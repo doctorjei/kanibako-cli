@@ -16,9 +16,18 @@ so what they pin is the CHANNEL — that a declared table resolves, arbitrates a
 provenance correctly — independently of who assembles the floor.
 ``TestTheLaunchWireCarriesTheDeclaration`` at the bottom pins the other half: that the
 REAL launch seam folds a plugin's table in, and folds it re-keyed.
+
+⚑ MBR-1 P4b brought CORE's own four literals through the same door
+(``KANIBAKO_NAME`` · ``KANIBAKO_AGENT`` · ``KANIBAKO_DIRECTIVE_SEED`` ·
+``KANIBAKO_AGENT_MARKERS_DIR`` → ``system.env.<VAR>``), so this module carries both
+halves of the one ruling: ``TestTheCoreStampsRideTheSameWire`` for their arrival, and
+a case in ``TestNothingRestampsThemAboveTheChannel`` for the writer that no longer
+exists above the channel.
 """
 
 from __future__ import annotations
+
+import logging
 
 import pytest
 import yaml
@@ -445,6 +454,169 @@ class TestTheLaunchWireCarriesTheDeclaration:
             assert slots[var].key == f"agent.{harness}.env.{var}"
 
 
+class TestTheCoreStampsRideTheSameWire:
+    """MBR-1 P4b: the four core ``KANIBAKO_*`` stamps as ``system.env.<VAR>`` keys.
+
+    The class above pins the PLUGIN half of ruling 2026-08-14 (*"the 'KANIBAKO_'
+    stuff should be in system.env, agent stuff should be in agent.env"*); this one
+    pins the CORE half, in the same shape and through the same seam. Each case reads
+    the ``meta.assembly.env`` leaf the launch consumes, so what it asserts is what a
+    box gets — and the KEY it asserts beside the value is the whole point: a stamp
+    written onto the container after the resolve has no key, no scope and no way for
+    a user to override or contest it, which is the arrangement this replaces.
+
+    ⚑ VALUES ARE INDEPENDENT LITERALS, not a second call to the code under test.
+    They are GUEST-side and fixed by construction (``GUEST_HOME`` is a constant), so
+    a change to either one fails here by name rather than agreeing with itself.
+    """
+
+    #: VAR → the value a launch of ``project_dir`` under node ``claude`` must carry.
+    #: ⚑ ``KANIBAKO_NAME`` is the project directory's name — ``project_dir`` is the
+    #: shared fixture, so this is that fixture's leaf name, not a free choice.
+    STAMPS = {
+        "KANIBAKO_NAME": "project",
+        "KANIBAKO_DIRECTIVE_SEED": "/home/agent/.config/kanibako/kickoff.md",
+        "KANIBAKO_AGENT": "claude",
+        "KANIBAKO_AGENT_MARKERS_DIR": "/tmp/kanibako/agents",
+    }
+
+    class _CoreTarget(NoAgentTarget):
+        """A REAL target declaring NO env of its own — every VAR here is core's."""
+
+        @property
+        def name(self) -> str:
+            return "claude"
+
+        def rom_root(self):
+            return None
+
+    def _launch_slots(self, std, config, project_dir, *, node="claude", target=...):
+        from kanibako.commands.start import (
+            _launch_env_map,
+            _resolve_launch_snapshot,
+        )
+        from kanibako.settings.paths import resolve_project
+
+        if target is ...:
+            target = self._CoreTarget()
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        snapshot, _deliveries = _resolve_launch_snapshot(
+            std=std, proj=proj, agent_name=node,
+            system_settings_path=None, agent_cfg_path=None,
+            desc=None, install=None, target=target,
+            agent_cfg=None, deliver_creds=True,
+        )
+        return _launch_env_map(snapshot)
+
+    @pytest.mark.parametrize("var", sorted(STAMPS))
+    def test_each_core_stamp_arrives_under_its_system_scope_key(
+        self, var, std, config, project_dir,
+    ):
+        """The VALUE, the SCOPE and the KEY — the three a post-resolve stamp lacked."""
+        slots = self._launch_slots(std, config, project_dir)
+        assert var in slots, f"the launch seam lost {var}"
+        assert slots[var].value == self.STAMPS[var]
+        assert slots[var].scope == "system"
+        assert slots[var].key == f"system.env.{var}"
+
+    def test_a_no_agent_launch_carries_the_other_three_and_no_agent_stamp(
+        self, std, config, project_dir,
+    ):
+        """The ONE gate that is not unconditional, kept where a shell launch sees it.
+
+        ⚑ ``KANIBAKO_DIRECTIVE_SEED`` is asserted PRESENT here on purpose: its
+        kickoff BIND is descriptor-gated and the variable is not, so a no-agent box
+        gets it today. Tidying the variable onto the bind's gate would pass every
+        agent case above and silently break exactly this one.
+        """
+        slots = self._launch_slots(std, config, project_dir, target=None)
+        assert "KANIBAKO_AGENT" not in slots
+        for var in ("KANIBAKO_NAME", "KANIBAKO_DIRECTIVE_SEED",
+                    "KANIBAKO_AGENT_MARKERS_DIR"):
+            assert slots[var].value == self.STAMPS[var]
+
+    def test_a_system_file_entry_overrides_a_stamp_by_the_same_key(
+        self, std, config, project_dir, tmp_path,
+    ):
+        """The override story ruling 41 states: same key, nearer file, no refusal.
+
+        The derived stamps are the BASE FLOOR, below every settings file — which is
+        what makes this the ordinary cascade rather than a special case. A twin at
+        ANOTHER scope is the refusal instead, in the case below.
+        """
+        from kanibako.commands.start import (
+            _launch_env_map,
+            _resolve_launch_snapshot,
+        )
+        from kanibako.settings.paths import resolve_project
+
+        var = "KANIBAKO_AGENT_MARKERS_DIR"
+        # ⚑ THE CONTROL FIRST: without the file the slot carries the DERIVED value.
+        # Without it this case would pass on a build that derives nothing at all,
+        # asserting only that a system file is read — which is not the claim.
+        assert self._launch_slots(
+            std, config, project_dir,
+        )[var].value == self.STAMPS[var]
+
+        system_file = write_yaml(tmp_path / "system.yaml", {
+            "system": {"env": {var: "/tmp/mine"}},
+        })
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        snapshot, _ = _resolve_launch_snapshot(
+            std=std, proj=proj, agent_name="claude",
+            system_settings_path=system_file, agent_cfg_path=None,
+            desc=None, install=None, target=self._CoreTarget(),
+            agent_cfg=None, deliver_creds=True,
+        )
+        slots = _launch_env_map(snapshot)
+        assert slots[var].value == "/tmp/mine"
+        assert slots[var].key == f"system.env.{var}"
+
+    def test_a_twin_of_a_core_stamp_at_another_scope_refuses_naming_both(
+        self, std, config, project_dir,
+    ):
+        """The BREAKING half of the fold, at the seam a user meets it.
+
+        A ``box.env.KANIBAKO_NAME`` used to launch, with kanibako's own value written
+        over it a moment later and nothing said. The stamps are ordinary keys now, so
+        the two contest one write-once slot and the launch refuses naming both — the
+        same rule ``TestATwinAtAnotherScopeRefuses`` pins for a plugin's declaration.
+        """
+        from kanibako.commands.start import _resolve_launch_snapshot
+        from kanibako.settings.paths import resolve_project
+
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        with pytest.raises(SettingsError) as excinfo:
+            _resolve_launch_snapshot(
+                std=std, proj=proj, agent_name="claude",
+                system_settings_path=None, agent_cfg_path=None,
+                desc=None, install=None, target=self._CoreTarget(),
+                agent_cfg=None, deliver_creds=True,
+                extra_default_categories={"box.env.KANIBAKO_NAME": "mine"},
+            )
+        message = str(excinfo.value)
+        assert "system.env.KANIBAKO_NAME" in message
+        assert "box.env.KANIBAKO_NAME" in message
+
+    def test_an_unnamed_project_declares_no_name_stamp(self):
+        """The ``proj.name`` gate, which no real launch can reach.
+
+        ⚑ THE ONE CASE DRIVEN AT THE FUNCTION rather than through the seam, and
+        deliberately: ``resolve_project`` always names a project, so the falsy branch
+        has no production path to probe. Everything else in this class goes through
+        ``_resolve_launch_snapshot``.
+        """
+        from types import SimpleNamespace
+
+        from kanibako.commands.start import _core_env_default_categories
+
+        table = _core_env_default_categories(
+            proj=SimpleNamespace(name=""), target=None, agent_id="claude",
+        )
+        assert "system.env.KANIBAKO_NAME" not in table
+        assert "system.env.KANIBAKO_DIRECTIVE_SEED" in table
+
+
 class TestNothingRestampsThemAboveTheChannel:
     """The launch layer that used to sit ABOVE every settings file is empty now.
 
@@ -453,6 +625,10 @@ class TestNothingRestampsThemAboveTheChannel:
     overrode one by key had the plugin's value written back on top a moment later —
     which is what made the override story impossible to tell. It realizes RESOLVED
     values only now, so nothing static passes it.
+
+    ⚑ AND SINCE MBR-1 P4b THE SAME HOLDS FOR CORE'S OWN FOUR (below). They were the
+    LAST writers above the channel, and the reason the class above can assert an
+    override at all is that nothing re-stamps the winner afterwards.
     """
 
     @pytest.mark.parametrize("harness", sorted(DECLARED))
@@ -464,3 +640,42 @@ class TestNothingRestampsThemAboveTheChannel:
             realized = assemble_env(descriptor, access=tier, setting_values={})
             for var in DECLARED[harness]:
                 assert var not in realized, f"{var} would re-stamp the user's value"
+
+    def test_nothing_above_the_channel_writes_the_core_stamps(self, tmp_path):
+        """MBR-1 P4b: ``_assemble_launch_env`` is a PROJECTION of the leaf now.
+
+        Handed an EMPTY slot map it must return an EMPTY env — the four
+        ``KANIBAKO_*`` variables included. Anything it adds of its own is above every
+        settings file and above ``-e`` by construction, which is the arrangement the
+        fold removed; a fifth stamp reintroduced anywhere in that function fails here
+        without needing to be named in advance.
+
+        ⚑ Driven at the CONSUMER on purpose. The arrival half is
+        ``TestTheCoreStampsRideTheSameWire``; what this pins is the ABSENCE of a
+        second writer, which no arrival assertion can see — a stamp restored beside
+        the channel would leave every arrival case green.
+        """
+        from types import SimpleNamespace
+
+        from kanibako.commands.start import _assemble_launch_env
+
+        extra_mounts: list = []
+        env, secret_vars = _assemble_launch_env(
+            # ⚑ Only what ``_warn_legacy_env_files`` reads: the three legacy env
+            # FILE paths it probes (none of which exist under ``tmp_path``, so it
+            # prints nothing) — this case is about what the function RETURNS.
+            std=SimpleNamespace(data_path=tmp_path),
+            proj=SimpleNamespace(
+                name="b", group=None,
+                metadata_path=tmp_path, project_path=tmp_path,
+            ),
+            deliveries=SimpleNamespace(secrets=[]),
+            env_slots={},
+            state_env={},
+            cli_env=None,
+            extra_mounts=extra_mounts,
+            logger=logging.getLogger("test.p4b"),
+        )
+        assert env == {}
+        assert secret_vars == []
+        assert extra_mounts == []

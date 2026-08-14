@@ -26,6 +26,7 @@ from typing import overload
 
 from kanibako.agent_ref import parse_agent_ref
 from kanibako.errors import ConfigError
+from kanibako.settings.agent_file import AgentFileSlot, slot_for
 from kanibako.settings.config_keys import (
     AGENT_DEFAULT_SUB,
     _parse_agent_node_secret_key,
@@ -52,8 +53,13 @@ class NodeRouteRefusal:
 
 def _agent_node_route(
     node: str, tail: str, agents_root: "Path | None",
-) -> "tuple[Path, tuple[str, ...], str] | NodeRouteRefusal | None":
-    """The per-node agent file route: ``(path, sections, leaf)`` for *node*/*tail*.
+) -> "AgentFileSlot | NodeRouteRefusal | None":
+    """The per-node agent file route: an :class:`AgentFileSlot` for *node*/*tail*.
+
+    ⚑ A SLOT, NOT AN ADDRESS.  It used to hand back ``(path, sections, leaf)``, which put a
+    ``self``-rooted file address in every caller's hands — internal traffic in a FILE-SURFACE
+    alias (rulings 51/52).  The slot carries the node and the key TAIL; the address is produced
+    inside :mod:`kanibako.settings.agent_file` when the value is actually read or written.
 
     ONE HOME for the recipe every per-node key resolution repeats — the reserved
     any-agent tier refusal, the validate-only ref check, the store path, and the
@@ -82,9 +88,7 @@ def _agent_node_route(
     refusal = check_agent_node(node)
     if refusal is not None:
         return refusal
-    from kanibako.settings.agent_config import agent_file_route, agent_settings_path
-
-    return (agent_settings_path(agents_root, node), *agent_file_route(tail, node))
+    return slot_for(agents_root, node, tail)
 
 
 def check_agent_node(node: str) -> "NodeRouteRefusal | None":
@@ -111,14 +115,14 @@ def check_agent_node(node: str) -> "NodeRouteRefusal | None":
 
 def _persona_agent_target(
     canonical: str, agents_root: "Path | None",
-) -> "tuple[Path, tuple[str, ...], str] | str | None":
+) -> "AgentFileSlot | str | None":
     """Resolve a canonical persona key to its FILE write/read location.
 
     Returns one of:
 
-    * ``(path, sections, leaf)`` — the route into ``agents/<node>/settings.yaml``
-      (``path``), the nested file table (``("self",)`` for a flat state leaf,
-      ``("self", "env")`` for an env pointer), and the leaf name;
+    * an :class:`AgentFileSlot` — the node's ``agents/<node>/settings.yaml`` plus the key TAIL
+      (``model`` for a flat state leaf, ``env.<VAR>`` for an env pointer).  Where inside the file
+      that lands is the boundary's business, not this module's;
     * an ``"Error: ..."`` string — a MALFORMED node ref (validated, never routed);
     * ``None`` — not a persona key, OR *agents_root* was not supplied (the per-
       persona store is global under ``config.agents`` and is only reachable when
@@ -148,7 +152,7 @@ def _persona_agent_target(
 
 def _node_bind_target(
     canonical: str, agents_root: "Path | None",
-) -> "tuple[Path, tuple[str, ...], str] | None":
+) -> "AgentFileSlot | None":
     """Resolve a canonical per-node DESCRIPTOR bind key
     ``agent.<node>.bindings.{ro,rw}.<name>`` (item-0) to its FILE READ location.
 
@@ -158,11 +162,10 @@ def _node_bind_target(
     the key does: still declared, still hand-authored in this very file, still
     delivered at launch — and hand-editing it is the cure the refusal prescribes.
 
-    Returns ``(path, sections, leaf)`` via the file-shape SoT
-    :func:`agent_config.agent_file_route`: the node's OWN settings file
-    ``agents/<node>/settings.yaml`` (*path*), and the nested table holding the bind
-    — ``self.<node>.bindings.<ro|rw>.<name>`` split into ``(sections, leaf)``, the
-    shape ``settings_assemble._agent_partial`` reads back at launch. The node appears
+    Returns an :class:`AgentFileSlot` on the node's OWN settings file
+    ``agents/<node>/settings.yaml``, carrying the tail ``bindings.<ro|rw>.<name>``.
+    :mod:`kanibako.settings.agent_file` places it in the discriminated per-node sub-table —
+    the shape ``settings_assemble._agent_partial`` reads back at launch. The node appears
     BOTH in the dir path AND in the nested key — that is the launch read shape, not
     a bug.
 
@@ -179,23 +182,20 @@ def _node_bind_target(
     # ``_cat`` is the FULL ``bindings.ro`` / ``bindings.rw`` segment (not the bare
     # ``ro``/``rw``), so the tail is ``{cat}.{name}`` — no extra ``bindings.`` prefix.
     route = _agent_node_route(node, f"{_cat}.{_name}", agents_root)
-    return route if isinstance(route, tuple) else None
+    return route if isinstance(route, AgentFileSlot) else None
 
 
 def _node_secret_target(
     canonical: str, agents_root: "Path | None",
-) -> "tuple[Path, tuple[str, ...], str] | None":
+) -> "AgentFileSlot | None":
     """Resolve a canonical ``agent.<node>.secret_path.<VAR>`` key (SECRET category)
     to its FILE write/read/reset location — the get/set/reset symmetry twin.
 
-    Returns ``(path, sections, leaf)`` via the file-shape SoT
-    :func:`agent_config.agent_file_route`: the node's OWN settings file
-    ``agents/<node>/settings.yaml`` (*path*) and the DISCRIMINATED nested table
-    ``self.<node>.secret_path`` (*sections*) with *leaf* = the VAR — EXACTLY the shape
-    ``_agent_partial`` reads into the launch cascade and ``load_agent_config`` reads
-    back into ``AgentConfig.secret_path``. The node appears BOTH in the dir path AND
-    the nested key — that is the launch read shape, not a bug (same as
-    ``_node_bind_target``).
+    Returns an :class:`AgentFileSlot` on the node's OWN settings file
+    ``agents/<node>/settings.yaml``, carrying the tail ``secret_path.<VAR>``.
+    :mod:`kanibako.settings.agent_file` places it at EXACTLY the table
+    ``_agent_partial`` reads into the launch cascade and ``agent_file.load`` reads
+    back into ``AgentConfig.secret_path``.
 
     Returns ``None`` when *canonical* is not a node secret key, *agents_root* was not
     threaded (the per-node store is global under ``config.agents`` — only reachable at
@@ -207,7 +207,7 @@ def _node_secret_target(
         return None
     node, _var = parsed
     route = _agent_node_route(node, f"secret_path.{_var}", agents_root)
-    return route if isinstance(route, tuple) else None
+    return route if isinstance(route, AgentFileSlot) else None
 
 
 # ⚑ ``system.default_agent``'s four-site SPECIAL CASE is GONE (P7). The key is
@@ -526,7 +526,7 @@ def _read_dest(
     (``settings_assemble._agent_partial``).  So a hand-authored ``self.claude.caches``
     reads back "(not set)" while a stray ``agent.claude.caches`` in the system
     settings file reads back instead.  Re-pointing it is a STORAGE-SHAPE change that
-    moves ``agent_config.agent_file_route`` — the per-agent file-shape SoT shared
+    moves ``agent_file._address`` — the per-agent file-shape SoT shared
     with the ``agent`` noun's own verbs — and is a separately-boarded pass.  ⚑ Until
     it lands, NO message may promise that ``config get <agent terminal key>`` works
     (see ``config_keys.agent_node_bind_retired_error``).

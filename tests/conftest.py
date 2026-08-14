@@ -593,6 +593,7 @@ def start_mocks():
 
                 from kanibako.commands.start import (
                     _agent_delivered_dests,
+                    _core_env_default_categories,
                     _install_assembly_collapse,
                 )
                 from kanibako.settings.agent_representation import agent_default_partial
@@ -653,6 +654,19 @@ def start_mocks():
                 _default_cats: dict[str, object] = {
                     "meta.box.home": str(proj.shell_path),
                 }
+                # The CORE ``KANIBAKO_*`` STAMPS (MBR-1 P4b) — ``system.env.<VAR>``
+                # keys the launch DERIVES, and part of the base-families branch this
+                # stub reimplements.  Since the fold there is no other writer of
+                # them: ``_assemble_launch_env`` stamps nothing, so a stub that
+                # omitted this line would launch every mocked box with NONE of the
+                # four and make every stamp assertion in test_start*.py vacuous.
+                # ⚑⚑ A CALL to the one implementation, never a second copy — the
+                # same rule the collapse install below follows, and the reason the
+                # product side is ONE named function: the gates (a named project; a
+                # real agent) are inside it, so this stub cannot drift from them.
+                _default_cats.update(_core_env_default_categories(
+                    proj=proj, target=_target, agent_id=_node,
+                ))
                 # SECRET category (spec §2a secret_path): fold the active agent's
                 # secret_path pointers into the snapshot as agent-scope category
                 # defaults (already discriminated agent.<node>.secret_path.<VAR>), so

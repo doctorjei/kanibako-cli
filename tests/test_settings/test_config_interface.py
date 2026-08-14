@@ -3481,7 +3481,7 @@ class TestAgentNodeBindRouting:
         has to, to split the node non-greedily around them) instead of importing an
         alternation, so it must be pinned against the single source. **It is pinned
         as a PROPER SUBSET, and that is a MEASUREMENT, not laziness:** this parser
-        also picks the READ route — ``agent_config.agent_file_route`` — which has a
+        also picks the READ route — ``agent_file._address`` — which has a
         nested table for ``bindings.<arm>.<name>`` and NONE for the other four, so a
         widened parser would resolve ``agent.claude.common.x`` to the dotted leaf
         ``self."common.x"`` and the read would silently answer "(not set)".

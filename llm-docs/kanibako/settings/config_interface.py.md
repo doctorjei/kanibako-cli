@@ -598,7 +598,7 @@ pre-existing defect still allows the set and `config set` stays usable to REPAIR
   `settings_prefs`).
 * **`agent.<node>.secret_path.<VAR>`** — the per-node SECRET category (spec §2a). A SCALAR path
   write to the node's OWN settings file at the DISCRIMINATED `agent.<node>.secret_path`
-  sub-table (the shape `_agent_partial` reads into the cascade + `load_agent_config` reads back).
+  sub-table (the shape `_agent_partial` reads into the cascade + `agent_file.load` reads back).
   ⚑ Checked BEFORE the persona branch (`env_file` was there in rc; `secret_path` is discriminated
   node storage, a clean break). The §0 directional guard already ran: `agent.*` is settable only
   DOWNWARD from system, so box/workset was refused above; SYSTEM threads `agents_root`.
@@ -616,7 +616,7 @@ pre-existing defect still allows the set and `config set` stays usable to REPAIR
   host-expanded at launch, so a dangling `@`-ref must be caught now).
 * **`agent.<node>.<key>`** — the PER-PERSONA agent key (block B1): a write to the agent's OWN
   `agents/<node>/settings.yaml` (NOT the command scope's settings file), at the FLAT slot
-  `load_agent_config` reads back (state leaf under `agent:`; `env.<VAR>` under `env:`). The
+  `agent_file.load` reads back (state leaf under `agent:`; `env.<VAR>` under `env:`). The
   SECRET pointer `secret_path.<VAR>` is handled EARLIER (discriminated node storage), not here.
   The node was `℘`-canonicalized by `resolve_key`. Sparse by construction: `write_nested_key` is
   read-modify-write, so only the key the user set is materialised — a default-only persona file

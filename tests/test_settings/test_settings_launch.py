@@ -3589,7 +3589,7 @@ def _agent_file_table(key, value, *, node="claude"):
     channel), so they are written in the discriminated sub-table. Keyed off the PRODUCTION
     tuple, so a category joining or leaving it cannot leave this spelling behind.
     """
-    from kanibako.settings.settings_assemble import _FLAT_AGENT_CATEGORIES
+    from kanibako.settings.agent_file import _FLAT_AGENT_CATEGORIES
 
     table = _nested(key, value)
     flat = key.partition(".")[0] in _FLAT_AGENT_CATEGORIES

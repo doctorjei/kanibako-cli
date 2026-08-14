@@ -2824,7 +2824,7 @@ not_keys:
                            ⚑ The `agent` NOUN is OUTSIDE that refusal and always was: its
                            verbs take the key TAIL under an already-named node, not a whole
                            key, so `agent set <node> env.FOO=bar` routes through
-                           agent_file_route() and writes the DECLARED agent.<node>.env.FOO.
+                           the agent_file boundary and writes the DECLARED agent.<node>.env.FOO.
                            No bare key is ever formed there, and nothing is refused"
     "agent.<agent>.<anyleaf>": "free-form leaf passthrough — the keyspace is CLOSED (spec §0)"
 

@@ -1719,8 +1719,6 @@ def _assemble_launch_env(
     env_slots,
     state_env,
     cli_env,
-    target,
-    agent_id,
     extra_mounts,
     logger,
 ):
@@ -1741,6 +1739,10 @@ def _assemble_launch_env(
     # REFUSES a variable two scopes' keys both name. Nothing here picks a scope,
     # and since MBR-1 P3 nothing rides in beside them either: the per-agent FILE's
     # env is an ordinary `agent.<node>.env.<VAR>` key that arrives in these slots.
+    # ⚑ And since MBR-1 P4b, NEITHER DO THE CORE ``KANIBAKO_*`` STAMPS: the four
+    # of them are launch-DERIVED ``system.env.<VAR>`` floor keys built by
+    # :func:`_core_env_default_categories` and they arrive in these slots like any
+    # other key. This function stamps NOTHING — do not add a variable here.
     # Target-derived state env and per-run CLI -e env stay above all config
     # levels.  The docker `.env` files that used to layer in here are RETIRED
     # (RQ-1, 2026-08-02) — see ``_build_config_env``.
@@ -1771,49 +1773,6 @@ def _assemble_launch_env(
     # auto-updater (DISABLE_AUTOUPDATER) vars are claude's own DECLARED
     # ``agent.claude.env.*`` keys and arrive in the ARBITRATED slots above: core
     # does NO per-agent (``target.name == "claude"``) special-casing.
-
-    # Inject instance identity for peer communication.
-    if proj.name:
-        container_env["KANIBAKO_NAME"] = proj.name
-
-    # Instruction-delivery SEED (increment 2b): the box-absolute path to the
-    # kickoff SEED, RO-bound at ~/.config/kanibako/kickoff.md.  The
-    # SessionStart hooks (claude/codex) and the goose launch-flatten shim
-    # reference this to flatten the ``@import`` directive chain into the
-    # agent's native slot.  ABSOLUTE (not ``~``) so it resolves identically in
-    # a hook shell and at exec time.  Global (agent-independent): the per-agent
-    # FINAL-slot path is each plugin's own declared
-    # ``agent.<agent>.env.KANIBAKO_DIRECTIVE_FINAL`` key and arrives in the slots
-    # above.
-    # ⚑ READ BACK from the ONE declaration of the slot (``core-defaults.yaml``
-    # ``kickoff.box_dest``, the source of core's own bind) rather than spelled a
-    # second time here: the env var and the bind MUST name the same file, and the
-    # kickoff is core-owned as of C-CANON R2 (P-5), so core has one spelling of it.
-    container_env["KANIBAKO_DIRECTIVE_SEED"] = core_defaults.kickoff_guest_dest()
-
-    # Stamp the resolved agent ON THE CONTAINER (NOT durable config — keeps
-    # `--agent` ephemeral).  On a later `kanibako start` against this running
-    # persistent box, the reattach fast-source reads this back so it can
-    # refresh creds + attach without re-running the resolution cascade (which
-    # would otherwise Gate-2a when there are 2+ agents and no default).  Only
-    # stamped for a real agent launch; no-agent/shell launches (target is
-    # None) carry no agent, so the var is left unset.
-    if target is not None:
-        # Stamp the NODE-name (full persona identity), NOT the harness
-        # (``target.name``): the reattach fast-source + stop writeback read
-        # this back and derive the harness via ``harness_of`` where a target
-        # is needed. Bare node == harness == target.name (byte-identical).
-        container_env["KANIBAKO_AGENT"] = agent_id
-
-    # E2g / increment 4a: seed the per-agent liveness MARKERS DIR so every agent
-    # session's start hook writes a per-PID marker ``<dir>/$PPID`` there; the
-    # supervisor reads the SAME dir via --agent-markers-dir.  Seeded UNCONDITIONALLY
-    # (not just warm-up): the E2b/E2c supervised-agent path (`kanibako start
-    # [--detach]`) now ALSO enumerates the dir so run_forever detects a panel
-    # newcomer (increment 4a), and the warm-up panel-watch path enumerates it for
-    # panel-agent liveness.  Harmless for a non-claude/no-agent box (no marker hook
-    # is seeded, so nothing writes it).
-    container_env["KANIBAKO_AGENT_MARKERS_DIR"] = AGENT_MARKERS_DIR
     return container_env, secret_export_vars
 
 
@@ -3169,7 +3128,8 @@ def _run_container(
         if runtime.is_running(container_name) and entrypoint is not None:
             exec_cmd = [entrypoint] + (extra_args or [])
             # Apply per-run -e/--env vars to the exec'd process. The container's
-            # baseline env (the collapsed `<scope>.env.<VAR>` slots, KANIBAKO_NAME)
+            # baseline env (the collapsed `<scope>.env.<VAR>` slots — KANIBAKO_NAME
+            # and the other core stamps AMONG them since MBR-1 P4b)
             # was set at launch and is inherited by exec; without
             # this, per-run -e vars would be silently dropped when the box is
             # already running.
@@ -3893,8 +3853,6 @@ def _run_container(
             env_slots=_launch_env_map(_snapshot),
             state_env=state_env,
             cli_env=cli_env,
-            target=target,
-            agent_id=agent_id,
             extra_mounts=extra_mounts,
             logger=logger,
         )
@@ -4178,12 +4136,22 @@ def _run_container(
                 supervisor_argv += [
                     "--creds-flag", f"{_GUEST_HOME_D}/{CREDS_DIRTY_RELPATH}",
                 ]
-                # E2g / increment 4a: thread the per-agent liveness MARKERS DIR (the
-                # SAME dir seeded as KANIBAKO_AGENT_MARKERS_DIR above) to BOTH modes.
-                # run_forever (E2b/E2c) enumerates it to DETECT a panel newcomer
-                # (increment 4a, LOG-ONLY); panel-watch (E2f) enumerates it for
-                # panel-agent liveness + newcomer detection.  One dir, one scheme.
-                supervisor_argv += ["--agent-markers-dir", AGENT_MARKERS_DIR]
+                # E2g / increment 4a: thread the per-agent liveness MARKERS DIR to
+                # BOTH modes.  run_forever (E2b/E2c) enumerates it to DETECT a panel
+                # newcomer (increment 4a, LOG-ONLY); panel-watch (E2f) enumerates it
+                # for panel-agent liveness + newcomer detection.  One dir, one scheme.
+                # ⚑ The value passed is the RESOLVED ``container_env`` entry, NOT the
+                # compile-time constant: since MBR-1 P4b the stamp is an ordinary
+                # ``system.env.KANIBAKO_AGENT_MARKERS_DIR`` slot (the floor key
+                # :func:`_core_env_default_categories` derives), so a user CAN override
+                # it — and the box-side hooks that WRITE the markers read the ENV
+                # (``${KANIBAKO_AGENT_MARKERS_DIR:-…}``, see ``vscode.vscode_config``).
+                # Reading the env here is what keeps BOTH ends of the contract on one
+                # dir under an override; the constant is only the no-override fallback.
+                supervisor_argv += [
+                    "--agent-markers-dir",
+                    container_env.get("KANIBAKO_AGENT_MARKERS_DIR", AGENT_MARKERS_DIR),
+                ]
                 # increment 4b ENFORCEMENT — DEFAULT-OFF, gated behind the experimental
                 # env KANIBAKO_SESSION_TAKEOVER so 4b lands DORMANT and cannot fire in
                 # the wild before the $PPID == agent-PID / panel invariant is validated
@@ -6539,6 +6507,18 @@ def _resolve_launch_snapshot(
                 else (target.descriptor if target is not None else None)
             ), family="kickoff", origins=cat_origins,
         )
+        # The CORE ``KANIBAKO_*`` STAMPS as SYSTEM-scope env keys (MBR-1 P4b,
+        # ruling 2026-08-14).  Folded HERE — beside the kickoff whose box_dest one
+        # of them names — because they are core's own launch-derived floor, the
+        # exact counterpart of the plugin-declared ``agent.<node>.env.*`` table
+        # below.  ⚑ The per-variable gates (a named project; a real agent) live
+        # INSIDE the one function that spells the variables, so there is one place
+        # to read what a box does and does not get; nothing here selects a subset.
+        _merge_default_categories(
+            default_categories, _core_env_default_categories(
+                proj=proj, target=target, agent_id=agent_name,
+            ), family="core env", origins=cat_origins,
+        )
         # The packaged CANON: five READ-ONLY SIBLING binds (spec §2c, J-7) — the
         # COLLECTION.md index and the bible's ROM_CONTENTS.md as FILE binds, plus one
         # whole-directory bind per packaged chapter (general/workset/box).  Each
@@ -8493,6 +8473,56 @@ def _apply_synced_copies(
 # keyed dict before anything resolves it.  The STATIC value lives in the shipped
 # system/core defaults file (P6b coalesce) and is empty today.
 VAULT_MASK_DEST = core_defaults.vault_mask_default()
+
+
+def _core_env_default_categories(*, proj, target, agent_id) -> dict[str, str]:
+    """The four CORE ``KANIBAKO_*`` stamps, as launch-DERIVED ``system.env.*`` keys.
+
+    ⚑⚑ THE ONE PLACE THEY ARE SPELLED (MBR-1 P4b, ruling 2026-08-14: *"the
+    'KANIBAKO_' stuff should be in system.env"*).  They used to be assigned onto the
+    finished container env by ``_assemble_launch_env``, ABOVE every settings file and
+    above ``-e``; they are ordinary system-scope floor keys now, so they enter the
+    ONE channel with everything else — a nearer ``system.env.<VAR>`` file entry
+    overrides one, a TWIN at another scope REFUSES the launch naming both keys
+    (``store_collapse.collapse_env``), ``-e`` reaches them, and ``box show
+    --effective`` shows them.  Nothing above the channel may write these variables;
+    adding a fifth stamp anywhere else is the bug this function exists to prevent.
+
+    The values are RESOLVED LITERALS, not ``@``-refs (the ``meta_identity_floor``
+    pattern): what a launch derives, it derives once, here.
+
+    Contracts the signature cannot carry:
+
+    * ``KANIBAKO_NAME`` is the peer-communication instance identity and is emitted
+      only for a NAMED project — an unnamed one leaves the variable unset.
+    * ``KANIBAKO_DIRECTIVE_SEED`` is UNCONDITIONAL even though its kickoff BIND is
+      descriptor-gated: a no-agent box gets the variable today and must keep getting
+      it.  🛑 Do NOT "tidy" it onto the bind's gate.  The path is READ BACK from the
+      ONE declaration of the slot (``core-defaults.yaml`` ``kickoff.box_dest``, the
+      source of core's own bind) rather than spelled a second time — the variable
+      and the bind MUST name the same file.  Global/agent-independent: the per-agent
+      FINAL slot is each plugin's own ``agent.<agent>.env.KANIBAKO_DIRECTIVE_FINAL``.
+    * ``KANIBAKO_AGENT`` is the resolved agent stamped ON THE CONTAINER and never in
+      durable config (that is what keeps ``--agent`` ephemeral): a later ``kanibako
+      start`` against the running box, ``stop``'s writeback and the creds watcher all
+      read it back rather than re-running the selection cascade.  It carries the
+      NODE name (full persona identity), NOT the harness (``target.name``) — readers
+      derive the harness via ``harness_of``; for a bare agent the two are identical.
+      Emitted only for a REAL agent launch, which is why *target* is the gate: a
+      no-agent / shell launch carries no agent and the variable stays unset.
+    * ``KANIBAKO_AGENT_MARKERS_DIR`` is UNCONDITIONAL: both the E2b/E2c supervised
+      path and the warm-up panel watch enumerate the dir that every agent session's
+      start hook writes its per-PID marker into, and the supervisor reads the SAME
+      dir via ``--agent-markers-dir``.  Harmless where no marker hook is seeded.
+    """
+    table: dict[str, str] = {}
+    if proj.name:
+        table["system.env.KANIBAKO_NAME"] = proj.name
+    table["system.env.KANIBAKO_DIRECTIVE_SEED"] = core_defaults.kickoff_guest_dest()
+    table["system.env.KANIBAKO_AGENT_MARKERS_DIR"] = AGENT_MARKERS_DIR
+    if target is not None:
+        table["system.env.KANIBAKO_AGENT"] = agent_id
+    return table
 
 
 def _channel_default_categories(std, proj) -> "core_defaults.BindArmTable":

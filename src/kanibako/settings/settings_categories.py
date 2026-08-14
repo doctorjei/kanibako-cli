@@ -200,7 +200,7 @@ SECRET_MOUNT_DIR: Final[str] = "/run/kanibako/secrets"
 # ``config_dest``'s known-broken ``_CATEGORY`` arm to the NOUN's settings file
 # rather than to ``agents/<node>/settings.yaml``, so the value it returns is the
 # wrong file's.  That arm's repointing is an OWED, separately-ruled pass (it moves
-# ``agent_config.agent_file_route``, the per-agent file-shape SoT); it is named
+# ``agent_file._address``, the per-agent file-shape SoT); it is named
 # here so nothing writes a message promising that read works.
 #
 # NOTE the regex order: ``bindings.ro`` / ``bindings.rw`` must precede a bare
@@ -302,7 +302,7 @@ _NON_TERMINAL_CATEGORY_ALT = "|".join(
 #: agent doors cover the same categories by DERIVATION rather than by two hand
 #: lists.  ⚑ ``config_keys._AGENT_NODE_BIND_RE`` also pins itself against this
 #: tuple, as a SUBSET rather than an equality, and that is a MEASUREMENT: it is the
-#: agent-scope READ parser, and ``agent_config.agent_file_route`` has a nested
+#: agent-scope READ parser, and ``agent_file._address`` has a nested
 #: table for ``bindings.<arm>.<name>`` and none for the other four (it would read
 #: the dotted leaf ``self."common.x"``).  Recognition is derived here; resolution
 #: is not.
@@ -345,7 +345,7 @@ SCOPE_BIND_KEY_RE = re.compile(
 #:
 #: ⚑⚑ RECOGNITION ONLY — IT PICKS NO READ ROUTE, and that separation is load-bearing.
 #: ``config_keys._AGENT_NODE_BIND_RE`` is the narrower parser that DOES pick one
-#: (``agent_config.agent_file_route``), and it covers the ``bindings`` arms alone
+#: (``agent_file._address``), and it covers the ``bindings`` arms alone
 #: because that file-shape SoT has a nested table for ``bindings.<arm>.<name>`` and
 #: none for the other four: widening THAT parser would resolve
 #: ``agent.claude.common.plugins`` to the dotted leaf ``self."common.plugins"`` and
@@ -1008,14 +1008,19 @@ def _suppress_then_add(
     for depth, seg in enumerate(occupant_segments[1:], start=1):
         lines.append(f"{indent * depth}{seg}:" if depth < last
                      else f"{indent * depth}{seg}: null")
-    # ⚑ The AGENT scope stores its own node under ``self.<node>`` in the per-agent
+    # ⚑ The AGENT scope stores its own node in a DISCRIMINATED sub-table of the per-agent
     # settings file (the shape ``_agent_partial`` reads back); the canonical
     # ``agent.<node>`` spelling is what a CONTAINING scope's file writes as a
     # defaults-down override. Printing one shape without saying so would hand the
     # reader an edit that silently does nothing in the other file.
+    # ⚑ The file's own spelling comes from the BOUNDARY (``agent_file``), never a literal
+    # here — same reason as the bind cure in ``config_keys``: the caveat QUOTES the agent
+    # file at the user, so S2's flatten must be able to change it in one place.
+    from kanibako.settings.agent_file import file_spelling
+
     caveat = (
         "\n⚑ In the per-agent settings file itself the node is spelled "
-        f"'self.{occupant_segments[1]}' rather\nthan "
+        f"'{file_spelling(occupant_segments[1])}' rather\nthan "
         f"'{scope}.{occupant_segments[1]}'; the form above is "
         "what a CONTAINING scope's file writes.\n"
         if scope == "agent" and len(occupant_segments) > 1 else ""

@@ -29,6 +29,12 @@ from kanibako.settings.config_display import (
     _print_category_block,
     _print_pref_block,
 )
+from kanibako.settings.agent_file import (
+    AgentFileSlot,
+    read_leaf,
+    remove_leaf,
+    write_leaf,
+)
 from kanibako.settings.config_dest import (
     DestRoute,
     _write_dest,
@@ -444,8 +450,7 @@ def get_config_value(
         bind_target = _node_bind_target(canonical, agents_root)
         if bind_target is None:
             return None
-        path, sections, leaf = bind_target
-        return read_stored_leaf(path, sections, leaf)
+        return read_leaf(bind_target)
 
     # ``agent.<node>.secret_path.<VAR>`` — the stored PATH, never the secret VALUE (spec §2a).
     # ⚑ BEFORE the persona branch (discriminated node storage).
@@ -453,8 +458,7 @@ def get_config_value(
         secret_target = _node_secret_target(canonical, agents_root)
         if secret_target is None:
             return None
-        path, sections, leaf = secret_target
-        return read_stored_leaf(path, sections, leaf)
+        return read_leaf(secret_target)
 
     # ``<scope>.secret_path.<VAR>`` — the stored PATH from the NOUN's settings file.
     # ⚑ ``noun_file``, NOT ``project_toml``: the SYSTEM handler never threads the latter.
@@ -469,9 +473,8 @@ def get_config_value(
     # ``agent.<node>.<key>`` — the PER-PERSONA agent key (B1), read from the node's own file.
     if _is_persona_agent_key(canonical):
         target = _persona_agent_target(canonical, agents_root)
-        if isinstance(target, tuple):
-            path, sections, leaf = target
-            return read_stored_leaf(path, sections, leaf)
+        if isinstance(target, AgentFileSlot):
+            return read_leaf(target)
         return None
 
     # Bare agent settings (model, continue_mode, access, allow_helpers).
@@ -662,8 +665,7 @@ def set_config_value(
                 f"Error: '{key}' is a per-node secret pointer and is only "
                 f"settable at the system scope."
             )
-        path, sections, leaf = secret_target
-        write_nested_key(path, sections, leaf, value)
+        write_leaf(secret_target, value)
         return f"Set {_node_secret_display_key(canonical)}={value}"
 
     # ``<scope>.secret_path.<VAR>`` — a SCALAR path write to the command scope's SETTINGS file.
@@ -698,8 +700,7 @@ def set_config_value(
                 f"Error: '{key}' is a per-persona agent setting and is only "
                 f"settable at the system scope."
             )
-        path, sections, leaf = target
-        write_nested_key(path, sections, leaf, value)
+        write_leaf(target, value)
         return f"Set {_persona_display_key(canonical)}={value}"
 
     # Bare agent settings — the agent-agnostic CLI writes the any-agent ``agent.default`` tier.
@@ -836,9 +837,8 @@ def reset_config_value(
                 f"Error: '{key}' is a per-node secret pointer and is only "
                 f"resettable at the system scope."
             )
-        path, sections, leaf = secret_target
         display = _node_secret_display_key(canonical)
-        if remove_nested_key(path, sections, leaf):
+        if remove_leaf(secret_target):
             return _honest_reset_message(display, command_scope)
         return f"No override for {display}"
 
@@ -867,9 +867,8 @@ def reset_config_value(
                 f"Error: '{key}' is a per-persona agent setting and is only "
                 f"resettable at the system scope."
             )
-        path, sections, leaf = target
         display = _persona_display_key(canonical)
-        if remove_nested_key(path, sections, leaf):
+        if remove_leaf(target):
             return _honest_reset_message(display, command_scope)
         return f"No override for {display}"
 

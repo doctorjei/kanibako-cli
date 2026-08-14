@@ -388,7 +388,7 @@ spelling was given.
 ``agent.<node>.<key>``, set on the agent's OWN settings file ``agents/<node>/settings.yaml``.
 
 `_PERSONA_STATE_LEAVES` is the settable per-persona agent leaves: the FLAT agent-state knobs
-(`_is_agent_setting` set) plus the ``env.`` section — the EXACT shape `agent_config.load_agent_config`
+(`_is_agent_setting` set) plus the ``env.`` section — the EXACT shape `agent_file.load`
 reads back (`AgentConfig.state` / `.env`), so a value `set` here is what the launch snapshot resolves
 for the persona (endpoint via `effective_behavior`). The former ``env_file.`` section is RENAMED to
 the DISCRIMINATED ``agent.<node>.secret_path.<VAR>`` SECRET category (routed by
@@ -440,7 +440,7 @@ the two cannot drift.
 ⚑⚑ IT IS DELIBERATELY NARROWER THAN THAT SET, AND THE SHAPE CUTOVER DID NOT CHANGE THAT — it
 CONFIRMED it. The older note said widening this parser "belongs with the shape cutover"; the cutover
 (2026-08-08c) landed and the answer turned out to be that there is nothing to widen it TO. This parser
-picks a READ route (:func:`config_dest._node_bind_target` -> `agent_config.agent_file_route`), that
+picks a READ route (:func:`config_dest._node_bind_target` -> `agent_file._address`), that
 file-shape SoT has a nested table for ``bindings.<arm>.<name>`` and NONE for
 ``common``/``caches``/``seeded``/``synced``, and — decisively — a per-entry key under those four is
 not a key at ALL now, so a widened parser would invent a read for a spelling the keyspace refuses: it
@@ -713,7 +713,7 @@ REFUSE the bare ``agent.`` form outright, so ``command_scope.value`` would hand 
 illegal spelling to replace the first — a cure that cannot be followed. The agent arm names the
 discriminated form with an explicit ``<agent>`` placeholder instead. (The ``agent`` NOUN's own verbs
 never reach here: ``agent set <node> env.FOO=bar`` passes a key TAIL under an already-named node,
-which `agent_file_route` writes to the DECLARED ``agent.<node>.env.FOO``. That arm exists so the
+which `agent_file._address` writes to the DECLARED ``agent.<node>.env.FOO``. That arm exists so the
 GENERIC engine cannot emit the illegal spelling if an agent-scope caller is ever wired into it.)
 
 ⚑ The docker ``.env`` FILES the bare spelling used to write are RETIRED OUTRIGHT (Jei's 2026-08-02
@@ -967,7 +967,7 @@ is the whole job: RECOGNISE the retired spelling so the write verbs refuse it BY
 project name — spec §0 refuses loudly, never quietly.
 
 ⚑ IT IS A SUPERSET of :func:`_is_agent_node_bind_key`, deliberately. That predicate covers the
-``bindings`` arms alone because it also picks a READ route (`agent_config.agent_file_route`); this one
+``bindings`` arms alone because it also picks a READ route (`agent_file._address`); this one
 picks none, so it can cover all six. Where both matter the narrow one is checked FIRST — recognition
 may be broad, resolution may not.
 

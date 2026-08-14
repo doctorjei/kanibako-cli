@@ -85,6 +85,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   checking even if you never hand-edited an agent file — that nesting predates the move to the
   flat table. `bindings:` is unaffected. See [MIGRATION.md](MIGRATION.md) §2.35.
 
+- **BREAKING: the four `KANIBAKO_*` variables kanibako sets for itself are ordinary settings now,
+  and a twin of one at another scope will refuse the launch.** `KANIBAKO_NAME`, `KANIBAKO_AGENT`,
+  `KANIBAKO_DIRECTIVE_SEED` and `KANIBAKO_AGENT_MARKERS_DIR` — the box's name, the agent it runs,
+  the in-box path of your kickoff file and the directory agent sessions write liveness markers to —
+  used to be written onto the container after your settings had been resolved, above every settings
+  file and above `-e`. **They are `system.env.<VAR>` keys now**, derived at launch and entered at
+  the system scope's floor, reaching the box through the same channel as every other variable; they
+  appear in `kanibako box show --effective` among the box's environment variables, listed as `env
+  KANIBAKO_NAME = …` (the bare variable name — those rows report the merged environment, not a
+  key). **The breaking half:** because they are ordinary keys, they take part in the
+  one-owner rule above, so a `box.env.KANIBAKO_NAME` alongside kanibako's own key is two keys for
+  one slot and **now refuses the launch and names both** — where it used to launch with your value
+  overwritten a moment later and nothing said. The cure is the same one owner: drop the other key
+  and write `system.env.KANIBAKO_NAME` instead. **Two things that were impossible now work:**
+  overriding one by writing the same key in a nearer settings file (the ordinary cascade, no
+  refusal), and `-e` — `kanibako start -e KANIBAKO_NAME=scratch` wins for that launch, where the
+  flag used to be accepted and silently have no effect. ⚑ Three of the four are read back by
+  kanibako itself (`kanibako stop`, `kanibako code` and the credential watcher inspect
+  `KANIBAKO_AGENT`; the in-box supervisor watches `KANIBAKO_AGENT_MARKERS_DIR`; the flatten step at
+  agent start opens `KANIBAKO_DIRECTIVE_SEED`), so overriding one is telling kanibako something
+  about the box that has to be true. See [MIGRATION.md](MIGRATION.md) §2.36.
+
 ### Fixed
 
 - **Helper boxes inherited the director's browser endpoint by accident of timing.** With

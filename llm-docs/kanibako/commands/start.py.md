@@ -483,6 +483,42 @@ the cascade (`settings_launch._persona_partial` splices it under `agent.<active>
 `generate_agent_config()` returns an env-less config under the file-purity invariant — which is why
 the parameter was retired outright rather than kept for a second caller.
 
+### 🛑 AND THE CORE STAMPS FOLLOWED (MBR-1 P4b)
+
+`_assemble_launch_env` used to end with four assignments onto the finished `container_env` —
+`KANIBAKO_NAME` (gated on `proj.name`), `KANIBAKO_DIRECTIVE_SEED`, `KANIBAKO_AGENT` (gated on
+`target is not None`) and `KANIBAKO_AGENT_MARKERS_DIR`. They ran after `_build_config_env`, after
+`state_env` and after `_parse_cli_env`, which put them above every settings file, above a persona
+and above `-e`. **Ruling 2026-08-14** (*"the 'KANIBAKO_' stuff should be in system.env"*) folds them
+into the channel: `_core_env_default_categories(proj=, target=, agent_id=)` returns
+`{"system.env.<VAR>": value}` and `_resolve_launch_snapshot` merges it into the
+default-categories floor beside `family="kickoff"`, under `family="core env"`. The four then enter
+`collapse_env` as ordinary system-scope keys, and `_assemble_launch_env` stamps nothing at all —
+`target` and `agent_id` died from its signature and its one call site, the same move P3 made with
+`agent_cfg`.
+
+Three behaviours arrive with that, and all three are the point rather than side effects: a nearer
+`system.env.<VAR>` file entry **overrides** one (same key, ordinary cascade); a twin at any other
+scope **REFUSES** the launch naming both keys, where kanibako used to overwrite the user's value a
+moment later in silence; and `-e KANIBAKO_NAME=x` **wins**, because `_parse_cli_env` is the last
+writer left in the function. ⚑ **`-e` needed no code for that** — the deletion alone satisfies
+ruling 42's `-e`-over-the-stamps half. Moving `-e` itself to the CLI cascade level is P4c and is not
+in this change. ⚑ Making the `KANIBAKO_AGENT_MARKERS_DIR` override REAL obliged the supervisor argv
+to follow it: `--agent-markers-dir` now carries `container_env.get(...)`, the resolved env value,
+so the box-side hooks (which read the env) and the host-side supervisor keep agreeing under an
+override — the compile-time constant is only the shared fallback.
+
+⚑ **The per-variable GATES live inside the one function**, not at the merge. Splitting the merge in
+two — three stamps in the base-families block, `KANIBAKO_AGENT` inside the existing `if target is
+not None:` — would put "which variables a box gets" in two places and give one concept two `family`
+labels in the act-once provenance table. One call, one family, one place to read the answer.
+🛑 `KANIBAKO_DIRECTIVE_SEED` is UNCONDITIONAL although its kickoff BIND is descriptor-gated: a
+no-agent box gets the variable today. Do not tidy it onto the bind's gate.
+
+⚑ The values are **resolved literals, not `@`-refs** (the `meta_identity_floor` pattern). And the
+floor is the BASE level, below every settings file — which is exactly what makes the override story
+"write the same key in a nearer file" rather than "you cannot".
+
 ⚑ `_launch_env_map` is ONE function where `bindings`/`seeded`/`synced` each have two (an option
 reader plus a total one). Neither env consumer can act on an absent leaf — both describe a box, and
 the leaf rides the whole-box gate — so an option form would be a route nothing takes.

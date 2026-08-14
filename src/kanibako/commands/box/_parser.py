@@ -1953,10 +1953,8 @@ def _run_box_config(args: argparse.Namespace) -> int:
         category_snapshot = None
         category_error = None
         if args.effective:
-            from kanibako.settings.agent_config import (
-                agent_settings_path,
-                load_agent_config,
-            )
+            from kanibako.settings.agent_config import agent_settings_path
+            from kanibako.settings.agent_file import load as load_agent_file
             from kanibako.targets import resolve_target
             from kanibako.commands.start import (
                 _build_config_env,
@@ -1985,7 +1983,7 @@ def _run_box_config(args: argparse.Namespace) -> int:
             if target and not agent_cfg_path.exists():
                 agent_cfg = target.generate_agent_config()
             elif agent_cfg_path.exists():
-                agent_cfg = load_agent_config(agent_cfg_path)
+                agent_cfg = load_agent_file(agent_cfg_path)
             else:
                 agent_cfg = None
             if target is not None and agent_cfg is not None:

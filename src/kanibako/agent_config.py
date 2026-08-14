@@ -9,8 +9,21 @@ a user who upgrades the base gets the new core beside an old plugin that still
 imports this path.  Every IN-REPO caller uses the new path.
 
 All three published plugins import :class:`AgentConfig` from here (in a
-``TYPE_CHECKING`` block and again inside ``generate_agent_config``); the whole
-public surface is re-exported so a third-party plugin keeps working too.
+``TYPE_CHECKING`` block and again inside ``generate_agent_config``); the rest of
+the module's public surface is re-exported so a third-party plugin keeps working
+too.
+
+⚑ ``agent_file_route`` IS NO LONGER RE-EXPORTED (S1): it moved to
+:mod:`kanibako.settings.agent_file` as ``_address``.  No published plugin
+imports it (measured against all three wheels); the third-party risk is
+theoretical and accepted, and v1.8.0 is a deliberate clean break.
+``load_agent_config`` / ``write_agent_config`` moved too (to ``agent_file.load``
+/ ``agent_file.save``) but their names SURVIVE in the new module as the S1b
+bridge, so this shim keeps re-exporting them — the contract here is "the WHOLE
+public surface of the new module", pinned by
+``test_plugin_import_compat.test_shim_covers_the_whole_public_surface``.  They
+leave this file when S1b deletes the bridge.  ``AgentConfig`` — the one name the
+plugins DO import — stays either way.
 
 ⚑ REMOVAL GATE — delete this file once ``kanibako-agent-claude``,
 ``kanibako-agent-goose`` AND ``kanibako-agent-codex`` have all PUBLISHED (not
@@ -42,9 +55,6 @@ from kanibako.settings.agent_config import (
 )
 from kanibako.settings.agent_config import (
     agent_config_path as agent_config_path,
-)
-from kanibako.settings.agent_config import (
-    agent_file_route as agent_file_route,
 )
 from kanibako.settings.agent_config import (
     agent_settings_path as agent_settings_path,

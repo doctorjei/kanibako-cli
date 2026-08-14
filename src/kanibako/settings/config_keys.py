@@ -325,7 +325,7 @@ def resolve_key(raw: str) -> str:
 # ---------------------------------------------------------------------------
 
 # The settable per-persona agent leaves: the FLAT agent-state knobs plus the
-# ``env.`` section — the EXACT shape ``agent_config.load_agent_config`` reads back.
+# ``env.`` section — the EXACT shape ``agent_file.load`` reads back.
 _PERSONA_STATE_LEAVES: frozenset[str] = frozenset(
     {
         "endpoint", "model", "continue_mode", "access", "allow_helpers",
@@ -875,6 +875,8 @@ def agent_node_bind_retired_error(canonical: str, *, verb: str) -> str | None:
     # half went silently DEAD on 2026-08-08c. Do not re-split it.
     # ⚑ WHAT SURVIVES DIFFERS BY ARM: only a ``bindings`` arm keeps a per-entry READ.
     # ⚑ The cure names the NODE's own settings file, never a scope table.
+    from kanibako.settings.agent_file import file_spelling
+
     m = _agent_bind_match(canonical)
     if m is None:
         return None
@@ -893,8 +895,11 @@ def agent_node_bind_retired_error(canonical: str, *, verb: str) -> str | None:
         verb=verb,
         route=f"agent.<node>.{category}.<name>",
         why=_retired_because(category),
+        # ⚑ The file's own spelling comes from the BOUNDARY (``agent_file``), never a literal
+        # here: this message QUOTES the agent file at the user, so it must say whatever that
+        # file actually spells — and when S2's flatten changes it, it changes in one place.
         cure=(
-            f"Edit the 'self.{shown_node}.{category}' table of that "
+            f"Edit the '{file_spelling(shown_node, category)}' table of that "
             f"agent's own settings file (agents/{shown_node}/"
             f"settings.yaml) directly; the launch reads it from there."
         ),
