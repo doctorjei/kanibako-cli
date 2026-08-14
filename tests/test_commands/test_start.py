@@ -2287,12 +2287,12 @@ class TestAgentConfigIntegration:
             )
             assert SECRET_MOUNT_DIR not in argv
 
-    def test_state_env_merged_into_container_env(self, start_mocks):
-        """Descriptor container_env is merged into the container env.
+    def test_declared_agent_env_merged_into_container_env(self, start_mocks):
+        """A plugin's DECLARED env key reaches the launched container.
 
-        The legacy apply_state env return no longer feeds the launch; the
-        descriptor's ``container_env`` (claude: DISABLE_AUTOUPDATER=1) reaches
-        runtime.run via assemble_env -> state_env -> container_env.
+        claude's ``agent.claude.env.DISABLE_AUTOUPDATER`` is folded into the launch
+        floor, arbitrated by the collapse and applied by the env seam — the one
+        settings channel, with no plugin-private route beside it.
         """
         with start_mocks() as m:
             m.target.setting_descriptors.return_value = []
@@ -2627,12 +2627,12 @@ class TestTweakccIntegration:
                 assert install.install_dir in sources
 
     def test_telemetry_disabled_for_claude(self, start_mocks):
-        """CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 is carried by claude's descriptor.
+        """CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 is claude's own declared key.
 
-        After step 1e, the telemetry var is no longer injected by a core
-        ``target.name == "claude"`` special-case; it lives in
-        ``descriptor.container_env`` and reaches the container via assemble_env →
-        state_env.  Drive the descriptor path with the real claude descriptor.
+        The telemetry var is not injected by a core ``target.name == "claude"``
+        special-case, nor handed over by the descriptor: it is
+        ``agent.claude.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`` and arrives
+        through the settings channel like any other setting.
         """
         from kanibako.plugins.claude.target import _CLAUDE_DESCRIPTOR
         with start_mocks() as m:
@@ -2647,7 +2647,7 @@ class TestTweakccIntegration:
             assert env.get("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC") == "1"
 
     def test_telemetry_not_overridden_by_user(self, start_mocks):
-        """User can override telemetry setting via -e flag (applied after state_env)."""
+        """User can override telemetry via -e (applied after the config levels)."""
         from kanibako.plugins.claude.target import _CLAUDE_DESCRIPTOR
         with start_mocks() as m:
             m.target.name = "claude"
@@ -2662,13 +2662,13 @@ class TestTweakccIntegration:
             # User's -e override takes priority (applied after the descriptor env)
             assert env.get("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC") == "0"
 
-    def test_apply_state_env_reaches_container(self, start_mocks):
-        """The descriptor's container_env flows into the launched container env.
+    def test_declared_env_reaches_container(self, start_mocks):
+        """The declared agent env reaches the launched container.
 
-        The Claude descriptor carries DISABLE_AUTOUPDATER=1 (so the in-container
-        agent cannot self-update mid-session); verify core threads the
-        descriptor-assembled env into the launched container.  (This replaces the
-        legacy apply_state env return, which is no longer dispatched.)
+        claude declares DISABLE_AUTOUPDATER=1 (so the in-container agent cannot
+        self-update mid-session and break the read-only binary bind); verify core
+        threads the resolved value into the launched container.  Neither the retired
+        ``apply_state`` env return nor a descriptor field is dispatched any more.
         """
         with start_mocks() as m:
             m.target.name = "claude"

@@ -577,13 +577,15 @@ class TestDescriptor:
         assert settings["model"].channel == Channel.FLAG
         assert settings["model"].flag == ("--model",)
 
-    def test_container_env_directive_final_slot(self):
-        # container_env now carries the instruction-delivery FINAL slot the
-        # box-start flattener writes codex's flattened per-agent guide to
-        # (codex reads ~/.codex/AGENTS.md natively); $GUEST_HOME is expanded by
+    def test_declared_env_is_the_directive_final_slot(self):
+        # codex declares ONE variable: the instruction-delivery FINAL slot the
+        # box-start flattener writes codex's flattened per-agent guide to (codex
+        # reads ~/.codex/AGENTS.md natively).  It is a DECLARED KEY
+        # (agent.codex.env.<VAR>, spec §2d) reaching the box through the settings
+        # channel, so a user can override it by name; $GUEST_HOME is expanded by
         # the loader.
-        assert CodexTarget().descriptor.container_env == {
-            "KANIBAKO_DIRECTIVE_FINAL": "/home/agent/.codex/AGENTS.md",
+        assert CodexTarget().default_envs() == {
+            "agent.codex.env.KANIBAKO_DIRECTIVE_FINAL": "/home/agent/.codex/AGENTS.md",
         }
 
     def test_cred_files(self):
@@ -725,13 +727,16 @@ class TestDescriptorAssembly:
         )
         assert argv == ["exec", "do the thing"]
 
-    def test_env_carries_directive_final_slot(self):
+    def test_the_assembly_emits_nothing_for_codex(self):
         d = CodexTarget().descriptor
         env = assembly.assemble_env(d, access="full", setting_values={"model": "gpt-5.5"})
-        # model is a FLAG (argv), not env; bypass is a flag.  The only
-        # container_env is the instruction-delivery FINAL slot (codex's native
-        # ~/.codex/AGENTS.md the box-start flattener writes the guide to).
-        assert env == {"KANIBAKO_DIRECTIVE_FINAL": "/home/agent/.codex/AGENTS.md"}
+        # codex realizes NOTHING on the ENV channel: model is a FLAG (argv) and so
+        # is the bypass.  Its one variable — the instruction-delivery FINAL slot —
+        # is a DECLARED KEY carried by the settings channel, not assembled here.
+        assert env == {}
+        assert CodexTarget().default_envs() == {
+            "agent.codex.env.KANIBAKO_DIRECTIVE_FINAL": "/home/agent/.codex/AGENTS.md",
+        }
 
 
 class TestDeliverySeams:

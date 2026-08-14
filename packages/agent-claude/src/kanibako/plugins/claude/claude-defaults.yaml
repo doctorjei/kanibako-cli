@@ -2,7 +2,7 @@
 # default-set (P6c coalesce; settings-keyspace-1.8.0.md §2d agent.claude.*).
 #
 # This file holds claude's complete DECLARATIVE default-set: its PluginDescriptor
-# data (delivery binds, launch grammar, settings routing, container env, cred-file
+# data (delivery binds, launch grammar, settings routing, cred-file
 # lifecycle, host_prep/init_dirs) PLUS its AGENT-scope `common` defaults.  It is
 # read by the thin loader :mod:`kanibako.settings.agent_defaults`, which builds the
 # PluginDescriptor / default_common exactly as the old hand-written `target.py`
@@ -13,7 +13,7 @@
 #   * DECLARATIVE — everything below: the binding ORIGIN selectors (which detected
 #     install field supplies the host source — a declarative NAME, not a probed
 #     value), box-side destinations, the mode/operations grammar, settings flags,
-#     container env, cred-file specs, host_prep/init_dirs, the agent-share
+#     cred-file specs, host_prep/init_dirs, the AGENT-scope `env:` keys, the agent-share
 #     box_dests.  In-box destinations are `$GUEST_HOME` EXPRESSIONS expanded by the
 #     loader from the single GUEST_HOME constant (no `/home/agent` literal here).
 #   * CODE-RESOLVED — the CRITICAL host binary/launcher/install paths stay in
@@ -50,7 +50,7 @@ descriptor:
     # pre-canon `@~/playbook/kanibako/directives/KANIBAKO.md`) — the entrypoint the
     # box-start flattener resolves (following the @import chain) into the flattened
     # per-agent FINAL file at claude's native user-memory slot ~/.claude/CLAUDE.md
-    # (named by KANIBAKO_DIRECTIVE_FINAL in container_env below).  The start-time
+    # (named by KANIBAKO_DIRECTIVE_FINAL in the `env:` section below).  The start-time
     # flatten + hook is a LATER increment; this declaration only ships the SEED and
     # the FINAL-slot env.  `origin: literal` + `literal_src_pkg` names a
     # package-relative resource (resolved to its shipped host path by the loader via
@@ -118,15 +118,6 @@ descriptor:
     endpoint_delivery: env
     token_var: ANTHROPIC_AUTH_TOKEN
 
-  # BOTH claude env vars: DISABLE_AUTOUPDATER (also set by apply_state) AND
-  # CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC.
-  container_env:
-    DISABLE_AUTOUPDATER: "1"
-    CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1"
-    # The native instruction slot the box-start flattener writes the flattened
-    # per-agent FINAL file to (claude's user-memory slot, loaded every session).
-    KANIBAKO_DIRECTIVE_FINAL: "$GUEST_HOME/.claude/CLAUDE.md"
-
   # Only auth remains host-sourced (.claude.json import removed in 1.6.0): the
   # synced .credentials.json (filtered -> transform_cred merges claudeAiOauth).
   cred_files:
@@ -146,6 +137,20 @@ descriptor:
   # code` attach, so claude's in-box `/ide` integration works out of the box.
   # goose/codex leave this UNSET (→ None) until their Phase-5 support lands.
   vscode_extension: anthropic.claude-code
+
+# AGENT-scope declared env DEFAULTS -> `agent.claude.env.<VAR>` (spec §2d).  These
+# are ordinary settings keys, not a private channel: a user overrides one by writing
+# the SAME key in a nearer file, and naming the same VAR at a second scope (say
+# `box.env.DISABLE_AUTOUPDATER`) REFUSES the launch naming both keys.  Values are
+# STRINGS (quote them); `$GUEST_HOME` is expanded by the loader.
+env:
+  # Disable the in-box self-updater: a mid-session update would repoint the writable
+  # ~/.local/bin/claude to a version the read-only host bind cannot have.
+  DISABLE_AUTOUPDATER: "1"
+  CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1"
+  # The native instruction slot the box-start flattener writes the flattened
+  # per-agent FINAL file to (claude's user-memory slot, loaded every session).
+  KANIBAKO_DIRECTIVE_FINAL: "$GUEST_HOME/.claude/CLAUDE.md"
 
 # AGENT-scope common dirs (plugins + cache), stored under the per-agent store dir
 # @meta.agent.claude.path = @config.agents/claude — spec §2a's agent DECLARATION

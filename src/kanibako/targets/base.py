@@ -530,7 +530,12 @@ class PluginDescriptor:
     settings: tuple[SettingArg, ...] = ()
     persona: "PersonaSpec | None" = None   # harness-specific persona endpoint/token delivery
                                            # (None = claude-style env + ANTHROPIC_AUTH_TOKEN)
-    container_env: dict[str, str] = field(default_factory=dict)
+    # ⚑ THERE IS NO `container_env` FIELD: a plugin's environment variables are
+    # SETTINGS KEYS (`agent.<agent>.env.<VAR>`, `Target.default_envs`), declared at
+    # the defaults file's top-level `env:` section and delivered by the launch's one
+    # settings channel. A descriptor field would be a second, unoverridable route to
+    # the same box env; `agent_defaults.load_descriptor` refuses `container_env:` by
+    # name so a plugin still declaring one fails rather than losing its variables.
     cred_files: tuple[CredFileSpec, ...] = ()
     host_prep: bool = False           # True -> core calls Target.prepare_host before mounts
     init_dirs: tuple[str, ...] = ()   # extra dirs to mkdir in the project home (home-relative)
@@ -676,6 +681,29 @@ class Target(ABC):
         "ONE DEST SPACE, TWO DELIVERIES") and RESOLVED to the box store when the
         copy runs. It STAYS A COPY — the shape it shares with `bindings` says how
         the entry is written down, never what is done with it.
+        """
+        return {}
+
+    def default_envs(self) -> dict[str, str]:
+        """Declare default AGENT-scope environment VARIABLES for this agent.
+
+        Maps a DISCRIMINATED `agent.<agent>.env.<VAR>` KEY to its scalar value —
+        declared as the AGENT level's defaults exactly as `default_common`, so the
+        values reach the box through the ONE settings channel: a user overrides one
+        by writing the SAME key in a nearer file, and the SAME variable named at a
+        SECOND scope is a launch REFUSAL naming both keys
+        (`store_collapse.collapse_env` — the write-once arbitration is the
+        collapse's and there is none here). The default returns {}.
+
+        ⚑ This is the ONLY route a plugin has for a STATIC variable: the launch folds
+        the table into its default-categories floor, re-keyed to the ACTIVE NODE so a
+        persona sees its harness's variables. A descriptor's ENV-channel `settings` /
+        `access_realization` are a different job — they REALIZE a resolved value per
+        launch, they do not declare one.
+
+        A plugin that ships its declarations in its `<agent>-defaults.yaml` `env:`
+        section gets them from `agent_defaults.load_envs`, which is what all three
+        first-party plugins call.
         """
         return {}
 

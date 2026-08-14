@@ -18,13 +18,14 @@ ONE transition release, the pre-canon ``@~/playbook/kanibako/directives/KANIBAKO
 import.  The plugin declares it as a best-effort descriptor ``managed_pointer``
 binding delivered read-only to ``~/.config/kanibako/kickoff.md``, and names the
 native instruction slot the box-start flattener will write the flattened per-agent
-FINAL file to via the ``KANIBAKO_DIRECTIVE_FINAL`` container env var.  These tests
+FINAL file to via the ``KANIBAKO_DIRECTIVE_FINAL`` declared env key.  These tests
 prove that declaration for all three first-party agents:
 
 * the ``managed_pointer`` binding resolves its shipped kickoff-loader source and,
   driven through ``descriptor_mounts``, mounts RO at the kickoff slot;
 * the kickoff-loader content is exactly the declared directive imports; and
-* ``descriptor.container_env["KANIBAKO_DIRECTIVE_FINAL"]`` is the right native slot.
+* ``default_envs()["agent.<agent>.env.KANIBAKO_DIRECTIVE_FINAL"]`` is the right
+  native slot.
 
 The former Route-A ``@system.instructions`` → native-slot category bind is RETIRED
 (the guide now reaches the box inside the RO ``~/canon/bible`` bind + the flattened
@@ -171,10 +172,14 @@ def test_kickoff_is_best_effort_missing_source_skipped(agent: str):
 
 @pytest.mark.parametrize("agent", _AGENTS)
 def test_directive_final_env_names_native_slot(agent: str):
-    """``KANIBAKO_DIRECTIVE_FINAL`` names the agent's native instruction slot."""
-    desc = resolve_target(agent, None).descriptor
-    assert desc is not None
-    assert desc.container_env.get("KANIBAKO_DIRECTIVE_FINAL") == _EXPECTED_FINAL[agent]
+    """``KANIBAKO_DIRECTIVE_FINAL`` names the agent's native instruction slot.
+
+    Declared as an AGENT-scope settings key, so the slot is one a user could repoint
+    by name rather than a value handed straight to the container.
+    """
+    envs = resolve_target(agent, None).default_envs()
+    key = f"agent.{agent}.env.KANIBAKO_DIRECTIVE_FINAL"
+    assert envs.get(key) == _EXPECTED_FINAL[agent]
 
 
 def test_goose_context_file_names_lists_additional_context_md():
@@ -186,17 +191,16 @@ def test_goose_context_file_names_lists_additional_context_md():
     CONTEXT_FILE_NAMES, so `.additionalContext.md` must be listed, and the retired
     KANIBAKO.md must be gone.  The existing keyring disable is untouched.
     """
-    desc = resolve_target("goose", None).descriptor
-    assert desc is not None
-    val = desc.container_env.get("CONTEXT_FILE_NAMES")
-    assert val is not None, "goose descriptor missing CONTEXT_FILE_NAMES"
+    envs = resolve_target("goose", None).default_envs()
+    val = envs.get("agent.goose.env.CONTEXT_FILE_NAMES")
+    assert val is not None, "goose declares no CONTEXT_FILE_NAMES"
     names = json.loads(val)
     assert ".additionalContext.md" in names, names
     assert "KANIBAKO.md" not in names, names
-    assert desc.container_env["KANIBAKO_DIRECTIVE_FINAL"].endswith(
+    assert envs["agent.goose.env.KANIBAKO_DIRECTIVE_FINAL"].endswith(
         "/.config/goose/.additionalContext.md"
     )
-    assert desc.container_env.get("GOOSE_DISABLE_KEYRING") == "true"
+    assert envs.get("agent.goose.env.GOOSE_DISABLE_KEYRING") == "true"
 
 
 # --- the retired Route-A category bind ---------------------------------------

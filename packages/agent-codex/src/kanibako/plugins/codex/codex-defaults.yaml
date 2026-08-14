@@ -3,7 +3,8 @@
 #
 # This file holds codex's complete DECLARATIVE default-set: its PluginDescriptor
 # data (delivery bind, launch grammar, settings routing, cred-file lifecycle,
-# init_dirs).  codex declares NO container env and NO agent shares.  It is read by
+# init_dirs) plus its AGENT-scope declared `env:` keys.  codex declares no agent
+# shares.  It is read by
 # the thin loader :mod:`kanibako.settings.agent_defaults`, which builds the PluginDescriptor
 # exactly as the old hand-written `target.py` values did.
 #
@@ -146,11 +147,6 @@ descriptor:
     # the pre-flight with an actionable message is the cheaper failure.
     model_required: true
 
-  # The native instruction slot the box-start flattener writes the flattened
-  # per-agent FINAL file to (codex reads ~/.codex/AGENTS.md natively).
-  container_env:
-    KANIBAKO_DIRECTIVE_FINAL: "$GUEST_HOME/.codex/AGENTS.md"
-
   # filtered=False (wholesale copy) is an E2E gate (Phase 10): flip to
   # filtered=True + add a transform_cred allowlist ONLY if E2E proves auth.json
   # carries non-portable machine-id/installation fields.  The host config.toml
@@ -185,3 +181,13 @@ descriptor:
 # ~/.codex/AGENTS.md) is RETIRED: the box guide now reaches the box INSIDE the RO
 # whole-dir canon bind at `~/canon/bible` + the flattened per-agent FINAL file (seeded by the
 # `managed_pointer` kickoff-loader above), not a per-agent native-slot bind.
+
+# AGENT-scope declared env DEFAULTS -> `agent.codex.env.<VAR>` (spec §2d).  These are
+# ordinary settings keys, not a private channel: a user overrides one by writing the
+# SAME key in a nearer file, and naming the same VAR at a second scope (say
+# `box.env.KANIBAKO_DIRECTIVE_FINAL`) REFUSES the launch naming both keys.  Values
+# are STRINGS (quote them); `$GUEST_HOME` is expanded by the loader.
+env:
+  # The native instruction slot the box-start flattener writes the flattened
+  # per-agent FINAL file to (codex reads ~/.codex/AGENTS.md natively).
+  KANIBAKO_DIRECTIVE_FINAL: "$GUEST_HOME/.codex/AGENTS.md"

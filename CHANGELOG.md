@@ -40,7 +40,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   covering binding is read-only is still skipped with a warning. See
   [MIGRATION.md](MIGRATION.md) §2.29.
 
+- **BREAKING: the environment variables an agent plugin sets are now ordinary settings, and you
+  can override them.** Each plugin used to hand its variables straight to the container —
+  claude's `DISABLE_AUTOUPDATER`, goose's `GOOSE_DISABLE_KEYRING` and `CONTEXT_FILE_NAMES`, the
+  per-agent `KANIBAKO_DIRECTIVE_FINAL` slot — on a private path that sat above your whole
+  configuration. **They are now declared defaults at the agent scope**
+  (`agent.<agent>.env.<VAR>`), so you can override one by writing the same key in a settings file
+  the way you would any other setting. **The breaking half:** because they are ordinary keys, they
+  take part in the one-owner rule above. If you had set the *same* variable at another scope — say
+  `box.env.DISABLE_AUTOUPDATER` — your value used to be silently discarded in favour of the
+  plugin's; that configuration now **refuses the launch and names both keys.** The cure is the
+  same one owner: drop your key and override the plugin's key instead, at whatever scope you like.
+  See [MIGRATION.md](MIGRATION.md) §2.34.
+
 ### Fixed
+
+- **Helper boxes inherited the director's browser endpoint by accident of timing.** With
+  `--browser`, kanibako starts a headless browser sidecar and gives the box its address as
+  `BROWSER_WS_ENDPOINT`. The helper hub had been handed the box's environment as a live reference a
+  moment *before* that address was written, so the write reached back into it and every helper
+  spawned afterwards carried the variable too — while a helper on a box whose sidecar failed to come
+  up carried nothing, from the same code. The hub now takes its own copy of the environment when it
+  starts, so a helper gets exactly the environment the box was described with and nothing that was
+  added later. **If you were relying on helpers reaching the director's browser sidecar, they no
+  longer do.**
 
 - **Your own binds were mounted twice on any box with helpers or image sharing on.** kanibako
   resolves two small extra passes at launch — one for the helper socket and message log, one for the

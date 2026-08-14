@@ -524,7 +524,7 @@ class TestPluginDescriptorDataclasses:
         assert d.operations == {}
         assert d.access_realization is None
         assert d.settings == ()
-        assert d.container_env == {}
+        assert not hasattr(d, "container_env")   # env is a settings key, not a field
         assert d.cred_files == ()
         assert d.host_prep is False
         assert d.init_dirs == ()

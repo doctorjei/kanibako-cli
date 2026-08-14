@@ -210,6 +210,35 @@ def agent_default_partial(
 # this function to "restore" a delivery path — it never was one.
 
 
+def agent_env_for_node(
+    table: "dict[str, str]", *, node_name: str, harness: str,
+) -> "dict[str, str]":
+    """Re-key a plugin's ``default_envs()`` table from the HARNESS to the NODE.
+
+    The env twin of :func:`agent_common_for_node`, and it exists for the same
+    reason: the §2d read pick overlays ``agent.default`` ∪ ``agent.<ACTIVE NODE>``,
+    so a key a plugin declared against its own HARNESS name is invisible to a
+    PERSONA node (``navigator℘claude``) — which for env means a persona box
+    launching without the variables its harness requires.
+
+    There is NO re-root half here. An env value is a scalar the plugin chose, not a
+    host source pointing at the harness's own store, so the KEY swap is the whole
+    job.  A BARE agent (``node_name == harness``) gets the identity back.
+
+    ⚑ The key is DATA: only the leading ``agent.<harness>.`` PREFIX is replaced and
+    the rest is carried through untouched — never split into segments and rejoined.
+    """
+    if not node_name or node_name == harness:
+        return dict(table)
+    prefix = f"agent.{harness}."
+    out: "dict[str, str]" = {}
+    for key, value in table.items():
+        if key.startswith(prefix):
+            key = f"agent.{node_name}." + key[len(prefix):]
+        out[key] = value
+    return out
+
+
 def agent_common_for_node(
     table: "dict[str, tuple]", *, node_name: str, harness: str,
 ) -> "dict[str, tuple]":

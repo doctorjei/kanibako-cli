@@ -56,8 +56,10 @@ Optional overrides (sensible defaults provided by the base class):
 | `has_binary` | `True` | Set `False` for a pure pip/python tool with no host binary |
 | `check_auth()` | `True` | Validate host auth before launch |
 | `prepare_host(install, *, auto_auth, data_path)` | no-op | Touch the host before mounts (binary update, auth refresh) — set `descriptor.host_prep=True` to enable |
-| `default_shares()` | `{}` | Declare default `agent.shared.*` / `agent.caches.*` binds |
-| `default_seeds()` | `{}` | Declare default `agent.seeded.*` copy-once seeds |
+| `default_common()` | `{}` | Declare default `agent.<agent>.common` / `agent.<agent>.caches` binds |
+| `default_category_binds()` | `{}` | Declare default `@`-ref-sourced binds in any agent-scope category |
+| `default_seeds()` | `{}` | Declare default `agent.<agent>.seeded` copy-once seeds |
+| `default_envs()` | `{}` | Declare default `agent.<agent>.env.<VAR>` environment variables |
 | `setting_descriptors()` | `[]` | Advertise runtime settings (key, default, choices) |
 | `generate_agent_config()` | `AgentConfig(name=display_name)` | Agent-specific config defaults |
 | `default_entrypoint` | `None` (bash) | The box entrypoint binary name |
@@ -79,7 +81,8 @@ class PluginDescriptor:
     operations: dict[str, Operation] = {}        # standalone ops, e.g. {"exec": ...}
     access_realization: AccessRealization | None = None  # per-tier `access` realization
     settings: tuple[SettingArg, ...] = ()        # value-bearing settings -> flag/env
-    container_env: dict[str, str] = {}           # static env injected into the box
+                                                 # (no env field: static variables are
+                                                 #  settings keys — see default_envs())
     cred_files: tuple[CredFileSpec, ...] = ()    # credential/config file lifecycle
     host_prep: bool = False                      # call prepare_host() before mounts
     init_dirs: tuple[str, ...] = ()              # home-relative dirs to mkdir (e.g. (".codex",))

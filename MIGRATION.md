@@ -1797,6 +1797,63 @@ in whichever file is nearest the box.
 
 ---
 
+### 2.34 An agent's own environment variables are settings now, and you can override them
+
+**What changed.** Every agent plugin sets a few environment variables its harness needs — claude
+disables its in-box self-updater and its non-essential traffic, goose turns off the OS keyring it
+cannot reach in a box and names the context files it should load, and each agent names the file
+kanibako writes your flattened guidance to (`KANIBAKO_DIRECTIVE_FINAL`). Those used to be handed to
+the container on a private path that ran *above* your whole configuration, so no settings key could
+touch them.
+
+**They are ordinary settings now.** Each one is a declared default at the agent scope:
+
+```
+agent.claude.env.DISABLE_AUTOUPDATER                      = 1
+agent.claude.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = 1
+agent.claude.env.KANIBAKO_DIRECTIVE_FINAL                 = ~/.claude/CLAUDE.md
+agent.codex.env.KANIBAKO_DIRECTIVE_FINAL                  = ~/.codex/AGENTS.md
+agent.goose.env.GOOSE_DISABLE_KEYRING                     = true
+agent.goose.env.CONTEXT_FILE_NAMES                        = [".additionalContext.md","AGENTS.md",".goosehints"]
+agent.goose.env.KANIBAKO_DIRECTIVE_FINAL                  = ~/.config/goose/.additionalContext.md
+```
+
+**To override one, write the same key** in a settings file that may set it — the agent's own
+`agents/<node>/settings.yaml`, or the system settings file:
+
+```yaml
+# agents/claude/settings.yaml — let claude update itself in this agent's boxes
+self:
+  claude:
+    env:
+      DISABLE_AUTOUPDATER: "0"
+```
+
+That was not possible at all before this release.
+
+**What you must do — one case only: if you already set the same variable at another scope.** Because
+these are ordinary keys, they take part in §2.33's one-owner rule. A configuration like
+
+```yaml
+# a box settings file
+box:
+  env:
+    DISABLE_AUTOUPDATER: "0"
+```
+
+used to launch, with the plugin's value silently winning and yours discarded. **It now refuses the
+launch and names both keys.** The cure is the one in §2.33 — give the variable one owner — and here
+that means dropping your `box.env.*` key and writing the plugin's key instead, with the value you
+want. Nothing else in your configuration is affected: a variable no plugin declares is untouched, and
+overriding by the same key is the ordinary cascade.
+
+**The variables kanibako does NOT declare are deliberate.** goose's `GOOSE_PROVIDER` / `GOOSE_MODEL`
+stay undeclared, because goose owns those in its own persistent config and a kanibako default would
+overwrite your choice on every launch. Set them yourself with `agent.goose.env.GOOSE_MODEL` if you
+want kanibako to own them.
+
+---
+
 ## 3. For plugin authors
 
 ⚑ **THREE PERSONA SURFACES ON `Target` CHANGED SHAPE in 1.8.0 — a plugin built against 1.7.x needs
@@ -1928,6 +1985,48 @@ independently of the base and depend on **`kanibako-cli`** with **no version pin
    declared. ⚑ A `common:` row's `host_src` keeps its old meaning — the store leaf that gets rooted
    under `@meta.agent.<agent>.path/common/` — and it is now also what tells kanibako which store dir
    a persona shares with its harness, a job the retired `key:` used to do.
+
+8. **BREAKING: `container_env:` moves out of `descriptor:` and becomes the file's top-level `env:`
+   section.** A plugin's environment variables are settings keys now
+   (`agent.<agent>.env.<VAR>`, §2.34), not a private channel into the container — so they are
+   declared where the rest of your agent-scope keys are declared, and a user can override one by
+   name.
+
+   **Before** — under `descriptor:`, where nothing in the keyspace could reach it:
+
+   ```yaml
+   descriptor:
+     container_env:
+       MY_AGENT_NO_UPDATE: "1"
+   ```
+
+   **After** — a top-level section, beside `common:` and `category_binds:`:
+
+   ```yaml
+   env:
+     MY_AGENT_NO_UPDATE: "1"
+   ```
+
+   ⚑ **A `container_env:` left under `descriptor:` is REFUSED by name**, naming the file and the
+   replacement — the same treatment `safe_bypass:` gets, and for the same reason: left unread it
+   would load your plugin as an agent whose required variables are silently absent, which is a box
+   that misbehaves rather than one that fails.
+
+   **Values must be STRINGS** — quote `"1"` and `"true"`. An unquoted `1` or `true` is refused
+   rather than coerced, because YAML would hand you an int or a bool whose `str()` is not what you
+   wrote (`True`). `$GUEST_HOME` is expanded by the loader exactly as it is in a `box_dest`.
+
+   **If you build your descriptor by hand** rather than from a defaults file, implement the new
+   `Target.default_envs()` — it returns `{"agent.<agent>.env.<VAR>": "value"}`, DISCRIMINATED under
+   your own name, the same shape rule `default_common()` follows. A plugin that ships a defaults
+   file gets it from `kanibako.settings.agent_defaults.load_envs`, which validates each key against
+   the closed keyspace and refuses an illegal variable name by name.
+
+   ⚑ **`PluginDescriptor` has no `container_env` field any more**, so
+   `PluginDescriptor(..., container_env={...})` is a `TypeError` rather than a value that quietly
+   goes nowhere. `default_envs()` is the only route a plugin has into the box environment; the
+   descriptor's `settings` and `access_realization` still realize RESOLVED values onto the env
+   channel, which is a different job.
 
 ### 3.1 Core module paths moved (package-ification) — shims ship for one release
 

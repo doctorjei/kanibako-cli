@@ -6,7 +6,11 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from kanibako.settings.agent_defaults import load_category_binds, load_descriptor
+from kanibako.settings.agent_defaults import (
+    load_category_binds,
+    load_descriptor,
+    load_envs,
+)
 from kanibako.log import get_logger
 from kanibako.targets.base import (
     AgentInstall,
@@ -44,8 +48,9 @@ _BINARY = Path.home() / ".local" / "bin" / "goose"
 # SYMMETRIC ENV GOOSE_MODE access realization (auto/approve — the ``restricted``
 # value is MANDATORY because goose's unset default is ``auto``); model/provider routed as
 # ENV GOOSE_MODEL/GOOSE_PROVIDER with NO default value (goose falls back to its
-# own config.yaml from ``goose configure``); the always-on
-# GOOSE_DISABLE_KEYRING container env; and the three two-way SYNC cred files
+# own config.yaml from ``goose configure``); the declared ``env:`` keys
+# (``agent.goose.env.*`` — GOOSE_DISABLE_KEYRING, CONTEXT_FILE_NAMES and the
+# KANIBAKO_DIRECTIVE_FINAL slot); and the three two-way SYNC cred files
 # (secrets.yaml + config.yaml + custom_providers/) that persist in-box ``goose
 # configure`` back to the host.  The CRITICAL host binary path stays
 # code-resolved in ``detect()`` (the contract constant below; origin=binary).
@@ -71,6 +76,19 @@ class GooseTarget(Target):
         whole-dir canon bind at ``~/canon/bible`` + the flattened FINAL file.
         """
         return load_category_binds(_DEFAULTS_PACKAGE, _DEFAULTS_FILE, self.name)
+
+    def default_envs(self) -> dict[str, str]:
+        """Declare goose's AGENT-scope env defaults (spec §2d ``agent.goose.env.*``).
+
+        Read from ``goose-defaults.yaml``'s ``env:`` section (via the loader):
+        ``GOOSE_DISABLE_KEYRING`` (no D-Bus secret service in a box),
+        ``CONTEXT_FILE_NAMES`` (the filenames goose loads, which must list the
+        flattened FINAL file) and ``KANIBAKO_DIRECTIVE_FINAL`` naming that file.
+        These are the PLUGIN-REQUIRED variables §2d keeps plugin-declared; the
+        user-preference ones (``GOOSE_PROVIDER`` / ``GOOSE_MODEL``) are deliberately
+        NOT declared — goose owns those in its own persistent config.
+        """
+        return load_envs(_DEFAULTS_PACKAGE, _DEFAULTS_FILE, self.name)
 
     def transform_cred(
         self,
@@ -168,8 +186,8 @@ class GooseTarget(Target):
         ``-e``) and would redirect goose's store; this hook's fixed signature
         (*home* only) cannot see that, so it checks the DEFAULT store
         location the descriptor lays down.  Kanibako itself never sets
-        ``GOOSE_PATH_ROOT`` (the descriptor's ``container_env`` is only
-        GOOSE_DISABLE_KEYRING).
+        ``GOOSE_PATH_ROOT`` — it is not among this plugin's declared
+        ``agent.goose.env.*`` keys.
 
         On a box's FIRST agent launch the store is empty and the resume is
         DOOMED ("no session found to resume" -> fast container death -> raw

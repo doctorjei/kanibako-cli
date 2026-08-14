@@ -66,7 +66,6 @@ def _claude_descriptor() -> PluginDescriptor:
             setting_key="access",
         ),
         settings=(SettingArg(setting_key="model", channel=Channel.FLAG, flag=("--model",)),),
-        container_env={"DISABLE_AUTOUPDATER": "1"},
     )
 
 
@@ -95,7 +94,6 @@ def _goose_descriptor() -> PluginDescriptor:
         settings=(
             SettingArg(setting_key="model", channel=Channel.ENV, env_var="GOOSE_MODEL"),
         ),
-        container_env={"GOOSE_DISABLE_KEYRING": "1"},
     )
 
 
@@ -706,17 +704,21 @@ def test_assemble_argv_has_no_descriptor_grammar_params() -> None:
 # --------------------------------------------------------------------------- #
 
 
-def test_env_base_container_env() -> None:
+def test_env_carries_realizations_only() -> None:
+    # A descriptor has NO static env of its own: a plugin's fixed variables are
+    # declared settings keys (``agent.<agent>.env.<VAR>``) and reach the box through
+    # the settings channel.  What is assembled here is realizations, and a
+    # descriptor with none on the ENV channel assembles NOTHING.
     d = _claude_descriptor()
     env = assemble_env(d, access="restricted", setting_values={})
-    assert env == {"DISABLE_AUTOUPDATER": "1"}
+    assert env == {}
 
 
 def test_env_claude_flag_settings_not_in_env() -> None:
     d = _claude_descriptor()
     env = assemble_env(d, access="full", setting_values={"model": "opus"})
-    # FLAG channels never land in env; only base container_env present.
-    assert env == {"DISABLE_AUTOUPDATER": "1"}
+    # FLAG channels never land in env, so a FLAG-only descriptor emits none at all.
+    assert env == {}
     assert "model" not in env
 
 
@@ -736,9 +738,7 @@ def test_env_flag_channel_harness_emits_no_permission_env_at_any_tier(
     # restrictive value — is exactly the shape the tier rows abolished: goose's
     # restricted row now EMITS `approve`, asserted just below.)
     d = _claude_descriptor()
-    assert assemble_env(d, access=tier, setting_values={}) == {
-        "DISABLE_AUTOUPDATER": "1",
-    }
+    assert assemble_env(d, access=tier, setting_values={}) == {}
 
 
 def test_env_goose_model_env_set() -> None:
@@ -767,7 +767,6 @@ def _claude_endpoint_descriptor() -> PluginDescriptor:
                 env_var="ANTHROPIC_BASE_URL",
             ),
         ),
-        container_env={"DISABLE_AUTOUPDATER": "1"},
     )
 
 
@@ -793,9 +792,9 @@ def test_env_claude_endpoint_absent_when_none() -> None:
     )
     assert "ANTHROPIC_BASE_URL" not in env_absent
     assert "ANTHROPIC_BASE_URL" not in env_empty
-    # Bare env is exactly the base container_env — no endpoint leakage.
-    assert env_absent == {"DISABLE_AUTOUPDATER": "1"}
-    assert env_empty == {"DISABLE_AUTOUPDATER": "1"}
+    # Bare env is EMPTY — nothing but the realization was ever assembled here.
+    assert env_absent == {}
+    assert env_empty == {}
 
 
 def test_argv_claude_endpoint_never_in_argv() -> None:
