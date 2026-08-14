@@ -60,11 +60,14 @@ class _WiringTarget(NoAgentTarget):
 def _resolve(std, proj, **kw):
     """Drive the REAL launch seam with the base families on."""
     kw.setdefault("deliver_creds", True)
+    # ⚑ DEFAULTED, not fixed: most cases here declare through
+    # ``extra_default_categories`` and want no system FILE at all. A case whose
+    # subject IS the file cascade (the same key in two files) passes the real path.
+    kw.setdefault("system_settings_path", None)
     return _resolve_launch_snapshot(
         std=std,
         proj=proj,
         agent_name="claude",
-        system_settings_path=None,
         agent_cfg_path=None,
         desc=None,
         install=None,
@@ -129,14 +132,14 @@ def _entries(std, proj, snapshot):
 
 
 class TestTheCollapseIsProduced:
-    """``meta.assembly.{bindings,seeded,synced}`` reach the snapshot off a real resolve."""
+    """``meta.assembly.{bindings,seeded,synced,env}`` reach the snapshot off a real resolve."""
 
-    def test_all_three_declared_leaves_are_written(self, std, config, project_dir):
+    def test_all_declared_leaves_are_written(self, std, config, project_dir):
         """RED if the wiring is deleted: no leaf exists at all."""
         proj = resolve_project(std, config, str(project_dir), initialize=True)
         snapshot, _deliveries = _resolve(std, proj)
 
-        assert sorted(_assembly(snapshot)) == ["bindings", "seeded", "synced"]
+        assert sorted(_assembly(snapshot)) == ["bindings", "env", "seeded", "synced"]
 
     def test_home_is_pid_zero_and_folded_exactly_once(
         self, std, config, project_dir,
@@ -191,7 +194,8 @@ class TestTheCollapseIsProduced:
         """🛑 INVERTED AT 2b-1 — this used to assert ``_assembly(snapshot) == {}``.
 
         The old premise (*no home in the entry list ⇒ no box to assemble*) stays
-        true for the two leaves that DESCRIBE an assembly, and was never true for
+        true for the three leaves that DESCRIBE an assembly (``bindings``,
+        ``synced``, ``env``), and was never true for
         the seed list: home is pid 0, seeded BEFORE any bind folds (§2a), so the
         seed arm is computable with no bind map at all. Gating it on a home bind
         made the leaf unreadable from precisely the caller that needs it — the
@@ -425,37 +429,139 @@ class TestTheEnvConsumerReadsTheCarrier:
     pinned by nothing.  The oracle here is the FLOOR — what was declared, and which
     scope\'s value a box is supposed to receive.
 
-    ⚑ It drives ``_build_config_env`` off the carrier because THAT dict-update IS the
-    per-VAR cascade: nothing arbitrates env upstream (measured at 6-R1), so a test
-    asserting only the carrier\'s list would pin the filter and miss the cascade.
+    ⚑ It drives ``_build_config_env`` off the carrier because that is what the launch
+    reads today: the collapse writes ``meta.assembly.env`` but no consumer has been
+    moved onto it yet.
+
+    🛑 THE TWO-SCOPE CASE LEFT THIS CLASS, and it did not merely change its answer.
+    The floor used to declare ``KANI_PINNED`` at BOTH workset and box scope and
+    assert box\'s value, because the consumer\'s dict-update over a scope-sorted list
+    was the only thing deciding a contested VAR. The collapse now REFUSES that
+    arrangement upstream, so the resolve raises and no carrier is ever built —
+    the contest cannot reach this consumer at all, which is what the last case here
+    pins. What survives above it is the part that was never a contest: each VAR
+    declared at one scope, delivered, with the agent tier underneath.
     """
 
     _FLOOR = {
         "workset.env.KANI_PINNED": "workset",
-        "box.env.KANI_PINNED": "box",
         "workset.env.KANI_ONLY_WORKSET": "ws-only",
     }
 
-    def _env(self, std, config, project_dir):
+    #: The SAME VAR at two scopes — one config, two keys, and no slot for both.
+    _TWIN = {
+        "workset.env.KANI_PINNED": "workset",
+        "box.env.KANI_PINNED": "box",
+    }
+
+    def _env(self, std, config, project_dir, floor=None):
         from kanibako.commands.start import _build_config_env
 
         proj = resolve_project(std, config, str(project_dir), initialize=True)
         _snapshot, deliveries = _resolve(
-            std, proj, extra_default_categories=dict(self._FLOOR),
+            std, proj,
+            extra_default_categories=dict(self._FLOOR if floor is None else floor),
         )
         return _build_config_env({"KANI_AGENT_TIER": "agent"}, deliveries.envs)
 
-    def test_the_box_scope_value_wins_and_the_workset_only_VAR_survives(
+    def test_every_declared_VAR_reaches_the_consumer(
         self, std, config, project_dir,
     ):
-        """The cascade the consumer performs — and the tail the mis-wire would drop."""
+        """The filter, and the tail a mis-wire would drop."""
         env = self._env(std, config, project_dir)
-        assert env["KANI_PINNED"] == "box"
+        assert env["KANI_PINNED"] == "workset"
         assert env["KANI_ONLY_WORKSET"] == "ws-only"
 
     def test_the_agent_tier_stays_the_UNDER_layer(self, std, config, project_dir):
         """``AgentConfig.env`` is below every scope, and is not dropped."""
         assert self._env(std, config, project_dir)["KANI_AGENT_TIER"] == "agent"
+
+    def test_a_VAR_named_by_two_scopes_never_reaches_the_consumer(
+        self, std, config, project_dir,
+    ):
+        """The contest the dict-update used to settle silently now stops the resolve.
+
+        ⚑ Driven through ``_env`` on purpose: the claim is not merely that something
+        raises, it is that the raise happens UPSTREAM of the consumer, so no value is
+        picked and no box is built from the half of the config that lost.
+        """
+        with pytest.raises(SettingsError) as exc:
+            self._env(std, config, project_dir, floor=self._TWIN)
+
+        message = str(exc.value)
+        assert "KANI_PINNED" in message
+        assert "workset.env.KANI_PINNED" in message
+        assert "box.env.KANI_PINNED" in message
+
+
+class TestOneVariableTwoOrderings:
+    """T-A′ — the KEY cascades, the VARIABLE realizes, pinned from ONE var.
+
+    These are the two orderings the settings framework runs, and for ``env`` they go
+    in OPPOSITE directions — which is exactly why one VAR proves both and why they
+    are asserted side by side rather than in two files:
+
+    * a KEY is write-many. The SAME key in two FILES cascades and the NEAREST file
+      wins, with no act limit and no complaint. That is ordinary, and this changeset
+      did not touch it.
+    * a VARIABLE is written ONCE. Two SCOPES' keys naming one VAR contest a slot
+      that holds one value, and the collapse refuses, naming both keys.
+
+    ⚑ THE FILES ARE THE POINT OF THE FIRST CASE. Injecting both values through the
+    default-category floor would collapse them into one key before the cascade ever
+    ran, so the case would pass without a cascade existing. It writes two real
+    settings files and lets ``build_launch_snapshot`` merge them.
+    """
+
+    _VAR = "KANI_TWO_ORDERINGS"
+
+    def _files(self, std, config, project_dir):
+        from kanibako.settings.paths import box_workset_settings_paths
+
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        box_path, _workset_path = box_workset_settings_paths(proj)
+        std.settings.parent.mkdir(parents=True, exist_ok=True)
+        box_path.parent.mkdir(parents=True, exist_ok=True)
+        return proj, box_path
+
+    def test_the_same_key_in_two_files_cascades_and_the_nearer_file_wins(
+        self, std, config, project_dir,
+    ):
+        """ONE key, TWO files: the box file's value, and NO error."""
+        from kanibako.settings.config_io import write_nested_key
+
+        proj, box_path = self._files(std, config, project_dir)
+        write_nested_key(std.settings, ("box", "env"), self._VAR, "from-system-file")
+        write_nested_key(box_path, ("box", "env"), self._VAR, "from-box-file")
+
+        snapshot, _deliveries = _resolve(
+            std, proj, system_settings_path=std.settings,
+        )
+
+        winner = _assembly(snapshot)["env"][self._VAR]
+        assert winner.value == "from-box-file"
+        # ONE key owns the slot, and it is the key both files wrote.
+        assert (winner.scope, winner.key) == ("box", f"box.env.{self._VAR}")
+
+    def test_two_scopes_keys_naming_one_variable_refuse_the_launch(
+        self, std, config, project_dir,
+    ):
+        """TWO keys, one slot: refused, and BOTH keys are named."""
+        from kanibako.settings.config_io import write_nested_key
+
+        proj, box_path = self._files(std, config, project_dir)
+        write_nested_key(std.settings, ("system", "env"), self._VAR, "system-owned")
+        write_nested_key(box_path, ("box", "env"), self._VAR, "box-owned")
+
+        with pytest.raises(SettingsError) as exc:
+            _resolve(std, proj, system_settings_path=std.settings)
+
+        message = str(exc.value)
+        assert self._VAR in message
+        assert f"system.env.{self._VAR}" in message
+        assert f"box.env.{self._VAR}" in message
+        # The cure, not just the complaint.
+        assert "ONE owner" in message
 
 
 class TestTheFoundationIsBuiltAtTheSeam:
@@ -1100,14 +1206,29 @@ class TestTheThreeMissingSourcePolicies:
         assert [m.destination for m in emitted] == ["/home/agent/w"]
 
 
-@pytest.mark.parametrize("leaf", ["bindings", "seeded", "synced"])
+@pytest.mark.parametrize("leaf", ["bindings", "seeded", "synced", "env"])
 def test_the_leaves_are_installed_as_segments_never_a_dotted_key(
     leaf, std, config, project_dir,
 ):
     """A dest is DATA: the leaf holds ONE value, never a tree shattered on its dots."""
     proj = resolve_project(std, config, str(project_dir), initialize=True)
-    snapshot, _deliveries = _resolve(std, proj)
+    # ⚑ ONE DECLARATION PER LEAF, so no case is vacuous. The env one is what makes
+    # the ``env`` parameter say anything: an empty map satisfies every shape.
+    snapshot, _deliveries = _resolve(std, proj, extra_default_categories={
+        "box.env.KANI_LEAF_SHAPE": "value",
+    })
     value = _assembly(snapshot)[leaf]
+
+    if leaf == "env":
+        # ⚑ THE SLOT IS A VAR NAME, and the DOTTED thing it carries is the winner's
+        # provenance KEY. Both must arrive whole: a dotted install would shatter
+        # ``box.env.KANI_LEAF_SHAPE`` into three tree levels and the VAR would hold
+        # a node instead of its value.
+        assert isinstance(value, dict)
+        winner = value["KANI_LEAF_SHAPE"]
+        assert (winner.value, winner.scope) == ("value", "box")
+        assert winner.key == "box.env.KANI_LEAF_SHAPE"
+        return
 
     # ⚑ TWO SHAPES, ONE PROPERTY. ``bindings`` is dest-KEYED; ``seeded`` and
     # ``synced`` are scope-ordered LISTS that CARRY their dest (2026-08-09d for the

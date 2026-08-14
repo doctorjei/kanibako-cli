@@ -126,7 +126,8 @@ will **merge the information, but not perform the action**"* ·
 `_resolve_launch_snapshot` folds the same `CategoryEntry` list the live route already produced
 (`snapshot_category_entries`) through the step-4 producer (`build_store_shape_set`) and the step-6a
 collapse (`collapse_store_shapes`), and stores the results at the declared RO/derived keys
-`meta.assembly.{bindings,seeded,synced}`.
+`meta.assembly.{bindings,seeded,synced}` — plus `meta.assembly.env`, which comes from
+`collapse_env` off the ENTRY LIST rather than the shapes, and which nothing reads yet.
 
 ### What it drives, and what it still does not
 

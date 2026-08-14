@@ -547,6 +547,7 @@ def test_supporting_surface_is_valid(key):
 @pytest.mark.parametrize("key", [
     "meta.runtime.ws_root", "meta.runtime.ws_name", "meta.runtime.project_type",
     "meta.assembly.bindings", "meta.assembly.seeded", "meta.assembly.synced",
+    "meta.assembly.env",
     "meta.workset.path", "meta.workset.name", "meta.workset.settings",
     "meta.box.path", "meta.box.name", "meta.box.mode", "meta.box.workspace",
     "meta.box.settings", "meta.box.inbox", "meta.box.share_global",
@@ -622,12 +623,15 @@ def test_the_manifest_reserved_leaf_names_match_the_code():
 # ``meta.assembly.*`` on 2026-08-09
 # ---------------------------------------------------------------------------
 
-#: ``meta.assembly.{bindings,seeded,synced}``. The collapse writes ALL THREE on the
+#: ``meta.assembly.{bindings,seeded,synced,env}``. The collapse writes ALL FOUR on the
 #: launch path (``commands/start.py._install_assembly_collapse``). They are declared
 #: because under the closed keyspace (spec §0) an undeclared key is not a key and
 #: reading one is an error — so the declaration is what makes the name legal, and
 #: it is the ONLY thing that changed. Nothing here asserts a value.
-COLLAPSE_LEAVES = ("bindings", "seeded", "synced")
+#: ⚑ ``env`` joined 2026-08-14: the env VARIABLES realize through the same collapse
+#: the mounts do (system-first, write-once), so their arbitrated result is a member
+#: of this group and not of the launch seam's return carrier.
+COLLAPSE_LEAVES = ("bindings", "seeded", "synced", "env")
 
 #: The 2026-08-10b split, stated as the names it RETIRED. ``copies`` was renamed to
 #: ``seeded`` and ``backup`` — reserved for the writeback — was retired outright,
@@ -706,7 +710,7 @@ def test_a_collapse_output_is_indistinguishable_from_a_produced_sibling(leaf):
     all: ``is_known_key`` gates on the SETTABLE set and ``meta.*`` is ``set: never``,
     so ``system get meta.runtime.ws_root`` — a key that IS produced — answers
     "unknown config key" exactly as an unproduced one does. Having no producer
-    therefore costs these three nothing, and this case says so in the form that
+    therefore costs these four nothing, and this case says so in the form that
     survives the gate being fixed: whatever the produced sibling answers, they
     answer. It goes RED the moment one of them is special-cased in either
     direction — a fabricated placeholder value on the read side, or a bespoke

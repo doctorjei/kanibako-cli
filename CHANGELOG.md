@@ -12,6 +12,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **BREAKING: an environment variable may be declared at one scope only.** Declaring the same
+  variable at two scopes — `system.env.EDITOR` and `box.env.EDITOR`, say — used to start the box
+  with the innermost scope's value and say nothing about the declaration it discarded. **That
+  arrangement now refuses the launch, naming both keys and the cure.** A variable is a slot with
+  one value, and kanibako assembles a box by letting each scope act in turn from the outside in,
+  the first to claim a place keeping it — the same rule two bindings at one destination have
+  always followed. Give the variable one owner and delete the other key. **Overriding a value is
+  unaffected and works exactly as before:** the *same* key written in more than one file is the
+  ordinary cascade, so a system file may set `box.env.EDITOR` as a default for every box and a
+  box's own file may set `box.env.EDITOR` and win. Nothing kanibako ships declares an `env` entry
+  at two scopes, so a default install cannot hit this. See
+  [MIGRATION.md](MIGRATION.md) §2.33.
+
 - **A `synced` copy may now share a destination with a binding, and both are delivered.** Until
   now, declaring a `synced` copy whose destination was exactly a binding's destination refused the
   launch outright: *"a 'synced' copy and a 'binding' mount target the same destination"*. That
