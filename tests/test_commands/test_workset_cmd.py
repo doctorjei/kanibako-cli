@@ -1150,7 +1150,7 @@ class TestWorksetEnv:
             agent_name="claude", workset_name=None,
             host_home="/home/host", xdg={"XDG_DATA_HOME": "/data"},
         )
-        return _build_config_env({}, collapse_env(snapshot_category_entries(
+        return _build_config_env(collapse_env(snapshot_category_entries(
             snapshot, active_agent="claude", box_ctx=ctx,
         )))
 

@@ -1519,7 +1519,7 @@ class TestTemplateStalenessRetired:
             snap, active_agent="claude", box_ctx=ctx,
         )
         slots = collapse_env(entries)
-        assert _build_config_env({}, slots)["COLORTERM"] == "truecolor"
+        assert _build_config_env(slots)["COLORTERM"] == "truecolor"
         winner = slots["COLORTERM"]
         assert (winner.scope, winner.key) == ("box", "box.env.COLORTERM")
 
@@ -1562,7 +1562,7 @@ class TestTemplateStalenessRetired:
         slots = collapse_env(
             snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx),
         )
-        assert _build_config_env({}, slots)["COLORTERM"] == "256color"
+        assert _build_config_env(slots)["COLORTERM"] == "256color"
 
 
 class TestShellAgentFlagIgnored:

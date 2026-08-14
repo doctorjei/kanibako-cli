@@ -116,11 +116,17 @@ the SoT for the per-agent file shape, and `_agent_partial` reads `raw["self"]`. 
 docstring claimed "rooted at a top-level `agent:` table"; that is `config.read_agent_settings`'s
 shape, over a different file. Dropped, not relocated.)* Inside `self:`:
 
-* flat state (`model` / `endpoint` / `access` / …) and `env.*` live DIRECTLY under `self`;
-* `secret_path.*` lives DIRECTLY under `self` (`self` IS `agent.<node>`, so there is no second
-  `<node>` embedding) — which is why `_agent_partial` splices it in for the ACTIVE layer only;
-* `bindings.{ro,rw}` still live in the DISCRIMINATED `self.<node>.*` sub-table, pending their own
-  flatten.
+* flat state (`model` / `endpoint` / `access` / …) lives DIRECTLY under `self`;
+* `env.*` and `secret_path.*` live DIRECTLY under `self` (`self` EXPANDS to `agent.<node>`, so a
+  second `<node>` level would read `agent.<node>.<node>.*`) — which is why `_agent_partial` splices
+  BOTH in for the ACTIVE layer only (`_FLAT_AGENT_CATEGORIES`). ⚑ For BOTH, the flat table is the
+  ONLY spelling: nesting either under a second level is REFUSED BY NAME
+  (`_refuse_nested_agent_categories`, rulings 49c + 50), and the literal `default` sub-table with it
+  — the all-agents tier of each is written in the SYSTEM file as `agent: default: <category>:`;
+* `bindings.{ro,rw}` still live in the DISCRIMINATED `self.<node>.*` sub-table — ruling 50's
+  universal reaches them in principle, but the refusal above deliberately does NOT, because nested
+  is bindings' only spelling today. The flatten that would make refusing it safe is Jei's call and
+  is not started.
 
 `config.read_agent_settings` PRE-MERGES the default and per-agent sections inside one file; this
 module deliberately does not — the separation into two levels is the point.
@@ -219,6 +225,41 @@ with a `BindMap` for a value. See "the depth rule" above for why this set is not
 
 ```_AGENT_DEFAULT_SUB = "default"```
 The agent sub-table that supplies the all-agents `agent.default` cascade level.
+
+```_FLAT_AGENT_CATEGORIES: tuple[str, ...] = ("secret_path", "env")```
+The categories the per-agent file stores FLAT under `self` rather than in the discriminated
+`self.<node>` sub-table. ORDER IS NOT SIGNIFICANT. Its WRITE-side twin is
+`agent_config.agent_file_route`. See "the FLAT-CATEGORY splice" below.
+
+```_REFUSED_NESTED_AGENT_CATEGORIES: tuple[str, ...] = ("env", "secret_path")```
+The categories NOTHING may nest under inside `self:` (ruling 49c, EXTENDED by **ruling 50** —
+*"There is no self:&lt;agent&gt;:foo. It is just self:foo"* / *"self is not a key, it's just an alias /
+pointer to agent.&lt;agent&gt;"*).
+
+⚑⚑ **THE MODEL IS ALIAS EXPANSION, not "a second embedding is redundant".** `self` is **not a key**:
+it SUBSTITUTES to `agent.<agent>`, so `self.<sub>.<category>` READS
+`agent.<agent>.<sub>.<category>` — a key that cannot exist, because *"agent.claude does not contain
+«claude»"* (*"That would be agent.claude.claude"* · *"never ever ever"*). The argument is **uniform
+over any `<sub>`**, which is why the literal `default` refuses on identical ground and why the agent
+file has **no spelling for the `agent.default` tier at all**. *(The earlier "re-spells the node"
+framing, and the arm-split explanation that went with it, were superseded as WORDING by ruling 50;
+the per-arm CURES stay, because they really do differ.)*
+
+🛑 **`bindings` IS DELIBERATELY ABSENT and that is not an oversight.** Nested is bindings' ONLY
+spelling today, so refusing it before a flat route exists would delete a live delivery path
+(additive route FIRST). Ruling 50's universal *does* reach it — `self: <node>: bindings:` reads
+`agent.<agent>.<node>.bindings`, equally impossible — so the bindings FLATTEN is implied; but the
+sequencing is Jei's and **not started**. Do not add it here.
+
+🛑 **NOT `_FLAT_AGENT_CATEGORIES`, and the two must not be merged.** They answer different questions:
+that one says where a category IS READ FROM, this one says which nesting is REFUSED. They happen to
+list the same two names today; that agreement is a coincidence of the current rulings, not a shared
+definition. **Widening either takes a ruling, not a symmetry argument.**
+
+```_CATEGORY_VALUE_PLACEHOLDER: dict[str, str]```
+What a cure renders in place of a value when the refused table is EMPTY — `<value>` for `env`,
+`<host-path>` for `secret_path` (a secret_path value is a POINTER, and a cure that suggested
+otherwise would invite a user to paste a secret into a settings file).
 
 ```RETIRED_FILE_KEYS: dict[tuple[str, ...], str]```
 Retired agent-SELECTION spellings: nested FILE path of the retired leaf → the retired KEY name (M-4).
@@ -435,8 +476,10 @@ get wrong.
 An empty / non-dict file yields an empty `KeyStore`. This is the rule for every NON-agent level
 (`base` / `system` / `workset` / `box`); the agent tier uses `_agent_partial`.
 
-```_agent_partial(raw: dict, *, sub_key: str) -> KeyStore```
+```_agent_partial(raw: dict, *, sub_key: str, path: Path | None = None) -> KeyStore```
 Build an AGENT-tier level partial (`agent.default` or `agent.<active>`).
+
+*path* is display-only: it NAMES the offending file in the refusal below and is never read.
 
 The agent settings file's top-level table is `self:` (see "The AGENT tier" above), holding per-node
 sub-tables — `default:` for the all-agents layer, `<name>:` for each agent. *sub_key* selects which
@@ -453,15 +496,95 @@ not a name collapse. This preserves §0 per-agent independence: a box/workset th
 `agent.<other>.*` (or directly sets `agent.default.*`) keeps its true name and survives the merge
 intact.
 
-⚑ **The `secret_path` splice, and why it is ACTIVE-LAYER ONLY.** `self` IS `agent.<active-node>`: the
-FLATTENED cascade category `secret_path` lives at the file's TOP level (`self.secret_path` since the
-2026-07-14b flatten), NOT in the nested `self.<node>` sub-table (which still holds bindings, pending
-their own flatten). It belongs to THIS node, so it is re-rooted alongside the sub-table for the ACTIVE
-layer ONLY — never the all-agents `default` layer. Without this the launch SECRET export, which reads
-the reconciled cascade, never sees an agent-scope `secret_path` and no token is mounted.
+⚑ **The FLAT-CATEGORY splice, and why it is ACTIVE-LAYER ONLY.** `self` IS `agent.<active-node>`: the
+FLATTENED cascade categories — `secret_path` (since the 2026-07-14b flatten) and `env` — live at the
+file's TOP level (`self.secret_path` / `self.env`), NOT in the nested `self.<node>` sub-table (which
+still holds bindings alone). They belong to THIS node, so `_FLAT_AGENT_CATEGORIES`
+is re-rooted alongside the sub-table for the ACTIVE layer ONLY — never the all-agents `default` layer.
+Without the splice a category is not in the cascade at all: the launch SECRET export never sees an
+agent-scope `secret_path` and no token is mounted.
+
+🛑 **`env` JOINED THAT LIST AT MBR-1 P3, AND ITS ABSENCE WAS A DEFECT, NOT A DESIGN.** The file's env
+table was delivered instead as a private under-layer inside `commands.start._build_config_env`, which
+cost it two things the cascade gives every other key: it sat BELOW `system.env.*`, inverting the
+bracket in which the agent tier outranks system, and it was never a snapshot leaf so it never reached
+the expand pass — one written `~` or `$VAR` behaved two ways depending on which FILE spelled it. Both
+close by construction here: an `agent.<node>.env.<VAR>` is now an ordinary key that cascades to its
+true rung and realizes through the collapse's env slots like every other scope's. The under-layer is
+GONE; do not reintroduce a second env channel.
 
 A missing `self` table, or a *sub_key* with no matching sub-table (e.g. an active agent absent from
 the file), yields an empty `KeyStore` level.
+
+```_nested_agent_cure(category: str, sub_key: str, *, var: str, value: str) -> str```
+The ARM-APPROPRIATE fix for a refused `self.<sub>.<category>`.
+
+⚑ **The EXPLANATION is uniform (alias expansion); the CURES are not** — which is why this is a
+function and not one message. For the ACTIVE node the cure is
+`kanibako agent set <node> <category>.<VAR>=<value>`, i.e. the flat `self: <category>:` table. For the
+literal `default` sub-table there is **no agent-file spelling at all** — the flat table is re-rooted
+for the active layer only, so the all-agents tier is written in the SYSTEM file as
+`agent: default: <category>:`. Sending an all-agents value to the flat table would silently NARROW it
+to one node, so the cure must **not** name `agent set` there.
+
+⚑ **BOTH ROUTES MEASURED LIVE (2026-08-14), for BOTH categories** — a cure naming a dead route is
+worse than no cure. `env`: system-file `agent: default: env:` arrives as `agent.default.env.<VAR>` and
+does not beat the active node. `secret_path`: same, arriving as `agent.default.secret_path.<VAR>`
+through `secret_path_winners`. The `agent set <node> secret_path.<VAR>=<path>` verb is live
+(`agent_file_route` returns the flat `("self", "secret_path")`; exercised by
+`test_agent_cmd.py::test_config_set_secret_path_key`).
+
+```_refuse_nested_agent_categories(node_tbl: dict, *, sub_key: str, node: str | None, path: Path | None) -> None```
+RAISE when the agent file nests a `_REFUSED_NESTED_AGENT_CATEGORIES` table under a second level
+inside `self:`.
+
+*node* is the agent whose FILE this is; it renders the ALIAS EXPANSION in the message
+(`agent.claude.claude.env`) and is never read. `None` renders the shape `<agent>`.
+
+⚑⚑ **THE PLACEMENT IS THE WHOLE DESIGN — three constraints, each of which a plausible implementation
+gets wrong.**
+
+1. **It tests `node_tbl`, the sub-table AS READ, and runs BEFORE the flat splice.** After the splice,
+   `node_tbl` also holds the flat table, so a perfectly legal flat-only file is indicted for the
+   nested table's sin. *(Measured: moving the call after the splice turns
+   `test_agent_partial_surfaces_flat_env`, `test_the_agent_file_beats_the_plugin_default` and the
+   env arm of `test_persona_loses_to_the_agent_file_active_table` red.)*
+2. **A check placed after the splice also catches only the BOTH-spellings case** — and then names the
+   WRONG SURVIVOR, since the flat table has already replaced the nested one. Nested-ONLY is the common
+   case and would sail through.
+3. **It iterates `_REFUSED_NESTED_AGENT_CATEGORIES`, not `_FLAT_AGENT_CATEGORIES`.** ⚑ The two tuples
+   list the same two names TODAY, which makes this the easiest constraint to erase by "simplifying"
+   — and the one whose erasure is silent. They are different questions, and the next ruling to move
+   either (the bindings flatten is the live candidate) separates them again. *(Measured: dropping
+   `secret_path` from the refused tuple turns exactly its five parametrized cases red and leaves
+   every `env` case green — the coverage is real, not riding its neighbour.)*
+
+⚑ **PRESENCE, not truthiness.** A bare `env:` leaf parses to `None` and an empty one to `{}`; both are
+the refused spelling, and both refuse. Same trap `_NO_LEAF` exists for above.
+
+⚑ **WHY REFUSE A SPELLING THAT RESOLVED.** It is not a rename and not migration machinery — it is §0
+applied to a spelling that never named a key in the first place. Before the refusal the nested table
+resolved to the very SAME `agent.<node>.<category>.<VAR>` keys as the flat one, so two spellings meant
+one thing (code conventions rule 0), and a file carrying both lost the nested table WHOLESALE to the
+splice — every entry spelled only there vanished with no message. *(Measured for BOTH categories:
+`ONLY_NESTED` was absent from the resolve entirely, not merely outranked.)* The refusal makes that
+loss unreachable rather than merely documented.
+
+⚑ **THE MESSAGE STATES THE EXPANSION, and that is load-bearing rather than decorative.** A refusal
+that only asserts "not a key" is authority; one that says *your spelling reads
+`agent.claude.claude.env`* is an argument the user can check against the one rule they now know
+(`self` = `agent.<agent>`). The `node` parameter exists for exactly that sentence.
+
+⚑ **PER-ARM HISTORY, and it is not symmetric.** The wholesale-replacement history is true of the
+ACTIVE arm only — the splice skips `default`, so nothing there was ever replaced; that arm's history
+is instead "it resolved as though it were a tier the SYSTEM file spells". ⚑ For `secret_path` the
+nested spelling long predates the 2026-07-14b flatten, so a file written by an earlier kanibako can
+carry it in the wild — unlike `env`, whose nesting was only ever hand-written.
+
+🛑 **DIFFERENT LAYER, DIFFERENT RAISE from the cross-scope twin refusal** (`store_collapse.
+_refuse_env_twin`, the sole twin raise site). That one arbitrates two DECLARED keys contesting one
+slot at COLLAPSE time; this one rejects a FILE SPELLING at ASSEMBLY time, before any key exists.
+Neither weakens the other and neither test may stand in for the other's.
 
 ```dotted_partial(floor: dict[str, object] | None) -> KeyStore```
 Build a merge LEVEL from a flat `{dotted key: value}` mapping.

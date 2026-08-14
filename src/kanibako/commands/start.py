@@ -1715,7 +1715,6 @@ def _assemble_launch_env(
     *,
     std,
     proj,
-    agent_cfg,
     deliveries,
     env_slots,
     state_env,
@@ -1736,10 +1735,12 @@ def _assemble_launch_env(
     holds the ``secret_path`` mounts.  Both fold from the ONE credential-gated entry
     list, so the env the box gets and the secrets it gets describe one box.
     """
-    # Config-level env: the agent tier under the ARBITRATED `<scope>.env.<VAR>`
-    # slots — one value per VAR, already decided by the assembly collapse
+    # Config-level env: the ARBITRATED `<scope>.env.<VAR>` slots and nothing else
+    # — one value per VAR, already decided by the assembly collapse
     # (`store_collapse.collapse_env`), which walks the scopes system-first and
-    # REFUSES a variable two scopes' keys both name. Nothing here picks a scope.
+    # REFUSES a variable two scopes' keys both name. Nothing here picks a scope,
+    # and since MBR-1 P3 nothing rides in beside them either: the per-agent FILE's
+    # env is an ordinary `agent.<node>.env.<VAR>` key that arrives in these slots.
     # Target-derived state env and per-run CLI -e env stay above all config
     # levels.  The docker `.env` files that used to layer in here are RETIRED
     # (RQ-1, 2026-08-02) — see ``_build_config_env``.
@@ -1748,7 +1749,7 @@ def _assemble_launch_env(
     # that silently stopped being delivered.  Announce it HERE, at the seam that
     # used to read it, so the loss is named rather than discovered.
     _warn_legacy_env_files(std, proj)
-    container_env = _build_config_env(agent_cfg.env, env_slots)
+    container_env = _build_config_env(env_slots)
     # SECRET category (spec §2a secret_path, 2026-07-06): the resolved
     # ``secret_path.<VAR>`` winners (any scope — agent/box/workset/system) are
     # delivered ARM'S-LENGTH — each host PATH is ro-bind-mounted to
@@ -3168,8 +3169,8 @@ def _run_container(
         if runtime.is_running(container_name) and entrypoint is not None:
             exec_cmd = [entrypoint] + (extra_args or [])
             # Apply per-run -e/--env vars to the exec'd process. The container's
-            # baseline env (the collapsed `<scope>.env.<VAR>` slots, agent_cfg.env,
-            # KANIBAKO_NAME) was set at launch and is inherited by exec; without
+            # baseline env (the collapsed `<scope>.env.<VAR>` slots, KANIBAKO_NAME)
+            # was set at launch and is inherited by exec; without
             # this, per-run -e vars would be silently dropped when the box is
             # already running.
             return runtime.exec(
@@ -3885,7 +3886,6 @@ def _run_container(
         container_env, secret_export_vars = _assemble_launch_env(
             std=std,
             proj=proj,
-            agent_cfg=agent_cfg,
             deliveries=deliveries,
             # The COLLAPSE's env slots, read at the seam and passed as a VALUE —
             # the same shape ``launch_binds`` above takes, and for the same reason:
@@ -4717,44 +4717,41 @@ def _teardown_persistent_box(runtime: ContainerRuntime, container_name: str) -> 
         )
 
 
-def _build_config_env(
-    agent_env: dict[str, str], env_slots: "CollapsedEnvs",
-) -> dict[str, str]:
-    """Layer config-level env vars, low->high: agent < the COLLAPSED env slots.
+def _build_config_env(env_slots: "CollapsedEnvs") -> dict[str, str]:
+    """Project the COLLAPSED env slots onto the container env dict — the WHOLE config env.
 
     Shared between container launch (start) and ``box show --effective`` so the
-    resolved config-env matches exactly — that sharing is the whole point of the
-    function, and it is why the ``<scope>.env.<VAR>`` values are folded in HERE
-    rather than by the launch caller alone (they were, and the display consequently
-    under-reported every ``<scope>.env.<VAR>`` the box actually receives).
-    Runtime-only layers (target state env, per-run ``-e``) are applied by the
-    caller ON TOP of this and are NOT config, so they are excluded here.
+    resolved config-env matches exactly; that sharing is the whole point of a
+    function this small, and it is why the projection lives HERE rather than in the
+    launch caller (it did, and the display consequently under-reported every
+    ``<scope>.env.<VAR>`` the box actually receives). Runtime-only layers (target
+    state env, per-run ``-e``) are applied by the caller ON TOP of this and are NOT
+    config, so they are excluded here.
 
     *env_slots* is ``meta.assembly.env`` — the collapse's arbitrated map, VAR to
-    ``CollapsedEnv(value, scope, key)``.  ⚑ THE UPDATE BELOW SETTLES NOTHING, and
-    there is nothing left for it to settle: the map holds ONE entry per variable
-    BY CONSTRUCTION (``store_collapse.collapse_env`` walks the scopes system-first
-    and REFUSES a VAR two scopes' keys both name), so this is a straight
-    projection of the winners onto the agent under-layer.  ⚑ The ``scope``/``key``
-    members are dropped here and that is not a loss of provenance: they travel WITH
-    the value in the leaf, which is where a display or a diagnostic reads them.
+    ``CollapsedEnv(value, scope, key)``. NOTHING IS SETTLED HERE and there is
+    nothing left to settle: the map holds ONE entry per variable BY CONSTRUCTION
+    (``store_collapse.collapse_env`` walks the scopes system-first and REFUSES a
+    VAR two scopes' keys both name).  ⚑ The ``scope``/``key`` members are dropped
+    here and that is not a loss of provenance: they travel WITH the value in the
+    leaf, which is where a display or a diagnostic reads them.
 
-    *agent_env* is ``AgentConfig.env`` (``agent.<node>.env.<VAR>``) and stays as
-    the UNDER-layer rather than being dropped as redundant: the resolve reads
-    the node's settings FILE, while a box whose agent config has not been
-    materialised yet is displayed from ``target.generate_agent_config()``, which
-    the snapshot cannot see.
+    ⚑ THE AGENT UNDER-LAYER IS GONE (MBR-1 P3) and must not come back. It was
+    ``AgentConfig.env`` — the per-agent FILE's ``self.env`` table, handed in
+    separately because ``_agent_partial`` re-rooted the file's ``secret_path`` and
+    not its ``env``, so those variables were on no cascade level at all. Being an
+    under-layer put them BELOW ``system``, inverting the bracket in which agent
+    outranks system, and being off the snapshot skipped the expand pass. The re-root
+    closed both: ``agent.<node>.env.<VAR>`` is an ordinary key now and arrives
+    through *env_slots* like every other scope's.
 
     ⚑ The docker ``.env`` FILES (system/workset/box) that were the other three
     tiers here are GONE — Jei's RQ-1 re-ruling (2026-08-02): the ratified
     manifest records them as DROPPED, so a live launch read of them was an
     authority-vs-code divergence. Their replacement is ``<scope>.env.<VAR>``,
-    which arrives through *env_slots*.
+    which arrives through *env_slots* too.
     """
-    env: dict[str, str] = {}
-    env.update(agent_env)                                    # agent tier
-    env.update({var: slot.value for var, slot in env_slots.items()})
-    return env
+    return {var: slot.value for var, slot in env_slots.items()}
 
 
 def _emit_secret_mounts(secrets, logger) -> "tuple[list, list[str]]":
@@ -4956,8 +4953,9 @@ def _directive_flatten_shim(
 # through the EXISTING single-route channels (no bespoke copy): the endpoint via
 # the descriptor's ``endpoint``->``ANTHROPIC_BASE_URL`` env, the token via the
 # ``secret_path`` category (arm's-length ro mount + in-box export), and any other
-# non-secret persona env (the model-map ``ANTHROPIC_DEFAULT_*_MODEL``) via the
-# agent ``env`` channel (``_build_config_env``).  BASE_URL and the token are
+# non-secret persona env (the model-map ``ANTHROPIC_DEFAULT_*_MODEL``) as an
+# ordinary ``agent.<node>.env.<VAR>`` key, arbitrated into the collapse's env
+# slots like every other scope's.  BASE_URL and the token are
 # carried by their dedicated channels and excluded from the env overlay so each
 # var has exactly ONE source.
 

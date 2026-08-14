@@ -1821,15 +1821,25 @@ agent.goose.env.KANIBAKO_DIRECTIVE_FINAL                  = ~/.config/goose/.add
 **To override one, write the same key** in a settings file that may set it — the agent's own
 `agents/<node>/settings.yaml`, or the system settings file:
 
-```yaml
-# agents/claude/settings.yaml — let claude update itself in this agent's boxes
-self:
-  claude:
-    env:
-      DISABLE_AUTOUPDATER: "0"
+```console
+$ kanibako agent set claude env.DISABLE_AUTOUPDATER=0
 ```
 
-That was not possible at all before this release.
+```yaml
+# agents/claude/settings.yaml — the same thing, written by hand.  ⚑ `self:` IS
+# `agent.claude`, so the env table sits DIRECTLY under it: there is no second
+# `claude:` level, and this is the shape the command above writes.
+self:
+  env:
+    DISABLE_AUTOUPDATER: "0"
+```
+
+That was not possible at all before this release. ⚑ **And the agent file's half of it needed one
+more fix to work** — see §2.35: until that landed, a value written in the flat `self: env:` table
+above was delivered *below* the plugin's declared default rather than above it, so this override
+would not have taken effect. (A hand-written second `claude:` level under `self:` did reach the
+cascade and did beat the plugin default. That spelling is refused outright now — §2.35 has the
+move.)
 
 **What you must do — one case only: if you already set the same variable at another scope.** Because
 these are ordinary keys, they take part in §2.33's one-owner rule. A configuration like
@@ -1851,6 +1861,131 @@ overriding by the same key is the ordinary cascade.
 stay undeclared, because goose owns those in its own persistent config and a kanibako default would
 overwrite your choice on every launch. Set them yourself with `agent.goose.env.GOOSE_MODEL` if you
 want kanibako to own them.
+
+### 2.35 An agent's own environment variables now resolve where an agent-scope key should
+
+**What changed.** A variable set in an agent's own settings file —
+
+```console
+$ kanibako agent set claude env.EDITOR=vim
+```
+
+```yaml
+# agents/claude/settings.yaml
+self:
+  env:
+    EDITOR: vim
+```
+
+— was handed to the container on a path of its own rather than resolved through the settings
+cascade with every other key. It arrived *underneath* all of them. **It is an ordinary
+`agent.claude.env.EDITOR` key now**, resolving where the agent scope resolves: above `system`,
+below `workset`, and expanded like anything else.
+
+**Four things change for you, all of them things that used to happen silently.**
+
+1. **A `system.env.EDITOR` twin now refuses the launch** where it used to win in silence. Two
+   keys at two scopes naming one variable is §2.33's one-owner rule, and the agent file is an
+   ordinary participant in it now — before, the system value simply arrived and yours did not.
+   See the first "what you must do" bullet below. Where there is *no* twin, what changed is the
+   cascade position: the agent scope outranks system, and the delivery agrees with that now.
+2. **A plugin's declared default no longer beats it.** §2.34 says you override a plugin variable
+   by writing the same key in a nearer file; from the agent file's flat `env:` table — the one
+   `agent set` writes — that did not work, because the plugin's value came through the cascade
+   and yours came in underneath it. It works now, and the `agent set` command above is the
+   shortest way to do it. (A hand-written second `<node>:` level *did* override, and is refused
+   now; see the third bullet below.)
+3. **A persona's stored value no longer beats it.** A persona's store config supplies `env:`
+   entries as live agent-scope keys, and the rule has always been that your file wins — the file
+   holds your own edits and nothing else, while a persona value is re-read on every launch. The
+   env half did not honour that. **If you were relying on a persona value while also having the
+   same variable in the agent file, the file's value is what you get now.**
+4. **`~` and `$VAR` in the value are expanded**, exactly as in a value written in any other
+   settings file. Before, an agent-file `env` value reached the box as literal text, so
+   `EDITOR: ~/bin/ed` delivered the tilde itself. ⚑ **Expansion resolves against kanibako's own
+   namespace, not your shell's, and an unknown name is REFUSED rather than passed through** — this
+   is how `<scope>.env.<VAR>` has always behaved and the agent file simply joins it. So an
+   agent-file `env` value containing something like `$HOME` **stops the launch with `Unknown
+   variable: $HOME`** where it previously delivered those six characters verbatim (and your box's
+   own shell may well have expanded them later, which is why it can look like a regression). The
+   host paths kanibako does know are spelled as `@`-references (`@config.data`, `@meta.box.home`);
+   for anything meant to be resolved *by the box*, escape it — see below.
+
+**What you must do.** Nothing, unless one of these is true:
+
+- **You have the same variable at another scope as well.** An agent-file `env.EDITOR` plus a
+  `box.env.EDITOR` are two keys for one slot, which §2.33 refuses — and the box used to take the
+  box-scope value without a word. Give the variable one owner.
+- **You wrote `~` or `$NAME` into an agent-file `env` value and meant it to be delivered as
+  written** (for the box's own shell to resolve, or as a literal). Escape it — `\~`, `\$` — which
+  is both the fix for a launch that now refuses and the way to keep an intended literal intact.
+- **You wrote an `env:` or `secret_path:` table under a second `<node>:` level by hand**
+  (`self: claude: env:`). **That spelling is refused by name and stops the launch.** See the box
+  below — it is the one part of this section that can affect a file you never edited.
+
+#### `self:` is an alias, so nothing nests under it
+
+This one is broader than `env`, and it is the case that can bite a file you never hand-edited.
+
+**`self:` is not a key.** It is an alias that stands for `agent.<that agent>`. So in
+`agents/claude/settings.yaml`, a table written like this:
+
+```yaml
+self:
+  claude:            # ← a second `claude:`
+    env:
+      EDITOR: vim
+```
+
+reads `agent.claude.claude.env.EDITOR` — `self` already *is* `agent.claude`, so the node is named
+twice. There is no such key and there never was one. **kanibako now refuses it by name and tells
+you the key your spelling reads**, rather than quietly resolving it as though you had written it
+the short way.
+
+**It applies to `env:` and `secret_path:` alike, and to any second level** — a literal `default:`
+included (`self: default: env:` reads `agent.claude.default.env`, equally impossible). The fix is
+always the same: **move the table up one level.**
+
+```yaml
+# agents/claude/settings.yaml — the whole of it
+self:
+  env:
+    EDITOR: vim
+  secret_path:
+    ANTHROPIC_AUTH_TOKEN: ~/.config/claude/token
+```
+
+The `agent set` verb writes exactly that shape, so these two are the shortest cure:
+
+```console
+$ kanibako agent set claude env.EDITOR=vim
+$ kanibako agent set claude secret_path.ANTHROPIC_AUTH_TOKEN=~/.config/claude/token
+```
+
+⚑ **Entries you wrote under `self: default:`** — meaning "for every agent" — have no agent-file
+spelling at all, because the flat table above belongs to *this* agent. Write that tier in the
+**system** settings file:
+
+```yaml
+# the system settings file
+agent:
+  default:
+    env:
+      EDITOR: vim
+```
+
+**Why refuse it rather than keep accepting it?** Because it was never one spelling — it was two,
+and the other one won. A file carrying both a nested and a flat table of the same category lost
+the nested one *wholesale*: an entry spelled only under `<node>:` was not overridden, it was
+absent, with no message. `secret_path` is the one to check first, since that spelling predates the
+move to the flat table and may sit in a file you have not opened in a while — and a silently
+dropped token pointer looks like an auth failure, not a config error.
+
+⚑ **`bindings:` is not affected.** It still lives at `self: <node>: bindings:` and still works;
+that table is on its own track.
+
+`kanibako box show --effective` resolves the same settings a launch does, so it will show you the
+resulting values (and report the refusal, if any) without starting anything.
 
 ---
 

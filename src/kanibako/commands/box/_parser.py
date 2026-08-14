@@ -2036,7 +2036,6 @@ def _run_box_config(args: argparse.Namespace) -> int:
                 # a launch would refuse is reported HERE as the category error rather
                 # than displayed as if it would start.
                 env_resolved = _build_config_env(
-                    agent_cfg.env if agent_cfg is not None else {},
                     _launch_env_map(category_snapshot),
                 )
             except KanibakoError as exc:

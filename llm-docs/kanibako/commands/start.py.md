@@ -140,8 +140,9 @@ agent-delivery dest set and both narrow bind maps read the `LaunchDeliveries` ca
 below), and 6-R3 DELETED `reconcile_categories`, `ReconciledCategories` and the three group
 resolvers under them. ⚑ Its WARN half went first, at 5-1c — next section. ⚑ **AND AGAIN WITH THE ENV
 LEAF: it drives the box's ENVIRONMENT too.** `meta.assembly.env` is read by `_launch_env_map` and
-folded by `_build_config_env`, for the launch and for `box show --effective` alike; the carrier's
-`envs` list is retired, so nothing assembles an environment from raw declarations any more.
+projected by `_build_config_env`, for the launch and for `box show --effective` alike; the carrier's
+`envs` list is retired, so nothing assembles an environment from raw declarations any more — and
+since MBR-1 P3 nothing rides in beside the leaf either (the agent under-layer is gone).
 
 That is also why the wiring reuses the existing walk rather than adding a second one: two walks
 could disagree about what was declared, and only one of them would be the one that ships.
@@ -430,7 +431,7 @@ every consumer onto it:
 
 | what | was | is |
 |---|---|---|
-| the container env | `_build_config_env(agent_env, reconciled.envs)` | ⚑ **moved on again — `_launch_env_map(snapshot)`**, the collapsed `meta.assembly.env` leaf, at the launch AND at `box show --effective`; the carrier's `envs` field is RETIRED |
+| the container env | `_build_config_env(agent_env, reconciled.envs)` | ⚑ **moved on again — `_launch_env_map(snapshot)`**, the collapsed `meta.assembly.env` leaf, at the launch AND at `box show --effective`; the carrier's `envs` field is RETIRED, and MBR-1 P3 dropped the `agent_env` parameter with it |
 | the secret mounts | `_emit_secret_mounts` filtering `reconciled.mounts` | `deliveries.secrets` |
 | the agent-delivery dests | `_agent_delivered_dests(reconciled.mounts)` | `deliveries.agent_dests` |
 | the narrow bind maps | `_narrow_bind_map(_img_rec.mounts)` | `deliveries.narrow_bindings` |
@@ -458,6 +459,29 @@ either surface and the winner's `(scope, key)` travels with it. **For a configur
 accepts this changed no value:** such a configuration has one scope's key per variable by
 construction, so the map and the old list carried the same pairs. What changed is that the
 arrangement where they would have DIFFERED does not launch at all.
+
+### 🛑 AND THE AGENT UNDER-LAYER WENT WITH IT (MBR-1 P3)
+
+`_build_config_env` took `(agent_env, env_slots)` and layered the first under the second. That first
+argument was `AgentConfig.env` — the per-agent FILE's `self.env` table, handed in separately for one
+reason: `settings_assemble._agent_partial` re-rooted the file's flat `secret_path` and not its `env`,
+so those variables were on no cascade level at all. The consequences were both silent. Being an
+under-layer put an agent-scope variable BELOW `system`, inverting the bracket in which the agent tier
+outranks system; and being off the snapshot meant it never met the expand pass, so a `~` or `$VAR`
+resolved or did not depending purely on WHICH FILE the value was written in.
+
+The re-root closes both, and it deletes the code rather than adding a rule: `agent.<node>.env.<VAR>`
+is an ordinary key, it cascades to its true rung (above `system`, below `workset`), it realizes
+through the same collapse as every other scope's, and `_build_config_env` is a straight projection of
+the slots with nothing layered under it. Two behaviours arrive with that: an agent-FILE variable and
+a `box.env.<VAR>` twin are now two scopes' keys at one slot and REFUSE the launch (ruling 2026-08-14),
+while an agent-FILE variable and the plugin's declared default are the SAME key at two cascade levels
+and simply cascade — the file wins, nothing refuses.
+
+⚑ **The only feeder that argument ever had was the FILE.** The persona STORE's env has always ridden
+the cascade (`settings_launch._persona_partial` splices it under `agent.<active>`), and every
+`generate_agent_config()` returns an env-less config under the file-purity invariant — which is why
+the parameter was retired outright rather than kept for a second caller.
 
 ⚑ `_launch_env_map` is ONE function where `bindings`/`seeded`/`synced` each have two (an option
 reader plus a total one). Neither env consumer can act on an absent leaf — both describe a box, and

@@ -2175,7 +2175,13 @@ class TestAgentConfigIntegration:
             assert "opus" in cli_args
 
     def test_agent_env_merged_into_container_env(self, start_mocks):
-        """Agent [env] section values are included in container env."""
+        """Agent [env] section values are included in container env.
+
+        ⚑ ARRIVAL, not ROUTE: ``agent_cfg.env`` reaches this launch through the
+        ``start_mocks`` FLOOR mirror, not the agent-FILE rung it takes in production.
+        The real ``agent.<node>.env.<VAR>`` route is pinned by T-B in
+        ``test_start_assembly.py``.
+        """
         with start_mocks() as m:
             m.agent_cfg.env = {"MY_VAR": "hello"}
             m.load_agent_config.return_value = m.agent_cfg
@@ -2334,7 +2340,7 @@ class TestContainerEnvPrecedence:
     """Verify container env accumulation precedence.
 
     Order (low->high, later ``.update`` wins):
-        agent < the COLLAPSED ``<scope>.env.<VAR>`` slots < state < cli
+        the COLLAPSED ``<scope>.env.<VAR>`` slots < state < cli
 
     ⚑ FLIPPED by B9/RQ-1. The three docker ``.env`` FILE tiers (system, workset,
     box) that used to open this sequence are RETIRED — the ratified manifest
@@ -2342,11 +2348,16 @@ class TestContainerEnvPrecedence:
     authority-vs-code divergence. Their replacement is the settings key
     ``<scope>.env.<VAR>``.
 
-    🛑 RECOMPOSED ONTO THE LEAF. The middle layer used to be
+    🛑 RECOMPOSED ONTO THE LEAF. The config layer used to be
     ``LaunchDeliveries.envs`` — an un-arbitrated entry list the consumer folded in
     scope order, which made ``_build_config_env``'s own ``update`` the per-VAR
     winner. It is ``meta.assembly.env`` now: one entry per VAR, decided by the
     collapse, so the layering below is the ONLY thing this class still asserts.
+    🛑 AND THE AGENT LAYER BENEATH IT IS GONE (MBR-1 P3): it was the per-agent
+    FILE's ``self.env``, delivered off the cascade because ``_agent_partial``
+    re-rooted only ``secret_path``, which put it BELOW ``system`` and past the
+    expand pass. Re-rooted, it is an ordinary key arriving in the slots — so the
+    config tier here has exactly one input.
     ⚑ WHAT IT MUST NOT BE READ AS: an ordering among the scopes. A two-scope
     contest cannot be expressed in this input at all — the map is keyed by VAR —
     and the arrangement that used to express it is a refusal upstream
@@ -2365,25 +2376,22 @@ class TestContainerEnvPrecedence:
         return slots
 
     @classmethod
-    def _assemble(cls, *, agent_env, env_slots, state_env, cli_env):
+    def _assemble(cls, *, env_slots, state_env, cli_env):
         """Replicate the start.py env-assembly sequence verbatim."""
         from kanibako.commands.start import _build_config_env
 
-        container_env = _build_config_env(agent_env, env_slots)
+        container_env = _build_config_env(env_slots)
         container_env.update(state_env)                        # state
         container_env.update(cli_env)                          # cli
         return container_env
 
-    def test_scoped_env_overrides_the_agent_tier(self):
+    def test_every_collapsed_slot_reaches_the_container_env(self):
         env = self._assemble(
-            agent_env={"K": "agent", "ONLY_AGENT": "a"},
             env_slots=self._slots(("K", "box"), ("ONLY_BOX", "b")),
             state_env={},
             cli_env={},
         )
-        assert env["K"] == "box"          # the collapsed slot wins
-        assert env["ONLY_BOX"] == "b"
-        assert env["ONLY_AGENT"] == "a"
+        assert env == {"K": "box", "ONLY_BOX": "b"}
 
     def test_the_slot_value_arrives_whatever_scope_won_it(self):
         """The layer applies the winner the COLLAPSE picked; it re-picks nothing.
@@ -2392,7 +2400,6 @@ class TestContainerEnvPrecedence:
         rides the leaf as PROVENANCE, and this layer never consults it.
         """
         env = self._assemble(
-            agent_env={"K": "agent"},
             env_slots=self._slots(("K", "workset", "workset")),
             state_env={},
             cli_env={},
@@ -2401,10 +2408,7 @@ class TestContainerEnvPrecedence:
 
     def test_state_and_cli_override_all_config_levels(self):
         """state_env and CLI -e env both sit above every config level."""
-        base = dict(
-            agent_env={"K": "agent"},
-            env_slots=self._slots(("K", "box")),
-        )
+        base = dict(env_slots=self._slots(("K", "box")))
         env_state = self._assemble(**base, state_env={"K": "state"}, cli_env={})
         assert env_state["K"] == "state"
         env_cli = self._assemble(
@@ -5930,6 +5934,11 @@ class TestPersonaLoadOrErrorIntegration:
         driven from the persona's own keys — the endpoint, the model-map env and the
         bearer-token pointer.  XDG_CONFIG_HOME is still pointed at an empty tree so
         no stray host dir can influence the result.
+
+        ⚑ The ``cfg.env`` entry below reaches the box through the ``start_mocks``
+        FLOOR mirror, not the agent-FILE rung it takes in production; the real
+        ``agent.<node>.env.<VAR>`` route is pinned by T-B in
+        ``test_start_assembly.py``.
         """
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
         cfg.state["endpoint"] = base_url
@@ -6945,7 +6954,7 @@ class TestPersonaLiveTierWiring:
         proj.name = "navigatorbox"
         return proj
 
-    def _resolve(self, std, *, target, persona_values):
+    def _resolve(self, std, *, target, persona_values, agent_cfg_path=None):
         from kanibako.commands.start import _resolve_launch_snapshot
 
         return _resolve_launch_snapshot(
@@ -6953,7 +6962,7 @@ class TestPersonaLiveTierWiring:
             proj=self._proj(std),
             agent_name=self._NODE,
             system_settings_path=None,
-            agent_cfg_path=None,
+            agent_cfg_path=agent_cfg_path,
             desc=None,
             install=None,
             target=target,
@@ -7083,6 +7092,59 @@ class TestPersonaLiveTierWiring:
                 "brand-new", "agent", f"agent.{self._NODE}.env.SOME_NEW_VAR",
             ),
         }
+
+    # --- the agent FILE outranks the store (N-2) -----------------------------
+
+    def test_the_agent_FILE_env_beats_the_store_at_the_same_variable(
+        self, std, config_file, tmp_home,
+    ):
+        """N-2 — and file-purity makes this ordering FORCED, not a preference.
+
+        The agent settings file holds USER INTENT ONLY — nothing kanibako writes
+        lands in it — so an ``env.<VAR>`` present there can only be a deliberate
+        edit, and a deliberate edit must outrank a value the store re-renders on
+        every launch.  The RUNG was already right (the persona partial splices
+        below the file's tables); the file's env simply was not on it, so the store
+        took every such variable by default.
+
+        ⚑ Asserted at the SLOT as well as the leaf: the leaf is what a display
+        reads and the slot is what the box receives, and this defect lived in the
+        gap between them.
+        """
+        from kanibako.commands.start import (
+            _launch_snapshot_inputs,
+            _persona_values_for,
+        )
+        from kanibako.settings.agent_config import (
+            AgentConfig,
+            agent_settings_path,
+            write_agent_config,
+        )
+        from kanibako.settings.settings_launch import snapshot_category_entries
+        from kanibako.settings.store_collapse import CollapsedEnv, collapse_env
+
+        self._store(tmp_home, env={"NAV_X": "from-the-store"})
+        target = self._target()
+        path = agent_settings_path(std.agents, self._NODE)
+        write_agent_config(path, AgentConfig(env={"NAV_X": "from-the-file"}))
+
+        snap, _deliveries = self._resolve(
+            std, target=target, agent_cfg_path=path,
+            persona_values=_persona_values_for(self._NODE, target),
+        )
+        assert dict.get(dict.get(self._active(snap), "env"), "NAV_X") == (
+            "from-the-file"
+        )
+
+        ctx = _launch_snapshot_inputs(
+            std=std, proj=self._proj(std), agent_name=self._NODE,
+        )[0]
+        slots = collapse_env(snapshot_category_entries(
+            snap, active_agent=self._NODE, box_ctx=ctx,
+        ))
+        assert slots["NAV_X"] == CollapsedEnv(
+            "from-the-file", "agent", f"agent.{self._NODE}.env.NAV_X",
+        )
 
     # --- display == launch ---------------------------------------------------
 
@@ -7459,14 +7521,14 @@ class TestPersonaLiveTierWiring:
     def test_a_store_env_value_expands_exactly_as_a_keyspace_one(
         self, std, config_file, tmp_home, raw,
     ):
-        """⚑ Locked decision #4, the ENV half — against the RIGHT comparison.
+        """⚑ Locked decision #4, the ENV half — the store against a scope FILE.
 
-        The like-for-like route for a store ``env.<VAR>`` is a keyspace-scope
-        ``agent.<node>.env.<VAR>``, NOT the agent file's flat ``self.env`` table:
-        ``_agent_partial`` re-roots only ``self.secret_path`` into the cascade,
-        so ``self.env`` never becomes a snapshot leaf at all (it is delivered by
-        the separate ``_build_config_env`` under-layer and sees no ``expand``).
-        Both routes compared here DO ride the snapshot, and must agree.
+        🛑 THE REASON THIS COMPARISON EXCLUDED THE AGENT FILE IS GONE (MBR-1 P3).
+        It read: ``_agent_partial`` re-roots only ``self.secret_path``, so
+        ``self.env`` never becomes a snapshot leaf at all and sees no ``expand``.
+        That WAS the defect, not a property of the file — the env arm is re-rooted
+        now, and the agent-file route has its own equivalence pin directly below.
+        This case keeps its own subject: the store against a keyspace scope.
         """
         from kanibako.commands.start import _persona_values_for
 
@@ -7483,6 +7545,44 @@ class TestPersonaLiveTierWiring:
         assert via_store == via_keyspace, (
             f"store and keyspace env disagree for {raw!r}: "
             f"{via_store!r} vs {via_keyspace!r}"
+        )
+
+    @pytest.mark.parametrize("raw", _EXPAND_HAZARDS)
+    def test_an_agent_FILE_env_value_expands_exactly_as_a_keyspace_one(
+        self, std, config_file, tmp_home, raw,
+    ):
+        """MBR-1 P3 — the agent FILE's env now takes the SAME pass as every other leaf.
+
+        ⚑ THE CLAIM IS THE EQUIVALENCE, AND THE EQUIVALENCE IS THE POINT: the
+        ROUTE a value took used to decide whether it was expanded at all, so a
+        ``~`` written into the agent file reached the box as a literal tilde while
+        the identical value written into a scope file arrived expanded — and a
+        ``$NOT_A_KANIBAKO_VAR`` was silently delivered raw by one route and
+        REFUSED by the other.  Both are snapshot leaves now, ``expand`` walks the
+        already-merged snapshot and cannot tell which level contributed one, so
+        the two answers — including the answers that RAISE — must be identical.
+        """
+        from kanibako.settings.agent_config import (
+            AgentConfig,
+            agent_settings_path,
+            load_agent_config,
+            write_agent_config,
+        )
+
+        target = self._target()
+        path = agent_settings_path(std.agents, self._NODE)
+        write_agent_config(path, AgentConfig(env={"NAV_X": raw}))
+        via_file = self._leaf_outcome(
+            std, tmp_home, target=target, category="env", var="NAV_X",
+            agent_cfg=load_agent_config(path), agent_cfg_path=path,
+        )
+        via_keyspace = self._leaf_outcome(
+            std, tmp_home, target=target, category="env", var="NAV_X",
+            system_doc={"agent": {self._NODE: {"env": {"NAV_X": raw}}}},
+        )
+        assert via_file == via_keyspace, (
+            f"agent-file and keyspace env disagree for {raw!r}: "
+            f"{via_file!r} vs {via_keyspace!r}"
         )
 
     def test_a_first_use_generated_agent_file_carries_no_persona_values(
