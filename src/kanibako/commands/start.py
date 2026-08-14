@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from kanibako.settings.keystore import KeyStore
     from kanibako.settings.paths import ProjectPaths, StandardPaths
     from kanibako.settings.settings_launch import AuthSource
-    from kanibako.settings.store_collapse import CollapsedCopy
+    from kanibako.settings.store_collapse import CollapsedCopy, CollapsedEnvs
     from kanibako.targets.base import PersonaSpec
     from kanibako.vscode.vscode_config import CodexModelProvider
 
@@ -1717,6 +1717,7 @@ def _assemble_launch_env(
     proj,
     agent_cfg,
     deliveries,
+    env_slots,
     state_env,
     cli_env,
     target,
@@ -1729,18 +1730,16 @@ def _assemble_launch_env(
     SIDE EFFECT: extends the caller's ``extra_mounts`` list IN PLACE with the
     secret mounts.  Returns ``(container_env, secret_export_vars)``.
 
-    *deliveries* is the launch seam's
-    :class:`~kanibako.settings.settings_categories.LaunchDeliveries` — both halves
-    this function needs (the ``<scope>.env.<VAR>`` entries and the ``secret_path``
-    mounts) come off it, so the env the box gets and the secrets it gets are read
-    from ONE object built from ONE list.
+    *env_slots* is the COLLAPSED env map (``meta.assembly.env``, read off the launch
+    snapshot by :func:`_launch_env_map`) and *deliveries* is the launch seam's
+    :class:`~kanibako.settings.settings_categories.LaunchDeliveries` carrier, which
+    holds the ``secret_path`` mounts.  Both fold from the ONE credential-gated entry
+    list, so the env the box gets and the secrets it gets describe one box.
     """
-    # Config-level env: the agent tier under the settings-framework env (the
-    # `<scope>.env.<VAR>` category), delivered by the single launch resolve above
-    # in scope apply order (system < agent < workset < box) — ⚑ that order is TIER
-    # LAYERING, not a per-VAR scope contest. Two scopes' keys naming one VAR are
-    # REFUSED UPSTREAM by the assembly collapse (`store_collapse.collapse_env` →
-    # `meta.assembly.env`), so at most one scope's key per VAR is in this list.
+    # Config-level env: the agent tier under the ARBITRATED `<scope>.env.<VAR>`
+    # slots — one value per VAR, already decided by the assembly collapse
+    # (`store_collapse.collapse_env`), which walks the scopes system-first and
+    # REFUSES a variable two scopes' keys both name. Nothing here picks a scope.
     # Target-derived state env and per-run CLI -e env stay above all config
     # levels.  The docker `.env` files that used to layer in here are RETIRED
     # (RQ-1, 2026-08-02) — see ``_build_config_env``.
@@ -1749,7 +1748,7 @@ def _assemble_launch_env(
     # that silently stopped being delivered.  Announce it HERE, at the seam that
     # used to read it, so the loss is named rather than discovered.
     _warn_legacy_env_files(std, proj)
-    container_env = _build_config_env(agent_cfg.env, deliveries.envs)
+    container_env = _build_config_env(agent_cfg.env, env_slots)
     # SECRET category (spec §2a secret_path, 2026-07-06): the resolved
     # ``secret_path.<VAR>`` winners (any scope — agent/box/workset/system) are
     # delivered ARM'S-LENGTH — each host PATH is ro-bind-mounted to
@@ -1901,7 +1900,13 @@ def _start_helper_hub(
         helpers_dir=helpers_dir,
         socket_path=socket_path,
         binary_mounts=binary_mounts,
-        env=container_env,
+        # ⚑ COPIED OUT (P8) — the hub keeps this map for the whole session and hands
+        # it to every helper it spawns, so a live alias makes any LATER write to the
+        # launch's own dict retroactively part of a helper's environment. That was
+        # not hypothetical: the browser sidecar writes ``BROWSER_WS_ENDPOINT`` into
+        # ``container_env`` further down, AFTER this call, and it reached helpers
+        # through this reference alone.
+        env=dict(container_env),
         entrypoint=entrypoint,
         default_entrypoint=target.default_entrypoint if target else None,
         box_shell=box_shell,
@@ -3879,6 +3884,10 @@ def _run_container(
             proj=proj,
             agent_cfg=agent_cfg,
             deliveries=deliveries,
+            # The COLLAPSE's env slots, read at the seam and passed as a VALUE —
+            # the same shape ``launch_binds`` above takes, and for the same reason:
+            # the assembler receives what was assembled, not the store it came from.
+            env_slots=_launch_env_map(_snapshot),
             state_env=state_env,
             cli_env=cli_env,
             target=target,
@@ -4705,27 +4714,27 @@ def _teardown_persistent_box(runtime: ContainerRuntime, container_name: str) -> 
         )
 
 
-def _build_config_env(agent_env: dict[str, str], scope_envs) -> dict[str, str]:
-    """Layer config-level env vars, low->high: agent < the resolved scope env.
+def _build_config_env(
+    agent_env: dict[str, str], env_slots: "CollapsedEnvs",
+) -> dict[str, str]:
+    """Layer config-level env vars, low->high: agent < the COLLAPSED env slots.
 
     Shared between container launch (start) and ``box show --effective`` so the
     resolved config-env matches exactly — that sharing is the whole point of the
-    function, and it is why the ``<scope>.env.<VAR>`` entries are folded in HERE
+    function, and it is why the ``<scope>.env.<VAR>`` values are folded in HERE
     rather than by the launch caller alone (they were, and the display consequently
     under-reported every ``<scope>.env.<VAR>`` the box actually receives).
     Runtime-only layers (target state env, per-run ``-e``) are applied by the
     caller ON TOP of this and are NOT config, so they are excluded here.
 
-    *scope_envs* is ``LaunchDeliveries.envs`` — the launch seam's ENV-delivered
-    entries in apply order, each carrying the VAR in ``box_dest`` and the resolved
-    value in ``options``.  ⚑ THE UPDATE BELOW NO LONGER PICKS A PER-VAR SCOPE
-    WINNER, AND MUST NOT BE READ AS ONE.  A VAR named by two scopes' keys is
-    REFUSED UPSTREAM by the assembly collapse
-    (``store_collapse.collapse_env`` → ``meta.assembly.env``), so at most ONE
-    scope's key per VAR ever reaches this list and the update has no contest to
-    settle.  What it still decides is the TIER LAYERING — the *agent_env*
-    under-layer below the scope entries, with the caller's runtime-only layers on
-    top — not which scope owns a variable.
+    *env_slots* is ``meta.assembly.env`` — the collapse's arbitrated map, VAR to
+    ``CollapsedEnv(value, scope, key)``.  ⚑ THE UPDATE BELOW SETTLES NOTHING, and
+    there is nothing left for it to settle: the map holds ONE entry per variable
+    BY CONSTRUCTION (``store_collapse.collapse_env`` walks the scopes system-first
+    and REFUSES a VAR two scopes' keys both name), so this is a straight
+    projection of the winners onto the agent under-layer.  ⚑ The ``scope``/``key``
+    members are dropped here and that is not a loss of provenance: they travel WITH
+    the value in the leaf, which is where a display or a diagnostic reads them.
 
     *agent_env* is ``AgentConfig.env`` (``agent.<node>.env.<VAR>``) and stays as
     the UNDER-layer rather than being dropped as redundant: the resolve reads
@@ -4737,11 +4746,11 @@ def _build_config_env(agent_env: dict[str, str], scope_envs) -> dict[str, str]:
     tiers here are GONE — Jei's RQ-1 re-ruling (2026-08-02): the ratified
     manifest records them as DROPPED, so a live launch read of them was an
     authority-vs-code divergence. Their replacement is ``<scope>.env.<VAR>``,
-    which arrives through *scope_envs*.
+    which arrives through *env_slots*.
     """
     env: dict[str, str] = {}
     env.update(agent_env)                                    # agent tier
-    env.update({e.box_dest: e.options for e in scope_envs})
+    env.update({var: slot.value for var, slot in env_slots.items()})
     return env
 
 
@@ -6390,17 +6399,17 @@ def _resolve_launch_snapshot(
     every consumer below it.
 
     Returns ``(snapshot, deliveries)``.  The mount set a box is built from lives IN
-    the snapshot, under ``meta.assembly.*``, written by the assembly COLLAPSE.  The
-    second element is the
-    :class:`~kanibako.settings.settings_categories.LaunchDeliveries` carrier — envs,
-    the ``secret_path`` mounts, the agent-delivered dests and (for a narrow resolve
+    the snapshot, under ``meta.assembly.*``, written by the assembly COLLAPSE — and
+    so do the environment variables it is launched with (``meta.assembly.env``, read
+    by :func:`_launch_env_map`).  The second element is the
+    :class:`~kanibako.settings.settings_categories.LaunchDeliveries` carrier — the
+    ``secret_path`` mounts, the agent-delivered dests and (for a narrow resolve
     only) that resolve's own bind map: what the collapse deliberately does not
     carry, built off the SAME credential-gated list the collapse sees, so the two
     describe one box.  ⚑ It is a RETURN VALUE and not a snapshot leaf on purpose —
     ``meta.assembly.*`` is a CLOSED set of DECLARED leaves, and an undeclared one
-    would install silently.  The env slots ARE such a leaf
-    (``meta.assembly.env``); the carrier's ``envs`` list is the un-arbitrated
-    entry-order view of the same declarations, which nothing has retired yet.
+    would install silently; what belongs in that closed set goes through a keyspace
+    change to get there, as the env leaf did.
 
     ⚑ THERE IS NO SECOND, CROSS-SCOPE ``reconcile`` PASS ANY MORE (cutover 6-R3).
     §0's collision table is applied by the per-scope producer, the collapse, and
@@ -7478,6 +7487,35 @@ def _snapshot_assembly_synced(snapshot: "KeyStore") -> "list[CollapsedCopy] | No
     for seg in _ASSEMBLY_SYNCED:
         node = dict.get(node, seg) if isinstance(node, KeyStore) else None
     return list(node) if isinstance(node, list) else None
+
+
+def _launch_env_map(snapshot: "KeyStore") -> "CollapsedEnvs":
+    """The collapsed env slots at ``meta.assembly.env`` — THE COLLAPSE, and nothing else.
+
+    ⚑ ONE FUNCTION WHERE THE THREE OTHER LEAVES HAVE TWO (a ``_snapshot_assembly_*``
+    option plus a total launch reader), because no consumer wants the option form:
+    both readers — the launch's env assembly and ``box show --effective`` — describe A
+    BOX, and this leaf rides the whole-box gate, so ABSENT is never an answer either of
+    them can act on. Splitting it would create a route nothing takes, which this file
+    has already paid to delete once (:func:`_launch_seed_list`).
+
+    ABSENT means the same one thing the sibling leaves' absence means since cutover 2c:
+    a NARROW resolve, or a snapshot that was never resolved at all. A refused fold
+    RAISES.  COPIED OUT of the snapshot — the caller gets its own map, never the live
+    node.
+    """
+    from kanibako.settings.keystore import KeyStore
+    from kanibako.settings.settings_resolve import SettingsError
+
+    node: object = snapshot
+    for seg in _ASSEMBLY_ENV:
+        node = dict.get(node, seg) if isinstance(node, KeyStore) else None
+    if not isinstance(node, dict):
+        raise SettingsError(
+            "the launch read no collapsed env map (meta.assembly.env) off this "
+            "snapshot: only a resolve carrying the base families assembles one."
+        )
+    return dict(node)
 
 
 def _launch_seed_list(snapshot: "KeyStore") -> "list[CollapsedCopy]":

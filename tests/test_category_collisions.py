@@ -875,19 +875,31 @@ class TestPreservedCopyRules:
     def test_env_never_participates_in_a_dest_collision(self):
         """An env VAR name equal to a path dest is not a destination at all.
 
-        ⚑ RECOMPOSED ONTO THE CARRIER (6-R3): ``env`` reaches a box through
-        ``LaunchDeliveries.envs`` and through nothing else, and the bind reaches it
-        through the collapse — two carriers, so the contrived clash cannot even be
-        expressed as one.
+        🛑 THE CLAIM IS NOW ABOUT THE SLOT SPACES, NOT ABOUT TWO CARRIERS. It used
+        to read "``env`` leaves on ``LaunchDeliveries.envs`` and the bind leaves on
+        the collapse, so the clash cannot be expressed" — and the carrier half of
+        that is gone: BOTH now fold in the collapse, off the ONE entry list. What
+        keeps them apart is what always did, and it survives the merge intact: the
+        arbitrated spaces are DIFFERENT. A bind is arbitrated by DESTINATION and an
+        env var by VARIABLE NAME, so ``PATH`` the variable and ``PATH`` the
+        destination are two slots that share a spelling and nothing else.
+
+        ⚑ The mutation this kills: an env row folded into a bind arm (or a bind row
+        into the env slots) makes the two contend, and one of them then loses or
+        refuses on a name collision that means nothing.
         """
-        from kanibako.settings.settings_categories import launch_deliveries
+        from kanibako.settings.store_collapse import collapse_env
 
         entries = [
             entry("env", name="PATH", box_dest="PATH"),
             entry("bindings.rw", name="home", box_dest="PATH"),
         ]
-        deliveries = launch_deliveries(entries, agent_dests=frozenset())
-        assert [e.box_dest for e in deliveries.envs] == ["PATH"]
+        # One entry list, two folds, neither aware of the other's ``PATH``.
+        slots = collapse_env(entries)
+        # The VARIABLE slot, and it came from the env KEY — one row, not two.
+        assert list(slots) == ["PATH"]
+        assert slots["PATH"].key.endswith("env.PATH")
+        # The DESTINATION, undisturbed by a variable that shares its spelling.
         assert bound(entries) == {"PATH": "/h"}
 
 

@@ -2334,36 +2334,42 @@ class TestContainerEnvPrecedence:
     """Verify container env accumulation precedence.
 
     Order (low->high, later ``.update`` wins):
-        agent < the delivered ``<scope>.env.<VAR>`` entries < state < cli
+        agent < the COLLAPSED ``<scope>.env.<VAR>`` slots < state < cli
 
     ⚑ FLIPPED by B9/RQ-1. The three docker ``.env`` FILE tiers (system, workset,
     box) that used to open this sequence are RETIRED — the ratified manifest
     records the files as DROPPED, so the launch read of them was an
     authority-vs-code divergence. Their replacement is the settings key
-    ``<scope>.env.<VAR>``, delivered through ``LaunchDeliveries.envs`` in scope
-    apply order (system < agent < workset < box).
+    ``<scope>.env.<VAR>``.
 
-    ⚑ THE PER-VAR WINNER IS ``_build_config_env``'s OWN ``update`` and always was:
-    nothing upstream arbitrates env, so the launch applies the delivered order
-    rather than re-deriving one.
+    🛑 RECOMPOSED ONTO THE LEAF. The middle layer used to be
+    ``LaunchDeliveries.envs`` — an un-arbitrated entry list the consumer folded in
+    scope order, which made ``_build_config_env``'s own ``update`` the per-VAR
+    winner. It is ``meta.assembly.env`` now: one entry per VAR, decided by the
+    collapse, so the layering below is the ONLY thing this class still asserts.
+    ⚑ WHAT IT MUST NOT BE READ AS: an ordering among the scopes. A two-scope
+    contest cannot be expressed in this input at all — the map is keyed by VAR —
+    and the arrangement that used to express it is a refusal upstream
+    (``test_start_assembly.py``).
     """
 
     @staticmethod
-    def _env_entry(var, value, scope="box"):
-        from kanibako.settings.settings_categories import CategoryEntry
+    def _slots(*rows):
+        """A ``meta.assembly.env`` map from ``(var, value)`` / ``(var, value, scope)``."""
+        from kanibako.settings.store_collapse import CollapsedEnv
 
-        return CategoryEntry(
-            category="env", scope=scope, box_dest=var, host_src=None,
-            delivery="ENV", options=value, name=var,
-            key_segments=(*scope.split("."), "env", var),
-        )
+        slots = {}
+        for var, value, *rest in rows:
+            scope = rest[0] if rest else "box"
+            slots[var] = CollapsedEnv(value, scope, f"{scope}.env.{var}")
+        return slots
 
     @classmethod
-    def _assemble(cls, *, agent_env, scope_envs, state_env, cli_env):
+    def _assemble(cls, *, agent_env, env_slots, state_env, cli_env):
         """Replicate the start.py env-assembly sequence verbatim."""
         from kanibako.commands.start import _build_config_env
 
-        container_env = _build_config_env(agent_env, scope_envs)
+        container_env = _build_config_env(agent_env, env_slots)
         container_env.update(state_env)                        # state
         container_env.update(cli_env)                          # cli
         return container_env
@@ -2371,22 +2377,23 @@ class TestContainerEnvPrecedence:
     def test_scoped_env_overrides_the_agent_tier(self):
         env = self._assemble(
             agent_env={"K": "agent", "ONLY_AGENT": "a"},
-            scope_envs=[
-                self._env_entry("K", "box"), self._env_entry("ONLY_BOX", "b"),
-            ],
+            env_slots=self._slots(("K", "box"), ("ONLY_BOX", "b")),
             state_env={},
             cli_env={},
         )
-        assert env["K"] == "box"          # the last delivered entry wins
+        assert env["K"] == "box"          # the collapsed slot wins
         assert env["ONLY_BOX"] == "b"
         assert env["ONLY_AGENT"] == "a"
 
-    def test_the_carrier_owns_the_cross_scope_order(self):
-        """The launch does NOT re-layer scopes: it applies the carrier's entries in
-        the order given, so whichever entry lands LAST is the value used."""
+    def test_the_slot_value_arrives_whatever_scope_won_it(self):
+        """The layer applies the winner the COLLAPSE picked; it re-picks nothing.
+
+        A workset-owned slot lands exactly as a box-owned one does — the scope
+        rides the leaf as PROVENANCE, and this layer never consults it.
+        """
         env = self._assemble(
             agent_env={"K": "agent"},
-            scope_envs=[self._env_entry("K", "workset", scope="workset")],
+            env_slots=self._slots(("K", "workset", "workset")),
             state_env={},
             cli_env={},
         )
@@ -2396,7 +2403,7 @@ class TestContainerEnvPrecedence:
         """state_env and CLI -e env both sit above every config level."""
         base = dict(
             agent_env={"K": "agent"},
-            scope_envs=[self._env_entry("K", "box")],
+            env_slots=self._slots(("K", "box")),
         )
         env_state = self._assemble(**base, state_env={"K": "state"}, cli_env={})
         assert env_state["K"] == "state"
@@ -2965,12 +2972,21 @@ class TestPrepareHostHook:
 class TestBrowserSidecar:
     """Verify browser sidecar integration in _run_container."""
 
+    _CONTAINER_WS = "ws://host.containers.internal:9222/devtools/browser/abc"
+
     def test_browser_flag_starts_sidecar(self, start_mocks):
-        """--browser starts a browser sidecar and injects BROWSER_WS_ENDPOINT."""
+        """--browser starts a sidecar and puts BROWSER_WS_ENDPOINT in the BOX env.
+
+        The endpoint is REWRITTEN for the box (``ws_endpoint_for_container``): the
+        sidecar reports a loopback URL the box cannot reach, so what lands in
+        ``container_env`` is the host-gateway spelling, not the one ``start()``
+        returned.  Both halves are asserted — the sidecar lifecycle AND the
+        variable actually reaching the launch's env.
+        """
         mock_sidecar = MagicMock()
         mock_sidecar.start.return_value = "ws://127.0.0.1:9222/devtools/browser/abc"
 
-        with start_mocks():
+        with start_mocks() as m:
             with (
                 patch(
                     "kanibako.browser_sidecar.BrowserSidecar",
@@ -2978,7 +2994,7 @@ class TestBrowserSidecar:
                 ),
                 patch(
                     "kanibako.browser_sidecar.ws_endpoint_for_container",
-                    return_value="ws://host.containers.internal:9222/devtools/browser/abc",
+                    return_value=self._CONTAINER_WS,
                 ),
             ):
                 rc = _run_container(
@@ -2994,6 +3010,77 @@ class TestBrowserSidecar:
                 assert rc == 0
                 mock_sidecar.start.assert_called_once()
                 mock_sidecar.stop.assert_called_once()
+
+        box_env = m.runtime.run.call_args.kwargs["env"]
+        assert box_env["BROWSER_WS_ENDPOINT"] == self._CONTAINER_WS, box_env
+
+    def test_the_hub_env_is_a_SNAPSHOT_not_the_launchs_live_env_dict(
+        self, start_mocks, tmp_path,
+    ):
+        """🛑 ``HelperContext.env`` must be a COPY, taken when the hub starts.
+
+        The hub OUTLIVES the launch assembly and spawns every helper from that map
+        for the rest of the session, so an ALIAS to the launch's own
+        ``container_env`` makes any LATER write retroactively part of a helper's
+        environment.  That is not hypothetical, and this is the ordering that
+        proves it: ``_start_helper_hub`` runs FIRST, then the browser sidecar
+        writes ``BROWSER_WS_ENDPOINT`` into ``container_env`` — a variable no
+        helper was ever described with.
+
+        🛑 NOTHING ELSE IN THE SUITE GOES RED if ``env=dict(container_env)``
+        reverts to ``env=container_env``: the box's own env is correct either way,
+        every mount assertion still holds, and the only symptom is helpers
+        inheriting an environment the launch never handed them.  Hence a pin on
+        the identity of the map AND on the one variable production is known to
+        write after the hub call.
+        """
+        from kanibako.channels import helper_listener as helper_listener_mod
+
+        mock_sidecar = MagicMock()
+        mock_sidecar.start.return_value = "ws://127.0.0.1:9222/devtools/browser/abc"
+
+        with start_mocks() as m, patch.object(
+            helper_listener_mod, "HelperHub",
+        ) as m_hub_cls:
+            # The hub is agent-scope opt-in in the fixture's floor; turn it ON so
+            # the REAL ``_start_helper_hub`` (the sole HelperContext construction)
+            # runs, and give it a real runtime dir for the AF_UNIX socket name.
+            m.agent_cfg.state["allow_helpers"] = "true"
+            m.load_std_paths.return_value.runtime = tmp_path / "run"
+            with (
+                patch(
+                    "kanibako.browser_sidecar.BrowserSidecar",
+                    return_value=mock_sidecar,
+                ),
+                patch(
+                    "kanibako.browser_sidecar.ws_endpoint_for_container",
+                    return_value=self._CONTAINER_WS,
+                ),
+            ):
+                assert _run_container(
+                    project_dir=None,
+                    entrypoint=None,
+                    image_override=None,
+                    new_session=False,
+                    safe_mode=False,
+                    resume_mode=False,
+                    extra_args=[],
+                    browser=True,
+                ) == 0
+
+        assert m_hub_cls.return_value.start.call_count == 1, "the hub must start"
+        ctx = m_hub_cls.return_value.start.call_args.args[1]
+        box_env = m.runtime.run.call_args.kwargs["env"]
+
+        # The launch's own dict DID get the late write (that is the box's job)...
+        assert box_env["BROWSER_WS_ENDPOINT"] == self._CONTAINER_WS, box_env
+        # ...and the hub's map, taken before it, did NOT.
+        assert "BROWSER_WS_ENDPOINT" not in ctx.env, ctx.env
+        # Identity, stated directly: not the same object, and immune to a write
+        # made after the fact by anything else holding the launch's dict.
+        assert ctx.env is not box_env
+        box_env["A_LATER_LAUNCH_WRITE"] = "must not reach a helper"
+        assert "A_LATER_LAUNCH_WRITE" not in ctx.env, ctx.env
 
     def test_browser_flag_not_set_skips_sidecar(self, start_mocks):
         """Without --browser, no sidecar is started."""
@@ -6924,13 +7011,16 @@ class TestPersonaLiveTierWiring:
     def test_the_tier_reaches_DELIVERY_not_just_the_snapshot(
         self, std, config_file, tmp_home,
     ):
-        """The launch DELIVERS the token MOUNT and the env var from the store.
+        """The launch DELIVERS the store's token MOUNT, not merely resolves it.
 
-        The snapshot assertions above prove the value resolved; this proves it
-        is actually DELIVERED — ``secret_path`` is a MOUNT category and ``env``
-        an ENV one, so both ride the ``LaunchDeliveries`` carrier the launch seam
-        returns, which is the whole point of routing the store through the tier
-        rather than a file.
+        The snapshot assertions above prove the value RESOLVED; this proves it
+        leaves the seam.  ``secret_path`` is a MOUNT category, so it rides the
+        ``LaunchDeliveries`` carrier — and the whole list is asserted, so a second
+        pointer arriving from anywhere would be caught rather than tolerated.
+
+        ⚑ THE STORE'S ``env`` HALF LEAVES BY A DIFFERENT ROUTE ENTIRELY (it folds
+        into no ``StoreShape`` arm and is on no carrier); that half is pinned by
+        ``test_the_store_env_var_is_the_only_slot_the_env_fold_produces`` below.
         """
         from kanibako.commands.start import _persona_values_for
 
@@ -6943,11 +7033,56 @@ class TestPersonaLiveTierWiring:
         assert [str(m.host_src) for m in deliveries.secrets] == [
             str(persona_dir / "token")
         ]
-        # For an ``env`` entry the VAR name is ``box_dest`` and its VALUE rides
-        # ``options`` (env carries no path / mount flags) — see CategoryEntry.
-        assert [
-            (e.box_dest, e.options) for e in deliveries.envs
-        ] == [("SOME_NEW_VAR", "brand-new")]
+
+    def test_the_store_env_var_is_the_only_slot_the_env_fold_produces(
+        self, std, config_file, tmp_home,
+    ):
+        """The store's var wins an env SLOT — and it is the only slot there is.
+
+        ``env`` folds into no ``StoreShape`` arm and rides no delivery carrier: the
+        variable leaves the seam through the collapse's env slots, where the value
+        has its own field and carries the DECLARATION it came from.  Routing the
+        store through the settings tier rather than a file is what puts it there.
+
+        ⚑ THE WHOLE MAP IS ASSERTED, not this VAR's presence in it.  A presence
+        check cannot see a variable the box was never meant to get — and the
+        store's OTHER two ``env`` block members (``ANTHROPIC_BASE_URL``,
+        ``ANTHROPIC_AUTH_TOKEN``) are exactly that case: they resolve as the
+        ``endpoint`` behavior key and a ``secret_path`` pointer, so neither may
+        appear here as a plain variable.
+
+        ⚑ THE SLOTS ARE FOLDED HERE RATHER THAN READ OFF ``meta.assembly.env``
+        because this class resolves NARROW (``include_base_families=False``, the
+        MagicMock box), and that leaf rides the whole-box gate.  The fold is the
+        one the launch runs, over the entry list the launch hands it.
+        """
+        from kanibako.commands.start import (
+            _launch_snapshot_inputs,
+            _persona_values_for,
+        )
+        from kanibako.settings.settings_launch import snapshot_category_entries
+        from kanibako.settings.store_collapse import CollapsedEnv, collapse_env
+
+        self._store(tmp_home, env={"SOME_NEW_VAR": "brand-new"})
+        target = self._target()
+        snap, _deliveries = self._resolve(
+            std, target=target,
+            persona_values=_persona_values_for(self._NODE, target),
+        )
+        ctx = _launch_snapshot_inputs(
+            std=std, proj=self._proj(std), agent_name=self._NODE,
+        )[0]
+        slots = collapse_env(snapshot_category_entries(
+            snap, active_agent=self._NODE, box_ctx=ctx,
+        ))
+        # The store splices in UNDER the agent's own file, so the slot is the
+        # AGENT's — provenance a display can name, which an entry list could not,
+        # and the key names the declaration under the discriminated agent node.
+        assert slots == {
+            "SOME_NEW_VAR": CollapsedEnv(
+                "brand-new", "agent", f"agent.{self._NODE}.env.SOME_NEW_VAR",
+            ),
+        }
 
     # --- display == launch ---------------------------------------------------
 

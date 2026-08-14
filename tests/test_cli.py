@@ -1479,22 +1479,27 @@ class TestTemplateStalenessRetired:
         through the REAL launch route the container env is built from::
 
             build_launch_snapshot -> snapshot_category_entries
-            -> launch_deliveries -> start._build_config_env
+            -> collapse_env -> start._build_config_env
 
         and assert ``COLORTERM=truecolor`` arrives, carrying the ``box`` scope. A
         ``config show --effective`` check would NOT substitute: it shares code
         with the display path B9 changed the same day.
+
+        ⚑ THE PROVENANCE ASSERT MOVED WITH THE ROUTE, not away from it. It read the
+        winning ``CategoryEntry`` off ``LaunchDeliveries.envs``; that carrier is
+        retired, and the winner's ``(scope, key)`` rides the COLLAPSED SLOT now —
+        the same pair, at the seam a display or a diagnostic actually reads.
         """
         from kanibako.cli import _ensure_initialized
         from kanibako.commands.start import _build_config_env
         from kanibako.settings.config import config_file_path, load_config
         from kanibako.settings.paths import load_std_paths, xdg
-        from kanibako.settings.settings_categories import launch_deliveries
         from kanibako.settings.settings_launch import (
             build_launch_snapshot,
             snapshot_category_entries,
         )
         from kanibako.settings.settings_resolve import ResolveCtx
+        from kanibako.settings.store_collapse import collapse_env
 
         _ensure_initialized()
         cf = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
@@ -1513,9 +1518,9 @@ class TestTemplateStalenessRetired:
         entries = snapshot_category_entries(
             snap, active_agent="claude", box_ctx=ctx,
         )
-        deliveries = launch_deliveries(entries, agent_dests=frozenset())
-        assert _build_config_env({}, deliveries.envs)["COLORTERM"] == "truecolor"
-        winner = next(e for e in deliveries.envs if e.box_dest == "COLORTERM")
+        slots = collapse_env(entries)
+        assert _build_config_env({}, slots)["COLORTERM"] == "truecolor"
+        winner = slots["COLORTERM"]
         assert (winner.scope, winner.key) == ("box", "box.env.COLORTERM")
 
     def test_colorterm_box_file_override_beats_the_system_file_seed(self, tmp_home):
@@ -1530,12 +1535,12 @@ class TestTemplateStalenessRetired:
         from kanibako.settings.config import config_file_path, load_config
         from kanibako.settings.config_io import write_nested_key
         from kanibako.settings.paths import load_std_paths, xdg
-        from kanibako.settings.settings_categories import launch_deliveries
         from kanibako.settings.settings_launch import (
             build_launch_snapshot,
             snapshot_category_entries,
         )
         from kanibako.settings.settings_resolve import ResolveCtx
+        from kanibako.settings.store_collapse import collapse_env
 
         _ensure_initialized()
         cf = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
@@ -1554,11 +1559,10 @@ class TestTemplateStalenessRetired:
             agent_path=None, workset_path=None, box_path=box_settings,
             default_categories={},
         )
-        deliveries = launch_deliveries(
+        slots = collapse_env(
             snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx),
-            agent_dests=frozenset(),
         )
-        assert _build_config_env({}, deliveries.envs)["COLORTERM"] == "256color"
+        assert _build_config_env({}, slots)["COLORTERM"] == "256color"
 
 
 class TestShellAgentFlagIgnored:

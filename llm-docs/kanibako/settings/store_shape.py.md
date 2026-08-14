@@ -23,7 +23,8 @@ writes a FOURTH, `meta.assembly.env`, but **not from a shape**: `env` sits in `_
 it, and that is deliberate — the sixth arm is the obvious place and the ruled-out one.
 
 ⚑ **All three SHAPE-FED leaves have consumers, and each is the ONLY route to what it delivers**
-(`meta.assembly.env` is not one of them — it is not a shape output and nothing reads it yet).
+(`meta.assembly.env` is read too — through `start.py:_launch_env_map`, by the launch and by
+`box show --effective` — but it is NOT a shape output, so it is not one of the three).
 `start.py:_launch_bind_map` reads `bindings` (2a-3), `_launch_seed_list` reads `seeded` (2b-2) and
 `_launch_synced_list` reads `synced` (2b-3); an ABSENT leaf on a whole-box resolve is a NAMED error,
 not a fallback. ⚑ **Cutover 6-R3 deleted the second, cross-scope route entirely** — there is no
@@ -31,9 +32,11 @@ not a fallback. ⚑ **Cutover 6-R3 deleted the second, cross-scope route entirel
 row 1 SAME-scope), by the collapse (rows 2, 4 and row 1 cross-scope), and by the launch seam's two
 functions for the inputs the collapse cannot see (`secret_path_deliveries`, `narrow_table_winners`).
 
-⚑ The collapse REFUSES some shapes the shipped route still accepts, so the call site catches
-`SettingsError`, leaves both leaves ABSENT and logs at `debug`. That tightening is intended and lands
-at the cutover — do not "fix" the collapse to stop raising.
+⚑ The collapse REFUSES some shapes the retired route accepted, and since cutover 2c that refusal IS
+the launch's: it propagates out of the resolve and stops the box. 🛑 **This paragraph used to say the
+call site catches `SettingsError`, leaves the leaves ABSENT and logs at `debug`.** That swallow was
+deleted with 2c, so an absent leaf now means a NARROW resolve and never a refusal — do not "fix" the
+collapse to stop raising, and do not restore a catch to keep a launch alive.
 
 ## The seam — WITHIN-SCOPE is the producer's, CROSS-SCOPE is the collapse's
 

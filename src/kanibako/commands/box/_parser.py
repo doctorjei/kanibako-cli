@@ -1961,6 +1961,7 @@ def _run_box_config(args: argparse.Namespace) -> int:
             from kanibako.commands.start import (
                 _build_config_env,
                 _effective_behavior_for_display,
+                _launch_env_map,
             )
             agent_name = ""
             effective_selection = None
@@ -2003,7 +2004,7 @@ def _run_box_config(args: argparse.Namespace) -> int:
             )
             from kanibako.errors import KanibakoError
             try:
-                category_snapshot, deliveries = _resolve_launch_snapshot(
+                category_snapshot, _deliveries = _resolve_launch_snapshot(
                     std=std, proj=proj, agent_name=agent_id,
                     system_settings_path=std.settings,
                     agent_cfg_path=agent_cfg_path,
@@ -2028,12 +2029,15 @@ def _run_box_config(args: argparse.Namespace) -> int:
                         else None
                     ),
                 )
-                # ⚑ The SAME helper the launch uses, off the SAME carrier, so the
-                # display cannot claim an env the box will not get.  It needs the
-                # RESOLVE — hence its position here.
+                # ⚑ The SAME helper the launch uses, off the SAME collapsed leaf
+                # (``meta.assembly.env``), so the display cannot claim an env the box
+                # will not get.  It needs the RESOLVE — hence its position here.
+                # ⚑ And it inherits the collapse's REFUSAL: a config whose variables
+                # a launch would refuse is reported HERE as the category error rather
+                # than displayed as if it would start.
                 env_resolved = _build_config_env(
                     agent_cfg.env if agent_cfg is not None else {},
-                    deliveries.envs,
+                    _launch_env_map(category_snapshot),
                 )
             except KanibakoError as exc:
                 category_error = str(exc)

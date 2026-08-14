@@ -277,30 +277,32 @@ class TestSystemEnvTier:
         assert rc == 0
         assert "system.env.EDITOR = nano" in capsys.readouterr().out
 
-    def test_launch_env_takes_the_reconciled_winner_over_the_agent_tier(self):
-        """``_build_config_env`` layers the agent tier UNDER the reconciled
-        ``<scope>.env.<VAR>`` winners — the reconcile has already picked the
-        most-specific scope per VAR (system < agent < workset < box), so the
-        launch applies its result rather than re-deriving the precedence."""
-        from kanibako.commands.start import _build_config_env
-        from kanibako.settings.settings_categories import CategoryEntry
+    def test_launch_env_takes_the_collapsed_slot_over_the_agent_tier(self):
+        """``_build_config_env`` layers the agent tier UNDER the COLLAPSED env slots.
 
-        def _env(var, value, scope):
-            return CategoryEntry(
-                category="env", scope=scope, box_dest=var, host_src=None,
-                delivery="ENV", options=value, name=var,
-                key_segments=(*scope.split("."), "env", var),
-            )
+        🛑 RECOMPOSED WITH THE CONSUMER, and the old prose went with it. The input
+        was ``LaunchDeliveries.envs``, an un-arbitrated entry list, and this docstring
+        said the pick was "the most-specific scope per VAR (system < agent < workset <
+        box)" — the CASCADE's direction, which is not the direction the VARIABLES
+        realize in. The slots arrive decided now (``store_collapse.collapse_env``
+        walks system-first and refuses a contested VAR), so what is left to assert
+        here is the LAYERING and nothing else.
+        """
+        from kanibako.commands.start import _build_config_env
+        from kanibako.settings.store_collapse import CollapsedEnv
+
+        def _slot(var, value, scope):
+            return {var: CollapsedEnv(value, scope, f"{scope}.env.{var}")}
 
         # Agent tier alone (no scoped env configured) → unchanged.
-        assert _build_config_env({"EDITOR": "agent-e"}, [])["EDITOR"] == "agent-e"
-        # A reconciled winner supersedes it.
+        assert _build_config_env({"EDITOR": "agent-e"}, {})["EDITOR"] == "agent-e"
+        # A collapsed slot supersedes it.
         assert _build_config_env(
-            {"EDITOR": "agent-e"}, [_env("EDITOR", "box-e", "box")],
+            {"EDITOR": "agent-e"}, _slot("EDITOR", "box-e", "box"),
         )["EDITOR"] == "box-e"
-        # And a var only the reconcile knows about still arrives.
+        # And a var only the settings keys know about still arrives.
         assert _build_config_env(
-            {}, [_env("PAGER", "less", "system")],
+            {}, _slot("PAGER", "less", "system"),
         )["PAGER"] == "less"
 
     def test_reset_env_removes_it(self, config_file, tmp_home, capsys):
