@@ -94,6 +94,7 @@ if TYPE_CHECKING:
     from kanibako.targets.base import PluginDescriptor
 
 from kanibako.agent_ref import harness_of
+from kanibako.settings.agent_file import AgentFileLevel
 from kanibako.settings.kb_store import SCOPE_CONTAINMENT, Bind, BindEntry
 from kanibako.settings.kb_store import __MISSING__
 from kanibako.settings.keystore import KeyStore
@@ -1109,7 +1110,7 @@ def build_launch_snapshot(
     behavior_floor: Mapping[str, object] | None = None,
     default_categories: Mapping[str, object] | None = None,
     agent_partial: KeyStore | None = None,
-    agent_state: Mapping[str, str] | None = None,
+    agent_state: AgentFileLevel | None = None,
     persona_values: Mapping[str, str] | None = None,
     auth_chain: Mapping[str, object] | None = None,
     meta_runtime: Mapping[str, object] | None = None,
@@ -1330,9 +1331,10 @@ def build_launch_snapshot(
     # their PRECISE precedence rungs, computed from these FIXED base indices (doing
     # all splices in one pass keeps the math robust — no chained index drift):
     #
-    #   agent_state      — the per-agent FILE's behavior, wrapped under the active
-    #                      slot, at the AGENT-FILE rung (above the empty assemble
-    #                      agent.<active> level, below workset): the OLD
+    #   agent_state      — the per-agent FILE's behavior as an ``AgentFileLevel``,
+    #                      wrapped under the node the BOUNDARY attached (C-2), at the
+    #                      AGENT-FILE rung (above the empty assemble agent.<active>
+    #                      level, below workset): the OLD
     #                      ``LevelView("agent", agent_cfg.state)`` precedence.
     #   persona_values   — the persona STORE's live values, wrapped under the active
     #                      slot, BELOW the per-agent FILE (both its flat state rung
@@ -1363,7 +1365,7 @@ def build_launch_snapshot(
     #   cli_level        — the §1A CLI LEVEL: ABOVE EVERYTHING (index 0). Carries
     #                      the RESOLVED ``system.agent`` (P7) plus the ephemeral
     #                      key-shadowing flag values (P8). GUARDED just below.
-    state_partial = _agent_state_partial(agent_name, agent_state)
+    state_partial = _agent_state_partial(agent_state)
     persona_partial = _persona_partial(agent_name, persona_values)
     # ⚑ THE ``box.agent.*`` CATEGORY FOLD IS GONE (P7). It existed to give a box's
     # SETTABLE ``box.agent.<category>`` tweak box-precedence inside the active
@@ -1811,27 +1813,33 @@ def _mirror_fill(box_node: KeyStore, agent_node: KeyStore) -> None:
             _mirror_fill(box_val, agent_val)
 
 
-def _agent_state_partial(
-    agent_name: str, agent_state: Mapping[str, str] | None
-) -> KeyStore | None:
-    """Wrap the per-agent FILE's FLAT ``[agent]`` behavior state under the active
-    slot — ``{agent: {<agent_name>: {<key>: <val>}}}`` — or ``None`` if empty.
+def _agent_state_partial(level: AgentFileLevel | None) -> KeyStore | None:
+    """Wrap one agent-file behavior LEVEL under its own slot —
+    ``{agent: {<level.node>: {<key>: <val>}}}`` — or ``None`` if there is nothing.
 
     The per-agent file (``agents/<active>/settings.yaml``, loaded as
     ``agent_cfg.state``) stores behavior FLAT (``agent.model`` — already per-agent),
     NOT the discriminated ``agent.<active>.*`` / ``agent.default.*`` sub-tables that
     ``assemble_levels``' ``_agent_partial`` reads (it treats a flat ``[agent]`` table
     as UNSET). So passing the file raw as ``agent_path`` DROPS its behavior. This
-    wraps it into the DISCRIMINATED active slot (the §2d / §0 form) so it merges
-    by name; any undeclared agent-scope scalar keys ride through verbatim (forward-compat).
+    wraps it into the DISCRIMINATED slot (the §2d / §0 form) so it merges by name;
+    any undeclared agent-scope scalar keys ride through verbatim (forward-compat).
+
+    ⚑⚑ THE DISCRIMINATOR ARRIVES WITH THE DATA (C-2, rulings 51/52).  It used to be
+    a SECOND parameter taken from the caller's ``agent_name`` while the state dict
+    travelled undiscriminated all the way from ``agent_file.load``, so the node the
+    table came FROM and the node it merged UNDER were two independent facts that
+    nothing cross-checked.  ``agent_file.state_level`` now attaches the file's own
+    node at the boundary and the pair travels as one :class:`AgentFileLevel`; there
+    is no longer a parameter to pass the wrong node in.
     """
-    if not agent_state:
+    if level is None or not level.table:
         return None
     active_node = KeyStore()
-    for key, val in agent_state.items():
+    for key, val in level.table.items():
         active_node[key] = val
     agent_node = KeyStore()
-    agent_node[agent_name] = active_node
+    agent_node[level.node] = active_node
     partial = KeyStore()
     partial["agent"] = agent_node
     return partial

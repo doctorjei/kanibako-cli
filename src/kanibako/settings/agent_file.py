@@ -502,9 +502,10 @@ def state_level(
     the file's OWN node and is attached HERE, at the boundary, rather than being carried
     undiscriminated through the launch and attached at snapshot build.
 
-    ⚑ NO PRODUCTION CALLER YET: the carrier swap through ``settings_launch._agent_state_partial``
-    and the ``start.py`` producers is S1b, serialized behind P4b (``start.py`` is single-writer).
-    Declared here with S1's other boundary surface so the two halves of one seam land together.
+    ⚑ EVERY producer of a behaviour level goes through here (S1b): the five ``start.py`` sites that
+    used to hand ``build_launch_snapshot`` a bare ``dict(agent_cfg.state)``, plus its own
+    ``agent_path`` load. ``settings_launch._agent_state_partial`` takes the level and reads its
+    node — so the node a table merges under is no longer a second, uncross-checked argument.
     """
     if not state:
         return None

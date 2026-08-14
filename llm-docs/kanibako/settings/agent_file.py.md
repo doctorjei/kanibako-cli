@@ -98,7 +98,7 @@ shape, over a different file. Dropped, not relocated.)* Inside `self:`:
 ```_FLAT_AGENT_CATEGORIES: tuple[str, ...] = ("secret_path", "env")```
 The categories the per-agent file stores FLAT under `self` rather than in the discriminated
 `self.<node>` sub-table. ORDER IS NOT SIGNIFICANT. Its WRITE-side twin is
-`agent_config.agent_file_route`. See "the FLAT-CATEGORY splice" below.
+`_address`. See "the FLAT-CATEGORY splice" below.
 
 ```_REFUSED_NESTED_AGENT_CATEGORIES: tuple[str, ...] = ("env", "secret_path")```
 The categories NOTHING may nest under inside `self:` (ruling 49c, EXTENDED by **ruling 50** —
@@ -186,11 +186,12 @@ generated config (both `start.py` sites gate on `agent_cfg_dirty`, first-use-onl
 sites build inline). The carrier's fate is S2's question; do not restate the guard as a live
 guarantee.
 
-⚑ **The two names `load_agent_config` / `write_agent_config` still exist in `agent_config.py`** as
-one-line forwards — the S1b BRIDGE. `commands/start.py` imports them at MODULE SCOPE and
-`tests/conftest.py` patches them in `start`'s namespace; `start.py` is single-writer and the P4b
-lane held it. They are deleted in S1b with the `start.py` hunks. `agent_file_route` needed no
-bridge and is simply GONE.
+⚑ **`load` and `save` are the ONLY names for this round trip** (S1b). The transitional
+`agent_config.load_agent_config` / `write_agent_config` forwards — the S1b BRIDGE, which existed
+only because `start.py` was held by the P4b lane — are DELETED, together with the flat
+`kanibako.agent_config` shim's two re-exports of them; `commands/start.py` imports this module and
+calls `agent_file.load` / `agent_file.save`, and `tests/conftest.py` patches `load` HERE.
+`agent_file_route` needed no bridge and is likewise GONE (its body is `_address`).
 
 ```level_table(raw, *, sub_key, node=None, path=None) -> AgentFileLevel```
 Which RAW table one agent-tier level reads — the SHAPE half of the cascade seam.
@@ -231,7 +232,7 @@ to one node, so the cure must **not** name `agent set` there.
 worse than no cure. `env`: system-file `agent: default: env:` arrives as `agent.default.env.<VAR>` and
 does not beat the active node. `secret_path`: same, arriving as `agent.default.secret_path.<VAR>`
 through `secret_path_winners`. The `agent set <node> secret_path.<VAR>=<path>` verb is live
-(`agent_file_route` returns the flat `("self", "secret_path")`; exercised by
+(`_address` returns the flat `("self", "secret_path")`; exercised by
 `test_agent_cmd.py::test_config_set_secret_path_key`).
 
 ```_refuse_nested_agent_categories(node_tbl: dict, *, sub_key: str, node: str | None, path: Path | None) -> None```
@@ -290,10 +291,25 @@ Neither weakens the other and neither test may stand in for the other's.
 The file's FLAT behaviour state as a DISCRIMINATED level, or `None` if empty.
 
 The per-agent file stores behaviour FLAT (`model` — already per-agent), not under the sub-tables
-the cascade merges by, so the discriminator has to be attached somewhere. Today it is attached
-LATE, at snapshot build (`settings_launch._agent_state_partial`), after the state dict has
-travelled undiscriminated through `start.py` — defect C-2. It belongs at the boundary.
+the cascade merges by, so the discriminator has to be attached somewhere. It is attached HERE, at
+the boundary — defect **C-2, CLOSED in S1b**. It used to be attached LATE, at snapshot build
+(`settings_launch._agent_state_partial`, from that caller's own `agent_name`), after the state
+dict had travelled undiscriminated through `start.py`: the node a table came FROM and the node it
+merged UNDER were two independent facts and nothing cross-checked them.
 
-🛑 **NO PRODUCTION CALLER YET.** The carrier swap through `_agent_state_partial` and the ~6
-`start.py` producer hunks is **S1b**, serialized behind P4b. Declared here with S1's other
-boundary surface so the two halves of one seam land together; pinned by `TestStateLevel`.
+⚑ **The five `start.py` producers all route through here** — `_effective_agent_scalar` (its own
+`agent_path` load), `_effective_transform`, `_effective_behavior_for_display`,
+`_resolve_box_launch_decisions`, `_resolve_launch_snapshot` — each folding the call INSIDE its
+existing gate. `_agent_state_partial` now takes the `AgentFileLevel` alone and reads `level.node`;
+there is no parameter left to pass a wrong node in. ⚑ `_effective_behavior_for_display` builds its
+level AFTER the `active` node is resolved, not beside `behavior_floor`: the node is the point.
+Pinned in three places that do NOT substitute for one another: `TestStateLevel` on the boundary
+itself; `test_persona_loses_to_the_agent_file_flat_state` and
+`test_behavior_floor_and_per_agent_state`, which go red on a wrong node at the CONSUMER SEAM
+(`_agent_state_partial`, which files the table by `level.node`) and at no producer; and the
+producers' own node arguments, by `TestTheLaunchAgentFileStateMergesUnderTheLaunchNode`
+(`tests/test_commands/test_start_assembly.py`) for the launch path (`_resolve_launch_snapshot`) and
+`test_box_config_effective_display_matches_launch_behavior_read`
+(`tests/test_settings/test_settings_launch_equivalence.py`) for the display path. ⚑ Both producer
+pins are mutation-measured; the launch one was UNCOVERED until the S1b fix round wrote it —
+`start_mocks` stubs `_resolve_launch_snapshot` out, and the real-chain callers pass `agent_cfg=None`.
