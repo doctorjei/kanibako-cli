@@ -3,10 +3,12 @@
 Every agent kanibako launches has **two** faces: the CLI process kanibako spawns itself, which
 gets its behaviour from argv flags and env; and the **panel** — the agent's own VS Code
 extension, which spawns a *second* agent process inside the box and sees **none** of kanibako's
-launch flags or launch env. Anything the box was configured with that must reach the panel has to
-be **written to disk, in-box**, before the panel starts. That is what this module is: the
-host-side writers for those on-disk surfaces, one per agent, plus the VS Code attach config that
-gets the panel installed in the first place.
+launch FLAGS. The launch ENV does reach it — a panel-spawned process descends from PID 1 or from a
+`podman exec`, and every one of those inherits the container's `Config.Env` (measured on real
+podman, 2026-08-14). So anything the box was configured with that rides an argv flag rather than
+the env has to be **written to disk, in-box**, before the panel starts. That is what this module
+is: the host-side writers for those on-disk surfaces, one per agent, plus the VS Code attach config
+that gets the panel installed in the first place.
 
 The box home is a bind mount, so "in-box `~/.claude/settings.json`" is a host path here and a box
 path to the agent. Writing it from the host is how a per-box value gets in.
@@ -215,8 +217,9 @@ its own agent.
 defined in this (low-level) module and imported by `commands/start.py` for BOTH the supervisor's
 `--agent-markers-dir` (read end) and the `KANIBAKO_AGENT_MARKERS_DIR` env it seeds (write end), so
 the two ends cannot desync. The hook command prefers the seeded env
-(`${KANIBAKO_AGENT_MARKERS_DIR:-...}`) and falls back to the same literal built from the constant,
-so it still works where a `podman exec` panel agent does not inherit the podman-set env.
+(`${KANIBAKO_AGENT_MARKERS_DIR:-...}`) and falls back to the same literal built from the constant.
+That fallback is belt-and-braces, not a cure for an inheritance gap: a `podman exec` panel agent
+DOES inherit the podman-set env, so both ends of the `:-` expand to the same literal anyway.
 
 ⚑ It MUST stay a LITERAL box-local path, byte-identical on both ends: podman sets the env verbatim
 and the supervisor reads `--agent-markers-dir` verbatim, so a shell expression like
