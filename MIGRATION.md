@@ -173,7 +173,17 @@ inside boxes. In order of likely impact:
     also leaves the per-scope `bindings.*` listing in `kanibako box show --effective` and appears
     above it as a labelled foundation line.
 
-20. Smaller items: standalone boxes' `box get` got truthful (§2.9); a box suppressed to
+20. **If the same environment variable is declared at two scopes, that box no longer starts**
+    (§2.33). `system.env.EDITOR` alongside `box.env.EDITOR` used to launch with the innermost
+    scope's value and no word about the declaration it discarded; it now refuses, naming both
+    keys. A variable is a slot with one value, and each scope acts in turn from the outside in
+    — the same rule two bindings at one destination follow. **The cure is one owner:** delete
+    one of the two keys. ⚑ Overriding is untouched — the *same* key in more than one file is
+    the ordinary cascade and the nearest file still wins. ⚑ **Check your persona if one of the
+    keys is not in any of your files:** a persona's store config supplies `env:` entries as
+    live agent-scope keys that are never written to disk (§2.33, §2.15).
+
+21. Smaller items: standalone boxes' `box get` got truthful (§2.9); a box suppressed to
     plain-shell keeps stale credential files in its home (§2.10); several never-released or
     expected-empty renames (§2.11); two `--null` CLI bugs fixed (§2.14).
 
@@ -1709,6 +1719,81 @@ argued with: suppress the shipped entry and declare your own, override it at a d
 mask over it. Making home the foundation removes the question instead of answering it. The path a
 box's home comes from is now stated in exactly one place, and relocating a box is a property of
 where the box lives rather than of its mount table.
+
+---
+
+### 2.33 An environment variable may be declared at ONE scope only
+
+**What changed.** `<scope>.env.<VAR>` entries used to be gathered from every scope and handed to the
+launch in scope order, where the last one seen won. So a variable declared at two scopes — say
+
+```yaml
+# in the system settings file
+system:
+  env:
+    EDITOR: nano
+```
+
+```yaml
+# in a box settings file
+box:
+  env:
+    EDITOR: vim
+```
+
+started the box with `EDITOR=vim` and nothing said the other declaration existed. **kanibako now
+refuses that launch and names both keys:**
+
+```
+Error: the environment variable 'EDITOR' is claimed by two keys: 'system.env.EDITOR' at the
+'system' scope already holds it, and 'box.env.EDITOR' at the 'box' scope names it again. …
+```
+
+**Why.** A variable is a slot with one value, and kanibako assembles a box by letting each scope act
+in turn from the outside in — system, then agent, then workset, then box — with the first one to
+claim a place keeping it. That is the same rule two bindings at one destination have always
+followed, and the refusal is how a slot says it is taken. Two declarations for one variable meant one
+of them could never take effect, and you were not told which.
+
+**This cannot happen on a default install.** Nothing kanibako ships declares an `env` entry at two
+scopes.
+
+**What you must do.** Give the variable **one owner**: keep the key at the scope the value belongs to
+and delete the other one. `kanibako box show --effective` resolves the same settings and reports the
+same refusal without starting anything, so you can find them before a launch does.
+
+**⚑ One of the two keys may be one you never wrote in any file — check your persona.** If the box
+runs a **persona**, that persona's store config supplies its `env:` entries as live agent-scope keys
+(`agent.<agent>.env.<VAR>`) on every launch. They are resolution inputs, not file contents — nothing
+is written to `agents/<node>/settings.yaml` — so grepping your settings files for the second key
+will not find it. A persona that sets `EDITOR` plus your own `box.env.EDITOR` is exactly this
+refusal, and the message names the agent-scope key. **The cure there is one of two things:** delete
+your own key and let the persona own the variable, or remove that variable from the persona's store
+config and keep yours. The "keep the key at the scope the value belongs to" advice above is about
+keys in **settings files**; a persona value is not one, so moving it between scopes is not an
+option.
+
+**Overriding a value is a different thing, and it still works exactly as it did.** The rule above is
+about two *different keys*. The **same** key written in more than one file is the ordinary cascade and
+is untouched: a system file may write `box.env.EDITOR` as a default for every box, and a box's own
+file may write `box.env.EDITOR` and win.
+
+```yaml
+# system settings file — a default for every box
+box:
+  env:
+    EDITOR: nano
+```
+
+```yaml
+# this box's settings file — wins, and no refusal: it is the SAME key
+box:
+  env:
+    EDITOR: vim
+```
+
+So the cure for a refusal is usually one line: move the value you want onto the key you are keeping,
+in whichever file is nearest the box.
 
 ---
 

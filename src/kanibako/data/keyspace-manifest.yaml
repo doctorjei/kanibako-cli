@@ -370,6 +370,54 @@ registry:                       # about this DOCUMENT (inert; never read by reso
               the annotations file strikes the old sentence in place. Nothing is owed
               on this axis; this record is history, not a pending edit."
       code_state: "Code + tests + CHANGELOG/MIGRATION landed with this amendment."
+    - date: "2026-08-14"
+      what: "ENV JOINS THE COLLAPSE, AND A CONTESTED VARIABLE REFUSES THE LAUNCH.
+             meta.assembly.env is NEW — a fourth collapse output, dict[VAR ->
+             (value, scope, key)] — carrying the env slots after write-once
+             arbitration. The scopes act SYSTEM-FIRST over the same
+             SCOPE_CONTAINMENT order the bind fold walks; the first scope to name a
+             VAR holds the slot; a VAR named by TWO scopes' keys is a COLLAPSE
+             REFUSAL naming both keys, the same shape as a contested bind dest. No
+             comparator is introduced: the walk order plus the refusal is the whole
+             arbitration."
+      authority: "Jei 2026-08-14, in sequence: \"I suggest we use the same approach
+                  as for the bindings - add a meta.assembly.env key, and collapse
+                  the variables within it. …\" -> \"Let's do it.\" -> \"this is not
+                  correct. Bindings are first to act, i.e., system before agent,
+                  etc.\" -> \"When setting keys for env variables, box wins. Keys do
+                  not have a write / act limit. When setting the env variables
+                  themselves, that is when write-once applies, so system wins.\" ->
+                  \"The 'raising' is indicating the slot isn't available… But env
+                  for us, I think, should do the same.\" -> \"re: P1 - that's fine.\"
+                  Plan plans/2026-08-09d-mbr1-IMPLEMENTATION-PLAN.md §2."
+      scope: "⚑⚑ THE KEY LAYER IS UNTOUCHED. `<scope>.env.<VAR>` remains an
+              ordinary write-many settings key: the SAME key written in several
+              files cascades and the nearest file wins, exactly as before. What is
+              written ONCE is the VARIABLE, and the slot is its NAME — the two
+              orderings are cascade (one key, many files, nearest wins) and
+              realization (many keys, one slot, containing scope acts first). ⚑ A
+              same-scope contest is impossible by construction and no code exists
+              for it: one scope's `env` node is a map keyed by VAR, and the agent
+              tier's two cascade levels are overlaid per name upstream.
+              🔴 USER-VISIBLE, BREAKING: a config carrying `system.env.X` (or
+              agent/workset) AND `box.env.X` launches today with box winning
+              SILENTLY; it now refuses, naming both keys. MIGRATION.md §2.33 +
+              CHANGELOG. ⚑ It cannot fire on a default install — nothing kanibako
+              ships declares an `env` entry at two scopes. `secret_path.<VAR>` is
+              UNTOUCHED and keeps its own per-VAR box-most pick; whether a secret
+              and an env var may contest one $VAR slot is a separate open question.
+              ⚑ The leaf is written UNREAD in this amendment: the launch and
+              `box show --effective` still consume LaunchDeliveries.envs, and that
+              consumer flip is a later step."
+      code_state: "Code + tests + CHANGELOG/MIGRATION landed with this amendment:
+                   store_collapse.collapse_env + its single raise site,
+                   _install_assembly_collapse writes the fourth leaf below the
+                   whole-box gate, DECLARED_META_ASSEMBLY_LEAVES gains `env`. ⚑ The
+                   §1A spec block and the annotations file were amended in the same
+                   pass. ⚑ ALSO IN THIS PASS, unrelated to the ruling: the
+                   meta.assembly.synced note still carried the 'sync dest that
+                   EXACTLY EQUALS a bind dest is a config ERROR' prose the
+                   2026-08-12 amendment deleted; it now states the ruled behaviour."
 
 ## ---------------------------------------------------------------------------
 ## POLICY — the rules of the keyspace. Every field traces to a ratified clause.
@@ -1703,10 +1751,12 @@ keys:
   ## ASSEMBLE THE BOX. ⚑ `origin: derived` is the honest token, NOT
   ## `runtime_treewalk` — nothing walks a tree to get them; they fold from the
   ## declared category families, exactly like every other derived meta row.
-  ## ⚑ ALL THREE ARE PRODUCED: the collapse writes them on the launch path
+  ## ⚑ ALL FOUR ARE PRODUCED: the collapse writes them on the launch path
   ## (commands/start.py, _install_assembly_collapse). The copy output SPLIT on
   ## 2026-08-10 — `copies` became `seeded`, `synced` was added, and the RESERVED
-  ## `backup` was retired because one sync list serves both directions.
+  ## `backup` was retired because one sync list serves both directions. `env`
+  ## joined 2026-08-14: the env VARIABLES realize through the same collapse the
+  ## mounts do, so their arbitrated result belongs in the same group.
   meta.assembly.bindings:
     namespace: meta
     set: never
@@ -1749,14 +1799,49 @@ keys:
            it, so a sync inside a bound directory lands in THAT BIND'S SOURCE and is
            visible in the box. Home is simply the pid-0 foundation among those binds
            - there is NO home-only rule here. A sync dest that EXACTLY EQUALS a bind
-           dest is a config ERROR (a file bind's dest IS the file; writing through it
-           would replace the bound inode); strictly INSIDE a bind dest is fine. BOTH
+           dest is ACCEPTED: the copy lands ON TOP and writes through into that
+           bind's source, so the bind remains and most of it is untouched; strictly
+           INSIDE a bind dest is likewise fine. The only refusals a `synced` copy
+           can meet are the containment table's MASK rows - a copy with a mask as
+           its PARENT is refused; a copy of a FILE at a mask's own point is
+           delivered and that mask is then not mounted (one file filling one void
+           is total); a copy of a DIRECTORY at a mask's own point is refused (no
+           partial masks). (`seeded` has a refusal of its own, seed_dest_outside_
+           home; the two copy arms answer this question differently and always did.)
+           (Corrected 2026-08-14: this note still called such a dest a config
+           ERROR, which the 2026-08-12 amendment in registry.amendments deleted -
+           policy.category_reconcile.synced_vs_binding_same_dest has read `allowed`
+           since, and no code reads this prose.) BOTH
            HALVES READ THIS ONE LIST - delivery host->guest at launch (overwrite,
            mtime-gated) and WRITEBACK guest->host at session end. A synced entry
            spells both sides fully and takes NO root, so DIRECTION IS A PROPERTY OF
            THE READ, not of the row; no separate reverse-direction member is needed.
            Same producer as meta.assembly.bindings, and absent under the same
            condition. (Replaces the RESERVED `backup` leaf, retired 2026-08-10.)"
+    spec: "§1A"
+  meta.assembly.env:
+    namespace: meta
+    set: never
+    origin: derived
+    type: dict
+    value: "dict[VAR -> (value, scope, key)]"
+    note: "COLLAPSED ENV MAP - the env slots after write-once arbitration. The
+           scopes act SYSTEM-FIRST (the same containment order the bind fold uses):
+           the first scope to name a VAR holds that slot, and a VAR named by two
+           scopes' keys REFUSES the launch, naming both keys (ruling 2026-08-14).
+           There is no winner-picking comparator - the walk order plus the refusal
+           IS the arbitration, exactly as it is for a contested bind dest. A
+           SAME-scope contest cannot arise: one scope's `env` node is a map keyed by
+           VAR, and the agent tier's two cascade levels are overlaid per name before
+           this point. ⚑ THE KEYS STAY ORDINARY: `<scope>.env.<VAR>` is write-many,
+           the same key in several files cascades and the NEAREST file wins, and
+           none of that is touched here - what is written ONCE is the VARIABLE, and
+           the slot is its NAME. The `scope`/`key` members are the winner's
+           PROVENANCE, carried so a display or a diagnostic can name the
+           declaration a value came from. Produced by the collapse on the launch
+           path (commands/start.py, _install_assembly_collapse), on a WHOLE-BOX
+           resolve only: a narrow resolve describes an injected table, not a box,
+           and carries no env leaf."
     spec: "§1A"
   meta.workset.path:
     namespace: meta

@@ -1,4 +1,10 @@
-"""The COLLAPSE: four per-scope ``store_shape``s -> a bindings map + a seed + a sync list.
+"""The COLLAPSE: four scopes -> a bindings map + a seed list + a sync list + an env map.
+
+The ENV SLOTS collapse here too, off the SAME scope-ordered entry list the shapes are
+built from rather than off the shapes: ``env`` carries no path and folds into no arm
+(``store_shape._NO_ARM``), so it has nothing to contribute to a ``StoreShape`` and
+:func:`collapse_env` runs BESIDE the shape set. The arbitration is the same one - a
+slot is written once, and the containing scope writes it first.
 
 Prose: ``llm-docs/kanibako/settings/store_collapse.py.md``.
 """
@@ -10,6 +16,7 @@ from pathlib import PurePosixPath
 from typing import Final, NamedTuple
 
 from kanibako.settings.kb_store import SCOPE_CONTAINMENT, BindEntry
+from kanibako.settings.settings_categories import ENV, CategoryEntry
 from kanibako.settings.settings_resolve import SettingsError, normalize_bind_dest
 from kanibako.settings.store_shape import StoreShape, StoreShapeSet
 
@@ -38,6 +45,19 @@ CollapsedBindings = dict[str, CollapsedBind]
 
 #: A collapsed copy list, SCOPE-ORDERED. ⚑ A dest MAY repeat - that IS the overlay.
 CollapsedCopies = list[CollapsedCopy]
+
+
+class CollapsedEnv(NamedTuple):
+  """One env slot's winner, ``(value, scope, key)`` - provenance travels WITH the value."""
+
+  value: str
+  scope: str
+  key: str
+
+
+#: The collapsed env slots, VAR-keyed. ⚑ ONE entry per VAR by construction: a second
+#: scope naming a VAR is refused, never arbitrated, so this map cannot lose a value.
+CollapsedEnvs = dict[str, CollapsedEnv]
 
 #: Home is pid 0 - the foundation, seeded before the loop, in no scope's shape.
 HOME_DEST: Final[str] = normalize_bind_dest("~")
@@ -112,6 +132,41 @@ def collapse_seeded(store_shape_set: StoreShapeSet) -> CollapsedCopies:
       _refuse_seed_outside_home(dest, entry)
       copies.append(CollapsedCopy(entry.src, dest, entry.opts))
   return copies
+
+
+def collapse_env(entries: list[CategoryEntry]) -> CollapsedEnvs:
+  """Arbitrate the env VAR slots: the FIRST scope to name a VAR holds it (PURE).
+
+  ⚑ IT TAKES THE ENTRY LIST, NOT THE SHAPE SET, and that is the whole seam: ``env``
+  folds into no ``StoreShape`` arm, so the shapes have already dropped it by the time
+  the mount fold runs. It reads the same CREDENTIAL-GATED list the shapes are built
+  from, so the mounts and the variables describe one box.
+
+  ⚑ THERE IS NO COMPARATOR HERE, and there is nothing to add one to: the walk order
+  IS the arbitration and the refusal below is what enforces it. A slot is written
+  ONCE and the CONTAINING scope writes it first, so a second scope's key could never
+  take effect - it is refused rather than silently dropped or silently preferred.
+
+  ⚑ A SAME-SCOPE CONTEST CANNOT ARISE. One scope's ``env`` node is a MAP keyed by
+  VAR, and the agent tier's two cascade levels are overlaid into ONE effective node
+  per name upstream (``settings_launch.snapshot_category_entries``), so each scope
+  reaches here with at most one entry per VAR. Do not add a within-scope guard.
+
+  🛑 THE KEYS THEMSELVES ARE ORDINARY WRITE-MANY SETTINGS KEYS. The same key in
+  several files cascades and the NEAREST file wins, exactly as every other key does;
+  that happens before this function is reached and is untouched by it. What is
+  written once is the VARIABLE, and the slot is its NAME.
+  """
+  slots: CollapsedEnvs = {}
+  for scope in SCOPE_CONTAINMENT:
+    for entry in entries:
+      if entry.delivery != ENV or entry.scope != scope:
+        continue
+      held = slots.get(entry.box_dest)
+      if held is not None:
+        _refuse_env_twin(entry, held)
+      slots[entry.box_dest] = CollapsedEnv(entry.options, entry.scope, entry.key)
+  return slots
 
 
 def _collapse_synced(store_shape_set: StoreShapeSet) -> CollapsedCopies:
@@ -302,6 +357,26 @@ def _refuse_seed_outside_home(dest: str, entry: BindEntry) -> None:
     f"into the box home store BEFORE any binding folds, so a destination outside it "
     f"has nowhere to land: give it a destination inside home, deliver it as a "
     f"binding, or declare it 'synced', which is not home-only."
+  )
+
+
+def _refuse_env_twin(arriving: CategoryEntry, held: CollapsedEnv) -> None:
+  """Two scopes' keys naming ONE variable: the slot is taken, so refuse - naming BOTH.
+
+  ⚑ THE SOLE RAISE SITE FOR THE ENV SLOT, deliberately: the severity of a contested
+  slot is one decision and it is spelled in one place.
+  """
+  raise SettingsError(
+    f"the environment variable {arriving.box_dest!r} is claimed by two keys: "
+    f"{held.key!r} at the {held.scope!r} scope already holds it, and "
+    f"{arriving.key!r} at the {arriving.scope!r} scope names it again. A variable "
+    f"is written ONCE and the containing scope writes it first, so the second "
+    f"declaration could never take effect. Give the variable ONE owner: keep the "
+    f"key at the scope the value belongs to and remove the other one. An override "
+    f"is not enough - these are two different KEYS, so both survive the cascade. To "
+    f"change the value WITHOUT moving its owner, write the SAME key "
+    f"({held.key!r}) in a nearer settings file: keys cascade, and the nearest "
+    f"file wins."
   )
 
 

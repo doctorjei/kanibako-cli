@@ -650,15 +650,21 @@ def gate_credential_delivery(
 class LaunchDeliveries:
     """What the launch entry list delivers BESIDE the collapse's mount set.
 
-    The launch seam's carrier for the three deliveries the assembly COLLAPSE
-    deliberately does not carry — environment variables, the arm's-length SECRET
-    mounts, and the dests the agent's own delivery binds land at.  Built ONCE at
-    the seam (``commands.start._resolve_launch_snapshot``) off the CREDENTIAL-GATED
-    entry list — the same list the collapse sees, so the two describe one box.
+    The launch seam's carrier for the three deliveries the assembly COLLAPSE's MOUNT
+    SET does not carry — environment variables, the arm's-length SECRET mounts, and
+    the dests the agent's own delivery binds land at.  Built ONCE at the seam
+    (``commands.start._resolve_launch_snapshot``) off the CREDENTIAL-GATED entry list
+    — the same list the collapse sees, so the two describe one box.  ⚑ The env
+    ARBITRATION is the collapse's (``meta.assembly.env``); what this list carries is
+    the un-arbitrated declarations the launch consumer still reads.
 
     * *envs* — the ENV-delivered entries, in entry order.  No arbitration happens
-      here or anywhere: the per-VAR winner is the CONSUMER's dict-update, exactly
-      as it has always been.
+      HERE: this list is the declarations as they were found, and the consumer's
+      dict-update is what picks a per-VAR value out of it.  ⚑ The slot ARBITRATION
+      lives in the assembly collapse (``store_collapse.collapse_env`` →
+      ``meta.assembly.env``), which refuses two scopes' keys naming one variable —
+      so the case the consumer's dict-update used to decide silently no longer
+      reaches it.
     * *secrets* — the ``secret_path`` mounts the launch delivers
       (:func:`secret_path_deliveries`: the per-VAR winners, minus what §0 gives to
       a ``masks`` at the same dest), in the emitter's order.
@@ -677,12 +683,14 @@ class LaunchDeliveries:
       (``commands.start._resolve_launch_snapshot``'s *narrow_bind_dests*), so the
       main path cannot reach a map it never requested (P3).
 
-    🛑 IT IS A RETURN VALUE, NEVER A SNAPSHOT KEY.  ``meta.assembly.*`` is CLOSED
-    at three leaves (spec §0 · the keyspace manifest ·
-    ``settings_keyspace.DECLARED_META_ASSEMBLY_LEAVES``), and a fourth would be
-    installed SILENTLY — ``insert_segments`` writes what it is handed and only the
+    🛑 IT IS A RETURN VALUE, NEVER A SNAPSHOT KEY.  ``meta.assembly.*`` is a CLOSED
+    set of DECLARED leaves (spec §0 · the keyspace manifest ·
+    ``settings_keyspace.DECLARED_META_ASSEMBLY_LEAVES``), and an UNDECLARED one would
+    be installed SILENTLY — ``insert_segments`` writes what it is handed and only the
     config-verb path refuses an undeclared key.  Producer DESIGN §9.1's precedent
-    governs: what is not a settings key is PASSED function-to-function.
+    governs: what is not a settings key is PASSED function-to-function.  Adding a
+    field here is therefore cheap and adding a leaf is a keyspace change — which is
+    what ``meta.assembly.env`` went through before the collapse could write it.
     """
 
     envs: list[CategoryEntry]

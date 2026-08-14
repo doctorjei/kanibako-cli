@@ -13,13 +13,17 @@ comparing scopes is the grand-unification collapse's whole job (roadmap step 6).
 `designs/grand-unification-collapse-DESIGN.md` §2/§2a (the consumer) ·
 `specs/settings-keyspace-1.8.0.md` §0 (the collision table).
 
-## Status: CONSUMED — all three leaves, and there is no second route left
+## Status: CONSUMED — all three SHAPE-FED leaves, and there is no second route left
 
 `commands/start.py:_install_assembly_collapse` calls `build_store_shape_set` on the launch path and
 feeds it to `collapse_store_shapes`, storing the result at
-`meta.assembly.{bindings,seeded,synced}` — three leaves, each on its own gate.
+`meta.assembly.{bindings,seeded,synced}` — three leaves, each on its own gate. ⚑ The same seam
+writes a FOURTH, `meta.assembly.env`, but **not from a shape**: `env` sits in `_NO_ARM`, so
+`collapse_env` reads the ENTRY LIST beside the shape set. The five-key `StoreShape` is untouched by
+it, and that is deliberate — the sixth arm is the obvious place and the ruled-out one.
 
-⚑ **All three leaves have consumers, and each is the ONLY route to what it delivers.**
+⚑ **All three SHAPE-FED leaves have consumers, and each is the ONLY route to what it delivers**
+(`meta.assembly.env` is not one of them — it is not a shape output and nothing reads it yet).
 `start.py:_launch_bind_map` reads `bindings` (2a-3), `_launch_seed_list` reads `seeded` (2b-2) and
 `_launch_synced_list` reads `synced` (2b-3); an ABSENT leaf on a whole-box resolve is a NAMED error,
 not a fallback. ⚑ **Cutover 6-R3 deleted the second, cross-scope route entirely** — there is no

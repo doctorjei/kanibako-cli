@@ -1737,8 +1737,10 @@ def _assemble_launch_env(
     """
     # Config-level env: the agent tier under the settings-framework env (the
     # `<scope>.env.<VAR>` category), delivered by the single launch resolve above
-    # in scope apply order (system < agent < workset < box) — ⚑ the per-VAR winner
-    # is ``_build_config_env``'s own ``update``, not an upstream arbitration.
+    # in scope apply order (system < agent < workset < box) — ⚑ that order is TIER
+    # LAYERING, not a per-VAR scope contest. Two scopes' keys naming one VAR are
+    # REFUSED UPSTREAM by the assembly collapse (`store_collapse.collapse_env` →
+    # `meta.assembly.env`), so at most one scope's key per VAR is in this list.
     # Target-derived state env and per-run CLI -e env stay above all config
     # levels.  The docker `.env` files that used to layer in here are RETIRED
     # (RQ-1, 2026-08-02) — see ``_build_config_env``.
@@ -4716,8 +4718,14 @@ def _build_config_env(agent_env: dict[str, str], scope_envs) -> dict[str, str]:
 
     *scope_envs* is ``LaunchDeliveries.envs`` — the launch seam's ENV-delivered
     entries in apply order, each carrying the VAR in ``box_dest`` and the resolved
-    value in ``options``.  ⚑ THE PER-VAR WINNER IS THE ``update`` BELOW and always
-    was: no arbitration happens upstream, so this line IS the cascade for env.
+    value in ``options``.  ⚑ THE UPDATE BELOW NO LONGER PICKS A PER-VAR SCOPE
+    WINNER, AND MUST NOT BE READ AS ONE.  A VAR named by two scopes' keys is
+    REFUSED UPSTREAM by the assembly collapse
+    (``store_collapse.collapse_env`` → ``meta.assembly.env``), so at most ONE
+    scope's key per VAR ever reaches this list and the update has no contest to
+    settle.  What it still decides is the TIER LAYERING — the *agent_env*
+    under-layer below the scope entries, with the caller's runtime-only layers on
+    top — not which scope owns a variable.
 
     *agent_env* is ``AgentConfig.env`` (``agent.<node>.env.<VAR>``) and stays as
     the UNDER-layer rather than being dropped as redundant: the resolve reads
@@ -6389,8 +6397,10 @@ def _resolve_launch_snapshot(
     only) that resolve's own bind map: what the collapse deliberately does not
     carry, built off the SAME credential-gated list the collapse sees, so the two
     describe one box.  ⚑ It is a RETURN VALUE and not a snapshot leaf on purpose —
-    ``meta.assembly.*`` is closed at three leaves and a fourth would install
-    silently.
+    ``meta.assembly.*`` is a CLOSED set of DECLARED leaves, and an undeclared one
+    would install silently.  The env slots ARE such a leaf
+    (``meta.assembly.env``); the carrier's ``envs`` list is the un-arbitrated
+    entry-order view of the same declarations, which nothing has retired yet.
 
     ⚑ THERE IS NO SECOND, CROSS-SCOPE ``reconcile`` PASS ANY MORE (cutover 6-R3).
     §0's collision table is applied by the per-scope producer, the collapse, and
@@ -6859,11 +6869,12 @@ def _install_derived_bindings(
         snapshot.insert_segments(segments, value)
 
 
-#: The three ``meta.assembly.*`` leaves the collapse produces, as SEGMENTS — the
+#: The four ``meta.assembly.*`` leaves the collapse produces, as SEGMENTS — the
 #: same reason ``binding_derivations`` travels that way (a dest is DATA).
 _ASSEMBLY_BINDINGS: "tuple[str, ...]" = ("meta", "assembly", "bindings")
 _ASSEMBLY_SEEDED: "tuple[str, ...]" = ("meta", "assembly", "seeded")
 _ASSEMBLY_SYNCED: "tuple[str, ...]" = ("meta", "assembly", "synced")
+_ASSEMBLY_ENV: "tuple[str, ...]" = ("meta", "assembly", "env")
 
 
 #: The pid-0 FOUNDATION's mount options — SEAM MACHINERY, not part of any key
@@ -6885,7 +6896,7 @@ def _install_assembly_collapse(snapshot, entries, *, whole_box: bool) -> None:
     🛑 THE GATE IS *whole_box*, NEVER "did ``meta.box.home`` resolve". The key is
     materialised by ``settings_launch.workset_anchor_floor``, which the launch builds
     UNCONDITIONALLY, so it resolves on a narrow resolve too — gating on the value would
-    write all three leaves for the image and helper tables. It also closes what the old
+    write every leaf for the image and helper tables. It also closes what the old
     entry-list gate left open: a USER home row on a narrow resolve made a home bind
     appear and ran the whole fold over a narrow snapshot.
 
@@ -6902,7 +6913,11 @@ def _install_assembly_collapse(snapshot, entries, *, whole_box: bool) -> None:
     Prose: ``llm-docs/kanibako/commands/start.py.md``.
     """
     from kanibako.settings.kb_store import BindEntry
-    from kanibako.settings.store_collapse import collapse_seeded, collapse_store_shapes
+    from kanibako.settings.store_collapse import (
+        collapse_env,
+        collapse_seeded,
+        collapse_store_shapes,
+    )
     from kanibako.settings.store_shape import build_store_shape_set
 
     # ⚑ THE WHOLE (GATED) LIST. Nothing is lifted out any more: home left
@@ -6934,9 +6949,9 @@ def _install_assembly_collapse(snapshot, entries, *, whole_box: bool) -> None:
     # precedes that refusal.
     emit_collision_warnings(shapes.warnings)
     snapshot.insert_segments(_ASSEMBLY_SEEDED, collapse_seeded(shapes))
-    # The other two DESCRIBE AN ASSEMBLY, and only a whole-box resolve describes one.
-    # ⚑ THE ASYMMETRY IS DELIBERATE AND PINNED: the seed leaf is written ABOVE this
-    # return, the bindings and sync leaves below it.
+    # The other three DESCRIBE AN ASSEMBLY, and only a whole-box resolve describes
+    # one. ⚑ THE ASYMMETRY IS DELIBERATE AND PINNED: the seed leaf is written ABOVE
+    # this return, the bindings, sync and env leaves below it.
     if not whole_box:
         return
     # THE pid-0 FOUNDATION, built HERE. Home does not route through ``bindings.rw``
@@ -6952,6 +6967,11 @@ def _install_assembly_collapse(snapshot, entries, *, whole_box: bool) -> None:
     collapsed = collapse_store_shapes(shapes, home_bind)
     snapshot.insert_segments(_ASSEMBLY_BINDINGS, collapsed.bindings)
     snapshot.insert_segments(_ASSEMBLY_SYNCED, collapsed.synced)
+    # THE ENV SLOTS, off the ENTRY LIST rather than the shapes: ``env`` folds into no
+    # ``StoreShape`` arm, so the shapes never carried it. It sits below the whole-box
+    # gate with the other two assembly leaves — a variable set describes a BOX, and a
+    # narrow resolve describes an injected table.
+    snapshot.insert_segments(_ASSEMBLY_ENV, collapse_env(entries))
 
 
 def _snapshot_home(snapshot) -> str:
