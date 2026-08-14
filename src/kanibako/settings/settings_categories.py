@@ -650,21 +650,19 @@ def gate_credential_delivery(
 class LaunchDeliveries:
     """What the launch entry list delivers BESIDE the collapse's mount set.
 
-    The launch seam's carrier for the three deliveries the assembly COLLAPSE's MOUNT
-    SET does not carry — environment variables, the arm's-length SECRET mounts, and
-    the dests the agent's own delivery binds land at.  Built ONCE at the seam
+    The launch seam's carrier for the deliveries the assembly COLLAPSE's MOUNT SET
+    does not carry — the arm's-length SECRET mounts and the dests the agent's own
+    delivery binds land at.  Built ONCE at the seam
     (``commands.start._resolve_launch_snapshot``) off the CREDENTIAL-GATED entry list
-    — the same list the collapse sees, so the two describe one box.  ⚑ The env
-    ARBITRATION is the collapse's (``meta.assembly.env``); what this list carries is
-    the un-arbitrated declarations the launch consumer still reads.
+    — the same list the collapse sees, so the two describe one box.
 
-    * *envs* — the ENV-delivered entries, in entry order.  No arbitration happens
-      HERE: this list is the declarations as they were found, and the consumer's
-      dict-update is what picks a per-VAR value out of it.  ⚑ The slot ARBITRATION
-      lives in the assembly collapse (``store_collapse.collapse_env`` →
-      ``meta.assembly.env``), which refuses two scopes' keys naming one variable —
-      so the case the consumer's dict-update used to decide silently no longer
-      reaches it.
+    🛑 THE ENVIRONMENT IS NOT HERE ANY MORE.  An ``envs`` list rode this carrier
+    until the env slots became a collapse output: the variables are arbitrated by
+    ``store_collapse.collapse_env`` and read off ``meta.assembly.env``, which carries
+    the winner's value AND its provenance.  A second, un-arbitrated view of the same
+    declarations is exactly the shape that let a per-VAR contest be settled silently
+    by a consumer's ``dict.update``, so it is gone rather than kept beside the leaf.
+
     * *secrets* — the ``secret_path`` mounts the launch delivers
       (:func:`secret_path_deliveries`: the per-VAR winners, minus what §0 gives to
       a ``masks`` at the same dest), in the emitter's order.
@@ -693,7 +691,6 @@ class LaunchDeliveries:
     what ``meta.assembly.env`` went through before the collapse could write it.
     """
 
-    envs: list[CategoryEntry]
     secrets: list[CategoryEntry]
     agent_dests: frozenset[str]
     narrow_bindings: "dict[str, object] | None" = None
@@ -791,13 +788,12 @@ def launch_deliveries(
 ) -> LaunchDeliveries:
     """Build the :class:`LaunchDeliveries` carrier from a CREDENTIAL-GATED list.
 
-    ⚑ The ENV filter below is the ONLY one since 6-R3 retired the by-dest reconcile
-    (whose own copy of it was byte-identical).  There is no env arbitration to
-    reproduce — that line IS the filter; the per-VAR winner is the CONSUMER's
-    dict-update, as it has always been.
+    ⚑ NO ``ENV`` FILTER HERE, AND ADDING ONE BACK WOULD BE A SECOND ROUTE.  The
+    ``env`` rows of *entries* leave through the assembly collapse instead
+    (``store_collapse.collapse_env`` → ``meta.assembly.env``), off this same list, so
+    the variables a box receives and the mounts it receives are folded from one input.
     """
     return LaunchDeliveries(
-        envs=[e for e in entries if e.delivery == ENV],
         secrets=secret_path_deliveries(entries),
         agent_dests=agent_dests,
         narrow_bindings=narrow_bindings,

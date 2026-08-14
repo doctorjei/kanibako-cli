@@ -406,9 +406,13 @@ registry:                       # about this DOCUMENT (inert; never read by reso
               ships declares an `env` entry at two scopes. `secret_path.<VAR>` is
               UNTOUCHED and keeps its own per-VAR box-most pick; whether a secret
               and an env var may contest one $VAR slot is a separate open question.
-              ⚑ The leaf is written UNREAD in this amendment: the launch and
-              `box show --effective` still consume LaunchDeliveries.envs, and that
-              consumer flip is a later step."
+              ⚑ The leaf was written UNREAD in this amendment: the launch and
+              `box show --effective` still consumed LaunchDeliveries.envs, and the
+              consumer flip was the next step. ✅ THAT STEP LANDED, 2026-08-14: both
+              consumers read the leaf through commands/start._launch_env_map and the
+              `envs` carrier field is RETIRED. Behaviour for a config the collapse
+              accepts is unchanged - one key per VAR either way, and the winner's
+              (scope, key) now travels WITH the value instead of beside it."
       code_state: "Code + tests + CHANGELOG/MIGRATION landed with this amendment:
                    store_collapse.collapse_env + its single raise site,
                    _install_assembly_collapse writes the fourth leaf below the
@@ -1767,8 +1771,12 @@ keys:
            dest BY CONSTRUCTION: a second bind at a live dest is the double-bind
            ERROR. src = None marks a MASK. Home is pid 0 and is seeded here BEFORE
            any scope folds (A9, @meta.box.home). Produced by the collapse on the
-           launch path; ABSENT when the collapse refuses a config the shipping
-           route still accepts, which is caught at that one seam and logged."
+           launch path, on a WHOLE-BOX resolve only: ABSENT means a NARROW resolve
+           (an injected table, not a box) and nothing else. (Corrected 2026-08-14:
+           this note said absent ALSO meant `the collapse refused a config the
+           shipping route still accepts, caught at that one seam and logged`. That
+           swallow was deleted at the cutover - a refusal RAISES and stops the
+           launch, so no leaf is left absent by one.)"
     spec: "§1A"
   meta.assembly.seeded:
     namespace: meta
@@ -1782,8 +1790,13 @@ keys:
            binding folds, so no mount arbitrates it: nothing is pruned, and a dest
            MAY repeat - rows at one dest are an ordered LAYER STACK, later over
            earlier, applied FILEWISE. A dest not inside home is a config ERROR.
-           Same producer as meta.assembly.bindings, and absent under the same
-           condition. (Renamed from `copies` 2026-08-10: the leaf names the category
+           Same producer as meta.assembly.bindings, but NOT the same gate: this leaf
+           rides its own arm and EVERY resolve writes it, narrow ones included (home
+           is pid 0, so a seed list needs no bind map). ABSENT therefore means the
+           snapshot was never resolved at all. (Corrected 2026-08-14: this note said
+           `absent under the same condition` as the bind map, which pointed at a
+           swallow the cutover deleted - a refusal RAISES.) (Renamed from `copies`
+           2026-08-10: the leaf names the category
            it carries, as its siblings do. meta.assembly.* post-dates v1.8.0-rc1, so
            the rename ships clean - no alias, no shim.)"
     spec: "§1A"
@@ -1816,8 +1829,11 @@ keys:
            mtime-gated) and WRITEBACK guest->host at session end. A synced entry
            spells both sides fully and takes NO root, so DIRECTION IS A PROPERTY OF
            THE READ, not of the row; no separate reverse-direction member is needed.
-           Same producer as meta.assembly.bindings, and absent under the same
-           condition. (Replaces the RESERVED `backup` leaf, retired 2026-08-10.)"
+           Same producer AND same gate as meta.assembly.bindings: written on a
+           WHOLE-BOX resolve only, so ABSENT means a NARROW resolve and nothing else.
+           (Corrected 2026-08-14: this note said absent ALSO meant a refusal the seam
+           caught and logged; that swallow was deleted at the cutover - a refusal
+           RAISES.) (Replaces the RESERVED `backup` leaf, retired 2026-08-10.)"
     spec: "§1A"
   meta.assembly.env:
     namespace: meta
@@ -1841,7 +1857,11 @@ keys:
            declaration a value came from. Produced by the collapse on the launch
            path (commands/start.py, _install_assembly_collapse), on a WHOLE-BOX
            resolve only: a narrow resolve describes an injected table, not a box,
-           and carries no env leaf."
+           and carries no env leaf. CONSUMED by both whole-box readers through
+           commands/start._launch_env_map - the launch's container env and
+           `box show --effective` - which are the ONLY route a `<scope>.env.<VAR>`
+           value takes into a box (the un-arbitrated LaunchDeliveries.envs list they
+           used to fold themselves is RETIRED, 2026-08-14)."
     spec: "§1A"
   meta.workset.path:
     namespace: meta

@@ -29,12 +29,15 @@ read** — `_launch_bind_map` (2a-3), `_launch_seed_list` (2b-2), `_launch_synce
 an ABSENT leaf on a whole-box resolve is a NAMED error, not a fallback. This function's REFUSALS are
 the launch's since cutover 2c: they propagate out of the resolve and stop the box.
 
-⚑ **A FOURTH LEAF, `meta.assembly.env`, is written by the same seam and is NOT read yet.**
+⚑ **A FOURTH LEAF, `meta.assembly.env`, is written by the same seam, and it is READ.**
 `collapse_env` arbitrates the env VAR slots off the ENTRY LIST rather than the shape set — `env`
-folds into no `StoreShape` arm, so the shapes never carried it — and the launch still consumes
-`LaunchDeliveries.envs`. The leaf is additive-first, exactly as the bind map was: written, then
-flipped onto. **Its REFUSAL is live from the moment it is written**, because the collapse runs on
-every whole-box resolve whether or not anything reads the result.
+folds into no `StoreShape` arm, so the shapes never carried it. It went in additive-first, exactly as
+the bind map did: written unread, then flipped onto. **Both of its consumers have flipped** — the
+launch's container env and `box show --effective` read it through `start._launch_env_map`, and the
+un-arbitrated `LaunchDeliveries.envs` list they used to fold for themselves is RETIRED, so there is
+no second view of a variable to disagree with this one. Its REFUSAL was live from the moment it was
+first written, because the collapse runs on every whole-box resolve whether or not anything reads
+the result.
 
 ## Three passes, in the ONE order that is a ruling
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 
+import pytest
 
 from kanibako.settings.config import load_config
 from kanibako.settings.paths import load_std_paths
@@ -1117,27 +1118,62 @@ class TestWorksetEnv:
         from kanibako.settings.config_io import load_doc
         assert "env" not in load_doc(ws.root / "settings.yaml").get("workset", {})
 
-    def test_primary_workset_env_reaches_the_launch_snapshot(
-        self, config_file, tmp_home, capsys,
-    ):
-        """A primary-workset env var reaches the launch env accumulation and
-        overrides the system tier (precedence system < workset).
+    def _env_from_the_files(self, config_file):
+        """The container env a launch would build from what the VERBS wrote.
 
-        ⚑ Proven through the SNAPSHOT now, not a ``.env`` file layering: the launch
-        seam DELIVERS both scopes' entries in apply order and ``_build_config_env``'s
-        own ``update`` is what picks the per-VAR winner.
+        The route, in the order the launch runs it: read the two settings files the
+        ``system set`` / ``workset set`` verbs produced, adapt them to the entry list
+        (``snapshot_category_entries``), fold the env slots
+        (``store_collapse.collapse_env`` — ``meta.assembly.env``'s producer) and
+        project them through the launch's own consumer.
         """
         from kanibako.commands.start import _build_config_env
-        from kanibako.commands.system_cmd import run_set as system_set
-        from kanibako.commands.workset_cmd import run_set
+        from kanibako.settings.config_io import load_doc
         from kanibako.settings.keystore import KeyStore
-        from kanibako.settings.settings_categories import launch_deliveries
         from kanibako.settings.settings_launch import snapshot_category_entries
         from kanibako.settings.settings_resolve import ResolveCtx
+        from kanibako.settings.store_collapse import collapse_env
 
-        assert system_set(argparse.Namespace(
-            key_value="system.env.EDITOR=nano", force=True,
-        )) == 0
+        std = load_std_paths(load_config(config_file))
+        snapshot = KeyStore({
+            "system": {
+                "env": dict(load_doc(std.settings).get("system", {}).get("env", {})),
+            },
+            "workset": {
+                "env": dict(
+                    load_doc(std.primary_workset / "settings.yaml")
+                    .get("workset", {}).get("env", {})
+                ),
+            },
+        })
+        ctx = ResolveCtx(
+            agent_name="claude", workset_name=None,
+            host_home="/home/host", xdg={"XDG_DATA_HOME": "/data"},
+        )
+        return _build_config_env({}, collapse_env(snapshot_category_entries(
+            snapshot, active_agent="claude", box_ctx=ctx,
+        )))
+
+    def test_primary_workset_env_reaches_the_launch_env(
+        self, config_file, tmp_home, capsys,
+    ):
+        """A primary-workset env var written by the VERB reaches the container env.
+
+        🛑 REBUILT ONTO THE COLLAPSE, AND ITS OLD ORACLE WAS THE INVERSE OF THE
+        RULED MODEL. It declared ``system.env.EDITOR`` AND ``workset.env.EDITOR``
+        and asserted ``vim`` — "the workset overrides the system tier" — because
+        the consumer's dict-update over a scope-sorted list was the only thing
+        deciding a contested VAR, and it landed the LAST entry. The variables
+        realize SYSTEM-FIRST, so that config no longer picks a winner in either
+        direction: it REFUSES, which the case below now pins. Flipping the assert
+        would have pinned an outcome no route produces.
+
+        What survives is the claim the test is FOR: a value only the workset file
+        declares is delivered.
+        """
+        from kanibako.commands.system_cmd import run_set as system_set
+        from kanibako.commands.workset_cmd import run_set
+
         assert system_set(argparse.Namespace(
             key_value="system.env.PAGER=less", force=True,
         )) == 0
@@ -1146,30 +1182,42 @@ class TestWorksetEnv:
         )) == 0
         capsys.readouterr()
 
-        from kanibako.settings.config_io import load_doc
-        std = load_std_paths(load_config(config_file))
-        system_tbl = load_doc(std.settings)["system"]["env"]
-        workset_tbl = load_doc(
-            std.primary_workset / "settings.yaml",
-        )["workset"]["env"]
+        env = self._env_from_the_files(config_file)
+        assert env["EDITOR"] == "vim"   # the workset file's own variable
+        assert env["PAGER"] == "less"   # and the system file's, beside it
 
-        snapshot = KeyStore({
-            "system": {"env": dict(system_tbl)},
-            "workset": {"env": dict(workset_tbl)},
-        })
-        ctx = ResolveCtx(
-            agent_name="claude", workset_name=None,
-            host_home="/home/host", xdg={"XDG_DATA_HOME": "/data"},
+    def test_the_same_VAR_at_system_and_workset_refuses(
+        self, config_file, tmp_home, capsys,
+    ):
+        """Two scopes' keys, one slot: the launch refuses and names both keys.
+
+        The twin the case above used to assert a winner for. ⚑ Written through the
+        VERBS on purpose — this is the config a user can reach by running two
+        supported commands, so the refusal has to be the one they meet.
+        """
+        from kanibako.commands.system_cmd import run_set as system_set
+        from kanibako.commands.workset_cmd import run_set
+        from kanibako.settings.settings_resolve import SettingsError
+
+        assert system_set(argparse.Namespace(
+            key_value="system.env.EDITOR=nano", force=True,
+        )) == 0
+        assert run_set(argparse.Namespace(
+            workset="default", key_value="workset.env.EDITOR=vim", force=False,
+        )) == 0
+        capsys.readouterr()
+
+        with pytest.raises(SettingsError) as exc:
+            self._env_from_the_files(config_file)
+
+        message = str(exc.value)
+        assert "system.env.EDITOR" in message
+        assert "workset.env.EDITOR" in message
+        # The system scope acts FIRST, so it is the holder and the workset key is
+        # the arrival — the direction, not just the pair.
+        assert message.index("system.env.EDITOR") < message.index(
+            "workset.env.EDITOR"
         )
-        deliveries = launch_deliveries(
-            snapshot_category_entries(
-                snapshot, active_agent="claude", box_ctx=ctx,
-            ),
-            agent_dests=frozenset(),
-        )
-        env = _build_config_env({}, deliveries.envs)
-        assert env["EDITOR"] == "vim"   # workset overrides system
-        assert env["PAGER"] == "less"   # system tier still present
 
 
 class TestPrimaryWorksetMigration:

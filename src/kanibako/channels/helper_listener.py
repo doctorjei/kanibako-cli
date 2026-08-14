@@ -29,6 +29,10 @@ class HelperContext:
     helpers_dir: Path     # absolute host path to helpers/ inside shell_path
     socket_path: Path     # host path to helper.sock
     binary_mounts: list[Mount] = field(default_factory=list)
+    # A SNAPSHOT of the launch environment as it stood when the hub started, never
+    # the launch's live dict: the hub outlives that assembly and spawns from this map
+    # for the rest of the session, so an alias would let a post-hub write reach
+    # helpers the launch never described. The caller copies out (P8).
     env: dict[str, str] | None = None
     entrypoint: str | None = None
     default_entrypoint: str | None = None  # from target.default_entrypoint

@@ -420,8 +420,8 @@ class TestARefusalStopsTheResolve:
         ), [r.message for r in caplog.records]
 
 
-class TestTheEnvConsumerReadsTheCarrier:
-    """The env flip (cutover 6-R2), pinned against the DECLARATIONS.
+class TestTheEnvConsumerReadsTheLeaf:
+    """The env consumer flip, pinned against the DECLARATIONS.
 
     ⚑ THIS IS WHY IT WAS WRITTEN THIS WAY. It was built beside a 6-R1 equivalence
     canary whose oracle was the retired route\'s env list; that canary died with the
@@ -429,18 +429,21 @@ class TestTheEnvConsumerReadsTheCarrier:
     pinned by nothing.  The oracle here is the FLOOR — what was declared, and which
     scope\'s value a box is supposed to receive.
 
-    ⚑ It drives ``_build_config_env`` off the carrier because that is what the launch
-    reads today: the collapse writes ``meta.assembly.env`` but no consumer has been
-    moved onto it yet.
+    🛑 RENAMED WITH THE ROUTE IT PINS. The carrier it was named for
+    (``LaunchDeliveries.envs``) is RETIRED: the launch and ``box show --effective``
+    both read the collapse\'s ``meta.assembly.env`` leaf now, through
+    ``_launch_env_map``, and the un-arbitrated entry list they used to fold
+    themselves does not exist any more. A class still asserting through the carrier
+    would not fail — it would simply stop describing the launch.
 
-    🛑 THE TWO-SCOPE CASE LEFT THIS CLASS, and it did not merely change its answer.
-    The floor used to declare ``KANI_PINNED`` at BOTH workset and box scope and
-    assert box\'s value, because the consumer\'s dict-update over a scope-sorted list
-    was the only thing deciding a contested VAR. The collapse now REFUSES that
-    arrangement upstream, so the resolve raises and no carrier is ever built —
-    the contest cannot reach this consumer at all, which is what the last case here
-    pins. What survives above it is the part that was never a contest: each VAR
-    declared at one scope, delivered, with the agent tier underneath.
+    🛑 THE TWO-SCOPE CASE ANSWERS DIFFERENTLY THAN IT ONCE DID, and it did not merely
+    change its answer. The floor used to declare ``KANI_PINNED`` at BOTH workset and
+    box scope and assert box\'s value, because the consumer\'s dict-update over a
+    scope-sorted list was the only thing deciding a contested VAR. The collapse
+    REFUSES that arrangement upstream, so the resolve raises and no leaf is ever
+    written — the contest cannot reach this consumer at all, which is what the last
+    case here pins. What survives above it is the part that was never a contest: each
+    VAR declared at one scope, delivered, with the agent tier underneath.
     """
 
     _FLOOR = {
@@ -455,14 +458,17 @@ class TestTheEnvConsumerReadsTheCarrier:
     }
 
     def _env(self, std, config, project_dir, floor=None):
-        from kanibako.commands.start import _build_config_env
+        """The container env the way the launch builds it: leaf → consumer."""
+        from kanibako.commands.start import _build_config_env, _launch_env_map
 
         proj = resolve_project(std, config, str(project_dir), initialize=True)
-        _snapshot, deliveries = _resolve(
+        snapshot, _deliveries = _resolve(
             std, proj,
             extra_default_categories=dict(self._FLOOR if floor is None else floor),
         )
-        return _build_config_env({"KANI_AGENT_TIER": "agent"}, deliveries.envs)
+        return _build_config_env(
+            {"KANI_AGENT_TIER": "agent"}, _launch_env_map(snapshot),
+        )
 
     def test_every_declared_VAR_reaches_the_consumer(
         self, std, config, project_dir,

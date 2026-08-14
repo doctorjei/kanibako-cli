@@ -127,7 +127,7 @@ will **merge the information, but not perform the action**"* ·
 (`snapshot_category_entries`) through the step-4 producer (`build_store_shape_set`) and the step-6a
 collapse (`collapse_store_shapes`), and stores the results at the declared RO/derived keys
 `meta.assembly.{bindings,seeded,synced}` — plus `meta.assembly.env`, which comes from
-`collapse_env` off the ENTRY LIST rather than the shapes, and which nothing reads yet.
+`collapse_env` off the ENTRY LIST rather than the shapes, and which `_launch_env_map` reads.
 
 ### What it drives, and what it still does not
 
@@ -135,10 +135,13 @@ collapse (`collapse_store_shapes`), and stores the results at the declared RO/de
 nothing", and that is now false for MOUNTS and for BOTH copy arms.** The main launch path emits its
 category mounts from `meta.assembly.bindings` (see the section above), the create-time seed applier
 reads `meta.assembly.seeded`, and the launch-time sync applier reads `meta.assembly.synced` (both
-below). ⚑ **AND AGAIN AT 6-R2/6-R3: THE SECOND ROUTE IS GONE.** The env set, the `secret_path`
-mounts, the agent-delivery dest set and both narrow bind maps read the `LaunchDeliveries` carrier
-(section below), and 6-R3 DELETED `reconcile_categories`, `ReconciledCategories` and the three group
-resolvers under them. ⚑ Its WARN half went first, at 5-1c — next section.
+below). ⚑ **AND AGAIN AT 6-R2/6-R3: THE SECOND ROUTE IS GONE.** The `secret_path` mounts, the
+agent-delivery dest set and both narrow bind maps read the `LaunchDeliveries` carrier (section
+below), and 6-R3 DELETED `reconcile_categories`, `ReconciledCategories` and the three group
+resolvers under them. ⚑ Its WARN half went first, at 5-1c — next section. ⚑ **AND AGAIN WITH THE ENV
+LEAF: it drives the box's ENVIRONMENT too.** `meta.assembly.env` is read by `_launch_env_map` and
+folded by `_build_config_env`, for the launch and for `box show --effective` alike; the carrier's
+`envs` list is retired, so nothing assembles an environment from raw declarations any more.
 
 That is also why the wiring reuses the existing walk rather than adding a second one: two walks
 could disagree about what was declared, and only one of them would be the one that ships.
@@ -427,7 +430,7 @@ every consumer onto it:
 
 | what | was | is |
 |---|---|---|
-| the container env | `_build_config_env(agent_env, reconciled.envs)` | `deliveries.envs` — at the launch AND at `box show --effective` |
+| the container env | `_build_config_env(agent_env, reconciled.envs)` | ⚑ **moved on again — `_launch_env_map(snapshot)`**, the collapsed `meta.assembly.env` leaf, at the launch AND at `box show --effective`; the carrier's `envs` field is RETIRED |
 | the secret mounts | `_emit_secret_mounts` filtering `reconciled.mounts` | `deliveries.secrets` |
 | the agent-delivery dests | `_agent_delivered_dests(reconciled.mounts)` | `deliveries.agent_dests` |
 | the narrow bind maps | `_narrow_bind_map(_img_rec.mounts)` | `deliveries.narrow_bindings` |
@@ -440,9 +443,25 @@ every consumer onto it:
 row 1 SAME-scope), the assembly collapse (rows 2, 4, row 1 cross-scope), and this seam's own
 `secret_path_deliveries` / `narrow_table_winners` for the inputs the collapse cannot see.
 
-⚑ **The env flip is byte-identical by inspection, not by hope:** the retired pass did no env
+⚑ **6-R2's env flip was byte-identical by inspection, not by hope:** the retired pass did no env
 arbitration — its env line WAS `[e for e in entries if e.delivery == ENV]`, the same filter
-`launch_deliveries` spells. The per-VAR winner is, and always was, the consumer's `dict.update`.
+`launch_deliveries` spelled. The per-VAR winner was, right up to MBR-1, the consumer's `dict.update`.
+
+### 🛑 THE ENV ROW MOVED OFF THIS CARRIER ENTIRELY (MBR-1 P2)
+
+The `envs` field is gone, and it was RETIRED rather than left beside the leaf on purpose: an
+un-arbitrated second view of the same declarations is exactly what let a variable named by two
+scopes be settled silently by whichever entry the list happened to end with. Both consumers —
+`_assemble_launch_env` and `box show --effective` — read `meta.assembly.env` through
+`_launch_env_map` and fold it with the same `_build_config_env`, so ONE value per variable exists on
+either surface and the winner's `(scope, key)` travels with it. **For a configuration the collapse
+accepts this changed no value:** such a configuration has one scope's key per variable by
+construction, so the map and the old list carried the same pairs. What changed is that the
+arrangement where they would have DIFFERED does not launch at all.
+
+⚑ `_launch_env_map` is ONE function where `bindings`/`seeded`/`synced` each have two (an option
+reader plus a total one). Neither env consumer can act on an absent leaf — both describe a box, and
+the leaf rides the whole-box gate — so an option form would be a route nothing takes.
 
 ### ⚑⚑ The pref-origin enrichment moved with the raises, and that is REAL UX
 
