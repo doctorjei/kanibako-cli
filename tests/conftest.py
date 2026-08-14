@@ -546,6 +546,10 @@ def start_mocks():
             # production) sets ``target.descriptor = None`` explicitly.
             from kanibako.plugins.claude.target import ClaudeTarget
             target.descriptor = ClaudeTarget().descriptor
+            # ... and claude's REAL declared env keys, for the same reason: they are
+            # the only route its variables have into a box, so a MagicMock here
+            # would silently launch every mocked box without them.
+            target.default_envs.return_value = ClaudeTarget().default_envs()
 
             # Make the detected install resolvable by ``descriptor_mounts``: its
             # AGENT_CRITICAL bindings (share -> install_dir, launcher -> launcher)
@@ -659,6 +663,20 @@ def start_mocks():
                         f"agent.{_node}.secret_path.{var}": path
                         for var, path in _agent_cfg.secret_path.items()
                     })
+                # The plugin's DECLARED env keys (agent.<node>.env.<VAR>) — the ONLY
+                # route a plugin's own variables have into the box, so a stub that
+                # omitted them would launch every mocked box without them and make
+                # the arrival assertions in test_start.py vacuous.  Re-keyed to the
+                # ACTIVE NODE exactly as the real orchestrator does it.
+                if _target is not None:
+                    from kanibako.settings.agent_representation import (
+                        agent_env_for_node,
+                    )
+                    _default_cats.update(agent_env_for_node(
+                        _target.default_envs(),
+                        node_name=_node,
+                        harness=_target.name,
+                    ))
                 # allow_helpers is now an AGENT-scope behavior key (spec §2d): the
                 # live launch reader (effective_behavior) resolves it off the
                 # snapshot and DEFAULTS True (helpers ON). Unit tests drive the

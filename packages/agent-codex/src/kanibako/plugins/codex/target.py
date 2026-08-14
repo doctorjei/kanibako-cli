@@ -48,7 +48,11 @@ import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from kanibako.settings.agent_defaults import load_category_binds, load_descriptor
+from kanibako.settings.agent_defaults import (
+    load_category_binds,
+    load_descriptor,
+    load_envs,
+)
 from kanibako.log import get_logger
 from kanibako.targets.base import (
     AgentInstall,
@@ -252,6 +256,17 @@ class CodexTarget(Target):
         """
         return load_category_binds(_DEFAULTS_PACKAGE, _DEFAULTS_FILE, self.name)
 
+    def default_envs(self) -> dict[str, str]:
+        """Declare codex's AGENT-scope env defaults (spec §2d ``agent.codex.env.*``).
+
+        Read from ``codex-defaults.yaml``'s ``env:`` section (via the loader): the
+        one variable ``KANIBAKO_DIRECTIVE_FINAL``, naming codex's native
+        ``~/.codex/AGENTS.md`` slot — the file the box-start flattener writes.  It
+        is an ordinary settings key: overridable by the SAME key in a nearer file,
+        and refused when a second scope names the same variable.
+        """
+        return load_envs(_DEFAULTS_PACKAGE, _DEFAULTS_FILE, self.name)
+
     @property
     def default_entrypoint(self) -> str | None:
         """Codex binary as container entrypoint."""
@@ -265,8 +280,9 @@ class CodexTarget(Target):
         persists under ``$CODEX_HOME/sessions/<year>/<MM>/<DD>/rollout-<ts>-<uuid>.jsonl``
         (verified against openai/codex ``codex-rs/rollout/src``: ``SESSIONS_SUBDIR =
         "sessions"`` + the ``year/month/day`` push in ``recorder.rs``).  ``CODEX_HOME``
-        defaults to ``~/.codex`` and kanibako sets NO ``CODEX_HOME`` (the descriptor's
-        ``container_env`` is empty), so the box store is ``<home>/.codex/sessions/``.
+        defaults to ``~/.codex`` and kanibako sets NO ``CODEX_HOME`` — it is not among
+        this plugin's declared ``agent.codex.env.*`` keys, whose only member is the
+        directive FINAL slot — so the box store is ``<home>/.codex/sessions/``.
         ``resume --last`` is workdir-AGNOSTIC (the newest session regardless of cwd),
         so — unlike claude's per-project transcript dir — this checks the WHOLE store.
 

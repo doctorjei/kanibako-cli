@@ -48,6 +48,7 @@ from kanibako.settings.core_defaults import add_bind
 from kanibako.settings.settings_keyspace import (
     ACCESS_TIERS,
     is_terminal_category_tail,
+    key_validity,
 )
 from kanibako.settings.settings_resolve import GUEST_HOME, SettingsError
 from kanibako.targets.base import (
@@ -382,6 +383,13 @@ def load_descriptor(package: str, filename: str) -> PluginDescriptor:
     one — box_dest ``$GUEST_HOME`` expressions are expanded and every enum field
     is mapped from its string name.
 
+    ⚑ A descriptor carries NO environment variables.  They are declared at the
+    file's TOP-LEVEL ``env:`` section, which :func:`load_envs` turns into
+    ``agent.<agent>.env.<VAR>`` settings keys; a ``container_env:`` left under
+    ``descriptor:`` is REFUSED by name for the same reason ``safe_bypass`` is —
+    left unread it would load as an agent whose required variables are silently
+    absent.
+
     ⚑ The RETIRED key ``safe_bypass:`` is REFUSED by name.  Descriptor keys are
     read individually (``desc.get(...)``), so an unrecognized one is simply not
     read — and for THIS key that silence is dangerous rather than harmless: the
@@ -404,6 +412,18 @@ def load_descriptor(package: str, filename: str) -> PluginDescriptor:
             f"channel is the harness's own PERMISSIVE default."
         )
 
+    if "container_env" in desc:
+        raise SettingsError(
+            f"{filename}: descriptor declares the RETIRED key 'container_env'. "
+            f"A plugin's environment variables are DECLARED at the file's "
+            f"top-level 'env:' section, where they become "
+            f"'agent.<agent>.env.<VAR>' settings keys and reach the box through "
+            f"the one settings channel, so a user can override one BY NAME. Move "
+            f"the block out of 'descriptor:': left where it is it is an unknown "
+            f"descriptor key, and this agent would launch with none of its "
+            f"required variables set."
+        )
+
     return PluginDescriptor(
         command=tuple(desc["command"]),
         bindings=tuple(_build_binding(b, package) for b in desc.get("bindings", [])),
@@ -419,9 +439,6 @@ def load_descriptor(package: str, filename: str) -> PluginDescriptor:
             _build_setting_arg(s, source=filename) for s in desc.get("settings", [])
         ),
         persona=_build_persona(desc.get("persona")),
-        container_env={
-            k: _expand(v) for k, v in desc.get("container_env", {}).items()
-        },
         cred_files=tuple(_build_cred_file(c) for c in desc.get("cred_files", [])),
         host_prep=bool(desc.get("host_prep", False)),
         init_dirs=tuple(desc.get("init_dirs", ())),
@@ -557,6 +574,71 @@ def load_category_binds(
             # the destination; only the FILE is missing from its message.
             raise SettingsError(f"{filename}: {exc}") from exc
     return binds
+
+
+def _env_values(doc: dict[str, Any], filename: str) -> dict[str, str]:
+    """Read the file's top-level ``env:`` section as ``{VAR: expanded value}``.
+
+    The section is a MAP, not a list of entries, so one VAR cannot be declared
+    twice in one file — the representation carries that rule and there is nothing
+    to enforce.  A non-string value is REFUSED rather than coerced: an environment
+    variable IS a string, and YAML would otherwise turn an unquoted ``1`` / ``true``
+    into an int / bool whose ``str()`` is not what the author wrote (``True``).
+    """
+    section = doc.get("env", {}) or {}
+    if not isinstance(section, dict):
+        raise SettingsError(
+            f"{filename}: the 'env:' section must be a MAP of <VAR>: <value>, "
+            f"not {type(section).__name__}"
+        )
+    values: dict[str, str] = {}
+    for var, value in section.items():
+        if not isinstance(value, str):
+            raise SettingsError(
+                f"{filename}: env variable {str(var)!r} declares a "
+                f"{type(value).__name__} value; an environment variable is a "
+                f'STRING — quote it (e.g. "1", "true")'
+            )
+        values[str(var)] = _expand(value)
+    return values
+
+
+def load_envs(package: str, filename: str, agent: str) -> "dict[str, str]":
+    """Build a plugin's AGENT-scope declared env DEFAULTS from its file.
+
+    Returns DISCRIMINATED ``agent.<agent>.env.<VAR>`` keys mapped to their scalar
+    values (spec §2d).  *agent* is the declaring plugin's own name; the agent tier
+    is DISCRIMINATED (§2d / §0 — there is NO bare ``agent.<key>``), so every key is
+    built discriminated HERE rather than re-rooted downstream.  Returns ``{}`` when
+    the file declares no ``env`` section.
+
+    The table is a FLOOR default: folded into ``default_categories`` beside
+    :func:`load_common` (re-keyed to the ACTIVE NODE by
+    :func:`~kanibako.settings.agent_representation.agent_env_for_node`), it sits under
+    every settings file, so a user overrides one by writing the SAME key in a nearer
+    file and the same VAR named at a SECOND scope REFUSES the launch
+    (``store_collapse.collapse_env`` — the write-once arbitration is the collapse's,
+    and there is none here).  It is the ONLY route these values have into a box: the
+    descriptor carries no environment field, and ``load_descriptor`` refuses one.
+
+    Every built key is checked against the CLOSED keyspace
+    (:func:`~kanibako.settings.settings_keyspace.key_validity`), so a plugin
+    declaring ``2FA`` or a reserved leaf name gets a refusal NAMING the key instead
+    of a floor entry the launch would fail to resolve later.
+
+    ``$GUEST_HOME`` is expanded HERE, at load, not left to the snapshot's expand
+    pass: an env value is a GUEST-side string, while the snapshot expands against
+    the HOST (``~`` → the host home).  What is stored is the literal in-box path,
+    which every later pass carries verbatim.
+    """
+    envs: "dict[str, str]" = {}
+    for var, value in _env_values(_load_doc(package, filename), filename).items():
+        key = f"agent.{agent}.env.{var}"
+        reason = key_validity(key, valid_agents=(agent,))
+        if reason is not None:
+            raise SettingsError(f"{filename}: env declaration is not a key — {reason}")
+        envs[key] = value
+    return envs
 
 
 def load_common(package: str, filename: str, agent: str) -> "dict[str, BindArm]":

@@ -14,6 +14,7 @@ from kanibako.settings.agent_defaults import (
     load_category_binds,
     load_descriptor,
     load_common,
+    load_envs,
 )
 from kanibako.log import get_logger
 from kanibako.targets.base import (
@@ -486,6 +487,18 @@ class ClaudeTarget(Target):
         """
         return load_category_binds(_DEFAULTS_PACKAGE, _DEFAULTS_FILE, self.name)
 
+    def default_envs(self) -> dict[str, str]:
+        """Declare claude's AGENT-scope env defaults (spec §2d ``agent.claude.env.*``).
+
+        Read from ``claude-defaults.yaml``'s ``env:`` section (via the loader):
+        ``DISABLE_AUTOUPDATER`` and ``CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC``,
+        plus ``KANIBAKO_DIRECTIVE_FINAL`` naming claude's native user-memory slot
+        (``~/.claude/CLAUDE.md``), the file the box-start flattener writes.  They are
+        ordinary settings keys: overridable by the SAME key in a nearer file, and
+        refused when a second scope names the same variable.
+        """
+        return load_envs(_DEFAULTS_PACKAGE, _DEFAULTS_FILE, self.name)
+
     def apply_state(self, state: dict[str, str]) -> tuple[list[str], dict[str, str]]:
         """Translate Claude Code state values into CLI args and env vars.
 
@@ -493,12 +506,14 @@ class ClaudeTarget(Target):
           - ``model``: passed as ``--model <value>``
 
         Unknown keys are silently ignored.
+
+        ⚑ UNDISPATCHED: core removed the ``apply_state`` hook call, so nothing
+        reaches this.  It returns NO env — ``DISABLE_AUTOUPDATER`` is a declared
+        key (:meth:`default_envs`), and a second copy here would be a value with
+        no way to override it if the hook ever came back.
         """
         cli_args: list[str] = []
-        # Disable the in-container agent's self-updater: a mid-session update
-        # would repoint the writable ~/.local/bin/claude to a version the
-        # read-only host bind cannot have, breaking the running session.
-        env_vars: dict[str, str] = {"DISABLE_AUTOUPDATER": "1"}
+        env_vars: dict[str, str] = {}
 
         model = state.get("model")
         if model:

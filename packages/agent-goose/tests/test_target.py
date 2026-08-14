@@ -496,18 +496,21 @@ class TestDescriptor:
         assert p.model_required is True
         assert p.provider_pin == (("provider", "openai"),)
 
-    def test_container_env_disables_keyring(self):
-        # GOOSE_DISABLE_KEYRING is ALWAYS set for goose boxes (static, not a
-        # setting): the in-box OS keyring/D-Bus secret-service is unavailable, so
-        # goose must store secrets in the file ~/.config/goose/secrets.yaml.
-        # CONTEXT_FILE_NAMES (STEP 2a) now lists the instruction-delivery FINAL
-        # slot ``.additionalContext.md`` (the flattened per-agent guide the
-        # box-start flattener writes) alongside the default context filenames;
-        # KANIBAKO_DIRECTIVE_FINAL names that slot for the flattener.
-        assert GooseTarget().descriptor.container_env == {
-            "GOOSE_DISABLE_KEYRING": "true",
-            "CONTEXT_FILE_NAMES": '[".additionalContext.md","AGENTS.md",".goosehints"]',
-            "KANIBAKO_DIRECTIVE_FINAL": "/home/agent/.config/goose/.additionalContext.md",
+    def test_declared_envs_are_the_plugin_required_variables(self):
+        # goose declares the three variables a goose box does not work without, as
+        # DECLARED KEYS (agent.goose.env.<VAR>, spec §2d) reaching the box through
+        # the settings channel — so a user can override one BY NAME.  The
+        # user-preference variables (GOOSE_PROVIDER / GOOSE_MODEL) are deliberately
+        # NOT declared: goose owns those in its own persistent config.
+        envs = GooseTarget().default_envs()
+        assert envs == {
+            "agent.goose.env.GOOSE_DISABLE_KEYRING": "true",
+            "agent.goose.env.CONTEXT_FILE_NAMES": (
+                '[".additionalContext.md","AGENTS.md",".goosehints"]'
+            ),
+            "agent.goose.env.KANIBAKO_DIRECTIVE_FINAL": (
+                "/home/agent/.config/goose/.additionalContext.md"
+            ),
         }
 
     def test_cred_files(self):
@@ -757,15 +760,14 @@ class TestDescriptorAssembly:
 
         This is the in-box-``goose configure`` fix: kanibako must not force the
         provider/model env vars (they override goose's config.yaml).  With no
-        setting, assemble_env (``if value:``) omits both — but GOOSE_MODE and
-        GOOSE_DISABLE_KEYRING still emit.
+        setting, assemble_env (``if value:``) omits both — while GOOSE_MODE, an
+        access-tier realization, still emits.
         """
         d = GooseTarget().descriptor
         env = assembly.assemble_env(d, access="full", setting_values={})
         assert "GOOSE_PROVIDER" not in env
         assert "GOOSE_MODEL" not in env
         assert env["GOOSE_MODE"] == "auto"
-        assert env["GOOSE_DISABLE_KEYRING"] == "true"
 
     def test_env_omits_provider_model_when_empty_string(self):
         """Empty-string values (the resolver floor for the unset case) are
@@ -777,25 +779,21 @@ class TestDescriptorAssembly:
         )
         assert "GOOSE_PROVIDER" not in env
         assert "GOOSE_MODEL" not in env
-        assert env["GOOSE_DISABLE_KEYRING"] == "true"
 
-    def test_env_always_disables_keyring(self):
-        """GOOSE_DISABLE_KEYRING=true is in the assembled box env unconditionally.
+    def test_the_declared_variables_are_not_assembled_here(self):
+        """The assembly emits REALIZATIONS only; the declared keys are elsewhere.
 
-        It is a static container_env constant, so it survives every assembly path
-        regardless of the permission tier or settings (in-box keyring
-        unavailable -> goose
-        falls back to file-based ~/.config/goose/secrets.yaml).
+        GOOSE_DISABLE_KEYRING is unconditional for a goose box (the in-box keyring
+        is unavailable, so goose must fall back to ~/.config/goose/secrets.yaml) —
+        and it is unconditional because it is a DECLARED KEY carried by the
+        settings channel, not because some assembly path always emits it.  Asserting
+        it here would pin the wrong mechanism.
         """
         d = GooseTarget().descriptor
         for tier in ("restricted", "full"):
             env = assembly.assemble_env(d, access=tier, setting_values={})
-            assert env["GOOSE_DISABLE_KEYRING"] == "true"
-        env = assembly.assemble_env(
-            d, access="full",
-            setting_values={"model": "claude-4", "provider": "anthropic"},
-        )
-        assert env["GOOSE_DISABLE_KEYRING"] == "true"
+            assert "GOOSE_DISABLE_KEYRING" not in env
+        assert "agent.goose.env.GOOSE_DISABLE_KEYRING" in GooseTarget().default_envs()
 
 
 class TestDeliverySeams:

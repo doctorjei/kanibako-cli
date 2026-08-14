@@ -1767,9 +1767,9 @@ def _assemble_launch_env(
     container_env.update(_parse_cli_env(cli_env))
 
     # Claude Code's telemetry (CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC) and
-    # auto-updater (DISABLE_AUTOUPDATER) vars ride claude's
-    # ``descriptor.container_env`` in via ``state_env`` above: core does NO
-    # per-agent (``target.name == "claude"``) special-casing.
+    # auto-updater (DISABLE_AUTOUPDATER) vars are claude's own DECLARED
+    # ``agent.claude.env.*`` keys and arrive in the ARBITRATED slots above: core
+    # does NO per-agent (``target.name == "claude"``) special-casing.
 
     # Inject instance identity for peer communication.
     if proj.name:
@@ -1781,7 +1781,9 @@ def _assemble_launch_env(
     # reference this to flatten the ``@import`` directive chain into the
     # agent's native slot.  ABSOLUTE (not ``~``) so it resolves identically in
     # a hook shell and at exec time.  Global (agent-independent): the per-agent
-    # FINAL-slot path arrives via each descriptor's KANIBAKO_DIRECTIVE_FINAL.
+    # FINAL-slot path is each plugin's own declared
+    # ``agent.<agent>.env.KANIBAKO_DIRECTIVE_FINAL`` key and arrives in the slots
+    # above.
     # ⚑ READ BACK from the ONE declaration of the slot (``core-defaults.yaml``
     # ``kickoff.box_dest``, the source of core's own bind) rather than spelled a
     # second time here: the env var and the bind MUST name the same file, and the
@@ -3166,9 +3168,10 @@ def _run_container(
         if runtime.is_running(container_name) and entrypoint is not None:
             exec_cmd = [entrypoint] + (extra_args or [])
             # Apply per-run -e/--env vars to the exec'd process. The container's
-            # baseline env (env files, agent_cfg.env, KANIBAKO_NAME) was set at
-            # launch and is inherited by exec; without this, per-run -e vars
-            # would be silently dropped when the box is already running.
+            # baseline env (the collapsed `<scope>.env.<VAR>` slots, agent_cfg.env,
+            # KANIBAKO_NAME) was set at launch and is inherited by exec; without
+            # this, per-run -e vars would be silently dropped when the box is
+            # already running.
             return runtime.exec(
                 container_name, exec_cmd, env=_parse_cli_env(cli_env)
             )
@@ -6483,6 +6486,7 @@ def _resolve_launch_snapshot(
     from kanibako.settings.agent_representation import (
         agent_common_for_node,
         agent_default_partial,
+        agent_env_for_node,
     )
     from kanibako.errors import CategoryCollisionError
     from kanibako.settings.settings_categories import (
@@ -6588,6 +6592,22 @@ def _resolve_launch_snapshot(
             _merge_default_categories(
                 default_categories, target.default_seeds(),
                 family="agent seeds", origins=cat_origins,
+            )
+            # PLUGIN-declared AGENT-scope env DEFAULTS (spec §2d
+            # ``agent.<agent>.env.<VAR>``): the variables a harness does not work
+            # without, entering as ordinary floor keys so a user overrides one by
+            # writing the SAME key in a nearer file — and so a SECOND scope naming
+            # the same variable refuses the launch instead of losing silently.
+            # ⚑ Re-keyed to the ACTIVE NODE for the same reason the commons above
+            # are: a plugin declares against its HARNESS name while the §2d pick
+            # reads ``agent.<node>``, so a persona box would otherwise launch with
+            # none of them set.  Identity for a bare agent.
+            _merge_default_categories(
+                default_categories, agent_env_for_node(
+                    target.default_envs(),
+                    node_name=agent_name,
+                    harness=target.name,
+                ), family="agent env", origins=cat_origins,
             )
             # PLUGIN-declared @-ref-sourced agent binds (spec §2d): a generic
             # AGENT-scope category-bind extension point.  Unioned like a share; the

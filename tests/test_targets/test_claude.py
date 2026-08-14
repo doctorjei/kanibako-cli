@@ -536,6 +536,26 @@ class TestDefaultShares:
             assert box_dest.startswith("/home/agent/.claude/")
 
 
+class TestDefaultEnvs:
+    """claude's declared AGENT-scope env keys (spec §2d ``agent.claude.env.*``)."""
+
+    def test_declares_the_two_spec_rows_plus_the_final_slot(self):
+        # The two spec-declared vars, plus KANIBAKO_DIRECTIVE_FINAL naming claude's
+        # native user-memory slot (the file the box-start flattener writes).  These
+        # are DECLARED KEYS reaching the box through the settings channel, so a user
+        # can override one BY NAME; $GUEST_HOME is expanded by the loader.
+        assert ClaudeTarget().default_envs() == {
+            "agent.claude.env.DISABLE_AUTOUPDATER": "1",
+            "agent.claude.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+            "agent.claude.env.KANIBAKO_DIRECTIVE_FINAL": "/home/agent/.claude/CLAUDE.md",
+        }
+
+    def test_the_descriptor_carries_no_environment_of_its_own(self):
+        # There is ONE declaration site and ONE route: a descriptor field would be a
+        # second way into the box env, and one no settings key could override.
+        assert not hasattr(ClaudeTarget().descriptor, "container_env")
+
+
 class TestSettingDescriptors:
     def test_returns_list_of_target_settings(self):
         t = ClaudeTarget()
@@ -598,10 +618,12 @@ class TestGenerateAgentConfig:
 
 
 class TestApplyState:
-    # Every Claude container invocation gets DISABLE_AUTOUPDATER=1 so the
-    # in-container agent cannot self-update mid-session and repoint its
-    # writable launcher to a version the read-only host bind cannot have.
-    _BASE_ENV = {"DISABLE_AUTOUPDATER": "1"}
+    # ⚑ The hook is UNDISPATCHED — core removed the ``apply_state`` call — and it
+    # returns NO env at all.  DISABLE_AUTOUPDATER is a DECLARED KEY
+    # (``agent.claude.env.DISABLE_AUTOUPDATER``, see ``TestDefaultEnvs``); a second
+    # copy here would be a value with no way to override it, on a route no user
+    # could reach.  What survives is the argv translation.
+    _BASE_ENV: dict[str, str] = {}
 
     def test_model_translated_to_cli_arg(self):
         t = ClaudeTarget()
@@ -621,12 +643,17 @@ class TestApplyState:
         assert cli_args == []
         assert env_vars == self._BASE_ENV
 
-    def test_disable_autoupdater_always_present(self):
-        """DISABLE_AUTOUPDATER=1 is set regardless of state contents."""
+    def test_no_env_is_returned_for_any_state(self):
+        """The hook emits NO environment, whatever the state carries.
+
+        RED if a literal comes back: a variable reaching a box from here would be
+        one the settings channel cannot name, so nothing could override it.
+        """
         t = ClaudeTarget()
         for state in ({}, {"model": "opus"}, {"unknown": "x"}):
             _, env_vars = t.apply_state(state)
-            assert env_vars.get("DISABLE_AUTOUPDATER") == "1"
+            assert env_vars == {}
+        assert "agent.claude.env.DISABLE_AUTOUPDATER" in ClaudeTarget().default_envs()
 
     def test_model_with_other_keys(self):
         t = ClaudeTarget()
@@ -743,11 +770,6 @@ class TestDescriptor:
         assert endpoint.channel == Channel.ENV
         assert endpoint.env_var == "ANTHROPIC_BASE_URL"
         assert endpoint.flag == ()
-
-    def test_container_env(self):
-        env = ClaudeTarget().descriptor.container_env
-        assert env["DISABLE_AUTOUPDATER"] == "1"
-        assert env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] == "1"
 
     def test_cred_files(self):
         # The host .claude.json config IMPORT (SEED_ONCE) was removed in 1.6.0;

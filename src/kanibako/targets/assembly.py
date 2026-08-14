@@ -340,7 +340,10 @@ def assemble_env(
 ) -> dict[str, str]:
     """Assemble the container environment overlay from the descriptor.
 
-    Starts from ``descriptor.container_env``, then:
+    ⚑ REALIZATIONS ONLY.  A plugin's STATIC variables are settings keys
+    (``agent.<agent>.env.<VAR>``, ``Target.default_envs``) and reach the box through
+    the launch's settings channel, never through here; what this builds is the
+    per-launch translation of RESOLVED values onto the ENV channel:
 
     * If the descriptor's ``access_realization`` is ENV-channel with an ``env_var``: set
       it to the ``env_value`` of the row for the *access* TIER (R-41; goose
@@ -356,7 +359,7 @@ def assemble_env(
     FLAG-channel access rows / settings are argv and are emitted by
     :func:`assemble_argv` instead.
     """
-    env: dict[str, str] = dict(descriptor.container_env)
+    env: dict[str, str] = {}
 
     ar = descriptor.access_realization
     if ar is not None and ar.channel is Channel.ENV and ar.env_var:

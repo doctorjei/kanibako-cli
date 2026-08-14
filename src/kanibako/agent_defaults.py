@@ -32,6 +32,9 @@ from kanibako.settings.agent_defaults import (
 from kanibako.settings.agent_defaults import (
     load_descriptor as load_descriptor,
 )
+from kanibako.settings.agent_defaults import (
+    load_envs as load_envs,
+)
 
 # ⚑ Stage 1 of the two-stage retirement (Jei, 2026-08-01): v1.8.0 KEEPS this
 # alias but SAYS SO; the next release deletes it and plugin discovery refuses an

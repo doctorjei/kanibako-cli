@@ -498,36 +498,39 @@ class TestUniformAccessAcrossAgents:
 
 
 class TestDescriptorEnv:
+    """claude's fixed variables are DECLARED KEYS; the assembly realizes, only.
+
+    They used to be descriptor literals seeded into ``assemble_env``, i.e. a route
+    that ran above every settings file. They are ``agent.claude.env.*`` keys now
+    (``tests/test_targets/test_agent_envs.py`` owns their arrival), so what these
+    cases pin is the OTHER half — that the assembly no longer carries them, which is
+    what makes a user's override of one survive the launch.
+    """
+
     def setup_method(self):
         self.desc = ClaudeTarget().descriptor
         assert self.desc is not None
 
-    def test_carries_autoupdater_and_telemetry(self):
-        env = assembly.assemble_env(
-            self.desc, access="full", setting_values=DEFAULT_STATE,
-        )
-        assert env["DISABLE_AUTOUPDATER"] == "1"
-        assert env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] == "1"
+    def test_the_fixed_variables_are_not_assembled_at_any_tier(self):
+        for tier in ("restricted", "editing", "full"):
+            env = assembly.assemble_env(
+                self.desc, access=tier, setting_values=DEFAULT_STATE,
+            )
+            assert "DISABLE_AUTOUPDATER" not in env
+            assert "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC" not in env
 
-    def test_env_present_in_secure_mode_too(self):
-        env = assembly.assemble_env(
-            self.desc, access="restricted", setting_values=DEFAULT_STATE,
-        )
-        assert env["DISABLE_AUTOUPDATER"] == "1"
-        assert env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] == "1"
+    def test_they_are_declared_keys_instead(self):
+        assert ClaudeTarget().default_envs() == {
+            "agent.claude.env.DISABLE_AUTOUPDATER": "1",
+            "agent.claude.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+            "agent.claude.env.KANIBAKO_DIRECTIVE_FINAL": "/home/agent/.claude/CLAUDE.md",
+        }
 
-    def test_env_superset_of_legacy_apply_state(self):
-        """Descriptor env carries every key legacy apply_state set (DISABLE_AUTOUPDATER)
-        plus the telemetry var that core start.py used to inject."""
+    def test_the_retired_apply_state_hook_adds_nothing_either(self):
+        """The legacy hook is undispatched AND empty — no second copy anywhere."""
         target = ClaudeTarget()
         _, legacy_env = target.apply_state(DEFAULT_STATE)
-        new_env = assembly.assemble_env(
-            target.descriptor, access="full", setting_values=DEFAULT_STATE,
-        )
-        for k, v in legacy_env.items():
-            assert new_env.get(k) == v
-        # plus the telemetry var that was previously core's special-case.
-        assert new_env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] == "1"
+        assert legacy_env == {}
 
 
 # --------------------------------------------------------------------------- #
