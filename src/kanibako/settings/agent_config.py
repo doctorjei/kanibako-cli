@@ -1,4 +1,10 @@
-"""Agent YAML configuration: load, write, and resolve per-agent settings."""
+"""Agent identity: the ``AgentConfig`` record, the agent store's paths and category roots.
+
+⚑ THE FILE'S SHAPE IS NOT HERE.  Reading, writing and addressing the per-agent settings file
+belong to :mod:`kanibako.settings.agent_file`, the one module that spells the file's root table
+(rulings 49-52).  What stays here is what a caller holds INDEPENDENTLY of any file: the record
+itself, where the store lives, and where a category's sources root.
+"""
 
 from __future__ import annotations
 
@@ -6,17 +12,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Final, Mapping
 
-from kanibako.settings.config_io import dump_doc, load_doc
 from kanibako.settings.settings_categories import ABSTRACT_CATEGORIES, DECLARATION_ROOT_REF
 
 # Keys that live directly in the [agent] section as agent identity (not state).
 IDENTITY_KEYS = frozenset({"name", "run_args"})
-
-# Every schema-owned (MODELLED) key of the per-agent file. Anything else that is
-# dict-valued under ``self`` is a discriminated ``self.<node>.*`` sub-table and
-# rides ``AgentConfig.node_tables`` opaquely; the modelled keys must never be
-# captured there (load) nor clobbered from there (write).
-_MODELED_KEYS = IDENTITY_KEYS | frozenset({"env", "secret_path", "transform_settings"})
 
 
 @dataclass
@@ -40,7 +39,7 @@ class AgentConfig:
                      env.<VAR>`` returns it (``:489``).  ⚑ It is NOT needed to
                      preserve a user's ``agent set``: that verb writes through
                      ``write_nested_key`` and never builds an ``AgentConfig``, and
-                     every ``write_agent_config`` caller persists a FRESHLY
+                     every ``agent_file.save`` caller persists a FRESHLY
                      GENERATED config (first-use only), so no read-modify-write
                      round-trip exists for a value to fall out of.
       secret_path  — the SECRET category (spec §2a, 2026-07-06; RENAMED from the
@@ -53,13 +52,20 @@ class AgentConfig:
                      precedence. The value is a PATH only — at launch it is ro-bind-
                      mounted arm's-length + exported IN-BOX; kanibako NEVER reads the
                      secret VALUE (never in the snapshot/keystore/logs/argv).
-      node_tables  — the DISCRIMINATED ``self.<node>.*`` sub-tables (bindings —
-                     the shape ``agent_file_route`` still routes ``bindings.*`` to,
-                     pending the tracked bindings flatten). NOT modelled here (they
-                     ride ``_agent_partial`` into the launch cascade, not the launch
-                     invocation) but carried OPAQUELY through the load→write
-                     round-trip so a read-modify-write persist never drops a
-                     user's node binds.
+      node_tables  — the DISCRIMINATED per-node sub-tables (bindings — the shape
+                     ``agent_file._address`` still routes ``bindings.*`` to, pending
+                     the S2 flatten). NOT modelled here (they ride ``_agent_partial``
+                     into the launch cascade, not the launch invocation) and carried
+                     OPAQUELY through the load→write round trip.
+
+                     ⚑ THAT ROUND TRIP HAS NO LIVE PRODUCER, MEASURED: all four
+                     ``agent_file.save`` callers persist a FRESHLY GENERATED config
+                     (both ``start.py`` sites gate on ``agent_cfg_dirty``, which is
+                     first-use-only, and both ``cli.py`` sites build the config
+                     inline), so nothing today loads this file, edits it and writes
+                     it back. The carry protects a shape no caller currently
+                     exercises — the field's fate is S2's question, not a claim to
+                     restate as a live guarantee.
     """
 
     name: str = ""
@@ -209,58 +215,6 @@ def root_relative_source(src: str, root_ref: str) -> str:
     return f"{root_ref}/{src}"
 
 
-def agent_file_route(tail: str, node: str) -> tuple[tuple[str, ...], str]:
-    """Map a per-agent-file key TAIL to its ``(sections, leaf)`` inside the file.
-
-    *tail* is the part of a canonical per-node agent key AFTER the ``agent.<node>.``
-    prefix (e.g. ``model``, ``env.FOO``, ``secret_path.TOK``, ``bindings.ro.share``);
-    *node* is the agent id (the file's own discriminator).
-
-    SINGLE SOURCE OF TRUTH for the per-agent settings-file shape. The file's own
-    top-level table is ``self`` (its self-reference — the renamed old bare
-    ``agent`` values), and the category split is load-bearing:
-
-    * flat state (``model`` / ``endpoint`` / ``access`` / …) lives DIRECTLY under
-      ``self`` (``self.<key>``) — the shape :func:`load_agent_config` reads into
-      ``AgentConfig`` for the launch invocation;
-    * ``env.*`` and ``secret_path.*`` live DIRECTLY under ``self``
-      (``self.env.<VAR>`` / ``self.secret_path.<VAR>``) — ``self`` IS
-      ``agent.<node>``, so there is NO second ``<node>`` embedding.  ⚑ BOTH are
-      re-rooted into the launch CASCADE by ``settings_assemble._agent_partial``
-      (``_FLAT_AGENT_CATEGORIES``, whose read side this write side must match);
-      :func:`load_agent_config` models them for the ``agent`` verbs' own READS
-      (``info`` / ``show`` / ``get``), not to deliver them.  ⚑ A second ``<node>``
-      level under ``self`` is REFUSED for BOTH (rulings 49c + 50: ``self`` is an
-      ALIAS for ``agent.<node>``, so ``self.<node>.env`` reads
-      ``agent.<node>.<node>.env``), so this route is the only spelling — which is
-      what keeps write and read from drifting apart.
-    * ``bindings.{ro,rw}.*`` still live in the DISCRIMINATED ``self.<node>.*`` sub-table
-      — the shape ``_agent_partial`` reads into the launch cascade (it reads
-      ``self.<node>`` and re-roots to ``agent.<node>``). Flattening bindings the same
-      way as secret_path is a tracked follow-up (its cascade/repoint machinery needs a
-      separate, careful pass).
-
-    Every reader/writer of the file (``agent set``/get/reset and the
-    ``config_interface`` generic engine's per-node resolvers) routes through here, so
-    ``self`` and the flat/nested split are defined ONCE — a future rename touches
-    this function alone.
-
-    ⚑ The bind ``repoint_host_src`` WRITE used to be in that list and is not any
-    more: DS-BL1 = (a) retired the CLI write route for every bind-shaped category
-    and QA′ (2026-08-08) deleted the function itself, so the only remaining traffic
-    through the ``bindings.`` arm here is the READ (``config get`` via
-    ``config_dest._node_bind_target``).
-    """
-    if tail.startswith("secret_path."):
-        return ("self", "secret_path"), tail[len("secret_path."):]
-    if tail.startswith("bindings."):
-        segs = tail.split(".")  # bindings.<ro|rw>.<name>
-        return ("self", node, *segs[:-1]), segs[-1]
-    if tail.startswith("env."):
-        return ("self", "env"), tail[len("env."):]
-    return ("self",), tail
-
-
 def agent_config_path(
     data_path: Path, agent_id: str, paths_agents: str = "agents",
 ) -> Path:
@@ -272,97 +226,39 @@ def agent_config_path(
     return agent_settings_path(agents_dir(data_path, paths_agents), agent_id)
 
 
+# ---------------------------------------------------------------------------
+# THE S1b BRIDGE — two names kept ALIVE for exactly one caller
+# ---------------------------------------------------------------------------
+# ⚑⚑ THESE TWO ARE MOVED, NOT KEPT.  Their bodies live in
+# :mod:`kanibako.settings.agent_file` (``load`` / ``save``) and every caller in the tree has
+# been re-routed there EXCEPT ``commands/start.py``, which imports both at MODULE SCOPE
+# (``:29-30``).  ``start.py`` is SINGLE-WRITER and the P4b lane holds it for this run, so S1
+# may not touch it — and ``tests/conftest.py`` patches those two names in ``start``'s own
+# namespace, so the import must keep resolving for the launch fixtures to work at all.
+#
+# ⚑ DELETE BOTH IN S1b, with the ``start.py`` hunks — they are a lane-serialization artifact
+# with a named end, not a compatibility shim and not a second opinion about the file's shape:
+# each is a one-line forward to the boundary, so the two spellings cannot disagree.
+# ⚑ ``agent_file_route`` HAS NO BRIDGE: it had no ``start.py`` caller, so it is simply GONE
+# (its body is ``agent_file._address``), and it is the ONE of the three the FLAT
+# ``kanibako.agent_config`` shim stopped re-exporting (no published plugin imports it;
+# measured).  The shim STILL re-exports these two, and must: its contract is "the WHOLE public
+# surface of this module", derived from THIS module's public names by
+# ``test_plugin_import_compat.test_shim_covers_the_whole_public_surface``, and the bridge lives
+# here.  So the two defs below and the shim's two re-exports are ONE hunk and die TOGETHER in
+# S1b — deleting the defs alone ImportErrors the shim, deleting the re-exports alone reds that
+# surface test.
+
+
 def load_agent_config(path: Path) -> AgentConfig:
-    """Read an agent config file and return an AgentConfig.
+    """MOVED to :func:`kanibako.settings.agent_file.load` — see the S1b BRIDGE note above."""
+    from kanibako.settings.agent_file import load
 
-    Returns defaults if the file does not exist.
-    """
-    cfg = AgentConfig()
-    if not path.exists():
-        return cfg
-
-    data = load_doc(path)
-
-    agent_sec = data.get("self", {})
-    if not isinstance(agent_sec, dict):
-        agent_sec = {}
-    cfg.name = str(agent_sec.get("name", ""))
-    raw_args = agent_sec.get("run_args", [])
-    cfg.run_args = [str(a) for a in raw_args] if isinstance(raw_args, list) else []
-
-    # Flat state = the SCALAR agent-state knobs. Exclude identity keys AND any
-    # dict-valued entry: the discriminated ``<node>:`` sub-table (env, secret_path,
-    # node binds) is a dict and is NOT flat state — it rides ``_agent_partial``, not
-    # the ``_agent_state_partial`` state channel.
-    cfg.state = {
-        k: str(v)
-        for k, v in agent_sec.items()
-        if k not in IDENTITY_KEYS and not isinstance(v, dict)
-    }
-    # env: VAR -> value, read DIRECTLY from ``self.env`` (``self`` IS
-    # ``agent.<node>``).  Carried for the ``agent info`` / ``show`` / ``get`` READS;
-    # the launch reads the same table off the file through the cascade, never off
-    # this field (MBR-1 P3).
-    cfg.env = {k: str(v) for k, v in agent_sec.get("env", {}).items()}
-    # secret_path: VAR -> host PATH pointer, read DIRECTLY from ``self.secret_path``
-    # (spec §2a SECRET category — ``self`` IS ``agent.<node>``, no second embedding).
-    # Stored as a plain string path; the file's CONTENTS (the secret) are never
-    # persisted here nor read — they are ro-mounted + exported IN-BOX only at launch.
-    secret_sub = agent_sec.get("secret_path", {})
-    cfg.secret_path = {
-        k: str(v) for k, v in secret_sub.items()
-    } if isinstance(secret_sub, dict) else {}
-    cfg.transform_settings = dict(agent_sec.get("transform_settings", {}))
-    # Any OTHER dict-valued entry under ``self`` is a discriminated
-    # ``self.<node>.*`` sub-table (node binds).  Carry it OPAQUELY (see the
-    # class docstring): without this, every load→write round-trip (the launch
-    # persist at start.py, the persona import) would silently DROP it.
-    cfg.node_tables = {
-        k: dict(v)
-        for k, v in agent_sec.items()
-        if isinstance(v, dict) and k not in _MODELED_KEYS
-    }
-
-    return cfg
+    return load(path)
 
 
 def write_agent_config(path: Path, cfg: AgentConfig) -> None:
-    """Write an AgentConfig to a YAML file."""
-    agent_sec: dict = {
-        "name": cfg.name,
-        "run_args": list(cfg.run_args),
-    }
-    for k, v in cfg.state.items():
-        agent_sec[k] = v
-    # secret_path (spec §2a SECRET category) is stored DIRECTLY under ``self``
-    # (``self.secret_path.<VAR>`` — ``self`` IS ``agent.<node>``, no second ``<node>``
-    # embedding) — the SAME first-class category location ``config set
-    # agent.<node>.secret_path.<VAR>`` writes and ``_agent_partial`` reads into the
-    # launch cascade. Only materialized when non-empty (sparse).
-    if cfg.secret_path:
-        agent_sec["secret_path"] = dict(cfg.secret_path)
-    # Sparse write — an EMPTY category is not materialized (parity with
-    # secret_path above; [[settings-must-map-to-keystore-key]]). A phantom
-    # ``transform_settings: {}`` / ``env: {}`` would otherwise be counted as an
-    # override by ``agent reset --all``. transform_settings is NOT a reset-all
-    # exception — when set it is a normal override, wiped like any other.
-    if cfg.transform_settings:
-        agent_sec["transform_settings"] = dict(cfg.transform_settings)
-    if cfg.env:
-        agent_sec["env"] = dict(cfg.env)
-    # Discriminated ``self.<node>.*`` sub-tables (node binds) re-emitted
-    # opaquely — sparse (an empty table is dropped, parity with the categories
-    # above); see :func:`load_agent_config` and the class docstring.  A
-    # schema-owned key can never ride through here (guard both ends: load never
-    # captures one, and a hand-built config cannot clobber a modelled table).
-    for node_key, node_table in cfg.node_tables.items():
-        if node_table and node_key not in _MODELED_KEYS:
-            agent_sec[node_key] = dict(node_table)
+    """MOVED to :func:`kanibako.settings.agent_file.save` — see the S1b BRIDGE note above."""
+    from kanibako.settings.agent_file import save
 
-    data: dict = {
-        "self": agent_sec,
-    }
-    # The settings file lives inside the per-agent store dir
-    # (agents/<agent>/settings.yaml); ensure that dir exists.
-    path.parent.mkdir(parents=True, exist_ok=True)
-    dump_doc(path, data)
+    save(path, cfg)

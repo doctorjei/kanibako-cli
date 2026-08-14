@@ -260,10 +260,16 @@ def merge_session_start_hook(settings: dict) -> dict:
 # Agent LIVENESS MARKERS (per-PID): the WRITE side of what box_supervisor reads.
 # ---------------------------------------------------------------------------
 
-# ⚑ SINGLE SoT for both ends of the contract: ``commands/start.py`` imports THIS for the
-# supervisor's ``--agent-markers-dir`` (read) and ``KANIBAKO_AGENT_MARKERS_DIR`` (write).
-# ⚑ Must stay a LITERAL box-local path — both ends compare it verbatim, so a shell
-# expression here (``${XDG_RUNTIME_DIR:-/tmp}``) would make the two ends disagree.
+# ⚑ THE CONTRACT, and it has TWO ends that must name ONE dir:
+#   * WRITE (box side) — the marker hooks below expand
+#     ``${KANIBAKO_AGENT_MARKERS_DIR:-<this constant>}``, i.e. they follow the ENV.
+#   * READ (host side) — ``commands/start.py`` hands the supervisor
+#     ``--agent-markers-dir <the RESOLVED container_env value>``.
+# So the ENV is what actually decides the dir (since MBR-1 P4b it is an ordinary
+# ``system.env.KANIBAKO_AGENT_MARKERS_DIR`` slot a user may override), and THIS constant
+# is the shared FALLBACK both ends use when nothing overrides it — not the sole source.
+# ⚑ Must stay a LITERAL box-local path — it is compared verbatim across the two ends, so
+# a shell expression here (``${XDG_RUNTIME_DIR:-/tmp}``) would make them disagree.
 AGENT_MARKERS_DIR = "/tmp/kanibako/agents"
 
 # Broad OR over claude's SessionEnd sources, so the marker is cleaned up on ANY clean end.

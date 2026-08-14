@@ -144,7 +144,7 @@ def _load_std() -> StandardPaths:
 
 def run_list(args: argparse.Namespace) -> int:
     """List configured agents."""
-    from kanibako.settings.agent_config import load_agent_config
+    from kanibako.settings.agent_file import load
 
     try:
         std = _load_std()
@@ -178,7 +178,7 @@ def run_list(args: argparse.Namespace) -> int:
 
     print(f"{'NAME':<20} {'MODEL'}")
     for f in settings_files:
-        cfg = load_agent_config(f)
+        cfg = load(f)
         name = display_agent_ref(f.parent.name)
         model = cfg.state.get("model", "-")
         print(f"{name:<20} {model}")
@@ -187,7 +187,8 @@ def run_list(args: argparse.Namespace) -> int:
 
 def run_info(args: argparse.Namespace) -> int:
     """Show agent configuration details."""
-    from kanibako.settings.agent_config import agent_settings_path, load_agent_config
+    from kanibako.settings.agent_config import agent_settings_path
+    from kanibako.settings.agent_file import load
 
     try:
         std = _load_std()
@@ -206,7 +207,7 @@ def run_info(args: argparse.Namespace) -> int:
         )
         return 1
 
-    cfg = load_agent_config(path)
+    cfg = load(path)
     print(f"Name:         {cfg.name or agent_display}")
     if cfg.run_args:
         print(f"Default args: {' '.join(cfg.run_args)}")
@@ -288,15 +289,15 @@ def _run_agent_config(args: argparse.Namespace) -> int:
       env.X                   -> [env]
       shell, run_args, name   -> identity keys
     """
-    from kanibako.settings.agent_config import (
-        agent_settings_path,
-        load_agent_config,
+    from kanibako.settings.agent_config import agent_settings_path
+    from kanibako.settings.agent_file import (
+        clear_overrides,
+        load,
+        remove_leaf,
+        slot_for,
+        write_leaf,
     )
     from kanibako.settings.config_keys import access_value_error, is_access_key
-    from kanibako.settings.config_io import (
-        remove_nested_key,
-        write_nested_key,
-    )
 
     try:
         std = _load_std()
@@ -331,41 +332,13 @@ def _run_agent_config(args: argparse.Namespace) -> int:
                 except UserCancelled:
                     print("Aborted.")
                     return 0
-            # Sparse "remove all user overrides": drop the env table entirely and,
-            # from [agent], every key EXCEPT ``name`` (this removes run_args, all
-            # state keys, AND the discriminated ``<node>`` sub-table that holds
-            # secret_path / node binds), then prune the now-empty [agent] table.
-            # PRESERVES name — behavior-parity with the old de-sparse reset.
-            # Sparse write: no default keys re-materialized ([[settings-must-map-to-
-            # keystore-key]]).
-            #
-            # Report a COUNT of the overrides actually removed — the SAME wording the
-            # other scopes' ``reset_all`` (config_interface.py) prints. Each secret_path
-            # entry under ``agent.<node>.secret_path`` counts individually (parity with
-            # the old flat env_file count); each other removed [agent] key counts once.
-            from kanibako.settings.config_io import dump_doc, load_doc
-
-            data = load_doc(path)
-            count = 0
-            agent_sec = data.get("self")
-            if isinstance(agent_sec, dict):
-                for k in [k for k in agent_sec if k != "name"]:
-                    val = agent_sec[k]
-                    if k == agent_id and isinstance(val, dict):
-                        # The discriminated node sub-table: count each secret_path
-                        # pointer per-VAR (parity with the old flat env_file count),
-                        # plus one for any other node content (e.g. node binds).
-                        secret_sub = val.get("secret_path")
-                        if isinstance(secret_sub, dict):
-                            count += len(secret_sub)
-                        if any(kk != "secret_path" for kk in val):
-                            count += 1
-                    else:
-                        count += 1
-                    del agent_sec[k]
-                if not agent_sec:
-                    del data["self"]
-            dump_doc(path, data)
+            # ⚑ THROUGH THE BOUNDARY, not by hand on the raw document. This was the
+            # sixth site that spelled the per-agent file's shape — a read-modify-write
+            # on the root table, in a command module. It PRESERVES ``name`` and reports
+            # a COUNT of the overrides actually removed, in the SAME wording the other
+            # scopes' ``reset_all`` (config_interface.py) prints; both facts now live
+            # with the shape, in :func:`agent_file.clear_overrides`.
+            count = clear_overrides(path, agent_id)
             print(
                 f"Reset {count} override(s)." if count else "No overrides to reset."
             )
@@ -378,8 +351,7 @@ def _run_agent_config(args: argparse.Namespace) -> int:
             return 1
 
         key = reset_key.strip()
-        sections, leaf = _agent_key_route(key, agent_id)
-        changed = remove_nested_key(path, sections, leaf)
+        changed = remove_leaf(slot_for(std.agents, agent_id, key))
         if changed:
             # Honest cleared-form (F7), same contract as every other noun's
             # reset. This engine edits the sparse settings file directly, NOT
@@ -403,7 +375,7 @@ def _run_agent_config(args: argparse.Namespace) -> int:
     # write happened by the absence of any error.
     #
     # ⚑ Why REFUSE rather than write the null. This file's reader coerces every
-    # value it loads: ``load_agent_config`` builds ``cfg.state`` / ``cfg.env``
+    # value it loads: ``agent_file.load`` builds ``cfg.state`` / ``cfg.env``
     # with ``str(v)``, so a YAML ``null`` here comes back as the TEXT ``"None"``
     # — not a suppression, a four-character string. For ``access`` that string
     # is not a legal tier at all, so a flag whose whole promise is "suppress
@@ -436,7 +408,7 @@ def _run_agent_config(args: argparse.Namespace) -> int:
     # Parse key/value argument
     if key_value is None:
         # Show mode — read the config only where the READ paths need it.
-        cfg = load_agent_config(path)
+        cfg = load(path)
         return _show_agent_config(cfg, agent_display, effective=args.effective)
 
     if "=" in key_value:
@@ -458,17 +430,16 @@ def _run_agent_config(args: argparse.Namespace) -> int:
             if access_err is not None:
                 print(access_err, file=sys.stderr)
                 return 1
-        sections, leaf = _agent_key_route(key, agent_id)
         # run_args is stored as a LIST (space-split); everything else is the
         # raw string. Sparse write — only the touched key is materialized.
         stored: object = value.split() if key == "run_args" else value
-        write_nested_key(path, sections, leaf, stored)
+        write_leaf(slot_for(std.agents, agent_id, key), stored)
         print(f"Set {key}={value}")
         return 0
 
     # Get mode
     key = key_value.strip()
-    cfg = load_agent_config(path)
+    cfg = load(path)
     val = _get_agent_key(cfg, key)
     if val is not None:
         print(val)
@@ -495,16 +466,10 @@ def _get_agent_key(cfg: AgentConfig, key: str) -> str | None:
     return cfg.state.get(key)
 
 
-def _agent_key_route(key: str, node: str) -> tuple[tuple[str, ...], str]:
-    """Map an agent config *key* to its ``(sections, leaf)`` file path.
-
-    Thin delegation to the file-shape SoT :func:`agent_config.agent_file_route`
-    (mirrors the read routing in :func:`_get_agent_key`) — ``self`` and the
-    flat/nested category split live there, defined once.
-    """
-    from kanibako.settings.agent_config import agent_file_route
-
-    return agent_file_route(key, node)
+# ⚑ ``_agent_key_route`` IS GONE (S1) and its absence is deliberate. It was a thin
+# delegation to the file-shape route, which is now reached the way every other caller
+# reaches it: ``agent_file.slot_for(...)`` then read/write/remove through the slot. A
+# second name for one hop is a second place for the rule to be described.
 
 
 def _show_agent_config(
@@ -609,15 +574,14 @@ def run_reauth(args: argparse.Namespace) -> int:
     # endpoint drives the OAuth-suppress cred fork (block B) so a reauth on a
     # custom-endpoint box never syncs the Anthropic token into a box pointed at a
     # third-party endpoint.
-    from kanibako.settings.agent_config import agent_settings_path, load_agent_config
+    from kanibako.settings.agent_config import agent_settings_path
+    from kanibako.settings.agent_file import load
     from kanibako.commands.start import (
         _persona_values_for,
         _resolve_box_launch_decisions,
     )
     agent_cfg_path = agent_settings_path(std.agents, agent_name)
-    reauth_agent_cfg = (
-        load_agent_config(agent_cfg_path) if agent_cfg_path.exists() else None
-    )
+    reauth_agent_cfg = load(agent_cfg_path) if agent_cfg_path.exists() else None
     auth_src, active_endpoint, _active_model = _resolve_box_launch_decisions(
         std=std,
         proj=proj,

@@ -459,6 +459,16 @@ class TestTheEnvConsumerReadsTheLeaf:
         "box.env.KANI_PINNED": "box",
     }
 
+    #: The CORE stamps the launch DERIVES as ``system.env.<VAR>`` keys (MBR-1 P4b).
+    #: They are part of what the collapse decides, not a channel beside it — which
+    #: is why the whole-env case below subtracts them rather than excluding them.
+    _CORE_STAMPS = {
+        "KANIBAKO_NAME",
+        "KANIBAKO_DIRECTIVE_SEED",
+        "KANIBAKO_AGENT",
+        "KANIBAKO_AGENT_MARKERS_DIR",
+    }
+
     def _env(self, std, config, project_dir, floor=None):
         """The container env the way the launch builds it: leaf → consumer."""
         from kanibako.commands.start import _build_config_env, _launch_env_map
@@ -488,9 +498,21 @@ class TestTheEnvConsumerReadsTheLeaf:
         The table is a cascade level now, so the consumer takes ONE input and this
         pins that: what the collapse decided is the whole of the config env, with no
         second channel able to add to it or shadow it.
+
+        ⚑ THE CLAIM IS UNCHANGED AND THE SET IS NOT (MBR-1 P4b). The four core
+        ``KANIBAKO_*`` stamps used to be assigned onto the finished env AFTER this
+        consumer ran — the very "second channel" this case forbids — and they are
+        ``system.env.<VAR>`` keys on the same leaf now, so they belong INSIDE the
+        set rather than outside it. What the difference pins is that they are the
+        WHOLE of the addition: a fifth variable appearing from anywhere fails here.
+        ⚑ ``_WiringTarget`` declares no ``default_envs()`` of its own (it inherits
+        ``NoAgentTarget``'s empty table), so the agent scope contributes nothing to
+        this difference and the stamps are all of it.
         """
         env = self._env(std, config, project_dir)
-        assert set(env) == {"KANI_PINNED", "KANI_ONLY_WORKSET"}
+        declared = {"KANI_PINNED", "KANI_ONLY_WORKSET"}
+        assert declared <= set(env)
+        assert set(env) - declared == self._CORE_STAMPS
 
     def test_a_VAR_named_by_two_scopes_never_reaches_the_consumer(
         self, std, config, project_dir,
@@ -591,28 +613,23 @@ class TestTheAgentFileEnvRidesTheOneChannel:
     expand pass, so one written value behaved two ways depending on which FILE spelled
     it. Neither was a decision; both were an omitted arm.
 
-    ⚑ THE INPUT IS WRITTEN WHERE ``agent_file_route`` SAYS, NEVER AT A HAND-SPELLED
-    TABLE. That function IS the per-agent file's shape and it is what ``agent set
-    <node> env.FOO=bar`` routes its write through, so deriving the location from it
-    makes these pins of the USER'S VERB reaching the box — not of a YAML layout that
-    could quietly drift away from the verb that writes it.
+    ⚑ THE INPUT IS WRITTEN THROUGH ``agent_file``, NEVER AT A HAND-SPELLED TABLE. That
+    module IS the per-agent file's shape and it is what ``agent set <node> env.FOO=bar``
+    routes its write through, so deriving the location from it makes these pins of the
+    USER'S VERB reaching the box — not of a YAML layout that could quietly drift away
+    from the verb that writes it.
     """
 
     _VAR = "KANI_FROM_THE_AGENT_FILE"
 
     def _agent_file(self, std, *, value="from-the-agent-file", var=None):
-        """Write ``self.env.<VAR>`` exactly where the ``agent set`` verb writes it."""
-        from kanibako.settings.agent_config import (
-            agent_file_route,
-            agent_settings_path,
-        )
-        from kanibako.settings.config_io import write_nested_key
+        """Write the file's flat env leaf exactly where the ``agent set`` verb writes it."""
+        from kanibako.settings.agent_file import slot_for, write_leaf
 
-        path = agent_settings_path(std.agents, "claude")
-        path.parent.mkdir(parents=True, exist_ok=True)
-        sections, leaf = agent_file_route(f"env.{var or self._VAR}", "claude")
-        write_nested_key(path, sections, leaf, value)
-        return path
+        slot = slot_for(std.agents, "claude", f"env.{var or self._VAR}")
+        slot.path.parent.mkdir(parents=True, exist_ok=True)
+        write_leaf(slot, value)
+        return slot.path
 
     def _slot(self, std, config, project_dir, *, var=None, **kw):
         """The collapsed slot the launch would deliver, off a real whole-box resolve."""

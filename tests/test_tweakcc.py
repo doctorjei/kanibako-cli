@@ -167,7 +167,7 @@ class TestAgentConfigTweakcc:
     """
 
     def test_load_with_tweakcc(self, tmp_path):
-        from kanibako.settings.agent_config import load_agent_config
+        from kanibako.settings.agent_file import load as load_agent_config
 
         yaml_content = """\
 self:
@@ -188,7 +188,7 @@ self:
         }
 
     def test_load_without_tweakcc(self, tmp_path):
-        from kanibako.settings.agent_config import load_agent_config
+        from kanibako.settings.agent_file import load as load_agent_config
 
         yaml_content = """\
 self:
@@ -200,7 +200,11 @@ self:
         assert cfg.transform_settings == {}
 
     def test_write_with_tweakcc(self, tmp_path):
-        from kanibako.settings.agent_config import AgentConfig, load_agent_config, write_agent_config
+        from kanibako.settings.agent_config import AgentConfig
+        from kanibako.settings.agent_file import (
+            load as load_agent_config,
+            save as write_agent_config,
+        )
 
         cfg = AgentConfig(
             name="Test", transform_settings={"enabled": True, "config": "/path"},
@@ -214,7 +218,11 @@ self:
         assert loaded.transform_settings["config"] == "/path"
 
     def test_write_without_tweakcc(self, tmp_path):
-        from kanibako.settings.agent_config import AgentConfig, load_agent_config, write_agent_config
+        from kanibako.settings.agent_config import AgentConfig
+        from kanibako.settings.agent_file import (
+            load as load_agent_config,
+            save as write_agent_config,
+        )
 
         cfg = AgentConfig(name="Test")
         path = tmp_path / "agent.yaml"
@@ -231,8 +239,8 @@ class TestAgentConfigTransformKey:
     ``AgentConfig`` field.
 
     ⚑ It rides ``AgentConfig.state`` exactly like ``model`` / ``endpoint`` /
-    ``access`` / ``bootstrap``: ``load_agent_config`` captures every non-identity,
-    non-dict ``self.*`` entry as state and ``write_agent_config`` re-emits it.  A
+    ``access`` / ``bootstrap``: ``agent_file.load`` captures every non-identity,
+    non-dict root entry as state and ``agent_file.save`` re-emits it.  A
     dedicated field would be a SECOND copy of a value ``state`` already holds.
     That is also why it takes NO sparse-write exception: only a dict-valued
     category can materialize as a phantom ``{}`` override for ``agent reset --all``,
@@ -240,7 +248,7 @@ class TestAgentConfigTransformKey:
     """
 
     def test_load_captures_transform_as_state(self, tmp_path):
-        from kanibako.settings.agent_config import load_agent_config
+        from kanibako.settings.agent_file import load as load_agent_config
 
         path = tmp_path / "agent.yaml"
         path.write_text('self:\n  name: "Claude Code"\n  transform: tweakcc\n')
@@ -248,8 +256,10 @@ class TestAgentConfigTransformKey:
         assert cfg.state["transform"] == "tweakcc"
 
     def test_round_trip_through_state(self, tmp_path):
-        from kanibako.settings.agent_config import (
-            AgentConfig, load_agent_config, write_agent_config,
+        from kanibako.settings.agent_config import AgentConfig
+        from kanibako.settings.agent_file import (
+            load as load_agent_config,
+            save as write_agent_config,
         )
 
         path = tmp_path / "agent.yaml"
@@ -257,8 +267,10 @@ class TestAgentConfigTransformKey:
         assert load_agent_config(path).state["transform"] == "tweakcc"
 
     def test_unset_transform_is_absent_not_empty(self, tmp_path):
-        from kanibako.settings.agent_config import (
-            AgentConfig, load_agent_config, write_agent_config,
+        from kanibako.settings.agent_config import AgentConfig
+        from kanibako.settings.agent_file import (
+            load as load_agent_config,
+            save as write_agent_config,
         )
 
         path = tmp_path / "agent.yaml"
@@ -268,7 +280,8 @@ class TestAgentConfigTransformKey:
 
     def test_not_a_modelled_field(self):
         """A modelled ``AgentConfig.transform`` would duplicate the ``state`` entry."""
-        from kanibako.settings.agent_config import AgentConfig, _MODELED_KEYS
+        from kanibako.settings.agent_config import AgentConfig
+        from kanibako.settings.agent_file import _MODELED_KEYS
 
         assert not hasattr(AgentConfig(), "transform")
         assert "transform" not in _MODELED_KEYS

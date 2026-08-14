@@ -301,12 +301,9 @@ def _ensure_initialized() -> None:
     # Create agents directory and generate default per-agent settings files.
     # Each agent's settings live INSIDE its store dir as
     # agents/<agent>/settings.yaml (the per-agent store dir is created on
-    # demand by write_agent_config).
-    from kanibako.settings.agent_config import (
-        AgentConfig,
-        agent_settings_path,
-        write_agent_config,
-    )
+    # demand by ``agent_file.save``).
+    from kanibako.settings.agent_config import AgentConfig, agent_settings_path
+    from kanibako.settings.agent_file import save as save_agent_file
     from kanibako.targets import discover_targets
 
     agents_path = sys_paths["config.agents"]
@@ -314,13 +311,13 @@ def _ensure_initialized() -> None:
 
     general_toml = agent_settings_path(agents_path, "general")
     if not general_toml.exists():
-        write_agent_config(general_toml, AgentConfig(name="Shell"))
+        save_agent_file(general_toml, AgentConfig(name="Shell"))
 
     target_names = list(discover_targets())
     for target_name, cls in discover_targets().items():
         target_toml = agent_settings_path(agents_path, target_name)
         if not target_toml.exists():
-            write_agent_config(target_toml, cls().generate_agent_config())
+            save_agent_file(target_toml, cls().generate_agent_config())
 
     # Packaged content → the host stores.  The content ships as static package data
     # and is installed here into its ENUMERATED destinations (@system.template's box

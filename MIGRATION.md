@@ -1987,6 +1987,59 @@ that table is on its own track.
 `kanibako box show --effective` resolves the same settings a launch does, so it will show you the
 resulting values (and report the refusal, if any) without starting anything.
 
+### 2.36 The four `KANIBAKO_*` variables kanibako sets for itself are settings now
+
+**What changed.** Every box has always come up with four variables kanibako sets from the launch
+itself:
+
+| variable | what it carries |
+|---|---|
+| `KANIBAKO_NAME` | the box's name — what the channel system addresses your mailbox by |
+| `KANIBAKO_AGENT` | the resolved agent node this box is running |
+| `KANIBAKO_DIRECTIVE_SEED` | the in-box path of the kickoff file your guidance chain starts at |
+| `KANIBAKO_AGENT_MARKERS_DIR` | the in-box directory agent sessions write their liveness markers to |
+
+They were written onto the container's environment *after* your settings had been resolved, so they
+sat above every settings file, above a persona, and above `-e`. **They are ordinary
+`system.env.<VAR>` keys now** — kanibako derives them at launch and enters them at the system scope's
+floor, and they reach the box through the same one channel every other variable does. `kanibako box
+show --effective` lists them among the box's environment variables, as `env KANIBAKO_NAME = …` —
+the bare variable name, not a dotted key, because those rows report the merged environment rather
+than any one key.
+
+**What you must do — one case only: if you set one of these four at another scope.** They are
+ordinary keys, so they take part in §2.33's one-owner rule. A configuration like
+
+```yaml
+# a box settings file
+box:
+  env:
+    KANIBAKO_NAME: something-else
+```
+
+used to launch, with kanibako's own value written over yours a moment later and nothing said. **It
+now refuses the launch and names both keys.** The cure is §2.33's: give the variable one owner —
+delete the `box.env.*` key and write `system.env.KANIBAKO_NAME` instead, in whichever settings file
+you like.
+
+**Two things you could not do before, and now can.**
+
+- **Override one by writing the same key.** `system.env.KANIBAKO_AGENT_MARKERS_DIR` in your system
+  settings file wins over kanibako's derived value, because it is the same key in a nearer file —
+  the ordinary cascade, and nothing refuses.
+- **`-e` reaches them.** `kanibako start -e KANIBAKO_NAME=scratch` now wins for that launch. It used
+  to lose in silence: the variable was set on the container after the `-e` values were merged in, so
+  the flag appeared to be accepted and had no effect.
+
+⚑ **They are overridable because the settings system has one rule and these variables are not an
+exception to it — not because overriding them is usually a good idea.** Three of the four are read
+back by kanibako itself: `KANIBAKO_AGENT` is what `kanibako stop`, `kanibako code` and the
+credential watcher inspect to learn which agent a running box carries, and
+`KANIBAKO_AGENT_MARKERS_DIR` must name the same directory the in-box supervisor is watching.
+`KANIBAKO_DIRECTIVE_SEED` must name the file kanibako binds your kickoff to, or the flatten step at
+agent start finds nothing. Change one and you are telling kanibako something about the box that has
+to be true.
+
 ---
 
 ## 3. For plugin authors

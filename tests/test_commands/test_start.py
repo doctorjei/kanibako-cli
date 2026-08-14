@@ -9088,3 +9088,80 @@ class TestRestartFlag(_RunningBoxDriver):
         assert rc == 1
         assert "could not stop" in err
         assert "kanibako stop testproject" in err
+
+
+# ---------------------------------------------------------------------------
+# LIVENESS-MARKER DIR — both ends of the contract must name the SAME directory
+# ---------------------------------------------------------------------------
+
+class TestSupervisorMarkersDirFollowsTheResolvedEnv:
+    """The supervisor's ``--agent-markers-dir`` must carry the RESOLVED env value.
+
+    The box-side hooks WRITE their per-PID marker into
+    ``${KANIBAKO_AGENT_MARKERS_DIR:-<constant>}`` (``vscode.vscode_config``), and the
+    supervisor READS whatever dir it was handed on argv.  Since MBR-1 P4b the stamp is
+    an ordinary ``system.env.KANIBAKO_AGENT_MARKERS_DIR`` slot, so a user CAN override
+    it (a ``system.env`` key, or per-run ``-e``) — and if argv kept quoting the
+    compile-time constant the hooks would write where the supervisor never looks:
+    panel-newcomer detection and liveness self-heal would silently die with no error.
+    So the pin is on the VALUE both ends receive, not on the wiring that computes it.
+    """
+
+    def _kwargs(self, **over):
+        base = dict(
+            project_dir=None,
+            entrypoint=None,
+            image_override=None,
+            new_session=False,
+            safe_mode=False,
+            resume_mode=False,
+            extra_args=[],
+            persistent=True,   # persistent + agent mode => supervised PID-1
+        )
+        base.update(over)
+        return base
+
+    @staticmethod
+    def _supervisor_argv(m) -> list[str]:
+        """Split the supervisor invocation out of the import-gated ``sh -c`` PID-1."""
+        import shlex
+
+        kw = m.runtime.run.call_args.kwargs
+        assert kw["entrypoint"] == "sh"
+        script = kw["cli_args"][1]
+        sup = script.split("&& exec ", 1)[1].split(" || exec ", 1)[0]
+        return shlex.split(sup)
+
+    def test_overridden_markers_dir_reaches_the_supervisor_argv(self, start_mocks):
+        """An overridden ``KANIBAKO_AGENT_MARKERS_DIR`` is what the supervisor is told.
+
+        Driven through the per-run ``-e`` route (the highest-priority feeder of
+        ``container_env``), so the assertion is on the delivered VALUE.  MUTATION: put
+        the compile-time constant back on the argv and this reds — the two ends then
+        name different dirs.
+        """
+        override = "/run/kanibako-custom/agents"
+        with start_mocks() as m:
+            rc = _run_container(
+                **self._kwargs(cli_env=[f"KANIBAKO_AGENT_MARKERS_DIR={override}"]),
+            )
+        assert rc == 0
+        argv = self._supervisor_argv(m)
+        assert argv[argv.index("--agent-markers-dir") + 1] == override
+        # BOTH ENDS AGREE: the box (which the hooks read) got the same dir.
+        assert m.runtime.run.call_args.kwargs["env"][
+            "KANIBAKO_AGENT_MARKERS_DIR"] == override
+
+    def test_unset_markers_dir_falls_back_to_the_constant(self, start_mocks):
+        """No override → argv carries the compile-time default, unchanged.
+
+        The complement that keeps the fix honest: reading the resolved env must not
+        cost the default when nothing overrides it.
+        """
+        from kanibako.commands.start import AGENT_MARKERS_DIR
+
+        with start_mocks() as m:
+            rc = _run_container(**self._kwargs())
+        assert rc == 0
+        argv = self._supervisor_argv(m)
+        assert argv[argv.index("--agent-markers-dir") + 1] == AGENT_MARKERS_DIR

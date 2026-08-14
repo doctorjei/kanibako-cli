@@ -37,7 +37,23 @@ class TestCommsOnStart:
     def test_kanibako_name_env_var(
         self, config_file, tmp_home, credentials_dir,
     ):
-        """KANIBAKO_NAME is set from proj.name."""
+        """KANIBAKO_NAME is derived from proj.name — asked of the CODE that derives it.
+
+        🛑 REBUILT (MBR-1 P4b). This case used to re-implement the injection in its
+        own body — ``container_env["KANIBAKO_NAME"] = proj.name`` under a comment
+        saying "simulate env var injection from start.py" — and then assert its own
+        two lines. It pinned nothing: it would have stayed green through the whole of
+        P4b, while the statement it appears to make ("the box gets its name") became
+        one nothing in the product had to honour.
+
+        It calls ``_core_env_default_categories`` now, the one function that spells
+        the variable, and reads the KEY the launch floor carries it under. The full
+        arrival chain — floor → collapse → the leaf a box is launched from — is
+        ``tests/test_targets/test_agent_envs.py::TestTheCoreStampsRideTheSameWire``;
+        what belongs HERE is the channel system's own claim, that the name a peer
+        addresses this box by is the project's name.
+        """
+        from kanibako.commands.start import _core_env_default_categories
         from kanibako.settings.config import load_config
         from kanibako.settings.paths import load_std_paths, resolve_project
 
@@ -46,12 +62,11 @@ class TestCommsOnStart:
         project_dir = str(tmp_home / "project")
         proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
 
-        # Simulate env var injection from start.py.
-        container_env: dict[str, str] = {}
-        if proj.name:
-            container_env["KANIBAKO_NAME"] = proj.name
-
-        assert container_env["KANIBAKO_NAME"] == "project"
+        table = _core_env_default_categories(
+            proj=proj, target=None, agent_id="claude",
+        )
+        assert table["system.env.KANIBAKO_NAME"] == "project"
+        assert proj.name == "project"
 
 
 class TestLogRotation:

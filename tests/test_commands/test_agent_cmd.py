@@ -12,8 +12,8 @@ from kanibako.settings.agent_config import (
     AgentConfig,
     agent_settings_path,
     agents_dir,
-    write_agent_config,
 )
+from kanibako.settings.agent_file import save as write_agent_config
 from kanibako.settings.settings_launch import AuthSource
 
 # Auth 3-tier SHARING fixtures replacing the old ``effective_group_auth`` bool
@@ -204,7 +204,8 @@ class TestRunConfig:
 
     def test_config_set_state_key(self, agent_env, capsys):
         from kanibako.commands.agent_cmd import run_set
-        from kanibako.settings.agent_config import agent_config_path, load_agent_config
+        from kanibako.settings.agent_config import agent_config_path
+        from kanibako.settings.agent_file import load as load_agent_config
 
         args = argparse.Namespace(agent_id="claude", key_value="model=sonnet")
         rc = run_set(args)
@@ -276,7 +277,8 @@ class TestRunConfig:
         ``model`` value still writes fine (only ``access`` is validated).
         """
         from kanibako.commands.agent_cmd import run_set
-        from kanibako.settings.agent_config import agent_config_path, load_agent_config
+        from kanibako.settings.agent_config import agent_config_path
+        from kanibako.settings.agent_file import load as load_agent_config
 
         rc = run_set(argparse.Namespace(
             agent_id="claude", key_value="model=whatever",
@@ -288,7 +290,8 @@ class TestRunConfig:
 
     def test_config_set_env_key(self, agent_env, capsys):
         from kanibako.commands.agent_cmd import run_set
-        from kanibako.settings.agent_config import agent_config_path, load_agent_config
+        from kanibako.settings.agent_config import agent_config_path
+        from kanibako.settings.agent_file import load as load_agent_config
 
         args = argparse.Namespace(agent_id="claude", key_value="env.PAGER=less")
         rc = run_set(args)
@@ -303,7 +306,8 @@ class TestRunConfig:
         # secret_path.<VAR>=<path> stores the POINTER (not a secret) DISCRIMINATED
         # under agent.<node>.secret_path (spec §2a; RENAMED from rc-only env_file).
         from kanibako.commands.agent_cmd import run_set
-        from kanibako.settings.agent_config import agent_config_path, load_agent_config
+        from kanibako.settings.agent_config import agent_config_path
+        from kanibako.settings.agent_file import load as load_agent_config
 
         args = argparse.Namespace(
             agent_id="claude",
@@ -332,7 +336,8 @@ class TestRunConfig:
 
     def test_config_reset_secret_path_key(self, agent_env, capsys):
         from kanibako.commands.agent_cmd import run_set, run_reset
-        from kanibako.settings.agent_config import agent_config_path, load_agent_config
+        from kanibako.settings.agent_config import agent_config_path
+        from kanibako.settings.agent_file import load as load_agent_config
 
         run_set(argparse.Namespace(
             agent_id="claude", key_value="secret_path.TOKEN=/secure/token",
@@ -354,7 +359,8 @@ class TestRunConfig:
         # an AgentConfig identity field, so a ``shell=`` set now lands in generic
         # state (not as a dedicated identity knob).
         from kanibako.commands.agent_cmd import run_set
-        from kanibako.settings.agent_config import agent_config_path, load_agent_config
+        from kanibako.settings.agent_config import agent_config_path
+        from kanibako.settings.agent_file import load as load_agent_config
 
         args = argparse.Namespace(agent_id="claude", key_value="shell=bash")
         rc = run_set(args)
@@ -367,7 +373,8 @@ class TestRunConfig:
 
     def test_config_reset_key(self, agent_env, capsys):
         from kanibako.commands.agent_cmd import run_reset
-        from kanibako.settings.agent_config import agent_config_path, load_agent_config
+        from kanibako.settings.agent_config import agent_config_path
+        from kanibako.settings.agent_file import load as load_agent_config
 
         args = argparse.Namespace(
             agent_id="claude", key="model", all_keys=False, force=False,
@@ -387,7 +394,8 @@ class TestRunConfig:
 
     def test_config_reset_env_key(self, agent_env, capsys):
         from kanibako.commands.agent_cmd import run_reset
-        from kanibako.settings.agent_config import agent_config_path, load_agent_config
+        from kanibako.settings.agent_config import agent_config_path
+        from kanibako.settings.agent_file import load as load_agent_config
 
         args = argparse.Namespace(
             agent_id="claude", key="env.EDITOR", all_keys=False, force=False,
@@ -415,7 +423,8 @@ class TestRunConfig:
 
     def test_config_reset_all_forced(self, agent_env, capsys):
         from kanibako.commands.agent_cmd import run_reset
-        from kanibako.settings.agent_config import agent_config_path, load_agent_config
+        from kanibako.settings.agent_config import agent_config_path
+        from kanibako.settings.agent_file import load as load_agent_config
 
         args = argparse.Namespace(
             agent_id="claude", key=None, all_keys=True, force=True,
@@ -461,7 +470,7 @@ class TestRunConfig:
 def _write_sparse(data_path: Path, agent: str, doc: dict) -> Path:
     """Write *doc* verbatim as ``agents/<agent>/settings.yaml`` and return path.
 
-    Bypasses the whole-object ``write_agent_config`` so the starting file holds
+    Bypasses the whole-object ``agent_file.save`` so the starting file holds
     ONLY the keys under test (a genuinely sparse file, as B1 leaves them).
     """
     from kanibako.settings.agent_config import agent_config_path
@@ -477,7 +486,7 @@ class TestSparseWrites:
     def test_set_is_sparse_no_default_keys(self, agent_env):
         """Core sparsity guard: a single ``set`` on a sparse file adds exactly
         ONE key and re-materializes NO defaults (name/run_args/env/secret_path/
-        tweakcc). Mutation check: reverting to ``write_agent_config`` makes this
+        tweakcc). Mutation check: reverting to ``agent_file.save`` makes this
         fail — it always emits those default tables.
         """
         from kanibako.commands.agent_cmd import run_set
@@ -1092,7 +1101,7 @@ class TestAgentSetNull:
     current model and exited 0 — an accepted, silently-ignored write.
 
     It is REFUSED rather than wired, because this file's reader coerces what it
-    loads (``load_agent_config`` builds ``cfg.state``/``cfg.env`` with
+    loads (``agent_file.load`` builds ``cfg.state``/``cfg.env`` with
     ``str(v)``): a YAML null here would read back as the TEXT ``"None"``, and
     for ``access`` that is not a legal tier at all — a suppression flag that
     would leave the box refusing to launch (and, before R-41 made the resolver
