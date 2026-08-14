@@ -361,7 +361,7 @@ def start_mocks():
                 # (Connect tests that exercise the heuristic patch it locally.)
                 _resolve_bootstrap_program=DEFAULT,
             ) as m_launch_mount_stubs,
-            patch("kanibako.commands.start.load_agent_config") as m_load_agent_cfg,
+            patch("kanibako.settings.agent_file.load") as m_load_agent_cfg,
             patch("kanibako.commands.start.fcntl") as m_fcntl,
             patch("builtins.open", MagicMock()) as m_open,
             patch("kanibako.commands.start.load_registry", return_value={}) as m_load_registry,
@@ -596,6 +596,9 @@ def start_mocks():
                     _core_env_default_categories,
                     _install_assembly_collapse,
                 )
+                from kanibako.settings.agent_file import (
+                    state_level as agent_file_state_level,
+                )
                 from kanibako.settings.agent_representation import agent_default_partial
                 from kanibako.settings.settings_categories import (
                     gate_credential_delivery,
@@ -638,7 +641,11 @@ def start_mocks():
                     if _descriptors:
                         _floor = {d.key: d.default for d in _descriptors}
                 if _agent_cfg is not None:
-                    _state = dict(_agent_cfg.state)
+                    # The DISCRIMINATED level the real producers build (C-2): the
+                    # node is the ACTIVE one, exactly as ``start.py`` folds it.
+                    _state = agent_file_state_level(
+                        _agent_cfg.state, node=_node,
+                    )
                 # ⚑⚑ THE ONE CORE FACT THIS STUB CARRIES — the box HOME SOURCE, and
                 # it is a PRECONDITION of the collapse, not a convenience.  Home is
                 # pid 0 and does NOT route through ``bindings.rw`` (spec ``:1015``):

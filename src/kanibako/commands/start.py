@@ -23,11 +23,10 @@ if TYPE_CHECKING:
     from kanibako.targets.base import PersonaSpec
     from kanibako.vscode.vscode_config import CodexModelProvider
 
+from kanibako.settings import agent_file
 from kanibako.settings.agent_config import (
     agent_category_root,
     agent_settings_path,
-    load_agent_config,
-    write_agent_config,
 )
 from kanibako.box_supervisor import CONTINUE_MARKER, KANIBAKO_PKG_MOUNT_ROOT
 from kanibako.commands.diagnose import probe_missing_executables
@@ -715,7 +714,7 @@ def _effective_agent_scalar(
     *,
     key: str,
     floor: str,
-    agent_state: "dict[str, str] | None" = None,
+    agent_state: "agent_file.AgentFileLevel | None" = None,
     agent_path: "Path | None" = None,
 ) -> "str | None":
     """Resolve ONE agent-scope behavior scalar off a focused launch snapshot.
@@ -731,10 +730,12 @@ def _effective_agent_scalar(
 
     *agent_id* is the launch-resolved active node-name (``"general"`` for a
     no-agent / shell box, so the ``agent.default`` backstop still applies).
-    *agent_state* is the per-agent file's flat behavior state when the caller
-    already holds it; *agent_path* loads it from ``agents/<node>/settings.yaml``
-    instead.  Both ``None`` = no per-agent tier (the scope-file cascade still
-    resolves).  Returns ``None`` when no scope and no floor sets *key*.
+    *agent_state* is the per-agent file's flat behavior state as an
+    ``AgentFileLevel`` — the table WITH the node it merges under, attached at the
+    boundary (C-2) — when the caller already holds it; *agent_path* loads it from
+    ``agents/<node>/settings.yaml`` instead.  Both ``None`` = no per-agent tier (the
+    scope-file cascade still resolves).  Returns ``None`` when no scope and no floor
+    sets *key*.
     """
     from kanibako.settings import settings_launch
     from kanibako.settings.paths import host_xdg_map
@@ -750,7 +751,9 @@ def _effective_agent_scalar(
     # ``effective_behavior`` reads for a per-agent override.  Absent file → empty.
     if agent_state is None and agent_path is not None and Path(agent_path).exists():
         try:
-            agent_state = dict(load_agent_config(agent_path).state)
+            agent_state = agent_file.state_level(
+                agent_file.load(agent_path).state, node=agent_id,
+            )
         except Exception:
             agent_state = None
     _scalar_box_path, _scalar_ws_path = box_workset_settings_paths(proj)
@@ -844,7 +847,10 @@ def _effective_transform(
     return _effective_agent_scalar(
         proj, system_settings_path, agent_id,
         key="transform", floor=floor,
-        agent_state=dict(agent_cfg.state) if agent_cfg is not None else None,
+        agent_state=(
+            agent_file.state_level(agent_cfg.state, node=agent_id)
+            if agent_cfg is not None else None
+        ),
     )
 
 
@@ -2780,7 +2786,7 @@ def _run_container(
         # (the WRITE is deferred until after the pre-flight passes).
         agent_cfg = target.generate_agent_config()
     else:
-        agent_cfg = load_agent_config(agent_cfg_path)
+        agent_cfg = agent_file.load(agent_cfg_path)
 
     # PERSONA-GRATA STORE, read ONCE for this launch (the persona analog of
     # credsync — but a READ, not a sync).  For a PERSONA agent whose store entry
@@ -2857,7 +2863,7 @@ def _run_container(
     #     and the launch decisions above already answered that.
     #   * deferred box materialisation and ``_check_box_components`` — a RUNNING
     #     box is materialised by definition and its dirs are live bind mounts.
-    #   * the persona ARTIFACT writes (``write_agent_config`` /
+    #   * the persona ARTIFACT writes (``agent_file.save`` /
     #     ``ensure_persona_share_symlinks``).  ⚑ A reattach must NOT write the
     #     agent config: it delivers nothing to the live box, and rewriting under
     #     a running agent is precisely the hazard ``reattach_config_notice``
@@ -3100,7 +3106,7 @@ def _run_container(
     # persona value back, so a persona launch leaves an existing
     # ``agents/<node>/settings.yaml`` byte-identical.
     if target and agent_cfg_dirty:
-        write_agent_config(agent_cfg_path, agent_cfg)
+        agent_file.save(agent_cfg_path, agent_cfg)
     ensure_persona_share_symlinks(std, agent_id, target)
 
     # Deterministic container name for stop/cleanup
@@ -5704,7 +5710,6 @@ def _effective_behavior_for_display(
         return dict(agent_cfg.state)
 
     behavior_floor = {d.key: d.default for d in descriptors}
-    agent_state = dict(agent_cfg.state)
 
     # The behavior tables are keyed by the ACTIVE node-name (fix 4a): for a persona
     # (``navigator℘claude``) the per-node ``agents/<node>/settings.yaml`` state and
@@ -5713,6 +5718,11 @@ def _effective_behavior_for_display(
     # for a persona. Bare: node==harness==target.name → byte-identical. Falls back to
     # ``target.name`` when a caller omits the node (legacy / test convenience).
     active = node_name if node_name is not None else target.name
+    # ⚑ BUILT HERE, NOT ABOVE: the level's node is the ACTIVE node resolved on the
+    # line above — the same node the ``agent.<node>.*`` cascade slot keys on, and
+    # the reason this read exists (fix 4a).  Building it beside ``behavior_floor``
+    # would pin a node that has not been decided yet.
+    agent_state = agent_file.state_level(agent_cfg.state, node=active)
 
     # DISPLAY == LAUNCH: the same persona-store tier the launch resolves against
     # (:func:`_persona_values_for`), read here for the same node. Without it this
@@ -5979,7 +5989,7 @@ def _resolve_box_launch_decisions(
         # behavior; gated on behavior_floor so a no-descriptor / mock target never
         # dereferences agent_cfg.state.
         agent_state=(
-            dict(agent_cfg.state)
+            agent_file.state_level(agent_cfg.state, node=agent_name)
             if behavior_floor and agent_cfg is not None
             else None
         ),
@@ -6666,7 +6676,7 @@ def _resolve_launch_snapshot(
         if descriptors:
             behavior_floor = {d.key: d.default for d in descriptors}
         if agent_cfg is not None:
-            agent_state = dict(agent_cfg.state)
+            agent_state = agent_file.state_level(agent_cfg.state, node=agent_name)
 
     # ``pref.*`` REQUESTS (spec §2h) — collected ONCE here, at the single launch
     # aggregation point, and threaded into the snapshot build. This function runs
@@ -7666,7 +7676,7 @@ def persona_create_verdict(
         return None  # bare — no persona gate.
     agent_cfg_path = agent_settings_path(std.agents, agent_id)
     probe_cfg = (
-        load_agent_config(agent_cfg_path)
+        agent_file.load(agent_cfg_path)
         if agent_cfg_path.exists()
         else target.generate_agent_config()
     )
@@ -7750,7 +7760,7 @@ def seed_new_box(std, config, proj, *, explicit_agent: str | None = None) -> Non
     agent_cfg_exists = bool(target) and agent_cfg_path.exists()
     if target is not None:
         seed_agent_cfg = (
-            load_agent_config(agent_cfg_path)
+            agent_file.load(agent_cfg_path)
             if agent_cfg_exists
             else target.generate_agent_config()
         )
@@ -7807,7 +7817,7 @@ def seed_new_box(std, config, proj, *, explicit_agent: str | None = None) -> Non
     # generated config, then the common-dir shim) BEFORE the seed resolve reads them.
     if target is not None and agent_cfg_dirty:
         assert seed_agent_cfg is not None  # target set ⇒ config built above.
-        write_agent_config(agent_cfg_path, seed_agent_cfg)
+        agent_file.save(agent_cfg_path, seed_agent_cfg)
     ensure_persona_share_symlinks(std, agent_id, target)
 
     _seed_box_home(

@@ -4887,12 +4887,12 @@ class TestSeedNewBoxCreateEntry:
             patch("kanibako.settings.config.resolve_agent", return_value="claude"),
             patch("kanibako.commands.start.resolve_target") as m_rt,
             patch("kanibako.commands.start.agent_settings_path"),
-            patch("kanibako.commands.start.write_agent_config"),
+            patch("kanibako.settings.agent_file.save"),
             patch(
                 "kanibako.commands.start._resolve_box_launch_decisions",
                 return_value=(_SHARED_AUTH, None, None),
             ),
-            patch("kanibako.commands.start.load_agent_config"),
+            patch("kanibako.settings.agent_file.load"),
             patch("kanibako.commands.start._seed_box_home") as m_seed,
             patch("kanibako.commands.start._sync_box_at_create"),
         ):
@@ -4929,12 +4929,12 @@ class TestSeedNewBoxCreateEntry:
             patch("kanibako.settings.config.resolve_agent", return_value="claude"),
             patch("kanibako.commands.start.resolve_target") as m_rt,
             patch("kanibako.commands.start.agent_settings_path"),
-            patch("kanibako.commands.start.write_agent_config"),
+            patch("kanibako.settings.agent_file.save"),
             patch(
                 "kanibako.commands.start._resolve_box_launch_decisions",
                 return_value=(_SHARED_AUTH, None, None),
             ),
-            patch("kanibako.commands.start.load_agent_config"),
+            patch("kanibako.settings.agent_file.load"),
             patch(
                 "kanibako.commands.start._seed_box_home",
                 side_effect=lambda **kw: order.append("seed"),
@@ -5978,7 +5978,7 @@ class TestPersonaLoadOrErrorIntegration:
                     return_value=(_SHARED_AUTH, None, None),  # endpoint unresolved
                 ),
                 patch(
-                    "kanibako.commands.start.write_agent_config"
+                    "kanibako.settings.agent_file.save"
                 ) as m_write,
                 patch(
                     "kanibako.commands.start.ensure_persona_share_symlinks"
@@ -6031,7 +6031,7 @@ class TestPersonaLoadOrErrorIntegration:
                 # Nothing on this path writes the agent file back; patch the write
                 # so the real dump against the MagicMock agent path cannot leak a
                 # CWD entry if the first-use generate branch is taken.
-                patch("kanibako.commands.start.write_agent_config"),
+                patch("kanibako.settings.agent_file.save"),
                 patch("kanibako.commands.start.credsync") as m_credsync,
             ):
                 m_credsync.selected_source_root = (
@@ -6087,7 +6087,7 @@ class TestPersonaLoadOrErrorIntegration:
                     "kanibako.commands.start._resolve_box_launch_decisions",
                     return_value=(_SHARED_AUTH, "https://nav.example/v1", None),
                 ),
-                patch("kanibako.commands.start.write_agent_config") as m_write,
+                patch("kanibako.settings.agent_file.save") as m_write,
             ):
                 rc = _run_container(
                     project_dir=None, entrypoint=None, image_override=None,
@@ -6141,7 +6141,7 @@ class TestPersonaLoadOrErrorIntegration:
                     "kanibako.commands.start._resolve_box_launch_decisions",
                     return_value=(_SHARED_AUTH, None, None),  # endpoint unresolved
                 ),
-                patch("kanibako.commands.start.write_agent_config") as m_write,
+                patch("kanibako.settings.agent_file.save") as m_write,
             ):
                 rc = _run_container(
                     project_dir=None, entrypoint=None, image_override=None,
@@ -6203,7 +6203,7 @@ class TestPersonaLoadOrErrorIntegration:
                     "kanibako.commands.start._resolve_box_launch_decisions",
                     return_value=(_SHARED_AUTH, "https://nav.example/v1", None),
                 ),
-                patch("kanibako.commands.start.write_agent_config"),
+                patch("kanibako.settings.agent_file.save"),
                 patch("kanibako.commands.start.credsync") as m_credsync,
             ):
                 m_credsync.selected_source_root = m.credsync.selected_source_root
@@ -6343,7 +6343,7 @@ class TestPersonaLoadOrErrorUnmasked:
         # the full launch.
         with self._preamble():
             with (
-                patch("kanibako.commands.start.write_agent_config"),
+                patch("kanibako.settings.agent_file.save"),
                 patch(
                     "kanibako.commands.start.ensure_persona_share_symlinks",
                     side_effect=_PastGate,
@@ -7118,8 +7118,8 @@ class TestPersonaLiveTierWiring:
         from kanibako.settings.agent_config import (
             AgentConfig,
             agent_settings_path,
-            write_agent_config,
         )
+        from kanibako.settings.agent_file import save as write_agent_config
         from kanibako.settings.settings_launch import snapshot_category_entries
         from kanibako.settings.store_collapse import CollapsedEnv, collapse_env
 
@@ -7343,7 +7343,8 @@ class TestPersonaLiveTierWiring:
         # (b) EXISTING file — byte-identical afterwards.  The values below are
         # DELIBERATELY stale/contradictory: a surviving swap would rewrite them
         # from the store, which is exactly what this pin forbids.
-        from kanibako.settings.agent_config import AgentConfig, write_agent_config
+        from kanibako.settings.agent_config import AgentConfig
+        from kanibako.settings.agent_file import save as write_agent_config
 
         write_agent_config(path, AgentConfig(
             state={"endpoint": "https://user-set.example", "model": "user-set"},
@@ -7426,8 +7427,10 @@ class TestPersonaLiveTierWiring:
         from kanibako.settings.agent_config import (
             AgentConfig,
             agent_settings_path,
-            load_agent_config,
-            write_agent_config,
+        )
+        from kanibako.settings.agent_file import (
+            load as load_agent_config,
+            save as write_agent_config,
         )
 
         # The store's resolved token pointer is an ABSOLUTE path, so feed *raw*
@@ -7486,8 +7489,10 @@ class TestPersonaLiveTierWiring:
         from kanibako.settings.agent_config import (
             AgentConfig,
             agent_settings_path,
-            load_agent_config,
-            write_agent_config,
+        )
+        from kanibako.settings.agent_file import (
+            load as load_agent_config,
+            save as write_agent_config,
         )
 
         monkeypatch.setenv("NAV_TOKEN_DIR", "/from/the/process/env")
@@ -7565,8 +7570,10 @@ class TestPersonaLiveTierWiring:
         from kanibako.settings.agent_config import (
             AgentConfig,
             agent_settings_path,
-            load_agent_config,
-            write_agent_config,
+        )
+        from kanibako.settings.agent_file import (
+            load as load_agent_config,
+            save as write_agent_config,
         )
 
         target = self._target()
@@ -8283,7 +8290,7 @@ class TestReattachFastPath(_RunningBoxDriver):
         """A reattach delivers nothing, and rewriting under a live agent is the
         hazard ``reattach_config_notice`` exists to warn about."""
         with start_mocks() as m, patch(
-            "kanibako.commands.start.write_agent_config",
+            "kanibako.settings.agent_file.save",
         ) as m_write:
             # First use (config absent) is the only thing that ever writes it.
             m.agent_config_path.exists.return_value = False
@@ -8291,7 +8298,7 @@ class TestReattachFastPath(_RunningBoxDriver):
             assert self._start() == 0
             m_write.assert_not_called()
         with start_mocks() as m, patch(
-            "kanibako.commands.start.write_agent_config",
+            "kanibako.settings.agent_file.save",
         ) as m_write:
             m.agent_config_path.exists.return_value = False
             self._start()

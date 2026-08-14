@@ -834,7 +834,7 @@ class TestAgentConfigFirstUse:
             # The derived agent-config path (std.agents / "<id>.yaml") is a
             # MagicMock here; stub the writer so it never coerces that mock to a
             # literal "MagicMock" path and mkdir's it into the CWD.
-            with patch("kanibako.commands.start.write_agent_config"):
+            with patch("kanibako.settings.agent_file.save"):
                 _run_container(
                     project_dir=None, entrypoint=None, image_override=None,
                     new_session=False, safe_mode=False, resume_mode=False,

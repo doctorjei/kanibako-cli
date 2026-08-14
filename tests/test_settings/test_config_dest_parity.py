@@ -547,7 +547,7 @@ class TestAgentScopeCategoryDestination:
     ``test_get_reads_the_noun_settings_file`` asserts that the agent-scope terminal
     READ lands on the noun's settings file rather than on
     ``agents/<node>/settings.yaml``, which is the wrong file. Re-pointing it moves
-    ``agent_config.agent_file_route`` and is a separately-boarded pass; when it
+    ``agent_file._address`` and is a separately-boarded pass; when it
     lands, THAT case must be edited deliberately, in that commit.
     """
 
@@ -641,7 +641,7 @@ class TestAgentScopeCategoryDestination:
         ``self.<node>`` table, so a hand-authored value there reads back "(not set)"
         while a stray ``agent.claude.caches`` in the system settings file wins —
         exactly what this asserts. Re-pointing it is the OWED pass that moves
-        ``agent_config.agent_file_route``; when it lands, THIS case goes red and must
+        ``agent_file._address``; when it lands, THIS case goes red and must
         be edited to name the node file, deliberately, in that commit.
         """
         bench.seed(bench.cf, ("agent", "claude"), "caches", {"/box/c": ["FROM_CF"]})

@@ -366,6 +366,7 @@ def _two_pass_behavior(*, agent_state, box_path=None):
     Mirrors the launch flow: the per-agent FILE state rides ``agent_state`` (→
     ``agent.<active>`` slot) and a box settings file rides ``box_path`` (its
     discriminated ``agent.<name>.*`` table, MORE specific than the agent state)."""
+    from kanibako.settings.agent_file import state_level
     from kanibako.settings.settings_launch import (
         build_launch_snapshot,
         effective_behavior,
@@ -379,7 +380,9 @@ def _two_pass_behavior(*, agent_state, box_path=None):
     snap = build_launch_snapshot(
         agent_name=name, ctx=ctx,
         system_path=None, agent_path=None, workset_path=None, box_path=box_path,
-        agent_state=agent_state,
+        # Wrapped as the production producers do (C-2): the level carries the
+        # node it merges under, which is the name PASS 1 just resolved.
+        agent_state=state_level(agent_state, node=name),
     )
     return name, effective_behavior(snap, active_agent=name)
 

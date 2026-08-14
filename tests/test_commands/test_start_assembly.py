@@ -38,7 +38,9 @@ from kanibako.commands.start import (
     _snapshot_assembly_bindings,
     _snapshot_assembly_synced,
 )
+from kanibako.settings.agent_config import AgentConfig
 from kanibako.settings.paths import resolve_project
+from kanibako.settings.settings_launch import effective_behavior
 from kanibako.settings.settings_resolve import SettingsError, normalize_bind_dest
 from kanibako.settings.store_collapse import HOME_DEST
 from kanibako.targets.assembly import BindingSourceError
@@ -746,6 +748,72 @@ class TestTheAgentFileEnvRidesTheOneChannel:
         message = str(exc.value)
         assert f"agent.claude.env.{self._VAR}" in message
         assert f"box.env.{self._VAR}" in message
+
+
+class TestTheLaunchAgentFileStateMergesUnderTheLaunchNode:
+    """S1b — the LAUNCH producer's node argument, pinned on the real chain.
+
+    ``_resolve_launch_snapshot`` is the fifth and last of the ``agent_file.state_level``
+    producers, and the only one that feeds the WHOLE-BOX launch: it wraps the per-agent
+    file's flat behaviour table (``agent_cfg.state``) into a discriminated level under
+    the node the launch is running as, and ``_agent_state_partial`` files it by
+    ``level.node``. A wrong node here files a user's ``model`` under a slot the reader
+    never looks in, and the box launches on the target's declared default instead.
+
+    🛑 THIS CLASS EXISTS BECAUSE THAT ARGUMENT WAS UNCOVERED, MEASURED — the whole suite
+    stayed green with the node mutated at this one site. ``conftest``'s ``start_mocks``
+    stubs ``_resolve_launch_snapshot`` outright, so no test that fixture touches ever
+    enters the function, and the real-chain callers elsewhere all pass ``agent_cfg=None``,
+    which skips the produce entirely. So the call is made HERE with a real
+    :class:`AgentConfig` and the base families ON — the two conditions the site is gated
+    on — and the value is read at the CONSUMER, ``effective_behavior``, which is what the
+    launch actually asks for the answer.
+    """
+
+    def _snapshot(self, std, config, project_dir, *, value="from-the-file"):
+        """A whole-box resolve carrying a real per-agent behaviour state."""
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        snapshot, _deliveries = _resolve_launch_snapshot(
+            std=std, proj=proj, agent_name="claude",
+            system_settings_path=None, agent_cfg_path=None,
+            desc=None, install=None, target=_WiringTarget(),
+            agent_cfg=AgentConfig(state={"model": value}),
+            include_base_families=True,
+        )
+        return snapshot
+
+    def test_the_file_state_reaches_the_behavior_reader_under_the_launch_node(
+        self, std, config, project_dir,
+    ):
+        """The value the user wrote is the value the launch reads back.
+
+        ⚑ READ THROUGH ``effective_behavior``, not off the raw subtree: the §2d
+        active-over-default pick is the step that consults the node, so asserting the
+        key's presence anywhere in the snapshot would pass with the table filed under
+        the wrong discriminator.
+        """
+        snapshot = self._snapshot(std, config, project_dir)
+
+        assert effective_behavior(
+            snapshot, active_agent="claude",
+        )["model"] == "from-the-file"
+
+    def test_the_file_state_is_filed_under_THAT_node_AND_NO_OTHER(
+        self, std, config, project_dir,
+    ):
+        """The other half of the same claim: the level is discriminated, not global.
+
+        Without this the case above would still pass if the state were merged in
+        undiscriminated, which is the shape the boundary module replaced.
+
+        ⚑ ASSERTED ON THE ONE KEY, NOT ON AN EMPTY READ — measured: a second node does
+        NOT read empty, because ``agent.default`` carries the core floor's own scalars
+        (``canon``) and ``effective_behavior`` backstops onto them. What must not cross
+        the node boundary is the FILE's key, and that is what this pins.
+        """
+        snapshot = self._snapshot(std, config, project_dir)
+
+        assert "model" not in effective_behavior(snapshot, active_agent="goose")
 
 
 class TestTheFoundationIsBuiltAtTheSeam:

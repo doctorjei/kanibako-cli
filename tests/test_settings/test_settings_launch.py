@@ -3596,6 +3596,13 @@ def _agent_file_table(key, value, *, node="claude"):
     return {"self": table if flat else {node: table}}
 
 
+# ⚑ Imported as a FUNCTION, not as the module: ``_persona_snap`` below has a
+# parameter literally named ``agent_file`` (the agent settings FILE it writes).
+from kanibako.settings.agent_file import (  # noqa: E402
+    state_level as agent_file_state_level,
+)
+
+
 def _persona_snap(
     tmp_path,
     *,
@@ -3620,7 +3627,9 @@ def _persona_snap(
             _write_yaml(tmp_path / "ws.yaml", workset) if workset else None
         ),
         box_path=_write_yaml(tmp_path / "box.yaml", box) if box else None,
-        agent_state=agent_state,
+        # The helper takes a plain dict and wraps it the way the production
+        # producers do (C-2): the level carries the node it merges under.
+        agent_state=agent_file_state_level(agent_state, node="claude"),
         persona_values=persona_values,
         valid_agents=_PREF_AGENTS,
     )
@@ -3750,7 +3759,7 @@ def test_persona_loses_to_the_agent_file_flat_state(tmp_path, key, path):
     """The agent file's FLAT ``[agent]`` state rung also beats the persona.
 
     ⚑ Only the two BARE classes are exercised, and that is structural, not an
-    omission: ``read_agent_settings`` builds ``cfg.state`` from the file's SCALAR
+    omission: ``agent_file.load`` builds ``cfg.state`` from the file's SCALAR
     entries only — a dict-valued ``env:`` / ``secret_path:`` table is explicitly
     excluded there and rides ``_agent_partial`` (the ``agent.<active>`` table,
     covered above) instead. So the flat channel cannot carry a dotted class at all.
@@ -3817,7 +3826,9 @@ class TestPersonaTierIsInertWhenEmpty:
             ),
             behavior_floor={"model": "opus", "allow_helpers": "true"},
             default_categories={"box.bindings.rw": {"~/": ("/h/home", "Z,U")}},
-            agent_state={"endpoint": "stored-endpoint"},
+            agent_state=agent_file_state_level(
+                {"endpoint": "stored-endpoint"}, node="claude",
+            ),
             valid_agents=_PREF_AGENTS,
             **persona_kw,
         )

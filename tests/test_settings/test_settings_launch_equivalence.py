@@ -317,6 +317,9 @@ def test_depth_order_preserved_across_families(tmp_path):
 # --------------------------------------------------------------------------- #
 
 
+from kanibako.settings.agent_file import (  # noqa: E402
+    state_level as agent_file_state_level,
+)
 from kanibako.settings.settings_launch import effective_behavior  # noqa: E402
 
 
@@ -328,7 +331,10 @@ def _behavior_snapshot(agent, *, floor, agent_state, box_path, system_path):
         agent_name=agent, ctx=_ctx(agent, None),
         system_path=system_path, agent_path=None,
         workset_path=None, box_path=box_path,
-        behavior_floor=floor, agent_state=agent_state,
+        behavior_floor=floor,
+        # Wrapped here, as the production producers do (C-2): the level carries
+        # the node it merges under, which for this read is the active agent.
+        agent_state=agent_file_state_level(agent_state, node=agent),
     )
     return snap
 

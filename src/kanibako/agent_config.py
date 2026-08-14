@@ -13,17 +13,17 @@ All three published plugins import :class:`AgentConfig` from here (in a
 the module's public surface is re-exported so a third-party plugin keeps working
 too.
 
-⚑ ``agent_file_route`` IS NO LONGER RE-EXPORTED (S1): it moved to
-:mod:`kanibako.settings.agent_file` as ``_address``.  No published plugin
-imports it (measured against all three wheels); the third-party risk is
-theoretical and accepted, and v1.8.0 is a deliberate clean break.
-``load_agent_config`` / ``write_agent_config`` moved too (to ``agent_file.load``
-/ ``agent_file.save``) but their names SURVIVE in the new module as the S1b
-bridge, so this shim keeps re-exporting them — the contract here is "the WHOLE
-public surface of the new module", pinned by
-``test_plugin_import_compat.test_shim_covers_the_whole_public_surface``.  They
-leave this file when S1b deletes the bridge.  ``AgentConfig`` — the one name the
-plugins DO import — stays either way.
+⚑ THREE NAMES ARE NO LONGER RE-EXPORTED (S1/S1b): ``agent_file_route``,
+``load_agent_config`` and ``write_agent_config`` all moved to
+:mod:`kanibako.settings.agent_file` (as ``_address``, ``load`` and ``save``),
+the one module that spells the per-agent file's shape.  None of the three is
+imported by any published plugin (measured against all three wheels); the
+third-party risk is theoretical and accepted, and v1.8.0 is a deliberate clean
+break.  ⚑ The contract this file keeps is "the WHOLE public surface of
+:mod:`kanibako.settings.agent_config`", DERIVED from that module and pinned by
+``test_plugin_import_compat.test_shim_covers_the_whole_public_surface`` — so
+this list follows that module automatically and is not a place to re-add a name
+that left it.  ``AgentConfig`` — the one name the plugins DO import — stays.
 
 ⚑ REMOVAL GATE — delete this file once ``kanibako-agent-claude``,
 ``kanibako-agent-goose`` AND ``kanibako-agent-codex`` have all PUBLISHED (not
@@ -66,13 +66,7 @@ from kanibako.settings.agent_config import (
     is_self_resolving as is_self_resolving,
 )
 from kanibako.settings.agent_config import (
-    load_agent_config as load_agent_config,
-)
-from kanibako.settings.agent_config import (
     root_relative_source as root_relative_source,
-)
-from kanibako.settings.agent_config import (
-    write_agent_config as write_agent_config,
 )
 
 # ⚑ Stage 1 of the two-stage retirement (Jei, 2026-08-01): v1.8.0 KEEPS this
