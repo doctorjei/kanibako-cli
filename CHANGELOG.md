@@ -145,6 +145,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   agent start opens `KANIBAKO_DIRECTIVE_SEED`), so overriding one is telling kanibako something
   about the box that has to be true. See [MIGRATION.md](MIGRATION.md) §2.36.
 
+### Removed
+
+- The flat `kanibako.agent_config` compatibility shim no longer re-exports **`agent_file_route`**,
+  **`load_agent_config`** or **`write_agent_config`** — all three moved into
+  `kanibako.settings.agent_file`, the one module that spells the per-agent file's shape (the
+  address rule, `load`, and `save`). Measured against all three published plugin wheels: none
+  imports any of the three; `AgentConfig` itself is still re-exported, unchanged. A third-party
+  import of one is a theoretical break, accepted under v1.8.0's clean-break policy.
+
 ### Fixed
 
 - **Helper boxes inherited the director's browser endpoint by accident of timing.** With
