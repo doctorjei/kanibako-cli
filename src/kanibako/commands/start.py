@@ -699,13 +699,47 @@ def start_detached(
 # changes the key's semantics.
 _BOOTSTRAP_NONE = "none"
 
-# The consumer default for the agent-scope ``bootstrap`` behavior key.  The spec
-# lists ``agent.default.bootstrap | tmux`` (§2d), but — exactly like the old
-# ``box.bootstrap_program or "tmux"`` coercion this replaced — the ``tmux`` default
-# is applied HERE at the consumer (start.py), NOT baked into a descriptor floor, so
-# an unset value (no scope sets ``bootstrap``) resolves to ``tmux`` and every shipped
-# agent (which declares NO bootstrap override, spec §2d) inherits it.
-_BOOTSTRAP_DEFAULT = "tmux"
+
+def _declared_behavior(key: str) -> str:
+    """One DECLARED ``agent.default.<key>`` behavior floor value (spec §2d).
+
+    ⚑ FUNCTIONS, not module constants, throughout this trio:
+    ``core_defaults._load_doc`` re-reads the shipped YAML on every call, so a
+    module-level read would bind at IMPORT time.
+    ⚑ FAIL-CLOSED like the kickoff loader: an absent declaration is a PACKAGING
+    defect, never a case to paper over with a fallback here — a re-materialized
+    literal is exactly the consumer default this read replaced.
+    """
+    defaults = core_defaults.behavior_defaults()
+    if key not in defaults:
+        raise RuntimeError(
+            f"{core_defaults.CORE_DEFAULTS_FILENAME} declares no "
+            f"'agent_default.{key}' — the core behavior floor (spec §2d "
+            f"agent.default.{key}) lives there and nowhere else."
+        )
+    return defaults[key]
+
+
+def _declared_behavior_bool(key: str) -> bool:
+    """:func:`_declared_behavior` for a BOOLEAN key, through the shared truth table.
+
+    ⚑ Fail-closed on an uncoercible value too: letting ``coerce_bool``'s ``None``
+    through would read as FALSE at every consumer, i.e. a typo in the shipped file
+    would silently disable a feature instead of naming itself.
+    """
+    value = coerce_bool(_declared_behavior(key))
+    if value is None:
+        raise RuntimeError(
+            f"{core_defaults.CORE_DEFAULTS_FILENAME} declares "
+            f"'agent_default.{key}' as {_declared_behavior(key)!r}, which is not a "
+            "boolean literal."
+        )
+    return value
+
+
+def _bootstrap_default() -> str:
+    """The DECLARED ``agent.default.bootstrap`` floor (spec §2d), read from the file."""
+    return _declared_behavior("bootstrap")
 
 
 def _is_no_bootstrap(program: str | None) -> bool:
@@ -818,14 +852,16 @@ def _effective_bootstrap(
     pipeline the launch reads for the other agent behavior scalars (``model`` /
     ``access`` / ``allow_helpers``) — see :func:`_effective_agent_scalar`.
 
-    Returns the resolved program name, or the consumer default ``tmux``
-    (:data:`_BOOTSTRAP_DEFAULT`) when no scope sets ``bootstrap`` — byte-identical
-    to the retired ``box.bootstrap_program or "tmux"`` coercion for the default case.
+    Returns the resolved program name, or the DECLARED default
+    (:func:`_bootstrap_default`) when no scope sets ``bootstrap``.
     """
+    # ⚑ ONE read: ``_bootstrap_default`` re-parses the shipped YAML per call, and
+    # the floor and the fallback are by definition the same value.
+    declared = _bootstrap_default()
     return _effective_agent_scalar(
         proj, system_settings_path, agent_id,
-        key="bootstrap", floor=_BOOTSTRAP_DEFAULT, agent_path=agent_path,
-    ) or _BOOTSTRAP_DEFAULT
+        key="bootstrap", floor=declared, agent_path=agent_path,
+    ) or declared
 
 
 def _effective_transform(
@@ -879,8 +915,11 @@ def _resolve_bootstrap_program(
 
     FAIL-SOFT: any resolution failure (unresolvable box, ambiguous/uninstalled agent
     — those raise their own typed errors from ``_run_container`` moments later) falls
-    back to the ``tmux`` default, so this cheap pre-flight never itself aborts the
-    launch.  ``_run_container`` re-resolves the authoritative value the same way.
+    back to the DECLARED default (:func:`_bootstrap_default`), so this cheap
+    pre-flight never itself aborts the launch.  ⚑ The ONE thing it does not swallow
+    is that read failing: a shipped file with no ``agent_default.bootstrap`` is a
+    packaging defect the launch cannot resolve either.  ``_run_container``
+    re-resolves the authoritative value the same way.
     """
     try:
         config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
@@ -914,16 +953,19 @@ def _resolve_bootstrap_program(
             agent_path=agent_settings_path(std.agents, agent_id),
         )
     except Exception:
-        return _BOOTSTRAP_DEFAULT
+        return _bootstrap_default()
 
 
-def _bootstrap_available(program: str = "tmux") -> bool:
+def _bootstrap_available(program: str | None = None) -> bool:
     """Check if the host-side bootstrap program is installed.
 
     Used to decide the default persistence mode (persistent only when the
     bootstrap program is present on the host, since reattach shells out to it).
+    ⚑ Both production callers pass the RESOLVED program; the ``None`` arm exists
+    for a bare probe and takes the DECLARED default rather than re-materializing
+    it (spec §2d ``agent.default.bootstrap``).
     """
-    return shutil.which(program) is not None
+    return shutil.which(program or _bootstrap_default()) is not None
 
 
 def _check_box_components(proj) -> str | None:
@@ -3560,19 +3602,26 @@ def _run_container(
         )
 
         # allow_helpers is an AGENT-scope behavior key (spec §2d,
-        # ``agent.default.allow_helpers | true``): resolve it off the ONE launch
+        # ``agent.default.allow_helpers``): resolve it off the ONE launch
         # snapshot (via ``effective_behavior``, the §2d active-over-default pick),
-        # coerced to bool and DEFAULTING True when unset. Resolved here for BOTH the
-        # agent and the no-agent/shell path (agent_id == "general") so the helper
-        # hub gate below sees the effective value regardless of target — an unset
-        # box keeps the True floor (helpers ON), matching the old flat default.
+        # coerced to bool. Resolved here for BOTH the agent and the no-agent/shell
+        # path (agent_id == "general") so the helper hub gate below sees the
+        # effective value regardless of target.
+        # ⚑ THE None-GUARD STAYS, and applies the DECLARED value, because TWO
+        # distinct paths still reach it: an agent-less / mocked target carries no
+        # snapshot floor at all, and a user's present-``None`` reset-to-default in
+        # the winning slot is OMITTED by ``effective_behavior`` by contract (it
+        # shadows the agent.default rung below, leaving the consumer to apply its
+        # own default — settings_launch.effective_behavior's docstring).
         from kanibako.settings import settings_launch as _settings_launch
         _ah = coerce_bool(
             _settings_launch.effective_behavior(
                 _snapshot, active_agent=agent_id,
             ).get("allow_helpers")
         )
-        helpers_allowed = True if _ah is None else _ah
+        helpers_allowed = (
+            _declared_behavior_bool("allow_helpers") if _ah is None else _ah
+        )
 
         # E2b: the CONTINUE-mode agent grammar for a detached box's always-on
         # supervisor self-heal restart (threaded to the detach branch below via
@@ -3623,10 +3672,13 @@ def _run_container(
                     logger=logger,
                 )
                 # continue_mode is an AGENT-scope behavior key (spec §2d
-                # ``agent.default.continue_mode | true``): resolve it off the SAME
-                # launch snapshot via the §2d active-over-default pick, coerced to
-                # bool and DEFAULTING True (continue) when unset — the same
-                # snapshot read as the ``access`` resolve above.
+                # ``agent.default.continue_mode``): resolve it off the SAME launch
+                # snapshot via the §2d active-over-default pick, coerced to bool —
+                # the same snapshot read as the ``access`` resolve above.  ⚑ The
+                # None-guard stays, and applies the DECLARED value, for the same
+                # two reasons as ``allow_helpers`` above: a mocked / floor-less
+                # snapshot, and a present-``None`` reset-to-default in the winning
+                # slot, which ``effective_behavior`` omits by contract.
                 #
                 # ⚑ P8: the per-launch ``-N``/``-C``/``-R`` flags are ALREADY folded
                 # in — they rode the §1A CLI LEVEL as ``agent.<active>.continue_mode``
@@ -3645,7 +3697,9 @@ def _run_container(
                 # skip_continue test, where a stored ``continue_mode: false`` would
                 # otherwise turn ``-R`` into a fresh start.)
                 _cm = coerce_bool(effective_state.get("continue_mode"))
-                continue_default = True if _cm is None else _cm
+                continue_default = (
+                    _declared_behavior_bool("continue_mode") if _cm is None else _cm
+                )
                 effective_new_session = not continue_default
                 # B5 (spec §2d, the §3.3 rulings): the launch GRAMMAR comes off
                 # the ONE snapshot — ``meta.agent.<a>.mode`` / ``.exec``,
@@ -5777,7 +5831,12 @@ def _effective_behavior_for_display(
     if not descriptors:
         return dict(agent_cfg.state)
 
-    behavior_floor = {d.key: d.default for d in descriptors}
+    # ⚑ ORDER IS LOAD-BEARING: the CORE floor (spec §2d, the all-agents backstop)
+    # goes UNDER the descriptor floor, so a plugin's declared default still wins.
+    behavior_floor = {
+        **core_defaults.behavior_defaults(),
+        **{d.key: d.default for d in descriptors},
+    }
 
     # The behavior tables are keyed by the ACTIVE node-name (fix 4a): for a persona
     # (``navigator℘claude``) the per-node ``agents/<node>/settings.yaml`` state and
@@ -6766,7 +6825,15 @@ def _resolve_launch_snapshot(
     if include_base_families and target is not None:
         descriptors = target.setting_descriptors()
         if descriptors:
-            behavior_floor = {d.key: d.default for d in descriptors}
+            # ⚑ ORDER IS LOAD-BEARING: the CORE floor (spec §2d) goes UNDER the
+            # descriptor floor, so a plugin's declared default still wins.
+            # ⚑ INSIDE the ``if`` deliberately — a no-descriptor / mock target must
+            # keep leaving ``behavior_floor`` None; downstream gates read its
+            # truthiness.
+            behavior_floor = {
+                **core_defaults.behavior_defaults(),
+                **{d.key: d.default for d in descriptors},
+            }
         if agent_cfg is not None:
             agent_state = agent_file.state_level(agent_cfg.state, node=agent_name)
 

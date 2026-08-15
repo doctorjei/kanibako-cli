@@ -457,6 +457,149 @@ class TestAgentDefaultsShape:
 
 
 # --------------------------------------------------------------------------- #
+# 1b. THE CORE BEHAVIOR FLOOR — `agent_default:` (D1-1)
+# --------------------------------------------------------------------------- #
+
+class TestCoreBehaviorDefaults:
+    """The declared ``agent.default.*`` BEHAVIOR floor (spec §2d).
+
+    The first NON-BIND section in the core defaults file: a flat scalar map, not a
+    dest-keyed category table.  These two tests are the guardrail over the D1-1
+    move — the VALUES against their spec oracle, and the MERGE ORDER that keeps a
+    plugin's declared default winning over the core floor.
+    """
+
+    #: The spec §2d oracle (``settings-keyspace-1.8.0.md`` :1245, :1252-1253 — NOT
+    #: the :1244 access row, which D1-2 owns).  ⚑ STRINGS,
+    #: including the booleans: the floor is consumed through ``coerce_bool`` and
+    #: ``effective_behavior`` stringifies, so a YAML bool would arrive as ``"True"``.
+    _SPEC_2D = {
+        "allow_helpers": "true",
+        "continue_mode": "true",
+        "bootstrap": "tmux",
+    }
+
+    def test_the_core_behavior_defaults_match_spec_2d(self):
+        """The shipped values ARE the spec-ratified ones, as strings, and no more.
+
+        ``access`` (spec §2d ``agent.default.access | full``) is deliberately
+        EXCLUDED: its consumers are set-time validation + ``effective_access``, on a
+        different clock, and they move in their own pass (D1-2).  Asserting its
+        ABSENCE is what stops a half-move landing unnoticed.
+        """
+        doc = _load_yaml("kanibako.data", "core-defaults.yaml")
+        declared = doc["agent_default"]
+        assert declared == self._SPEC_2D, (
+            f"core-defaults.yaml agent_default must be the spec §2d values "
+            f"{self._SPEC_2D}, got {declared!r}"
+        )
+        for key, value in declared.items():
+            assert isinstance(value, str), (
+                f"agent_default.{key} must be a QUOTED string, got "
+                f"{type(value).__name__}: {value!r} — an unquoted YAML bool "
+                f"round-trips to a consumer as \"True\"/\"False\""
+            )
+        assert "access" not in declared, (
+            "access is D1-2's, not D1-1's — it has three consumers on two clocks"
+        )
+        assert core_defaults.behavior_defaults() == self._SPEC_2D, (
+            "the loader must hand back the file's values verbatim"
+        )
+
+    def test_a_descriptor_default_still_beats_the_core_behavior_floor(self, tmp_path):
+        """A plugin's declared default WINS over the core floor at the merge sites.
+
+        Both floor build sites in ``start.py`` spell the merge with the DESCRIPTOR
+        LAST; flipping either one would destroy every plugin default that shares a
+        name with a core one.  Driven through ``_effective_behavior_for_display``,
+        which is the cheaply-callable of the two sites and carries the identical
+        expression.
+        """
+        from unittest.mock import MagicMock
+
+        from kanibako.commands.start import _effective_behavior_for_display
+        from kanibako.settings.agent_config import AgentConfig
+        from kanibako.settings.config import write_project_config
+        from kanibako.targets.base import TargetSetting
+
+        target = MagicMock()
+        target.name = "claude"
+        target.setting_descriptors.return_value = [
+            # A descriptor that COLLIDES with a core floor key — the whole contest.
+            TargetSetting(key="bootstrap", description="Multiplexer", default="screen"),
+        ]
+        project_toml = tmp_path / "settings.yaml"
+        write_project_config(project_toml, "base:image")
+
+        effective = _effective_behavior_for_display(
+            target, AgentConfig(), project_toml, system_settings_path=None,
+        )
+        assert effective["bootstrap"] == "screen", (
+            "the DESCRIPTOR default must beat the core floor — a flipped merge "
+            f"order would leave the core {self._SPEC_2D['bootstrap']!r} here"
+        )
+        # ...and the non-colliding core keys still reach the read.
+        assert effective["allow_helpers"] == self._SPEC_2D["allow_helpers"]
+        assert effective["continue_mode"] == self._SPEC_2D["continue_mode"]
+
+    def test_the_real_launch_seam_merges_the_core_floor_under_the_descriptor(
+        self, std, config, project_dir,
+    ):
+        """The LAUNCH site carries the same merge — presence AND order.
+
+        The test above drives the ``config --effective`` DISPLAY site.  This one
+        goes through ``_resolve_launch_snapshot`` itself, because the two sites
+        spell the merge SEPARATELY: deleting it from the launch site, or flipping
+        its order there, is invisible to every other test in the tree.  A real
+        target whose descriptor declares ``bootstrap`` COLLIDES with the core
+        floor on purpose — that collision is the only thing an order flip moves.
+        """
+        from kanibako.commands.start import _resolve_launch_snapshot
+        from kanibako.settings.paths import resolve_project
+        from kanibako.settings.settings_launch import effective_behavior
+        from kanibako.targets.base import TargetSetting
+        from kanibako.targets.no_agent import NoAgentTarget
+
+        node = "claude"
+
+        class _CollidingTarget(NoAgentTarget):
+            """A REAL target that declares ``bootstrap`` against the core floor."""
+
+            @property
+            def name(self) -> str:
+                return "claude"
+
+            def setting_descriptors(self):
+                return [
+                    TargetSetting(
+                        key="bootstrap", description="Multiplexer", default="screen",
+                    ),
+                ]
+
+            def rom_root(self):
+                return None
+
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        snapshot, _deliveries = _resolve_launch_snapshot(
+            std=std, proj=proj, agent_name=node,
+            system_settings_path=None, agent_cfg_path=None,
+            desc=None, install=None, target=_CollidingTarget(),
+            agent_cfg=None, deliver_creds=True,
+        )
+        effective = effective_behavior(snapshot, active_agent=node)
+
+        assert effective["bootstrap"] == "screen", (
+            "ORDER: the descriptor must go in LAST at the launch site — a flipped "
+            f"merge leaves the core {self._SPEC_2D['bootstrap']!r} here, destroying "
+            "every plugin default that shares a name with a core one"
+        )
+        assert effective["continue_mode"] == self._SPEC_2D["continue_mode"], (
+            "PRESENCE: a non-colliding core key must reach the launch read — if "
+            "this is absent the launch site is not merging the core floor at all"
+        )
+
+
+# --------------------------------------------------------------------------- #
 # 2. DE-HARDCODING LOCK — grep-guard over the coalesced-defaults surface
 # --------------------------------------------------------------------------- #
 
