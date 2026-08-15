@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from kanibako.settings.agent_defaults import (
+    load_behavior,
     load_category_binds,
     load_descriptor,
     load_common,
@@ -85,6 +86,9 @@ _DEFAULTS_PACKAGE = "kanibako.plugins.claude"
 _DEFAULTS_FILE = "claude-defaults.yaml"
 
 _CLAUDE_DESCRIPTOR = load_descriptor(_DEFAULTS_PACKAGE, _DEFAULTS_FILE)
+# The declared BEHAVIOR floor (the file's `behavior:` section) — no default value
+# is written in this module.
+_CLAUDE_BEHAVIOR = load_behavior(_DEFAULTS_PACKAGE, _DEFAULTS_FILE)
 
 
 def _autoupdater_disabled_env() -> dict[str, str]:
@@ -687,26 +691,12 @@ class ClaudeTarget(Target):
         resolved at launch (validated against the enum, defaulting to ``full``
         when unset) — routed verbatim like ``allow_helpers``, with the per-launch
         ``-S``/``-A`` flags overriding it for the ARGV only.
+
+        The keys and their FLOOR values are declared in ``claude-defaults.yaml``'s
+        ``behavior:`` section, not here: a default written in plugin code is a
+        second declaration site for something the shipped file already owns.
         """
-        return [
-            TargetSetting(
-                key="model",
-                description="Claude model to use",
-                default="opus",
-            ),
-            TargetSetting(
-                key="endpoint",
-                description="Alternate base-URL endpoint (persona); "
-                "unset uses the harness default and syncs the OAuth login",
-                default="",
-            ),
-            TargetSetting(
-                key="transform",
-                description="Binary transform applied to the agent binary "
-                "(tweakcc); empty = none",
-                default="tweakcc",
-            ),
-        ]
+        return list(_CLAUDE_BEHAVIOR)
 
     def refresh_credentials(self, home: Path) -> None:
         """Refresh Claude credentials from host into project home.

@@ -87,8 +87,18 @@ both import it.
 kanibako's per-agent `access` tier (`restricted` | `editing` | `full`, ordered least → most
 permissive in `settings_keyspace.ACCESS_TIERS`) reaches each CLI agent through its argv flag row.
 None of that reaches the panel. Each agent therefore gets a projection written into a per-box file,
-and the tier→value knowledge for all three lives **here**, beside its siblings, rather than in
-each plugin's branch — one place decides what a tier means for this surface (R-41).
+and each projection is written **here**, beside its siblings, rather than in each plugin's branch
+(R-41).
+
+⚑ Where the tier→value knowledge itself lives is per-surface, and the distinction is the point.
+**goose's is not here.** Its `GOOSE_MODE` values *are* its descriptor's `access_realization` rows —
+the very rows the launch emits as an env var — so `seed_goose_mode` takes the descriptor from the
+caller that owns it (`GooseTarget.deliver_panel_permissions`) and reads the row. The private copy
+this module used to keep was a second declaration of one fact, and drift on that axis is silent:
+the panel would keep running at the tier the copy still remembered. The claude and codex tables
+below stay here because they are genuinely **different** vocabularies from those agents' argv rows
+— codex's `approval_policy` enum (`untrusted`/`on-request`/`never`) is not its flag realization,
+it is a config-file surface with no descriptor equivalent.
 
 ⚑ The projection is driven by the box's **CASCADE-resolved** `access`, never by the ephemeral
 `-S`/`-A` launch flags. A projection outlives the launch that wrote it (spec §1A), so seeding it
@@ -99,6 +109,10 @@ from a one-shot flag would leave the next launch running at a tier nobody asked 
 | `full` | `bypassPermissions` | `never` | `auto` |
 | `editing` | `acceptEdits` | `on-request` | REFUSED |
 | `restricted` | CLEARED | `untrusted` | `approve` |
+
+The goose column is **quoted, not declared** — `goose-defaults.yaml`'s `access_realization.tiers`
+declares it, and this table is a reader's convenience that can go stale. The other two columns are
+declared in this module.
 
 An **unknown** tier raises in every arm. This surface must never fall through to the permissive
 value, and "clear it" is an equally wrong guess for a tier we do not understand.
@@ -147,8 +161,14 @@ delivery best-effort, so this raise on its own would be swallowed. The real refu
 `targets.assembly.access_row`, which stops the launch and names the tiers the agent can render
 before any delivery runs. The check here exists so the function is honest in isolation.
 
-The error message lists legal tiers in `ACCESS_TIERS` order (least → most permissive). A `sorted()`
-would print "full | restricted" and read as a ladder running the wrong way.
+It is now literally the *same* refusal: `seed_goose_mode` calls `access_row`, so the message a
+swallowed second fence would have printed is word-for-word the one the launch gate prints, and it
+still lists legal tiers in `ACCESS_TIERS` order (least → most permissive — a `sorted()` would print
+"full | restricted" and read as a ladder running the wrong way).
+
+A descriptor that carries no `GOOSE_MODE` value for the tier — no `access_realization` at all, or
+FLAG-channel rows, or a deliberate emit-nothing row — is refused rather than written: a blank
+`GOOSE_MODE` is goose's permissive `auto`, so "" is not a safe reading of any of those.
 
 ⚑ `seed_goose_mode` writes through the `Path` object rather than `config_io.dump_doc`, matching its
 claude/codex siblings. `dump_doc`'s `atomic_write_text` coerces the path via `Path()`/`mkstemp` and
@@ -572,9 +592,10 @@ to `False` — no write, no normalization of user bytes — when the reconciled 
 which also means an OFF pass over an absent file never creates one. An UNKNOWN tier RAISES. Callers
 wrap best-effort.
 
-```seed_goose_mode(config_path: Path, *, access: str) -> bool```
+```seed_goose_mode(config_path: Path, *, access: str, descriptor: PluginDescriptor) -> bool```
 SET the box's goose `GOOSE_MODE` to its `access` tier parity value — the emitter behind
-`GooseTarget.deliver_panel_permissions`. Merge-preserving: only the top-level `GOOSE_MODE` key is
-set, every other key survives, and an absent file is created with just `GOOSE_MODE`. Idempotent —
-no write when the key already equals the desired value. RAISES for `editing` and for any unknown
-tier.
+`GooseTarget.deliver_panel_permissions`, which passes its own descriptor so the value written is
+the `access_realization` row the launch emits. Merge-preserving: only the top-level `GOOSE_MODE`
+key is set, every other key survives, and an absent file is created with just `GOOSE_MODE`.
+Idempotent — no write when the key already equals the desired value. RAISES for `editing`, for any
+unknown tier, and for a descriptor carrying no ENV value for the tier.

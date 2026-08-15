@@ -162,8 +162,6 @@ def seed_codex_config(config_path: Path, *, box_config_path: str, codex_cwd: str
 def seed_codex_approval(config_path: Path, *, access: str) -> bool:
     ...
 
-_GOOSE_MODE_BY_TIER: 'dict[str, str]' = {'restricted': 'approve', 'full': 'auto'}
-
-def seed_goose_mode(config_path: Path, *, access: str) -> bool:
+def seed_goose_mode(config_path: Path, *, access: str, descriptor: PluginDescriptor) -> bool:
     ...
 ```

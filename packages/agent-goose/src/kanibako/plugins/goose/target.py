@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from kanibako.settings.agent_defaults import (
+    load_behavior,
     load_category_binds,
     load_descriptor,
     load_envs,
@@ -58,6 +59,9 @@ _DEFAULTS_PACKAGE = "kanibako.plugins.goose"
 _DEFAULTS_FILE = "goose-defaults.yaml"
 
 _GOOSE_DESCRIPTOR = load_descriptor(_DEFAULTS_PACKAGE, _DEFAULTS_FILE)
+# The declared BEHAVIOR floor (the file's `behavior:` section) — no default value
+# is written in this module.  goose's three are EMPTY on purpose; the file says why.
+_GOOSE_BEHAVIOR = load_behavior(_DEFAULTS_PACKAGE, _DEFAULTS_FILE)
 
 
 class GooseTarget(Target):
@@ -230,9 +234,14 @@ class GooseTarget(Target):
         """
         from kanibako.vscode.vscode_config import seed_goose_mode
 
+        # The tier→GOOSE_MODE values are THIS descriptor's `access_realization`
+        # rows — the same ones the launch emits — so the panel cannot drift from
+        # the CLI. Passed from here because the plugin owns the declaration; core
+        # must not reach back into a named plugin to read it.
         return seed_goose_mode(
             config_root / ".config" / "goose" / "config.yaml",
             access=access,
+            descriptor=_GOOSE_DESCRIPTOR,
         )
 
     def should_run_setup(self, output: str) -> bool:
@@ -400,23 +409,11 @@ class GooseTarget(Target):
         provider reads ``OPENAI_HOST``); declared here to make it a first-class
         SETTABLE + cascade-resolved behavior key (``config set``/``--effective``),
         MIRRORING claude's ``endpoint`` descriptor.
+
+        The keys and their FLOOR values are declared in ``goose-defaults.yaml``'s
+        ``behavior:`` section, not here: a default written in plugin code is a
+        second declaration site for something the shipped file already owns.  All
+        three floors are the EMPTY STRING, and that file states why.
         """
-        return [
-            TargetSetting(
-                key="provider",
-                description="LLM provider (unset = use goose configure / config.yaml)",
-                default="",
-            ),
-            TargetSetting(
-                key="model",
-                description="Model to use (unset = use goose configure / config.yaml)",
-                default="",
-            ),
-            TargetSetting(
-                key="endpoint",
-                description="Alternate OpenAI-compatible base-URL endpoint (persona); "
-                "unset uses the harness default and syncs the goose login",
-                default="",
-            ),
-        ]
+        return list(_GOOSE_BEHAVIOR)
 
