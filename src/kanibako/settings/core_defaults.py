@@ -6,8 +6,10 @@
   symbolically)
 - _CONDITIONAL_: per-mode / per-state gates, applied at the injection site, never in the file
 
-Eight declared families, one producer each; every table lands in the BASE-level floor. The
-box-create canon SKELETON also lives here — mirror image of the canon binds (llm-docs).
+Eight declared BIND families, one producer each, plus two NON-BIND scalar sections
+(``agent_default:`` behavior, ``env:`` static variables); every table lands in the BASE-level
+floor. The box-create canon SKELETON also lives here — mirror image of the canon binds
+(llm-docs).
 """
 
 from __future__ import annotations
@@ -64,6 +66,45 @@ def behavior_defaults() -> dict[str, str]:
         str(key): str(value)
         for key, value in (_load_doc().get("agent_default") or {}).items()
     }
+
+
+def behavior_default(key: str) -> str:
+    """ONE declared ``agent.default.<key>`` value — the FAIL-CLOSED single-key read.
+
+    ⚑ THE ONE SPELLING of this read.  ``start._declared_behavior`` and
+    ``settings_keyspace.access_default`` both come here; a second fail-closed copy is
+    how the two would drift.
+    ⚑ A FUNCTION, not a constant: :func:`_load_doc` re-reads the shipped file on every
+    call, so a module-level read would bind the value at IMPORT time.
+    ⚑ An absent declaration RAISES — it is a PACKAGING defect, and re-materializing a
+    literal here would be exactly the consumer-side default this read replaced.
+    """
+    defaults = behavior_defaults()
+    if key not in defaults:
+        raise RuntimeError(
+            f"{CORE_DEFAULTS_FILENAME} declares no 'agent_default.{key}' — the core "
+            f"behavior floor (spec §2d agent.default.{key}) lives there and nowhere else."
+        )
+    return defaults[key]
+
+
+def env_default_categories() -> dict[str, str]:
+    """The STATIC core env floor as ``<scope>.env.<VAR>`` keys (spec §2d).
+
+    ⚑ A SEPARATE emitter from ``start._core_env_default_categories``, whose docstring
+    forbids new entries: that one carries the launch-DERIVED ``KANIBAKO_*`` stamps —
+    values that do not exist until a launch runs — while these are literals a file can
+    hold.  The derived table merges AFTER this one, so a stamp still wins a VAR this
+    section also names.
+    ⚑ Values are STRINGS, as in :func:`behavior_defaults`: an unquoted YAML bool would
+    reach the box as ``"True"``.  The section is EMPTY as shipped, so this is a no-op
+    by construction until a value moves into it.
+    """
+    table: dict[str, str] = {}
+    for scope, entries in (_load_doc().get("env") or {}).items():
+        for var, value in (entries or {}).items():
+            table[f"{scope}.env.{var}"] = str(value)
+    return table
 
 
 #: A dest-keyed floor bind table: ``{"box.bindings.ro": {box_dest: (src[, opts])}}`` (R-5/R-11).

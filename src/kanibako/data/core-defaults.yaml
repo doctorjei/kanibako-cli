@@ -444,9 +444,45 @@ images:
 # `coerce_bool` and `effective_behavior` STRINGIFIES what it returns, so a YAML
 # `true` here would reach a consumer as `"True"`.  Quote them.
 #
-# `access` is deliberately ABSENT: its consumers (set-time validation +
-# `effective_access`) run on a different clock and move in their own pass.
+# `access` (spec :1244) is DECLARED HERE like the rest, and it is the one whose
+# consumers do NOT share a clock: `config_keys.access_value_error` runs at SET time
+# and `targets.assembly.resolve_access_tier` at LAUNCH.  Both read this one
+# declaration through the single lazy accessor `settings_keyspace.access_default()`
+# — there is no `ACCESS_DEFAULT` constant any more.
+# ⚑ Its value set is CLOSED (`settings_keyspace.ACCESS_TIERS`): a spelling outside
+# `restricted | editing | full` is REFUSED at read, never treated as permissive.
 agent_default:
+  access: "full"
   allow_helpers: "true"
   continue_mode: "true"
   bootstrap: "tmux"
+
+# ---------------------------------------------------------------------------
+# STATIC core `<scope>.env.<VAR>` defaults (spec §2d) — the file route for core
+# environment variables whose value is a LITERAL.
+#
+# ⚑ SHAPE: scope-keyed sub-tables of `<VAR>: "<value>"`.
+#
+#   env:
+#     system:
+#       COLORTERM: "truecolor"
+#     box:
+#       EDITOR: "vi"
+#
+# ⚑ VALUES ARE STRINGS, exactly as in `agent_default:` above: an unquoted YAML
+# `true`/`1` would reach the box as "True"/"1" rather than what the author wrote.
+#
+# ⚑ THIS IS NOT THE HOME OF THE `KANIBAKO_*` STAMPS.  Those are launch-DERIVED
+# (a project name, a resolved agent, a computed path) and are spelled in exactly
+# one place, `start._core_env_default_categories`.  A variable belongs here only
+# when a file can hold its whole value; a variable that must be COMPUTED belongs
+# there.  The derived table merges AFTER this one, so a stamp still wins a VAR
+# this section also names — but naming one here is a bug, not an override.
+#
+# ⚑ CROSS-SCOPE TWINS REFUSE (spec §2d, `store_collapse.collapse_env`): a VAR
+# declared here at one scope and written by a user at ANOTHER scope stops the
+# launch naming both keys.  Pick the scope the value belongs to.
+#
+# EMPTY at landing, deliberately: the mechanism ships green and separately from
+# any value moving into it.
+env: {}

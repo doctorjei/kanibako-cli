@@ -186,10 +186,36 @@ DECLARED_AGENT_LEAVES: Final[frozenset[str]] = frozenset({
 #: resolver and the plugin descriptors all read ONE list.
 ACCESS_TIERS: Final[tuple[str, ...]] = ("restricted", "editing", "full")
 
-#: The tier a launch uses when NO scope in the cascade sets ``access``
-#: (spec §2d ``agent.default.access | full``; R-41 CLOSED: option (a), today's
-#: behaviour preserved).
-ACCESS_DEFAULT: Final[str] = "full"
+
+def access_default() -> str:
+    """The tier a launch uses when NO scope in the cascade sets ``access``.
+
+    Spec §2d ``:1244`` (``agent.default.access | full``; R-41 CLOSED: option (a),
+    today's behaviour preserved).  The value is DECLARED in ``core-defaults.yaml``
+    beside the other ``agent.default.*`` behavior floors (D1-2) and read from there.
+
+    ⚑ A FUNCTION, not the retired ``ACCESS_DEFAULT`` constant, and the reason is
+    IMPORT DISCIPLINE: this module is imported at MODULE SCOPE by ``config_keys``,
+    ``agent_defaults``, ``settings_cli_level`` and ``settings_prefs``, so a
+    module-level read would put YAML file I/O on every one of those imports.
+    ⚑ FAIL-CLOSED on a declaration outside :data:`ACCESS_TIERS`. Nothing downstream
+    re-checks the DEFAULT — ``resolve_access_tier`` validates only a value the
+    cascade supplied — so a shipped typo here would silently become the tier every
+    unset box runs at, on a permission axis.
+    """
+    from kanibako.settings.core_defaults import (
+        CORE_DEFAULTS_FILENAME,
+        behavior_default,
+    )
+
+    value = behavior_default("access")
+    if value not in ACCESS_TIERS:
+        raise RuntimeError(
+            f"{CORE_DEFAULTS_FILENAME} declares 'agent_default.access' as {value!r}, "
+            f"which is not one of {' | '.join(ACCESS_TIERS)} (spec §2d). Refusing "
+            "rather than defaulting every unset box to an unrecognised tier."
+        )
+    return value
 
 # ---------------------------------------------------------------------------
 # The §2a CATEGORIES — parametric over every scope

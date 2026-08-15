@@ -23,8 +23,8 @@ from kanibako.errors import ConfigError
 from kanibako.settings.config import coerce_bool
 from kanibako.settings.kb_store import SCOPE_CONTAINMENT
 from kanibako.settings.settings_keyspace import (
-    ACCESS_DEFAULT,
     ACCESS_TIERS,
+    access_default,
     leaf_name_reason,
 )
 from kanibako.settings.settings_prefs import PREF_ROOT
@@ -380,7 +380,7 @@ def access_value_error(canonical: str, value: str) -> str | None:
     return (
         f"Error: {canonical} must be one of {legal} (spec §2d); got {value!r}. "
         f"An unrecognised permission tier is REFUSED, never treated as "
-        f"'{ACCESS_DEFAULT}'."
+        f"'{access_default()}'."
     )
 
 # ---------------------------------------------------------------------------
