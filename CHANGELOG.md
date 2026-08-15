@@ -12,6 +12,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **BREAKING: the variables kanibako derives for an agent are settings entries now, and a key
+  naming one refuses the launch.** Five environment variables are *computed* from an agent's
+  resolved settings rather than written by hand: goose's `GOOSE_MODE` (from the permission tier),
+  `GOOSE_MODEL`, `GOOSE_PROVIDER` and `OPENAI_HOST` (from `model`, `provider` and `endpoint`), and
+  claude's `ANTHROPIC_BASE_URL` (from `endpoint`). They used to be pasted onto the container's
+  environment after everything else had been decided; **they are ordinary agent-scope entries
+  now**, arriving through the same channel as every other variable — so `-e` overrides one for a
+  launch like it overrides any key, and a variable set two different ways is a **refusal instead
+  of a silent overwrite**. (`kanibako box show --effective` still does not list them: it reports
+  stored configuration, and a realization depends on the flags of a launch that has not happened.) **A settings key naming one of these five now stops the launch**, at any
+  scope, naming both the key you wrote and the key that *drives* the variable. `GOOSE_MODE` is
+  derived on **every** goose launch, so any `env.GOOSE_MODE` will refuse unconditionally — set the
+  `access` key, or use `-S` / `-A`. The other four refuse only when their driving key resolves to a
+  value: set `model`, `provider` or `endpoint` instead, or pass `-e VAR=value` for one launch.
+  Nothing kanibako ships declares any of the five as a key, so a default install cannot hit this.
+  See [MIGRATION.md](MIGRATION.md) §2.40.
+
 - **BREAKING: an environment variable may be declared at one scope only.** Declaring the same
   variable at two scopes — `system.env.EDITOR` and `box.env.EDITOR`, say — used to start the box
   with the innermost scope's value and say nothing about the declaration it discarded. **That

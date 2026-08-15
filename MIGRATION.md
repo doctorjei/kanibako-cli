@@ -2202,6 +2202,77 @@ write the key.
 
 ---
 
+### 2.40 Realized variables are settings entries, and setting one by hand now refuses
+
+**Read this if any settings file of yours sets `GOOSE_MODE`, `GOOSE_MODEL`, `GOOSE_PROVIDER`,
+`OPENAI_HOST` or `ANTHROPIC_BASE_URL` as an `env` key.** Nothing kanibako ships sets any of them
+that way, so a default install is unaffected — but if you set one by hand, your box will now refuse
+to launch until you move the value.
+
+**What a *realized* variable is.** Some environment variables are not values you store — they are
+values kanibako **computes** from settings you already have. goose does not take a model on the
+command line, so `agent.<agent>.model` is delivered to it *as* `GOOSE_MODEL`; goose's permission
+mode is `GOOSE_MODE`, computed from the `access` key with `-S` / `-A` folded in; claude's
+`endpoint` is delivered as `ANTHROPIC_BASE_URL`. The variable is a *rendering* of the key, the way
+`--model opus` on claude's command line is.
+
+| variable | agent | derived from | set when |
+|---|---|---|---|
+| `GOOSE_MODE` | goose | `access` (+ `-S` / `-A`) | **always** — every goose launch |
+| `GOOSE_MODEL` | goose | `model` | when `model` resolves to a value |
+| `GOOSE_PROVIDER` | goose | `provider` | when `provider` resolves to a value |
+| `OPENAI_HOST` | goose | `endpoint` | when `endpoint` resolves to a value |
+| `ANTHROPIC_BASE_URL` | claude | `endpoint` | when `endpoint` resolves to a value |
+
+codex realizes none, and neither does a no-agent (`kanibako shell`) box.
+
+**What changed.** These five used to be written onto the container's environment *after* your
+settings had been resolved — the last layer, above every file. They are **ordinary agent-scope
+settings entries now**, decided in the same pass as every other variable. Three consequences, and
+all three are the point:
+
+- `kanibako box show --effective` and the launch read the same channel, so a variable can no longer
+  reach a box without having gone through it.
+- `-e VAR=value` overrides a realized variable for one launch exactly as it overrides any key —
+  which it could only do by careful ordering before, and now does by construction.
+- **A key naming a realized variable refuses the launch** instead of being silently overwritten a
+  moment later, which is the break below.
+
+**The break: `<scope>.env.<VAR>` naming one of the five now stops the launch.**
+
+Before, such a key was accepted, then discarded — the realization was written over it on the way
+out, and nothing said so. Now the launch stops with a message naming **both** the key you wrote and
+the key that drives the variable.
+
+| what you have | what happens now | the cure |
+|---|---|---|
+| `agent.goose.env.GOOSE_MODE: auto` (or at any other scope) | refuses on **every** goose launch | set `access` (`kanibako agent set goose access=full`), or pass `-S` / `-A` per launch |
+| `agent.goose.env.GOOSE_MODEL: …` | refuses **whenever `model` resolves to a value** | set `model` instead — `kanibako agent set goose model=…`, or `-M` per launch |
+| `agent.goose.env.GOOSE_PROVIDER: …` | refuses whenever `provider` resolves | set `provider` |
+| `agent.goose.env.OPENAI_HOST: …` / `agent.claude.env.ANTHROPIC_BASE_URL: …` | refuses whenever `endpoint` resolves | set `endpoint` (or use a persona, which supplies it) |
+
+⚑ **`GOOSE_MODE` is the total one.** The other four are conditional on an *unrelated* key, which is
+worth knowing before it surprises you: the same settings file launches or refuses depending on
+whether `model` / `provider` / `endpoint` resolves to a value. If you set both `model` and
+`env.GOOSE_MODEL`, the file that worked yesterday refuses today — that is the point, because
+yesterday one of the two was being thrown away.
+
+⚑ **There is no `env` spelling for a realized variable at any scope.** A twin at a *different*
+scope (`box.env.GOOSE_MODE` against the agent-scope realization) meets the ordinary one-owner
+refusal of §2.33; at the *same* scope you get the message above. Both say the same thing: drive the
+variable through its key.
+
+⚑ **For one launch and no file change, `-e` still works** — `kanibako start -e GOOSE_MODE=chat`
+overrides the realized value for that run, writing nothing. It is not a way around the refusal
+above, though: a *declared* twin is refused before the flag is applied.
+
+⚑ **`kanibako box show --effective` does not list realized variables.** It reports stored
+configuration, and a realization depends on the flags of a launch that has not happened —
+displaying one would report a permission tier your next `-S` may not use. Read the driving keys
+(`access`, `model`, `provider`, `endpoint`) there instead.
+
+---
+
 ## 3. For plugin authors
 
 ⚑ **THREE PERSONA SURFACES ON `Target` CHANGED SHAPE in 1.8.0 — a plugin built against 1.7.x needs

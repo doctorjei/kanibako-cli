@@ -2337,39 +2337,40 @@ class TestAgentConfigIntegration:
 
 
 class TestContainerEnvPrecedence:
-    """Verify container env accumulation precedence.
+    """Verify container env accumulation precedence — and there is none left to verify.
 
-    What is left of the layering, low->high:
-        the target's realizations (``state_env``) < the COLLAPSED slots
+    🛑🛑 THE LAYERING IS GONE, ALL OF IT, AND THAT IS WHAT THIS CLASS NOW PINS: the
+    COLLAPSED SLOTS **are** the container environment. There is no tier above them,
+    below them or beside them, so the only thing left to assert about the assembler
+    is that it is a TOTAL PROJECTION — every slot arrives, and nothing else does.
 
-    ⚑ FLIPPED by B9/RQ-1. The three docker ``.env`` FILE tiers (system, workset,
-    box) that used to open this sequence are RETIRED — the ratified manifest
-    records the files as DROPPED, so the launch read of them was an
-    authority-vs-code divergence. Their replacement is the settings key
-    ``<scope>.env.<VAR>``.
+    The layers, in the order they left, each one folded INTO the settings channel
+    rather than deleted:
 
-    🛑 RECOMPOSED ONTO THE LEAF. The config layer used to be
-    ``LaunchDeliveries.envs`` — an un-arbitrated entry list the consumer folded in
-    scope order, which made ``_build_config_env``'s own ``update`` the per-VAR
-    winner. It is ``meta.assembly.env`` now: one entry per VAR, decided by the
-    collapse, so the layering below is the ONLY thing this class still asserts.
-    🛑 AND THE AGENT LAYER BENEATH IT IS GONE (MBR-1 P3): it was the per-agent
-    FILE's ``self.env``, delivered off the cascade because ``_agent_partial``
-    re-rooted only ``secret_path``, which put it BELOW ``system`` and past the
-    expand pass. Re-rooted, it is an ordinary key arriving in the slots — so the
-    config tier here has exactly one input.
-    🛑🛑 AND THE ``cli`` LAYER IS GONE TOO (MBR-1 P4c-1): ``-e`` is not a layer over
-    the assembled env any more, it is the CASCADE'S CLI LEVEL over the key that owns
-    the variable, applied inside ``store_collapse.collapse_env``. Its cases moved
-    ONTO that mechanism — the pure ones to ``test_store_collapse.py``, the composed
-    one below, the end-to-end one to ``TestCliEnv`` — because a ``-e`` case written
-    against a replicated ``.update`` sequence would keep passing after the mechanism
-    it is about had been deleted.
+    * the three docker ``.env`` FILE tiers — RETIRED (B9/RQ-1; the ratified manifest
+      records the files as DROPPED). Replacement: the key ``<scope>.env.<VAR>``.
+    * the un-arbitrated ``LaunchDeliveries.envs`` config tier, whose consumer-side
+      ``.update`` was the per-VAR winner — replaced by ``meta.assembly.env``, one
+      entry per VAR, decided by the collapse.
+    * the per-agent FILE's ``self.env`` under-layer (MBR-1 P3) — re-rooted into an
+      ordinary ``agent.<node>.env.<VAR>`` key.
+    * the four core ``KANIBAKO_*`` stamps (MBR-1 P4b) — ``system.env.*`` floor keys.
+    * the per-run ``-e`` (MBR-1 P4c-1) — the CASCADE'S CLI LEVEL, applied inside
+      ``store_collapse.collapse_env`` over the key that owns the variable.
+    * the target's REALIZATIONS (MBR-1 P4c-2) — launch-derived ``agent.<node>.env.*``
+      keys, installed before the collapse walks them.
+
+    ⚑ WHERE THE MOVED CASES WENT, because they were recomposed onto the mechanism
+    rather than dropped: the ``-e`` cases to ``test_store_collapse.py`` (pure) and
+    ``TestCliEnv`` (end to end); the REALIZATION cases — a realized variable arriving
+    as a key, its refusals, and ``-e`` beating it — to
+    ``tests/test_targets/test_agent_envs.py``. A case written against a replicated
+    ``.update`` sequence would keep passing after the mechanism it is about had been
+    deleted, which is exactly what happened to the sequence this class used to hold.
 
     ⚑⚑ THE HELPER THAT REPLICATED START.PY'S SEQUENCE IS GONE WITH IT. These cases
     call the REAL ``_assemble_launch_env``; a hand-copied "verbatim" sequence is an
-    assumption in executable form, and this class exists precisely to catch that
-    sequence changing.
+    assumption in executable form.
     ⚑ WHAT IT MUST NOT BE READ AS: an ordering among the scopes. A two-scope
     contest cannot be expressed in this input at all — the map is keyed by VAR —
     and the arrangement that used to express it is a refusal upstream
@@ -2388,8 +2389,8 @@ class TestContainerEnvPrecedence:
         return slots
 
     @staticmethod
-    def _assemble(tmp_path, *, env_slots, state_env):
-        """Run the REAL launch assembler over *env_slots* + *state_env*."""
+    def _assemble(tmp_path, *, env_slots):
+        """Run the REAL launch assembler over *env_slots* — its ONLY environment input."""
         import logging
         from types import SimpleNamespace
 
@@ -2406,7 +2407,6 @@ class TestContainerEnvPrecedence:
             ),
             deliveries=SimpleNamespace(secrets=[]),
             env_slots=env_slots,
-            state_env=state_env,
             extra_mounts=[],
             logger=logging.getLogger("test.env-precedence"),
         )
@@ -2414,9 +2414,7 @@ class TestContainerEnvPrecedence:
 
     def test_every_collapsed_slot_reaches_the_container_env(self, tmp_path):
         env = self._assemble(
-            tmp_path,
-            env_slots=self._slots(("K", "box"), ("ONLY_BOX", "b")),
-            state_env={},
+            tmp_path, env_slots=self._slots(("K", "box"), ("ONLY_BOX", "b")),
         )
         assert env == {"K": "box", "ONLY_BOX": "b"}
 
@@ -2427,41 +2425,25 @@ class TestContainerEnvPrecedence:
         rides the leaf as PROVENANCE, and this layer never consults it.
         """
         env = self._assemble(
-            tmp_path,
-            env_slots=self._slots(("K", "workset", "workset")),
-            state_env={},
+            tmp_path, env_slots=self._slots(("K", "workset", "workset")),
         )
         assert env["K"] == "workset"
 
-    def test_a_realization_fills_a_variable_no_slot_claims(self, tmp_path):
-        """The realization layer still delivers — it is simply no longer on top."""
-        env = self._assemble(
-            tmp_path,
-            env_slots=self._slots(("K", "box")), state_env={"REALIZED": "auto"},
-        )
-        assert env == {"K": "box", "REALIZED": "auto"}
+    def test_the_map_is_the_whole_environment_and_nothing_is_added(self, tmp_path):
+        """MBR-1 P4c-2: the projection is TOTAL, and the EMPTY map is what proves it.
 
-    def test_a_realization_does_not_overwrite_a_collapsed_slot(self, tmp_path):
-        """MBR-1 P4c-1: ``state_env`` lands BENEATH the slots, not over them.
-
-        🛑 THIS IS WHAT KEEPS ``-e`` WINNING, and it is the whole reason the order
-        moved. A per-run ``-e`` IS a slot value now (the CLI level, applied inside
-        the collapse), so a realization written on top would silently beat the flag
-        — the one behaviour ruling 45 requires to survive the fold. The composed
-        case below drives exactly that through the real collapse.
-
-        ⚑ P4c-2 deletes this layer outright: the realizations become launch-derived
-        agent-scope entries and a declared twin meets the ordinary refusal. Until
-        then the declared key wins, which is the near side of where that lands.
+        🛑 A presence check cannot see a layer that was restored — only an assertion
+        that the result is EXACTLY the input can. Handed nothing, the assembler must
+        produce nothing: no realization, no stamp, no flag, no default. Anything a
+        future edit adds here would sit above every settings file, above ``-e`` and
+        outside every refusal, which is the arrangement four folds removed.
         """
-        env = self._assemble(
-            tmp_path,
-            env_slots=self._slots(("K", "box")), state_env={"K": "realized"},
-        )
-        assert env["K"] == "box"
+        assert self._assemble(tmp_path, env_slots={}) == {}
 
-    def test_a_per_run_e_beats_a_realization_of_the_same_variable(self, tmp_path):
-        """``-e`` wins the finished env for a REALIZED variable — through the real chain.
+    def test_a_cli_provenance_slot_reaches_the_container_env_like_any_other(
+        self, tmp_path,
+    ):
+        """A vacancy ``-e`` filled is a slot, and the assembler treats it as one.
 
         ⚑⚑ COMPOSED, NOT REPLICATED: ``collapse_env`` is what production calls to
         build ``meta.assembly.env`` (via ``_install_assembly_collapse``) and
@@ -2469,17 +2451,16 @@ class TestContainerEnvPrecedence:
         two in that order is the production composition minus the snapshot
         round-trip — not a third arrangement invented here.
 
-        The variable is one NO key declares, which is the case that matters: the
-        collapse gives it a CLI-provenance slot of its own, and the realization must
-        not then land on top of it.
+        ⚑ The variable is one NO key declares, which is the case that matters: the
+        collapse gives it a CLI-provenance slot of its own, and this layer must read
+        that slot without consulting its scope. (That ``-e`` also beats a REALIZED
+        variable is pinned where the realization is — ``test_agent_envs.py`` — since
+        there is no realization input here any more to compose against.)
         """
         from kanibako.settings.store_collapse import collapse_env
 
         slots = collapse_env([], {"GOOSE_MODE": "chat"})
-        env = self._assemble(
-            tmp_path, env_slots=slots, state_env={"GOOSE_MODE": "auto"},
-        )
-        assert env["GOOSE_MODE"] == "chat"
+        assert self._assemble(tmp_path, env_slots=slots)["GOOSE_MODE"] == "chat"
 
 
 class TestRetiredEnvFilesAreNotRead:
@@ -7072,6 +7053,39 @@ class TestPersonaLiveTierWiring:
         )
         return snap
 
+    def _resolve_realizing(self, std, *, target, persona_values):
+        """The REAL orchestrator with a realizer — the P4c-2 seam, in place.
+
+        ⚑⚑ THE ONLY CASE THAT DRIVES THE SEAM WHERE IT LIVES. Everything else that
+        exercises a realization either calls ``_install_realized_env`` directly
+        (``tests/test_targets/test_agent_envs.py``) or runs through the ``start_mocks``
+        stub, which REPLACES this function — so a resolve that stopped installing what
+        it derived would leave both of those green. Measured: it does.
+        """
+        from kanibako.commands.start import (
+            _LaunchRealizer,
+            _resolve_launch_snapshot,
+        )
+
+        snap, _deliveries = _resolve_launch_snapshot(
+            std=std,
+            proj=self._proj(std),
+            agent_name=self._NODE,
+            system_settings_path=None,
+            agent_cfg_path=None,
+            desc=target.descriptor,
+            install=None,
+            target=target,
+            agent_cfg=None,
+            persona_values=persona_values,
+            include_base_families=False,
+            realize=_LaunchRealizer(
+                desc=target.descriptor, agent_id=self._NODE,
+                safe_mode=False, autonomous=False,
+            ),
+        )
+        return snap
+
     def _active(self, snapshot):
         """The resolved ``agent.<node>`` subtree, or ``{}``."""
         node = dict.get(snapshot, "agent") or {}
@@ -7097,6 +7111,88 @@ class TestPersonaLiveTierWiring:
         )
         env = dict.get(self._active(snap), "env") or {}
         assert dict.get(env, "SOME_NEW_VAR") == "brand-new"
+
+    # --- MBR-1 P4c-2: the resolve INSTALLS what it realizes -------------------
+
+    def test_the_resolve_installs_the_realized_variable_as_an_agent_key(
+        self, std, config_file, tmp_home,
+    ):
+        """The store's ``endpoint`` comes out of the REAL resolve as a KEY.
+
+        ⚑ The whole chain in one case, and every link is real: the persona store
+        supplies ``endpoint`` as a live cascade rung, the resolve builds the
+        snapshot, the realizer reads ``endpoint`` off it, and the seam writes
+        ``agent.<node>.env.ANTHROPIC_BASE_URL`` back into that same snapshot before
+        the entry list is adapted. A resolve that derived and discarded fails here.
+        """
+        from kanibako.commands.start import _persona_values_for
+
+        self._store(tmp_home)
+        target = self._target()
+        snap = self._resolve_realizing(
+            std, target=target,
+            persona_values=_persona_values_for(self._NODE, target),
+        )
+        env = dict.get(self._active(snap), "env") or {}
+        assert dict.get(env, "ANTHROPIC_BASE_URL") == self._ENDPOINT
+
+    def test_the_realized_variable_is_installed_BEFORE_the_entry_adaptation(
+        self, std, config_file, tmp_home, monkeypatch,
+    ):
+        """The SEAM'S POSITION, which the case above structurally cannot see.
+
+        🛑 That case reads the RETURNED snapshot, so an install moved one statement
+        LATER — after ``snapshot_category_entries`` — still satisfies it, while the
+        entry list, the collapse and the box get nothing at all. Measured: that
+        mutation leaves the WHOLE suite green. What has to be asserted is what the
+        ADAPTATION was handed, so this captures the snapshot at that call.
+        """
+        from kanibako.commands.start import _persona_values_for
+        from kanibako.settings import settings_launch
+        from kanibako.settings.keystore import KeyStore
+
+        seen: list[object] = []
+        real = settings_launch.snapshot_category_entries
+
+        def _spy(snapshot, **kw):
+            node = snapshot
+            for seg in ("agent", self._NODE, "env", "ANTHROPIC_BASE_URL"):
+                node = (
+                    dict.get(node, seg, None) if isinstance(node, KeyStore) else None
+                )
+            seen.append(node)
+            return real(snapshot, **kw)
+
+        monkeypatch.setattr(settings_launch, "snapshot_category_entries", _spy)
+        self._store(tmp_home)
+        target = self._target()
+        self._resolve_realizing(
+            std, target=target,
+            persona_values=_persona_values_for(self._NODE, target),
+        )
+        assert seen == [self._ENDPOINT]
+
+    def test_a_resolve_with_no_realizer_installs_nothing(
+        self, std, config_file, tmp_home,
+    ):
+        """The NEGATIVE CONTROL, and it is what makes the case above mean anything.
+
+        🛑 It is also the ``box show --effective`` / ``_sync_box_at_create`` contract:
+        those resolves describe STORED configuration and are given no realizer, so a
+        realized variable must not appear in one. Deriving it there would report a
+        box as configured with a value no file holds — and, for the access tier, one
+        the launch's own flags may not even ship.
+        """
+        from kanibako.commands.start import _persona_values_for
+
+        self._store(tmp_home)
+        target = self._target()
+        snap = self._snapshot(
+            std, target=target,
+            persona_values=_persona_values_for(self._NODE, target),
+        )
+        env = dict.get(self._active(snap), "env") or {}
+        assert dict.get(env, "ANTHROPIC_BASE_URL") is None
 
     def test_the_store_secret_path_reaches_the_resolved_launch_snapshot(
         self, std, config_file, tmp_home,

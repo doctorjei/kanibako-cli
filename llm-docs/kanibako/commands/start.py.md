@@ -534,7 +534,8 @@ paste over the finished environment. It is **the CLI level of the cascade applie
 family** now: `_run_container` parses the flag ONCE at its door, threads the map through
 `_resolve_launch_snapshot(cli_env=)` → `_install_assembly_collapse` → `collapse_env`, and the
 overlay runs there. `_assemble_launch_env`'s `cli_env` parameter and its paste are GONE, which is
-what makes that function a projection of `meta.assembly.env` plus one remaining layer.
+what makes that function a projection of `meta.assembly.env` plus one remaining layer — and P4c-2
+below took that one too.
 
 ⚑ **THE OVERLAY RUNS AFTER THE CONTAINMENT WALK AND THAT IS THE CONSTRUCTION, NOT A DETAIL** —
 `store_collapse._apply_cli_env` carries the measured reason a reader must not "unify" it onto the
@@ -555,13 +556,57 @@ box): there is no collapse there to apply a level to. What they gained is the sh
 read the map `_run_container` already built, so the doors and the launch cannot disagree about what
 the user typed.
 
-🛑 **`state_env` (the target's realizations) moved BENEATH the slots in the same edit**, and that is
-load-bearing rather than tidy: a per-run `-e` IS a slot value now, so a realization pasted on top
-would silently beat the flag — the one behaviour ruling 45 requires to survive the fold. **P4c-2
-deletes that layer outright** (realizations become launch-derived agent-scope entries and a declared
-twin meets the ordinary refusal), so the order here is the near side of where the fold lands. Under
-it, a declared `<scope>.env.<VAR>` naming a realized variable wins where the realization used to;
-that pair becomes a refusal at P4c-2.
+🛑 **`state_env` (the target's realizations) moved BENEATH the slots in the same edit**, as a stated
+intermediate: a per-run `-e` was already a slot value, so a realization pasted on top would have
+silently beaten the flag. That layer is GONE — see P4c-2 below, which replaced it rather than
+reordering it again.
+
+### 🛑🛑 AND FINALLY THE REALIZATIONS (MBR-1 P4c-2) — there is nothing above the channel left
+
+⚖️ **Ruling 45** (*"Hmm. Why does GOOSE_MODEL have to be post-collapse?"* — the question was the
+answer: nothing forces it) + **ruling 59** (*"Yes on P4c-2"* — the refusals SHIP, no carve-out).
+The five realized variables — goose `GOOSE_MODE` (unconditional, every launch) · `GOOSE_MODEL` ·
+`GOOSE_PROVIDER` · `OPENAI_HOST` and claude `ANTHROPIC_BASE_URL` (each conditional on its driving
+key resolving truthy); **codex and core realize none** — used to be `assemble_env`'s return value,
+applied to the finished `container_env` by the caller. They are **launch-derived
+`agent.<node>.env.<VAR>` keys** now, and `_assemble_launch_env` is a TOTAL projection of the leaf.
+
+**The seam is a POSITION, and that is the design.** A realization cannot be a floor default: its
+inputs (`effective_behavior`, the `-S`/`-A`-folded access tier, the persona provider pin) are
+OUTPUTS of the resolve, so nothing that feeds the resolve can carry them. So `_run_container` builds
+a `_LaunchRealizer` and hands it to `_resolve_launch_snapshot(realize=)`, which calls it **between
+`build_launch_snapshot` and `snapshot_category_entries`** — the only point where its input exists
+and its output is still in time — and `_install_realized_env` writes what it derived into that same
+snapshot. `snapshot_category_entries` then adapts those keys like any other, and **nothing
+downstream can tell a realized variable from a declared one.** That indistinguishability IS the
+fold: no second producer, no second slot pass, no realization-shaped exception anywhere below.
+
+⚑ **The alternative was measured and rejected**: resolving twice (once for the state, once with the
+variables folded in) costs a second full resolve AND *inverts* `-M` — the realization would become a
+floor a stored `agent.<node>.env.GOOSE_MODEL` sits above, so a flag that outranks every settings
+file would lose to a key.
+
+⚑ **The derived trio comes BACK to the caller** (`_LaunchRealizer.result` →
+`LaunchRealization(effective_state, cascade_access, launch_access, env)`) so each keeps exactly ONE
+derivation site. `_run_container` used to derive all of them itself, after the resolve — which is
+precisely why the variables could not be keys. The **un-rendered tier gate moved with them**, into
+the realizer ahead of `assemble_env`, because `assemble_env` raises on the LAUNCH tier alone while
+the gate must name the CASCADE tier first. 🛑 `result` RAISES rather than defaulting when the
+callback never ran: an empty default would turn a resolve that dropped the kwarg into a box launched
+at `full` with no realized variables and nothing said about it.
+
+**Two refusals, two raise sites, and the split is the CURE not the mechanism.** A twin at ANOTHER
+scope is the ORDINARY `store_collapse._refuse_env_twin` — the existing mechanism catches it for
+free, and nothing was built for it. A declaration at the SAME (agent) scope is the one the collapse
+cannot see, because the §2d pick merges `agent.<node>` and `agent.default` into one node where one
+value would simply overwrite the other; `_refuse_realized_twin` names the declared key AND the key
+that DRIVES the variable (`targets.assembly.env_realization_drivers`, the twin walk of
+`assemble_env`), because a cross-scope twin has a key to move to and this one does not.
+
+⚑ **`box show --effective` deliberately does NOT gain realizations.** It resolves stored
+configuration and is given no realizer, so a launch sets variables a display does not list.
+Deriving them for a display would report a tier the launch's own flags may not ship. That drift is
+recorded, not pending.
 
 ### ⚑⚑ The pref-origin enrichment moved with the raises, and that is REAL UX
 
