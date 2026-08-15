@@ -17,7 +17,7 @@ The STATIC, non-agent-specific launch-floor tables live as declarative data in
 :mod:`importlib.resources`. This module reads that file and emits its entries through the existing
 category seam, so nothing enters a box except through the keyspace.
 
-The shipped file declares EIGHT families and this module has a producer for each:
+The shipped file declares EIGHT CATEGORY-TABLE families (seven BIND families plus `masks`, which is a mask table, not a bind) and this module has a producer for each:
 
 | block | producer | arm(s) |
 |---|---|---|
@@ -29,6 +29,25 @@ The shipped file declares EIGHT families and this module has a producer for each
 | `canon` | `canon_default_categories` | `box.bindings.ro` + `agent.<node>.canon` scalars |
 | `helpers` | `helper_default_categories` | `box.bindings.{ro,rw}` |
 | `images` | `image_default_categories` | `box.bindings.ro` + `box.images_store` scalar |
+
+Since the DEFAULTS-1 pass the file also carries TWO NON-BIND SCALAR sections. They are flat maps
+keyed by setting name, not dest-keyed category tables, and they are why the sentence above says
+*bind* families:
+
+| block | producer | emits |
+|---|---|---|
+| `agent_default` | `behavior_defaults` / `behavior_default` | the `agent.default.<key>` BEHAVIOR floor (spec §2d) — `access` · `allow_helpers` · `continue_mode` · `bootstrap` |
+| `env` | `env_default_categories` | STATIC `<scope>.env.<VAR>` floor keys; **EMPTY as shipped** |
+
+Two reading traps in that pair:
+
+* `behavior_default` (singular) is the FAIL-CLOSED single-key read and it is the ONE spelling of
+  that read — `commands.start._declared_behavior` and
+  :func:`kanibako.settings.settings_keyspace.access_default` both come here. `access` in particular
+  has NO constant any more: the retired `ACCESS_DEFAULT` was a second spelling of `full`.
+* `env_default_categories` is NOT `commands.start._core_env_default_categories`. That one emits the
+  launch-DERIVED `KANIBAKO_*` stamps and its docstring forbids new entries; this one emits literals
+  a file can hold. The derived table merges AFTER this one, so a stamp wins a contested VAR.
 
 Two things in the module are NOT table producers and should not be read as such:
 

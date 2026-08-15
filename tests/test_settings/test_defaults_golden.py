@@ -48,6 +48,7 @@ import importlib.resources
 import re
 from pathlib import Path
 
+import pytest
 import yaml
 
 from kanibako.settings import agent_defaults, core_defaults
@@ -469,11 +470,12 @@ class TestCoreBehaviorDefaults:
     plugin's declared default winning over the core floor.
     """
 
-    #: The spec §2d oracle (``settings-keyspace-1.8.0.md`` :1245, :1252-1253 — NOT
-    #: the :1244 access row, which D1-2 owns).  ⚑ STRINGS,
+    #: The spec §2d oracle (``settings-keyspace-1.8.0.md`` :1244, :1245,
+    #: :1252-1253).  ⚑ STRINGS,
     #: including the booleans: the floor is consumed through ``coerce_bool`` and
     #: ``effective_behavior`` stringifies, so a YAML bool would arrive as ``"True"``.
     _SPEC_2D = {
+        "access": "full",
         "allow_helpers": "true",
         "continue_mode": "true",
         "bootstrap": "tmux",
@@ -482,10 +484,11 @@ class TestCoreBehaviorDefaults:
     def test_the_core_behavior_defaults_match_spec_2d(self):
         """The shipped values ARE the spec-ratified ones, as strings, and no more.
 
-        ``access`` (spec §2d ``agent.default.access | full``) is deliberately
-        EXCLUDED: its consumers are set-time validation + ``effective_access``, on a
-        different clock, and they move in their own pass (D1-2).  Asserting its
-        ABSENCE is what stops a half-move landing unnoticed.
+        ``access`` (spec §2d ``:1244`` ``agent.default.access | full``) joined the
+        section in D1-2.  It is the one whose consumers do not share a clock —
+        ``config_keys.access_value_error`` at SET time, ``assembly
+        .resolve_access_tier`` at LAUNCH — and both reach it through
+        ``settings_keyspace.access_default()``, pinned below.
         """
         doc = _load_yaml("kanibako.data", "core-defaults.yaml")
         declared = doc["agent_default"]
@@ -499,12 +502,48 @@ class TestCoreBehaviorDefaults:
                 f"{type(value).__name__}: {value!r} — an unquoted YAML bool "
                 f"round-trips to a consumer as \"True\"/\"False\""
             )
-        assert "access" not in declared, (
-            "access is D1-2's, not D1-1's — it has three consumers on two clocks"
-        )
         assert core_defaults.behavior_defaults() == self._SPEC_2D, (
             "the loader must hand back the file's values verbatim"
         )
+
+    def test_the_access_accessor_reads_the_declared_value(self):
+        """``access_default()`` is the file's value, not a re-materialized literal.
+
+        The retired ``ACCESS_DEFAULT`` constant spelled ``full`` a second time; the
+        accessor exists so there is ONE spelling.  Asserting it against the file's
+        own row is what makes the constant unrestorable without going red.
+        """
+        from kanibako.settings.settings_keyspace import ACCESS_TIERS, access_default
+
+        declared = _load_yaml("kanibako.data", "core-defaults.yaml")["agent_default"]
+        assert access_default() == declared["access"]
+        assert access_default() in ACCESS_TIERS
+
+    def test_a_declared_access_outside_the_tier_set_refuses(self, monkeypatch):
+        """The accessor's tier guard is load-bearing — nothing downstream re-checks.
+
+        ``resolve_access_tier`` validates only a value the CASCADE supplied, so a
+        typo'd shipped default would silently become the tier every unset box runs
+        at.  This pin is what keeps a future "simplify" pass from deleting the
+        guard while the suite stays green.
+        """
+        import pytest
+
+        from kanibako.settings.settings_keyspace import access_default
+
+        monkeypatch.setattr(
+            core_defaults, "_load_doc", lambda: {"agent_default": {"access": "fulll"}}
+        )
+        with pytest.raises(RuntimeError, match="fulll"):
+            access_default()
+
+    def test_a_missing_behavior_key_refuses_by_name(self, monkeypatch):
+        """``behavior_default`` fails CLOSED on an absent key, naming file and key."""
+        import pytest
+
+        monkeypatch.setattr(core_defaults, "_load_doc", lambda: {"agent_default": {}})
+        with pytest.raises(RuntimeError, match="agent_default.access"):
+            core_defaults.behavior_default("access")
 
     def test_a_descriptor_default_still_beats_the_core_behavior_floor(self, tmp_path):
         """A plugin's declared default WINS over the core floor at the merge sites.
@@ -596,6 +635,163 @@ class TestCoreBehaviorDefaults:
         assert effective["continue_mode"] == self._SPEC_2D["continue_mode"], (
             "PRESENCE: a non-colliding core key must reach the launch read — if "
             "this is absent the launch site is not merging the core floor at all"
+        )
+
+
+# --------------------------------------------------------------------------- #
+# 1c. THE STATIC CORE ENV FLOOR — `env:` (D1-3)
+# --------------------------------------------------------------------------- #
+
+class TestCoreStaticEnvDefaults:
+    """The FILE route for static core ``<scope>.env.<VAR>`` defaults (spec §2d).
+
+    The delivery mechanism already existed — ``start._core_env_default_categories``
+    folds the launch-DERIVED ``KANIBAKO_*`` stamps into ``default_categories`` and
+    that table becomes the floor.  What D1-3 adds is a way to declare a variable
+    whose value is a LITERAL, in the file, without writing code.  The section ships
+    EMPTY, so every case below drives a PATCHED loader document; the last case pins
+    the emptiness itself.
+
+    ⚑ THE PATCH IS ADDITIVE, never a replacement document.  ``_load_doc`` feeds every
+    other family in this file (channels, core, kani, kickoff, canon, helpers), so a
+    bare ``{"env": …}`` would resolve a launch with no binds at all and prove nothing
+    about the env route.
+    """
+
+    #: A VAR no scope declares, in this file or any plugin's — the cross-scope twin
+    #: refusal (spec §2d) fires on a shared NAME, so a real one would refuse for the
+    #: wrong reason and read as a pass.
+    PROBE_VAR = "KANI_D1_3_PROBE"
+
+    @staticmethod
+    def _target():
+        from kanibako.targets.no_agent import NoAgentTarget
+
+        class _CoreTarget(NoAgentTarget):
+            """A REAL target declaring nothing of its own — every VAR here is core's."""
+
+            @property
+            def name(self) -> str:
+                return "claude"
+
+            def rom_root(self):
+                return None
+
+        return _CoreTarget()
+
+    @staticmethod
+    def _patch_env_section(monkeypatch, section):
+        """Re-declare ONLY the ``env:`` section of the shipped document."""
+        doc = {**core_defaults._load_doc(), "env": section}
+        monkeypatch.setattr(core_defaults, "_load_doc", lambda: doc)
+
+    def _launch_slots(self, std, config, project_dir):
+        from kanibako.commands.start import (
+            _launch_env_map,
+            _resolve_launch_snapshot,
+        )
+        from kanibako.settings.paths import resolve_project
+
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        snapshot, _deliveries = _resolve_launch_snapshot(
+            std=std, proj=proj, agent_name="claude",
+            system_settings_path=None, agent_cfg_path=None,
+            desc=None, install=None, target=self._target(),
+            agent_cfg=None, deliver_creds=True,
+        )
+        return _launch_env_map(snapshot)
+
+    @staticmethod
+    def _write_box_env(std, config, project_dir, var, value):
+        """Write ``box.env.<var>`` into the project's own BOX-tier settings file."""
+        from kanibako.settings.paths import box_workset_settings_paths, resolve_project
+
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        box_path, _workset_path = box_workset_settings_paths(proj)
+        doc = yaml.safe_load(box_path.read_text()) if box_path.is_file() else {}
+        doc = doc or {}
+        doc.setdefault("box", {}).setdefault("env", {})[var] = value
+        box_path.write_text(yaml.safe_dump(doc))
+
+    def test_a_core_declared_env_default_reaches_the_floor(
+        self, monkeypatch, std, config, project_dir,
+    ):
+        """A declared entry arrives at the box under its own dotted key.
+
+        The value, the scope AND the key: a variable that reached the box without a
+        key would be the post-resolve stamp the whole MBR-1 fold replaced.
+        """
+        self._patch_env_section(
+            monkeypatch, {"box": {self.PROBE_VAR: "from-the-file"}},
+        )
+        slots = self._launch_slots(std, config, project_dir)
+        assert self.PROBE_VAR in slots, (
+            "the declared core env default never reached the launch seam"
+        )
+        assert slots[self.PROBE_VAR].value == "from-the-file"
+        assert slots[self.PROBE_VAR].scope == "box"
+        assert slots[self.PROBE_VAR].key == f"box.env.{self.PROBE_VAR}"
+
+    def test_a_stored_box_env_key_beats_the_core_default(
+        self, monkeypatch, std, config, project_dir,
+    ):
+        """SAME key, nearer file — the ordinary cascade, no refusal.
+
+        ``env`` keys are write-many at the KEY layer (spec §2d): the core declaration
+        is the BASE floor, below every settings file, so a user's own entry at the
+        SAME scope simply wins.  Contrast the case below, where a SECOND scope names
+        the variable and the launch refuses instead.
+        """
+        self._patch_env_section(
+            monkeypatch, {"box": {self.PROBE_VAR: "from-the-file"}},
+        )
+        # ⚑ THE CONTROL: without the stored key the slot carries the DECLARED value,
+        # so this cannot pass on a build that declares nothing at all.
+        assert self._launch_slots(
+            std, config, project_dir,
+        )[self.PROBE_VAR].value == "from-the-file"
+
+        self._write_box_env(std, config, project_dir, self.PROBE_VAR, "mine")
+        slots = self._launch_slots(std, config, project_dir)
+        assert slots[self.PROBE_VAR].value == "mine"
+        assert slots[self.PROBE_VAR].key == f"box.env.{self.PROBE_VAR}"
+
+    def test_a_core_declared_twin_at_another_scope_still_refuses(
+        self, monkeypatch, std, config, project_dir,
+    ):
+        """The shipped row-38 refusal reaches the NEW route unchanged.
+
+        A core declaration at ``system`` and a user's key at ``box`` contest one
+        write-once slot, exactly as a plugin's declaration and a user's do. Nothing
+        about arriving from a file rather than from code carves this out — that
+        indistinguishability is the point of routing through ``default_categories``.
+        """
+        from kanibako.settings.settings_resolve import SettingsError
+
+        self._patch_env_section(
+            monkeypatch, {"system": {self.PROBE_VAR: "from-the-file"}},
+        )
+        self._write_box_env(std, config, project_dir, self.PROBE_VAR, "mine")
+        with pytest.raises(SettingsError) as excinfo:
+            self._launch_slots(std, config, project_dir)
+        message = str(excinfo.value)
+        assert f"system.env.{self.PROBE_VAR}" in message
+        assert f"box.env.{self.PROBE_VAR}" in message
+
+    def test_the_shipped_env_section_is_empty(self):
+        """The section ships EMPTY, and that is a DECISION, not an oversight.
+
+        D1-3 lands the mechanism green and separately from any value moving into it
+        (COLORTERM is D1-4/MBR-2's).  Without this, a value could slip in with the
+        mechanism and nobody would have decided to ship it.
+        """
+        doc = _load_yaml("kanibako.data", "core-defaults.yaml")
+        assert doc.get("env") == {}, (
+            f"core-defaults.yaml ships a NON-EMPTY env: section ({doc.get('env')!r}) "
+            f"— moving a value in is its own pass, with its own decision"
+        )
+        assert core_defaults.env_default_categories() == {}, (
+            "the emitter must hand back nothing while the section is empty"
         )
 
 

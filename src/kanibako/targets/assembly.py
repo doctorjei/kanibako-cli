@@ -29,7 +29,7 @@ from typing import TYPE_CHECKING, Collection, Sequence
 
 from kanibako.errors import ConfigError
 from kanibako.log import get_logger
-from kanibako.settings.settings_keyspace import ACCESS_DEFAULT, ACCESS_TIERS
+from kanibako.settings.settings_keyspace import ACCESS_TIERS, access_default
 from kanibako.targets.base import (
     BindScope,
     Channel,
@@ -111,9 +111,10 @@ def resolve_mode(
 def resolve_access_tier(access: "str | None") -> str:
     """Validate a CASCADE-resolved ``access`` value into a permission TIER.
 
-    ``None`` / unset ⇒ :data:`~kanibako.settings.settings_keyspace.ACCESS_DEFAULT`
+    ``None`` / unset ⇒ :func:`~kanibako.settings.settings_keyspace.access_default`
     (``full`` — R-41's ruled default: today's behaviour preserved, the box is the
-    containment boundary).  Anything else must be a member of
+    containment boundary; DECLARED in ``core-defaults.yaml``, not spelled here).
+    Anything else must be a member of
     :data:`~kanibako.settings.settings_keyspace.ACCESS_TIERS` EXACTLY.
 
     ⚑ An unknown value RAISES, naming the key and the legal values.  It is NEVER
@@ -132,13 +133,13 @@ def resolve_access_tier(access: "str | None") -> str:
     unknown stored value is rejected, never treated as permissive).
     """
     if access is None:
-        return ACCESS_DEFAULT
+        return access_default()
     if access not in ACCESS_TIERS:
         raise ConfigError(
             f"'access' must be one of {' | '.join(ACCESS_TIERS)} (spec §2d); "
             f"this box resolved {access!r}. Refusing rather than running: an "
             f"unrecognised permission tier is never treated as "
-            f"'{ACCESS_DEFAULT}'."
+            f"'{access_default()}'."
         )
     return access
 

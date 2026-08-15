@@ -937,14 +937,25 @@ def test_retired_auto_approve_is_not_a_key():
 
 
 def test_access_tier_vocabulary_is_declared_once():
-    """The enum + its default live beside the leaf they belong to, so the
-    settable surface, the launch resolver and the plugin descriptors read ONE
-    list (R-41)."""
-    from kanibako.settings.settings_keyspace import ACCESS_DEFAULT, ACCESS_TIERS
+    """The enum + its default read as ONE vocabulary beside the leaf (R-41).
+
+    ⚑ The DEFAULT is no longer a constant here: D1-2 moved the VALUE into
+    ``core-defaults.yaml``'s ``agent_default:`` section, so this module exposes an
+    ACCESSOR (``access_default``) rather than ``ACCESS_DEFAULT``. The enum stays a
+    constant — it is the closed vocabulary, not a default. What this pins is that
+    the settable surface, the launch resolver and the plugin descriptors still
+    reach ONE list and ONE default read.
+    """
+    from kanibako.settings import settings_keyspace
+    from kanibako.settings.settings_keyspace import ACCESS_TIERS, access_default
 
     assert ACCESS_TIERS == ("restricted", "editing", "full")
-    assert ACCESS_DEFAULT == "full"
-    assert ACCESS_DEFAULT in ACCESS_TIERS
+    assert access_default() == "full"
+    assert access_default() in ACCESS_TIERS
+    assert not hasattr(settings_keyspace, "ACCESS_DEFAULT"), (
+        "the constant is retired — a restored one would be a SECOND spelling of a "
+        "value that now lives in core-defaults.yaml"
+    )
 
 
 def test_the_keyspace_floor_is_the_store_set_not_a_copy():

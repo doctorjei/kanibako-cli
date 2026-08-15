@@ -709,15 +709,13 @@ def _declared_behavior(key: str) -> str:
     ⚑ FAIL-CLOSED like the kickoff loader: an absent declaration is a PACKAGING
     defect, never a case to paper over with a fallback here — a re-materialized
     literal is exactly the consumer default this read replaced.
+    ⚑ The read AND its refusal live in :func:`core_defaults.behavior_default`, which
+    ``settings_keyspace.access_default`` also uses; this is start.py's local name for
+    it, not a second implementation.  ``settings_keyspace`` cannot come here (it is
+    imported by everything this module imports), which is why the shared read sits in
+    the loader rather than in this file.
     """
-    defaults = core_defaults.behavior_defaults()
-    if key not in defaults:
-        raise RuntimeError(
-            f"{core_defaults.CORE_DEFAULTS_FILENAME} declares no "
-            f"'agent_default.{key}' — the core behavior floor (spec §2d "
-            f"agent.default.{key}) lives there and nowhere else."
-        )
-    return defaults[key]
+    return core_defaults.behavior_default(key)
 
 
 def _declared_behavior_bool(key: str) -> bool:
@@ -6667,6 +6665,16 @@ def _resolve_launch_snapshot(
                 desc if desc is not None
                 else (target.descriptor if target is not None else None)
             ), family="kickoff", origins=cat_origins,
+        )
+        # The STATIC core env floor, declared in ``core-defaults.yaml``'s ``env:``
+        # section (D1-3).  FIRST of the two core env tables on purpose: it holds
+        # LITERALS a file can carry, the derived table below holds values only a
+        # launch can compute, and where both name one VAR the DERIVED value is the
+        # authoritative one — so it merges second and wins.  The section ships
+        # EMPTY, which makes this a no-op by construction today.
+        _merge_default_categories(
+            default_categories, core_defaults.env_default_categories(),
+            family="core env file", origins=cat_origins,
         )
         # The CORE ``KANIBAKO_*`` STAMPS as SYSTEM-scope env keys (MBR-1 P4b,
         # ruling 2026-08-14).  Folded HERE — beside the kickoff whose box_dest one
