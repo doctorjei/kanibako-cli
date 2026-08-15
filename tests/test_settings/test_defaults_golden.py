@@ -898,7 +898,11 @@ class TestNoHardcodedGuestHome:
         assert GUEST_HOME == _HOME_LITERAL
 
     def test_no_home_literal_in_shipped_data_files(self):
-        """The shipped defaults DATA files carry NO ``/home/agent`` literal.
+        """The shipped keyspace DATA files carry NO ``/home/agent`` literal.
+
+        The defaults files plus the keyspace MANIFEST (the registry those defaults
+        are asserted against — a divergence in the guest-home spelling between the
+        two is exactly the drift the conformance suite exists to catch).
 
         Every in-box destination in the data files is a ``~``/``$GUEST_HOME``
         expression; a raw ``/home/agent`` would mean a re-hardcoded box path.
@@ -908,6 +912,10 @@ class TestNoHardcodedGuestHome:
         """
         data_files = [
             _data_file_path("kanibako.data", "core-defaults.yaml"),
+            # The keyspace REGISTRY ships in the same wheel and spells every
+            # in-box destination as a ``~``-expression, so it is under the same
+            # rule as the defaults files it is asserted against.
+            _data_file_path("kanibako.data", "keyspace-manifest.yaml"),
         ]
         for package, filename in _AGENT_DEFAULTS:
             data_files.append(_data_file_path(package, filename))
@@ -928,7 +936,7 @@ class TestNoHardcodedGuestHome:
         )
 
     def test_no_home_literal_in_defaults_loaders(self):
-        """The two thin loaders carry NO ``/home/agent`` STRING LITERAL in code.
+        """The three thin loaders carry NO ``/home/agent`` STRING LITERAL in code.
 
         The loaders expand box paths from the imported :data:`GUEST_HOME`; a code
         literal here would bypass the single SoT.  Comment/docstring mentions of
@@ -938,6 +946,9 @@ class TestNoHardcodedGuestHome:
         loaders = [
             _REPO_ROOT / "src" / "kanibako" / "settings" / "core_defaults.py",
             _REPO_ROOT / "src" / "kanibako" / "settings" / "agent_defaults.py",
+            # The keyspace-registry reader — a third thin loader over shipped
+            # data, so it is under the same no-box-path-literal rule.
+            _REPO_ROOT / "src" / "kanibako" / "settings" / "keyspace_manifest.py",
         ]
         for f in loaders:
             # The guard is only as good as its target: a path that stopped

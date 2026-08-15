@@ -52,6 +52,7 @@ from kanibako.settings.config_interface import (
     show_config,
 )
 from kanibako.settings.config_io import dump_doc, load_doc
+from kanibako.settings.keyspace_manifest import manifest_doc
 
 
 # ---------------------------------------------------------------------------
@@ -702,14 +703,12 @@ class TestChannelTypeRootsRouteUNIFORMLY:
 
         DERIVED from the manifest so a channel type added later is covered without
         an edit here — the property is about the FAMILY, not about ``common``.
+
+        ⚑ Read through ``keyspace_manifest.manifest_doc``, which resolves the
+        INSTALLED package data (not a repo-relative path), so this stays a
+        statement about the shipped artefact.
         """
-        import importlib.resources as res
-
-        import yaml
-
-        doc = yaml.safe_load(
-            res.files("kanibako.data").joinpath("keyspace-manifest.yaml").read_text()
-        )
+        doc = manifest_doc()
         out: dict[str, list[str]] = {}
         for key in doc["keys"]:
             head, _, rest = str(key).partition(".channels.")

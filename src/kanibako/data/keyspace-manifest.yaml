@@ -2,9 +2,17 @@
 ## (ratification record: plans/manifest-ratification-RULINGS.md)
 ##
 ## AUTHORITY is specs/settings-keyspace-1.8.0.md. This file is its
-## MACHINE-READABLE projection: the single table from which the Key
-## set, Scope enums, defaults and directional rules are GENERATED, and against which
-## a conformance test asserts code == registry.
+## MACHINE-READABLE projection: the single table of the Key set, Scope enums,
+## defaults and directional rules, AGAINST WHICH CONFORMANCE TESTS ASSERT
+## code == registry (tests/test_settings/test_manifest_conformance.py; read
+## through kanibako.settings.keyspace_manifest, the one loader).
+##
+## ⚑ NOTHING IS GENERATED FROM THIS FILE, and this header used to promise it was.
+## Generation was measured and DECLINED (2026-08-15): it would put a 3000-line YAML
+## parse on the CLI hot path, destroy the load-bearing per-entry commentary inside
+## the code's DECLARED_* frozensets, and narrow nothing `key_validity` already
+## refuses. TWO CARRIERS, ASSERTED EQUAL — set-equality catches the same drift one
+## gate-run later, at none of that cost.
 ##
 ## CONVENTION: every entry carries `spec:` = the section it is traced from.
 
@@ -2309,6 +2317,24 @@ bind_default_entries:
             names no longer exist at all, so `images` vs `images_store` can no
             longer collide. The dest is a RESOLVED placeholder, not a literal."
       spec: "§2c (ALL PROJECTS; D-M8) / §2b (box.images_store)"
+    "~/.config/containers/storage.conf":
+      user_key: false
+      value: "(<generated storage.conf>)"
+      note: "INTERNAL, like the kani_pkg binds — the GENERATED
+             additionalImageStores companion to the <box_image_dir> mount above,
+             without which that store mount is INERT. Fixed location, generated
+             content: nothing for a user to configure, so it is §0's worked
+             example of the narrow not-a-key exception (already carried at
+             not_keys.never_a_key.images_conf). It is still SINGLE-ROUTE — the
+             bind goes through the category resolver like every other, its
+             non-settings inputs entering at the seam
+             (image_sharing.write_storage_conf → core_defaults
+             .image_default_categories). Same gate as <box_image_dir>: injected
+             only when image sharing is active. ⚑ Row ADDED 2026-08-15 — every
+             other internal bind carried a user_key: false row and this one did
+             not, which is the only reason it was missing."
+      see: "`images_conf` is this entry's core-defaults.yaml row key"
+      spec: "§2c (ALL PROJECTS; D-M8) / §0 (the internal-only exception)"
     "~/.kanibako/state/helpers.jsonl":
       user_key: true
       default: "(@workset.logs/@{meta.box.name}.jsonl)"

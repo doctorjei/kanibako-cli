@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import pytest
 
+from kanibako.settings.keyspace_manifest import manifest_doc
 from kanibako.settings.settings_keyspace import (
     DECLARED_AGENT_LEAVES,
     DECLARED_META_ASSEMBLY_LEAVES,
@@ -396,13 +397,7 @@ class TestTerminalCategoryKeyMatchesOnPosition:
         manifest means a channel type named after a future category is covered the
         day it is declared.
         """
-        import importlib.resources as res
-
-        import yaml
-
-        doc = yaml.safe_load(
-            res.files("kanibako.data").joinpath("keyspace-manifest.yaml").read_text()
-        )
+        doc = manifest_doc()
         families: dict[str, list[str]] = {}
         for key in doc["keys"]:
             head, _, rest = str(key).partition(".channels.")
@@ -426,16 +421,9 @@ class TestTerminalCategoryKeyMatchesOnPosition:
         DECLARED keys that are not category keys, which is the whole reason the
         position predicate exists.
         """
-        import importlib.resources as res
-
-        import yaml
-
         from kanibako.settings.settings_keyspace import is_terminal_category_tail
 
-        doc = yaml.safe_load(
-            res.files("kanibako.data").joinpath("keyspace-manifest.yaml").read_text()
-        )
-        declared = {str(k) for k in doc["keys"]}
+        declared = {str(k) for k in manifest_doc()["keys"]}
         suffix = {k for k in declared if is_terminal_category_tail(k.split("."))}
         position = {k for k in declared if self._pred(k)}
         assert position - suffix == set()
@@ -566,26 +554,18 @@ def test_meta_families_are_valid(key):
 # Manifest <-> declaration drift guards
 # ---------------------------------------------------------------------------
 
-def _manifest_doc() -> dict:
-    """The ratified manifest AS SHIPPED — read through ``importlib.resources``.
-
-    ⚑ Resource lookup, not a repo-relative path: the manifest ships INSIDE the
-    wheel, and reading it the way the package does is what makes a guard here a
-    statement about the artefact rather than about this checkout.
-    """
-    import importlib.resources as res
-
-    import yaml
-
-    return yaml.safe_load(
-        res.files("kanibako.data").joinpath("keyspace-manifest.yaml").read_text()
-    )
-
-
 def _manifest_leaves(prefix: str) -> set[str]:
-    """The manifest's DIRECT leaves under *prefix* — nested rows dropped."""
+    """The manifest's DIRECT leaves under *prefix* — nested rows dropped.
+
+    ⚑ The manifest is read through :func:`kanibako.settings.keyspace_manifest
+    .manifest_doc`, which resolves the INSTALLED package data rather than a
+    repo-relative path — that is what makes a guard here a statement about the
+    ARTEFACT rather than about this checkout.  Four ad-hoc ``importlib.resources``
+    reads (three here, one in ``test_config_dest_parity``) each restated that
+    property in their own docstring; the loader now carries it once.
+    """
     tails = {
-        str(k)[len(prefix):] for k in _manifest_doc()["keys"] if str(k).startswith(prefix)
+        str(k)[len(prefix):] for k in manifest_doc()["keys"] if str(k).startswith(prefix)
     }
     return {t for t in tails if "." not in t}
 
@@ -607,7 +587,7 @@ def test_the_manifest_reserved_leaf_names_match_the_code():
     """
     from kanibako.settings.keystore import KeyStore
 
-    manifest = set(_manifest_doc()["policy"]["reserved_leaf_names"])
+    manifest = set(manifest_doc()["policy"]["reserved_leaf_names"])
     code = set(KeyStore.RESERVED_KEY_NAMES)
     # Named in BOTH directions: a bare set == set on 13 strings says nothing
     # actionable at the moment it fires.
