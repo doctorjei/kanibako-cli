@@ -120,6 +120,53 @@ def resolve_envs(target, *, node: str | None = None, rekey: bool = True, **files
     ))
 
 
+def resolve_realized(
+    target, *, node: str | None = None, safe_mode: bool = False,
+    autonomous: bool = False, behavior_floor=None, model=None, cli_env=None,
+    **files,
+):
+    """The same chain WITH the launch REALIZATION installed — the P4c-2 seam, BY CALL.
+
+    ⚑⚑ THE SEAM IS THE POSITION, so this helper reproduces the position and nothing
+    else: build the snapshot, run ``_LaunchRealizer`` against it, install what it
+    derived, THEN adapt to entries and collapse. Every step is a CALL to the one
+    production implementation — a hand-made realized map here would pin the harness.
+
+    *model* rides the §1A CLI LEVEL (``-M``), because that is how a flag reaches the
+    behavior read; *safe_mode* / *autonomous* are ``-S`` / ``-A``. *behavior_floor*
+    seeds ``agent.default.<key>`` for the driving keys a plugin declares with no
+    default of its own.
+    """
+    from kanibako.commands.start import _LaunchRealizer, _install_realized_env
+    from kanibako.settings.settings_cli_level import build_cli_level
+
+    node = node or target.name
+    ctx = make_ctx(node)
+    paths = {
+        "system_path": None, "agent_path": None,
+        "workset_path": None, "box_path": None,
+    }
+    paths.update(files)
+    desc = target.descriptor
+    snapshot = build_launch_snapshot(
+        agent_name=node, ctx=ctx,
+        default_categories=env_floor(target, node=node),
+        behavior_floor=behavior_floor,
+        cli_level=build_cli_level(active_agent=node, model=model),
+        **paths,
+    )
+    realizer = _LaunchRealizer(
+        desc=desc, agent_id=node, safe_mode=safe_mode, autonomous=autonomous,
+    )
+    _install_realized_env(
+        snapshot, realizer(snapshot).env, agent_id=node, desc=desc,
+    )
+    return collapse_env(
+        snapshot_category_entries(snapshot, active_agent=node, box_ctx=ctx),
+        cli_env,
+    )
+
+
 def write_yaml(path, doc):
     path.write_text(yaml.safe_dump(doc))
     return path
@@ -620,11 +667,12 @@ class TestTheCoreStampsRideTheSameWire:
 class TestNothingRestampsThemAboveTheChannel:
     """The launch layer that used to sit ABOVE every settings file is empty now.
 
-    ``assemble_env`` feeds ``state_env``, which the launch applies OVER the resolved
-    config levels. While a plugin's static literals were seeded into it, a user who
-    overrode one by key had the plugin's value written back on top a moment later —
-    which is what made the override story impossible to tell. It realizes RESOLVED
-    values only now, so nothing static passes it.
+    ``assemble_env`` USED TO feed ``state_env``, which the launch applied OVER the
+    resolved config levels. While a plugin's static literals were seeded into it, a
+    user who overrode one by key had the plugin's value written back on top a moment
+    later — which is what made the override story impossible to tell. It realizes
+    RESOLVED values only now, and since MBR-1 P4c-2 that layer is GONE outright: the
+    realizations enter the channel as ``agent.<node>.env.<VAR>`` keys.
 
     ⚑ AND SINCE MBR-1 P4b THE SAME HOLDS FOR CORE'S OWN FOUR (below). They were the
     LAST writers above the channel, and the reason the class above can assert an
@@ -655,10 +703,11 @@ class TestNothingRestampsThemAboveTheChannel:
         second writer, which no arrival assertion can see — a stamp restored beside
         the channel would leave every arrival case green.
 
-        ⚑⚑ STRENGTHENED AT P4c-1: the function takes NO ``cli_env`` any more, so the
-        projection this asserts is now total for everything except ``state_env`` —
-        there is no longer a per-run layer it could be adding on top. Restoring that
-        parameter fails this case at the CALL, before the assertion.
+        ⚑⚑ NOW TOTAL (MBR-1 P4c-2). P4c-1 took the ``cli_env`` parameter away and
+        P4c-2 took ``state_env``, so the function has NO input but the slot map and
+        no layer of its own left to add: an empty map must produce an empty
+        environment, with no exception to carve out. Restoring EITHER parameter fails
+        this case at the CALL, before the assertion.
         """
         from types import SimpleNamespace
 
@@ -676,10 +725,245 @@ class TestNothingRestampsThemAboveTheChannel:
             ),
             deliveries=SimpleNamespace(secrets=[]),
             env_slots={},
-            state_env={},
             extra_mounts=extra_mounts,
             logger=logging.getLogger("test.p4b"),
         )
         assert env == {}
         assert secret_vars == []
         assert extra_mounts == []
+
+
+# ---------------------------------------------------------------------------
+# MBR-1 P4c-2 — the target's REALIZATIONS enter the collapse as agent-scope keys.
+# ---------------------------------------------------------------------------
+
+
+class TestTheRealizedVariablesArriveAsKeys:
+    """The last layer above the channel is gone: a realization IS a settings entry.
+
+    ⚑ WHAT MAKES THESE DIFFERENT FROM THE DECLARED CASES ABOVE: a declared
+    ``agent.<node>.env.<VAR>`` is a FLOOR value a plugin ships, present whatever the
+    launch resolves. A REALIZATION is computed FROM the resolved cascade — the
+    permission tier, the model, the provider, the persona endpoint — so it cannot be
+    a floor at all, and folding it in is the whole of P4c-2.
+
+    ⚑ Provenance is asserted, not just presence: the point of the fold is that the
+    variable now has an OWNER a display can name and a refusal can quote. A
+    realization delivered with no key attached would satisfy a presence check and
+    still be the layer this replaced.
+    """
+
+    def test_the_access_tier_is_realized_as_an_agent_scope_key(self):
+        """goose ``GOOSE_MODE`` — the UNCONDITIONAL one, on every goose launch."""
+        slots = resolve_realized(target_for("goose"))
+        assert slots["GOOSE_MODE"].value == "auto"
+        assert slots["GOOSE_MODE"].scope == "agent"
+        assert slots["GOOSE_MODE"].key == "agent.goose.env.GOOSE_MODE"
+
+    def test_the_launch_flags_reach_the_realized_value(self):
+        """``-S`` / ``-A`` are the tier's per-launch fold, and the SLOT shows it.
+
+        ⚑ This is the half a stored-key test cannot see. The tier the ENV gets is
+        ``launch_access`` — the stored key WITH the flags folded in — so a fold that
+        realized the cascade tier instead would deliver the box's stored permission
+        under a ``-S`` and still pass every arrival assertion.
+        """
+        secure = resolve_realized(target_for("goose"), safe_mode=True)
+        assert secure["GOOSE_MODE"].value == "approve"
+        loose = resolve_realized(target_for("goose"), autonomous=True)
+        assert loose["GOOSE_MODE"].value == "auto"
+
+    def test_a_driving_key_that_resolves_truthy_realizes_its_variable(self):
+        """``agent.<node>.model`` → ``GOOSE_MODEL``, provenance on the agent scope."""
+        slots = resolve_realized(
+            target_for("goose"), behavior_floor={"model": "some-model"},
+        )
+        assert slots["GOOSE_MODEL"].value == "some-model"
+        assert slots["GOOSE_MODEL"].key == "agent.goose.env.GOOSE_MODEL"
+
+    def test_a_driving_key_that_resolves_empty_realizes_nothing(self):
+        """The CONDITIONAL four are conditional, and the absence is the assertion.
+
+        ⚑⚑ THE WHOLE MAP IS CHECKED, not the one variable: a fold that realized an
+        EMPTY value would put ``GOOSE_MODEL=''`` in the box's environment, which
+        overrides goose's own config file with nothing — a presence check on a truthy
+        value would not see it, and neither would ``in slots``.
+        """
+        slots = resolve_realized(target_for("goose"))
+        for var in ("GOOSE_MODEL", "GOOSE_PROVIDER", "OPENAI_HOST"):
+            assert var not in slots, f"{var} was realized from an unset key"
+
+    def test_the_model_flag_drives_the_realization(self):
+        """``-M`` rides the §1A CLI level, so the realized variable carries it.
+
+        🛑 THE URGENCY P4c-2 CLOSES. Between P4c-1 and this fold, a declared
+        ``agent.<node>.env.GOOSE_MODEL`` beat the realization, so ``-M`` — a flag
+        ABOVE every settings file — lost to a stored key. It cannot now: the flag
+        drives the realization through the cascade, and a key naming the same
+        variable refuses instead of winning.
+        """
+        slots = resolve_realized(target_for("goose"), model="flag-model")
+        assert slots["GOOSE_MODEL"].value == "flag-model"
+
+    def test_the_endpoint_key_is_realized_for_claude_too(self):
+        """``ANTHROPIC_BASE_URL`` — the claude half of the closed inventory."""
+        slots = resolve_realized(
+            target_for("claude"), behavior_floor={"endpoint": "https://e.example"},
+        )
+        assert slots["ANTHROPIC_BASE_URL"].value == "https://e.example"
+        assert slots["ANTHROPIC_BASE_URL"].key == (
+            "agent.claude.env.ANTHROPIC_BASE_URL"
+        )
+
+    def test_codex_realizes_nothing_at_all(self):
+        """The inventory is CLOSED and codex is not in it — measured, not assumed.
+
+        ⚑ The positive control rides along: codex's DECLARED key still arrives, so
+        this is "codex realizes nothing", not "codex's env is empty".
+        """
+        target = target_for("codex")
+        slots = resolve_realized(
+            target,
+            behavior_floor={"model": "gpt-5.5", "endpoint": "https://e.example"},
+        )
+        assert set(slots) == set(DECLARED["codex"])
+
+    def test_a_target_with_no_descriptor_realizes_nothing(self):
+        """The no-agent box: nothing to realize from, and no attempt to."""
+        from kanibako.commands.start import _LaunchRealizer
+
+        realizer = _LaunchRealizer(
+            desc=None, agent_id="general", safe_mode=True, autonomous=False,
+        )
+        ctx = make_ctx("general")
+        snapshot = build_launch_snapshot(
+            agent_name="general", ctx=ctx,
+            system_path=None, agent_path=None, workset_path=None, box_path=None,
+        )
+        realized = realizer(snapshot)
+        assert realized.env == {}
+        assert realized.cascade_access == ""
+        assert realized.launch_access == ""
+
+
+class TestARealizedVariableADeclaredKeyAlsoNamesRefuses:
+    """Ruling 59 (*"as ruled"*): the refusals SHIP — no carve-out, no skip.
+
+    Once a variable is realized there is no env-key spelling for it at any scope: the
+    agent scope is the same-scope refusal below, every other scope is the ordinary
+    row-38 collapse refusal. That is the user-visible break, and it is deliberate — a
+    carve-out would mint a second CLASS of key, which is the disease the fold cures.
+    """
+
+    def test_a_same_scope_declaration_refuses_naming_both_keys(self, tmp_path):
+        """The agent file's own ``env.GOOSE_MODEL`` against the realization of it."""
+        target = target_for("goose")
+        agent_file = write_yaml(
+            tmp_path / "agent.yaml", {"self": {"env": {"GOOSE_MODEL": "mine"}}},
+        )
+        with pytest.raises(SettingsError) as excinfo:
+            resolve_realized(
+                target, agent_path=agent_file,
+                behavior_floor={"model": "some-model"},
+            )
+        message = str(excinfo.value)
+        # BOTH keys — the one the user wrote, and the one that drives the variable.
+        assert "agent.goose.env.GOOSE_MODEL" in message
+        assert "agent.goose.model" in message
+        assert "GOOSE_MODEL" in message
+
+    def test_the_all_agents_tier_is_checked_too(self, tmp_path):
+        """``agent.default.env.<VAR>`` is the SAME scope and is named as itself.
+
+        ⚑ The §2d pick merges the two agent tiers into one effective node, so a
+        declaration at either would be the value that silently vanished. Checking
+        only ``agent.<node>`` would let this one through — and the message names the
+        DISCRIMINATED tier the user actually wrote, not a bare ``agent.env.<VAR>``
+        the keyspace forbids.
+        """
+        target = target_for("goose")
+        system_file = write_yaml(
+            tmp_path / "system.yaml",
+            {"agent": {"default": {"env": {"GOOSE_MODE": "chat"}}}},
+        )
+        with pytest.raises(SettingsError) as excinfo:
+            resolve_realized(target, system_path=system_file)
+        assert "agent.default.env.GOOSE_MODE" in excinfo.value.args[0]
+
+    def test_the_access_realizations_cure_names_the_flags(self, tmp_path):
+        """``GOOSE_MODE`` is access-derived, so the cure is ``access`` / ``-S`` / ``-A``."""
+        target = target_for("goose")
+        agent_file = write_yaml(
+            tmp_path / "agent.yaml", {"self": {"env": {"GOOSE_MODE": "chat"}}},
+        )
+        with pytest.raises(SettingsError) as excinfo:
+            resolve_realized(target, agent_path=agent_file)
+        message = str(excinfo.value)
+        assert "agent.goose.access" in message
+        assert "-S" in message and "-A" in message
+
+    def test_a_twin_at_another_scope_meets_the_ORDINARY_refusal(self, tmp_path):
+        """Cross-scope is the EXISTING mechanism — no second one was built for it.
+
+        ⚑⚑ THAT IS THE ASSERTION, not merely that it raises: the message is
+        ``store_collapse._refuse_env_twin``'s, word for word on the sentence that
+        only it produces. A realization-shaped refusal invented for this case would
+        pass a "raises SettingsError" check and would be the second mechanism ruling
+        59 forbids.
+        """
+        target = target_for("goose")
+        box_file = write_yaml(
+            tmp_path / "box.yaml", {"box": {"env": {"GOOSE_MODE": "chat"}}},
+        )
+        with pytest.raises(SettingsError) as excinfo:
+            resolve_realized(target, box_path=box_file)
+        message = str(excinfo.value)
+        assert "is claimed by two keys" in message
+        assert "agent.goose.env.GOOSE_MODE" in message
+        assert "box.env.GOOSE_MODE" in message
+
+    def test_an_unrealized_variable_at_another_scope_is_untouched(self):
+        """The POSITIVE CONTROL: only the realized names refuse.
+
+        Without it, a fold that refused every ``env`` key at every scope would pass
+        all four cases above.
+        """
+        slots = resolve_realized(target_for("goose"))
+        assert slots["GOOSE_MODE"].value == "auto"
+        assert slots["GOOSE_DISABLE_KEYRING"].value == "true"
+
+
+class TestThePerRunFlagStillBeatsARealization:
+    """Ruling 45 (*"e must win"*) survives the fold — BY CONSTRUCTION, not by order.
+
+    ``-e`` is the CLI level applied to the SETTLED slot, above every scope, so it
+    overrides a realized variable exactly as it overrides a declared one. Before
+    P4c-2 this held only because the realization layer was carefully placed BENEATH
+    the slots; now there is no layer to place.
+    """
+
+    def test_a_per_run_flag_overrides_a_realized_variable(self):
+        slots = resolve_realized(target_for("goose"), cli_env={"GOOSE_MODE": "chat"})
+        assert slots["GOOSE_MODE"].value == "chat"
+
+    def test_the_override_keeps_the_realizations_provenance(self):
+        """The key still OWNS the variable; ``-e`` supplies a value for one launch."""
+        slots = resolve_realized(target_for("goose"), cli_env={"GOOSE_MODE": "chat"})
+        assert slots["GOOSE_MODE"].scope == "agent"
+        assert slots["GOOSE_MODE"].key == "agent.goose.env.GOOSE_MODE"
+
+    def test_a_per_run_flag_does_not_dodge_the_refusal(self, tmp_path):
+        """⚑ ``-e`` is not a cure for a declared twin: the refusal is upstream of it.
+
+        The twin refusal raises at the install site, upstream of the slot pass, so a
+        user cannot paper over a contested declaration by passing the flag — they are
+        told to fix the keys.
+        """
+        target = target_for("goose")
+        agent_file = write_yaml(
+            tmp_path / "agent.yaml", {"self": {"env": {"GOOSE_MODE": "chat"}}},
+        )
+        with pytest.raises(SettingsError):
+            resolve_realized(
+                target, agent_path=agent_file, cli_env={"GOOSE_MODE": "auto"},
+            )

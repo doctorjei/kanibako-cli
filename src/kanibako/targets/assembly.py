@@ -14,9 +14,10 @@ are agent-agnostic: no plugin names appear, and divergent LOGIC stays behind the
 plugin ``Target`` hook methods.
 
 LIVE: this module is wired into ``commands/start.py`` for every descriptor-bearing
-target (all three first-party agents).  ``resolve_mode`` / ``assemble_argv`` /
-``assemble_env`` build the launch argv + container env, and ``descriptor_mounts``
-emits the delivery binds.  The only descriptor-less target is ``NoAgentTarget``
+target (all three first-party agents).  ``resolve_mode`` / ``assemble_argv`` build the
+launch argv; ``assemble_env`` + ``env_realization_drivers`` say which variables the
+descriptor REALIZES and which key drives each (the launch turns them into agent-scope
+settings keys — MBR-1 P4c-2); ``descriptor_mounts`` emits the delivery binds.  The only descriptor-less target is ``NoAgentTarget``
 (the ``kanibako shell`` fallback), which launches a plain shell with no agent
 argv and no delivery binds.
 """
@@ -341,9 +342,9 @@ def assemble_env(
     """Assemble the container environment overlay from the descriptor.
 
     ⚑ REALIZATIONS ONLY.  A plugin's STATIC variables are settings keys
-    (``agent.<agent>.env.<VAR>``, ``Target.default_envs``) and reach the box through
-    the launch's settings channel, never through here; what this builds is the
-    per-launch translation of RESOLVED values onto the ENV channel:
+    (``agent.<agent>.env.<VAR>``, ``Target.default_envs``) and are FLOOR values that
+    need no launch to compute, so they never come through here; what this builds is
+    the per-launch translation of RESOLVED values onto the ENV channel:
 
     * If the descriptor's ``access_realization`` is ENV-channel with an ``env_var``: set
       it to the ``env_value`` of the row for the *access* TIER (R-41; goose
@@ -358,6 +359,13 @@ def assemble_env(
 
     FLAG-channel access rows / settings are argv and are emitted by
     :func:`assemble_argv` instead.
+
+    ⚑⚑ THE RETURN VALUE IS NOT APPLIED TO ANYTHING (MBR-1 P4c-2).  It used to be
+    pasted onto the finished container env; the launch now installs it as
+    ``agent.<node>.env.<VAR>`` KEYS before the collapse, so these variables are
+    arbitrated, overridable and refusable like every other one.  This function stayed
+    PURE through that move and must: it says what a descriptor realizes, and nothing
+    about where the answer goes.  See ``commands/start._install_realized_env``.
     """
     env: dict[str, str] = {}
 
@@ -374,6 +382,40 @@ def assemble_env(
                 env[s.env_var] = value
 
     return env
+
+
+def env_realization_drivers(descriptor: PluginDescriptor) -> dict[str, str]:
+    """Every variable this descriptor can REALIZE -> the setting key that DRIVES it.
+
+    The DECLARATION map, and unconditional where :func:`assemble_env` is
+    conditional: it names every variable that function *could* emit, whatever this
+    launch resolved.  ⚑ It exists because the emitted ``{var: value}`` map cannot
+    carry provenance, and a caller that has to say WHY a variable is set — the
+    launch's refusal when a settings key names a realized variable — needs the key
+    that produces it, not the value.
+
+    ⚑⚑ IT IS THE TWIN WALK OF :func:`assemble_env` AND MUST STAY BESIDE IT.  Both
+    read the same two declaration sites in the same order (the ENV-channel
+    ``access_realization``, then the ENV-channel :class:`SettingArg`s); a variable
+    one of them knows about and the other does not is a variable that either
+    reaches the box unexplained or is explained but never set.
+
+    A row's setting key may be EMPTY (an ``access_realization`` driven only by the
+    per-launch ``-S``/``-A`` flags).  It is carried through as the empty string
+    rather than dropped: the variable IS realized, and a caller reporting it needs
+    to know there is no key to point the user at.
+    """
+    drivers: dict[str, str] = {}
+
+    ar = descriptor.access_realization
+    if ar is not None and ar.channel is Channel.ENV and ar.env_var:
+        drivers[ar.env_var] = ar.setting_key
+
+    for s in descriptor.settings:
+        if s.channel is Channel.ENV and s.env_var:
+            drivers[s.env_var] = s.setting_key
+
+    return drivers
 
 
 def resolve_binding_source(

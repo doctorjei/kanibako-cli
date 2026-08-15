@@ -1435,6 +1435,65 @@ class TestPrefOriginEnrichment:
         assert str(box) in text
         assert str(ws) not in text
 
+    def test_a_pref_installed_env_key_is_named_in_the_REALIZED_TWIN_refusal(
+        self, tmp_path,
+    ):
+        """MBR-1 P4c-2: the realization refusal names a key a ``pref`` can install.
+
+        ⚑ ``pref.agent.<agent>.env.<VAR>`` is a legal request and its target IS the
+        entry key (``pref_entry_keys`` — ``<VAR>`` is a key SEGMENT, not a dest), so
+        a user whose only file says ``pref.agent.goose.env.GOOSE_MODEL`` would
+        otherwise be told to delete ``agent.goose.env.GOOSE_MODEL``, which appears in
+        none of their files. This is the TEXT arm: the refusal is a plain
+        ``SettingsError`` with no structured participants, matched on its message.
+        """
+        from pathlib import Path
+
+        from kanibako.commands.start import (
+            _annotate_pref_origin,
+            _refuse_realized_twin,
+        )
+        from kanibako.settings.settings_prefs import PrefRequest
+        from kanibako.settings.settings_resolve import SettingsError
+
+        box = Path(tmp_path) / "box.yaml"
+        with pytest.raises(SettingsError) as excinfo:
+            _refuse_realized_twin(
+                "GOOSE_MODEL", "agent.goose.env.GOOSE_MODEL",
+                agent_id="goose", driving_key="model", is_access=False,
+            )
+        prefs = [PrefRequest(
+            target="agent.goose.env.GOOSE_MODEL", value="mine",
+            level="box", source=box,
+        )]
+        text = str(_annotate_pref_origin(excinfo.value, prefs))
+        assert "box settings file" in text
+        assert str(box) in text
+
+    def test_an_unrelated_pref_does_not_claim_the_REALIZED_TWIN_refusal(
+        self, tmp_path,
+    ):
+        """The NEGATIVE CONTROL: matching is on the KEY, never on "a pref exists"."""
+        from pathlib import Path
+
+        from kanibako.commands.start import (
+            _annotate_pref_origin,
+            _refuse_realized_twin,
+        )
+        from kanibako.settings.settings_prefs import PrefRequest
+        from kanibako.settings.settings_resolve import SettingsError
+
+        with pytest.raises(SettingsError) as excinfo:
+            _refuse_realized_twin(
+                "GOOSE_MODEL", "agent.goose.env.GOOSE_MODEL",
+                agent_id="goose", driving_key="model", is_access=False,
+            )
+        prefs = [PrefRequest(
+            target="agent.goose.env.EDITOR", value="vim",
+            level="box", source=Path(tmp_path) / "box.yaml",
+        )]
+        assert _annotate_pref_origin(excinfo.value, prefs) is excinfo.value
+
     def test_a_SUPPRESSING_null_entry_is_never_an_origin(self, tmp_path):
         """Present-``None`` at a dest REMOVES the entry (§2h / §6e); it installs
         nothing. A surviving entry at that dest is somebody else's, so blaming

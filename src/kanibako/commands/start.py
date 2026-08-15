@@ -11,7 +11,7 @@ import subprocess
 import sys
 from collections.abc import Callable, Mapping
 from pathlib import Path, PurePosixPath
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, NamedTuple
 
 if TYPE_CHECKING:
     from kanibako.persona_store import PersonaBundle
@@ -1777,7 +1777,6 @@ def _assemble_launch_env(
     proj,
     deliveries,
     env_slots,
-    state_env,
     extra_mounts,
     logger,
 ):
@@ -1809,6 +1808,14 @@ def _assemble_launch_env(
     # variables themselves"*).  The dict update that used to paste it on top is
     # GONE and must not come back: pasted above the channel it could not be
     # overridden, displayed, or refused, and it silently outranked every file.
+    # ⚑⚑⚑ AND SINCE MBR-1 P4c-2, NEITHER DO THE TARGET'S REALIZATIONS — the LAST
+    # writer above the channel, and now there is none.  ``GOOSE_MODE`` /
+    # ``GOOSE_MODEL`` / ``GOOSE_PROVIDER`` / ``OPENAI_HOST`` /
+    # ``ANTHROPIC_BASE_URL`` are derived by ``_LaunchRealizer`` inside the resolve
+    # and installed as ``agent.<node>.env.<VAR>`` keys, so they arrive in these
+    # slots too.  🛑 THIS FUNCTION IS A TOTAL PROJECTION OF THE LEAF NOW: whatever
+    # it added of its own would sit above every settings file, above ``-e`` and
+    # outside every refusal, which is the arrangement three folds removed.
     # The docker `.env` files that used to layer in here are RETIRED
     # (RQ-1, 2026-08-02) — see ``_build_config_env``.
     #
@@ -1829,20 +1836,6 @@ def _assemble_launch_env(
     # means NO shim (a box with no secrets keeps the bare entrypoint byte-identical).
     secret_mounts, secret_export_vars = _emit_secret_mounts(deliveries.secrets, logger)
     extra_mounts.extend(secret_mounts)
-    # THE TARGET-DERIVED REALIZATIONS (``targets.assembly.assemble_env``) — the last
-    # layer still outside the channel, and the ONLY one.  MBR-1 P4c-2 folds it in as
-    # launch-DERIVED agent-scope entries and deletes these two lines.
-    #
-    # ⚑⚑ IT LANDS BENEATH THE SLOTS, NOT OVER THEM, and that is load-bearing rather
-    # than tidy.  Since P4c-1 a per-run ``-e`` IS a slot value, so a realization
-    # written on TOP would silently beat the flag — and ``-e`` winning is the one
-    # behaviour ruling 45 requires to survive the fold intact (*"e must win"*).
-    # Under it, a variable a settings key declares also beats the realization of the
-    # same name; P4c-2 turns that pair into the ordinary two-owners REFUSAL, so this
-    # order is the near side of where the fold lands, never the far side.
-    for var, value in state_env.items():
-        container_env.setdefault(var, value)
-
     # Claude Code's telemetry (CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC) and
     # auto-updater (DISABLE_AUTOUPDATER) vars are claude's own DECLARED
     # ``agent.claude.env.*`` keys and arrive in the ARBITRATED slots above: core
@@ -3517,6 +3510,30 @@ def _run_container(
             system_settings_path=system_settings_path,
             agent_cfg_path=agent_cfg_path,
         )
+        # THE REALIZATION (MBR-1 P4c-2): everything this launch DERIVES from its
+        # resolved settings — the behavior read, the two access tiers, and the
+        # variables the descriptor realizes — computed ONCE, INSIDE the resolve
+        # below, and read back off ``.result`` further down.  It has to run in
+        # there: it reads the built snapshot, and the variables it derives must be
+        # keys before the collapse arbitrates them (see :class:`_LaunchRealizer`).
+        # ⚑ BUILT UNCONDITIONALLY, and that is deliberate: a ``kanibako shell`` /
+        # no-target box simply realizes NOTHING (no descriptor ⇒ no permission axis
+        # and no variables), which the realizer expresses as an empty derivation
+        # rather than the caller expressing it as an absent one. One shape means the
+        # read below cannot be handed a value that was never derived.
+        _realizer = _LaunchRealizer(
+            desc=desc,
+            agent_id=agent_id,
+            safe_mode=safe_mode,
+            autonomous=autonomous,
+            # The persona provider pin, resolved from the TARGET (never hardwired):
+            # given only when this launch has an active persona endpoint, empty
+            # otherwise — a BARE box is never touched.
+            provider_pin=(
+                _persona_wiring(target).provider_pin
+                if target is not None and active_endpoint is not None else ()
+            ),
+        )
         _snapshot, deliveries = _resolve_launch_snapshot(
             std=std,
             proj=proj,
@@ -3536,6 +3553,10 @@ def _run_container(
             # and ``box show --effective`` describe stored configuration, which a
             # per-run flag must not appear in.
             cli_env=cli_env_values,
+            # ⚑ THE ONE RESOLVE THAT REALIZES, for the same reason it is the one
+            # that takes ``-e``: a realization is what THIS launch's flags produce,
+            # so a stored map or a display must not carry one.
+            realize=_realizer,
         )
 
         # allow_helpers is an AGENT-scope behavior key (spec §2d,
@@ -3563,33 +3584,20 @@ def _run_container(
 
         # Build CLI args via target, merging agent run_args and state
         if target:
-            # The LIVE behavior read (block 7b — ruling A): off the ONE snapshot via
-            # the §2d active-over-default pick (agent.<active>.<k> | agent.
-            # default.<k>), replacing the retired ``_build_effective_state`` LAUNCH
-            # use. A target with NO declared settings has no behavior floor — its
-            # effective state is just the per-agent file's raw state (preserved from
-            # the old early-return), so read from the snapshot all the same.
+            # THE LAUNCH'S DERIVED STATE, READ BACK (MBR-1 P4c-2). It was computed
+            # inside the resolve above, off the ONE snapshot, by the ONE realizer —
+            # the §2d active-over-default behavior pick with the persona provider pin
+            # applied, plus the two access tiers. ⚑ Every one of these used to be
+            # derived HERE, after the resolve, which is exactly why the realized
+            # variables could not be keys: they were computed downstream of the pass
+            # that arbitrates them. Re-deriving any of them here would restore that
+            # split — the box's environment and this dict could then disagree.
+            # ⚑ NO post-resolve ``-M`` patch anywhere (P8): ``-M/--model`` is a
+            # key-shadowing flag riding the §1A CLI LEVEL, so it arrives through the
+            # snapshot read like any other value.
             from kanibako.settings import settings_launch
-            effective_state = settings_launch.effective_behavior(
-                _snapshot, active_agent=agent_id,
-            )
-            # ⚑ NO post-resolve ``-M`` patch here any more (P8). ``-M/--model`` is a
-            # key-shadowing flag, so it rides the §1A CLI LEVEL spliced above every
-            # settings file and pref (``agent.<active>.model``, built by
-            # ``build_cli_level``) and arrives through this read like any other
-            # value. Patching the dict AFTER the cascade was the ad-hoc form of
-            # exactly one level, and it could not be seen by anything that read the
-            # snapshot rather than this dict.
-            # PERSONA provider auto-pin: when this launch resolved an active persona
-            # endpoint (active_endpoint is not None), FORCE the harness-declared
-            # provider setting(s) so the endpoint's required provider can't be
-            # forgotten/mis-set (goose pins ``provider=openai`` → the descriptor's
-            # ``provider``→``GOOSE_PROVIDER`` env then emits ``GOOSE_PROVIDER=openai``).
-            # Empty provider_pin (claude/codex) = no-op (byte-identical); a BARE box
-            # (active_endpoint None) is NEVER touched.
-            if active_endpoint is not None:
-                for _pin_key, _pin_val in _persona_wiring(target).provider_pin:
-                    effective_state[_pin_key] = _pin_val
+            _realized = _realizer.result
+            effective_state = _realized.effective_state
             all_extra = list(agent_cfg.run_args) + list(extra_args)
             if desc is not None:
                 # Descriptor path: assemble argv + container-env overlay
@@ -3597,46 +3605,16 @@ def _run_container(
                 # apply_state / build_cli_args hooks for descriptor-bearing
                 # targets).
                 #
-                # THE PERMISSION AXIS (R-41, spec §2d). TWO tiers are resolved
-                # here, deliberately, and they are NOT the same read:
-                #
-                #  * ``cascade_access`` — the box's stored ``access`` key
-                #    (``agent.default.access | full``; every shipped descriptor
-                #    sets access_realization.setting_key="access"), validated against the
-                #    enum and DEFAULTING to ``full`` when unset. This is what the
-                #    PROJECTED surfaces get: they are written into the box's own
-                #    agent config files and OUTLIVE this launch, so an ephemeral
-                #    flag must never reach them (spec §1A projected-surface
-                #    exception).
-                #  * ``launch_access`` — the same value with the per-launch
-                #    ``-S``/``-A`` folded in (``-S`` ⇒ restricted, ``-A`` ⇒ full).
-                #    This is what the ARGV/ENV get, and only they.
-                #
-                # An agent whose descriptor declares no access_realization.setting_key
-                # falls back to the ``full`` default, as before.
-                #
-                # ⚑ UN-RENDERED TIER GATE, before ANY delivery. Both tiers are
-                # checked against the descriptor's rows here, where the launch can
-                # still stop: the projected-surface deliveries below are wrapped
-                # best-effort and would SWALLOW the refusal, leaving the box
-                # running at a tier the user did not ask for (goose has no
-                # ``editing`` realization — the case this exists for).
-                ar = desc.access_realization
-                cascade_access = assembly.resolve_access_tier(
-                    effective_state.get(ar.setting_key)
-                    if ar is not None and ar.setting_key
-                    else None
-                )
-                launch_access = assembly.effective_access(
-                    secure=safe_mode,
-                    autonomous=autonomous,
-                    access=cascade_access,
-                )
-                # dict.fromkeys, not a set: dedupe while keeping a DETERMINISTIC
-                # order (cascade first), so when both tiers are unrenderable the
-                # error names the same one every run.
-                for _tier in dict.fromkeys((cascade_access, launch_access)):
-                    assembly.access_row(desc, _tier, agent=agent_id)
+                # THE PERMISSION AXIS (R-41, spec §2d). TWO tiers, deliberately, and
+                # they are NOT the same read — see :class:`LaunchRealization`, which
+                # is where both are derived and which spells the difference. ⚑ THEY
+                # ARE READ HERE, NOT RESOLVED HERE (P4c-2): the un-rendered TIER GATE
+                # moved with them, into the realizer, because ``assemble_env`` raises
+                # on the launch tier alone and the gate has to name the CASCADE tier
+                # first. Re-resolving either tier here would be a second derivation
+                # that could disagree with the environment the box was given.
+                cascade_access = _realized.cascade_access
+                launch_access = _realized.launch_access
                 _deliver_panel_permissions(
                     target=target,
                     proj=proj,
@@ -3742,22 +3720,21 @@ def _run_container(
                         extra_args=all_extra,
                         agent=agent_id,
                     )
-                state_env = assembly.assemble_env(
-                    desc,
-                    access=launch_access,
-                    setting_values=effective_state,
-                    agent=agent_id,
-                )
+                # 🛑 NO ``assemble_env`` HERE ANY MORE (MBR-1 P4c-2). The descriptor's
+                # ENV realizations are derived by the realizer, INSIDE the resolve,
+                # and installed as ``agent.<node>.env.<VAR>`` keys — so they reach
+                # the box through the collapse with every other variable. A second
+                # call here would be a second producer of the same variables, above
+                # the channel, which is precisely the layer the fold deleted.
             else:
                 # Descriptor-less target: the only one is NoAgentTarget (the
                 # `kanibako shell` fallback), which launches a plain shell with
-                # no agent argv and no state env.  The legacy build_cli_args /
-                # apply_state hook dispatch was removed for the public release
-                # (descriptor-only plugin system); a no-agent box needs neither.
+                # no agent argv and no realized variables.  The legacy
+                # build_cli_args / apply_state hook dispatch was removed for the
+                # public release (descriptor-only plugin system); a no-agent box
+                # needs neither.
                 cli_args = []
-                state_env = {}
         else:
-            state_env = {}
             cli_args = list(extra_args)
 
         # Build extra mounts from target binary detection.
@@ -3941,9 +3918,10 @@ def _run_container(
             # the assembler receives what was assembled, not the store it came from.
             # ⚑ The per-run ``-e`` is IN HERE since P4c-1 (it was applied inside the
             # collapse that produced this map), which is why no ``cli_env`` reaches
-            # the assembler any more.
+            # the assembler any more — and since P4c-2 so are the target's
+            # REALIZATIONS, which is why no ``state_env`` does either. The map IS
+            # the environment.
             env_slots=_launch_env_map(_snapshot),
-            state_env=state_env,
             extra_mounts=extra_mounts,
             logger=logger,
         )
@@ -4783,11 +4761,14 @@ def _build_config_env(env_slots: "CollapsedEnvs") -> dict[str, str]:
     resolved config-env matches exactly; that sharing is the whole point of a
     function this small, and it is why the projection lives HERE rather than in the
     launch caller (it did, and the display consequently under-reported every
-    ``<scope>.env.<VAR>`` the box actually receives). The ONE runtime layer left
-    outside the map — the target's realizations (``state_env``) — is applied by the
-    caller and is not config, so it is not here. ⚑ Per-run ``-e`` no longer belongs
-    on that list: since P4c-1 it is applied INSIDE the collapse, so it arrives in
-    *env_slots* like any other value and this function is a plain projection.
+    ``<scope>.env.<VAR>`` the box actually receives). ⚑⚑ THERE IS NO RUNTIME LAYER
+    LEFT OUTSIDE THE MAP. The per-run ``-e`` went in at P4c-1 and the target's
+    realizations at P4c-2, both applied INSIDE the collapse, so every variable a box
+    receives arrives in *env_slots* and this function is a plain projection.
+    ⚑ ONE ASYMMETRY REMAINS, and it is deliberate rather than pending: the display
+    (``box show --effective``) resolves STORED configuration and derives no
+    realization, so a launch sets variables a display does not list. Deriving them
+    for a display would report a tier the launch may not ship.
 
     *env_slots* is ``meta.assembly.env`` — the collapse's arbitrated map, VAR to
     ``CollapsedEnv(value, scope, key)``. NOTHING IS SETTLED HERE and there is
@@ -6451,6 +6432,7 @@ def _resolve_launch_snapshot(
     guarantee_create: bool = True,
     cli_level: "Mapping[str, object] | None" = None,
     cli_env: "Mapping[str, str] | None" = None,
+    realize: "Callable[[KeyStore], LaunchRealization] | None" = None,
     narrow_bind_dests: "frozenset[str] | None" = None,
 ):
     """Build the ONE launch snapshot + what this launch DELIVERS from it.
@@ -6554,6 +6536,19 @@ def _resolve_launch_snapshot(
     ``box show --effective``) must not see it, and the narrow resolves write no env
     leaf to put it in.  ⚑ It is NOT a settings level and cannot be folded into
     *cli_level*: see ``store_collapse._apply_cli_env`` for the measured reason.
+
+    *realize* is the launch's REALIZATION callback (P4c-2, a :class:`_LaunchRealizer`)
+    — the derivation of everything this launch computes FROM the resolved cascade.
+    It runs between the snapshot build and the entry adaptation because that is the
+    only point where its input exists and its output is still in time: the variables
+    it derives are written into the snapshot as ``agent.<node>.env.<VAR>`` keys, so
+    ``snapshot_category_entries`` adapts them and the collapse arbitrates them like
+    any declared key.  ⚑ SAME RULE AS *cli_level* / *cli_env*: only THIS resolve
+    takes one.  A realization is what a launch's flags produce, so a display or a
+    stored map must not carry it (``box show --effective`` deliberately does not gain
+    them; deriving without the launch flags would show a tier the launch may not
+    ship).  It also carries *desc*'s access tiers back to the caller — see
+    :class:`LaunchRealization` for why re-deriving them there would be a second site.
     """
     from kanibako.settings import settings_launch
     from kanibako.settings.agent_representation import (
@@ -6805,6 +6800,21 @@ def _resolve_launch_snapshot(
         cli_level=cli_level,
     )
     try:
+        # THE REALIZATION SEAM (MBR-1 P4c-2), and its position is the design: AFTER
+        # the build (the derivation reads the resolved cascade) and BEFORE the
+        # adaptation (its variables must be ordinary entries by the time the collapse
+        # walks them). 🛑 Nothing downstream knows a realized variable from a declared
+        # one, and nothing may be taught to — that indistinguishability IS the fold.
+        # ⚑ INSIDE THE ENRICHMENT WRAP, for the reason the wrap exists: its
+        # same-scope refusal names ``agent.<node>.env.<VAR>``, and
+        # ``pref.agent.<agent>.env.<VAR>`` is a legal request (``settings_prefs
+        # .pref_entry_keys``), so that key can be one the user never wrote and cannot
+        # write. The un-rendered TIER refusal it may also raise is a ``ConfigError``
+        # naming a tier, not a key, and passes through unannotated — correctly.
+        if realize is not None:
+            _install_realized_env(
+                snapshot, realize(snapshot).env, agent_id=agent_name, desc=desc,
+            )
         entries = settings_launch.snapshot_category_entries(
             snapshot, active_agent=agent_name, box_ctx=ctx,
             # SKIP-IF-ABSENT declarations, read from the SAME ``canon:`` rows that
@@ -6851,6 +6861,8 @@ def _resolve_launch_snapshot(
     # ``secret_path`` gate and narrow-table pass (both inside ``launch_deliveries``)
     # — so the wrap covers the BLOCK rather than one call. Narrowing it back to a
     # single call silently downgrades every pref-caused collision message.
+    # ⚑ The realization seam's own refusal (P4c-2) is wrapped by the FIRST ``try``
+    # above for the same reason — see the comment there.
     # ⚑⚑ BOTH TYPES, and the second is not decoration: the producer and the seam
     # raise ``CategoryCollisionError``, but the COLLAPSE's own refusals are plain
     # ``SettingsError`` (they are not the §0 table's two texts). The reconcile used
@@ -8643,6 +8655,242 @@ def _core_env_default_categories(*, proj, target, agent_id) -> dict[str, str]:
     if target is not None:
         table["system.env.KANIBAKO_AGENT"] = agent_id
     return table
+
+
+class LaunchRealization(NamedTuple):
+    """What ONE launch DERIVES from its resolved settings: behavior, tiers, variables.
+
+    Every field is an OUTPUT of the launch snapshot, which is why none of them can be
+    a floor default: they are computed FROM the resolved cascade (``-M``/``-S``/``-A``
+    and the persona pin included), so nothing that feeds the resolve can carry them.
+
+    * *effective_state* — the §2d active-over-default behavior read, with the persona
+      provider pin applied.  It is the dict the descriptor assemblers consume.
+    * *cascade_access* — the box's STORED permission tier.  What the PROJECTED
+      surfaces get: they outlive the launch, so an ephemeral flag must not reach them.
+    * *launch_access* — the same tier with this launch's ``-S``/``-A`` folded in.
+      What the ARGV and the ENV get, and only they.
+    * *env* — the REALIZED variables (``targets.assembly.assemble_env``): the
+      per-launch translation of resolved values onto the ENV channel.
+    """
+
+    effective_state: dict[str, str]
+    cascade_access: str
+    launch_access: str
+    env: dict[str, str]
+
+
+class _LaunchRealizer:
+    """The ONE derivation of a launch's behavior state, access tiers and realized variables.
+
+    ⚑⚑ IT IS A CALLBACK BECAUSE OF WHERE ITS INPUT AND OUTPUT LIVE, not for taste
+    (MBR-1 P4c-2).  The derivation READS the built launch snapshot, and its realized
+    variables must be back in the entry list BEFORE the collapse walks it — so the
+    only point at which both are true is inside :func:`_resolve_launch_snapshot`,
+    between the build and :func:`~kanibako.settings.settings_launch.snapshot_category_entries`.
+    Resolving twice to get there (once for the state, once with the variables folded
+    in) would cost a second full resolve AND invert ``-M``: the realization would
+    then be a floor the user's own ``agent.<node>.env.<VAR>`` sits above, which is
+    exactly the refusal below reversed.
+
+    ⚑ THE RESULT IS KEPT so the caller reads the SAME derivation the snapshot was
+    written from.  ``_run_container`` needs all four fields; re-deriving any of them
+    at the call site would be a second site that can disagree with the box's actual
+    environment, which is the shape this fold exists to remove.
+
+    🛑 ONLY THE WHOLE-BOX LAUNCH RESOLVE IS GIVEN ONE.  The conditional image/helper
+    resolves describe an injected table, and ``_sync_box_at_create`` /
+    ``box show --effective`` describe STORED configuration — a realization is neither
+    (it is what THIS launch's flags produce), so those resolves derive nothing and
+    write no realized variable.
+    """
+
+    def __init__(self, *, desc, agent_id: str, safe_mode: bool, autonomous: bool,
+                 provider_pin=()):
+        self._desc = desc
+        self._agent_id = agent_id
+        self._safe_mode = safe_mode
+        self._autonomous = autonomous
+        self._provider_pin = tuple(provider_pin)
+        self._result: "LaunchRealization | None" = None
+
+    @property
+    def result(self) -> LaunchRealization:
+        """The derivation this launch ran.
+
+        🛑 IT RAISES RATHER THAN DEFAULTING when the callback never ran, and that is
+        the whole guard: an empty default here would turn a resolve that dropped the
+        ``realize`` kwarg — the exact trap the conftest stub's own note records for
+        ``cli_level`` and ``cli_env`` — into a box launched at the ``full`` tier with
+        no realized variables and nothing said about it.
+        """
+        if self._result is None:
+            raise AssertionError(
+                "the launch realization was read before it was derived: the resolve "
+                "did not run the 'realize' callback (a stub that drops the kwarg)"
+            )
+        return self._result
+
+    def __call__(self, snapshot) -> LaunchRealization:
+        """Derive this launch's state off *snapshot*; keep it and return it."""
+        from kanibako.settings import settings_launch
+
+        # The LIVE behavior read (block 7b): the §2d active-over-default pick over
+        # the ONE snapshot.  ⚑ No post-resolve ``-M`` patch — the flag rode the §1A
+        # CLI LEVEL into the snapshot and arrives through this read like any value.
+        state = settings_launch.effective_behavior(
+            snapshot, active_agent=self._agent_id,
+        )
+        # PERSONA provider auto-pin: when this launch resolved an active persona
+        # endpoint, FORCE the harness-declared provider setting(s) so the endpoint's
+        # required provider cannot be forgotten or mis-set (goose pins
+        # ``provider=openai`` -> the descriptor's provider->GOOSE_PROVIDER
+        # realization then emits ``GOOSE_PROVIDER=openai``).  An empty pin
+        # (claude/codex) is a no-op; a BARE box is never given one.
+        for pin_key, pin_val in self._provider_pin:
+            state[pin_key] = pin_val
+
+        cascade_access = ""
+        launch_access = ""
+        env: dict[str, str] = {}
+        if self._desc is not None:
+            # THE PERMISSION AXIS (R-41, spec §2d). TWO tiers, deliberately, and
+            # they are NOT the same read — see :class:`LaunchRealization`.  An agent
+            # whose descriptor declares no ``access_realization.setting_key`` falls
+            # back to the ``full`` default, as before.
+            ar = self._desc.access_realization
+            cascade_access = assembly.resolve_access_tier(
+                state.get(ar.setting_key)
+                if ar is not None and ar.setting_key
+                else None
+            )
+            launch_access = assembly.effective_access(
+                secure=self._safe_mode,
+                autonomous=self._autonomous,
+                access=cascade_access,
+            )
+            # ⚑ UN-RENDERED TIER GATE, before ANY delivery — and now before the
+            # realization below, which is the earliest the launch can still stop.
+            # Both tiers are checked here because the projected-surface deliveries
+            # further down are wrapped best-effort and would SWALLOW the refusal,
+            # leaving the box running at a tier the user did not ask for (goose has
+            # no ``editing`` realization — the case this exists for).
+            # dict.fromkeys, not a set: dedupe while keeping a DETERMINISTIC order
+            # (cascade first), so when both tiers are unrenderable the error names
+            # the same one every run.  🛑 That order is why the gate stays AHEAD of
+            # ``assemble_env``, which raises on the LAUNCH tier alone.
+            for tier in dict.fromkeys((cascade_access, launch_access)):
+                assembly.access_row(self._desc, tier, agent=self._agent_id)
+            env = assembly.assemble_env(
+                self._desc,
+                access=launch_access,
+                setting_values=state,
+                agent=self._agent_id,
+            )
+
+        self._result = LaunchRealization(
+            state, cascade_access, launch_access, env,
+        )
+        return self._result
+
+
+def _install_realized_env(snapshot, env, *, agent_id: str, desc) -> None:
+    """Write a launch's REALIZED variables into *snapshot* as ``agent.<node>.env.*`` keys.
+
+    ⚑⚑ THIS IS THE WHOLE OF MBR-1 P4c-2: the realizations stop being a layer applied
+    to the finished environment and become KEYS, at the scope that owns them.  They
+    enter one step ahead of ``snapshot_category_entries``, so the collapse adapts and
+    arbitrates them exactly as it does a declared ``agent.<node>.env.<VAR>`` — there
+    is no second producer, no second slot pass, and no realization-shaped exception
+    anywhere below this line.  What that buys, in order:
+
+    * a per-run ``-e`` beats a realization BY CONSTRUCTION (the CLI level applies to
+      the settled slot, above every scope) rather than by an ordering nobody records;
+    * a realized variable a key at ANOTHER scope also names is the ORDINARY
+      cross-scope refusal (``store_collapse._refuse_env_twin``), naming both keys;
+    * ``-M``/``-S``/``-A`` stay authoritative: the flag drives the realization
+      through the cascade, so nothing stored can outrank it.
+
+    The SAME-SCOPE case is the one the collapse cannot see, and it is refused here
+    (:func:`_refuse_realized_twin`): a declared ``agent.<node>.env.<VAR>`` and a
+    realization of the same variable are both the agent scope's, and one would
+    silently overwrite the other in the node below.  Checked against BOTH agent tiers
+    — ``agent.<node>`` and ``agent.default`` — because the §2d pick merges them into
+    one effective node, so a value in either would be the one that vanished.
+    """
+    if not env:
+        return
+    from kanibako.targets.assembly import env_realization_drivers
+
+    drivers = env_realization_drivers(desc) if desc is not None else {}
+    access_var = (
+        desc.access_realization.env_var
+        if desc is not None and desc.access_realization is not None
+        else ""
+    )
+    for var, value in env.items():
+        declared = _declared_agent_env_key(snapshot, agent_id, var)
+        if declared is not None:
+            _refuse_realized_twin(
+                var, declared,
+                agent_id=agent_id,
+                driving_key=drivers.get(var, ""),
+                is_access=(var == access_var),
+            )
+        snapshot.insert_segments(("agent", agent_id, "env", var), value)
+
+
+def _declared_agent_env_key(snapshot, agent_id: str, var: str) -> "str | None":
+    """The DISCRIMINATED key already declaring ``env.<var>`` at the agent scope, or ``None``.
+
+    Both tiers, ACTIVE first: the §2d pick would let ``agent.<node>`` win, so that is
+    the key to name when both are present.  Reads via the UNBOUND ``dict`` protocol
+    (S3) — a snapshot node answers attribute lookups with its own members.
+    """
+    from kanibako.settings.keystore import KeyStore
+
+    agent_node = dict.get(snapshot, "agent", None)
+    if not isinstance(agent_node, KeyStore):
+        return None
+    for tier in (agent_id, "default"):
+        tier_node = dict.get(agent_node, tier, None)
+        if not isinstance(tier_node, KeyStore):
+            continue
+        env_node = dict.get(tier_node, "env", None)
+        if isinstance(env_node, KeyStore) and dict.__contains__(env_node, var):
+            return f"agent.{tier}.env.{var}"
+    return None
+
+
+def _refuse_realized_twin(
+    var: str, declared_key: str, *,
+    agent_id: str, driving_key: str, is_access: bool,
+) -> None:
+    """A settings key names a variable this launch REALIZES: refuse, naming both.
+
+    ⚑ THE SOLE RAISE SITE for the same-scope half, deliberately, exactly as
+    ``store_collapse._refuse_env_twin`` is for the cross-scope half: the severity of
+    a contested slot is one decision per case and each is spelled in one place.  The
+    two are separate because the CURE is: a cross-scope twin moves or deletes a key,
+    while this one has no key to move to — the variable's owner is the key that
+    DRIVES it, and that is what the message has to hand back.
+    """
+    from kanibako.settings.settings_resolve import SettingsError
+
+    routes = []
+    if driving_key:
+        routes.append(f"set {f'agent.{agent_id}.{driving_key}'!r}")
+    if is_access:
+        routes.append("use the per-launch -S / -A flags")
+    routes.append(f"or, for ONE launch, pass -e {var}=<value>")
+    raise SettingsError(
+        f"the environment variable {var!r} is REALIZED by this launch — kanibako "
+        f"derives it from the agent's resolved settings — and {declared_key!r} names "
+        f"it as well. A variable is written ONCE, so the key could never take "
+        f"effect: it would be overwritten by the realization on every launch, "
+        f"silently. Do not set this variable directly. Instead: "
+        f"{'; '.join(routes)}. Then remove {declared_key!r}."
+    )
 
 
 def _channel_default_categories(std, proj) -> "core_defaults.BindArmTable":

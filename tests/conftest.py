@@ -595,6 +595,7 @@ def start_mocks():
                     _agent_delivered_dests,
                     _core_env_default_categories,
                     _install_assembly_collapse,
+                    _install_realized_env,
                 )
                 from kanibako.settings.agent_file import (
                     state_level as agent_file_state_level,
@@ -752,6 +753,20 @@ def start_mocks():
                     # test_start.py would be asserting the harness, not the code.
                     cli_level=kw.get("cli_level"),
                 )
+                # ⚑⚑ THE REALIZATION SEAM, MIRRORED BY CALL (MBR-1 P4c-2), and it
+                # sits exactly where the real orchestrator puts it: AFTER the build,
+                # BEFORE the entry adaptation. The target's realized variables
+                # (GOOSE_MODE / GOOSE_MODEL / ANTHROPIC_BASE_URL / …) reach the box
+                # ONLY as ``agent.<node>.env.<VAR>`` keys installed here, so a stub
+                # that swallowed the ``realize`` kwarg would launch every mocked box
+                # with NONE of them and make every realization assertion vacuous —
+                # the same P8 trap the ``cli_level`` and ``cli_env`` notes record,
+                # one rung further up. These are CALLS to the one implementation.
+                _realize = kw.get("realize")
+                if _realize is not None:
+                    _install_realized_env(
+                        snap, _realize(snap).env, agent_id=_node, desc=_desc,
+                    )
                 entries = snapshot_category_entries(
                     snap, active_agent=_node, box_ctx=ctx,
                 )

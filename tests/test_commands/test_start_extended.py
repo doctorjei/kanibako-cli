@@ -1639,6 +1639,66 @@ class TestCliEnv:
             assert env.get("MY_KEY") == "my_val"
 
 
+class TestTheRealizedVariablesReachTheContainerEndToEnd:
+    """MBR-1 P4c-2: a realized variable arrives at ``runtime.run(env=)`` — as a KEY.
+
+    ⚑⚑ THIS IS THE CONFTEST-FORWARD PIN for the realization seam, and it is the
+    reason the case is driven end to end rather than at the collapse. The realizer
+    reaches the launch ONLY as ``_resolve_launch_snapshot``'s ``realize`` callback,
+    so a stub that dropped the kwarg would launch every mocked box with none of the
+    five realized variables — and every arrival assertion in the suite would pass
+    while asserting nothing. It fails HERE, loudly, instead.
+
+    ⚑ The fixture's target is claude, whose only realization is ``endpoint`` ->
+    ``ANTHROPIC_BASE_URL``; the goose inventory is exercised against the real chain
+    in ``tests/test_targets/test_agent_envs.py``.
+    """
+
+    @staticmethod
+    def _launch_env(m, **kwargs):
+        _run_container(
+            project_dir=None, entrypoint=None, image_override=None,
+            new_session=False, safe_mode=False, resume_mode=False,
+            extra_args=[], **kwargs,
+        )
+        return m.runtime.run.call_args.kwargs.get("env") or {}
+
+    def test_a_realized_variable_reaches_the_box(self, start_mocks):
+        with start_mocks() as m:
+            m.agent_cfg.state = {"endpoint": "https://e.example"}
+            m.load_agent_config.return_value = m.agent_cfg
+            env = self._launch_env(m)
+            assert env.get("ANTHROPIC_BASE_URL") == "https://e.example"
+
+    def test_a_driving_key_left_unset_realizes_nothing(self, start_mocks):
+        """The NEGATIVE CONTROL. Without it the case above passes on any constant."""
+        with start_mocks() as m:
+            assert "ANTHROPIC_BASE_URL" not in self._launch_env(m)
+
+    def test_a_per_run_flag_beats_the_realization_end_to_end(self, start_mocks):
+        """Ruling 45 through the whole launch: ``-e`` is the CLI level over the slot."""
+        with start_mocks() as m:
+            m.agent_cfg.state = {"endpoint": "https://e.example"}
+            m.load_agent_config.return_value = m.agent_cfg
+            env = self._launch_env(
+                m, cli_env=["ANTHROPIC_BASE_URL=https://flag.example"],
+            )
+            assert env.get("ANTHROPIC_BASE_URL") == "https://flag.example"
+
+    def test_a_declared_twin_of_a_realized_variable_stops_the_launch(self, start_mocks):
+        """Ruling 59: the refusal ships, and it stops the box rather than the display."""
+        from kanibako.settings.settings_resolve import SettingsError
+
+        with start_mocks() as m:
+            m.agent_cfg.state = {"endpoint": "https://e.example"}
+            m.agent_cfg.env = {"ANTHROPIC_BASE_URL": "https://mine.example"}
+            m.load_agent_config.return_value = m.agent_cfg
+            with pytest.raises(SettingsError) as excinfo:
+                self._launch_env(m)
+            assert "ANTHROPIC_BASE_URL" in str(excinfo.value)
+            m.runtime.run.assert_not_called()
+
+
 class TestTheCliEnvParseRefusesAMalformedItem:
     """MBR-1 P4c-1: a ``-e`` item that is not a legal ``VAR=VALUE`` is a NAMED error.
 

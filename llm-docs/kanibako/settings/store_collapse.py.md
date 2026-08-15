@@ -53,6 +53,19 @@ refuses `cli.env.FOO` and the scope-less `env.FOO`), at which point a `-e` namin
 user's own key already names becomes a two-scope twin and `_refuse_env_twin` refuses the launch —
 the opposite of the ruling. The four scopes are still the only things that can contend for a slot.
 
+⚑⚑ **AND THE ENTRY LIST NOW CARRIES THE TARGET'S REALIZATIONS (MBR-1 P4c-2) — with nothing here
+changed to receive them, which is the point.** goose's `GOOSE_MODE`/`GOOSE_MODEL`/`GOOSE_PROVIDER`/
+`OPENAI_HOST` and claude's `ANTHROPIC_BASE_URL` used to be pasted onto the finished environment
+after this function had run. `commands/start._install_realized_env` writes them into the snapshot as
+`agent.<node>.env.<VAR>` keys BEFORE `snapshot_category_entries`, so they arrive here as ordinary
+agent-scope ENV entries and `collapse_env` cannot tell them from a declared key. **That is what
+makes the cross-scope case free**: a user's `box.env.GOOSE_MODE` against a realization is
+`_refuse_env_twin`, the existing raise, with no realization-shaped branch anywhere in this module.
+🛑 Do not add one. The SAME-scope case (a declared `agent.<node>.env.<VAR>` the §2d pick would merge
+into the realization's own node) is refused at the install site instead, because it cannot reach
+this walk as two entries — see `_refuse_realized_twin`, whose separate existence is about the CURE
+(a realization has no key to move to) and not about a second arbitration.
+
 ⚑ **No fourth `CollapsedEnv` field, deliberately.** An overridden slot carries no "cli" marker:
 nothing displays env provenance today (`box show --effective` prints `env K = V`), so a fourth field
 would cost a spec + manifest + closure change to say something no user can see. Adding a DEFAULTED
