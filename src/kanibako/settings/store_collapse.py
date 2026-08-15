@@ -4,13 +4,16 @@ The ENV SLOTS collapse here too, off the SAME scope-ordered entry list the shape
 built from rather than off the shapes: ``env`` carries no path and folds into no arm
 (``store_shape._NO_ARM``), so it has nothing to contribute to a ``StoreShape`` and
 :func:`collapse_env` runs BESIDE the shape set. The arbitration is the same one - a
-slot is written once, and the containing scope writes it first.
+slot is written once, and the containing scope writes it first. The per-run ``-e``
+values are the CASCADE'S CLI LEVEL over that result and are applied INSIDE the same
+function, above every scope and below nothing.
 
 Prose: ``llm-docs/kanibako/settings/store_collapse.py.md``.
 """
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import Final, NamedTuple
@@ -58,6 +61,11 @@ class CollapsedEnv(NamedTuple):
 #: The collapsed env slots, VAR-keyed. ⚑ ONE entry per VAR by construction: a second
 #: scope naming a VAR is refused, never arbitrated, so this map cannot lose a value.
 CollapsedEnvs = dict[str, CollapsedEnv]
+
+#: The PROVENANCE SCOPE a per-run ``-e`` writes when it fills a VACANT slot. It is a
+#: LABEL, not a settings scope: no cascade level, no containment rank, nothing
+#: resolves against it. ⚑ It cannot BE a scope — see :func:`_apply_cli_env`.
+CLI_PROVENANCE_SCOPE: Final[str] = "cli"
 
 #: Home is pid 0 - the foundation, seeded before the loop, in no scope's shape.
 HOME_DEST: Final[str] = normalize_bind_dest("~")
@@ -134,7 +142,9 @@ def collapse_seeded(store_shape_set: StoreShapeSet) -> CollapsedCopies:
   return copies
 
 
-def collapse_env(entries: list[CategoryEntry]) -> CollapsedEnvs:
+def collapse_env(
+  entries: list[CategoryEntry], cli_env: Mapping[str, str] | None = None,
+) -> CollapsedEnvs:
   """Arbitrate the env VAR slots: the FIRST scope to name a VAR holds it (PURE).
 
   ⚑ IT TAKES THE ENTRY LIST, NOT THE SHAPE SET, and that is the whole seam: ``env``
@@ -156,6 +166,12 @@ def collapse_env(entries: list[CategoryEntry]) -> CollapsedEnvs:
   several files cascades and the NEAREST file wins, exactly as every other key does;
   that happens before this function is reached and is untouched by it. What is
   written once is the VARIABLE, and the slot is its NAME.
+
+  *cli_env* is the per-run ``-e VAR=VALUE`` map, already parsed and validated at the
+  launch door (``commands.start._parse_cli_env``). It is the CASCADE'S CLI LEVEL
+  applied to the env family — Jei, 2026-08-14: *"-e should override the key values,
+  not the environment variables themselves"* — and it is applied AFTER the walk, by
+  :func:`_apply_cli_env`.
   """
   slots: CollapsedEnvs = {}
   for scope in SCOPE_CONTAINMENT:
@@ -166,7 +182,44 @@ def collapse_env(entries: list[CategoryEntry]) -> CollapsedEnvs:
       if held is not None:
         _refuse_env_twin(entry, held)
       slots[entry.box_dest] = CollapsedEnv(entry.options, entry.scope, entry.key)
+  _apply_cli_env(slots, cli_env)
   return slots
+
+
+def _apply_cli_env(slots: CollapsedEnvs, cli_env: Mapping[str, str] | None) -> None:
+  """Overlay the per-run ``-e`` values on the SETTLED slots: override an owner, or fill a vacancy.
+
+  ⚑⚑ IT RUNS AFTER THE CONTAINMENT WALK, AND THAT IS THE WHOLE CONSTRUCTION.
+  ``-e`` can never CONTEST a slot — there are exactly two cases and neither is a
+  contest: a VAR some key owns has its VALUE replaced for this launch, and a VAR no
+  key owns gets a slot of its own. So no refusal above can name a ``-e``, and none
+  should ever be taught to.
+
+  🛑 IT CANNOT RIDE THE CLI SETTINGS LEVEL INSTEAD, and this is the measured reason
+  a future reader must not "unify" it there: the keyspace has no scope-less ``env``
+  spelling and no ``cli`` namespace (``settings_keyspace.key_validity`` refuses both),
+  so the level would have to spell a CONCRETE scope — at which point the flag becomes
+  a SECOND scope's key naming a variable the user's own key already names, and
+  :func:`_refuse_env_twin` above refuses the launch. Overriding by flag would refuse
+  exactly the configurations it exists to serve.
+
+  ⚑ AN OVERRIDDEN SLOT KEEPS ITS OWNING PROVENANCE (scope + key). The key still owns
+  the variable; what ``-e`` supplies is a value for ONE launch, and the leaf carries
+  no marker saying so. That omission is deliberate: nothing reads env provenance for
+  display today, and a fourth tuple field would cost a spec + manifest + closure
+  change to say something no user can see.
+
+  ⚑ A VACANCY gets :data:`CLI_PROVENANCE_SCOPE` and the key spelling ``-e <VAR>`` —
+  HONEST (it names what put the value there) and INERT (no consumer parses either
+  field; they are read for display and diagnostics only). ``-e <VAR>`` is not a key
+  and is not meant to look like one: there is no such key to write.
+  """
+  for var, value in (cli_env or {}).items():
+    held = slots.get(var)
+    slots[var] = (
+      CollapsedEnv(value, held.scope, held.key) if held is not None
+      else CollapsedEnv(value, CLI_PROVENANCE_SCOPE, f"-e {var}")
+    )
 
 
 def _collapse_synced(store_shape_set: StoreShapeSet) -> CollapsedCopies:

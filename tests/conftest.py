@@ -765,7 +765,16 @@ def start_mocks():
                 # implementation, never a second copy of it.
                 _deliver_creds = kw.get("deliver_creds", True)
                 delivered = gate_credential_delivery(entries, _deliver_creds)
-                _install_assembly_collapse(snap, delivered, whole_box=True)
+                # ⚑⚑ ``cli_env`` IS FORWARDED, and dropping it is the same P8 trap the
+                # ``cli_level`` note above records — one rung further down. Per-run
+                # ``-e`` reaches the box ONLY through this collapse now (P4c-1
+                # deleted the paste that used to apply it afterwards), so a stub that
+                # swallowed the kwarg would make every ``-e`` driven through this
+                # fixture silently INERT and the flag tests would be asserting the
+                # harness rather than the code.
+                _install_assembly_collapse(
+                    snap, delivered, whole_box=True, cli_env=kw.get("cli_env"),
+                )
                 # The carrier the orchestrator returns second, built here BY THE SAME
                 # CALL off the SAME gated list — a stub that returned a hand-made one
                 # would be a second producer in the harness.

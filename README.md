@@ -367,7 +367,7 @@ context.
 
 | Flag | Description |
 |------|-------------|
-| `-e, --env KEY=VALUE` | Per-run environment variable (repeatable) |
+| `-e, --env VAR=VALUE` | Set a per-run environment variable, overriding the key that owns it (repeatable; a malformed item refuses the launch) |
 | `--image IMAGE` | Container rig override |
 | `--entrypoint CMD` | Override container entrypoint |
 | `--persistent` | Use tmux session wrapper (default) |

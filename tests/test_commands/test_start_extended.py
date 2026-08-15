@@ -1557,7 +1557,19 @@ class TestModelOverride:
 
 
 class TestCliEnv:
-    """Verify -e/--env KEY=VALUE vars are merged into container env."""
+    """Verify ``-e/--env VAR=VALUE`` vars reach the box — END TO END, through the launch.
+
+    ⚑⚑ THESE STAY GREEN BY BEHAVIOUR ACROSS MBR-1 P4c-1, and that is the point of
+    keeping them unchanged: the MECHANISM underneath moved from a dict paste over the
+    finished env to the CLI level of the cascade, applied inside
+    ``store_collapse.collapse_env``. The user-visible promise did not move, so a case
+    written against the promise rather than against the sequence still holds.
+
+    ⚑ THEY ARE ALSO THE CONFTEST-FORWARD PIN. ``-e`` now reaches the container ONLY
+    through the collapse the stubbed ``_resolve_launch_snapshot`` runs, so a stub that
+    dropped the ``cli_env`` kwarg would red every arrival case here rather than let it
+    pass while asserting nothing.
+    """
 
     def test_cli_env_merged(self, start_mocks):
         """Per-run env vars from -e are included in container env."""
@@ -1572,12 +1584,18 @@ class TestCliEnv:
             assert env.get("OTHER") == "123"
 
     def test_cli_env_overrides_agent_env(self, start_mocks):
-        """Per-run env vars have highest priority over agent env.
+        """``-e`` wins over an agent-scope value — the HELD-SLOT case, end to end.
 
         ⚑ The loser here rides the ``start_mocks`` FLOOR mirror, not the agent-FILE
         rung it takes in production; what is pinned is that ``-e`` outranks an
         agent-scope value, not which rung supplied it (T-B in
         ``test_start_assembly.py`` pins the real route).
+
+        ⚑⚑ SINCE P4c-1 THIS IS A REAL KEY BEING OVERRIDDEN, not a paste over the
+        result: ``m.agent_cfg.env`` folds into ``agent.<node>.env.MY_KEY``, which owns
+        the slot, and ``-e`` replaces that key's VALUE inside the collapse. The
+        provenance half — that the slot still names the owning key — is pinned pure in
+        ``tests/test_settings/test_store_collapse.py``.
         """
         with start_mocks() as m:
             m.agent_cfg.env = {"MY_KEY": "agent_val"}
@@ -1619,6 +1637,129 @@ class TestCliEnv:
             m.runtime.exec.assert_called_once()
             env = m.runtime.exec.call_args.kwargs.get("env") or {}
             assert env.get("MY_KEY") == "my_val"
+
+
+class TestTheCliEnvParseRefusesAMalformedItem:
+    """MBR-1 P4c-1: a ``-e`` item that is not a legal ``VAR=VALUE`` is a NAMED error.
+
+    🛑 IT USED TO BE SILENT, in two different ways, and both were losses a user could
+    not see: an item with no ``=`` was skipped, and ``=v`` was accepted as a variable
+    whose name is the empty string. A dropped flag was always the deferred surprise §0
+    forbids; it is worse now that ``-e`` OVERRIDES A KEY, because a typo reads as a
+    settings override that quietly did not take.
+
+    ⚑ EVERY CASE ASSERTS THE OFFENDING ITEM IS IN THE MESSAGE. "It raises" is not the
+    behaviour — a user with four ``-e`` flags needs to be told WHICH one.
+    """
+
+    @staticmethod
+    def _refusal(item):
+        from kanibako.commands.start import _parse_cli_env
+        from kanibako.settings.settings_resolve import SettingsError
+
+        with pytest.raises(SettingsError) as excinfo:
+            _parse_cli_env([item])
+        return str(excinfo.value)
+
+    def test_an_item_with_no_equals_is_refused_by_name(self):
+        message = self._refusal("JUST_A_NAME")
+        assert "JUST_A_NAME" in message
+        # The cure is spelled, not merely implied.
+        assert "JUST_A_NAME=" in message
+
+    def test_an_item_with_an_empty_variable_name_is_refused(self):
+        """``-e =v`` used to enter a variable named ``''`` into the container env."""
+        assert "=v" in self._refusal("=v")
+
+    @pytest.mark.parametrize("item", ["2FA=x", "A-B=x", "A.B=x", "A B=x"])
+    def test_an_illegal_variable_name_is_refused_by_name(self, item):
+        """The shape is the keyspace's own — the plain env identifier, nothing else.
+
+        ⚑ ``A.B`` matters on its own: a dotted spelling is what a user reaches for
+        when they think ``-e`` takes a KEY. It does not; it takes a variable.
+        """
+        assert item in self._refusal(item)
+
+    def test_a_reserved_name_is_refused_by_the_shared_floor(self):
+        """§0's reserved-leaf floor, applied through ``leaf_name_reason`` — not a copy.
+
+        ⚑ The mutation this kills: dropping the floor call and keeping only the shape
+        check. Every case above would stay green, because a reserved name IS a legal
+        identifier.
+        """
+        from kanibako.settings.settings_keyspace import RESERVED_LEAF_NAMES
+
+        reserved = sorted(RESERVED_LEAF_NAMES)[0]
+        assert reserved in self._refusal(f"{reserved}=x")
+
+    def test_a_wellformed_item_keeps_every_character_of_its_value(self):
+        """The ONE ``=`` split is the FIRST one; the value is data from there on."""
+        from kanibako.commands.start import _parse_cli_env
+
+        assert _parse_cli_env(["K=a=b=c", "EMPTY="]) == {"K": "a=b=c", "EMPTY": ""}
+
+    def test_the_refusal_lands_before_the_launch_touches_anything(self, start_mocks):
+        """Parsed at the door: a bad ``-e`` fails with no container and no runtime call.
+
+        ⚑ Driven through ``_run_container`` because "it raises somewhere" is not the
+        contract — WHERE it raises is. A parse deferred to the assembly seam would
+        refuse only after the box had been resolved, seeded and locked.
+        """
+        from kanibako.settings.settings_resolve import SettingsError
+
+        with start_mocks() as m:
+            with pytest.raises(SettingsError):
+                _run_container(
+                    project_dir=None, entrypoint=None, image_override=None,
+                    new_session=False, safe_mode=False, resume_mode=False,
+                    extra_args=[], cli_env=["OOPS"],
+                )
+            m.runtime.run.assert_not_called()
+            m.runtime.exec.assert_not_called()
+            m.resolve_launch_snapshot.assert_not_called()
+
+
+class TestOnlyTheLaunchResolveCarriesThePerRunEnv:
+    """MBR-1 P4c-1: ``cli_env`` reaches the ONE resolve that describes this launch.
+
+    🛑 THE OTHER RESOLVES MUST NOT SEE IT. The conditional image / helper resolves
+    describe an injected table and write no env leaf; ``_sync_box_at_create`` and
+    ``box show --effective`` describe STORED configuration, and a per-run flag
+    appearing there would report a box as configured with something no file says.
+    """
+
+    def test_the_whole_box_resolve_carries_the_per_run_env(self, start_mocks):
+        # ⚑ Only the WHOLE-BOX half is pinnable here: under ``start_mocks`` no
+        # narrow resolve runs at all, so a they-did-not-see-it assertion over them
+        # is vacuously green (measured at the P4c-1 review — ``all([])``). The
+        # narrow resolves cannot receive ``cli_env`` TODAY by construction — the
+        # parameter is out of scope at their call sites, so a regression must add
+        # one first. The structural claim lives in the class docstring; this test
+        # pins what actually runs.
+        with start_mocks() as m:
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], cli_env=["SCRATCH=1"],
+            )
+            carried = [
+                kw.get("cli_env")
+                for _a, kw in m.resolve_launch_snapshot.call_args_list
+                if kw.get("include_base_families", True)
+            ]
+            # Exactly one whole-box resolve per launch, and it carries the map.
+            assert carried == [{"SCRATCH": "1"}]
+
+    def test_a_launch_with_no_flag_carries_nothing_to_override_with(self, start_mocks):
+        """No ``-e`` typed → no variable named anywhere, so the collapse is the keys alone."""
+        with start_mocks() as m:
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[],
+            )
+            for _a, kw in m.resolve_launch_snapshot.call_args_list:
+                assert not kw.get("cli_env"), "an untyped -e named a variable"
 
 
 class TestProjectPositional:
