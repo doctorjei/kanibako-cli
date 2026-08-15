@@ -497,18 +497,28 @@ class TestADottedDestinationSlotsWHOLE:
 
     def test_the_RETIRED_ROUTE_PROMISE_is_true_for_a_dotted_dest(self, bench):
         """⚑⚑ THE MESSAGE'S OWN CLAIM, EXECUTED — ``scope_bind_retired_error``
-        closes with *"Reading it back with 'config get <key>' still works"*.
+        closes with *"Reading it back with 'kanibako box get <box> <key>' still
+        works"*.
 
         The sentence was honest and the ROUTER was not: it held only for a dot-free
         destination, so the refusal prescribed a cure the user could not verify —
         the F6 lie in a new place. The promised command is extracted FROM the
         message rather than retyped here, so a reworded promise cannot drift out
         from under its own test.
+
+        ⚑ The VERB is pinned as well now, and separately from the key: the promise
+        used to name ``config get``, and there is no ``config`` noun — the command
+        it handed back exited on "unrecognized arguments" (bifrost row 66, defect
+        2). A key that reads back through a command nobody can run is the same lie
+        one layer out.
         """
         bench.seed(bench.box, ("box", "caches"), self._DOTTED, list(_TUPLE))
         msg = bench.set(ConfigLevel.box, f"box.caches.{self._DOTTED}", "/some/src")
         assert msg.startswith("Error:") and "RETIRED" in msg, msg
-        m = re.search(r"'config get (?P<key>[^']+)' still works", msg)
+        assert "config get" not in msg, msg          # the noun that does not exist
+        m = re.search(
+            r"'kanibako box get <box> (?P<key>[^']+)' still works", msg
+        )
         assert m is not None, msg
         assert bench.get(ConfigLevel.box, m.group("key")) is not None, msg
 

@@ -1815,7 +1815,10 @@ class TestCategoryConfigSet:
         assert "RETIRED" in msg, msg
         assert f"box.{category}.<name>" in msg, msg          # names the SPELLING
         assert "settings file" in msg, msg                    # names the CURE
-        assert f"config get box.{category}.x" in msg, msg     # the read still works
+        # The read still works — and the message names a command that EXISTS:
+        # there is no ``config`` noun (bifrost row 66, defect 2), and the box noun
+        # takes its subject first.
+        assert f"kanibako box get <box> box.{category}.x" in msg, msg
         # ⚑ Refused BEFORE any write machinery — the stored tuple is byte-identical.
         assert load_doc(f)["box"][category]["x"] == ["/old", "/dest"]
 
@@ -3710,10 +3713,15 @@ class TestAgentNodeBindWriteRouteRetired:
         assert "self.bindings.ro" in msg, msg
         assert "self.navigator+claude" not in msg, msg
         # ⚑ ``℘`` is a keyspace-INTERNAL separator and must NEVER reach a message —
-        # including the ``config get`` the message hands back for the user to run.
+        # including the read the message hands back for the user to run.
         assert "℘" not in msg, msg
-        # The read is the one verb still offered, and it really works.
-        assert "config get" in msg, msg
+        # The read is the one verb still offered, and it really works — spelled on
+        # the AGENT noun, which takes the node as its SUBJECT and the rest as the
+        # TAIL. It used to be spelled ``config get <full key>``, which is wrong
+        # twice: there is no ``config`` noun, and the full key double-prefixes the
+        # node (bifrost row 66, defect 2).
+        assert "kanibako agent get navigator+claude bindings.ro.launcher" in msg, msg
+        assert "config get" not in msg, msg
 
     def test_the_plus_form_is_refused_too(self, tmp_path):
         """The user types ``+``; ``resolve_key`` canonicalizes before the refusal,
