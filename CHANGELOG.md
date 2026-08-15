@@ -10,6 +10,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`kanibako system defaults` lists every default kanibako ships, and says where each one is
+  declared.** `show --effective` resolves the cascade but never names an artefact — it can mark a
+  value you stored `(override)`, but nothing it prints tells you where a default is written down.
+  The new command answers the other half: one line per shipped
+  default with its **key, value, scope and the file that declares it** (`core-defaults.yaml
+  (agent_default:)`, `paths_defaults.py (system tier)`, `goose plugin defaults (env:)`, and so on).
+  It is install-wide and static — it takes no box, resolves nothing, reads none of your settings,
+  and works before `kanibako setup` has ever run. Three sections: the 63 declared keys, the 33 bind
+  and copy entries (internal ones included and marked, since a box gets them too), and the
+  environment variables, which are gathered from kanibako's own defaults file plus every agent
+  plugin you have installed — the footer names the agent targets consulted and which of them
+  declared anything, so a cli-only install (which still carries kanibako's own `no_agent` target)
+  reads as *nothing declared* rather than as *no variables exist*. The `KANIBAKO_*` variables
+  kanibako derives per launch are deliberately not listed, because two of the four are not emitted
+  at all for an unnamed project or an agentless box; the output
+  says so and points at `kanibako box show --effective`.
+
 ### Changed
 
 - **BREAKING: `COLORTERM=truecolor` is a declared default now, and nothing writes it into your
