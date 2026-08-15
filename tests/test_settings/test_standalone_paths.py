@@ -589,3 +589,83 @@ class TestStandaloneDetection:
         (project_dir / "box_data").mkdir()
         result = detect_project_mode(project_dir, std, config)
         assert result.mode is BoxMode.primary
+
+
+# ---------------------------------------------------------------------------
+# §D4a resolution semantics for an UNREGISTERED standalone box (I3)
+# ---------------------------------------------------------------------------
+
+class TestUnregisteredStandaloneResolution:
+    """§D4a (a)/(b): the registry is the by-name-from-ELSEWHERE index and nothing
+    else.  A box's own directory carries its identity in-tree, so resolving from
+    there needs no entry; a bare NAME with no entry cannot resolve at all.
+    """
+
+    def _unregistered(self, std, config, project_dir):
+        """Materialize a standalone box and leave it out of the index."""
+        proj = resolve_standalone_project(
+            std, config, str(project_dir), initialize=True, register=False,
+        )
+        assert registry_store.load_standalone(std.registry) == {}
+        return proj
+
+    def test_resolves_from_its_own_dir_without_an_entry(
+        self, std, config, project_dir, credentials_dir, monkeypatch,
+    ):
+        """(b): cwd inside the box resolves it by its in-tree marker, no entry needed.
+
+        ⚑ Starting with no entry, not ending with none — see the drop-in-import
+        test below for what the resolution leaves behind.
+        """
+        proj = self._unregistered(std, config, project_dir)
+        monkeypatch.chdir(project_dir)
+
+        from kanibako.settings.paths import resolve_any_project
+
+        found = resolve_any_project(std, config, None)
+        assert found.mode is BoxMode.standalone
+        assert found.metadata_path == project_dir.resolve()
+        assert found.name == proj.name
+
+    def test_bare_name_with_no_entry_does_not_resolve(
+        self, std, config, project_dir, credentials_dir, tmp_home, monkeypatch,
+    ):
+        """(a): the NAME route is the registry route, so no entry ⇒ no resolution."""
+        proj = self._unregistered(std, config, project_dir)
+        elsewhere = tmp_home / "elsewhere"
+        elsewhere.mkdir()
+        monkeypatch.chdir(elsewhere)
+
+        from kanibako.settings.paths import resolve_box_target
+
+        # ⚑ Matched on the NAME: an unconditional ``raises`` would pass on any
+        # unrelated error and pin nothing.
+        with pytest.raises(ProjectError, match=proj.name):
+            resolve_box_target(std, config, proj.name)
+
+    def test_own_dir_resolution_still_adds_the_entry_by_drop_in_import(
+        self, std, config, project_dir, credentials_dir, monkeypatch,
+    ):
+        """⚑⚑ MEASURED DELTA, pinned as-is — NOT the ruled design.
+
+        §D4a (b) says the entry is *"a shortcut only, never added"*.  It IS added:
+        ``detect_project_mode`` step 2 calls
+        :func:`kanibako.project.import_reconcile.import_standalone` whenever it
+        sees a standalone marker, so the FIRST resolution from inside an
+        unregistered box indexes it — the v1.6.0 drop-in auto-import
+        (``MIGRATION.md`` §6), a separate released behavior.  A box created
+        without ``--register`` is therefore unregistered until it is first used,
+        not permanently.
+
+        The two rules collide and only one can hold; which one is not decided
+        here, and this pin is a record of the collision, never a licence for it.
+        """
+        self._unregistered(std, config, project_dir)
+        monkeypatch.chdir(project_dir)
+
+        from kanibako.settings.paths import resolve_any_project
+
+        proj = resolve_any_project(std, config, None)
+        assert registry_store.load_standalone(std.registry) == {
+            proj.name: str(project_dir.resolve()),
+        }

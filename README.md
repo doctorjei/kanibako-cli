@@ -180,7 +180,7 @@ shortcuts for common operations:
 
 | Subcommand | Description |
 |------------|-------------|
-| `box create [path]` | Create project (`--name`, `--standalone`, `--image`, `--no-vault`, `--distinct-auth`, `--allow-home`) |
+| `box create [path]` | Create project (`--name`, `--standalone`, `--register`, `--image`/`--rig`, `--no-vault`, `--private`, `--allow-home`, `--agent`) |
 | `box list` / `box ls` | List projects (`--all`, `--orphan`, `-q`) |
 | `box info` / `box inspect` | Project details (mode, paths, lock, rig) |
 | `box rm` / `box delete` | Remove project (`--purge` deletes metadata, `--force` skips confirm) |
@@ -543,6 +543,17 @@ itself, alongside the workspace.  Fully portable (drop-in importable).
 ```bash
 kanibako create --standalone           # in the current directory
 kanibako create --standalone ~/myproj  # create and initialize a new directory
+```
+
+A standalone box is **unregistered by default** -- it carries its own identity
+in-tree, so it needs no registry entry and can be moved or copied anywhere.
+The registry entry is only a shortcut for addressing the box **by name from
+another directory**; add it at create time with `--register` (which is also
+what makes `--name` meaningful), or later with `kanibako box register <path>`.
+
+```bash
+kanibako create --standalone --register --name myproj ~/myproj
+kanibako box register ~/myproj         # or opt in afterwards
 ```
 
 ```

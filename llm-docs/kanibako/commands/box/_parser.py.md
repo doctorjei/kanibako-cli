@@ -23,7 +23,7 @@ Authority: the keyspace spec `settings-keyspace-1.8.0.md` §0 (closed keyspace, 
 
 | Verb | Aliases | What it does |
 |------|---------|--------------|
-| `create` | — | Make a box: probe, gate, materialise, seed, register |
+| `create` | — | Make a box: probe, gate, materialise, seed, register (standalone: only on `--register`) |
 | `list` | `ls` | Every known project + status; the DEFAULT when `box` is given no verb |
 | `ps` | — | `list` filtered to active boxes |
 | `remap` | — | Records-only relocation (you already moved the folder) |
@@ -49,6 +49,11 @@ long-only on `start`/`shell`.
 any of them reopens a bug that has already been paid for.
 
 1. **Fold `--name` to lowercase, THEN validate** (R2). The blocklist must see the folded name.
+   The folded value is then read into `standalone_name`, which is `""` unless `--register` was
+   given: for a standalone box `--name` names the REGISTRY ENTRY, so with no entry to name it is
+   dropped before it reaches the resolver and never reaches `resolve_standalone_name` (I3/§D4a).
+   ⚑ It is still folded and validated first — the flag's VALUE is checked even on the path that
+   ignores it, which is a known incoherence held for a ruling, not an accident to copy.
 2. **The `$HOME` guard.** A home-directory project mounts the entire home tree, so it must be BOTH
    standalone AND an explicit `--allow-home`. Default mode at `$HOME` is never permitted.
 3. **The cross-kind name guard**, run HERE rather than at registration, so it refuses cleanly
@@ -69,6 +74,13 @@ any of them reopens a bug that has already been paid for.
 7. **The already-initialized refusal**, HOISTED above the materialising resolve.
 8. **The materialising resolve**, with `register=False`.
 9. **The J1 write-ahead sequence**: write entry → seed → canon skeleton → register → clear entry.
+   ⚑ The register step is CONDITIONAL for a standalone box (I3/§D4a): `_register_new_box` runs
+   for every PRIMARY box, whose membership IS its workset, but for a standalone box only on
+   `--register`. The default leaves an independent, unindexed box that `kanibako box register
+   <path>` adopts later, index-only and seed-free. The gate lives at this call site, not inside
+   `_register_new_box`, because the flag is a create-verb concern. A created box then reports
+   its own state: an unregistered one prints the `box register` cure, gated on the REGISTRY
+   rather than on the flag so a journal-recovery re-run of an already-registered box stays quiet.
 
 ### Why `_already` is captured where it is
 

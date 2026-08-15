@@ -12,6 +12,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **BREAKING: `create --standalone` no longer registers the box — `--register` opts in.** A
+  standalone box carries its whole identity inside its own directory, and the global
+  `registry.standalone` entry buys exactly one thing: addressing the box by name *from another
+  directory*. Writing that entry at create assigned a global name to a box whose point is to
+  move freely, so **it is now something you ask for**: `kanibako create --standalone --register`.
+  **`--name` is ignored without `--register`** (with it, `--name` sources the entry's name), and
+  a box created independent is adopted later by `kanibako box register <path>` — index-only and
+  seed-free, so nothing is re-seeded. Nothing about the box itself changed: same layout, same
+  identity, same `workset.kuid`, and working *inside* it never needed the entry — `kanibako
+  start` from the box's own directory resolves it from its in-tree marker as before. What breaks
+  is a bare **name** used from elsewhere (`kanibako start <name>`, `box info <name>`, `--box
+  <name>`), which reports the token as unresolvable until the box is indexed. `--register` is
+  standalone-only: a default-mode box's registration is its workset membership, which is not
+  optional. See [MIGRATION.md](MIGRATION.md) §2.41.
+
 - **BREAKING: the variables kanibako derives for an agent are settings entries now, and a key
   naming one refuses the launch.** Five environment variables are *computed* from an agent's
   resolved settings rather than written by hand: goose's `GOOSE_MODE` (from the permission tier),

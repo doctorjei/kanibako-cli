@@ -27,9 +27,11 @@ The file has these top-level sections::
     # NOTE: there is NO ``seeded`` section.  Registry MEMBERSHIP is itself the
     # seed signal — a box present here (STANDALONE ``standalone`` / NAMED
     # workset-local list / PRIMARY per-workset ``boxes:`` membership) was seeded
-    # when ``create`` registered it (seed-then-register, §0/§5 of the keyspace
-    # spec).  The former ``seeded`` flag section (and its first-launch gate) are
-    # GONE.
+    # at its ``create`` (seed-then-register, §0/§5 of the keyspace spec).  The
+    # former ``seeded`` flag section (and its first-launch gate) are GONE.
+    # ⚑ The implication runs ONE WAY: present ==> seeded, never the converse.  A
+    # standalone box created without ``--register`` (§D4a) is seeded and ABSENT
+    # until ``box register`` indexes it — which is why that verb is seed-free.
 
     rigs:
       corp/base:1.0: {kind: prefab, ...}   # formerly rigs.yaml

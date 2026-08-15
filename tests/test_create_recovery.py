@@ -248,6 +248,7 @@ def _create_args(path, **over):
     ns = argparse.Namespace(
         path=str(path), standalone=False, no_vault=True,
         name=None, image=None, agent=None, allow_home=False,
+        register=False,
     )
     for k, v in over.items():
         setattr(ns, k, v)
@@ -717,7 +718,11 @@ class TestRecoveryStandalone:
     ):
         """STANDALONE interrupted create (unregistered AND registered+stale-entry):
         a re-run completes — registered exactly once, entry GONE, USER HOME EDIT
-        SURVIVES.  Asserted UNCONDITIONALLY."""
+        SURVIVES.  Asserted UNCONDITIONALLY.
+
+        ⚑ The re-run passes ``--register`` (I3/§D4a): registration at create is
+        opt-in now, and this suite is about the JOURNAL, so it keeps asking for
+        the registering create it always exercised."""
         from kanibako.commands.box._parser import run_create
         from kanibako.settings.config import load_config
         from kanibako.project import registry_store
@@ -743,7 +748,7 @@ class TestRecoveryStandalone:
             "kanibako.commands.start.seed_new_box",
             lambda std, config, proj, **kw: None,
         )
-        rc = run_create(_create_args(root, standalone=True))
+        rc = run_create(_create_args(root, standalone=True, register=True))
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -756,6 +761,43 @@ class TestRecoveryStandalone:
         assert journal.pending_create(std.journal, box_key) is None
         assert journal.read_journal(std.journal) == {}
         assert user_file.read_text() == "precious"
+
+    def test_recovery_of_a_registered_box_never_claims_unregistered(
+        self, config_file, tmp_home, credentials_dir, monkeypatch, capsys
+    ):
+        """⚑ The create hint reads the REGISTRY, not the flag (I3/§D4a).
+
+        A create interrupted AFTER its registry write leaves a registered box
+        with a stale journal entry.  The recovery re-run carries no
+        ``--register`` — nobody re-types the flag to finish an interrupted
+        create — so a flag-gated hint would tell the user their registered box
+        is "Not registered" and hand them a cure for a state it is not in.
+        """
+        from kanibako.commands.box._parser import run_create
+        from kanibako.settings.config import load_config
+        from kanibako.project import registry_store
+        from kanibako.settings.paths import load_std_paths
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        root = tmp_home / "sa"
+        root.mkdir()
+
+        proj = _simulate_interrupted_create(
+            std, config, standalone=True, path=root, register_box=True,
+        )
+        assert proj.name in registry_store.load_standalone(std.registry)
+        monkeypatch.setattr(
+            "kanibako.commands.start.seed_new_box",
+            lambda std, config, proj, **kw: None,
+        )
+        capsys.readouterr()
+
+        assert run_create(_create_args(root, standalone=True)) == 0
+
+        out = capsys.readouterr().out
+        assert "Not registered" not in out
+        assert "box register" not in out
 
 
 # ---------------------------------------------------------------------------

@@ -99,11 +99,19 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     create_p.add_argument(
         "--name", default=None,
-        help="Project name override (default: auto-assigned from directory name)",
+        help="Project name override (default: auto-assigned from directory name). "
+             "For a standalone box this names the registry entry, so it is inert "
+             "without --register.",
     )
     create_p.add_argument(
         "--standalone", action="store_true",
         help="Use standalone mode (all state inside the project directory)",
+    )
+    create_p.add_argument(
+        "--register", action="store_true",
+        help="Index a new STANDALONE box in the registry so it resolves by name "
+             "from other directories (default: unregistered and independent; "
+             "--name is ignored without this). Default-mode boxes always register.",
     )
     create_p.add_argument(
         "-i", "--image", default=None,
@@ -611,6 +619,14 @@ def run_create(args: argparse.Namespace) -> int:
         args.name = args.name.lower()
         validate_box_name(args.name)
 
+    # ⚑ §D4a: a STANDALONE box is indexed only on ``--register``; the default is an
+    # unregistered, independent box, which is what lets it move freely.  The registry
+    # is the by-name-from-elsewhere index and nothing else, so without it ``--name``
+    # has nothing to name and is ignored (with it, ``--name`` sources the entry).
+    # Read AFTER the R2 fold, so what is threaded is the folded name.
+    standalone_register = bool(getattr(args, "register", False))
+    standalone_name = (getattr(args, "name", None) or "") if standalone_register else ""
+
     # $HOME guard: a home project must be BOTH standalone and an explicit --allow-home.
     effective_path = Path(project_dir).resolve() if project_dir else Path.cwd().resolve()
     if effective_path == Path.home().resolve():
@@ -671,7 +687,7 @@ def run_create(args: argparse.Namespace) -> int:
         _probe = resolve_standalone_project(
             std, config, project_dir, initialize=False,
             enable_vault=enable_vault,
-            name=getattr(args, "name", None) or "",
+            name=standalone_name,
             register=False,
         )
     else:
@@ -718,7 +734,7 @@ def run_create(args: argparse.Namespace) -> int:
         proj = resolve_standalone_project(
             std, config, project_dir, initialize=True,
             enable_vault=enable_vault,
-            name=getattr(args, "name", None) or "",
+            name=standalone_name,
             register=False,
         )
     else:
@@ -795,7 +811,11 @@ def run_create(args: argparse.Namespace) -> int:
     # ⚑ THE CANON SKELETON (J-7) — AFTER the seed (it makes the root 555; protect first
     # and the seed's copies die EACCES) and INSIDE the journal window (it must replay).
     materialize_canon_skeleton(proj.shell_path)
-    _register_new_box(std, proj, force=getattr(args, "force", False))
+    # ⚑ The §D4a gate lives HERE, at the create verb: a PRIMARY box's membership IS its
+    # workset, so it always registers; a standalone box only opts in.  An unregistered
+    # box is adopted later by ``kanibako box register <path>`` (index-only, seed-free).
+    if not args.standalone or standalone_register:
+        _register_new_box(std, proj, force=getattr(args, "force", False))
     _clear_create_entry(std, proj)
 
     mode = "standalone" if args.standalone else "default"
@@ -809,6 +829,22 @@ def run_create(args: argparse.Namespace) -> int:
     else:
         print(f"Created {mode} project in {proj.project_path}")
     print(start_hint)
+    # ⚑ The behavior signal for the §D4a flip: v1.7.2 registered here and said nothing,
+    # so silence would report the OLD outcome.  ⚑ Gated on the registry STATE, not on
+    # the flag: a journal-recovery re-run of a box that registered before the interrupt
+    # passes no ``--register`` and is registered all the same, and "Not registered"
+    # would be a lie about it.  ⚑ The cure names ``metadata_path`` (the box ROOT) — the
+    # line above prints ``project_path``, the workspace SUBDIR, which carries no
+    # standalone marker and would NOT paste.
+    from kanibako.project import registry_store
+
+    if args.standalone and registry_store.standalone_name_for_root(
+        std.registry, Path(proj.metadata_path),
+    ) is None:
+        print(
+            f"Not registered; run 'kanibako box register {proj.metadata_path}' "
+            f"to address it by name from elsewhere."
+        )
     return 0
 
 

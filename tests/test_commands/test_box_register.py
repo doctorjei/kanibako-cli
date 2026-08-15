@@ -31,11 +31,16 @@ def _create_args(path, **over):
     ns = argparse.Namespace(
         path=str(path), standalone=False, no_vault=True,
         name=None, image=None, agent=None, allow_home=False,
-        private=False, force=False,
+        private=False, force=False, register=False,
     )
     for k, v in over.items():
         setattr(ns, k, v)
     return ns
+
+
+# A valid kuid (5 Crockford base32 chars, odd parity) used to build a VERBATIM
+# canonical ``<kuid>_<leaf>`` ``--name``, the one form that outlives the create.
+_A_KUID = "pznvh"
 
 
 def _register_args(target, **over):
@@ -404,3 +409,177 @@ class TestSelfHeal:
         assert "nothing to restore" in capsys.readouterr().err.lower()
         # Stale entry self-healed away.
         assert "mybox" not in registry_store.load_deregistered(std.registry)
+
+
+# ---------------------------------------------------------------------------
+# I3 / §D4a: `create --standalone` registers only on --register
+# ---------------------------------------------------------------------------
+
+class TestCreateStandaloneOptIn:
+    """``create --standalone`` no longer indexes the box; ``--register`` opts in.
+
+    §D4a (owner 2026-07-04): the registry is the by-name-from-another-directory
+    index and nothing else, so a standalone box is independent by default and
+    moves freely.  ``--name`` names the registry entry, hence is a NO-OP without
+    ``--register``.  An unregistered box is adopted later by the ``register``
+    verb (I2) — index-only and seed-free.
+    """
+
+    @staticmethod
+    def _stored_kuid(root: Path) -> str:
+        from kanibako.settings.config import read_workset_kuid
+
+        return read_workset_kuid(root / "settings.yaml")
+
+    def test_default_create_is_unregistered(
+        self, config_file, tmp_home, credentials_dir
+    ):
+        """THE FLIP: a plain ``create --standalone`` writes NO registry entry."""
+        config, std = _std(config_file)
+        root = tmp_home / "sa"
+        root.mkdir()
+
+        assert run_create(_create_args(root, standalone=True)) == 0
+
+        # The box is on disk and complete...
+        assert (root / "box_data" / "home").is_dir()
+        assert (root / "settings.yaml").is_file()
+        # ...and absent from the index.
+        assert registry_store.load_standalone(std.registry) == {}
+        assert registry_store.standalone_name_for_root(std.registry, root) is None
+
+    def test_register_flag_indexes_the_box(
+        self, config_file, tmp_home, credentials_dir
+    ):
+        """``--register`` writes the ``registry.standalone`` entry at create."""
+        config, std = _std(config_file)
+        root = tmp_home / "sa"
+        root.mkdir()
+
+        assert run_create(_create_args(root, standalone=True, register=True)) == 0
+
+        registered = registry_store.load_standalone(std.registry)
+        assert len(registered) == 1
+        (name, entry), = registered.items()
+        assert entry == str(root)
+        # The composed identity: <stored kuid>_<leaf>.
+        assert name.partition("_")[0] == self._stored_kuid(root)
+
+    def test_register_honors_name(self, config_file, tmp_home, credentials_dir):
+        """With ``--register``, ``--name`` sources the registry entry's leaf."""
+        config, std = _std(config_file)
+        root = tmp_home / "sa"
+        root.mkdir()
+
+        assert run_create(
+            _create_args(root, standalone=True, register=True, name="chosen")
+        ) == 0
+
+        registered = registry_store.load_standalone(std.registry)
+        (name,) = registered
+        assert name.partition("_")[2] == "chosen"
+        assert name.partition("_")[2] != root.name
+
+    def test_name_is_a_noop_without_register(
+        self, config_file, tmp_home, credentials_dir
+    ):
+        """⚑ §D4a: ``--name`` names the INDEX ENTRY, so with no entry it does nothing.
+
+        Pinned on the one effect of ``--name`` that would otherwise OUTLIVE the
+        create: a verbatim canonical ``<kuid>_<leaf>`` asserts the box's kuid, and
+        that kuid is persisted as ``workset.kuid``.  Ignored, the box gets a fresh
+        one.
+        """
+        config, std = _std(config_file)
+        root = tmp_home / "sa"
+        root.mkdir()
+        supplied = f"{_A_KUID}_pinned"
+
+        assert run_create(
+            _create_args(root, standalone=True, name=supplied)
+        ) == 0
+
+        assert registry_store.load_standalone(std.registry) == {}
+        stored = self._stored_kuid(root)
+        assert stored and stored != _A_KUID
+
+    def test_name_is_honored_verbatim_with_register(
+        self, config_file, tmp_home, credentials_dir
+    ):
+        """The same canonical ``--name`` WITH ``--register`` is taken verbatim.
+
+        The contrast half of the no-op pin: identical input, opposite outcome, so
+        the difference is the flag and nothing else.
+        """
+        config, std = _std(config_file)
+        root = tmp_home / "sa"
+        root.mkdir()
+        supplied = f"{_A_KUID}_pinned"
+
+        assert run_create(
+            _create_args(root, standalone=True, register=True, name=supplied)
+        ) == 0
+
+        assert registry_store.load_standalone(std.registry) == {supplied: str(root)}
+        assert self._stored_kuid(root) == _A_KUID
+
+    def test_unregistered_box_is_adopted_by_the_register_verb(
+        self, config_file, tmp_home, credentials_dir, capsys
+    ):
+        """I2 is the opt-in-later half: ``box register <path>`` adopts the box.
+
+        Seed-free — the home tree is byte-identical across the adoption.
+        """
+        config, std = _std(config_file)
+        root = tmp_home / "sa"
+        root.mkdir()
+        assert run_create(_create_args(root, standalone=True)) == 0
+        assert registry_store.load_standalone(std.registry) == {}
+        before = _tree_digest(root / "box_data" / "home")
+        capsys.readouterr()
+
+        assert run_register(_register_args(root)) == 0
+
+        registered = registry_store.load_standalone(std.registry)
+        assert list(registered.values()) == [str(root)]
+        assert _tree_digest(root / "box_data" / "home") == before
+
+    def test_unregistered_create_prints_the_pasteable_cure(
+        self, config_file, tmp_home, credentials_dir, capsys
+    ):
+        """The flip is SIGNALLED: v1.7.2 registered silently, so silence would
+        report the old outcome.
+
+        ⚑ The asserted command is closed with its quote on purpose.  The success
+        line above it prints ``project_path`` (the ``workspace/`` SUBDIR), and an
+        unterminated match would pass on that path too — while
+        ``box register <root>/workspace`` finds no standalone marker and does NOT
+        paste.
+        """
+        root = tmp_home / "sa"
+        root.mkdir()
+
+        assert run_create(_create_args(root, standalone=True)) == 0
+        out = capsys.readouterr().out
+        assert f"'kanibako box register {root}'" in out
+        assert f"'kanibako box register {root / 'workspace'}'" not in out
+
+        # The opposite arm: nothing to cure, so no hint.
+        other = tmp_home / "sa2"
+        other.mkdir()
+        assert run_create(_create_args(other, standalone=True, register=True)) == 0
+        assert "box register" not in capsys.readouterr().out
+
+    def test_primary_create_still_registers_without_the_flag(
+        self, config_file, tmp_home, credentials_dir
+    ):
+        """⚑ The gate is standalone-only: a PRIMARY box's membership IS its workset."""
+        from kanibako.settings.paths import load_primary_boxes
+
+        config, std = _std(config_file)
+        proj_dir = tmp_home / "proj"
+        proj_dir.mkdir()
+
+        assert run_create(_create_args(proj_dir, name="mybox")) == 0
+
+        assert load_primary_boxes(std.primary_workset).get("mybox") == str(proj_dir)
