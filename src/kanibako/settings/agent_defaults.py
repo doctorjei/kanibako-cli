@@ -18,7 +18,9 @@ Split (documented in each YAML header too):
 * DECLARATIVE — everything in the file: the binding ORIGIN selectors (which
   detected install field supplies the host source — a declarative string, NOT a
   probed value), box-side destinations, the mode/operations grammar, settings
-  routing, container env, cred-file lifecycle, host_prep/init_dirs, and the
+  routing, the BEHAVIOR floor (``behavior:`` — every ``agent.<agent>.<key>``
+  scalar default this plugin declares; no behavior default is written in plugin
+  CODE), container env, cred-file lifecycle, host_prep/init_dirs, and the
   agent-common box_dests.  Box-side destinations under the guest home are written
   as ``$GUEST_HOME`` EXPRESSIONS (e.g. ``$GUEST_HOME/.local/bin/claude``) that
   this loader expands from the single :data:`~kanibako.settings.settings_resolve.GUEST_HOME`
@@ -67,6 +69,7 @@ from kanibako.targets.base import (
     PersonaSpec,
     PluginDescriptor,
     SettingArg,
+    TargetSetting,
 )
 
 
@@ -339,6 +342,94 @@ def _build_setting_arg(entry: dict[str, Any], *, source: str = "") -> SettingArg
     )
 
 
+def _build_behavior(entry: dict[str, Any], *, source: str = "") -> TargetSetting:
+    """Build ONE :class:`TargetSetting` from a declarative ``behavior:`` entry.
+
+    A ``behavior:`` row DECLARES one of this agent's scalar behavior keys
+    (``agent.<agent>.<key>``, spec §2d) and the FLOOR value it resolves to when no
+    settings file sets it — the table ``start.py`` reads off
+    ``setting_descriptors()`` and lays UNDER the whole cascade.  It is a separate
+    section from ``descriptor.settings:`` on purpose: that one declares how a
+    value is REALIZED (which flag / which env var) and its key set is neither a
+    subset nor a superset of this one.  claude's ``transform`` is declared here
+    and realized on NO channel (kanibako's own patch pipeline consumes it), while
+    codex's ``endpoint`` is declared here and delivered by a config-file rewrite
+    rather than a :class:`SettingArg`.  Folding the floor into the realization
+    rows would leave both of those with nowhere to live.
+
+    ⚑ ``default:`` is MANDATORY, and an EMPTY one must be written ``""``.  Absence
+    and ``""`` are different declarations and only one of them can be the
+    fallback: goose declares three empty defaults DELIBERATELY (never pin a
+    provider/model — its own ``config.yaml`` owns them), while an accidentally
+    omitted claude ``transform`` default would floor at ``""`` and silently patch
+    nothing.  Requiring the field makes the empty case a statement rather than an
+    oversight.
+
+    ⚑ The value must be a STRING.  The floor is merged into a ``dict[str, str]``
+    and stringified downstream, so a YAML ``default: 1`` would travel as an int
+    until something compared it to ``"1"`` and disagreed.
+
+    ⚑ Deliberately NOT checked against the closed keyspace: THIS is the site that
+    declares a plugin's agent leaves (``settings_prefs`` unions
+    ``setting_descriptors()`` keys into the legal leaf set), so validating a row
+    against that set would be circular — ``agent.goose.provider`` is a key
+    BECAUSE this section declares it.
+
+    *source* names the defaults file in every refusal, so a plugin author is
+    pointed at the file to fix (see :func:`_build_access_row`).
+    """
+    where = f" ({source})" if source else ""
+    if not isinstance(entry, dict):
+        # Caught here so a bare scalar row does not reach the field-by-field read,
+        # where `set("model")` would refuse it naming five unknown "fields".
+        raise SettingsError(
+            f"behavior entry{where} must be a mapping with 'key', 'description' "
+            f"and 'default', got {type(entry).__name__}: {entry!r}"
+        )
+    named = entry.get("key", "<unnamed>")
+    unknown = set(entry) - {"key", "description", "default", "choices"}
+    if unknown:
+        raise SettingsError(
+            f"behavior entry {named!r}{where} declares unknown field(s) "
+            f"{sorted(unknown)}; a behavior setting carries only 'key', "
+            f"'description', 'default' and 'choices'."
+        )
+    for field_name in ("key", "description"):
+        if not entry.get(field_name):
+            raise SettingsError(
+                f"behavior entry {named!r}{where} names no {field_name!r}; a "
+                f"behavior setting is a DECLARED agent key and its description "
+                f"is what 'kanibako config' shows for it."
+            )
+    if "default" not in entry:
+        raise SettingsError(
+            f"behavior entry {named!r}{where} declares no 'default': the floor "
+            f"value is the whole point of the row, and an omitted one would "
+            f"silently floor the key at the empty string. Write the value, or "
+            f'\'default: ""\' if the key deliberately has none (goose pins no '
+            f"provider/model so its own config.yaml keeps owning them)."
+        )
+    default = entry["default"]
+    if not isinstance(default, str):
+        raise SettingsError(
+            f"behavior entry {named!r}{where} declares a "
+            f"{type(default).__name__} default; a behavior floor value is a "
+            f'STRING — quote it (e.g. "1", "true").'
+        )
+    choices = entry.get("choices") or ()
+    if not all(isinstance(c, str) for c in choices):
+        raise SettingsError(
+            f"behavior entry {named!r}{where} declares a non-string choice; the "
+            f"choices are compared against the resolved STRING value."
+        )
+    return TargetSetting(
+        key=entry["key"],
+        description=entry["description"],
+        default=default,
+        choices=tuple(choices),
+    )
+
+
 def _build_persona(raw: dict[str, Any] | None) -> PersonaSpec | None:
     """Build the harness-specific :class:`PersonaSpec` from its block (or None).
 
@@ -445,6 +536,38 @@ def load_descriptor(package: str, filename: str) -> PluginDescriptor:
         auth_share_support=bool(desc.get("auth_share_support", False)),
         vscode_extension=desc.get("vscode_extension"),
     )
+
+
+def load_behavior(package: str, filename: str) -> "tuple[TargetSetting, ...]":
+    """Build a plugin's declared BEHAVIOR settings from its defaults file.
+
+    The file's top-level ``behavior:`` list, in file order, as the
+    :class:`~kanibako.targets.base.TargetSetting` tuple a plugin returns from
+    ``setting_descriptors()``.  ``()`` when the file declares no section — an
+    agent with no behavior keys of its own is legal, and the launch reads its
+    floor as empty (``start.py``: no descriptors ⇒ the core §2d backstop alone).
+
+    This is the ONE declaration site for those values: nothing in plugin CODE
+    carries a behavior default any more, so the file a plugin ships is also the
+    file that answers "what does this agent default its model to".  The order is
+    preserved because it is the order ``config`` lists the agent's settings in.
+
+    A key declared TWICE is refused rather than last-wins: two rows for one key
+    are two answers to "what is the floor", and the loser would be invisible.
+    """
+    seen: set[str] = set()
+    built: list[TargetSetting] = []
+    for entry in _load_doc(package, filename).get("behavior", []) or []:
+        setting = _build_behavior(entry, source=filename)
+        if setting.key in seen:
+            raise SettingsError(
+                f"{filename}: behavior key {setting.key!r} is declared twice; "
+                f"a key has ONE floor value, and the second row would silently "
+                f"replace the first."
+            )
+        seen.add(setting.key)
+        built.append(setting)
+    return tuple(built)
 
 
 def load_category_binds(

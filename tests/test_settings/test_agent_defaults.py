@@ -955,3 +955,145 @@ class TestFlagChannelSettingsMustNameTheirFlag:
         assert d.access_realization is not None
         assert d.access_realization.restricted is not None
         assert d.access_realization.restricted.flag == ()
+
+
+class TestLoadBehavior:
+    """``behavior:`` — the plugin's DECLARED behavior floor (D1-7).
+
+    The floor values used to be ``default=`` literals inside each plugin's
+    ``setting_descriptors()``.  They live in the shipped defaults file now, so the
+    file a plugin ships is the ONE place that answers "what does this agent default
+    its model to".  These drive the real loader over synthetic files; the SHIPPED
+    rows are pinned in ``tests/test_targets/test_agent_behavior_defaults.py``.
+    """
+
+    def test_reads_key_description_and_default(self, declfile):
+        package, filename = declfile(
+            "behavior:\n"
+            "  - key: model\n"
+            "    description: Model to use\n"
+            "    default: opus\n"
+        )
+        (setting,) = agent_defaults.load_behavior(package, filename)
+        assert setting.key == "model"
+        assert setting.description == "Model to use"
+        assert setting.default == "opus"
+        assert setting.choices == ()
+
+    def test_file_order_is_preserved(self, declfile):
+        """The order is what ``config`` lists the agent's settings in."""
+        package, filename = declfile(
+            "behavior:\n"
+            "  - {key: provider, description: P, default: \"\"}\n"
+            "  - {key: model, description: M, default: \"\"}\n"
+            "  - {key: endpoint, description: E, default: \"\"}\n"
+        )
+        got = agent_defaults.load_behavior(package, filename)
+        assert [s.key for s in got] == ["provider", "model", "endpoint"]
+
+    def test_an_explicit_empty_default_is_kept(self, declfile):
+        """goose's three floors are ``""`` DELIBERATELY (never pin goose).
+
+        (Mutation: coerce an empty default to some placeholder → RED, and the box
+        would override the user's own goose config.yaml on every launch.)"""
+        package, filename = declfile(
+            "behavior:\n"
+            "  - key: provider\n"
+            "    description: LLM provider\n"
+            "    default: \"\"\n"
+        )
+        (setting,) = agent_defaults.load_behavior(package, filename)
+        assert setting.default == ""
+
+    def test_an_absent_default_is_refused(self, declfile):
+        """START-STRICT: absence is NOT a synonym for ``""``.
+
+        An omitted floor would silently resolve to the empty string — for claude's
+        ``transform`` that means nothing is ever patched, reported as success.  The
+        refusal is what keeps goose's empty defaults a STATEMENT."""
+        package, filename = declfile(
+            "behavior:\n"
+            "  - key: transform\n"
+            "    description: Binary transform\n"
+        )
+        with pytest.raises(SettingsError) as exc:
+            agent_defaults.load_behavior(package, filename)
+        msg = str(exc.value)
+        assert "transform" in msg
+        assert "default" in msg
+        assert filename in msg
+
+    def test_a_non_string_default_is_refused(self, declfile):
+        """The floor is a ``dict[str, str]``; an int would travel as an int."""
+        package, filename = declfile(
+            "behavior:\n"
+            "  - key: model\n"
+            "    description: Model\n"
+            "    default: 1\n"
+        )
+        with pytest.raises(SettingsError) as exc:
+            agent_defaults.load_behavior(package, filename)
+        assert "int" in str(exc.value)
+        assert "model" in str(exc.value)
+
+    def test_a_missing_description_is_refused(self, declfile):
+        package, filename = declfile(
+            "behavior:\n"
+            "  - key: model\n"
+            "    default: opus\n"
+        )
+        with pytest.raises(SettingsError) as exc:
+            agent_defaults.load_behavior(package, filename)
+        assert "description" in str(exc.value)
+
+    def test_an_unknown_field_is_refused(self, declfile):
+        """A row is read field by field, so a typo'd name is never read."""
+        package, filename = declfile(
+            "behavior:\n"
+            "  - key: model\n"
+            "    description: Model\n"
+            "    default: opus\n"
+            "    defualt: opus\n"
+        )
+        with pytest.raises(SettingsError) as exc:
+            agent_defaults.load_behavior(package, filename)
+        assert "defualt" in str(exc.value)
+
+    def test_a_duplicate_key_is_refused(self, declfile):
+        """Two rows for one key are two answers; the loser would be invisible."""
+        package, filename = declfile(
+            "behavior:\n"
+            "  - {key: model, description: M, default: opus}\n"
+            "  - {key: model, description: M, default: sonnet}\n"
+        )
+        with pytest.raises(SettingsError) as exc:
+            agent_defaults.load_behavior(package, filename)
+        assert "twice" in str(exc.value)
+        assert "model" in str(exc.value)
+
+    def test_choices_load_as_a_tuple(self, declfile):
+        package, filename = declfile(
+            "behavior:\n"
+            "  - key: bootstrap\n"
+            "    description: Multiplexer\n"
+            "    default: tmux\n"
+            "    choices: [tmux, none]\n"
+        )
+        (setting,) = agent_defaults.load_behavior(package, filename)
+        assert setting.choices == ("tmux", "none")
+
+    def test_a_file_with_no_behavior_section_declares_none(self, declfile):
+        """An agent with no behavior keys of its own is legal (empty floor)."""
+        package, filename = declfile("descriptor:\n  command: [\"probe\"]\n")
+        assert agent_defaults.load_behavior(package, filename) == ()
+
+    def test_a_bare_scalar_row_is_refused_clearly(self, declfile):
+        """A row that is not a mapping is named as such.
+
+        Without the type guard the field-by-field read would refuse it naming the
+        five LETTERS of the string as unknown fields."""
+        package, filename = declfile("behavior:\n  - model\n")
+        with pytest.raises(SettingsError) as exc:
+            agent_defaults.load_behavior(package, filename)
+        assert "mapping" in str(exc.value)
+        assert "str" in str(exc.value)

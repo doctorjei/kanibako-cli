@@ -323,6 +323,16 @@ def setting_descriptors(self) -> list[TargetSetting]:
     ]
 ```
 
+> **The shipped plugins do not write these values in code.**  Each ships a
+> `<agent>-defaults.yaml` whose top-level `behavior:` section declares one row per
+> key (`key` / `description` / `default`, optional `choices`), and
+> `kanibako.settings.agent_defaults.load_behavior()` turns it into the tuple
+> `setting_descriptors()` returns.  `default:` is mandatory there — an empty floor
+> is written `""` — so an omitted value is a load-time refusal rather than a silent
+> empty string.  Declaring the values in the file keeps one declaration site for a
+> floor every box of that agent starts from.  A hand-written list as above still
+> works; the loader is the route to prefer.
+
 ### `transform_cred(spec, src, dst, direction) -> None`
 
 Called by the credential-sync engine only for `CredFileSpec`s with

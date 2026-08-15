@@ -49,6 +49,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from kanibako.settings.agent_defaults import (
+    load_behavior,
     load_category_binds,
     load_descriptor,
     load_envs,
@@ -97,6 +98,9 @@ _DEFAULTS_PACKAGE = "kanibako.plugins.codex"
 _DEFAULTS_FILE = "codex-defaults.yaml"
 
 _CODEX_DESCRIPTOR = load_descriptor(_DEFAULTS_PACKAGE, _DEFAULTS_FILE)
+# The declared BEHAVIOR floor (the file's `behavior:` section) — no default value
+# is written in this module.
+_CODEX_BEHAVIOR = load_behavior(_DEFAULTS_PACKAGE, _DEFAULTS_FILE)
 
 
 # Map (os, machine) -> (npm platform-package suffix, vendored target triple).
@@ -667,17 +671,9 @@ class CodexTarget(Target):
         ``access``),
         persisted + cascade-resolved, default permissive; ``-A``/``-S`` override per
         launch.
+
+        The keys and their FLOOR values are declared in ``codex-defaults.yaml``'s
+        ``behavior:`` section, not here: a default written in plugin code is a
+        second declaration site for something the shipped file already owns.
         """
-        return [
-            TargetSetting(
-                key="model",
-                description="Model to use",
-                default="gpt-5.5",
-            ),
-            TargetSetting(
-                key="endpoint",
-                description="Alternate model-provider base-URL (persona); "
-                "unset uses the harness default and syncs the codex login",
-                default="",
-            ),
-        ]
+        return list(_CODEX_BEHAVIOR)

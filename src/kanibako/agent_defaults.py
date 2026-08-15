@@ -24,6 +24,9 @@ contract.
 import warnings
 
 from kanibako.settings.agent_defaults import (
+    load_behavior as load_behavior,
+)
+from kanibako.settings.agent_defaults import (
     load_category_binds as load_category_binds,
 )
 from kanibako.settings.agent_defaults import (

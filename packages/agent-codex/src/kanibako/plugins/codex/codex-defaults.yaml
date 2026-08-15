@@ -182,6 +182,26 @@ descriptor:
 # whole-dir canon bind at `~/canon/bible` + the flattened per-agent FINAL file (seeded by the
 # `managed_pointer` kickoff-loader above), not a per-agent native-slot bind.
 
+# AGENT-scope BEHAVIOR defaults -> the `agent.codex.<key>` FLOOR (spec §2d), read by
+# the launch off `setting_descriptors()` and laid UNDER the whole cascade, so a user
+# overrides one by writing the SAME key in any settings file.  `default:` is MANDATORY
+# on every row (an empty one is written `""`) and its value is a STRING.
+#
+# ⚑ This is a SEPARATE section from `descriptor.settings:` above, and the two key sets
+# are not the same one: `settings:` says HOW a value is realized, and `endpoint` below
+# is DELIBERATELY not a SettingArg (a codex persona's endpoint is written into
+# ~/.codex/config.toml, not emitted as a flag/env), so it has a floor here and no row
+# there.  Declaring it keeps `config set agent.<node>℘codex.endpoint` a first-class
+# settable, cascade-resolved key.
+behavior:
+  - key: model
+    description: Model to use
+    default: gpt-5.5
+  - key: endpoint
+    description: "Alternate model-provider base-URL (persona); unset uses the
+      harness default and syncs the codex login"
+    default: ""
+
 # AGENT-scope declared env DEFAULTS -> `agent.codex.env.<VAR>` (spec §2d).  These are
 # ordinary settings keys, not a private channel: a user overrides one by writing the
 # SAME key in a nearer file, and naming the same VAR at a second scope (say

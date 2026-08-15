@@ -1507,17 +1507,98 @@ def test_codex_seam_composition_relaunch_is_no_op(tmp_path):
 
 
 # --- T1 seam Step 2: seed_goose_mode (extracted GOOSE_MODE emitter) ----------
+#
+# ⚑ V-10: the tier→GOOSE_MODE table is the goose plugin's OWN `access_realization`,
+# passed in by the caller (`GooseTarget.deliver_panel_permissions`).  The private copy
+# that used to live in `vscode_config` is GONE — a second declaration of one fact, and
+# a drift on this axis is silent (the panel keeps running at the tier the copy still
+# remembers).  These cases therefore drive the SHIPPED descriptor, not a stand-in.
+
+
+def _goose_descriptor():
+    """The shipped goose descriptor — the declaration these values come from."""
+    from kanibako.plugins.goose.target import _GOOSE_DESCRIPTOR
+
+    return _GOOSE_DESCRIPTOR
+
+
+def test_goose_mode_map_comes_from_the_descriptor(tmp_path):
+    """The persisted GOOSE_MODE is the DESCRIPTOR's env_value, not a private copy.
+
+    Two halves, because either alone would pass a tautology:
+
+    * the SHIPPED values are pinned as literals — `full`→`auto`, `restricted`→
+      `approve`, and `editing` unrenderable (mutation: edit
+      `goose-defaults.yaml`'s tier rows → RED here by name);
+    * a SENTINEL descriptor drives the write — the value follows the rows it is
+      handed, which the deleted `_GOOSE_MODE_BY_TIER` copy could never do.
+    """
+    from kanibako.targets.base import (
+        AccessRealization,
+        AccessTierRow,
+        Channel,
+        PluginDescriptor,
+    )
+
+    shipped = {"restricted": "approve", "full": "auto"}
+    realization = _goose_descriptor().access_realization
+    assert realization is not None
+    for tier, expected in shipped.items():
+        path = tmp_path / f"{tier}.yaml"
+        assert seed_goose_mode(
+            path, access=tier, descriptor=_goose_descriptor(),
+        ) is True
+        assert yaml.safe_load(path.read_text())["GOOSE_MODE"] == expected
+        row = realization.row(tier)
+        assert row is not None and row.env_value == expected
+    # ...and the tier goose declares NO row for is the one that refuses.
+    assert realization.row("editing") is None
+
+    sentinel = PluginDescriptor(
+        command=("goose",),
+        bindings=(),
+        mode={},
+        access_realization=AccessRealization(
+            channel=Channel.ENV,
+            env_var="GOOSE_MODE",
+            full=AccessTierRow(env_value="sentinel-mode"),
+            setting_key="access",
+        ),
+    )
+    path = tmp_path / "sentinel.yaml"
+    assert seed_goose_mode(path, access="full", descriptor=sentinel) is True
+    assert yaml.safe_load(path.read_text())["GOOSE_MODE"] == "sentinel-mode"
+
+
+def test_seed_goose_mode_refuses_a_descriptor_with_no_env_realization(tmp_path):
+    """A FLAG-channel descriptor (claude/codex) carries no GOOSE_MODE value.
+
+    Refusing beats writing the empty `env_value` those rows carry: an unset or blank
+    GOOSE_MODE is goose's permissive `auto`.
+    """
+    from kanibako.errors import ConfigError
+    from kanibako.plugins.claude.target import _CLAUDE_DESCRIPTOR
+
+    path = tmp_path / "config.yaml"
+    with pytest.raises(ConfigError) as exc:
+        seed_goose_mode(path, access="full", descriptor=_CLAUDE_DESCRIPTOR)
+    assert "BLANK" in str(exc.value)
+    assert not path.exists()
 
 
 def test_seed_goose_mode_on_writes_auto(tmp_path):
     path = tmp_path / "config.yaml"
-    assert seed_goose_mode(path, access="full") is True
+    assert seed_goose_mode(
+        path, access="full", descriptor=_goose_descriptor(),
+    ) is True
     assert yaml.safe_load(path.read_text())["GOOSE_MODE"] == "auto"
 
 
 def test_seed_goose_mode_off_writes_explicit_approve(tmp_path):
     path = tmp_path / "config.yaml"
-    assert seed_goose_mode(path, access="restricted") is True
+    assert seed_goose_mode(
+        path, access="restricted", descriptor=_goose_descriptor(),
+    ) is True
     assert yaml.safe_load(path.read_text())["GOOSE_MODE"] == "approve"
 
 
@@ -1531,7 +1612,7 @@ def test_seed_goose_mode_editing_refuses_and_writes_nothing(tmp_path):
 
     path = tmp_path / "config.yaml"
     with pytest.raises(ConfigError) as exc:
-        seed_goose_mode(path, access="editing")
+        seed_goose_mode(path, access="editing", descriptor=_goose_descriptor())
     assert "restricted | full" in str(exc.value)
     assert not path.exists()
 
@@ -1541,20 +1622,24 @@ def test_seed_goose_mode_unknown_tier_refuses(tmp_path):
 
     path = tmp_path / "config.yaml"
     with pytest.raises(ConfigError):
-        seed_goose_mode(path, access="bogus")
+        seed_goose_mode(path, access="bogus", descriptor=_goose_descriptor())
     assert not path.exists()
 
 
 def test_seed_goose_mode_idempotent_and_merge_preserving(tmp_path):
     path = tmp_path / "config.yaml"
     path.write_text("GOOSE_PROVIDER: openai\nextensions:\n  developer:\n    enabled: true\n")
-    assert seed_goose_mode(path, access="full") is True
+    assert seed_goose_mode(
+        path, access="full", descriptor=_goose_descriptor(),
+    ) is True
     doc = yaml.safe_load(path.read_text())
     assert doc["GOOSE_MODE"] == "auto"
     assert doc["GOOSE_PROVIDER"] == "openai"
     assert doc["extensions"]["developer"]["enabled"] is True
     before = path.read_bytes()
-    assert seed_goose_mode(path, access="full") is False
+    assert seed_goose_mode(
+        path, access="full", descriptor=_goose_descriptor(),
+    ) is False
     assert path.read_bytes() == before
 
 
@@ -1567,7 +1652,9 @@ def test_seed_goose_mode_overwrites_conflicting_existing_value(tmp_path):
         "GOOSE_MODE": "auto",
         "GOOSE_PROVIDER": "anthropic",
     }))
-    assert seed_goose_mode(path, access="restricted") is True
+    assert seed_goose_mode(
+        path, access="restricted", descriptor=_goose_descriptor(),
+    ) is True
     written = yaml.safe_load(path.read_text())
     assert written["GOOSE_MODE"] == "approve"
     assert written["GOOSE_PROVIDER"] == "anthropic"

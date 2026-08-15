@@ -138,6 +138,30 @@ descriptor:
   # goose/codex leave this UNSET (→ None) until their Phase-5 support lands.
   vscode_extension: anthropic.claude-code
 
+# AGENT-scope BEHAVIOR defaults -> the `agent.claude.<key>` FLOOR (spec §2d), read
+# by the launch off `setting_descriptors()` and laid UNDER the whole cascade, so a
+# user overrides one by writing the SAME key in any settings file.  `default:` is
+# MANDATORY on every row (an empty one is written `""`) and its value is a STRING.
+#
+# ⚑ This is a SEPARATE section from `descriptor.settings:` above, and the two key
+# sets are not the same one: `settings:` says HOW a value is realized (which flag /
+# which env var), and `transform` below is realized on NO channel at all — kanibako's
+# own patch pipeline consumes it, so it has a floor here and no row there.
+behavior:
+  - key: model
+    description: Claude model to use
+    default: opus
+  - key: endpoint
+    description: "Alternate base-URL endpoint (persona); unset uses the harness
+      default and syncs the OAuth login"
+    default: ""
+  - key: transform
+    description: "Binary transform applied to the agent binary (tweakcc); empty
+      = none"
+    # WHICH transform claude runs (spec §2d `agent.claude.transform | tweakcc`).
+    # ⚑ Not "" — an empty floor here means NOTHING is patched.
+    default: tweakcc
+
 # AGENT-scope declared env DEFAULTS -> `agent.claude.env.<VAR>` (spec §2d).  These
 # are ordinary settings keys, not a private channel: a user overrides one by writing
 # the SAME key in a nearer file, and naming the same VAR at a second scope (say

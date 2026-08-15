@@ -13,8 +13,10 @@ WHICH transform an agent runs. The launch gate compares the cascade-resolved val
 Two DIFFERENT facts share the spelling `"tweakcc"`, and they are matched, not shared:
 
 * **core implements a transform called `tweakcc`** — that is this constant;
-* **the claude plugin declares that claude wants `tweakcc`** — that is the
-  `TargetSetting(key="transform", default="tweakcc")` in the plugin's `setting_descriptors()`.
+* **the claude plugin declares that claude wants `tweakcc`** — that is the `transform` row of
+  `claude-defaults.yaml`'s `behavior:` section (`default: tweakcc`), which the loader turns into
+  the `TargetSetting` the plugin's `setting_descriptors()` returns. ⚑ The value is in the shipped
+  FILE, not in plugin code (D1-7), so a reader looking for the literal should open the YAML.
 
 The plugin does NOT import this constant. Spec §0 makes every non-universal agent specific
 PLUGIN-established, and plugins declare `dependencies = ["kanibako-cli"]` with no upper bound —
