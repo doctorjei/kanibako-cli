@@ -422,6 +422,51 @@ registry:                       # about this DOCUMENT (inert; never read by reso
                    meta.assembly.synced note still carried the 'sync dest that
                    EXACTLY EQUALS a bind dest is a config ERROR' prose the
                    2026-08-12 amendment deleted; it now states the ruled behaviour."
+    - date: "2026-08-15"
+      what: "-e ENTERS THE COLLAPSE AT THE CLI LEVEL, AND THE PLUGIN REALIZATIONS
+             FOLD IN AS AGENT-SCOPE KEYS (MBR-1 P4c). A `-e VAR=value` REPLACES the
+             value of the VAR's owning key inside the collapse (provenance kept);
+             a VAR no key names gets a fresh CLI-provenance slot (scope=\"cli\",
+             key=\"-e <VAR>\"). The five descriptor-derived variables (goose
+             GOOSE_MODE/GOOSE_MODEL/GOOSE_PROVIDER/OPENAI_HOST, claude
+             ANTHROPIC_BASE_URL) derive inside the launch resolve and INSTALL as
+             agent.<active>.env.<VAR> keys before entry adaptation; the state_env
+             paste layer above the channel is DELETED. A user twin of a realized
+             VAR refuses: same-scope at the install naming the declared key AND
+             the driving key; other scopes via the ordinary contested-VAR
+             refusal. NO carve-out."
+      authority: "Jei - ruling 42 2026-08-14 (\"-e should override the key values,
+                  not the environment variables themselves\"); ruling 45
+                  (\"e must win... so it must be part of the collapse\"); ruling 59
+                  2026-08-15 (\"Yes on P4c-2.\" - derived pairs enter as keys, user
+                  twins meet the ordinary refusal, no carve-out); ruling 61, the
+                  P4c GO (\"so, go\") + his future-design flag on the
+                  paste-over-the-key shape (no immediate action; boarded). Plan
+                  plans/2026-08-14-p4c-DESIGN.md."
+      scope: "CLOSED-KEYSPACE ANSWER: NO new declared shape - the CLI value lives
+              inside the leaf's tuple (data, not a key); realized pairs enter
+              through the existing declared agent.<node>.env.<VAR> family and
+              leave through the one meta.assembly.env writer. box show --effective
+              does NOT display realizations (they depend on launch flags).
+              🔴 USER-VISIBLE, BREAKING (the realization half): GOOSE_MODE realizes
+              on EVERY goose launch, so any <scope>.env.GOOSE_MODE that launches on
+              v1.7.2 refuses now (cure: access / -S / -A); the other four refuse
+              conditionally on model/provider/endpoint resolving truthy. Nothing
+              kanibako ships declares any of the five as a key. This closes the
+              2026-08-14 entry's open CLI `-e` half; its secret_path half stays
+              open (G4 -> board, ruling 62)."
+      code_state: "Code + tests + CHANGELOG/MIGRATION landed with this amendment:
+                   P4c-1 b6b5a2d (the -e fold: collapse_env cli_env= application
+                   between gating and the walk, parse-once refusal at
+                   _run_container entry) and P4c-2 95beb33 (the realization fold:
+                   _LaunchRealizer callback in _resolve_launch_snapshot between
+                   build_launch_snapshot and snapshot_category_entries, the
+                   derived trio returned to the caller; _install_realized_env +
+                   _refuse_realized_twin single raise site; the P4c-1 setdefault
+                   intermediate deleted). MIGRATION §2.39/§2.40; both CI-green by
+                   SHA. The spec §1A flag list + meta.assembly.env leaf block +
+                   §2a realization bullet and the annotations file were amended in
+                   the same pass."
 
 ## ---------------------------------------------------------------------------
 ## POLICY — the rules of the keyspace. Every field traces to a ratified clause.
@@ -1861,7 +1906,18 @@ keys:
            commands/start._launch_env_map - the launch's container env and
            `box show --effective` - which are the ONLY route a `<scope>.env.<VAR>`
            value takes into a box (the un-arbitrated LaunchDeliveries.envs list they
-           used to fold themselves is RETIRED, 2026-08-14)."
+           used to fold themselves is RETIRED, 2026-08-14).
+           ⚑ THE CLI LEVEL folds in AFTER the walk (2026-08-15): a `-e VAR=value`
+           REPLACES the value of the slot's owning key - provenance kept - and
+           never contests a slot, so it cannot trip the refusal; a VAR no key
+           names gets a fresh slot with CLI provenance (scope=\"cli\",
+           key=\"-e <VAR>\" - honest and inert; no consumer interprets the
+           fields). Ephemeral: one launch, nothing persisted.
+           ⚑ The five DESCRIPTOR-DERIVED variables (the plugin realizations) are
+           INSTALLED as agent.<active>.env.<VAR> keys at the launch resolve,
+           UPSTREAM of this map - ordinary agent-scope entries by the time the
+           collapse walks; nothing downstream knows a realized variable from a
+           declared one, and nothing may be taught to."
     spec: "§1A"
   meta.workset.path:
     namespace: meta
