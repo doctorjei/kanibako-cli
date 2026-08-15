@@ -97,14 +97,63 @@ def env_default_categories() -> dict[str, str]:
     hold.  The derived table merges AFTER this one, so a stamp still wins a VAR this
     section also names.
     ⚑ Values are STRINGS, as in :func:`behavior_defaults`: an unquoted YAML bool would
-    reach the box as ``"True"``.  The section is EMPTY as shipped, so this is a no-op
-    by construction until a value moves into it.
+    reach the box as ``"True"``.
+
+    ⚑ FAIL-CLOSED ON THE KEY IT BUILDS (R3).  Every emitted ``<scope>.env.<VAR>`` is
+    matched against ``settings_categories.ENV_KEY_RE`` — the keyspace's own
+    declaration of the family (spec §2a) — so a typo'd scope head (``sytem:``) or a
+    VAR that is not an env-name RAISES, naming the file and the head.  It used to be
+    a silent no-op: the bad key entered ``default_categories``, matched nothing
+    downstream and simply never reached a box.
     """
     table: dict[str, str] = {}
-    for scope, entries in (_load_doc().get("env") or {}).items():
-        for var, value in (entries or {}).items():
+    section = _load_doc().get("env") or {}
+    if not isinstance(section, dict):
+        raise RuntimeError(
+            f"{CORE_DEFAULTS_FILENAME} 'env:' must be scope-keyed tables, got "
+            f"{type(section).__name__} — see the section's own comment for the shape."
+        )
+    for scope, entries in section.items():
+        if entries is None:
+            continue
+        if not isinstance(entries, dict):
+            raise RuntimeError(
+                f"{CORE_DEFAULTS_FILENAME} declares 'env.{scope}' as "
+                f"{type(entries).__name__}, not a table of <VAR>: \"<value>\" — a "
+                f"variable belongs under the scope that owns it."
+            )
+        for var, value in entries.items():
+            _check_env_key(str(scope), str(var))
             table[f"{scope}.env.{var}"] = str(value)
     return table
+
+
+def _check_env_key(scope: str, var: str) -> None:
+    """RAISE unless ``<scope>.env.<VAR>`` is a declared key (spec §2a); name which half is wrong.
+
+    ⚑ ONE RULE, ASKED TWICE.  ``ENV_KEY_RE`` carries both halves — the legal scope
+    heads and the env-name shape — so the second match is a PROBE that tells the two
+    apart for the message, not a second copy of either.  Re-spelling the head set
+    here is exactly the drift the regex import avoids.
+    ⚑ A FUNCTION-LOCAL import, the :func:`add_bind` pattern: this module stays a thin
+    reader whose module scope pulls in no part of the settings stack, and
+    ``settings_categories`` imports nothing from ``kanibako`` at module scope, so
+    there is no cycle either way.
+    """
+    from kanibako.settings.settings_categories import ENV_KEY_RE
+
+    if ENV_KEY_RE.match(f"{scope}.env.{var}") is not None:
+        return
+    head_ok = ENV_KEY_RE.match(f"{scope}.env.PROBE") is not None
+    detail = (
+        f"'{var}' is not an env-var name ([A-Za-z_][A-Za-z0-9_]*)" if head_ok
+        else f"'{scope}' is not a scope the env family is declared at — spec §2a "
+             f"allows system, workset, box and agent.<node> (bare 'agent' is not a key)"
+    )
+    raise RuntimeError(
+        f"{CORE_DEFAULTS_FILENAME} declares 'env.{scope}.{var}', which is not a "
+        f"key: {detail}."
+    )
 
 
 #: A dest-keyed floor bind table: ``{"box.bindings.ro": {box_dest: (src[, opts])}}`` (R-5/R-11).

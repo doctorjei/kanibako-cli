@@ -359,29 +359,15 @@ def _ensure_initialized() -> None:
     std_paths = load_std_paths(config)
     install_packaged_templates(std_paths, target_names)
 
-    # Seed the default box environment (don't overwrite existing).
-    #
-    # ``COLORTERM=truecolor`` is declared at BOX scope — the scope that actually
-    # describes it (it is a property of the terminal a box runs, not of the host
-    # install) — and written DOWNWARD into the system SETTINGS file, which the
-    # directional rule allows (a system file may set keys of the scopes it
-    # contains). ``settings_launch._emit_scope_node`` delivers it as a box-scope
-    # ``env`` category entry, so a box's own ``box.env.COLORTERM`` overrides it.
-    #
-    # ⚑ This is still a WRITTEN VALUE, not a default. The proper fix — no write at
-    # all, and a declared box-scope DEFAULT that populates with nothing stored —
-    # is tracked as MBR-2 and is deliberately NOT done here (it is HELD pending a
-    # decision on where defaults live).
-    #
-    # setdefault semantics: first run only (this function returns early once the
-    # config file exists) AND create-if-absent, so a user value is never clobbered.
-    from kanibako.settings.config_io import read_stored_leaf, write_nested_key
-
-    if read_stored_leaf(std_paths.settings, ("box", "env"), "COLORTERM") is None:
-        std_paths.settings.parent.mkdir(parents=True, exist_ok=True)
-        write_nested_key(
-            std_paths.settings, ("box", "env"), "COLORTERM", "truecolor",
-        )
+    # ⚑ NOTHING SEEDS ``COLORTERM`` HERE ANY MORE (MBR-2/D1-4).  It was a
+    # create-if-absent first-run write of ``box.env.COLORTERM=truecolor`` into the
+    # system settings file — a default MATERIALISED AT A SEAM, which is what
+    # ``tests/test_settings/test_defaults_enforcement.py`` forbids.  It is declared
+    # in ``data/core-defaults.yaml``'s ``env:`` section instead, so it resolves for
+    # every box with nothing stored — including the installs this first-run path
+    # never reached, because it returns early once the config file exists.
+    # 🛑 Do not restore a write here: a value that needs a default belongs in a
+    # defaults file, and this function is not one.
 
     # Try shell completion
     try:

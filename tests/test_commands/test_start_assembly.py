@@ -471,6 +471,28 @@ class TestTheEnvConsumerReadsTheLeaf:
         "KANIBAKO_AGENT_MARKERS_DIR",
     }
 
+    @staticmethod
+    def _core_file_env_vars() -> set[str]:
+        """The VARs core DECLARES in ``core-defaults.yaml``'s ``env:`` section (D1-4).
+
+        Core's OTHER env source, beside the derived stamps above: literals a file
+        can hold (``COLORTERM`` today). ⚑ DERIVED, not re-listed — the section's
+        exact content is pinned once, in
+        ``test_defaults_golden.TestCoreStaticEnvDefaults``, which is where a new
+        row gets its review. Re-listing it here would be a second copy that goes
+        stale, and it would pin the FILE twice while pinning this case's actual
+        claim — no channel BESIDE the leaf — not at all.
+        ⚑ The match cannot be ``None``: ``env_default_categories`` refuses to emit
+        a key this same regex does not accept.
+        """
+        from kanibako.settings import core_defaults
+        from kanibako.settings.settings_categories import ENV_KEY_RE
+
+        return {
+            ENV_KEY_RE.match(key).group("name")
+            for key in core_defaults.env_default_categories()
+        }
+
     def _env(self, std, config, project_dir, floor=None):
         """The container env the way the launch builds it: leaf → consumer."""
         from kanibako.commands.start import _build_config_env, _launch_env_map
@@ -505,16 +527,19 @@ class TestTheEnvConsumerReadsTheLeaf:
         ``KANIBAKO_*`` stamps used to be assigned onto the finished env AFTER this
         consumer ran — the very "second channel" this case forbids — and they are
         ``system.env.<VAR>`` keys on the same leaf now, so they belong INSIDE the
-        set rather than outside it. What the difference pins is that they are the
-        WHOLE of the addition: a fifth variable appearing from anywhere fails here.
+        set rather than outside it.
+        ⚑ D1-4 gave core a SECOND floor source on that same leaf — the literals
+        declared in ``core-defaults.yaml``'s ``env:`` section — so the difference
+        is now BOTH core sources and nothing else. What it pins is unchanged: a
+        variable arriving from any channel BESIDE the leaf fails here.
         ⚑ ``_WiringTarget`` declares no ``default_envs()`` of its own (it inherits
         ``NoAgentTarget``'s empty table), so the agent scope contributes nothing to
-        this difference and the stamps are all of it.
+        this difference and the two core sources are all of it.
         """
         env = self._env(std, config, project_dir)
         declared = {"KANI_PINNED", "KANI_ONLY_WORKSET"}
         assert declared <= set(env)
-        assert set(env) - declared == self._CORE_STAMPS
+        assert set(env) - declared == self._CORE_STAMPS | self._core_file_env_vars()
 
     def test_a_VAR_named_by_two_scopes_never_reaches_the_consumer(
         self, std, config, project_dir,

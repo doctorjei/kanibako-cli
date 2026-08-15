@@ -12,6 +12,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **BREAKING: `COLORTERM=truecolor` is a declared default now, and nothing writes it into your
+  settings.** v1.7.2 seeded the value into the global `env` file on first run, and 1.8.0 development
+  briefly wrote it as a settings key instead; **neither happens.** It is declared at **box** scope in
+  kanibako's own defaults file, so it resolves for every box with nothing stored anywhere —
+  including the installs the old first-run write never reached, since that write fired only on a
+  genuinely fresh host. A `box.env.COLORTERM` of your own still wins, by the ordinary cascade.
+  **What breaks is turning it off: there is no longer a line to delete.** Disabling truecolor now
+  takes an explicit override — `kanibako box set <box> --null box.env.COLORTERM` leaves the variable
+  unset in the box, and `kanibako box set <box> box.env.COLORTERM=` sets it to the empty string.
+  ⚑ And because kanibako now declares the variable at box scope, a `COLORTERM` key of your own at
+  **any other** scope is a contested slot and refuses the launch (§2.33) — re-spell it
+  `box.env.COLORTERM`. The launch notice about retired `env` files says so too: `COLORTERM` was the
+  one line kanibako itself put in them, and it is the one line that must be deleted rather than
+  migrated. See [MIGRATION.md](MIGRATION.md) §2.42.
+
+- **`kanibako box show --effective` lists the behavior defaults it always applied.**
+  `allow_helpers`, `continue_mode`, `bootstrap` and `access` were literals inside the launch code, so
+  with nothing stored the effective view had no row for them at all while the launch went on using
+  them. They are declared defaults in kanibako's own defaults file now, and the display reads the
+  same floor the launch does — so the four rows appear, carrying the values that were always in
+  force. **No behavior changed; only what you can see.**
+
 - **BREAKING: `create --standalone` no longer registers the box — `--register` opts in.** A
   standalone box carries its whole identity inside its own directory, and the global
   `registry.standalone` entry buys exactly one thing: addressing the box by name *from another

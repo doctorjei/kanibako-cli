@@ -140,7 +140,10 @@ inside boxes. In order of likely impact:
     install has one of these files**. A launch that finds a non-empty one now prints a notice
     naming the file and the per-tier cure. Move each var with
     `kanibako system set system.env.<VAR>=<value>` (or the `workset`/`box` equivalent), then
-    delete the file.
+    delete the file. ⚑ **One exception, and it is the `COLORTERM` line kanibako put there
+    itself: do NOT move that one** — `COLORTERM=truecolor` is a declared default now (§2.42),
+    so it needs no key at all, and re-creating it at `system` scope would *refuse* your
+    launches as a contested variable (§2.33). Just delete the line with the file.
 
 17. **You can no longer `set` or `reset` a bind entry from the CLI — edit the settings file
     instead** (§2.20). `kanibako box set box.bindings.rw.home=/newhome` and `kanibako system set
@@ -882,11 +885,18 @@ Notice: these env files are NO LONGER READ — values in them do not reach the b
   /home/you/.local/share/kanibako/env
     move values with: kanibako system set system.env.<VAR>=<value>
   Delete the file(s) once migrated to silence this notice.
+  ⚑ COLORTERM: DELETE that line, do not move it — truecolor is a declared default now and a second declaration refuses the launch.
 ```
 
 There is no new persisted state — the file's *existence* is the signal, so the notice
 self-clears the moment you migrate or delete the file, and never appears on a box created after
-the upgrade. The `COLORTERM` line is *ours*, not yours; migrating or deleting it is safe.
+the upgrade.
+
+⚑ **The `COLORTERM` line in that file is *ours*, not yours — DELETE it, do not migrate it.**
+`COLORTERM=truecolor` is a declared default in v1.8.0 (§2.42): it reaches every box with no key
+stored anywhere, so moving it to `system.env.COLORTERM` as the notice's generic cure suggests would
+create a *second* declaration of a variable kanibako already declares at box scope, and that
+refuses the launch (§2.33). Every other line in the file migrates exactly as described.
 
 **2. The bare `env.<VAR>` spelling is RETIRED and refuses by name.** It was an undiscriminated
 variant that meant something *different* from the key of the same name: it wrote a file, not a
@@ -905,7 +915,8 @@ an unknown key. The per-agent form is `kanibako agent set <agent> env.FOO=bar` (
 takes the tail under an already-named agent, and is not affected by the refusal above).
 
 **What you must do.** For each of the three files, move every `VAR=value` line to the matching
-key and delete the file:
+key and delete the file — **except the `COLORTERM` line kanibako seeded itself, which is deleted and
+not moved** (see above, and §2.42):
 
 ```console
 $ kanibako system set system.env.<VAR>=<value>            # <data>/env
@@ -1758,6 +1769,13 @@ of them could never take effect, and you were not told which.
 **This cannot happen on a default install.** Nothing kanibako ships declares an `env` entry at two
 scopes.
 
+**⚑ But kanibako does ship ONE `env` declaration, and it is `COLORTERM`.** It is declared at **box**
+scope (§2.42), so a `COLORTERM` key of your own at any *other* scope — `system.env.COLORTERM`,
+`workset.env.COLORTERM`, `agent.<node>.env.COLORTERM` — is the second declaration this section
+refuses, even though only one of the two keys is in a file you wrote. The cure is the usual one and
+it is a re-spelling: put your value on `box.env.COLORTERM`, which is the *same* key kanibako
+declares and therefore the ordinary cascade rather than a contest.
+
 **What you must do.** Give the variable **one owner**: keep the key at the scope the value belongs to
 and delete the other one. `kanibako box show --effective` resolves the same settings and reports the
 same refusal without starting anything, so you can find them before a launch does.
@@ -2315,6 +2333,65 @@ that entry exist *immediately*, and it is the only way to choose the name.
 
 ⚑ **`--register` is standalone-only.** A default-mode box's registration is its workset
 membership, which is not optional; the flag is accepted and does nothing there.
+
+---
+
+### 2.42 `COLORTERM` is a declared default — nothing writes it into your settings any more
+
+**Read this if you turned truecolor OFF, or if you set `COLORTERM` yourself.** For everyone else
+this section is good news you do not have to act on.
+
+**What changed.** v1.7.2 wrote `COLORTERM=truecolor` into `<data>/env` the first time it ran, and
+that file was the value's only delivery path — the file §2.19 says is no longer read. v1.8.0 does
+not write the value anywhere at all: **`COLORTERM=truecolor` is declared as a default at `box`
+scope**, in kanibako's own defaults file, and it simply resolves. No settings file mentions it, and
+no first run creates it.
+
+**⚑ This closes a gap §2.19 leaves open.** The old write only ever fired on a genuinely fresh host,
+so upgrading from v1.7.2 never produced the replacement key — you would have lost truecolor unless
+you migrated that `env`-file line by hand. A declared default applies to every box on every install,
+new or upgraded, so **the `COLORTERM` line is now the one entry in a legacy `env` file that needs no
+cure at all.** Delete the file (§2.19) and truecolor keeps working.
+
+**A value you already stored still wins.** `box.env.COLORTERM` written in any settings file is the
+*same key* kanibako declares, so it is the ordinary cascade and the nearer file wins — no refusal,
+nothing to change:
+
+```yaml
+# this box's settings file — wins over the declared default
+box:
+  env:
+    COLORTERM: 256color
+```
+
+**⚑ A `COLORTERM` key at any OTHER scope now refuses the launch.** Because kanibako's declaration
+sits at box scope, `system.env.COLORTERM`, `workset.env.COLORTERM` and
+`agent.<node>.env.COLORTERM` are each a *second* scope naming one variable, which is the contested
+slot §2.33 refuses — and the message names kanibako's key alongside yours. **The cure is to
+re-spell it at box scope:**
+
+```bash
+kanibako system reset system.env.COLORTERM
+kanibako box set <box> box.env.COLORTERM=<your value>
+```
+
+**⚑ To turn truecolor OFF there is no longer a line to delete.** Under v1.7.2 you removed the
+`COLORTERM` line from `<data>/env`; a declared default has no line, so disabling it takes an
+explicit override. Three spellings, and they do different things:
+
+| what you run | what the box gets |
+|---|---|
+| `kanibako box set <box> --null box.env.COLORTERM` | **`COLORTERM` is not set at all** — the variable is absent from the box's environment |
+| `kanibako box set <box> box.env.COLORTERM=` | **`COLORTERM` is set and EMPTY** (`COLORTERM=`) — present, so a program that only tests whether the variable exists still sees it |
+| `kanibako box set <box> box.env.COLORTERM=256color` | that value, verbatim |
+
+The `--null` row is the exact equivalent of deleting the old file line. The empty row is not: most
+terminal-capability checks read the *value*, but not all of them do.
+
+**Where it lives.** The declaration is one line in kanibako's packaged `core-defaults.yaml`, under
+its `env:` section. That file ships inside the package and an upgrade replaces it, so it is not a
+configuration surface: the settings keys above are how you override the value, which is the point of
+a default rather than a written one.
 
 ---
 

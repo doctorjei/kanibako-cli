@@ -461,13 +461,15 @@ agent_default:
 # STATIC core `<scope>.env.<VAR>` defaults (spec §2d) — the file route for core
 # environment variables whose value is a LITERAL.
 #
-# ⚑ SHAPE: scope-keyed sub-tables of `<VAR>: "<value>"`.
+# ⚑ SHAPE: scope-keyed sub-tables of `<VAR>: "<value>"` — the `box:` table below
+# is the worked example; a second scope is a sibling table beside it.
 #
-#   env:
-#     system:
-#       COLORTERM: "truecolor"
-#     box:
-#       EDITOR: "vi"
+# ⚑ THE SCOPE HEAD IS VALIDATED, and an unknown one RAISES rather than resolving
+# to nothing: `core_defaults.env_default_categories` matches the key it builds
+# against `settings_categories.ENV_KEY_RE`, the keyspace's own declaration of the
+# family (spec §2a: `system` · `workset` · `box` · `agent.<node>`, the agent tier
+# spelled out because bare `agent` is not a key).  A typo'd head used to be a
+# silent no-op.
 #
 # ⚑ VALUES ARE STRINGS, exactly as in `agent_default:` above: an unquoted YAML
 # `true`/`1` would reach the box as "True"/"1" rather than what the author wrote.
@@ -483,6 +485,13 @@ agent_default:
 # declared here at one scope and written by a user at ANOTHER scope stops the
 # launch naming both keys.  Pick the scope the value belongs to.
 #
-# EMPTY at landing, deliberately: the mechanism ships green and separately from
-# any value moving into it.
-env: {}
+# `COLORTERM` (MBR-2): BOX scope, because it describes the terminal a box runs
+# and not the host install.  It was a first-run WRITE into the system settings
+# file until D1-4 deleted it — a value materialised at a seam, which is the shape
+# `tests/test_settings/test_defaults_enforcement.py` now forbids.  Declared here
+# it needs no stored value at all: it resolves for every box, including boxes and
+# installs that predate this release, and a user's own `box.env.COLORTERM` in any
+# settings file beats it by the ordinary cascade.
+env:
+  box:
+    COLORTERM: "truecolor"

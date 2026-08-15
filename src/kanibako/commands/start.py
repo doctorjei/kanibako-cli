@@ -2271,6 +2271,21 @@ def _warn_legacy_env_files(std, proj) -> None:
         lines.append(f"  {path}")
         lines.append(f"    move values with: {cure}")
     lines.append("  Delete the file(s) once migrated to silence this notice.")
+    # ⚑ COLORTERM IS THE ONE LINE THE GENERIC CURE ABOVE GETS WRONG, and it is the
+    # line most of these files hold: kanibako seeded it itself on every pre-1.8.0
+    # first run.  It is a DECLARED box-scope default now (MBR-2), so moving it to
+    # ``system.env.COLORTERM`` would name a variable kanibako already names at
+    # another scope and REFUSE the launch (``store_collapse.collapse_env``).
+    # ⚑ UNCONDITIONAL, not gated on the file's contents: reading the file to find
+    # out would restore a parser for a dead format, which
+    # :func:`_legacy_env_file_has_content` deliberately refuses to do.  Not
+    # tier-gated either: only the system-tier file ever got the seed, but a user's
+    # own COLORTERM line can sit in any tier's file, and moving it is the same
+    # trap wherever it sits.
+    lines.append(
+        "  ⚑ COLORTERM: DELETE that line, do not move it — truecolor is a "
+        "declared default now and a second declaration refuses the launch."
+    )
     print("\n".join(lines), file=sys.stderr)
 
 
@@ -6704,8 +6719,8 @@ def _resolve_launch_snapshot(
         # section (D1-3).  FIRST of the two core env tables on purpose: it holds
         # LITERALS a file can carry, the derived table below holds values only a
         # launch can compute, and where both name one VAR the DERIVED value is the
-        # authoritative one — so it merges second and wins.  The section ships
-        # EMPTY, which makes this a no-op by construction today.
+        # authoritative one — so it merges second and wins.  It carries
+        # ``box.env.COLORTERM`` since D1-4/MBR-2 deleted the first-run write.
         _merge_default_categories(
             default_categories, core_defaults.env_default_categories(),
             family="core env file", origins=cat_origins,
