@@ -178,12 +178,15 @@ def _write_seed_config(env: dict[str, str], host_seed_dir: Path) -> None:
 
     settings_file.parent.mkdir(parents=True, exist_ok=True)
     # Merge into the existing settings doc (preserving e2e_env's
-    # system.agent) rather than clobbering it.  The value is a
-    # structured [host_src, box_dest] pair (the keyspace rework rejects the
-    # legacy "host:dest" colon-string form).
+    # system.agent) rather than clobbering it.  The table is DEST-KEYED
+    # (`{box_dest: [host_src]}`) — the name-keyed `{name: [src, dest]}` shape
+    # this helper carried until 2026-08-15 was retired by the dest-key retool
+    # (2b59a79/b9e3d32) and made every test here die at `create`, so the
+    # seed-clobber guard silently stopped guarding.  Dest-keyed shape
+    # mutation-proven on real podman (bifrost row66 pass, 2026-08-15).
     doc = load_doc(settings_file)
     doc.setdefault("system", {})["seeded"] = {
-        "notebook": [str(host_seed_dir), SEED_GUEST_DEST]
+        SEED_GUEST_DEST: [str(host_seed_dir)]
     }
     dump_doc(settings_file, doc)
 

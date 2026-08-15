@@ -9001,19 +9001,27 @@ def _refuse_realized_twin(
     """
     from kanibako.settings.settings_resolve import SettingsError
 
+    # ⚑ REMOVAL LEADS, AND THE REST ARE WHAT COMES AFTER IT — never a menu of
+    # alternatives. MEASURED (bifrost row 66 A3): with the twin stored, ``-S``,
+    # ``-A``, an ``access`` value AND ``-e`` all meet this same refusal, because it
+    # fires here, one step ahead of the collapse the CLI level applies to. Only
+    # deleting the key clears it. The old wording offered the three as ways to
+    # avoid removing the key, and none of them is.
     routes = []
     if driving_key:
         routes.append(f"set {f'agent.{agent_id}.{driving_key}'!r}")
     if is_access:
         routes.append("use the per-launch -S / -A flags")
-    routes.append(f"or, for ONE launch, pass -e {var}=<value>")
+    routes.append(f"or pass -e {var}=<value> for ONE launch")
     raise SettingsError(
         f"the environment variable {var!r} is REALIZED by this launch — kanibako "
         f"derives it from the agent's resolved settings — and {declared_key!r} names "
         f"it as well. A variable is written ONCE, so the key could never take "
         f"effect: it would be overwritten by the realization on every launch, "
-        f"silently. Do not set this variable directly. Instead: "
-        f"{'; '.join(routes)}. Then remove {declared_key!r}."
+        f"silently. Remove {declared_key!r}: that is the only thing that clears "
+        f"this refusal — no flag does, because the launch stops here, before any of "
+        f"them is applied. Once the key is gone, choose the value with: "
+        f"{'; '.join(routes)}."
     )
 
 

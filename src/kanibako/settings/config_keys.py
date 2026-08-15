@@ -832,6 +832,19 @@ def has_no_cli_write_route(target: str) -> bool:
     )
 
 
+#: How a user SPELLS the surviving read at each file scope's own noun.
+#: ⚑ THERE IS NO ``config`` NOUN — measured: ``kanibako config get <key>`` exits on
+#: "unrecognized arguments". The read lives on the scope's own verb, and every noun
+#: but ``system`` names its SUBJECT before the key (``box``/``workset`` resolve a
+#: project, ``system`` has none to resolve). Keyed by :data:`SCOPE_BIND_KEY_RE`'s
+#: own ``scope`` group, whose alternation is exactly these three.
+_SCOPE_READ_COMMAND = {
+    "system": "kanibako system get",
+    "workset": "kanibako workset get <workset>",
+    "box": "kanibako box get <box>",
+}
+
+
 def _bind_route_retired_message(
     display_key: str, *, verb: str, route: str, why: str, cure: str, survives: str,
 ) -> str:
@@ -864,7 +877,8 @@ def scope_bind_retired_error(canonical: str, *, verb: str) -> str | None:
             f"directly; the launch reads it from there."
         ),
         survives=(
-            f"Reading it back with 'config get {canonical}' still works."
+            f"Reading it back with "
+            f"'{_SCOPE_READ_COMMAND[scope]} {canonical}' still works."
         ),
     )
 
@@ -884,7 +898,14 @@ def agent_node_bind_retired_error(canonical: str, *, verb: str) -> str | None:
     shown_node = display_agent_ref(node)
     display_key = f"agent.{shown_node}.{category}.{name}"
     if _is_agent_node_bind_key(canonical):
-        survives = f"Reading it back with 'config get {display_key}' still works."
+        # ⚑ The AGENT noun's own verb, and it takes the TAIL — the node is the
+        # SUBJECT, so repeating ``agent.<node>.`` inside the key double-prefixes it
+        # and the read refuses (measured). There is no ``config`` noun to fall back
+        # on; see :data:`_SCOPE_READ_COMMAND`.
+        survives = (
+            f"Reading it back with 'kanibako agent get {shown_node} "
+            f"{category}.{name}' still works."
+        )
     else:
         survives = (
             f"The surviving key is 'agent.{shown_node}.{category}' — the whole "
