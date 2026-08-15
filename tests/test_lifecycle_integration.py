@@ -72,16 +72,16 @@ class TestKanibakoLazyInit:
     """Verify lazy init creates expected files and dirs on first command."""
 
     def test_lazy_init_creates_config_and_dirs(self, cli_env):
-        """Lazy init writes the config file, the agent stores, and the env SEED.
+        """Lazy init writes the config file and the agent stores — and NO env seed.
 
-        ⚑ The env seed is a settings KEY now, not a file.  Lazy init used to
-        write a docker-style ``<data>/env``; B9 (``77c4cf4``) retired that file
-        under Jei's RQ-1 re-ruling and re-homed the seed to a declared
-        ``system.env.COLORTERM`` key in the system settings file, which
-        ``6e3d016`` then moved to ``box.env.COLORTERM`` — the scope that actually
-        describes the value (still written into the SAME system settings file, as
-        a downward table).  Both halves are asserted below — the file must be
-        ABSENT, the key must be present.
+        ⚑ There is no env seed at all any more.  Lazy init used to write a
+        docker-style ``<data>/env``; B9 (``77c4cf4``) retired that file under
+        Jei's RQ-1 re-ruling and re-homed the seed to ``system.env.COLORTERM``,
+        ``6e3d016`` moved it to ``box.env.COLORTERM``, and MBR-2/D1-4 deleted the
+        write outright — ``COLORTERM`` is DECLARED in ``core-defaults.yaml`` and
+        resolves without being stored.  All three storage locations are asserted
+        ABSENT below, because each one was live at some point and a restored
+        writer would look like history rather than a regression.
         """
         result = _run_kanibako("system", "info", env=cli_env["env"], cwd=str(cli_env["project"]))
         assert result.returncode == 0, f"lazy init failed: {result.stderr}"
@@ -99,21 +99,26 @@ class TestKanibakoLazyInit:
             "the retired docker-style env FILE was re-created by lazy init"
         )
 
-        # The REPLACEMENT half.  ``cli._ensure_initialized`` seeds
-        # ``COLORTERM=truecolor`` at BOX scope, written downward into the system
-        # settings file (``@config.settings`` = ``@config.data/global/settings.yaml``)
-        # via ``config_io.write_nested_key``.
-        #
-        # ⚑ MBR-2 — the QUEUED task that deletes that write entirely and declares
-        # COLORTERM as a real DEFAULT instead.  Whoever lands MBR-2 lands here:
-        # drop the COLORTERM assertion below (keep the env-FILE one above), since
-        # a defaulted key is resolved, not stored.
+        # The SETTINGS-KEY half, also retired (MBR-2/D1-4).  ``cli._ensure_initialized``
+        # used to write ``COLORTERM=truecolor`` at box scope, downward into the system
+        # settings file (``@config.settings`` = ``@config.data/global/settings.yaml``).
+        # A declared default is RESOLVED, not stored, so the file must carry neither
+        # spelling.  ⚑ MEASURED CONSEQUENCE, and the reason the file is no longer
+        # REQUIRED here: that write was the ONLY thing creating
+        # ``global/settings.yaml`` at first run, so a fresh install now has no system
+        # settings file until the user sets something.  Nothing needs it to exist —
+        # a missing settings file reads as empty and the first ``system set``
+        # materialises it — so an ABSENT file is the strongest form of this pin, not
+        # a failure of it.
         settings_file = data_path / "global" / "settings.yaml"
-        assert settings_file.is_file(), "system settings file not created"
-        stored = yaml.safe_load(settings_file.read_text()) or {}
-        assert stored.get("box", {}).get("env", {}).get("COLORTERM") == "truecolor", (
-            f"first-run box.env.COLORTERM seed missing; settings file holds: {stored!r}"
-        )
+        stored = (
+            yaml.safe_load(settings_file.read_text()) or {}
+        ) if settings_file.is_file() else {}
+        for scope in ("box", "system"):
+            assert "COLORTERM" not in stored.get(scope, {}).get("env", {}), (
+                f"first-run wrote {scope}.env.COLORTERM back; a default belongs in "
+                f"core-defaults.yaml, not a settings file: {stored!r}"
+            )
 
     def test_lazy_init_idempotent(self, cli_env):
         """Running commands twice succeeds without errors (lazy init is idempotent)."""

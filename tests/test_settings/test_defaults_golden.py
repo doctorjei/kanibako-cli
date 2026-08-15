@@ -648,9 +648,11 @@ class TestCoreStaticEnvDefaults:
     The delivery mechanism already existed — ``start._core_env_default_categories``
     folds the launch-DERIVED ``KANIBAKO_*`` stamps into ``default_categories`` and
     that table becomes the floor.  What D1-3 adds is a way to declare a variable
-    whose value is a LITERAL, in the file, without writing code.  The section ships
-    EMPTY, so every case below drives a PATCHED loader document; the last case pins
-    the emptiness itself.
+    whose value is a LITERAL, in the file, without writing code; D1-4/MBR-2 moved
+    the first value into it (``box.env.COLORTERM``).  The route cases below drive a
+    PATCHED loader document so they pin the MECHANISM and not one variable; the
+    content case pins what actually ships, and the refusal cases pin the fail-closed
+    validation of the key the emitter builds.
 
     ⚑ THE PATCH IS ADDITIVE, never a replacement document.  ``_load_doc`` feeds every
     other family in this file (channels, core, kani, kickoff, canon, helpers), so a
@@ -778,21 +780,93 @@ class TestCoreStaticEnvDefaults:
         assert f"system.env.{self.PROBE_VAR}" in message
         assert f"box.env.{self.PROBE_VAR}" in message
 
-    def test_the_shipped_env_section_is_empty(self):
-        """The section ships EMPTY, and that is a DECISION, not an oversight.
+    #: The WHOLE shipped ``env:`` section, exactly.  D1-3 shipped it EMPTY and
+    #: pinned the emptiness; D1-4/MBR-2 moved the first value in, so the pin
+    #: becomes the section's exact CONTENT — same job either way: nothing reaches
+    #: a box from this file that somebody did not decide to ship.
+    _SHIPPED_ENV = {"box": {"COLORTERM": "truecolor"}}
 
-        D1-3 lands the mechanism green and separately from any value moving into it
-        (COLORTERM is D1-4/MBR-2's).  Without this, a value could slip in with the
-        mechanism and nobody would have decided to ship it.
+    def test_the_shipped_env_section_is_exactly_the_declared_content(self):
+        """The section IS ``box.env.COLORTERM``, as a string, and nothing else.
+
+        ``COLORTERM`` is at BOX scope deliberately (it describes the terminal a box
+        runs, not the host install) and a WRONG scope here is not cosmetic: a
+        variable declared at one scope and written by a user at another REFUSES the
+        launch naming both keys, so a slip to ``system:`` would break exactly the
+        users who had already stored their own.
         """
         doc = _load_yaml("kanibako.data", "core-defaults.yaml")
-        assert doc.get("env") == {}, (
-            f"core-defaults.yaml ships a NON-EMPTY env: section ({doc.get('env')!r}) "
-            f"— moving a value in is its own pass, with its own decision"
+        assert doc.get("env") == self._SHIPPED_ENV, (
+            f"core-defaults.yaml ships env: {doc.get('env')!r}, expected "
+            f"{self._SHIPPED_ENV} — a value moving in or out of this section is "
+            f"its own pass, with its own decision"
         )
-        assert core_defaults.env_default_categories() == {}, (
-            "the emitter must hand back nothing while the section is empty"
+        for scope, entries in doc["env"].items():
+            for var, value in entries.items():
+                assert isinstance(value, str), (
+                    f"env.{scope}.{var} must be a QUOTED string, got "
+                    f"{type(value).__name__}: {value!r} — an unquoted YAML "
+                    f"value round-trips to the box as its Python repr"
+                )
+        assert core_defaults.env_default_categories() == {
+            "box.env.COLORTERM": "truecolor",
+        }, "the emitter must hand back the file's declaration under its dotted key"
+
+    def test_an_unknown_scope_head_refuses_by_name(self, monkeypatch):
+        """A typo'd head RAISES, naming file and head — it used to be a silent no-op.
+
+        ``sytem.env.X`` matches nothing downstream, so the entry entered the floor
+        table and simply never reached a box.  Nothing else in the chain can catch
+        it: ``default_categories`` is a plain string-keyed dict all the way to the
+        store, and an unrecognised key there is not an error, it is nobody's.
+        """
+        self._patch_env_section(monkeypatch, {"sytem": {self.PROBE_VAR: "x"}})
+        with pytest.raises(RuntimeError) as excinfo:
+            core_defaults.env_default_categories()
+        message = str(excinfo.value)
+        assert "core-defaults.yaml" in message
+        assert "sytem" in message
+
+    def test_a_bare_agent_head_refuses(self, monkeypatch):
+        """``agent:`` alone is not a scope — the tier is ``agent.default``/``agent.<node>``.
+
+        The one head a reader is most likely to write from the containment order
+        (``system · agent · workset · box``) and the one the keyspace does not
+        declare (§0 forbids a bare ``agent.<key>``), which is why the check reads
+        the family's own regex rather than ``SCOPE_CONTAINMENT``.
+        """
+        self._patch_env_section(monkeypatch, {"agent": {self.PROBE_VAR: "x"}})
+        # The HEAD branch of the message, not merely the word "agent" — which the
+        # allowed-heads sentence contains no matter which half is wrong.
+        with pytest.raises(RuntimeError, match=r"'agent' is not a scope"):
+            core_defaults.env_default_categories()
+
+    def test_a_declared_agent_tier_head_is_accepted(self, monkeypatch):
+        """``agent.default`` and ``agent.<node>`` ARE declared — the check must not over-refuse.
+
+        The anti-vacuity half of the two refusals above: a validator that rejected
+        every dotted head would pass them both while forbidding a legal key.
+        """
+        self._patch_env_section(
+            monkeypatch, {"agent.default": {self.PROBE_VAR: "d"},
+                          "agent.claude": {"KANI_D1_4_PROBE": "c"}},
         )
+        assert core_defaults.env_default_categories() == {
+            f"agent.default.env.{self.PROBE_VAR}": "d",
+            "agent.claude.env.KANI_D1_4_PROBE": "c",
+        }
+
+    def test_a_var_that_is_not_an_env_name_refuses(self, monkeypatch):
+        """The VAR half of the same rule, and the message says WHICH half is wrong."""
+        self._patch_env_section(monkeypatch, {"box": {"1BAD-NAME": "x"}})
+        with pytest.raises(RuntimeError, match="env-var name"):
+            core_defaults.env_default_categories()
+
+    def test_a_scope_table_that_is_not_a_table_refuses(self, monkeypatch):
+        """``box: "truecolor"`` — a VAR written at the scope level, named not crashed."""
+        self._patch_env_section(monkeypatch, {"box": "truecolor"})
+        with pytest.raises(RuntimeError, match="env.box"):
+            core_defaults.env_default_categories()
 
 
 # --------------------------------------------------------------------------- #

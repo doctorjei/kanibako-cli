@@ -1424,15 +1424,17 @@ class TestTemplateStalenessRetired:
         # (setup marker is still absent → a soft nudge prints, but no hard error.)
         assert _setup_nudge(self._ns("start")) is None
 
-    def test_first_run_seeds_colorterm_at_the_real_key(self, tmp_home):
-        """⚑ RE-HOMED by B9/RQ-1, then moved to BOX scope (2026-08-02b).
+    def test_first_run_writes_no_colorterm_setting_anywhere(self, tmp_home):
+        """⚑ MBR-2/D1-4: THE WRITE IS GONE, at BOTH spellings it ever had.
 
-        The seed wrote ``COLORTERM=truecolor`` into the global docker ``.env``
-        FILE, whose ONLY delivery path was the launch read B9 retired. It now
-        lands at ``box.env.COLORTERM`` — the scope that describes the value —
-        written DOWNWARD into the SYSTEM settings file (legal: a system file may
-        set keys of the scopes it contains). Delivery is pinned by
-        ``test_first_run_colorterm_reaches_the_resolved_container_env``.
+        The value was seeded into the global docker ``.env`` FILE, then re-homed
+        by B9/RQ-1 to ``system.env.COLORTERM``, then moved by ``6e3d016`` to
+        ``box.env.COLORTERM`` — three storage locations for one default. It is
+        declared in ``core-defaults.yaml`` now and stored NOWHERE: this asserts
+        all three are absent, so restoring any one of them reds here as well as
+        at the write-seam guard (``test_defaults_enforcement``).
+        Delivery is pinned by
+        ``test_declared_colorterm_reaches_the_resolved_container_env``.
         """
         from kanibako.cli import _ensure_initialized
         from kanibako.settings.config import config_file_path, load_config
@@ -1443,14 +1445,20 @@ class TestTemplateStalenessRetired:
         cf = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
         std = load_std_paths(load_config(cf))
         doc = load_doc(std.settings)
-        assert doc["box"]["env"]["COLORTERM"] == "truecolor"
-        # BOX scope, not system — the value is a property of the box's terminal.
+        assert "COLORTERM" not in ((doc.get("box") or {}).get("env") or {})
         assert "COLORTERM" not in ((doc.get("system") or {}).get("env") or {})
         # And NOT into the retired docker .env file.
         assert not (std.data_path / "env").exists()
 
-    def test_first_run_colorterm_seed_never_clobbers_a_user_value(self, tmp_home):
-        """setdefault semantics, preserved through the re-home and the move."""
+    def test_first_run_leaves_a_stored_colorterm_value_untouched(self, tmp_home):
+        """A user's own value survives init — now because nothing writes at all.
+
+        It used to be create-if-absent ``setdefault`` semantics at the seam. The
+        seam is gone, so the guarantee is structural rather than conditional; the
+        pin stays because "a user value survives an upgrade" is the promise, and
+        the way it is kept is an implementation detail that has already changed
+        three times.
+        """
         from kanibako.cli import _ensure_initialized
         from kanibako.settings.config import (
             KanibakoConfig, config_file_path, load_config,
@@ -1470,13 +1478,15 @@ class TestTemplateStalenessRetired:
         std = load_std_paths(load_config(cf)) if cf.exists() else std
         assert load_doc(std.settings)["box"]["env"]["COLORTERM"] == "mine"
 
-    def test_first_run_colorterm_reaches_the_resolved_container_env(self, tmp_home):
-        """⚑ THE DELIVERY PROOF for the box-scope move (2026-08-02b).
+    def test_declared_colorterm_reaches_the_resolved_container_env(self, tmp_home):
+        """⚑ THE DELIVERY PROOF for the DECLARED default (MBR-2/D1-4).
 
-        The move makes the seed a DOWNWARD ``box:`` table in the SYSTEM settings
-        file. That shape is legal (``_drop_upward_scopes`` keeps downward tables),
-        but "legal to write" is not "delivered" — so drive the value all the way
-        through the REAL launch route the container env is built from::
+        ⚑ What changed here is the SOURCE, not the route: the value used to be a
+        downward ``box:`` table written into the SYSTEM settings file and is a
+        core-declared floor entry now, so the resolve is fed
+        ``core_defaults.env_default_categories()`` where it used to be fed ``{}``
+        and a written file. "Declared" is not "delivered" — so drive it all the
+        way through the REAL launch route the container env is built from::
 
             build_launch_snapshot -> snapshot_category_entries
             -> collapse_env -> start._build_config_env
@@ -1492,6 +1502,7 @@ class TestTemplateStalenessRetired:
         """
         from kanibako.cli import _ensure_initialized
         from kanibako.commands.start import _build_config_env
+        from kanibako.settings import core_defaults
         from kanibako.settings.config import config_file_path, load_config
         from kanibako.settings.paths import load_std_paths, xdg
         from kanibako.settings.settings_launch import (
@@ -1509,11 +1520,12 @@ class TestTemplateStalenessRetired:
             agent_name="claude", workset_name=None, host_home=str(tmp_home),
             xdg={"XDG_DATA_HOME": str(tmp_home / "data")}, config={},
         )
-        # ONLY the system settings file on disk — no workset/box file supplies it.
+        # NO settings file supplies it — the floor is the only source, which is
+        # the whole claim: the value reaches a box that has stored nothing.
         snap = build_launch_snapshot(
             agent_name="claude", ctx=ctx, system_path=std.settings,
             agent_path=None, workset_path=None, box_path=None,
-            default_categories={},
+            default_categories=core_defaults.env_default_categories(),
         )
         entries = snapshot_category_entries(
             snap, active_agent="claude", box_ctx=ctx,
@@ -1523,15 +1535,17 @@ class TestTemplateStalenessRetired:
         winner = slots["COLORTERM"]
         assert (winner.scope, winner.key) == ("box", "box.env.COLORTERM")
 
-    def test_colorterm_box_file_override_beats_the_system_file_seed(self, tmp_home):
-        """A box's OWN ``box.env.COLORTERM`` still wins over the seeded value.
+    def test_colorterm_box_file_override_beats_the_declared_default(self, tmp_home):
+        """A box's OWN ``box.env.COLORTERM`` still wins over the DECLARED default.
 
-        The move only makes sense if the downward declaration stays overridable
-        at the scope it is declared for — otherwise the system file would have
-        pinned a box-scope value nothing could beat.
+        The declaration only makes sense if it stays overridable at the scope it
+        is declared for — a default nothing can beat is a hardwired value. ⚑ The
+        override must be spelled at the SAME scope: a ``system.env.COLORTERM``
+        would not win, it would REFUSE the launch as a contested slot.
         """
         from kanibako.cli import _ensure_initialized
         from kanibako.commands.start import _build_config_env
+        from kanibako.settings import core_defaults
         from kanibako.settings.config import config_file_path, load_config
         from kanibako.settings.config_io import write_nested_key
         from kanibako.settings.paths import load_std_paths, xdg
@@ -1557,7 +1571,7 @@ class TestTemplateStalenessRetired:
         snap = build_launch_snapshot(
             agent_name="claude", ctx=ctx, system_path=std.settings,
             agent_path=None, workset_path=None, box_path=box_settings,
-            default_categories={},
+            default_categories=core_defaults.env_default_categories(),
         )
         slots = collapse_env(
             snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx),

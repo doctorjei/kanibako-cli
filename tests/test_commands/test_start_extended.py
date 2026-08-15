@@ -763,6 +763,30 @@ class TestLegacyEnvFileNotice:
         # A subject-less box cure would write into the CWD box, not this one.
         assert "kanibako box set box.env" not in err
 
+    def test_the_notice_carves_colorterm_out_of_its_own_cure(self, tmp_path, capsys):
+        """COLORTERM is the one line the generic per-tier cure gets WRONG (MBR-2).
+
+        Every pre-1.8.0 first run seeded ``COLORTERM=truecolor`` into the system
+        tier's file, so it is the likeliest thing in there — and following the
+        cure above for it would write a second declaration of a variable kanibako
+        now declares at box scope, refusing the launch. ⚑ The carve-out is
+        UNCONDITIONAL because the notice deliberately never reads these files
+        (``_legacy_env_file_has_content`` is existence + size), which the second
+        case pins: a file with no COLORTERM in it still carries the line.
+        """
+        from kanibako.commands.start import _warn_legacy_env_files
+
+        std, proj = self._std_proj(tmp_path)
+        (std.data_path / "env").write_text("COLORTERM=truecolor\n")
+        _warn_legacy_env_files(std, proj)
+        err = capsys.readouterr().err
+        assert "COLORTERM" in err
+        assert "DELETE that line, do not move it" in err
+
+        (std.data_path / "env").write_text("FOO=bar\n")
+        _warn_legacy_env_files(std, proj)
+        assert "COLORTERM" in capsys.readouterr().err
+
     def test_standalone_box_has_no_workset_tier(self, tmp_path, capsys):
         """A standalone box has no workset group — and no workset env file."""
         from kanibako.commands.start import _warn_legacy_env_files

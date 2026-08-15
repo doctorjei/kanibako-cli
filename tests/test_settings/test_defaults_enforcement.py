@@ -61,22 +61,18 @@ _SANCTIONED: dict[str, int] = {
     "src/kanibako/commands/setup_cmd.py": 1,
 }
 
-#: QUARANTINED EXCEPTION — the COLORTERM first-run write (``cli.py``).
+#: QUARANTINED EXCEPTIONS — **EMPTY, and that is the point.**
 #:
-#: This is a WRITTEN VALUE standing in for a default, i.e. precisely the thing
-#: this guard forbids; it is listed here so the guard can be exact rather than
-#: approximate, NOT because it is sanctioned.  MBR-2's D1-4 deletes the call
-#: site; when it does, REMOVE this entry so the list is exception-free.
-#:
-#: The removal is self-enforcing: the stale-entry test below reds on an allowlist
-#: file with zero call sites, so deleting the write without deleting this entry
-#: fails the suite until the entry goes too.
+#: It held exactly one: the COLORTERM first-run write in ``cli.py``, a WRITTEN
+#: VALUE standing in for a default, i.e. precisely the thing this guard forbids.
+#: MBR-2's D1-4 deleted that call site and this entry with it (the removal was
+#: self-enforcing — the stale-entry test below reds on an allowlist file with zero
+#: call sites), so the allowlist is exception-free and the guard is exact.
 #:
 #: Do NOT add entries here.  A new entry means a defaults write outside the
-#: defaults system.
-_QUARANTINED: dict[str, int] = {
-    "src/kanibako/cli.py": 1,
-}
+#: defaults system; the cure is to move the value into a defaults file, not to
+#: re-open this table.
+_QUARANTINED: dict[str, int] = {}
 
 #: Everything permitted to call the seam.
 _ALLOWLIST: dict[str, int] = {**_SANCTIONED, **_QUARANTINED}
@@ -174,8 +170,10 @@ class TestWriteSeamCallers:
     def test_every_allowlist_entry_still_has_a_call_site(self):
         """No STALE entry: an allowlisted file with zero calls fails.
 
-        This is what makes the ``cli.py`` quarantine self-verifying — when D1-4
-        deletes the COLORTERM write, this test reds until the entry is removed.
+        This is what made the ``cli.py`` quarantine self-verifying — when D1-4
+        deleted the COLORTERM write it red until the entry went too.  It keeps
+        earning its place on the SANCTIONED rows: a write surface that moves out
+        of its file leaves an entry that permits a future write nobody reviewed.
         """
         stale = sorted(rel for rel in _ALLOWLIST if rel not in _call_sites())
         assert not stale, (
