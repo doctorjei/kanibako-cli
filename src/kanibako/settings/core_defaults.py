@@ -52,6 +52,20 @@ def vault_mask_default() -> list[str]:
     return [str(m) for m in masks]
 
 
+def behavior_defaults() -> dict[str, str]:
+    """Return the declared ``agent.default.<key>`` BEHAVIOR floor (spec §2d).
+
+    The all-agents backstop, merged UNDER a plugin's descriptor floor at the launch
+    sites (descriptor last ⇒ a plugin's declared default still wins).  ⚑ Values are
+    STRINGS: the consumers run them through ``coerce_bool`` and
+    ``effective_behavior`` stringifies, so a YAML bool would arrive as ``"True"``.
+    """
+    return {
+        str(key): str(value)
+        for key, value in (_load_doc().get("agent_default") or {}).items()
+    }
+
+
 #: A dest-keyed floor bind table: ``{"box.bindings.ro": {box_dest: (src[, opts])}}`` (R-5/R-11).
 #: ⚑ RAW — parsed by ``settings_assemble.dotted_partial``, never here.
 BindArmTable = dict[str, dict[str, tuple[str, ...]]]

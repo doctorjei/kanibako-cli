@@ -457,10 +457,17 @@ def test_box_config_effective_display_matches_launch_behavior_read(tmp_path):
     the sharpest case — the display must show the launch-correct ``opus``. The
     default layer rides the FLOOR (descriptors → agent.default.*, OS1) — NOT a box
     file: a box may not set agent.default.* per spec §0 (upward, dropped at
-    RESOLVE). The box file carries only a legal box.* key here."""
+    RESOLVE). The box file carries only a legal box.* key here.
+
+    ⚑ D1-1: the floor now has TWO contributors, and BOTH sides must carry both or
+    this stops comparing the real thing — the DESCRIPTOR floor and the CORE behavior
+    floor from ``core-defaults.yaml`` (spec §2d). The display builds that merge
+    itself out of the descriptors; the launch side below mirrors it with the SAME
+    expression ``start.py`` uses, descriptor LAST."""
     from types import SimpleNamespace
 
     from kanibako.commands.start import _effective_behavior_for_display
+    from kanibako.settings import core_defaults
 
     agent = "claude"
     # agent.default.model rides the floor ("haiku") — the all-agents default the
@@ -472,13 +479,17 @@ def test_box_config_effective_display_matches_launch_behavior_read(tmp_path):
         tmp_path / "settings.yaml", {"box": {"image": "img"}},
     )
 
-    # LAUNCH behavior read: the snapshot + effective_behavior, as start.py does.
+    # LAUNCH behavior read: the snapshot + effective_behavior, as start.py does —
+    # including start.py's own core-under-descriptor floor merge.
     launch_snap = _behavior_snapshot(
-        agent, floor=floor, agent_state=state, box_path=box, system_path=None,
+        agent, floor={**core_defaults.behavior_defaults(), **floor},
+        agent_state=state, box_path=box, system_path=None,
     )
     launch_read = effective_behavior(launch_snap, active_agent=agent)
 
-    # DISPLAY read: box config --effective's helper over the same inputs.
+    # DISPLAY read: box config --effective's helper over the same inputs.  ⚑ The
+    # descriptors stay the DESCRIPTOR floor ONLY — the display path adds the core
+    # floor itself, and seeding it here too would be testing the test.
     descriptors = [
         SimpleNamespace(key=k, default=v) for k, v in floor.items()
     ]
@@ -491,11 +502,15 @@ def test_box_config_effective_display_matches_launch_behavior_read(tmp_path):
     # The display equals an INDEPENDENT spec-correct expected dict (NOT merely
     # "== the launch read"): model = the agent-file active "opus" (§2d active beats
     # the box agent.default "haiku" — the correction the retired old resolver did
-    # NOT do), access = the per-agent passthrough, allow_helpers = the floor default.
+    # NOT do), access = the per-agent passthrough, allow_helpers = the floor default
+    # (declared by BOTH contributors, at the same value), and continue_mode +
+    # bootstrap = the core floor alone.
     assert display == {
         "model": "opus",
         "access": "editing",
         "allow_helpers": "true",
+        "continue_mode": "true",
+        "bootstrap": "tmux",
     }
     # ...and it MATCHES the live launch behavior read over the same inputs.
     assert display == launch_read

@@ -262,7 +262,15 @@ class TestBuildEffectiveState:
         return project_toml
 
     def test_target_defaults_only(self, tmp_path):
-        """When agent has no state and no project overrides, target defaults apply."""
+        """With no agent state and no project overrides, the DECLARED floors apply.
+
+        Two of them, and the display shows BOTH (D1-1): the target's descriptor
+        defaults, plus the core behavior floor from ``core-defaults.yaml``
+        (``agent_default:`` → ``agent.default.<key>``, spec §2d). The core keys are
+        listed here rather than filtered out because the launch applies them too —
+        omitting them from the display was the DISPLAY==LAUNCH lie this read exists
+        to prevent.
+        """
         from kanibako.commands.start import _effective_behavior_for_display as _build_effective_state
 
         descriptors = [
@@ -276,7 +284,15 @@ class TestBuildEffectiveState:
         result = _build_effective_state(
             target, agent_cfg, project_toml, system_settings_path=None
         )
-        assert result == {"model": "opus", "access": "permissive"}
+        assert result == {
+            # The DESCRIPTOR floor.
+            "model": "opus",
+            "access": "permissive",
+            # The CORE behavior floor (core-defaults.yaml ``agent_default:``).
+            "allow_helpers": "true",
+            "continue_mode": "true",
+            "bootstrap": "tmux",
+        }
 
     def test_agent_overrides_default(self, tmp_path):
         """Agent config state overrides target defaults."""

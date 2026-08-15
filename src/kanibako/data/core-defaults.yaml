@@ -429,3 +429,24 @@ images:
     source: images_conf
     box_dest: "~/.config/containers/storage.conf"
     options: "ro"
+
+# ---------------------------------------------------------------------------
+# `agent.default.*` BEHAVIOR defaults (spec §2d) — the ALL-AGENTS backstop.
+#
+# ⚑ THE FIRST BEHAVIOR SECTION IN THIS FILE.  Everything above declares a
+# bind/seed/mask CATEGORY family, keyed by box destination; this one declares
+# agent-scope BEHAVIOR SCALARS, keyed by setting name.
+# `core_defaults.behavior_defaults()` reads it verbatim and `start.py` merges it
+# UNDER the plugin descriptor floor (descriptor last ⇒ a plugin's declared
+# default still wins).
+#
+# ⚑ VALUES ARE STRINGS, INCLUDING THE BOOLEANS.  The floor is consumed through
+# `coerce_bool` and `effective_behavior` STRINGIFIES what it returns, so a YAML
+# `true` here would reach a consumer as `"True"`.  Quote them.
+#
+# `access` is deliberately ABSENT: its consumers (set-time validation +
+# `effective_access`) run on a different clock and move in their own pass.
+agent_default:
+  allow_helpers: "true"
+  continue_mode: "true"
+  bootstrap: "tmux"
