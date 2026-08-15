@@ -2339,8 +2339,8 @@ class TestAgentConfigIntegration:
 class TestContainerEnvPrecedence:
     """Verify container env accumulation precedence.
 
-    Order (low->high, later ``.update`` wins):
-        the COLLAPSED ``<scope>.env.<VAR>`` slots < state < cli
+    What is left of the layering, low->high:
+        the target's realizations (``state_env``) < the COLLAPSED slots
 
     ⚑ FLIPPED by B9/RQ-1. The three docker ``.env`` FILE tiers (system, workset,
     box) that used to open this sequence are RETIRED — the ratified manifest
@@ -2358,6 +2358,18 @@ class TestContainerEnvPrecedence:
     re-rooted only ``secret_path``, which put it BELOW ``system`` and past the
     expand pass. Re-rooted, it is an ordinary key arriving in the slots — so the
     config tier here has exactly one input.
+    🛑🛑 AND THE ``cli`` LAYER IS GONE TOO (MBR-1 P4c-1): ``-e`` is not a layer over
+    the assembled env any more, it is the CASCADE'S CLI LEVEL over the key that owns
+    the variable, applied inside ``store_collapse.collapse_env``. Its cases moved
+    ONTO that mechanism — the pure ones to ``test_store_collapse.py``, the composed
+    one below, the end-to-end one to ``TestCliEnv`` — because a ``-e`` case written
+    against a replicated ``.update`` sequence would keep passing after the mechanism
+    it is about had been deleted.
+
+    ⚑⚑ THE HELPER THAT REPLICATED START.PY'S SEQUENCE IS GONE WITH IT. These cases
+    call the REAL ``_assemble_launch_env``; a hand-copied "verbatim" sequence is an
+    assumption in executable form, and this class exists precisely to catch that
+    sequence changing.
     ⚑ WHAT IT MUST NOT BE READ AS: an ordering among the scopes. A two-scope
     contest cannot be expressed in this input at all — the map is keyed by VAR —
     and the arrangement that used to express it is a refusal upstream
@@ -2375,46 +2387,99 @@ class TestContainerEnvPrecedence:
             slots[var] = CollapsedEnv(value, scope, f"{scope}.env.{var}")
         return slots
 
-    @classmethod
-    def _assemble(cls, *, env_slots, state_env, cli_env):
-        """Replicate the start.py env-assembly sequence verbatim."""
-        from kanibako.commands.start import _build_config_env
+    @staticmethod
+    def _assemble(tmp_path, *, env_slots, state_env):
+        """Run the REAL launch assembler over *env_slots* + *state_env*."""
+        import logging
+        from types import SimpleNamespace
 
-        container_env = _build_config_env(env_slots)
-        container_env.update(state_env)                        # state
-        container_env.update(cli_env)                          # cli
-        return container_env
+        from kanibako.commands.start import _assemble_launch_env
 
-    def test_every_collapsed_slot_reaches_the_container_env(self):
+        # ⚑ Only what the assembler reads on the way to the env: the three legacy
+        # env FILE paths ``_warn_legacy_env_files`` probes (absent under *tmp_path*,
+        # so it prints nothing) and an empty secret list.
+        env, _secret_vars = _assemble_launch_env(
+            std=SimpleNamespace(data_path=tmp_path),
+            proj=SimpleNamespace(
+                name="b", group=None,
+                metadata_path=tmp_path, project_path=tmp_path,
+            ),
+            deliveries=SimpleNamespace(secrets=[]),
+            env_slots=env_slots,
+            state_env=state_env,
+            extra_mounts=[],
+            logger=logging.getLogger("test.env-precedence"),
+        )
+        return env
+
+    def test_every_collapsed_slot_reaches_the_container_env(self, tmp_path):
         env = self._assemble(
+            tmp_path,
             env_slots=self._slots(("K", "box"), ("ONLY_BOX", "b")),
             state_env={},
-            cli_env={},
         )
         assert env == {"K": "box", "ONLY_BOX": "b"}
 
-    def test_the_slot_value_arrives_whatever_scope_won_it(self):
+    def test_the_slot_value_arrives_whatever_scope_won_it(self, tmp_path):
         """The layer applies the winner the COLLAPSE picked; it re-picks nothing.
 
         A workset-owned slot lands exactly as a box-owned one does — the scope
         rides the leaf as PROVENANCE, and this layer never consults it.
         """
         env = self._assemble(
+            tmp_path,
             env_slots=self._slots(("K", "workset", "workset")),
             state_env={},
-            cli_env={},
         )
         assert env["K"] == "workset"
 
-    def test_state_and_cli_override_all_config_levels(self):
-        """state_env and CLI -e env both sit above every config level."""
-        base = dict(env_slots=self._slots(("K", "box")))
-        env_state = self._assemble(**base, state_env={"K": "state"}, cli_env={})
-        assert env_state["K"] == "state"
-        env_cli = self._assemble(
-            **base, state_env={"K": "state"}, cli_env={"K": "cli"},
+    def test_a_realization_fills_a_variable_no_slot_claims(self, tmp_path):
+        """The realization layer still delivers — it is simply no longer on top."""
+        env = self._assemble(
+            tmp_path,
+            env_slots=self._slots(("K", "box")), state_env={"REALIZED": "auto"},
         )
-        assert env_cli["K"] == "cli"
+        assert env == {"K": "box", "REALIZED": "auto"}
+
+    def test_a_realization_does_not_overwrite_a_collapsed_slot(self, tmp_path):
+        """MBR-1 P4c-1: ``state_env`` lands BENEATH the slots, not over them.
+
+        🛑 THIS IS WHAT KEEPS ``-e`` WINNING, and it is the whole reason the order
+        moved. A per-run ``-e`` IS a slot value now (the CLI level, applied inside
+        the collapse), so a realization written on top would silently beat the flag
+        — the one behaviour ruling 45 requires to survive the fold. The composed
+        case below drives exactly that through the real collapse.
+
+        ⚑ P4c-2 deletes this layer outright: the realizations become launch-derived
+        agent-scope entries and a declared twin meets the ordinary refusal. Until
+        then the declared key wins, which is the near side of where that lands.
+        """
+        env = self._assemble(
+            tmp_path,
+            env_slots=self._slots(("K", "box")), state_env={"K": "realized"},
+        )
+        assert env["K"] == "box"
+
+    def test_a_per_run_e_beats_a_realization_of_the_same_variable(self, tmp_path):
+        """``-e`` wins the finished env for a REALIZED variable — through the real chain.
+
+        ⚑⚑ COMPOSED, NOT REPLICATED: ``collapse_env`` is what production calls to
+        build ``meta.assembly.env`` (via ``_install_assembly_collapse``) and
+        ``_assemble_launch_env`` is what production hands that leaf to. Running the
+        two in that order is the production composition minus the snapshot
+        round-trip — not a third arrangement invented here.
+
+        The variable is one NO key declares, which is the case that matters: the
+        collapse gives it a CLI-provenance slot of its own, and the realization must
+        not then land on top of it.
+        """
+        from kanibako.settings.store_collapse import collapse_env
+
+        slots = collapse_env([], {"GOOSE_MODE": "chat"})
+        env = self._assemble(
+            tmp_path, env_slots=slots, state_env={"GOOSE_MODE": "auto"},
+        )
+        assert env["GOOSE_MODE"] == "chat"
 
 
 class TestRetiredEnvFilesAreNotRead:
@@ -8897,9 +8962,10 @@ class TestDetachAtALiveBoxRefusesThePerRunFlags(_RunningBoxDriver):
     def test_a_fresh_detached_launch_still_delivers_cli_env(self, start_mocks):
         """⚑ THE POSITIVE CONTROL, AND THE WHOLE REASON THE LIVE-BOX BEHAVIOUR
         WAS WRONG.  On a FRESH detached launch a container is actually created
-        and ``-e`` reaches it (``_assemble_launch_env`` -> ``runtime.run(env=)``).
-        A live box under ``--detach`` creates nothing, so accepting the same flag
-        there contradicted this."""
+        and ``-e`` reaches it (the assembly collapse -> ``meta.assembly.env`` ->
+        ``_assemble_launch_env`` -> ``runtime.run(env=)``).  A live box under
+        ``--detach`` creates nothing, so accepting the same flag there
+        contradicted this."""
         with start_mocks() as m:
             assert m.runtime.is_running.return_value is False
             rc = self._start(detach=True, cli_env=["FOO=bar"])

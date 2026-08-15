@@ -500,10 +500,12 @@ default-categories floor beside `family="kickoff"`, under `family="core env"`. T
 Three behaviours arrive with that, and all three are the point rather than side effects: a nearer
 `system.env.<VAR>` file entry **overrides** one (same key, ordinary cascade); a twin at any other
 scope **REFUSES** the launch naming both keys, where kanibako used to overwrite the user's value a
-moment later in silence; and `-e KANIBAKO_NAME=x` **wins**, because `_parse_cli_env` is the last
-writer left in the function. ⚑ **`-e` needed no code for that** — the deletion alone satisfies
-ruling 42's `-e`-over-the-stamps half. Moving `-e` itself to the CLI cascade level is P4c and is not
-in this change. ⚑ Making the `KANIBAKO_AGENT_MARKERS_DIR` override REAL obliged the supervisor argv
+moment later in silence; and `-e KANIBAKO_NAME=x` **wins**. ⚑ **`-e` needed no code for that at
+P4b** — the deletion alone satisfied ruling 42's `-e`-over-the-stamps half, because `_parse_cli_env`
+was then the last writer left in the function. P4c-1 has since moved `-e` itself to the CLI cascade
+level (below), and the stamps keep winning-order under it for the ordinary reason: `-e` overrides
+the value of whichever key owns the variable, and these four are keys. ⚑ Making the
+`KANIBAKO_AGENT_MARKERS_DIR` override REAL obliged the supervisor argv
 to follow it: `--agent-markers-dir` now carries `container_env.get(...)`, the resolved env value,
 so the box-side hooks (which read the env) and the host-side supervisor keep agreeing under an
 override — the compile-time constant is only the shared fallback.
@@ -522,6 +524,44 @@ floor is the BASE level, below every settings file — which is exactly what mak
 ⚑ `_launch_env_map` is ONE function where `bindings`/`seeded`/`synced` each have two (an option
 reader plus a total one). Neither env consumer can act on an absent leaf — both describe a box, and
 the leaf rides the whole-box gate — so an option form would be a route nothing takes.
+
+### 🛑 AND THEN `-e` FOLLOWED THEM (MBR-1 P4c-1)
+
+⚖️ **Ruling 42** (*"-e should override the key values, not the environment variables themselves"*)
++ **ruling 45** (*"e must win… so it must be part of the collapse"*). `-e VAR=value` was
+`container_env.update(_parse_cli_env(cli_env))` — the last line of `_assemble_launch_env`, a dict
+paste over the finished environment. It is **the CLI level of the cascade applied to the env
+family** now: `_run_container` parses the flag ONCE at its door, threads the map through
+`_resolve_launch_snapshot(cli_env=)` → `_install_assembly_collapse` → `collapse_env`, and the
+overlay runs there. `_assemble_launch_env`'s `cli_env` parameter and its paste are GONE, which is
+what makes that function a projection of `meta.assembly.env` plus one remaining layer.
+
+⚑ **THE OVERLAY RUNS AFTER THE CONTAINMENT WALK AND THAT IS THE CONSTRUCTION, NOT A DETAIL** —
+`store_collapse._apply_cli_env` carries the measured reason a reader must not "unify" it onto the
+CLI *settings* level instead: `key_validity` refuses `cli.env.FOO` and the scope-less `env.FOO`, so
+such a level would have to spell a CONCRETE scope, at which point `-e` becomes a second scope's key
+naming the user's own variable and the twin refusal fires on exactly the configurations the flag
+exists to serve. Applied after the walk, `-e` cannot CONTEST a slot at all: it overrides an owner or
+fills a vacancy. An overridden slot KEEPS the owning scope + key (the key still owns the variable);
+a vacancy gets `("cli", "-e <VAR>")`, honest and inert — no consumer parses either field.
+
+⚑ **The malformed-item silent drop died in the same fold** (boarded with ruling 42). `_parse_cli_env`
+skipped an item with no `=` and accepted `=v` as a variable named `""`; both are named errors now,
+raised at the door before the launch reads a file. The shape is the keyspace's own plain env
+identifier plus §0's reserved floor via `leaf_name_reason` — one rule, not a second copy.
+
+⚑ **The two exec doors are a SEPARATE seam and STAY** (`runtime.exec(..., env=)` against a live
+box): there is no collapse there to apply a level to. What they gained is the shared parse — they
+read the map `_run_container` already built, so the doors and the launch cannot disagree about what
+the user typed.
+
+🛑 **`state_env` (the target's realizations) moved BENEATH the slots in the same edit**, and that is
+load-bearing rather than tidy: a per-run `-e` IS a slot value now, so a realization pasted on top
+would silently beat the flag — the one behaviour ruling 45 requires to survive the fold. **P4c-2
+deletes that layer outright** (realizations become launch-derived agent-scope entries and a declared
+twin meets the ordinary refusal), so the order here is the near side of where the fold lands. Under
+it, a declared `<scope>.env.<VAR>` naming a realized variable wins where the realization used to;
+that pair becomes a refusal at P4c-2.
 
 ### ⚑⚑ The pref-origin enrichment moved with the raises, and that is REAL UX
 

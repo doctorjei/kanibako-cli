@@ -654,6 +654,11 @@ class TestNothingRestampsThemAboveTheChannel:
         ``TestTheCoreStampsRideTheSameWire``; what this pins is the ABSENCE of a
         second writer, which no arrival assertion can see — a stamp restored beside
         the channel would leave every arrival case green.
+
+        ⚑⚑ STRENGTHENED AT P4c-1: the function takes NO ``cli_env`` any more, so the
+        projection this asserts is now total for everything except ``state_env`` —
+        there is no longer a per-run layer it could be adding on top. Restoring that
+        parameter fails this case at the CALL, before the assertion.
         """
         from types import SimpleNamespace
 
@@ -672,7 +677,6 @@ class TestNothingRestampsThemAboveTheChannel:
             deliveries=SimpleNamespace(secrets=[]),
             env_slots={},
             state_env={},
-            cli_env=None,
             extra_mounts=extra_mounts,
             logger=logging.getLogger("test.p4b"),
         )

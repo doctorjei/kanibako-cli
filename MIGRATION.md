@@ -2160,6 +2160,46 @@ Also fixed in the same pass: **a dotted destination reads back whole** — `agen
 "(not set)"; and the write route that fractured such a dest across YAML levels is gone (it
 refuses with the retirement message instead).
 
+### 2.39 `-e` overrides the key, not the environment
+
+**Read this if you use `kanibako start -e VAR=value`.** For a well-formed flag, what reaches the
+box is unchanged. What changed is *how* — and a `-e` item kanibako used to drop in silence now
+stops the launch.
+
+**What changed.** `-e VAR=value` used to be written onto the container's environment after your
+settings had been resolved — a last layer pasted on top of the finished result. **It is a level of
+the settings cascade now**: the value overrides *the key that owns that variable*, for that launch
+only, and it is applied while kanibako is deciding the box's variables rather than after.
+
+That is the same move §2.34 and §2.36 made for the variables plugins and kanibako itself set.
+Every mechanism that puts a variable in a box now goes through one channel, and `-e` is the CLI
+level of it — which is what lets kanibako tell you *which key* a `-e` is overriding, and refuse a
+`-e` it cannot honour instead of appearing to accept it.
+
+**Nothing to do in the ordinary case.** `-e EDITOR=vim` on a box with no `env.EDITOR` key anywhere
+behaves exactly as before: the variable is injected for that launch as an ephemeral CLI entry,
+belonging to no settings file and stored nowhere. `-e` naming a variable a key *does* own — at any
+scope, including the `system.env.KANIBAKO_*` stamps of §2.36 — replaces that key's value for the
+launch and leaves the file alone.
+
+**The break: a malformed `-e` item now stops the launch instead of being ignored.**
+
+| you type | before | now |
+|---|---|---|
+| `-e JUST_A_NAME` | silently ignored | refused, naming the item, before the box is touched |
+| `-e =value` | set a variable whose name was the empty string | refused, naming the item |
+| `-e 2FA=x`, `-e A-B=x`, `-e A.B=x` | passed straight to the container runtime | refused, naming the item |
+
+**What you must do:** if a script or shell alias carries a `-e` item kanibako was quietly dropping,
+it will now fail the launch until the item is fixed. Each message names the offending item and the
+cure. A variable name is a letter or underscore followed by letters, digits or underscores —
+the same shape an `<scope>.env.<VAR>` key is held to; `-e` takes a *variable*, never a dotted key.
+An empty value is still legal and still means "set it to nothing": `-e QUIET=`.
+
+⚑ **`-e` is per-launch and writes nothing.** It never touches a settings file, and `kanibako box
+show --effective` — which reports stored configuration — does not show it. To make a value stick,
+write the key.
+
 ---
 
 ## 3. For plugin authors

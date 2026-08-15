@@ -33,11 +33,14 @@ from kanibako.settings.settings_launch import (
 )
 from kanibako.settings.settings_resolve import GUEST_HOME, ResolveCtx, SettingsError
 from kanibako.settings.store_collapse import (
+  CLI_PROVENANCE_SCOPE,
   HOME_DEST,
   MASK,
   CollapsedBind,
   CollapsedCopy,
+  CollapsedEnv,
   CollapsedStore,
+  collapse_env,
   collapse_seeded,
   collapse_store_shapes,
   fold_opt,
@@ -1188,3 +1191,103 @@ class TestTheLiveRoute:
     })
     assert collapsed.bindings[f"{GUEST}/x"].src == "/h/agent"
     assert collapsed.seeded == [CollapsedCopy("/h/file", f"{GUEST}/x/file", "")]
+
+
+class TestThePerRunOverride:
+  """``-e VAR=VALUE`` is the CASCADE'S CLI LEVEL over the env slots (MBR-1 P4c-1).
+
+  Jei, 2026-08-14: *"-e should override the key values, not the environment variables
+  themselves"* — so it is applied INSIDE the collapse, after the containment walk, and
+  it does exactly two things: it replaces the VALUE of the key that owns a variable, or
+  it fills a variable no key owns.
+
+  ⚑⚑ WHY THAT ORDER IS THE DESIGN AND NOT A DETAIL: ``-e`` can never CONTEST a slot, so
+  no refusal can name it and none should be taught to. Ride it as a settings level
+  instead and it must spell a concrete scope, at which point it becomes a SECOND scope's
+  key naming the user's own variable and the twin refusal fires on the very
+  configurations the flag exists to serve. Both halves are pinned below.
+
+  🛑 THE CASES ARE DRIVEN THROUGH THE LIVE ROUTE (floor → snapshot → entries →
+  ``collapse_env``), the chain ``_install_assembly_collapse`` runs. Hand-built entries
+  would let a fold that never reads a real ``env`` key pass.
+  """
+
+  def ctx(self) -> ResolveCtx:
+    return ResolveCtx(
+      agent_name="claude", workset_name="myws", host_home="/home/u",
+      xdg={"XDG_DATA_HOME": "/data"}, config={},
+    )
+
+  def slots(self, floor: dict, cli_env=None):
+    ctx = self.ctx()
+    snap = build_launch_snapshot(
+      agent_name="claude", ctx=ctx,
+      system_path=None, agent_path=None, workset_path=None, box_path=None,
+      default_categories=floor,
+    )
+    entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx)
+    return collapse_env(entries, cli_env)
+
+  def test_no_cli_map_leaves_the_slots_exactly_as_the_scopes_settled_them(self):
+    """The default is the whole compatibility story: no ``-e``, no change."""
+    plain = self.slots({"box.env.EDITOR": "vim"})
+    assert plain == self.slots({"box.env.EDITOR": "vim"}, None)
+    assert plain["EDITOR"] == CollapsedEnv("vim", "box", "box.env.EDITOR")
+
+  def test_it_replaces_the_value_of_the_key_that_owns_the_variable(self):
+    slots = self.slots({"box.env.EDITOR": "vim"}, {"EDITOR": "ed"})
+    assert slots["EDITOR"].value == "ed"
+
+  def test_the_overridden_slot_KEEPS_the_owning_scope_and_key(self):
+    """The key still OWNS the variable; ``-e`` supplied a value for one launch.
+
+    ⚑ The mutation this kills: re-stamping the slot with CLI provenance. The value
+    would be identical and every arrival assertion would stay green, while the leaf
+    stopped saying which key a user has to edit to make the change stick.
+    """
+    slots = self.slots({"system.env.EDITOR": "vim"}, {"EDITOR": "ed"})
+    assert slots["EDITOR"] == CollapsedEnv("ed", "system", "system.env.EDITOR")
+
+  def test_a_variable_no_key_owns_gets_a_slot_of_its_own(self):
+    slots = self.slots({}, {"SCRATCH": "1"})
+    assert slots["SCRATCH"] == CollapsedEnv("1", "cli", "-e SCRATCH")
+
+  def test_the_vacancy_provenance_is_not_a_scope_and_is_not_a_key(self):
+    """It is a LABEL. Nothing resolves against ``cli`` and no such key can be written.
+
+    Pinned because the two fields are honest STRINGS in a tuple every consumer reads
+    positionally — the moment one is treated as a scope token or a settable key,
+    ``-e`` acquires a cascade rank it must not have.
+    """
+    assert CLI_PROVENANCE_SCOPE not in SCOPE_CONTAINMENT
+    slots = self.slots({}, {"SCRATCH": "1"})
+    assert slots["SCRATCH"].key.startswith("-e ")
+
+  def test_it_never_contests_a_slot_so_no_twin_refusal_can_name_it(self):
+    """Two SCOPES naming one variable refuse; a ``-e`` naming that variable does not.
+
+    🛑 THE DISCRIMINATING PAIR, and it is why the ``-e`` overlay runs AFTER the walk.
+    The same variable is used twice: declared at two scopes it refuses, and named by
+    ``-e`` over ONE scope's declaration it collapses cleanly. A ``-e`` folded into the
+    walk as a scope would make the second case refuse too.
+    """
+    with pytest.raises(SettingsError, match="claimed by two keys"):
+      self.slots({"system.env.EDITOR": "vi", "box.env.EDITOR": "vim"})
+    assert self.slots({"box.env.EDITOR": "vim"}, {"EDITOR": "ed"})["EDITOR"].value == "ed"
+
+  def test_it_reaches_a_variable_at_any_scope_including_the_outermost(self):
+    """One flag, one behaviour, whichever scope happens to own the variable.
+
+    The core ``KANIBAKO_*`` stamps are ``system.env.*`` keys (MBR-1 P4b), the
+    outermost scope there is — so this is the case that makes MIGRATION §2.36's
+    *"-e reaches them"* true.
+    """
+    for scope in ("system", "workset", "box"):
+      slots = self.slots({f"{scope}.env.KANIBAKO_NAME": "real"}, {"KANIBAKO_NAME": "x"})
+      assert slots["KANIBAKO_NAME"] == CollapsedEnv("x", scope, f"{scope}.env.KANIBAKO_NAME")
+
+  def test_it_touches_only_the_variables_it_names(self):
+    slots = self.slots(
+      {"box.env.EDITOR": "vim", "box.env.PAGER": "less"}, {"EDITOR": "ed"},
+    )
+    assert slots["PAGER"] == CollapsedEnv("less", "box", "box.env.PAGER")

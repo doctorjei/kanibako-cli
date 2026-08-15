@@ -53,7 +53,10 @@ from kanibako.settings.settings_categories import (
     SECRET_VAR_RE,
     is_read_only,
 )
-from kanibako.settings.settings_keyspace import is_terminal_category_key
+from kanibako.settings.settings_keyspace import (
+    is_terminal_category_key,
+    leaf_name_reason,
+)
 from kanibako.settings.settings_resolve import BOX_PINNED_STATE_RELPATH
 from kanibako.settings.settings_cli_level import build_cli_level
 from kanibako.settings.paths import (
@@ -261,8 +264,12 @@ def add_start_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Override the agent model for this run",
     )
     p.add_argument(
-        "-e", "--env", action="append", default=None, metavar="KEY=VALUE",
-        help="Set per-run environment variable (repeatable)",
+        "-e", "--env", action="append", default=None, metavar="VAR=VALUE",
+        # ⚑ VAR, not KEY (P4c-1). The flag names an environment VARIABLE and
+        # overrides whichever settings key owns it; a dotted key spelling is
+        # refused, so the metavar must not invite one.
+        help="Set per-run environment variable, overriding the key that owns it "
+             "(repeatable)",
     )
     p.add_argument(
         "--image", default=None,
@@ -361,8 +368,12 @@ def add_shell_parser(subparsers: argparse._SubParsersAction) -> None:
         description="Open a bash shell in the container (no agent).",
     )
     p.add_argument(
-        "-e", "--env", action="append", default=None, metavar="KEY=VALUE",
-        help="Set per-run environment variable (repeatable)",
+        "-e", "--env", action="append", default=None, metavar="VAR=VALUE",
+        # ⚑ VAR, not KEY (P4c-1). The flag names an environment VARIABLE and
+        # overrides whichever settings key owns it; a dotted key spelling is
+        # refused, so the metavar must not invite one.
+        help="Set per-run environment variable, overriding the key that owns it "
+             "(repeatable)",
     )
     p.add_argument(
         "--image", default=None,
@@ -1494,12 +1505,55 @@ def _apply_tweakcc(install, agent_cfg, cache_path, image, runtime_cmd, logger):
 
 
 def _parse_cli_env(cli_env: list[str] | None) -> dict[str, str]:
-    """Parse ``-e/--env KEY=VALUE`` items into a dict (ignores malformed ones)."""
+    """Parse ``-e/--env VAR=VALUE`` items into a VAR → VALUE map, REFUSING a malformed one.
+
+    THE ONE PARSE, and it is called ONCE per launch — at ``_run_container``'s door,
+    before anything reads a file — because both things that consume the result need
+    the SAME answer: the assembly collapse (where ``-e`` is the CLI level over the
+    key that owns the variable) and the two exec doors (which apply it to a second
+    process in a box that is already up, where no collapse exists to apply it to).
+
+    ⚑ IT REFUSES WHERE IT USED TO DROP. An item with no ``=`` was skipped in silence
+    and ``=v`` was accepted as a variable named ``""``; a flag the user typed and
+    kanibako ignored is the deferred surprise §0 forbids, and it is worse now that
+    ``-e`` overrides a KEY — a mistyped item would look like a settings override that
+    did not take. Both are named errors, at the door, before the launch does anything.
+
+    ⚑ THE VAR SHAPE IS THE KEYSPACE'S OWN, not a second rule: the plain env
+    identifier every ``<scope>.env.<VAR>`` key is held to, plus §0's reserved-name
+    floor (:func:`~kanibako.settings.settings_keyspace.leaf_name_reason`). A ``-e``
+    is not a key, but it names the same slot a key would, so a spelling no key could
+    ever hold is refused rather than delivered.
+
+    🛑 The ``=`` split here is the ONE declared parse of an item. The VAR and the
+    VALUE are DATA from here on — nothing downstream splits or joins either again.
+    """
+    from kanibako.settings.settings_resolve import SettingsError
+
     env: dict[str, str] = {}
     for item in cli_env or []:
-        if "=" in item:
-            k, v = item.split("=", 1)
-            env[k] = v
+        var, sep, value = item.partition("=")
+        if not sep:
+            raise SettingsError(
+                f"-e/--env {item!r} is not a VAR=VALUE assignment. Each -e item "
+                f"sets ONE variable and needs an '=' — write "
+                f"-e {item}=<value> (an empty value is fine: -e {item}=)."
+            )
+        # ⚑ ``SECRET_VAR_RE`` IS THE BARE ENV-VAR SHAPE, not a secret-only rule — its
+        # own definition calls it the ``name`` group of ``SECRET_KEY_RE`` (textually
+        # the same shape ``ENV_KEY_RE``'s name group uses). Reused rather than
+        # re-spelled: another copy of ``[A-Za-z_][A-Za-z0-9_]*`` is how the keyspace
+        # and the flag drift apart. (The ``SECRET_`` prefix is historical.)
+        reason = (
+            leaf_name_reason(var) if SECRET_VAR_RE.match(var)
+            else (
+                f"{var!r} is not a legal environment variable name (a letter or "
+                f"underscore, then letters, digits or underscores)"
+            )
+        )
+        if reason is not None:
+            raise SettingsError(f"-e/--env {item!r}: {reason}.")
+        env[var] = value
     return env
 
 
@@ -1724,7 +1778,6 @@ def _assemble_launch_env(
     deliveries,
     env_slots,
     state_env,
-    cli_env,
     extra_mounts,
     logger,
 ):
@@ -1749,8 +1802,14 @@ def _assemble_launch_env(
     # of them are launch-DERIVED ``system.env.<VAR>`` floor keys built by
     # :func:`_core_env_default_categories` and they arrive in these slots like any
     # other key. This function stamps NOTHING — do not add a variable here.
-    # Target-derived state env and per-run CLI -e env stay above all config
-    # levels.  The docker `.env` files that used to layer in here are RETIRED
+    # ⚑⚑ AND SINCE MBR-1 P4c-1, NEITHER DOES THE PER-RUN ``-e``: it is the CLI
+    # LEVEL of the cascade applied to the key that OWNS the variable, inside
+    # ``store_collapse.collapse_env``, so it arrives in these slots as well
+    # (Jei, 2026-08-14: *"-e should override the key values, not the environment
+    # variables themselves"*).  The dict update that used to paste it on top is
+    # GONE and must not come back: pasted above the channel it could not be
+    # overridden, displayed, or refused, and it silently outranked every file.
+    # The docker `.env` files that used to layer in here are RETIRED
     # (RQ-1, 2026-08-02) — see ``_build_config_env``.
     #
     # ⚑ Which means a user who set values through the OLD spelling has a file
@@ -1770,10 +1829,19 @@ def _assemble_launch_env(
     # means NO shim (a box with no secrets keeps the bare entrypoint byte-identical).
     secret_mounts, secret_export_vars = _emit_secret_mounts(deliveries.secrets, logger)
     extra_mounts.extend(secret_mounts)
-    container_env.update(state_env)                        # target-derived state env
-
-    # Merge per-run -e/--env KEY=VALUE vars (highest priority).
-    container_env.update(_parse_cli_env(cli_env))
+    # THE TARGET-DERIVED REALIZATIONS (``targets.assembly.assemble_env``) — the last
+    # layer still outside the channel, and the ONLY one.  MBR-1 P4c-2 folds it in as
+    # launch-DERIVED agent-scope entries and deletes these two lines.
+    #
+    # ⚑⚑ IT LANDS BENEATH THE SLOTS, NOT OVER THEM, and that is load-bearing rather
+    # than tidy.  Since P4c-1 a per-run ``-e`` IS a slot value, so a realization
+    # written on TOP would silently beat the flag — and ``-e`` winning is the one
+    # behaviour ruling 45 requires to survive the fold intact (*"e must win"*).
+    # Under it, a variable a settings key declares also beats the realization of the
+    # same name; P4c-2 turns that pair into the ordinary two-owners REFUSAL, so this
+    # order is the near side of where the fold lands, never the far side.
+    for var, value in state_env.items():
+        container_env.setdefault(var, value)
 
     # Claude Code's telemetry (CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC) and
     # auto-updater (DISABLE_AUTOUPDATER) vars are claude's own DECLARED
@@ -2174,6 +2242,15 @@ def _run_container(
     print_container: bool = False,
     warm_only: bool = False,
 ) -> int:
+    # ⚑⚑ THE ``-e`` PARSE, ONCE, AT THE DOOR — BEFORE ANY FILE IS READ OR ANY
+    # DIRECTORY MADE.  Three sites downstream consume the result (the two exec doors
+    # against a live box, and the launch resolve where it becomes the CLI level over
+    # the owning key), and a second parse is a second chance to disagree.  It also
+    # puts the malformed-item REFUSAL where a typo costs nothing: a mistyped ``-e``
+    # now fails before the box is touched rather than after it is up.
+    # 🛑 The typed FLAG stays the gate for user intent (the override gate below reads
+    # ``cli_env``, the list); this map is the parsed VALUE and is never a substitute.
+    cli_env_values = _parse_cli_env(cli_env)
     config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
     config = load_config(config_file)
 
@@ -2958,7 +3035,7 @@ def _run_container(
             # neither can accept what the other would drop.
             return runtime.exec(
                 container_name, [exec_program] + (extra_args or []),
-                env=_parse_cli_env(cli_env),
+                env=cli_env_values,
             )
         # Heads-up to STDERR (never stdout — must not pollute the tmux/agent
         # stream we're about to attach to).
@@ -3140,7 +3217,7 @@ def _run_container(
             # this, per-run -e vars would be silently dropped when the box is
             # already running.
             return runtime.exec(
-                container_name, exec_cmd, env=_parse_cli_env(cli_env)
+                container_name, exec_cmd, env=cli_env_values
             )
         if runtime.container_exists(container_name):
             # Where an --ephemeral / shell launch meets a live box.  It is the
@@ -3453,6 +3530,12 @@ def _run_container(
             persona_values=persona_values,
             deliver_creds=auth_src.creds_shared,
             cli_level=_cli_level,
+            # ⚑ THE ONE RESOLVE THAT TAKES ``-e``, because it is the only one that
+            # describes THIS BOX'S LAUNCH.  The conditional image/helper resolves
+            # describe an injected table and write no env leaf; ``_sync_box_at_create``
+            # and ``box show --effective`` describe stored configuration, which a
+            # per-run flag must not appear in.
+            cli_env=cli_env_values,
         )
 
         # allow_helpers is an AGENT-scope behavior key (spec §2d,
@@ -3856,9 +3939,11 @@ def _run_container(
             # The COLLAPSE's env slots, read at the seam and passed as a VALUE —
             # the same shape ``launch_binds`` above takes, and for the same reason:
             # the assembler receives what was assembled, not the store it came from.
+            # ⚑ The per-run ``-e`` is IN HERE since P4c-1 (it was applied inside the
+            # collapse that produced this map), which is why no ``cli_env`` reaches
+            # the assembler any more.
             env_slots=_launch_env_map(_snapshot),
             state_env=state_env,
-            cli_env=cli_env,
             extra_mounts=extra_mounts,
             logger=logger,
         )
@@ -4698,9 +4783,11 @@ def _build_config_env(env_slots: "CollapsedEnvs") -> dict[str, str]:
     resolved config-env matches exactly; that sharing is the whole point of a
     function this small, and it is why the projection lives HERE rather than in the
     launch caller (it did, and the display consequently under-reported every
-    ``<scope>.env.<VAR>`` the box actually receives). Runtime-only layers (target
-    state env, per-run ``-e``) are applied by the caller ON TOP of this and are NOT
-    config, so they are excluded here.
+    ``<scope>.env.<VAR>`` the box actually receives). The ONE runtime layer left
+    outside the map — the target's realizations (``state_env``) — is applied by the
+    caller and is not config, so it is not here. ⚑ Per-run ``-e`` no longer belongs
+    on that list: since P4c-1 it is applied INSIDE the collapse, so it arrives in
+    *env_slots* like any other value and this function is a plain projection.
 
     *env_slots* is ``meta.assembly.env`` — the collapse's arbitrated map, VAR to
     ``CollapsedEnv(value, scope, key)``. NOTHING IS SETTLED HERE and there is
@@ -6363,6 +6450,7 @@ def _resolve_launch_snapshot(
     extra_default_categories: "Mapping[str, object] | None" = None,
     guarantee_create: bool = True,
     cli_level: "Mapping[str, object] | None" = None,
+    cli_env: "Mapping[str, str] | None" = None,
     narrow_bind_dests: "frozenset[str] | None" = None,
 ):
     """Build the ONE launch snapshot + what this launch DELIVERS from it.
@@ -6457,6 +6545,15 @@ def _resolve_launch_snapshot(
     because its output is this launch's argv / env / mounts and nothing here is
     written back to a settings file. The seed, persona-endpoint and ``--effective``
     resolves take a selection-ONLY level.
+
+    *cli_env* is the parsed per-run ``-e`` map (P4c-1) and is forwarded UNTOUCHED to
+    the collapse, which applies it as the CLI level over the key owning each
+    variable.  ⚑ SAME RULE AS *cli_level* AND FOR THE SAME REASON: only THIS resolve
+    takes it.  A ``-e`` value is not configuration — it belongs to one launch — so a
+    resolve whose product is a stored map or a display (``_sync_box_at_create``,
+    ``box show --effective``) must not see it, and the narrow resolves write no env
+    leaf to put it in.  ⚑ It is NOT a settings level and cannot be folded into
+    *cli_level*: see ``store_collapse._apply_cli_env`` for the measured reason.
     """
     from kanibako.settings import settings_launch
     from kanibako.settings.agent_representation import (
@@ -6770,7 +6867,7 @@ def _resolve_launch_snapshot(
         # ambiguity is announced ONCE, from the producer, inside this call (cutover
         # 5-1c). A second feed would give one ambiguity two ways to reach the user.
         _install_assembly_collapse(
-            snapshot, delivered, whole_box=include_base_families,
+            snapshot, delivered, whole_box=include_base_families, cli_env=cli_env,
         )
         # The carrier every consumer reads (cutover 6-R1/6-R2), built off the SAME
         # gated list — another reader of one list, never a second resolve. ⚑ The
@@ -6902,13 +6999,21 @@ _ASSEMBLY_ENV: "tuple[str, ...]" = ("meta", "assembly", "env")
 _HOME_OPTIONS: "str" = "Z,U"
 
 
-def _install_assembly_collapse(snapshot, entries, *, whole_box: bool) -> None:
+def _install_assembly_collapse(
+    snapshot, entries, *, whole_box: bool,
+    cli_env: "Mapping[str, str] | None" = None,
+) -> None:
     """Store the collapse at ``meta.assembly.*``, each leaf on ITS OWN gate — see llm-docs.
 
     *whole_box* is the resolve's own ``include_base_families``, forwarded rather than
     re-derived: a resolve that carries the base families is describing A BOX, and only a
     box has a foundation to fold over. A NARROW resolve describes an injected table, not
     a box, and asks only for the seed arm — so it keeps the early return.
+
+    *cli_env* is the launch's parsed ``-e`` map, handed straight to the env fold. It
+    DEFAULTS to ``None``, which is what keeps every other caller of this seam — and
+    of the resolve above it — unchanged: a resolve that names no per-run values
+    collapses exactly the keys, as it always did.
 
     🛑 THE GATE IS *whole_box*, NEVER "did ``meta.box.home`` resolve". The key is
     materialised by ``settings_launch.workset_anchor_floor``, which the launch builds
@@ -6988,7 +7093,11 @@ def _install_assembly_collapse(snapshot, entries, *, whole_box: bool) -> None:
     # ``StoreShape`` arm, so the shapes never carried it. It sits below the whole-box
     # gate with the other two assembly leaves — a variable set describes a BOX, and a
     # narrow resolve describes an injected table.
-    snapshot.insert_segments(_ASSEMBLY_ENV, collapse_env(entries))
+    # ⚑ The per-run ``-e`` map goes IN HERE, not on top of the result: it is the CLI
+    # level over the key that owns each variable, and the leaf it lands in is what
+    # every consumer reads. Applying it after this call would put it above the
+    # channel again — the arrangement P4c-1 removed.
+    snapshot.insert_segments(_ASSEMBLY_ENV, collapse_env(entries, cli_env))
 
 
 def _snapshot_home(snapshot) -> str:
@@ -8494,7 +8603,8 @@ def _core_env_default_categories(*, proj, target, agent_id) -> dict[str, str]:
     above ``-e``; they are ordinary system-scope floor keys now, so they enter the
     ONE channel with everything else — a nearer ``system.env.<VAR>`` file entry
     overrides one, a TWIN at another scope REFUSES the launch naming both keys
-    (``store_collapse.collapse_env``), ``-e`` reaches them, and ``box show
+    (``store_collapse.collapse_env``), ``-e`` reaches them — since P4c-1 by
+    overriding the stamp's own key VALUE inside that same collapse — and ``box show
     --effective`` shows them.  Nothing above the channel may write these variables;
     adding a fifth stamp anywhere else is the bug this function exists to prevent.
 

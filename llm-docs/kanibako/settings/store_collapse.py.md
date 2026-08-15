@@ -39,6 +39,25 @@ no second view of a variable to disagree with this one. Its REFUSAL was live fro
 first written, because the collapse runs on every whole-box resolve whether or not anything reads
 the result.
 
+⚑⚑ **AND THE PER-RUN `-e` IS APPLIED INSIDE IT (MBR-1 P4c-1).** `collapse_env(entries, cli_env)`
+takes the launch's parsed `-e` map and, AFTER the containment walk, hands it to `_apply_cli_env`:
+per variable, an owned slot has its VALUE replaced (provenance kept — the key still owns the
+variable) and an unowned one gets a slot of its own with `("cli", "-e <VAR>")` provenance. ⚖️
+Ruling 42 — *"-e should override the key values, not the environment variables themselves"* — plus
+ruling 45's *"e must win… so it must be part of the collapse"*.
+
+🛑 **AFTER the walk, never inside it, and the reason is measured rather than aesthetic.** `-e` has
+no scope and must never CONTEST a slot: it overrides an owner or fills a vacancy, so no refusal can
+name it. Ride it as a settings LEVEL instead and it must spell a concrete scope (`key_validity`
+refuses `cli.env.FOO` and the scope-less `env.FOO`), at which point a `-e` naming a variable the
+user's own key already names becomes a two-scope twin and `_refuse_env_twin` refuses the launch —
+the opposite of the ruling. The four scopes are still the only things that can contend for a slot.
+
+⚑ **No fourth `CollapsedEnv` field, deliberately.** An overridden slot carries no "cli" marker:
+nothing displays env provenance today (`box show --effective` prints `env K = V`), so a fourth field
+would cost a spec + manifest + closure change to say something no user can see. Adding a DEFAULTED
+one later is additive.
+
 ## Three passes, in the ONE order that is a ruling
 
 ⚖️ **RULED 2026-08-10b: the two copy categories resolve at OPPOSITE ENDS of the fold**, and the

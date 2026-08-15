@@ -145,6 +145,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   agent start opens `KANIBAKO_DIRECTIVE_SEED`), so overriding one is telling kanibako something
   about the box that has to be true. See [MIGRATION.md](MIGRATION.md) §2.36.
 
+- **BREAKING: `-e` overrides the key that owns the variable, and a malformed `-e` item now stops
+  the launch.** `kanibako start -e VAR=value` used to be pasted onto the container's environment
+  after your settings had been resolved — a last layer on top of the finished result, above every
+  file and outside the settings system entirely. **It is the CLI level of the cascade now**:
+  the value overrides *the key that owns that variable*, for that launch only, applied while
+  kanibako is deciding the box's variables rather than after. A working `-e` behaves exactly as
+  before, at any scope, the `system.env.KANIBAKO_*` stamps above included; a `-e` naming a variable
+  no key owns still injects it for the launch, as an ephemeral CLI-level entry belonging to no
+  settings file. It writes nothing and `kanibako box show --effective`, which reports stored
+  configuration, does not show it. **The breaking half:** a malformed item used to be dropped in
+  silence — `-e JUST_A_NAME` (no `=`) was skipped, `-e =value` set a variable whose name was the
+  empty string, and an illegal name (`-e 2FA=x`, `-e A-B=x`, `-e A.B=x`) went straight to the
+  container runtime. **Each of those now refuses the launch, naming the offending item, before the
+  box is touched** — a flag that overrides a key must not look accepted and do nothing. A variable
+  name is a letter or underscore followed by letters, digits or underscores, the same shape an
+  `<scope>.env.<VAR>` key is held to; an empty value is still legal (`-e QUIET=`). See
+  [MIGRATION.md](MIGRATION.md) §2.39.
+
 ### Removed
 
 - The flat `kanibako.agent_config` compatibility shim no longer re-exports **`agent_file_route`**,
