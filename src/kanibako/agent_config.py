@@ -15,7 +15,7 @@ too.
 
 ⚑ THREE NAMES ARE NO LONGER RE-EXPORTED (S1/S1b): ``agent_file_route``,
 ``load_agent_config`` and ``write_agent_config`` all moved to
-:mod:`kanibako.settings.agent_file` (as ``_address``, ``load`` and ``save``),
+:mod:`kanibako.settings.agent_file` (as the private address rule, ``load`` and ``save``),
 the one module that spells the per-agent file's shape.  None of the three is
 imported by any published plugin (measured against all three wheels); the
 third-party risk is theoretical and accepted, and v1.8.0 is a deliberate clean
