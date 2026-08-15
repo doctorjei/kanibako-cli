@@ -92,6 +92,20 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     show_p.set_defaults(func=run_show)
 
+    # system defaults
+    defaults_p = sys_sub.add_parser(
+        "defaults",
+        help="List every default kanibako ships, with its scope and source",
+        description=(
+            "List the values kanibako declares out of the box.\n\n"
+            "Install-wide and STATIC — it takes no box and resolves nothing, so it\n"
+            "answers what 'show --effective' cannot: which of the values in force\n"
+            "are kanibako's own defaults, and which file declares each one.\n"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    defaults_p.set_defaults(func=run_defaults)
+
     # system upgrade [--check]
     from kanibako.commands.upgrade import run as run_upgrade_fn
 
@@ -229,6 +243,21 @@ def run_show(args: argparse.Namespace) -> int:
     args.all_keys = False
     args.force = False
     return _run_system_config(args)
+
+
+def run_defaults(args: argparse.Namespace) -> int:
+    """``system defaults`` — the shipped defaults, each beside the artefact declaring it.
+
+    Deliberately NOT routed through ``_run_system_config``: that engine reads and writes
+    the user's own files, and this verb reads neither. It consults only PACKAGED data
+    (the keyspace manifest, ``core-defaults.yaml``, each installed plugin's defaults
+    file), so it works with no config, no project and no box — which is exactly when a
+    user needs to know what the defaults are.
+    """
+    from kanibako.settings.defaults_inventory import print_defaults
+
+    print_defaults(sys.stdout)
+    return 0
 
 
 def _run_system_config(args: argparse.Namespace) -> int:

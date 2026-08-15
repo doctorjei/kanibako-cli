@@ -265,6 +265,7 @@ The runtime helper and fork verbs (formerly under `crab`) now live under `box`:
 |------------|-------------|
 | `system info` / `system inspect` | System details (version, runtime, paths) |
 | `system set` / `system get` / `system show` / `system reset` | View or modify global configuration |
+| `system defaults` | List every default kanibako ships, with its scope and source |
 | `system upgrade` | Self-update (`--check` for dry run) |
 | `system diagnose` | Check system health (runtime, images, agents, storage) |
 

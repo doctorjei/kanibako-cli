@@ -831,6 +831,33 @@ def _table_bind_dests(table: str) -> frozenset[str]:
     )
 
 
+#: The declarative BIND tables, in file order — the sections whose rows carry a
+#: ``box_dest``.  ⚑ NOT every top-level section: ``masks``, ``agent_default`` and ``env``
+#: are the file's non-bind scalar tables and declare no destination.
+BIND_TABLES = ("channels", "core", "kani", "kickoff", "canon", "helpers", "images")
+
+
+def bind_dest_families() -> dict[str, str]:
+    """``{box_dest: table}`` — WHICH declarative section of this file declares a dest.
+
+    The provenance read behind ``kanibako system defaults``
+    (:mod:`kanibako.settings.defaults_inventory`): a dest is reported as declared by the
+    section it actually sits in, so one that moves between tables re-labels itself
+    instead of drifting away from a hand-written label.
+
+    ⚑ Dests are returned AS WRITTEN, not normalized — the caller matches them against the
+    manifest's ``bind_default_entries`` keys, which are the same ``~``-spelled strings.
+    :func:`_table_bind_dests` normalizes because its callers filter an EMITTED map, whose
+    keys have been through ``normalize_bind_dest``; these two reads answer different
+    questions and must not be merged.
+    """
+    return {
+        str(entry["box_dest"]): table
+        for table in BIND_TABLES
+        for entry in _load_doc().get(table) or []
+    }
+
+
 def helper_bind_dests() -> frozenset[str]:
     """The HELPER table's own dests — the helper-hub resolve's EMISSION filter.
 
