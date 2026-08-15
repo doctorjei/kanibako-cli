@@ -161,15 +161,17 @@ def _node_bind_target(
     caller left is ``config_interface.get_config_value``. The read survives because
     the key does: still declared, still hand-authored in this very file, still
     delivered at launch — and hand-editing it is the cure the refusal prescribes.
+    ⚑ THE CLAIM IS TRUE OF EVERY VERB SINCE S3: the ``agent`` noun had its own writer and no
+    gate, so ``agent set claude bindings.ro.x=…`` was a live write route past this one. It now
+    takes the SAME retirement refusal, from the same recogniser.
 
     Returns an :class:`AgentFileSlot` on the node's OWN settings file
-    ``agents/<node>/settings.yaml``, carrying the tail ``bindings.<ro|rw>.<name>``.
-    ⚑⚑ :mod:`kanibako.settings.agent_file` still places it in the discriminated per-node
-    sub-table, and that is NO LONGER the launch read shape: S2 flattened the read, so
-    ``settings_assemble._agent_partial`` reads ``self: bindings:`` and REFUSES the nested
-    table this write arm produces. It is a defect with a slot — ``_address``'s bindings
-    arm flattens at S3 — not a shape to preserve. Until then the ONE caller left is a
-    READ (``get_config_value``), so nothing legitimate writes through it.
+    ``agents/<node>/settings.yaml``, carrying the tail ``bindings.<ro|rw>.<dest>``.
+    ⚑⚑ :mod:`kanibako.settings.agent_file` places it at EXACTLY the table the launch reads —
+    ``self: bindings: <arm>:``, flat, with the DESTINATION whole (S2 flattened the read, S3 the
+    address rule). The read this function serves and the read the cascade performs are therefore
+    one address; before S3 they were two, and a hand-authored dotted destination read back
+    "(not set)" from here while the launch delivered it (D-4).
 
     Returns ``None`` when *canonical* is not a node bind, *agents_root* was not
     threaded (the per-node store is global under ``config.agents`` — only reachable
@@ -299,8 +301,10 @@ def noun_settings_file(
 _NOUN, _SCOPED, _CATEGORY = "noun", "scoped", "category"
 
 
-# ⚑⚑ A DESTINATION IS DATA, NOT A KEY PATH — the fourth and last known site of one
-# root cause (`509592a`, `5958572`, `dacd9b7`). Splitting a per-entry spelling on
+# ⚑⚑ A DESTINATION IS DATA, NOT A KEY PATH — the fourth known site of one root cause
+# (`509592a`, `5958572`, `dacd9b7`), and NOT the last: a FIFTH lived in the per-agent file's
+# own address rule (``agent_file``'s bindings arm did ``tail.split(".")``) until S3 replaced it
+# with a partition rule. Splitting a per-entry spelling on
 # ``.`` cut ``box.caches.~/.cache/uv`` into a section ``~/`` and a leaf ``cache/uv``,
 # so the read landed on a slot no file has and a hand-authored entry read back
 # "(not set)" — which is what made ``config_keys.scope_bind_retired_error``'s closing
@@ -529,10 +533,13 @@ def _read_dest(
     ``self.<node>`` table is now REFUSED by name).  So a hand-authored ``self.caches``
     reads back "(not set)" while a stray ``agent.claude.caches`` in the system
     settings file reads back instead.  Re-pointing it is a STORAGE-SHAPE change that
-    moves ``agent_file._address`` — the per-agent file-shape SoT shared
+    moves ``agent_file``'s address rule — the per-agent file-shape SoT shared
     with the ``agent`` noun's own verbs — and is a separately-boarded pass.  ⚑ Until
     it lands, NO message may promise that ``config get <agent terminal key>`` works
-    (see ``config_keys.agent_node_bind_retired_error``).
+    (see ``config_keys.agent_node_bind_retired_error``).  ⚑ S3 did NOT close this: it
+    gave the ``agent`` NOUN's own verbs the boundary read (``agent get <node> caches``
+    answers off the agent file), which is a second route to the same value, not a
+    repoint of this one.
     """
     return _dest(
         canonical, command_scope=command_scope, config_path=config_path,

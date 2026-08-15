@@ -10,7 +10,7 @@ pins that.
 
 Provenance: S1 of the `self` rectification (`plans/2026-08-14-self-rectification-PLAN.md` §3).
 Six independent sites used to spell the file's shape — and `agent_file_route`'s own docstring
-claimed to be the only one (defect D-1). The six are `agent_file_route` (now `_address`),
+claimed to be the only one (defect D-1). The six are `agent_file_route` (now the `_read_address` / `_write_address` pair),
 `load_agent_config` (`load`), `write_agent_config` (`save`), `settings_assemble._BEHAVIOR_TABLE_SHAPES`' row (now `ROOT_SECTIONS`), `settings_assemble._agent_partial` (its shape
 half is now `level_table`), and `agent reset --all`'s raw surgery (now `clear_overrides`).
 
@@ -39,8 +39,13 @@ whether a NODE is routable (`config_dest.check_agent_node` — key classificatio
 
 ## The two carriers
 
-```AgentFileSlot(path: Path, node: str, tail: str)```  — frozen dataclass
+```AgentFileSlot(path: Path, tail: str)```  — frozen dataclass
 WHERE one per-node value lives.
+
+⚑ **It carries no `node` either, since S3.** The node picks the FILE (`slot_for` still takes it) and
+nothing else: once the flatten put every category at the file's top level, no address depends on
+whose file it is — `self` IS that node. A `node` field kept only for an address that no longer reads
+it is a second copy of a fact, waiting to disagree with the path it was derived from.
 
 ⚑⚑ **It carries NO `sections`/`leaf`, and that is the whole point (P3/P4).** The per-node resolvers
 in `config_dest` used to hand callers a `(path, sections, leaf)` triple, so SEVEN `config_interface`
@@ -75,8 +80,8 @@ the root is reached via the constant, the fixtures prove which root ships.)*
 
 ## The file's shape
 
-⚑⚑ **The agent file's top-level table is `self:`, NOT `agent:`.** `_address` is the SoT for the per-agent file
-shape, and `level_table` reads `raw[_ROOT]`. *(The `_agent_partial`
+⚑⚑ **The agent file's top-level table is `self:`, NOT `agent:`.** `_read_address` / `_write_address` are the
+SoT for the per-agent file shape, and `level_table` reads `raw[_ROOT]`. *(The `_agent_partial`
 docstring claimed "rooted at a top-level `agent:` table"; that is `config.read_agent_settings`'s
 shape, over a different file. Dropped, not relocated.)* Inside `self:`:
 
@@ -102,8 +107,8 @@ closed and the refusal became universal.
 ```_FLAT_AGENT_CATEGORIES: tuple[str, ...] = ("bindings", "caches", "seeded", "common", "synced", "masks", "secret_path", "env")```
 EVERY category the file stores FLAT under `self`. **EIGHT TOKENS, NINE CATEGORIES** — `bindings` is
 one token whose `{ro, rw}` table rides WHOLE, exactly as the canonical `agent.<node>.bindings` key
-holds both arms. ORDER IS NOT SIGNIFICANT. Its WRITE-side twin is `_address` (⚑ which still routes
-the `bindings.*` arm NESTED — see below).
+holds both arms. ORDER IS NOT SIGNIFICANT. It is ALSO `_read_address`'s category set, so the shape a
+value is STORED in and the shape the cascade READS are one fact rather than two lists agreeing.
 
 ```_ROOT_TABLES: Final[frozenset[str]] = _MODELED_KEYS | frozenset(_FLAT_AGENT_CATEGORIES)```
 ⚑⚑ **THIS SET *IS* THE REFUSAL RULE.** There is no second, enumerated list of refused names,
@@ -130,6 +135,15 @@ alone. *(Pinned per category, both directions, by
 `TestNothingNestsUnderSelfButTheCategories::test_the_nested_spelling_refuses_when_no_flat_table_exists`:
 the flat-table YAML is asserted for all nine, the verb line only where it is TRUE — `assert (verb in
 message) is (category in ("env", "secret_path"))`.)*
+⚑ **It is ALSO `_write_address`'s routing set, and that is one fact, not two** (S3): these are the only
+categories holding a SCALAR per name, which is exactly why they are the only ones a scalar write can
+address AND the only ones a cure may name the verb for.
+
+```_TABLE_VALUED_KEYS: Final[frozenset[str]] = _ROOT_TABLES - IDENTITY_KEYS```
+Every ROOT key whose VALUE IS A TABLE — DERIVED, so it cannot drift from the shape the file holds:
+everything the root may carry except the two identity fields (`name` is a string, `run_args` a list of
+them). It answers ONE question — *can a SCALAR be written AT this key?* — and the answer is no for all
+of them. It is the D-7 cure's rule and `_write_address`'s backstop, spelled once.
 
 ```_CATEGORY_PLACEHOLDER``` · ```_DEST_KEYED_PLACEHOLDER```
 What a cure renders when the refused table is EMPTY: a sample `(key, value)` for one entry.
@@ -140,30 +154,54 @@ rest rather than a row each.
 
 ## Functions
 
-```_address(tail: str, node: str) -> tuple[tuple[str, ...], str]```
-Map a per-agent-file key TAIL to its `(sections, leaf)` inside the file — the file-shape SoT.
+```_read_address(tail: str) -> tuple[tuple[str, ...], str]```
+Map a per-agent-file key TAIL to the `(sections, leaf)` it is READ from — the file-shape SoT.
 
-`secret_path.<VAR>` → `(root, "secret_path") / <VAR>` · `env.<VAR>` → `(root, "env") / <VAR>` ·
-`bindings.<arm>.<name>` → `(root, node, "bindings") / <arm>…` · anything else → `(root,) / <tail>`.
+⚑⚑ **THE PARTITION RULE, AND IT IS THE WHOLE OF IT:** the FIRST segment is the CATEGORY; `bindings`
+— and only `bindings` — then takes an ARM; EVERYTHING after that is ONE DESTINATION. Two
+`str.partition` calls, never `split(".")`: **a dest is DATA** (a guest-side path, dots and all), so it
+is never cut apart and never re-joined. The primitives underneath are dotted-leaf-safe —
+`write_nested_key` / `read_stored_leaf` treat the leaf as a literal dict key.
 
-🛑 **THE `bindings` ARM IS OUT OF STEP WITH THE READ SIDE, AND THAT IS THE S2↔S3 WINDOW.** S2
-flattened the read: `level_table` reads `bindings` FLAT and REFUSES the `self.<node>` sub-table this
-arm writes, so a value written through it lands where nothing reads it. **A defect with a slot
-(S3), not a shape** — pinned by
-`TestSlotRouting::test_the_bindings_write_arm_lands_where_the_cascade_now_refuses`, which asserts
-BOTH halves (the write lands nested, the read refuses) so the window is witnessed rather than
-implied. Traffic CAN reach it: `agent set` is ungated (D-5) and stores a bindings entry rc=0 — the
-next `load` then refuses, taking `agent show` and every launch with it until `agent reset --all`
-(which reads raw YAML and still rescues, measured). R-9 retired only the `config set` door, not
-this verb; S3's key gate closes it.
+`env.<VAR>` → `(root, "env") / <VAR>` · `secret_path.<VAR>` → `(root, "secret_path") / <VAR>` ·
+`bindings.<arm>.<dest…>` → `(root, "bindings", <arm>) / <dest…>` · `<category>.<dest…>` →
+`(root, <category>) / <dest…>` · anything else → `(root,) / <tail>`.
 
-🛑 **THE `bindings` ARM SPLITS THE DEST ON `.` AND THAT IS A KNOWN DEFECT (D-4), MOVED HERE
-VERBATIM ON PURPOSE.** A dotted destination (`bindings.ro.~/.cache/uv`) is shattered across YAML
-levels: the read lands on a slot no file has and the write lays down an unusable shape. It is the
-FIFTH instance of one root cause (a dest is DATA and is never split). **S3 fixes it red-then-green**
-— the write arm refuses with the retirement message, the read arm takes the dest verbatim. S1 is
-behaviour-preserving, and a silent repair inside a relocation is exactly how a behaviour change
-hides in a move.
+⚑ **THE FALLTHROUGH IS LOAD-BEARING** — a tail whose head is not a category is a FLAT root leaf and
+reads `(root,) / tail`, including a dotted one; a `settings_categories` claim depends on it.
+
+✅ **D-4 IS CLOSED HERE (S3).** The old arm did `segs = tail.split(".")` and shattered
+`bindings.ro.~/.cache/uv` across YAML levels, so the read landed on a slot no file has and a
+hand-authored entry read back "(not set)" — while the sibling BOX scope handled the identical
+destination fine. It was the **FIFTH** instance of one root cause. Pinned by
+`TestTheDestIsData`, per category, with the mutation named in the test.
+
+```_write_address(tail: str) -> tuple[tuple[str, ...], str]```
+Where a SCALAR is WRITTEN — **narrower than the read side BY CONSTRUCTION, and that is the point
+(P3/P4).** The file holds exactly three kinds of scalar: a flat root leaf, an `env.<VAR>` and a
+`secret_path.<VAR>`. Every other category is DEST-KEYED — its entries are destinations INSIDE the
+value — so there is no address to produce and this RAISES rather than inventing one. D-4 shipped
+because the write side could express a per-entry address at all; it now cannot.
+
+⚑ **THE RAISE IS A BACKSTOP, NOT THE USER-FACING REFUSAL.** Every write caller gates first and names
+the key itself (`agent_cmd._agent_key_gate`, `config_interface`'s retired-route preamble), because a
+refusal owes the user a cure this function cannot phrase. Reaching it means a caller skipped its gate.
+
+```table_value_error(tail, *, path, verb) -> str | None```
+Why *tail* takes no scalar `agent set` / `agent reset` — **the D-7 cure.** `transform_settings`,
+`masks` and the dest-keyed tables all hold a MAP, so a scalar written at one is a wrong SHAPE, not a
+wrong value; until this refused, a scalar `transform_settings` crashed every subsequent `load` — i.e.
+every launch, list, info and show.
+
+⚑ **SET AND RESET TAKE IT ALIKE.** A CLI reset would remove the WHOLE table, a different operation
+from the per-entry removal the spelling suggests, and "set cannot reach what reset can" is the
+get/set-asymmetry class this module's siblings exist to prevent. The hand edit is the honest cure for
+both — since `set` can never CREATE one of these tables, every one that exists was hand-authored.
+(`agent reset --all` still drops them wholesale: it is the file-wide verb, not a per-key one.)
+
+⚑ It lives HERE, not in the verb, because the cure QUOTES the file's own spelling — one of the two
+file-surface residues `self` is allowed (ruling 51). `file_spelling(tail)` takes the tail WHOLE: it
+JOINS under the root and never splits, so a dotted arm (`bindings.ro`) renders as itself.
 
 ```file_spelling(*segments: str) -> str```
 The agent file's OWN spelling of *segments*, under the root — `self.env`, `self.claude.bindings`.
@@ -191,8 +229,8 @@ The per-VALUE half of the boundary — every `config_interface` per-node get/set
 it: its two conventions (bools lowercase, a stored `""` reading as `None`) are load-bearing for
 every `get`.
 
-```clear_overrides(path: Path, node: str) -> int```
-Drop every user override from *node*'s file, PRESERVING `name`; return the count.
+```clear_overrides(path: Path) -> int```
+Drop every user override from the file at *path*, PRESERVING `name`; return the count.
 
 This was `agent reset --all`'s hand-rolled read-modify-write on the raw document, in a command
 module — the sixth shape site. The COUNT is part of the contract, not a detail: **each removed ROOT
@@ -202,8 +240,9 @@ key counts once**, which is what makes the printed number agree with the other s
 individually, parity with the old flat `env_file` count) only ever fired for entries found INSIDE
 the `<node>` sub-table — a shape the flatten refuses, so it is unreachable. The fixture that used
 to report 5 reports 4, with the reasoning written into the test rather than left as a number that
-changed. ⚑ **The `node` branch and the `node` PARAMETER are both dead now and retire at S3**, with
-the write side; keeping them here would have made the removal a rider on the read flatten.
+changed. ✅ **The `node` branch and the `node` PARAMETER are GONE at S3**, with the write side —
+keeping them at S2 would have made the removal a rider on the read flatten. Deletion behaviour is
+unchanged; only the count for a legacy nested file (a shape the flatten refuses anyway) could differ.
 
 ```load(path: Path) -> AgentConfig``` · ```save(path: Path, cfg: AgentConfig) -> None```
 The WHOLE-FILE round trip — the `agent` verbs' own reads (`info` / `show` / `get`) and the
@@ -232,7 +271,7 @@ the carrier and write would never put it back.
 only because `start.py` was held by the P4b lane — are DELETED, together with the flat
 `kanibako.agent_config` shim's two re-exports of them; `commands/start.py` imports this module and
 calls `agent_file.load` / `agent_file.save`, and `tests/conftest.py` patches `load` HERE.
-`agent_file_route` needed no bridge and is likewise GONE (its body is `_address`).
+`agent_file_route` needed no bridge and is likewise GONE (its body SPLIT at S3 into `_read_address` and `_write_address`).
 
 ```level_table(raw, *, sub_key, node=None, path=None) -> AgentFileLevel```
 Which RAW table one agent-tier level reads — the SHAPE half of the cascade seam.

@@ -440,12 +440,15 @@ the two cannot drift.
 ⚑⚑ IT IS DELIBERATELY NARROWER THAN THAT SET, AND THE SHAPE CUTOVER DID NOT CHANGE THAT — it
 CONFIRMED it. The older note said widening this parser "belongs with the shape cutover"; the cutover
 (2026-08-08c) landed and the answer turned out to be that there is nothing to widen it TO. This parser
-picks a READ route (:func:`config_dest._node_bind_target` -> `agent_file._address`), that
-file-shape SoT has a nested table for ``bindings.<arm>.<name>`` and NONE for
-``common``/``caches``/``seeded``/``synced``, and — decisively — a per-entry key under those four is
-not a key at ALL now, so a widened parser would invent a read for a spelling the keyspace refuses: it
-would resolve ``agent.claude.common.plugins`` to the DOTTED LEAF ``self."common.plugins"``, a slot
-nothing writes, and answer a silent "(not set)". ⚑ DO NOT WIDEN IT. The four are RECOGNISED and
+picks a READ route (:func:`config_dest._node_bind_target` -> the agent file's address rule), and — decisively —
+a per-entry key under those four is not a key at ALL now, so a widened parser would invent a read for
+a spelling the keyspace refuses. ⚑ **THE REASON MOVED AT S3, THE ANSWER DID NOT.** It used to be a
+STORAGE fact — the file-shape SoT had a nested table for ``bindings.<arm>.<name>`` and none for the
+other four, so widening would have resolved ``agent.claude.common.plugins`` to the dotted leaf
+``self."common.plugins"`` and answered a silent "(not set)". Since S3 the address rule reads EVERY
+category flat with the destination whole, so widening would no longer mis-address them — it would
+ADMIT them. These two arms are the only per-entry spellings whose READ survived R-9, which is exactly
+what :func:`agent_read_key_error` carves out of the ``agent`` noun's §0 read gate. ⚑ DO NOT WIDEN IT. The four are RECOGNISED and
 refused at the agent scope through `AGENT_BIND_KEY_RE` — see :func:`agent_node_bind_retired_error`.
 
 The regex does not match the ``box.agent.bindings.*`` box-mirror form (a ``box`` top-token).
@@ -713,7 +716,7 @@ REFUSE the bare ``agent.`` form outright, so ``command_scope.value`` would hand 
 illegal spelling to replace the first — a cure that cannot be followed. The agent arm names the
 discriminated form with an explicit ``<agent>`` placeholder instead. (The ``agent`` NOUN's own verbs
 never reach here: ``agent set <node> env.FOO=bar`` passes a key TAIL under an already-named node,
-which `agent_file._address` writes to the DECLARED ``agent.<node>.env.FOO``. That arm exists so the
+which the agent file's write address rule puts at the DECLARED ``agent.<node>.env.FOO``. That arm exists so the
 GENERIC engine cannot emit the illegal spelling if an agent-scope caller is ever wired into it.)
 
 ⚑ The docker ``.env`` FILES the bare spelling used to write are RETIRED OUTRIGHT (Jei's 2026-08-02
@@ -967,8 +970,8 @@ is the whole job: RECOGNISE the retired spelling so the write verbs refuse it BY
 project name — spec §0 refuses loudly, never quietly.
 
 ⚑ IT IS A SUPERSET of :func:`_is_agent_node_bind_key`, deliberately. That predicate covers the
-``bindings`` arms alone because it also picks a READ route (`agent_file._address`); this one
-picks none, so it can cover all six. Where both matter the narrow one is checked FIRST — recognition
+``bindings`` arms alone because it also picks a READ route (the agent file's address rule) and is the
+one carve-out in the ``agent`` noun's §0 read gate; this one picks none, so it can cover all six. Where both matter the narrow one is checked FIRST — recognition
 may be broad, resolution may not.
 
 ⚑ It answers False for an UNDISCRIMINATED ``agent.<category>.<name>``: the agent tier is discriminated
@@ -1119,6 +1122,47 @@ exist.
 
 The node is rendered in its USER-FACING ``+`` spelling (:func:`display_agent_ref`) — ``℘`` is a
 keyspace-internal separator and must never reach a message.
+
+```agent_key_reason(node: str, tail: str) -> str | None```
+The §0 reason *tail* is not a declared key of agent *node*, or `None` when it is — **the `agent`
+noun's closed keyspace, spelled ONCE** (S3, defect D-5).
+
+⚑ **ONE CONSTRUCTION, THREE CONSUMERS**: the verb's WRITE gate, its READ gate, and the LAUNCH
+boundary's passthrough refusal (`agent_file.state_level`). A REASON rather than a message, for the
+reason `config_dest.NodeRouteRefusal` gives — the rule is one, but a verb owes a cure and a refused
+launch owes a file to open.
+
+⚑⚑ **`key_validity`, NEVER `is_known_key`, AND THE DIFFERENCE IS MEASURED.**
+`is_known_key("agent.claude.self.model")` is **True** — `_parse_persona_agent_key` splits on the LAST
+segment and reads the node as ``claude.self`` — so a literal `is_known_key` gate would leave ruling
+55's exact hole open while REFUSING ``run_args`` and ``name``, both live and both pinned.
+`is_known_key` answers *"is this key-SHAPED, as opposed to a project name"*; §0 asks *"is this a
+DECLARED key"*, and only `key_validity` answers that. **Do not "simplify" this to the other
+predicate.**
+
+⚑ **The node is supplied AS the valid-agent set** (`valid_agents=(node,)`): it is the on-disk store
+dir, known good, so an agent-DISCOVERY result must never be able to refuse a key on an agent the user
+is demonstrably running. The PLUGIN-declared leaves are unioned in the OTHER direction
+(`settings_prefs.default_valid_agents().leaves`) — without it a legitimate ``agent.goose.provider``
+would be refused, at the verb AND at the launch. Both directions are pinned, with the union's own
+mutation proof.
+
+⚑ **THE IDENTITY RESIDUE**: `name` / `run_args` are FILE-identity fields of `AgentConfig`, not
+keyspace leaves (`agent_file._MODELED_KEYS` already says so). `run_args` happens to be a declared §2d
+leaf too; `name` is not, so the `IDENTITY_KEYS` allowlist is what keeps a shipped, pinned surface
+working — refusing it would be a breaking change no ruling asks for.
+
+```agent_write_key_error(node, tail, *, verb) -> str | None``` ·
+```agent_read_key_error(node, tail) -> str | None```
+The two verb-facing wrappers. WRITE is the reason with the verb's wording. READ is the same, PLUS the
+ONE carve-out: ``agent.<node>.bindings.{ro,rw}.<name>`` is not a declared key — the arm is terminal
+and its entries are destinations inside the value — but `config get` reads it anyway (R-9: the read
+survived the write), and the hand edit that refusal prescribes is only checkable if the read-back
+works. Two verbs over ONE file must not disagree, so the carve-out is taken from the SAME predicate
+`get_config_value` branches on (`_is_agent_node_bind_key`) rather than restated.
+
+⚑ Reading an undeclared key is an error under §0 exactly as writing one is — which is why the read
+gate exists at all: ``agent get claude self.model`` REFUSES instead of answering "(not set)".
 
 *verb* is the op word (``"set"`` / ``"reset"``). Gates itself — `None` for every other key — so every
 verb door applies it uniformly.

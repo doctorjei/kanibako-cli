@@ -3484,11 +3484,13 @@ class TestAgentNodeBindRouting:
         """⚑ ``_AGENT_NODE_BIND_RE`` spells the two ``bindings`` arms LITERALLY (it
         has to, to split the node non-greedily around them) instead of importing an
         alternation, so it must be pinned against the single source. **It is pinned
-        as a PROPER SUBSET, and that is a MEASUREMENT, not laziness:** this parser
-        also picks the READ route — ``agent_file._address`` — which has a
-        nested table for ``bindings.<arm>.<name>`` and NONE for the other four, so a
-        widened parser would resolve ``agent.claude.common.x`` to the dotted leaf
-        ``self."common.x"`` and the read would silently answer "(not set)".
+        as a PROPER SUBSET, and the REASON MOVED AT S3 (the fact did not):** since the
+        agent file's address rule reads every category flat with the destination whole,
+        a widened parser would no longer MIS-ADDRESS the other four — it would ADMIT
+        them. These two arms are the only per-entry spellings whose READ survived R-9,
+        which is exactly what ``config_keys.agent_read_key_error`` carves out of the §0
+        read gate and what ``is_known_key`` claims as key-shaped; widening this parser
+        would hand the other four a read spec §0 says is not a key at any scope.
 
         ⚑⚑ THE ARMS ARE SPELLED OUT HERE ON PURPOSE, AND THAT IS THE FIX. This half
         used to loop over ``_TERMINAL_BIND_CATEGORIES``, which was the two arms when
@@ -3664,8 +3666,8 @@ class TestAgentNodeBindWriteRouteRetired:
         agents = tmp_path / "agents"
         (agents / "claude").mkdir(parents=True)
         node_file = agents / "claude" / "settings.yaml"
-        seeded = {"self": {"claude": {"bindings": {"ro": {
-            "launcher": ["/old", "/box/launcher", "ro"]}}}}}
+        seeded = {"self": {"bindings": {"ro": {
+            "launcher": ["/old", "/box/launcher", "ro"]}}}}
         dump_doc(node_file, seeded)
         msg = reset_config_value(
             "agent.claude.bindings.ro.launcher",
@@ -3830,8 +3832,8 @@ class TestAgentNodeBindGetSurvives:
         agents = self._agents_root(tmp_path)
         node_file = agents / "claude" / "settings.yaml"
         # Authored the ONLY way left: directly in the node's settings file.
-        dump_doc(node_file, {"self": {"claude": {"bindings": {"ro": {
-            "launcher": ["/newsrc", "/box/launcher", "ro"]}}}}})
+        dump_doc(node_file, {"self": {"bindings": {"ro": {
+            "launcher": ["/newsrc", "/box/launcher", "ro"]}}}})
         val = get_config_value(
             "agent.claude.bindings.ro.launcher",
             global_config_path=tmp_path / "cfg.yaml", agents_root=agents,
@@ -3843,8 +3845,8 @@ class TestAgentNodeBindGetSurvives:
         hand-authored tuple the get above reads is still there afterwards."""
         agents = self._agents_root(tmp_path)
         node_file = agents / "claude" / "settings.yaml"
-        seeded = {"self": {"claude": {"bindings": {"ro": {
-            "launcher": ["/old", "/box/launcher", "ro"]}}}}}
+        seeded = {"self": {"bindings": {"ro": {
+            "launcher": ["/old", "/box/launcher", "ro"]}}}}
         dump_doc(node_file, seeded)
         set_msg = set_config_value(
             "agent.claude.bindings.ro.launcher", "/newsrc",
@@ -3889,8 +3891,8 @@ class TestAgentNodeBindGetSurvives:
         # get path (the bindings.ro segment), NOT the persona ``model`` scalar.
         agents = self._agents_root(tmp_path)
         node_file = agents / "claude" / "settings.yaml"
-        dump_doc(node_file, {"self": {"claude": {"bindings": {"ro": {
-            "model": ["/hostmodel", "/box/model", "ro"]}}}}})
+        dump_doc(node_file, {"self": {"bindings": {"ro": {
+            "model": ["/hostmodel", "/box/model", "ro"]}}}})
         val = get_config_value(
             "agent.claude.bindings.ro.model",
             global_config_path=tmp_path / "cfg.yaml", agents_root=agents,

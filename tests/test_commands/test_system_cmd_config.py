@@ -536,8 +536,10 @@ class TestSystemAgentNodeBindWriteRouteRetired:
         std = _std(config_file)
         node_file = self._file(std)
         node_file.parent.mkdir(parents=True, exist_ok=True)
-        seeded = {"self": {"claude": {"bindings": {"ro": {
-            "launcher": ["/old/src", "/box/launcher", "ro"]}}}}}
+        # ⚑ FLAT since S2/S3: ``self`` IS ``agent.claude``, so the bindings table sits
+        # DIRECTLY under the root; the nested ``self: claude:`` shape is now refused.
+        seeded = {"self": {"bindings": {"ro": {
+            "launcher": ["/old/src", "/box/launcher", "ro"]}}}}
         dump_doc(node_file, seeded)
         rc = _reset(self.KEY)
         assert rc == 1
@@ -569,8 +571,8 @@ class TestSystemAgentNodeBindWriteRouteRetired:
         std = _std(config_file)
         node_file = self._file(std)
         node_file.parent.mkdir(parents=True, exist_ok=True)
-        dump_doc(node_file, {"self": {"claude": {"bindings": {"ro": {
-            "launcher": ["/newsrc", "/box/launcher", "ro"]}}}}})
+        dump_doc(node_file, {"self": {"bindings": {"ro": {
+            "launcher": ["/newsrc", "/box/launcher", "ro"]}}}})
         capsys.readouterr()
         rc = _get(self.KEY)
         assert rc == 0

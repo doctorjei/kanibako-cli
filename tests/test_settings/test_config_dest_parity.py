@@ -221,6 +221,11 @@ def bench(tmp_path: Path) -> Bench:
 # gate passes and the repoint is exercised (rather than refused).
 _TUPLE = ["/old/src", "/home/agent/dest", "ro"]
 
+# A DESTINATION carrying dots of its own — the shape every split-on-dot instance died on.
+# Hoisted to module scope so the AGENT-scope case (§6) and the file-scope cases (§4) are
+# provably the SAME destination rather than two literals that agree today.
+_DOTTED_DEST = "~/.cache/uv"
+
 
 # ---------------------------------------------------------------------------
 # 1. Routed scalar keys — the ``_KEY_ROUTES`` family
@@ -410,7 +415,7 @@ class TestRetiredScopeBindDest:
 
 
 class TestADottedDestinationSlotsWHOLE:
-    """⚑⚑ A DESTINATION IS DATA — the fourth and last site of one root cause.
+    """⚑⚑ A DESTINATION IS DATA — the fourth site of one root cause, and NOT the last.
 
     ``_key_slot`` split the canonical key on ``.``, so a destination carrying dots
     of its own shattered across nested levels: ``box.caches.~/.cache/uv`` asked for
@@ -422,10 +427,16 @@ class TestADottedDestinationSlotsWHOLE:
     ⚑ EVERY PRE-EXISTING CASE IN THIS FILE USES A DOT-FREE DESTINATION — ``pip``,
     ``vault``, ``/box/c`` — which is exactly how all four instances stayed green.
     Destinations went guest-side, so the dotted case is now the common one.
+
+    ⚑⚑ A FIFTH INSTANCE SHIPPED ANYWAY, AND THIS FILE IS WHY IT COULD: the per-agent FILE's
+    own address rule split the same way (``agent_file``'s bindings arm, repaired at S3), and
+    the gap that let it through was that no case here read an AGENT-scope dotted destination —
+    the agent tier resolves through the node-file rule, not through ``_key_slot``. The added
+    case below closes that, in this file's own terms (through ``bench``, no private import).
     """
 
     _CATEGORIES = ("bindings.ro", "bindings.rw", "caches", "seeded", "common", "synced")
-    _DOTTED = "~/.cache/uv"
+    _DOTTED = _DOTTED_DEST
 
     @pytest.mark.parametrize("scope", ["system", "workset", "box"])
     @pytest.mark.parametrize("category", _CATEGORIES)
@@ -860,8 +871,11 @@ class TestPerNodeAgentDest:
         (This test asserted the repoint WROTE, until the route was retired.)"""
         node_file = bench.agents / "claude" / "settings.yaml"
         node_file.parent.mkdir(parents=True, exist_ok=True)
+        # ⚑ FLAT since S2/S3 — ``self`` IS ``agent.claude``, so the bindings table sits
+        # DIRECTLY under the root and the nested ``self: claude:`` shape this used to
+        # seed is now REFUSED by name.
         bench.seed(
-            node_file, ("self", "claude", "bindings", "ro"), "launcher",
+            node_file, ("self", "bindings", "ro"), "launcher",
             list(_TUPLE),
         )
         # The READ finds the hand-authored tuple in the node file.
@@ -881,6 +895,29 @@ class TestPerNodeAgentDest:
         assert reset_msg.startswith("Error:") and "RETIRED" in reset_msg, reset_msg
         # ⚑ The bench's whole point: NO file moved. RED if a refusal still wrote.
         assert bench.changed(before) == {}, bench.changed(before)
+
+    def test_an_AGENT_scope_dotted_destination_reads_back(self, bench):
+        """⚑⚑ THE CASE THIS FILE WAS MISSING, and its absence is how a FIFTH
+        dest-split instance shipped (D-4).
+
+        Every dotted-destination case above goes through ``_key_slot``; the AGENT tier does
+        not — it resolves through the node-file rule to ``agents/<node>/settings.yaml``, whose
+        own address rule had its own split. So the oracle covered four scopes and left the
+        fifth route dark.
+
+        MUTATION: restore the split in ``agent_file``'s address rule (``segs =
+        tail.split(".")``) and this dies — the read lands on a section ``~/`` and a leaf
+        ``cache/uv``, a slot no file has.
+        """
+        node_file = bench.agents / "claude" / "settings.yaml"
+        node_file.parent.mkdir(parents=True, exist_ok=True)
+        bench.seed(
+            node_file, ("self", "bindings", "ro"), _DOTTED_DEST, list(_TUPLE),
+        )
+        got = bench.get(
+            ConfigLevel.system, f"agent.claude.bindings.ro.{_DOTTED_DEST}",
+        ) or ""
+        assert _TUPLE[0] in got, got
 
     @pytest.mark.parametrize("key", [
         "agent.claude.model",

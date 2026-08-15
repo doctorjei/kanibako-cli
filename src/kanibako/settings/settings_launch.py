@@ -1822,8 +1822,13 @@ def _agent_state_partial(level: AgentFileLevel | None) -> KeyStore | None:
     NOT the discriminated ``agent.<active>.*`` / ``agent.default.*`` sub-tables that
     ``assemble_levels``' ``_agent_partial`` reads (it treats a flat ``[agent]`` table
     as UNSET). So passing the file raw as ``agent_path`` DROPS its behavior. This
-    wraps it into the DISCRIMINATED slot (the §2d / §0 form) so it merges by name;
-    any undeclared agent-scope scalar keys ride through verbatim (forward-compat).
+    wraps it into the DISCRIMINATED slot (the §2d / §0 form) so it merges by name.
+
+    ⚑ IT NEEDS NO GATE OF ITS OWN, AND THAT IS DELIBERATE (P4).  The undeclared keys it used to
+    ride through verbatim — the "forward-compat" passthrough spec §0 SPECIFICALLY EXCLUDES — are
+    refused at the BOUNDARY that builds the level (``agent_file.state_level``), so nothing
+    undeclared can reach this function to be gated.  A second check here would be a rule spelled
+    twice, and the one downstream would be the one that rots.
 
     ⚑⚑ THE DISCRIMINATOR ARRIVES WITH THE DATA (C-2, rulings 51/52).  It used to be
     a SECOND parameter taken from the caller's ``agent_name`` while the state dict

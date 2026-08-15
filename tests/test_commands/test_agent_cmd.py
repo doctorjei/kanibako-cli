@@ -194,10 +194,15 @@ class TestRunConfig:
         assert rc == 0
         assert "vim" in capsys.readouterr().out
 
-    def test_config_get_missing_key(self, agent_env, capsys):
+    def test_config_get_unset_declared_key(self, agent_env, capsys):
+        # A DECLARED key the file does not carry is "(not set)" — the honest read.
+        # ⚑ RENAMED from ``test_config_get_missing_key`` and re-keyed with D-5's gate:
+        # the old key was ``nonexistent``, which is not a key at all and now REFUSES
+        # (see ``TestAgentVerbKeyspaceGate``). "Missing" and "not a key" are two
+        # different answers and the verb must not collapse them.
         from kanibako.commands.agent_cmd import run_get
 
-        args = argparse.Namespace(agent_id="claude", key="nonexistent")
+        args = argparse.Namespace(agent_id="claude", key="endpoint")
         rc = run_get(args)
         assert rc == 0
         assert "not set" in capsys.readouterr().err
@@ -354,22 +359,25 @@ class TestRunConfig:
         cfg = load_agent_config(agent_config_path(agent_env, "claude"))
         assert "TOKEN" not in cfg.secret_path
 
-    def test_config_shell_is_no_longer_an_identity_key(self, agent_env, capsys):
-        # The template-variant ``shell`` axis was removed; ``shell`` is no longer
-        # an AgentConfig identity field, so a ``shell=`` set now lands in generic
-        # state (not as a dedicated identity knob).
+    def test_config_shell_is_no_longer_a_key_at_all(self, agent_env, capsys):
+        # The template-variant ``shell`` axis was removed, so ``shell`` is neither an
+        # AgentConfig identity field nor a declared §2d leaf.
+        # ⚑ INVERTED BY D-5, DELIBERATELY. It used to land in generic state rc=0 — which
+        # was the defect, not the contract: this verb had NO keyspace validation, so a
+        # retired name (and anything else) was stored and read back as though it meant
+        # something. Under §0 an undeclared key is not a key; the refusal NAMES it.
         from kanibako.commands.agent_cmd import run_set
         from kanibako.settings.agent_config import agent_config_path
-        from kanibako.settings.agent_file import load as load_agent_config
+        from kanibako.settings.config_io import load_doc
 
         args = argparse.Namespace(agent_id="claude", key_value="shell=bash")
         rc = run_set(args)
-        assert rc == 0
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert "'shell'" in err and "keyspace is CLOSED" in err
 
         path = agent_config_path(agent_env, "claude")
-        cfg = load_agent_config(path)
-        assert not hasattr(cfg, "shell")
-        assert cfg.state["shell"] == "bash"
+        assert "shell" not in load_doc(path)["self"]
 
     def test_config_reset_key(self, agent_env, capsys):
         from kanibako.commands.agent_cmd import run_reset
@@ -411,11 +419,14 @@ class TestRunConfig:
         cfg = load_agent_config(path)
         assert "EDITOR" not in cfg.env
 
-    def test_config_reset_missing_key(self, agent_env, capsys):
+    def test_config_reset_unset_declared_key(self, agent_env, capsys):
+        # ⚑ RE-KEYED with D-5's gate, same reason as the get twin: ``nonexistent`` is not
+        # a key and now refuses, so this pins the OTHER answer — a real key with no
+        # override stored.
         from kanibako.commands.agent_cmd import run_reset
 
         args = argparse.Namespace(
-            agent_id="claude", key="nonexistent", all_keys=False, force=False,
+            agent_id="claude", key="endpoint", all_keys=False, force=False,
         )
         rc = run_reset(args)
         assert rc == 0
@@ -1170,3 +1181,262 @@ class TestAgentSetNull:
         ))
         assert rc == 1
         assert "requires a key" in capsys.readouterr().err
+
+
+# ---------------------------------------------------------------------------
+# The ``agent`` noun's own closed-keyspace gate (D-5 · D-6 · D-7 · D-4's write half)
+# ---------------------------------------------------------------------------
+
+
+def _stored_doc(agent_env):
+    from kanibako.settings.config_io import load_doc
+
+    return load_doc(agent_settings_path(agents_dir(agent_env), "claude"))
+
+
+class TestAgentVerbKeyspaceGate:
+    """D-5: ``agent set`` had NO keyspace validation and stored whatever it was handed.
+
+    Every other noun routes its writes through ``set_config_value``, which owns the §0 check;
+    this verb has its own writer and had none, so it was the ONE place a user could type
+    ``self.`` and have it land on disk (ruling 55).  The gate is ``key_validity`` on the
+    canonical key built from the KNOWN node, NEVER ``is_known_key``: measured,
+    ``is_known_key("agent.claude.self.model")`` is True (the persona parser reads the node as
+    ``claude.self``), so a literal ``is_known_key`` gate would leave exactly this hole open while
+    refusing ``run_args`` and ``name``.
+    """
+
+    _REFUSED = ("self.model", "self.claude.env.FOO", "anything.at.all", "shell")
+
+    @pytest.mark.parametrize("key", _REFUSED)
+    def test_set_refuses_and_writes_nothing(self, key, agent_env, capsys):
+        from kanibako.commands.agent_cmd import run_set
+
+        before = _stored_doc(agent_env)
+        rc = run_set(argparse.Namespace(agent_id="claude", key_value=f"{key}=x"))
+        assert rc == 1
+        assert "keyspace is CLOSED" in capsys.readouterr().err
+        assert _stored_doc(agent_env) == before
+
+    def test_the_self_alias_is_refused_on_the_command_line(self, agent_env, capsys):
+        """RULING 55, at the one surface that could still accept it.
+
+        ``self`` is a FILE-SURFACE alias substituted at the parse boundary; nothing past that
+        boundary recognises it, and the way it stays out of the code is that no parser admits
+        it.  Every other noun already refused ``self.`` as unknown — this verb did not.
+        """
+        from kanibako.commands.agent_cmd import run_set
+
+        before = _stored_doc(agent_env)
+        rc = run_set(argparse.Namespace(
+            agent_id="claude", key_value="self.model=sonnet",
+        ))
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert "self.model" in err
+        # Nothing landed — in particular no ``self.model`` leaf under the root.
+        assert _stored_doc(agent_env) == before
+        assert "self.model" not in _stored_doc(agent_env)["self"]
+
+    @pytest.mark.parametrize("verb", ("get", "reset"))
+    def test_read_and_reset_take_the_same_vocabulary(self, verb, agent_env, capsys):
+        """SYMMETRY (spec §0): reading or resetting an undeclared key is equally an error.
+
+        "(not set)" and "No override for …" are both LIES about a spelling that is not a key —
+        the same reason ``reset_config_value`` refuses the retired bind routes symmetrically.
+        """
+        from kanibako.commands.agent_cmd import run_get, run_reset
+
+        if verb == "get":
+            rc = run_get(argparse.Namespace(agent_id="claude", key="self.model"))
+        else:
+            rc = run_reset(argparse.Namespace(
+                agent_id="claude", key="self.model", all_keys=False, force=False,
+            ))
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert "keyspace is CLOSED" in err
+
+    @pytest.mark.parametrize(
+        "kv", ("model=opus", "env.FOO=bar", "secret_path.TOK=/p", "name=Nav",
+               "run_args=--a --b"),
+    )
+    def test_the_live_keys_still_write(self, kv, agent_env, capsys):
+        """THE GREEN HALF. ``name`` is NOT a declared §2d leaf — it is a FILE-identity field
+        of ``AgentConfig`` — so it rides an explicit ``IDENTITY_KEYS`` allowlist. Drop that
+        allowlist and this case dies; that is the mutation proof for the residue."""
+        from kanibako.commands.agent_cmd import run_set
+
+        assert run_set(
+            argparse.Namespace(agent_id="claude", key_value=kv)
+        ) == 0
+
+    def test_a_plugin_declared_leaf_is_not_refused(self, agent_env, capsys):
+        """The PLUGIN union (§0 *"Agent specifics are PLUGIN-declared"*).
+
+        ``provider`` is declared by the goose target through ``setting_descriptors()``, not by
+        core's §2d table. MUTATION PROOF: drop ``agent_leaves=`` from the gate's
+        ``key_validity`` call and this reddens while every core key stays green.
+        """
+        from kanibako.commands.agent_cmd import run_set
+        from kanibako.settings.settings_prefs import default_valid_agents
+
+        if "provider" not in (getattr(default_valid_agents(), "leaves", None) or ()):
+            pytest.skip("no installed plugin declares 'provider' in this environment")
+        rc = run_set(argparse.Namespace(agent_id="claude", key_value="provider=ollama"))
+        assert rc == 0
+
+
+class TestRetiredBindRoutesRefuseByName:
+    """D-4's write half: the bind-shaped categories are refused BY NAME, never degraded.
+
+    A retired spelling gets its own message and cure (§0) rather than "not a declared key", and
+    the refusal comes from the SAME derived recogniser the other verbs use — so it covers all
+    five bind-shaped categories rather than being a bindings-only rule someone widens later.
+    """
+
+    _RETIRED = (
+        "bindings.ro./box/share", "bindings.rw./box/w", "caches.~/.cache/uv",
+        "seeded.~", "common.~/.claude/plugins", "synced.~/.config/x",
+    )
+
+    @pytest.mark.parametrize("key", _RETIRED)
+    def test_set_refuses_and_the_file_is_unchanged(self, key, agent_env, capsys):
+        from kanibako.commands.agent_cmd import run_set
+
+        before = _stored_doc(agent_env)
+        rc = run_set(argparse.Namespace(agent_id="claude", key_value=f"{key}=/h/x"))
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert "settings.yaml" in err          # the cure names the node's own file
+        assert _stored_doc(agent_env) == before
+
+    @pytest.mark.parametrize("key", _RETIRED)
+    def test_reset_refuses_symmetrically(self, key, agent_env, capsys):
+        from kanibako.commands.agent_cmd import run_reset
+
+        rc = run_reset(argparse.Namespace(
+            agent_id="claude", key=key, all_keys=False, force=False,
+        ))
+        assert rc == 1
+        assert "No override" not in capsys.readouterr().out
+
+    @pytest.mark.parametrize(
+        "key", ("bindings.ro", "caches", "masks", "transform_settings"),
+    )
+    def test_a_whole_table_takes_no_scalar(self, key, agent_env, capsys):
+        """D-7: the TERMINAL keys are declared and pass the keyspace gate — what refuses
+        them is the VALUE SHAPE. Their entries are DATA inside the table."""
+        from kanibako.commands.agent_cmd import run_set
+
+        before = _stored_doc(agent_env)
+        rc = run_set(argparse.Namespace(agent_id="claude", key_value=f"{key}=x"))
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert "holds a TABLE" in err
+        assert _stored_doc(agent_env) == before
+
+
+class TestAgentGetReadsWhatTheFileCarries:
+    """D-6: ``agent get`` printed "(not set)" over values the file actually holds.
+
+    The requirement is agreement: ``agent get <node> <tail>`` and ``config get
+    agent.<node>.<tail>`` read ONE file through ONE boundary slot, so they must render ONE
+    string — the category tables have no ``AgentConfig`` field, which is why the record-only
+    read could not answer for them at all.
+    """
+
+    _DOTTED = "~/.cache/uv"
+
+    def _hand_author(self, agent_env):
+        from kanibako.settings.config_io import dump_doc
+
+        path = agent_settings_path(agents_dir(agent_env), "claude")
+        dump_doc(path, {"self": {
+            "name": "claude",
+            "bindings": {"ro": {
+                "/box/share": ["/host/share"],
+                self._DOTTED: ["/store/uv"],
+            }},
+            "caches": {self._DOTTED: ["/store/uv"]},
+            "masks": {"~/.ssh": True},
+        }})
+        return path
+
+    def test_agent_get_reads_the_hand_authored_bind_entry(self, agent_env, capsys):
+        """The one per-entry spelling whose READ survived R-9 — and the refusal that
+        prescribes hand-editing it promises the read-back works, so it must."""
+        from kanibako.commands.agent_cmd import run_get
+
+        self._hand_author(agent_env)
+        rc = run_get(argparse.Namespace(
+            agent_id="claude", key="bindings.ro./box/share",
+        ))
+        assert rc == 0
+        assert "/host/share" in capsys.readouterr().out
+
+    @pytest.mark.parametrize("tail", ("bindings.ro", "caches", "masks"))
+    def test_agent_get_reads_the_whole_terminal_table(self, tail, agent_env, capsys):
+        """The TERMINAL category key is what §2a declares, and it reads back the whole
+        dest-keyed map — which is what makes every retired-route cure checkable."""
+        from kanibako.commands.agent_cmd import run_get
+
+        self._hand_author(agent_env)
+        rc = run_get(argparse.Namespace(agent_id="claude", key=tail))
+        assert rc == 0
+        assert capsys.readouterr().out.strip() not in ("", "(not set)")
+
+    @pytest.mark.parametrize("tail", ("caches.~/.cache/uv", "masks.~/.ssh"))
+    def test_a_per_entry_spelling_refuses_and_names_the_terminal_key(
+        self, tail, agent_env, capsys,
+    ):
+        """⚑ NOT A GAP IN THE READ — §0. Outside the ``bindings`` arms a per-entry
+        spelling is not a key at ANY scope (2026-08-08c), so the honest answer is the
+        refusal naming the terminal key, never "(not set)" over a value that is there."""
+        from kanibako.commands.agent_cmd import run_get
+
+        self._hand_author(agent_env)
+        rc = run_get(argparse.Namespace(agent_id="claude", key=tail))
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert "box destinations" in err
+        assert tail.partition(".")[0] in err
+
+    def test_the_two_verbs_render_one_string(self, agent_env, capsys):
+        """The AGREEMENT, pinned by comparison rather than by two expected literals.
+
+        ⚑ THE DESTINATION IS DOTTED ON PURPOSE. Both verbs now resolve through ONE address
+        rule, so a mutation to that rule moves them TOGETHER and an equality alone would stay
+        green — which is the very shape of a test that passes while pinning nothing. A dotted
+        dest is what the split MUTATION actually breaks: restore ``tail.split(".")`` and both
+        sides go empty/``None``, which is not equality, and this dies.
+        """
+        from kanibako.commands.agent_cmd import run_get
+        from kanibako.settings.agent_file import read_leaf, slot_for
+        from kanibako.settings.config_interface import get_config_value
+
+        self._hand_author(agent_env)
+        tail = f"bindings.ro.{self._DOTTED}"
+        run_get(argparse.Namespace(agent_id="claude", key=tail))
+        via_agent = capsys.readouterr().out.strip()
+        via_config = get_config_value(
+            f"agent.claude.{tail}",
+            global_config_path=agent_env / "config.yaml",
+            agents_root=agents_dir(agent_env),
+        )
+        assert via_agent == via_config
+        assert via_agent == read_leaf(
+            slot_for(agents_dir(agent_env), "claude", tail),
+        )
+
+    def test_agent_info_does_not_raise_on_a_malformed_table(self, agent_env, capsys):
+        """D-7's repair-reachability half: a scalar where a table belongs used to raise out
+        of ``agent_file.load``, so the very verbs that SHOW a user their broken file died."""
+        from kanibako.commands.agent_cmd import run_info
+        from kanibako.settings.config_io import dump_doc
+
+        dump_doc(
+            agent_settings_path(agents_dir(agent_env), "claude"),
+            {"self": {"name": "claude", "transform_settings": "oops"}},
+        )
+        assert run_info(argparse.Namespace(agent_id="claude")) == 0

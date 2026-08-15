@@ -2120,6 +2120,46 @@ The refusal prints the fix for the table it found, so you do not have to work it
 `kanibako box show --effective` resolves the same settings a launch does, so you can check a file —
 and see the refusal, if any — without starting anything.
 
+### 2.38 The `agent` verbs joined the closed keyspace: `set`, `get` and `reset` refuse what is not a key
+
+**Read this if a script drives `kanibako agent set`/`get`/`reset`, or if you have ever stored a
+custom key in an agent's file through the CLI.**
+
+**What changed.** `agent set` used to accept nearly anything — `agent set claude shell=zsh`,
+`self.model=opus`, `anything.at.all=x` all returned 0 and stored the text. None of it was a key:
+most of it nothing read, some rode into the box's launch snapshot delivered-but-unread, and two
+accepted spellings actively broke the file — a `bindings.*` write stored a shape the next launch
+refuses, and a scalar `transform_settings` crashed every later `agent` command. The verbs now
+answer with the same vocabulary the settings engine uses everywhere else:
+
+- **`agent set <agent> <key>=<value>` refuses an undeclared `<key>` by name**, rc 1, file
+  unchanged. The live keys still write: the state keys (`model`, `access`, `endpoint`, …),
+  `name`, `run_args`, `env.<VAR>`, `secret_path.<VAR>`, and every plugin-declared key
+  (`agent set goose provider=…`).
+- **The bind-shaped categories (`bindings`, `caches`, `seeded`, `common`, `synced`) refuse with
+  the retirement message.** Those tables are hand-edited in the file; the message shows the shape
+  to write.
+- **A table-valued key given a scalar (`transform_settings=oops`) refuses naming the expected
+  shape.** Previously it stored, and every later `agent` command — and every launch — crashed on
+  the file.
+- **`agent get` and `agent reset` speak the same vocabulary as `set`.** Reading an undeclared key
+  is an error too, not "(not set)". One deliberate read carve-out: `agent get <agent>
+  bindings.ro.<dest>` still answers, because `config get` serves that read and two verbs must not
+  disagree about one file.
+- **`agent reset <agent> <table>`** (a whole category, or `transform_settings`) **refuses** —
+  `set` cannot create those, so any such table is hand-authored and the hand-edit is the honest
+  cure. `agent reset --all <agent>` still clears everything and remains the recovery for any file
+  the gates refuse.
+- **The launch snapshot's "forward-compat" passthrough is closed.** An undeclared scalar already
+  sitting in an agent file used to ride into the box unread; it now refuses the LAUNCH by name.
+  `agent list` and `agent info` still display such a file, so you can see what to fix without
+  starting anything.
+
+Also fixed in the same pass: **a dotted destination reads back whole** — `agent get claude
+"bindings.ro.~/.cache/uv"` prints the same entry `config get` prints, where it used to answer
+"(not set)"; and the write route that fractured such a dest across YAML levels is gone (it
+refuses with the retirement message instead).
+
 ---
 
 ## 3. For plugin authors
