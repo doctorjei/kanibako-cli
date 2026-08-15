@@ -12,6 +12,7 @@ import pytest
 from kanibako.settings.agent_config import AgentConfig
 from kanibako.settings.agent_file import (
     AgentFileLevel,
+    _FLAT_AGENT_CATEGORIES,
     _MODELED_KEYS,
     clear_overrides,
     file_spelling,
@@ -259,46 +260,64 @@ class TestRoundTrip:
         assert loaded.run_args == ["--foo", "--bar", "baz"]
 
 
-class TestNodeTablesCarryThrough:
-    """The discriminated per-node sub-table (node binds) must survive the load→write
-    round trip OPAQUELY.  AgentConfig does not model it (it rides ``_agent_partial``
-    into the launch cascade), but before the ``node_tables`` carry, a read-modify-write
-    persist silently DROPPED a user's node binds."""
+class TestCategoryTablesCarryThrough:
+    """The CATEGORY tables the record does not model (bindings, caches, seeded, common,
+    synced, masks) must survive the load→write round trip OPAQUELY.  AgentConfig does not
+    model them (they ride ``_agent_partial`` into the launch cascade), but before the
+    ``category_tables`` carry a read-modify-write persist silently DROPPED a user's binds.
 
-    _NODE_YAML = (
+    ⚑ RENAMED FROM ``node_tables`` WITH THE S2 FLATTEN, and the name is the fact: there is no
+    per-node sub-table any more (``self`` IS ``agent.<node>``), so what the carrier holds is
+    exactly the flat categories the record has no field for.
+    """
+
+    _FLAT_YAML = (
         "self:\n"
         "  name: Nav\n"
         "  model: gemma4\n"
-        "  \"nav℘codex\":\n"
-        "    bindings:\n"
-        "      ro:\n"
-        "        share: /host/share:/box/share\n"
+        "  bindings:\n"
+        "    ro:\n"
+        "      /box/share: [/host/share]\n"
     )
 
-    def test_load_captures_node_sub_table(self, tmp_path):
+    def test_load_captures_the_unmodelled_categories(self, tmp_path):
         path = tmp_path / "settings.yaml"
-        path.write_text(self._NODE_YAML)
+        path.write_text(self._FLAT_YAML)
         cfg = load(path)
-        assert cfg.node_tables == {
-            "nav℘codex": {"bindings": {"ro": {"share": "/host/share:/box/share"}}}
+        assert cfg.category_tables == {
+            "bindings": {"ro": {"/box/share": ["/host/share"]}}
         }
         # And it is NOT mistaken for flat state (dict-valued entries excluded).
-        assert "nav℘codex" not in cfg.state
+        assert "bindings" not in cfg.state
 
-    def test_round_trip_preserves_node_sub_table(self, tmp_path):
+    def test_round_trip_preserves_the_category_tables(self, tmp_path):
         from kanibako.settings.config_io import load_doc
 
         path = tmp_path / "settings.yaml"
-        path.write_text(self._NODE_YAML)
+        path.write_text(self._FLAT_YAML)
         cfg = load(path)
         cfg.state["endpoint"] = "https://e.example"  # a read-modify-write
         save(path, cfg)
 
         data = load_doc(path)
-        assert data["self"]["nav℘codex"]["bindings"]["ro"]["share"] == (
-            "/host/share:/box/share"
-        )
+        assert data["self"]["bindings"]["ro"] == {"/box/share": ["/host/share"]}
         assert data["self"]["endpoint"] == "https://e.example"
+
+    def test_every_unmodelled_category_rides_the_carrier(self, tmp_path):
+        # The carrier is derived from the flat-category tuple MINUS what the record
+        # models, so widening one widens the other — no second list to keep in step.
+        path = tmp_path / "settings.yaml"
+        path.write_text(
+            "self:\n"
+            "  caches: {~/.cache/uv: [/store/uv]}\n"
+            "  seeded: {~: [/store/template]}\n"
+            "  common: {~/.claude/plugins: [/store/plugins]}\n"
+            "  synced: {~/.config/x: [/store/x]}\n"
+            "  masks: {~/.ssh: true}\n"
+        )
+        assert set(load(path).category_tables) == {
+            "caches", "seeded", "common", "synced", "masks",
+        }
 
     def test_env_secret_transform_not_double_captured(self, tmp_path):
         path = tmp_path / "settings.yaml"
@@ -312,18 +331,19 @@ class TestNodeTablesCarryThrough:
             "    theme: dark\n"
         )
         cfg = load(path)
-        assert cfg.node_tables == {}
+        assert cfg.category_tables == {}
 
-    def test_empty_node_table_not_materialized(self, tmp_path):
+    def test_empty_category_table_not_materialized(self, tmp_path):
         from kanibako.settings.config_io import load_doc
 
         path = tmp_path / "settings.yaml"
-        save(path, AgentConfig(node_tables={"nav℘codex": {}}))
-        assert "nav℘codex" not in load_doc(path)["self"]
+        save(path, AgentConfig(category_tables={"caches": {}}))
+        assert "caches" not in load_doc(path)["self"]
 
     def test_schema_owned_dict_keys_never_captured(self, tmp_path):
-        # Malformed dict-valued identity keys must not ride node_tables (they
-        # would clobber the emitted string ``name`` on the next write).
+        # Malformed dict-valued identity keys must not ride category_tables (they
+        # would clobber the emitted string ``name`` on the next write) — and they are
+        # NOT refused as nested sub-tables either: a mistyped scalar is not a nesting.
         path = tmp_path / "settings.yaml"
         path.write_text(
             "self:\n"
@@ -333,21 +353,24 @@ class TestNodeTablesCarryThrough:
             "    weird: 2\n"
         )
         cfg = load(path)
-        assert cfg.node_tables == {}
+        assert cfg.category_tables == {}
 
     def test_write_guard_never_clobbers_modeled_tables(self, tmp_path):
-        # A hand-built config cannot smuggle a "node table" named after a
-        # modelled key over the real category (guarded at BOTH ends).
+        # A hand-built config cannot smuggle a carrier entry named after a modelled
+        # key over the real category: ONE set guards both ends, and ``env`` is not in
+        # it. Nor can the carrier emit a table ``load`` would refuse.
         from kanibako.settings.config_io import load_doc
 
         path = tmp_path / "settings.yaml"
         save(path, AgentConfig(
             env={"A": "b"},
-            node_tables={"env": {"EVIL": "x"}, "name": {"evil": "y"}},
+            category_tables={"env": {"EVIL": "x"}, "nav℘codex": {"evil": "y"}},
         ))
         data = load_doc(path)
         assert data["self"]["env"] == {"A": "b"}
-        assert data["self"]["name"] == ""
+        assert "nav℘codex" not in data["self"]
+        # And what was written loads back without a refusal.
+        assert load(path).env == {"A": "b"}
 
     def test_transform_is_not_a_modelled_key(self):
         # ``transform`` (the tweakcc state knob) is NOT ``transform_settings``: it
@@ -381,15 +404,23 @@ class TestSlotRouting:
         level = level_table(load_doc(slot.path), sub_key="claude", node="claude")
         assert level.table["env"] == {"NAV_X": "from-the-file"}
 
-    def test_bindings_land_in_the_discriminated_sub_table(self, tmp_path):
-        # ⚑ Bindings are the ONE category still nested (S2 flattens it): the slot
-        # writes the node sub-table, which is where ``level_table`` reads it.
+    def test_the_bindings_write_arm_lands_where_the_cascade_now_refuses(self, tmp_path):
+        # ⚑⚑ THE S2↔S3 WINDOW, PINNED RATHER THAN LEFT IMPLICIT (rulings 50-52). S2
+        # flattened the READ side, so ``level_table`` reads ``self: bindings:`` and REFUSES
+        # a ``self.<node>:`` sub-table by name. ``_address`` still WRITES that sub-table, so
+        # this arm now lays down the one shape the launch rejects — a defect with a slot
+        # (S3), not a shape. This test goes green-with-a-different-body when S3 lands; it
+        # must never be deleted to make the window quiet.
         from kanibako.settings.config_io import load_doc
 
         slot = slot_for(tmp_path, "claude", "bindings.ro.share")
         write_leaf(slot, "/host:/box")
-        level = level_table(load_doc(slot.path), sub_key="claude", node="claude")
-        assert level.table["bindings"]["ro"] == {"share": "/host:/box"}
+        assert load_doc(slot.path)["self"]["claude"]["bindings"]["ro"] == {
+            "share": "/host:/box"
+        }
+        with pytest.raises(SettingsError) as exc:
+            level_table(load_doc(slot.path), sub_key="claude", node="claude")
+        assert "self.claude.bindings" in str(exc.value)
 
     def test_read_does_not_re_render(self, tmp_path):
         # ⚑ The two ``read_stored_leaf`` conventions are load-bearing for every
@@ -413,16 +444,19 @@ class TestClearOverrides:
             "  name: Nav\n"
             "  model: opus\n"
             "  access: full\n"
-            "  \"nav℘codex\":\n"
-            "    secret_path:\n"
-            "      TOK_A: /a\n"
-            "      TOK_B: /b\n"
-            "    bindings:\n"
-            "      ro:\n"
-            "        share: /h:/b\n"
+            "  secret_path:\n"
+            "    TOK_A: /a\n"
+            "    TOK_B: /b\n"
+            "  bindings:\n"
+            "    ro:\n"
+            "      /box/share: [/h/share]\n"
         )
-        # model + access + (2 secret_path VARs + 1 for the other node content).
-        assert clear_overrides(path, "nav℘codex") == 5
+        # ⚑ FOUR, NOT FIVE, AND THE CHANGE IS DELIBERATE. The old fixture nested these
+        # under a ``nav℘codex`` sub-table, which the flatten (S2) refuses; flattened, the
+        # per-VAR arm of the count is unreachable, because it only ever counted VARs found
+        # inside that sub-table. So: model + access + secret_path + bindings = 4 ROOT keys,
+        # each counting once — the rule the docstring states, with nothing special-cased.
+        assert clear_overrides(path, "nav℘codex") == 4
         assert load_doc(path) == {"self": {"name": "Nav"}}
 
     def test_prunes_the_root_when_nothing_survives(self, tmp_path):
@@ -442,53 +476,87 @@ class TestClearOverrides:
 class TestLevelTable:
     """The cascade half: which table a level reads, and the refusal that guards it."""
 
-    def test_active_level_splices_the_flat_categories(self):
+    def test_active_level_reads_the_flat_categories(self):
         raw = {"self": {"env": {"A": "b"}, "secret_path": {"T": "/t"}}}
         level = level_table(raw, sub_key="claude", node="claude")
         assert level == AgentFileLevel("claude", {"env": {"A": "b"},
                                                   "secret_path": {"T": "/t"}})
 
-    def test_default_level_gets_no_flat_splice(self):
-        # The flat tables are THIS node's, never every agent's — the all-agents
-        # tier is the SYSTEM file's ``agent: default:`` table.
-        raw = {"self": {"env": {"A": "b"}}}
+    @pytest.mark.parametrize("category", _FLAT_AGENT_CATEGORIES)
+    def test_every_flat_category_reaches_the_active_level(self, category):
+        # ⚑ PARAMETRIZED OFF THE CONSTANT, so widening the tuple widens the pin and a
+        # narrowing shows up as a missing case rather than as silence. ``bindings`` rides
+        # as ONE token — its ``{ro, rw}`` table is re-rooted whole.
+        table = {"ro": {"/box/x": ["/h/x"]}} if category == "bindings" else {"X": "y"}
+        raw = {"self": {category: table}}
+        level = level_table(raw, sub_key="claude", node="claude")
+        assert level.table == {category: table}
+
+    def test_default_level_is_structurally_empty(self):
+        # The flat tables are THIS node's, never every agent's — and since the flatten
+        # the file has NO spelling for the all-agents tier at all; that tier is the
+        # SYSTEM file's ``agent: default:`` table.
+        raw = {"self": {"env": {"A": "b"}, "bindings": {"ro": {"/x": ["/y"]}}}}
         assert level_table(raw, sub_key="default", node="claude").table == {}
 
     def test_missing_root_is_an_empty_level(self):
         assert level_table({"system": {}}, sub_key="claude").table == {}
         assert level_table("not-a-dict", sub_key="claude").table == {}
 
-    @pytest.mark.parametrize("category", ("env", "secret_path"))
+    @pytest.mark.parametrize("category", _FLAT_AGENT_CATEGORIES)
     @pytest.mark.parametrize("sub", ("claude", "default"))
     def test_nested_category_refuses_by_name(self, category, sub):
-        # rulings 49c / 50 — ``self.<sub>.<category>`` reads
+        # rulings 50-52 — ``self.<sub>.<category>`` reads
         # ``agent.<agent>.<sub>.<category>``, which is never syntactically correct.
+        # ⚑ EVERY category, from the constant: the refusal is ONE PREDICATE over the root
+        # table, so it cannot be true of some categories and not others.
         raw = {"self": {sub: {category: {"X": "y"}}}}
         with pytest.raises(SettingsError) as exc:
             level_table(raw, sub_key=sub, node="claude")
         assert file_spelling(sub, category) in str(exc.value)
 
-    def test_refusal_precedes_the_flat_splice(self):
-        # ⚑ ORDERING IS THE CONTRACT: a file carrying BOTH spellings must still be
-        # refused for the nested one, not silently resolved off the flat one.
-        # ⚑⚑ THE MESSAGE IS WHAT DISCRIMINATES, NOT THE RAISE. Both orderings raise
-        # on this input — after the splice ``node_tbl["env"]`` is the FLAT table, which
-        # is still a present ``env`` — and they differ ONLY in which entries the refusal
-        # NAMES: refusal-first indicts the nested ``X``, splice-first the flat ``A``.
-        # A bare ``pytest.raises`` here would pin nothing.
-        raw = {"self": {"env": {"A": "b"}, "claude": {"env": {"X": "y"}}}}
+    def test_nested_state_refuses_too(self):
+        # ⚑ THE STATE CASE (defect D-3), which a per-category loop could not express:
+        # ``self: claude: model:`` is a scalar carrier, not a category table. It used to
+        # resolve, and to LOSE silently to the flat spelling. One predicate closes it.
+        raw = {"self": {"claude": {"model": "opus"}}}
         with pytest.raises(SettingsError) as exc:
             level_table(raw, sub_key="claude", node="claude")
-        entries = str(exc.value).split("entries: ", 1)[1].splitlines()[0]
-        assert "X" in entries
-        assert "A" not in entries
+        message = str(exc.value)
+        assert "self.claude" in message
+        assert "model" in message
+        # No category to point at, so the cure is the rule itself — never a verb.
+        assert "kanibako agent set" not in message
 
-    def test_bindings_still_nest(self):
-        # ⚑ NOT refused: nested is bindings' only spelling until S2 lands the flat
-        # route.  Refusing first would delete a live delivery path.
-        raw = {"self": {"claude": {"bindings": {"ro": {"share": "/h:/b"}}}}}
-        level = level_table(raw, sub_key="claude", node="claude")
-        assert level.table == {"bindings": {"ro": {"share": "/h:/b"}}}
+    def test_the_refusal_indicts_the_nested_table_not_the_legal_flat_one(self):
+        # ⚑⚑ THE MESSAGE IS WHAT DISCRIMINATES, NOT THE RAISE. A file carrying a LEGAL
+        # flat table beside a nested sub-table must be refused for the nested one and
+        # must not name the flat table's entries — a predicate written over the wrong
+        # table would indict the innocent half.
+        raw = {"self": {
+            "env": {"ONLY_FLAT": "b"},
+            "claude": {"env": {"ONLY_NESTED": "y"}},
+        }}
+        with pytest.raises(SettingsError) as exc:
+            level_table(raw, sub_key="claude", node="claude")
+        message = str(exc.value)
+        assert "self.claude.env" in message
+        assert "ONLY_NESTED" in message
+        assert "ONLY_FLAT" not in message
+
+    def test_an_unknown_root_table_refuses_even_with_no_category_in_it(self):
+        # The closed keyspace, not a list of known-bad names: a table nobody declared
+        # refuses by name, and the cure states the rule rather than guessing an intent.
+        raw = {"self": {"claude": {"whatever": {"X": "y"}}}}
+        with pytest.raises(SettingsError, match=r"self\.claude"):
+            level_table(raw, sub_key="claude", node="claude")
+
+    def test_a_bare_sub_key_leaf_is_not_a_table(self):
+        # ``claude:`` with nothing under it parses to None. It carries nothing and
+        # delivers nothing, so it is a stray scalar, not a nested sub-table.
+        assert level_table(
+            {"self": {"claude": None}}, sub_key="claude", node="claude",
+        ).table == {}
 
 
 class TestStateLevel:
@@ -503,8 +571,53 @@ class TestStateLevel:
 
 
 class TestFileSpelling:
-    def test_node_only(self):
-        assert file_spelling("claude") == "self.claude"
+    def test_the_root_alone(self):
+        assert file_spelling() == "self"
 
-    def test_node_and_tail(self):
-        assert file_spelling("claude", "bindings.ro") == "self.claude.bindings.ro"
+    def test_one_segment_is_the_flat_table(self):
+        # What every CURE names since the flatten: the file IS the node's, so the
+        # category table sits directly under the root.
+        assert file_spelling("caches") == "self.caches"
+
+    def test_segments_join_under_the_root(self):
+        # What every REFUSAL names: the nested shape the user actually wrote.
+        assert file_spelling("claude", "bindings") == "self.claude.bindings"
+
+    def test_empty_segments_are_dropped(self):
+        # Lets the refusal pass an optional category without a branch of its own.
+        assert file_spelling("claude", "") == "self.claude"
+
+
+class TestLoadSharesTheRefusal:
+    """Two readers of ONE file must not disagree about what the file means (call (b))."""
+
+    def test_load_refuses_what_the_cascade_refuses(self, tmp_path):
+        path = tmp_path / "settings.yaml"
+        path.write_text(
+            "self:\n"
+            "  name: Nav\n"
+            "  claude:\n"
+            "    env:\n"
+            "      EDITOR: vim\n"
+        )
+        with pytest.raises(SettingsError) as exc:
+            load(path)
+        message = str(exc.value)
+        assert "self.claude.env" in message
+        assert str(path) in message
+
+    def test_a_flat_file_loads(self, tmp_path):
+        # The control: the predicate must not refuse the shape the flatten blesses.
+        path = tmp_path / "settings.yaml"
+        path.write_text(
+            "self:\n"
+            "  name: Nav\n"
+            "  env:\n"
+            "    EDITOR: vim\n"
+            "  bindings:\n"
+            "    ro:\n"
+            "      /box/x: [/h/x]\n"
+        )
+        cfg = load(path)
+        assert cfg.env == {"EDITOR": "vim"}
+        assert cfg.category_tables == {"bindings": {"ro": {"/box/x": ["/h/x"]}}}

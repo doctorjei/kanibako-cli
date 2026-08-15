@@ -1981,8 +1981,9 @@ absent, with no message. `secret_path` is the one to check first, since that spe
 move to the flat table and may sit in a file you have not opened in a while — and a silently
 dropped token pointer looks like an auth failure, not a config error.
 
-⚑ **`bindings:` is not affected.** It still lives at `self: <node>: bindings:` and still works;
-that table is on its own track.
+⚑ **`bindings:` moved too, and its own section has the detail.** At the time this section was
+first written it was the one table still nested; it is flat now, like everything else, and the
+nested spelling is refused with the rest. See **§2.37**, which covers every category in one go.
 
 `kanibako box show --effective` resolves the same settings a launch does, so it will show you the
 resulting values (and report the refusal, if any) without starting anything.
@@ -2039,6 +2040,85 @@ credential watcher inspect to learn which agent a running box carries, and
 `KANIBAKO_DIRECTIVE_SEED` must name the file kanibako binds your kickoff to, or the flatten step at
 agent start finds nothing. Change one and you are telling kanibako something about the box that has
 to be true.
+
+### 2.37 An agent's settings file has ONE level: everything sits directly under `self:`
+
+**Read this if you have ever hand-edited an `agents/<agent>/settings.yaml`, or if a box that
+started yesterday refuses today naming a `self.…` table.** This is the section §2.35's `env` and
+`secret_path` note grew into: the same rule, now applied to *every* category, `bindings` included.
+
+**What changed.** `self:` is not a key. It is an alias standing for `agent.<that agent>` — the file
+already belongs to one agent, so its root already *is* that agent's node. Anything written under a
+second level inside it therefore names the node twice:
+
+```yaml
+# agents/claude/settings.yaml — REFUSED
+self:
+  claude:                       # ← a second `claude:`
+    bindings:
+      ro:
+        ~/ref: [/store/ref]
+```
+
+`self: claude: bindings:` reads `agent.claude.claude.bindings`. There is no such key and there
+never was one. **Every category is written flat now**, and the nested spelling **refuses the
+launch, naming the table it found and the key your spelling reads:**
+
+```yaml
+# agents/claude/settings.yaml — the whole shape
+self:
+  model: opus                   # behaviour keys: directly under the root
+  env:
+    EDITOR: vim
+  secret_path:
+    ANTHROPIC_AUTH_TOKEN: ~/.config/claude/token
+  bindings:
+    ro:
+      ~/ref: [/store/ref]
+  caches:
+    ~/.cache/uv: [/store/caches/uv]
+  seeded:
+    ~: [/store/template]
+  common:
+    ~/.claude/plugins: [/store/agents/claude/common/plugins]
+  synced:
+    ~/.config/x: [/store/x]
+  masks:
+    ~/.ssh: true
+```
+
+**What you must do.** Nothing, unless one of these is true:
+
+- **You have a `self: <agent>:` level in an agent settings file.** Delete that level and move what
+  was inside it up one — the content itself does not change, only its depth. `bindings:` is the
+  one to look for first: it was the last table still written that way, so a file that has not been
+  touched since 1.7.2 will have it nested.
+- **You have a `self: default:` level**, meaning "for every agent". That tier has **no agent-file
+  spelling at all** — the flat tables above belong to *this* agent. Write it in the **system**
+  settings file, which is where that tier lives:
+
+  ```yaml
+  # the system settings file
+  agent:
+    default:
+      caches:
+        ~/.cache/uv: [/store/caches/uv]
+  ```
+
+- **You have agent-file *state* nested** — `self: claude: model: opus`. Same cure, one level up
+  (`self: model: opus`), and the same refusal if you leave it. This one had a second failure of its
+  own: a flat `model:` in the same file silently beat the nested one, so the nested value was not
+  overridden, it was ignored.
+
+**Why refuse it rather than keep accepting it?** Because it was never one spelling — it was two,
+and the flat one won without saying so. A file carrying both a nested and a flat table of one
+category lost the nested one *wholesale*: entries spelled only under `<agent>:` were not
+overridden, they were absent, with no message. A refusal that names the table is the smallest
+change that makes that impossible.
+
+The refusal prints the fix for the table it found, so you do not have to work it out from here.
+`kanibako box show --effective` resolves the same settings a launch does, so you can check a file —
+and see the refusal, if any — without starting anything.
 
 ---
 

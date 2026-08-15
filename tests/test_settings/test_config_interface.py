@@ -1902,7 +1902,11 @@ class TestCategoryConfigSet:
         assert msg.startswith("Error:"), msg
         assert "RETIRED" in msg, msg
         assert "agent.<node>.common.<name>" in msg, msg
-        assert "self.claude.common" in msg, msg
+        # ⚑ The NODE left the file spelling with the S2 flatten (rulings 50-52): the
+        # file IS claude's, so the table sits DIRECTLY under ``self:``. The node stays
+        # in the PATH, which is what tells the user which file to open.
+        assert "self.common" in msg, msg
+        assert "self.claude" not in msg, msg
         assert "agents/claude/settings.yaml" in msg, msg
         assert not f.exists()  # a refused write creates nothing
 
@@ -3698,7 +3702,11 @@ class TestAgentNodeBindWriteRouteRetired:
             command_scope=ConfigLevel.system,
         )
         assert "agents/navigator+claude/settings.yaml" in msg, msg
-        assert "self.navigator+claude.bindings.ro" in msg, msg
+        # ⚑ Flat since S2: the file is that node's, so ``self:`` IS
+        # ``agent.navigator+claude`` and the bindings arm sits directly under it. The
+        # node is carried by the PATH asserted above, not by the table spelling.
+        assert "self.bindings.ro" in msg, msg
+        assert "self.navigator+claude" not in msg, msg
         # ⚑ ``℘`` is a keyspace-INTERNAL separator and must NEVER reach a message —
         # including the ``config get`` the message hands back for the user to run.
         assert "℘" not in msg, msg
@@ -3776,8 +3784,8 @@ class TestAgentNodeBindWriteRouteRetired:
         # spelling is refused by arity now, which is what makes the two shapes
         # distinguishable at all — a 2-element list is NOT (R-9's accepted loss).
         node = tmp_path / "settings.yaml"
-        dump_doc(node, {"self": {"claude": {"bindings": {"ro": {
-            "/box/launcher": ["/REPOINT", "ro"]}}}}})
+        dump_doc(node, {"self": {"bindings": {"ro": {
+            "/box/launcher": ["/REPOINT", "ro"]}}}})
 
         snap = build_launch_snapshot(
             agent_name="claude",
@@ -4254,18 +4262,19 @@ class TestEffectiveCategoryBlock:
         )
         from kanibako.settings.settings_resolve import ResolveCtx
 
-        # The agent file is rooted at ``self:`` with one sub-table per agent node
-        # (``settings_assemble._agent_partial``); every category below is
-        # DEST-KEYED — the map key is the box destination, the value is
-        # ``[src[, opts]]``.
+        # The agent file is rooted at ``self:``, which IS ``agent.<node>`` — the file is
+        # that node's own, so the category tables sit DIRECTLY under the root and a
+        # second ``<node>`` level refuses (``settings_assemble._agent_partial``, the S2
+        # flatten). Every category below is DEST-KEYED — the map key is the box
+        # destination, the value is ``[src[, opts]]``.
         agent_file = tmp_path / "agent-settings.yaml"
-        agent_file.write_text(yaml.safe_dump({"self": {"claude": {
+        agent_file.write_text(yaml.safe_dump({"self": {
             "common": {
                 "~/.claude/plugins": ["/store/agents/claude/common/plugins"],
             },
             "seeded": {"~": ["/store/template"]},
             "bindings": {"ro": {"~/ref": ["/store/ref"]}},
-        }}}))
+        }}))
         box_file = tmp_path / "box-settings.yaml"
         box_file.write_text(yaml.safe_dump({"box": {"bindings": {
             "rw": {"~": ["/boxes/mybox/home", "Z,U"]},

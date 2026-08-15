@@ -445,12 +445,13 @@ def _agent_partial(
     file, re-rooted under its TRUE discriminated name ``agent.<sub_key>``.
 
     ⚑ THE SEAM: :func:`~kanibako.settings.agent_file.level_table` owns the file's SHAPE (which
-    table a level reads, the flat-category splice, and the nested refusal that must precede it)
-    and hands back a RAW table; this function owns the STORE coercion and the §2d wrap. The split
-    is what keeps the boundary free of ``KeyStore`` — and the import edge one-way.
+    tables a level reads, the flat-category re-root, and the nested refusal that precedes it) and
+    hands back a RAW table; this function owns the STORE coercion and the §2d wrap. The split is
+    what keeps the boundary free of ``KeyStore`` — and the import edge one-way.
 
-    *sub_key* selects the sub-table; the two agent levels are kept SEPARATE (spec §2) and merge by
-    their true §2d names — NO bare-``agent`` collapse. An empty level yields an empty partial.
+    *sub_key* selects the TIER; the two agent levels are kept SEPARATE (spec §2) and merge by
+    their true §2d names — NO bare-``agent`` collapse. An empty level yields an empty partial,
+    which is what the all-agents tier ALWAYS is out of this file since the flatten.
     *path* and *node* only render the boundary's refusal message; neither is read. llm-docs.
     """
     level = level_table(raw, sub_key=sub_key, node=node, path=path)
@@ -594,6 +595,14 @@ def assemble_levels(
         _agent_partial(
             raw_agent, sub_key=agent_name, path=agent_path, node=agent_name,
         ),
+        # ⚑⚑ THIS LEVEL IS STRUCTURALLY EMPTY SINCE THE S2 FLATTEN, and saying so is the
+        # point: the agent file has NO spelling for the all-agents tier at all (``self:`` IS
+        # ``agent.<node>``, so a ``default`` sub-table under it reads
+        # ``agent.<node>.default.*`` and REFUSES). That tier's route is the SYSTEM file's
+        # ``agent: default:`` table, which arrives on the system level below. The call is KEPT
+        # rather than deleted: dropping it re-indexes every ``base_levels[n]`` consumer, and
+        # whether a permanently-empty rung should be encoded at all is a re-encoding question
+        # boarded on its own, not a rider here.
         _agent_partial(
             raw_agent, sub_key=_AGENT_DEFAULT_SUB, path=agent_path, node=agent_name,
         ),

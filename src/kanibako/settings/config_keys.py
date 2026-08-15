@@ -897,9 +897,13 @@ def agent_node_bind_retired_error(canonical: str, *, verb: str) -> str | None:
         why=_retired_because(category),
         # ⚑ The file's own spelling comes from the BOUNDARY (``agent_file``), never a literal
         # here: this message QUOTES the agent file at the user, so it must say whatever that
-        # file actually spells — and when S2's flatten changes it, it changes in one place.
+        # file actually spells — which is why S2's flatten changed it in ONE place.
+        # ⚑ The NODE is not in the spelling any more, and its absence is the point: the file IS
+        # that node's, so ``self:`` expands to ``agent.<node>`` and the category table sits
+        # DIRECTLY under it. The node stays in the PATH, which is what tells the user which
+        # file to open.
         cure=(
-            f"Edit the '{file_spelling(shown_node, category)}' table of that "
+            f"Edit the '{file_spelling(category)}' table of that "
             f"agent's own settings file (agents/{shown_node}/"
             f"settings.yaml) directly; the launch reads it from there."
         ),

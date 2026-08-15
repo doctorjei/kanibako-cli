@@ -18,6 +18,7 @@ from pathlib import Path
 import pytest
 
 from kanibako.commands.start import _bind_map_from_mounts, _emit_category_mounts
+from kanibako.settings.agent_file import _FLAT_AGENT_CATEGORIES
 from kanibako.settings.kb_store import Bind, BindEntry
 from kanibako.settings.keystore import KeyStore
 from kanibako.settings.settings_launch import (
@@ -153,14 +154,29 @@ def test_agent_partial_surfaces_flat_env():
     assert _agent_partial(raw, sub_key="default") == KeyStore()
 
 
-#: The categories ruled out of the ``self.<sub>`` sub-table, each with a sample entry so a
-#: parametrized case can assert the CURE it renders (the verb spelling is per-category).
-_REFUSED_NESTED = [("env", "EDITOR", "vim"), ("secret_path", "API_KEY", "/t/token")]
+#: A sample entry per CATEGORY, so a parametrized case can assert the CURE it renders (the
+#: verb spelling is per-category, and the dest-keyed families take a list value).
+#:
+#: ⚑⚑ DERIVED FROM THE PRODUCTION TUPLE, NEVER RE-LISTED. The refusal is ONE PREDICATE over
+#: the file's root table — *anything dict-valued that is not one of the root's own tables* —
+#: so a category joining the flat set joins this parametrization in the same edit, and a
+#: category leaving it cannot leave a stale pin behind. A hand-written list here would be a
+#: second copy of the constant, drifting the moment either moved.
+_CATEGORY_SAMPLES: dict[str, tuple[str, object]] = {
+    "env": ("EDITOR", "vim"),
+    "secret_path": ("API_KEY", "/t/token"),
+    "bindings": ("ro", {"/box/x": ["/h/x"]}),
+}
+_DEST_KEYED_SAMPLE = ("/box/d", ["/h/s"])
+_REFUSED_NESTED = [
+    (c, *_CATEGORY_SAMPLES.get(c, _DEST_KEYED_SAMPLE))
+    for c in _FLAT_AGENT_CATEGORIES
+]
 
 
 @pytest.mark.parametrize("category,var,value", _REFUSED_NESTED, ids=lambda v: str(v))
 class TestNothingNestsUnderSelfButTheCategories:
-    """Rulings 49c + 50 — *"There is no self:<agent>:foo. It is just self:foo"*.
+    """Rulings 50-52 — *"There is no self:<agent>:foo. It is just self:foo"*.
 
     ⚑⚑ THE ARGUMENT IS ALIAS EXPANSION, not redundancy. ``self`` is NOT A KEY: it SUBSTITUTES to
     ``agent.<agent>``, so ``self.<sub>.<category>`` READS ``agent.<agent>.<sub>.<category>`` — a key
@@ -168,9 +184,10 @@ class TestNothingNestsUnderSelfButTheCategories:
     agent.claude.claude"*). ⚑ That argument is UNIFORM over any ``<sub>``, which is why the literal
     ``default`` refuses on exactly the same ground and is NOT a generic-``<node>`` construction.
 
-    ⚑ SCOPE: ``env`` and ``secret_path``. ``bindings`` is EXCLUDED — nested is its only spelling
-    today, so refusing it before a flat route exists would delete a live delivery path; the control
-    at the bottom is what stops this refusal creeping into it ahead of that decision.
+    ⚑ SCOPE: EVERY category, ``bindings`` included since S2 landed its flat route
+    (*"None of them should"* have existed). The parametrization is DERIVED from the production
+    tuple rather than listed, because the refusal itself is one predicate over the root table
+    and not a list of names — see ``_REFUSED_NESTED`` above.
 
     ⚑ A DIFFERENT REFUSAL AT A DIFFERENT LAYER from the cross-scope twin
     (``store_collapse._refuse_env_twin``, rows 35-38): that one arbitrates two DECLARED keys
@@ -198,8 +215,17 @@ class TestNothingNestsUnderSelfButTheCategories:
         # Names the offending SPELLING and the cure — a refusal that does not is a crash.
         assert f"self.codex.{category}" in message
         assert var in message
-        assert f"kanibako agent set codex {category}.{var}={value}" in message
         assert "/a/settings.yaml" in message
+        # The CURE every category gets: the FLAT table, spelled as the YAML to write.
+        assert f"self:\n      {category}:\n        {var}: {value}" in message
+        # ⚑ AND THE VERB ONLY WHERE IT WORKS. ``agent set`` writes a per-VAR scalar, which
+        # is ``env`` / ``secret_path`` and nothing else: the dest-keyed families take a
+        # LIST value it cannot express, and it would store a dotted literal instead. A
+        # message must never prescribe a verb that does not work — the same rule
+        # ``config_keys``' retired-bind cure follows, and the reason the hand edit above is
+        # what all nine share.
+        verb = f"kanibako agent set codex {category}.{var}={value}"
+        assert (verb in message) is (category in ("env", "secret_path"))
 
     def test_the_message_states_the_alias_expansion_that_makes_it_impossible(
         self, category, var, value,
@@ -273,15 +299,30 @@ class TestNothingNestsUnderSelfButTheCategories:
             _agent_partial({"self": {"codex": {category: None}}}, sub_key="codex")
 
 
-def test_the_nested_bindings_sub_table_is_untouched():
-    # THE SCOPE CONTROL, and the ONE occupant of the nested shape left. ``env`` and
-    # ``secret_path`` are BOTH refused there now (rulings 49c + 50); ``bindings`` is not,
-    # because nested is its only spelling today and refusing it before a flat route exists
-    # would delete a live delivery path. That flatten is a separate decision pending Jei's
-    # word — this test failing is the tell that it was assumed rather than made.
+def test_the_nested_bindings_sub_table_refuses_now_that_the_flat_route_exists():
+    # ⚑⚑ INVERTED, NOT DELETED (rulings 50/51/52). This used to be the SCOPE CONTROL for
+    # the one occupant of the nested shape: ``bindings`` was excluded from the refusal
+    # because nested was its ONLY spelling, and refusing it before a flat route existed
+    # would have deleted a live delivery path. S2 landed that flat route, so the
+    # exclusion's whole reason is spent — *"self: claude: bindings should never have
+    # existed. None of them should"*. Keeping the test as an INVERSION is what records
+    # that the change was MADE rather than assumed; a deletion would have left the
+    # widening unwitnessed.
     from kanibako.settings.settings_assemble import _agent_partial
+    from kanibako.settings.settings_resolve import SettingsError
 
     raw = {"self": {"codex": {"bindings": {"rw": {"~/x": ["/tmp/x"]}}}}}
+    with pytest.raises(SettingsError) as exc:
+        _agent_partial(raw, sub_key="codex", node="codex")
+    assert "self.codex.bindings" in str(exc.value)
+
+
+def test_the_flat_bindings_table_is_the_route_that_replaced_it():
+    # The other half of the same fact, and the reason the refusal above is legitimate:
+    # the value still has a spelling, one level up.
+    from kanibako.settings.settings_assemble import _agent_partial
+
+    raw = {"self": {"bindings": {"rw": {"~/x": ["/tmp/x"]}}}}
     active = _agent_partial(raw, sub_key="codex", node="codex")
     assert "x" in str(active.agent["codex"].bindings.rw)
 
@@ -335,8 +376,7 @@ def test_settings_file_repoints_delivery_bind_by_dest(tmp_path: Path):
     agent_file = tmp_path / "agent-settings.yaml"
     dump_doc(
         agent_file,
-        {"self": {"claude": {"bindings": {"ro": {
-            "/box/share": [str(repoint)]}}}}},
+        {"self": {"bindings": {"ro": {"/box/share": [str(repoint)]}}}},
     )
 
     snap = build_launch_snapshot(
@@ -3427,22 +3467,31 @@ class TestCliLevelPrecedence:
     """
 
     def _agent_file_snap(self, tmp_path, *, stored, cli_level):
-        """A snapshot over an AGENT-tier settings file.
+        """A snapshot over an AGENT-tier settings file, through the PRODUCTION pair.
 
         ⚑ Not a BOX file: §0 directional enforcement DROPS an ``agent.*`` table
         from a box file (a file contributes keys of its OWN scope), so the box
         tier cannot hold the contender. The agent FILE is where a stored
         ``agent.<active>.model`` legitimately lives — and a box that wants one
         writes ``pref.agent.<agent>.model``, covered separately below.
+
+        ⚑⚑ THE PAIR IS THE POINT: a behaviour scalar lives FLAT in the file (``self:``
+        IS ``agent.claude``, and a ``self: claude:`` sub-table is REFUSED — rulings
+        50-52), and it reaches the cascade on its OWN rung, the one every production
+        producer builds through ``agent_file.state_level``. Writing the file and NOT
+        passing the state level would leave the contender out of the snapshot entirely,
+        which is exactly the shape that used to make this test pass for the wrong
+        reason.
         """
-        agent_file = _yaml(
-            tmp_path / "agent.yaml", {"self": {"claude": {"model": stored}}},
-        )
+        agent_file = _yaml(tmp_path / "agent.yaml", {"self": {"model": stored}})
         return build_launch_snapshot(
             agent_name="claude",
             ctx=_ctx(),
             system_path=None, agent_path=agent_file,
             workset_path=None, box_path=None,
+            agent_state=agent_file_state_level(
+                agent_file_load(agent_file).state, node="claude",
+            ),
             cli_level=cli_level,
         )
 
@@ -3579,26 +3628,30 @@ def _nested(key, value):
     return {category: {var: value}} if sep else {key: value}
 
 
-def _agent_file_table(key, value, *, node="claude"):
-    """Spell one persona key as the AGENT FILE table that carries it into ``_agent_partial``.
+def _agent_file_contender(key, value):
+    """The ``_persona_snap`` kwargs that put *key* in the AGENT FILE, by its real ROUTE.
 
-    ⚑ The two shapes are NOT interchangeable and the difference is load-bearing here.
-    ``env`` / ``secret_path`` live FLAT under ``self`` — ``self`` IS ``agent.<node>``, and a
-    second ``<node>`` level under it REFUSES (rulings 49c + 50). The bare behavior classes have no
-    flat route into ``_agent_partial`` at all (a flat scalar goes to the separate ``cfg.state``
-    channel), so they are written in the discriminated sub-table. Keyed off the PRODUCTION
-    tuple, so a category joining or leaving it cannot leave this spelling behind.
+    ⚑⚑ THE SHAPE COLLAPSED, BUT THE TWO ROUTES DID NOT, and conflating them is the trap this
+    helper exists to close. Since the flatten there is ONE file shape — everything sits
+    DIRECTLY under ``self:``, which IS ``agent.<node>``; a second ``<node>`` level REFUSES
+    (rulings 50-52). But a CATEGORY table and a BEHAVIOUR scalar still reach the cascade by
+    different rungs: the category rides ``_agent_partial``'s ``agent.<active>`` level, while a
+    scalar goes to ``cfg.state`` and rides ``state_level``'s own rung. So the file bytes are
+    written the same way and the kwarg differs — which is exactly the production pair
+    (``agent_path=`` + ``agent_state=``) every launch producer builds.
+
+    Keyed off the PRODUCTION tuple, so a category joining or leaving it cannot leave a stale
+    spelling behind.
     """
-    from kanibako.settings.agent_file import _FLAT_AGENT_CATEGORIES
-
-    table = _nested(key, value)
-    flat = key.partition(".")[0] in _FLAT_AGENT_CATEGORIES
-    return {"self": table if flat else {node: table}}
+    if key.partition(".")[0] in _FLAT_AGENT_CATEGORIES:
+        return {"agent_file": {"self": _nested(key, value)}}
+    return {"agent_file": {"self": {key: value}}, "agent_state": {key: value}}
 
 
 # ⚑ Imported as a FUNCTION, not as the module: ``_persona_snap`` below has a
 # parameter literally named ``agent_file`` (the agent settings FILE it writes).
 from kanibako.settings.agent_file import (  # noqa: E402
+    load as agent_file_load,
     state_level as agent_file_state_level,
 )
 
@@ -3713,7 +3766,7 @@ class TestPersonaRungOrdering:
         ``agent.<active>.<key>`` in it can only be a deliberate user edit."""
         self._contended(
             tmp_path, key, path, "from-agent-file",
-            agent_file=_agent_file_table(key, "from-agent-file"),
+            **_agent_file_contender(key, "from-agent-file"),
         )
 
     def test_persona_loses_to_a_workset_pref(self, tmp_path, key, path):
@@ -3788,14 +3841,14 @@ def test_persona_beats_the_agent_default_backstop_at_the_behavior_read(tmp_path,
     snap = _persona_snap(
         tmp_path,
         persona_values={key: "from-persona"},
-        agent_file={"self": {"default": {key: "from-agent-default"}}},
+        system={"agent": {"default": {key: "from-agent-default"}}},
     )
     assert effective_behavior(snap, active_agent="claude")[key] == "from-persona"
     # CONTROL: the backstop is what a persona-free launch reads.
     control = _persona_snap(
         tmp_path / "control",
         persona_values=None,
-        agent_file={"self": {"default": {key: "from-agent-default"}}},
+        system={"agent": {"default": {key: "from-agent-default"}}},
     )
     assert (effective_behavior(control, active_agent="claude")[key]
             == "from-agent-default")
@@ -3815,7 +3868,7 @@ class TestPersonaTierIsInertWhenEmpty:
             ctx=_ctx(),
             system_path=None,
             agent_path=_write_yaml(
-                tmp_path / "agent.yaml", {"self": {"claude": {"model": "stored"}}},
+                tmp_path / "agent.yaml", {"self": {"env": {"STORED": "x"}}},
             ),
             workset_path=_write_yaml(
                 tmp_path / "ws.yaml", {"workset": {"boxes": "/ws/boxes"}},

@@ -1089,10 +1089,16 @@ The refusal + cure for a RETIRED AGENT-scope bind-shaped WRITE ``agent.<node>.<b
 category>.<name>``, or `None` when *canonical* is not one.
 
 The SIBLING of :func:`scope_bind_retired_error` — same ruling, same wording, one different cure: the
-tuple lives in the NODE's own settings file ``agents/<node>/settings.yaml``, under the
-``self.<node>.<category>`` table (the shape `settings_assemble._agent_partial` reads into the launch
-cascade, re-rooting ``self.<node>`` to ``agent.<node>``), not in a scope table. Naming the scope file
+tuple lives in the NODE's own settings file ``agents/<node>/settings.yaml``, under the flat
+``self.<category>`` table (the shape `settings_assemble._agent_partial` reads into the launch
+cascade, re-rooting ``self`` to ``agent.<node>``), not in a scope table. Naming the scope file
 here would send a user to edit a file the launch never reads for this key.
+
+⚑ **THE NODE IS NOT IN THE TABLE SPELLING, and its absence is the point (S2):** the file IS that
+node's, so ``self:`` expands to ``agent.<node>`` and the category table sits DIRECTLY under it — a
+``self.<node>.<category>`` table is REFUSED by the boundary now. The node stays in the PATH the
+message also prints, which is what tells the user which file to open. ⚑ The spelling comes from
+``agent_file.file_spelling(category)``, never a literal here.
 
 ⚑ ONE PARSER, ALL SIX. Recognition comes from
 :data:`~kanibako.settings.settings_categories.AGENT_BIND_KEY_RE`, the derived agent-scope twin of

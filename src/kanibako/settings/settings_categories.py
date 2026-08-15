@@ -2,12 +2,18 @@
 
 This module GENERALIZES the (now-folded) ``settings_shares`` + ``settings_seeds``
 resolvers into one *category* primitive.  Every path-delivery mechanism the
-settings framework exposes at a scope is a CATEGORY; this module discovers the
-category keys across the precedence levels, resolves each via the engine in
-:mod:`kanibako.settings.settings_resolve`, and emits one ordered ``list[CategoryEntry]``
-tagged with its *delivery* (COPY vs MOUNT).  It is **pure**: no file I/O, no
-mounting/copying, no global mutable state.  It imports only stdlib and the
-expression engine.
+settings framework exposes at a scope is a CATEGORY, and what lives here is that
+VOCABULARY: which category names exist and what key SHAPE each one takes, the
+:class:`CategoryEntry` record an emitted entry is, what its *delivery* (COPY vs
+MOUNT) means, and the collision refusals a category set must satisfy.
+
+⚑ IT DOES NOT DISCOVER, RESOLVE OR EMIT — :func:`kanibako.settings.settings_launch.
+snapshot_category_entries` walks the precedence levels, resolves each key through
+:mod:`kanibako.settings.settings_resolve` and CONSTRUCTS every ``CategoryEntry``
+there (the four construction sites are all in that module).  This one is **pure**
+and imports only stdlib: ``re``, ``dataclasses``, ``typing``.  ⚑ That import list is
+the invariant, not a coincidence — a resolver import here would close a cycle, which
+is precisely why the emission sits at the launch seam and the vocabulary sits here.
 
 Cross-category collision resolution (the spec §0 identical-dest TABLE) is NOT here
 any more.  ⚑ The single by-dest reconcile pass was RETIRED at cutover 6-R3;
@@ -1008,20 +1014,23 @@ def _suppress_then_add(
     for depth, seg in enumerate(occupant_segments[1:], start=1):
         lines.append(f"{indent * depth}{seg}:" if depth < last
                      else f"{indent * depth}{seg}: null")
-    # ⚑ The AGENT scope stores its own node in a DISCRIMINATED sub-table of the per-agent
-    # settings file (the shape ``_agent_partial`` reads back); the canonical
+    # ⚑ The AGENT scope's own file has NO node level at all: it is that node's file, so its
+    # root ``self:`` IS ``agent.<node>`` and the category table sits DIRECTLY under it (the
+    # shape ``_agent_partial`` reads back since the S2 flatten). The canonical
     # ``agent.<node>`` spelling is what a CONTAINING scope's file writes as a
     # defaults-down override. Printing one shape without saying so would hand the
     # reader an edit that silently does nothing in the other file.
     # ⚑ The file's own spelling comes from the BOUNDARY (``agent_file``), never a literal
     # here — same reason as the bind cure in ``config_keys``: the caveat QUOTES the agent
-    # file at the user, so S2's flatten must be able to change it in one place.
+    # file at the user, so the flatten changed it in ONE place.
     from kanibako.settings.agent_file import file_spelling
 
+    # ⚑ The TABLE, never the entry: the last segment is the DEST, which is data and carries
+    # dots of its own, so a spelling that swallowed it would print something unreadable back.
     caveat = (
-        "\n⚑ In the per-agent settings file itself the node is spelled "
-        f"'{file_spelling(occupant_segments[1])}' rather\nthan "
-        f"'{scope}.{occupant_segments[1]}'; the form above is "
+        f"\n⚑ In {occupant_segments[1]}'s OWN settings file there is no node level: "
+        f"the table is\nspelled '{file_spelling(*occupant_segments[2:last])}', because "
+        f"'{file_spelling()}:' IS '{scope}.{occupant_segments[1]}'. The form above is "
         "what a CONTAINING scope's file writes.\n"
         if scope == "agent" and len(occupant_segments) > 1 else ""
     )

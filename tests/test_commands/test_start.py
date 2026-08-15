@@ -3296,19 +3296,49 @@ class TestApplyInitSeeds:
         assert list(shell.iterdir()) == []
 
     def test_configured_agent_seed_copied(self, tmp_path):
-        """An agent-config seed copies host_src dir into shell_path/<dest>."""
+        """An agent-config seed copies host_src dir into shell_path/<dest>.
+
+        ⚑ FLAT, and IN PLACE: this fixture used to spell ``self: default: seeded:``,
+        which the S2 flatten refuses (``self:`` IS ``agent.claude``, so a ``default``
+        level under it reads ``agent.claude.default`` — rulings 50-52). It is flattened
+        HERE rather than moved to the system file: relocating it would make the test pass
+        with ``agent_config_path`` inert, which is the dead-route trap — the assertion
+        would no longer be about the agent file at all. The all-agents tier gets its OWN
+        test below.
+        """
         shell = self._shell(tmp_path)
         src = tmp_path / "src"
         src.mkdir()
         (src / "file.txt").write_text("hello")
         agent_cfg = tmp_path / "claude.yaml"
         agent_cfg.write_text(
-            f'self:\n  default:\n    seeded:\n      "~/foo": ["{src}"]\n'
+            f'self:\n  seeded:\n    "~/foo": ["{src}"]\n'
         )
         self._call(
             tmp_path,
             proj=self._proj(shell),
             agent_config_path=agent_cfg,
+        )
+        assert (shell / "foo" / "file.txt").read_text() == "hello"
+
+    def test_all_agents_seed_tier_is_the_system_file(self, tmp_path):
+        """The POSITIVE CONTROL for the tier the agent file lost (rulings 50-52).
+
+        ⚑ Without this, the flatten above would only prove that the tier stopped
+        working from one file — never that it still works from the one the refusal's cure
+        NAMES. A cure pointing at a dead route is worse than no cure, so the route it
+        names is exercised here on the same production path.
+        """
+        shell = self._shell(tmp_path)
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "file.txt").write_text("hello")
+        glob = tmp_path / "kanibako_config.yaml"
+        glob.write_text(f'agent:\n  default:\n    seeded:\n      "~/foo": ["{src}"]\n')
+        self._call(
+            tmp_path,
+            proj=self._proj(shell),
+            global_config_path=glob,
         )
         assert (shell / "foo" / "file.txt").read_text() == "hello"
 
@@ -3415,7 +3445,7 @@ class TestApplyInitSeeds:
         # meaningless, so the misplaced dest was never even exercised.
         agent_cfg = tmp_path / "claude.yaml"
         agent_cfg.write_text(
-            f'self:\n  default:\n    seeded:\n      "~/gone": ["{missing}"]\n'
+            f'self:\n  seeded:\n    "~/gone": ["{missing}"]\n'
         )
         self._call(tmp_path, proj=self._proj(shell), agent_config_path=agent_cfg)
         assert not (shell / "gone").exists()
@@ -3475,7 +3505,7 @@ class TestApplyInitSeeds:
         # meaningless, so the misplaced dest was never even exercised.
         agent_cfg = tmp_path / "claude.yaml"
         agent_cfg.write_text(
-            f'self:\n  default:\n    seeded:\n      "~/note.md": ["{src}"]\n'
+            f'self:\n  seeded:\n    "~/note.md": ["{src}"]\n'
         )
         self._call(tmp_path, proj=self._proj(shell), agent_config_path=agent_cfg)
 
@@ -3491,7 +3521,7 @@ class TestApplyInitSeeds:
         (src / "file.txt").write_text("hello")
         agent_cfg = tmp_path / "claude.yaml"
         agent_cfg.write_text(
-            f'self:\n  default:\n    seeded:\n      "~/foo": ["{src}"]\n'
+            f'self:\n  seeded:\n    "~/foo": ["{src}"]\n'
         )
         self._call(
             tmp_path, proj=self._proj(shell), agent_config_path=agent_cfg,
@@ -3519,8 +3549,8 @@ class TestApplyInitSeeds:
         (src / "f.txt").write_text("seed-ws")
         agent_cfg = tmp_path / "claude.yaml"
         agent_cfg.write_text(
-            f'self:\n  default:\n    seeded:\n'
-            f'      "~/workspace/sub": ["{src}"]\n'
+            f'self:\n  seeded:\n'
+            f'    "~/workspace/sub": ["{src}"]\n'
         )
         self._call(tmp_path, proj=proj, agent_config_path=agent_cfg)
         assert (project / "sub" / "f.txt").read_text() == "seed-ws"
