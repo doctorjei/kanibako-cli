@@ -2271,6 +2271,51 @@ configuration, and a realization depends on the flags of a launch that has not h
 displaying one would report a permission tier your next `-S` may not use. Read the driving keys
 (`access`, `model`, `provider`, `endpoint`) there instead.
 
+### 2.41 `create --standalone` no longer registers the box; `--register` opts in
+
+**Read this if a script of yours creates a standalone box and then addresses it by NAME.**
+`kanibako create --standalone` used to write a `registry.standalone` entry as part of the
+create. It no longer does. The new **`--register`** flag asks for the entry, and
+**`--name` is ignored without it**.
+
+**Why.** A standalone box keeps its whole identity inside its own directory — that is what
+makes it drop-in portable. The registry entry buys exactly one thing: addressing the box by
+name *from some other directory*. Registering by default assigned a global name to a box
+whose whole point is to move freely, so the entry is now something you ask for.
+
+| what you ran on v1.7.2 | what you get on v1.8.0 | the cure |
+|---|---|---|
+| `kanibako create --standalone ~/proj` | box created, **no registry entry** | add `--register`, or `kanibako box register ~/proj` afterwards |
+| `kanibako create --standalone --name proj ~/proj` | box created, **`--name` ignored**, no entry | add `--register` — with it, `--name` sources the entry's name |
+| `kanibako create --standalone --register --name proj ~/proj` | box created **and** registered as before | nothing |
+
+```bash
+# Register at create (the v1.7.2 behavior, now explicit):
+kanibako create --standalone --register --name myproj ~/myproj
+
+# Or create independent and opt in later — index-only, nothing is re-seeded:
+kanibako create --standalone ~/myproj
+kanibako box register ~/myproj
+```
+
+**Nothing about the box itself changed** — same directory layout, same identity, same
+`workset.kuid`. Only the global index entry is withheld. Working *inside* the box needs no
+entry at any time: `kanibako start` from the box's own directory (or any subdirectory)
+resolves it from its in-tree marker, exactly as before.
+
+⚑ **What actually breaks is a bare NAME used from elsewhere.** `kanibako start <name>`,
+`kanibako box info <name>` and `--box <name>` are the registry's only readers, and with no
+entry they report the token as unresolvable rather than finding the box.
+
+⚑ **The box is not permanently invisible.** Drop-in detection (§6 of the 1.6.0 runbook
+below) still indexes a standalone
+box the first time kanibako resolves one from its own tree, so an unregistered box acquires
+an entry on first use and is addressable by name from then on. `--register` is what makes
+that entry exist *immediately*, and it is the only way to choose the name.
+
+⚑ **`--register` is standalone-only.** A default-mode box's registration is its workset
+membership, which is not optional; the flag is accepted and does nothing there.
+
 ---
 
 ## 3. For plugin authors

@@ -72,6 +72,24 @@ class TestBoxCreateParser:
         assert args.command == "create"
         assert args.private is True
 
+    def test_create_parser_register_defaults_off(self):
+        """I3/§D4a: registration at create is OPT-IN, so the default is False."""
+        parser = build_parser()
+        args = parser.parse_args(["box", "create", "--standalone"])
+        assert args.register is False
+        assert parser.parse_args(
+            ["box", "create", "--standalone", "--register"]
+        ).register is True
+
+    def test_top_level_create_parser_register(self):
+        """⚑ The top-level ``create`` alias declares its flags SEPARATELY
+        (``cli.py``), so a flag added to ``box create`` alone is missing here."""
+        parser = build_parser()
+        args = parser.parse_args(["create", "--standalone", "--register"])
+        assert args.command == "create"
+        assert args.register is True
+        assert parser.parse_args(["create", "--standalone"]).register is False
+
 
 # ---------------------------------------------------------------------------
 # TestRunCreate

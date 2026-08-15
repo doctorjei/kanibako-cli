@@ -140,7 +140,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     create_p.add_argument(
         "--name", default=None,
-        help="Project name override (default: auto-assigned from directory name)",
+        help="Project name override (default: auto-assigned from directory name). "
+             "For a standalone box this names the registry entry, so it is inert "
+             "without --register.",
+    )
+    create_p.add_argument(
+        "--register", action="store_true",
+        help="Index a new STANDALONE box in the registry so it resolves by name "
+             "from other directories (default: unregistered and independent; "
+             "--name is ignored without this). Default-mode boxes always register.",
     )
     create_p.add_argument(
         "-i", "--image", default=None,

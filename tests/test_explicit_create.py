@@ -89,7 +89,7 @@ class TestLaunchAbsentBoxErrors:
         assert rc == 1
         err = capsys.readouterr().err
         assert "no box at ghostbox" in err
-        assert "run 'kanibako create ghostbox'" in err
+        assert "kanibako create ghostbox" in err
         assert not std.boxes.exists() or not any(std.boxes.iterdir())
 
     def test_shell_absent_box_errors(
@@ -368,11 +368,43 @@ class TestUnbuiltBoxErrorMessage:
 
 class TestNoBoxErrorMessage:
     def test_named_spec_is_copy_pasteable(self):
+        """A NAME-shaped miss offers BOTH branches, register first (I3/§D4a)."""
         msg = _no_box_error("myproj")
         assert msg == (
-            "Error: no box at myproj. To create a new box, "
-            "run 'kanibako create myproj'"
+            "Error: no box at myproj.\n"
+            "  A bare name is resolved through the registry, and nothing "
+            "is registered under it.\n"
+            "  If this is an unregistered standalone box, register it "
+            "first:  kanibako box register <path-to-its-box-root>\n"
+            "  Otherwise create a new box:  kanibako create myproj"
         )
+
+    def test_name_shaped_miss_leads_with_the_register_cure(self):
+        """⚑ ``create <name>`` must never be the ONLY path offered for a name.
+
+        Since I3/§D4a an unregistered standalone box is real, on disk and
+        launchable from its own directory, yet invisible to a bare name — and
+        following ``create <name>`` from anywhere else mkdirs ``./<name>`` and
+        puts a PRIMARY box in it, which is the harm this function's own contract
+        names.  Both cures present, register FIRST.
+        """
+        msg = _no_box_error("ghostbox")
+        assert "kanibako box register <path-to-its-box-root>" in msg
+        assert "kanibako create ghostbox" in msg
+        assert msg.index("box register") < msg.index("kanibako create ghostbox")
+
+    def test_path_shaped_miss_keeps_the_one_liner(self, tmp_path, monkeypatch):
+        """⚑ Only the NAME shape changed.  A spec that IS a path on disk has no
+        registry story — ``create <path>`` is the right and only cure there."""
+        monkeypatch.chdir(tmp_path)
+        real = tmp_path / "realdir"
+        real.mkdir()
+        msg = _no_box_error(str(real))
+        assert msg == (
+            f"Error: no box at {real.resolve()}. To create a new box, "
+            f"run 'kanibako create {real}'"
+        )
+        assert "box register" not in msg
 
     def test_no_spec_suggests_bare_create(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
@@ -409,9 +441,11 @@ class TestBrokenStandaloneNoBoxError:
 
         root = (tmp_home / "sa-proj").resolve()
         root.mkdir()
+        # ⚑ ``--register`` (I3/§D4a): the branch under test is the message for a
+        # REGISTERED standalone box, and registration at create is opt-in now.
         ns = argparse.Namespace(
             path=str(root), standalone=True, no_vault=True,
-            name=None, image=None, agent=None, allow_home=False,
+            name=None, image=None, agent=None, allow_home=False, register=True,
         )
         assert run_create(ns) == 0
         _config, std = _std(config_file)
@@ -438,13 +472,18 @@ class TestBrokenStandaloneNoBoxError:
         """``--name`` is load-bearing (it preserves the kuid / channel address)
         and both commands must be on ONE line so the pair cannot be
         half-followed — the ``rm`` is what FREES the name the ``create`` asks
-        for."""
+        for.
+
+        ⚑ ``--register`` is what makes ``--name`` load-bearing (I3/§D4a): create
+        drops the name outright when it is not registering, so without the flag
+        this cure would rebuild the box under a FRESH kuid and leave it out of
+        the registry that named it."""
         std, name, root = self._broken(config_file, tmp_home)
         msg = _no_box_error(name, std)
         (cure,) = [ln for ln in msg.splitlines() if "Rebuild it:" in ln]
         assert (
             f"kanibako box rm {name} && kanibako create --standalone "
-            f"--name {name} {root}"
+            f"--register --name {name} {root}"
         ) in cure
         assert "your workspace/ and vault/ are not touched" in msg
 
@@ -472,7 +511,7 @@ class TestBrokenStandaloneNoBoxError:
         root.mkdir()
         ns = argparse.Namespace(
             path=str(root), standalone=True, no_vault=True,
-            name=None, image=None, agent=None, allow_home=False,
+            name=None, image=None, agent=None, allow_home=False, register=True,
         )
         assert run_create(ns) == 0
         _config, std = _std(config_file)
@@ -487,13 +526,20 @@ class TestBrokenStandaloneNoBoxError:
     def test_unregistered_name_is_unchanged(
         self, config_file, tmp_home, credentials_dir,
     ):
-        """D-2 regression pin: a token naming NO standalone box keeps the generic
-        message verbatim, ``std`` or not.  The generic bare-name suggestion is a
-        separate, still-boarded question and this pass does not touch it."""
+        """D-2 regression pin: a token naming NO standalone box does not take the
+        registry-keyed branch — it gets the ordinary NAME-shaped message, ``std``
+        or not.
+
+        ⚑ That message is no longer the one-line ``create`` suggestion: the
+        bare-name question this test once called "still-boarded" was decided by
+        I3/§D4a, and the register cure now leads it (see
+        ``TestNoBoxErrorMessage``).  What this pin still owns is the BRANCH — the
+        ``_broken_standalone_error`` text must not appear for a token that names
+        no registered box."""
         _config, std = _std(config_file)
-        assert _no_box_error("ghostbox", std) == (
-            "Error: no box at ghostbox. To create a new box, "
-            "run 'kanibako create ghostbox'"
+        assert _no_box_error("ghostbox", std) == _no_box_error("ghostbox")
+        assert "is registered as a standalone box" not in _no_box_error(
+            "ghostbox", std,
         )
         assert _no_box_error(None, std) == _no_box_error(None)
 
@@ -507,4 +553,6 @@ class TestBrokenStandaloneNoBoxError:
         assert _launch(name) == 1
         err = capsys.readouterr().err
         assert f"kanibako create {name}" not in err
-        assert f"kanibako box rm {name} && kanibako create --standalone" in err
+        assert (
+            f"kanibako box rm {name} && kanibako create --standalone --register"
+        ) in err

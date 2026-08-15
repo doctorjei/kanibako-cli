@@ -1095,6 +1095,14 @@ def _broken_standalone_error(std: StandardPaths, project_dir: str) -> str | None
     pair cannot be half-followed (the ``rm`` also FREES the name the ``create``
     then asks for — without it the ``create`` refuses).
 
+    ⚑ ``--register`` is what MAKES ``--name`` load-bearing, and the cure is void
+    without it.  Since I3/§D4a ``create --standalone`` registers only on request
+    and drops ``--name`` entirely when it does not (``run_create``'s
+    ``standalone_name``), so the two-flag pair is indivisible here: omit
+    ``--register`` and the name never reaches the resolver, the kuid is
+    regenerated, and the box this branch describes comes back as a different one
+    that is also no longer in the registry that named it.
+
     ⚑ The CURE LINE is the part a future ``repair`` verb replaces (tasks.md
     MBR-6), exactly as in :func:`_unbuilt_box_error`, whose three-part shape
     (``Error:`` / *why we won't* / ``Rebuild it:``) this deliberately reuses so
@@ -1129,7 +1137,7 @@ def _broken_standalone_error(std: StandardPaths, project_dir: str) -> str | None
         "  A launch will not rebuild it — rebuilding a box is a repair, and a "
         "repair has to be asked for by name.\n"
         f"  Rebuild it:  kanibako box rm {q_name} && kanibako create "
-        f"--standalone --name {q_name} {q_root}\n"
+        f"--standalone --register --name {q_name} {q_root}\n"
         "  (box_data/ is already gone, so 'box rm' only drops the registry "
         "entry — your workspace/ and vault/ are not touched, and --name keeps "
         "the box's identity and channel address.)"
@@ -1141,10 +1149,18 @@ def _no_box_error(project_dir: str | None, std: StandardPaths | None = None) -> 
 
     ``<path>`` is the resolved target we looked for a box at; the suggested
     ``create`` carries the user's own spec so it is copy-pasteable — an explicit
-    ``kanibako create <spec>`` when they named a project, a bare ``kanibako
-    create`` from inside the project dir (no spec).
+    ``kanibako create <spec>`` when they named a PATH, a bare ``kanibako create``
+    from inside the project dir (no spec).
 
-    ⚑ ONE EXCEPTION, and it is the reason *std* is a parameter: a REGISTERED
+    ⚑ THREE SHAPES, and only the first is that plain one-liner.  A NAME-shaped
+    token (a spec that is no path on disk) gets its own multi-line message: since
+    I3/§D4a a standalone box created without ``--register`` is real and running
+    but carries no registry entry, and the registry is the only thing a bare name
+    can consult — so that population lands HERE, and for it ``create <name>``
+    would mkdir a new ``./<name>`` and put a PRIMARY box in it.  The register cure
+    leads and ``create`` follows as the other branch.
+
+    ⚑ THE THIRD SHAPE is the reason *std* is a parameter: a REGISTERED
     STANDALONE box whose ``box_data/`` is gone also lands here (it resolves
     nameless), and for it the copy-pasteable suggestion is actively HARMFUL —
     see :func:`_broken_standalone_error`, which owns that message.  *std* is
@@ -1160,7 +1176,25 @@ def _no_box_error(project_dir: str | None, std: StandardPaths | None = None) -> 
         # A path that resolves on disk shows its resolved dir; a bare NAME (no
         # such path) shows the spec verbatim — either way copy-pasteable.
         candidate = Path(project_dir)
-        target = str(candidate.resolve()) if candidate.exists() else project_dir
+        if not candidate.exists():
+            # NAME-SHAPED MISS.  Since I3/§D4a this is the UNREGISTERED-STANDALONE
+            # population's message: a box created without ``--register`` is real,
+            # on disk and addressable from its own directory, but has no registry
+            # entry — and the registry is the only thing a bare name can consult.
+            # So the register cure leads, and ``create`` is offered as the other
+            # branch rather than as the only one: run bare it would mkdir a NEW
+            # ``./<name>`` and put a PRIMARY box in it, which is the harm this
+            # function's own contract already names.  ⚑ The root cannot be known
+            # from a name, so that cure carries a PLACEHOLDER and does not paste.
+            return (
+                f"Error: no box at {project_dir}.\n"
+                "  A bare name is resolved through the registry, and nothing "
+                "is registered under it.\n"
+                "  If this is an unregistered standalone box, register it "
+                "first:  kanibako box register <path-to-its-box-root>\n"
+                f"  Otherwise create a new box:  kanibako create {project_dir}"
+            )
+        target = str(candidate.resolve())
         suggest = f"kanibako create {project_dir}"
     else:
         target = os.getcwd()
