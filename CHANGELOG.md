@@ -106,6 +106,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   entries spelled only there were absent, not overridden, with nothing said. See
   [MIGRATION.md](MIGRATION.md) §2.37.
 
+- **BREAKING: the `agent` verbs joined the closed keyspace — `agent set`, `get` and `reset` refuse
+  what is not a key, and an undeclared scalar in an agent file refuses the launch.** `agent set`
+  used to accept nearly anything (`shell=zsh`, `self.model=opus`, `anything.at.all=x` — rc 0,
+  stored), and two accepted spellings actively broke the file: a `bindings.*` write stored a shape
+  the launch refuses, and a scalar `transform_settings` crashed every later `agent` command. Now:
+  an undeclared key refuses by name with the file unchanged (the live keys — state, `name`,
+  `run_args`, `env.<VAR>`, `secret_path.<VAR>`, plugin-declared leaves — still write); the
+  bind-shaped categories refuse with the retirement message (hand-edit is the route, and the
+  message shows the shape); a table-valued key given a scalar refuses naming the expected shape;
+  `get` and `reset` speak the same vocabulary as `set` (one read carve-out: `agent get <agent>
+  bindings.ro.<dest>` still answers, agreeing with `config get`); and the launch snapshot's old
+  "forward-compat" passthrough is closed — an undeclared scalar already in the file refuses the
+  launch by name, while `agent list`/`info` still display the file and `agent reset --all`
+  remains the recovery. Also fixed: a dotted destination reads back whole (`agent get claude
+  "bindings.ro.~/.cache/uv"`), where it used to print "(not set)". See
+  [MIGRATION.md](MIGRATION.md) §2.38.
+
 - **BREAKING: the four `KANIBAKO_*` variables kanibako sets for itself are ordinary settings now,
   and a twin of one at another scope will refuse the launch.** `KANIBAKO_NAME`, `KANIBAKO_AGENT`,
   `KANIBAKO_DIRECTIVE_SEED` and `KANIBAKO_AGENT_MARKERS_DIR` — the box's name, the agent it runs,

@@ -911,6 +911,84 @@ def agent_node_bind_retired_error(canonical: str, *, verb: str) -> str | None:
     )
 
 
+def agent_key_reason(node: str, tail: str) -> str | None:
+    """The §0 reason *tail* is not a declared key of agent *node*, or ``None`` when it is.
+
+    ⚑ ONE CONSTRUCTION, THREE CONSUMERS — the ``agent`` verb's write gate, its read gate, and the
+    LAUNCH boundary's passthrough refusal (``agent_file.state_level``).  A REASON rather than a
+    message, for the reason ``config_dest.NodeRouteRefusal`` gives: the rule is one, but a verb
+    owes a cure and a refused launch owes a file to open.
+
+    ⚑⚑ ``key_validity`` ON THE CANONICAL KEY, NEVER ``is_known_key``, AND THE DIFFERENCE IS
+    MEASURED: ``is_known_key("agent.claude.self.model")`` is **True** (the persona parser splits on
+    the LAST segment and reads the node as ``claude.self``), so the shape ruling 55 exists to
+    refuse would sail through, while ``run_args`` and ``name`` — both live, both pinned — would be
+    refused.  ``is_known_key`` answers "is this key-SHAPED, as opposed to a project name"; §0 asks
+    "is this a DECLARED key", and only ``key_validity`` answers that.
+
+    *node* is the agent whose file this is — it is KNOWN GOOD (the on-disk store dir), so it is
+    supplied AS the valid-agent set rather than re-litigated: an agent-discovery result must never
+    be able to refuse a key on an agent the user is demonstrably running.  The PLUGIN-declared
+    leaves are unioned in the OTHER direction (§0 *"Agent specifics are PLUGIN-declared"*), without
+    which a legitimate ``agent.goose.provider`` would be refused.
+
+    ⚑ THE IDENTITY RESIDUE: ``name`` / ``run_args`` are FILE-identity fields of ``AgentConfig``,
+    not keyspace leaves (``agent_file._MODELED_KEYS`` already says so), and both are live, written
+    and displayed.  ``run_args`` happens to be a declared §2d leaf as well; ``name`` is not, so the
+    allowlist is what keeps a shipped, pinned surface working — refusing it would be a breaking
+    change no ruling asks for.
+    """
+    from kanibako.settings.agent_config import IDENTITY_KEYS
+    from kanibako.settings.settings_keyspace import key_validity
+    from kanibako.settings.settings_prefs import default_valid_agents
+
+    if tail in IDENTITY_KEYS:
+        return None
+    agents = default_valid_agents()
+    return key_validity(
+        f"agent.{node}.{tail}",
+        valid_agents=(node,),
+        agent_leaves=getattr(agents, "leaves", None),
+    )
+
+
+def agent_write_key_error(node: str, tail: str, *, verb: str) -> str | None:
+    """Why ``agent <verb> <node> <tail>`` names no key, or ``None`` when it does (spec §0).
+
+    THE ``agent`` NOUN'S CLOSED-KEYSPACE GATE (D-5).  Its sibling verbs route through
+    ``set_config_value``, which owns this check for every other noun; this one has its own writer
+    and had NO validation at all, so ``agent set claude anything.at.all=x`` stored garbage rc=0 —
+    a closed-keyspace breach on a first-class write path, and the ONE place a user could type
+    ``self.`` and have it land (ruling 55).
+    """
+    reason = agent_key_reason(node, tail)
+    if reason is None:
+        return None
+    return (
+        f"Error: '{tail}' cannot be {verb} on agent "
+        f"'{display_agent_ref(node)}': {reason}."
+    )
+
+
+def agent_read_key_error(node: str, tail: str) -> str | None:
+    """Why ``agent get <node> <tail>`` names no key, or ``None`` when it does (spec §0).
+
+    The WRITE vocabulary (:func:`agent_write_key_error`) PLUS the one retired spelling whose READ
+    survived: ``agent.<node>.bindings.{ro,rw}.<name>`` is not a declared key — the arm is terminal
+    and its entries are destinations inside the value — but ``config get`` reads it anyway (R-9:
+    *"the read survived the write, on purpose"*), and the hand-edit that refusal prescribes is
+    only checkable if the read-back works.  Two verbs over ONE file must not disagree about it, so
+    the carve-out is taken from the SAME predicate ``get_config_value`` branches on rather than
+    re-stated here.
+
+    ⚑ Reading an undeclared key is an error under §0 exactly as writing one is, which is why this
+    exists at all: ``agent get claude self.model`` refuses instead of answering "(not set)".
+    """
+    if _is_agent_node_bind_key(f"agent.{node}.{tail}"):
+        return None
+    return agent_write_key_error(node, tail, verb="read")
+
+
 def _is_path_category_key(key: str) -> bool:
     """True iff *key* is a PER-NAME PATH-TUPLE category key."""
     # ⚑⚑ IT IS NOW FALSE FOR EVERY KEY, AND THAT IS THE CORRECT ANSWER (2026-08-08c).

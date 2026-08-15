@@ -10,6 +10,8 @@ from kanibako.agent_ref import canonicalize_agent_ref, display_agent_ref
 from kanibako.commands.flags import add_null_flag
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from kanibako.settings.agent_config import AgentConfig
     from kanibako.settings.paths import StandardPaths
 
@@ -293,11 +295,16 @@ def _run_agent_config(args: argparse.Namespace) -> int:
     from kanibako.settings.agent_file import (
         clear_overrides,
         load,
+        read_leaf,
         remove_leaf,
         slot_for,
         write_leaf,
     )
-    from kanibako.settings.config_keys import access_value_error, is_access_key
+    from kanibako.settings.config_keys import (
+        access_value_error,
+        agent_read_key_error,
+        is_access_key,
+    )
 
     try:
         std = _load_std()
@@ -338,7 +345,7 @@ def _run_agent_config(args: argparse.Namespace) -> int:
             # a COUNT of the overrides actually removed, in the SAME wording the other
             # scopes' ``reset_all`` (config_interface.py) prints; both facts now live
             # with the shape, in :func:`agent_file.clear_overrides`.
-            count = clear_overrides(path, agent_id)
+            count = clear_overrides(path)
             print(
                 f"Reset {count} override(s)." if count else "No overrides to reset."
             )
@@ -351,6 +358,14 @@ def _run_agent_config(args: argparse.Namespace) -> int:
             return 1
 
         key = reset_key.strip()
+        # ⚑ THE SAME GATE ``set`` TAKES, and the symmetry is the point (spec §0): a
+        # reset is a WRITE, so "No override for …" on a spelling that is not a key —
+        # or on one whose write route is RETIRED — is a lie in both directions.  This
+        # is the order ``config_interface.reset_config_value`` uses.
+        gate_err = _agent_key_gate(agent_id, key, path=path, verb="reset")
+        if gate_err is not None:
+            print(gate_err, file=sys.stderr)
+            return 1
         changed = remove_leaf(slot_for(std.agents, agent_id, key))
         if changed:
             # Honest cleared-form (F7), same contract as every other noun's
@@ -430,6 +445,10 @@ def _run_agent_config(args: argparse.Namespace) -> int:
             if access_err is not None:
                 print(access_err, file=sys.stderr)
                 return 1
+        gate_err = _agent_key_gate(agent_id, key, path=path, verb="set")
+        if gate_err is not None:
+            print(gate_err, file=sys.stderr)
+            return 1
         # run_args is stored as a LIST (space-split); everything else is the
         # raw string. Sparse write — only the touched key is materialized.
         stored: object = value.split() if key == "run_args" else value
@@ -439,13 +458,57 @@ def _run_agent_config(args: argparse.Namespace) -> int:
 
     # Get mode
     key = key_value.strip()
-    cfg = load(path)
-    val = _get_agent_key(cfg, key)
+    read_err = agent_read_key_error(agent_id, key)
+    if read_err is not None:
+        print(read_err, file=sys.stderr)
+        return 1
+    val = _get_agent_key(load(path), key)
+    if val is None:
+        # ⚑ D-6: THE RECORD FIRST, THE FILE SECOND.  ``AgentConfig`` models a
+        # SUBSET of what the file may hold — no field answers for the CATEGORY
+        # tables — so a record-only read printed "(not set)" over values the file
+        # carries, including ones ``agent set`` had just written.  The fallback
+        # goes through the SAME boundary slot ``config get agent.<node>.<tail>``
+        # uses, so the two verbs render ONE string
+        # (``config_io.render_stored_scalar``) rather than two renderings of one
+        # value.  ⚑ A declared key MUST be readable (spec §0); the record's shape
+        # is not a reason for a key to have no answer.
+        val = read_leaf(slot_for(std.agents, agent_id, key))
     if val is not None:
         print(val)
     else:
         print("(not set)", file=sys.stderr)
     return 0
+
+
+def _agent_key_gate(
+    agent_id: str, key: str, *, path: "Path", verb: str
+) -> str | None:
+    """The WRITE gate for ``agent set`` / ``agent reset``: refusal text, or ``None``.
+
+    ⚑ THE ORDER MIRRORS ``set_config_value``'s PREAMBLE, and each step is there because the next
+    one would say the wrong thing about it:
+
+    1. a RETIRED bind-shaped route is refused BY NAME with its own cure — never degraded to "not
+       a declared key" (spec §0).  It covers all five bind-shaped categories, from the same
+       derived recogniser the other verbs use, so there is no bindings-only rule to widen later;
+    2. the CLOSED KEYSPACE (D-5) — this verb had no vocabulary at all and stored whatever it was
+       handed, including ``self.model`` (ruling 55);
+    3. the VALUE SHAPE (D-7) — a declared key whose value is a TABLE takes no scalar.
+    """
+    from kanibako.settings.agent_file import table_value_error
+    from kanibako.settings.config_keys import (
+        agent_node_bind_retired_error,
+        agent_write_key_error,
+    )
+
+    retired = agent_node_bind_retired_error(f"agent.{agent_id}.{key}", verb=verb)
+    if retired is not None:
+        return retired
+    key_err = agent_write_key_error(agent_id, key, verb=verb)
+    if key_err is not None:
+        return key_err
+    return table_value_error(key, path=path, verb=verb)
 
 
 def _get_agent_key(cfg: AgentConfig, key: str) -> str | None:

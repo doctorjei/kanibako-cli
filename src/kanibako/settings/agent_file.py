@@ -54,10 +54,9 @@ _MODELED_KEYS = IDENTITY_KEYS | frozenset({"env", "secret_path", "transform_sett
 #: there is no second ``<node>`` embedding and no other spelling exists (rulings 49-52; the S2
 #: flatten). ``bindings`` is ONE token: its ``{ro, rw}`` table rides WHOLE, exactly as the
 #: canonical ``agent.<node>.bindings`` key holds both arms. ⚑ ORDER IS NOT SIGNIFICANT (they are
-#: distinct category names, so no re-root can shadow another). The WRITE side of this same fact is
-#: :func:`_address`, which routes ``agent set <node> env.FOO=bar`` to exactly the table
-#: :func:`level_table` reads back — the two are siblings in this module, which is what stops them
-#: drifting.
+#: distinct category names, so no re-root can shadow another). It is ALSO the address rule's
+#: category set (:func:`_read_address`), which is what stops the value's storage shape and the
+#: cascade's read of it from drifting apart.
 _FLAT_AGENT_CATEGORIES: tuple[str, ...] = (
     "bindings", "caches", "seeded", "common", "synced", "masks", "secret_path", "env",
 )
@@ -88,7 +87,19 @@ _CARRIED_CATEGORIES: Final[frozenset[str]] = frozenset(_FLAT_AGENT_CATEGORIES) -
 #: for. The dest-keyed families take a LIST value the verb cannot express (it would store a dotted
 #: literal), and a message must never prescribe a verb that does not work — the same rule
 #: ``config_keys``' retired-bind cure follows. Their cure is the hand-edit alone.
+#:
+#: ⚑ IT IS THE SAME FACT :func:`_write_address` ROUTES ON, and it is spelled once for both: these
+#: two are the only categories holding a SCALAR per name (``env.<VAR>`` / ``secret_path.<VAR>``),
+#: which is exactly why they are the only ones a scalar write can address and the only ones a cure
+#: may name the verb for.
 _VERB_WRITABLE_CATEGORIES: Final[frozenset[str]] = frozenset({"env", "secret_path"})
+
+#: Every ROOT key whose VALUE IS A TABLE — derived, so it cannot drift from the shape the file
+#: actually holds: everything the root may carry EXCEPT the two identity fields (``name`` is a
+#: string, ``run_args`` a list of them). ⚑ It answers ONE question — "can a SCALAR be written AT
+#: this key?" — and the answer is no for all of them: an entry inside one of these tables is DATA
+#: (a box destination, a VAR, a transform knob), never a key segment of its own.
+_TABLE_VALUED_KEYS: Final[frozenset[str]] = _ROOT_TABLES - IDENTITY_KEYS
 
 #: What a cure renders for a category whose refused table is EMPTY (nothing to quote): a sample
 #: ``(key, value)`` for ONE entry. The dest-keyed families all share one entry shape, so they take
@@ -110,7 +121,7 @@ _DEST_KEYED_PLACEHOLDER: Final[tuple[str, str]] = ("<box-dest>", "[<host-src>]")
 
 @dataclass(frozen=True)
 class AgentFileSlot:
-    """WHERE one per-node value lives: a file, the node it belongs to, and the key TAIL.
+    """WHERE one per-node value lives: a file and the key TAIL.
 
     ⚑⚑ IT CARRIES NO ``sections``/``leaf``, AND THAT IS THE WHOLE POINT (P3/P4).  The four
     per-node resolvers used to hand callers a ``(path, sections, leaf)`` triple, so seven
@@ -123,10 +134,15 @@ class AgentFileSlot:
     True and every ``path, sections, leaf = route`` unpacking silently working at the WRONG arity
     — the same-arity shape flip that passes green while the meaning changes.  The dataclass makes
     both go loudly false.
+
+    ⚑ IT CARRIES NO ``node`` EITHER, SINCE S3.  The node picks the FILE (``slot_for`` still takes
+    it) and nothing else: once the flatten made every category live at the file's top level, no
+    address depends on which node's file it is — ``self`` IS that node.  A ``node`` field kept
+    only for an address that no longer reads it is the second copy of a fact, waiting to disagree
+    with the path it was derived from.
     """
 
     path: Path
-    node: str
     tail: str
 
 
@@ -148,51 +164,110 @@ class AgentFileLevel:
 # The file ADDRESS — spelled once, produced only in here
 # ---------------------------------------------------------------------------
 
-def _address(tail: str, node: str) -> tuple[tuple[str, ...], str]:
-    """Map a per-agent-file key TAIL to its ``(sections, leaf)`` inside the file.
+def _read_address(tail: str) -> tuple[tuple[str, ...], str]:
+    """Map a per-agent-file key TAIL to the ``(sections, leaf)`` it is READ from.
 
-    *tail* is the part of a canonical per-node agent key AFTER the ``agent.<node>.``
-    prefix (e.g. ``model``, ``env.FOO``, ``secret_path.TOK``, ``bindings.ro.share``);
-    *node* is the agent id (the file's own discriminator).
+    *tail* is the part of a canonical per-node agent key AFTER the ``agent.<node>.`` prefix
+    (``model``, ``env.FOO``, ``secret_path.TOK``, ``bindings.ro./box/share``, ``caches./h/uv``).
 
-    The file's own top-level table is :data:`_ROOT` (its self-reference — the renamed old bare
-    ``agent`` values), and the category split is load-bearing:
+    ⚑⚑ THE PARTITION RULE, AND IT IS THE WHOLE OF IT: the FIRST segment is the CATEGORY;
+    ``bindings`` — and only ``bindings`` — then takes an ARM; EVERYTHING after that is ONE
+    DESTINATION.  A dest is DATA (a guest-side path, dots and all), so it is never split and never
+    re-joined: two :meth:`str.partition` calls take exactly the segments the key HAS, and hand the
+    remainder over whole.  ⚑ The primitives underneath are dotted-leaf-safe — ``write_nested_key``
+    and ``read_stored_leaf`` treat *leaf* as a literal dict key.
 
-    * flat state (``model`` / ``endpoint`` / ``access`` / …) lives DIRECTLY under
-      the root — the shape :func:`load` reads into ``AgentConfig`` for the launch invocation;
-    * ``env.*`` and ``secret_path.*`` live DIRECTLY under the root too — ``self`` IS
-      ``agent.<node>``, so there is NO second ``<node>`` embedding.  ⚑ BOTH are
-      re-rooted into the launch CASCADE by :func:`level_table`
-      (:data:`_FLAT_AGENT_CATEGORIES`, whose read side this write side must match);
-      :func:`load` models them for the ``agent`` verbs' own READS
-      (``info`` / ``show`` / ``get``), not to deliver them.  ⚑ A second ``<node>``
-      level under the root is REFUSED for BOTH (rulings 49c + 50: ``self`` is an
-      ALIAS for ``agent.<node>``, so ``self.<node>.env`` reads
-      ``agent.<node>.<node>.env``), so this route is the only spelling — which is
-      what keeps write and read from drifting apart.
-    * ``bindings.{ro,rw}.*`` are still WRITTEN into the DISCRIMINATED ``self.<node>.*``
-      sub-table here — and that is now a DEFECT with a slot, not a shape.  ⚑ S2 flattened
-      the READ side: :func:`level_table` reads ``bindings`` FLAT with every other category
-      and REFUSES the nested sub-table by name, so a value written through this arm lands
-      where nothing reads it.  S3 flattens this arm to match, red-then-green; it is not
-      "tidied" here, because a silent repair inside another pass is exactly how a
-      behaviour change hides.
+    ⚑ THE FALLTHROUGH IS LOAD-BEARING: a tail whose head is not a category is a FLAT root leaf
+    (``model``, ``name``, ``run_args``) and reads ``(root,) / tail`` — including a dotted one,
+    which lands on a literal dotted key rather than being exploded.
 
-    ⚑⚑ THE ``bindings`` ARM SPLITS THE DEST ON ``.`` AND THAT IS A KNOWN DEFECT (D-4), MOVED
-    HERE VERBATIM ON PURPOSE.  A dotted destination (``bindings.ro.~/.cache/uv``) is shattered
-    across YAML levels: the read lands on a slot no file has and the write lays down an unusable
-    shape.  S3 fixes it red-then-green — the dest is DATA and is never split.  Do NOT "tidy" it
-    into a fix here: S1 is behaviour-preserving, and a silent repair inside a relocation is
-    exactly how a behaviour change hides in a move.
+    The categories come from :data:`_FLAT_AGENT_CATEGORIES`, the same tuple :func:`level_table`
+    re-roots into the cascade, so a key ``config get`` reads and a key the LAUNCH reads are one
+    address by construction rather than by two lists agreeing.
     """
-    if tail.startswith("secret_path."):
-        return (_ROOT, "secret_path"), tail[len("secret_path."):]
-    if tail.startswith("bindings."):
-        segs = tail.split(".")  # bindings.<ro|rw>.<name>
-        return (_ROOT, node, *segs[:-1]), segs[-1]
-    if tail.startswith("env."):
-        return (_ROOT, "env"), tail[len("env."):]
-    return (_ROOT,), tail
+    category, sep, rest = tail.partition(".")
+    if not sep or category not in _FLAT_AGENT_CATEGORIES:
+        return (_ROOT,), tail
+    if category == "bindings":
+        arm, arm_sep, dest = rest.partition(".")
+        if arm_sep:
+            return (_ROOT, category, arm), dest
+    return (_ROOT, category), rest
+
+
+def _write_address(tail: str) -> tuple[tuple[str, ...], str]:
+    """Map a per-agent-file key TAIL to the ``(sections, leaf)`` a SCALAR is WRITTEN at.
+
+    ⚑⚑ NARROWER THAN :func:`_read_address` BY CONSTRUCTION, AND THAT IS THE POINT (P3/P4).  The
+    file holds exactly three kinds of scalar: a FLAT root leaf (``model``, ``name``, ``run_args``),
+    an ``env.<VAR>`` and a ``secret_path.<VAR>`` (:data:`_VERB_WRITABLE_CATEGORIES`).  Every other
+    category is DEST-KEYED: its entries are box destinations INSIDE its value, not slots of their
+    own, so there is no address to produce and this raises rather than inventing one.  D-4 shipped
+    because the write side could express a per-entry address at all; it now cannot.
+
+    ⚑ THE RAISE IS A BACKSTOP, NOT THE USER-FACING REFUSAL.  Every write caller gates first and
+    names the key itself (``agent_cmd``'s verb gate, ``config_interface``'s retired-route
+    preamble), because a refusal owes the user a cure this function has no way to phrase.  Reaching
+    here means a caller skipped its gate: either the VALUE-SHAPE one
+    (:func:`table_value_error` — the tail names a whole table) or the CLOSED-KEYSPACE one
+    (``config_keys.agent_write_key_error`` — a dotted tail under anything but the two var-keyed
+    categories is not a key at all, and writing it would lay down a nested sub-table the loader
+    then REFUSES).
+    """
+    head, sep, rest = tail.partition(".")
+    if not sep and not _is_table_valued(tail):
+        return (_ROOT,), tail
+    if sep and head in _VERB_WRITABLE_CATEGORIES:
+        return (_ROOT, head), rest
+    raise SettingsError(
+        f"'{tail}' has no scalar slot in the agent settings file. Its caller must "
+        f"refuse the key by name before asking for a write address."
+    )
+
+
+def _is_table_valued(tail: str) -> bool:
+    """Does *tail* name a whole TABLE of the agent file (so no scalar can live AT it)?
+
+    ⚑ ``env.<VAR>`` / ``secret_path.<VAR>`` are the exception and the ONLY one: those two
+    categories hold a SCALAR per name (:data:`_VERB_WRITABLE_CATEGORIES`).  Every other category
+    — and ``transform_settings``, and a bare ``env:`` / ``secret_path:`` — IS the value.
+    """
+    head, sep, _rest = tail.partition(".")
+    if sep and head in _VERB_WRITABLE_CATEGORIES:
+        return False
+    return head in _TABLE_VALUED_KEYS
+
+
+def table_value_error(tail: str, *, path: Path, verb: str) -> str | None:
+    """Why *tail* takes no scalar ``agent set`` / ``agent reset``, or ``None`` when it does.
+
+    The VALUE-SHAPE half of the verb's gate, and the cure for D-7: ``transform_settings``,
+    ``masks`` and the dest-keyed category tables all hold a MAP, so a scalar written at one is not
+    a wrong value but a wrong SHAPE — and until this refused, a scalar ``transform_settings``
+    crashed every subsequent :func:`load`, i.e. every launch, list, info and show.
+
+    ⚑ SET AND RESET TAKE IT ALIKE.  A CLI reset would remove the whole table, which is a different
+    operation from the per-entry removal the spelling suggests, and "set cannot reach what reset
+    can" is the get/set-asymmetry class this file's siblings exist to prevent.  The hand-edit is
+    the honest cure for both: since ``set`` can never CREATE one of these tables, every one that
+    exists was hand-authored.  (``agent reset --all`` still drops them wholesale — it is the
+    file-wide verb, not a per-key one.)
+
+    It lives HERE rather than in the verb because the cure QUOTES the file's own spelling
+    (:func:`file_spelling`), which is one of the two file-surface residues ``self`` is allowed
+    (ruling 51): the boundary writes the file's bytes and the boundary quotes them back.
+    ⚑ ``file_spelling(tail)`` takes *tail* WHOLE — it JOINS under the root and never splits, so a
+    dotted arm (``bindings.ro``) renders as itself.
+    """
+    if not _is_table_valued(tail):
+        return None
+    return (
+        f"Error: '{tail}' holds a TABLE, not a scalar, so it cannot be {verb} from "
+        f"the command line — its entries are DATA inside the table, not keys of "
+        f"their own.\n"
+        f"  Fix: edit the `{file_spelling(tail)}` table of {path} directly; the "
+        f"launch reads it from there."
+    )
 
 
 def file_spelling(*segments: str) -> str:
@@ -207,8 +282,11 @@ def file_spelling(*segments: str) -> str:
 
 
 def slot_for(agents_root: Path, node: str, tail: str) -> AgentFileSlot:
-    """The :class:`AgentFileSlot` for *node*'s *tail* under *agents_root*."""
-    return AgentFileSlot(agent_settings_path(agents_root, node), node, tail)
+    """The :class:`AgentFileSlot` for *node*'s *tail* under *agents_root*.
+
+    *node* picks the FILE and is not carried any further — see :class:`AgentFileSlot`.
+    """
+    return AgentFileSlot(agent_settings_path(agents_root, node), tail)
 
 
 def read_leaf(slot: AgentFileSlot) -> str | None:
@@ -218,24 +296,32 @@ def read_leaf(slot: AgentFileSlot) -> str | None:
     conventions (bools lowercase, a stored ``""`` reading as ``None``) are load-bearing for every
     ``get``, so this must NOT re-render on top of them.
     """
-    sections, leaf = _address(slot.tail, slot.node)
+    sections, leaf = _read_address(slot.tail)
     return read_stored_leaf(slot.path, sections, leaf)
 
 
 def write_leaf(slot: AgentFileSlot, value: object) -> None:
-    """Write *value* at *slot*, creating intermediate tables (sparse read-modify-write)."""
-    sections, leaf = _address(slot.tail, slot.node)
+    """Write *value* at *slot*, creating intermediate tables (sparse read-modify-write).
+
+    ⚑ Through :func:`_write_address`, which is NARROWER than the read side and raises on a
+    dest-keyed tail — the caller gates first.
+    """
+    sections, leaf = _write_address(slot.tail)
     write_nested_key(slot.path, sections, leaf, value)
 
 
 def remove_leaf(slot: AgentFileSlot) -> bool:
-    """Remove the value at *slot*, pruning emptied tables; True if one was there."""
-    sections, leaf = _address(slot.tail, slot.node)
+    """Remove the value at *slot*, pruning emptied tables; True if one was there.
+
+    ⚑ A remove is a WRITE and takes :func:`_write_address` for it — reset and set must not
+    disagree about where a value lives.
+    """
+    sections, leaf = _write_address(slot.tail)
     return remove_nested_key(slot.path, sections, leaf)
 
 
-def clear_overrides(path: Path, node: str) -> int:
-    """Drop every user override from *node*'s file, PRESERVING ``name``; return the count.
+def clear_overrides(path: Path) -> int:
+    """Drop every user override from the file at *path*, PRESERVING ``name``; return the count.
 
     Sparse "remove all user overrides": from the root table, every key EXCEPT ``name`` (this
     removes run_args, all state keys, and every category table), then prune the now-empty root
@@ -243,30 +329,20 @@ def clear_overrides(path: Path, node: str) -> int:
     ([[settings-must-map-to-keystore-key]]).
 
     The COUNT is what ``agent reset --all`` reports, in the same terms the other scopes'
-    ``reset_all`` uses: each removed root key counts once.
+    ``reset_all`` uses: EACH REMOVED ROOT KEY COUNTS ONCE, whatever it holds — a category table
+    counts as the one override it is.
 
-    ⚑ THE ``node`` BRANCH BELOW IS DEAD AND *node* IS UNUSED SINCE THE FLATTEN (S2): a root key
-    equal to the node is a nested sub-table, which :func:`_refuse_nested_tables` now refuses, so
-    no file this verb can be pointed at has one.  Both retire at S3 with the write side — kept
-    here so the removal is a change of its own rather than a rider on the read flatten.
+    ⚑ THE ``node`` PARAMETER IS GONE (S3), with the branch that read it.  It special-cased a root
+    key equal to the node — the nested sub-table — which the flatten (S2) REFUSES by name, so no
+    file this verb can be pointed at reaches here with one, and the per-VAR arm of the count could
+    only ever have counted VARs found inside it.
     """
     data = load_doc(path)
     count = 0
     agent_sec = data.get(_ROOT)
     if isinstance(agent_sec, dict):
         for k in [k for k in agent_sec if k != "name"]:
-            val = agent_sec[k]
-            if k == node and isinstance(val, dict):
-                # The discriminated node sub-table: count each secret_path
-                # pointer per-VAR (parity with the old flat env_file count),
-                # plus one for any other node content (e.g. node binds).
-                secret_sub = val.get("secret_path")
-                if isinstance(secret_sub, dict):
-                    count += len(secret_sub)
-                if any(kk != "secret_path" for kk in val):
-                    count += 1
-            else:
-                count += 1
+            count += 1
             del agent_sec[k]
         if not agent_sec:
             del data[_ROOT]
@@ -302,20 +378,32 @@ def load(path: Path) -> AgentConfig:
     raw_args = agent_sec.get("run_args", [])
     cfg.run_args = [str(a) for a in raw_args] if isinstance(raw_args, list) else []
 
-    # Flat state = the SCALAR agent-state knobs. Exclude identity keys AND any
-    # dict-valued entry: every CATEGORY table (env, secret_path, bindings, …) is a
-    # dict and is NOT flat state — those ride ``_agent_partial``, not the
-    # ``_agent_state_partial`` state channel.
+    # Flat state = the SCALAR agent-state knobs. Exclude every key the record MODELS
+    # as a field of its own, and any dict-valued entry: a CATEGORY table (env,
+    # secret_path, bindings, …) is a dict and is NOT flat state — those ride
+    # ``_agent_partial``, not the ``_agent_state_partial`` state channel.
+    # ⚑ ``_MODELED_KEYS``, NOT ``IDENTITY_KEYS`` (S3/D-7): the two tests only differ
+    # for a MALFORMED file — a scalar written where a table belongs (``env: oops``)
+    # is not dict-valued, so the narrower test swept it into state and the launch
+    # then carried a modelled field's garbage as an agent-state knob.
     cfg.state = {
         k: str(v)
         for k, v in agent_sec.items()
-        if k not in IDENTITY_KEYS and not isinstance(v, dict)
+        if k not in _MODELED_KEYS and not isinstance(v, dict)
     }
     # env: VAR -> value, read DIRECTLY from the root's ``env`` table (``self`` IS
     # ``agent.<node>``).  Carried for the ``agent info`` / ``show`` / ``get`` READS;
     # the launch reads the same table off the file through the cascade, never off
     # this field (MBR-1 P3).
-    cfg.env = {k: str(v) for k, v in agent_sec.get("env", {}).items()}
+    # ⚑ ISINSTANCE-GUARDED, like every modelled table below (S3/D-7): a hand-authored
+    # SCALAR at a table-valued key is a wrong SHAPE, and the READ side stays permissive
+    # about it on purpose — ``agent info`` / ``list`` / ``show`` are how a user SEES a
+    # broken file, so they must not be the thing the broken file kills. The WRITE side
+    # refuses the shape (``table_value_error``), which is what stops one being made.
+    env_sub = agent_sec.get("env", {})
+    cfg.env = {
+        k: str(v) for k, v in env_sub.items()
+    } if isinstance(env_sub, dict) else {}
     # secret_path: VAR -> host PATH pointer, read DIRECTLY from the root's
     # ``secret_path`` table (spec §2a SECRET category — ``self`` IS ``agent.<node>``,
     # no second embedding).
@@ -325,7 +413,10 @@ def load(path: Path) -> AgentConfig:
     cfg.secret_path = {
         k: str(v) for k, v in secret_sub.items()
     } if isinstance(secret_sub, dict) else {}
-    cfg.transform_settings = dict(agent_sec.get("transform_settings", {}))
+    transform_sub = agent_sec.get("transform_settings", {})
+    cfg.transform_settings = (
+        dict(transform_sub) if isinstance(transform_sub, dict) else {}
+    )
     # The CATEGORY tables the record does not model as fields of its own (bindings,
     # caches, seeded, common, synced, masks).  Carried OPAQUELY: a load→write round
     # trip that did NOT carry them would silently DROP a user's binds.
@@ -564,7 +655,42 @@ def state_level(
     used to hand ``build_launch_snapshot`` a bare ``dict(agent_cfg.state)``, plus its own
     ``agent_path`` load. ``settings_launch._agent_state_partial`` takes the level and reads its
     node — so the node a table merges under is no longer a second, uncross-checked argument.
+
+    ⚑⚑ AND IT IS WHERE THE FORWARD-COMPAT PASSTHROUGH CLOSES (S3, D-5's other end).  An undeclared
+    scalar in the file used to ride into the launch snapshot VERBATIM — the "old
+    ``agent.<name>.<anyleaf>`` behaviour" spec §0 SPECIFICALLY EXCLUDES — so the garbage
+    ``agent set`` stored was not merely dead, it reached the box.  The refusal lives HERE, at the
+    boundary, and it is LAUNCH-ONLY on purpose: ``agent list`` / ``info`` read ``cfg.state``
+    directly and the repair verbs never call :func:`load`, so a poisoned file still LISTS, still
+    DISPLAYS, and can still be fixed — only starting a box on it refuses, by name.  (The persona
+    precedent: a broken config is a hard launch error, never a last-known-good.)
     """
     if not state:
         return None
+    _refuse_undeclared_state(state, node=node)
     return AgentFileLevel(node, dict(state))
+
+
+def _refuse_undeclared_state(state: Mapping[str, str], *, node: str) -> None:
+    """RAISE on the first agent-file state key that is not a declared key (spec §0).
+
+    ⚑ THE PLUGIN UNION IS LOAD-BEARING, not a nicety: ``config_keys.agent_key_reason`` unions the
+    leaves the installed targets DECLARE, and without it a legitimate ``agent.goose.provider``
+    would refuse a working box at launch.
+    """
+    from kanibako.settings.config_keys import agent_key_reason
+
+    for key in state:
+        reason = agent_key_reason(node, key)
+        if reason is None:
+            continue
+        raise SettingsError(
+            f"the agent settings file for '{node}' carries '{key}', which is not a "
+            f"settings key: {reason}.\n"
+            f"kanibako will not start a box on it — an undeclared key has no "
+            f"meaning to give the box, and carrying it through would be the very "
+            f"'anything goes' behaviour the closed keyspace replaces.\n"
+            f"  Fix: remove `{file_spelling(key)}` from agents/{node}/settings.yaml "
+            f"(or correct the spelling); 'kanibako agent info {node}' still lists "
+            f"what the file holds."
+        )

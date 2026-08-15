@@ -381,7 +381,7 @@ class TestCategoryTablesCarryThrough:
 class TestSlotRouting:
     """``slot_for`` + read/write/remove — the per-value half of the boundary."""
 
-    _TAILS = ("model", "env.FOO", "secret_path.TOK", "bindings.ro.share")
+    _TAILS = ("model", "env.FOO", "secret_path.TOK")
 
     @pytest.mark.parametrize("tail", _TAILS)
     def test_write_read_remove_round_trip(self, tail, tmp_path):
@@ -404,23 +404,29 @@ class TestSlotRouting:
         level = level_table(load_doc(slot.path), sub_key="claude", node="claude")
         assert level.table["env"] == {"NAV_X": "from-the-file"}
 
-    def test_the_bindings_write_arm_lands_where_the_cascade_now_refuses(self, tmp_path):
-        # ⚑⚑ THE S2↔S3 WINDOW, PINNED RATHER THAN LEFT IMPLICIT (rulings 50-52). S2
-        # flattened the READ side, so ``level_table`` reads ``self: bindings:`` and REFUSES
-        # a ``self.<node>:`` sub-table by name. ``_address`` still WRITES that sub-table, so
-        # this arm now lays down the one shape the launch rejects — a defect with a slot
-        # (S3), not a shape. This test goes green-with-a-different-body when S3 lands; it
-        # must never be deleted to make the window quiet.
-        from kanibako.settings.config_io import load_doc
-
+    def test_the_bindings_write_arm_is_gone(self, tmp_path):
+        # ⚑⚑ THE INVERSION OF THE S2↔S3 WINDOW PIN (rulings 50-52; D-4). Through S2 this
+        # arm WROTE a ``self.<node>: bindings:`` sub-table that the flattened read then
+        # REFUSED — a value laid down where nothing reads it. S3 does not "flatten" the
+        # write arm, it DELETES it: ``bindings`` is dest-keyed, its entries are DATA inside
+        # the arm's value, so there is no scalar slot to address and the boundary cannot
+        # produce one. The verb refuses by name long before this; this is the backstop.
         slot = slot_for(tmp_path, "claude", "bindings.ro.share")
-        write_leaf(slot, "/host:/box")
-        assert load_doc(slot.path)["self"]["claude"]["bindings"]["ro"] == {
-            "share": "/host:/box"
-        }
-        with pytest.raises(SettingsError) as exc:
-            level_table(load_doc(slot.path), sub_key="claude", node="claude")
-        assert "self.claude.bindings" in str(exc.value)
+        with pytest.raises(SettingsError, match=r"no scalar slot"):
+            write_leaf(slot, "/host:/box")
+        assert not slot.path.exists()
+
+    @pytest.mark.parametrize(
+        "tail", ("caches", "masks", "bindings.ro", "transform_settings", "synced"),
+    )
+    def test_no_write_address_for_a_whole_table(self, tail, tmp_path):
+        # The rule is the KEY's value shape, not a list of bad names: every root key
+        # holding a TABLE is unaddressable by a scalar write, and a REMOVE is a write.
+        slot = slot_for(tmp_path, "claude", tail)
+        with pytest.raises(SettingsError, match=r"no scalar slot"):
+            write_leaf(slot, "v")
+        with pytest.raises(SettingsError, match=r"no scalar slot"):
+            remove_leaf(slot)
 
     def test_read_does_not_re_render(self, tmp_path):
         # ⚑ The two ``read_stored_leaf`` conventions are load-bearing for every
@@ -430,6 +436,110 @@ class TestSlotRouting:
         assert read_leaf(slot) == "true"
         write_leaf(slot, "")
         assert read_leaf(slot) is None
+
+
+class TestTheDestIsData:
+    """D-4: a per-entry DESTINATION is DATA and is never split on ``.`` (rulings 49-52).
+
+    The fifth instance of one root cause ([[dest-is-data-never-split-on-dot]]).  The old bindings
+    arm did ``tail.split(".")`` and scattered ``bindings.ro.~/.cache/uv`` across YAML levels, so a
+    hand-authored entry read back "(not set)" while the sibling box scope handled the identical
+    destination fine.
+    """
+
+    _DOTTED = "~/.cache/uv"
+
+    def _file_with(self, tmp_path, body):
+        path = tmp_path / "claude" / "settings.yaml"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(body)
+        return path
+
+    def test_a_dotted_bindings_dest_reads_back_whole(self, tmp_path):
+        # MUTATION PROOF: restore ``segs = tail.split(".")`` in the address rule and the
+        # read lands on ``self/bindings/ro/~/`` + leaf ``cache/uv`` — a slot no file has.
+        self._file_with(
+            tmp_path,
+            "self:\n"
+            "  bindings:\n"
+            "    ro:\n"
+            f"      {self._DOTTED}: [/store/uv]\n",
+        )
+        slot = slot_for(tmp_path, "claude", f"bindings.ro.{self._DOTTED}")
+        assert read_leaf(slot) == "['/store/uv']"
+
+    @pytest.mark.parametrize("category", ("caches", "seeded", "common", "synced"))
+    def test_a_dotted_dest_reads_back_whole_for_every_dest_keyed_category(
+        self, category, tmp_path,
+    ):
+        # The four one-segment-shallower families: the category token IS the whole key,
+        # so EVERYTHING after it is the destination.
+        self._file_with(
+            tmp_path,
+            f"self:\n  {category}:\n    {self._DOTTED}: [/store/x]\n",
+        )
+        slot = slot_for(tmp_path, "claude", f"{category}.{self._DOTTED}")
+        assert read_leaf(slot) == "['/store/x']"
+
+    def test_a_dotted_masks_dest_reads_back_whole(self, tmp_path):
+        self._file_with(tmp_path, "self:\n  masks:\n    ~/.ssh: true\n")
+        assert read_leaf(slot_for(tmp_path, "claude", "masks.~/.ssh")) == "true"
+
+    def test_a_non_category_head_is_a_flat_leaf(self, tmp_path):
+        # The fallthrough: a tail whose head is not a category is a root leaf, dots and
+        # all — it is NOT exploded into sections a settings_categories claim depends on.
+        self._file_with(tmp_path, "self:\n  model: opus\n")
+        assert read_leaf(slot_for(tmp_path, "claude", "model")) == "opus"
+
+
+class TestTableValuedKeysTakeNoScalar:
+    """D-7: a declared key whose VALUE is a table takes no scalar, and says so."""
+
+    def test_transform_settings_is_refused_with_its_shape(self, tmp_path):
+        from kanibako.settings.agent_file import table_value_error
+
+        msg = table_value_error(
+            "transform_settings", path=tmp_path / "settings.yaml", verb="set",
+        )
+        assert msg is not None
+        assert "holds a TABLE" in msg
+        # The cure QUOTES the file's own spelling — the allowed residue (ruling 51).
+        assert "self.transform_settings" in msg
+
+    def test_a_dotted_arm_renders_whole_in_the_cure(self, tmp_path):
+        from kanibako.settings.agent_file import table_value_error
+
+        msg = table_value_error(
+            "bindings.ro", path=tmp_path / "settings.yaml", verb="set",
+        )
+        assert msg is not None and "self.bindings.ro" in msg
+
+    @pytest.mark.parametrize("tail", ("model", "name", "env.FOO", "secret_path.TOK"))
+    def test_the_scalar_tails_are_not_refused(self, tail, tmp_path):
+        from kanibako.settings.agent_file import table_value_error
+
+        assert table_value_error(
+            tail, path=tmp_path / "settings.yaml", verb="set",
+        ) is None
+
+
+class TestLoadSurvivesAMalformedTable:
+    """D-7's other half: a wrong-SHAPE value must not kill the verbs that SHOW it.
+
+    A scalar where a table belongs used to raise out of :func:`load` (``dict("foo")``), so every
+    caller inherited it — ``agent info``, ``list``, ``show``, and every launch.  The repair verbs
+    have to stay reachable, so the READ side coerces and the WRITE side refuses.
+    """
+
+    @pytest.mark.parametrize("key", ("transform_settings", "env", "secret_path"))
+    def test_a_scalar_at_a_table_key_does_not_raise(self, key, tmp_path):
+        path = tmp_path / "settings.yaml"
+        path.write_text(f"self:\n  name: Nav\n  {key}: oops\n")
+        cfg = load(path)          # must not raise
+        assert cfg.name == "Nav"
+        assert getattr(cfg, key) == {}
+        # ...and the garbage does NOT ride into the launch as an agent-state knob.
+        assert key not in cfg.state
 
 
 class TestClearOverrides:
@@ -456,7 +566,9 @@ class TestClearOverrides:
         # per-VAR arm of the count is unreachable, because it only ever counted VARs found
         # inside that sub-table. So: model + access + secret_path + bindings = 4 ROOT keys,
         # each counting once — the rule the docstring states, with nothing special-cased.
-        assert clear_overrides(path, "nav℘codex") == 4
+        # ⚑ AND THE ``node`` ARGUMENT IS GONE WITH THAT ARM (S3): the count no longer has
+        # anything to ask about which node's file this is.
+        assert clear_overrides(path) == 4
         assert load_doc(path) == {"self": {"name": "Nav"}}
 
     def test_prunes_the_root_when_nothing_survives(self, tmp_path):
@@ -464,13 +576,13 @@ class TestClearOverrides:
 
         path = tmp_path / "settings.yaml"
         path.write_text("self:\n  model: opus\n")
-        assert clear_overrides(path, "claude") == 1
+        assert clear_overrides(path) == 1
         assert load_doc(path) == {}
 
     def test_no_overrides_is_zero(self, tmp_path):
         path = tmp_path / "settings.yaml"
         path.write_text("self:\n  name: Nav\n")
-        assert clear_overrides(path, "claude") == 0
+        assert clear_overrides(path) == 0
 
 
 class TestLevelTable:
@@ -568,6 +680,67 @@ class TestStateLevel:
         assert state_level({"model": "opus"}, node="claude") == AgentFileLevel(
             "claude", {"model": "opus"}
         )
+
+
+class TestTheForwardCompatPassthroughIsClosed:
+    """S3b / D-5's other end: an undeclared scalar no longer rides into the launch.
+
+    ``_agent_state_partial`` documented that "undeclared agent-scope scalar keys ride through
+    verbatim (forward-compat)" — which is the *"old ``agent.<name>.<anyleaf>`` behaviour"* spec §0
+    SPECIFICALLY EXCLUDES. Together with the ungated ``agent set`` (D-5) it meant stored garbage
+    was not merely dead: it reached the box.
+    """
+
+    def test_an_undeclared_scalar_refuses_the_launch_by_name(self):
+        with pytest.raises(SettingsError) as exc:
+            state_level({"model": "opus", "junk": "x"}, node="claude")
+        message = str(exc.value)
+        assert "'junk'" in message
+        assert "agents/claude/settings.yaml" in message
+        # The repair route stays NAMED — the verb that still works on a poisoned file.
+        assert "agent info claude" in message
+
+    def test_the_self_alias_cannot_ride_in_either(self):
+        # ruling 55: nothing past the parse boundary recognises ``self``. A hand-authored
+        # ``self.model:`` root leaf is a scalar the loader sweeps into state — and it stops
+        # here rather than becoming ``agent.claude.self.model`` in the snapshot.
+        with pytest.raises(SettingsError, match=r"self\.model"):
+            state_level({"self.model": "opus"}, node="claude")
+
+    def test_every_core_declared_leaf_still_launches(self):
+        # The CONTROL. A refusal that also refused the real keys would be caught by the
+        # rest of the suite, but not by anything that says WHY this list is the list.
+        state = {
+            "model": "opus", "access": "full", "endpoint": "https://e",
+            "allow_helpers": "true", "continue_mode": "true", "bootstrap": "x",
+            "template": "t", "canon": "c", "transform": "tweakcc",
+        }
+        assert state_level(state, node="claude").table == state
+
+    def test_a_plugin_declared_leaf_still_launches(self):
+        """THE POSITIVE CONTROL, and the mutation proof for the union.
+
+        ``provider`` is declared by the goose target via ``setting_descriptors()``, not by core's
+        §2d table. MUTATION: drop ``agent_leaves=`` from ``config_keys.agent_key_reason``'s
+        ``key_validity`` call and this reddens — a refusal without the union kills a working box.
+        """
+        from kanibako.settings.settings_prefs import default_valid_agents
+
+        leaves = getattr(default_valid_agents(), "leaves", None) or ()
+        if "provider" not in leaves:
+            pytest.skip("no installed plugin declares 'provider' in this environment")
+        assert state_level({"provider": "ollama"}, node="goose").table == {
+            "provider": "ollama",
+        }
+
+    def test_the_repair_verbs_do_not_go_through_here(self, tmp_path):
+        # ⚑ WHY THE REFUSAL IS AT THE LAUNCH BOUNDARY AND NOT IN ``load``: a poisoned file
+        # must still be clearable. ``clear_overrides`` reads raw YAML and never builds a
+        # level, so this is the escape hatch, pinned rather than assumed.
+        path = tmp_path / "settings.yaml"
+        path.write_text("self:\n  name: Nav\n  junk: x\n")
+        assert load(path).state == {"junk": "x"}   # the SHOW verbs still see it
+        assert clear_overrides(path) == 1
 
 
 class TestFileSpelling:

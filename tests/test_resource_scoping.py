@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
+import pytest
+
 from kanibako.settings.agent_config import AgentConfig
 from kanibako.targets.base import TargetSetting
 
@@ -308,9 +310,19 @@ class TestBuildEffectiveState:
         )
         assert result["model"] == "haiku"
 
-    def test_agent_state_passthrough_for_undeclared_keys(self, tmp_path):
-        """Undeclared keys from agent state are passed through."""
+    def test_an_undeclared_agent_state_key_is_REFUSED_not_passed_through(self, tmp_path):
+        """⚑⚑ INVERTED AT S3 (D-5's other end), and the inversion is the point.
+
+        This asserted that "undeclared keys from agent state are passed through" — the *"old
+        ``agent.<name>.<anyleaf>`` behaviour"* spec §0 SPECIFICALLY EXCLUDES. Together with the
+        then-ungated ``agent set`` it meant stored garbage was not merely dead: it reached the
+        box. The refusal lives at the boundary that builds the level
+        (``agent_file.state_level``), so it fires wherever a level is built — here, and at every
+        launch. ⚑ ``agent list`` / ``info`` read ``cfg.state`` directly and never build a level,
+        so a poisoned file still LISTS and can still be repaired.
+        """
         from kanibako.commands.start import _effective_behavior_for_display as _build_effective_state
+        from kanibako.settings.settings_resolve import SettingsError
 
         descriptors = [
             TargetSetting(key="model", description="Model", default="opus"),
@@ -319,11 +331,18 @@ class TestBuildEffectiveState:
         agent_cfg = AgentConfig(state={"model": "sonnet", "custom_key": "custom_value"})
         project_toml = self._make_project_toml(tmp_path)
 
-        result = _build_effective_state(
+        with pytest.raises(SettingsError) as exc:
+            _build_effective_state(
+                target, agent_cfg, project_toml, system_settings_path=None
+            )
+        assert "custom_key" in str(exc.value)
+
+        # The CONTROL: the declared key alone still resolves, so the refusal is about
+        # declaredness and not about having any agent state at all.
+        agent_cfg = AgentConfig(state={"model": "sonnet"})
+        assert _build_effective_state(
             target, agent_cfg, project_toml, system_settings_path=None
-        )
-        assert result["model"] == "sonnet"
-        assert result["custom_key"] == "custom_value"
+        )["model"] == "sonnet"
 
     def test_no_descriptors_returns_agent_state(self, tmp_path):
         """When target has no setting_descriptors, return agent state as-is."""

@@ -206,7 +206,7 @@ SECRET_MOUNT_DIR: Final[str] = "/run/kanibako/secrets"
 # ``config_dest``'s known-broken ``_CATEGORY`` arm to the NOUN's settings file
 # rather than to ``agents/<node>/settings.yaml``, so the value it returns is the
 # wrong file's.  That arm's repointing is an OWED, separately-ruled pass (it moves
-# ``agent_file._address``, the per-agent file-shape SoT); it is named
+# ``agent_file``'s address rule, the per-agent file-shape SoT); it is named
 # here so nothing writes a message promising that read works.
 #
 # NOTE the regex order: ``bindings.ro`` / ``bindings.rw`` must precede a bare
@@ -308,10 +308,13 @@ _NON_TERMINAL_CATEGORY_ALT = "|".join(
 #: agent doors cover the same categories by DERIVATION rather than by two hand
 #: lists.  ⚑ ``config_keys._AGENT_NODE_BIND_RE`` also pins itself against this
 #: tuple, as a SUBSET rather than an equality, and that is a MEASUREMENT: it is the
-#: agent-scope READ parser, and ``agent_file._address`` has a nested
-#: table for ``bindings.<arm>.<name>`` and none for the other four (it would read
-#: the dotted leaf ``self."common.x"``).  Recognition is derived here; resolution
-#: is not.
+#: agent-scope READ parser, and since S3 the agent file's address rule reads EVERY
+#: category flat with the destination whole — so widening that parser would no longer
+#: mis-address the other four, it would ADMIT them: ``config_keys.agent_read_key_error``
+#: carves the ``bindings`` arms out of the closed-keyspace read gate precisely because
+#: their per-entry READ survived R-9, and the other four have no such carve-out (spec
+#: §0 — a per-entry spelling is not a key at any scope).  Recognition is derived here;
+#: resolution is not.
 RETIRED_BIND_CATEGORIES: Final[tuple[str, ...]] = tuple(
     c for c in _BIND_CATEGORIES if c not in SETTABLE_BIND_CATEGORIES
 )
@@ -342,21 +345,26 @@ SCOPE_BIND_KEY_RE = re.compile(
 #: RECOGNISED and refused BY NAME (``config_keys.agent_node_bind_retired_error``,
 #: ``config_keys.is_known_key``).
 #:
-#: ⚑ THE NODE IS NON-GREEDY, and that is the whole reason this cannot be folded
-#: into the regex above: a node segment may itself contain dots
-#: (``navigator.v2℘claude``), so the FIRST category segment is what splits node
-#: from name.  An UNDISCRIMINATED ``agent.<category>.<name>`` therefore does NOT
+#: ⚑ THE NODE IS NON-GREEDY so the FIRST category segment splits node from name:
+#: a DEST tail may itself contain a DOT-PRECEDED category token
+#: (``caches.~/.caches.x`` — measured: greedy parses node=``claude.caches.~/``),
+#: and a greedy node would swallow everything up to the LAST one.  *(An earlier
+#: revision claimed node segments may contain dots — measured false 2026-08-15:
+#: ``parse_agent_ref`` refuses ``.`` in an agent name outright.  The split rule
+#: stands on the dest side alone.)*  An
+#: UNDISCRIMINATED ``agent.<category>.<name>`` therefore does NOT
 #: match — the agent tier is discriminated (spec §0/§2d) and an undeclared
 #: spelling must stay unrecognised rather than be quietly admitted.
 #:
 #: ⚑⚑ RECOGNITION ONLY — IT PICKS NO READ ROUTE, and that separation is load-bearing.
 #: ``config_keys._AGENT_NODE_BIND_RE`` is the narrower parser that DOES pick one
-#: (``agent_file._address``), and it covers the ``bindings`` arms alone
-#: because that file-shape SoT has a nested table for ``bindings.<arm>.<name>`` and
-#: none for the other four: widening THAT parser would resolve
-#: ``agent.claude.common.plugins`` to the dotted leaf ``self."common.plugins"`` and
-#: answer a silent "(not set)".  Recognising a spelling in order to REFUSE it is a
-#: different job from resolving one, so it gets a different parser.
+#: (the agent file's address rule), and it covers the ``bindings`` arms alone because
+#: those are the only per-entry spellings whose READ survived R-9.  Widening it would
+#: not mis-address the other four — since S3 the address rule reads every category flat
+#: — it would ADMIT them: the arms are what ``config_keys.agent_read_key_error`` carves
+#: out of the §0 read gate, and ``is_known_key`` claims as key-shaped.  Recognising a
+#: spelling in order to REFUSE it is a different job from resolving one, so it gets a
+#: different parser.
 AGENT_BIND_KEY_RE = re.compile(
     rf"^agent\.(?P<node>.+?)"
     rf"\.(?P<category>{_RETIRED_CATEGORY_ALT})\.(?P<name>.+)$"
