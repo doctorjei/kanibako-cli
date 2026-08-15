@@ -1169,16 +1169,22 @@ class TestRemedyTextIsHonestAboutWhatItCanKnow:
         assert "Either entry may be the one you keep" not in str(exc.value)
 
     def test_an_agent_scope_occupant_names_the_per_agent_file_spelling(self):
-        """The per-agent file spells its own node ``self.<node>``; the canonical
-        ``agent.<node>`` form is what a CONTAINING scope's file writes. Printing
-        one without the other hands the reader an edit that silently no-ops."""
+        """The per-agent file has NO node level: its root ``self:`` IS ``agent.<node>``,
+        so the table is spelled ``self.bindings.ro``. The canonical ``agent.<node>`` form
+        is what a CONTAINING scope's file writes. Printing one without the other hands
+        the reader an edit that silently no-ops.
+
+        ⚑ The node LEFT the spelling with the S2 flatten (rulings 50-52) — a nested
+        ``self.claude.bindings`` is now refused by name, so a caveat still printing it
+        would be teaching the one shape the launch rejects."""
         with pytest.raises(CategoryCollisionError) as exc:
             raise_binding_vs_binding(DEST, [
                 entry("bindings.ro", name="a", scope="agent.claude"),
                 entry("bindings.rw", name="b", scope="agent.claude"),
             ])
         text = str(exc.value)
-        assert "self.claude" in text
+        assert "self.bindings.ro" in text
+        assert "self.claude" not in text
         assert "agent:\n  claude:\n    bindings:\n      ro:\n        a: null" in text
 
     def test_a_box_scope_occupant_gets_no_agent_caveat(self):

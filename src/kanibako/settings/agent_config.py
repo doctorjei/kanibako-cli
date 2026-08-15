@@ -24,9 +24,8 @@ class AgentConfig:
 
     Sections:
       agent        — identity (name, run_args) plus agent-state knobs
-                     (model, access, allow_helpers, endpoint, …). The
-                     per-node DISCRIMINATED sub-table ``agent.<node>.secret_path``
-                     also lives here (see *secret_path* below).
+                     (model, access, allow_helpers, endpoint, …), all FLAT under
+                     the file's root, beside the category tables.
       env          — the ENV category (``agent.<node>.env.<VAR>``), stored FLAT
                      under ``self`` for the same reason *secret_path* below is:
                      ``self`` IS ``agent.<node>``.  ⚑ NOT A LAUNCH-INVOCATION INPUT
@@ -52,11 +51,15 @@ class AgentConfig:
                      precedence. The value is a PATH only — at launch it is ro-bind-
                      mounted arm's-length + exported IN-BOX; kanibako NEVER reads the
                      secret VALUE (never in the snapshot/keystore/logs/argv).
-      node_tables  — the DISCRIMINATED per-node sub-tables (bindings — the shape
-                     ``agent_file._address`` still routes ``bindings.*`` to, pending
-                     the S2 flatten). NOT modelled here (they ride ``_agent_partial``
-                     into the launch cascade, not the launch invocation) and carried
-                     OPAQUELY through the load→write round trip.
+      category_tables
+                   — the CATEGORY tables this record does not model as fields of its
+                     own: ``bindings`` (the ``{ro, rw}`` pair, whole), ``caches``,
+                     ``seeded``, ``common``, ``synced``, ``masks``. All FLAT under
+                     the file's root since the S2 flatten — ``self`` IS
+                     ``agent.<node>``, so there is no per-node sub-table to hold
+                     them. NOT modelled here (they ride ``_agent_partial`` into the
+                     launch cascade, not the launch invocation) and carried OPAQUELY
+                     through the load→write round trip.
 
                      ⚑ THAT ROUND TRIP HAS NO LIVE PRODUCER, MEASURED: all four
                      ``agent_file.save`` callers persist a FRESHLY GENERATED config
@@ -64,8 +67,7 @@ class AgentConfig:
                      first-use-only, and both ``cli.py`` sites build the config
                      inline), so nothing today loads this file, edits it and writes
                      it back. The carry protects a shape no caller currently
-                     exercises — the field's fate is S2's question, not a claim to
-                     restate as a live guarantee.
+                     exercises — a guard, not a running guarantee.
     """
 
     name: str = ""
@@ -74,7 +76,7 @@ class AgentConfig:
     env: dict[str, str] = field(default_factory=dict)
     secret_path: dict[str, str] = field(default_factory=dict)
     transform_settings: dict = field(default_factory=dict)
-    node_tables: dict[str, dict] = field(default_factory=dict)
+    category_tables: dict[str, dict] = field(default_factory=dict)
 
 
 def agents_dir(data_path: Path, paths_agents: str = "agents") -> Path:

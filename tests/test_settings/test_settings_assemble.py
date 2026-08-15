@@ -54,12 +54,20 @@ def test_order_is_most_specific_first(tmp_path: Path) -> None:
     # scope token, so the marker lives under e.g. box.marker / system.marker.
     box = _write(tmp_path / "box.yaml", {"box": {"marker": "box"}})
     ws = _write(tmp_path / "ws.yaml", {"workset": {"marker": "workset"}})
-    sysf = _write(tmp_path / "sys.yaml", {"system": {"marker": "system"}})
-    base = _write(tmp_path / "base.yaml", {"system": {"marker": "base"}})
-    agent = _write(
-        tmp_path / "agent.yaml",
-        {"self": {"default": {"marker": "adef"}, "claude": {"marker": "aact"}}},
+    # ⚑ The all-agents marker is written in the SYSTEM file, which is where that tier
+    # LIVES: the agent file is the active node's own, so ``self:`` IS ``agent.claude``
+    # and it has no spelling for ``agent.default`` at all (the flatten, rulings 50-52).
+    sysf = _write(
+        tmp_path / "sys.yaml",
+        {"system": {"marker": "system"},
+         "agent": {"default": {"env": {"MARKER": "adef"}}}},
     )
+    base = _write(tmp_path / "base.yaml", {"system": {"marker": "base"}})
+    # ⚑ A CATEGORY, not a bare scalar: since the flatten the agent FILE contributes its
+    # category tables to this cascade, while its flat STATE rides its own rung at the
+    # launch seam (``agent_file.state_level`` → ``settings_launch._agent_state_partial``)
+    # and never appears here. One value, one route — that is defect D-3 closed.
+    agent = _write(tmp_path / "agent.yaml", {"self": {"env": {"MARKER": "aact"}}})
     levels = assemble_levels(
         agent_name="claude",
         base_path=base,
@@ -75,13 +83,18 @@ def test_order_is_most_specific_first(tmp_path: Path) -> None:
 
     assert _marker(levels[BOX], "box") == "box"
     assert _marker(levels[WORKSET], "workset") == "workset"
-    # The agent levels keep their TRUE discriminated key: the active level under
-    # agent.claude.*, the default level under agent.default.* (NO bare-agent collapse).
+    # The active agent level keeps its TRUE discriminated key agent.claude.* (NO
+    # bare-agent collapse).
     assert (
-        dict.get(levels[AGENT_ACTIVE]["agent"]["claude"], "marker", __MISSING__) == "aact"
+        dict.get(levels[AGENT_ACTIVE]["agent"]["claude"]["env"], "MARKER", __MISSING__)
+        == "aact"
     )
+    # ⚑ The agent-file DEFAULT level is STRUCTURALLY EMPTY — the file has no spelling
+    # for that tier. The tier itself is alive and arrives on the SYSTEM level, under
+    # its own true discriminated name.
+    assert len(levels[AGENT_DEFAULT]) == 0
     assert (
-        dict.get(levels[AGENT_DEFAULT]["agent"]["default"], "marker", __MISSING__)
+        dict.get(levels[SYSTEM]["agent"]["default"]["env"], "MARKER", __MISSING__)
         == "adef"
     )
     assert _marker(levels[SYSTEM], "system") == "system"
@@ -184,19 +197,22 @@ def test_upward_drop_warns_once_per_agent_file(
     # but a `system:` upward table is dropped+warned exactly ONCE (the drop runs on
     # the shared raw view before both levels are built). Also: the `system:` table
     # never reaches EITHER agent partial (baseline it was silently ignored — now
-    # it warns).
+    # it warns). ⚑ The file's own tables are FLAT since the flatten; the default level
+    # is built from it all the same, and is empty.
     agent = _write(
         tmp_path / "agent.yaml",
         {
-            "self": {"default": {"model": "dm"}, "claude": {"model": "cm"}},
+            "self": {"env": {"M": "cm"}},
             "system": {"auth": {"share_allowed": False}},
         },
     )
     with caplog.at_level("WARNING"):
         levels = assemble_levels(agent_name="claude", agent_path=agent)
     # The two agent levels are intact and carry NO system node.
-    assert dict.get(levels[AGENT_ACTIVE]["agent"]["claude"], "model", __MISSING__) == "cm"
-    assert dict.get(levels[AGENT_DEFAULT]["agent"]["default"], "model", __MISSING__) == "dm"
+    assert (
+        dict.get(levels[AGENT_ACTIVE]["agent"]["claude"]["env"], "M", __MISSING__) == "cm"
+    )
+    assert len(levels[AGENT_DEFAULT]) == 0
     assert dict.get(levels[AGENT_ACTIVE], "system", __MISSING__) is __MISSING__
     assert dict.get(levels[AGENT_DEFAULT], "system", __MISSING__) is __MISSING__
     # Exactly ONE warning for the dropped system token (not one-per-level).
@@ -370,15 +386,17 @@ def test_top_level_meta_drop_warns_once_per_agent_file(
     agent = _write(
         tmp_path / "agent.yaml",
         {
-            "self": {"default": {"model": "dm"}, "claude": {"model": "cm"}},
+            "self": {"env": {"M": "cm"}},
             "meta": {"box": {"mode": "x"}},
         },
     )
     with caplog.at_level("WARNING"):
         levels = assemble_levels(agent_name="claude", agent_path=agent)
     # The two agent levels are intact and carry NO meta node.
-    assert dict.get(levels[AGENT_ACTIVE]["agent"]["claude"], "model", __MISSING__) == "cm"
-    assert dict.get(levels[AGENT_DEFAULT]["agent"]["default"], "model", __MISSING__) == "dm"
+    assert (
+        dict.get(levels[AGENT_ACTIVE]["agent"]["claude"]["env"], "M", __MISSING__) == "cm"
+    )
+    assert len(levels[AGENT_DEFAULT]) == 0
     assert dict.get(levels[AGENT_ACTIVE], "meta", __MISSING__) is __MISSING__
     assert dict.get(levels[AGENT_DEFAULT], "meta", __MISSING__) is __MISSING__
     # Exactly ONE meta-drop warning (not one-per-level).
@@ -513,63 +531,70 @@ def test_arbitrary_unknown_table_still_rides(
 
 
 def test_agent_tiers_land_in_separate_levels_true_discriminated(tmp_path: Path) -> None:
-    agent = _write(
-        tmp_path / "agent.yaml",
-        {
-            "self": {
-                "default": {"allow_helpers": True, "model": "dmodel"},
-                "claude": {"model": "cmodel"},
-            }
-        },
+    # ⚑ TWO FILES, because the two tiers have two homes since the flatten: the ACTIVE
+    # tier is the agent's own file (flat under ``self:``, which IS ``agent.claude``) and
+    # the ALL-AGENTS tier is the SYSTEM file's ``agent: default:`` table. What the test
+    # is about is unchanged: each keeps its TRUE §2d discriminated name.
+    agent = _write(tmp_path / "agent.yaml", {"self": {"env": {"M": "cmodel"}}})
+    sysf = _write(
+        tmp_path / "sys.yaml",
+        {"agent": {"default": {"allow_helpers": True, "env": {"M": "dmodel"}}}},
     )
-    levels = assemble_levels(agent_name="claude", agent_path=agent)
-    # The active level keeps the §2d key agent.claude.*; the default level keeps
-    # agent.default.* — NO bare-`agent` collapse (spec §0/§2d).
+    levels = assemble_levels(
+        agent_name="claude", agent_path=agent, system_path=sysf,
+    )
     active = levels[AGENT_ACTIVE]["agent"]["claude"]
-    default = levels[AGENT_DEFAULT]["agent"]["default"]
+    default = levels[SYSTEM]["agent"]["default"]
     # active carries ONLY what claude set (NOT pre-merged with default).
-    assert dict.get(active, "model", __MISSING__) == "cmodel"
+    assert dict.get(active["env"], "M", __MISSING__) == "cmodel"
     assert dict.get(active, "allow_helpers", __MISSING__) is __MISSING__
-    assert dict.get(default, "model", __MISSING__) == "dmodel"
+    assert dict.get(default["env"], "M", __MISSING__) == "dmodel"
     assert dict.get(default, "allow_helpers", __MISSING__) is True
     # The discriminator is KEPT (the §2d key form), not collapsed to bare `agent`.
     assert dict.get(levels[AGENT_ACTIVE]["agent"], "claude", __MISSING__) is not __MISSING__
-    assert dict.get(levels[AGENT_DEFAULT]["agent"], "default", __MISSING__) is not __MISSING__
+    assert dict.get(levels[SYSTEM]["agent"], "default", __MISSING__) is not __MISSING__
     # No bare `agent.<key>` leaked (would be a §0 violation).
-    assert dict.get(levels[AGENT_ACTIVE]["agent"], "model", __MISSING__) is __MISSING__
-    assert dict.get(levels[AGENT_DEFAULT]["agent"], "model", __MISSING__) is __MISSING__
+    assert dict.get(levels[AGENT_ACTIVE]["agent"], "env", __MISSING__) is __MISSING__
+    assert dict.get(levels[SYSTEM]["agent"], "env", __MISSING__) is __MISSING__
+    # And the agent file contributes NOTHING to the all-agents level.
+    assert len(levels[AGENT_DEFAULT]) == 0
 
 
 def test_active_override_not_in_default_and_vice_versa(tmp_path: Path) -> None:
-    agent = _write(
-        tmp_path / "agent.yaml",
-        {"self": {"default": {"x": "d"}, "goose": {"y": "g"}}},
+    agent = _write(tmp_path / "agent.yaml", {"self": {"env": {"Y": "g"}}})
+    sysf = _write(
+        tmp_path / "sys.yaml", {"agent": {"default": {"env": {"X": "d"}}}},
     )
-    levels = assemble_levels(agent_name="goose", agent_path=agent)
+    levels = assemble_levels(
+        agent_name="goose", agent_path=agent, system_path=sysf,
+    )
     active = levels[AGENT_ACTIVE]["agent"]["goose"]
-    default = levels[AGENT_DEFAULT]["agent"]["default"]
-    assert dict.get(active, "y", __MISSING__) == "g"
-    assert dict.get(active, "x", __MISSING__) is __MISSING__  # default key not here
-    assert dict.get(default, "x", __MISSING__) == "d"
-    assert dict.get(default, "y", __MISSING__) is __MISSING__  # active key not here
+    default = levels[SYSTEM]["agent"]["default"]
+    assert dict.get(active["env"], "Y", __MISSING__) == "g"
+    assert dict.get(active["env"], "X", __MISSING__) is __MISSING__  # not the default's
+    assert dict.get(default["env"], "X", __MISSING__) == "d"
+    assert dict.get(default["env"], "Y", __MISSING__) is __MISSING__  # not the active's
 
 
-def test_unknown_active_agent_yields_empty_active_level(tmp_path: Path) -> None:
-    agent = _write(
-        tmp_path / "agent.yaml",
-        {"self": {"default": {"x": "d"}, "claude": {"y": "c"}}},
-    )
+def test_the_agent_file_is_read_under_whichever_node_is_active(tmp_path: Path) -> None:
+    # ⚑⚑ WHAT REPLACED "an active agent absent from the file yields an empty level",
+    # and the replacement is the model, not a weaker test: there is no per-node
+    # discrimination INSIDE the file any more, because the file IS one node's
+    # (``agents/<node>/settings.yaml``, and every production caller builds the path from
+    # the active id — ``agent_settings_path(std.agents, agent_id)``). So the same bytes
+    # read under codex are codex's keys; a "wrong node" file is not a thing the cascade
+    # can be handed.
+    agent = _write(tmp_path / "agent.yaml", {"self": {"env": {"Y": "c"}}})
     levels = assemble_levels(agent_name="codex", agent_path=agent)
-    # An active agent absent from the file → empty active level (no agent.codex.*).
-    assert len(levels[AGENT_ACTIVE]) == 0
-    assert dict.get(levels[AGENT_DEFAULT]["agent"]["default"], "x", __MISSING__) == "d"
+    assert dict.get(levels[AGENT_ACTIVE]["agent"]["codex"]["env"], "Y", __MISSING__) == "c"
+    assert dict.get(levels[AGENT_ACTIVE]["agent"], "claude", __MISSING__) is __MISSING__
 
 
 def test_agent_categories_under_true_discriminated_name(tmp_path: Path) -> None:
     # An agent-tier bind key keeps the §2d form agent.<active-name>.bindings.*.
     agent = _write(
         tmp_path / "agent.yaml",
-        {"self": {"claude": {"bindings": {"ro": {"/g/s": ["/h/s"]}}}}},
+        {"self": {"bindings": {"ro": {"/g/s": ["/h/s"]}}}},
     )
     active = assemble_levels(agent_name="claude", agent_path=agent)[AGENT_ACTIVE]
     # DEST-KEYED (R-5/R-6): the arm is keyed by destination, the entry is (src[, opts]).
@@ -577,32 +602,53 @@ def test_agent_categories_under_true_discriminated_name(tmp_path: Path) -> None:
     assert bind == BindEntry("/h/s", None)
 
 
-def test_per_agent_independence_other_agent_under_own_name(tmp_path: Path) -> None:
-    # §0: a settings file may set agent.<name>.* for an agent that is NOT the
-    # active one. With claude active, the file's agent.goose.* must NOT leak into
-    # the active level and must keep its own discriminated name (it only takes
-    # effect when goose is active next launch).
+def test_agent_file_state_does_not_ride_the_file_cascade_level(tmp_path: Path) -> None:
+    # ⚑⚑ DEFECT D-3 CLOSED, PINNED AS A FACT RATHER THAN LEFT AS AN ABSENCE. Agent-file
+    # STATE (model / access / endpoint / …) had TWO live routes: the flat one, through
+    # ``state_level`` → ``_agent_state_partial``'s own rung at the launch seam, and a
+    # nested ``self: <node>: model:`` that rode THIS level and lost to the flat one
+    # silently. The nested spelling is refused now, and this level carries CATEGORIES
+    # ONLY — one value, one route. A state key reappearing here is a second rung.
     agent = _write(
         tmp_path / "agent.yaml",
-        {
-            "self": {
-                "default": {"model": "dm"},
-                "claude": {"model": "cm"},
-                "goose": {"model": "gm"},
-            }
-        },
+        {"self": {"model": "opus", "env": {"M": "v"}}},
     )
-    levels = assemble_levels(agent_name="claude", agent_path=agent)
-    active = levels[AGENT_ACTIVE]["agent"]
-    # The active (claude) level carries claude's subtree only — NOT goose's.
-    assert dict.get(active, "claude", __MISSING__) is not __MISSING__
-    assert dict.get(active, "goose", __MISSING__) is __MISSING__
-    # goose's keys are simply not represented as an active level here (claude is
-    # active); they live in the file for a future goose launch. The default level
-    # still carries agent.default.* by its true name.
-    assert (
-        dict.get(levels[AGENT_DEFAULT]["agent"]["default"], "model", __MISSING__) == "dm"
+    active = assemble_levels(agent_name="claude", agent_path=agent)[AGENT_ACTIVE]
+    assert dict.get(active["agent"]["claude"], "env", __MISSING__) is not __MISSING__
+    assert dict.get(active["agent"]["claude"], "model", __MISSING__) is __MISSING__
+
+
+def test_another_agents_sub_table_in_the_agent_file_refuses(tmp_path: Path) -> None:
+    # ⚑⚑ THE PURPOSE HALVED, AND THE SURVIVING HALF INVERTED (rulings 50/51/52). §0 still
+    # lets a settings file set ``agent.<name>.*`` for an agent that is NOT active — but
+    # not THIS file: ``self:`` IS ``agent.claude``, so ``self: goose:`` reads
+    # ``agent.claude.goose``, which names nothing. The keys for another agent belong in
+    # a CONTAINING scope's file, spelled canonically. Refused BY NAME, never dropped.
+    agent = _write(
+        tmp_path / "agent.yaml",
+        {"self": {"env": {"M": "cm"}, "goose": {"env": {"M": "gm"}}}},
     )
+    with pytest.raises(SettingsError) as exc:
+        assemble_levels(agent_name="claude", agent_path=agent)
+    message = str(exc.value)
+    assert "self.goose" in message
+    assert "agent.claude.goose" in message
+
+
+def test_another_agents_keys_ride_a_containing_scope_file(tmp_path: Path) -> None:
+    # The other half, kept whole: with claude active, a SYSTEM-file ``agent.goose.*``
+    # keeps its own discriminated name and does not leak into the active level.
+    agent = _write(tmp_path / "agent.yaml", {"self": {"env": {"M": "cm"}}})
+    sysf = _write(
+        tmp_path / "sys.yaml",
+        {"agent": {"default": {"model": "dm"}, "goose": {"model": "gm"}}},
+    )
+    levels = assemble_levels(
+        agent_name="claude", agent_path=agent, system_path=sysf,
+    )
+    assert dict.get(levels[AGENT_ACTIVE]["agent"], "goose", __MISSING__) is __MISSING__
+    assert dict.get(levels[SYSTEM]["agent"]["goose"], "model", __MISSING__) == "gm"
+    assert dict.get(levels[SYSTEM]["agent"]["default"], "model", __MISSING__) == "dm"
 
 
 # --------------------------------------------------------------------------- #
@@ -907,18 +953,19 @@ def _merged(
 
 def test_agent_active_override_survives_and_wins_by_name(tmp_path: Path) -> None:
     # §2d discriminated keys survive the merge distinctly (no bare-`agent`
-    # collapse). The agent-file agent.claude.model (the ACTIVE level, more
-    # specific) wins BY NAME over a system-file agent.claude.model default; the
-    # system's agent.default.model survives under its own true name.
+    # collapse). The agent-file agent.claude.env.M (the ACTIVE level, more
+    # specific) wins BY NAME over a system-file agent.claude.env.M default; the
+    # system's agent.default.* survives under its own true name.
     snap = _merged(
         tmp_path,
         agent_name="claude",
-        agent={"self": {"claude": {"model": "cm"}}},
+        agent={"self": {"env": {"M": "cm"}}},
         # System file = a legal downward source for agent.* defaults.
-        system={"agent": {"default": {"model": "dm"}, "claude": {"model": "sysm"}}},
+        system={"agent": {"default": {"model": "dm"},
+                          "claude": {"env": {"M": "sysm"}}}},
     )
-    # The more-specific agent-active level wins for claude (over system default).
-    assert dict.get(snap["agent"]["claude"], "model", __MISSING__) == "cm"
+    # The more-specific agent-active level wins for claude (over the system file).
+    assert dict.get(snap["agent"]["claude"]["env"], "M", __MISSING__) == "cm"
     # agent.default.* survives by its own true name (NOT erased / collapsed).
     assert dict.get(snap["agent"]["default"], "model", __MISSING__) == "dm"
     # No bare agent.model leaked (a §0 violation).
@@ -933,18 +980,18 @@ def test_two_agents_coexist_under_their_own_names(tmp_path: Path) -> None:
     snap = _merged(
         tmp_path,
         agent_name="claude",
-        agent={"self": {"claude": {"model": "cm"}}},
+        agent={"self": {"env": {"M": "cm"}}},
         system={
             "agent": {
                 "default": {"model": "dm"},
-                "claude": {"model": "sys_claude"},
+                "claude": {"env": {"M": "sys_claude"}},
                 "goose": {"model": "sys_goose"},
             }
         },
     )
     # claude resolves to the more-specific agent-active level ("cm"); goose and
     # default coexist by name from the system level, distinct from claude.
-    assert dict.get(snap["agent"]["claude"], "model", __MISSING__) == "cm"
+    assert dict.get(snap["agent"]["claude"]["env"], "M", __MISSING__) == "cm"
     assert dict.get(snap["agent"]["goose"], "model", __MISSING__) == "sys_goose"
     # agent.default.* also coexists, distinct from both.
     assert dict.get(snap["agent"]["default"], "model", __MISSING__) == "dm"
@@ -1051,12 +1098,12 @@ class TestPrefTableWriteSiteAtAssembly:
         agentf = _write(
             tmp_path / "agent.yaml",
             {"pref": {"system": {"agent": "goose"}},
-             "self": {"claude": {"model": "opus"}}},
+             "self": {"env": {"M": "opus"}}},
         )
         with caplog.at_level("WARNING"):
             levels = assemble_levels(agent_name="claude", agent_path=agentf)
         assert "pref" not in levels[AGENT_ACTIVE]
-        assert levels[AGENT_ACTIVE].agent.claude.model == "opus"
+        assert levels[AGENT_ACTIVE].agent.claude.env["M"] == "opus"
         assert "workset or box settings file" in caplog.text
 
     def test_box_and_workset_pref_tables_are_KEPT(self, tmp_path, caplog) -> None:

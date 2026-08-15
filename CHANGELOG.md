@@ -83,7 +83,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `self: secret_path:` (an all-agents entry to the system file's `agent: default: <category>:`);
   `kanibako agent set <agent> env.VAR=…` writes that shape for you. ⚑ `secret_path` is worth
   checking even if you never hand-edited an agent file — that nesting predates the move to the
-  flat table. `bindings:` is unaffected. See [MIGRATION.md](MIGRATION.md) §2.35.
+  flat table. `bindings:` moved with them; the entry below has the whole file shape. See
+  [MIGRATION.md](MIGRATION.md) §2.35.
+
+- **BREAKING: an agent's settings file has one level — every category is written directly under
+  `self:`, and a nested `self: <agent>:` table refuses the launch.** `self:` is not a key: it is
+  an alias standing for `agent.<that agent>`, and the file already belongs to one agent, so its
+  root already *is* that node. A table under a second level therefore names the node twice —
+  `self: claude: bindings:` reads `agent.claude.claude.bindings`, which is not a key and never
+  was. `env` and `secret_path` were flattened first (above); **every remaining category follows:
+  `bindings`, `caches`, `seeded`, `common`, `synced` and `masks` are read flat now, and the
+  agent's behaviour keys (`model`, `access`, `endpoint`, …) sit directly under the root beside
+  them.** The nested spelling is **refused by name**, with the key the spelling actually reads and
+  the flat table to write instead. This affects files you may never have hand-edited: `bindings:`
+  was the last table still written the nested way, so an agent settings file untouched since
+  v1.7.2 will carry it. Two more consequences, both of arrangements that used to launch: **the
+  all-agents `self: default:` level has no agent-file spelling at all** — that tier is written in
+  the system file as `agent: default: <category>:`, which is what the refusal's cure names; and
+  **a nested behaviour key** (`self: claude: model:`) refuses too, where a flat `model:` in the
+  same file used to beat it silently. The reason for refusing rather than continuing to accept: it
+  was never one spelling but two, and a file carrying both lost the nested table *wholesale* —
+  entries spelled only there were absent, not overridden, with nothing said. See
+  [MIGRATION.md](MIGRATION.md) §2.37.
 
 - **BREAKING: the four `KANIBAKO_*` variables kanibako sets for itself are ordinary settings now,
   and a twin of one at another scope will refuse the launch.** `KANIBAKO_NAME`, `KANIBAKO_AGENT`,

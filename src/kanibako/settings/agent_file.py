@@ -43,42 +43,65 @@ _ROOT: Final[str] = "self"
 #: second raw-walk caller means the walk itself belongs in here.
 ROOT_SECTIONS: Final[tuple[str, ...]] = (_ROOT,)
 
-# Every schema-owned (MODELLED) key of the per-agent file. Anything else that is
-# dict-valued under ``self`` is a discriminated ``self.<node>.*`` sub-table and
-# rides ``AgentConfig.node_tables`` opaquely; the modelled keys must never be
-# captured there (load) nor clobbered from there (write).
+# Every schema-owned (MODELLED) key of the per-agent file — the ones :class:`AgentConfig` holds
+# as fields of its own.
+# 🛑 A CATEGORY MUST NEVER BE ADDED HERE without both an ``AgentConfig`` field and a ``save``
+# emission: load would capture it out of the opaque carrier and write would never put it back,
+# which is a silent data-loss shape.
 _MODELED_KEYS = IDENTITY_KEYS | frozenset({"env", "secret_path", "transform_settings"})
 
-#: The categories the per-agent file stores FLAT under ``self`` rather than in the discriminated
-#: ``self.<node>`` sub-table — ``self`` IS ``agent.<node>``, so there is no second ``<node>``
-#: embedding. ⚑ ORDER IS NOT SIGNIFICANT (they are distinct category names, so no re-root can
-#: shadow another). The WRITE side of this same fact is :func:`_address`, which routes
-#: ``agent set <node> env.FOO=bar`` to exactly the table :func:`level_table` reads back — the two
-#: are siblings in this module now, which is what stops them drifting.
-_FLAT_AGENT_CATEGORIES: tuple[str, ...] = ("secret_path", "env")
+#: EVERY category the per-agent file stores FLAT under ``self`` — ``self`` IS ``agent.<node>``, so
+#: there is no second ``<node>`` embedding and no other spelling exists (rulings 49-52; the S2
+#: flatten). ``bindings`` is ONE token: its ``{ro, rw}`` table rides WHOLE, exactly as the
+#: canonical ``agent.<node>.bindings`` key holds both arms. ⚑ ORDER IS NOT SIGNIFICANT (they are
+#: distinct category names, so no re-root can shadow another). The WRITE side of this same fact is
+#: :func:`_address`, which routes ``agent set <node> env.FOO=bar`` to exactly the table
+#: :func:`level_table` reads back — the two are siblings in this module, which is what stops them
+#: drifting.
+_FLAT_AGENT_CATEGORIES: tuple[str, ...] = (
+    "bindings", "caches", "seeded", "common", "synced", "masks", "secret_path", "env",
+)
 
-#: The categories NOTHING may nest under inside ``self:`` (ruling 49c, EXTENDED by ruling 50 —
-#: *"There is no self:<agent>:foo. It is just self:foo"* / *"self is not a key, it's just an
-#: alias / pointer to agent.<agent>"*).
+#: EVERY table the file's ROOT may hold: what the record models, MERGED with what the cascade
+#: reads.
 #:
-#: ⚑⚑ THE MODEL, and it is not "a second embedding looks redundant": ``self`` is NOT A KEY. It
-#: SUBSTITUTES to ``agent.<agent>``, so ``self.<sub>.<category>`` READS
-#: ``agent.<agent>.<sub>.<category>`` — a key that cannot exist, because ``agent.claude`` does not
-#: contain a ``claude`` level (*"That would be agent.claude.claude"* / *"never ever ever"*). The
-#: argument is UNIFORM over any ``<sub>``, which is why the literal ``default`` refuses on the same
-#: line and why the agent file has no spelling for the all-agents tier AT ALL.
+#: ⚑⚑ THIS SET *IS* THE REFUSAL RULE, and that is why there is no second list of refused names to
+#: keep in step with it: a dict-valued root key that is not in here is a nested ``self.<sub>:``
+#: sub-table, and ``self`` is NOT A KEY — it SUBSTITUTES to ``agent.<agent>``, so
+#: ``self.<sub>.<x>`` READS ``agent.<agent>.<sub>.<x>``, a key that cannot exist because
+#: ``agent.claude`` does not contain a ``claude`` level (*"That would be agent.claude.claude"* /
+#: *"never ever ever"*). The argument is UNIFORM over any ``<sub>``, which is why the literal
+#: ``default`` refuses on the same line and why the agent file has no spelling for the all-agents
+#: tier AT ALL (that tier is the SYSTEM file's ``agent: default:`` table).
 #:
-#: 🛑 ``bindings`` IS DELIBERATELY ABSENT and its absence is not an oversight: nested is bindings'
-#: ONLY spelling today, so refusing it before a flat route exists would delete a live delivery
-#: path. That flatten is S2 of the rectification — do not add it here ahead of the flat route.
-#: ⚑ NOT :data:`_FLAT_AGENT_CATEGORIES`, which answers a different question (where a category is
-#: READ FROM, not which nesting is REFUSED); the two happen to agree today and must not be merged.
-_REFUSED_NESTED_AGENT_CATEGORIES: tuple[str, ...] = ("env", "secret_path")
+#: ⚑ The IDENTITY keys stay in the set deliberately: a malformed dict-valued ``name:`` is a
+#: mistyped scalar, not a nested sub-table, and it keeps its old handling (``load`` coerces it and
+#: the carrier never captures it) rather than becoming a refusal about nesting.
+_ROOT_TABLES: Final[frozenset[str]] = _MODELED_KEYS | frozenset(_FLAT_AGENT_CATEGORIES)
 
-#: The placeholder a cure renders for a category whose refused table is EMPTY (nothing to quote).
-_CATEGORY_VALUE_PLACEHOLDER: "dict[str, str]" = {
-    "env": "<value>", "secret_path": "<host-path>",
+#: The categories that ride :attr:`AgentConfig.category_tables` OPAQUELY — every flat category the
+#: record does NOT model as a field of its own. ONE set for both ends of the round trip, so a
+#: modelled table can neither be captured into the carrier (load) nor clobbered from it (write).
+_CARRIED_CATEGORIES: Final[frozenset[str]] = frozenset(_FLAT_AGENT_CATEGORIES) - _MODELED_KEYS
+
+#: The categories ``agent set`` can actually WRITE, and so the only ones a cure may name that verb
+#: for. The dest-keyed families take a LIST value the verb cannot express (it would store a dotted
+#: literal), and a message must never prescribe a verb that does not work — the same rule
+#: ``config_keys``' retired-bind cure follows. Their cure is the hand-edit alone.
+_VERB_WRITABLE_CATEGORIES: Final[frozenset[str]] = frozenset({"env", "secret_path"})
+
+#: What a cure renders for a category whose refused table is EMPTY (nothing to quote): a sample
+#: ``(key, value)`` for ONE entry. The dest-keyed families all share one entry shape, so they take
+#: :data:`_DEST_KEYED_PLACEHOLDER` rather than a row each.
+_CATEGORY_PLACEHOLDER: Final[dict[str, tuple[str, str]]] = {
+    "env": ("<VAR>", "<value>"),
+    "secret_path": ("<VAR>", "<host-path>"),
+    "bindings": ("ro", "{<box-dest>: [<host-src>]}"),
 }
+
+#: The entry shape every dest-keyed category takes: the box DESTINATION is the key, the value is
+#: ``[<host-src>[, <options>]]``.
+_DEST_KEYED_PLACEHOLDER: Final[tuple[str, str]] = ("<box-dest>", "[<host-src>]")
 
 
 # ---------------------------------------------------------------------------
@@ -147,11 +170,13 @@ def _address(tail: str, node: str) -> tuple[tuple[str, ...], str]:
       ALIAS for ``agent.<node>``, so ``self.<node>.env`` reads
       ``agent.<node>.<node>.env``), so this route is the only spelling — which is
       what keeps write and read from drifting apart.
-    * ``bindings.{ro,rw}.*`` still live in the DISCRIMINATED ``self.<node>.*`` sub-table
-      — the shape :func:`level_table` reads into the launch cascade (it reads
-      ``self.<node>`` and re-roots to ``agent.<node>``). Flattening bindings the same
-      way as secret_path is S2 of the rectification (its cascade/repoint machinery needs a
-      separate, careful pass).
+    * ``bindings.{ro,rw}.*`` are still WRITTEN into the DISCRIMINATED ``self.<node>.*``
+      sub-table here — and that is now a DEFECT with a slot, not a shape.  ⚑ S2 flattened
+      the READ side: :func:`level_table` reads ``bindings`` FLAT with every other category
+      and REFUSES the nested sub-table by name, so a value written through this arm lands
+      where nothing reads it.  S3 flattens this arm to match, red-then-green; it is not
+      "tidied" here, because a silent repair inside another pass is exactly how a
+      behaviour change hides.
 
     ⚑⚑ THE ``bindings`` ARM SPLITS THE DEST ON ``.`` AND THAT IS A KNOWN DEFECT (D-4), MOVED
     HERE VERBATIM ON PURPOSE.  A dotted destination (``bindings.ro.~/.cache/uv``) is shattered
@@ -170,15 +195,15 @@ def _address(tail: str, node: str) -> tuple[tuple[str, ...], str]:
     return (_ROOT,), tail
 
 
-def file_spelling(node: str, tail: str = "") -> str:
-    """The agent file's OWN spelling of *node*'s sub-table, with an optional *tail*.
+def file_spelling(*segments: str) -> str:
+    """The agent file's OWN spelling of *segments*, under the root — ``self.env``, ``self.claude``.
 
-    For the two message surfaces that must QUOTE the file at a user — a refusal naming the table
-    it found, and a bind cure naming the table to hand-edit.  ⚑ It renders the DISCRIMINATED
-    sub-table, which is the shape those two messages are about; S2 changes the wording in one
-    place when the nested spelling dies.
+    For the message surfaces that must QUOTE the file at a user: a cure naming the FLAT table to
+    hand-edit (one segment), and a refusal naming the NESTED table it found (the shape the user
+    actually wrote, so two).  Empty segments are dropped, which is what lets a caller pass an
+    optional tail without a branch of its own.
     """
-    return f"{_ROOT}.{node}.{tail}" if tail else f"{_ROOT}.{node}"
+    return ".".join((_ROOT, *(s for s in segments if s)))
 
 
 def slot_for(agents_root: Path, node: str, tail: str) -> AgentFileSlot:
@@ -213,13 +238,17 @@ def clear_overrides(path: Path, node: str) -> int:
     """Drop every user override from *node*'s file, PRESERVING ``name``; return the count.
 
     Sparse "remove all user overrides": from the root table, every key EXCEPT ``name`` (this
-    removes run_args, all state keys, AND the discriminated ``<node>`` sub-table that holds
-    secret_path / node binds), then prune the now-empty root table.  Sparse write: no default keys
-    re-materialized ([[settings-must-map-to-keystore-key]]).
+    removes run_args, all state keys, and every category table), then prune the now-empty root
+    table.  Sparse write: no default keys re-materialized
+    ([[settings-must-map-to-keystore-key]]).
 
     The COUNT is what ``agent reset --all`` reports, in the same terms the other scopes'
-    ``reset_all`` uses: each ``secret_path`` entry under the node sub-table counts individually
-    (parity with the old flat env_file count); each other removed key counts once.
+    ``reset_all`` uses: each removed root key counts once.
+
+    ⚑ THE ``node`` BRANCH BELOW IS DEAD AND *node* IS UNUSED SINCE THE FLATTEN (S2): a root key
+    equal to the node is a nested sub-table, which :func:`_refuse_nested_tables` now refuses, so
+    no file this verb can be pointed at has one.  Both retire at S3 with the write side — kept
+    here so the removal is a change of its own rather than a rider on the read flatten.
     """
     data = load_doc(path)
     count = 0
@@ -253,6 +282,11 @@ def load(path: Path) -> AgentConfig:
     """Read an agent config file and return an AgentConfig.
 
     Returns defaults if the file does not exist.
+
+    ⚑ IT RUNS THE SAME REFUSAL THE CASCADE DOES (:func:`_refuse_nested_tables`), and that is the
+    point: two readers of ONE file must not disagree about what the file means.  Before this,
+    ``load`` accepted a nested sub-table the launch refused, so ``agent show`` described a shape
+    that could not start a box.
     """
     cfg = AgentConfig()
     if not path.exists():
@@ -263,14 +297,15 @@ def load(path: Path) -> AgentConfig:
     agent_sec = data.get(_ROOT, {})
     if not isinstance(agent_sec, dict):
         agent_sec = {}
+    _refuse_nested_tables(agent_sec, node=None, path=path)
     cfg.name = str(agent_sec.get("name", ""))
     raw_args = agent_sec.get("run_args", [])
     cfg.run_args = [str(a) for a in raw_args] if isinstance(raw_args, list) else []
 
     # Flat state = the SCALAR agent-state knobs. Exclude identity keys AND any
-    # dict-valued entry: the discriminated ``<node>:`` sub-table (env, secret_path,
-    # node binds) is a dict and is NOT flat state — it rides ``_agent_partial``, not
-    # the ``_agent_state_partial`` state channel.
+    # dict-valued entry: every CATEGORY table (env, secret_path, bindings, …) is a
+    # dict and is NOT flat state — those ride ``_agent_partial``, not the
+    # ``_agent_state_partial`` state channel.
     cfg.state = {
         k: str(v)
         for k, v in agent_sec.items()
@@ -291,15 +326,15 @@ def load(path: Path) -> AgentConfig:
         k: str(v) for k, v in secret_sub.items()
     } if isinstance(secret_sub, dict) else {}
     cfg.transform_settings = dict(agent_sec.get("transform_settings", {}))
-    # Any OTHER dict-valued entry under the root is a discriminated
-    # ``self.<node>.*`` sub-table (node binds).  Carry it OPAQUELY: a load→write
-    # round trip that did NOT carry it would silently DROP a user's node binds.
+    # The CATEGORY tables the record does not model as fields of its own (bindings,
+    # caches, seeded, common, synced, masks).  Carried OPAQUELY: a load→write round
+    # trip that did NOT carry them would silently DROP a user's binds.
     # ⚑ NO LIVE CALLER MAKES THAT ROUND TRIP TODAY (measured — see the
     # ``AgentConfig`` docstring); the carry is a guard, not a running guarantee.
-    cfg.node_tables = {
+    cfg.category_tables = {
         k: dict(v)
         for k, v in agent_sec.items()
-        if isinstance(v, dict) and k not in _MODELED_KEYS
+        if k in _CARRIED_CATEGORIES and isinstance(v, dict)
     }
 
     return cfg
@@ -329,14 +364,14 @@ def save(path: Path, cfg: AgentConfig) -> None:
         agent_sec["transform_settings"] = dict(cfg.transform_settings)
     if cfg.env:
         agent_sec["env"] = dict(cfg.env)
-    # Discriminated ``self.<node>.*`` sub-tables (node binds) re-emitted
-    # opaquely — sparse (an empty table is dropped, parity with the categories
-    # above); see :func:`load` and the ``AgentConfig`` class docstring.  A
-    # schema-owned key can never ride through here (guard both ends: load never
-    # captures one, and a hand-built config cannot clobber a modelled table).
-    for node_key, node_table in cfg.node_tables.items():
-        if node_table and node_key not in _MODELED_KEYS:
-            agent_sec[node_key] = dict(node_table)
+    # The opaquely-carried CATEGORY tables re-emitted — sparse (an empty table is
+    # dropped, parity with the categories above); see :func:`load` and the
+    # ``AgentConfig`` class docstring.  ⚑ ONE set guards BOTH ends: a modelled table
+    # can neither be captured into the carrier nor clobber its own emission from
+    # there, and nothing the carrier holds can be a shape :func:`load` would refuse.
+    for category, table in cfg.category_tables.items():
+        if table and category in _CARRIED_CATEGORIES:
+            agent_sec[category] = dict(table)
 
     data: dict = {
         _ROOT: agent_sec,
@@ -352,9 +387,9 @@ def save(path: Path, cfg: AgentConfig) -> None:
 # ---------------------------------------------------------------------------
 
 def _nested_agent_cure(
-    category: str, sub_key: str, *, var: str, value: str
+    category: str | None, sub_key: str, *, var: str, value: str
 ) -> str:
-    """The ARM-APPROPRIATE fix for a refused ``self.<sub>.<category>`` (rulings 49c / 50).
+    """The ARM-APPROPRIATE fix for a refused ``self.<sub>:`` sub-table (rulings 49-52).
 
     ⚑ THE EXPLANATION IS UNIFORM (alias expansion) BUT THE CURES ARE NOT, which is the whole
     reason this is a function and not one message. The flat ``self: <category>:`` table is
@@ -362,72 +397,103 @@ def _nested_agent_cure(
     move to at all — it is written in the SYSTEM file as ``agent: default: <category>:``. Sending
     an all-agents value to the flat table would silently NARROW it to one node, so the default
     arm must NOT name ``agent set``. Both routes measured live (2026-08-14).
+
+    *category* is ``None`` when the refused sub-table holds nothing that is a category at all
+    (state knobs, a typo, another node's name): there is no table to point at, so the cure is the
+    rule itself.
     """
     from kanibako.settings.config_keys import AGENT_DEFAULT_SUB
 
+    if category is None:
+        # ⚑ It must not prescribe the DELETION — the caller's closing line already does,
+        # and a cure that also said "delete it" read as "delete the content", which is
+        # the opposite of what to do with it.
+        return (
+            f"move what is inside it UP ONE LEVEL. The state knobs sit DIRECTLY under "
+            f"`{_ROOT}:` (`model: opus`), and so does every category table;"
+        )
+    by_hand = (
+        f"in the FLAT table (`{_ROOT}:` expands to `agent.{sub_key}`, so the "
+        f"{category} table sits DIRECTLY under it):\n"
+        f"    {_ROOT}:\n      {category}:\n        {var}: {value}"
+    )
     if sub_key == AGENT_DEFAULT_SUB:
         return (
             f"the all-agents tier is written in the SYSTEM settings file, not the "
             f"agent file:\n"
             f"    agent:\n      default:\n        {category}:\n          {var}: {value}"
         )
-    return (
-        f"kanibako agent set {sub_key} {category}.{var}={value}\n"
-        f"  — or by hand, in the FLAT table (`{_ROOT}:` expands to `agent.{sub_key}`, "
-        f"so the {category} table sits DIRECTLY under it):\n"
-        f"    {_ROOT}:\n      {category}:\n        {var}: {value}"
-    )
+    # ⚑ The verb is named ONLY where it works — see :data:`_VERB_WRITABLE_CATEGORIES`.
+    if category in _VERB_WRITABLE_CATEGORIES:
+        return (
+            f"kanibako agent set {sub_key} {category}.{var}={value}\n"
+            f"  — or by hand, {by_hand}"
+        )
+    return f"by hand, {by_hand}"
 
 
-def _refuse_nested_agent_categories(
-    node_tbl: dict, *, sub_key: str, node: str | None, path: Path | None
+def _refused_category(sub_tbl: dict) -> str | None:
+    """The first CATEGORY a refused sub-table holds, or ``None`` if it holds none.
+
+    File order, not sorted: it names the table the user wrote first, which is the one they are
+    most likely looking at.
+    """
+    return next((k for k in sub_tbl if k in _FLAT_AGENT_CATEGORIES), None)
+
+
+def _refuse_nested_tables(
+    root_tbl: dict, *, node: str | None, path: Path | None
 ) -> None:
-    """RAISE when the agent file nests a :data:`_REFUSED_NESTED_AGENT_CATEGORIES` table under a
-    second level inside ``self:`` (rulings 49c / 50).
+    """RAISE when the agent file's ROOT holds a table that is not one of its own (rulings 49-52).
+
+    ⚑⚑ ONE PREDICATE, over the ROOT: *any dict-valued root key outside* :data:`_ROOT_TABLES`
+    *is a nested* ``self.<sub>:`` *sub-table and refuses by name*. It is not an enumeration of
+    refused categories, and deliberately so — one rule closes the CATEGORY case, the STATE case (a
+    scalar carrier a per-category loop cannot express: ``self: claude: model: opus``), the
+    all-agents ``default`` arm, and every spelling nobody has thought of yet. The representation
+    IS the enforcement, so there is no second list to drift.
 
     *node* is the agent whose FILE this is — it renders the ALIAS EXPANSION in the message and is
     never read; ``None`` renders the shape ``<agent>``.
 
-    ⚑ *node_tbl* must be the ``self.<sub_key>`` sub-table AS READ, BEFORE the flat splice re-roots
-    anything into it — otherwise a legal flat ``self: env:`` is indicted for the nested table's sin,
-    and (worse) a nested-ONLY file, which is the common case, is not caught at all.
-
-    ⚑ PRESENCE, not truthiness: a bare ``env:`` leaf parses to ``None`` and an empty one to ``{}``,
-    and both are still the spelling being refused — the same present-vs-absent trap the
-    assembler's ``_NO_LEAF`` sentinel exists for.
+    ⚑ PRESENCE, not truthiness: an empty ``claude: {}`` sub-table is still the spelling being
+    refused. A BARE ``claude:`` leaf parses to ``None`` and is NOT refused here — it is not a
+    table, carries nothing, and delivers nothing; ``load`` sweeps it into state as the scalar it
+    parsed to, exactly as it does any other stray root leaf.
     """
     from kanibako.settings.config_keys import AGENT_DEFAULT_SUB
 
     agent = node or "<agent>"
-    for category in _REFUSED_NESTED_AGENT_CATEGORIES:
-        if category not in node_tbl:
+    for sub_key, sub_val in root_tbl.items():
+        if sub_key in _ROOT_TABLES or not isinstance(sub_val, dict):
             continue
-        spelling = file_spelling(sub_key, category)
-        entries = node_tbl[category]
-        table = entries if isinstance(entries, dict) else {}
-        var = sorted(str(k) for k in table)[0] if table else "<VAR>"
-        value = (
-            str(table[var]) if var in table
-            else _CATEGORY_VALUE_PLACEHOLDER.get(category, "<value>")
+        category = _refused_category(sub_val)
+        spelling = file_spelling(sub_key, category or "")
+        table = sub_val.get(category) if category else None
+        table = table if isinstance(table, dict) else {}
+        var_ph, value_ph = _CATEGORY_PLACEHOLDER.get(
+            category or "", _DEST_KEYED_PLACEHOLDER,
         )
-        named = ", ".join(sorted(str(k) for k in table)) or "(none yet)"
-        # ⚑⚑ ONE EXPLANATION FOR BOTH ARMS — ruling 50's alias semantics, not a redundancy
+        var = sorted(str(k) for k in table)[0] if table else var_ph
+        value = str(table[var]) if var in table else value_ph
+        held = ", ".join(sorted(str(k) for k in sub_val)) or "(nothing)"
+        # ⚑⚑ ONE EXPLANATION FOR EVERY ARM — ruling 50's alias semantics, not a redundancy
         # argument. ``self`` is not a key; it SUBSTITUTES to ``agent.<agent>``, so the spelling
         # expands to a key that cannot exist, and that is equally true of ``default``. Only the
         # HISTORY and the CURE split by arm, each for its own real reason.
-        expansion = f"agent.{agent}.{sub_key}.{category}"
+        expansion = f"agent.{agent}.{sub_key}" + (f".{category}" if category else "")
         if sub_key == AGENT_DEFAULT_SUB:
             history = (
-                f"Refusing rather than running: it used to resolve as though it were "
-                f"the all-agents `agent.default.{category}.<VAR>` tier, which is a "
-                f"real tier — but one the SYSTEM file spells, not this one."
+                "Refusing rather than running: it used to resolve as though it were "
+                "the all-agents `agent.default.*` tier, which is a real tier — but one "
+                "the SYSTEM file spells, not this one."
             )
         else:
             history = (
                 f"Refusing rather than running: it used to resolve to the same "
-                f"`agent.{sub_key}.{category}.<VAR>` keys as the flat table, and in a "
-                f"file carrying BOTH the flat one REPLACED it wholesale — every entry "
-                f"spelled only here vanished without a word."
+                f"`agent.{sub_key}.*` keys as the flat tables, and in a file carrying "
+                f"BOTH the flat one REPLACED it wholesale — every entry spelled only "
+                f"here vanished without a word."
             )
         raise SettingsError(
             f"`{spelling}` is not a settings key, so kanibako will not read it.\n"
@@ -437,11 +503,11 @@ def _refuse_nested_agent_categories(
             f"level. Nothing nests under `{_ROOT}:` but the categories themselves "
             f"(spec §0, closed keyspace).\n"
             f"Found in the {sub_key} sub-table of "
-            f"{path if path is not None else '<agent settings>'}; entries: "
-            f"{named}.\n"
+            f"{path if path is not None else '<agent settings>'}; it holds: "
+            f"{held}.\n"
             f"{history}\n"
             f"  Fix: {_nested_agent_cure(category, sub_key, var=var, value=value)}\n"
-            f"  then delete the `{spelling}` table from "
+            f"  then delete the `{file_spelling(sub_key)}` table from "
             f"{path if path is not None else 'the agent settings file'}."
         )
 
@@ -451,39 +517,31 @@ def level_table(
 ) -> AgentFileLevel:
     """The RAW table one agent-tier level reads out of *raw*, under its TRUE §2d name.
 
-    *sub_key* selects the sub-table; the two agent levels are kept SEPARATE (spec §2) and merge by
-    their true §2d names — NO bare-``agent`` collapse.  A missing root table, or a *sub_key* with
-    no matching sub-table, yields an EMPTY table.  *path* and *node* only render the refusal
-    message (the file's name, and the agent ``self`` expands to); neither is read.
+    *sub_key* selects the TIER, not a sub-table: since the flatten (S2) every category is read
+    FLAT off the root, so the ACTIVE tier is the file's own tables and the all-agents ``default``
+    tier is STRUCTURALLY EMPTY — the file has no spelling for it at all (the SYSTEM file's
+    ``agent: default:`` table is that tier's route). The two agent levels are still kept SEPARATE
+    (spec §2) and merge by their true §2d names — NO bare-``agent`` collapse. A missing root table
+    yields an EMPTY table. *path* and *node* only render the refusal message (the file's name, and
+    the agent ``self`` expands to); neither is read.
 
-    ⚑ THE REFUSAL RUNS BEFORE THE FLAT SPLICE, and the ordering is the contract — see
-    :func:`_refuse_nested_agent_categories`.
+    ⚑ THE REFUSAL RUNS FIRST, over the WHOLE root — see :func:`_refuse_nested_tables`.
     """
     from kanibako.settings.config_keys import AGENT_DEFAULT_SUB
 
     agent = raw.get(_ROOT) if isinstance(raw, dict) else None
     if not isinstance(agent, dict):
         return AgentFileLevel(sub_key, {})
-    sub = agent.get(sub_key)
-    node_tbl: dict = dict(sub) if isinstance(sub, dict) else {}
-    # ⚑ BEFORE the splice below, and deliberately so — see the function's contract.
-    _refuse_nested_agent_categories(
-        node_tbl, sub_key=sub_key, node=node, path=path,
-    )
-    # ⚑ ``self`` IS ``agent.<active-node>``, so the FLATTENED categories live at the file's TOP
-    # level, not in the ``self.<node>`` sub-table — re-root them for the ACTIVE layer ONLY, never
-    # the all-agents ``default`` (they are THIS node's, not every agent's). Without this a
-    # category is not in the cascade at all: the launch secret export saw no agent-scope
-    # secret_path and mounted no token, and an ``agent.<node>.env.<VAR>`` was no snapshot leaf,
-    # so it reached the box only on a private under-layer BELOW every collapsed slot and never
-    # saw the expand pass (llm-docs).
-    # ⚑ CONTRACT THE TYPES CANNOT CARRY: the splice REPLACES a same-named table found in the
-    # ``self.<node>`` sub-table, so a file carrying BOTH spellings of one category would resolve
-    # the FLAT one and lose the nested table WHOLESALE. ⚑ NEITHER SPLICED CATEGORY CAN REACH THAT
-    # SHAPE ANY MORE — :func:`_refuse_nested_agent_categories` above rejects a nested ``env`` OR
-    # ``secret_path`` by name (rulings 49c / 50), which is what makes the silent loss UNREACHABLE
-    # rather than merely documented. The replacement itself is kept, not deleted: it is what makes
-    # the refusal's placement testable, and ``bindings`` still rides the sub-table.
+    _refuse_nested_tables(agent, node=node, path=path)
+    # ⚑ ``self`` IS ``agent.<active-node>``, so EVERY category lives at the file's TOP level —
+    # re-root them for the ACTIVE layer ONLY, never the all-agents ``default`` (they are THIS
+    # node's, not every agent's). Without this a category is not in the cascade at all: the
+    # launch secret export saw no agent-scope secret_path and mounted no token, and an
+    # ``agent.<node>.env.<VAR>`` was no snapshot leaf, so it reached the box only on a private
+    # under-layer BELOW every collapsed slot and never saw the expand pass (llm-docs).
+    # ⚑ ``bindings`` rides as ONE table, ``{ro: …, rw: …}`` whole: the canonical
+    # ``agent.<node>.bindings`` key holds both arms, so re-rooting the token re-roots the pair.
+    node_tbl: dict = {}
     if sub_key != AGENT_DEFAULT_SUB:
         for category in _FLAT_AGENT_CATEGORIES:
             flat = agent.get(category)

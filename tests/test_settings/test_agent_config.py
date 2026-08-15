@@ -23,7 +23,7 @@ class TestAgentConfigDefaults:
         assert cfg.state == {}
         assert cfg.env == {}
         assert cfg.secret_path == {}
-        assert cfg.node_tables == {}
+        assert cfg.category_tables == {}
 
     def test_custom_values(self):
         cfg = AgentConfig(

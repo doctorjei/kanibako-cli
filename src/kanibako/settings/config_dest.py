@@ -164,10 +164,12 @@ def _node_bind_target(
 
     Returns an :class:`AgentFileSlot` on the node's OWN settings file
     ``agents/<node>/settings.yaml``, carrying the tail ``bindings.<ro|rw>.<name>``.
-    :mod:`kanibako.settings.agent_file` places it in the discriminated per-node sub-table —
-    the shape ``settings_assemble._agent_partial`` reads back at launch. The node appears
-    BOTH in the dir path AND in the nested key — that is the launch read shape, not
-    a bug.
+    ⚑⚑ :mod:`kanibako.settings.agent_file` still places it in the discriminated per-node
+    sub-table, and that is NO LONGER the launch read shape: S2 flattened the read, so
+    ``settings_assemble._agent_partial`` reads ``self: bindings:`` and REFUSES the nested
+    table this write arm produces. It is a defect with a slot — ``_address``'s bindings
+    arm flattens at S3 — not a shape to preserve. Until then the ONE caller left is a
+    READ (``get_config_value``), so nothing legitimate writes through it.
 
     Returns ``None`` when *canonical* is not a node bind, *agents_root* was not
     threaded (the per-node store is global under ``config.agents`` — only reachable
@@ -522,8 +524,9 @@ def _read_dest(
 
     ⚑⚑ AND FOR THOSE THE ROUTE IS WRONG, MEASURABLY — THIS IS THE HALF QA′ DID NOT
     TOUCH.  It answers the NOUN's settings file, while the agent tier is assembled
-    from ``agents/<node>/settings.yaml``'s ``self.<node>`` table
-    (``settings_assemble._agent_partial``).  So a hand-authored ``self.claude.caches``
+    from ``agents/<node>/settings.yaml``'s FLAT category tables directly under
+    ``self:`` (``settings_assemble._agent_partial``; the S2 flatten, and a nested
+    ``self.<node>`` table is now REFUSED by name).  So a hand-authored ``self.caches``
     reads back "(not set)" while a stray ``agent.claude.caches`` in the system
     settings file reads back instead.  Re-pointing it is a STORAGE-SHAPE change that
     moves ``agent_file._address`` — the per-agent file-shape SoT shared

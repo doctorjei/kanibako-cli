@@ -216,8 +216,16 @@ with a `BindMap` for a value. See "the depth rule" above for why this set is not
 ```_AGENT_DEFAULT_SUB = "default"```
 The agent sub-table that supplies the all-agents `agent.default` cascade level.
 
-⚑ `_FLAT_AGENT_CATEGORIES` · `_REFUSED_NESTED_AGENT_CATEGORIES` · `_CATEGORY_VALUE_PLACEHOLDER`
-MOVED to `settings/agent_file.py` with the machinery that reads them — see `agent_file.py.md`.
+⚑ **THE LEVEL IT SUPPLIES IS STRUCTURALLY EMPTY OUT OF THE AGENT FILE** (S2): `self:` IS
+`agent.<node>`, so a `default:` level under it reads `agent.<node>.default.*` and REFUSES. That
+tier's route is the SYSTEM file's `agent: default:` table. The `_agent_partial` call at
+`assemble_levels` is KEPT — deleting it re-indexes every `base_levels[n]` consumer — with the
+emptiness stated at the call site.
+
+⚑ `_FLAT_AGENT_CATEGORIES` · the nested REFUSAL · its cure placeholders MOVED to
+`settings/agent_file.py` with the machinery that reads them — see `agent_file.py.md`. *(The refusal
+is one PREDICATE over the root table there now, not the enumerated
+`_REFUSED_NESTED_AGENT_CATEGORIES` tuple this line used to name.)*
 
 ```RETIRED_FILE_KEYS: dict[tuple[str, ...], str]```
 Retired agent-SELECTION spellings: nested FILE path of the retired leaf → the retired KEY name (M-4).
