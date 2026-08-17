@@ -16,10 +16,16 @@ launch.
 
 from __future__ import annotations
 
+import os
 import shutil
+import stat
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
+
+from kanibako.log import get_logger
+
+logger = get_logger("snapshots")
 
 
 # Default maximum number of snapshots to retain.
@@ -34,6 +40,46 @@ _DEFAULT_MAX_SNAPSHOTS = 5
 def _versions_dir(vault_rw_path: Path) -> Path:
     """Return the .versions/ directory for a vault share-rw path."""
     return vault_rw_path.parent / ".versions"
+
+
+def _force_writable_dirs(root: Path) -> None:
+    """Add owner write+execute to every directory at or under *root*.
+
+    Unlinking an entry requires write on its PARENT DIRECTORY -- the entry's own
+    mode is irrelevant -- so this only touches directories.  ``os.walk`` is
+    top-down and each directory is chmod'ed as it is yielded, which is what lets
+    the walk descend into a mode-0555 (or 0444) directory it has just widened.
+    Best-effort per entry: a directory we cannot chmod (not ours) is skipped and
+    left for the caller's error handling rather than aborting the whole sweep.
+    """
+    for dirpath, _dirnames, _filenames in os.walk(root, topdown=True):
+        try:
+            mode = os.stat(dirpath).st_mode
+            os.chmod(dirpath, mode | stat.S_IWUSR | stat.S_IXUSR)
+        except OSError:
+            continue
+
+
+def _rmtree_force(path: Path) -> None:
+    """``shutil.rmtree`` that also removes trees containing READ-ONLY directories.
+
+    Vault content is arbitrary user data, and a read-only directory in it is
+    perfectly legitimate -- copying one in is enough to make a snapshot of it
+    undeletable, because ``rmtree`` cannot unlink through a parent that denies
+    write.  Measured 2026-08-17: a read-only tree under ``vault/rw`` propagated
+    into ``.versions/`` and made ``prune_snapshots`` raise ``PermissionError``
+    from inside the launch path, so ``kanibako start`` could not start the box
+    at all until the offending directories were moved out BY HAND.
+
+    The plain ``rmtree`` is attempted FIRST so the overwhelmingly common case is
+    byte-identical to before; the widening pass runs only after a
+    ``PermissionError``, and only over the tree we were already asked to delete.
+    """
+    try:
+        shutil.rmtree(path)
+    except PermissionError:
+        _force_writable_dirs(path)
+        shutil.rmtree(path)
 
 
 def _test_reflink(path: Path) -> bool:
@@ -196,9 +242,9 @@ def restore_snapshot(vault_rw_path: Path, snapshot_name: str) -> None:
     staging = vault_rw_path.parent / f".{vault_rw_path.name}.restore.tmp"
     backup = vault_rw_path.parent / f".{vault_rw_path.name}.restore.bak"
     if staging.exists():
-        shutil.rmtree(staging)
+        _rmtree_force(staging)
     if backup.exists():
-        shutil.rmtree(backup)
+        _rmtree_force(backup)
     staging.mkdir(parents=True)
 
     try:
@@ -223,9 +269,12 @@ def restore_snapshot(vault_rw_path: Path, snapshot_name: str) -> None:
                 shutil.move(str(item), str(vault_rw_path / item.name))
         except Exception:
             # Roll back: clear whatever made it in, restore the backup.
+            # ⚑ _rmtree_force, not rmtree: this is the DATA-PRESERVING arm, and a
+            # read-only directory among the staged contents must not be what
+            # stops the live vault from being put back.
             for item in list(vault_rw_path.iterdir()):
                 if item.is_dir():
-                    shutil.rmtree(item)
+                    _rmtree_force(item)
                 else:
                     item.unlink()
             for name in moved:
@@ -255,9 +304,25 @@ def prune_snapshots(
         to_remove = all_snapshots
     else:
         to_remove = all_snapshots[:-max_keep] if len(all_snapshots) > max_keep else []
+    removed = 0
     for old in to_remove:
-        shutil.rmtree(old)
-    return len(to_remove)
+        # Pruning is HOUSEKEEPING and runs inside the launch path
+        # (``auto_snapshot`` <- ``start._run_container``).  Failing to reclaim an
+        # OLD snapshot is never a reason to refuse to start a box, so a failure
+        # here is reported and skipped rather than propagated -- but it is NOT
+        # swallowed: an undeletable snapshot means the retention limit is no
+        # longer being honoured, and the user has to be told which one.
+        try:
+            _rmtree_force(old)
+        except OSError as exc:
+            logger.warning(
+                "Could not prune old vault snapshot %s: %s. "
+                "It is being kept; remove it by hand to reclaim the space.",
+                old.name, exc,
+            )
+            continue
+        removed += 1
+    return removed
 
 
 def auto_snapshot(

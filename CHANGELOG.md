@@ -275,6 +275,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A read-only directory anywhere in your vault could stop a box from starting at all.** Kanibako
+  snapshots `vault/rw` before each launch and prunes the oldest snapshots to stay inside the
+  retention limit. Deleting a directory requires write permission on the directory that contains
+  it, so a read-only directory copied into the vault — a reference tree, an archived checkout,
+  anything with its permissions preserved — produced a snapshot that could not be removed. Pruning
+  raised `PermissionError` from inside the launch, and because that happens before the container is
+  created, **the box could not be started until the offending directories were moved out by hand.**
+  Pruning now widens directory permissions when, and only when, an ordinary removal has already
+  failed, and a snapshot that still cannot be reclaimed is reported and skipped rather than
+  cancelling your launch. Housekeeping is no longer able to refuse to start a box.
+
 - **Helper boxes inherited the director's browser endpoint by accident of timing.** With
   `--browser`, kanibako starts a headless browser sidecar and gives the box its address as
   `BROWSER_WS_ENDPOINT`. The helper hub had been handed the box's environment as a live reference a
