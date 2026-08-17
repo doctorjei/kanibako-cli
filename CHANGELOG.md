@@ -275,6 +275,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **One broken agent plugin could make the entire CLI unusable, including the command that fixes
+  it.** Agent adapters are discovered by importing every registered plugin, and that import was
+  unguarded. A plugin built against a different version of kanibako raises `ImportError` from its own
+  module body, and that escaped discovery as a raw traceback — killing whatever command you ran, even
+  though you weren't using that agent, because resolving *which* agent to launch enumerates all of
+  them. `kanibako setup` uses the same discovery, so the documented cure died the same way and
+  editing installed files by hand was the only way back in. A plugin that fails to load is now
+  reported by name on standard error, with what still works and what to do about it, and then
+  skipped. Every other agent keeps working. The two fallback discovery paths already tolerated a
+  failing plugin; the main one now matches them.
+
+- **`kanibako-agent-goose` and `kanibako-agent-codex` are now 0.4.0, and older ones are refused.**
+  Their published `0.3.0` packages predate the `access_realization` and top-level `env:` changes, so
+  the current kanibako cannot load them — it refuses them by name, which is correct but left no
+  version to upgrade *to*, since `0.3.0` was the newest published. Both are republished at `0.4.0`
+  and the meta package now requires that. **If you installed the meta package and saw errors about
+  `safe_bypass`, `container_env`, or `BindDefault`, upgrading is the fix.**
+
 - **A box could come up at a bare shell prompt instead of starting its agent, and nothing said
   why.** PID 1 of an agent box checks that it can import the supervisor before running it, and falls
   back to a plain shell keep-alive if it cannot — insurance for an older image that ships no
