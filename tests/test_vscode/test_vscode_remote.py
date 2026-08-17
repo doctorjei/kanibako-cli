@@ -23,7 +23,15 @@ from kanibako.errors import KanibakoError
 
 @pytest.fixture(autouse=True)
 def _isolate_xdg(tmp_path, monkeypatch):
-    """Point every XDG base the module reads at a per-test tmp dir."""
+    """Point every XDG base the module reads at a per-test tmp dir.
+
+    ⚑ ``XDG_CONFIG_HOME`` is isolated too: ``_vscode_remote_state_dir`` now tracks
+    ``config.data``'s leaf via :func:`kanibako.settings.paths.resolve_data_leaf`,
+    which reads ``$XDG_CONFIG_HOME/kanibako_config.yaml`` — an unisolated env would
+    read the REAL host config and make the leaf (hence every path in this file)
+    depend on whatever happens to be on the box running the suite.
+    """
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path / "run"))
@@ -222,6 +230,50 @@ def test_context_slug_distinct_dests_never_collide():
     # The readable normalisation is lossy; the digest keeps these apart.
     assert vr.context_slug("me@host") != vr.context_slug("me/host")
     assert vr.context_slug("me@host") == vr.context_slug("me@host")
+
+
+# --- _vscode_remote_state_dir tracks config.data's leaf (resolve_data_leaf) ---
+
+def test_state_dir_defaults_to_kanibako_leaf_when_no_config(tmp_path):
+    """No ``kanibako_config.yaml`` under the isolated ``XDG_CONFIG_HOME`` → the default leaf,
+    exactly the prior hardcoded behaviour (TOTAL: absent config never raises)."""
+    d = vr._vscode_remote_state_dir()
+    assert d.name == "vscode-remote"
+    assert d.parent.name == "kanibako"
+
+
+def test_state_dir_tracks_non_default_config_data_leaf(tmp_path):
+    """A store-isolated ``config.data`` (per-box XDG override, e.g. dogfood ladder boxes)
+    is now REACHED — closing the gap the hardcoded leaf left open."""
+    config_home = Path(os.environ["XDG_CONFIG_HOME"])
+    config_home.mkdir(parents=True, exist_ok=True)
+    (config_home / "kanibako_config.yaml").write_text(
+        f'config:\n  data: "{tmp_path / "custom_store"}"\n'
+    )
+    d = vr._vscode_remote_state_dir()
+    assert d.parent.name == "custom_store"
+    assert d == Path(os.environ["XDG_STATE_HOME"]) / "custom_store" / "vscode-remote"
+
+
+def test_state_dir_creates_nothing(tmp_path):
+    """Calling it is a pure path computation — no directory materializes."""
+    config_home = Path(os.environ["XDG_CONFIG_HOME"])
+    config_home.mkdir(parents=True, exist_ok=True)
+    (config_home / "kanibako_config.yaml").write_text(
+        f'config:\n  data: "{tmp_path / "custom_store"}"\n'
+    )
+    before = set(tmp_path.rglob("*"))
+    vr._vscode_remote_state_dir()
+    after = set(tmp_path.rglob("*"))
+    assert after == before
+
+
+def test_state_dir_malformed_config_degrades_without_raising():
+    config_home = Path(os.environ["XDG_CONFIG_HOME"])
+    config_home.mkdir(parents=True, exist_ok=True)
+    (config_home / "kanibako_config.yaml").write_text("not: [valid: yaml: at all")
+    d = vr._vscode_remote_state_dir()  # must not raise
+    assert d.parent.name == "kanibako"
 
 
 # --- connection store round-trip + greppability ----------------------------

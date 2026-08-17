@@ -22,6 +22,7 @@ from __future__ import annotations
 import logging
 import os
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -30,8 +31,10 @@ from kanibako.settings.paths import (
     CONFIG_PATH_DEFAULTS,
     SYSTEM_PATH_DEFAULTS,
     host_xdg_map,
+    load_std_paths,
     load_system_config,
     resolve_config_paths,
+    resolve_data_leaf,
     resolve_system_paths,
     resolve_xdg,
 )
@@ -629,3 +632,110 @@ class TestConfigDataCascade:
         assert resolved["system.channelroot"] == root / "channels"
         assert resolved["system.backup"] == root / "backup"
         assert resolved["system.template"] == root / "global" / "template"
+
+
+class TestResolveDataLeaf:
+    """``resolve_data_leaf`` — the PURE, TOTAL leaf-of-``config.data`` resolver.
+
+    THE single source ``load_std_paths`` and ``vscode_remote._vscode_remote_state_dir``
+    both route through, instead of each re-deriving ``data_path.name`` (or hardcoding the
+    default leaf) on their own.
+    """
+
+    def _redirect_etc_base(self, monkeypatch, tmp_path: Path) -> None:
+        """Point the /etc base CONFIG path at an absent tmp file (mirrors
+        ``TestLoadSystemConfig._redirect`` — hermetic, doesn't depend on the real host)."""
+        import kanibako.settings.config as cfg_mod
+
+        monkeypatch.setattr(cfg_mod, "config_base_path", lambda: tmp_path / "etc_absent.yaml")
+
+    # --- fast path: an already-resolved data_path -------------------------
+
+    def test_pre_resolved_path_returns_its_basename(self, tmp_path):
+        assert resolve_data_leaf(tmp_path / "custom-leaf") == "custom-leaf"
+
+    # --- fresh resolve: tracks a non-default config.data -------------------
+
+    def test_tracks_non_default_config_data_leaf(self, tmp_path, monkeypatch):
+        self._redirect_etc_base(monkeypatch, tmp_path)
+        config_home = tmp_path / "cfg"
+        config_home.mkdir()
+        (config_home / "kanibako_config.yaml").write_text(
+            f'config:\n  data: "{tmp_path / "custom_store"}"\n'
+        )
+        leaf = resolve_data_leaf(config_home=config_home, data_home=tmp_path / "data")
+        assert leaf == "custom_store"
+
+    # --- TOTAL: never raises, degrades to the default leaf -----------------
+
+    def test_no_config_file_returns_default_leaf(self, tmp_path, monkeypatch):
+        self._redirect_etc_base(monkeypatch, tmp_path)
+        leaf = resolve_data_leaf(config_home=tmp_path / "cfg-absent",
+                                 data_home=tmp_path / "data")
+        assert leaf == "kanibako"
+
+    def test_malformed_config_degrades_without_raising(self, tmp_path, monkeypatch):
+        self._redirect_etc_base(monkeypatch, tmp_path)
+        config_home = tmp_path / "cfg"
+        config_home.mkdir()
+        (config_home / "kanibako_config.yaml").write_text("not: [valid: yaml: at all")
+        # Mutation proof: without the try/except this raises ConfigError and the
+        # test errors out rather than reaching the assertion.
+        leaf = resolve_data_leaf(config_home=config_home, data_home=tmp_path / "data")
+        assert leaf == "kanibako"
+
+    # --- creates nothing -----------------------------------------------------
+
+    def test_creates_no_directories(self, tmp_path, monkeypatch):
+        self._redirect_etc_base(monkeypatch, tmp_path)
+        config_home = tmp_path / "cfg"
+        config_home.mkdir()
+        (config_home / "kanibako_config.yaml").write_text(
+            f'config:\n  data: "{tmp_path / "custom_store"}"\n'
+        )
+        data_home = tmp_path / "data"
+        before = set(tmp_path.rglob("*"))
+        resolve_data_leaf(config_home=config_home, data_home=data_home)
+        after = set(tmp_path.rglob("*"))
+        assert after == before
+        assert not data_home.exists()
+        assert not (tmp_path / "custom_store").exists()
+
+    def test_never_touches_xdg_runtime_dir_fallback(self, tmp_path, monkeypatch):
+        """Mutation proof: if the resolve ever routed through ``host_xdg_map`` (which
+        resolves ``XDG_RUNTIME_DIR`` and can mkdir a fallback dir when unset), this fails."""
+        import kanibako.settings.paths as paths_mod
+
+        self._redirect_etc_base(monkeypatch, tmp_path)
+        monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
+        monkeypatch.setattr(paths_mod, "_runtime_fallback_cache", {})
+        spy = MagicMock()
+        monkeypatch.setattr(paths_mod, "_fallback_runtime_dir", spy)
+
+        resolve_data_leaf(config_home=tmp_path / "cfg", data_home=tmp_path / "data")
+        spy.assert_not_called()
+
+    # --- P4 wiring: load_std_paths routes its leaf through the resolver ----
+
+    def test_load_std_paths_uses_the_resolver_for_its_leaf(self, tmp_home):
+        """Observable-behaviour parity: overriding ``config.data`` still cascades to
+        ``state_path``/``cache_path`` exactly as the old inline ``data_path.name`` did."""
+        cf = tmp_home / "config" / "kanibako_config.yaml"
+        cf.write_text(f'config:\n  data: "{tmp_home / "srv_data"}"\n')
+        config = load_config(cf)
+        std = load_std_paths(config)
+        assert std.state_path == std.state_home / "srv_data"
+        assert std.cache_path == std.cache_home / "srv_data"
+
+    def test_load_std_paths_calls_resolve_data_leaf(self, tmp_home, config_file, monkeypatch):
+        """Wiring proof: ``load_std_paths`` must call the shared resolver, not keep its
+        own second copy of the ``.name`` derivation."""
+        import kanibako.settings.paths as paths_mod
+
+        real = paths_mod.resolve_data_leaf
+        spy = MagicMock(side_effect=real)
+        monkeypatch.setattr(paths_mod, "resolve_data_leaf", spy)
+
+        config = load_config(config_file)
+        load_std_paths(config)
+        spy.assert_called_once()
