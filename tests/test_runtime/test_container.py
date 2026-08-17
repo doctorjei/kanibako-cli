@@ -1888,6 +1888,74 @@ class TestDetectShadowedMounts:
         assert not (shell / "vault").exists()
         assert before == after
 
+    def test_managed_canon_bible_excluded(self, tmp_path):
+        """Finding #7: the box-create skeleton owns canon/bible — never report it shadowed."""
+        from kanibako.runtime.container import detect_shadowed_mounts
+        shell = tmp_path / "shell"
+        shell.mkdir()
+        project = tmp_path / "project"
+        project.mkdir()
+        chapter = shell / "canon" / "bible" / "general"
+        chapter.mkdir(parents=True)
+        (chapter / "existing.md").write_text("pre-existing skeleton content")
+        src = tmp_path / "src-general"
+        src.mkdir()
+        mounts = [self._mount(src, "/home/agent/canon/bible/general")]
+        result = detect_shadowed_mounts(shell, project, mounts, enable_vault=False)
+        assert result == []
+
+    def test_managed_canon_handbook_excluded(self, tmp_path):
+        """Same guard, handbook side (canon/handbook is skeleton-owned, not seed-owned)."""
+        from kanibako.runtime.container import detect_shadowed_mounts
+        shell = tmp_path / "shell"
+        shell.mkdir()
+        project = tmp_path / "project"
+        project.mkdir()
+        chapter = shell / "canon" / "handbook" / "box"
+        chapter.mkdir(parents=True)
+        (chapter / "existing.md").write_text("pre-existing skeleton content")
+        src = tmp_path / "src-box"
+        src.mkdir()
+        mounts = [self._mount(src, "/home/agent/canon/handbook/box")]
+        result = detect_shadowed_mounts(shell, project, mounts, enable_vault=False)
+        assert result == []
+
+    def test_managed_canon_collection_file_excluded(self, tmp_path):
+        """The single-file managed dest (canon/COLLECTION.md) is excluded too."""
+        from kanibako.runtime.container import detect_shadowed_mounts
+        shell = tmp_path / "shell"
+        shell.mkdir()
+        project = tmp_path / "project"
+        project.mkdir()
+        (shell / "canon").mkdir()
+        host_stub = shell / "canon" / "COLLECTION.md"
+        host_stub.write_text("pre-existing skeleton content")
+        src = tmp_path / "src-collection"
+        src.touch()
+        mounts = [self._mount(src, "/home/agent/canon/COLLECTION.md")]
+        result = detect_shadowed_mounts(shell, project, mounts, enable_vault=False)
+        assert result == []
+
+    def test_canon_notebook_still_reported(self, tmp_path):
+        """MUTATION PROOF (other direction): canon/notebook stays SEEDABLE (spec §2c), so a
+        genuine shadow there is real user content and must still be reported — this is what
+        would break if the exclusion were widened to all of ``~/canon`` instead of the
+        seed-deny prefixes.
+        """
+        from kanibako.runtime.container import detect_shadowed_mounts
+        shell = tmp_path / "shell"
+        shell.mkdir()
+        project = tmp_path / "project"
+        project.mkdir()
+        notebook = shell / "canon" / "notebook"
+        notebook.mkdir(parents=True)
+        (notebook / "existing.md").write_text("real user content")
+        src = tmp_path / "src-notebook"
+        src.mkdir()
+        mounts = [self._mount(src, "/home/agent/canon/notebook")]
+        result = detect_shadowed_mounts(shell, project, mounts, enable_vault=False)
+        assert "/home/agent/canon/notebook" in result
+
 
 class TestLocalImageMetadata:
     """get_local_created / get_local_tags / get_local_label (via image_inspect)."""

@@ -29,6 +29,7 @@ from pathlib import Path
 
 from kanibako.errors import ContainerError
 from kanibako.log import get_logger
+from kanibako.settings.core_defaults import CANON_SEED_DENY_PREFIXES
 from kanibako.settings.settings_resolve import GUEST_GID, GUEST_HOME, GUEST_UID
 
 
@@ -678,6 +679,29 @@ def _is_managed_canon_dest(dest: str) -> bool:
     return dest == _CANON_GUEST_PREFIX or dest.startswith(f"{_CANON_GUEST_PREFIX}/")
 
 
+# The MANAGED CANON REGION, as guest-absolute prefixes — same set spec §2c forbids a template
+# SEED from targeting (``CANON_SEED_DENY_PREFIXES``), widened from ``~``-relative to guest-
+# absolute here.  ⚑ NARROWER than ``_CANON_GUEST_PREFIX`` above: it excludes
+# ``canon/{notebook,workbook}``, which stay genuinely seedable, so a bind there can still
+# shadow real user content and must keep reporting.
+_CANON_SEED_DENY_GUEST_PREFIXES = tuple(
+    f"{GUEST_HOME}/{rel}" for rel in CANON_SEED_DENY_PREFIXES
+)
+
+
+def _is_seed_denied_canon_dest(dest: str) -> bool:
+    """True for a bind dest under the seed-denied managed canon region (spec §2c).
+
+    Box-create's skeleton owns these dests and no seed may ever land under them, so a bind
+    here can never shadow user content — it is not a candidate for the shadow report at all.
+    """
+    rstripped = dest.rstrip("/")
+    return any(
+        rstripped == prefix or rstripped.startswith(f"{prefix}/")
+        for prefix in _CANON_SEED_DENY_GUEST_PREFIXES
+    )
+
+
 def _guest_dest_to_host(
     dest: str,
     shell_path: Path,
@@ -725,6 +749,11 @@ def detect_shadowed_mounts(
     for dest in candidates:
         # Skip the base roots (their content IS the box, not shadowed).
         if dest.rstrip("/") in base_roots:
+            continue
+        # Skip the seed-denied managed canon region (spec §2c): box-create's own skeleton
+        # owns these dests, so a bind here is guaranteed benign — reporting it would fire on
+        # EVERY box and could never indicate a real mistake (finding #7).
+        if _is_seed_denied_canon_dest(dest):
             continue
         host_path = _guest_dest_to_host(dest, shell_path, project_path)
         if host_path is None:
