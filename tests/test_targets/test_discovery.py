@@ -97,6 +97,79 @@ class TestDiscoverTargets:
         assert "b" in targets
 
 
+class TestBrokenEntryPointIsSkipped:
+    """A plugin that cannot IMPORT must not take the whole CLI down with it.
+
+    Regression, measured 2026-08-17: a stale ``kanibako-agent-goose`` wheel raised
+    ``ImportError: cannot import name 'BindDefault'`` from its own module body.
+    ``ep.load()`` was unguarded, so that escaped ``discover_targets`` as a raw
+    traceback and killed every command that resolves an agent — including
+    ``kanibako setup``, which calls discovery too, so the documented cure was
+    unreachable and hand-editing site-packages was the only way back in.
+    """
+
+    @staticmethod
+    def _broken_entry_point(name: str, exc: Exception) -> MagicMock:
+        ep = MagicMock()
+        ep.name = name
+        ep.load.side_effect = exc
+        return ep
+
+    @pytest.fixture(autouse=True)
+    def _clear_warn_dedupe(self):
+        # The warning is once-per-process, so reset the memo or test order decides
+        # whether a later test sees the message.
+        from kanibako.targets import _EP_LOAD_FAILED
+        _EP_LOAD_FAILED.clear()
+        yield
+        _EP_LOAD_FAILED.clear()
+
+    def test_broken_plugin_does_not_abort_discovery(self):
+        broken = self._broken_entry_point(
+            "goose",
+            ImportError("cannot import name 'BindDefault' from 'kanibako.targets.base'"),
+        )
+        good = _mock_entry_point("fake", _FakeTarget)
+        with patch("kanibako.targets.entry_points", return_value=[broken, good]):
+            targets = discover_targets()
+        # The healthy agent survives; the broken one is simply absent.
+        assert targets["fake"] is _FakeTarget
+        assert "goose" not in targets
+
+    def test_broken_plugin_is_reported_on_stderr_with_the_cure(self, capsys):
+        broken = self._broken_entry_point("goose", ImportError("cannot import name 'BindDefault'"))
+        with patch("kanibako.targets.entry_points", return_value=[broken]):
+            discover_targets()
+        err = capsys.readouterr().err
+        # Named, not swallowed: a pip-installed adapter that cannot load is a
+        # broken install the user has to know about.
+        assert "goose" in err
+        assert "SKIPPED" in err
+        assert "ImportError" in err
+        assert "BindDefault" in err
+        # And it says what still works, so the user does not conclude the CLI is dead.
+        assert "kanibako setup" in err
+
+    def test_warning_is_emitted_once_per_process(self, capsys):
+        broken = self._broken_entry_point("goose", ImportError("boom"))
+        with patch("kanibako.targets.entry_points", return_value=[broken]):
+            discover_targets()
+            discover_targets()
+            discover_targets()
+        # discover_targets runs several times per command; the paragraph must not
+        # be repeated each time or it buries the real output.
+        assert capsys.readouterr().err.count("failed to load") == 1
+
+    def test_a_plugin_raising_a_non_import_error_is_also_survived(self):
+        """The guard is deliberately broad: any exception from third-party code."""
+        broken = self._broken_entry_point("exploding", RuntimeError("bad metaclass"))
+        good = _mock_entry_point("fake", _FakeTarget)
+        with patch("kanibako.targets.entry_points", return_value=[broken, good]):
+            targets = discover_targets()
+        assert "fake" in targets
+        assert "exploding" not in targets
+
+
 class TestGetTarget:
     def test_found(self):
         ep = _mock_entry_point("fake", _FakeTarget)

@@ -6,6 +6,7 @@ import importlib
 import importlib.util
 import logging
 import pkgutil
+import sys
 from importlib.metadata import entry_points
 from pathlib import Path
 
@@ -19,6 +20,12 @@ __all__ = [
 ]
 
 logger = logging.getLogger(__name__)
+
+# Entry points whose load() already failed, so the stderr warning is emitted ONCE
+# per process.  ``discover_targets`` is called many times per command (selection,
+# setup's agent menu, the target resolve), and repeating the same paragraph on
+# every call would bury the rest of the output.
+_EP_LOAD_FAILED: set[str] = set()
 
 
 def _scan_plugin_modules(targets: dict[str, type[Target]]) -> None:
@@ -119,7 +126,45 @@ def discover_targets(project_path: Path | None = None) -> dict[str, type[Target]
     # avoid clashing with this entry-point registry. Do not "unify".
     eps = entry_points(group="kanibako.agents")
     for ep in eps:
-        cls = ep.load()
+        # ⚑⚑ ONE BROKEN ADAPTER MUST NOT TAKE THE WHOLE CLI DOWN.  ``ep.load()``
+        # imports third-party code, and an adapter built against a different
+        # kanibako-cli raises ImportError from its own module body.  Unguarded,
+        # that propagated out of discovery and killed whatever command called it
+        # — as a raw traceback, from a plugin the user was not even using, since
+        # agent SELECTION enumerates every entry point.  Worse, ``setup_cmd``
+        # calls this too, so the documented cure (`kanibako setup`) died the same
+        # way and hand-editing site-packages was the only way back in.  MEASURED
+        # 2026-08-17 with a stale kanibako-agent-goose: three sequential
+        # dead-ends, three manual edits.
+        #
+        # The two FALLBACK scanners below have always tolerated a failing plugin
+        # (``logger.debug`` + continue); this loop is the primary path and was the
+        # only one that did not.  Skip-and-warn brings it in line.
+        #
+        # WARN, never swallow: a pip-installed adapter that cannot load is a
+        # broken install the user must know about, so this goes to stderr with
+        # the cure — unlike the fallbacks' debug-level note, which covers
+        # optional bind-mount/file-drop paths where absence is routine.
+        try:
+            cls = ep.load()
+        except Exception as exc:
+            if ep.name not in _EP_LOAD_FAILED:
+                _EP_LOAD_FAILED.add(ep.name)
+                dist = getattr(getattr(ep, "dist", None), "name", None)
+                who = f"'{dist}'" if dist else f"the '{ep.name}' agent plugin"
+                print(
+                    f"Warning: {who} failed to load and is being SKIPPED: "
+                    f"{type(exc).__name__}: {exc}\n"
+                    f"  The '{ep.name}' agent is unavailable; every other agent, "
+                    f"and 'kanibako setup', still work. This usually means the "
+                    f"package was built against a different kanibako-cli — "
+                    f"upgrade it, or uninstall it if you do not use it.",
+                    file=sys.stderr,
+                )
+            logger.debug(
+                "entry point %s failed to load", ep.name, exc_info=True,
+            )
+            continue
         targets[ep.name] = cls
 
     # Fallback: scan kanibako.plugins.* for bind-mounted plugins
