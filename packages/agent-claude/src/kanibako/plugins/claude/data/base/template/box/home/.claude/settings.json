@@ -1,4 +1,137 @@
 {
-  "$schema": "https://json.schemastore.org/claude-code-settings.json",
-  "includeCoAuthoredBy": false
+  "permissions": {
+    "defaultMode": "bypassPermissions"
+  },
+  "attribution": {
+    "commit": "",
+    "pr": ""
+  },
+  "model": "default",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Bash|Read|Write|Edit|Glob|Grep|Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/canon/handbook/general/scripts/behavior/check-comms.sh",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/canon/bible/general/scripts/hooks/edited.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "startup",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/canon/bible/general/scripts/hooks/startup.sh || true"
+          }
+        ]
+      },
+      {
+        "matcher": "resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/canon/bible/general/scripts/hooks/resume.sh || true"
+          }
+        ]
+      },
+      {
+        "matcher": "clear",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/canon/bible/general/scripts/hooks/clear-start.sh || true"
+          }
+        ]
+      },
+      {
+        "matcher": "compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/canon/bible/general/scripts/hooks/compact.sh || true"
+          }
+        ]
+      },
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"/opt/kanibako/kanibako/scripts/import-directives.py\" --additional-context \"$KANIBAKO_DIRECTIVE_SEED\" || true"
+          }
+        ]
+      },
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "d=\"${KANIBAKO_AGENT_MARKERS_DIR:-/tmp/kanibako/agents}\"; mkdir -p \"$d\" && printf %s \"$PPID\" > \"$d/$PPID\" || true"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "clear",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/canon/bible/general/scripts/hooks/clear-end.sh || true"
+          }
+        ]
+      },
+      {
+        "matcher": "logout|prompt_input_exit|other",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/canon/bible/general/scripts/hooks/end.sh || true"
+          }
+        ]
+      },
+      {
+        "matcher": "clear|logout|prompt_input_exit|other",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "d=\"${KANIBAKO_AGENT_MARKERS_DIR:-/tmp/kanibako/agents}\"; rm -f \"$d/$PPID\" || true"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/canon/bible/general/scripts/hooks/stop.sh || true",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "~/canon/handbook/agent/scripts/interface/statusline.sh"
+  },
+  "effortLevel": "xhigh",
+  "skipDangerousModePermissionPrompt": true,
+  "autoCompactEnabled": false
 }
