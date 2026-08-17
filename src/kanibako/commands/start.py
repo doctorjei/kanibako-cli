@@ -28,6 +28,7 @@ from kanibako.settings.agent_config import (
     agent_category_root,
     agent_settings_path,
 )
+from kanibako.settings.kb_store import __MISSING__
 from kanibako.box_supervisor import CONTINUE_MARKER, KANIBAKO_PKG_MOUNT_ROOT
 from kanibako.commands.diagnose import probe_missing_executables
 from kanibako.settings.config import (
@@ -5306,8 +5307,19 @@ def _persona_wiring(target) -> "PersonaSpec":
     return PersonaSpec(token_var=_PERSONA_TOKEN_VAR, endpoint_delivery="env")
 
 
-def _persona_token_pointer(agent_cfg, var: str, bundle) -> "str | None":
-    """The token pointer for ``secret_path.<var>``: the agent FILE, then the store.
+def _persona_token_pointer(agent_cfg, var: str, bundle) -> object:
+    """The token STATE for ``secret_path.<var>``: the agent FILE, then the store.
+
+    Returns one of the THREE states a token key may hold (2026-08-17 ruling):
+
+    * a ``str`` — a configured path (from the file, or the store's resolved
+      pointer);
+    * ``None`` — PRESENT-null: the agent FILE names *var* with an explicit
+      ``null`` (``--null`` / a hand-edit).  This endpoint is deliberately
+      KEYLESS; the caller proceeds without mounting a token;
+    * ``__MISSING__`` — *var* is not configured ANYWHERE (neither the file nor
+      the store names it).  The caller refuses, unchanged from before this key
+      could hold ``None`` at all.
 
     TWO sources, in the RULED cascade order — the agent settings file rung first,
     the persona-store tier below it.  That ordering is not a preference: the file
@@ -5316,12 +5328,14 @@ def _persona_token_pointer(agent_cfg, var: str, bundle) -> "str | None":
     anything else would re-open the display≠launch gap (a pre-flight that
     approves a token the box never receives, or refuses one it does).
 
-    ⚑ A file value that is PRESENT but unusable is NOT rescued by the store: it
-    still wins the cascade, so it is still what gets mounted, and the caller must
-    report it.  The store is therefore consulted ONLY when the file does not name
-    this var at all — never to override or repair a file value that does.  And it
-    contributes only when it names THIS var (``bundle.auth_env``): a store token
-    exported as some other var does not satisfy this one.
+    ⚑ A file value that is PRESENT (a path OR an explicit ``null``) is NOT
+    rescued or overridden by the store: it still wins the cascade, so it is
+    still what the launch mounts (or does not), and the caller must act on it
+    as given.  The store is therefore consulted ONLY when the file does not
+    name this var AT ALL — never to repair a file value that does, and never
+    to turn a deliberate keyless declaration back into a token search.  And it
+    contributes only when it names THIS var (``bundle.auth_env``): a store
+    token exported as some other var does not satisfy this one.
 
     ⚑ M-28 CONSEQUENCE, documented not fixed: an EXISTING persona box created
     before the store persist was retired still has ``endpoint`` / ``secret_path``
@@ -5331,9 +5345,8 @@ def _persona_token_pointer(agent_cfg, var: str, bundle) -> "str | None":
     MANUAL ("delete the values you did not write yourself") and is
     DOCUMENTATION-ONLY by ruling; do NOT add scrub machinery here.
     """
-    ptr = agent_cfg.secret_path.get(var)
-    if ptr:
-        return ptr
+    if var in agent_cfg.secret_path:
+        return agent_cfg.secret_path[var]  # a path, or None = deliberately keyless
     if (
         bundle is not None
         and bundle.token_path is not None
@@ -5341,7 +5354,7 @@ def _persona_token_pointer(agent_cfg, var: str, bundle) -> "str | None":
         and bundle.auth_env == var
     ):
         return str(bundle.token_path)
-    return None
+    return __MISSING__
 
 
 def _persona_secret_path_keys(agent_cfg, bundle) -> "list[str]":
@@ -5360,14 +5373,21 @@ def _persona_secret_path_keys(agent_cfg, bundle) -> "list[str]":
 
 
 def _persona_probe_error(
-    target, endpoint: str, token_ptr: str, model: "str | None", display: str, logger,
+    target, endpoint: str, token_ptr: "str | None", model: "str | None", display: str,
+    logger,
 ) -> "str | None":
     """PER-LAUNCH persona verify probe — the load gate's last question.
 
-    Runs once endpoint AND a usable token are both resolved, and only on the
-    LAUNCH path (the create path keeps its own WARN-ONLY probe — locked ruling
-    #2; unifying them would turn a create with a bad token into a refusal).
-    Applies the DESIGN §5b verdict rules to the :class:`PersonaProbeOutcome`:
+    Runs once the endpoint AND the token STATE are both settled — a usable path,
+    or a deliberate keyless declaration (``token_ptr is None``, 2026-08-17
+    ruling) — and only on the LAUNCH path (the create path keeps its own
+    WARN-ONLY probe — locked ruling #2; unifying them would turn a create with a
+    bad token into a refusal).  A keyless persona IS probed: the request is sent
+    with the ``Authorization`` header OMITTED (never a placeholder/dummy
+    credential — a hardwired-auth server could REJECT one it does not serve,
+    producing a false REJECTED that refuses a working box) and the server
+    decides, exactly like the omitted-model probe below it.  Applies the DESIGN
+    §5b verdict rules to the :class:`PersonaProbeOutcome`:
 
     * ``REJECTED`` (a POSITIVE 401/403 auth reject) ⇒ HARD ERROR.  There is no
       last-known-good to fall back on any more — the store is resolved live —
@@ -5398,7 +5418,9 @@ def _persona_probe_error(
     if target is None:
         return None
     try:
-        outcome = target.verify_persona(endpoint, Path(token_ptr), model)
+        outcome = target.verify_persona(
+            endpoint, Path(token_ptr) if token_ptr is not None else None, model,
+        )
     except Exception:
         if logger is not None:
             logger.debug("persona '%s': verify probe raised; inconclusive",
@@ -5491,7 +5513,7 @@ def _preflight_persona_load(
     logger,
     *,
     target=None,
-    keyspace_model: str | None = None,
+    keyspace_model: object = __MISSING__,
     bundle=None,
     probe: bool = False,
 ) -> "tuple[str | None, str | None, CodexModelProvider | None]":
@@ -5534,12 +5556,18 @@ def _preflight_persona_load(
 
     ``keyspace_model`` is the box-level cascade-resolved ``agent.<node>.model`` (the
     single-source resolution done by the caller off the launch snapshot, harness
-    default excluded — see :func:`_resolve_box_launch_decisions`).  Whether an absent
-    model is fatal is the HARNESS's declaration (``PersonaSpec.model_required``), not
-    a property of the path: codex vetoes (a config-file provider block with
-    ``model = ""`` is meaningless and an omitted key falls through to codex's own
-    moving default), goose vetoes (a third-party OpenAI-compatible endpoint has no
-    meaningful default), claude does not (its model rides its own channels).
+    default excluded — see :func:`_resolve_box_launch_decisions`), and THREE-STATE
+    (2026-08-17 ruling, :func:`_model_tristate`): ``__MISSING__`` (the default —
+    never configured), ``None`` (PRESENT-null — "this endpoint needs no model"),
+    or a resolved id (``str``). Whether an ABSENT model is fatal is the HARNESS's
+    declaration (``PersonaSpec.model_required``), not a property of the path:
+    codex vetoes (a config-file provider block with ``model = ""`` is
+    meaningless and an omitted key falls through to codex's own moving
+    default), goose vetoes (a third-party OpenAI-compatible endpoint has no
+    meaningful default), claude does not (its model rides its own channels). A
+    PRESENT-null model SUPPRESSES that veto for an ENV harness (it can simply
+    omit the model) but CONFLICTS with a CONFIG-FILE harness (it structurally
+    cannot express "no model" at all) — see the two sub-gates for the refusal.
 
     ``bundle`` is the persona-grata store read for this same launch
     (:func:`_persona_bundle_for`).  It is the SECOND token source — the agent
@@ -5591,10 +5619,31 @@ def _preflight_persona_load(
     )
 
 
+def _model_tristate(keyspace_model: object) -> object:
+    """Classify a caller-supplied ``keyspace_model`` into the THREE persona-model
+    states (2026-08-17 ruling, same shape as the token key):
+
+    * ``__MISSING__`` — nothing configured ANYWHERE, including a stored blank
+      (``""`` / whitespace-only, or the ``__MISSING__`` sentinel itself) — the
+      pre-existing "empty model" shape, UNCHANGED: harness default / the
+      existing veto-driven refusal.
+    * ``None`` — PRESENT-null: ``agent.<node>.model: null`` at the winning
+      cascade scope.  A deliberate "this endpoint needs no model" declaration —
+      distinct from never having set the key at all.
+    * a non-empty ``str`` (stripped) — a real model id.
+    """
+    if keyspace_model is None:
+        return None
+    if keyspace_model is __MISSING__:
+        return __MISSING__
+    text = str(keyspace_model).strip()
+    return text if text else __MISSING__
+
+
 def _preflight_env_persona(
     agent_cfg,
     endpoint: str,
-    keyspace_model: str | None,
+    keyspace_model: object,
     wiring,
     display: str,
     *,
@@ -5613,47 +5662,70 @@ def _preflight_env_persona(
 
     Gates (each an ACTIONABLE, harness-appropriate error):
 
-    1. a usable bearer token under the FIXED ``wiring.token_var`` (claude
+    1. the bearer token STATE under the FIXED ``wiring.token_var`` (claude
        ``ANTHROPIC_AUTH_TOKEN``, goose ``OPENAI_API_KEY``), agent FILE first then
-       the store (:func:`_persona_token_pointer`): missing/unusable ⇒ error pointing
-       at ``agent.<node>.secret_path.<token_var>``.  ⚑ The token var is checked
-       SPECIFICALLY (N1): a usable pointer under some OTHER ``secret_path`` key does
-       not mean a bearer token is present.  The pointer is STAT'd arm's length —
-       never read; the value flows only through the launch mount.
-    2. when ``wiring.model_required`` (goose): a real cascade-resolved ``model`` id
-       (``keyspace_model``): empty ⇒ error (a third-party OpenAI-compatible endpoint
-       has no meaningful default model — parity with the codex model gate).  Claude
-       declares no veto: a persona that names no model needs none.
-    3. on the LAUNCH path only, the verify probe (:func:`_persona_probe_error`).
+       the store (:func:`_persona_token_pointer`) — THREE states (2026-08-17
+       ruling): ABSENT (``__MISSING__``, never configured) ⇒ error pointing at
+       ``agent.<node>.secret_path.<token_var>``, unchanged from before this key
+       could hold ``None``; PRESENT-null (``None``, deliberately keyless) ⇒
+       proceed, no token mounted; a configured path that is NOT
+       :func:`_secret_pointer_usable` ⇒ the SAME error as ABSENT (it always has
+       been — "none was found (or it points at an unusable file)"). ⚑ The token
+       var is checked SPECIFICALLY (N1): a usable pointer under some OTHER
+       ``secret_path`` key does not mean a bearer token is present. A usable
+       pointer is STAT'd arm's length — never read; the value flows only
+       through the launch mount.
+    2. when ``wiring.model_required`` (goose): a real cascade-resolved ``model``
+       id (``keyspace_model``, :func:`_model_tristate`) — ABSENT ⇒ error (a
+       third-party OpenAI-compatible endpoint has no meaningful default model —
+       parity with the codex model gate); PRESENT-null ⇒ the veto is
+       SUPPRESSED (ENV delivery can simply omit the model env — the harness
+       said "I need one by default", the KEY says "not THIS endpoint", and the
+       key wins because it is the more specific, per-persona fact). Claude
+       declares no veto at all: a persona that names no model needs none,
+       ABSENT or PRESENT-null alike.
+    3. on the LAUNCH path only, the verify probe (:func:`_persona_probe_error`)
+       — reached for a PRESENT-null token too, sent with no ``Authorization``
+       header.
 
     NEVER mutates *agent_cfg*: every value is resolved live through the cascade
     before this seam.  The endpoint + token ride their existing single-source
     channels (the ``endpoint``→env ``SettingArg`` + the ``secret_path`` mount), so
     there is no config-file provider to carry (``provider`` None).
     """
-    token_ptr = _persona_token_pointer(agent_cfg, wiring.token_var, bundle)
-    if not token_ptr or not _secret_pointer_usable(token_ptr):
+    token_state = _persona_token_pointer(agent_cfg, wiring.token_var, bundle)
+    if token_state is __MISSING__ or (
+        isinstance(token_state, str) and not _secret_pointer_usable(token_state)
+    ):
         return None, (
             f"Error: persona '{display}' has an endpoint ({endpoint}) but no "
             f"usable auth token.\n"
             f"  A custom-endpoint persona needs an API key delivered via a "
             f"`kanibako system set agent.{display}.secret_path.{wiring.token_var}="
-            f"<path>` entry; none was found (or it points at an unusable file).\n"
+            f"<path>` entry (or an explicit "
+            f"`agent.{display}.secret_path.{wiring.token_var}: null` if this "
+            f"endpoint is keyless); none was found (or it points at an unusable "
+            f"file).\n"
             f"  Set the key for this persona, then retry."
         ), None
-    model = (keyspace_model or "").strip()
-    if wiring.model_required and not model:
+    # PRESENT-null (deliberately keyless) or a usable path — proceed either way.
+    token_ptr = token_state if isinstance(token_state, str) else None
+    model_state = _model_tristate(keyspace_model)
+    if wiring.model_required and model_state is __MISSING__:
         return None, (
             f"Error: persona '{display}' has an endpoint ({endpoint}) but no "
             f"model configured.\n"
             f"  A custom-endpoint persona must name the provider's model id "
             f"(e.g. `kanibako system set agent.{display}.model=<model-id>`); the "
-            f"harness default is not used for a third-party provider.\n"
+            f"harness default is not used for a third-party provider. If this "
+            f"endpoint genuinely needs no model, declare it explicitly with "
+            f"`kanibako system set --null agent.{display}.model`.\n"
             f"  Set the model for this persona, then retry."
         ), None
+    model = model_state if isinstance(model_state, str) else None
     if probe:
         probe_err = _persona_probe_error(
-            target, endpoint, token_ptr, model or None, display, logger,
+            target, endpoint, token_ptr, model, display, logger,
         )
         if probe_err is not None:
             return None, probe_err, None
@@ -5698,7 +5770,7 @@ def _preflight_config_file_persona(
     agent_id: str,
     agent_cfg,
     endpoint: str,
-    keyspace_model: str | None,
+    keyspace_model: object,
     wiring,
     display: str,
     *,
@@ -5712,9 +5784,10 @@ def _preflight_config_file_persona(
     The endpoint is resolved through the cascade.  Two load gates, each with an
     ACTIONABLE, SUB-CASE-SPECIFIC error (INC-3 fold-in), then the provider assemble:
 
-    1. a usable bearer token under the DYNAMIC token var (the single ``secret_path``
-       key the persona resolves == the provider ``env_key``).  ⚑ "The keys the
-       persona resolves" spans BOTH sources — the agent file AND the persona store
+    1. the bearer token STATE under the DYNAMIC token var (the single ``secret_path``
+       key the persona resolves == the provider ``env_key``) — THREE states
+       (2026-08-17 ruling), same as the ENV path.  ⚑ "The keys the persona
+       resolves" spans BOTH sources — the agent file AND the persona store
        (:func:`_persona_secret_path_keys`) — so a store-only persona resolves its
        env_key from the store rather than reading as zero keys.  Distinguished
        sub-cases, all preserved:
@@ -5724,10 +5797,15 @@ def _preflight_config_file_persona(
          turns one into two only when it names a DIFFERENT var than the file does,
          which is genuinely ambiguous and correctly reported as such.
        * the single key's pointer is missing/unreadable/empty → "points at an unusable
-         file" (names the key + path) — NOT a blanket "none was found".
-    2. a real ``model`` id (``keyspace_model``, the box-level cascade override): empty
-       ⇒ error (a NaviGator ``[model_providers.<id>]`` block needs a model — never ship
-       ``model = ""``).
+         file" (names the key + path) — NOT a blanket "none was found";
+       * the single key's pointer is PRESENT-null (deliberately keyless) →
+         proceeds, ``env_key`` still resolves, no token mounted.
+    2. a real ``model`` id (``keyspace_model``, the box-level cascade override,
+       :func:`_model_tristate`) — ABSENT ⇒ error (a NaviGator
+       ``[model_providers.<id>]`` block needs a model — never ship ``model =
+       ""``); PRESENT-null ⇒ a declared CONFLICT (a config-file harness cannot
+       express "no model" at all, regardless of ``wiring.model_required`` —
+       refused BY NAME, never silently resolved).
 
     On success return the resolved :class:`~kanibako.vscode.vscode_config.CodexModelProvider`
     for INC 3.  NEVER mutates *agent_cfg*: every value is resolved live through the
@@ -5738,17 +5816,43 @@ def _preflight_config_file_persona(
     )
     if token_err is not None:
         return None, token_err, None
-    # token gate passed ⇒ a single, usable secret_path key resolves the env_key.
+    # token gate passed ⇒ a single, usable-or-deliberately-keyless secret_path
+    # key resolves the env_key.
     env_key = _resolve_codex_persona_env_key(agent_cfg, wiring, bundle)
     assert env_key is not None  # guaranteed by the passed token gate above.
-    model = (keyspace_model or "").strip()
+    model_state = _model_tristate(keyspace_model)
+    if model_state is None:
+        # PRESENT-null model on a CONFIG-FILE harness: a declared CONFLICT
+        # (2026-08-17 ruling), refused by name — never silently resolved either
+        # way. This is UNCONDITIONAL for config_file delivery, independent of
+        # ``wiring.model_required``: the structural limit is the DELIVERY
+        # mechanism (the provider projection types ``model`` as a non-optional
+        # ``str`` — see the "no model AND no veto" arm below), not the flag.
+        # ``model_required`` narrows to a HARNESS-CAPABILITY question ("can this
+        # delivery express no model at all") distinct from the KEY's SERVER
+        # question ("does THIS endpoint need one") — an ENV harness can honor
+        # the key's answer (see ``_preflight_env_persona``); a config-file one
+        # structurally cannot.
+        return None, (
+            f"Error: persona '{display}' declares no model needed "
+            f"(`agent.{display}.model: null`), but its harness "
+            f"({harness_of(agent_id)}) delivers personas via a config file that "
+            f"cannot express \"no model\" — every provider block must name "
+            f"one.\n"
+            f"  Either configure a model for this persona "
+            f"(`kanibako system set agent.{display}.model=<model-id>`), or drop "
+            f"the null override so the persona resolves as unconfigured "
+            f"(`kanibako system reset agent.{display}.model`), then retry."
+        ), None
+    model = model_state if isinstance(model_state, str) else ""
     if not model:
-        # A MISSING model is not automatically invalid — some endpoints need no
-        # model spec — so absence is allowed unless the HARNESS vetoes it via its
-        # declared ``persona.model_required``. Gate on the DECLARATION, exactly as
-        # the ENV path does (:func:`_preflight_env_persona`); this path
-        # used to hardwire the rule, which made one of the two sibling gates
-        # ignore the descriptor it was supposed to read.
+        # ABSENT (never configured) — not automatically invalid on its own, since
+        # some endpoints need no model spec, so absence is allowed unless the
+        # HARNESS vetoes it via its declared ``persona.model_required``. Gate on
+        # the DECLARATION, exactly as the ENV path does
+        # (:func:`_preflight_env_persona`); this path used to hardwire the rule,
+        # which made one of the two sibling gates ignore the descriptor it was
+        # supposed to read.
         if wiring.model_required:
             return None, (
                 f"Error: persona '{display}' has an endpoint ({endpoint}) but no "
@@ -5775,9 +5879,10 @@ def _preflight_config_file_persona(
             f"`persona.model_required: true` in the harness descriptor."
         ), None
     if probe:
+        probe_token_state = _persona_token_pointer(agent_cfg, env_key, bundle)
         probe_err = _persona_probe_error(
             target, endpoint,
-            _persona_token_pointer(agent_cfg, env_key, bundle) or "",
+            probe_token_state if isinstance(probe_token_state, str) else None,
             model, display, logger,
         )
         if probe_err is not None:
@@ -5818,22 +5923,28 @@ def _codex_persona_token_error(
             f"  Leave exactly one, then retry."
         )
     env_key = _resolve_codex_persona_env_key(agent_cfg, wiring, bundle)
-    token_ptr = _persona_token_pointer(agent_cfg, env_key, bundle) if env_key else None
-    if not env_key or not token_ptr:
+    token_state = (
+        _persona_token_pointer(agent_cfg, env_key, bundle)
+        if env_key else __MISSING__
+    )
+    if not env_key or token_state is __MISSING__:
         return (
             f"{intro}"
             f"  A custom-endpoint codex persona needs an API key delivered via a "
             f"single `agent.{display}.secret_path.<ENV_KEY>=<path>` entry (that "
-            f"<ENV_KEY> becomes the model-provider env_key); none was found.\n"
+            f"<ENV_KEY> becomes the model-provider env_key) — or an explicit "
+            f"`agent.{display}.secret_path.<ENV_KEY>: null` if this endpoint is "
+            f"keyless; none was found.\n"
             f"{tail}"
         )
-    if not _secret_pointer_usable(token_ptr):
+    if isinstance(token_state, str) and not _secret_pointer_usable(token_state):
         return (
             f"{intro}"
             f"  The configured key `{env_key}` points at an unusable file "
-            f"({token_ptr}) — it must be a readable, non-empty file.\n"
+            f"({token_state}) — it must be a readable, non-empty file.\n"
             f"{tail}"
         )
+    # PRESENT-null (deliberately keyless) or a usable path — proceed either way.
     return None
 
 
@@ -6070,7 +6181,7 @@ def _resolve_box_launch_decisions(
     agent_cfg_path,
     selection_level: "Mapping[str, object] | None",
     persona_values: "Mapping[str, str] | None" = None,
-) -> "tuple[AuthSource, str | None, str | None]":
+) -> "tuple[AuthSource, str | None, object]":
     """Resolve the launch's per-box decisions off ONE snapshot.
 
     Auth SOURCE + persona endpoint + persona model — the single-source consolidation
@@ -6089,14 +6200,25 @@ def _resolve_box_launch_decisions(
       (``<None>`` / empty / no descriptors / no target) — the cred-fork signal
       (non-None ⇒ suppress the OAuth cred). ``None`` is byte-identical to today.
     * *model* — the cascade-resolved active-node ``agent.<node>.model`` (the box-level
-      override where set), or ``None`` when unset.  The codex-persona provider needs a
-      real model id, so this DELIBERATELY excludes the harness ``model`` DEFAULT floor
+      override where set) — THREE-STATE (2026-08-17 ruling): ``__MISSING__`` (never
+      set, incl. no descriptors / no target), ``None`` (PRESENT-null — "this
+      endpoint needs no model"), or a resolved ``str`` id.  Read via
+      :func:`_persona_model_state` off the SAME snapshot, not
+      ``effective_behavior`` — that reader deliberately COLLAPSES a present-None
+      scalar into omission (its docstring: "the consumer applies its own
+      default", the general reset-to-default convention every OTHER behavior key
+      wants) which is exactly the distinction the persona model gate needs kept
+      apart, mirroring ``agent_select.resolve_selected_agent`` /
+      ``settings_launch.snapshot_leaf``'s ABSENT-vs-PRESENT-None idiom for
+      ``pref.system.agent: null``.  The codex-persona provider needs a real model
+      id, so this DELIBERATELY excludes the harness ``model`` DEFAULT floor
       (e.g. codex's ``gpt-5.5`` — an own-endpoint default that is wrong for a
-      third-party provider): an unset persona model resolves ``None`` here so the
-      preflight surfaces an actionable empty-model error rather than shipping a bogus
-      default into a NaviGator ``[model_providers.<id>]`` block.  Only consumed for a
-      config-file (codex) persona; unused (harmless) for bare/claude launches, where
-      the ``--model`` flag still resolves its own default via the main launch snapshot.
+      third-party provider): an unset persona model resolves ``__MISSING__`` here
+      so the preflight surfaces an actionable empty-model error rather than
+      shipping a bogus default into a NaviGator ``[model_providers.<id>]`` block.
+      Only consumed for a persona load gate; unused (harmless) for bare launches,
+      where the ``--model`` flag still resolves its own default via the main
+      launch snapshot.
 
     The behavior floor folds in as ``agent.default.<key>`` (OS1) and the per-agent
     FILE state as the active ``agent.<node>`` slot; the §2d active-over-default pick
@@ -6181,17 +6303,56 @@ def _resolve_box_launch_decisions(
     )
     auth_src = settings_launch.resolve_auth_source(snapshot, mode=proj.mode.value)
     endpoint: str | None = None
-    model: str | None = None
+    model: object = __MISSING__
     if behavior_floor:
         effective = settings_launch.effective_behavior(
             snapshot, active_agent=agent_name
         )
         endpoint = effective.get("endpoint", "") or None
-        # model resolves off the SAME snapshot (box-level cascade override where set);
-        # the harness default was excluded from the floor above, so an unset persona
-        # model is absent/empty here → None (empty-model error, not a bogus default).
-        model = effective.get("model", "") or None
+        # model resolves off the SAME snapshot (box-level cascade override where
+        # set) — read DIRECTLY (:func:`_persona_model_state`), not through
+        # ``effective`` above: the harness default was excluded from the floor,
+        # so an unset persona model is genuinely ABSENT here (__MISSING__,
+        # empty-model error, not a bogus default) — but ``effective_behavior``'s
+        # generic present-None-is-omitted collapse would ALSO turn a deliberate
+        # ``agent.<node>.model: null`` into that same ABSENT reading, losing the
+        # THREE-STATE distinction the persona model gate needs (2026-08-17
+        # ruling).
+        model = _persona_model_state(snapshot, agent_name)
     return auth_src, endpoint, model
+
+
+def _persona_model_state(snapshot: "KeyStore", active_agent: str) -> object:
+    """The RAW ``agent.<active>.model`` / ``agent.default.model`` pick, THREE-STATE.
+
+    Mirrors ``effective_behavior``'s active-over-default pick for exactly the
+    ``model`` key, but does NOT apply its final "present-None ⇒ omitted"
+    collapse — the persona model gate needs ABSENT (``__MISSING__``, never set
+    at either slot) kept apart from PRESENT-null (``None``, a deliberate "this
+    endpoint needs no model" declaration at the winning slot), which is exactly
+    what that collapse erases (by design, for every OTHER behavior key: see its
+    docstring).  Same idiom as ``agent_select.resolve_selected_agent`` /
+    ``settings_launch.snapshot_leaf`` for ``pref.system.agent: null`` — read the
+    winning slot directly instead of routing through a reader that flattens the
+    distinction.
+
+    *snapshot* must be the SAME expanded snapshot ``effective_behavior`` would
+    read (single-route: one build, every reader agrees).
+    """
+    from kanibako.settings.keystore import KeyStore
+
+    agent_node = dict.get(snapshot, "agent", __MISSING__)
+    if not isinstance(agent_node, KeyStore):
+        return __MISSING__
+    active_node = dict.get(agent_node, active_agent, __MISSING__)
+    if isinstance(active_node, KeyStore):
+        val = dict.get(active_node, "model", __MISSING__)
+        if val is not __MISSING__:
+            return val
+    default_node = dict.get(agent_node, "default", __MISSING__)
+    if isinstance(default_node, KeyStore):
+        return dict.get(default_node, "model", __MISSING__)
+    return __MISSING__
 
 
 def _launch_snapshot_inputs(

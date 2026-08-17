@@ -224,7 +224,14 @@ class PersonaSpec:
     * *token_var* — the `secret_path` key (== the in-box env var) carrying the bearer
       token. Claude uses the fixed `ANTHROPIC_AUTH_TOKEN`. A config-file harness (codex)
       leaves this EMPTY, which is dynamic: the single configured `secret_path` key is the
-      token var, and it doubles as the model-provider `env_key`.
+      token var, and it doubles as the model-provider `env_key`. ⚑ That key's VALUE is
+      THREE-STATE (2026-08-17 ruling): a configured path, ABSENT (never configured — the
+      launch refuses), or an explicit `null` — this endpoint is deliberately KEYLESS, and
+      the launch proceeds with no token mounted and no `Authorization` header on the
+      verify probe. Whether an endpoint needs a token is a property of that SERVER, so it
+      is declared per persona on the KEY (`start.py`'s two preflight gates), never on a
+      field here — a harness-level flag could not express "this one persona of mine is
+      keyless" while a sibling persona on the same harness needs a real token.
     * *endpoint_delivery* — `"env"` (claude: the endpoint rides the descriptor's
       `endpoint`->`ANTHROPIC_BASE_URL` ENV `SettingArg`) or `"config_file"` (codex: the
       launch config generator writes it into `~/.codex/config.toml`'s
@@ -245,6 +252,21 @@ class PersonaSpec:
       harness vetoes here. Claude keeps `False` (its model rides its own channels); goose
       and codex set `True` — a third-party OpenAI-compatible endpoint has no meaningful
       default, and a config-file harness cannot express "no model" at all.
+      ⚑ NARROWED, not superseded, by the 2026-08-17 ruling that made `agent.<node>.model`
+      itself three-state: a persona-level explicit `null` now lets a user declare "THIS
+      endpoint needs no model" directly on the key, distinct from simply never configuring
+      one. `model_required` still answers a different, HARNESS-CAPABILITY question — "can
+      this DELIVERY MECHANISM express no model at all" — not a per-server one, and the two
+      can conflict. For an ENV-delivery harness (claude, goose) the veto is a recommendation
+      the key's per-persona fact can override: env delivery can simply omit the model, so a
+      present-null model SUPPRESSES `model_required` there. For a CONFIG-FILE harness
+      (codex) it cannot: the generated provider block types `model` as a non-optional field,
+      so there is no shape a config-file persona could emit for "no model" — a present-null
+      model on a config-file harness is therefore a declared CONFLICT, refused by name
+      (`start.py`'s `_preflight_config_file_persona`), never silently resolved either way.
+      `model_required` is not deleted for this: the config-file conflict check is
+      UNCONDITIONAL on `endpoint_delivery == "config_file"`, not on this field, because the
+      structural limit is the delivery mechanism, not the flag.
 
     A target with no `PersonaSpec` (`descriptor.persona is None`) resolves through the
     fallback in `start.py`'s `_persona_wiring`, which spells out the claude shape
@@ -977,12 +999,12 @@ class Target(ABC):
     def verify_persona(
         self,
         endpoint: str,
-        token_path: Path,
+        token_path: Path | None,
         model: str | None,
         *,
         timeout: float = 5.0,
     ) -> PersonaProbeOutcome:
-        """Probe *endpoint* with the token at *token_path* — a minimal real ack.
+        """Probe *endpoint*, bearer-authed with the token at *token_path* — a minimal real ack.
 
         The persona verify probe (DESIGN §3b): a FEW-token genuine completion round-trip
         against the persona's endpoint, specific to the harness API (anthropic messages vs
@@ -990,6 +1012,15 @@ class Target(ABC):
         probe that RAN and could not decide (`INCONCLUSIVE`) from one that learned nothing
         about the token and never will for this input (`NOT_APPLICABLE`, carrying the named
         cause).
+
+        *token_path* MAY be `None` (2026-08-17 ruling): a persona whose `secret_path` key is
+        PRESENT-null declares itself deliberately KEYLESS, and an implementation must still
+        probe it, with the `Authorization` header OMITTED rather than decline — the request
+        is sent bare and the SERVER decides (a 2xx confirms the endpoint really is keyless; a
+        401/403 is a genuine, useful `REJECTED` — the user's belief was wrong). Never
+        substitute a placeholder/dummy credential to fill the header: a hardwired-auth server
+        can reject one it does not serve, producing a false `REJECTED` that refuses a working
+        box — the same rule *model* below already follows.
 
         *model* MAY be `None`: a persona that names none is valid, and an implementation
         must probe it with the `model` field OMITTED rather than decline — never with a

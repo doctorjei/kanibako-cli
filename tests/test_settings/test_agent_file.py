@@ -65,6 +65,28 @@ class TestSecretPathSection:
         cfg_path.write_text('self:\n  name: "x"\n')
         assert load(cfg_path).secret_path == {}
 
+    def test_load_present_null_secret_path_is_kept_as_none(self, tmp_path):
+        # 2026-08-17 ruling: the token/key MAY hold an explicit null to mean "no
+        # key" — this endpoint is deliberately KEYLESS. A ``None`` value must
+        # survive the load VERBATIM (never coerced through ``str()``, which
+        # would turn it into the four-byte garbage string ``"None"`` —
+        # indistinguishable from a typo'd path). Membership (``var in
+        # cfg.secret_path``) still says the VAR was configured; only the value
+        # differs from a real pointer. (Mutation: restore the old
+        # ``str(v)``-for-every-entry load and this comes back as the string
+        # ``"None"`` → RED.)
+        cfg_path = self._node_file(tmp_path)
+        cfg_path.write_text(
+            'self:\n'
+            '  name: "persona"\n'
+            '  secret_path:\n'
+            '    ANTHROPIC_AUTH_TOKEN: null\n'
+        )
+        cfg = load(cfg_path)
+        assert "ANTHROPIC_AUTH_TOKEN" in cfg.secret_path
+        assert cfg.secret_path["ANTHROPIC_AUTH_TOKEN"] is None
+        assert cfg.secret_path["ANTHROPIC_AUTH_TOKEN"] != "None"
+
     def test_round_trip_secret_path(self, tmp_path):
         path = self._node_file(tmp_path)
         original = AgentConfig(
@@ -79,6 +101,22 @@ class TestSecretPathSection:
         assert "env_file" not in content
         loaded = load(path)
         assert loaded.secret_path == {"ANTHROPIC_AUTH_TOKEN": "/secure/token"}
+
+    def test_round_trip_present_null_secret_path(self, tmp_path):
+        # A deliberately-keyless VAR (2026-08-17 ruling) survives save→load as a
+        # real ``None``, not the string "None" — and a sparse write still
+        # materializes the table (a dict with one None-valued entry is
+        # non-empty, so it is NOT dropped as an empty category).
+        path = self._node_file(tmp_path)
+        original = AgentConfig(
+            name="persona",
+            secret_path={"ANTHROPIC_AUTH_TOKEN": None},
+        )
+        save(path, original)
+        content = path.read_text()
+        assert "secret_path" in content
+        loaded = load(path)
+        assert loaded.secret_path == {"ANTHROPIC_AUTH_TOKEN": None}
 
 
 class TestLoad:
@@ -103,6 +141,25 @@ class TestLoad:
         assert cfg.run_args == ["--verbose", "--debug"]
         assert cfg.state == {"model": "opus", "access": "permissive"}
         assert cfg.env == {"MY_VAR": "hello"}
+
+    def test_load_present_null_state_is_kept_as_none(self, tmp_path):
+        # 2026-08-17 ruling (persona MODEL, same shape as the token key): a flat
+        # state scalar (e.g. ``model``) explicitly ``null`` must survive load as
+        # a real ``None`` — never coerced through ``str()`` into the four-byte
+        # garbage string ``"None"``, which would reach the launch cascade as a
+        # BOGUS model id and silently defeat the "this persona needs no model"
+        # declaration. (Mutation: restore the unconditional ``str(v)`` and this
+        # comes back as the string ``"None"`` → RED.)
+        cfg_path = tmp_path / "test.yaml"
+        cfg_path.write_text(
+            'self:\n'
+            '  name: "persona"\n'
+            '  model: null\n'
+        )
+        cfg = load(cfg_path)
+        assert "model" in cfg.state
+        assert cfg.state["model"] is None
+        assert cfg.state["model"] != "None"
 
     def test_load_agent_section_only(self, tmp_path):
         cfg_path = tmp_path / "test.yaml"
@@ -219,6 +276,17 @@ class TestRoundTrip:
         assert loaded.run_args == original.run_args
         assert loaded.state == original.state
         assert loaded.env == original.env
+
+    def test_round_trip_present_null_state(self, tmp_path):
+        # A deliberately-null state scalar (e.g. a persona's ``model: null``)
+        # survives save→load as a real ``None``, not the string "None".
+        path = tmp_path / "test.yaml"
+        original = AgentConfig(name="persona", state={"model": None})
+        save(path, original)
+        content = path.read_text()
+        assert "model:" in content
+        loaded = load(path)
+        assert loaded.state == {"model": None}
 
     def test_round_trip_empty_config(self, tmp_path):
         path = tmp_path / "test.yaml"

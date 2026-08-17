@@ -386,8 +386,17 @@ def load(path: Path) -> AgentConfig:
     # for a MALFORMED file — a scalar written where a table belongs (``env: oops``)
     # is not dict-valued, so the narrower test swept it into state and the launch
     # then carried a modelled field's garbage as an agent-state knob.
+    # ⚑ A ``None`` value is KEPT as ``None`` (2026-08-17 ruling — same fix as
+    # ``secret_path`` above), never coerced through ``str()``. That coercion used
+    # to turn a hand-edited/``--null``-written ``model: null`` into the four-byte
+    # string ``"None"`` — a BOGUS model id that reached the launch cascade as a
+    # real value, silently defeating the exact "this persona needs no model"
+    # declaration the persona-model gate now depends on. ``state_level`` below
+    # passes every value through unchanged, so a present-None here survives all
+    # the way to the cascade's per-key active-over-default pick — exactly where
+    # it needs to keep meaning "explicitly reset/keyless" rather than a string.
     cfg.state = {
-        k: str(v)
+        k: (v if v is None else str(v))
         for k, v in agent_sec.items()
         if k not in _MODELED_KEYS and not isinstance(v, dict)
     }
@@ -409,9 +418,15 @@ def load(path: Path) -> AgentConfig:
     # no second embedding).
     # Stored as a plain string path; the file's CONTENTS (the secret) are never
     # persisted here nor read — they are ro-mounted + exported IN-BOX only at launch.
+    # ⚑ A ``None`` value is KEPT as ``None`` (2026-08-17 ruling), never coerced
+    # through ``str()`` (which would turn a deliberate ``null`` into the four-byte
+    # string ``"None"``, a garbage path that USED to be indistinguishable from a
+    # typo'd one). ``None`` here means "this VAR is deliberately keyless" — a
+    # DECLARED third state, not a malformed second one; see ``AgentConfig.
+    # secret_path``.
     secret_sub = agent_sec.get("secret_path", {})
     cfg.secret_path = {
-        k: str(v) for k, v in secret_sub.items()
+        k: (v if v is None else str(v)) for k, v in secret_sub.items()
     } if isinstance(secret_sub, dict) else {}
     transform_sub = agent_sec.get("transform_settings", {})
     cfg.transform_settings = (
@@ -642,7 +657,7 @@ def level_table(
 
 
 def state_level(
-    state: Mapping[str, str] | None, *, node: str
+    state: "Mapping[str, str | None] | None", *, node: str
 ) -> AgentFileLevel | None:
     """The agent file's FLAT behaviour state as a DISCRIMINATED level, or ``None`` if empty.
 
@@ -671,7 +686,7 @@ def state_level(
     return AgentFileLevel(node, dict(state))
 
 
-def _refuse_undeclared_state(state: Mapping[str, str], *, node: str) -> None:
+def _refuse_undeclared_state(state: "Mapping[str, str | None]", *, node: str) -> None:
     """RAISE on the first agent-file state key that is not a declared key (spec §0).
 
     ⚑ THE PLUGIN UNION IS LOAD-BEARING, not a nicety: ``config_keys.agent_key_reason`` unions the
