@@ -2142,7 +2142,11 @@ class TestCheckLaunchBaselineUnit:
 
     def _std(self, tmp_path):
         from types import SimpleNamespace
-        return SimpleNamespace()  # only used for the state path via xdg
+        # ``_launch_issues_path``/``_shadow_issues_path`` read ``std.state_path``
+        # (finding #4 fix — no more hardcoded "kanibako" leaf), so the stand-in
+        # must carry it; mirrors the default-leaf resolution of a real
+        # ``load_std_paths()`` against ``XDG_STATE_HOME=<tmp_path>/state``.
+        return SimpleNamespace(state_path=tmp_path / "state" / "kanibako")
 
     def test_tier1_missing_returns_sentinel_with_shell_reminder(
         self, tmp_path, monkeypatch, capsys
@@ -2266,6 +2270,26 @@ class TestCheckLaunchBaselineUnit:
         issues.write_text("/home/agent/vault/rw\n")
         start_mod._persist_shadow_issues(std, "box1", [])
         assert not issues.exists()
+
+    def test_launch_and_shadow_issues_track_a_non_default_state_leaf(self, tmp_path):
+        """⚑ MUTATION PROOF (finding #4): both state-file paths must follow
+        ``std.state_path`` — an isolated store (a non-default ``config.data``
+        leaf) must relocate them, not always land under a hardcoded "kanibako".
+        A leaf-blind implementation (the pre-fix ``xdg(...) / "kanibako" /
+        ...``) would put both under ``.../state/kanibako/...`` regardless of
+        *std*, failing these assertions.
+        """
+        from types import SimpleNamespace
+
+        from kanibako.commands import start as start_mod
+
+        std = SimpleNamespace(state_path=tmp_path / "state" / "kanibako-custom")
+        launch_issues = start_mod._launch_issues_path(std, "box1")
+        shadow_issues = start_mod._shadow_issues_path(std, "box1")
+        assert launch_issues == tmp_path / "state" / "kanibako-custom" / "launch-issues.box1"
+        assert shadow_issues == tmp_path / "state" / "kanibako-custom" / "launch-shadows.box1"
+        assert "kanibako-custom" in str(launch_issues)
+        assert "kanibako-custom" in str(shadow_issues)
 
     def test_single_probe_covers_bootstrap_and_baseline(
         self, tmp_path, monkeypatch

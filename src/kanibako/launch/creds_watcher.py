@@ -111,6 +111,12 @@ def creds_store_lock() -> "Iterator[None]":
     a lock file that cannot be created / locked degrades to proceeding UNLOCKED (a
     writeback must never be BLOCKED by a lock-infra hiccup) rather than raising.
     """
+    # ⚑ The hardcoded ``"kanibako"`` leaf here is DELIBERATE, not the store-isolation
+    # bug it would be elsewhere: the ``"global"`` tier's writeback destination is
+    # ``host_home`` ITSELF (:func:`kanibako.targets.credsync.selected_source_root`),
+    # shared by EVERY store on the machine — so this lock must stay HOST-WIDE.  Do
+    # NOT repoint it at ``StandardPaths.state_path``; that tracks the store leaf and
+    # would scope the lock per-store, breaking cross-store serialization.
     lock_path = xdg("XDG_STATE_HOME", ".local/state") / "kanibako" / "creds-writeback.lock"
     fd = None
     try:

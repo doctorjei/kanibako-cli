@@ -1262,11 +1262,11 @@ _BOOTSTRAP_MISSING = object()
 def _launch_issues_path(std, container_name: str) -> Path:
     """State-file path for a box's tier-2 launch warnings.
 
-    Uses XDG_STATE (``$XDG_STATE_HOME/kanibako/launch-issues.<box>``) so the
-    warnings survive the bootstrap session and can be reprinted on exit.
+    Uses ``std.state_path`` (``$XDG_STATE_HOME/<store leaf>``) so the warnings
+    survive the bootstrap session and can be reprinted on exit, and so an
+    isolated store's warnings never land in another store's state dir.
     """
-    state_home = xdg("XDG_STATE_HOME", ".local/state")
-    return state_home / "kanibako" / f"launch-issues.{container_name}"
+    return std.state_path / f"launch-issues.{container_name}"
 
 
 def _check_launch_baseline(runtime, image, bootstrap_program, container_name, std):
@@ -1370,11 +1370,10 @@ def _print_launch_issues(std, container_name: str) -> None:
 def _shadow_issues_path(std, container_name: str) -> Path:
     """State-file path for a box's bind-shadow warnings.
 
-    Mirrors :func:`_launch_issues_path` (same XDG_STATE call) so the warnings
-    survive the bootstrap session and can be reprinted on exit.
+    Mirrors :func:`_launch_issues_path` (same ``std.state_path`` root) so the
+    warnings survive the bootstrap session and can be reprinted on exit.
     """
-    state_home = xdg("XDG_STATE_HOME", ".local/state")
-    return state_home / "kanibako" / f"launch-shadows.{container_name}"
+    return std.state_path / f"launch-shadows.{container_name}"
 
 
 def _persist_shadow_issues(std, container_name: str, shadowed: list[str]) -> None:
