@@ -2658,7 +2658,7 @@ class TestDetachedSupervisor:
             script = self._detach_script(m)
             # Forward-compat import gate.
             assert "import kanibako.box_supervisor" in script
-            assert "2>/dev/null" in script
+            assert "2>>/home/agent/.kanibako/supervisor-fallback.log" in script
             # Supervisor PID-1 invocation (NOT tmux-wrapped).
             assert 'exec env "PYTHONPATH=/opt/kanibako${PYTHONPATH:+:$PYTHONPATH}" python3 -m kanibako.box_supervisor' in script
             assert "--session kanibako" in script
@@ -2666,7 +2666,7 @@ class TestDetachedSupervisor:
             # The supervised agent entrypoint appears in the -- payload.
             assert "claude" in script
             # `|| exec` degrade path = today's bare-shell tmux keep-alive.
-            assert "|| exec" in script
+            assert "|| {" in script  # fallback is a brace group now
             assert "new-session -s kanibako" in script
 
     def test_detached_no_agent_keeps_bare_shell_keepalive(self, start_mocks):
@@ -2730,7 +2730,7 @@ class TestDetachedSupervisor:
             # would pass on the flag NAME alone, proving nothing about the value).
             import shlex
 
-            sup = script.split("&& exec ", 1)[1].split(" || exec ", 1)[0]
+            sup = script.split("&& exec ", 1)[1].rsplit(" || {", 1)[0]
             argv = shlex.split(sup)
             cont_val = argv[argv.index("--continue-cmd") + 1]
             assert "--continue" in shlex.split(cont_val)
@@ -2824,10 +2824,53 @@ class TestBuildSupervisorPid1:
         assert args[0] == "-c"
         script = args[1]
         assert "python3 -c 'import kanibako.box_supervisor'" in script
-        assert "2>/dev/null" in script
         assert f"&& exec env {_PP} python3 -m kanibako.box_supervisor" in script
         # Fallback exec is UNCHANGED — bare-shell keep-alive, no PYTHONPATH injected.
-        assert "|| exec tmux new-session -s kanibako -- sh" in script
+        assert "exec tmux new-session -s kanibako -- sh;" in script
+
+    def test_probe_retries_once_before_falling_back(self):
+        """The import probe runs TWICE, not once.
+
+        It fires at the noisiest moment of a box's life; a one-shot check there is
+        a race.  Measured 2026-08-17: a launch that had correctly resolved claude
+        came up at a bare bash prompt, and the SAME import in the SAME container
+        succeeded when probed minutes later.
+        """
+        from kanibako.commands.start import _build_supervisor_pid1
+
+        _ep, args = _build_supervisor_pid1(
+            ["python3", "-m", "kanibako.box_supervisor", "--", "claude"],
+            ["tmux", "new-session", "-s", "kanibako", "--", "sh"],
+        )
+        script = args[1]
+        assert script.count("python3 -c 'import kanibako.box_supervisor'") == 2
+        assert "sleep 1;" in script
+
+    def test_fallback_is_not_silent(self):
+        """Taking the fallback must leave a trace on stderr AND on disk.
+
+        `kanibako start` returns SUCCESS whichever branch runs, so without this the
+        only symptom of a failed gate is a bash prompt and the reason is gone.  The
+        probe's own stderr is APPENDED to the marker rather than discarded.
+        """
+        from kanibako.commands.start import (
+            SUPERVISOR_FALLBACK_RELPATH,
+            _build_supervisor_pid1,
+        )
+
+        _ep, args = _build_supervisor_pid1(
+            ["python3", "-m", "kanibako.box_supervisor", "--", "claude"],
+            ["tmux", "new-session", "-s", "kanibako", "--", "sh"],
+        )
+        script = args[1]
+        # The reason is kept, not thrown away.
+        assert "2>/dev/null " not in script.split("&& exec", 1)[0]
+        assert f"2>>/home/agent/{SUPERVISOR_FALLBACK_RELPATH}" in script
+        # And the fallback announces itself on stderr (-> `podman logs`).
+        fallback_branch = script.rsplit("|| {", 1)[1]
+        assert "echo " in fallback_branch
+        assert ">&2" in fallback_branch
+        assert "WILL NOT START" in fallback_branch
 
     def test_probe_and_supervisor_exec_carry_pythonpath_fallback_does_not(self):
         """BOTH the import probe and the supervisor exec run with the host-mount
@@ -2845,10 +2888,12 @@ class TestBuildSupervisorPid1:
         assert f"env {_PP} python3 -c 'import kanibako.box_supervisor'" in script
         # Supervisor exec carries the PYTHONPATH.
         assert f"exec env {_PP} python3 -m kanibako.box_supervisor" in script
-        # The fallback (after `|| exec `) does NOT inject PYTHONPATH.
-        fb = script.split(" || exec ", 1)[1]
+        # The fallback branch does NOT inject PYTHONPATH.  rsplit, not split: the
+        # probe's own retry group also contains a `|| {`, and the LAST one opens
+        # the fallback.
+        fb = script.rsplit("|| {", 1)[1]
         assert "PYTHONPATH" not in fb
-        assert fb == "tmux new-session -s kanibako -- sh"
+        assert "exec tmux new-session -s kanibako -- sh;" in fb
 
     def test_quotes_agent_args_with_spaces_round_trip(self):
         """Agent args with spaces / quotes survive the shlex quoting round-trip."""
@@ -2873,12 +2918,12 @@ class TestBuildSupervisorPid1:
         # And the supervisor command round-trips back to the original argv once the
         # `env "PYTHONPATH=..."` prefix (two tokens) is stripped.  shlex.split strips
         # the shell quotes off the assignment, so compare against the unquoted value.
-        after = script.split("&& exec ", 1)[1].split(" || exec ", 1)[0]
+        after = script.split("&& exec ", 1)[1].rsplit(" || {", 1)[0]
         after_tokens = shlex.split(after)
         assert after_tokens[0] == "env"
         assert after_tokens[1] == _PP.strip('"')
         assert after_tokens[2:] == supervisor_argv
-        fb = script.split(" || exec ", 1)[1]
+        fb = script.split("2>/dev/null; exec ", 1)[1].rstrip(" ;}")
         assert shlex.split(fb) == fallback_argv
 
 
@@ -2907,7 +2952,7 @@ class TestWarmOnlyPanelWatch:
         """shlex-split the supervisor invocation out of the import-gated script."""
         import shlex
 
-        sup = script.split("&& exec ", 1)[1].split(" || exec ", 1)[0]
+        sup = script.split("&& exec ", 1)[1].rsplit(" || {", 1)[0]
         return shlex.split(sup)
 
     def test_start_detached_warm_up_is_agentless_panel_watch(self, start_mocks):
@@ -2953,7 +2998,7 @@ class TestWarmOnlyPanelWatch:
         with start_mocks() as m:
             assert start_detached(None) == 0
             script = self._pid1_script(m)
-            fallback = script.split(" || exec ", 1)[1]
+            fallback = script.split("2>/dev/null; exec ", 1)[1].rstrip(" ;}")
             assert "box_supervisor" not in fallback       # no agent, no supervisor
             assert "new-session -s kanibako" in fallback   # bare-shell tmux keep-alive
 
@@ -3060,7 +3105,7 @@ class TestForegroundSupervisor:
         """Parse the supervisor argv out of the import-gated ``sh -c`` script."""
         import shlex
 
-        sup = script.split("&& exec ", 1)[1].split(" || exec ", 1)[0]
+        sup = script.split("&& exec ", 1)[1].rsplit(" || {", 1)[0]
         return shlex.split(sup)
 
     def test_foreground_agent_launches_supervisor_pid1(self, start_mocks):
@@ -3079,7 +3124,7 @@ class TestForegroundSupervisor:
             assert CONTINUE_MARKER in script
             assert "claude" in script
             # Forward-compat fallback keep-alive present.
-            assert "|| exec" in script
+            assert "|| {" in script  # fallback is a brace group now
             assert "new-session -s kanibako" in script
 
     def test_foreground_agent_carries_teardown_policy(self, start_mocks):

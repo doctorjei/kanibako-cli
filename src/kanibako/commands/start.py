@@ -1444,6 +1444,13 @@ def _env_flag_enabled(value: str | None) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
+# Where PID-1 records WHY it fell back to the bare-shell keep-alive, relative to
+# the guest home — so the reason survives host-side (the box home is a bind) and
+# `kanibako start`'s own success/failure is not the only signal.  Sibling of
+# ``creds_watcher.CREDS_DIRTY_RELPATH``; same ``.kanibako/`` marker convention.
+SUPERVISOR_FALLBACK_RELPATH = ".kanibako/supervisor-fallback.log"
+
+
 def _build_supervisor_pid1(
     supervisor_argv: list[str], fallback_argv: list[str],
 ) -> tuple[str, list[str]]:
@@ -1455,7 +1462,20 @@ def _build_supervisor_pid1(
     §221-225): an OLD box image may ship a kanibako WITHOUT the supervisor module,
     so PID-1 is an import-GATED ``sh -c`` — it ``exec``s the supervisor only when
     ``import kanibako.box_supervisor`` succeeds, else ``exec``s the *fallback*
-    bare-shell keep-alive (today's exact behavior), degrading gracefully.
+    bare-shell keep-alive, degrading gracefully.
+
+    ⚑⚑ THE GATE RETRIES ONCE AND THE FALLBACK IS LOUD (2026-08-17). The probe used
+    to run ONCE with ``2>/dev/null``, so a transient failure produced a box sitting
+    at a bash prompt with the agent never started, the reason discarded, and
+    ``kanibako start`` still returning SUCCESS — no host-side signal of any kind.
+    That is not hypothetical: it was MEASURED on a real launch that had resolved
+    claude correctly (``podman inspect`` showed this exact gated script; PID 1 was
+    its ``||`` branch), and the same import in the same container succeeded when
+    probed minutes later. So the probe now runs twice, its stderr is APPENDED to
+    :data:`SUPERVISOR_FALLBACK_RELPATH` under the guest home instead of being
+    thrown away, and taking the fallback writes a warning to BOTH stderr (which
+    reaches ``podman logs``) and that file. The fallback still runs — a degraded
+    box beats no box — but it can no longer be silent.
 
     *supervisor_argv* and *fallback_argv* are FULL argv lists (the program at index
     0); both are ``shlex``-quoted into the single ``sh -c`` script so agent args
@@ -1483,12 +1503,40 @@ def _build_supervisor_pid1(
     ``KANIBAKO_PKG_MOUNT_ROOT`` literal is itself a fixed, shell-safe path; the argv
     lists stay ``shlex``-quoted verbatim after each ``exec``.
     """
+    from kanibako.settings.settings_resolve import GUEST_HOME
+
     pythonpath = f'"PYTHONPATH={KANIBAKO_PKG_MOUNT_ROOT}${{PYTHONPATH:+:$PYTHONPATH}}"'
     probe = shlex.join(["python3", "-c", "import kanibako.box_supervisor"])
+
+    diag_path = f"{GUEST_HOME}/{SUPERVISOR_FALLBACK_RELPATH}"
+    diag = shlex.quote(diag_path)
+    diag_dir = shlex.quote(diag_path.rsplit("/", 1)[0])
+    warning = shlex.quote(
+        "kanibako: box_supervisor could not be imported in-box (2 attempts); "
+        "PID 1 is falling back to a bare shell keep-alive, so THE AGENT WILL "
+        f"NOT START. Reason recorded in {diag_path}."
+    )
+
+    # The probe RETRIES once. It runs at the noisiest moment of a box's life
+    # (bind mounts settling, canon seeding, the directive flatten), and a
+    # one-shot check there is a race: measured 2026-08-17, a launch that had
+    # correctly resolved claude came up as a bare bash prompt because this probe
+    # failed once, and a probe of the SAME import in the SAME container minutes
+    # later succeeded.
+    probe_once = f"env {pythonpath} {probe} 2>>{diag}"
     script = (
-        f"env {pythonpath} {probe} 2>/dev/null "
+        # Best-effort diagnostics file; never let its absence change the outcome.
+        f"mkdir -p {diag_dir} 2>/dev/null; : >{diag} 2>/dev/null; "
+        f"{{ {probe_once} || {{ sleep 1; {probe_once}; }} }} "
         f"&& exec env {pythonpath} {shlex.join(supervisor_argv)} "
-        f"|| exec {shlex.join(fallback_argv)}"
+        # ⚑ The fallback is now LOUD. It exists as forward-compat for an OLD
+        # image with no supervisor module (design §221-225) — but on a box that
+        # resolved a real agent it means the agent silently did not start, and
+        # `kanibako start` returns SUCCESS either way, so without this the only
+        # symptom is a bash prompt and the reason is gone. stderr reaches
+        # `podman logs`; the file is readable HOST-side under the box home.
+        f"|| {{ echo {warning} >&2; echo {warning} >>{diag} 2>/dev/null; "
+        f"exec {shlex.join(fallback_argv)}; }}"
     )
     return "sh", ["-c", script]
 
