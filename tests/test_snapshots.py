@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
+from kanibako import snapshots as snapshots_mod
 from kanibako.snapshots import (
     _test_reflink,
     auto_snapshot,
@@ -468,6 +470,71 @@ class TestPruneSnapshots:
         assert removed == 4
         remaining = list(versions.iterdir())
         assert len(remaining) == 3
+
+    def test_prunes_snapshot_containing_read_only_dir(
+        self, tmp_path: Path,
+    ) -> None:
+        """A READ-ONLY directory inside a snapshot must not block pruning.
+
+        Regression, measured on a real host 2026-08-17: a read-only tree copied
+        into ``vault/rw`` propagated into ``.versions/`` and made this raise
+        ``PermissionError: [Errno 13] ... /.versions/<ts>/<dir>`` from inside
+        ``start._run_container``, so the box could not be started AT ALL until
+        the directories were moved out by hand.  Unlinking needs write on the
+        PARENT, so the read-only mode goes on the containing directory.
+        """
+        vault_rw = tmp_path / "vault" / "share-rw"
+        versions = tmp_path / "vault" / ".versions"
+        versions.mkdir(parents=True)
+        _populate_rw(vault_rw)
+
+        for i in range(3):
+            _make_dir_snapshot(versions, f"2026010{i + 1}T000000Z", vault_rw)
+
+        locked = versions / "20260101T000000Z" / "locked"
+        locked.mkdir()
+        (locked / "trapped.txt").write_text("cannot be unlinked from a 0555 parent")
+        locked.chmod(0o555)
+        try:
+            removed = prune_snapshots(vault_rw, max_keep=1)
+
+            assert removed == 2
+            assert [p.name for p in versions.iterdir()] == ["20260103T000000Z"]
+        finally:
+            # Never leave an undeletable tree behind if the assertions fail.
+            if locked.exists():
+                locked.chmod(0o755)
+
+    def test_prune_reports_and_continues_when_a_snapshot_cannot_be_removed(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """An unremovable snapshot is skipped, not raised, so a launch survives.
+
+        ``prune_snapshots`` runs inside the launch path; housekeeping must never
+        be able to refuse to start a box.  The count reflects what was ACTUALLY
+        reclaimed, so a caller cannot read a skipped snapshot as pruned.
+        """
+        vault_rw = tmp_path / "vault" / "share-rw"
+        versions = tmp_path / "vault" / ".versions"
+        versions.mkdir(parents=True)
+        _populate_rw(vault_rw)
+
+        for i in range(3):
+            _make_dir_snapshot(versions, f"2026010{i + 1}T000000Z", vault_rw)
+
+        doomed = versions / "20260101T000000Z"
+
+        def _fake_rmtree(path: Path) -> None:
+            if Path(path) == doomed:
+                raise PermissionError(13, "Permission denied", str(path))
+            shutil.rmtree(path)
+
+        monkeypatch.setattr(snapshots_mod, "_rmtree_force", _fake_rmtree)
+
+        removed = prune_snapshots(vault_rw, max_keep=1)
+
+        assert removed == 1
+        assert doomed.is_dir()
 
     def test_no_prune_when_under_limit(self, tmp_path: Path) -> None:
         vault_rw = tmp_path / "vault" / "share-rw"
