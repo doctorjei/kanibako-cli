@@ -1111,7 +1111,27 @@ categories:
     never_read_by_kanibako: true    # value NEVER enters snapshot/keystore/argv/logs
     fail_soft: true                 # missing/unreadable/empty ⇒ WARN + VAR unset
     agent_independent: true
-    spec: "§2a (2026-07-06, Jei)"
+    nullable: true                  # RATIFIED 2026-08-17 (Jei): the token/key MAY
+                                     #   hold an explicit null to mean "no key" —
+                                     #   THREE states, not two: ABSENT (never
+                                     #   configured) ⇒ refuse as before;
+                                     #   PRESENT-null (`agent.<node>.secret_path.
+                                     #   <VAR>: null`, via `--null` / a hand-edit)
+                                     #   ⇒ this endpoint is deliberately KEYLESS —
+                                     #   proceed, no token mounted, no VAR exported;
+                                     #   present-a-path ⇒ unchanged. Whether an
+                                     #   endpoint needs a token is a property of
+                                     #   THAT SERVER, so it is declared per persona
+                                     #   on the KEY, not on a harness/plugin flag
+                                     #   (mirrors `pref.system.agent: null` —
+                                     #   `settings/agent_select.py` — an established
+                                     #   PRESENT-None SUPPRESSION, not a novel shape).
+                                     #   The persona verify probe (targets/base.py
+                                     #   `Target.verify_persona`) is SENT with the
+                                     #   Authorization header omitted for a
+                                     #   present-null token, never a placeholder
+                                     #   value — the server decides.
+    spec: "§2a (2026-07-06, Jei; nullable 2026-08-17 ruling)"
 
 # The entry VALUE shape is load-bearing (§2a REPRESENTATION): a YAML list / Python
 # tuple, NEVER a colon-joined "host:box" string. THERE IS NOW ONE BIND SHAPE.
@@ -1681,8 +1701,32 @@ keys:
     type: str
     set: cli+file
     default: null                 # "use the harness's built-in default"
-    note: "-M overrides per launch"
-    spec: "§2d"
+    note: "-M overrides per launch. ⚑ RATIFIED 2026-08-17 (Jei, same ruling as
+           secret_path): a PERSONA node's model is ALSO three-state, for the
+           SAME reason (whether an endpoint NEEDS a model is a property of that
+           SERVER) — but `default: null` already means 'harness default' here,
+           so ABSENT and an explicit PERSONA-level null are NOT the same
+           resolved value and must not collapse (`effective_behavior`'s
+           generic present-None-is-omitted convention is the WRONG reader for
+           this distinction; the persona model gate reads the cascade's
+           active-vs-default slot directly instead — start.py
+           `_persona_model_state`, mirroring `agent_select.
+           resolve_selected_agent` / `settings_launch.snapshot_leaf`'s
+           ABSENT-vs-PRESENT-None idiom). ABSENT ⇒ unchanged (harness default /
+           the existing empty-model refusal where `persona.model_required`
+           vetoes). PERSONA-level explicit null ⇒ 'this endpoint needs no
+           model' and SUPPRESSES the `persona.model_required` veto for an
+           ENV-delivery harness (claude, goose) — env delivery can simply omit
+           the model. It does NOT suppress the veto for a CONFIG-FILE harness
+           (codex): `targets/base.py` `PersonaSpec.model_required` NARROWS
+           rather than disappears — it still answers a HARNESS-CAPABILITY
+           question ('can this delivery mechanism express no model at all'),
+           distinct from the KEY's SERVER question, and a config-file
+           provider block cannot emit a missing/empty model field. A
+           persona-level null on a config-file harness is therefore a
+           declared CONFLICT, refused by name (key + harness + reason), never
+           silently resolved either way."
+    spec: "§2d (nullable-per-persona 2026-08-17 ruling)"
   agent.default.endpoint:
     scope: agent
     type: str

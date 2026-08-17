@@ -51,6 +51,13 @@ class AgentConfig:
                      precedence. The value is a PATH only — at launch it is ro-bind-
                      mounted arm's-length + exported IN-BOX; kanibako NEVER reads the
                      secret VALUE (never in the snapshot/keystore/logs/argv).
+                     ⚑ A VAR's value is THREE-STATE (2026-08-17 ruling): the VAR is
+                     either ABSENT from this dict (never configured), maps to
+                     ``None`` (PRESENT-null — ``--null`` / a hand-edit — this
+                     endpoint is deliberately KEYLESS), or maps to a path ``str``.
+                     Test membership (``var in cfg.secret_path``) before reading a
+                     value — ``.get(var)`` alone cannot tell ABSENT from
+                     deliberately-keyless, both of which are falsy/``None``.
       category_tables
                    — the CATEGORY tables this record does not model as fields of its
                      own: ``bindings`` (the ``{ro, rw}`` pair, whole), ``caches``,
@@ -72,9 +79,9 @@ class AgentConfig:
 
     name: str = ""
     run_args: list[str] = field(default_factory=list)
-    state: dict[str, str] = field(default_factory=dict)
+    state: dict[str, str | None] = field(default_factory=dict)
     env: dict[str, str] = field(default_factory=dict)
-    secret_path: dict[str, str] = field(default_factory=dict)
+    secret_path: dict[str, str | None] = field(default_factory=dict)
     transform_settings: dict = field(default_factory=dict)
     category_tables: dict[str, dict] = field(default_factory=dict)
 

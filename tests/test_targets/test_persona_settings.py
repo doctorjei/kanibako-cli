@@ -684,3 +684,82 @@ class TestVerifyPersonaWithoutAModel:
             server.close()
         assert server.last_body is not None
         assert "model" not in server.last_body
+
+
+class TestVerifyPersonaWithoutAToken:
+    """⚑ A persona whose ``secret_path`` key is PRESENT-null is PROBED —
+    with the ``Authorization`` header OMITTED (2026-08-17 ruling).
+
+    A self-hosted endpoint may genuinely require no bearer credential; sending
+    the request bare and letting the SERVER decide is the same "unknown until
+    we ask" reasoning ``TestVerifyPersonaWithoutAModel`` already applies to a
+    model-less persona, and never a placeholder credential — a hardwired-auth
+    server can reject one it does not serve, and a false ``REJECTED`` is a hard
+    error that would refuse a working box.
+    """
+
+    @pytest.mark.parametrize("target_cls,versioned", [
+        (ClaudeTarget, True), (CodexTarget, False),
+    ])
+    def test_the_request_carries_NO_authorization_header(
+        self, target_cls, versioned,
+    ):
+        """⚑ Do not "helpfully" substitute anything here either."""
+        server = _ProbeServer(status=200)
+        try:
+            outcome = target_cls().verify_persona(
+                server.endpoint, None, "gemma4", timeout=5.0,
+            )
+        finally:
+            server.close()
+        assert outcome.verdict is PersonaProbeVerdict.PASS
+        assert server.last_auth is None
+        # The anthropic-version header (claude only) rides independently of auth.
+        assert (server.last_version is not None) is versioned
+        assert server.last_body is not None
+        assert server.last_body["model"] == "gemma4"
+
+    @pytest.mark.parametrize("status", [401, 403])
+    @pytest.mark.parametrize("target_cls", [ClaudeTarget, CodexTarget])
+    def test_a_keyless_declaration_the_server_disagrees_with_is_REJECTED(
+        self, target_cls, status,
+    ):
+        """The server said it DOES need auth — a genuine, useful REJECTED, not
+        suppressed just because the user believed the endpoint was keyless.
+        """
+        server = _ProbeServer(status=status)
+        try:
+            outcome = target_cls().verify_persona(
+                server.endpoint, None, "gemma4", timeout=5.0,
+            )
+            assert outcome.verdict is PersonaProbeVerdict.REJECTED
+        finally:
+            server.close()
+
+    @pytest.mark.parametrize("target_cls", [ClaudeTarget, CodexTarget])
+    def test_an_unreachable_endpoint_still_warns_with_no_token(
+        self, target_cls,
+    ):
+        server = _ProbeServer()
+        server.close()  # closed port -> connection refused
+        outcome = target_cls().verify_persona(
+            server.endpoint, None, "gemma4", timeout=2.0,
+        )
+        assert outcome.verdict is PersonaProbeVerdict.INCONCLUSIVE
+
+    @pytest.mark.parametrize("target_cls", [ClaudeTarget, CodexTarget])
+    def test_no_token_and_no_model_together_still_probes(self, target_cls):
+        """Both the token AND the model may be declared unneeded at once — the
+        two omissions are independent, and neither one skips the probe.
+        """
+        server = _ProbeServer(status=200)
+        try:
+            outcome = target_cls().verify_persona(
+                server.endpoint, None, None, timeout=5.0,
+            )
+        finally:
+            server.close()
+        assert outcome.verdict is PersonaProbeVerdict.PASS
+        assert server.last_auth is None
+        assert server.last_body is not None
+        assert "model" not in server.last_body

@@ -24,6 +24,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   persona endpoint is a base URL the harness appends its own routes to, and a false refusal here
   would break a working box.
 
+- **A persona's bearer token — and now its model — may be declared explicitly absent, for an
+  endpoint that genuinely needs neither.** `agent.<node>.secret_path.<VAR>` and
+  `agent.<node>.model` used to be two-state: configured, or not. A self-hosted endpoint that
+  requires no bearer token could not be expressed at all — every launch gate refused it as if the
+  key had simply been forgotten, and the only workaround was a dummy token file the gate never
+  actually read. Both keys are three-state now: unset still refuses exactly as before, a real value
+  still works unchanged, and an explicit `null` (`kanibako system set --null
+  agent.<node>.secret_path.<VAR>`, or the equivalent hand-edit) means *this endpoint needs none* —
+  the launch proceeds with nothing mounted, nothing exported, and the persona verify probe still
+  runs, sent with the credential or the model field simply omitted so the server itself decides.
+  The two keys differ in one respect: a config-file harness (codex) generates a provider block that
+  cannot express "no model" at all, so a null model there is refused as a declared conflict between
+  what the persona asks for and what the harness can deliver, naming both; an ENV-delivery harness
+  (claude, goose) has no such limit, and a null model there simply suppresses the harness's own
+  "a model is required" default.
+
 - **`kanibako system defaults` lists every default kanibako ships, and says where each one is
   declared.** `show --effective` resolves the cascade but never names an artefact — it can mark a
   value you stored `(override)`, but nothing it prints tells you where a default is written down.

@@ -584,7 +584,7 @@ class CodexTarget(Target):
     def verify_persona(
         self,
         endpoint: str,
-        token_path: Path,
+        token_path: Path | None,
         model: str | None,
         *,
         timeout: float = 5.0,
@@ -596,8 +596,17 @@ class CodexTarget(Target):
         the endpoint is the provider ``base_url``, which by that convention
         already carries the ``/v1``-style prefix codex appends ``/responses``
         to).  Bearer-authed with the token at *token_path* (the ``env_key``
-        var's value in-box).  Per the base contract: 2xx → ``PASS``, 401/403 →
-        ``REJECTED``, unreachable/ambiguous → ``INCONCLUSIVE``.
+        var's value in-box) when one is configured.  Per the base contract:
+        2xx → ``PASS``, 401/403 → ``REJECTED``, unreachable/ambiguous →
+        ``INCONCLUSIVE``.
+
+        ⚑ **A PRESENT-null *token_path* (2026-08-17 ruling) is still PROBED,
+        with the ``Authorization`` header OMITTED** — a persona whose
+        ``secret_path`` key is deliberately ``null`` declares this endpoint
+        keyless, and the request is sent bare for the server to decide (never a
+        placeholder credential — a hardwired-auth server can REJECT one it does
+        not serve, and a false ``REJECTED`` is a hard error that would refuse a
+        working box).
 
         ⚑ **A persona that names no *model* is still PROBED, with the ``model``
         key OMITTED from the body** — an OpenAI-compatible endpoint may serve
@@ -613,26 +622,29 @@ class CodexTarget(Target):
         called straight off the store on the CREATE path, where no model may
         have been resolved at all.)
 
-        The one ``NOT_APPLICABLE`` this decides for itself is an unreadable or
-        empty token file.  The token is read transiently for this request only;
-        never logged or persisted.
+        The one ``NOT_APPLICABLE`` this decides for itself is a CONFIGURED
+        (non-``None``) token file that is unreadable or empty.  The token is
+        read transiently for this request only; never logged or persisted.
         """
-        try:
-            token = token_path.read_text(encoding="utf-8").strip()
-        except (OSError, UnicodeDecodeError):
-            return PersonaProbeOutcome.not_applicable(
-                f"the token file ({token_path}) could not be read"
-            )
-        if not token:
-            return PersonaProbeOutcome.not_applicable(
-                f"the token file ({token_path}) is empty"
-            )
+        headers: dict[str, str] = {}
+        if token_path is not None:
+            try:
+                token = token_path.read_text(encoding="utf-8").strip()
+            except (OSError, UnicodeDecodeError):
+                return PersonaProbeOutcome.not_applicable(
+                    f"the token file ({token_path}) could not be read"
+                )
+            if not token:
+                return PersonaProbeOutcome.not_applicable(
+                    f"the token file ({token_path}) is empty"
+                )
+            headers["Authorization"] = f"Bearer {token}"
         body: dict = {"input": "ping", "max_output_tokens": 16}
         if model:
             body["model"] = model
         status = http_probe_status(
             endpoint.rstrip("/") + "/responses",
-            headers={"Authorization": f"Bearer {token}"},
+            headers=headers,
             body=body,
             timeout=timeout,
         )
