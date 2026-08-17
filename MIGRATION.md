@@ -398,11 +398,25 @@ What a v1.7.2 user needs to know:
   | `home/playbook/workset/**` | `<workset_path>/canon/handbook/**` (host) |
   | `home/notebook/**` | `home/canon/notebook/**` (in the box home) |
   | `home/workbook/**` | `home/canon/workbook/**` (in the box home) |
+  | `home/playbook/box/**`, `home/playbook/agents/directives/**` | no single destination — triage by hand, see below |
+  | `home/playbook/CONTENTS.md` | nothing to carry — the canon index (`~/canon/COLLECTION.md`) supersedes it |
 
   The first three rows leave the box entirely — a handbook chapter is host content,
   contributed by a scope, not stored in the box. Triaging is yours to do: one box's playbook
   cannot be promoted wholesale into the shared handbook without imposing it on every other
   box. The ruling on record: existing-box migration stays deferred; new boxes only.
+- ⚑ **A box older than the three-part handbook keeps everything under `home/playbook/box/`,
+  and the mapped rows do not reach it.** Those rows assume a box that already had
+  `home/notebook/` and `home/workbook/` split out as their own trees. On an older box you
+  will instead find `home/playbook/box/directives/**` holding that box's own directives
+  *alongside* its `devnotes.md` and `tasks.md` — real, hand-written content that matches no
+  row above and is therefore easy to leave behind. Send the directives to
+  `home/canon/notebook/` and the devnotes/tasks to `home/canon/workbook/` — the same two
+  destinations the table already gives that content, just reached from a different source
+  path. There is deliberately no mechanical rule here: which of a box's directives belong in
+  a shared handbook chapter and which are only ever this box's own is a judgement call, and
+  only you can make it. An older box spells the agents scope `agents/directives/**` rather
+  than `agents/default/**`, and needs the same treatment.
 - **The playbook-equivalent tree is now read-only in-box.** An agent that edits its
   `~/playbook` today cannot edit `~/canon/handbook` tomorrow; its own writing goes to the
   notebook and workbook. Do not report this as a regression — edit the handbook host-side.
@@ -411,8 +425,11 @@ What a v1.7.2 user needs to know:
   `<box_dir>/canon/` is the box's *contribution* root whose `handbook/` is one chapter bound
   read-only at `~/canon/handbook/box`. A file placed in the wrong one is shadowed by the
   mounts and never read.
-- An old box also keeps a stale, empty `home/playbook/kanibako/**` stub tree on disk —
-  harmless residue, and a handy "this box predates the canon" marker.
+- An old box also keeps a stale `home/playbook/kanibako/**` stub tree on disk. It is not
+  necessarily empty — on a box of any age it holds kanibako's own environment guide and
+  helper scripts — but every file in it is kanibako-owned and delivered by the running
+  release, so there is still nothing to carry forward: harmless residue, and a handy "this
+  box predates the canon" marker.
 
 ### 2.5 Template and per-agent store moves
 
@@ -3103,12 +3120,16 @@ holds the agent home + the helper log.
   actual project files live under `workspace/` (mounted as `~/workspace`).
 
 ⚑ **The standalone walk marker is now a `box_data/` directory PLUS a
-`<root>/settings.yaml`** declaring `mode: standalone`. (A NAMED workset root also
-carries `<root>/settings.yaml`, but with a `workset.meta` identity and NO
-`box_data/` dir, so the two never collide.) The old in-tree `.kanibako`/`kanibako`
-dotdir marker is gone. When hand-editing a standalone tree, place `settings.yaml`
-at the root, keep a `box_data/` dir beside it, and put your files under
-`workspace/`. Drop any `layout:` field; the mode token stays `standalone`.
+`<root>/settings.yaml`** — presence alone, not any field inside the file. (A
+NAMED workset root also carries `<root>/settings.yaml`, but with a
+`workset.meta` identity and NO `box_data/` dir, so the two never collide.) The
+old in-tree `.kanibako`/`kanibako` dotdir marker is gone. When hand-editing a
+standalone tree, place `settings.yaml` at the root, keep a `box_data/` dir
+beside it, and put your files under `workspace/`. Drop any `layout:` field —
+and drop `mode` too: nothing writes or reads a `mode` token on a standalone
+box's `settings.yaml` (`launch/box_resolve.py:standalone_settings_present`
+tests presence only, deliberately not `project.mode`; see §9.2 for the full
+`project:`-table correction).
 
 ⚑ **No automatic migration (pre-public):** there is no on-disk migrator. To move a
 pre-existing standalone tree to the new shape by hand: move `box_data/settings.yaml`
@@ -3211,14 +3232,20 @@ same-name convert reuses the existing name instead of auto-suffixing.
 ## 6. Drop-in detection & import (NEW behavior)
 
 On-disk metadata is now **authoritative**; the registry is just a rebuildable index.
-All three modes are **self-describing on disk and drop-in importable.**
+All three modes are **drop-in importable purely from their on-disk layout** — ⚑ but
+"self-describing" overstates it for STANDALONE identity specifically: a standalone
+box's on-disk `settings.yaml` no longer carries its own name (P8b deleted the stored
+`project.name`, along with the rest of the `project:` table — see §9.2). Its identity
+is instead COMPOSED at import time from the stored `workset.kuid` plus the live
+directory leaf (`project/import_reconcile.py`,
+`launch/box_identity.py:compose_standalone_name`), not read verbatim off disk.
 
 What this means for you:
 
 - **Detection is an ancestor-walk**, not a registry lookup. Standalone is detected by
-  walking up for a `box_data/` dir + a root `settings.yaml` with `mode: standalone`;
-  named by a workset-root `settings.yaml` carrying `workset.meta`; primary by
-  reconciling the central boxes dir against the registry.
+  walking up for a `box_data/` dir + a root `settings.yaml` — presence only, no
+  `mode` field is read (§4.5); named by a workset-root `settings.yaml` carrying
+  `workset.meta`; primary by reconciling the central boxes dir against the registry.
 - **You can move or copy a box/workset/project tree** to a new location or machine and
   kanibako re-discovers it.
 - **Import is automatic with an alert, no confirmation.** When kanibako finds an
@@ -3474,13 +3501,12 @@ The per-box metadata file is renamed `project.yaml` → **`settings.yaml`** in *
 mode (primary, named, and standalone). See §4.6 for where each mode's file lives;
 §4.5 for the standalone walk marker (`box_data/` dir + `<root>/settings.yaml`).
 
-⚑ **What the file actually contains (on-disk format).** The per-box `settings.yaml`
-stores construct-time box metadata in two YAML sections, `project:` and `resolved:`
-— these are the *physical* on-disk shape you would see if you opened the file. (The
-keyspace documents this metadata as the logical `box.meta.*` / `workset.meta.*`
-model; the on-disk layout uses these two sections rather than nested `box.meta.*`
-tables. The logical keyspace names are the model; the sections below are the disk
-reality.)
+⚑ **What the file actually contained at 1.6.0 (on-disk format, now superseded — see the
+correction below).** At 1.6.0 the per-box `settings.yaml` stored construct-time box
+metadata in two YAML sections, `project:` and `resolved:` — the *physical* on-disk
+shape you would have seen if you opened the file. (The keyspace documented this
+metadata as the logical `box.meta.*` / `workset.meta.*` model; the on-disk layout used
+these two sections rather than nested `box.meta.*` tables.)
 
 ```yaml
 project:
@@ -3497,11 +3523,36 @@ resolved:
   project_hash: <hash>
 ```
 
-When migrating an old `project.yaml`: rename the file to `settings.yaml`, **drop any
-`layout:` field**, translate `mode` per §4.1, and keep the `project:` / `resolved:`
-section layout shown above. You normally do not hand-edit the `resolved:` section —
-it is derived construct-time state, regenerated by kanibako. The `name` under
-`project:` is what lets a moved/copied tree keep its identity on drop-in import (§6).
+🛑 **CORRECTION (as of 1.8.0): this shape is DEAD, not a target to "keep."** The
+identity/construct-time rework since 1.6.0 (P8b/P8c) deleted the readers AND writers of
+the `project:` / `resolved:` sections outright (`read_project_meta` /
+`write_project_meta` no longer exist). **Nothing in the current code reads a `project:`
+table, ever, for any of its four members:**
+
+| Old field (`project:` table) | Current reality |
+|---|---|
+| `mode` | not read; identity comes from the registry + on-disk layout walk, never a stored mode field (`launch/box_resolve.py`) |
+| `enable_vault` | **not read** — `box.enable_vault` (§2b) is sparse-written/read from a `box:` table only (`settings/config.py` `write_box_enable_vault`/`read_box_enable_vault`). **A stored `project.enable_vault: false` is silently ignored and the box launches with the vault ENABLED** — move it by hand, do not leave it under `project:`. |
+| `group_auth` | not read; superseded by `box.auth.global_enabled` / `box.auth.workset_enabled` (§2b, 2026-07-01) |
+| `name` | not read; a standalone box's identity is composed `<kuid>_<dir-leaf>` from the stored `workset.kuid` plus the live directory name, never from a stored `project.name` (`project/import_reconcile.py`, `launch/box_identity.py:compose_standalone_name`) |
+
+The `resolved:` section is likewise dead — it is not written or read anywhere in current
+code.
+
+**What to actually do when migrating an old `project.yaml`:** rename the file to
+`settings.yaml`, then **discard the `project:` / `resolved:` sections entirely** — do
+NOT carry that layout forward. Recover any value you still need under its current key:
+only a **non-default** `enable_vault: false` needs recovering, written under a `box:`
+table instead:
+
+```yaml
+box:
+  enable_vault: false
+```
+
+`mode`, `group_auth`, and `name` are self-deriving and need no manual carry-forward. A
+moved/copied tree keeps its identity on drop-in import via the mechanism in §6, not via
+a carried `name` field.
 
 ### 9.3 Box-side vault dest `~/share-ro` / `~/share-rw` → `~/vault/ro` / `~/vault/rw`
 
