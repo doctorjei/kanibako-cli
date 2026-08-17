@@ -293,6 +293,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and the meta package now requires that. **If you installed the meta package and saw errors about
   `safe_bypass`, `container_env`, or `BindDefault`, upgrading is the fix.**
 
+- **Installing a pre-release of the meta package could pull an older Claude plugin than the one it
+  was built with.** The meta pins the CLI to the exact version it shipped with, so the two can never
+  be mixed while PyPI's index catches up — but `kanibako-agent-claude`, which is released from the
+  same version stamp, was left as a range. Python's version ordering puts a release candidate *above*
+  a development build, so installing a `.dev` meta resolved the Claude plugin to an older published
+  `rc` and paired it with a CLI it was never built against, producing an `ImportError` on a
+  completely clean install. Both halves of the stamped set are now pinned together. The goose and
+  codex plugins keep their ranges, because they genuinely are released on their own schedule.
+
 - **A box could come up at a bare shell prompt instead of starting its agent, and nothing said
   why.** PID 1 of an agent box checks that it can import the supervisor before running it, and falls
   back to a plain shell keep-alive if it cannot — insurance for an older image that ships no

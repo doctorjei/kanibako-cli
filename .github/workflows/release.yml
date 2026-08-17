@@ -191,19 +191,29 @@ jobs:
       - name: Install build tooling
         run: pip install build
 
-      - name: Pin meta -> kanibako-cli to the release version
-        # The in-tree meta dep is a RANGE so a source checkout / dev flow never
-        # breaks; pin it to the EXACT release version ($VER, from the tag) at
-        # build time so a stale meta/cli pair can NEVER install during PyPI
-        # index propagation (meta 1.7.0 + cli 1.6.x silently mixed). The in-tree
+      - name: Pin meta -> the stamped train to the release version
+        # The in-tree meta deps are RANGES so a source checkout / dev flow never
+        # breaks; pin them to the EXACT release version ($VER, from the tag) at
+        # build time so a stale pair can NEVER install during PyPI index
+        # propagation (meta 1.7.0 + cli 1.6.x silently mixed). The in-tree
         # base version already matches the tag (bump2version stamps then tags),
-        # so only the dep line needs pinning here. Anchored on the indented
-        # "kanibako-cli" dep line — matches ONLY it (agent deps are
-        # "kanibako-agent-*"). Contract asserted by test_meta_pin.py.
+        # so only the dep lines need pinning here.
+        #
+        # ⚑⚑ BOTH STAMPED PACKAGES, NOT JUST THE CLI. agent-claude is part of
+        # the same version-stamped train, and leaving it a RANGE reopened the
+        # exact hole this step exists to close — by PEP 440 an rc OUTRANKS a dev
+        # (1.8.0rc1 > 1.8.0.dev98), so a meta at .devN resolved agent-claude to
+        # the older PUBLISHED 1.8.0rc1 and installed a plugin built against a
+        # different cli. MEASURED 2026-08-17 on a real install: ImportError for
+        # the removed BindDefault, straight out of a clean `uv tool install`.
+        # agent-goose / agent-codex stay RANGES on purpose — they version
+        # INDEPENDENTLY of this train and are not stamped.
         run: |
-          sed -i -E "s|^([[:space:]]*)\"kanibako-cli[^\"]*\"|\1\"kanibako-cli==$VER\"|" packages/meta/pyproject.toml
-          echo "Pinned meta -> kanibako-cli:"
-          grep -n 'kanibako-cli==' packages/meta/pyproject.toml
+          for pkg in kanibako-cli kanibako-agent-claude; do
+            sed -i -E "s|^([[:space:]]*)\"${pkg}[^\"]*\"|\1\"${pkg}==$VER\"|" packages/meta/pyproject.toml
+          done
+          echo "Pinned meta -> stamped train:"
+          grep -nE 'kanibako-cli==|kanibako-agent-claude==' packages/meta/pyproject.toml
 
       - name: Build all distributable packages
         # Mirrors scripts/build-all.sh's package list. agent-goose and
@@ -299,18 +309,30 @@ jobs:
           for f in src/kanibako/__init__.py packages/agent-claude/src/kanibako/plugins/claude/__init__.py; do
             sed -i -E "s/^__version__ = \"[^\"]+\"/__version__ = \"$DEV_VERSION\"/" "$f"
           done
-          # Pin the meta package's kanibako-cli dependency to the EXACT stamped
-          # version so a stale meta/cli pair can NEVER install during the PyPI
+          # Pin the meta's STAMPED-TRAIN dependencies to the EXACT stamped
+          # version so a stale pair can NEVER install during the PyPI
           # index-propagation window (meta rcN + cli rcN-1 silently mixed). The
-          # in-tree line stays a RANGE (source checkout / dev flow unbroken); we
-          # pin only at build time. Anchored on the indented "kanibako-cli" dep
-          # line — matches ONLY it (agent deps are "kanibako-agent-*"), never the
-          # top-level `version = "..."`. Contract asserted by test_meta_pin.py.
-          sed -i -E "s|^([[:space:]]*)\"kanibako-cli[^\"]*\"|\1\"kanibako-cli==$DEV_VERSION\"|" packages/meta/pyproject.toml
+          # in-tree lines stay RANGES (source checkout / dev flow unbroken); we
+          # pin only at build time. Each anchor is the indented dep line and
+          # never the top-level `version = "..."`. Contract: test_meta_pin.py.
+          #
+          # ⚑⚑ BOTH kanibako-cli AND kanibako-agent-claude. Pinning only the cli
+          # left agent-claude a RANGE, and PEP 440 sorts an rc ABOVE a dev
+          # (1.8.0rc1 > 1.8.0.dev98) — so a meta stamped .devN resolved
+          # agent-claude to the older PUBLISHED rc and shipped a plugin built
+          # against a different cli. MEASURED 2026-08-17: ImportError for the
+          # removed BindDefault out of a clean `uv tool install`. The propagation
+          # -window argument above was always the SAME argument for agent-claude;
+          # it simply was not applied to it.
+          # agent-goose / agent-codex stay RANGES — they version INDEPENDENTLY
+          # of this train and are never stamped here.
+          for pkg in kanibako-cli kanibako-agent-claude; do
+            sed -i -E "s|^([[:space:]]*)\"${pkg}[^\"]*\"|\1\"${pkg}==$DEV_VERSION\"|" packages/meta/pyproject.toml
+          done
           echo "Stamped version $DEV_VERSION:"
           grep -n '^version = ' pyproject.toml packages/*/pyproject.toml
-          echo "Pinned meta -> kanibako-cli:"
-          grep -n 'kanibako-cli==' packages/meta/pyproject.toml
+          echo "Pinned meta -> stamped train:"
+          grep -nE 'kanibako-cli==|kanibako-agent-claude==' packages/meta/pyproject.toml
 
       - name: Build all distributable packages
         # The 1.5.x train (cli + agent-claude + meta) is dev-stamped above and
