@@ -3732,13 +3732,13 @@ class TestBoxShellLaunch:
             # The agent binary rides the supervisor's `-- <agent>` payload — now
             # nested in the directive flatten shim (default for all agents), so the
             # `--` payload is `sh -c '<flatten>; exec "$@"' sh claude`.
-            sup = script.split("&& exec ", 1)[1].split(" || exec ", 1)[0]
+            sup = script.split("&& exec ", 1)[1].rsplit(" || {", 1)[0]
             sup_argv = shlex.split(sup)
             after_sep = sup_argv[sup_argv.index("--"):]
             assert "claude" in after_sep
             assert any("import-directives.py" in a for a in after_sep)
             # ...and /bin/zsh is ONLY the `|| exec` fallback keep-alive, not the agent.
-            fb = script.split(" || exec ", 1)[1]
+            fb = script.split("2>/dev/null; exec ", 1)[1]
             assert "/bin/zsh" in fb
 
     def test_real_agent_nonpersistent_uses_agent_entrypoint(self, start_mocks):
@@ -9705,7 +9705,7 @@ class TestSupervisorMarkersDirFollowsTheResolvedEnv:
         kw = m.runtime.run.call_args.kwargs
         assert kw["entrypoint"] == "sh"
         script = kw["cli_args"][1]
-        sup = script.split("&& exec ", 1)[1].split(" || exec ", 1)[0]
+        sup = script.split("&& exec ", 1)[1].rsplit(" || {", 1)[0]
         return shlex.split(sup)
 
     def test_overridden_markers_dir_reaches_the_supervisor_argv(self, start_mocks):

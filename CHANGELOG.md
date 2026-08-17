@@ -275,6 +275,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A box could come up at a bare shell prompt instead of starting its agent, and nothing said
+  why.** PID 1 of an agent box checks that it can import the supervisor before running it, and falls
+  back to a plain shell keep-alive if it cannot — insurance for an older image that ships no
+  supervisor. That check ran exactly once, at the busiest moment of a box's startup, and discarded
+  the reason it failed. So a transient failure produced a box sitting at a shell with the agent
+  never started, no explanation anywhere, and `kanibako start` still reporting success. The check
+  now runs twice before giving up, records why it failed to `~/.kanibako/supervisor-fallback.log`
+  inside the box, and announces the fallback on standard error, where `podman logs` will show it.
+  The fallback itself is unchanged — a degraded box is still better than no box — but it can no
+  longer happen silently.
+
 - **A read-only directory anywhere in your vault could stop a box from starting at all.** Kanibako
   snapshots `vault/rw` before each launch and prunes the oldest snapshots to stay inside the
   retention limit. Deleting a directory requires write permission on the directory that contains
