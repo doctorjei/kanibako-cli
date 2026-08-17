@@ -275,6 +275,29 @@ class TestRetiredKeyRefusal:
         assert "pref.system.agent=goose" in msg
         assert str(f) in msg                  # names the FILE
 
+    def test_box_level_cure_interpolates_the_box_argument(self, tmp_path):
+        """Jei's own ruling: ``box set`` needs the box positional to be copy-pasteable
+        from outside the box's own cwd — the caller supplies it via *box_name*."""
+        f = _yaml(tmp_path / "box.yaml", {"box": {"agent_name": "goose"}})
+        with pytest.raises(SettingsError) as ei:
+            refuse_retired_keys(
+                yaml.safe_load(f.read_text()), level="box", path=f, box_name="myproj",
+            )
+        msg = str(ei.value)
+        assert "kanibako box set myproj pref.system.agent=goose" in msg
+        assert "kanibako box set myproj --null pref.system.agent" in msg
+
+    def test_box_name_is_ignored_off_the_box_level(self, tmp_path):
+        """No SINGLE box is being refused for at workset/system/base/agent scope, so a
+        *box_name* passed in anyway must not leak into the cure."""
+        f = _yaml(tmp_path / "workset.yaml", {"box": {"agent_name": "goose"}})
+        with pytest.raises(SettingsError) as ei:
+            refuse_retired_keys(
+                yaml.safe_load(f.read_text()), level="workset", path=f, box_name="myproj",
+            )
+        msg = str(ei.value)
+        assert "myproj" not in msg
+
     def test_system_default_agent_is_refused_with_the_cure(self, tmp_path):
         f = _yaml(
             tmp_path / "system.yaml",
@@ -315,12 +338,14 @@ class _FakeGroup:
         self.root = root
 
 
-def _proj(tmp_path):
+def _proj(tmp_path, *, name: "str | None" = "myproj"):
     """The minimal ``ProjectPaths`` shape ``select_agent`` reads.
 
     It needs exactly: ``mode`` / ``metadata_path`` / ``group`` (for
-    ``box_workset_settings_paths``) and ``project_path`` (passed to the
-    installed-set probe).
+    ``box_workset_settings_paths``), ``project_path`` (passed to the
+    installed-set probe) and ``name`` (threaded to the box-level retired-key
+    cure — ``None``/``""`` is the real NAMELESS-box case, spec:
+    ``settings/paths.py`` falls back to a short hash for one when it is falsy).
     """
     from types import SimpleNamespace
 
@@ -335,6 +360,7 @@ def _proj(tmp_path):
         metadata_path=meta,
         group=_FakeGroup(ws),
         project_path=tmp_path / "proj",
+        name=name,
     )
 
 
@@ -469,6 +495,77 @@ class TestSelectAgentSeam:
         std, proj = _std(tmp_path), _proj(tmp_path)
         sel = select_agent(std=std, proj=proj, explicit_agent=None)
         assert (sel.node, sel.source) == ("claude", "autopick")
+
+
+# --------------------------------------------------------------------------- #
+# The BOX ARGUMENT in the cure — Jei's ruling, through the REAL seam           #
+# --------------------------------------------------------------------------- #
+#
+# ⚑ ``TestRetiredKeyCureIsLevelAppropriate`` (and ``settings_assemble``'s own
+# mutation-proved unit tests) drove ``_retired_key_cure`` / ``refuse_retired_keys``
+# DIRECTLY — that machinery is correct but was NOT WIRED: the production caller,
+# ``select_agent``, never passed ``box_name``, so the user-visible cure line stayed
+# the bare form regardless. These three drive ``select_agent`` itself, so deleting
+# the ``box_name=proj.name if level == "box" else None`` splice from its refusal
+# loop reddens them even though every test above stays green.
+
+
+class TestSelectAgentSeamBoxArgument:
+    def test_a_named_box_gets_the_box_argument_in_the_cure(self, tmp_path, monkeypatch):
+        from kanibako.settings.agent_select import select_agent
+
+        monkeypatch.setattr(
+            "kanibako.targets.discover_targets",
+            lambda *a, **k: {"claude": object, "goose": object},
+        )
+        std, proj = _std(tmp_path), _proj(tmp_path, name="myproj")
+        box_file, _ws = _box_workset(proj)
+        box_file.write_text(yaml.safe_dump({"box": {"agent_name": "goose"}}))
+        with pytest.raises(SettingsError) as ei:
+            select_agent(std=std, proj=proj, explicit_agent=None)
+        msg = str(ei.value)
+        assert "kanibako box set myproj pref.system.agent=goose" in msg
+        assert "kanibako box set myproj --null pref.system.agent" in msg
+
+    def test_a_nameless_box_falls_back_to_the_bare_cure(self, tmp_path, monkeypatch):
+        """``proj.name`` can be falsy (spec: the addressable-name-less case
+        ``settings/paths.py`` covers with a short-hash DISPLAY fallback, which is
+        not a ``box set`` positional). The cure must degrade to today's bare form
+        rather than emit a broken/``None`` argument or a doubled space."""
+        from kanibako.settings.agent_select import select_agent
+
+        monkeypatch.setattr(
+            "kanibako.targets.discover_targets",
+            lambda *a, **k: {"claude": object, "goose": object},
+        )
+        std, proj = _std(tmp_path), _proj(tmp_path, name=None)
+        box_file, _ws = _box_workset(proj)
+        box_file.write_text(yaml.safe_dump({"box": {"agent_name": "goose"}}))
+        with pytest.raises(SettingsError) as ei:
+            select_agent(std=std, proj=proj, explicit_agent=None)
+        msg = str(ei.value)
+        assert "kanibako box set pref.system.agent=goose" in msg
+        assert "kanibako box set --null pref.system.agent" in msg
+        assert "kanibako box set  pref.system.agent=goose" not in msg  # no doubled space
+        assert "None" not in msg
+
+    def test_a_non_box_level_refusal_never_leaks_a_box_argument(self, tmp_path, monkeypatch):
+        """``system.default_agent`` is a SYSTEM-tier refusal — a named box in scope
+        must not leak into a cure that names no single box."""
+        from kanibako.settings.agent_select import select_agent
+
+        monkeypatch.setattr(
+            "kanibako.targets.discover_targets", lambda *a, **k: {"claude": object},
+        )
+        std, proj = _std(tmp_path), _proj(tmp_path, name="myproj")
+        std.settings.write_text(
+            yaml.safe_dump({"agent": {"default": {"default_agent": "claude"}}}),
+        )
+        with pytest.raises(SettingsError) as ei:
+            select_agent(std=std, proj=proj, explicit_agent=None)
+        msg = str(ei.value)
+        assert "system.default_agent" in msg
+        assert "myproj" not in msg
 
 
 def _box_workset(proj):

@@ -231,6 +231,12 @@ def select_agent(
     # of the silent-wrong-agent failure, not an exempt one. The cure is
     # LEVEL-APPROPRIATE — a pref is not writable at base/system, so those levels are
     # told to REMOVE the key rather than to run a `box set` that cannot fix them.
+    # ⚑ The BOX-level cure names the box explicitly (Jei: the bare form only works
+    # from a resolvable cwd, and is required otherwise) — ``proj.name`` is threaded
+    # only for ``level == "box"``. A NAMELESS box (``proj.name`` falsy — spec: the
+    # short-hash fallback ``settings/paths.py`` uses for display is NOT an
+    # addressable ``box set`` positional) degrades to today's bare cure line rather
+    # than emit an argument that would not resolve.
     for level, path in (
         ("base", settings_base_path()),
         ("system", system_path),
@@ -238,7 +244,10 @@ def select_agent(
         ("box", box_path),
     ):
         if path is not None and Path(path).exists():
-            refuse_retired_keys(load_doc(Path(path)), level=level, path=Path(path))
+            refuse_retired_keys(
+                load_doc(Path(path)), level=level, path=Path(path),
+                box_name=proj.name if level == "box" else None,
+            )
 
     requested: object = __MISSING__
     if not explicit_agent:
