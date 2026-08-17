@@ -911,11 +911,17 @@ Later sources override earlier ones when two plugins register the same name.
 |------|----------|----------|
 | 1. Entry points | `kanibako.agents` entry point group + `kanibako.plugins.*` namespace scan | Pip-installed packages and bind-mounted plugins in nested containers |
 | 2. User directory | `~/.local/share/kanibako/plugins/*.py` | Personal plugins shared across all projects |
-| 3. Project directory | `{project}/.kanibako/plugins/*.py` | Project-specific plugins |
+| 3. Project directory | `{project}/box_data/plugins/*.py` | Project-specific plugins |
 
 Drop a `.py` file containing a `Target` subclass into the user or project
 plugins directory and Kanibako picks it up automatically -- no packaging or
 `pip install` needed.  Files starting with `_` are skipped.
+
+**A plugin that fails to load is skipped, not fatal.**  If a plugin raises while
+being imported -- most often because it was built against a different
+`kanibako-cli` -- Kanibako names it on standard error, says the rest still works,
+and carries on without it.  Only that agent becomes unavailable; every other
+agent, and `kanibako setup`, are unaffected.
 
 **Security note:** file-drop plugins run with the same permissions as
 Kanibako itself.  Only place files you trust in plugin directories.
@@ -928,10 +934,11 @@ guide.
 pip install kanibako-target-myagent
 
 # Use a specific target
-kanibako box set box.agent=myagent
+kanibako box set pref.system.agent=myagent
 kanibako start
 
-# (`crab_name` is gone -- select the agent via box.agent)
+# (`crab_name` and `box.agent_name` are gone -- select the agent via
+#  pref.system.agent, which is the spelling kanibako's own messages print)
 ```
 
 ## Configuration
