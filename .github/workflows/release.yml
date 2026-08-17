@@ -330,6 +330,18 @@ jobs:
       - name: Check distributions
         run: twine check dist/*
 
+      - name: Refuse a version collision with different content
+        # The independently-versioned agents (agent-goose, agent-codex) build at
+        # their STATIC pyproject version, and the upload below runs with
+        # `skip-existing: true`. Together those silently drop an upload whenever a
+        # package changed without a version bump -- measured 2026-08-17: goose and
+        # codex shipped 2026-08-01 wheels carrying `safe_bypass:`/`container_env:`
+        # long after both keys were retired, the rebuild was skipped, and the
+        # published meta pulled a wheel the cli refuses to load.
+        # Runs UNCONDITIONALLY, including when `publish` is false, so a build-only
+        # validation run reports the problem before anyone asks for an upload.
+        run: python scripts/check-publish-collisions.py dist
+
       - name: Publish to PyPI (dev pre-release)
         # OIDC trusted publishing via the same release.yml Trusted Publisher.
         # skip-existing lets the independently-versioned agent packages
@@ -379,6 +391,13 @@ jobs:
         env:
           AGENT: ${{ inputs.agent }}
         run: python -m build "packages/$AGENT" --outdir "$PWD/dist"
+
+      - name: Refuse a version collision with different content
+        # This job is the one that ships the independently-versioned agents at
+        # their STATIC version, so it is where "changed but not bumped" bites
+        # hardest — and `skip-existing` below would drop the upload in silence.
+        # Stdlib-only, so it needs nothing beyond the build tooling above.
+        run: python scripts/check-publish-collisions.py dist
 
       - name: Publish to PyPI
         # OIDC trusted publishing via the per-project Trusted Publisher
