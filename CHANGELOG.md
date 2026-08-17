@@ -12,6 +12,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A persona endpoint that is not a well-formed URL is refused at the store boundary, naming the
+  file and the cure.** Kanibako checked only that an endpoint was *present*; a scheme-less value
+  such as `myhost:8080/v1` passed create-side preflight and every launch gate, reached the harness
+  verbatim, and died inside it with an opaque `API Error: Invalid URL`. The network probe did not
+  catch it either — a malformed URL fails at the transport layer, which the probe folds in with
+  "the server is briefly down" and treats as inconclusive, i.e. warn-and-proceed. The endpoint is
+  now validated where the persona store's harness-native config becomes a cascade value, so both
+  `create` and `launch` refuse it from one place. The check is deliberately minimal — a recognised
+  scheme (`http`/`https`) and a non-empty host, and nothing about path, port or query — because a
+  persona endpoint is a base URL the harness appends its own routes to, and a false refusal here
+  would break a working box.
+
 - **`kanibako system defaults` lists every default kanibako ships, and says where each one is
   declared.** `show --effective` resolves the cascade but never names an artefact — it can mark a
   value you stored `(override)`, but nothing it prints tells you where a default is written down.
