@@ -586,10 +586,14 @@ for a `system:` table containing `bindings:`, `caches:`, `seeded:`, `common:`, `
 `kanibako system get <key>` — it now answers. The structural path keys (`system.cache`,
 `system.channels.*`, `system.setup_completed`, …) belong in the config file and must **stay**.
 
-One loud case: `kanibako system set` against a bind that exists *only* in the config file is
-now refused with *"cannot create key … it must already exist in the cascade"*. That refusal is
-correct (the launch never read that file), and the cure is the move above — after it, the same
-`set` succeeds. A stale entry you *don't* touch is simply inert, exactly as it already was.
+One loud case: `kanibako system set` against a bind-shaped key (`bindings.{ro,rw}.*`, `caches`,
+`seeded`, `common`, `synced`) is refused **unconditionally, wherever the entry lives** — not with
+a cascade-existence message (no such string — *"cannot create key … it must already exist in the
+cascade"* — exists anywhere in the code; a repo-wide search turns up only this line). The real,
+current refusal and its cure are §2.20's (line 970): the *write verb* for these categories is
+retired outright, full stop, so moving the entry to `<data>/global/settings.yaml` does **not**
+make a subsequent `set` succeed — the fix is to edit that file directly. A stale entry you *don't*
+touch is simply inert, exactly as it already was.
 
 Box and workset scopes are unaffected. Agent-scope binds already routed correctly.
 
@@ -2477,7 +2481,12 @@ independently of the base and depend on **`kanibako-cli`** with **no version pin
    `data/base` falls back to its legacy `data/template`, installed to the destination that
    reproduces the old delivery byte-for-byte — so an old published plugin keeps working
    against the new base. The `synced` credential destinations becoming host-side paths is
-   still open plugin-package work (the base-side applier already branches on `dest_space`).
+   still open plugin-package work. ⚑ **Correction: the base-side applier does not branch on a
+   `dest_space` field** — there is no such field, and its absence is deliberate
+   (`settings/settings_categories.py:527`: "THERE IS NO `dest_space` FIELD, AND ITS ABSENCE IS
+   THE DESIGN"). The real mechanism is longest-prefix cover over the final bind map
+   (`commands/start.py:8659`, `_synced_host_dest`): a `synced` guest dest resolves to a host
+   path by finding the bind that covers it, not by consulting a separate namespace field.
 5. **Build hygiene:** `rm -rf build/ packages/*/build` before any local wheel build — stale
    `build/lib/` trees ship deleted files (CI builds clean; local builds do not).
 6. **`Binding.key`'s user override is now settings-file-only — the type is UNCHANGED.**
@@ -2679,9 +2688,9 @@ then work top-to-bottom.
 | Vocabulary | `crab` everywhere | `agent` (the tool) for config/dirs/commands; `crab` only = runtime concept |
 | System paths | `system.path.*` | `system.*` (`.path` dropped), restructured |
 | Modes | `ProjectMode{default,workset,standalone}` × `ProjectLayout{simple,default,robust}` | `box.mode{primary,named,standalone}`, **no layouts** |
-| Primary store | scattered `boxes/`, `comms/`, `share_*/` under data root | **PRIMARY workset** is a real dir at `@system.primary_workset` |
+| Primary store | scattered `boxes/`, `comms/`, `share_*/` under data root | **PRIMARY workset** is a real dir at `@system.primary_workset` (superseded in v1.8.0 → `@config.primary_workset`, §2.1) |
 | Per-box meta file | `project.yaml` (mode/layout/paths/...) | per-box `settings.yaml` (`[project]` + `[resolved]` sections); all modes (§9) |
-| Registry | `names.yaml` + `worksets.yaml` + `connected.yaml` | one `registry.yaml` (`@system.registry`) |
+| Registry | `names.yaml` + `worksets.yaml` + `connected.yaml` | one `registry.yaml` (`@system.registry`, superseded in v1.8.0 → `@config.registry`, §2.1); see §5 for the section list, also superseded |
 | Detection | registry-driven | **on-disk authoritative**, walk-detected, drop-in importable |
 | Comm system | single `~/comms/` mount (`mailbox/<box>`, `broadcast.log`) | **channels** — 5 types under `~/channels/` (`mailboxes/<ws>/<box>`, `chat/broadcast.md`) (§7) |
 | Templates | shell-variant tree + CLAUDE.md merge + host-config import | **layered seed-once** (base→agent→workset); host-config import **removed** (§8) |
@@ -2901,20 +2910,27 @@ restructured. The PRIMARY workset (§4) absorbs the old top-level box/log/vault 
 
 ### 3.1 Key renames / new / deleted
 
-| Old `system.path.*` | New `system.*` | Notes |
+⚑ **Superseded in v1.8.0 (see §2.1, line 197).** Five of the "New `system.*`" spellings
+below moved again, to a `config.*` prefix (`config.data`, `config.agents`,
+`config.registry`, `config.settings`, `config.primary_workset` —
+`settings_keyspace.py` `DECLARED_CONFIG_LEAVES`); they are marked below. The rest of
+this table (the `system.channelroot`/`system.channels.*`, `system.backup`,
+`system.cache`, `system.runtime` rows) is still the live spelling.
+
+| Old `system.path.*` | New `system.*` (1.6.0) | Notes |
 |---|---|---|
-| `system.path.data` | `system.data` | rename only |
-| `system.path.crabs` | `system.agents` | + crab→agent (§2) |
+| `system.path.data` | `system.data` → **`config.data`** | rename only |
+| `system.path.crabs` | `system.agents` → **`config.agents`** | + crab→agent (§2) |
 | `system.path.comms` | `system.channelroot` | renamed + rebuilt (see §7); type roots under `system.channels.*` |
-| `system.path.templates` | `system.base_template` | re-pointed to `@system.global/base_template` |
-| `system.path.ws_hints` | `system.registry` | absorbed into the consolidated registry (§5) |
-| `system.path.boxes` | **DELETED** | → `@system.primary_workset/boxes` (§4) |
+| `system.path.templates` | `system.base_template` → **`system.template`** | ⚑ **superseded in v1.8.0 — see §2.5 (line 460).** (1.6.0 re-pointed it to `@system.global/base_template`; the live key names a template ROOT, not that file — `@system.global` itself is also gone, see the row below.) |
+| `system.path.ws_hints` | `system.registry` → **`config.registry`** | absorbed into the consolidated registry (§5) |
+| `system.path.boxes` | **DELETED** | → `@config.primary_workset/boxes` (§4) |
 | `system.path.share_ro` | **DELETED** | subsumed by `@workset.vault_ro` / category `shared` |
 | `system.path.share_rw` | **DELETED** | subsumed by `@workset.vault_rw` / category `shared` |
 | — | `system.backup` | NEW (`@system.data/backup`) |
 | — | `system.global` | NEW (`@system.data/global`; holds `settings.yaml`, `registry.yaml`) |
-| — | `system.settings` | NEW (`@system.global/settings.yaml`, the "system"-tier settings file) |
-| — | `system.primary_workset` | NEW (`@system.data/primary_workset`; the PRIMARY workset root) |
+| — | `system.settings` → **`config.settings`** | NEW (`@config.data/global/settings.yaml`, the "system"-tier settings file — `@system.global` does not resolve today; `global` is a literal path segment under `config.data`, not an addressable key: `settings/paths_defaults.py`) |
+| — | `system.primary_workset` → **`config.primary_workset`** | NEW (`@system.data/primary_workset`; the PRIMARY workset root) |
 | — | `system.cache` | NEW (`$XDG_CACHE_HOME/kanibako`; **not** under data) |
 | — | `system.runtime` | NEW (`$XDG_RUNTIME_DIR/kanibako`; helper sockets; **not** under data) |
 | — | `system.channels.{commons,chat,broadcast,mailboxes,share}` | NEW sub-keys (detailed in §7) |
@@ -2924,22 +2940,32 @@ Also **deleted from the top level** (now under the PRIMARY workset): `system.box
 
 ### 3.2 `system.default_agent` (renamed setting)
 
+⚑ **This rename direction is BACKWARDS — superseded in v1.8.0, see §2.1 (line 202).**
+The rest of this subsection describes the 1.6.0-era rename (`system.agent` →
+`system.default_agent`) as if it were still live. It is not: as of v1.8.0,
+**`system.default_agent` is the RETIRED spelling and `system.agent` is the live
+key** — the exact reverse of the claim below. `system.default_agent` stored
+anywhere is refused with a hard launch error naming
+`kanibako system set system.agent=<value>` as the cure
+(`settings/settings_assemble.py:77,95-97`). Do not follow the "no automatic
+migration" instructions in this subsection; use §2.1's cure instead.
+
 The old default-agent selector `system.agent` is renamed to **`system.default_agent`**
 (to avoid the one-character clash with the `system.agents` store directory). It is a
 **setting** (behavior), not config — it lives in the settings file set despite its
 `system.*` name. `box.agent` falls back to it.
 
 The system tier of these behavior settings now lives in **`global/settings.yaml`**
-(`@system.settings`), separate from the `~/.config/kanibako.yaml` CONFIG file (which
-holds only `system.*` layout/path keys). The `kanibako system get` / `system show`
-commands READ / SHOW `system.*` keys (e.g. `system.default_agent`, `system.data`) but
+(`@config.settings`), separate from the `~/.config/kanibako_config.yaml` CONFIG file
+(which holds only `system.*` layout/path keys). The `kanibako system get` / `system
+show` commands READ / SHOW `system.*` keys (e.g. `system.agent`, `config.data`) but
 — as of the W1 overhaul (see §10) — `system set` **refuses to set them**: all
 `system.*`-prefixed keys are file-only. Non-`system.` settings (e.g. `model`) stay CLI-settable at the global tier
 and are written to `global/settings.yaml`. **No automatic migration:** if you
-previously set `system.default_agent` in `kanibako.yaml`, choose it with
+previously set the default agent in `kanibako_config.yaml`, choose it with
 **`kanibako setup`** (which writes it for you) or move the `[agent.default]` table
-into `global/settings.yaml` by hand — a stale `[agent]` table in `kanibako.yaml` is
-no longer read by the system settings tier. See **§10** for the full file-only rule
+into `global/settings.yaml` by hand — a stale `[agent]` table in `kanibako_config.yaml`
+is no longer read by the system settings tier. See **§10** for the full file-only rule
 and the new agent-resolution behavior.
 
 ### 3.2a Box-level `[paths]` keys removed
@@ -2966,6 +2992,11 @@ suitable dir and **warns** — it is not silently substituted.
 
 ### 3.4 New `@system.data` tree
 
+⚑ **`@system.data` superseded in v1.8.0 — see §2.1 (line 197), now `@config.data`.**
+The tree below is otherwise still the 1.6.0-era layout described in this section;
+later v1.8.0 moves inside it (e.g. `base_template/` → `template/`, §2.5 line 460)
+are not reflected in the diagram.
+
 ```
 $XDG_DATA_HOME/kanibako/
 ├── global/            ├─ base_template/   ├─ settings.yaml   └─ registry.yaml
@@ -2986,7 +3017,7 @@ three-mode model and **layouts are removed**.
 
 ### 4.1 Mode rename
 
-| Old `ProjectMode` / `project.yaml mode` | New `box.mode` | `workset.meta.name` |
+| Old `ProjectMode` / `project.yaml mode` | New `box.mode` | `meta.workset.name` |
 |---|---|---|
 | `default` (synthesized `__default__` workset) | `primary` | `__PRIMARY__` |
 | `workset` (a named workset) | `named` | `<your workset name>` |
@@ -3009,7 +3040,7 @@ from your on-disk metadata. There is now one fixed per-mode path policy:
 
 The PRIMARY (formerly "default") workset is no longer virtual. Its boxes, vault, and
 logs move out of the scattered data-root locations into one tree under
-`@system.primary_workset`.
+`@system.primary_workset` (superseded in v1.8.0 → `@config.primary_workset`, §3.1).
 
 **Before** (scattered under the data root):
 
@@ -3023,12 +3054,12 @@ $XDG_DATA_HOME/kanibako/
 **After**:
 
 ```
-$XDG_DATA_HOME/kanibako/primary_workset/   ← @system.primary_workset (= @workset.meta.root)
+$XDG_DATA_HOME/kanibako/primary_workset/   ← @config.primary_workset (= @meta.workset.path)
 ├── settings.yaml
 ├── boxes/<box>/{home/ → ~/ , settings.yaml}
 ├── vault/{ro,rw}/<box>/                    → ~/vault/{ro,rw}
 └── logs/<box>.jsonl
-# the box WORKSPACE stays external: box.meta.workspace = your real project dir → ~/workspace
+# the box WORKSPACE stays external: meta.box.workspace = your real project dir → ~/workspace
 ```
 
 Move each primary box's home dir to `primary_workset/boxes/<box>/home/`, its vault to
@@ -3044,8 +3075,8 @@ unchanged; only the directory leaf moved.)
 ### 4.4 NAMED workset layout
 
 ```
-~/code/<wsname>/               ← workset.meta.root
-├── settings.yaml              ← workset.meta.settings
+~/code/<wsname>/               ← meta.workset.path
+├── settings.yaml              ← meta.workset.settings
 ├── boxes/<box>/{home/ → ~/ , settings.yaml}
 ├── workspaces/<box>/          → ~/workspace
 ├── vault/{ro,rw}/<box>/       → ~/vault/{ro,rw}
@@ -3066,8 +3097,8 @@ does not auto-suffix). The names `__PRIMARY__` and `__STANDALONE__` (and legacy
 A NAMED workset previously kept its identity/marker/project-list in a
 `<root>/workset.yaml` and its cascade settings (image, `agent.*`, `workset.bindings.*`,
 `standalone`, `enable_vault`) in a separate `<root>/config.yaml`. Both now live in a
-**single `<root>/settings.yaml`** = `@workset.meta.settings`, mirroring a box's
-`settings.yaml` which carries `box.meta.*` alongside its settings:
+**single `<root>/settings.yaml`** = `@meta.workset.settings`, mirroring a box's
+`settings.yaml` which carries `meta.box.*` alongside its settings:
 
 | Old file → key | New location |
 | --- | --- |
@@ -3103,8 +3134,8 @@ holds the agent home + the helper log.
 **After**:
 
 ```
-~/scratch/myproj/             ← @workset.meta.root  (workset.meta.name: __STANDALONE__)
-├── settings.yaml             ← box.meta.settings   (box metadata; AT THE ROOT)
+~/scratch/myproj/             ← @meta.workset.path  (meta.workset.name: __STANDALONE__)
+├── settings.yaml             ← meta.box.settings   (box metadata; AT THE ROOT)
 ├── workspace/                → ~/workspace          (a SUBDIR, not the root)
 ├── box_data/                 ├─ home/ → ~/          └─ <box.name>.jsonl   (helper log)
 └── vault/{ro,rw}/            → ~/vault/{ro,rw}
@@ -3152,7 +3183,7 @@ is detailed in §9 — read that section before hand-editing it.
 
 Drop `layout` entirely; translate `mode` per §4.1; the path fields are derived from
 the fixed per-mode tables, not user-edited. (Where the file lives: primary →
-`@system.primary_workset/boxes/<box>/settings.yaml`; named →
+`@config.primary_workset/boxes/<box>/settings.yaml`; named →
 `<wsroot>/boxes/<box>/settings.yaml`; standalone → `<root>/settings.yaml` (at the
 project root, NOT inside `box_data/` — see §4.5).)
 
@@ -3184,9 +3215,9 @@ box's own workset/box tree, one file per box:
 
 | Mode | New host helper-log path |
 |---|---|
-| PRIMARY | `@system.primary_workset/logs/<box>.jsonl` |
-| NAMED | `@workset.meta.root/logs/<box>.jsonl` |
-| STANDALONE | `@workset.meta.root/box_data/<box>.jsonl` |
+| PRIMARY | `@system.primary_workset/logs/<box>.jsonl` (superseded in v1.8.0 → `@config.primary_workset/...`, §3.1) |
+| NAMED | `@meta.workset.path/logs/<box>.jsonl` |
+| STANDALONE | `@meta.workset.path/box_data/<box>.jsonl` |
 
 The box-side dest is unchanged (`$XDG_STATE_HOME/kanibako/helpers.jsonl`, read-only),
 and the in-box `kanibako box helper log` command is unaffected. NAMED worksets now get
@@ -3202,9 +3233,26 @@ so a moved/imported standalone tree carries its helper log with it.
 ## 5. Registry consolidation
 
 The separate name/registry stores merge into one `registry.yaml` at
-`@system.registry` (`@system.global/registry.yaml`).
+`@config.registry` (`@config.data/global/registry.yaml` today; `@system.global`
+does not resolve — see §3.1, the `system.global` row, line 2931).
 
-| Old file | New `registry.yaml` section |
+⚑ **Superseded in v1.8.0.** The table below reflects the 1.6.0-era merge; the
+sections have moved again since. The canonical, current section list is
+`("worksets", "standalone", "deregistered", "rigs", "image_shells")`
+(`project/registry_store.py:85-91`):
+
+- **`projects:` is RETIRED** — it is dropped from the file on the next save, not
+  carried forward. Default-mode ("primary") box identity now lives in the
+  PRIMARY workset's own per-workset `boxes:` membership, not in a top-level
+  registry section.
+- **`connected:` is GONE.** What it tracked is now the same per-workset `boxes:`
+  entry mentioned above — there is no separate top-level section for it.
+- **`workset_roots` is not a separate section.** Name→root resolution folds into
+  `worksets:` itself.
+- The table below also omits the live **`deregistered:`** section (present in
+  every current registry).
+
+| Old file | New `registry.yaml` section (1.6.0 — see correction above for the current set) |
 |---|---|
 | `{data}/names.yaml` `[projects]` | `projects:` |
 | `{data}/names.yaml` `[worksets]` | `worksets:` |
@@ -3216,10 +3264,10 @@ The separate name/registry stores merge into one `registry.yaml` at
 
 Steps:
 
-1. Create `@system.global/` if it does not exist.
+1. Create `@config.data/global/` if it does not exist.
 2. Merge the contents of `names.yaml`, `worksets.yaml`, `connected.yaml`,
    `rigs.yaml`, and `image-shells.yaml` into the appropriate sections of
-   `@system.global/registry.yaml`.
+   `@config.data/global/registry.yaml`.
 3. Remove the old `names.yaml` / `worksets.yaml` / `connected.yaml` /
    `rigs.yaml` / `image-shells.yaml`.
 
@@ -3272,10 +3320,14 @@ types across 2 scopes (system + workset), surfaced in-box under `~/channels/` an
 
 ### 7.1 Key + path renames
 
+⚑ **`system.channels.commons` superseded in v1.8.0 — see §2.3 (line 326).** The
+channel itself was renamed again, `commons` → `common`, on both host paths and
+the settings key.
+
 | Old `system.path.comms` | New `system.channelroot` + `system.channels.*` |
 |---|---|
-| `system.path.comms` (one dir) | `system.channelroot` (`@system.data/channels`) — ROOT-path leaf; sub-keys below under the `system.channels.*` branch |
-| — | `system.channels.commons` (`@system.channelroot/commons`) |
+| `system.path.comms` (one dir) | `system.channelroot` (`@config.data/channels`) — ROOT-path leaf; sub-keys below under the `system.channels.*` branch |
+| — | `system.channels.commons` (`@system.channelroot/commons`) — see the ⚑ above, now `system.channels.common` |
 | — | `system.channels.chat` (`@system.channelroot/chat`; dir of `*.md` logs) |
 | — | `system.channels.broadcast` (`@system.channels.chat/broadcast.md`) |
 | — | `system.channels.mailboxes` (`@system.channelroot/mailboxes`; partitioned `/<ws>/<box>`) |
@@ -3291,7 +3343,7 @@ so the key is a scalar XOR a subtree — the type roots live under `system.chann
 |---|---|---|---|
 | **Mailbox** | a box | write-only\* | system `mailboxes/<ws>/<box>` |
 | **Share** | a box | read-only\* | system `share/<ws>/<box>` + workset `channels/share/<box>` |
-| **Commons** | a scope | read-write | `commons/` (system + workset) |
+| **Commons** | a scope | read-write | `commons/` (system + workset) — renamed `common/` in v1.8.0, §2.3 |
 | **Chat** | a scope | read-append\* | `chat/*.md` (system + workset); default `general.md` |
 | **Broadcast** | a scope | read-append\* | `chat/broadcast.md` (system + workset) |
 
@@ -3302,6 +3354,10 @@ stance; box↔HOST isolation is unaffected. (Future helper-mediated enforcement 
 tighten the write paths without moving the in-box paths.)
 
 ### 7.3 In-box layout: `~/comms/` → `~/channels/`
+
+⚑ **`commons/` superseded in v1.8.0 — see §2.3 (line 326).** Every `commons/` path
+in the diagram below (both the system and workset trees) is `common/` as of
+v1.8.0.
 
 **Before** (single mount):
 
@@ -3394,6 +3450,11 @@ section: **your host agent config no longer flows into boxes.**
 
 ### 8.1 Layered seed-once template
 
+⚑ **`@system.base_template` superseded in v1.8.0 — see §2.5 (line 460).** The key
+is retired; the live key is `system.template`, and it now names a template
+**root** two levels up from the box-home seed (`global/template/box/home/`), not
+the box-home dir directly.
+
 On box creation, three template layers are copied into the box home `~/` in order
 (later overlays earlier; absent layers are skipped), **once** — never re-seeded, so
 any edits you make inside a box afterward survive:
@@ -3408,6 +3469,10 @@ Per-file rule: plain ordered copy, **last layer wins**, seed-once. There is **no
 per-file merge of any file** (see the CLAUDE.md change below).
 
 ### 8.2 Content moves (a rename, not a loss)
+
+⚑ **`@system.base_template` superseded in v1.8.0 — see §2.5 (line 460).** Same
+correction as §8.1 above: the live key is `system.template`, naming the template
+root, not the flat box-home dir this row implies.
 
 | Old on-disk content | New location |
 |---|---|
@@ -3482,18 +3547,22 @@ plugin contract). The user-visible pieces are three on-disk / box-layout changes
 
 ### 9.1 Per-agent YAML section `crab:` → `agent:`
 
-The top-level section token in a per-agent YAML file is renamed from `crab` to
-`agent` (the last on-disk `crab` token in the config layer):
+⚑ **Superseded in v1.8.0 — see §2.37 (line 2094).** The top-level section token
+renamed from `crab` to `agent` at 1.6.0, as shown below, but that is no longer
+the file's root spelling either: v1.8.0 renamed it again, to **`self:`**
+(`settings/agent_file.py:36`). Renaming a `crab:` section to `agent:` today still
+leaves the file unrecognized — go straight to `self:`, and read §2.37 for the
+full current shape (every category flat under one `self:` level).
 
 ```yaml
-# Before                         # After
-crab:                            agent:
+# 1.6.0-era                      # superseded again in v1.8.0
+crab:                            self:
   model: opus                      model: opus
 ```
 
-⚑ **Hard break, no back-read.** A file with a `crab:` section is not recognized
-until you rename the section to `agent:`. (This is in addition to the cascade-level
-and key renames in §2.)
+⚑ **Hard break, no back-read.** A file with a `crab:` **or** `agent:` section is
+not recognized until you rename the section to `self:`. (This is in addition to
+the cascade-level and key renames in §2.)
 
 ### 9.2 Per-box meta file `project.yaml` → `settings.yaml`
 
@@ -3505,8 +3574,8 @@ mode (primary, named, and standalone). See §4.6 for where each mode's file live
 correction below).** At 1.6.0 the per-box `settings.yaml` stored construct-time box
 metadata in two YAML sections, `project:` and `resolved:` — the *physical* on-disk
 shape you would have seen if you opened the file. (The keyspace documented this
-metadata as the logical `box.meta.*` / `workset.meta.*` model; the on-disk layout used
-these two sections rather than nested `box.meta.*` tables.)
+metadata as the logical `meta.box.*` / `meta.workset.*` model; the on-disk layout used
+these two sections rather than nested `meta.box.*` tables.)
 
 ```yaml
 project:
@@ -3631,7 +3700,8 @@ shows** them; it refuses to set them and points you at the config file:
   > key is now `system.agent`, it lives in that
   > file's `system:` table, and it IS CLI-settable — `kanibako system set
   > system.agent=<name>`. Only the layout-PATH keys stay file-only.
-- To change a structural path (e.g. `system.data`): edit `~/.config/kanibako.yaml`.
+- To change a structural path (e.g. `config.data`, formerly spelled `system.data` — §2.1,
+  §3.1): edit `~/.config/kanibako_config.yaml`.
 
 Non-`system.`-prefixed settings (e.g. `model`, `box.image`) remain CLI-settable at
 every scope, including the global tier (`kanibako system set model=opus`).
@@ -3718,19 +3788,19 @@ After that the directory is a normal snapshot, restorable with
 ### 12.2 Config & env files at old locations
 
 `config_file_path` now resolves **only** the current location, and the global
-`env` file is no longer auto-moved. If you have files at the old paths, move
-them yourself:
+`env` file is no longer read by anything — the whole system-tier env reader is
+deleted (§2.19). If you have files at the old paths, move them yourself:
 
 | What        | Old location (no longer read/moved)        | Current location                |
 |-------------|--------------------------------------------|---------------------------------|
-| Main config | `$XDG_CONFIG_HOME/kanibako/kanibako.yaml`  | `$XDG_CONFIG_HOME/kanibako.yaml`|
-| Global env  | `$XDG_CONFIG_HOME/kanibako/env`            | `<data>/env` (`@system.data/env`) |
+| Main config | `$XDG_CONFIG_HOME/kanibako/kanibako.yaml`  | `$XDG_CONFIG_HOME/kanibako_config.yaml` |
+| Global env  | `$XDG_CONFIG_HOME/kanibako/env`            | not a file any more — the `system.env.<VAR>` setting key (§2.19) |
 
 ```bash
-mv ~/.config/kanibako/kanibako.yaml ~/.config/kanibako.yaml
-# Find your data dir with `kanibako system get system.data` (prints
-# `system.data=<path>`), then move the env file under it:
-mv ~/.config/kanibako/env <data>/env
+mv ~/.config/kanibako/kanibako.yaml ~/.config/kanibako_config.yaml
+# There is no system-tier env FILE to move the old one to (§2.19: the reader
+# that used to load it is deleted). Move each VAR=value line to a key instead:
+kanibako system set system.env.<VAR>=<value>
 ```
 
 (`$XDG_CONFIG_HOME` defaults to `~/.config`. Adjust if you set it explicitly.)
