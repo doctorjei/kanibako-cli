@@ -748,7 +748,7 @@ class Target(ABC):
 
         Returns `None` on ANY failure — no such module entry, no `__package__`, an
         unimportable/absent package, or no `data/rom` directory. Directory plugins
-        (`~/.local/share/kanibako/plugins/`, `{project}/.kanibako/plugins/`) are not
+        (`~/.local/share/kanibako/plugins/`, `{project}/box_data/plugins/`) are not
         `kanibako.plugins.*` packages and simply resolve to `None`, which is the right
         answer for them.
         """
