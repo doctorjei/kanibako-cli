@@ -1592,8 +1592,12 @@ keys:
     type: bool
     set: cli+file
     default: true
-    note: "sparse — only a non-default false is ever written. Read-compat maps the
-           legacy project.enable_vault → this key."
+    note: "sparse — only a non-default false is ever written. NO read-compat: a
+           legacy project.enable_vault on disk is NOT read by
+           read_box_enable_vault (settings/config.py), which looks at the
+           box: table only. See not_keys.code_residue `project.*` — a stored
+           project.enable_vault: false must be moved by hand or the box
+           silently launches with the vault ENABLED."
     spec: "§2b (renamed 2026-07-04)"
   box.bindings.ro:
     scope: box
@@ -2934,8 +2938,21 @@ not_keys:
     # (agent.<agent>.provider MOVED to plugin_contributed — R-37: goose declares it
     #  via setting_descriptors(), so it IS a legal descriptor-contributed member)
     "paths_project_toml":       "residue field"
-    "project.*":                "the [project] table is a pre-box-rename artifact
-                                 (read-compat ONLY: project.enable_vault -> box.enable_vault)"
+    "project.*":                "the [project] table (mode/enable_vault/group_auth/name)
+                                 is a pre-P8b on-disk artifact. NO read-compat exists for
+                                 ANY member: read_project_meta/write_project_meta were
+                                 DELETED in P8c once sparse create (P8b) stopped writing
+                                 the project:/resolved: sections. project.mode and
+                                 project.group_auth are superseded by
+                                 meta.box.mode / box.auth.{global,workset}_enabled (never
+                                 read from here); project.enable_vault is never read from
+                                 here either (see box.enable_vault above); project.name is
+                                 likewise unread — standalone identity is composed
+                                 kuid-first from workset.kuid + the dir leaf
+                                 (project/import_reconcile.py, P8b), never from a stored
+                                 project.name. MIGRATION.md's per-box-meta-file section
+                                 describes this same on-disk shape — keep the two in
+                                 agreement."
     "resolved.*":               "core-derived [resolved] table, not keys"
 
 ## ---------------------------------------------------------------------------
