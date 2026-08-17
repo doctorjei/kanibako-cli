@@ -27,7 +27,36 @@ from kanibako.persona_store import (
     persona_store_root,
     read_persona_bundle,
     resolve_secret_path,
+    validate_endpoint,
 )
+
+
+class TestValidateEndpoint:
+    """The well-formedness gate itself, in isolation from the store plumbing."""
+
+    @pytest.mark.parametrize("endpoint", [
+        "https://api.anthropic.com",
+        "http://myhost:8080",
+        "https://api.example.com/v1",
+        "http://192.168.1.1:8080/v1",
+        "HTTPS://Upper.Case.Example",
+    ], ids=["https-plain", "http-host-port", "https-path-suffix", "http-ipv4-literal",
+            "uppercase-scheme"])
+    def test_ordinary_endpoints_pass(self, endpoint):
+        validate_endpoint(endpoint)  # must not raise
+
+    @pytest.mark.parametrize("endpoint", [
+        "myhost:8080/v1",           # the live incident: no scheme at all
+        "api.anthropic.com",        # bare host, same failure shape
+        "ftp://host.example",       # a scheme, but not one the client can use
+        "https://",                 # scheme with no host
+        "https:///path",            # scheme + path, still no host
+        "",                         # empty
+    ], ids=["scheme-less", "bare-host", "unsupported-scheme", "empty-host",
+            "empty-host-with-path", "empty-string"])
+    def test_malformed_endpoints_are_refused(self, endpoint):
+        with pytest.raises(ConfigError):
+            validate_endpoint(endpoint)
 
 
 def _make_store_entry(tmp_home: Path, persona: str = "navigator", harness: str = "codex") -> Path:
@@ -406,6 +435,53 @@ class TestReadPersonaBundle:
         assert bundle is not None
         assert bundle.reject_reason is not None
         assert bundle.to_persona_values() == {}
+
+    def test_scheme_less_endpoint_is_a_reject_bundle(self, tmp_home):
+        """The live incident (finding #6): ``myhost:8080/v1`` has no scheme, is
+        indistinguishable from a valid persona today at every truthiness check, and
+        used to reach Node verbatim (``API Error: Invalid URL``). It must now be
+        caught at the store-read boundary, naming the key and the cure."""
+        import json
+
+        self._entry(tmp_home, config=json.dumps({
+            "env": {
+                "ANTHROPIC_BASE_URL": "myhost:8080/v1",
+                "ANTHROPIC_AUTH_TOKEN": "sk-never-read",
+            },
+            "model": "gemma4",
+        }))
+        bundle = self._read()
+        assert bundle is not None
+        assert bundle.reject_reason is not None
+        assert "myhost:8080/v1" in bundle.reject_reason
+        assert "not well-formed" in bundle.reject_reason
+        # names the key + the exact cure, like every neighbouring refusal
+        assert "agent.navigator+claude.endpoint=<url>" in bundle.reject_reason
+        assert "kanibako system set" in bundle.reject_reason
+        assert bundle.to_persona_values() == {}
+
+    @pytest.mark.parametrize("endpoint", [
+        "https://api.anthropic.com",
+        "http://myhost:8080",
+        "https://api.example.com/v1",
+        "http://192.168.1.1:8080/v1",
+    ], ids=["https-plain", "http-host-port", "https-path-suffix", "http-ipv4-literal"])
+    def test_ordinary_valid_endpoints_still_pass(self, tmp_home, endpoint):
+        """MUST NOT regress: a gate that rejects everything would also catch this."""
+        import json
+
+        self._entry(tmp_home, config=json.dumps({
+            "env": {
+                "ANTHROPIC_BASE_URL": endpoint,
+                "ANTHROPIC_AUTH_TOKEN": "sk-never-read",
+            },
+            "model": "gemma4",
+        }))
+        bundle = self._read()
+        assert bundle is not None
+        assert bundle.reject_reason is None
+        assert bundle.endpoint == endpoint
+        assert bundle.to_persona_values()["endpoint"] == endpoint
 
     def test_harness_with_no_reader_is_not_a_reject(self, tmp_home):
         """⚑ BOTH-``None`` (goose / ``NoAgentTarget``) is NOT a reject.

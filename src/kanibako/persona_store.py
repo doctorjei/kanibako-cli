@@ -49,7 +49,10 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING, NamedTuple
 
-from kanibako.agent_ref import harness_of, parse_agent_ref, persona_of
+from urllib.parse import urlsplit
+
+from kanibako.agent_ref import display_agent_ref, harness_of, parse_agent_ref, persona_of
+from kanibako.errors import ConfigError
 from kanibako.settings.paths import xdg
 
 if TYPE_CHECKING:
@@ -306,6 +309,38 @@ class PersonaBundle(NamedTuple):
         return values
 
 
+#: Schemes the delivered HTTP clients (urllib probe, Node harness runtimes) can act on.
+_ENDPOINT_SCHEMES = frozenset({"http", "https"})
+
+
+def validate_endpoint(endpoint: str) -> None:
+    """Raise :class:`~kanibako.errors.ConfigError` unless *endpoint* is a well-formed
+    ``http``/``https`` base URL — validate-only, exactly like :func:`kanibako.agent_ref.parse_agent_ref`.
+
+    Minimal well-formedness ONLY, by design: a recognised scheme (``http``/``https``,
+    case-insensitive) and a non-empty host. Nothing about path, port, or query is
+    checked — a persona endpoint is a base URL the harness appends its own routes to,
+    and a stricter gate risks refusing a shape that works today (a false refusal here
+    breaks a working box, the one outcome this check must never cause). This is the
+    boundary the live incident crossed uncaught: a scheme-less endpoint
+    (``myhost:8080/v1``) reads as ``urlsplit``-scheme ``"myhost"``, sails past every
+    truthiness check downstream, and dies inside Node with ``Invalid URL``.
+    """
+    try:
+        parsed = urlsplit(endpoint)
+    except ValueError as exc:
+        raise ConfigError(
+            f"persona endpoint {endpoint!r} is not a well-formed URL ({exc})"
+        ) from exc
+    if parsed.scheme.lower() not in _ENDPOINT_SCHEMES:
+        raise ConfigError(
+            f"persona endpoint {endpoint!r} has no recognised scheme "
+            f"(got {parsed.scheme!r}; must start with 'http://' or 'https://')"
+        )
+    if not parsed.hostname:
+        raise ConfigError(f"persona endpoint {endpoint!r} names no host after the scheme")
+
+
 def read_persona_bundle(ref: str, target: Target) -> PersonaBundle | None:
     """Read the persona store ONCE and return the LIVE values for a launch.
 
@@ -353,6 +388,17 @@ def read_persona_bundle(ref: str, target: Target) -> PersonaBundle | None:
             return PersonaBundle(no_reader=True)
         return PersonaBundle(reject_reason=outcome.reject_reason)
     settings = outcome.settings
+    if settings.endpoint is not None:
+        try:
+            validate_endpoint(settings.endpoint)
+        except ConfigError as exc:
+            display = display_agent_ref(entry.node)
+            return PersonaBundle(reject_reason=(
+                f"persona store entry for '{entry.node}': the {entry.harness} config "
+                f"at {entry.config_dir} names an endpoint that is not well-formed — "
+                f"{exc}; fix the endpoint in that config, or override it via "
+                f"`kanibako system set agent.{display}.endpoint=<url>`, then retry"
+            ))
     token = resolve_secret_path(entry)
     return PersonaBundle(
         endpoint=settings.endpoint,

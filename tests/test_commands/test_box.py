@@ -9,6 +9,7 @@ import argparse
 import shutil
 from unittest.mock import patch
 
+import pytest
 
 from kanibako.settings.config import load_config
 from kanibako.settings.paths import WorksetSpec, load_std_paths, resolve_standalone_project, resolve_project, resolve_workset_project
@@ -2356,6 +2357,48 @@ class TestCheckPersonaStoreForCreate:
         err = self._call(tmp_home, "navigator+codex", monkeypatch)
         assert err is not None
         assert "not valid TOML" in err
+
+    def test_scheme_less_endpoint_is_refused_at_create(self, tmp_home, monkeypatch):
+        """Finding #6, create-side: the store TOML names a scheme-less base URL
+        (the live incident's exact shape) — the well-formedness gate at the
+        ``persona_store`` boundary must refuse it here too, via the SAME
+        ``reject_reason`` plumbing already wired for an unreadable config."""
+        store = self._store(tmp_home)
+        (store / "codex" / "config.toml").write_text(
+            'model = "gemma4"\n'
+            "[model_providers.navigator]\n"
+            'name = "navigator"\n'
+            'base_url = "myhost:8080/v1"\n'
+            'wire_api = "responses"\n'
+            'env_key = "NAVIGATOR_API_KEY"\n'
+        )
+        err = self._call(tmp_home, "navigator+codex", monkeypatch)
+        assert err is not None and err.startswith("Error:")
+        assert "myhost:8080/v1" in err
+        assert "not well-formed" in err
+        assert "agent.navigator+codex.endpoint=<url>" in err
+        assert not self._settings_path(tmp_home).exists()
+
+    @pytest.mark.parametrize("endpoint", [
+        "https://api.navigator.example/v1",
+        "http://myhost:8080",
+        "http://192.168.1.1:8080/v1",
+    ], ids=["https-plain", "http-host-port", "http-ipv4-literal"])
+    def test_ordinary_endpoint_variants_still_create(
+        self, tmp_home, monkeypatch, endpoint,
+    ):
+        """MUST NOT regress: a gate that rejects everything would pass this too."""
+        store = self._store(tmp_home)
+        (store / "codex" / "config.toml").write_text(
+            'model = "gemma4"\n'
+            "[model_providers.navigator]\n"
+            'name = "navigator"\n'
+            f'base_url = "{endpoint}"\n'
+            'wire_api = "responses"\n'
+            'env_key = "NAVIGATOR_API_KEY"\n'
+        )
+        assert self._call(tmp_home, "navigator+codex", monkeypatch) is None
+        assert not (tmp_home / "data" / "agents").exists()
 
     def test_malformed_ref_is_an_error(self, tmp_home, monkeypatch):
         err = self._call(tmp_home, "navi/gator+codex", monkeypatch)
