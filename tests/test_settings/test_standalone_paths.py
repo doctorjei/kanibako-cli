@@ -481,6 +481,18 @@ class TestMissingVaultAdvisory:
         proj = self._proj(tmp_path, enable_vault=True, make_vault=False)
         assert self._warned(caplog, proj)
 
+    def test_warning_names_the_path_it_checked(self, tmp_path, caplog):
+        # The warning must name the directory the code actually tested
+        # (vault_rw_path), never its parent.
+        proj = self._proj(tmp_path, enable_vault=True, make_vault=False)
+        assert self._warned(caplog, proj)
+        [msg] = [r.getMessage() for r in caplog.records if "cannot find vault" in r.getMessage()]
+        # vault_rw_path.parent is a PREFIX of vault_rw_path, so a plain
+        # substring check can't distinguish them; pin the exact argument via
+        # the format string's own delimiters ("expected at %s)").
+        assert f"expected at {proj.vault_rw_path})" in msg
+        assert f"expected at {proj.vault_rw_path.parent})" not in msg
+
     def test_enabled_and_present_silent(self, tmp_path, caplog):
         proj = self._proj(tmp_path, enable_vault=True, make_vault=True)
         assert not self._warned(caplog, proj)

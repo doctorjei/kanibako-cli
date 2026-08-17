@@ -321,8 +321,12 @@ def xdg(env_var: str, default_suffix: str) -> Path:
     return resolve_xdg(env_var, default_suffix)
 
 
-def host_xdg_map(data_home: Path | None = None) -> dict[str, str]:
-    """THE single builder for the ``xdg=`` argument of every host-side ``ResolveCtx``."""
+def _spec_default_xdg_map(data_home: Path | None) -> dict[str, str]:
+    """The XDG vars that HAVE a spec default (data/config/state/cache) — no ``XDG_RUNTIME_DIR``.
+
+    ⚑ Side-effect-free: unlike ``XDG_RUNTIME_DIR`` (see :func:`_fallback_runtime_dir`), none of
+    these four ever mkdir a fallback dir — :func:`resolve_data_leaf` relies on that to stay total.
+    """
     xdg_map: dict[str, str] = {}
     for name, suffix in XDG_SPEC_DEFAULTS.items():
         if name == XDG_DATA_HOME and data_home is not None:
@@ -330,14 +334,26 @@ def host_xdg_map(data_home: Path | None = None) -> dict[str, str]:
             xdg_map[name] = str(data_home)
         else:
             xdg_map[name] = str(resolve_xdg(name, suffix))
+    return xdg_map
+
+
+def host_xdg_map(data_home: Path | None = None) -> dict[str, str]:
+    """THE single builder for the ``xdg=`` argument of every host-side ``ResolveCtx``."""
+    xdg_map = _spec_default_xdg_map(data_home)
     xdg_map[XDG_RUNTIME_DIR] = str(resolve_xdg(XDG_RUNTIME_DIR, None))
     return xdg_map
 
 
-def resolve_config_paths(set_values: Mapping[str, str],
-                         *, data_home: Path, home: Path) -> dict[str, str]:
-    """Resolve the Layer-1 CONFIG-key foundation to concrete host paths (flat by design)."""
-    xdg_vars = host_xdg_map(data_home)
+def resolve_config_paths(set_values: Mapping[str, str], *, data_home: Path, home: Path,
+                         xdg_vars: Mapping[str, str] | None = None) -> dict[str, str]:
+    """Resolve the Layer-1 CONFIG-key foundation to concrete host paths (flat by design).
+
+    ⚑ *xdg_vars*, when given, REPLACES the live :func:`host_xdg_map` build — the seam
+    :func:`resolve_data_leaf` uses to resolve ``config.data`` without touching
+    ``XDG_RUNTIME_DIR`` (whose fallback can mkdir; see :func:`_spec_default_xdg_map`).
+    Every other caller leaves it unset and gets today's exact ``host_xdg_map(data_home)``.
+    """
+    xdg_vars = dict(xdg_vars) if xdg_vars is not None else host_xdg_map(data_home)
     ctx = ResolveCtx(agent_name=None, workset_name=None, host_home=str(home), xdg=xdg_vars)
     levels = [LevelView("config", values=dict(set_values), defaults=CONFIG_PATH_DEFAULTS)]
 
@@ -419,6 +435,51 @@ def load_system_config(user_config_path: Path, *, data_home: Path, home: Path) -
     return resolve_system_paths(raw, data_home=data_home, home=home)
 
 
+def resolve_data_leaf(data_path: Path | None = None, *, config_home: Path | None = None,
+                      data_home: Path | None = None) -> str:
+    """The leaf (basename) of ``config.data`` — PURE and TOTAL; creates nothing, never raises.
+
+    Given an ALREADY-RESOLVED *data_path* (e.g. a caller's own
+    ``load_system_config(...)["config.data"]``), this is just ``data_path.name`` — no re-read.
+    Without one, resolves ``config.data`` fresh from the host CONFIG file set (base < user,
+    the same Layer-1 foundation :func:`load_system_config` reads) and returns ITS leaf — so a
+    caller with no path in hand yet (:func:`kanibako.vscode.vscode_remote._vscode_remote_state_dir`)
+    still tracks a non-default ``config.data`` instead of hardcoding the default leaf.
+
+    ⚑ TOTAL: any failure to read or resolve config — the file is absent, unreadable, or
+    malformed YAML, or a stored expression fails to resolve — degrades to the DEFAULT leaf
+    (:data:`KANIBAKO_PATH`, matching ``CONFIG_PATH_DEFAULTS["config.data"]``'s own default).
+    An absent/unreadable config is exactly TODAY's status quo (nothing has ever read it for
+    this purpose either), so this can never be worse; a readable config makes it strictly
+    better. ⚑ Builds its own xdg map (:func:`_spec_default_xdg_map` — data/config/state/cache,
+    deliberately NOT ``host_xdg_map``) rather than the full Layer-1 resolve's usual map: resolving
+    ``XDG_RUNTIME_DIR`` can mkdir a fallback dir when unset, and this function must create
+    nothing. The one case that misses: a hand-edited config expression referencing
+    ``$XDG_RUNTIME_DIR`` (no shipped default does) degrades to the default leaf rather than
+    resolving it — an acceptable trade for staying total and side-effect-free.
+    """
+    if data_path is not None:
+        return data_path.name
+    ch = config_home if config_home is not None else xdg(XDG_CONFIG_HOME,
+                                                          XDG_SPEC_DEFAULTS[XDG_CONFIG_HOME])
+    dh = data_home if data_home is not None else xdg(XDG_DATA_HOME,
+                                                      XDG_SPEC_DEFAULTS[XDG_DATA_HOME])
+    try:
+        # ⚑ Lazy import to avoid a config <-> paths import cycle at module load — do not hoist
+        # (mirrors load_system_config's own deferral).
+        from kanibako.settings.config import config_base_path
+
+        raw: dict[str, str] = {}
+        raw.update(load_config(config_base_path()).config_paths)
+        raw.update(load_config(config_file_path(ch)).config_paths)
+        config_set = {k: v for k, v in raw.items() if k.startswith("config.")}
+        resolved = resolve_config_paths(config_set, data_home=dh, home=Path.home(),
+                                        xdg_vars=_spec_default_xdg_map(dh))
+        return Path(resolved["config.data"]).name
+    except Exception:
+        return KANIBAKO_PATH
+
+
 def load_std_paths(config: KanibakoConfig | None = None) -> StandardPaths:
     """Compute all standard kanibako directories, creating them as needed."""
     config_home = xdg(XDG_CONFIG_HOME, XDG_SPEC_DEFAULTS[XDG_CONFIG_HOME])
@@ -437,7 +498,7 @@ def load_std_paths(config: KanibakoConfig | None = None) -> StandardPaths:
     resolved = load_system_config(config_file, data_home=data_home, home=Path.home())
     data_path = resolved["config.data"]
     # state/cache paths track the data dir's leaf name (default leaf "kanibako").
-    rel = data_path.name
+    rel = resolve_data_leaf(data_path)
     state_path = state_home / rel
     cache_path = cache_home / rel
 
@@ -1282,7 +1343,7 @@ def _flag_missing_vault(proj: ProjectPaths) -> ProjectPaths:
     """Advisory (never fatal): warn when a box that EXPECTS a vault has none on disk (spec D5)."""
     if proj.enable_vault and not proj.vault_rw_path.is_dir():
         get_logger(__name__).warning(WARN_BOX_NO_VAULT, proj.name or str(proj.project_path),
-                                     proj.vault_rw_path.parent)
+                                     proj.vault_rw_path)
 
     return proj
 

@@ -52,7 +52,7 @@ from pathlib import Path
 
 from kanibako.errors import KanibakoError
 from kanibako.log import get_logger
-from kanibako.settings.paths import xdg
+from kanibako.settings.paths import resolve_data_leaf, xdg
 
 logger = get_logger("vscode_remote")
 
@@ -347,7 +347,15 @@ def remote_context_name(dest: str) -> str:
 # ---------------------------------------------------------------------------
 
 def _vscode_remote_state_dir() -> Path:
-    return xdg("XDG_STATE_HOME", ".local/state") / "kanibako" / "vscode-remote"
+    """State dir for the connection store + dispatch log — tracks ``config.data``'s leaf.
+
+    :func:`resolve_data_leaf` is PURE and TOTAL (never raises, creates nothing): it degrades
+    to the default leaf ("kanibako") whenever the host config is absent/unreadable/malformed,
+    which is today's exact behaviour — so this function stays as pure and total as it was
+    with the leaf hardcoded, while tracking a non-default ``config.data`` when config IS
+    readable (closes the store-isolation gap the hardcoded leaf left open).
+    """
+    return xdg("XDG_STATE_HOME", ".local/state") / resolve_data_leaf() / "vscode-remote"
 
 
 def contexts_dir() -> Path:
