@@ -82,16 +82,26 @@ RETIRED_FILE_KEYS: "dict[tuple[str, ...], str]" = {
 _PREF_LEGAL_LEVELS: "frozenset[str]" = frozenset({"workset", "box"})
 
 
-def _retired_key_cure(key: str, *, level: str, value: str) -> str:
-    """The LEVEL-APPROPRIATE fix for a retired key (M-4)."""
+def _retired_key_cure(
+    key: str, *, level: str, value: str, box_name: str | None = None,
+) -> str:
+    """The LEVEL-APPROPRIATE fix for a retired key (M-4).
+
+    *box_name* is the addressable box the cure is FOR — ``kanibako box set`` needs it as its
+    ``[project]`` positional (spec: the box argument is REQUIRED unless the caller's cwd already
+    resolves to that box; Jei hit exactly that gap live). Threaded ONLY for a box-level refusal
+    (``None`` at any other *level*, where no single box is being refused for).
+    """
     if key == "system.default_agent":
         # Always the same cure: the replacement is a SYSTEM-scope key wherever the stale leaf was.
         return f"kanibako system set system.agent={value}"
     # box.agent_name → the §2h request, but ONLY where a request may be written.
     if level in _PREF_LEGAL_LEVELS:
+        box_arg = f"{box_name} " if level == "box" and box_name else ""
         return (
-            f"kanibako box set pref.system.agent={value}   "
-            f"(or `kanibako box set --null pref.system.agent` for a no-agent box)"
+            f"kanibako box set {box_arg}pref.system.agent={value}   "
+            f"(or `kanibako box set {box_arg}--null pref.system.agent` for a "
+            f"no-agent box)"
         )
     # M-4: no legal pref equivalent at base/system/agent — FLAG it, never silently relocate it.
     return (
@@ -119,12 +129,17 @@ def _nested_present(raw: Any, parts: "tuple[str, ...]") -> Any:
     return node
 
 
-def refuse_retired_keys(raw: Any, *, level: str, path: Path | None) -> None:
+def refuse_retired_keys(
+    raw: Any, *, level: str, path: Path | None, box_name: str | None = None,
+) -> None:
     """RAISE when *raw* still carries a RETIRED agent-selection key (P7); the two are
     :data:`RETIRED_FILE_KEYS`.
 
     Never a warning and never a silent drop; called at the SELECTION seam
     (:mod:`kanibako.settings.agent_select`), NOT inside :func:`assemble_levels`. Why both: llm-docs.
+
+    *box_name* is passed straight through to :func:`_retired_key_cure` — see its docstring for why
+    it is only meaningful at ``level="box"``.
     """
     if not isinstance(raw, dict):
         return
@@ -135,7 +150,9 @@ def refuse_retired_keys(raw: Any, *, level: str, path: Path | None) -> None:
         # The cure quotes the value the user ACTUALLY has, so it is copy-pasteable; a
         # present-``None`` has no value to quote → the shape.
         value = "" if found is None else str(found).strip()
-        cure = _retired_key_cure(key, level=level, value=value or "<name>")
+        cure = _retired_key_cure(
+            key, level=level, value=value or "<name>", box_name=box_name,
+        )
         raise SettingsError(
             f"'{key}' is RETIRED and is still set in the {level} settings file "
             f"{path if path is not None else '<settings>'} "
