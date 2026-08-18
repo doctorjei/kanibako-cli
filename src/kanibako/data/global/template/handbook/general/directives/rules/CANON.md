@@ -1,5 +1,6 @@
 <!--[STOCK]
-# System Tome: Canon
+### 2.1.1 Canon Sections 
+_(System Tome))_
 
 > This file holds the system-wide canon policy; it is read from the global canon/handbook path and
 > can only be edited from the host system by the user (not from within the box). Agent-editable
@@ -8,7 +9,7 @@
 > This file is seeded from the core package. Defaults contents are included here; they are meant
 > as a starting point and can be extended or replaced.
 -->
-## Canon Structure
+### Canon Structure
 
 The 'Canon' refers to instructions and information metadata of three distinct parts / levels:
 
@@ -29,7 +30,7 @@ directory that does not yet exist is not missing — it has no content yet.
 
 ---
 
-### Handbook
+#### Handbook
 
 The user may grant agents access to edit the handbook documents; when doing so, observe and
 reinforce existing layouts, design approaches, and structure (subject to user requests or
@@ -38,7 +39,7 @@ those host-level files by invoking a one-time external mount.
 
 ---
 
-### Notebook
+#### Notebook
 
 Split directives and/or information in the notebook into multiple files as useful for organization.
 These are the standard, recognized Kanibako playbook formats & paths:
@@ -49,8 +50,10 @@ These are the standard, recognized Kanibako playbook formats & paths:
 | `archives/` | Completed plans & historical devnotes, documents, & information (i.e., "the archive" or "the archives"); the **authoritative historical record** | No |
 | `directives/CONVENTIONS.md` | Technical expectations (coding, architecture, commands, etc) | Typically (requires reference) |
 | `directives/` | Additional directive files, as appropriate | Typically (requires reference) |
+| `information/` | Informational documents about the project — architecture, platform lessons, environments; descriptive, not directive | No |
 | `procedures/` | Information about specific procedures / actions and how to do them | No |
-| `resources/` | Generally useful resources | No |
+| `references/` | Reference material consulted when a directive is ambiguous or silent — e.g. the rulings history. Evidence, never law | No |
+| `resources/` | Raw resource files (captures, fixtures, data) — not prose; prose belongs in `information/` | No |
 | `scripts/` | Reusable helper scripts | No |
 
 Keep script documentation in `--help` within scripts themselves, not in session files to avoid
@@ -58,7 +61,7 @@ duplication and reduce context consumption.
 
 ---
 
-### Workbook
+#### Workbook
 
 The project/box-specific `~/canon/workbook` also has standard conventions:
 
@@ -86,6 +89,3 @@ related to the current or future design, planning, and/or development) should be
 archives, including completed plans. Current / active documents and/or logs (e.g., `devnotes.md`
 and `tasks.md`) should truncate old entries, moving those old entries _verbatim_ into the archives
 with an appropriate prefix/suffix.
-
----
-

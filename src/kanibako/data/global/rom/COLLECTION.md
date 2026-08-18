@@ -17,10 +17,8 @@ This file contains *authoritative* instructions, rules, and procedures for auton
 are _not_ mere recommendations or guidelines, but rather **requirements**. When recommendations or
 guidelines are incorporated, the will be explicitly noted as such.
 
-# Library
+## Library
 
-1. Bible (Core) - @bible/ROM_CONTENTS.md
-2. Handbook (System) - @handbook/SYS_CONTENTS.md
-3. Notebook (Local) - @notebook/MY_CONTENTS.md
-
----
+1. [Bible (Core)](@bible/ROM_CONTENTS.md)
+2. [Handbook (System)](@handbook/SYS_CONTENTS.md)
+3. [Notebook (Local)](@notebook/MY_CONTENTS.md)

@@ -1,20 +1,18 @@
-# BRIEF_WORKSET.md - Workset Directives (editable)
 <!--[STOCK]
+## 2.3 Workset Directives
+_(System Tome)_
+
 ***NOTE TO EDITING AGENTS OR NATURAL PERSONS***: *Only directives that apply to ALL and ONLY
 projects in the workset should go in these files! Anything that is global, specific to agents, or
 specific to a project/box should go in the `general`, `agents`, or `box` sections respectively.*
 
+This file is seeded from the workset template (`@system.template/workset/canon/handbook`) into the
+workset store; delivered read-only at `~/canon/handbook/workset`. Directives that would apply to
+all workset boxes go here.
+
 An example section breakdown can be found in the comment block below. Those elements can be used as
 a starting point or entirely replaced.
--->
 
-> Seeded from the workset template (`@system.template/workset/canon/handbook`) into the workset store; delivered read-only at `~/canon/handbook/workset`.
-> Directives that would apply to all workset boxes go here.
-
-Shared directives across related projects in this workset are found here.
-
----
-<!--[STOCK]
 
 ## Workset Overview
 

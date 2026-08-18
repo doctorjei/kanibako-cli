@@ -1,5 +1,7 @@
 <!--[STOCK]
-# System Tome: Agent Instructions
+## 2.2 Agent Directives
+_(System Tome)_
+ System Tome: Agent Instructions
 
 > This file is the entrypoint for the "agent" chapter of the "handbook"; it is read from the
 > agent's canon/handbook directory and can only be edited from the host system by the user (not
