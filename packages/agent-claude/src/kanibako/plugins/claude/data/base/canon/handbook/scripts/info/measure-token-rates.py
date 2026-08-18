@@ -196,7 +196,8 @@ for key in sorted(cell_m, key=lambda k: (-len(cell_m[k]))):
 
 # marginals
 for axis, ix in (("MODEL", 0), ("EFFORT", 1)):
-    agg_m, agg_g = defaultdict(list), defaultdict(list)
+    agg_m: defaultdict[str, list[float]] = defaultdict(list)
+    agg_g: defaultdict[str, list[float]] = defaultdict(list)
     for key in cell_m:
         agg_m[key[ix]] += cell_m[key]
         agg_g[key[ix]] += cell_g[key]
@@ -213,7 +214,9 @@ for axis, ix in (("MODEL", 0), ("EFFORT", 1)):
 print("\n" + "=" * 78)
 print("SUBAGENTS, BY ROLE (agentType from sibling .meta.json)")
 print("=" * 78)
-by_role_out, by_role_g, by_role_n = defaultdict(list), defaultdict(list), defaultdict(int)
+by_role_out: defaultdict[str, list[float]] = defaultdict(list)
+by_role_g: defaultdict[str, list[float]] = defaultdict(list)
+by_role_n: defaultdict[str, int] = defaultdict(int)
 for meta in glob.glob(os.path.join(DIR, "*", "subagents", "*.meta.json")):
     try:
         m = json.load(open(meta))
