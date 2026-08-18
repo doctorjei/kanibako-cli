@@ -19,8 +19,11 @@ def detect_box_mode(project_dir: Path, std: StandardPaths, config: KanibakoConfi
 def resolve_box_identity(project_dir: Path, std: StandardPaths, config: KanibakoConfig) -> dict[str, Any] | None
 def _enumerate_worksets(std: StandardPaths) -> Iterator[tuple[str, Path, BoxMode]]
 def _find_owning_box(project_dir: Path, std: StandardPaths, config: KanibakoConfig) -> _OwnedBox | None
+```
 
+## Classes
 
+```
 class _OwnedBox(NamedTuple):
     workset_name: str
     workset_root: Path

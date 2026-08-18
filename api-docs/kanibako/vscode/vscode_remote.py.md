@@ -47,8 +47,11 @@ def _vscode_remote_state_dir() -> Path
 def _docker_config_dir() -> Path
 def _wrapper_content() -> str
 def _write_script(path: Path, content: str) -> bool
+```
 
+## Classes
 
+```
 class RemoteEngine:
     def __init__(self, url: str, *, podman: str | None=None) -> None
 

@@ -21,8 +21,11 @@ def has_workset_channels(proj: ProjectPaths) -> bool
 def system_partition(std: StandardPaths, ws_token: str) -> SystemPartition
 def workset_channel_paths(proj: ProjectPaths, std: StandardPaths) -> WorksetChannels | None
 def box_channel_addresses(proj: ProjectPaths, std: StandardPaths) -> BoxChannelAddresses
+```
 
+## Classes
 
+```
 @dataclass(frozen=True)
 class SystemPartition:
     ws_token: str

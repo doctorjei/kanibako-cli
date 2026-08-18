@@ -85,8 +85,11 @@ def _flag_nonconforming(proj: ProjectPaths) -> ProjectPaths
 def _flag_invalid_kuid(proj: ProjectPaths) -> ProjectPaths
 def _flag_missing_vault(proj: ProjectPaths) -> ProjectPaths
 def _init_standalone_project(std: StandardPaths, metadata_path: Path, shell_path: Path, vault_ro_path: Path, vault_rw_path: Path, project_path: Path, *, enable_vault: bool=True) -> None
+```
 
+## Classes
 
+```
 class BoxMode(Enum):
     primary = 'primary'
     named = 'named'
@@ -135,10 +138,6 @@ class ProjectGroup:
     is_default: bool
     local_shared_base: Path
 
-class _WorksetRooted(Protocol):
-    @property
-    def root(self) -> Path
-
 @dataclass
 class ProjectPaths:
     project_path: Path
@@ -152,6 +151,23 @@ class ProjectPaths:
     enable_vault: bool = field(default=True)
     name: str = field(default='')
     group: ProjectGroup | None = field(default=None)
+
+@dataclass(frozen=True)
+class WorksetSpec:
+    name: str
+    root: Path
+    projects_dir: Path
+    workspaces_dir: Path
+    vault_dir: Path
+    project_names: tuple[str, ...]
+    is_default: bool = False
+
+    @classmethod
+    def from_workset(cls, ws: _WorksetLike) -> WorksetSpec
+
+class _WorksetRooted(Protocol):
+    @property
+    def root(self) -> Path
 
 class _WorksetLike(Protocol):
     name: str
@@ -174,17 +190,4 @@ class _WorksetProjectLike(Protocol):
     def name(self) -> str
     @property
     def source_path(self) -> Path
-
-@dataclass(frozen=True)
-class WorksetSpec:
-    name: str
-    root: Path
-    projects_dir: Path
-    workspaces_dir: Path
-    vault_dir: Path
-    project_names: tuple[str, ...]
-    is_default: bool = False
-
-    @classmethod
-    def from_workset(cls, ws: _WorksetLike) -> WorksetSpec
 ```

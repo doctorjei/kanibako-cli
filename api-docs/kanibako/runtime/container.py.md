@@ -25,8 +25,11 @@ def _is_managed_canon_dest(dest: str) -> bool
 def _is_seed_denied_canon_dest(dest: str) -> bool
 def _guest_dest_to_host(dest: str, shell_path: Path, project_path: Path, *, map_home_root: bool=False) -> Path | None
 def _precreate_mount_stubs(shell_path: Path, project_path: Path, extra_mounts: list | None, enable_vault: bool, vault_ro_path: Path, vault_rw_path: Path, tmpfs_masks: list[str]) -> None
+```
 
+## Classes
 
+```
 class ContainerRuntime:
     def __init__(self, command: str | None=None) -> None
 

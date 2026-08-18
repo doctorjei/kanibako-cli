@@ -20,7 +20,8 @@ StoreValue = Union[KeyStore, Bind, BindEntry, str, int, float, bool, list[str], 
 
 ```
 
-## Functions
+## Classes
+
 ```
 class Bind(NamedTuple):
     host: str

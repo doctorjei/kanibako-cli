@@ -27,8 +27,11 @@ def snapshot_attach_state(session: str, *, run: _Runner=subprocess.run, proc_cmd
 def canonical_tmux_session_pid(session: str, *, run: _Runner=subprocess.run) -> int | None
 def _collect_proc_cmdlines() -> list[str]
 def _tmux_clients_output(session: str, run: _Runner) -> str
+```
 
+## Classes
 
+```
 @dataclass(frozen=True)
 class AttachState:
     vscode_server: bool = False

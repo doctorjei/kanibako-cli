@@ -11,10 +11,10 @@ V = TypeVar('V')
 
 ```
 
-## Functions
+## Classes
+
 ```
 class ReservedKeyError(KeyError):
-    ...
 
 class KeyStore(dict[str, 'V | KeyStore[V]'], Generic[V]):
     RESERVED_KEY_NAMES: frozenset[str] = frozenset({'get', 'keys', 'values', 'items', 'pop', 'popitem', 'setdefault', 'update', 'clear', 'copy', 'fromkeys', 'RESERVED_KEY_NAMES', 'insert_segments'})

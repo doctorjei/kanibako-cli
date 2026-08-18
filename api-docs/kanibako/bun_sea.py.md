@@ -20,10 +20,12 @@ def extract_module(binary_path: Path, name_suffix: str='cli.js') -> bytes
 def extract_cli_js(binary_path: Path) -> bytes
 def cli_js_hash(binary_path: Path) -> str
 def _parse_header(f) -> tuple[int, int, int]
+```
 
+## Classes
 
+```
 class BunSEAError(Exception):
-    ...
 
 @dataclass
 class BunModule:

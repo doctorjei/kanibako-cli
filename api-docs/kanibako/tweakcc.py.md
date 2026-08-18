@@ -19,8 +19,11 @@ def load_external_config(config_path: str | None) -> dict
 def build_merged_config(tweakcc_cfg: TweakccConfig, kanibako_defaults: dict | None=None) -> dict
 def write_merged_config(config: dict, output_path: Path) -> None
 def _deep_merge(base: dict, override: dict) -> dict
+```
 
+## Classes
 
+```
 @dataclass
 class TweakccConfig:
     enabled: bool = False

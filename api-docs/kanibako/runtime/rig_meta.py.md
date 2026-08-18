@@ -17,8 +17,11 @@ _ALWAYS: frozenset[str] = frozenset({'name', 'kind', 'reproducible'})
 def dump_rig_meta(meta: RigMeta) -> str
 def write_rig_meta(meta: RigMeta, path: Path) -> None
 def load_rig_meta(source: str | Path) -> RigMeta
+```
 
+## Classes
 
+```
 @dataclass
 class RigMeta:
     name: str

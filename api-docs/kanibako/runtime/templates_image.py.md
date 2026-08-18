@@ -28,8 +28,11 @@ def list_bundled_templates(containers_dir: Path | None=None, *, override_dir: Pa
 def _bundled_containers_dir() -> Path | None
 def _read_template_description(containerfile: Path, name: str) -> str
 def _scan_template_dir(containers_dir: Path | None, source: str) -> list[BundledTemplate]
+```
 
+## Classes
 
+```
 class BundledTemplate(NamedTuple):
     name: str
     description: str

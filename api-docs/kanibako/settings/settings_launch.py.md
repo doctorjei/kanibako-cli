@@ -57,8 +57,11 @@ def _emit_scope_node(collected: list[tuple[tuple[int, str, str], CategoryEntry]]
 def _emit_bind_map(collected: list[tuple[tuple[int, str, str], CategoryEntry]], map_node: KeyStore, *, order: int, scope: str, category: str, box_dest_fn, decl_scope_fn, optional_keys: frozenset[str]=frozenset()) -> None
 def _emit_bind(collected: list[tuple[tuple[int, str, str], CategoryEntry]], order: int, scope: str, category: str, name: str, host_src: str, box_dest_raw: str, opts: str | None, box_dest_fn, *, key_segments: tuple[str, ...], optional_keys: frozenset[str]=frozenset()) -> None
 def _no_lookup(ref: str, chain: tuple[str, ...]) -> str
+```
 
+## Classes
 
+```
 @dataclass(frozen=True)
 class AuthSource:
     tier: AuthTier

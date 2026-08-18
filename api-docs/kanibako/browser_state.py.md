@@ -18,8 +18,11 @@ def load_state(data_path: Path) -> BrowserState
 def save_state(data_path: Path, state: BrowserState) -> None
 def to_playwright_context(state: BrowserState) -> dict
 def from_playwright_context(context: dict) -> BrowserState
+```
 
+## Classes
 
+```
 @dataclass
 class BrowserState:
     cookies: list[dict] = field(default_factory=list)

@@ -47,8 +47,11 @@ def _refuse_mask_over_home(dest: str) -> None
 def _refuse_seed_outside_home(dest: str, entry: BindEntry) -> None
 def _refuse_env_twin(arriving: CategoryEntry, held: CollapsedEnv) -> None
 def _refuse_mode_contradiction(dest: str, entry: BindEntry, mode: str) -> None
+```
 
+## Classes
 
+```
 class CollapsedBind(NamedTuple):
     src: str | None
     opts: str | None

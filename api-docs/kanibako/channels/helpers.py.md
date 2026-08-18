@@ -31,8 +31,11 @@ def remove_helper_dirs(helpers_dir: Path, helper_num: int, sibling_helpers: list
 def bundled_init_script() -> Path
 def resolve_init_script(parent_scripts_dir: Path | None) -> Path
 def _link_peer(helpers_dir: Path, helper_num: int, name: str, target: Path) -> None
+```
 
+## Classes
 
+```
 @dataclass(frozen=True)
 class SpawnBudget:
     depth: int = DEFAULT_DEPTH

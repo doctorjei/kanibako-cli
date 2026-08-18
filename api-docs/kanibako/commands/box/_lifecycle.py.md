@@ -55,15 +55,11 @@ def _lower_name(args) -> str | None
 def _make_confirm(force: bool, summary: str)
 def _load_env()
 def _abort_if_locked(state: ProjectState, force: bool) -> bool
+```
 
+## Classes
 
-class _Sentinel:
-    __slots__ = ('_name',)
-
-    def __init__(self, name: str) -> None
-
-    def __repr__(self) -> str
-
+```
 @dataclass
 class ProjectState:
     owner: str
@@ -84,6 +80,13 @@ class TargetSpec:
     ownership: str | _Sentinel = UNCHANGED
     name: str | None = None
     records_only: bool = False
+
+class _Sentinel:
+    __slots__ = ('_name',)
+
+    def __init__(self, name: str) -> None
+
+    def __repr__(self) -> str
 
 @dataclass
 class _Unwind:

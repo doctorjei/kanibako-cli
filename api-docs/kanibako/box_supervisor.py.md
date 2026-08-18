@@ -51,8 +51,11 @@ def _default_pid_alive(pid: int) -> bool
 def _default_list_marker_pids(markers_dir: str) -> list[int]
 def _build_parser() -> argparse.ArgumentParser
 def _directive_watch(ns: argparse.Namespace) -> DirectiveWatch | None
+```
 
+## Classes
 
+```
 @dataclass(frozen=True)
 class DirectiveWatch:
     seed: str

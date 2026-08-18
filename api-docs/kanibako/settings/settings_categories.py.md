@@ -61,8 +61,11 @@ def _most_specific(entries: list[CategoryEntry]) -> CategoryEntry
 def _entry_lines(entries: list[CategoryEntry]) -> str
 def _rule_changed(body: str) -> str
 def _suppress_then_add(occupant_segments: tuple[str, ...], *, ambiguous: bool=False) -> str
+```
 
+## Classes
 
+```
 @dataclass(frozen=True)
 class CategoryEntry:
     category: str

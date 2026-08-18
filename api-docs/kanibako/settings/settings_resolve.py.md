@@ -36,15 +36,12 @@ def _expand_var(expr: str, i: int, ctx: ResolveCtx) -> tuple[str, int]
 def _resolve_var(name: str, ctx: ResolveCtx) -> str
 def _expand_ref(expr: str, i: int, lookup: Callable[[str, tuple[str, ...]], str], chain: tuple[str, ...]) -> tuple[str, int]
 def _no_lookup(ref: str, chain: tuple[str, ...]) -> str
+```
 
+## Classes
 
+```
 class SettingsError(KanibakoError):
-    ...
-
-class _Unset:
-    __slots__ = ()
-
-    def __repr__(self) -> str
 
 @dataclass(frozen=True)
 class ResolveCtx:
@@ -66,4 +63,9 @@ class ResolvedValue:
     level: str
     is_default: bool = False
     terminal: bool = False
+
+class _Unset:
+    __slots__ = ()
+
+    def __repr__(self) -> str
 ```

@@ -15,8 +15,11 @@ SELECTION_KEY = 'system.agent'
 ```
 def launch_resolve_ctx(std, proj, agent_name: 'str | None')
 def select_agent(*, std, proj, explicit_agent: 'str | None'=None, project_path: 'Path | None'=None) -> AgentSelection
+```
 
+## Classes
 
+```
 @dataclass(frozen=True)
 class AgentSelection:
     node: str

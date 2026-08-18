@@ -26,8 +26,11 @@ def strip_comments(line: str, in_comment: bool) -> tuple[str, bool]
 def build_manifest(fl: Flattener, seed: Path, dest: Path, output: str) -> dict
 def flatten(source: str, dest: str | None, *, additional_context: bool=False, manifest: str | None=None) -> int
 def main(argv: list[str]) -> int
+```
 
+## Classes
 
+```
 class Flattener:
     def __init__(self) -> None
 

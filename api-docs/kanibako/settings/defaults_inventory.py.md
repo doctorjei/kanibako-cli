@@ -30,8 +30,11 @@ def _bind_family_by_dest() -> dict[str, str]
 def _installed_targets() -> dict[str, Any]
 def _print_table(rows: list[DefaultRow], out: Any) -> None
 def _sorted(rows: list[DefaultRow]) -> list[DefaultRow]
+```
 
+## Classes
 
+```
 class DefaultRow(NamedTuple):
     key: str
     value: str

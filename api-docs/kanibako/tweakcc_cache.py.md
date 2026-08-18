@@ -14,10 +14,12 @@ logger = get_logger('tweakcc_cache')
 ## Functions
 ```
 def config_hash(config: dict) -> str
+```
 
+## Classes
 
+```
 class TweakccCacheError(Exception):
-    ...
 
 @dataclass
 class CacheEntry:
