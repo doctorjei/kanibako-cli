@@ -4,66 +4,62 @@ _Signatures only: no comments, no docstrings, no bodies._
 **GENERATED — do not hand-edit; regenerate with `notebook/scripts/dev-tools/gen-api-doc.py`.**
 Prose for these symbols lives in `llm-docs/kanibako/box_supervisor.py.md`.
 
-```python
+
+## Variables
+
+```
 log = get_logger('box_supervisor')
-
 CONTINUE_MARKER = '[Agent handoff - Continue prior task(s)]'
-
 TAKEOVER_HEADS_UP = '[Session takeover - another surface is taking over this session; wind down and checkpoint now if you have work in progress]'
-
 KANIBAKO_PKG_MOUNT_ROOT = '/opt/kanibako'
-
 PINNED_ROOT_RELPATH = '.kanibako'
-
 XDG_PROJECTIONS: tuple[tuple[str, str, str], ...] = (('XDG_STATE_HOME', '.local/state', 'state'),)
-
 XDG_LINK_NAME = 'kanibako'
+DIRECTIVE_MANIFEST_VERSION = 1
+FLATTEN_TIMEOUT = 60.0
+```
 
-def project_pinned_xdg(home: Path | None=None, environ: Mapping[str, str] | None=None) -> list[str]:
-    ...
-
-def xdg_projection_sh() -> str:
-    ...
-
-def scrub_bootstrap_pythonpath(environ: MutableMapping[str, str] | None=None) -> None:
-    ...
-
+## Types
+```
 _Runner = Callable[..., 'subprocess.CompletedProcess[str]']
-
 _Sleeper = Callable[[float], None]
-
 _PidAlive = Callable[[int], bool]
-
 _MarkersLister = Callable[[str], 'list[int]']
-
 _Signaller = Callable[[int, int], None]
-
 _GroupOf = Callable[[int], int]
-
 _OwnGroup = Callable[[], int]
-
 _Reaper = Callable[[], int]
 
-def _parse_stat_state(stat_text: str) -> str | None:
-    ...
+```
 
-def _proc_stat_state(pid: int) -> str | None:
-    ...
+## Functions
+```
+def project_pinned_xdg(home: Path | None=None, environ: Mapping[str, str] | None=None) -> list[str]
+def xdg_projection_sh() -> str
+def scrub_bootstrap_pythonpath(environ: MutableMapping[str, str] | None=None) -> None
+def reap_zombie_children(max_reaps: int=32) -> int
+def scan_marker_pids(markers_dir: str, *, list_pids: _MarkersLister, pid_alive: _PidAlive) -> tuple[set[int], set[int]]
+def newcomer_pids(live_pids: set[int], own_pids: set[int]) -> set[int]
+def decide(prev_state: AttachState, cur_state: AttachState, agent_alive: bool) -> SupervisorAction
+def decide_panel(tmux_alive: bool, panel: PanelAgentState, vscode_server: bool, any_attached: bool, seen_surface: bool) -> PanelAction
+def decide_directives(manifest: object, seed: str, dest: str, probe: Mapping[str, str | None]) -> DirectiveVerdict
+def config_from_argv(argv: list[str]) -> SupervisorConfig
+def main(argv: list[str] | None=None) -> int
+def _parse_stat_state(stat_text: str) -> str | None
+def _proc_stat_state(pid: int) -> str | None
+def _default_pid_alive(pid: int) -> bool
+def _default_list_marker_pids(markers_dir: str) -> list[int]
+def _build_parser() -> argparse.ArgumentParser
+def _directive_watch(ns: argparse.Namespace) -> DirectiveWatch | None
 
-def _default_pid_alive(pid: int) -> bool:
-    ...
 
-def reap_zombie_children(max_reaps: int=32) -> int:
-    ...
-
-def _default_list_marker_pids(markers_dir: str) -> list[int]:
-    ...
-
-def scan_marker_pids(markers_dir: str, *, list_pids: _MarkersLister, pid_alive: _PidAlive) -> tuple[set[int], set[int]]:
-    ...
-
-def newcomer_pids(live_pids: set[int], own_pids: set[int]) -> set[int]:
-    ...
+@dataclass(frozen=True)
+class DirectiveWatch:
+    seed: str
+    dest: str
+    manifest: str
+    flattener: str
+    interval: float = 5.0
 
 @dataclass(frozen=True)
 class SupervisorConfig:
@@ -82,6 +78,7 @@ class SupervisorConfig:
     panel_watch: bool = False
     agent_markers_dir: str | None = None
     creds_flag: str | None = None
+    directives: DirectiveWatch | None = None
     capture_history: int = 200
 
 class ActionKind(Enum):
@@ -92,9 +89,6 @@ class ActionKind(Enum):
 class SupervisorAction:
     kind: ActionKind = ActionKind.NONE
     fire_detach_hook: bool = False
-
-def decide(prev_state: AttachState, cur_state: AttachState, agent_alive: bool) -> SupervisorAction:
-    ...
 
 class PanelAgentState(Enum):
     NONE = 'none'
@@ -110,113 +104,53 @@ class PanelActionKind(Enum):
 class PanelAction:
     kind: PanelActionKind = PanelActionKind.NONE
 
-def decide_panel(tmux_alive: bool, panel: PanelAgentState, vscode_server: bool, any_attached: bool, seen_surface: bool) -> PanelAction:
-    ...
+class DirectiveVerdict(Enum):
+    FRESH = 'fresh'
+    STALE = 'stale'
+    HAND_EDITED = 'hand_edited'
 
 class BoxSupervisor:
+    def __init__(self, config: SupervisorConfig, *, run: _Runner=subprocess.run, sleep: _Sleeper=time.sleep, proc_cmdlines: Iterable[str] | None=None, pid_alive: _PidAlive=_default_pid_alive, list_marker_pids: _MarkersLister=_default_list_marker_pids, kill: _Signaller=os.kill, killpg: _Signaller=os.killpg, getpgid: _GroupOf=os.getpgid, getpgrp: _OwnGroup=os.getpgrp, reap: _Reaper=reap_zombie_children) -> None
 
-    def __init__(self, config: SupervisorConfig, *, run: _Runner=subprocess.run, sleep: _Sleeper=time.sleep, proc_cmdlines: Iterable[str] | None=None, pid_alive: _PidAlive=_default_pid_alive, list_marker_pids: _MarkersLister=_default_list_marker_pids, kill: _Signaller=os.kill, killpg: _Signaller=os.killpg, getpgid: _GroupOf=os.getpgid, getpgrp: _OwnGroup=os.getpgrp, reap: _Reaper=reap_zombie_children) -> None:
-        ...
+    def start_agent_session(self) -> bool
+    def restart_agent_session(self) -> bool
+    def agent_pane_dead_status(self) -> int | None
+    def capture_agent_output(self) -> str | None
+    def agent_session_alive(self) -> bool
+    def kill_agent_session(self) -> None
+    def panel_agent_state(self) -> PanelAgentState
+    def check_directives(self) -> DirectiveVerdict | None
+    def teardown(self) -> None
+    def install_signal_handlers(self) -> None
+    def run_forever(self) -> int
 
-    def _run_tmux(self, args: list[str]) -> int | None:
-        ...
-
-    def _tmux_output(self, args: list[str]) -> str | None:
-        ...
-
-    def _start_session_argv(self, session_argv: list[str]) -> list[str]:
-        ...
-
-    def _arm_and_start_session(self, session_argv: list[str]) -> int | None:
-        ...
-
-    def start_agent_session(self) -> bool:
-        ...
-
-    def restart_agent_session(self) -> bool:
-        ...
-
-    def _send_keys_text(self, text: str) -> bool:
-        ...
-
-    def _send_marker(self) -> bool:
-        ...
-
-    def _send_takeover_heads_up(self) -> bool:
-        ...
-
-    def agent_pane_dead_status(self) -> int | None:
-        ...
-
-    def capture_agent_output(self) -> str | None:
-        ...
-
-    def agent_session_alive(self) -> bool:
-        ...
-
-    def _kill_process_group(self, pid: int, sig: int) -> bool:
-        ...
-
-    def kill_agent_session(self) -> None:
-        ...
-
-    def _snapshot(self) -> AttachState:
-        ...
-
-    def _other_surface_attached(self, state: AttachState) -> bool:
-        ...
-
-    def _scan_markers(self) -> tuple[set[int], set[int]]:
-        ...
-
-    def _own_agent_pids(self) -> set[int]:
-        ...
-
-    def _log_newcomers(self, live_pids: set[int], own_pids: set[int]) -> None:
-        ...
-
-    def _signal_pid(self, pid: int, sig: int) -> bool:
-        ...
-
-    def _resume(self, pids: list[int]) -> None:
-        ...
-
-    def _takeover(self, own_pids: set[int], newcomers: set[int]) -> bool:
-        ...
-
-    def panel_agent_state(self) -> PanelAgentState:
-        ...
-
-    def _self_heal(self) -> bool:
-        ...
-
-    def _on_detach(self) -> None:
-        ...
-
-    def _safe_on_detach(self) -> None:
-        ...
-
-    def teardown(self) -> None:
-        ...
-
-    def _handle_sigterm(self, signum: int, frame: FrameType | None) -> None:
-        ...
-
-    def install_signal_handlers(self) -> None:
-        ...
-
-    def run_forever(self) -> int:
-        ...
-
-    def _run_panel_watch(self) -> int:
-        ...
-
-def _build_parser() -> argparse.ArgumentParser:
-    ...
-
-def config_from_argv(argv: list[str]) -> SupervisorConfig:
-    ...
-
-def main(argv: list[str] | None=None) -> int:
-    ...
+    def _run_tmux(self, args: list[str]) -> int | None
+    def _tmux_output(self, args: list[str]) -> str | None
+    def _start_session_argv(self, session_argv: list[str]) -> list[str]
+    def _arm_and_start_session(self, session_argv: list[str]) -> int | None
+    def _send_keys_text(self, text: str) -> bool
+    def _send_marker(self) -> bool
+    def _send_takeover_heads_up(self) -> bool
+    def _kill_process_group(self, pid: int, sig: int) -> bool
+    def _snapshot(self) -> AttachState
+    def _other_surface_attached(self, state: AttachState) -> bool
+    def _scan_markers(self) -> tuple[set[int], set[int]]
+    def _own_agent_pids(self) -> set[int]
+    def _log_newcomers(self, live_pids: set[int], own_pids: set[int]) -> None
+    def _signal_pid(self, pid: int, sig: int) -> bool
+    def _resume(self, pids: list[int]) -> None
+    def _takeover(self, own_pids: set[int], newcomers: set[int]) -> bool
+    def _self_heal(self) -> bool
+    def _on_detach(self) -> None
+    def _safe_on_detach(self) -> None
+    @staticmethod
+    def _sha256_of(path: str) -> str | None
+    def _read_directive_manifest(self, path: str) -> object
+    def _probe_directives(self, manifest: object, dest: str) -> dict[str, str | None]
+    def _reflatten_directives(self, watch: DirectiveWatch) -> bool
+    def _safe_check_directives(self) -> None
+    def _directive_tick_period(self) -> int
+    def _directive_tick(self) -> None
+    def _handle_sigterm(self, signum: int, frame: FrameType | None) -> None
+    def _run_panel_watch(self) -> int
 ```
