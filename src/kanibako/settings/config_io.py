@@ -1,21 +1,12 @@
 """Centralized load/dump/mutate for kanibako config documents (YAML).
 
-All kanibako-owned config files (kanibako_config.yaml, settings.yaml, config.yaml,
-settings.yaml, names.yaml, spawn.yaml, general.yaml, agent configs) are
-serialized as YAML through :func:`load_doc` / :func:`dump_doc`. There is no
-hand-rolled serializer. (pyproject.toml is Python packaging and is NOT handled
-here.)
-
-Beside them live the read-modify-write DOCUMENT MUTATORS — read/write/remove at a
-``(sections, leaf)`` path, plus the scalar rendering ``get`` displays. They know
-nothing about the KEYSPACE: a caller hands them a resolved path into a document
-and they preserve everything else in it. Which file, and which nested slot, a
-config KEY maps to is a different question, answered by
-:mod:`kanibako.settings.config_keys` and :mod:`kanibako.settings.config_dest`.
-
-⚑ These mutators were named ``_write_toml_key*`` / ``_remove_toml_key*`` while
-living in ``config_interface``. kanibako has no TOML config file — they called
-``load_doc``/``dump_doc`` (YAML) the whole time. The names are now honest.
+Terminology: a config DOCUMENT is one settings-cascade file (``kanibako_config.yaml``,
+a scope's ``settings.yaml``, an agent file, ``names.yaml``, ``spawn.yaml``); a
+DOCUMENT MUTATOR is a read-modify-write at a ``(sections, leaf)`` path.  The
+mutators know nothing about the KEYSPACE — which file and which nested slot a
+config KEY maps to is answered by :mod:`kanibako.settings.config_keys` and
+:mod:`kanibako.settings.config_dest`.  (pyproject.toml is Python packaging and is
+NOT handled here.)
 """
 from __future__ import annotations
 
@@ -28,13 +19,7 @@ from kanibako.errors import ConfigError
 
 
 def _yaml_problem(exc: yaml.YAMLError) -> str:
-    """One-line rendering of a YAML parse failure (the problem + where).
-
-    ``yaml``'s own ``str()`` is multi-line and cites ``"<unicode string>"`` as
-    the source (we hand :func:`yaml.safe_load` TEXT, not the file), so it names
-    everything except the file.  The caller supplies the file; this supplies the
-    problem and its line/column.
-    """
+    """One-line rendering of a YAML parse failure (the problem + where)."""
     if isinstance(exc, yaml.MarkedYAMLError) and exc.problem:
         mark = exc.problem_mark
         where = (
@@ -46,26 +31,14 @@ def _yaml_problem(exc: yaml.YAMLError) -> str:
 
 
 def load_doc(path: Path | None) -> dict:
-    """Load a config document → dict. Missing/empty/non-mapping → {}.
-
-    A file that is not parseable YAML raises :class:`~kanibako.errors.ConfigError`
-    ("Configuration file missing or malformed") naming the FILE and the parse
-    problem.  ⚑ THE NORMALIZATION BELONGS HERE and nowhere else: this is the one
-    seam that knows WHICH file is being read — ``yaml`` is handed a string, so its
-    own mark says ``"<unicode string>"`` — and a raw ``yaml.YAMLError`` escaping
-    to the CLI (which converts only ``KanibakoError`` into a clean rc1) is a
-    traceback on any verb that touches the cascade, including the BOX-LESS ones
-    (``rig list`` / ``setup`` / ``baseline``) that reach it through
-    ``load_merged_config``'s box-scalar resolve (B6-Editor S-3).
-    """
+    """Load a config document → dict. Missing/empty/non-mapping → {}."""
     if path is None or not path.exists():
         return {}
     text = path.read_text()
-    # Defensive: only parse real text. A non-str (e.g. a MagicMock from an
-    # under-mocked test path) fed to yaml.safe_load can balloon memory
-    # catastrophically — guard the host instead of trusting the input.
+    # ⚑ HOST-SAFETY GUARD, not a type nicety: a non-str fed to yaml.safe_load can OOM the box.
     if not isinstance(text, str):
         return {}
+    # ⚑ THE PARSE-FAILURE NORMALIZATION BELONGS HERE — this is the one seam that knows the FILE.
     try:
         data = yaml.safe_load(text)
     except yaml.YAMLError as exc:
@@ -77,11 +50,7 @@ def load_doc(path: Path | None) -> dict:
 
 
 def dump_doc(path: Path, data: dict) -> None:
-    """Serialize *data* to *path* as YAML (creates parent dirs).
-
-    The write is atomic (temp file in the same dir + ``os.replace``) so a crash
-    mid-write can never leave a torn/corrupt config document on disk.
-    """
+    """Serialize *data* to *path* as YAML, atomically (creates parent dirs)."""
     text = yaml.safe_dump(
         data, sort_keys=False, default_flow_style=False, allow_unicode=True,
     )
@@ -92,12 +61,10 @@ def dump_doc(path: Path, data: dict) -> None:
 # Document mutators (load → mutate → dump)
 # ---------------------------------------------------------------------------
 
+# ⚑ No key routes to empty ``sections`` today — this pair is the nested pair's
+# structural complement, not dead code.  See llm-docs for the measurement.
 def write_root_key(path: Path, key: str, value: object) -> None:
-    """Write a TOP-LEVEL scalar key, preserving other content.
-
-    Used for flat KanibakoConfig fields that live at the document root, not
-    under a section.
-    """
+    """Write a TOP-LEVEL scalar key, preserving other content."""
     data = load_doc(path)
     data[key] = value
     dump_doc(path, data)
@@ -118,10 +85,7 @@ def remove_root_key(path: Path, key: str) -> bool:
 def write_nested_key(
     path: Path, sections: tuple[str, ...], key: str, value: object,
 ) -> None:
-    """Write *key* into a nested table (e.g. ``("system", "path")``).
-
-    Preserves other content; creates intermediate tables as needed.
-    """
+    """Write *key* into a nested table (e.g. ``("system", "path")``), creating intermediates."""
     data = load_doc(path)
     node = data
     for sec in sections:
@@ -137,10 +101,7 @@ def write_nested_key(
 def remove_nested_key(
     path: Path, sections: tuple[str, ...], key: str,
 ) -> bool:
-    """Remove *key* from a nested table.  Returns True if found.
-
-    Prunes now-empty intermediate tables.
-    """
+    """Remove *key* from a nested table, pruning now-empty intermediates.  True if found."""
     if not path.exists():
         return False
 
@@ -183,14 +144,7 @@ def render_stored_scalar(v: object) -> str | None:
 def read_stored_leaf(
     noun_file: "Path | None", sections: tuple[str, ...], leaf: str,
 ) -> str | None:
-    """Return the value STORED at ``sections/leaf`` in *noun_file* (the get
-    model's stored-at-noun read), or ``None`` when absent / no file.
-
-    A root-level scalar (empty *sections*, e.g. a flat config field) reads the
-    document root. Bools render lowercase "true"/"false" (matching ``set``'s
-    coercion + ``show``'s rendering); a stored empty string reads as ``None``
-    ("(not set)"), preserving the prior "empty ⇒ unset" convention.
-    """
+    """The value STORED at ``sections/leaf`` in *noun_file*, or ``None`` when absent / no file."""
     if noun_file is None or not noun_file.exists():
         return None
     node: object = load_doc(noun_file)
@@ -206,19 +160,7 @@ def read_stored_leaf(
 def read_stored_pref(
     noun_file: "Path | None", sections: tuple[str, ...], leaf: str,
 ) -> str | None:
-    """Read a stored ``pref`` REQUEST, rendering all THREE empty idioms apart.
-
-    ⚑ The general :func:`read_stored_leaf` renders a stored ``""`` as ``None``
-    ("(not set)") — the "empty ⇒ unset" convention. That convention is WRONG for
-    a pref: §2h designates ``get`` as the verb that *"returns the REQUEST"*, and
-    the three idioms it must forward untouched (present-``None``, terminal ``""``,
-    and absence) are three DIFFERENT requests. Collapsing two of them into one
-    display makes the suppression request — the only channel a box has to drop
-    something its agent declares — indistinguishable from having asked nothing.
-
-    absent → ``None`` ("(not set)") · present-``None`` → ``"null"`` ·
-    ``""`` → ``'""'`` · else the value.
-    """
+    """Read a stored ``pref`` REQUEST, rendering all THREE empty idioms apart (spec §2h)."""
     if noun_file is None or not noun_file.exists():
         return None
     node: object = load_doc(noun_file)
@@ -229,6 +171,7 @@ def read_stored_pref(
     if not isinstance(node, dict) or leaf not in node:
         return None
     v = node[leaf]
+    # ⚑ NOT render_stored_scalar: it collapses None and "" — the three pref idioms must stay apart.
     if v is None:
         return "null"
     if v == "":
