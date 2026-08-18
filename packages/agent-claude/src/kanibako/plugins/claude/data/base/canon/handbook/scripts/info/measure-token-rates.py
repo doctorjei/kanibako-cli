@@ -11,9 +11,12 @@ Key correctness points:
   * Sidechain (subagent) turns are excluded from the director stream and
     analysed separately, split by agentType from the sibling .meta.json.
 
-Usage: measure-mg.py [transcript-dir]
+Usage: measure-token-rates.py [transcript-dir]
 """
-import json, os, sys, glob
+import glob
+import json
+import os
+import sys
 import statistics as st
 from collections import defaultdict
 
