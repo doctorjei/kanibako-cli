@@ -35,6 +35,8 @@ hook is a LATER increment and is NOT exercised here.
 
 from __future__ import annotations
 
+import importlib.resources
+import importlib.util
 import json
 from dataclasses import replace
 from pathlib import Path
@@ -82,6 +84,45 @@ _EXPECTED_FINAL = {
 }
 
 
+def _load_flattener():
+    """The box-side directive flattener, loaded from its package-data path.
+
+    Its filename is not a Python identifier, so it is loaded by file location and
+    never imported — the same helper ``tests/test_import_directives.py`` uses.
+    """
+    script = importlib.resources.files("kanibako.scripts").joinpath(
+        "import-directives.py"
+    )
+    spec = importlib.util.spec_from_file_location("import_directives", str(script))
+    assert spec and spec.loader
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+_flattener = _load_flattener()
+
+
+def _content_lines(text: str) -> list[str]:
+    """A kickoff loader's surviving lines, stripped the way a LAUNCH strips them.
+
+    ⚑ Comment removal is the flattener's OWN ``strip_comments``, with the comment
+    state carried across lines exactly as ``_process_text`` drives it, so what these
+    tests count is what the real flatten counts.  A hand-rolled
+    ``startswith("<!--")`` test sees only a comment's FIRST line, so every
+    CONTINUATION line of a multi-line header comment survives it and is counted as
+    content — a false failure the moment someone extends the header prose.  (A
+    kickoff loader carries no fenced blocks, so fence tracking is not reproduced.)
+    """
+    lines: list[str] = []
+    in_comment = False
+    for raw in text.splitlines():
+        line, in_comment = _flattener.strip_comments(raw, in_comment)
+        if line.strip():
+            lines.append(line.strip())
+    return lines
+
+
 def _kickoff_binding(agent: str):
     """The plugin descriptor's ``managed_pointer`` kickoff-loader binding."""
     desc = resolve_target(agent, None).descriptor
@@ -121,12 +162,7 @@ def test_kickoff_content_is_the_declared_directive_imports(agent: str):
     canon entry FIRST, then the one transition import, and nothing else."""
     b = _kickoff_binding(agent)
     assert b.literal_src is not None
-    text = b.literal_src.read_text()
-    import_lines = [
-        ln.strip()
-        for ln in text.splitlines()
-        if ln.strip() and not ln.strip().startswith("<!--")
-    ]
+    import_lines = _content_lines(b.literal_src.read_text())
     assert import_lines == [_DIRECTIVE_IMPORT, _LEGACY_DIRECTIVE_IMPORT], (
         f"{agent}: kickoff-loader must carry exactly the canon entry plus the "
         f"transition import, got {import_lines!r}"
@@ -303,15 +339,16 @@ class TestCoreKickoffBind:
         against an older base.  A base-shipped kickoff ships in the same wheel as the
         canon binds it imports, so that line could never resolve — it would buy a
         permanent per-launch ``unresolved import`` warning and nothing else.
+
+        ⚑ The header comment is read out with the FLATTENER'S stripper
+        (``_content_lines``), not a per-line ``<!--`` test: this file's comment spans
+        many lines, and counting its continuation lines as content is a defect in the
+        TEST, never in the loader.
         """
         src = Path(core_defaults.kickoff_default_categories(None)[
             "box.bindings.ro"
         ][_KICKOFF_DEST][0])
-        import_lines = [
-            ln.strip()
-            for ln in src.read_text().splitlines()
-            if ln.strip() and not ln.strip().startswith("<!--")
-        ]
+        import_lines = _content_lines(src.read_text())
         assert import_lines == [_DIRECTIVE_IMPORT]
         assert _LEGACY_DIRECTIVE_IMPORT not in src.read_text()
 
