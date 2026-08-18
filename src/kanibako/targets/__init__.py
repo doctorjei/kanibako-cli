@@ -145,6 +145,15 @@ def discover_targets(project_path: Path | None = None) -> dict[str, type[Target]
         # broken install the user must know about, so this goes to stderr with
         # the cure — unlike the fallbacks' debug-level note, which covers
         # optional bind-mount/file-drop paths where absence is routine.
+        #
+        # ⚑ AND IT IS NOW THE ONLY CARRIER OF THE CURE.  v1.8.0 DELETED the four
+        # flat re-export shims outright (clean break — a shim is a deprecation
+        # window), so an old plugin arrives here as a bare
+        # ``ModuleNotFoundError``.  That exception names the missing MODULE but
+        # not the PACKAGE that reached for it, and the user never wrote the
+        # import — so this is the one place that can name the distribution, and
+        # it hands over 'MIGRATION.md' as the term that finds the affected
+        # versions.  Pinned by ``tests/test_plugin_import_compat.py``.
         try:
             cls = ep.load()
         except Exception as exc:
@@ -158,7 +167,9 @@ def discover_targets(project_path: Path | None = None) -> dict[str, type[Target]
                     f"  The '{ep.name}' agent is unavailable; every other agent, "
                     f"and 'kanibako setup', still work. This usually means the "
                     f"package was built against a different kanibako-cli — "
-                    f"upgrade it, or uninstall it if you do not use it.",
+                    f"upgrade it, or uninstall it if you do not use it. Installing "
+                    f"the 'kanibako' meta package pins a compatible set; see "
+                    f"MIGRATION.md for the plugin versions this release breaks.",
                     file=sys.stderr,
                 )
             logger.debug(

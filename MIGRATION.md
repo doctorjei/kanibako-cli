@@ -62,7 +62,10 @@ inside boxes. In order of likely impact:
 3. **Upgrade the agent plugins WITH the base — never the base alone.** Upgrading only
    `kanibako-cli` while keeping v1.7.2-era agent plugins silently deletes your boxes' entire
    instruction/directive chain (no error is printed). Upgrade via the `kanibako` meta package,
-   or upgrade the plugins first (§2.6).
+   or upgrade the plugins first (§2.6). ⚑ A pre-1.8.0 plugin also **will not load at all** on
+   this base — the flat core modules it imports are deleted, so kanibako skips that agent with a
+   named warning (§3.1 lists the affected plugin versions). The plugins pin no upper bound on
+   `kanibako-cli`, so this is what an unpinned `pip install --upgrade kanibako-cli` gives you.
 
 4. **Claude plugins and cache will look EMPTY unless you move two directories** before your
    first launch on v1.8.0 (§2.5). Nothing errors — the box just sees empty dirs:
@@ -2610,7 +2613,7 @@ independently of the base and depend on **`kanibako-cli`** with **no version pin
    descriptor's `settings` and `access_realization` still realize RESOLVED values onto the env
    channel, which is a different job.
 
-### 3.1 Core module paths moved (package-ification) — shims ship for one release
+### 3.1 Core module paths moved (package-ification) — the flat compatibility shims are DELETED
 
 v1.8.0 promotes the flat `src/kanibako/*.py` modules into coarse domain subpackages
 (`kanibako.settings`, `kanibako.launch`, `kanibako.runtime`, `kanibako.vscode`,
@@ -2619,48 +2622,76 @@ v1.8.0 promotes the flat `src/kanibako/*.py` modules into coarse domain subpacka
 move**, so a plugin written against the documented interface (`docs/writing-targets.md`) is
 unaffected.
 
-Four core modules that the first-party plugins import *did* move. Because the plugins depend
-on `kanibako-cli` with no upper bound, an already-published plugin can land beside the new
-base. **The retirement is therefore two-stage** (ruling, 2026-08-01):
+Four core modules that the first-party plugins import *did* move, **and the old flat paths are
+gone in this release**:
 
-| Legacy path | New path | Imported by |
+| Legacy path (REMOVED) | New path | Imported by |
 |---|---|---|
 | `kanibako.vscode_config` | `kanibako.vscode.vscode_config` | claude, codex, goose |
 | `kanibako.settings_resolve` | `kanibako.settings.settings_resolve` | claude, codex (`GUEST_HOME`) |
 | `kanibako.agent_defaults` | `kanibako.settings.agent_defaults` | claude, codex, goose |
 | `kanibako.agent_config` | `kanibako.settings.agent_config` | claude, codex, goose |
 
-**Stage 1 — v1.8.0 (this release): the aliases WORK, and they say so.** Each old path keeps a
-re-export shim covering the full public surface of the moved module, so an already-published
-plugin keeps running unchanged. Importing one emits a `FutureWarning` naming the old path,
-the new path, and what to do:
+⚑ **There is no shim and no deprecation window.** A development build briefly carried re-export
+aliases at the four old paths that warned and kept working; **they do not ship.** v1.8.0 is a
+deliberate clean break, and an alias that keeps working *is* a deprecation window. Importing a
+legacy path now raises `ModuleNotFoundError: No module named 'kanibako.agent_defaults'`.
 
-> `kanibako.agent_defaults moved to kanibako.settings.agent_defaults; this compatibility alias
-> exists for plugins built against kanibako-cli < 1.8.0 and will be REMOVED in the next
-> release — upgrade your kanibako-agent-* packages.`
+#### This bites USERS, not just plugin authors
 
-`FutureWarning`, not `DeprecationWarning`, because the latter is hidden by default outside
-`__main__` — a silent notice would be no notice. It fires only on the OLD path; correctly
-updated code never sees it.
+The plugins declare `dependencies = ["kanibako-cli"]` with **no upper bound**. So *old plugin
+beside new core* is not an exotic combination — it is what you get by default if you upgrade
+`kanibako-cli` (or install a plugin) without pinning. **These published plugin versions import
+at least one removed path and will not load on v1.8.0:**
 
-**Stage 2 — the release AFTER v1.8.0: the aliases are GONE.** The four shim files are deleted
-and replaced by a named refuse-and-exit at plugin discovery: a plugin still importing an old
-path is refused *by name*, with the upgrade instruction, instead of failing as a bare
-`ModuleNotFoundError` from inside an entry-point load.
+| Removed module | `kanibako-agent-claude` | `kanibako-agent-codex` | `kanibako-agent-goose` |
+|---|---|---|---|
+| `kanibako.agent_config` | every `1.7.0` → `1.8.0rc1` | `0.2.0`–`0.3.0` | `0.2.0`–`0.3.0` |
+| `kanibako.agent_defaults` | `1.7.0` → `1.8.0rc1` | `0.2.1`–`0.3.0` | `0.2.1`, `0.3.0` |
+| `kanibako.settings_resolve` | `1.7.2`, `1.7.2rc3`–`rc5`, `1.8.0rc1` | `0.2.3`–`0.3.0` | — |
+| `kanibako.vscode_config` | `1.7.2`, `1.7.2rc3`–`rc5`, `1.8.0rc1` | `0.2.3`–`0.3.0` | `0.3.0` |
 
-**Plugin authors: switch to the new paths now** — a one-line edit per import site — and in the
-same release pin `kanibako-cli >= 1.8.0`, exactly as item 3 requires for the KICKOFF deletion.
+`kanibako.agent_config` is the widest: **every** `kanibako-agent-claude` from `1.7.0` through
+`1.8.0rc1` imports it. **Clean (unaffected):** `kanibako-agent-claude` `1.8.0.dev95` / `dev98`,
+`kanibako-agent-codex` `0.4.0`, `kanibako-agent-goose` `0.4.0`.
 
-⚑ **REMOVAL GATE — the same shape as item 3 above.** Stage 2 happens only once
-`kanibako-agent-claude`, `-codex` AND `-goose` have all **published** releases importing the
-new paths *and* carrying the `kanibako-cli >= 1.8.0` floor pin. Until then, deleting a shim
-silently breaks agent detection for anyone on an older plugin.
-`tests/test_plugin_import_compat.py` pins stage 1 (the aliases resolve, re-export the same
-objects, and warn; the new paths stay silent).
+**What you see.** kanibako does not die — a plugin that cannot import is skipped by name and
+every other agent, plus `kanibako setup`, keeps working:
+
+> `Warning: 'kanibako-agent-goose' failed to load and is being SKIPPED: ModuleNotFoundError: No
+> module named 'kanibako.agent_defaults'`
+> `  The 'goose' agent is unavailable; every other agent, and 'kanibako setup', still work.
+> This usually means the package was built against a different kanibako-cli — upgrade it, or
+> uninstall it if you do not use it. Installing the 'kanibako' meta package pins a compatible
+> set; see MIGRATION.md for the plugin versions this release breaks.`
+
+**The cure — upgrade the plugin:**
+
+```bash
+pip install --upgrade kanibako-agent-claude   # or -codex / -goose, whichever was named
+```
+
+or install the **`kanibako` meta package**, which pins a compatible set of all of them:
+
+```bash
+pip install --upgrade kanibako
+```
+
+A plugin you do not actually use can simply be uninstalled — that clears the warning too.
+
+#### Plugin authors
+
+**Switch to the new paths** — a one-line edit per import site — and in the same release pin
+`kanibako-cli >= 1.8.0`, exactly as item 3 requires for the KICKOFF deletion. There is nothing
+to be compatible *with*: no version of kanibako-cli offers both spellings, so a floor pin is the
+only honest way to say which core your wheel needs.
+`tests/test_plugin_import_compat.py` pins this contract (the legacy paths raise, the new paths
+import and stay silent, and a stale plugin degrades to the named warning above rather than a
+traceback).
 
 **Version numbers.** This release ships as `kanibako-cli` **1.8.0**, `kanibako` (meta)
-**1.8.0**, `kanibako-agent-claude` **1.8.0**, `kanibako-agent-codex` **0.3.0** and
-`kanibako-agent-goose` **0.3.0**. The plugins version independently and do not adopt the
+**1.8.0**, `kanibako-agent-claude` **1.8.0**, `kanibako-agent-codex` **0.4.0** and
+`kanibako-agent-goose` **0.4.0**. The plugins version independently and do not adopt the
 base's number (codex and goose never have). The KICKOFF-deletion follow-up (item 3) is **the
 release after v1.8.0** for each plugin, and must carry the `kanibako-cli >= 1.8.0` floor
 pin.

@@ -278,12 +278,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
-- The flat `kanibako.agent_config` compatibility shim no longer re-exports **`agent_file_route`**,
-  **`load_agent_config`** or **`write_agent_config`** — all three moved into
-  `kanibako.settings.agent_file`, the one module that spells the per-agent file's shape (the
-  address rule, `load`, and `save`). Measured against all three published plugin wheels: none
-  imports any of the three; `AgentConfig` itself is still re-exported, unchanged. A third-party
-  import of one is a theoretical break, accepted under v1.8.0's clean-break policy.
+- **BREAKING: the four flat compatibility shims are deleted — `kanibako.agent_config`,
+  `kanibako.agent_defaults`, `kanibako.settings_resolve` and `kanibako.vscode_config` no longer
+  exist.** Package-ification moved them to `kanibako.settings.*` / `kanibako.vscode.*`, and
+  development builds briefly kept re-export aliases at the old flat paths that worked and emitted
+  a `FutureWarning`. **Those aliases do not ship.** v1.8.0 is a deliberate clean break, and an
+  alias that keeps working *is* the deprecation window this release declined to open; the removed
+  code is preserved in git history, not in the wheel. Importing a legacy path now raises
+  `ModuleNotFoundError`. **This reaches users, not only plugin authors:** the agent plugins pin no
+  upper bound on `kanibako-cli`, so an old plugin beside a new core is what an unpinned upgrade
+  produces by default. Every `kanibako-agent-claude` from `1.7.0` through `1.8.0rc1`, and
+  `kanibako-agent-codex` / `-goose` through `0.3.0`, import at least one removed path;
+  `kanibako-agent-claude` `1.8.0.dev95`+, `-codex` `0.4.0` and `-goose` `0.4.0` are clean. Nothing
+  crashes — a plugin that cannot import is reported by name on standard error and skipped, and
+  every other agent plus `kanibako setup` keeps working (see the discovery fix below). The cure is
+  to upgrade that plugin, or to install the `kanibako` meta package, which pins a compatible set.
+  See [MIGRATION.md](MIGRATION.md) §3.1, which lists the affected versions.
 
 ### Fixed
 
