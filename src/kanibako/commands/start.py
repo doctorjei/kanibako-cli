@@ -1450,6 +1450,21 @@ def _env_flag_enabled(value: str | None) -> bool:
 # ``creds_watcher.CREDS_DIRTY_RELPATH``; same ``.kanibako/`` marker convention.
 SUPERVISOR_FALLBACK_RELPATH = ".kanibako/supervisor-fallback.log"
 
+# In-box path of the directive FLATTENER, which reaches the box on the unconditional
+# ``kani_pkg`` package bind (machinery, not canon — see ``_directive_flatten_shim``).
+# ⚑ The SAME literal is carried by the SessionStart hook command in
+# :mod:`kanibako.vscode.vscode_config`; the two must move TOGETHER, because a one-sided
+# change is SILENT.  Named here so this file spells it ONCE for both of its users (the
+# launch shim and the supervisor's freshness watch) — do not add a third spelling.
+DIRECTIVE_FLATTENER = "/opt/kanibako/kanibako/scripts/import-directives.py"
+
+# Where the flatten leaves its RECEIPT — the manifest of every directive source that
+# render read, which PID 1 re-hashes to notice a mid-life edit.  Relative to the guest
+# home; sibling of ``creds_watcher.CREDS_DIRTY_RELPATH`` and the fallback log above,
+# same ``.kanibako/`` marker convention (generated machinery with a fixed location and
+# nothing to configure — no settings key, exactly like the container ``storage.conf``).
+DIRECTIVE_MANIFEST_RELPATH = ".kanibako/directive-manifest.json"
+
 
 def _build_supervisor_pid1(
     supervisor_argv: list[str], fallback_argv: list[str],
@@ -4354,6 +4369,29 @@ def _run_container(
                 supervisor_argv += [
                     "--creds-flag", f"{_GUEST_HOME_D}/{CREDS_DIRTY_RELPATH}",
                 ]
+                # DIRECTIVE FRESHNESS: the launch shim flattens the directive chain
+                # into the agent's native slot ONCE per launch, so a source edited
+                # mid-container-life leaves that file stale — and silently, since the
+                # shim is ``|| true``.  Thread the flatten RECEIPT + the flattener so
+                # PID 1 (which outlives every session and every harness) re-renders the
+                # slot when a collected source moves.  ⚑ SAME WIRING AS --creds-flag:
+                # the LAUNCHER decides every path and the supervisor spells none — that
+                # is what keeps the flattener literal from gaining a third carrier.
+                # ⚑ The seed/dest come from the RESOLVED ``container_env`` (the
+                # ``--agent-markers-dir`` pattern), so the watcher and the in-box shim
+                # cannot disagree about which files they maintain under an override;
+                # no FINAL slot ⇒ nothing threaded ⇒ the watch stays inert, mirroring
+                # the shim's own ``[ -n "$KANIBAKO_DIRECTIVE_FINAL" ]`` guard.
+                _directive_seed = container_env.get("KANIBAKO_DIRECTIVE_SEED")
+                _directive_dest = container_env.get("KANIBAKO_DIRECTIVE_FINAL")
+                if _directive_seed and _directive_dest:
+                    supervisor_argv += [
+                        "--directive-seed", _directive_seed,
+                        "--directive-dest", _directive_dest,
+                        "--directive-manifest",
+                        f"{_GUEST_HOME_D}/{DIRECTIVE_MANIFEST_RELPATH}",
+                        "--directive-flattener", DIRECTIVE_FLATTENER,
+                    ]
                 # E2g / increment 4a: thread the per-agent liveness MARKERS DIR to
                 # BOTH modes.  run_forever (E2b/E2c) enumerates it to DETECT a panel
                 # newcomer (increment 4a, LOG-ONLY); panel-watch (E2f) enumerates it
@@ -5102,24 +5140,34 @@ def _directive_flatten_shim(
     The flattener is MACHINERY, not instructional text, so it does not live in the
     canon: it ships in the kanibako package itself and rides the existing
     unconditional ``kani_pkg`` bind (whole package dir, ro) to
-    ``/opt/kanibako/kanibako/scripts/import-directives.py`` — no extra bind, no extra
-    key.  No sudo — the native slots are agent-owned.  ⚑ The SAME literal is carried
-    by the SessionStart hook command in :mod:`kanibako.vscode.vscode_config`; the two
-    must move TOGETHER, because a one-sided change is SILENT (``|| true`` swallows the
-    failure and the box just loses its directives).  SILENT-SAFE (``|| true``) and
-    GUARDED on ``$KANIBAKO_DIRECTIVE_FINAL`` being set, so a launch with NO directive
-    slot (e.g. a no-agent shell) skips the flatten cleanly.
+    :data:`DIRECTIVE_FLATTENER` — no extra bind, no extra key.  No sudo — the native
+    slots are agent-owned.  ⚑ The SAME literal is carried by the SessionStart hook
+    command in :mod:`kanibako.vscode.vscode_config`; the two must move TOGETHER,
+    because a one-sided change is SILENT (``|| true`` swallows the failure and the box
+    just loses its directives).  SILENT-SAFE (``|| true``) and GUARDED on
+    ``$KANIBAKO_DIRECTIVE_FINAL`` being set, so a launch with NO directive slot (e.g. a
+    no-agent shell) skips the flatten cleanly.
+
+    The flatten also writes its MANIFEST (:data:`DIRECTIVE_MANIFEST_RELPATH`) — the
+    receipt naming every source this render read.  It is written HERE, by the render
+    that produced the file, because the supervisor's freshness watch compares against
+    what was actually read; a receipt written by anyone else would be a second opinion.
 
     Returns ``("sh", ["-c", <script>, "sh", program, *args])`` so ``sh -c`` sets
     ``$0=sh`` and ``$@=program args`` and ``exec "$@"`` runs the agent with its
     args intact — nesting inside the tmux/bootstrap wrap exactly like
-    :func:`_secret_export_shim`.  Per-session refresh is via the SessionStart hook
-    where available (racy — accepted); this launch-flatten is the reliable baseline.
+    :func:`_secret_export_shim`.  The SessionStart hook still injects a per-session
+    copy where a harness has one (racy — accepted, and UNCHANGED by the freshness
+    work); this launch-flatten remains the reliable baseline, and the supervisor now
+    keeps it TRUE for the rest of the box's life (``--directive-manifest``).
     """
+    from kanibako.settings.settings_resolve import GUEST_HOME
+    manifest = f"{GUEST_HOME}/{DIRECTIVE_MANIFEST_RELPATH}"
     script = (
         'if [ -n "$KANIBAKO_DIRECTIVE_FINAL" ]; then '
-        'python3 "/opt/kanibako/kanibako/scripts/import-directives.py" '
-        '"$KANIBAKO_DIRECTIVE_SEED" "$KANIBAKO_DIRECTIVE_FINAL" || true; '
+        f'python3 "{DIRECTIVE_FLATTENER}" '
+        '"$KANIBAKO_DIRECTIVE_SEED" "$KANIBAKO_DIRECTIVE_FINAL" '
+        f'--manifest "{manifest}" || true; '
         'fi; '
         'exec "$@"'
     )

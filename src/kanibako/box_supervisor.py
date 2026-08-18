@@ -8,6 +8,8 @@ which ``commands/start.py`` imports at MODULE scope.
 Terminology — SELF-HEAL: restart a dead agent with the continue grammar + marker.
 PANEL-WATCH: the E2f agentless ``code`` warm-up loop.  NEWCOMER: a live marker PID that
 is not the supervisor's own agent.  TAKEOVER: the 4b single-writer evict (DEFAULT-OFF).
+DIRECTIVE FRESHNESS: re-flatten the agent's native instruction slot when one of the
+directive sources it was rendered from changes (:class:`DirectiveWatch`).
 
 ⚑ Every probe and action here is TOLERANT — PID-1 must never die on a hiccup.
 ⚑ Every impure op — subprocess, sleep, marker probe, process signal, child reap — funnels
@@ -19,6 +21,8 @@ a real clock or a real process.
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import os
 import shlex
 import signal
@@ -283,6 +287,54 @@ def newcomer_pids(live_pids: set[int], own_pids: set[int]) -> set[int]:
 # Config.
 # ---------------------------------------------------------------------------
 
+#: Flatten-manifest format this watcher understands.  Anything else — a newer
+#: flattener, a truncated file, no file at all — reads as STALE and costs one
+#: re-flatten; never parse an unknown shape defensively into a wrong answer.
+#: ⚑ The WRITER (``kanibako/scripts/import-directives.py``, ``MANIFEST_VERSION``)
+#: carries the same number.  It is a standalone box-side script that can import
+#: nothing from the package, so the two cannot share a constant — the skew is made
+#: SAFE by this rule instead of being prevented.
+DIRECTIVE_MANIFEST_VERSION = 1
+
+#: Seconds PID 1 will wait for one re-flatten before giving up on it (see
+#: :meth:`BoxSupervisor._reflatten_directives`).  A cap on a HANG, not a work budget.
+FLATTEN_TIMEOUT = 60.0
+
+
+@dataclass(frozen=True)
+class DirectiveWatch:
+    """What PID 1 needs to keep the flattened instruction slot FRESH — all four, or none.
+
+    The launch shim flattens the directive chain into the agent's native slot ONCE
+    per agent launch, so a source edited mid-container-life leaves that file stale
+    and silent.  PID 1 outlives every session and every harness, so it is where the
+    file becomes continuously true rather than true-at-launch.
+
+    Every path is DECIDED BY THE LAUNCHER and arrives in argv; the supervisor derives
+    none of them.  Grouping them in one value is the guard: a half-wired watcher (a
+    manifest with no flattener to run, a dest with no seed to render it from) cannot
+    be represented, so no loop has to check for one.
+
+    * *seed* / *dest* — the flattener's SOURCE and the agent's native slot, exactly as
+      the launch shim spells them (``$KANIBAKO_DIRECTIVE_SEED`` / ``_FINAL``).
+    * *manifest* — the receipt the flattener leaves; see the flattener's
+      ``build_manifest``.
+    * *flattener* — in-box path of the flattener script.  ⚑ PASSED, never spelled
+      here: that literal is already carried twice (``start._directive_flatten_shim``
+      and ``vscode.vscode_config``), and a third copy would be a third thing to move
+      in step, silently, when the script moves.
+    * *interval* — target seconds between checks, converted to whole ticks against
+      ``poll_interval``.  Cheap enough (a few sha256 of small files) to run often and
+      far below any human edit-to-read gap.
+    """
+
+    seed: str
+    dest: str
+    manifest: str
+    flattener: str
+    interval: float = 5.0
+
+
 @dataclass(frozen=True)
 class SupervisorConfig:
     """Immutable configuration for a :class:`BoxSupervisor`."""
@@ -302,6 +354,9 @@ class SupervisorConfig:
     panel_watch: bool = False
     agent_markers_dir: str | None = None
     creds_flag: str | None = None
+    #: Directive-freshness watch, or ``None`` (the watcher is then inert and every
+    #: tick is byte-unchanged) — a launch with no directive slot threads nothing.
+    directives: DirectiveWatch | None = None
     # Bounded scrollback echoed to PID-1's stdout so ``podman logs`` surfaces the dead
     # agent's final output to the host (:meth:`BoxSupervisor.capture_agent_output`).
     capture_history: int = 200
@@ -384,6 +439,79 @@ def decide_panel(
 
 
 # ---------------------------------------------------------------------------
+# DIRECTIVE FRESHNESS model — is the flattened instruction slot still true?
+# ---------------------------------------------------------------------------
+
+class DirectiveVerdict(Enum):
+    """What one freshness check found."""
+
+    FRESH = "fresh"              # the slot still matches its receipt — do nothing
+    STALE = "stale"              # re-render and rewrite the slot
+    HAND_EDITED = "hand_edited"  # inputs unchanged, slot changed — LEAVE IT ALONE
+
+
+def decide_directives(
+    manifest: object,
+    seed: str,
+    dest: str,
+    probe: Mapping[str, str | None],
+) -> DirectiveVerdict:
+    """PURE: read a flatten receipt against the current world and decide.
+
+    *manifest* is the parsed receipt (or ``None`` / anything unparseable). *probe*
+    maps every path this verdict may consult — each of the receipt's inputs, plus
+    *dest* — to the sha256 of its content NOW, or ``None`` when nothing can be read
+    from it.  Hashes, never mtimes: the sources span an NFS home and read-only
+    package binds, where mtime is not comparable and an upgrade can land new content
+    under an old timestamp.
+
+    Every way of not understanding the receipt returns ``STALE``.  That is the
+    property which makes this safe inside PID 1: the worst outcome of any confusion
+    is one unnecessary re-render, and there is no state in which the watcher can do
+    something worse.
+
+    The two verdicts that are NOT "stale" both exist to protect a user:
+
+    * ``HAND_EDITED`` — the inputs are untouched but the generated file is not, so
+      someone edited it by hand.  Rewriting it would be the seed-clobber class of
+      data loss; refreshing it on the next real source change is not.
+    * ``FRESH`` — nothing to do, which must stay the common case: this runs every
+      few seconds for the life of the box.
+    """
+    if not isinstance(manifest, dict):
+        return DirectiveVerdict.STALE
+    if manifest.get("version") != DIRECTIVE_MANIFEST_VERSION:
+        return DirectiveVerdict.STALE
+    if manifest.get("seed") != seed or manifest.get("dest") != dest:
+        return DirectiveVerdict.STALE   # it describes a different job than ours
+    inputs = manifest.get("inputs")
+    if not isinstance(inputs, list):
+        return DirectiveVerdict.STALE
+    for entry in inputs:
+        if not isinstance(entry, dict) or not isinstance(entry.get("path"), str):
+            return DirectiveVerdict.STALE
+        current = probe.get(entry["path"])
+        if entry.get("absent"):
+            # 🛑 THE MISS SIDE.  An import that pointed nowhere and now yields
+            # content changes the render, and NOTHING on the hit side moved — a
+            # watcher that only re-checks what it found would never fire.  The test
+            # is "can it be read", not "does it exist", so a directory or a still
+            # unreadable file does not re-trigger every tick forever.
+            if current is not None:
+                return DirectiveVerdict.STALE
+        elif current != entry.get("sha256"):
+            # Content changed, or the source can no longer be read (``None``).
+            # Both change what a re-render produces.
+            return DirectiveVerdict.STALE
+    output = probe.get(dest)
+    if output is None:
+        return DirectiveVerdict.STALE   # the artifact is gone; DEST beats the receipt
+    if output != manifest.get("output_sha256"):
+        return DirectiveVerdict.HAND_EDITED
+    return DirectiveVerdict.FRESH
+
+
+# ---------------------------------------------------------------------------
 # The supervisor.
 # ---------------------------------------------------------------------------
 
@@ -424,6 +552,11 @@ class BoxSupervisor:
         # 4a: newcomers already logged, so each is announced ONCE.  Re-pinned to the
         # current newcomer set each tick, so a departed-then-returning PID re-logs.
         self._reported_newcomers: set[int] = set()
+        # Directive-freshness cadence + a ONE-SHOT latch for the hand-edit notice, so a
+        # user's edited instruction file says so once instead of every few seconds.
+        # Cleared whenever the slot is fresh again or gets re-rendered.
+        self._ticks = 0
+        self._directive_hand_edit_logged = False
         self._stop = False
 
     # -- tmux action helpers (impure; tolerant; injectable ``run``) ----------
@@ -774,6 +907,123 @@ class BoxSupervisor:
         except Exception:
             log.exception("on-detach hook raised; ignored (supervisor loop continues)")
 
+    # -- directive freshness (the flattened instruction slot) ----------------
+
+    @staticmethod
+    def _sha256_of(path: str) -> str | None:
+        """sha256 of *path*'s content, or ``None`` if nothing can be read from it."""
+        try:
+            digest = hashlib.sha256()
+            with open(path, "rb") as fh:
+                for chunk in iter(lambda: fh.read(1 << 16), b""):
+                    digest.update(chunk)
+        except OSError:
+            return None
+        return digest.hexdigest()
+
+    def _read_directive_manifest(self, path: str) -> object:
+        """Parse the flatten receipt at *path*; ``None`` if it cannot be read as JSON."""
+        try:
+            with open(path, "rb") as fh:
+                return json.loads(fh.read().decode("utf-8"))
+        except (OSError, ValueError) as exc:
+            log.debug("directive manifest %s unusable (%s); treating as stale", path, exc)
+            return None
+
+    def _probe_directives(self, manifest: object, dest: str) -> dict[str, str | None]:
+        """Hash every path :func:`decide_directives` may consult for this receipt."""
+        paths = [dest]
+        if isinstance(manifest, dict) and isinstance(manifest.get("inputs"), list):
+            for entry in manifest["inputs"]:
+                if isinstance(entry, dict) and isinstance(entry.get("path"), str):
+                    paths.append(entry["path"])
+        return {path: self._sha256_of(path) for path in paths}
+
+    def _reflatten_directives(self, watch: DirectiveWatch) -> bool:
+        """Re-run the flattener as a SUBPROCESS; ``True`` iff it reported success.
+
+        The flattener owns the write (atomically, receipt included) — the supervisor
+        never renders or writes the slot itself, so there is exactly one producer of
+        both the artifact and its receipt.  A failure here is logged and dropped: an
+        instruction file left stale is bad, PID 1 dying is fatal.
+
+        ⚑ BOUNDED.  This is a synchronous call inside PID 1's tick, and the directive
+        sources sit on an NFS home — a stalled mount would otherwise wedge the reap,
+        the detach hook and self-heal behind a read.  The bound is enormous next to a
+        real flatten (tens of milliseconds); it exists to cap a HANG, not to time work.
+        """
+        argv = [
+            sys.executable or "python3", watch.flattener, watch.seed, watch.dest,
+            "--manifest", watch.manifest,
+        ]
+        try:
+            proc = self._run(
+                argv, capture_output=True, text=True, check=False,
+                timeout=FLATTEN_TIMEOUT,
+            )
+        except (OSError, ValueError, subprocess.SubprocessError) as exc:
+            log.warning("directive re-flatten could not run %r: %s", watch.flattener, exc)
+            return False
+        stderr = (getattr(proc, "stderr", "") or "").strip()
+        if proc.returncode != 0:
+            log.warning(
+                "directive re-flatten failed (rc=%s): %s", proc.returncode, stderr,
+            )
+            return False
+        if stderr:
+            # The flattener warns on stderr about unresolved imports and unterminated
+            # comments; that is diagnostic, not failure.
+            log.debug("directive re-flatten warnings: %s", stderr)
+        log.info("directive sources changed; re-flattened %s", watch.dest)
+        return True
+
+    def check_directives(self) -> DirectiveVerdict | None:
+        """One freshness check of the flattened instruction slot; ``None`` when unwatched."""
+        watch = self.config.directives
+        if watch is None:
+            return None
+        manifest = self._read_directive_manifest(watch.manifest)
+        verdict = decide_directives(
+            manifest, watch.seed, watch.dest, self._probe_directives(manifest, watch.dest),
+        )
+        if verdict is DirectiveVerdict.HAND_EDITED:
+            if not self._directive_hand_edit_logged:
+                log.warning(
+                    "%s differs from the flatten that produced it while its sources are "
+                    "unchanged — leaving the hand-edited file alone (it will refresh on "
+                    "the next directive-source change)",
+                    watch.dest,
+                )
+                self._directive_hand_edit_logged = True
+            return verdict
+        self._directive_hand_edit_logged = False
+        if verdict is DirectiveVerdict.STALE:
+            self._reflatten_directives(watch)
+        return verdict
+
+    def _safe_check_directives(self) -> None:
+        """Call :meth:`check_directives`, swallowing ANY exception (the loop must not die)."""
+        try:
+            self.check_directives()
+        except Exception:
+            log.exception("directive freshness check raised; ignored (loop continues)")
+
+    def _directive_tick_period(self) -> int:
+        """Ticks between freshness checks — the cadence is in SECONDS, converted here."""
+        watch = self.config.directives
+        if watch is None:
+            return 1
+        poll = self.config.poll_interval if self.config.poll_interval > 0 else 1.0
+        return max(1, round(watch.interval / poll))
+
+    def _directive_tick(self) -> None:
+        """Advance the tick counter and run a freshness check on the Nth one."""
+        self._ticks += 1
+        if self.config.directives is None:
+            return
+        if self._ticks % self._directive_tick_period() == 0:
+            self._safe_check_directives()
+
     # -- teardown / signals --------------------------------------------------
 
     def teardown(self) -> None:
@@ -831,6 +1081,10 @@ class BoxSupervisor:
                 # ⚑ PID-1 duty FIRST: reap orphan-reparented children so a dead panel
                 # cannot sit as a zombie and read ALIVE to the marker probes below.
                 self._reap()
+                # Keep the flattened instruction slot TRUE while the box lives (every
+                # Nth tick; inert unless the launcher threaded a watch).  Independent
+                # of the agent — a source edit must land whether or not one is running.
+                self._directive_tick()
                 cur = self._snapshot()
                 alive = self.agent_session_alive()
                 # Newcomer detection, gated on a configured markers dir so an old launcher
@@ -920,6 +1174,10 @@ class BoxSupervisor:
                 # ⚑ PID-1 duty FIRST: a dead panel agent must not sit as a zombie and hold
                 # panel_agent_state at ALIVE forever, wedging SELF_HEAL_CLI and TEARDOWN.
                 self._reap()
+                # A warm-only box has directives and a panel agent reading them, so the
+                # freshness watch belongs in BOTH loops — the slot must not go stale
+                # just because this box was fronted by the panel instead of a CLI.
+                self._directive_tick()
                 cur = self._snapshot()
                 if cur.any_attached:
                     seen_surface = True
@@ -1041,7 +1299,63 @@ def _build_parser() -> argparse.ArgumentParser:
             "store writeback; omit to signal nothing"
         ),
     )
+    # DIRECTIVE FRESHNESS — all four or none (see :class:`DirectiveWatch`).  Every one
+    # is a path the LAUNCHER decided; the supervisor spells none of them, which is what
+    # keeps the flattener literal from gaining a third carrier.
+    parser.add_argument(
+        "--directive-seed",
+        default=None,
+        help="flattener SOURCE — the directive-chain entry slot ($KANIBAKO_DIRECTIVE_SEED)",
+    )
+    parser.add_argument(
+        "--directive-dest",
+        default=None,
+        help="agent's native instruction slot to keep fresh ($KANIBAKO_DIRECTIVE_FINAL)",
+    )
+    parser.add_argument(
+        "--directive-manifest",
+        default=None,
+        help=(
+            "box-local path of the flatten RECEIPT: the watcher re-hashes what it names "
+            "and re-flattens when any of it moves; the flattener rewrites it"
+        ),
+    )
+    parser.add_argument(
+        "--directive-flattener",
+        default=None,
+        help="in-box path of the flattener script to re-run (import-directives.py)",
+    )
     return parser
+
+
+def _directive_watch(ns: argparse.Namespace) -> DirectiveWatch | None:
+    """Assemble the four directive-freshness paths, or ``None``.
+
+    A PARTIAL set is a launcher bug, and the only safe response inside PID 1 is to
+    say so and stay inert: erroring out would refuse to start a box over a watch that
+    is not the box's purpose, and guessing a missing path would put a path decision
+    back in the supervisor.
+    """
+    parts = {
+        "--directive-seed": ns.directive_seed,
+        "--directive-dest": ns.directive_dest,
+        "--directive-manifest": ns.directive_manifest,
+        "--directive-flattener": ns.directive_flattener,
+    }
+    if all(parts.values()):
+        return DirectiveWatch(
+            seed=ns.directive_seed,
+            dest=ns.directive_dest,
+            manifest=ns.directive_manifest,
+            flattener=ns.directive_flattener,
+        )
+    if any(parts.values()):
+        log.warning(
+            "directive freshness NOT armed: %s given without %s",
+            sorted(k for k, v in parts.items() if v),
+            sorted(k for k, v in parts.items() if not v),
+        )
+    return None
 
 
 def config_from_argv(argv: list[str]) -> SupervisorConfig:
@@ -1057,6 +1371,7 @@ def config_from_argv(argv: list[str]) -> SupervisorConfig:
         parser.error("no agent argv given after '--'")
     continue_argv = shlex.split(ns.continue_cmd) if ns.continue_cmd else list(start_argv)
     return SupervisorConfig(
+        directives=_directive_watch(ns),
         session=ns.session,
         start_argv=list(start_argv),
         continue_argv=continue_argv,

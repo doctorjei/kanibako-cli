@@ -9,9 +9,13 @@ real agent, no real waiting.
 
 from __future__ import annotations
 
+import hashlib as _hashlib
+import importlib.resources as _resources
+import json as _json
 import os as _os
 import signal
 import subprocess
+import sys as _sys
 import time as _time
 from pathlib import Path as _Path
 
@@ -20,14 +24,18 @@ import pytest
 from kanibako.box_lifecycle import AttachState
 from kanibako import box_supervisor as bs
 from kanibako.box_supervisor import (
+    DIRECTIVE_MANIFEST_VERSION,
     ActionKind,
     BoxSupervisor,
+    DirectiveVerdict,
+    DirectiveWatch,
     PanelActionKind,
     PanelAgentState,
     SupervisorConfig,
     _default_list_marker_pids,
     config_from_argv,
     decide,
+    decide_directives,
     decide_panel,
     main,
     newcomer_pids,
@@ -2487,3 +2495,511 @@ class TestXdgProjectionSh:
             _Path(bs.__file__).parent / "scripts" / "helper-init.sh"
         ).read_text()
         assert bs.xdg_projection_sh() in script
+
+
+# --------------------------------------------------------------------------- #
+# DIRECTIVE FRESHNESS -- the flattened instruction slot, kept true for the box's  #
+# whole life instead of only at launch.                                          #
+# --------------------------------------------------------------------------- #
+#
+# The launch shim flattens the directive chain into the agent's native slot ONCE per
+# agent launch and swallows every failure (`|| true`), so a directive edited
+# mid-container-life leaves the authoritative file stale and says nothing.  These pin
+# the watch that fixes it: a RECEIPT of what the render read, re-hashed every few
+# ticks, with a re-flatten on any move.
+
+_FLATTENER = str(
+    _resources.files("kanibako.scripts").joinpath("import-directives.py")
+)
+
+
+def _sha(text: str) -> str:
+    return _hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _manifest(**over: object) -> dict:
+    base: dict[str, object] = {
+        "version": DIRECTIVE_MANIFEST_VERSION,
+        "seed": "/seed.md",
+        "dest": "/dest.md",
+        "output_sha256": _sha("rendered"),
+        "inputs": [{"path": "/seed.md", "sha256": _sha("body")}],
+    }
+    base.update(over)
+    return base
+
+
+def _probe(**over: str | None) -> dict[str, str | None]:
+    probe: dict[str, str | None] = {
+        "/seed.md": _sha("body"),
+        "/dest.md": _sha("rendered"),
+    }
+    probe.update(over)
+    return probe
+
+
+# --- the pure verdict ------------------------------------------------------
+
+def test_directives_fresh_when_every_input_and_the_output_match():
+    assert decide_directives(_manifest(), "/seed.md", "/dest.md", _probe()) is (
+        DirectiveVerdict.FRESH
+    )
+
+
+def test_directives_changed_input_is_stale():
+    probe = _probe(**{"/seed.md": _sha("EDITED")})
+    assert decide_directives(_manifest(), "/seed.md", "/dest.md", probe) is (
+        DirectiveVerdict.STALE
+    )
+
+
+def test_directives_absent_input_that_now_exists_is_stale():
+    """🛑 THE MISS SIDE. Nothing the hit side watches moved -- a hits-only check would
+    never fire, and the file a user just created would never reach the agent."""
+    man = _manifest(inputs=[
+        {"path": "/seed.md", "sha256": _sha("body")},
+        {"path": "/late.md", "absent": True},
+    ])
+    probe = _probe(**{"/late.md": _sha("i exist now")})
+    assert decide_directives(man, "/seed.md", "/dest.md", probe) is DirectiveVerdict.STALE
+
+
+def test_directives_absent_input_still_absent_is_fresh():
+    # ...and it must NOT re-fire every tick, which is why "absent" means "yields no
+    # content" (a directory, or a still-unreadable file, keeps yielding none).
+    man = _manifest(inputs=[
+        {"path": "/seed.md", "sha256": _sha("body")},
+        {"path": "/late.md", "absent": True},
+    ])
+    probe = _probe(**{"/late.md": None})
+    assert decide_directives(man, "/seed.md", "/dest.md", probe) is DirectiveVerdict.FRESH
+
+
+def test_directives_input_that_can_no_longer_be_read_is_stale():
+    probe = _probe(**{"/seed.md": None})
+    assert decide_directives(_manifest(), "/seed.md", "/dest.md", probe) is (
+        DirectiveVerdict.STALE
+    )
+
+
+def test_directives_hand_edited_output_is_not_stale():
+    """Inputs untouched but the generated file changed => a human edited it. Rewriting
+    it is the seed-clobber class of data loss; refreshing it on the next real source
+    change is not."""
+    probe = _probe(**{"/dest.md": _sha("hand written")})
+    assert decide_directives(_manifest(), "/seed.md", "/dest.md", probe) is (
+        DirectiveVerdict.HAND_EDITED
+    )
+
+
+def test_directives_changed_input_beats_a_hand_edit():
+    # Both moved: the sources win -- "refresh on the first" is the ruled policy.
+    probe = _probe(**{"/seed.md": _sha("EDITED"), "/dest.md": _sha("hand written")})
+    assert decide_directives(_manifest(), "/seed.md", "/dest.md", probe) is (
+        DirectiveVerdict.STALE
+    )
+
+
+def test_directives_missing_output_is_stale_not_hand_edited():
+    # DEST beats the receipt: if the artifact is gone, no receipt makes it present.
+    probe = _probe(**{"/dest.md": None})
+    assert decide_directives(_manifest(), "/seed.md", "/dest.md", probe) is (
+        DirectiveVerdict.STALE
+    )
+
+
+@pytest.mark.parametrize("manifest", [
+    None,                                          # absent
+    "not json at all",                             # unparseable
+    {},                                            # no version
+    {"version": 999, "inputs": []},                # unknown version
+    {"version": DIRECTIVE_MANIFEST_VERSION, "seed": "/seed.md",
+     "dest": "/dest.md", "inputs": "not-a-list"},  # malformed inputs
+    {"version": DIRECTIVE_MANIFEST_VERSION, "seed": "/seed.md",
+     "dest": "/dest.md", "inputs": [{"sha256": "x"}]},   # an entry with no path
+])
+def test_directives_every_unusable_receipt_means_reflatten(manifest):
+    """The property that makes this safe inside PID 1: the worst outcome of ANY
+    confusion is one unnecessary render. There is no state in which the watcher can do
+    something worse than that."""
+    assert decide_directives(manifest, "/seed.md", "/dest.md", _probe()) is (
+        DirectiveVerdict.STALE
+    )
+
+
+def test_directives_unknown_version_is_stale_even_when_all_else_matches():
+    """The version gate has to be pinned on an OTHERWISE-VALID receipt, or it looks
+    covered by the malformed cases while doing nothing. Never parse an unknown shape
+    defensively into a wrong answer: format evolution is then free, and the cost of
+    refusing to guess is one render."""
+    man = _manifest(version=DIRECTIVE_MANIFEST_VERSION + 1)
+    assert decide_directives(man, "/seed.md", "/dest.md", _probe()) is (
+        DirectiveVerdict.STALE
+    )
+    # ...and the SAME receipt at the known version is fresh, so the version is the
+    # only thing this asserts.
+    assert decide_directives(_manifest(), "/seed.md", "/dest.md", _probe()) is (
+        DirectiveVerdict.FRESH
+    )
+
+
+@pytest.mark.parametrize("seed,dest", [("/other.md", "/dest.md"), ("/seed.md", "/other")])
+def test_directives_receipt_for_a_different_job_is_stale(seed, dest):
+    probe = _probe(**{"/other": _sha("rendered"), "/other.md": _sha("body")})
+    assert decide_directives(_manifest(), seed, dest, probe) is DirectiveVerdict.STALE
+
+
+# --- the check, against real files -----------------------------------------
+
+class _FlattenRun(FakeRun):
+    """FakeRun that also accepts the (non-tmux) flattener call.
+
+    ``run`` is the module's ONE subprocess seam; the base fake asserts every call is
+    tmux, so the flatten is recorded here instead of loosening that guard.  With
+    ``execute=True`` the REAL flattener runs, so a loop test proves the whole route --
+    argv included -- rather than a fake's idea of it.
+    """
+
+    def __init__(self, *, execute: bool = False, **kw: object) -> None:
+        super().__init__(**kw)  # type: ignore[arg-type]
+        self.flattens: list[list[str]] = []
+        self._execute = execute
+
+    def __call__(self, args, **kwargs):
+        if args and args[0] != "tmux":
+            self.flattens.append(list(args))
+            if self._execute:
+                return subprocess.run(args, **kwargs)
+            return subprocess.CompletedProcess(args, 0, "", "")
+        return super().__call__(args, **kwargs)
+
+
+@pytest.fixture
+def directive_box(tmp_path):
+    """A box whose directive chain is really flattened on disk, with its receipt."""
+    seed = tmp_path / "kickoff.md"
+    seed.write_text("kickoff @canon.md and @later.md\n", encoding="utf-8")
+    (tmp_path / "canon.md").write_text("canon body\n", encoding="utf-8")
+    dest = tmp_path / "CLAUDE.md"
+    manifest = tmp_path / ".kanibako" / "directive-manifest.json"
+    watch = DirectiveWatch(
+        seed=str(seed), dest=str(dest), manifest=str(manifest), flattener=_FLATTENER,
+    )
+    rc = subprocess.run(
+        [_sys.executable, _FLATTENER, str(seed), str(dest),
+         "--manifest", str(manifest)],
+        capture_output=True, text=True,
+    ).returncode
+    assert rc == 0
+    return watch, tmp_path
+
+
+def _supervisor(watch, **over):
+    fake = _FlattenRun(execute=True)
+    sup = BoxSupervisor(_config(directives=watch, **over), run=fake, proc_cmdlines=[])
+    return sup, fake
+
+
+def test_check_directives_is_none_when_the_launcher_threaded_no_watch():
+    sup = BoxSupervisor(_config(), run=FakeRun())
+    assert sup.check_directives() is None
+
+
+def test_check_directives_fresh_right_after_the_launch_flatten(directive_box):
+    watch, _tmp = directive_box
+    sup, fake = _supervisor(watch)
+    assert sup.check_directives() is DirectiveVerdict.FRESH
+    assert fake.flattens == []          # an unchanged tick writes NOTHING
+
+
+def test_check_directives_reflattens_after_a_source_edit(directive_box):
+    watch, tmp = directive_box
+    sup, fake = _supervisor(watch)
+    (tmp / "canon.md").write_text("canon body, REVISED\n", encoding="utf-8")
+
+    assert sup.check_directives() is DirectiveVerdict.STALE
+    assert "REVISED" in _Path(watch.dest).read_text()
+    # EXACTLY ONE rewrite: the receipt is refreshed by the same run, so the next
+    # tick is fresh again and the box does not re-render every 5 seconds forever.
+    assert len(fake.flattens) == 1
+    assert sup.check_directives() is DirectiveVerdict.FRESH
+    assert len(fake.flattens) == 1
+
+
+def test_check_directives_reflattens_when_a_missing_import_appears(directive_box):
+    """The case a hits-only watcher cannot see: nothing it was watching changed."""
+    watch, tmp = directive_box
+    sup, fake = _supervisor(watch)
+    assert "later body" not in _Path(watch.dest).read_text()
+
+    (tmp / "later.md").write_text("later body\n", encoding="utf-8")
+
+    assert sup.check_directives() is DirectiveVerdict.STALE
+    assert "later body" in _Path(watch.dest).read_text()
+    assert sup.check_directives() is DirectiveVerdict.FRESH
+
+
+def test_check_directives_leaves_a_hand_edited_slot_alone(directive_box):
+    watch, _tmp = directive_box
+    sup, fake = _supervisor(watch)
+    _Path(watch.dest).write_text("MY OWN NOTES\n", encoding="utf-8")
+
+    assert sup.check_directives() is DirectiveVerdict.HAND_EDITED
+    assert _Path(watch.dest).read_text() == "MY OWN NOTES\n"
+    assert fake.flattens == []
+
+
+def test_hand_edit_is_announced_once_not_every_tick(directive_box, caplog):
+    watch, _tmp = directive_box
+    sup, _fake = _supervisor(watch)
+    _Path(watch.dest).write_text("MY OWN NOTES\n", encoding="utf-8")
+    with caplog.at_level("WARNING"):
+        for _ in range(4):
+            sup.check_directives()
+    assert sum("hand-edited" in r.message for r in caplog.records) == 1
+
+
+def test_a_source_change_still_refreshes_a_hand_edited_slot(directive_box):
+    watch, tmp = directive_box
+    sup, _fake = _supervisor(watch)
+    _Path(watch.dest).write_text("MY OWN NOTES\n", encoding="utf-8")
+    assert sup.check_directives() is DirectiveVerdict.HAND_EDITED
+
+    (tmp / "canon.md").write_text("canon body, REVISED\n", encoding="utf-8")
+    assert sup.check_directives() is DirectiveVerdict.STALE
+    assert "REVISED" in _Path(watch.dest).read_text()
+
+
+@pytest.mark.parametrize("body", ["", "{ not json", '{"version": 999}'])
+def test_an_unusable_receipt_on_disk_reflattens(directive_box, body):
+    watch, _tmp = directive_box
+    sup, fake = _supervisor(watch)
+    _Path(watch.manifest).write_text(body, encoding="utf-8")
+    assert sup.check_directives() is DirectiveVerdict.STALE
+    assert len(fake.flattens) == 1
+    # and the run restored a usable receipt, so the next tick settles
+    assert sup.check_directives() is DirectiveVerdict.FRESH
+
+
+def test_a_receipt_from_a_newer_flattener_reflattens(directive_box):
+    """A real, complete receipt whose only defect is a version this build does not
+    know: still stale. The skew between the flattener's ``MANIFEST_VERSION`` and this
+    module's ``DIRECTIVE_MANIFEST_VERSION`` is made SAFE, not prevented."""
+    watch, _tmp = directive_box
+    sup, fake = _supervisor(watch)
+    receipt = _json.loads(_Path(watch.manifest).read_text())
+    receipt["version"] = DIRECTIVE_MANIFEST_VERSION + 1
+    _Path(watch.manifest).write_text(_json.dumps(receipt))
+
+    assert sup.check_directives() is DirectiveVerdict.STALE
+    assert len(fake.flattens) == 1
+    assert sup.check_directives() is DirectiveVerdict.FRESH
+
+
+def test_a_deleted_receipt_reflattens(directive_box):
+    watch, _tmp = directive_box
+    sup, fake = _supervisor(watch)
+    _Path(watch.manifest).unlink()
+    assert sup.check_directives() is DirectiveVerdict.STALE
+    assert _Path(watch.manifest).is_file()
+
+
+def test_a_deleted_slot_is_rebuilt(directive_box):
+    watch, _tmp = directive_box
+    sup, _fake = _supervisor(watch)
+    _Path(watch.dest).unlink()
+    assert sup.check_directives() is DirectiveVerdict.STALE
+    assert "canon body" in _Path(watch.dest).read_text()
+
+
+def test_reflatten_argv_is_the_launcher_paths_in_file_mode(directive_box):
+    """The supervisor spells NO path of its own: seed, dest, manifest and the
+    flattener all arrive from the launcher (the no-third-carrier rule)."""
+    watch, tmp = directive_box
+    fake = _FlattenRun(execute=False)
+    sup = BoxSupervisor(_config(directives=watch), run=fake, proc_cmdlines=[])
+    (tmp / "canon.md").write_text("edited\n", encoding="utf-8")
+    sup.check_directives()
+    assert fake.flattens == [[
+        _sys.executable, _FLATTENER, watch.seed, watch.dest,
+        "--manifest", watch.manifest,
+    ]]
+    assert "--additional-context" not in fake.flattens[0]
+
+
+def test_a_failing_flatten_does_not_raise(directive_box):
+    watch, tmp = directive_box
+    fake = _FlattenRun(execute=False, rc={})
+    sup = BoxSupervisor(_config(directives=watch), run=fake, proc_cmdlines=[])
+
+    def boom(args, **kw):
+        fake.flattens.append(list(args))
+        return subprocess.CompletedProcess(args, 2, "", "import-directives: nope")
+
+    sup._run = boom  # type: ignore[method-assign]
+    (tmp / "canon.md").write_text("edited\n", encoding="utf-8")
+    assert sup.check_directives() is DirectiveVerdict.STALE   # no exception escapes
+
+
+def test_a_flattener_that_cannot_be_launched_does_not_raise(directive_box):
+    watch, tmp = directive_box
+    sup = BoxSupervisor(_config(directives=watch), run=FakeRun(), proc_cmdlines=[])
+
+    def missing(args, **kw):
+        raise FileNotFoundError("no python3")
+
+    sup._run = missing  # type: ignore[method-assign]
+    (tmp / "canon.md").write_text("edited\n", encoding="utf-8")
+    assert sup.check_directives() is DirectiveVerdict.STALE
+
+
+def test_a_hanging_flatten_is_bounded_and_does_not_raise(directive_box):
+    """PID 1 calls the flattener SYNCHRONOUSLY inside its tick, and the sources live on
+    an NFS home — an unbounded read would wedge the reap, the detach hook and self-heal
+    behind it. The call carries a timeout, and the timeout is handled, not propagated."""
+    watch, tmp = directive_box
+    sup = BoxSupervisor(_config(directives=watch), run=FakeRun(), proc_cmdlines=[])
+    seen: list[float | None] = []
+
+    def hang(args, **kw):
+        seen.append(kw.get("timeout"))
+        raise subprocess.TimeoutExpired(args, kw.get("timeout") or 0)
+
+    sup._run = hang  # type: ignore[method-assign]
+    (tmp / "canon.md").write_text("edited\n", encoding="utf-8")
+    assert sup.check_directives() is DirectiveVerdict.STALE
+    assert seen == [bs.FLATTEN_TIMEOUT]
+
+
+def test_safe_check_swallows_a_raising_check():
+    sup = BoxSupervisor(_config(), run=FakeRun())
+
+    def boom() -> DirectiveVerdict:
+        raise RuntimeError("probe blew up")
+
+    sup.check_directives = boom  # type: ignore[method-assign]
+    sup._safe_check_directives()  # PID 1 must not die on a hiccup
+
+
+# --- the loop (driven by the INJECTED sleeper; nothing waits on a clock) ----
+
+def test_run_forever_checks_directives_on_the_cadence_not_every_tick(directive_box):
+    watch, tmp = directive_box
+    checks: list[int] = []
+    # 5s target against a 2s tick => every 2nd tick.
+    sup = BoxSupervisor(
+        _config(directives=watch), run=FakeRun(rc={"has-session": 0}), proc_cmdlines=[],
+    )
+    sup.check_directives = lambda: checks.append(1)  # type: ignore[method-assign]
+    _stop_after(sup, 5)
+    assert sup.run_forever() == 0
+    assert len(checks) == 2          # ticks 2 and 4 of 5
+
+
+def test_run_forever_reflattens_a_changed_source_exactly_once(directive_box):
+    """End to end through the real loop and the real flattener: one edit, one rewrite,
+    and every later tick silent."""
+    watch, tmp = directive_box
+    fake = _FlattenRun(execute=True, rc={"has-session": 0})
+    sup = BoxSupervisor(
+        _config(directives=DirectiveWatch(
+            seed=watch.seed, dest=watch.dest, manifest=watch.manifest,
+            flattener=watch.flattener, interval=2.0,   # every tick
+        )),
+        run=fake, proc_cmdlines=[],
+    )
+    (tmp / "canon.md").write_text("canon body, REVISED\n", encoding="utf-8")
+    _stop_after(sup, 4)
+    assert sup.run_forever() == 0
+    assert len(fake.flattens) == 1
+    assert "REVISED" in _Path(watch.dest).read_text()
+
+
+def test_run_forever_does_not_touch_an_unchanged_slot(directive_box):
+    watch, _tmp = directive_box
+    fake = _FlattenRun(execute=True, rc={"has-session": 0})
+    sup = BoxSupervisor(
+        _config(directives=DirectiveWatch(
+            seed=watch.seed, dest=watch.dest, manifest=watch.manifest,
+            flattener=watch.flattener, interval=2.0,
+        )),
+        run=fake, proc_cmdlines=[],
+    )
+    before = _Path(watch.dest).stat().st_ino
+    _stop_after(sup, 4)
+    assert sup.run_forever() == 0
+    assert fake.flattens == []
+    assert _Path(watch.dest).stat().st_ino == before
+
+
+def test_run_forever_is_byte_unchanged_without_a_watch():
+    # An old launcher (or a no-agent box) threads no watch: nothing extra runs.
+    fake = _FlattenRun(execute=False, rc={"has-session": 0})
+    sup = BoxSupervisor(_config(), run=fake, proc_cmdlines=[])
+    _stop_after(sup, 3)
+    assert sup.run_forever() == 0
+    assert fake.flattens == []
+
+
+def test_panel_watch_also_keeps_the_slot_fresh(directive_box):
+    """A warm-only box has directives and a panel agent reading them; the slot must not
+    go stale just because this box was fronted by the panel instead of a CLI."""
+    watch, tmp = directive_box
+    fake = _FlattenRun(execute=True, rc={"has-session": 0})
+    sup = BoxSupervisor(
+        _config(panel_watch=True, directives=DirectiveWatch(
+            seed=watch.seed, dest=watch.dest, manifest=watch.manifest,
+            flattener=watch.flattener, interval=2.0,
+        )),
+        run=fake, proc_cmdlines=[],
+    )
+    (tmp / "canon.md").write_text("canon body, REVISED\n", encoding="utf-8")
+    _stop_after(sup, 2)
+    assert sup.run_forever() == 0
+    assert "REVISED" in _Path(watch.dest).read_text()
+
+
+# --- argv wiring -----------------------------------------------------------
+
+def test_config_from_argv_threads_the_four_directive_paths():
+    cfg = config_from_argv([
+        "--session", "s", "--marker", "m",
+        "--directive-seed", "/home/agent/.config/kanibako/kickoff.md",
+        "--directive-dest", "/home/agent/.claude/CLAUDE.md",
+        "--directive-manifest", "/home/agent/.kanibako/directive-manifest.json",
+        "--directive-flattener", "/opt/kanibako/kanibako/scripts/import-directives.py",
+        "--", "claude",
+    ])
+    assert cfg.directives == DirectiveWatch(
+        seed="/home/agent/.config/kanibako/kickoff.md",
+        dest="/home/agent/.claude/CLAUDE.md",
+        manifest="/home/agent/.kanibako/directive-manifest.json",
+        flattener="/opt/kanibako/kanibako/scripts/import-directives.py",
+    )
+
+
+def test_config_from_argv_defaults_to_no_directive_watch():
+    cfg = config_from_argv(["--session", "s", "--marker", "m", "--", "claude"])
+    assert cfg.directives is None
+
+
+def test_config_from_argv_refuses_to_half_arm_the_directive_watch(caplog):
+    """A partial set is a launcher bug. Erroring would refuse to start a box over a
+    watch that is not the box's purpose; guessing the missing path would put a path
+    decision back in the supervisor. So: say so, stay inert."""
+    with caplog.at_level("WARNING"):
+        cfg = config_from_argv([
+            "--session", "s", "--marker", "m",
+            "--directive-manifest", "/home/agent/.kanibako/directive-manifest.json",
+            "--", "claude",
+        ])
+    assert cfg.directives is None
+    assert any("directive freshness NOT armed" in r.message for r in caplog.records)
+
+
+def test_directive_tick_period_converts_seconds_to_whole_ticks():
+    watch = DirectiveWatch(seed="s", dest="d", manifest="m", flattener="f", interval=5.0)
+    sup = BoxSupervisor(_config(directives=watch, poll_interval=2.0), run=FakeRun())
+    assert sup._directive_tick_period() == 2
+    sup = BoxSupervisor(_config(directives=watch, poll_interval=60.0), run=FakeRun())
+    assert sup._directive_tick_period() == 1     # never zero -- that would never fire

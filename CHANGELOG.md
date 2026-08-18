@@ -57,6 +57,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   at all for an unnamed project or an agentless box; the output
   says so and points at `kanibako box show --effective`.
 
+### Fixed
+
+- **Edited directives now reach a running box, instead of waiting for the next box start.** The
+  flattened instruction file (`~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`,
+  `~/.config/goose/.additionalContext.md`) was written once per agent launch, so any directive source
+  you edited mid-session left that file **stale and silent** — nothing announced it, and the agent
+  kept reading the older text. The flattener now records a manifest of every file it collected
+  (content hashes, plus the paths an import *failed* to resolve), and the box supervisor re-flattens
+  when any of them changes — including when a previously missing file appears. Writes are atomic, so
+  a harness never reads a half-written instruction file, and an identical render does not rewrite it.
+  A file you edited by hand is left alone rather than clobbered.
+
 ### Changed
 
 - **BREAKING: `COLORTERM=truecolor` is a declared default now, and nothing writes it into your
