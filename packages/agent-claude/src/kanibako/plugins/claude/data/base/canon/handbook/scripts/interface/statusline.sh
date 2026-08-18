@@ -5,7 +5,7 @@
 #
 #   "statusLine": {
 #     "type": "command",
-#     "command": "~/canon/handbook/scripts/hooks/statusline.sh"
+#     "command": "~/canon/handbook/agent/scripts/interface/statusline.sh"
 #   }
 
 input=$(cat)
