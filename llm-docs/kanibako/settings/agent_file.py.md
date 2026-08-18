@@ -269,7 +269,10 @@ the carrier and write would never put it back.
 ⚑ **`load` and `save` are the ONLY names for this round trip** (S1b). The transitional
 `agent_config.load_agent_config` / `write_agent_config` forwards — the S1b BRIDGE, which existed
 only because `start.py` was held by the P4b lane — are DELETED, together with the flat
-`kanibako.agent_config` shim's two re-exports of them; `commands/start.py` imports this module and
+`kanibako.agent_config` shim that re-exported them. ⚑ **That whole shim is GONE in v1.8.0** —
+the four flat re-export modules were deleted outright (clean break, no deprecation window), so
+`import kanibako.agent_config` now raises `ModuleNotFoundError`; the module is
+`kanibako.settings.agent_config`. `commands/start.py` imports this module and
 calls `agent_file.load` / `agent_file.save`, and `tests/conftest.py` patches `load` HERE.
 `agent_file_route` needed no bridge and is likewise GONE (its body SPLIT at S3 into `_read_address` and `_write_address`).
 
