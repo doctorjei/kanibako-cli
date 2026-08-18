@@ -9741,3 +9741,98 @@ class TestSupervisorMarkersDirFollowsTheResolvedEnv:
         assert rc == 0
         argv = self._supervisor_argv(m)
         assert argv[argv.index("--agent-markers-dir") + 1] == AGENT_MARKERS_DIR
+
+
+# ---------------------------------------------------------------------------
+# DIRECTIVE FRESHNESS — the launch flatten and the watcher must name ONE receipt
+# ---------------------------------------------------------------------------
+
+class TestSupervisorDirectiveFreshnessWiring:
+    """PID 1 is told which instruction slot to keep fresh, and from what.
+
+    The launch shim flattens the directive chain into the agent's native slot ONCE per
+    agent launch and swallows every failure, so a directive edited mid-container-life
+    leaves that file stale in silence.  The supervisor fixes that by re-checking the
+    flatten's RECEIPT — which only works if the shim that writes the receipt and the
+    watcher that reads it name the SAME file, and if the watcher is handed the same
+    flattener the shim ran.  Both are pinned here, on the delivered VALUES.
+    """
+
+    def _kwargs(self, **over):
+        base = dict(
+            project_dir=None,
+            entrypoint=None,
+            image_override=None,
+            new_session=False,
+            safe_mode=False,
+            resume_mode=False,
+            extra_args=[],
+            persistent=True,   # persistent + agent mode => supervised PID-1
+        )
+        base.update(over)
+        return base
+
+    @staticmethod
+    def _supervisor_argv(m) -> list[str]:
+        import shlex
+
+        kw = m.runtime.run.call_args.kwargs
+        assert kw["entrypoint"] == "sh"
+        script = kw["cli_args"][1]
+        sup = script.split("&& exec ", 1)[1].rsplit(" || {", 1)[0]
+        return shlex.split(sup)
+
+    @staticmethod
+    def _flatten_shim(argv: list[str]) -> str:
+        """The `sh -c` flatten script nested in the supervisor's `-- <agent argv>`."""
+        payload = argv[argv.index("--") + 1:]
+        return payload[payload.index("-c") + 1]
+
+    def test_the_watch_is_threaded_for_an_agent_with_a_final_slot(self, start_mocks):
+        from kanibako.commands.start import (
+            DIRECTIVE_FLATTENER,
+            DIRECTIVE_MANIFEST_RELPATH,
+        )
+        from kanibako.settings.settings_resolve import GUEST_HOME
+
+        slot = "/home/agent/.claude/CLAUDE.md"
+        with start_mocks() as m:
+            rc = _run_container(**self._kwargs(cli_env=[f"KANIBAKO_DIRECTIVE_FINAL={slot}"]))
+        assert rc == 0
+        argv = self._supervisor_argv(m)
+        env = m.runtime.run.call_args.kwargs["env"]
+        # Seed and dest are the RESOLVED env the box itself runs with, so the watcher
+        # and the in-box shim cannot disagree about which files they maintain.
+        assert argv[argv.index("--directive-dest") + 1] == slot
+        assert argv[argv.index("--directive-seed") + 1] == env["KANIBAKO_DIRECTIVE_SEED"]
+        assert argv[argv.index("--directive-flattener") + 1] == DIRECTIVE_FLATTENER
+        assert argv[argv.index("--directive-manifest") + 1] == (
+            f"{GUEST_HOME}/{DIRECTIVE_MANIFEST_RELPATH}"
+        )
+
+    def test_the_launch_flatten_writes_the_receipt_the_watcher_reads(self, start_mocks):
+        """ONE receipt, named once: the shim's ``--manifest`` and the supervisor's
+        ``--directive-manifest`` are the same path, and the flattener the watcher is
+        told to re-run is the one the shim ran.  MUTATION: change either spelling
+        alone and this reds — which is the whole point, because a split would be
+        SILENT (the watcher would re-flatten every tick against a receipt nobody
+        writes, or never notice an edit at all)."""
+        slot = "/home/agent/.claude/CLAUDE.md"
+        with start_mocks() as m:
+            rc = _run_container(**self._kwargs(cli_env=[f"KANIBAKO_DIRECTIVE_FINAL={slot}"]))
+        assert rc == 0
+        argv = self._supervisor_argv(m)
+        script = self._flatten_shim(argv)
+        assert f'--manifest "{argv[argv.index("--directive-manifest") + 1]}"' in script
+        assert f'"{argv[argv.index("--directive-flattener") + 1]}"' in script
+
+    def test_no_final_slot_threads_no_watch(self, start_mocks):
+        """No native instruction slot ⇒ nothing to keep fresh.  The watch stays
+        UNARMED by construction rather than by a check inside PID 1 — the same guard
+        the shim applies in-shell (``[ -n "$KANIBAKO_DIRECTIVE_FINAL" ]``)."""
+        with start_mocks() as m:
+            rc = _run_container(**self._kwargs(cli_env=["KANIBAKO_DIRECTIVE_FINAL="]))
+        assert rc == 0
+        argv = self._supervisor_argv(m)
+        assert "--directive-manifest" not in argv
+        assert "--directive-dest" not in argv
