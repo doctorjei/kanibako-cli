@@ -4,7 +4,7 @@
 > **Read this BEFORE archiving anything, truncating `devnotes.md`/`tasks.md`, or splitting a
 > document** — the archives are the AUTHORITATIVE historical record, & old entries must move
 > VERBATIM. Getting this wrong destroys history rather than filing it.
-> Trigger conditions live in `~/canon/handbook/general/directives/rules/HANDBOOK.md` (auto-loaded).
+> Trigger conditions live in `~/canon/handbook/general/directives/rules/CANON.md` (auto-loaded).
 > Moved out of `directives/` 2026-08-04 (context cost).
 
 
