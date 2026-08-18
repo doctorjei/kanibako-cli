@@ -43,8 +43,6 @@ from kanibako.box_lifecycle import (
 )
 from kanibako.log import get_logger
 
-log = get_logger("box_supervisor")
-
 #: The continue-marker a self-heal restart delivers via ``tmux send-keys`` as a
 #: real acting turn (design §108).  ⚑ Single-sourced HERE — ``commands/start.py``
 #: passes it as ``--marker``; never duplicate the literal.
@@ -88,6 +86,8 @@ XDG_PROJECTIONS: tuple[tuple[str, str, str], ...] = (
 #: The link's own basename under each projected XDG base — ``$XDG_STATE_HOME/kanibako``.
 #: ⚑ Single-sourced: BOTH halves of the projection spell it.
 XDG_LINK_NAME = "kanibako"
+
+log = get_logger("box_supervisor")
 
 
 def project_pinned_xdg(
@@ -734,6 +734,15 @@ class BoxSupervisor:
         if rc not in (0, None):
             log.debug("kill_agent_session: tmux kill-session rc=%s", rc)
 
+    # -- signal-handler install ----------------------------------------------
+
+    def install_signal_handlers(self) -> None:
+        """Install the SIGTERM handler (best-effort; a no-op off the main thread)."""
+        try:
+            signal.signal(signal.SIGTERM, self._handle_sigterm)
+        except (ValueError, OSError) as exc:
+            log.debug("could not install SIGTERM handler: %s", exc)
+
     # -- snapshot ------------------------------------------------------------
 
     def _snapshot(self) -> AttachState:
@@ -1024,25 +1033,12 @@ class BoxSupervisor:
         if self._ticks % self._directive_tick_period() == 0:
             self._safe_check_directives()
 
-    # -- teardown / signals --------------------------------------------------
-
-    def teardown(self) -> None:
-        """Total teardown: signal the loop to exit and kill the agent session."""
-        log.info("teardown requested; killing agent session and exiting loop")
-        self._stop = True
-        self.kill_agent_session()
+    # -- the SIGTERM handler -------------------------------------------------
 
     def _handle_sigterm(self, signum: int, frame: FrameType | None) -> None:
         """SIGTERM handler → :meth:`teardown` (factored out so tests call it directly)."""
         log.info("received signal %s", signum)
         self.teardown()
-
-    def install_signal_handlers(self) -> None:
-        """Install the SIGTERM handler (best-effort; a no-op off the main thread)."""
-        try:
-            signal.signal(signal.SIGTERM, self._handle_sigterm)
-        except (ValueError, OSError) as exc:
-            log.debug("could not install SIGTERM handler: %s", exc)
 
     # -- the watch loop ------------------------------------------------------
 
@@ -1220,6 +1216,14 @@ class BoxSupervisor:
                 log.exception("panel-watch tick failed; continuing")
             self._sleep(self.config.poll_interval)
         return 0
+
+    # -- teardown ------------------------------------------------------------
+
+    def teardown(self) -> None:
+        """Total teardown: signal the loop to exit and kill the agent session."""
+        log.info("teardown requested; killing agent session and exiting loop")
+        self._stop = True
+        self.kill_agent_session()
 
 
 # ---------------------------------------------------------------------------
