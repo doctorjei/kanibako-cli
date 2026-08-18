@@ -71,6 +71,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **BREAKING: the flattened directives file has a new link format, and generated section headers
+  are gone.** Kanibako assembles your directive tree into one file for the agent to read. That file
+  used to label every imported chapter with a machine-generated `## canon_bible_general_…_md`
+  heading and point every reference at it. Chapters are now emitted under **their own** headings,
+  so the flattened document reads as a single coherent outline instead of a list of slugs.
+
+  A new import form, `[Display Text](@path/to/file.md)`, both includes a file **and** links to it.
+  In a numbered list the row's number becomes part of the generated heading (`## 1.1 Identity &
+  Environment`), and the link resolves to it; outside a list the display text is used. Heading
+  depth follows the heading enclosing the list plus the row's own nesting, so an included chapter
+  always sits beneath the section that included it. **The bare `@path` form is unchanged** — it
+  still includes the file, it simply produces no link and no heading.
+
+  ⚠️ **If you hand-wrote a link to a generated anchor** (`[see](#canon_handbook_general_…_md)`) in
+  your own directives, that anchor no longer exists. Point it at the chapter's own heading instead.
+  Nothing else in your directive sources needs to change.
+
+- **A chapter that contains nothing no longer produces an empty section.** A directive file that is
+  only comments and whitespace — the stock `ROM_AGENT.md` / `SYS_AGENT.md` placeholders are exactly
+  this — used to contribute a heading with no body under it. Such files, and index files that
+  contain nothing but imports, are now left out of the flattened output entirely; their imports are
+  still followed, so anything they pull in still appears. **When a linked chapter is left out, its
+  table-of-contents row is dropped and the surviving rows renumber**, so the numbering a reader sees
+  never points at a section that is not there. The files are still read and still watched: give one
+  real content and it reappears on the next reload.
+
+- **The size warning no longer names a specific agent.** The flattener warns when the assembled
+  directives file passes 32 KiB. That message said codex would truncate it; harnesses differ (codex
+  stops at 32 KiB, others allow more), so on a roomier harness it was a false alarm naming the wrong
+  tool. It now reads *"WARNING: agent directives file exceeds 32KiB, the limit for some harnesses /
+  agents."* — the same conservative threshold, stated as what it is.
+
 - **BREAKING: `COLORTERM=truecolor` is a declared default now, and nothing writes it into your
   settings.** v1.7.2 seeded the value into the global `env` file on first run, and 1.8.0 development
   briefly wrote it as a settings key instead; **neither happens.** It is declared at **box** scope in

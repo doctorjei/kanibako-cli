@@ -1,6 +1,6 @@
-# Notebook (Local Tome)
 <!--[STOCK]
-# Local Tome: Box Instructions
+# 3 Notebook
+_(Local Tome)_
 
 > This file is the entrypoint for the "box" chapter of the "notebook"; it is read from the box's
 > canon/notebook directory and can edited by agents and the user of the system (including from
@@ -15,7 +15,5 @@
 - Reminders or conventions that aren't project code and don't fit the project's own docs.
 - Anything a future session should see that isn't captured elsewhere.
 -->
-
-@directives/CONVENTIONS.md
-
----
+## Contents
+3.1 [Conventions](@directives/CONVENTIONS.md)

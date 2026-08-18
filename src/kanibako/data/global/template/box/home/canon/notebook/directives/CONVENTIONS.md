@@ -1,6 +1,6 @@
-# Project Conventions
 <!--[STOCK]
-# Local Tome: Conventions
+## 3.1 Project Conventions
+_(Local Tome)_
 
 > This file holds the project's conventions; it is read from the box's canon/notebook directory
 > and can edited by agents and the user of the system (including from within the box). Box/project
@@ -14,17 +14,11 @@
 - rules
 - architecture
 - development reference
--->
 
-Project-specific rules, architecture, and development reference.
 
+Content includes Project-specific rules, architecture, & development referenc (Example below)
 ---
 
-<!--[STOCK] TO EDITING AGENTS AND/OR NATURAL PERSONS:
-
-Here in comments you will find an example section breakdown as a starting point.
-
----
 
 ## Project Overview
 
@@ -64,7 +58,7 @@ Author/committer identity, message format, branch naming
 ---
 
 ## Build & Test Commands
-
+//
 Project-specific commands for build, test, lint, type-check, deploy
 
 | Command | Purpose |

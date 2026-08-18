@@ -1,5 +1,6 @@
 <!--[STOCK]
-# System Tome: Box Instructions
+## 2.4 Box Directives
+_(System Tome)_
 
 > This file is the entrypoint for the "box" chapter of the "handbook"; it is read from the box's
 > canon/handbook directory and can only be edited from the host system by the user (not from within

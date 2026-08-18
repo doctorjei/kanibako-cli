@@ -1,5 +1,5 @@
-# Handbook (System Tome)
 <!--[STOCK]
+# 2. Handbook (System Tome)
 # Entrypoint to System Instructions
 
 > This file contains the Table of Contents for the _system tome_ of the canon; it is read from the
@@ -18,9 +18,9 @@ are meant as a starting point and can be extended or replaced.
 > 4. box - box/project-specific (seeded from core)
 -->
 
-1. General/Global - @general/directives/SYS_GENERAL.md
-2. Agent-Specific - @agent/directives/SYS_AGENT.md
-3. Workset-Specific - @workset/directives/SYS_WORKSET.md
-4. Box/Project-Specific - @box/directives/SYS_BOX.md
+## Handbook Contents
 
----
+2.1 [System-Wide Information & Directives](@general/directives/SYS_GENERAL.md)
+2.2 [Agent Directives](@agent/directives/SYS_AGENT.md)
+2.3 [Workset Directives](@workset/directives/SYS_WORKSET.md)
+2.4 [Box Directives](@box/directives/SYS_BOX.md)

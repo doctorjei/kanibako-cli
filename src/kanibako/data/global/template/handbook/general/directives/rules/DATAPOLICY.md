@@ -1,6 +1,6 @@
-## Efficiency in Memory
 <!--[STOCK]
-# System Tome: Data Policy
+### 2.1.2 Data Policy
+_(System Tome)_
 
 > This file holds the system-wide data policy; it is read from the global canon/handbook path and
 > can only be edited from the host system by the user (not from within the box). Agent-editable
@@ -10,7 +10,7 @@
 > as a starting point and can be extended or replaced.
 -->
 
-### Context Management
+#### Context Management
 
 The document structure is designed around **deferred loading**:
 
@@ -21,7 +21,7 @@ The document structure is designed around **deferred loading**:
 
 ---
 
-### Git Safety
+#### Git Safety
 
 - **Don't commit, push, or amend unless explicitly asked.**
 - **Never commit** `~/vault/ro`, `~/vault/rw`, or credential files.
@@ -29,7 +29,7 @@ The document structure is designed around **deferred loading**:
 
 ---
 
-### Records
+#### Records
 
 Persist state as you go. Context is summarized; the container is ephemeral. The durable record
 is the files you write to bound paths. Capture decisions when they are made.
@@ -47,5 +47,3 @@ is the files you write to bound paths. Capture decisions when they are made.
 
 - **If asked to update devnotes, plans, or any other documentation,** do so immediately. The user
   may be about to end the session.
-
----

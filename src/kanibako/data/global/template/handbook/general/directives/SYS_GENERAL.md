@@ -1,6 +1,6 @@
-## General Information & Directives (System-Wide)
 <!--[STOCK]
-# System Tome: General Instructions
+## System-Wide Information & Directives
+_(System Tome)_
 
 > This file is the entrypoint for the "agent" chapter of the "handbook"; it is read from the
 > global canon/handbook directory and can only be edited from the host system by the user (not
@@ -30,8 +30,6 @@ Update the `devnotes.md` file as you work — especially after build checks.
 
 ### Rules
 
-1. Canon Sections - @rules/CANON.md
-2. Project Work - @rules/DATAPOLICY.md
-3. Interaction - @rules/INTERACTION.md
-
----
+3.1 [Canon Sections](@rules/CANON.md)
+3.2 [Project Work](@rules/DATAPOLICY.md)
+3.3 [Interaction Guide](@rules/INTERACTION.md)

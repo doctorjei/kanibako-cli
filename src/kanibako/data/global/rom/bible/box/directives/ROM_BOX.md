@@ -1,5 +1,6 @@
 <!--[STOCK]
-# Core Tome: Box Instructions
+## Box Instructions
+_(Core Tome)_
 
 > This file is the entrypoint for the "box" chapter of the "bible"; it is read directly from
 > the package's "rom" index and cannot be edited. The core instructions are updated together with
