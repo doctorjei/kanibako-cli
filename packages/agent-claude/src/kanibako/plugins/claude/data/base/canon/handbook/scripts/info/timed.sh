@@ -7,9 +7,9 @@
 # coding spans from transcripts.  Never sum them into one total.
 #
 # Usage (source it first):
-#   export KANI_TIMING_LOG=~/workbook/temp/testing/timings/runs/$(date -u +%Y%m%dT%H%M%SZ).jsonl
+#   export KANI_TIMING_LOG=~/canon/workbook/temp/testing/timings/runs/$(date -u +%Y%m%dT%H%M%SZ).jsonl
 #   export KANI_RUN_ID=my-e2e-run
-#   source ~/notebook/scripts/timed.sh
+#   source ~/canon/handbook/agent/scripts/info/timed.sh
 #   timed infra env   "seadog create" -- seadog create --image kanibako-lxc --ttl 1h
 #   timed infra setup "git clone"     -- ssh -i "$KEY" agent@"$IP" 'git clone ...'
 #   timed_event infra env "seadog destroy" start
