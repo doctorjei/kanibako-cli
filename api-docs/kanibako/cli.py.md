@@ -18,8 +18,11 @@ def main(argv: list[str] | None=None) -> None
 def _normalize_command(effective: list[str]) -> list[str]
 def _ensure_initialized() -> None
 def _setup_nudge(args: argparse.Namespace) -> None
+```
 
+## Classes
 
+```
 class _Formatter(argparse.RawDescriptionHelpFormatter):
     def __init__(self, prog: str, **kwargs: Any) -> None
 ```

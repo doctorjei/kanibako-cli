@@ -20,8 +20,11 @@ def save_registry(path: Path, records: dict[str, RigRecord]) -> None
 def upsert(path: Path, record: RigRecord) -> None
 def remove(path: Path, name: str) -> bool
 def get(path: Path, name: str) -> RigRecord | None
+```
 
+## Classes
 
+```
 @dataclass
 class RigRecord:
     name: str

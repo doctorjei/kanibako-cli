@@ -34,34 +34,12 @@ def as_argv_fragment(value: Any) -> list[str]
 def as_mode_table(value: Any) -> dict[str, list[str]]
 def _require_node(node: Any, label: str) -> None
 def _sub_or_empty(node: KeyStore, key: str) -> KeyStore
+```
 
+## Classes
 
+```
 class ViewError(Exception):
-    ...
-
-class _BindMapView(Mapping[str, BindEntry]):
-    __slots__ = ('_node', '_label')
-
-    def __init__(self, node: KeyStore, *, label: str) -> None
-
-    def __getitem__(self, key: str) -> BindEntry
-    def __iter__(self) -> Iterator[str]
-    def __len__(self) -> int
-    def __contains__(self, key: object) -> bool
-    def _checked(self, key: str, value: Any) -> BindEntry
-    def __repr__(self) -> str
-
-class _EnvView(Mapping[str, 'str | int | float | bool']):
-    __slots__ = ('_node',)
-
-    def __init__(self, node: KeyStore) -> None
-
-    def __getitem__(self, key: str) -> str | int | float | bool
-    def __iter__(self) -> Iterator[str]
-    def __len__(self) -> int
-    def __contains__(self, key: object) -> bool
-    def _checked(self, key: str, value: Any) -> str | int | float | bool
-    def __repr__(self) -> str
 
 class typed_field(Generic[T]):
     __slots__ = ('_coerce', '_key', '_name')
@@ -105,4 +83,28 @@ class MetaAgentView(FiniteView):
     settings: Path = typed_field(as_path)
     mode: 'dict[str, list[str]]' = typed_field(as_mode_table)
     exec: 'list[str]' = typed_field(as_argv_fragment)
+
+class _BindMapView(Mapping[str, BindEntry]):
+    __slots__ = ('_node', '_label')
+
+    def __init__(self, node: KeyStore, *, label: str) -> None
+
+    def __getitem__(self, key: str) -> BindEntry
+    def __iter__(self) -> Iterator[str]
+    def __len__(self) -> int
+    def __contains__(self, key: object) -> bool
+    def _checked(self, key: str, value: Any) -> BindEntry
+    def __repr__(self) -> str
+
+class _EnvView(Mapping[str, 'str | int | float | bool']):
+    __slots__ = ('_node',)
+
+    def __init__(self, node: KeyStore) -> None
+
+    def __getitem__(self, key: str) -> str | int | float | bool
+    def __iter__(self) -> Iterator[str]
+    def __len__(self) -> int
+    def __contains__(self, key: object) -> bool
+    def _checked(self, key: str, value: Any) -> str | int | float | bool
+    def __repr__(self) -> str
 ```

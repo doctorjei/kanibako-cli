@@ -29,8 +29,11 @@ def build_store_shape(entries: list[CategoryEntry]) -> tuple[StoreShape, list[Ca
 def _scope_survivors(entries: list[CategoryEntry]) -> tuple[list[CategoryEntry], list[CategoryCollision]]
 def _within_scope_survivors(box_dest: str, group: list[CategoryEntry]) -> tuple[list[CategoryEntry], list[CategoryCollision]]
 def _arm_of(entry: CategoryEntry) -> str | None
+```
 
+## Classes
 
+```
 class CopyRow(NamedTuple):
     dest: str
     entry: BindEntry

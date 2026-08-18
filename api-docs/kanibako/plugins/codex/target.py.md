@@ -23,8 +23,11 @@ def _npm_root_global() -> Path | None
 def _resolve_vendored_binary(npm_root: Path) -> Path | None
 def _is_elf(path: Path) -> bool
 def _resolve_path_executable() -> Path | None
+```
 
+## Classes
 
+```
 class CodexTarget(Target):
     @property
     def name(self) -> str

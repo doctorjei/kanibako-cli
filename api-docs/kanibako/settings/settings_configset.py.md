@@ -23,13 +23,15 @@ ResolveProbe = Callable[[str, str], 'str | None']
 ```
 def validate_config_set(key: str, value: str, *, resolves: ResolveProbe) -> Verdict
 def _scan_tokens(value: str) -> tuple[list[str], list[str]]
+```
 
+## Classes
 
-@dataclass(frozen=True)
-class _OK:
-    ...
-
+```
 @dataclass(frozen=True)
 class Error:
     message: str
+
+@dataclass(frozen=True)
+class _OK:
 ```

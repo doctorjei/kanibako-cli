@@ -21,8 +21,11 @@ def _names_in_order(levels: list[KeyStore]) -> list[str]
 def _merge_nodes(levels: list[KeyStore], *, path: tuple[str, ...]) -> KeyStore
 def _deep_copy_store(store: KeyStore) -> KeyStore
 def _resolve_present_none(*, path: tuple[str, ...]) -> StoreValue | _Omit
+```
 
+## Classes
 
+```
 class _Omit:
     def __repr__(self) -> str
 ```

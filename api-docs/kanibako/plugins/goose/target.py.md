@@ -16,7 +16,8 @@ _GOOSE_DESCRIPTOR = load_descriptor(_DEFAULTS_PACKAGE, _DEFAULTS_FILE)
 _GOOSE_BEHAVIOR = load_behavior(_DEFAULTS_PACKAGE, _DEFAULTS_FILE)
 ```
 
-## Functions
+## Classes
+
 ```
 class GooseTarget(Target):
     @property

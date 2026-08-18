@@ -46,8 +46,11 @@ def _present_scalar_fields(path: Path) -> dict[str, object]
 def _resolve_box_scalars(global_path: Path, floor_values: 'dict[str, object]', *, workset_path: Path | None, box_path: Path | None, cli_overrides: 'dict[str, object] | None') -> dict[str, object]
 def _split_config_key(flat_key: str) -> tuple[str, str]
 def _flatten_dotted(data: dict, prefix: str='') -> dict[str, str]
+```
 
+## Classes
 
+```
 @dataclass
 class KanibakoConfig:
     paths_project_toml: str = _DEFAULTS['paths_project_toml']

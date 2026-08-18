@@ -18,8 +18,11 @@ _HEALTH_CHECK_INTERVAL = 0.5
 ## Functions
 ```
 def ws_endpoint_for_container(ws_url: str) -> str
+```
 
+## Classes
 
+```
 @dataclass
 class BrowserSidecar:
     runtime: ContainerRuntime
@@ -35,5 +38,4 @@ class BrowserSidecar:
     def _wait_for_endpoint(self, port: int) -> str
 
 class BrowserSidecarError(Exception):
-    ...
 ```

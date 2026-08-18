@@ -23,8 +23,11 @@ def agent_category_root_ref(agent: str, category: str) -> str
 def is_self_resolving(src: str) -> bool
 def root_relative_source(src: str, root_ref: str) -> str
 def agent_config_path(data_path: Path, agent_id: str, paths_agents: str='agents') -> Path
+```
 
+## Classes
 
+```
 @dataclass
 class AgentConfig:
     name: str = ''

@@ -158,8 +158,11 @@ def _interactive_host() -> bool
 def _restore_host_terminal() -> None
 def _validate_mounts(mounts: list, logger) -> None
 def _rotate_file(path: Path) -> None
+```
 
+## Classes
 
+```
 class LaunchRealization(NamedTuple):
     effective_state: dict[str, str]
     cascade_access: str

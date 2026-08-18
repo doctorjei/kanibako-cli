@@ -24,8 +24,11 @@ def http_probe_status(url: str, *, headers: dict[str, str], body: dict, timeout:
 def probe_outcome(status: int | None) -> PersonaProbeOutcome
 def probe_outcome_no_model(status: int | None) -> PersonaProbeOutcome
 def _validate_agent_binary(binary: Path) -> str | None
+```
 
+## Classes
 
+```
 @dataclass(frozen=True)
 class TargetSetting:
     key: str

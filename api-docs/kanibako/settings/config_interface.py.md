@@ -27,8 +27,11 @@ def _honest_reset_message(flat: str, command_scope: 'ConfigLevel | None', effect
 def _effective_after_reset(routed: str, sections: tuple[str, ...], leaf: str, *, agent_name: str, system_path: Path | None, agent_path: Path | None, workset_path: Path | None, box_path: Path | None) -> 'tuple[str, str] | None'
 def _count_leaves(node: object) -> int
 def _clear_writable_scope_tables(path: Path, command_scope: 'ConfigLevel | None') -> int
+```
 
+## Classes
 
+```
 class ConfigAction(Enum):
     get = 'get'
     set = 'set'

@@ -5,7 +5,8 @@ _Signatures only: no comments, no docstrings, no bodies._
 Prose for these symbols lives in `llm-docs/kanibako/targets/no_agent.py.md`.
 
 
-## Functions
+## Classes
+
 ```
 class NoAgentTarget(Target):
     @property

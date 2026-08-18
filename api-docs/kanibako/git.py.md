@@ -11,8 +11,11 @@ def is_git_repo(path: Path) -> bool
 def check_uncommitted(path: Path) -> None
 def check_unpushed(path: Path) -> None
 def get_metadata(path: Path) -> GitMetadata | None
+```
 
+## Classes
 
+```
 @dataclass
 class GitMetadata:
     branch: str

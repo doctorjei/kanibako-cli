@@ -41,14 +41,11 @@ def _write_workset_toml(ws: Workset) -> None
 def _load_workset_toml(root: Path) -> Workset
 def _load_registry(std: StandardPaths) -> dict[str, Path]
 def _detach_project(ws: Workset, name: str) -> None
+```
 
+## Classes
 
-class _Unwind:
-    def __init__(self) -> None
-
-    def push(self, action: Callable[[], None]) -> None
-    def run(self) -> None
-
+```
 @dataclass
 class WorksetProject:
     name: str
@@ -73,4 +70,10 @@ class Workset:
     def logs_dir(self) -> Path
     @property
     def toml_path(self) -> Path
+
+class _Unwind:
+    def __init__(self) -> None
+
+    def push(self, action: Callable[[], None]) -> None
+    def run(self) -> None
 ```

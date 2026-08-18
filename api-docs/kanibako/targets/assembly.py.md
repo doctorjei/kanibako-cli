@@ -24,8 +24,10 @@ def env_realization_drivers(descriptor: PluginDescriptor) -> dict[str, str]
 def resolve_binding_source(binding: Binding, install: AgentInstall, *, override: str='') -> Path | None
 def declares_box_dest(descriptor: 'PluginDescriptor | None', box_dest: str) -> bool
 def descriptor_mounts(descriptor: PluginDescriptor, install: AgentInstall, *, overrides: dict[str, str] | None=None) -> list[Mount]
+```
 
+## Classes
 
+```
 class BindingSourceError(Exception):
-    ...
 ```

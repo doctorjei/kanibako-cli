@@ -16,8 +16,11 @@ _READER_JOIN = 5.0
 ```
 def send_request(socket_path: Path, request: dict) -> dict
 def _route_frame(line: bytes, responses: queue.Queue[Any], inbox: queue.Queue[Any]) -> str | None
+```
 
+## Classes
 
+```
 class HelperConnection:
     def __init__(self) -> None
 

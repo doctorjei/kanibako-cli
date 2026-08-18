@@ -16,8 +16,11 @@ _LOG_MAX_BYTES = 1048576
 ```
 def _send_json(conn: socket.socket, data: dict) -> None
 def _build_helper_mounts(ctx: HelperContext, helper_num: int, helpers_dir: Path) -> list[Mount]
+```
 
+## Classes
 
+```
 @dataclass
 class HelperContext:
     runtime: ContainerRuntime

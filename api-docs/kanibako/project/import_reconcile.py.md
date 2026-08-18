@@ -20,8 +20,10 @@ def _conflict(mode: str, name: str, new_path: Path, existing_path: str) -> Impor
 @contextmanager
 def _journal_register(journal: Path | None, box_path: Path, *, op: str, name: str, mode: str, workset: str | None=None)
 def _clear_stale_import(journal: Path | None, box_path: Path) -> None
+```
 
+## Classes
 
+```
 class ImportConflictError(KanibakoError):
-    ...
 ```

@@ -33,8 +33,11 @@ def main(argv: list[str] | None=None) -> int
 def _build_parser() -> argparse.ArgumentParser
 def _single_instance_lock(lock_path: Path) -> 'object | None'
 def _resolve_watch_context(box: str | None)
+```
 
+## Classes
 
+```
 class WatchAction(Enum):
     NONE = 'none'
     WRITEBACK = 'writeback'

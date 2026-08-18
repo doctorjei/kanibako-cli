@@ -19,8 +19,11 @@ def locate_entry(ref: str) -> PersonaEntry | None
 def resolve_secret_path(entry: PersonaEntry) -> SecretPathResult
 def validate_endpoint(endpoint: str) -> None
 def read_persona_bundle(ref: str, target: Target) -> PersonaBundle | None
+```
 
+## Classes
 
+```
 @dataclass(frozen=True)
 class PersonaEntry:
     node: str

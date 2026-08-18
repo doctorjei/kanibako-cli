@@ -28,8 +28,11 @@ def _key_slot(canonical: str) -> 'tuple[tuple[str, ...], str, str] | None'
 def _dest(canonical: str, *, command_scope: 'object | None', config_path: 'Path | None', settings_path: 'Path | None') -> 'DestRoute | None'
 def _write_dest(canonical: str, *, command_scope: 'object | None'=None, config_path: 'Path | None', settings_path: 'Path | None'=None) -> 'DestRoute | None'
 def _read_dest(canonical: str, *, command_scope: 'object | None'=None, config_path: 'Path | None', settings_path: 'Path | None'=None) -> 'DestRoute | None'
+```
 
+## Classes
 
+```
 @dataclass(frozen=True)
 class NodeRouteRefusal:
     reason: str

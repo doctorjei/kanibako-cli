@@ -26,8 +26,10 @@ def _seed_attached_config(runtime, std, proj, container_name: str) -> None
 def _wire_docker_path(wrapper_path) -> int | None
 def _seed_remote_attached_config(engine, container_name: str) -> None
 def _run_code_remote(args: argparse.Namespace, dest: str) -> int
+```
 
+## Classes
 
+```
 class _CodeShimError(Exception):
-    ...
 ```

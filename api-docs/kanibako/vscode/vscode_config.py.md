@@ -69,8 +69,11 @@ def _strip_codex_provider_region(text: str) -> str
 def _apply_provider_root_keys(body: str, *, model: str, provider_id: str) -> str
 def _remove_provider_root_keys(body: str) -> str
 def _build_codex_provider_region(*, provider_id: str, name: str, base_url: str, wire_api: str, env_key: str) -> str
+```
 
+## Classes
 
+```
 class CodexModelProvider(NamedTuple):
     provider_id: str
     name: str

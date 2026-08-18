@@ -20,8 +20,11 @@ def expand(snapshot: KeyStore, ctx: ResolveCtx) -> KeyStore
 def expand(snapshot: KeyStore, ctx: ResolveCtx, *, collect_errors: bool) -> KeyStore | tuple[KeyStore, dict[str, str]]
 def expand(snapshot: KeyStore, ctx: ResolveCtx, *, collect_errors: bool=False) -> KeyStore | tuple[KeyStore, dict[str, str]]
 def _is_whole_value_ref(value: str) -> str | None
+```
 
+## Classes
 
+```
 class _Absent:
     _instance: '_Absent | None' = None
 

@@ -15,8 +15,11 @@ _CODE_RE = re.compile('(?:verification\\s+code|code|key)\\s*(?:is)?[:=]\\s*([A-Z
 ## Functions
 ```
 def parse_auth_output(output: str) -> AuthPrompt | None
+```
 
+## Classes
 
+```
 @dataclass
 class AuthPrompt:
     url: str

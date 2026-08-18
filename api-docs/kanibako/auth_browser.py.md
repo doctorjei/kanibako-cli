@@ -27,8 +27,11 @@ def auto_refresh_auth(claude_path: str, data_path: Path, *, headless: bool=True,
 def _check_playwright() -> bool
 def _handle_auth_page(page) -> AuthResult
 def _extract_key(page) -> str | None
+```
 
+## Classes
 
+```
 @dataclass
 class AuthResult:
     success: bool

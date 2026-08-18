@@ -40,8 +40,11 @@ def _nested_agent_cure(category: str | None, sub_key: str, *, var: str, value: s
 def _refused_category(sub_tbl: dict) -> str | None
 def _refuse_nested_tables(root_tbl: dict, *, node: str | None, path: Path | None) -> None
 def _refuse_undeclared_state(state: 'Mapping[str, str | None]', *, node: str) -> None
+```
 
+## Classes
 
+```
 @dataclass(frozen=True)
 class AgentFileSlot:
     path: Path

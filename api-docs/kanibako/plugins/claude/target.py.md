@@ -23,8 +23,11 @@ _CLAUDE_BEHAVIOR = load_behavior(_DEFAULTS_PACKAGE, _DEFAULTS_FILE)
 ## Functions
 ```
 def _autoupdater_disabled_env() -> dict[str, str]
+```
 
+## Classes
 
+```
 class ClaudeTarget(Target):
     @property
     def name(self) -> str

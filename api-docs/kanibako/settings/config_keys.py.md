@@ -80,8 +80,11 @@ def _bind_route_retired_message(display_key: str, *, verb: str, route: str, why:
 def _is_path_category_key(key: str) -> bool
 def _has_dedicated_route(canonical: str) -> bool
 def _probes_at_set_time(canonical: str) -> bool
+```
 
+## Classes
 
+```
 class ConfigLevel(Enum):
     box = 'box'
     workset = 'workset'

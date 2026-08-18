@@ -37,8 +37,11 @@ def pref_entry_keys(req: PrefRequest) -> tuple[str, ...]
 def pref_origin(target_key: str, requests: Sequence[PrefRequest]) -> PrefRequest | None
 def _flatten_pref_node(node: KeyStore, prefix: tuple[str, ...], *, level: str, path: Path | None) -> list[PrefRequest]
 def _needs_agent_discovery(requests: Sequence[PrefRequest]) -> bool
+```
 
+## Classes
 
+```
 @dataclass(frozen=True)
 class PrefRequest:
     target: str

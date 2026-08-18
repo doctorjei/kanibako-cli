@@ -31,11 +31,13 @@ def _splits_positionals(positionals: 'list[argparse.Action]') -> bool
 def _has_option(parser: argparse.ArgumentParser, option: str) -> bool
 def _walk(parser: argparse.ArgumentParser, prefix: tuple[str, ...]) -> None
 def _find_subparsers_action(parser: argparse.ArgumentParser) -> argparse._SubParsersAction | None
+```
 
+## Classes
 
+```
 class OptionsAnywhereParser(argparse.ArgumentParser):
     def parse_known_args(self, args: 'list[str] | None'=None, namespace: argparse.Namespace | None=None) -> 'tuple[argparse.Namespace, list[str]]'
 
 class FlagRelevanceError(Exception):
-    ...
 ```
