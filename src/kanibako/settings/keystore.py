@@ -1,14 +1,12 @@
 """KeyStore — the resolved-keyspace data structure (storage + types only).
 
-This module defines the KeyStore class and its supporting types _only_: reserved key errors
-(:class:`ReservedKeyError`) & the recursive attribute-dict container (:class:`KeyStore`) - NOT
-resolution, merge, cascade, ``@``-ref / ``$VAR`` / ``~`` expansion, typed views, or consumers —
-which live in later blocks. It imports nothing from the settings stack beyond its own
-:mod:`keystore_strings`.
+This module defines the KeyStore class & its supporting types _only_: the recursive attribute-dict
+container (:class:`KeyStore`) & reserved key errors (:class:`ReservedKeyError`) - NOT resolution,
+merge, cascade, ``@``-ref / ``$VAR`` / ``~`` expansion, typed views, or consumers — which live
+elsewhere. It imports nothing from the settings stack beyond its own :mod:`keystore_strings`.
 
-⚑ The absent-vs-present-None sentinel (``__MISSING__``) is NOT here: it belongs to kanibako's VALUE
-space, so it lives in :mod:`kb_store` beside :data:`StoreValue`, which excludes it. This module is
-the unit that can LEAVE the tree; keeping it value-space-agnostic is what makes that possible."""
+⚑ This is purely a data structure, mostly unopionated about its contents; its value-agnostic design
+intentionally limits cross-dependencies."""
 
 from __future__ import annotations
 
@@ -23,44 +21,40 @@ from .keystore_strings import (
     ERR_TYPE_NONSTRING_KEY,
 )
 
-#: The leaf value space of a :class:`KeyStore`. Kanibako's instantiation lives in :mod:`kb_store`;
-#: this module stays value-space-agnostic so it can leave the tree intact.
+# Leaf value space of a :class:`KeyStore`
 V = TypeVar("V")
 
 
-######## Errors / Exceptions ####################################
+### Errors / Exceptions ###
 
 class ReservedKeyError(KeyError):
     """Raised when a :class:`KeyStore` write uses a RESERVED key name (bad-key, not bad-value)"""
 
 
-######## Main KeyStore Class ###############################
+### Main KeyStore Class ###
 
 class KeyStore(dict[str, "V | KeyStore[V]"], Generic[V]):
     """Recursive attribute-dict: ``dict[str, V | KeyStore[V]]`` w. attr access. Inherits `dict`."""
 
-    #: The public, non-dunder method names of :class:`dict`, PLUS this class's OWN public members.
-    #: All are forbidden as user keys.
-    #:
-    #: ⚑ THE EXPOSURE, stated the right way round: ``__getattr__`` fires on a lookup MISS ONLY, so
-    #: a class member ALWAYS wins. A key spelled like a member does not break the member — it
-    #: becomes SILENTLY UNREADABLE through attribute access (``store[name]`` still returns it,
-    #: ``store.name`` hands back the member). That silence is the whole reason for this set.
-    #:
-    #: THE RULE every class member satisfies: it is NAME-MANGLED (``_KeyStore__*``), or a DUNDER,
-    #: or LISTED HERE. Mangled and dunder names are out of reach of a declared key by construction
-    #: — no key is spelled ``_KeyStore__*``, and a dunder key is refused at write time — so the
-    #: internals need no entry. A PUBLIC member has neither protection and must name itself, which
-    #: is why this set carries its own members alongside ``dict``'s. Pinned by
-    #: ``test_every_non_dunder_class_member_is_mangled_or_reserved``.
+    # Public, non-dunder methods of :class:`dict`, PLUS KeyStore's public members - all forbidden
+    # as user keys.
+    #
+    # ⚑ EXPOSURE, stated correctly: ``__getattr__`` fires on lookup MISS ONLY, so class members
+    # ALWAYS win. A key spelled like a member becomes SILENTLY UNREADABLE through attribute access
+    # (``store[name]`` still available); ``store.name`` still returns member. That's intentional.
+    #
+    # EVERY CLASS MEMER satisfies this rule: it is NAME-MANGLED (``_KeyStore__*``), a DUNDER, or is
+    # LISTED HERE. Mangled & dunder names cannot be keys by construction; no key is spelled
+    # ``_KeyStore__*``, & dunder keys are refused at write time; internals need no entry. PUBLIC
+    # members lack these protections & must be named, hence this set of member named.
     RESERVED_KEY_NAMES: frozenset[str] = frozenset({"get", "keys", "values",
         "items", "pop", "popitem", "setdefault", "update", "clear", "copy", "fromkeys",
         "RESERVED_KEY_NAMES", "insert_segments",})
 
-    # No ``__slots__`` or instance ``__dict__`` use for storage; state lives in underlying `dict`.
-    # ⚑ ``self`` is pinned to ``KeyStore[Any]``: an argument-free ``KeyStore()`` has nothing to
-    # solve ``V`` from, and an unsolved ``V`` makes mypy demand an annotation at every bare
-    # construction. Explicit ``KeyStore[StoreValue]`` annotations still bind normally.
+    # No ``__slots__`` instance ``__dict__`` for storage; state is in inherited `dict`. ⚑ ``self``
+    # is pinned to ``KeyStore[Any]``: an arg-free ``KeyStore()`` has nothing to solve ``V`` from,
+    # & unsolved ``V`` makes mypy demand an annotation on bare construction. Explicit
+    # ``KeyStore[StoreValue]`` annotations bind as usual.
     def __init__(self: KeyStore[Any], *args: Any, **kwargs: Any) -> None:
         super().__init__()
         # Funnel everything through dict.update -> __setitem__ to wrap nested dicts uniformly.
@@ -68,12 +62,11 @@ class KeyStore(dict[str, "V | KeyStore[V]"], Generic[V]):
             if len(args) > 1:
                 raise TypeError(ERR_TYPE_KEYSTORE_ARGS % len(args))
             source = args[0]
-            # Use dict.items(source) — NOT source.items() — so the REAL storage of whatever mapping
-            # arrived is what gets read. ⚑ For a KeyStore source the two are identical: ``items`` is
-            # a reserved key name, and even force-written past that check the METHOD still wins the
-            # attribute lookup (__getattr__ fires on a MISS only). The unbound call earns its keep
-            # against any OTHER dict subclass, whose items() may be overridden to answer something
-            # that is not its contents.
+            # dict.items(source) (NOT source.items()) — reads REAL storage of the received mapping.
+            # ⚑ For KeyStore, they're identical: ``items`` is a reserved, & even if force-written
+            # past the check, METHOD still wins lookup (__getattr__ fires only on a MISS). Unbound
+            # calls earn their keep against OTHER dict subclasses, whose items() may be overridden
+            # to provide something other than its contents.
             items = dict.items(source) if isinstance(source, dict) else source
             for key, value in items:
                 self[key] = value
