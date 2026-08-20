@@ -26,7 +26,8 @@ information about its process / progress / state / etc.)
 that, follow them as written.**
 
 When editing, **create each directory listed when first writing into it; do not pre-create them.** A
-directory that does not yet exist is not missing — it has no content yet.
+directory that does not yet exist is not missing — it has no content yet. **An empty tome section is
+a slot, not cruft.**
 
 ---
 

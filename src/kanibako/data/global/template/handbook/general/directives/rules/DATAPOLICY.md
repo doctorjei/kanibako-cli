@@ -25,6 +25,7 @@ The document structure is designed around **deferred loading**:
 
 - **Don't commit, push, or amend unless explicitly asked.**
 - **Never commit** `~/vault/ro`, `~/vault/rw`, or credential files.
+- **Never drop or clear a stash you did not create.**
 - Commit authorship/identity conventions are **per-project** — follow the project's own docs.
 
 ---
