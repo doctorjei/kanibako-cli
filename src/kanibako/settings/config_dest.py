@@ -58,8 +58,8 @@ def _agent_node_route(
 
     ⚑ A SLOT, NOT AN ADDRESS.  It used to hand back ``(path, sections, leaf)``, which put a
     ``self``-rooted file address in every caller's hands — internal traffic in a FILE-SURFACE
-    alias (spec §0, ``self`` … a FILE-SURFACE ALIAS substituting at the parse boundary).  The
-    slot carries the node and the key TAIL; the address is produced
+    alias ([spec:15-21, "self"]).  The slot carries the node and the key
+    TAIL; the address is produced
     inside :mod:`kanibako.settings.agent_file` when the value is actually read or written.
 
     ONE HOME for the recipe every per-node key resolution repeats — the reserved

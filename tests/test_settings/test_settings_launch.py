@@ -176,7 +176,7 @@ _REFUSED_NESTED = [
 
 @pytest.mark.parametrize("category,var,value", _REFUSED_NESTED, ids=lambda v: str(v))
 class TestNothingNestsUnderSelfButTheCategories:
-    """Spec §0 (``self`` … a FILE-SURFACE ALIAS) — *"There is no self:<agent>:foo. It is just
+    """[spec:15-21, "self"] — *"There is no self:<agent>:foo. It is just
     self:foo"*.
 
     ⚑⚑ THE ARGUMENT IS ALIAS EXPANSION, not redundancy. ``self`` is NOT A KEY: it SUBSTITUTES to
@@ -231,7 +231,7 @@ class TestNothingNestsUnderSelfButTheCategories:
     def test_the_message_states_the_alias_expansion_that_makes_it_impossible(
         self, category, var, value,
     ):
-        # SPEC §0 (``self`` … a FILE-SURFACE ALIAS), pinned as the WORDING it is: the user
+        # [spec:15-21, "self"], pinned as the WORDING it is: the user
         # is told the key their spelling
         # actually reads. Without the expansion the refusal is an assertion of authority; with
         # it, it is an argument they can check. ⚑ ``agent.codex.codex.<category>`` is the whole
@@ -302,8 +302,8 @@ class TestNothingNestsUnderSelfButTheCategories:
 
 
 def test_the_nested_bindings_sub_table_refuses_now_that_the_flat_route_exists():
-    # ⚑⚑ INVERTED, NOT DELETED (spec §0, ``self`` … a FILE-SURFACE ALIAS substituting at the
-    # parse boundary). This used to be the SCOPE CONTROL for
+    # ⚑⚑ INVERTED, NOT DELETED ([spec:15-21, "self"]). This used to be the SCOPE
+    # CONTROL for
     # the one occupant of the nested shape: ``bindings`` was excluded from the refusal
     # because nested was its ONLY spelling, and refusing it before a flat route existed
     # would have deleted a live delivery path. S2 landed that flat route, so the
@@ -3479,8 +3479,8 @@ class TestCliLevelPrecedence:
         writes ``pref.agent.<agent>.model``, covered separately below.
 
         ⚑⚑ THE PAIR IS THE POINT: a behaviour scalar lives FLAT in the file (``self:``
-        IS ``agent.claude``, and a ``self: claude:`` sub-table is REFUSED — rulings
-        50-52), and it reaches the cascade on its OWN rung, the one every production
+        IS ``agent.claude``, and a ``self: claude:`` sub-table is REFUSED —
+        [spec:15-21, "self"]), and it reaches the cascade on its OWN rung, the one every production
         producer builds through ``agent_file.state_level``. Writing the file and NOT
         passing the state level would leave the contender out of the snapshot entirely,
         which is exactly the shape that used to make this test pass for the wrong
@@ -3637,9 +3637,8 @@ def _agent_file_contender(key, value):
     ⚑⚑ THE SHAPE COLLAPSED, BUT THE TWO ROUTES DID NOT, and conflating them is the trap this
     helper exists to close. Since the flatten there is ONE file shape — everything sits
     DIRECTLY under ``self:``, which IS ``agent.<node>``; a second ``<node>`` level REFUSES
-    (spec §0, ``self`` … a FILE-SURFACE ALIAS). But a CATEGORY table and a BEHAVIOUR scalar
-    still reach the cascade by
-    different rungs: the category rides ``_agent_partial``'s ``agent.<active>`` level, while a
+    ([spec:15-21, "self"]). But a CATEGORY table and a BEHAVIOUR scalar still reach
+    the cascade by different rungs: the category rides ``_agent_partial``'s ``agent.<active>`` level, while a
     scalar goes to ``cfg.state`` and rides ``state_level``'s own rung. So the file bytes are
     written the same way and the kwarg differs — which is exactly the production pair
     (``agent_path=`` + ``agent_state=``) every launch producer builds.
@@ -3743,8 +3742,8 @@ class TestPersonaRungOrdering:
 
         ⚑ The backstop is written in the SYSTEM file, which is the route for it: the agent
         file's flat table is re-rooted for the ACTIVE node only, and ``self.default.env``
-        refuses (spec §0, ``self`` … a FILE-SURFACE ALIAS). Which FILE supplies it is incidental
-        to the claim — that two
+        refuses ([spec:15-21, "self"]). Which FILE supplies it is incidental to the
+        claim — that two
         disjoint names never meet is exactly why the level does not matter.
         """
         snap = _persona_snap(

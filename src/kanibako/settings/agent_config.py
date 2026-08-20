@@ -2,8 +2,7 @@
 
 ⚑ THE FILE'S SHAPE IS NOT HERE.  Reading, writing and addressing the per-agent settings file
 belong to :mod:`kanibako.settings.agent_file`, the one module that spells the file's root table
-(spec §0: ``self`` … = a FILE-SURFACE ALIAS that SUBSTITUTES to ``agent.<that file's agent>`` at
-the parse boundary).  What stays here is what a caller holds INDEPENDENTLY of any file: the record
+[spec:15-21, "self"].  What stays here is what a caller holds INDEPENDENTLY of any file: the record
 itself, where the store lives, and where a category's sources root.
 """
 
