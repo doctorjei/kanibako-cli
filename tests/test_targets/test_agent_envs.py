@@ -214,8 +214,7 @@ class TestTheOverrideStory:
     def test_the_agent_file_beats_the_plugin_default(self, tmp_path):
         # ⚑ The FLAT table is the agent file's only env spelling: ``self:`` IS
         # ``agent.goose``, so a second ``goose:`` level under it would read
-        # ``agent.goose.goose.env`` and refuses (spec §0, ``self`` … a FILE-SURFACE ALIAS;
-        # pinned in
+        # ``agent.goose.goose.env`` and refuses ([spec:15-21, "self"]; pinned in
         # ``TestTheNestedSpellingRefuses`` below).
         target = target_for("goose")
         agent_file = write_yaml(
@@ -273,7 +272,7 @@ class TestTheOverrideStory:
 
 
 class TestTheNestedSpellingRefuses:
-    """Spec §0 (``self`` … a FILE-SURFACE ALIAS) — a second ``<node>`` level under ``self:``
+    """[spec:15-21, "self"] — a second ``<node>`` level under ``self:``
     refuses, through the REAL chain.
 
     ⚑ The layer-level cases live in ``test_settings_launch.py``; what this one adds is that the

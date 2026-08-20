@@ -1174,9 +1174,8 @@ class TestRemedyTextIsHonestAboutWhatItCanKnow:
         is what a CONTAINING scope's file writes. Printing one without the other hands
         the reader an edit that silently no-ops.
 
-        ⚑ The node LEFT the spelling with the S2 flatten (spec §0, ``self`` … a
-        FILE-SURFACE ALIAS) — a nested
-        ``self.claude.bindings`` is now refused by name, so a caveat still printing it
+        ⚑ The node LEFT the spelling with the S2 flatten ([spec:15-21, "self"])
+        — a nested ``self.claude.bindings`` is now refused by name, so a caveat still printing it
         would be teaching the one shape the launch rejects."""
         with pytest.raises(CategoryCollisionError) as exc:
             raise_binding_vs_binding(DEST, [

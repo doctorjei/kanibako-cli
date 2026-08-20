@@ -3346,9 +3346,8 @@ class TestApplyInitSeeds:
 
         ⚑ FLAT, and IN PLACE: this fixture used to spell ``self: default: seeded:``,
         which the S2 flatten refuses (``self:`` IS ``agent.claude``, so a ``default``
-        level under it reads ``agent.claude.default`` — spec §0, ``self`` … a
-        FILE-SURFACE ALIAS). It is flattened
-        HERE rather than moved to the system file: relocating it would make the test pass
+        level under it reads ``agent.claude.default`` — [spec:15-21, "self"]).
+        It is flattened HERE rather than moved to the system file: relocating it would make the test pass
         with ``agent_config_path`` inert, which is the dead-route trap — the assertion
         would no longer be about the agent file at all. The all-agents tier gets its OWN
         test below.
@@ -3369,8 +3368,8 @@ class TestApplyInitSeeds:
         assert (shell / "foo" / "file.txt").read_text() == "hello"
 
     def test_all_agents_seed_tier_is_the_system_file(self, tmp_path):
-        """The POSITIVE CONTROL for the tier the agent file lost (spec §0, ``self`` … a
-        FILE-SURFACE ALIAS).
+        """The POSITIVE CONTROL for the tier the agent file lost
+        ([spec:15-21, "self"]).
 
         ⚑ Without this, the flatten above would only prove that the tier stopped
         working from one file — never that it still works from the one the refusal's cure
