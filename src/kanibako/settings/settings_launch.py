@@ -1830,7 +1830,8 @@ def _agent_state_partial(level: AgentFileLevel | None) -> KeyStore | None:
     undeclared can reach this function to be gated.  A second check here would be a rule spelled
     twice, and the one downstream would be the one that rots.
 
-    ⚑⚑ THE DISCRIMINATOR ARRIVES WITH THE DATA (C-2, rulings 51/52).  It used to be
+    ⚑⚑ THE DISCRIMINATOR ARRIVES WITH THE DATA (C-2; spec §0, ``self`` … a FILE-SURFACE
+    ALIAS substituting at the parse boundary).  It used to be
     a SECOND parameter taken from the caller's ``agent_name`` while the state dict
     travelled undiscriminated all the way from ``agent_file.load``, so the node the
     table came FROM and the node it merged UNDER were two independent facts that

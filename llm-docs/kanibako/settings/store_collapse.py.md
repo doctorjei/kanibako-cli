@@ -44,7 +44,8 @@ takes the launch's parsed `-e` map and, AFTER the containment walk, hands it to 
 per variable, an owned slot has its VALUE replaced (provenance kept — the key still owns the
 variable) and an unowned one gets a slot of its own with `("cli", "-e <VAR>")` provenance. ⚖️
 Ruling 42 — *"-e should override the key values, not the environment variables themselves"* — plus
-ruling 45's *"e must win… so it must be part of the collapse"*.
+Jei's *"e must win… so it must be part of the collapse"* (spec `env.<VAR>`: *"`-e` beats a
+realization uniformly (the CLI level overrides the owning key — §1A)"*).
 
 🛑 **AFTER the walk, never inside it, and the reason is measured rather than aesthetic.** `-e` has
 no scope and must never CONTEST a slot: it overrides an owner or fills a vacancy, so no refusal can

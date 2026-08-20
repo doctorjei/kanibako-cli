@@ -214,7 +214,8 @@ class TestTheOverrideStory:
     def test_the_agent_file_beats_the_plugin_default(self, tmp_path):
         # ⚑ The FLAT table is the agent file's only env spelling: ``self:`` IS
         # ``agent.goose``, so a second ``goose:`` level under it would read
-        # ``agent.goose.goose.env`` and refuses (rulings 49c + 50; pinned in
+        # ``agent.goose.goose.env`` and refuses (spec §0, ``self`` … a FILE-SURFACE ALIAS;
+        # pinned in
         # ``TestTheNestedSpellingRefuses`` below).
         target = target_for("goose")
         agent_file = write_yaml(
@@ -272,7 +273,8 @@ class TestTheOverrideStory:
 
 
 class TestTheNestedSpellingRefuses:
-    """Ruling 49c — a second ``<node>`` level under ``self:`` refuses, through the REAL chain.
+    """Spec §0 (``self`` … a FILE-SURFACE ALIAS) — a second ``<node>`` level under ``self:``
+    refuses, through the REAL chain.
 
     ⚑ The layer-level cases live in ``test_settings_launch.py``; what this one adds is that the
     refusal is REACHABLE from the path a launch actually walks, not only from ``_agent_partial``
@@ -934,7 +936,8 @@ class TestARealizedVariableADeclaredKeyAlsoNamesRefuses:
 
 
 class TestThePerRunFlagStillBeatsARealization:
-    """Ruling 45 (*"e must win"*) survives the fold — BY CONSTRUCTION, not by order.
+    """Spec env.<VAR> (*"-e beats a realization uniformly"* — the CLI level overrides the
+    owning key, §1A) survives the fold — BY CONSTRUCTION, not by order.
 
     ``-e`` is the CLI level applied to the SETTLED slot, above every scope, so it
     overrides a realized variable exactly as it overrides a declared one. Before

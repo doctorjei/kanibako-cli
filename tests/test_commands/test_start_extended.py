@@ -1700,7 +1700,8 @@ class TestTheRealizedVariablesReachTheContainerEndToEnd:
             assert "ANTHROPIC_BASE_URL" not in self._launch_env(m)
 
     def test_a_per_run_flag_beats_the_realization_end_to_end(self, start_mocks):
-        """Ruling 45 through the whole launch: ``-e`` is the CLI level over the slot."""
+        """Spec env.<VAR> (*-e* beats a realization uniformly, §1A) through the whole
+        launch: ``-e`` is the CLI level over the slot."""
         with start_mocks() as m:
             m.agent_cfg.state = {"endpoint": "https://e.example"}
             m.load_agent_config.return_value = m.agent_cfg

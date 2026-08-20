@@ -474,7 +474,8 @@ The re-root closes both, and it deletes the code rather than adding a rule: `age
 is an ordinary key, it cascades to its true rung (above `system`, below `workset`), it realizes
 through the same collapse as every other scope's, and `_build_config_env` is a straight projection of
 the slots with nothing layered under it. Two behaviours arrive with that: an agent-FILE variable and
-a `box.env.<VAR>` twin are now two scopes' keys at one slot and REFUSE the launch (ruling 2026-08-14),
+a `box.env.<VAR>` twin are now two scopes' keys at one slot and REFUSE the launch (spec, the
+`env.<VAR>` block: *"Two scopes' keys naming ONE variable REFUSE the launch, naming both keys"*),
 while an agent-FILE variable and the plugin's declared default are the SAME key at two cascade levels
 and simply cascade — the file wins, nothing refuses.
 
@@ -528,7 +529,8 @@ the leaf rides the whole-box gate — so an option form would be a route nothing
 ### 🛑 AND THEN `-e` FOLLOWED THEM (MBR-1 P4c-1)
 
 ⚖️ **Ruling 42** (*"-e should override the key values, not the environment variables themselves"*)
-+ **ruling 45** (*"e must win… so it must be part of the collapse"*). `-e VAR=value` was
++ **spec `env.<VAR>`** (*"`-e` beats a realization uniformly (the CLI level overrides the owning
+key — §1A)"*; Jei: *"e must win… so it must be part of the collapse"*). `-e VAR=value` was
 `container_env.update(_parse_cli_env(cli_env))` — the last line of `_assemble_launch_env`, a dict
 paste over the finished environment. It is **the CLI level of the cascade applied to the env
 family** now: `_run_container` parses the flag ONCE at its door, threads the map through
@@ -563,7 +565,8 @@ reordering it again.
 
 ### 🛑🛑 AND FINALLY THE REALIZATIONS (MBR-1 P4c-2) — there is nothing above the channel left
 
-⚖️ **Ruling 45** (*"Hmm. Why does GOOSE_MODEL have to be post-collapse?"* — the question was the
+⚖️ **Spec `env.<VAR>`** — *"`-e` beats a realization uniformly (the CLI level overrides the owning
+key — §1A)"* (Jei: *"Hmm. Why does GOOSE_MODEL have to be post-collapse?"* — the question was the
 answer: nothing forces it) + **ruling 59** (*"Yes on P4c-2"* — the refusals SHIP, no carve-out).
 The five realized variables — goose `GOOSE_MODE` (unconditional, every launch) · `GOOSE_MODEL` ·
 `GOOSE_PROVIDER` · `OPENAI_HOST` and claude `ANTHROPIC_BASE_URL` (each conditional on its driving

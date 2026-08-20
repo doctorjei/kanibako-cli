@@ -176,7 +176,8 @@ _REFUSED_NESTED = [
 
 @pytest.mark.parametrize("category,var,value", _REFUSED_NESTED, ids=lambda v: str(v))
 class TestNothingNestsUnderSelfButTheCategories:
-    """Rulings 50-52 — *"There is no self:<agent>:foo. It is just self:foo"*.
+    """Spec §0 (``self`` … a FILE-SURFACE ALIAS) — *"There is no self:<agent>:foo. It is just
+    self:foo"*.
 
     ⚑⚑ THE ARGUMENT IS ALIAS EXPANSION, not redundancy. ``self`` is NOT A KEY: it SUBSTITUTES to
     ``agent.<agent>``, so ``self.<sub>.<category>`` READS ``agent.<agent>.<sub>.<category>`` — a key
@@ -230,7 +231,8 @@ class TestNothingNestsUnderSelfButTheCategories:
     def test_the_message_states_the_alias_expansion_that_makes_it_impossible(
         self, category, var, value,
     ):
-        # RULING 50, pinned as the WORDING it is: the user is told the key their spelling
+        # SPEC §0 (``self`` … a FILE-SURFACE ALIAS), pinned as the WORDING it is: the user
+        # is told the key their spelling
         # actually reads. Without the expansion the refusal is an assertion of authority; with
         # it, it is an argument they can check. ⚑ ``agent.codex.codex.<category>`` is the whole
         # point — the node appears TWICE.
@@ -300,7 +302,8 @@ class TestNothingNestsUnderSelfButTheCategories:
 
 
 def test_the_nested_bindings_sub_table_refuses_now_that_the_flat_route_exists():
-    # ⚑⚑ INVERTED, NOT DELETED (rulings 50/51/52). This used to be the SCOPE CONTROL for
+    # ⚑⚑ INVERTED, NOT DELETED (spec §0, ``self`` … a FILE-SURFACE ALIAS substituting at the
+    # parse boundary). This used to be the SCOPE CONTROL for
     # the one occupant of the nested shape: ``bindings`` was excluded from the refusal
     # because nested was its ONLY spelling, and refusing it before a flat route existed
     # would have deleted a live delivery path. S2 landed that flat route, so the
@@ -3634,7 +3637,8 @@ def _agent_file_contender(key, value):
     ⚑⚑ THE SHAPE COLLAPSED, BUT THE TWO ROUTES DID NOT, and conflating them is the trap this
     helper exists to close. Since the flatten there is ONE file shape — everything sits
     DIRECTLY under ``self:``, which IS ``agent.<node>``; a second ``<node>`` level REFUSES
-    (rulings 50-52). But a CATEGORY table and a BEHAVIOUR scalar still reach the cascade by
+    (spec §0, ``self`` … a FILE-SURFACE ALIAS). But a CATEGORY table and a BEHAVIOUR scalar
+    still reach the cascade by
     different rungs: the category rides ``_agent_partial``'s ``agent.<active>`` level, while a
     scalar goes to ``cfg.state`` and rides ``state_level``'s own rung. So the file bytes are
     written the same way and the kwarg differs — which is exactly the production pair
@@ -3739,7 +3743,8 @@ class TestPersonaRungOrdering:
 
         ⚑ The backstop is written in the SYSTEM file, which is the route for it: the agent
         file's flat table is re-rooted for the ACTIVE node only, and ``self.default.env``
-        refuses (rulings 49c + 50). Which FILE supplies it is incidental to the claim — that two
+        refuses (spec §0, ``self`` … a FILE-SURFACE ALIAS). Which FILE supplies it is incidental
+        to the claim — that two
         disjoint names never meet is exactly why the level does not matter.
         """
         snap = _persona_snap(

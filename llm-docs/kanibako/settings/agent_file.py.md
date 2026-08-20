@@ -3,7 +3,8 @@ _`settings/agent_file.py`: the ONE module that spells the agent file's root tabl
 
 `self` is **not a key**. It is a FILE-SURFACE ALIAS that SUBSTITUTES to `agent.<agent>`, created
 *"exclusively for config files (and maybe commandline)"* — *"There's no need for our code to **ever**
-use self"* (rulings 50-52, 2026-08-14). Everything past this module traffics in the ACTUAL agent
+use self"* (spec §0: *"`self` … = a FILE-SURFACE ALIAS that SUBSTITUTES to `agent.<that file's
+agent>` at the parse boundary"*). Everything past this module traffics in the ACTUAL agent
 reference. This module exists so that is true BY CONSTRUCTION rather than by discipline: it is the
 only place a `self` string appears in shipped source, and `test_agent_file_boundary.py`'s AST census
 pins that.
@@ -90,7 +91,8 @@ shape, over a different file. Dropped, not relocated.)* Inside `self:`:
   `caches` · `seeded` · `common` · `synced` · `masks` — lives DIRECTLY under `self` too. `self`
   EXPANDS to `agent.<node>`, so a second `<node>` level would read `agent.<node>.<node>.*`;
 * **there is nothing else.** A dict-valued root key outside those two groups is a nested
-  `self.<sub>:` sub-table and REFUSES BY NAME (`_refuse_nested_tables`, rulings 50-52), the literal
+  `self.<sub>:` sub-table and REFUSES BY NAME (`_refuse_nested_tables`; spec §0, `self` … a
+  FILE-SURFACE ALIAS), the literal
   `default` included — the agent file has **no spelling for the all-agents tier at all**, which is
   written in the SYSTEM file as `agent: default: <category>:`.
 
@@ -200,7 +202,8 @@ both — since `set` can never CREATE one of these tables, every one that exists
 (`agent reset --all` still drops them wholesale: it is the file-wide verb, not a per-key one.)
 
 ⚑ It lives HERE, not in the verb, because the cure QUOTES the file's own spelling — one of the two
-file-surface residues `self` is allowed (ruling 51). `file_spelling(tail)` takes the tail WHOLE: it
+file-surface residues `self` is allowed (spec §0, `self` … a FILE-SURFACE ALIAS).
+`file_spelling(tail)` takes the tail WHOLE: it
 JOINS under the root and never splits, so a dotted arm (`bindings.ro`) renders as itself.
 
 ```file_spelling(*segments: str) -> str```
