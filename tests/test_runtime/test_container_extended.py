@@ -90,7 +90,7 @@ class TestRunCommandAssembly:
         """run() NO LONGER hardwires the home/workspace/vault ``-v`` (step 3).
 
         The core box mounts now flow through the category resolver and arrive via
-        *extra_mounts* (``start._build_core_mounts``); ``container.run`` builds NONE
+        *extra_mounts* (``start._emit_category_mounts``); ``container.run`` builds NONE
         of them in-process.  Only ``-w`` (a flag, not a mount) stays hardwired.
         """
         rt = self._make_rt()
@@ -112,7 +112,7 @@ class TestRunCommandAssembly:
     def test_core_mounts_arrive_via_extra_mounts(self, tmp_path):
         """The core binds ARE emitted when the caller passes them in *extra_mounts*.
 
-        Mirrors what ``start._build_core_mounts`` hands to ``run``: the home /
+        Mirrors what ``start._emit_category_mounts`` hands to ``run``: the home /
         workspace / vault binds as resolved :class:`Mount`s.  ``run`` emits each as a
         plain ``-v`` via the extra-mounts loop (the ONLY remaining ``-v`` site).
         """
