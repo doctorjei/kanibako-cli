@@ -59,6 +59,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A prerelease tag can no longer reach production PyPI.** The `promote` job's guard excluded only
+  `-rc`, so a `v1.8.0-dev2`, `-beta` or `-alpha` tag satisfied it: the job started, claimed the
+  production publishing environment, and was rejected only afterwards by its own tag-shape check.
+  The guard now excludes every hyphenated tag, which is exactly the shape that check enforces, so
+  the case cannot arise at all.
+- **Development version numbers count published cuts, not workflow runs.** The `dev` job stamped
+  `<base>.dev<run_number>`, and that counter increments on every run of the release workflow —
+  including build-only validations that upload nothing. The second development cut of 1.8.0 was
+  therefore published as `1.8.0.dev98`. The number is now one past the highest `<base>.devN` already
+  on PyPI, with a floor of 100 so it stays above the run-number-era versions; if PyPI cannot be
+  reached the job fails rather than guessing a number.
+
 - **Edited directives now reach a running box, instead of waiting for the next box start.** The
   flattened instruction file (`~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`,
   `~/.config/goose/.additionalContext.md`) was written once per agent launch, so any directive source
