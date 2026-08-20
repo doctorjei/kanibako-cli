@@ -34,7 +34,7 @@ string, default empty). Every job self-gates:
 | --- | --- | --- |
 | `rc-pypi-check` | **push** of an rc tag `v<ver>-rc<n>` | Validates the tag shape, builds all five packages, runs `twine check`. **No upload.** |
 | `rc-release` | **push** of an rc tag (after `rc-pypi-check`) | Creates a **DRAFT** GitHub prerelease with generated notes (guarded, so a re-run reuses an existing draft). |
-| `dev` | **manual dispatch**, no `agent` input | Builds a pre-release — `<X.Y.Z>rc<N>` when dispatched on an rc tag, `<base>.dev<run_number>` on a branch. Uploads to PyPI **only** when `publish=true`. |
+| `dev` | **manual dispatch**, no `agent` input | Builds a pre-release — `<X.Y.Z>rc<N>` when dispatched on an rc tag, `<base>.dev<N>` on a branch. Uploads to PyPI **only** when `publish=true`. |
 | `promote` | push of a **bare** `v<ver>` tag (no `-rc`) | Waits for green Tests jobs on the tag's SHA, then builds and publishes all five packages to **prod PyPI** (OIDC) and publishes the GitHub release, deleting the rc draft. |
 | `publish-agent` | **manual dispatch** with `agent=agent-goose\|agent-codex` | Builds and publishes that one agent package at its static version. |
 
@@ -220,11 +220,12 @@ branch instead of a tag.
 gh workflow run release.yml -f publish=true          # ref defaults to main
 ```
 
-The version becomes `<base>.dev<run_number>`, where `<base>` is the repo
-version from `pyproject.toml` with any `.dev` suffix stripped and
-`<run_number>` is the workflow run number — monotonic, so each upload is unique
-on PyPI. The stamp is ephemeral: no commit, no tag; `main` keeps its plain
-`X.Y.Z` baseline.
+The version becomes `<base>.dev<N>`, where `<base>` is the repo version from
+`pyproject.toml` with any `.dev` suffix stripped and `<N>` is one past the
+highest `<base>.devN` already published on PyPI, floored at 100. The number
+counts published cuts, not workflow runs; if PyPI cannot be reached the job
+fails rather than guessing. The stamp is ephemeral: no commit, no tag; `main`
+keeps its plain `X.Y.Z` baseline.
 
 Per PEP 440 both `X.Y.ZrcN` and `X.Y.Z.devN` sort **below** `X.Y.Z`, so neither
 is installed by default. Install one explicitly:

@@ -105,7 +105,15 @@ jobs:
 
   promote:
     name: Publish release
-    if: ${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-rc') }}
+    # ⚑ ANY hyphenated tag is a PRERELEASE and must never reach prod PyPI. This
+    # guard used to exclude only '-rc', so v1.8.0-dev2 / -beta / -alpha SATISFIED
+    # it: they entered this production job — claiming the `pypi` environment and
+    # its Trusted Publisher — and were rejected only later, by the tag-shape
+    # check below. Excluding every '-' makes that UNAVAILABLE rather than merely
+    # forbidden, and is exactly congruent with the shape this job validates
+    # (^v[0-9]+\.[0-9]+\.[0-9]+$ admits no hyphen at all), so no tag can now pass
+    # the guard and then fail the shape check.
+    if: ${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-') }}
     runs-on: ubuntu-latest
     environment: pypi
     steps:
@@ -283,16 +291,57 @@ jobs:
       - name: Compute version
         # The dispatch ref decides the version: an rc tag v<X.Y.Z>-rc<N> builds
         # the PEP 440 pre-release <X.Y.Z>rc<N> (NEVER the bare <X.Y.Z>, which is
-        # the gated prod promote). A branch builds <base>.dev<run_number>, where
-        # base = repo version with any .dev suffix stripped and the run number
-        # is monotonic + unique on PyPI.
+        # the gated prod promote). A branch builds <base>.dev<N>, where base =
+        # the repo version with any .dev suffix stripped.
+        #
+        # ⚑⚑ N COUNTS PUBLISHED CUTS, NOT WORKFLOW RUNS. It used to be
+        # github.run_number, which increments on EVERY run of this workflow —
+        # including build-only validations that upload nothing, and every run of
+        # every other job in this file — so the SECOND dev cut of 1.8.0 shipped
+        # as 1.8.0.dev98. N is now derived from what PyPI ALREADY SERVES: the
+        # highest published <base>.devN for this same base, plus one. The counter
+        # is therefore the published index itself, which is the only thing that
+        # actually constrains the next usable number.
+        #
+        # FLOOR of 100. A published version can never be reused and PEP 440
+        # ordering only moves forward, so the floor keeps every future cut above
+        # the run-number-era versions already on PyPI (1.8.0.dev98 is published).
+        # It applies both when nothing is published for this base and when the
+        # computed number would land below it.
+        #
+        # NO FALLBACK, BY DESIGN. If PyPI is unreachable or its JSON will not
+        # parse, this step FAILS. A guessed number is worse than a failed build:
+        # it either collides with a published release — where `skip-existing`
+        # below silently drops the upload — or burns a number out of order.
         run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/next-dev.py" <<'PY'
+          """Print the next <base>.devN number for BASE, floored at 100.
+
+          Argv: BASE, path to a PyPI JSON API response. Any malformed response
+          raises, which is the intended loud failure -- never a guessed number.
+          """
+          import json, re, sys
+
+          base, path = sys.argv[1], sys.argv[2]
+          with open(path, encoding="utf-8") as fh:
+            releases = json.load(fh)["releases"]
+          dev = re.compile(re.escape(base) + r"\.dev(\d+)")
+          published = [int(m.group(1)) for m in map(dev.fullmatch, releases) if m]
+          print(max(published + [99]) + 1)
+          PY
           REF="${GITHUB_REF_NAME}"
           if [[ "$REF" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-rc[0-9]+$ ]]; then
             VER="${REF#v}"; VER="${VER/-rc/rc}"            # v1.6.0-rc3 -> 1.6.0rc3 (PEP 440 normalized)
           else
             BASE=$(grep -m1 '^version' pyproject.toml | sed -E 's/.*"([^"]+)".*/\1/'); BASE=${BASE%%.dev*}
-            VER="${BASE}.dev${{ github.run_number }}"      # branch -> 1.6.0.devN
+            curl -fsSL --retry 3 --retry-delay 2 --max-time 60 \
+                 -o "$RUNNER_TEMP/pypi-kanibako-cli.json" \
+                 https://pypi.org/pypi/kanibako-cli/json \
+              || { echo "PyPI JSON API unreachable for kanibako-cli; refusing to guess a dev number." >&2; exit 1; }
+            N=$(python3 "$RUNNER_TEMP/next-dev.py" "$BASE" "$RUNNER_TEMP/pypi-kanibako-cli.json") \
+              || { echo "Could not read a dev number out of the PyPI response for kanibako-cli." >&2; exit 1; }
+            VER="${BASE}.dev${N}"                          # branch -> 1.8.0.dev101
           fi
           echo "DEV_VERSION=$VER" >> "$GITHUB_ENV"
           echo "Building pre-release version: $VER"
