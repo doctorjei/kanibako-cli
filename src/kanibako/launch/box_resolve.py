@@ -1,24 +1,11 @@
 """New-model box identity derivation (registry + layout).
 
-This module derives a box's identity from the REGISTRIES (the per-workset
-``workset_registry`` box membership + the global ``registry_store`` standalone
-index) and the on-disk LAYOUT — the replacement for the legacy
-``read_project_meta`` (``project:``/``resolved:``) derivation.  Every helper is
-PURE: it takes the resolved :class:`~kanibako.settings.paths.StandardPaths`, the
-``KanibakoConfig``, and the target directory EXPLICITLY (no hidden global
-reads), and never writes.
+Every helper is PURE: it takes the resolved
+:class:`~kanibako.settings.paths.StandardPaths`, the ``KanibakoConfig``, and the
+target directory EXPLICITLY (no hidden global reads), and never writes.
 
-Design source: ``plans/settings-conformance-registry-DESIGN.md`` — the
-**D3-mode** mode-detection precedence, **D1b** name-sourcing (the registry entry
-KEY *is* the box name), **D3-auth** membership authority (registry ⇒ dirs), and
-**D10** enumerate-and-scan (all worksets are reachable up front; their
-per-workset registries collectively form the reverse index).
-
-Introduced as additive phase-P4 infrastructure and made the LIVE identity source
-in P5a: the former ``read_project_meta`` consumers now derive identity here, and
-the legacy on-disk-meta helpers (``read_project_meta``/``write_project_meta``)
-were deleted in P8c once sparse create (P8b) stopped writing the ``project:``/
-``resolved:`` sections they read.
+Design letters (D0/D1, D1b, D3-mode, D3-auth, D4, D10, P6d), the history this
+replaced, and the full case enumeration: ``llm-docs/kanibako/launch/box_resolve.py.md``.
 """
 
 from __future__ import annotations
@@ -38,27 +25,18 @@ from kanibako.settings.paths import (
     detect_project_mode,
 )
 
-# The PRIMARY (default) workset's name — it is anchored by ``config.primary_workset``
-# (NON-EXCEPTIONAL per D0/D1), not listed in the global ``worksets:`` section, so
-# the enumeration yields it explicitly.  Mirrors ``_default_project_group``'s name.
+# The PRIMARY workset's NAME (not a mode).  Anchored by ``config.primary_workset``,
+# not listed in the global ``worksets:`` section — so the enumeration yields it
+# explicitly.  Mirrors ``_default_project_group``'s name.
 _PRIMARY_WORKSET_NAME = "default"
 
 
 def standalone_settings_present(project_dir: Path) -> bool:
     """True iff *project_dir* carries the standalone box MARKER (presence only).
 
-    The marker is the standalone meta dir PLUS the box settings file, both
-    present::
-
-        (project_dir/STANDALONE_META_DIR).is_dir()
-            and (project_dir/BOX_META_FILE).is_file()
-
-    Mirrors :func:`kanibako.settings.paths._is_standalone_meta_dir` BUT deliberately does
-    NOT read ``project.mode`` — that field is going away (design D4: the FILE's
-    existence is the standalone signal).  This is the highest-precedence
-    detection signal (D3-mode #1): a box's own in-place settings file is the
-    authoritative self-declaration of standalone identity and OVERRIDES any
-    workset determination (a workset must not be able to "steal" it).
+    ⚑ Mirrors :func:`kanibako.settings.paths._is_standalone_meta_dir` but must NOT
+    read ``project.mode`` — under D4 the FILE's existence is the signal and that
+    field is going away.  Highest-precedence detection signal; see the llm-doc.
     """
     return (project_dir / STANDALONE_META_DIR).is_dir() and (
         project_dir / BOX_META_FILE
@@ -70,10 +48,8 @@ def _enumerate_worksets(
 ) -> Iterator[tuple[str, Path, BoxMode]]:
     """Yield ``(workset_name, workset_root, mode)`` for EVERY reachable workset.
 
-    The PRIMARY workset first (anchored by ``config.primary_workset`` ==
-    ``std.primary_workset``; NON-EXCEPTIONAL per D0/D1), then every NAMED workset
-    from the global ``worksets:`` discovery section (D10 enumerate-and-scan —
-    all worksets are reachable up front).
+    PRIMARY first (``std.primary_workset``), then every NAMED workset from the
+    global ``worksets:`` discovery section.
     """
     yield (_PRIMARY_WORKSET_NAME, std.primary_workset, BoxMode.primary)
     for name, root_str in registry_store.load_section(
@@ -99,13 +75,9 @@ def _find_owning_box(
 ) -> _OwnedBox | None:
     """Scan every workset's per-workset registry for a box AT *project_dir*.
 
-    Enumerates all worksets (:func:`_enumerate_worksets`), resolves each one's
-    per-workset registry path (honoring a ``workset.registry`` repoint via its
-    settings), loads its ``boxes:`` membership, and returns the entry whose PATH
-    == *project_dir* (BOTH sides ``resolve()``d so symlinks / relative /
-    trailing-slash forms compare equal).  ``None`` when no workset owns the dir.
-    (D10 enumerate-and-scan; the per-workset registries collectively ARE the
-    reverse index — no marker in the user's repo.)
+    Honors a ``workset.registry`` repoint; matches on PATH with BOTH sides
+    ``resolve()``d, so symlink / relative / trailing-slash forms compare equal.
+    ``None`` when no workset owns the dir.
     """
     target = project_dir.resolve()
     for workset_name, root, mode in _enumerate_worksets(std):
@@ -133,25 +105,14 @@ def find_connected_external_box(
     """Resolve *project_dir* (or an ancestor) to a registered box OUTSIDE the
     current composition (external connect OR a pre-repoint stranded member).
 
-    The per-workset registries collectively ARE the reverse index (D10): this
-    enumerates every NAMED workset (the global ``worksets:`` discovery section),
-    scans its per-workset ``boxes:`` membership (honoring a ``workset.registry``
-    repoint), and returns the entry whose registered path is *project_dir* OR a
-    proper ANCESTOR of it — DEEPEST wins, the same ancestor semantics the legacy
-    ``connected:`` index used so a launch from a SUBDIR of a connected dir still
-    resolves.  Boxes under the workset's CURRENT resolved ``workset.workspaces``
-    dir are skipped — those (and ONLY those) are resolved by ordinary location
-    detection.  ⚑ The skip is deliberately NOT "under the workset root": the
-    registry's ``boxes:`` membership is the SOLE authoritative name → workspace
-    store, and a member registered under an OLD composition (in-root, before a
-    ``workset.workspaces`` repoint) is invisible to the workspaces walk — it must
-    resolve HERE by its REGISTERED path (bifrost A0, 2026-08-02: the root-wide
-    skip stranded exactly those members).  The PRIMARY workset is skipped:
-    default-mode external boxes were never in ``connected:`` and resolve by their
-    own name index.  ``None`` when no such box owns *project_dir*.
+    Scans every NAMED workset; DEEPEST registered ancestor wins, so a launch from
+    a SUBDIR of a connected dir still resolves.  The PRIMARY workset is skipped
+    (its external boxes resolve by their own name index).  ``None`` when no such
+    box owns *project_dir*.
 
-    This REPLACES the global ``connected:`` index + ``workset._find_connected_project``
-    (D10 enumerate-and-scan; no marker in the user's repo).
+    ⚑ The in-scan skip is "under the CURRENT resolved ``workset.workspaces`` dir",
+    NOT "under the workset root".  Widening it strands members registered under an
+    OLD composition — bifrost A0, 2026-08-02.  Reasoning: the llm-doc.
     """
     from kanibako.project.workset import resolve_workset_workspaces
 
@@ -166,24 +127,20 @@ def find_connected_external_box(
         registry_path = workset_registry.resolve_workset_registry_path(
             root, settings
         )
-        # ``resolve_workset_workspaces`` guards non-mapping docs itself (the
-        # same *settings* value the registry-path resolver above consumes).
+        # No mapping check needed: ``resolve_workset_workspaces`` guards
+        # non-mapping docs itself.
         workspaces_resolved = resolve_workset_workspaces(root, settings).resolve()
         boxes = workset_registry.load_workset_boxes(registry_path)
         for box_name, box_path_str in boxes.items():
             box_path = Path(box_path_str).resolve()
             # Skip ONLY members under the CURRENT resolved workspaces dir —
-            # ordinary location detection owns those.  Anything else (external
-            # connect, or an in-root path stranded by a repoint) resolves here
-            # by its registered path.
+            # ordinary location detection owns those.
             try:
                 box_path.relative_to(workspaces_resolved)
                 continue
             except ValueError:
                 pass
-            # Ancestor match: the registered external path IS *target* or an
-            # ancestor of it (deepest registered path wins — the connected:
-            # ancestor-walk semantics, so a subdir launch still resolves).
+            # Ancestor match: the registered path IS *target* or an ancestor.
             try:
                 target.relative_to(box_path)
             except ValueError:
@@ -208,23 +165,8 @@ def detect_box_mode(
 ) -> DetectionResult | None:
     """Detect *project_dir*'s box mode by the D3-mode PRECEDENCE (first wins).
 
-    1. **In-place settings file present → STANDALONE.**  A box's own settings
-       file is the authoritative self-declaration and OVERRIDES any workset
-       determination — a workset must NOT be able to steal a box that declares
-       itself standalone (Jei).  Highest-precedence signal.
-    2. Else **enumerate worksets and scan** their per-workset registries for a
-       ``boxes:`` entry whose PATH == *project_dir* → that workset's mode
-       (``primary``/``named``) (D10).
-    3. Else the existing :func:`kanibako.settings.paths.detect_project_mode` treewalk.
-       A ``named`` (or ``standalone``) result passes through; a ``primary``
-       result is detect_project_mode's NO-MARKER default (its case 4) — in the
-       new model PRIMARY membership is authoritative via the registry scan
-       (case 2 above), so an unregistered dir is NOT an existing box → ``None``
-       (the caller's create path).  This ``primary → None`` also collapses
-       detect_project_mode's case-2 genuine-primary: new-model primary membership
-       lives SOLELY in the per-workset registry (scanned in case 2) now that the
-       global ``projects:`` section has been RETIRED (clean split, 2026-07-08).
-    4. Else ``None`` (not a box).
+    Standalone marker, else workset-registry ownership, else the treewalk, else
+    ``None`` (not a box).  The four cases in full: the llm-doc.
     """
     # 1. Standalone by in-place settings-file presence (OVERRIDES everything).
     if standalone_settings_present(project_dir):
@@ -235,8 +177,10 @@ def detect_box_mode(
     if owned is not None:
         return DetectionResult(owned.mode, owned.box_path.resolve())
 
-    # 3. Treewalk detection (compose — do not duplicate).  A PRIMARY result is
-    # the no-marker default (case 4) → not a box in the new model → None.
+    # 3. Treewalk detection (compose — do not duplicate).  ⚑ A PRIMARY result is
+    # the no-marker default → NOT a box in the new model → None, which is the
+    # caller's create path.  Primary membership lives solely in the registry
+    # scanned at case 2.
     result = detect_project_mode(project_dir, std, config)
     if result.mode is BoxMode.primary:
         return None
@@ -248,46 +192,28 @@ def resolve_box_identity(
     std: StandardPaths,
     config: KanibakoConfig,
 ) -> dict[str, Any] | None:
-    """Return the new-model identity for the box at *project_dir*, or ``None``.
+    """Return ``{mode, name, workspace, registered}`` for the box at *project_dir*.
 
-    ``{mode, name, workspace, registered}`` sourced per D1b/D3-auth:
-
-    - ``mode`` — the :class:`~kanibako.settings.paths.BoxMode` from
-      :func:`detect_box_mode`.
-    - ``name`` — the registry entry KEY (D1b: the ``name: path`` KEY *is* the
-      box name).  Workset box → the per-workset ``boxes:`` key; STANDALONE →
-      composed LIVE as ``<stored workset.kuid>_<live leaf>`` (P6d: the kuid is the
-      STABLE stored prefix, the leaf tracks the current dir); a pre-kuid box (no
-      ``workset.kuid``) falls back to the ``standalone:`` registry key or the dir
-      leaf.
-    - ``workspace`` — the registry entry PATH (workset box) or the layout dir
-      (standalone / orphan).
-    - ``registered`` — membership present (D3-auth): the per-workset ``boxes:``
-      for a workset box, the global ``standalone:`` for a standalone box.
-
-    ``enable_vault`` is intentionally NOT sourced here — it is the settable
-    ``box.enable_vault`` key already handled in P2.  ``None`` when *project_dir*
-    is not a box.
+    Sourced per D1b (the registry entry KEY *is* the name) and D3-auth; field
+    table in the llm-doc.  ``enable_vault`` is intentionally NOT sourced here —
+    it is the settable ``box.enable_vault`` key.  ``None`` when not a box.
     """
     result = detect_box_mode(project_dir, std, config)
     if result is None:
         return None
 
     if result.mode is BoxMode.standalone:
-        # Source from the DETECTED box root (``result.project_root``), NOT the
-        # passed-in *project_dir* — the two diverge when standalone is detected
-        # by the treewalk from a SUBDIR (case 3 finds the marker at an
-        # ancestor).  Mirrors the orphan branch below; keeps name/workspace/
-        # registration anchored on the box root.
+        # ⚑ Source from the DETECTED box root, NOT the passed-in *project_dir* —
+        # the two diverge when the treewalk finds the marker at an ANCESTOR of a
+        # subdir launch.  The orphan branch below mirrors this.
         box_root = result.project_root.resolve()
         registered_name = registry_store.standalone_name_for_root(
             std.registry, box_root
         )
-        # LIVE name (P6d): the stored ``workset.kuid`` prefixes the CURRENT-leaf
-        # basename, so a MOVED standalone keeps its stable kuid identity while the
-        # leaf tracks the new dir. Read the kuid from the box's own settings.yaml
-        # (the workset tier for a standalone). A pre-kuid box (SENTINEL — no stored
-        # kuid) falls back to the registered ``standalone:`` KEY, else the dir leaf.
+        # LIVE name (P6d) ``<stored workset.kuid>_<current leaf>``, so a MOVED
+        # standalone keeps its identity.  The kuid comes from the box's own
+        # settings.yaml (the workset tier for a standalone); a pre-kuid box reads
+        # back SENTINEL and falls back to the ``standalone:`` KEY, else the leaf.
         from kanibako import kuid
         from kanibako.launch import box_identity
         from kanibako.settings.config import read_workset_kuid
@@ -316,10 +242,9 @@ def resolve_box_identity(
             "registered": True,
         }
 
-    # A ``named`` result with NO registry entry: a workset-contained but
-    # unregistered dir (D3-auth: the registry is authoritative, dirs follow —
-    # so an orphan is registered=False).  Name/workspace are layout-derived
-    # from the detected box root.
+    # Orphan: a workset-contained but UNREGISTERED dir.  D3-auth makes the
+    # registry authoritative, so it reports registered=False with name and
+    # workspace derived from the detected box root.
     return {
         "mode": result.mode,
         "name": result.project_root.name,

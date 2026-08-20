@@ -1,21 +1,16 @@
 """Thin reader of the shipped ``keyspace-manifest.yaml`` — the keyspace REGISTRY.
 
-The manifest is the machine-readable projection of ``specs/settings-keyspace-1.8.0.md``:
-one row per declared key, plus the category / bind-default / not-a-key tables.  It is
-RELEASE AUTHORITY that ships in the wheel, and this module is the ONE way to read it.
+It is the machine-readable projection of ``specs/settings-keyspace-1.8.0.md``, ships in
+the wheel as RELEASE AUTHORITY, and this module is the ONE way to read it.
 
-⚑ IT DECLARES NOTHING AT RUNTIME.  Nothing on the launch or resolve path consults the
-manifest: the keyspace's live carriers are the ``DECLARED_*`` frozensets in
-:mod:`kanibako.settings.settings_keyspace` and the shipped ``core-defaults.yaml``.  The
-manifest's job is to be asserted AGAINST those carriers (``tests/test_settings/
-test_manifest_conformance.py``), which is why generating the frozensets FROM it was
-measured and declined — see the manifest's own header.
+⚑ IT DECLARES NOTHING AT RUNTIME; nothing on the launch or resolve path consults the
+manifest.  The keyspace's live carriers are the ``DECLARED_*`` frozensets and
+``core-defaults.yaml``; the manifest is asserted AGAINST them
+(``tests/test_settings/test_manifest_conformance.py``), never generated FROM.
 
-⚑ CACHED, unlike :func:`kanibako.settings.core_defaults._load_doc`, and the difference
-is not an oversight.  ``core-defaults.yaml`` carries live DEFAULTS whose tests
-monkeypatch the reader, so re-reading per call is load-bearing there.  The manifest is
-IMMUTABLE PACKAGED DATA — no code path writes it, no test rewrites it — and parsing its
-3000-odd lines costs ~137 ms, so the parse is cached once per process.
+⚑ THE PARSE IS CACHED and :func:`kanibako.settings.core_defaults._load_doc`'s is not;
+neither shape is an oversight.  Reasoning for both, the declined generation and the
+copy-out: ``llm-docs/kanibako/settings/keyspace_manifest.py.md``.
 """
 
 from __future__ import annotations
@@ -37,10 +32,9 @@ KEYSPACE_MANIFEST_FILENAME = "keyspace-manifest.yaml"
 def _parse_manifest() -> dict[str, Any]:
   """Parse the packaged manifest ONCE; the cached, never-handed-out original.
 
-  ⚑ Read through :func:`~kanibako.settings.core_defaults.packaged_data_dir` — the ONE
-  ``importlib.resources.files()`` join — so this resolves the INSTALLED package data,
-  never a repo-relative path.  A conformance guard that read the checkout would be a
-  statement about this working tree rather than about the artefact that ships.
+  ⚑ Resolves the INSTALLED package data through
+  :func:`~kanibako.settings.core_defaults.packaged_data_dir`, never a repo-relative path:
+  a guard that read the checkout would describe this tree, not the wheel that ships.
   """
   ref = packaged_data_dir(KEYSPACE_MANIFEST_FILENAME)
   raw = yaml.safe_load(Path(str(ref)).read_text())
@@ -54,10 +48,5 @@ def _parse_manifest() -> dict[str, Any]:
 
 
 def manifest_doc() -> dict[str, Any]:
-  """The ratified keyspace manifest as a plain dict — a FRESH COPY every call.
-
-  Copy-out at the boundary (P8): the parse is shared, the document is not.  A caller
-  that mutated a shared dict would corrupt every later reader in the process, and the
-  cache would make that corruption outlive the test that caused it.
-  """
+  """The ratified keyspace manifest as a plain dict — a FRESH COPY every call (P8)."""
   return copy.deepcopy(_parse_manifest())

@@ -1,36 +1,13 @@
 """Channel path resolution + per-instance partition addressing (PURE helpers).
 
-Phase 6 (sub-step 6a) of the 1.6.0 config/settings revamp.  This module derives
-the host-side channel paths from an already-resolved :class:`~kanibako.settings.paths.
-ProjectPaths` (``proj``) + :class:`~kanibako.settings.paths.StandardPaths` (``std``).  It
-is **pure derivation only** — it computes paths, it does NOT create directories,
-touch launch mounts, or change any behavior.  The bind production / mkdir /
-file-seeding live in sub-step 6b.
+Derives the host-side channel paths — the system-scope and workset-scope roots
+plus this box's own mailbox/share addresses inside them — from an already-resolved
+:class:`~kanibako.settings.paths.ProjectPaths` (``proj``) +
+:class:`~kanibako.settings.paths.StandardPaths` (``std``).  **Pure derivation only:**
+it computes paths, it creates no directories, no binds and no files.
 
-Two channel scopes (TARGET §1, §2c, §2f):
-
-* **system scope** — five type roots under ``@system.channelroot`` (common, chat,
-  broadcast, mailboxes, share).  The instance-owned types (mailboxes, share) are
-  *partitioned* by the workset-name token: ``mailboxes/<ws>`` and ``share/<ws>``
-  where ``<ws>`` is ``__PRIMARY__`` | ``<named>`` | ``__STANDALONE__``.  These
-  partition roots apply to EVERY mode (standalone included).
-* **workset scope** — three type roots under the resolved ``workset.channelroot``
-  (default ``@meta.workset.path/channels``; common, chat, share).  These exist
-  for the PRIMARY and NAMED modes ONLY; standalone has no workset-local channels
-  (its ``workset.channelroot`` is ``<None>`` per the TARGET).
-
-The per-instance partition ADDRESSES (``meta.box.{inbox,share_global,
-share_workset}``) are this box's own mailbox/share dirs *within* the partitioned
-roots — derived from the workset-name token + the box name.
-
-⚑ The workset-name token and the workset root are NOT carried verbatim on
-``ProjectPaths`` (the legacy comms block used only ``proj.name``).  Per the
-design-review A8 resolution we derive them HERE from ``proj.mode`` + ``proj.
-group`` rather than widening the resolver's public shape: PRIMARY roots at
-``@config.primary_workset`` with token ``__PRIMARY__``; NAMED roots at
-``proj.group.root`` with token ``proj.group.name``; STANDALONE roots at
-``proj.metadata_path`` (the root; the workspace is a subdir) with token
-``__STANDALONE__``.
+The two scopes, the A8 derivation of the workset token/root, the callers, and the
+aspirational-permissions stance are in ``llm-docs/kanibako/channels/channels.py.md``.
 """
 
 from __future__ import annotations
@@ -43,21 +20,15 @@ if TYPE_CHECKING:  # avoid an import cycle (paths.py would import this later)
     from kanibako.settings.paths import ProjectPaths, StandardPaths
 
 
-# Reserved workset-name tokens for the system-scope partition key.  A named
-# workset may not use either (Phase 5 reserves them at create time, 5e); they
-# stand for the PRIMARY and STANDALONE pseudo-worksets.
+# Reserved workset-name tokens for the system-scope partition key (a named
+# workset may not use either — Phase 5 reserves them at create time, 5e).
 WS_TOKEN_PRIMARY = "__PRIMARY__"
 WS_TOKEN_STANDALONE = "__STANDALONE__"
 
 
 @dataclass(frozen=True)
 class SystemPartition:
-    """The per-workset SYSTEM-scope partition roots (keyed by the ws token).
-
-    ``mailboxes`` == ``@system.channels.mailboxes/<ws>`` and ``share`` ==
-    ``@system.channels.share/<ws>``.  These are the *parents* under which each
-    box gets its own ``<box>`` subdir (see :func:`box_channel_addresses`).
-    """
+    """The per-workset SYSTEM-scope partition roots — the PARENTS of each box's own subdir."""
 
     ws_token: str
     mailboxes: Path
@@ -66,12 +37,7 @@ class SystemPartition:
 
 @dataclass(frozen=True)
 class WorksetChannels:
-    """The workset-local channel roots (PRIMARY/NAMED only).
-
-    ``@workset.channelroot = @meta.workset.path/channels`` with ``common``,
-    ``chat`` (+ the reserved ``broadcast.md`` / default ``general.md`` files
-    inside it), and ``share`` (per-box subdirs are ``meta.box.share_workset``).
-    """
+    """The workset-local channel roots under ``@workset.channelroot`` (PRIMARY/NAMED only)."""
 
     root: Path
     common: Path
@@ -83,16 +49,7 @@ class WorksetChannels:
 
 @dataclass(frozen=True)
 class BoxChannelAddresses:
-    """This box's own partition ADDRESSES (TARGET §2c ``meta.box.*``).
-
-    * ``inbox`` == ``@system.channels.mailboxes/<ws>/<box>`` — this box's own
-      mailbox dir (also surfaced in-box at ``~/channels/inbox``).
-    * ``share_global`` == ``@system.channels.share/<ws>/<box>`` — this box's own
-      system-scope publication dir.
-    * ``share_workset`` == ``@workset.channels.share/<box>`` — this box's own
-      workset-scope publication dir; ``None`` for standalone (no workset-local
-      channels).
-    """
+    """This box's own partition ADDRESSES (TARGET §2c ``meta.box.*``)."""
 
     ws_token: str
     box_name: str
@@ -103,14 +60,7 @@ class BoxChannelAddresses:
 
 @dataclass(frozen=True)
 class OwnPartition:
-    """This box's OWN system-scope partition dirs (mailbox + share_global).
-
-    ``mailbox`` == ``@system.channels.mailboxes/<ws>/<box>`` (this box's inbox
-    source dir) and ``share_global`` == ``@system.channels.share/<ws>/<box>``
-    (this box's system-scope publication dir).  Used by the move/convert
-    relocation (6d), which addresses the partition by raw ``(ws_token, box)``
-    rather than a fully-resolved :class:`ProjectPaths`.
-    """
+    """This box's OWN system-scope partition dirs (mailbox + share_global)."""
 
     ws_token: str
     box_name: str
@@ -123,11 +73,9 @@ def own_partition_dirs(
 ) -> OwnPartition:
     """Derive a box's OWN system-scope partition dirs from ``(ws_token, box)``.
 
-    The lower-level primitive behind :func:`box_channel_addresses` — it takes the
-    workset-name token + box name directly (no ``ProjectPaths``), so the lifecycle
-    relocation can compute BOTH the OLD and the NEW partition for a box being
-    moved/converted.  Mirrors :func:`system_partition` + the ``meta.box.{inbox,
-    share_global}`` joins (TARGET §2c).
+    The raw-token primitive behind :func:`box_channel_addresses`: the move/convert
+    relocation needs BOTH the OLD and the NEW partition, and works from a pair of
+    ``ProjectState``s rather than a resolved ``ProjectPaths``.
     """
     part = system_partition(std, ws_token)
     return OwnPartition(
@@ -141,9 +89,7 @@ def own_partition_dirs(
 def workset_name_token(proj: ProjectPaths) -> str:
     """Return the workset-name token for *proj* (the system partition key).
 
-    ``__PRIMARY__`` for PRIMARY mode, the named workset's name for NAMED mode,
-    ``__STANDALONE__`` for STANDALONE mode.  Derived from ``proj.mode`` +
-    ``proj.group`` (A8) rather than read off a dedicated field.
+    Derived from ``proj.mode`` + ``proj.group`` (A8), not read off a dedicated field.
     """
     # Lazy import keeps this module free of an import cycle with paths.py.
     from kanibako.settings.paths import BoxMode
@@ -162,18 +108,14 @@ def workset_name_token(proj: ProjectPaths) -> str:
 
 
 def workset_root(proj: ProjectPaths, std: StandardPaths) -> Path:
-    """Return ``@meta.workset.path`` for *proj*.
-
-    PRIMARY → ``@config.primary_workset``; NAMED → the named workset root
-    (``proj.group.root``); STANDALONE → the project root itself
-    (``proj.metadata_path``, which for standalone IS the root — the workspace is
-    a ``workspace/`` subdir under it, so ``project_path`` is not the root).
-    """
+    """Return ``@meta.workset.path`` for *proj* (PRIMARY/NAMED/STANDALONE roots)."""
     from kanibako.settings.paths import BoxMode
 
     if proj.mode is BoxMode.primary:
         return std.primary_workset
     if proj.mode is BoxMode.standalone:
+        # For standalone, metadata_path IS the root; the workspace is a subdir
+        # under it, so project_path is NOT the workset root.
         return proj.metadata_path
     if proj.group is None:
         raise ValueError(
@@ -186,8 +128,8 @@ def workset_root(proj: ProjectPaths, std: StandardPaths) -> Path:
 def has_workset_channels(proj: ProjectPaths) -> bool:
     """True iff *proj* gets workset-local channels (PRIMARY/NAMED, not standalone).
 
-    Standalone omits ``~/channels/workset/*`` (no workset-local channels); its
-    system-scope partition (mailboxes/share_global) still applies (A10).
+    ⚑ Standalone omits ``~/channels/workset/*`` but STILL has a system-scope
+    partition — never reuse this predicate to gate that one (A10, D-M9).
     """
     from kanibako.settings.paths import BoxMode
 
@@ -195,11 +137,10 @@ def has_workset_channels(proj: ProjectPaths) -> bool:
 
 
 def system_partition(std: StandardPaths, ws_token: str) -> SystemPartition:
-    """Derive the SYSTEM-scope per-workset partition roots for *ws_token*.
+    """Derive the SYSTEM-scope ``mailboxes/<ws>`` + ``share/<ws>`` partition roots.
 
-    ``mailboxes/<ws>`` and ``share/<ws>`` under the resolved system channels
-    skeleton.  Applies to EVERY mode — do NOT gate this off the workset-local
-    channels (D-M9): standalone still has a ``__STANDALONE__`` partition.
+    ⚑ Applies to EVERY mode — do NOT gate this off the workset-local channels
+    (D-M9): standalone still has a ``__STANDALONE__`` partition.
     """
     return SystemPartition(
         ws_token=ws_token,
@@ -211,17 +152,13 @@ def system_partition(std: StandardPaths, ws_token: str) -> SystemPartition:
 def workset_channel_paths(
     proj: ProjectPaths, std: StandardPaths
 ) -> WorksetChannels | None:
-    """Derive the WORKSET-local channel roots for *proj* (PRIMARY/NAMED only).
+    """Derive the WORKSET-local channel roots for *proj*; ``None`` for standalone.
 
-    Returns ``None`` for standalone (no workset-local channels).  Rooted at the
-    resolved ``workset.channelroot`` (default ``@meta.workset.path/channels``;
-    a repoint in the workset's settings.yaml is honored — §3.3: real and USED)
-    (A3 — a derived helper, NOT new fields on ``ProjectPaths``).
+    ⚑ Rooted at the RESOLVED ``workset.channelroot``, never a hard-coded join: a
+    repoint in the workset's settings.yaml is honored (§3.3 — real and USED).
     """
     if not has_workset_channels(proj):
         return None
-    # Lazy import (mirrors the module's other function-level imports; keeps
-    # this pure-derivation module import-light at load).
     from kanibako.project.workset import (
         load_workset_settings_doc,
         resolve_workset_channelroot,
@@ -246,7 +183,8 @@ def box_channel_addresses(
     """Derive this box's own partition addresses (``meta.box.*``) for *proj*.
 
     ``inbox`` / ``share_global`` always resolve (system-scope, every mode);
-    ``share_workset`` is ``None`` for standalone.  *proj.name* is the box name.
+    ``share_workset`` is ``None`` for standalone.  ⚑ RAISES on a nameless box —
+    callers on the launch path resolve the name first.
     """
     if not proj.name:
         raise ValueError(

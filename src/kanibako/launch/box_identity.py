@@ -1,27 +1,16 @@
-"""STANDALONE box identity generation (``<kuid>_<sanitized,capped leaf>``).
+"""STANDALONE box identity generation, plus the box-name blocklist.
 
-A standalone box is named ``<kuid>_<leaf>`` where:
-
-* ``kuid`` is the box's stable :mod:`kanibako.kuid` id — a 25-bit Crockford
-  base32 token (24 data + 1 parity → always 5 lowercased chars). It REPLACES the
-  former ``<random24>`` slot (settings-conformance P6d): the kuid is GENERATED at
-  creation and STORED as the settable ``workset.kuid`` key, so it is the STABLE
-  cross-move identity prefix.
-* ``leaf`` is the project-root basename, sanitized so only portable filename
-  characters survive (``[^A-Za-z0-9._-]`` → ``_``), capped at 32 characters,
-  with an empty leaf falling back to ``"box"``. The leaf tracks dir MOVES (it is
-  re-derived live from the current root basename), so only the kuid is stable.
-
-The pieces are joined with ``_``.  Because the kuid prefix can collide with an
-already-registered standalone box name (design-review D-M13), the generator
-regenerates the kuid (bounded retries) until the *whole* name is unique within a
-caller-supplied ``existing`` set.
+A standalone box is named ``<kuid>_<leaf>``: a stable :mod:`kanibako.kuid` prefix
+stored as the settable ``workset.kuid`` key, joined by ``_`` to the project-root
+basename run through :func:`sanitize_cap`.  Only the kuid is stable — the leaf is
+re-derived live, so it tracks directory moves.
 
 This module is pure (modulo ``os.urandom``/clock via :mod:`kanibako.kuid`) and
 side-effect free so the sanitize/cap/collision-regen logic is directly
-unit-testable.  The kuid CODEC lives in the break-off-ready :mod:`kanibako.kuid`;
-the ``<kuid>_<leaf>`` NAME composition + the ``workset.kuid`` key wiring live
-here / in the settings layer (D6a — nothing kanibako-specific in ``kuid``).
+unit-testable.
+
+See ``llm-docs/kanibako/launch/box_identity.py.md`` for the name grammar, the
+blocklist rule and the resolve branches.
 """
 
 from __future__ import annotations
@@ -42,33 +31,19 @@ _SAFE_CHAR_RE = re.compile(r"[^A-Za-z0-9._-]")
 # Bound on collision-regeneration attempts before giving up.
 _MAX_REGEN_ATTEMPTS = 1000
 
-# A canonical standalone box name is ``<kuid>_<leaf>`` where the prefix is a
-# VALID kuid (5 Crockford base32 chars with odd parity — see :func:`kanibako.
-# kuid.is_valid`) and the leaf is 1-32 chars drawn from the sanitized, *lowercased*
-# alphabet (see :func:`sanitize_cap`).  This is the verbatim shape the generator
-# emits, so it is also what a user may assert by passing a fully-formed ``--name``.
-# (The prefix ALPHABET is now the kuid's Crockford set, NOT RFC-4648 ``[a-z2-7]``.)
+# The leaf half of the canonical ``<kuid>_<leaf>`` shape; the prefix half is
+# :func:`kanibako.kuid.is_valid`.  It is the verbatim shape the generator emits,
+# so it is also the grammar a user may assert with a fully-formed ``--name``.
+# ⚑ The prefix alphabet is the kuid's Crockford set, NOT RFC-4648 ``[a-z2-7]``.
 _LEAF_RE = re.compile(r"^[a-z0-9._-]{1,32}$")
 
 # ---------------------------------------------------------------------------
-# Box-name BLOCKLIST validation (W1 Phase D, §Design 8).
+# Box-name BLOCKLIST validation (W1 Phase D, §Design 8).  A name is rejected only
+# for a blocked character or a structural rule — everything else is permitted, so
+# unicode letters/digits and interior ``.`` ARE allowed.
 #
-# A box name is REJECTED if it contains any blocked character or violates a
-# structural rule; everything else is permitted (so unicode letters/digits and
-# interior ``.`` ARE allowed — the reason this is a blocklist, not an allowlist).
-# The blocked sets are defined by standard categories so the rule is COMPLETE:
-#
-#   * Control chars ``U+0000-U+001F`` and ``U+007F``.
-#   * All whitespace (ASCII space + any Unicode whitespace, via ``str.isspace``).
-#   * ASCII punctuation EXCEPT ``_ - .`` (this single set subsumes both the
-#     Windows-reserved chars ``< > : " / \ | ? *`` and the POSIX shell
-#     metacharacters).
-#   * Structural: not ``.``/``..``; no leading ``-`` (CLI-flag collision) or
-#     leading ``.`` (hidden/relative); no trailing ``.`` or whitespace
-#     (Windows); length 1-64.
-#
-# Uppercase ASCII is NOT blocked — it is folded to lowercase by the ``--name``
-# invariant (R2) BEFORE validation runs, so validate a name post-fold.
+# ⚑ Validate a name AFTER lowercase-folding (the ``--name`` R2 invariant):
+# uppercase ASCII is not itself a violation, it is folded upstream.
 # ---------------------------------------------------------------------------
 
 # ASCII punctuation that survives (the ONLY ASCII punctuation permitted).
@@ -82,18 +57,12 @@ _NAME_MAX_LEN = 64
 
 
 def _box_name_violation(name: str) -> str | None:
-    """Return a human-readable reason *name* is an invalid box name, else ``None``.
-
-    Pure and side-effect free.  Implements the §Design 8 blocklist + structural
-    rules.  Callers pass a name that has ALREADY been lowercase-folded (the R2
-    ``--name`` invariant); uppercase is not itself a violation.
-    """
+    """Return a human-readable reason *name* is an invalid box name, else ``None``."""
     if len(name) < _NAME_MIN_LEN:
         return "box name must not be empty"
     if len(name) > _NAME_MAX_LEN:
         return f"box name must be at most {_NAME_MAX_LEN} characters"
 
-    # Structural: reserved relative-path names.
     if name in (".", ".."):
         return f"box name must not be '{name}'"
 
@@ -116,8 +85,8 @@ def _box_name_violation(name: str) -> str | None:
         return "box name must not start with '.' (hidden/relative)"
     if name.endswith("."):
         return "box name must not end with '.'"
-    # A trailing-whitespace check is redundant with the per-char whitespace
-    # block above, but kept explicit for the Windows-portability intent.
+    # ⚑ Redundant with the per-char whitespace block above, but kept explicit:
+    # the Windows-portability intent is not recoverable from that general check.
     if name != name.rstrip():
         return "box name must not end with whitespace"
 
@@ -125,11 +94,10 @@ def _box_name_violation(name: str) -> str | None:
 
 
 def is_valid_box_name(name: str) -> bool:
-    """Return ``True`` when *name* passes the §Design 8 box-name blocklist.
+    """Return ``True`` when *name* passes the box-name blocklist (non-raising).
 
-    Non-raising companion to :func:`validate_box_name` for the "flag, don't
-    reject" case (pre-existing non-conforming boxes still resolve but get
-    warned).  Validate a name AFTER lowercase-folding (R2 invariant).
+    The "flag, don't reject" companion to :func:`validate_box_name`: a
+    pre-existing non-conforming box still resolves, it just gets warned about.
     """
     return _box_name_violation(name) is None
 
@@ -142,9 +110,7 @@ def box_name_reason(name: str) -> str | None:
 def validate_box_name(name: str) -> None:
     """Raise :class:`~kanibako.errors.ProjectError` if *name* is an invalid box name.
 
-    Enforced at creation / ``--name`` (NEW names).  Pure and side-effect free.
-    Validate a name AFTER lowercase-folding (R2 invariant) — uppercase is not a
-    violation, it is folded upstream.
+    Enforced at creation and at ``--name`` — i.e. on NEW names only.
     """
     reason = _box_name_violation(name)
     if reason is not None:
@@ -154,10 +120,8 @@ def validate_box_name(name: str) -> None:
 def sanitize_cap(leaf: str) -> str:
     """Sanitize, lowercase, and cap a project-basename *leaf* for a box name.
 
-    Non-portable characters (anything outside ``[A-Za-z0-9._-]``) become ``_``;
-    the result is lowercased (every box name is lowercase) and capped at
-    :data:`_LEAF_CAP` characters.  An empty result (e.g. an empty or all-illegal
-    basename) falls back to ``"box"``.
+    Non-portable characters become ``_``; every box name is lowercase.  An empty
+    result — an empty or all-illegal basename — falls back to ``"box"``.
     """
     sanitized = _SAFE_CHAR_RE.sub("_", leaf).lower()[:_LEAF_CAP]
     return sanitized or _EMPTY_LEAF_FALLBACK
@@ -166,11 +130,7 @@ def sanitize_cap(leaf: str) -> str:
 def is_canonical_standalone_name(name: str) -> bool:
     """True when *name* matches the canonical ``<kuid>_<leaf>`` shape.
 
-    The prefix (up to the FIRST ``_``) must be a VALID kuid (:func:`kanibako.
-    kuid.is_valid` — 5 Crockford base32 chars with odd parity) and the leaf 1-32
-    chars of ``[a-z0-9._-]`` (lowercase, matching :func:`sanitize_cap`).  An
-    over-long or illegal-char leaf, or a non-kuid prefix, fails the match.  The
-    check is case-sensitive: callers lowercase a supplied name first.
+    ⚑ Case-sensitive: callers lowercase a supplied name first.
     """
     prefix, sep, leaf = name.partition("_")
     if not sep:
@@ -179,39 +139,26 @@ def is_canonical_standalone_name(name: str) -> bool:
 
 
 def standalone_kuid(name: str) -> str:
-    """Return the kuid PREFIX of a standalone box *name* (``<kuid>_<leaf>``).
-
-    The kuid is everything up to the FIRST ``_`` (the kuid alphabet never
-    contains ``_``, so this is unambiguous even when the leaf itself holds one).
-    Exposes the generated/stored kuid so the create path can persist it as the
-    ``workset.kuid`` key WITHOUT re-deriving it — the name is composed FROM the
-    kuid, so this is the inverse.
-    """
+    """Return the kuid PREFIX of a standalone box *name* (``<kuid>_<leaf>``)."""
+    # Everything up to the FIRST ``_``: unambiguous even when the leaf holds one,
+    # because the kuid alphabet never contains ``_``.
     return name.partition("_")[0]
 
 
 def compose_standalone_name(box_kuid: str, root: Path) -> str:
     """Compose the LIVE standalone box name ``<box_kuid>_<leaf>`` for *root*.
 
-    *box_kuid* is the STABLE stored ``workset.kuid`` prefix; the leaf is derived
-    LIVE from the current *root* basename (``sanitize_cap(root.name)``) so it
-    TRACKS directory moves (the kuid stays put, the leaf follows the dir — spec
-    2026-07-04).  The single source for re-composing a moved box's name from its
-    stored kuid; mirrors the join in :func:`_generate_with_leaf`.
+    The stored kuid stays put; the leaf is re-derived from the current basename,
+    so a moved box re-composes to a new name.  Mirrors :func:`_generate_with_leaf`.
     """
     return f"{box_kuid}_{sanitize_cap(root.name)}"
 
 
 def _generate_with_leaf(leaf: str, existing: set[str]) -> str:
-    """Build ``<kuid>_<leaf>`` with whole-name collision regen.
+    """Build ``<kuid>_<leaf>``, regenerating the kuid until the WHOLE name is free.
 
-    *leaf* must already be sanitized (see :func:`sanitize_cap`).  Regenerates
-    the kuid prefix (bounded retries) until the whole name is unique within
-    *existing*.  Shared by :func:`make_standalone_box_name` (leaf from the root
-    basename) and :func:`resolve_standalone_name` (leaf from a supplied string).
-
-    Raises :class:`RuntimeError` if a unique name cannot be found within
-    :data:`_MAX_REGEN_ATTEMPTS` attempts.
+    *leaf* must already be sanitized.  Raises :class:`RuntimeError` once
+    :data:`_MAX_REGEN_ATTEMPTS` is exhausted.
     """
     for _ in range(_MAX_REGEN_ATTEMPTS):
         name = f"{kuid.generate()}_{leaf}"
@@ -226,14 +173,8 @@ def _generate_with_leaf(leaf: str, existing: set[str]) -> str:
 def make_standalone_box_name(root: Path, existing: set[str]) -> str:
     """Generate a unique standalone box name for project *root*.
 
-    Builds ``<kuid>_<sanitize_cap(root.name)>`` and, if that whole name is
-    already in *existing*, regenerates the kuid prefix (bounded retries) until
-    the name is unique.  *existing* is the set of standalone box names currently
-    registered (see ``registry.standalone``).
-
-    Raises :class:`RuntimeError` if a unique name cannot be found within
-    :data:`_MAX_REGEN_ATTEMPTS` attempts (effectively impossible with a sane
-    ``existing`` set; the bound guards against a degenerate caller).
+    *existing* is the set of standalone box names currently registered (see
+    ``registry.standalone``).
     """
     return _generate_with_leaf(sanitize_cap(root.name), existing)
 
@@ -241,14 +182,12 @@ def make_standalone_box_name(root: Path, existing: set[str]) -> str:
 def validate_standalone_name(supplied: str, existing: set[str]) -> None:
     """Pre-flight a user-supplied standalone ``--name`` for a refusable collision.
 
-    Pure and side-effect free.  Raises the SAME
-    :class:`~kanibako.errors.ProjectError` that :func:`resolve_standalone_name`
-    would on the one refusable case — a *supplied* name that is a verbatim
-    canonical ``<kuid>_<leaf>`` id already present in *existing*.  Every other
-    input (empty, or a non-canonical string that becomes a fresh
-    ``<kuid>_<leaf>``) is always satisfiable, so this is a no-op for them.
+    Raises the SAME :class:`~kanibako.errors.ProjectError` that
+    :func:`resolve_standalone_name` would, on the one refusable case: a verbatim
+    canonical id already in *existing*.  Every other input is satisfiable, so
+    this is a no-op for them.  ⚑ Keep the two refusal messages identical.
 
-    Callers run this BEFORE any filesystem mutation so a doomed standalone
+    ⚑ Callers run this BEFORE any filesystem mutation so a doomed standalone
     ``create`` refuses up front instead of leaving a half-created tree (BUG-A).
     """
     if not supplied:
@@ -269,19 +208,9 @@ def resolve_standalone_name(
 ) -> str:
     """Resolve the standalone box name for *root* given a user *supplied* name.
 
-    Pure (modulo the kuid generator) so it is directly unit-testable.  Branches:
-
-    1. *supplied* empty → :func:`make_standalone_box_name` (fresh kuid prefix +
-       sanitized ``root.name`` leaf, whole-name collision regen).
-    2. Otherwise lowercase *supplied*, then:
-
-       * If it does NOT match the canonical ``<kuid>_<leaf>`` shape (see
-         :func:`is_canonical_standalone_name`) → treat the WHOLE supplied string
-         as a raw leaf: ``<fresh-kuid>_<sanitize_cap(supplied)>`` with
-         collision regen.  (An over-long / illegal name lands here.)
-       * If it DOES match → the user is asserting a full canonical id verbatim.
-         If it is free in *existing* → return it as-is; if taken → raise
-         :class:`~kanibako.errors.ProjectError`.
+    Three branches: empty → a fresh name; a non-canonical string → its whole
+    text becomes the leaf; a verbatim canonical id → honored if free, refused if
+    taken.  The last is the only refusable input.
     """
     if not supplied:
         return make_standalone_box_name(root, existing)

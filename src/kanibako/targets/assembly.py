@@ -1,25 +1,17 @@
 """Agent-agnostic, declarative assembly of an agent launch from a PluginDescriptor.
 
-This module is the data-driven core of the descriptor-only plugin system: given
-a plugin's :class:`~kanibako.targets.base.PluginDescriptor` plus the resolved
-host :class:`~kanibako.targets.base.AgentInstall` and a handful of per-launch
-knobs, it assembles the agent argv, container env, and host->box mounts.  (It
-superseded the per-plugin ``build_cli_args`` / ``binary_mounts`` hooks, which
-were removed for the public release.)
+Given a plugin's :class:`~kanibako.targets.base.PluginDescriptor` plus the resolved
+host :class:`~kanibako.targets.base.AgentInstall` and a handful of per-launch knobs,
+this assembles the agent argv, container env, and host->box mounts.  Everything here
+is pure apart from ``Path.exists()`` checks in :func:`descriptor_mounts` /
+:func:`resolve_binding_source`, and agent-agnostic: no plugin names appear, and
+divergent LOGIC stays behind the plugin ``Target`` hook methods.
 
-Everything here is pure and side-effect-free apart from filesystem *existence*
-checks in :func:`descriptor_mounts` / :func:`resolve_binding_source` (which only
-``Path.exists()`` — they never read, write, or mutate anything).  All functions
-are agent-agnostic: no plugin names appear, and divergent LOGIC stays behind the
-plugin ``Target`` hook methods.
+LIVE in ``commands/start.py`` for every descriptor-bearing target; the only
+descriptor-less one is ``NoAgentTarget`` (the ``kanibako shell`` fallback), which
+launches a plain shell with no agent argv and no delivery binds.
 
-LIVE: this module is wired into ``commands/start.py`` for every descriptor-bearing
-target (all three first-party agents).  ``resolve_mode`` / ``assemble_argv`` build the
-launch argv; ``assemble_env`` + ``env_realization_drivers`` say which variables the
-descriptor REALIZES and which key drives each (the launch turns them into agent-scope
-settings keys — MBR-1 P4c-2); ``descriptor_mounts`` emits the delivery binds.  The only descriptor-less target is ``NoAgentTarget``
-(the ``kanibako shell`` fallback), which launches a plain shell with no agent
-argv and no delivery binds.
+Design, history and the full case tables: ``llm-docs/kanibako/targets/assembly.py.md``.
 """
 
 from __future__ import annotations
@@ -49,22 +41,14 @@ _logger = get_logger("targets.assembly")
 
 
 class BindingSourceError(Exception):
-    """An AGENT_CRITICAL binding's resolved host source is missing/unresolvable.
-
-    Raised by :func:`descriptor_mounts` so the caller can fail fast with a clean,
-    actionable kanibako error instead of letting the runtime (crun) crash on a
-    dangling bind source.  This is the declarative replacement for start.py's
-    existing "mount source disappeared before launch" safe-fail.
-    """
+    """An AGENT_CRITICAL binding's resolved host source is missing/unresolvable."""
 
 
 def entrypoint(descriptor: PluginDescriptor) -> str:
     """Return the container entrypoint: the first element of ``descriptor.command``.
 
-    The descriptor's ``command`` is the full box argv prefix (e.g. ``("claude",)``);
-    its first element is the program podman launches via ``--entrypoint``.  The
-    remaining elements (``command[1:]``) are agent args and are produced by
-    :func:`assemble_argv`.
+    ``command`` is the full box argv prefix; the rest (``command[1:]``) is agent args,
+    produced by :func:`assemble_argv`.
     """
     return descriptor.command[0]
 
@@ -77,22 +61,13 @@ def resolve_mode(
     extra_args: list[str],
     available_modes: Collection[str],
 ) -> str:
-    """Select the interactive launch mode key, lifting claude's ``build_cli_args`` logic.
+    """Select the interactive launch mode key from *available_modes*.
 
-    *available_modes* is the set of mode keys the agent's launch grammar declares —
-    read off the snapshot's ``meta.agent.<a>.mode`` table (B5, spec §2d), where the
-    descriptor materialized it.  Resolution order:
-
-    1. ``-R`` resume picker: if *resume_mode* and ``"resume"`` is available -> ``"resume"``.
-    2. ``skip_continue`` is true when a new session was forced (*new_session* /
-       *is_new_project*) or the user passed ``--resume``/``-r`` in *extra_args*.
-    3. If not *skip_continue* and ``"continue"`` is available -> ``"continue"``.
-    4. Otherwise -> ``"start"``.
-
-    A descriptor that declares only ``{"start", "continue"}`` (no picker) makes
-    *resume_mode* fall through past step 1; with no new-session/``--resume``-in-extra
-    forcing, step 3 then yields ``"continue"`` (continue-last) — the sane mapping
-    for an agent that has no dedicated resume picker (e.g. goose/codex).
+    *available_modes* is the set of mode keys the agent's launch grammar declares,
+    read off the snapshot's ``meta.agent.<a>.mode`` table (B5, spec §2d).  Order:
+    ``-R`` resume picker if declared; else ``continue`` unless a new session was
+    forced (*new_session* / *is_new_project* / ``--resume``/``-r`` in *extra_args*);
+    else ``start``.  An agent with no picker falls through to continue-last.
     """
     if resume_mode and "resume" in available_modes:
         return "resume"
@@ -111,26 +86,18 @@ def resolve_mode(
 def resolve_access_tier(access: "str | None") -> str:
     """Validate a CASCADE-resolved ``access`` value into a permission TIER.
 
-    ``None`` / unset ⇒ :func:`~kanibako.settings.settings_keyspace.access_default`
-    (``full`` — R-41's ruled default: today's behaviour preserved, the box is the
-    containment boundary; DECLARED in ``core-defaults.yaml``, not spelled here).
-    Anything else must be a member of
-    :data:`~kanibako.settings.settings_keyspace.ACCESS_TIERS` EXACTLY.
+    ``None`` (unset) ⇒ :func:`~kanibako.settings.settings_keyspace.access_default`,
+    DECLARED in ``core-defaults.yaml`` and not spelled here; anything else must be a
+    member of :data:`~kanibako.settings.settings_keyspace.ACCESS_TIERS` EXACTLY.
 
     ⚑ An unknown value RAISES, naming the key and the legal values.  It is NEVER
     coerced and NEVER falls back to the default: on a permission axis a typo must
-    not decide whether the agent prompts.  (The old boolean read did exactly that
-    — ``coerce_bool("flase")`` → ``None`` → the permissive default — which is why
-    the set-time guard existed; the guard stays, and this is now a second fence
-    for a value that reached the file some other way, e.g. a hand edit.)
+    not decide whether the agent prompts.  This is the SECOND FENCE behind the
+    set-time guard, for a value that reached the file some other way (a hand edit).
 
-    ⚑ The EMPTY STRING is not unset — it is an INVALID VALUE, and it refuses like
-    any other.  Only ``None`` (the key absent from the cascade) takes the default.
-    Both set paths already refuse ``""``, so the only way it reaches here is the
-    hand edit the paragraph above describes — i.e. exactly the case this second
-    fence exists for.  Treating it as unset would make the ONE reachable route to
-    this function's permissive arm a route the validators never approved (R-41: an
-    unknown stored value is rejected, never treated as permissive).
+    ⚑ The EMPTY STRING is not unset — it is an INVALID VALUE and refuses like any
+    other; only ``None`` takes the default.  Treating it as unset would make this
+    function's permissive arm reachable by a route the validators never approved.
     """
     if access is None:
         return access_default()
@@ -152,19 +119,13 @@ def effective_access(
 ) -> str:
     """Return the permission TIER this launch's ARGV/ENV should run at.
 
-    Resolution (spec §2d + §1A; R-41 replaced the old boolean
-    ``effective_safe_mode_off``):
+    *secure* (``-S``) ⇒ ``restricted``, winning over everything; *autonomous*
+    (``-A``) ⇒ ``full``; else the cascade-resolved *access* key via
+    :func:`resolve_access_tier` (spec §2d + §1A).
 
-    * *secure* (``-S``) -> ``"restricted"`` — wins over everything.
-    * *autonomous* (``-A``) -> ``"full"`` — the per-launch override.
-    * else the cascade-resolved *access* key, defaulting to ``full`` when unset
-      (:func:`resolve_access_tier`, which REFUSES an unknown value).
-
-    ⚑ The flags are EPHEMERAL and apply to the launch argv/env ONLY. The
-    PROJECTED surfaces (claude ``settings.json`` / codex ``config.toml`` / goose
-    ``config.yaml``) resolve the tier from the CASCADE alone — spec §1A's
-    projected-surface exception, because a projection outlives the launch.  So
-    both values exist at a launch and they are deliberately NOT the same read.
+    ⚑ The flags are EPHEMERAL and apply to the launch argv/env ONLY.  The PROJECTED
+    surfaces resolve the tier from the CASCADE alone (spec §1A's projected-surface
+    exception), so both values exist at a launch and are NOT the same read.
     """
     if secure:
         return "restricted"
@@ -176,34 +137,22 @@ def effective_access(
 def access_row(
     descriptor: PluginDescriptor, tier: str, *, agent: str = "",
 ) -> "AccessTierRow | None":
-    """The descriptor's realization of *tier*, or ``None`` when it declares no
-    ``access_realization`` at all (an agent with no permission surface).
+    """The descriptor's realization of *tier*, or ``None`` when it declares none.
 
     RAISES when the descriptor HAS an ``access_realization`` but cannot render
-    *tier* — the un-rendered-tier rule: the launch stops and names the tiers this
-    agent CAN render, rather than substituting a neighbouring one.  Never silently
-    permissive, never silently stricter (goose's missing ``editing``: substituting
-    ``auto`` would over-permit, substituting ``approve`` would deliver
-    prompt-on-every-edit while reporting success — both are lies about what the
-    user asked for).
+    *tier* — the un-rendered-tier rule: name the tiers this agent CAN render rather
+    than substitute a neighbouring one, which would be either silently permissive
+    or silently stricter.  Both are lies about what the user asked for.
 
-    ⚑ A descriptor that declares an ``access_realization`` with ZERO rows is
-    diagnosed SEPARATELY as PLUGIN VERSION SKEW, because that is what it actually
-    is: a harness with a permission surface always realizes at least one tier, so
-    no rows means the block was parsed from a plugin that predates the ``access``
-    tiers — the retired PRE-TIER BODY (``flag``/``secure_flag`` with no ``tiers:``)
-    loads to an empty :class:`AccessRealization`.  Reporting "this agent cannot
-    render that tier" there would blame the agent for an install problem and send
-    the user looking for a capability limit that does not exist.
+    ⚑ ZERO rows is diagnosed SEPARATELY as PLUGIN VERSION SKEW, not as a capability
+    limit: the retired PRE-TIER BODY (``flag``/``secure_flag`` with no ``tiers:``)
+    loads to an empty :class:`AccessRealization`, and blaming the agent would send
+    the user looking for a limit that does not exist.
 
-    ⚑ SPELLING, old vs new: the block is named ``access_realization:`` (this
-    release); it was named ``safe_bypass:`` before.  A descriptor still using the
-    OLD KEY never reaches here — it is refused at descriptor load by
-    :func:`~kanibako.settings.agent_defaults.load_descriptor`, because an unknown
-    descriptor key would otherwise be ignored and leave the agent with NO
-    permission surface at all.  So the only pre-tier shape that survives to this
-    point is the old BODY under the NEW key, which is what the message below
-    describes.
+    ⚑ A descriptor spelling the OLD KEY (``safe_bypass:``) never reaches here — it
+    is refused at descriptor load by
+    :func:`~kanibako.settings.agent_defaults.load_descriptor`.  Only the old BODY
+    under the NEW key survives this far, which is what the message below describes.
     """
     ar = descriptor.access_realization
     if ar is None:
@@ -232,19 +181,15 @@ def access_row(
     return row
 
 
-# ⚑ ``resolve_new_session`` was DELETED in P8 (v1.8.0). Its whole body was the fold
-# *"the per-launch -N/-C/-R flags over the persisted ``continue_mode`` key"* — i.e.
-# one hand-rolled precedence chain for one flag family. Spec §1A makes the COMMAND
-# LINE its own LEVEL, the highest, so that fold now happens ONCE, declaratively, in
-# :func:`kanibako.settings.settings_cli_level.build_cli_level` (``-N`` ⇒ ``continue_mode``
-# False, ``-C``/``-R`` ⇒ True), and the launch simply reads the resolved key:
-# ``effective_new_session = not continue_default``.
+# ⚑ ``resolve_new_session`` was DELETED in P8 (v1.8.0): spec §1A makes the COMMAND LINE
+# its own LEVEL, so the ``-N``/``-C``/``-R`` fold over ``continue_mode`` now happens ONCE,
+# declaratively, in :func:`kanibako.settings.settings_cli_level.build_cli_level`, and the
+# launch reads ``effective_new_session = not continue_default``.
 #
-# Do NOT reintroduce it. Two places folding the same flags from two different inputs
-# is the "two forms that mean the same thing" failure — and the second one would be
-# the one nobody tested. ``resolve_mode`` still takes the raw ``resume_mode``,
-# because ``-R`` selects a launch GRAMMAR (the resume mode fragment), which is not a
-# key.
+# Do NOT reintroduce it. Two places folding the same flags from two different inputs is
+# the "two forms that mean the same thing" failure, and the second one would be the one
+# nobody tested. ``resolve_mode`` still takes the raw ``resume_mode``, because ``-R``
+# selects a launch GRAMMAR, not a key.
 
 
 def assemble_argv(
@@ -259,55 +204,31 @@ def assemble_argv(
 ) -> list[str]:
     """Assemble the agent argv that follows the entrypoint binary.
 
-    The returned list is everything that should be passed to the container AFTER
-    the ``--entrypoint`` program — i.e. it EXCLUDES ``descriptor.command[0]`` (the
-    entrypoint, available via :func:`entrypoint`) and starts at
-    ``descriptor.command[1:]``.  This mirrors how ``start.py`` uses ``cli_args``
-    after setting ``--entrypoint`` separately, and corresponds to today's
-    ``build_cli_args + state_args`` tail.
+    The returned list starts at ``descriptor.command[1:]`` — it EXCLUDES the
+    entrypoint program (:func:`entrypoint`), which ``start.py`` sets separately.
 
     ⚑ B5 (spec §2d): the launch-grammar fragments are PARAMETERS, not descriptor
-    reads.  The live caller reads them off the ONE launch snapshot —
-    ``meta.agent.<a>.mode[mode_key]`` (*mode_fragment*) and ``meta.agent.<a>.exec``
-    (*op_fragment*) via :func:`kanibako.settings.settings_launch.meta_agent_grammar`
-    — where the descriptor MATERIALIZED them
-    (:func:`~kanibako.settings.settings_launch.meta_agent_grammar_floor`).  This
-    function must NOT read ``descriptor.mode`` / ``descriptor.operations``: the
-    descriptor feeds the KEYSPACE only, and a second (descriptor-direct) source
-    for the same argv fragment is the drift shape B5 exists to kill.
+    reads — the caller reads them off the ONE launch snapshot.  This function must
+    NOT read ``descriptor.mode`` / ``descriptor.operations``: the descriptor feeds
+    the KEYSPACE only, and a second, descriptor-direct source for the same argv
+    fragment is the drift shape B5 exists to kill.
 
-    Build order (after ``command[1:]``):
+    Order after ``command[1:]``: *op_fragment* if set, which SUPPRESSES the
+    interactive mode (the two are MUTUALLY EXCLUSIVE at this slot, spec §2d), else
+    *mode_fragment*; then the FLAG-channel ``access_realization`` row for the
+    *access* tier — an EMPTY row emits nothing, a MISSING row RAISES
+    (:func:`access_row`), so no tier falls through to another tier's emission; then
+    each FLAG-channel :class:`SettingArg` with a truthy value; then *extra_args*.
 
-    1. If *op_fragment* is set: the standalone operation fragment
-       (``meta.agent.<a>.exec``); NO interactive mode is added — the two are
-       MUTUALLY EXCLUSIVE at this argv slot (spec §2d).
-    2. Else if *mode_fragment* is set: the interactive mode fragment
-       (``meta.agent.<a>.mode[mode_key]`` for the resolved *mode_key*).
-    3. If the descriptor's ``access_realization`` is FLAG-channel: emit the ``flag`` of
-       its row for the *access* TIER (R-41).  An EMPTY row emits nothing (the
-       claude/codex ``restricted`` realization — their own default already
-       prompts); a MISSING row RAISES (:func:`access_row` — the un-rendered-tier
-       rule), so no tier can ever fall through to a different tier's emission.
-    4. For each FLAG-channel :class:`SettingArg` WITH A ``flag`` whose value in
-       *setting_values* is truthy: ``flag + [value]``.
-    5. *extra_args*, appended last.
+    ⚑ The ``and s.flag`` guard (twin of :func:`assemble_env`'s ``and s.env_var``):
+    without it a flagless FLAG entry extends by ``()`` and the value lands as a BARE
+    POSITIONAL — for claude, the initial PROMPT.  The DECLARATION is refused one
+    level up at descriptor load; this is containment for a :class:`PluginDescriptor`
+    hand-built in code, which never passes through that loader.
 
-    ⚑ The ``and s.flag`` in step 4 is the exact twin of :func:`assemble_env`'s
-    ``and s.env_var``, and exists for a sharper reason.  Without it a flagless
-    FLAG entry extends by ``()`` and then appends the value, so the value lands
-    as a BARE POSITIONAL — for claude, the initial PROMPT.  A setting's value
-    silently becoming the text the agent is asked to act on is far worse than
-    the value going undelivered, so the emission is withheld.  The DECLARATION
-    itself is refused one level up, at descriptor load
-    (:func:`~kanibako.settings.agent_defaults._build_setting_arg`), which is
-    where a plugin author gets told the file and the field; this guard is the
-    containment for a :class:`PluginDescriptor` hand-built in code, which never
-    passes through that loader.
-
-    *access* is the tier this LAUNCH runs at (``-S``/``-A``-folded — see
-    :func:`effective_access`); *agent* names the agent in the refusal message.
-    ENV-channel access rows / settings are NOT argv and are emitted by
-    :func:`assemble_env` instead.
+    *access* is the tier this LAUNCH runs at (see :func:`effective_access`); *agent*
+    names the agent in the refusal message.  ENV-channel access rows / settings are
+    NOT argv and are emitted by :func:`assemble_env` instead.
     """
     argv: list[str] = list(descriptor.command[1:])
 
@@ -343,30 +264,23 @@ def assemble_env(
     """Assemble the container environment overlay from the descriptor.
 
     ⚑ REALIZATIONS ONLY.  A plugin's STATIC variables are settings keys
-    (``agent.<agent>.env.<VAR>``, ``Target.default_envs``) and are FLOOR values that
-    need no launch to compute, so they never come through here; what this builds is
-    the per-launch translation of RESOLVED values onto the ENV channel:
+    (``agent.<agent>.env.<VAR>``, ``Target.default_envs``) and never come through
+    here; this is the per-launch translation of RESOLVED values onto the ENV
+    channel — the ENV-channel ``access_realization`` row for the *access* tier, then
+    each ENV-channel :class:`SettingArg` with a truthy value.  An EMPTY row emits
+    nothing; a MISSING row RAISES (:func:`access_row`).
 
-    * If the descriptor's ``access_realization`` is ENV-channel with an ``env_var``: set
-      it to the ``env_value`` of the row for the *access* TIER (R-41; goose
-      ``GOOSE_MODE=auto`` at ``full``, ``approve`` at ``restricted``).  An EMPTY
-      row emits nothing; a MISSING row RAISES (:func:`access_row`).  ⚑ For an
-      agent whose UNSET env default is itself permissive (goose's ``GOOSE_MODE``
-      defaults to ``auto``) every renderable tier must carry a value — emitting
-      nothing there would BE the bypass, which is why the un-rendered tier
-      refuses instead of falling through.
-    * For each ENV-channel :class:`SettingArg` with an ``env_var`` and a truthy
-      value in *setting_values*: set ``env_var`` to that value.
+    ⚑ Where an agent's UNSET env default is itself permissive (goose's
+    ``GOOSE_MODE`` defaults to ``auto``), every renderable tier must carry a value:
+    emitting nothing there would BE the bypass.
 
-    FLAG-channel access rows / settings are argv and are emitted by
-    :func:`assemble_argv` instead.
+    ⚑⚑ THE RETURN VALUE IS NOT APPLIED TO ANYTHING (MBR-1 P4c-2) — the launch
+    installs it as ``agent.<node>.env.<VAR>`` KEYS before the collapse, so these
+    variables are arbitrated, overridable and refusable like every other one.  This
+    function stayed PURE through that move and must stay pure.  See
+    ``commands/start._install_realized_env``.
 
-    ⚑⚑ THE RETURN VALUE IS NOT APPLIED TO ANYTHING (MBR-1 P4c-2).  It used to be
-    pasted onto the finished container env; the launch now installs it as
-    ``agent.<node>.env.<VAR>`` KEYS before the collapse, so these variables are
-    arbitrated, overridable and refusable like every other one.  This function stayed
-    PURE through that move and must: it says what a descriptor realizes, and nothing
-    about where the answer goes.  See ``commands/start._install_realized_env``.
+    FLAG-channel access rows / settings are argv (:func:`assemble_argv`).
     """
     env: dict[str, str] = {}
 
@@ -388,23 +302,18 @@ def assemble_env(
 def env_realization_drivers(descriptor: PluginDescriptor) -> dict[str, str]:
     """Every variable this descriptor can REALIZE -> the setting key that DRIVES it.
 
-    The DECLARATION map, and unconditional where :func:`assemble_env` is
-    conditional: it names every variable that function *could* emit, whatever this
-    launch resolved.  ⚑ It exists because the emitted ``{var: value}`` map cannot
-    carry provenance, and a caller that has to say WHY a variable is set — the
-    launch's refusal when a settings key names a realized variable — needs the key
-    that produces it, not the value.
+    The DECLARATION map, unconditional where :func:`assemble_env` is conditional:
+    an emitted ``{var: value}`` map cannot carry provenance, and a caller that has
+    to say WHY a variable is set needs the key that produces it, not the value.
 
-    ⚑⚑ IT IS THE TWIN WALK OF :func:`assemble_env` AND MUST STAY BESIDE IT.  Both
-    read the same two declaration sites in the same order (the ENV-channel
-    ``access_realization``, then the ENV-channel :class:`SettingArg`s); a variable
-    one of them knows about and the other does not is a variable that either
-    reaches the box unexplained or is explained but never set.
+    ⚑⚑ IT IS THE TWIN WALK OF :func:`assemble_env` AND MUST STAY BESIDE IT — the
+    same two declaration sites in the same order.  A variable one of them knows
+    about and the other does not either reaches the box unexplained or is explained
+    but never set.
 
-    A row's setting key may be EMPTY (an ``access_realization`` driven only by the
-    per-launch ``-S``/``-A`` flags).  It is carried through as the empty string
-    rather than dropped: the variable IS realized, and a caller reporting it needs
-    to know there is no key to point the user at.
+    A row's setting key may be EMPTY (a realization driven only by ``-S``/``-A``).
+    It is carried through rather than dropped: the variable IS realized, and there
+    is no key to point the user at.
     """
     drivers: dict[str, str] = {}
 
@@ -425,21 +334,11 @@ def resolve_binding_source(
     *,
     override: str = "",
 ) -> Path | None:
-    """Resolve a binding's host source path (no existence check here).
+    """Resolve a binding's host source from ``binding.origin`` (no existence check).
 
-    A non-empty *override* (a caller-supplied host source repoint; the user cascade
-    equivalent is ``agent.<name>.bindings.{ro,rw}.<key>``, hand-authored in the
-    node's settings file and resolved upstream in the launch snapshot — R-9 retired
-    its CLI set route; this param is now used by tests only)
-    always wins and is returned as ``Path(override)``.  Otherwise the source is
-    derived from ``binding.origin``:
-
-    * ``LAUNCHER`` -> ``install.launcher`` (falling back to ``install.binary``).
-    * ``INSTALL_DIR`` -> ``install.install_dir``.
-    * ``BINARY`` -> ``install.binary``.
-    * ``LITERAL`` -> ``binding.literal_src``.
-
-    Returns ``None`` when the source cannot be resolved.
+    A non-empty *override* wins and is returned as ``Path(override)``; R-9 retired
+    its CLI set route, so the parameter is used by tests only.  Returns ``None``
+    when the source cannot be resolved.
     """
     if override:
         return Path(override)
@@ -462,26 +361,19 @@ def declares_box_dest(
 ) -> bool:
     """True when *descriptor* declares a delivery binding at *box_dest*.
 
-    The DECLARATION-level question: "does this plugin deliver something to that
-    box-side path?"  Asked of the box_dest and not of a key NAME on purpose —
-    the thing that collides in a box is the DESTINATION (spec §0's identical-dest
-    table, which errors on two concrete bindings at one dest), and a plugin is
-    free to name its key whatever it likes.  A key-name test would pass a
-    third-party plugin's identically-destined binding straight into that error.
+    ⚑ Asked of the box_dest and NOT of a key NAME on purpose: the thing that
+    collides in a box is the DESTINATION (spec §0's identical-dest table), and a
+    plugin names its keys freely — a key-name test would pass a third-party
+    plugin's identically-destined binding straight into that error.
 
-    Declaration-level, not resolution-level: it does not touch the filesystem and
-    does not care whether the source resolves.  That matches
-    :func:`~kanibako.settings.agent_representation.agent_default_partial`, which represents
-    a binding in the launch snapshot with no existence check — so a caller gating
-    on this predicate sees exactly what the snapshot will carry.
+    Declaration-level, not resolution-level: no filesystem, no source resolution,
+    matching what the launch snapshot carries
+    (:func:`~kanibako.settings.agent_representation.agent_default_partial`).
 
     *descriptor* may be ``None`` (the no-agent target has none), which answers
-    False.  *box_dest* must be the ABSOLUTE guest path: descriptor box_dests are
-    ``$GUEST_HOME``-expanded by the defaults loader, so a ``~``-spelled dest never
-    matches and callers must expand first.
+    False.  *box_dest* must be the ABSOLUTE guest path; callers expand ``~`` first.
 
-    Sole caller today: :func:`kanibako.settings.core_defaults.kickoff_default_categories`
-    (the P-5 transition gate).
+    Sole caller today: :func:`kanibako.settings.core_defaults.kickoff_default_categories`.
     """
     if descriptor is None:
         return False
@@ -496,23 +388,19 @@ def descriptor_mounts(
 ) -> list[Mount]:
     """Build the ordered host->box mounts for a descriptor's bindings.
 
-    For each :class:`Binding` (descriptor order preserved):
+    Descriptor order is preserved; each source resolves via
+    :func:`resolve_binding_source`, with any per-key *overrides* value winning.
 
-    * Its host source is resolved via :func:`resolve_binding_source`, with any
-      per-key value in *overrides* taking precedence.
     * ``AGENT_CRITICAL`` (binary/launcher/share): the source MUST resolve and
-      exist, else :class:`BindingSourceError` is raised — the clean safe-fail
-      that replaces a crun crash on a dangling bind source.  It is then bound
-      as-is (podman inode-pins it at mount time).
-    * ``AGENT`` (best-effort): a source that is unresolvable or missing is
-      skipped (a missing/suppressed agent share is fine) with a debug log;
-      otherwise it is appended.  (No shipped plugin currently declares an AGENT
-      binding — agent-scope shared dirs flow through the category resolver — but
-      the branch is kept for the general binding contract.)
+      exist, else :class:`BindingSourceError` — the clean safe-fail that replaces
+      a crun crash on a dangling bind source.
+    * ``AGENT`` (best-effort): unresolvable or missing is skipped with a debug log.
+      No shipped plugin declares one today, but the branch is kept for the general
+      binding contract.
 
     Mount options are ``"ro"`` when ``binding.ro`` is set, else ``""`` (rw).
 
-    NOTE: clearing any pre-existing dest symlink in the box is the caller's job
+    ⚑ Clearing any pre-existing dest symlink in the box is the CALLER's job
     (``_precreate_mount_stubs``), NOT this function's.
     """
     override_map = overrides or {}

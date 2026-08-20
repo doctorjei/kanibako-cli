@@ -1,75 +1,17 @@
 """Consolidated name registry (``config.registry`` → ``registry.yaml``).
 
-A single file at ``@config.registry`` (``@config.data/global/registry.yaml`` ==
-``{data_path}/global/registry.yaml``) backs every kanibako *global* name store.
-It replaces the former separate files ``names.yaml`` (projects + worksets) and
-``worksets.yaml`` (workset name → root), which are no longer read or written.
-(The former global ``connected:`` external-connect index is GONE — connections
-now live in each workset's per-workset registry as a ``boxes:`` entry, design
-D10.)
-
-The file has these top-level sections::
-
-    worksets:
-      clientwork: /home/user/worksets/client
-
-    standalone:
-      # box.name → root, populated by sub-step 5d; empty for now.
-
-    deregistered:
-      # box.name → retained-recovery blob for a box removed by ``rm`` (no
-      # ``--purge``); its metadata is kept on disk so a later ``rm <name>
-      # --purge`` can find it BY NAME (the active membership is already gone).
-      # Each entry: {kind: primary|standalone, workspace, metadata, image?,
-      # deregistered_at?}.  Self-heals: a list/purge that finds an entry whose
-      # metadata dir is gone drops it.
-
-    # NOTE: there is NO ``seeded`` section.  Registry MEMBERSHIP is itself the
-    # seed signal — a box present here (STANDALONE ``standalone`` / NAMED
-    # workset-local list / PRIMARY per-workset ``boxes:`` membership) was seeded
-    # at its ``create`` (seed-then-register, §0/§5 of the keyspace spec).  The
-    # former ``seeded`` flag section (and its first-launch gate) are GONE.
-    # ⚑ The implication runs ONE WAY: present ==> seeded, never the converse.  A
-    # standalone box created without ``--register`` (§D4a) is seeded and ABSENT
-    # until ``box register`` indexes it — which is why that verb is seed-free.
-
-    rigs:
-      corp/base:1.0: {kind: prefab, ...}   # formerly rigs.yaml
-
-    image_shells:
-      sha256:abc...: /bin/bash             # formerly image-shells.yaml
-
-The former ``projects`` section (default-mode box name → external-workspace) has
-been RETIRED (clean split, 2026-07-08): a PRIMARY box's identity now lives SOLELY
-in the primary workset's per-workset ``boxes:`` membership
-(``@config.primary_workset/registry.yaml`` via :mod:`kanibako.project.workset_registry`),
-the AUTHORITATIVE source of box names (spec L514).  This section is no longer
-loaded or written; a stale ``projects`` block left by an older install is simply
-dropped on the next ``save_registry`` (no migration, no legacy read).
-
-``worksets`` carries the workset name → root registry used both for name-based
-lookups AND to discover/list worksets (the former separate ``worksets.yaml`` and
-its ``workset_roots`` duplicate were collapsed onto this single section,
-2026-06-29f).  ``standalone`` maps a registered standalone box's
-``<kuid>_<leaf>`` name → root path.
-``rigs`` carries the former ``rigs.yaml`` payload (added-rig records keyed by
-rig name; the ``rig_registry`` module owns its shape).  ``image_shells`` carries
-the former ``image-shells.yaml`` map (image store key → captured login shell;
-the ``shells`` module owns its shape).
-
-The ``rigs`` and ``image_shells`` sections are owned by ``rig_registry`` and
-``shells`` respectively, which read/write them through ``load_section`` /
-``save_section`` (preserving sibling sections); this module passes their values
-through verbatim.
+One file backs every *global* name store: ``worksets`` (name → root),
+``standalone`` (box name → root), ``deregistered`` (recovery blobs), plus ``rigs``
+and ``image_shells``, whose shapes are owned by ``rig_registry`` / ``shells`` and
+passed through verbatim here.
 
 Every public function takes the resolved ``config.registry`` FILE path
-(``std.registry``) — the single source of the registry location.  A repointed
-``config.registry`` is honored end-to-end; nothing reconstructs the path from
-``config.data``.
+(``std.registry``); nothing reconstructs it from ``config.data``.  Old files are
+never read (no migration), an absent file yields empty sections, and writes are
+atomic via ``config_io.dump_doc``.
 
-No on-disk migration is performed: the old files are NOT read.  A fresh tree
-(absent ``registry.yaml``) yields empty sections.  Writes are atomic (via
-``config_io.dump_doc`` — temp file + ``os.replace``).
+See ``llm-docs/kanibako/project/registry_store.py.md`` for the file layout, what
+this consolidation replaced, and the design of the ``deregistered`` section.
 """
 
 from __future__ import annotations
@@ -78,10 +20,11 @@ from pathlib import Path
 
 from kanibako.settings.config_io import dump_doc, load_doc
 
-# Top-level sections of registry.yaml, in canonical order.  ``projects`` was
-# RETIRED (2026-07-08): default-mode box identity lives in the primary workset's
-# per-workset ``boxes:`` membership, not here.  Dropping it from this tuple stops
-# the loader surfacing it AND drops any stale block on the next write.
+# Top-level sections of registry.yaml, in canonical order.
+# ⚑ This tuple is the RETIREMENT mechanism: a section absent from it is neither
+# surfaced by the loader nor rewritten, so the retired ``projects`` block is
+# dropped on the next write.  ⚑ There is NO ``seeded`` section and must not be —
+# membership IS the seed signal, one way only (present ==> seeded, not converse).
 _SECTIONS: tuple[str, ...] = (
     "worksets",
     "standalone",
@@ -93,26 +36,18 @@ _SECTIONS: tuple[str, ...] = (
 _NAME_SECTIONS: frozenset[str] = frozenset(
     {"worksets"}
 )
-# Sections whose keys are sorted on write for stable diffs (name-keyed, but the
-# value may be a blob rather than a bare path — ``deregistered`` is name → entry
-# dict, so it sorts like a name section without the path-string coercion).
+# Also sorted on write, but the value is a blob rather than a bare path — so no
+# path-string coercion.
 _SORTED_BLOB_SECTIONS: frozenset[str] = frozenset(
     {"deregistered"}
 )
 
 
 def load_registry(registry: Path) -> dict[str, dict]:
-    """Load the ``registry.yaml`` at *registry* and return all sections.
+    """Load the ``registry.yaml`` at *registry*; absent file → empty sections.
 
-    *registry* is the resolved ``config.registry`` file path (the single source of
-    the registry location; callers pass ``std.registry``).  A user who repoints
-    ``config.registry`` is honored end-to-end — there is no ``data_path``-relative
-    reconstruction.
-
-    Absent file → empty sections.  Every section key is always present so
-    callers can index it without a ``.get`` default.  ``worksets`` is
-    ``{name: path_str}``; ``standalone`` is passed through as stored.  A stale
-    ``projects`` block (retired 2026-07-08) is ignored — never surfaced.
+    Every canonical section key is always present, so callers can index the result
+    without a ``.get`` default.
     """
     data = load_doc(registry) if registry.is_file() else {}
     return {
@@ -131,11 +66,8 @@ def load_registry(registry: Path) -> dict[str, dict]:
 def save_registry(registry: Path, sections: dict[str, dict]) -> None:
     """Atomically write *sections* to the ``registry.yaml`` at *registry*.
 
-    *registry* is the resolved ``config.registry`` file path.  Only the canonical
-    sections are persisted; the ``worksets`` name section's keys are sorted for
-    stable diffs (matching the legacy ``names.yaml`` writer).  Missing sections
-    default to empty.  A retired ``projects`` block is NOT among the canonical
-    sections, so this write drops it (clean split).
+    Only the canonical sections are persisted (a missing one defaults to empty),
+    and name-keyed sections are sorted for stable diffs.
     """
     data: dict = {}
     for section in _SECTIONS:
@@ -155,11 +87,7 @@ def load_section(registry: Path, section: str) -> dict:
 
 
 def save_section(registry: Path, section: str, entries: dict) -> None:
-    """Replace a single section of the ``registry.yaml`` at *registry*, atomically.
-
-    Reads the current registry, swaps *section*, and writes the whole file so
-    the other sections are preserved.
-    """
+    """Replace one section of the ``registry.yaml``, preserving the others."""
     sections = load_registry(registry)
     sections[section] = dict(entries)
     save_registry(registry, sections)
@@ -169,10 +97,8 @@ def save_section(registry: Path, section: str, entries: dict) -> None:
 # Standalone-box helpers (``standalone`` section: box.name → project root)
 # ---------------------------------------------------------------------------
 #
-# Standalone boxes are self-describing on disk (``box_data/`` marker under the
-# project root); ``registry.standalone`` is a derived index keyed by the box's
-# ``<kuid>_<leaf>`` name → root path string.  It backs the whole-name
-# collision check (D-M13) and the drop-in import work in the next sub-step.
+# ⚑ A DERIVED index, not the truth: standalone boxes are self-describing on disk
+# (``box_data/`` marker under the project root).
 
 
 def load_standalone(registry: Path) -> dict[str, str]:
@@ -186,11 +112,7 @@ def standalone_box_names(registry: Path) -> set[str]:
 
 
 def register_standalone(registry: Path, box_name: str, root: Path) -> None:
-    """Register a standalone box (``box_name`` → *root*) in the registry.
-
-    Idempotent for a matching ``(box_name, root)`` pair; overwrites the stored
-    root if the same name re-registers a different root (a moved box).
-    """
+    """Register a standalone box (``box_name`` → *root*); a re-register overwrites."""
     entries = load_standalone(registry)
     entries[box_name] = str(root)
     save_section(registry, "standalone", entries)
@@ -204,11 +126,7 @@ def unregister_standalone(registry: Path, box_name: str) -> None:
 
 
 def standalone_name_for_root(registry: Path, root: Path) -> str | None:
-    """Return the registered standalone box name whose root is *root*, if any.
-
-    Lets a caller (e.g. the next drop-in-import sub-step) check whether an
-    on-disk standalone root is already registered, and reuse its name.
-    """
+    """Return the registered standalone box name whose root is *root*, if any."""
     target = str(root)
     for name, root_str in load_standalone(registry).items():
         if root_str == target:
@@ -220,26 +138,15 @@ def standalone_name_for_root(registry: Path, root: Path) -> str | None:
 # Deregistered-box helpers (``deregistered`` section: box.name → retained blob)
 # ---------------------------------------------------------------------------
 #
-# When ``rm`` (no ``--purge``) deregisters a box, its metadata is retained on
-# disk and a small blob is parked here so a later ``--purge`` (or, in I2, a
-# ``register`` readopt) can find it BY NAME — the active membership is already
-# gone, so name → path resolution against the live registry would miss it.
+# ``rm`` without ``--purge`` parks a recovery blob here so a later ``--purge``
+# (or an I2 ``register`` readopt) can still find the box BY NAME once its active
+# membership is gone.  Entry: ``kind`` (primary|standalone), ``workspace``,
+# ``metadata`` (the box dir ``--purge`` deletes), optional ``image`` and
+# ``deregistered_at``.
 #
-# KEYING: a single flat map keyed by the bare box NAME, with ``kind``
-# (``primary`` | ``standalone``) stored INSIDE each entry.  Box names come from a
-# single validated namespace (primary boxes in the primary-workset ``boxes:``
-# membership; standalone boxes as canonical ``<kuid>_<leaf>`` names), and the
-# user-facing recovery verbs (``rm <name> --purge`` / ``register <name>``) are
-# keyed by that bare name — so a flat name → entry map matches the lookup exactly
-# and keeps the YAML round-trip clean (tuple keys do not serialise).  The
-# per-kind teardown/readopt routing reads ``kind`` from the entry, so no
-# composite key is needed; if a real primary/standalone name collision domain
-# ever emerges the entry already carries ``kind`` and the key can be promoted to
-# ``"<kind>/<name>"`` locally.
-#
-# Each entry: ``kind``, ``workspace`` (project/workspace path), ``metadata`` (box
-# dir — primary ``std.boxes/<name>``; standalone in-tree root), optional
-# ``image`` and ``deregistered_at`` (stamped at the CLI seam).
+# ⚑ FLAT map keyed by the BARE name, with ``kind`` inside the entry — do not
+# promote ``kind`` into the key.  The recovery verbs are keyed by the bare name,
+# and tuple keys do not serialise to YAML.  See the llm-doc.
 
 
 def load_deregistered(registry: Path) -> dict[str, dict]:
@@ -259,13 +166,7 @@ def register_deregistered(
     image: str | None = None,
     deregistered_at: str | None = None,
 ) -> None:
-    """Park a deregistered box's recovery blob under *box_name*.
-
-    Overwrites any existing entry for *box_name* (a re-``rm`` refreshes the
-    retained blob).  *metadata* is the box dir a later ``--purge`` deletes
-    (primary ``std.boxes/<name>``; standalone in-tree root); *workspace* is the
-    project path (for readopt / create-conflict detection in later increments).
-    """
+    """Park a deregistered box's recovery blob under *box_name*, overwriting any prior."""
     entries = load_deregistered(registry)
     entry: dict = {
         "kind": kind,
@@ -281,11 +182,7 @@ def register_deregistered(
 
 
 def unregister_deregistered(registry: Path, box_name: str) -> bool:
-    """Drop *box_name* from the ``deregistered`` section.
-
-    Returns ``True`` if an entry was removed, ``False`` if none was present
-    (a no-op — supports idempotent purge).
-    """
+    """Drop *box_name* from ``deregistered``; ``False`` if absent (purge is idempotent)."""
     entries = load_deregistered(registry)
     if entries.pop(box_name, None) is not None:
         save_section(registry, "deregistered", entries)
@@ -296,9 +193,8 @@ def unregister_deregistered(registry: Path, box_name: str) -> bool:
 def lookup_deregistered(registry: Path, box_name: str) -> dict | None:
     """Return the deregistered entry for *box_name*, or ``None``.
 
-    A pure read — self-healing (dropping entries whose metadata dir is gone)
-    happens at the ``list`` / ``purge`` seam (:func:`list_deregistered` and the
-    purge handler), never here, so callers get a predictable lookup.
+    ⚑ A PURE read: self-healing belongs at the ``list`` / ``purge`` seam, never
+    here, so callers get a predictable lookup.
     """
     entry = load_deregistered(registry).get(box_name)
     return dict(entry) if entry is not None else None
@@ -307,18 +203,10 @@ def lookup_deregistered(registry: Path, box_name: str) -> dict | None:
 def _metadata_definitively_gone(path: str) -> bool:
     """True only when *path* is DEFINITIVELY absent — the drop-safe case.
 
-    The self-heal in :func:`list_deregistered` must NOT drop a recovery pointer
-    on a TRANSIENT filesystem error: a plain ``Path.exists()`` collapses "the dir
-    is genuinely gone" and "I could not stat it (permission / I/O error)" into the
-    same ``False``, so an ambiguous error would false-drop a still-present box and
-    lose the only handle to ``register`` / ``purge`` it.
-
-    Distinguish the two by inspecting the ``OSError``: only ``ENOENT`` (no such
-    file) / ``ENOTDIR`` (a path component is not a directory) prove the target is
-    really gone.  Any other error (``EACCES``, ``EIO``, ``ESTALE``, …) is treated
-    as "present, cannot confirm removal" so the entry is KEPT.  ``os.stat``
-    follows symlinks (matching the previous ``Path.exists()`` semantics), so a
-    dangling symlink still reads as gone.
+    ⚑ NOT ``Path.exists()``: that collapses "genuinely gone" and "could not stat
+    it" into one ``False``, so a transient permission / I/O error would false-drop
+    a live box and lose the only handle left to ``register`` or ``purge`` it.
+    Only ``ENOENT`` / ``ENOTDIR`` prove removal; anything else KEEPS the entry.
     """
     import errno
     import os
@@ -333,13 +221,8 @@ def _metadata_definitively_gone(path: str) -> bool:
 def list_deregistered(registry: Path) -> dict[str, dict]:
     """Return the deregistered entries, self-healing genuinely-stale ones.
 
-    An entry is dropped only when its ``metadata`` path is empty (no recovery
-    target) or DEFINITIVELY gone from disk (the box was deleted out-of-band); the
-    pruned section is persisted when anything is removed.  A transient stat error
-    (permission / I/O) is NOT a genuine removal, so such an entry is KEPT rather
-    than false-dropped (which would lose its recovery pointer) — see
-    :func:`_metadata_definitively_gone`.  This is the ``list`` self-heal from the
-    design, hardened for the transient-FS case now that ``box list`` wires it.
+    Dropped only when ``metadata`` is empty (no recovery target) or definitively
+    gone; the pruned section is persisted when anything is removed.
     """
     entries = load_deregistered(registry)
     live: dict[str, dict] = {}
