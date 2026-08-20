@@ -88,7 +88,7 @@ def _merge_nodes(
         # ⚑ RECURSE on ANY subtree winner — not only when a LOWER setter is also a
         # subtree (§6e). A lone subtree winner must recurse too, or the §3
         # present-None type-split never reaches its leaves; the recursion is also
-        # what makes the node fresh (S15). Reasoning in full: llm-doc.
+        # what makes the node fresh (S15).
         subtrees = [v for _lv, v in setters if isinstance(v, KeyStore)]
         if isinstance(winning_val, KeyStore):
             out[name] = _merge_nodes(
