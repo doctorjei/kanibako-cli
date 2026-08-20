@@ -1,6 +1,7 @@
 """The per-agent settings file's SHAPE — the ONLY module that spells its root table."""
 
-# ⚑⚑ WHY THIS MODULE EXISTS (rulings 49-52, 2026-08-14).  ``self`` is NOT a key: it is a
+# ⚑⚑ WHY THIS MODULE EXISTS (spec §0: ``self`` … = a FILE-SURFACE ALIAS that SUBSTITUTES to
+# ``agent.<that file's agent>`` at the parse boundary).  ``self`` is NOT a key: it is a
 # FILE-SURFACE ALIAS that substitutes to ``agent.<agent>``, created *"exclusively for config
 # files"* — *"There's no need for our code to ever use self"*.  Everything past this boundary
 # traffics in the ACTUAL agent reference.  Six independent sites used to spell the file's shape
@@ -51,7 +52,8 @@ ROOT_SECTIONS: Final[tuple[str, ...]] = (_ROOT,)
 _MODELED_KEYS = IDENTITY_KEYS | frozenset({"env", "secret_path", "transform_settings"})
 
 #: EVERY category the per-agent file stores FLAT under ``self`` — ``self`` IS ``agent.<node>``, so
-#: there is no second ``<node>`` embedding and no other spelling exists (rulings 49-52; the S2
+#: there is no second ``<node>`` embedding and no other spelling exists (spec §0, ``self`` … a
+#: FILE-SURFACE ALIAS substituting at the parse boundary; the S2
 #: flatten). ``bindings`` is ONE token: its ``{ro, rw}`` table rides WHOLE, exactly as the
 #: canonical ``agent.<node>.bindings`` key holds both arms. ⚑ ORDER IS NOT SIGNIFICANT (they are
 #: distinct category names, so no re-root can shadow another). It is ALSO the address rule's
@@ -255,7 +257,8 @@ def table_value_error(tail: str, *, path: Path, verb: str) -> str | None:
 
     It lives HERE rather than in the verb because the cure QUOTES the file's own spelling
     (:func:`file_spelling`), which is one of the two file-surface residues ``self`` is allowed
-    (ruling 51): the boundary writes the file's bytes and the boundary quotes them back.
+    (spec §0, ``self`` … a FILE-SURFACE ALIAS): the boundary writes the file's bytes and the
+    boundary quotes them back.
     ⚑ ``file_spelling(tail)`` takes *tail* WHOLE — it JOINS under the root and never splits, so a
     dotted arm (``bindings.ro``) renders as itself.
     """
@@ -495,7 +498,10 @@ def save(path: Path, cfg: AgentConfig) -> None:
 def _nested_agent_cure(
     category: str | None, sub_key: str, *, var: str, value: str
 ) -> str:
-    """The ARM-APPROPRIATE fix for a refused ``self.<sub>:`` sub-table (rulings 49-52).
+    """The ARM-APPROPRIATE fix for a refused ``self.<sub>:`` sub-table.
+
+    Spec §0: ``self`` … = a FILE-SURFACE ALIAS that SUBSTITUTES to ``agent.<that file's agent>``
+    at the parse boundary.
 
     ⚑ THE EXPLANATION IS UNIFORM (alias expansion) BUT THE CURES ARE NOT, which is the whole
     reason this is a function and not one message. The flat ``self: <category>:`` table is
@@ -550,7 +556,10 @@ def _refused_category(sub_tbl: dict) -> str | None:
 def _refuse_nested_tables(
     root_tbl: dict, *, node: str | None, path: Path | None
 ) -> None:
-    """RAISE when the agent file's ROOT holds a table that is not one of its own (rulings 49-52).
+    """RAISE when the agent file's ROOT holds a table that is not one of its own.
+
+    Spec §0: ``self`` … = a FILE-SURFACE ALIAS that SUBSTITUTES to ``agent.<that file's agent>``
+    at the parse boundary.
 
     ⚑⚑ ONE PREDICATE, over the ROOT: *any dict-valued root key outside* :data:`_ROOT_TABLES`
     *is a nested* ``self.<sub>:`` *sub-table and refuses by name*. It is not an enumeration of
@@ -583,7 +592,8 @@ def _refuse_nested_tables(
         var = sorted(str(k) for k in table)[0] if table else var_ph
         value = str(table[var]) if var in table else value_ph
         held = ", ".join(sorted(str(k) for k in sub_val)) or "(nothing)"
-        # ⚑⚑ ONE EXPLANATION FOR EVERY ARM — ruling 50's alias semantics, not a redundancy
+        # ⚑⚑ ONE EXPLANATION FOR EVERY ARM — the spec §0 alias semantics (``self`` … a
+        # FILE-SURFACE ALIAS substituting at the parse boundary), not a redundancy
         # argument. ``self`` is not a key; it SUBSTITUTES to ``agent.<agent>``, so the spelling
         # expands to a key that cannot exist, and that is equally true of ``default``. Only the
         # HISTORY and the CURE split by arm, each for its own real reason.

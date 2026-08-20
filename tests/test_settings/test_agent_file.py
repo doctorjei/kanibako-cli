@@ -473,7 +473,8 @@ class TestSlotRouting:
         assert level.table["env"] == {"NAV_X": "from-the-file"}
 
     def test_the_bindings_write_arm_is_gone(self, tmp_path):
-        # ⚑⚑ THE INVERSION OF THE S2↔S3 WINDOW PIN (rulings 50-52; D-4). Through S2 this
+        # ⚑⚑ THE INVERSION OF THE S2↔S3 WINDOW PIN (spec §0, ``self`` … a FILE-SURFACE
+        # ALIAS substituting at the parse boundary; D-4). Through S2 this
         # arm WROTE a ``self.<node>: bindings:`` sub-table that the flattened read then
         # REFUSED — a value laid down where nothing reads it. S3 does not "flatten" the
         # write arm, it DELETES it: ``bindings`` is dest-keyed, its entries are DATA inside
@@ -507,7 +508,10 @@ class TestSlotRouting:
 
 
 class TestTheDestIsData:
-    """D-4: a per-entry DESTINATION is DATA and is never split on ``.`` (rulings 49-52).
+    """D-4: a per-entry DESTINATION is DATA and is never split on ``.``.
+
+    Spec §0: ``self`` … = a FILE-SURFACE ALIAS that SUBSTITUTES to ``agent.<that file's agent>``
+    at the parse boundary.
 
     The fifth instance of one root cause ([[dest-is-data-never-split-on-dot]]).  The old bindings
     arm did ``tail.split(".")`` and scattered ``bindings.ro.~/.cache/uv`` across YAML levels, so a
@@ -571,7 +575,8 @@ class TestTableValuedKeysTakeNoScalar:
         )
         assert msg is not None
         assert "holds a TABLE" in msg
-        # The cure QUOTES the file's own spelling — the allowed residue (ruling 51).
+        # The cure QUOTES the file's own spelling — the allowed residue (spec §0,
+        # ``self`` … a FILE-SURFACE ALIAS).
         assert "self.transform_settings" in msg
 
     def test_a_dotted_arm_renders_whole_in_the_cure(self, tmp_path):
@@ -686,7 +691,7 @@ class TestLevelTable:
     @pytest.mark.parametrize("category", _FLAT_AGENT_CATEGORIES)
     @pytest.mark.parametrize("sub", ("claude", "default"))
     def test_nested_category_refuses_by_name(self, category, sub):
-        # rulings 50-52 — ``self.<sub>.<category>`` reads
+        # spec §0 (``self`` … a FILE-SURFACE ALIAS) — ``self.<sub>.<category>`` reads
         # ``agent.<agent>.<sub>.<category>``, which is never syntactically correct.
         # ⚑ EVERY category, from the constant: the refusal is ONE PREDICATE over the root
         # table, so it cannot be true of some categories and not others.

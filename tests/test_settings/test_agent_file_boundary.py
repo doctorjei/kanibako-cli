@@ -1,6 +1,7 @@
 """The agent-file BOUNDARY pins: nothing outside ``settings/agent_file.py`` spells the file.
 
-Three pins, each guarding a different way the boundary leaks (S1, rulings 49-52 —
+Three pins, each guarding a different way the boundary leaks (S1; spec §0, ``self`` … a
+FILE-SURFACE ALIAS substituting at the parse boundary —
 *"There is no self:<agent>:foo"* / *"There's no need for our code to ever use self.
 It was created exclusively for config files"*):
 

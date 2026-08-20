@@ -56,7 +56,8 @@ def test_order_is_most_specific_first(tmp_path: Path) -> None:
     ws = _write(tmp_path / "ws.yaml", {"workset": {"marker": "workset"}})
     # ⚑ The all-agents marker is written in the SYSTEM file, which is where that tier
     # LIVES: the agent file is the active node's own, so ``self:`` IS ``agent.claude``
-    # and it has no spelling for ``agent.default`` at all (the flatten, rulings 50-52).
+    # and it has no spelling for ``agent.default`` at all (the flatten; spec §0,
+    # ``self`` … a FILE-SURFACE ALIAS).
     sysf = _write(
         tmp_path / "sys.yaml",
         {"system": {"marker": "system"},
@@ -619,7 +620,8 @@ def test_agent_file_state_does_not_ride_the_file_cascade_level(tmp_path: Path) -
 
 
 def test_another_agents_sub_table_in_the_agent_file_refuses(tmp_path: Path) -> None:
-    # ⚑⚑ THE PURPOSE HALVED, AND THE SURVIVING HALF INVERTED (rulings 50/51/52). §0 still
+    # ⚑⚑ THE PURPOSE HALVED, AND THE SURVIVING HALF INVERTED (spec §0, ``self`` … a
+    # FILE-SURFACE ALIAS substituting at the parse boundary). §0 still
     # lets a settings file set ``agent.<name>.*`` for an agent that is NOT active — but
     # not THIS file: ``self:`` IS ``agent.claude``, so ``self: goose:`` reads
     # ``agent.claude.goose``, which names nothing. The keys for another agent belong in

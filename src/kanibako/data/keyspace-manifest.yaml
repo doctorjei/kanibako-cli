@@ -444,7 +444,9 @@ registry:                       # about this DOCUMENT (inert; never read by reso
              the driving key; other scopes via the ordinary contested-VAR
              refusal. NO carve-out."
       authority: "Jei - ruling 42 2026-08-14 (\"-e should override the key values,
-                  not the environment variables themselves\"); ruling 45
+                  not the environment variables themselves\"); spec env.<VAR>, -e
+                  beats a realization uniformly, the CLI level overrides the owning
+                  key (§1A)
                   (\"e must win... so it must be part of the collapse\"); ruling 59
                   2026-08-15 (\"Yes on P4c-2.\" - derived pairs enter as keys, user
                   twins meet the ordinary refusal, no carve-out); ruling 61, the
@@ -1945,7 +1947,9 @@ keys:
     note: "COLLAPSED ENV MAP - the env slots after write-once arbitration. The
            scopes act SYSTEM-FIRST (the same containment order the bind fold uses):
            the first scope to name a VAR holds that slot, and a VAR named by two
-           scopes' keys REFUSES the launch, naming both keys (ruling 2026-08-14).
+           scopes' keys REFUSES the launch, naming both keys (spec, the env.<VAR>
+           block: Two scopes' keys naming ONE variable REFUSE the launch, naming
+           both keys).
            There is no winner-picking comparator - the walk order plus the refusal
            IS the arbitration, exactly as it is for a contested bind dest. A
            SAME-scope contest cannot arise: one scope's `env` node is a map keyed by
