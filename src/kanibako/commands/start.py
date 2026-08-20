@@ -1065,49 +1065,23 @@ def _resolve_existing_box(
 def _broken_standalone_error(std: StandardPaths, project_dir: str) -> str | None:
     """The BROKEN-STANDALONE refusal for *project_dir*, or ``None``.
 
-    A standalone box lives entirely inside the user's own directory: the root is
-    theirs, and ``box_data/`` is the only thing kanibako puts there.  When
-    ``box_data/`` is deleted the REGISTRY entry survives, but
-    ``resolve_standalone_project`` can no longer read an identity out of the tree,
-    so the box resolves NAMELESS and the explicit-create gate reads it as "no box
-    at all" — the one state ``_unbuilt_box_error`` structurally cannot see
-    (a standalone box's ``metadata_path`` IS the user's project root, which is
-    still there).  Without this branch that state falls through to the generic
-    "no box" message, whose suggestion is built from the user's own spec — so a
-    bare standalone NAME produces ``kanibako create <name>``, and running THAT
-    creates a directory literally named ``<name>`` in the CWD with a PRIMARY box
-    in it (``commands/box/_parser.py`` uses the spec as a path).  Two grammars,
-    one token: ``start`` resolves a bare token in the NAME grammar, ``create``
-    resolves it in the PATH grammar.
+    A standalone box whose ``box_data/`` was deleted keeps its REGISTRY entry but
+    resolves NAMELESS, so the explicit-create gate reads it as "no box at all" — the
+    one state :func:`_unbuilt_box_error` structurally cannot see.  Without this
+    branch the generic "no box" message suggests ``kanibako create <name>``, which
+    creates a DIRECTORY literally named ``<name>`` in the CWD.
 
-    ⚑ The ``box_data/`` clause is LOAD-BEARING, not a convenience.  It guarantees
-    the branch can never fire while a live box tree is on disk, which is exactly
-    what makes the suggested ``box rm`` safe to name: with ``box_data/`` gone,
-    ``_rm_standalone``'s deregistered-park arm is gated OFF (its ``metadata_dir
-    .is_dir()`` test fails), so the ``rm`` drops the registry entry and touches
-    NOTHING on disk.  Widening the gate would turn the suggestion into the
-    destructive parking variant.
+    ⚑ The ``box_data/`` clause is LOAD-BEARING, not a convenience: it guarantees the
+    branch can never fire while a live box tree is on disk, which is what makes the
+    suggested ``box rm`` safe to name.  Widening the gate would turn the suggestion
+    into the destructive parking variant.
 
-    ⚑ ``--name`` is LOAD-BEARING in the cure: ``validate_standalone_name`` /
-    ``resolve_standalone_name`` accept a verbatim canonical ``<kuid>_<leaf>`` and
-    return it AS-IS, so re-creating with the old name preserves the box's kuid,
-    its channel address and every stored reference to it.  Omit it and the box
-    comes back under a NEW kuid.  Both commands are on ONE ``&&`` line so the
-    pair cannot be half-followed (the ``rm`` also FREES the name the ``create``
-    then asks for — without it the ``create`` refuses).
+    ⚑ ``--name`` and ``--register`` are BOTH load-bearing in the cure and indivisible
+    — without the pair the box comes back under a NEW kuid, unregistered.  Both
+    commands are on ONE ``&&`` line so they cannot be half-followed.
 
-    ⚑ ``--register`` is what MAKES ``--name`` load-bearing, and the cure is void
-    without it.  Since I3/§D4a ``create --standalone`` registers only on request
-    and drops ``--name`` entirely when it does not (``run_create``'s
-    ``standalone_name``), so the two-flag pair is indivisible here: omit
-    ``--register`` and the name never reaches the resolver, the kuid is
-    regenerated, and the box this branch describes comes back as a different one
-    that is also no longer in the registry that named it.
-
-    ⚑ The CURE LINE is the part a future ``repair`` verb replaces (tasks.md
-    MBR-6), exactly as in :func:`_unbuilt_box_error`, whose three-part shape
-    (``Error:`` / *why we won't* / ``Rebuild it:``) this deliberately reuses so
-    standalone stops being the one mode that answers differently.
+    See ``llm-docs/kanibako/commands/start.py.md``, "``_broken_standalone_error``",
+    for the two grammars and each clause of the cure.
     """
     from kanibako.project import registry_store
     from kanibako.settings.paths import BoxMode, box_metadata_dir
@@ -1471,52 +1445,26 @@ def _build_supervisor_pid1(
 ) -> tuple[str, list[str]]:
     """Compose the PID-1 ``(entrypoint, args)`` for a DETACHED agent box (E2b).
 
-    The always-on supervisor (:mod:`kanibako.box_supervisor`) runs the agent in a
-    detached tmux session and self-heals it, so a detached AGENT box makes the
-    supervisor PID-1 instead of a bare-shell keep-alive.  Forward-compat (design
-    §221-225): an OLD box image may ship a kanibako WITHOUT the supervisor module,
-    so PID-1 is an import-GATED ``sh -c`` — it ``exec``s the supervisor only when
-    ``import kanibako.box_supervisor`` succeeds, else ``exec``s the *fallback*
-    bare-shell keep-alive, degrading gracefully.
-
-    ⚑⚑ THE GATE RETRIES ONCE AND THE FALLBACK IS LOUD (2026-08-17). The probe used
-    to run ONCE with ``2>/dev/null``, so a transient failure produced a box sitting
-    at a bash prompt with the agent never started, the reason discarded, and
-    ``kanibako start`` still returning SUCCESS — no host-side signal of any kind.
-    That is not hypothetical: it was MEASURED on a real launch that had resolved
-    claude correctly (``podman inspect`` showed this exact gated script; PID 1 was
-    its ``||`` branch), and the same import in the same container succeeded when
-    probed minutes later. So the probe now runs twice, its stderr is APPENDED to
-    :data:`SUPERVISOR_FALLBACK_RELPATH` under the guest home instead of being
-    thrown away, and taking the fallback writes a warning to BOTH stderr (which
-    reaches ``podman logs``) and that file. The fallback still runs — a degraded
-    box beats no box — but it can no longer be silent.
-
-    *supervisor_argv* and *fallback_argv* are FULL argv lists (the program at index
-    0); both are ``shlex``-quoted into the single ``sh -c`` script so agent args
-    carrying spaces / quotes survive intact through the nested shell.  Returns
+    PID-1 is an import-GATED ``sh -c``: it ``exec``s the always-on supervisor
+    (:mod:`kanibako.box_supervisor`) when ``import kanibako.box_supervisor``
+    succeeds, else ``exec``s the *fallback* bare-shell keep-alive.  Returns
     ``("sh", ["-c", <script>])``.
 
-    Both the import PROBE and the supervisor ``exec`` run with the HOST kanibako
-    (bind-mounted read-only at :data:`KANIBAKO_PKG_MOUNT_ROOT` by
-    :func:`_kanibako_mounts`) FIRST on ``sys.path`` via an injected ``PYTHONPATH`` —
-    so the supervisor that runs is the FRESH host version (== the host CLI), never
-    the image's baked copy.  Published images ship an OLD kanibako WITHOUT the
-    supervisor module, so probing/exec'ing the baked copy would silently degrade
-    every real launch to the bare-shell fallback (design §221-225).  ``PYTHONPATH``
-    is PREPENDED (``${PYTHONPATH:+:$PYTHONPATH}``), never clobbered, so any value the
-    image sets survives after our entry; the supervisor scrubs its OWN mount-root
-    entry back out before spawning the agent/tmux children
-    (:func:`kanibako.box_supervisor.scrub_bootstrap_pythonpath`).  The FALLBACK
-    ``exec`` is left UNCHANGED (no PYTHONPATH): it is a bare-shell keep-alive that
-    never imports kanibako, and runs only when even the host supervisor import fails.
-    The whole ``PYTHONPATH=…`` assignment is DOUBLE-QUOTED so the shell still expands
-    ``${PYTHONPATH:+…}`` but the RESULT is never word-split or glob-expanded — an image
-    whose own PYTHONPATH held a space or ``*`` would otherwise split the env assignment
-    into extra ``env`` operands (``env`` treats the tail as a command and fails),
-    silently degrading the probe to the bare-shell fallback.  The
-    ``KANIBAKO_PKG_MOUNT_ROOT`` literal is itself a fixed, shell-safe path; the argv
-    lists stay ``shlex``-quoted verbatim after each ``exec``.
+    ⚑⚑ THE GATE RETRIES ONCE AND THE FALLBACK IS LOUD (2026-08-17).  Probing once
+    with ``2>/dev/null`` produced — MEASURED, on a real launch — a box at a bash
+    prompt with the agent never started, the reason discarded, and ``kanibako
+    start`` still returning SUCCESS.  Do not make it quiet again.
+
+    ⚑ The HOST kanibako must be FIRST on ``sys.path`` for both the probe and the
+    supervisor ``exec``: published images ship an OLD kanibako with no supervisor
+    module, so probing the baked copy silently degrades every real launch to the
+    fallback.  ``PYTHONPATH`` is PREPENDED, never clobbered, and the whole
+    assignment is DOUBLE-QUOTED so an image PYTHONPATH holding a space or ``*``
+    cannot word-split it into extra ``env`` operands.  The FALLBACK ``exec`` is left
+    UNCHANGED (no PYTHONPATH) — it never imports kanibako.
+
+    See ``llm-docs/kanibako/commands/start.py.md``, "``_build_supervisor_pid1``",
+    for the measurement and the forward-compat argument.
     """
     from kanibako.settings.settings_resolve import GUEST_HOME
 
@@ -2143,53 +2091,23 @@ def _persist_or_announce_flags(
 ) -> None:
     """Settle a launch's SHADOWING flags: persist them, or say OUT LOUD they are ephemeral.
 
-    Ruling #12 (Jei, 2026-08-02): **"(c) BOTH"**.
+    Ruling #12 (Jei, 2026-08-02): **"(c) BOTH"**.  Every flag value still routes
+    through the ONE §1A CREATE-EXCEPTION gate
+    (:func:`~kanibako.settings.config.persist_creation_flags`); this function adds no
+    persist logic of its own.
 
-    **Persist arm.**  Every flag value still routes through the ONE §1A
-    CREATE-EXCEPTION gate (:func:`~kanibako.settings.config.persist_creation_flags`),
-    which reads the single ``materializing`` signal and decides; this function
-    adds no persist logic of its own.  It is called from the EARLIEST point on
-    each launch arm at which BOTH preconditions hold — the rig is PREPPED (built
-    or pulled) and ``proj`` is MATERIALIZED — because everything between
-    materialization and the persist is a window in which a failed launch leaves
-    the box EXISTING with the flag unstored, so the user's retry is
-    non-materializing and their ``--image`` is silently discarded.  Ordering
-    both ways round has a cost and the two are not symmetric:
+    ⚑ It must be called from the EARLIEST point on each launch arm at which BOTH
+    preconditions hold — the rig is PREPPED and ``proj`` is MATERIALIZED.  Anything
+    between materialization and the persist is a window in which a failed launch
+    leaves the box EXISTING with the flag unstored, so the user's retry is
+    non-materializing and their ``--image`` is silently discarded.  ⚑ Never move it
+    EARLIER than the prep either: that stores an image that never pulled.
 
-    * BEFORE the rig prep would store an image that never pulled (the hazard Jei
-      named) — so we never go earlier than the prep.  A pull that FAILS is
-      therefore the one window that stays open by design; the announce arm below
-      is what keeps it from being SILENT.
-    * AFTER the rest of the launch (where this used to be called) left the
-      baseline probe, the agent-config load, the persona store read, the
-      launch-decision resolve and the persona pre-flight — each of which can
-      return non-zero — inside the window.
+    ⚑ ONE notice, never two — the explanation is the SAME sentence for both flags.
 
-    ⚑ A REATTACH reaches this seam ZERO times (2026-08-05f).  There is no window
-    to close: the box already exists and no container is being created, so
-    nothing could be materializing, and both flags this seam settles are refused
-    outright by the running-box override gate — a user who wants ``--rig`` to
-    take is told to ``kanibako --restart``, which relaunches through the normal
-    arm and lands here as usual.
-
-    **Announce arm.**  On a NON-materializing launch a supplied shadowing flag
-    applies to that launch alone (spec §1A) and, before this, said nothing about
-    it.  It now prints the ephemerality and the cure, which is the general fix
-    for the residual window above *and* for the far commoner case of a user who
-    simply expected ``start --image`` to stick.  BOTH shadowing flags this seam
-    settles are announced — ``--image`` and ``--share-images`` have the identical
-    silent gap, and Jei ruled (2026-08-02b) *"yes, same hint"* for the second.
-
-    ⚑ ONE notice, never two.  The flags are announced TOGETHER because the
-    explanation ("this box already exists, so nothing was stored") is the SAME
-    sentence for both: emitting it once per flag would make a user read two
-    near-identical paragraphs and diff them to find the difference.  The
-    single-flag rendering is therefore byte-identical to what one flag printed
-    before; a second flag extends the same sentence and adds a second cure line
-    rather than starting a second notice.
-
-    *box_settings_path* is the BOX-TIER settings file from
-    ``box_workset_settings_paths`` (M-8) — the file ``box set box.image=…`` writes.
+    See ``llm-docs/kanibako/commands/start.py.md``, "``_persist_or_announce_flags``",
+    for both arms, the window either ordering leaves open, and why a REATTACH reaches
+    this seam zero times.
     """
     persist_creation_flags(
         box_settings_path,
@@ -2624,48 +2542,25 @@ def _run_container(
 
     # ── THE DOOR TABLE for the ALREADY-RUNNING regime ────────────────────────
     # The reattach regime below (``if reattach_running:``, ~400 lines down) has
-    # exactly FOUR exits, and every value that decides WHICH ONE a launch takes
-    # is settled by this line.  So resolve it ONCE, here, into a named value —
-    # and let the override gate immediately below AND the regime itself both
-    # READ that answer instead of each re-deriving it from its own subset of the
-    # deciding inputs.
-    #
-    #   "detach"      ``--detach``/``--warm-only``: the box is already Up, which
-    #                 is the whole request → report and return 0.  ⚑ NOTHING
-    #                 RUNS through this door, so it can carry no per-run flag.
-    #   "box-shell"   ``kanibako shell`` at a live box that IS RUNNING AN AGENT →
-    #                 resolve a shell off the LIVE container's image and exec it
-    #                 as a second process.
-    #   "entrypoint"  an explicit ``--entrypoint`` → the same exec, with the
-    #                 program the user named.
-    #   "attach"      everything else → ``_bootstrap_attach`` (``tmux attach``),
-    #                 whose exec takes NO ``env=`` and no program of ours.
+    # exactly FOUR exits — "detach", "box-shell", "entrypoint", "attach" — and
+    # every value that decides WHICH ONE a launch takes is settled by this line.
+    # Resolved ONCE, here, so the override gate below AND the regime itself both
+    # READ one answer instead of each re-deriving it from its own subset.
     #
     # ⚑ ``stored_agent`` — the LIVE box's ``KANIBAKO_AGENT`` stamp — is
     # LOAD-BEARING in the "box-shell" row, not a redundant narrowing of
     # ``box_shell_mode``: a live NO-AGENT box's PID-1 tmux session IS the user's
-    # own shell, so it must keep reattaching (exec'ing a fresh shell would strand
-    # it).  Such a box therefore takes the "attach" door, where a ``-e`` would be
-    # silently discarded — which is exactly why the gate below must refuse one.
+    # own shell, so it must keep reattaching.
     #
-    # ⚑ WHY A TABLE AND NOT ANOTHER PREDICATE TERM.  The gate below asks "will a
-    # consumer apply this flag?"  It used to answer by reading TWO of the three
-    # values that pick the door (``entrypoint``, and ``box_shell_mode`` +
-    # ``stored_agent``) while a THIRD (``detach``) closed both of them ~400 lines
-    # later — so ``start --detach --entrypoint X -e FOO=bar <live box>`` was
-    # ACCEPTED and then silently discarded, rc 0, the exact failure class the
-    # gate exists to end.  A gate that reads the RESOLVED DOOR cannot disagree
-    # with the regime that walks through it, however either one grows.
+    # ⚑ IT READS TYPED VALUES, AND IT MUST STAY HERE TO DO SO.  ``entrypoint``,
+    # ``no_helpers`` and ``explicit_agent`` are all rebound further down; this
+    # block sits ABOVE every one of those, so the question it answers is the
+    # question the USER asked.  ``typed_entrypoint`` keeps that frozen answer
+    # under its own name so the regime never has to trust that no rebinding
+    # slipped in between.
     #
-    # ⚑ IT READS TYPED VALUES, AND IT MUST STAY HERE TO DO SO.  ``entrypoint`` is
-    # rebound repeatedly further down (the two box-shell resolves, the agent
-    # default, the detached-launch box shell), as are ``no_helpers`` and
-    # ``explicit_agent``.  This block sits ABOVE every one of those, so the
-    # question it answers is the question the USER asked.  Same shape as
-    # ``is_agent_mode`` just above: freeze the typed question once, read it many
-    # times.  ``typed_entrypoint`` keeps that frozen answer under its own name
-    # (the ``cascade_access``/``launch_access`` shape used further down) so the
-    # regime never has to trust that no rebinding slipped in between.
+    # llm-docs/kanibako/commands/start.py.md, "``_run_container`` — the DOOR
+    # TABLE and the OVERRIDE GATE", carries the four rows and why it is a table.
     typed_entrypoint = entrypoint
     running_door: Literal["detach", "box-shell", "entrypoint", "attach"] | None
     running_door = None
@@ -2685,56 +2580,26 @@ def _run_container(
     # ── OVERRIDE GATE for an ALREADY-RUNNING box ─────────────────────────────
     # Jei's test (2026-08-05): "could this setting work without restarting the
     # box and without making a mangled / corrupted / unexpected state?"  For the
-    # flags below the answer is no — so they are REFUSED BY NAME rather than
-    # silently dropped, which is what happens today:
-    #   Class A (container-CREATION inputs) — the container already EXISTS, so a
-    #     creation-time input cannot reach it.  That is the whole justification,
-    #     and it is uniform across the class: no member of it gets a bespoke
-    #     rationale, and none is softened because some later code path happens to
-    #     ignore it anyway.
-    #   Class B (agent argv) — the reattach execs a bootstrap ATTACH, never a
-    #     fresh agent, so ``start -N <running-box>`` attaches to the OLD
-    #     conversation instead of starting a new one.
-    #   The two SESSION-SHAPE flags — an EXPLICIT ``--persistent`` asks for a
-    #     fresh persistent session, which we cannot give without killing the
-    #     bootstrap session that is already there, and an explicit ``--ephemeral``
-    #     asks for a foreground single-use session, which cannot coexist with it.
-    #     Jei (2026-08-05f): "it SHOULDN'T be necessary to kill tmux for this; we
-    #     should find out if tmux is running BEFORE we try to reattach.  If tmux
-    #     is there, we go back to the command line (and leave the old tmux thread
-    #     running)."  This gate is that check: it precedes every attach, so the
-    #     running session is never signalled, killed, or even touched.
-    # This sits ahead of BOTH seams (the flag persist and the reattach fast path
-    # below), so neither can ever observe one.  ``--restart`` never reaches here
-    # — it stopped the box above, so nothing is running.
+    # flags below the answer is no, so they are REFUSED BY NAME rather than
+    # silently dropped: container-CREATION inputs (class A), agent argv (class
+    # B), and the two SESSION-SHAPE flags.  This sits ahead of BOTH seams (the
+    # flag persist and the reattach fast path below), so neither can ever
+    # observe one.  ``--restart`` never reaches here — it stopped the box above.
     #
     # ⚑ THE SESSION-SHAPE PAIR IS KEYED ON THE FLAG THE USER TYPED, NOT ON
-    # ``persistent``.  ``persistent`` is DERIVED: ``run_start`` defaults it True
-    # whenever the bootstrap program is present, so gating on it would refuse
-    # every ordinary reattach.  ``explicit_persistent``/``explicit_ephemeral``
-    # carry the typed flags, threaded in from both callers that own them
-    # (``run_start`` and ``run_shell``) precisely so the two facts stay distinct.
-    # They are also the reason this gate keys on ``box_running`` rather than
-    # ``reattach_running``: an explicit ``--ephemeral`` DERIVES ``persistent``
-    # False, so it never becomes a reattach and ``reattach_running`` would be
-    # False for the very case that must be refused.
+    # ``persistent``, which is DERIVED and would refuse every ordinary reattach.
+    # It is also why the gate keys on ``box_running`` rather than
+    # ``reattach_running``: an explicit ``--ephemeral`` derives ``persistent``
+    # False, so ``reattach_running`` would be False for the very case that must
+    # be refused.
     #
-    # DELIBERATELY NOT GATED: ``--attach``/``--detach``/``--print-container``/
-    # ``--warm-only`` — all meaningful against a live box in their own right.
+    # ⚑ The two PER-RUN flags (``--entrypoint``, ``-e/--env``) are gated BY THE
+    # DOOR resolved above, on one principle: refuse a per-run flag only when the
+    # door this launch will actually take would not apply it.
     #
-    # ``--entrypoint`` and ``-e/--env`` are the two PER-RUN flags, and they are
-    # gated BY THE DOOR resolved above, on one principle: refuse a per-run flag
-    # only when the door this launch will actually take would not apply it.
-    #   * "entrypoint" / "box-shell" — both land on the one ``runtime.exec`` that
-    #     passes ``env=``, so both flags ride through and neither is refused.
-    #   * "detach" — NOTHING RUNS: the box is already Up, we say so and return 0.
-    #     So a typed ``--entrypoint`` AND a ``-e`` are both refused BY NAME here,
-    #     rather than accepted and dropped.  (The FRESH-launch path's separate
-    #     decision to drop ``--entrypoint`` under ``--detach`` is unrelated and
-    #     unchanged — there a container is actually created.)
-    #   * "attach" — ``_bootstrap_attach``'s exec takes no ``env=``, so ``-e`` is
-    #     refused.  A typed ``--entrypoint`` can never reach this door (it would
-    #     have selected "entrypoint"), so there is nothing to say about it here.
+    # llm-docs/kanibako/commands/start.py.md, "``_run_container`` — the DOOR
+    # TABLE and the OVERRIDE GATE", carries each class, each door and Jei's
+    # tmux ruling, plus what is deliberately NOT gated.
     if box_running:
         _rejected: list[str] = []
         # Session shape.  Scoped to an AGENT launch: ``kanibako shell`` and
@@ -5616,72 +5481,22 @@ def _preflight_persona_load(
     """Resolve a persona's LOADABILITY — a TRUE pre-flight.
 
     Called ONLY for a persona (``harness_of(agent_id) != agent_id``), BEFORE any
-    persona artifact is created.  Returns ``(endpoint, error, provider)``:
-
-    * *endpoint* — the resolved endpoint URL on success (``error`` None); ``None``
-      when unloadable;
-    * *error* — an actionable message when the persona cannot be loaded (unresolved
-      endpoint, or endpoint-but-no-token); ``None`` on success.  The caller prints
-      it (start) or raises it (create) and refuses to launch.
-    * *provider* — for a CONFIG-FILE harness (codex) the resolved
-      :class:`~kanibako.vscode.vscode_config.CodexModelProvider` INC 3 wires into
-      ``~/.codex/config.toml``; ``None`` for an ENV harness (claude, goose) — whose
-      endpoint + token ride their existing single-source channels (the
-      ``endpoint``→``ANTHROPIC_BASE_URL`` :class:`SettingArg` env + the
-      ``secret_path`` mount), so no separate carry is needed.
+    persona artifact is created.  Returns ``(endpoint, error, provider)``: the
+    resolved endpoint URL, an actionable message when the persona cannot be loaded,
+    and — for a CONFIG-FILE harness (codex) only — the
+    :class:`~kanibako.vscode.vscode_config.CodexModelProvider` INC 3 wires into
+    ``~/.codex/config.toml``.
 
     ⚑ NOTHING here mutates *agent_cfg*.  Every persona value is a LIVE resolution
     input resolved through the cascade before this seam, so there is nothing to
     adopt and nothing to write back to ``agents/<node>/settings.yaml``.
 
-    HARNESS-AWARE (INC 2): the token var and endpoint DESTINATION are chosen per the
-    resolved target's :func:`_persona_wiring`, not hardwired to Anthropic.  There are
-    exactly TWO gates below it and ``endpoint_delivery`` alone picks between them:
-    ENV (:func:`_preflight_env_persona` — claude, goose) and CONFIG-FILE
-    (:func:`_preflight_config_file_persona` — codex, which also returns the
-    CodexModelProvider for INC 3).  Everything that used to distinguish claude from
-    another ENV harness was the retired B3 host-dir path.
+    ⚑ ``probe`` is opt-in and set ONLY by the launch: the create path keeps its own
+    WARN-ONLY probe (locked ruling #2), so a create must not inherit this one's hard
+    error on a rejected token.
 
-    ``keyspace_endpoint`` is the endpoint the launch snapshot already resolved from
-    ``agent.<node>.endpoint`` — the persona STORE is a cascade tier of that snapshot,
-    so a store-configured endpoint arrives here already resolved.  ``None`` therefore
-    means no endpoint is configured for this persona ANYWHERE, which is a hard error:
-    kanibako will not launch a persona as the bare host harness on the user's real
-    account.  A resolved endpoint with NO usable token is ALSO a hard error (a bearer
-    endpoint with no token 401s inside the box).
-
-    ``keyspace_model`` is the box-level cascade-resolved ``agent.<node>.model`` (the
-    single-source resolution done by the caller off the launch snapshot, harness
-    default excluded — see :func:`_resolve_box_launch_decisions`), and THREE-STATE
-    (2026-08-17 ruling, :func:`_model_tristate`): ``__MISSING__`` (the default —
-    never configured), ``None`` (PRESENT-null — "this endpoint needs no model"),
-    or a resolved id (``str``). Whether an ABSENT model is fatal is the HARNESS's
-    declaration (``PersonaSpec.model_required``), not a property of the path:
-    codex vetoes (a config-file provider block with ``model = ""`` is
-    meaningless and an omitted key falls through to codex's own moving
-    default), goose vetoes (a third-party OpenAI-compatible endpoint has no
-    meaningful default), claude does not (its model rides its own channels). A
-    PRESENT-null model SUPPRESSES that veto for an ENV harness (it can simply
-    omit the model) but CONFLICTS with a CONFIG-FILE harness (it structurally
-    cannot express "no model" at all) — see the two sub-gates for the refusal.
-
-    ``bundle`` is the persona-grata store read for this same launch
-    (:func:`_persona_bundle_for`).  It is the SECOND token source — the agent
-    file rung first, the store below it (:func:`_persona_token_pointer`) — and
-    it carries the store's own verdict on itself:
-
-    * ``reject_reason`` ⇒ a HARD ERROR naming the reader's SPECIFIC cause.  A
-      persona whose store config the harness refused has no usable values, and
-      there is no last-known-good to fall back on now that nothing is persisted.
-    * ``no_reader`` ⇒ NOT an error, ever.  The harness simply has no store
-      reader; a goose persona is configured entirely through the keyspace and
-      merely happens to own a store dir, and refusing it would break every such
-      launch.
-
-    ``probe`` runs the PER-LAUNCH verify probe once endpoint and token both
-    resolve (:func:`_persona_probe_error`).  It is opt-in and set ONLY by the
-    launch: the create path keeps its own WARN-ONLY probe (locked ruling #2), so
-    a create must not inherit this one's hard error on a rejected token.
+    See ``llm-docs/kanibako/commands/start.py.md``, "``_preflight_persona_load`` — a
+    persona's LOADABILITY", for the two harness gates and what each input means.
     """
     wiring = _persona_wiring(target)
     display = display_agent_ref(agent_id)
@@ -6281,65 +6096,20 @@ def _resolve_box_launch_decisions(
     """Resolve the launch's per-box decisions off ONE snapshot.
 
     Auth SOURCE + persona endpoint + persona model — the single-source consolidation
-    of the auth resolve and the behavior (endpoint/model) resolve.
+    of the auth resolve and the behavior (endpoint/model) resolve, read off the SAME
+    expanded snapshot so there is no duplicate build.
 
-    ``build_launch_snapshot`` accepts BOTH the auth 3-tier ``auth_chain`` floor AND
-    the behavior ``behavior_floor`` in a single call, so the box's sharing decision
-    (:class:`~kanibako.settings.settings_launch.AuthSource`, ``resolve_auth_source``) and its
-    active-node ``agent.<node>.endpoint`` (``effective_behavior``) are read off the
-    SAME expanded snapshot — no duplicate build. Same pipeline the main launch uses
-    (single-route).
-
-    * *auth_src* — the credential-SHARING SOURCE (tier/source + enables), threaded to
-      every credsync/gate consumer, exactly as :func:`_resolve_box_auth_source`.
-    * *endpoint* — the resolved PERSONA endpoint URL, or ``None`` when unset
-      (``<None>`` / empty / no descriptors / no target) — the cred-fork signal
-      (non-None ⇒ suppress the OAuth cred). ``None`` is byte-identical to today.
-    * *model* — the cascade-resolved active-node ``agent.<node>.model`` (the box-level
-      override where set) — THREE-STATE (2026-08-17 ruling): ``__MISSING__`` (never
-      set, incl. no descriptors / no target), ``None`` (PRESENT-null — "this
-      endpoint needs no model"), or a resolved ``str`` id.  Read via
-      :func:`_persona_model_state` off the SAME snapshot, not
-      ``effective_behavior`` — that reader deliberately COLLAPSES a present-None
-      scalar into omission (its docstring: "the consumer applies its own
-      default", the general reset-to-default convention every OTHER behavior key
-      wants) which is exactly the distinction the persona model gate needs kept
-      apart, mirroring ``agent_select.resolve_selected_agent`` /
-      ``settings_launch.snapshot_leaf``'s ABSENT-vs-PRESENT-None idiom for
-      ``pref.system.agent: null``.  The codex-persona provider needs a real model
-      id, so this DELIBERATELY excludes the harness ``model`` DEFAULT floor
-      (e.g. codex's ``gpt-5.5`` — an own-endpoint default that is wrong for a
-      third-party provider): an unset persona model resolves ``__MISSING__`` here
-      so the preflight surfaces an actionable empty-model error rather than
-      shipping a bogus default into a NaviGator ``[model_providers.<id>]`` block.
-      Only consumed for a persona load gate; unused (harmless) for bare launches,
-      where the ``--model`` flag still resolves its own default via the main
-      launch snapshot.
-
-    The behavior floor folds in as ``agent.default.<key>`` (OS1) and the per-agent
-    FILE state as the active ``agent.<node>`` slot; the §2d active-over-default pick
-    yields the endpoint for the NODE (persona identity). A target with no declared
-    settings contributes no floor → endpoint ``None`` (bare).
-
-    *persona_values* is the persona store's LIVE tier (:func:`_persona_values_for`),
-    threaded in because BOTH returns above depend on it: the *endpoint* is the
-    cred fork (a persona endpoint that did not reach this resolve would silently
-    stop suppressing the host OAuth cred, sending the user's real Anthropic token
-    to a third-party endpoint), and the *model* is written into the codex
-    ``[model_providers.<id>]`` block.  ``None`` for a bare agent.
-
-    ⚑ The store tier sits BELOW the per-agent FILE, so while the swap still
-    persists the same values this changes NOTHING — the file wins with an
-    identical value.  It is what keeps both returns correct once the persist is
-    retired and the file no longer carries them.
+    ⚑ The *model* is read via :func:`_persona_model_state`, NOT ``effective_behavior``
+    — that reader deliberately collapses a present-None scalar into omission, which
+    is exactly the distinction the persona model gate needs kept apart.
 
     ⚑ *selection_level* is the SELECTION only — deliberately NOT the full §1A CLI
-    level (P8). The *model* this returns is threaded into ``_preflight_persona_load``
-    and lands in the codex ``config.toml`` ``[model_providers.<id>]`` block, i.e. it
-    is WRITTEN TO DISK; letting ``-M`` reach it would make an ephemeral flag mutate a
-    stored value, which spec §1A forbids (*"EPHEMERAL, always"*). ``-M`` therefore
-    rides the LAUNCH snapshot only (``_resolve_launch_snapshot``), where it reaches
-    argv and the container env and nothing else.
+    level (P8).  The *model* this returns is WRITTEN TO DISK (the codex
+    ``[model_providers.<id>]`` block), and spec §1A forbids an ephemeral flag mutating
+    a stored value (*"EPHEMERAL, always"*), so ``-M`` rides the LAUNCH snapshot only.
+
+    See ``llm-docs/kanibako/commands/start.py.md``,
+    "``_resolve_box_launch_decisions``", for the three returns and the tristate model.
     """
     from kanibako.settings import settings_launch
 
@@ -6692,58 +6462,27 @@ def _merge_default_categories(
 ) -> None:
     """Fold ONE family's default-categories table into the aggregate floor *table*.
 
-    ⚑⚑ **THIS EXISTS BECAUSE ``dict.update`` STOPPED BEING SAFE HERE (H5).** While a
-    bindings arm was NAME-keyed, every family owned distinct
-    ``box.bindings.ro.<name>`` keys and a plain union was well-defined. Under
-    dest-keying the arm is ONE terminal key holding the whole map (R-5), and about
-    eight of the families below contribute to ``box.bindings.ro`` — so an
-    ``.update()`` would replace the map wholesale and delete every earlier family's
-    entries, silently and with nothing downstream able to notice.
+    ⚑⚑ **THIS EXISTS BECAUSE ``dict.update`` STOPPED BEING SAFE HERE (H5).** Under
+    dest-keying a bindings arm is ONE terminal key holding the whole map (R-5), and
+    about eight families contribute to ``box.bindings.ro`` — so an ``.update()``
+    would replace the map wholesale and delete every earlier family's entries,
+    silently.  ⚑ It covers ALL SEVEN TERMINAL CATEGORIES, not just the two bindings
+    arms; the membership test is
+    :func:`~kanibako.settings.settings_keyspace.is_terminal_category_key`, the ONE
+    whole-key predicate — never a private copy of it.
 
-    ⚑ **ALL SEVEN TERMINAL CATEGORIES, not just the two bindings arms.** When
-    ``caches``/``seeded``/``common``/``synced`` became terminal too (2026-08-08c)
-    they landed in exactly the state the paragraph above calls unsafe, and several
-    families write each of them: ``target.default_seeds()`` and
-    ``template_seed_defaults`` both write ``agent.<a>.seeded``;
-    ``target.default_common()`` and ``target.default_category_binds()`` both fold
-    into ``agent.<a>.common``. The membership test is
-    :func:`~kanibako.settings.settings_keyspace.is_terminal_category_key` — the ONE
-    whole-key predicate, DERIVED from the keyspace's own declaration so it cannot
-    fall behind the next flip. ⚑ A private copy lived here until QC; it is the
-    KEYSPACE's answer, and a second copy is how the two would drift.
-
-    Two branches, and the split is deliberate:
-
-    * a **TERMINAL dest-keyed category key** whose value is a map merges ENTRY BY
-      ENTRY;
-    * **everything else** is LAST-WINS, exactly as before. ⚑⚑ Do NOT generalize this
-      into a deep merge for every value. Two call sites — ``extra_default_categories``
-      and ``resolved_sys`` — are LATE INJECTIONS that are supposed to override, and a
-      deep merge would quietly stop them from doing so. The ``dict`` test is what
-      keeps the LIST-valued ``<scope>.masks`` on the last-wins branch where it
-      belongs — **masks hold whole.** ⚑ It is NOT what excludes a scalar leaf that
-      merely ends in a category token: ``system.channels.common`` fails
-      :func:`~kanibako.settings.settings_keyspace.is_terminal_category_key` itself,
-      on POSITION, so no value of any shape at that key can reach this branch.
+    ⚑⚑ Do NOT generalize the merge branch into a deep merge for every value. Two call
+    sites — ``extra_default_categories`` and ``resolved_sys`` — are LATE INJECTIONS
+    that are supposed to override, and a deep merge would quietly stop them.  The
+    ``dict`` test is also what keeps the LIST-valued ``<scope>.masks`` on the
+    last-wins branch where it belongs — **masks hold whole.**
 
     A destination already claimed in the SAME key RAISES, naming both families
-    (*origins* carries who claimed it). ⚑ **The refusal is STRUCTURAL and therefore
-    holds for every terminal category, not only for act-once bindings.** The value
-    is ONE dict keyed by destination, so it can hold exactly one entry per
-    destination — two families claiming one dest under one key is not an overlay
-    the shape can express, and whichever lands second simply erases the first.
+    (*origins* carries who claimed it).  ⚑ That refuses no legitimate overlay: seed
+    LAYERING is expressed ACROSS KEYS, which never pass through this per-key map.
 
-    That is NOT a statement that seeds may not layer: they may, and do. Layering is
-    expressed ACROSS KEYS — ``system.seeded`` / ``agent.<a>.seeded`` /
-    ``workset.seeded`` all target ``~/``, remain three DIFFERENT keys here, and are
-    regrouped by destination and staged in scope apply order (per-file last-wins) by
-    ``_apply_init_seeds``. Nothing in that route passes through this function's
-    per-key map, so widening the raise to the copy categories takes no legitimate
-    overlay away; it only refuses the one arrangement that has no representation.
-    (Bindings additionally being act-once is a SECOND reason for the arms, not the
-    reason here: two entries at one dest in DIFFERENT arms or DIFFERENT categories
-    are still different keys, still both emitted, and still reach the collision
-    table in ``settings_categories`` — untouched here.)
+    See ``llm-docs/kanibako/commands/start.py.md``, "``_merge_default_categories``",
+    for both branches and why the same-key refusal is structural.
     """
     from kanibako.settings.settings_resolve import SettingsError
 
@@ -6799,118 +6538,21 @@ def _resolve_launch_snapshot(
 ):
     """Build the ONE launch snapshot + what this launch DELIVERS from it.
 
-    The single launch-time CATEGORY resolve (block 7b): aggregates every
-    runtime ``default_categories`` table (core / kani / channel / share / seeds /
-    masks, plus the CONDITIONAL helper + image tables) into ONE floor, folds in
-    the resolved ``system.*`` tier so @-refs resolve from the snapshot, represents
-    the agent's descriptor delivery binds via 7a's ``agent_default_partial``, and
-    runs ``assemble_levels → merge → expand`` ONCE via
-    :func:`kanibako.settings.settings_launch.build_launch_snapshot`.  The expanded
-    snapshot is then adapted to ``CategoryEntry`` ONCE, and that ONE list feeds
-    every consumer below it.
-
-    Returns ``(snapshot, deliveries)``.  The mount set a box is built from lives IN
-    the snapshot, under ``meta.assembly.*``, written by the assembly COLLAPSE — and
-    so do the environment variables it is launched with (``meta.assembly.env``, read
-    by :func:`_launch_env_map`).  The second element is the
-    :class:`~kanibako.settings.settings_categories.LaunchDeliveries` carrier — the
-    ``secret_path`` mounts, the agent-delivered dests and (for a narrow resolve
-    only) that resolve's own bind map: what the collapse deliberately does not
-    carry, built off the SAME credential-gated list the collapse sees, so the two
-    describe one box.  ⚑ It is a RETURN VALUE and not a snapshot leaf on purpose —
-    ``meta.assembly.*`` is a CLOSED set of DECLARED leaves, and an undeclared one
-    would install silently; what belongs in that closed set goes through a keyspace
-    change to get there, as the env leaf did.
+    Returns ``(snapshot, deliveries)``.  ⚑ The
+    :class:`~kanibako.settings.settings_categories.LaunchDeliveries` carrier is a
+    RETURN VALUE and not a snapshot leaf on purpose: ``meta.assembly.*`` is a CLOSED
+    set of DECLARED leaves, and an undeclared one would install silently.
 
     ⚑ THERE IS NO SECOND, CROSS-SCOPE ``reconcile`` PASS ANY MORE (cutover 6-R3).
-    §0's collision table is applied by the per-scope producer, the collapse, and
-    the two seam functions that hold inputs the collapse never sees — see
-    :mod:`kanibako.settings.settings_categories`' module docstring for the split.
 
-    *narrow_bind_dests* is a NARROW caller's own injected table's dests
-    (``core_defaults.helper_bind_dests`` / ``image_bind_dests``).  Given, this
-    resolve builds ``deliveries.narrow_bindings`` — that table's rows and NOTHING
-    ELSE, in the emitter's shape.  Omitted, the field stays ``None``: a whole-box
-    resolve emits from ``meta.assembly.bindings`` and must not have a second map
-    available to reach for.
+    ⚑ *cli_level*, *cli_env* and *realize* belong to ONE launch, so ONLY this resolve
+    may take them — a resolve whose product is a stored map or a display must not see
+    one.  *narrow_bind_dests* is likewise a NARROW caller's own table: omitted, a
+    whole-box resolve emits from ``meta.assembly.bindings`` and has no second map to
+    reach for.
 
-    AGENT_CRITICAL delivery binds
-    now flow through the snapshot's ``agent.<agent>.bindings.*`` subtree (single-route),
-    emitted by :func:`_emit_category_mounts` under its ``must_exist`` policy at the
-    call site — NOT a parallel ``descriptor_mounts`` route, and since cutover 2a-3
-    not a parallel agent emitter either.
-
-    The image + helper tables are CONDITIONAL: a table is included ONLY when its
-    gate holds (image-sharing active → *storage_conf_path* given, *graph_root*
-    only when the probe succeeded — it feeds ONLY the ``box.images_store``
-    default, ruled 11a; helpers enabled → *socket_path*/*log_path* given), so
-    their binds do NOT appear otherwise — exactly as the per-family path emitted
-    them only inside their conditional block.
-
-    *guarantee_create* (default True — a LAUNCH) gates the core table's
-    create-if-missing of the vault source dirs. A READ-ONLY consumer of this
-    resolve — ``box show --effective``, which renders the resolved
-    categories — passes False: it must show what a launch WOULD mount without
-    making it so. Nothing else about the resolve differs.
-
-    *include_base_families* gates the always-available tables (core / kani /
-    channel / common / seeded).  It is True for the MAIN launch snapshot and False
-    for the late, conditional image/helper resolves (whose box_dests are disjoint),
-    so the image/helper resolve carries ONLY their own table + any config-file
-    keys — byte-for-byte the old per-family ``_build_image_mounts`` /
-    ``_build_helper_hub_mounts`` resolve (which injected only that one table).
-
-    *persona_values* is the persona store's LIVE tier for this launch
-    (:func:`_persona_values_for`) — ``endpoint`` / ``model`` /
-    ``secret_path.<VAR>`` / ``env.<VAR>``, un-discriminated.  Given by every
-    resolve that has to AGREE with the launch about what the store says: the
-    MAIN launch resolve, the ``--effective`` display, and the two CREATE-side
-    resolves that run the same load-or-error gate
-    (:func:`persona_create_verdict`, :func:`seed_new_box`).  ⚑ The create side
-    is not optional — it used to see a persona's endpoint only because the
-    create-side store IMPORT had just persisted it; nothing persists it now.
-    The tier also carries the token MOUNT and the env delivery, so a resolve
-    that omits it would show a persona box without the credential the launch
-    actually mounts.
-    The NARROW resolves leave it ``None`` deliberately — the image / helper
-    tables (``include_base_families=False``, no target) resolve box_dests
-    disjoint from anything a persona touches, and the SEED resolve is FILE
-    DELIVERY only, where a behavior scalar or a token pointer has no meaning.
-    ``None`` is byte-identical to a pre-persona build.  ⚑ The CREATE-time SYNC
-    resolve (:func:`_sync_box_at_create`) is NOT among them and DOES carry the
-    tier: it is a FULL resolve whose whole product is the bind map, and a persona's
-    ``secret_path.<VAR>`` is a MOUNT — a map built without it would resolve a sync
-    dest against a mount set the launch does not have.
-
-    *cli_level* is the §1A CLI LEVEL (P8), built by
-    :func:`kanibako.settings.settings_cli_level.build_cli_level` and validated inside
-    ``build_launch_snapshot``. This is the ONE resolve that may carry the EPHEMERAL
-    flag values (``-M`` / ``-N``-``-C``-``-R``) as well as the resolved selection,
-    because its output is this launch's argv / env / mounts and nothing here is
-    written back to a settings file. The seed, persona-endpoint and ``--effective``
-    resolves take a selection-ONLY level.
-
-    *cli_env* is the parsed per-run ``-e`` map (P4c-1) and is forwarded UNTOUCHED to
-    the collapse, which applies it as the CLI level over the key owning each
-    variable.  ⚑ SAME RULE AS *cli_level* AND FOR THE SAME REASON: only THIS resolve
-    takes it.  A ``-e`` value is not configuration — it belongs to one launch — so a
-    resolve whose product is a stored map or a display (``_sync_box_at_create``,
-    ``box show --effective``) must not see it, and the narrow resolves write no env
-    leaf to put it in.  ⚑ It is NOT a settings level and cannot be folded into
-    *cli_level*: see ``store_collapse._apply_cli_env`` for the measured reason.
-
-    *realize* is the launch's REALIZATION callback (P4c-2, a :class:`_LaunchRealizer`)
-    — the derivation of everything this launch computes FROM the resolved cascade.
-    It runs between the snapshot build and the entry adaptation because that is the
-    only point where its input exists and its output is still in time: the variables
-    it derives are written into the snapshot as ``agent.<node>.env.<VAR>`` keys, so
-    ``snapshot_category_entries`` adapts them and the collapse arbitrates them like
-    any declared key.  ⚑ SAME RULE AS *cli_level* / *cli_env*: only THIS resolve
-    takes one.  A realization is what a launch's flags produce, so a display or a
-    stored map must not carry it (``box show --effective`` deliberately does not gain
-    them; deriving without the launch flags would show a tier the launch may not
-    ship).  It also carries *desc*'s access tiers back to the caller — see
-    :class:`LaunchRealization` for why re-deriving them there would be a second site.
+    See ``llm-docs/kanibako/commands/start.py.md``, "``_resolve_launch_snapshot`` —
+    the ONE launch resolve, and what gates each parameter", for every parameter.
     """
     from kanibako.settings import settings_launch
     from kanibako.settings.agent_representation import (
@@ -7786,43 +7428,33 @@ def _seed_box_home(
     """Apply the one-time home seed for a freshly-created box (seed-at-create).
 
     The SINGLE seed implementation, shared by `box create` (`run_create`) and the
-    `start` auto-create path.  Runs ATOMICALLY-after registration (the caller
-    gates on the just-registered signal, ``proj.is_new``); it is NEVER run on a
-    relaunch of an existing box.  THREE ordered, create-if-absent steps (so a
-    re-create into a leftover dir never clobbers user content):
+    `start` auto-create path.  Runs ATOMICALLY-after registration (the caller gates
+    on the just-registered signal, ``proj.is_new``); it is NEVER run on a relaunch of
+    an existing box.  THREE ordered, create-if-absent steps, so a re-create into a
+    leftover dir never clobbers user content: the descriptor's one-time credential
+    seed · the configured ``seeded`` category winners · the box's own HANDBOOK
+    CHAPTER (a HOST-side template copy, NOT a seed).
 
-    1. the descriptor's one-time credential seed (descriptor-bearing targets
-       only; a descriptor-less / no-agent target has nothing to seed here).
-    2. the configured copy-once-at-init ``seeded`` category winners — INCLUDING
-       the layered ``seeded[~/]`` trio (system/base -> agent -> workset;
-       later overlays earlier, per-file last-wins). The separate on-disk template
-       staging route RETIRED (Q1): the template layers are now ordinary keystore
-       ``seeded`` keys resolved off the committed snapshot in
-       :func:`_apply_init_seeds`, which stages the ``~``-targeted layers in scope
-       order there.
-    3. the box's own HANDBOOK CHAPTER — a HOST-side template copy, NOT a seed and
-       NOT a ``seeded`` category entry (Jei, 2026-08-07g: the handbook templates
-       *"do not DIRECTLY interact with the box itself … They are HOST templates,
-       not GUEST templates"*).  A SIBLING of step 2, deliberately outside it: it
-       fills ``@box.canon/handbook``, which no guest ever sees — the RO
-       ``canon_hb_box`` BIND is what delivers it at ``~/canon/handbook/box``, and
-       that bind is an ordinary key, so single-route is intact.
-       ⚑ THIS IS THE ONLY ROUTE THAT FILLS THE BOX HANDBOOK CHAPTER.  Step 2 does
-       NOT: the three handbook seed layers went out with the ruling, so nothing
-       declares a ``seeded`` entry at ``@box.canon/handbook`` any more and a box
-       created without step 3 gets an EMPTY chapter.  This is not a redundant
-       second copy — do not "simplify" it away by folding it back into step 2.
+    ⚑ STEP 3 IS THE ONLY ROUTE THAT FILLS THE BOX HANDBOOK CHAPTER.  Step 2 does
+    NOT — nothing declares a ``seeded`` entry at ``@box.canon/handbook`` any more, so
+    a box created without step 3 gets an EMPTY chapter.  It is not a redundant second
+    copy; do not "simplify" it away by folding it back into step 2.
 
     ⚑⚑ THE CREATE-TIME ``synced`` WRITE IS **NOT** A FOURTH STEP HERE — it is the
     SIBLING :func:`_sync_box_at_create`, which every caller runs immediately after
-    this returns.  Two reasons it must stay outside: a sync is an OVERWRITE, so
-    folding it in would falsify the create-if-absent contract stated above; and this
-    function's resolve is deliberately NARROW (no bind map), while the sync needs a
-    FULL one.  Housing both in one function is a standing invitation to "simplify"
-    by widening the narrow resolve, which is exactly what must not happen.
+    this returns.  A sync is an OVERWRITE, so folding it in would falsify the
+    create-if-absent contract; and this function's resolve is deliberately NARROW (no
+    bind map), while the sync needs a FULL one.  Housing both in one function is a
+    standing invitation to "simplify" by widening the narrow resolve, which is
+    exactly what must not happen.
 
     The per-launch credsync REFRESH and the channel guarantee-create are SEPARATE
     per-launch mechanisms and are NOT part of this one-time seed.
+
+    ⚑⚑ See ``llm-docs/kanibako/commands/start.py.md``, "``_seed_box_home`` /
+    ``_apply_init_seeds`` — the ONE-TIME home seed, at CREATE", before changing
+    anything here: it carries the three steps in full and the seed model this path
+    deliberately differs from.
     """
     if target and desc is not None:
         credsync.seed_box_credentials(
@@ -7859,47 +7491,27 @@ def _sync_box_at_create(
 
     ⚖️ RULED 2026-08-11 — *"at box creation, since that's the only time seeded is
     copied, find the top-most bind in the bindings and write synced to it once at
-    creation, irrespective of date"*, "top-most" being *"the opposite of home"*: the
-    INNERMOST bind covering the dest, which is what :func:`_synced_host_dest` already
-    resolves (longest-prefix cover).  There is ONE covering-bind resolver and this is
-    a CALLER of it, not a second copy engine.
+    creation, irrespective of date"*.  This is a CALLER of :func:`_synced_host_dest`,
+    not a second copy engine.
 
     ⚑⚑ ``skip_if=None`` — the create-time write is UNCONDITIONAL, and that is the
-    whole point of the ruling rather than an omission.  :func:`_synced_uptodate`
-    compares the destination's mtime against the source's, which means something only
-    if the destination was last written BY THE SYNC.  Nothing made that true: the
-    create-time seed writes first through ``shutil.copy2``, which PRESERVES the source
-    mtime, so a seed source newer than the sync source pinned the SEED's bytes at a
-    ``synced`` destination — permanently, silently, and at a credential more often
-    than not.  Writing the sync once at create, irrespective of date, makes the
-    invariant TRUE from creation onward, which is why the collapse's copy-vs-copy
-    prune (the retired ``store_collapse._sync_dests``) came out in the same commit: it
-    was working around this gate by deleting a declared seed row.
+    whole point of the ruling rather than an omission: it is what makes the launch's
+    mtime gate mean anything, since ``shutil.copy2`` PRESERVES a seed source's mtime
+    and would otherwise pin the SEED's bytes at a ``synced`` destination permanently.
 
     ⚑ A SECOND, FULL RESOLVE, beside the seed's narrow one, and the two must stay
-    two.  A ``synced`` dest is meaningless without the bind map (spec §0 "ONE DEST
-    SPACE, TWO DELIVERIES"), so this needs ``include_base_families=True`` — while
-    :func:`_apply_init_seeds` deliberately resolves NARROW, without the agent-binding
-    inputs, because SEEDING is file delivery.  Widening that one to reach the bind map
+    two.  A ``synced`` dest is meaningless without the bind map, so this needs
+    ``include_base_families=True``; widening the seed's resolve to reach the bind map
     would make it lie about what it reads.
 
     ⚑ IT RUNS BEFORE ``materialize_canon_skeleton``, for the same reason the seed
     does: the skeleton makes the canon region 555, and a copy into it afterwards dies
     ``EACCES``.  Both create call sites keep that order.
 
-    ⚑ *install* is ``target.detect()`` — a HOST FILESYSTEM PROBE (agent name, host
-    binary, install root, launcher), nothing to do with the image — and ``None`` (the
-    agent is not installed on this host) is a legitimate state, not an error.  On the
-    LAUNCH auto-create path the launch RE-DETECTS after ``prepare_host()``, so the
-    create-time and launch-time bind maps are not guaranteed identical; the sync runs
-    again later in that same process and the mtime gate then correctly no-ops.
+    ⚑ NO CLI LEVEL (§1A): the create-side flags are not the launch's.
 
-    ⚑ NO CLI LEVEL (§1A): the create-side flags are not the launch's, and the
-    ephemeral ones (``-M``/``-N``/``-C``/``-R``) carry no bind.  The image keys ride
-    their own conditional resolve, which this map does not carry either.
-
-    ADDITIVE: with no ``<scope>.synced`` keys configured the sync list is empty and
-    this copies nothing.
+    See ``llm-docs/kanibako/commands/start.py.md``, "``_sync_box_at_create``", for the
+    ruling in full, the *install* probe and the launch-time re-detect.
     """
     # ⚑ The DELIVERIES carrier is DISCARDED: since cutover 2c the sync pass reads
     # the collapse alone, and this resolve exists only to produce it.
@@ -8575,64 +8187,28 @@ def _apply_init_seeds(
 
     RETURNS the expanded launch snapshot this resolve built, so the caller's SIBLING
     ordered steps (:func:`_seed_box_home` step 3, the HOST-side handbook template
-    copy) read resolved keys off the SAME snapshot instead of building a second one
-    — two builds could disagree about a repointed ``workset.template``, and this
-    function already runs the one resolve that has the answer.
-
-    ADDITIVE: with no seed config and no target default seeds, copies nothing.
-    Routes the category config through the ONE launch resolve and applies the
-    COLLAPSED SEED LIST it stored at ``meta.assembly.seeded`` (cutover step 2b-2,
-    via :func:`_launch_seed_list`), translating each guest dest (/home/agent/X) to a
-    host path under ``proj.shell_path`` and copying its source -> that path once.
+    copy) read resolved keys off the SAME snapshot instead of building a second one.
 
     ⚑ A COLLAPSED SEED ROW IS ``(src, dest, opts)`` AND NOTHING ELSE — no name, no
-    category.  The DEST is the row's identity (R-10), so it is what a warning names,
-    and there is no category to filter on: the seed arm and the sync arm are two
-    SEPARATE leaves now, not one list with a discriminator.  ⚑⚑ Both leaves are
-    still COPIES and stay copies; do not let either become a mount.
+    category.  ⚑⚑ Both copy leaves are still COPIES and stay copies; do not let
+    either become a mount.
 
-    The LAYERED ``seeded[~/]`` trio (system/base -> agent -> workset; spec §2a, Q1)
-    flows through THIS route too — no separate on-disk staging pass. The
-    template layers all target ``~`` (the create-time home); the collapse's seeded
-    arm keeps every same-dest COPY (copies OVERLAY, they do not shadow —
-    :func:`kanibako.settings.store_collapse.collapse_seeded`), so here the
-    ``~``-group is a list of layer sources in scope apply order that
-    :func:`kanibako.launch.templates.stage_layers` stages PER-FILE LAST-WINS then copies
-    into home CREATE-IF-ABSENT (never clobbering user content). A layer whose
-    source dir is absent (e.g. an unpopulated ``@workset.template``) is skipped.
+    ⚑ ``seeded[~/]`` IS THE SPELLING OF THE LAYERED TRIO.  There is NO
+    ``seeded.template`` key and there never can be: the destination IS the entry's
+    identity (R-10).  Do not reintroduce the old label as a nickname.
 
-    ⚑ ``seeded[~/]`` IS THE SPELLING OF THE TRIO — spec §2a's own seed-table form,
-    and the one this tree uses everywhere it names them (``cli``,
-    ``runtime.container``, ``settings.settings_categories``, and
-    :mod:`kanibako.launch.templates`, which DECLARES them in
-    :func:`~kanibako.launch.templates.template_seed_defaults`).  It reads: the
-    TERMINAL key ``<scope>.seeded`` (``system`` / ``agent.<a>`` / ``workset``),
-    at the one entry its dest-keyed map holds — the guest home ``~/``, whose
-    source is that scope's ``template`` scalar plus ``box/home``.  ⚑ There is NO
-    ``seeded.template`` key and there never can be: since 2026-08-08c the
-    destination IS the entry's identity (R-10), so an entry NAME is not part of
-    the keyspace.  Do not reintroduce the old label as a nickname.
-
-    The credential gate (D-M4) is applied ONCE, inside the resolve this pass reads,
-    above every consumer of the entry list, the collapse included
-    (``settings_categories.gate_credential_delivery``): a credential-flagged
-    ``seeded`` entry is suppressed for a PRIVATE box (*deliver_creds* False).
-
-    ⚑⚑ ONE DESTINATION NAMESPACE (spec §0 "ONE DEST SPACE, TWO DELIVERIES";
-    2026-08-08c).  Every ``seeded`` dest is GUEST-spelled — the three §2a seed keys
-    target ``~/`` and a user-declared entry targets whatever guest path it names —
-    and ALL of them are resolved to the box store by the ONE translator
-    ``container._guest_dest_to_host``, whose ``map_home_root=True`` maps the bare
-    home to ``proj.shell_path`` (= ``<box_dir>/home``, the very directory the old
-    host spelling named).  There is no branch here and nothing for an entry to
-    carry: see ``settings_categories.CategoryEntry`` for the mis-landing bug the
-    retired host arm existed to close, and why the respell closes it at the source.
+    ⚑⚑ ONE DESTINATION NAMESPACE (spec §0 "ONE DEST SPACE, TWO DELIVERIES"): every
+    ``seeded`` dest is GUEST-spelled and resolved to the box store by the ONE
+    translator ``container._guest_dest_to_host``.  There is no branch here and
+    nothing for an entry to carry.
 
     ⚑ THE BOX HANDBOOK CHAPTER IS NOT SEEDED HERE, and looking for it in this
-    function is the wrong place: the three handbook seed layers were retired
-    2026-08-07g (HOST templates, not GUEST templates), so no declared ``seeded``
-    entry names that dest.  ``@box.canon/handbook`` is filled by the SIBLING step 3,
-    :func:`_install_box_handbook`, off the snapshot returned above.
+    function is the wrong place: ``@box.canon/handbook`` is filled by the SIBLING
+    step 3, :func:`_install_box_handbook`, off the snapshot returned above.
+
+    See ``llm-docs/kanibako/commands/start.py.md``, "``_seed_box_home`` /
+    ``_apply_init_seeds`` — the ONE-TIME home seed, at CREATE", for the layered
+    ``seeded[~/]`` trio, the credential gate and the dest namespace.
     """
     from kanibako.settings.settings_resolve import GUEST_HOME
     from kanibako.launch.templates import (
@@ -8755,43 +8331,26 @@ def _apply_init_seeds(
 def _synced_host_dest(box_dest: str, bindings, *, logger) -> "Path | None":
     """A sync's guest dest → the host path it lands on, THROUGH the bind that covers it.
 
-    Cutover step 2b-3.  A ``synced`` dest is spelled GUEST-side (spec §0 "ONE DEST
-    SPACE, TWO DELIVERIES"), and what it means on the host is decided by the mount
-    set: the copy has to land in the SOURCE of whichever bind covers that path, or
-    the box will never see it.  So the resolution is the LONGEST-PREFIX cover over
-    the final bind map, and *bindings* must be the map the launch actually emits.
+    A ``synced`` dest is spelled GUEST-side (spec §0 "ONE DEST SPACE, TWO
+    DELIVERIES"), and what it means on the host is decided by the mount set, so the
+    resolution is the LONGEST-PREFIX cover over the final bind map — *bindings* must
+    be the map the launch actually emits.
 
     ⚑ This does NOT replace ``container._guest_dest_to_host``, which keeps three
-    other callers (the stub/shadow scans) and answers a different question — where a
-    guest path's host STUB is, under the two hardwired roots.  On shipped config the
-    two agree: ``/home/agent`` covers everything the stub arm mapped to
-    ``shell_path``, and ``/home/agent/workspace`` covers its workspace arm with the
-    same source.  They part company on a dest inside SOME OTHER bind, which the stub
-    arm mapped under the home stub — a host path the bind shadows, so nothing in the
-    box ever saw the copy.
+    other callers (the stub/shadow scans) and answers a different question: where a
+    guest path's host STUB is, under the two hardwired roots.
 
     Three refusals, each a warn-and-skip rather than a raise (a mis-declared dest
-    must not cost the user the launch), in the order they must be asked:
-
-    * **no cover** — the dest is outside every bind, so there is no host location it
-      could arrive at.  ⚑ Reachable in more places than the old translator's
-      outside-home skip: ``/etc/...`` with nothing declared over it, for instance.
-    * **the cover is a MASK** — a tmpfs has no host source at all.  ⚑ This MUST be
-      asked before ``bind.src`` is touched: :data:`~kanibako.settings.store_collapse.MASK`
-      carries ``src=None``, so ``Path(bind.src)`` raises ``TypeError``.  The collapse
-      refuses a sync NOTHING (ruling 2026-08-12), so every declared row arrives here
-      and this seam is the only one that can decline one.
-      ⚑ By the time this runs, a mask cover can only
-      be a strict PARENT of the dest or the dest's own point with a DIRECTORY source:
-      spec §0's ``copy (file)`` row accepts a FILE at a mask's own point and deletes
-      the mask, which :func:`_apply_synced_copies` has already applied to *bindings*.
-    * **the cover is READ-ONLY** — writing into a read-only bind's host source
-      delivers content the box cannot be shown to have received, and the source is
-      very often something the user did not mean this to reach (a canon chapter, the
-      packaged CLI).  Spec is SILENT here; refusing is the strict start, and
-      loosening it later breaks no existing box.
+    must not cost the user the launch), in the order they must be asked: **no cover**
+    · **the cover is a MASK** · **the cover is READ-ONLY**.  ⚑ The MASK arm MUST be
+    asked before ``bind.src`` is touched:
+    :data:`~kanibako.settings.store_collapse.MASK` carries ``src=None``, so
+    ``Path(bind.src)`` raises ``TypeError``.
 
     ⚑ A dest is DATA: it is compared and sliced as a PATH, never split on ``.``.
+
+    See ``llm-docs/kanibako/commands/start.py.md``, "``_synced_host_dest`` — the dest
+    resolves THROUGH the bind that covers it", for each arm's reasoning.
     """
     from kanibako.settings.store_collapse import is_mask, is_within
 
@@ -8894,60 +8453,32 @@ def _apply_synced_copies(
 ) -> None:
     """Apply the terminal ``<scope>.synced`` category copies into the box.
 
-    Reads the collapsed sync rows (:func:`_launch_synced_list`) and resolves each
-    guest dest through the bind that covers it (:func:`_synced_host_dest`).
-
     ⚑⚑ *skip_if* IS REQUIRED AND HAS NO DEFAULT, because the two passes that run this
-    are not the same pass and neither may inherit the other's answer:
-
-    * the LAUNCH refresh passes :func:`_synced_uptodate` — reapply on every launch,
-      but only when the host source is NEWER than the box-side copy, so an unchanged
-      source is a no-op;
-    * the CREATE-time write (:func:`_sync_box_at_create`) passes ``None`` — write
-      UNCONDITIONALLY, once, *"irrespective of date"* (Jei, 2026-08-11).  That write
-      is what MAKES the launch gate meaningful: an mtime comparison against the
-      destination only says anything if the destination was last written by the sync.
+    are not the same pass and neither may inherit the other's answer: the LAUNCH
+    refresh passes :func:`_synced_uptodate`, the CREATE-time write
+    (:func:`_sync_box_at_create`) passes ``None``.
 
     ⚑⚑ ALL FOUR PARAMETERS ARE KEYWORD-ONLY AND REQUIRED, AND THAT IS THE DESIGN
-    (P3 — make the violation unavailable, not forbidden).  This pass cannot run until
-    the bind map is FINAL, because a sync dest means nothing without it: every
-    row would have to be skipped.  A caller that tries to run it earlier — where this
-    used to sit, ~180 lines up beside the create-time seed — cannot even NAME
-    *snapshot* or *bindings*, so it fails LOUDLY instead of quietly delivering
-    nothing.  ⚑ The create-time caller satisfies that by bringing a real, FULL resolve
-    of its own; the guard is not relaxed for it.  ⚑ The reconciled rows were a fifth
-    parameter until cutover 2c, read ONLY by the sync list's fallback arm; the arm and
-    the parameter came out together.
+    (P3 — make the violation unavailable, not forbidden): this pass cannot run until
+    the bind map is FINAL, so a caller at the old site fails LOUDLY instead of quietly
+    delivering nothing.
 
-    ⚑⚑ THE THREE INPUTS COME FROM ONE COLLAPSE, AND THEY HAVE TO.
-    ``collapse_store_shapes`` returns the sync list and the bind map in ONE
-    ``CollapsedStore``, built from one set of shapes.  ⚑ The sync ARM itself is a
-    plain scope-ordered concatenation and takes NO bind map (``_collapse_synced``
-    lost that parameter when the sync-at-a-bind refusal was deleted — ruling
-    2026-08-12); the bind map is applied to a sync dest at DELIVERY, by
-    :func:`_synced_host_dest`.  Resolving a sync dest against a bind map from a
-    DIFFERENT resolve would resolve it against a mount set the collapse never
-    validated it over.  So this consumes the MAIN launch resolve rather than
-    running one of its own; see llm-docs for the measurement that forced it.
+    ⚑⚑ THE THREE INPUTS COME FROM ONE COLLAPSE, AND THEY HAVE TO.  Resolving a sync
+    dest against a bind map from a DIFFERENT resolve would resolve it against a mount
+    set the collapse never validated it over.
 
     This is the settings-driven synced path; the plugin descriptor's ``cred_files``
-    credsync engine is descriptor-driven and runs ABOVE this on the launch path, so a
-    ``synced`` row pointed at a file credsync also writes is applied SECOND and wins.
-
-    The credential gate (D-M4) suppresses every ``synced`` entry for a PRIVATE box;
-    it is applied once inside the resolve, above every consumer of the entry list,
-    the collapse included (``settings_categories.gate_credential_delivery``).
+    credsync engine runs ABOVE this on the launch path, so a ``synced`` row pointed at
+    a file credsync also writes is applied SECOND and wins.
 
     ⚑⚑ IT DELETES FROM *bindings*, AND THE CALLER MUST READ THAT MAP'S MASKS AFTER
     THIS RETURNS.  Spec §0's ``copy (file)`` row accepts a synced FILE at a mask's own
-    point and DELETES the mask (:func:`_synced_masks_replaced`), and a deleted mask is
-    one that must never reach ``runtime.run(tmpfs_masks=...)``: the map is this pass's
-    INPUT and :func:`_bind_map_masks`'s SOURCE, and there is exactly one of it (2a-4).
-    Nothing of the snapshot moves — ``meta.assembly.bindings`` is COPIED OUT
-    (:func:`_snapshot_assembly_bindings`), so the map is the caller's own.
+    point and DELETES the mask (:func:`_synced_masks_replaced`), and a deleted mask
+    must never reach ``runtime.run(tmpfs_masks=...)``.  Nothing of the snapshot moves —
+    ``meta.assembly.bindings`` is COPIED OUT, so the map is the caller's own.
 
-    ADDITIVE: with no ``<scope>.synced`` keys configured (and no target default synced
-    entries) the sync list is empty -> copies nothing.
+    See ``llm-docs/kanibako/commands/start.py.md``, "``_apply_synced_copies`` — the
+    sync applier consumes the LEAF", for the measurement that forced the position.
     """
     rows = _synced_last_wins(_launch_synced_list(snapshot))
     # Applied BEFORE any row resolves, so which mask survives cannot depend on the
@@ -8990,42 +8521,25 @@ def _core_env_default_categories(*, proj, target, agent_id) -> dict[str, str]:
     """The four CORE ``KANIBAKO_*`` stamps, as launch-DERIVED ``system.env.*`` keys.
 
     ⚑⚑ THE ONE PLACE THEY ARE SPELLED (MBR-1 P4b, ruling 2026-08-14: *"the
-    'KANIBAKO_' stuff should be in system.env"*).  They used to be assigned onto the
-    finished container env by ``_assemble_launch_env``, ABOVE every settings file and
-    above ``-e``; they are ordinary system-scope floor keys now, so they enter the
-    ONE channel with everything else — a nearer ``system.env.<VAR>`` file entry
-    overrides one, a TWIN at another scope REFUSES the launch naming both keys
-    (``store_collapse.collapse_env``), ``-e`` reaches them — since P4c-1 by
-    overriding the stamp's own key VALUE inside that same collapse — and ``box show
-    --effective`` shows them.  Nothing above the channel may write these variables;
-    adding a fifth stamp anywhere else is the bug this function exists to prevent.
+    'KANIBAKO_' stuff should be in system.env"*).  They are ordinary system-scope
+    floor keys, so they enter the ONE env channel with everything else.  Nothing
+    above the channel may write these variables; adding a fifth stamp anywhere else
+    is the bug this function exists to prevent.
 
     The values are RESOLVED LITERALS, not ``@``-refs (the ``meta_identity_floor``
     pattern): what a launch derives, it derives once, here.
 
-    Contracts the signature cannot carry:
+    🛑 ``KANIBAKO_DIRECTIVE_SEED`` is UNCONDITIONAL even though its kickoff BIND is
+    descriptor-gated — a no-agent box gets the variable today and must keep getting
+    it.  Do NOT "tidy" it onto the bind's gate.  Its path is READ BACK from the ONE
+    declaration of the slot (``core-defaults.yaml`` ``kickoff.box_dest``) rather than
+    spelled a second time: the variable and the bind MUST name the same file.
 
-    * ``KANIBAKO_NAME`` is the peer-communication instance identity and is emitted
-      only for a NAMED project — an unnamed one leaves the variable unset.
-    * ``KANIBAKO_DIRECTIVE_SEED`` is UNCONDITIONAL even though its kickoff BIND is
-      descriptor-gated: a no-agent box gets the variable today and must keep getting
-      it.  🛑 Do NOT "tidy" it onto the bind's gate.  The path is READ BACK from the
-      ONE declaration of the slot (``core-defaults.yaml`` ``kickoff.box_dest``, the
-      source of core's own bind) rather than spelled a second time — the variable
-      and the bind MUST name the same file.  Global/agent-independent: the per-agent
-      FINAL slot is each plugin's own ``agent.<agent>.env.KANIBAKO_DIRECTIVE_FINAL``.
-    * ``KANIBAKO_AGENT`` is the resolved agent stamped ON THE CONTAINER and never in
-      durable config (that is what keeps ``--agent`` ephemeral): a later ``kanibako
-      start`` against the running box, ``stop``'s writeback and the creds watcher all
-      read it back rather than re-running the selection cascade.  It carries the
-      NODE name (full persona identity), NOT the harness (``target.name``) — readers
-      derive the harness via ``harness_of``; for a bare agent the two are identical.
-      Emitted only for a REAL agent launch, which is why *target* is the gate: a
-      no-agent / shell launch carries no agent and the variable stays unset.
-    * ``KANIBAKO_AGENT_MARKERS_DIR`` is UNCONDITIONAL: both the E2b/E2c supervised
-      path and the warm-up panel watch enumerate the dir that every agent session's
-      start hook writes its per-PID marker into, and the supervisor reads the SAME
-      dir via ``--agent-markers-dir``.  Harmless where no marker hook is seeded.
+    ⚑ ``KANIBAKO_AGENT`` carries the NODE name (full persona identity), NOT the
+    harness (``target.name``); readers derive the harness via ``harness_of``.
+
+    See ``llm-docs/kanibako/commands/start.py.md``,
+    "``_core_env_default_categories``", for the per-variable gates and contracts.
     """
     table: dict[str, str] = {}
     if proj.name:
