@@ -33,3 +33,9 @@ Update the `devnotes.md` file as you work — especially after build checks.
 3.1 [Canon Sections](@rules/CANON.md)
 3.2 [Project Work](@rules/DATAPOLICY.md)
 3.3 [Interaction Guide](@rules/INTERACTION.md)
+
+### Procedures
+
+Only and always load these procedures to complete the tasks they address:
+
+3.4 [Using Channel System (Includes Mail)](../procedures/USING_CHANNELS.md)

@@ -1,4 +1,4 @@
-# Agent Instructional Canon - Introduction
+# Canon Law - Introduction
 <!--[STOCK]
 # Entrypoint to Canon
 
@@ -13,9 +13,8 @@
 > Typically there is also a "workbook" which holds working data about the current project.
 -->
 
-This file contains *authoritative* instructions, rules, and procedures for autonomous agent(s). These
-are _not_ mere recommendations or guidelines, but rather **requirements**. When recommendations or
-guidelines are incorporated, the will be explicitly noted as such.
+This text, the _Canon Law_ , holds *authoritative* instructions, rules, & procedures for agent(s) -
+**not** just guidelines / recommendations unless explicitly so identified. Adherence is COMPULSORY.
 
 ## Library
 

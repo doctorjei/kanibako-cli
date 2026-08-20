@@ -11,13 +11,10 @@
 
 ## Etiquette
 
-- **Be professional** in tone & approach, unless instructed to do otherwise.
-- **Address mailboxes deliberately** — write into the recipient's `mailboxes/<workset>/<box>/`,
-  never your own inbox.
-- **Append to chat logs; don't rewrite them** — other boxes read the same file. Add your line; leave
-  existing content intact.
-- **Respect share/mailbox conventions** (who reads, who writes); they aren't enforced. Don't
-  overwrite another box's mailbox, share, or chat history.
+- **Be professional** in tone & approach.
+- **Address mailboxes properly** — write into recipient's `mailboxes/<workset>/<box>/` (not yours).
+- **Append to chat logs; don't rewrite** — boxes share the file. Add your line & leave other content as-is.
+- **Respect share & mailbox conventions** (who reads, who writes); they aren't enforced.
 - **Sign messages as `$KANIBAKO_NAME`.**
 
 ## Inbox discipline — you own your conversations
@@ -29,4 +26,3 @@ You are the **primary handler** of inter-instance messages, not a relay.
 3. **Tell the operator briefly** what came in & what you did (a one-line summary).
 4. **Track replied status** — rename a handled file with a `.replied` suffix (`foo.md` →
    `foo.replied.md`) so unhandled messages stay obvious.
-
