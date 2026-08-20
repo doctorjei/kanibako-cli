@@ -1,74 +1,24 @@
 """Typed access — the 3-tier read surface over the expanded snapshot.
 
-The expanded snapshot (assemble → merge → expand) is a
-recursive :class:`~kanibako.settings.keystore.KeyStore` whose leaves carry the loose
-:data:`~kanibako.settings.kb_store.StoreValue` union. This module adds the TYPED
-read surface design §5 calls for, confining that loose union to genuinely mixed
-nodes only. It is READ-ONLY: it wraps an EXISTING snapshot node and exposes a
-typed lens over it — it never merges, expands, reconciles, writes, or mutates.
+READ-ONLY: every accessor wraps an EXISTING snapshot node and exposes a typed
+lens over it. It never merges, expands, reconciles, writes, or mutates, and it
+does not copy — the snapshot stays the source of truth.
 
-Three tiers (design §5)
------------------------
-1. **Typed VIEWS over finite subtrees** (system paths, ``meta``) — fixed names,
-   exact static types (``Path`` / ``str`` / ``bool``). This module ships the
-   MECHANISM (:func:`typed_field` + the :class:`FiniteView` base) and ONE small
-   worked example (:class:`MetaView`); it does NOT port ``StandardPaths``, which
-   still resolves through ``resolve_value`` on the FOUNDATION path tier.
-2. **Typed CATEGORY accessors** — each §2a category has DYNAMIC keys but ONE
-   known value type, so it is a typed read-only mapping:
-   :func:`bind_map` → ``Mapping[box_dest, BindEntry]`` for EVERY bind-shaped
-   category — the ``bindings.{ro,rw}`` arms and ``caches`` / ``seeded`` /
-   ``common`` / ``synced``, all dest-keyed terminal keys (R-5/R-6; the four
-   followed 2026-08-08c). ⚑ The NAME-keyed ``bind_category`` / ``bindings``
-   lenses were DELETED in that pass: they had no production caller and their
-   ``Mapping[str, Bind]`` contract was the retired shape, so leaving them would
-   have left a typed accessor promising a value the store can no longer hold.
-   :func:`env_view` →
-   ``Mapping[str, scalar]`` for ``env``; :func:`masks_set` → ``set[box_dest]``
-   for the resolved ``masks`` (design §6f).
-3. **Raw attribute / ``[]`` access** returning the full union — already on
-   :class:`KeyStore` (block 1), for genuinely mixed nodes only.
+⚑ Collision safety (S3): every container operation goes through the UNBOUND
+``dict`` methods (``dict.get(node, k)``, ``dict.keys(node)``, …), NEVER the
+bound ``node.get(...)`` — a category key may legitimately be named ``get`` /
+``items`` / ``keys`` and would shadow it into a crash.
 
-PER-SCOPE, not cross-scope (S21)
---------------------------------
-Every accessor is a typed LENS over a category NODE WHEREVER it appears in the
-scope-qualified snapshot (``store.box.bindings.rw`` → ``Mapping[str, Bind]``).
-It is NOT a cross-scope aggregator — resolving the SAME ``box_dest`` declared at
-different scopes is the ``store_shape`` producer + the assembly collapse (design
-§6g), a SEPARATE downstream pass that is OUT of scope here.
+⚑ A category accessor exposes ``Bind``, NOT ``Bind | None``, only because the
+cascade merge omits every present-``None`` leaf before any consumer sees the
+snapshot (design §3/§6e). A ``None`` or ill-typed leaf here is a BUILD-INVARIANT
+BREACH and RAISES :class:`ViewError` — never type-launder it (S22).
 
-The load-bearing ``Bind``-not-``Bind|None`` coupling (S22)
-----------------------------------------------------------
-A category accessor exposes ``Bind`` (NOT ``Bind | None``) ONLY because the
-cascade merge OMITS every present-``None`` bind / category / masks leaf before
-any consumer sees the snapshot (design §3/§6e). This module RELIES on that and
-does NOT re-admit ``None``: if it ever encounters a ``None`` (or otherwise
-ill-typed) leaf under a category node, that is a BUILD-INVARIANT BREACH, so it
-RAISES :class:`ViewError` rather than silently type-laundering it. Likewise a
-resolved ``masks`` value is honestly the mask marker (present-``None`` unmasks
-were dropped at build, §6f), so :func:`masks_set` is honestly a ``set``.
+The tiers, the per-scope boundary (S21) and what is deliberately OUT of scope
+are in ``llm-docs/kanibako/settings/settings_views.py.md``.
 
-Collision safety (S3)
----------------------
-A category key may legitimately be named ``get`` / ``items`` / ``keys``. Every
-container operation over a node therefore goes through the UNBOUND ``dict``
-methods (``dict.get(node, k)`` / ``dict.keys(node)`` / ``dict.__getitem__`` /
-``dict.__contains__`` / ``dict.__len__``) — NEVER the bound ``node.get(...)`` a
-user key would shadow into a crash (the standing :class:`KeyStore` foot-gun).
-
-OUT of scope (hard boundaries)
-------------------------------
-NO cross-scope ``box_dest`` collision resolution (design §6g);
-NO merge / expansion / cycle detection (:mod:`kanibako.settings.settings_merge` /
-:mod:`kanibako.settings.settings_expand`); NO ``config set``
-(:mod:`kanibako.settings.config_interface`); NO ``StandardPaths`` port. This module does
-NOT modify ``keystore`` / ``kb_store`` / ``settings_merge`` / ``settings_expand`` /
-``paths`` / ``start`` — it only READS the snapshot.
-
-Authority: ``~/vault/rw/keystore-design.md`` §5 (typed access — PRIMARY, incl.
-the load-bearing ``Bind``-not-``Bind|None`` coupling), §6f (resolved ``masks`` =
-``set``); spec ``settings-keyspace-1.8.0.md`` §2a (categories + value
-types).
+Authority: ``~/vault/rw/keystore-design.md`` §5, §6f; spec
+``settings-keyspace-1.8.0.md`` §2a.
 """
 
 from __future__ import annotations
@@ -107,11 +57,7 @@ __all__ = [
 class ViewError(Exception):
     """A typed view found a value the snapshot's build invariants forbid.
 
-    Raised when an accessor sees a leaf its tier's contract says cannot exist —
-    a ``None`` (or non-:class:`Bind`) leaf under a bind category (the S22
-    coupling breach), a non-scalar under ``env``, or a missing / wrong-typed
-    field under a finite view. It signals a BUILD bug upstream (block 2b/3), NOT
-    bad user input; the view refuses to type-launder it (design §5).
+    It signals a BUILD bug upstream (block 2b/3), NOT bad user input.
     """
 
 
@@ -124,19 +70,13 @@ class _BindMapView(Mapping[str, BindEntry]):
     """A read-only ``Mapping[box_dest, BindEntry]`` lens over a DEST-KEYED arm.
 
     The ONLY bind lens (R-5/R-6): the mapping KEY is the destination and the
-    value carries only
-    ``(src, opts)``. Wraps an EXISTING :class:`KeyStore` node WITHOUT copying;
-    every value is asserted to be a real :class:`BindEntry` on read (the S22
-    coupling — build dropped present-``None`` entries, so a ``None`` here is a
-    build breach → :class:`ViewError`).
+    value carries only ``(src, opts)``. Every value is asserted to be a real
+    :class:`BindEntry` on read — build dropped present-``None`` entries, so a
+    ``None`` here is a build breach → :class:`ViewError` (S22).
 
     ⚑ The check is ``isinstance(value, BindEntry)``, which is FALSE for a legacy
-    3-tuple :class:`Bind` even though both are tuples — so a stale name-keyed arm
-    handed to this lens is REFUSED at read rather than mis-read (the P5→P8 bridge
-    keeps both shapes alive; nothing may tell them apart by arity).
-
-    Read-only (``Mapping``, not ``MutableMapping``); all container ops use the
-    UNBOUND ``dict`` methods (S3).
+    3-tuple :class:`Bind` even though both are tuples — a stale name-keyed arm
+    handed to this lens is REFUSED at read rather than mis-read.
     """
 
     __slots__ = ("_node", "_label")
@@ -179,9 +119,8 @@ class _BindMapView(Mapping[str, BindEntry]):
 class _EnvView(Mapping[str, "str | int | float | bool"]):
     """A read-only ``Mapping[str, scalar]`` lens over an ``env`` NODE.
 
-    Wraps an EXISTING ``env`` :class:`KeyStore` node (``store.box.env``) without
-    copying. ``env.<VAR>`` values are scalars (spec §2a); a non-scalar leaf is a
-    build breach → :class:`ViewError`. Read-only; unbound ``dict`` ops (S3).
+    ``env.<VAR>`` values are scalars (spec §2a); a non-scalar leaf is a build
+    breach → :class:`ViewError`.
     """
 
     __slots__ = ("_node",)
@@ -205,10 +144,8 @@ class _EnvView(Mapping[str, "str | int | float | bool"]):
         return dict.__contains__(self._node, key)
 
     def _checked(self, key: str, value: Any) -> str | int | float | bool:
-        # ``bool`` is a subclass of ``int`` — admitted (a scoped env flag). A
-        # ``None`` is rejected: ``env.<VAR>`` is a scalar value (spec §2a) and an
-        # env var has no "consumer default" to fall back to, so a None leaf is a
-        # build breach (nothing to export), not a legitimate value.
+        # ``bool`` is admitted (a scoped env flag; bool ⊂ int). ``None`` is
+        # rejected: an env var has no consumer default, so nothing to export.
         if not isinstance(value, (str, int, float, bool)):
             raise ViewError(
                 f"env[{key!r}] is {type(value).__name__}, expected a scalar "
@@ -224,15 +161,12 @@ def bind_map(node: KeyStore, *, label: str = "bindings") -> Mapping[str, BindEnt
     """A typed ``Mapping[box_dest, BindEntry]`` lens over a DEST-KEYED arm (tier-2).
 
     *node* is the :class:`KeyStore` a terminal bind-shaped key holds —
-    ``<scope>.bindings.{ro,rw}`` or ``<scope>.{caches,seeded,common,synced}`` —
-    i.e. ``{box_dest: BindEntry(src, opts)}``. The returned mapping is READ-ONLY and
-    does NOT copy the node. A ``None`` / mistyped leaf — including a legacy
+    ``<scope>.bindings.{ro,rw}`` or ``<scope>.{caches,seeded,common,synced}``,
+    i.e. ``{box_dest: BindEntry(src, opts)}``. The returned mapping is READ-ONLY
+    and does NOT copy the node. A ``None`` / mistyped leaf — including a legacy
     3-tuple :class:`Bind` — RAISES :class:`ViewError` (S22), never type-launders.
 
-    *label* names the node in error messages; no behavioral effect. Per-scope
-    (S21) — it does NOT aggregate one dest across scopes (that is reconcile,
-    design §6g).
-
+    *label* names the node in error messages; no behavioral effect.
     """
     _require_node(node, label)
     return _BindMapView(node, label=label)
@@ -243,10 +177,7 @@ def bind_maps(node: KeyStore, *, label: str = "bindings") -> tuple[
 ]:
     """Split a whole DEST-KEYED ``bindings`` NODE into its ``(ro, rw)`` lenses.
 
-    The dest-keyed counterpart of :func:`bindings`: *node* holds the ``ro``
-    and/or ``rw`` arms (R-5 — the arm is still its own key segment; only the
-    entries below it are dest-keyed). A mode ABSENT from the node yields an EMPTY
-    mapping (§3/§6e), never an error. Per-scope (S21).
+    A mode ABSENT from the node yields an EMPTY mapping (§3/§6e), never an error.
     """
     _require_node(node, label)
     return (
@@ -260,27 +191,19 @@ def derived_bindings(
 ) -> dict[str, Bind]:
     """FLATTEN the ``binding_derivations`` subtree to ``{declaration-key: Bind}``.
 
-    *node* is the ``binding_derivations`` :class:`KeyStore` subtree — the
-    reserved INTERNAL node at the snapshot root (R-8, not a key) carrying the
-    MATERIALISED binding each ABSTRACT declaration (``common`` / ``caches`` /
-    ``seeded``) derives, filed at ``binding_derivations.<declaration-key>`` so a
-    reader can see the declaration AND the binding it produces (spec §0).
+    *node* is the reserved INTERNAL node at the snapshot root (R-8, not a key)
+    carrying the MATERIALISED binding each ABSTRACT declaration (``common`` /
+    ``caches`` / ``seeded``) derives, so a reader can see the declaration AND the
+    binding it produces (spec §0).
 
-    Unlike the tier-2 lenses this returns a fresh dict rather than a live view:
-    the node is PARAMETRIC over the whole key space below it
-    (``binding_derivations.agent.claude.common.~/.claude/plugins`` — the
-    declaration key plus the entry's DEST, since the four went terminal and
-    dest-keyed on 2026-08-08c), so the useful shape
-    is the FLAT declaration key, which no lens over one node can present. The
-    Binds themselves are shared, not copied — they are immutable.
+    Returns a fresh dict, not a live view: the node is PARAMETRIC over the whole
+    key space below it, so the useful shape is the FLAT declaration key. An
+    absent / empty node yields ``{}``; a non-``Bind`` leaf RAISES
+    :class:`ViewError` (S22).
 
-    An absent / empty node yields ``{}``. A non-``Bind`` leaf RAISES
-    :class:`ViewError` (S22 — a build breach, never type-laundered).
-
-    ⚑ This is the READ half only. The keys are PRODUCED by
-    :func:`kanibako.settings.settings_categories.derive_binding_keys`, which is
-    deliberately named differently: two functions with one name in two modules is
-    exactly the confusion the conventions open with.
+    ⚑ The READ half only. The keys are PRODUCED by
+    :func:`kanibako.settings.settings_categories.derive_binding_keys`,
+    deliberately named differently.
     """
     _require_node(node, label)
     out: dict[str, Bind] = {}
@@ -306,9 +229,8 @@ def derived_bindings(
 def env_view(node: KeyStore, *, label: str = "env") -> Mapping[str, "str | int | float | bool"]:
     """A typed ``Mapping[str, scalar]`` lens over an ``env`` NODE (tier-2, S21).
 
-    *node* is an ``env`` :class:`KeyStore` subtree (``store.box.env``) whose
-    leaves are scoped env-var scalars (spec §2a). Read-only, no copy; a
-    non-scalar leaf RAISES :class:`ViewError`. Per-scope.
+    *node* is an ``env`` subtree (``store.box.env``) whose leaves are scoped
+    env-var scalars. Read-only, no copy; a non-scalar leaf RAISES.
     """
     _require_node(node, label)
     return _EnvView(node)
@@ -317,24 +239,18 @@ def env_view(node: KeyStore, *, label: str = "env") -> Mapping[str, "str | int |
 def masks_set(node: KeyStore, *, label: str = "masks") -> set[str]:
     """The RESOLVED ``masks`` as ``set[box_dest]`` — the masked dests (tier-2, §6f).
 
-    *node* is a ``masks`` :class:`KeyStore` subtree (``store.box.masks``), a
-    keyed ``dict[box_dest → bool|None]`` (S5). AFTER build, every present-``None``
-    unmask has been DROPPED (design §6f), so every SURVIVING key is a mask marker
-    — the honest resolved shape is a ``set`` of the masked dests, NOT a mapping.
+    *node* is a ``masks`` subtree, a keyed ``dict[box_dest → bool|None]`` (S5).
+    Build DROPS every present-``None`` unmask (design §6f), so every surviving
+    key is a mask marker and the honest shape is a ``set``, not a mapping.
 
-    This returns exactly the set of KEYS present in the node. As an S22-style
-    invariant check it asserts no surviving value is ``None`` (a ``None`` here
-    would be a build breach — the unmask should have been dropped) and RAISES
-    :class:`ViewError` if one is found. Reads via unbound ``dict`` ops (S3);
-    does not copy or mutate the node. Per-scope (S21).
+    Returns exactly the set of KEYS present. As an S22-style invariant check it
+    asserts no surviving value is ``None`` and RAISES if one is found.
     """
     _require_node(node, label)
     masked: set[str] = set()
     for key in dict.keys(node):
         value = dict.__getitem__(node, key)
         if value is None:
-            # Build (§6f) drops present-None unmasks before any consumer reads
-            # the snapshot; a surviving None is an invariant breach, not a mask.
             raise ViewError(
                 f"{label}[{key!r}] is None — a present-None unmask should have "
                 f"been dropped at build (design §6f/S22); not a mask marker"
@@ -347,15 +263,11 @@ def masks_set(node: KeyStore, *, label: str = "masks") -> set[str]:
 # Tier-1 — typed finite-view mechanism + one worked example                   #
 # --------------------------------------------------------------------------- #
 
-# Strict CHECKING coercers for tier-1 fields. A finite view promises EXACT types
-# (design §5), so a field's coerce must REJECT a mistyped stored leaf, not launder
-# it. A bare constructor (``str`` / ``bool`` / ``int``) is the foot-gun: ``str(123)
-# -> "123"`` and ``bool("false") -> True`` would silently HIDE a build bug (e.g. a
-# stored "false" surfacing as the bool True). These helpers isinstance-CHECK the
-# stored value first and raise :class:`ValueError` on a mismatch (``typed_field``
-# wraps that in :class:`ViewError`). ``as_path`` is the one legitimate CONVERSION:
-# a system path is stored as a ``str`` (spec) and ``Path`` is not a stored type, so
-# it checks ``str`` then wraps — never launders a non-str.
+# Strict CHECKING coercers for tier-1 fields. ⚑ A bare constructor is the
+# foot-gun (``str(123) -> "123"``, ``bool("false") -> True``): it would LAUNDER a
+# mistyped leaf and silently hide a build bug, defeating the EXACT-type promise
+# design §5 makes. These isinstance-CHECK the stored value first and raise
+# :class:`ValueError`, which ``typed_field`` wraps in :class:`ViewError`.
 
 
 def as_str(value: Any) -> str:
@@ -389,9 +301,8 @@ def as_float(value: Any) -> float:
 def as_path(value: Any) -> Path:
     """Checking coercer: a stored ``str`` path → :class:`Path`. Rejects non-str.
 
-    The one legitimate CONVERSION (not a launder): a system path is stored as a
-    ``str`` and ``Path`` is not a stored type, so this checks ``str`` then wraps.
-    A non-str (int / bool / Bind) RAISES rather than being stringified.
+    The one legitimate CONVERSION, not a launder: a path is stored as a ``str``
+    and ``Path`` is not a stored type.
     """
     if not isinstance(value, str):
         raise ValueError(f"expected a str path, got {type(value).__name__}")
@@ -401,11 +312,9 @@ def as_path(value: Any) -> Path:
 def as_opt_path(value: Any) -> Path | None:
     """Checking coercer: a stored ``str`` path → :class:`Path`, OR ``None`` verbatim.
 
-    The optional-path variant of :func:`as_path` for a finite-view field whose
-    spec value is a path OR ``<None>`` (a whole-value ``@``-ref None terminal that
-    survived as a real ``None`` leaf — e.g. ``meta.box.share_workset`` for
-    STANDALONE, spec §2c).  A present ``None`` is honest and returned as-is; a
-    non-str / non-None leaf is rejected (never laundered).
+    For a field whose spec value is a path OR ``<None>`` (e.g.
+    ``meta.box.share_workset`` for STANDALONE): a present ``None`` is honest and
+    returned as-is; a non-str / non-None leaf is rejected.
     """
     if value is None:
         return None
@@ -418,10 +327,7 @@ def as_argv_fragment(value: Any) -> list[str]:
     """Checking coercer: a stored argv fragment (``list``/``tuple`` of ``str``) →
     ``list[str]``.
 
-    For the plugin-set launch-grammar leaves (``meta.agent.<a>.exec`` and the
-    values inside ``meta.agent.<a>.mode``, spec §2d / B5). Rejects any non-str
-    element (never launders); a tuple (the descriptor's in-memory form) is
-    normalized to a list.
+    A tuple (the descriptor's in-memory form) is normalized to a list.
     """
     if not isinstance(value, (list, tuple)) or not all(
         isinstance(part, str) for part in value
@@ -435,10 +341,9 @@ def as_argv_fragment(value: Any) -> list[str]:
 def as_mode_table(value: Any) -> dict[str, list[str]]:
     """Checking coercer: the ``meta.agent.<a>.mode`` NODE → ``dict[str, list[str]]``.
 
-    The launch-grammar table is materialized as a KeyStore sub-node (the floor's
-    dict value, spec §2d ``dict[mode_key → argv fragment]``); each mode's value
-    must itself be an argv fragment. A non-node (scalar / Bind) or a malformed
-    fragment is rejected — a finite view never launders a build bug.
+    The launch-grammar table is materialized as a KeyStore sub-node (spec §2d
+    ``dict[mode_key → argv fragment]``); each mode's value must itself be an
+    argv fragment.
     """
     if not isinstance(value, KeyStore):
         raise ValueError(
@@ -456,25 +361,16 @@ T = TypeVar("T")
 class typed_field(Generic[T]):
     """A typed read-only field descriptor for a tier-1 finite VIEW (the mechanism).
 
-    A finite view (system paths, ``meta``) has FIXED names of KNOWN type. This
-    descriptor declares one such field: it reads the named key off the wrapped
-    snapshot node (via the UNBOUND ``dict`` probe, S3), converts it with the
-    field's *coerce* callable, and returns the EXACT static type ``T`` — so a
-    consumer of ``view.field`` gets ``T``, not the loose ``StoreValue`` union
-    (design §5 tier-1). Read-only: the descriptor has no ``__set__``.
+    Reads the named key off the wrapped node, converts it with the field's
+    *coerce* callable, and returns the EXACT static type ``T`` rather than the
+    loose ``StoreValue`` union (design §5 tier-1). No ``__set__``.
 
-    Use a CHECKING coercer (:func:`as_str` / :func:`as_bool` / :func:`as_int` /
-    :func:`as_float` / :func:`as_path`), NOT a bare constructor: a bare ``str`` /
-    ``bool`` would LAUNDER a mistyped leaf (``str(123)`` → ``"123"``,
-    ``bool("false")`` → ``True``) and silently hide a build bug, defeating the §5
-    EXACT-type promise. The checking coercers isinstance-verify the stored value
-    and reject a mismatch (``as_path`` is the one legitimate conversion: a stored
-    ``str`` → ``Path``).
+    ⚑ Hand it a CHECKING coercer, never a bare constructor (see above). A
+    missing field, or a value the coerce rejects, RAISES :class:`ViewError`: a
+    finite view promises every named field is present and well-typed.
 
-    A missing field, or a value the coerce rejects, RAISES :class:`ViewError`
-    (a finite view promises every named field is present and well-typed). Use
-    *key* to point the field at a stored key whose name differs from the Python
-    attribute (e.g. ``global`` keyword → ``global_dir``); it defaults to the
+    Use *key* to point the field at a stored key whose name differs from the
+    Python attribute (``global`` keyword → ``global_dir``); it defaults to the
     attribute name.
     """
 
@@ -514,10 +410,8 @@ class FiniteView:
     """Base for a tier-1 typed finite view — wraps a finite snapshot NODE.
 
     Subclasses declare :class:`typed_field` attributes (one per known key) and
-    get exact-typed, read-only access to a FIXED-name subtree. The view does NOT
-    copy the node (snapshot stays the source of truth) and exposes no mutation
-    path. This is the MECHANISM design §5 tier-1 calls for; ``StandardPaths`` is
-    NOT ported here (block 7).
+    get exact-typed, read-only access to a FIXED-name subtree. ``StandardPaths``
+    is NOT ported here (block 7).
     """
 
     __slots__ = ("_node",)
@@ -532,11 +426,7 @@ class FiniteView:
 class MetaView(FiniteView):
     """A small WORKED EXAMPLE of a tier-1 finite view (design §5 tier-1).
 
-    Wraps a ``meta`` NODE and exposes a few representative fields at their EXACT
-    types — a ``Path`` (``root``) and a ``str`` (``name``). It demonstrates the
-    :class:`typed_field` + :class:`FiniteView` mechanism; it is NOT the full
-    ``meta`` schema and is NOT wired into any consumer (that is block 7). Add more
-    fields by declaring more :class:`typed_field` descriptors.
+    ⚑ NOT the full ``meta`` schema, and NOT wired into any consumer (block 7).
     """
 
     name: str = typed_field(as_str)  # type: ignore[assignment]
@@ -546,15 +436,13 @@ class MetaView(FiniteView):
 class MetaRuntimeView(FiniteView):
     """Typed finite view over the ``meta.runtime`` NODE (block B1, spec §1A).
 
-    Surfaces the runtime-resolved identity anchors at their EXACT types: the
-    workset root (``ws_root`` — a resolved ``Path``) and the resolved mode token
-    (``project_type`` — a ``str``, one of ``"primary"`` / ``"named"`` /
-    ``"standalone"``). Read-only; wraps ``store.meta.runtime``. ADDITIVE — no
-    consumer reads it yet (B1).
+    The runtime-resolved identity anchors: the workset root ``ws_root`` and the
+    resolved mode token ``project_type`` (``"primary"`` / ``"named"`` /
+    ``"standalone"``). ADDITIVE — no consumer reads it yet (B1).
 
-    ⚑ There is NO ``ws_settings`` field: ``meta.runtime.ws_settings`` is CUT from the
-    keyspace (spec §1A). The workset-tier settings FILE is
-    ``MetaWorksetView.settings``, which now spells itself directly off ``ws_root``.
+    ⚑ There is NO ``ws_settings`` field: ``meta.runtime.ws_settings`` is CUT from
+    the keyspace (spec §1A). The workset-tier settings FILE is
+    ``MetaWorksetView.settings``, spelled directly off ``ws_root``.
     """
 
     ws_root: Path = typed_field(as_path)  # type: ignore[assignment]
@@ -564,27 +452,16 @@ class MetaRuntimeView(FiniteView):
 class MetaBoxView(FiniteView):
     """Typed finite view over the ``meta.box`` NODE (block B1 + B2).
 
-    Exposes the RO identity anchors materialized for the box (spec §2c; §0 meta-RO):
+    The RO identity anchors materialized for the box (spec §2c; §0 meta-RO).
+    ``mode`` is surfaced from ``@meta.runtime.project_type`` (spec §2b — it was
+    the settable ``box.mode``); ``workspace`` / ``inbox`` are the dests that
+    ``box.bindings.rw`` routes through. ``container_name`` / ``helper_num`` are
+    a non-bind RENDER and are NOT materialized here (JC-B2-3).
 
-    * ``mode`` (B1) — the resolved mode token surfaced from
-      ``@meta.runtime.project_type`` (spec §2b — was the settable ``box.mode``).
-    * ``name`` (B2) — the box name (``proj.name``; the @meta.box.* binds key off it).
-    * ``workspace`` (B2) — the resolved in-box workspace SOURCE
-      (= ``str(proj.project_path)``); ``box.bindings.rw.workspace`` routes through
-      ``@meta.box.workspace`` (spec §2c).
-    * ``inbox`` (B2) — this box's own mailbox dir (spec §2c);
-      ``box.bindings.rw.inbox`` routes through ``@meta.box.inbox``.
-    * ``share_global`` (B2) — this box's system-scope share dir (spec §2c).
-    * ``share_workset`` (B2) — this box's workset-local share dir, ``None`` for
-      STANDALONE (spec §2c).
-    * ``settings`` — the RO box-TIER settings-file path, UNIFORM in every mode (spec
-      §2c ALL PROJECTS). Standalone's is ``<root>/box_data/settings.yaml``, a
-      real path that is merely ABSENT BY DEFAULT (§5) — NOT a ``None`` terminal.
-      (Typed ``Path | None`` because a narrow/partial resolve may materialize no box
-      tier; the launch always supplies one.)
-
-    Read-only; wraps ``store.meta.box``. (``container_name`` / ``helper_num`` are
-    a non-bind RENDER, not materialized here — JC-B2-3.)
+    ⚑ ``settings`` is UNIFORM in every mode; standalone's
+    ``<root>/box_data/settings.yaml`` is a real path merely ABSENT BY DEFAULT
+    (§5), NOT a ``None`` terminal. It is typed ``Path | None`` only because a
+    narrow/partial resolve may materialize no box tier.
     """
 
     mode: str = typed_field(as_str)  # type: ignore[assignment]
@@ -599,14 +476,9 @@ class MetaBoxView(FiniteView):
 class MetaWorksetView(FiniteView):
     """Typed finite view over the ``meta.workset`` NODE (block B1 + B2, spec §1A/§2c).
 
-    Exposes the single-source-re-rooted ``path`` (= ``@meta.runtime.ws_root``, a
-    resolved ``Path``) and ``settings`` (= ``@meta.runtime.ws_root/settings.yaml``, a
-    ``Path`` for ALL modes incl. standalone, whose ROOT file plays the workset tier —
-    spelled directly off ``ws_root`` now that the ``meta.runtime.ws_settings`` hop is
-    CUT, spec §1A), plus the
-    ``name`` partition token (``__PRIMARY__`` / ``<named>`` / ``__STANDALONE__``) —
-    now the ``@meta.runtime.ws_name`` anchor (block B1, single source, spec §1A/§2c
-    2026-07-04; was a direct B2 literal). Read-only; wraps ``store.meta.workset``.
+    ``name`` is the partition token (``__PRIMARY__`` / ``<named>`` /
+    ``__STANDALONE__``); ``path`` and ``settings`` both re-root off the single
+    source ``@meta.runtime.ws_root``.
     """
 
     path: Path = typed_field(as_path)  # type: ignore[assignment]
@@ -617,18 +489,15 @@ class MetaWorksetView(FiniteView):
 class MetaAgentView(FiniteView):
     """Typed finite view over a ``meta.agent.<agent>`` NODE (block B2 + B5, spec §2d).
 
-    Exposes the plugin-set ``name`` (spec §2d — REQUIRED when an agent
-    exists; identifies the store dir & cascade key), the agent STORE ROOT
-    ``path`` (§2d = ``@config.agents/<agent>``), which is also §2a's agent
-    DECLARATION ROOT: an abstract-category source stores
-    ``@meta.agent.<agent>.path/<category>/<leaf>``, so the key resolves for real —
-    and the B5-materialized trio (§3.3 rulings): ``settings`` (the agent-tier
-    settings cascade FILE, ``@meta.agent.<a>.path/settings.yaml`` resolved),
-    ``mode`` (the harness's INTERACTIVE launch grammar,
-    ``dict[mode_key → argv fragment]``), and ``exec`` (the STANDALONE one-shot
-    fragment — declared under the Python-safe attribute ``exec``; absent for an
-    agent with no ``exec`` operation, so access it only where materialized).
-    Read-only; wraps ``store.meta.agent.<agent>``.
+    ``path`` is the agent STORE ROOT (``@config.agents/<agent>``) and doubles as
+    §2a's agent DECLARATION ROOT, so an abstract-category source storing
+    ``@meta.agent.<agent>.path/<category>/<leaf>`` resolves for real. The
+    B5-materialized trio (§3.3 rulings) is ``settings`` (the agent-tier cascade
+    FILE), ``mode`` (the harness's INTERACTIVE launch grammar) and ``exec`` (the
+    STANDALONE one-shot fragment).
+
+    ⚑ ``exec`` is ABSENT for an agent with no ``exec`` operation — access it
+    only where it is materialized.
     """
 
     name: str = typed_field(as_str)  # type: ignore[assignment]
@@ -646,9 +515,9 @@ class MetaAgentView(FiniteView):
 def _require_node(node: Any, label: str) -> None:
     """Guard: an accessor must wrap a real :class:`KeyStore` node, not a leaf.
 
-    A category / finite-view accessor is meaningless over a scalar / ``Bind`` /
-    ``None`` leaf. Passing one is a CALLER bug (wrong path into the snapshot), so
-    it RAISES :class:`ViewError` rather than producing an empty or wrong lens.
+    An accessor is meaningless over a scalar / ``Bind`` / ``None`` leaf. Passing
+    one is a CALLER bug (a wrong path into the snapshot), so it RAISES rather
+    than producing an empty or wrong lens.
     """
     if not isinstance(node, KeyStore):
         raise ViewError(
@@ -660,9 +529,9 @@ def _require_node(node: Any, label: str) -> None:
 def _sub_or_empty(node: KeyStore, key: str) -> KeyStore:
     """The *key* sub-node of *node* as a :class:`KeyStore`, or an EMPTY one.
 
-    Used to split ``bindings`` into ``ro`` / ``rw`` (a mode the build omitted is
-    simply absent → an empty lens, §3/§6e — not an error). Unbound ``dict`` ops
-    (S3). A present-but-non-KeyStore sub-value is a build breach → :class:`ViewError`.
+    Splits ``bindings`` into ``ro`` / ``rw``: a mode the build omitted is simply
+    absent → an empty lens (§3/§6e), not an error. A present-but-non-KeyStore
+    sub-value is a build breach → :class:`ViewError`.
     """
     if not dict.__contains__(node, key):
         return KeyStore()

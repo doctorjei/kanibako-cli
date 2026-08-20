@@ -51,8 +51,8 @@ present-`None`, else the value — and it is consulted by merge LOGIC elsewhere.
 
 `class __Missing__` is a distinct singleton TYPE, not a bare `object()`, so it has a legible `repr`
 (`"__MISSING__"`) and static type-checkers can reason about `StoreValue | __Missing__` at internal
-call sites. Its `__bool__` returns `False` defensively — **test presence with `is __MISSING__`,
-never as a bool.**
+call sites. `__bool__` returns `False` as a defensive measure — `__MISSING__` must never be mistaken
+for a real value. **Test it via `is __MISSING__`, never as a bool.**
 
 ⚑ **It lives HERE, not in `keystore`.** Absence is a fact about the VALUE space, and the union that
 excludes it is in this file; `keystore` is the container, the unit that can LEAVE the tree, and it
@@ -97,9 +97,11 @@ strictly act-once, and a name never distinguishes two entries at one dest).
 `opts` carries exactly the meaning it has on `Bind`: `None` means "fall back to the category's
 default options".
 
-⚑ **TEMPORARY NAME.** R-6's final name for this type is `Bind`; the rename, and the deletion of the
-legacy 3-tuple `Bind`, happen in P8 of the bindings arc. Two bind names coexisting P5→P8 is a
-deliberate, bounded cost of the bridge — **do NOT rename early.**
+⚑ **THIS NAME IS TEMPORARY.** Two types cannot both be `Bind` at once, so this one carries a
+placeholder and will become `Bind` eventually, once the conflict is gone. R-6's final name for this
+type is `Bind`; that rename, and the deletion of the legacy 3-tuple `Bind`, happen in P8 of the
+bindings arc. Two bind names coexisting P5→P8 is a deliberate, bounded cost of the bridge — **do NOT
+rename early.**
 
 ### ⚑⚑ THE ARITY TRAP — how the two differ
 
@@ -163,7 +165,8 @@ different orderings and conflating them manufactures contradictions that are not
 BINDING_DERIVATIONS_NODE: Final[str] = "binding_derivations"
 ```
 
-The reserved INTERNAL derivations node at the store root (R-8 manifest,
-`not_keys.reserved_internal`). **It is not a key.** Declared ONCE here, so the producer
+Declared here to reserve the internal derivation nodes at the store root (R-8 manifest,
+`not_keys.reserved_internal`). **It is not a key** — the keyspace is CLOSED, and a reserved internal
+node is not made a key by living in the tree. Declared ONCE, so the producer
 (`settings_categories.derive_binding_keys`) and the assembly drop
 (`settings_assemble._drop_upward_scopes`) spell the same token by construction and cannot drift.

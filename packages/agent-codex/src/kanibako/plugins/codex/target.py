@@ -1,42 +1,21 @@
 """CodexTarget: OpenAI Codex CLI agent target implementation (descriptor-native).
 
-This plugin is the *new* first-class target proving the generalized,
-descriptor-native plugin interface holds for an agent that did not exist when
-the interface was designed.  It implements ONLY the irreducible surface:
-
-* ``name`` / ``display_name`` — identity.
-* ``detect`` — the one genuinely codex-specific bit: resolve the REAL native
-  binary to bind into the box, honoring the host's recorded host-binary
-  preference order — **machine-code-compiled executable > self-contained /
-  contained package (SEA, AppImage — still a single bindable executable) >
-  runtime-dependent package managers (npm/pip), LAST**.  The rationale is to
-  avoid the brittleness of requiring node/python on the host.  Concretely on
-  Linux:
-
-  - PRIMARY: if ``codex`` on ``$PATH`` resolves (symlinks followed) to a
-    directly-bindable **ELF** (a Rust native build OR a Node SEA — both carry
-    the ``\x7fELF`` magic), bind THAT executable directly.
-  - FALLBACK: otherwise (PATH ``codex`` absent, or it is the npm Node *shim* — a
-    ``#!node`` text script, NOT bindable standalone) resolve THROUGH npm to the
-    native binary the shim vendors (see below).
-* ``descriptor`` — the declarative :class:`PluginDescriptor`; core ``start.py``
-  assembles launch argv / env / delivery binds / credential lifecycle from it.
-* ``check_auth`` — lenient credential presence check.
-* the declarative helpers ``setting_descriptors`` / ``generate_agent_config``.
-
-Everything else (``build_cli_args`` / ``binary_mounts`` /
+The first target written after the plugin interface was generalized, so it
+implements ONLY the irreducible surface — identity, ``detect``, the declarative
+``descriptor``, ``check_auth``, the config.toml + persona seams and the two
+declarative helpers.  Everything else (``build_cli_args`` / ``binary_mounts`` /
 ``refresh_credentials`` / ``writeback_credentials`` / ``transform_cred``) is
-inherited from the step-3a concrete :class:`Target` defaults — codex needs no
-overrides there (both its cred files are wholesale copies; the descriptor's
-``init_dirs`` create ``.codex``).
+inherited from the concrete :class:`Target` defaults.
 
-⚑ E2E-GATED: ``detect``'s two paths — (1) the PRIMARY standalone-ELF-on-PATH
-bind and (2) the FALLBACK npm-shim -> native-binary resolution (the exact
-vendored hoist location and target triple) — are implemented best-effort
-against the documented codex 0.140.0 layout but MUST be verified on a real
-codex install: a standalone-extracted ELF on PATH (primary) and the npm Node
-shim that vendors a musl static-pie ELF (fallback).  codex is not present on
-the dev box, so the tests mock both.  See the ``detect`` docstring.
+⚑ codex is the one CONFIG-FILE harness: endpoint and model reach the box through
+``~/.codex/config.toml``, not env vars.  Most of what is unusual here follows
+from that one fact.
+
+⚑ E2E-GATED: both ``detect`` paths are best-effort against the documented codex
+0.140.0 layout and MUST be verified on a real install; codex is absent from the
+dev box, so the tests mock both.
+
+Reference: ``llm-docs/kanibako/plugins/codex/target.py.md``.
 """
 
 from __future__ import annotations
@@ -79,21 +58,13 @@ logger = get_logger("targets.codex")
 _NPM_ROOT_TIMEOUT = 10
 
 
-# Declarative descriptor for the generalized plugin interface.  LIVE: core
-# start.py assembles codex's launch argv / env / delivery mounts / credential
-# lifecycle from this descriptor.  codex implements no legacy hooks.
-#
-# The descriptor's declarative default-set lives in this plugin's shipped
-# ``codex-defaults.yaml`` (P6c coalesce) and is read by the thin
-# :mod:`kanibako.settings.agent_defaults` loader — the file documents each non-obvious
-# field (codex 0.140.0): the bare ``codex`` / ``codex resume --last`` mode
-# grammar; the ``codex exec`` op; the FLAG
-# ``--dangerously-bypass-approvals-and-sandbox`` ``full`` access realization; the
-# ``--model`` FLAG; the single SYNC ``.codex/auth.json`` cred file (filtered=False
-# wholesale copy, an E2E gate); and the ``.codex`` init dir.  The box-side binary
-# destination is fixed in the file; the CRITICAL host binary path is
-# runtime-PROBED in ``detect()`` (ELF-on-PATH primary / npm-vendored fallback;
-# origin=binary).
+# The declarative default-set — descriptor, behavior floor and env — is this
+# plugin's shipped ``codex-defaults.yaml`` (P6c coalesce), read by the thin
+# :mod:`kanibako.settings.agent_defaults` loader; that file documents each
+# non-obvious field.  Core start.py assembles codex's launch argv / env /
+# delivery mounts / credential lifecycle from the descriptor it builds.
+# ⚑ The one CODE-RESOLVED value is the CRITICAL host binary path, runtime-PROBED
+# in ``detect()`` (origin=binary); the box-side destination is fixed in the file.
 _DEFAULTS_PACKAGE = "kanibako.plugins.codex"
 _DEFAULTS_FILE = "codex-defaults.yaml"
 
@@ -103,17 +74,13 @@ _CODEX_DESCRIPTOR = load_descriptor(_DEFAULTS_PACKAGE, _DEFAULTS_FILE)
 _CODEX_BEHAVIOR = load_behavior(_DEFAULTS_PACKAGE, _DEFAULTS_FILE)
 
 
-# Map (os, machine) -> (npm platform-package suffix, vendored target triple).
-# The npm ``@openai/codex`` shim vendors a per-platform package
-# ``@openai/codex-<suffix>`` containing ``vendor/<triple>/bin/codex``.
-# ⚑ E2E-GATED: the exact suffix/triple strings below match the documented
-# 0.140.0 packaging but must be confirmed against a real install.
+# ⚑ E2E-GATED: the suffix/triple strings below match the documented 0.140.0
+# packaging but must be confirmed against a real install.
 def _platform_pkg_and_triple() -> tuple[str, str] | None:
     """Return (npm-platform-pkg-suffix, vendored-target-triple) for this host.
 
-    e.g. linux + x86_64 -> ("codex-linux-x64", "x86_64-unknown-linux-musl").
-    Returns ``None`` for an unrecognized OS/arch (detect then falls back to the
-    glob search, and ultimately to "not installed").
+    ``None`` for an unrecognized OS/arch — detect then falls back to the glob
+    search, and ultimately to "not installed".
     """
     sysname = platform.system().lower()
     machine = platform.machine().lower()
@@ -138,9 +105,8 @@ def _platform_pkg_and_triple() -> tuple[str, str] | None:
 def _npm_root_global() -> Path | None:
     """Return the npm global ``node_modules`` root, or ``None`` on any failure.
 
-    Best-effort: runs ``npm root -g`` with a short timeout and tolerates every
-    failure mode (npm absent, timeout, nonzero, garbage output) by returning
-    ``None`` — codex detection NEVER crashes on this.
+    Best-effort: every failure mode (npm absent, timeout, nonzero, garbage
+    output) answers ``None`` — codex detection NEVER crashes on this.
     """
     try:
         result = subprocess.run(
@@ -165,16 +131,10 @@ def _resolve_vendored_binary(npm_root: Path) -> Path | None:
 
     The npm ``@openai/codex`` package is a Node SHIM; the real binary lives in a
     per-platform package ``@openai/codex-<suffix>`` at
-    ``vendor/<triple>/bin/codex``.  That platform package may be:
-
-    * HOISTED to the top level:  ``<root>/@openai/codex-<suffix>``
-    * NESTED under the shim:     ``<root>/@openai/codex/node_modules/@openai/codex-<suffix>``
-
-    Both are checked (in that order) for the resolved (suffix, triple).  As a
-    final fallback we glob ``<root>/**/@openai/codex-*/vendor/*/bin/codex`` (any
-    layout / any vendored triple) so a packaging quirk still resolves.
-
-    Returns the first existing real binary path, or ``None``.
+    ``vendor/<triple>/bin/codex``, which npm may have HOISTED to the top level or
+    NESTED under the shim.  Both are checked, in that order, then a glob of any
+    layout / any vendored triple so a packaging quirk still resolves.  Returns
+    the first existing real binary path, or ``None``.
     """
     pkg_triple = _platform_pkg_and_triple()
     if pkg_triple is not None:
@@ -201,11 +161,11 @@ def _resolve_vendored_binary(npm_root: Path) -> Path | None:
 def _is_elf(path: Path) -> bool:
     """Return ``True`` iff *path* begins with the ELF magic ``\\x7fELF``.
 
-    This is the discriminator between a directly-bindable machine-code / SEA
-    executable (Rust native build OR a Node single-executable-application — both
-    are ELF on Linux) and the npm ``@openai/codex`` Node *shim* (a ``#!node``
-    text script, NOT bindable standalone).  Swallows any ``OSError``
-    (missing/unreadable/dir) -> ``False`` so detection never crashes.
+    The discriminator between a directly-bindable machine-code / SEA executable
+    (a Rust native build OR a Node single-executable-application — both are ELF
+    on Linux) and the npm ``@openai/codex`` Node *shim* (a ``#!node`` text
+    script, NOT bindable standalone).  Any ``OSError`` (missing / unreadable /
+    dir) -> ``False`` so detection never crashes.
     """
     try:
         with open(path, "rb") as fh:
@@ -217,14 +177,12 @@ def _is_elf(path: Path) -> bool:
 def _resolve_path_executable() -> Path | None:
     """Resolve ``codex`` on ``$PATH`` to its real (symlink-followed) target.
 
-    codex's host install location is genuinely user-chosen — there is no fixed
-    contract path like claude/goose have — so a ``$PATH`` lookup is the right
-    primitive here; we follow symlinks and verify ELF magic (read-only) before
-    ever trusting/binding the result, so this is not the PATH-injection vector
-    that anchoring guards against for the fixed-path agents.
-
-    Returns the resolved real path, or ``None`` if ``codex`` is not on ``$PATH``
-    (or cannot be resolved).  Never raises.
+    ⚑ A ``$PATH`` lookup is the right primitive HERE — codex's install location
+    is genuinely user-chosen, with no fixed contract path like claude/goose have
+    — and it is not the PATH-injection vector anchoring guards against for those
+    agents, because the result is ELF-verified (read-only) before it is ever
+    trusted or bound.  ``None`` if ``codex`` is absent or unresolvable; never
+    raises.
     """
     found = shutil.which("codex")
     if not found:
@@ -253,21 +211,19 @@ class CodexTarget(Target):
     def default_category_binds(self) -> CategoryBindDefaults:
         """Declare codex's AGENT-scope ``@``-ref-sourced category binds.
 
-        Read from ``codex-defaults.yaml`` (via the loader).  Currently EMPTY: the
-        former ``@system.instructions`` → ``~/.codex/AGENTS.md`` instructions bind
-        was retired — the box guide now ships INSIDE the RO whole-dir canon bind
-        at ``~/canon/bible`` + the flattened per-agent FINAL file.
+        Read from ``codex-defaults.yaml`` (via the loader), and currently EMPTY:
+        the former ``@system.instructions`` → ``~/.codex/AGENTS.md`` bind was
+        retired in favour of the RO canon bind + the flattened FINAL file.
         """
         return load_category_binds(_DEFAULTS_PACKAGE, _DEFAULTS_FILE, self.name)
 
     def default_envs(self) -> dict[str, str]:
         """Declare codex's AGENT-scope env defaults (spec §2d ``agent.codex.env.*``).
 
-        Read from ``codex-defaults.yaml``'s ``env:`` section (via the loader): the
-        one variable ``KANIBAKO_DIRECTIVE_FINAL``, naming codex's native
-        ``~/.codex/AGENTS.md`` slot — the file the box-start flattener writes.  It
-        is an ordinary settings key: overridable by the SAME key in a nearer file,
-        and refused when a second scope names the same variable.
+        Read from ``codex-defaults.yaml``'s ``env:`` section: the one variable
+        ``KANIBAKO_DIRECTIVE_FINAL``, naming codex's native ``~/.codex/AGENTS.md``
+        slot.  An ordinary settings key — overridable by the SAME key in a nearer
+        file, and refused when a second scope names the same variable.
         """
         return load_envs(_DEFAULTS_PACKAGE, _DEFAULTS_FILE, self.name)
 
@@ -279,22 +235,16 @@ class CodexTarget(Target):
     def has_resumable_session(self, home: Path) -> bool:
         """Report whether codex has a recorded session to resume under the box home.
 
-        ``continue`` mode builds ``codex resume --last`` (codex-defaults.yaml), which
-        replays the MOST-RECENT recorded session — a "rollout" ``.jsonl`` file codex
-        persists under ``$CODEX_HOME/sessions/<year>/<MM>/<DD>/rollout-<ts>-<uuid>.jsonl``
-        (verified against openai/codex ``codex-rs/rollout/src``: ``SESSIONS_SUBDIR =
-        "sessions"`` + the ``year/month/day`` push in ``recorder.rs``).  ``CODEX_HOME``
-        defaults to ``~/.codex`` and kanibako sets NO ``CODEX_HOME`` — it is not among
-        this plugin's declared ``agent.codex.env.*`` keys, whose only member is the
-        directive FINAL slot — so the box store is ``<home>/.codex/sessions/``.
-        ``resume --last`` is workdir-AGNOSTIC (the newest session regardless of cwd),
-        so — unlike claude's per-project transcript dir — this checks the WHOLE store.
+        ``continue`` mode builds ``codex resume --last``, which replays the newest
+        rollout ``.jsonl`` under ``<home>/.codex/sessions/`` (kanibako sets no
+        ``CODEX_HOME``, so codex's ``~/.codex`` default stands).  That is
+        workdir-AGNOSTIC, so — unlike claude's per-project transcript dir — this
+        checks the WHOLE store, recursively to cover the date nesting.
 
-        On a FRESH box the store is absent/empty, so ``resume --last`` is DOOMED (no
-        session -> fast exit); returning ``False`` lets start.py launch a new session
-        instead (the launch-time crash-and-retry net was removed).  Any rollout
-        ``*.jsonl`` (recursively, to cover the date nesting) ⇒ ``True``.  Tolerant:
-        any stat/glob error ⇒ ``False`` (a fresh start is always safe).
+        On a FRESH box the store is absent/empty, so ``resume --last`` is DOOMED;
+        ``False`` lets start.py launch a new session instead (the launch-time
+        crash-and-retry net was removed).  Any stat/glob error ⇒ ``False`` too, a
+        fresh start being always safe.
         """
         sessions = home / ".codex" / "sessions"
         try:
@@ -311,17 +261,14 @@ class CodexTarget(Target):
         ``approval_policy``/``sandbox_mode`` root keys of the box's in-box
         ``~/.codex/config.toml``.
 
-        Codex approval/sandbox has NO VS Code settings key and the
-        ``openai.chatgpt`` panel spawns its own in-box codex without kanibako's
-        launch flags — this config.toml parity is the ONLY way the panel sees
-        the box's tier.  The SOLE writer of those two keys (the directive-hook
-        write below is hook/trust/provider only).  ``approval_policy`` is
-        TIER-gated (``full`` → ``"never"``, ``editing`` → ``"on-request"``,
-        ``restricted`` → removed while it still equals a value WE manage,
-        preserving a user-chosen one); ``sandbox_mode`` is a BOX INVARIANT forced
-        to ``"danger-full-access"`` ALWAYS (the container is the sandbox, so the
-        panel's app-server must not attempt a nested one) — independent of
-        *access*.  ⚑ That invariant is why the panel's middle tier rides the
+        The panel spawns its own in-box codex without kanibako's launch flags, so
+        this parity is the ONLY way it sees the box's tier.  The SOLE writer of
+        those two keys (the directive-hook write below is hook/trust/provider
+        only).  ``approval_policy`` is TIER-gated (``full`` → ``"never"``,
+        ``editing`` → ``"on-request"``, ``restricted`` → removed while it still
+        equals a value WE manage, preserving a user-chosen one); ``sandbox_mode``
+        is a BOX INVARIANT forced to ``"danger-full-access"`` ALWAYS, independent
+        of *access*.  ⚑ That invariant is why the panel's middle tier rides the
         APPROVAL axis while the CLI's rides ``-s workspace-write``: writing
         workspace-write here is the configuration that hangs the app-server.  See
         :func:`kanibako.vscode.vscode_config.seed_codex_approval`.
@@ -343,15 +290,13 @@ class CodexTarget(Target):
         ``[[hooks.SessionStart]]`` group, its pre-computed trust hash, the
         directory trust, and (for a codex persona) the *model_provider* region.
 
-        NEVER the approval/sandbox keys — those belong to
-        :meth:`deliver_panel_permissions` alone, so no managed key has two
-        writers (*access* is accepted per the seam contract but unused here).  The box-side literals codex keys
-        its trust entries on (the in-box config path and workdir) are derived
-        here from the core :data:`~kanibako.settings.settings_resolve.GUEST_HOME`
-        constant: the workdir is the fixed container WORKDIR
-        ``GUEST_HOME/workspace`` (tmux new-session inherits it — see
-        ``has_resumable_session``, which pins the same literal); promote a seam
-        parameter instead if it ever becomes configurable.
+        ⚑ NEVER the approval/sandbox keys — those belong to
+        :meth:`deliver_panel_permissions` alone, so no managed key has two writers
+        (*access* is accepted per the seam contract but unused here).  The
+        box-side literals codex keys its trust entries on (the in-box config path
+        and workdir) derive from
+        :data:`~kanibako.settings.settings_resolve.GUEST_HOME`; promote a seam
+        parameter instead if either ever becomes configurable.
         """
         from kanibako.settings.settings_resolve import GUEST_HOME
         from kanibako.vscode.vscode_config import seed_codex_config
@@ -364,12 +309,11 @@ class CodexTarget(Target):
         )
 
     def reattach_config_notice(self) -> str | None:
-        """codex's ``config.toml`` is a RECONCILED PROJECTION (D1): the launch
-        seams re-materialise its model/provider/approval elements only on start
-        of a STOPPED box.  A reattach to a live box does NOT re-deliver (and
-        rewriting under the panel's already-running codex app-server is unsafe),
-        so warn that codex config changes apply only after a restart — kanibako
-        reconciles the file to the resolved active agent on the next start.
+        """Warn that codex config changes apply only after a restart.
+
+        codex's ``config.toml`` is a RECONCILED PROJECTION (D1): the launch seams
+        re-materialise it only on start of a STOPPED box, and rewriting it under
+        the panel's already-running app-server is unsafe.
         """
         return (
             "Note: this box is already running; codex config changes (model / "
@@ -381,10 +325,8 @@ class CodexTarget(Target):
     def setup_entrypoint(self) -> str | None:
         """``codex login`` is codex's interactive in-box login.
 
-        When the pre-launch :meth:`check_auth` probe fails (no ``auth.json`` and
-        no ``OPENAI_API_KEY``), ``start.py`` runs ``codex login`` interactively
-        IN THE BOX so the user can complete the ChatGPT/OAuth flow, then proceeds
-        with launch.  Box-state persists across reattach.
+        Run by ``start.py`` IN THE BOX when :meth:`check_auth` fails, so the user
+        can complete the ChatGPT/OAuth flow before launch continues.
         """
         return "codex"
 
@@ -394,11 +336,8 @@ class CodexTarget(Target):
 
     def should_run_setup(self, output: str) -> bool:
         # Launch-time ground truth that ``codex login`` did NOT produce a bootable
-        # auth state: codex's session reports it needs a login / authentication
-        # failed.  Match case-insensitively on codex's known login-needed signals
-        # ("not logged in", the "codex login" remediation hint, "please log in",
-        # "authentication failed", "401 unauthorized") so a phrasing change in any
-        # one of them still trips the detector.
+        # auth state.  Case-insensitive across codex's known login-needed signals,
+        # so a phrasing change in any ONE of them still trips the detector.
         low = output.lower()
         return (
             "not logged in" in low
@@ -414,39 +353,20 @@ class CodexTarget(Target):
         """Detect the Codex installation, resolving a directly-bindable binary.
 
         Honors the host-binary preference order (machine-code > self-contained
-        package > runtime package manager) so we bind a standalone executable
-        whenever one exists and only fall back to npm — which would otherwise
-        require node on the host — as a last resort.
+        package > runtime package manager), so npm — the one path that would
+        require node on the host — is the last resort.
 
-        **PRIMARY — standalone executable on ``$PATH``.** Resolve ``codex`` on
-        ``$PATH`` (symlinks followed).  If the real target is an **ELF** (first
-        four bytes ``\\x7fELF`` — a Rust native build OR a Node single-executable
-        application, both directly bindable) bind THAT file:
-        :class:`AgentInstall` with ``binary`` = the resolved ELF and
-        ``install_dir`` = its parent.  No node in-box required.
+        **PRIMARY:** ``codex`` on ``$PATH`` (symlinks followed) when it is an ELF
+        — a Rust native build OR a Node single-executable application, both
+        directly bindable, no node in-box.  **FALLBACK:** the native binary the
+        npm ``@openai/codex`` Node *shim* vendors, reached through ``npm root -g``;
+        the descriptor's BINARY binding uses ``install.binary``, so that
+        static-pie musl ELF binds in and runs with no node either.  ``None``
+        (never a crash) when neither is found.
 
-        **FALLBACK — npm vendored native binary.** If ``codex`` is absent from
-        ``$PATH``, OR it resolves to a *non*-ELF (the npm ``@openai/codex`` Node
-        *shim*, a ``#!node`` text script that is NOT bindable standalone), fall
-        through to the npm path:
-
-        1. Find the npm global ``node_modules`` root via ``npm root -g``.
-        2. Under it, locate the per-platform package
-           ``@openai/codex-<os>-<arch>`` and its vendored binary at
-           ``vendor/<triple>/bin/codex`` (checking the hoisted + nested layouts,
-           then a glob fallback).
-        3. Return an :class:`AgentInstall` pointing ``binary`` at that real ELF.
-           The descriptor's BINARY binding uses ``install.binary``, so the
-           static-pie musl ELF binds into the box and runs with no node.
-
-        ⚑ Both paths are E2E-gated: the PRIMARY standalone-ELF bind and the
-        FALLBACK shim -> vendored-native resolution (the precise vendored hoist
-        location and target triple, documented for codex 0.140.0) MUST be
-        verified on a real codex install — codex is not installed on the dev box
-        (the unit tests mock ``$PATH`` + the npm root + a fake vendored tree).
-
-        Returns ``None`` (never crashes) when neither a standalone binary nor an
-        npm-vendored one is found.
+        ⚑ Both paths are E2E-gated against a REAL codex install, which the dev box
+        does not have: the unit tests mock ``$PATH``, the npm root and a fake
+        vendored tree, so they cannot prove either resolution.
         """
         # PRIMARY: a standalone machine-code / SEA executable on $PATH.
         path_bin = _resolve_path_executable()
@@ -480,14 +400,9 @@ class CodexTarget(Target):
     def check_auth(self) -> bool:
         """Lenient credential presence check for Codex.
 
-        Returns ``True`` (do not block launch) when either:
-
-        * ``~/.codex/auth.json`` exists and is non-empty, OR
-        * the ``OPENAI_API_KEY`` environment variable is set.
-
-        Otherwise returns ``False``.  Never crashes — any stat error is treated
-        as "cannot tell" and returns ``True`` (matching goose's lenient style of
-        not blocking when it cannot determine auth state).
+        ``True`` (do not block launch) when ``~/.codex/auth.json`` is present and
+        non-empty, OR ``OPENAI_API_KEY`` is set — and on any stat error too,
+        which is "cannot tell", not "no".  Matches goose's lenient style.
         """
         try:
             auth = Path.home() / ".codex" / "auth.json"
@@ -505,23 +420,17 @@ class CodexTarget(Target):
     def read_persona_settings(self, config_dir: Path) -> PersonaReadOutcome:
         """Extract persona values from a rendered codex ``config.toml``.
 
-        The persona-grata store renders a codex persona as the SAME
-        ``[model_providers.<id>]`` shape kanibako itself emits at launch
-        (``vscode_config.CodexModelProvider`` → ``_build_codex_provider_region``),
-        so this reader parses the inverse: ``base_url`` → endpoint, ``env_key``
-        → auth_env (codex configs SELF-NAME the bearer var), and the top-level
-        ``model``.  Provider-table selection: the top-level ``model_provider``
-        key when it names a present table (what kanibako writes), else the
-        single table when exactly one exists; zero tables or an unresolvable
-        ambiguity is a reject.  A codex config carries NO env block, so
-        ``env``/``env_dropped`` stay at their (empty) defaults — unlike
-        claude, whose persona env rides the config.
+        The store renders a codex persona in the SAME ``[model_providers.<id>]``
+        shape kanibako emits at launch, so this parses the inverse: ``base_url``
+        → endpoint, ``env_key`` → auth_env (codex configs SELF-NAME the bearer
+        var), plus the top-level ``model``.  Table selection: the ``model_provider``
+        key when it names a present table, else the single table when exactly one
+        exists.  A codex config carries NO env block, so ``env``/``env_dropped``
+        stay empty — unlike claude, whose persona env rides the config.
 
-        FAIL-SOFT (base-class contract): absent / unreadable, malformed TOML,
-        no usable provider table, or a missing/empty ``base_url``/``env_key``
-        (a codex persona is meaningless without both) each return an outcome
-        NAMING that cause and the file.  Pure read via stdlib ``tomllib``;
-        never touches the token.
+        FAIL-SOFT (base-class contract): every reject below returns an outcome
+        NAMING its cause and the file.  Pure stdlib ``tomllib`` read; never
+        touches the token.
         """
         import tomllib
 
@@ -591,40 +500,36 @@ class CodexTarget(Target):
     ) -> PersonaProbeOutcome:
         """Minimal OpenAI ``/responses`` ack against a persona endpoint.
 
-        A genuine few-token completion on the RESPONSES wire (the only wire
-        current codex speaks — the provider block's ``wire_api = "responses"``;
-        the endpoint is the provider ``base_url``, which by that convention
-        already carries the ``/v1``-style prefix codex appends ``/responses``
-        to).  Bearer-authed with the token at *token_path* (the ``env_key``
-        var's value in-box) when one is configured.  Per the base contract:
+        A genuine few-token completion on the RESPONSES wire — the only wire
+        current codex speaks (``wire_api = "responses"``).  Per the base contract:
         2xx → ``PASS``, 401/403 → ``REJECTED``, unreachable/ambiguous →
         ``INCONCLUSIVE``.
 
-        ⚑ **A PRESENT-null *token_path* (2026-08-17 ruling) is still PROBED,
-        with the ``Authorization`` header OMITTED** — a persona whose
-        ``secret_path`` key is deliberately ``null`` declares this endpoint
-        keyless, and the request is sent bare for the server to decide (never a
-        placeholder credential — a hardwired-auth server can REJECT one it does
-        not serve, and a false ``REJECTED`` is a hard error that would refuse a
-        working box).
+        ⚑ *endpoint* is the provider ``base_url``, which by codex's convention
+        ALREADY carries the ``/v1``-style prefix this appends ``/responses`` to —
+        NOT an origin-only host like goose's ``OPENAI_HOST``.
+
+        ⚑ **A PRESENT-null *token_path* (2026-08-17 ruling) is still PROBED, with
+        the ``Authorization`` header OMITTED** — that persona declares the
+        endpoint keyless, so the request goes out bare and the server decides.
 
         ⚑ **A persona that names no *model* is still PROBED, with the ``model``
-        key OMITTED from the body** — an OpenAI-compatible endpoint may serve
-        exactly one model or apply its own, and declining to probe would let a
-        DEAD token reach the box.  The answer is read through
+        key OMITTED from the body** — an endpoint may serve exactly one model or
+        apply its own, and declining to probe would let a DEAD token reach the
+        box.  The answer is read through
         :func:`~kanibako.targets.base.probe_outcome_no_model` so a "model
-        required" reply is silent rather than a permanent warning.  ⚑ NEVER
-        substitute a placeholder/default/guessed model id to make the call go
-        through: a server with a hardwired model can REJECT an id it does not
-        serve, and a false ``REJECTED`` is a hard error that would refuse a
-        working box.  (The codex LAUNCH gate is stricter than the probe — the
-        descriptor declares ``model_required: true`` — but this method is also
-        called straight off the store on the CREATE path, where no model may
-        have been resolved at all.)
+        required" reply is silent rather than a permanent warning.
 
-        The one ``NOT_APPLICABLE`` this decides for itself is a CONFIGURED
-        (non-``None``) token file that is unreadable or empty.  The token is
-        read transiently for this request only; never logged or persisted.
+        ⚑ NEVER substitute a placeholder credential or model id to make either
+        call go through: a hardwired-auth or hardwired-model server can REJECT one
+        it does not serve, and a false ``REJECTED`` is a hard error that would
+        refuse a working box.  (The codex LAUNCH gate is stricter than this probe
+        — see the llm-doc — because this is also called straight off the store on
+        the CREATE path.)
+
+        The one ``NOT_APPLICABLE`` decided here is a CONFIGURED (non-``None``)
+        token file that is unreadable or empty.  The token is read transiently for
+        this request only; never logged or persisted.
         """
         headers: dict[str, str] = {}
         if token_path is not None:
@@ -653,12 +558,10 @@ class CodexTarget(Target):
     def generate_agent_config(self) -> AgentConfig:
         """Return default Codex agent configuration.
 
-        ``state`` is intentionally EMPTY (the FILE-PURITY invariant): the agent
+        ⚑ ``state`` is intentionally EMPTY (the FILE-PURITY invariant): the agent
         settings file holds USER INTENT only, and defaults come from the
-        descriptor floor (:meth:`setting_descriptors` — ``model`` defaults to
-        ``gpt-5.5``).  Seeding that same value into the file would pin every
-        install ABOVE the floor, so a later change to the default could never
-        reach an existing box.
+        descriptor floor.  Seeding one into the file would pin every install ABOVE
+        the floor, where a later change to the default can never reach it.
         """
         from kanibako.settings.agent_config import AgentConfig as _AgentConfig
 
@@ -668,24 +571,16 @@ class CodexTarget(Target):
         )
 
     def setting_descriptors(self) -> list[TargetSetting]:
-        """Declare Codex runtime settings.
+        """Declare Codex runtime settings: ``model`` and the persona ``endpoint``.
 
-        - ``model`` (freeform; OpenAI adds models regularly).
-        - ``endpoint``: alternate model-provider base-URL (persona); unset =
-          bare/harness-default.  Unlike claude, a codex endpoint is delivered via
-          the ``~/.codex/config.toml`` ``[model_providers.<id>]`` block (see the
-          descriptor ``persona.endpoint_delivery: config_file``), NOT an env var —
-          it is declared here only to make it a first-class SETTABLE + cascade-
-          resolved behavior key (``config set``/``--effective``).
+        ⚑ ``endpoint`` is declared here ONLY to make it a first-class SETTABLE,
+        cascade-resolved behavior key (``config set`` / ``--effective``): a codex
+        endpoint is delivered via the ``~/.codex/config.toml``
+        ``[model_providers.<id>]`` block, NOT an env var, so it is deliberately not
+        a descriptor ``SettingArg``.
 
-        The permission tier is NOT a setting descriptor: it rides the uniform
-        ``access`` key (the descriptor's ``access_realization.setting_key`` is
-        ``access``),
-        persisted + cascade-resolved, default permissive; ``-A``/``-S`` override per
-        launch.
-
-        The keys and their FLOOR values are declared in ``codex-defaults.yaml``'s
-        ``behavior:`` section, not here: a default written in plugin code is a
-        second declaration site for something the shipped file already owns.
+        The permission tier is NOT a setting descriptor either: it rides the
+        uniform ``access`` key, persisted + cascade-resolved, default permissive;
+        ``-A``/``-S`` override per launch.
         """
         return list(_CODEX_BEHAVIOR)

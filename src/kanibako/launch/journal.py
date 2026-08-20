@@ -1,50 +1,25 @@
 """Lifecycle journal — a write-ahead log of in-flight box-lifecycle operations.
 
-Design authority: ``plans/lifecycle-journal-DESIGN.md`` (Jei-blessed 2026-06-30b).
-
 The REGISTRY (``config.registry``) is the steady-state truth ("what boxes
 exist"); the JOURNAL (``config.journal``) is the transient truth ("what ops are
-mid-flight").  A journal entry is written BEFORE the SEED step (and before the
-registry write), so a crash anywhere in the seed->register window is forward-
-recoverable — this is the window B3's create-recovery defect lived in.  At rest
-the journal is normally EMPTY; an entry is the rare in-flight/crashed op.
-
-NOTE — not yet a TRUE pre-dir write-ahead: today the resolver materializes the
-box dir + meta BEFORE the entry is written (the resolver still creates dirs).  A
-crash DURING that resolver dir-creation, before the entry exists, leaves the same
-(narrower) unrecoverable limbo.  Closing it fully = the deferred tech-debt of
-extracting registration + dir-creation OUT of the resolver (then the entry can be
-written before any dir).  The design doc's "write-ahead before any dir exists"
-goal is realized then; J1 covers the seed->register window, which is the defect.
-
-Recovery model (Jei-blessed): forward-complete by REPLAY.  Every lifecycle op is
-idempotent (create-if-absent / register-if-absent / remove-if-absent), so a
-recovery re-runs the recorded op from step 1 and done steps skip.  NO ``phase``
-field, NO rollback (rollback is a user-initiated ABORT concern, out of scope).
+mid-flight").  At rest the journal is normally EMPTY.
 
 Write-ahead order per op: **write entry -> (idempotent op steps) -> clear entry**.
 The HARD INVARIANT (from B3): the entry is cleared immediately after the op's
-committing step, so ``registered ==> no pending entry`` holds at rest.
+committing step, so ``registered ==> no pending entry`` holds at rest.  The
+committing step lives in the CALLERS, so nothing in this module enforces it.
 
-Schema (``global/journal.yaml``)::
+Recovery is forward-complete by REPLAY — the recorded op re-runs from step 1 and
+done steps skip — so every lifecycle op must stay idempotent (create-if-absent /
+register-if-absent / remove-if-absent).  NO ``phase`` field and NO rollback; do
+not add either.
 
-    entries:
-      /home/jei/projects/foo:        # keyed by box host-side PATH (pre-registration)
-        op: create                   # create|import|connect|move|convert|...
-        name: foo                    # assigned (pick_primary_box_name); may not be registered yet
-        mode: primary                # primary|workset|standalone
-        workset: __PRIMARY__         # if relevant (else absent)
-        started_at: 2026-06-30T07:12:00Z
-        host: blue                   # reserved for liveness detection (later)
+NOT yet a TRUE pre-dir write-ahead: the resolver materializes the box dir + meta
+BEFORE the entry is written, so a crash during that dir-creation still leaves a
+(narrower) unrecoverable limbo.  Known and deferred — do not read it as closed.
 
-The entry KEY is the box host-side path (``str(Path(proj.shell_path).parent)`` —
-the dir CONTAINING ``home/``, uniform across all modes, known at write-ahead
-time).
-
-Atomicity: reads/writes go through :mod:`kanibako.settings.config_io` (``load_doc`` /
-``dump_doc``), whose ``dump_doc`` writes atomically (temp file + ``os.replace``
-via :func:`kanibako._atomic.atomic_write_text`), so a crash mid-journal-write can
-never leave a torn/corrupt journal document on disk.
+Schema, entry-key derivation, atomicity, the replay table and the design
+authority: ``llm-docs/kanibako/launch/journal.py.md``.
 """
 
 from __future__ import annotations
@@ -65,11 +40,7 @@ def _key(box_path: str | Path) -> str:
 
 
 def read_journal(journal_path: Path) -> dict[str, dict]:
-    """Return the journal's ``entries`` mapping (``{box_path: entry}``).
-
-    An absent / empty / malformed journal file yields an empty dict — the
-    normal at-rest state (no in-flight ops).
-    """
+    """Return the journal's ``entries`` mapping; absent/empty/malformed yields ``{}``."""
     doc = load_doc(journal_path)
     entries = doc.get(_ENTRIES)
     return entries if isinstance(entries, dict) else {}
@@ -85,19 +56,7 @@ def write_entry(
     workset: str | None = None,
     workspace: str | None = None,
 ) -> None:
-    """Write-ahead: record an in-flight lifecycle op keyed by *box_path*.
-
-    Atomic read-modify-write of the journal document.  Stamps ``started_at``
-    (real ``datetime.now(UTC)``) and ``host`` (``socket.gethostname()``, reserved
-    for future liveness detection).  Overwrites any existing entry for the same
-    *box_path* (a re-run before recovery re-stamps the intent — harmless, the op
-    is idempotent).
-
-    *workspace* (P8b): the box's WORKSPACE dir, recorded so a create can be
-    re-discovered BY WORKSPACE during deferred-registration recovery (the journal
-    is keyed by box PATH, so a workspace lookup scans — see
-    :func:`pending_create_for_workspace`).  Persisted only when provided.
-    """
+    """Write-ahead: record an in-flight lifecycle op keyed by *box_path* (atomic RMW)."""
     key = _key(box_path)
     doc = load_doc(journal_path)
     entries = doc.get(_ENTRIES)
@@ -113,19 +72,22 @@ def write_entry(
         entry["workset"] = workset
     if workspace is not None:
         entry["workspace"] = workspace
+    # Stamped AFTER the optional fields on purpose: ``dump_doc`` pins
+    # ``sort_keys=False``, so insertion order is the on-disk order.  ``host`` has no
+    # reader yet — it is reserved for liveness detection.
     entry["started_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     entry["host"] = socket.gethostname()
+    # Overwriting an existing entry is intended: a re-run before recovery just
+    # re-stamps the same intent, and the op it records is idempotent either way.
     entries[key] = entry
     dump_doc(journal_path, doc)
 
 
 def clear_entry(journal_path: Path, box_path: str | Path) -> None:
-    """Atomically drop the entry keyed by *box_path* (no-op if absent).
-
-    JC-J1-3 (lean): keep the journal document, drop the key — the document
-    persists (``entries: {}`` when the last entry clears) rather than deleting an
-    empty file.  No-op when the file is absent or the key is not present.
-    """
+    """Atomically drop the entry keyed by *box_path* (no-op if absent)."""
+    # JC-J1-3 (lean): drop the key, KEEP the document — an emptied journal stays as
+    # ``entries: {}`` and is never deleted.  The no-op arm is what lets a replay call
+    # this unconditionally.
     key = _key(box_path)
     doc = load_doc(journal_path)
     entries = doc.get(_ENTRIES)
@@ -143,8 +105,8 @@ def pending_entry(journal_path: Path, box_path: str | Path) -> dict | None:
 def pending_create(journal_path: Path, box_path: str | Path) -> dict | None:
     """Return the pending entry for *box_path* iff it is a ``create`` op.
 
-    The create/seed-path recovery signal: a non-``None`` result means a create
-    was started for this box but never completed (crash before ``clear_entry``).
+    The create/seed-path recovery signal: a non-``None`` result means a create was
+    started for this box but never completed (crash before ``clear_entry``).
     """
     entry = pending_entry(journal_path, box_path)
     if entry is not None and entry.get("op") == "create":
@@ -155,16 +117,14 @@ def pending_create(journal_path: Path, box_path: str | Path) -> dict | None:
 def pending_create_for_workspace(
     journal_path: Path, workspace: str | Path,
 ) -> dict | None:
-    """Return the pending ``create`` entry whose ``workspace`` == *workspace*.
+    """Return the pending ``create`` entry whose ``workspace`` == *workspace*, else ``None``.
 
-    The journal is keyed by box host-side PATH, so a lookup BY WORKSPACE requires
-    scanning every entry for an ``op: create`` whose recorded ``workspace`` field
-    resolves to the same dir as *workspace* (both ``resolve()``d for symlink /
-    trailing-slash equivalence).  This is the PRIMARY deferred-registration
-    create-recovery signal (P8b): a box was mid-create for this workspace but
-    never registered — the name is read from the journal, not from on-disk meta.
-    ``None`` when no such entry exists (the ordinary registry-hit resolve).
+    The PRIMARY deferred-registration create-recovery signal (P8b): the box was
+    mid-create for this workspace but never registered, so its NAME is read from the
+    journal — there is no on-disk meta to read it from.
     """
+    # The journal is keyed by box PATH, so a lookup BY WORKSPACE has to scan.  Both
+    # sides are resolve()d for symlink / trailing-slash equivalence.
     target = str(Path(workspace).resolve())
     for entry in read_journal(journal_path).values():
         if entry.get("op") != "create":
@@ -177,23 +137,20 @@ def pending_create_for_workspace(
     return None
 
 
-# Register-only ops (J2): import/connect REGISTER an externally-seeded box and
-# NEVER seed (CONVENTIONS "Seed model" B7).  Their replay is register-if-absent
-# -> clear, with NO seed step — so the op-typed entry is exactly how the journal
-# distinguishes a create (seed+register) from an import/connect (register-only).
+# Register-only ops (J2): import/connect REGISTER an externally-seeded box and NEVER
+# seed (CONVENTIONS "Seed model" B7); their replay is register-if-absent -> clear.
+# The op TYPE is what keeps the two replay tables apart — never collapse this lookup
+# into pending_create, or a create entry would drive a register-only replay (and a
+# create entry on an imported box would wrongly trigger a re-seed).
 _IMPORT_OPS = ("import", "connect")
 
 
 def pending_import(journal_path: Path, box_path: str | Path) -> dict | None:
     """Return the pending entry for *box_path* iff it is a register-only op.
 
-    The import/connect recovery signal: a non-``None`` result means a
-    register-only op (``import`` or ``connect``) was started for this box but
-    never completed (crash before ``clear_entry``).  Distinct from
-    :func:`pending_create` so a create entry never drives a register-only replay
-    (and vice-versa) — the op TYPE selects the replay table (DESIGN "Recovery
-    model"): a ``create`` replays seed+register, an ``import``/``connect``
-    replays register-only (NO seed).
+    The import/connect recovery signal: a non-``None`` result means an ``import`` or
+    ``connect`` was started for this box but never completed (crash before
+    ``clear_entry``).
     """
     entry = pending_entry(journal_path, box_path)
     if entry is not None and entry.get("op") in _IMPORT_OPS:

@@ -2,82 +2,31 @@
 
 ONE pure function, :func:`expand`, walks
 :mod:`kanibako.settings.settings_merge`'s raw merged
-:class:`~kanibako.settings.keystore.KeyStore` snapshot
-(``d33db5c``) and resolves every ``@``-ref (CONFIG, both bind sides) and host-side
-``$VAR`` / ``~`` (ENVIRONMENT) to terminals — TRANSITIVELY (fixpoint /
-topological), with cycle detection. It is PURE: no file / env / clock access, same
-input → same output, and it NEVER mutates the input snapshot (S19) — it builds a
-fresh :class:`~kanibako.settings.keystore.KeyStore`.
+:class:`~kanibako.settings.keystore.KeyStore` snapshot and resolves every
+``@``-ref (CONFIG, both bind sides) and host-side ``$VAR`` / ``~`` (ENVIRONMENT)
+to terminals — TRANSITIVELY (a fixpoint), with cycle detection. It is PURE, and it
+NEVER mutates the input snapshot (S19): it builds a fresh ``KeyStore``.
 
-It REUSES the existing single-expr engine
-:func:`kanibako.settings.settings_resolve.expand_expr` (the scanner: escapes, ``~``,
-``$VAR``/``${VAR}``, ``@ref``, the ``chain`` cycle-guard, ``MAX_REF_DEPTH``) and
-adds the three things that engine lacks (brief §3):
+⚑ A reference resolves to a DECLARED key or it does not resolve at all — this pass
+NEVER fabricates a default for a name it cannot find. An absent referent propagates
+ABSENCE (§6b: whole-value → the holder key is DROPPED, embedded → ``""``), and
+every other unresolvable case is an ERROR that NAMES the key: a cycle, a depth-cap
+breach, an unknown ``$VAR``, a ``@pref.*`` ref, or a binding destination that would
+resolve to no path.
 
-1. **Snapshot-backed TRANSITIVE lookup.** The ``lookup`` callback resolves a ref
-   by reading the snapshot at that dotted path AND fully expanding THAT value
-   first (recursing), so chains collapse to terminals regardless of dict order.
-   Reuses ``_expand_ref``'s ``chain``-based cycle guard. Results are MEMOIZED, so
-   the pass is a fixpoint, not re-resolution per reference.
-2. **Whole-value ``@``-ref 3-state propagation (§6b/§6h).** A value that IS
-   exactly one ``@x`` (decided by PARSE — S18, never guessed) inherits the
-   referent's 3-state through every link: referent absent → this key ABSENT
-   (dropped from the snapshot); referent present-``None`` → ``None`` (kept, the
-   §3 terminal a bind/category consumer then OMITs); else the terminal value. An
-   EMBEDDED token (``@x`` inside a larger string) is pure SUBSTITUTION via
-   ``expand_expr`` (absent/None → empty string; never deletes the key).
-3. **CONFIG-vs-ENV deferral (§6a/B6 — S17).** For a :class:`Bind`: ``host_src``
-   expands FULLY host-side (``@``-refs + ``$XDG``/``~``). ``box_dest`` expands its
-   ``@``-refs (CONFIG, same both sides) but leaves ``$XDG``/``~`` (ENVIRONMENT,
-   host ≠ box) RAW — a DEFERRED token resolved box-side at mount. The expanded
-   ``Bind.box`` may therefore still carry a ``$XDG``/``~`` token: a known, bounded
-   residue, NOT lazy config re-resolution.
+⚑ ``box_dest`` keeps its ``$XDG``/``~`` RAW (S17): ENVIRONMENT differs host vs box,
+so those tokens are DEFERRED to mount time. ``@``-refs (CONFIG) expand BOTH sides.
+An expanded ``Bind.box`` may therefore still carry a token — a known, bounded
+residue, NOT lazy config re-resolution.
 
-Cycle = hard build ERROR (``SettingsError``), covering whole-value AND embedded
-tokens (B7), with the chain in the message — KEPT DISTINCT from a legitimately
-absent/None referent (that is §6b propagation, NOT an error).
+It WRAPS :func:`kanibako.settings.settings_resolve.expand_expr` (the single-expr
+scanner) and does not modify it; it adds transitive snapshot lookup, whole-value
+3-state propagation and the CONFIG-vs-ENV deferral.
 
-LENIENT (error-COLLECTING) mode — Q9 set-time validation (spec §2a / design Q9)
-------------------------------------------------------------------------------
-:func:`expand` takes an opt-in ``collect_errors`` flag (additive, default OFF —
-STRICT mode is byte-identical to today; the launch read-path is unchanged). When
-ON, expansion resolves everything resolvable and, instead of raising / silently
-dropping, RECORDS each unresolvable leaf in an error map keyed by the leaf's
-dotted path: a dangling ``@``-ref (whole-value or embedded, target absent), an
-unknown / unset / malformed ``$VAR``, an ``@``-ref CYCLE, or a depth-cap breach.
-It returns ``(snapshot, errors)``. The pass still TERMINATES on a cycle (the
-``chain`` guard fires; lenient mode records + skips instead of raising).
-
-Set-time ``config set`` validation (the only lenient consumer) uses this to
-implement the E3 rule: apply the candidate RAW value into the merged snapshot at
-the edited key, lenient-``expand`` the result, and ALLOW iff the edited key is
-NOT in the error map (its own transitive upstream chain resolved cleanly).
-
-OUT of scope (hard boundaries): NO cascade merge / precedence
-(:mod:`kanibako.settings.settings_merge` — this consumes its output), NO
-cross-scope ``box_dest`` collision resolution (§6g — the SEPARATE downstream
-pass, today the ``store_shape`` producer + the assembly collapse), NO typed
-views (:mod:`kanibako.settings.settings_views`), NO ``config set``
-(:mod:`kanibako.settings.config_interface`). It WRAPS ``expand_expr`` and does not modify
-it: the single-expr engine is shared with the ``config.*`` / ``system.*``
-FOUNDATION path tier, which still resolves through ``resolve_value``
-(``paths.py``) rather than through this pass.
-
-Authority
----------
-* ``~/vault/rw/keystore-design.md`` §6h (transitive expansion + cycle — PRIMARY),
-  §6a (CONFIG-vs-ENV split; box-side ``$XDG``/``~`` deferred), §6b (whole-value vs
-  embedded ``@``-ref shapes), §3 (3-state).
-* Spec ``settings-keyspace-1.8.0.md`` §0, §1 (box-side XDG line ~94), §2c.
-
-Seams realized here (``plans/keystore-blocks/SEAMS.md``)
--------------------------------------------------------
-* **S17** — box-side ``$XDG``/``~`` left RAW in ``Bind.box``; ``@``-refs expand
-  BOTH sides. The concrete realization of S12's deferral contract.
-* **S18** — whole-value vs embedded ``@``-ref decided by PARSE, never by guess.
-* **S19** — expansion does NOT mutate the input snapshot (pure; fresh tree).
-* **S3** — every snapshot access uses the UNBOUND ``dict.<method>(obj, …)`` bypass
-  (a key named ``get`` / ``items`` cannot shadow the protocol into a crash).
+The per-leaf case enumeration, LENIENT mode's contract, the ``pref`` rules, the
+resolver split, the out-of-scope boundaries, the authority (design §3/§6a/§6b/§6h,
+spec §0/§1/§1A/§2a/§2c/§2h) and the seams S3/S17/S18/S19 are all in
+``llm-docs/kanibako/settings/settings_expand.py.md``.
 """
 
 from __future__ import annotations
@@ -99,10 +48,8 @@ class _Absent:
     """Sentinel: a ref resolved to a LEGITIMATELY ABSENT key (§6b propagation).
 
     Distinct from a *cycle* (which raises) and from a stored ``None`` (present-
-    None, a real terminal). A whole-value ``@``-ref to an absent key propagates
-    THIS sentinel up the chain; at the top it drops the host key from the
-    snapshot. An EMBEDDED token coerces it to ``""``. Module-private, never
-    stored, never a member of :data:`~kanibako.settings.kb_store.StoreValue`.
+    None, a real terminal). Module-private, never stored, never a member of
+    :data:`~kanibako.settings.kb_store.StoreValue`.
     """
 
     _instance: "_Absent | None" = None
@@ -120,24 +67,19 @@ class _Absent:
 #: to this; the holder key is then DROPPED from the expanded snapshot (§6b).
 _ABSENT: _Absent = _Absent()
 
-#: The top-level table holding ``pref.*`` REQUESTS (spec §2h). Its subtree is
-#: carried through UNEXPANDED and may not be ``@``-referenced — prefs "never
-#: participate in resolution as derivable keys" (§2h). One fixed token,
-#: spelled here rather than imported, to keep this module free of a
-#: ``settings_prefs`` import (which would cycle through the settings stack).
+#: The top-level table holding ``pref.*`` REQUESTS (spec §2h): carried through
+#: UNEXPANDED and never ``@``-referenceable. Spelled here rather than imported —
+#: a ``settings_prefs`` import would cycle through the settings stack.
 _PREF_ROOT = "pref"
 
 
 class _LenientDefect(Exception):
     """Internal (lenient-mode only) signal: the leaf being expanded is unresolvable.
 
-    Raised when ``collect_errors=True`` and a leaf's resolution hits a defect that
-    STRICT mode would either raise on (unknown ``$VAR`` / cycle / depth-cap) or
-    silently drop (a dangling ``@``-ref → ``_ABSENT``). Caught by
-    :meth:`_Expander._expand_node` at the OWNING leaf, which records the dotted
-    path → *reason* in the error map and omits the leaf from the lenient output. It
-    NEVER escapes :func:`expand` (a leaf-local control signal, not a user error) and
-    is never raised in strict mode.
+    Caught by :meth:`_Expander._expand_node` at the OWNING leaf, which records the
+    dotted path → *reason* in the error map and omits the leaf. It NEVER escapes
+    :func:`expand` (a leaf-local control signal, not a user error) and is never
+    raised in strict mode.
     """
 
     def __init__(self, reason: str) -> None:
@@ -148,33 +90,19 @@ class _LenientDefect(Exception):
 def _is_whole_value_ref(value: str) -> str | None:
     """Return the dotted ref name iff *value* IS exactly one whole-value ``@``-ref.
 
-    S18 — the shape is decided by PARSE, never guessed: a value is whole-value iff
-    it is ONE ``@``-reference (:func:`~kanibako.settings.settings_resolve.match_ref` — the
-    shared grammar, so BOTH the bare ``@a.b`` and braced ``@{a.b}`` spellings
-    qualify) and NOTHING else (no leading/trailing characters, no embedded
-    literal). ``"@a.b"`` / ``"@{a.b}"`` → ``"a.b"``; ``"@a-@b"`` / ``"x@a"`` /
-    ``"@a/c"`` / ``"@a "`` / ``"@{a.b}x"`` → ``None`` (embedded — handled by
-    :func:`~kanibako.settings.settings_resolve.expand_expr` substitution). A leading ``~``
-    or ``$`` is therefore never whole-value (those are environment tokens, not
-    config refs).
+    S18 — the shape is decided by PARSE, never guessed, via the shared
+    :func:`~kanibako.settings.settings_resolve.match_ref` grammar. ``"@a.b"`` /
+    ``"@{a.b}"`` → ``"a.b"``; anything with a leading, trailing or embedded literal
+    → ``None`` (the embedded path, handled by ``expand_expr`` substitution).
 
     ⚑ THE BRACED FORM MUST LAND HERE, NOT ON THE EMBEDDED PATH. This predicate is
-    the ONLY thing that decides the shape, and the two paths differ in a way that
-    is invisible until it bites: a whole-value ref inherits the referent's full
-    3-state VERBATIM (absent → the key is dropped; present-``None`` → ``None``),
-    while an embedded token is pure string substitution and ``_lookup_str``
-    coerces absent/``None`` to ``""``. So a braced whole-value ref misrouted to the
-    embedded path would silently turn a ``None`` (the §3 "omit this bind"
+    the ONLY thing that decides the shape, and a braced whole-value ref misrouted
+    to the embedded path silently turns a present-``None`` (the §3 "omit this bind"
     terminal) into an empty-string terminal — a real value where the spec means
-    absence. ``@{a.b}`` and ``@a.b`` therefore resolve through the SAME call.
+    absence. See the llm-doc.
 
-    NEVER RAISES — a total predicate. A malformed reference (``"@{a.b"``,
-    ``"@{"``) answers ``None`` so it falls through to
-    :meth:`_Expander._expand_embedded`, where ``expand_expr`` raises it with the
-    same message from the same place it always has. That keeps error provenance
-    identical for malformed input in STRICT and LENIENT mode alike; the only
-    behaviour delta in this function is that a WELL-FORMED braced ref now answers
-    its name instead of ``None``.
+    NEVER RAISES — a total predicate; a malformed reference answers ``None`` and
+    ``expand_expr`` raises it downstream with unchanged provenance.
     """
     if not value or value[0] != "@":
         return None
@@ -201,26 +129,9 @@ def expand(
     *snapshot* is block 2b's raw merged store (refs/vars/``~`` intact). *ctx*
     carries the host-side expansion namespace (``host_home``, ``xdg``,
     ``agent_name``, ``workset_name``) consumed for host-side ``$VAR`` / ``~``.
-
-    Every value is resolved TRANSITIVELY to a fixpoint (§6h): an ``@``-ref reads
-    the snapshot at its dotted path and expands THAT value first, so a multi-hop
-    chain (``A=@B``, ``B=@C``, ``C=term``) collapses to ``term`` regardless of
-    dict order. Per leaf:
-
-    * **scalar str** → expanded host-side (``space="host"``); a whole-value
-      ``@``-ref inherits the referent's 3-state (absent → the key is DROPPED;
-      present-None → ``None``); an embedded token substitutes per ``expand_expr``.
-    * **Bind** → ``host_src`` expanded FULLY host-side; ``box_dest`` expands its
-      ``@``-refs but leaves ``$XDG``/``~`` RAW (deferred box-side, S17). If a
-      whole-value ``host_src`` ``@``-ref resolves absent/None, the WHOLE Bind is
-      dropped / carried as that terminal (§3 — a bind/category consumer OMITs it).
-    * **BindEntry** (the dest-keyed shape, R-5/R-6) → ``src`` expanded exactly as
-      ``Bind.host_src``, with the SAME 3-state rule; the destination is the node
-      KEY, so it is expanded on the walk (``_expand_dest_key``) in the same
-      ``$XDG``/``~``-deferred space ``box_dest`` uses. Two stored dests that
-      resolve to ONE destination RAISE rather than silently clobbering.
-    * **non-str scalar** (``int`` / ``float`` / ``bool`` / ``None`` / ``list``) →
-      carried verbatim (no token to expand).
+    Every value is resolved TRANSITIVELY to a fixpoint (§6h), so a multi-hop chain
+    collapses to its terminal regardless of dict order. The per-leaf rules for
+    each value shape are enumerated in the llm-doc.
 
     STRICT mode (``collect_errors=False``, the default — the live launch read-path):
     a CYCLE (whole-value or embedded — B7) raises :class:`SettingsError` with the
@@ -228,12 +139,9 @@ def expand(
     not raised). Returns the fresh expanded :class:`KeyStore`.
 
     LENIENT mode (``collect_errors=True`` — Q9 set-time validation only): nothing
-    raises. Each leaf whose resolution hits a DEFECT — a dangling ``@``-ref
-    (whole-value or embedded, target absent), an unknown/unset/malformed ``$VAR``,
-    an ``@``-ref CYCLE, or a depth-cap breach — is RECORDED in an error map keyed by
-    the leaf's dotted path (path → human reason) and OMITTED from the output, while
-    every clean leaf still resolves. The pass terminates on a cycle (the ``chain``
-    guard records + skips). Returns ``(snapshot, errors)``.
+    raises; each DEFECTIVE leaf is RECORDED in an error map keyed by its dotted
+    path (path → human reason) and OMITTED, while every clean leaf still resolves.
+    Returns ``(snapshot, errors)``.
 
     The input snapshot is never mutated (S19).
     """
@@ -245,11 +153,10 @@ def expand(
 
 
 class _Expander:
-    """The per-pass expansion state: the source snapshot, ctx, and the memo.
+    """The per-pass expansion state: the source snapshot, ctx, and the fixpoint memo.
 
-    Holds the fixpoint memo of fully-resolved values keyed by dotted snapshot
-    path. One instance per :func:`expand` call (pure — no cross-call state). The
-    snapshot is read-only here (S19); the fresh tree is built in :meth:`run`.
+    One instance per :func:`expand` call (pure — no cross-call state). The snapshot
+    is read-only here (S19); the fresh tree is built in :meth:`run`.
     """
 
     def __init__(
@@ -257,14 +164,13 @@ class _Expander:
     ) -> None:
         self._snapshot = snapshot
         self._ctx = ctx
-        # Memo: dotted path -> fully-resolved value (or _ABSENT). A path mid-
-        # resolution is NOT in the memo; the ``chain`` argument detects a cycle
-        # before the memo would (a self-revisit). None and _ABSENT are valid memo
-        # values (present-None terminal; legitimately-absent ref), so absence
-        # from the memo is tested with ``in``, never by a sentinel value.
+        # Memo: dotted path -> fully-resolved value (or _ABSENT). ⚑ None and
+        # _ABSENT are both VALID memo values, so membership is tested with ``in``,
+        # never by comparing to a sentinel. A path mid-resolution is not in the
+        # memo; the ``chain`` argument is what detects a cycle.
         self._memo: dict[str, StoreValue | _Absent] = {}
-        # LENIENT mode (Q9): collect defects instead of raising/silent-drop. The
-        # error map is keyed by the OWNING leaf's dotted path → human reason.
+        # LENIENT mode (Q9): collect defects instead of raising/silent-drop, keyed
+        # by the OWNING leaf's dotted path → human reason.
         self._collect_errors = collect_errors
         self.errors: dict[str, str] = {}
 
@@ -279,10 +185,10 @@ class _Expander:
     def _expand_node(self, node: KeyStore, *, path: tuple[str, ...]) -> KeyStore:
         """Build a fresh expanded KeyStore mirroring *node* at *path*.
 
-        A child KeyStore recurses; a leaf is expanded via :meth:`_expand_leaf`. A
-        whole-value ``@``-ref leaf that resolves ABSENT is DROPPED (§6b) — the key
-        simply does not appear in the output node. Uses the UNBOUND ``dict``
-        protocol (S3) so a key named ``keys`` / ``items`` / ``get`` cannot shadow.
+        A child KeyStore recurses; a leaf goes to :meth:`_expand_leaf`; a
+        whole-value ``@``-ref leaf that resolves ABSENT is DROPPED (§6b). Uses the
+        UNBOUND ``dict`` protocol (S3) so a key named ``keys`` / ``items`` / ``get``
+        cannot shadow it.
         """
         out = KeyStore()
         for key in dict.keys(node):
@@ -290,18 +196,11 @@ class _Expander:
             value = dict.__getitem__(node, key)
             if not path and key == _PREF_ROOT and isinstance(value, KeyStore):
                 # ⚑ The ``pref`` subtree is CARRIED THROUGH VERBATIM, unexpanded
-                # (spec §2h: "pref.* keys never participate in resolution
-                # as derivable keys — resolve_key_set ignores them").
-                #
-                # This is what keeps the RAW REQUEST readable after resolution:
-                # ``--effective`` shows BOTH the request (here, raw) and the
-                # result (at the TARGET key, resolved), which is what makes "why
-                # did system.agent resolve to zippity" answerable from the
-                # snapshot. Expanding it would also resolve every pref value
-                # TWICE, once here and once at its target.
-                #
-                # Guarded on the ROOT path (``not path``) so a category
-                # legitimately NAMED ``pref`` deeper in the tree is unaffected.
+                # (spec §2h: prefs never participate in resolution as derivable
+                # keys). Expanding it would resolve every pref value TWICE and
+                # would destroy the RAW REQUEST ``--effective`` displays. Guarded
+                # on the ROOT path (``not path``) so a category legitimately NAMED
+                # ``pref`` deeper in the tree is unaffected.
                 from kanibako.settings.settings_merge import _deep_copy_store
 
                 out[key] = _deep_copy_store(value)
@@ -311,10 +210,8 @@ class _Expander:
                 continue
             if self._collect_errors:
                 # LENIENT (Q9): a defect anywhere in THIS leaf's transitive chain
-                # surfaces here (a dangling ref / unknown $VAR / cycle / depth-cap
-                # raises ``_LenientDefect`` / ``SettingsError`` from the resolver).
-                # Record it against the OWNING leaf path and OMIT the leaf; every
-                # clean leaf still resolves. STRICT mode never enters this branch.
+                # surfaces here. Record it against the OWNING leaf path and OMIT
+                # the leaf; every clean leaf still resolves. STRICT never enters.
                 try:
                     out_key = self._expand_dest_key(key, value, chain=child_path)
                     resolved = self._expand_leaf(value, path=child_path)
@@ -328,14 +225,11 @@ class _Expander:
             if resolved is _ABSENT:
                 continue  # whole-value ref to an absent key → drop this key (§6b).
             if isinstance(value, BindEntry) and dict.__contains__(out, out_key):
-                # Two DIFFERENT stored dests expanded to ONE destination (files
-                # store UNRESOLVED, so ``@meta.box.path/home`` and a literal
-                # spelling of that same path are two distinct keys that resolve to
-                # one place — design §2b-CAVEAT). Installing the second would
-                # silently DELETE the first, which is a data loss no downstream
-                # check can see, because only one entry would ever reach it.
-                # Raised rather than recorded even in LENIENT mode: the fault is
-                # the PAIR, so there is no single owning leaf to attribute it to.
+                # ⚑ Two DIFFERENT stored dests expanded to ONE destination (files
+                # store UNRESOLVED — design §2b-CAVEAT). Installing the second
+                # would silently DELETE the first, a data loss no downstream check
+                # can see. Raised even in LENIENT mode: the fault is the PAIR, so
+                # there is no single owning leaf to attribute it to.
                 raise SettingsError(
                     f"Two bindings under {'.'.join(path) or '<root>'} resolve to "
                     f"the same destination {out_key!r}; the second entry "
@@ -349,22 +243,14 @@ class _Expander:
     ) -> str:
         """The OUTPUT key for *value* — identity, EXCEPT under a dest-keyed arm.
 
-        For every value shape but :class:`BindEntry` a node key is a plain
-        keyspace token and is carried through verbatim. A :class:`BindEntry`
-        lives in a DEST-KEYED bindings arm (R-5/R-6), where the destination has
-        moved out of the value and become the mapping KEY — so the key, not the
-        value, is the box-side path EXPRESSION and it expands exactly as
-        ``Bind.box`` does: ``@``-refs resolved, ``$XDG``/``~`` left RAW for the
-        box side (``space="defer"``, S17).
+        A :class:`BindEntry` lives in a DEST-KEYED bindings arm (R-5/R-6) where the
+        destination has become the mapping KEY, so the key is the box-side path
+        EXPRESSION and expands exactly as ``Bind.box`` does (``space="defer"``,
+        S17). Every other value shape carries its key through verbatim.
 
         ⚑ Discrimination is by TYPE (``isinstance(value, BindEntry)``), never by
         the key's spelling or the value's arity — a legacy :class:`Bind` and a
         :class:`BindEntry` are both 2-element-legal with opposite meanings.
-
-        A whole-value ``@``-ref destination that resolves absent / present-``None``
-        RAISES, for the same reason the name-keyed :meth:`_expand_bind` does: a
-        destination cannot resolve to no path, and an empty dest is a mount
-        foot-gun rather than a legitimate omission.
         """
         if not isinstance(value, BindEntry):
             return key
@@ -382,13 +268,12 @@ class _Expander:
     def _expand_leaf(
         self, value: StoreValue, *, path: tuple[str, ...]
     ) -> StoreValue | _Absent:
-        """Expand a single non-KeyStore leaf (scalar / Bind / list / None).
+        """Expand a single non-KeyStore leaf (scalar / Bind / BindEntry / list / None).
 
         Returns the expanded terminal, ``None`` (present-None inherited from a
-        whole-value ref), or :data:`_ABSENT` (whole-value ref to an absent key →
-        the caller DROPS the key). The ``chain`` starts at this leaf's own dotted
-        path so a self-referential whole-value ``@`` to the leaf's own key is a
-        cycle, not an infinite recurse.
+        whole-value ref), or :data:`_ABSENT` (the caller DROPS the key). The
+        ``chain`` starts at this leaf's own dotted path so a self-referential
+        whole-value ``@`` is a cycle, not an infinite recurse.
         """
         chain = (".".join(path),)
         if isinstance(value, Bind):
@@ -397,32 +282,26 @@ class _Expander:
             return self._expand_bind_entry(value, chain=chain)
         if isinstance(value, str):
             return self._expand_str(value, space="host", chain=chain)
-        # int / float / bool / None / list[str] — no token to expand, carried
-        # verbatim. (A present-None stored leaf is a real terminal, not _ABSENT.)
+        # No token to expand. (A present-None leaf is a terminal, not _ABSENT.)
         return value
 
     def _expand_bind(self, bind: Bind, *, chain: tuple[str, ...]) -> StoreValue | _Absent:
         """Expand a :class:`Bind`: ``host_src`` fully host-side; ``box_dest``
         ``@``-refs only (``$XDG``/``~`` left RAW, deferred box-side — S17).
 
-        If the ``host_src`` is a whole-value ``@``-ref that resolves absent/None,
-        the WHOLE Bind takes that 3-state (the binding cannot point anywhere): an
-        absent host → ``_ABSENT`` (drop the bind); a present-None host → ``None``
-        (the §3 bind/category OMIT terminal). Otherwise both halves are strings;
-        ``opts`` is carried verbatim (it never holds tokens).
+        A whole-value ``host_src`` ref that resolves absent/None gives the WHOLE
+        Bind that 3-state — the binding cannot point anywhere. ``opts`` is carried
+        verbatim; it never holds tokens.
         """
         host = self._expand_str(bind.host, space="host", chain=chain)
         if host is _ABSENT or host is None:
             # Whole-value host ref absent/None → the bind inherits that 3-state.
             return host
         box = self._expand_str(bind.box, space="defer", chain=chain)
-        # A box_dest is a path EXPRESSION, not a key whose absence deletes the bind
-        # — so it never returns _ABSENT/None from the EMBEDDED path (an embedded
-        # token coerces to ""). The ONLY way box is _ABSENT/None here is a
-        # WHOLE-VALUE box_dest @-ref to an absent/present-None config key. The spec
-        # has NO whole-value box_dest (every box_dest is ~/… or $XDG… or an embedded
-        # @-path), so this is an unreachable-on-spec-forms config error; rather than
-        # silently emit an empty dest (a mount foot-gun), raise loudly with the bind.
+        # ⚑ Reads as dead code and is not: a box_dest is a path EXPRESSION, not a
+        # key whose absence deletes the bind, and the spec has NO whole-value
+        # box_dest — so this arm is unreachable on spec forms. Raise loudly rather
+        # than silently emit an empty dest, which is a mount foot-gun.
         if box is _ABSENT or box is None:
             state = "absent" if box is _ABSENT else "present-None"
             raise SettingsError(
@@ -441,13 +320,8 @@ class _Expander:
 
         The dest-keyed counterpart of :meth:`_expand_bind`. It expands ONE half,
         because the other half — the destination — is the mapping KEY and is
-        expanded by :meth:`_expand_dest_key` on the node walk (R-5/R-6).
-
-        The 3-state rule is unchanged from the name-keyed shape: if ``src`` is a
-        whole-value ``@``-ref that resolves absent, the WHOLE entry is
-        :data:`_ABSENT` (drop it — the binding cannot point anywhere); a
-        present-``None`` ``src`` yields ``None`` (the §3 bind/category OMIT
-        terminal). ``opts`` never holds tokens and is carried verbatim.
+        expanded by :meth:`_expand_dest_key` on the node walk (R-5/R-6). The
+        3-state rule is unchanged from the name-keyed shape.
         """
         src = self._expand_str(entry.src, space="host", chain=chain)
         if src is _ABSENT or src is None:
@@ -465,21 +339,16 @@ class _Expander:
     ) -> StoreValue | _Absent:
         """Expand a single string leaf in *space* (``"host"`` or ``"defer"``).
 
-        WHOLE-VALUE ``@``-ref (S18) → resolve the referent's full 3-state and
-        INHERIT it (``_ABSENT`` / ``None`` / the terminal). EMBEDDED token (or a
-        plain literal) → :func:`~kanibako.settings.settings_resolve.expand_expr`
-        substitution (absent/None token → empty string), in the given space.
+        WHOLE-VALUE ``@``-ref (S18) → INHERIT the referent's full 3-state
+        (``_ABSENT`` / ``None`` / the terminal). EMBEDDED token or plain literal →
+        ``expand_expr`` substitution (absent/None token → empty string).
 
-        *space*: ``"host"`` expands ``~``/``$VAR`` host-side (``host_src``,
-        scalars); ``"defer"`` leaves ``~``/``$VAR`` RAW (box-side env, S17) while
-        still expanding ``@``-refs. ``@``-refs (CONFIG) expand in BOTH spaces.
+        *space*: ``"host"`` expands ``~``/``$VAR`` host-side; ``"defer"`` leaves
+        them RAW for the box side (S17). ``@``-refs expand in BOTH spaces.
         """
         ref_name = _is_whole_value_ref(value)
         if ref_name is not None:
-            # Whole-value: inherit the referent's 3-state the full chain (§6b/§6h).
             return self._resolve_ref(ref_name, chain=(*chain, ref_name))
-        # Embedded token / plain literal → scanner substitution. The lookup
-        # coerces absent/None to "" (embedded rule, §6b); a cycle still raises.
         return self._expand_embedded(value, space=space, chain=chain)
 
     # ------------------------------------------------------------------ #
@@ -491,28 +360,23 @@ class _Expander:
     ) -> StoreValue | _Absent:
         """Fully resolve the value at snapshot path *dotted*, transitively (§6h).
 
-        Reads the RAW value at *dotted* in the source snapshot, then expands THAT
-        value (recursing through its own ``@``-refs) so the result is a terminal.
-        MEMOIZED by dotted path (the fixpoint). 3-state: an absent path →
-        :data:`_ABSENT`; a present-None leaf → ``None``; else the expanded value.
+        Reads the RAW value at *dotted*, then expands THAT value (recursing) so the
+        result is a terminal. MEMOIZED by dotted path — the fixpoint. 3-state: an
+        absent path → :data:`_ABSENT`; a present-None leaf → ``None``; else the
+        expanded value. The depth cap (``MAX_REF_DEPTH``) bounds pathological
+        non-cyclic chains.
 
-        *chain* is the in-progress ref trail (ending in *dotted*) for the cycle
-        guard: it was already checked + appended by the caller (``_expand_ref`` /
-        :meth:`_expand_str`), mirroring ``expand_expr``'s contract. The depth cap
-        (``MAX_REF_DEPTH``) bounds pathological non-cyclic chains.
+        *chain* is the in-progress ref trail, ending in *dotted*: already checked
+        and appended by the caller, mirroring ``expand_expr``'s contract.
         """
-        # CYCLE GUARD (B7 — covers whole-value AND embedded paths). *chain* ends in
-        # *dotted* (the caller appended it, mirroring ``expand_expr``'s contract); a
-        # PRIOR occurrence of *dotted* in the chain means we re-entered a ref still
-        # in progress → a cycle, raised with the full trail. Checked BEFORE the memo
-        # so a cycle is never masked by a half-built memo entry (none is stored
-        # mid-resolution anyway).
+        # CYCLE GUARD (B7 — whole-value AND embedded paths): a PRIOR occurrence of
+        # *dotted* means we re-entered a ref still in progress. ⚑ Checked BEFORE
+        # the memo so a cycle can never be masked by a half-built memo entry.
         if dotted in chain[:-1]:
             cycle = " -> ".join(chain)
             if self._collect_errors:
-                # LENIENT (Q9): a cycle is a defect to RECORD against the owning
-                # leaf, not a hard raise. The chain guard still fires here, so the
-                # pass TERMINATES (we never re-enter the in-progress ref).
+                # LENIENT (Q9): RECORD, do not raise. The guard still fires here,
+                # so the pass TERMINATES rather than re-entering the ref.
                 raise _LenientDefect(f"cyclic @-reference: {cycle}")
             raise SettingsError(f"Cyclic @-reference: {cycle}")
         if dotted in self._memo:
@@ -530,9 +394,8 @@ class _Expander:
         raw = self._lookup_raw(dotted)
         if raw is _ABSENT:
             if self._collect_errors:
-                # LENIENT (Q9): a whole-value/transitive ``@``-ref to an ABSENT key
-                # is a DANGLING reference — a set-time defect to record, NOT the
-                # strict §6b silent drop. Raised so the OWNING leaf attributes it.
+                # LENIENT (Q9): a DANGLING ref is a set-time defect to record, NOT
+                # the strict §6b silent drop. Raised so the OWNING leaf gets it.
                 raise _LenientDefect(
                     f"dangling @-reference '@{dotted}' "
                     f"(no such config key in the keyspace)"
@@ -540,14 +403,10 @@ class _Expander:
             self._memo[dotted] = _ABSENT
             return _ABSENT
         # Resolve the referent's value AS A LEAF, with the cycle chain threaded so
-        # a ref back into this path (directly or transitively) is caught. A nested
-        # KeyStore referent (a whole subtree) is degenerate — the spec never refs a
-        # whole subtree — but it MUST be resolved through ``_expand_node`` so the
-        # returned subtree is (a) FRESH, not an alias of the input (S19 — a bare
-        # ``resolved = raw`` would make ``out[...] is snapshot[...]`` and let a later
-        # output edit leak back into a partial), and (b) fully EXPANDED (its inner
-        # ``@``/``$`` tokens resolved), matching how the same subtree is expanded at
-        # its own location. The dotted path seeds child cycle chains.
+        # a ref back into this path (directly or transitively) is caught.
+        # ⚑ A nested KeyStore referent is degenerate, but it MUST route through
+        # ``_expand_node``: a bare ``resolved = raw`` would ALIAS the input tree
+        # (S19) and would leave the subtree's own tokens unexpanded.
         if isinstance(raw, KeyStore):
             resolved: StoreValue | _Absent = self._expand_node(
                 raw, path=tuple(dotted.split("."))
@@ -555,8 +414,7 @@ class _Expander:
         elif isinstance(raw, Bind):
             resolved = self._expand_bind(raw, chain=chain)
         elif isinstance(raw, BindEntry):
-            # A ref landing ON a dest-keyed entry resolves the entry alone; its
-            # destination is the KEY, which is not reachable through a value ref.
+            # The entry alone: its destination is the KEY, unreachable by value ref.
             resolved = self._expand_bind_entry(raw, chain=chain)
         elif isinstance(raw, str):
             resolved = self._expand_str(raw, space="host", chain=chain)
@@ -570,11 +428,8 @@ class _Expander:
 
         Resolver SPLIT (spec §1A / JC-2): a ``config.*`` ref routes to the Layer-1
         CONFIG-key FOUNDATION (``ctx.config``), NOT the settings snapshot — config
-        is a foundation, not a cascade level.  Every other prefix
-        (``system.*``/``workset.*``/``box.*``/``agent.*``) walks the merged
-        snapshot.  Foundation values are already-resolved absolute paths (terminals),
-        so a ``config.*`` hit returns its string verbatim; a ``config.*`` miss is
-        :data:`_ABSENT` (a dangling config ref).
+        is a foundation, not a cascade level. Every other prefix walks the merged
+        snapshot.
 
         Walks the dotted segments with the UNBOUND ``dict.get(node, seg, _ABSENT)``
         probe (S3): any missing segment, or a non-KeyStore node reached before the
@@ -582,13 +437,10 @@ class _Expander:
         segment's value is returned verbatim (a present-``None`` leaf → ``None``).
         """
         if dotted == _PREF_ROOT or dotted.startswith(f"{_PREF_ROOT}."):
-            # ⚑ A ``@pref.…`` reference is REFUSED, not resolved (spec §2h
-            # — prefs "never participate in resolution as derivable keys").
-            # RAISED rather than answered ``_ABSENT``: absent would silently
-            # DROP the referring key (§6b whole-value propagation), which is the
-            # class of failure this phase exists to eliminate. The raise lands in
-            # the lenient error map too — ``_expand_node`` catches SettingsError
-            # in collect_errors mode and attributes it to the owning leaf.
+            # ⚑ A ``@pref.…`` reference is REFUSED, not resolved (spec §2h).
+            # RAISED rather than answered ``_ABSENT``: absent would silently DROP
+            # the referring key (§6b), the failure class this phase exists to
+            # eliminate. ``_expand_node`` catches it into the lenient error map.
             raise SettingsError(
                 f"'@{dotted}' is not resolvable: a pref is a REQUEST, not a "
                 f"value (spec §2h). Reference the TARGET key instead."
@@ -621,12 +473,8 @@ class _Expander:
         An ``@``-ref token resolves through :meth:`_lookup_str` (absent/None →
         ``""``); ``~``/``$VAR`` expand host-side for ``space="host"`` and are left
         RAW (``defer_env=True``) for ``space="defer"`` (S17). A cycle reached
-        through an embedded token still raises (B7 — the chain guard is in
-        ``expand_expr``'s ``_expand_ref`` AND in :meth:`_resolve_ref`).
-
-        Reuses the SINGLE ``expand_expr`` scanner for BOTH spaces (no fork): the
-        box-side deferral is the engine's additive ``defer_env`` flag, proposed in
-        chat and held pending the director's call.
+        through an embedded token still raises (B7). ONE scanner serves both
+        spaces — no fork; the deferral is the engine's additive ``defer_env`` flag.
         """
         return expand_expr(
             value,
@@ -641,27 +489,22 @@ class _Expander:
         """``expand_expr`` lookup: resolve *dotted* and coerce to a SUBSTITUTION
         string (the embedded-token rule, §6b).
 
-        Reuses the transitive resolver (so embedded refs are also fixpoint /
-        cycle-guarded — B7). STRICT mode: an absent or present-None referent → ``""``
-        (empty substitution, never deletes the host key). A resolved scalar/Bind/list
-        → its string form. *chain* is ``expand_expr``'s already-extended trail.
+        Reuses the transitive resolver, so embedded refs are fixpoint- and
+        cycle-guarded too (B7). STRICT: an absent or present-None referent → ``""``,
+        an empty substitution that never deletes the host key. *chain* is
+        ``expand_expr``'s already-extended trail.
 
-        LENIENT mode (Q9): an ABSENT referent does NOT reach the ``""`` coercion —
-        ``_resolve_ref`` raises ``_LenientDefect`` first (an embedded dangling ref is
-        a set-time DEFECT, per the director's 2026-06-29 ruling, attributed to the
-        owning edited leaf). A present-None referent is still a legitimate ``""``
-        (not a defect). So the strict embedded-``""`` behavior is unchanged; only the
-        absent case diverges, and only when ``collect_errors=True``.
+        LENIENT (Q9): an ABSENT referent never reaches that coercion —
+        ``_resolve_ref`` raises ``_LenientDefect`` first. A present-None referent is
+        still a legitimate ``""``. Only the absent case diverges.
         """
         resolved = self._resolve_ref(dotted, chain=chain)
         if resolved is _ABSENT or resolved is None:
             return ""
         if isinstance(resolved, Bind):
-            # An embedded ref to a whole Bind is degenerate, but be total: a Bind
-            # has no single string form, so substitute its host (the source path).
+            # Degenerate but total: a Bind has no single string form → its host.
             return resolved.host
         if isinstance(resolved, BindEntry):
-            # Same degenerate case for the dest-keyed shape: substitute the src
-            # (the source path) — the destination is the key, not part of the value.
+            # Same, dest-keyed: the destination is the key, not part of the value.
             return resolved.src
         return str(resolved)

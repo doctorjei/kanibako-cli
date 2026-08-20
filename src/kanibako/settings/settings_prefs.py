@@ -10,47 +10,31 @@ pref.system.agent         | <agent name>   SELECTION — "I want to use this age
 pref.agent.<agent>.<key>  | <value>        CONFIGURATION — a value for that agent, at agent scope.
 ```
 
-How it works here (and why there is no recompute LOOP)
-------------------------------------------------------
-§2h says prefs are expanded at the START of their level and the preceding levels
-are then **RECOMPUTED** — *"I should have said recompute. We will be careful
-about it."* That describes a STAGED resolver. Ours is single-shot
-(``assemble_levels`` → ``merge`` → ``expand``), so prefs are collected BEFORE the
-merge and installed as two additional cascade LEVELS. Recompute is then satisfied
-*a fortiori*: no value derived from the old value can be stale, because at
-install time nothing has been resolved at all.
+⚑ Prefs are collected BEFORE the merge and installed as two additional cascade
+LEVELS, one per pref-legal level, placed immediately BELOW that level's own
+partial. §2h's **RECOMPUTE** is then satisfied *a fortiori*. Do NOT instead patch
+the EXPANDED snapshot afterwards, beside ``_materialize_box_agent_mirror`` /
+``_install_derived_bindings`` — those are legitimate post-expand ``meta.*``
+materialisations, a pref is not, because a pref's value is an INPUT to
+resolution. That is the DELTA failure mode §2h warns about;
+``tests/test_settings/test_settings_launch.py``
+``TestPrefRecomputeNotDelta.test_a_key_derived_from_a_prefd_value_updates`` is the
+discriminator.
 
-⚑ The DELTA failure mode the spec warns about is reachable only by the tempting
-wrong implementation — patching the EXPANDED snapshot afterwards, beside
-``_materialize_box_agent_mirror`` / ``_install_derived_bindings``. Those are
-legitimate post-expand ``meta.*`` materialisations; a pref is NOT, because a
-pref's value is an INPUT to resolution. ``tests/test_settings_prefs.py``
-``test_pref_propagates_to_a_derived_key`` is the discriminator.
-
-**Placement** (``settings_launch.build_launch_snapshot``), MOST-SPECIFIC-FIRST::
-
-    [*box_agent_folds, box, BOX_PREFS, workset, WORKSET_PREFS, …]
-
-Each level's overlay sits immediately BELOW that level's own partial, because
-§2h expands prefs *before the level resolves* — so the level's own keys are
-applied after and win. ``BOX_PREFS`` precedes ``WORKSET_PREFS``, which is
-box-beats-workset by assignment order (§1A). Nothing LEGAL contends
-with either overlay: a box or workset file may not set ``system.agent`` or
-``agent.<a>.*`` at all (upward writes, dropped by ``_drop_upward_scopes``).
-
-Termination
------------
-§2h's bound is that no pref may change which files feed the cascade. Two
-independent guarantees: the LOCATOR-CLOSURE filter below, and the measured fact
-that the pref-legal file pair comes from ``paths._box_settings_files`` — the
-runtime TREEWALK — which consults no settings key at all. That second fact is
-what makes :func:`collect_prefs` safe to call as a targeted PRE-READ before the
-cascade runs, which is what agent selection needs.
+⚑ TERMINATION: no pref may change which files feed the cascade. Two independent
+guarantees — the LOCATOR-CLOSURE filter below, and the pref-legal file pair
+coming from ``paths._box_settings_files``, a runtime TREEWALK that consults no
+settings key at all. The second is what makes :func:`collect_prefs` safe to call
+as a targeted PRE-READ before the cascade runs, which is what agent SELECTION
+needs.
 
 ⚑ ``pref.system.agent`` DOES change a cascade input (it selects
 ``meta.agent.<agent>.settings``). That is safe, and deliberately excluded from
 the closure, because an AGENT file may not carry prefs — so a re-selected agent
 file cannot introduce new requests. See :data:`LOCATOR_CLOSURE`.
+
+Placement order, the recompute argument and the termination proof in full:
+``llm-docs/kanibako/settings/settings_prefs.py.md``.
 """
 
 from __future__ import annotations
@@ -80,31 +64,19 @@ PREF_ROOT: Final[str] = "pref"
 #: convenience."*
 PREF_LEGAL_LEVELS: Final[tuple[str, ...]] = ("workset", "box")
 
-#: The ALLOWLIST (spec §2h) — a list of ENTRIES, each either one key
-#: or a KEY SET written with §0's glob convention (``*`` = exactly ONE segment,
-#: ``**`` = the remaining tail at any depth, one-or-more by construction).
-#: Nothing else is requestable today.
+#: The ALLOWLIST (spec §2h) — a list of ENTRIES, each either one key or a KEY SET
+#: written with §0's glob convention (:func:`glob_match`). Nothing else is
+#: requestable today.
 ALLOWLIST: Final[tuple[str, ...]] = ("system.agent", "agent.*.**")
 
 #: The LOCATOR CLOSURE (spec §2h) — the forbidden-tier arm that is a
 #: **TERMINATION guarantee, not tidiness**: a key here relocates a cascade-input
 #: settings FILE, so requesting it from a lower level could pull in a different
 #: file carrying its own prefs, which could relocate again — unbounded, and able
-#: to oscillate between two files pointing at each other.
-#:
-#: * ``workset.boxes`` → ``meta.box.path`` (``@workset.boxes[/@meta.box.name]``,
-#:   §2c) → ``meta.box.settings`` (``@meta.box.path/settings.yaml``,
-#:   §2c ALL PROJECTS) → THE BOX SETTINGS FILE, i.e. possibly the very file
-#:   the request came from.
-#: * ``workset.kuid`` → ``meta.box.name`` for STANDALONE
-#:   (``<@workset.kuid>_%leaf%``, §2c) → the ``meta.box.path`` LEAF → the same
-#:   chain, one hop further out.
-#:
-#: ⚑ WHY ONLY TWO, where §2h's sketch lists seven: ``config.data``,
-#: ``config.primary_workset``, ``meta.workset.path``, ``meta.box.path`` and
-#: ``meta.box.name`` are already barred by the CATEGORICAL tier (``config.*`` /
-#: ``meta.*``). This tier holds only the SETTABLE, non-meta, non-config keys in
-#: the chain. The tiers are independent filters; a key covered by both is fine.
+#: to oscillate between two files pointing at each other. Both members lead to
+#: THE BOX SETTINGS FILE: ``workset.boxes`` → ``meta.box.path`` →
+#: ``meta.box.settings`` (§2c), and ``workset.kuid`` → the STANDALONE
+#: ``meta.box.name`` → the same chain one hop further out.
 #:
 #: ⚑⚑ ``system.agent`` IS DELIBERATELY EXCLUDED even though
 #: ``meta.agent.<agent>.settings`` derives from it (§2d). It is the whole
@@ -113,20 +85,11 @@ ALLOWLIST: Final[tuple[str, ...]] = ("system.agent", "agent.*.**")
 #: capture ``system.agent`` and break the headline feature** — read this before
 #: implementing the TODO below.
 #:
-#: ⚑ NOT in the closure, so nobody adds them speculatively: ``workset.registry``
-#: (box MEMBERSHIP index, not a cascade-input settings file),
-#: ``workset.template`` / ``<scope>.canon`` (seed/bind sources),
-#: ``system.cache`` / ``system.runtime`` (no cascade file under them).
-#:
-#: **TODO (agreed, not now) — DERIVE this set, do not hand-list it** (spec §2h
-#: ): take every cascade-input anchor (``meta.workset.settings``,
-#: ``meta.box.settings``, ``meta.agent.<agent>.settings``, the base/system files)
-#: and forbid the TRANSITIVE CLOSURE of the keys they derive from. A hand-written
-#: list rots the moment someone adds a derivation; a computed closure can be
-#: asserted by the consistency checker and yields a precise error:
-#: *"pref.workset.boxes forbidden: meta.box.settings derives from it."*
-#: Accepted consequence: the closure includes ``workset.boxes``, which stays
-#: settable in a workset FILE — only REQUESTING it from a lower level is barred.
+#: **TODO (agreed, not now) — DERIVE this set, do not hand-list it** (spec §2h):
+#: a hand-written list rots the moment someone adds a derivation. Read the
+#: llm-doc's LOCATOR CLOSURE section first — it carries the shape the derivation
+#: must take, why only TWO keys are listed where §2h's sketch lists seven, and
+#: the near-miss keys deliberately NOT in the closure.
 LOCATOR_CLOSURE: Final[frozenset[str]] = frozenset({
     "workset.boxes",
     "workset.kuid",
@@ -150,10 +113,9 @@ _LEVEL_ORDER: Final[dict[str, int]] = {
 class PrefRequest:
     """ONE ``pref.<target>: <value>`` request, as read from ONE settings file.
 
-    *value* is carried VERBATIM — including ``None`` (spec §2h). This
-    layer performs NO emptiness interpretation of any kind: present-``None``,
-    terminal ``""`` and the COPY-disable sentinel all forward untouched, so the
-    pref does not become a FOURTH place deciding what "empty" means.
+    *value* is carried VERBATIM — including ``None`` (spec §2h). This layer
+    performs NO emptiness interpretation of any kind: present-``None``, terminal
+    ``""`` and the COPY-disable sentinel all forward untouched.
     """
 
     target: str
@@ -178,18 +140,16 @@ class PrefRequest:
 def glob_match(pattern: str, key: str) -> bool:
     """Match *key* against a §0 glob *pattern*.
 
-    Convention (spec §0, ruled by Jei 2026-07-29): ``*`` matches
-    exactly ONE segment; ``**`` matches the remaining tail at ANY depth. ``**``
-    is ONE-or-more *by construction*, not by rule — the separator is part of the
-    pattern, so a zero-length tail on ``agent.*.**`` would yield the malformed
-    ``agent.foo.`` (trailing dot).
+    Convention (spec §0): ``*`` matches exactly ONE segment; ``**`` matches the
+    remaining tail at ANY depth. ``**`` is ONE-or-more *by construction*, not by
+    rule — the separator is part of the pattern, so a zero-length tail on
+    ``agent.*.**`` would yield the malformed ``agent.foo.`` (trailing dot).
     """
     pat = pattern.split(".")
     seg = key.split(".")
-    # ⚑ A key with an EMPTY segment is not a key (§0), and this is exactly where
-    # the "one-or-more BY CONSTRUCTION" argument bites: without this guard
-    # ``agent.*.**`` would MATCH the malformed ``agent.claude.`` — the very
-    # zero-length tail the convention says cannot arise.
+    # ⚑ A key with an EMPTY segment is not a key (§0), and this is where the
+    # "one-or-more BY CONSTRUCTION" argument bites: without this guard
+    # ``agent.*.**`` would MATCH the malformed ``agent.claude.``.
     if any(s == "" for s in seg):
         return False
     for i, token in enumerate(pat):
@@ -214,26 +174,19 @@ def _flatten_pref_node(
 
     ⚑ Flattening walks NESTED tables ONLY. A leaf whose own segment contains a
     dot (``pref: {"system.agent": x}``) is an ERROR, not a second accepted
-    spelling: ``settings_assemble._parse_node`` decides bind-shapes by ANCESTOR
-    segment, so under the dotted spelling
-    ``pref: {"agent.claude.common.plugins": [src, dest]}`` the value would stay a
-    raw ``list`` and never become a :class:`~kanibako.settings.kb_store.Bind` — the
-    same request behaving differently depending on how it was spelled. One form,
-    enforced (§0 convention 0).
+    spelling: a bind-shaped value spelled the dotted way would stay a raw ``list``
+    and never become a :class:`~kanibako.settings.kb_store.Bind`, so one request
+    would behave differently depending on how it was spelled. One form, enforced
+    (§0 convention 0).
 
-    ⚑⚑ **THE WALK STOPS AT A TERMINAL DEST-KEYED CATEGORY** —
-    ``<scope>.masks`` and ``<scope>.bindings.{ro,rw}``
+    ⚑⚑ **THE WALK STOPS AT A TERMINAL DEST-KEYED CATEGORY** — ``<scope>.masks``
+    and ``<scope>.bindings.{ro,rw}``
     (:func:`~kanibako.settings.settings_keyspace.is_terminal_category_tail`). Those
     keys' VALUES are maps keyed by box DESTINATION, and a destination is DATA, not
-    a key segment (spec §2a; disk-store R-5/R-10). Descending into one would
-    manufacture a target that is not a key —
-    ``pref.agent.claude.bindings.rw./home/agent/x`` — and, because a real
-    destination contains dots, it would trip the dotted-key raise ABOVE first and
-    report a SPELLING fault the user did not commit. So the arm itself is the
-    request: one :class:`PrefRequest` carrying the WHOLE map, which
-    :func:`pref_overlay` installs at the arm and ``settings_merge`` then merges
-    PER-ENTRY across levels (the ``masks`` three-state precedent). That is exactly
-    what makes the spec's per-entry suppression spelling
+    a key segment (spec §2a), so descending would manufacture a target that is not
+    a key. The arm ITSELF is the request: one :class:`PrefRequest` carrying the
+    WHOLE map, which ``settings_merge`` then merges PER-ENTRY across levels. That
+    is what makes the spec's per-entry suppression spelling
     ``pref.<scope>.bindings.ro: {<dest>: null}`` work.
 
     The dotted-key raise is UNCHANGED for every other node: only these terminal
@@ -289,8 +242,7 @@ def collect_prefs(
     Parses through ``settings_assemble._file_partial`` — the SAME parse the
     cascade uses — so a bind-shaped pref value arrives as a
     :class:`~kanibako.settings.kb_store.Bind`, exactly as it would at its target
-    key. (Re-reading the file is deliberate: see the module docstring. It is ONE
-    spelling of the parse, called from one collector.)
+    key. Re-reading the file is deliberate.
     """
     from kanibako.settings.config_io import load_doc
     from kanibako.settings.settings_assemble import _file_partial
@@ -308,17 +260,14 @@ def collect_prefs(
 def refuse_pref_table(raw: Any, *, level: str, path: Path | None) -> Any:
     """Drop a top-level ``pref:`` table from a file where a pref is ILLEGAL.
 
-    Prefs are legal in WORKSET and BOX files only (spec §2h). A
-    ``pref:`` table in a base / system / agent file is DROPPED with a warning
-    naming the file — the SAME treatment ``_drop_upward_scopes`` gives the
-    sibling fault (a containing scope's table in a lower file), because two
-    behaviours for one fault class is exactly the confusion §0's convention 0
-    forbids. The HARD refusal §2h calls for lives at the write site
-    (``config set pref.* `` at these scopes RAISES), which is the only way a user
-    creates one short of hand-editing.
+    Prefs are legal in WORKSET and BOX files only (spec §2h). A ``pref:`` table in
+    a base / system / agent file has NO equivalent there and is DROPPED with a
+    warning naming the file — never silently relocated to a legal level, and never
+    read as a value. That is the SAME treatment ``_drop_upward_scopes`` gives the
+    sibling fault. The HARD refusal §2h calls for lives at the write site
+    (``config set pref.*`` at these scopes RAISES).
 
-    Dropping preserves the recursion bound at least as strongly as erroring
-    would. Returns a shallow copy without the table; never mutates *raw*.
+    Returns a shallow copy without the table; never mutates *raw*.
     """
     if not isinstance(raw, dict) or PREF_ROOT not in raw:
         return raw
@@ -343,15 +292,13 @@ def key_reason(target: str, *, valid_agents: Collection[str]) -> str | None:
     inside a parametric family is exactly what a user may want to add. An existence
     test would permit only modifying keys that already hold a value.
 
-    ⚑⚑ NO BIND-SHAPED CATEGORY IS SUCH A FAMILY ANY MORE, and this docstring twice
-    said otherwise. Its example was ``agent.claude.bindings.rw.boooooo`` until those
-    arms went TERMINAL and DEST-KEYED (spec §2a; R-5/R-10), then
-    ``agent.claude.common.boooooo`` until 2026-08-08c did the same to ``common`` /
-    ``caches`` / ``seeded`` / ``synced``. Both spellings are now REFUSED by
-    :func:`key_validity` — correctly — so only the BARE terminal key
-    (``agent.claude.common``) is a valid pref target and the destinations live
-    inside its value. The families that DO still carry a free ``<name>`` are
-    ``env.<VAR>``, ``secret_path.<VAR>`` and the agent discriminator itself.
+    ⚑⚑ NO BIND-SHAPED CATEGORY IS SUCH A FAMILY ANY MORE (this docstring twice
+    said otherwise — see the llm-doc). Only the BARE terminal key
+    (``agent.claude.common``) is a valid pref target; the destinations live inside
+    its value, and ``agent.claude.common.<name>`` is REFUSED by
+    :func:`key_validity`, correctly. The families that DO still carry a free
+    ``<name>`` are ``env.<VAR>``, ``secret_path.<VAR>`` and the agent
+    discriminator itself.
     """
     return key_validity(
         target,
@@ -402,18 +349,13 @@ def allowlist_reason(
         "it is not requestable: only 'system.agent' and "
         "'agent.<agent>.<key>' may be requested (spec §2h allowlist)"
     )
-    # Only suggest a direct set where one is actually possible. ``meta.*`` is RO
-    # by contract, ``config.*`` is hand-edited in the bootstrap file, and
-    # ``pref.*`` is not a value scope at all — telling a user to "set it directly
-    # at the meta scope" would send them somewhere that does not exist.
-    #
-    # ⚑ SAME RULE, SECOND CLASS OF TARGET: a YAML-only key has no direct set either.
-    # The bind-shaped categories lost their CLI write route (R-9 for the two
-    # ``bindings`` arms, DS-BL1 = (a) for ``caches``/``seeded``/``common``/``synced``)
-    # and ``masks`` never had one, so the suggestion would prescribe a command that
-    # refuses. ONE predicate answers it for both message sites
-    # (``config_keys.has_no_cli_write_route``), deferred-imported to keep this
-    # module free of a module-scope edge back to the key registry.
+    # Only suggest a direct set where one is actually possible: ``meta.*`` is RO by
+    # contract, ``config.*`` is hand-edited in the bootstrap file, ``pref.*`` is not
+    # a value scope at all, and a YAML-only key (the bind-shaped categories,
+    # ``masks``) has no CLI write route. Each would send the user to a scope that
+    # does not exist or a command that refuses. ONE predicate answers it for both
+    # message sites, deferred-imported to keep this module free of a module-scope
+    # edge back to the key registry.
     from kanibako.settings.config_keys import has_no_cli_write_route
 
     if scope in ("system", "agent", "workset", "box") and not has_no_cli_write_route(
@@ -426,9 +368,7 @@ def allowlist_reason(
 def forbidden_tier_reason(target: str, *, level: str) -> str | None:
     """FILTER 3 — is the target barred by a forbidden TIER? (spec §2h)
 
-    Returns a REASON string, never a bool: §2h requires the error to say WHY,
-    and the design's item-1 ruling makes that explicit — *"the forbidden-tier
-    check must return a REASON, not a boolean."*
+    Returns a REASON string, never a bool: §2h requires the error to say WHY.
 
     Three arms, checked in the spec's order:
 
@@ -487,12 +427,10 @@ def validate_pref(
 ) -> str | None:
     """Run all THREE filters; return ONE joined reason, or ``None`` to accept.
 
-    ⚑ ALL failing filters are reported, in filter order — not just the first.
-    The filters are INDEPENDENT (§2h) and the decision is their
-    conjunction, so reporting every failure is faithful; reporting only the
-    first would make message quality hostage to the validator's SUPPORTING-surface
-    completeness (a gap there would make ``pref.box.image`` read "not a declared
-    key" instead of the actionable "not requestable").
+    ⚑ ALL failing filters are reported, in filter order — not just the first. The
+    filters are INDEPENDENT (§2h) and the decision is their conjunction, so
+    reporting every failure is faithful; reporting only the first would make
+    message quality hostage to the validator's SUPPORTING-surface completeness.
     """
     reasons: list[str] = []
     k = key_reason(req.target, valid_agents=valid_agents)
@@ -518,12 +456,13 @@ def validate_pref(
 def pref_overlay(requests: Iterable[PrefRequest]) -> KeyStore:
     """Build the cascade-level overlay installing *requests* at their targets.
 
-    ⚑ VALUES ARE INSTALLED **VERBATIM, INCLUDING ``None``** (spec §2h
-    ). ``if value is None: continue`` is the most natural guard to
-    write here and it silently implements the REJECTED reading ("no request"),
-    deleting a box's ONLY suppression channel with no error and no visible diff.
-    There is deliberately no such guard, and
-    ``test_null_pref_suppresses_agent_bind`` reddens if one appears.
+    ⚑ VALUES ARE INSTALLED **VERBATIM, INCLUDING ``None``** (spec §2h).
+    ``if value is None: continue`` is the most natural guard to write here and it
+    silently implements the REJECTED reading ("no request"), deleting a box's ONLY
+    suppression channel with no error and no visible diff. There is deliberately no
+    such guard, and ``test_settings_launch.py``
+    ``TestPrefNullSuppression.test_a_null_pref_suppresses_an_inherited_agent_bind``
+    reddens if one appears.
 
     A present-``None`` lands on the target key and is then classified by the
     ORDINARY present-``None`` rule at the TARGET's path (``settings_merge``):
@@ -544,14 +483,11 @@ def apply_prefs(
 ) -> tuple[KeyStore, KeyStore]:
     """Validate every request and build ``(workset_overlay, box_overlay)``.
 
-    RAISES :class:`~kanibako.settings.settings_resolve.SettingsError` on the FIRST invalid
-    request, naming the key, the LEVEL, the FILE and the REASON (spec §2h
-    : *"We don't want to just moving on with bad settings"* — the
-    launch FAILS rather than proceeding with a partially-applied request, and
-    never a silent skip).
-
-    Only the first offender is reported: fix-one-then-see-the-next matches every
-    other config error in this codebase.
+    RAISES :class:`~kanibako.settings.settings_resolve.SettingsError` on the FIRST
+    invalid request, naming the key, the LEVEL, the FILE and the REASON (spec §2h):
+    the launch FAILS rather than proceeding with a partially-applied request, and
+    never a silent skip. Only the first offender is reported —
+    fix-one-then-see-the-next, as every other config error in this codebase.
     """
     # ⚑ Discovery is reached ONLY when a request actually names ``agent.*``, and
     # the test is ``is None`` — NOT falsiness. An EMPTY ``AgentNames`` (a box with
@@ -592,11 +528,8 @@ def apply_prefs(
 # Suppliers / helpers for consumers
 # ---------------------------------------------------------------------------
 
-#: Process-scoped memo for plugin discovery. Discovery walks entry points, a
-#: module namespace and two plugin DIRECTORIES; a launch runs several resolves,
-#: and repeating it per resolve is pure waste. Reset via
-#: :func:`reset_discovery_cache` (the test seam; mirrors
-#: ``commands.start.reset_collision_warnings``).
+#: Process-scoped memo for plugin discovery, which walks entry points, a module
+#: namespace and two plugin DIRECTORIES. Reset via :func:`reset_discovery_cache`.
 _DISCOVERY: "dict[str, AgentNames]" = {}
 
 
@@ -609,16 +542,15 @@ class AgentNames(Collection[str]):
     """The ``valid_agents`` collection: discovered HARNESSES + any persona NODE
     built on one.
 
-    A ``Collection[str]`` rather than a bare ``frozenset`` because the valid set
-    is not enumerable: the keyspace agent tier is discriminated by NODE
-    (``navigator℘claude``), and persona nodes are user-created, so membership is
-    a PREDICATE (*is this ref built on a discovered harness?*) while iteration
-    yields the finite harness list that an error message should name.
+    A ``Collection[str]`` rather than a bare ``frozenset`` because the valid set is
+    not enumerable: the agent tier is discriminated by NODE (``navigator℘claude``)
+    and persona nodes are user-created, so membership is a PREDICATE while
+    iteration yields the finite harness list an error message should name.
 
-    ⚑ Membership is deliberately a VALIDITY test, not an EXISTENCE test: §2h
-    rules that a pref may pre-configure *"an agent you may switch to"*, so
-    requiring the persona's store dir to already exist would be the same
-    existence error the spec rejects for keys.
+    ⚑ Membership is deliberately a VALIDITY test, not an EXISTENCE test: §2h lets
+    a pref pre-configure an agent you may switch to, so requiring the persona's
+    store dir to already exist would be the same existence error the spec rejects
+    for keys.
     """
 
     def __init__(
@@ -665,12 +597,11 @@ def default_valid_agents() -> AgentNames:
     """The production ``valid_agents`` supplier — every DISCOVERED agent, plus
     the agent keys those plugins DECLARE.
 
-    MEMOIZED for the process (see :data:`_DISCOVERY`) and reached only when a
-    request actually names ``agent.*`` (see :func:`_needs_agent_discovery`), so
-    the docstring's "lazy" claim is enforced by the call site, not just asserted.
-
-    A discovery FAILURE is recorded on the result rather than swallowed: an
-    environment fault must not be reported as a bad agent name.
+    MEMOIZED for the process (:data:`_DISCOVERY`) and reached only when a request
+    actually names ``agent.*`` (:func:`_needs_agent_discovery`), so laziness is
+    enforced by the call site, not just asserted. A discovery FAILURE is recorded
+    on the result rather than swallowed: an environment fault must not be reported
+    as a bad agent name.
     """
     cached = _DISCOVERY.get("default")
     if cached is not None:
@@ -746,42 +677,28 @@ def pref_entry_keys(req: PrefRequest) -> tuple[str, ...]:
 
     A settings ENTRY is identified downstream (collision errors,
     ``binding_derivations.*``) by ``<decl-scope>.<category>.<dest>``. For most
-    targets that string IS the pref target — ``pref.agent.claude.env.FOO``
-    requests exactly the key ``agent.claude.env.FOO``, because ``<VAR>`` is a key
-    SEGMENT. For the SEVEN terminal dest-keyed categories (the six bind-shaped
-    ones plus ``masks``) it is not: the target stops at the category
-    (:func:`key_reason` REFUSES ``agent.claude.common.<name>``) and the
-    destinations live INSIDE the value. One request there accounts for one entry
-    key PER DESTINATION IT DECLARES.
+    targets that string IS the pref target, because ``<VAR>`` is a key SEGMENT. For
+    the SEVEN terminal dest-keyed categories (the six bind-shaped ones plus
+    ``masks``) it is not: the target stops at the category and the destinations
+    live INSIDE the value, so one request accounts for one entry key PER
+    DESTINATION IT DECLARES.
 
     ⚑⚑ **THE DESTINATIONS ARE READ FROM THE REQUEST'S OWN VALUE, not derived by
     trimming the entry key.** A bare prefix test (``key.startswith(target + ".")``)
-    is the tempting one-liner and it MISATTRIBUTES: two prefs may target one
-    category from the workset and box levels while declaring DIFFERENT
-    destinations, and the entry at a given dest may not have come from a pref at
-    all (the agent settings file and the launch floor also write these keys, they
-    just resolve LOWER). Containment answers both — a request that does not
-    declare the destination cannot be its origin, and two requests that both
-    declare it are separated by the same last-wins rule the overlays use.
+    is the tempting one-liner and it MISATTRIBUTES — two prefs may target one
+    category at different levels while declaring DIFFERENT destinations, and the
+    entry at a given dest may not have come from a pref at all. Containment
+    answers both.
 
     ⚑ A DECLARED-``None`` destination is EXCLUDED. Present-``None`` is the
     per-entry suppression spelling (§2h / §6e): it removes the entry rather than
-    installing one, so a surviving entry at that dest is somebody else's. Erring
-    this way costs at most a missing annotation; the other way prints a wrong
-    file path.
+    installing one, so a surviving entry at that dest is somebody else's.
 
     ⚑ The terminal-category test gates on the KEYSPACE
-    (:func:`is_terminal_category_key`), not on "the value happens to be a dict" —
-    only a terminal category's value is a dest-keyed map, and deriving the set
-    from the keyspace is what stops this falling behind the next flip. A terminal
-    target whose value is NOT a map (a malformed ``pref.agent.claude.common:
-    "oops"``) yields the bare target, which is exactly what the adapter's own
-    error names.
-
-    ⚑ THE WHOLE-KEY PREDICATE, NOT THE SUFFIX ONE (QC). ``req.target`` is a canonical
-    scope-rooted key, so a category token counts only where the SCOPE ends. Under the
-    suffix test a dict at a scalar leaf ending in a category token would have been
-    expanded into per-destination entry keys that are not keys.
+    (:func:`is_terminal_category_key`), not on "the value happens to be a dict",
+    and on the WHOLE key rather than a suffix — both keep this from manufacturing
+    per-destination strings that are not keys. A terminal target whose value is NOT
+    a map yields the bare target, which is what the adapter's own error names.
     """
     if not is_terminal_category_key(req.target):
         return (req.target,)
@@ -802,14 +719,9 @@ def pref_origin(
 
     A collision error identifies an entry by the DECLARATION KEY plus that entry's
     DEST (``agent.claude.common.~/newthing``) — an identifier a user who wrote
-    ``pref.agent.claude.common`` never wrote and cannot write, because the dest
-    lives INSIDE the value that pref carries. This lets the one CLI seam that
-    renders such an error say where the entry actually came from.
-
-    Matching is containment in :func:`pref_entry_keys`, which is the EXACT
-    :attr:`PrefRequest.target` for every non-terminal target and the
-    per-destination expansion for the seven terminal dest-keyed categories. Last
-    request wins, matching the overlay precedence (box after workset).
+    ``pref.agent.claude.common`` never wrote and cannot write. Matching is
+    therefore containment in :func:`pref_entry_keys`; last request wins, matching
+    the overlay precedence (box after workset).
 
     ⚑ :func:`pref_request_for` is deliberately NOT reused here. Its contract is
     exact target equality, the read that agent SELECTION depends on

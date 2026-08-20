@@ -1,23 +1,11 @@
 """Crockford-base32 codec for the "kuid" — a ULID-flavored 25-bit short id.
 
-A kuid is a compact, human-typable box identifier. It packs a 25-bit value into
-exactly five Crockford-base32 characters (lowercased). The bit layout, with
-bit 24 the MSB and bit 0 the LSB:
+A compact, human-typable box identifier: ms-within-second(10) | random(14) |
+odd-parity(1), packed into five lowercase base32 chars. Bit layout, sentinel
+derivation and callers: ``llm-docs/kanibako/kuid.py.md``.
 
-    bits [24:15]  (10 bits)  milliseconds within the current second (0-999)
-    bits [14:1]   (14 bits)  uniform random
-    bit  [0]      ( 1 bit )  ODD parity over the other 24 bits
-
-The parity bit is chosen so the popcount of the whole 25-bit value is ODD
-(>= 1). That guarantees a generated value can NEVER be all-zero, which reserves
-the all-zero encoding ``"00000"`` as a sentinel (see ``SENTINEL``).
-
-ULID shout-out: like a ULID this is time-prefixed + random, sortable within a
-second, but shrunk to 25 bits / 5 chars for a terse, typo-tolerant id.
-
-This module is intentionally PURE and stdlib-only (``os``, ``time``) with ZERO
-``kanibako`` imports, so it can later be extracted into a standalone library.
-Nothing kanibako-specific (box/workset/registry concepts) belongs here.
+⚑ Intentionally PURE — stdlib-only, ZERO ``kanibako`` imports, so it stays
+extractable. Nothing box/workset/registry-specific belongs here.
 """
 
 from __future__ import annotations
@@ -28,9 +16,11 @@ import time
 # Crockford base32, value 0->31: digits 0-9 then a-z minus i, l, o, u. Lowercased.
 ALPHABET: str = "0123456789abcdefghjkmnpqrstvwxyz"
 
-# The all-zero value. Reserved (workset default sentinel). Note: this is an
-# even-parity value, so ``is_valid(SENTINEL)`` is False BY DESIGN — the sentinel
-# is exempted at call sites, never special-cased inside is_valid/decode here.
+# The all-zero value. Reserved as the workset default sentinel; ``generate``'s odd
+# parity is what keeps it unmintable.
+# ⚑ Even parity, so ``is_valid(SENTINEL)`` is False BY DESIGN. PRESENT-SENTINEL
+# ("no kuid stored") is NOT INVALID ("a wrong kuid stored") — the sentinel is
+# exempted at CALL SITES, never special-cased inside is_valid/decode here.
 SENTINEL: str = "00000"
 
 BITS: int = 25  # width of the packed value
@@ -47,11 +37,7 @@ def _popcount(n: int) -> int:
 
 
 def encode(value: int) -> str:
-    """Encode a 25-bit int to exactly 5 Crockford-base32 chars, MSB-first.
-
-    Char ``i`` holds bits ``[5*(CHARS-1-i) .. 5*(CHARS-1-i)+4]``. Raises
-    ``ValueError`` unless ``0 <= value < 2**BITS``.
-    """
+    """Encode a 25-bit int to exactly 5 Crockford-base32 chars, MSB-first."""
     if not 0 <= value < (1 << BITS):
         raise ValueError(f"value out of range for {BITS}-bit kuid: {value!r}")
     out = []
@@ -62,12 +48,7 @@ def encode(value: int) -> str:
 
 
 def decode(s: str) -> int:
-    """Decode 5 Crockford-base32 chars to a 25-bit int.
-
-    Canonicalizes ``s`` first (see ``canonicalize``), then maps each char via the
-    alphabet. Raises ``ValueError`` on the wrong length or a char that is not in
-    the canonicalized alphabet.
-    """
+    """Decode 5 Crockford-base32 chars to a 25-bit int, canonicalizing first."""
     s = canonicalize(s)
     if len(s) != CHARS:
         raise ValueError(f"kuid must be {CHARS} chars, got {len(s)}: {s!r}")
@@ -81,11 +62,10 @@ def decode(s: str) -> int:
 
 
 def canonicalize(s: str) -> str:
-    """Fold user input toward canonical form (Crockford input rules).
+    """Fold user input toward canonical form (Crockford input rules); does NOT validate.
 
-    Lowercases; maps ``o``->``0`` and ``i``/``l``->``1``; strips ``-`` (Crockford
-    treats hyphens as ignorable separators). The result MAY still be an invalid
-    length or charset — that judgment belongs to ``is_valid``/``decode``.
+    ⚑ The result MAY still be an invalid length or charset — that judgment
+    belongs to ``is_valid``/``decode``.
     """
     s = s.lower().replace("-", "")
     return s.replace("o", "0").replace("i", "1").replace("l", "1")
@@ -94,8 +74,8 @@ def canonicalize(s: str) -> str:
 def is_valid(s: str) -> bool:
     """True iff ``s`` canonicalizes to 5 in-alphabet chars with ODD parity.
 
-    NOTE: ``is_valid(SENTINEL)`` is False (all-zero has even parity). That is
-    correct; the sentinel is exempted at CALL SITES, not here.
+    ⚑ ``is_valid(SENTINEL)`` is False — all-zero has even parity. Correct: a
+    caller that may hold a sentinel tests for it BEFORE asking here.
     """
     try:
         value = decode(s)
