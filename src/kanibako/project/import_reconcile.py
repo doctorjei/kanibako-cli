@@ -187,7 +187,7 @@ def import_named_workset(
 ) -> str | None:
     """Reconcile an on-disk workset at *root* against ``registry.worksets``.
 
-    Reads the name from *root*'s ``settings.yaml`` ``workset.meta`` table.
+    Reads the name from *root*'s ``settings.yaml`` ``meta.workset`` table.
     Returns the workset name, or ``None`` when there is no readable identity.
     ⚑ Does NOT rewrite the workset-create skeleton; it only registers.
     """

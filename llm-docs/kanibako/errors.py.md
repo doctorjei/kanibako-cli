@@ -212,6 +212,15 @@ Workset creation, loading, or manipulation failed.
 
 26 raise sites; nothing displaced.
 
+```class LegacyWorksetIdentityError(WorksetError):```
+A workset root still spells its identity the RETIRED `workset.meta` way (1.6.0/1.7.x).
+
+One raise site, `project/workset.py:_refuse_retired_workset_identity`, reached from
+`read_workset_meta` — the NAMED-workset-root detection primitive. ⚑ **The subclass exists so ONE
+blanket catch can re-raise it:** `commands/box/_parser.py:_resolve_standalone_target` swallows every
+exception out of `detect_project_mode` as "a non-project path is simply a miss", and an un-migrated
+workset root in the ancestor walk is a named thing to fix, not a miss. Cure: MIGRATION.md §2.43.
+
 ```class UserCancelled(KanibakoError):```
 User cancelled an interactive prompt.
 

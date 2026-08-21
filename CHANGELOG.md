@@ -89,6 +89,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **BREAKING: a named workset's identity table is spelled `meta.workset` now, not `workset.meta`.**
+  v1.7.0 moved every `<scope>.meta` identity key into the top-level, read-only `meta.<scope>`
+  namespace, and named this very table while doing it (`workset.meta.root` → `meta.workset.path`) —
+  but the table kanibako actually writes at a workset root stayed behind under `workset:` → `meta:`,
+  the one place the rename never landed. It is the top-level `meta:` → `workset:` table now, which
+  is also what keeps it from ever being taken for a setting: `meta.*` is read-only everywhere, so
+  kanibako drops the whole `meta:` table before assembling your settings and reads the identity
+  straight out of the file instead. **Re-nest the table by hand in each named workset root's
+  `settings.yaml`** — `workset: {meta: {…}}` becomes `meta: {workset: {…}}`, the same three entries
+  (`name`, `created`, `projects`), and nothing else in the file moves. Until you do, kanibako
+  **refuses** every command that has to resolve that workset, with an error naming the file, both
+  spellings and the exact re-nest — rather than quietly failing to recognise the directory as a
+  workset root and resolving it as an ordinary primary-mode box. See
+  [MIGRATION.md](MIGRATION.md) §2.43.
+
 - **BREAKING: the flattened directives file has a new link format, and generated section headers
   are gone.** Kanibako assembles your directive tree into one file for the agent to read. That file
   used to label every imported chapter with a machine-generated `## canon_bible_general_…_md`

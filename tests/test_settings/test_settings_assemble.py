@@ -356,25 +356,73 @@ def test_top_level_meta_in_base_file_drops_but_system_scope_survives(
 def test_nested_scope_meta_is_untouched(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
-    # The drop is TOP-LEVEL ONLY. A NESTED workset.meta table (the bootstrap workset
-    # identity written by workset.py:write_workset_meta / read by read_workset_meta)
-    # rides UNDER the workset scope table and must SURVIVE untouched — no descent,
-    # no warning. This proves the top-level-only guarantee (bootstrap identity is
-    # preserved while a settings file still cannot set the top-level meta.* anchor).
+    # The drop is TOP-LEVEL ONLY: the loop never descends. A NESTED node named `meta` —
+    # here a retired `<scope>.meta` spelling, which is NOT a key and NOT the workset
+    # identity (that is the TOP-LEVEL `meta.workset` table, covered below) — rides through
+    # assembly untouched and unwarned. Refusing an undeclared key is the VALIDATOR's job;
+    # the drop only ever looks at the top-level view.
     ws = _write(
         tmp_path / "ws.yaml",
-        {"workset": {"meta": {"name": "foo"}, "marker": "keep"}},
+        {"workset": {"marker": "keep"}, "box": {"meta": {"mode": "x"}}},
     )
     with caplog.at_level("WARNING"):
         ws_level = assemble_levels(agent_name="claude", workset_path=ws)[WORKSET]
-    # The nested workset.meta.name survives verbatim; sibling own-scope key too.
+    # The nested node survives verbatim; the sibling own-scope key too.
     assert dict.get(ws_level["workset"], "marker", __MISSING__) == "keep"
-    assert isinstance(dict.get(ws_level["workset"], "meta"), KeyStore)
-    assert dict.get(ws_level["workset"]["meta"], "name", __MISSING__) == "foo"
+    assert isinstance(dict.get(ws_level["box"], "meta"), KeyStore)
+    assert dict.get(ws_level["box"]["meta"], "mode", __MISSING__) == "x"
     # No meta-drop warning fired (nothing top-level was dropped).
     assert not _meta_warns(caplog, ws), [
         r.getMessage() for r in caplog.records if r.levelname == "WARNING"
     ]
+
+
+def test_workset_identity_marker_drops_silently(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # THE NAMED-workset-root identity marker is the TOP-LEVEL `meta.workset` table in a
+    # workset settings.yaml (system-design §Detect) — written by project/workset.py and
+    # read RAW by read_workset_meta, never through the cascade. It STILL drops (meta.* is
+    # RO everywhere, spec §0 / clause 4), but SILENTLY: warning here would put a spurious
+    # WARNING on stderr for every read of a spec-sanctioned file. Both directions
+    # asserted: the table is gone from the level, and no warning names the file.
+    ws = _write(
+        tmp_path / "ws.yaml",
+        {"workset": {"marker": "keep"}, "meta": {"workset": {"name": "foo"}}},
+    )
+    with caplog.at_level("WARNING"):
+        ws_level = assemble_levels(agent_name="claude", workset_path=ws)[WORKSET]
+    assert dict.get(ws_level["workset"], "marker", __MISSING__) == "keep"
+    assert dict.get(ws_level, "meta", __MISSING__) is __MISSING__
+    assert not _meta_warns(caplog, ws), [
+        r.getMessage() for r in caplog.records if r.levelname == "WARNING"
+    ]
+
+
+def test_workset_meta_with_other_members_warns_naming_them(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # The silence is scoped to the identity MEMBER, not to the table. A workset file whose
+    # top-level meta: table carries anything ELSE drops the WHOLE table and warns — and the
+    # warning names the offending members, so the diagnostic points at what the user wrote
+    # rather than at the marker the tool itself put there.
+    ws = _write(
+        tmp_path / "ws.yaml",
+        {
+            "workset": {"marker": "keep"},
+            "meta": {"workset": {"name": "foo"}, "box": {"mode": "x"}},
+        },
+    )
+    with caplog.at_level("WARNING"):
+        ws_level = assemble_levels(agent_name="claude", workset_path=ws)[WORKSET]
+    assert dict.get(ws_level["workset"], "marker", __MISSING__) == "keep"
+    assert dict.get(ws_level, "meta", __MISSING__) is __MISSING__
+    warns = _meta_warns(caplog, ws)
+    assert warns, [
+        r.getMessage() for r in caplog.records if r.levelname == "WARNING"
+    ]
+    assert "'box'" in warns[0]
+    assert "'workset'" not in warns[0]
 
 
 def test_top_level_meta_drop_warns_once_per_agent_file(

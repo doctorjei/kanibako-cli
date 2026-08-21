@@ -5,8 +5,13 @@ single root directory chosen by the user.  Terminology:
 
 * **workset root** — the user-chosen dir; holds ``settings.yaml``, ``boxes/``,
   ``vault/``, ``logs/``, ``registry.yaml``, ``auth/`` and ``channels/``.
-* **identity** — the on-disk ``workset.meta`` table in the root ``settings.yaml``
-  (NOT ``meta.workset.*``, which is runtime-derived per spec §1A).
+* **identity** — the on-disk TOP-LEVEL ``meta.workset`` table in the root
+  ``settings.yaml``.  ⚑ It never enters the settings merge: ``meta.*`` is RO, so
+  the assembler drops it, and :func:`read_workset_meta` reads the raw file
+  instead.  The runtime ``meta.workset.*`` keys (spec §1A) are derived at launch
+  and never read from here.  ⚑ 1.6.0/1.7.x wrote it the other way round
+  (``workset.meta``); that spelling is RETIRED and now HARD-REFUSES with the
+  hand re-nest as its cure — see :func:`_refuse_retired_workset_identity`.
 * **default workset** — the synthesized, never-persisted group of default-mode
   projects, rooted at ``@config.primary_workset``.
 * **connected (external) box** — a member whose registered path lies OUTSIDE the
@@ -27,7 +32,7 @@ from typing import Any, Callable
 
 from kanibako.project import registry_store
 from kanibako.settings.config_io import dump_doc, load_doc
-from kanibako.errors import WorksetError
+from kanibako.errors import LegacyWorksetIdentityError, WorksetError
 from kanibako.project.names import register_name, unregister_name
 # ⚑ FORWARD edge of a documented cycle: ``settings/paths.py`` breaks it by DEFERRING
 # its ``project.workset`` imports into function bodies — do not add a module-scope
@@ -225,20 +230,22 @@ class Workset:
 
 
 # ---------------------------------------------------------------------------
-# The root settings.yaml: the ``workset.meta`` identity table + cascade settings.
-# ⚑ The two never collide because each reader recognizes only its own key shapes.
+# The root settings.yaml: the ``meta.workset`` identity table + cascade settings.
+# ⚑ The two coexist because the identity table is the TOP-LEVEL ``meta:`` table and
+# ``meta.*`` is RO: the assembler DROPS it from the merge, so it can never shadow a
+# cascade key, and the identity readers below load the raw file instead.
 # ---------------------------------------------------------------------------
 
 def _write_workset_toml(ws: Workset) -> None:
-    """Persist *ws*'s identity into ``workset.meta`` — ⚑ reads the file FIRST to keep cascade keys."""
+    """Persist *ws*'s identity into ``meta.workset`` — ⚑ reads the file FIRST to keep cascade keys."""
     existing = load_doc(ws.toml_path) if ws.toml_path.is_file() else {}
     if not isinstance(existing, dict):
         existing = {}
-    workset_tbl = existing.get("workset")
-    if not isinstance(workset_tbl, dict):
-        workset_tbl = {}
-        existing["workset"] = workset_tbl
-    workset_tbl["meta"] = {
+    meta_tbl = existing.get("meta")
+    if not isinstance(meta_tbl, dict):
+        meta_tbl = {}
+        existing["meta"] = meta_tbl
+    meta_tbl["workset"] = {
         "name": ws.name,
         "created": ws.created,
         # ⚑ Credential sharing is NOT an identity key — it is ``workset.auth.share_allowed``.
@@ -254,14 +261,17 @@ def _write_workset_toml(ws: Workset) -> None:
 
 
 def _load_workset_toml(root: Path) -> Workset:
-    """Read the workset identity (``workset.meta``) from *root*'s settings.yaml."""
+    """Read the workset identity (``meta.workset``) from *root*'s settings.yaml."""
     toml_path = root / WORKSET_META_FILE
     if not toml_path.is_file():
         raise WorksetError(f"No {WORKSET_META_FILE} in {root}")
+    # ⚑ A root still on the RETIRED ``workset.meta`` spelling raises out of here
+    # (:func:`_refuse_retired_workset_identity`) rather than reaching the "no identity"
+    # message below — the load path gets the named cure, same as detection.
     meta = read_workset_meta(toml_path)
     if meta is None:
         raise WorksetError(
-            f"{WORKSET_META_FILE} in {root} has no 'workset.meta' identity"
+            f"{WORKSET_META_FILE} in {root} has no 'meta.workset' identity"
         )
     name = meta.get("name")
     if not name:
@@ -286,23 +296,69 @@ def _load_workset_toml(root: Path) -> Workset:
     )
 
 
+def _refuse_retired_workset_identity(path: Path, data: Mapping[str, Any]) -> None:
+    """RAISE when *data* still nests the identity under the RETIRED ``workset.meta`` spelling.
+
+    ⚑ DETECTED ONLY SO IT CAN BE DIAGNOSED.  v1.8.0 is a clean break: there is no compat
+    read and no auto-migration, because reading past this table is exactly the silent
+    failure — a legacy root has no ``meta.workset``, so detection would call it "not a
+    workset root" and the ancestor walk would fall through to another mode with no error.
+    """
+    workset_tbl = data.get("workset")
+    if not isinstance(workset_tbl, Mapping):
+        return
+    if not isinstance(workset_tbl.get("meta"), Mapping):
+        return
+    raise LegacyWorksetIdentityError(
+        f"'workset.meta' is the RETIRED spelling of a named workset's identity table "
+        f"and is still the shape of {path}.\n"
+        f"The RULE CHANGED in kanibako 1.8.0: the identity table moved into the "
+        f"top-level `meta:` namespace and is spelled `meta.workset`. kanibako 1.6.0 and "
+        f"1.7.x wrote the old spelling, so every workset root those releases created "
+        f"carries it. Refusing rather than running: this table is what MARKS the "
+        f"directory as a workset root, and reading past it would resolve the directory "
+        f"as an ordinary primary-mode box instead — your workset would stop being a "
+        f"workset with no error at all.\n"
+        f"  Fix: re-nest the table BY HAND in {path} — lift `meta:` out from under "
+        f"`workset:` and make `workset:` its child, with the SAME three entries and "
+        f"their values unchanged:\n"
+        f"\n"
+        f"    meta:\n"
+        f"      workset:\n"
+        f"        name: ...\n"
+        f"        created: ...\n"
+        f"        projects: ...\n"
+        f"\n"
+        f"  Nothing else in the file moves: a top-level `workset:` table is still where "
+        f"this workset's own settings live, so leave the rest of it exactly as it is "
+        f"and delete only the now-empty `meta:` entry under it. kanibako 1.8.0 ships no "
+        f"automatic migration for this — see MIGRATION.md §2.43."
+    )
+
+
 def read_workset_meta(path: Path) -> dict | None:
-    """Return the ``workset.meta`` table — ⚑⚑ THE NAMED-workset-root detection primitive."""
+    """Return the ``meta.workset`` table — ⚑⚑ THE NAMED-workset-root detection primitive."""
     if not path.is_file():
         return None
     try:
         data = load_doc(path)
     except Exception:
+        # ⚑ An unreadable/corrupt file is genuinely not a workset root.  The guard wraps
+        # the LOAD ONLY, so it can never swallow the retired-spelling refusal below.
         return None
     if not isinstance(data, dict):
         return None
-    workset_tbl = data.get("workset")
-    if not isinstance(workset_tbl, dict):
+    # ⚑⚑ RETIRED SPELLING FIRST, and unconditionally: a legacy root's `meta.workset` read
+    # below returns None, which detection reads as "not a workset root" — the exact silence
+    # this refusal exists to replace.
+    _refuse_retired_workset_identity(path, data)
+    meta_tbl = data.get("meta")
+    if not isinstance(meta_tbl, dict):
         return None
-    meta = workset_tbl.get("meta")
-    if not isinstance(meta, dict):
+    identity = meta_tbl.get("workset")
+    if not isinstance(identity, dict):
         return None
-    return meta
+    return identity
 
 
 # ---------------------------------------------------------------------------
@@ -419,7 +475,7 @@ def list_worksets(std: StandardPaths) -> dict[str, Path]:
 
 
 def default_workset(std: StandardPaths) -> Workset:
-    """Synthesize the default workset — ⚑ VIRTUAL: no registry write, no ``workset.meta`` on disk."""
+    """Synthesize the default workset — ⚑ VIRTUAL: no registry write, no ``meta.workset`` on disk."""
     from kanibako.settings.paths import load_primary_boxes, warn_legacy_primary_settings
 
     warn_legacy_primary_settings(std)
