@@ -411,10 +411,13 @@ have no part in any publish or promote step.
 - **Never run a bare `bump2version`** — `tag = True` in `.bumpversion.cfg`
   means it creates a `v<ver>` tag, which *is* the production trigger. Use
   `release-rc.sh`, or pass `--no-tag` yourself.
-- **Do not dispatch `release.yml` on a bare `v<ver>` tag ref.** The `promote`
-  job gates on the ref shape, not on the event, so a dispatch on a non-rc `v`
-  tag runs the production promote (and the `dev` job alongside it). Dispatch on
-  a branch (dev) or on an rc tag (rc) only.
+- **Dispatch `release.yml` on a branch (dev) or an rc tag (rc) only.** A
+  dispatch aimed at a bare `v<ver>` tag can no longer reach the production
+  promote: that job requires a `push` event as well as the tag shape, so
+  **pushing the tag is the only way to promote.** It used to gate on the ref
+  shape alone, and a dispatch on a non-rc `v` tag ran the production promote.
+  ⚑ The `dev` job still accepts such a dispatch and would stamp a version from
+  that ref; dispatch on a branch.
 - **A promote publishes the tree, not the tag's intent.** If the in-tree
   versions do not already equal the tag, the promote publishes the wrong
   version numbers. Check before tagging.

@@ -59,6 +59,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A manual dispatch can no longer trigger the production promote.** The `promote` job gated on the
+  ref shape alone, so dispatching `release.yml` at a bare `v<ver>` tag ran the production publish —
+  the dispatch path exists for a branch (dev) or an rc tag (rc), and neither of those is a promote.
+  The job now requires a `push` event as well, so **pushing the tag is the only way to promote**,
+  which is what the pipeline's one-tag-drives-a-release model already claimed. It was previously
+  documented as a pitfall in `docs/RELEASING.md` rather than prevented.
 - **A prerelease tag can no longer reach production PyPI.** The `promote` job's guard excluded only
   `-rc`, so a `v1.8.0-dev2`, `-beta` or `-alpha` tag satisfied it: the job started, claimed the
   production publishing environment, and was rejected only afterwards by its own tag-shape check.

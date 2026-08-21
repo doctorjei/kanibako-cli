@@ -113,7 +113,13 @@ jobs:
     # forbidden, and is exactly congruent with the shape this job validates
     # (^v[0-9]+\.[0-9]+\.[0-9]+$ admits no hyphen at all), so no tag can now pass
     # the guard and then fail the shape check.
-    if: ${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-') }}
+    #
+    # ⚑ AND THE EVENT, NOT ONLY THE REF SHAPE. This guard read the ref alone, so a
+    # workflow_dispatch aimed at a bare v<ver> tag entered the production job — the
+    # dispatch path is meant for a branch (dev) or an rc tag (rc), and neither of
+    # those is a promote. Requiring `push` makes the tag the ONLY way to promote,
+    # which is what the pipeline's one-tag-drives-a-release model already claims.
+    if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-') }}
     runs-on: ubuntu-latest
     environment: pypi
     steps:
