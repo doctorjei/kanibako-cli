@@ -1177,8 +1177,12 @@ def effective_behavior(
     covered by a behavior-equivalence test, NOT silent.
 
     *keys*: when given, read exactly those; when ``None``, DISCOVER every scalar
-    behavior leaf under ``agent.<active>`` ∪ ``agent.default``, so undeclared
-    agent-scope scalars survive as pass-through. Category subtrees and ``Bind`` leaves
+    behavior leaf under ``agent.<active>`` ∪ ``agent.default``. ⚑ DISCOVERY EXISTS
+    BECAUSE THE AGENT-LEAF SET IS PLUGIN-DECLARED (spec §0, "Agent specifics are
+    PLUGIN-declared") — a leaf a shipped plugin declares and this reader has never
+    heard of must still surface. It is NOT a pass-through for UNDECLARED keys: the
+    keyspace is CLOSED (§0), and a name that reaches this node has already been
+    judged at the boundary that admitted it. Category subtrees and ``Bind`` leaves
     are NOT behavior and are skipped.
 
     A key absent from BOTH slots is omitted. A present-``None`` scalar in the WINNING
@@ -1199,8 +1203,9 @@ def effective_behavior(
     # would be a cycle — that node is MATERIALIZED FROM this pick.
 
     if keys is None:
-        # DISCOVER: the union of leaf names across both slots; the category subtrees
-        # and Bind leaves are filtered out per-key below.
+        # DISCOVER: the union of leaf names across both slots — by NAME, so a
+        # PLUGIN-declared leaf this module does not enumerate still surfaces. The
+        # category subtrees and Bind leaves are filtered out per-key below.
         discovered: dict[str, None] = {}
         for node in (active_node, default_node):
             if isinstance(node, KeyStore):

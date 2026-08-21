@@ -59,6 +59,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`config set box.agent.<key>` now always says the key is retired, instead of sometimes
+  complaining about its value first.** `box.agent.<key>` — the settable box-scoped mirror of an
+  agent's settings — was retired in 1.8.0, and the refusal names the replacement
+  (`pref.agent.<agent>.<key>`). But the set-time resolution probe, which checks that a value's
+  `@`-references and `$`-variables actually resolve, ran *before* that refusal. So
+  `kanibako box set box.agent.model=@some.missing.key` reported the dangling reference and said
+  nothing about the key being retired, sending you off to fix a value on a key that no longer
+  exists. The retirement is now checked in the same preamble as the other retired spellings, ahead
+  of anything that looks at the value. Nothing was ever written to your settings file in either
+  case; only the message changes.
+
 - **A manual dispatch can no longer trigger the production promote.** The `promote` job gated on the
   ref shape alone, so dispatching `release.yml` at a bare `v<ver>` tag ran the production publish —
   the dispatch path exists for a branch (dev) or an rc tag (rc), and neither of those is a promote.

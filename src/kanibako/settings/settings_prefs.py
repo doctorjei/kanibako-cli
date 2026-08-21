@@ -243,6 +243,21 @@ def collect_prefs(
     cascade uses — so a bind-shaped pref value arrives as a
     :class:`~kanibako.settings.kb_store.Bind`, exactly as it would at its target
     key. Re-reading the file is deliberate.
+
+    ⚑⚑ THE ``pref:`` TABLE ONLY, and the narrowing is load-bearing. This is the
+    SECOND reader of the same file, and the two must agree about what the file
+    contains: ``assemble_levels`` runs every raw doc through
+    ``_drop_upward_scopes`` first, which strips the top-level ``meta:`` table —
+    including a workset root's ``meta.workset`` IDENTITY marker, which is on-disk
+    metadata read raw by ``read_workset_meta`` and is NOT a key. Parsing the whole
+    document here materialised that table into a ``KeyStore`` as
+    ``meta.workset.created`` / ``.projects``, neither of which the keyspace
+    declares (spec §0 declares ``meta.workset.{path,name,settings}``). Nothing read
+    the result — the extractor below keeps only ``pref.*`` — but a filter that
+    guards ONE reader of a file guards only that reader. Restricting the parse to
+    the one table this function consumes removes the disagreement at the source
+    instead of chasing it downstream, and is strictly narrower than the drop the
+    cascade applies.
     """
     from kanibako.settings.config_io import load_doc
     from kanibako.settings.settings_assemble import _file_partial
@@ -251,8 +266,14 @@ def collect_prefs(
     for level, path in zip(PREF_LEGAL_LEVELS, (workset_path, box_path)):
         if path is None:
             continue
+        raw = load_doc(path)
+        table = raw.get(PREF_ROOT) if isinstance(raw, dict) else None
+        if table is None:
+            continue
         out.extend(
-            prefs_from_partial(_file_partial(load_doc(path)), level=level, path=path)
+            prefs_from_partial(
+                _file_partial({PREF_ROOT: table}), level=level, path=path,
+            )
         )
     return out
 
