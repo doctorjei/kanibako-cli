@@ -37,6 +37,21 @@ def _write(path: Path, data: dict) -> Path:
     return path
 
 
+# The DECLARED leaf each scope's cascade probes use as their order/survival marker.
+# A probe only needs a same-shaped scalar it can read back by scope, but the keyspace
+# is CLOSED (spec §0) — an undeclared name is not a key, so the probe borrows a real
+# behavior leaf of that scope rather than inventing one.
+_MARKER_KEY = {"system": "template", "box": "image", "workset": "template"}
+
+
+def _marker_of(store: KeyStore, scope: str) -> object:
+    """The *scope*'s marker leaf out of *store*, or ``__MISSING__``."""
+    sub = dict.get(store, scope, __MISSING__)
+    if not isinstance(sub, KeyStore):
+        return __MISSING__
+    return dict.get(sub, _MARKER_KEY[scope], __MISSING__)
+
+
 # --------------------------------------------------------------------------- #
 # Level count + order (S8)                                                     #
 # --------------------------------------------------------------------------- #
@@ -49,21 +64,21 @@ def test_returns_six_levels_all_keystores() -> None:
 
 
 def test_order_is_most_specific_first(tmp_path: Path) -> None:
-    # Each scope file sets a same-named scope-qualified scalar so we can read the
-    # order back by value. Files are scope-ROOTED on disk; the partial keeps the
-    # scope token, so the marker lives under e.g. box.marker / system.marker.
-    box = _write(tmp_path / "box.yaml", {"box": {"marker": "box"}})
-    ws = _write(tmp_path / "ws.yaml", {"workset": {"marker": "workset"}})
+    # Each scope file sets its own DECLARED marker leaf (``_MARKER_KEY``) so we can
+    # read the order back by value. Files are scope-ROOTED on disk; the partial keeps
+    # the scope token, so the marker lives under e.g. box.image / system.template.
+    box = _write(tmp_path / "box.yaml", {"box": {"image": "box"}})
+    ws = _write(tmp_path / "ws.yaml", {"workset": {"template": "workset"}})
     # ⚑ The all-agents marker is written in the SYSTEM file, which is where that tier
     # LIVES: the agent file is the active node's own, so ``self:`` IS ``agent.claude``
     # and it has no spelling for ``agent.default`` at all (the flatten;
     # [spec:15-21, "self"]).
     sysf = _write(
         tmp_path / "sys.yaml",
-        {"system": {"marker": "system"},
+        {"system": {"template": "system"},
          "agent": {"default": {"env": {"MARKER": "adef"}}}},
     )
-    base = _write(tmp_path / "base.yaml", {"system": {"marker": "base"}})
+    base = _write(tmp_path / "base.yaml", {"system": {"template": "base"}})
     # ⚑ A CATEGORY, not a bare scalar: since the flatten the agent FILE contributes its
     # category tables to this cascade, while its flat STATE rides its own rung at the
     # launch seam (``agent_file.state_level`` → ``settings_launch._agent_state_partial``)
@@ -78,12 +93,8 @@ def test_order_is_most_specific_first(tmp_path: Path) -> None:
         box_path=box,
     )
 
-    def _marker(store: KeyStore, scope: str) -> object:
-        sub = dict.get(store, scope, __MISSING__)
-        return dict.get(sub, "marker", __MISSING__) if isinstance(sub, KeyStore) else __MISSING__
-
-    assert _marker(levels[BOX], "box") == "box"
-    assert _marker(levels[WORKSET], "workset") == "workset"
+    assert _marker_of(levels[BOX], "box") == "box"
+    assert _marker_of(levels[WORKSET], "workset") == "workset"
     # The active agent level keeps its TRUE discriminated key agent.claude.* (NO
     # bare-agent collapse).
     assert (
@@ -98,8 +109,8 @@ def test_order_is_most_specific_first(tmp_path: Path) -> None:
         dict.get(levels[SYSTEM]["agent"]["default"]["env"], "MARKER", __MISSING__)
         == "adef"
     )
-    assert _marker(levels[SYSTEM], "system") == "system"
-    assert _marker(levels[BASE], "system") == "base"
+    assert _marker_of(levels[SYSTEM], "system") == "system"
+    assert _marker_of(levels[BASE], "system") == "base"
 
 
 # --------------------------------------------------------------------------- #
@@ -144,10 +155,10 @@ def test_downward_scope_key_in_workset_file_preserved(tmp_path: Path) -> None:
     # pins the direction the drop leaves untouched.
     ws = _write(
         tmp_path / "ws.yaml",
-        {"workset": {"marker": "w"}, "box": {"masks": {"/x": None}}},
+        {"workset": {"template": "w"}, "box": {"masks": {"/x": None}}},
     )
     ws_level = assemble_levels(agent_name="claude", workset_path=ws)[WORKSET]
-    assert dict.get(ws_level["workset"], "marker", __MISSING__) == "w"
+    assert _marker_of(ws_level, "workset") == "w"
     assert isinstance(dict.get(ws_level, "box"), KeyStore)
     assert dict.get(ws_level["box"]["masks"], "/x", __MISSING__) is None
 
@@ -179,12 +190,13 @@ def test_upward_scope_dropped_and_warned(
     own_scope = "box" if path_kw == "box_path" else "workset"
     f = _write(
         tmp_path / "f.yaml",
-        {own_scope: {"marker": "keep"}, token: {"auth": {"share_allowed": False}}},
+        {own_scope: {_MARKER_KEY[own_scope]: "keep"},
+         token: {"auth": {"share_allowed": False}}},
     )
     with caplog.at_level("WARNING"):
         level = assemble_levels(agent_name="claude", **{path_kw: f})[level_idx]
     # The own-scope contribution survives; the upward table is gone.
-    assert dict.get(level[own_scope], "marker", __MISSING__) == "keep"
+    assert _marker_of(level, own_scope) == "keep"
     assert dict.get(level, token, __MISSING__) is __MISSING__
     # The drop is announced, naming the file and the dropped token.
     msgs = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
@@ -313,11 +325,11 @@ def test_top_level_meta_dropped_across_scopes(
     # yet still may not set meta). Own-scope key survives; meta absent; warn fired.
     f = _write(
         tmp_path / "f.yaml",
-        {own_scope: {"marker": "keep"}, "meta": {"box": {"mode": "x"}}},
+        {own_scope: {_MARKER_KEY[own_scope]: "keep"}, "meta": {"box": {"mode": "x"}}},
     )
     with caplog.at_level("WARNING"):
         level = assemble_levels(agent_name="claude", **{path_kw: f})[level_idx]
-    assert dict.get(level[own_scope], "marker", __MISSING__) == "keep"
+    assert _marker_of(level, own_scope) == "keep"
     assert dict.get(level, "meta", __MISSING__) is __MISSING__
     assert _meta_warns(caplog, f), [
         r.getMessage() for r in caplog.records if r.levelname == "WARNING"
@@ -353,6 +365,12 @@ def test_top_level_meta_in_base_file_drops_but_system_scope_survives(
     ]
 
 
+@pytest.mark.writes_undeclared(
+    "box.meta", "box.meta.mode",
+    reason="the nested <scope>.meta ride-through is the whole subject: "
+           "_drop_upward_scopes looks at the TOP-LEVEL view only, so an undeclared "
+           "box.meta node has to be present for the test to prove it survives.",
+)
 def test_nested_scope_meta_is_untouched(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -361,14 +379,19 @@ def test_nested_scope_meta_is_untouched(
     # identity (that is the TOP-LEVEL `meta.workset` table, covered below) — rides through
     # assembly untouched and unwarned. Refusing an undeclared key is the VALIDATOR's job;
     # the drop only ever looks at the top-level view.
+    # ⚑ `box.image` rides beside the undeclared node deliberately: the box table must
+    # carry a DECLARED sibling, or the `box` node itself is an empty fabricated subtree
+    # rather than the scaffolding a real downward contribution builds.
     ws = _write(
         tmp_path / "ws.yaml",
-        {"workset": {"marker": "keep"}, "box": {"meta": {"mode": "x"}}},
+        {"workset": {"template": "keep"},
+         "box": {"image": "img", "meta": {"mode": "x"}}},
     )
     with caplog.at_level("WARNING"):
         ws_level = assemble_levels(agent_name="claude", workset_path=ws)[WORKSET]
     # The nested node survives verbatim; the sibling own-scope key too.
-    assert dict.get(ws_level["workset"], "marker", __MISSING__) == "keep"
+    assert _marker_of(ws_level, "workset") == "keep"
+    assert dict.get(ws_level["box"], "image", __MISSING__) == "img"
     assert isinstance(dict.get(ws_level["box"], "meta"), KeyStore)
     assert dict.get(ws_level["box"]["meta"], "mode", __MISSING__) == "x"
     # No meta-drop warning fired (nothing top-level was dropped).
@@ -388,11 +411,11 @@ def test_workset_identity_marker_drops_silently(
     # asserted: the table is gone from the level, and no warning names the file.
     ws = _write(
         tmp_path / "ws.yaml",
-        {"workset": {"marker": "keep"}, "meta": {"workset": {"name": "foo"}}},
+        {"workset": {"template": "keep"}, "meta": {"workset": {"name": "foo"}}},
     )
     with caplog.at_level("WARNING"):
         ws_level = assemble_levels(agent_name="claude", workset_path=ws)[WORKSET]
-    assert dict.get(ws_level["workset"], "marker", __MISSING__) == "keep"
+    assert _marker_of(ws_level, "workset") == "keep"
     assert dict.get(ws_level, "meta", __MISSING__) is __MISSING__
     assert not _meta_warns(caplog, ws), [
         r.getMessage() for r in caplog.records if r.levelname == "WARNING"
@@ -409,13 +432,13 @@ def test_workset_meta_with_other_members_warns_naming_them(
     ws = _write(
         tmp_path / "ws.yaml",
         {
-            "workset": {"marker": "keep"},
+            "workset": {"template": "keep"},
             "meta": {"workset": {"name": "foo"}, "box": {"mode": "x"}},
         },
     )
     with caplog.at_level("WARNING"):
         ws_level = assemble_levels(agent_name="claude", workset_path=ws)[WORKSET]
-    assert dict.get(ws_level["workset"], "marker", __MISSING__) == "keep"
+    assert _marker_of(ws_level, "workset") == "keep"
     assert dict.get(ws_level, "meta", __MISSING__) is __MISSING__
     warns = _meta_warns(caplog, ws)
     assert warns, [
@@ -494,12 +517,12 @@ def test_top_level_binding_derivations_dropped_across_scopes(
     # Own-scope key survives; the forged table is absent; warning fired.
     f = _write(
         tmp_path / "f.yaml",
-        {own_scope: {"marker": "keep"},
+        {own_scope: {_MARKER_KEY[own_scope]: "keep"},
          "binding_derivations": _FORGED_DERIVATIONS},
     )
     with caplog.at_level("WARNING"):
         level = assemble_levels(agent_name="claude", **{path_kw: f})[level_idx]
-    assert dict.get(level[own_scope], "marker", __MISSING__) == "keep"
+    assert _marker_of(level, own_scope) == "keep"
     assert dict.get(level, "binding_derivations", __MISSING__) is __MISSING__
     assert _derivations_warns(caplog, f), [
         r.getMessage() for r in caplog.records if r.levelname == "WARNING"
@@ -528,6 +551,12 @@ def test_top_level_binding_derivations_in_base_file_drops_too(
     ]
 
 
+@pytest.mark.writes_undeclared(
+    "box.binding_derivations", "box.binding_derivations.marker",
+    reason="the SCOPE-LOCAL binding_derivations table is the subject: it is not the "
+           "top-level reserved node and not a key either, so the test can only show "
+           "it rides through undropped by writing the undeclared table itself.",
+)
 def test_nested_binding_derivations_is_untouched(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -902,15 +931,21 @@ def test_base_file_set_value_beats_floor_at_same_key(tmp_path: Path) -> None:
 
 
 def test_overlay_preserves_sibling_floor_leaves(tmp_path: Path) -> None:
-    base_file = _write(tmp_path / "base.yaml", {"agent": {"default": {"a": "file"}}})
+    # Two DECLARED agent leaves: the overlay is about the file beating the floor at
+    # ONE key without disturbing its sibling, so which two keys they are is arbitrary —
+    # but the keyspace is CLOSED (spec §0), so they must be real ones.
+    base_file = _write(
+        tmp_path / "base.yaml", {"agent": {"default": {"model": "file"}}}
+    )
     levels = assemble_levels(
         agent_name="claude",
         base_path=base_file,
-        floor={"agent.default.a": "floor", "agent.default.b": "floorB"},
+        floor={"agent.default.model": "floor", "agent.default.endpoint": "floorB"},
     )
     sub = levels[BASE]["agent"]["default"]
-    assert dict.get(sub, "a", __MISSING__) == "file"  # file overlays floor
-    assert dict.get(sub, "b", __MISSING__) == "floorB"  # sibling floor leaf survives
+    assert dict.get(sub, "model", __MISSING__) == "file"  # file overlays floor
+    # sibling floor leaf survives
+    assert dict.get(sub, "endpoint", __MISSING__) == "floorB"
 
 
 # --------------------------------------------------------------------------- #
@@ -964,9 +999,12 @@ def test_nested_subtrees_are_keystores(tmp_path: Path) -> None:
 
 def test_present_none_scalar_preserved(tmp_path: Path) -> None:
     # An explicit null behavior leaf is present-None (a reset), distinct from absent.
-    box = _write(tmp_path / "box.yaml", {"box": {"model": None}})
+    # ⚑ A DECLARED box leaf: `model` is an AGENT leaf and never a box one, so
+    # `box.model` would not be a key at all. `box.absent` below is only ever READ,
+    # which is the point of it — nothing writes it.
+    box = _write(tmp_path / "box.yaml", {"box": {"image": None}})
     box_scope = assemble_levels(agent_name="claude", box_path=box)[BOX]["box"]
-    assert dict.get(box_scope, "model", __MISSING__) is None
+    assert dict.get(box_scope, "image", __MISSING__) is None
     assert dict.get(box_scope, "absent", __MISSING__) is __MISSING__
 
 
@@ -1094,14 +1132,13 @@ def test_p6c_standalone_workset_scope_key_also_resolves(tmp_path: Path) -> None:
     # survives, because the file is the WORKSET tier and workset.* is its own scope.
     f = _write(
         tmp_path / "settings.yaml",
-        {"box": {"enable_vault": False}, "workset": {"marker": "w"}},
+        {"box": {"enable_vault": False}, "workset": {"template": "w"}},
     )
     snap = merge(
         assemble_levels(agent_name="claude", box_path=None, workset_path=f)
     )
-    ws = dict.get(snap, "workset", __MISSING__)
-    assert isinstance(ws, KeyStore)
-    assert dict.get(ws, "marker", __MISSING__) == "w"
+    assert isinstance(dict.get(snap, "workset", __MISSING__), KeyStore)
+    assert _marker_of(snap, "workset") == "w"
     # box.* still resolves too (both scopes coexist at the workset tier).
     assert _box_enable_vault(snap) is False
 
@@ -1349,6 +1386,12 @@ class TestRefuseRetiredBehaviorKeys:
 
         assert RETIRING_KEYS == frozenset()
 
+    @pytest.mark.writes_undeclared(
+        "agent.default.auto_approve",
+        reason="the subject is that assembly does NOT refuse the RETIRED "
+               "auto_approve key, so the retired (and therefore undeclared) key has "
+               "to reach the assembled level for the test to mean anything.",
+    )
     def test_assemble_levels_itself_does_not_raise(self, tmp_path) -> None:
         """The refusal lives at the LAUNCH seam, NOT inside assembly — a raise
         here would also break ``config set``, the very command the message

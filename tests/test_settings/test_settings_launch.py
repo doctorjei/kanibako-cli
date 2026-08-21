@@ -935,24 +935,26 @@ def test_effective_behavior_omits_present_none():
 
 def test_effective_behavior_discovers_all_keys_when_keys_none():
     # keys=None (the LIVE default): DISCOVER every scalar behavior leaf across both
-    # slots (so undeclared pass-through keys survive), skipping category subtrees.
+    # slots rather than reading a fixed list, skipping category subtrees. It has to
+    # DISCOVER because the agent-leaf set is PLUGIN-declared (spec §0), so a leaf this
+    # call was never told about must still surface.
     snap = KeyStore({"agent": {
         "default": {"model": "sonnet", "allow_helpers": True},
         "claude": {
             "model": "opus",            # active wins
-            "custom_leaf": "fresh",     # undeclared pass-through (active only)
+            "transform": "jq .",        # a leaf outside the two named below
             "bindings": {"ro": {"x": Bind("/h", "/b", "ro")}},  # category → skip
-            "meta": {"name": "claude"},  # subtree → skip
+            "env": {"SOME_VAR": "x"},   # category subtree → skip
         },
     }})
     eff = effective_behavior(snap, active_agent="claude")
     assert eff == {
         "model": "opus",            # active over default
         "allow_helpers": "True",    # default fills the gap
-        "custom_leaf": "fresh",     # undeclared pass-through discovered
+        "transform": "jq .",        # discovered without this call naming it
     }
-    # category / meta subtrees are NOT behavior → never surface.
-    assert "bindings" not in eff and "meta" not in eff
+    # category subtrees are NOT behavior → never surface.
+    assert "bindings" not in eff and "env" not in eff
 
 
 def test_effective_behavior_endpoint_resolves_per_active_node():
@@ -2213,6 +2215,11 @@ def test_meta_box_agent_mirror_defaults_to_resolved_active_agent():
     assert "box" not in snap or "agent" not in snap.box
 
 
+@pytest.mark.writes_undeclared(
+    "box.agent", "box.agent.model",
+    reason="the subject IS the retired table: proving box.agent.* is inert requires "
+           "a box file that still carries it, so the undeclared key reaches the store.",
+)
 def test_a_box_file_box_agent_table_is_inert(tmp_path: Path):
     """⮕ P7 FLIP: the settable ``box.agent.*`` mirror is RETIRED (spec §2b).
 
@@ -2958,6 +2965,11 @@ class TestCategoryRootRefusal:
             KeyStore(node), active_agent="claude", box_ctx=_ctx(),
         )
 
+    @pytest.mark.writes_undeclared(
+        "agent.default.bindings",
+        reason="the refused shape IS a scalar at the category root; the store write "
+               "happens in the fixture, before _emit_scope_node gets to refuse it.",
+    )
     def test_scalar_at_bindings_root_errors(self):
         with pytest.raises(_SettingsError) as e:
             self._entries({"agent": {"default": {"bindings": "/some/path"}}})
@@ -2994,6 +3006,11 @@ class TestCategoryRootRefusal:
         # The forbidden bare form must not appear ANYWHERE in the message.
         assert "agent.common" not in msg
 
+    @pytest.mark.writes_undeclared(
+        "agent.claude.bindings.mydir",
+        reason="the RETIRED name-keyed bindings.<name> spelling is the input whose "
+               "refusal is under test, so the fixture has to build it.",
+    )
     def test_arm_less_agent_message_names_the_discriminated_tier(self):
         with pytest.raises(_SettingsError) as e:
             self._entries({"agent": {"claude": {"bindings": {
@@ -3037,6 +3054,11 @@ class TestCategoryRootRefusal:
         with pytest.raises(_SettingsError):
             self._entries({"box": {"seeded": None}})
 
+    @pytest.mark.writes_undeclared(
+        "box.bindings.mydir",
+        reason="the arm-less bind is the input being refused; writing the retired "
+               "name-keyed entry is what the test exists to do.",
+    )
     def test_arm_less_binding_errors(self):
         """A ``bindings`` child outside ``{ro, rw}`` is an arm-less bind.
 
@@ -3071,6 +3093,12 @@ class TestCategoryRootRefusal:
             self._entries({"box": {"bindings": {"ro": "/x"}}})
         assert "box.bindings.ro" in str(e.value)
 
+    @pytest.mark.writes_undeclared(
+        "agent.default.bindings",
+        reason="the subject is the EMPTY node at the category root — §2d's own "
+               "'documentation of intent' row — which is the undeclared shape the "
+               "test proves is tolerated rather than refused.",
+    )
     def test_present_but_empty_is_not_an_error(self):
         """An empty node is byte-indistinguishable from an absent one after
         ``assemble``, so erroring would trap a no-op.  §2d itself calls the
@@ -3332,6 +3360,12 @@ class TestPrefLevelPrecedence:
         )
         assert snap.agent.claude.model == "opus"
 
+    @pytest.mark.writes_undeclared(
+        "box.agent", "box.agent.common",
+        reason="the box file must still carry the RETIRED box.agent.<category> table "
+               "(spec §2b) for the test to show the pref beats it; that write is the "
+               "fixture, not a fabrication.",
+    )
     def test_a_box_pref_wins_now_that_the_box_agent_fold_is_gone(self, tmp_path):
         """⮕ **THE P6 PIN, FLIPPED BY P7 — deliberately.**
 
@@ -3365,16 +3399,24 @@ class TestPrefLevelPrecedence:
             snap, "meta", "box", "agent", "common", dest,
         ).src == "/from/pref"
 
+    @pytest.mark.writes_undeclared(
+        "box.agent", "box.agent.model",
+        reason="the RETIRED scalar box.agent.<key> table is the contender being "
+               "shown to be absent; the test cannot stage the contest without "
+               "writing it.",
+    )
     def test_a_box_pref_wins_for_a_SCALAR_agent_key(self, tmp_path):
         """⚑ MEASURED, and it corrects the brief's prediction.
 
-        The fold is CATEGORY-only (``_box_agent_category_fold``); a SCALAR
-        ``box.agent.<key>`` is not spliced into ``agent.<active>`` at all — the
-        scalar mirror is a post-expand READ-BACK
-        (``_materialize_box_agent_mirror``). So there is no scalar contest and
-        the pref, which really does target the agent tier, wins. The brief
-        predicted the mirror would win here; it does not, and only the category
-        half of the transitional contest is real.
+        Nothing splices a SCALAR ``box.agent.<key>`` into ``agent.<active>``:
+        settable ``box.agent.*`` is RETIRED (spec §2b), and the only surviving
+        ``box.agent``-shaped mechanism is ``_materialize_box_agent_mirror``, a
+        post-expand READ-BACK that WRITES ``meta.box.agent`` FROM the resolved
+        agent tier and never feeds it. So there is no scalar contest and the
+        pref, which really does target the agent tier, wins. The brief predicted
+        the mirror would win here; it does not. (The category half of the
+        transitional contest was real, but it went with
+        ``_box_agent_category_fold`` — see the sibling test above.)
         """
         snap = _pref_snap(
             tmp_path,

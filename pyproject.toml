@@ -102,5 +102,9 @@ markers = [
     # OF ``unshare_chown``/``unshare_chmod`` themselves: patching the subject with
     # the stub turns real assertions into false reds.
     "no_unshare_sim: never apply the protected-canon unshare simulation",
+    # The KeyStore census (tests/_keystore_census.py) fails a run on an undeclared
+    # key. A test that EXERCISES a refusal has to write one; it names the exact
+    # paths here, and a named path that is never written fails the run in its turn.
+    "writes_undeclared: this test writes the named UNDECLARED key paths on purpose",
 ]
 addopts = "-m 'not integration and not e2e'"

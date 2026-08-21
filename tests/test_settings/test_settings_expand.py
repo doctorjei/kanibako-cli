@@ -94,14 +94,14 @@ def test_idempotent_on_already_terminal() -> None:
 
 def test_input_snapshot_not_mutated() -> None:
     snap = KeyStore({
-        "system": {"data": "$XDG_DATA_HOME/kanibako",
-                   "backup": "@system.data/backup"},
+        "meta": {"workset": {"path": "$XDG_DATA_HOME/kanibako/ws"}},
+        "workset": {"logs": "@meta.workset.path/logs"},
     })
     before = copy.deepcopy(snap)
     out = expand(snap, _ctx())
     assert snap == before  # S19 — input untouched.
     assert out is not snap
-    assert out["system"]["backup"] == "/home/u/.local/share/kanibako/backup"
+    assert out["workset"]["logs"] == "/home/u/.local/share/kanibako/ws/logs"
 
 
 def test_fresh_tree_no_aliasing() -> None:
@@ -117,11 +117,11 @@ def test_fresh_tree_no_aliasing() -> None:
 
 def test_host_xdg_and_tilde_expand() -> None:
     snap = KeyStore({
-        "system": {"data": "$XDG_DATA_HOME/kanibako"},
+        "system": {"backup": "$XDG_DATA_HOME/kanibako/backup"},
         "home_thing": "~/sub",
     })
     out = expand(snap, _ctx())
-    assert out["system"]["data"] == "/home/u/.local/share/kanibako"
+    assert out["system"]["backup"] == "/home/u/.local/share/kanibako/backup"
     assert out["home_thing"] == "/home/u/sub"
 
 
@@ -137,17 +137,21 @@ def test_braced_xdg_var() -> None:
 
 
 def test_transitive_chain_collapses() -> None:
-    # backup -> @system.data -> $XDG_DATA_HOME terminal (spec §1 chain shape).
+    # canon -> @workset.template -> @meta.workset.path -> $XDG_DATA_HOME terminal
+    # (spec §1 chain shape: a workset's children derive from its path).
+    # ⚑ The chain stays INSIDE the snapshot on purpose — ``@config.*`` would not
+    # test the fixpoint at all, since the resolver split (spec §1A / JC-2) routes
+    # a config ref to the Layer-1 foundation, never to the merged snapshot.
     snap = KeyStore({
-        "system": {
-            "data": "$XDG_DATA_HOME/kanibako",
-            "global": "@system.data/global",
-            "template": "@system.global/template",
+        "meta": {"workset": {"path": "$XDG_DATA_HOME/kanibako/ws"}},
+        "workset": {
+            "template": "@meta.workset.path/template",
+            "canon": "@workset.template/canon",
         },
     })
     out = expand(snap, _ctx())
-    assert out["system"]["template"] == (
-        "/home/u/.local/share/kanibako/global/template"
+    assert out["workset"]["canon"] == (
+        "/home/u/.local/share/kanibako/ws/template/canon"
     )
 
 
@@ -233,7 +237,10 @@ def test_braced_whole_value_multi_hop_chain() -> None:
 def test_braced_whole_value_resolves_non_str_terminal_verbatim() -> None:
     # VERBATIM means type-preserving, not just None-preserving: a bool referent
     # comes back a bool, never the string "True".
-    snap = KeyStore({"avail": "@{workset.enabled}", "workset": {"enabled": True}})
+    snap = KeyStore({
+        "avail": "@{workset.skip_kuid_check}",
+        "workset": {"skip_kuid_check": True},
+    })
     out = expand(snap, _ctx())
     assert out["avail"] is True
 
@@ -304,7 +311,10 @@ def test_is_whole_value_ref_braced_shapes(value: str, expected: str | None) -> N
 
 
 def test_whole_value_resolves_terminal() -> None:
-    snap = KeyStore({"avail": "@workset.enabled", "workset": {"enabled": True}})
+    snap = KeyStore({
+        "avail": "@workset.skip_kuid_check",
+        "workset": {"skip_kuid_check": True},
+    })
     out = expand(snap, _ctx())
     assert out["avail"] is True
 
@@ -343,7 +353,7 @@ def test_embedded_present_none_token_to_empty() -> None:
 
 
 def test_embedded_ref_substitutes_value() -> None:
-    snap = KeyStore({"name": "kanibako-@box.id", "box": {"id": "abc"}})
+    snap = KeyStore({"name": "kanibako-@box.image", "box": {"image": "abc"}})
     out = expand(snap, _ctx())
     assert out["name"] == "kanibako-abc"
 
@@ -352,8 +362,9 @@ def test_if_block_literal_carried_for_downstream_renderer() -> None:
     # %if% is a downstream RENDER concern, NOT this pass: the embedded @-ref
     # substitutes; the %...% literal text is carried verbatim (no key deletion).
     snap = KeyStore({
-        "cn": "kanibako-@box.meta.name%if @box.meta.helper_num: -h-@box.meta.helper_num%",
-        "box": {"meta": {"name": "droste"}},
+        "cn": "kanibako-@meta.box.name"
+              "%if @meta.box.helper_num: -h-@meta.box.helper_num%",
+        "meta": {"box": {"name": "droste"}},
     })
     out = expand(snap, _ctx())
     # name substitutes; absent helper_num → ""; %if% literal text preserved.
@@ -880,7 +891,10 @@ class TestPrefReferencesAreRefused:
 
 
 def _arm(entries: dict) -> KeyStore:
-    return KeyStore({"box": {"root": "/data/box", "bindings": {"rw": entries}}})
+    return KeyStore({
+        "meta": {"box": {"path": "/data/box"}},
+        "box": {"bindings": {"rw": entries}},
+    })
 
 
 def test_bind_entry_src_expands_host_side() -> None:
@@ -897,7 +911,7 @@ def test_bind_entry_dest_key_expands_refs_but_defers_tilde_and_vars() -> None:
     # (S17). Both halves of that rule are asserted on ONE arm.
     snap = _arm(
         {
-            "@box.root/home": BindEntry("/h/home"),
+            "@meta.box.path/home": BindEntry("/h/home"),
             "~/.claude": BindEntry("/h/claude"),
             "$XDG_STATE_HOME/k": BindEntry("/h/k"),
         }
@@ -913,7 +927,7 @@ def test_bind_entry_dest_key_expands_refs_but_defers_tilde_and_vars() -> None:
 
 
 def test_bind_entry_opts_carried_verbatim() -> None:
-    snap = _arm({"~/a": BindEntry("@box.root/s", "ro")})
+    snap = _arm({"~/a": BindEntry("@meta.box.path/s", "ro")})
     out = expand(snap, _ctx())
     assert _probe(out, "box", "bindings", "rw", "~/a") == BindEntry("/data/box/s", "ro")
 
@@ -928,8 +942,15 @@ def test_bind_entry_whole_value_src_absent_drops_the_entry() -> None:
 
 
 def test_bind_entry_whole_value_src_present_none_yields_none() -> None:
+    # ``images_store`` is a NULLABLE path key — a declared box key that is
+    # legitimately present-None, which is exactly the 3-state this needs.
     snap = KeyStore(
-        {"box": {"nil": None, "bindings": {"rw": {"~/a": BindEntry("@box.nil")}}}}
+        {
+            "box": {
+                "images_store": None,
+                "bindings": {"rw": {"~/a": BindEntry("@box.images_store")}},
+            }
+        }
     )
     out = expand(snap, _ctx())
     assert _probe(out, "box", "bindings", "rw", "~/a") is None
@@ -949,20 +970,24 @@ def test_two_dest_keys_resolving_to_one_destination_raise() -> None:
     # namespace only (design §2b-CAVEAT). Expansion can collapse two distinct
     # stored keys onto one destination; installing the second would SILENTLY
     # delete the first, and no downstream check could ever see the loss.
-    snap = _arm({"@box.root/a": BindEntry("/h/1"), "/data/box/a": BindEntry("/h/2")})
+    snap = _arm(
+        {"@meta.box.path/a": BindEntry("/h/1"), "/data/box/a": BindEntry("/h/2")}
+    )
     with pytest.raises(SettingsError) as exc:
         expand(snap, _ctx())
     assert "same destination" in str(exc.value)
 
 
 def test_non_bind_entry_keys_are_never_expanded() -> None:
-    # The key-expansion branch is gated on the VALUE's TYPE. An ordinary keyspace
-    # node whose key merely LOOKS like a token must be carried through verbatim.
-    snap = KeyStore({"box": {"env": {"$HOME": "x", "@a": "y"}}})
+    # The key-expansion branch is gated on the VALUE's TYPE, not on the key's
+    # SHAPE.  ``box.caches`` is DEST-KEYED, so a key containing ``$`` or ``@`` is
+    # legal data there; but these values are plain strings, NOT BindEntry, so the
+    # keys must be carried through verbatim — token-looking or not.
+    snap = KeyStore({"box": {"caches": {"$HOME": "x", "@a": "y"}}})
     out = expand(snap, _ctx())
-    env = _probe(out, "box", "env")
-    assert isinstance(env, KeyStore)
-    assert set(dict.keys(env)) == {"$HOME", "@a"}
+    caches = _probe(out, "box", "caches")
+    assert isinstance(caches, KeyStore)
+    assert set(dict.keys(caches)) == {"$HOME", "@a"}
 
 
 def test_bind_and_bind_entry_expand_side_by_side() -> None:
@@ -970,13 +995,13 @@ def test_bind_and_bind_entry_expand_side_by_side() -> None:
     # the Bind's dest is in its VALUE, the BindEntry's is its KEY.
     snap = KeyStore(
         {
+            "meta": {"box": {"path": "/data/box"}},
             "box": {
-                "root": "/data/box",
                 "bindings": {
-                    "ro": {"legacy": Bind("/h/l", "@box.root/l")},
-                    "rw": {"@box.root/n": BindEntry("/h/n")},
+                    "ro": {"legacy": Bind("/h/l", "@meta.box.path/l")},
+                    "rw": {"@meta.box.path/n": BindEntry("/h/n")},
                 },
-            }
+            },
         }
     )
     out = expand(snap, _ctx())
