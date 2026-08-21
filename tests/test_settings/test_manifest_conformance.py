@@ -181,8 +181,8 @@ class TestManifestLoader:
         for section in ("registry", "policy", "categories", "keys",
                         "bind_default_entries", "not_keys"):
             assert section in doc, f"manifest section {section!r} is missing"
-        assert len(doc["keys"]) == 96, (
-            f"the manifest declares {len(doc['keys'])} key rows, not the 96 this "
+        assert len(doc["keys"]) == 97, (
+            f"the manifest declares {len(doc['keys'])} key rows, not the 97 this "
             f"file's counts were measured against — re-measure, do not adjust blindly"
         )
 
@@ -231,7 +231,9 @@ _BEHAVIOR_KEYS = (
 )
 
 #: (i-e) + the kuid sentinel — one-off rows with a single named carrier each.
-_SINGLETON_KEYS = ("agent.default.canon", "workset.kuid")
+#: ``box.env.COLORTERM`` is the third: the ONE ``env`` member kanibako itself ships a
+#: default for, carried by ``core_defaults.env_default_categories`` (spec §2b:867).
+_SINGLETON_KEYS = ("agent.default.canon", "workset.kuid", "box.env.COLORTERM")
 
 #: Every manifest ``keys:`` row this file pins a VALUE for.
 PINNED_DEFAULT_KEYS: frozenset[str] = frozenset(
@@ -404,6 +406,18 @@ class TestSingletonDefaults:
             _StubStandardPaths(), PROBE_AGENT,
         )
         assert emitted["agent.default.canon"] == _default("agent.default.canon")
+
+    def test_the_core_env_floor(self):
+        """``box.env.COLORTERM`` IS ``core-defaults.yaml``'s whole ``env:`` table.
+
+        The emitter builds ``<scope>.env.<VAR>`` keys off the shipped file, so reading
+        its OUTPUT pins both halves of the manifest row at once — the key SPELLING and
+        the value.  Asserting the table is exactly one entry is the anti-vacuity half:
+        a second shipped env default would otherwise slip in unregistered, and the
+        registry's job is to name every one.
+        """
+        shipped = core_defaults.env_default_categories()
+        assert shipped == {"box.env.COLORTERM": _default("box.env.COLORTERM")}
 
     def test_the_workset_kuid_sentinel(self):
         """The primary/named arms ARE ``kuid.SENTINEL``.
@@ -707,14 +721,14 @@ class TestDefaultsCoverage:
             f"this file classifies rows the manifest no longer declares a default for: "
             f"{sorted(stale)}"
         )
-        assert len(declared) == 63, (
-            f"the manifest gives {len(declared)} rows a default, not the 63 measured — "
+        assert len(declared) == 64, (
+            f"the manifest gives {len(declared)} rows a default, not the 64 measured — "
             f"re-classify, do not adjust the count"
         )
 
     def test_the_split_is_the_measured_split(self):
-        """39 pinned rows, 24 exempted — stated so a silent migration between them reds."""
-        assert len(PINNED_DEFAULT_KEYS) == 39
+        """40 pinned rows, 24 exempted — stated so a silent migration between them reds."""
+        assert len(PINNED_DEFAULT_KEYS) == 40
         assert len(EXEMPT_DEFAULT_KEYS) == 24
         assert not (PINNED_DEFAULT_KEYS & EXEMPT_DEFAULT_KEYS)
 
@@ -860,7 +874,26 @@ class TestKeySetConformance:
         real drift and it lands here.
         """
         leftover = {str(k) for k in _keys()} - _code_scalar_keys()
-        category_rows = {f"box.{c}" for c in BIND_CATEGORIES} | {"box.masks"}
+        # ⚑ THE CATEGORY KIND IS DERIVED FROM THE MANIFEST'S OWN `categories:` TABLE,
+        # not hand-listed, so it states its reason exactly once: the DECLARED_* sets
+        # hold SCALAR leaves, and anything whose head is a declared category — the
+        # terminal dest-keyed rows (`box.bindings.ro`) and a member of a parametric
+        # family (`box.env.COLORTERM`, the one env default kanibako ships) — is
+        # declared THERE instead.  One reason, no per-row exception.
+        declared_categories = {
+            name for name, row in manifest_doc()["categories"].items()
+            if isinstance(row, dict) and "value" in row
+        }
+        assert BIND_CATEGORIES <= declared_categories, (
+            "the manifest's categories: table no longer names every BIND_CATEGORIES "
+            f"member: {sorted(BIND_CATEGORIES - declared_categories)}"
+        )
+        category_rows = {
+            key for key in leftover
+            if key.startswith("box.")
+            and (key[len("box."):] in declared_categories
+                 or key[len("box."):].rpartition(".")[0] in declared_categories)
+        }
         parametric_agent = {
             f"agent.<agent>.{leaf}" for leaf in DECLARED_AGENT_LEAVES
         }
@@ -877,7 +910,9 @@ class TestKeySetConformance:
             f"longer declares: {sorted(expected - leftover)}"
         )
         # And the derivations are not vacuous: each class actually has members.
-        assert leftover & category_rows == {"box.bindings.ro", "box.bindings.rw", "box.masks"}
+        assert leftover & category_rows == {
+            "box.bindings.ro", "box.bindings.rw", "box.masks", "box.env.COLORTERM",
+        }
         assert leftover & parametric_agent == {
             "agent.<agent>.access", "agent.<agent>.template", "agent.<agent>.canon",
         }
