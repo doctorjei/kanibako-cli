@@ -729,23 +729,17 @@ SHAPE_ROWS: frozenset[str] = frozenset({
     "agent.<agent>.<key>", "meta.box.agent.<key>",
 })
 
-#: ⚑⚑ FINDING 4 (NEW, measured 2026-08-15) — a DECLARED row the code's own key predicate
-#: REFUSES.  ``auth_chain_floor`` MATERIALIZES ``meta.box.agent.auth.share_support`` (it
-#: is the capability mirror the two box enables are ANDed against) and the manifest
-#: declares it, but ``key_validity`` rejects it: ``_meta_reason``'s ``meta.box.agent``
-#: mirror arm delegates to ``_agent_tail_reason``, which knows the ``agent.<a>.<leaf>``
-#: contract (``DECLARED_AGENT_LEAVES``) and has NO ``auth.<leaf>`` arm — while the thing
-#: being mirrored is a ``meta.agent.<a>.auth.*`` key, whose leaves live in
-#: ``DECLARED_META_AGENT_AUTH_LEAVES``.  Inert today (``key_validity`` guards the SET
-#: boundary, where a ``meta.*`` key is refused anyway as ``set: never``), but the refusal
-#: REASON is wrong and any future consumer that validates floor keys would refuse a
-#: declared one.  REPORTED, not fixed: this phase changes no src behavior.
-KEY_VALIDITY_EXEMPTIONS: dict[str, str] = {
-    "meta.box.agent.auth.share_support": (
-        "key_validity refuses it — the meta.box.agent mirror validates its tail against "
-        "the agent-scope leaf set, which has no auth.* sub-namespace (finding 4)"
-    ),
-}
+#: ⚑ FINDING 4 IS CLOSED (2026-08-21) and its exemption is GONE, which is what the
+#: exemption's own anti-vacuity case demanded happen on a fix.  ``key_validity`` used to
+#: refuse the DECLARED row ``meta.box.agent.auth.share_support``: ``_meta_reason``'s
+#: ``meta.box.agent`` mirror arm delegated to ``_agent_tail_reason``, which knows the
+#: ``agent.<a>.<leaf>`` contract and has no ``auth.<leaf>`` arm, while the thing being
+#: mirrored is a ``meta.agent.<a>.auth.*`` key.  The refusal was called "inert" because
+#: ``key_validity`` guards the SET boundary and a ``meta.*`` key is refused there anyway
+#: — the PART 2 ``KeyStore`` write census killed that word by MEASURING the key
+#: materialized into real stores 1334× on the launch path.  The mirror now carries its
+#: own ``auth.*`` arm, sourced from ``DECLARED_META_AGENT_AUTH_LEAVES``.
+#: (No exemption dict remains; a future finding of this kind re-introduces one here.)
 
 
 def _code_scalar_keys() -> set[str]:
@@ -797,7 +791,7 @@ class TestKeySetConformance:
         refused: dict[str, str] = {}
         for row in _keys():
             key = str(row)
-            if key in SHAPE_ROWS or key in KEY_VALIDITY_EXEMPTIONS:
+            if key in SHAPE_ROWS:
                 continue
             reason = key_validity(
                 key.replace("<agent>", PROBE_AGENT), valid_agents=PROBE_AGENTS,
@@ -815,19 +809,22 @@ class TestKeySetConformance:
             assert row in _keys(), f"{row} is no longer a manifest row"
             assert "<key>" in row
 
-    def test_every_key_validity_exemption_still_reproduces(self):
-        """A finding that quietly fixed itself must red HERE, so the finding gets closed.
+    def test_the_agent_mirror_carries_the_auth_capability(self):
+        """Finding 4's CLOSE-OUT pin: the mirror accepts ``auth.*``, the SCOPE does not.
 
-        ⚑ THE POINT OF THIS CASE IS TO GO RED ON A FIX.  If someone teaches
-        ``_agent_tail_reason`` the ``auth.*`` sub-namespace, finding 4 is resolved and
-        this exemption must be DELETED — which is exactly what a red here says.
+        Both halves matter.  Accepting the mirror row without refusing the agent-scope
+        spelling would make the capability look settable, and it is plugin-set (spec
+        :1103) — there is no ``agent.<agent>.auth.*`` key to mirror.
         """
-        for key in KEY_VALIDITY_EXEMPTIONS:
-            assert key in _keys(), f"{key} is no longer a manifest row"
-            assert key_validity(key, valid_agents=PROBE_AGENTS) is not None, (
-                f"{key} is now ACCEPTED by key_validity — finding 4 is fixed; delete "
-                f"this exemption and let the row join the sweep above"
-            )
+        assert key_validity(
+            "meta.box.agent.auth.share_support", valid_agents=PROBE_AGENTS,
+        ) is None
+        assert key_validity(
+            f"agent.{PROBE_AGENT}.auth.share_support", valid_agents=PROBE_AGENTS,
+        ) is not None
+        assert key_validity(
+            "meta.box.agent.auth.invented", valid_agents=PROBE_AGENTS,
+        ) is not None
 
     def test_no_declared_scalar_key_is_missing_from_the_manifest(self):
         """Direction 2 — every ``DECLARED_*`` spelling has a registry row.

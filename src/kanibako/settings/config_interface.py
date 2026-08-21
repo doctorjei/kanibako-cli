@@ -98,6 +98,7 @@ from kanibako.settings.config_io import (
 )
 from kanibako.errors import UserCancelled
 from kanibako.settings.kb_store import __MISSING__
+from kanibako.settings.settings_keyspace import key_validity
 from kanibako.settings.keystore import ReservedKeyError
 from kanibako.settings.settings_prefs import PREF_ROOT
 from kanibako.utils import confirm_prompt
@@ -262,7 +263,19 @@ def _path_tier_split() -> "tuple[dict[str, str], dict[str, object]]":
     ).items():
         if dotted.startswith("config."):
             config_foundation[dotted] = str(path)
-        elif dotted.startswith("system."):
+        # ⚑ DECLARED KEYS ONLY, and the filter is not decoration. The path tier's
+        # ``system.*`` half is NOT all keyspace: ``resolve_system_paths`` also derives
+        # four PRIMARY-workset surrogates (``system._boxes``,
+        # ``system._primary_{vault_ro,vault_rw,logs}``) whose ONLY consumers are the
+        # ``StandardPaths`` fields built out of the same dict — the manifest classes
+        # them ``not_keys.code_residue``, *"appeared in CODE only, never
+        # spec-sanctioned"*. Floored unfiltered they became REAL nodes in every
+        # resolved store, which is a CLOSED-keyspace breach (spec §0) manufactured by
+        # code rather than declared. This is a FILTER, not a silent accept of user
+        # input: nothing here comes from a user, and no ``@system._*`` ref exists.
+        elif dotted.startswith("system.") and key_validity(
+            dotted, valid_agents=(),
+        ) is None:
             floor[dotted] = str(path)
     return config_foundation, floor
 

@@ -633,7 +633,25 @@ def _meta_reason(
             # meta.box.agent.<key> — the RO MIRROR of the effective agent
             # subtree (spec §2b). It mirrors the WHOLE subtree, so its tail
             # is any valid agent-scope tail.
-            return _agent_tail_reason("meta.box.agent", tail[1:], leaves)
+            mirror = tail[1:]
+            # ⚑ PLUS an ``auth.*`` sub-namespace the agent SCOPE does not have, and
+            # which is therefore NOT ``_agent_tail_reason``'s to accept: spec :1079
+            # declares ``meta.box.agent.auth.share_support`` as its own row, the bool
+            # @-ref MIRROR of ``meta.agent.<agent>.auth.share_support`` (:1103). The
+            # capability is PLUGIN-set and lives on the ``meta.agent`` tier — there is
+            # no ``agent.<agent>.auth.*`` key to mirror — so the leaves come from
+            # :data:`DECLARED_META_AGENT_AUTH_LEAVES` and the mirror answers here.
+            # ``auth_chain_floor`` materializes it into the store on every launch
+            # resolve, so a refusal here refuses a key the launch path really writes.
+            if len(mirror) == 2 and mirror[0] == "auth":
+                if mirror[1] in DECLARED_META_AGENT_AUTH_LEAVES:
+                    return None
+                return (
+                    f"'meta.box.agent.auth.{mirror[1]}' is not a declared key "
+                    f"(declared: "
+                    f"{', '.join(sorted(DECLARED_META_AGENT_AUTH_LEAVES))})"
+                )
+            return _agent_tail_reason("meta.box.agent", mirror, leaves)
         return (
             f"'meta.box.{'.'.join(tail)}' is not a declared key (declared: "
             f"{', '.join(sorted(DECLARED_META_BOX_LEAVES))}, auth.workset_path, "
