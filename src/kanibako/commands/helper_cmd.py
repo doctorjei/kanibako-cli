@@ -10,6 +10,8 @@ from pathlib import Path
 
 from kanibako.settings.config import config_file_path
 from kanibako.channels.helpers import (
+    HELPER_SCRIPTS_RELPATH,
+    PARENT_SCRIPTS_RELPATH,
     SpawnBudget,
     check_spawn_allowed,
     child_budget,
@@ -270,9 +272,9 @@ def run_spawn(args: argparse.Namespace) -> int:
 
     # Copy init script into helper's scripts/
     init_script = resolve_init_script(
-        Path.home() / "playbook" / "scripts",
+        Path.home().joinpath(*PARENT_SCRIPTS_RELPATH),
     )
-    dest_scripts = helpers_dir / str(helper_num) / "playbook" / "scripts"
+    dest_scripts = helpers_dir / str(helper_num) / HELPER_SCRIPTS_RELPATH
     dest_init = dest_scripts / "helper-init.sh"
     if not dest_init.exists():
         shutil.copy2(init_script, dest_init)

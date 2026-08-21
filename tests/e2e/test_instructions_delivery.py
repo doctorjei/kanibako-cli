@@ -117,9 +117,11 @@ FLATTENER_IN_BOX = "/opt/kanibako/kanibako/scripts/import-directives.py"
 # The canon ENTRY POINT the kickoff loader imports (spec §2c / C-CANON P-4).
 DIRECTIVE_IMPORT = "@~/canon/COLLECTION.md"
 
-# ⚑ TRANSITION (one release only): the kickoff also carries the PRE-CANON import so
-# a plugin release works against a base that still binds the old rom layout.  Pinned
-# so its REMOVAL (migration M-12) is a deliberate edit here, not a silent drift.
+# ⚑ RETIRED-SPELLING SENTINEL.  For one transition release the plugin kickoffs also
+# carried this PRE-CANON import, so a plugin release worked against a base that still
+# bound the old rom layout.  M-12 deleted it — the tree it addressed is gone and its
+# content moved into the canon.  Kept only as a REFUSAL fixture: a real box now
+# proves the delivered kickoff does NOT carry it.
 LEGACY_DIRECTIVE_IMPORT = "@~/playbook/kanibako/directives/KANIBAKO.md"
 
 # The FIVE CORE canon binds (spec §2c, J-7 SIBLING model), asserted on the REAL
@@ -258,8 +260,8 @@ def assert_handbook_binds_ro(cfg: dict) -> None:
 
     1. the two SYSTEM rows (``SYS_CONTENTS.md`` file bind + the ``general`` chapter)
        are mounted READ-ONLY — the handbook is HOST-owned content, so the box reads it
-       and never edits it (a deliberate behaviour change from the writable
-       ``~/playbook`` it replaces; M-10);
+       and never edits it (a deliberate behaviour change from the writable pre-canon
+       tree it replaces; M-10);
     2. the chapters a scope actually supplies are mounted, at dests carrying NO agent
        segment ("storage is varied, binding is not", §2d);
     3. a chapter no scope supplies is simply ABSENT — no mount, and (asserted by the
@@ -337,25 +339,26 @@ def assert_no_skip_if_absent_warnings(stderr: str) -> None:
     )
 
 
-def assert_flatten_warns_only_about_the_kickoff_legacy_line(
+def assert_flatten_resolves_every_import(
     cfg: dict, box: str,
 ) -> None:
-    """⚑⚑ EXACTLY ONE unresolved-import warning, and it is a KNOWN one.
+    """⚑⚑ ZERO unresolved-import warnings — every import in the chain resolves.
 
-    The count is the whole point, so it is asserted as a count and not as an absence.
-    Two separate mechanisms had to land for it to be true:
+    The count is the whole point, so it is asserted as a count.  It was ONE until
+    M-12 dropped the kickoff's pre-canon line; that line was the last import in the
+    chain pointing at a tree the box does not have.  THREE mechanisms had to land:
 
     * the box's NOTEBOOK is seeded, so ``@notebook/MY_CONTENTS.md`` resolves;
     * the skeleton's 0-byte IMPORT-FALLBACK files (F1) make ``SYS_CONTENTS.md``'s
       UNCONDITIONAL chapter imports resolve-to-empty on a box that supplies no
       workset/box chapter — skip-if-absent governs the BIND, not the INDEX, so
-      without them every primary box warned about ``@workset/`` on every launch.
+      without them every primary box warned about ``@workset/`` on every launch;
+    * M-12 dropped the plugin kickoffs' pre-canon transition import, which pointed at
+      a tree no box has and warned on EVERY launch of EVERY agent box.
 
-    The ONE that remains is the plugin KICKOFF's pre-canon transition import, which
-    exists so a plugin release works against an older base and disappears with the
-    deferred plugin-deletion release (M-12). Pinning the count is what makes that
-    removal a deliberate edit here rather than a silent drift — and what stops a NEW
-    dangling import from hiding inside an expected-noise allowance.
+    ⚑ ZERO is a stronger pin than ONE, not a weaker one: an expected-noise allowance
+    is exactly where a NEW dangling import hides.  Raising this back above zero means
+    something in the chain is addressing content that is not there.
 
     ⚑⚑ WHY THIS RE-RUNS THE FLATTENER INSTEAD OF READING ``start``'s STDERR — DO NOT
     MOVE IT BACK.  The flatten shim ``exec``s INSIDE the tmux session
@@ -394,13 +397,9 @@ def assert_flatten_warns_only_about_the_kickoff_legacy_line(
     warnings = [
         line for line in result.stderr.splitlines() if "unresolved import" in line
     ]
-    assert len(warnings) == 1, (
-        f"expected exactly ONE flatten warning (the kickoff's pre-canon transition "
-        f"import), got {len(warnings)}:\n" + "\n".join(warnings)
-    )
-    assert LEGACY_DIRECTIVE_IMPORT.lstrip("@") in warnings[0], (
-        f"the single remaining flatten warning is not the expected kickoff legacy "
-        f"line: {warnings[0]!r}"
+    assert warnings == [], (
+        f"expected NO flatten warnings — every import in the chain must resolve — "
+        f"got {len(warnings)}:\n" + "\n".join(warnings)
     )
 
 
@@ -428,14 +427,14 @@ def test_claude_kickoff_loader_delivery(e2e_env):
         assert km.get("RW") is False, "kickoff-loader bind must be read-only"
         kickoff = Path(km["Source"]).read_text()
         assert DIRECTIVE_IMPORT in kickoff
-        assert LEGACY_DIRECTIVE_IMPORT in kickoff
+        assert LEGACY_DIRECTIVE_IMPORT not in kickoff
         assert_canon_binds_ro(cfg)
         assert_agent_chapter_bound_ro(cfg, box)
         assert_handbook_binds_ro(cfg)
         assert_canon_locked_down(box)
         assert_canon_books_writable(box)
         assert_no_skip_if_absent_warnings(res.stderr)
-        assert_flatten_warns_only_about_the_kickoff_legacy_line(cfg, box)
+        assert_flatten_resolves_every_import(cfg, box)
     finally:
         rm(container_name(box))
 
@@ -469,14 +468,14 @@ def test_goose_kickoff_loader_delivery(goose_e2e_env):
         assert km.get("RW") is False, "kickoff-loader bind must be read-only"
         kickoff = Path(km["Source"]).read_text()
         assert DIRECTIVE_IMPORT in kickoff
-        assert LEGACY_DIRECTIVE_IMPORT in kickoff
+        assert LEGACY_DIRECTIVE_IMPORT not in kickoff
         assert_canon_binds_ro(cfg)
         assert_agent_chapter_bound_ro(cfg, box)
         assert_handbook_binds_ro(cfg)
         assert_canon_locked_down(box)
         assert_canon_books_writable(box)
         assert_no_skip_if_absent_warnings(res.stderr)
-        assert_flatten_warns_only_about_the_kickoff_legacy_line(cfg, box)
+        assert_flatten_resolves_every_import(cfg, box)
         assert "AGENTS.md" in json.loads(
             env_of(cfg).get("CONTEXT_FILE_NAMES", "[]")
         )

@@ -231,7 +231,10 @@ class TestCreateHelperDirs:
         assert (root / "vault" / "ro").is_dir()
         assert (root / "vault" / "rw").is_dir()
         assert (root / "workspace").is_dir()
-        assert (root / "playbook" / "scripts").is_dir()
+        assert (root / "scripts").is_dir()
+        # ⚑ The vestigial ``playbook/`` wrapper level is GONE, not renamed: a helper
+        # home is not a box, so it gets a flat ``scripts/`` and no canon tree.
+        assert not (root / "playbook").exists()
         assert (root / "peers").is_dir()
 
     def test_idempotent(self, tmp_path):

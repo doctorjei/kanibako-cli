@@ -13,9 +13,9 @@ each with its own class:
 Increment 2a — the PLUGIN-DECLARATION half of instruction delivery.
 
 Each agent plugin ships a KICKOFF-LOADER (the flattener SEED): a tiny static file
-whose whole content is the canon entry import ``@~/canon/COLLECTION.md`` plus, for
-ONE transition release, the pre-canon ``@~/playbook/kanibako/directives/KANIBAKO.md``
-import.  The plugin declares it as a best-effort descriptor ``managed_pointer``
+whose whole content is the canon entry import ``@~/canon/COLLECTION.md`` — since
+M-12, that ONE import and nothing else, in every kickoff the project ships.
+The plugin declares it as a best-effort descriptor ``managed_pointer``
 binding delivered read-only to ``~/.config/kanibako/kickoff.md``, and names the
 native instruction slot the box-start flattener will write the flattened per-agent
 FINAL file to via the ``KANIBAKO_DIRECTIVE_FINAL`` declared env key.  These tests
@@ -68,12 +68,13 @@ _KICKOFF_DEST = f"{GUEST_HOME}/.config/kanibako/kickoff.md"
 # P-4) plus, for ONE transition release, the pre-canon import.
 _DIRECTIVE_IMPORT = "@~/canon/COLLECTION.md"
 
-# ⚑ TRANSITION (one release only — brief §3.4 mitigation 1). The KICKOFF ships in
-# three INDEPENDENTLY PUBLISHED plugin packages while the canon paths live in the
-# base, so either publish order alone would silently break EVERY box: the flattener
-# degrades a missing import target to an inert backticked mention, and the launch
-# shim's ``|| true`` hides it. Carrying BOTH imports makes the plugin work against
-# either base. Pinned here so REMOVING it (migration M-12) is deliberate.
+# ⚑ RETIRED-SPELLING SENTINEL, and the ONLY reason this string survives in the tree.
+# For one transition release the plugin kickoffs carried this pre-canon import
+# alongside the canon one, so a plugin build also worked against a base that still
+# bound the old rom layout.  M-12 deleted it: the tree it addressed is gone and its
+# content moved into the canon, which ``@~/canon/COLLECTION.md`` already reaches.
+# Kept here as a REFUSAL fixture — every kickoff is now pinned to NOT carry it, so a
+# re-introduction reddens instead of shipping a dead import to every box.
 _LEGACY_DIRECTIVE_IMPORT = "@~/playbook/kanibako/directives/KANIBAKO.md"
 
 # The native instruction slot the box-start flattener writes the FINAL file to.
@@ -158,14 +159,22 @@ def test_kickoff_binding_shape(agent: str):
 
 @pytest.mark.parametrize("agent", _AGENTS)
 def test_kickoff_content_is_the_declared_directive_imports(agent: str):
-    """The shipped kickoff-loader content is exactly the declared @imports — the
-    canon entry FIRST, then the one transition import, and nothing else."""
+    """The shipped kickoff-loader content is exactly ONE @import: the canon entry.
+
+    ⚑ The retired pre-canon import is pinned ABSENT in the same breath (M-12).  It
+    resolved against a tree that no longer exists, so re-adding it would deliver an
+    inert backticked mention plus a per-launch warning to every box, forever.
+    """
     b = _kickoff_binding(agent)
     assert b.literal_src is not None
-    import_lines = _content_lines(b.literal_src.read_text())
-    assert import_lines == [_DIRECTIVE_IMPORT, _LEGACY_DIRECTIVE_IMPORT], (
-        f"{agent}: kickoff-loader must carry exactly the canon entry plus the "
-        f"transition import, got {import_lines!r}"
+    text = b.literal_src.read_text()
+    import_lines = _content_lines(text)
+    assert import_lines == [_DIRECTIVE_IMPORT], (
+        f"{agent}: kickoff-loader must carry exactly the canon entry import, "
+        f"got {import_lines!r}"
+    )
+    assert _LEGACY_DIRECTIVE_IMPORT not in text, (
+        f"{agent}: the retired pre-canon import is back in the shipped kickoff"
     )
 
 
@@ -185,8 +194,9 @@ def test_kickoff_delivered_ro_at_kickoff_slot(agent: str):
     m = mounts[0]
     assert m.destination == _KICKOFF_DEST
     assert m.options == "ro"
-    assert _DIRECTIVE_IMPORT in Path(m.source).read_text()
-    assert _LEGACY_DIRECTIVE_IMPORT in Path(m.source).read_text()
+    delivered = Path(m.source).read_text()
+    assert _DIRECTIVE_IMPORT in delivered
+    assert _LEGACY_DIRECTIVE_IMPORT not in delivered
 
 
 @pytest.mark.parametrize("agent", _AGENTS)
@@ -333,12 +343,13 @@ class TestCoreKickoffBind:
         assert core_defaults.kickoff_guest_dest() == _KICKOFF_DEST
 
     def test_core_content_is_the_canon_entry_and_nothing_else(self):
-        """⚑ ONE import, deliberately NOT the plugins' two.
+        """⚑ ONE import — and since M-12 the plugin kickoffs carry the same one.
 
-        The legacy ``@~/playbook/...`` line exists so a PLUGIN release also works
-        against an older base.  A base-shipped kickoff ships in the same wheel as the
-        canon binds it imports, so that line could never resolve — it would buy a
-        permanent per-launch ``unresolved import`` warning and nothing else.
+        The base kickoff never carried the pre-canon transition line: it ships in the
+        same wheel as the canon binds it imports, so that line could never resolve and
+        would buy a permanent per-launch ``unresolved import`` warning and nothing
+        else.  The plugins have now dropped it too, for the harder reason — the tree
+        it addressed is gone.
 
         ⚑ The header comment is read out with the FLATTENER'S stripper
         (``_content_lines``), not a per-line ``<!--`` test: this file's comment spans

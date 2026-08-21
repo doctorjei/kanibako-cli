@@ -130,11 +130,26 @@ def write_spawn_config(path: Path, budget: SpawnBudget) -> None:
 # Directory structure
 # ---------------------------------------------------------------------------
 
+#: The helper-root-relative scripts dir, holding the entrypoint wrapper.
+#:
+#: ⚑ FLAT, and deliberately NOT ``canon/notebook/scripts``.  A helper home is not a
+#: box: it has no canon binds, and ``core_defaults.materialize_canon_skeleton_if_present``
+#: keys off the presence of a ``canon/`` dir, so putting the script under one would turn
+#: that no-op into a real skeleton materialization — "a silent layout change made by the
+#: wrong seam", in that function's own words.  The rest of a helper root is flat plain
+#: dirs (``workspace``, ``vault``, ``peers``) and this belongs with them.  It replaces a
+#: vestigial two-level path whose first level carried nothing at all.
+HELPER_SCRIPTS_RELPATH = "scripts"
+
+#: Where a PARENT keeps its own override copy of the entrypoint wrapper.  The parent IS
+#: a box, so this is the canon address for a reusable helper script.
+PARENT_SCRIPTS_RELPATH = ("canon", "notebook", "scripts")
+
 
 def create_helper_dirs(helpers_dir: Path, helper_num: int) -> Path:
     """Create the directory layout for a single helper.
 
-    Creates vault (with ro, rw), workspace, playbook/scripts,
+    Creates vault (with ro, rw), workspace, ``scripts``,
     and peers directories.  Returns the helper's root directory.
     """
     root = helpers_dir / str(helper_num)
@@ -148,9 +163,7 @@ def create_helper_dirs(helpers_dir: Path, helper_num: int) -> Path:
 
     # Standard layout
     (root / "workspace").mkdir(exist_ok=True)
-    playbook = root / "playbook"
-    playbook.mkdir(exist_ok=True)
-    (playbook / "scripts").mkdir(exist_ok=True)
+    (root / HELPER_SCRIPTS_RELPATH).mkdir(exist_ok=True)
 
     # Peers directory
     (root / "peers").mkdir(exist_ok=True)
@@ -283,8 +296,8 @@ def bundled_init_script() -> Path:
 def resolve_init_script(parent_scripts_dir: Path | None) -> Path:
     """Return the init script to use for helpers.
 
-    Checks the parent's ``playbook/scripts/`` for a custom version first,
-    then falls back to the bundled default.
+    Checks the parent's ``canon/notebook/scripts/`` for a custom version
+    first, then falls back to the bundled default.
     """
     if parent_scripts_dir is not None:
         custom = parent_scripts_dir / _INIT_SCRIPT_NAME

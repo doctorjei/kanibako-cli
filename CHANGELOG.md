@@ -89,6 +89,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **BREAKING: every kickoff now carries ONE import, so the base package and the agent plugins must
+  be upgraded together.** The kickoff is the file that boots a box's whole instruction chain. For
+  one transition release the three plugin kickoffs carried a second, pre-canon import
+  (`@~/playbook/…`) alongside the canon entry point, so a plugin build kept working against a base
+  that still bound the retired pre-canon layout. That layout is gone — its content moved into the
+  canon, which `@~/canon/COLLECTION.md` already reaches — so the second line addressed nothing and
+  printed one `unresolved import` warning on stderr at every box launch. It is deleted, from all
+  three plugins. **A plugin now requires a base that binds the canon: `kanibako-cli` 1.8.0 or
+  newer.** Either half upgraded alone leaves a box whose kickoff resolves nothing and whose
+  directives silently stop loading, so upgrade through the `kanibako` meta package, or upgrade the
+  plugins and the base in one step. The launch warning is gone with the line, which makes any
+  future one a real signal rather than expected noise. See [MIGRATION.md](MIGRATION.md) §2.6.
+
+- **A spawned helper's entrypoint script moved out of `playbook/`.** A helper box's directory
+  layout carried a `playbook/scripts/` directory holding `helper-init.sh` — `playbook` being the
+  pre-canon name for what is now the canon handbook, and the wrapper level carrying nothing else.
+  A helper now gets a flat `~/helpers/<n>/scripts/`, and a **parent's** own override copy of the
+  script is read from `~/canon/notebook/scripts/helper-init.sh`, the canon's own address for a
+  reusable script. If you never customized `helper-init.sh` there is nothing to do; if you did,
+  move it, because a copy left at the old path is read by nothing and warned about by nothing. The
+  two sides are addressed differently on purpose: a parent is a real box with a canon, while a
+  helper home has no canon binds at all, and giving one a `canon/` directory would make the launch
+  materialize a canon skeleton it was never meant to have. See [MIGRATION.md](MIGRATION.md) §2.44.
+
 - **BREAKING: a named workset's identity table is spelled `meta.workset` now, not `workset.meta`.**
   v1.7.0 moved every `<scope>.meta` identity key into the top-level, read-only `meta.<scope>`
   namespace, and named this very table while doing it (`workset.meta.root` → `meta.workset.path`) —

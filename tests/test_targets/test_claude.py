@@ -229,11 +229,10 @@ class TestDescriptorDeliveryMounts:
         loader_text = mounts[2].source.read_text()
         # The canon ENTRY POINT (C-CANON P-4) …
         assert "@~/canon/COLLECTION.md" in loader_text
-        # … plus the pre-canon import, kept for ONE transition release so a plugin
-        # build works against a base that still binds the old rom layout.  ⚑ Remove
-        # this line together with the KICKOFF's (migration M-12) — pinning it here
-        # makes that removal deliberate rather than silent drift.
-        assert "@~/playbook/kanibako/directives/KANIBAKO.md" in loader_text
+        # … and NOTHING else.  The pre-canon import that rode alongside it for one
+        # transition release is gone (migration M-12), together with the tree it
+        # addressed; pinned absent here so it cannot drift back in.
+        assert "@~/playbook/kanibako/directives/KANIBAKO.md" not in loader_text
 
     def test_missing_source_safe_fails(self, tmp_path):
         """A missing AGENT_CRITICAL source raises BindingSourceError (clean safe-fail)."""
