@@ -24,6 +24,15 @@ jobs:
       - run: ruff check src/ tests/ packages/
       - run: mypy src/kanibako/
       - run: mypy packages/agent-claude/src packages/agent-goose/src packages/agent-codex/src
+      # ⚑ This step also runs the KEYSPACE ENFORCEMENT layer. tests/_keystore_census.py
+      # is a DEFAULT-ON plugin (registered in tests/conftest.py) that interposes on
+      # KeyStore.__setitem__, judges every key path written into a store against the
+      # declared keyspace, and FAILS the session on one the spec does not declare
+      # (spec §0: the keyspace is CLOSED). It needs no flag and no separate step —
+      # arming it by env var is what let it sit unenforced. Set
+      # KANI_KEYSTORE_CENSUS=0 to opt out; the only reason to is bisecting the
+      # census itself. Measured cost over the whole suite: 399.7 s on vs 325.0 s
+      # off (+23%), with identical pass/fail outcomes.
       - run: pytest tests/ -v
 
   integration:

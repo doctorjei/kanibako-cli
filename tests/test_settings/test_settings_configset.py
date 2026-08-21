@@ -50,8 +50,8 @@ from kanibako.settings.settings_resolve import ResolveCtx
 #: the lenient expand actually resolves a chain, not just an existence map).
 _KEYSPACE: dict = {
     "workset": {"boxes": "/ws/boxes", "vault_rw": "/ws/vault"},
-    "system": {"data": "/sys/data"},
-    "box": {"meta": {"name": "mybox"}},
+    "config": {"data": "/sys/data"},
+    "meta": {"box": {"name": "mybox"}},
 }
 #: A ctx whose XDG/home set makes $XDG_DATA_HOME/$XDG_STATE_HOME resolvable and
 #: $NOPE_VAR / $XDG_CACHE_HOME unset (→ a defect the lenient expand records).
@@ -223,18 +223,18 @@ def test_escaped_at_is_literal_not_a_ref() -> None:
 def test_braced_ref_scans_as_one_token_not_a_swallowed_suffix() -> None:
     # ``_scan_tokens`` calls the resolver's OWN parser, so the ref name stops at
     # the closing brace and the ``.jsonl`` suffix is a literal — the whole point
-    # of the form. (Bare ``@box.meta.name.jsonl`` would yield one dotted name.)
+    # of the form. (Bare ``@meta.box.name.jsonl`` would yield one dotted name.)
     from kanibako.settings.settings_configset import _scan_tokens
 
-    assert _scan_tokens("@{box.meta.name}.jsonl") == (["box.meta.name"], [])
+    assert _scan_tokens("@{meta.box.name}.jsonl") == (["meta.box.name"], [])
     assert _scan_tokens("@{a}/@{b}.x") == (["a", "b"], [])
-    assert _scan_tokens("@box.meta.name.jsonl") == (["box.meta.name.jsonl"], [])
+    assert _scan_tokens("@meta.box.name.jsonl") == (["meta.box.name.jsonl"], [])
 
 
 def test_braced_ref_that_resolves_is_ok() -> None:
-    # ``box.meta.name`` exists in _KEYSPACE → the E3 probe resolves cleanly.
+    # ``meta.box.name`` exists in _KEYSPACE → the E3 probe resolves cleanly.
     v = _validate(
-        "box.bindings.ro.helper_log", "@workset.boxes/@{box.meta.name}.jsonl",
+        "box.bindings.ro.helper_log", "@workset.boxes/@{meta.box.name}.jsonl",
     )
     assert v is OK
 

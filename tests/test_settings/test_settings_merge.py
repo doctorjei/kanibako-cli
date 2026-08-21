@@ -88,13 +88,14 @@ def test_most_specific_scalar_wins() -> None:
 
 def test_lower_scope_survives_when_higher_absent() -> None:
     levels = [
-        KeyStore({"box": {"a": "box"}}),
-        KeyStore({"box": {"b": "ws"}}),
+        KeyStore({"box": {"image": "box"}}),
+        KeyStore({"box": {"shell": "ws"}}),
     ]
     snap = merge(levels)
-    # Per-name union within the box subtree: both a (box) and b (workset) survive.
-    assert _probe(snap, "box", "a") == "box"
-    assert _probe(snap, "box", "b") == "ws"
+    # Per-name union within the box subtree: both image (box) and shell (workset)
+    # survive.
+    assert _probe(snap, "box", "image") == "box"
+    assert _probe(snap, "box", "shell") == "ws"
 
 
 # --------------------------------------------------------------------------- #
@@ -104,38 +105,40 @@ def test_lower_scope_survives_when_higher_absent() -> None:
 
 def test_falsy_zero_sets_and_wins() -> None:
     levels = [
-        KeyStore({"box": {"n": 0}}),  # box sets 0 — falsy but SET
-        KeyStore({"box": {"n": 99}}),  # workset 99 — must be shadowed
+        # box sets helper_num 0 — falsy but SET
+        KeyStore({"meta": {"box": {"helper_num": 0}}}),
+        # workset 99 — must be shadowed
+        KeyStore({"meta": {"box": {"helper_num": 99}}}),
     ]
     snap = merge(levels)
-    assert _probe(snap, "box", "n") == 0
+    assert _probe(snap, "meta", "box", "helper_num") == 0
 
 
 def test_falsy_empty_string_sets_and_wins() -> None:
     levels = [
-        KeyStore({"box": {"s": ""}}),
-        KeyStore({"box": {"s": "lower"}}),
+        KeyStore({"box": {"image": ""}}),
+        KeyStore({"box": {"image": "lower"}}),
     ]
     snap = merge(levels)
-    assert _probe(snap, "box", "s") == ""
+    assert _probe(snap, "box", "image") == ""
 
 
 def test_falsy_false_sets_and_wins() -> None:
     levels = [
-        KeyStore({"box": {"flag": False}}),
-        KeyStore({"box": {"flag": True}}),
+        KeyStore({"box": {"share_images": False}}),
+        KeyStore({"box": {"share_images": True}}),
     ]
     snap = merge(levels)
-    assert _probe(snap, "box", "flag") is False
+    assert _probe(snap, "box", "share_images") is False
 
 
 def test_falsy_empty_list_sets_and_wins() -> None:
     levels = [
-        KeyStore({"box": {"xs": []}}),
-        KeyStore({"box": {"xs": ["a", "b"]}}),
+        KeyStore({"agent": {"default": {"run_args": []}}}),
+        KeyStore({"agent": {"default": {"run_args": ["a", "b"]}}}),
     ]
     snap = merge(levels)
-    assert _probe(snap, "box", "xs") == []
+    assert _probe(snap, "agent", "default", "run_args") == []
 
 
 # --------------------------------------------------------------------------- #
@@ -221,11 +224,11 @@ def test_deep_recursion_three_levels() -> None:
 
 def test_higher_subtree_shadows_lower_nonsubtree() -> None:
     # A higher KeyStore subtree at a name shadows a lower scalar at the same name.
-    high = KeyStore({"box": {"x": KeyStore({"a": 1})}})
-    low = KeyStore({"box": {"x": "scalar"}})
+    high = KeyStore({"box": {"auth": KeyStore({"global_enabled": True})}})
+    low = KeyStore({"box": {"auth": "scalar"}})
     snap = merge([high, low])
-    assert _probe(snap, "box", "x", "a") == 1
-    assert _probe(snap, "box", "x") == KeyStore({"a": 1})
+    assert _probe(snap, "box", "auth", "global_enabled") is True
+    assert _probe(snap, "box", "auth") == KeyStore({"global_enabled": True})
 
 
 # --------------------------------------------------------------------------- #

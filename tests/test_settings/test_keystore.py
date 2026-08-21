@@ -51,7 +51,7 @@ _V = TypeVar("_V")
 def test_construct_from_nested_dict_literals_wraps_recursively() -> None:
     store = KeyStore(
         {
-            "system": {"data": "/data", "cache": {"dir": "/cache"}},
+            "system": {"template": "/data", "cache": {"dir": "/cache"}},
             "count": 3,
         }
     )
@@ -108,9 +108,9 @@ def test_too_many_positional_args_rejected() -> None:
 
 
 def test_attr_access_equals_item_access() -> None:
-    store = KeyStore({"system": {"data": "/data"}})
+    store = KeyStore({"system": {"template": "/data"}})
     assert store.system is store["system"]
-    assert store.system.data == store["system"]["data"] == "/data"
+    assert store.system.template == store["system"]["template"] == "/data"
 
 
 def test_attr_write_visible_via_item() -> None:

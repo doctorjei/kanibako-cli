@@ -7,14 +7,18 @@ FABRICATED INTERNALLY that reaches a resolved store without crossing one.  This
 plugin comes between the store and the code that writes it: it patches the single
 write funnel, records every path written during the session, judges each one
 against a pluggable declared-keyspace oracle, and at session end REPORTS every
-unapproved key with the line that set it and FAILS THE RUN.  A collector that only
-warns is not enforcement.
+unapproved key with the line that set it and FAILS THE RUN.
 
-OPT-IN / ZERO-IMPACT, on the model of ``tests/_timing.py``: the plugin is
-COMPLETELY INERT unless ``KANI_KEYSTORE_CENSUS`` is set, so normal runs, CI and
-the gates pay nothing, no file is written and no run can be failed by it.  When it
-IS set, the patch is installed at ``pytest_configure`` and REMOVED again at the end
-of the session -- the class is never left patched.
+DEFAULT-ON.  The keyspace is CLOSED (spec §0), so an undeclared key is a defect
+whether or not anyone remembered to arm a flag.  Set ``KANI_KEYSTORE_CENSUS`` to
+``0`` (or ``off``/``false``/``no``) to opt OUT -- the only reason to is bisecting
+the census itself.  When on, the patch is installed at ``pytest_configure`` and
+REMOVED again at the end of the session; the class is never left patched.
+MEASURED COST, whole suite through the chunked runner, same tree, same 162 files:
+**399.7 s on vs 325.0 s off** (+23%, ~0.46 s per file), with IDENTICAL outcomes --
+``ok=162 fail=5 memkill=0``, 7892 passed, 7 skipped, both ways.  It is not free;
+it is cheap, and a run that cannot be trusted about the keyspace is worth less
+than 75 s.
 
 --------------------------------------------------------------------------------
 WHAT COUNTS AS A VIOLATION -- the half of this that is adjudication, not mechanism
@@ -22,7 +26,11 @@ WHAT COUNTS AS A VIOLATION -- the half of this that is adjudication, not mechani
 
 A resolved store legitimately holds a great deal that is NOT a key, and a collector
 that flagged all of it would report noise.  Every recorded write lands in exactly
-one class (:class:`Verdict`), and only ``UNDECLARED`` fails the run:
+one class (:class:`Verdict`), and only ``UNDECLARED`` fails the run.  ⚑⚑ EVERY
+CLASS BELOW IS STRUCTURAL -- decided by the path's SHAPE or by a constant the
+SPEC sanctions.  There is no list of blessed key names here, and none may be
+added: a name-keyed exemption is exactly the carve-out that hides the next
+finding behind it.
 
 ``DECLARED``   the oracle accepts the whole path.  A key.
 ``VALUE``      a proper PREFIX is a declared key, so the rest addresses a VALUE
@@ -36,21 +44,43 @@ one class (:class:`Verdict`), and only ``UNDECLARED`` fails the run:
                fragment store whose key path the collector cannot know.  A fragment
                that ever reaches a real store is re-censused THERE, with its true
                path, so nothing is lost by declining to guess.
-``UNJUDGED``   the key did not come from the code (see ORIGIN below).
-``EXEMPT``     adjudicated, with the reason recorded at the exemption
-               (:data:`EXEMPTIONS`).
-``UNDECLARED`` none of the above: the CODE put a key into a store that the keyspace
+``RESERVED``   the RESERVED INTERNAL NODE the spec names in so many words: *"The
+               derivation is NOT a key -- it is a RESERVED INTERNAL NODE ... rides
+               inside the per-launch snapshot as an internal node named
+               `binding_derivations`"* (spec §0, ABSTRACT declarations).  Keyed off
+               ``kb_store.BINDING_DERIVATIONS_NODE``, the constant that declares it
+               -- not off a copy of the name.
+``NEGATIVE``   the RUNNING TEST DECLARED IT (see the marker below).  A test that
+               exercises the refusal of an undeclared key has to write one; that is
+               its point.
+``UNDECLARED`` none of the above: something put a key into a store that the keyspace
                does not declare.  THE RUN FAILS.
 
-⚑ ORIGIN -- WHO CHOSE THE KEY, which is the whole question.  The gap this closes is
-a key "fabricated INTERNALLY ... without crossing a boundary", so a key that DID
-cross one is a different question and is reported rather than enforced:
-- ``TEST``  the innermost or outermost frame is in a test tree.  A test that builds
-  a store by hand, or calls the settings stack directly with a synthetic partial, is
-  authoring its own input; enforcing there reds on FIXTURES, not on the code.
-- ``FILE``  the writing frame is the settings FILE-partial parser, so the key is a
-  settings file's CONTENT.  A file IS a boundary.
-- ``CODE``  everything else -- the production call path -- and the only class judged.
+⚑⚑ THE ``writes_undeclared`` MARKER -- intent declared AT THE TEST, never here.
+A test that drives a refusal names the exact paths it will write::
+
+    @pytest.mark.writes_undeclared(
+      "box.meta", "box.meta.mode",
+      reason="the nested <scope>.meta ride-through: _drop_upward_scopes looks at "
+             "the TOP-LEVEL view only, so the nested node must survive un-dropped.",
+    )
+
+Three properties make this a declaration rather than a blessing, and all three
+matter:
+1. It is scoped to ONE test.  The same path written by anything else still reds.
+2. It is EXACT.  Any OTHER undeclared path that test writes still reds.
+3. It MUST CHANGE A VERDICT.  A declared path that never turns a violation into a
+   ``NEGATIVE`` -- because the test stopped writing it, because the key became
+   declared, or because it was scaffolding all along -- FAILS THE RUN, so a marker
+   cannot quietly outlive its reason.
+
+⚑ THERE IS NO ORIGIN DISCRIMINATOR.  An earlier revision excused a key by WHERE it
+was written from (a test frame, the file-partial parser), matched by code object.
+That excused two whole classes of real violation -- ~44 synthetic fixture keys and
+``meta.workset.{created,projects}`` -- and its frame walk was the fragile part of
+the machinery.  A key is judged by WHAT IT IS.  A test that means to write one says
+so; a settings FILE carrying an undeclared key is a defect in the fixture that
+wrote the file, and is now reported as one.
 
 ⚑⚑ THE COLLECTOR MUST NOT RENDER NON-KEY DATA AS A DOTTED KEY.  A destination is
 DATA and NEVER appears in a dotted key: ``KeyStore.insert_segments`` takes each
@@ -90,6 +120,9 @@ KNOWN BLIND SPOTS, stated rather than papered over:
 - ``dict.update(store, ...)`` and other C-level ``dict`` mutators do NOT route
   through ``__setitem__`` and are invisible here.  So is ``dict.__setitem__``
   called unbound.
+- A ``writes_undeclared`` marker is matched against the write's RESOLVED path, so
+  a marker on a test whose write is re-tagged to a different path later in the
+  session goes unused and reds -- deliberately.
 - ``packages/*/tests`` do not load ``tests/conftest.py``, so plugin-side writes
   are not censused unless this plugin is registered there too.
 - A node inserted at two paths keeps the tag of the LAST attachment.
@@ -107,7 +140,6 @@ from collections.abc import Collection, Iterator
 from typing import TYPE_CHECKING, Any, Callable, NamedTuple
 
 from kanibako.settings import keystore as _keystore_mod
-from kanibako.settings import settings_assemble as _assemble_mod
 from kanibako.settings.kb_store import BINDING_DERIVATIONS_NODE, SCOPE_CONTAINMENT
 from kanibako.settings.keystore import KeyStore
 from kanibako.settings.settings_keyspace import key_validity
@@ -115,8 +147,14 @@ from kanibako.settings.settings_keyspace import key_validity
 if TYPE_CHECKING:  # pragma: no cover - typing only
   import pytest
 
-#: Set to anything non-empty to arm the census AND its enforcement.  Unset = inert.
+#: The census is ON unless this names one of :data:`_OFF_TOKENS`.
 ENV_FLAG = "KANI_KEYSTORE_CENSUS"
+
+#: The values that opt OUT.  Anything else -- including unset -- is ON.
+_OFF_TOKENS = frozenset({"0", "off", "false", "no", ""})
+
+#: The marker a test uses to DECLARE the undeclared paths it will write on purpose.
+NEGATIVE_MARKER = "writes_undeclared"
 
 #: Where the JSONL rows are appended.  Override with ``KANI_KEYSTORE_CENSUS_FILE``.
 #: ⚑ APPEND, never truncate: the chunked runner is one pytest process PER FILE, so
@@ -132,8 +170,9 @@ _MAX_TAG_DEPTH = 64
 
 #: The tokens a KEYSPACE path may start with: the four scopes (``kb_store``'s own
 #: containment order), the three non-scope namespaces, and the reserved internal
-#: node -- included so it is EXEMPTED BY NAME below rather than dismissed as an
-#: unrooted fragment.
+#: node -- included so a ``binding_derivations`` write is recognised as the node
+#: the SPEC names (``Verdict.RESERVED``) rather than dismissed as an unrooted
+#: fragment the collector could not place.
 KEYSPACE_ROOTS: frozenset[str] = (
   frozenset(SCOPE_CONTAINMENT) | {"config", "meta", "pref", BINDING_DERIVATIONS_NODE}
 )
@@ -211,58 +250,6 @@ def set_oracle(fn: Callable[[str], str | None]) -> None:
   _oracle = fn
 
 
-### The exemption set — the deliverable's other half ###
-
-class Exemption(NamedTuple):
-  """One adjudicated non-key, with the reason recorded AT the exemption."""
-  segments: tuple[str, ...]
-  subtree: bool
-  reason: str
-
-  def covers(self, path: tuple[str, ...]) -> bool:
-    n = len(self.segments)
-    if self.subtree:
-      return path[:n] == self.segments
-    return path == self.segments
-
-
-#: ⚑⚑ EVERY MEMBER IS MEASURED AND CARRIES ITS REASON.  An entry added merely to
-#: make a run green is the exact failure this phase exists to prevent — the classes
-#: that are STRUCTURE (value addresses, containers, dest data) are handled by the
-#: classification above and must never appear here.
-EXEMPTIONS: tuple[Exemption, ...] = (
-  Exemption(
-    (BINDING_DERIVATIONS_NODE,), True,
-    "the RESERVED INTERNAL NODE, not a key — kb_store.BINDING_DERIVATIONS_NODE's "
-    "own comment says so. commands/start.py installs the collapse's per-declaration "
-    "derivation map beside the keyspace in the same store; its interior is "
-    "declaration keys and box DESTINATIONS, which are data.",
-  ),
-  Exemption(
-    ("agent", "default", "cache_probe"), False,
-    "INSTRUMENTATION LIMIT, not a fabrication: 'cache_probe' is a legal "
-    "PLUGIN-declared agent leaf, registered by a TargetSetting that "
-    "tests/test_resource_scoping.py injects. The oracle's plugin-leaf set is "
-    "discovered ONCE at install (see _agent_leaves — discovering it later would "
-    "prime a cache the production code reads), so a test-registered descriptor is "
-    "invisible to it.",
-  ),
-  Exemption(
-    ("meta", "box", "agent", "cache_probe"), False,
-    "the meta.box.agent RO MIRROR of the same test-registered 'cache_probe' leaf; "
-    "see the agent.default.cache_probe exemption.",
-  ),
-)
-
-
-def exemption_for(segments: tuple[str, ...]) -> Exemption | None:
-  """The exemption covering *segments*, or ``None``."""
-  for entry in EXEMPTIONS:
-    if entry.covers(segments):
-      return entry
-  return None
-
-
 ### Classification ###
 
 class Verdict:
@@ -272,9 +259,19 @@ class Verdict:
   DATA_SEGMENT = "DATA_SEGMENT"
   CONTAINER = "CONTAINER"
   UNROOTED = "UNROOTED"
-  UNJUDGED = "UNJUDGED"
-  EXEMPT = "EXEMPT"
+  RESERVED = "RESERVED"
+  NEGATIVE = "NEGATIVE"
   UNDECLARED = "UNDECLARED"
+
+
+#: The one non-key node the SPEC names, quoted at :data:`Verdict.RESERVED`.  Sourced
+#: from the declaring constant so a rename cannot leave a stale spelling behind.
+_RESERVED_REASON = (
+  f"{BINDING_DERIVATIONS_NODE!r} is the RESERVED INTERNAL NODE the spec names in "
+  f"so many words (§0, ABSTRACT declarations): the materialised binding an abstract "
+  f"declaration derives is machinery output, not a settable surface. Its interior "
+  f"is declaration keys and box DESTINATIONS, which are data."
+)
 
 
 class Judgement(NamedTuple):
@@ -307,7 +304,17 @@ def render(segments: Collection[str], key_len: int | None = None) -> str:
 #: Un-drained writes, keyed by ``(id(box), key, file, line)`` so a hot write site
 #: collapses to one entry instead of one per call.  The box is held in the VALUE,
 #: which is what keeps its ``id`` from being recycled under us.
-_pending: dict[tuple[int, str, str, int], list[Any]] = {}
+_pending: dict[tuple[int, str, str, str], list[Any]] = {}
+
+#: The paths the RUNNING test declared it would write, captured AT WRITE TIME (not
+#: at drain): a drain happens in teardown, by which point the item may have moved on.
+_current_negative: frozenset[str] = frozenset()
+
+#: Every path any ``writes_undeclared`` marker declared this session, and the subset
+#: actually written.  The difference FAILS the run -- that is what stops a marker
+#: outliving its reason.
+_declared_negative: set[str] = set()
+_hit_negative: set[str] = set()
 
 #: Drained rows: segments -> row.  EVERY distinct path written, judged or not — the
 #: clean ones are the census's denominator, and they are what tells the CONTAINER
@@ -327,54 +334,36 @@ _finalized = False
 _KEYSTORE_FILE = os.path.abspath(_keystore_mod.__file__)
 _SETTINGS_DIR = os.path.dirname(_KEYSTORE_FILE)
 _SELF_FILE = os.path.abspath(__file__)
-_TEST_DIR_MARKER = os.sep + "tests" + os.sep
-
-#: ⚑ THE FILE-PARTIAL PARSER, BY CODE OBJECT, not by name or line.  These two build
-#: a level partial out of a loaded settings DOCUMENT, so a key written from one of
-#: their frames came out of a FILE — a boundary — not out of the code.  Imported
-#: rather than string-matched so a rename breaks the census LOUDLY at install
-#: instead of silently re-classifying every file-sourced key as a fabrication.
-_FILE_PARTIAL_CODE = frozenset({
-  _assemble_mod._parse_node.__code__, _assemble_mod.parse_bind_map.__code__,
-})
 
 
 class _Sites(NamedTuple):
-  """Where a write came from: two frames, plus what they say about its ORIGIN."""
+  """Where a write came from: the line that set it, and the caller of settings."""
   inner: str
   outer: str
-  origin: str
 
 
 def _write_sites() -> _Sites:
-  """The line that wrote the key, the caller of settings, & the write's ORIGIN.
+  """The line that wrote the key, and the caller of the settings stack.
 
   TWO frames, because either one alone misleads.  The plan asks for the first
   frame outside ``kanibako/settings`` (*outer*) — but the settings stack writes
   most of the store, so for those writes *outer* names whoever called
   ``build_launch_snapshot``, never the line that chose the key.  *inner* is the
   first frame outside ``keystore.py`` itself (the mechanism), which IS that line.
+  ⚑ REPORTING ONLY.  Neither frame decides a verdict: a key is judged by what it
+  is, never by who wrote it.
   """
   inner = ""
-  origin = "CODE"
   frame: Any = sys._getframe()
   while frame is not None:
     name = frame.f_code.co_filename
     if name != _SELF_FILE and name != _KEYSTORE_FILE:
       if not inner:
         inner = f"{name}:{frame.f_lineno}"
-        if frame.f_code in _FILE_PARTIAL_CODE:
-          origin = "FILE"
-        elif _TEST_DIR_MARKER in name:
-          origin = "TEST"
       if not name.startswith(_SETTINGS_DIR):
-        # ⚑ The OUTERMOST frame decides TEST even when the innermost was production:
-        # a test calling assemble_levels with its own floor/partial authored that key.
-        if _TEST_DIR_MARKER in name:
-          origin = "TEST"
-        return _Sites(inner, f"{name}:{frame.f_lineno}", origin)
+        return _Sites(inner, f"{name}:{frame.f_lineno}")
     frame = frame.f_back
-  return _Sites(inner or "<keystore internal>", "<inside settings>", origin)
+  return _Sites(inner or "<keystore internal>", "<inside settings>")
 
 
 def _box(node: KeyStore[Any]) -> list[tuple[str, ...]]:
@@ -411,7 +400,9 @@ def _record(node: KeyStore[Any], key: str, value: Any) -> None:
   if slot is None:
     # ⚑ ``type(value).__name__``, NOT ``repr(value)``: a node's repr is recursive,
     # so reprs at every write would be quadratic in store size.
-    _pending[ident] = [box, key, sites, type(value).__name__, 1]
+    # ⚑ The declaring set is captured HERE, at the write, because drain runs in
+    # teardown and the running item's markers are a write-time fact.
+    _pending[ident] = [box, key, sites, type(value).__name__, 1, _current_negative]
   else:
     slot[4] += 1
 
@@ -445,14 +436,18 @@ def _ask(path: str) -> str | None:
   return _verdicts[path]
 
 
-def classify(segments: tuple[str, ...], *, origin: str) -> Judgement:
+def classify(segments: tuple[str, ...]) -> Judgement:
   """One write's :class:`Judgement`, ignoring what landed UNDER it.
 
-  The CONTAINER rule needs the whole census and is applied later, in
-  :func:`_apply_container_rule`; everything else is decidable from the path alone.
+  The CONTAINER and NEGATIVE rules need more than the path — what landed
+  underneath, and what the running test declared — and are applied later, in
+  :func:`_apply_container_rule` / :func:`_apply_negative_rule`.  Everything else is
+  decidable from the path alone.
   """
   if not segments:  # pragma: no cover - __setitem__ cannot produce this
     return Judgement(Verdict.UNROOTED, "", 0, "empty path")
+  if segments[0] == BINDING_DERIVATIONS_NODE:
+    return Judgement(Verdict.RESERVED, BINDING_DERIVATIONS_NODE, 1, _RESERVED_REASON)
   if segments[0] not in KEYSPACE_ROOTS:
     return Judgement(
       Verdict.UNROOTED, "", len(segments),
@@ -475,48 +470,53 @@ def classify(segments: tuple[str, ...], *, origin: str) -> Judgement:
         Verdict.VALUE, prefix, cut,
         f"a value address inside the declared key {prefix!r}",
       )
-  exemption = exemption_for(segments)
-  if exemption is not None:
-    return Judgement(
-      Verdict.EXEMPT, ".".join(exemption.segments), len(exemption.segments),
-      exemption.reason,
-    )
   full = ".".join(segments)
-  if origin != "CODE":
-    what = "a settings FILE" if origin == "FILE" else "a test's own input"
-    return Judgement(
-      Verdict.UNJUDGED, "", len(segments),
-      f"came from {what}, not from the code — {_ask(full)}",
-    )
   return Judgement(Verdict.UNDECLARED, "", len(segments), _ask(full) or "")
 
 
 def drain() -> None:
   """Resolve pending writes to segment paths & fold them into the census."""
-  for box, key, sites, kind, count in _pending.values():
+  for box, key, sites, kind, count, negatives in _pending.values():
     segments = box[0] + (key,)
+    declared = ".".join(segments) in negatives
     row: dict[str, Any] | None = _rows.get(segments)
     if row is not None:
       row["count"] += count
+      # ⚑ AND, never OR: one write of this path from outside a declaring test is
+      # enough to make the path a violation again.
+      row["negative"] = row["negative"] and declared
+      # ⚑ OR, never "first write wins": the CONTAINER rule turns on whether a path
+      # ever held a NODE. Latching on the first write would make the verdict depend
+      # on the ORDER two tests happened to run in.
+      row["is_node"] = row["is_node"] or kind == "KeyStore"
       continue
-    judged = classify(segments, origin=sites.origin)
+    judged = classify(segments)
     _rows[segments] = {
       "path": render(segments, judged.key_len), "segments": list(segments),
       "verdict": judged.verdict, "key": judged.key, "note": judged.note,
-      "origin": sites.origin, "count": count, "site": sites.inner,
+      "negative": declared, "count": count, "site": sites.inner,
       "outer_site": sites.outer, "value_type": kind, "is_node": kind == "KeyStore",
     }
   _pending.clear()
 
 
 def _apply_container_rule() -> None:
-  """Re-class a flagged NODE that carries declared keys underneath it.
+  """Re-class a flagged NODE that is STRUCTURE rather than a key.  Two rules.
 
-  ⚑ Judged by WHAT LANDED UNDER IT rather than by a list: ``box``, ``meta.box`` and
-  ``box.bindings`` are scaffolding the store needs, and none of them is a key.  A
-  node with NOTHING declared beneath it is not scaffolding — an empty fabricated
-  subtree stays a violation, which is why this rule is a filter and not a blanket
-  "nodes are exempt".
+  ⚑ AN INTERMEDIATE node is judged by WHAT LANDED UNDER IT rather than by a list:
+  ``meta.box`` and ``box.bindings`` are scaffolding the store needs, and neither is
+  a key.  A node with NOTHING declared beneath it is not scaffolding — an empty
+  fabricated subtree stays a violation, which is why this is a filter and not a
+  blanket "nodes are exempt".
+
+  ⚑⚑ A KEYSPACE ROOT is different, and the difference is the spec's, not a
+  convenience: a root is a NAMESPACE, which ``key_validity`` says in its own words
+  (*"'meta' is a namespace, not a key"*).  Its key-hood cannot depend on what a
+  given session happened to write beneath it — an empty ``box: {}`` scope table in
+  a settings file is a scope table, not a fabrication, and the "carries something
+  declared" test would call it one in any run that only exercised empty files.
+  A SCALAR at a root is still a violation: that is a genuinely undeclared shape,
+  and the ``is_node`` guard is what keeps this rule from excusing it.
   """
   real = {Verdict.DECLARED, Verdict.VALUE}
   carriers: set[tuple[str, ...]] = set()
@@ -525,29 +525,68 @@ def _apply_container_rule() -> None:
       for cut in range(1, len(segments)):
         carriers.add(segments[:cut])
   for segments, row in _rows.items():
-    # ⚑ ``EXEMPT`` is NOT in this set: a row somebody adjudicated by hand keeps the
-    # class that carries its reason, or the exemption stops being visible to audit.
-    if (
-      row["is_node"]
-      and row["verdict"] in (Verdict.UNDECLARED, Verdict.UNJUDGED)
-      and segments in carriers
-    ):
+    if not row["is_node"] or row["verdict"] != Verdict.UNDECLARED:
+      continue
+    if len(segments) == 1:
+      row["verdict"] = Verdict.CONTAINER
+      row["note"] = "a keyspace ROOT: a namespace, not a key (spec §0)"
+    elif segments in carriers:
       row["verdict"] = Verdict.CONTAINER
       row["note"] = "an intermediate node carrying declared keys underneath it"
+
+
+def _apply_negative_rule() -> None:
+  """Re-class a violation EVERY write of which came from a test that declared it.
+
+  ⚑ Applied AFTER the container rule and only to what is still ``UNDECLARED``, so a
+  marker cannot dress up a row some other rule already explains.
+  ⚑⚑ A declaration counts as EXERCISED only where it actually changed a verdict —
+  which is what :func:`unused_negatives` reads.  A marker naming a path that turns
+  out to be scaffolding, or a declared key, or one that some OTHER test also writes
+  undeclared, changed nothing, and saying so is the whole point of the check.
+  """
+  for segments, row in _rows.items():
+    if row["verdict"] == Verdict.UNDECLARED and row["negative"]:
+      row["verdict"] = Verdict.NEGATIVE
+      row["note"] = (
+        f"the test declared this write with @pytest.mark.{NEGATIVE_MARKER} — "
+        f"{row['note']}"
+      )
+      _hit_negative.add(".".join(segments))
+
+
+def unused_negatives() -> list[str]:
+  """Declared marker paths that changed no verdict.  Each one FAILS the run."""
+  return sorted(_declared_negative - _hit_negative)
 
 
 ### pytest hooks ###
 
 def _enabled() -> bool:
-  return bool(os.environ.get(ENV_FLAG))
+  return os.environ.get(ENV_FLAG, "1").strip().lower() not in _OFF_TOKENS
 
 
 def _census_file() -> str:
   return os.environ.get(ENV_FILE) or DEFAULT_CENSUS_FILE
 
 
+def _marker_paths(item: "pytest.Item") -> frozenset[str]:
+  """Every path the item's ``writes_undeclared`` markers name (closest wins nothing
+  — a class marker and a function marker COMPOSE)."""
+  paths: set[str] = set()
+  for mark in item.iter_markers(name=NEGATIVE_MARKER):
+    paths.update(str(a) for a in mark.args)
+  return frozenset(paths)
+
+
 def pytest_configure(config: "pytest.Config") -> None:
   global _original_setitem
+  config.addinivalue_line(
+    "markers",
+    f"{NEGATIVE_MARKER}(*paths, reason=...): this test writes these UNDECLARED key "
+    f"paths on purpose (it exercises a refusal). Every path must actually be "
+    f"written or the run fails.",
+  )
   if not _enabled() or _original_setitem is not None:
     return
   _agent_leaves()  # discover before any test patches discovery
@@ -555,10 +594,29 @@ def pytest_configure(config: "pytest.Config") -> None:
   KeyStore.__setitem__ = _patched_setitem  # type: ignore[method-assign]
 
 
+def pytest_runtest_setup(item: "pytest.Item") -> None:
+  """Arm the item's declared paths BEFORE its fixtures run — a fixture write is
+  as much the test's own input as a write from the test body."""
+  global _current_negative
+  _current_negative = _marker_paths(item)
+
+
+def pytest_runtest_call(item: "pytest.Item") -> None:
+  """Register the declared paths only once the test actually RUNS.
+
+  ⚑ Not in setup: a skipped or setup-errored test never gets the chance to write
+  what it declared, and reporting its paths as unused would red the run for a test
+  that did not execute.
+  """
+  _declared_negative.update(_current_negative)
+
+
 def pytest_runtest_teardown(item: "pytest.Item") -> None:
   """Drain per test so pending state (and the boxes it pins) stays bounded."""
+  global _current_negative
   if _original_setitem is not None:
     drain()
+  _current_negative = frozenset()
 
 
 def _uninstall() -> None:
@@ -599,6 +657,7 @@ def _finalize() -> list[dict[str, Any]]:
   drain()
   _uninstall()
   _apply_container_rule()
+  _apply_negative_rule()
   _finalized = True
   ordered = _ordered()
   _write_census(ordered)
@@ -613,37 +672,39 @@ def pytest_terminal_summary(terminalreporter: Any) -> None:
   for row in ordered:
     counts[row["verdict"]] = counts.get(row["verdict"], 0) + 1
   bad = violations()
+  stale = unused_negatives()
   write = terminalreporter.write_line
   write("")
   write(
     f"KeyStore census: {len(ordered)} distinct paths written -> {_census_file()}"
   )
   write("  " + "  ".join(f"{k}={v}" for k, v in sorted(counts.items())))
-  # ⚑ ONE LINE PER EXEMPTION, not per row: the exemption SET is the thing a reader
-  # has to audit, and a subtree exemption that printed its every dest would bury it.
-  for entry in EXEMPTIONS:
-    hit = [r for r in ordered if r["verdict"] == Verdict.EXEMPT
-           and entry.covers(tuple(r["segments"]))]
-    if hit:
-      scope = "subtree" if entry.subtree else "exact"
-      write(
-        f"  exempt ({scope})  {'.'.join(entry.segments)}  "
-        f"— {len(hit)} path(s), {sum(r['count'] for r in hit)} write(s)"
-      )
-      write(f"           {entry.reason}")
   if _collector_errors:
     write(f"  collector errors ({len(_collector_errors)}): {_collector_errors[:3]}")
+  if stale:
+    write("")
+    write(
+      f"KEYSTORE CENSUS FAILURE — {len(stale)} @pytest.mark.{NEGATIVE_MARKER} "
+      f"path(s) declared but never written:"
+    )
+    for path in stale:
+      write(f"          {path}")
+    write(
+      "  A declaration that no longer describes what the test writes is a stale "
+      "blessing. Delete it, or fix the path."
+    )
   if not bad:
     return
   write("")
-  write(f"KEYSTORE ENFORCEMENT FAILURE — {len(bad)} undeclared key(s) written by code:")
+  write(f"KEYSTORE ENFORCEMENT FAILURE — {len(bad)} undeclared key(s) written:")
   for row in bad:
     write(f"  {row['count']:>6}x  {row['path']}")
     write(f"           set at {row['site']}  (via {row['outer_site']})")
     write(f"           {row['note']}")
   write(
     "  The keyspace is CLOSED (spec §0): an undeclared key is not a key. Either stop "
-    "writing it, or declare it — an exemption needs a stated reason and an adjudication."
+    f"writing it, or declare it in the SPEC. A test that means to write one says so "
+    f"with @pytest.mark.{NEGATIVE_MARKER}; there is no exemption list."
   )
 
 
@@ -656,7 +717,7 @@ def pytest_sessionfinish(session: Any, exitstatus: Any) -> None:
   # ``pytest_sessionfinish`` hook, so setting it here is what turns the report into a
   # failed run — but overwriting an INTERRUPTED / NO-TESTS-COLLECTED status would
   # relabel a run that never got far enough to have a census.
-  if violations() and session.exitstatus == 0:
+  if (violations() or unused_negatives()) and session.exitstatus == 0:
     session.exitstatus = 1
 
 

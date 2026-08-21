@@ -558,14 +558,22 @@ class TestXdgFallbackRegression:
 
         The global config mirrors the live carrier state: the
         setup-materialized ``system.cache`` entry (the value that crashed the
-        launch) PLUS a declared behavior key with the same token, so the
+        launch) PLUS a declared agent leaf carrying the same token, so the
         expanded value is assertable end-to-end through the display read.
+
+        ⚑ The leaf is ``template`` — a DECLARED §2d agent leaf (the keyspace is
+        CLOSED, so a made-up probe name is not a key).  Its NAME is incidental
+        to the subject: what is under test is the expansion of a stored
+        ``$XDG_CACHE_HOME`` value through the agent tier, and ``template`` is
+        the path-valued leaf, so a path value reads honestly there.
         """
         from kanibako.settings.config import write_project_config
 
         target = MagicMock()
         target.setting_descriptors.return_value = [
-            TargetSetting(key="cache_probe", description="Probe", default="unset"),
+            TargetSetting(
+                key="template", description="Per-agent template source", default="unset"
+            ),
         ]
         target.name = "claude"
 
@@ -575,7 +583,7 @@ class TestXdgFallbackRegression:
             "  cache: $XDG_CACHE_HOME/kanibako\n"
             "agent:\n"
             "  claude:\n"
-            "    cache_probe: $XDG_CACHE_HOME/kanibako/probe\n"
+            "    template: $XDG_CACHE_HOME/kanibako/probe\n"
         )
 
         proj_dir = tmp_path / "proj"
@@ -598,7 +606,7 @@ class TestXdgFallbackRegression:
         result = _effective_behavior_for_display(
             target, agent_cfg, project_toml, system_settings_path=global_toml
         )
-        assert result["cache_probe"] == "/custom/cache/kanibako/probe"
+        assert result["template"] == "/custom/cache/kanibako/probe"
 
     def test_stored_xdg_cache_value_env_unset_falls_back(self, tmp_path, monkeypatch):
         """Unset env var → the stored value expands to the XDG-spec default
@@ -614,7 +622,7 @@ class TestXdgFallbackRegression:
             target, agent_cfg, project_toml, system_settings_path=global_toml
         )
         expected = str(Path.home() / ".cache" / "kanibako" / "probe")
-        assert result["cache_probe"] == expected
+        assert result["template"] == expected
 
     def test_stored_xdg_cache_value_env_empty_falls_back(self, tmp_path, monkeypatch):
         """An EMPTY env var is as good as unset (per the spec) → default."""
@@ -629,4 +637,4 @@ class TestXdgFallbackRegression:
             target, agent_cfg, project_toml, system_settings_path=global_toml
         )
         expected = str(Path.home() / ".cache" / "kanibako" / "probe")
-        assert result["cache_probe"] == expected
+        assert result["template"] == expected
