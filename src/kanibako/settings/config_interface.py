@@ -618,6 +618,17 @@ def set_config_value(
         if access_err is not None:
             return access_err
 
+    # ⚑ ``box.agent.<key>`` — RETIRED (P7, spec §2b): refused BY NAME here, in the preamble
+    # with the other retired spellings, and NOT further down beside the write branches. The
+    # E3 probe below builds a CANDIDATE snapshot with the proposed key spliced into it; run
+    # ahead of this refusal it materialises a retired, undeclared key into a real ``KeyStore``
+    # before anything judges the name. The keyspace is CLOSED (spec §0) — the name is refused
+    # first, and nothing downstream ever sees it. The message and its cure are unchanged.
+    if _is_box_agent_key(canonical):
+        return box_agent_retired_error(
+            canonical, verb="set", active_agent=cascade_agent_name or None,
+        )
+
     # SET-TIME RESOLUTION PROBE for a value the EXPANDER will see (E3, spec §2a / Q9); see
     # :func:`_probes_at_set_time` for which keys qualify. It blocks ONLY on the edited value's
     # own upstream chain, so ``config set`` stays usable to REPAIR a broken config.
@@ -726,12 +737,9 @@ def set_config_value(
         write_nested_key(dest.file, dest.sections, dest.leaf, value)
         return f"Set {canonical}={value}"
 
-    # ``box.agent.<key>`` — RETIRED (P7, spec §2b): REFUSE and name the cure; nothing is written.
-    # ⚑ BEFORE the path-category branch, so the refusal claims the WHOLE retired spelling.
-    if _is_box_agent_key(canonical):
-        return box_agent_retired_error(
-            canonical, verb="set", active_agent=cascade_agent_name or None,
-        )
+    # ⚑ THERE IS NO ``box.agent.<key>`` BRANCH HERE ANY MORE and its absence is DELIBERATE:
+    # the retirement refusal moved UP into the preamble, ahead of the E3 probe, so no write
+    # machinery — the probe's candidate store included — ever sees the retired spelling.
 
     # ⚑ THERE IS NO CATEGORY SET BRANCH ANY MORE (DS-BL1 = (a)) and its absence is DELIBERATE —
     # all six are refused BY NAME in the preamble above. Do NOT "restore" it: re-adding a write
