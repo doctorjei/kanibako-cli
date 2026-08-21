@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
-pytest_plugins = ["tests.conftest_integration", "tests._timing"]
+pytest_plugins = [
+    "tests.conftest_integration",
+    "tests._timing",
+    # Inert unless KANI_KEYSTORE_CENSUS is set; see its module docstring.
+    "tests._keystore_census",
+]
 
 import json
 import subprocess
