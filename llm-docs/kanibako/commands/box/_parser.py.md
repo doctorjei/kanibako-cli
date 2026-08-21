@@ -568,6 +568,11 @@ Resolve a `box rm` *target* (NAME or PATH) to `(box_name, root)`, else two `None
 (resolved by ancestor-walk detection, then matched to its registered root). Mirrors how `box purge`
 finds standalone boxes.
 
+⚑ **The blanket `except Exception` here treats any detection failure as "not this box" — with ONE
+carve-out: `LegacyWorksetIdentityError` re-raises.** A workset root still on the retired
+`workset.meta` spelling (MIGRATION.md §2.43) is a named thing to fix, and swallowing it here would
+report the path as an unresolvable box instead of printing the cure.
+
 ```_rm_standalone(std, box_name: str, root, args: argparse.Namespace) -> int```
 Remove a standalone box: always drop its registry entry, its `box_data/` on `--purge`.
 

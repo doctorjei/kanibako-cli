@@ -7,7 +7,7 @@ enumerated (`list`), inspected (`info`), unregistered (`rm`), gains and loses me
 directories its boxes mount (`share add` / `rm` / `list`).
 
 Two facts shape almost everything below. First, **the workset tier is ONE file** —
-`<root>/settings.yaml`, for every mode — so identity (`workset.meta`) and cascade settings coexist
+`<root>/settings.yaml`, for every mode — so identity (`meta.workset`) and cascade settings coexist
 in it and every write here must MERGE rather than overwrite. Second, **a share is a binding keyed
 BY ITS BOX DESTINATION** (R-10): a binding has no entry name, so the destination is the identity,
 the `share list` DEST column, and the `share rm` argument, all at once.
@@ -38,7 +38,7 @@ and R-39; the J2 lifecycle journal.
 
 `_workset_config_path` is the ONE derivation for every mode (spec §2c: `meta.workset.settings` =
 `@meta.workset.path/settings.yaml`) — always `<root>/settings.yaml`. A NAMED workset's file also
-carries the workset identity (`workset.meta`); the cascade tables (`box`/`agent`/`workset.bindings`)
+carries the workset identity (`meta.workset`); the cascade tables (`box`/`agent`/`workset.bindings`)
 coexist there without colliding, which is why `run_create` and `share add` both LOAD-then-MERGE.
 
 The PRIMARY ("default") workset roots at `@config.primary_workset`. Its old
@@ -64,7 +64,7 @@ Credential SHARING is a settable cascade key (`workset.auth.share_allowed`, via 
 NOT a create-time flag — `--distinct-auth` is retired.
 
 The `image` / `standalone` / `no_vault` writes MERGE into the existing file rather than overwriting
-it, so the `workset.meta` identity `create_workset` just wrote survives.
+it, so the `meta.workset` identity `create_workset` just wrote survives.
 
 ## `connect`: the J2 write-ahead journal
 
@@ -106,7 +106,7 @@ escalation the user can actually run.
 `run_set` / `run_reset` / `run_get` / `run_show` are thin argument shims onto `_run_workset_config`,
 which dispatches into the `config_interface` engine. Credential sharing is an ordinary settable
 cascade key (`workset.auth.share_allowed`) routed through the engine like any other — no
-special-casing (the old `group_auth` `workset.meta` identity key is retired).
+special-casing (the old `group_auth` `meta.workset` identity key is retired).
 
 **The workset-tier docker env FILE is GONE (R-39/RQ-1).** The env family is the settings key
 `workset.env.<VAR>`, stored in `ws_config` like every other workset key, so there is no second

@@ -1312,6 +1312,7 @@ def _resolve_standalone_target(
     std, config, target: str,
 ) -> tuple[str | None, Path | None]:
     """Resolve a ``box rm`` *target* (NAME or PATH) to ``(box_name, root)``, else two ``None``."""
+    from kanibako.errors import LegacyWorksetIdentityError
     from kanibako.project import registry_store
     from kanibako.settings.paths import BoxMode, detect_project_mode
 
@@ -1325,6 +1326,10 @@ def _resolve_standalone_target(
     if candidate.exists():
         try:
             detection = detect_project_mode(candidate.resolve(), std, config)
+        except LegacyWorksetIdentityError:
+            # ⚑ THE ONE EXCEPTION THE BLANKET MISS MUST NOT EAT: an un-migrated workset
+            # root in the walk is a NAMED thing to fix, not a path that failed to be a box.
+            raise
         except Exception:  # noqa: BLE001 - a non-project path is simply a miss
             return None, None
         if detection.mode is BoxMode.standalone:

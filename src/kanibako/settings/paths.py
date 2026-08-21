@@ -828,7 +828,7 @@ def detect_project_mode(project_dir: Path, std: StandardPaths,
         return DetectionResult(BoxMode.primary, ac_ancestor)
 
     # 5. Walk ancestors for on-disk markers, IMPORTING what is unregistered.  NAMED is
-    # checked first at each level: its workset.meta marker is the more specific identity.
+    # checked first at each level: its meta.workset marker is the more specific identity.
     from kanibako.project import import_reconcile
     from kanibako.project.workset import WORKSET_META_FILE, read_workset_meta
 

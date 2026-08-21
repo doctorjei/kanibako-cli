@@ -81,9 +81,10 @@ across levels. The `base` code floor is EXEMPT for SCOPE keys (it is the system-
 A top-level `meta:` table is ALWAYS dropped from EVERY file (`base` included) — `meta.*` is a
 TOP-LEVEL protected namespace set by the construct-time/bootstrap layer and stays RO everywhere
 (spec §0 / clause 4). The sole sanctioned meta source is the runtime/identity FLOOR
-(`dotted_partial`), which is never dropped, and a NESTED `<scope>.meta` bootstrap table (e.g.
-`workset.meta`, written by `project/workset.py` and read by `read_workset_meta`) is UNTOUCHED — only
-the top-level `meta:` key is stripped.
+(`dotted_partial`), which is never dropped. ⚑ That drop is also what lets a NAMED workset root's
+`settings.yaml` carry its `meta.workset` identity beside its cascade settings —
+`project/workset.py`'s `read_workset_meta` reads it off the raw document instead. Warning rules:
+`_drop_upward_scopes` below.
 
 ## The AGENT tier — two cascade levels from one file
 
@@ -338,7 +339,7 @@ source), so the containing set is the HEAD-slice strictly BEFORE *file_scope*. T
 ```_drop_upward_scopes(raw: dict, *, file_scope: str, path: Path | None) -> dict```
 Drop a CONTAINING-scope, `meta:` or `binding_derivations:` top-level table (spec §0).
 
-**THREE dropped tokens, THREE distinct rationales, one warning each.**
+**THREE dropped tokens, THREE distinct rationales, one warning each — with ONE silent case (#2).**
 
 1. **A CONTAINING scope's table.** Directional enforcement at RESOLVE: a settings file may set keys of
    its own scope and of scopes it CONTAINS, but a top-level key of a CONTAINING scope (`system:` /
@@ -348,10 +349,15 @@ Drop a CONTAINING-scope, `meta:` or `binding_derivations:` top-level table (spec
 2. **`meta`**, for EVERY file (`base` included). `meta.*` is a TOP-LEVEL protected read-only namespace
    set by the construct-time/bootstrap layer, RO everywhere (spec §0 / clause 4, "`meta.*` remains RO
    everywhere"); a settings file may not set it. `meta` is NOT a containing scope, so it earns a
-   DISTINCT warning. ⚑ **This drop is TOP-LEVEL ONLY:** a NESTED `<scope>.meta` bootstrap table (e.g.
-   `workset.meta`) rides under its scope table and is UNTOUCHED — the function iterates only
-   top-level keys and never descends. The sole sanctioned meta source is the FLOOR
-   (`dotted_partial`), inserted separately and never routed through this drop.
+   DISTINCT warning. ⚑ At the WORKSET scope that warning NAMES the members it dropped, because the
+   silent case below means the reported set is a SUBSET of the table; every other scope drops the
+   whole table and says so. ⚑⚑ **One SILENT case:** a WORKSET file's
+   `workset` member is the spec-sanctioned NAMED-root identity marker (system-design § Detect). It
+   is still dropped (`meta.*` is RO) but says nothing — a warning there would fire on every assembly
+   of a correct workset root. ⚑ **The drop is TOP-LEVEL ONLY:** the loop iterates top-level keys and
+   never descends, so a nested `<scope>.meta` table rides under its scope untouched. The sole
+   sanctioned meta source is the FLOOR (`dotted_partial`), inserted separately and never routed
+   through this drop.
 3. **`binding_derivations`** (spec §0 fault class: "never enters the merge"). It is the RESERVED
    INTERNAL derivations node at the snapshot root (R-8, manifest `not_keys.reserved_internal`) —
    machinery output regenerated per launch by `commands.start._install_derived_bindings`, not a key.

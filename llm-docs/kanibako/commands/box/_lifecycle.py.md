@@ -389,7 +389,7 @@ source-into-symlink `copytree` collision that registering the external *source* 
 *shell_path* are the SOURCE project's dirs to copy from.
 
 ⚑ **Failure-consistency:** a crash AFTER `add_project` (which registers the project in the
-`workset.meta` identity and creates per-project dirs) but DURING the copies would strand a
+`meta.workset` identity and creates per-project dirs) but DURING the copies would strand a
 registered-but-incomplete project. The whole copy block therefore rolls the registration and partial
 dirs back on any failure, then re-raises. `remove_project(remove_files=True, std=...)` is idempotent
 and removes only workset-side dirs — never the user's external source.

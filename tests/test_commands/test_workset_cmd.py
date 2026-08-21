@@ -201,7 +201,7 @@ class TestWorksetCreate:
         rc = run_create(args)
         assert rc == 0
 
-        # The image cascade setting AND the workset.meta identity coexist in the
+        # The image cascade setting AND the meta.workset identity coexist in the
         # single root settings.yaml.
         import yaml
         settings_yaml = ws_root.resolve() / "settings.yaml"
@@ -209,7 +209,7 @@ class TestWorksetCreate:
         with open(settings_yaml) as f:
             data = yaml.safe_load(f)
         assert data["box"]["image"] == "custom:latest"
-        assert data["workset"]["meta"]["name"] == "imagews"
+        assert data["meta"]["workset"]["name"] == "imagews"
 
 
 class TestWorksetList:

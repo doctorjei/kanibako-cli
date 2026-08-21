@@ -87,7 +87,7 @@ class TestBoxConfigShow:
         add_project(ws, "myproj", src)
 
         # Set a box.* value ONLY at the workset level.  The workset settings now
-        # live in the SAME settings.yaml that carries the workset.meta identity,
+        # live in the SAME settings.yaml that carries the meta.workset identity,
         # so merge the cascade key in rather than clobbering the file.
         from kanibako.settings.config_io import dump_doc, load_doc
         ws_settings = ws.root / "settings.yaml"

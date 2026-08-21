@@ -370,7 +370,7 @@ def run_create(args: argparse.Namespace) -> int:
     install_workset_template(std, ws.root)
 
     # ⚑ MERGE into the existing file, never overwrite — create_workset already wrote
-    # the workset.meta identity there and it must survive.
+    # the meta.workset identity there and it must survive.
     image = getattr(args, "image", None)
     standalone = getattr(args, "standalone", False)
     no_vault = getattr(args, "no_vault", False)

@@ -739,7 +739,7 @@ Detection order:
 4. **Default (name-based)** — one-pass scan of `names.yaml`; deepest registered path that is an
    ancestor of *project_dir* wins. Requires `boxes/{name}/` to exist on disk.
 5. **Walk ancestors for on-disk markers** — a `box_data/` standalone marker, or an unregistered
-   NAMED workset root (a `settings.yaml` carrying a `workset.meta` identity). Both are drop-in
+   NAMED workset root (a `settings.yaml` carrying a `meta.workset` identity). Both are drop-in
    *imported* on discovery (registered + an alert to stderr; a name collision REFUSES — see
    `kanibako.project.import_reconcile`).
 6. **Default** — `primary` mode at the original *project_dir*.
@@ -777,8 +777,8 @@ walk does.
 On-disk metadata is authoritative; a discovered-but-unregistered entity is IMPORTED there (alert +
 register; collision → refuse) so a dropped-in tree is re-discovered. The NAMED check runs first at
 each level: a workset root may itself contain a `box_data/` dir, but its `settings.yaml`
-`workset.meta` marker is the more specific identity. The NAMED arm imports the unregistered workset
-root (a `settings.yaml` carrying a `workset.meta` identity whose name is not in the registry) and
+`meta.workset` marker is the more specific identity. The NAMED arm imports the unregistered workset
+root (a `settings.yaml` carrying a `meta.workset` identity whose name is not in the registry) and
 then re-runs the standard workset check, which is what actually resolves it. The STANDALONE arm is
 presence-only since D4
 (the former `box.mode == "standalone"` field read is DROPPED); a bare `box_data/` directory is not

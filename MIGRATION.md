@@ -26,9 +26,10 @@ config notes are in the [CHANGELOG](CHANGELOG.md).
 > deferred follow-on, so in v1.8.0 **a retired or renamed key left stored in your files
 > is silently inert at launch** — it is carried into the merged snapshot verbatim,
 > resolves to nothing, and produces no error and no warning. The exceptions that DO error
-> loudly are exactly two keys — the agent-selection pair (§2.1) — plus the
-> typed-at-the-CLI surfaces noted below. When that enforcement lands, every "silently
-> inert" row in §2.1 becomes a loud error.
+> loudly are exactly two keys — the agent-selection pair (§2.1) — plus the retired
+> `workset.meta` identity table (§2.43, which is not a cascade key at all: it is the marker
+> that makes a directory a workset root) and the typed-at-the-CLI surfaces noted below. When
+> that enforcement lands, every "silently inert" row in §2.1 becomes a loud error.
 
 Paths below: `<data>` is your kanibako data directory (default `~/.local/share/kanibako`;
 whatever `config.data` points at if you moved it).
@@ -189,7 +190,15 @@ inside boxes. In order of likely impact:
     keys is not in any of your files:** a persona's store config supplies `env:` entries as
     live agent-scope keys that are never written to disk (§2.33, §2.15).
 
-21. Smaller items: standalone boxes' `box get` got truthful (§2.9); a box suppressed to
+21. **Every NAMED workset needs a one-time hand edit to its root `settings.yaml`, or it stops
+    resolving** (§2.43). The identity table moved from `workset.meta` to `meta.workset` —
+    `workset: {meta: {…}}` becomes `meta: {workset: {…}}`, the same three entries, nothing else in
+    the file moves. Until you do it, every command that has to resolve that workset **refuses**,
+    naming the file and the exact re-nest. ⚑ **This one is high on the impact list even though it
+    sits low on this page:** it hits every workset made by v1.6.0 or v1.7.x, and there is no
+    auto-migration. Primary-mode and standalone boxes have no such table and need nothing.
+
+22. Smaller items: standalone boxes' `box get` got truthful (§2.9); a box suppressed to
     plain-shell keeps stale credential files in its home (§2.10); several never-released or
     expected-empty renames (§2.11); two `--null` CLI bugs fixed (§2.14).
 
@@ -2434,6 +2443,90 @@ a default rather than a written one.
 
 ---
 
+### 2.43 A named workset's identity table is spelled `meta.workset`; an un-migrated root refuses
+
+**Read this if you have a NAMED workset** — one you made with `kanibako workset create`. Every
+workset root written by v1.6.0 or v1.7.x needs a one-time hand edit before it will resolve on
+v1.8.0. Primary-mode and standalone boxes are unaffected: neither has this table.
+
+**What changed.** A named workset's identity — its `name`, its `created` stamp and its `projects`
+list — lives in `settings.yaml` at the workset root. v1.7.2 nested it *inside* the workset's own
+settings table, as `workset.meta`. v1.8.0 spells it `meta.workset`: the identity moved into the
+top-level `meta:` namespace, where kanibako's other read-only metadata already lives. Only the
+nesting changed. The three entries and their values are identical.
+
+**What you must do.** In each workset root's `settings.yaml`, lift `meta:` out from under
+`workset:` and make `workset:` its child:
+
+```yaml
+# v1.7.x — the identity nested inside the workset's settings table
+workset:
+  meta:
+    name: research
+    created: 2026-03-11T09:22:41+00:00
+    projects:
+      - name: notes
+        source_path: /home/you/worksets/research/workspaces/notes
+  bindings:
+    rw:
+      ~/data: /host/data
+```
+
+```yaml
+# v1.8.0 — the identity is a TOP-LEVEL meta.workset table
+meta:
+  workset:
+    name: research
+    created: 2026-03-11T09:22:41+00:00
+    projects:
+      - name: notes
+        source_path: /home/you/worksets/research/workspaces/notes
+workset:
+  bindings:
+    rw:
+      ~/data: /host/data
+```
+
+⚑ **Nothing else in the file moves.** The top-level `workset:` table stays exactly where it is —
+it is still where this workset's own settings live (`workset.bindings`, `workset.workspaces`,
+`workset.channelroot`, `workset.auth`, …). Copy the three identity entries across verbatim, then
+delete the now-empty `meta:` entry underneath `workset:`. Nothing else on disk changes: no
+directory moves, no registry entry changes, no box is re-seeded.
+
+**What you see if you don't.** kanibako refuses by name on any command that has to resolve the
+workset — `start`, `box info`, `workset` verbs, and any command run from inside the workset tree
+(verbatim template; `<path>` is the workset root's `settings.yaml`):
+
+```
+'workset.meta' is the RETIRED spelling of a named workset's identity table and is still the shape of <path>.
+The RULE CHANGED in kanibako 1.8.0: the identity table moved into the top-level `meta:` namespace and is spelled `meta.workset`. kanibako 1.6.0 and 1.7.x wrote the old spelling, so every workset root those releases created carries it. Refusing rather than running: this table is what MARKS the directory as a workset root, and reading past it would resolve the directory as an ordinary primary-mode box instead — your workset would stop being a workset with no error at all.
+  Fix: re-nest the table BY HAND in <path> — lift `meta:` out from under `workset:` and make `workset:` its child, with the SAME three entries and their values unchanged:
+
+    meta:
+      workset:
+        name: ...
+        created: ...
+        projects: ...
+
+  Nothing else in the file moves: a top-level `workset:` table is still where this workset's own settings live, so leave the rest of it exactly as it is and delete only the now-empty `meta:` entry under it. kanibako 1.8.0 ships no automatic migration for this — see MIGRATION.md §2.43.
+```
+
+**Why it refuses instead of reading the old spelling.** This table is the *marker*: finding it is
+how kanibako decides a directory is a workset root at all. A compat read is not the safe option
+here — the unsafe outcome is the silent one. Without the refusal, a v1.7.x root that is **not in
+your registry** (a workset you moved, copied, or dropped in from another machine) simply fails to
+match: the ancestor walk falls through and the directory resolves as an ordinary primary-mode box,
+with boxes addressed by name gone missing, `workset.*` settings no longer applying, and nothing
+printed to tell you why. A root that **is** registered fails less quietly but no more usefully —
+kanibako finds it by path, then cannot read its name. Either way you are owed a message with the
+cure in it, which is what the refusal is.
+
+⚑ **A file that is neither spelling is still not an error.** A `settings.yaml` with no identity
+table — an ordinary box's settings file, or a cascade-only file at some directory in the walk —
+is simply not a workset root, exactly as before. Only the retired spelling refuses.
+
+---
+
 ## 3. For plugin authors
 
 ⚑ **THREE PERSONA SURFACES ON `Target` CHANGED SHAPE in 1.8.0 — a plugin built against 1.7.x needs
@@ -3133,7 +3226,7 @@ A NAMED workset previously kept its identity/marker/project-list in a
 
 | Old file → key | New location |
 | --- | --- |
-| `<root>/workset.yaml` (`name`, `created`, `group_auth`, `projects`) | `<root>/settings.yaml` under `workset.meta.*` |
+| `<root>/workset.yaml` (`name`, `created`, `group_auth`, `projects`) | `<root>/settings.yaml` under `workset.meta.*` (superseded in v1.8.0 → `meta.workset.*`, §2.43) |
 | `<root>/config.yaml` (`box.*`, `agent.*`, `workset.bindings.*`, `standalone`, `enable_vault`) | `<root>/settings.yaml` (top level — unchanged key shapes) |
 
 The identity lives under the `workset.meta` table so it never collides with the
@@ -3146,6 +3239,11 @@ the old `config.yaml` keys in at the top level, then remove both old files. (The
 default/synthesized workset is unaffected: its `group_auth` still lives in the
 data-root `config.yaml` `[project]` section, which is the system/default config file,
 not a NAMED-workset file.)
+
+⚑ **`workset.meta` superseded in v1.8.0 — see §2.43 (line 2446).** The identity table is
+spelled `meta.workset` there, and a root left on the 1.6.0/1.7.x spelling **hard-refuses**.
+Do the fold described above, then do the §2.43 re-nest — or fold straight into
+`meta:`→`workset:` and skip a step.
 
 ### 4.5 STANDALONE layout & identity
 
@@ -3184,7 +3282,8 @@ holds the agent home + the helper log.
 ⚑ **The standalone walk marker is now a `box_data/` directory PLUS a
 `<root>/settings.yaml`** — presence alone, not any field inside the file. (A
 NAMED workset root also carries `<root>/settings.yaml`, but with a
-`workset.meta` identity and NO `box_data/` dir, so the two never collide.) The
+`workset.meta` identity — superseded in v1.8.0 → `meta.workset`, §2.43 — and NO
+`box_data/` dir, so the two never collide.) The
 old in-tree `.kanibako`/`kanibako` dotdir marker is gone. When hand-editing a
 standalone tree, place `settings.yaml` at the root, keep a `box_data/` dir
 beside it, and put your files under `workspace/`. Drop any `layout:` field —
@@ -3324,7 +3423,8 @@ What this means for you:
 - **Detection is an ancestor-walk**, not a registry lookup. Standalone is detected by
   walking up for a `box_data/` dir + a root `settings.yaml` — presence only, no
   `mode` field is read (§4.5); named by a workset-root `settings.yaml` carrying
-  `workset.meta`; primary by reconciling the central boxes dir against the registry.
+  `workset.meta` (superseded in v1.8.0 → `meta.workset`, §2.43); primary by
+  reconciling the central boxes dir against the registry.
 - **You can move or copy a box/workset/project tree** to a new location or machine and
   kanibako re-discovers it.
 - **Import is automatic with an alert, no confirmation.** When kanibako finds an

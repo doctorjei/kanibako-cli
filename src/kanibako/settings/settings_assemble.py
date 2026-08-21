@@ -303,7 +303,8 @@ def _drop_upward_scopes(
     """Return *raw* without any CONTAINING-scope top-level table, top-level ``meta:`` or top-level
     ``binding_derivations:`` (spec §0) — a shallow copy, warning-only, never a raise.
 
-    THREE dropped tokens, THREE distinct rationales, one warning each (llm-docs).
+    THREE dropped tokens, THREE distinct rationales, one warning each (llm-docs) — with ONE
+    silent case: a workset file's ``meta.workset`` identity marker (see below).
     """
     if not isinstance(raw, dict):
         return raw
@@ -322,14 +323,24 @@ def _drop_upward_scopes(
     for token in dropped:
         if token == "meta":
             # meta is NOT a containing scope — a DISTINCT rationale, hence its own warning.
-            # ⚑ TOP-LEVEL ONLY: a nested ``<scope>.meta`` bootstrap table is untouched (this loop
-            # never descends), and the FLOOR's meta is inserted separately, never routed here.
+            # ⚑ TOP-LEVEL ONLY: this loop never descends, so a nested ``<scope>.meta`` table
+            # rides untouched, and the FLOOR's meta is inserted separately, never routed here.
+            # ⚑⚑ AT THE WORKSET SCOPE the ``workset`` member is the spec-sanctioned NAMED-root
+            # identity marker (system-design §Detect) — written by ``project/workset.py`` and
+            # read RAW by ``read_workset_meta``, never through the cascade. It is still DROPPED
+            # (meta.* is RO) but SILENTLY; any OTHER member warns, and the warning names it.
+            subject = "table"
+            if file_scope == "workset" and isinstance(raw.get(token), dict):
+                others = sorted(str(k) for k in raw[token] if str(k) != "workset")
+                if not others:
+                    continue
+                subject = "member(s) " + ", ".join(repr(k) for k in others)
             _log.warning(
-                "Dropping top-level 'meta' table from %s settings file %s: "
+                "Dropping top-level 'meta' %s from %s settings file %s: "
                 "meta.* is a read-only namespace set by the "
                 "construct-time/bootstrap layer and remains RO everywhere (spec "
                 "§0 meta-RO / clause 4); the key is ignored.",
-                file_scope, where,
+                subject, file_scope, where,
             )
         elif token == BINDING_DERIVATIONS_NODE:
             # Neither a containing scope nor meta — a THIRD rationale: the RESERVED INTERNAL
