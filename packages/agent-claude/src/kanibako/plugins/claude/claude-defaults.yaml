@@ -46,8 +46,8 @@ descriptor:
     # The KICKOFF-LOADER (the flattener SEED).  A tiny plugin-shipped static file
     # (constant, claude-specific — NOT an @system.instructions keyspace source)
     # delivered RO to ~/.config/kanibako/kickoff.md.  Its content is the canon entry
-    # import `@~/canon/COLLECTION.md` (plus, for ONE transition release, the
-    # pre-canon `@~/playbook/kanibako/directives/KANIBAKO.md`) — the entrypoint the
+    # import `@~/canon/COLLECTION.md`, and since M-12 that is the ONLY import it
+    # carries (the pre-canon transition line is gone) — the entrypoint the
     # box-start flattener resolves (following the @import chain) into the flattened
     # per-agent FINAL file at claude's native user-memory slot ~/.claude/CLAUDE.md
     # (named by KANIBAKO_DIRECTIVE_FINAL in the `env:` section below).  The start-time

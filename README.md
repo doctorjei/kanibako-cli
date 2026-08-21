@@ -1111,7 +1111,7 @@ A broadcast channel (`all/`) is available to all helpers.
     workspace/          # helper's working directory
     vault/ro/           # read-only vault share
     vault/rw/           # read-write vault share
-    playbook/scripts/   # helper-init.sh (entrypoint wrapper)
+    scripts/            # helper-init.sh (entrypoint wrapper)
     peers/              # symlinks to peer channels
     all -> ../all/      # broadcast channel
     spawn.yaml          # RO spawn budget

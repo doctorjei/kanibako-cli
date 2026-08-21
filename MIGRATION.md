@@ -200,7 +200,8 @@ inside boxes. In order of likely impact:
 
 22. Smaller items: standalone boxes' `box get` got truthful (§2.9); a box suppressed to
     plain-shell keeps stale credential files in its home (§2.10); several never-released or
-    expected-empty renames (§2.11); two `--null` CLI bugs fixed (§2.14).
+    expected-empty renames (§2.11); two `--null` CLI bugs fixed (§2.14); a customized helper
+    entrypoint script moves to `~/canon/notebook/scripts/helper-init.sh` (§2.44).
 
 ---
 
@@ -539,27 +540,32 @@ new box's `canon/handbook` directory, which is then bound read-only into the box
 This affects nobody upgrading from **v1.7.2**, which had neither those entries nor the box
 handbook chapter; it is written down because the `1.8.0rc1` prerelease declared them.
 
-### 2.6 The kickoff transition — why upgrade order matters to YOU
+### 2.6 The kickoff — upgrade base and plugins TOGETHER
 
 The "kickoff" is the file that boots a box's whole instruction chain
 (`~/.config/kanibako/kickoff.md`). In v1.7.2 each agent plugin shipped it. In v1.8.0 the base
-package also ships it as a core bind (pointing at the canon), the plugins ship a
-**transition-safe copy carrying both the new and the old import**, and the base *yields* to a
-plugin-supplied kickoff during the overlap (the yield is keyed on the delivery destination, so
-the two can never collide into a launch error). All of this is shipped and test-pinned.
+package also ships it as a core bind (pointing at the canon), and the base *yields* to a
+plugin-supplied kickoff (the yield is keyed on the delivery destination, so the two can never
+collide into a launch error).
 
-What you will see, and what to avoid:
+⚑ **Every kickoff now carries exactly ONE import, `@~/canon/COLLECTION.md`.** Earlier v1.8.0
+prereleases shipped plugin kickoffs carrying a second, pre-canon import as a transition aid;
+that line is gone, along with the tree it addressed. Its content moved into the canon, which
+the one remaining import already reaches — nothing is lost by its removal.
 
-- **Mixed versions work, with one visible cost:** one `unresolved import` warning on stderr at
-  every box launch (whichever import line does not match the installed base). That warning is
-  the intended signal that your install is mid-transition; it disappears once base and plugins
-  are both on their v1.8.0-era releases (and fully once the later plugin cleanup release lands).
-- **The one fatal combination: new base + your old v1.7.2 plugins.** The old plugin kickoff
-  carries only the old import (`~/playbook/…`), which the new base no longer provides —
-  **every directive in every box silently stops loading**, no error anywhere. The plugins do
-  not pin a base version, so `pip install -U kanibako-cli` alone puts you exactly there.
-  **Cure: upgrade via the `kanibako` meta package, or upgrade the three agent plugins before
-  (or with) the base.**
+What that costs you, and what to avoid:
+
+- **Base and plugins must move together.** A plugin now needs a base that binds the canon
+  (`kanibako-cli` 1.8.0 or newer), and the base needs plugins whose kickoff points at the canon.
+  Either half alone leaves a box whose kickoff resolves nothing: **every directive in every box
+  silently stops loading**, no error anywhere. The plugins do not pin a base version, so
+  `pip install -U kanibako-cli` alone puts you exactly there.
+  **Cure: upgrade via the `kanibako` meta package, or upgrade the three agent plugins and the
+  base in one step.**
+- **No more launch warning.** A mid-transition install used to print one `unresolved import`
+  line on stderr at every box launch. With a single import in every kickoff there is nothing
+  left to warn about, so if you still see one, something in your chain is addressing content
+  that is not there.
 - No-agent (plain-shell) boxes: the kickoff file is bound but nothing consumes it yet; no
   action, no breakage.
 
@@ -2524,6 +2530,32 @@ cure in it, which is what the refusal is.
 ⚑ **A file that is neither spelling is still not an error.** A `settings.yaml` with no identity
 table — an ordinary box's settings file, or a cascade-only file at some directory in the walk —
 is simply not a workset root, exactly as before. Only the retired spelling refuses.
+
+---
+
+### 2.44 Helper boxes: the entrypoint script moved out of `playbook/`
+
+A spawned helper's directory layout carried a `playbook/scripts/` directory holding
+`helper-init.sh`, the entrypoint wrapper. `playbook` was the pre-canon name for what is now the
+canon **handbook**, and the wrapper level carried nothing else, so both halves are gone:
+
+| before | now |
+|---|---|
+| `~/helpers/<n>/playbook/scripts/helper-init.sh` (inside a helper) | `~/helpers/<n>/scripts/helper-init.sh` |
+| `~/playbook/scripts/helper-init.sh` (a PARENT's own override copy) | `~/canon/notebook/scripts/helper-init.sh` |
+
+**If you never customized `helper-init.sh`, there is nothing to do** — kanibako copies its bundled
+default into the new location at spawn.
+
+**If you did**, move your copy to `~/canon/notebook/scripts/helper-init.sh`. That is the canon's
+own address for a reusable script, and it is agent-writable, so a box can put one there itself.
+A copy left at the old path is read by nothing and reported by nothing — helpers will silently
+spawn with the stock wrapper instead of yours.
+
+⚑ **A helper root gets a flat `scripts/`, not `canon/notebook/scripts/`.** A helper home is not a
+box: it has no canon binds and no canon skeleton, and giving it a `canon/` directory would make
+the launch materialize one. The parent is a real box, which is why only the parent side is
+canon-addressed.
 
 ---
 

@@ -33,8 +33,8 @@ descriptor:
       ro: true
     # The KICKOFF-LOADER (the flattener SEED).  A tiny plugin-shipped static file
     # delivered RO to ~/.config/kanibako/kickoff.md.  Its content is the canon entry
-    # import `@~/canon/COLLECTION.md` (plus, for ONE transition release, the
-    # pre-canon `@~/playbook/kanibako/directives/KANIBAKO.md`) — the entrypoint the
+    # import `@~/canon/COLLECTION.md`, and since M-12 that is the ONLY import it
+    # carries (the pre-canon transition line is gone) — the entrypoint the
     # box-start flattener resolves into the flattened per-agent FINAL file at codex's
     # native slot ~/.codex/AGENTS.md (named by KANIBAKO_DIRECTIVE_FINAL below).  The
     # start-time flatten + hook is a LATER increment; this declaration only ships the

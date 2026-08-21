@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from kanibako.channels.helpers import HELPER_SCRIPTS_RELPATH
 from kanibako.runtime.container import ContainerRuntime
 from kanibako.log import get_logger
 from kanibako.settings.settings_resolve import BOX_PINNED_STATE_RELPATH, GUEST_HOME
@@ -291,7 +292,7 @@ class HelperHub:
 
         # Use helper-init.sh as entrypoint wrapper — it registers with the
         # hub, sources broadcast scripts, then execs the agent command.
-        init_script = "/home/agent/playbook/scripts/helper-init.sh"
+        init_script = f"{GUEST_HOME}/{HELPER_SCRIPTS_RELPATH}/helper-init.sh"
         # Fall back to the resolved box.shell (box.shell -> $KANIBAKO_SHELL ->
         # image's recorded login shell -> sh) rather than a hardcoded /bin/bash,
         # so a no-agent helper honors the same shell-resolution chain as the

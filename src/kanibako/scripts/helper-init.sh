@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 # helper-init.sh — Default helper entrypoint wrapper (kanibako)
 #
-# This script is copied into every helper's playbook/scripts/ directory
-# by the parent agent.  It runs as the container entrypoint.
+# This script is copied into every helper's scripts/ directory by the
+# parent agent.  It runs as the container entrypoint.
 #
-# The parent creates the directory structure (vault, workspace, playbook,
+# The parent creates the directory structure (vault, workspace, scripts,
 # peers, broadcast channels) before launching the helper.  This script
 # handles registration with the hub and additional bootstrap, then execs
 # the agent command.
 #
-# Parents can replace this with a custom version in their own
-# playbook/scripts/helper-init.sh — kanibako will use the parent's
-# version if it exists, falling back to this bundled default.
+# Parents can replace this with a custom version at their own
+# ~/canon/notebook/scripts/helper-init.sh — kanibako will use the
+# parent's version if it exists, falling back to this bundled default.
 #
 # Usage: helper-init.sh HELPER_NUM [COMMAND...]
 #   HELPER_NUM — this helper's global agent number

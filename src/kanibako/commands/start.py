@@ -8318,7 +8318,7 @@ def _apply_init_seeds(
         # Single-source dest — the ordinary per-seed copy (unchanged behavior).
         # Create-if-absent (``if_absent=True``): a seed delivers content ONCE;
         # existing home content is owned by the box and must never be overwritten
-        # by a re-seed (the playbook-clobber bug).
+        # by a re-seed (the home-clobber bug; CHANGELOG 1.6.0 has the history).
         seed = group[0]
         _apply_shell_copy(
             Path(seed.src), dest,

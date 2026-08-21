@@ -32,7 +32,7 @@ def helpers_env(tmp_path, monkeypatch):
     """Set up a temporary helpers environment."""
     home = tmp_path / "home"
     home.mkdir()
-    (home / "playbook" / "scripts").mkdir(parents=True)
+    (home / "canon" / "notebook" / "scripts").mkdir(parents=True)
     monkeypatch.setattr(Path, "home", staticmethod(lambda: home))
 
     config_dir = tmp_path / "config"
@@ -164,9 +164,24 @@ class TestRunSpawn:
     def test_init_script_copied(self, helpers_env):
         args = _make_args(depth=None, breadth=None, model=None)
         run_spawn(args)
-        init = helpers_env / "helpers" / "1" / "playbook" / "scripts" / "helper-init.sh"
+        init = helpers_env / "helpers" / "1" / "scripts" / "helper-init.sh"
         assert init.is_file()
         assert "#!/usr/bin/env bash" in init.read_text()
+        # The vestigial ``playbook/`` wrapper is gone from the helper root entirely.
+        assert not (helpers_env / "helpers" / "1" / "playbook").exists()
+
+    def test_parent_override_is_read_from_the_canon_notebook(self, helpers_env):
+        """A parent's own helper-init.sh wins, and it lives at the canon address.
+
+        ⚑ This pins WHERE the parent is asked.  ``resolve_init_script`` takes the
+        directory as an argument, so its own tests cannot catch the caller looking in
+        a retired place — only this one can.
+        """
+        custom = Path.home() / "canon" / "notebook" / "scripts" / "helper-init.sh"
+        custom.write_text("#!/usr/bin/env bash\n# parent's own\n")
+        run_spawn(_make_args(depth=None, breadth=None, model=None))
+        init = helpers_env / "helpers" / "1" / "scripts" / "helper-init.sh"
+        assert "# parent's own" in init.read_text()
 
 
 class TestHelperState:

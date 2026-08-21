@@ -8,10 +8,10 @@ index of the bible / handbook / notebook books) and, through it, the user's own 
 base, so the kickoff and the canon paths it imports now ship in ONE package and can never disagree:
 a canon path change no longer requires a plugin release.
 
-⚑ It carries exactly ONE import & deliberately NOT the plugins' transition line: that second,
-pre-canon import exists so a PLUGIN release also works against an older base, a problem a
-base-shipped kickoff cannot have (it ships in the same wheel as the canon binds it imports), so
-carrying it here would buy nothing but an unresolved-import warning at every launch, forever.
+⚑ It carries exactly ONE import, and so do the three plugin kickoffs: the pre-canon second import
+they used to carry for one transition release is gone (migration M-12), because the tree it
+addressed is gone. Every kickoff now enters at ~/canon/COLLECTION.md and nowhere else, so a box
+launch has no unresolved import left to warn about.
 
 "Raw" @-imports do not appear as links, so the import below is transparently added. -->
 @~/canon/COLLECTION.md

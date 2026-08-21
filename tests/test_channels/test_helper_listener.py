@@ -245,7 +245,7 @@ class TestHubSpawn:
         call_kwargs = ctx.runtime.run.call_args[1]
         assert call_kwargs["detach"] is True
         # Verify helper-init.sh is used as entrypoint with correct cli_args
-        assert call_kwargs["entrypoint"] == "/home/agent/playbook/scripts/helper-init.sh"
+        assert call_kwargs["entrypoint"] == "/home/agent/scripts/helper-init.sh"
         assert call_kwargs["cli_args"] == ["1", "claude"]
 
     def test_spawn_runtime_failure(self, hub_and_sock):
@@ -282,7 +282,7 @@ class TestHubSpawn:
         assert resp["status"] == "ok"
 
         call_kwargs = ctx.runtime.run.call_args[1]
-        assert call_kwargs["entrypoint"] == "/home/agent/playbook/scripts/helper-init.sh"
+        assert call_kwargs["entrypoint"] == "/home/agent/scripts/helper-init.sh"
         assert call_kwargs["cli_args"] == ["1", "/usr/bin/custom-agent"]
 
     def test_spawn_with_model(self, hub_and_sock):

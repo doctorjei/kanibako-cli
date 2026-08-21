@@ -29,8 +29,8 @@ COMPLEMENTS that e2e; it does not replace it.
 THE TWO DELIVERY LAYERS
 -----------------------
 1. SEEDED (materialized at ``kanibako create``, host-side, create-if-absent):
-   the base template tree (``data/global/template`` → ``~/playbook/...``) plus the
-   per-agent template tree (``plugins/<agent>/data/template`` → e.g. claude's
+   the base template tree (``data/global/template`` → ``~/canon/{notebook,workbook}``)
+   plus the per-agent template tree (``plugins/<agent>/data/template`` → e.g. claude's
    ``~/.claude.json`` + ``~/.claude/settings.json``). Driven here through the SAME
    keystore-routed seed entrypoint the create command uses,
    ``kanibako.commands.start._apply_init_seeds``.

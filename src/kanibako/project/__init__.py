@@ -13,7 +13,7 @@ identity, and the drop-in import that reconciles them against on-disk truth.
 * ``import_reconcile`` — drop-in import-on-discovery: reconcile the registry from
   what is actually on disk.
 
-⚑ This package is where **H5** lands (the playbook's ``BoxRegistry``/``Entry``
+⚑ This package is where **H5** lands (the ``BoxRegistry``/``Entry``
 consolidation: 15 free functions and untyped dicts spread across ~10 modules).
 The boundary is drawn here so that work reshapes modules INSIDE it without
 re-litigating where they live.

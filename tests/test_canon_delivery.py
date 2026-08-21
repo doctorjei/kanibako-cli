@@ -382,7 +382,7 @@ class TestDisjointness:
                 "canon/workbook/devnotes.md",
                 "canon/bibles-of-mine/x.md",
                 "canon/COLLECTION.md.bak",
-                "playbook/CONTENTS.md",
+                "workspace/README.md",
             },
         )
 

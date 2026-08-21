@@ -19,7 +19,7 @@ the refactor unedited.  Keep it that way.
 ⚑ THIS FILE PINS BEHAVIOR, INCLUDING BEHAVIOR THAT IS KNOWN-WRONG.  Cases below
 assert destinations that are *deliberately broken*.  They are not aspirational and
 they are not bugs in the test: preserving them across a refactor is an explicit
-requirement (playbook "H2 exemplar", `3b67e61`).  A future change that FIXES one
+requirement (the "H2 exemplar", `3b67e61`).  A future change that FIXES one
 must edit the case and SAY SO; a refactor that silently "fixes" one has violated
 its charter.
 
