@@ -56,6 +56,7 @@ LABEL_TO_CONFORMANCE_CLASS: dict[str, str] = {
     "settings_launch.py (anchor floor)": "pinned",
     "settings_launch.py (auth floor)": "pinned",
     "core-defaults.yaml (agent_default:)": "pinned",
+    "core-defaults.yaml (env:)": "pinned",
     "config.py (KanibakoConfig field)": "pinned",
     "config.py (read-with-default)": "pinned",
     "core_defaults.py (canon producer)": "pinned",
@@ -102,8 +103,8 @@ class TestSourcePartition:
             f"registry defaults with no source: {sorted(declared - covered)}; "
             f"sources for rows the registry no longer defaults: {sorted(covered - declared)}"
         )
-        assert len(declared) == 63, (
-            f"the manifest gives {len(declared)} rows a default, not the 63 measured"
+        assert len(declared) == 64, (
+            f"the manifest gives {len(declared)} rows a default, not the 64 measured"
         )
 
     def test_the_partition_agrees_with_the_conformance_classification(self):
@@ -298,15 +299,23 @@ class TestBindRows:
 
 
 class TestEnvRows:
-    """Section 3 — the env instances the registry deliberately does not enumerate."""
+    """Section 3 — the env instances a box gets, registry-enumerated or not."""
 
-    def test_the_registry_really_has_no_per_var_env_rows(self):
-        """Anti-vacuity: section 3 exists BECAUSE the manifest declares no instance rows.
+    def test_the_registry_enumerates_exactly_the_core_env_default(self):
+        """⚑ THE REGISTRY NOW CARRIES ONE env INSTANCE, and section 3 still lists it.
 
-        If per-VAR rows are ever ratified into the registry, this section becomes a
-        duplicate and must be re-derived — which is what a red here says.
+        This case used to assert the registry carried NONE, and said that a red here
+        meant per-VAR rows had been ratified and the section had to be re-derived.  They
+        were: spec §2b declares ``box.env.COLORTERM`` (2026-08-15, ``9ac0980``) and the
+        manifest gained its row.  The re-derivation the old text demanded is NOT a
+        removal — section 3 reports the live env floor a box gets, so the one var
+        kanibako ships belongs in it, and it is section 1 that grew a DECLARED KEY row.
+        What this pins is that the overlap is exactly that one key: a SECOND registry
+        env row would be a new ratification and must be read before it prints.
         """
-        assert not [k for k in manifest_doc()["keys"] if ".env." in str(k)]
+        registry_env = [str(k) for k in manifest_doc()["keys"] if ".env." in str(k)]
+        assert registry_env == ["box.env.COLORTERM"]
+        assert "box.env.COLORTERM" in {r.key for r in env_rows()[0]}
 
     def test_the_core_env_floor_is_the_shipped_emitter_s(self):
         rows, _ = env_rows()

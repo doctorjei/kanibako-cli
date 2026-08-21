@@ -113,6 +113,13 @@ def source_groups() -> tuple[tuple[str, frozenset[str]], ...]:
       auth_chain_floor(mode="primary", agent_name=_PROBE_AGENT))),
     ("core-defaults.yaml (agent_default:)", frozenset(
       f"agent.default.{leaf}" for leaf in core_defaults.behavior_defaults())),
+    # The ``env:`` table's own keys, intersected with the registry: the file may ship an
+    # env default the registry has not (yet) enumerated, and only the enumerated ones
+    # are section-1 rows. ⚑ The label is the SAME string section 3 prints, deliberately
+    # — ``box.env.COLORTERM`` is one fact reported by two sections (a DECLARED KEY and
+    # a variable a box gets), not two opinions about where it comes from.
+    ("core-defaults.yaml (env:)", frozenset(core_defaults.env_default_categories())
+     & declared),
     # --- carriers with nothing to enumerate: named, one reason each --- #
     # Fields of the ``KanibakoConfig`` dataclass.
     ("config.py (KanibakoConfig field)", frozenset({"box.image", "box.share_images"})),
@@ -316,14 +323,19 @@ def bind_rows() -> list[DefaultRow]:
 
 
 # --------------------------------------------------------------------------- #
-# Section 3 — the env-instance defaults, which the registry deliberately lacks
+# Section 3 — the env-instance defaults a box actually gets
 # --------------------------------------------------------------------------- #
 #
-# ⚑ THERE ARE NO PER-VAR ``env`` ROWS IN THE MANIFEST, and that is not an oversight to
-# repair here: whether the registry enumerates env INSTANCES is undecided, and the
-# family SHAPE (``<scope>.env.<VAR>``) is what it declares today.  The values are read
-# from the same two emitters the launch reads, so this section is a report on the live
-# floor, not a registry claim.
+# ⚑ THIS SECTION IS A REPORT ON THE LIVE ENV FLOOR, NOT A REGISTRY CLAIM.  The values
+# are read from the same two emitters the launch reads, so it lists what a box actually
+# gets — which is why it lists EVERY var, including the one the registry also carries.
+# ⚑⚑ THE REGISTRY ENUMERATES ONE env INSTANCE and no longer "deliberately lacks" them:
+# spec §2b declares ``box.env.COLORTERM`` (the core-shipped default), so it is a
+# section-1 DECLARED KEY as well, printed there with the SAME source label.  That
+# overlap is the point — the two sections answer different questions about one value,
+# and dropping it from here would make "the environment variables a box gets" omit the
+# only one kanibako itself ships.  Every OTHER env instance (each plugin's declared
+# vars) is a family member with no registry row, and this is where it is reported.
 
 
 class PluginConsultation(NamedTuple):

@@ -477,6 +477,39 @@ registry:                       # about this DOCUMENT (inert; never read by reso
                    SHA. The spec §1A flag list + meta.assembly.env leaf block +
                    §2a realization bullet and the annotations file were amended in
                    the same pass."
+    - date: "2026-08-15"
+      what: "box.env.COLORTERM IS A DECLARED KEY WITH A CORE-SHIPPED DEFAULT, and
+             gains its `keys:` row (D1-4/MBR-2). core-defaults.yaml's `env:` table
+             stopped being empty and now carries `box: COLORTERM: \"truecolor\"`;
+             the first-run write in cli.py that used to materialise the value into
+             the system settings file is DELETED. No new shape: the `env` category
+             already declared the FAMILY, and this is the first member kanibako
+             itself ships a DEFAULT for, so the default belongs in the key table
+             beside every other §2b box row."
+      authority: "spec §2b, the `box.env.COLORTERM | truecolor` row
+                  (specs/settings-keyspace-1.8.0.md:867 — `[core-declared
+                  DEFAULT] … replaces the retired first-run seed`); commit
+                  9ac0980 (2026-08-15) \"Declare COLORTERM as a core default and
+                  retire the first-run seed\"."
+      scope: "ONE ROW, ADDITIVE. The `env` category entry is untouched — the
+              family was already declared parametric in VAR and every other
+              <scope>.env.<VAR> stays a family member with no row of its own. No
+              other category, key or retired-key row changes. ⚑ NO BEHAVIOUR
+              CHANGE AND NO NEW CHANGELOG ENTRY: the key and its value have both
+              shipped since 9ac0980, and this is the REGISTRY catching up to code
+              and spec that already agreed. The one user-facing consequence is
+              that `system defaults` reads the registry, so its DECLARED KEYS
+              section grows by this row (63 -> 64) — the count in the UNRELEASED
+              CHANGELOG entry for that command is corrected in the same commit.
+              Nothing is owed to MIGRATION."
+      code_state: "Code + spec landed 2026-08-15 at 9ac0980 (core-defaults.yaml
+                   `env: box:`, the cli.py write deleted, fail-closed ENV_KEY_RE
+                   validation of the shipped file, CHANGELOG + MIGRATION §2.42).
+                   This file was the ONLY carrier still silent about it; the row
+                   above and the conformance pin in
+                   tests/test_settings/test_manifest_conformance.py
+                   (TestSingletonDefaults, against
+                   core_defaults.env_default_categories) land with this amendment."
 
 ## ---------------------------------------------------------------------------
 ## POLICY — the rules of the keyspace. Every field traces to a ratified clause.
@@ -1621,6 +1654,24 @@ keys:
            project.enable_vault: false must be moved by hand or the box
            silently launches with the vault ENABLED."
     spec: "§2b (renamed 2026-07-04)"
+  box.env.COLORTERM:
+    scope: box
+    type: str
+    set: cli+file
+    default: "truecolor"
+    note: "THE ONE env MEMBER KANIBAKO ITSELF DECLARES — shipped in
+           core-defaults.yaml's `env: box:` table (D1-4/MBR-2 9ac0980,
+           2026-08-15), which REPLACED the first-run write that used to
+           materialise the value into the system settings file. BOX scope because
+           it describes the terminal a box runs in, not the host install; it
+           resolves for every box, including installs predating the release, with
+           no stored value anywhere. An ORDINARY key of the parametric `env`
+           category (§2a): write-many, so an override is the SAME key in a nearer
+           file and the nearest wins, while the SAME VAR named at a SECOND scope
+           is the launch REFUSAL naming both keys (2026-08-14 amendment).
+           Delivery is the §2d env channel, through meta.assembly.env. The
+           category declares the FAMILY; this row declares the shipped DEFAULT."
+    spec: "§2b (core-declared default, 2026-08-15)"
   box.bindings.ro:
     scope: box
     type: dict
