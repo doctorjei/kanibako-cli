@@ -303,6 +303,21 @@ _BOX_TEMPLATE_SKELETON = (
     "template/box/canon/handbook",
 )
 
+#: The CANON HALF of the workset stamp — the ONE definition both the NAMED stamp and
+#: the CANON-ONLY (standalone) stamp read.  ⚑ It is the mould subtree that is copied
+#: AND the frame the guarantee-created chapter is spelled in; the chapter below is
+#: derived from it so the two cannot drift.
+_WORKSET_CANON_ROOT = "canon"
+
+#: The workset's handbook CHAPTER dir, guarantee-created (D7) in EVERY mode.  ⚑ Spec
+#: ``:962``: ``workset.canon`` is *"UNIFORM IN EVERY MODE — deliberately NOT a
+#: per-mode key"*, so a lone standalone box has this tier too.  Its sibling half — the
+#: ``template/`` skeleton above — does NOT transfer: ``workset.template`` is <None> in
+#: standalone (spec ``:936``; :func:`template_seed_defaults` omits the key there), and
+#: a workset template seeds FUTURE boxes, of which a standalone root will never have
+#: one.
+_WORKSET_CANON_CHAPTER = f"{_WORKSET_CANON_ROOT}/handbook"
+
 
 def _packaged_base_template() -> Path | None:
     """Locate the packaged TEMPLATE ROOT (``kanibako.data/global/template``).
@@ -441,35 +456,71 @@ def ensure_agent_stores(
     return touched
 
 
-def check_workset_template(std: StandardPaths, workset_path: Path) -> None:
+def _workset_stamp_copy(std: StandardPaths, workset_path: Path,
+                        canon_only: bool) -> tuple[Path, Path]:
+    """The (source, destination) pair of the workset stamp's copy — ONE definition.
+
+    ⚑ The PRE-FLIGHT and the STAMP must narrow identically or the check would clear a
+    copy it never looked at; both read this, neither respells it.
+
+    ⚑ The caller always passes ``dest_root=workset_path``, NOT this *dest*.  The
+    whitelist reads the STORE-relative path (see :func:`_check_whitelist`), so
+    narrowing the copy to ``canon/`` must not narrow the frame it is judged in — do
+    that and every entry looks top-level and the deny-by-default predicate goes blind.
+    """
+    mould = std.template / PACKAGED_WORKSET_TEMPLATE
+    if canon_only:
+        return mould / _WORKSET_CANON_ROOT, workset_path / _WORKSET_CANON_ROOT
+    return mould, workset_path
+
+
+def check_workset_template(std: StandardPaths, workset_path: Path, *,
+                           canon_only: bool = False) -> None:
     """PRE-FLIGHT the workset mould against the workset whitelist; write nothing.
 
     ⚑ Runs FIRST, before anything is registered or created: a refusal part-way
     through :func:`install_workset_template` would leave a REGISTERED workset with a
     PARTIAL copy, recoverable only by ``workset rm``.
+
+    ⚑⚑ *canon_only* pre-flights the STANDALONE stamp, and that reason does NOT
+    transfer — nothing is registered yet on that path.  A DIFFERENT one does, and it
+    is stronger: the destination is a directory THE USER ALREADY HAD, which kanibako
+    never deletes, so a refusal cannot be cleaned up by removing the destination.  The
+    refusal has to land before the first byte, not after.
     """
-    copy_tree(
-        std.template / PACKAGED_WORKSET_TEMPLATE, workset_path,
-        scope="workset", check_only=True,
-    )
+    src, dest = _workset_stamp_copy(std, workset_path, canon_only)
+    copy_tree(src, dest, dest_root=workset_path, scope="workset", check_only=True)
 
 
-def install_workset_template(std: StandardPaths, workset_path: Path) -> None:
+def install_workset_template(std: StandardPaths, workset_path: Path, *,
+                             canon_only: bool = False) -> None:
     """Stamp a NEW workset store from the host workset mould — the J-6 A-action.
 
     This is the LIVE single-source shape for a host template: one mould, one
     ``copy_tree``, one whitelist.  Create-if-absent, so re-running adds only what is
     missing.
 
-    ⚑ The whitelist matters MOST here.  For a STANDALONE project ``<workset_path>``
-    IS the user's own project directory, so the deny-by-default predicate guards the
-    tree they actually work in, not a kanibako-managed store.
+    ⚑⚑ *canon_only* is the STANDALONE half: the CANON tier only, never the
+    ``template/`` skeleton.  Both halves are spec-backed and the reasons differ — see
+    :data:`_WORKSET_CANON_CHAPTER`.  ⚑ The canon chapter is guarantee-created on BOTH
+    paths, which is why that one line sits outside the branch: it is the half the two
+    modes SHARE, not something the standalone path also happens to do.
+
+    ⚑ The whitelist matters MOST here, and not for the reason this comment used to
+    give.  A STANDALONE ``<workset_path>`` is a kanibako-MANAGED wrapper
+    (``settings.yaml`` + ``box_data/`` + ``vault/{ro,rw}/`` + ``workspace/``); the
+    user's own code lives one level down in ``workspace/`` (the workspace is a SUBDIR
+    of the root — ``paths.py``, drift H) and no stamp ever reaches it.  What IS true is
+    that the wrapper is a directory the user already had — ``resolve_standalone_project``
+    requires ``root.is_dir()`` — so the deny-by-default predicate guards a tree nothing
+    here is entitled to clean up afterwards.
     """
-    src = std.template / PACKAGED_WORKSET_TEMPLATE
-    copy_tree(src, workset_path, scope="workset")
-    for rel in _BOX_TEMPLATE_SKELETON:
-        (workset_path / rel).mkdir(parents=True, exist_ok=True)
-    (workset_path / "canon" / "handbook").mkdir(parents=True, exist_ok=True)
+    src, dest = _workset_stamp_copy(std, workset_path, canon_only)
+    copy_tree(src, dest, dest_root=workset_path, scope="workset")
+    if not canon_only:
+        for rel in _BOX_TEMPLATE_SKELETON:
+            (workset_path / rel).mkdir(parents=True, exist_ok=True)
+    (workset_path / _WORKSET_CANON_CHAPTER).mkdir(parents=True, exist_ok=True)
 
 
 # ---------------------------------------------------------------------------
