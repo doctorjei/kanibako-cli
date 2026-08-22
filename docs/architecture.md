@@ -26,7 +26,7 @@ cross-cutting entry points and utilities stay at the package root.
 | `snapshots.py` | Vault snapshot engine |
 | `project/workset.py` | Workset data model and persistence (identity + projects in `<root>/registry.yaml`) |
 | `project/names.py` | Project/workset name registry (the `projects`/`worksets` sections of `system.registry`) |
-| `project/registry_store.py` | Consolidated `registry.yaml` index (`projects`/`worksets`/`connected`/`standalone`/`rigs`/`image_shells`) |
+| `project/registry_store.py` | Consolidated `registry.yaml` index (`worksets`/`standalone`/`deregistered`/`rigs`/`image_shells`; a `projects` section is retired and dropped on the next write) |
 | `runtime/registry.py` | OCI Distribution API client for remote image digests (stdlib only) |
 | `settings/agent_config.py` | Per-agent YAML config (`agents/<agent>/settings.yaml`): load, write, resolve |
 | `launch/templates.py` | Layered seed-once template resolution and application (base → agent → workset) |
