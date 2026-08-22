@@ -1456,11 +1456,8 @@ keys:
            ERROR. src = None marks a MASK. Home is pid 0 and is seeded here BEFORE
            any scope folds (A9, @meta.box.home). Produced by the collapse on the
            launch path, on a WHOLE-BOX resolve only: ABSENT means a NARROW resolve
-           (an injected table, not a box) and nothing else. (Corrected 2026-08-14:
-           this note said absent ALSO meant `the collapse refused a config the
-           shipping route still accepts, caught at that one seam and logged`. That
-           swallow was deleted at the cutover - a refusal RAISES and stops the
-           launch, so no leaf is left absent by one.)"
+           (an injected table, not a box) and nothing else. A collapse refusal
+           RAISES and stops the launch, so no leaf is ever left absent by one."
     spec: "§1A"
   meta.assembly.seeded:
     namespace: meta
@@ -1477,12 +1474,9 @@ keys:
            Same producer as meta.assembly.bindings, but NOT the same gate: this leaf
            rides its own arm and EVERY resolve writes it, narrow ones included (home
            is pid 0, so a seed list needs no bind map). ABSENT therefore means the
-           snapshot was never resolved at all. (Corrected 2026-08-14: this note said
-           `absent under the same condition` as the bind map, which pointed at a
-           swallow the cutover deleted - a refusal RAISES.) (Renamed from `copies`
-           2026-08-10: the leaf names the category
-           it carries, as its siblings do. meta.assembly.* post-dates v1.8.0-rc1, so
-           the rename ships clean - no alias, no shim.)"
+           snapshot was never resolved at all. (Renamed from `copies` 2026-08-10: the
+           leaf names the category it carries, as its siblings do. meta.assembly.*
+           post-dates v1.8.0-rc1, so the rename ships clean - no alias, no shim.)"
     spec: "§1A"
   meta.assembly.synced:
     namespace: meta
@@ -1505,19 +1499,13 @@ keys:
            is total); a copy of a DIRECTORY at a mask's own point is refused (no
            partial masks). (`seeded` has a refusal of its own, seed_dest_outside_
            home; the two copy arms answer this question differently and always did.)
-           (Corrected 2026-08-14: this note still called such a dest a config
-           ERROR, which the 2026-08-12 ruling deleted -
-           policy.category_reconcile.synced_vs_binding_same_dest has read `allowed`
-           since, and no code reads this prose.) BOTH
-           HALVES READ THIS ONE LIST - delivery host->guest at launch (overwrite,
+           BOTH HALVES READ THIS ONE LIST - delivery host->guest at launch (overwrite,
            mtime-gated) and WRITEBACK guest->host at session end. A synced entry
            spells both sides fully and takes NO root, so DIRECTION IS A PROPERTY OF
            THE READ, not of the row; no separate reverse-direction member is needed.
            Same producer AND same gate as meta.assembly.bindings: written on a
            WHOLE-BOX resolve only, so ABSENT means a NARROW resolve and nothing else.
-           (Corrected 2026-08-14: this note said absent ALSO meant a refusal the seam
-           caught and logged; that swallow was deleted at the cutover - a refusal
-           RAISES.) (Replaces the RESERVED `backup` leaf, retired 2026-08-10.)"
+           (Replaces the RESERVED `backup` leaf, retired 2026-08-10.)"
     spec: "§1A"
   meta.assembly.env:
     namespace: meta
