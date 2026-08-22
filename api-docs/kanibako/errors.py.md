@@ -29,6 +29,8 @@ class WorksetError(KanibakoError):
 
 class LegacyWorksetIdentityError(WorksetError):
 
+class LegacyRegistryIdentityError(WorksetError):
+
 class UserCancelled(KanibakoError):
 
 class SubjectConflictError(KanibakoError):

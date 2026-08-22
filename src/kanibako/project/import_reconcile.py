@@ -11,10 +11,23 @@ Two live modes, one uniform mechanism (no per-mode special-casing):
 during the resolver's ancestor walk.  A retired third **PRIMARY** mode is
 sequestered in ``salvage/primary_reconcile.py`` — do not revive it here.
 
-Conflict semantics (all modes): a NAME colliding with an entity already
-registered to a *different* root/path **REFUSES** the import — nothing is
-mutated and :class:`ImportConflictError` is raised.  An entity already
-registered to its current path is a silent idempotent no-op.
+⚑ The two modes differ in where the NAME comes from, and only there.  A standalone
+box composes one from its stored ``workset.kuid`` plus the live dir leaf.  A workset
+records no name at all — its identity is the global registry's ``worksets:`` entry —
+so a workset being imported has none to read and takes the LEAF DIRECTORY BASENAME
+([R139]), which is what ``workset create`` already defaults an unnamed workset to.
+⚑⚑ That a workset's name is not on disk is a fact about NAMING; it never made a
+workset root unfindable, and treating it as though it had is what removed this
+function once.  The marker is :func:`~kanibako.project.workset.is_workset_skeleton`.
+
+Conflict semantics: a name colliding SAME-KIND — with an entity of the same kind
+already registered to a *different* root/path — **REFUSES** the import; nothing is
+mutated and :class:`ImportConflictError` is raised.  An entity already registered to
+its current path is a silent idempotent no-op.  ⚑ A CROSS-KIND collision (a workset
+name matching a primary BOX name) does NOT refuse: it imports and WARNS.  Refusing at
+``workset create`` is affordable because a human typed the name and can retype it; on
+an import nobody typed anything and there is no ``--force`` to offer, so a refusal
+would strand the tree it was meant to recover ([R139]).
 
 Reference: ``llm-docs/kanibako/project/import_reconcile.py.md``.
 """
@@ -26,8 +39,12 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from kanibako.project import registry_store
+from kanibako.project.names import cross_kind_shadow_hatch, register_name
 from kanibako.settings.config import BOX_META_FILE
 from kanibako.errors import KanibakoError
+from kanibako.log import get_logger
+
+logger = get_logger("import_reconcile")
 
 
 # The standalone box's host-side box dir (sibling of ``settings.yaml``, holding
@@ -183,24 +200,43 @@ def import_standalone(
 # ---------------------------------------------------------------------------
 
 def import_named_workset(
-    registry: Path, root: Path, *, journal: Path | None = None,
+    registry: Path, root: Path, *,
+    primary_workset: Path, journal: Path | None = None,
 ) -> str | None:
     """Reconcile an on-disk workset at *root* against ``registry.worksets``.
 
-    Reads the name from *root*'s ``registry.yaml`` ``workset:`` identity table.
-    Returns the workset name, or ``None`` when there is no readable identity.
+    Names it after *root*'s LEAF DIRECTORY basename ([R139]) — a workset records no
+    name on disk, and the basename is the answer in the absence of another one.
+    Returns that name, or ``None`` when *root* cannot be imported as a workset —
+    an empty or reserved basename, or ``$HOME`` (see the guards below).
     ⚑ Does NOT rewrite the workset-create skeleton; it only registers.
+    ⚑ *primary_workset* is REQUIRED, not defaulted: it is the sole input to the
+    cross-kind check below, and a caller free to omit it would import a shadowed
+    workset without the one warning that tells the user how to reach it.
     """
     root = root.resolve()
     root_str = str(root)
 
-    from kanibako.project.workset import read_workset_identity
+    from kanibako.project.workset import is_reserved_workset_name
 
-    identity = read_workset_identity(root)
-    if identity is None:
+    # ⚑ A DERIVED name must clear the SAME bars ``create_workset`` puts in front of a
+    # typed one: no empty name (only the filesystem root has one), no reserved
+    # sentinel.  It RETURNS where create RAISES, and the difference is who is asking —
+    # create answers a user who can retype, this answers a treewalk stepping past an
+    # ordinary directory, and a dir named ``default`` must not fail every command.
+    # Declining to import leaves it what it already was: a plain primary-mode dir.
+    name = root.name
+    if not name or is_reserved_workset_name(name):
         return None
-    name = (identity.get("name") or "").strip()
-    if not name:
+
+    # ⚑ $HOME is DECLINED here for the same reason, one step earlier than
+    # ``register_name``'s refusal of it: the walk arrives at $HOME under its own
+    # steam — it is the walk's own stop condition, not a path anyone chose — so a
+    # home dir that happens to carry the four-dir skeleton would raise out of
+    # EVERY command's mode detection.  Declining leaves it what it already was: a
+    # plain primary-mode dir.  Tested directly, never caught: an ``except
+    # ProjectError`` here would swallow the SAME-KIND collision refusal below.
+    if root == Path.home().resolve():
         return None
 
     names_section = registry_store.load_section(registry, "worksets")
@@ -210,15 +246,29 @@ def import_named_workset(
             # Already registered to this root → no-op; clear a stale entry.
             _clear_stale_import(journal, root)
             return name
+        # SAME-KIND: the name is another WORKSET's.  Refuse, leave the tree on disk.
         raise _conflict("workset", name, root, str(current))
 
-    # Register name → root in the ``worksets`` section, matching
-    # ``create_workset``.  J2 write-ahead: register-only, never seeds.  A workset
-    # has no single ``home/``, so its journal key is the workset ROOT.
+    # CROSS-KIND: the name is a primary BOX's.  Bare-name resolution is deterministic
+    # (box before workset), so this workset lands shadowed — import it anyway and say
+    # so, naming the same escape hatch that resolution names.  ⚑ NOT a refusal: see
+    # the module docstring's conflict paragraph for why create's refusal cannot carry.
+    from kanibako.settings.paths import load_primary_boxes
+
+    if name in load_primary_boxes(primary_workset):
+        logger.warning(
+            "imported workset '%s' shares its bare name with a primary box; the "
+            "bare name resolves to the box, so %s.",
+            name, cross_kind_shadow_hatch(name),
+        )
+
+    # Register name → root through ``register_name``, the SOLE writer of the global
+    # ``worksets`` section — its own $HOME refusal still stands and is simply never
+    # reached from here.  J2 write-ahead: register-only, never seeds.  A workset has
+    # no single ``home/``, so its journal key is the workset ROOT.
     with _journal_register(
         journal, root, op="import", name=name, mode="named", workset=name,
     ):
-        names_section[name] = root_str
-        registry_store.save_section(registry, "worksets", names_section)
+        register_name(registry, name, root_str, section="worksets")
     _alert("workset", name, root)
     return name

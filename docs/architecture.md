@@ -24,8 +24,8 @@ cross-cutting entry points and utilities stay at the package root.
 | `settings/paths.py` | XDG resolution, mode detection (primary/named/standalone), box/workset init |
 | `runtime/container.py` | Box runtime (detect, pull, build, run, stop, detach) |
 | `snapshots.py` | Vault snapshot engine |
-| `project/workset.py` | Workset data model and persistence (identity + projects in `<root>/registry.yaml`) |
-| `project/names.py` | Project/workset name registry (the `projects`/`worksets` sections of `system.registry`) |
+| `project/workset.py` | Workset data model and persistence (members from `<root>/registry.yaml`'s `boxes:`; the NAME comes from the global registry) |
+| `project/names.py` | Workset name registry (the `worksets` section of `config.registry`) |
 | `project/registry_store.py` | Consolidated `registry.yaml` index (`worksets`/`standalone`/`deregistered`/`rigs`/`image_shells`; a `projects` section is retired and dropped on the next write) |
 | `runtime/registry.py` | OCI Distribution API client for remote image digests (stdlib only) |
 | `settings/agent_config.py` | Per-agent YAML config (`agents/<agent>/settings.yaml`): load, write, resolve |

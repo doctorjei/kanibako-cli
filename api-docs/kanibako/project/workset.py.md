@@ -16,6 +16,8 @@ RESERVED_WORKSET_NAMES = frozenset({DEFAULT_WORKSET_ID, DEFAULT_WORKSET_ALIAS, '
 _WORKSPACES_LEAF = 'workspaces'
 _STANDALONE_WORKSPACE_LEAF = 'workspace'
 _CHANNELROOT_LEAF = 'channels'
+_VAULT_LEAF = 'vault'
+_LOGS_LEAF = 'logs'
 ```
 
 ## Functions
@@ -24,9 +26,10 @@ def load_workset_settings_doc(root: Path) -> Mapping[str, Any] | None
 def resolve_workset_workspaces(workset_root: Path, workset_settings: Mapping[str, Any] | None, *, standalone: bool=False) -> Path
 def resolve_workset_channelroot(workset_root: Path, workset_settings: Mapping[str, Any] | None) -> Path
 def is_reserved_workset_name(name: str) -> bool
-def read_workset_identity(root: Path) -> dict | None
+def refuse_retired_workset_identity(root: Path) -> None
+def is_workset_skeleton(root: Path) -> bool
 def create_workset(name: str, root: Path, std: StandardPaths, force: bool=False) -> Workset
-def load_workset(root: Path) -> Workset
+def load_workset(root: Path, name: str) -> Workset
 def list_worksets(std: StandardPaths) -> dict[str, Path]
 def default_workset(std: StandardPaths) -> Workset
 def resolve_workset_name(name: str, std: StandardPaths) -> Workset
@@ -37,10 +40,9 @@ def _workset_path_repoint(workset_settings: Mapping[str, Any] | None, leaf: str)
 def _apply_workset_dir_repoint(workset_root: Path, repoint: str | None, default_leaf: str) -> Path
 @contextmanager
 def _journal_connect(journal: Path | None, box_path: Path, *, name: str, workset: str | None=None, workspace: str | None=None)
-def _write_workset_identity(ws: Workset) -> None
-def _load_workset_identity(root: Path) -> Workset
-def _refuse_retired_workset_identity(root: Path) -> None
+def _load_workset(root: Path, name: str) -> Workset
 def _load_registry(std: StandardPaths) -> dict[str, Path]
+def _workset_skeleton_dirs(root: Path) -> tuple[Path, ...]
 def _detach_project(ws: Workset, name: str) -> None
 ```
 
@@ -56,7 +58,6 @@ class WorksetProject:
 class Workset:
     name: str
     root: Path
-    created: str
     projects: list[WorksetProject] = field(default_factory=list)
     is_default: bool = False
     workspaces_repoint: str | None = None

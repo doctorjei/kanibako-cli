@@ -1673,7 +1673,7 @@ class TestA0RepointStrandedMembers:
         from kanibako.project.workset import load_workset
 
         config, std, ws, internal = self._setup(config_file, tmp_home)
-        ws_reloaded = load_workset(ws.root)  # captures the repoint
+        ws_reloaded = load_workset(ws.root, ws.name)  # captures the repoint
         proj = resolve_workset_project(
             WorksetSpec.from_workset(ws_reloaded), "boxa", std, config,
             initialize=False,

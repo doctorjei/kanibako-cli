@@ -293,7 +293,8 @@ def _resolve_workset_state(
         from kanibako.launch import box_resolve
         owned = box_resolve.find_connected_external_box(raw_path, std)
         if owned is not None:
-            ws, proj_name = load_workset(owned.workset_root), owned.box_name
+            ws, proj_name = (load_workset(owned.workset_root, owned.workset_name),
+                             owned.box_name)
     if ws is None or proj_name is None:
         raise WorksetError(f"No workset project found for path: {raw_path}")
 
@@ -436,7 +437,7 @@ def _resolve_target_workset(
     registry = list_worksets(std)
     if name not in registry:
         raise WorksetError(f"Workset '{name}' not found.")
-    return load_workset(registry[name])
+    return load_workset(registry[name], name)
 
 
 def _validate(

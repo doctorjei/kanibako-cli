@@ -1,49 +1,50 @@
-# The Per-Workset Registry — identity, membership, and the name anchors it yields
+# The Per-Workset Registry — membership, and the name anchors it yields
 
 `workset_registry` is the read/write layer for one file per workset: the resolved `workset.registry`
 key, whose default is `@meta.workset.path/registry.yaml` == `<workset_root>/registry.yaml`. That file
-holds the workset's **identity** and its **membership**, and nothing else this module writes.
+holds the workset's **membership**, and nothing else.
 
-It is a document layer, not a policy layer. It loads its sections, writes them back atomically, and
-offers small typed helpers over them — register, unregister, forward lookup, reverse lookup, identity
-read and the identity/projects write. It decides nothing about modes, seeding or name validity; those
-live in `kanibako.settings.paths`, `kanibako.project.names` and the settings keyspace.
+It is a document layer, not a policy layer. It loads its one section, writes it back atomically, and
+offers small typed helpers over it — register, unregister, forward lookup, reverse lookup. It decides
+nothing about modes, seeding or name validity; those live in `kanibako.settings.paths`,
+`kanibako.project.names` and the settings keyspace.
 
 ## The file layout
 
 ```yaml
-workset:                    # the workset's own identity
-  name: myset
-  created: "2026-08-21T14:02:11+00:00"
-boxes:                      # box membership
+boxes:                      # box membership — the WHOLE file
   mybox: /abs/path/to/mybox
   other: /abs/path/to/other
-projects:                   # the workset's project records
-  mybox: {source_path: /abs/path/to/src}
 ```
 
-In `boxes:` the entry KEY is the box name (the `<leaf>` for a workset box) and the value is the box's
-path. In `projects:` the entry KEY is the project name and the value is its record.
+The entry KEY is the box name (the `<leaf>` for a workset box) and the value is that box's workspace
+path: the external dir for a connect, `workspaces/<name>` for an in-tree member.
 
-⚑ **`_SECTIONS` is the canonical on-disk ORDER** — identity, membership, projects — applied on every
-write by `_write_doc`, with unknown sections appended after. `_SORTED_SECTIONS` names the two
-name-keyed sections that are additionally sorted by name. Both exist so a registry written by two
-different verbs diffs cleanly.
+⚑ **`_SECTIONS` is the canonical on-disk ORDER**, applied on every write by `_write_doc`, with
+unknown sections appended after; `_SORTED_SECTIONS` names the name-keyed sections additionally sorted
+by name. Both are one-element tuples today. They stay tuples rather than collapsing to a constant so
+a sibling-owned section can be added without reshaping the writer, and so a registry written by two
+different verbs still diffs cleanly.
 
-## ⚑⚑ Why identity lives here
+## ⚑⚑ Why identity does NOT live here
 
-**system-design §Detect: "Identity and membership are REGISTRY-BORNE at every level — a workset's
-name, `created` and membership live in `registry.yaml` exactly as a box's `meta.box.name` does; a
-settings file carries SETTINGS ONLY, is sparse, and MAY BE ABSENT."**
+system-design §Detect's registry-borne rule is about MEMBERSHIP: *"Members live in `registry.yaml`'s
+`boxes:`, keyed by name."* A workset's IDENTITY is its `name → root` entry in the GLOBAL registry's
+`worksets:` section (`@config.registry`) — the entry `workset create` writes and `kanibako workset
+list` reads. Nothing under the workset root repeats it, and `project/workset.py` takes the name as an
+argument rather than reading one.
 
-Boxes already obeyed that (keyspec §2b: `mode` and `name` "do NOT become `box.*` keys … derived at
-construction from the registry … never written to the settings file"). Worksets were the level that
-never followed, keeping `name`, `created` and `projects` in the root `settings.yaml`. They moved here
-on 2026-08-22, and `project/workset.py` hard-refuses a root that still carries them there.
+⚑⚑ **THE PATH IS RECORDED EXACTLY ONCE.** For one day the unreleased tree kept a `workset:` identity
+table here AND a `projects:` map holding every member path a second time. Both are RETIRED, and both
+now HARD-REFUSE (`_refuse_retired_registry_sections`), because the two copies drifted: a disconnect
+dropped the `projects:` row and orphaned the `boxes:` one — which then tripped the uniqueness
+refusal below and locked that workspace out of its own workset under any name — and an in-tree
+connect recorded two different paths for one box. v1.6.0/v1.7.x roots carry neither shape; theirs is
+the `settings.yaml` table `project/workset.py` refuses.
 
-⚑ The presence of a `workset:` table is **THE named-workset-root detection input**. The PRIMARY
-workset's own registry has `boxes:` and no `workset:` — which is exactly what keeps a primary root
-from being detected as a named one.
+⚑ There is no detection input here any more. A directory is a NAMED workset root **iff** the global
+registry says so, which is also what keeps the PRIMARY workset root — same file, same `boxes:`
+shape — from ever being mistaken for a named one.
 
 ## Why the membership section is authoritative
 
@@ -84,8 +85,8 @@ registered a box reads clean.
 Writes go through `config_io.dump_doc` — temp file plus `os.replace`, so a crash mid-write cannot
 leave a torn registry — and they **preserve every sibling section untouched**: the raw document is
 read back and only the section being written is swapped. That is what lets the three sections have
-INDEPENDENT writers. `save_workset_record` writes `workset:` + `projects:` in one read-modify-write
-and leaves `boxes:` alone; `register_workset_box` / `unregister_workset_box` do the converse.
+INDEPENDENT writers, should a sibling ever own one. `register_workset_box` /
+`unregister_workset_box` swap `boxes:` and leave everything else in the document alone.
 
 A write never scaffolds a section it was not asked to write. `unregister_workset_box` in particular
 short-circuits before touching disk when the file is absent or the name is not present, so an
@@ -99,14 +100,16 @@ Name-keyed sections are sorted on write, for stable diffs — matching the name-
 `_section` coerces with `... or {}` rather than relying on `dict.get`'s default. The case is real:
 YAML `boxes:\n` parses to the key being PRESENT with value `None`, so the `{}` default never applies
 and a bare `dict(...)` call would raise. `registry_store` carries the same guard for the same reason.
-Every section reader goes through `_section`, so all three get the guard once.
+Every section reader goes through `_section`, so it is written once.
 
 `_load_boxes_raw` returns the pair `(full_doc, boxes)` because the two have different jobs —
 `full_doc` is the raw document a write needs in order to preserve siblings, `boxes` is the normalized
 `{name: path_str}` membership a caller reads.
 
-⚑ `load_workset_identity` answers `None` for an absent file, an absent section AND an empty one,
-because all three mean the same thing to its one caller: "not a workset root".
+⚑ `_load_raw` is **THE ONE READ SEAM**, which is why the retired-section refusal lives there: every
+read of a per-workset registry passes through it, so no caller can slip past a `workset:` or
+`projects:` section by reading some other way. A non-mapping document (a scalar YAML file) is handed
+straight back, exactly as before — `_section` already tolerates it.
 
 ## The workspace-path uniqueness invariant (the Bug A durable fix)
 

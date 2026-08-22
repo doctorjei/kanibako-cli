@@ -53,7 +53,11 @@ class WorksetError(KanibakoError):
 
 
 class LegacyWorksetIdentityError(WorksetError):
-    """A workset root still keeps its identity in ``settings.yaml``, not ``registry.yaml``."""
+    """A workset root's ``settings.yaml`` still carries a RETIRED workset identity table."""
+
+
+class LegacyRegistryIdentityError(WorksetError):
+    """A per-workset ``registry.yaml`` still carries a RETIRED ``workset:``/``projects:`` section."""
 
 
 class UserCancelled(KanibakoError):

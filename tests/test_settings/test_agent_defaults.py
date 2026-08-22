@@ -8,7 +8,7 @@ Nothing prepends a root later — that mechanism (``scope_roots``) is what P3 de
 These drive the REAL loader over SYNTHETIC declaration files (written to a temp
 package dir and read through ``importlib.resources``-compatible package access), so
 they pin the RULE rather than claude's two shipped rows; the shipped rows are pinned
-by ``test_targets/test_claude.py`` and ``test_defaults_golden.py``.
+by ``packages/agent-claude/tests/test_target.py`` and ``test_defaults_golden.py``.
 """
 
 from __future__ import annotations

@@ -107,5 +107,5 @@ class TestBoxMove:
         rc = run_move(_move_args(project_dir, dest, to_workset="ws"))
         assert rc == 0
         assert dest.is_dir()
-        ws2 = load_workset(ws.root)
+        ws2 = load_workset(ws.root, ws.name)
         assert any(p.name == "movable" for p in ws2.projects)

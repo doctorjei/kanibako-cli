@@ -406,7 +406,7 @@ def test_workset_meta_table_drops_and_warns_like_every_other_scope(
     # ⚑ NO WORKSET-SCOPE CARVE-OUT. A workset root's identity is REGISTRY-BORNE
     # (system-design §Detect) and its settings file carries SETTINGS ONLY, so a
     # top-level `meta.workset` table here is the RETIRED 1.6.0/1.7.x shape that
-    # `read_workset_identity` hard-refuses — not a marker the tool itself wrote.
+    # `refuse_retired_workset_identity` hard-refuses — not a marker the tool wrote.
     # It therefore drops AND warns, exactly as at every other scope. (Before the
     # move it dropped SILENTLY, to spare a spurious WARNING on a sanctioned file.)
     ws = _write(

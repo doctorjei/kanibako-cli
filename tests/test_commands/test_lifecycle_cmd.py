@@ -198,7 +198,7 @@ class TestMove:
         dest = tmp_home / "dest_ext"
         rc = run_move(_move_args(pdir, dest, to_workset="ws"))
         assert rc == 0
-        ws2 = load_workset(ws.root)
+        ws2 = load_workset(ws.root, ws.name)
         assert any(p.name == "proj" for p in ws2.projects)
 
     def test_move_external_refused(self, env):
@@ -264,7 +264,7 @@ class TestConvert:
         pdir = _default(env)
         rc = run_convert(_convert_args(pdir, to_workset="ws"))
         assert rc == 0
-        ws2 = load_workset(ws.root)
+        ws2 = load_workset(ws.root, ws.name)
         assert any(p.name == "proj" for p in ws2.projects)
         # P8b/Option A: the external workspace is recorded in the workset's
         # per-workset ``boxes:`` registry, not an on-disk ``resolved.workspace``.
@@ -516,7 +516,7 @@ class TestConvertMoveCrossKindName:
             _convert_args(pdir, to_workset="tw", name="gname")
         )
         assert rc == 0
-        ws2 = load_workset(tmp_home / "tw_root")
+        ws2 = load_workset(tmp_home / "tw_root", "tw")
         assert any(p.name == "gname" for p in ws2.projects)
 
     def test_move_default_same_name_relocates_registration(self, env):
@@ -700,7 +700,7 @@ class TestLifecycleCarriesBoxSettings:
         capsys.readouterr()
 
         from kanibako.settings.paths import WorksetSpec, box_workset_settings_paths
-        ws = load_workset(tmp_home / "ws_root")
+        ws = load_workset(tmp_home / "ws_root", "ws")
         names = list(ws.project_names) if hasattr(ws, "project_names") else [
             p.name for p in ws.projects
         ]
@@ -788,7 +788,7 @@ class TestLifecycleCarriesBoxSettings:
         capsys.readouterr()
 
         from kanibako.settings.paths import WorksetSpec, box_workset_settings_paths
-        ws = load_workset(tmp_home / "ws_root")
+        ws = load_workset(tmp_home / "ws_root", "ws")
         names = list(ws.project_names) if hasattr(ws, "project_names") else [
             p.name for p in ws.projects
         ]

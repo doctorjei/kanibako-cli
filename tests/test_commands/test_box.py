@@ -1711,7 +1711,7 @@ class TestBoxDuplicateExternal:
 
         # Project NOT left registered in the workset (reload from disk).
         registry = list_worksets(std)
-        reloaded = load_workset(registry["cf-ws"])
+        reloaded = load_workset(registry["cf-ws"], "cf-ws")
         assert all(p.name != "cf_proj" for p in reloaded.projects)
         # No partial per-project dirs left behind.
         assert not (ws.projects_dir / "cf_proj").exists()

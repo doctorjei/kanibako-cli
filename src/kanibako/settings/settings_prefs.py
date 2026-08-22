@@ -248,11 +248,11 @@ def collect_prefs(
     SECOND reader of the same file, and the two must agree about what the file
     contains: ``assemble_levels`` runs every raw doc through
     ``_drop_upward_scopes`` first, which strips the top-level ``meta:`` table.
-    A workset root's identity is on-disk metadata, NOT a key — it lives in
-    ``registry.yaml`` and is read raw by ``read_workset_identity`` — but 1.6.0/1.7.x
-    kept it in this file, and parsing the whole document here materialised that table
-    into a ``KeyStore`` as ``meta.workset.created`` / ``.projects``, neither of which
-    the keyspace declares (spec §0 declares ``meta.workset.{path,name,settings}``).
+    A workset root's identity is NOT a key and is not on disk under the root at all —
+    the global registry's ``worksets:`` section names it — but 1.6.0/1.7.x kept a table
+    in this file, and parsing the whole document here materialised it into a
+    ``KeyStore`` as ``meta.workset.created`` / ``.projects``, neither of which the
+    keyspace declares (spec §0 declares ``meta.workset.{path,name,settings}``).
     Nothing read
     the result — the extractor below keeps only ``pref.*`` — but a filter that
     guards ONE reader of a file guards only that reader. Restricting the parse to
