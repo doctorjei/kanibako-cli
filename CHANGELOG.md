@@ -71,6 +71,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A standalone project never received its workset handbook chapter.** `workset.canon` is declared
+  uniform in every mode — a lone box has a workset tier exactly as a named workset does — but the
+  directory that supplies it was only ever created on the `workset create` path, so a standalone root
+  had no `canon/handbook` and the chapter bind was silently omitted. Standalone roots are stamped now,
+  and stamped with the canon half only: a workset template seeds *future* boxes, and a standalone root
+  will never have a second one, so no `template/` directory is created there.
+
 - **A workset that repointed `workset.boxes` or `workset.logs` stopped being recognised as a
   workset at all.** The ancestor walk identifies a named workset root by the directories it is made
   of, but it tested three of those four against hardcoded names rather than against the keys that

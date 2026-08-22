@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import logging
 import shutil
 
@@ -1110,8 +1111,9 @@ class TestInstallWorksetTemplate:
 
     def test_refuses_a_registry_planted_by_the_mould(self, std, tmp_path):
         """⚑ The severity case: ``registry.yaml`` is ``workset.registry``, the
-        AUTHORITATIVE box membership — a templated one could ORPHAN boxes. And for a
-        STANDALONE project ``<workset_path>`` IS the user's own project dir."""
+        AUTHORITATIVE box membership — a templated one could ORPHAN boxes. And a
+        STANDALONE ``<workset_path>`` is a directory the USER already had, which
+        nothing here is entitled to clean up after a refusal."""
         from kanibako.errors import TemplateScopeError
         from kanibako.launch.templates import install_workset_template
 
@@ -1123,6 +1125,119 @@ class TestInstallWorksetTemplate:
             install_workset_template(std, ws)
         assert "WORKSET" in str(exc.value)
         assert not (ws / "registry.yaml").exists()
+
+
+class TestWorksetStampSplit:
+    """The stamp is TWO halves, and a STANDALONE root gets only the CANON one.
+
+    ⚑ Both halves are spec-backed and the reasons differ. ``workset.canon`` is
+    *"UNIFORM IN EVERY MODE — deliberately NOT a per-mode key"* (spec ``:962``), so a
+    lone box has that tier. ``workset.template`` is <None> for standalone (spec
+    ``:936``) — a workset template seeds FUTURE boxes and a standalone root will never
+    have one — so stamping ``template/`` there would be structure for a key the mode
+    does not have.
+    """
+
+    def _fresh_root(self, tmp_home, name):
+        root = tmp_home / name
+        root.mkdir()
+        return root
+
+    def test_named_workset_create_stamps_both_halves(self, std, config_file, tmp_home):
+        """⚑ Driven through ``workset create``, the PRODUCT path — not the stamp in
+        isolation, which is the shape ~200 existing fixtures build and the product
+        never produces."""
+        from kanibako.commands.workset_cmd import run_create
+
+        install_packaged_templates(std, ["claude"])
+        ws_root = tmp_home / "named-ws"
+        rc = run_create(argparse.Namespace(
+            path=str(ws_root), name=None, standalone=False, image=None, no_vault=False,
+        ))
+        assert rc == 0
+        assert (ws_root / "canon" / "handbook" / "directives" / "SYS_WORKSET.md").is_file()
+        assert (ws_root / "template" / "box" / "home" / "canon" / "notebook").is_dir()
+        assert (ws_root / "template" / "box" / "canon" / "handbook").is_dir()
+
+    def test_standalone_init_stamps_canon_and_never_template(self, std, config, tmp_home):
+        """First-time standalone init gets the canon tier and NOT the template half."""
+        install_packaged_templates(std, ["claude"])
+        root = self._fresh_root(tmp_home, "solo")
+        resolve_standalone_project(std, config, str(root), initialize=True)
+        assert (root / "canon" / "handbook" / "directives" / "SYS_WORKSET.md").is_file()
+        # ⚑ THE POINT OF THE SPLIT.
+        assert not (root / "template").exists()
+        # A second resolve is the recovery pass; it must not grow the template half.
+        resolve_standalone_project(std, config, str(root), initialize=True)
+        assert not (root / "template").exists()
+
+    def test_canon_only_stamp_is_idempotent_and_clobbers_nothing(self, std, tmp_home):
+        """Create-if-absent, so a re-run adds only what is missing — and the
+        destination is the user's own tree, so a clobber here is DATA LOSS."""
+        from kanibako.launch.templates import install_workset_template
+
+        install_packaged_templates(std, ["claude"])
+        root = self._fresh_root(tmp_home, "solo-idem")
+        install_workset_template(std, root, canon_only=True)
+        stamped = root / "canon" / "handbook" / "directives" / "SYS_WORKSET.md"
+        stamped.write_text("MINE\n")
+        theirs = root / "canon" / "handbook" / "notes.md"
+        theirs.write_text("keep me\n")
+        install_workset_template(std, root, canon_only=True)
+        assert stamped.read_text() == "MINE\n"
+        assert theirs.read_text() == "keep me\n"
+        assert not (root / "template").exists()
+
+    def test_canon_only_still_refuses_an_out_of_scope_entry(self, std, tmp_home):
+        """⚑ Narrowing the COPY to ``canon/`` must not narrow the WHITELIST'S FRAME:
+        ``dest_root`` stays the store root, so ``canon/notebook/…`` is still judged as
+        the store-relative path it is and DENIED (only ``canon/handbook`` is allowed)."""
+        from kanibako.errors import TemplateScopeError
+        from kanibako.launch.templates import install_workset_template
+
+        install_packaged_templates(std, ["claude"])
+        bad = std.template / "workset" / "canon" / "notebook" / "NOTES.md"
+        bad.parent.mkdir(parents=True, exist_ok=True)
+        bad.write_text("nope\n")
+        root = self._fresh_root(tmp_home, "solo-deny")
+        with pytest.raises(TemplateScopeError) as exc:
+            install_workset_template(std, root, canon_only=True)
+        assert "WORKSET" in str(exc.value)
+        assert not (root / "canon" / "notebook").exists()
+
+    def test_canon_only_preflight_refuses_before_the_first_byte(self, std, tmp_home):
+        """⚑ The ordering the standalone create depends on: the pre-flight writes
+        NOTHING, so a doomed stamp leaves no litter in a directory kanibako may never
+        delete."""
+        from kanibako.errors import TemplateScopeError
+        from kanibako.launch.templates import check_workset_template
+
+        install_packaged_templates(std, ["claude"])
+        bad = std.template / "workset" / "canon" / "notebook" / "NOTES.md"
+        bad.parent.mkdir(parents=True, exist_ok=True)
+        bad.write_text("nope\n")
+        root = self._fresh_root(tmp_home, "solo-preflight")
+        with pytest.raises(TemplateScopeError):
+            check_workset_template(std, root, canon_only=True)
+        assert not (root / "canon").exists()
+
+    def test_standalone_create_refuses_whole_and_leaves_nothing(self, std, config, tmp_home):
+        """⚑⚑ The SEAM property, and the reason the stamp is the create's FIRST write:
+        a refusal aborts before ``box_data/`` exists, so the create guard is still true
+        and a corrected re-run does the whole create. There is no unwind — and there
+        must not be one: the root is the user's own directory."""
+        from kanibako.errors import TemplateScopeError
+
+        install_packaged_templates(std, ["claude"])
+        bad = std.template / "workset" / "canon" / "notebook" / "NOTES.md"
+        bad.parent.mkdir(parents=True, exist_ok=True)
+        bad.write_text("nope\n")
+        root = self._fresh_root(tmp_home, "solo-abort")
+        with pytest.raises(TemplateScopeError):
+            resolve_standalone_project(std, config, str(root), initialize=True)
+        assert not (root / "box_data").exists()
+        assert not (root / "canon").exists()
+        assert root.is_dir()
 
 
 class TestLegacyPluginPayloadArm:
