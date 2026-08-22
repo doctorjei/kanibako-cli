@@ -1426,6 +1426,27 @@ def resolve_standalone_project(std: StandardPaths, config: KanibakoConfig,
         from kanibako.launch import box_identity
         box_identity.validate_standalone_name(requested_name,
                                               registry_store.standalone_box_names(std.registry))
+        # ⚑ The WORKSET CANON tier, stamped CANON-ONLY.  ``workset.canon`` is UNIFORM
+        # IN EVERY MODE (spec ``:962``) so a lone box has one; ``workset.template`` is
+        # <None> in standalone (spec ``:936``), so the template half is NOT stamped —
+        # it would be structure for a key this mode does not have.
+        #
+        # ⚑⚑ PRE-FLIGHT, THEN STAMP AS THE CREATE'S FIRST WRITE.  Refusing here leaves
+        # NOTHING behind: ``box_data/`` does not exist yet, so the guard above is still
+        # true and a corrected re-run does the whole create.  The copy is
+        # create-if-absent, so a re-run or a recovery pass adds only what is missing
+        # and clobbers no file already under ``canon/``.
+        #
+        # ⚑⚑ AND THERE IS DELIBERATELY NO UNWIND — DO NOT ADD ONE, and do not "unify
+        # the creators" by routing standalone through ``create_workset``.  That
+        # function's failure path is ``shutil.rmtree(root)`` (``project/workset.py``),
+        # which is safe only because IT made the root.  A standalone root is a
+        # directory the USER already had — ``root.is_dir()`` is required above — so the
+        # same unwind would delete their project.  That is the trap in the refactor.
+        from kanibako.launch.templates import check_workset_template, install_workset_template
+
+        check_workset_template(std, root, canon_only=True)
+        install_workset_template(std, root, canon_only=True)
         _init_standalone_project(std, box_data, shell_path, vault_ro_path, vault_rw_path,
                                  project_path, enable_vault=actual_vault_enabled)
         # Identity + meta + registration via the shared establish core (fresh identity here).
