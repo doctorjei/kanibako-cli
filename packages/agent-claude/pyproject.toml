@@ -37,3 +37,6 @@ include = ["kanibako.plugins.claude*"]
     "data/.*/**/*", "data/.*/*",
     "data/**/.*/**/*", "data/**/.*/*",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
