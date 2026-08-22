@@ -147,6 +147,7 @@ def _load_std() -> StandardPaths:
 def run_list(args: argparse.Namespace) -> int:
     """List configured agents."""
     from kanibako.settings.agent_file import load
+    from kanibako.settings.config import AGENT_META_FILE
 
     try:
         std = _load_std()
@@ -163,7 +164,7 @@ def run_list(args: argparse.Namespace) -> int:
 
     # Each agent's settings live inside its store dir: agents/<agent>/agent.yaml.
     settings_files = sorted(
-        p for p in adir.glob("*/agent.yaml") if p.is_file()
+        p for p in adir.glob(f"*/{AGENT_META_FILE}") if p.is_file()
     )
     if not settings_files:
         quiet = getattr(args, "quiet", False)

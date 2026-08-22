@@ -305,8 +305,8 @@ class TestRunInfo:
         assert "ghcr.io/doctorjei/kanibako-oci:latest" in out
 
     def test_shows_project_image_override(self, initialized_project, capsys):
-        """Info shows project-specific image when settings.yaml is set."""
-        project_toml = initialized_project.proj.metadata_path / "settings.yaml"
+        """Info shows project-specific image when box.yaml is set."""
+        project_toml = initialized_project.proj.metadata_path / "box.yaml"
         project_toml.write_text('box:\n  image: "custom:v2"\n')
         args = argparse.Namespace(path=initialized_project.project_dir)
         with patch(

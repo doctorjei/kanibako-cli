@@ -1549,7 +1549,7 @@ class TestTheSeedApplierConsumesTheLeaf:
         return _apply_init_seeds(
             std=std, proj=proj, agent_name="claude", target=_T(),
             global_config_path=std.settings,
-            agent_config_path=std.agents / "claude" / "settings.yaml",
+            agent_config_path=std.agents / "claude" / "agent.yaml",
             logger=logging.getLogger("seed-consumer"), deliver_creds=True,
         )
 
@@ -1716,7 +1716,7 @@ class TestTheSeedApplierConsumesTheLeaf:
         return _sync_box_at_create(
             std=std, proj=proj, agent_name="claude", target=_WiringTarget(),
             global_config_path=std.settings,
-            agent_config_path=std.agents / "claude" / "settings.yaml",
+            agent_config_path=std.agents / "claude" / "agent.yaml",
             logger=logger, deliver_creds=True,
         )
 
@@ -1763,7 +1763,7 @@ class TestTheSeedApplierConsumesTheLeaf:
         # ⚑ The seed source is STRICTLY NEWER — the mtime gate's blind spot.
         os.utime(sync_src, (1000, 1000))
         os.utime(seed_src, (2000, 2000))
-        (proj.metadata_path / "settings.yaml").write_text(
+        (proj.metadata_path / "box.yaml").write_text(
             f'box:\n'
             f'  seeded:\n    "~/cred.txt": ["{seed_src}"]\n'
             f'  synced:\n    "~/cred.txt": ["{sync_src}"]\n'

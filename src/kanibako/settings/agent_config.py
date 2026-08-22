@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Final, Mapping
 
+from kanibako.settings.config import AGENT_META_FILE
 from kanibako.settings.settings_categories import ABSTRACT_CATEGORIES, DECLARATION_ROOT_REF
 
 # Keys that live directly in the [agent] section as agent identity (not state).
@@ -49,7 +50,7 @@ def agent_settings_path(agents_root: Path, agent_id: str) -> Path:
     """Return ``@meta.agent.<agent>.settings`` for *agent_id*."""
     # ⚑ INSIDE the store dir as ``agent.yaml``, not the old sibling
     # ``agents/<agent>.yaml`` (D-2026-06-22).
-    return agents_root / agent_id / "agent.yaml"
+    return agents_root / agent_id / AGENT_META_FILE
 
 
 # --------------------------------------------------------------------------- #

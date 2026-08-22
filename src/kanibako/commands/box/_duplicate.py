@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 from kanibako.settings.config import (
+    BOX_META_FILE,
     carried_box_settings,
     config_file_path,
     load_config,
@@ -234,7 +235,6 @@ def _duplicate_to_standalone(src_proj, new_path, std, force):
     name, so standalone detection (``_is_standalone_meta_dir`` requires
     ``mode == "standalone"``) would never find it → an orphaned box (BUG#3).
     """
-    from kanibako.settings.config import BOX_META_FILE
     from kanibako.errors import ProjectError
     from kanibako.settings.paths import establish_standalone
     from kanibako.utils import write_project_gitignore

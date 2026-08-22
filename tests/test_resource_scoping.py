@@ -237,7 +237,7 @@ class TestBuildEffectiveState:
         return ws_toml
 
     def _make_project_toml(self, tmp_path, settings=None, agent="claude"):
-        """Create a minimal box settings.yaml, optionally with a box→agent tweak.
+        """Create a minimal box.yaml, optionally with a box→agent tweak.
 
         A per-agent behavior override at the BOX scope rides the §2h REQUEST
         ``pref.agent.<agent>.<key>``. (A box file may NOT set ``agent.<name>.*``
@@ -248,7 +248,7 @@ class TestBuildEffectiveState:
         from kanibako.settings.config_io import dump_doc, load_doc
 
         tmp_path.mkdir(parents=True, exist_ok=True)
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / "box.yaml"
         # A minimal box-tier settings file (P8b sparse create writes no identity
         # section; the pref requests below are what this scoping test cares about).
         write_project_config(project_toml, "base:image")
@@ -588,7 +588,7 @@ class TestXdgFallbackRegression:
 
         proj_dir = tmp_path / "proj"
         proj_dir.mkdir()
-        project_toml = proj_dir / "settings.yaml"
+        project_toml = proj_dir / "box.yaml"
         # A minimal box-tier settings file (P8b sparse create writes no identity
         # section); the XDG expansion under test rides the global/agent tiers.
         write_project_config(project_toml, "base:image")

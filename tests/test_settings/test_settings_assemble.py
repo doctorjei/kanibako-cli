@@ -634,7 +634,7 @@ def test_the_agent_file_is_read_under_whichever_node_is_active(tmp_path: Path) -
     # ⚑⚑ WHAT REPLACED "an active agent absent from the file yields an empty level",
     # and the replacement is the model, not a weaker test: there is no per-node
     # discrimination INSIDE the file any more, because the file IS one node's
-    # (``agents/<node>/settings.yaml``, and every production caller builds the path from
+    # (``agents/<node>/agent.yaml``, and every production caller builds the path from
     # the active id — ``agent_settings_path(std.agents, agent_id)``). So the same bytes
     # read under codex are codex's keys; a "wrong node" file is not a thing the cascade
     # can be handed.
@@ -1073,11 +1073,11 @@ def _box_enable_vault(snap: KeyStore) -> object:
 
 
 def test_p6c_standalone_box_key_resolves_via_workset_tier(tmp_path: Path) -> None:
-    # STANDALONE TIER MODEL (P6c, spec §2c): a lone box's single settings.yaml
+    # STANDALONE TIER MODEL (P6c, spec §2c): a lone box's single workset.yaml
     # now plays the WORKSET tier (box tier EMPTY). A box.* key set in it still
     # resolves for box scope via R2 downward-defaults (box ⊂ workset — the
     # workset-tier read KEEPS box.*). File carries a box-scope override.
-    f = _write(tmp_path / "settings.yaml", {"box": {"enable_vault": False}})
+    f = _write(tmp_path / "workset.yaml", {"box": {"enable_vault": False}})
 
     # P6c pair: box tier EMPTY (None), the file as the WORKSET tier.
     snap_p6c = merge(
@@ -1107,7 +1107,7 @@ def test_p6c_standalone_workset_scope_key_also_resolves(tmp_path: Path) -> None:
     # (previously DROPPED as an upward write when the file was the BOX tier) now
     # survives, because the file is the WORKSET tier and workset.* is its own scope.
     f = _write(
-        tmp_path / "settings.yaml",
+        tmp_path / "workset.yaml",
         {"box": {"enable_vault": False}, "workset": {"template": "w"}},
     )
     snap = merge(

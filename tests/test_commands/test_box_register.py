@@ -429,7 +429,7 @@ class TestCreateStandaloneOptIn:
     def _stored_kuid(root: Path) -> str:
         from kanibako.settings.config import read_workset_kuid
 
-        return read_workset_kuid(root / "settings.yaml")
+        return read_workset_kuid(root / "workset.yaml")
 
     def test_default_create_is_unregistered(
         self, config_file, tmp_home, credentials_dir
@@ -443,7 +443,7 @@ class TestCreateStandaloneOptIn:
 
         # The box is on disk and complete...
         assert (root / "box_data" / "home").is_dir()
-        assert (root / "settings.yaml").is_file()
+        assert (root / "workset.yaml").is_file()
         # ...and absent from the index.
         assert registry_store.load_standalone(std.registry) == {}
         assert registry_store.standalone_name_for_root(std.registry, root) is None

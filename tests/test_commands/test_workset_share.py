@@ -80,7 +80,7 @@ class TestShareAdd:
         """
         rc = run_share_add(_add_args(mode="rw"))
         assert rc == 0
-        bindings = read_bindings(workset.root / "settings.yaml")
+        bindings = read_bindings(workset.root / "workset.yaml")
         # Storage is STRUCTURED (spec §2a): a list, NOT a colon-joined string
         # (the colon form is only the CLI input grammar).
         # ⚑ The value is the 1-ELEMENT dest-keyed entry [src] (R-6): the
@@ -95,7 +95,7 @@ class TestShareAdd:
     def test_add_ro_writes_key(self, config_file, tmp_home, workset):
         rc = run_share_add(_add_args(bind="/host/docs:/srv/docs", mode="ro"))
         assert rc == 0
-        bindings = read_bindings(workset.root / "settings.yaml")
+        bindings = read_bindings(workset.root / "workset.yaml")
         assert bindings == {("ro", "/srv/docs"): ["/host/docs"]}
 
     def test_add_overwrite_is_keyed_on_the_destination(
@@ -107,7 +107,7 @@ class TestShareAdd:
         capsys.readouterr()
         rc = run_share_add(_add_args(bind="/host/b:/g"))
         assert rc == 0
-        bindings = read_bindings(workset.root / "settings.yaml")
+        bindings = read_bindings(workset.root / "workset.yaml")
         assert bindings == {("rw", "/g"): ["/host/b"]}
         assert "Updated rw share at '/g'" in capsys.readouterr().out
 
@@ -119,7 +119,7 @@ class TestShareAdd:
         now the destinations distinguish themselves."""
         run_share_add(_add_args(bind="/host/a:/g1"))
         run_share_add(_add_args(bind="/host/a:/g2"))
-        bindings = read_bindings(workset.root / "settings.yaml")
+        bindings = read_bindings(workset.root / "workset.yaml")
         assert bindings == {
             ("rw", "/g1"): ["/host/a"],
             ("rw", "/g2"): ["/host/a"],
@@ -141,7 +141,7 @@ class TestShareAdd:
         """
         rc = run_share_add(_add_args(bind="sub/dir:/home/agent/data"))
         assert rc == 0
-        bindings = read_bindings(workset.root / "settings.yaml")
+        bindings = read_bindings(workset.root / "workset.yaml")
         assert bindings[("rw", "/home/agent/data")] == [
             str(workset.root / "sub" / "dir"),
         ]
@@ -160,7 +160,7 @@ class TestShareAdd:
         """
         rc = run_share_add(_add_args(bind=f"{src}:/home/agent/data"))
         assert rc == 0
-        bindings = read_bindings(workset.root / "settings.yaml")
+        bindings = read_bindings(workset.root / "workset.yaml")
         assert bindings[("rw", "/home/agent/data")] == [src]
 
     def test_add_relative_on_default_workset_is_refused(
@@ -185,7 +185,7 @@ class TestShareAdd:
         """The refusal is narrow: only the shape that cannot resolve is refused."""
         rc = run_share_add(_add_args(workset="default", bind="/abs/h:/g"))
         assert rc == 0
-        bindings = read_bindings(std.primary_workset / "settings.yaml")
+        bindings = read_bindings(std.primary_workset / "workset.yaml")
         assert bindings[("rw", "/g")] == ["/abs/h"]
 
     @pytest.mark.parametrize("bind", ["nocolon", ":/dest", "/src:", "a:b:c"])
@@ -203,7 +203,7 @@ class TestShareAdd:
         the divergence P4 closes."""
         rc = run_share_add(_add_args(bind="/host/pa\\:th:/guest/dest"))
         assert rc == 0
-        bindings = read_bindings(workset.root / "settings.yaml")
+        bindings = read_bindings(workset.root / "workset.yaml")
         assert bindings == {("rw", "/guest/dest"): ["/host/pa:th"]}
 
     def test_add_escaped_colon_only_no_separator_rejected(
@@ -240,7 +240,7 @@ class TestShareAdd:
 
         rc = run_share_add(_add_args(bind=f"/host/src:{dest}"))
         assert rc == 0
-        bindings = read_bindings(workset.root / "settings.yaml")
+        bindings = read_bindings(workset.root / "workset.yaml")
         assert ("rw", normalize_bind_dest(dest)) in bindings
 
     def test_add_unknown_workset(self, config_file, tmp_home, capsys):
@@ -255,7 +255,7 @@ class TestShareRemove:
         capsys.readouterr()
         rc = run_share_remove(_rm_args(dest="/home/agent/data"))
         assert rc == 0
-        assert read_bindings(workset.root / "settings.yaml") == {}
+        assert read_bindings(workset.root / "workset.yaml") == {}
         out = capsys.readouterr().out
         assert "Removed rw share at '/home/agent/data'" in out
         assert "next box launch" in out
@@ -264,7 +264,7 @@ class TestShareRemove:
         run_share_add(_add_args(mode="ro", bind="/h:/g"))
         rc = run_share_remove(_rm_args(dest="/g", mode="ro"))
         assert rc == 0
-        assert read_bindings(workset.root / "settings.yaml") == {}
+        assert read_bindings(workset.root / "workset.yaml") == {}
 
     def test_rm_missing_returns_1(self, config_file, tmp_home, workset, capsys):
         rc = run_share_remove(_rm_args(dest="/ghost"))
@@ -295,14 +295,14 @@ class TestShareRemove:
         err = capsys.readouterr().err
         assert "both ro and rw" in err
         # Nothing removed.
-        assert len(read_bindings(workset.root / "settings.yaml")) == 2
+        assert len(read_bindings(workset.root / "workset.yaml")) == 2
 
     def test_rm_ambiguous_with_mode_removes_one(self, config_file, tmp_home, workset):
         run_share_add(_add_args(mode="rw", bind="/h1:/g"))
         run_share_add(_add_args(mode="ro", bind="/h2:/g"))
         rc = run_share_remove(_rm_args(dest="/g", mode="rw"))
         assert rc == 0
-        bindings = read_bindings(workset.root / "settings.yaml")
+        bindings = read_bindings(workset.root / "workset.yaml")
         assert bindings == {("ro", "/g"): ["/h2"]}
 
     def test_rm_wrong_mode_returns_1(self, config_file, tmp_home, workset, capsys):
@@ -320,14 +320,14 @@ class TestShareRemove:
         _write_legacy_named_entry(workset, "data", "/host/data", "/home/agent/data")
         rc = run_share_remove(_rm_args(dest="data"))
         assert rc == 0
-        assert read_bindings(workset.root / "settings.yaml") == {}
+        assert read_bindings(workset.root / "workset.yaml") == {}
 
 
 def _write_legacy_named_entry(workset, name, src, dest, mode="rw"):
     """Hand-author the RETIRED name-keyed shape: entry key != its destination."""
     from kanibako.settings.config_io import dump_doc, load_doc
 
-    path = workset.root / "settings.yaml"
+    path = workset.root / "workset.yaml"
     data = load_doc(path) if path.exists() else {}
     data.setdefault("workset", {}).setdefault("bindings", {}).setdefault(
         mode, {}
@@ -402,12 +402,12 @@ class TestShareList:
         ⚑ THREE elements is the malformed shape: the dest-keyed entry takes
         ``[src[, options]]``, so a ONE-element list is perfectly legal.  (Until the
         identity moved to registry.yaml this test passed for the wrong reason — the
-        rewritten settings.yaml dropped the identity, so ``load_workset`` refused
+        rewritten workset.yaml dropped the identity, so ``load_workset`` refused
         before the reader was ever reached.)"""
         from kanibako.settings.config_io import dump_doc
 
         dump_doc(
-            workset.root / "settings.yaml",
+            workset.root / "workset.yaml",
             {"workset": {"bindings": {"rw": {"/g": ["src", "opts", "extra"]}}}},
         )
         rc = run_share_list(_list_args())

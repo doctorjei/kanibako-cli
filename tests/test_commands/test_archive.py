@@ -208,10 +208,10 @@ class TestArchiveExtended:
         config = load_config(config_file)
         load_std_paths(config)
         project_dir = tmp_home / "project"
-        # Standalone marker: box_data/ dir + ROOT settings.yaml (drift I).
+        # Standalone marker: box_data/ dir + ROOT workset.yaml (drift I).
         kanibako_dir = project_dir / "box_data"
         kanibako_dir.mkdir(parents=True)
-        (project_dir / "settings.yaml").write_text('project:\n  mode: "standalone"\n')
+        (project_dir / "workset.yaml").write_text('project:\n  mode: "standalone"\n')
         (kanibako_dir / "data.txt").write_text("standalone-data")
 
         archive_path = str(tmp_home / "dec.txz")
@@ -256,7 +256,7 @@ class TestStubProject:
         gone_ws = tmp_home / "gone_workspace"
         reg = workset_registry.resolve_workset_registry_path(
             std.primary_workset,
-            load_doc(std.primary_workset / "settings.yaml"),
+            load_doc(std.primary_workset / "workset.yaml"),
         )
         workset_registry.register_workset_box(reg, "regkey", gone_ws)
 

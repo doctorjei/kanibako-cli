@@ -200,12 +200,12 @@ class TestWorksetChannelPaths:
     def test_named_channelroot_repoint_honored(self, named_proj, std):
         """B2 (§3.3): the workset-local roots compose from the RESOLVED
         ``workset.channelroot`` — a ``workset: {channelroot: …}`` repoint in
-        the workset's settings.yaml is honored (default unchanged, pinned by
+        the workset's workset.yaml is honored (default unchanged, pinned by
         the sibling tests above)."""
         from kanibako.settings.config_io import dump_doc, load_doc
 
         assert named_proj.group is not None
-        settings = named_proj.group.root / "settings.yaml"
+        settings = named_proj.group.root / "workset.yaml"
         data = load_doc(settings)
         data.setdefault("workset", {})["channelroot"] = "comms"
         dump_doc(settings, data)
@@ -218,10 +218,10 @@ class TestWorksetChannelPaths:
         assert wch.share == root / "share"
 
     def test_primary_channelroot_repoint_honored(self, primary_proj, std):
-        """PRIMARY honors a repoint from the primary workset's settings.yaml."""
+        """PRIMARY honors a repoint from the primary workset's workset.yaml."""
         from kanibako.settings.config_io import dump_doc, load_doc
 
-        settings = std.primary_workset / "settings.yaml"
+        settings = std.primary_workset / "workset.yaml"
         data = load_doc(settings) if settings.is_file() else {}
         if not isinstance(data, dict):
             data = {}

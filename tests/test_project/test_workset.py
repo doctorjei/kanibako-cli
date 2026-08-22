@@ -37,7 +37,7 @@ class TestCreateWorkset:
         assert (ws.root / "boxes").is_dir()
         assert (ws.root / "workspaces").is_dir()
         assert (ws.root / "vault").is_dir()
-        # ⚑ A fresh workset root holds NO FILES AT ALL: no settings.yaml (the file
+        # ⚑ A fresh workset root holds NO FILES AT ALL: no workset.yaml (the file
         # carries settings only, so it appears when something is SET) and no
         # registry.yaml (a workset with no members has no membership to record).
         assert not ws.settings_path.exists()
@@ -439,14 +439,14 @@ class TestAddProjectConnectGuard:
     @staticmethod
     def _make_standalone(dir_path: Path) -> None:
         """Stamp *dir_path* with the in-place standalone MARKER (box_data/ +
-        settings.yaml), matching box_resolve.standalone_settings_present."""
+        workset.yaml), matching box_resolve.standalone_settings_present."""
         from kanibako.launch.box_resolve import standalone_settings_present
-        from kanibako.settings.config import BOX_META_FILE
+        from kanibako.settings.config import WORKSET_META_FILE
         from kanibako.settings.paths import STANDALONE_META_DIR
 
         dir_path.mkdir(parents=True, exist_ok=True)
         (dir_path / STANDALONE_META_DIR).mkdir()
-        (dir_path / BOX_META_FILE).write_text("project: {}\n")
+        (dir_path / WORKSET_META_FILE).write_text("project: {}\n")
         assert standalone_settings_present(dir_path)  # marker is real
 
     def test_refuses_standalone_marked_external_source(self, std, tmp_home):
@@ -735,7 +735,7 @@ class TestWorksetProperties:
         assert ws.projects_dir == resolved / "boxes"
         assert ws.workspaces_dir == resolved / "workspaces"
         assert ws.vault_dir == resolved / "vault"
-        assert ws.settings_path == resolved / "settings.yaml"
+        assert ws.settings_path == resolved / "workset.yaml"
         assert ws.registry_path == resolved / "registry.yaml"
 
 
@@ -743,7 +743,7 @@ class TestWorksetWorkspacesResolved:
     """B2 (§3.3 ruling: ``workset.{workspaces,channelroot}`` "need to be real
     and USED — not hard-coded"): the composing sites route through the resolved
     key value — a ``workset: {workspaces: …}`` / ``{channelroot: …}`` repoint in
-    the workset's settings.yaml is honored, and the default is the spec's
+    the workset's workset.yaml is honored, and the default is the spec's
     per-mode formula spelled once in the resolver, never a per-site literal."""
 
     # -- the shared resolvers (pure units) ---------------------------------
@@ -816,8 +816,8 @@ class TestWorksetWorkspacesResolved:
         root = tmp_home / "worksets" / "repointed"
         create_workset("repointed", root, std)
 
-        # Merge the repoint into the root settings.yaml (identity preserved).
-        settings = root.resolve() / "settings.yaml"
+        # Merge the repoint into the root workset.yaml (identity preserved).
+        settings = root.resolve() / "workset.yaml"
         data = load_doc(settings)
         data.setdefault("workset", {})["workspaces"] = "pods"
         dump_doc(settings, data)
@@ -840,7 +840,7 @@ class TestWorksetWorkspacesResolved:
 
         std.primary_workset.mkdir(parents=True, exist_ok=True)
         dump_doc(
-            std.primary_workset / "settings.yaml",
+            std.primary_workset / "workset.yaml",
             {"workset": {"workspaces": "pods"}},
         )
         ws = default_workset(std)
@@ -858,7 +858,7 @@ class TestWorksetWorkspacesResolved:
 
         root = tmp_home / "worksets" / "det"
         create_workset("det", root, std)
-        settings = root.resolve() / "settings.yaml"
+        settings = root.resolve() / "workset.yaml"
         data = load_doc(settings)
         data.setdefault("workset", {})["workspaces"] = "pods"
         dump_doc(settings, data)
@@ -931,7 +931,7 @@ class TestWorksetWorkspacesResolved:
 class TestWorksetIdentityIsTheGlobalRegistry:
     """⚑⚑ A workset's identity is its ``worksets:`` entry in the GLOBAL registry, and
     nothing else.  Neither file under the root records a name: ``registry.yaml`` holds
-    the flat ``boxes:`` membership and ``settings.yaml`` holds SETTINGS ONLY — sparse,
+    the flat ``boxes:`` membership and ``workset.yaml`` holds SETTINGS ONLY — sparse,
     optional, and ABSENT on a freshly created workset."""
 
     def test_no_file_under_the_root_names_the_workset(self, std, tmp_home):
@@ -942,7 +942,7 @@ class TestWorksetIdentityIsTheGlobalRegistry:
         from kanibako.settings.config_io import load_doc
 
         resolved = root.resolve()
-        assert not (resolved / "settings.yaml").exists()
+        assert not (resolved / "workset.yaml").exists()
         assert not (resolved / "workset.yaml").exists()
         # ⚑ The ONE file under the root is the membership, and it holds ONE section
         # of box rows — no name, no created stamp, no table about the workset itself.
@@ -996,7 +996,7 @@ class TestWorksetIdentityIsTheGlobalRegistry:
         }
 
     def test_a_settings_file_is_optional_end_to_end(self, std, tmp_home, config):
-        """With no settings.yaml at all, the root still detects, loads and lists."""
+        """With no workset.yaml at all, the root still detects, loads and lists."""
         from kanibako.settings.paths import detect_project_mode
 
         root = tmp_home / "worksets" / "sparse"
@@ -1080,7 +1080,7 @@ class TestWorksetSkeletonMarker:
 
         elsewhere = tmp_home / "elsewhere"
         elsewhere.mkdir()
-        dump_doc(root / "settings.yaml", {"workset": {"workspaces": str(elsewhere)}})
+        dump_doc(root / "workset.yaml", {"workset": {"workspaces": str(elsewhere)}})
         # The repoint is honored: the default ``workspaces/`` dir is now irrelevant.
         assert is_workset_skeleton(root)
         (root / "workspaces").rmdir()
@@ -1102,7 +1102,7 @@ class TestWorksetSkeletonMarker:
 
         elsewhere = tmp_home / "elsewhere-boxes"
         elsewhere.mkdir()
-        dump_doc(root / "settings.yaml", {"workset": {"boxes": str(elsewhere)}})
+        dump_doc(root / "workset.yaml", {"workset": {"boxes": str(elsewhere)}})
         assert is_workset_skeleton(root)
         # The default leaf is now irrelevant...
         (root / "boxes").rmdir()
@@ -1123,7 +1123,7 @@ class TestWorksetSkeletonMarker:
 
         elsewhere = tmp_home / "elsewhere-logs"
         elsewhere.mkdir()
-        dump_doc(root / "settings.yaml", {"workset": {"logs": str(elsewhere)}})
+        dump_doc(root / "workset.yaml", {"workset": {"logs": str(elsewhere)}})
         assert is_workset_skeleton(root)
         (root / "logs").rmdir()
         assert is_workset_skeleton(root)
@@ -1131,7 +1131,7 @@ class TestWorksetSkeletonMarker:
         assert not is_workset_skeleton(root)
 
     def test_absent_settings_file_yields_the_default_leaves(self, tmp_home):
-        """⚑⚑ LOOK AT settings.yaml, never DEPEND on it.  A workset root's settings
+        """⚑⚑ LOOK AT workset.yaml, never DEPEND on it.  A workset root's settings
         file is OPTIONAL and absent on a fresh create, so an absent file must yield
         the four default leaves — which is exactly what ``create_workset`` stamps.
         (A regression guard, not a mutation-prover: it held before the resolution
@@ -1140,7 +1140,7 @@ class TestWorksetSkeletonMarker:
 
         root = tmp_home / "nofile"
         root.mkdir()
-        assert not (root / "settings.yaml").exists()
+        assert not (root / "workset.yaml").exists()
         assert _workset_skeleton_dirs(root) == (
             root / "boxes", root / "workspaces", root / "vault", root / "logs",
         )
@@ -1155,7 +1155,7 @@ class TestWorksetSkeletonMarker:
 
         root = (tmp_home / "worksets" / "vaulted").resolve()
         create_workset("vaulted", root, std)
-        dump_doc(root / "settings.yaml", {"workset": {
+        dump_doc(root / "workset.yaml", {"workset": {
             "vault_ro": str(tmp_home / "vro"),
             "vault_rw": str(tmp_home / "vrw"),
         }})
@@ -1168,7 +1168,7 @@ class TestWorksetSkeletonMarker:
 
 # ---------------------------------------------------------------------------
 # The RETIRED identity locations.  v1.6.0/v1.7.x wrote ``workset.meta`` into the root
-# settings.yaml; the unreleased v1.8.0 tree wrote first ``meta.workset`` into the same
+# workset.yaml; the unreleased v1.8.0 tree wrote first ``meta.workset`` into the same
 # file and then a ``workset:``/``projects:`` pair into registry.yaml.
 #
 # v1.8.0 is a clean break: a workset has NO identity table anywhere under its root, it
@@ -1213,11 +1213,11 @@ _UNRELEASED_REGISTRY_DOC = {
 
 
 def _write_legacy_root(root: Path, doc: dict | None = None) -> Path:
-    """Materialize a legacy (settings.yaml-identity) workset root; return its settings file."""
+    """Materialize a legacy (workset.yaml-identity) workset root; return its settings file."""
     from kanibako.settings.config_io import dump_doc
 
     root.mkdir(parents=True, exist_ok=True)
-    settings = root / "settings.yaml"
+    settings = root / "workset.yaml"
     dump_doc(settings, _LEGACY_IDENTITY_DOC if doc is None else doc)
     return settings
 
@@ -1296,15 +1296,15 @@ class TestRetiredWorksetIdentityLocation:
         cascade_only = tmp_home / "cascade-only"
         cascade_only.mkdir()
         dump_doc(
-            cascade_only / "settings.yaml",
+            cascade_only / "workset.yaml",
             {"workset": {"bindings": {"rw": {"~/data": "/host/data"}}}},
         )
         refuse_retired_workset_identity(cascade_only)
 
-        # An ordinary box settings file.
+        # A workset file carrying nothing but a box-scope table.
         boxlike = tmp_home / "boxlike"
         boxlike.mkdir()
-        dump_doc(boxlike / "settings.yaml", {"box": {"image": "img"}})
+        dump_doc(boxlike / "workset.yaml", {"box": {"image": "img"}})
         refuse_retired_workset_identity(boxlike)
 
         # A PLAIN directory — nothing on disk at all — and a missing one.
@@ -1320,7 +1320,7 @@ class TestRetiredWorksetIdentityLocation:
 
         scalar = tmp_home / "scalar-meta"
         scalar.mkdir()
-        dump_doc(scalar / "settings.yaml", {"workset": {"meta": "not-a-table"}})
+        dump_doc(scalar / "workset.yaml", {"workset": {"meta": "not-a-table"}})
         refuse_retired_workset_identity(scalar)
 
     def test_corrupt_file_does_not_refuse(self, tmp_home):
@@ -1329,7 +1329,7 @@ class TestRetiredWorksetIdentityLocation:
 
         corrupt = tmp_home / "corrupt"
         corrupt.mkdir()
-        (corrupt / "settings.yaml").write_text("workset:\n  meta:\n   - [broken: :\n")
+        (corrupt / "workset.yaml").write_text("workset:\n  meta:\n   - [broken: :\n")
         refuse_retired_workset_identity(corrupt)
 
     def test_live_shape_still_works(self, std, tmp_home):
@@ -1359,7 +1359,7 @@ class TestRetiredWorksetIdentityLocation:
 
         with pytest.raises(LegacyWorksetIdentityError) as excinfo:
             detect_project_mode(deep, std, config)
-        assert str(root / "settings.yaml") in str(excinfo.value)
+        assert str(root / "workset.yaml") in str(excinfo.value)
 
     def test_registered_legacy_workset_refuses_at_the_load_seam(self, std, tmp_home, config):
         """⚑ THE REALISTIC UPGRADE CASE: a v1.7.2 install already has the registry entry, so
@@ -1380,7 +1380,7 @@ class TestRetiredWorksetIdentityLocation:
         # …and the very next step, reading the identity, refuses by name.
         with pytest.raises(LegacyWorksetIdentityError) as excinfo:
             resolve_workset_name("legacyws", std)
-        assert str(root / "settings.yaml") in str(excinfo.value)
+        assert str(root / "workset.yaml") in str(excinfo.value)
 
     def test_walk_still_falls_through_for_a_non_workset_ancestor(
         self, std, tmp_home, config,

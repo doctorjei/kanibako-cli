@@ -259,7 +259,7 @@ class TestRunCreatePersonaGate:
     """`box create` for an UNLOADABLE persona: a TRUE PRE-FLIGHT (F5, Director
     ruling 2026-07-03).  The load-or-error gate runs on a NON-materialising probe
     BEFORE the box dir is created (and before the write-ahead journal entry, ruling
-    #3), so a failed create leaves NOTHING behind: no box dir / settings.yaml, no
+    #3), so a failed create leaves NOTHING behind: no box dir / box.yaml, no
     journal entry, no seed, and the registry untouched.  Real filesystem — these
     are fs-level, not mock-level, assertions.
 
@@ -303,7 +303,7 @@ class TestRunCreatePersonaGate:
         config = load_config(config_file)
         std = load_std_paths(config)
         # TRUE PRE-FLIGHT: the box was NEVER materialised — no box dir /
-        # settings.yaml (the workspace dir tmp_home/project the user asked to
+        # box.yaml (the workspace dir tmp_home/project the user asked to
         # create in is theirs; the BOX under std.boxes is what must be absent).
         assert not std.boxes.exists() or not any(std.boxes.iterdir())
         # Guard ran BEFORE the journal entry: no entry written, nothing seeded,

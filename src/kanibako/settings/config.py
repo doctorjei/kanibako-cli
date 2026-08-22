@@ -14,7 +14,12 @@ from kanibako.settings.config_io import dump_doc, load_doc
 
 # Per-box construct-time metadata + box-tier settings cascade file (spec §2c meta.box.*)
 BOX_META_FILE = "box.yaml"
+# Workset-tier settings cascade file (spec §2c)
 WORKSET_META_FILE = "workset.yaml"
+# Agent-tier settings cascade file, INSIDE the per-agent store dir (spec §2d
+# meta.agent.<agent>.settings).  ⚑ The SYSTEM tier is NOT here: it stays
+# @config.settings = global/settings.yaml.
+AGENT_META_FILE = "agent.yaml"
 
 # Shared truth tables: the typed `config set` writer AND the box.meta writer.
 _BOOL_TRUE = frozenset({"true", "1", "yes", "on"})
@@ -34,8 +39,13 @@ def coerce_bool(value: object) -> bool | None:
     return None
 
 
-_DEFAULTS = {
-    "paths_project_toml": None,
+# ⚑ No default filename: the box-tier file is named for its tier (``box.yaml``), so
+# there is no ONE global settings filename left to default to.  This key only ever
+# holds a value when a user overrides it — hence its own carrier, kept out of
+# ``_DEFAULTS`` so that dict stays ``dict[str, str]``.
+_DEFAULT_PROJECT_TOML: str | None = None
+
+_DEFAULTS: dict[str, str] = {
     "box_image": "ghcr.io/doctorjei/kanibako-oci:latest",
     "box_shell": "",
 }
@@ -45,7 +55,7 @@ _DEFAULTS = {
 class KanibakoConfig:
     """The flat merged configuration object (defaults < config file < workset < box < CLI)."""
 
-    paths_project_toml: str = _DEFAULTS["paths_project_toml"]
+    paths_project_toml: str | None = _DEFAULT_PROJECT_TOML
     box_image: str = _DEFAULTS["box_image"]
     # ⚑ NO ``box_agent_name`` field (P7, spec §2b) — the selection is a KEY.
     box_shell: str = _DEFAULTS["box_shell"]

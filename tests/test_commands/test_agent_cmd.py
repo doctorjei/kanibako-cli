@@ -479,7 +479,7 @@ class TestRunConfig:
 
 
 def _write_sparse(data_path: Path, agent: str, doc: dict) -> Path:
-    """Write *doc* verbatim as ``agents/<agent>/settings.yaml`` and return path.
+    """Write *doc* verbatim as ``agents/<agent>/agent.yaml`` and return path.
 
     Bypasses the whole-object ``agent_file.save`` so the starting file holds
     ONLY the keys under test (a genuinely sparse file, as B1 leaves them).
@@ -1308,7 +1308,7 @@ class TestRetiredBindRoutesRefuseByName:
         rc = run_set(argparse.Namespace(agent_id="claude", key_value=f"{key}=/h/x"))
         assert rc == 1
         err = capsys.readouterr().err
-        assert "settings.yaml" in err          # the cure names the node's own file
+        assert "agent.yaml" in err             # the cure names the node's own file
         assert _stored_doc(agent_env) == before
 
     @pytest.mark.parametrize("key", _RETIRED)

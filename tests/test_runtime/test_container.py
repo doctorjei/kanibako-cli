@@ -497,7 +497,7 @@ class TestRemoveBoxTree:
         from kanibako.runtime.container import remove_box_tree
         d = tmp_path / "box"
         (d / "home").mkdir(parents=True)
-        (d / "settings.yaml").write_text("x")
+        (d / "box.yaml").write_text("x")
         assert remove_box_tree(d) is True
         assert not d.exists()
 

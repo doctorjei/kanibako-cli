@@ -106,7 +106,7 @@ class TestRootViaConstant:
     def test_save_roots_the_document_at_the_constant(self, tmp_path: Path) -> None:
         from kanibako.settings.config_io import load_doc
 
-        path = tmp_path / "claude" / "settings.yaml"
+        path = tmp_path / "claude" / "agent.yaml"
         agent_file.save(path, AgentConfig(name="Claude", state={"model": "opus"}))
         # ⚑ THROUGH the constant, never a literal: a rename that misses a site must
         # fail HERE rather than be re-blessed by editing this line.

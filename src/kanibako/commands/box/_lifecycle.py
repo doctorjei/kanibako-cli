@@ -26,6 +26,7 @@ from kanibako.runtime.container import remove_box_tree
 from kanibako.settings.core_defaults import materialize_canon_skeleton
 from kanibako.settings.config import (
     BOX_META_FILE,
+    WORKSET_META_FILE,
     KanibakoConfig,
     read_box_enable_vault,
     write_box_enable_vault,
@@ -1041,7 +1042,6 @@ def _to_standalone(
 ) -> ProjectState:
     """Convert/relocate the project so it becomes standalone (in-tree metadata)."""
     from kanibako.project import registry_store
-    from kanibako.settings.config import BOX_META_FILE, WORKSET_META_FILE
     from kanibako.settings.paths import establish_standalone
 
     # ⚑ ORDER: consolidate the source's top-level files into ``workspace/`` FIRST, THEN lay

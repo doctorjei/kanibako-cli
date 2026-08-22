@@ -7,7 +7,7 @@ launch resolves against.  Everything here is filesystem-only under
 ``tmp_home`` — no container, no start/create wiring.
 
 ⚑ There is no import-mapping suite any more: the store used to be COPIED into
-``agents/<node>/settings.yaml`` by a verified swap, and that whole route
+``agents/<node>/agent.yaml`` by a verified swap, and that whole route
 (``build_candidate`` / ``persist_candidate`` / ``import_persona_entry``) is
 gone.  The property that replaced it is asserted at the bottom of
 ``TestReadPersonaBundle``: a read persists NOTHING.

@@ -505,7 +505,7 @@ class TestRunBoxDiagnose:
 
     `resolve_any_project` fabricates a default-mode resolution for ANY
     existing directory, so diagnose must verify a project is actually
-    registered (persisted settings.yaml) before reporting on its shell/etc.
+    registered (persisted box.yaml) before reporting on its shell/etc.
     """
 
     def _register_default_project(self, config_file, tmp_home, credentials_dir):
@@ -658,7 +658,7 @@ class TestRunBoxDiagnose:
         internal = ws.workspaces_dir / "api"
         internal.mkdir(parents=True)
         add_project(ws, "api", internal, std)
-        # Initialize the box so settings.yaml is persisted (the registration the
+        # Initialize the box so box.yaml is persisted (the registration the
         # diagnose guard requires).
         with patch(
             "kanibako.runtime.container.ContainerRuntime",
@@ -758,7 +758,7 @@ class TestRunBoxDiagnose:
         self, config_file, tmp_home, credentials_dir, capsys
     ) -> None:
         """P8a: the registration verdict is the box_resolve IDENTITY (registry
-        membership), NOT the on-disk settings.yaml FILE.  Removing the box's
+        membership), NOT the on-disk box.yaml FILE.  Removing the box's
         registry entry (identity gone) makes diagnose report 'no project' even
         though the box metadata still exists on disk.
 
@@ -780,7 +780,7 @@ class TestRunBoxDiagnose:
         std = load_std_paths(config)
         reg = workset_registry.resolve_workset_registry_path(
             std.primary_workset,
-            load_doc(std.primary_workset / "settings.yaml"),
+            load_doc(std.primary_workset / "workset.yaml"),
         )
         workset_registry.unregister_workset_box(reg, proj.name)
 

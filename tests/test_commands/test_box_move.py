@@ -54,7 +54,7 @@ class TestBoxMove:
         assert boxes.get(proj.name) == str(dest)
         assert proj.project_path == dest.resolve()
         assert proj.project_hash == project_hash(str(dest.resolve()))
-        assert "project" not in load_doc(proj.metadata_path / "settings.yaml")
+        assert "project" not in load_doc(proj.metadata_path / "box.yaml")
 
     def test_move_requires_both_paths(self, config_file, tmp_home, credentials_dir):
         """move with a missing path returns an error (no cwd fallback)."""

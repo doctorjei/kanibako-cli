@@ -364,7 +364,7 @@ class TestSeededManifest:
             target=_FakeTarget(),
             desc=None,
             agent_id="claude",
-            agent_cfg_path=std.agents / "claude" / "settings.yaml",
+            agent_cfg_path=std.agents / "claude" / "agent.yaml",
             system_settings_path=std.settings,
             auth_src=SimpleNamespace(creds_shared=True),
             logger=logging.getLogger("test-delivery-manifest"),

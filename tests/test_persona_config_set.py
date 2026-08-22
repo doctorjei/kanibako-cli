@@ -44,11 +44,11 @@ def agents_root(tmp_path):
 
 
 def _cfg_path(tmp_path):
-    return tmp_path / "settings.yaml"
+    return tmp_path / "box.yaml"
 
 
 def _node_file(agents_root, node="navigator℘claude"):
-    return agents_root / node / "settings.yaml"
+    return agents_root / node / "agent.yaml"
 
 
 # ---------------------------------------------------------------------------

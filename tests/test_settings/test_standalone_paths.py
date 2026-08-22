@@ -35,7 +35,7 @@ class TestResolveStandaloneProject:
         resolved = project_dir.resolve()
         # Drift H: workspace is the <root>/workspace SUBDIR (mount source).
         assert proj.project_path == resolved / "workspace"
-        # Drift I: metadata (settings.yaml) is at the ROOT.
+        # Drift I: metadata (workset.yaml) is at the ROOT.
         assert proj.metadata_path == resolved
         assert proj.shell_path == resolved / "box_data" / "home"
         assert proj.vault_ro_path == resolved / "vault" / "ro"
@@ -63,7 +63,7 @@ class TestResolveStandaloneProject:
     def test_workspace_follows_root_relative_repoint(
         self, std, config, project_dir,
     ):
-        """A set ``workset: {workspaces: …}`` in the ROOT settings.yaml
+        """A set ``workset: {workspaces: …}`` in the ROOT workset.yaml
         repoints the standalone workspace (ruled 10, 2026-08-02: the spec's
         "changeable from workset level").  A relative repoint anchors under
         the root, matching the sibling workset dir-key resolvers."""
@@ -72,7 +72,7 @@ class TestResolveStandaloneProject:
         resolve_standalone_project(
             std, config, str(project_dir), initialize=True,
         )
-        settings = project_dir.resolve() / "settings.yaml"
+        settings = project_dir.resolve() / "workset.yaml"
         data = load_doc(settings)
         data.setdefault("workset", {})["workspaces"] = "code"
         dump_doc(settings, data)
@@ -243,7 +243,7 @@ class TestStandaloneCredentialFlow:
 class TestStandaloneFixedPaths:
     """Pin the concrete paths the STANDALONE fixed table produces.
 
-    Drift H+I: the box ``settings.yaml`` lives at the ROOT (``metadata_path`` is
+    Drift H+I: the workset-tier ``workset.yaml`` lives at the ROOT (``metadata_path`` is
     the root), the live workspace is the ``<root>/workspace`` subdir, the agent
     home is ``box_data/home`` (the ``box_data/`` marker dir also holds the
     helper log), and the vault lives at ``<root>/vault/{ro,rw}``.
@@ -261,9 +261,9 @@ class TestStandaloneFixedPaths:
         assert proj.vault_ro_path == resolved / "vault" / "ro"
         assert proj.vault_rw_path == resolved / "vault" / "rw"
         # Settings at root; box_data holds home + (after launch) the helper log.
-        assert (resolved / "settings.yaml").is_file()
+        assert (resolved / "workset.yaml").is_file()
         assert (resolved / "box_data").is_dir()
-        assert not (resolved / "box_data" / "settings.yaml").exists()
+        assert not (resolved / "box_data" / "box.yaml").exists()
 
     def test_helper_log_stays_in_box_data(
         self, std, config, project_dir, credentials_dir,
@@ -336,9 +336,9 @@ class TestStandaloneIdentity:
 
 class TestStandaloneKuid:
     def _read_stored_kuid(self, project_dir):
-        """Read the sparsely-stored ``workset.kuid`` from the box settings.yaml."""
+        """Read the sparsely-stored ``workset.kuid`` from the root workset.yaml."""
         from kanibako.settings.config_io import load_doc
-        data = load_doc(project_dir.resolve() / "settings.yaml")
+        data = load_doc(project_dir.resolve() / "workset.yaml")
         return (data.get("workset") or {}).get("kuid")
 
     def test_create_generates_valid_kuid_stored_and_named(
@@ -397,7 +397,7 @@ class TestStandaloneKuid:
         from kanibako.settings.config_io import dump_doc, load_doc
         from kanibako.settings.paths import resolve_box_target
 
-        settings = project_dir.resolve() / "settings.yaml"
+        settings = project_dir.resolve() / "workset.yaml"
         # Materialize a real standalone box first (valid kuid, default skip=true).
         resolve_standalone_project(std, config, str(project_dir), initialize=True)
 

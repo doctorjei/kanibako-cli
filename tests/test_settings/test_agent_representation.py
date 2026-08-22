@@ -409,7 +409,7 @@ def test_node_name_none_falls_back_to_install_name() -> None:
 #
 # ⚑ NOTHING ABOUT LAUNCH CHANGED, and the tests that prove it are ABOVE, untouched:
 # ``agent_default_partial`` is the launch representation, and a hand-authored
-# override in ``agents/<node>/settings.yaml`` still beats it by cascade merge
+# override in ``agents/<node>/agent.yaml`` still beats it by cascade merge
 # (pinned by ``test_config_interface.TestAgentNodeBindWriteRouteRetired::
 # test_written_tuple_still_overrides_descriptor_floor_at_launch``). Do not read the
 # absence of these tests as a delivery path having gone untested.

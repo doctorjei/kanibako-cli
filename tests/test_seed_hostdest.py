@@ -191,7 +191,7 @@ class TestSeedRoutesThroughTheOneGuestTranslator:
         start_mod._apply_init_seeds(
             std=std, proj=proj, agent_name="claude", target=_T(),
             global_config_path=std.settings,
-            agent_config_path=std.agents / "claude" / "settings.yaml",
+            agent_config_path=std.agents / "claude" / "agent.yaml",
             logger=logging.getLogger("t"), deliver_creds=True,
         )
 
@@ -597,16 +597,20 @@ class TestHandbookMountOrdering:
         assert f"{GUEST_HOME}/canon/handbook/box" in dests
 
 
-@pytest.mark.parametrize("scope", ["box", "agent", "workset"])
-def test_every_scope_whitelist_denies_settings_yaml(scope, tmp_path):
-    """The one DENY that is a CORRECTNESS property at EVERY scope: ``settings.yaml``
-    is that scope's own cascade level."""
+@pytest.mark.parametrize("scope,leaf", [
+    ("box", "box.yaml"), ("agent", "agent.yaml"), ("workset", "workset.yaml"),
+])
+def test_every_scope_whitelist_denies_its_own_settings_file(scope, leaf, tmp_path):
+    """The one DENY that is a CORRECTNESS property at EVERY scope: the scope's own
+    settings file IS that scope's cascade level.  ⚑ Each tier names its own file
+    now, so the denied leaf is per-scope — one shared ``settings.yaml`` would test
+    the box arm three times."""
     from kanibako.errors import TemplateScopeError
     from kanibako.launch.templates import copy_tree
 
     src = tmp_path / "src"
     src.mkdir()
-    (src / "settings.yaml").write_text("x: 1\n")
+    (src / leaf).write_text("x: 1\n")
     dest = tmp_path / "dest"
     dest.mkdir()
     with pytest.raises(TemplateScopeError):

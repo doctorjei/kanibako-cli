@@ -77,7 +77,7 @@ class TestClean:
 
         prim_reg = workset_registry.resolve_workset_registry_path(
             std.primary_workset,
-            load_doc(std.primary_workset / "settings.yaml"),
+            load_doc(std.primary_workset / "workset.yaml"),
         )
         assert proj.name in workset_registry.load_workset_boxes(prim_reg)
 
@@ -175,15 +175,15 @@ class TestClean:
 
 class TestCleanExtended:
     def test_purge_standalone_project(self, config_file, tmp_home):
-        """Purge removes the in-tree artifacts (box_data/, root settings.yaml,
+        """Purge removes the in-tree artifacts (box_data/, root workset.yaml,
         vault/) for a standalone project, leaving the project root itself."""
         from kanibako.commands.clean import run
 
         project_dir = tmp_home / "project"
         kanibako_dir = project_dir / "box_data"
         kanibako_dir.mkdir(parents=True)
-        # Standalone marker: box_data/ dir + ROOT settings.yaml (drift I).
-        (project_dir / "settings.yaml").write_text('project:\n  mode: "standalone"\n')
+        # Standalone marker: box_data/ dir + ROOT workset.yaml (drift I).
+        (project_dir / "workset.yaml").write_text('project:\n  mode: "standalone"\n')
         (kanibako_dir / "data.txt").write_text("session-data")
 
         args = argparse.Namespace(
@@ -192,7 +192,7 @@ class TestCleanExtended:
         rc = run(args)
         assert rc == 0
         assert not kanibako_dir.exists()
-        assert not (project_dir / "settings.yaml").exists()
+        assert not (project_dir / "workset.yaml").exists()
         # The project root itself is NOT deleted.
         assert project_dir.is_dir()
 
@@ -212,7 +212,7 @@ class TestCleanExtended:
         dec_dir = tmp_home / "dec_project"
         dec_dir.mkdir()
         (dec_dir / "box_data").mkdir()
-        (dec_dir / "box_data" / "settings.yaml").write_text(
+        (dec_dir / "box_data" / "box.yaml").write_text(
             'project:\n  mode: "standalone"\n'
         )
         (dec_dir / "box_data" / "data.txt").write_text("dec-data")

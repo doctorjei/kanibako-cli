@@ -925,7 +925,7 @@ class TestAgentConfigFirstUse:
                 new_session=False, safe_mode=False, resume_mode=False,
                 extra_args=[],
             )
-            # The agent config path is std.agents / "no_agent" / "settings.yaml"
+            # The agent config path is std.agents / "no_agent" / "agent.yaml"
             # (settings live inside the per-agent store dir); std.agents also gets
             # a / "no_agent" / "share" call from the scoped-share resolver, so
             # check the full call list.
@@ -939,7 +939,7 @@ class TestAgentConfigFirstUse:
                 for c in m.load_std_paths.return_value.agents.__truediv__
                 .return_value.__truediv__.call_args_list
             ]
-            assert "settings.yaml" in sub_args
+            assert "agent.yaml" in sub_args
 
 
 # ---------------------------------------------------------------------------

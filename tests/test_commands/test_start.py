@@ -110,25 +110,25 @@ class TestCheckBoxComponents:
 
     def test_missing_settings_file_not_double_checked(self, tmp_path):
         """#3 — the settings-file marker is NOT re-checked at launch: a proj
-        whose workspace + home exist passes even with no settings.yaml (the
+        whose workspace + home exist passes even with no box.yaml (the
         marker's absence is handled at resolution/detection, not double-fired
         here — see box_resolve.standalone_settings_present below)."""
-        proj = self._proj(tmp_path)  # no settings.yaml written anywhere
-        assert not (proj.metadata_path / "settings.yaml").exists()
+        proj = self._proj(tmp_path)  # no box.yaml written anywhere
+        assert not (proj.metadata_path / "box.yaml").exists()
         assert _check_box_components(proj) is None
 
     def test_marker_absence_is_a_resolution_concern(self, tmp_path):
         """#3 (cont.) — the settings-file marker IS the box signal at the
         RESOLUTION layer: a standalone root is only recognised as a box when its
-        settings.yaml is present, so a missing marker → 'not a box' there (never
+        workset.yaml is present, so a missing marker → 'not a box' there (never
         double-checked at launch)."""
         from kanibako.launch import box_resolve
 
         root = tmp_path / "sbox"
         (root / "box_data").mkdir(parents=True)
-        # box_data present but NO settings.yaml → not recognised as a box.
+        # box_data present but NO workset.yaml → not recognised as a box.
         assert not box_resolve.standalone_settings_present(root)
-        (root / "settings.yaml").write_text("project: {mode: standalone}\n")
+        (root / "workset.yaml").write_text("project: {mode: standalone}\n")
         assert box_resolve.standalone_settings_present(root)
 
     def test_wired_into_run_container(self, start_mocks, tmp_path, capsys):
@@ -404,11 +404,11 @@ class TestEffectiveBootstrapResolution:
         from kanibako.settings.paths import BoxMode
         box_dir = tmp_path / "box"
         box_dir.mkdir()
-        # PRIMARY with no group → the tier pair is (box_dir/settings.yaml, None):
+        # PRIMARY with no group → the tier pair is (box_dir/box.yaml, None):
         # a box tier and NO workset-tier file, which keeps the test focused on the
         # system/agent cascade.  ``mode`` is required because the tier pair is
         # mode-aware (``box_workset_settings_paths``); it is NOT standalone — that
-        # mode's box tier would be box_dir/box_data/settings.yaml.
+        # mode's box tier would be box_dir/box_data/box.yaml.
         return SimpleNamespace(
             metadata_path=box_dir, group=None, mode=BoxMode.primary,
         )
@@ -450,7 +450,7 @@ class TestEffectiveBootstrapResolution:
         sys_file = tmp_path / "system.yaml"
         dump_doc(sys_file, {"agent": {"default": {"bootstrap": "zellij"}}})
         dump_doc(
-            proj.metadata_path / "settings.yaml",
+            proj.metadata_path / "box.yaml",
             {"pref": {"agent": {"claude": {"bootstrap": "none"}}}},
         )
         assert _effective_bootstrap(proj, sys_file, "claude") == "none"
@@ -470,7 +470,7 @@ class TestEffectiveBootstrapResolution:
         proj = self._proj(tmp_path)
         # ONLY the box's §2h request is set — no system file at all.
         dump_doc(
-            proj.metadata_path / "settings.yaml",
+            proj.metadata_path / "box.yaml",
             {"pref": {"agent": {"claude": {"bootstrap": "none"}}}},
         )
         assert _effective_bootstrap(proj, None, "claude") == "none"
@@ -484,7 +484,7 @@ class TestEffectiveBootstrapResolution:
         proj = self._proj(tmp_path)
         sys_file = tmp_path / "system.yaml"
         dump_doc(sys_file, {"agent": {"default": {"bootstrap": "zellij"}}})
-        agent_file = tmp_path / "agents" / "claude" / "settings.yaml"
+        agent_file = tmp_path / "agents" / "claude" / "agent.yaml"
         agent_file.parent.mkdir(parents=True)
         dump_doc(agent_file, {"self": {"bootstrap": "none"}})
         # The active agent (claude) picks its own-file override over the default.
@@ -592,7 +592,7 @@ class TestEffectiveTransformResolution:
         from kanibako.settings.config_io import dump_doc
         proj = self._proj(tmp_path)
         dump_doc(
-            proj.metadata_path / "settings.yaml",
+            proj.metadata_path / "box.yaml",
             {"pref": {"agent": {"claude": {"transform": ""}}}},
         )
         assert _effective_transform(
@@ -2320,20 +2320,20 @@ class TestAgentConfigIntegration:
                 extra_args=[],
             )
             # The agent config path is derived as
-            # std.agents / "general" / "settings.yaml" (the settings file lives
+            # std.agents / "general" / "agent.yaml" (the settings file lives
             # inside the per-agent store dir).
             div_args = [
                 c[0][0]
                 for c in m.load_std_paths.return_value.agents.__truediv__.call_args_list
             ]
             assert "general" in div_args
-            # ... / "general" / "settings.yaml"
+            # ... / "general" / "agent.yaml"
             sub_args = [
                 c[0][0]
                 for c in m.load_std_paths.return_value.agents.__truediv__
                 .return_value.__truediv__.call_args_list
             ]
-            assert "settings.yaml" in sub_args
+            assert "agent.yaml" in sub_args
 
 
 class TestContainerEnvPrecedence:
@@ -3317,7 +3317,7 @@ class TestApplyInitSeeds:
               deliver_creds=True):
         from kanibako.commands.start import _apply_init_seeds
         # P6c: the box-tier seed config is single-sourced off proj.metadata_path/
-        # settings.yaml (box_workset_settings_paths); tests place it there directly.
+        # box.yaml (box_workset_settings_paths); tests place it there directly.
         _apply_init_seeds(
             std=std or self._std(tmp_path),
             proj=proj,
@@ -3447,7 +3447,7 @@ class TestApplyInitSeeds:
         # box suppresses it through its §2h REQUEST — the spec-legal box→agent
         # tweak.  ⚑ The request names the DESTINATION, because that is the entry's
         # whole identity now (2026-08-08c) — there is no entry name to name.
-        ptoml = tmp_path / "settings.yaml"
+        ptoml = tmp_path / "box.yaml"
         ptoml.write_text(
             'pref:\n  agent:\n    claude:\n      seeded:\n        "~/x": null\n'
         )
@@ -3473,8 +3473,8 @@ class TestApplyInitSeeds:
         src = tmp_path / "hsrc"
         src.mkdir()
         (src / "root_file.txt").write_text("top")
-        # P6c: the box-tier seed config lives at proj.metadata_path/settings.yaml.
-        (self._proj(shell).metadata_path / "settings.yaml").write_text(
+        # P6c: the box-tier seed config lives at proj.metadata_path/box.yaml.
+        (self._proj(shell).metadata_path / "box.yaml").write_text(
             f'box:\n  seeded:\n    "~/": ["{src}"]\n'
         )
         self._call(tmp_path, proj=self._proj(shell))
@@ -3525,8 +3525,8 @@ class TestApplyInitSeeds:
         # ``agent.default`` entry at ``~/`` is the SAME entry as the agent-tier
         # template layer already declared there, so the §2d pick resolves it away.
         # A box-tier entry is a different SCOPE and survives to the seed fold.
-        # P6c: the box-tier seed config lives at proj.metadata_path/settings.yaml.
-        (self._proj(shell).metadata_path / "settings.yaml").write_text(
+        # P6c: the box-tier seed config lives at proj.metadata_path/box.yaml.
+        (self._proj(shell).metadata_path / "box.yaml").write_text(
             f'box:\n  seeded:\n    "~/": ["{src}"]\n'
         )
         self._call(tmp_path, proj=self._proj(shell))
@@ -6159,7 +6159,7 @@ class TestPersonaCreateVerdict:
             ),
             patch(
                 "kanibako.commands.start.agent_settings_path",
-                return_value=tmp_path / "absent" / "settings.yaml",
+                return_value=tmp_path / "absent" / "agent.yaml",
             ),
             patch(
                 "kanibako.commands.start._resolve_box_launch_decisions",
@@ -6250,7 +6250,7 @@ class TestPersonaLoadOrErrorIntegration:
         # is live: on a LOADABLE persona the config WOULD be written, so
         # ``m_write.assert_not_called()`` genuinely proves the gate short-circuits
         # BEFORE the write (mutation-proven: move the write pre-gate → this reddens).
-        absent_cfg = tmp_path / "agents" / "navigator℘claude" / "settings.yaml"
+        absent_cfg = tmp_path / "agents" / "navigator℘claude" / "agent.yaml"
         with start_mocks() as m:
             self._drive_persona(m)
             with (
@@ -6281,7 +6281,7 @@ class TestPersonaLoadOrErrorIntegration:
             assert rc == 1
             # First-use branch is LIVE (config path absent) yet NOTHING persona-
             # scoped is created, and NO launch happens.
-            assert not absent_cfg.exists()  # fs-level: no settings.yaml written
+            assert not absent_cfg.exists()  # fs-level: no agent.yaml written
             m_write.assert_not_called()
             m_symlink.assert_not_called()
             m_seed.assert_not_called()
@@ -6413,7 +6413,7 @@ class TestPersonaLoadOrErrorIntegration:
         # box materialisation, so an unloadable system-default persona on a
         # brand-new box leaves NO empty unregistered box dir.
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))  # no host dir laid
-        absent_cfg = tmp_path / "agents" / "navigator℘claude" / "settings.yaml"
+        absent_cfg = tmp_path / "agents" / "navigator℘claude" / "agent.yaml"
         with start_mocks() as m:
             self._drive_persona(m)
             m.read_system_agent.return_value = "navigator+claude"  # system default
@@ -6503,9 +6503,9 @@ class TestPersonaLoadOrErrorIntegration:
             # proving project_toml was rebound after materialise.  The REAL gate
             # ran: assert the on-disk write itself.
             from kanibako.settings.config_io import load_doc
-            written = load_doc(real / "settings.yaml")
+            written = load_doc(real / "box.yaml")
             assert written.get("box", {}).get("image") == "custom:img"
-            assert not (probe_dir / "settings.yaml").exists()
+            assert not (probe_dir / "box.yaml").exists()
 
 
 class TestPersonaLoadOrErrorUnmasked:
@@ -7091,26 +7091,33 @@ class TestRetiredBehaviorRefusalWiring:
     fires.
     """
 
-    def _proj(self, tmp_path, box_file):
+    def _proj(self, root):
         from types import SimpleNamespace
 
         from kanibako.settings.paths import BoxMode
 
         return SimpleNamespace(
             mode=BoxMode.standalone,
-            metadata_path=box_file.parent,
+            metadata_path=root,
             group=None,
         )
 
     def _call(self, tmp_path, *, box_doc=None, agent_doc=None, system_doc=None):
         from kanibako.commands.start import _refuse_retired_behavior
+        from kanibako.settings.config import BOX_META_FILE
         from kanibako.settings.config_io import dump_doc
+        from kanibako.settings.paths import STANDALONE_META_DIR
 
-        box_file = tmp_path / "box" / "settings.yaml"
+        # ⚑ The box doc goes at the STANDALONE BOX TIER — ``box_data/box.yaml``,
+        # not the root.  The root file is that box's WORKSET tier; while both
+        # tiers spelled ``settings.yaml`` a doc dropped at the root satisfied the
+        # box arm by accident, so this wiring test never exercised it.
+        root = tmp_path / "box"
+        box_file = root / STANDALONE_META_DIR / BOX_META_FILE
         box_file.parent.mkdir(parents=True, exist_ok=True)
         if box_doc is not None:
             dump_doc(box_file, box_doc)
-        agent_file = tmp_path / "agents" / "claude" / "settings.yaml"
+        agent_file = tmp_path / "agents" / "claude" / "agent.yaml"
         agent_file.parent.mkdir(parents=True, exist_ok=True)
         if agent_doc is not None:
             dump_doc(agent_file, agent_doc)
@@ -7119,7 +7126,7 @@ class TestRetiredBehaviorRefusalWiring:
         if system_doc is not None:
             dump_doc(system_file, system_doc)
         return _refuse_retired_behavior(
-            proj=self._proj(tmp_path, box_file),
+            proj=self._proj(root),
             agent_id="claude",
             system_settings_path=system_file,
             agent_cfg_path=agent_file,
@@ -7821,7 +7828,7 @@ class TestPersonaLiveTierWiring:
         """⚑ NEVER-PERSIST: the agent settings file is USER-INTENT ONLY.
 
         Resolving the whole persona tier — read, render, snapshot, category
-        delivery — must leave ``agents/<node>/settings.yaml`` exactly as it was.
+        delivery — must leave ``agents/<node>/agent.yaml`` exactly as it was.
         The retired verified swap wrote endpoint/model/secret_path into it on
         every launch; nothing may write there again except a user's own
         ``config set`` and the one-time empty first-use generate.
@@ -8247,7 +8254,7 @@ class TestPersonaPreflightBundle:
 
         A store persona's token pointer exists ONLY in the bundle.  Before the
         store became a live tier the verified swap had written it into
-        ``agents/<node>/settings.yaml``, and the gate read it from there.
+        ``agents/<node>/agent.yaml``, and the gate read it from there.
         """
         from kanibako.persona_store import PersonaBundle
 
