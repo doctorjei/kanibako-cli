@@ -155,7 +155,7 @@ def workset_channel_paths(
     """Derive the WORKSET-local channel roots for *proj*; ``None`` for standalone.
 
     ⚑ Rooted at the RESOLVED ``workset.channelroot``, never a hard-coded join: a
-    repoint in the workset's settings.yaml is honored (§3.3 — real and USED).
+    repoint in the workset's workset.yaml is honored (§3.3 — real and USED).
     """
     if not has_workset_channels(proj):
         return None

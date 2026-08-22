@@ -47,9 +47,9 @@ def agents_dir(data_path: Path, paths_agents: str = "agents") -> Path:
 
 def agent_settings_path(agents_root: Path, agent_id: str) -> Path:
     """Return ``@meta.agent.<agent>.settings`` for *agent_id*."""
-    # ⚑ INSIDE the store dir as ``settings.yaml``, not the old sibling
+    # ⚑ INSIDE the store dir as ``agent.yaml``, not the old sibling
     # ``agents/<agent>.yaml`` (D-2026-06-22).
-    return agents_root / agent_id / "settings.yaml"
+    return agents_root / agent_id / "agent.yaml"
 
 
 # --------------------------------------------------------------------------- #

@@ -5,7 +5,7 @@ single root directory chosen by the user.  Terminology:
 
 * **workset root** — the user-chosen dir; holds the boxes dir, the workspaces dir,
   ``vault/``, the logs dir, ``auth/``, ``channels/`` and — BOTH OPTIONAL —
-  ``registry.yaml`` and ``settings.yaml``.  ⚑ A freshly created root has FOUR
+  ``registry.yaml`` and ``workset.yaml``.  ⚑ A freshly created root has FOUR
   DIRS AND NO FILES.  ⚑ Only ``vault/`` is spelled with a literal leaf here: the
   others are REPOINTABLE keys, so their on-disk names are whatever
   ``workset.{boxes,workspaces,logs,channelroot}`` resolve to.
@@ -18,10 +18,10 @@ single root directory chosen by the user.  Terminology:
   imported under its leaf directory name — exactly as ``workset create`` already
   defaults a name it was not given.  The
   root ``registry.yaml`` carries the ``boxes:`` MEMBERSHIP only; the root
-  ``settings.yaml`` carries SETTINGS ONLY, is sparse, and MAY BE ABSENT.  The
+  ``workset.yaml`` carries SETTINGS ONLY, is sparse, and MAY BE ABSENT.  The
   runtime ``meta.workset.*`` keys (spec §1A) are derived at launch from the
   treewalk, never read off disk.  ⚑ 1.6.0/1.7.x kept a ``workset.meta`` identity
-  table in ``settings.yaml``, and an unreleased 1.8.0 build a ``meta.workset``
+  table in ``workset.yaml``, and an unreleased 1.8.0 build a ``meta.workset``
   one; BOTH are RETIRED and now HARD-REFUSE — see
   :func:`refuse_retired_workset_identity`.
 * **default workset** — the synthesized, never-persisted group of default-mode
@@ -85,7 +85,7 @@ _VAULT_LEAF = paths_defaults.VAULT_PATH
 # ---------------------------------------------------------------------------
 
 def load_workset_settings_doc(root: Path) -> Mapping[str, Any] | None:
-    """Best-effort read of *root*'s workset ``settings.yaml`` document (``None`` on any failure)."""
+    """Best-effort read of *root*'s workset ``workset.yaml`` document (``None`` on any failure)."""
     path = root / WORKSET_SETTINGS_FILE
     if not path.is_file():
         return None
@@ -254,7 +254,7 @@ class Workset:
     root: Path
     projects: list[WorksetProject] = field(default_factory=list)
     is_default: bool = False                 # True = synthesized default workset
-    #: RAW ``workset.workspaces`` repoint from the root settings.yaml; ``None`` = unset.
+    #: RAW ``workset.workspaces`` repoint from the root workset.yaml; ``None`` = unset.
     workspaces_repoint: str | None = None
 
     # Convenience paths -------------------------------------------------------
@@ -303,7 +303,7 @@ class Workset:
 # ---------------------------------------------------------------------------
 # Loading a workset: its NAME comes from the caller (who read it out of the global
 # registry), its MEMBERS from the root registry.yaml's ``boxes:`` section, and its
-# settings from the root settings.yaml.  ⚑ Neither file under the root is read for
+# settings from the root workset.yaml.  ⚑ Neither file under the root is read for
 # identity — there is none there to read.
 # ---------------------------------------------------------------------------
 
@@ -330,7 +330,7 @@ def _load_workset(root: Path, name: str) -> Workset:
 
 
 def refuse_retired_workset_identity(root: Path) -> None:
-    """RAISE when *root*'s settings.yaml still carries a RETIRED workset IDENTITY table.
+    """RAISE when *root*'s workset.yaml still carries a RETIRED workset IDENTITY table.
 
     ⚑ DETECTED ONLY SO IT CAN BE DIAGNOSED.  v1.8.0 is a clean break: there is no compat
     read and no auto-migration.  Reading past this table is exactly the silent failure —
@@ -426,9 +426,9 @@ def _workset_skeleton_dirs(root: Path) -> tuple[Path, ...]:
     # ``workset.logs`` INVISIBLE to detection: the walk looked for ``<root>/boxes`` and
     # ``<root>/logs``, which the repoint is precisely what removes.
     # ⚑ ``vault`` is the one literal, and correctly so — no key names it (see _VAULT_LEAF).
-    # ⚑ ONE read feeds all three resolutions; reading settings.yaml per key would open a
+    # ⚑ ONE read feeds all three resolutions; reading workset.yaml per key would open a
     # window for the three to disagree about the same file.  At create time *root* has no
-    # settings.yaml yet, so the read yields None and every leaf is its default — the same
+    # workset.yaml yet, so the read yields None and every leaf is its default — the same
     # four dirs the pre-refactor literals made.
     settings_doc = load_workset_settings_doc(root)
     return (
@@ -505,15 +505,15 @@ def create_workset(
     try:
         # ⚑ Skeleton = the FOUR dirs of :func:`_workset_skeleton_dirs`, which is also
         # what detection tests for; auth/channels are created lazily elsewhere.  NO file
-        # is written at all — no settings.yaml (a workset root need not have one) and
+        # is written at all — no workset.yaml (a workset root need not have one) and
         # no registry.yaml (a workset with no members has no membership to record).
         root.mkdir(parents=True)
         unwind.push(lambda: shutil.rmtree(root, ignore_errors=True))
         # ⚑ The bare ``mkdir()`` (no parents) is safe BECAUSE of the line above and the
         # ``root.exists()`` refusal before it: *root* was just created empty, so it has no
-        # settings.yaml, so all three resolved leaves fall back to their defaults and every
+        # workset.yaml, so all three resolved leaves fall back to their defaults and every
         # path here is exactly one level under *root*.  ⚑ A repoint can never reach this
-        # call — reaching it would need a settings.yaml inside a root that did not exist a
+        # call — reaching it would need a workset.yaml inside a root that did not exist a
         # moment ago.  Do NOT paper over a future violation with ``parents=True``: that
         # would silently stamp a skeleton somewhere other than the root being created.
         for subdir_path in _workset_skeleton_dirs(root):
@@ -582,7 +582,7 @@ def default_workset(std: StandardPaths) -> Workset:
         root=std.primary_workset,
         projects=projects,
         is_default=True,
-        # PRIMARY honors a repoint from its own settings.yaml, like a named workset.
+        # PRIMARY honors a repoint from its own workset.yaml, like a named workset.
         workspaces_repoint=_workset_path_repoint(
             load_workset_settings_doc(std.primary_workset), _WORKSPACES_LEAF,
         ),
@@ -777,7 +777,7 @@ def add_project(
         # ⚑ Durable registry write LAST, so a failure leaves no orphaned record.
         # ⚑⚑ ONE WRITE FOR EVERY MEMBER, in-tree and external alike: the P7/D10
         # ``boxes: {name → path}`` entry IS the membership record — sparse create
-        # (P8b/Option A) writes no settings.yaml, and box_resolve reads this row for
+        # (P8b/Option A) writes no workset.yaml, and box_resolve reads this row for
         # BOTH identity and the workspace override.  Idempotent (overwrites a move).
         # ⚑⚑ The J2 ``op: connect`` bracket lives in ``workset_cmd.run_connect``, NOT
         # here — this is ALSO the membership seam for move/convert/duplicate, which

@@ -161,9 +161,9 @@ def run_list(args: argparse.Namespace) -> int:
             print("No agents configured.")
         return 0
 
-    # Each agent's settings live inside its store dir: agents/<agent>/settings.yaml.
+    # Each agent's settings live inside its store dir: agents/<agent>/agent.yaml.
     settings_files = sorted(
-        p for p in adir.glob("*/settings.yaml") if p.is_file()
+        p for p in adir.glob("*/agent.yaml") if p.is_file()
     )
     if not settings_files:
         quiet = getattr(args, "quiet", False)

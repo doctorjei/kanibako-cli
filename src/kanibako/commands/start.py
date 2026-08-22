@@ -777,7 +777,7 @@ def _effective_agent_scalar(
     *agent_state* is the per-agent file's flat behavior state as an
     ``AgentFileLevel`` — the table WITH the node it merges under, attached at the
     boundary (C-2) — when the caller already holds it; *agent_path* loads it from
-    ``agents/<node>/settings.yaml`` instead.  Both ``None`` = no per-agent tier (the
+    ``agents/<node>/agent.yaml`` instead.  Both ``None`` = no per-agent tier (the
     scope-file cascade still resolves).  Returns ``None`` when no scope and no floor
     sets *key*.
     """
@@ -991,7 +991,7 @@ def _check_box_components(proj) -> str | None:
     The **settings-file marker** (the third CRITICAL component per D5) is NOT
     re-checked here: its absence is already handled at resolution/detection time
     (``box_resolve.standalone_settings_present`` requires the box
-    ``settings.yaml`` for a standalone to be recognised as a box at all; the
+    ``box.yaml`` for a standalone to be recognised as a box at all; the
     read-side ``box_resolve`` returns ``None`` = "not a box").  A launch resolve
     (``initialize=True``) would recreate a fresh marker, so a marker check here
     would be dead.  The **vault** (NON-CRITICAL) only WARNS, at resolve time,
@@ -2865,7 +2865,7 @@ def _run_container(
     # persona load-or-error pre-flight below MUST resolve loadability BEFORE any
     # artifact for the persona is created (JEI-CRITICAL ordering, dogfood
     # 2026-07-03): an unconfigured persona that cannot be loaded errors out here
-    # with NOTHING left behind — no ``agents/<node>/`` store, no ``settings.yaml``,
+    # with NOTHING left behind — no ``agents/<node>/`` store, no ``agent.yaml``,
     # no share symlinks, no box seed/registration, no ``KANIBAKO_AGENT`` stamp.
     agent_cfg_exists = bool(target) and agent_cfg_path.exists()
     if target and not agent_cfg_exists:
@@ -2882,7 +2882,7 @@ def _run_container(
     # snapshot, the launch decisions, the auth source) as a LIVE cascade level.
     # They are a resolution INPUT, never a persisted one — the tier carries
     # endpoint/model/secret_path/env into the cascade directly, so a launch
-    # leaves ``agents/<node>/settings.yaml`` BYTE-IDENTICAL (the file holds
+    # leaves ``agents/<node>/agent.yaml`` BYTE-IDENTICAL (the file holds
     # user-intent values only, and higher scopes still override normally).  Bare
     # agents and store-less personas do zero work: the store is never touched
     # for a bare node, and a miss is a clean ``None``.
@@ -3191,7 +3191,7 @@ def _run_container(
     # assembly resolves them.  A bare agent (node == harness) is a no-op for the shim.
     # ⚑ ``agent_cfg_dirty`` is FIRST-USE ONLY: nothing on this path writes a resolved
     # persona value back, so a persona launch leaves an existing
-    # ``agents/<node>/settings.yaml`` byte-identical.
+    # ``agents/<node>/agent.yaml`` byte-identical.
     if target and agent_cfg_dirty:
         agent_file.save(agent_cfg_path, agent_cfg)
     ensure_persona_share_symlinks(std, agent_id, target)
@@ -5103,7 +5103,7 @@ def _name_new_box_probe(std, proj) -> None:
       ONE invocation with no intervening registry/dir writes; single-source guard met).
     * STANDALONE / other — the standalone identity is a ``<kuid>_<leaf>``
       assigned at materialise, so it cannot be predicted; but a standalone box's
-      config lives at ``<root>/settings.yaml`` (name-INDEPENDENT) and is empty for a
+      config lives at ``<root>/workset.yaml`` (name-INDEPENDENT) and is empty for a
       brand-new box, so the box NAME never influences the persona endpoint verdict.
       A stable placeholder (``short_hash`` of the project hash) unblocks the address
       derivation without selecting any config (no divergent-config hazard).
@@ -5300,7 +5300,7 @@ def _persona_token_pointer(agent_cfg, var: str, bundle) -> object:
 
     ⚑ M-28 CONSEQUENCE, documented not fixed: an EXISTING persona box created
     before the store persist was retired still has ``endpoint`` / ``secret_path``
-    values written into ``agents/<node>/settings.yaml`` by the old verified swap.
+    values written into ``agents/<node>/agent.yaml`` by the old verified swap.
     Those sit on the file rung, so they keep winning over the live store — a
     persona that is edited in the store will not appear to change.  The cure is
     MANUAL ("delete the values you did not write yourself") and is
@@ -5489,7 +5489,7 @@ def _preflight_persona_load(
 
     ⚑ NOTHING here mutates *agent_cfg*.  Every persona value is a LIVE resolution
     input resolved through the cascade before this seam, so there is nothing to
-    adopt and nothing to write back to ``agents/<node>/settings.yaml``.
+    adopt and nothing to write back to ``agents/<node>/agent.yaml``.
 
     ⚑ ``probe`` is opt-in and set ONLY by the launch: the create path keeps its own
     WARN-ONLY probe (locked ruling #2), so a create must not inherit this one's hard
@@ -5907,7 +5907,7 @@ def _effective_behavior_for_display(
     }
 
     # The behavior tables are keyed by the ACTIVE node-name (fix 4a): for a persona
-    # (``navigator℘claude``) the per-node ``agents/<node>/settings.yaml`` state and
+    # (``navigator℘claude``) the per-node ``agents/<node>/agent.yaml`` state and
     # the ``agent.<node>.*`` cascade slot key on the node, NOT the harness
     # (``target.name``) — else ``config --effective`` shows the bare-harness view
     # for a persona. Bare: node==harness==target.name → byte-identical. Falls back to
@@ -6059,7 +6059,7 @@ def _resolve_box_auth_source(
     # here carries ONLY system.* — no category families) so any @-ref in the
     # chain that reaches system.* resolves; this keeps the focused snapshot
     # consistent with the main one. The cascade box/workset tier file paths are the
-    # mode-aware single source (P6c) — standalone reads <root>/settings.yaml as the
+    # mode-aware single source (P6c) — standalone reads <root>/workset.yaml as the
     # WORKSET tier, box tier empty.
     snapshot = settings_launch.build_launch_snapshot(
         agent_name=agent_name,
@@ -6255,7 +6255,7 @@ def _launch_snapshot_inputs(
     paths``): the SINGLE SOURCE the snapshot resolvers pass as
     ``build_launch_snapshot(box_path=…, workset_path=…)``, and the SAME box-tier path
     that materializes ``meta.box.settings`` — so the anchor and the cascade cannot
-    drift. STANDALONE = ``(<root>/box_data/settings.yaml, <root>/settings.yaml)``:
+    drift. STANDALONE = ``(<root>/box_data/box.yaml, <root>/workset.yaml)``:
     a real box tier (absent by default) over the ROOT file that plays the workset
     tier; primary/named unchanged.
     """
@@ -6383,8 +6383,8 @@ def _launch_snapshot_inputs(
             agent_desc = None
             agent_auth_support = False
     # The SINGLE-SOURCE (box_tier, workset_tier) settings-file pair (M-8). It is
-    # UNIFORM now: primary/named = (the box's own settings.yaml, the workset root's);
-    # standalone = (<root>/box_data/settings.yaml, <root>/settings.yaml) — the box
+    # UNIFORM now: primary/named = (the box's own box.yaml, the workset root's);
+    # standalone = (<root>/box_data/box.yaml, <root>/workset.yaml) — the box
     # tier is a real path in EVERY mode, merely ABSENT BY DEFAULT for standalone
     # (spec §2c ALL PROJECTS + §5). The SAME pair feeds BOTH the
     # meta.box.settings anchor (box tier path, below) AND the cascade box_path/
@@ -7796,7 +7796,7 @@ def persona_create_verdict(
     # The persona store, read ONCE for this verdict exactly as the launch reads
     # it. ⚑ NOT optional: the create path used to see a persona's endpoint and
     # token because the create-side store IMPORT had just persisted them into
-    # ``agents/<node>/settings.yaml``. That persist is gone (the store is a live
+    # ``agents/<node>/agent.yaml``. That persist is gone (the store is a live
     # input now), so without this the verdict would resolve NO endpoint for a
     # perfectly good store persona and refuse every such create.
     persona_bundle = _persona_bundle_for(agent_id, target)

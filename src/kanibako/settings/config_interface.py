@@ -455,7 +455,7 @@ def get_config_value(
         return None
 
     # ``agent.<node>.bindings.{ro,rw}.<name>`` — the per-node DESCRIPTOR bind, read RAW from the
-    # node's own ``agents/<node>/settings.yaml``.
+    # node's own ``agents/<node>/agent.yaml``.
     # ⚑ BEFORE the persona branch: a bind NAMED after a state leaf (``…bindings.ro.model``)
     # would otherwise be mis-captured by the persona form.
     # ⚑ THE READ SURVIVED THE WRITE (R-9), on purpose — do not "restore symmetry" by removing it.
@@ -714,7 +714,7 @@ def set_config_value(
         return f"Set {canonical}={'null' if value is None else value}"
 
     # ``agent.<node>.<key>`` — the PER-PERSONA key (B1): a VERBATIM write to the node's OWN
-    # ``agents/<node>/settings.yaml``, sparse by construction (``write_nested_key`` is RMW).
+    # ``agents/<node>/agent.yaml``, sparse by construction (``write_nested_key`` is RMW).
     if _is_persona_agent_key(canonical):
         target = _persona_agent_target(canonical, agents_root)
         if isinstance(target, str):

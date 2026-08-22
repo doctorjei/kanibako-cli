@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 
 #: The box home seed destination — the GUEST home, RESOLVED to the box store when
 #: the copy runs.  ⚑ It is the ONLY one: SEED DESTINATIONS ARE ENUMERATED, NEVER A
-#: WHOLE-DIRECTORY COPY, or a template could plant ``<box_dir>/settings.yaml`` (=
+#: WHOLE-DIRECTORY COPY, or a template could plant ``<box_dir>/box.yaml`` (=
 #: ``meta.box.settings``, the LAST cascade level).
 #: ⚑ Do not respell this host-side again; the ``dest_space`` discriminator that made
 #: the old ``@meta.box.path/home`` spelling safe is gone (2026-08-08c).
@@ -139,7 +139,7 @@ def stage_layers(dest: Path, layers: list[Path]) -> None:
 #: packaged per-scope template subtree MIRRORS THAT SCOPE'S STORE ROOT, so the
 #: whitelist is exactly the set of top-level entries that subtree may contain.
 #: ⚑ DENY-BY-DEFAULT: anything not listed is an ERROR.  What each scope denies, and
-#: why (``settings.yaml`` at box scope IS the last cascade level; ``registry.yaml``
+#: why (``box.yaml`` at box scope IS the last cascade level; ``registry.yaml``
 #: at workset scope IS the authoritative box membership), is in the llm-doc.
 #: ⚑ The sets are NOT one uniform rule — ``common/`` is AGENT-only, and only
 #: ``canon/handbook`` is seedable, never ``canon/`` wholesale.
@@ -564,7 +564,7 @@ def install_packaged_templates(
         # STAGING (system-owned): the box + workset moulds, refreshable.
         #
         # ⚑ SCOPED, and this is where J-2's box whitelist actually BITES: staging is
-        # the earliest — and only — point a planted ``settings.yaml`` can be REFUSED.
+        # the earliest — and only — point a planted settings file can be REFUSED.
         # Nothing downstream re-checks it, because the two downstream copies read
         # ``box/home`` and ``box/canon/handbook`` directly.
         copy_tree(

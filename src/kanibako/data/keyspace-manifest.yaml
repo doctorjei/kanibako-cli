@@ -456,8 +456,8 @@ policy:
 
   # SEED WHITELISTS (R-24) — per-scope, DENY BY DEFAULT: anything not listed is
   # refused. The enumeration IS an allowlist — a correctness property, not a
-  # style choice (a wholesale template copy could plant settings.yaml — the LAST
-  # cascade level — or a templated registry.yaml corrupting box membership).
+  # style choice (a wholesale template copy could plant a settings file — the
+  # LAST cascade level — or templated registry.yaml corrupting box membership).
   # Severity is recorded ONLY where the spec states it: correctness = silently
   # override the cascade / corrupt box membership; user_data_and_secrets = the
   # user's credentials/code. STANDALONE is where this matters most: the workset
@@ -468,19 +468,19 @@ policy:
       root: "<box_dir>"                    # @meta.box.path
       allow: ["home/", "canon/handbook/"]
       deny:
-        "settings.yaml": "correctness — = meta.box.settings, the LAST cascade level"
+        "box.yaml": "correctness — = meta.box.settings, the LAST cascade level"
         "<box_name>.jsonl": "standalone helper log"
     agent:
       root: "agents/<agent>"               # @meta.agent.<agent>.path
       allow: ["template/", "canon/handbook/", "common/"]
       deny:
-        "settings.yaml": "correctness — = meta.agent.<agent>.settings"
+        "agent.yaml": "correctness — = meta.agent.<agent>.settings"
         "caches/": "denied by default"
     workset:
       root: "<workset_path>"               # @meta.workset.path
       allow: ["template/", "canon/handbook/"]
       deny:
-        "settings.yaml": "correctness — = meta.workset.settings"
+        "workset.yaml": "correctness — = meta.workset.settings"
         "registry.yaml": "correctness — = workset.registry, the AUTHORITATIVE
                           store of box membership + names"
         "auth/": "user_data_and_secrets — CREDENTIALS"
@@ -783,7 +783,7 @@ keys:
     type: path
     set: file
     default: "@config.data/agents"
-    why: "per-agent store; agent cascade files at <agent>/settings.yaml"
+    why: "per-agent store; agent cascade files at <agent>/agent.yaml"
     spec: "§1"
   config.primary_workset:
     layer: 1
@@ -1569,7 +1569,7 @@ keys:
     namespace: meta
     set: never
     origin: bootstrap
-    value: "@meta.workset.path/settings.yaml"
+    value: "@meta.workset.path/workset.yaml"
     note: "the §1A SINGLE-SOURCE canonical spelling; the former
            @meta.runtime.ws_settings anchor is CUT (unified path; R-36)"
     spec: "§2c / §1A"
@@ -1628,7 +1628,7 @@ keys:
     namespace: meta
     set: never
     origin: construct_time
-    value: "@meta.box.path/settings.yaml"
+    value: "@meta.box.path/box.yaml"
     note: "UNIFORM — ALL PROJECTS, every mode (R-30): standalone HAS a box tier
            whose file is merely ABSENT by default; box values then resolve from
            the workset tier @meta.workset.settings as R2 downward defaults
@@ -1733,7 +1733,7 @@ keys:
     parametric: [agent]
     set: never
     origin: plugin
-    value: "@meta.agent.<agent>.path/settings.yaml"
+    value: "@meta.agent.<agent>.path/agent.yaml"
     spec: "§2d"
   meta.agent.<agent>.mode:
     namespace: meta
@@ -2491,7 +2491,7 @@ not_keys:
                                  meta.runtime block is ws_root/ws_name/project_type ONLY (the
                                  collapse outputs it briefly sat beside became their own
                                  meta.assembly group on 2026-08-09);
-                                 meta.workset.settings spells @meta.workset.path/settings.yaml
+                                 meta.workset.settings spells @meta.workset.path/workset.yaml
                                  directly (the SINGLE-SOURCE list). The draft's live key
                                  entry was a clause-4 violation and is deleted."
     "meta.box.project_dir": "RETIRED (R-36) — there is no project-dir key: the project dir

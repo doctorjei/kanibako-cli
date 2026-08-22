@@ -230,7 +230,7 @@ def _restore_one(std, config, *, project_dir, archive_file, force, name=None) ->
 
         if name and proj.mode is not BoxMode.primary:
             # --name only means anything for a default/primary box: a standalone box
-            # carries its identity in its own settings.yaml and a workset box takes
+            # carries its identity in its own workset.yaml and a workset box takes
             # its name from its workspace dir.  Say so instead of dropping it.
             print(
                 f"Warning: --name is ignored for {proj.mode.value}-mode boxes "

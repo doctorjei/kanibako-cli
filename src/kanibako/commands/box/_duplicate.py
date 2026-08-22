@@ -147,7 +147,7 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
     # ``<root>/workspace`` subdir, NOT the root (which holds kanibako artifacts);
     # for a primary source it is the project root.  For a standalone TARGET the
     # files land in the destination's ``workspace/`` subdir (drift H), since the
-    # destination root holds the standalone artifacts (settings.yaml, box_data/,
+    # destination root holds the standalone artifacts (workset.yaml, box_data/,
     # vault/).
     # F2/F-3: capture whether the destination dir pre-existed BEFORE the workspace
     # copy, so a refusal/OSError can roll back a copy THIS call created without
@@ -162,7 +162,7 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
             # The copy DESTINATION is the destination root's resolved
             # ``workset.workspaces`` (ruled 10, 2026-08-02) — the STANDALONE
             # default ``@meta.workset.path/workspace`` for a fresh root (no
-            # settings.yaml yet); a pre-existing root repoint is honored.
+            # workset.yaml yet); a pre-existing root repoint is honored.
             from kanibako.project.workset import (
                 load_workset_settings_doc,
                 resolve_workset_workspaces,
@@ -224,10 +224,10 @@ def _duplicate_to_standalone(src_proj, new_path, std, force):
     A duplicate is a NEW box, so this mirrors ``create --standalone`` /
     ``convert --standalone`` rather than copying the source verbatim: the
     source's box metadata (agent/session state, minus the lock + home + the
-    source ``settings.yaml``) is copied into ``box_data/``, its home into
-    ``box_data/home``, and its ``settings.yaml`` to the destination ROOT (drift
-    I — settings live at ``<root>/settings.yaml``, NOT in ``box_data/``), then
-    that root ``settings.yaml`` is REWRITTEN with ``mode=standalone``, a freshly
+    source ``box.yaml``) is copied into ``box_data/``, its home into
+    ``box_data/home``, and its ``workset.yaml`` to the destination ROOT (drift
+    I — settings live at ``<root>/workset.yaml``, NOT in ``box_data/``), then
+    that root ``workset.yaml`` is REWRITTEN with ``mode=standalone``, a freshly
     generated ``<kuid>_<leaf>`` identity (never the source's name), and the
     standalone path table — and the box is registered in ``registry.standalone``.
     Without this the dest would keep the source's ``mode`` (e.g. ``primary``) and
@@ -241,7 +241,7 @@ def _duplicate_to_standalone(src_proj, new_path, std, force):
 
     dst_metadata = new_path / STANDALONE_META_DIR
     dst_shell = dst_metadata / "home"
-    # (The destination ROOT settings.yaml is written by ``establish_standalone`` below
+    # (The destination ROOT workset.yaml is written by ``establish_standalone`` below
     # — it is the WORKSET tier and carries the FRESH workset.kuid, never a copy of the
     # source's.  The box tier is ``dst_metadata / BOX_META_FILE``, handled further down.)
 
@@ -250,7 +250,7 @@ def _duplicate_to_standalone(src_proj, new_path, std, force):
 
     # Copy the source box metadata into box_data/ — preserving misc session
     # files — but NOT the lock, the home (copied separately below), or the
-    # source settings.yaml (which is relocated to the ROOT, drift I).
+    # source box.yaml (which is relocated to the ROOT, drift I).
     if force and dst_metadata.is_dir() and not remove_box_tree(dst_metadata):
         # The copytree below uses dirs_exist_ok=True, so a silently-failed removal
         # would MERGE the new box into the old one rather than replace it.
@@ -291,7 +291,7 @@ def _duplicate_to_standalone(src_proj, new_path, std, force):
 
     # Establish the canonical standalone shape (mode=standalone, a FRESH
     # <kuid>_<leaf> identity even from a standalone source, the standalone
-    # path table) + register it, via the shared core.  The root settings.yaml
+    # path table) + register it, via the shared core.  The root workset.yaml
     # was just copied above; establish overwrites its meta in place, preserving
     # any other sections copied from the source.
     establish_standalone(
@@ -358,8 +358,6 @@ def _assert_dup_home_free(std, name: str) -> None:
 
 def _duplicate_to_local(src_proj, new_path, std, config, force):
     """Copy metadata into default-mode layout for new_path."""
-    from kanibako.settings.config import BOX_META_FILE
-
     # Assign a new name for the duplicate.  The name MUST be registered first
     # because the destination metadata dir is derived from it (std.boxes/<name>).
     # Registers the PRIMARY membership (the sole store; a duplicate now joins the
@@ -380,8 +378,8 @@ def _duplicate_to_local(src_proj, new_path, std, config, force):
     # ``metadata_path`` is the project ROOT — its box metadata lives in ``box_data/``.
     # Copy from the right place per mode so the workspace tree is not dragged into the
     # box dir.  The carried box settings come from the ONE pair (M-8), mode-aware:
-    # box tier <root>/box_data/settings.yaml for a standalone source,
-    # <metadata_path>/settings.yaml otherwise — with a pre-P2 standalone source's
+    # box tier <root>/box_data/box.yaml for a standalone source,
+    # <metadata_path>/box.yaml otherwise — with a pre-P2 standalone source's
     # root-stored ``box.*`` keys underlaid so a legacy box does not lose them.
     src_box, src_ws = box_workset_settings_paths(src_proj)
     carried = carried_box_settings(src_box, src_ws)
@@ -400,7 +398,7 @@ def _duplicate_to_local(src_proj, new_path, std, config, force):
             ignore=shutil.ignore_patterns(".kanibako.lock"),
         )
         # Deliver the carried box settings to the DESTINATION's box tier (which for a
-        # primary/named destination is <dst_project>/settings.yaml).  The copytree
+        # primary/named destination is <dst_project>/box.yaml).  The copytree
         # above already places a standalone source's box tier there; this overwrites
         # it with the carried doc so the legacy underlay is applied and the source's
         # ``workset:`` identity is not inherited.

@@ -213,7 +213,7 @@ def _require_meta_name(target: Target) -> Target:
     REQUIRED (D-2026-06-22): it identifies the per-agent store dir
     (``agents/<name>/``) and the agent cascade key.  An agent with no
     resolvable name has no store dir and no cascade slot, so fail loudly
-    rather than silently writing to ``agents//settings.yaml``.
+    rather than silently writing to ``agents//agent.yaml``.
     """
     meta_name = getattr(target, "name", None)
     if not (isinstance(meta_name, str) and meta_name.strip()):

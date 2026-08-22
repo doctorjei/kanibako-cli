@@ -16,7 +16,7 @@ from pathlib import Path
 from kanibako.launch.box_identity import validate_box_name
 from kanibako.commands.flags import add_null_flag
 from kanibako.settings.config import (
-    BOX_META_FILE,
+    WORKSET_META_FILE,
     config_file_path,
     load_config,
     load_merged_config,
@@ -287,7 +287,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Unregister a project (optionally purge its metadata)",
         description=(
             "Remove a project from names.yaml without touching the workspace.\n"
-            "With --purge, also delete kanibako metadata (shell config, settings.yaml, vault symlinks, logs)."
+            "With --purge, also delete kanibako metadata (shell config, box.yaml, vault symlinks, logs)."
         ),
     )
     rm_p.add_argument(
@@ -314,7 +314,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
             "  register <name>   readopt a box deregistered by 'rm' (restore\n"
             "                    its active membership)\n"
             "  register <path>   register a standalone box that exists on disk\n"
-            "                    (box_data/ + settings.yaml) but has no index entry\n"
+            "                    (box_data/ + box.yaml) but has no index entry\n"
             "Refuses if an active box already occupies the name or workspace."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -1189,9 +1189,9 @@ def _teardown_standalone_box(root: Path) -> bool:
     metadata_dir = root / STANDALONE_META_DIR
     if _purge_dir(metadata_dir):
         print(f"Removed metadata: {metadata_dir}")
-        # ⚑ The ROOT settings.yaml is the WORKSET tier AND half the §5 detection marker —
+        # ⚑ The ROOT workset.yaml is the WORKSET tier AND half the §5 detection marker —
         # drop it too, or the box is re-detected.  (The BOX tier went with box_data/.)
-        settings_file = root / BOX_META_FILE
+        settings_file = root / WORKSET_META_FILE
         if settings_file.is_file():
             settings_file.unlink()
             print(f"Removed metadata: {settings_file}")
@@ -1210,7 +1210,7 @@ def _teardown_standalone_box(root: Path) -> bool:
 
 
 def _read_box_image(settings_file: Path) -> str | None:
-    """Best-effort read of a box's ``box.image`` from its settings.yaml; failure is ``None``."""
+    """Best-effort read of a box's ``box.image`` from its box.yaml; failure is ``None``."""
     try:
         from kanibako.settings.config_io import load_doc
 

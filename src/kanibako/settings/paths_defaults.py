@@ -51,7 +51,6 @@ SYSTEM_PATH_DEFAULTS: dict[str, str] = {
    "system.channels.share":         "@system.channelroot/share"}
 
 
-SETTINGS_FILE = "settings.yaml"
 PROFILE_FILE = ".profile"
 BASHRC_FILE = ".bashrc"
 SHELL_D_FILE = ".shell.d"
