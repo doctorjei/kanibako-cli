@@ -59,12 +59,19 @@ IGNORE_FILE = ".gitignore"
 
 
 BOXES_PATH = "boxes"
+CHANNELS_PATH = "channels"
 HOME_PATH = "home"
 KANIBAKO_PATH = "kanibako"
 LOGS_PATH = "logs"
 RO_PATH = "ro"
 RW_PATH = "rw"
 VAULT_PATH = "vault"
+# ⚑⚑ SINGULAR vs PLURAL, and they are DIFFERENT DIRS: ``workspaces`` is the primary/named
+# workset's container of per-box workspaces, ``workspace`` is the STANDALONE box's single
+# one.  Reading one for the other silently repoints every box of that mode — spell the
+# constant, never the string.
+WORKSPACES_PATH = "workspaces"
+WORKSPACE_PATH = "workspace"
 RUN_USER_UID_PATH = "/run/user/%d"
 
 # The STANDALONE box-store dir name — ``@meta.box.path`` and half the §5 marker.

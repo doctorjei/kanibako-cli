@@ -782,6 +782,32 @@ class TestWorksetWorkspacesResolved:
                 == tmp_path / "workspaces"
             )
 
+    def test_boxes_and_logs_resolvers_default_to_the_spec_formula(self, tmp_path):
+        """⚑ ``workset.boxes``/``workset.logs`` are declared keys and resolve exactly
+        like ``workspaces``: default ``@meta.workset.path/<leaf>``, relative repoint
+        anchored under the root, absolute repoint used as-is."""
+        from kanibako.project.workset import (
+            resolve_workset_boxes,
+            resolve_workset_logs,
+        )
+
+        assert resolve_workset_boxes(tmp_path, None) == tmp_path / "boxes"
+        assert resolve_workset_logs(tmp_path, None) == tmp_path / "logs"
+
+        doc = {"workset": {"boxes": "trees", "logs": "/var/log/kani"}}
+        assert resolve_workset_boxes(tmp_path, doc) == tmp_path / "trees"
+        assert resolve_workset_logs(tmp_path, doc) == Path("/var/log/kani")
+
+    def test_boxes_and_logs_resolvers_ignore_malformed_or_empty_slots(self, tmp_path):
+        from kanibako.project.workset import (
+            resolve_workset_boxes,
+            resolve_workset_logs,
+        )
+
+        for doc in (None, {}, {"workset": "oops"}, {"workset": {"boxes": "", "logs": ""}}):
+            assert resolve_workset_boxes(tmp_path, doc) == tmp_path / "boxes"
+            assert resolve_workset_logs(tmp_path, doc) == tmp_path / "logs"
+
     # -- NAMED: load_workset captures the repoint --------------------------
 
     def test_named_workspaces_dir_follows_repoint(self, std, tmp_home):
@@ -1061,6 +1087,82 @@ class TestWorksetSkeletonMarker:
         assert is_workset_skeleton(root)
         # ...and the repoint TARGET is what must exist.
         elsewhere.rmdir()
+        assert not is_workset_skeleton(root)
+
+    def test_a_repointed_boxes_dir_still_detects(self, std, tmp_home):
+        """⚑ ``workset.boxes`` is a DECLARED, repointable key (keyspec:
+        ``workset.boxes | @meta.workset.path/boxes``), so the locator is what it
+        RESOLVES to.  Testing the literal ``<root>/boxes`` made a repointed root
+        invisible to detection — the repoint is precisely what removes that dir."""
+        from kanibako.project.workset import is_workset_skeleton
+        from kanibako.settings.config_io import dump_doc
+
+        root = (tmp_home / "worksets" / "boxmoved").resolve()
+        create_workset("boxmoved", root, std)
+
+        elsewhere = tmp_home / "elsewhere-boxes"
+        elsewhere.mkdir()
+        dump_doc(root / "settings.yaml", {"workset": {"boxes": str(elsewhere)}})
+        assert is_workset_skeleton(root)
+        # The default leaf is now irrelevant...
+        (root / "boxes").rmdir()
+        assert is_workset_skeleton(root)
+        # ...and the repoint TARGET is what must exist.
+        elsewhere.rmdir()
+        assert not is_workset_skeleton(root)
+
+    def test_a_repointed_logs_dir_still_detects(self, std, tmp_home):
+        """⚑ Same for ``workset.logs`` (keyspec: ``@meta.workset.path/logs``).  The
+        comment that once stood over ``_LOGS_LEAF`` claimed no ``workset.*`` key
+        named it; the keyspec has declared one all along."""
+        from kanibako.project.workset import is_workset_skeleton
+        from kanibako.settings.config_io import dump_doc
+
+        root = (tmp_home / "worksets" / "logmoved").resolve()
+        create_workset("logmoved", root, std)
+
+        elsewhere = tmp_home / "elsewhere-logs"
+        elsewhere.mkdir()
+        dump_doc(root / "settings.yaml", {"workset": {"logs": str(elsewhere)}})
+        assert is_workset_skeleton(root)
+        (root / "logs").rmdir()
+        assert is_workset_skeleton(root)
+        elsewhere.rmdir()
+        assert not is_workset_skeleton(root)
+
+    def test_absent_settings_file_yields_the_default_leaves(self, tmp_home):
+        """⚑⚑ LOOK AT settings.yaml, never DEPEND on it.  A workset root's settings
+        file is OPTIONAL and absent on a fresh create, so an absent file must yield
+        the four default leaves — which is exactly what ``create_workset`` stamps.
+        (A regression guard, not a mutation-prover: it held before the resolution
+        change too, and it is what must keep holding after it.)"""
+        from kanibako.project.workset import _workset_skeleton_dirs
+
+        root = tmp_home / "nofile"
+        root.mkdir()
+        assert not (root / "settings.yaml").exists()
+        assert _workset_skeleton_dirs(root) == (
+            root / "boxes", root / "workspaces", root / "vault", root / "logs",
+        )
+
+    def test_vault_is_the_one_literal_and_no_repoint_moves_it(self, std, tmp_home):
+        """⚑ DELIBERATE non-key: the keyspec declares ``workset.vault_ro`` and
+        ``workset.vault_rw`` and NO ``workset.vault``, so ``vault/`` is only their
+        shared default parent.  Repointing either leaf must NOT move the skeleton's
+        vault dir — there is no key to resolve it through."""
+        from kanibako.project.workset import _workset_skeleton_dirs, is_workset_skeleton
+        from kanibako.settings.config_io import dump_doc
+
+        root = (tmp_home / "worksets" / "vaulted").resolve()
+        create_workset("vaulted", root, std)
+        dump_doc(root / "settings.yaml", {"workset": {
+            "vault_ro": str(tmp_home / "vro"),
+            "vault_rw": str(tmp_home / "vrw"),
+        }})
+        assert root / "vault" in _workset_skeleton_dirs(root)
+        assert is_workset_skeleton(root)
+        # It is load-bearing for detection despite naming no key.
+        (root / "vault").rmdir()
         assert not is_workset_skeleton(root)
 
 

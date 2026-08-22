@@ -3,10 +3,12 @@
 A *workset* is a named group of projects whose persistent state lives under a
 single root directory chosen by the user.  Terminology:
 
-* **workset root** — the user-chosen dir; holds ``boxes/``, the workspaces dir,
-  ``vault/``, ``logs/``, ``auth/``, ``channels/`` and — BOTH OPTIONAL —
+* **workset root** — the user-chosen dir; holds the boxes dir, the workspaces dir,
+  ``vault/``, the logs dir, ``auth/``, ``channels/`` and — BOTH OPTIONAL —
   ``registry.yaml`` and ``settings.yaml``.  ⚑ A freshly created root has FOUR
-  DIRS AND NO FILES.
+  DIRS AND NO FILES.  ⚑ Only ``vault/`` is spelled with a literal leaf here: the
+  others are REPOINTABLE keys, so their on-disk names are whatever
+  ``workset.{boxes,workspaces,logs,channelroot}`` resolve to.
 * **identity** — the workset's entry in the GLOBAL registry's ``worksets:``
   section (``@config.registry``), mapping its NAME to its ROOT.  ⚑⚑ THAT MAPPING
   IS THE WHOLE OF A WORKSET'S IDENTITY: nothing under the workset root records a
@@ -40,6 +42,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from kanibako.project import registry_store, workset_registry
+from kanibako.settings import paths_defaults
 from kanibako.settings.config_io import load_doc
 from kanibako.errors import LegacyWorksetIdentityError, WorksetError
 from kanibako.project.names import register_name, unregister_name
@@ -48,24 +51,32 @@ from kanibako.project.names import register_name, unregister_name
 # edge back this way.
 from kanibako.settings.paths import StandardPaths
 
+# ⚑⚑ EVERY NAME BELOW IS AN ALIAS, NEVER A VALUE.  The defaults themselves live in
+# ``settings/paths_defaults.py``, the designated defaults file, and are materialized
+# THERE AND NOWHERE ELSE; re-spelling one here made a second carrier that could drift.
+# The local names stay only because the call sites read better with them.
+
 # The workset-tier cascade settings file at the workset root — SETTINGS ONLY, and
 # OPTIONAL: membership lives in ``registry.yaml``, identity in the GLOBAL registry.
-WORKSET_SETTINGS_FILE = "settings.yaml"
-
-# The BOX-tree leaf under a workset root (three use sites, only one has a Workset).
-BOXES_DIR_NAME = "boxes"
+WORKSET_SETTINGS_FILE = paths_defaults.SETTINGS_FILE
 
 # Default leaves for the RESOLVED workset dir keys — the spec's per-mode default
-# formula ``@meta.workset.path/<leaf>`` spelled ONCE (§3.3: real and USED).
-_WORKSPACES_LEAF = "workspaces"
-_STANDALONE_WORKSPACE_LEAF = "workspace"
-_CHANNELROOT_LEAF = "channels"
+# formula ``@meta.workset.path/<leaf>``, applied ONCE per key in its resolver below
+# (§3.3: real and USED).  ⚑ A default leaf is what a key falls back to, NOT the path
+# component: every one of these is repointable, so nothing may join it directly.
+BOXES_DIR_NAME = paths_defaults.BOXES_PATH
+_WORKSPACES_LEAF = paths_defaults.WORKSPACES_PATH
+_STANDALONE_WORKSPACE_LEAF = paths_defaults.WORKSPACE_PATH
+_CHANNELROOT_LEAF = paths_defaults.CHANNELS_PATH
+_LOGS_LEAF = paths_defaults.LOGS_PATH
 
-# Leaves of the two skeleton dirs that are NOT repointable — no ``workset.*`` key
-# names them, so they are always ``<root>/<leaf>``.  ⚑ Spelled once because three
-# sites want them: the skeleton, and the two convenience properties.
-_VAULT_LEAF = "vault"
-_LOGS_LEAF = "logs"
+# ⚑ The ONE skeleton dir that names NO KEY: the keyspec declares ``workset.vault_ro``
+# and ``workset.vault_rw`` (``@meta.workset.path/vault/{ro,rw}``) and no ``workset.vault``
+# at all, so ``vault/`` is only their shared DEFAULT PARENT — there is nothing to resolve
+# it through and it is always ``<root>/vault``.  ⚑ DELIBERATE, not an oversight: it keeps
+# the skeleton a SINGLE list that ``create_workset`` stamps and ``is_workset_skeleton``
+# tests, at the cost of one honestly-documented non-key.
+_VAULT_LEAF = paths_defaults.VAULT_PATH
 
 
 # ---------------------------------------------------------------------------
@@ -119,6 +130,28 @@ def resolve_workset_workspaces(
         workset_root,
         _workset_path_repoint(workset_settings, _WORKSPACES_LEAF),
         _STANDALONE_WORKSPACE_LEAF if standalone else _WORKSPACES_LEAF,
+    )
+
+
+def resolve_workset_boxes(
+    workset_root: Path, workset_settings: Mapping[str, Any] | None,
+) -> Path:
+    """Return the resolved ``workset.boxes`` dir — the BOX-tree root under a workset."""
+    return _apply_workset_dir_repoint(
+        workset_root,
+        _workset_path_repoint(workset_settings, BOXES_DIR_NAME),
+        BOXES_DIR_NAME,
+    )
+
+
+def resolve_workset_logs(
+    workset_root: Path, workset_settings: Mapping[str, Any] | None,
+) -> Path:
+    """Return the resolved ``workset.logs`` dir — ⚑ primary/named ONLY; standalone logs to the box."""
+    return _apply_workset_dir_repoint(
+        workset_root,
+        _workset_path_repoint(workset_settings, _LOGS_LEAF),
+        _LOGS_LEAF,
     )
 
 
@@ -228,6 +261,12 @@ class Workset:
 
     @property
     def projects_dir(self) -> Path:
+        # ⚑ KNOWN GAP, deliberately NOT closed here: ``workset.boxes`` IS repointable and
+        # detection now resolves it, but this property still composes the default leaf, so
+        # a repointed root is FOUND while its box trees are still created and removed under
+        # ``<root>/boxes``.  Resolving it changes where boxes LIVE — add/remove/move/delete
+        # and ``settings/paths.py`` all compose off this — which is a store-layout change,
+        # not a detection fix.  Do not "just resolve it" without that being the task.
         return self.root / BOXES_DIR_NAME
 
     @property
@@ -243,6 +282,9 @@ class Workset:
 
     @property
     def logs_dir(self) -> Path:
+        # ⚑ Same KNOWN GAP as ``projects_dir``: ``workset.logs`` is repointable and the
+        # launch seam already honors it (``settings_launch``/``core_defaults``), but this
+        # convenience property composes the default leaf.  See ``projects_dir``.
         return self.root / _LOGS_LEAF
 
     @property
@@ -376,15 +418,24 @@ def _load_registry(std: StandardPaths) -> dict[str, Path]:
 # ---------------------------------------------------------------------------
 
 def _workset_skeleton_dirs(root: Path) -> tuple[Path, ...]:
-    """The four dirs a workset root is made of (``workspaces`` through its repoint)."""
-    # ⚑ ``workspaces`` is RESOLVED, so a repointed root still matches.  At create time
-    # *root* has no settings.yaml yet, so the read yields None and the default leaf —
-    # the same dir the pre-refactor literal made.
+    """The four dirs a workset root is made of — ⚑ three RESOLVED, ``vault`` alone literal."""
+    # ⚑⚑ THE RESOLVED DIRS ARE THE LOCATOR (system-design, NAMED arm of "Detect =
+    # ancestor-walk").  ``boxes``, ``workspaces`` and ``logs`` are all declared,
+    # repointable workset keys, so the locator must be what each one RESOLVES to.
+    # Testing the literal leaf instead made a root that repointed ``workset.boxes`` or
+    # ``workset.logs`` INVISIBLE to detection: the walk looked for ``<root>/boxes`` and
+    # ``<root>/logs``, which the repoint is precisely what removes.
+    # ⚑ ``vault`` is the one literal, and correctly so — no key names it (see _VAULT_LEAF).
+    # ⚑ ONE read feeds all three resolutions; reading settings.yaml per key would open a
+    # window for the three to disagree about the same file.  At create time *root* has no
+    # settings.yaml yet, so the read yields None and every leaf is its default — the same
+    # four dirs the pre-refactor literals made.
+    settings_doc = load_workset_settings_doc(root)
     return (
-        root / BOXES_DIR_NAME,
-        resolve_workset_workspaces(root, load_workset_settings_doc(root)),
+        resolve_workset_boxes(root, settings_doc),
+        resolve_workset_workspaces(root, settings_doc),
         root / _VAULT_LEAF,
-        root / _LOGS_LEAF,
+        resolve_workset_logs(root, settings_doc),
     )
 
 
@@ -397,6 +448,8 @@ def is_workset_skeleton(root: Path) -> bool:
     answering one does not answer the other.  ``_is_standalone_meta_dir`` is the same
     shape for the same reason.
     ⚑ ALL FOUR are required: any one of them alone is an ordinary directory name.
+    ⚑ Three of the four are RESOLVED through their workset keys, so this finds a root
+    that has repointed ``workset.boxes``, ``workset.workspaces`` or ``workset.logs``.
     """
     return all(subdir.is_dir() for subdir in _workset_skeleton_dirs(root))
 
@@ -456,6 +509,13 @@ def create_workset(
         # no registry.yaml (a workset with no members has no membership to record).
         root.mkdir(parents=True)
         unwind.push(lambda: shutil.rmtree(root, ignore_errors=True))
+        # ⚑ The bare ``mkdir()`` (no parents) is safe BECAUSE of the line above and the
+        # ``root.exists()`` refusal before it: *root* was just created empty, so it has no
+        # settings.yaml, so all three resolved leaves fall back to their defaults and every
+        # path here is exactly one level under *root*.  ⚑ A repoint can never reach this
+        # call — reaching it would need a settings.yaml inside a root that did not exist a
+        # moment ago.  Do NOT paper over a future violation with ``parents=True``: that
+        # would silently stamp a skeleton somewhere other than the root being created.
         for subdir_path in _workset_skeleton_dirs(root):
             subdir_path.mkdir()
 
@@ -487,9 +547,13 @@ def load_workset(root: Path, name: str) -> Workset:
     root = root.resolve()
     if not root.is_dir():
         raise WorksetError(f"Workset root does not exist: {root}")
-    # Legacy migration: old kanibako/ subdir → boxes/.
+    # Legacy migration: old kanibako/ subdir → boxes/.  ⚑ The DEFAULT leaf on purpose,
+    # not the resolved ``workset.boxes``: this renames a pre-key-era directory into the
+    # place that era put it, and a root old enough to have one cannot have repointed.
+    # ⚑ ``"kanibako"`` stays a literal — ``paths_defaults.KANIBAKO_PATH`` is the app-name
+    # leaf for the data/runtime dir, a DIFFERENT default that merely shares the string.
     old_subdir = root / "kanibako"
-    new_subdir = root / "boxes"
+    new_subdir = root / BOXES_DIR_NAME
     if old_subdir.is_dir() and not new_subdir.exists():
         old_subdir.rename(new_subdir)
         import sys

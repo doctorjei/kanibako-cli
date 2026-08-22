@@ -2213,3 +2213,66 @@ class TestStandaloneEnableVaultTier:
             std, config, project_dir=str(tmp_home / "project"), initialize=False,
         )
         assert proj2.enable_vault is True
+
+
+class TestPathLeafDefaultsHaveOneCarrier:
+    """⚑⚑ A default is materialized in EXACTLY ONE place — its designated defaults
+    file, ``settings/paths_defaults.py`` — and nowhere else.  ``project/workset.py``
+    used to re-spell four of these as its own literals, which is two carriers of one
+    value and a drift waiting to happen: change ``BOXES_PATH`` and the workset
+    module would have kept stamping the old leaf."""
+
+    def test_workset_module_agrees_with_the_defaults_file(self):
+        """The workset module's names carry the defaults file's VALUES.
+
+        ⚑ This pins AGREEMENT, not single-carrier-ness, and it cannot pin the latter:
+        CPython INTERNS these short identifier-like strings, so ``is`` is True even for
+        two separately-written literals — an identity assertion here would pass against
+        the very duplication it looks like it forbids.  The source tripwire below is
+        what actually detects a second spelling.
+        """
+        from kanibako.settings import paths_defaults
+        from kanibako.project import workset as ws_mod
+
+        assert ws_mod.WORKSET_SETTINGS_FILE == paths_defaults.SETTINGS_FILE
+        assert ws_mod.BOXES_DIR_NAME == paths_defaults.BOXES_PATH
+        assert ws_mod._LOGS_LEAF == paths_defaults.LOGS_PATH
+        assert ws_mod._VAULT_LEAF == paths_defaults.VAULT_PATH
+        assert ws_mod._WORKSPACES_LEAF == paths_defaults.WORKSPACES_PATH
+        assert ws_mod._STANDALONE_WORKSPACE_LEAF == paths_defaults.WORKSPACE_PATH
+        assert ws_mod._CHANNELROOT_LEAF == paths_defaults.CHANNELS_PATH
+
+    def test_no_second_spelling_of_a_leaf_in_the_workset_module(self):
+        """Tripwire: re-introducing any of these as a literal in ``project/workset.py``
+        recreates the second carrier.  The defaults file is the ONLY place the string
+        may appear."""
+        import re
+
+        from tests.support.repo import REPO_ROOT
+
+        text = (REPO_ROOT / "src" / "kanibako" / "project" / "workset.py").read_text(
+            encoding="utf-8",
+        )
+        # ⚑ A prose mention in a comment or docstring is fine — only a CODE literal makes
+        # a carrier, so match the assignment and join forms, not every occurrence.
+        for leaf in ("boxes", "logs", "vault", "workspaces", "workspace", "channels",
+                     "settings.yaml"):
+            bad = re.compile(r'=\s*"%s"|/\s*"%s"|"%s"\s*/' % (leaf, leaf, leaf))
+            assert not bad.search(text), (
+                f'literal "{leaf}" in project/workset.py; draw it from '
+                f"settings.paths_defaults instead"
+            )
+
+    def test_paths_defaults_is_import_free(self):
+        """⚑ The defaults file must stay a LEAF: ``project/workset.py`` now imports it,
+        and ``settings/paths.py`` imports ``project/workset.py``, so any import added
+        here can close that documented cycle."""
+        import re
+
+        from tests.support.repo import REPO_ROOT
+
+        text = (REPO_ROOT / "src" / "kanibako" / "settings" / "paths_defaults.py"
+                ).read_text(encoding="utf-8")
+        assert not re.search(r"(?m)^\s*(import|from)\s", text), (
+            "settings/paths_defaults.py grew an import; it is a pure-constant leaf"
+        )
