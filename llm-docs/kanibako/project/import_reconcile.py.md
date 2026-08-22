@@ -187,15 +187,27 @@ box is already seeded on disk.
 `workset.is_workset_skeleton`, and the name is **derived** as `root.name`, the leaf directory
 basename ([R139]).
 
-Order of operations: derive the name → bar check → already-registered check (plus stale-entry clear)
-→ same-kind collision check → cross-kind warning → journalled register → alert. The section it
-writes is `registry.worksets`, the name → root index backing both name lookups and workset
-discovery. Registration goes through `names.register_name` — the SOLE writer of that section, and
-the guard that refuses `$HOME` as a root, which matters here and not at `create_workset`: create is
-handed a path, while the ancestor walk arrives at `$HOME` under its own steam.
+Order of operations: derive the name → bar check → `$HOME` guard → already-registered check (plus
+stale-entry clear) → same-kind collision check → cross-kind warning → journalled register → alert.
+The section it writes is `registry.worksets`, the name → root index backing both name lookups and
+workset discovery. Registration goes through `names.register_name` — the SOLE writer of that
+section.
 
-Returns `None` when the basename cannot be a workset name — empty (only the filesystem root) or a
-reserved sentinel.
+It returns `None` on THREE declines: an empty basename (only the filesystem root has one), a reserved
+sentinel, and a root that IS `$HOME`.
+
+⚑ **The `$HOME` decline is the one that is not obvious, and it is deliberately one step earlier than
+`names.register_name`'s own refusal of a `$HOME` root.** That refusal still stands; it is simply
+never reached from here. It has to be pre-empted, because `create_workset` is HANDED a path while the
+ancestor walk arrives at `$HOME` under its own steam — `detect_project_mode`'s stop condition fires
+only AFTER the level has been tested — so a home directory that happens to carry the four-dir
+skeleton would RAISE out of **every** command's mode detection. Declining leaves it what it already
+was: a plain primary-mode dir.
+
+⚑⚑ **The guard is an explicit `root == Path.home().resolve()` test, deliberately NOT a `try` /
+`except` around the register.** `register_name` raises `ProjectError` for a `$HOME` root and for an
+already-registered name alike, so catching it here to decline would swallow the SAME-KIND collision
+refusal too — turning "I left both sides exactly as I found them" into a silent `None`.
 
 ⚑ `primary_workset` is a REQUIRED keyword argument, not a defaulted one, because it is the sole
 input to the cross-kind check: a caller free to omit it would import a shadowed workset without the
@@ -220,4 +232,6 @@ edit break something silently at that exact line:
   simplified to `project.mode` and to the dir leaf respectively, and both must not be;
 * at the derived name in `import_named_workset` — it returns where `create_workset` raises, and the
   cross-kind collision warns where `create_workset` refuses; both read like inconsistencies and
-  neither is.
+  neither is;
+* at the `$HOME` guard in `import_named_workset` — it duplicates a refusal `register_name` already
+  makes, and it must stay an explicit test rather than a caught exception.
