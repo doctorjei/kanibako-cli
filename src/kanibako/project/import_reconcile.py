@@ -40,14 +40,14 @@ from pathlib import Path
 
 from kanibako.project import registry_store
 from kanibako.project.names import cross_kind_shadow_hatch, register_name
-from kanibako.settings.config import BOX_META_FILE
+from kanibako.settings.config import WORKSET_META_FILE
 from kanibako.errors import KanibakoError
 from kanibako.log import get_logger
 
 logger = get_logger("import_reconcile")
 
 
-# The standalone box's host-side box dir (sibling of ``settings.yaml``, holding
+# The standalone box's host-side box dir (sibling of ``workset.yaml``, holding
 # ``home/``), and the J2 key for a standalone import.
 # ⚑ Hand-kept 2nd spelling of ``paths_defaults.STANDALONE_META_DIR`` — move both.
 _STANDALONE_BOX_DIR = "box_data"
@@ -149,7 +149,7 @@ def import_standalone(
     """Reconcile an on-disk standalone box at *root* against ``registry.standalone``.
 
     *root* is the standalone project root (the dir containing ``box_data/`` and,
-    at the root, ``settings.yaml``).  Returns the registered box name, or
+    at the root, ``workset.yaml``).  Returns the registered box name, or
     ``None`` when *root* carries no standalone MARKER.
     """
     root = root.resolve()
@@ -173,7 +173,7 @@ def import_standalone(
     # ⚑ Compose the LIVE name kuid-first (mirrors box_resolve's standalone
     # branch): the stored ``workset.kuid`` prefixes the CURRENT dir leaf, so a
     # MOVED box keeps its stable identity.  A pre-kuid box (SENTINEL) → the leaf.
-    stored_kuid = read_workset_kuid(root / BOX_META_FILE)
+    stored_kuid = read_workset_kuid(root / WORKSET_META_FILE)
     if stored_kuid != kuid.SENTINEL:
         name = box_identity.compose_standalone_name(stored_kuid, root)
     else:

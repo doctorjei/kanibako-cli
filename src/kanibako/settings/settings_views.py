@@ -459,7 +459,7 @@ class MetaBoxView(FiniteView):
     a non-bind RENDER and are NOT materialized here (JC-B2-3).
 
     ⚑ ``settings`` is UNIFORM in every mode; standalone's
-    ``<root>/box_data/settings.yaml`` is a real path merely ABSENT BY DEFAULT
+    ``<root>/box_data/box.yaml`` is a real path merely ABSENT BY DEFAULT
     (§5), NOT a ``None`` terminal. It is typed ``Path | None`` only because a
     narrow/partial resolve may materialize no box tier.
     """

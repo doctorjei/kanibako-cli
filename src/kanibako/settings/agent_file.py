@@ -616,7 +616,7 @@ def _refuse_undeclared_state(state: "Mapping[str, str | None]", *, node: str) ->
             f"kanibako will not start a box on it — an undeclared key has no "
             f"meaning to give the box, and carrying it through would be the very "
             f"'anything goes' behaviour the closed keyspace replaces.\n"
-            f"  Fix: remove `{file_spelling(key)}` from agents/{node}/settings.yaml "
+            f"  Fix: remove `{file_spelling(key)}` from agents/{node}/agent.yaml "
             f"(or correct the spelling); 'kanibako agent info {node}' still lists "
             f"what the file holds."
         )

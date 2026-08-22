@@ -6,7 +6,7 @@ import argparse
 import shutil
 import sys
 
-from kanibako.settings.config import BOX_META_FILE, load_config
+from kanibako.settings.config import WORKSET_META_FILE, load_config
 from kanibako.runtime.container import remove_box_tree
 from kanibako.errors import UserCancelled
 from kanibako.settings.paths import (
@@ -136,7 +136,7 @@ def _purge_one(std, config, path: str, *, force: bool) -> int:
     proj = resolve_any_project(std, config, project_dir=path, initialize=False)
 
     # For standalone, metadata_path IS the project root (drift I); the actual
-    # box metadata lives in box_data/ + the root settings.yaml + vault/.  "No
+    # box metadata lives in box_data/ + the root workset.yaml + vault/.  "No
     # session data" means no box_data/ marker dir (the root always exists).
     if proj.mode is BoxMode.standalone:
         if not (proj.metadata_path / STANDALONE_META_DIR).is_dir():
@@ -168,14 +168,14 @@ def _purge_one(std, config, path: str, *, force: bool) -> int:
 
     if proj.mode is BoxMode.standalone:
         # metadata_path is the project ROOT — remove ONLY the in-tree kanibako
-        # artifacts (box_data/ + root settings.yaml + vault/), never the root.
+        # artifacts (box_data/ + root workset.yaml + vault/), never the root.
         root = proj.metadata_path
         # box_data/ holds the box home + its root-owned canon skeleton (J-7), so
         # the deletion needs the podman-unshare escalation, not a bare rmtree.
         box_data = root / STANDALONE_META_DIR
         if box_data.is_dir() and not remove_box_tree(box_data):
             _warn_undeleted(box_data)
-        (root / BOX_META_FILE).unlink(missing_ok=True)
+        (root / WORKSET_META_FILE).unlink(missing_ok=True)
         shutil.rmtree(root / "vault", ignore_errors=True)
     else:
         if not remove_box_tree(proj.metadata_path):

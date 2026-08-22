@@ -195,7 +195,7 @@ def _workset_member_paths(worksets: dict[str, str], name: str) -> list[str]:
     for ws_root_str in worksets.values():
         ws_root = Path(ws_root_str)
         registry_path = workset_registry.resolve_workset_registry_path(
-            ws_root, load_doc(ws_root / "settings.yaml"),
+            ws_root, load_doc(ws_root / "workset.yaml"),
         )
         box_path = workset_registry.load_workset_boxes(registry_path).get(name)
         if box_path is not None:
@@ -276,7 +276,7 @@ def resolve_name(
         from kanibako.settings.config_io import load_doc
 
         primary_reg = workset_registry.resolve_workset_registry_path(
-            primary_workset, load_doc(primary_workset / "settings.yaml"),
+            primary_workset, load_doc(primary_workset / "workset.yaml"),
         )
         primary_path = workset_registry.workset_box_path(primary_reg, name)
         if primary_path is not None:

@@ -321,7 +321,7 @@ def resolve_key(raw: str) -> str:
 
 # ---------------------------------------------------------------------------
 # Per-persona agent keys (block B1) — ``agent.<node>.<key>`` set on the agent's
-# OWN settings file ``agents/<node>/settings.yaml``.
+# OWN settings file ``agents/<node>/agent.yaml``.
 # ---------------------------------------------------------------------------
 
 # The settable per-persona agent leaves: the FLAT agent-state knobs plus the
@@ -512,7 +512,7 @@ def bare_env_retired_error(
 
 
 def _is_agent_setting(key: str) -> bool:
-    """Keys that belong in the agent section of settings.yaml."""
+    """Keys that belong in the agent section of agent.yaml."""
     return key in {
         "model", "continue_mode", "access", "endpoint", "allow_helpers",
         "bootstrap",
@@ -926,7 +926,7 @@ def agent_node_bind_retired_error(canonical: str, *, verb: str) -> str | None:
         cure=(
             f"Edit the '{file_spelling(category)}' table of that "
             f"agent's own settings file (agents/{shown_node}/"
-            f"settings.yaml) directly; the launch reads it from there."
+            f"agent.yaml) directly; the launch reads it from there."
         ),
         survives=survives,
     )

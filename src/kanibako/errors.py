@@ -53,7 +53,7 @@ class WorksetError(KanibakoError):
 
 
 class LegacyWorksetIdentityError(WorksetError):
-    """A workset root's ``settings.yaml`` still carries a RETIRED workset identity table."""
+    """A workset root's ``workset.yaml`` still carries a RETIRED workset identity table."""
 
 
 class LegacyRegistryIdentityError(WorksetError):

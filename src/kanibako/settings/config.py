@@ -13,7 +13,8 @@ from kanibako.settings.config_io import dump_doc, load_doc
 # ---------------------------------------------------------------------------
 
 # Per-box construct-time metadata + box-tier settings cascade file (spec §2c meta.box.*)
-BOX_META_FILE = "settings.yaml"
+BOX_META_FILE = "box.yaml"
+WORKSET_META_FILE = "workset.yaml"
 
 # Shared truth tables: the typed `config set` writer AND the box.meta writer.
 _BOOL_TRUE = frozenset({"true", "1", "yes", "on"})
@@ -34,7 +35,7 @@ def coerce_bool(value: object) -> bool | None:
 
 
 _DEFAULTS = {
-    "paths_project_toml": BOX_META_FILE,
+    "paths_project_toml": None,
     "box_image": "ghcr.io/doctorjei/kanibako-oci:latest",
     "box_shell": "",
 }
@@ -288,7 +289,7 @@ def write_global_config(path: Path, cfg: KanibakoConfig | None = None) -> None:
 
 
 def write_project_config(path: Path, image: str) -> None:
-    """Write or update a settings.yaml with the given image."""
+    """Write or update a box.yaml with the given image."""
     write_project_config_key(path, "box_image", image)
 
 
@@ -394,7 +395,7 @@ def _split_config_key(flat_key: str) -> tuple[str, str]:
 
 
 def write_project_config_key(path: Path, flat_key: str, value: str) -> None:
-    """Write or update a single key in a settings.yaml (*flat_key* is underscore-joined)."""
+    """Write or update a single key in a box.yaml (*flat_key* is underscore-joined)."""
     section, key = _split_config_key(flat_key)
     data = load_doc(path)
     if not section:
@@ -411,7 +412,7 @@ def write_project_config_key(path: Path, flat_key: str, value: str) -> None:
 
 
 def unset_project_config_key(path: Path, flat_key: str) -> bool:
-    """Remove a single key from a settings.yaml; True iff it was found and removed."""
+    """Remove a single key from a box.yaml; True iff it was found and removed."""
     if not path.exists():
         return False
 
@@ -436,7 +437,7 @@ def unset_project_config_key(path: Path, flat_key: str) -> bool:
 
 
 def load_project_overrides(path: Path) -> dict[str, str]:
-    """The project-level overrides in a settings.yaml — flat_key → value for keys differing from defaults."""
+    """The project-level overrides in a box.yaml — flat_key → value for keys differing from defaults."""
     if not path.exists():
         return {}
     proj_cfg = load_config(path)

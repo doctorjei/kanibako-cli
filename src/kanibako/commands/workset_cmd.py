@@ -787,7 +787,7 @@ def _resolve_share_workset(name: str):
 
 
 def _load_share_doc(ws_config: Path) -> dict:
-    """Load the workset settings.yaml as a nested dict (missing → {})."""
+    """Load the workset workset.yaml as a nested dict (missing → {})."""
     from kanibako.settings.config_io import load_doc
 
     return load_doc(ws_config)

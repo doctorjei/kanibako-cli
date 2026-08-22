@@ -239,7 +239,7 @@ def meta_runtime_floor(
     # ⚑ The SPEC's own spelling (§2c), chaining through the anchor set one line up.
     # Spelling it off @meta.runtime.ws_root would resolve to the byte-identical value
     # but DIVERGE from the spec, and the spec is authority.
-    floor["meta.workset.settings"] = "@meta.workset.path/settings.yaml"
+    floor["meta.workset.settings"] = "@meta.workset.path/workset.yaml"
     # The SINGLE SOURCE for the partition token; block B2 no longer sets it directly.
     floor["meta.workset.name"] = "@meta.runtime.ws_name"
     # The RO identity anchor surfacing the runtime mode (spec §2b; was the settable
@@ -380,7 +380,7 @@ def meta_identity_floor(
         # formula, resolved transitively through the sibling ``path`` anchor — the
         # SAME file ``agent_settings_path`` composes.
         floor[f"meta.agent.{agent_name}.settings"] = (
-            f"@meta.agent.{agent_name}.path/settings.yaml"
+            f"@meta.agent.{agent_name}.path/agent.yaml"
         )
         # ⚑ The agent's credential-SHARING CAPABILITY: plugin-set, RO — the hard
         # floor a user can't fake. The auth chain's mirror views UP to this key, so

@@ -9,7 +9,7 @@ Holds one workset's MEMBERSHIP, and nothing else, in ONE section:
 NAMED by the ``worksets:`` section of the GLOBAL registry (``@config.registry``),
 which maps its name to its root — that mapping is the whole of a workset's
 identity, and nothing under the workset root repeats it.  The root
-``settings.yaml`` carries SETTINGS ONLY, is sparse, and MAY BE ABSENT.
+``workset.yaml`` carries SETTINGS ONLY, is sparse, and MAY BE ABSENT.
 
 ⚑⚑ THE PATH IS RECORDED EXACTLY ONCE.  The entry is FLAT — ``name: path``,
 exactly as the keyspace's ``workset.registry`` row spells it — never a nested

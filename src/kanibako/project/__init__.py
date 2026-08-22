@@ -4,7 +4,7 @@ Who exists and what they are called: the authoritative stores of workset and box
 identity, and the drop-in import that reconciles them against on-disk truth.
 
 * ``workset``          — the ``Workset``/``WorksetProject`` model and its
-  persistence (``<root>/settings.yaml``), plus the workset CRUD API.
+  persistence (``<root>/workset.yaml``), plus the workset CRUD API.
 * ``workset_registry`` — the per-workset ``registry.yaml`` ``boxes:`` membership,
   the SOLE authoritative store of box names (including PRIMARY).
 * ``registry_store``   — the global ``registry.yaml`` (``worksets``/``standalone``

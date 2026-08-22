@@ -420,7 +420,7 @@ def _run_system_config(args: argparse.Namespace) -> int:
 
         # ⚑ THE PER-NODE BIND ROUTING BLOCK IS GONE (R-9). A system-scope
         # ``agent.<node>.bindings.{ro,rw}.<name>`` set used to be re-aimed at the
-        # node's OWN ``agents/<node>/settings.yaml`` (mkdir included) and handed the
+        # node's OWN ``agents/<node>/agent.yaml`` (mkdir included) and handed the
         # detect-free descriptor floor registry so the must-exist gate would pass.
         # That write route is retired: the engine refuses the key BY NAME in its
         # preamble, before any destination is resolved. Removing the block here is

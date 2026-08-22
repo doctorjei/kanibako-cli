@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any, NamedTuple
 
 from kanibako.project import registry_store, workset_registry
-from kanibako.settings.config import BOX_META_FILE, KanibakoConfig
+from kanibako.settings.config import WORKSET_META_FILE, KanibakoConfig
 from kanibako.settings.config_io import load_doc
 from kanibako.settings.paths import (
     STANDALONE_META_DIR,
@@ -39,7 +39,7 @@ def standalone_settings_present(project_dir: Path) -> bool:
     field is going away.  Highest-precedence detection signal; see the llm-doc.
     """
     return (project_dir / STANDALONE_META_DIR).is_dir() and (
-        project_dir / BOX_META_FILE
+        project_dir / WORKSET_META_FILE
     ).is_file()
 
 
@@ -81,7 +81,7 @@ def _find_owning_box(
     """
     target = project_dir.resolve()
     for workset_name, root, mode in _enumerate_worksets(std):
-        settings: Any = load_doc(root / "settings.yaml")
+        settings: Any = load_doc(root / "workset.yaml")
         registry_path = workset_registry.resolve_workset_registry_path(
             root, settings
         )
@@ -123,7 +123,7 @@ def find_connected_external_box(
         std.registry, "worksets"
     ).items():
         root = Path(root_str)
-        settings: Any = load_doc(root / "settings.yaml")
+        settings: Any = load_doc(root / "workset.yaml")
         registry_path = workset_registry.resolve_workset_registry_path(
             root, settings
         )
@@ -212,13 +212,13 @@ def resolve_box_identity(
         )
         # LIVE name (P6d) ``<stored workset.kuid>_<current leaf>``, so a MOVED
         # standalone keeps its identity.  The kuid comes from the box's own
-        # settings.yaml (the workset tier for a standalone); a pre-kuid box reads
+        # workset.yaml (the workset tier for a standalone); a pre-kuid box reads
         # back SENTINEL and falls back to the ``standalone:`` KEY, else the leaf.
         from kanibako import kuid
         from kanibako.launch import box_identity
         from kanibako.settings.config import read_workset_kuid
 
-        stored_kuid = read_workset_kuid(box_root / BOX_META_FILE)
+        stored_kuid = read_workset_kuid(box_root / WORKSET_META_FILE)
         if stored_kuid != kuid.SENTINEL:
             name = box_identity.compose_standalone_name(stored_kuid, box_root)
         elif registered_name is not None:

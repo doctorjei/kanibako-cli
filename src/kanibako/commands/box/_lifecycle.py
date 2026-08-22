@@ -827,7 +827,7 @@ def _remove_old_metadata(
             # ⚑ Escalating removal: the root-owned canon skeleton makes a bare rmtree
             # fail with EACCES and leave the old box behind (J-7).
             remove_box_tree(box_data)
-        settings = root / BOX_META_FILE
+        settings = root / WORKSET_META_FILE
         if settings.is_file():
             settings.unlink()
         vault = root / "vault"
@@ -965,7 +965,8 @@ _STANDALONE_ROOT_ARTIFACTS = frozenset({
     STANDALONE_META_DIR,   # box_data/
     "workspace",            # the subdir we are populating
     "vault",                # vault/{ro,rw}
-    "settings.yaml",        # the box meta (drift I — at the root)
+    "workset.yaml",         # the workset meta (drift I — at the root)
+    "box.yaml",             # the box meta (drift I — at the root)
     ".kanibako",            # legacy marker dir
     "kanibako",             # legacy marker dir
     ".kanibako.lock",       # lock file
@@ -1040,7 +1041,7 @@ def _to_standalone(
 ) -> ProjectState:
     """Convert/relocate the project so it becomes standalone (in-tree metadata)."""
     from kanibako.project import registry_store
-    from kanibako.settings.config import BOX_META_FILE
+    from kanibako.settings.config import BOX_META_FILE, WORKSET_META_FILE
     from kanibako.settings.paths import establish_standalone
 
     # ⚑ ORDER: consolidate the source's top-level files into ``workspace/`` FIRST, THEN lay
@@ -1057,14 +1058,14 @@ def _to_standalone(
         box_metadata_dir(state.mode, state.metadata_path), state.shell_path,
         dst_metadata, shell_into_metadata=True, home_leaf="home", unwind=unwind,
     )
-    # ⚑⚑ DO NOT DELETE this file as an "orphan": the settings.yaml landing in ``box_data/``
+    # ⚑⚑ DO NOT DELETE this file as an "orphan": the box.yaml landing in ``box_data/``
     # IS the destination's BOX TIER (spec §2c — @meta.box.path for standalone IS
     # ``box_data/``). Deleting it discards the box's settings; detection reads the ROOT
     # file (§5), which ``establish_standalone`` writes below.
     _deliver_carried_box_settings(state, dst_metadata / BOX_META_FILE)
 
     # Establish identity + meta + registration through the shared core; it writes
-    # <root>/settings.yaml (mode=standalone) and registers the box.
+    # <root>/workset.yaml (mode=standalone) and registers the box.
     box_name, dst_shell, vault_ro, vault_rw = establish_standalone(
         std, root,
         enable_vault=state.enable_vault,
@@ -1200,13 +1201,13 @@ def _to_workset(
         recorded_workspace = (target_ws.workspaces_dir / new_name)
     else:
         # ⚑ EXTERNAL: read the workspace back from the per-workset ``boxes:`` registry
-        # add_project just wrote — under sparse create (P8b) the box's settings.yaml no
+        # add_project just wrote — under sparse create (P8b) the box's box.yaml no
         # longer self-describes, so the D10 connection record is the authority.
         from kanibako.project import workset_registry
         from kanibako.settings.config_io import load_doc
 
         registry_path = workset_registry.resolve_workset_registry_path(
-            target_ws.root, load_doc(target_ws.root / "settings.yaml"),
+            target_ws.root, load_doc(target_ws.root / "workset.yaml"),
         )
         recorded_str = workset_registry.load_workset_boxes(registry_path).get(
             new_name

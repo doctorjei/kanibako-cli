@@ -356,7 +356,7 @@ def _read_dest(
     ⚑⚑ FOR THE BARE AGENT-SCOPE TERMINAL CATEGORY KEYS THE ROUTE IS WRONG,
     MEASURABLY — the half QA′ did not touch, and BOARDED, not fixed.  It answers the
     NOUN's settings file, while the agent tier is assembled from the FLAT tables
-    under ``self:`` in ``agents/<node>/settings.yaml``, so a hand-authored
+    under ``self:`` in ``agents/<node>/agent.yaml``, so a hand-authored
     ``self.caches`` reads back "(not set)".  ⚑ Until the repoint lands, NO message
     may promise that ``config get <agent terminal key>`` works (see
     ``config_keys.agent_node_bind_retired_error``).  ⚑ S3 did NOT close this — it

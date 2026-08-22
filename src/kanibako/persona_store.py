@@ -4,12 +4,12 @@ kanibako CONSUMES the persona-grata store at
 ``$XDG_CONFIG_HOME/personas/<pid>/<hid>/``: a ``<pid>+<hid>`` agent ref whose
 store entry exists is a *persona agent*, and its endpoint/model/token-pointer/env
 are re-read from the store at EVERY launch as a LIVE cascade level — never
-copied into any settings file, so a launch leaves ``agents/<node>/settings.yaml``
+copied into any settings file, so a launch leaves ``agents/<node>/agent.yaml``
 byte-identical.  Store PRESENCE decides persona-vs-plain, so everything here
 returns a clean "not a persona" ``None`` on a miss.
 
 ⚑ There is deliberately NO import/sync half any more.  The old copy-into-
-``agents/<node>/settings.yaml`` route (``build_candidate`` /
+``agents/<node>/agent.yaml`` route (``build_candidate`` /
 ``persist_candidate`` / ``import_persona_entry``) is GONE: that file holds
 USER-INTENT values only, and a persisted copy of a live source can only go
 stale.  Do not reintroduce one.
