@@ -86,6 +86,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   box. An in-tree member's row now records `workspaces/<name>`; an external connect records the
   external directory, unchanged.
 
+- **A key the launch path writes on every resolve was not recognised as declared.**
+  `meta.box.agent.*` is the read-only mirror of the effective agent subtree, and it carries an
+  `auth.*` sub-namespace the agent scope itself does not have — `meta.box.agent.auth.share_support`
+  is its own declared row, mirroring the plugin-set capability on the `meta.agent` tier. Key
+  validation had no branch for it, so it fell through to the agent-tail rule, which judged it
+  against the wrong declared set. An undeclared leaf under that namespace now refuses by name and
+  lists the leaves that are declared, and the declared one is accepted where the launch path
+  materialises it.
+
 - **A `box: agent:` table left in a settings file is now refused by name, instead of being
   silently discarded.** `box.agent` was retired in 1.8.0 in two different senses — as a scalar it
   was the old agent-*selection* key (`box.crab` → `box.agent` → `box.agent_name`), and as a table
