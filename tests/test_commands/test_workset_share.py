@@ -397,12 +397,18 @@ class TestShareList:
         self, config_file, tmp_home, workset, capsys
     ):
         """``_workset_raw_shares`` goes through the real file reader, so a bad
-        arity raises. A listing command must report it, not traceback."""
+        arity raises. A listing command must report it, not traceback.
+
+        ⚑ THREE elements is the malformed shape: the dest-keyed entry takes
+        ``[src[, options]]``, so a ONE-element list is perfectly legal.  (Until the
+        identity moved to registry.yaml this test passed for the wrong reason — the
+        rewritten settings.yaml dropped the identity, so ``load_workset`` refused
+        before the reader was ever reached.)"""
         from kanibako.settings.config_io import dump_doc
 
         dump_doc(
             workset.root / "settings.yaml",
-            {"workset": {"bindings": {"rw": {"/g": ["only-one-element"]}}}},
+            {"workset": {"bindings": {"rw": {"/g": ["src", "opts", "extra"]}}}},
         )
         rc = run_share_list(_list_args())
         assert rc == 1
