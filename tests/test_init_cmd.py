@@ -490,7 +490,7 @@ def _standalone_tiers(config_file, project_dir):
 
     Sourced from ``box_workset_settings_paths`` — the SAME single source production
     uses (M-8) — rather than hard-coded, so a test can never assert a location the
-    code no longer writes.  (Before P2 these tests spelled ``<root>/settings.yaml``
+    code no longer writes.  (Before P2 these tests spelled ``<root>/workset.yaml``
     directly; that IS the workset tier now, and the box keys live one level down in
     ``box_data/``.)
 
@@ -514,8 +514,8 @@ def _standalone_tiers(config_file, project_dir):
     )
     box_tier, ws_tier = box_workset_settings_paths(proj)
     root = project_dir.resolve()
-    assert box_tier == root / "box_data" / "settings.yaml", box_tier
-    assert ws_tier == root / "settings.yaml", ws_tier
+    assert box_tier == root / "box_data" / "box.yaml", box_tier
+    assert ws_tier == root / "workset.yaml", ws_tier
     return box_tier, ws_tier
 
 
@@ -584,7 +584,7 @@ class TestCreatePrivate:
     """`create --private` closes the OAuth-token-leak-at-create.
 
     A private box persists ``box.auth.global_enabled=false`` +
-    ``box.auth.workset_enabled=false`` to the box settings.yaml BEFORE the home
+    ``box.auth.workset_enabled=false`` to the box.yaml BEFORE the home
     seed runs, so ``seed_new_box``'s ``resolve_auth_source`` resolves tier
     ``"box"`` (source_root None) and the host OAuth credential is never copied
     into the box.
@@ -719,7 +719,7 @@ class TestCreatePrivate:
         self, config_file, credentials_dir, project_dir, capsys,
     ):
         """--private closes the leak in DEFAULT (primary/named) mode too — not
-        just standalone.  The box's settings.yaml lives under the data dir here,
+        just standalone.  The box's box.yaml lives under the data dir here,
         so assert via the seed's resolved auth (tier "box", no forward)."""
         from unittest.mock import patch
         parser = build_parser()

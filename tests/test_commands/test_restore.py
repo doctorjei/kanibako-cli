@@ -448,7 +448,7 @@ class TestExtractExtended:
         from kanibako.commands.restore import run as extract_run
 
         # Create a standalone project and archive it (the archive carries the
-        # standalone settings.yaml, so extract preserves standalone mode).
+        # standalone workset.yaml, so extract preserves standalone mode).
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = str(tmp_home / "project")
@@ -467,7 +467,7 @@ class TestExtractExtended:
 
         # Remove the restorable payload but KEEP the standalone marker, so the
         # project still resolves as standalone (extract routes its destination
-        # by detection; a real `settings.yaml` with mode=standalone is required
+        # by detection; a real `workset.yaml` with mode=standalone is required
         # now that bare `.kanibako` dirs are no longer trusted as markers).
         (proj.metadata_path / "data.txt").unlink()
 

@@ -305,7 +305,7 @@ def test_apply_splits_by_level_in_order():
 def test_a_failed_pref_raises_naming_key_level_file_and_reason(tmp_path):
     """spec §2h — 'We don't want to just moving on with bad
     settings.' INVERT: warn-and-continue -> reddens."""
-    src = tmp_path / "settings.yaml"
+    src = tmp_path / "box.yaml"
     with pytest.raises(SettingsError) as exc:
         apply_prefs(
             [req("agent.zippity.wibble", level="box", source=src)],
@@ -653,7 +653,7 @@ class TestSuppressionEndToEnd:
         )
 
     def test_the_declared_mount_is_present_without_a_request(self, tmp_path):
-        box = tmp_path / "settings.yaml"
+        box = tmp_path / "box.yaml"
         box.write_text("box: {}\n")
         _snap, entries = self._entries(tmp_path, box)
         assert any(e.key == self.MOUNT_KEY for e in entries)
@@ -665,7 +665,7 @@ class TestSuppressionEndToEnd:
             set_config_value,
         )
 
-        box = tmp_path / "settings.yaml"
+        box = tmp_path / "box.yaml"
         # Exactly what the CLI does for `box set --null <key>`.
         action, key, value = parse_config_arg(
             "pref.agent.claude.common", set_null=True,
@@ -694,7 +694,7 @@ class TestSuppressionEndToEnd:
         from kanibako.settings.config_interface import set_config_value
         from kanibako.settings.config_keys import ConfigLevel
 
-        box = tmp_path / "settings.yaml"
+        box = tmp_path / "box.yaml"
         msg = set_config_value(
             "pref.agent.claude.common", "null",
             config_path=box, command_scope=ConfigLevel.box,

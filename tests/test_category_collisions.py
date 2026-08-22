@@ -1694,7 +1694,7 @@ class TestThePrefOriginReachesTheLIVEPATH:
     src.mkdir()
     proj = resolve_project(std, config, str(project_dir), initialize=True)
     proj.metadata_path.mkdir(parents=True, exist_ok=True)
-    (proj.metadata_path / "settings.yaml").write_text(yaml.safe_dump({
+    (proj.metadata_path / "box.yaml").write_text(yaml.safe_dump({
       "pref": {"agent": {"claude": {"common": {self.DEST: [str(src)]}}}},
     }))
 

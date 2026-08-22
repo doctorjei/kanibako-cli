@@ -308,7 +308,7 @@ def _ensure_initialized() -> None:
 
     # Create agents directory and generate default per-agent settings files.
     # Each agent's settings live INSIDE its store dir as
-    # agents/<agent>/settings.yaml (the per-agent store dir is created on
+    # agents/<agent>/agent.yaml (the per-agent store dir is created on
     # demand by ``agent_file.save``).
     from kanibako.settings.agent_config import AgentConfig, agent_settings_path
     from kanibako.settings.agent_file import save as save_agent_file

@@ -210,7 +210,7 @@ class TestResolveName:
         self, registry: Path, tmp_path: Path
     ) -> None:
         """B2 (§3.3): the cwd-context step composes through the RESOLVED
-        ``workset.workspaces`` — a repoint in the workset settings.yaml is
+        ``workset.workspaces`` — a repoint in the workset workset.yaml is
         honored, and the default dir is no longer consulted for the name."""
         from kanibako.settings.config_io import dump_doc
 
@@ -218,7 +218,7 @@ class TestResolveName:
         (ws_root / "pods" / "api").mkdir(parents=True)
         # A decoy under the DEFAULT leaf proves the repoint is what resolves.
         (ws_root / "workspaces" / "api").mkdir(parents=True)
-        dump_doc(ws_root / "settings.yaml", {"workset": {"workspaces": "pods"}})
+        dump_doc(ws_root / "workset.yaml", {"workset": {"workspaces": "pods"}})
         register_name(registry, "myws", str(ws_root), section="worksets")
 
         path, kind = resolve_name(registry, "api", cwd=ws_root)
@@ -315,11 +315,11 @@ class TestResolveName:
         self._register_ws_member(registry, tmp_path, "ws-b", "dup")
         # Absolute repoint of ws-a AFTER the member was registered in-root.
         ws_root = tmp_path / "ws-a"
-        doc = load_doc(ws_root / "settings.yaml") if (
-            ws_root / "settings.yaml"
+        doc = load_doc(ws_root / "workset.yaml") if (
+            ws_root / "workset.yaml"
         ).is_file() else {}
         doc.setdefault("workset", {})["workspaces"] = str(tmp_path / "pods-a")
-        dump_doc(ws_root / "settings.yaml", doc)
+        dump_doc(ws_root / "workset.yaml", doc)
 
         path, kind = resolve_name(registry, "dup", cwd=ws_root)
         assert kind == "project"
@@ -342,7 +342,7 @@ class TestResolveName:
         ws_root = tmp_path / "ws-a"
         ws_root.mkdir()
         dump_doc(
-            ws_root / "settings.yaml",
+            ws_root / "workset.yaml",
             {"workset": {"workspaces": str(external_pods)}},
         )
         register_name(registry, "ws-a", str(ws_root), section="worksets")
@@ -378,7 +378,7 @@ class TestResolveQualifiedName:
 
         ws_root = tmp_path / "ws"
         (ws_root / "pods" / "api").mkdir(parents=True)
-        dump_doc(ws_root / "settings.yaml", {"workset": {"workspaces": "pods"}})
+        dump_doc(ws_root / "workset.yaml", {"workset": {"workspaces": "pods"}})
         register_name(registry, "myws", str(ws_root), section="worksets")
 
         path, ws_name = resolve_qualified_name(registry, "myws/api")
@@ -403,7 +403,7 @@ class TestResolveQualifiedName:
         reg_path = workset_registry.resolve_workset_registry_path(ws_root, None)
         workset_registry.register_workset_box(reg_path, "api", member)
         dump_doc(
-            ws_root / "settings.yaml",
+            ws_root / "workset.yaml",
             {"workset": {"workspaces": str(tmp_path / "elsewhere")}},
         )
 
@@ -588,7 +588,7 @@ class TestLocalNameAssignment:
         proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
 
         assert proj.name == "project"
-        assert "project" not in load_doc(proj.metadata_path / "settings.yaml")
+        assert "project" not in load_doc(proj.metadata_path / "box.yaml")
         assert load_primary_boxes(std.primary_workset).get("project") == project_dir
 
     def test_name_registered_in_membership(self, config_file, tmp_home, credentials_dir):
@@ -1101,14 +1101,14 @@ class TestBoxDeregisterPurge:
 class TestStandaloneDeregisterPurge:
     def _make_standalone(self, config_file, tmp_home):
         from kanibako.project import registry_store
-        from kanibako.settings.config import BOX_META_FILE, load_config
+        from kanibako.settings.config import WORKSET_META_FILE, load_config
         from kanibako.settings.paths import STANDALONE_META_DIR, load_std_paths
 
         config = load_config(config_file)
         std = load_std_paths(config)
         root = tmp_home / "sa_root"
         (root / STANDALONE_META_DIR).mkdir(parents=True)
-        (root / BOX_META_FILE).write_text("box:\n  image: ghcr.io/x:1\n")
+        (root / WORKSET_META_FILE).write_text("box:\n  image: ghcr.io/x:1\n")
         (root / "vault").mkdir()
         (root / "keep.txt").write_text("workspace file")
         registry_store.register_standalone(std.registry, "k_box", root)
@@ -1117,7 +1117,7 @@ class TestStandaloneDeregisterPurge:
     def test_standalone_deregister_then_purge_by_name(self, config_file, tmp_home, credentials_dir):
         from kanibako.project import registry_store
         from kanibako.commands.box._parser import run_rm
-        from kanibako.settings.config import BOX_META_FILE
+        from kanibako.settings.config import WORKSET_META_FILE
         from kanibako.settings.paths import STANDALONE_META_DIR
 
         std, root = self._make_standalone(config_file, tmp_home)
@@ -1136,7 +1136,7 @@ class TestStandaloneDeregisterPurge:
         rc = run_rm(argparse.Namespace(target="k_box", purge=True, force=True))
         assert rc == 0
         assert not (root / STANDALONE_META_DIR).is_dir()
-        assert not (root / BOX_META_FILE).exists()
+        assert not (root / WORKSET_META_FILE).exists()
         assert not (root / "vault").exists()
         assert root.is_dir()
         assert (root / "keep.txt").read_text() == "workspace file"

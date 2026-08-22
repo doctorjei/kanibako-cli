@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from kanibako.settings.config import (
+    BOX_META_FILE,
     KanibakoConfig,
     _flatten_toml,
     config_file_path,
@@ -446,7 +447,7 @@ class TestSetupCompatGate:
 class TestMergedConfig:
     def test_project_overrides_global(self, tmp_path):
         global_path = tmp_path / "global.yaml"
-        project_path = tmp_path / "settings.yaml"
+        project_path = tmp_path / BOX_META_FILE
 
         write_global_config(global_path)
         write_project_config(project_path, "my-image:v2")
@@ -456,7 +457,7 @@ class TestMergedConfig:
 
     def test_cli_overrides_all(self, tmp_path):
         global_path = tmp_path / "global.yaml"
-        project_path = tmp_path / "settings.yaml"
+        project_path = tmp_path / BOX_META_FILE
 
         write_global_config(global_path)
         write_project_config(project_path, "my-image:v2")
@@ -471,7 +472,7 @@ class TestMergedConfig:
     def test_workset_path_none_is_byte_identical(self, tmp_path):
         """Omitting workset_path must reproduce the pre-P2.2 global+project merge."""
         global_path = tmp_path / "global.yaml"
-        project_path = tmp_path / "settings.yaml"
+        project_path = tmp_path / BOX_META_FILE
 
         write_global_config(global_path)
         write_project_config(project_path, "my-image:v2")
@@ -494,7 +495,7 @@ class TestMergedConfig:
     def test_project_overrides_workset(self, tmp_path):
         global_path = tmp_path / "global.yaml"
         workset_path = tmp_path / "ws-config.yaml"
-        project_path = tmp_path / "settings.yaml"
+        project_path = tmp_path / BOX_META_FILE
 
         write_global_config(global_path)
         write_project_config(workset_path, "ws-image:v1")
@@ -522,7 +523,7 @@ class TestMergedConfig:
     def test_default_no_op_when_no_workset_config(self, tmp_path):
         """A default-mode project with no workset config.yaml merges exactly as before."""
         global_path = tmp_path / "global.yaml"
-        project_path = tmp_path / "settings.yaml"
+        project_path = tmp_path / BOX_META_FILE
         missing_workset = tmp_path / "no-such-config.yaml"
 
         write_global_config(global_path)
@@ -562,7 +563,7 @@ class TestScalarOverlayPrecedence:
         global_path.write_text("box:\n  image: user:2\n  shell: bash\n")
         workset_path = tmp_path / "ws-config.yaml"
         workset_path.write_text("box:\n  image: ws:3\n")
-        project_path = tmp_path / "settings.yaml"
+        project_path = tmp_path / BOX_META_FILE
         project_path.write_text("box:\n  image: proj:4\n")
         merged = load_merged_config(
             global_path, project_path, workset_path=workset_path
@@ -596,7 +597,7 @@ class TestScalarOverlayPrecedence:
         default_img = "ghcr.io/doctorjei/kanibako-oci:latest"
         global_path = tmp_path / "global.yaml"
         global_path.write_text("box:\n  image: img:custom\n")
-        project_path = tmp_path / "settings.yaml"
+        project_path = tmp_path / BOX_META_FILE
         # Explicitly set the built-in default — must win.
         project_path.write_text(f"box:\n  image: {default_img}\n")
         merged = load_merged_config(global_path, project_path)
@@ -607,7 +608,7 @@ class TestScalarOverlayPrecedence:
         default, discarding a lower layer's non-default value."""
         global_path = tmp_path / "global.yaml"
         global_path.write_text("box:\n  image: img:custom\n")
-        project_path = tmp_path / "settings.yaml"
+        project_path = tmp_path / BOX_META_FILE
         project_path.write_text("box:\n  image: null\n")
         merged = load_merged_config(global_path, project_path)
         assert merged.box_image == "ghcr.io/doctorjei/kanibako-oci:latest"
@@ -617,7 +618,7 @@ class TestScalarOverlayPrecedence:
         default, same as an explicit ``null``."""
         global_path = tmp_path / "global.yaml"
         global_path.write_text("box:\n  image: img:custom\n")
-        project_path = tmp_path / "settings.yaml"
+        project_path = tmp_path / BOX_META_FILE
         project_path.write_text("box:\n  image:\n")
         merged = load_merged_config(global_path, project_path)
         assert merged.box_image == "ghcr.io/doctorjei/kanibako-oci:latest"
@@ -631,7 +632,7 @@ class TestScalarOverlayPrecedence:
         SHAPE under test is the presence-based scalar overlay, not that key.)"""
         global_path = tmp_path / "global.yaml"
         global_path.write_text('box:\n  shell: foo\n')
-        project_path = tmp_path / "settings.yaml"
+        project_path = tmp_path / BOX_META_FILE
         # Quoted empty string is a real value, not null.
         project_path.write_text('box:\n  shell: ""\n')
         merged = load_merged_config(global_path, project_path)
@@ -670,20 +671,20 @@ class TestFlattenToml:
 
 class TestWriteProjectConfig:
     def test_creates_new(self, tmp_path):
-        path = tmp_path / "settings.yaml"
+        path = tmp_path / BOX_META_FILE
         write_project_config(path, "new-image:latest")
         cfg = load_config(path)
         assert cfg.box_image == "new-image:latest"
 
     def test_updates_existing(self, tmp_path):
-        path = tmp_path / "settings.yaml"
+        path = tmp_path / BOX_META_FILE
         write_project_config(path, "first:latest")
         write_project_config(path, "second:latest")
         cfg = load_config(path)
         assert cfg.box_image == "second:latest"
 
     def test_update_existing_image(self, tmp_path):
-        p = tmp_path / "settings.yaml"
+        p = tmp_path / BOX_META_FILE
         write_project_config(p, "img:v1")
         assert "image: img:v1" in p.read_text()
         write_project_config(p, "img:v2")
@@ -692,14 +693,14 @@ class TestWriteProjectConfig:
         assert "img:v1" not in text
 
     def test_add_image_to_container_section(self, tmp_path):
-        p = tmp_path / "settings.yaml"
+        p = tmp_path / BOX_META_FILE
         p.write_text("box:\n  # empty section\n")
         write_project_config(p, "new:img")
         text = p.read_text()
         assert "image: new:img" in text
 
     def test_create_new_file(self, tmp_path):
-        p = tmp_path / "sub" / "settings.yaml"
+        p = tmp_path / "sub" / BOX_META_FILE
         write_project_config(p, "fresh:v1")
         assert p.exists()
         assert "box:" in p.read_text()
@@ -717,7 +718,7 @@ class TestBoxEnableVault:
     def test_disabled_writes_box_enable_vault_false(self, tmp_path):
         """(a) enable_vault=False → box:{enable_vault: False} (a real bool)."""
         from kanibako.settings.config import load_doc
-        p = tmp_path / "settings.yaml"
+        p = tmp_path / BOX_META_FILE
         write_box_enable_vault(p, enable_vault=False)
         data = load_doc(p)
         assert data["box"]["enable_vault"] is False
@@ -728,7 +729,7 @@ class TestBoxEnableVault:
     def test_default_true_on_fresh_path_writes_nothing(self, tmp_path):
         """(b) default True on a fresh path writes NOTHING — no file, no empty
         ``box:`` table materialized."""
-        p = tmp_path / "settings.yaml"
+        p = tmp_path / BOX_META_FILE
         write_box_enable_vault(p)  # default True
         assert not p.exists()
         # The absent file reads back as the default True.
@@ -737,7 +738,7 @@ class TestBoxEnableVault:
     def test_default_true_drops_stale_override(self, tmp_path):
         """(c) default True with a stale box.enable_vault present → drops it."""
         from kanibako.settings.config import load_doc
-        p = tmp_path / "settings.yaml"
+        p = tmp_path / BOX_META_FILE
         p.write_text("box:\n  enable_vault: false\n")
         write_box_enable_vault(p)  # default True
         data = load_doc(p)
@@ -747,7 +748,7 @@ class TestBoxEnableVault:
     def test_disabled_merges_beside_existing_box_image(self, tmp_path):
         """(d) disabled merges beside an existing box.image (preserves it)."""
         from kanibako.settings.config import load_doc
-        p = tmp_path / "settings.yaml"
+        p = tmp_path / BOX_META_FILE
         p.write_text('box:\n  image: "custom:v1"\n')
         write_box_enable_vault(p, enable_vault=False)
         data = load_doc(p)
@@ -777,15 +778,15 @@ class TestConfigFilePath:
 
 
 class TestTargetSettings:
-    """Tests for target setting override storage in settings.yaml."""
+    """Tests for target setting override storage in box.yaml."""
 
     def _write_base_toml(self, path):
-        """Write a minimal settings.yaml for testing."""
+        """Write a minimal box.yaml for testing."""
         write_project_config(path, "base:image")
 
     def test_round_trip(self, tmp_path):
         """Write and read back agent-keyed target settings."""
-        p = tmp_path / "settings.yaml"
+        p = tmp_path / BOX_META_FILE
         self._write_base_toml(p)
         write_agent_setting(p, "model", "sonnet", "claude")
         write_agent_setting(p, "access", "permissive", "claude")
@@ -794,8 +795,8 @@ class TestTargetSettings:
         assert settings == {"model": "sonnet", "access": "permissive"}
 
     def test_backward_compat_no_section(self, tmp_path):
-        """settings.yaml without a [agent] section returns empty dict."""
-        p = tmp_path / "settings.yaml"
+        """box.yaml without a [agent] section returns empty dict."""
+        p = tmp_path / BOX_META_FILE
         self._write_base_toml(p)
 
         settings = read_agent_settings(p, "claude")
@@ -809,7 +810,7 @@ class TestTargetSettings:
         """
         from kanibako.settings.config import dump_doc, load_doc
 
-        p = tmp_path / "settings.yaml"
+        p = tmp_path / BOX_META_FILE
         self._write_base_toml(p)
         data = load_doc(p)
         data["agent"] = {"model": "sonnet"}  # flat scalar — old shape
@@ -819,7 +820,7 @@ class TestTargetSettings:
 
     def test_default_tier_applies_to_any_agent(self, tmp_path):
         """agent.default values apply to every agent unless overridden."""
-        p = tmp_path / "settings.yaml"
+        p = tmp_path / BOX_META_FILE
         self._write_base_toml(p)
         write_agent_setting(p, "model", "sonnet", "default")
 
@@ -828,7 +829,7 @@ class TestTargetSettings:
 
     def test_agent_specific_wins_over_default(self, tmp_path):
         """agent.<agent> overrides agent.default within one file."""
-        p = tmp_path / "settings.yaml"
+        p = tmp_path / BOX_META_FILE
         self._write_base_toml(p)
         write_agent_setting(p, "model", "sonnet", "default")
         write_agent_setting(p, "model", "opus", "claude")
@@ -839,7 +840,7 @@ class TestTargetSettings:
 
     def test_no_bleed_across_agents(self, tmp_path):
         """An override set for one agent does NOT bleed onto another (B3 bug)."""
-        p = tmp_path / "settings.yaml"
+        p = tmp_path / BOX_META_FILE
         self._write_base_toml(p)
         write_agent_setting(p, "model", "sonnet", "claude")
 
@@ -848,7 +849,7 @@ class TestTargetSettings:
 
     def test_preserves_other_sections(self, tmp_path):
         """Writing target settings doesn't clobber other sections."""
-        p = tmp_path / "settings.yaml"
+        p = tmp_path / BOX_META_FILE
         self._write_base_toml(p)
         write_agent_setting(p, "model", "haiku", "claude")
 
@@ -868,7 +869,7 @@ class TestPersistCreationFlags:
         from kanibako.settings.config import persist_creation_flags
         from kanibako.settings.config_io import load_doc
 
-        p = tmp_path / "settings.yaml"
+        p = tmp_path / BOX_META_FILE
         persist_creation_flags(p, materializing=True, image="custom:v1")
         assert load_doc(p)["box"]["image"] == "custom:v1"
 
@@ -876,7 +877,7 @@ class TestPersistCreationFlags:
         from kanibako.settings.config import persist_creation_flags
         from kanibako.settings.config_io import load_doc
 
-        p = tmp_path / "settings.yaml"
+        p = tmp_path / BOX_META_FILE
         persist_creation_flags(p, materializing=True, share_images=True)
         assert load_doc(p)["box"]["share_images"] is True
 
@@ -885,7 +886,7 @@ class TestPersistCreationFlags:
         flag is STRICTLY EPHEMERAL — the gate writes nothing at all."""
         from kanibako.settings.config import persist_creation_flags
 
-        p = tmp_path / "settings.yaml"
+        p = tmp_path / BOX_META_FILE
         persist_creation_flags(
             p, materializing=False, image="custom:v1", share_images=True,
         )
@@ -897,7 +898,7 @@ class TestPersistCreationFlags:
         cascade.  ``""`` for image is absent, not a value (absent ≠ '')."""
         from kanibako.settings.config import persist_creation_flags
 
-        p = tmp_path / "settings.yaml"
+        p = tmp_path / BOX_META_FILE
         persist_creation_flags(p, materializing=True)
         persist_creation_flags(p, materializing=True, image="", share_images=None)
         assert not p.exists()
@@ -906,7 +907,7 @@ class TestPersistCreationFlags:
         from kanibako.settings.config import persist_creation_flags
         from kanibako.settings.config_io import dump_doc, load_doc
 
-        p = tmp_path / "settings.yaml"
+        p = tmp_path / BOX_META_FILE
         dump_doc(p, {"box": {"enable_vault": False}, "agent": {"claude": {"model": "opus"}}})
         persist_creation_flags(p, materializing=True, image="custom:v1")
         doc = load_doc(p)
@@ -940,7 +941,7 @@ class TestMergedConfigKeyspaceResolve:
         gp = self._global(tmp_path, monkeypatch)
         ws = tmp_path / "wconfig.yaml"
         ws.write_text("box:\n  image: ws-img:2\n")
-        bt = tmp_path / "settings.yaml"
+        bt = tmp_path / BOX_META_FILE
         bt.write_text("box:\n  image: box-img:3\n  shell: zsh\n")
         assert load_merged_config(gp, None, workset_path=ws).box_image == "ws-img:2"
         merged = load_merged_config(gp, bt, workset_path=ws)
@@ -956,13 +957,13 @@ class TestMergedConfigKeyspaceResolve:
         ssp.write_text("box:\n  image: sys-img:4\n")
         assert load_merged_config(gp, None).box_image == "sys-img:4"
         # ...but every settings-file tier above it still wins.
-        bt = tmp_path / "settings.yaml"
+        bt = tmp_path / BOX_META_FILE
         bt.write_text("box:\n  image: box-img:3\n")
         assert load_merged_config(gp, bt).box_image == "box-img:3"
 
     def test_cli_level_outranks_every_file(self, tmp_path, monkeypatch):
         gp = self._global(tmp_path, monkeypatch)
-        bt = tmp_path / "settings.yaml"
+        bt = tmp_path / BOX_META_FILE
         bt.write_text("box:\n  image: box-img:3\n")
         merged = load_merged_config(
             gp, bt,
@@ -973,7 +974,7 @@ class TestMergedConfigKeyspaceResolve:
 
     def test_share_images_resolves_as_a_bool_from_files(self, tmp_path, monkeypatch):
         gp = self._global(tmp_path, monkeypatch)
-        bt = tmp_path / "settings.yaml"
+        bt = tmp_path / BOX_META_FILE
         bt.write_text("box:\n  share_images: true\n")
         assert load_merged_config(gp, bt).box_share_images is True
 
@@ -1005,7 +1006,7 @@ class TestMalformedSettingsFileIsNamed:
         from kanibako.errors import ConfigError, KanibakoError
         from kanibako.settings.config_io import load_doc
 
-        bad = tmp_path / "settings.yaml"
+        bad = tmp_path / BOX_META_FILE
         bad.write_text(self._CORRUPT)
 
         with pytest.raises(ConfigError) as exc:
@@ -1020,7 +1021,7 @@ class TestMalformedSettingsFileIsNamed:
         """The guard is a normalization, not a new refusal."""
         from kanibako.settings.config_io import load_doc
 
-        good = tmp_path / "settings.yaml"
+        good = tmp_path / BOX_META_FILE
         good.write_text("box:\n  image: ok:1\n")
         assert load_doc(good) == {"box": {"image": "ok:1"}}
 

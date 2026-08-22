@@ -933,12 +933,12 @@ class TestBoxDuplicateCrossMode:
         assert rc == 0
 
         # Destination should have standalone layout: box_data/ marker dir holds
-        # session data; settings.yaml at the ROOT (drift I); the workspace files
+        # session data; workset.yaml at the ROOT (drift I); the workspace files
         # land in the workspace/ subdir (drift H).
         assert (dst_dir / "box_data").is_dir()
         assert (dst_dir / "box_data" / "marker.txt").read_text() == "ac-data"
-        assert (dst_dir / "settings.yaml").is_file()
-        assert not (dst_dir / "box_data" / "settings.yaml").exists()
+        assert (dst_dir / "workset.yaml").is_file()
+        assert not (dst_dir / "box_data" / "box.yaml").exists()
         assert (dst_dir / "workspace" / "code.py").read_text() == "print('hello')"
         # No breadcrumb in standalone.
         assert not (dst_dir / "box_data" / "project-path.txt").exists()
@@ -1301,7 +1301,7 @@ class TestBoxDuplicateCrossMode:
         ``<kuid>_<leaf>`` name distinct from the source (which is unregistered
         as a standalone, since primary boxes use ``names.yaml``)."""
         from kanibako.commands.box import run_duplicate
-        from kanibako.settings.config import BOX_META_FILE
+        from kanibako.settings.config import WORKSET_META_FILE
         from kanibako.settings.config_io import load_doc
         from kanibako.settings.paths import BoxMode, detect_project_mode
         from kanibako.project.registry_store import load_standalone
@@ -1326,13 +1326,13 @@ class TestBoxDuplicateCrossMode:
         assert result.mode == BoxMode.standalone
 
         # (2) P8b/Option A: no on-disk ``project:`` identity — the marker
-        #     settings.yaml lives at the ROOT (drift I) and is materialized by the
+        #     workset.yaml lives at the ROOT (drift I) and is materialized by the
         #     sparse kuid write; no ``project:`` section on disk.
         from kanibako.settings.config import read_workset_kuid
         from kanibako.kuid import SENTINEL
-        assert "project" not in load_doc(dst_dir / BOX_META_FILE)
-        assert (dst_dir / BOX_META_FILE).is_file()
-        assert read_workset_kuid(dst_dir / BOX_META_FILE) != SENTINEL
+        assert "project" not in load_doc(dst_dir / WORKSET_META_FILE)
+        assert (dst_dir / WORKSET_META_FILE).is_file()
+        assert read_workset_kuid(dst_dir / WORKSET_META_FILE) != SENTINEL
 
         # (3) Registered in registry.standalone keyed by a fresh <kuid>_<leaf>
         #     name → dst root (NOT the source's name).
@@ -1394,7 +1394,7 @@ def _connected_index(std):
     ).items():
         root = Path(root_str)
         registry_path = workset_registry.resolve_workset_registry_path(
-            root, load_doc(root / "settings.yaml"),
+            root, load_doc(root / "workset.yaml"),
         )
         for box_name, box_path in workset_registry.load_workset_boxes(
             registry_path
@@ -2077,7 +2077,7 @@ class TestBoxDuplicateNoToMode:
         # box established at the dst root.
         assert (dst_dir / "workspace" / "code.py").read_text() == "print('sa')"
         assert (dst_dir / "box_data").is_dir()
-        assert (dst_dir / "settings.yaml").is_file()
+        assert (dst_dir / "workset.yaml").is_file()
         sa = registry_store.load_standalone(std.registry)
         dst_names = [n for n, root in sa.items() if root == str(dst_dir.resolve())]
         assert len(dst_names) == 1
@@ -2243,7 +2243,7 @@ class TestCheckPersonaStoreForCreate:
     create behaves exactly as today for them.
 
     ⚑ The gates are UNCHANGED from when this function still IMPORTED the store
-    into ``agents/<node>/settings.yaml`` — same hard errors, same warn-only
+    into ``agents/<node>/agent.yaml`` — same hard errors, same warn-only
     probe.  What changed is that it writes NOTHING, which is why almost every
     test below also asserts the agents dir was never created.
     """
@@ -2292,7 +2292,7 @@ class TestCheckPersonaStoreForCreate:
 
     def _settings_path(self, tmp_home):
         return (
-            tmp_home / "data" / "agents" / "navigator℘codex" / "settings.yaml"
+            tmp_home / "data" / "agents" / "navigator℘codex" / "agent.yaml"
         )
 
     def test_bare_ref_falls_through(self, tmp_home, monkeypatch):
@@ -2317,7 +2317,7 @@ class TestCheckPersonaStoreForCreate:
     ):
         """⚑ NEVER-PERSIST: a conforming store is CONFIRMED, not copied.
 
-        The create used to write ``agents/<node>/settings.yaml`` here from the
+        The create used to write ``agents/<node>/agent.yaml`` here from the
         store.  It must not any more — the store is resolved live at every
         launch — but the user must still be told the store was recognised.
         """
@@ -2409,7 +2409,7 @@ class TestCheckPersonaStoreForCreate:
     ):
         """⚑ The DELETED corrupt-file arm, asserted as its absence.
 
-        This gate used to LOAD ``agents/<node>/settings.yaml`` (to build the
+        This gate used to LOAD ``agents/<node>/agent.yaml`` (to build the
         import candidate on top of it) and convert a parse failure into a create
         refusal.  Nothing reads that file here any more, so a corrupt one is
         simply irrelevant — the store check passes straight through it.  (The
@@ -2652,7 +2652,7 @@ class TestCreatePersistsAgentSelection:
         assert self._create(tmp_home, agent="navigator+codex") == 0
         settings = self._box_settings(config_file, tmp_home)
         assert load_doc(settings)["pref"]["system"]["agent"] == "navigator+codex"
-        # ⚑ NEVER-PERSIST. The node's settings.yaml exists — the one-time
+        # ⚑ NEVER-PERSIST. The node's agent.yaml exists — the one-time
         # first-use GENERATE writes it — but it must be EMPTY of persona values.
         # The store's endpoint/model/token reached this create as a live cascade
         # level; a surviving import would have copied them in here.
@@ -2660,7 +2660,7 @@ class TestCreatePersistsAgentSelection:
         from kanibako.settings.paths import load_std_paths
 
         std = load_std_paths(load_config(config_file))
-        node_doc = load_doc(std.agents / "navigator℘codex" / "settings.yaml")
+        node_doc = load_doc(std.agents / "navigator℘codex" / "agent.yaml")
         node_self = node_doc.get("self") or {}
         assert "endpoint" not in node_self
         assert "model" not in node_self
@@ -2672,7 +2672,7 @@ class TestCreatePersistsAgentSelection:
         """FAILURE-PATH RESIDUE: a create refused by the persona verdict must
         leave NO box (no meta, no ``pref.system.agent`` anywhere).  The verdict
         runs BEFORE box materialisation and before the agent-selection write —
-        pin that ordering.  ⚑ The ``agents/<node>/settings.yaml`` the store
+        pin that ordering.  ⚑ The ``agents/<node>/agent.yaml`` the store
         import used to leave behind was the ONE documented exception to "no
         residue"; the import is gone, so the exception is gone with it and the
         failure path now leaves NOTHING AT ALL."""
@@ -2707,4 +2707,4 @@ class TestCreatePersistsAgentSelection:
         # …and no persona residue either: the verdict refuses BEFORE the seed's
         # first-use generate, and nothing persists the store any more, so the
         # node dir is never created at all.
-        assert not (std.agents / "navigator℘codex" / "settings.yaml").exists()
+        assert not (std.agents / "navigator℘codex" / "agent.yaml").exists()

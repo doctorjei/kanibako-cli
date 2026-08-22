@@ -169,6 +169,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **BREAKING: each settings file is now named for the tier it belongs to.** Every cascade level used
+  the same filename, `settings.yaml`, and which tier a given file belonged to was something you had to
+  work out from where it sat. The per-tier files are now `box.yaml`, `workset.yaml` and `agent.yaml`:
+  a box's settings live at `<box dir>/box.yaml` (for a standalone project, `box_data/box.yaml`), a
+  workset's at `<workset root>/workset.yaml` (this is also the root file of a standalone project), and
+  an agent's at `<data>/agents/<agent>/agent.yaml`. **The system tier is deliberately unchanged and
+  stays at `<data>/global/settings.yaml`** — it is the only one of its kind, so nothing about it was
+  ambiguous.
+  ⚠️ **Clean break, no compatibility read: a file left under the old name is not read and not
+  reported.** Rename yours before launching a box, or it will start on defaults as though the file
+  were not there. See `MIGRATION.md` for the per-tier list of what to rename.
+
 - **BREAKING: a workset root no longer carries an identity table anywhere, and a v1.6/v1.7 root
   refuses until you remove the one it has.** A workset has always been *identified* by the global
   registry — `workset create` writes a `name → root` entry into its `worksets:` section, and that

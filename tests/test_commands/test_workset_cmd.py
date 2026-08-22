@@ -21,7 +21,7 @@ def _workset_boxes(ws):
     from kanibako.settings.config_io import load_doc
 
     registry_path = workset_registry.resolve_workset_registry_path(
-        ws.root, load_doc(ws.root / "settings.yaml"),
+        ws.root, load_doc(ws.root / "workset.yaml"),
     )
     return workset_registry.load_workset_boxes(registry_path)
 
@@ -202,12 +202,12 @@ class TestWorksetCreate:
         rc = run_create(args)
         assert rc == 0
 
-        # The image cascade setting lands in the root settings.yaml — which is
+        # The image cascade setting lands in the root workset.yaml — which is
         # created ONLY because something was actually set.  ⚑ It is the ONE file
         # under the root: no identity table anywhere, and no registry.yaml until
         # there is a member to record.
         import yaml
-        settings_yaml = ws_root.resolve() / "settings.yaml"
+        settings_yaml = ws_root.resolve() / "workset.yaml"
         assert settings_yaml.exists()
         with open(settings_yaml) as f:
             data = yaml.safe_load(f)
@@ -449,7 +449,7 @@ class TestWorksetConnect:
     ):
         """connect to an EXTERNAL dir → workspace override in the per-workset
         boxes: connection record (D10), and a workspaces/{name} symlink to the
-        dir.  P8b/Option A: the override is NO LONGER written to settings.yaml —
+        dir.  P8b/Option A: the override is NO LONGER written to box.yaml —
         the per-workset registry is the sole connection record."""
         from kanibako.commands.workset_cmd import run_connect
         from kanibako.settings.config_io import load_doc
@@ -470,7 +470,7 @@ class TestWorksetConnect:
 
         # P8b/Option A: no on-disk ``project:`` identity is written for the
         # connected box — the override lives ONLY in the per-workset registry.
-        project_toml = ws.projects_dir / "ext" / "settings.yaml"
+        project_toml = ws.projects_dir / "ext" / "box.yaml"
         assert "project" not in load_doc(project_toml)
 
         # The per-workset registry has the connection record: box name → external
@@ -504,8 +504,8 @@ class TestWorksetConnect:
         rc = run_connect(args)
         assert rc == 0
 
-        # No workspace override written (settings.yaml not pre-seeded).
-        project_toml = ws.projects_dir / "int" / "settings.yaml"
+        # No workspace override written (box.yaml not pre-seeded).
+        project_toml = ws.projects_dir / "int" / "box.yaml"
         assert "project" not in load_doc(project_toml)
 
         # ⚑⚑ EVERY member gets a row, in-tree as well as external — and an in-tree
@@ -532,7 +532,7 @@ class TestWorksetConnect:
         external = (tmp_home / "sa_box").resolve()
         external.mkdir()
         (external / "box_data").mkdir()
-        (external / "settings.yaml").write_text("project: {}\n")
+        (external / "workset.yaml").write_text("project: {}\n")
 
         args = argparse.Namespace(
             workset="saws", source=str(external), project_name="sb", force=False,
@@ -557,7 +557,7 @@ class TestWorksetConnect:
         external = (tmp_home / "sa_box2").resolve()
         external.mkdir()
         (external / "box_data").mkdir()
-        (external / "settings.yaml").write_text("project: {}\n")
+        (external / "workset.yaml").write_text("project: {}\n")
 
         args = argparse.Namespace(
             workset="saws2", source=str(external), project_name="sb", force=True,
@@ -838,7 +838,7 @@ class TestDefaultWorksetCli:
         # the workset scope by construction (same-scope write; lands nested under
         # the [workset] table).
         # F4: the write lands in the spec §2c file
-        # ``@config.primary_workset/settings.yaml`` (the old
+        # ``@config.primary_workset/workset.yaml`` (the old
         # ``@config.data/config.yaml`` target was a launch-invisible dead write).
         from kanibako.commands.workset_cmd import run_set
         std = self._std(config_file)
@@ -850,7 +850,7 @@ class TestDefaultWorksetCli:
         rc = run_set(args)
         assert rc == 0
         import yaml
-        with open(std.primary_workset / "settings.yaml") as f:
+        with open(std.primary_workset / "workset.yaml") as f:
             data = yaml.safe_load(f)
         assert data["workset"]["vault_ro"] == "/ro"
         assert not (std.data_path / "config.yaml").exists()
@@ -912,9 +912,9 @@ class TestWorksetParser:
 
 class TestPrimaryWorksetSpecConvergence:
     """F4: the PRIMARY workset's settings write path AND every launch reader
-    converge on the spec location ``@config.primary_workset/settings.yaml``
+    converge on the spec location ``@config.primary_workset/workset.yaml``
     (spec §2c: PRIMARY ``meta.workset.path`` = ``@config.primary_workset``;
-    ALL-WORKSETS ``meta.workset.settings`` = ``@meta.workset.path/settings.yaml``).
+    ALL-WORKSETS ``meta.workset.settings`` = ``@meta.workset.path/workset.yaml``).
 
     Pins the fix for the 1.6.0 three-file split: the CLI wrote
     ``@config.data/config.yaml`` (a silent dead write) while the cascade read
@@ -936,7 +936,7 @@ class TestPrimaryWorksetSpecConvergence:
         std = load_std_paths(load_config(config_file))
         rc = self._set_default("box.shell=/bin/zsh")
         assert rc == 0
-        spec_file = std.primary_workset / "settings.yaml"
+        spec_file = std.primary_workset / "workset.yaml"
         assert spec_file.is_file()
         with open(spec_file) as f:
             data = yaml.safe_load(f)
@@ -1008,7 +1008,7 @@ class TestPrimaryWorksetSpecConvergence:
     def test_named_workset_settings_file_unchanged(
         self, config_file, tmp_home, capsys,
     ):
-        """A NAMED workset keeps its single ``<root>/settings.yaml`` file."""
+        """A NAMED workset keeps its single ``<root>/workset.yaml`` file."""
         import yaml
         from kanibako.commands.workset_cmd import run_set
 
@@ -1020,7 +1020,7 @@ class TestPrimaryWorksetSpecConvergence:
         )
         rc = run_set(args)
         assert rc == 0
-        with open(ws.root / "settings.yaml") as f:
+        with open(ws.root / "workset.yaml") as f:
             data = yaml.safe_load(f)
         assert data["workset"]["vault_ro"] == "/ro"
 
@@ -1032,7 +1032,7 @@ class TestWorksetEnv:
     at the workset root, threaded into the engine as ``env_path``; R-39 retired
     the spelling and RQ-1 retired the launch READ of those files, so both the
     threading and the file are gone. The workset env tier is the settings key
-    ``workset.env.<VAR>``, stored in the workset's own ``settings.yaml`` — for
+    ``workset.env.<VAR>``, stored in the workset's own ``workset.yaml`` — for
     BOTH named and primary worksets.
     """
 
@@ -1073,7 +1073,7 @@ class TestWorksetEnv:
         assert rc == 0
         assert "Set workset.env.EDITOR=vim" in capsys.readouterr().out
         from kanibako.settings.config_io import load_doc
-        assert load_doc(ws.root / "settings.yaml")["workset"]["env"]["EDITOR"] == "vim"
+        assert load_doc(ws.root / "workset.yaml")["workset"]["env"]["EDITOR"] == "vim"
 
     def test_set_env_default_workset(self, config_file, tmp_home, capsys):
         """PRIMARY: the value lands under ``@config.primary_workset``."""
@@ -1088,7 +1088,7 @@ class TestWorksetEnv:
         assert "Set workset.env.EDITOR=vim" in capsys.readouterr().out
         from kanibako.settings.config_io import load_doc
         assert load_doc(
-            std.primary_workset / "settings.yaml",
+            std.primary_workset / "workset.yaml",
         )["workset"]["env"]["EDITOR"] == "vim"
 
     def test_get_env_workset(self, config_file, tmp_home, capsys):
@@ -1123,7 +1123,7 @@ class TestWorksetEnv:
         assert rc == 0
         capsys.readouterr()
         from kanibako.settings.config_io import load_doc
-        assert "env" not in load_doc(ws.root / "settings.yaml").get("workset", {})
+        assert "env" not in load_doc(ws.root / "workset.yaml").get("workset", {})
 
     def _env_from_the_files(self, config_file):
         """The container env a launch would build from what the VERBS wrote.
@@ -1148,7 +1148,7 @@ class TestWorksetEnv:
             },
             "workset": {
                 "env": dict(
-                    load_doc(std.primary_workset / "settings.yaml")
+                    load_doc(std.primary_workset / "workset.yaml")
                     .get("workset", {}).get("env", {})
                 ),
             },
@@ -1365,7 +1365,7 @@ class TestWorksetCreateIsAtomicOnRefusal:
 
     ⚑ "Loud and leak-free" is not the same as "clean". Refusing part-way through the
     mould stamp satisfied both of those and still left a REGISTERED workset with a
-    root, its own ``settings.yaml`` and a PARTIAL chapter copy — recoverable only by
+    root, its own ``workset.yaml`` and a PARTIAL chapter copy — recoverable only by
     ``workset rm``. The check therefore runs BEFORE anything is registered or
     created, matching the order ``create_workset`` already uses for its name guards.
     """

@@ -1560,7 +1560,7 @@ class TestTemplateStalenessRetired:
         cf = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
         std = load_std_paths(load_config(cf))
 
-        box_settings = tmp_home / "abox" / "settings.yaml"
+        box_settings = tmp_home / "abox" / "box.yaml"
         box_settings.parent.mkdir(parents=True, exist_ok=True)
         write_nested_key(box_settings, ("box", "env"), "COLORTERM", "256color")
 
@@ -1675,7 +1675,7 @@ class TestBoxConfigVerbsAcceptBoxFlag:
         assert "subject-img:v1" in capsys.readouterr().out
 
         # The override landed in the NAMED subject's settings file.
-        overrides = load_project_overrides(proj.metadata_path / "settings.yaml")
+        overrides = load_project_overrides(proj.metadata_path / "box.yaml")
         assert overrides.get("box_image") == "subject-img:v1"
 
     def test_shell_never_nudges_after_reorder(self, tmp_path, capsys):
@@ -1716,7 +1716,7 @@ class TestNullFlagEndToEnd:
             ["box", "set"] + [str(src) if a is None else a for a in argv_tail]
         )
         assert args.func(args) == 0
-        return load_doc(proj.metadata_path / "settings.yaml")
+        return load_doc(proj.metadata_path / "box.yaml")
 
     def test_every_ordering_writes_the_same_null(
         self, config_file, tmp_home, credentials_dir, capsys,

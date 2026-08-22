@@ -31,7 +31,7 @@ class TestBareEnvRetired:
         env_path = tmp_path / "env"
         msg = set_config_value(
             "env.EDITOR", "vim",
-            config_path=tmp_path / "settings.yaml",
+            config_path=tmp_path / "box.yaml",
             env_path=env_path,
             command_scope=ConfigLevel.box,
         )
@@ -44,7 +44,7 @@ class TestBareEnvRetired:
         """RQ-1: the message must NOT suggest hand-editing the .env file."""
         msg = set_config_value(
             "env.EDITOR", "vim",
-            config_path=tmp_path / "settings.yaml",
+            config_path=tmp_path / "box.yaml",
             command_scope=ConfigLevel.box,
         )
         assert "no longer read at all" in msg, msg
@@ -53,7 +53,7 @@ class TestBareEnvRetired:
     def test_set_cure_defaults_to_the_box_tier_without_a_scope(self, tmp_path):
         msg = set_config_value(
             "env.EDITOR", "vim",
-            config_path=tmp_path / "settings.yaml",
+            config_path=tmp_path / "box.yaml",
             env_path=tmp_path / "env",
         )
         assert msg.startswith("Error:"), msg
@@ -66,7 +66,7 @@ class TestBareEnvRetired:
         ):
             msg = set_config_value(
                 "env.EDITOR", "vim",
-                config_path=tmp_path / "settings.yaml",
+                config_path=tmp_path / "box.yaml",
                 env_path=tmp_path / "env",
                 command_scope=scope,
             )
@@ -90,7 +90,7 @@ class TestBareEnvRetired:
         env_path.write_text("EDITOR=vim\n")
         msg = reset_config_value(
             "env.EDITOR",
-            config_path=tmp_path / "settings.yaml",
+            config_path=tmp_path / "box.yaml",
             env_path=env_path,
             command_scope=ConfigLevel.box,
         )
@@ -102,7 +102,7 @@ class TestBareEnvRetired:
     def test_null_set_gets_the_retirement_cure(self, tmp_path):
         msg = set_config_value(
             "env.EDITOR", None,
-            config_path=tmp_path / "settings.yaml",
+            config_path=tmp_path / "box.yaml",
             env_path=tmp_path / "env",
             command_scope=ConfigLevel.box,
         )
@@ -121,7 +121,7 @@ class TestScopeEnvIsSettable:
     """
 
     def test_set_get_reset_round_trip_at_box_scope(self, tmp_path):
-        f = tmp_path / "settings.yaml"
+        f = tmp_path / "box.yaml"
         msg = set_config_value(
             "box.env.EDITOR", "vim",
             config_path=f, command_scope=ConfigLevel.box,
@@ -149,7 +149,7 @@ class TestScopeEnvIsSettable:
         ) is None
 
     def test_reset_of_an_unset_scope_env_says_no_override(self, tmp_path):
-        f = tmp_path / "settings.yaml"
+        f = tmp_path / "box.yaml"
         msg = reset_config_value(
             "box.env.NOPE", config_path=f, command_scope=ConfigLevel.box,
         )
@@ -179,7 +179,7 @@ class TestScopeEnvIsSettable:
         exactly as it does to ``<scope>.secret_path.<VAR>``."""
         msg = set_config_value(
             "system.env.EDITOR", "vim",
-            config_path=tmp_path / "settings.yaml",
+            config_path=tmp_path / "box.yaml",
             command_scope=ConfigLevel.box,
         )
         assert msg.startswith("Error:"), msg
@@ -187,7 +187,7 @@ class TestScopeEnvIsSettable:
 
     def test_a_reserved_var_name_is_refused_loudly_at_write_time(self, tmp_path):
         """Spec §0 reserved key names — rejected at ``config set`` time, by NAME."""
-        f = tmp_path / "settings.yaml"
+        f = tmp_path / "box.yaml"
         for var in ("get", "keys", "__init__"):
             msg = set_config_value(
                 f"box.env.{var}", "x", config_path=f, command_scope=ConfigLevel.box,
@@ -203,7 +203,7 @@ class TestScopeEnvIsSettable:
 
     def test_var_matching_is_case_sensitive(self, tmp_path):
         """Spec §0/§2a — ``box.env.Path`` and ``box.env.PATH`` are two keys."""
-        f = tmp_path / "settings.yaml"
+        f = tmp_path / "box.yaml"
         set_config_value(
             "box.env.Path", "lower", config_path=f, command_scope=ConfigLevel.box,
         )

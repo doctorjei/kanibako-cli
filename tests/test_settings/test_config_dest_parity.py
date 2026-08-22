@@ -32,7 +32,7 @@ was DELETED once DS-BL1 = (a) had made it unreachable from every verb.  So
 assert that the two wrappers now AGREE, which is a real oracle in the other
 direction — it goes red if anyone reintroduces a per-caller destination switch.
 ⚑ The class's OTHER known-wrong pin — the agent-scope READ landing on the noun's
-settings file instead of ``agents/<node>/settings.yaml`` — is UNTOUCHED and still
+settings file instead of ``agents/<node>/agent.yaml`` — is UNTOUCHED and still
 deliberately broken.  Only the write half moved.
 """
 
@@ -70,8 +70,8 @@ class Bench:
         self.tmp = tmp
         self.cf = tmp / "kanibako_config.yaml"   # Layer-1 bootstrap config
         self.ssp = tmp / "global" / "settings.yaml"  # system SETTINGS (@config.settings)
-        self.box = tmp / "box" / "settings.yaml"     # a box settings file
-        self.ws = tmp / "ws" / "settings.yaml"       # a workset settings file
+        self.box = tmp / "box" / "box.yaml"          # a box settings file
+        self.ws = tmp / "ws" / "workset.yaml"        # a workset settings file
         self.agents = tmp / "agents"                 # the per-node store root
         self.env_sys = tmp / "env"
         self.env_box = tmp / "box" / "env"
@@ -86,7 +86,7 @@ class Bench:
             "cf": self.cf, "ssp": self.ssp, "box": self.box, "ws": self.ws,
         }
         if self.agents.exists():
-            for node_file in sorted(self.agents.glob("*/settings.yaml")):
+            for node_file in sorted(self.agents.glob("*/agent.yaml")):
                 out[f"agent:{node_file.parent.name}"] = node_file
         return out
 
@@ -129,7 +129,7 @@ class Bench:
         if m is None:
             return None
         node = m.group("node")
-        f = self.agents / node / "settings.yaml"
+        f = self.agents / node / "agent.yaml"
         f.parent.mkdir(parents=True, exist_ok=True)
         return f, node
 
@@ -568,7 +568,7 @@ class TestAgentScopeCategoryDestination:
     ⚑⚑ THE CLASS STILL PINS ONE KNOWN-WRONG BEHAVIOUR, AND QA′ DID NOT TOUCH IT:
     ``test_get_reads_the_noun_settings_file`` asserts that the agent-scope terminal
     READ lands on the noun's settings file rather than on
-    ``agents/<node>/settings.yaml``, which is the wrong file. Re-pointing it moves
+    ``agents/<node>/agent.yaml``, which is the wrong file. Re-pointing it moves
     ``agent_file._address`` and is a separately-boarded pass; when it
     lands, THAT case must be edited deliberately, in that commit.
     """
@@ -584,7 +584,7 @@ class TestAgentScopeCategoryDestination:
         assert reset_msg.startswith("Error:") and "RETIRED" in reset_msg, reset_msg
         # The wrong file is not written, and neither is the node's own file.
         assert bench.changed(before) == {}, bench.changed(before)
-        assert not (bench.agents / "claude" / "settings.yaml").exists()
+        assert not (bench.agents / "claude" / "agent.yaml").exists()
 
     def test_the_per_entry_spelling_reaches_no_slot(self, bench):
         """⚑ THE NEW FACT, PINNED IN ITS OWN CASE (2026-08-08c). The two cases below
@@ -659,7 +659,7 @@ class TestAgentScopeCategoryDestination:
 
         ⚑⚑ AND THE FILE IT NAMES IS THE KNOWN-WRONG ONE, WHICH IS THE POINT OF A
         CHARACTERIZATION ORACLE. ``config_dest._read_dest``'s own docstring measures
-        it: the agent tier is assembled from ``agents/<node>/settings.yaml``'s
+        it: the agent tier is assembled from ``agents/<node>/agent.yaml``'s
         ``self.<node>`` table, so a hand-authored value there reads back "(not set)"
         while a stray ``agent.claude.caches`` in the system settings file wins —
         exactly what this asserts. Re-pointing it is the OWED pass that moves
@@ -878,7 +878,7 @@ class TestPerNodeAgentDest:
         node's own file and loses its WRITE route. The asymmetry is deliberate and
         is what the parity bench exists to make visible rather than accidental.
         (This test asserted the repoint WROTE, until the route was retired.)"""
-        node_file = bench.agents / "claude" / "settings.yaml"
+        node_file = bench.agents / "claude" / "agent.yaml"
         node_file.parent.mkdir(parents=True, exist_ok=True)
         # ⚑ FLAT since S2/S3 — ``self`` IS ``agent.claude``, so the bindings table sits
         # DIRECTLY under the root and the nested ``self: claude:`` shape this used to
@@ -910,7 +910,7 @@ class TestPerNodeAgentDest:
         dest-split instance shipped (D-4).
 
         Every dotted-destination case above goes through ``_key_slot``; the AGENT tier does
-        not — it resolves through the node-file rule to ``agents/<node>/settings.yaml``, whose
+        not — it resolves through the node-file rule to ``agents/<node>/agent.yaml``, whose
         own address rule had its own split. So the oracle covered four scopes and left the
         fifth route dark.
 
@@ -918,7 +918,7 @@ class TestPerNodeAgentDest:
         tail.split(".")``) and this dies — the read lands on a section ``~/`` and a leaf
         ``cache/uv``, a slot no file has.
         """
-        node_file = bench.agents / "claude" / "settings.yaml"
+        node_file = bench.agents / "claude" / "agent.yaml"
         node_file.parent.mkdir(parents=True, exist_ok=True)
         bench.seed(
             node_file, ("self", "bindings", "ro"), _DOTTED_DEST, list(_TUPLE),
@@ -1058,7 +1058,7 @@ class TestSystemGetCommandScopeIsInert:
         ("system.cache", (lambda b: b.seed(b.cf, ("system",), "cache", "v"))),
         ("agent.claude.model",
          (lambda b: b.seed(
-             b.agents / "claude" / "settings.yaml",
+             b.agents / "claude" / "agent.yaml",
              ("self",), "model", "v"))),
     ])
     def test_threading_the_scope_changes_no_read(self, bench, key, seed):

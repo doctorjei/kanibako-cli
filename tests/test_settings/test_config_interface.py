@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 import yaml
 
+from kanibako.settings.config import BOX_META_FILE, WORKSET_META_FILE
 from kanibako.settings.config_io import dump_doc, load_doc
 from kanibako.settings.config_keys import ConfigLevel, is_known_key
 from kanibako.settings.config_interface import (
@@ -194,7 +195,7 @@ class TestRegularConfigKeys:
         lie that a plain get returns another tier's value.)"""
         global_cfg = tmp_path / "kanibako_config.yaml"
         global_cfg.write_text('box:\n  image: "my-image:latest"\n')
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / BOX_META_FILE
 
         val = get_config_value(
             "box.image",
@@ -207,7 +208,7 @@ class TestRegularConfigKeys:
         """Setting a config key writes it and subsequent get returns it."""
         global_cfg = tmp_path / "kanibako_config.yaml"
         global_cfg.write_text('box:\n  image: "default:latest"\n')
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / BOX_META_FILE
 
         msg = set_config_value(
             "box.image", "custom:v2",
@@ -227,7 +228,7 @@ class TestRegularConfigKeys:
         """Resetting a key removes the project-level override."""
         global_cfg = tmp_path / "kanibako_config.yaml"
         global_cfg.write_text('box:\n  image: "default:latest"\n')
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / BOX_META_FILE
 
         set_config_value("box.image", "custom:v2", config_path=project_toml)
         msg = reset_config_value("box.image", config_path=project_toml)
@@ -238,7 +239,7 @@ class TestRegularConfigKeys:
 
     def test_reset_nonexistent_key(self, tmp_path):
         """Resetting a key that has no override returns informative message."""
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / BOX_META_FILE
         msg = reset_config_value("box.image", config_path=project_toml)
         assert "No override" in msg
 
@@ -246,7 +247,7 @@ class TestRegularConfigKeys:
         """box.shell defaults to empty → get returns None (rendered as not set)."""
         global_cfg = tmp_path / "kanibako_config.yaml"
         global_cfg.write_text("box:\n  image: \"default:latest\"\n")
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / BOX_META_FILE
 
         val = get_config_value(
             "box.shell",
@@ -259,7 +260,7 @@ class TestRegularConfigKeys:
         """Setting box.shell and reading it back returns the value (no error)."""
         global_cfg = tmp_path / "kanibako_config.yaml"
         global_cfg.write_text("box:\n  image: \"default:latest\"\n")
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / BOX_META_FILE
 
         set_config_value("box.shell", "/bin/zsh", config_path=project_toml)
         val = get_config_value(
@@ -275,7 +276,7 @@ class TestRegularConfigKeys:
         LAUNCH + ``--effective`` (spec §2d agent.default.bootstrap=tmux)."""
         global_cfg = tmp_path / "kanibako_config.yaml"
         global_cfg.write_text("box:\n  image: \"default:latest\"\n")
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / BOX_META_FILE
 
         val = get_config_value(
             "bootstrap",
@@ -289,7 +290,7 @@ class TestRegularConfigKeys:
         ``agent.default`` tier (mirrors ``model``) and reads back the value."""
         global_cfg = tmp_path / "kanibako_config.yaml"
         global_cfg.write_text("box:\n  image: \"default:latest\"\n")
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / BOX_META_FILE
 
         msg = set_config_value("bootstrap", "screen", config_path=project_toml)
         assert "Set bootstrap=screen" in msg
@@ -306,7 +307,7 @@ class TestRegularConfigKeys:
 
     def test_set_per_agent_bootstrap_override(self, tmp_path):
         """A per-agent ``agent.<agent>.bootstrap`` override is a PER-PERSONA setting
-        routed to the agent's OWN ``agents/<node>/settings.yaml`` flat slot the launch
+        routed to the agent's OWN ``agents/<node>/agent.yaml`` flat slot the launch
         reads — mirroring ``agent.<agent>.model``."""
         cf = tmp_path / "kanibako_config.yaml"
         agents_root = tmp_path / "agents"
@@ -316,7 +317,7 @@ class TestRegularConfigKeys:
             agents_root=agents_root,
         )
         assert not msg.startswith("Error:"), msg
-        assert load_doc(agents_root / "claude" / "settings.yaml") == {
+        assert load_doc(agents_root / "claude" / "agent.yaml") == {
             "self": {"bootstrap": "none"},
         }
 
@@ -341,7 +342,7 @@ class TestContinueMode:
     def test_start_mode_bare_set_refused_as_unknown(self, tmp_path):
         """A bare ``start_mode`` set no longer takes the agent.default route — it
         is refused as an unknown key and nothing is written."""
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / BOX_META_FILE
         msg = set_config_value("start_mode", "fresh", config_path=project_toml)
         assert msg == "Error: unknown config key: start_mode"
         assert not project_toml.exists()
@@ -351,7 +352,7 @@ class TestContinueMode:
         ``agent.default`` tier (mirrors ``model``) and reads back the value."""
         global_cfg = tmp_path / "kanibako_config.yaml"
         global_cfg.write_text("box:\n  image: \"default:latest\"\n")
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / BOX_META_FILE
 
         msg = set_config_value("continue_mode", "false", config_path=project_toml)
         assert "Set continue_mode=false" in msg
@@ -368,7 +369,7 @@ class TestContinueMode:
     def test_set_explicit_agent_default_continue_mode_refused(self, tmp_path):
         """``agent.default.continue_mode`` is refused (the any-agent default is the
         BARE key), mirroring model/access."""
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / BOX_META_FILE
         msg = set_config_value(
             "agent.default.continue_mode", "false", config_path=project_toml,
         )
@@ -376,7 +377,7 @@ class TestContinueMode:
 
     def test_set_continue_mode_per_agent_override(self, tmp_path):
         """A per-agent ``agent.<agent>.continue_mode`` override is a PERSONA key: it
-        lands on the agent's OWN ``agents/<agent>/settings.yaml`` flat slot the
+        lands on the agent's OWN ``agents/<agent>/agent.yaml`` flat slot the
         launch reader picks over ``agent.default`` (§2d active-over-default)."""
         cf = tmp_path / "kanibako_config.yaml"
         agents_root = tmp_path / "agents"
@@ -386,7 +387,7 @@ class TestContinueMode:
             agents_root=agents_root,
         )
         assert not msg.startswith("Error:"), msg
-        assert load_doc(agents_root / "claude" / "settings.yaml") == {
+        assert load_doc(agents_root / "claude" / "agent.yaml") == {
             "self": {"continue_mode": "false"},
         }
 
@@ -394,7 +395,7 @@ class TestContinueMode:
         """The box/workset bare-key refusal now COVERS continue_mode (it is in
         ``_is_agent_setting``): a bare set at BOX scope is refused (redirected to
         the box.agent.<key> mirror), nothing lands in a top-level agent table."""
-        f = tmp_path / "settings.yaml"
+        f = tmp_path / BOX_META_FILE
         msg = set_config_value(
             "continue_mode", "false",
             config_path=f, command_scope=ConfigLevel.box,
@@ -413,7 +414,7 @@ class TestWorksetKuidKeys:
     ``workset:`` table of the command-scope (workset-tier) settings file."""
 
     def test_set_kuid_routes_to_workset_slot(self, tmp_path):
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / BOX_META_FILE
         msg = set_config_value(
             "workset.kuid", "abcde", config_path=project_toml,
         )
@@ -428,7 +429,7 @@ class TestWorksetKuidKeys:
         assert read_workset_kuid(project_toml) == "abcde"
 
     def test_set_skip_kuid_check_coerces_bool(self, tmp_path):
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / BOX_META_FILE
         set_config_value(
             "workset.skip_kuid_check", "false", config_path=project_toml,
         )
@@ -467,7 +468,7 @@ class TestEnvKeys:
         env_path = tmp_path / "env"
         msg = set_config_value(
             "env.MY_VAR", "hello",
-            config_path=tmp_path / "settings.yaml",
+            config_path=tmp_path / BOX_META_FILE,
             env_path=env_path,
         )
         assert msg.startswith("Error:"), msg
@@ -502,7 +503,7 @@ class TestEnvKeys:
         assert env_path.read_text() == "FOO=bar\n"
 
     def test_scoped_env_var_round_trips(self, tmp_path):
-        f = tmp_path / "settings.yaml"
+        f = tmp_path / BOX_META_FILE
         assert set_config_value(
             "box.env.MY_VAR", "hello",
             config_path=f, command_scope=ConfigLevel.box,
@@ -577,7 +578,7 @@ class TestTargetSettings:
     """Tests for target settings keys."""
 
     def test_set_model(self, tmp_path):
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / BOX_META_FILE
         msg = set_config_value("model", "sonnet", config_path=project_toml)
         assert "Set model=sonnet" in msg
 
@@ -586,7 +587,7 @@ class TestTargetSettings:
         assert data["agent"]["default"]["model"] == "sonnet"
 
     def test_get_model(self, tmp_path):
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / BOX_META_FILE
         dump_doc(project_toml, {"agent": {"default": {"model": "opus"}}})
 
         val = get_config_value(
@@ -597,7 +598,7 @@ class TestTargetSettings:
         assert val == "opus"
 
     def test_reset_model(self, tmp_path):
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / BOX_META_FILE
         dump_doc(project_toml, {"agent": {"default": {"model": "opus"}}})
 
         msg = reset_config_value("model", config_path=project_toml)
@@ -612,7 +613,7 @@ class TestTargetSettings:
 
     def test_set_endpoint(self, tmp_path):
         # endpoint accepted the SAME way as model — writes agent.default tier.
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / BOX_META_FILE
         msg = set_config_value(
             "endpoint", "http://localhost:8080", config_path=project_toml
         )
@@ -621,7 +622,7 @@ class TestTargetSettings:
         assert data["agent"]["default"]["endpoint"] == "http://localhost:8080"
 
     def test_get_endpoint(self, tmp_path):
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / BOX_META_FILE
         dump_doc(
             project_toml,
             {"agent": {"default": {"endpoint": "http://ep:9000"}}},
@@ -644,7 +645,7 @@ class TestShowConfig:
     def test_show_no_overrides(self, tmp_path, capsys):
         global_cfg = tmp_path / "kanibako_config.yaml"
         global_cfg.write_text("")
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / BOX_META_FILE
 
         show_config(
             global_config_path=global_cfg,
@@ -656,7 +657,7 @@ class TestShowConfig:
     def test_show_effective(self, tmp_path, capsys):
         global_cfg = tmp_path / "kanibako_config.yaml"
         global_cfg.write_text('box:\n  image: "my:img"\n')
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / BOX_META_FILE
 
         show_config(
             global_config_path=global_cfg,
@@ -670,7 +671,7 @@ class TestShowConfig:
     def test_show_with_override(self, tmp_path, capsys):
         global_cfg = tmp_path / "kanibako_config.yaml"
         global_cfg.write_text('box:\n  image: "default"\n')
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / BOX_META_FILE
         project_toml.write_text('box:\n  image: "custom"\n')
 
         show_config(
@@ -687,7 +688,7 @@ class TestShowConfig:
         """With workset_path/agent_state/env_resolved=None, output is unchanged."""
         global_cfg = tmp_path / "kanibako_config.yaml"
         global_cfg.write_text('box:\n  image: "my:img"\n')
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / BOX_META_FILE
 
         show_config(
             global_config_path=global_cfg,
@@ -712,7 +713,7 @@ class TestShowConfig:
         """A value set only at the workset level is reflected when supplied."""
         global_cfg = tmp_path / "kanibako_config.yaml"
         global_cfg.write_text('box:\n  image: "sys:img"\n')
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / BOX_META_FILE
         workset_cfg = tmp_path / "config.yaml"
         workset_cfg.write_text('box:\n  image: "ws:img"\n')
 
@@ -733,7 +734,7 @@ class TestShowConfig:
         """agent_state is rendered; only box-level keys get the override marker."""
         global_cfg = tmp_path / "kanibako_config.yaml"
         global_cfg.write_text("")
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / BOX_META_FILE
         project_toml.write_text('agent:\n  default:\n    model: "sonnet"\n')
 
         show_config(
@@ -753,7 +754,7 @@ class TestShowConfig:
         """env_resolved is the source dict for the env section when given."""
         global_cfg = tmp_path / "kanibako_config.yaml"
         global_cfg.write_text("")
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / BOX_META_FILE
 
         show_config(
             global_config_path=global_cfg,
@@ -793,7 +794,7 @@ class TestResetAll:
     """Tests for the reset-all operation."""
 
     def test_reset_all_with_force(self, tmp_path):
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / BOX_META_FILE
         project_toml.write_text('box:\n  image: "custom"\n')
         env_path = tmp_path / "env"
         env_path.write_text("FOO=bar\n")
@@ -802,7 +803,7 @@ class TestResetAll:
         assert "Reset" in msg
 
     def test_reset_all_nothing_to_reset(self, tmp_path):
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / BOX_META_FILE
         msg = reset_all(config_path=project_toml, force=True)
         assert "No overrides" in msg
 
@@ -863,7 +864,7 @@ class TestResetAll:
         # top-level entry. The flat pass must count ONLY real removals — a file
         # with ONLY a structural [system] table (no overrides) says
         # "No overrides to reset.", not "Reset N".
-        f = tmp_path / "settings.yaml"
+        f = tmp_path / BOX_META_FILE
         dump_doc(f, {"system": {"cache": "/x"}})  # structural-ish, no override
         msg = reset_all(config_path=f, force=True)  # no command_scope
         assert "No overrides to reset." in msg, msg
@@ -910,7 +911,7 @@ class TestH1NoCrashOnAdvertisedKeys:
     """
 
     def test_set_box_auth_global_enabled_no_crash(self, tmp_path):
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / BOX_META_FILE
         # Auth 3-tier SHARING (2026-07-01 redesign): the box's per-tier opt-out
         # knob, a typed bool routed to the box.auth section. Must not raise.
         msg = set_config_value(
@@ -921,7 +922,7 @@ class TestH1NoCrashOnAdvertisedKeys:
         assert data["box"]["auth"]["global_enabled"] is False
 
     def test_set_box_auth_workset_enabled_no_crash(self, tmp_path):
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / BOX_META_FILE
         msg = set_config_value(
             "box.auth.workset_enabled", "false", config_path=project_toml
         )
@@ -934,7 +935,7 @@ class TestH1NoCrashOnAdvertisedKeys:
         key is the any-agent ``agent.default`` tier (mirrors ``model``), NOT a
         flat top-level scalar. Clean break — nothing lands at the old scopeless
         ``allow_helpers`` key."""
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / BOX_META_FILE
         msg = set_config_value("allow_helpers", "false", config_path=project_toml)
         assert msg.startswith("Set")
         data = load_doc(project_toml)
@@ -947,7 +948,7 @@ class TestH1NoCrashOnAdvertisedKeys:
         """``access`` is an AGENT-scope enum key (spec §2d, R-41): the bare key is
         the any-agent ``agent.default`` tier (mirrors ``model``/``allow_helpers``),
         written VERBATIM (no KEY_TYPES coercion — validated at set AND at launch)."""
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / BOX_META_FILE
         msg = set_config_value("access", "restricted", config_path=project_toml)
         assert msg.startswith("Set")
         data = load_doc(project_toml)
@@ -974,7 +975,7 @@ class TestH1NoCrashOnAdvertisedKeys:
 
         Mutation proof: dropping the ``is_access_key`` write-guard lets this
         through and this assertion reddens."""
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / BOX_META_FILE
         msg = set_config_value("access", "fll", config_path=project_toml)
         assert msg.startswith("Error:")
         assert "restricted | editing | full" in msg
@@ -996,7 +997,7 @@ class TestH1NoCrashOnAdvertisedKeys:
     def test_set_access_is_case_sensitive(self, tmp_path):
         """EXACT matching: the stored value is what the launch resolver reads
         back, and that resolver is exact too."""
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / BOX_META_FILE
         assert set_config_value(
             "access", "FULL", config_path=project_toml,
         ).startswith("Error:")
@@ -1014,7 +1015,7 @@ class TestH1NoCrashOnAdvertisedKeys:
         """P2: ``box.enable_vault`` routes to the ``box:`` table nested slot
         ``enable_vault`` as a real bool (NOT the [project] section, NOT a
         string)."""
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / BOX_META_FILE
         msg = set_config_value("box.enable_vault", "false", config_path=project_toml)
         assert msg.startswith("Set")
         data = load_doc(project_toml)
@@ -1026,7 +1027,7 @@ class TestH1NoCrashOnAdvertisedKeys:
 
     def test_set_box_enable_vault_preserves_other_box_keys(self, tmp_path):
         """The nested write merges — a pre-existing ``box.image`` survives."""
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / BOX_META_FILE
         dump_doc(project_toml, {"box": {"image": "img:1"}})
         set_config_value("box.enable_vault", "false", config_path=project_toml)
         data = load_doc(project_toml)
@@ -1035,7 +1036,7 @@ class TestH1NoCrashOnAdvertisedKeys:
 
     def test_reset_box_enable_vault_removes_it(self, tmp_path):
         """Reset clears the box-scope override (sparse store)."""
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / BOX_META_FILE
         set_config_value("box.enable_vault", "false", config_path=project_toml)
         assert load_doc(project_toml)["box"]["enable_vault"] is False
         reset_config_value(
@@ -1047,7 +1048,7 @@ class TestH1NoCrashOnAdvertisedKeys:
     def test_set_workset_registry_lands_in_workset_table_as_string(self, tmp_path):
         """P3: ``workset.registry`` routes to the ``workset:`` table nested slot
         ``registry`` as a real STRING path (NOT bool-coerced, NOT [project])."""
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / BOX_META_FILE
         msg = set_config_value(
             "workset.registry", "/custom/reg.yaml", config_path=project_toml
         )
@@ -1061,7 +1062,7 @@ class TestH1NoCrashOnAdvertisedKeys:
 
     def test_set_workset_registry_preserves_other_workset_keys(self, tmp_path):
         """The nested write merges — a pre-existing ``workset:`` key survives."""
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / BOX_META_FILE
         dump_doc(project_toml, {"workset": {"auth": {"share_allowed": True}}})
         set_config_value(
             "workset.registry", "/custom/reg.yaml", config_path=project_toml
@@ -1072,7 +1073,7 @@ class TestH1NoCrashOnAdvertisedKeys:
 
     def test_reset_workset_registry_removes_it(self, tmp_path):
         """Reset clears the workset-scope override (sparse store)."""
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / BOX_META_FILE
         set_config_value(
             "workset.registry", "/custom/reg.yaml", config_path=project_toml
         )
@@ -1086,7 +1087,7 @@ class TestH1NoCrashOnAdvertisedKeys:
     def test_set_workset_boxes_lands_in_workset_table_as_string(self, tmp_path):
         """P6a: ``workset.boxes`` routes to the ``workset:`` table nested slot
         ``boxes`` as a real STRING path (NOT bool-coerced, NOT [project])."""
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / BOX_META_FILE
         msg = set_config_value(
             "workset.boxes", "/srv/boxes", config_path=project_toml
         )
@@ -1099,7 +1100,7 @@ class TestH1NoCrashOnAdvertisedKeys:
     def test_set_workset_auth_path_nests_under_auth(self, tmp_path):
         """P6a: ``workset.auth.path`` nests under ``workset.auth`` (the same nested
         pattern as ``workset.auth.share_allowed``)."""
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / BOX_META_FILE
         msg = set_config_value(
             "workset.auth.path", "/srv/auth", config_path=project_toml
         )
@@ -1108,7 +1109,7 @@ class TestH1NoCrashOnAdvertisedKeys:
 
     def test_set_workset_channels_common_nests_under_channels(self, tmp_path):
         """P6a: ``workset.channels.common`` nests under ``workset.channels``."""
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / BOX_META_FILE
         msg = set_config_value(
             "workset.channels.common", "/srv/common", config_path=project_toml
         )
@@ -1119,7 +1120,7 @@ class TestH1NoCrashOnAdvertisedKeys:
 
     def test_set_workset_anchor_preserves_other_workset_keys(self, tmp_path):
         """The nested write merges — a pre-existing ``workset:`` key survives."""
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / BOX_META_FILE
         dump_doc(project_toml, {"workset": {"registry": "/reg.yaml"}})
         set_config_value("workset.boxes", "/srv/boxes", config_path=project_toml)
         data = load_doc(project_toml)
@@ -1128,7 +1129,7 @@ class TestH1NoCrashOnAdvertisedKeys:
 
     def test_reset_workset_boxes_removes_it(self, tmp_path):
         """Reset clears the workset-scope override (sparse store)."""
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / BOX_META_FILE
         set_config_value("workset.boxes", "/srv/boxes", config_path=project_toml)
         assert load_doc(project_toml)["workset"]["boxes"] == "/srv/boxes"
         reset_config_value(
@@ -1168,7 +1169,7 @@ class TestH1NoCrashOnAdvertisedKeys:
         real STRING path (NOT bool-coerced).  Pre-fix, the key was declared and
         consumed live but refused by the verbs ("unknown config key"), forcing
         a settings-file edit."""
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / BOX_META_FILE
         msg = set_config_value(
             "workset.workspaces", "/srv/pods", config_path=project_toml
         )
@@ -1182,7 +1183,7 @@ class TestH1NoCrashOnAdvertisedKeys:
     ):
         """``workset.channelroot`` — the sibling resolved workset dir key
         (§3.3), same route shape as ``workset.workspaces``."""
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / BOX_META_FILE
         msg = set_config_value(
             "workset.channelroot", "/srv/comms", config_path=project_toml
         )
@@ -1202,9 +1203,13 @@ class TestH1NoCrashOnAdvertisedKeys:
             resolve_workset_workspaces,
         )
 
-        project_toml = tmp_path / "settings.yaml"
+        # ⚑ The destination is the WORKSET tier, which is what the consumer reads:
+        # ``load_workset_settings_doc`` opens ``<root>/workset.yaml``.  Before the
+        # per-tier rename both tiers spelled the same filename, so writing this
+        # through a box-tier path passed by coincidence rather than by route.
+        ws_file = tmp_path / WORKSET_META_FILE
         set_config_value(
-            "workset.workspaces", "/srv/pods", config_path=project_toml
+            "workset.workspaces", "/srv/pods", config_path=ws_file
         )
         assert resolve_workset_workspaces(
             tmp_path, load_workset_settings_doc(tmp_path)
@@ -1212,7 +1217,7 @@ class TestH1NoCrashOnAdvertisedKeys:
 
     def test_reset_workset_workspaces_removes_it(self, tmp_path):
         """Reset clears the workset-scope override (sparse store)."""
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / BOX_META_FILE
         set_config_value(
             "workset.workspaces", "/srv/pods", config_path=project_toml
         )
@@ -1241,7 +1246,7 @@ class TestH1NoCrashOnAdvertisedKeys:
         the bootstrap layer at box creation, NOT overridable. ``config set mode``
         is now an unknown-key error; nothing is written.
         """
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / BOX_META_FILE
         msg = set_config_value("mode", "primary", config_path=project_toml)
         assert msg.startswith("Error:")
         assert "unknown config key" in msg
@@ -1253,13 +1258,13 @@ class TestH1NoCrashOnAdvertisedKeys:
 
     def test_set_dead_layout_key_rejected(self, tmp_path):
         """W4: layout is a deleted dead key — now an unknown-key error."""
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / BOX_META_FILE
         msg = set_config_value("layout", "robust", config_path=project_toml)
         assert msg.startswith("Error:")
         assert "unknown config key" in msg
 
     def test_set_unknown_key_returns_error_not_raise(self, tmp_path):
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / BOX_META_FILE
         # No exception: an UNKNOWN key returns an error string.
         msg = set_config_value("totally-bogus-key", "x", config_path=project_toml)
         assert msg.startswith("Error:")
@@ -1268,7 +1273,7 @@ class TestH1NoCrashOnAdvertisedKeys:
         assert not project_toml.exists() or "totally-bogus-key" not in load_doc(project_toml)
 
     def test_reset_unknown_key_returns_error_not_raise(self, tmp_path):
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / BOX_META_FILE
         msg = reset_config_value("totally-bogus-key", config_path=project_toml)
         assert msg.startswith("Error:")
 
@@ -1276,7 +1281,7 @@ class TestH1NoCrashOnAdvertisedKeys:
         """Every routed key set by the writer reads back (no asymmetry)."""
         global_cfg = tmp_path / "kanibako_config.yaml"
         global_cfg.write_text("")
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / BOX_META_FILE
         for key, val in [
             ("box.auth.global_enabled", "false"),
             ("box.image", "custom:latest"),
@@ -1301,7 +1306,7 @@ class TestH2BoolCoercion:
     def test_set_box_share_images_false_loads_as_real_bool(self, tmp_path):
         from kanibako.settings.config import load_config
 
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / BOX_META_FILE
         set_config_value("box.share_images", "false", config_path=project_toml)
 
         # On-disk: a real YAML bool, not the string 'false'.
@@ -1314,7 +1319,7 @@ class TestH2BoolCoercion:
         assert not cfg.box_share_images  # consumer disable-check honored
 
     def test_set_box_share_images_various_truthy_falsy(self, tmp_path):
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / BOX_META_FILE
         for raw, expected in [
             ("true", True), ("TRUE", True), ("1", True), ("yes", True), ("on", True),
             ("false", False), ("0", False), ("no", False), ("off", False),
@@ -1325,7 +1330,7 @@ class TestH2BoolCoercion:
     def test_get_allow_helpers_round_trips_agent_default(self, tmp_path):
         """The bare ``allow_helpers`` get reads the value STORED at the any-agent
         ``agent.default`` tier (symmetric with set; mirrors ``model``)."""
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / BOX_META_FILE
         dump_doc(project_toml, {"agent": {"default": {"allow_helpers": "false"}}})
         val = get_config_value(
             "allow_helpers",
@@ -1337,7 +1342,7 @@ class TestH2BoolCoercion:
     def test_set_allow_helpers_per_agent_override(self, tmp_path):
         """A per-agent override ``agent.<agent>.allow_helpers`` is a PERSONA key
         (like ``agent.<agent>.model``): it lands on the agent's OWN
-        ``agents/<agent>/settings.yaml`` flat ``agent:`` slot the launch reads."""
+        ``agents/<agent>/agent.yaml`` flat ``agent:`` slot the launch reads."""
         cf = tmp_path / "kanibako_config.yaml"
         agents_root = tmp_path / "agents"
         msg = set_config_value(
@@ -1346,14 +1351,14 @@ class TestH2BoolCoercion:
             agents_root=agents_root,
         )
         assert not msg.startswith("Error:"), msg
-        assert load_doc(agents_root / "claude" / "settings.yaml") == {
+        assert load_doc(agents_root / "claude" / "agent.yaml") == {
             "self": {"allow_helpers": "false"},
         }
 
     def test_get_access_round_trips_agent_default(self, tmp_path):
         """The bare ``access`` get reads the value STORED at the any-agent
         ``agent.default`` tier (symmetric with set; mirrors ``model``)."""
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / BOX_META_FILE
         dump_doc(project_toml, {"agent": {"default": {"access": "restricted"}}})
         val = get_config_value(
             "access",
@@ -1364,7 +1369,7 @@ class TestH2BoolCoercion:
 
     def test_set_access_per_agent_override(self, tmp_path):
         """A per-agent override ``agent.<agent>.access`` is a PERSONA key: it
-        lands on the agent's OWN ``agents/<agent>/settings.yaml`` flat slot the
+        lands on the agent's OWN ``agents/<agent>/agent.yaml`` flat slot the
         launch reader picks over ``agent.default`` (§2d active-over-default)."""
         cf = tmp_path / "kanibako_config.yaml"
         agents_root = tmp_path / "agents"
@@ -1374,7 +1379,7 @@ class TestH2BoolCoercion:
             agents_root=agents_root,
         )
         assert not msg.startswith("Error:"), msg
-        assert load_doc(agents_root / "claude" / "settings.yaml") == {
+        assert load_doc(agents_root / "claude" / "agent.yaml") == {
             "self": {"access": "restricted"},
         }
 
@@ -1389,14 +1394,14 @@ class TestH2BoolCoercion:
         assert is_known_key("autonomous") is False
         assert is_known_key("auto_approve") is False
         assert is_known_key("access") is True
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / BOX_META_FILE
         for dead in ("autonomous", "auto_approve"):
             msg = set_config_value(dead, "true", config_path=project_toml)
             assert msg == f"Error: unknown config key: {dead}", dead
             assert not project_toml.exists()
 
     def test_bool_key_rejects_garbage(self, tmp_path):
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / BOX_META_FILE
         msg = set_config_value("box.share_images", "maybe", config_path=project_toml)
         assert msg.startswith("Error:")
         assert "boolean" in msg
@@ -1428,7 +1433,7 @@ class TestSystemAgent:
     def test_set_writes_the_settings_tier(self, tmp_path):
         from kanibako.settings.config import read_system_agent
 
-        f = tmp_path / "settings.yaml"
+        f = tmp_path / BOX_META_FILE
         msg = set_config_value("system.agent", "claude", config_path=f)
         assert not msg.startswith("Error:"), msg
         # Stored exactly where the shipped reader AND the cascade's system tier read.
@@ -1438,7 +1443,7 @@ class TestSystemAgent:
     def test_reset_removes_the_setting(self, tmp_path):
         from kanibako.settings.config import read_system_agent
 
-        f = tmp_path / "settings.yaml"
+        f = tmp_path / BOX_META_FILE
         _seed_system_agent(f, "claude")
         msg = reset_config_value("system.agent", config_path=f)
         assert not msg.startswith("Error:"), msg
@@ -1589,7 +1594,7 @@ class TestConfigJournalRecognition:
             "registry": "/srv/kani/registry.yaml",
             "journal": "/srv/kani/journal.yaml",
         }})
-        settings = tmp_path / "settings.yaml"
+        settings = tmp_path / BOX_META_FILE
         assert get_config_value(
             "config.registry", global_config_path=cf, project_toml=settings,
         ) == "/srv/kani/registry.yaml"
@@ -1599,7 +1604,7 @@ class TestConfigJournalRecognition:
 
     def test_get_unset_is_none_like_the_sibling(self, tmp_path):
         cf = tmp_path / "kanibako_config.yaml"
-        settings = tmp_path / "settings.yaml"
+        settings = tmp_path / BOX_META_FILE
         for key in ("config.registry", "config.journal"):
             assert get_config_value(
                 key, global_config_path=cf, project_toml=settings,
@@ -1791,7 +1796,7 @@ class TestCategoryConfigSet:
 
     def _seed(self, tmp_path, key_path, tuple_val):
         """Write an existing category bind tuple into a scope file; return path."""
-        f = tmp_path / "settings.yaml"
+        f = tmp_path / BOX_META_FILE
         data: dict = {}
         node = data
         for seg in key_path[:-1]:
@@ -1910,7 +1915,7 @@ class TestCategoryConfigSet:
         # in the PATH, which is what tells the user which file to open.
         assert "self.common" in msg, msg
         assert "self.claude" not in msg, msg
-        assert "agents/claude/settings.yaml" in msg, msg
+        assert "agents/claude/agent.yaml" in msg, msg
         assert not f.exists()  # a refused write creates nothing
 
     def test_reset_is_refused_symmetrically(self, tmp_path):
@@ -2198,7 +2203,7 @@ class TestScopeDirectionGuard:
         — NOT in the Layer-1 kanibako_config.yaml (spec §1: settings keys never
         live in the bootstrap config file)."""
         cf = tmp_path / "kanibako_config.yaml"
-        ssp = tmp_path / "settings.yaml"
+        ssp = tmp_path / BOX_META_FILE
         msg = set_config_value(
             "box.image", "img:1",
             config_path=cf, is_system=True, system_settings_path=ssp,
@@ -2213,7 +2218,7 @@ class TestScopeDirectionGuard:
         """DOWNWARD (system ⊃ workset): a REGISTERED workset key is accepted
         and nests under ``workset:`` in the system SETTINGS file."""
         cf = tmp_path / "kanibako_config.yaml"
-        ssp = tmp_path / "settings.yaml"
+        ssp = tmp_path / BOX_META_FILE
         msg = set_config_value(
             "workset.auth.share_allowed", "false",
             config_path=cf, is_system=True, system_settings_path=ssp,
@@ -2227,7 +2232,7 @@ class TestScopeDirectionGuard:
         """DOWNWARD (system ⊃ agent): the direction guard PERMITS an agent.*
         key from the system scope. Block B1 makes ``agent.<node>.<key>`` a real
         PER-PERSONA setting routed to the agent's OWN
-        ``agents/<node>/settings.yaml`` — so a system-scope write now SUCCEEDS
+        ``agents/<node>/agent.yaml`` — so a system-scope write now SUCCEEDS
         (past the guard) when the agents root is threaded, landing sparsely at
         the flat ``agent:`` slot the launch reads."""
         cf = tmp_path / "kanibako_config.yaml"
@@ -2239,7 +2244,7 @@ class TestScopeDirectionGuard:
         )
         assert "cannot be set from the system scope" not in msg
         assert not msg.startswith("Error:"), msg
-        assert load_doc(agents_root / "claude" / "settings.yaml") == {
+        assert load_doc(agents_root / "claude" / "agent.yaml") == {
             "self": {"model": "opus"},
         }
 
@@ -2289,7 +2294,7 @@ class TestScopeDirectionGuard:
         """meta.* is RO regardless of command scope — refused even when no
         command_scope is threaded (it is a top-level RO namespace, not a
         directional check)."""
-        f = tmp_path / "settings.yaml"
+        f = tmp_path / BOX_META_FILE
         msg = set_config_value("meta.box.name", "fred", config_path=f)
         assert msg.startswith("Error:"), msg
         assert "read-only" in msg
@@ -2382,7 +2387,7 @@ class TestScopeDirectionGuard:
     def test_own_scope_env_key_allowed_at_box(self, tmp_path):
         msg = set_config_value(
             "box.env.FOO", "bar",
-            config_path=tmp_path / "settings.yaml",
+            config_path=tmp_path / BOX_META_FILE,
             command_scope=ConfigLevel.box,
         )
         assert not msg.startswith("Error:"), msg
@@ -2399,7 +2404,7 @@ class TestScopeDirectionGuard:
     def test_upward_env_key_refused_at_box(self, tmp_path):
         msg = set_config_value(
             "workset.env.FOO", "bar",
-            config_path=tmp_path / "settings.yaml",
+            config_path=tmp_path / BOX_META_FILE,
             command_scope=ConfigLevel.box,
         )
         assert msg.startswith("Error:"), msg
@@ -2410,7 +2415,7 @@ class TestScopeDirectionGuard:
         # ``project:`` section P8 DELETED — a silent dead write. They are REMOVED;
         # a set/reset/flat-form now returns the unknown-key error and writes
         # nothing (the vault override surface is ``box.bindings.{ro,rw}.vault``).
-        f = tmp_path / "settings.yaml"
+        f = tmp_path / BOX_META_FILE
         for key in ("vault.ro", "vault.rw", "vault_ro", "vault_rw"):
             msg = set_config_value(
                 key, "/x", config_path=f, command_scope=ConfigLevel.box,
@@ -2972,7 +2977,7 @@ class TestF6NoFabricatedDefaultOnPlainGet:
     def test_plain_get_unset_flat_field_is_not_set(self, tmp_path):
         # Nothing stored at the box noun.
         global_cfg = tmp_path / "kanibako_config.yaml"
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / BOX_META_FILE
         # RED at baseline: returns "ghcr.io/doctorjei/kanibako-oci:latest".
         val = get_config_value(
             "box.image",
@@ -2984,7 +2989,7 @@ class TestF6NoFabricatedDefaultOnPlainGet:
     def test_plain_get_returns_value_stored_at_the_noun(self, tmp_path):
         # A value stored AT the box noun's own file IS returned by plain get.
         global_cfg = tmp_path / "kanibako_config.yaml"
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / BOX_META_FILE
         set_config_value("box.image", "custom:v2", config_path=project_toml)
         val = get_config_value(
             "box.image",
@@ -2998,7 +3003,7 @@ class TestF6NoFabricatedDefaultOnPlainGet:
         # "(not set)" (global is not the box noun's file); --effective shows it.
         global_cfg = tmp_path / "kanibako_config.yaml"
         global_cfg.write_text('box:\n  image: "global:img"\n')
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / BOX_META_FILE
         # RED at baseline: returns "global:img" (merged default view).
         val = get_config_value(
             "box.image",
@@ -3012,7 +3017,7 @@ class TestF6NoFabricatedDefaultOnPlainGet:
         # command's own config file (get mirrors set's dest selection): set at
         # the box noun → get at the box noun returns it; unset → "(not set)".
         global_cfg = tmp_path / "kanibako_config.yaml"
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / BOX_META_FILE
         assert get_config_value(
             "allow_helpers",
             global_config_path=global_cfg,
@@ -3031,7 +3036,7 @@ class TestF6NoFabricatedDefaultOnPlainGet:
         # --effective must still show the resolved (merged) value — unchanged.
         global_cfg = tmp_path / "kanibako_config.yaml"
         global_cfg.write_text('box:\n  image: "global:img"\n')
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / BOX_META_FILE
         show_config(
             global_config_path=global_cfg,
             config_path=project_toml,
@@ -3049,7 +3054,7 @@ class TestF7HonestResetMessage:
 
     def test_reset_message_is_not_the_builtin_default_claim(self, tmp_path):
         # box.image reset with the box override present.
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / BOX_META_FILE
         set_config_value("box.image", "custom:v2", config_path=project_toml)
         msg = reset_config_value(
             "box.image", config_path=project_toml,
@@ -3064,7 +3069,7 @@ class TestF7HonestResetMessage:
     def test_reset_message_says_cleared_on_this_noun(self, tmp_path):
         # Box scope (the box handler threads command_scope=ConfigLevel.box):
         # honest wording direction (Jei) — cleared the value set on THIS box.
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / BOX_META_FILE
         set_config_value("box.image", "custom:v2", config_path=project_toml)
         msg = reset_config_value(
             "box.image", config_path=project_toml,
@@ -3643,7 +3648,7 @@ class TestAgentNodeBindWriteRouteRetired:
         ],
     )
     def test_set_is_refused_and_names_the_key(self, tmp_path, key, shown):
-        node = tmp_path / "settings.yaml"
+        node = tmp_path / BOX_META_FILE
         msg = set_config_value(
             key, "/newsrc",
             config_path=node, command_scope=ConfigLevel.system,
@@ -3668,7 +3673,7 @@ class TestAgentNodeBindWriteRouteRetired:
         right there in the node file."""
         agents = tmp_path / "agents"
         (agents / "claude").mkdir(parents=True)
-        node_file = agents / "claude" / "settings.yaml"
+        node_file = agents / "claude" / "agent.yaml"
         seeded = {"self": {"bindings": {"ro": {
             "launcher": ["/old", "/box/launcher", "ro"]}}}}
         dump_doc(node_file, seeded)
@@ -3689,7 +3694,7 @@ class TestAgentNodeBindWriteRouteRetired:
         "category has no null form" one. A user who typed a route that no longer
         exists must be told THAT, not handed a rule about a route they cannot
         reach."""
-        node = tmp_path / "settings.yaml"
+        node = tmp_path / BOX_META_FILE
         msg = set_config_value(
             "agent.claude.bindings.rw.plugins", None,
             config_path=node, command_scope=ConfigLevel.system,
@@ -3703,10 +3708,10 @@ class TestAgentNodeBindWriteRouteRetired:
         route that is the NODE's own file, not a scope table."""
         msg = set_config_value(
             "agent.navigator℘claude.bindings.ro.launcher", "/newsrc",
-            config_path=tmp_path / "settings.yaml",
+            config_path=tmp_path / BOX_META_FILE,
             command_scope=ConfigLevel.system,
         )
-        assert "agents/navigator+claude/settings.yaml" in msg, msg
+        assert "agents/navigator+claude/agent.yaml" in msg, msg
         # ⚑ Flat since S2: the file is that node's, so ``self:`` IS
         # ``agent.navigator+claude`` and the bindings arm sits directly under it. The
         # node is carried by the PATH asserted above, not by the table spelling.
@@ -3728,7 +3733,7 @@ class TestAgentNodeBindWriteRouteRetired:
         so the guard must fire on the spelling the user actually typed."""
         msg = set_config_value(
             "agent.navigator+claude.bindings.ro.launcher", "/newsrc",
-            config_path=tmp_path / "settings.yaml",
+            config_path=tmp_path / BOX_META_FILE,
             command_scope=ConfigLevel.system,
         )
         assert "RETIRED" in msg, msg
@@ -3793,7 +3798,7 @@ class TestAgentNodeBindWriteRouteRetired:
         # ``[src[, options]]``. The retired ``{"launcher": [src, dest, opts]}``
         # spelling is refused by arity now, which is what makes the two shapes
         # distinguishable at all — a 2-element list is NOT (R-9's accepted loss).
-        node = tmp_path / "settings.yaml"
+        node = tmp_path / BOX_META_FILE
         dump_doc(node, {"self": {"bindings": {"ro": {
             "/box/launcher": ["/REPOINT", "ro"]}}}})
 
@@ -3823,7 +3828,7 @@ class TestAgentNodeBindGetSurvives:
     scopes (``TestCoreBindGetReset`` below).
 
     The set/reset route is retired, but the key is still DECLARED, still authored
-    by hand in ``agents/<node>/settings.yaml``, and still delivered at launch — and
+    by hand in ``agents/<node>/agent.yaml``, and still delivered at launch — and
     hand-editing that file is exactly the cure the refusal prescribes. So ``config
     get`` must keep returning the stored tuple. A get that answered "(not set)" for
     a bind the launch is actually mounting would be a silent lie, and would make the
@@ -3831,14 +3836,14 @@ class TestAgentNodeBindGetSurvives:
     """
 
     def _agents_root(self, tmp_path):
-        # A node file under an agents root: agents/<node>/settings.yaml.
+        # A node file under an agents root: agents/<node>/agent.yaml.
         root = tmp_path / "agents"
         (root / "claude").mkdir(parents=True)
         return root
 
     def test_get_reads_a_hand_authored_bind_after_the_route_retired(self, tmp_path):
         agents = self._agents_root(tmp_path)
-        node_file = agents / "claude" / "settings.yaml"
+        node_file = agents / "claude" / "agent.yaml"
         # Authored the ONLY way left: directly in the node's settings file.
         dump_doc(node_file, {"self": {"bindings": {"ro": {
             "launcher": ["/newsrc", "/box/launcher", "ro"]}}}})
@@ -3852,7 +3857,7 @@ class TestAgentNodeBindGetSurvives:
         """The other half of the same round-trip: set and reset both refuse, and the
         hand-authored tuple the get above reads is still there afterwards."""
         agents = self._agents_root(tmp_path)
-        node_file = agents / "claude" / "settings.yaml"
+        node_file = agents / "claude" / "agent.yaml"
         seeded = {"self": {"bindings": {"ro": {
             "launcher": ["/old", "/box/launcher", "ro"]}}}}
         dump_doc(node_file, seeded)
@@ -3898,7 +3903,7 @@ class TestAgentNodeBindGetSurvives:
         # Collision: a bind literally NAMED ``model`` must route to the node-bind
         # get path (the bindings.ro segment), NOT the persona ``model`` scalar.
         agents = self._agents_root(tmp_path)
-        node_file = agents / "claude" / "settings.yaml"
+        node_file = agents / "claude" / "agent.yaml"
         dump_doc(node_file, {"self": {"bindings": {"ro": {
             "model": ["/hostmodel", "/box/model", "ro"]}}}})
         val = get_config_value(
@@ -3925,7 +3930,7 @@ class TestPersonaScalarGetResetUnchanged:
     def test_persona_model_get_reset_unchanged(self, tmp_path):
         agents = tmp_path / "agents"
         (agents / "claude").mkdir(parents=True)
-        node_file = agents / "claude" / "settings.yaml"
+        node_file = agents / "claude" / "agent.yaml"
         set_config_value(
             "agent.claude.model", "opus",
             config_path=tmp_path / "x", command_scope=ConfigLevel.system,
@@ -4045,15 +4050,15 @@ class TestSetTimeResolutionProbe:
     def test_dangling_embedded_ref_is_refused_and_names_the_referent(self, tmp_path):
         msg = set_config_value(
             "workset.boxes", "@meta.nope.key/boxes",
-            config_path=tmp_path / "settings.yaml",
+            config_path=tmp_path / BOX_META_FILE,
             command_scope=ConfigLevel.workset,
         )
         assert msg.startswith("Error:")
         assert "meta.nope.key" in msg
-        assert not (tmp_path / "settings.yaml").exists()  # nothing written
+        assert not (tmp_path / BOX_META_FILE).exists()  # nothing written
 
     def test_a_resolvable_ref_is_accepted(self, tmp_path):
-        cfg = tmp_path / "settings.yaml"
+        cfg = tmp_path / BOX_META_FILE
         cfg.write_text("workset:\n  template: /ws/template\n")
         msg = set_config_value(
             "workset.boxes", "@workset.template/boxes",
@@ -4065,7 +4070,7 @@ class TestSetTimeResolutionProbe:
     def test_an_unrelated_pre_existing_defect_still_allows_the_set(self, tmp_path):
         """``config set`` must stay usable to REPAIR a broken config: the probe
         blocks only on the EDITED value's own transitive upstream chain."""
-        cfg = tmp_path / "settings.yaml"
+        cfg = tmp_path / BOX_META_FILE
         cfg.write_text("workset:\n  logs: '@meta.also.nope/logs'\n")
         msg = set_config_value(
             "workset.boxes", "/abs/boxes",
@@ -4083,7 +4088,7 @@ class TestSetTimeResolutionProbe:
         """
         msg = set_config_value(
             "box.image", "ghcr.io/doctorjei/kanibako-oci:latest",
-            config_path=tmp_path / "settings.yaml",
+            config_path=tmp_path / BOX_META_FILE,
         )
         assert not msg.startswith("Error:"), msg
         assert "ghcr.io/doctorjei/kanibako-oci:latest" in msg
@@ -4091,7 +4096,7 @@ class TestSetTimeResolutionProbe:
     def test_reset_is_untouched(self, tmp_path):
         """Removing an override cannot introduce a dangling ref in the removed
         value, so ``--reset`` does not run the probe."""
-        cfg = tmp_path / "settings.yaml"
+        cfg = tmp_path / BOX_META_FILE
         cfg.write_text("box:\n  image: 'custom:v2'\n")
         msg = reset_config_value("box.image", config_path=cfg)
         assert not msg.startswith("Error:"), msg
@@ -4117,7 +4122,7 @@ class TestSetTimeResolutionProbe:
         env_path = tmp_path / ".env"
         msg = set_config_value(
             "env.EMAIL", "jei@example.com",
-            config_path=tmp_path / "settings.yaml", env_path=env_path,
+            config_path=tmp_path / BOX_META_FILE, env_path=env_path,
         )
         assert msg.startswith("Error:"), msg
         assert "box.env.EMAIL" in msg
@@ -4131,7 +4136,7 @@ class TestSetTimeResolutionProbe:
         """
         msg = set_config_value(
             "box.env.MY_PATH", "@nope.not.a.key/bin",
-            config_path=tmp_path / "settings.yaml",
+            config_path=tmp_path / BOX_META_FILE,
             command_scope=ConfigLevel.box,
         )
         assert msg.startswith("Error:"), msg
@@ -4159,7 +4164,7 @@ class TestSetTimeResolutionProbe:
         which sends the reader after the wrong thing entirely.
         """
         msg = set_config_value(
-            "run_args", "--env FOO=$BAR", config_path=tmp_path / "settings.yaml",
+            "run_args", "--env FOO=$BAR", config_path=tmp_path / BOX_META_FILE,
         )
         assert msg == "Error: unknown config key: run_args"
 
@@ -4310,7 +4315,7 @@ class TestEffectiveCategoryBlock:
         buf = io.StringIO()
         show_config(
             global_config_path=tmp_path / "kanibako_config.yaml",
-            config_path=tmp_path / "settings.yaml",
+            config_path=tmp_path / BOX_META_FILE,
             effective=True,
             file=buf,
             category_snapshot=self._snapshot(tmp_path),
@@ -4408,7 +4413,7 @@ class TestEffectiveCategoryBlock:
         buf = io.StringIO()
         rc = show_config(
             global_config_path=tmp_path / "kanibako_config.yaml",
-            config_path=tmp_path / "settings.yaml",
+            config_path=tmp_path / BOX_META_FILE,
             effective=True,
             file=buf,
             category_error=(
@@ -4431,7 +4436,7 @@ class TestPrefWriteSite:
     @pytest.mark.parametrize("scope", [ConfigLevel.system, ConfigLevel.agent])
     def test_set_at_an_illegal_scope_is_refused(self, tmp_path, scope):
         """INVERT: remove ``_pref_write_site_error`` -> reddens."""
-        f = tmp_path / "settings.yaml"
+        f = tmp_path / BOX_META_FILE
         msg = set_config_value(
             "pref.system.agent", "goose",
             config_path=f, system_settings_path=f, command_scope=scope,
@@ -4443,7 +4448,7 @@ class TestPrefWriteSite:
 
     @pytest.mark.parametrize("scope", [ConfigLevel.system, ConfigLevel.agent])
     def test_reset_at_an_illegal_scope_is_refused(self, tmp_path, scope):
-        f = tmp_path / "settings.yaml"
+        f = tmp_path / BOX_META_FILE
         msg = reset_config_value(
             "pref.system.agent",
             config_path=f, system_settings_path=f, command_scope=scope,
@@ -4455,7 +4460,7 @@ class TestPrefWriteSite:
         """A user at the system scope must be told the FILE is wrong regardless
         of the target's quality — fixing the target first would only surface
         this error afterwards."""
-        f = tmp_path / "settings.yaml"
+        f = tmp_path / BOX_META_FILE
         msg = set_config_value(
             "pref.agent.zippity.model", "x",
             config_path=f, system_settings_path=f,
@@ -4469,7 +4474,7 @@ class TestPrefSetGetReset:
     """§2h — set / get / reset all operate on prefs."""
 
     def test_set_writes_a_nested_table_and_get_returns_the_request(self, tmp_path):
-        f = tmp_path / "settings.yaml"
+        f = tmp_path / BOX_META_FILE
         msg = set_config_value(
             "pref.system.agent", "goose",
             config_path=f, command_scope=ConfigLevel.box,
@@ -4485,7 +4490,7 @@ class TestPrefSetGetReset:
         assert got == "goose"
 
     def test_a_deep_agent_pref_round_trips(self, tmp_path):
-        f = tmp_path / "settings.yaml"
+        f = tmp_path / BOX_META_FILE
         set_config_value(
             "pref.agent.claude.model", "opus",
             config_path=f, command_scope=ConfigLevel.workset,
@@ -4500,7 +4505,7 @@ class TestPrefSetGetReset:
         ) == "opus"
 
     def test_reset_clears_exactly_where_set_wrote(self, tmp_path):
-        f = tmp_path / "settings.yaml"
+        f = tmp_path / BOX_META_FILE
         set_config_value(
             "pref.system.agent", "goose",
             config_path=f, command_scope=ConfigLevel.box,
@@ -4516,7 +4521,7 @@ class TestPrefSetGetReset:
         ) is None
 
     def test_reset_of_an_absent_pref_is_honest(self, tmp_path):
-        f = tmp_path / "settings.yaml"
+        f = tmp_path / BOX_META_FILE
         msg = reset_config_value(
             "pref.system.agent", config_path=f, command_scope=ConfigLevel.box,
         )
@@ -4529,7 +4534,7 @@ class TestPrefTargetFiltersAtSetTime:
     stored request that fails every future launch."""
 
     def test_an_undeclared_target_is_refused(self, tmp_path):
-        f = tmp_path / "settings.yaml"
+        f = tmp_path / BOX_META_FILE
         msg = set_config_value(
             "pref.agent.claude.notakey", "x",
             config_path=f, command_scope=ConfigLevel.box,
@@ -4539,7 +4544,7 @@ class TestPrefTargetFiltersAtSetTime:
         assert not f.exists()
 
     def test_a_non_allowlisted_target_is_refused(self, tmp_path):
-        f = tmp_path / "settings.yaml"
+        f = tmp_path / BOX_META_FILE
         msg = set_config_value(
             "pref.box.image", "x",
             config_path=f, command_scope=ConfigLevel.box,
@@ -4548,7 +4553,7 @@ class TestPrefTargetFiltersAtSetTime:
         assert "directly at the box scope" in msg
 
     def test_a_meta_target_is_refused(self, tmp_path):
-        f = tmp_path / "settings.yaml"
+        f = tmp_path / BOX_META_FILE
         msg = set_config_value(
             "pref.meta.box.path", "/x",
             config_path=f, command_scope=ConfigLevel.box,
@@ -4557,7 +4562,7 @@ class TestPrefTargetFiltersAtSetTime:
 
     def test_a_new_name_in_a_parametric_family_is_accepted(self, tmp_path):
         """VALIDITY, not existence (§2h)."""
-        f = tmp_path / "settings.yaml"
+        f = tmp_path / BOX_META_FILE
         msg = set_config_value(
             "pref.agent.claude.model", "opus",
             config_path=f, command_scope=ConfigLevel.box,
@@ -4584,7 +4589,7 @@ class TestPrefAccessEnumGuard:
     def test_an_off_enum_value_is_refused_at_set_time(self, tmp_path, bogus):
         """Mutation proof: drop the ``is_access_key(target)`` arm in
         ``_pref_value_error`` → the write succeeds and this reddens."""
-        f = tmp_path / "settings.yaml"
+        f = tmp_path / BOX_META_FILE
         msg = set_config_value(
             "pref.agent.claude.access", bogus,
             config_path=f, command_scope=ConfigLevel.box,
@@ -4609,7 +4614,7 @@ class TestPrefAccessEnumGuard:
 
     def test_the_persona_node_spelling_is_guarded_too(self, tmp_path):
         """A ``+``/``℘`` persona node is still an ``access`` target."""
-        f = tmp_path / "settings.yaml"
+        f = tmp_path / BOX_META_FILE
         msg = set_config_value(
             "pref.agent.nav+claude.access", "fll",
             config_path=f, command_scope=ConfigLevel.box,
@@ -4620,7 +4625,7 @@ class TestPrefAccessEnumGuard:
     def test_the_suppression_request_is_still_legal(self, tmp_path):
         """``--null`` is §2h's suppression channel and is legal at ANY leaf —
         the enum guard must not swallow it (present-``None`` is not a value)."""
-        f = tmp_path / "settings.yaml"
+        f = tmp_path / BOX_META_FILE
         msg = set_config_value(
             "pref.agent.claude.access", None,
             config_path=f, command_scope=ConfigLevel.box,
@@ -4644,7 +4649,7 @@ class TestPrefIsKnownKey:
         the bare spelling's only delivery. Without this the cure would be a
         dead end and no config verb could set a container env var at all.
         """
-        f = tmp_path / "settings.yaml"
+        f = tmp_path / BOX_META_FILE
         msg = set_config_value(
             "box.env.FOO", "x", config_path=f, command_scope=ConfigLevel.box,
         )
@@ -4661,7 +4666,7 @@ class TestPrefShow:
         flip because this listing is a plain nested walk that validates no key —
         green was not evidence the spelling existed.
         """
-        f = tmp_path / "settings.yaml"
+        f = tmp_path / BOX_META_FILE
         f.write_text(yaml.safe_dump({
             "pref": {"system": {"agent": "goose"},
                      "agent": {"claude": {"common": {
@@ -4808,7 +4813,7 @@ class TestPrefValueValidation:
         pref can name, and it is claimed by ``is_terminal_category_key``, the
         same term that claims a ``bindings`` arm in the twin below.
         """
-        f = tmp_path / "settings.yaml"
+        f = tmp_path / BOX_META_FILE
         msg = set_config_value(
             "pref.agent.claude.common", "just-a-string",
             config_path=f, command_scope=ConfigLevel.box,
@@ -4843,7 +4848,7 @@ class TestPrefValueValidation:
         that REACHES this check: the §2h allowlist refuses ``pref.<scope>.…`` for a
         file scope several steps earlier ("only 'system.agent' and
         'agent.<agent>.<key>' may be requested")."""
-        f = tmp_path / "settings.yaml"
+        f = tmp_path / BOX_META_FILE
         msg = set_config_value(
             "pref.agent.claude.bindings.ro", "just-a-string",
             config_path=f, command_scope=ConfigLevel.box,
@@ -4878,7 +4883,7 @@ class TestPrefValueValidation:
         """R-5/R-10 — the retired spelling is refused EARLIER and for a DIFFERENT
         reason: it is not a key, so no value shape applies to it. The message must
         say so rather than talking about tuple shape."""
-        f = tmp_path / "settings.yaml"
+        f = tmp_path / BOX_META_FILE
         msg = set_config_value(
             "pref.agent.claude.bindings.ro.launcher", "just-a-string",
             config_path=f, command_scope=ConfigLevel.box,
@@ -4892,7 +4897,7 @@ class TestPrefValueValidation:
         """The E3 probe must run AT THE TARGET: probing at the pref path is a
         no-op because expand skips the pref subtree, so `@typo` used to be
         accepted and then silently DROPPED the target at launch."""
-        f = tmp_path / "settings.yaml"
+        f = tmp_path / BOX_META_FILE
         msg = set_config_value(
             "pref.agent.claude.template", "@nope.nothing/x",
             config_path=f, command_scope=ConfigLevel.box,
@@ -4902,7 +4907,7 @@ class TestPrefValueValidation:
         assert "agent.claude.template" in msg
 
     def test_a_resolvable_scalar_value_is_accepted(self, tmp_path):
-        f = tmp_path / "settings.yaml"
+        f = tmp_path / BOX_META_FILE
         msg = set_config_value(
             "pref.agent.claude.template", "/plain/path",
             config_path=f, command_scope=ConfigLevel.box,
@@ -4920,7 +4925,7 @@ class TestPrefValueValidation:
         name-keyed family, so a reserved leaf is still expressible and the
         never-raises contract is still exercised rather than proved vacuously.
         """
-        f = tmp_path / "settings.yaml"
+        f = tmp_path / BOX_META_FILE
         msg = set_config_value(
             "pref.agent.claude.env.get", "x",
             config_path=f, command_scope=ConfigLevel.box,
@@ -4933,7 +4938,7 @@ class TestPrefValueValidation:
         """⚑ DELIBERATE (§2h): the agent test is 'is it a VALID
         agent' about the KEY's discriminator, not about this VALUE. An unknown
         name surfaces at agent RESOLUTION (P7), not here."""
-        f = tmp_path / "settings.yaml"
+        f = tmp_path / BOX_META_FILE
         msg = set_config_value(
             "pref.system.agent", "zippity",
             config_path=f, command_scope=ConfigLevel.box,
@@ -4955,7 +4960,7 @@ class TestNullSpelling:
     def test_the_string_null_is_NOT_magic(self, tmp_path):
         """No pref-only dialect: `config set` stores scalars verbatim, so the
         literal text 'null' must stay a string wherever it is legal."""
-        f = tmp_path / "settings.yaml"
+        f = tmp_path / BOX_META_FILE
         set_config_value(
             "pref.agent.claude.template", "null",
             config_path=f, command_scope=ConfigLevel.box,
@@ -4967,7 +4972,7 @@ class TestNullSpelling:
     def test_null_writes_a_real_yaml_null(self, tmp_path):
         # ⚑ The suppression is spelled at the CATEGORY: ``common`` is TERMINAL and
         # dest-keyed (2026-08-08c), so there is no per-entry key to null.
-        f = tmp_path / "settings.yaml"
+        f = tmp_path / BOX_META_FILE
         msg = set_config_value(
             "pref.agent.claude.common", None,
             config_path=f, command_scope=ConfigLevel.box,
@@ -4989,7 +4994,7 @@ class TestNullSpelling:
         What is pinned now is that absence, from both sides: the retired spelling
         gets the RETIREMENT (not a null-mechanism lecture), and a live nested target
         actually stores a null."""
-        f = tmp_path / "settings.yaml"
+        f = tmp_path / BOX_META_FILE
         f.write_text(yaml.safe_dump({"box": {"common": {"plugins": ["/a", "~/b"]}}}))
         msg = set_config_value(
             "box.common.plugins", None,
@@ -5013,7 +5018,7 @@ class TestNullSpelling:
         """The R-39 refusal runs BEFORE the --null route guard, so a user who
         writes ``--null env.FOO`` is told the spelling is retired — not offered a
         null-mechanics explanation for a key that does not exist."""
-        f = tmp_path / "settings.yaml"
+        f = tmp_path / BOX_META_FILE
         msg = set_config_value(
             "env.FOO", None, config_path=f, env_path=tmp_path / "env",
             command_scope=ConfigLevel.box,
@@ -5044,7 +5049,7 @@ class TestPrefRefusalDoesNotPrescribeAMissingCommand:
     def test_no_direct_set_is_prescribed_for_a_yaml_only_target(
         self, tmp_path, target,
     ):
-        f = tmp_path / "settings.yaml"
+        f = tmp_path / BOX_META_FILE
         # SITE 1 — the write-site guard (a pref at a scope that may not hold one).
         site1 = set_config_value(
             f"pref.{target}", "v",
@@ -5063,7 +5068,7 @@ class TestPrefRefusalDoesNotPrescribeAMissingCommand:
     def test_a_scalar_target_still_gets_the_direct_set_hint(self, tmp_path):
         """The control — RED if the suppression over-reached and swallowed the hint
         wherever it is actually correct."""
-        f = tmp_path / "settings.yaml"
+        f = tmp_path / BOX_META_FILE
         assert "Set 'agent.claude.model' directly at the agent scope" in (
             set_config_value(
                 "pref.agent.claude.model", "opus",
@@ -5098,7 +5103,7 @@ class TestPrefGetRendersAllThreeEmptyIdioms:
         # the stored dotted path and validates nothing; green was not evidence.
         # The whole-category suppression is the present-None a user can now write
         # at a key with no destination in its tail.
-        f = tmp_path / "settings.yaml"
+        f = tmp_path / BOX_META_FILE
         f.write_text(yaml.safe_dump({"pref": {"agent": {"claude": {
             "common": None,
             "template": "",
@@ -5127,7 +5132,7 @@ def test_a_reserved_leaf_on_a_category_key_still_returns_an_error_not_a_raise(
     probe. It is currently unreachable through any spelling this suite can name; do
     not delete it on the strength of that without measuring the pref path.
     """
-    f = tmp_path / "settings.yaml"
+    f = tmp_path / BOX_META_FILE
     msg = set_config_value(
         "agent.claude.common.get", "/x",
         config_path=f, command_scope=ConfigLevel.system,
@@ -5198,7 +5203,7 @@ class TestSystemScopeSecretPathSymmetry:
     def test_box_scope_secret_get_is_unchanged(self, tmp_path):
         """The fix reads ``noun_file``, which falls back to ``project_toml`` when
         no system settings file is threaded — box/workset behavior is identical."""
-        f = tmp_path / "settings.yaml"
+        f = tmp_path / BOX_META_FILE
         set_config_value(
             "box.secret_path.TOKEN", "/t/box",
             config_path=f, command_scope=ConfigLevel.box,
@@ -5298,7 +5303,7 @@ class TestSystemScopeCategoryFileRouting:
         """``settings_dest`` IS ``config_path`` when no system settings file is
         threaded, so a box/workset read is byte-identical to before — and the write
         verbs refuse there too."""
-        f = tmp_path / "settings.yaml"
+        f = tmp_path / BOX_META_FILE
         dump_doc(f, {"box": {"caches": {"x": ["/old", "/home/agent/.cache/x"]}}})
         assert get_config_value(
             "box.caches.x", global_config_path=f, project_toml=f,
@@ -5343,7 +5348,7 @@ class TestCategorySetAgentNodeGuardsSuperseded:
         ``TestScopeBindRouteRetired.test_reset_is_refused_symmetrically``).
         """
         return set_config_value(
-            key, "/x", config_path=tmp_path / "settings.yaml",
+            key, "/x", config_path=tmp_path / BOX_META_FILE,
             command_scope=ConfigLevel.system, agents_root=self._agents(tmp_path),
         )
 
@@ -5361,7 +5366,7 @@ class TestCategorySetAgentNodeGuardsSuperseded:
         msg = self._set(tmp_path, key)
         assert msg.startswith("Error:"), msg
         assert "RETIRED" in msg, msg
-        assert not (tmp_path / "settings.yaml").exists()
+        assert not (tmp_path / BOX_META_FILE).exists()
 
     @pytest.mark.parametrize(
         "key",
@@ -5370,7 +5375,7 @@ class TestCategorySetAgentNodeGuardsSuperseded:
     def test_get_and_reset_still_refuse_the_same_two_nodes(self, tmp_path, key):
         """The read half is unchanged: a get of an unroutable node is still
         ``None``, and a reset is still an error (now the retirement's)."""
-        f = tmp_path / "settings.yaml"
+        f = tmp_path / BOX_META_FILE
         assert get_config_value(
             key, global_config_path=f, system_settings_path=f,
             agents_root=self._agents(tmp_path),

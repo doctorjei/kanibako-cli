@@ -568,7 +568,7 @@ class TestCoreBehaviorDefaults:
             # A descriptor that COLLIDES with a core floor key — the whole contest.
             TargetSetting(key="bootstrap", description="Multiplexer", default="screen"),
         ]
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / "box.yaml"
         write_project_config(project_toml, "base:image")
 
         effective = _effective_behavior_for_display(

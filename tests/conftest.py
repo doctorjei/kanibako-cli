@@ -512,13 +512,13 @@ def start_mocks():
             m_load_agent_cfg.return_value = agent_cfg
             # start.py derives the agent config path as
             # agent_settings_path(std.agents, "<id>") == std.agents / "<id>" /
-            # "settings.yaml" (two __truediv__ hops).  std is a MagicMock, so the
+            # "agent.yaml" (two __truediv__ hops).  std is a MagicMock, so the
             # derived path's .exists() is truthy by default — which keeps the
             # "config already present" branch.
             mock_agent_path = (
                 m_load_std.return_value.agents
                 .__truediv__.return_value      # std.agents / "<id>"
-                .__truediv__.return_value      # ... / "settings.yaml"
+                .__truediv__.return_value      # ... / "agent.yaml"
             )
             mock_agent_path.exists.return_value = True
 

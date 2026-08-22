@@ -33,13 +33,13 @@ class TestSecretPathSection:
 
     RENAMED from ``env_file`` (rc0-rc2, clean break). Stored DIRECTLY under the file's root
     (``self.secret_path.<VAR>``) — ``self`` IS ``agent.<node>`` (the per-agent store dir
-    ``agents/<node>/settings.yaml``), so there is NO second ``<node>`` embedding; the whole root
+    ``agents/<node>/agent.yaml``), so there is NO second ``<node>`` embedding; the whole root
     table is what ``_agent_partial`` re-roots into the launch cascade.  The value is a PATH only
     (never the secret contents).
     """
 
     def _node_file(self, tmp_path, node="nav℘claude"):
-        p = tmp_path / node / "settings.yaml"
+        p = tmp_path / node / "agent.yaml"
         p.parent.mkdir(parents=True, exist_ok=True)
         return p
 
@@ -349,7 +349,7 @@ class TestCategoryTablesCarryThrough:
     )
 
     def test_load_captures_the_unmodelled_categories(self, tmp_path):
-        path = tmp_path / "settings.yaml"
+        path = tmp_path / "agent.yaml"
         path.write_text(self._FLAT_YAML)
         cfg = load(path)
         assert cfg.category_tables == {
@@ -361,7 +361,7 @@ class TestCategoryTablesCarryThrough:
     def test_round_trip_preserves_the_category_tables(self, tmp_path):
         from kanibako.settings.config_io import load_doc
 
-        path = tmp_path / "settings.yaml"
+        path = tmp_path / "agent.yaml"
         path.write_text(self._FLAT_YAML)
         cfg = load(path)
         cfg.state["endpoint"] = "https://e.example"  # a read-modify-write
@@ -374,7 +374,7 @@ class TestCategoryTablesCarryThrough:
     def test_every_unmodelled_category_rides_the_carrier(self, tmp_path):
         # The carrier is derived from the flat-category tuple MINUS what the record
         # models, so widening one widens the other — no second list to keep in step.
-        path = tmp_path / "settings.yaml"
+        path = tmp_path / "agent.yaml"
         path.write_text(
             "self:\n"
             "  caches: {~/.cache/uv: [/store/uv]}\n"
@@ -388,7 +388,7 @@ class TestCategoryTablesCarryThrough:
         }
 
     def test_env_secret_transform_not_double_captured(self, tmp_path):
-        path = tmp_path / "settings.yaml"
+        path = tmp_path / "agent.yaml"
         path.write_text(
             "self:\n"
             "  env:\n"
@@ -404,7 +404,7 @@ class TestCategoryTablesCarryThrough:
     def test_empty_category_table_not_materialized(self, tmp_path):
         from kanibako.settings.config_io import load_doc
 
-        path = tmp_path / "settings.yaml"
+        path = tmp_path / "agent.yaml"
         save(path, AgentConfig(category_tables={"caches": {}}))
         assert "caches" not in load_doc(path)["self"]
 
@@ -412,7 +412,7 @@ class TestCategoryTablesCarryThrough:
         # Malformed dict-valued identity keys must not ride category_tables (they
         # would clobber the emitted string ``name`` on the next write) — and they are
         # NOT refused as nested sub-tables either: a mistyped scalar is not a nesting.
-        path = tmp_path / "settings.yaml"
+        path = tmp_path / "agent.yaml"
         path.write_text(
             "self:\n"
             "  name:\n"
@@ -429,7 +429,7 @@ class TestCategoryTablesCarryThrough:
         # it. Nor can the carrier emit a table ``load`` would refuse.
         from kanibako.settings.config_io import load_doc
 
-        path = tmp_path / "settings.yaml"
+        path = tmp_path / "agent.yaml"
         save(path, AgentConfig(
             env={"A": "b"},
             category_tables={"env": {"EVIL": "x"}, "nav℘codex": {"evil": "y"}},
@@ -454,7 +454,7 @@ class TestSlotRouting:
     @pytest.mark.parametrize("tail", _TAILS)
     def test_write_read_remove_round_trip(self, tail, tmp_path):
         slot = slot_for(tmp_path, "claude", tail)
-        assert slot.path == tmp_path / "claude" / "settings.yaml"
+        assert slot.path == tmp_path / "claude" / "agent.yaml"
         assert read_leaf(slot) is None
         write_leaf(slot, "v")
         assert read_leaf(slot) == "v"
@@ -521,7 +521,7 @@ class TestTheDestIsData:
     _DOTTED = "~/.cache/uv"
 
     def _file_with(self, tmp_path, body):
-        path = tmp_path / "claude" / "settings.yaml"
+        path = tmp_path / "claude" / "agent.yaml"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(body)
         return path
@@ -570,7 +570,7 @@ class TestTableValuedKeysTakeNoScalar:
         from kanibako.settings.agent_file import table_value_error
 
         msg = table_value_error(
-            "transform_settings", path=tmp_path / "settings.yaml", verb="set",
+            "transform_settings", path=tmp_path / "agent.yaml", verb="set",
         )
         assert msg is not None
         assert "holds a TABLE" in msg
@@ -582,7 +582,7 @@ class TestTableValuedKeysTakeNoScalar:
         from kanibako.settings.agent_file import table_value_error
 
         msg = table_value_error(
-            "bindings.ro", path=tmp_path / "settings.yaml", verb="set",
+            "bindings.ro", path=tmp_path / "agent.yaml", verb="set",
         )
         assert msg is not None and "self.bindings.ro" in msg
 
@@ -591,7 +591,7 @@ class TestTableValuedKeysTakeNoScalar:
         from kanibako.settings.agent_file import table_value_error
 
         assert table_value_error(
-            tail, path=tmp_path / "settings.yaml", verb="set",
+            tail, path=tmp_path / "agent.yaml", verb="set",
         ) is None
 
 
@@ -605,7 +605,7 @@ class TestLoadSurvivesAMalformedTable:
 
     @pytest.mark.parametrize("key", ("transform_settings", "env", "secret_path"))
     def test_a_scalar_at_a_table_key_does_not_raise(self, key, tmp_path):
-        path = tmp_path / "settings.yaml"
+        path = tmp_path / "agent.yaml"
         path.write_text(f"self:\n  name: Nav\n  {key}: oops\n")
         cfg = load(path)          # must not raise
         assert cfg.name == "Nav"
@@ -620,7 +620,7 @@ class TestClearOverrides:
     def test_preserves_name_and_counts(self, tmp_path):
         from kanibako.settings.config_io import load_doc
 
-        path = tmp_path / "settings.yaml"
+        path = tmp_path / "agent.yaml"
         path.write_text(
             "self:\n"
             "  name: Nav\n"
@@ -646,13 +646,13 @@ class TestClearOverrides:
     def test_prunes_the_root_when_nothing_survives(self, tmp_path):
         from kanibako.settings.config_io import load_doc
 
-        path = tmp_path / "settings.yaml"
+        path = tmp_path / "agent.yaml"
         path.write_text("self:\n  model: opus\n")
         assert clear_overrides(path) == 1
         assert load_doc(path) == {}
 
     def test_no_overrides_is_zero(self, tmp_path):
-        path = tmp_path / "settings.yaml"
+        path = tmp_path / "agent.yaml"
         path.write_text("self:\n  name: Nav\n")
         assert clear_overrides(path) == 0
 
@@ -768,7 +768,7 @@ class TestTheForwardCompatPassthroughIsClosed:
             state_level({"model": "opus", "junk": "x"}, node="claude")
         message = str(exc.value)
         assert "'junk'" in message
-        assert "agents/claude/settings.yaml" in message
+        assert "agents/claude/agent.yaml" in message
         # The repair route stays NAMED — the verb that still works on a poisoned file.
         assert "agent info claude" in message
 
@@ -809,7 +809,7 @@ class TestTheForwardCompatPassthroughIsClosed:
         # ⚑ WHY THE REFUSAL IS AT THE LAUNCH BOUNDARY AND NOT IN ``load``: a poisoned file
         # must still be clearable. ``clear_overrides`` reads raw YAML and never builds a
         # level, so this is the escape hatch, pinned rather than assumed.
-        path = tmp_path / "settings.yaml"
+        path = tmp_path / "agent.yaml"
         path.write_text("self:\n  name: Nav\n  junk: x\n")
         assert load(path).state == {"junk": "x"}   # the SHOW verbs still see it
         assert clear_overrides(path) == 1
@@ -837,7 +837,7 @@ class TestLoadSharesTheRefusal:
     """Two readers of ONE file must not disagree about what the file means (call (b))."""
 
     def test_load_refuses_what_the_cascade_refuses(self, tmp_path):
-        path = tmp_path / "settings.yaml"
+        path = tmp_path / "agent.yaml"
         path.write_text(
             "self:\n"
             "  name: Nav\n"
@@ -853,7 +853,7 @@ class TestLoadSharesTheRefusal:
 
     def test_a_flat_file_loads(self, tmp_path):
         # The control: the predicate must not refuse the shape the flatten blesses.
-        path = tmp_path / "settings.yaml"
+        path = tmp_path / "agent.yaml"
         path.write_text(
             "self:\n"
             "  name: Nav\n"

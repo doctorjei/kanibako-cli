@@ -52,7 +52,7 @@ _SANCTIONED: dict[str, int] = {
     # ``kanibako config set`` and friends — the user-intent write path.  Six
     # sites: the per-scope dispatch arms plus the system-scope leaf write.
     "src/kanibako/settings/config_interface.py": 6,
-    # The agent settings file writer (``agents/<node>/settings.yaml``), which by
+    # The agent settings file writer (``agents/<node>/agent.yaml``), which by
     # the FILE-PURITY invariant may only ever carry user-intent values.
     "src/kanibako/settings/agent_file.py": 1,
     # Standalone box registration stamps the generated ``workset.kuid``.

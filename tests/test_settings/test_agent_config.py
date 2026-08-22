@@ -62,26 +62,26 @@ class TestAgentsDir:
 
 class TestAgentConfigPath:
     def test_path(self, tmp_path):
-        # Per-agent settings live INSIDE the store dir: agents/<agent>/settings.yaml
+        # Per-agent settings live INSIDE the store dir: agents/<agent>/agent.yaml
         result = agent_config_path(tmp_path, "claude")
-        assert result == tmp_path / "agents" / "claude" / "settings.yaml"
+        assert result == tmp_path / "agents" / "claude" / "agent.yaml"
 
     def test_custom_agents_dir(self, tmp_path):
         result = agent_config_path(tmp_path, "claude", "my-crabs")
-        assert result == tmp_path / "my-crabs" / "claude" / "settings.yaml"
+        assert result == tmp_path / "my-crabs" / "claude" / "agent.yaml"
 
     def test_general_agent(self, tmp_path):
         result = agent_config_path(tmp_path, "general")
-        assert result == tmp_path / "agents" / "general" / "settings.yaml"
+        assert result == tmp_path / "agents" / "general" / "agent.yaml"
 
 
 class TestAgentSettingsPath:
     def test_path(self, tmp_path):
         agents_root = tmp_path / "agents"
         result = agent_settings_path(agents_root, "claude")
-        assert result == agents_root / "claude" / "settings.yaml"
+        assert result == agents_root / "claude" / "agent.yaml"
 
     def test_general(self, tmp_path):
         agents_root = tmp_path / "agents"
         result = agent_settings_path(agents_root, "general")
-        assert result == agents_root / "general" / "settings.yaml"
+        assert result == agents_root / "general" / "agent.yaml"

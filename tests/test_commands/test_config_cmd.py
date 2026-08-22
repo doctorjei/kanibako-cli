@@ -57,7 +57,7 @@ class TestBoxConfigShow:
         proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
 
         # Write a project override
-        project_toml = proj.metadata_path / "settings.yaml"
+        project_toml = proj.metadata_path / "box.yaml"
         write_project_config(project_toml, "custom:v1")
 
         args = argparse.Namespace(args=[project_dir], effective=False)
@@ -69,7 +69,7 @@ class TestBoxConfigShow:
     def test_show_effective_reflects_workset_tier(
         self, config_file, tmp_home, credentials_dir, capsys, monkeypatch,
     ):
-        """A value set ONLY in the workset settings.yaml shows in --effective.
+        """A value set ONLY in the workset workset.yaml shows in --effective.
 
         This is the P3.7 parity fix: ``box config --effective`` must reflect
         the workset tier that ``start`` resolves (previously it skipped it).
@@ -87,10 +87,10 @@ class TestBoxConfigShow:
         add_project(ws, "myproj", src)
 
         # Set a box.* value ONLY at the workset level.  The workset settings now
-        # live in the SAME settings.yaml that carries the meta.workset identity,
+        # live in the SAME workset.yaml that carries the meta.workset identity,
         # so merge the cascade key in rather than clobbering the file.
         from kanibako.settings.config_io import dump_doc, load_doc
-        ws_settings = ws.root / "settings.yaml"
+        ws_settings = ws.root / "workset.yaml"
         data = load_doc(ws_settings) if ws_settings.is_file() else {}
         data["box"] = {"image": "ws-tier-img:1"}
         dump_doc(ws_settings, data)
@@ -334,7 +334,7 @@ class TestBoxConfigSet:
         assert "box.bindings.rw.home" in captured.err, captured.err
         assert "RETIRED" in captured.err, captured.err
         # Nothing was written into the box settings file.
-        project_toml = proj.metadata_path / "settings.yaml"
+        project_toml = proj.metadata_path / "box.yaml"
         assert "bindings" not in load_doc(project_toml).get("box", {})
 
 
@@ -349,7 +349,7 @@ class TestBoxConfigReset:
         proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
 
         # Set first
-        project_toml = proj.metadata_path / "settings.yaml"
+        project_toml = proj.metadata_path / "box.yaml"
         write_project_config(project_toml, "to-reset:v1")
 
         # Reset
@@ -375,7 +375,7 @@ class TestBoxConfigReset:
         proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
 
         # Set a value first
-        project_toml = proj.metadata_path / "settings.yaml"
+        project_toml = proj.metadata_path / "box.yaml"
         write_project_config(project_toml, "override:v1")
 
         # Reset all with --force (skip confirmation)
@@ -415,7 +415,7 @@ class TestBoxConfigReset:
 
 class TestBoxConfigRefusesThePhantomBox:
     """MBR-6: a subject-less box-config verb run from a cwd that is NOT a box
-    must REFUSE, not materialise ``boxes/__unregistered__/settings.yaml``.
+    must REFUSE, not materialise ``boxes/__unregistered__/box.yaml``.
 
     ``_resolve_local_dir`` returns that path as a NAME-ASSIGNMENT SENTINEL for
     resolvers that go on to pick a real name.  The config verbs pick none, so the
@@ -580,7 +580,7 @@ class TestBoxConfigTooManyArgs:
 
 class TestWriteProjectConfigKey:
     def test_write_paths_key(self, tmp_path):
-        p = tmp_path / "settings.yaml"
+        p = tmp_path / "box.yaml"
         write_project_config_key(p, "paths_project_toml", "custom.yaml")
         loaded = load_config(p)
         assert loaded.paths_project_toml == "custom.yaml"
@@ -589,7 +589,7 @@ class TestWriteProjectConfigKey:
         assert 'project_toml: custom.yaml' in text
 
     def test_write_box_key(self, tmp_path):
-        p = tmp_path / "settings.yaml"
+        p = tmp_path / "box.yaml"
         write_project_config_key(p, "box_image", "myimg:v1")
         loaded = load_config(p)
         assert loaded.box_image == "myimg:v1"
@@ -600,7 +600,7 @@ class TestWriteProjectConfigKey:
     def test_write_shell_key(self, tmp_path):
         # (⮕ P7: was ``box_agent_name``, retired with spec §2b — the SHAPE under
         # test is the nested box-table write, not that key.)
-        p = tmp_path / "settings.yaml"
+        p = tmp_path / "box.yaml"
         write_project_config_key(p, "box_shell", "bash")
         loaded = load_config(p)
         assert loaded.box_shell == "bash"
@@ -610,7 +610,7 @@ class TestWriteProjectConfigKey:
 
     def test_write_multiple_sections(self, tmp_path):
         """Writing keys from different sections should create both."""
-        p = tmp_path / "settings.yaml"
+        p = tmp_path / "box.yaml"
         write_project_config_key(p, "box_image", "multi:v1")
         write_project_config_key(p, "paths_project_toml", "multi.yaml")
         loaded = load_config(p)
@@ -618,7 +618,7 @@ class TestWriteProjectConfigKey:
         assert loaded.paths_project_toml == "multi.yaml"
 
     def test_update_existing_key(self, tmp_path):
-        p = tmp_path / "settings.yaml"
+        p = tmp_path / "box.yaml"
         write_project_config_key(p, "box_image", "old:v1")
         write_project_config_key(p, "box_image", "new:v2")
         loaded = load_config(p)
@@ -628,7 +628,7 @@ class TestWriteProjectConfigKey:
 
     def test_backward_compat_with_write_project_config(self, tmp_path):
         """write_project_config (old API) should still work."""
-        p = tmp_path / "settings.yaml"
+        p = tmp_path / "box.yaml"
         write_project_config(p, "compat:v1")
         loaded = load_config(p)
         assert loaded.box_image == "compat:v1"
@@ -637,7 +637,7 @@ class TestWriteProjectConfigKey:
 class TestUnsetProjectConfigKey:
     def test_unset_removes_key(self, tmp_path):
         from kanibako.settings.config import unset_project_config_key
-        p = tmp_path / "settings.yaml"
+        p = tmp_path / "box.yaml"
         write_project_config_key(p, "box_image", "remove-me:v1")
         assert unset_project_config_key(p, "box_image") is True
         loaded = load_config(p)
@@ -646,7 +646,7 @@ class TestUnsetProjectConfigKey:
 
     def test_unset_nonexistent_key(self, tmp_path):
         from kanibako.settings.config import unset_project_config_key
-        p = tmp_path / "settings.yaml"
+        p = tmp_path / "box.yaml"
         write_project_config_key(p, "box_image", "keep:v1")
         assert unset_project_config_key(p, "paths_project_toml") is False
         # Original key should still be there
@@ -660,7 +660,7 @@ class TestUnsetProjectConfigKey:
 
     def test_unset_preserves_other_keys(self, tmp_path):
         from kanibako.settings.config import unset_project_config_key
-        p = tmp_path / "settings.yaml"
+        p = tmp_path / "box.yaml"
         write_project_config_key(p, "box_image", "img:v1")
         write_project_config_key(p, "paths_project_toml", "my.yaml")
         assert unset_project_config_key(p, "box_image") is True
@@ -675,7 +675,7 @@ class TestLoadProjectOverrides:
         assert load_project_overrides(p) == {}
 
     def test_returns_only_overrides(self, tmp_path):
-        p = tmp_path / "settings.yaml"
+        p = tmp_path / "box.yaml"
         write_project_config_key(p, "box_image", "override:v1")
         overrides = load_project_overrides(p)
         assert "box_image" in overrides
@@ -719,8 +719,8 @@ class TestSplitConfigKey:
 # ---------------------------------------------------------------------------
 
 class TestStandaloneBoxTierRoundTrip:
-    """A standalone box has a BOX TIER at ``box_data/settings.yaml`` (spec §2c ALL
-    PROJECTS), absent by default, over the ROOT ``settings.yaml`` that plays the
+    """A standalone box has a BOX TIER at ``box_data/box.yaml`` (spec §2c ALL
+    PROJECTS), absent by default, over the ROOT ``workset.yaml`` that plays the
     WORKSET tier.  ``config set`` must WRITE the box tier that ``get`` READS — the
     whole point of M-8: a read/write split is the silent "I set it and nothing
     changed" failure, with no error anywhere."""
@@ -743,9 +743,9 @@ class TestStandaloneBoxTierRoundTrip:
         gets both positions from the code under test is self-consistent and therefore
         BLIND to a swapped pair.  These literals are what make the swap mutation
         redden here."""
-        from kanibako.settings.paths import STANDALONE_META_DIR, BOX_META_FILE
+        from kanibako.settings.paths import STANDALONE_META_DIR
 
-        return root / BOX_META_FILE, root / STANDALONE_META_DIR / BOX_META_FILE
+        return root / "workset.yaml", root / STANDALONE_META_DIR / "box.yaml"
 
     def test_set_writes_the_box_tier_and_leaves_the_root_file_alone(
         self, config_file, tmp_home, credentials_dir, capsys,
@@ -773,7 +773,7 @@ class TestStandaloneBoxTierRoundTrip:
         self, config_file, tmp_home, credentials_dir, capsys,
     ):
         """⚑ THE M-8 GATE. A set followed by a get must round-trip through ONE file.
-        (Mutation: leave `config set` on the old ``metadata_path/settings.yaml``
+        (Mutation: leave `config set` on the old ``metadata_path/workset.yaml``
         derivation while the read moves → get prints "(not set)" → RED.)"""
         from kanibako.commands.box._parser import run_get, run_set
 
@@ -854,7 +854,7 @@ class TestStandaloneBoxTierRoundTrip:
         self, config_file, tmp_home, credentials_dir, capsys,
     ):
         """Regression pin: PRIMARY still writes and reads its own
-        ``<metadata_path>/settings.yaml`` — no ``box_data/`` anywhere."""
+        ``<metadata_path>/box.yaml`` — no ``box_data/`` anywhere."""
         from kanibako.commands.box._parser import run_get, run_set
         from kanibako.settings.config_io import load_doc
         from kanibako.settings.paths import BOX_META_FILE, load_std_paths, resolve_project
@@ -910,7 +910,7 @@ class TestStandaloneBoxTierRoundTrip:
         # ⚑ LITERAL position too: asserting only against the pair function would make
         # this AUTH-CRITICAL test self-consistent and blind to a swapped pair, which
         # would point it at the ROOT file while the launch snapshot reads box_data/.
-        assert box_tier == root / "box_data" / "settings.yaml"
+        assert box_tier == root / "box_data" / "box.yaml"
         auth = load_doc(box_tier)["box"]["auth"]
         assert auth["global_enabled"] is False
         assert auth["workset_enabled"] is False

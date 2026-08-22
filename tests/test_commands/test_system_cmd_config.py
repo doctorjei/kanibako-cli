@@ -434,12 +434,12 @@ class TestSystemStructuralFileOnly:
 
 class TestSystemPersonaAgentKeys:
     """B1: ``system set agent.<persona+harness>.<key>`` — CLI-configurable
-    personas routed to the agent's OWN ``agents/<node>/settings.yaml`` (the
+    personas routed to the agent's OWN ``agents/<node>/agent.yaml`` (the
     global ``config.agents`` store), end-to-end through the ``system`` verbs.
     """
 
     def _file(self, std, node="navigator℘claude"):
-        return std.agents / node / "settings.yaml"
+        return std.agents / node / "agent.yaml"
 
     def test_set_endpoint_writes_canonical_dir(self, config_file, tmp_home):
         rc = _set("agent.navigator+claude.endpoint=https://ep")
@@ -498,14 +498,14 @@ class TestSystemAgentNodeBindWriteRouteRetired:
     This class REPLACES ``TestSystemAgentNodeBindRepoint``, which pinned the
     opposite end-to-end behaviour (``system config set
     agent.<node>.bindings.{ro,rw}.<name> /new`` writing a RAW tuple into
-    ``agents/<node>/settings.yaml``). That surface is an ACCEPTED LOSS, boarded as
+    ``agents/<node>/agent.yaml``). That surface is an ACCEPTED LOSS, boarded as
     DS-BL1. The end-to-end value of the tests is unchanged: they prove the refusal
     is what the USER meets at the CLI, not just what the engine returns."""
 
     KEY = "agent.claude.bindings.ro.launcher"
 
     def _file(self, std, node="claude"):
-        return std.agents / node / "settings.yaml"
+        return std.agents / node / "agent.yaml"
 
     def test_set_exits_nonzero_and_names_the_key_on_stderr(
         self, config_file, tmp_home, capsys,

@@ -89,15 +89,15 @@ class TestStandaloneImport:
         self, std, config, project_dir, capsys,
     ):
         # A hand-built / pre-kuid standalone tree: the box_data/ marker + a
-        # settings.yaml carrying NO workset.kuid (P8b: import composes kuid-first
+        # workset.yaml carrying NO workset.kuid (P8b: import composes kuid-first
         # and, absent a stored kuid — the SENTINEL — falls back to the dir leaf,
         # mirroring box_resolve.resolve_box_identity; it does NOT persist a name).
         from kanibako.settings.config_io import dump_doc, load_doc
 
         box_data = project_dir / "box_data"
         box_data.mkdir(parents=True)
-        meta_file = project_dir / "settings.yaml"
-        # A sparse settings.yaml with a box: table but no workset.kuid.
+        meta_file = project_dir / "workset.yaml"
+        # A sparse workset.yaml with a box: table but no workset.kuid.
         dump_doc(meta_file, {"box": {"enable_vault": True}})
         capsys.readouterr()
 
@@ -123,7 +123,7 @@ class TestStandaloneImport:
 
         box_data = project_dir / "box_data"
         box_data.mkdir(parents=True)
-        meta_file = project_dir / "settings.yaml"
+        meta_file = project_dir / "workset.yaml"
         box_kuid = kuid.generate()
         dump_doc(meta_file, {"workset": {"kuid": box_kuid}})
         capsys.readouterr()
@@ -169,7 +169,7 @@ class TestStandaloneImport:
         assert resolved.vault_ro_path == (moved / "vault" / "ro").resolve()
         assert resolved.vault_rw_path == (moved / "vault" / "rw").resolve()
         assert str(orig) not in str(resolved.shell_path)
-        # Drift I: metadata_path is the ROOT (settings.yaml lives there);
+        # Drift I: metadata_path is the ROOT (workset.yaml lives there);
         # the workspace is the <root>/workspace subdir.
         assert resolved.metadata_path == moved.resolve()
         assert resolved.project_path == (moved / "workspace").resolve()

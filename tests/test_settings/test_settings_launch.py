@@ -210,13 +210,13 @@ class TestNothingNestsUnderSelfButTheCategories:
         raw = {"self": {"codex": {category: {var: value}}}}
         with pytest.raises(SettingsError) as exc:
             _agent_partial(
-                raw, sub_key="codex", path=Path("/a/settings.yaml"), node="codex",
+                raw, sub_key="codex", path=Path("/a/agent.yaml"), node="codex",
             )
         message = str(exc.value)
         # Names the offending SPELLING and the cure — a refusal that does not is a crash.
         assert f"self.codex.{category}" in message
         assert var in message
-        assert "/a/settings.yaml" in message
+        assert "/a/agent.yaml" in message
         # The CURE every category gets: the FLAT table, spelled as the YAML to write.
         assert f"self:\n      {category}:\n        {var}: {value}" in message
         # ⚑ AND THE VERB ONLY WHERE IT WORKS. ``agent set`` writes a per-VAR scalar, which
@@ -278,7 +278,7 @@ class TestNothingNestsUnderSelfButTheCategories:
         raw = {"self": {"default": {category: {var: value}}}}
         with pytest.raises(SettingsError) as exc:
             _agent_partial(
-                raw, sub_key="default", path=Path("/a/settings.yaml"), node="codex",
+                raw, sub_key="default", path=Path("/a/agent.yaml"), node="codex",
             )
         message = str(exc.value)
         assert f"self.default.{category}" in message
@@ -1422,7 +1422,7 @@ def test_meta_runtime_named_ws_root_is_detected_root_literal():
 
 def test_meta_runtime_standalone_ws_root_is_the_project_dir():
     """STANDALONE: ws_root = the project dir literal, so the workset tier resolves
-    to <root>/settings.yaml (the ROOT file plays the WORKSET tier)."""
+    to <root>/workset.yaml (the ROOT file plays the WORKSET tier)."""
     snap = _meta_snapshot("standalone", ws_root_literal="/scratch/myproj")
     runtime = _meta_node(snap, "meta", "runtime")
     assert dict.get(runtime, "ws_root") == "/scratch/myproj"
@@ -1461,7 +1461,7 @@ def test_meta_workset_path_single_sources_from_ws_root_all_modes():
 
 
 def test_meta_workset_settings_single_sources_all_modes():
-    """meta.workset.settings = @meta.runtime.ws_root/settings.yaml, UNIFORM across ALL
+    """meta.workset.settings = @meta.runtime.ws_root/workset.yaml, UNIFORM across ALL
     modes incl. standalone (whose ROOT file plays the workset tier).
 
     ⚑ EQUIVALENCE BAR for the ``meta.runtime.ws_settings`` CUT: these EXPECTED VALUES
@@ -1471,17 +1471,17 @@ def test_meta_workset_settings_single_sources_all_modes():
     snap_p = _meta_snapshot("primary", ctx=_ctx_with_config("/data/primary_workset"))
     assert (
         dict.get(_meta_node(snap_p, "meta", "workset"), "settings")
-        == "/data/primary_workset/settings.yaml"
+        == "/data/primary_workset/workset.yaml"
     )
     snap_n = _meta_snapshot("named", ws_root_literal="/code/kento")
     assert (
         dict.get(_meta_node(snap_n, "meta", "workset"), "settings")
-        == "/code/kento/settings.yaml"
+        == "/code/kento/workset.yaml"
     )
     snap_s = _meta_snapshot("standalone", ws_root_literal="/scratch/myproj")
     assert (
         dict.get(_meta_node(snap_s, "meta", "workset"), "settings")
-        == "/scratch/myproj/settings.yaml"
+        == "/scratch/myproj/workset.yaml"
     )
 
 
@@ -1640,15 +1640,15 @@ def test_meta_views_read_runtime_typed():
     assert bx.mode == "named"
     ws = views.MetaWorksetView(_meta_node(snap, "meta", "workset"))
     assert ws.path == _Path("/code/kento")
-    assert ws.settings == _Path("/code/kento/settings.yaml")
+    assert ws.settings == _Path("/code/kento/workset.yaml")
 
-    # standalone: workset.settings is the <root>/settings.yaml the ROOT file plays as
+    # standalone: workset.settings is the <root>/workset.yaml the ROOT file plays as
     # the WORKSET tier, NOT None.
     snap_s = _meta_snapshot("standalone", ws_root_literal="/scratch/myproj")
     rt_s = views.MetaRuntimeView(_meta_node(snap_s, "meta", "runtime"))
     assert rt_s.ws_root == _Path("/scratch/myproj")
     ws_s = views.MetaWorksetView(_meta_node(snap_s, "meta", "workset"))
-    assert ws_s.settings == _Path("/scratch/myproj/settings.yaml")
+    assert ws_s.settings == _Path("/scratch/myproj/workset.yaml")
 
 
 def test_meta_runtime_floor_requires_literal_for_non_primary():
@@ -1909,14 +1909,14 @@ class TestMetaAgentGrammarSnapshot:
         assert dict.get(ma, "exec") == ["-p"]
 
     def test_settings_leaf_resolves_through_the_path_anchor(self):
-        """``meta.agent.<a>.settings`` = @meta.agent.<a>.path/settings.yaml —
+        """``meta.agent.<a>.settings`` = @meta.agent.<a>.path/agent.yaml —
         the @-ref chain resolves through the sibling ``path`` anchor to the SAME
-        file ``agent_settings_path`` composes (agents/<a>/settings.yaml)."""
+        file ``agent_settings_path`` composes (agents/<a>/agent.yaml)."""
         from kanibako.settings.agent_config import agent_settings_path
 
         snap = _grammar_snapshot()
         ma = _meta_node(snap, "meta", "agent", "claude")
-        assert dict.get(ma, "settings") == "/data/agents/claude/settings.yaml"
+        assert dict.get(ma, "settings") == "/data/agents/claude/agent.yaml"
         assert dict.get(ma, "settings") == str(
             agent_settings_path(Path("/data/agents"), "claude")
         )
@@ -1961,7 +1961,7 @@ class TestMetaAgentGrammarSnapshot:
 
         snap = _grammar_snapshot()
         ma = views.MetaAgentView(_meta_node(snap, "meta", "agent", "claude"))
-        assert ma.settings == Path("/data/agents/claude/settings.yaml")
+        assert ma.settings == Path("/data/agents/claude/agent.yaml")
         assert ma.mode == {"start": [], "continue": ["--continue"]}
         assert ma.exec == ["-p"]
 
@@ -1999,28 +1999,28 @@ def test_meta_identity_standalone_share_workset_none_terminal():
 def test_meta_box_settings_anchor_primary_named_and_standalone():
     """meta.box.settings is the RO box-TIER file anchor, materialized VERBATIM from
     the box-tier path the cascade uses — and it is a real path in EVERY mode now
-    (spec §2c ALL PROJECTS), standalone's being <root>/box_data/settings.yaml.
+    (spec §2c ALL PROJECTS), standalone's being <root>/box_data/box.yaml.
     Mutation-guard: dropping the floor dict entry → the path asserts → RED."""
-    # primary/named: the box's own settings.yaml path is materialized verbatim.
+    # primary/named: the box's own box.yaml path is materialized verbatim.
     floor_pn = meta_identity_floor(
         box_name="droste", project_path="/code/droste", inbox="/i",
         share_global="/s", share_workset=None,
-        box_settings="/data/pw/boxes/droste/settings.yaml",
+        box_settings="/data/pw/boxes/droste/box.yaml",
     )
-    assert floor_pn["meta.box.settings"] == "/data/pw/boxes/droste/settings.yaml"
+    assert floor_pn["meta.box.settings"] == "/data/pw/boxes/droste/box.yaml"
     # STANDALONE: NOT a None terminal — the box tier is a real path under box_data/.
     floor_std = meta_identity_floor(
         box_name="x", project_path="/p", inbox="/i", share_global="/s",
         share_workset=None,
-        box_settings="/scratch/myproj/box_data/settings.yaml",
+        box_settings="/scratch/myproj/box_data/box.yaml",
     )
-    assert floor_std["meta.box.settings"] == "/scratch/myproj/box_data/settings.yaml"
+    assert floor_std["meta.box.settings"] == "/scratch/myproj/box_data/box.yaml"
     # And it survives into the resolved snapshot as a real meta.box leaf.
     snap_std = _identity_snapshot(
-        share_workset=None, box_settings="/scratch/myproj/box_data/settings.yaml",
+        share_workset=None, box_settings="/scratch/myproj/box_data/box.yaml",
     )
     mb = _meta_node(snap_std, "meta", "box")
-    assert dict.get(mb, "settings") == "/scratch/myproj/box_data/settings.yaml"
+    assert dict.get(mb, "settings") == "/scratch/myproj/box_data/box.yaml"
 
 
 def test_standalone_box_tier_is_the_LAST_cascade_level(tmp_path):
@@ -2043,8 +2043,8 @@ def test_standalone_box_tier_is_the_LAST_cascade_level(tmp_path):
     root = tmp_path / "myproj"
     (root / STANDALONE_META_DIR).mkdir(parents=True)
     # LITERAL positions (spec §5), independent of the code under test.
-    literal_ws = root / "settings.yaml"
-    literal_box = root / STANDALONE_META_DIR / "settings.yaml"
+    literal_ws = root / "workset.yaml"
+    literal_box = root / STANDALONE_META_DIR / "box.yaml"
     dump_doc(literal_ws, {"box": {"image": "root/img:1"}})
     dump_doc(literal_box, {"box": {"image": "box/img:2"}})
 

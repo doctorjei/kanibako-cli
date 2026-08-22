@@ -42,6 +42,7 @@ if TYPE_CHECKING:
 
 from kanibako.agent_ref import harness_of
 from kanibako.settings.agent_file import AgentFileLevel
+from kanibako.settings.config import AGENT_META_FILE
 from kanibako.settings.kb_store import SCOPE_CONTAINMENT, Bind, BindEntry
 from kanibako.settings.kb_store import __MISSING__
 from kanibako.settings.keystore import KeyStore
@@ -380,7 +381,7 @@ def meta_identity_floor(
         # formula, resolved transitively through the sibling ``path`` anchor — the
         # SAME file ``agent_settings_path`` composes.
         floor[f"meta.agent.{agent_name}.settings"] = (
-            f"@meta.agent.{agent_name}.path/agent.yaml"
+            f"@meta.agent.{agent_name}.path/{AGENT_META_FILE}"
         )
         # ⚑ The agent's credential-SHARING CAPABILITY: plugin-set, RO — the hard
         # floor a user can't fake. The auth chain's mirror views UP to this key, so

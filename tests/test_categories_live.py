@@ -1342,7 +1342,7 @@ class TestForgedDerivationsTableNeverEntersTheMerge:
             workset_anchor_floor,
         )
 
-        box_file = tmp_path / "settings.yaml"
+        box_file = tmp_path / "box.yaml"
         box_file.write_text(yaml.safe_dump({
             "box": {"enable_vault": False},
             "binding_derivations": {

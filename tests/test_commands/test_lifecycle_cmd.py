@@ -53,7 +53,7 @@ def _connected_index(std):
     ).items():
         root = Path(root_str)
         registry_path = workset_registry.resolve_workset_registry_path(
-            root, load_doc(root / "settings.yaml"),
+            root, load_doc(root / "workset.yaml"),
         )
         for box_name, box_path in workset_registry.load_workset_boxes(
             registry_path
@@ -145,7 +145,7 @@ class TestRemap:
         proj = resolve_project(std, config, project_dir=str(new), initialize=False)
         assert proj.project_path == new.resolve()
         assert proj.project_hash == project_hash(str(new.resolve()))
-        assert "project" not in load_doc(proj.metadata_path / "settings.yaml")
+        assert "project" not in load_doc(proj.metadata_path / "box.yaml")
 
     def test_remap_external_repoint(self, env):
         """remap on an EXTERNAL-connected project repoints records, no move."""
@@ -237,12 +237,12 @@ class TestConvert:
         pdir = _default(env)
         rc = run_convert(_convert_args(pdir, to_standalone=True))
         assert rc == 0
-        # P8b/Option A: Drift I marker settings.yaml at the ROOT (materialized by
+        # P8b/Option A: Drift I marker workset.yaml at the ROOT (materialized by
         # the sparse kuid write), but no on-disk ``project:`` identity — the
         # standalone box is registered in registry.standalone.
         from kanibako.project.registry_store import load_standalone
-        assert "project" not in load_doc(pdir / "settings.yaml")
-        assert (pdir / "settings.yaml").is_file()
+        assert "project" not in load_doc(pdir / "workset.yaml")
+        assert (pdir / "workset.yaml").is_file()
         assert (pdir / "box_data").is_dir()
         assert any(root == str(pdir) for root in load_standalone(std.registry).values())
 
@@ -255,7 +255,7 @@ class TestConvert:
         assert proj.metadata_path.parent == std.boxes
         # P8b/Option A: primary identity is the names.yaml registration, not disk.
         assert proj.mode == BoxMode.primary
-        assert "project" not in load_doc(proj.metadata_path / "settings.yaml")
+        assert "project" not in load_doc(proj.metadata_path / "box.yaml")
         assert str(pdir) in load_primary_boxes(std.primary_workset).values()
 
     def test_convert_to_workset_inplace_external(self, env):
@@ -272,7 +272,7 @@ class TestConvert:
         from kanibako.settings.config_io import load_doc
         reg = workset_registry.load_workset_boxes(
             workset_registry.resolve_workset_registry_path(
-                ws.root, load_doc(ws.root / "settings.yaml"),
+                ws.root, load_doc(ws.root / "workset.yaml"),
             )
         )
         assert reg.get("proj") == str(pdir.resolve())
@@ -284,8 +284,8 @@ class TestConvert:
         rc = run_convert(_convert_args(pdir, to_standalone=True, move=str(dest)))
         assert rc == 0
         assert dest.is_dir()
-        # Drift I: settings.yaml at the root; drift H: files in workspace/ subdir.
-        assert (dest / "settings.yaml").is_file()
+        # Drift I: workset.yaml at the root; drift H: files in workspace/ subdir.
+        assert (dest / "workset.yaml").is_file()
         assert (dest / "box_data").is_dir()
         assert (dest / "workspace" / "file.txt").read_text() == "cm"
         assert not pdir.exists()
@@ -387,8 +387,8 @@ class TestLockGuard:
         rc = run_convert(_convert_args(pdir, to_standalone=True, move=str(dest), force=True))
         assert rc == 0
         assert dest.is_dir()
-        # Drift I: settings.yaml at the root; drift H: files in workspace/ subdir.
-        assert (dest / "settings.yaml").is_file()
+        # Drift I: workset.yaml at the root; drift H: files in workspace/ subdir.
+        assert (dest / "workset.yaml").is_file()
         assert (dest / "box_data").is_dir()
         assert (dest / "workspace" / "file.txt").read_text() == "live"
         assert not pdir.exists()
@@ -646,7 +646,7 @@ class TestMigrateGone:
 
 class TestLifecycleCarriesBoxSettings:
     """``convert`` / ``move`` make a NEW box that INHERITS the source's box-scope
-    settings.  Post-P2 a standalone box keeps those in ``box_data/settings.yaml``,
+    settings.  Post-P2 a standalone box keeps those in ``box_data/box.yaml``,
     one level below the ROOT file — so an op that copies ``metadata_path`` "as if it
     were box metadata" delivers the source's WORKSET tier to the destination's BOX
     tier and the real settings are never read again.
@@ -739,11 +739,11 @@ class TestLifecycleCarriesBoxSettings:
         capsys.readouterr()
 
         assert not (dest / "box_data" / "box_data").exists()
-        assert load_doc(dest / "box_data" / "settings.yaml")["box"]["image"] == (
+        assert load_doc(dest / "box_data" / "box.yaml")["box"]["image"] == (
             "carry/img:10"
         )
         # The ROOT file still exists (detection marker) and carries the FRESH kuid.
-        assert (dest / "settings.yaml").is_file()
+        assert (dest / "workset.yaml").is_file()
 
     def test_legacy_root_stored_settings_are_carried_on_convert(self, env, capsys):
         """⚑ A PRE-P2 standalone box kept its ``box.*`` in the ROOT file.  Its box
@@ -752,10 +752,10 @@ class TestLifecycleCarriesBoxSettings:
         config, std, tmp_home = env
         pdir = _standalone(env)
         # Simulate the pre-P2 on-disk shape: box keys in the ROOT, no box tier.
-        root_doc = load_doc(pdir / "settings.yaml")
+        root_doc = load_doc(pdir / "workset.yaml")
         root_doc.setdefault("box", {})["image"] = "legacy/img:11"
-        dump_doc(pdir / "settings.yaml", root_doc)
-        assert not (pdir / "box_data" / "settings.yaml").exists()
+        dump_doc(pdir / "workset.yaml", root_doc)
+        assert not (pdir / "box_data" / "box.yaml").exists()
 
         assert run_convert(_convert_args(pdir, to_default=True)) == 0
         capsys.readouterr()
@@ -773,16 +773,16 @@ class TestLifecycleCarriesBoxSettings:
         """The WORKSET destination needs the carry for the LEGACY shape specifically.
 
         For a post-P2 source the metadata copytree already lands ``box_data/
-        settings.yaml`` at the destination's box tier, so the delivery looks
+        box.yaml`` at the destination's box tier, so the delivery looks
         redundant — it is NOT: a pre-P2 source has no box tier, and only the
         workset-tier underlay recovers its ``box.*`` keys."""
         config, std, tmp_home = env
         create_workset("ws", tmp_home / "ws_root", std)
         pdir = _standalone(env)
-        root_doc = load_doc(pdir / "settings.yaml")
+        root_doc = load_doc(pdir / "workset.yaml")
         root_doc.setdefault("box", {})["image"] = "legacy/img:12"
-        dump_doc(pdir / "settings.yaml", root_doc)
-        assert not (pdir / "box_data" / "settings.yaml").exists()
+        dump_doc(pdir / "workset.yaml", root_doc)
+        assert not (pdir / "box_data" / "box.yaml").exists()
 
         assert run_convert(_convert_args(pdir, to_workset="ws")) == 0
         capsys.readouterr()
@@ -804,15 +804,15 @@ class TestLifecycleCarriesBoxSettings:
         """Same for the STANDALONE destination (the S1 site)."""
         config, std, tmp_home = env
         pdir = _standalone(env)
-        root_doc = load_doc(pdir / "settings.yaml")
+        root_doc = load_doc(pdir / "workset.yaml")
         root_doc.setdefault("box", {})["image"] = "legacy/img:13"
-        dump_doc(pdir / "settings.yaml", root_doc)
-        assert not (pdir / "box_data" / "settings.yaml").exists()
+        dump_doc(pdir / "workset.yaml", root_doc)
+        assert not (pdir / "box_data" / "box.yaml").exists()
 
         dest = tmp_home / "moved_legacy"
         assert run_move(_move_args(pdir, dest, to_standalone=True)) == 0
         capsys.readouterr()
 
-        assert load_doc(dest / "box_data" / "settings.yaml")["box"]["image"] == (
+        assert load_doc(dest / "box_data" / "box.yaml")["box"]["image"] == (
             "legacy/img:13"
         )

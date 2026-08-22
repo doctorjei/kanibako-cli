@@ -312,7 +312,7 @@ def _seed(std, proj, *, agent="claude", deliver_creds=True):
         agent_name=agent,
         target=_FakeTarget() if agent else None,
         global_config_path=std.settings,
-        agent_config_path=std.agents / "claude" / "settings.yaml",
+        agent_config_path=std.agents / "claude" / "agent.yaml",
         logger=logging.getLogger("test-seed"),
         deliver_creds=deliver_creds,
     )
@@ -462,7 +462,7 @@ class TestLayeredHomeSeed:
         ws_default.mkdir(parents=True, exist_ok=True)
         (ws_default / "DEFAULT.txt").write_text("default")
 
-        wsf = std.primary_workset / "settings.yaml"
+        wsf = std.primary_workset / "workset.yaml"
         doc = (yaml.safe_load(wsf.read_text()) if wsf.exists() else {}) or {}
         doc.setdefault("workset", {})["template"] = str(tmp_path / "custom-tpl")
         wsf.write_text(yaml.safe_dump(doc))
@@ -528,7 +528,7 @@ def _seed_snapshot(std, proj, *, agent="claude"):
         agent_name=agent,
         target=_FakeTarget() if agent else None,
         global_config_path=std.settings,
-        agent_config_path=std.agents / "claude" / "settings.yaml",
+        agent_config_path=std.agents / "claude" / "agent.yaml",
         logger=logging.getLogger("test-seed"),
     )
 
@@ -557,7 +557,7 @@ def _seed_box(std, proj, *, agent="claude", deliver_creds=True):
         target=_FakeTarget() if agent else None,
         desc=None,
         agent_id=agent,
-        agent_cfg_path=std.agents / "claude" / "settings.yaml",
+        agent_cfg_path=std.agents / "claude" / "agent.yaml",
         system_settings_path=std.settings,
         auth_src=SimpleNamespace(creds_shared=deliver_creds),
         logger=logging.getLogger("test-seed"),
@@ -722,16 +722,16 @@ class TestInstallBoxHandbookTemplate:
     def test_layer_content_cannot_escape_the_dest_subtree(self, tmp_path):
         """And the reason no content whitelist is owed: ``stage_layers`` relativises
         every entry UNDER each layer root, so a layer that ships a top-level name the
-        box whitelist would deny (``settings.yaml``, ``registry.yaml``) still lands
+        box whitelist would deny (``box.yaml``, ``registry.yaml``) still lands
         INSIDE the dest — it cannot reach a sibling entry of the box store."""
         dest = self._box(tmp_path)
         box_root = dest.parent.parent
         roots = self._roots(tmp_path, [
-            ("sys", {"settings.yaml": "x", "registry.yaml": "y"}),
+            ("sys", {"box.yaml": "x", "registry.yaml": "y"}),
         ])
         install_box_handbook_template(dest, roots)
-        assert (dest / "settings.yaml").read_text() == "x"
-        assert not (box_root / "settings.yaml").exists()
+        assert (dest / "box.yaml").read_text() == "x"
+        assert not (box_root / "box.yaml").exists()
         assert not (box_root / "registry.yaml").exists()
 
 
@@ -801,7 +801,7 @@ class TestBoxHandbookHostCopyThroughTheSeam:
         custom.mkdir(parents=True)
         (custom / "CUSTOM.md").write_text("custom")
 
-        wsf = std.primary_workset / "settings.yaml"
+        wsf = std.primary_workset / "workset.yaml"
         doc = (yaml.safe_load(wsf.read_text()) if wsf.exists() else {}) or {}
         doc.setdefault("workset", {})["template"] = str(tmp_path / "custom-tpl")
         wsf.write_text(yaml.safe_dump(doc))
@@ -814,7 +814,7 @@ class TestBoxHandbookHostCopyThroughTheSeam:
 
     def _set_box_canon(self, std, value):
         """Repoint ``box.canon`` in the workset settings file — the user's route."""
-        wsf = std.primary_workset / "settings.yaml"
+        wsf = std.primary_workset / "workset.yaml"
         doc = (yaml.safe_load(wsf.read_text()) if wsf.exists() else {}) or {}
         doc.setdefault("box", {})["canon"] = str(value)
         wsf.write_text(yaml.safe_dump(doc))
@@ -1084,16 +1084,16 @@ class TestEnsureAgentStores:
 
     def test_mould_content_outside_the_whitelist_is_refused(self, std):
         """Deny-by-default at AGENT scope: a mould that would plant
-        ``settings.yaml`` (= ``meta.agent.<a>.settings``) is REFUSED."""
+        ``agent.yaml`` (= ``meta.agent.<a>.settings``) is REFUSED."""
         from kanibako.errors import TemplateScopeError
         from kanibako.launch.templates import ensure_agent_stores
 
         install_packaged_templates(std, ["claude"])
-        (std.template / "agent" / "settings.yaml").write_text("agent: {}\n")
+        (std.template / "agent" / "agent.yaml").write_text("agent: {}\n")
         with pytest.raises(TemplateScopeError) as exc:
             ensure_agent_stores(std, ["claude"])
         assert "AGENT" in str(exc.value)
-        assert "settings.yaml" in str(exc.value)
+        assert "agent.yaml" in str(exc.value)
 
 
 class TestInstallWorksetTemplate:
@@ -1301,7 +1301,7 @@ class TestLegacyPluginPayloadArm:
         _apply_init_seeds(
             std=std, proj=primary_proj, agent_name="claude", target=_T(),
             global_config_path=std.settings,
-            agent_config_path=std.agents / "claude" / "settings.yaml",
+            agent_config_path=std.agents / "claude" / "agent.yaml",
             logger=logging.getLogger("t"), deliver_creds=True,
         )
         assert (primary_proj.shell_path / ".claude.json").read_text() == (
@@ -1439,7 +1439,7 @@ class TestCopierEnforcement:
         assert not (outside / "a.txt").exists()
 
     def test_box_whitelist_denies_a_planted_settings_file(self, tmp_path):
-        """``settings.yaml`` at a BOX store root is ``meta.box.settings``, the LAST
+        """``box.yaml`` at a BOX store root is ``meta.box.settings``, the LAST
         cascade level — template content would become the box's top-priority
         settings, carrying any key it liked."""
         from kanibako.errors import TemplateScopeError
@@ -1447,13 +1447,13 @@ class TestCopierEnforcement:
 
         src = tmp_path / "src"
         src.mkdir()
-        (src / "settings.yaml").write_text("box: {image: evil}\n")
+        (src / "box.yaml").write_text("box: {image: evil}\n")
         dest = tmp_path / "dest"
         dest.mkdir()
         with pytest.raises(TemplateScopeError) as exc:
             copy_tree(src, dest, scope="box")
         assert "BOX" in str(exc.value)
-        assert not (dest / "settings.yaml").exists()
+        assert not (dest / "box.yaml").exists()
 
     def test_box_whitelist_allows_the_two_declared_entries(self, tmp_path):
         from kanibako.launch.templates import copy_tree
@@ -1779,11 +1779,11 @@ class TestStagingIsScoped:
     ):
         from kanibako.errors import TemplateScopeError
 
-        self._fake_packaged(monkeypatch, tmp_path, "box", "settings.yaml")
+        self._fake_packaged(monkeypatch, tmp_path, "box", "box.yaml")
         with pytest.raises(TemplateScopeError) as exc:
             install_packaged_templates(std, ["claude"])
         assert "BOX" in str(exc.value)
-        assert not (std.template / "box" / "settings.yaml").exists()
+        assert not (std.template / "box" / "box.yaml").exists()
 
     def test_a_planted_workset_registry_is_REFUSED_by_the_real_install(
         self, std, monkeypatch, tmp_path,

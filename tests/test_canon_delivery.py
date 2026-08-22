@@ -1128,7 +1128,7 @@ class TestBaseTemplateSeedsTheNotebook:
             agent_name="claude",
             target=_FakeTarget(),
             global_config_path=std.settings,
-            agent_config_path=std.agents / "claude" / "settings.yaml",
+            agent_config_path=std.agents / "claude" / "agent.yaml",
             logger=logging.getLogger("test-canon-seed"),
             deliver_creds=True,
         )

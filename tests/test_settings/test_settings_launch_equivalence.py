@@ -476,7 +476,7 @@ def test_box_config_effective_display_matches_launch_behavior_read(tmp_path):
     state = {"model": "opus", "access": "editing"}
     # A box settings file with only a legal box.* key (no upward agent.* table).
     box = _write_yaml(
-        tmp_path / "settings.yaml", {"box": {"image": "img"}},
+        tmp_path / "box.yaml", {"box": {"image": "img"}},
     )
 
     # LAUNCH behavior read: the snapshot + effective_behavior, as start.py does —

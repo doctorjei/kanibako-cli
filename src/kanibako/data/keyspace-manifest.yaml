@@ -458,10 +458,10 @@ policy:
   # refused. The enumeration IS an allowlist — a correctness property, not a
   # style choice (a wholesale template copy could plant a settings file — the
   # LAST cascade level — or templated registry.yaml corrupting box membership).
-  # Severity is recorded ONLY where the spec states it: correctness = silently
-  # override the cascade / corrupt box membership; user_data_and_secrets = the
-  # user's credentials/code. STANDALONE is where this matters most: the workset
-  # root IS the user's project directory.
+  # Each deny carries its own REASON, not a severity class: the spec's two-class
+  # taxonomy was deleted 2026-08-22 (ratified) as a restatement of the hazards it
+  # already argues, and one that classified 5 of 11 denied entries. STANDALONE is
+  # where this matters most: the workset root IS the user's project directory.
   seed_whitelists:
     default: deny
     box:

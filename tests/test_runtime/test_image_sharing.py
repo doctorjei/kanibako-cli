@@ -279,7 +279,7 @@ class TestImageSharingInRunContainer:
 
         with start_mocks() as m:
             # A REAL metadata path: the staging storage.conf is genuinely
-            # written; the box-tier settings.yaml is absent (no set value).
+            # written; the box-tier box.yaml is absent (no set value).
             m.proj.metadata_path = box_meta
             m.merged.box_share_images = True  # the B6 gate (see above)
             with patch(
@@ -328,7 +328,7 @@ class TestImageSharingInRunContainer:
         store_dir.mkdir()
         box_meta = tmp_path / "box-meta"
         box_meta.mkdir()
-        (box_meta / "settings.yaml").write_text(
+        (box_meta / "box.yaml").write_text(
             f"box:\n  images_store: {store_dir}\n"
         )
 
@@ -691,7 +691,7 @@ class TestImageSharingConfig:
         from kanibako.settings.config import load_merged_config
         global_toml = tmp_path / "global.yaml"
         global_toml.write_text("box:\n  share_images: false\n")
-        project_toml = tmp_path / "settings.yaml"
+        project_toml = tmp_path / "box.yaml"
         project_toml.write_text("box:\n  share_images: true\n")
         cfg = load_merged_config(global_toml, project_toml)
         assert cfg.box_share_images is True
