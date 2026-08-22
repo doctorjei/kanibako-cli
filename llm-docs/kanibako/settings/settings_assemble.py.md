@@ -81,10 +81,7 @@ across levels. The `base` code floor is EXEMPT for SCOPE keys (it is the system-
 A top-level `meta:` table is ALWAYS dropped from EVERY file (`base` included) — `meta.*` is a
 TOP-LEVEL protected namespace set by the construct-time/bootstrap layer and stays RO everywhere
 (spec §0 / clause 4). The sole sanctioned meta source is the runtime/identity FLOOR
-(`dotted_partial`), which is never dropped. ⚑ That drop is also what lets a NAMED workset root's
-`settings.yaml` carry its `meta.workset` identity beside its cascade settings —
-`project/workset.py`'s `read_workset_meta` reads it off the raw document instead. Warning rules:
-`_drop_upward_scopes` below.
+(`dotted_partial`), which is never dropped. Warning rules: `_drop_upward_scopes` below.
 
 ## The AGENT tier — two cascade levels from one file
 
@@ -339,7 +336,7 @@ source), so the containing set is the HEAD-slice strictly BEFORE *file_scope*. T
 ```_drop_upward_scopes(raw: dict, *, file_scope: str, path: Path | None) -> dict```
 Drop a CONTAINING-scope, `meta:` or `binding_derivations:` top-level table (spec §0).
 
-**THREE dropped tokens, THREE distinct rationales, one warning each — with ONE silent case (#2).**
+**THREE dropped tokens, THREE distinct rationales, one warning each.**
 
 1. **A CONTAINING scope's table.** Directional enforcement at RESOLVE: a settings file may set keys of
    its own scope and of scopes it CONTAINS, but a top-level key of a CONTAINING scope (`system:` /
@@ -349,12 +346,12 @@ Drop a CONTAINING-scope, `meta:` or `binding_derivations:` top-level table (spec
 2. **`meta`**, for EVERY file (`base` included). `meta.*` is a TOP-LEVEL protected read-only namespace
    set by the construct-time/bootstrap layer, RO everywhere (spec §0 / clause 4, "`meta.*` remains RO
    everywhere"); a settings file may not set it. `meta` is NOT a containing scope, so it earns a
-   DISTINCT warning. ⚑ At the WORKSET scope that warning NAMES the members it dropped, because the
-   silent case below means the reported set is a SUBSET of the table; every other scope drops the
-   whole table and says so. ⚑⚑ **One SILENT case:** a WORKSET file's
-   `workset` member is the spec-sanctioned NAMED-root identity marker (system-design § Detect). It
-   is still dropped (`meta.*` is RO) but says nothing — a warning there would fire on every assembly
-   of a correct workset root. ⚑ **The drop is TOP-LEVEL ONLY:** the loop iterates top-level keys and
+   DISTINCT warning. ⚑⚑ **NO WORKSET-SCOPE CARVE-OUT, since 2026-08-22.** A workset file's
+   `meta.workset` member used to be the spec-sanctioned NAMED-root identity marker and dropped
+   SILENTLY, with the warning naming only the OTHER members. Identity is now REGISTRY-BORNE
+   (system-design § Detect), so that member is the RETIRED 1.6.0/1.7.x shape which
+   `project/workset.py`'s `read_workset_identity` hard-refuses — it warns like every other scope, and
+   the warning names the whole table. ⚑ **The drop is TOP-LEVEL ONLY:** the loop iterates top-level keys and
    never descends, so a nested `<scope>.meta` table rides under its scope untouched. The sole
    sanctioned meta source is the FLOOR (`dotted_partial`), inserted separately and never routed
    through this drop.

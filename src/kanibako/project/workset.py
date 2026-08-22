@@ -3,15 +3,18 @@
 A *workset* is a named group of projects whose persistent state lives under a
 single root directory chosen by the user.  Terminology:
 
-* **workset root** — the user-chosen dir; holds ``settings.yaml``, ``boxes/``,
-  ``vault/``, ``logs/``, ``registry.yaml``, ``auth/`` and ``channels/``.
-* **identity** — the on-disk TOP-LEVEL ``meta.workset`` table in the root
-  ``settings.yaml``.  ⚑ It never enters the settings merge: ``meta.*`` is RO, so
-  the assembler drops it, and :func:`read_workset_meta` reads the raw file
-  instead.  The runtime ``meta.workset.*`` keys (spec §1A) are derived at launch
-  and never read from here.  ⚑ 1.6.0/1.7.x wrote it the other way round
-  (``workset.meta``); that spelling is RETIRED and now HARD-REFUSES with the
-  hand re-nest as its cure — see :func:`_refuse_retired_workset_identity`.
+* **workset root** — the user-chosen dir; holds ``registry.yaml``, ``boxes/``,
+  ``vault/``, ``logs/``, ``auth/``, ``channels/`` and — OPTIONALLY —
+  ``settings.yaml``.
+* **identity** — the ``workset:`` table (``name`` + ``created``) in the root
+  ``registry.yaml``, alongside the ``boxes:`` membership and the ``projects:``
+  records.  ⚑⚑ IDENTITY AND MEMBERSHIP ARE REGISTRY-BORNE AT EVERY LEVEL
+  (system-design §Detect), exactly as a box's ``meta.box.name`` is: the root
+  ``settings.yaml`` carries SETTINGS ONLY, is sparse, and MAY BE ABSENT.  The
+  runtime ``meta.workset.*`` keys (spec §1A) are derived at launch and never read
+  from here.  ⚑ 1.6.0/1.7.x kept the identity in ``settings.yaml`` instead
+  (``workset.meta``); that shape is RETIRED and now HARD-REFUSES with the hand
+  move as its cure — see :func:`_refuse_retired_workset_identity`.
 * **default workset** — the synthesized, never-persisted group of default-mode
   projects, rooted at ``@config.primary_workset``.
 * **connected (external) box** — a member whose registered path lies OUTSIDE the
@@ -30,8 +33,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
-from kanibako.project import registry_store
-from kanibako.settings.config_io import dump_doc, load_doc
+from kanibako.project import registry_store, workset_registry
+from kanibako.settings.config_io import load_doc
 from kanibako.errors import LegacyWorksetIdentityError, WorksetError
 from kanibako.project.names import register_name, unregister_name
 # ⚑ FORWARD edge of a documented cycle: ``settings/paths.py`` breaks it by DEFERRING
@@ -39,8 +42,9 @@ from kanibako.project.names import register_name, unregister_name
 # edge back this way.
 from kanibako.settings.paths import StandardPaths
 
-# The single per-workset file at the workset root: identity + cascade settings.
-WORKSET_META_FILE = "settings.yaml"
+# The workset-tier cascade settings file at the workset root — SETTINGS ONLY, and
+# OPTIONAL: identity and membership live in ``registry.yaml``.
+WORKSET_SETTINGS_FILE = "settings.yaml"
 
 # The BOX-tree leaf under a workset root (three use sites, only one has a Workset).
 BOXES_DIR_NAME = "boxes"
@@ -59,7 +63,7 @@ _CHANNELROOT_LEAF = "channels"
 
 def load_workset_settings_doc(root: Path) -> Mapping[str, Any] | None:
     """Best-effort read of *root*'s workset ``settings.yaml`` document (``None`` on any failure)."""
-    path = root / WORKSET_META_FILE
+    path = root / WORKSET_SETTINGS_FILE
     if not path.is_file():
         return None
     try:
@@ -225,140 +229,135 @@ class Workset:
         return self.root / "logs"
 
     @property
-    def toml_path(self) -> Path:
-        return self.root / WORKSET_META_FILE
+    def settings_path(self) -> Path:
+        """The workset-tier settings file — SETTINGS ONLY, and may not exist."""
+        return self.root / WORKSET_SETTINGS_FILE
+
+    @property
+    def registry_path(self) -> Path:
+        """The resolved per-workset ``registry.yaml`` — identity, membership, projects."""
+        return workset_registry.resolve_workset_registry_path(
+            self.root, load_workset_settings_doc(self.root),
+        )
 
 
 # ---------------------------------------------------------------------------
-# The root settings.yaml: the ``meta.workset`` identity table + cascade settings.
-# ⚑ The two coexist because the identity table is the TOP-LEVEL ``meta:`` table and
-# ``meta.*`` is RO: the assembler DROPS it from the merge, so it can never shadow a
-# cascade key, and the identity readers below load the raw file instead.
+# The root registry.yaml: the ``workset:`` identity table + the ``projects:``
+# records (``boxes:`` membership has its own writers in ``workset_registry``).
+# ⚑ The root settings.yaml is NOT read for identity at all — it carries settings
+# only, and a workset root need not have one.
 # ---------------------------------------------------------------------------
 
-def _write_workset_toml(ws: Workset) -> None:
-    """Persist *ws*'s identity into ``meta.workset`` — ⚑ reads the file FIRST to keep cascade keys."""
-    existing = load_doc(ws.toml_path) if ws.toml_path.is_file() else {}
-    if not isinstance(existing, dict):
-        existing = {}
-    meta_tbl = existing.get("meta")
-    if not isinstance(meta_tbl, dict):
-        meta_tbl = {}
-        existing["meta"] = meta_tbl
-    meta_tbl["workset"] = {
-        "name": ws.name,
-        "created": ws.created,
+def _write_workset_identity(ws: Workset) -> None:
+    """Persist *ws*'s identity + project records into the per-workset ``registry.yaml``."""
+    workset_registry.save_workset_record(
+        ws.registry_path,
+        name=ws.name,
+        created=ws.created,
         # ⚑ Credential sharing is NOT an identity key — it is ``workset.auth.share_allowed``.
-        "projects": [
-            {
-                "name": proj.name,
-                "source_path": str(proj.source_path),
-            }
+        projects={
+            proj.name: {"source_path": str(proj.source_path)}
             for proj in ws.projects
-        ],
-    }
-    dump_doc(ws.toml_path, existing)
-
-
-def _load_workset_toml(root: Path) -> Workset:
-    """Read the workset identity (``meta.workset``) from *root*'s settings.yaml."""
-    toml_path = root / WORKSET_META_FILE
-    if not toml_path.is_file():
-        raise WorksetError(f"No {WORKSET_META_FILE} in {root}")
-    # ⚑ A root still on the RETIRED ``workset.meta`` spelling raises out of here
-    # (:func:`_refuse_retired_workset_identity`) rather than reaching the "no identity"
-    # message below — the load path gets the named cure, same as detection.
-    meta = read_workset_meta(toml_path)
-    if meta is None:
-        raise WorksetError(
-            f"{WORKSET_META_FILE} in {root} has no 'meta.workset' identity"
-        )
-    name = meta.get("name")
-    if not name:
-        raise WorksetError(
-            f"{WORKSET_META_FILE} in {root} has no 'name' key"
-        )
-    created = meta.get("created", "")
-    projects = []
-    for entry in meta.get("projects", []):
-        projects.append(
-            WorksetProject(
-                name=entry["name"],
-                source_path=Path(entry["source_path"]),
-            )
-        )
-    return Workset(
-        name=name, root=root, created=created, projects=projects,
-        # The repoint comes from the SAME settings.yaml, so workspaces_dir resolves.
-        workspaces_repoint=_workset_path_repoint(
-            load_workset_settings_doc(root), _WORKSPACES_LEAF,
-        ),
+        },
     )
 
 
-def _refuse_retired_workset_identity(path: Path, data: Mapping[str, Any]) -> None:
-    """RAISE when *data* still nests the identity under the RETIRED ``workset.meta`` spelling.
+def _load_workset_identity(root: Path) -> Workset:
+    """Read the workset identity + projects from *root*'s ``registry.yaml``."""
+    settings_doc = load_workset_settings_doc(root)
+    registry_path = workset_registry.resolve_workset_registry_path(root, settings_doc)
+    # ⚑ A root still carrying the identity in settings.yaml raises out of here
+    # (:func:`_refuse_retired_workset_identity`) rather than reaching the "no identity"
+    # message below — the load path gets the named cure, same as detection.
+    identity = read_workset_identity(root)
+    if identity is None:
+        raise WorksetError(f"{registry_path} has no 'workset' identity table")
+    name = identity.get("name")
+    if not name:
+        raise WorksetError(f"{registry_path} 'workset' table has no 'name' key")
+    projects = [
+        WorksetProject(name=proj_name, source_path=Path(record["source_path"]))
+        for proj_name, record in workset_registry.load_workset_projects(
+            registry_path,
+        ).items()
+    ]
+    return Workset(
+        name=name, root=root, created=identity.get("created", ""), projects=projects,
+        workspaces_repoint=_workset_path_repoint(settings_doc, _WORKSPACES_LEAF),
+    )
+
+
+def _refuse_retired_workset_identity(root: Path) -> None:
+    """RAISE when *root*'s settings.yaml still carries the workset IDENTITY table.
 
     ⚑ DETECTED ONLY SO IT CAN BE DIAGNOSED.  v1.8.0 is a clean break: there is no compat
     read and no auto-migration, because reading past this table is exactly the silent
-    failure — a legacy root has no ``meta.workset``, so detection would call it "not a
-    workset root" and the ancestor walk would fall through to another mode with no error.
+    failure — a legacy root has no ``registry.yaml`` identity, so detection would call it
+    "not a workset root" and the ancestor walk would fall through to another mode with no
+    error.  BOTH retired spellings are caught: 1.6.0/1.7.x wrote ``workset.meta``, and the
+    unreleased 1.8.0 tree briefly wrote ``meta.workset``.
     """
+    data = load_workset_settings_doc(root)
+    if data is None:
+        return
     workset_tbl = data.get("workset")
-    if not isinstance(workset_tbl, Mapping):
+    meta_tbl = data.get("meta")
+    if isinstance(workset_tbl, Mapping) and isinstance(workset_tbl.get("meta"), Mapping):
+        retired = "workset.meta"
+    elif isinstance(meta_tbl, Mapping) and isinstance(meta_tbl.get("workset"), Mapping):
+        retired = "meta.workset"
+    else:
         return
-    if not isinstance(workset_tbl.get("meta"), Mapping):
-        return
+    path = root / WORKSET_SETTINGS_FILE
     raise LegacyWorksetIdentityError(
-        f"'workset.meta' is the RETIRED spelling of a named workset's identity table "
+        f"'{retired}' is a RETIRED location for a named workset's identity table "
         f"and is still the shape of {path}.\n"
-        f"The RULE CHANGED in kanibako 1.8.0: the identity table moved into the "
-        f"top-level `meta:` namespace and is spelled `meta.workset`. kanibako 1.6.0 and "
-        f"1.7.x wrote the old spelling, so every workset root those releases created "
-        f"carries it. Refusing rather than running: this table is what MARKS the "
-        f"directory as a workset root, and reading past it would resolve the directory "
-        f"as an ordinary primary-mode box instead — your workset would stop being a "
-        f"workset with no error at all.\n"
-        f"  Fix: re-nest the table BY HAND in {path} — lift `meta:` out from under "
-        f"`workset:` and make `workset:` its child, with the SAME three entries and "
-        f"their values unchanged:\n"
+        f"The RULE CHANGED in kanibako 1.8.0: identity and membership are "
+        f"REGISTRY-BORNE at every level, so a workset's name, created stamp and "
+        f"projects now live in the workset root's `registry.yaml` — the same file "
+        f"that already holds its box membership — and `settings.yaml` carries "
+        f"SETTINGS ONLY. kanibako 1.6.0 and 1.7.x put the identity in settings.yaml, "
+        f"so every workset root those releases created carries it. Refusing rather "
+        f"than running: this table is what MARKS the directory as a workset root, and "
+        f"reading past it would resolve the directory as an ordinary primary-mode box "
+        f"instead — your workset would stop being a workset with no error at all.\n"
+        f"  Fix: MOVE the table BY HAND out of {path} and into "
+        f"{root / 'registry.yaml'}, splitting it into the two sections below. `name` "
+        f"and `created` keep their values verbatim; each entry of the old `projects` "
+        f"LIST becomes one entry of the `projects` MAP, keyed by its `name`:\n"
         f"\n"
-        f"    meta:\n"
-        f"      workset:\n"
-        f"        name: ...\n"
-        f"        created: ...\n"
-        f"        projects: ...\n"
+        f"    workset:\n"
+        f"      name: ...\n"
+        f"      created: ...\n"
+        f"    projects:\n"
+        f"      <project name>:\n"
+        f"        source_path: ...\n"
         f"\n"
-        f"  Nothing else in the file moves: a top-level `workset:` table is still where "
-        f"this workset's own settings live, so leave the rest of it exactly as it is "
-        f"and delete only the now-empty `meta:` entry under it. kanibako 1.8.0 ships no "
-        f"automatic migration for this — see MIGRATION.md §2.43."
+        f"  Leave any `boxes:` section in registry.yaml exactly as it is. Then delete "
+        f"the identity table from {path}: a top-level `workset:` table is still where "
+        f"this workset's own SETTINGS live, so keep the rest of that file and delete "
+        f"only the identity. If nothing is left, the file may be deleted outright — a "
+        f"workset root no longer needs one. kanibako 1.8.0 ships no automatic "
+        f"migration for this — see MIGRATION.md §2.43."
     )
 
 
-def read_workset_meta(path: Path) -> dict | None:
-    """Return the ``meta.workset`` table — ⚑⚑ THE NAMED-workset-root detection primitive."""
-    if not path.is_file():
-        return None
+def read_workset_identity(root: Path) -> dict | None:
+    """Return *root*'s ``workset:`` identity table — ⚑⚑ THE NAMED-root detection primitive."""
+    # ⚑⚑ RETIRED LOCATION FIRST, and unconditionally: a legacy root's registry read
+    # below returns None, which detection reads as "not a workset root" — the exact
+    # silence this refusal exists to replace.
+    _refuse_retired_workset_identity(root)
     try:
-        data = load_doc(path)
+        registry_path = workset_registry.resolve_workset_registry_path(
+            root, load_workset_settings_doc(root),
+        )
+        identity = workset_registry.load_workset_identity(registry_path)
     except Exception:
-        # ⚑ An unreadable/corrupt file is genuinely not a workset root.  The guard wraps
-        # the LOAD ONLY, so it can never swallow the retired-spelling refusal below.
+        # ⚑ An unreadable/corrupt registry is genuinely not a workset root.  The guard
+        # wraps the LOAD ONLY, so it can never swallow the retired-location refusal.
         return None
-    if not isinstance(data, dict):
-        return None
-    # ⚑⚑ RETIRED SPELLING FIRST, and unconditionally: a legacy root's `meta.workset` read
-    # below returns None, which detection reads as "not a workset root" — the exact silence
-    # this refusal exists to replace.
-    _refuse_retired_workset_identity(path, data)
-    meta_tbl = data.get("meta")
-    if not isinstance(meta_tbl, dict):
-        return None
-    identity = meta_tbl.get("workset")
-    if not isinstance(identity, dict):
-        return None
-    return identity
+    return identity if isinstance(identity, dict) else None
 
 
 # ---------------------------------------------------------------------------
@@ -415,14 +414,15 @@ def create_workset(
     if root.exists():
         raise WorksetError(f"Workset root already exists: {root}")
 
-    # Multi-step: disk skeleton + root settings.yaml, then the ONE global registration.
+    # Multi-step: disk skeleton + root registry.yaml, then the ONE global registration.
     # A crash between them would orphan dirs, so unwind in reverse: all-or-nothing.
     import shutil
 
     unwind = _Unwind()
     try:
-        # ⚑ Skeleton = FOUR dirs; registry.yaml/auth/channels are created lazily
-        # elsewhere.  The workspaces dir routes through the resolver, not a literal.
+        # ⚑ Skeleton = FOUR dirs; auth/channels are created lazily elsewhere, and
+        # NO settings.yaml is written — a workset root need not have one.  The
+        # workspaces dir routes through the resolver, not a literal.
         root.mkdir(parents=True)
         unwind.push(lambda: shutil.rmtree(root, ignore_errors=True))
         for subdir_path in (
@@ -438,7 +438,7 @@ def create_workset(
             root=root,
             created=datetime.now(timezone.utc).isoformat(),
         )
-        _write_workset_toml(ws)
+        _write_workset_identity(ws)
 
         # ⚑ ONE section serves BOTH name lookup AND discovery/list — hence one call.
         register_name(std.registry, name, str(root), section="worksets")
@@ -466,7 +466,7 @@ def load_workset(root: Path) -> Workset:
         old_subdir.rename(new_subdir)
         import sys
         print(f"Migrated workset: {old_subdir} → {new_subdir}", file=sys.stderr)
-    return _load_workset_toml(root)
+    return _load_workset_identity(root)
 
 
 def list_worksets(std: StandardPaths) -> dict[str, Path]:
@@ -475,7 +475,7 @@ def list_worksets(std: StandardPaths) -> dict[str, Path]:
 
 
 def default_workset(std: StandardPaths) -> Workset:
-    """Synthesize the default workset — ⚑ VIRTUAL: no registry write, no ``meta.workset`` on disk."""
+    """Synthesize the default workset — ⚑ VIRTUAL: no registry write, no identity on disk."""
     from kanibako.settings.paths import load_primary_boxes, warn_legacy_primary_settings
 
     warn_legacy_primary_settings(std)
@@ -698,7 +698,7 @@ def add_project(
         proj = WorksetProject(name=name, source_path=resolved_source)
         ws.projects.append(proj)
         unwind.push(lambda: _detach_project(ws, name))
-        _write_workset_toml(ws)
+        _write_workset_identity(ws)
     except Exception:
         unwind.run()
         raise
@@ -734,13 +734,9 @@ def remove_project(
     # ⚑ The external test is on the RECORD's path: an in-tree membership entry is
     # left untouched, as before.
     if std is not None:
-        from kanibako.project import workset_registry
         from kanibako.settings.paths import _unregister_workset_box_membership
 
-        registry_path = workset_registry.resolve_workset_registry_path(
-            ws.root, load_doc(ws.root / WORKSET_META_FILE),
-        )
-        box_path = workset_registry.workset_box_path(registry_path, name)
+        box_path = workset_registry.workset_box_path(ws.registry_path, name)
         if box_path is not None:
             try:
                 Path(box_path).resolve().relative_to(ws.root.resolve())
@@ -758,7 +754,7 @@ def remove_project(
 
     # Durable registry removal LAST (after record + symlink are clean).
     ws.projects.remove(target)
-    _write_workset_toml(ws)
+    _write_workset_identity(ws)
 
     if remove_files:
         # ⚑ Per-box vault LEAVES only — never the shared ro/rw parents.

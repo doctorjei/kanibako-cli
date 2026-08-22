@@ -201,15 +201,19 @@ class TestWorksetCreate:
         rc = run_create(args)
         assert rc == 0
 
-        # The image cascade setting AND the meta.workset identity coexist in the
-        # single root settings.yaml.
+        # The image cascade setting lands in the root settings.yaml — which is
+        # created ONLY because something was actually set — while the identity
+        # stays in registry.yaml.  ⚑ The two files never mix.
         import yaml
         settings_yaml = ws_root.resolve() / "settings.yaml"
         assert settings_yaml.exists()
         with open(settings_yaml) as f:
             data = yaml.safe_load(f)
         assert data["box"]["image"] == "custom:latest"
-        assert data["meta"]["workset"]["name"] == "imagews"
+        assert "meta" not in data
+        with open(ws_root.resolve() / "registry.yaml") as f:
+            registry = yaml.safe_load(f)
+        assert registry["workset"]["name"] == "imagews"
 
 
 class TestWorksetList:

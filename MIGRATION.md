@@ -28,7 +28,8 @@ config notes are in the [CHANGELOG](CHANGELOG.md).
 > resolves to nothing, and produces no error and no warning. The exceptions that DO error
 > loudly are exactly two keys — the agent-selection pair (§2.1) — plus the retired
 > `workset.meta` identity table (§2.43, which is not a cascade key at all: it is the marker
-> that makes a directory a workset root) and the typed-at-the-CLI surfaces noted below. When
+> that makes a directory a workset root, and no longer lives in a settings file) and the
+> typed-at-the-CLI surfaces noted below. When
 > that enforcement lands, every "silently inert" row in §2.1 becomes a loud error.
 
 Paths below: `<data>` is your kanibako data directory (default `~/.local/share/kanibako`;
@@ -191,12 +192,13 @@ inside boxes. In order of likely impact:
     live agent-scope keys that are never written to disk (§2.33, §2.15).
 
 21. **Every NAMED workset needs a one-time hand edit to its root `settings.yaml`, or it stops
-    resolving** (§2.43). The identity table moved from `workset.meta` to `meta.workset` —
-    `workset: {meta: {…}}` becomes `meta: {workset: {…}}`, the same three entries, nothing else in
-    the file moves. Until you do it, every command that has to resolve that workset **refuses**,
-    naming the file and the exact re-nest. ⚑ **This one is high on the impact list even though it
-    sits low on this page:** it hits every workset made by v1.6.0 or v1.7.x, and there is no
-    auto-migration. Primary-mode and standalone boxes have no such table and need nothing.
+    resolving** (§2.43). The identity moved OUT of the root `settings.yaml` and into the root
+    `registry.yaml`, where the box membership already lives: `workset: {meta: {…}}` becomes a
+    `workset:` table plus a name-keyed `projects:` map in `registry.yaml`. Until you do it, every
+    command that has to resolve that workset **refuses**, naming both files and the exact move.
+    ⚑ **This one is high on the impact list even though it sits low on this page:** it hits every
+    workset made by v1.6.0 or v1.7.x, and there is no auto-migration. Primary-mode and standalone
+    boxes have no such table and need nothing.
 
 22. Smaller items: standalone boxes' `box get` got truthful (§2.9); a box suppressed to
     plain-shell keeps stale credential files in its home (§2.10); several never-released or
@@ -2449,23 +2451,27 @@ a default rather than a written one.
 
 ---
 
-### 2.43 A named workset's identity table is spelled `meta.workset`; an un-migrated root refuses
+### 2.43 A named workset's identity moves into `registry.yaml`; an un-migrated root refuses
 
 **Read this if you have a NAMED workset** — one you made with `kanibako workset create`. Every
 workset root written by v1.6.0 or v1.7.x needs a one-time hand edit before it will resolve on
 v1.8.0. Primary-mode and standalone boxes are unaffected: neither has this table.
 
 **What changed.** A named workset's identity — its `name`, its `created` stamp and its `projects`
-list — lives in `settings.yaml` at the workset root. v1.7.2 nested it *inside* the workset's own
-settings table, as `workset.meta`. v1.8.0 spells it `meta.workset`: the identity moved into the
-top-level `meta:` namespace, where kanibako's other read-only metadata already lives. Only the
-nesting changed. The three entries and their values are identical.
+records — used to live in `settings.yaml` at the workset root, nested inside the workset's own
+settings table as `workset.meta`. In v1.8.0 identity and membership are **registry-borne at every
+level**: a workset's name and members live in the workset root's `registry.yaml`, the same file that
+already holds its box membership, exactly as a box's name comes from the registry rather than from
+its settings file. `settings.yaml` at a workset root now carries **settings only** — and a workset
+root does not need one at all.
 
-**What you must do.** In each workset root's `settings.yaml`, lift `meta:` out from under
-`workset:` and make `workset:` its child:
+**What you must do.** In each workset root, move the identity out of `settings.yaml` and into
+`registry.yaml`, splitting it into two sections. `name` and `created` keep their values verbatim.
+Each entry of the old `projects` **list** becomes one entry of the new `projects` **map**, keyed by
+its `name`.
 
 ```yaml
-# v1.7.x — the identity nested inside the workset's settings table
+# v1.7.x — <workset root>/settings.yaml
 workset:
   meta:
     name: research
@@ -2479,45 +2485,54 @@ workset:
 ```
 
 ```yaml
-# v1.8.0 — the identity is a TOP-LEVEL meta.workset table
-meta:
-  workset:
-    name: research
-    created: 2026-03-11T09:22:41+00:00
-    projects:
-      - name: notes
-        source_path: /home/you/worksets/research/workspaces/notes
+# v1.8.0 — <workset root>/registry.yaml
+workset:
+  name: research
+  created: 2026-03-11T09:22:41+00:00
+boxes:                     # if this section is already here, LEAVE IT ALONE
+  notes: /home/you/worksets/research/workspaces/notes
+projects:
+  notes:
+    source_path: /home/you/worksets/research/workspaces/notes
+```
+
+```yaml
+# v1.8.0 — <workset root>/settings.yaml, with the identity gone
 workset:
   bindings:
     rw:
       ~/data: /host/data
 ```
 
-⚑ **Nothing else in the file moves.** The top-level `workset:` table stays exactly where it is —
-it is still where this workset's own settings live (`workset.bindings`, `workset.workspaces`,
-`workset.channelroot`, `workset.auth`, …). Copy the three identity entries across verbatim, then
-delete the now-empty `meta:` entry underneath `workset:`. Nothing else on disk changes: no
-directory moves, no registry entry changes, no box is re-seeded.
+⚑ **Nothing else moves.** The top-level `workset:` table in `settings.yaml` stays exactly where it
+is — it is still where this workset's own settings live (`workset.bindings`, `workset.workspaces`,
+`workset.channelroot`, `workset.auth`, …). Delete only the identity from it. **If that leaves the
+file empty, you may delete the file**; a v1.8.0 workset root created from scratch has no
+`settings.yaml` until you set something. Leave any existing `boxes:` section of `registry.yaml`
+untouched. Nothing else on disk changes: no directory moves, no global registry entry changes, no
+box is re-seeded.
 
 **What you see if you don't.** kanibako refuses by name on any command that has to resolve the
 workset — `start`, `box info`, `workset` verbs, and any command run from inside the workset tree
-(verbatim template; `<path>` is the workset root's `settings.yaml`):
+(verbatim template; `<path>` is the workset root's `settings.yaml`, `<registry>` its
+`registry.yaml`):
 
 ```
-'workset.meta' is the RETIRED spelling of a named workset's identity table and is still the shape of <path>.
-The RULE CHANGED in kanibako 1.8.0: the identity table moved into the top-level `meta:` namespace and is spelled `meta.workset`. kanibako 1.6.0 and 1.7.x wrote the old spelling, so every workset root those releases created carries it. Refusing rather than running: this table is what MARKS the directory as a workset root, and reading past it would resolve the directory as an ordinary primary-mode box instead — your workset would stop being a workset with no error at all.
-  Fix: re-nest the table BY HAND in <path> — lift `meta:` out from under `workset:` and make `workset:` its child, with the SAME three entries and their values unchanged:
+'workset.meta' is a RETIRED location for a named workset's identity table and is still the shape of <path>.
+The RULE CHANGED in kanibako 1.8.0: identity and membership are REGISTRY-BORNE at every level, so a workset's name, created stamp and projects now live in the workset root's `registry.yaml` — the same file that already holds its box membership — and `settings.yaml` carries SETTINGS ONLY. kanibako 1.6.0 and 1.7.x put the identity in settings.yaml, so every workset root those releases created carries it. Refusing rather than running: this table is what MARKS the directory as a workset root, and reading past it would resolve the directory as an ordinary primary-mode box instead — your workset would stop being a workset with no error at all.
+  Fix: MOVE the table BY HAND out of <path> and into <registry>, splitting it into the two sections below. `name` and `created` keep their values verbatim; each entry of the old `projects` LIST becomes one entry of the `projects` MAP, keyed by its `name`:
 
-    meta:
-      workset:
-        name: ...
-        created: ...
-        projects: ...
+    workset:
+      name: ...
+      created: ...
+    projects:
+      <project name>:
+        source_path: ...
 
-  Nothing else in the file moves: a top-level `workset:` table is still where this workset's own settings live, so leave the rest of it exactly as it is and delete only the now-empty `meta:` entry under it. kanibako 1.8.0 ships no automatic migration for this — see MIGRATION.md §2.43.
+  Leave any `boxes:` section in registry.yaml exactly as it is. Then delete the identity table from <path>: a top-level `workset:` table is still where this workset's own SETTINGS live, so keep the rest of that file and delete only the identity. If nothing is left, the file may be deleted outright — a workset root no longer needs one. kanibako 1.8.0 ships no automatic migration for this — see MIGRATION.md §2.43.
 ```
 
-**Why it refuses instead of reading the old spelling.** This table is the *marker*: finding it is
+**Why it refuses instead of reading the old location.** This table is the *marker*: finding it is
 how kanibako decides a directory is a workset root at all. A compat read is not the safe option
 here — the unsafe outcome is the silent one. Without the refusal, a v1.7.x root that is **not in
 your registry** (a workset you moved, copied, or dropped in from another machine) simply fails to
@@ -2527,9 +2542,10 @@ printed to tell you why. A root that **is** registered fails less quietly but no
 kanibako finds it by path, then cannot read its name. Either way you are owed a message with the
 cure in it, which is what the refusal is.
 
-⚑ **A file that is neither spelling is still not an error.** A `settings.yaml` with no identity
-table — an ordinary box's settings file, or a cascade-only file at some directory in the walk —
-is simply not a workset root, exactly as before. Only the retired spelling refuses.
+⚑ **A root with no identity table anywhere is still not an error.** A `settings.yaml` with no
+identity table — an ordinary box's settings file, or a cascade-only file at some directory in the
+walk — is simply not a workset root, exactly as before, and so is a plain directory. Only an
+identity still sitting in `settings.yaml` refuses.
 
 ---
 
@@ -3232,7 +3248,8 @@ unchanged; only the directory leaf moved.)
 
 ```
 ~/code/<wsname>/               ← meta.workset.path
-├── settings.yaml              ← meta.workset.settings
+├── registry.yaml              ← identity + membership (v1.8.0; see §2.43)
+├── settings.yaml              ← meta.workset.settings (OPTIONAL in v1.8.0)
 ├── boxes/<box>/{home/ → ~/ , settings.yaml}
 ├── workspaces/<box>/          → ~/workspace
 ├── vault/{ro,rw}/<box>/       → ~/vault/{ro,rw}
@@ -3258,7 +3275,7 @@ A NAMED workset previously kept its identity/marker/project-list in a
 
 | Old file → key | New location |
 | --- | --- |
-| `<root>/workset.yaml` (`name`, `created`, `group_auth`, `projects`) | `<root>/settings.yaml` under `workset.meta.*` (superseded in v1.8.0 → `meta.workset.*`, §2.43) |
+| `<root>/workset.yaml` (`name`, `created`, `group_auth`, `projects`) | `<root>/settings.yaml` under `workset.meta.*` (superseded in v1.8.0 → `<root>/registry.yaml`, §2.43) |
 | `<root>/config.yaml` (`box.*`, `agent.*`, `workset.bindings.*`, `standalone`, `enable_vault`) | `<root>/settings.yaml` (top level — unchanged key shapes) |
 
 The identity lives under the `workset.meta` table so it never collides with the
@@ -3272,10 +3289,11 @@ default/synthesized workset is unaffected: its `group_auth` still lives in the
 data-root `config.yaml` `[project]` section, which is the system/default config file,
 not a NAMED-workset file.)
 
-⚑ **`workset.meta` superseded in v1.8.0 — see §2.43 (line 2446).** The identity table is
-spelled `meta.workset` there, and a root left on the 1.6.0/1.7.x spelling **hard-refuses**.
-Do the fold described above, then do the §2.43 re-nest — or fold straight into
-`meta:`→`workset:` and skip a step.
+⚑ **`workset.meta` superseded in v1.8.0 — see §2.43.** The identity does not live in
+`settings.yaml` at all any more; it is the `workset:` table of `<root>/registry.yaml`, and a root
+left on the 1.6.0/1.7.x shape **hard-refuses**. If you are coming from a `workset.yaml`, skip the
+fold described above and go straight to §2.43: put `name` / `created` / `projects` into
+`registry.yaml` and merge only the old `config.yaml` keys into `settings.yaml`.
 
 ### 4.5 STANDALONE layout & identity
 
@@ -3314,7 +3332,8 @@ holds the agent home + the helper log.
 ⚑ **The standalone walk marker is now a `box_data/` directory PLUS a
 `<root>/settings.yaml`** — presence alone, not any field inside the file. (A
 NAMED workset root also carries `<root>/settings.yaml`, but with a
-`workset.meta` identity — superseded in v1.8.0 → `meta.workset`, §2.43 — and NO
+`workset.meta` identity — superseded in v1.8.0: the identity moved to
+`<root>/registry.yaml` and the settings file became optional, §2.43 — and NO
 `box_data/` dir, so the two never collide.) The
 old in-tree `.kanibako`/`kanibako` dotdir marker is gone. When hand-editing a
 standalone tree, place `settings.yaml` at the root, keep a `box_data/` dir
@@ -3455,7 +3474,8 @@ What this means for you:
 - **Detection is an ancestor-walk**, not a registry lookup. Standalone is detected by
   walking up for a `box_data/` dir + a root `settings.yaml` — presence only, no
   `mode` field is read (§4.5); named by a workset-root `settings.yaml` carrying
-  `workset.meta` (superseded in v1.8.0 → `meta.workset`, §2.43); primary by
+  `workset.meta` (superseded in v1.8.0 → a `workset:` table in the root
+  `registry.yaml`, §2.43); primary by
   reconciling the central boxes dir against the registry.
 - **You can move or copy a box/workset/project tree** to a new location or machine and
   kanibako re-discovers it.

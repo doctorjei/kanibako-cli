@@ -828,14 +828,14 @@ def detect_project_mode(project_dir: Path, std: StandardPaths,
         return DetectionResult(BoxMode.primary, ac_ancestor)
 
     # 5. Walk ancestors for on-disk markers, IMPORTING what is unregistered.  NAMED is
-    # checked first at each level: its meta.workset marker is the more specific identity.
+    # checked first at each level: its registry.yaml identity is the more specific one.
     from kanibako.project import import_reconcile
-    from kanibako.project.workset import WORKSET_META_FILE, read_workset_meta
+    from kanibako.project.workset import read_workset_identity
 
     current = resolved
     while True:
         # NAMED: an unregistered workset root; import it, then the standard check resolves it.
-        if read_workset_meta(current / WORKSET_META_FILE) is not None:
+        if read_workset_identity(current) is not None:
             import_reconcile.import_named_workset(std.registry, current, journal=std.journal)
             ws_after = _check_workset(resolved, std)
             if ws_after is not None:
@@ -1133,7 +1133,6 @@ def iter_workset_projects(std: StandardPaths, config: KanibakoConfig) -> _Workse
 
     from kanibako.project import workset_registry
     from kanibako.project.workset import list_worksets, load_workset
-    from kanibako.settings.config_io import load_doc
 
     registry = list_worksets(std)
     results: _WorksetProjectRows = []
@@ -1149,11 +1148,10 @@ def iter_workset_projects(std: StandardPaths, config: KanibakoConfig) -> _Workse
             print(WARN_WS_BAD_LOAD % (ws_name, exc), file=sys.stderr)
             continue
 
-        # The per-workset ``boxes:`` membership, loaded ONCE per workset.  ⚑ Presence is
-        # checked at the REGISTERED path, else an old-composition member reads as "missing".
-        registry_path = workset_registry.resolve_workset_registry_path(
-            ws.root, load_doc(ws.root / SETTINGS_FILE))
-        registered_boxes = workset_registry.load_workset_boxes(registry_path)
+        # The per-workset ``boxes:`` membership, loaded ONCE per workset — the SAME file
+        # ``load_workset`` just read the projects from.  ⚑ Presence is checked at the
+        # REGISTERED path, else an old-composition member reads as "missing".
+        registered_boxes = workset_registry.load_workset_boxes(ws.registry_path)
 
         project_list: list[tuple[str, str]] = []
         for proj in ws.projects:

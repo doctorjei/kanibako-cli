@@ -378,7 +378,7 @@ class TestConnectJournal:
 
         box_key = str((tmp_home / "cj_ws2" / "boxes" / "cjproj2"))
         seen = {}
-        real_write = workset_mod._write_workset_toml
+        real_write = workset_mod._write_workset_identity
 
         def spy_write(w):
             seen["pending_during_write"] = (
@@ -386,7 +386,7 @@ class TestConnectJournal:
             )
             return real_write(w)
 
-        monkeypatch.setattr(workset_mod, "_write_workset_toml", spy_write)
+        monkeypatch.setattr(workset_mod, "_write_workset_identity", spy_write)
         rc = run_connect(_connect_args("cjws2", src, "cjproj2"))
 
         assert rc == 0
@@ -416,7 +416,7 @@ class TestConnectJournal:
         def boom(w):
             raise RuntimeError("simulated membership write crash")
 
-        monkeypatch.setattr(workset_mod, "_write_workset_toml", boom)
+        monkeypatch.setattr(workset_mod, "_write_workset_identity", boom)
         with pytest.raises(RuntimeError, match="simulated"):
             run_connect(_connect_args("cjws3", src, "cjproj3"))
 

@@ -187,19 +187,19 @@ def import_named_workset(
 ) -> str | None:
     """Reconcile an on-disk workset at *root* against ``registry.worksets``.
 
-    Reads the name from *root*'s ``settings.yaml`` ``meta.workset`` table.
+    Reads the name from *root*'s ``registry.yaml`` ``workset:`` identity table.
     Returns the workset name, or ``None`` when there is no readable identity.
     ⚑ Does NOT rewrite the workset-create skeleton; it only registers.
     """
     root = root.resolve()
     root_str = str(root)
 
-    from kanibako.project.workset import WORKSET_META_FILE, read_workset_meta
+    from kanibako.project.workset import read_workset_identity
 
-    meta = read_workset_meta(root / WORKSET_META_FILE)
-    if meta is None:
+    identity = read_workset_identity(root)
+    if identity is None:
         return None
-    name = (meta.get("name") or "").strip()
+    name = (identity.get("name") or "").strip()
     if not name:
         return None
 

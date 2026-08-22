@@ -183,8 +183,8 @@ class TestNamedWorksetImport:
     ):
         ws_root = tmp_home / "worksets" / "imported"
         create_workset("imported", ws_root, std)
-        # Wipe the registry to simulate a dropped-in workset tree (settings.yaml
-        # meta.workset on disk, no registry entry).
+        # Wipe the GLOBAL registry to simulate a dropped-in workset tree (the
+        # per-workset registry.yaml identity is on disk, no global entry).
         registry_store.save_section(std.registry, "worksets", {})
         capsys.readouterr()
 

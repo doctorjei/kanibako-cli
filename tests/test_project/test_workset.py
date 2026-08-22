@@ -37,13 +37,17 @@ class TestCreateWorkset:
         assert (ws.root / "boxes").is_dir()
         assert (ws.root / "workspaces").is_dir()
         assert (ws.root / "vault").is_dir()
-        assert ws.toml_path.is_file()
+        assert ws.registry_path.is_file()
+        # ⚑ A fresh workset root has NO settings.yaml — identity is registry-borne
+        # and the settings file carries settings only, so it is created only if
+        # something is actually SET.
+        assert not ws.settings_path.exists()
 
-    def test_writes_workset_toml(self, std, tmp_home):
+    def test_writes_identity_to_the_registry(self, std, tmp_home):
         root = tmp_home / "worksets" / "my-set"
         ws = create_workset("my-set", root, std)
 
-        text = ws.toml_path.read_text()
+        text = ws.registry_path.read_text()
         assert "name: my-set" in text
         assert "created:" in text
 
@@ -237,21 +241,21 @@ class TestLoadWorkset:
         with pytest.raises(WorksetError, match="does not exist"):
             load_workset(tmp_home / "nonexistent")
 
-    def test_missing_toml_raises(self, std, tmp_home):
-        root = tmp_home / "worksets" / "no-toml"
+    def test_missing_registry_raises(self, std, tmp_home):
+        root = tmp_home / "worksets" / "no-registry"
         root.mkdir(parents=True)
 
-        with pytest.raises(WorksetError, match="No settings.yaml"):
+        with pytest.raises(WorksetError, match="no 'workset' identity table"):
             load_workset(root)
 
-    def test_toml_without_name_raises(self, std, tmp_home):
-        root = tmp_home / "worksets" / "bad-toml"
+    def test_identity_without_name_raises(self, std, tmp_home):
+        root = tmp_home / "worksets" / "bad-identity"
         root.mkdir(parents=True)
-        (root / "settings.yaml").write_text(
-            'meta:\n  workset:\n    created: "2026-01-01"\n'
+        (root / "registry.yaml").write_text(
+            'workset:\n  created: "2026-01-01"\n'
         )
 
-        with pytest.raises(WorksetError, match="no 'name' key"):
+        with pytest.raises(WorksetError, match="has no 'name' key"):
             load_workset(root)
 
 
@@ -542,40 +546,39 @@ class TestUnifiedProjectRecord:
         assert rec.source_path == src
 
     def test_persisted_entry_carries_only_identity_and_path(self, std, tmp_home):
-        """The on-disk project entry has exactly {name, source_path}; no seeded."""
+        """The on-disk project record is keyed by name and holds only source_path."""
         from kanibako.settings.config_io import load_doc
 
         root = tmp_home / "worksets" / "my-set"
         ws = create_workset("my-set", root, std)
         add_project(ws, "proj", tmp_home / "project")
 
-        data = load_doc(ws.toml_path)
-        entries = data["meta"]["workset"]["projects"]
-        assert entries == [
-            {"name": "proj", "source_path": str(tmp_home / "project")}
-        ]
+        data = load_doc(ws.registry_path)
+        assert data["projects"] == {
+            "proj": {"source_path": str(tmp_home / "project")}
+        }
 
     def test_legacy_entry_with_seeded_loads_and_drops_it(self, std, tmp_home):
-        """A legacy on-disk entry carrying `seeded` loads (ignored) + drops it."""
+        """A legacy on-disk record carrying `seeded` loads (ignored) + drops it."""
         from kanibako.settings.config_io import dump_doc, load_doc
 
         root = tmp_home / "worksets" / "my-set"
         ws = create_workset("my-set", root, std)
         add_project(ws, "proj", tmp_home / "project")
 
-        # Inject a legacy 'seeded' key onto the on-disk entry.
-        data = load_doc(ws.toml_path)
-        for entry in data["meta"]["workset"]["projects"]:
-            entry["seeded"] = True
-        dump_doc(ws.toml_path, data)
+        # Inject a legacy 'seeded' key onto the on-disk record.
+        data = load_doc(ws.registry_path)
+        for record in data["projects"].values():
+            record["seeded"] = True
+        dump_doc(ws.registry_path, data)
 
         # Loads fine (seeded ignored); a re-write drops the legacy key.
         loaded = load_workset(root)
         assert not hasattr(loaded.projects[0], "seeded")
         add_project(loaded, "proj2", tmp_home / "project2")
-        rewritten = load_doc(loaded.toml_path)
-        for entry in rewritten["meta"]["workset"]["projects"]:
-            assert "seeded" not in entry
+        rewritten = load_doc(loaded.registry_path)
+        for record in rewritten["projects"].values():
+            assert "seeded" not in record
 
 
 class TestRemoveProject:
@@ -624,12 +627,8 @@ class TestRemoveProject:
 def _workset_boxes(ws):
     """Read *ws*'s per-workset ``boxes:`` membership (the D10 connection index)."""
     from kanibako.project import workset_registry
-    from kanibako.settings.config_io import load_doc
 
-    registry_path = workset_registry.resolve_workset_registry_path(
-        ws.root, load_doc(ws.root / "settings.yaml"),
-    )
-    return workset_registry.load_workset_boxes(registry_path)
+    return workset_registry.load_workset_boxes(ws.registry_path)
 
 
 class TestRemoveExternalProject:
@@ -695,7 +694,8 @@ class TestWorksetProperties:
         assert ws.projects_dir == resolved / "boxes"
         assert ws.workspaces_dir == resolved / "workspaces"
         assert ws.vault_dir == resolved / "vault"
-        assert ws.toml_path == resolved / "settings.yaml"
+        assert ws.settings_path == resolved / "settings.yaml"
+        assert ws.registry_path == resolved / "registry.yaml"
 
 
 class TestWorksetWorkspacesResolved:
@@ -861,84 +861,117 @@ class TestWorksetWorkspacesResolved:
             )
 
 
-class TestWorksetSettingsFile:
-    def test_identity_under_meta_workset(self, std, tmp_home):
-        """create_workset writes identity into settings.yaml's meta.workset."""
+class TestWorksetIdentityFile:
+    """⚑⚑ IDENTITY AND MEMBERSHIP ARE REGISTRY-BORNE (system-design §Detect): the
+    ``workset:`` table lives in the root ``registry.yaml`` beside ``boxes:`` and
+    ``projects:``, and the root ``settings.yaml`` carries SETTINGS ONLY — sparse,
+    optional, and ABSENT on a freshly created workset."""
+
+    def test_identity_is_in_the_registry_not_the_settings_file(self, std, tmp_home):
         from kanibako.settings.config_io import load_doc
 
         root = tmp_home / "worksets" / "mset"
         create_workset("mset", root, std)
 
-        settings = root.resolve() / "settings.yaml"
-        assert settings.is_file()
+        registry = root.resolve() / "registry.yaml"
+        assert registry.is_file()
+        assert not (root.resolve() / "settings.yaml").exists()
         assert not (root.resolve() / "workset.yaml").exists()
-        data = load_doc(settings)
-        assert data["meta"]["workset"]["name"] == "mset"
+        data = load_doc(registry)
+        assert data["workset"]["name"] == "mset"
 
-    def test_identity_and_cascade_coexist(self, std, tmp_home):
-        """Cascade settings + the meta.workset identity share one file without
-        clobbering each other across writes."""
-        from kanibako.settings.config_io import dump_doc, load_doc
+    def test_identity_write_preserves_box_membership(self, std, tmp_home):
+        """The identity + projects write is a read-modify-write: ``boxes:`` rides through."""
+        from kanibako.project import workset_registry
+        from kanibako.project.workset import _write_workset_identity
 
         root = tmp_home / "worksets" / "coexist"
         ws = create_workset("coexist", root, std)
-        settings = ws.toml_path
-
-        # Write a cascade share key into the same file.
-        data = load_doc(settings)
-        data.setdefault("workset", {}).setdefault("bindings", {}).setdefault(
-            "rw", {}
-        )["data"] = "/host:/guest"
-        dump_doc(settings, data)
-
-        # Re-writing the workset identity must preserve the cascade key.
-        from kanibako.project.workset import _write_workset_toml
-        _write_workset_toml(ws)
-
-        # Both survive: the binding key is intact on disk, identity reload works.
-        reloaded_data = load_doc(settings)
-        assert (
-            reloaded_data["workset"]["bindings"]["rw"]["data"] == "/host:/guest"
+        workset_registry.register_workset_box(
+            ws.registry_path, "boxa", tmp_home / "elsewhere",
         )
-        reloaded = load_workset(root)
-        assert reloaded.name == "coexist"
 
-    def test_detection_marker_is_meta_workset(self, std, tmp_home, config):
-        """A dir with a settings.yaml carrying meta.workset is detected NAMED;
-        a settings.yaml without that MEMBER is not."""
+        _write_workset_identity(ws)
+
+        assert workset_registry.load_workset_boxes(ws.registry_path) == {
+            "boxa": str(tmp_home / "elsewhere")
+        }
+        assert load_workset(root).name == "coexist"
+
+    def test_sections_are_written_in_canonical_order(self, std, tmp_home):
+        """Identity, then membership, then projects — one stable on-disk order."""
+        from kanibako.project import workset_registry
+
+        root = tmp_home / "worksets" / "ordered"
+        ws = create_workset("ordered", root, std)
+        workset_registry.register_workset_box(
+            ws.registry_path, "boxa", tmp_home / "elsewhere",
+        )
+        add_project(ws, "proj", tmp_home / "project")
+
+        text = ws.registry_path.read_text()
+        assert (
+            text.index("workset:") < text.index("boxes:") < text.index("projects:")
+        )
+
+    def test_detection_marker_is_the_registry_identity(self, std, tmp_home, config):
+        """A dir whose registry.yaml carries ``workset:`` is detected NAMED; one without
+        it is not — and neither is a bare settings.yaml of any shape."""
         from kanibako.settings.config_io import dump_doc
         from kanibako.settings.paths import detect_project_mode
-        from kanibako.project.workset import read_workset_meta
+        from kanibako.project.workset import read_workset_identity
 
         root = tmp_home / "worksets" / "marker"
         create_workset("marker", root, std)
-        assert read_workset_meta(root / "settings.yaml") is not None
+        assert read_workset_identity(root) is not None
+
+        # A registry.yaml with membership but NO identity is not a workset root —
+        # that is exactly the shape of the PRIMARY workset's own registry.
+        boxes_only = tmp_home / "boxes-only"
+        boxes_only.mkdir()
+        dump_doc(boxes_only / "registry.yaml", {"boxes": {"b": "/somewhere"}})
+        assert read_workset_identity(boxes_only) is None
 
         # A cascade-only settings.yaml is NOT a workset marker.
         boxlike = tmp_home / "boxlike"
         boxlike.mkdir()
         dump_doc(boxlike / "settings.yaml", {"box": {"image": "img"}})
-        assert read_workset_meta(boxlike / "settings.yaml") is None
+        assert read_workset_identity(boxlike) is None
 
-        # Nor is a top-level meta: table WITHOUT the `workset` member — the marker is
-        # the MEMBER, not the table.
-        metaless = tmp_home / "metaless"
-        metaless.mkdir()
-        dump_doc(metaless / "settings.yaml", {"meta": {"box": {"mode": "named"}}})
-        assert read_workset_meta(metaless / "settings.yaml") is None
         # Detection from inside a registered workset resolves to NAMED.
         result = detect_project_mode(root, std, config)
         assert result.mode is BoxMode.named
 
+    def test_a_settings_file_is_optional_end_to_end(self, std, tmp_home, config):
+        """⚑ THE POINT OF THE MOVE: with no settings.yaml at all, the root still
+        detects, loads, imports and lists."""
+        from kanibako.project import import_reconcile, registry_store
+        from kanibako.settings.paths import detect_project_mode
+
+        root = tmp_home / "worksets" / "sparse"
+        ws = create_workset("sparse", root, std)
+        add_project(ws, "proj", ws.workspaces_dir / "proj")
+        assert not ws.settings_path.exists()
+
+        assert load_workset(root).name == "sparse"
+        assert [p.name for p in load_workset(root).projects] == ["proj"]
+        assert detect_project_mode(root, std, config).mode is BoxMode.named
+
+        # Drop the global registration: the drop-in import re-registers from disk.
+        registry_store.save_section(std.registry, "worksets", {})
+        assert import_reconcile.import_named_workset(std.registry, root) == "sparse"
+
 
 # ---------------------------------------------------------------------------
-# The RETIRED ``workset.meta`` identity spelling (v1.6.0 / v1.7.x wrote it).
+# The RETIRED settings.yaml identity location (v1.6.0/v1.7.x wrote ``workset.meta``
+# there; the unreleased v1.8.0 tree briefly wrote ``meta.workset`` there).
 #
-# v1.8.0 is a clean break: no compat read, no auto-migration.  The legacy table is
-# DETECTED only so it can be DIAGNOSED — a hard refusal naming the hand re-nest, in
-# place of the silent fall-through that would otherwise stop the directory being a
-# workset at all.  ⚑ The distinction that carries the whole design: a file with NEITHER
-# table, and an unreadable one, both still say "not a workset root" without refusing.
+# v1.8.0 is a clean break: identity is REGISTRY-BORNE, there is no compat read and no
+# auto-migration.  The legacy table is DETECTED only so it can be DIAGNOSED — a hard
+# refusal naming the hand move to registry.yaml, in place of the silent fall-through
+# that would otherwise stop the directory being a workset at all.  ⚑ The distinction
+# that carries the whole design: a root with NEITHER identity, and an unreadable one,
+# both still say "not a workset root" without refusing.
 # ---------------------------------------------------------------------------
 
 #: A workset root exactly as v1.7.2 wrote it (``src/kanibako/workset.py`` line 214).
@@ -953,44 +986,73 @@ _LEGACY_IDENTITY_DOC = {
     },
 }
 
+#: The same identity as the UNRELEASED v1.8.0 tree spelled it, still in settings.yaml.
+_UNRELEASED_IDENTITY_DOC = {
+    "meta": {
+        "workset": {
+            "name": "legacyws",
+            "created": "2026-01-02T03:04:05+00:00",
+            "projects": [{"name": "proj", "source_path": "/somewhere/proj"}],
+        },
+    },
+    "workset": {"bindings": {"rw": {"~/data": "/host/data"}}},
+}
 
-def _write_legacy_root(root: Path) -> Path:
-    """Materialize a legacy (v1.7.x-spelled) workset root at *root*; return its settings file."""
+
+def _write_legacy_root(root: Path, doc: dict | None = None) -> Path:
+    """Materialize a legacy (settings.yaml-identity) workset root; return its settings file."""
     from kanibako.settings.config_io import dump_doc
 
     root.mkdir(parents=True, exist_ok=True)
     settings = root / "settings.yaml"
-    dump_doc(settings, _LEGACY_IDENTITY_DOC)
+    dump_doc(settings, _LEGACY_IDENTITY_DOC if doc is None else doc)
     return settings
 
 
-class TestRetiredWorksetIdentitySpelling:
-    def test_legacy_root_refuses(self, tmp_home):
-        """A ``workset.meta`` root RAISES out of the detection primitive — never ``None``."""
-        from kanibako.project.workset import read_workset_meta
+class TestRetiredWorksetIdentityLocation:
+    @pytest.mark.parametrize(
+        "doc_name", ["_LEGACY_IDENTITY_DOC", "_UNRELEASED_IDENTITY_DOC"],
+    )
+    def test_legacy_root_refuses(self, tmp_home, doc_name):
+        """⚑ EITHER retired spelling RAISES out of the detection primitive — never ``None``."""
+        from kanibako.project.workset import read_workset_identity
 
-        settings = _write_legacy_root(tmp_home / "legacyws")
+        root = tmp_home / "legacyws"
+        _write_legacy_root(root, globals()[doc_name])
         with pytest.raises(LegacyWorksetIdentityError):
-            read_workset_meta(settings)
+            read_workset_identity(root)
 
-    def test_cure_names_file_both_spellings_and_the_renest(self, tmp_home):
-        """The refusal is actionable: the file, the retired + live spellings, the re-nest."""
-        from kanibako.project.workset import read_workset_meta
+    def test_cure_names_the_file_the_registry_and_the_move(self, tmp_home):
+        """The refusal is actionable: the file, the retired location, the destination."""
+        from kanibako.project.workset import read_workset_identity
 
-        settings = _write_legacy_root(tmp_home / "legacyws")
+        root = tmp_home / "legacyws"
+        settings = _write_legacy_root(root)
         with pytest.raises(LegacyWorksetIdentityError) as excinfo:
-            read_workset_meta(settings)
+            read_workset_identity(root)
         message = str(excinfo.value)
 
         assert str(settings) in message
-        assert "workset.meta" in message          # the retired spelling, named
-        assert "meta.workset" in message          # the live spelling, named
-        # The re-nest itself, shown rather than described, with all three entries.
-        assert "meta:\n      workset:" in message
-        for entry in ("name:", "created:", "projects:"):
+        assert "workset.meta" in message              # the retired location, named
+        assert str(root / "registry.yaml") in message  # the DESTINATION, named
+        # The target shape itself, shown rather than described.
+        assert "workset:\n      name:" in message
+        for entry in ("created:", "projects:", "source_path:"):
             assert entry in message
         # No auto-migration, and the shipped guide is cited BY FILENAME.
         assert "MIGRATION.md §2.43" in message
+
+    def test_cure_names_the_unreleased_spelling_when_that_is_what_is_there(
+        self, tmp_home,
+    ):
+        """The message names the spelling actually on disk, not a generic pair."""
+        from kanibako.project.workset import read_workset_identity
+
+        root = tmp_home / "legacyws"
+        _write_legacy_root(root, _UNRELEASED_IDENTITY_DOC)
+        with pytest.raises(LegacyWorksetIdentityError) as excinfo:
+            read_workset_identity(root)
+        assert "'meta.workset' is a RETIRED location" in str(excinfo.value)
 
     def test_refusal_is_a_workset_error(self, tmp_home):
         """``LegacyWorksetIdentityError`` is a ``WorksetError``, so ``cli.py`` prints it."""
@@ -999,10 +1061,10 @@ class TestRetiredWorksetIdentitySpelling:
         assert issubclass(LegacyWorksetIdentityError, WorksetError)
         assert issubclass(LegacyWorksetIdentityError, KanibakoError)
 
-    def test_non_workset_file_still_returns_none(self, tmp_home):
-        """⚑ A file with NEITHER identity table is genuinely not a workset root: ``None``."""
+    def test_non_workset_root_still_returns_none(self, tmp_home):
+        """⚑ A root with NEITHER identity is genuinely not a workset root: ``None``."""
         from kanibako.settings.config_io import dump_doc
-        from kanibako.project.workset import read_workset_meta
+        from kanibako.project.workset import read_workset_identity
 
         # A cascade-only ``workset:`` table — present, but with no ``meta:`` under it.
         cascade_only = tmp_home / "cascade-only"
@@ -1011,44 +1073,54 @@ class TestRetiredWorksetIdentitySpelling:
             cascade_only / "settings.yaml",
             {"workset": {"bindings": {"rw": {"~/data": "/host/data"}}}},
         )
-        assert read_workset_meta(cascade_only / "settings.yaml") is None
+        assert read_workset_identity(cascade_only) is None
 
         # An ordinary box settings file.
         boxlike = tmp_home / "boxlike"
         boxlike.mkdir()
         dump_doc(boxlike / "settings.yaml", {"box": {"image": "img"}})
-        assert read_workset_meta(boxlike / "settings.yaml") is None
+        assert read_workset_identity(boxlike) is None
 
-        # A missing file.
-        assert read_workset_meta(tmp_home / "nothing-here" / "settings.yaml") is None
+        # A PLAIN directory — nothing on disk at all.
+        plain = tmp_home / "plain-dir"
+        plain.mkdir()
+        assert read_workset_identity(plain) is None
+
+        # A missing directory.
+        assert read_workset_identity(tmp_home / "nothing-here") is None
 
     def test_workset_meta_scalar_is_not_the_legacy_table(self, tmp_home):
         """``workset.meta`` must be a MAPPING to be the retired identity — a scalar is not."""
         from kanibako.settings.config_io import dump_doc
-        from kanibako.project.workset import read_workset_meta
+        from kanibako.project.workset import read_workset_identity
 
         scalar = tmp_home / "scalar-meta"
         scalar.mkdir()
         dump_doc(scalar / "settings.yaml", {"workset": {"meta": "not-a-table"}})
-        assert read_workset_meta(scalar / "settings.yaml") is None
+        assert read_workset_identity(scalar) is None
 
     def test_corrupt_file_still_returns_none(self, tmp_home):
         """⚑ The load guard stays: an unparseable file is ``None``, not a refusal."""
-        from kanibako.project.workset import read_workset_meta
+        from kanibako.project.workset import read_workset_identity
 
         corrupt = tmp_home / "corrupt"
         corrupt.mkdir()
-        settings = corrupt / "settings.yaml"
-        settings.write_text("workset:\n  meta:\n   - [broken: :\n")
-        assert read_workset_meta(settings) is None
+        (corrupt / "settings.yaml").write_text("workset:\n  meta:\n   - [broken: :\n")
+        assert read_workset_identity(corrupt) is None
 
-    def test_correct_spelling_still_works(self, std, tmp_home):
-        """The live ``meta.workset`` spelling is untouched by the refusal."""
-        from kanibako.project.workset import read_workset_meta
+        # And an unparseable REGISTRY is a miss too, not a crash.
+        bad_registry = tmp_home / "bad-registry"
+        bad_registry.mkdir()
+        (bad_registry / "registry.yaml").write_text("workset:\n   - [broken: :\n")
+        assert read_workset_identity(bad_registry) is None
+
+    def test_live_location_still_works(self, std, tmp_home):
+        """The live registry.yaml identity is untouched by the refusal."""
+        from kanibako.project.workset import read_workset_identity
 
         root = tmp_home / "worksets" / "goodws"
         create_workset("goodws", root, std)
-        identity = read_workset_meta(root.resolve() / "settings.yaml")
+        identity = read_workset_identity(root.resolve())
         assert identity is not None
         assert identity["name"] == "goodws"
         assert load_workset(root).name == "goodws"
@@ -1186,12 +1258,12 @@ class TestAddProjectFailConsistent:
         ws = create_workset("my-set", root, std)
         proj_src = tmp_home / "project"
 
-        # workset.yaml write is the LAST step; failing it must roll back the
+        # The registry identity write is the LAST step; failing it must roll back the
         # per-project dirs and leave no project in the in-memory list / on disk.
         def boom(*a, **k):
-            raise _Boom("workset.yaml write failed")
+            raise _Boom("registry.yaml identity write failed")
 
-        monkeypatch.setattr(ws_mod, "_write_workset_toml", boom)
+        monkeypatch.setattr(ws_mod, "_write_workset_identity", boom)
         with pytest.raises(_Boom):
             add_project(ws, "proj", proj_src)
 
@@ -1214,12 +1286,12 @@ class TestAddProjectFailConsistent:
         (external / "keep.txt").write_text("keep me")
 
         # The per-workset boxes: connection record is written BEFORE the final
-        # workset.yaml write.  If that final write fails, the record + symlink
+        # registry identity write.  If that final write fails, the record + symlink
         # must be rolled back so the external path is NOT locked out.
         def boom(*a, **k):
-            raise _Boom("workset.yaml write failed")
+            raise _Boom("registry.yaml identity write failed")
 
-        monkeypatch.setattr(ws_mod, "_write_workset_toml", boom)
+        monkeypatch.setattr(ws_mod, "_write_workset_identity", boom)
         with pytest.raises(_Boom):
             add_project(ws, "extproj", external, std)
 
@@ -1261,7 +1333,7 @@ class TestAddProjectFailConsistent:
 
 class TestRemoveProjectFailConsistent:
     def test_registry_removal_is_last_durable_step(self, std, tmp_home, monkeypatch):
-        # If the final workset.yaml write fails during removal, the project must
+        # If the final registry identity write fails during removal, the project must
         # remain registered (re-runnable) rather than being dropped from the
         # registry while leaving a dangling per-workset connection record.
         import kanibako.project.workset as ws_mod
@@ -1274,9 +1346,9 @@ class TestRemoveProjectFailConsistent:
         assert _workset_boxes(ws).get("extproj") == str(external)
 
         def boom(*a, **k):
-            raise _Boom("workset.yaml write failed")
+            raise _Boom("registry.yaml identity write failed")
 
-        monkeypatch.setattr(ws_mod, "_write_workset_toml", boom)
+        monkeypatch.setattr(ws_mod, "_write_workset_identity", boom)
         with pytest.raises(_Boom):
             remove_project(ws, "extproj", std=std)
 
