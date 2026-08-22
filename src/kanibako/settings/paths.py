@@ -7,7 +7,7 @@ from kanibako.settings.paths_defaults import (XDG_SPEC_DEFAULTS, CONFIG_PATH_DEF
                                               XDG_RUNTIME_DIR, XDG_STATE_HOME, XDG_CACHE_HOME,
 
                                               SHELL_D_FILE, PROFILE_FILE, BASHRC_FILE, IGNORE_FILE,
-                                              SETTINGS_FILE, PROFILE_CONTENTS, BASHRC_CONTENTS,
+                                              PROFILE_CONTENTS, BASHRC_CONTENTS,
                                               SHELL_D_CONTENTS, RUN_USER_UID_PATH,
 
                                               BOXES_PATH, HOME_PATH, KANIBAKO_PATH, LOGS_PATH,
@@ -40,8 +40,8 @@ from typing import NamedTuple, Protocol, overload
 
 from kanibako.log import get_logger
 
-from kanibako.settings.config import (BOX_META_FILE, KanibakoConfig, config_file_path, load_config,
-                                      read_box_enable_vault, read_workset_kuid,
+from kanibako.settings.config import (WORKSET_META_FILE, BOX_META_FILE, KanibakoConfig, config_file_path,
+                                      load_config, read_box_enable_vault, read_workset_kuid,
                                       read_workset_skip_kuid_check, write_box_enable_vault)
 
 from kanibako.errors import ConfigError, ProjectError, WorksetError
@@ -129,8 +129,8 @@ def workset_settings_path(group: None) -> None: ...
 
 
 def workset_settings_path(group: _WorksetRooted | None) -> Path | None:
-    """THE workset-tier settings-file derivation: ``@meta.workset.path/settings.yaml`` (spec §2c)."""
-    return group.root / SETTINGS_FILE if group is not None else None
+    """THE workset-tier settings-file derivation: ``@meta.workset.path/workset.yaml`` (spec §2c)."""
+    return group.root / WORKSET_META_FILE if group is not None else None
 
 
 def _default_project_group(std: StandardPaths) -> ProjectGroup:
@@ -147,8 +147,8 @@ def warn_legacy_primary_settings(std: StandardPaths) -> None:
     global _legacy_primary_settings_warned
     if _legacy_primary_settings_warned:
         return
-    legacy = std.data_path / SETTINGS_FILE
-    spec_file = std.primary_workset / SETTINGS_FILE
+    legacy = std.data_path / "settings.yaml"
+    spec_file = std.primary_workset / WORKSET_META_FILE
     if legacy.is_file() and not spec_file.is_file():
         import sys
 
@@ -163,7 +163,7 @@ class ProjectPaths:
     """Resolved paths for a specific project."""
     project_path: Path
     project_hash: str
-    metadata_path: Path      # host-only: settings.yaml, breadcrumb, lock
+    metadata_path: Path      # host-only: workset.yaml, breadcrumb, lock
     shell_path: Path         # mounted as /home/agent
     vault_ro_path: Path      # {project}/vault/ro (→ /home/agent/vault/ro)
     vault_rw_path: Path      # {project}/vault/rw (→ /home/agent/vault/rw)
@@ -181,7 +181,7 @@ def box_tree_materialized(proj: ProjectPaths) -> bool:
 
 def _standalone_settings_files(root: Path) -> tuple[Path, Path]:
     """The STANDALONE ``(box_tier, workset_tier)`` pair — BOTH always real paths."""
-    return root / STANDALONE_META_DIR / BOX_META_FILE, root / BOX_META_FILE
+    return root / STANDALONE_META_DIR / BOX_META_FILE, root / WORKSET_META_FILE
 
 
 def box_metadata_dir(mode: BoxMode, metadata_path: Path) -> Path:
@@ -642,7 +642,7 @@ def resolve_project(std: StandardPaths, config: KanibakoConfig, project_dir: str
         if not shell_path.is_dir():
             shell_path.mkdir(parents=True, exist_ok=True)
             _bootstrap_shell(shell_path)
-        # P8b/Option A: NO settings.yaml backfill — identity lives in the registries now.
+        # P8b/Option A: NO workset.yaml backfill — identity lives in the registries now.
 
     return ProjectPaths(project_path=project_path, project_hash=phash, metadata_path=metadata_path,
                         shell_path=shell_path, vault_ro_path=vault_ro_path,
@@ -905,7 +905,7 @@ def _workset_box_name_for_workspace(ws_root: Path, workspace: str) -> str | None
     from kanibako.settings.config_io import load_doc
 
     registry_path = workset_registry.resolve_workset_registry_path(
-        ws_root, load_doc(ws_root / SETTINGS_FILE))
+        ws_root, load_doc(ws_root / WORKSET_META_FILE))
     return workset_registry.reverse_lookup_workset_box(registry_path, workspace)
 
 
@@ -915,7 +915,7 @@ def _workset_box_workspace_for_name(ws_root: Path, box_name: str) -> str | None:
     from kanibako.settings.config_io import load_doc
 
     registry_path = workset_registry.resolve_workset_registry_path(
-        ws_root, load_doc(ws_root / SETTINGS_FILE))
+        ws_root, load_doc(ws_root / WORKSET_META_FILE))
     return workset_registry.workset_box_path(registry_path, box_name)
 
 
@@ -925,7 +925,7 @@ def _register_workset_box_membership(ws_root: Path, box_name: str, workspace: Pa
     from kanibako.settings.config_io import load_doc
 
     registry_path = workset_registry.resolve_workset_registry_path(
-        ws_root, load_doc(ws_root / SETTINGS_FILE))
+        ws_root, load_doc(ws_root / WORKSET_META_FILE))
     workset_registry.register_workset_box(registry_path, box_name, workspace)
 
 
@@ -935,7 +935,7 @@ def _unregister_workset_box_membership(ws_root: Path, box_name: str) -> None:
     from kanibako.settings.config_io import load_doc
 
     registry_path = workset_registry.resolve_workset_registry_path(
-        ws_root, load_doc(ws_root / SETTINGS_FILE))
+        ws_root, load_doc(ws_root / WORKSET_META_FILE))
     workset_registry.unregister_workset_box(registry_path, box_name)
 
 
@@ -950,7 +950,7 @@ def load_primary_boxes(primary_workset: Path) -> dict[str, str]:
     from kanibako.settings.config_io import load_doc
 
     registry_path = workset_registry.resolve_workset_registry_path(
-        primary_workset, load_doc(primary_workset / SETTINGS_FILE))
+        primary_workset, load_doc(primary_workset / WORKSET_META_FILE))
     return workset_registry.load_workset_boxes(registry_path)
 
 
@@ -1127,7 +1127,7 @@ def iter_projects(std: StandardPaths, config: KanibakoConfig) -> list[tuple[Path
     from kanibako.settings.config_io import load_doc
 
     primary_registry = workset_registry.resolve_workset_registry_path(
-        std.primary_workset, load_doc(std.primary_workset / SETTINGS_FILE))
+        std.primary_workset, load_doc(std.primary_workset / WORKSET_META_FILE))
     registered = workset_registry.load_workset_boxes(primary_registry)
     results: list[tuple[Path, Path | None]] = []
     for entry in sorted(projects_dir.iterdir()):

@@ -508,7 +508,7 @@ def install_workset_template(std: StandardPaths, workset_path: Path, *,
 
     ⚑ The whitelist matters MOST here, and not for the reason this comment used to
     give.  A STANDALONE ``<workset_path>`` is a kanibako-MANAGED wrapper
-    (``settings.yaml`` + ``box_data/`` + ``vault/{ro,rw}/`` + ``workspace/``); the
+    (``workset.yaml`` + ``box_data/`` + ``vault/{ro,rw}/`` + ``workspace/``); the
     user's own code lives one level down in ``workspace/`` (the workspace is a SUBDIR
     of the root — ``paths.py``, drift H) and no stamp ever reaches it.  What IS true is
     that the wrapper is a directory the user already had — ``resolve_standalone_project``
