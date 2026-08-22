@@ -46,6 +46,7 @@ from kanibako.settings import paths_defaults
 from kanibako.settings.config_io import load_doc
 from kanibako.errors import LegacyWorksetIdentityError, WorksetError
 from kanibako.project.names import register_name, unregister_name
+from kanibako.settings.config import WORKSET_META_FILE
 # ⚑ FORWARD edge of a documented cycle: ``settings/paths.py`` breaks it by DEFERRING
 # its ``project.workset`` imports into function bodies — do not add a module-scope
 # edge back this way.
@@ -55,10 +56,6 @@ from kanibako.settings.paths import StandardPaths
 # ``settings/paths_defaults.py``, the designated defaults file, and are materialized
 # THERE AND NOWHERE ELSE; re-spelling one here made a second carrier that could drift.
 # The local names stay only because the call sites read better with them.
-
-# The workset-tier cascade settings file at the workset root — SETTINGS ONLY, and
-# OPTIONAL: membership lives in ``registry.yaml``, identity in the GLOBAL registry.
-WORKSET_SETTINGS_FILE = paths_defaults.SETTINGS_FILE
 
 # Default leaves for the RESOLVED workset dir keys — the spec's per-mode default
 # formula ``@meta.workset.path/<leaf>``, applied ONCE per key in its resolver below
@@ -86,7 +83,7 @@ _VAULT_LEAF = paths_defaults.VAULT_PATH
 
 def load_workset_settings_doc(root: Path) -> Mapping[str, Any] | None:
     """Best-effort read of *root*'s workset ``workset.yaml`` document (``None`` on any failure)."""
-    path = root / WORKSET_SETTINGS_FILE
+    path = root / WORKSET_META_FILE
     if not path.is_file():
         return None
     try:
@@ -290,7 +287,7 @@ class Workset:
     @property
     def settings_path(self) -> Path:
         """The workset-tier settings file — SETTINGS ONLY, and may not exist."""
-        return self.root / WORKSET_SETTINGS_FILE
+        return self.root / WORKSET_META_FILE
 
     @property
     def registry_path(self) -> Path:
@@ -360,7 +357,7 @@ def refuse_retired_workset_identity(root: Path) -> None:
         )
     else:
         return
-    path = root / WORKSET_SETTINGS_FILE
+    path = root / WORKSET_META_FILE
     raise LegacyWorksetIdentityError(
         f"'{retired}' is a RETIRED location for a named workset's identity table "
         f"and is still the shape of {path}.\n"
