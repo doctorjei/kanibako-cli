@@ -172,13 +172,28 @@ Scope is deliberately TIGHT in both cases: these keys, nothing else. Neither is 
 enforcement — that follow-on stays deferred, gated on `settings_keyspace.RETIRING_KEYS` emptying,
 and neither refusal repopulates that set.
 
-**Selection keys (P7, spec §0 / §2b / §2g; migration M-4).** `box.agent_name` and
-`system.default_agent`. A box that SILENTLY RUNS A DIFFERENT AGENT — and seeds that agent's
-CREDENTIALS into itself — is the failure being prevented, so a silent drop is not an option. The CURE
-is LEVEL-DEPENDENT: a pref is legal only in a workset or box file (spec §2h), so telling a SYSTEM-file
-reader to `box set pref…` would prescribe a write that cannot fix their file. Called at the SELECTION
-seam (`settings.agent_select`), NOT inside `assemble_levels` — a raise there would also break
-`config set`, i.e. the very command the message prescribes as the cure.
+**Selection and mirror keys (P7, spec §0 / §2b / §2g; migration M-4).** THREE retired spellings:
+`box.agent`, `box.agent_name` and `system.default_agent`. A box that SILENTLY RUNS A DIFFERENT AGENT
+— and seeds that agent's CREDENTIALS into itself — is the failure being prevented, so a silent drop
+is not an option. The CURE is LEVEL-DEPENDENT: a pref is legal only in a workset or box file (spec
+§2h), so telling a SYSTEM-file reader to `box set pref…` would prescribe a write that cannot fix
+their file. Called at the SELECTION seam (`settings.agent_select`), NOT inside `assemble_levels` — a
+raise there would also break `config set`, i.e. the very command the message prescribes as the cure.
+
+⚑⚑ **`box.agent` is TWO retirements sharing ONE file path, and the VALUE'S SHAPE is the
+discriminator.** Both are manifest `renamed` rows:
+
+* a **SCALAR** is the old agent-SELECTION key (`box.crab` → `box.agent` → `box.agent_name`, all of
+  them cured toward `pref.system.agent`, §2h);
+* a **TABLE** is the retired SETTABLE MIRROR of the agent's settings, `box.agent.<key>` (R-4), cured
+  toward the per-agent request `pref.agent.<agent>.<key>` (§2h). The `box.agent` spelling that
+  SURVIVES is the RO read-back `meta.box.agent.<key>` (§2b) — a different key, not a tweak channel.
+
+One cure for both would send half of these users at the wrong key, so `refuse_retired_keys` reads
+the shape and hands `_retired_key_cure` a *mirror* argument that selects between the two. The
+FRAMING SENTENCE forks with it, which is why there are TWO story constants: *"a box no longer names
+its agent with a key of its own"* is false for someone who was tweaking an agent rather than naming
+one.
 
 **Behavior key (R-41, spec §2d; migration M-22).** R-41 replaced the boolean `auto_approve` with the
 enum `access` (`restricted|editing|full`, default `full`). Under the closed keyspace the old spelling
@@ -226,7 +241,12 @@ is one PREDICATE over the root table there now, not the enumerated
 `_REFUSED_NESTED_AGENT_CATEGORIES` tuple this line used to name.)*
 
 ```RETIRED_FILE_KEYS: dict[tuple[str, ...], str]```
-Retired agent-SELECTION spellings: nested FILE path of the retired leaf → the retired KEY name (M-4).
+Retired agent-SELECTION and agent-MIRROR spellings: nested FILE path of the retired leaf → the
+retired KEY name (M-4).
+
+THREE rows: `box.agent`, `box.agent_name`, `system.default_agent`. ⚑ The ROW count is not the
+RETIREMENT count — `("box", "agent")` is one path carrying TWO retired spellings, told apart by the
+value's SHAPE. See "Retired spellings" above.
 
 ```_PREF_LEGAL_LEVELS: frozenset[str]```
 The levels where a `pref` REQUEST may be WRITTEN (spec §2h) — `{"workset", "box"}`.
@@ -239,6 +259,17 @@ The "no such leaf" sentinel for `_nested_present`.
 ⚑ NOT `None`: a `box: {agent_name:}` leaf is PRESENT with the value `None`, and it is still the
 retired key. Conflating present-null with absent is the same 3-state mistake §2h warns about for
 prefs, and it would let the exact config the refusal exists to catch slip through silently.
+
+```_SELECTION_STORY``` / ```_MIRROR_STORY```
+The framing sentence a selection refusal / a mirror refusal opens with — WHY the spelling is refused.
+
+TWO constants and not one, because the two retirements are different things. `_SELECTION_STORY`
+says a box no longer names its agent with a key of its own and points at `pref.system.agent` (§2h)
+and `system.agent` (§2g); `_MIRROR_STORY` says a box no longer carries a SETTABLE mirror of its
+agent's settings, points at `pref.agent.<agent>.<key>` (§2h), and names the RO read-back
+`meta.box.agent.<key>` (§2b). Each closes with what the refusal is BUYING — a guessed agent whose
+credentials get seeded, versus every override in the table silently vanishing. `refuse_retired_keys`
+picks between them with the same shape test that picks the cure.
 
 ```RETIRED_BEHAVIOR_KEYS: dict[str, str]```
 The RETIRED behavior leaf → its successor key (R-41): `{"auto_approve": "access"}`.
@@ -264,30 +295,72 @@ Each entry is `(prefix, has-a-<sub>-level)`:
 
 ## Functions
 
-```_retired_key_cure(key: str, *, level: str, value: str) -> str```
+```_cure_assignment(sub: str, value: Any) -> str```
+The `<key>=<value>` tail a cure can be COPY-PASTED with, for ONE retired mirror leaf.
+
+TWO shapes, because the file's leaf has two. A SCALAR is quoted verbatim so the command runs AS
+PRINTED — a `bool` through YAML's spelling, never Python's `True` / `False`, which is not what the
+CLI parses. A nested TABLE has no single-token spelling at all, so its tail stays a PLACEHOLDER one
+level deeper (`<sub>.<key>=<value>`) rather than a repr that cannot work. Both of those were caught
+by PROBING the emitted commands rather than reading them; a cure is a command a user pastes.
+
+```_retired_mirror_cure(*, level: str, box_name: str | None, table: dict[Any, Any]) -> str```
+The LEVEL-APPROPRIATE fix for a TABLE-valued `box.agent` — the retired settable agent MIRROR (R-4).
+
+One `_cure_assignment` tail per leaf in the stored table (an empty table falls back to the bare
+`<key>=<value>` shape). Where a request may be WRITTEN it is the §2h `pref.agent.<agent>.<key>`
+form; elsewhere it is the same REMOVE-it refusal the scalar cure gives at base / system / agent
+scope, offering `kanibako agent set` for a user who meant to tweak the agent everywhere.
+
+⚑ The agent renders as the `<agent>` PLACEHOLDER — the `_retired_behavior_cure` shape. This seam
+runs BEFORE selection, so naming an agent here would be a GUESS, and it is exactly the guess a box
+carrying this table most needs kanibako not to make.
+
+⚑ Both `box set` and `workset set` take a REQUIRED subject positional, so an unknown subject renders
+`<box>` / `<workset>` — a PLACEHOLDER, never nothing: a command that is missing an argument fails in
+a way that reads as "the cure is wrong".
+
+```_retired_key_cure(key: str, *, level: str, value: str, box_name: str | None = None, mirror: dict[Any, Any] | None = None) -> str```
 The LEVEL-APPROPRIATE fix for a retired key (M-4).
 
+*mirror* is the TABLE a `box.agent` leaf holds when that is its shape — the ONE discriminator
+between this key's two retired spellings (see "Retired spellings" above). Not `None` ⇒ the cure is
+delegated whole to `_retired_mirror_cure`. `None` means the SCALAR agent-name spelling, and every
+other retired key.
+
 `system.default_agent` always gets the same cure — the replacement is a SYSTEM-scope key wherever the
-stale leaf was found. `box.agent_name` gets the §2h request, but ONLY where a request may be written.
-Elsewhere, M-4: *"A `box.agent_name` found in a system or agent file has no legal pref equivalent —
-flag it rather than silently relocating it."*
+stale leaf was found. A scalar `box.agent` / `box.agent_name` gets the §2h request, but ONLY where a
+request may be written. Elsewhere, M-4: *"A `box.agent_name` found in a system or agent file has no
+legal pref equivalent — flag it rather than silently relocating it."*
+
+*box_name* is the addressable box the cure is FOR: `kanibako box set` takes the box as a REQUIRED
+`[project]` positional unless the caller's cwd already resolves to that box, and Jei hit that gap
+live on a cure that omitted it. Threaded ONLY for a box-level refusal — `None` at any other *level*,
+where no single box is being refused for.
 
 ```_nested_present(raw: Any, parts: tuple[str, ...]) -> Any```
 Read *raw* at the nested *parts* path, or `_NO_LEAF` when ABSENT.
 
 Distinguishes ABSENT from PRESENT-`None` (see `_NO_LEAF`).
 
-```refuse_retired_keys(raw: Any, *, level: str, path: Path | None) -> None```
-RAISE when *raw* still carries a RETIRED agent-selection key (P7).
+```refuse_retired_keys(raw: Any, *, level: str, path: Path | None, box_name: str | None = None) -> None```
+RAISE when *raw* still carries a RETIRED agent-selection or agent-mirror key (P7).
 
-The two keys are `RETIRED_FILE_KEYS`. The message names the KEY, the FILE, the fact that THE RULE
+The three keys are `RETIRED_FILE_KEYS`. The message names the KEY, the FILE, the fact that THE RULE
 CHANGED, and the one-line cure — it must never read as "your config is wrong" (the M-7 precedent).
 Never a warning and never a silent drop: a dropped `box.agent_name` would leave the box launching the
 system default with that agent's credentials, which is the exact failure this refusal exists to
 prevent. Called at the SELECTION seam (`settings.agent_select`), not inside `assemble_levels`.
 
+⚑ **This is where the SHAPE discriminator is read:** a found `box.agent` holding a `dict` is the
+MIRROR, anything else is the agent NAME. That one test picks BOTH halves of the message — the story
+constant that opens it, and the *mirror* argument that steers the cure.
+
 The cure carries the value the user ACTUALLY has, so it is copy-pasteable rather than a shape to fill
 in; a present-`None` (an empty `agent_name:` leaf) has no value to quote, so it gets the shape.
+
+*box_name* is passed straight through to `_retired_key_cure`, and is only meaningful at
+`level="box"`.
 
 ```_behavior_leaf_sites(raw: Any, leaf: str) -> list[tuple[tuple[str, ...], Any]]```
 Every (nested path, value) where *leaf* is present in *raw*.
