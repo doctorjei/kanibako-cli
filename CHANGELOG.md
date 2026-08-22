@@ -71,6 +71,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A workset that repointed `workset.boxes` or `workset.logs` stopped being recognised as a
+  workset at all.** The ancestor walk identifies a named workset root by the directories it is made
+  of, but it tested three of those four against hardcoded names rather than against the keys that
+  declare them — so repointing `workset.boxes` or `workset.logs` moved the real directory while
+  detection went on looking for `boxes/` and `logs/`, found nothing, and resolved the root as an
+  ordinary primary-mode directory. Only `workset.workspaces` was resolved correctly. All three are
+  resolved now: the walk reads the root's `settings.yaml` when one is present and falls back to the
+  declared defaults when it is not, so detection uses the layout you configured without ever
+  depending on that file existing. `vault/` remains a fixed name, deliberately — no key names it;
+  it is only the default parent of `workset.vault_ro` and `workset.vault_rw`.
+  ⚑ Known gap, unchanged by this fix: a repointed `workset.boxes` root is now found, but box trees
+  are still created under `<root>/boxes`. Repointing that key is not yet safe end-to-end.
+
 - **Disconnecting an in-tree workset box left its membership row behind, and the orphan then locked
   that workspace out of its own workset.** `workset disconnect` dropped the `boxes:` row only when
   the recorded path was OUTSIDE the workset root. For a box living in the workset's own
