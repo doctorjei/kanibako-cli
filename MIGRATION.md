@@ -247,19 +247,26 @@ REQUESTS one at the key that resolves earlier (`pref.system.agent`, spec §2h), 
 default is now `system.agent` (§2g). Refusing rather than running: kanibako cannot tell which
 agent you meant, and guessing would launch a DIFFERENT agent and seed that agent's credentials
 into this box.
-  Fix: kanibako box set pref.system.agent=<value>   (or `kanibako box set --null pref.system.agent` for a no-agent box)
+  Fix: kanibako box set <box> pref.system.agent=<value>   (or `kanibako box set <box> --null pref.system.agent` for a no-agent box)
   then delete the `box: agent_name` entry from <path>.
 ```
 
-The cure is level-appropriate, with your own stored value interpolated so it is copy-pasteable:
+The cure is level-appropriate, with your own stored value interpolated so it is copy-pasteable.
+It names the verb that matches the file it found the key in, and always carries that verb's
+subject — the box name when kanibako knows it, a `<box>` / `<workset>` placeholder to fill in
+when it does not:
 
-- `box.agent_name` in a **workset or box** settings file:
-  `kanibako box set pref.system.agent=<value>` (or `kanibako box set --null pref.system.agent`
-  for a no-agent box)
+- `box.agent_name` in a **box** settings file:
+  `kanibako box set <box> pref.system.agent=<value>` (or
+  `kanibako box set <box> --null pref.system.agent` for a no-agent box)
+- `box.agent_name` in a **workset** settings file:
+  `kanibako workset set <workset> pref.system.agent=<value>` (or
+  `kanibako workset set <workset> --null pref.system.agent`)
 - `box.agent_name` in a **system or agent** file: REMOVE it — a request may be written ONLY in
   a workset or box settings file (spec §2h), so this key has no equivalent at that scope. If
   you meant the host-wide default: `kanibako system set system.agent=<value>`. If you
-  meant one box, set the request in THAT box's settings file.
+  meant one box, set the request in THAT box's settings file:
+  `kanibako box set <box> pref.system.agent=<value>`.
 - `system.default_agent` (anywhere): `kanibako system set system.agent=<value>`
 
 **`box.agent` is refused too, and which refusal you get depends on the value's shape.** One

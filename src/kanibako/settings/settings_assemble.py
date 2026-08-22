@@ -103,6 +103,23 @@ def _cure_assignment(sub: str, value: Any) -> str:
     return f"{sub}={str(value).strip()}" if str(value).strip() else f"{sub}=<value>"
 
 
+def _cure_subject(level: str, box_name: str | None) -> str:
+    """The REQUIRED subject positional for ``kanibako <level> set`` — ONE derivation, shared by
+    every cure this module emits.
+
+    ⚑ BOTH pref-legal verbs take a subject — ``box set <box>`` and ``workset set <workset>`` — and
+    the verb is the LEVEL, never a hardcoded ``box``. Only a box-level refusal knows its subject
+    (:func:`_retired_key_cure`'s *box_name*); anything else is a PLACEHOLDER, never nothing.
+
+    ⚑ MEASURED, and it is why this cannot be checked by reading: dropping the positional does NOT
+    fail loudly at either level. ``workset set`` binds the KEY to its ``workset`` positional and
+    leaves ``key_value`` empty, so the pasted line hunts for a working set named after the key;
+    ``box set`` takes its arguments as a LIST, so the key alone parses and the write lands on
+    whatever box the reader's cwd resolves to — a different box, silently.
+    """
+    return box_name if level == "box" and box_name else f"<{level}>"
+
+
 def _retired_mirror_cure(
     *, level: str, box_name: str | None, table: "dict[Any, Any]",
 ) -> str:
@@ -115,11 +132,7 @@ def _retired_mirror_cure(
     """
     tails = [_cure_assignment(str(sub), val) for sub, val in table.items()] or ["<key>=<value>"]
     if level in _PREF_LEGAL_LEVELS:
-        # ⚑ BOTH verbs take a REQUIRED subject positional — ``box set <box>`` and
-        # ``workset set <workset>`` — and omitting it is the exact gap *box_name* was threaded
-        # here to close. Unknown ⇒ a PLACEHOLDER, never nothing: a command that is missing an
-        # argument fails in a way that reads as "the cure is wrong".
-        subject = box_name if level == "box" and box_name else f"<{level}>"
+        subject = _cure_subject(level, box_name)
         return "; ".join(
             f"kanibako {level} set {subject} pref.agent.<agent>.{tail}" for tail in tails
         )
@@ -141,7 +154,8 @@ def _retired_key_cure(
     *box_name* is the addressable box the cure is FOR — ``kanibako box set`` needs it as its
     ``[project]`` positional (spec: the box argument is REQUIRED unless the caller's cwd already
     resolves to that box; Jei hit exactly that gap live). Threaded ONLY for a box-level refusal
-    (``None`` at any other *level*, where no single box is being refused for).
+    (``None`` at any other *level*, where no single box is being refused for) — a WORKSET-level
+    refusal takes the ``workset set`` verb and its own placeholder (:func:`_cure_subject`).
 
     *mirror* is the retired ``box.agent`` TABLE when that is the shape the file holds — the one
     discriminator between this key's two spellings (:data:`RETIRED_FILE_KEYS`); ``None`` means the
@@ -153,20 +167,23 @@ def _retired_key_cure(
         # Always the same cure: the replacement is a SYSTEM-scope key wherever the stale leaf was.
         return f"kanibako system set system.agent={value}"
     # box.agent / box.agent_name → the §2h request, but ONLY where a request may be written.
+    # ⚑ The VERB IS THE LEVEL (:func:`_cure_subject`) — a workset file's cure is
+    # ``workset set``, the same fork :func:`_retired_mirror_cure` makes.
     if level in _PREF_LEGAL_LEVELS:
-        box_arg = f"{box_name} " if level == "box" and box_name else ""
+        subject = _cure_subject(level, box_name)
         return (
-            f"kanibako box set {box_arg}pref.system.agent={value}   "
-            f"(or `kanibako box set {box_arg}--null pref.system.agent` for a "
+            f"kanibako {level} set {subject} pref.system.agent={value}   "
+            f"(or `kanibako {level} set {subject} --null pref.system.agent` for a "
             f"no-agent box)"
         )
     # M-4: no legal pref equivalent at base/system/agent — FLAG it, never silently relocate it.
+    # No single box is in scope here, so the box arm takes the placeholder.
     return (
         f"REMOVE it — a request may be written ONLY in a workset or box settings "
         f"file (spec §2h), so this key has NO equivalent at {level} scope. If you "
         f"meant the host-wide default, set it: kanibako system set "
         f"system.agent={value}. If you meant one box, set the request in THAT "
-        f"box's settings file: kanibako box set pref.system.agent={value}"
+        f"box's settings file: kanibako box set <box> pref.system.agent={value}"
     )
 
 
@@ -309,7 +326,14 @@ def _retired_behavior_cure(
     if level == "agent":
         return f"kanibako agent set {agent} {successor}={tier}"
     if level in _PREF_LEGAL_LEVELS:
-        return f"kanibako {level} set pref.agent.{agent}.{successor}={tier}"
+        # ⚑ *subject* names the AGENT, never the box/workset the verb addresses — this seam is
+        # handed no box name at all, so the required positional is the PLACEHOLDER
+        # (:func:`_cure_subject`). Emitting the pref key straight after the verb makes the KEY
+        # read as the subject and the command fails, or lands on the wrong box.
+        return (
+            f"kanibako {level} set {_cure_subject(level, None)} "
+            f"pref.agent.{agent}.{successor}={tier}"
+        )
     return f"kanibako system set {successor}={tier}"
 
 

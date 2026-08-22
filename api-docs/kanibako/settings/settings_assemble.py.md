@@ -32,6 +32,7 @@ def parse_bind_map(raw: Any, *, category: str='bindings') -> KeyStore
 def dotted_partial(floor: dict[str, object] | None) -> KeyStore
 def assemble_levels(*, agent_name: str, base_path: Path | None=None, system_path: Path | None=None, agent_path: Path | None=None, workset_path: Path | None=None, box_path: Path | None=None, floor: dict[str, object] | None=None) -> list[KeyStore]
 def _cure_assignment(sub: str, value: Any) -> str
+def _cure_subject(level: str, box_name: str | None) -> str
 def _retired_mirror_cure(*, level: str, box_name: str | None, table: 'dict[Any, Any]') -> str
 def _retired_key_cure(key: str, *, level: str, value: str, box_name: str | None=None, mirror: 'dict[Any, Any] | None'=None) -> str
 def _nested_present(raw: Any, parts: 'tuple[str, ...]') -> Any

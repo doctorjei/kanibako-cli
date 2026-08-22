@@ -1304,13 +1304,18 @@ class TestRefuseRetiredBehaviorKeys:
             )
         msg = str(exc.value)
         assert "pref.agent.claude.auto_approve" in msg
-        assert "kanibako box set pref.agent.claude.access=full" in msg
+        assert "kanibako box set <box> pref.agent.claude.access=full" in msg
 
     def test_the_cure_is_level_appropriate(self, tmp_path) -> None:
         """``access`` is an AGENT-scope key, so where it may be WRITTEN depends
         on the file it was found in (the same asymmetry the selection refusal
         handles): system writes it directly, box/workset must use the §2h
-        request (a bare agent key there is an UPWARD write and is dropped)."""
+        request (a bare agent key there is an UPWARD write and is dropped).
+
+        ⚑ *subject* names the AGENT; the verb's own SUBJECT POSITIONAL is a
+        separate argument this seam is never handed, so the pref-legal cures
+        carry the ``<box>`` / ``<workset>`` placeholder rather than dropping it.
+        """
         cures = {}
         for level in ("base", "system", "workset", "box"):
             with pytest.raises(SettingsError) as exc:
@@ -1321,8 +1326,32 @@ class TestRefuseRetiredBehaviorKeys:
             cures[level] = str(exc.value)
         assert "kanibako system set access=full" in cures["base"]
         assert "kanibako system set access=full" in cures["system"]
-        assert "kanibako workset set pref.agent.claude.access=full" in cures["workset"]
-        assert "kanibako box set pref.agent.claude.access=full" in cures["box"]
+        assert (
+            "kanibako workset set <workset> pref.agent.claude.access=full"
+            in cures["workset"]
+        )
+        assert "kanibako box set <box> pref.agent.claude.access=full" in cures["box"]
+
+    def test_the_workset_cure_names_the_workset_verb_AND_a_subject(
+        self, tmp_path,
+    ) -> None:
+        """DEFECT: this cure used to emit ``workset set pref.agent.…`` with NO
+        subject, and argparse does not reject it — it binds the KEY to the
+        ``workset`` positional and leaves ``key_value`` empty, so the pasted
+        line looks for a working set called ``pref.agent.claude.access=full``.
+
+        INVERT: drop the subject from ``_retired_behavior_cure`` and this reddens.
+        """
+        with pytest.raises(SettingsError) as exc:
+            self._refuse(
+                {"agent": {"default": {"auto_approve": True}}},
+                level="workset", path=tmp_path / "s.yaml", subject="claude",
+            )
+        cure = str(exc.value).split("Fix: ", 1)[1].splitlines()[0].strip()
+        assert cure.startswith("kanibako workset set <workset> ")
+        # The subject sits BETWEEN the verb and the key — never the key alone.
+        assert "kanibako workset set pref." not in cure
+        assert cure.endswith("pref.agent.claude.access=full")
 
     def test_a_clean_file_passes(self, tmp_path) -> None:
         """Non-vacuity: the same shapes with the SUCCESSOR key do not raise."""
