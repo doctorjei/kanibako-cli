@@ -48,5 +48,5 @@ def _parse_manifest() -> dict[str, Any]:
 
 
 def manifest_doc() -> dict[str, Any]:
-  """The ratified keyspace manifest as a plain dict — a FRESH COPY every call (P8)."""
+  """The living manifest of the ratified keyspace — a plain dict, FRESH COPY every call (P8)."""
   return copy.deepcopy(_parse_manifest())
