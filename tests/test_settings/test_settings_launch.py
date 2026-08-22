@@ -2215,29 +2215,58 @@ def test_meta_box_agent_mirror_defaults_to_resolved_active_agent():
     assert "box" not in snap or "agent" not in snap.box
 
 
-@pytest.mark.writes_undeclared(
-    "box.agent", "box.agent.model",
-    reason="the subject IS the retired table: proving box.agent.* is inert requires "
-           "a box file that still carries it, so the undeclared key reaches the store.",
-)
-def test_a_box_file_box_agent_table_is_inert(tmp_path: Path):
-    """⮕ P7 FLIP: the settable ``box.agent.*`` mirror is RETIRED (spec §2b).
+def test_a_box_file_box_agent_table_is_REFUSED_BY_NAME(tmp_path: Path):
+    """⮕ **SUBJECT CHANGED.** This test used to pin the table as INERT — the box
+    launched, the table contributed nothing, and the user was told NOTHING.
 
-    A box file that still carries the old table contributes NOTHING — not to the
-    agent tier, not to the RO read-back, not to effective behavior. INVERT: restore
-    the pre-merge fold / the ``box.agent`` overlay in ``effective_behavior`` and
-    this reddens.
+    That silence WAS the defect: §0 requires a retired spelling to be refused BY
+    NAME, so ``box.agent`` joined ``RETIRED_FILE_KEYS`` and the launch now stops at
+    the selection seam. What is pinned here is the refusal, its NAME, and the fact
+    that the TABLE shape gets the agent-MIRROR story (R-4, spec §2b) rather than the
+    agent-SELECTION one — the two spellings share this file path and nothing else.
+    INVERT: drop the ``("box", "agent")`` entry and this reddens.
     """
+    from kanibako.settings.settings_assemble import refuse_retired_keys
+    from kanibako.settings.settings_resolve import SettingsError
+
     box = _yaml(tmp_path / "box.yaml", {"box": {"agent": {"model": "sonnet"}}})
-    snap = build_launch_snapshot(
-        agent_name="claude",
-        ctx=_ctx(),
-        system_path=None, agent_path=None, workset_path=None, box_path=box,
-        behavior_floor={"model": "opus", "allow_helpers": "true"},
-    )
-    assert snap.meta.box.agent.model == "opus"        # the read-back, not the file.
-    assert snap.agent.default.model == "opus"         # the agent tier is untouched.
-    assert effective_behavior(snap, active_agent="claude")["model"] == "opus"
+    with pytest.raises(SettingsError) as ei:
+        refuse_retired_keys(
+            yaml.safe_load(box.read_text()), level="box", path=box, box_name="mybox",
+        )
+    msg = str(ei.value)
+    assert "'box.agent' is RETIRED" in msg
+    assert str(box) in msg
+    # The MIRROR story, not the selection story — the user was tweaking an agent,
+    # not naming one. Its discriminating clause, and the wrong story's, both pinned.
+    assert "SETTABLE mirror of its agent's settings" in msg
+    assert "no longer names its agent with a key of its own" not in msg
+    # A COPY-PASTEABLE cure: the box positional, the §2h request, the stored value.
+    assert "kanibako box set mybox pref.agent.<agent>.model=sonnet" in msg
+
+
+def test_a_box_file_box_agent_SCALAR_gets_the_selection_story(tmp_path: Path):
+    """The SAME file path, the OTHER retired spelling: a scalar ``box: agent: claude``
+    is the agent-NAME key (``box.crab`` → ``box.agent`` → ``box.agent_name``), so it
+    gets the SELECTION story and the ``pref.system.agent`` cure.
+
+    ⚑ THE DISCRIMINATOR IS THE VALUE SHAPE, and it is the whole reason one entry can
+    serve two retirements. INVERT: cure on the key alone and this reddens with the
+    mirror's text.
+    """
+    from kanibako.settings.settings_assemble import refuse_retired_keys
+    from kanibako.settings.settings_resolve import SettingsError
+
+    box = _yaml(tmp_path / "box.yaml", {"box": {"agent": "claude"}})
+    with pytest.raises(SettingsError) as ei:
+        refuse_retired_keys(
+            yaml.safe_load(box.read_text()), level="box", path=box, box_name="mybox",
+        )
+    msg = str(ei.value)
+    assert "'box.agent' is RETIRED" in msg
+    assert "no longer names its agent with a key of its own" in msg
+    assert "SETTABLE mirror" not in msg
+    assert "kanibako box set mybox pref.system.agent=claude" in msg
 
 
 def test_meta_box_agent_mirror_keeps_the_auth_capability_floor_key():
@@ -3360,14 +3389,8 @@ class TestPrefLevelPrecedence:
         )
         assert snap.agent.claude.model == "opus"
 
-    @pytest.mark.writes_undeclared(
-        "box.agent", "box.agent.common",
-        reason="the box file must still carry the RETIRED box.agent.<category> table "
-               "(spec §2b) for the test to show the pref beats it; that write is the "
-               "fixture, not a fabrication.",
-    )
     def test_a_box_pref_wins_now_that_the_box_agent_fold_is_gone(self, tmp_path):
-        """⮕ **THE P6 PIN, FLIPPED BY P7 — deliberately.**
+        """⮕ **THE P6 PIN, FLIPPED BY P7 — deliberately, and NARROWED again since.**
 
         P6 recorded a TRANSITIONAL contest: ``_box_agent_category_fold`` spliced
         the retiring ``box.agent.<category>`` tweak ABOVE ``box``, while a pref
@@ -3375,8 +3398,14 @@ class TestPrefLevelPrecedence:
         resolves), so for a CATEGORY the legacy mirror won. P7 RETIRES settable
         ``box.agent.*`` (spec §2b) and deletes the fold, which removes the
         contender — the pref now wins a CATEGORY exactly as it already won a
-        SCALAR (the test below, unchanged and still green, is the discriminator
-        proving only the category half of the contest was ever real).
+        SCALAR (the test below is the discriminator proving only the category
+        half of the contest was ever real).
+
+        ⮕ **SUBJECT NARROWED.** The fixture used to leave the retired table in
+        the same file to show the pref beat it. It cannot: ``box.agent`` is now a
+        ``RETIRED_FILE_KEYS`` entry, so that file is REFUSED BY NAME before it
+        reaches this merge, and staging it here would have pinned a contest no
+        user can reach. Both halves are pinned separately below.
 
         INVERT: restore the fold and this reddens.
         """
@@ -3386,25 +3415,40 @@ class TestPrefLevelPrecedence:
                 "pref": {"agent": {"claude": {"common": {
                     "~/.claude/plugins": ["/from/pref"],
                 }}}},
-                # The RETIRED table, left here on purpose: it must be INERT.
-                "box": {"agent": {"common": {
-                    "~/.claude/plugins": ["/from/mirror"],
-                }}},
             },
         )
         dest = "/home/agent/.claude/plugins"
         assert _meta_node(snap, "agent", "claude", "common", dest).src == "/from/pref"
-        # …and the retired table contributes nothing anywhere else either.
+        # …and the pref reaches the RO read-back too, not just the agent tier.
         assert _meta_node(
             snap, "meta", "box", "agent", "common", dest,
         ).src == "/from/pref"
 
-    @pytest.mark.writes_undeclared(
-        "box.agent", "box.agent.model",
-        reason="the RETIRED scalar box.agent.<key> table is the contender being "
-               "shown to be absent; the test cannot stage the contest without "
-               "writing it.",
-    )
+    def test_a_box_file_carrying_the_retired_category_table_never_reaches_the_merge(
+        self, tmp_path,
+    ):
+        """The OTHER half of the pin above: the retired ``box.agent.<category>``
+        table is not merely out-ranked by a pref, it is REFUSED BY NAME.
+
+        ⚑ A CATEGORY sub-value is a nested map, so the cure cannot spell a value —
+        it names the request one level deeper instead of quoting a Python repr the
+        shell would choke on. INVERT: render the raw value and this reddens.
+        """
+        from kanibako.settings.settings_assemble import refuse_retired_keys
+        from kanibako.settings.settings_resolve import SettingsError
+
+        box = _write_yaml(tmp_path / "box.yaml", {
+            "box": {"agent": {"common": {"~/.claude/plugins": ["/from/mirror"]}}},
+        })
+        with pytest.raises(SettingsError) as ei:
+            refuse_retired_keys(
+                yaml.safe_load(box.read_text()), level="box", path=box,
+                box_name="mybox",
+            )
+        msg = str(ei.value)
+        assert "'box.agent' is RETIRED" in msg
+        assert "kanibako box set mybox pref.agent.<agent>.common.<key>=<value>" in msg
+
     def test_a_box_pref_wins_for_a_SCALAR_agent_key(self, tmp_path):
         """⚑ MEASURED, and it corrects the brief's prediction.
 
@@ -3417,15 +3461,40 @@ class TestPrefLevelPrecedence:
         the mirror would win here; it does not. (The category half of the
         transitional contest was real, but it went with
         ``_box_agent_category_fold`` — see the sibling test above.)
+
+        ⮕ **SUBJECT NARROWED**, same reason as the sibling: the retired table is
+        no longer staged alongside the pref, because a file carrying it is refused
+        before this merge runs. The refusal is pinned in the test below.
         """
         snap = _pref_snap(
             tmp_path,
-            box={
-                "pref": {"agent": {"claude": {"model": "from-pref"}}},
-                "box": {"agent": {"model": "from-mirror"}},
-            },
+            box={"pref": {"agent": {"claude": {"model": "from-pref"}}}},
         )
         assert snap.agent.claude.model == "from-pref"
+
+    def test_a_box_file_carrying_the_retired_scalar_key_table_is_refused(
+        self, tmp_path,
+    ):
+        """The refusal half of the scalar pin: ``box: agent: {model: …}`` names a
+        BEHAVIOR leaf, so it is the MIRROR spelling and the cure is the §2h
+        per-agent request carrying the value the file actually holds.
+        """
+        from kanibako.settings.settings_assemble import refuse_retired_keys
+        from kanibako.settings.settings_resolve import SettingsError
+
+        box = _write_yaml(
+            tmp_path / "box.yaml", {"box": {"agent": {"model": "from-mirror"}}},
+        )
+        with pytest.raises(SettingsError) as ei:
+            refuse_retired_keys(
+                yaml.safe_load(box.read_text()), level="box", path=box,
+                box_name="mybox",
+            )
+        msg = str(ei.value)
+        assert "'box.agent' is RETIRED" in msg
+        assert (
+            "kanibako box set mybox pref.agent.<agent>.model=from-mirror" in msg
+        )
 
 
 class TestPrefRejectionAtLaunch:

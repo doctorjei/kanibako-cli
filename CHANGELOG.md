@@ -86,6 +86,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ref shape alone, so dispatching `release.yml` at a bare `v<ver>` tag ran the production publish —
   the dispatch path exists for a branch (dev) or an rc tag (rc), and neither of those is a promote.
   The job now requires a `push` event as well, so **pushing the tag is the only way to promote**,
+- **A `box: agent:` table left in a settings file is now refused by name, instead of being
+  silently discarded.** `box.agent` was retired in 1.8.0 in two different senses — as a scalar it
+  was the old agent-*selection* key (`box.crab` → `box.agent` → `box.agent_name`), and as a table
+  it was the settable *mirror* of an agent's settings. The write verbs refuse both, but a file
+  that already carried one was simply inert: the box launched on whatever the cascade resolved,
+  and nothing said the stored intent had been dropped. `box.agent` joins the retired spellings
+  that are refused at launch, alongside `box.agent_name` and `system.default_agent`. Which
+  refusal you get is decided by the value's shape, because the two retirements have different
+  cures — a scalar points at `pref.system.agent`, a table at `pref.agent.<agent>.<key>`, with
+  your own stored keys and values interpolated so each line is copy-pasteable. Boxes that carry
+  the table have been running the agent's untweaked settings all along; see `MIGRATION.md`
+  § *Settings keys renamed or retired*.
+
   which is what the pipeline's one-tag-drives-a-release model already claimed. It was previously
   documented as a pitfall in `docs/RELEASING.md` rather than prevented.
 - **A prerelease tag can no longer reach production PyPI.** The `promote` job's guard excluded only
