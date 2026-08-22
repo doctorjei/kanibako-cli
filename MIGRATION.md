@@ -59,7 +59,9 @@ inside boxes. In order of likely impact:
    that ever chose an agent has `box.agent_name` stored; v1.8.0 refuses to launch such a box
    with an error that names the file and the exact fix (§2.1). One command per box:
    `kanibako box set pref.system.agent=<name>`. The system default moved too:
-   `kanibako system set system.agent=<name>`.
+   `kanibako system set system.agent=<name>`. The older spelling `box.agent` — scalar (the
+   pre-v1.6.0 `box.crab`) or table (the settable agent mirror) — is refused the same way, with
+   its own cure per shape (§2.1).
 
 3. **Upgrade the agent plugins WITH the base — never the base alone.** Upgrading only
    `kanibako-cli` while keeping v1.7.2-era agent plugins silently deletes your boxes' entire
@@ -214,11 +216,12 @@ inside boxes. In order of likely impact:
 | old (v1.7.2) | new (v1.8.0) | left in place, it is… |
 |---|---|---|
 | `box.agent_name` | `pref.system.agent` (workset/box files only) | **hard launch error** (below) |
+| `box.agent` (scalar — the v1.6.0 rename of `box.crab`) | `pref.system.agent` (workset/box files only) | **hard launch error** (below) |
 | `system.default_agent` (stored as `agent: default: default_agent:` in `global/settings.yaml`) | `system.agent` (same file, `system: agent:`) | **hard launch error** (below) |
 | `<scope>.shared.<name>` (the `shared` mount category) | `<scope>.common.<name>` | silently ignored (verified) |
 | `system.base_template` | `system.template` (and it now names a template ROOT — §2.5) | silently ignored (verified) |
 | `@meta.runtime.ws_settings` (reference target) | `@meta.workset.settings` | dangling reference |
-| settable `box.agent.*` mirror | read-only `meta.box.agent.*` read-back; write via `pref.agent.<agent>.<key>` | inert; write verbs refuse with the pref cure |
+| settable `box.agent.*` mirror (a `box: agent:` **table**) | read-only `meta.box.agent.*` read-back; write via `pref.agent.<agent>.<key>` | **hard launch error** (below); write verbs refuse with the pref cure |
 
 **What a stale stored key actually does, per surface** (measured on the shipped code — this
 is what v1.8.0 does, not the eventual closed-keyspace plan):
@@ -230,7 +233,7 @@ is what v1.8.0 does, not the eventual closed-keyspace plan):
 | `kanibako box get <box> <stale key>` | prints `(not set)`, rc 0 |
 | `kanibako box get <stale key>` (no box argument) | `Error: Unknown project or workset: '<key>'` — the unknown key is taken for a project name |
 | `kanibako system get`/`set <stale key>` (typed) | **loud** — `Error: unknown config key: …`, rc 1 |
-| `box.agent_name` / `system.default_agent` stored anywhere in the cascade | **hard refusal** at launch and in `box info` (below) |
+| `box.agent_name` / `box.agent` / `system.default_agent` stored anywhere in the cascade | **hard refusal** at launch and in `box info` (below) |
 
 **The retired agent-selection keys are refused loudly** — the one place v1.8.0 deliberately
 errors instead of ignoring, because a guessed agent would silently run a *different* agent and
@@ -258,6 +261,46 @@ The cure is level-appropriate, with your own stored value interpolated so it is 
   you meant the host-wide default: `kanibako system set system.agent=<value>`. If you
   meant one box, set the request in THAT box's settings file.
 - `system.default_agent` (anywhere): `kanibako system set system.agent=<value>`
+
+**`box.agent` is refused too, and which refusal you get depends on the value's shape.** One
+spelling in your file, two different retired keys behind it — kanibako tells them apart by what
+the leaf holds, because they were retired for different reasons and the cures point at different
+places:
+
+- A **scalar** (`box: {agent: claude}`) is the old agent-*selection* key — `box.crab` renamed to
+  `box.agent` in v1.6.0, then to `box.agent_name`. It gets the same message and the same
+  `pref.system.agent` cure as `box.agent_name` above, with `box.agent` as the name.
+- A **table** (`box: {agent: {model: sonnet}}`) is the settable agent *mirror*, the row in the
+  table at the top of this section. You were not naming an agent, you were tweaking one, so the
+  message says so and the cure is the `pref.agent.<agent>.<key>` request:
+
+```
+'box.agent' is RETIRED and is still set in the box settings file <path> (as `box: agent:`).
+The RULE CHANGED in kanibako 1.8.0: a box no longer carries a SETTABLE mirror of its agent's
+settings — it REQUESTS a tweak with `pref.agent.<agent>.<key>` (spec §2h) and reads the effective
+value back at the read-only `meta.box.agent.<key>` (§2b). Refusing rather than running: an
+undeclared key is not read at all, so this box would come up on the agent's UNTWEAKED settings and
+every override in this table would silently vanish.
+  Fix: kanibako box set <box> pref.agent.<agent>.model=sonnet
+  then delete the `box: agent` entry from <path>.
+```
+
+The mirror cure is level-appropriate the same way the selection cure is, and it names **every**
+leaf your table holds, one request each:
+
+- In a **workset or box** settings file: `kanibako box set <box> pref.agent.<agent>.<key>=<value>`,
+  or `kanibako workset set <workset> pref.agent.<agent>.<key>=<value>` from a workset file.
+  ⚑ `<agent>` stays a placeholder — this check runs *before* kanibako picks an agent, so
+  substitute the agent you mean yourself.
+- In a **system or agent** file: REMOVE it — a request may be written only in a workset or box
+  file (spec §2h). To tweak an agent everywhere, set it on the agent itself:
+  `kanibako agent set <agent> <key>=<value>`.
+
+⚑ **This is the change most likely to surprise you**, because until now a `box: agent:` table was
+*inert*: the box launched, the table was silently discarded, and nothing told you your override
+was doing nothing. That silence is what was fixed — the box refuses to launch instead. If you have
+been running such a box and were happy with it, you were running the agent's untweaked settings all
+along; the refusal tells you what you actually asked for and how to ask for it now.
 
 Notes:
 - An **empty** leaf (`box: agent_name:` with no value) still counts as the retired key and is

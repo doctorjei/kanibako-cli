@@ -67,12 +67,18 @@ _AGENT_DEFAULT_SUB = "default"
 # RETIRED agent-selection spellings — refuse by name (P7, spec §0 / §2b / §2g)
 # ---------------------------------------------------------------------------
 # ⚑ NOT migration machinery (which is documentation-only for this arc): it is §0's CLOSED-KEYSPACE
-# rule — an undeclared key is an ERROR that NAMES it — applied to two retired spellings. Scope is
-# deliberately TIGHT: these two keys, nothing else. Why, and the M-7 precedent: llm-docs.
+# rule — an undeclared key is an ERROR that NAMES it — applied to three retired spellings. Scope is
+# deliberately TIGHT: these three keys, nothing else. Why, and the M-7 precedent: llm-docs.
 
 #: The NESTED FILE path of each retired leaf → the retired KEY name. The cure is LEVEL-DEPENDENT
 #: (:func:`_retired_key_cure`) — a pref is legal only in a workset or box file (§2h). Record: M-4.
+#: ⚑⚑ ``box.agent`` is ONE path carrying TWO retired spellings, told apart by the VALUE SHAPE the
+#: file holds (both are manifest ``renamed`` rows): a SCALAR is the agent-NAME spelling
+#: (``box.crab`` → ``box.agent`` → ``box.agent_name``, all → ``pref.system.agent``), a TABLE is the
+#: settable agent MIRROR ``box.agent.<key>`` (R-4 → ``pref.agent.<agent>.<key>``). Two stories and
+#: two cures — telling one story for both sends half of these users at the wrong key.
 RETIRED_FILE_KEYS: "dict[tuple[str, ...], str]" = {
+    ("box", "agent"): "box.agent",
     ("box", "agent_name"): "box.agent_name",
     ("agent", "default", "default_agent"): "system.default_agent",
 }
@@ -82,8 +88,53 @@ RETIRED_FILE_KEYS: "dict[tuple[str, ...], str]" = {
 _PREF_LEGAL_LEVELS: "frozenset[str]" = frozenset({"workset", "box"})
 
 
+def _cure_assignment(sub: str, value: Any) -> str:
+    """The ``<key>=<value>`` tail a cure can be COPY-PASTED with, for ONE retired mirror leaf.
+
+    ⚑ TWO shapes, because the file's leaf has two. A SCALAR is quoted verbatim so the command
+    runs as printed — ``bool`` through YAML's spelling, never Python's ``True``/``False``, which
+    is not what the CLI parses. A nested TABLE has no single-token spelling at all, so the tail
+    stays a PLACEHOLDER one level deeper rather than a repr that cannot work.
+    """
+    if isinstance(value, bool):
+        return f"{sub}={str(value).lower()}"
+    if value is None or isinstance(value, (dict, list, tuple)):
+        return f"{sub}.<key>=<value>"
+    return f"{sub}={str(value).strip()}" if str(value).strip() else f"{sub}=<value>"
+
+
+def _retired_mirror_cure(
+    *, level: str, box_name: str | None, table: "dict[Any, Any]",
+) -> str:
+    """The LEVEL-APPROPRIATE fix for a TABLE-valued ``box.agent`` — the RETIRED settable agent
+    MIRROR ``box.agent.<key>`` (R-4), whose replacement is the §2h per-agent request.
+
+    ⚑ The agent renders as the ``<agent>`` PLACEHOLDER, the :func:`_retired_behavior_cure` shape:
+    this seam runs BEFORE selection, so naming an agent here would be a guess — and the guess a
+    box carrying this table most needs kanibako not to make.
+    """
+    tails = [_cure_assignment(str(sub), val) for sub, val in table.items()] or ["<key>=<value>"]
+    if level in _PREF_LEGAL_LEVELS:
+        # ⚑ BOTH verbs take a REQUIRED subject positional — ``box set <box>`` and
+        # ``workset set <workset>`` — and omitting it is the exact gap *box_name* was threaded
+        # here to close. Unknown ⇒ a PLACEHOLDER, never nothing: a command that is missing an
+        # argument fails in a way that reads as "the cure is wrong".
+        subject = box_name if level == "box" and box_name else f"<{level}>"
+        return "; ".join(
+            f"kanibako {level} set {subject} pref.agent.<agent>.{tail}" for tail in tails
+        )
+    # Same §2h gate the scalar cure applies: no request may be written here at all.
+    return (
+        f"REMOVE it — a request may be written ONLY in a workset or box settings "
+        f"file (spec §2h), so this table has NO equivalent at {level} scope. If "
+        f"you meant to tweak the agent everywhere, set it on the AGENT itself: "
+        + "; ".join(f"kanibako agent set <agent> {tail}" for tail in tails)
+    )
+
+
 def _retired_key_cure(
     key: str, *, level: str, value: str, box_name: str | None = None,
+    mirror: "dict[Any, Any] | None" = None,
 ) -> str:
     """The LEVEL-APPROPRIATE fix for a retired key (M-4).
 
@@ -91,11 +142,17 @@ def _retired_key_cure(
     ``[project]`` positional (spec: the box argument is REQUIRED unless the caller's cwd already
     resolves to that box; Jei hit exactly that gap live). Threaded ONLY for a box-level refusal
     (``None`` at any other *level*, where no single box is being refused for).
+
+    *mirror* is the retired ``box.agent`` TABLE when that is the shape the file holds — the one
+    discriminator between this key's two spellings (:data:`RETIRED_FILE_KEYS`); ``None`` means the
+    SCALAR agent-name spelling, and every other retired key.
     """
+    if mirror is not None:
+        return _retired_mirror_cure(level=level, box_name=box_name, table=mirror)
     if key == "system.default_agent":
         # Always the same cure: the replacement is a SYSTEM-scope key wherever the stale leaf was.
         return f"kanibako system set system.agent={value}"
-    # box.agent_name → the §2h request, but ONLY where a request may be written.
+    # box.agent / box.agent_name → the §2h request, but ONLY where a request may be written.
     if level in _PREF_LEGAL_LEVELS:
         box_arg = f"{box_name} " if level == "box" and box_name else ""
         return (
@@ -129,11 +186,33 @@ def _nested_present(raw: Any, parts: "tuple[str, ...]") -> Any:
     return node
 
 
+#: WHY the SCALAR spelling is refused — the agent-SELECTION story (§2g / §2h).
+_SELECTION_STORY = (
+    "The RULE CHANGED in kanibako 1.8.0: a box no longer names its agent with a "
+    "key of its own — it REQUESTS one at the key that resolves earlier "
+    "(`pref.system.agent`, spec §2h), and the system default is now "
+    "`system.agent` (§2g). Refusing rather than running: kanibako cannot tell "
+    "which agent you meant, and guessing would launch a DIFFERENT agent and seed "
+    "that agent's credentials into this box."
+)
+
+#: WHY a TABLE-valued ``box.agent`` is refused — a DIFFERENT retired thing, so a different story:
+#: the user was not naming an agent, they were tweaking one (R-4, spec §2b).
+_MIRROR_STORY = (
+    "The RULE CHANGED in kanibako 1.8.0: a box no longer carries a SETTABLE "
+    "mirror of its agent's settings — it REQUESTS a tweak with "
+    "`pref.agent.<agent>.<key>` (spec §2h) and reads the effective value back at "
+    "the read-only `meta.box.agent.<key>` (§2b). Refusing rather than running: an "
+    "undeclared key is not read at all, so this box would come up on the agent's "
+    "UNTWEAKED settings and every override in this table would silently vanish."
+)
+
+
 def refuse_retired_keys(
     raw: Any, *, level: str, path: Path | None, box_name: str | None = None,
 ) -> None:
-    """RAISE when *raw* still carries a RETIRED agent-selection key (P7); the two are
-    :data:`RETIRED_FILE_KEYS`.
+    """RAISE when *raw* still carries a RETIRED agent-selection or agent-mirror key (P7); the
+    three are :data:`RETIRED_FILE_KEYS`.
 
     Never a warning and never a silent drop; called at the SELECTION seam
     (:mod:`kanibako.settings.agent_select`), NOT inside :func:`assemble_levels`. Why both: llm-docs.
@@ -147,22 +226,20 @@ def refuse_retired_keys(
         found = _nested_present(raw, parts)
         if found is _NO_LEAF:
             continue
+        # ⚑ THE ONE DISCRIMINATOR between ``box.agent``'s two retired spellings: a TABLE is the
+        # settable MIRROR, anything else is the agent NAME (:data:`RETIRED_FILE_KEYS`).
+        mirror = found if key == "box.agent" and isinstance(found, dict) else None
         # The cure quotes the value the user ACTUALLY has, so it is copy-pasteable; a
         # present-``None`` has no value to quote → the shape.
         value = "" if found is None else str(found).strip()
         cure = _retired_key_cure(
-            key, level=level, value=value or "<name>", box_name=box_name,
+            key, level=level, value=value or "<name>", box_name=box_name, mirror=mirror,
         )
         raise SettingsError(
             f"'{key}' is RETIRED and is still set in the {level} settings file "
             f"{path if path is not None else '<settings>'} "
             f"(as `{': '.join(parts)}:`).\n"
-            f"The RULE CHANGED in kanibako 1.8.0: a box no longer names its agent "
-            f"with a key of its own — it REQUESTS one at the key that resolves "
-            f"earlier (`pref.system.agent`, spec §2h), and the system default is "
-            f"now `system.agent` (§2g). Refusing rather than running: kanibako "
-            f"cannot tell which agent you meant, and guessing would launch a "
-            f"DIFFERENT agent and seed that agent's credentials into this box.\n"
+            f"{_MIRROR_STORY if mirror is not None else _SELECTION_STORY}\n"
             f"  Fix: {cure}\n"
             f"  then delete the `{': '.join(parts)}` entry from {path}."
         )
@@ -324,11 +401,12 @@ def _drop_upward_scopes(
             # meta is NOT a containing scope — a DISTINCT rationale, hence its own warning.
             # ⚑ TOP-LEVEL ONLY: this loop never descends, so a nested ``<scope>.meta`` table
             # rides untouched, and the FLOOR's meta is inserted separately, never routed here.
-            # ⚑⚑ NO WORKSET-SCOPE CARVE-OUT: a workset root's identity is REGISTRY-BORNE
-            # (system-design §Detect) and its settings file carries SETTINGS ONLY, so a
-            # ``meta.workset`` table here is the RETIRED 1.6.0/1.7.x shape that
-            # ``read_workset_identity`` hard-refuses — it gets the same warning as any
-            # other scope, never the silence a sanctioned marker used to earn.
+            # ⚑⚑ NO WORKSET-SCOPE CARVE-OUT: a workset root has NO identity table — it
+            # is named by the global registry's ``worksets:`` section — and its settings
+            # file carries SETTINGS ONLY, so a ``meta.workset`` table here is a RETIRED
+            # shape that ``refuse_retired_workset_identity`` hard-refuses upstream of
+            # this warning; it gets the same treatment as any other scope, never the
+            # silence a sanctioned marker used to earn.
             _log.warning(
                 "Dropping top-level 'meta' table from %s settings file %s: "
                 "meta.* is a read-only namespace set by the "
