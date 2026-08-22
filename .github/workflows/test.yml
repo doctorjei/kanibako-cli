@@ -34,6 +34,21 @@ jobs:
       # census itself. Measured cost over the whole suite: 399.7 s on vs 325.0 s
       # off (+23%), with identical pass/fail outcomes.
       - run: pytest tests/ -v
+      # ⚑⚑ THE PLUGIN PACKAGES NEED THEIR OWN INVOCATIONS — `pytest tests/` above does
+      # NOT reach them, and every one of these 253 tests was running nowhere in CI.
+      # ONE invocation cannot collect all three: each package ships tests/test_target.py
+      # (two also ship tests/test_credentials.py), so under pytest's prepend import mode
+      # all three resolve to the same module name and collection dies on
+      # "import file mismatch". Adding tests/__init__.py does NOT fix it -- sibling
+      # distributions would then each resolve to `tests.test_target` and collide the same
+      # way. Separate PROCESSES are what makes the basenames unambiguous, and it is also
+      # what each package's own `testpaths` setting assumes.
+      - run: pytest -v
+        working-directory: packages/agent-claude
+      - run: pytest -v
+        working-directory: packages/agent-codex
+      - run: pytest -v
+        working-directory: packages/agent-goose
 
   integration:
     runs-on: ubuntu-latest
