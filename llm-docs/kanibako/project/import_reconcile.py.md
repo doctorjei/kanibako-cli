@@ -17,16 +17,29 @@ registry section it writes.
 
 ## The two live modes, and who calls them
 
-Both are called **lazily, during resolution** — nothing sweeps eagerly. The call sites are in
+It is called **lazily, during resolution** — nothing sweeps eagerly. The call sites are in
 `settings/paths.py`'s `detect_project_mode`:
 
 * **STANDALONE** — `import_standalone`, called from the step-2 in-place marker check and again from
   the step-5 ancestor walk, whenever a `box_data/` marker is found whose box is not in
   `registry.standalone`.
-* **NAMED** — `import_named_workset`, called from the ancestor walk when a workset-root marker (a
-  `registry.yaml` carrying a `workset:` identity table) is found that is not a registered workset
-  root. NAMED is checked first at each level of the walk, because the registry identity is the
-  more specific identity.
+* **NAMED** — `import_named_workset`, called from the step-5 ancestor walk whenever
+  `project/workset.is_workset_skeleton` matches a level: the four dirs `create_workset` stamps,
+  present together. After the import the walk re-runs `_check_workset`, which now resolves.
+
+⚑⚑ **THE TWO MODES DIFFER IN WHERE THE NAME COMES FROM, AND ONLY THERE.** A standalone box composes
+one from its stored `workset.kuid` plus the live dir leaf. A workset records no name anywhere under
+its root — its identity is the global registry's `worksets:` entry — so an imported workset takes
+its **leaf directory basename** ([R139]), which is what `workset create` already defaults an unnamed
+workset to. 🛑 That a workset's name is not on disk is a fact about NAMING; it never made a workset
+root unfindable, and reading it as though it had is what deleted this function once. Detection is
+presence-only in both modes, and `_is_standalone_meta_dir` is the standing proof the two questions
+separate: it finds a box without reading any name out of it.
+
+⚑ The walk ALSO calls `project/workset.refuse_retired_workset_identity` at each level, **before**
+the NAMED test — deliberately. A v1.6/v1.7 root HAS the four-dir skeleton, so a NAMED arm running
+first would import it under its leaf name and leave the retired identity table, and the `projects:`
+list beside it, unread and unmentioned. The diagnosis has to precede the action or it never happens.
 
 `import_standalone` has one further caller outside detection: `commands/box/_parser.py`'s
 `register` verb reuses it for STANDALONE **register-later**, with the comment
@@ -55,7 +68,7 @@ Three outcomes, and only three:
 
 * **Already registered to this exact path** → silent, idempotent no-op. The function returns the
   registered name and mutates nothing.
-* **No marker / no readable identity** → `None`. There was nothing to import.
+* **No marker** → `None`. There was nothing to import.
 * **The name collides with an entity already registered to a *different* root or path** → the import
   is **REFUSED**. Nothing is mutated and `ImportConflictError` is raised, explaining that a `rename`
   mechanism to resolve such collisions is planned (future work, not 1.6.0) and that for now the user
@@ -63,6 +76,25 @@ Three outcomes, and only three:
 
 `ImportConflictError` therefore always means "I left both sides exactly as I found them". The shared
 message text is built once in `_conflict` so standalone and workset refusals read identically.
+
+### The CROSS-KIND case is NOT one of them — it imports and warns
+
+The three outcomes above are all **same-kind**: a workset name against another workset, a box name
+against another box. A **cross-kind** collision — an imported workset's derived name matching an
+existing PRIMARY BOX name — does **not** refuse. It imports, and `import_named_workset` logs one
+warning saying the bare name now resolves to the box and naming the escape hatch that reaches the
+workset (`names.cross_kind_shadow_hatch`, the same wording bare-name resolution uses).
+
+🛑 **Do not "make this consistent" with `create_workset`, which refuses the same collision unless
+`--force`.** The two differ on purpose ([R139]): refusing at create is affordable because a human
+typed the name and can retype it. On an import nobody typed anything and there is no `--force` to
+offer, so a refusal would strand the copied tree — the same silent failure the import exists to end,
+wearing a different hat.
+
+⚑ The derived name does clear create's OTHER bars — no empty basename, no reserved sentinel. It
+RETURNS `None` where create RAISES, because this one is answering a treewalk stepping past an
+ordinary directory rather than a user who can retype: a directory named `default` must not make
+every command fail.
 
 ## `_STANDALONE_BOX_DIR` — and its second spelling
 
@@ -151,28 +183,41 @@ box is already seeded on disk.
 
 ## `import_named_workset` — the `worksets` section
 
-Reads the workset name from `root`'s `registry.yaml` `workset:` identity table and reconciles it against
-`registry.worksets` — the name → root index that backs both name lookups AND workset discovery,
-written by `kanibako.project.workset`. Registration matches `create_workset` exactly, so an imported
-workset is indistinguishable from a created one.
+`root` is the workset root. There is no file to read: the caller has already matched
+`workset.is_workset_skeleton`, and the name is **derived** as `root.name`, the leaf directory
+basename ([R139]).
 
-Returns `None` when `root` has no readable `registry.yaml` `workset:` identity, or when that
-identity carries an empty name.
+Order of operations: derive the name → bar check → already-registered check (plus stale-entry clear)
+→ same-kind collision check → cross-kind warning → journalled register → alert. The section it
+writes is `registry.worksets`, the name → root index backing both name lookups and workset
+discovery. Registration goes through `names.register_name` — the SOLE writer of that section, and
+the guard that refuses `$HOME` as a root, which matters here and not at `create_workset`: create is
+handed a path, while the ancestor walk arrives at `$HOME` under its own steam.
+
+Returns `None` when the basename cannot be a workset name — empty (only the filesystem root) or a
+reserved sentinel.
+
+⚑ `primary_workset` is a REQUIRED keyword argument, not a defaulted one, because it is the sole
+input to the cross-kind check: a caller free to omit it would import a shadowed workset without the
+one warning that says how to reach it.
 
 ⚑ It does **NOT** rewrite the workset-create skeleton. It only registers an already-on-disk
 workset — a workset import never seeds a box, which is why its journal bracket is register-only like
-the standalone one.
+the standalone one. A workset has no single `home/`, so the entry is keyed on the workset ROOT.
 
 ## Completeness sweep
 
 `prose-relocation-check.py`: every removed prose line is accounted for above. The prose kept in the
-source is the trimmed module docstring, the one-line descriptor on each of the seven
-docstring-bearing symbols, the two section banners, and the short `⚑` / HARD INVARIANT markers whose
-deletion would let a future edit break something silently at that exact line:
+source is the trimmed module docstring, the one-line descriptor on each docstring-bearing symbol,
+the section banners, and the short `⚑` / HARD INVARIANT markers whose deletion would let a future
+edit break something silently at that exact line:
 
 * at `_STANDALONE_BOX_DIR` — the second spelling in `paths_defaults.py` must move with it;
 * at `_journal_register`'s clear step — the clear is the immediate post-register step, and a raise
   intentionally leaves the entry;
 * at `_clear_stale_import` — only register-only entries are cleared, never a `create` entry;
 * at the marker gate and the kuid composition in `import_standalone` — both look like they could be
-  simplified to `project.mode` and to the dir leaf respectively, and both must not be.
+  simplified to `project.mode` and to the dir leaf respectively, and both must not be;
+* at the derived name in `import_named_workset` — it returns where `create_workset` raises, and the
+  cross-kind collision warns where `create_workset` refuses; both read like inconsistencies and
+  neither is.

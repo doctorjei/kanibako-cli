@@ -11,6 +11,7 @@ from kanibako.settings.paths import load_std_paths
 from kanibako.project.workset import (
     add_project,
     create_workset,
+    list_worksets,
 )
 
 
@@ -202,18 +203,19 @@ class TestWorksetCreate:
         assert rc == 0
 
         # The image cascade setting lands in the root settings.yaml — which is
-        # created ONLY because something was actually set — while the identity
-        # stays in registry.yaml.  ⚑ The two files never mix.
+        # created ONLY because something was actually set.  ⚑ It is the ONE file
+        # under the root: no identity table anywhere, and no registry.yaml until
+        # there is a member to record.
         import yaml
         settings_yaml = ws_root.resolve() / "settings.yaml"
         assert settings_yaml.exists()
         with open(settings_yaml) as f:
             data = yaml.safe_load(f)
-        assert data["box"]["image"] == "custom:latest"
-        assert "meta" not in data
-        with open(ws_root.resolve() / "registry.yaml") as f:
-            registry = yaml.safe_load(f)
-        assert registry["workset"]["name"] == "imagews"
+        assert data == {"box": {"image": "custom:latest"}}
+        assert not (ws_root.resolve() / "registry.yaml").exists()
+        # The name is in the GLOBAL registry, and only there.
+        std = load_std_paths(load_config(config_file))
+        assert list_worksets(std)["imagews"] == ws_root.resolve()
 
 
 class TestWorksetList:
@@ -483,8 +485,8 @@ class TestWorksetConnect:
     def test_connect_internal_no_override_no_symlink(
         self, config_file, tmp_home, capsys
     ):
-        """connect to a dir INSIDE the workset root → normal behavior: a real
-        workspaces/{name} dir, no override, no external connection record."""
+        """connect to a dir INSIDE the workset root → a real workspaces/{name} dir,
+        no override, and a membership row recording THAT dir."""
         from kanibako.commands.workset_cmd import run_connect
         from kanibako.settings.config_io import load_doc
 
@@ -506,10 +508,10 @@ class TestWorksetConnect:
         project_toml = ws.projects_dir / "int" / "settings.yaml"
         assert "project" not in load_doc(project_toml)
 
-        # No external connection record for an internal source (the per-workset
-        # registry only records EXTERNAL connects; an internal source keeps the
-        # normal real-dir behavior).
-        assert "int" not in _workset_boxes(ws)
+        # ⚑⚑ EVERY member gets a row, in-tree as well as external — and an in-tree
+        # member's row records ``workspaces/<name>``, the dir it actually runs on,
+        # not the caller's source argument (which was `inside_src` here).
+        assert _workset_boxes(ws) == {"int": str(ws.workspaces_dir / "int")}
 
         # workspaces/int is a real directory, not a symlink.
         wsdir = ws.workspaces_dir / "int"
@@ -644,7 +646,8 @@ class TestWorksetInfo:
         assert "infows" in out
         assert "infoproj" in out
         assert "Root:" in out
-        assert "Created:" in out
+        # ⚑ ``created`` is gone from the model, so there is no line to print.
+        assert "Created:" not in out
 
     def test_info_unknown_error(self, config_file, tmp_home, capsys):
         from kanibako.commands.workset_cmd import run_info

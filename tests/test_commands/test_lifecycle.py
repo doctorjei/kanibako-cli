@@ -406,7 +406,7 @@ class TestConvertInPlace:
         # workspace still where it was.
         assert pdir.is_dir() and (pdir / "file.txt").is_file()
         # workset registration + external markers.
-        ws2 = load_workset(ws.root)
+        ws2 = load_workset(ws.root, ws.name)
         assert any(p.name == "proj" for p in ws2.projects)
         # P8b/Option A: mode + external workspace live in the returned state and
         # the workset's per-workset ``boxes:`` registry, not an on-disk section.
@@ -475,7 +475,7 @@ class TestConvertInPlace:
         # external dir preserved (NEVER deleted).
         assert external.is_dir() and (external / "file.txt").is_file()
         # workset registration removed.
-        ws2 = load_workset(ws.root)
+        ws2 = load_workset(ws.root, ws.name)
         assert not any(p.name == "ep" for p in ws2.projects)
         # connected.yaml cleared.
         assert str(external.resolve()) not in _connected_index(std)
@@ -522,8 +522,8 @@ class TestWorksetToWorkset:
         assert new.is_external
         assert external.is_dir()
         # wsa no longer owns it; wsb does.
-        assert not any(p.name == "p" for p in load_workset(ws_a.root).projects)
-        assert any(p.name == "p" for p in load_workset(tmp_home / "wsb_root").projects)
+        assert not any(p.name == "p" for p in load_workset(ws_a.root, ws_a.name).projects)
+        assert any(p.name == "p" for p in load_workset(tmp_home / "wsb_root", "wsb").projects)
         # connected.yaml points at wsb now.
         entry = _connected_index(std)[str(external.resolve())]
         assert entry["workset"] == "wsb"
@@ -850,7 +850,7 @@ class TestUnwind:
         assert calls["n"] >= 1  # the patched seam actually fired
 
         # workset registration unwound.
-        ws2 = load_workset(ws.root)
+        ws2 = load_workset(ws.root, ws.name)
         assert not any(p.name == "proj" for p in ws2.projects)
         # original default project intact + still resolves as primary in place.
         assert str(pdir) in load_primary_boxes(std.primary_workset).values()

@@ -432,7 +432,7 @@ def _duplicate_to_workset(args, std, config) -> int:
     if ws_name not in registry:
         print(f"Error: workset '{ws_name}' not found.", file=sys.stderr)
         return 1
-    ws = load_workset(registry[ws_name])
+    ws = load_workset(registry[ws_name], ws_name)
 
     source_path = Path(args.source_path).resolve()
     if not source_path.is_dir():

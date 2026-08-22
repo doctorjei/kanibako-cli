@@ -996,8 +996,9 @@ All kanibako config/settings files are YAML.
 - **System settings**: `$XDG_DATA_HOME/kanibako/global/settings.yaml`
 - **Workset settings**: `<workset_root>/settings.yaml` (optional -- a workset root has
   one only once you set something there)
-- **Workset identity + membership**: `<workset_root>/registry.yaml` (the workset's name,
-  its `created` stamp, its boxes and its projects)
+- **Workset membership**: `<workset_root>/registry.yaml` (its boxes, as flat `name: path`
+  rows -- and nothing else; a workset is NAMED by the global registry's `worksets:` section,
+  never by a file under its own root)
 - **Per-agent settings**: `$XDG_DATA_HOME/kanibako/agents/{agent}/settings.yaml`
 - **Per-box settings**: `boxes/{name}/settings.yaml` (standalone: `<root>/settings.yaml`)
 - **Template root**: `$XDG_DATA_HOME/kanibako/global/template/` (the `box`,

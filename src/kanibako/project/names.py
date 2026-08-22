@@ -34,6 +34,15 @@ from kanibako.log import get_logger
 logger = get_logger("names")
 
 
+def cross_kind_shadow_hatch(name: str) -> str:
+    """The ONE spelling of how a name-shadowed workset stays reachable."""
+    # ⚑ TWO sites tell the user this, in different sentences: bare-name resolution
+    # below, and the import-time warning in ``import_reconcile.import_named_workset``.
+    # The escape hatch itself TRAVELS between them, so it is spelled here once (P10) —
+    # a second literal would be a standing promise nobody keeps.
+    return f"reach it via 'kanibako workset <cmd> {name}'"
+
+
 # ---------------------------------------------------------------------------
 # I/O helpers — back the worksets section of config.registry.
 # ---------------------------------------------------------------------------
@@ -279,9 +288,8 @@ def resolve_name(
             if name in names["worksets"]:
                 logger.warning(
                     "bare name '%s' resolved to the primary box; a workset of "
-                    "the same name is shadowed (reach it via "
-                    "'kanibako workset <cmd> %s').",
-                    name, name,
+                    "the same name is shadowed (%s).",
+                    name, cross_kind_shadow_hatch(name),
                 )
             return primary_path, "project"
 

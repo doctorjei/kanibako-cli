@@ -348,10 +348,10 @@ Drop a CONTAINING-scope, `meta:` or `binding_derivations:` top-level table (spec
    everywhere"); a settings file may not set it. `meta` is NOT a containing scope, so it earns a
    DISTINCT warning. ⚑⚑ **NO WORKSET-SCOPE CARVE-OUT, since 2026-08-22.** A workset file's
    `meta.workset` member used to be the spec-sanctioned NAMED-root identity marker and dropped
-   SILENTLY, with the warning naming only the OTHER members. Identity is now REGISTRY-BORNE
-   (system-design § Detect), so that member is the RETIRED 1.6.0/1.7.x shape which
-   `project/workset.py`'s `read_workset_identity` hard-refuses — it warns like every other scope, and
-   the warning names the whole table. ⚑ **The drop is TOP-LEVEL ONLY:** the loop iterates top-level keys and
+   SILENTLY, with the warning naming only the OTHER members. A workset root has NO identity table
+   now — it is named by the global registry — so that member is a RETIRED shape which
+   `project/workset.py`'s `refuse_retired_workset_identity` hard-refuses upstream of this warning; it
+   warns like every other scope, and the warning names the whole table. ⚑ **The drop is TOP-LEVEL ONLY:** the loop iterates top-level keys and
    never descends, so a nested `<scope>.meta` table rides under its scope untouched. The sole
    sanctioned meta source is the FLOOR (`dotted_partial`), inserted separately and never routed
    through this drop.

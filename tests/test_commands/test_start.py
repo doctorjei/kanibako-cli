@@ -2894,7 +2894,8 @@ class TestPrepareHostHook:
     """Core invokes the agent-agnostic prepare_host() hook before mounts.
 
     The hook is plugin-owned: the Claude plugin runs the synchronous update
-    gate + host auth refresh inside it (covered in test_claude.py).  Core's
+    gate + host auth refresh inside it (covered in the plugin's own
+    ``packages/agent-claude/tests/test_target.py``).  Core's
     only contract is *that it calls the hook* with the right auto_auth flag and
     install — it never reaches into auto_refresh_auth itself anymore.
     """

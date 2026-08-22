@@ -213,14 +213,21 @@ Workset creation, loading, or manipulation failed.
 26 raise sites; nothing displaced.
 
 ```class LegacyWorksetIdentityError(WorksetError):```
-A workset root still keeps its identity in `settings.yaml`, not `registry.yaml` — either the
-`workset.meta` spelling (1.6.0/1.7.x) or the `meta.workset` one (the unreleased 1.8.0 tree).
+A workset root's `settings.yaml` still carries a RETIRED workset identity table — either the
+`workset.meta` spelling (1.6.0/1.7.x) or the `meta.workset` one (the unreleased 1.8.0 tree). A 1.8.0
+workset has no identity table anywhere under its root; it is named by the global registry.
 
-One raise site, `project/workset.py:_refuse_retired_workset_identity`, reached from
-`read_workset_identity` — the NAMED-workset-root detection primitive. ⚑ **The subclass exists so ONE
-blanket catch can re-raise it:** `commands/box/_parser.py:_resolve_standalone_target` swallows every
-exception out of `detect_project_mode` as "a non-project path is simply a miss", and an un-migrated
-workset root in the ancestor walk is a named thing to fix, not a miss. Cure: MIGRATION.md §2.43.
+One raise site, `project/workset.py:refuse_retired_workset_identity`, reached from `_load_workset`
+and from `settings/paths.py`'s ancestor walk. ⚑ **The subclass exists so ONE blanket catch can
+re-raise it:** `commands/box/_parser.py:_resolve_standalone_target` swallows every exception out of
+`detect_project_mode` as "a non-project path is simply a miss", and an un-migrated workset root in
+the ancestor walk is a named thing to fix, not a miss. Cure: MIGRATION.md §2.43.
+
+```class LegacyRegistryIdentityError(WorksetError):```
+A per-workset `registry.yaml` still carries a RETIRED `workset:` identity table or `projects:` map
+(the unreleased 1.8.0 tree only). One raise site,
+`project/workset_registry.py:_refuse_retired_registry_sections`, reached from `_load_raw` — the
+module's ONE read seam, so every read of that file passes it. Cure: MIGRATION.md §2.43.
 
 ```class UserCancelled(KanibakoError):```
 User cancelled an interactive prompt.

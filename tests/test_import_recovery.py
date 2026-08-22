@@ -119,7 +119,8 @@ class TestImportBehavioralEquivalence:
         capsys.readouterr()
 
         name = import_reconcile.import_named_workset(
-            std.registry, ws_root, journal=std.journal,
+            std.registry, ws_root,
+            primary_workset=std.primary_workset, journal=std.journal,
         )
         assert name == "imp"
         assert registry_store.load_section(std.registry, "worksets").get(
@@ -357,7 +358,7 @@ class TestConnectJournal:
         rc = run_connect(_connect_args("cjws", src, "cjproj"))
         assert rc == 0
         assert journal.read_journal(std.journal) == {}
-        reloaded = load_workset(ws.root)
+        reloaded = load_workset(ws.root, ws.name)
         assert any(p.name == "cjproj" for p in reloaded.projects)
 
     def test_connect_entry_present_during_membership_write(
@@ -368,7 +369,7 @@ class TestConnectJournal:
         from kanibako.commands.workset_cmd import run_connect
         from kanibako.settings.config import load_config
         from kanibako.settings.paths import load_std_paths
-        from kanibako.project import workset as workset_mod
+        from kanibako.settings import paths as paths_mod
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -378,15 +379,17 @@ class TestConnectJournal:
 
         box_key = str((tmp_home / "cj_ws2" / "boxes" / "cjproj2"))
         seen = {}
-        real_write = workset_mod._write_workset_identity
+        real_write = paths_mod._register_workset_box_membership
 
-        def spy_write(w):
+        def spy_write(*a, **k):
             seen["pending_during_write"] = (
                 journal.pending_import(std.journal, box_key) is not None
             )
-            return real_write(w)
+            return real_write(*a, **k)
 
-        monkeypatch.setattr(workset_mod, "_write_workset_identity", spy_write)
+        monkeypatch.setattr(
+            paths_mod, "_register_workset_box_membership", spy_write,
+        )
         rc = run_connect(_connect_args("cjws2", src, "cjproj2"))
 
         assert rc == 0
@@ -403,7 +406,7 @@ class TestConnectJournal:
         from kanibako.commands.workset_cmd import run_connect
         from kanibako.settings.config import load_config
         from kanibako.settings.paths import load_std_paths
-        from kanibako.project import workset as workset_mod
+        from kanibako.settings import paths as paths_mod
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -413,10 +416,10 @@ class TestConnectJournal:
 
         box_key = str((tmp_home / "cj_ws3" / "boxes" / "cjproj3"))
 
-        def boom(w):
+        def boom(*a, **k):
             raise RuntimeError("simulated membership write crash")
 
-        monkeypatch.setattr(workset_mod, "_write_workset_identity", boom)
+        monkeypatch.setattr(paths_mod, "_register_workset_box_membership", boom)
         with pytest.raises(RuntimeError, match="simulated"):
             run_connect(_connect_args("cjws3", src, "cjproj3"))
 
@@ -460,7 +463,7 @@ class TestConnectSelfHealOnResolve:
         assert journal.pending_import(std.journal, box_key) is not None
 
         # Resolve the already-member box → self-heal clears the stale entry.
-        ws = load_workset(tmp_home / "heal_ws")
+        ws = load_workset(tmp_home / "heal_ws", "healws")
         proj = resolve_workset_project(
             WorksetSpec.from_workset(ws), "healproj", std, config,
             initialize=False,
@@ -501,7 +504,7 @@ class TestConnectSelfHealOnResolve:
         )
         capsys.readouterr()
 
-        ws = load_workset(tmp_home / "cr_ws")
+        ws = load_workset(tmp_home / "cr_ws", "crws")
         resolve_workset_project(
             WorksetSpec.from_workset(ws), "crproj", std, config,
             initialize=False,
@@ -534,7 +537,7 @@ class TestDeferredPipelinesDoNotJournalConnect:
         add_project(ws, "dpproj", src, std)  # std passed — but NO journal entry.
 
         assert journal.read_journal(std.journal) == {}
-        reloaded = load_workset(ws.root)
+        reloaded = load_workset(ws.root, ws.name)
         assert any(p.name == "dpproj" for p in reloaded.projects)
 
     def test_copy_into_workset_writes_no_journal_entry(
@@ -566,7 +569,7 @@ class TestDeferredPipelinesDoNotJournalConnect:
 
         # The pipeline registered the project but journaled NO connect op.
         assert journal.read_journal(std.journal) == {}
-        reloaded = load_workset(ws.root)
+        reloaded = load_workset(ws.root, ws.name)
         assert any(p.name == "ciproj" for p in reloaded.projects)
 
     def test_no_journal_connect_call_in_lifecycle_module(self) -> None:

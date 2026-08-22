@@ -416,7 +416,7 @@ def run_list(args: argparse.Namespace) -> int:
     for name in sorted(registry):
         root = registry[name]
         try:
-            ws = load_workset(root)
+            ws = load_workset(root, name)
             count = len(ws.projects)
         except WorksetError:
             count = 0
@@ -439,7 +439,7 @@ def run_rm(args: argparse.Namespace) -> int:
     registry = list_worksets(std)
     if args.name in registry:
         try:
-            ws = load_workset(registry[args.name])
+            ws = load_workset(registry[args.name], args.name)
             if ws.projects and not args.force:
                 print(
                     f"Error: workset '{args.name}' has {len(ws.projects)} project(s). "
@@ -474,7 +474,7 @@ def run_connect(args: argparse.Namespace) -> int:
         return 1
 
     try:
-        ws = load_workset(registry[args.workset])
+        ws = load_workset(registry[args.workset], args.workset)
     except WorksetError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
@@ -514,7 +514,7 @@ def run_disconnect(args: argparse.Namespace) -> int:
         return 1
 
     try:
-        ws = load_workset(registry[args.workset])
+        ws = load_workset(registry[args.workset], args.workset)
     except WorksetError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
@@ -580,7 +580,6 @@ def run_info(args: argparse.Namespace) -> int:
     root_display = "<default workset>" if ws.is_default else str(ws.root)
     print(f"Name:     {ws.name}")
     print(f"Root:     {root_display}")
-    print(f"Created:  {ws.created}")
     if ws.projects:
         print(f"Projects: {len(ws.projects)}")
         for proj in ws.projects:

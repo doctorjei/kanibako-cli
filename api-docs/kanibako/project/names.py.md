@@ -13,6 +13,7 @@ logger = get_logger('names')
 
 ## Functions
 ```
+def cross_kind_shadow_hatch(name: str) -> str
 def read_names(registry: Path) -> dict[str, dict[str, str]]
 def register_name(registry: Path, name: str, path: str, section: str='worksets') -> None
 def register_name_if_absent(registry: Path, name: str, path: str, section: str='worksets') -> None

@@ -448,7 +448,8 @@ class TestAgentDefaultsShape:
                 # layout (e.g. drop the ``common/`` segment) and both sides move
                 # together and this stays GREEN. The LITERAL carriers — the ones that
                 # spell the resolved path out and go red on a layout change — are
-                # ``test_targets/test_claude.py::TestDefaultShares`` (the stored ref)
+                # ``packages/agent-claude/tests/test_target.py::TestDefaultShares``
+                # (the stored ref)
                 # and ``test_categories_live.py::TestDeclarationRoots::
                 # test_claude_commons_resolve_under_common_dir`` (the resolved mount).
                 assert entry_val[0] == expected, (

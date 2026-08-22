@@ -71,6 +71,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Disconnecting an in-tree workset box left its membership row behind, and the orphan then locked
+  that workspace out of its own workset.** `workset disconnect` dropped the `boxes:` row only when
+  the recorded path was OUTSIDE the workset root. For a box living in the workset's own
+  `workspaces/` tree the row survived the disconnect, so the box went on appearing in
+  `workset info` and `kanibako list` as a member of a workset it had left — and because a workspace
+  path maps to exactly one box name, nothing could register that directory again under any name.
+  Hand-editing `registry.yaml` was the only way out. The drop is unconditional now.
+
+- **Connecting a directory inside a workset recorded a path the box never ran on.** `workset
+  connect <dir-inside-the-workset>` creates the box's real workspace at `workspaces/<name>` and
+  runs it there, but recorded the directory you named instead. `workset info` and `box info` then
+  reported that directory as the project path, and the registry held two different paths for one
+  box. An in-tree member's row now records `workspaces/<name>`; an external connect records the
+  external directory, unchanged.
+
+- **A `box: agent:` table left in a settings file is now refused by name, instead of being
+  silently discarded.** `box.agent` was retired in 1.8.0 in two different senses — as a scalar it
+  was the old agent-*selection* key (`box.crab` → `box.agent` → `box.agent_name`), and as a table
+  it was the settable *mirror* of an agent's settings. The write verbs refuse both, but a file
+  that already carried one was simply inert: the box launched on whatever the cascade resolved,
+  and nothing said the stored intent had been dropped. `box.agent` joins the retired spellings
+  that are refused at launch, alongside `box.agent_name` and `system.default_agent`. Which
+  refusal you get is decided by the value's shape, because the two retirements have different
+  cures — a scalar points at `pref.system.agent`, a table at `pref.agent.<agent>.<key>`, with
+  your own stored keys and values interpolated so each line is copy-pasteable. Boxes that carry
+  the table have been running the agent's untweaked settings all along; see `MIGRATION.md`
+  § *Settings keys renamed or retired*.
+
 - **`config set box.agent.<key>` now always says the key is retired, instead of sometimes
   complaining about its value first.** `box.agent.<key>` — the settable box-scoped mirror of an
   agent's settings — was retired in 1.8.0, and the refusal names the replacement
@@ -86,19 +114,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ref shape alone, so dispatching `release.yml` at a bare `v<ver>` tag ran the production publish —
   the dispatch path exists for a branch (dev) or an rc tag (rc), and neither of those is a promote.
   The job now requires a `push` event as well, so **pushing the tag is the only way to promote**,
-- **A `box: agent:` table left in a settings file is now refused by name, instead of being
-  silently discarded.** `box.agent` was retired in 1.8.0 in two different senses — as a scalar it
-  was the old agent-*selection* key (`box.crab` → `box.agent` → `box.agent_name`), and as a table
-  it was the settable *mirror* of an agent's settings. The write verbs refuse both, but a file
-  that already carried one was simply inert: the box launched on whatever the cascade resolved,
-  and nothing said the stored intent had been dropped. `box.agent` joins the retired spellings
-  that are refused at launch, alongside `box.agent_name` and `system.default_agent`. Which
-  refusal you get is decided by the value's shape, because the two retirements have different
-  cures — a scalar points at `pref.system.agent`, a table at `pref.agent.<agent>.<key>`, with
-  your own stored keys and values interpolated so each line is copy-pasteable. Boxes that carry
-  the table have been running the agent's untweaked settings all along; see `MIGRATION.md`
-  § *Settings keys renamed or retired*.
-
   which is what the pipeline's one-tag-drives-a-release model already claimed. It was previously
   documented as a pitfall in `docs/RELEASING.md` rather than prevented.
 - **A prerelease tag can no longer reach production PyPI.** The `promote` job's guard excluded only
@@ -124,6 +139,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   A file you edited by hand is left alone rather than clobbered.
 
 ### Changed
+
+- **BREAKING: a workset root no longer carries an identity table anywhere, and a v1.6/v1.7 root
+  refuses until you remove the one it has.** A workset has always been *identified* by the global
+  registry — `workset create` writes a `name → root` entry into its `worksets:` section, and that
+  entry is what `workset list` reads and what resolves a bare workset name. v1.6.0 and v1.7.x also
+  wrote a copy of the name, a `created` stamp and a `projects` list into the workset root's own
+  `settings.yaml` as `workset.meta`. That copy is gone. A workset root now holds at most two files:
+  `registry.yaml`, carrying its box MEMBERSHIP as flat `name: path` rows under `boxes:` and nothing
+  else, and `settings.yaml`, carrying SETTINGS ONLY — sparse, optional, and not written at all by
+  `workset create`. A brand-new workset root contains four directories and no files. `created` is
+  dropped rather than relocated, so `workset info` no longer prints a `Created:` line; nothing
+  records when a workset was made. Both retired spellings (`workset.meta`, and the `meta.workset`
+  one an unreleased dev build wrote) hard-refuse by name, with the fold-and-delete cure in the
+  message; **MIGRATION.md §2.43** is the guide. A per-workset `registry.yaml` still carrying the
+  `workset:` or `projects:` sections that same dev build wrote refuses too, for the same reason:
+  the `projects:` map held a second copy of every member path, and the two copies drifted.
+
+- **A workset tree you move or copy is still re-discovered, but it now comes back under its
+  DIRECTORY's name.** Dropping an unregistered workset tree onto a new machine re-registers it on
+  first resolve, as before. What changed is where the name comes from: the tree used to carry one,
+  and no longer does, so the import uses the workset root's directory basename — the same default
+  `kanibako workset create` has always applied when you give it a path and no `--name`. A workset
+  you created without `--name` therefore comes back under exactly the name it had. One you named
+  explicitly comes back under its directory's name instead, so rename the directory before you move
+  it if you want the old name kept. Two cases to know about: if that name already belongs to a
+  DIFFERENT registered workset the import is refused, the tree is left untouched on disk, and the
+  error says so — rename or relocate one of the two by hand. If it belongs to a primary BOX, the
+  import goes ahead and warns: the bare name resolves to the box, and the workset stays reachable as
+  `kanibako workset <cmd> <name>`.
 
 - **BREAKING: every kickoff now carries ONE import, so the base package and the agent plugins must
   be upgraded together.** The kickoff is the file that boots a box's whole instruction chain. For

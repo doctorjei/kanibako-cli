@@ -8,13 +8,14 @@ Prose for these symbols lives in `llm-docs/kanibako/project/import_reconcile.py.
 ## Variables
 
 ```
+logger = get_logger('import_reconcile')
 _STANDALONE_BOX_DIR = 'box_data'
 ```
 
 ## Functions
 ```
 def import_standalone(registry: Path, root: Path, *, journal: Path | None=None) -> str | None
-def import_named_workset(registry: Path, root: Path, *, journal: Path | None=None) -> str | None
+def import_named_workset(registry: Path, root: Path, *, primary_workset: Path, journal: Path | None=None) -> str | None
 def _alert(mode: str, name: str, path: Path) -> None
 def _conflict(mode: str, name: str, new_path: Path, existing_path: str) -> ImportConflictError
 @contextmanager

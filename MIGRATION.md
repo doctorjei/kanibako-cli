@@ -2494,24 +2494,27 @@ a default rather than a written one.
 
 ---
 
-### 2.43 A named workset's identity moves into `registry.yaml`; an un-migrated root refuses
+### 2.43 A workset root no longer carries an identity table; an un-migrated root refuses
 
 **Read this if you have a NAMED workset** — one you made with `kanibako workset create`. Every
 workset root written by v1.6.0 or v1.7.x needs a one-time hand edit before it will resolve on
 v1.8.0. Primary-mode and standalone boxes are unaffected: neither has this table.
 
-**What changed.** A named workset's identity — its `name`, its `created` stamp and its `projects`
-records — used to live in `settings.yaml` at the workset root, nested inside the workset's own
-settings table as `workset.meta`. In v1.8.0 identity and membership are **registry-borne at every
-level**: a workset's name and members live in the workset root's `registry.yaml`, the same file that
-already holds its box membership, exactly as a box's name comes from the registry rather than from
-its settings file. `settings.yaml` at a workset root now carries **settings only** — and a workset
-root does not need one at all.
+**What changed.** A workset has always been *identified* by the global registry: `workset create`
+writes a `name → root` entry into the `worksets:` section of `~/.local/share/kanibako/global/registry.yaml`,
+and that entry is what `kanibako workset list` reads and what resolves a bare workset name. v1.6.0
+and v1.7.x *also* wrote a copy of the name — plus a `created` stamp and a `projects` list — into the
+workset root's own `settings.yaml`, nested as `workset.meta`. v1.8.0 keeps the registry entry and
+drops the copy. A workset root now holds exactly two kinds of file: `registry.yaml` with its box
+MEMBERSHIP, as flat `name: path` rows under `boxes:`, and `settings.yaml` with SETTINGS ONLY —
+sparse, optional, and absent entirely on a workset created from scratch.
 
-**What you must do.** In each workset root, move the identity out of `settings.yaml` and into
-`registry.yaml`, splitting it into two sections. `name` and `created` keep their values verbatim.
-Each entry of the old `projects` **list** becomes one entry of the new `projects` **map**, keyed by
-its `name`.
+`created` is **gone**, not relocated. Nothing records when a workset was made.
+
+**What you must do.** In each workset root, fold the old `projects` list into `registry.yaml`'s
+`boxes:` section and delete the identity table from `settings.yaml`. Most rows are already in
+`boxes:` — kanibako has written one there for every box it created since v1.6.0 — so in practice
+this is usually a delete and a check.
 
 ```yaml
 # v1.7.x — <workset root>/settings.yaml
@@ -2528,15 +2531,9 @@ workset:
 ```
 
 ```yaml
-# v1.8.0 — <workset root>/registry.yaml
-workset:
-  name: research
-  created: 2026-03-11T09:22:41+00:00
-boxes:                     # if this section is already here, LEAVE IT ALONE
+# v1.8.0 — <workset root>/registry.yaml: MEMBERSHIP, flat, one row per box
+boxes:
   notes: /home/you/worksets/research/workspaces/notes
-projects:
-  notes:
-    source_path: /home/you/worksets/research/workspaces/notes
 ```
 
 ```yaml
@@ -2547,48 +2544,65 @@ workset:
       ~/data: /host/data
 ```
 
+The workset is still called `research`, because the global registry still says so. You do not write
+its name anywhere, and there is nowhere left to write it.
+
 ⚑ **Nothing else moves.** The top-level `workset:` table in `settings.yaml` stays exactly where it
 is — it is still where this workset's own settings live (`workset.bindings`, `workset.workspaces`,
-`workset.channelroot`, `workset.auth`, …). Delete only the identity from it. **If that leaves the
-file empty, you may delete the file**; a v1.8.0 workset root created from scratch has no
-`settings.yaml` until you set something. Leave any existing `boxes:` section of `registry.yaml`
-untouched. Nothing else on disk changes: no directory moves, no global registry entry changes, no
-box is re-seeded.
+`workset.channelroot`, `workset.auth`, …). Delete only the `meta:` table from inside it. **If that
+leaves the file empty, you may delete the file.** Any `boxes:` row already in `registry.yaml` is
+already correct: leave it. Where a name appears in both the old list and `boxes:`, the `boxes:`
+value is the path the box actually ran on — keep that one. Nothing else on disk changes: no
+directory moves, no global registry entry changes, no box is re-seeded.
 
 **What you see if you don't.** kanibako refuses by name on any command that has to resolve the
 workset — `start`, `box info`, `workset` verbs, and any command run from inside the workset tree
-(verbatim template; `<path>` is the workset root's `settings.yaml`, `<registry>` its
-`registry.yaml`):
+(verbatim; `<path>` is the workset root's `settings.yaml`, `<registry>` its `registry.yaml`):
 
 ```
 'workset.meta' is a RETIRED location for a named workset's identity table and is still the shape of <path>.
-The RULE CHANGED in kanibako 1.8.0: identity and membership are REGISTRY-BORNE at every level, so a workset's name, created stamp and projects now live in the workset root's `registry.yaml` — the same file that already holds its box membership — and `settings.yaml` carries SETTINGS ONLY. kanibako 1.6.0 and 1.7.x put the identity in settings.yaml, so every workset root those releases created carries it. Refusing rather than running: this table is what MARKS the directory as a workset root, and reading past it would resolve the directory as an ordinary primary-mode box instead — your workset would stop being a workset with no error at all.
-  Fix: MOVE the table BY HAND out of <path> and into <registry>, splitting it into the two sections below. `name` and `created` keep their values verbatim; each entry of the old `projects` LIST becomes one entry of the `projects` MAP, keyed by its `name`:
+THE RULE: a workset has NO identity table on disk under its root. Its name lives in ONE place — the `worksets:` section of the global registry, which maps that name to this directory and is what `kanibako workset list` reads. This file carries SETTINGS ONLY, is sparse, and may be absent entirely; MEMBERSHIP lives in <registry> as flat `boxes:` entries, `name: path`. kanibako 1.6.0 and 1.7.x kept the name, a `created` stamp and a `projects` list here, so every workset root those releases created carries them. Refusing rather than running: 1.8.0 reads this file as ordinary settings, so it would drop the table as an unsettable `meta` namespace and ignore the `projects` list — your connected boxes would stop resolving with nothing printed to say why.
+  Fix, BY HAND:
 
-    workset:
-      name: ...
-      created: ...
-    projects:
-      <project name>:
-        source_path: ...
+    1. Each entry of the `projects` LIST becomes one flat entry of the `boxes:` section in <registry>, keyed by its `name`, with its `source_path` as the value. An entry already there is already correct — leave it:
 
-  Leave any `boxes:` section in registry.yaml exactly as it is. Then delete the identity table from <path>: a top-level `workset:` table is still where this workset's own SETTINGS live, so keep the rest of that file and delete only the identity. If nothing is left, the file may be deleted outright — a workset root no longer needs one. kanibako 1.8.0 ships no automatic migration for this — see MIGRATION.md §2.43.
+         boxes:
+           <project name>: <its source_path>
+
+    2. Delete the `workset.meta` table from <path> — name, created stamp and projects together. NOTHING replaces it: `workset create` already registered this workset under its name in the global registry, and `created` is not recorded anywhere in 1.8.0.
+
+  Everything else in <path> stays put: the top-level `workset:` table is still where this workset's own SETTINGS live (`workset.bindings`, `workset.workspaces`, `workset.auth`, …), so delete only the `meta:` table from inside it. If nothing is left, delete the file outright — a workset root no longer needs one. kanibako 1.8.0 ships no automatic migration for this — see MIGRATION.md §2.43.
 ```
 
-**Why it refuses instead of reading the old location.** This table is the *marker*: finding it is
-how kanibako decides a directory is a workset root at all. A compat read is not the safe option
-here — the unsafe outcome is the silent one. Without the refusal, a v1.7.x root that is **not in
-your registry** (a workset you moved, copied, or dropped in from another machine) simply fails to
-match: the ancestor walk falls through and the directory resolves as an ordinary primary-mode box,
-with boxes addressed by name gone missing, `workset.*` settings no longer applying, and nothing
-printed to tell you why. A root that **is** registered fails less quietly but no more usefully —
-kanibako finds it by path, then cannot read its name. Either way you are owed a message with the
-cure in it, which is what the refusal is.
+A root that spelled the table `meta.workset` instead gets the same refusal naming that spelling; the
+cure is identical.
 
-⚑ **A root with no identity table anywhere is still not an error.** A `settings.yaml` with no
-identity table — an ordinary box's settings file, or a cascade-only file at some directory in the
-walk — is simply not a workset root, exactly as before, and so is a plain directory. Only an
-identity still sitting in `settings.yaml` refuses.
+⚑ **A root with no identity table anywhere is not an error.** A `settings.yaml` with no such table —
+an ordinary box's settings file, or a cascade-only file at some directory in the walk — is simply
+not carrying one, exactly as a freshly created v1.8.0 workset root is not, and neither is a plain
+directory. Only a table still sitting in `settings.yaml` refuses.
+
+**If you ran a v1.8.0 development build.** One unreleased dev build put the identity table into the
+workset root's `registry.yaml` instead, beside a `projects:` map that repeated every member path a
+second time. Neither belongs there, and both refuse — the two path copies drift apart, and a
+disconnect that dropped one while orphaning the other locked that workspace out of its own workset
+under any name. No released version ever wrote this shape, so skip this unless you built from a
+`main` checkout between 2026-08-21 and 2026-08-22:
+
+```
+'workset:' and 'projects:' sections are RETIRED from a workset registry and still the shape of <registry>.
+THE RULE: this file records MEMBERSHIP and nothing else — one flat `boxes:` entry per member, `name: path`, the path written EXACTLY ONCE. A workset's IDENTITY is not on disk under its root at all: it is the entry in the GLOBAL registry's `worksets:` section mapping the workset's name to this directory, which is what `kanibako workset list` reads. An unreleased 1.8.0 development build wrote an identity table into this file, and every member path a second time under `projects:`. Refusing rather than running: the two path copies drift — a disconnect dropped the `projects:` row and orphaned the `boxes:` one, which then refused to let that workspace be registered again under any name.
+  Fix, BY HAND:
+
+    1. Each `projects:` entry becomes a flat `boxes:` entry under the SAME name, with its `source_path` as the value. Where a name is in BOTH, keep the `boxes:` value — that is the path the box actually ran with. Then delete `projects:` outright:
+
+         boxes:
+           <box name>: <the path>
+
+    2. Delete the `workset:` table. NOTHING replaces it — this workset is already named by the global registry, and no file under its root records a name, a created stamp or anything else about the workset itself.
+
+  Leave the rest of this file as it is. kanibako 1.8.0 ships no automatic migration for this — see MIGRATION.md §2.43.
+```
 
 ---
 
@@ -3291,7 +3305,7 @@ unchanged; only the directory leaf moved.)
 
 ```
 ~/code/<wsname>/               ← meta.workset.path
-├── registry.yaml              ← identity + membership (v1.8.0; see §2.43)
+├── registry.yaml              ← box membership ONLY (v1.8.0; see §2.43)
 ├── settings.yaml              ← meta.workset.settings (OPTIONAL in v1.8.0)
 ├── boxes/<box>/{home/ → ~/ , settings.yaml}
 ├── workspaces/<box>/          → ~/workspace
@@ -3516,19 +3530,26 @@ What this means for you:
 
 - **Detection is an ancestor-walk**, not a registry lookup. Standalone is detected by
   walking up for a `box_data/` dir + a root `settings.yaml` — presence only, no
-  `mode` field is read (§4.5); named by a workset-root `settings.yaml` carrying
-  `workset.meta` (superseded in v1.8.0 → a `workset:` table in the root
-  `registry.yaml`, §2.43); primary by
+  `mode` field is read (§4.5); named by a workset root's four-directory skeleton
+  (`boxes/`, the workspaces dir, `vault/`, `logs/`) — also presence only in v1.8.0,
+  where a workset root carries no identity table at all (§2.43); primary by
   reconciling the central boxes dir against the registry.
+- **A detected workset takes its DIRECTORY's name** (v1.8.0). Nothing under the root
+  records a name any more, so the import uses the root's directory basename — the same
+  default `workset create` applies when you give it a path and no `--name`. Rename the
+  directory before you move it if you want a different name.
 - **You can move or copy a box/workset/project tree** to a new location or machine and
   kanibako re-discovers it.
 - **Import is automatic with an alert, no confirmation.** When kanibako finds an
   on-disk entity that is not in the registry, it registers it, tells you it was
   imported, and proceeds.
 - **Name collision = refuse.** If an import's name collides with an
-  already-registered project/workset, kanibako refuses, leaves the tree untouched,
-  and prints a clear error. (A future `rename` mechanism — not in 1.6.0 — will
-  resolve collisions.)
+  already-registered entity **of the same kind** — a workset against a workset, a box
+  against a box — kanibako refuses, leaves the tree untouched, and prints a clear
+  error. (A future `rename` mechanism — not in 1.6.0 — will resolve collisions.)
+  ⚑ A workset name colliding with a primary BOX name is a different case and does
+  **not** refuse: the import proceeds and warns. Bare-name resolution prefers the box,
+  so reach the workset as `kanibako workset <cmd> <name>`.
 
 Practical upshot for migration: after you have hand-moved trees into the new layout
 (§3–§5), you do **not** strictly need to hand-edit the registry for every box — a

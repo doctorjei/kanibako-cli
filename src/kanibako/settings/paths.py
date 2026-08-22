@@ -828,15 +828,27 @@ def detect_project_mode(project_dir: Path, std: StandardPaths,
         return DetectionResult(BoxMode.primary, ac_ancestor)
 
     # 5. Walk ancestors for on-disk markers, IMPORTING what is unregistered.  NAMED is
-    # checked first at each level: its registry.yaml identity is the more specific one.
+    # checked first at each level: a workset root is the more specific shape.
     from kanibako.project import import_reconcile
-    from kanibako.project.workset import read_workset_identity
+    from kanibako.project.workset import (
+        is_workset_skeleton, refuse_retired_workset_identity,
+    )
 
     current = resolved
     while True:
+        # ⚑⚑ THE LEGACY REFUSAL RUNS FIRST, and unconditionally.  A v1.6/v1.7 root HAS
+        # the four-dir skeleton, so the NAMED arm below would import it happily under
+        # its leaf name — leaving the retired identity table, and the `projects:` list
+        # beside it, unread and unmentioned.  Diagnosing the legacy shape has to come
+        # before acting on the directory, or the diagnosis never happens.
+        refuse_retired_workset_identity(current)
+
         # NAMED: an unregistered workset root; import it, then the standard check resolves it.
-        if read_workset_identity(current) is not None:
-            import_reconcile.import_named_workset(std.registry, current, journal=std.journal)
+        if is_workset_skeleton(current):
+            import_reconcile.import_named_workset(
+                std.registry, current,
+                primary_workset=std.primary_workset, journal=std.journal,
+            )
             ws_after = _check_workset(resolved, std)
             if ws_after is not None:
                 return ws_after
@@ -1131,7 +1143,6 @@ def iter_workset_projects(std: StandardPaths, config: KanibakoConfig) -> _Workse
     """Return ``(workset_name, workset, [(project_name, status), ...])`` for every workset."""
     import sys
 
-    from kanibako.project import workset_registry
     from kanibako.project.workset import list_worksets, load_workset
 
     registry = list_worksets(std)
@@ -1143,23 +1154,17 @@ def iter_workset_projects(std: StandardPaths, config: KanibakoConfig) -> _Workse
             print(WARN_WS_NO_ROOT % (ws_name, root), file=sys.stderr)
             continue
         try:
-            ws = load_workset(root)
+            ws = load_workset(root, ws_name)
         except Exception as exc:
             print(WARN_WS_BAD_LOAD % (ws_name, exc), file=sys.stderr)
             continue
 
-        # The per-workset ``boxes:`` membership, loaded ONCE per workset — the SAME file
-        # ``load_workset`` just read the projects from.  ⚑ Presence is checked at the
-        # REGISTERED path, else an old-composition member reads as "missing".
-        registered_boxes = workset_registry.load_workset_boxes(ws.registry_path)
-
         project_list: list[tuple[str, str]] = []
         for proj in ws.projects:
             has_project_dir = (ws.projects_dir / proj.name).is_dir()
-            registered_ws_path = registered_boxes.get(proj.name)
-            workspace_path = (Path(registered_ws_path) if registered_ws_path is not None
-                              else ws.workspaces_dir / proj.name)
-            has_workspace = workspace_path.is_dir()
+            # ⚑ Presence is checked at the REGISTERED path — ``source_path`` IS the
+            # ``boxes:`` value, so there is no second read and nothing to re-derive.
+            has_workspace = proj.source_path.is_dir()
             if has_project_dir and has_workspace:
                 status = STATUS_OK
             elif has_project_dir and not has_workspace:
@@ -1180,7 +1185,7 @@ def _find_workset_for_path(project_dir: Path, std: StandardPaths) -> tuple[_Work
 
     registry = list_worksets(std)
     resolved = project_dir.resolve()
-    for _name, root in registry.items():
+    for ws_name, root in registry.items():
         ws_root = root.resolve()
         # The RESOLVED ``workset.workspaces`` — a repoint is honored (§3.3).
         ws_workspaces = resolve_workset_workspaces(ws_root, load_workset_settings_doc(ws_root))
@@ -1188,14 +1193,14 @@ def _find_workset_for_path(project_dir: Path, std: StandardPaths) -> tuple[_Work
         try:
             rel = resolved.relative_to(ws_workspaces)
             project_name = rel.parts[0] if rel.parts else None
-            ws = load_workset(root)
+            ws = load_workset(root, ws_name)
             return ws, project_name
         except ValueError:
             pass
         # Then check workset root itself.
         try:
             resolved.relative_to(ws_root)
-            ws = load_workset(root)
+            ws = load_workset(root, ws_name)
             return ws, None
         except ValueError:
             continue
@@ -1216,7 +1221,8 @@ def _resolve_workset_or_connected(project_dir: Path,
         from kanibako.project.workset import load_workset
         owned = box_resolve.find_connected_external_box(project_dir.resolve(), std)
         if owned is not None:
-            ws, proj_name = load_workset(owned.workset_root), owned.box_name
+            ws, proj_name = (load_workset(owned.workset_root, owned.workset_name),
+                             owned.box_name)
     if ws is None:
         raise WorksetError(ERR_WORKSET_NO_WORKSET % project_dir)
     return ws, proj_name
