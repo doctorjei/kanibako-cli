@@ -105,8 +105,9 @@ module.
 arbitrates at a destination — two mounts at one dest is an error in every scope combination — so
 dest-keying a mount arm makes the rule true by construction. A copy arbitrates at nothing: spec
 `:147-149` calls `meta.assembly.seeded`/`.synced` *"both flat scope-ordered lists"* and rules that
-*"nothing is arbitrated at a destination"*, and the manifest amendment spells it *"scope-ordered
-concatenation, **dest may repeat**"*. A dict cannot express a list with repeats, so it silently
+*"nothing is arbitrated at a destination"*, and the manifest's `meta.assembly.seeded` row spells it
+*"the CONCATENATION of every scope's `seeded` arm ... nothing is pruned, and a dest **MAY
+repeat**"*. A dict cannot express a list with repeats, so it silently
 kept the LAST row.
 
 * `ro` · `rw` are `BindMap` = `dict[dest -> BindEntry(src, opts)]`, matching the collapse's unpack

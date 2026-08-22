@@ -1,4 +1,4 @@
-## kanibako keyspace registry — RATIFIED 2026-08-01
+## kanibako keyspace registry — the LIVING projection of the keyspace
 ## (ratification record: plans/manifest-ratification-RULINGS.md)
 ##
 ## AUTHORITY is specs/settings-keyspace-1.8.0.md. This file is its
@@ -6,6 +6,15 @@
 ## defaults and directional rules, AGAINST WHICH CONFORMANCE TESTS ASSERT
 ## code == registry (tests/test_settings/test_manifest_conformance.py; read
 ## through kanibako.settings.keyspace_manifest, the one loader).
+##
+## ⚑ EVERY ROW STATES WHAT IS TRUE NOW — this file carries NO changelog. When a
+## ruling moves the keyspace, the row that OWNS the fact is rewritten and the old
+## wording goes: a dated ledger beside the rows makes TWO CARRIERS of one truth,
+## and the stale one reads as live. History lives in the archive. The verbatim
+## snapshot taken before the dated-amendment ledger was folded away is
+## notebook/archives/specs/keyspace-manifest.yaml.bak-2026-08-22-pre-amendments-fold
+## (sha256 5c6cf1722add5f65bc87dad336f649e42b39df83aecb6d3bc16eaf278ad88d06); the
+## ratification record above is the provenance of the original table.
 ##
 ## ⚑ NOTHING IS GENERATED FROM THIS FILE, and this header used to promise it was.
 ## Generation was measured and DECLINED (2026-08-15): it would put a 3000-line YAML
@@ -20,496 +29,13 @@ registry:                       # about this DOCUMENT (inert; never read by reso
   schema: 1                     # format version of this file
   keyspace: "1.8.0rc"           # flipped to "1.8.0" in-tree before the promoted rc (Part-4-as-amended)
   authority: "specs/settings-keyspace-1.8.0.md"
-  authority_read: "2026-08-01 (1300 lines, full)"
-  status: ratified              # ratification record: plans/manifest-ratification-RULINGS.md
-  amendments:                   # ratified changes made AFTER 2026-08-01
-    - date: "2026-08-06c"
-      what: "bindings.{ro,rw} go DEST-KEYED and TERMINAL; entry `name` dropped;
-             cli_set false; the 30 declared box.bindings.*.<name> rows DEMOTED to
-             bind_default_entries. Step 1 of the disk-store arc."
-      authority: "designs/disk-store-rework-DESIGN.md §0 R-3/R-4/R-5/R-6/R-8/R-9/R-10
-                  (Jei, 2026-08-06c); plan
-                  plans/2026-08-06c-bindings-dest-key-IMPLEMENTATION-PLAN.md"
-      scope: "bindings ONLY — masks / caches / common / seeded / synced /
-              secret_path are UNTOUCHED, and category_layers is unchanged
-              (reclassifying seeded is a LATER step of the same arc)."
-      code_state: "DOC-ONLY when written: no .py had landed. The spec is the
-                   authority; code that still spells the retired shape is WRONG."
-    - date: "2026-08-07f"
-      what: "caches / seeded / common / synced go DEST-KEYED and TERMINAL; the
-             entry `name` segment is dropped (R-10 extended to all four);
-             cli_set source_only -> false on all four (DS-BL1 answered (a)); the
-             six seeded.<name> layer rows and the three plugin synced.<name> rows
-             DEMOTED to category_default_entries; bind_shape DELETED (no members
-             left) and the four fold into bindmap_shape. Step 2 of the disk-store
-             arc."
-      authority: "Jei 2026-08-07f (\"lets retool common cache, seeded, synced, and
-                  others necessary to dest-key\" + \"fir synced : yes, this too\")
-                  and 2026-08-07g (\"DS-BL1 - a)\"); plan
-                  plans/2026-08-07f-four-category-dest-key-PLAN.md"
-      scope: "The four bind-shaped NAME-KEYED categories ONLY. This is a KEY-SHAPE
-              change and NOT a delivery change: `seeded` and `synced` remain
-              COPIES (kind: copy is unchanged) and `caches`/`common` remain mounts.
-              `env.<VAR>` and `secret_path.<VAR>` are <VAR>-parametric SCALARS and
-              are UNTOUCHED; they remain the only name-parametric category
-              families. category_layers (abstract/derived) is unchanged, and
-              tuple_dest_space is unchanged — it was already per-CATEGORY."
-      code_state: "DOC-ONLY when written: no .py had landed. The spec is the
-                   authority; code that still spells the retired shape is WRONG."
-    - date: "2026-08-07g"
-      what: "The THREE box-HANDBOOK seed layers (§2a layers 4-6, every one at
-             @box.canon/handbook) LEAVE the `seeded` category. Their
-             category_default_entries rows are DELETED at all three scopes, the
-             SEEDED-SEEDS box-create moment drops <box_dir>/canon/handbook, and the
-             notes that called @box.canon/handbook a seed dest are corrected. The
-             box's handbook chapter is now filled by a HOST-side copy at create
-             (launch.templates.install_box_handbook_template), modelled on
-             install_workset_template and KEEPING ALL THREE LAYERS as a named
-             SPECIAL CASE."
-      authority: "Jei 2026-08-07g: the handbook templates \"do not DIRECTLY
-                  interact with the box itself ... They are HOST templates, not
-                  GUEST templates\"; ratified spec §2a (three layers) and its
-                  SEEDED-SEEDS table; plan
-                  plans/2026-08-07g-handbook-host-template-move-PLAN.md"
-      scope: "The handbook half of `seeded` ONLY. The box-HOME layers 1-3 are
-              UNCHANGED and still `seeded` (the home IS what the guest sees at ~),
-              and so is their HOST dest_space discriminator. The ro
-              box.bindings.ro[~/canon/handbook/box] bind is UNTOUCHED: it still
-              reads @box.canon/handbook and is still an ordinary key — a host
-              template never enters a box, the BIND does, so single route COMPOSES.
-              The three layer SOURCES stay the ordinary keys
-              {system, agent.<agent>, workset}.template, so the user's repoint
-              route is unchanged. The box seed WHITELIST still allows
-              canon/handbook/ (ratified spec, unchanged): it governs the packaged
-              -> @system.template/box install, which still stages that subtree."
-      code_state: "Code + tests landed with this amendment (phases H1/H2). The spec
-                   half was Jei's and was ratified first."
-    - date: "2026-08-08a"
-      what: "The box HOME bind LEAVES `bindings.rw` and becomes the RO DERIVED key
-             `meta.box.home` (= @meta.box.path/home). The spec's
-             box.bindings.rw[~/] row and this file's `~/` bind_default_entries row
-             are DELETED; a `meta.box.home` key is declared in their place. Home is
-             effectively pid 0 — the FOUNDATION bind, seeded into the collapse
-             before any other entry, so nothing can subsume it and there can only
-             ever be one bind at home, BY CONSTRUCTION rather than by a new rule."
-      authority: "Jei 2026-08-08b: \"Henceforth, we will consider the home (~) bind
-                  to be unique (as it is); it will not route through the
-                  bindings.rw structure. Instead, it will be, effectively, pid 0;
-                  it will bind before ANYTHING else\" ... \"'home' goes in on the
-                  ground floor. It's the base plate, the foundation\"; and, on the
-                  key itself, \"ok. we can add a key for home. meta.box.home?\" ->
-                  \"yes, thats fine re: home. and A9 is good.\" Delta record:
-                  reference/2026-08-08-collapse-spec-delta-PROPOSAL.md A9; design
-                  designs/grand-unification-collapse-DESIGN.md §0.2 / §2a."
-      scope: "The HOME entry ONLY. ⚑ MOUNT OPTIONS ARE SEAM MACHINERY, not part of
-              the key — meta.box.home is a path scalar like every other meta.* row,
-              and the options (`Z,U`) move to the seam UNCHANGED IN VALUE. The ~13
-              binds NESTED inside home are UNAFFECTED: they stay bindings.rw
-              entries and simply nest on the base plate. No other bind row moves."
-      code_state: "DOC-ONLY when written; the code follow-up LANDED at cutover 6-H.
-                   data/core-defaults.yaml's `key: home` row is DELETED (there is no
-                   home row and one must not be re-added), and the FOUNDATION SEAM is
-                   commands/start.py._install_assembly_collapse, which builds the
-                   pid-0 bind from meta.box.home and hands it to
-                   store_collapse.collapse_store_shapes. ⚑ TWO CORRECTIONS TO THE
-                   ORIGINAL TEXT ABOVE: `core_defaults.add_bind's home arm` was a
-                   PHANTOM — the function has been generic since its introducing
-                   commit and the home behaviour lived in the YAML row alone, so
-                   deleting the row discharged it with NO add_bind edit; and the seam
-                   is start.py's, not settings_launch.py's (settings_launch owns the
-                   KEY, via workset_anchor_floor, and nothing more)."
-    - date: "2026-08-08b"
-      what: "COPY DESTS GO GUEST-SPELLED. policy.tuple_dest_space.copies flips
-             `host` -> `guest`; the §0 rule becomes ONE DEST SPACE, TWO DELIVERIES
-             for all six bind-shaped categories. The three seed-layer dest keys
-             (@meta.box.path/home) and the three plugin cred dest keys
-             (@meta.box.path/home/...) are respelled to their guest paths."
-      authority: "Jei 2026-08-08: \"Sorry, I mean guest dest-keyed\" and \"It's just
-                  a guest path; I know it lands host-side. And yes, I'll ratify the
-                  spec changes\"; plus the S-1 cut, \"cut 'it is a property of the
-                  CATEGORY, not of the key shape'. That's no longer true.\" Delta
-                  record: reference/2026-08-08-copy-dest-guest-respell-PROPOSAL.md
-                  §A/§C/§D; design designs/grand-unification-collapse-DESIGN.md §5."
-      scope: "SPELLING + RESOLUTION OWNERSHIP ONLY. `kind: copy` is UNCHANGED —
-              `seeded` and `synced` are COPIES and stay COPIES. ⚑⚑ COPIES STILL
-              LAND HOST-SIDE, and must: no guest exists at `create`. \"Copies write
-              into the guest\" is FALSE. What changed is that the dest is SPELLED
-              guest and RESOLVED to the host store WHEN THE COPY RUNS.
-              `masks` / `bindings.{ro,rw}` / `caches` / `common` were already guest
-              and are UNTOUCHED; the only edits touching them WIDEN a shared
-              sentence to cover all six. ⚑ The earlier ledger entries at
-              2026-08-07f (\"tuple_dest_space is unchanged\") and 2026-08-07g
-              (\"their HOST dest_space discriminator\") are LEFT AS WRITTEN: the
-              ledger is history and both were true when written."
-      code_state: "DOC-ONLY when written. NOT in this amendment and owed by the
-                   implementation pass: `dest_space`, `host_dest_keys` and
-                   `seed_keys_of` are DELETED (nothing left to discriminate), and
-                   seed_keys_of breaks MECHANICALLY at the key-shape flip. The spec
-                   is the authority; code that still spells a copy dest host-side
-                   is WRONG."
-    - date: "2026-08-08f"
-      what: "THREE keys are DECLARED in the §1A meta.runtime block:
-             meta.runtime.bindings (the collapsed BIND map, dict[guest_dest ->
-             (host_src, opts)], one entry per dest by construction),
-             meta.runtime.copies (the collapsed COPY map, dict[guest_dest ->
-             list[(host_src, opts)]], DEST-ORDERED) and meta.runtime.backup
-             (RESERVED, guest->host, the only reverse-direction member)."
-      authority: "Jei 2026-08-08f, ratifying the triple together; spec
-                  specs/settings-keyspace-1.8.0.md §1A (the meta.runtime block,
-                  immediately after meta.runtime.project_type)."
-      scope: "DECLARATION ONLY — these name the grand-unification OUTPUT (§0/§2),
-              they do not change how any category resolves. ⚑ NO PRODUCER EXISTS
-              for any of the three: bindings/copies are written by the collapse,
-              which has not landed, and backup has no producer at all and is
-              declared now only so the triple ratifies once. Declared-but-unproduced
-              is the intended state, not an omission."
-      code_state: "Code landed with this amendment: the three leaves join
-                   settings_keyspace.DECLARED_META_RUNTIME_LEAVES so the closed
-                   keyspace admits them (spec §0 — until declared, reading one is an
-                   error). Nothing else changed: no read surface exists for ANY
-                   meta.* key today (`system get meta.<anything>` answers 'unknown
-                   config key', including for the three PRODUCED siblings), so the
-                   declaration adds no get/set asymmetry."
-    - date: "2026-08-08g"
-      what: "NO KEYSPACE CHANGE — a CODE CORRECTION recorded for the ledger.
-             `meta.box.home`, `meta.box.container_name` and `meta.box.helper_num`
-             were rows in this file and in spec §2c while
-             settings_keyspace.DECLARED_META_BOX_LEAVES omitted all three, so the
-             closed-keyspace validator REFUSED three declared keys. `home` is the
-             ratified A9 key (2026-08-08a, above); the other two are long-standing
-             §2c rows."
-      authority: "The SPEC is the authority (§0: an undeclared key is not a key —
-                  and its converse, that a DECLARED key must resolve as one).
-                  Same defect class as 2026-08-08f, one namespace over; no new
-                  ratification was needed or sought."
-      scope: "DECLARATION ONLY. ⚑ NONE OF THE THREE WAS PRODUCED WHEN THIS WAS
-              WRITTEN: `home`'s @meta.box.path derivation was still OWED
-              (core-defaults' home bind spelled the literal `@meta.box.path/home`
-              inline instead), and `container_name` / `helper_num` are the non-bind
-              RENDER pair (JC-B2-3) — container_name is composed in
-              utils.container_name_for from proj attrs, helper_num travels in helper
-              messages. ⚑⚑ `home` IS PRODUCED NOW, and the row that bound it is GONE:
-              settings_launch.workset_anchor_floor materialises `meta.box.home`
-              (2026-08-10, A9), and cutover 6-H deleted the core-defaults `key: home`
-              row outright — the FOUNDATION is built at the assembly seam
-              (commands/start.py._install_assembly_collapse) and nothing routes home
-              through bindings.rw. `container_name` / `helper_num` are still
-              unproduced. ⚑ `core_defaults.add_bind's home arm` never existed; see the
-              2026-08-08a code_state above."
-      code_state: "Code + tests landed with this amendment: the three leaves join
-                   DECLARED_META_BOX_LEAVES, and the meta.box counterpart of
-                   2026-08-08f's manifest drift guard is added — it was the RED
-                   test that named this bug."
-    - date: "2026-08-09"
-      what: "THE COLLAPSE OUTPUTS MOVE TO THEIR OWN GROUP:
-             meta.runtime.{bindings,copies,backup} -> meta.assembly.{...}.
-             meta.assembly is a new TOP-LEVEL protected RO meta group (§0);
-             meta.runtime.{ws_root,ws_name,project_type} are UNCHANGED and stay."
-      authority: "Jei 2026-08-09: \"let's use meta.assembly.*; these values will be
-                  used to assemble the box after everything else is sorted.\" Spec
-                  specs/settings-keyspace-1.8.0.md §1A already carries the
-                  meta.assembly block, immediately after the meta.runtime one."
-      scope: "RENAME OF THE THREE 2026-08-08f ROWS ONLY — nothing about what they
-              hold changed; the notes travel verbatim. The reason is LIFECYCLE:
-              meta.runtime.* is what the TREEWALK found at L0.2, before anything
-              else resolves; these are the collapse's OUTPUT, produced after every
-              scope has folded, and they assemble the box. One group, one
-              lifecycle. ⚑ Their `spec:` field drops the `(L0.2)` rider with the
-              move: L0.2 is the treewalk layer and was never their layer.
-              ⚑ CLEAN BREAK, no alias: the keys were declared the day before, are
-              unreleased, and have no producer and no consumer, so the
-              breaking-change policy's additive discipline does not engage.
-              meta.runtime.bindings is now NOT A KEY and is refused BY NAME."
-      code_state: "Code + tests landed with this amendment: the three leaves leave
-                   settings_keyspace.DECLARED_META_RUNTIME_LEAVES for a new
-                   DECLARED_META_ASSEMBLY_LEAVES, key_validity's meta dispatch grows
-                   an `assembly` arm (a new second segment under meta. is a new
-                   family, and without the arm the closed keyspace refuses the
-                   ratified names), and the unknown-group refusal names it. The
-                   2026-08-08f drift guard now covers BOTH families, and a negative
-                   case pins meta.runtime.bindings REFUSED so the move cannot leave
-                   both spellings working."
-    - date: "2026-08-09d"
-      what: "COPIES APPLY TO THE HOME BIND ALONE, and meta.assembly.copies becomes
-             a SCOPE-ORDERED LIST[(host_src, guest_dest, opts)] instead of a
-             dest-keyed map. Every copy dest lies inside home and resolves into the
-             box home store, so the copy pass completes BEFORE any binding folds; a
-             copy whose dest is not inside home is a config ERROR. NOTHING IS
-             PRUNED — no mount arbitrates a copy at all, and a dest MAY repeat (the
-             later entry overwrites the earlier FILEWISE at apply time)."
-      authority: "Jei 2026-08-09d: \"Keep the bind rules - there's no reason to
-                  delete them. But, let's simplify copies. Copies will apply only
-                  to the home bind - done. They can be completed before any binding
-                  resolution that way. We can split out the final copies in a
-                  simply concatenation of the file list\", ratified on sight of the
-                  drafted spec text (\"ratified\"). Design
-                  designs/collapse-implementation-DESIGN.md §9."
-      scope: "WHERE a copy may point and WHEN it resolves — NOT what a copy is.
-              ⚑⚑ `seeded` and `synced` ARE STILL COPIES (kind: copy untouched).
-              The dest-keyed map was silently collapsing the layered seeded.template
-              trio (one row per SCOPE); a concatenated list keeps all three. ⚑ The
-              synced<->binding refusal at one dest is RETAINED DELIBERATELY until
-              the mount_forbidden list replaces it — deleting it first would leave a
-              window with no protection. The mount table (§0) is untouched by this."
-      code_state: "Code landed with this amendment (948910c, plus c6cddce for the
-                   meta.assembly notes). The collapse also stopped touching the
-                   filesystem as a consequence: the Path(src).is_dir() probe existed
-                   only for the copy-vs-mask rule this ruling deletes."
-    - date: "2026-08-10"
-      what: "THE COLLISION TABLE BECOMES A CONTAINMENT TABLE. policy
-             .category_collisions' five dest-equality cases are replaced by the
-             containment table over the ARRIVING mount (point / child / parent x
-             bind / mask), the four refusals stated once, and the accept-then-sweep
-             operation. policy.category_reconcile's `nested_paths: deepest_wins`
-             becomes `containment_ordered` (ONE merge, TWO orderings) and the block
-             gains the home-only copy rule it never carried."
-      authority: "Jei 2026-08-10, ratifying five spec sites one at a time on sight
-                  of the drafted text (\"Approved\" / \"Ratified\" / \"ratified.\"
-                  x3). The refusability table is HIS (2026-08-09: \"BTW, that table
-                  is good. Keep it.\"). Design
-                  designs/collapse-implementation-DESIGN.md §8. ⚑ This SUPERSEDES
-                  the 2026-08-08 collapse spec-delta PROPOSAL, which is RETIRED —
-                  do not apply any item from that file."
-      scope: "⚑ ONE BEHAVIOUR CHANGE, and it NARROWS what a user may write: two
-              mounts at one dest are an ERROR in EVERY scope combination. The
-              retired rows resolved a cross-scope abstraction collision SILENTLY by
-              scope precedence and a same-scope one with a WARN. It was put to Jei
-              explicitly and ratified with the site. Base-vs-extension keeps only a
-              DIAGNOSTIC requirement — the refusal is SYMMETRIC and is decided in
-              ONE scope at PRODUCTION, before the collapse. ⚑ The table is MOUNTS
-              ONLY: copies apply to the home bind alone and never meet a mount.
-              keyed_on, the ro/rw rationale and error_text_must_point_at are
-              UNCHANGED, and synced_vs_binding_same_dest is UNCHANGED."
-      code_state: "DOC-ONLY. 🛑 The live route does NOT implement this table — it
-                   groups on the exact box_dest string and resolves cross-scope ties
-                   by precedence. The tightening lands at the CUTOVER
-                   (plans/2026-08-09d-CUTOVER-PLAN.md). The spec LEADS the code
-                   here, deliberately; the spec is the authority."
-    - date: "2026-08-10b"
-      what: "THE COPY OUTPUT SPLITS IN TWO, AND `synced` RESOLVES AT THE OPPOSITE END
-             OF THE FOLD. meta.assembly.copies -> meta.assembly.seeded (renamed; the
-             leaf names the category it carries, as its siblings do), carrying the
-             `seeded` arm and nothing else. meta.assembly.synced is NEW and carries
-             the `synced` arm, which the collapse had been DROPPING ENTIRELY.
-             meta.assembly.backup is RETIRED: it had been reserved for the writeback
-             — the second half of sync — and ONE list now serves both halves, since a
-             synced entry spells both sides fully and takes no root, so DIRECTION IS
-             A PROPERTY OF THE READ, not of the row."
-      authority: "Jei 2026-08-10, in sequence: \"Two lists sounds good.\" ->
-                  \"(meta.assembly.synced should good.) … it may make sense for
-                  'copies' to become meta.assembly.seeded to match the pattern.\" ->
-                  \"Since sync has its own pattern now, could we simply copy it last
-                  instead? After binds are done?\" -> \"synced<->binding is
-                  unnecessary now, yes… we need to either have mount_forbidden for
-                  the specific mount point, or we need to throw an error or warning if
-                  there's a file bind overlap. Perhaps for simplicity, we start with
-                  an error; we can always loosen it later\" — clarified: \"we can
-                  loosen later without breaking existing boxes\" — and on the drafted
-                  rows: \"go\". Spec specs/settings-keyspace-1.8.0.md §0 and §1A;
-                  annotations, post-ratification amendment 2026-08-10b. Precipitating
-                  measurement: plans/2026-08-09d-CUTOVER-PLAN.md §1c-M."
-      scope: "⚑⚑ `seeded` and `synced` ARE STILL COPIES (kind: copy untouched) — this
-              is KEY SHAPE and RESOLUTION ORDER, not delivery. `seeded` is UNCHANGED
-              in every respect but its name: home-only, resolved BEFORE any binding
-              folds, scope-ordered concatenation, dest may repeat. `synced` applies
-              LAST, after the bind map is FINAL, and there is deliberately NO
-              home-only rule for it — home is simply the pid-0 foundation among the
-              binds a sync dest may resolve through. ⚑ ONE NEW REFUSAL: a sync dest
-              that EXACTLY EQUALS a bind dest. It is stated STRUCTURALLY because the
-              collapse is PURE and cannot tell a file bind from a directory bind; it
-              catches every file-bind overlap and starts strict, since loosening a
-              refusal cannot break a box that works today. ⚑ THIS IS NOT AN
-              ARBITRATION: the bind map is complete and immutable before the sync pass
-              READS it — nothing is pruned and no copy competes with a mount, so the
-              2026-08-09d simplification stands. ⚑ CLEAN BREAK, no alias:
-              meta.assembly.* post-dates v1.8.0-rc1, so meta.assembly.copies and
-              meta.assembly.backup are now NOT KEYS and are refused BY NAME.
-              📌 The synced<->binding same-dest refusal on the LIVE route
-              (settings_categories._resolve_dest_group) is RETIRED by this, and the
-              mount_forbidden backlog item is ANSWERED by it — both land at the
-              CUTOVER, not with this amendment."
-      code_state: "Code + tests landed with this amendment: DECLARED_META_ASSEMBLY_
-                   LEAVES becomes {bindings, seeded, synced}; store_collapse splits
-                   _collapse_copies into a seed pass and a sync pass with the mount
-                   fold BETWEEN them, CollapsedStore gains its third field, and the
-                   sync pass carries the exact-dest refusal; _install_assembly_collapse
-                   writes all three leaves. 🛑 NOT in this amendment: the
-                   resolve-through-the-bind-map DELIVERY behaviour (the emitted row
-                   carries the GUEST dest) and the two live copy consumers, which
-                   still read reconciled.copies. Both switch at the CUTOVER's step 2.
-                   ⚑ SUPERSEDED 2026-08-12 (below): the exact-dest refusal this
-                   amendment introduced is GONE, and nothing replaces it."
-    - date: "2026-08-12"
-      what: "THE SYNC-vs-BIND CHECK IS DELETED OUTRIGHT. policy.category_reconcile
-             .synced_vs_binding_same_dest: error -> allowed. A `synced` copy whose
-             dest EXACTLY EQUALS a bind dest is ordinary — it resolves through that
-             bind into its host source and overwrites CONTENT there, so the bind is
-             not replaced and most of it remains intact. No stage refuses it: the
-             reconcile's copy went at 5-1b, and the assembly fold's
-             store_collapse._refuse_sync_at_a_bind_dest is now deleted too, leaving
-             the sync arm a plain scope-ordered concatenation that takes no bind map
-             at all. ⚑ THE MOUNT ALSO STOPS BEING DROPPED: settings_categories
-             ._resolve_dest_group returned the copy ALONE when a `synced` met a
-             non-`masks` mount at one dest, deleting a declared binding; both now
-             survive, so one box_dest may appear in BOTH ReconciledCategories.mounts
-             and .copies. The `masks` arm is UNTOUCHED — a copy-vs-mask rule is a
-             separate question and is not decided here."
-      authority: "Jei 2026-08-12: \"don't check for sync. Let it clobber whatever it
-                  wants.\" Consistent with four earlier statements of the same
-                  position — \"sometimes we want to copy onto a bind\", \"copy |
-                  bind, same, OK\", \"copy | bind copies on top of the bind, and most
-                  of bind remains intact\", \"it's ok for a synced item to apply to
-                  the exact same root as a bind, just like a copy can\". ⚑ The
-                  earlier reading that a structural blanket refusal followed from the
-                  file-bind-overlap concern was the DIRECTOR's, not his."
-      scope: "⚑⚑ `seeded` and `synced` ARE STILL COPIES (kind: copy untouched). This
-              LOOSENS: a configuration that refused to launch now launches, and
-              nothing that launched before refuses. `seed_dest_outside_home` is
-              UNTOUCHED and still an error — the two copy arms answer this question
-              DIFFERENTLY and always did. ⚑ It also supersedes two earlier records
-              in THIS list that read as live: 2026-08-10's `scope` (\"...and
-              synced_vs_binding_same_dest is UNCHANGED\") and 2026-08-10b's `scope`
-              (\"ONE NEW REFUSAL: a sync dest that EXACTLY EQUALS a bind dest\").
-              Both are left standing as the dated history of what those rulings did;
-              neither states the rule today.
-              ✅ SPEC DELTA TAKEN (2026-08-12): specs/settings-keyspace-1.8.0.md §0 now
-              reads that such a dest is ACCEPTED — the copy lands ON TOP and writes
-              through into the bind's source — carrying a dated correction note, and
-              the annotations file strikes the old sentence in place. Nothing is owed
-              on this axis; this record is history, not a pending edit."
-      code_state: "Code + tests + CHANGELOG/MIGRATION landed with this amendment."
-    - date: "2026-08-14"
-      what: "ENV JOINS THE COLLAPSE, AND A CONTESTED VARIABLE REFUSES THE LAUNCH.
-             meta.assembly.env is NEW — a fourth collapse output, dict[VAR ->
-             (value, scope, key)] — carrying the env slots after write-once
-             arbitration. The scopes act SYSTEM-FIRST over the same
-             SCOPE_CONTAINMENT order the bind fold walks; the first scope to name a
-             VAR holds the slot; a VAR named by TWO scopes' keys is a COLLAPSE
-             REFUSAL naming both keys, the same shape as a contested bind dest. No
-             comparator is introduced: the walk order plus the refusal is the whole
-             arbitration."
-      authority: "Jei 2026-08-14, in sequence: \"I suggest we use the same approach
-                  as for the bindings - add a meta.assembly.env key, and collapse
-                  the variables within it. …\" -> \"Let's do it.\" -> \"this is not
-                  correct. Bindings are first to act, i.e., system before agent,
-                  etc.\" -> \"When setting keys for env variables, box wins. Keys do
-                  not have a write / act limit. When setting the env variables
-                  themselves, that is when write-once applies, so system wins.\" ->
-                  \"The 'raising' is indicating the slot isn't available… But env
-                  for us, I think, should do the same.\" -> \"re: P1 - that's fine.\"
-                  Plan plans/2026-08-09d-mbr1-IMPLEMENTATION-PLAN.md §2."
-      scope: "⚑⚑ THE KEY LAYER IS UNTOUCHED. `<scope>.env.<VAR>` remains an
-              ordinary write-many settings key: the SAME key written in several
-              files cascades and the nearest file wins, exactly as before. What is
-              written ONCE is the VARIABLE, and the slot is its NAME — the two
-              orderings are cascade (one key, many files, nearest wins) and
-              realization (many keys, one slot, containing scope acts first). ⚑ A
-              same-scope contest is impossible by construction and no code exists
-              for it: one scope's `env` node is a map keyed by VAR, and the agent
-              tier's two cascade levels are overlaid per name upstream.
-              🔴 USER-VISIBLE, BREAKING: a config carrying `system.env.X` (or
-              agent/workset) AND `box.env.X` launches today with box winning
-              SILENTLY; it now refuses, naming both keys. MIGRATION.md §2.33 +
-              CHANGELOG. ⚑ It cannot fire on a default install — nothing kanibako
-              ships declares an `env` entry at two scopes. `secret_path.<VAR>` is
-              UNTOUCHED and keeps its own per-VAR box-most pick; whether a secret
-              and an env var may contest one $VAR slot is a separate open question.
-              ⚑ The leaf was written UNREAD in this amendment: the launch and
-              `box show --effective` still consumed LaunchDeliveries.envs, and the
-              consumer flip was the next step. ✅ THAT STEP LANDED, 2026-08-14: both
-              consumers read the leaf through commands/start._launch_env_map and the
-              `envs` carrier field is RETIRED. Behaviour for a config the collapse
-              accepts is unchanged - one key per VAR either way, and the winner's
-              (scope, key) now travels WITH the value instead of beside it."
-      code_state: "Code + tests + CHANGELOG/MIGRATION landed with this amendment:
-                   store_collapse.collapse_env + its single raise site,
-                   _install_assembly_collapse writes the fourth leaf below the
-                   whole-box gate, DECLARED_META_ASSEMBLY_LEAVES gains `env`. ⚑ The
-                   §1A spec block and the annotations file were amended in the same
-                   pass. ⚑ ALSO IN THIS PASS, unrelated to the ruling: the
-                   meta.assembly.synced note still carried the 'sync dest that
-                   EXACTLY EQUALS a bind dest is a config ERROR' prose the
-                   2026-08-12 amendment deleted; it now states the ruled behaviour."
-    - date: "2026-08-15"
-      what: "-e ENTERS THE COLLAPSE AT THE CLI LEVEL, AND THE PLUGIN REALIZATIONS
-             FOLD IN AS AGENT-SCOPE KEYS (MBR-1 P4c). A `-e VAR=value` REPLACES the
-             value of the VAR's owning key inside the collapse (provenance kept);
-             a VAR no key names gets a fresh CLI-provenance slot (scope=\"cli\",
-             key=\"-e <VAR>\"). The five descriptor-derived variables (goose
-             GOOSE_MODE/GOOSE_MODEL/GOOSE_PROVIDER/OPENAI_HOST, claude
-             ANTHROPIC_BASE_URL) derive inside the launch resolve and INSTALL as
-             agent.<active>.env.<VAR> keys before entry adaptation; the state_env
-             paste layer above the channel is DELETED. A user twin of a realized
-             VAR refuses: same-scope at the install naming the declared key AND
-             the driving key; other scopes via the ordinary contested-VAR
-             refusal. NO carve-out."
-      authority: "Jei - ruling 42 2026-08-14 (\"-e should override the key values,
-                  not the environment variables themselves\"); spec env.<VAR>, -e
-                  beats a realization uniformly, the CLI level overrides the owning
-                  key (§1A)
-                  (\"e must win... so it must be part of the collapse\"); ruling 59
-                  2026-08-15 (\"Yes on P4c-2.\" - derived pairs enter as keys, user
-                  twins meet the ordinary refusal, no carve-out); ruling 61, the
-                  P4c GO (\"so, go\") + his future-design flag on the
-                  paste-over-the-key shape (no immediate action; boarded). Plan
-                  plans/2026-08-14-p4c-DESIGN.md."
-      scope: "CLOSED-KEYSPACE ANSWER: NO new declared shape - the CLI value lives
-              inside the leaf's tuple (data, not a key); realized pairs enter
-              through the existing declared agent.<node>.env.<VAR> family and
-              leave through the one meta.assembly.env writer. box show --effective
-              does NOT display realizations (they depend on launch flags).
-              🔴 USER-VISIBLE, BREAKING (the realization half): GOOSE_MODE realizes
-              on EVERY goose launch, so any <scope>.env.GOOSE_MODE that launches on
-              v1.7.2 refuses now (cure: access / -S / -A); the other four refuse
-              conditionally on model/provider/endpoint resolving truthy. Nothing
-              kanibako ships declares any of the five as a key. This closes the
-              2026-08-14 entry's open CLI `-e` half; its secret_path half stays
-              open (G4 -> board, ruling 62)."
-      code_state: "Code + tests + CHANGELOG/MIGRATION landed with this amendment:
-                   P4c-1 b6b5a2d (the -e fold: collapse_env cli_env= application
-                   between gating and the walk, parse-once refusal at
-                   _run_container entry) and P4c-2 95beb33 (the realization fold:
-                   _LaunchRealizer callback in _resolve_launch_snapshot between
-                   build_launch_snapshot and snapshot_category_entries, the
-                   derived trio returned to the caller; _install_realized_env +
-                   _refuse_realized_twin single raise site; the P4c-1 setdefault
-                   intermediate deleted). MIGRATION §2.39/§2.40; both CI-green by
-                   SHA. The spec §1A flag list + meta.assembly.env leaf block +
-                   §2a realization bullet and the annotations file were amended in
-                   the same pass."
-    - date: "2026-08-15"
-      what: "box.env.COLORTERM IS A DECLARED KEY WITH A CORE-SHIPPED DEFAULT, and
-             gains its `keys:` row (D1-4/MBR-2). core-defaults.yaml's `env:` table
-             stopped being empty and now carries `box: COLORTERM: \"truecolor\"`;
-             the first-run write in cli.py that used to materialise the value into
-             the system settings file is DELETED. No new shape: the `env` category
-             already declared the FAMILY, and this is the first member kanibako
-             itself ships a DEFAULT for, so the default belongs in the key table
-             beside every other §2b box row."
-      authority: "spec §2b, the `box.env.COLORTERM | truecolor` row
-                  (specs/settings-keyspace-1.8.0.md:867 — `[core-declared
-                  DEFAULT] … replaces the retired first-run seed`); commit
-                  9ac0980 (2026-08-15) \"Declare COLORTERM as a core default and
-                  retire the first-run seed\"."
-      scope: "ONE ROW, ADDITIVE. The `env` category entry is untouched — the
-              family was already declared parametric in VAR and every other
-              <scope>.env.<VAR> stays a family member with no row of its own. No
-              other category, key or retired-key row changes. ⚑ NO BEHAVIOUR
-              CHANGE AND NO NEW CHANGELOG ENTRY: the key and its value have both
-              shipped since 9ac0980, and this is the REGISTRY catching up to code
-              and spec that already agreed. The one user-facing consequence is
-              that `system defaults` reads the registry, so its DECLARED KEYS
-              section grows by this row (63 -> 64) — the count in the UNRELEASED
-              CHANGELOG entry for that command is corrected in the same commit.
-              Nothing is owed to MIGRATION."
-      code_state: "Code + spec landed 2026-08-15 at 9ac0980 (core-defaults.yaml
-                   `env: box:`, the cli.py write deleted, fail-closed ENV_KEY_RE
-                   validation of the shipped file, CHANGELOG + MIGRATION §2.42).
-                   This file was the ONLY carrier still silent about it; the row
-                   above and the conformance pin in
-                   tests/test_settings/test_manifest_conformance.py
-                   (TestSingletonDefaults, against
-                   core_defaults.env_default_categories) land with this amendment."
+  authority_tracking: current   # the rows track the spec AS IT IS, not as it read on
+                                #   any one date. Replaces the former `authority_read`
+                                #   date stamp, which asserted this file was a snapshot
+                                #   of one dated reading.
+  status: living                # maintained against the spec — not a ratified snapshot
+                                #   plus a ledger. Ratification record:
+                                #   plans/manifest-ratification-RULINGS.md
 
 ## ---------------------------------------------------------------------------
 ## POLICY — the rules of the keyspace. Every field traces to a ratified clause.
@@ -1668,7 +1194,7 @@ keys:
            no stored value anywhere. An ORDINARY key of the parametric `env`
            category (§2a): write-many, so an override is the SAME key in a nearer
            file and the nearest wins, while the SAME VAR named at a SECOND scope
-           is the launch REFUSAL naming both keys (2026-08-14 amendment).
+           is the launch REFUSAL naming both keys (see meta.assembly.env).
            Delivery is the §2d env channel, through meta.assembly.env. The
            category declares the FAMILY; this row declares the shipped DEFAULT."
     spec: "§2b (core-declared default, 2026-08-15)"
@@ -1915,6 +1441,10 @@ keys:
   ## `backup` was retired because one sync list serves both directions. `env`
   ## joined 2026-08-14: the env VARIABLES realize through the same collapse the
   ## mounts do, so their arbitrated result belongs in the same group.
+  ## ⚑ THE SUPERSEDED SPELLINGS ARE NOT KEYS and are refused BY NAME:
+  ## meta.runtime.{bindings,copies,backup} (this group's pre-2026-08-09 home) and
+  ## meta.assembly.{copies,backup}. Every one of them post-dates v1.8.0-rc1, so the
+  ## moves ship CLEAN — no alias, no shim, nothing to migrate.
   meta.assembly.bindings:
     namespace: meta
     set: never
@@ -1976,7 +1506,7 @@ keys:
            partial masks). (`seeded` has a refusal of its own, seed_dest_outside_
            home; the two copy arms answer this question differently and always did.)
            (Corrected 2026-08-14: this note still called such a dest a config
-           ERROR, which the 2026-08-12 amendment in registry.amendments deleted -
+           ERROR, which the 2026-08-12 ruling deleted -
            policy.category_reconcile.synced_vs_binding_same_dest has read `allowed`
            since, and no code reads this prose.) BOTH
            HALVES READ THIS ONE LIST - delivery host->guest at launch (overwrite,
@@ -2028,7 +1558,12 @@ keys:
            INSTALLED as agent.<active>.env.<VAR> keys at the launch resolve,
            UPSTREAM of this map - ordinary agent-scope entries by the time the
            collapse walks; nothing downstream knows a realized variable from a
-           declared one, and nothing may be taught to."
+           declared one, and nothing may be taught to. A USER TWIN OF A REALIZED
+           VAR REFUSES, with NO carve-out: at the SAME agent scope the INSTALL
+           refuses, naming both the user's declared key and the driving key; at any
+           other scope it meets the ordinary contested-VAR refusal above. The
+           same-scope sentence above is about the WALK - by the time the collapse
+           walks, a twin has already been refused upstream."
     spec: "§1A"
   meta.workset.path:
     namespace: meta
