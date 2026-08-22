@@ -57,6 +57,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   at all for an unnamed project or an agentless box; the output
   says so and points at `kanibako box show --effective`.
 
+- **Two rules were added to the handbook kanibako ships, and only NEW boxes get them.** The
+  bundled handbook template gained one rule in each of two files: `CANON.md`'s editing guidance
+  now closes with **"An empty tome section is a slot, not cruft."** — it already said a directory
+  that does not yet exist is not missing, but said nothing about reading one that is there and
+  empty, which reads as cruft to tidy away. And `DATAPOLICY.md`'s git-safety list gained **"Never
+  drop or clear a stash you did not create."** — it barred committing and pushing unasked and
+  named the paths never to commit, but a stash holds work that is in no commit, and is often not
+  the work of whoever finds it. ⚑ **The handbook is seeded once, at `create`.** Boxes you already
+  have will never see either rule; only boxes created on this version and later carry them. To
+  give an existing box the same text, copy the two lines into its own canon by hand — kanibako
+  will not re-seed over a live handbook, by design.
+
 ### Fixed
 
 - **`config set box.agent.<key>` now always says the key is retired, instead of sometimes
