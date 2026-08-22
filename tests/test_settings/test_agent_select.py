@@ -527,11 +527,20 @@ class TestSelectAgentSeamBoxArgument:
         assert "kanibako box set myproj pref.system.agent=goose" in msg
         assert "kanibako box set myproj --null pref.system.agent" in msg
 
-    def test_a_nameless_box_falls_back_to_the_bare_cure(self, tmp_path, monkeypatch):
+    def test_a_nameless_box_falls_back_to_the_subject_PLACEHOLDER(
+        self, tmp_path, monkeypatch,
+    ):
         """``proj.name`` can be falsy (spec: the addressable-name-less case
         ``settings/paths.py`` covers with a short-hash DISPLAY fallback, which is
-        not a ``box set`` positional). The cure must degrade to today's bare form
-        rather than emit a broken/``None`` argument or a doubled space."""
+        not a ``box set`` positional).
+
+        ⮕ **SUBJECT CHANGED.** This used to pin a degrade to the BARE form. The
+        bare form parses, which is the trap: ``box set`` takes its arguments as a
+        list, so the key alone is accepted and the write lands on whatever box the
+        reader's cwd resolves to — a different box, silently. Unknown subject ⇒ the
+        ``<box>`` placeholder, the choice ``_retired_mirror_cure`` already made.
+        Still no ``None`` and no doubled space.
+        """
         from kanibako.settings.agent_select import select_agent
 
         monkeypatch.setattr(
@@ -544,8 +553,8 @@ class TestSelectAgentSeamBoxArgument:
         with pytest.raises(SettingsError) as ei:
             select_agent(std=std, proj=proj, explicit_agent=None)
         msg = str(ei.value)
-        assert "kanibako box set pref.system.agent=goose" in msg
-        assert "kanibako box set --null pref.system.agent" in msg
+        assert "kanibako box set <box> pref.system.agent=goose" in msg
+        assert "kanibako box set <box> --null pref.system.agent" in msg
         assert "kanibako box set  pref.system.agent=goose" not in msg  # no doubled space
         assert "None" not in msg
 
@@ -592,19 +601,38 @@ class TestRetiredKeyCureIsLevelAppropriate:
         return str(ei.value)
 
     def test_box_and_workset_get_the_pref_cure(self, tmp_path):
+        """⚑ THE VERB IS THE LEVEL. A workset file's cure is ``workset set``, not
+        ``box set`` — the levels share the §2h permission, never the command."""
         for level in ("box", "workset"):
             msg = self._msg(tmp_path, level, {"box": {"agent_name": "goose"}})
-            assert "kanibako box set pref.system.agent=goose" in msg
+            assert f"kanibako {level} set <{level}> pref.system.agent=goose" in msg
             assert "no-agent box" in msg
+
+    def test_the_workset_cure_names_the_workset_verb_AND_a_subject(self, tmp_path):
+        """DEFECT: the scalar cure hardcoded ``box set`` at BOTH pref-legal levels,
+        so a workset file was handed the wrong verb with no subject at all —
+        ``kanibako box set pref.system.agent=goose``, which parses and writes to a
+        BOX. The sibling ``_retired_mirror_cure`` never had the bug; this pins the
+        two functions to the same shape.
+
+        INVERT: hardcode ``box`` in ``_retired_key_cure`` again and this reddens.
+        """
+        msg = self._msg(tmp_path, "workset", {"box": {"agent_name": "goose"}})
+        cure = msg.split("Fix: ", 1)[1].splitlines()[0].strip()
+        assert cure.startswith("kanibako workset set <workset> pref.system.agent=goose")
+        assert "kanibako workset set <workset> --null pref.system.agent" in cure
+        # The BOX verb must not appear at all at this level.
+        assert "kanibako box set" not in cure
 
     def test_system_and_base_get_the_flag_dont_relocate_cure(self, tmp_path):
         for level in ("system", "base", "agent"):
             msg = self._msg(tmp_path, level, {"box": {"agent_name": "goose"}})
             assert "REMOVE it" in msg
             assert f"NO equivalent at {level} scope" in msg
-            # It still says what to do INSTEAD, at both plausible intents.
+            # It still says what to do INSTEAD, at both plausible intents. No
+            # single box is in scope here, so the box arm carries the placeholder.
             assert "system set system.agent=goose" in msg
-            assert "box set pref.system.agent=goose" in msg
+            assert "box set <box> pref.system.agent=goose" in msg
 
     def test_the_system_default_cure_is_level_independent(self, tmp_path):
         for level in ("system", "box"):

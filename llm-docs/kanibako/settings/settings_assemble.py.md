@@ -304,6 +304,26 @@ CLI parses. A nested TABLE has no single-token spelling at all, so its tail stay
 level deeper (`<sub>.<key>=<value>`) rather than a repr that cannot work. Both of those were caught
 by PROBING the emitted commands rather than reading them; a cure is a command a user pastes.
 
+```_cure_subject(level: str, box_name: str | None) -> str```
+The REQUIRED subject positional for `kanibako <level> set` — ONE derivation, shared by every cure
+this module emits.
+
+⚑ **THE VERB IS THE LEVEL, and the subject is never optional.** Both pref-legal verbs take a
+subject — `box set <box>`, `workset set <workset>` — and only a box-level refusal knows what it is
+(`_retired_key_cure`'s *box_name*). Anything else renders `<box>` / `<workset>`: a PLACEHOLDER,
+never nothing.
+
+Why nothing is the worst of the three options, and why it is not caught by reading: dropping the
+positional does not fail loudly at either level. `workset set` binds the KEY to its `workset`
+positional and leaves `key_value` empty, so the pasted line hunts for a working set named
+`pref.agent.<agent>.access=full`. `box set` takes its arguments as a LIST, so the key alone parses
+and the write lands on whatever box the reader's cwd resolves to — a different box, silently. Both
+were measured against the real parser; both read fine on the page.
+
+⮕ This function exists because the two cures DIVERGED: `_retired_mirror_cure` forked on the level
+correctly while `_retired_key_cure` hardcoded `box` and populated the positional only at box level,
+so a workset file got `box set` with no subject. One derivation, so they cannot drift again.
+
 ```_retired_mirror_cure(*, level: str, box_name: str | None, table: dict[Any, Any]) -> str```
 The LEVEL-APPROPRIATE fix for a TABLE-valued `box.agent` — the retired settable agent MIRROR (R-4).
 
@@ -316,9 +336,7 @@ scope, offering `kanibako agent set` for a user who meant to tweak the agent eve
 runs BEFORE selection, so naming an agent here would be a GUESS, and it is exactly the guess a box
 carrying this table most needs kanibako not to make.
 
-⚑ Both `box set` and `workset set` take a REQUIRED subject positional, so an unknown subject renders
-`<box>` / `<workset>` — a PLACEHOLDER, never nothing: a command that is missing an argument fails in
-a way that reads as "the cure is wrong".
+⚑ The verb and its subject come from `_cure_subject`.
 
 ```_retired_key_cure(key: str, *, level: str, value: str, box_name: str | None = None, mirror: dict[Any, Any] | None = None) -> str```
 The LEVEL-APPROPRIATE fix for a retired key (M-4).
@@ -336,7 +354,11 @@ legal pref equivalent — flag it rather than silently relocating it."*
 *box_name* is the addressable box the cure is FOR: `kanibako box set` takes the box as a REQUIRED
 `[project]` positional unless the caller's cwd already resolves to that box, and Jei hit that gap
 live on a cure that omitted it. Threaded ONLY for a box-level refusal — `None` at any other *level*,
-where no single box is being refused for.
+where no single box is being refused for. The verb and its subject then come from `_cure_subject`,
+so a WORKSET file's cure is `workset set <workset> …`, not `box set …`.
+
+⚑ The base / system / agent REMOVE-it arm names no single box either, so the "if you meant one box"
+line it closes with carries the `<box>` placeholder rather than a bare `box set`.
 
 ```_nested_present(raw: Any, parts: tuple[str, ...]) -> Any```
 Read *raw* at the nested *parts* path, or `_NO_LEAF` when ABSENT.
@@ -380,6 +402,12 @@ found in — the same asymmetry `_retired_key_cure` handles for the selection ke
 * `workset` / `box` — a BARE agent key is an UPWARD write there (`agent ⊃ workset ⊃ box`) and is
   dropped at assembly, so the legal spelling is the §2h REQUEST, which is exactly where a per-box
   permission tier belongs.
+
+⚑ **Two different subjects, one word.** *subject* here names the AGENT node, NOT the box or workset
+the verb addresses. This seam is handed no box name at all, so the verb's own positional comes from
+`_cure_subject(level, None)` and is always the placeholder. Reading *subject* as the verb's subject
+is how this cure shipped as `workset set pref.agent.<agent>.access=full`, with the positional
+missing outright.
 
 ```refuse_retired_behavior_keys(raw, *, level, path, subject=None) -> None```
 RAISE when *raw* still carries a RETIRED behavior key (R-41 / RQ-2).
