@@ -124,18 +124,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   helper home has no canon binds at all, and giving one a `canon/` directory would make the launch
   materialize a canon skeleton it was never meant to have. See [MIGRATION.md](MIGRATION.md) §2.44.
 
-- **BREAKING: a named workset's identity table is spelled `meta.workset` now, not `workset.meta`.**
-  v1.7.0 moved every `<scope>.meta` identity key into the top-level, read-only `meta.<scope>`
-  namespace, and named this very table while doing it (`workset.meta.root` → `meta.workset.path`) —
-  but the table kanibako actually writes at a workset root stayed behind under `workset:` → `meta:`,
-  the one place the rename never landed. It is the top-level `meta:` → `workset:` table now, which
-  is also what keeps it from ever being taken for a setting: `meta.*` is read-only everywhere, so
-  kanibako drops the whole `meta:` table before assembling your settings and reads the identity
-  straight out of the file instead. **Re-nest the table by hand in each named workset root's
-  `settings.yaml`** — `workset: {meta: {…}}` becomes `meta: {workset: {…}}`, the same three entries
-  (`name`, `created`, `projects`), and nothing else in the file moves. Until you do, kanibako
-  **refuses** every command that has to resolve that workset, with an error naming the file, both
-  spellings and the exact re-nest — rather than quietly failing to recognise the directory as a
+- **BREAKING: a named workset's identity moves out of `settings.yaml` and into `registry.yaml`.**
+  A workset's `name`, its `created` stamp and its project records used to sit inside the workset's
+  own settings table at the workset root, as `workset.meta`. They are now the `workset:` and
+  `projects:` sections of that root's `registry.yaml` — the file that already holds the workset's
+  box membership. Identity and membership are registry-borne at every level now: a workset's name
+  comes from the registry exactly as a box's does, and a settings file carries **settings only**.
+  A workset root does not need a `settings.yaml` at all; `kanibako workset create` no longer writes
+  one. **Move the table by hand in each named workset root**: `name` and `created` become a
+  `workset:` table in `registry.yaml`, each entry of the old `projects` list becomes one entry of a
+  name-keyed `projects:` map beside it, any existing `boxes:` section is left alone, and the
+  identity is deleted from `settings.yaml` (delete the file too if nothing else is in it). Until
+  you do, kanibako **refuses** every command that has to resolve that workset, with an error naming
+  both files and the exact move — rather than quietly failing to recognise the directory as a
   workset root and resolving it as an ordinary primary-mode box. See
   [MIGRATION.md](MIGRATION.md) §2.43.
 

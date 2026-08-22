@@ -24,8 +24,8 @@ Both are called **lazily, during resolution** — nothing sweeps eagerly. The ca
   the step-5 ancestor walk, whenever a `box_data/` marker is found whose box is not in
   `registry.standalone`.
 * **NAMED** — `import_named_workset`, called from the ancestor walk when a workset-root marker (a
-  `settings.yaml` carrying a `meta.workset` identity) is found that is not a registered workset
-  root. NAMED is checked first at each level of the walk, because a `meta.workset` marker is the
+  `registry.yaml` carrying a `workset:` identity table) is found that is not a registered workset
+  root. NAMED is checked first at each level of the walk, because the registry identity is the
   more specific identity.
 
 `import_standalone` has one further caller outside detection: `commands/box/_parser.py`'s
@@ -151,12 +151,12 @@ box is already seeded on disk.
 
 ## `import_named_workset` — the `worksets` section
 
-Reads the workset name from `root`'s `settings.yaml` `meta.workset` table and reconciles it against
+Reads the workset name from `root`'s `registry.yaml` `workset:` identity table and reconciles it against
 `registry.worksets` — the name → root index that backs both name lookups AND workset discovery,
 written by `kanibako.project.workset`. Registration matches `create_workset` exactly, so an imported
 workset is indistinguishable from a created one.
 
-Returns `None` when `root` has no readable `settings.yaml` `meta.workset` identity, or when that
+Returns `None` when `root` has no readable `registry.yaml` `workset:` identity, or when that
 identity carries an empty name.
 
 ⚑ It does **NOT** rewrite the workset-create skeleton. It only registers an already-on-disk

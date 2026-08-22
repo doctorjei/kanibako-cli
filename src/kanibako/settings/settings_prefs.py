@@ -247,12 +247,13 @@ def collect_prefs(
     ⚑⚑ THE ``pref:`` TABLE ONLY, and the narrowing is load-bearing. This is the
     SECOND reader of the same file, and the two must agree about what the file
     contains: ``assemble_levels`` runs every raw doc through
-    ``_drop_upward_scopes`` first, which strips the top-level ``meta:`` table —
-    including a workset root's ``meta.workset`` IDENTITY marker, which is on-disk
-    metadata read raw by ``read_workset_meta`` and is NOT a key. Parsing the whole
-    document here materialised that table into a ``KeyStore`` as
-    ``meta.workset.created`` / ``.projects``, neither of which the keyspace
-    declares (spec §0 declares ``meta.workset.{path,name,settings}``). Nothing read
+    ``_drop_upward_scopes`` first, which strips the top-level ``meta:`` table.
+    A workset root's identity is on-disk metadata, NOT a key — it lives in
+    ``registry.yaml`` and is read raw by ``read_workset_identity`` — but 1.6.0/1.7.x
+    kept it in this file, and parsing the whole document here materialised that table
+    into a ``KeyStore`` as ``meta.workset.created`` / ``.projects``, neither of which
+    the keyspace declares (spec §0 declares ``meta.workset.{path,name,settings}``).
+    Nothing read
     the result — the extractor below keeps only ``pref.*`` — but a filter that
     guards ONE reader of a file guards only that reader. Restricting the parse to
     the one table this function consumes removes the disagreement at the source

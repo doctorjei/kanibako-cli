@@ -369,8 +369,9 @@ def run_create(args: argparse.Namespace) -> int:
     # J-6 A-action (INSTANTIATION): stamp the new workset store from the host mould.
     install_workset_template(std, ws.root)
 
-    # ⚑ MERGE into the existing file, never overwrite — create_workset already wrote
-    # the meta.workset identity there and it must survive.
+    # ⚑ MERGE into the existing file, never overwrite — ``install_workset_template``
+    # may have just stamped settings into it, and those must survive.  (The workset's
+    # IDENTITY is not here: it lives in registry.yaml.)
     image = getattr(args, "image", None)
     standalone = getattr(args, "standalone", False)
     no_vault = getattr(args, "no_vault", False)

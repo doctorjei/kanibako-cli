@@ -400,41 +400,18 @@ def test_nested_scope_meta_is_untouched(
     ]
 
 
-def test_workset_identity_marker_drops_silently(
+def test_workset_meta_table_drops_and_warns_like_every_other_scope(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
-    # THE NAMED-workset-root identity marker is the TOP-LEVEL `meta.workset` table in a
-    # workset settings.yaml (system-design §Detect) — written by project/workset.py and
-    # read RAW by read_workset_meta, never through the cascade. It STILL drops (meta.* is
-    # RO everywhere, spec §0 / clause 4), but SILENTLY: warning here would put a spurious
-    # WARNING on stderr for every read of a spec-sanctioned file. Both directions
-    # asserted: the table is gone from the level, and no warning names the file.
+    # ⚑ NO WORKSET-SCOPE CARVE-OUT. A workset root's identity is REGISTRY-BORNE
+    # (system-design §Detect) and its settings file carries SETTINGS ONLY, so a
+    # top-level `meta.workset` table here is the RETIRED 1.6.0/1.7.x shape that
+    # `read_workset_identity` hard-refuses — not a marker the tool itself wrote.
+    # It therefore drops AND warns, exactly as at every other scope. (Before the
+    # move it dropped SILENTLY, to spare a spurious WARNING on a sanctioned file.)
     ws = _write(
         tmp_path / "ws.yaml",
         {"workset": {"template": "keep"}, "meta": {"workset": {"name": "foo"}}},
-    )
-    with caplog.at_level("WARNING"):
-        ws_level = assemble_levels(agent_name="claude", workset_path=ws)[WORKSET]
-    assert _marker_of(ws_level, "workset") == "keep"
-    assert dict.get(ws_level, "meta", __MISSING__) is __MISSING__
-    assert not _meta_warns(caplog, ws), [
-        r.getMessage() for r in caplog.records if r.levelname == "WARNING"
-    ]
-
-
-def test_workset_meta_with_other_members_warns_naming_them(
-    tmp_path: Path, caplog: pytest.LogCaptureFixture
-) -> None:
-    # The silence is scoped to the identity MEMBER, not to the table. A workset file whose
-    # top-level meta: table carries anything ELSE drops the WHOLE table and warns — and the
-    # warning names the offending members, so the diagnostic points at what the user wrote
-    # rather than at the marker the tool itself put there.
-    ws = _write(
-        tmp_path / "ws.yaml",
-        {
-            "workset": {"template": "keep"},
-            "meta": {"workset": {"name": "foo"}, "box": {"mode": "x"}},
-        },
     )
     with caplog.at_level("WARNING"):
         ws_level = assemble_levels(agent_name="claude", workset_path=ws)[WORKSET]
@@ -444,8 +421,7 @@ def test_workset_meta_with_other_members_warns_naming_them(
     assert warns, [
         r.getMessage() for r in caplog.records if r.levelname == "WARNING"
     ]
-    assert "'box'" in warns[0]
-    assert "'workset'" not in warns[0]
+    assert "top-level 'meta' table" in warns[0]
 
 
 def test_top_level_meta_drop_warns_once_per_agent_file(

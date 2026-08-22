@@ -8,7 +8,7 @@ Prose for these symbols lives in `llm-docs/kanibako/project/workset.py.md`.
 ## Variables
 
 ```
-WORKSET_META_FILE = 'settings.yaml'
+WORKSET_SETTINGS_FILE = 'settings.yaml'
 BOXES_DIR_NAME = 'boxes'
 DEFAULT_WORKSET_ID = '__default__'
 DEFAULT_WORKSET_ALIAS = 'default'
@@ -24,7 +24,7 @@ def load_workset_settings_doc(root: Path) -> Mapping[str, Any] | None
 def resolve_workset_workspaces(workset_root: Path, workset_settings: Mapping[str, Any] | None, *, standalone: bool=False) -> Path
 def resolve_workset_channelroot(workset_root: Path, workset_settings: Mapping[str, Any] | None) -> Path
 def is_reserved_workset_name(name: str) -> bool
-def read_workset_meta(path: Path) -> dict | None
+def read_workset_identity(root: Path) -> dict | None
 def create_workset(name: str, root: Path, std: StandardPaths, force: bool=False) -> Workset
 def load_workset(root: Path) -> Workset
 def list_worksets(std: StandardPaths) -> dict[str, Path]
@@ -37,8 +37,9 @@ def _workset_path_repoint(workset_settings: Mapping[str, Any] | None, leaf: str)
 def _apply_workset_dir_repoint(workset_root: Path, repoint: str | None, default_leaf: str) -> Path
 @contextmanager
 def _journal_connect(journal: Path | None, box_path: Path, *, name: str, workset: str | None=None, workspace: str | None=None)
-def _write_workset_toml(ws: Workset) -> None
-def _load_workset_toml(root: Path) -> Workset
+def _write_workset_identity(ws: Workset) -> None
+def _load_workset_identity(root: Path) -> Workset
+def _refuse_retired_workset_identity(root: Path) -> None
 def _load_registry(std: StandardPaths) -> dict[str, Path]
 def _detach_project(ws: Workset, name: str) -> None
 ```
@@ -69,7 +70,9 @@ class Workset:
     @property
     def logs_dir(self) -> Path
     @property
-    def toml_path(self) -> Path
+    def settings_path(self) -> Path
+    @property
+    def registry_path(self) -> Path
 
 class _Unwind:
     def __init__(self) -> None

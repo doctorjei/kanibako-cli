@@ -1599,7 +1599,8 @@ class TestA0RepointStrandedMembers:
             ws.root, load_doc(ws.root / "settings.yaml"),
         )
         workset_registry.register_workset_box(registry_path, "boxa", internal)
-        # Absolute repoint AFTER the member exists, preserving meta.workset.
+        # Absolute repoint AFTER the member exists (settings.yaml is created here
+        # for the first time — a workset root has none until something is set).
         pods = (tmp_home / "b2pods").resolve()
         pods.mkdir()
         doc = load_doc(ws.root / "settings.yaml")

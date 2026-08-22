@@ -53,7 +53,7 @@ class WorksetError(KanibakoError):
 
 
 class LegacyWorksetIdentityError(WorksetError):
-    """A workset root still spells its identity the RETIRED ``workset.meta`` way (1.6.0/1.7.x)."""
+    """A workset root still keeps its identity in ``settings.yaml``, not ``registry.yaml``."""
 
 
 class UserCancelled(KanibakoError):

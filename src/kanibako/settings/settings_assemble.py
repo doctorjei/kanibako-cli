@@ -303,8 +303,7 @@ def _drop_upward_scopes(
     """Return *raw* without any CONTAINING-scope top-level table, top-level ``meta:`` or top-level
     ``binding_derivations:`` (spec §0) — a shallow copy, warning-only, never a raise.
 
-    THREE dropped tokens, THREE distinct rationales, one warning each (llm-docs) — with ONE
-    silent case: a workset file's ``meta.workset`` identity marker (see below).
+    THREE dropped tokens, THREE distinct rationales, one warning each (llm-docs).
     """
     if not isinstance(raw, dict):
         return raw
@@ -325,22 +324,17 @@ def _drop_upward_scopes(
             # meta is NOT a containing scope — a DISTINCT rationale, hence its own warning.
             # ⚑ TOP-LEVEL ONLY: this loop never descends, so a nested ``<scope>.meta`` table
             # rides untouched, and the FLOOR's meta is inserted separately, never routed here.
-            # ⚑⚑ AT THE WORKSET SCOPE the ``workset`` member is the spec-sanctioned NAMED-root
-            # identity marker (system-design §Detect) — written by ``project/workset.py`` and
-            # read RAW by ``read_workset_meta``, never through the cascade. It is still DROPPED
-            # (meta.* is RO) but SILENTLY; any OTHER member warns, and the warning names it.
-            subject = "table"
-            if file_scope == "workset" and isinstance(raw.get(token), dict):
-                others = sorted(str(k) for k in raw[token] if str(k) != "workset")
-                if not others:
-                    continue
-                subject = "member(s) " + ", ".join(repr(k) for k in others)
+            # ⚑⚑ NO WORKSET-SCOPE CARVE-OUT: a workset root's identity is REGISTRY-BORNE
+            # (system-design §Detect) and its settings file carries SETTINGS ONLY, so a
+            # ``meta.workset`` table here is the RETIRED 1.6.0/1.7.x shape that
+            # ``read_workset_identity`` hard-refuses — it gets the same warning as any
+            # other scope, never the silence a sanctioned marker used to earn.
             _log.warning(
-                "Dropping top-level 'meta' %s from %s settings file %s: "
+                "Dropping top-level 'meta' table from %s settings file %s: "
                 "meta.* is a read-only namespace set by the "
                 "construct-time/bootstrap layer and remains RO everywhere (spec "
                 "§0 meta-RO / clause 4); the key is ignored.",
-                subject, file_scope, where,
+                file_scope, where,
             )
         elif token == BINDING_DERIVATIONS_NODE:
             # Neither a containing scope nor meta — a THIRD rationale: the RESERVED INTERNAL

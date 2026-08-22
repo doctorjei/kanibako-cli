@@ -27,6 +27,8 @@ class GitError(KanibakoError):
 
 class WorksetError(KanibakoError):
 
+class LegacyWorksetIdentityError(WorksetError):
+
 class UserCancelled(KanibakoError):
 
 class SubjectConflictError(KanibakoError):

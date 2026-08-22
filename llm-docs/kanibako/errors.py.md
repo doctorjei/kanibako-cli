@@ -213,10 +213,11 @@ Workset creation, loading, or manipulation failed.
 26 raise sites; nothing displaced.
 
 ```class LegacyWorksetIdentityError(WorksetError):```
-A workset root still spells its identity the RETIRED `workset.meta` way (1.6.0/1.7.x).
+A workset root still keeps its identity in `settings.yaml`, not `registry.yaml` — either the
+`workset.meta` spelling (1.6.0/1.7.x) or the `meta.workset` one (the unreleased 1.8.0 tree).
 
 One raise site, `project/workset.py:_refuse_retired_workset_identity`, reached from
-`read_workset_meta` — the NAMED-workset-root detection primitive. ⚑ **The subclass exists so ONE
+`read_workset_identity` — the NAMED-workset-root detection primitive. ⚑ **The subclass exists so ONE
 blanket catch can re-raise it:** `commands/box/_parser.py:_resolve_standalone_target` swallows every
 exception out of `detect_project_mode` as "a non-project path is simply a miss", and an un-migrated
 workset root in the ancestor walk is a named thing to fix, not a miss. Cure: MIGRATION.md §2.43.

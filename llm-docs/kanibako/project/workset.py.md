@@ -23,8 +23,10 @@ creates or resolves it:**
 
 ```
 {root}/
-    settings.yaml           ← workset identity (the on-disk `meta.workset` table)
-                              + the workset's cascade settings
+    registry.yaml           ← workset IDENTITY (`workset:`) + box membership (`boxes:`)
+                              + project records (`projects:`)  (`workset.registry`)
+    settings.yaml           ← the workset's cascade settings — SETTINGS ONLY, and
+                              OPTIONAL: a fresh root does not have one
     boxes/{name}/           ← per-box metadata dir (`meta.box.path`)
         home/               ← agent home (mounted as /home/agent)
         settings.yaml       ← the BOX cascade tier (`meta.box.settings`)
@@ -33,17 +35,17 @@ creates or resolves it:**
     vault/ro/{name}/        ← per-box read-only vault
     vault/rw/{name}/        ← per-box read-write vault
     logs/{name}.jsonl       ← per-box helper message log
-    registry.yaml           ← the per-workset box membership (`workset.registry`)
     auth/                   ← the per-workset credential dir (`workset.auth.path`)
     channels/               ← workset-local channels (`workset.channelroot`)
 ```
 
 Three notes the diagram cannot carry:
 
-* ⚑ **`create_workset` makes only FOUR of these** — `boxes/`, the resolved workspaces dir, `vault/`,
-  `logs/`. `registry.yaml`, `auth/` and `channels/` are created lazily by the paths that own them
-  (`workset_registry`, the plugin's auth dir, the launch-path channel guarantee-create). Their
-  absence from a fresh root is correct, not a bug.
+* ⚑ **`create_workset` makes only FOUR DIRS plus `registry.yaml`** — `boxes/`, the resolved
+  workspaces dir, `vault/`, `logs/`, and the registry file that carries the identity. `settings.yaml`,
+  `auth/` and `channels/` are created lazily by the paths that own them (a `workset set`/`share add`
+  write, the plugin's auth dir, the launch-path channel guarantee-create). Their absence from a fresh
+  root is correct, not a bug — and for `settings.yaml` it is the NORMAL case.
 * ⚑ **`workspaces/` is the DEFAULT, not the layout.** `workset.workspaces` is a repointable key
   (see below), and the PRIMARY per-mode default is `<None>` — primary boxes have EXTERNAL
   workspaces. Reading `<root>/workspaces` as a fixed fact is exactly the mistake the resolver exists
@@ -106,7 +108,7 @@ selects a default, never a different storage location.
 
 ## Failure-consistency: the LIFO unwind stack
 
-Several public mutators touch more than one file — a root `settings.yaml` plus the global registry,
+Several public mutators touch more than one file — a root `registry.yaml` plus the global registry,
 or a symlink + a per-workset `boxes:` connection record + the durable identity write. Individual
 writes are torn-file-safe (atomic temp + `os.replace`, via `config_io.dump_doc`), but a crash
 *between* steps could strand a half-applied cross-file state: the registry says X while disk says Y,
@@ -119,20 +121,26 @@ back. The sequences are short — two pushes for `create_workset`, up to seven f
 this stays deliberately small rather than a generic framework. ⚑ It is the SIMPLER of the two
 `_Unwind`s: no `on_success` list and no `finish`.
 
-## The root `settings.yaml`: identity and cascade in one file
+## ⚑⚑ Identity is REGISTRY-BORNE; the settings file is settings only
 
-The workset IDENTITY is the top-level `meta.workset` table (`meta: {workset: {name, created,
-projects}}`), sharing the file with the cascade-settings tables (`box.*`, `agent.*`,
-`workset.bindings.*`).
+**system-design §Detect: "Identity and membership are REGISTRY-BORNE at every level — a workset's
+name, `created` and membership live in `registry.yaml` exactly as a box's `meta.box.name` does; a
+settings file carries SETTINGS ONLY, is sparse, and MAY BE ABSENT."** Worksets are the level that
+took longest to follow it. The identity is now the `workset:` table of the root `registry.yaml`,
+beside the `boxes:` membership and the `projects:` records that moved there with it.
 
-⚑ **Why that is safe, stated once:** the two readerships never meet. `meta.*` is a protected RO
-namespace (spec §0), so assembly strips the top-level `meta:` table out of EVERY settings file
-before it reaches the merge (`settings_assemble._drop_upward_scopes`) — the identity cannot be
-mistaken for a cascade value. In the other direction the identity readers here go to the raw
-document (`config_io.load_doc`) rather than through the cascade, and touch only `meta.workset`, so
-cascade keys a user set survive an identity write. Both halves must stay true — an identity writer
-that replaced the whole document would silently drop the user's workset settings, which is why
-`_write_workset_toml` reads the existing file first.
+Three consequences, each of which someone will otherwise re-derive:
+
+* **A workset root need not have a `settings.yaml` at all.** `create_workset` writes none. Every
+  read path must therefore tolerate its absence rather than raising — `load_workset_settings_doc`
+  returns `None`, and `config_io.load_doc` returns `{}`.
+* **The read-the-file-first guard is gone from the identity write.** It existed because identity
+  shared a file with user settings, and an identity writer that replaced the whole document would
+  silently drop them. `workset_registry.save_workset_record` still does a read-modify-write, but for
+  a DIFFERENT reason: `registry.yaml`'s `boxes:` section has its own independent writers.
+* **The settings file is no longer a detection input.** `read_workset_identity` reads
+  `registry.yaml`. It still opens `settings.yaml` first — but only to refuse the retired shape, and
+  to resolve a `workset.registry` repoint.
 
 Same filename as `BOX_META_FILE` (`settings/config.py`, also `"settings.yaml"`) **by design** — both
 are the "settings.yaml at the entity's root" convention.
@@ -174,10 +182,11 @@ identity block, anywhere on the connect path.
 ## Constants
 
 ```python
-WORKSET_META_FILE = "settings.yaml"
+WORKSET_SETTINGS_FILE = "settings.yaml"
 ```
-The single per-workset file at the workset root. See **The root `settings.yaml`**, above: it carries
-the identity AND the cascade settings, mirroring a box's `settings.yaml`.
+The workset-tier cascade settings file at the workset root — **SETTINGS ONLY, and OPTIONAL**. See
+**Identity is REGISTRY-BORNE**, above. (Renamed from `WORKSET_META_FILE` when the identity left it:
+the old name asserted a role the file no longer has.)
 
 ```python
 BOXES_DIR_NAME = "boxes"
@@ -267,14 +276,18 @@ def vault_dir(self) -> Path         # {root}/vault
 @property
 def logs_dir(self) -> Path          # {root}/logs
 @property
-def toml_path(self) -> Path         # {root}/settings.yaml
+def settings_path(self) -> Path     # {root}/settings.yaml — may NOT exist
+@property
+def registry_path(self) -> Path     # the RESOLVED workset.registry
 ```
 
-⚑ `workspaces_dir` is the only one of the five that is RESOLVED rather than composed (§3.3: real and
-USED) — the repoint is honored and the default is spelled once, in the resolver machinery.
+⚑ `workspaces_dir` and `registry_path` are the RESOLVED ones (§3.3: real and USED) — the repoint is
+honored and the default is spelled once, in the resolver machinery. `registry_path` re-reads
+`settings.yaml` on each access to pick up a `workset.registry` repoint, matching the five equivalent
+helpers in `settings/paths.py`; it is not cached in a field the way `workspaces_repoint` is.
 
-*(Naming defect, recorded not fixed: `toml_path`, `_write_workset_toml` and `_load_workset_toml` all
-say "toml" and all operate on YAML. All config files in this project are YAML.)*
+*(The old "toml" names — `toml_path`, `_write_workset_toml`, `_load_workset_toml` — said "toml" and
+operated on YAML. They were retired with this move; all config files in this project are YAML.)*
 
 ## Functions
 
@@ -284,8 +297,9 @@ def load_workset_settings_doc(root: Path) -> Mapping[str, Any] | None
 Best-effort read of *root*'s workset `settings.yaml` document.
 
 Returns the raw document mapping, or `None` when the file is absent, unreadable, or not a mapping —
-**mirroring `read_workset_meta`'s failure shape**, so a broken settings file degrades a repoint to
-the default composition instead of crashing the detection / lookup paths that call it.
+**mirroring `read_workset_identity`'s failure shape**, so a broken or (routinely) ABSENT settings
+file degrades a repoint to the default composition instead of crashing the detection / lookup paths
+that call it.
 
 ```python
 def _workset_path_repoint(workset_settings: Mapping[str, Any] | None, leaf: str) -> str | None
@@ -352,65 +366,75 @@ def is_reserved_workset_name(name: str) -> bool
 Return True if *name* is a reserved sentinel (cannot be a NAMED workset).
 
 ```python
-def _write_workset_toml(ws: Workset) -> None
+def _write_workset_identity(ws: Workset) -> None
 ```
-Persist *ws*'s identity into `meta.workset` of the root `settings.yaml`.
+Persist *ws*'s identity (`workset:`) and project records (`projects:`) into the root `registry.yaml`,
+through `workset_registry.save_workset_record`.
 
-⚑ **Reads the existing file FIRST** so the workset's cascade settings (`box.*` / `agent.*` /
-`workset.bindings.*`) survive an identity update — only the `meta.workset` table is replaced. Those
-tables are written by `workset config` and, for the two `workset.bindings.{ro,rw}` arms
-specifically, by `workset share`: the arms are YAML-only since the bind `config set` route was
-retired (2026-08-06c), so `share` and hand-editing are the two ways in.
+⚑ **The read-the-file-first guard that used to live here is GONE**, and its absence is the point.
+It existed because identity shared `settings.yaml` with the workset's cascade settings (`box.*` /
+`agent.*` / `workset.bindings.*`), so a whole-document write would have dropped them. Those tables
+are written by `workset config` and, for the two `workset.bindings.{ro,rw}` arms specifically, by
+`workset share` — and this function no longer opens that file at all. `save_workset_record` still
+does a read-modify-write of `registry.yaml`, for the unrelated reason that the `boxes:` section has
+its own writers.
 
-⚑ **Credential sharing is NOT a `meta.workset` identity key.** It is an ordinary settable cascade
-key (`workset.auth.share_allowed`) stored in the workset's settings cascade like any other setting.
-A note is kept at the code because the identity dict is exactly where someone would put it back.
+⚑ **Credential sharing is NOT an identity key.** It is an ordinary settable cascade key
+(`workset.auth.share_allowed`) stored in the workset's settings cascade like any other setting. A
+note is kept at the code because the identity dict is exactly where someone would put it back.
 
 ```python
-def _load_workset_toml(root: Path) -> Workset
+def _load_workset_identity(root: Path) -> Workset
 ```
-Read the workset identity (`meta.workset`) from *root*'s `settings.yaml`.
+Read the workset identity (`workset:`) and project records (`projects:`) from *root*'s
+`registry.yaml`.
 
-Raises `WorksetError` when the file is missing, carries no `meta.workset`, or has no `name` — and
-`LegacyWorksetIdentityError` (out of `read_workset_meta`) for a root still on the retired spelling,
-so the LOAD path gets the named cure rather than the generic "no identity" message. The
-`workset.workspaces` repoint is captured from the SAME `settings.yaml` so `workspaces_dir` composes
-the resolved key.
+Raises `WorksetError` when there is no identity table or it has no `name` — and
+`LegacyWorksetIdentityError` (out of `read_workset_identity`) for a root still keeping its identity
+in `settings.yaml`, so the LOAD path gets the named cure rather than the generic "no identity"
+message. The `workset.workspaces` repoint is still read from `settings.yaml`, where it belongs, so
+`workspaces_dir` composes the resolved key.
+
+⚑ Projects arrive **sorted by name**, because the registry section is a name-keyed map written
+sorted. The retired list-shaped table preserved insertion order.
 
 ```python
-def _refuse_retired_workset_identity(path: Path, data: Mapping[str, Any]) -> None
+def _refuse_retired_workset_identity(root: Path) -> None
 ```
-RAISE `LegacyWorksetIdentityError` when *data* still nests the identity under the RETIRED
-`workset.meta` spelling — a top-level `workset:` table with a `meta:` MAPPING under it.
+RAISE `LegacyWorksetIdentityError` when *root*'s `settings.yaml` still carries the workset identity
+table, in EITHER retired spelling: `workset.meta` (v1.6.0/v1.7.x) or `meta.workset` (the unreleased
+v1.8.0 tree). The message names the spelling actually found.
 
 ⚑ **DETECTED ONLY SO IT CAN BE DIAGNOSED.** v1.6.0 and v1.7.x wrote `workset: {meta: …}` into every
 named workset root on disk, and v1.8.0 is a clean break: there is no compat read and no
 auto-migration. Reading past the table is exactly the silent failure — a legacy root has no
-`meta.workset`, so `read_workset_meta` would return `None`, detection would call it "not a workset
-root", and the ancestor walk would fall through to another mode with no error at all. The refusal
-names the file, both spellings and the hand re-nest; the shipped guide is MIGRATION.md §2.43.
+`registry.yaml` identity, so `read_workset_identity` would return `None`, detection would call it
+"not a workset root", and the ancestor walk would fall through to another mode with no error at all.
+The refusal names the file, the retired location, the `registry.yaml` DESTINATION and the target
+shape; the shipped guide is MIGRATION.md §2.43.
 
 ⚑ Two things the check deliberately does NOT do: a `workset.meta` that is a SCALAR is not the
-identity table and does not refuse, and the refusal fires **unconditionally** when the legacy table
-is present — a root carrying both spellings refuses rather than picking one, because a stale
+identity table and does not refuse, and the refusal fires **unconditionally** when a retired table
+is present — a root carrying identity in BOTH files refuses rather than picking one, because a stale
 identity beside a live one is ambiguous, not migrated.
 
 ```python
-def read_workset_meta(path: Path) -> dict | None
+def read_workset_identity(root: Path) -> dict | None
 ```
-Return the `meta.workset` identity table from a workset `settings.yaml`.
+Return the `workset:` identity table from *root*'s `registry.yaml`.
 
-`None` when the file is missing / unreadable / carries no `meta.workset` table — i.e. *path* is not
-a NAMED-workset root marker. ⚑ **The `except Exception` guard wraps the LOAD ONLY**, so it can never
-swallow `_refuse_retired_workset_identity` (called after the parse): a corrupt file is still `None`,
-a legacy file still refuses. That ordering is the contract — the retired check runs BEFORE the
-`meta.workset` read, since a legacy root's read would return `None` and re-open the silent path.
+`None` when the registry is missing / unreadable / carries no `workset:` table — i.e. *root* is not
+a NAMED-workset root. ⚑ **The `except Exception` guard wraps the REGISTRY READ ONLY**, so it can
+never swallow `_refuse_retired_workset_identity` (called BEFORE it): a corrupt file is still `None`,
+a legacy root still refuses. That ordering is the contract — the retired check runs first, since a
+legacy root's registry read returns `None` and would re-open the silent path.
 
 ⚑⚑ **This is THE detection primitive:** a directory is a NAMED workset root **iff** its
-`settings.yaml` carries `meta.workset` with a name. `settings/paths.py`'s upward root walk calls it
-directly (checked first at each level, because a `meta.workset` marker is the more specific
-identity). Changing what this returns changes where every box thinks it lives. The walk does not
-catch, so the refusal propagates to the user as an `Error:` line.
+`registry.yaml` carries a `workset:` table with a name. That is why the PRIMARY workset root — whose
+registry has `boxes:` but never `workset:` — is not mistaken for a named root. `settings/paths.py`'s
+upward root walk calls it directly (checked first at each level, because the registry identity is
+the more specific one). Changing what this returns changes where every box thinks it lives. The walk
+does not catch, so the refusal propagates to the user as an `Error:` line.
 
 ```python
 def _load_registry(std: StandardPaths) -> dict[str, Path]
@@ -434,13 +458,13 @@ Raises `WorksetError` if *root* already exists or the name is already registered
    collides with an existing PRIMARY BOX name would be shadowed by the box in bare-name resolution
    (the box wins). Refused UNLESS *force*, and refused **BEFORE any on-disk side effect**.
 
-**The multi-step create:** disk skeleton + root `settings.yaml`, then the global registry
+**The multi-step create:** disk skeleton + root `registry.yaml`, then the global registry
 registration. A crash between them would leave orphan dirs that are not in the registry. Forward
 effects are tracked on an `_Unwind` and reversed on any failure, so the create is all-or-nothing.
 
 ⚑ The workspaces dir routes through `resolve_workset_workspaces` rather than a literal — a fresh
-create has no settings yet, so the resolver yields the spec default under *root*, but the call site
-stays correct if that default ever moves.
+create has no settings file at all, so the resolver yields the spec default under *root*, but the
+call site stays correct if that default ever moves.
 
 ⚑ The registration is a SINGLE `register_name(..., section="worksets")`: that one section serves
 BOTH name-based lookups AND workset discovery / list. See **The global registry** for the collapse
@@ -451,8 +475,8 @@ def load_workset(root: Path) -> Workset
 ```
 Load a workset from its root directory.
 
-Raises `WorksetError` if the directory or the root `settings.yaml` (carrying `meta.workset`) is
-missing.
+Raises `WorksetError` if the directory is missing or the root `registry.yaml` carries no `workset:`
+identity.
 
 ⚑ Carries a legacy migration: an old `kanibako/` subdir is renamed to `boxes/` when `boxes/` does
 not yet exist, with a notice on stderr.
@@ -475,9 +499,13 @@ The default workset is VIRTUAL. Its members are the default-mode boxes in the PR
 roots at `@config.primary_workset` (spec §2c: PRIMARY `meta.workset.path`), so its settings/env
 files derive from `root` exactly like a named workset's (F4).
 
-⚑ **NEVER persisted to disk:** no registry write, and the primary root's `settings.yaml` carries
-only cascade keys, never a `meta.workset` identity. That is also what keeps `read_workset_meta` from
-mistaking the primary root for a NAMED workset root.
+⚑ **NEVER persisted to disk:** no identity write, and the primary root's `registry.yaml` carries
+only the `boxes:` membership, never a `workset:` identity table. That is what keeps
+`read_workset_identity` from mistaking the primary root for a NAMED workset root — and it is why
+`created` is `""` here: there is no identity to read, so there is nothing to fabricate.
+
+⚑ After the identity move, primary's members and a named workset's projects come from the SAME file
+in the SAME shape. The two modes now differ only in being the default and in their default paths.
 
 ⚑ Credential sharing is a normal settable cascade key (`workset.auth.share_allowed`) resolved
 through the settings pipeline — **not** a `Workset` field.
@@ -638,7 +666,7 @@ source was right and the CODE was corrected instead.
 |---|-------|-----------|---------|
 | 1 | module docstring | "A global registry at `$XDG_DATA_HOME/kanibako/worksets.yaml` maps workset names to root paths" | **FALSE.** `worksets.yaml` is not read or written anywhere — `registry_store`'s own docstring says it and `names.yaml` "are no longer read or written", and `tests/test_project/test_workset.py:155` ASSERTS the file does not exist. The real location is the `worksets` section of `config.registry` = `@config.data/global/registry.yaml`. **Corrected.** |
 | 2 | `create_workset` inline comment (×3 spellings) | "the global worksets.yaml/names.yaml registries", "then the names.yaml index", "a worksets.yaml entry with no names.yaml index (bare-name resolution fails while `workset list` works)" | **FALSE, same drift as #1, and it describes a CONTROL FLOW that does not exist.** The two files were collapsed into one section, so the code has ONE registration call, not two, and the described three-step crash window has only two steps. **Corrected.** |
-| 3 | module docstring layout tree | "`settings.yaml` ← workset identity (`meta.workset.*`)" | **TRUE — the CODE was the defect.** Docstring and code disagreed inside one file; this pass sided with the code and wrote `workset.meta`, which was the wrong half. The on-disk table is `meta.workset`. ⚑ It holds identity DATA, not the cascade keys `meta.workset.name` / `meta.workset.path`, which stay runtime-derived (spec §1A, from `@meta.runtime.*`) — see **The root `settings.yaml`**. |
+| 3 | module docstring layout tree | "`settings.yaml` ← workset identity (`meta.workset.*`)" | **TRUE at the time — the CODE was the defect.** Docstring and code disagreed inside one file; that pass sided with the code and wrote `workset.meta`, which was the wrong half. ⚑ **SUPERSEDED 2026-08-22:** the identity does not live in `settings.yaml` in EITHER spelling any more — it is the `workset:` table of `registry.yaml`. Both spellings now HARD-REFUSE. See **Identity is REGISTRY-BORNE**. |
 | 4 | module docstring layout tree | "The layout is: …" followed by six entries | **INCOMPLETE.** Omits `registry.yaml` (`workset.registry`), `auth/` (`workset.auth.path`) and `channels/` (`workset.channelroot`) — all three are in the spec's own workset-root layout (§2c and the template-whitelist block) and all three exist at real roots. Presented as the layout, it teaches a wrong root shape. **Corrected, with a note on which four `create_workset` actually makes.** |
 | 5 | `BOXES_DIR_NAME` comment | "two places need it … `Workset.projects_dir` (below) and **`remove_workset`**" | **FALSE on both counts.** There is no `remove_workset` in the codebase (`grep` over `src/` + `tests/`: zero hits); the function is `delete_workset`. And there are THREE use sites, not two — `create_workset` also uses it, also without a `Workset` instance. **Corrected.** |
 | 6 | `add_project` docstring | "a `workspace` override is written into the project's `settings.yaml`" | **FALSE, and self-contradicted 120 lines later.** The external arm writes no `settings.yaml` at all; the inline comment on the same path states "Sparse create (P8b/Option A): NO settings.yaml identity is written for the connected box — the connection record IS the per-workset `boxes:` entry". A reader trusting the docstring would go looking for a file that is never created. **DROPPED**, and the sparse-create ruling recorded instead. |
@@ -654,6 +682,5 @@ source was right and the CODE was corrected instead.
   not for these two. Recorded in the layout section above.
 * **`load_workset` spells `"boxes"` as a literal** (`new_subdir = root / "boxes"`) two lines after
   the module defines `BOXES_DIR_NAME` for exactly that purpose.
-* **`toml_path` / `_write_workset_toml` / `_load_workset_toml`** are TOML names on YAML files.
 * **The in-function `from kanibako.settings.paths import …` statements are not cycle-motivated** —
   `settings.paths` is already imported at module scope. See **The import cycle**.
