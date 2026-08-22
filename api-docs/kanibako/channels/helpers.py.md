@@ -11,6 +11,8 @@ Prose for these symbols lives in `llm-docs/kanibako/channels/helpers.py.md`.
 UNLIMITED_BREADTH = 2 ** 16
 DEFAULT_DEPTH = 4
 DEFAULT_BREADTH = 4
+HELPER_SCRIPTS_RELPATH = 'scripts'
+PARENT_SCRIPTS_RELPATH = ('canon', 'notebook', 'scripts')
 _INIT_SCRIPT_NAME = 'helper-init.sh'
 ```
 

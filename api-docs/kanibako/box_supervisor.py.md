@@ -8,13 +8,13 @@ Prose for these symbols lives in `llm-docs/kanibako/box_supervisor.py.md`.
 ## Variables
 
 ```
-log = get_logger('box_supervisor')
 CONTINUE_MARKER = '[Agent handoff - Continue prior task(s)]'
 TAKEOVER_HEADS_UP = '[Session takeover - another surface is taking over this session; wind down and checkpoint now if you have work in progress]'
 KANIBAKO_PKG_MOUNT_ROOT = '/opt/kanibako'
 PINNED_ROOT_RELPATH = '.kanibako'
 XDG_PROJECTIONS: tuple[tuple[str, str, str], ...] = (('XDG_STATE_HOME', '.local/state', 'state'),)
 XDG_LINK_NAME = 'kanibako'
+log = get_logger('box_supervisor')
 DIRECTIVE_MANIFEST_VERSION = 1
 FLATTEN_TIMEOUT = 60.0
 ```
@@ -121,11 +121,11 @@ class BoxSupervisor:
     def capture_agent_output(self) -> str | None
     def agent_session_alive(self) -> bool
     def kill_agent_session(self) -> None
+    def install_signal_handlers(self) -> None
     def panel_agent_state(self) -> PanelAgentState
     def check_directives(self) -> DirectiveVerdict | None
-    def teardown(self) -> None
-    def install_signal_handlers(self) -> None
     def run_forever(self) -> int
+    def teardown(self) -> None
 
     def _run_tmux(self, args: list[str]) -> int | None
     def _tmux_output(self, args: list[str]) -> str | None
