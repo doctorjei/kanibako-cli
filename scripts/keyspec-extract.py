@@ -17,6 +17,10 @@ for:
    ⚑ Heading detection is FENCE-AWARE: most of this spec's key surface lives in
    fenced blocks whose lines start with ``#``, so a naive ``^#`` scan finds
    hundreds of false headings.
+   ⚑ A PARENT'S PREAMBLE IS ITS OWN SECTION (``2-pre``), derived the same way.
+   Requesting §2a-§2h alone left §2's own 40 lines -- which declare
+   ``system.agent`` and the whole persona-store input paragraph -- requested by
+   NOTHING, and requesting §2 instead would re-send every one of its children.
 
 2. A 429 IS INDISTINGUISHABLE FROM A BAD EXTRACTION IF YOU ONLY LOOK AT THE BODY.
    Its body parses as an empty result.  So the status code is recorded for every
@@ -67,10 +71,11 @@ _CANON = Path(os.environ.get("KANI_CANON", "~/canon")).expanduser()
 _DEFAULT_SPEC = _CANON / "workbook/specs/settings-keyspace-1.8.0.md"
 _DEFAULT_BRIEF = _CANON / "notebook/resources/keyspec-extraction-BRIEF.md"
 
-#: The ten sections the nine-extractor run carved the keyspec into (§1A rode with
-#: §1's extractor).  A missing one is a HARD error naming it -- extracting the
-#: wrong slice silently is the outcome this list exists to prevent.
-_EXPECTED = ("1", "1A", "2a", "2b", "2c", "2d", "2e", "2f", "2g", "2h")
+#: The sections the nine-extractor run carved the keyspec into (§1A rode with §1's
+#: extractor), plus ``2-pre`` for the §2 prose that carve-up left unread.  A missing
+#: one is a HARD error naming it -- extracting the wrong slice silently is the
+#: outcome this list exists to prevent.
+_EXPECTED = ("1", "1A", "2-pre", "2a", "2b", "2c", "2d", "2e", "2f", "2g", "2h")
 
 #: REFERENCE ONLY -- the ranges the 2026-08-20 run used, for the drift column of
 #: ``--list-sections``.  🛑 NEVER used to slice anything.  They are stale by
@@ -84,6 +89,12 @@ _ORACLE_RANGES = {
 _FENCE = re.compile(r"^\s{0,3}(```|~~~)")
 _HEADING = re.compile(r"^(#{1,6})\s+(\S.*)$")
 _SECTION_ID = re.compile(r"^(?:§\s*)?([0-9]+[A-Za-z]*)\.\s")
+
+#: Appended to a parent's id to name its preamble (§2 -> ``2-pre``).  ⚑ The HYPHEN
+#: is the point: ``_SECTION_ID`` mints ids out of ``[0-9]+[A-Za-z]*`` and nothing
+#: else, so no heading the spec could ever carry spells one of these.  A synthetic
+#: id therefore cannot shadow a declared section, nor be shadowed by one.
+_PREAMBLE_SUFFIX = "-pre"
 
 #: Statuses worth another attempt.  429 is the one this script is built around.
 _RETRY_STATUSES = frozenset({408, 425, 429, 500, 502, 503, 504})
@@ -122,6 +133,16 @@ def parse_sections(lines: list[str]) -> dict[str, Section]:
     heads.append((idx, len(match.group(1)), numbered_id.group(1) if numbered_id else "", title))
 
   out: dict[str, Section] = {}
+
+  def declare(sec: Section) -> None:
+    prior = out.get(sec.sid)
+    if prior is not None:
+      raise SystemExit(
+        f"spec declares section '{sec.sid}' twice (lines {prior.start} and {sec.start}); "
+        f"the section ids must be unique for the carve-up to be well defined"
+      )
+    out[sec.sid] = sec
+
   for pos, (lineno, level, sid, title) in enumerate(heads):
     if not sid:
       continue
@@ -130,17 +151,51 @@ def parse_sections(lines: list[str]) -> dict[str, Section]:
     # (`access`, `agent.claude.*`, …) and truncating there drops 112 of its 176
     # lines — most of its key surface — silently.
     end = len(lines)
-    for nxt_line, nxt_level, _, _ in heads[pos + 1:]:
+    child: tuple[int, str] | None = None  # first DEEPER heading: (lineno, its sid or "")
+    for nxt_line, nxt_level, nxt_sid, _ in heads[pos + 1:]:
       if nxt_level <= level:
         end = nxt_line - 1
         break
-    if sid in out:
-      raise SystemExit(
-        f"spec declares section '{sid}' twice (lines {out[sid].start} and {lineno}); "
-        f"the section ids must be unique for the carve-up to be well defined"
-      )
-    out[sid] = Section(sid=sid, title=title, start=lineno, end=end)
+      if child is None:
+        child = (nxt_line, nxt_sid)
+    declare(Section(sid=sid, title=title, start=lineno, end=end))
+    # ⚑ WHERE THE CHILDREN ARE THEMSELVES NUMBERED, the parent's own prose belongs
+    # to no child and the parent cannot stand in for them — asking for §2 re-sends
+    # all of §2a-§2h. So the preamble, heading line to the line before the first
+    # child, becomes a section in its own right. An UNNUMBERED child (§2d's four
+    # `####` blocks) claims nothing, so its parent's range already covers the lot
+    # and no preamble is minted: a `2d-pre` would only overlap `2d`.
+    if child is not None and child[1]:
+      declare(Section(
+        sid=sid + _PREAMBLE_SUFFIX,
+        title=f"{title}  [preamble — before §{child[1]}]",
+        start=lineno,
+        end=child[0] - 1,
+      ))
   return out
+
+
+def coverage_gaps(
+  found: dict[str, Section], wanted: tuple[str, ...]
+) -> list[tuple[int, int, str, str]]:
+  """Spans inside the requested range that NO requested section asks for.
+
+  Each entry is ``(first, last, sid_before, sid_after)``.  ⚑ This is the property
+  the whole carve-up exists to hold: the extraction becomes the manifest oracle, so
+  a span nobody requested is key surface nobody read — and an oracle with an
+  unextracted hole is worse than none, because it reads as coverage.
+  """
+  ordered = sorted((found[sid] for sid in wanted), key=lambda s: (s.start, s.end))
+  if not ordered:
+    return []
+  gaps: list[tuple[int, int, str, str]] = []
+  reached, holder = ordered[0].end, ordered[0].sid
+  for sec in ordered[1:]:
+    if sec.start > reached + 1:
+      gaps.append((reached + 1, sec.start - 1, holder, sec.sid))
+    if sec.end > reached:
+      reached, holder = sec.end, sec.sid
+  return gaps
 
 
 def require_expected(found: dict[str, Section], wanted: tuple[str, ...]) -> None:
@@ -171,7 +226,27 @@ def range_table(found: dict[str, Section], wanted: tuple[str, ...]) -> str:
       f"{sid:<5} {f'{sec.start}-{sec.end}':>13} {span:>6}  "
       f"{f'{old[0]}-{old[1]}':>13} {old_span:>6}  {span - old_span:+d}"
     )
-  return "\n".join(rows)
+  return "\n".join(rows + ["", coverage_summary(found, wanted)])
+
+
+def coverage_summary(found: dict[str, Section], wanted: tuple[str, ...]) -> str:
+  """The line accounting, with every gap named — a hole must announce itself, loudly."""
+  if not wanted:
+    return "no sections requested"
+  lo = min(found[sid].start for sid in wanted)
+  hi = max(found[sid].end for sid in wanted)
+  gaps = coverage_gaps(found, wanted)
+  # A gap is by definition a maximal UNCOVERED interval inside [lo, hi], so the
+  # covered count follows from the span without unioning the sections again.
+  covered = (hi - lo + 1) - sum(last - first + 1 for first, last, _, _ in gaps)
+  head = f"requested {len(wanted)} section(s): {covered} of {hi - lo + 1} lines in {lo}-{hi}"
+  if not gaps:
+    return f"{head} — contiguous, nothing between them is unrequested"
+  return "\n".join([head] + [
+    f"  🛑 GAP {first}-{last} ({last - first + 1} lines) between §{before} and §{after}"
+    " — requested by NO section"
+    for first, last, before, after in gaps
+  ])
 
 
 def numbered(lines: list[str], sec: Section) -> str:
@@ -546,7 +621,8 @@ def build_parser() -> argparse.ArgumentParser:
   parser.add_argument("--force", action="store_true", help="re-run sections already extracted")
   parser.add_argument(
     "--list-sections", action="store_true",
-    help="print the re-derived ranges beside the 2026-08-20 ones and exit",
+    help="print the re-derived ranges beside the 2026-08-20 ones, plus the line "
+         "accounting for the requested set and any gap between two of them, and exit",
   )
   parser.add_argument(
     "--dry-run", action="store_true",
@@ -615,18 +691,18 @@ def main(argv: list[str]) -> int:
     )
     if args.dry_run:
       (args.out / f"prompt-{sid}.txt").write_text(prompt, encoding="utf-8")
-      print(f"§{sid:<3} lines {sec.start}-{sec.end}  prompt {len(prompt)} chars (dry run)")
+      print(f"§{sid:<5} lines {sec.start}-{sec.end}  prompt {len(prompt)} chars (dry run)")
       continue
     if body.exists() and not args.force:
       # ⚑ RE-HARVEST, do not merely skip: the merge is rewritten every run, so a
       # resumed section that contributed nothing would silently empty the roll-up.
       kept = body.read_text(encoding="utf-8")
       results[sid] = {"chars": len(kept), "keys": harvest_keys(kept)}
-      print(f"§{sid:<3} lines {sec.start}-{sec.end}  SKIPPED (already extracted; --force to redo)")
+      print(f"§{sid:<5} lines {sec.start}-{sec.end}  SKIPPED (already extracted; --force to redo)")
       continue
 
     assert conn is not None
-    print(f"§{sid:<3} lines {sec.start}-{sec.end}  requesting…", flush=True)
+    print(f"§{sid:<5} lines {sec.start}-{sec.end}  requesting…", flush=True)
     text, failure, attempts = run_section(conn=conn, bearer=bearer, prompt=prompt, args=args)
     meta = {
       "section": sid, "title": sec.title, "start": sec.start, "end": sec.end,
