@@ -737,7 +737,7 @@ class TestStandaloneBoxTierRoundTrip:
 
     @staticmethod
     def _files(root):
-        """``(root_file, box_file)`` at their LITERAL spec positions (§5).
+        """``(root_file, box_file)`` at their LITERAL spec positions (§4 STANDALONE tree).
 
         ⚑ Deliberately NOT sourced from ``box_workset_settings_paths``: a test that
         gets both positions from the code under test is self-consistent and therefore
@@ -755,7 +755,7 @@ class TestStandaloneBoxTierRoundTrip:
 
         root = self._standalone(config_file, tmp_home)
         root_file, box_file = self._files(root)
-        assert not box_file.exists()          # ABSENT BY DEFAULT (spec §5)
+        assert not box_file.exists()   # ABSENT BY DEFAULT (spec §2c + §4 STANDALONE tree)
         root_before = root_file.read_text()
 
         rc = run_set(argparse.Namespace(
@@ -825,7 +825,7 @@ class TestStandaloneBoxTierRoundTrip:
     ):
         """⚑ The one USER-VISIBLE read-surface change (M-8).  A LEGACY standalone box
         stored ``box.*`` in its ROOT file — which is the WORKSET tier now.  A plain
-        ``get`` is stored-at-noun (spec §5 read verbs), so it honestly reports the key
+        ``get`` is stored-at-noun (spec §2a "Read verbs"), so it honestly reports the key
         as not stored AT THE BOX; ``show --effective`` still resolves it via the R2
         downward-default.  Nothing is lost; the read got truthful."""
         from kanibako.commands.box._parser import run_get, run_show

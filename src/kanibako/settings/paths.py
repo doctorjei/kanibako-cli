@@ -1367,7 +1367,8 @@ def establish_standalone(std: StandardPaths, root: Path, *, enable_vault: bool,
     # ⚑ Sparse create, EACH KEY AT ITS OWN SCOPE'S TIER (M-8): box-scope ``box.enable_vault``
     # to the BOX tier — the same file ``config set box.*`` writes.
     write_box_enable_vault(box_settings, enable_vault)
-    # ⚑ The workset-scope kuid goes to the ROOT file, whose write MATERIALIZES the §5 marker.
+    # ⚑ The workset-scope kuid goes to the ROOT file, whose write MATERIALIZES the detection
+    # marker (``system-design-1.8.0.md`` § "Detection & import").
     from kanibako.settings.config_io import write_nested_key
 
     write_nested_key(settings_file, ("workset",), "kuid", box_identity.standalone_kuid(box_name))

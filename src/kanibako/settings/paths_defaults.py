@@ -73,7 +73,8 @@ WORKSPACES_PATH = "workspaces"
 WORKSPACE_PATH = "workspace"
 RUN_USER_UID_PATH = "/run/user/%d"
 
-# The STANDALONE box-store dir name — ``@meta.box.path`` and half the §5 marker.
+# The STANDALONE box-store dir name — ``@meta.box.path`` and half the detection
+# marker (``system-design-1.8.0.md`` § "Detection & import").
 # ⚑ THE only carrier: ``project/import_reconcile`` used to hand-keep a second
 # spelling and now imports this one.  Import it; never re-spell the string.
 STANDALONE_META_DIR = 'box_data'

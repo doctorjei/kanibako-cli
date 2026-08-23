@@ -98,7 +98,7 @@ every command fail.
 
 ## `box_data/` — the box dir, and the journal key it forms
 
-The standalone box's host-side box dir is a sibling of the root `settings.yaml`, and holds `home/`.
+The standalone box's host-side box dir is a sibling of the root `workset.yaml`, and holds `home/`.
 
 ⚑ Its name is **not declared in this module**. `STANDALONE_META_DIR` is imported from
 `settings/paths_defaults` at module scope and used at both call sites, so the string has a single
@@ -160,10 +160,9 @@ left alone for the create-recovery path to find. A `None` journal is a no-op.
 
 ## `import_standalone` — kuid-first identity
 
-`root` is the standalone project root: the dir containing `box_data/` and, at the root,
-`settings.yaml`.
+`root` is the standalone project root: the dir containing `box_data/` and `workset.yaml`.
 
-**The marker gate** (design D4): the box's own settings FILE is the standalone signal — **NOT**
+**The marker gate** (design D4): the ROOT settings FILE is the standalone signal — **NOT**
 `project.mode`. `box_resolve.standalone_settings_present(root)` is the test. A bare `box_data/` is
 not enough. No marker → `None`, nothing to import.
 

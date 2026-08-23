@@ -26,8 +26,9 @@ exist for the same reason: they let this module speak about a workset without im
 ### The standalone marker (`_STANDALONE_META_DIR`)
 
 `box_data` is the STANDALONE box-store dir name. It is `@meta.box.path` for a standalone box (the
-empty leaf of `@workset.boxes`, spec §2c) and HALF of the §5 detection marker — the other half is
-the ROOT `settings.yaml`. Both must be present; a bare `box_data/` directory is not a marker.
+empty leaf of `@workset.boxes`, keyspec §2c) and HALF of the detection marker
+(`system-design-1.8.0.md` § "Detection & import") — the other half is the ROOT `settings.yaml`.
+Both must be present; a bare `box_data/` directory is not a marker.
 
 It is defined at the TOP of the module, not inside the detection helper that used to own it, because
 `_box_settings_files` needs it and it is a LAYOUT constant rather than a detail of detection.
@@ -263,13 +264,14 @@ EVERY mode (spec §2c ALL PROJECTS), so the box tier is ALWAYS a real path — n
   workset root's `settings.yaml`).
 * **standalone** — `@meta.box.path` is the `box_data/` marker dir (the empty leaf of
   `@workset.boxes`), so the box tier is `<root>/box_data/settings.yaml` — **ABSENT BY DEFAULT**
-  (spec §5): an absent file is an empty tier, and `config_io.load_doc` yields `{}` for it, so a
-  standalone box with no box file resolves byte-identically to one with no box tier at all. The
-  workset tier is the ROOT `<root>/settings.yaml` — the file that plays the WORKSET tier for a
-  degenerate one-box workset, and the file §5 DETECTION reads
-  (`box_resolve.standalone_settings_present`). A `box.*` key stored THERE still resolves for box
-  scope via R2 downward-defaults (`box` ⊂ `workset` in `SCOPE_CONTAINMENT` — the workset-tier read
-  KEEPS `box.*`), which is exactly how a pre-P2 standalone box keeps working with no migration.
+  (spec §2c + §4 STANDALONE tree): an absent file is an empty tier, and `config_io.load_doc` yields
+  `{}` for it, so a standalone box with no box file resolves byte-identically to one with no box
+  tier at all. The workset tier is the ROOT `<root>/settings.yaml` — the file that plays the
+  WORKSET tier for a degenerate one-box workset, and the file DETECTION reads
+  (`system-design-1.8.0.md` § "Detection & import"; `box_resolve.standalone_settings_present`).
+  A `box.*` key stored THERE still resolves for box scope via R2 downward-defaults (`box` ⊂
+  `workset` in `SCOPE_CONTAINMENT` — the workset-tier read KEEPS `box.*`), which is exactly how a
+  pre-P2 standalone box keeps working with no migration.
 
 ⚑ This pair is the SINGLE SOURCE for READ, WRITE **and** ANCHOR (M-8): the launch cascade's
 `box_path`/`workset_path`, the `meta.box.settings` anchor, and the `config set` / `get` / `show` /
@@ -1247,12 +1249,13 @@ The single shared core behind all three standalone paths (`create --standalone`,
    otherwise honoring the supplied (lowercased) `--name`: a verbatim canonical id if free (else
    refuse), or a fresh prefix over the supplied string as the leaf;
 2. writes the SPARSE settings, each key AT ITS OWN SCOPE'S TIER (M-8): the workset-scope
-   `workset.kuid` into the ROOT `<root>/settings.yaml` (which MATERIALIZES that file — half the §5
-   standalone detection marker), and a NON-default box-scope `box.enable_vault` into the BOX tier
-   `<root>/box_data/settings.yaml` — the SAME file `config set box.*` writes, so create and set can
-   never disagree. A default-vault box therefore writes NO box-tier file at all, which is the spec's
-   "ABSENT BY DEFAULT" (§5). NO `project:`/`resolved:` identity is written — the name/mode/workspace
-   derive from `registry.standalone` + the live kuid;
+   `workset.kuid` into the ROOT `<root>/settings.yaml` (which MATERIALIZES that file — half the
+   standalone detection marker, `system-design-1.8.0.md` § "Detection & import"), and a NON-default
+   box-scope `box.enable_vault` into the BOX tier `<root>/box_data/settings.yaml` — the SAME file
+   `config set box.*` writes, so create and set can never disagree. A default-vault box therefore
+   writes NO box-tier file at all, which is the spec's "ABSENT BY DEFAULT" (§2c + §4 STANDALONE
+   tree). NO `project:`/`resolved:` identity is written — the name/mode/workspace derive from
+   `registry.standalone` + the live kuid;
 3. registers the box in `registry.standalone` (`box_name` → *root*).
 
 *root* is the standalone project dir. The box-data dir (`root/box_data`) must already exist (each
@@ -1310,7 +1313,8 @@ in the ROOT `settings.yaml` repoints it ("changeable from workset level", spec �
 
 The mode-aware tier pair comes from the ONE derivation (M-8): the BOX tier is
 `box_data/settings.yaml` (absent by default) and the WORKSET tier is the ROOT `settings.yaml` — the
-file §5 detection reads and where `workset.kuid` lives.
+file detection reads (`system-design-1.8.0.md` § "Detection & import") and where `workset.kuid`
+lives.
 
 ⚑ STANDALONE paths are derived from the (current) root, never the stored absolutes: the DEFAULT
 formulas are all `@`-anchored to the root (`@meta.workset.path/…`), so a default-shaped tree is
