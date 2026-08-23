@@ -369,24 +369,36 @@ def run_create(args: argparse.Namespace) -> int:
     # J-6 A-action (INSTANTIATION): stamp the new workset store from the host mould.
     install_workset_template(std, ws.root)
 
-    # ⚑ MERGE into the existing file, never overwrite — ``install_workset_template``
-    # may have just stamped settings into it, and those must survive.  (The workset's
-    # IDENTITY is not here: it lives in registry.yaml.)
-    image = getattr(args, "image", None)
-    standalone = getattr(args, "standalone", False)
-    no_vault = getattr(args, "no_vault", False)
-    if image or standalone or no_vault:
+    # ⚑ These flags set BOX-SCOPE keys at the WORKSET tier — ``box.image`` and
+    # ``box.enable_vault``, which is where ``read_box_enable_vault`` looks.  A
+    # top-level ``enable_vault``/``standalone`` is not a declared key at all
+    # (spec §0: the keyspace is CLOSED), so it would be carried into the store as
+    # an undeclared path, not merely ignored.
+    # ⚑⚑ ``--standalone`` writes NOTHING: mode is RO identity (``meta.box.mode``),
+    # and no declared key says "this workset's boxes are standalone".  The flag is
+    # therefore accepted and inert pending a ruling on its fate — do NOT invent a
+    # key for it.
+    box_updates: dict = {}
+    if getattr(args, "image", None):
+        box_updates["image"] = args.image
+    if getattr(args, "no_vault", False):
+        box_updates["enable_vault"] = False
+
+    # ⚑ MERGE into the existing file, never overwrite — a workset.yaml already on
+    # disk carries settings that must survive, and the merge has to reach INSIDE
+    # the ``box:`` table: assigning the table whole drops every other ``box.*``
+    # key in it.  (The workset's IDENTITY is not here: it lives in registry.yaml.)
+    if box_updates:
         from kanibako.settings.config_io import dump_doc, load_doc
         ws_config = _workset_config_path(ws)
         config_data = load_doc(ws_config) if ws_config.is_file() else {}
         if not isinstance(config_data, dict):
             config_data = {}
-        if image:
-            config_data["box"] = {"image": image}
-        if standalone:
-            config_data["standalone"] = True
-        if no_vault:
-            config_data["enable_vault"] = False
+        box_table = config_data.get("box")
+        if not isinstance(box_table, dict):
+            box_table = {}
+            config_data["box"] = box_table
+        box_table.update(box_updates)
         dump_doc(ws_config, config_data)
 
     print(f"Created working set '{ws.name}' at {ws.root}")
