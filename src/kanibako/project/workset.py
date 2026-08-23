@@ -47,6 +47,7 @@ from kanibako.settings.config_io import load_doc
 from kanibako.errors import LegacyWorksetIdentityError, WorksetError
 from kanibako.project.names import register_name, unregister_name
 from kanibako.settings.config import WORKSET_META_FILE
+from kanibako.settings.workset_dirkeys import resolve_workset_dir_key
 # ⚑ FORWARD edge of a documented cycle: ``settings/paths.py`` breaks it by DEFERRING
 # its ``project.workset`` imports into function bodies — do not add a module-scope
 # edge back this way.
@@ -77,8 +78,12 @@ _VAULT_LEAF = paths_defaults.VAULT_PATH
 
 
 # ---------------------------------------------------------------------------
-# Resolved workset dir keys (workset.workspaces / workset.channelroot) — the
-# no-snapshot seam, mirroring ``workset_registry.resolve_workset_registry_path``.
+# Resolved workset dir keys (workset.workspaces / workset.channelroot) — thin
+# per-key faces over the ONE no-snapshot route,
+# ``settings/workset_dirkeys.resolve_workset_dir_key``.  ⚑ These read the leaf out
+# of the workset.yaml table; the ROUTE owns every token rule (@-refs, $XDG, ~) and
+# owns the refusal.  ``workset_registry.resolve_workset_registry_path`` is a fifth
+# face on the same route — do not give any of them a private expansion again.
 # ---------------------------------------------------------------------------
 
 def load_workset_settings_doc(root: Path) -> Mapping[str, Any] | None:
@@ -106,27 +111,16 @@ def _workset_path_repoint(
     return None
 
 
-def _apply_workset_dir_repoint(
-    workset_root: Path, repoint: str | None, default_leaf: str,
-) -> Path:
-    """Apply a workset dir-key *repoint* (or the ``<root>/<default_leaf>`` default)."""
-    if repoint:
-        expanded = Path(repoint).expanduser()
-        if not expanded.is_absolute():
-            expanded = workset_root / expanded
-        return expanded
-    return workset_root / default_leaf
-
-
 def resolve_workset_workspaces(
     workset_root: Path, workset_settings: Mapping[str, Any] | None,
     *, standalone: bool = False,
 ) -> Path:
     """Return the resolved ``workset.workspaces`` dir (*standalone* selects the singular default)."""
-    return _apply_workset_dir_repoint(
+    return resolve_workset_dir_key(
         workset_root,
         _workset_path_repoint(workset_settings, _WORKSPACES_LEAF),
         _STANDALONE_WORKSPACE_LEAF if standalone else _WORKSPACES_LEAF,
+        key=_WORKSPACES_LEAF,
     )
 
 
@@ -134,10 +128,11 @@ def resolve_workset_boxes(
     workset_root: Path, workset_settings: Mapping[str, Any] | None,
 ) -> Path:
     """Return the resolved ``workset.boxes`` dir — the BOX-tree root under a workset."""
-    return _apply_workset_dir_repoint(
+    return resolve_workset_dir_key(
         workset_root,
         _workset_path_repoint(workset_settings, BOXES_DIR_NAME),
         BOXES_DIR_NAME,
+        key=BOXES_DIR_NAME,
     )
 
 
@@ -145,10 +140,11 @@ def resolve_workset_logs(
     workset_root: Path, workset_settings: Mapping[str, Any] | None,
 ) -> Path:
     """Return the resolved ``workset.logs`` dir — ⚑ primary/named ONLY; standalone logs to the box."""
-    return _apply_workset_dir_repoint(
+    return resolve_workset_dir_key(
         workset_root,
         _workset_path_repoint(workset_settings, _LOGS_LEAF),
         _LOGS_LEAF,
+        key=_LOGS_LEAF,
     )
 
 
@@ -156,10 +152,11 @@ def resolve_workset_channelroot(
     workset_root: Path, workset_settings: Mapping[str, Any] | None,
 ) -> Path:
     """Return the resolved ``workset.channelroot`` — ⚑ primary/named ONLY; callers gate on mode."""
-    return _apply_workset_dir_repoint(
+    return resolve_workset_dir_key(
         workset_root,
         _workset_path_repoint(workset_settings, "channelroot"),
         _CHANNELROOT_LEAF,
+        key="channelroot",
     )
 
 
@@ -269,8 +266,9 @@ class Workset:
     @property
     def workspaces_dir(self) -> Path:
         # ⚑ RESOLVED, not composed (§3.3: real and USED) — the only one of the five.
-        return _apply_workset_dir_repoint(
+        return resolve_workset_dir_key(
             self.root, self.workspaces_repoint, _WORKSPACES_LEAF,
+            key=_WORKSPACES_LEAF,
         )
 
     @property

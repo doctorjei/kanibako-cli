@@ -50,7 +50,6 @@ from kanibako.settings.config_keys import (
     _SCOPE_WRITE_ALLOWED,
     _SETTINGS_SCOPE_TOKENS,
     _coerce_value,
-    _dot_to_flat,
     _is_agent_node_bind_key,
     _is_agent_node_secret_key,
     _is_agent_setting,
@@ -69,9 +68,9 @@ from kanibako.settings.config_keys import (
     _pref_write_site_error,
     _probes_at_set_time,
     _persona_display_key,
-    _route_key,
     _scope_direction_error,
     access_value_error,
+    agent_leaf_table_error,
     bare_agent_key_scope_error,
     bare_env_retired_error,
     box_agent_redirect_key,
@@ -80,8 +79,8 @@ from kanibako.settings.config_keys import (
     agent_node_bind_retired_error,
     scope_bind_retired_error,
     scope_env_var_error,
-    is_system_path_key,
-    system_key_refusal,
+    SETUP_MARKER_KEY,
+    is_config_file_only_key,
     resolve_key,
     ConfigLevel,
 )
@@ -163,6 +162,15 @@ def _pref_value_error(
         access_err = access_value_error(canonical, value)
         if access_err is not None:
             return access_err
+
+    # ⚑ A TABLE-valued agent leaf, checked AT THE TARGET for the same reason ``access`` is:
+    # the preamble guard gates on the key as TYPED and a ``pref.*`` spelling slips past it.
+    # A pref is INSTALLED at its target during resolution (spec §2h), so a scalar requested
+    # for ``transform_settings`` reaches the launch as a scalar where a map belongs — the
+    # second door onto the crash the direct write is already refused for.
+    table_err = agent_leaf_table_error(target, verb="requested")
+    if table_err is not None:
+        return table_err
 
     # ⚑ EVERY TERM IS LOAD-BEARING — do not drop one as "unreachable". The two regex terms and
     # ``_is_agent_node_bind_key`` name RETIRED per-name spellings a pref may still REQUEST;
@@ -520,10 +528,13 @@ def get_config_value(
         assert dest is not None  # a category key always has a slot
         return read_stored_leaf(dest.path, dest.sections, dest.leaf)
 
-    # ``config.*`` / ``system.*`` path keys — the raw value from the bootstrap config file.
+    # ``config.*`` + the setup MARKER — the raw value from the bootstrap config file.
     # ⚑ ``load_config``, NOT ``load_merged_config``: this tier is CONFIG-FILE-ONLY, and a
     # malformed box settings file must not break a bootstrap-tier read.
-    if is_system_path_key(canonical):
+    # ⚑ The ``system.*`` PATH tier is NO LONGER READ HERE (spec §2g): those are settings
+    # keys and fall through to the routed read below, which answers the system SETTINGS
+    # file — the same file their ``set`` writes.
+    if is_config_file_only_key(canonical):
         cfg = load_config(global_config_path)
         return cfg.config_paths.get(canonical)
 
@@ -583,6 +594,13 @@ def set_config_value(
     )
     if bare_err is not None:
         return bare_err
+
+    # ⚑ A declared agent leaf whose value is a TABLE (spec §2d ``transform_settings``) —
+    # refused BEFORE the persona branch, so the reserved-tier cure never names a bare
+    # spelling this rule then refuses.
+    table_err = agent_leaf_table_error(canonical, verb="set")
+    if table_err is not None:
+        return table_err
 
     # ⚑ Bare ``env.*`` — RETIRED (R-39): refused with the cure BEFORE any write machinery
     # (``--null`` included). The cure is REACHABLE — the scoped arm is routed a few branches below.
@@ -745,19 +763,33 @@ def set_config_value(
     # all six are refused BY NAME in the preamble above. Do NOT "restore" it: re-adding a write
     # route would need a visible spec edit.
 
-    # STRUCTURAL ``system.*`` path-tier keys — FILE-ONLY; the refusal names the config file.
-    # ⚑ A precise family check (F2): a ``system.*`` SETTINGS key is never refused here.
-    if is_system_path_key(canonical):
-        return system_key_refusal(canonical, verb="set")
+    # The setup VERSION MARKER — written to the ``system:`` table of the BOOTSTRAP config
+    # file, which is where ``setup`` puts it and where every reader looks (spec §2g:
+    # "PERSISTS, user-resettable").
+    # ⚑ A REFUSAL STOOD HERE UNTIL 2026-08-23, and it named the config file as the cure —
+    # telling the user to hand-edit a file the CLI can write, for a key the registry
+    # declares ``set: cli+file``. The ``config.*`` half of that refusal is unaffected: it
+    # short-circuits at the top of this function with its own ruled message.
+    if canonical == SETUP_MARKER_KEY:
+        dest = _write_dest(
+            canonical, command_scope=command_scope,
+            config_path=config_path, settings_path=system_settings_path,
+        )
+        assert dest is not None  # the marker's slot is unconditional
+        write_nested_key(dest.file, dest.sections, dest.leaf, value)
+        return f"Set {canonical}={'null' if value is None else value}"
 
     # Regular config keys — the single known-key table (H1: an unknown key returns an error
-    # string and NEVER raises). Either the canonical dotted spelling or the flat underscore form.
-    routed = _route_key(canonical)
-    route = _KEY_ROUTES.get(routed)
+    # string and NEVER raises).
+    # ⚑ THE CANONICAL DOTTED SPELLING, AND ONLY IT. The flat underscore form used to be
+    # normalised in here; it is undeclared (spec §0), ``get`` always refused it, and it
+    # routed to a different FILE than its dotted twin. There is nothing to normalise now,
+    # so it falls out here as the unknown key it is, named in the refusal.
+    route = _KEY_ROUTES.get(canonical)
     if route is None:
         return f"Error: unknown config key: {key}"
-    typed = _coerce_value(routed, value)  # the H2 fix (real bool/etc.)
-    if isinstance(typed, str) and KEY_TYPES.get(routed):
+    typed = _coerce_value(canonical, value)  # the H2 fix (real bool/etc.)
+    if isinstance(typed, str) and KEY_TYPES.get(canonical):
         # ``_coerce_value`` signalled a parse error (a str only comes back for a typed key).
         return typed
     # A scope-prefixed SETTINGS key lands in the COMMAND scope's SETTINGS file with the key's
@@ -771,7 +803,9 @@ def set_config_value(
         write_nested_key(dest.file, dest.sections, dest.leaf, typed)
     else:
         write_root_key(dest.file, dest.leaf, typed)
-    return f"Set {_dot_to_flat(routed)}={'null' if value is None else value}"
+    # ⚑ THE CANONICAL KEY, never a re-flattened one: a confirmation is a lesson, and the
+    # form it teaches must be the form every other verb accepts.
+    return f"Set {canonical}={'null' if value is None else value}"
 
 
 def reset_config_value(
@@ -815,6 +849,12 @@ def reset_config_value(
     )
     if bare_err is not None:
         return bare_err
+
+    # ⚑ A TABLE-valued agent leaf — refused symmetrically with set: "No override for …" would
+    # be a lie about a key whose value the CLI cannot address at all.
+    table_err = agent_leaf_table_error(canonical, verb="reset")
+    if table_err is not None:
+        return table_err
 
     # ⚑ Bare ``env.*`` — RETIRED (R-39): refused symmetrically with set, because "No override"
     # would be a lie (the ``.env`` file is not an override store any more).
@@ -910,13 +950,25 @@ def reset_config_value(
     # ⚑ THERE IS NO CATEGORY RESET BRANCH ANY MORE (DS-BL1 = (a)) — gone symmetrically with its
     # SET twin, which is the point. Do not restore one half of a symmetric pair.
 
-    # STRUCTURAL ``system.*`` path-tier keys — FILE-ONLY, refused for symmetry with set.
-    if is_system_path_key(canonical):
-        return system_key_refusal(canonical, verb="reset")
+    # The setup VERSION MARKER — cleared from the config file's ``system:`` table, the same
+    # slot set wrote. ⚑ This is the "user-resettable" half of spec §2g's own description of
+    # the key, and it was refused outright until 2026-08-23.
+    if canonical == SETUP_MARKER_KEY:
+        dest = _reset_dest(canonical, command_scope, config_path, system_settings_path)
+        if remove_nested_key(dest.file, dest.sections, dest.leaf):
+            # ⚑ NOT ``_honest_reset_message``, and the difference is the point (F7): its
+            # tail says the value "falls back through the cascade", and the marker HAS no
+            # cascade — one file holds it, and clearing it means setup reads as never run.
+            # The shared message would be a true-sounding sentence about a tier that does
+            # not exist for this key.
+            return (
+                f"Cleared {canonical}; kanibako now reads as not yet set up. "
+                f"Run 'kanibako setup' to record it again."
+            )
+        return f"No override for {canonical}"
 
-    # Regular config keys — the same known-key table as set/get.
-    routed = _route_key(canonical)
-    route = _KEY_ROUTES.get(routed)
+    # Regular config keys — the same known-key table, and the same ONE spelling, as set/get.
+    route = _KEY_ROUTES.get(canonical)
     if route is None:
         return f"Error: unknown config key: {key}"
     # ⚑ Symmetric with ``set_config_value`` BY CONSTRUCTION: the same rule site picks the file.
@@ -926,7 +978,6 @@ def reset_config_value(
         if dest.sections
         else remove_root_key(dest.file, dest.leaf)
     )
-    flat = _dot_to_flat(routed)
     if removed:
         # The now-effective value + source tier from the POST-RESET cascade (the file is
         # already written, so the assembled snapshot reflects the removal).
@@ -934,7 +985,7 @@ def reset_config_value(
         # for those is a cascade-derived "effective" a true claim.
         effective = (
             _effective_after_reset(
-                routed, dest.sections, dest.leaf,
+                canonical, dest.sections, dest.leaf,
                 agent_name=cascade_agent_name,
                 system_path=cascade_system_path,
                 agent_path=cascade_agent_path,
@@ -946,8 +997,9 @@ def reset_config_value(
             if canonical.split(".", 1)[0] in _SETTINGS_SCOPE_TOKENS
             else None
         )
-        return _honest_reset_message(flat, command_scope, effective)
-    return f"No override for {flat}"
+        # ⚑ The CANONICAL key in both messages — see the ``set`` twin's note.
+        return _honest_reset_message(canonical, command_scope, effective)
+    return f"No override for {canonical}"
 
 
 def _reset_dest(
@@ -966,17 +1018,20 @@ def _reset_dest(
 
 
 def _honest_reset_message(
-    flat: str,
+    key: str,
     command_scope: "ConfigLevel | None",
     effective: "tuple[str, str] | None" = None,
 ) -> str:
     """The HONEST ``reset`` confirmation (F7, Jei-ruled 2026-07-02d)."""
+    # ⚑ *key* is the key AS THE USER MAY RETYPE IT — the canonical dotted spelling, or a
+    # persona/secret DISPLAY key. It was named ``flat`` while the generic branch handed
+    # it an underscore spelling no verb accepted.
     scope_phrase = (
         f"the {command_scope.value} scope"
         if command_scope is not None
         else "this scope"
     )
-    base = f"Cleared {flat} set on {scope_phrase}; "
+    base = f"Cleared {key} set on {scope_phrase}; "
     if effective is not None:
         value, tier = effective
         return f"{base}effective is now {value} ({tier})."
@@ -984,7 +1039,7 @@ def _honest_reset_message(
 
 
 def _effective_after_reset(
-    routed: str,
+    canonical: str,
     sections: tuple[str, ...],
     leaf: str,
     *,
@@ -994,7 +1049,7 @@ def _effective_after_reset(
     workset_path: Path | None,
     box_path: Path | None,
 ) -> "tuple[str, str] | None":
-    """The now-effective ``(value, source_tier)`` for *routed* AFTER a reset, else ``None``."""
+    """The now-effective ``(value, source_tier)`` for *canonical* AFTER a reset, else ``None``."""
     if all(
         p is None for p in (system_path, agent_path, workset_path, box_path)
     ):
@@ -1053,7 +1108,7 @@ def _effective_after_reset(
     result = expand(snapshot, ctx, collect_errors=True)
     assert isinstance(result, tuple)  # lenient mode → (snapshot, errors)
     resolved_snap, errors = result
-    if routed in errors:
+    if canonical in errors:
         return None  # unresolved post-reset (dangling ref / cycle) — no guess.
     found, eff = _reads(resolved_snap, key_path)
     if not found or isinstance(eff, (Bind, KeyStore, list)) or eff is None:

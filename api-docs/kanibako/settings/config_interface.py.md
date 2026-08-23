@@ -23,8 +23,8 @@ def _category_set_lookups(config_path: Path, *, canonical: str, system_path: Pat
 def _clone_keystore(store: 'Any') -> 'Any'
 def _set_leaf(store: 'Any', parts: list, value: object) -> None
 def _reset_dest(canonical: str, command_scope: 'ConfigLevel | None', config_path: Path, system_settings_path: 'Path | None') -> DestRoute
-def _honest_reset_message(flat: str, command_scope: 'ConfigLevel | None', effective: 'tuple[str, str] | None'=None) -> str
-def _effective_after_reset(routed: str, sections: tuple[str, ...], leaf: str, *, agent_name: str, system_path: Path | None, agent_path: Path | None, workset_path: Path | None, box_path: Path | None) -> 'tuple[str, str] | None'
+def _honest_reset_message(key: str, command_scope: 'ConfigLevel | None', effective: 'tuple[str, str] | None'=None) -> str
+def _effective_after_reset(canonical: str, sections: tuple[str, ...], leaf: str, *, agent_name: str, system_path: Path | None, agent_path: Path | None, workset_path: Path | None, box_path: Path | None) -> 'tuple[str, str] | None'
 def _count_leaves(node: object) -> int
 def _clear_writable_scope_tables(path: Path, command_scope: 'ConfigLevel | None') -> int
 ```

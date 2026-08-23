@@ -163,18 +163,41 @@ the noun's own file.
 Here it answers only the question it can actually answer: does this noun keep its settings in a
 separate file?
 
-### The three file rules — `_NOUN`, `_SCOPED`, `_CATEGORY`
+### The four file rules — `_NOUN`, `_SCOPED`, `_CATEGORY`, `_BOOTSTRAP`
 
 Which FILE rule a family follows:
 
 * `NOUN` — always the noun's settings file;
-* `SCOPED` — the key's own scope token picks between the settings file and the command's config file;
-* `CATEGORY` — the bind-shaped category families, which follow the `SCOPED` rule.
+* `SCOPED` — the key is scope-rooted, and its scope token is CHECKED against
+  `_SETTINGS_SCOPE_TOKENS` on the way to the settings file;
+* `CATEGORY` — the bind-shaped category families, which follow the `SCOPED` rule;
+* `BOOTSTRAP` — the Layer-1 `kanibako_config.yaml` itself, with exactly ONE member:
+  `config_keys.SETUP_MARKER_KEY` (`system.setup_completed`).
+
+⚑ **WHY `_BOOTSTRAP` EXISTS (2026-08-23), AND WHY IT IS NOT A GENERAL "WRITE THE CONFIG FILE"
+RULE.** The setup marker is WRITTEN to that file by `setup` (`config_interface.write_system_value`)
+and READ back from it by the staleness gate (`config.read_setup_completed`), so any other
+destination — the system settings file most plausibly, alongside its `system.*` siblings — would
+have been accepted, persisted and INERT. Spec §2g declares the key `set: cli+file` and
+*"user-resettable"*, and the CLI refused both verbs until this rule landed. 🛑 `config.*` keys are
+NOT this rule: they LOCATE the files everything else lives in and are refused from every scope
+before any destination is asked for (spec §2a). Below the system scope the marker is an UPWARD
+write, refused by the scope-direction guard, which is why the arm may return the command's own file
+unconditionally.
 
 This is a per-FAMILY fact, not a per-caller option: the pref request, the non-agent secret pointer,
 the non-agent env var and the bare agent key are SETTINGS by construction and have no config-file
-form, while a category or routed key can land in either. It reads as a field here and becomes a
-field on the KeyKind descriptor later — the same fact, declared once.
+form. It reads as a field here and becomes a field on the KeyKind descriptor later — the same fact,
+declared once.
+
+⚑⚑ **THE SCOPE-TOKEN TEST IS AN ASSERTION, NOT A FORK, AND THAT CHANGE IS THE FIX FOR A REAL BUG.**
+It used to FALL THROUGH to the command's Layer-1 config file when the token was not a settings
+scope. Nothing legitimate reaches that arm — the routing table, both bind recognisers and
+`is_terminal_category_key` all require a head in `SCOPE_CONTAINMENT` — but the UNDECLARED flat
+spelling did: `box_image`'s first dotted token is the whole string, so a `set box_image=…` slotted
+at `box: image:` in `kanibako_config.yaml` (the bootstrap FLOOR) while `box.image` slotted
+identically in the settings tier ABOVE it. The spelling chose the precedence, silently. The
+normaliser is deleted (`config_keys`), and this arm now says so instead of routing around it.
 
 ⚑⚑ **CATEGORY AND SCOPED NOW PICK THE SAME FILE, AND THAT IS THE REPAIR, NOT AN OVERSIGHT.**
 `CATEGORY` was distinguished for exactly one reason: it carried the deliberately-broken agent-scope

@@ -331,6 +331,16 @@ Notes:
   inert and safe to delete for tidiness. It does **not** trigger the refusal (verified).
 - **`shared` → `common`:** rename the category token in your settings files, keeping scope,
   agent name, entry name, and value (`shared:` table → `common:`). There is no alias.
+- **Underscore key spellings are gone — type the dots.** `kanibako system set box_image=…` used to
+  be accepted as a second spelling of `box.image`, and so did the flat form of every other routed
+  key (`box_enable_vault`, `system_agent`, `workset_channels_broadcast`, …). It only ever half
+  worked: `set` and `reset` took it, `get` answered `Error: unknown config key: box_image` for the
+  same string, and the two spellings wrote **different files** — the flat form landed in
+  `~/.config/kanibako_config.yaml`, which sits *underneath* the system settings file the dotted
+  form writes, so which spelling you typed decided which value won. The flat form is now refused by
+  name at every verb, and a successful `set` echoes the dotted key back. **Nothing on disk changes**
+  — no release ever stored the underscore spelling, only accepted it as input — so the only thing
+  to update is any script or habit that types one.
 
 ### 2.2 Mount collisions are now hard errors (a working config can start failing)
 
@@ -662,8 +672,38 @@ If you ever worked around that by hand-editing `~/.config/kanibako_config.yaml`:
 for a `system:` table containing `bindings:`, `caches:`, `seeded:`, `common:`, `synced:`, or
 `secret_path:` and move those sub-tables **verbatim** into the `system:` table of
 `<data>/global/settings.yaml`. The shape is identical; only the file changes. Confirm with
-`kanibako system get <key>` — it now answers. The structural path keys (`system.cache`,
-`system.channels.*`, `system.setup_completed`, …) belong in the config file and must **stay**.
+`kanibako system get <key>` — it now answers. Only `system.setup_completed` and the `config.*`
+bootstrap keys belong in the config file and must **stay** there.
+
+The eleven `system.*` **path** keys — `system.template`, `system.canon`, `system.backup`,
+`system.cache`, `system.runtime`, `system.channelroot` and the five `system.channels.*`
+type-roots — are settings keys, and `kanibako system set` accepts them (it used to refuse them as
+"structural config keys" and send you to the config file). A set lands in the `system:` table of
+`<data>/global/settings.yaml`, and `get`/`reset` read and clear it there. **If you hand-placed any
+of these in `~/.config/kanibako_config.yaml`, leave them.** They still apply — that table is the
+floor the settings file layers over — but `kanibako system get` reports what the *settings* file
+says, so it answers `(not set)` until you set one. To see what is actually in effect, use
+`kanibako system show --effective`.
+
+**These repoints now move the directories they name, not just the cascade.** If you set one of
+these eleven keys on an earlier 1.8.0 build, check it. The value was stored and the launch honoured
+it — binds, seeds and `show --effective` all moved — but kanibako's own path resolver read the
+config file only, so anything asking directly for "the template root" or "the channel root" still
+got the default. A `system.template` repoint did not move the seed source; a `system.channelroot`
+repoint did not move the channel tree. **Nothing is required of you** — the stored value was always
+the one you meant, and it now takes effect everywhere. But if you set one of these and worked
+around it by *also* moving files by hand or by pointing something else at the old location, that
+workaround may now be doing the opposite of what you want: run `kanibako system get <key>`,
+confirm it names the directory you actually want, and undo the workaround.
+
+**`system.setup_completed` is settable and resettable now.** It used to be refused by every verb
+with advice to hand-edit the config file. It still lives in that file's `system:` table — nothing
+moved, and a hand-edit still works — but `kanibako system set system.setup_completed=…`,
+`kanibako system get system.setup_completed` and `kanibako system reset system.setup_completed` all
+work against it directly. Clearing it is the supported way to get back to *"setup has never run"*.
+⚠️ There is no validation on the value, exactly as there was none on the hand-edit: a marker newer
+than your installed kanibako makes the next command stop and tell you to upgrade or re-run
+`kanibako setup`.
 
 One loud case: `kanibako system set` against a bind-shaped key (`bindings.{ro,rw}.*`, `caches`,
 `seeded`, `common`, `synced`) is refused **unconditionally, wherever the entry lives** — not with
@@ -2728,6 +2768,38 @@ that tells you the rest.
 code had passages whose only job was to say which `settings.yaml` was meant; those are shorter or
 gone. It also flushed out a class of our own tests that passed only because two tiers happened to
 spell their filename the same way.
+
+### 2.46 Five more bare agent keys are recognised, so five more names stop reading as a box
+
+**Read this if you have a box named `template`, `canon`, `run_args`, `transform` or
+`transform_settings`.**
+
+The any-agent defaults are set by their bare names: `kanibako system set model=opus` sets
+`agent.default.model`. Six of them worked — `model`, `access`, `endpoint`, `bootstrap`,
+`allow_helpers`, `continue_mode` — and the rest of the declared set did not, though the settings
+spec declares them all alike. `agent.default.template` answered a refusal telling you to *"set the
+any-agent default with the bare key"*, and `template` then answered `unknown config key`; `run_args`
+and `transform` had no working spelling at all. All of them are recognised now.
+
+**What that costs you.** `kanibako box config <token>` reads a lone token as a *key* when it is one
+and as a *box name* otherwise, so five names moved from the second reading to the first — exactly as
+`model` and `access` already had. If you have a box called `template`, `kanibako box config
+template` now reports the agent key instead of that box's settings.
+
+**The cure is the two-word form, which has always worked and is never ambiguous:**
+
+```
+kanibako box config template <key>          # the box named "template"
+kanibako box config template box.image=…    # …and setting one of its keys
+```
+
+`kanibako box show`, `kanibako start template` and every other verb that takes a box name are
+unaffected — the collision exists only where a single positional could be either thing.
+
+**`transform_settings` is recognised but still not settable**, because its value is a table rather
+than a scalar. It is refused by name now, saying so and pointing at the settings file, instead of
+being denied as a key that does not exist. Edit it in `<data>/global/settings.yaml` under
+`agent: default: transform_settings:`, or in an agent's own `agent.yaml` under `self:`.
 
 ---
 

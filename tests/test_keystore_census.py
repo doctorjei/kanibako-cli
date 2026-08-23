@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import pytest
 
+from kanibako.settings.kb_store import BINDING_DERIVATIONS_NODE
 from kanibako.settings.keystore import KeyStore
 from tests import _keystore_census as census
 
@@ -214,12 +215,12 @@ class TestReservedInternalNode:
     self, clean_census,
   ):
     judged = _judge(
-      (census.BINDING_DERIVATIONS_NODE, "system", "seeded", "/home/agent"),
+      (BINDING_DERIVATIONS_NODE, "system", "seeded", "/home/agent"),
     )
     assert judged.verdict == census.Verdict.RESERVED
     assert judged.key_len == 1
     assert census.render(
-      (census.BINDING_DERIVATIONS_NODE, "system", "seeded", "/home/agent"),
+      (BINDING_DERIVATIONS_NODE, "system", "seeded", "/home/agent"),
       judged.key_len,
     ) == "binding_derivations ⟨system | seeded | /home/agent⟩"
 
@@ -227,7 +228,7 @@ class TestReservedInternalNode:
     """The class is the ROOT node, not the spelling: ``box.binding_derivations``
     is an ordinary undeclared key."""
     assert _judge(
-      ("box", census.BINDING_DERIVATIONS_NODE),
+      ("box", BINDING_DERIVATIONS_NODE),
     ).verdict == census.Verdict.UNDECLARED
 
   def test_there_is_no_exemption_list_to_grow(self, clean_census):

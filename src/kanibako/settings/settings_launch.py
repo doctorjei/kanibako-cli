@@ -55,6 +55,7 @@ from kanibako.settings.settings_categories import (
 )
 from kanibako.settings.settings_cli_level import guard_cli_level
 from kanibako.settings.settings_expand import expand
+from kanibako.settings.settings_keyspace_probe import observe as observe_keyspace
 from kanibako.settings.settings_merge import merge
 from kanibako.settings.settings_prefs import PrefRequest, apply_prefs, collect_prefs
 from kanibako.settings.settings_resolve import ResolveCtx, SettingsError, expand_expr
@@ -845,6 +846,12 @@ def build_launch_snapshot(
     _materialize_box_agent_mirror(expanded, active_agent=agent_name)
     if workset_anchor and _BOX_ROOT_KEY in workset_anchor:
         _assert_box_root_resolved(expanded)
+    # ⚑ MEASUREMENT, NOT ENFORCEMENT. Spec §0 says resolving an undeclared key is an
+    # error; nothing here raises one, and this call must never be the thing that
+    # starts. It is DISARMED unless ``KANI_KEYSPACE_PROBE`` names it and cannot fail a
+    # run either way — its whole job is to size the blast radius of a refusal AT THIS
+    # LINE, which behind ``load_merged_config`` is nearly every kanibako command.
+    observe_keyspace(expanded, origin="build_launch_snapshot")
     return expanded
 
 

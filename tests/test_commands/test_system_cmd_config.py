@@ -7,10 +7,11 @@ SETTINGS key to ``kanibako_config.yaml`` was a write-only no-op
 launch reads those keys from the system SETTINGS file (``@config.settings`` =
 ``global/settings.yaml``).  The rule now:
 
-* STRUCTURAL path-tier keys (the ``SYSTEM_PATH_DEFAULTS`` family +
-  ``system.setup_completed``) stay FILE-ONLY in ``kanibako_config.yaml``'s
+* ``system.setup_completed`` stays FILE-ONLY in ``kanibako_config.yaml``'s
   ``[system]`` table — set/reset refused, get/show still read, and the refusal
-  names the file that hand-editing actually honors.
+  names the file that hand-editing actually honors.  ⚑ The
+  ``SYSTEM_PATH_DEFAULTS`` family stood beside it until 2026-08-23; spec §2g
+  declares all eleven Layer-2 SETTINGS keys, so they joined the row below.
 * system-scope SETTINGS (``system.auth.share_allowed``,
   ``system.agent``, ``env.*``, agent settings) route to the SAME
   storage the launch cascade reads: the system settings file for keyed
@@ -311,83 +312,107 @@ class TestSystemEnvTier:
 
 
 class TestSystemStructuralFileOnly:
-    """The STRUCTURAL path-tier family stays FILE-ONLY — and the refusal's
-    advice is TRUE: hand-editing the named file is honored by the resolver."""
+    """``system.setup_completed`` is SETTABLE, and every verb names the ONE table
+    the marker is stored in — the config file's ``system:``.
 
-    def test_set_structural_key_refused_names_the_real_file(
+    ⚑⚑ THIS CLASS ASSERTED THE OPPOSITE UNTIL 2026-08-23, and the reversal is the
+    saying-so.  It pinned a refusal on all three verbs whose cure was "hand-edit the
+    config file" — for a key spec §2g calls "PERSISTS, user-resettable" and the
+    registry marks ``set: cli+file``.  Telling a user to hand-edit a file the CLI can
+    write is not a safety property; it is the surface failing to keep a declared
+    promise, and the hand-edit had exactly the same lack of validation.
+
+    ⚑ WHY THE FIX WAS NOT A SETTINGS-FILE ROUTE.  ``setup`` writes the marker to the
+    config file and ``read_setup_completed`` reads it from there, so routing the verbs
+    to ``@config.settings`` like their ``system.*`` siblings would have been accepted,
+    persisted and INERT.  The remaining delta — spec §2g declares it a settings key
+    while the code stores it in the config file — is a STORAGE migration, not a
+    routing one, and is recorded at ``config_keys.SETUP_MARKER_KEY``.
+    """
+
+    def test_set_writes_the_file_the_gate_reads(
         self, config_file, tmp_home, capsys,
     ):
-        rc = _set("system.cache=/custom/cache")
-        assert rc == 1
-        err = capsys.readouterr().err
-        assert "structural config key" in err
-        # The VERB is the op the user ran.
-        assert "cannot be set from the CLI" in err
-        # The advice names the file resolve_system_paths actually reads.
-        assert str(config_file) in err
-        # Nothing was written anywhere.
-        assert load_doc(config_file)["system"].get("cache") != "/custom/cache"
+        from kanibako.settings.config import read_setup_completed
 
-    def test_reset_structural_key_refused(self, config_file, tmp_home, capsys):
-        rc = _reset("system.cache")
-        assert rc == 1
-        err = capsys.readouterr().err
-        assert "structural config key" in err
-        # ⚑ "reset", not "set": a reset is its own op and used to borrow set's verb.
-        assert "cannot be reset from the CLI" in err
+        rc = _set("system.setup_completed=1.7.0")
+        assert rc == 0, capsys.readouterr()
+        # The SHIPPED READER is the oracle: asserting a table exists would pass just
+        # as well for a write nobody consumes.
+        assert read_setup_completed(config_file) == "1.7.0"
 
-    def test_hand_editing_the_named_file_actually_works(
+    def test_reset_clears_it_back_to_never_run(
         self, config_file, tmp_home, capsys,
     ):
-        """The refusal advice must not lie: a hand-edit of the config file's
-        [system] table is honored by the path resolver AND readable via get."""
-        custom = str(tmp_home / "custom-cache")
-        write_nested_key(config_file, ("system",), "cache", custom)
-        std = _std(config_file)
-        assert std.cache == Path(custom)
+        from kanibako.settings.config import read_setup_completed
+
+        _set("system.setup_completed=1.7.0")
         capsys.readouterr()
-        rc = _get("system.cache")
-        assert rc == 0
+        rc = _reset("system.setup_completed")
+        assert rc == 0, capsys.readouterr()
+        assert read_setup_completed(config_file) is None
+
+    def test_hand_editing_the_named_file_is_still_honored(
+        self, config_file, tmp_home, capsys,
+    ):
+        """The file stays a hand-editable surface, and ``get`` reads it back.
+
+        ⚑ The READ used to be REFUSED here (``rc == 1``, "structural config key"),
+        which meant a key the CLI now sets could not be read by the same CLI — the
+        get/set asymmetry the dest-parity module exists to prevent.
+        """
+        write_nested_key(config_file, ("system",), "setup_completed", "1.7.0")
+        capsys.readouterr()
+        rc = _get("system.setup_completed")
+        assert rc == 0, capsys.readouterr()
+        assert "1.7.0" in capsys.readouterr().out
+        from kanibako.settings.config import read_setup_completed
+        assert read_setup_completed(config_file) == "1.7.0"
+
+    def test_the_system_path_tier_is_settable_and_lands_in_the_settings_file(
+        self, config_file, tmp_home, capsys,
+    ):
+        """⚑ THE REPLACEMENT PIN (2026-08-23), and it asserts the OPPOSITE of what
+        stood here: spec §2g makes the ``SYSTEM_PATH_DEFAULTS`` family ordinary
+        settings keys, so ``system set`` writes them to ``global/settings.yaml``.
+        """
+        custom = str(tmp_home / "custom-cache")
+        rc = _set(f"system.cache={custom}")
+        assert rc == 0, capsys.readouterr()
+        std = _std(config_file)
+        assert load_doc(std.settings)["system"]["cache"] == custom
+        assert load_doc(config_file)["system"].get("cache") != custom
+        capsys.readouterr()
+        assert _get("system.cache") == 0
         assert custom in capsys.readouterr().out
 
-    def test_setup_completed_stays_file_only(self, config_file, tmp_home, capsys):
-        """system.setup_completed's shipped reader (read_setup_completed) reads
-        kanibako_config.yaml's [system] table — it keeps the file-only refusal
-        (spec-vs-code divergence flagged; reader relocation out of scope)."""
-        rc = _set("system.setup_completed=1.7.0")
-        assert rc == 1
-        assert "structural config key" in capsys.readouterr().err
-
-    def test_get_structural_key_refuses_with_a_READ_verb(
+    def test_an_undeclared_config_key_is_refused_as_UNKNOWN(
         self, config_file, tmp_home, capsys,
     ):
-        """Residuals item 4 gave `get` the structural TRUTH; this pins its VERB.
+        """Spec §0: an undeclared name is not a key, and the refusal says so.
 
-        `get` shares ``system_key_refusal`` with `set`/`reset`, and the message was
-        a fixed "is not settable from the CLI" — a WRITE verb printed on a READ,
-        mis-describing the op that failed. It now takes *verb*, and the read tail
-        drops "(or re-run 'kanibako setup')" too: that is a WRITE cure, useless to
-        someone who ran `get`.
-
-        ⚑ MUTATION: pass ``verb="set"`` at ``system_cmd``'s call -> the read-verb
-        assertion dies.
+        ⚑ THIS CASE REPLACES ``test_get_structural_key_refuses_with_a_READ_verb``
+        (2026-08-23), which pinned the VERB of a "structural config key" refusal on
+        ``system.setup_completed``.  That key is settable and readable now, and the
+        refusal it exercised was left with no subject but undeclared ``config.*``
+        spellings — for which "is a structural config key … its value lives in the
+        config file" asserts that a non-existent key exists.  The message is gone; the
+        assertions below are the ones its own mutation guard implied.
         """
-        for key in ("system.setup_completed", "system.channels.common"):
-            capsys.readouterr()  # drain
-            rc = _get(key)
-            assert rc == 1, key
-            err = capsys.readouterr().err
-            # Mutation guard: the old lie is GONE, the structural truth PRESENT,
-            # and the message names the real config file (as set's does).
-            assert "unknown config key" not in err, (key, err)
-            assert "structural config key" in err, (key, err)
-            assert str(config_file) in err, (key, err)
-            # THE VERB matches the op the user ran — and no write verb survives.
-            assert "cannot be read from the CLI" in err, (key, err)
-            assert "settable" not in err, (key, err)
-            assert "cannot be set" not in err, (key, err)
-            # A write cure has no business on a read.
-            assert "kanibako setup" not in err, (key, err)
+        capsys.readouterr()  # drain
+        rc = _get("config.nope")
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert "unknown config key" in err, err
+        assert "structural config key" not in err, err
+
+    def test_a_declared_config_foundation_key_still_reads(
+        self, config_file, tmp_home, capsys,
+    ):
+        """The other half: dropping the branch must not make a REAL key unreadable."""
+        capsys.readouterr()
+        assert _get("config.data") == 0
+        assert capsys.readouterr().out.strip() != ""
 
     def test_get_config_path_key_reads_kanibako_config_yaml(
         self, config_file, tmp_home, capsys,

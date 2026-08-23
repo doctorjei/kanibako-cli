@@ -507,8 +507,9 @@ The order is deliberate at every step.
    everything else lands in, so they cannot live in those files — they live in the bootstrap
    config file, hand-edited by a human/admin. Refused EXPLICITLY here, BEFORE the scope guard, so
    every command scope gets the same ruled message (not the cross-scope guard message, and not
-   the older generic `system_key_refusal` that mentions `setup`). The READ/show path still
-   consults `is_system_path_key`'s `config.` branch — only set/reset short-circuit here.
+   the DELETED generic `system_key_refusal`, which mentioned `setup` — spec §2a forbids naming it
+   in THIS message). The READ/show path still consults `is_config_file_only_key`'s `config.`
+   branch — only set/reset short-circuit here.
 2. **The `pref.*` WRITE-SITE guard (spec §2h)** — BEFORE the three TARGET filters and before the
    scope guard. A pref is legal only in a workset or box settings file, and that restriction is
    what BOUNDS the resolution recursion, so it is a hard rule rather than a convenience. Checked
@@ -645,9 +646,11 @@ pre-existing defect still allows the set and `config set` stays usable to REPAIR
   `system.agent` / categories / env) was routed above or falls through to the routing table below
   — it is never refused here.
 * **Regular config keys** — routed via the single known-key table (the H1 fix: an unknown key
-  returns an error string and NEVER raises). Either the canonical dotted spelling or the flat
-  underscore form is accepted; `_coerce_value` is the H2 fix (real `bool` etc.) and only returns
-  a `str` for a typed key when coercion failed. A scope-prefixed SETTINGS key (`{agent,workset,
+  returns an error string and NEVER raises). ⚑ The canonical dotted spelling and ONLY it — the flat
+  underscore form used to be normalised in here and is now refused by name (see the deleted
+  `config_keys._route_key`); `_coerce_value` is the H2 fix (real `bool` etc.) and only returns
+  a `str` for a typed key when coercion failed. The confirmation echoes the CANONICAL key, so a
+  successful `set` cannot advertise a form `get` refuses. A scope-prefixed SETTINGS key (`{agent,workset,
   box}.*` — including a DOWNWARD write at a containing command scope, spec §0) lands in the
   COMMAND scope's SETTINGS file with the key's scope token KEPT (the nested form
   `assemble_levels` mirrors — never remapped to the key-scope's own file). `settings_dest` ==
@@ -795,7 +798,7 @@ family with no slot would mean the dispatch and the rule site disagree — which
 surface, not to route around.
 
 
-```_honest_reset_message(flat, command_scope, effective=None) -> str```
+```_honest_reset_message(key, command_scope, effective=None) -> str```
 The HONEST `reset` confirmation (F7, Jei-ruled 2026-07-02d).
 
 The behavior is right — clearing a scope override lets the value fall back through the cascade —
@@ -841,10 +844,14 @@ the bound `.get`.
 ```write_system_value(config_path: Path, leaf: str, value: object) -> None```
 Programmatically write a `[system] <leaf>` key to the CONFIG file, bypassing the CLI guard.
 
-This is the PROGRAM editing the config file on the user's behalf — it bypasses the file-only CLI
-guard in `set_config_value` (which refuses the STRUCTURAL `system.*` path-tier family). Used by
-`kanibako setup` to record host-global values (e.g. `system.setup_completed` →
-`[system] setup_completed`) that the CLI deliberately will not let a user SET directly.
+This is the PROGRAM editing the config file on the user's behalf, at a point where no CLI verb is
+running: `kanibako setup` recording `system.setup_completed` → `[system] setup_completed`, and
+`setup_compat_gate`'s best-effort forward bump of the same marker.
+
+⚑ **IT NO LONGER "BYPASSES A GUARD" (2026-08-23), and the old wording claimed a guard that is gone.**
+The `system.*` path tier stopped being refused with spec §2g, and the marker followed: `config set
+system.setup_completed=…` writes this very table through `config_dest`'s `_BOOTSTRAP` file rule. The
+two writers agree on the address on purpose — that agreement is what makes the CLI verb non-inert.
 
 *leaf* is the bare key name under the `[system]` table (NOT prefixed with `system.`). Writes
 preserve all other config content (read-modify-write via `write_nested_key`).

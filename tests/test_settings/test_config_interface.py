@@ -8,6 +8,7 @@ import yaml
 from kanibako.settings.config import BOX_META_FILE, WORKSET_META_FILE
 from kanibako.settings.config_io import dump_doc, load_doc
 from kanibako.settings.config_keys import ConfigLevel, is_known_key
+from kanibako.settings.paths_defaults import SYSTEM_PATH_DEFAULTS
 from kanibako.settings.config_interface import (
     ConfigAction,
     get_config_value,
@@ -1489,40 +1490,80 @@ class TestSystemAgent:
 
 
 class TestSystemConfigFileOnly:
-    """The STRUCTURAL system.* path-tier family is FILE-ONLY (F2 narrowing:
-    the old ALL-system.* catch-all is deliberately flipped).
+    """What is CONFIG-FILE-ONLY, and what merely used to be called that.
 
-    Only the ``SYSTEM_PATH_DEFAULTS`` family (+ ``system.setup_completed``,
-    whose shipped reader reads the config file) is refused, pointing at the
-    REAL resolved bootstrap config file.  Retired key names (``system.data``
-    → ``config.data``) and settings keys are NOT this family.
+    ⚑⚑ THE ``SYSTEM_PATH_DEFAULTS`` FAMILY IS NOT REFUSED ANY MORE (2026-08-23).
+    All eleven are Layer-2 SETTINGS keys (spec §2g; the registry marks each
+    ``set: cli+file``, and §2a names ``system.template`` in the CLI-settable
+    list beside ``workset.vault_{ro,rw}``), so they route like their
+    ``workset.*`` twins.  Refusing them as "structural" was a spec violation,
+    not a policy — do not restore it without a spec edit.
+
+    ⚑⚑ AND ``system.setup_completed`` LEFT THE FAMILY TOO (2026-08-23), which is
+    why this class no longer names a survivor.  Its shipped reader and writers use
+    the config file's ``system:`` table raw — so the fix was not a settings-file
+    route (that would have been INERT: a set the reader never sees) but a route to
+    THAT table.  Spec §2g calls it "PERSISTS, user-resettable" and the registry marks
+    it ``set: cli+file``; the CLI refused both verbs and told the user to hand-edit
+    the very file it could have written.  The ``config.*`` foundation is all that is
+    refused now, by its own ruled message and earlier in the chain.  Retired key
+    names (``system.data`` → ``config.data``) are not this family either.
     """
 
-    def test_set_structural_system_key_refused(self, tmp_path):
+    def test_the_system_path_tier_is_settable(self, tmp_path):
+        """Every ``SYSTEM_PATH_DEFAULTS`` member takes a set and lands in the settings file."""
         cf = tmp_path / "kanibako_config.yaml"
-        for key in (
-            "system.cache", "system.backup", "system.channelroot",
-            # M-11: ``system.base_template`` is RETIRED; ``system.template`` and
-            # the new ``system.canon`` are the structural spellings now.
-            "system.template", "system.canon", "system.runtime",
-            "system.channels.common", "system.setup_completed",
-        ):
-            msg = set_config_value(key, "x", config_path=cf)
-            assert msg.startswith("Error:"), key
-            assert "structural config key" in msg
-            # The advice names the REAL bootstrap config file (the [system]
-            # table resolve_system_paths reads) — never the command scope's
-            # settings file.
-            assert "kanibako_config.yaml" in msg
-        # Nothing was written to the file.
-        assert not cf.exists()
+        ssp = tmp_path / "settings.yaml"
+        for key in sorted(SYSTEM_PATH_DEFAULTS):
+            msg = set_config_value(
+                key, "/tmp/x", config_path=cf, system_settings_path=ssp,
+                command_scope=ConfigLevel.system,
+            )
+            assert msg == f"Set {key}=/tmp/x", (key, msg)
+        # The SETTINGS file took every write; the bootstrap config file took none.
+        assert ssp.exists() and not cf.exists()
 
-    def test_reset_structural_system_key_refused(self, tmp_path):
+    def test_setup_marker_writes_the_file_its_reader_reads(self, tmp_path):
+        """The marker's ``set`` lands where ``read_setup_completed`` looks — not the
+        settings file, and not nowhere.
+
+        ⚑ THIS CASE ASSERTED THE OPPOSITE UNTIL 2026-08-23 (it pinned the refusal and
+        the "hand-edit the config file" advice), and the replacement is the saying-so.
+        The route is proven by the SHIPPED READER, not by an assertion about which
+        table the writer chose: a settings-file route would satisfy any file-shape
+        assertion and still be invisible to every consumer.
+        """
+        from kanibako.settings.config import read_setup_completed
+
         cf = tmp_path / "kanibako_config.yaml"
-        for key in ("system.cache", "system.setup_completed"):
-            msg = reset_config_value(key, config_path=cf)
-            assert msg.startswith("Error:"), key
-            assert "structural config key" in msg
+        ssp = tmp_path / "settings.yaml"
+        msg = set_config_value(
+            "system.setup_completed", "1.8.0", config_path=cf,
+            system_settings_path=ssp, command_scope=ConfigLevel.system,
+        )
+        assert msg == "Set system.setup_completed=1.8.0", msg
+        assert read_setup_completed(cf) == "1.8.0"
+        assert not ssp.exists(), "the marker is NOT a settings-file key"
+
+    def test_setup_marker_reset_clears_what_the_reader_reads(self, tmp_path):
+        """Spec §2g calls the marker "user-resettable"; ``reset`` is that verb.
+
+        Clearing it is the supported way back to "setup has never run", so the
+        assertion is again the SHIPPED READER's answer.
+        """
+        from kanibako.settings.config import read_setup_completed
+
+        cf = tmp_path / "kanibako_config.yaml"
+        set_config_value(
+            "system.setup_completed", "1.8.0", config_path=cf,
+            command_scope=ConfigLevel.system,
+        )
+        msg = reset_config_value(
+            "system.setup_completed", config_path=cf,
+            command_scope=ConfigLevel.system,
+        )
+        assert not msg.startswith("Error:"), msg
+        assert read_setup_completed(cf) is None
 
     def test_retired_system_key_is_unknown_not_structural(self, tmp_path):
         """``system.data`` was RENAMED to ``config.data`` (block #3a): it is
@@ -1565,15 +1606,15 @@ class TestSystemConfigFileOnly:
                 assert "structural config key" not in msg
                 assert "kanibako setup" not in msg
 
-    def test_get_system_config_key_still_reads(self, tmp_path):
+    def test_get_config_file_only_key_still_reads(self, tmp_path):
         """Reads/shows are unaffected — only writes are refused."""
         from kanibako.settings.config_io import write_nested_key
 
         cf = tmp_path / "kanibako_config.yaml"
-        write_nested_key(cf, ("system",), "cache", "/custom/cache")
+        write_nested_key(cf, ("system",), "setup_completed", "1.8.0")
         assert (
-            get_config_value("system.cache", global_config_path=cf)
-            == "/custom/cache"
+            get_config_value("system.setup_completed", global_config_path=cf)
+            == "1.8.0"
         )
 
 
@@ -1702,20 +1743,44 @@ class TestSystemSettingsTierSplit:
             "model", global_config_path=cf, system_settings_path=ssp,
         ) == "gpt-5"
 
-    def test_system_config_key_stays_in_config_file(self, tmp_path):
-        """STRUCTURAL system.* CONFIG read uses global_config_path
+    def test_config_file_only_key_stays_in_config_file(self, tmp_path):
+        """The CONFIG-FILE-ONLY read uses global_config_path
         (kanibako_config.yaml), even when a settings file is supplied —
         config/settings stay separate."""
         from kanibako.settings.config_io import write_nested_key
 
         cf = tmp_path / "kanibako_config.yaml"
         ssp = tmp_path / "global" / "settings.yaml"
-        write_nested_key(cf, ("system",), "cache", "/custom/cache")
+        write_nested_key(cf, ("system",), "setup_completed", "1.8.0")
+        assert get_config_value(
+            "system.setup_completed", global_config_path=cf, system_settings_path=ssp,
+        ) == "1.8.0"
+        # The settings file was never touched by a CONFIG read.
+        assert not ssp.exists()
+
+    def test_the_system_path_tier_reads_the_settings_file(self, tmp_path):
+        """A ``system.*`` PATH key reads where its ``set`` writes: the SETTINGS file.
+
+        ⚑ The ``[system]`` table of ``kanibako_config.yaml`` is the resolution
+        FLOOR, not the store, so a plain ``get`` does not report it — spec §2a:
+        plain get answers what THIS scope's file says, never another tier's value.
+        """
+        from kanibako.settings.config_io import write_nested_key
+
+        cf = tmp_path / "kanibako_config.yaml"
+        ssp = tmp_path / "global" / "settings.yaml"
+        write_nested_key(cf, ("system",), "cache", "/floor/cache")
+        assert get_config_value(
+            "system.cache", global_config_path=cf, system_settings_path=ssp,
+        ) is None
+        set_config_value(
+            "system.cache", "/custom/cache", config_path=cf,
+            system_settings_path=ssp, command_scope=ConfigLevel.system,
+        )
+        assert load_doc(ssp)["system"]["cache"] == "/custom/cache"
         assert get_config_value(
             "system.cache", global_config_path=cf, system_settings_path=ssp,
         ) == "/custom/cache"
-        # The settings file was never touched by a CONFIG read.
-        assert not ssp.exists()
 
     def test_reset_system_agent_removes_from_settings_file(self, tmp_path):
         """F3 flip: reset removes the setting from the SETTINGS file (where the
@@ -1729,12 +1794,13 @@ class TestSystemSettingsTierSplit:
         msg = reset_config_value(
             "system.agent", config_path=cf, system_settings_path=ssp,
         )
-        # Honest cleared-form (F7). ⮕ P7: the message now names the key in the
-        # GENERIC branch's flat spelling (``system_agent``), because the key lost
-        # its four-site special case and routes like every other scope-prefixed
-        # settings key — one branch, one message style.
+        # Honest cleared-form (F7). ⮕ P7: the key lost its four-site special case
+        # and routes like every other scope-prefixed settings key — one branch, one
+        # message style. ⚑ It used to say ``system_agent``: the generic branch
+        # re-flattened the key on the way into the message, advertising a spelling
+        # ``get`` refuses. The message names the key the user can retype.
         assert msg == (
-            "Cleared system_agent set on this scope; it now falls back "
+            "Cleared system.agent set on this scope; it now falls back "
             "through the cascade."
         ), msg
         assert read_system_agent(ssp) is None
@@ -1954,16 +2020,21 @@ class TestCategoryConfigSet:
             command_scope=ConfigLevel.box,
         ) == str(["/src", "/dest"])
 
-    def test_structural_system_key_still_refused(self, tmp_path):
-        """A real structural system.* config key is still file-only refused.
+    def test_the_setup_marker_overwrites_in_place(self, tmp_path):
+        """A marker already in the config file is REPLACED, not shadowed elsewhere.
 
-        (``system.data`` is a RETIRED name — ``config.data`` — so the pin uses
-        a live SYSTEM_PATH_DEFAULTS member; F2 narrowed the family.)"""
+        (``system.data`` is a RETIRED name — ``config.data``; ``system.cache``
+        stood here until 2026-08-23, when the ``SYSTEM_PATH_DEFAULTS`` family became
+        CLI-settable per spec §2g, and the marker followed on the same day — the
+        refusal this case used to assert is gone, and the one table it is stored in
+        is the one a set now edits.)"""
         f = tmp_path / "kanibako_config.yaml"
-        dump_doc(f, {"system": {"cache": "/x"}})
-        msg = set_config_value("system.cache", "/tmp", config_path=f, is_system=True)
-        assert msg.startswith("Error:")
-        assert "structural" in msg
+        dump_doc(f, {"system": {"setup_completed": "1.7.0"}})
+        msg = set_config_value(
+            "system.setup_completed", "1.8.0", config_path=f, is_system=True,
+        )
+        assert msg == "Set system.setup_completed=1.8.0", msg
+        assert load_doc(f)["system"]["setup_completed"] == "1.8.0"
 
     def test_category_key_is_known(self):
         """`is_known_key` recognizes category keys (D1 — get/set symmetry)."""
@@ -4160,13 +4231,21 @@ class TestSetTimeResolutionProbe:
         """SHOULD-3 / spec §0: the error must NAME the key.
 
         Probing first would diagnose the VALUE of a key that does not exist —
-        ``Unknown variable: $BAR`` instead of ``unknown config key: run_args`` —
-        which sends the reader after the wrong thing entirely.
+        ``Unknown variable: $BAR`` instead of ``unknown config key: …`` — which
+        sends the reader after the wrong thing entirely.
+
+        ⚑ THE SPECIMEN WAS ``run_args`` UNTIL 2026-08-23, and swapping it is the
+        saying-so: ``run_args`` is a DECLARED ``agent.default`` leaf (spec §2d) that
+        the bare surface had simply never admitted, so this case was proving the
+        unknown-key rule with a key that is not unknown — and it went red the moment
+        the surface was derived from ``DECLARED_AGENT_LEAVES`` rather than hand-kept.
+        ``auto_approve`` is genuinely undeclared (R-41 RETIRED it) and is the same
+        SHAPE: a bare, plausible-looking agent behaviour spelling.
         """
         msg = set_config_value(
-            "run_args", "--env FOO=$BAR", config_path=tmp_path / BOX_META_FILE,
+            "auto_approve", "--env FOO=$BAR", config_path=tmp_path / BOX_META_FILE,
         )
-        assert msg == "Error: unknown config key: run_args"
+        assert msg == "Error: unknown config key: auto_approve"
 
 
 class TestSetDispatchCoverage:
@@ -4192,8 +4271,13 @@ class TestSetDispatchCoverage:
             "box.env.FOO",                        # scope env
             "agent.claude.model",                 # persona setting
             "model",                              # bare agent setting
+            # ⚑ The bare surface is DERIVED from ``DECLARED_AGENT_LEAVES`` since
+            # 2026-08-23, so every declared scalar leaf is claimed — not just the six
+            # a hand-kept set happened to name. ``run_args`` is the one that proves it.
+            "run_args",                           # bare agent setting (was unclaimed)
             "box.agent.model",                    # box agent mirror
             "system.cache",                       # system path tier
+            "system.setup_completed",             # the setup MARKER (bootstrap file)
         ):
             assert _has_dedicated_route(key), key
 
@@ -4211,8 +4295,13 @@ class TestSetDispatchCoverage:
         # ``bindings`` arms with R-9, and ``caches``/``seeded``/``common``/``synced``
         # with DS-BL1 = (a). All are refused in the preamble; none reaches a
         # dispatch branch.
+        #
+        # ⚑ ``run_args`` STOOD HERE AS THE BARE SPECIMEN UNTIL 2026-08-23. It is a
+        # DECLARED ``agent.default`` leaf (spec §2d) and now HAS a dedicated route,
+        # so it moved to ``test_each_special_family_is_claimed``; ``auto_approve``
+        # (R-41 RETIRED, undeclared) is the bare spelling nothing claims.
         for key in (
-            "run_args", "env.FOO", "nonsense.key",
+            "auto_approve", "env.FOO", "nonsense.key",
             "agent.claude.bindings.ro.launcher",
             "box.bindings.ro.vault",
             "box.common.plugins",
@@ -4228,8 +4317,10 @@ class TestSetDispatchCoverage:
         # ``agent.claude.bindings.ro.launcher`` is off because NOTHING claims it
         # any more (R-9's second step), the same way ``env.FOO`` is — not because
         # of a category exclusion, which is why its term was deleted.
+        # ⚑ ``auto_approve`` replaced ``run_args`` here on 2026-08-23 for the reason
+        # given in :meth:`test_a_fabricated_key_is_claimed_by_nothing`.
         for off in ("env.FOO", "box.common.plugins",
-                    "agent.claude.bindings.ro.launcher", "run_args"):
+                    "agent.claude.bindings.ro.launcher", "auto_approve"):
             assert not _probes_at_set_time(off), off
         for on in ("box.shell", "box.secret_path.TOK", "box.env.FOO",
                    "model", "box.image"):

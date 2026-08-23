@@ -35,7 +35,9 @@ CONFIG_PATH_DEFAULTS: dict[str, str] = {
 # Layer 2 — system-scope SETTINGS keys that are PATHS (spec §1/§2g)
 # ---------------------------------------------------------------------------
 # SETTINGS keys, not bootstrap config: each ``@``-refs a Layer-1 config key, an XDG base,
-# or another key in THIS table.  ⚑ CLI-refused as structural (``config_keys.is_system_path_key``).
+# or another key in THIS table.  ⚑ THIS TABLE IS THE FLOOR, NOT THE STORE: every key here is
+# CLI-settable at the system scope (``config_keys._KEY_ROUTES``) and a set lands in the ``system:``
+# table of the SYSTEM SETTINGS file, which the cascade layers OVER these defaults.
 SYSTEM_PATH_DEFAULTS: dict[str, str] = {
    "system.backup":                 "@config.data/backup",
    "system.channelroot":            "@config.data/channels",

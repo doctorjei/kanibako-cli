@@ -366,21 +366,13 @@ def _run_system_config(args: argparse.Namespace) -> int:
             print(_env_err, file=sys.stderr)
             return 1
         if not is_known_key(key):
-            # Residuals item 4: a STRUCTURAL file-only key (system.setup_completed,
-            # system.channels.*) is not in the settable known-key set, so the plain
-            # is_known_key gate rejected it as "unknown config key" — while `set`
-            # gives the truthful structural refusal (naming the config file). Say
-            # the same TRUTH here instead of pretending the key does not exist.
-            # ⚑ verb="read": the refusal describes the op the user actually ran. It
-            # used to say "is not settable from the CLI" on a `get` — a write verb
-            # on a read, mis-stating what failed.
-            from kanibako.settings.config_keys import (
-                is_system_path_key,
-                system_key_refusal,
-            )
-            if is_system_path_key(key):
-                print(system_key_refusal(key, verb="read"), file=sys.stderr)
-                return 1
+            # ⚑ A "structural config key" BRANCH STOOD HERE UNTIL 2026-08-23. It caught
+            # CONFIG-FILE-ONLY keys and told the user their value lives in the config
+            # file. The ``system.*`` PATH tier left that family with spec §2g, and
+            # ``system.setup_completed`` followed it into KNOWN_CONFIG_KEYS once the
+            # write verbs routed it — so the only spellings still reaching the branch
+            # were UNDECLARED ``config.*`` ones, which it answered by asserting they
+            # exist. An undeclared name is refused as unknown (spec §0), below.
             # ⚑ THIS MESSAGE IS WRONG FOR SEVEN DECLARED KEYS AND THAT IS
             # QUARANTINED, NOT UNNOTICED. The six bind-shaped category terminals
             # (``<scope>.{bindings.ro,bindings.rw,caches,common,seeded,synced}``)

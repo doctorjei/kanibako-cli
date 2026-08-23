@@ -186,8 +186,11 @@ writes into the bind's own host source: it clobbers CONTENT, and the mount survi
 ⚑ Because the arm arbitrates nothing, the mask case needs no carve-out either. A sync at a MASK's
 exact point was already accepted (a mask is the source-less entry, and the refusal returned early on
 it); now it is accepted for the same reason as everything else, rather than by a coincidence of
-implementation. Whether such a sync is then dead is a DELIVERY question — `start._synced_host_dest`
-warns and skips a dest whose cover is a mask or is read-only.
+implementation. Whether such a sync then stands is a DELIVERY question, and the delivery half answers
+it with spec §0's copy rows: `start._refuse_synced_under_mask` RAISES on the two the table refuses (a
+mask as the copy's PARENT, a DIRECTORY at a mask's own point), while `start._synced_host_dest` warns
+and skips the residue the table does not name — no cover, a read-only cover, and a mask at the dest's
+own point over a missing source.
 
 🔴 **SPEC DELTA, OPEN:** `specs/settings-keyspace-1.8.0.md` §0 still states this refusal, as does
 `settings-keyspace-1.8.0-annotations.md:187`. The ruling supersedes both; the spec edit is owed and

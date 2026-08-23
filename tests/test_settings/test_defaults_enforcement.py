@@ -49,9 +49,17 @@ _DEFINITION_SITE = "src/kanibako/settings/config_io.py"
 #: which is the same violation the guard exists to catch.  A count changes only
 #: when someone adds or removes a write, and that is exactly the review moment.
 _SANCTIONED: dict[str, int] = {
-    # ``kanibako config set`` and friends — the user-intent write path.  Six
+    # ``kanibako config set`` and friends — the user-intent write path.  Seven
     # sites: the per-scope dispatch arms plus the system-scope leaf write.
-    "src/kanibako/settings/config_interface.py": 6,
+    # ⚑ 6 → 7 on 2026-08-23, and the JUSTIFICATION the guard asks for: the new site
+    # is the setup MARKER's own ``set`` arm (`SETUP_MARKER_KEY`), which writes
+    # ``system.setup_completed`` into the BOOTSTRAP config file's ``system:`` table.
+    # It records USER INTENT in the strictest sense — it runs only when a user typed
+    # ``system set system.setup_completed=…`` — and it writes no default: the key has
+    # none (spec §2g: unset means setup has never run). It is a new ARM on an already
+    # sanctioned surface, not a new surface, which is exactly the case this count
+    # exists to surface for review rather than to forbid.
+    "src/kanibako/settings/config_interface.py": 7,
     # The agent settings file writer (``agents/<node>/agent.yaml``), which by
     # the FILE-PURITY invariant may only ever carry user-intent values.
     "src/kanibako/settings/agent_file.py": 1,

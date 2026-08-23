@@ -309,14 +309,13 @@ kickoff:
 # the `<scope>.canon` KEY, and shipping two spellings for one repoint is the shape
 # convention 0 forbids.
 #
-# ⚑ THE REPOINT ROUTES ARE NOT UNIFORM, and saying "just `config set <scope>.canon`"
-# would be a half-truth.  `workset.canon` and `box.canon` ARE CLI-settable (wired
-# exactly like `workset.template`); `agent.<a>.canon` is settable at the SYSTEM scope
-# only (the per-persona agent-leaf rule, same as `agent.<a>.template`); and
-# `system.canon` is CLI-REFUSED as a structural path key — it lives in the `[system]`
-# table of `kanibako_config.yaml`, hand-edited, exactly like `system.template` and
-# every other `SYSTEM_PATH_DEFAULTS` member.  That split is pre-existing convention,
-# not something this section chose.
+# ⚑ THE REPOINT ROUTE IS THE `<scope>.canon` KEY AT EVERY SCOPE, and the scopes differ
+# only in WHERE the command is run.  `workset.canon` and `box.canon` are CLI-settable
+# (wired exactly like `workset.template`); `agent.<a>.canon` is settable at the SYSTEM
+# scope only (the per-persona agent-leaf rule, same as `agent.<a>.template`); and
+# `system.canon` is settable at the SYSTEM scope, landing in the `system:` table of the
+# system SETTINGS file like every other Layer-2 `system.*` path key (spec §2g).  It was
+# CLI-REFUSED as "structural" until 2026-08-23; that refusal contradicted the spec.
 canon:
   # The handbook's table of contents — a FILE bind over the 0-byte mountpoint.
   - key: canon_hb_contents

@@ -1,0 +1,205 @@
+"""The no-snapshot workset dir-key route: one grammar, and no token ever reaches disk.
+
+⚑ The load-bearing test here is :class:`TestNoResolverLeaksAToken`, which asserts the
+RULE over every resolver it DISCOVERS rather than over a list of names: a sixth
+``workset.*`` dir key added tomorrow is swept the moment its resolver exists.  The
+defect it exists to make impossible: a resolver that ``expanduser()``-ed the raw value
+and joined the rest under the workset root, turning the spec's own documented default
+``@meta.workset.path/boxes`` into a literal directory named ``@meta.workset.path`` —
+while the launch snapshot resolved the same key correctly.
+"""
+
+from __future__ import annotations
+
+import inspect
+from pathlib import Path
+
+import pytest
+
+from kanibako.project import workset, workset_registry
+from kanibako.settings.settings_resolve import SettingsError
+from kanibako.settings.workset_dirkeys import (
+    WORKSET_PATH_REF,
+    resolve_workset_dir_key,
+)
+
+# The modules that carry a no-snapshot resolver face.  ⚑ A LIST OF MODULES, not of
+# functions: the resolvers themselves are discovered by SHAPE below.
+_FACE_MODULES = (workset, workset_registry)
+
+# ⚑ Every token shape a stored value may legally carry (spec ``:214``) that this seam
+# cannot resolve.  None of them may survive into a returned path.
+_UNRESOLVABLE = (
+    "@config.registry/x",
+    "@workset.boxes/x",
+    "@meta.box.path/x",
+    "$XDG_RUNTIME_DIR/x",
+    "$NOT_A_VARIABLE/x",
+    "$AGENT/x",
+    "$WORKSET/x",
+)
+
+
+class _AnyLeaf(dict):
+    """A ``workset:`` table that answers the SAME value for EVERY leaf name.
+
+    ⚑ This is what keeps the sweep free of a key inventory: whichever leaf a resolver
+    reaches for — including one that does not exist yet — it gets the poison.
+    """
+
+    def __init__(self, value: str) -> None:
+        super().__init__()
+        self._value = value
+
+    def get(self, key, default=None):  # noqa: ANN001, ANN201 - Mapping protocol
+        return self._value
+
+    def __getitem__(self, key):  # noqa: ANN001, ANN204 - Mapping protocol
+        return self._value
+
+
+def _poisoned(value: str) -> dict:
+    """A workset.yaml document whose every ``workset.*`` leaf is *value*."""
+    return {"workset": _AnyLeaf(value)}
+
+
+def _discover_resolvers() -> dict[str, object]:
+    """Every public no-snapshot resolver, found by SIGNATURE SHAPE across the faces.
+
+    The shape IS the contract: ``(workset_root, workset_settings, …) -> Path``.  A
+    helper with other parameters (``resolve_workset_name``) is not one of these and is
+    filtered out by the same rule that finds the real ones.
+    """
+    found: dict[str, object] = {}
+    for module in _FACE_MODULES:
+        for name, obj in vars(module).items():
+            if not name.startswith("resolve_workset_") or not callable(obj):
+                continue
+            if getattr(obj, "__module__", None) != module.__name__:
+                continue
+            params = list(inspect.signature(obj).parameters)
+            if params[:2] != ["workset_root", "workset_settings"]:
+                continue
+            found[f"{module.__name__}.{name}"] = obj
+    return found
+
+
+class TestDiscoveryIsNotVacuous:
+    def test_finds_resolvers(self):
+        # ⚑ The sweep below passes trivially on an empty set; this is what stops it
+        # from manufacturing confidence if the discovery rule ever stops matching.
+        assert _discover_resolvers(), (
+            "no no-snapshot workset dir-key resolver was discovered — the token "
+            "sweep would pass vacuously"
+        )
+
+    def test_every_face_module_imports_the_one_route(self):
+        for module in _FACE_MODULES:
+            assert hasattr(module, "resolve_workset_dir_key"), (
+                f"{module.__name__} defines a workset dir-key resolver but has not "
+                "imported the one no-snapshot route"
+            )
+
+
+class TestNoResolverLeaksAToken:
+    """THE RULE: a resolved workset dir key never contains ``@`` or ``$``."""
+
+    @pytest.mark.parametrize("poison", _UNRESOLVABLE)
+    def test_unresolvable_token_refuses_rather_than_becoming_a_directory(self, poison):
+        for label, resolver in _discover_resolvers().items():
+            with pytest.raises(SettingsError) as excinfo:
+                resolver(Path("/ws"), _poisoned(poison))
+            message = str(excinfo.value)
+            assert poison in message, f"{label}: refusal does not quote the value"
+            assert "/ws/workset.yaml" in message, f"{label}: refusal names no file"
+
+    @pytest.mark.parametrize(
+        "value", ["@meta.workset.path/leaf", "$XDG_DATA_HOME/leaf", "~/leaf", "leaf"]
+    )
+    def test_resolvable_value_leaves_no_token_behind(self, value):
+        for label, resolver in _discover_resolvers().items():
+            resolved = str(resolver(Path("/ws"), _poisoned(value)))
+            assert "@" not in resolved, f"{label}: '@' survived into {resolved}"
+            assert "$" not in resolved, f"{label}: '$' survived into {resolved}"
+            assert "~" not in resolved, f"{label}: '~' survived into {resolved}"
+
+    def test_default_when_unset_carries_no_token(self):
+        for label, resolver in _discover_resolvers().items():
+            resolved = str(resolver(Path("/ws"), None))
+            assert not any(c in resolved for c in "@$~"), f"{label}: {resolved}"
+
+
+class TestEveryFaceRoutesThroughTheOneResolver:
+    """Proof BY MUTATION: break the route and every face must break with it."""
+
+    def test_each_resolver_calls_the_route(self, monkeypatch):
+        resolvers = _discover_resolvers()
+        assert resolvers
+        for label, resolver in resolvers.items():
+            module_name = label.rsplit(".", 1)[0]
+            module = next(m for m in _FACE_MODULES if m.__name__ == module_name)
+            calls: list[str] = []
+
+            def _tripwire(*args, **kwargs):
+                calls.append(label)
+                return Path("/sentinel")
+
+            monkeypatch.setattr(module, "resolve_workset_dir_key", _tripwire)
+            assert resolver(Path("/ws"), _poisoned("leaf")) == Path("/sentinel")
+            assert calls == [label], f"{label} does not route through the one resolver"
+            monkeypatch.undo()
+
+
+class TestTheRouteItself:
+    def test_spec_default_formula_resolves_to_the_root_leaf(self):
+        # The exact value the keyspec declares as the default for all five keys.
+        assert resolve_workset_dir_key(
+            Path("/ws"), f"@{WORKSET_PATH_REF}/boxes", "boxes", key="boxes",
+        ) == Path("/ws/boxes")
+
+    def test_unset_takes_the_default_leaf(self):
+        assert resolve_workset_dir_key(
+            Path("/ws"), None, "workspace", key="workspaces",
+        ) == Path("/ws/workspace")
+
+    def test_absolute_repoint_is_not_reanchored(self):
+        assert resolve_workset_dir_key(
+            Path("/ws"), "/elsewhere/boxes", "boxes", key="boxes",
+        ) == Path("/elsewhere/boxes")
+
+    def test_relative_repoint_anchors_under_the_root(self):
+        assert resolve_workset_dir_key(
+            Path("/ws"), "sub/dir", "boxes", key="boxes",
+        ) == Path("/ws/sub/dir")
+
+    def test_embedded_ref_resolves_mid_path(self):
+        assert resolve_workset_dir_key(
+            Path("/ws"), f"/mnt/@{{{WORKSET_PATH_REF}}}/b", "boxes", key="boxes",
+        ) == Path("/mnt/ws/b")
+
+    def test_refusal_names_the_key(self):
+        with pytest.raises(SettingsError, match=r"workset\.channelroot"):
+            resolve_workset_dir_key(
+                Path("/ws"), "@config.data/c", "channels", key="channelroot",
+            )
+
+    def test_refusal_names_the_only_available_reference(self):
+        with pytest.raises(SettingsError, match=WORKSET_PATH_REF):
+            resolve_workset_dir_key(
+                Path("/ws"), "@config.data/c", "boxes", key="boxes",
+            )
+
+    def test_resolving_has_no_side_effects_on_the_runtime_dir(self, monkeypatch):
+        # ⚑ Detection walks ancestors that may not be worksets; ``host_xdg_map`` would
+        # mkdir an XDG_RUNTIME_DIR fallback here.  The route must use the
+        # side-effect-free map instead.
+        import kanibako.settings.paths as paths_mod
+
+        def _boom(*args, **kwargs):
+            raise AssertionError("the no-snapshot route touched XDG_RUNTIME_DIR")
+
+        monkeypatch.setattr(paths_mod, "_fallback_runtime_dir", _boom)
+        monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
+        assert resolve_workset_dir_key(
+            Path("/ws"), "$XDG_DATA_HOME/b", "boxes", key="boxes",
+        ).is_absolute()

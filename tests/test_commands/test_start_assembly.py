@@ -2071,24 +2071,24 @@ class TestTheSyncApplierConsumesTheLeaf:
 
         assert (proj.project_path / "sub" / "f.txt").read_text() == "in-workspace"
 
-    def test_a_dest_under_a_MASK_is_skipped_and_does_not_RAISE(
-        self, caplog, std, config, project_dir, tmp_path,
+    def test_a_dest_under_a_PARENT_MASK_RAISES_and_names_the_mask(
+        self, std, config, project_dir, tmp_path,
     ):
-        """🛑 The arm that must precede every ``Path(bind.src)``, and why.
+        """🔴 Spec §0's first ``synced`` refusal — a mask as the copy's PARENT.
 
         The collapse refuses a sync NOTHING (ruling 2026-08-12), so every declared row
-        reaches delivery — a dest whose cover is a mask included. Delivery therefore
-        meets a ``CollapsedBind(None, None)``.
+        reaches delivery — a dest whose cover is a mask included. The table's word for
+        this one is REFUSE, and until 2026-08-23 delivery only WARNED: the box started
+        and the credential was not there, with nothing naming the configuration.
 
-        MUTATION-PROVED against dropping the ``is_mask`` arm: ``TypeError: argument
-        should be a str or an os.PathLike object where __fspath__ returns a str, not
-        'NoneType'`` — a crashed launch, not a skipped copy.
+        MUTATION-PROVED against reverting ``_refuse_synced_under_mask``'s parent arm to
+        a ``continue``: ``DID NOT RAISE``, and the launch proceeds.
         """
         src = tmp_path / "hidden.txt"
         src.write_text("x")
         proj = resolve_project(std, config, str(project_dir), initialize=True)
 
-        with caplog.at_level(logging.WARNING):
+        with pytest.raises(SettingsError, match=r"sits inside the mask") as caught:
             _sync(
                 std, proj, logger=logging.getLogger("sync-consumer"),
                 extra_default_categories={
@@ -2097,7 +2097,40 @@ class TestTheSyncApplierConsumesTheLeaf:
                 },
             )
 
+        # The user's two coordinates: the dest they declared and the mask over it.
+        assert normalize_bind_dest("~/private/hidden.txt") in str(caught.value)
+        assert normalize_bind_dest("~/private") in str(caught.value)
         assert not (proj.shell_path / "private" / "hidden.txt").exists()
+
+    def test_a_MISSING_source_at_a_masks_own_point_still_only_WARNS(
+        self, caplog, std, config, project_dir, tmp_path,
+    ):
+        """🛑 The arm that must precede every ``Path(bind.src)`` — and the ONE case left in it.
+
+        Spec §0's copy rows are ``copy (file)`` and ``copy (dir)``. A source that is
+        NEITHER — missing, or unreadable — is in no row, so it is not a refusal the
+        spec names and must not be promoted to one: it stays the module's ordinary
+        missing-source class. A mask therefore still reaches ``_synced_host_dest``,
+        and the mask arm still guards ``Path(bind.src)``.
+
+        MUTATION-PROVED twice: drop the ``is_mask`` arm and this dies with ``TypeError:
+        argument should be a str or an os.PathLike object where __fspath__ returns a
+        str, not 'NoneType'`` — a crashed launch; and relax
+        ``_refuse_synced_under_mask``'s own-point arm from ``is_dir()`` to ``not
+        is_file()`` and it raises on a source the table never classified.
+        """
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+
+        with caplog.at_level(logging.WARNING):
+            _sync(
+                std, proj, logger=logging.getLogger("sync-consumer"),
+                extra_default_categories={
+                    "box.masks": ["~/gone.txt"],
+                    "box.synced": {"~/gone.txt": (str(tmp_path / "gone.txt"),)},
+                },
+            )
+
+        assert not (proj.shell_path / "gone.txt").exists()
         assert any("is a mask" in r.getMessage() for r in caplog.records), [
             r.getMessage() for r in caplog.records
         ]
@@ -2371,25 +2404,26 @@ class TestTheCopyRowsAtAMasksOwnPoint:
             r.getMessage() for r in caplog.records if "is a mask" in r.getMessage()
         ]
 
-    def test_a_synced_DIRECTORY_at_a_masks_own_point_is_STILL_REFUSED(
-        self, caplog, std, config, project_dir, tmp_path,
+    def test_a_synced_DIRECTORY_at_a_masks_own_point_RAISES(
+        self, std, config, project_dir, tmp_path,
     ):
-        """The other half of the cell — and a mask survives a refusal INTACT.
+        """The other half of the cell — and the table's word for it is REFUSE.
 
         A directory copied onto a void would leave the mask partially populated, which
-        is a state the table has no room for. The refusal is warn-and-skip, as every
-        copy refusal here is.
+        is a state the table has no room for. It raises, as every sibling refusal in
+        that table does; through 2026-08-22 it warned and skipped, which is an
+        acceptance with a log line.
 
         MUTATION-PROVED against ``_synced_masks_replaced`` asking ``exists()`` instead
-        of ``is_file()``: the tree lands and the mask is gone.
+        of ``is_file()``: no raise, the tree lands and the mask is gone.
         """
         src = tmp_path / "tree"
         (src / "nested").mkdir(parents=True)
         (src / "nested" / "f.txt").write_text("x")
         proj = resolve_project(std, config, str(project_dir), initialize=True)
 
-        with caplog.at_level(logging.WARNING):
-            bindings = _sync_over_the_launch_map(
+        with pytest.raises(SettingsError, match=r"DIRECTORY") as caught:
+            _sync_over_the_launch_map(
                 std, proj, logger=logging.getLogger("sync-consumer"),
                 extra_default_categories={
                     "box.masks": ["~/tree"],
@@ -2397,35 +2431,34 @@ class TestTheCopyRowsAtAMasksOwnPoint:
                 },
             )
 
+        # ⚑ The cure names the accepted cell, which is the non-obvious part.
+        assert "FILE at a mask's own point IS accepted" in str(caught.value)
         assert not (proj.shell_path / "tree").exists()
-        assert _bind_map_masks(bindings) == [normalize_bind_dest("~/tree")]
-        assert any("is a mask" in r.getMessage() for r in caplog.records), [
-            r.getMessage() for r in caplog.records
-        ]
 
     def test_a_mask_as_a_strict_PARENT_refuses_a_DIRECTORY_source_TOO(
-        self, caplog, std, config, project_dir, tmp_path,
+        self, std, config, project_dir, tmp_path,
     ):
         """The PARENT column, whose two cells agree — the FILE half is pinned above it.
 
-        ⚑ THE SIBLING IS THE POINT: ``test_a_dest_under_a_MASK_is_skipped_and_does_not_RAISE``
-        pins the FILE source under a parent mask. Only the OWN-POINT column
-        discriminates on the source's type, and this is what says so.
+        ⚑ THE SIBLING IS THE POINT:
+        ``test_a_dest_under_a_PARENT_MASK_RAISES_and_names_the_mask`` pins the FILE
+        source under a parent mask. Only the OWN-POINT column discriminates on the
+        source's type, and this is what says so.
 
         MUTATION-PROVED against BOTH halves of the lookup relaxed at once —
         ``_synced_masks_replaced`` asking the longest-prefix COVER instead of the
-        dest's own point, and ``exists()`` instead of ``is_file()``: the parent mask is
-        deleted and the tree lands in the home bind's source. ⚑ Either half ALONE
-        leaves this green (a directory is not a file; a parent is not the point), which
-        is exactly why the two columns need a test each.
+        dest's own point, and ``exists()`` instead of ``is_file()``: no raise, the
+        parent mask is deleted and the tree lands in the home bind's source. ⚑ Either
+        half ALONE leaves this green (a directory is not a file; a parent is not the
+        point), which is exactly why the two columns need a test each.
         """
         src = tmp_path / "tree"
         src.mkdir()
         (src / "f.txt").write_text("x")
         proj = resolve_project(std, config, str(project_dir), initialize=True)
 
-        with caplog.at_level(logging.WARNING):
-            bindings = _sync_over_the_launch_map(
+        with pytest.raises(SettingsError, match=r"sits inside the mask"):
+            _sync_over_the_launch_map(
                 std, proj, logger=logging.getLogger("sync-consumer"),
                 extra_default_categories={
                     "box.masks": ["~/private"],
@@ -2434,10 +2467,6 @@ class TestTheCopyRowsAtAMasksOwnPoint:
             )
 
         assert not (proj.shell_path / "private").exists()
-        assert _bind_map_masks(bindings) == [normalize_bind_dest("~/private")]
-        assert any("is a mask" in r.getMessage() for r in caplog.records), [
-            r.getMessage() for r in caplog.records
-        ]
 
     def test_the_FILE_lands_in_the_INNERMOST_REAL_COVER_once_the_mask_is_gone(
         self, std, config, project_dir, tmp_path,
@@ -2560,3 +2589,141 @@ class TestTheCopyRowsAtAMasksOwnPoint:
             kwargs = m.runtime.run.call_args.kwargs
 
         assert kwargs["tmpfs_masks"] == ["/home/agent/hidden"]
+
+
+def _spec_refuses_the_copy(mask: str, dest: str, *, src_is_dir: bool) -> bool:
+    """Spec §0's two COPY rows as a PREDICATE — the oracle, DERIVED and not listed.
+
+    The whole of what the spec says a ``synced`` copy meets, in three lines:
+
+    * a mask that neither covers the dest nor sits at its point is not in the way;
+    * a mask that is a strict PARENT refuses EVERY arrival (both copy rows agree);
+    * at the mask's OWN point the rows part — a DIRECTORY is refused, a FILE is
+      accepted and deletes the mask.
+
+    ⚑ P13: it states the RULE, so a change to the shape fails the guard instead of
+    quietly outdating a table of expected verdicts. ⚑ ``is_within`` is the CODE's own
+    containment spelling, published for exactly this reason — an oracle that
+    re-spelled "inside" would be testing its own second implementation.
+    """
+    from kanibako.settings.store_collapse import is_within
+
+    if not is_within(dest, mask):
+        return False
+    return src_is_dir if mask == dest else True
+
+
+class TestEverySpecNamedSyncedRefusalRAISES:
+    """🔴 P15 GUARD — the mechanical check that makes a warned-instead-of-refused row DETECTABLE.
+
+    The class this exists for: spec §0's containment table says REFUSE, and delivery
+    implemented two of those refusals as ``logger.warning(...); return None``. Every
+    sibling refusal in the same table raises, so nothing about the code LOOKED wrong —
+    a `synced` credential declared under a mask was simply never delivered, the box
+    started, and the harness failed to authenticate naming nothing. A prose rule would
+    not have caught it; only a check that walks the geometries and compares each
+    verdict against the rule does.
+
+    ⚑ THE VERDICTS ARE NOT WRITTEN DOWN HERE. :func:`_spec_refuses_the_copy` computes
+    each one from the spec's sentence, so a shape change reddens this rather than
+    ageing a list of names (P13).
+
+    ⚑⚑ IT REDS ON ITS OWN EMPTINESS (P15). A geometry sweep that discovered no refusal
+    — or no acceptance — would pass vacuously and manufacture confidence, so both
+    counts are asserted before a single verdict is compared.
+
+    ⚑ It drives ``_apply_synced_copies`` over a HAND-BUILT bind map rather than a
+    resolve, because the map is exactly what the production function receives and the
+    sweep is 50 geometries wide. The rows' passage from the leaf to this function is
+    pinned by the classes above.
+    """
+
+    #: Guest dests spanning every containment relation the rule can distinguish:
+    #: identity, parent, grandparent, disjoint — plus the separator trap
+    #: (``x`` vs ``xylophone``), which is a bare prefix and not a containment.
+    _DESTS = tuple(
+        f"{HOME_DEST}/{leaf}"
+        for leaf in ("x", "x/inner", "x/inner/deep", "xylophone", "other")
+    )
+
+    def _verdict(self, mask, dest, src, boxhome, logger):
+        """Run the production sync pass over ONE geometry; did it REFUSE?"""
+        from kanibako.commands.start import _apply_synced_copies
+        from kanibako.settings.store_collapse import (
+            MASK,
+            CollapsedBind,
+            CollapsedCopy,
+        )
+
+        boxhome.mkdir(parents=True)
+        bindings = {
+            HOME_DEST: CollapsedBind(str(boxhome), "rw"),
+            mask: MASK,
+        }
+        with patch(
+            "kanibako.commands.start._launch_synced_list",
+            return_value=[CollapsedCopy(str(src), dest, None)],
+        ):
+            try:
+                _apply_synced_copies(
+                    snapshot=None, bindings=bindings, logger=logger, skip_if=None,
+                )
+            except SettingsError:
+                return True
+        return False
+
+    def test_the_delivery_verdict_MATCHES_THE_RULE_for_every_mask_geometry(
+        self, tmp_path,
+    ):
+        """🛑 Every geometry the rule refuses RAISES; every one it accepts does not.
+
+        MUTATION-PROVED ON BOTH SIDES, which is what makes it a guard rather than a
+        one-way alarm. REFUSAL side: revert EITHER arm of ``_refuse_synced_under_mask``
+        to a skip and the geometries the rule refuses report ``expected refuse, got
+        accept``. ACCEPTANCE side: drop the ``is_mask`` discrimination from the same
+        pass (refuse on ANY cover) and the geometries the rule accepts report the
+        converse. Flipping ``_synced_cover``'s longest prefix to shortest fails it too,
+        since the refusal is decided against the wrong mount.
+
+        ⚑ NOT caught, and correctly so: widening the own-point arm from ``is_dir()`` to
+        ``not is_file()``. Every source here is a real file or a real directory, so the
+        two agree over this sweep — the case they part on is a MISSING source, which is
+        in NEITHER copy row and is pinned by
+        ``test_a_MISSING_source_at_a_masks_own_point_still_only_WARNS``.
+        """
+        logger = logging.getLogger("p15-synced-refusals")
+        sources = {
+            False: tmp_path / "src.txt",
+            True: tmp_path / "srcdir",
+        }
+        sources[False].write_text("TOKEN")
+        (sources[True] / "nested").mkdir(parents=True)
+
+        cases = [
+            (mask, dest, src_is_dir)
+            for mask in self._DESTS
+            for dest in self._DESTS
+            for src_is_dir in (False, True)
+        ]
+        refusing = [c for c in cases if _spec_refuses_the_copy(c[0], c[1], src_is_dir=c[2])]
+        # ⚑⚑ THE EMPTINESS RED (P15): a sweep that found nothing to refuse — or
+        # nothing to accept — would pass without testing the rule at all.
+        assert refusing, f"the geometry sweep discovered NO refusal: {cases}"
+        assert len(refusing) < len(cases), (
+            f"the geometry sweep discovered NO acceptance: {cases}"
+        )
+
+        mismatches = []
+        for index, (mask, dest, src_is_dir) in enumerate(cases):
+            expected = _spec_refuses_the_copy(mask, dest, src_is_dir=src_is_dir)
+            actual = self._verdict(
+                mask, dest, sources[src_is_dir], tmp_path / f"box{index}", logger,
+            )
+            if actual != expected:
+                mismatches.append(
+                    f"mask={mask} dest={dest} src={'dir' if src_is_dir else 'file'}: "
+                    f"expected {'refuse' if expected else 'accept'}, "
+                    f"got {'refuse' if actual else 'accept'}"
+                )
+
+        assert not mismatches, "\n".join(mismatches)

@@ -32,6 +32,7 @@ def box_metadata_dir(mode: BoxMode, metadata_path: Path) -> Path
 def box_workset_settings_paths(proj: ProjectPaths) -> tuple[Path, Path | None]
 def resolve_xdg(var_name: str, spec_default_suffix: str | None) -> Path
 def xdg(env_var: str, default_suffix: str) -> Path
+def spec_default_xdg_map(data_home: Path | None) -> dict[str, str]
 def host_xdg_map(data_home: Path | None=None) -> dict[str, str]
 def resolve_config_paths(set_values: Mapping[str, str], *, data_home: Path, home: Path, xdg_vars: Mapping[str, str] | None=None) -> dict[str, str]
 def resolve_system_paths(set_values: Mapping[str, str], *, data_home: Path, home: Path) -> dict[str, Path]
@@ -61,7 +62,6 @@ def _standalone_settings_files(root: Path) -> tuple[Path, Path]
 def _box_settings_files(mode: BoxMode, metadata_path: Path, group: 'ProjectGroup | None') -> tuple[Path, Path | None]
 def _fallback_runtime_dir(var_name: str) -> Path
 def _runtime_base_usable(base: Path) -> bool
-def _spec_default_xdg_map(data_home: Path | None) -> dict[str, str]
 def _resolve_local_dir(std: StandardPaths, project_path_str: str) -> tuple[str, Path]
 def _primary_box_paths(std: StandardPaths, metadata_path: Path, box_name: str) -> tuple[Path, Path, Path]
 def _workset_box_paths(metadata_path: Path, vault_base: Path, box_name: str) -> tuple[Path, Path, Path]

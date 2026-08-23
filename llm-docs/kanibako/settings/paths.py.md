@@ -410,13 +410,14 @@ def load_system_config(
     user_config_path: Path, *, data_home: Path, home: Path,
 ) -> dict[str, Path]
 ```
-Resolve the path tier from the CONFIG file set.
+Resolve the path tier from the CONFIG file set **and the SYSTEM SETTINGS file**.
 
-The CONFIG file set is two files, read in cascade order so the most-authoritative present value of
-each set-value wins **before** expression resolution:
+Three layers, read in cascade order so the most-authoritative present value of each set-value wins
+**before** expression resolution:
 
 1. `/etc/kanibako/config_base.yaml` — site-wide overridable defaults (least specific).
 2. *user_config_path* — the user's global `~/.config/kanibako_config.yaml` (overrides the base).
+3. `@config.settings` — the SYSTEM SETTINGS file's `system:` table (most specific).
 
 Missing files are skipped (each contributes nothing). The merged set-values are split by prefix into
 the Layer-1 `config.*` foundation and the Layer-2 `system.*` path settings, then handed to
@@ -424,6 +425,25 @@ the Layer-1 `config.*` foundation and the Layer-2 `system.*` path settings, then
 
 Back-compat: a user with only `~/.config/kanibako_config.yaml` (no `/etc` file) gets the base layer
 empty, so the user file is the sole set-source.
+
+⚑⚑ **LAYER 3 IS NEW (2026-08-23), AND ITS ABSENCE WAS A PARTIAL SUCCESS — the failure shape that is
+worse than a refusal.** Spec §2g declares `system.{template,canon,cache,runtime,backup,channelroot}`
+and `system.channels.*` SETTINGS keys, *"set in settings files at the `system` cascade level"*, and
+`config set system.canon=…` writes them there. Reading the CONFIG files only meant that write
+reached the launch cascade — binds, seeds, `show --effective` — and NEVER reached `StandardPaths`:
+`std.canon` kept answering the default. Accepted, persisted, half-effective, and silent about it.
+`tests/test_settings/test_repoint_reaches_std_paths.py` asserts the EFFECT rather than the
+destination, because the destination pins were green the whole time.
+
+⚑ **THE LAYER-1 RESOLVE RUNS TWICE, DELIBERATELY.** Locating the settings file IS `@config.settings`,
+so the foundation must resolve before the file can be opened; `resolve_config_paths` is a pure dict
+resolve over set-values already in hand, so the second pass reopens nothing.
+
+⚑ **THE SETTINGS LAYER IS FILTERED TO `SYSTEM_PATH_DEFAULTS`** (P13 — derived from the table, not a
+list at the call site). That file's `system:` table also holds `system.agent`, the
+`auth`/`env`/`secret_path` families and the bind-shaped categories, none of which belong to the path
+tier — and a `config:` table hand-written into a SETTINGS file must never reach Layer 1, which lives
+in `kanibako_config.yaml` alone (spec §1). Both halves are pinned.
 
 ⚑ The `kanibako.settings.config` import inside the body is a lazy import that avoids a
 `config` ↔ `paths` cycle at module load — do not hoist it.

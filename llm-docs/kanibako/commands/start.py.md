@@ -890,23 +890,56 @@ to `shell_path`, `/home/agent/workspace` covers its workspace arm with the same 
 company inside SOME OTHER bind, which the stub arm sent under the home stub: a host path that bind
 shadows, so the copy was invisible in the box.
 
+The lookup itself is `_synced_cover` — ONE spelling, shared with `_refuse_synced_under_mask` below,
+so the pass that decides whether a covering mount REFUSES a row and the pass that resolves the row
+THROUGH it can never disagree about which mount the destination sits in.
+
 | arm | when | why it is where it is |
 |---|---|---|
 | no cover → warn+skip | dest outside every bind | there is no host location it could arrive at. Wider than the retired outside-home skip — `/etc/...` with nothing declared over it, for instance |
-| cover is a MASK → warn+skip | `is_mask(bind)` | **must precede any `Path(bind.src)`** — `MASK` is `src=None`, so it raises `TypeError`, not `AttributeError`. By this point the cover can only be a mask ABOVE the dest, or the dest's own point with a DIRECTORY source |
+| cover is a MASK → warn+skip | `is_mask(bind)` | **must precede any `Path(bind.src)`** — `MASK` is `src=None`, so it raises `TypeError`, not `AttributeError`. By this point the cover can only be the dest's OWN point with a source that is neither file nor directory; the two the spec calls refusals already raised |
 | cover is READ-ONLY → warn+skip | `is_read_only(bind.opts)` | see below |
 | else | — | `Path(bind.src) / rel` |
 
-⚑ **Each refusal is a warn-and-skip rather than a raise: a mis-declared dest must not cost the user
-the launch.** They must be asked in the order the table spells them.
+⚑⚑ **NOT ONE OF THESE THREE IS A REFUSAL THE SPEC NAMES, and that is why they warn.** Spec §0
+states the `synced` refusals exhaustively — *"The only refusals a `synced` copy meets are a mask as
+its PARENT and a copy of a DIRECTORY at a mask's own point"* — and `_refuse_synced_under_mask`
+RAISES on both before this function runs. What is left here is residue the containment table says
+nothing about: a dest no bind covers, a read-only cover, and a mask at the dest's own point over a
+missing or unreadable source (already the module's own class — `_apply_shell_copy` warns on any
+missing source). For residue, a mis-declared dest must not cost the user the launch. They must be
+asked in the order the table spells them.
 
 ⚑ **A dest is DATA** — compared and sliced as a path, never `.split(".")`-ed.
 
-🔴 **The MASK arm exists because the collapse ACCEPTS what delivery then SKIPS.** Since the
+🔴 **The MASK arm exists because the collapse ACCEPTS what delivery then JUDGES.** Since the
 2026-08-12 ruling (*"don't check for sync. Let it clobber whatever it wants."*) the fold refuses a
-sync nothing whatever, so every sync row reaches here, a mask's exact point included — and a mask is the
-source-less entry, so `Path(bind.src)` would raise. Delivery is the only stage that can cope with it,
-and this arm is where it does.
+sync nothing whatever, so every sync row reaches delivery, a mask's exact point included — and a mask is the
+source-less entry, so `Path(bind.src)` would raise. Delivery is the only stage that can cope with it.
+
+### `_refuse_synced_under_mask` — the table's word is REFUSE, so it raises
+
+**Authority:** spec §0's containment table, the two copy rows, and the sentence that states their
+refusals exhaustively. A mask that is a strict **PARENT** of a sync dest refuses the copy; a
+**DIRECTORY** copied at a mask's own point refuses too, because no mask may be left half-populated.
+
+**It raises `SettingsError`, like every sibling refusal in that table** (`_refuse_bind_under_mask`,
+`_refuse_mask_on_mask`, `_refuse_mask_over_home` in the collapse). Until 2026-08-23 both were
+warn-and-skip here, on the reasoning that *a mis-declared dest must not cost the user the launch* —
+which nothing ratified, and which the spec's own word contradicts. A refusal that only warns is an
+acceptance with a log line, and the row it silently drops is usually a **credential**: the box
+starts, the harness then fails to authenticate, and nothing on the way names the configuration that
+caused it.
+
+**Position: after `_synced_masks_replaced`, before the first copy.** After, because the cell the
+table ACCEPTS — a FILE at a mask's own point — is decided there and deletes its mask, so it must be
+settled before anything asks what the cover is. Before, because a raise mid-loop would leave the box
+with some rows delivered and some not.
+
+**The one mask cover it does not refuse** is the dest's own point over a source that is neither file
+nor directory. The table has two copy rows; a missing or unreadable source is in neither, so it
+keeps the missing-source warning it already had rather than being promoted to a refusal the spec
+never named.
 
 ### `_synced_masks_replaced` — the one cell where the two COPY rows differ
 
@@ -988,9 +1021,11 @@ bind. On removing the collapse's prune in the same commit: *"Confirmed."*
 
 It is a **CALLER**, not a mechanism. `_synced_host_dest` already resolves a guest dest to its host
 landing spot by LONGEST-PREFIX cover — longest prefix *is* innermost *is* "the opposite of home" — and
-already carries the three warn-and-skip refusals (no cover · the cover is a MASK · the cover is
-READ-ONLY). `_apply_synced_copies` already applies the rows. This adds the create-time caller and
-nothing else; a second covering-bind resolver would be two spellings of one rule, which drift.
+already carries the three warn-and-skip arms (no cover · the cover is a MASK · the cover is
+READ-ONLY). `_apply_synced_copies` already applies the rows, and already raises spec §0's two
+refusals through `_refuse_synced_under_mask` — so a mis-declared dest stops `create` exactly as it
+stops a launch. This adds the create-time caller and nothing else; a second covering-bind resolver
+would be two spellings of one rule, which drift.
 
 ### Why UNGATED is the whole point
 
