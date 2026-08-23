@@ -181,8 +181,8 @@ class TestManifestLoader:
         for section in ("registry", "policy", "categories", "keys",
                         "bind_default_entries", "not_keys"):
             assert section in doc, f"manifest section {section!r} is missing"
-        assert len(doc["keys"]) == 97, (
-            f"the manifest declares {len(doc['keys'])} key rows, not the 97 this "
+        assert len(doc["keys"]) == 98, (
+            f"the manifest declares {len(doc['keys'])} key rows, not the 98 this "
             f"file's counts were measured against — re-measure, do not adjust blindly"
         )
 
@@ -841,29 +841,16 @@ class TestKeySetConformance:
         ) is not None
 
     def test_no_declared_scalar_key_is_missing_from_the_manifest(self):
-        """Direction 2 — every ``DECLARED_*`` spelling has a registry row.
+        """Direction 2 — every ``DECLARED_*`` spelling has a registry row, with NO exemption.
 
-        ⚑⚑ ONE EXEMPTION, AND IT IS A GENUINE GAP, NOT A SHAPE ARTEFACT (FINDING 2):
-        ``agent.default.template`` is a legal key — it is in ``DECLARED_AGENT_LEAVES``
-        and the agent-tier discriminator accepts it — with NO manifest row and no spec
-        §2d row, while its sibling ``agent.default.canon`` has both.  Whether that is a
-        MEANT omission or an accident of the generic ``agent.<agent>.<key>`` shape is a
-        decision, not a mechanical fix: adding a row would assert REGISTRY STATUS for a
-        key whose status is exactly what is undecided.  Boarded, awaiting Jei's word;
-        the exemption is one line to reverse.
+        ``agent.default.template`` used to be exempt here (finding 2).  It is MEANT and it
+        has its row: it is the §2d default-tier arm of the template SOURCE, like every
+        other ``DECLARED_AGENT_LEAVES`` member.  Do not re-open it.
         """
         missing = _code_scalar_keys() - {str(k) for k in _keys()}
-        assert missing == {"agent.default.template"}, (
-            f"declared keys with no manifest row: {sorted(missing)} (expected exactly "
-            f"the boarded finding-2 gap)"
+        assert missing == set(), (
+            f"declared keys with no manifest row: {sorted(missing)}"
         )
-
-    def test_the_gap_key_really_is_a_legal_key(self):
-        """Anti-vacuity for finding 2: the gap is only a gap if the key is real."""
-        assert "template" in DECLARED_AGENT_LEAVES
-        assert key_validity(
-            "agent.default.template", valid_agents=PROBE_AGENTS,
-        ) is None
 
     def test_no_manifest_row_is_missing_from_the_declarations(self):
         """The other side of direction 2, with the derivations spelled out.
