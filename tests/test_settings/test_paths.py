@@ -2218,11 +2218,26 @@ class TestStandaloneEnableVaultTier:
 
 
 class TestPathLeafDefaultsHaveOneCarrier:
-    """⚑⚑ A default is materialized in EXACTLY ONE place — its designated defaults
-    file, ``settings/paths_defaults.py`` — and nowhere else.  ``project/workset.py``
+    """⚑⚑ A default is materialized in EXACTLY ONE place.  ``project/workset.py``
     used to re-spell four of these as its own literals, which is two carriers of one
     value and a drift waiting to happen: change ``BOXES_PATH`` and the workset
-    module would have kept stamping the old leaf."""
+    module would have kept stamping the old leaf.
+
+    ⚑ ONE carrier per VALUE — not one carrier FILE.  There are two designated
+    carriers and the split is structural, so do not "fix" it by merging them:
+
+    * ``settings/paths_defaults.py`` — the path LEAVES.  It is deliberately
+      import-free (pinned by :meth:`test_paths_defaults_is_import_free`), which is
+      what lets ``project/workset.py`` import it while ``settings/paths.py`` imports
+      ``project/workset.py``.  Moving anything here that needs an import closes that
+      documented cycle.
+    * ``settings/config.py`` — the per-tier settings FILENAMES (``box.yaml``,
+      ``workset.yaml``, ``agent.yaml``), which sit beside the readers and writers
+      that use them and which reach ``config_io``.  Relocating them into the leaf
+      would either drag that import in or strand them from their callers.
+
+    Each value still has exactly one home; the two tripwires below enforce that per
+    carrier."""
 
     def test_workset_module_agrees_with_the_defaults_file(self):
         """The workset module's names carry the defaults file's VALUES.
@@ -2268,6 +2283,80 @@ class TestPathLeafDefaultsHaveOneCarrier:
                 f'literal "{leaf}" in project/workset.py; draw it from '
                 f"settings.paths_defaults instead"
             )
+
+    def test_no_second_spelling_of_a_tier_settings_filename(self):
+        """Tripwire: each per-tier settings FILENAME has ONE carrier —
+        ``settings/config.py`` — and no other module may spell it in a path.
+
+        ⚑ Scope is the WHOLE of ``src/kanibako``, not a module list.  The sibling
+        tripwire above scans ``project/workset.py`` alone, and so could not see the
+        seven literals that had accumulated in ``project/names.py``,
+        ``launch/box_resolve.py`` and ``commands/box/_lifecycle.py``: a guard
+        narrower than the defect class it is named for catches nothing new.  There is
+        no exempt-module list here and there must not be one — the ONE file skipped
+        is the carrier itself, located from where the constants are DEFINED, so the
+        rule and its exclusion cannot drift apart (P13).
+
+        Three things go unflagged, all BY CONSTRUCTION rather than by name — a
+        name-keyed allowlist would hide the next finding behind whatever is in it:
+
+        * COMMENTS AND DOCSTRINGS.  The scan walks the AST, where comments do not
+          exist at all and a docstring is identified positionally.  Prose carries no
+          value; only a code literal makes a carrier.
+        * A literal that is not PATH-SHAPED.  The filename must be the final
+          ``/``-segment, so ``"...(shell config, box.yaml, vault symlinks)"`` — help
+          text naming the file in a sentence — is a mention, not a second carrier.
+        * A literal containing WHITESPACE.  This currently excludes NOTHING (stated
+          so it is not mistaken for a live exemption); it is here because the next
+          error message that happens to END in a path would otherwise red this test
+          and pressure the reader into the allowlist the paragraph above forbids.
+
+        ⚑ The rule catches the filename ANYWHERE in a path, not only alone: it was
+        ``settings/settings_launch.py``'s ``"@meta.workset.path/workset.yaml"`` — a
+        spec formula with the leaf typed by hand — that a weaker equality-only form
+        let through, while line 384 of that same module had been composing the
+        agent-tier formula off the constant all along.
+        """
+        import ast
+        import inspect
+
+        from kanibako.settings import config as config_mod
+        from tests.support.repo import REPO_ROOT
+
+        filenames = {config_mod.BOX_META_FILE, config_mod.WORKSET_META_FILE,
+                     config_mod.AGENT_META_FILE}
+        carrier = Path(inspect.getfile(config_mod)).resolve()
+        src = REPO_ROOT / "src" / "kanibako"
+
+        def code_literals(tree):
+            """Every str constant that is not a docstring (comments are not in the AST)."""
+            docstrings = set()
+            for node in ast.walk(tree):
+                body = getattr(node, "body", None)
+                if (isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef,
+                                      ast.AsyncFunctionDef)) and body
+                        and isinstance(body[0], ast.Expr)
+                        and isinstance(body[0].value, ast.Constant)
+                        and isinstance(body[0].value.value, str)):
+                    docstrings.add(id(body[0].value))
+            for node in ast.walk(tree):
+                if (isinstance(node, ast.Constant) and isinstance(node.value, str)
+                        and id(node) not in docstrings):
+                    yield node.lineno, node.value
+
+        for path in sorted(src.rglob("*.py")):
+            if path.resolve() == carrier:
+                continue
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            for lineno, value in code_literals(tree):
+                if value.split() != [value]:
+                    continue
+                assert value.rsplit("/", 1)[-1] not in filenames, (
+                    f"{path.relative_to(src.parent)}:{lineno} spells a per-tier "
+                    f'settings filename in the literal "{value}"; compose it from '
+                    f"settings.config ({carrier.name}) instead — that constant is "
+                    f"its ONE carrier"
+                )
 
     def test_paths_defaults_is_import_free(self):
         """⚑ The defaults file must stay a LEAF: ``project/workset.py`` now imports it,

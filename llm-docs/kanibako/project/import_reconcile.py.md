@@ -96,15 +96,13 @@ RETURNS `None` where create RAISES, because this one is answering a treewalk ste
 ordinary directory rather than a user who can retype: a directory named `default` must not make
 every command fail.
 
-## `_STANDALONE_BOX_DIR` — and its second spelling
+## `box_data/` — the box dir, and the journal key it forms
 
-`_STANDALONE_BOX_DIR = "box_data"` is the standalone box's host-side box dir: a sibling of the root
-`settings.yaml`, holding `home/`.
+The standalone box's host-side box dir is a sibling of the root `settings.yaml`, and holds `home/`.
 
-⚑ It **mirrors `paths_defaults.STANDALONE_META_DIR`**, which carries the matching note
-(*"A hand-kept 2nd spelling lives in `project/import_reconcile._STANDALONE_BOX_DIR`"*). The two are
-kept in step by hand; changing one without the other silently splits the marker from the journal
-key.
+⚑ Its name is **not declared in this module**. `STANDALONE_META_DIR` is imported from
+`settings/paths_defaults` at module scope and used at both call sites, so the string has a single
+carrier and the detection marker cannot drift from the journal key below.
 
 The J2 journal entry for a standalone import is keyed by `<root>/box_data` — the dir *containing*
 `home/` — which is the uniform host-side box-dir key scheme shared with J1
@@ -224,7 +222,6 @@ source is the trimmed module docstring, the one-line descriptor on each docstrin
 the section banners, and the short `⚑` / HARD INVARIANT markers whose deletion would let a future
 edit break something silently at that exact line:
 
-* at `_STANDALONE_BOX_DIR` — the second spelling in `paths_defaults.py` must move with it;
 * at `_journal_register`'s clear step — the clear is the immediate post-register step, and a raise
   intentionally leaves the entry;
 * at `_clear_stale_import` — only register-only entries are cleared, never a `create` entry;

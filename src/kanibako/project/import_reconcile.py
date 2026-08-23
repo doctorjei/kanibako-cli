@@ -41,16 +41,11 @@ from pathlib import Path
 from kanibako.project import registry_store
 from kanibako.project.names import cross_kind_shadow_hatch, register_name
 from kanibako.settings.config import WORKSET_META_FILE
+from kanibako.settings.paths_defaults import STANDALONE_META_DIR
 from kanibako.errors import KanibakoError
 from kanibako.log import get_logger
 
 logger = get_logger("import_reconcile")
-
-
-# The standalone box's host-side box dir (sibling of ``workset.yaml``, holding
-# ``home/``), and the J2 key for a standalone import.
-# ⚑ Hand-kept 2nd spelling of ``paths_defaults.STANDALONE_META_DIR`` — move both.
-_STANDALONE_BOX_DIR = "box_data"
 
 
 class ImportConflictError(KanibakoError):
@@ -158,7 +153,7 @@ def import_standalone(
     # Already registered to this exact root → no-op; clear any stale J2 entry.
     existing_name = registry_store.standalone_name_for_root(registry, root)
     if existing_name is not None:
-        _clear_stale_import(journal, root / _STANDALONE_BOX_DIR)
+        _clear_stale_import(journal, root / STANDALONE_META_DIR)
         return existing_name
 
     # ⚑ Gate on the standalone MARKER (design D4): the box's own settings FILE is
@@ -187,7 +182,7 @@ def import_standalone(
 
     # J2 write-ahead: register-only, NO seed — the box is already seeded on disk.
     with _journal_register(
-        journal, root / _STANDALONE_BOX_DIR,
+        journal, root / STANDALONE_META_DIR,
         op="import", name=name, mode="standalone",
     ):
         registry_store.register_standalone(registry, name, root)
