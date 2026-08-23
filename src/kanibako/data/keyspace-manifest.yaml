@@ -1359,6 +1359,24 @@ keys:
            is the identity, cf. the `caches` shape block). WHICH transform runs is
            `agent.<agent>.transform`, a key in its own right."
     spec: "§2d (added 2026-07-14)"
+  agent.default.template:
+    scope: agent
+    type: path
+    set: cli+file
+    note: "the all-agents fallback arm of the layer-2 TEMPLATE SOURCE, sibling of
+           the agent.default.canon row below — `template` is a §2d default-tier leaf
+           like every other, so the arm exists by the §2d fallback rule
+           (agent.<agent>.<key> -> agent.default.<key>). It is the all-agents
+           OVERRIDE POINT, not a value carrier.
+           ⚑ NO `default:` FIELD, AND THAT IS MEASURED, NOT AN OMISSION: no floor
+           emits a value at this tier. launch.templates.template_seed_defaults
+           installs the NODE arm agent.<agent>.template for EVERY agent (whose
+           template/ subtree ensure_agent_stores guarantee-creates), so the
+           fallback to this arm never fires. A default here would be a value
+           `system defaults` prints and no artefact produces — the same
+           'documentation of intent, not a required default' shape §2d gives
+           agent.default.bindings.{ro,rw}."
+    spec: "§2d (default tier; the fallback arm of agent.<agent>.template)"
   agent.default.canon:
     scope: agent
     type: path
