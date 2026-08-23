@@ -1351,7 +1351,7 @@ keys:
   agent.default.transform_settings:
     scope: agent
     type: dict
-    set: cli+file
+    set: file
     default: {}
     note: "binary-transform SETTINGS consumed by the plugin's transform pipeline — the
            INPUT. Its OUTPUT is the patched binary held as an ENTRY of the terminal
