@@ -574,10 +574,13 @@ policy:
 ## bind-shaped category left.
 ## ---------------------------------------------------------------------------
 categories:
+  # Token mapping: the spec (§2a) spells the active-agent level `agent.<active>`; this file spells it `agent.active`.
   scopes: [system, agent.default, agent.active, workset, box]
   scopes_spec: "§2a"
 
   masks:
+    terminal_key: true          # the value is the whole map; inner keys are data
+    dest_keyed: true
     value: "dict[box_dest -> bool|None]"
     tri_state: {present: mask, "null": unmask, absent: inherit}
     cli_set: false              # YAML only — list/dict mutation via set is awkward
