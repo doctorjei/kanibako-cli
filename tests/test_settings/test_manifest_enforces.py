@@ -518,6 +518,24 @@ def _parametric_segments(family: str) -> list[str]:
     return list(manifest_doc()["categories"][family].get("parametric", []))
 
 
+def _bind_shaped_families() -> list[str]:
+    """The families whose key ENDS at its own token — the manifest's NON-parametric rows.
+
+    ⚑ THE ONE DERIVATION OF THIS SET, used by every case that needs it.  Structural:
+    a family is bind-shaped iff the manifest declares it no ``parametric:`` segments.
+    :meth:`TestTheCategoriesBlockShape
+    .test_the_non_parametric_families_are_the_code_terminal_tails` asserts the result
+    equals ``TERMINAL_CATEGORY_TAILS``, so the set is cross-checked against the code
+    rather than trusted, and no case below has to spell seven names (P13).
+    """
+    return [f for f in _families() if not _parametric_segments(f)]
+
+
+def _parametric_families() -> list[str]:
+    """The complement: the families that take a ``<VAR>`` segment after their token."""
+    return [f for f in _families() if _parametric_segments(f)]
+
+
 def _spell(prefix: str, family: str) -> str:
     """The KEY a *prefix* and a *family* name.
 
@@ -612,13 +630,18 @@ class TestTheCategoriesBlockShape:
         stops :func:`_spell` from quietly writing a key of the wrong SHAPE and the
         surface cases from passing on strings nobody meant.
 
-        ⚑ ``masks`` is why this reads ``parametric`` rather than a ``terminal_key:``
-        column: six rows carry ``terminal_key: true`` and the ``masks`` row does not,
-        although the block's own prose calls it dest-keyed and the code lists it here.
-        Absence of a positive marker cannot be the discriminator; presence of
-        ``parametric`` can.
+        ⚑ WHY THE DISCRIMINATOR IS ``parametric:`` AND NOT THE ``terminal_key:`` /
+        ``dest_keyed:`` FLAGS — WHICH IS NO LONGER OBVIOUS.  It was once forced:
+        ``masks`` carried neither flag while its six bind-shaped siblings carried
+        both, so absence of a positive marker could not discriminate anything.  Jei
+        closed that gap on 2026-08-23 and all seven now carry both, which makes the
+        flags LOOK like a simpler split.  They are not the one to use.  ``parametric:``
+        is the field :func:`_parametric_segments` already reads to SPELL a key, so
+        discriminating on it keeps one field deciding one thing and keeps this
+        cross-check independent of the flags — which is what lets
+        :class:`TestTheBindShapedRowsCarryTheKeyShapeFlags` pin the flags at all.
         """
-        manifest = {f for f in _families() if not _parametric_segments(f)}
+        manifest = set(_bind_shaped_families())
         code = {".".join(t) for t in TERMINAL_CATEGORY_TAILS}
         assert manifest == code, (
             f"category KEY-SHAPE drift — the manifest declares no parametric segments "
@@ -626,6 +649,84 @@ class TestTheCategoriesBlockShape:
             f"TERMINAL_CATEGORY_TAILS does not end a key there; and it ends a key at "
             f"{sorted(code - manifest)}, which the manifest marks parametric"
         )
+
+
+#: The two fields a bind-shaped ``categories:`` row carries, each mapped to the claim it
+#: makes ABOUT THE KEY.  ⚑ Neither is a delivery property: ``masks`` and ``secret_path``
+#: are both MOUNT in :data:`_DELIVERY` and only one of them is either of these.
+_KEY_SHAPE_FLAGS: dict[str, str] = {
+    "terminal_key": "the key ENDS at the family token — what follows it is DATA",
+    "dest_keyed": "the value is one map whose inner keys are destinations, not segments",
+}
+
+
+class TestTheBindShapedRowsCarryTheKeyShapeFlags:
+    """⚑ The key-shape flags are UNIFORM across the bind-shaped rows — and ABSENT from
+    the parametric pair, which is the half that keeps the two classes distinguishable.
+
+    WHY THIS EXISTS.  Until 2026-08-23 ``masks`` carried neither ``terminal_key:`` nor
+    ``dest_keyed:`` while its six bind-shaped siblings carried both, even though the
+    block's own prose called it dest-keyed and the code listed it in
+    ``TERMINAL_CATEGORY_TAILS`` — the row was simply written before the others and never
+    caught up.  Jei brought it into line, and nothing asserted the resulting uniformity,
+    so the EIGHTH bind-shaped row would have reintroduced exactly the same silent
+    inconsistency.  This is the case that reds instead.
+
+    ⚑⚑ THE SET IS DERIVED FROM ``parametric:`` (:func:`_bind_shaped_families`),
+    DELIBERATELY NOT FROM THE FLAGS THIS CASE ASSERTS.  That is not a stylistic
+    preference, it is the difference between a test and a tautology: derive
+    "bind-shaped" from ``terminal_key: true`` and a row that LOSES the flag simply
+    leaves the set, so the case that was meant to catch the loss passes over a smaller
+    corpus instead.  A pin may never read its own subject.
+
+    🛑 THE PARAMETRIC PAIR IS ASSERTED, NOT EXCLUDED.  ``env`` and ``secret_path`` carry
+    NEITHER flag today, and the absence is meaningful rather than an oversight: their
+    keys do NOT end at the family token (``env.<VAR>`` — spec §2a), so ``terminal_key``
+    would be a false claim; and their ``<VAR>`` is a KEYSPACE SEGMENT the validator
+    parses, which is the precise opposite of what ``dest_keyed`` says about a bind map's
+    inner keys.  So the rule is: the flags mark the bind-shaped class and mark nothing
+    else, and either flag appearing on a parametric row is a row contradicting its own
+    ``parametric:`` field.  An unasserted exclusion is where the next gap hides.
+    """
+
+    @pytest.mark.parametrize("family", _bind_shaped_families())
+    def test_the_bind_shaped_row_carries_both_flags(self, family):
+        """Both flags, ``true``, on every row the manifest declares non-parametric."""
+        row = manifest_doc()["categories"][family]
+        missing = {f: why for f, why in _KEY_SHAPE_FLAGS.items() if row.get(f) is not True}
+        assert not missing, (
+            f"the categories: row {family!r} is bind-shaped (no parametric: segments) "
+            f"but does not declare {sorted(missing)} as true — each states something the "
+            f"key shape needs: "
+            + "; ".join(f"{f}: {why}" for f, why in sorted(missing.items()))
+        )
+
+    @pytest.mark.parametrize("family", _parametric_families())
+    def test_the_parametric_row_carries_neither_flag(self, family):
+        """The other half of the rule, so the two classes cannot converge silently."""
+        row = manifest_doc()["categories"][family]
+        present = sorted(f for f in _KEY_SHAPE_FLAGS if f in row)
+        assert not present, (
+            f"the categories: row {family!r} declares parametric: "
+            f"{_parametric_segments(family)} — its key ends at a <VAR> SEGMENT, not at "
+            f"the family token — yet it also carries {present}, which is what the "
+            f"bind-shaped rows use to say the opposite"
+        )
+
+    def test_the_two_classes_partition_the_families(self):
+        """Anti-vacuity: an empty parametrize list runs ZERO cases and stays green.
+
+        Stated as the rule rather than as counts — the sizes are pinned by
+        :meth:`TestTheFamilySetIsTheDeliveryTable.test_the_family_corpus_is_the_measured_size`
+        and by the ``TERMINAL_CATEGORY_TAILS`` equality above.
+        """
+        bind, parametric = set(_bind_shaped_families()), set(_parametric_families())
+        assert bind and parametric, (
+            f"one of the two shape classes is EMPTY (bind-shaped {sorted(bind)}, "
+            f"parametric {sorted(parametric)}) — its cases above ran on nothing"
+        )
+        assert not bind & parametric
+        assert bind | parametric == set(_families())
 
 
 class TestTheScopeTokenMapping:
