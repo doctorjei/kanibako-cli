@@ -55,7 +55,15 @@ inside boxes. In order of likely impact:
    non-interactive setup that cannot ask about the template refresh deliberately records
    nothing, prints `Setup Incomplete` and exits **rc 1**, so the block stays up (§2.12).
 
-2. **Your boxes will refuse to launch until you replace the agent-selection key.** Every box
+2. **Every settings file except the system one must be renamed by hand, or it is silently not
+   read** (§2.45). Each cascade tier's file was called `settings.yaml`; each is now named for its
+   tier — `box.yaml`, `workset.yaml`, `agent.yaml`. There is no compatibility read and no warning:
+   a file left under the old name is invisible, and the box launches on defaults as though you had
+   never configured it, which looks exactly like kanibako losing your configuration. It is the
+   largest hand-migration in this release by file count. 🛑 `<data>/global/settings.yaml` is the
+   system tier and must **not** be renamed.
+
+3. **Your boxes will refuse to launch until you replace the agent-selection key.** Every box
    that ever chose an agent has `box.agent_name` stored; v1.8.0 refuses to launch such a box
    with an error that names the file and the exact fix (§2.1). One command per box:
    `kanibako box set pref.system.agent=<name>`. The system default moved too:
@@ -63,7 +71,7 @@ inside boxes. In order of likely impact:
    pre-v1.6.0 `box.crab`) or table (the settable agent mirror) — is refused the same way, with
    its own cure per shape (§2.1).
 
-3. **Upgrade the agent plugins WITH the base — never the base alone.** Upgrading only
+4. **Upgrade the agent plugins WITH the base — never the base alone.** Upgrading only
    `kanibako-cli` while keeping v1.7.2-era agent plugins silently deletes your boxes' entire
    instruction/directive chain (no error is printed). Upgrade via the `kanibako` meta package,
    or upgrade the plugins first (§2.6). ⚑ A pre-1.8.0 plugin also **will not load at all** on
@@ -71,57 +79,57 @@ inside boxes. In order of likely impact:
    named warning (§3.1 lists the affected plugin versions). The plugins pin no upper bound on
    `kanibako-cli`, so this is what an unpinned `pip install --upgrade kanibako-cli` gives you.
 
-4. **Claude plugins and cache will look EMPTY unless you move two directories** before your
+5. **Claude plugins and cache will look EMPTY unless you move two directories** before your
    first launch on v1.8.0 (§2.5). Nothing errors — the box just sees empty dirs:
    `mkdir -p <data>/agents/claude/common && mv <data>/agents/claude/{plugins,cache} <data>/agents/claude/common/`
 
-5. **The `commons` channel is now `common`** — on disk (host) and in-box
+6. **The `commons` channel is now `common`** — on disk (host) and in-box
    (`~/channels/commons` → `~/channels/common`). Move the directories before first launch or
    an empty `common/` is created beside your populated `commons/`, silently (§2.3). Any
    scripts/notes of yours that reference the old path break silently.
 
-6. **Instruction files move into the canon.** New boxes get `~/canon/{bible,handbook,notebook,
+7. **Instruction files move into the canon.** New boxes get `~/canon/{bible,handbook,notebook,
    workbook}` with a read-only, root-owned skeleton; `~/playbook` is retired as the entry
    point. Existing boxes keep launching but their own `~/playbook` directives **silently stop
    being loaded** and need hand-triage (§2.4).
 
-7. **Two mounts at one destination now refuse to launch** where the more specific scope used
+8. **Two mounts at one destination now refuse to launch** where the more specific scope used
    to win silently (§2.2). The error says the rule changed and prints the exact YAML cure.
    Default installs are proven collision-free; only hand-added shares/binds can collide.
    After upgrading, `kanibako box show --effective` reports collisions without launching.
 
-8. **Rename the `shared` category to `common` in your settings files** (e.g.
+9. **Rename the `shared` category to `common` in your settings files** (e.g.
    `agent.claude.shared.plugins` → `agent.claude.common.plugins`). A leftover `shared` entry
    is silently ignored (verified — see the header note), so the bind it declared simply
    stops appearing (§2.1).
 
-9. **Relative host paths in `workset share add` no longer resolve under the workset root at
-   launch.** New adds are resolved and stored absolute at write time; **already-stored relative
-   sources must be rewritten to absolute paths by hand** or they resolve against the process
-   CWD — a wrong-directory mount, not an error (§2.7).
+10. **Relative host paths in `workset share add` no longer resolve under the workset root at
+    launch.** New adds are resolved and stored absolute at write time; **already-stored relative
+    sources must be rewritten to absolute paths by hand** or they resolve against the process
+    CWD — a wrong-directory mount, not an error (§2.7).
 
-10. **The box template root moved and restructured** (`global/base_template/` →
+11. **The box template root moved and restructured** (`global/base_template/` →
     `global/template/box/home/`). Existing boxes are untouched (seeded once, long ago). The
     forced `kanibako setup` (item 1) re-creates the NEW tree with **stock packaged content**,
     so new boxes do NOT seed empty — but **any customizations you made in
     `global/base_template/` are orphaned there, silently**: nothing reads the old directory,
     nothing warns about it, and new boxes seed the stock files instead of yours (§2.5).
 
-11. **System-scope binds/caches/secret pointers now live in ONE file** — `global/settings.yaml`,
+12. **System-scope binds/caches/secret pointers now live in ONE file** — `global/settings.yaml`,
     not `~/.config/kanibako_config.yaml`. If you ever hand-placed such entries in the config
     file (working around the old broken routing), move them (§2.8).
 
-12. **A symlink anywhere in a template directory now fails box creation loudly** — if you
+13. **A symlink anywhere in a template directory now fails box creation loudly** — if you
     symlinked template files into a dotfiles repo, replace them with real files or a bind
     (§2.13).
 
-13. **If you use PERSONA agents, delete persona values you did not write yourself** from
-    `agents/<node>/settings.yaml` — the store is now read live and a leftover synced value
+14. **If you use PERSONA agents, delete persona values you did not write yourself** from
+    `agents/<node>/agent.yaml` — the store is now read live and a leftover synced value
     silently outranks it (§2.15). Also: a persona's whole `env` block now reaches the box, a
     rejected token is now a hard error on every `start`, and a generated agent settings file no
     longer carries `model` (§2.15, §2.16).
 
-14. **If you pass flags to a box that may already be running, they are now refused instead of
+15. **If you pass flags to a box that may already be running, they are now refused instead of
     silently ignored** (§2.17). `kanibako start -N <running box>` used to reattach you to the OLD
     conversation without a word; it now errors. Same for `--rig`, `-e` (except where a second
     process in the box will apply it — see §2.17), `--browser`, `--share-images`, `--no-helpers`,
@@ -132,7 +140,7 @@ inside boxes. In order of likely impact:
     makes network calls it cannot use, and `--entrypoint` against a live box now runs your command
     in it as a second process instead of being dropped.)
 
-15. **If anything you run deletes a box directory and lets the next `start` put it back, it now
+16. **If anything you run deletes a box directory and lets the next `start` put it back, it now
     errors instead** (§2.18). A launch never rebuilds a box: with the registration intact and the
     box directory gone, `kanibako start` used to silently re-create and re-seed it. It now refuses
     and prints the command that rebuilds it (`kanibako create <workspace>`, or `workset disconnect`
@@ -140,7 +148,7 @@ inside boxes. In order of likely impact:
     box.<key>=<value>` from a directory that is **not** a box now errors instead of writing a
     settings file for a box that does not exist.
 
-16. **Your `env` files are no longer read, silently** — and the bare `env.<VAR>` key is refused
+17. **Your `env` files are no longer read, silently** — and the bare `env.<VAR>` key is refused
     (§2.19). The three docker-style `env` files (`<data>/env`, the workset one, the per-box one)
     were dropped; every `VAR=value` line in them stops reaching your boxes. v1.7.2 seeded
     `COLORTERM=truecolor` into `<data>/env` on first run, so **essentially every pre-existing
@@ -152,17 +160,17 @@ inside boxes. In order of likely impact:
     so it needs no key at all, and re-creating it at `system` scope would *refuse* your
     launches as a contested variable (§2.33). Just delete the line with the file.
 
-17. **You can no longer `set` or `reset` a bind entry from the CLI — edit the settings file
+18. **You can no longer `set` or `reset` a bind entry from the CLI — edit the settings file
     instead** (§2.20). `kanibako box set box.bindings.rw.home=/newhome` and `kanibako system set
     agent.claude.bindings.ro.launcher=/newsrc` both used to work; both now refuse, naming the key
     and the file to edit. **Nothing you have already configured stops working** — the keys are
     still declared, still read at launch, and `config get` still reads them back. Only the write
     verb is gone, and there is no CLI replacement. ⚑ One exception, and it is the example above: a
-    binding at the box home is a separate change and does **not** keep mounting (item 19). If a
+    binding at the box home is a separate change and does **not** keep mounting (item 20). If a
     script of yours repoints a bind, that is the thing to check. The other mount categories
     (`caches`, `seeded`, `common`, `synced`) are untouched and still settable at every scope.
 
-18. **`workset share add` / `rm` lost their NAME argument** (§2.21). `workset share add WS NAME
+19. **`workset share add` / `rm` lost their NAME argument** (§2.21). `workset share add WS NAME
     host:guest` is now `workset share add WS host:guest`, and `workset share rm WS NAME` is now
     `workset share rm WS DEST` — the box destination, exactly as `share list` prints it. ⚑ **The
     stored shape changed too, and an old entry is MISREAD rather than rejected** — a two-element
@@ -174,7 +182,7 @@ inside boxes. In order of likely impact:
     the thing to check, and so is anything that parses `share list`, whose columns are now
     `DEST / MODE / SOURCE`.
 
-19. **If you gave a box a custom home with a binding at `~`, that box no longer starts** (§2.32).
+20. **If you gave a box a custom home with a binding at `~`, that box no longer starts** (§2.32).
     The box home stopped being a binding — it is the foundation the rest of the mount set folds
     over — so an entry at `~` in any settings file is now a second claim on one place and refuses
     the launch by name. Nothing else moves: a binding *inside* home (`~/work`) is unaffected, and
@@ -183,7 +191,7 @@ inside boxes. In order of likely impact:
     also leaves the per-scope `bindings.*` listing in `kanibako box show --effective` and appears
     above it as a labelled foundation line.
 
-20. **If the same environment variable is declared at two scopes, that box no longer starts**
+21. **If the same environment variable is declared at two scopes, that box no longer starts**
     (§2.33). `system.env.EDITOR` alongside `box.env.EDITOR` used to launch with the innermost
     scope's value and no word about the declaration it discarded; it now refuses, naming both
     keys. A variable is a slot with one value, and each scope acts in turn from the outside in
@@ -193,8 +201,8 @@ inside boxes. In order of likely impact:
     keys is not in any of your files:** a persona's store config supplies `env:` entries as
     live agent-scope keys that are never written to disk (§2.33, §2.15).
 
-21. **Every NAMED workset needs a one-time hand edit to its root `settings.yaml`, or it stops
-    resolving** (§2.43). The identity moved OUT of the root `settings.yaml` and into the root
+22. **Every NAMED workset needs a one-time hand edit to its root `workset.yaml`, or it stops
+    resolving** (§2.43). The identity moved OUT of the root settings file and into the root
     `registry.yaml`, where the box membership already lives: `workset: {meta: {…}}` becomes a
     `workset:` table plus a name-keyed `projects:` map in `registry.yaml`. Until you do it, every
     command that has to resolve that workset **refuses**, naming both files and the exact move.
@@ -202,7 +210,7 @@ inside boxes. In order of likely impact:
     workset made by v1.6.0 or v1.7.x, and there is no auto-migration. Primary-mode and standalone
     boxes have no such table and need nothing.
 
-22. Smaller items: standalone boxes' `box get` got truthful (§2.9); a box suppressed to
+23. Smaller items: standalone boxes' `box get` got truthful (§2.9); a box suppressed to
     plain-shell keeps stale credential files in its home (§2.10); several never-released or
     expected-empty renames (§2.11); two `--null` CLI bugs fixed (§2.14); a customized helper
     entrypoint script moves to `~/canon/notebook/scripts/helper-init.sh` (§2.44).
@@ -312,8 +320,9 @@ along; the refusal tells you what you actually asked for and how to ask for it n
 Notes:
 - An **empty** leaf (`box: agent_name:` with no value) still counts as the retired key and is
   refused the same way (verified).
-- The new on-disk shape of a request is a **nested table** in the box/workset `settings.yaml`
-  (`pref: {system: {agent: <name>}}`) — never a dotted literal; `config set` writes it for you.
+- The new on-disk shape of a request is a **nested table** in the box's `box.yaml` or the workset's
+  `workset.yaml` (`pref: {system: {agent: <name>}}`) — never a dotted literal; `config set` writes
+  it for you.
   Suppression ("this box runs no agent") has its own spelling: `kanibako box set --null
   pref.system.agent`. `--null` writes a real YAML `null`; the sibling `reset` VERB
   (`kanibako box reset <box> <key>`) instead *removes* the entry. ⚑ There is no `--reset` flag.
@@ -633,7 +642,7 @@ defect, and still resolves against the process CWD at launch — see the warning
 
 **Already-stored relative sources are NOT rewritten for you.** At launch they pass through
 as-is and resolve against whatever the process CWD happens to be — a plausibly
-*wrong-directory* mount, which is worse than an error. Check every workset `settings.yaml` for
+*wrong-directory* mount, which is worse than an error. Check every workset's `workset.yaml` for
 `workset.bindings.{ro,rw}` entries whose source does not start with `/`, `~`, `$`, or `@`, and
 rewrite each to the absolute path it used to resolve to: `<workset root>/<relative>`.
 
@@ -669,8 +678,8 @@ Box and workset scopes are unaffected. Agent-scope binds already routed correctl
 
 ### 2.9 Standalone boxes: reads got truthful
 
-Standalone boxes gain a real box-scope settings file, `<root>/box_data/settings.yaml` (absent
-until first written); the project-root `settings.yaml` is the workset tier. No data
+Standalone boxes gain a real box-scope settings file, `<root>/box_data/box.yaml` (absent
+until first written); the project-root `workset.yaml` is the workset tier. No data
 moves and existing boxes resolve identically, but two read surfaces change on a box whose
 `box.*` values sit in the root file (every standalone box created before v1.8.0):
 
@@ -790,13 +799,13 @@ model and bearer token reach a box has changed shape.
   launch then resolved that file. On a FAIL it kept the previously-written values and launched.
 - **Now:** the store is read fresh on every launch and resolved directly, as a cascade level below
   the agent settings file and above the harness defaults. **Nothing is written.** A launch leaves
-  `agents/<node>/settings.yaml` byte-identical, and `kanibako create` no longer imports anything.
+  `agents/<node>/agent.yaml` byte-identical, and `kanibako create` no longer imports anything.
 
 **What you must do: delete persona values you did not write yourself.** This is the one action this
 change requires, and nothing warns you about it.
 
 The agent settings file outranks the live store, so any `endpoint`, `model` or `secret_path.<VAR>`
-that the old sync wrote into `agents/<node>/settings.yaml` (kanibako ≤ `v1.8.0-rc1`) keeps
+that the old sync wrote into `agents/<node>/agent.yaml` (kanibako ≤ `v1.8.0-rc1`) keeps
 overriding the store — you edit the persona's `settings.json` and nothing changes, silently. Remove
 those keys. A value that MATCHES the store is always safe to delete (the live tier supplies it). A
 value that DIFFERS is now, by definition, a deliberate user override: keep it if you meant it.
@@ -1076,7 +1085,7 @@ again, the refusal names the real surface: the file. §2.23 covers the stored sh
 
 **The cure.** Edit the settings file for the scope you want, and re-launch the box. For a box-scope
 bind that is the box's own settings file; for an agent-node bind it is
-`agents/<node>/settings.yaml`. For a box- or workset-scope bind you can read the current value
+`agents/<node>/agent.yaml`. For a box- or workset-scope bind you can read the current value
 first with `kanibako box get <box> <key>` — naming the subject, which is required. An agent-node
 bind reads back on its own noun, with the node as the subject and the rest as the key:
 `kanibako agent get <node> "bindings.ro.~/.ro/x"`. ⚑ The `system` noun reads an *entry* but
@@ -1252,7 +1261,7 @@ is **refused loudly**, naming the entry and the category — it is not silently 
 not half-load.
 
 **Where to look.** Any settings YAML you have hand-written: the system settings file, a workset's,
-a box's, and `agents/<node>/settings.yaml`. Check for a `caches:`, `seeded:`, `common:` or `synced:`
+a box's, and `agents/<node>/agent.yaml`. Check for a `caches:`, `seeded:`, `common:` or `synced:`
 table whose sub-keys are names rather than paths. (`bindings.ro` / `bindings.rw` already moved to
 this shape earlier in v1.8.0 — see §2.20 and §2.21.)
 
@@ -1363,7 +1372,7 @@ box:
 ```
 
 **Where to look.** Any settings YAML you hand-wrote: the system settings file, a workset's, a box's,
-and `agents/<node>/settings.yaml`. Check for a `masks:` table written with `-` bullets.
+and `agents/<node>/agent.yaml`. Check for a `masks:` table written with `-` bullets.
 
 **Why.** Keying by destination is what makes the containment rules in §2.2 decidable at all — a mask
 and a bind at one path, or a mask inside another mask, are questions about destinations. It also
@@ -1889,7 +1898,7 @@ same refusal without starting anything, so you can find them before a launch doe
 **⚑ One of the two keys may be one you never wrote in any file — check your persona.** If the box
 runs a **persona**, that persona's store config supplies its `env:` entries as live agent-scope keys
 (`agent.<agent>.env.<VAR>`) on every launch. They are resolution inputs, not file contents — nothing
-is written to `agents/<node>/settings.yaml` — so grepping your settings files for the second key
+is written to `agents/<node>/agent.yaml` — so grepping your settings files for the second key
 will not find it. A persona that sets `EDITOR` plus your own `box.env.EDITOR` is exactly this
 refusal, and the message names the agent-scope key. **The cure there is one of two things:** delete
 your own key and let the persona own the variable, or remove that variable from the persona's store
@@ -1943,14 +1952,14 @@ agent.goose.env.KANIBAKO_DIRECTIVE_FINAL                  = ~/.config/goose/.add
 ```
 
 **To override one, write the same key** in a settings file that may set it — the agent's own
-`agents/<node>/settings.yaml`, or the system settings file:
+`agents/<node>/agent.yaml`, or the system settings file:
 
 ```console
 $ kanibako agent set claude env.DISABLE_AUTOUPDATER=0
 ```
 
 ```yaml
-# agents/claude/settings.yaml — the same thing, written by hand.  ⚑ `self:` IS
+# agents/claude/agent.yaml — the same thing, written by hand.  ⚑ `self:` IS
 # `agent.claude`, so the env table sits DIRECTLY under it: there is no second
 # `claude:` level, and this is the shape the command above writes.
 self:
@@ -1995,7 +2004,7 @@ $ kanibako agent set claude env.EDITOR=vim
 ```
 
 ```yaml
-# agents/claude/settings.yaml
+# agents/claude/agent.yaml
 self:
   env:
     EDITOR: vim
@@ -2052,7 +2061,7 @@ below `workset`, and expanded like anything else.
 This one is broader than `env`, and it is the case that can bite a file you never hand-edited.
 
 **`self:` is not a key.** It is an alias that stands for `agent.<that agent>`. So in
-`agents/claude/settings.yaml`, a table written like this:
+`agents/claude/agent.yaml`, a table written like this:
 
 ```yaml
 self:
@@ -2071,7 +2080,7 @@ included (`self: default: env:` reads `agent.claude.default.env`, equally imposs
 always the same: **move the table up one level.**
 
 ```yaml
-# agents/claude/settings.yaml — the whole of it
+# agents/claude/agent.yaml — the whole of it
 self:
   env:
     EDITOR: vim
@@ -2167,7 +2176,7 @@ to be true.
 
 ### 2.37 An agent's settings file has ONE level: everything sits directly under `self:`
 
-**Read this if you have ever hand-edited an `agents/<agent>/settings.yaml`, or if a box that
+**Read this if you have ever hand-edited an `agents/<agent>/agent.yaml`, or if a box that
 started yesterday refuses today naming a `self.…` table.** This is the section §2.35's `env` and
 `secret_path` note grew into: the same rule, now applied to *every* category, `bindings` included.
 
@@ -2176,7 +2185,7 @@ already belongs to one agent, so its root already *is* that agent's node. Anythi
 second level inside it therefore names the node twice:
 
 ```yaml
-# agents/claude/settings.yaml — REFUSED
+# agents/claude/agent.yaml — REFUSED
 self:
   claude:                       # ← a second `claude:`
     bindings:
@@ -2189,7 +2198,7 @@ never was one. **Every category is written flat now**, and the nested spelling *
 launch, naming the table it found and the key your spelling reads:**
 
 ```yaml
-# agents/claude/settings.yaml — the whole shape
+# agents/claude/agent.yaml — the whole shape
 self:
   model: opus                   # behaviour keys: directly under the root
   env:
@@ -2513,13 +2522,14 @@ and that entry is what `kanibako workset list` reads and what resolves a bare wo
 and v1.7.x *also* wrote a copy of the name — plus a `created` stamp and a `projects` list — into the
 workset root's own `settings.yaml`, nested as `workset.meta`. v1.8.0 keeps the registry entry and
 drops the copy. A workset root now holds exactly two kinds of file: `registry.yaml` with its box
-MEMBERSHIP, as flat `name: path` rows under `boxes:`, and `settings.yaml` with SETTINGS ONLY —
+MEMBERSHIP, as flat `name: path` rows under `boxes:`, and `workset.yaml` with SETTINGS ONLY —
 sparse, optional, and absent entirely on a workset created from scratch.
 
 `created` is **gone**, not relocated. Nothing records when a workset was made.
 
 **What you must do.** In each workset root, fold the old `projects` list into `registry.yaml`'s
-`boxes:` section and delete the identity table from `settings.yaml`. Most rows are already in
+`boxes:` section and delete the identity table from `workset.yaml` — the file v1.7.x called
+`settings.yaml`, so do §2.45's rename first or this refusal never fires. Most rows are already in
 `boxes:` — kanibako has written one there for every box it created since v1.6.0 — so in practice
 this is usually a delete and a check.
 
@@ -2544,7 +2554,7 @@ boxes:
 ```
 
 ```yaml
-# v1.8.0 — <workset root>/settings.yaml, with the identity gone
+# v1.8.0 — <workset root>/workset.yaml, with the identity gone
 workset:
   bindings:
     rw:
@@ -2554,7 +2564,7 @@ workset:
 The workset is still called `research`, because the global registry still says so. You do not write
 its name anywhere, and there is nowhere left to write it.
 
-⚑ **Nothing else moves.** The top-level `workset:` table in `settings.yaml` stays exactly where it
+⚑ **Nothing else moves.** The top-level `workset:` table in `workset.yaml` stays exactly where it
 is — it is still where this workset's own settings live (`workset.bindings`, `workset.workspaces`,
 `workset.channelroot`, `workset.auth`, …). Delete only the `meta:` table from inside it. **If that
 leaves the file empty, you may delete the file.** Any `boxes:` row already in `registry.yaml` is
@@ -2564,7 +2574,7 @@ directory moves, no global registry entry changes, no box is re-seeded.
 
 **What you see if you don't.** kanibako refuses by name on any command that has to resolve the
 workset — `start`, `box info`, `workset` verbs, and any command run from inside the workset tree
-(verbatim; `<path>` is the workset root's `settings.yaml`, `<registry>` its `registry.yaml`):
+(verbatim; `<path>` is the workset root's `workset.yaml`, `<registry>` its `registry.yaml`):
 
 ```
 'workset.meta' is a RETIRED location for a named workset's identity table and is still the shape of <path>.
@@ -2584,10 +2594,10 @@ THE RULE: a workset has NO identity table on disk under its root. Its name lives
 A root that spelled the table `meta.workset` instead gets the same refusal naming that spelling; the
 cure is identical.
 
-⚑ **A root with no identity table anywhere is not an error.** A `settings.yaml` with no such table —
-an ordinary box's settings file, or a cascade-only file at some directory in the walk — is simply
+⚑ **A root with no identity table anywhere is not an error.** A settings file with no such table —
+an ordinary box's `box.yaml`, or a cascade-only file at some directory in the walk — is simply
 not carrying one, exactly as a freshly created v1.8.0 workset root is not, and neither is a plain
-directory. Only a table still sitting in `settings.yaml` refuses.
+directory. Only a table still sitting in a `workset.yaml` refuses.
 
 **If you ran a v1.8.0 development build.** One unreleased dev build put the identity table into the
 workset root's `registry.yaml` instead, beside a `projects:` map that repeated every member path a
@@ -2636,6 +2646,88 @@ spawn with the stock wrapper instead of yours.
 box: it has no canon binds and no canon skeleton, and giving it a `canon/` directory would make
 the launch materialize one. The parent is a real box, which is why only the parent side is
 canon-addressed.
+
+---
+
+### 2.45 Each settings file is now named for its tier: `box.yaml`, `workset.yaml`, `agent.yaml`
+
+**Read this if you have ever written a settings file**, which is very nearly everyone. This is the
+largest hand-migration in v1.8.0 by file count — it touches every box, every workset and every
+agent you have, on every machine.
+
+**What changed.** All four levels of the settings cascade used to be stored in a file called
+`settings.yaml`; which tier a given file belonged to was something you worked out from where it
+sat. Each per-tier file is now named for its own tier:
+
+| tier | v1.7.2 | v1.8.0 |
+|---|---|---|
+| box, primary mode | `<data>/primary_workset/boxes/<box>/settings.yaml` | `box.yaml` |
+| box, in a named workset | `<workset root>/boxes/<box>/settings.yaml` | `box.yaml` |
+| box, standalone project | `<project root>/box_data/settings.yaml` | `box.yaml` |
+| workset, primary mode | `<data>/primary_workset/settings.yaml` | `workset.yaml` |
+| workset, named | `<workset root>/settings.yaml` | `workset.yaml` |
+| **standalone project root** | `<project root>/settings.yaml` | `workset.yaml` |
+| agent | `<data>/agents/<agent>/settings.yaml` | `agent.yaml` |
+| **system** | `<data>/global/settings.yaml` | **unchanged** |
+
+🛑 **The system tier keeps `settings.yaml`, and renaming it breaks your install.** It is the only
+file of its kind, so nothing about it was ambiguous and nothing about it changed. Four filenames
+are now in play, not three.
+
+⚑ **The standalone row is the one people misread.** A standalone project's *root* file is the
+**workset** tier, not the box tier — its box file is the one under `box_data/`. The two were
+indistinguishable while both were called `settings.yaml`, and telling them apart is most of the
+reason for this change.
+
+**What you must do.** Rename each file. Nothing inside them changes — same keys, same shape, same
+values — so this is `mv` and nothing else:
+
+```bash
+# Boxes and worksets under the default primary-mode layout.
+data=~/.local/share/kanibako          # or wherever config.data points
+for f in "$data"/primary_workset/boxes/*/settings.yaml; do mv "$f" "${f%/*}/box.yaml"; done
+mv "$data"/primary_workset/settings.yaml "$data"/primary_workset/workset.yaml
+
+# Agents.
+for f in "$data"/agents/*/settings.yaml; do mv "$f" "${f%/*}/agent.yaml"; done
+
+# Each NAMED workset root (repeat per root; `kanibako workset list` prints them).
+mv <workset root>/settings.yaml           <workset root>/workset.yaml
+for f in <workset root>/boxes/*/settings.yaml; do mv "$f" "${f%/*}/box.yaml"; done
+
+# Each STANDALONE project (repeat per project).
+mv <project root>/settings.yaml           <project root>/workset.yaml
+mv <project root>/box_data/settings.yaml  <project root>/box_data/box.yaml
+```
+
+Not every file exists — a settings file is written only once something is stored at that scope, so
+plenty of boxes and worksets have none. Any `mv` that reports a missing source is a scope you never
+configured, and there is nothing to carry.
+
+⚑ **If you repointed `workset.boxes` or moved a workset root**, the paths above are not where your
+files are. This lists every candidate under a store, and deliberately skips `global/`, which must
+keep its name:
+
+```bash
+find "$data" <workset root> <project root> -name settings.yaml -not -path '*/global/*'
+```
+
+**What you see if you don't.** Nothing. v1.8.0 is a clean break with no compatibility read: a file
+left under the old name is not read, not reported, and not mentioned at launch. The box starts on
+defaults, exactly as though you had never configured it. **The failure looks like kanibako losing
+your configuration**, so if a box comes up without its binds, its `env`, or its agent, check for a
+file still called `settings.yaml` before anything else.
+
+⚑ **A named workset root needs `[§2.43]`'s edit as well, and the order matters.** That refusal —
+the retired `workset.meta` identity table — is raised by the code that *reads* the workset file,
+which is now `workset.yaml`. A root still holding both the old table and the old filename is
+silently ignored rather than refused, so **rename first**: the rename is what surfaces the refusal
+that tells you the rest.
+
+⚑ **Why this was worth a break.** The filenames now carry what prose used to. Both the spec and the
+code had passages whose only job was to say which `settings.yaml` was meant; those are shorter or
+gone. It also flushed out a class of our own tests that passed only because two tiers happened to
+spell their filename the same way.
 
 ---
 
@@ -2704,7 +2796,7 @@ independently of the base and depend on **`kanibako-cli`** with **no version pin
    It is still a real key — still declared, still beating your descriptor's own source at launch,
    still readable with `config get` — so the mechanism your `Binding` relies on is intact. ⚑ If your
    plugin's README or error strings tell a user to run `kanibako system set agent.<you>.bindings…`,
-   that instruction now fails; point them at `agents/<node>/settings.yaml` instead. There is no CLI
+   that instruction now fails; point them at `agents/<node>/agent.yaml` instead. There is no CLI
    verb to substitute, so do not invent one.
 7. **BREAKING: `Target.default_category_binds()`, `default_common()` and `default_seeds()` declare
    EVERY category keyed by DESTINATION.** **Before** — one key per entry, carrying the
