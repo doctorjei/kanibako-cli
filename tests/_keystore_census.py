@@ -178,7 +178,7 @@ KEYSPACE_ROOTS: frozenset[str] = (
 )
 
 
-### The oracle — pluggable, so Part 3 can swap the manifest in ###
+### The oracle — reached through a substitutable seam ###
 
 class _AnyAgent(Collection[str]):
   """A ``valid_agents`` that accepts every discriminator.
@@ -239,13 +239,29 @@ def declared_keyspace_oracle(path: str) -> str | None:
   return key_validity(path, valid_agents=ANY_AGENT, agent_leaves=_agent_leaves())
 
 
-#: THE ORACLE SEAM.  Part 3 replaces this with a manifest-sourced callable; the
-#: collector below never names ``key_validity`` itself.
+#: THE ORACLE SEAM.  The collector below never names ``key_validity`` itself, so an
+#: oracle can be substituted (:func:`set_oracle`) without reaching into the
+#: classifier.  DECOUPLING is the whole of its value -- it is not a migration
+#: waiting to happen.
+#: 🛑🛑 A MANIFEST-SOURCED ORACLE IS **NO-GO**, DECIDED 2026-08-23 ON MEASUREMENT.
+#: The swap would make the census MORE PERMISSIVE, and ⚑ THE FAILURE IS SILENT: a
+#: too-permissive oracle reports "0 undeclared" instead of going red.  Two reasons
+#: carry it.  (a) ``policy.parametric_expansion`` in
+#: ``src/kanibako/data/keyspace-manifest.yaml`` is THREE ENGLISH SENTENCES in a YAML
+#: list, so a manifest oracle is a hand-written interpreter of prose -- a paraphrase
+#: of ``key_validity``, not an independent source.  (b) the generic
+#: ``agent.<agent>.<key>`` row read as a literal wildcard accepts EVERY agent leaf,
+#: retired ones included, silently disabling the arm where plugin code writes most.
+#: Full reasoning, and the measurements behind it:
+#: ``~/canon/workbook/plans/2026-08-23-part3-manifest-enforcer.md`` (its NO-GO
+#: section).  What was built instead asserts code ← manifest without touching this
+#: oracle: the family half of key-set conformance in
+#: ``tests/test_settings/test_manifest_enforces.py``.
 _oracle: Callable[[str], str | None] = declared_keyspace_oracle
 
 
 def set_oracle(fn: Callable[[str], str | None]) -> None:
-  """Substitute the declared-keyspace oracle (Part 3's seam)."""
+  """Substitute the declared-keyspace oracle (see THE ORACLE SEAM above)."""
   global _oracle
   _oracle = fn
 
