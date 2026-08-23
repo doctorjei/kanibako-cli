@@ -699,10 +699,31 @@ sources are calculated. Anything that needs either — the launch, the display, 
 reads it from here. A caller that recomputes its own answer is a second opinion about what the
 box sees, which is the failure the `--effective` output exists to DETECT, not to commit.
 
-**Built on the collapse function.** The body will be written against the forthcoming *collapse*
-function (author: Jei), which is being built separately and which this reuses rather than
-reimplements. That is why the body is empty and not merely rough: the primitive it stands on
-does not exist yet.
+**Why the body is still empty — and it is NOT because the collapse is missing.** That was the
+original reason and it expired: the collapse function landed 2026-08-09 (`1472bd3`,
+`settings/store_collapse.py`), and `meta.assembly.{bindings,seeded,synced,env}` rides on every
+whole-box snapshot, so the input is available.
+
+The real blocker is one layer below: **the collapse carries no declaration provenance.**
+`CollapsedBind` is `(src, opts)` and `CollapsedCopy` is `(src, dest, opts)` — neither names the
+declaration that produced it. `store_shape.build_store_shape` drops `CategoryEntry.key_segments`,
+and only the `env` arm was given `(scope, key)`. Carrying it is a producer shape change, which
+`store_collapse.py` boards in its own words: *"naming them is a producer shape change."*
+
+**The obvious shortcut is WRONG, and it was measured wrong on 2026-08-23.** Reading the installed
+`binding_derivations` node instead looks sufficient and is not: that node is populated at
+`commands/start.py:6860`, **before** arbitration at `:6903`, deliberately — *"a derived binding is a
+property of the DECLARATION, not of whether the box may receive it."* So it can name a binding the
+box does not have. Measured: an `agent.claude.common` declaration under a box-scope `masks` entry
+produced `CollapsedBind(src=None)` — a mask sentinel, **no mount** — while the node still described
+a live mount at that destination. A display built on it asserted `(mount)` for a mount that does not
+exist and did not print the mask. Collision rows 1/3/5 raise and surface as `category_error`; **the
+mask path is silent, which is the dangerous one.**
+
+⚑ This is exactly the "second opinion" the paragraph above warns about, and the warning is a
+CORRECTNESS claim, not a routing preference. The keyspec no longer dictates where the derivation is
+materialised (that clause now reserves a NAME only) — **but removing the spec's objection does not
+answer this one.** An honest stub beats a display that quietly lies about what is mounted.
 
 **The two halves DO NOT share a shape, and that is not an accident.** Bindings **COLLAPSE**: a
 destination can be occupied by exactly one winner, so the answer is a per-dest pick and the

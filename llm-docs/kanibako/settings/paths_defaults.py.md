@@ -138,11 +138,17 @@ path (the category guarantee-create for the type-root dirs, plus the chat-log se
 setup. That move is what unified the whole channel subtree — `channelroot` plus `system.channels.*` —
 into one layer.
 
-⚑ **These keys are FILE-ONLY at the CLI.** `config set` / `reset` / `get` refuse the whole
-`SYSTEM_PATH_DEFAULTS` family as structural layout config, pointing the user at the
-`kanibako_config.yaml` `[system]` table instead (`settings.config_keys.system_key_refusal`; the
-membership test is `config_keys.is_system_path_key`, which imports this table LAZILY). Adding a row
-here therefore also adds a CLI refusal.
+⚑ **THIS TABLE IS THE FLOOR, NOT THE STORE (corrected 2026-08-23).** Every key here is CLI-settable
+at the system scope: `config set` / `reset` / `get` route it through `config_keys._KEY_ROUTES` to
+the `system:` table of the SYSTEM SETTINGS file, which the cascade layers OVER these defaults. It
+used to refuse the whole family as "structural layout config" and send the user to the
+`kanibako_config.yaml` `[system]` table — a spec violation (§2g declares them Layer-2 settings keys;
+§2a names `system.template` among the CLI-settable). Adding a row here therefore also needs a
+`_KEY_ROUTES` entry and a `KNOWN_CONFIG_KEYS` spelling, or the new key sets nowhere.
+
+⚑ **STILL OPEN:** `load_system_config` resolves this table from the CONFIG file set alone, so every
+`StandardPaths` field keeps the floor value while the cascade sees the repoint. Closing that means
+moving where the `[system]` table lives, not another routing change.
 
 ⚑ `system.template` and `system.canon` are deliberately ROOTS rather than leaves — the box-home seed
 is `@system.template/box/home` and the box-bound handbook is `@system.canon/handbook`, so each root

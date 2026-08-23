@@ -44,6 +44,18 @@ into the assemble/launch path. Those two consumers turn an undeclared key into a
 user-visible failure (a launch that refuses to start), which is a change with a
 blast radius of every stored legacy key — tracked as the "closed-keyspace
 resolve enforcement" follow-on, gated on :data:`RETIRING_KEYS` being empty.
+⚑ That gate is now MET, and the follow-on is still not taken: the remaining
+question is a blast radius nobody has yet measured, which is what the
+REPORT-ONLY ``settings_keyspace_probe`` exists to measure. Enforcement is a
+separate, deliberate act.
+
+The second question: what is this path INTO A STORE?
+----------------------------------------------------
+:func:`key_validity` judges a dotted STRING. A resolved store also holds VALUE
+addresses, scaffolding nodes and plain data, none of which are keys and none of
+which are defects. :func:`classify_store_path` (with :func:`container_notes` and
+:func:`walk_store_paths`) answers that second question, and it is ONE carrier
+with two consumers — the pytest write census and the resolve probe.
 
 PURE. No I/O, no plugin import at module load. The set of valid AGENT names is
 an injected parameter (``valid_agents``) precisely so this module stays pure and
@@ -53,9 +65,18 @@ testable; ``settings_prefs.default_valid_agents`` is the one production supplier
 from __future__ import annotations
 
 import re
-from typing import Collection, Final, Sequence
+from typing import (
+    Any,
+    Callable,
+    Collection,
+    Final,
+    Iterator,
+    Mapping,
+    NamedTuple,
+    Sequence,
+)
 
-from kanibako.settings.kb_store import SCOPE_CONTAINMENT
+from kanibako.settings.kb_store import BINDING_DERIVATIONS_NODE, SCOPE_CONTAINMENT
 from kanibako.settings.keystore import KeyStore
 
 # ---------------------------------------------------------------------------
@@ -164,6 +185,33 @@ DECLARED_AGENT_LEAVES: Final[frozenset[str]] = frozenset({
     "template",            # §2d
     "canon",               # §2d
 })
+
+#: The declared agent leaves whose VALUE IS A TABLE — spec §2d calls
+#: ``transform_settings`` "agent-scope, sparse, dict-valued".  Its entries are DATA inside
+#: the table, never key segments, so NO SCALAR HAS A SLOT AT ONE and every write verb has
+#: to refuse it BY NAME rather than store a string where a map belongs.
+#:
+#: ⚑ IT IS A SUBSET OF :data:`DECLARED_AGENT_LEAVES`, NOT A SECOND KEYSPACE.  These are
+#: fully declared, fully READABLE keys; what the split answers is the narrower question
+#: "can ``set`` express this value?", which is why the settable surface is derived by
+#: SUBTRACTION (:data:`SCALAR_AGENT_LEAVES`) instead of by a second hand-kept list.
+#:
+#: ⚑ THE COST OF GETTING IT WRONG IS MEASURED: a scalar stored at
+#: ``self.transform_settings`` crashed every subsequent ``agent_file.load`` — i.e. every
+#: launch, list, info and show — until :func:`kanibako.settings.agent_file.table_value_error`
+#: refused it.  That refusal is the FILE-shape half of this same fact, and
+#: ``tests/test_settings/test_agent_leaf_shape.py`` pins the two against each other.
+TABLE_VALUED_AGENT_LEAVES: Final[frozenset[str]] = frozenset({"transform_settings"})
+
+#: The declared agent leaves a CLI ``set`` can actually WRITE — every leaf holding a SCALAR.
+#: ⚑ DERIVED, NEVER LISTED (P13): a leaf entering :data:`DECLARED_AGENT_LEAVES` becomes
+#: settable at both the bare ``agent.default`` spelling and the per-persona one with no edit
+#: at either surface.  ``agent.default.{template,canon,run_args,transform}`` were declared
+#: ``set: cli+file`` and refused for the whole 1.8.0 cycle precisely because those two
+#: surfaces each carried their own hand-kept copy of this set and both fell behind.
+SCALAR_AGENT_LEAVES: Final[frozenset[str]] = (
+    DECLARED_AGENT_LEAVES - TABLE_VALUED_AGENT_LEAVES
+)
 
 # ---------------------------------------------------------------------------
 # The ``access`` permission TIER — the one enum-valued agent leaf (spec §2d)
@@ -833,3 +881,258 @@ def key_validity(
         f"'{head}' is not a declared namespace (declared: config, system, "
         f"agent, workset, box, meta, pref) — the keyspace is CLOSED (spec §0)"
     )
+
+
+# ---------------------------------------------------------------------------
+# The STORE-PATH classifier (spec §0)
+# ---------------------------------------------------------------------------
+#
+# :func:`key_validity` answers "is this dotted STRING a key". A resolved STORE poses
+# a second question the first one cannot: a path INTO a store may be a key, a VALUE
+# address inside one, scaffolding the store needs, or plain data. The rules below
+# answer THAT, and they live here — beside the validator they consult — because they
+# now have two consumers (the pytest write census and the report-only resolve probe
+# in ``settings_keyspace_probe``). A second carrier of one shape is the defect class
+# this project keeps paying for; there is exactly one.
+#
+# PURE, like the rest of this module: the declared-keyspace ORACLE is injected, so
+# nothing here reaches for plugin discovery or an agent set.
+
+
+#: The tokens a KEYSPACE path may start with: the four scopes (``kb_store``'s own
+#: containment order), the three non-scope namespaces, and the reserved internal
+#: node — included so a ``binding_derivations`` path is recognised as the node the
+#: SPEC names (:data:`Verdict.RESERVED`) rather than dismissed as an unrooted
+#: fragment whose true path the walker cannot know.
+KEYSPACE_ROOTS: Final[frozenset[str]] = (
+    frozenset(SCOPE_CONTAINMENT) | {"config", "meta", "pref", BINDING_DERIVATIONS_NODE}
+)
+
+
+class Verdict:
+    """The class a store PATH lands in. Only ``UNDECLARED`` is a FINDING.
+
+    A resolved store legitimately holds a great deal that is not a key, and a
+    classifier that flagged all of it would report noise. ⚑⚑ EVERY CLASS IS
+    STRUCTURAL — decided by the path's SHAPE or by a constant the SPEC sanctions.
+    There is no list of blessed key NAMES here, and none may be added: a name-keyed
+    exemption is exactly the carve-out that hides the next finding behind it.
+
+    ``DECLARED``     the oracle accepts the whole path. A key.
+    ``VALUE``        a proper PREFIX is a declared key, so the rest addresses a VALUE
+                     INSIDE it — ``box.caches``'s destinations, ``box.masks``'s
+                     entries, a ``bindings`` arm's map. Structure, not a key.
+    ``DATA_SEGMENT`` a segment CONTAINS A DOT, so the path cannot be a key path at
+                     all (see :func:`render_store_path`).
+    ``CONTAINER``    an intermediate NODE carrying declared keys underneath it
+                     (``box``, ``meta.box``, ``box.bindings``), or a keyspace ROOT,
+                     which is a NAMESPACE. Scaffolding. Applied by
+                     :func:`container_notes`, which needs the whole path SET.
+    ``UNROOTED``     the root segment is not a keyspace root, so this is a
+                     scope-LOCAL or fragment store whose key path cannot be known. A
+                     fragment that reaches a real store is judged THERE, with its
+                     true path, so nothing is lost by declining to guess.
+    ``RESERVED``     the RESERVED INTERNAL NODE the spec names in so many words:
+                     *"The derivation is NOT a key — it is a RESERVED INTERNAL NODE
+                     … rides inside the per-launch snapshot as an internal node named
+                     `binding_derivations`"* (spec §0, ABSTRACT declarations).
+    ``UNDECLARED``   none of the above: something put a path into a store that the
+                     keyspace does not declare.
+
+    ⚑ A consumer may add classes of its OWN by subclassing — the pytest census adds
+    ``NEGATIVE`` for a path the running test declared it would write. What it may not
+    do is re-spell one of these.
+    """
+    DECLARED = "DECLARED"
+    VALUE = "VALUE"
+    DATA_SEGMENT = "DATA_SEGMENT"
+    CONTAINER = "CONTAINER"
+    UNROOTED = "UNROOTED"
+    RESERVED = "RESERVED"
+    UNDECLARED = "UNDECLARED"
+
+
+#: Why :data:`Verdict.RESERVED` is not an exemption. Sourced from the declaring
+#: constant so a rename cannot leave a stale spelling behind.
+RESERVED_NODE_REASON: Final[str] = (
+    f"{BINDING_DERIVATIONS_NODE!r} is the RESERVED INTERNAL NODE the spec names in "
+    f"so many words (§0, ABSTRACT declarations): the materialised binding an abstract "
+    f"declaration derives is machinery output, not a settable surface. Its interior "
+    f"is declaration keys and box DESTINATIONS, which are data."
+)
+
+
+class Judgement(NamedTuple):
+    """One path's class, the declared key it sits in, & where the DATA starts."""
+    verdict: str
+    key: str
+    key_len: int  # how many leading segments are key path; the rest is DATA
+    note: str
+
+
+class StoreNode(NamedTuple):
+    """One judged path as :func:`container_notes` needs to see it."""
+    verdict: str
+    is_node: bool
+
+
+def render_store_path(segments: Collection[str], key_len: int | None = None) -> str:
+    """A display path that NEVER renders non-key data as a dotted key.
+
+    ⚑⚑ A CORRECTNESS job, not a cosmetic one. A destination is DATA and never
+    appears in a dotted key, so the *key_len* leading segments are dot-joined and
+    everything after them is PIPE-joined inside ``⟨⟩`` — visibly not key path. With
+    no *key_len* the whole path is key path, and even then a segment carrying a dot
+    forces the pipe form rather than forging a segment boundary that is not there.
+    """
+    parts = list(segments)
+    if key_len is None or key_len >= len(parts):
+        return " | ".join(parts) if any("." in s for s in parts) else ".".join(parts)
+    head = ".".join(parts[:key_len])
+    tail = " | ".join(parts[key_len:])
+    return f"{head} ⟨{tail}⟩" if head else f"⟨{tail}⟩"
+
+
+def classify_store_path(
+    segments: tuple[str, ...], *, oracle: Callable[[str], str | None],
+) -> Judgement:
+    """One path's :class:`Judgement`, ignoring what landed UNDER it.
+
+    *oracle* answers "is this dotted path a declared key" — ``None`` for yes, else
+    the REASON. :func:`key_validity` is the production answer; it is injected rather
+    than called so this stays pure and so a caller can memoise (the prefix walk asks
+    about every proper prefix, and prefixes repeat heavily across a store).
+
+    The CONTAINER rule is NOT applied here: it needs what landed underneath a node,
+    which one path cannot show. See :func:`container_notes`.
+    """
+    if not segments:
+        return Judgement(Verdict.UNROOTED, "", 0, "empty path")
+    if segments[0] == BINDING_DERIVATIONS_NODE:
+        return Judgement(
+            Verdict.RESERVED, BINDING_DERIVATIONS_NODE, 1, RESERVED_NODE_REASON,
+        )
+    if segments[0] not in KEYSPACE_ROOTS:
+        return Judgement(
+            Verdict.UNROOTED, "", len(segments),
+            f"{segments[0]!r} is not a keyspace root: a scope-LOCAL or fragment "
+            f"store, whose key path this cannot know",
+        )
+    for cut in range(1, len(segments) + 1):
+        if "." in segments[cut - 1]:
+            # ⚑ STOP. A dotted segment is DATA; asking the oracle past it would forge
+            # a key out of a destination (or an env VAR name — the open question
+            # ``ENV_KEY_RE`` forbids and the persona path never checks).
+            return Judgement(
+                Verdict.DATA_SEGMENT, ".".join(segments[:cut - 1]), cut - 1,
+                f"segment {segments[cut - 1]!r} contains a dot, so this is not a "
+                f"key path",
+            )
+        prefix = ".".join(segments[:cut])
+        if oracle(prefix) is None:
+            if cut == len(segments):
+                return Judgement(Verdict.DECLARED, prefix, cut, "")
+            return Judgement(
+                Verdict.VALUE, prefix, cut,
+                f"a value address inside the declared key {prefix!r}",
+            )
+    full = ".".join(segments)
+    return Judgement(Verdict.UNDECLARED, "", len(segments), oracle(full) or "")
+
+
+def container_notes(
+    nodes: Mapping[tuple[str, ...], StoreNode],
+) -> dict[tuple[str, ...], str]:
+    """The paths :data:`Verdict.CONTAINER` rescues, each mapped to its NOTE.
+
+    *nodes* is the WHOLE judged set — the rule is about relationships between paths,
+    so a partial view gives a wrong answer. Every returned path is re-classed to
+    ``CONTAINER`` by the caller; the value is which of the two rules applied.
+
+    ⚑ AN INTERMEDIATE node is judged by WHAT LANDED UNDER IT rather than by a list:
+    ``meta.box`` and ``box.bindings`` are scaffolding the store needs, and neither is
+    a key. A node with NOTHING declared beneath it is not scaffolding — an empty
+    fabricated subtree stays a violation, which is why this is a filter and not a
+    blanket "nodes are exempt".
+
+    ⚑⚑ A KEYSPACE ROOT is different, and the difference is the spec's, not a
+    convenience: a root is a NAMESPACE, which :func:`key_validity` says in its own
+    words (*"'meta' is a namespace, not a key"*). Its key-hood cannot depend on what
+    a given session happened to write beneath it — an empty ``box: {}`` scope table
+    in a settings file is a scope table, not a fabrication, and the "carries
+    something declared" test would call it one in any run that only exercised empty
+    files. A SCALAR at a root is still a violation: that is a genuinely undeclared
+    shape, and the ``is_node`` guard is what keeps this rule from excusing it.
+    """
+    real = {Verdict.DECLARED, Verdict.VALUE}
+    carriers: set[tuple[str, ...]] = set()
+    for segments, node in nodes.items():
+        if node.verdict in real:
+            for cut in range(1, len(segments)):
+                carriers.add(segments[:cut])
+    rescued: dict[tuple[str, ...], str] = {}
+    for segments, node in nodes.items():
+        if not node.is_node or node.verdict != Verdict.UNDECLARED:
+            continue
+        if len(segments) == 1:
+            rescued[segments] = "a keyspace ROOT: a namespace, not a key (spec §0)"
+        elif segments in carriers:
+            rescued[segments] = (
+                "an intermediate node carrying declared keys underneath it"
+            )
+    return rescued
+
+
+#: Cap on :func:`walk_store_paths` recursion; a self-referential store would
+#: otherwise not terminate.
+MAX_STORE_DEPTH: Final[int] = 64
+
+
+def walk_store_paths(
+    node: KeyStore[Any], prefix: tuple[str, ...] = (),
+) -> Iterator[tuple[tuple[str, ...], bool]]:
+    """Every path in *node*, depth-first: its SEGMENTS and whether it is a NODE.
+
+    Segments rather than a dotted string, because a dest-keyed segment is routinely
+    a filesystem path with dots in it and a dotted string loses the very segment
+    boundaries :func:`classify_store_path` turns on.
+
+    ⚑ UNBOUND ``dict.items`` (S3): a resolved snapshot is exactly where a
+    user-named leaf lives, and one spelled ``items`` would shadow the bound method
+    into a crash.
+    """
+    if len(prefix) >= MAX_STORE_DEPTH:
+        return
+    for key, value in dict.items(node):
+        segments = prefix + (key,)
+        is_node = isinstance(value, KeyStore)
+        yield segments, is_node
+        if is_node:
+            yield from walk_store_paths(value, segments)
+
+
+def undeclared_store_paths(
+    store: KeyStore[Any], *, oracle: Callable[[str], str | None],
+) -> list[tuple[tuple[str, ...], Judgement]]:
+    """Every path in *store* the CLOSED keyspace does not declare (spec §0).
+
+    The whole pipeline in one call: walk, classify each path, then apply the
+    CONTAINER rule over the complete set. Returns ``(segments, judgement)`` pairs
+    sorted by path — the SEGMENTS travel with the judgement because a
+    :class:`Judgement` alone cannot be rendered (an ``UNDECLARED`` one names no key,
+    which is the point of it).
+
+    ⚑ It REPORTS. Refusing is the caller's decision, and — for the resolve seam —
+    one that is not ours to take: see ``settings_keyspace_probe``.
+    """
+    judged: dict[tuple[str, ...], Judgement] = {}
+    nodes: dict[tuple[str, ...], StoreNode] = {}
+    for segments, is_node in walk_store_paths(store):
+        judgement = classify_store_path(segments, oracle=oracle)
+        judged[segments] = judgement
+        nodes[segments] = StoreNode(judgement.verdict, is_node)
+    rescued = container_notes(nodes)
+    return [
+        (segments, judgement) for segments, judgement in sorted(judged.items())
+        if judgement.verdict == Verdict.UNDECLARED and segments not in rescued
+    ]

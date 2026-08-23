@@ -8,7 +8,7 @@ Prose for these symbols lives in `llm-docs/kanibako/settings/config_dest.py.md`.
 ## Variables
 
 ```
-_NOUN, _SCOPED, _CATEGORY = ('noun', 'scoped', 'category')
+_NOUN, _SCOPED, _CATEGORY, _BOOTSTRAP = ('noun', 'scoped', 'category', 'bootstrap')
 ```
 
 ## Functions

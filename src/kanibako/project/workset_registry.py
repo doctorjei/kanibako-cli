@@ -38,7 +38,12 @@ from pathlib import Path
 from typing import Any
 
 from kanibako.settings.config_io import dump_doc, load_doc
+from kanibako.settings.workset_dirkeys import resolve_workset_dir_key
 from kanibako.errors import LegacyRegistryIdentityError, ProjectError
+
+# The DEFAULT leaf ``workset.registry`` falls back to — ⚑ a fallback, never a path
+# component: the key is repointable, so nothing may join this directly.
+_REGISTRY_FILE = "registry.yaml"
 
 # The box-membership section of a per-workset registry file: box name → path.
 # ⚑ THE ONLY SECTION THIS MODULE READS OR WRITES.
@@ -221,15 +226,20 @@ def resolve_workset_registry_path(
 
     A set ``workset.registry`` repoint wins (relative anchors under *workset_root*);
     anything else falls through to ``<workset_root>/registry.yaml``.
+
+    ⚑ A FIFTH FACE on the ONE no-snapshot route, alongside the four in
+    ``project/workset.py`` — ``workset.registry``'s spec default is
+    ``@meta.workset.path/registry.yaml`` like theirs, so it carries tokens like theirs
+    and must not expand them privately.
     """
     repoint: Any = None
     if isinstance(workset_settings, Mapping):
         workset_table = workset_settings.get("workset")
         if isinstance(workset_table, Mapping):
             repoint = workset_table.get("registry")
-    if repoint:
-        expanded = Path(str(repoint)).expanduser()
-        if not expanded.is_absolute():
-            expanded = workset_root / expanded
-        return expanded
-    return workset_root / "registry.yaml"
+    return resolve_workset_dir_key(
+        workset_root,
+        str(repoint) if repoint else None,
+        _REGISTRY_FILE,
+        key="registry",
+    )

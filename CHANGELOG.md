@@ -71,6 +71,113 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A `synced` copy declared under a mask now stops the launch with an error naming it, instead of
+  being silently dropped.** The settings spec gives a `synced` copy exactly two refusals — a mask
+  that is a **parent** of the destination, and a copy of a **directory** at a mask's own point — and
+  both were implemented as a log warning followed by a skip. In practice a `synced` row is usually a
+  credential, so the effect was a box that started perfectly and then failed to authenticate inside
+  the agent, with nothing anywhere naming the configuration that caused it; the warning went to a
+  log the user had no reason to read. Both are now errors, raised before any `synced` row is copied,
+  so a refused declaration leaves nothing half-delivered — and each one names the destination you
+  declared, the mask covering it, and the cure. This applies to `create` as well as to every launch.
+  ⚠️ **If you have a `synced` entry sitting under a `masks` entry, the box will now refuse to start
+  until you move the copy out of the mask or drop the mask.** It was never being delivered.
+  Unchanged, and deliberately: a copy of a **file** at a mask's own point is still accepted and
+  replaces the mask, and the three cases the spec does *not* call refusals — a destination no
+  binding covers, a destination inside a read-only binding, and a source file that does not exist —
+  still warn and skip exactly as before.
+
+- **The eleven `system.*` path settings — `template`, `canon`, `backup`, `cache`, `runtime`,
+  `channelroot` and the five `channels.*` type-roots — are settable from the CLI again.**
+  `kanibako system set system.template=…` answered *"'system.template' is a structural config key
+  and cannot be set from the CLI"* and sent you to hand-edit `kanibako_config.yaml`. These are not
+  structural config keys: they are ordinary Layer-2 settings keys, and the two keys named in the
+  same breath as `system.template` in the settings spec — `workset.vault_ro` and
+  `agent.<agent>.canon` — always set fine, which is what made the refusal look like a rule rather
+  than the mistake it was. The refusal came from a family membership test that swept the whole
+  system path table in with the genuinely file-only `config.*` bootstrap keys. All eleven now route
+  exactly like their `workset.*` twins: a set lands in the `system:` table of the system settings
+  file, `get` reads it back from the same place, `reset` clears it and names what becomes effective,
+  and the value gets the identical set-time resolution check — a dangling `@`-reference is refused
+  with the same message `workset.vault_ro` gives. Repointing the handbook root with
+  `system set system.canon=…`, which the settings documentation has always described as available,
+  works for the first time.
+
+- **…and those same eleven repoints now actually move the directories they name.** Making them
+  settable was only half the repair. `kanibako system set system.canon=/srv/canon` stored the value
+  and the launch cascade honoured it — binds, seeds and `show --effective` all moved — but the
+  host-side path resolver read the bootstrap config file *only*, so every part of kanibako that
+  asks for "the canon root" directly kept handing back the default. A `system.template` repoint did
+  not move the seed source; a `system.channelroot` repoint did not move the channel tree. The set
+  was accepted, persisted, and half-effective, and nothing said so — which is worse than the
+  refusal it replaced, because a refusal at least tells you it did not work. The resolver now reads
+  the system settings file as the top layer, so a repoint reaches both halves, and derived keys
+  follow it (repointing `channelroot` moves all five `channels.*` type-roots with it). Values
+  hand-written into `kanibako_config.yaml`'s `system:` table still work and still sit underneath, as
+  the floor they always were.
+
+- **The any-agent defaults `template`, `canon`, `run_args` and `transform` are settable, and the
+  refusal that pointed at them stopped lying.** Six agent behaviour keys were settable by their bare
+  names — `model`, `access`, `endpoint`, `bootstrap`, `allow_helpers`, `continue_mode` — and the
+  rest of the declared set was not, though the settings spec declares all of them alike. Typing the
+  full `agent.default.template` got you a refusal saying *"set the any-agent default with the bare
+  key (e.g. 'template')"*, and `template` then answered `unknown config key`: a cure that prescribed
+  a command that fails. `run_args` and `transform` had no working spelling at all. All four take a
+  set now, at the bare name, exactly as `model` always has, and the per-agent forms
+  (`agent.<agent>.run_args`, `agent.<agent>.transform`) work too. The settable surface is derived
+  from the declared key list rather than hand-listed beside it, so it cannot fall behind again.
+  `transform_settings` is the one member that stays unwritable from the command line — its value is
+  a table, not a scalar — but it is now refused by name, explaining the shape and pointing at the
+  settings file, instead of being denied as a key that does not exist. ⚠️ That refusal also closed a
+  second door: `kanibako box set pref.agent.<agent>.transform_settings=…` used to be accepted, and a
+  pref is installed at its target during resolution, so it delivered a plain string where the
+  harness expects a map. It is refused now with the same explanation. If you already have one stored
+  in a box or workset settings file, remove it — it was never going to work.
+
+- **`system.setup_completed` is settable and resettable, as the settings spec has always said it
+  is.** The setup version marker is described in the spec as persisting and user-resettable, and
+  every verb refused it: *"'system.setup_completed' is a structural config key and cannot be set
+  from the CLI"*, with advice to hand-edit `kanibako_config.yaml` instead. Hand-editing that file is
+  exactly what the CLI now does for you — the same table, the same absence of validation — so the
+  refusal bought no safety; it only withheld `reset`, which is the supported way back to *"setup has
+  never run"*. `get` was refused too, so a value you could see in the file could not be read by the
+  tool that stores it. All three verbs work now and all three name the same table, which is the one
+  the setup staleness gate reads. ⚠️ Setting a marker newer than your installed kanibako will make
+  the next command stop and tell you to upgrade or re-run `kanibako setup`; that was already true of
+  a hand-edit.
+
+- **`set box_image=…` wrote a different file than `set box.image=…`, and `get` refused the spelling
+  both of them had just stored.** Every underscore-joined form of a routed key — `box_image`,
+  `box_enable_vault`, `system_agent`, `workset_channels_broadcast` — was accepted by `set` and
+  `reset` as a second spelling of the dotted key. It was never a declared key, and no other verb
+  served it: `get` answered `unknown config key: box_image` for the exact string a successful `set`
+  had printed back at you, because the confirmation echoed the undeclared form rather than the one
+  you typed. The two spellings also disagreed about *where the value went*. The rule that picks the
+  destination file reads the scope off the key as typed, and `box_image`'s first dotted segment is
+  the whole string — so the flat form landed in the `[box]` table of `kanibako_config.yaml`, the
+  bootstrap floor beneath every tier, while `box.image` landed in the system settings tier above
+  it. Picking a spelling silently picked a precedence, and neither spelling said so. The keyspace
+  is closed and a key has exactly one spelling: the flat form is gone from every verb and is
+  refused by name like any other key that does not exist, the destination rule can no longer fall
+  through to a second file, and `set`/`reset` confirmations name the dotted key you can retype.
+  Only the CLI spelling changed — nothing about stored files, the `[box]` table `setup` writes, or
+  the cascade moved.
+
+- **Writing a workset directory key the way the documentation spells it created a directory called
+  `@meta.workset.path`.** Settings files store their entries unresolved — `@`-references, `$XDG_*`
+  and `~` are kept verbatim and resolved per launch — and the shipped default for all five workset
+  directory keys (`workset.workspaces`, `boxes`, `logs`, `channelroot`, `registry`) is written
+  `@meta.workset.path/<name>`. But the code that reads those keys outside a launch, to find your
+  workset and lay out its tree, expanded only `~`: a copy of the documented default put your box
+  store in a literal directory named `@meta.workset.path`, and `$XDG_DATA_HOME/worksets` landed in
+  one named `$XDG_DATA_HOME`. Because a launch resolved the same key correctly, the two disagreed
+  about where a workset's boxes lived. All five keys now resolve through one route that shares the
+  launch grammar, so `@meta.workset.path`, `$XDG_*` and `~` mean the same thing on both sides. That
+  route runs before the launch snapshot exists, so `@meta.workset.path` — the workset's own root,
+  and the anchor of every one of those defaults — is the only reference it can resolve; any other
+  one is now refused by name, quoting the value and the file it came from, rather than becoming a
+  directory.
+
 - **A standalone project never received its workset handbook chapter.** `workset.canon` is declared
   uniform in every mode — a lone box has a workset tier exactly as a named workset does — but the
   directory that supplies it was only ever created on the `workset create` path, so a standalone root

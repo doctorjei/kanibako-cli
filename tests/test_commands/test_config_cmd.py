@@ -352,9 +352,10 @@ class TestBoxConfigReset:
         project_toml = proj.metadata_path / "box.yaml"
         write_project_config(project_toml, "to-reset:v1")
 
-        # Reset
+        # Reset. ⚑ The key is spelled with DOTS — the flat ``box_image`` form this
+        # case used to pass is not a declared key and every verb refuses it now.
         args = argparse.Namespace(
-            args=[project_dir, "box_image"], reset_all=False, force=False,
+            args=[project_dir, "box.image"], reset_all=False, force=False,
         )
         rc = run_reset(args)
         assert rc == 0
@@ -396,8 +397,10 @@ class TestBoxConfigReset:
         project_dir = str(tmp_home / "project")
         resolve_project(std, config, project_dir=project_dir, initialize=True)
 
+        # ⚑ DOTTED: this case is about resetting a key with nothing stored, not
+        # about spelling — and the flat form now refuses before it gets that far.
         args = argparse.Namespace(
-            args=[project_dir, "box_image"], reset_all=False, force=False,
+            args=[project_dir, "box.image"], reset_all=False, force=False,
         )
         rc = run_reset(args)
         assert rc == 0

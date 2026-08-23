@@ -27,34 +27,23 @@ WHAT COUNTS AS A VIOLATION -- the half of this that is adjudication, not mechani
 A resolved store legitimately holds a great deal that is NOT a key, and a collector
 that flagged all of it would report noise.  Every recorded write lands in exactly
 one class (:class:`Verdict`), and only ``UNDECLARED`` fails the run.  ⚑⚑ EVERY
-CLASS BELOW IS STRUCTURAL -- decided by the path's SHAPE or by a constant the
-SPEC sanctions.  There is no list of blessed key names here, and none may be
-added: a name-keyed exemption is exactly the carve-out that hides the next
-finding behind it.
+CLASS IS STRUCTURAL -- decided by the path's SHAPE or by a constant the SPEC
+sanctions.  There is no list of blessed key names here, and none may be added: a
+name-keyed exemption is exactly the carve-out that hides the next finding behind it.
 
-``DECLARED``   the oracle accepts the whole path.  A key.
-``VALUE``      a proper PREFIX is a declared key, so the rest addresses a VALUE
-               INSIDE it -- ``box.caches``'s destinations, ``box.masks``'s entries,
-               a ``bindings`` arm's map.  Structure, not a key of its own.
-``DATA_SEGMENT`` a segment CONTAINS A DOT, so the path cannot be a key path at all
-               (see the rendering note below).
-``CONTAINER``  an intermediate NODE that carries declared keys underneath it
-               (``box``, ``meta.box``, ``box.bindings``).  Scaffolding.
-``UNROOTED``   the root segment is not a keyspace root, so this is a scope-LOCAL or
-               fragment store whose key path the collector cannot know.  A fragment
-               that ever reaches a real store is re-censused THERE, with its true
-               path, so nothing is lost by declining to guess.
-``RESERVED``   the RESERVED INTERNAL NODE the spec names in so many words: *"The
-               derivation is NOT a key -- it is a RESERVED INTERNAL NODE ... rides
-               inside the per-launch snapshot as an internal node named
-               `binding_derivations`"* (spec §0, ABSTRACT declarations).  Keyed off
-               ``kb_store.BINDING_DERIVATIONS_NODE``, the constant that declares it
-               -- not off a copy of the name.
+⚑ THE CLASSES AND THE RULES THAT ASSIGN THEM ARE NOT DEFINED HERE.  They are
+``settings_keyspace``'s -- :class:`~kanibako.settings.settings_keyspace.Verdict`
+documents each class, :func:`~kanibako.settings.settings_keyspace.classify_store_path`
+applies the prefix walk / dotted-segment stop / reserved-node rules, and
+:func:`~kanibako.settings.settings_keyspace.container_notes` applies the CONTAINER
+rule.  This module has one consumer's worth of them and the resolve probe has the
+other; a second copy of the shape is the defect class the project keeps paying for.
+
+ONE class is this module's own, because it cannot be judged from a path:
+
 ``NEGATIVE``   the RUNNING TEST DECLARED IT (see the marker below).  A test that
                exercises the refusal of an undeclared key has to write one; that is
                its point.
-``UNDECLARED`` none of the above: something put a key into a store that the keyspace
-               does not declare.  THE RUN FAILS.
 
 ⚑⚑ THE ``writes_undeclared`` MARKER -- intent declared AT THE TEST, never here.
 A test that drives a refusal names the exact paths it will write::
@@ -82,16 +71,15 @@ the machinery.  A key is judged by WHAT IT IS.  A test that means to write one s
 so; a settings FILE carrying an undeclared key is a defect in the fixture that
 wrote the file, and is now reported as one.
 
-⚑⚑ THE COLLECTOR MUST NOT RENDER NON-KEY DATA AS A DOTTED KEY.  A destination is
-DATA and NEVER appears in a dotted key: ``KeyStore.insert_segments`` takes each
-segment verbatim and its own comment names this case.  So the prefix walk STOPS at
-the first segment containing a dot -- the oracle is never handed ``box.caches.~/
-.cache/uv`` -- and :func:`render` pipe-joins a path with such a segment instead of
-dot-joining it, so nothing here can be misread as a key.  (⚑ The one live question
-this leaves OPEN is whether an ``env.<VAR>`` NAME may contain a dot: ``ENV_KEY_RE``
-forbids it, the persona path never checks, and ``test_settings_launch.py`` pins
-``env.WEIRD.VAR`` surviving as ONE literal leaf.  Unruled -- so those rows land in
-``DATA_SEGMENT``, are named in the report, and do NOT fail the run.)
+⚑⚑ THE COLLECTOR MUST NOT RENDER NON-KEY DATA AS A DOTTED KEY, which is why a
+recorded path is carried as SEGMENTS everywhere below and only ever displayed
+through :func:`render`.  The rule and its reasoning are
+:func:`~kanibako.settings.settings_keyspace.render_store_path`'s.  ⚑ The one live
+question it leaves OPEN is whether an ``env.<VAR>`` NAME may contain a dot:
+``ENV_KEY_RE`` forbids it, the persona path never checks, and
+``test_settings_launch.py`` pins ``env.WEIRD.VAR`` surviving as ONE literal leaf.
+Unruled -- so those rows land in ``DATA_SEGMENT``, are named in the report, and do
+NOT fail the run.
 
 --------------------------------------------------------------------------------
 HOW A NESTED NODE LEARNS ITS PATH
@@ -136,13 +124,22 @@ from __future__ import annotations
 import json
 import os
 import sys
-from collections.abc import Collection, Iterator
 from typing import TYPE_CHECKING, Any, Callable, NamedTuple
 
 from kanibako.settings import keystore as _keystore_mod
-from kanibako.settings.kb_store import BINDING_DERIVATIONS_NODE, SCOPE_CONTAINMENT
 from kanibako.settings.keystore import KeyStore
-from kanibako.settings.settings_keyspace import key_validity
+from kanibako.settings.settings_keyspace import (
+  Judgement,
+  StoreNode,
+  classify_store_path,
+  container_notes,
+)
+from kanibako.settings.settings_keyspace import Verdict as _StructuralVerdict
+from kanibako.settings.settings_keyspace import render_store_path as render
+from kanibako.settings.settings_keyspace_probe import (
+  declared_keyspace_oracle,
+  plugin_agent_leaves,
+)
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
   import pytest
@@ -168,76 +165,12 @@ PATH_TAG = "__kani_path__"
 #: Cap on ``_tag`` recursion; a self-referential store would otherwise not terminate.
 _MAX_TAG_DEPTH = 64
 
-#: The tokens a KEYSPACE path may start with: the four scopes (``kb_store``'s own
-#: containment order), the three non-scope namespaces, and the reserved internal
-#: node -- included so a ``binding_derivations`` write is recognised as the node
-#: the SPEC names (``Verdict.RESERVED``) rather than dismissed as an unrooted
-#: fragment the collector could not place.
-KEYSPACE_ROOTS: frozenset[str] = (
-  frozenset(SCOPE_CONTAINMENT) | {"config", "meta", "pref", BINDING_DERIVATIONS_NODE}
-)
-
-
 ### The oracle — reached through a substitutable seam ###
-
-class _AnyAgent(Collection[str]):
-  """A ``valid_agents`` that accepts every discriminator.
-
-  DELIBERATELY PERMISSIVE.  ``valid_agents`` is injected for purity, and the test
-  environment invents agent names freely ("myagent", "testagent", persona refs).
-  A narrow set would manufacture rows that say "'x' is not a valid agent" about
-  fixtures, which is noise about the FIXTURE, not a finding about the keyspace.
-  The census is here to find fabricated KEYS, so the discriminator is conceded and
-  the LEAF still has to be declared.  ``__iter__``/``__len__`` exist only because
-  ``_bad_agent_reason`` renders the set — a path this can never reach.
-  """
-
-  def __contains__(self, item: object) -> bool:
-    return True
-
-  def __iter__(self) -> Iterator[str]:
-    return iter(("claude", "codex", "goose"))
-
-  def __len__(self) -> int:
-    return 3
-
-
-ANY_AGENT = _AnyAgent()
-
-#: Plugin-declared agent leaves, discovered ONCE at install (see ``_agent_leaves``).
-_LEAVES: frozenset[str] | None = None
-
-
-def _agent_leaves() -> frozenset[str]:
-  """PLUGIN-declared agent keys, to union over the core §2d set.
-
-  ⚑ Discovered here rather than through ``settings_prefs.default_valid_agents``
-  on purpose: that supplier MEMOIZES into a process-wide cache the production code
-  reads, so priming it from a test plugin would hand every later test a discovery
-  result computed before its own patches were in place.
-  """
-  global _LEAVES
-  if _LEAVES is not None:
-    return _LEAVES
-  leaves: set[str] = set()
-  try:
-    from kanibako.targets import discover_targets
-
-    for target_cls in discover_targets().values():
-      try:
-        leaves.update(d.key for d in target_cls().setting_descriptors())
-      except Exception:
-        continue
-  except Exception:
-    pass
-  _LEAVES = frozenset(leaves)
-  return _LEAVES
-
-
-def declared_keyspace_oracle(path: str) -> str | None:
-  """``None`` when *path* is a declared key, else the REASON it is not."""
-  return key_validity(path, valid_agents=ANY_AGENT, agent_leaves=_agent_leaves())
-
+#
+# ⚑ THE ORACLE ITSELF LIVES IN ``settings_keyspace_probe``, not here. The resolve
+# probe asks the identical question ("is this a declared key, conceding the agent
+# DISCRIMINATOR"), and two carriers of one answer is the defect class this project
+# keeps paying for. What stays here is the SEAM below and the memo in :func:`_ask`.
 
 #: THE ORACLE SEAM.  The collector below never names ``key_validity`` itself, so an
 #: oracle can be substituted (:func:`set_oracle`) without reaching into the
@@ -268,51 +201,18 @@ def set_oracle(fn: Callable[[str], str | None]) -> None:
 
 ### Classification ###
 
-class Verdict:
-  """The classes a recorded write can land in; only ``UNDECLARED`` fails a run."""
-  DECLARED = "DECLARED"
-  VALUE = "VALUE"
-  DATA_SEGMENT = "DATA_SEGMENT"
-  CONTAINER = "CONTAINER"
-  UNROOTED = "UNROOTED"
-  RESERVED = "RESERVED"
-  NEGATIVE = "NEGATIVE"
-  UNDECLARED = "UNDECLARED"
+class Verdict(_StructuralVerdict):
+  """The classes a recorded write can land in; only ``UNDECLARED`` fails a run.
 
-
-#: The one non-key node the SPEC names, quoted at :data:`Verdict.RESERVED`.  Sourced
-#: from the declaring constant so a rename cannot leave a stale spelling behind.
-_RESERVED_REASON = (
-  f"{BINDING_DERIVATIONS_NODE!r} is the RESERVED INTERNAL NODE the spec names in "
-  f"so many words (§0, ABSTRACT declarations): the materialised binding an abstract "
-  f"declaration derives is machinery output, not a settable surface. Its interior "
-  f"is declaration keys and box DESTINATIONS, which are data."
-)
-
-
-class Judgement(NamedTuple):
-  """One write's class, the declared key it sits in, & where the DATA starts."""
-  verdict: str
-  key: str
-  key_len: int  # how many leading segments are key path; the rest is DATA
-  note: str
-
-
-def render(segments: Collection[str], key_len: int | None = None) -> str:
-  """A display path that NEVER renders non-key data as a dotted key.
-
-  ⚑⚑ THE COLLECTOR'S JOB, not a cosmetic one. A destination is DATA and never
-  appears in a dotted key, so the *key_len* leading segments are dot-joined and
-  everything after them is PIPE-joined inside ``⟨⟩`` — visibly not key path. With
-  no *key_len* the whole path is key path, and even then a segment carrying a dot
-  forces the pipe form rather than forging a segment boundary that is not there.
+  ⚑ The STRUCTURAL classes — every one decided by the path's shape or by a constant
+  the SPEC sanctions — are inherited from
+  :class:`~kanibako.settings.settings_keyspace.Verdict`, which documents each of
+  them. ``NEGATIVE`` is added HERE because it is the one class no path can be judged
+  into: it means the RUNNING TEST DECLARED IT (see the marker above). A test that
+  exercises the refusal of an undeclared key has to write one; that is its point,
+  and the concept has no meaning outside a test session.
   """
-  parts = list(segments)
-  if key_len is None or key_len >= len(parts):
-    return " | ".join(parts) if any("." in s for s in parts) else ".".join(parts)
-  head = ".".join(parts[:key_len])
-  tail = " | ".join(parts[key_len:])
-  return f"{head} ⟨{tail}⟩" if head else f"⟨{tail}⟩"
+  NEGATIVE = "NEGATIVE"
 
 
 ### Collector state ###
@@ -455,39 +355,17 @@ def _ask(path: str) -> str | None:
 def classify(segments: tuple[str, ...]) -> Judgement:
   """One write's :class:`Judgement`, ignoring what landed UNDER it.
 
-  The CONTAINER and NEGATIVE rules need more than the path — what landed
-  underneath, and what the running test declared — and are applied later, in
-  :func:`_apply_container_rule` / :func:`_apply_negative_rule`.  Everything else is
-  decidable from the path alone.
+  ⚑ A SEAM, not a rule: the shape rules are
+  :func:`~kanibako.settings.settings_keyspace.classify_store_path`'s, and all this
+  adds is THIS collector's memoised oracle.  Keeping the signature at exactly
+  ``(segments)`` is pinned by ``tests/test_keystore_census.py`` — a second parameter
+  would be a place to smuggle an origin discriminator back in.
+
+  The CONTAINER and NEGATIVE rules need more than the path — what landed underneath,
+  and what the running test declared — and are applied later, in
+  :func:`_apply_container_rule` / :func:`_apply_negative_rule`.
   """
-  if not segments:  # pragma: no cover - __setitem__ cannot produce this
-    return Judgement(Verdict.UNROOTED, "", 0, "empty path")
-  if segments[0] == BINDING_DERIVATIONS_NODE:
-    return Judgement(Verdict.RESERVED, BINDING_DERIVATIONS_NODE, 1, _RESERVED_REASON)
-  if segments[0] not in KEYSPACE_ROOTS:
-    return Judgement(
-      Verdict.UNROOTED, "", len(segments),
-      f"{segments[0]!r} is not a keyspace root: a scope-LOCAL or fragment store, "
-      f"whose key path this cannot know",
-    )
-  for cut in range(1, len(segments) + 1):
-    if "." in segments[cut - 1]:
-      # ⚑ STOP. A dotted segment is DATA; asking the oracle past it would forge a
-      # key out of a destination (or an env VAR name — the open question).
-      return Judgement(
-        Verdict.DATA_SEGMENT, ".".join(segments[:cut - 1]), cut - 1,
-        f"segment {segments[cut - 1]!r} contains a dot, so this is not a key path",
-      )
-    prefix = ".".join(segments[:cut])
-    if _ask(prefix) is None:
-      if cut == len(segments):
-        return Judgement(Verdict.DECLARED, prefix, cut, "")
-      return Judgement(
-        Verdict.VALUE, prefix, cut,
-        f"a value address inside the declared key {prefix!r}",
-      )
-  full = ".".join(segments)
-  return Judgement(Verdict.UNDECLARED, "", len(segments), _ask(full) or "")
+  return classify_store_path(segments, oracle=_ask)
 
 
 def drain() -> None:
@@ -517,38 +395,20 @@ def drain() -> None:
 
 
 def _apply_container_rule() -> None:
-  """Re-class a flagged NODE that is STRUCTURE rather than a key.  Two rules.
+  """Re-class a flagged NODE that is STRUCTURE rather than a key.
 
-  ⚑ AN INTERMEDIATE node is judged by WHAT LANDED UNDER IT rather than by a list:
-  ``meta.box`` and ``box.bindings`` are scaffolding the store needs, and neither is
-  a key.  A node with NOTHING declared beneath it is not scaffolding — an empty
-  fabricated subtree stays a violation, which is why this is a filter and not a
-  blanket "nodes are exempt".
-
-  ⚑⚑ A KEYSPACE ROOT is different, and the difference is the spec's, not a
-  convenience: a root is a NAMESPACE, which ``key_validity`` says in its own words
-  (*"'meta' is a namespace, not a key"*).  Its key-hood cannot depend on what a
-  given session happened to write beneath it — an empty ``box: {}`` scope table in
-  a settings file is a scope table, not a fabrication, and the "carries something
-  declared" test would call it one in any run that only exercised empty files.
-  A SCALAR at a root is still a violation: that is a genuinely undeclared shape,
-  and the ``is_node`` guard is what keeps this rule from excusing it.
+  ⚑ A SEAM again: the two rules and the reasoning behind them are
+  :func:`~kanibako.settings.settings_keyspace.container_notes`'.  This hands it the
+  WHOLE judged set — the rule is about relationships between paths, so a partial
+  view gives a wrong answer — and writes the results back onto the rows.
   """
-  real = {Verdict.DECLARED, Verdict.VALUE}
-  carriers: set[tuple[str, ...]] = set()
-  for segments, row in _rows.items():
-    if row["verdict"] in real:
-      for cut in range(1, len(segments)):
-        carriers.add(segments[:cut])
-  for segments, row in _rows.items():
-    if not row["is_node"] or row["verdict"] != Verdict.UNDECLARED:
-      continue
-    if len(segments) == 1:
-      row["verdict"] = Verdict.CONTAINER
-      row["note"] = "a keyspace ROOT: a namespace, not a key (spec §0)"
-    elif segments in carriers:
-      row["verdict"] = Verdict.CONTAINER
-      row["note"] = "an intermediate node carrying declared keys underneath it"
+  rescued = container_notes({
+    segments: StoreNode(row["verdict"], row["is_node"])
+    for segments, row in _rows.items()
+  })
+  for segments, note in rescued.items():
+    _rows[segments]["verdict"] = Verdict.CONTAINER
+    _rows[segments]["note"] = note
 
 
 def _apply_negative_rule() -> None:
@@ -605,7 +465,7 @@ def pytest_configure(config: "pytest.Config") -> None:
   )
   if not _enabled() or _original_setitem is not None:
     return
-  _agent_leaves()  # discover before any test patches discovery
+  plugin_agent_leaves()  # discover before any test patches discovery
   _original_setitem = KeyStore.__setitem__
   KeyStore.__setitem__ = _patched_setitem  # type: ignore[method-assign]
 

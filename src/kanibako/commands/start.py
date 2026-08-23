@@ -8328,6 +8328,86 @@ def _apply_init_seeds(
     return snapshot
 
 
+def _synced_cover(box_dest: str, bindings) -> "str | None":
+    """The bind dest covering *box_dest* — the LONGEST prefix, or ``None`` if none does.
+
+    ⚑ ONE spelling, because the delivery half asks this in TWO places and they may
+    not disagree: :func:`_refuse_synced_under_mask` decides whether the covering
+    mount refuses the copy, and :func:`_synced_host_dest` resolves the copy through
+    it.  A second lookup is how a row gets refused against one mount and delivered
+    through another.
+
+    LONGEST PREFIX = the innermost bind, which is the one the box sees at that path.
+    ⚑ Every candidate is a prefix of ONE string, so length totally orders them and
+    there is no tie to break: two covers of equal length are equal.
+
+    ⚑ A dest is DATA: it is compared and sliced as a PATH, never split on ``.``.
+    """
+    from kanibako.settings.store_collapse import is_within
+
+    covers = [dest for dest in bindings if is_within(box_dest, dest)]
+    return max(covers, key=len) if covers else None
+
+
+def _refuse_synced_under_mask(copies: "list[CollapsedCopy]", bindings) -> None:
+    """Spec §0's two ``synced`` refusals — a mask as PARENT, a DIRECTORY at its point.
+
+    The containment table's copy rows, stated once in §0 and stated EXHAUSTIVELY:
+    *"The only refusals a ``synced`` copy meets are a mask as its PARENT and a copy
+    of a DIRECTORY at a mask's own point (a FILE there is accepted and deletes the
+    mask)."*  Both RAISE, exactly as every sibling refusal in that table does
+    (``store_collapse._refuse_bind_under_mask``, ``_refuse_mask_on_mask``,
+    ``_refuse_mask_over_home``): the table's word is REFUSE, and a refusal that only
+    warns is an acceptance with a log line.
+
+    🔴 WHY IT MUST COST THE LAUNCH.  A ``synced`` row is a credential far more often
+    than not, and a skipped one hands the user a box that starts and then fails to
+    authenticate INSIDE the harness, naming nothing the user could act on.  The
+    error naming the destination and the mask is the cheaper failure by a wide
+    margin.
+
+    ⚑ IT RUNS BEFORE THE FIRST ROW IS APPLIED, so a refusal leaves no half-delivered
+    sync behind it.
+
+    ⚑ AND AFTER :func:`_synced_masks_replaced`, over the map that pass has already
+    edited: the accepted cell — a FILE at a mask's own point — is decided FIRST and
+    its mask is gone by the time this looks, which is what keeps the acceptance
+    accepted.
+
+    ⚑ THE ONE MASK COVER IT DOES NOT REFUSE is a mask at the dest's OWN point whose
+    source is neither a file nor a directory.  The table has two copy rows and a
+    missing or unreadable source is in NEITHER, so it stays what it already was: the
+    module's ordinary missing-source warning, reached through
+    :func:`_synced_host_dest`'s mask arm.
+
+    ⚑ A dest is DATA: it is compared and sliced as a PATH, never split on ``.``.
+    """
+    from kanibako.settings.settings_resolve import SettingsError
+    from kanibako.settings.store_collapse import is_mask
+
+    for sync in copies:
+        cover = _synced_cover(sync.dest, bindings)
+        if cover is None or not is_mask(bindings[cover]):
+            continue
+        if cover != sync.dest:
+            raise SettingsError(
+                f"the synced copy of {sync.src!r} at {sync.dest!r} sits inside the "
+                f"mask at {cover!r}, which would swallow it. A mask is a void with "
+                f"no host source, so the copy has nowhere to land and the box would "
+                f"see nothing at that path - sync to a destination outside the mask, "
+                f"or do not declare the mask."
+            )
+        if Path(sync.src).is_dir():
+            raise SettingsError(
+                f"the synced copy of the DIRECTORY {sync.src!r} lands on the mask at "
+                f"{sync.dest!r}, which it would leave partially populated - there is "
+                f"no such thing as a partial mask. A copy of a FILE at a mask's own "
+                f"point IS accepted and replaces the mask; a directory is not. Sync "
+                f"the files one by one, sync to a destination outside the mask, or "
+                f"do not declare the mask."
+            )
+
+
 def _synced_host_dest(box_dest: str, bindings, *, logger) -> "Path | None":
     """A sync's guest dest → the host path it lands on, THROUGH the bind that covers it.
 
@@ -8340,30 +8420,35 @@ def _synced_host_dest(box_dest: str, bindings, *, logger) -> "Path | None":
     other callers (the stub/shadow scans) and answers a different question: where a
     guest path's host STUB is, under the two hardwired roots.
 
-    Three refusals, each a warn-and-skip rather than a raise (a mis-declared dest
-    must not cost the user the launch), in the order they must be asked: **no cover**
-    · **the cover is a MASK** · **the cover is READ-ONLY**.  ⚑ The MASK arm MUST be
-    asked before ``bind.src`` is touched:
-    :data:`~kanibako.settings.store_collapse.MASK` carries ``src=None``, so
-    ``Path(bind.src)`` raises ``TypeError``.
+    Three arms, in the order they must be asked: **no cover** · **the cover is a
+    MASK** · **the cover is READ-ONLY**.  ⚑ The MASK arm MUST be asked before
+    ``bind.src`` is touched: :data:`~kanibako.settings.store_collapse.MASK` carries
+    ``src=None``, so ``Path(bind.src)`` raises ``TypeError``.
+
+    ⚑⚑ ALL THREE ARE WARN-AND-SKIP, AND NOT ONE OF THEM IS A REFUSAL THE SPEC NAMES.
+    Spec §0 states the ``synced`` refusals EXHAUSTIVELY — *"The only refusals a
+    ``synced`` copy meets are a mask as its PARENT and a copy of a DIRECTORY at a
+    mask's own point"* — and both of those RAISE, in
+    :func:`_refuse_synced_under_mask`, before this function is reached.  What arrives
+    at these arms is the residue the containment table says nothing about: a dest no
+    bind covers, a read-only cover, and a mask at the dest's OWN point whose source is
+    neither file nor directory (a missing or unreadable one, which the module already
+    treats as its own class — see :func:`_apply_shell_copy`).  For that residue a
+    mis-declared dest must not cost the user the launch.
 
     ⚑ A dest is DATA: it is compared and sliced as a PATH, never split on ``.``.
 
     See ``llm-docs/kanibako/commands/start.py.md``, "``_synced_host_dest`` — the dest
     resolves THROUGH the bind that covers it", for each arm's reasoning.
     """
-    from kanibako.settings.store_collapse import is_mask, is_within
+    from kanibako.settings.store_collapse import is_mask
 
-    covers = [dest for dest in bindings if is_within(box_dest, dest)]
-    if not covers:
+    cover = _synced_cover(box_dest, bindings)
+    if cover is None:
         logger.warning(
             "synced %s: no binding covers this destination; skipping", box_dest,
         )
         return None
-    # LONGEST PREFIX = the innermost bind, which is the one the box sees at that
-    # path. ⚑ Every candidate is a prefix of ONE string, so length totally orders
-    # them and there is no tie to break: two covers of equal length are equal.
-    cover = max(covers, key=len)
     bind = bindings[cover]
     if is_mask(bind):
         logger.warning(
@@ -8421,8 +8506,11 @@ def _synced_masks_replaced(
     FILE vs DIRECTORY is a property of the copy SOURCE, so answering it is a host
     STAT and can only happen at DELIVERY: the collapse is pure and asks the
     filesystem nothing.  A source that is a directory — or missing, or unreadable —
-    is not a file, so the mask stands and :func:`_synced_host_dest` declines the row
-    exactly as it declines any other cover-is-a-mask.
+    is not a file, so the mask STANDS, and what happens next parts company on which
+    of the two it was: a DIRECTORY is the table's refusal and
+    :func:`_refuse_synced_under_mask` raises on it, while a missing or unreadable
+    source is in NEITHER copy row and falls through to
+    :func:`_synced_host_dest`'s warn-and-skip mask arm.
 
     ⚑ ONLY the dest's own point.  A mask that is a strict PARENT of the dest refuses
     every arrival and is not touched here.
@@ -8471,6 +8559,11 @@ def _apply_synced_copies(
     credsync engine runs ABOVE this on the launch path, so a ``synced`` row pointed at
     a file credsync also writes is applied SECOND and wins.
 
+    ⚑⚑ IT RAISES ``SettingsError`` ON SPEC §0's TWO ``synced`` REFUSALS
+    (:func:`_refuse_synced_under_mask`) — a mask as a copy's PARENT, and a DIRECTORY
+    copied at a mask's own point.  Both are decided BEFORE any row is applied, so a
+    caller that stops on the error stops with nothing written.
+
     ⚑⚑ IT DELETES FROM *bindings*, AND THE CALLER MUST READ THAT MAP'S MASKS AFTER
     THIS RETURNS.  Spec §0's ``copy (file)`` row accepts a synced FILE at a mask's own
     point and DELETES the mask (:func:`_synced_masks_replaced`), and a deleted mask
@@ -8485,6 +8578,9 @@ def _apply_synced_copies(
     # order two sync rows happen to sit in.
     for replaced in _synced_masks_replaced(rows, bindings):
         del bindings[replaced]
+    # ⚑ REFUSE BEFORE THE FIRST COPY, so a refused row costs no half-delivered sync —
+    # and AFTER the deletion above, so the cell the table ACCEPTS is decided first.
+    _refuse_synced_under_mask(rows, bindings)
     for sync in rows:
         dest = _synced_host_dest(sync.dest, bindings, logger=logger)
         if dest is None:

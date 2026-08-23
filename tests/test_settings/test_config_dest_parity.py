@@ -53,6 +53,7 @@ from kanibako.settings.config_interface import (
 )
 from kanibako.settings.config_io import dump_doc, load_doc
 from kanibako.settings.keyspace_manifest import manifest_doc
+from kanibako.settings.paths_defaults import SYSTEM_PATH_DEFAULTS
 
 
 # ---------------------------------------------------------------------------
@@ -248,23 +249,37 @@ class TestRoutedScalarDest:
         assert set(changed) == {expect}, changed
         assert changed[expect]["box"]["image"] == "img:1"
 
-    def test_set_flat_spelling_at_system_lands_in_config_file(self, bench):
-        """⚑ PINNED ASYMMETRY, not an endorsement.
+    def test_set_flat_spelling_is_refused_and_writes_nothing(self, bench):
+        """⚑ THE CHARTER'S "SAY SO": this case pinned a DEFECT and now pins its fix.
 
-        The dest gate tests the token of the key AS TYPED, while the routing
-        table lookup uses the canonicalised spelling — so at SYSTEM scope the
-        flat form ``box_image`` (whose first dotted token is the whole string,
-        not ``box``) falls to the CONFIG file while ``box.image`` goes to the
-        SETTINGS file.  At box/workset the two files are the same path, so the
-        divergence is invisible there.  Recorded so the H2 collapse reproduces
-        it rather than accidentally normalising it.
+        It used to assert that the flat form ``box_image`` LANDED — in the
+        Layer-1 config file, while its dotted twin ``box.image`` landed in the
+        settings file.  The dest gate reads the scope token off the key AS
+        TYPED, and ``box_image``'s first dotted token is the whole string, so
+        the SPELLING chose the precedence tier: the bootstrap floor under
+        everything, or the system settings tier above it.  ``get`` refused the
+        same spelling outright, so ``set`` taught a form no other verb served.
+        The spelling is UNDECLARED (spec §0), the normaliser is deleted, and the
+        write verbs now refuse it BY NAME and touch no file at all.
         """
         before = bench.snapshot()
         msg = bench.set(ConfigLevel.system, "box_image", "img:flat")
-        assert not msg.startswith("Error:"), msg
-        changed = bench.changed(before)
-        assert set(changed) == {"cf"}, changed
-        assert changed["cf"]["box"]["image"] == "img:flat"
+        assert msg.startswith("Error:"), msg
+        assert "box_image" in msg, msg
+        assert bench.changed(before) == {}
+
+    def test_a_successful_set_echoes_the_key_the_user_can_retype(self, bench):
+        """Fault 3: the confirmation is a lesson, so it must teach the ONE spelling.
+
+        The generic branch used to re-flatten the key on its way into the
+        message, so a working ``set box.image=…`` answered ``Set box_image=…``
+        — advertising the undeclared form on the success path.
+        """
+        msg = bench.set(ConfigLevel.system, "box.image", "img:1")
+        assert msg == "Set box.image=img:1", msg
+        assert bench.reset(ConfigLevel.system, "box.image").startswith(
+            "Cleared box.image ",
+        ), msg
 
     @pytest.mark.parametrize("scope,dest", [
         (ConfigLevel.box, "box"),
@@ -291,6 +306,87 @@ class TestRoutedScalarDest:
         bench.seed(bench.cf, ("box",), "image", "FROM_CF")
         bench.seed(bench.box, ("box",), "image", "FROM_BOX")
         assert bench.get(ConfigLevel.box, "box.image") == "FROM_BOX"
+
+
+# ---------------------------------------------------------------------------
+# 1b. ONE SPELLING PER KEY — the CLASS guard, not the instance
+# ---------------------------------------------------------------------------
+
+def _mutated_spellings() -> "set[str]":
+    """Every CLI key spelling the engine's own tables name, plus its flattening.
+
+    ⚑ DERIVED, NEVER ENUMERATED (P13): the names come from ``KNOWN_CONFIG_KEYS``
+    and ``_KEY_ROUTES``, so a key added tomorrow is covered without an edit here,
+    and a key REMOVED cannot leave a stale row asserting about nothing.
+
+    ⚑ THE MUTATION IS GENERATED LOCALLY, ON PURPOSE.  Importing a production
+    flattener would tie the guard to the very symbol it exists to keep deleted —
+    the test would go green by vanishing along with the bug.
+    """
+    from kanibako.settings.config_keys import KNOWN_CONFIG_KEYS, _KEY_ROUTES
+
+    named = set(KNOWN_CONFIG_KEYS) | set(_KEY_ROUTES)
+    return named | {name.replace(".", "_") for name in named}
+
+
+class TestOneSpellingPerKey:
+    """⚑⚑ THE CLASS OF DEFECT, NOT THE INSTANCE (P15).
+
+    ``box_image`` was a second, undeclared user-facing surface: ``set`` took it,
+    ``get`` refused it, and the two spellings of one key landed in DIFFERENT
+    FILES at different precedence tiers.  Deleting the normaliser fixes that
+    spelling; this class fixes the SHAPE — a write verb may not accept a spelling
+    the read gate refuses, whatever spelling anyone invents next.
+
+    ⚑ THE ORACLE IS ``is_known_key``, WHICH IS THE GATE ``get`` ALREADY APPLIES
+    (``system_cmd``'s get arm), and NOT ``key_validity``.  Measured: ``model`` is a
+    legitimate bare CLI spelling of ``agent.default.model`` that ``key_validity``
+    refuses, because that function judges KEYSPACE keys and a bare behaviour key
+    is a CLI spelling of one.  ``is_known_key`` answers the question actually at
+    issue — is this key-SHAPED to the CLI — so it admits the bare form and refuses
+    the flattened one.
+    """
+
+    def test_the_guard_has_something_to_guard(self):
+        """⚑ RED ON ITS OWN EMPTINESS — a vacuous pass would manufacture confidence."""
+        from kanibako.settings.config_keys import KNOWN_CONFIG_KEYS, is_known_key
+
+        spellings = _mutated_spellings()
+        refused = {s for s in spellings if not is_known_key(s)}
+        assert refused, f"nothing to check — the mutation produced no new spelling: {spellings}"
+        # ...and the filter DISCRIMINATES: every name the tables declare is admitted,
+        # so ``refused`` is the mutations and nothing else.
+        assert all(is_known_key(name) for name in KNOWN_CONFIG_KEYS)
+
+    @pytest.mark.parametrize("scope", [
+        ConfigLevel.system, ConfigLevel.workset, ConfigLevel.box,
+    ])
+    def test_no_write_verb_accepts_what_the_read_gate_refuses(self, bench, scope):
+        from kanibako.settings.config_keys import is_known_key
+
+        for spelling in sorted(s for s in _mutated_spellings() if not is_known_key(s)):
+            before = bench.snapshot()
+            msg = bench.set(scope, spelling, "x")
+            assert msg.startswith("Error:"), f"set accepted {spelling!r}: {msg}"
+            assert spelling in msg, f"the refusal must NAME the key (spec §0): {msg}"
+            assert bench.changed(before) == {}, f"set of {spelling!r} wrote a file"
+
+            before = bench.snapshot()
+            msg = bench.reset(scope, spelling)
+            assert msg.startswith("Error:"), f"reset accepted {spelling!r}: {msg}"
+            assert spelling in msg, f"the refusal must NAME the key (spec §0): {msg}"
+            assert bench.changed(before) == {}, f"reset of {spelling!r} wrote a file"
+
+    def test_every_routed_key_is_a_declared_keyspace_key(self):
+        """The other half: the ONE spelling a verb does accept must BE a key (spec §0)."""
+        from kanibako.settings.config_keys import _KEY_ROUTES
+        from kanibako.settings.settings_keyspace import key_validity
+
+        undeclared = {
+            key: reason for key in _KEY_ROUTES
+            if (reason := key_validity(key, valid_agents=())) is not None
+        }
+        assert undeclared == {}, undeclared
 
 
 # ---------------------------------------------------------------------------
@@ -689,11 +785,15 @@ class TestChannelTypeRootsRouteUNIFORMLY:
     the category to sit where the SCOPE ends.
 
     ⚑⚑ NO READ WAS TRADED FOR THE CONSISTENCY, and that is the case below, not an
-    assertion in prose. ``system.channels.*`` is a STRUCTURAL system path read from
-    the config file BEFORE the slot rule is consulted (which is exactly why ``chat``
-    always read fine with no slot at all), and ``workset.channels.common`` has a
-    ``_KEY_ROUTES`` entry naming the IDENTICAL ``(sections, leaf)`` — so only the
-    family LABEL moved, and ``_CATEGORY`` and ``_SCOPED`` pick the same file.
+    assertion in prose. Both scopes have a ``_KEY_ROUTES`` entry naming the
+    IDENTICAL ``(sections, leaf)`` shape — so only the family LABEL moved, and
+    ``_CATEGORY`` and ``_SCOPED`` pick the same file.
+
+    ⚑ UNTIL 2026-08-23 the two scopes answered DIFFERENTLY: ``system.channels.*``
+    had no slot at all, because the whole ``SYSTEM_PATH_DEFAULTS`` family was refused
+    as "structural" and read from ``kanibako_config.yaml`` before the slot rule ran.
+    Spec §2g declares them settings keys; they are routed now, and the per-scope
+    hedging that used to live in these cases is gone with the divergence.
 
     ⚑⚑ THE CLASS NAME NO LONGER OVERSTATES, AND THIS IS THE SAYING-SO (2026-08-09).
     It used to: ``workset.channels.{broadcast,mailboxes,share_global}`` were DECLARED
@@ -729,11 +829,8 @@ class TestChannelTypeRootsRouteUNIFORMLY:
     def test_no_channel_type_root_claims_the_CATEGORY_family(self):
         """⚑ RED BEFORE QC, at BOTH scopes: ``common`` alone answered ``_CATEGORY``.
 
-        Stated as "none of them" rather than "all of them agree" because the two
-        SCOPES genuinely answer differently — ``system.channels.*`` has no slot at
-        all (it is read from the config file before the slot rule) while every
-        ``workset.channels.*`` is ``_SCOPED``. What this case settles is the one
-        property common to both: a channel type-root is never mistaken for a
+        Stated as "none of them" rather than "all of them agree" because that is the
+        property the suffix test broke: a channel type-root is never mistaken for a
         CATEGORY. Per-scope uniformity is
         :meth:`test_every_declared_member_is_routed`.
 
@@ -753,19 +850,16 @@ class TestChannelTypeRootsRouteUNIFORMLY:
         """The two siblings that motivated the pass, pinned against each other.
 
         ``common`` is the only channel TYPE whose name collides with a §2a category
-        token, so it was the only member the suffix test could claim. At the workset
-        scope the collision cost the label only (both are ``_SCOPED`` at the same
-        slot); at the system scope it cost a spurious slot for a key the read path
-        never consults. Either way the two must answer the same thing.
+        token, so it was the only member the suffix test could claim. The collision
+        cost the label only — both are ``_SCOPED`` at the same slot — and the two
+        must answer the same thing at either scope.
         """
         from kanibako.settings.config_dest import _key_slot
 
         for scope in ("system", "workset"):
             common = _key_slot(f"{scope}.channels.common")
             chat = _key_slot(f"{scope}.channels.chat")
-            if common is None:
-                assert chat is None, (scope, common, chat)
-                continue
+            assert common is not None and chat is not None, (scope, common, chat)
             assert common[0] == chat[0] and common[2] == chat[2], (scope, common, chat)
 
     def test_a_stored_value_still_reads_back(self, bench):
@@ -776,18 +870,16 @@ class TestChannelTypeRootsRouteUNIFORMLY:
         a key with no entry. It reads GREEN on both sides of QC BY DESIGN — its job
         is to stay green, and it goes RED the moment a member loses its read.
 
-        ⚑ Covers EVERY declared member at BOTH scopes — the system ones are
-        ``SYSTEM_PATH_DEFAULTS``, read from the config file by a branch that runs
-        BEFORE the slot rule (which is why ``chat`` always read fine with no slot at
-        all); the workset ones are all ``_SCOPED`` since the three unrouted members
-        were routed. The member list is DERIVED from the manifest, so a leaf added
-        there is covered here without an edit — and a leaf that loses its route goes
-        red here rather than silently reading "(not set)".
+        ⚑ Covers EVERY declared member at BOTH scopes, and both are ``_SCOPED`` now —
+        the system five since 2026-08-23, the workset six since the three unrouted
+        members were routed. The member list is DERIVED from the manifest, so a leaf
+        added there is covered here without an edit — and a leaf that loses its route
+        goes red here rather than silently reading "(not set)".
         """
         families = self._families()
         for key in families["system"]:
             leaf = key.rsplit(".", 1)[1]
-            bench.seed(bench.cf, ("system", "channels"), leaf, f"/hosted/{leaf}")
+            bench.seed(bench.ssp, ("system", "channels"), leaf, f"/hosted/{leaf}")
         for key in families["system"]:
             leaf = key.rsplit(".", 1)[1]
             assert bench.get(ConfigLevel.system, key) == f"/hosted/{leaf}", key
@@ -971,12 +1063,24 @@ class TestPrefDest:
 
 
 # ---------------------------------------------------------------------------
-# 8. File-only ``system.*`` path keys — refused, nothing written
+# 8. The CONFIG-FILE-ONLY keys — refused, nothing written
 # ---------------------------------------------------------------------------
 
-class TestSystemPathKeyRefusal:
+class TestConfigFileOnlyKeyRefusal:
+    """⚑ ``system.cache`` STOOD HERE UNTIL 2026-08-23, with its ten
+    ``SYSTEM_PATH_DEFAULTS`` siblings.  They are Layer-2 settings keys (spec §2g)
+    and are routed now — §8b below is the replacement pin, and it asserts the
+    OPPOSITE.
 
-    @pytest.mark.parametrize("key", ["system.cache", "config.data"])
+    ⚑⚑ ``system.setup_completed`` LEFT THE SAME DAY, and this is its saying-so: it
+    was parametrized into the refusal case below, and it now has its own class
+    (§8c) asserting that set and reset WRITE — spec §2g calls it "PERSISTS,
+    user-resettable" and the registry marks it ``set: cli+file``.  What is left
+    here is the ``config.*`` foundation alone, which is refused for a reason no
+    other key has: those keys LOCATE the files everything else lives in (§2a).
+    """
+
+    @pytest.mark.parametrize("key", ["config.data"])
     def test_set_and_reset_refuse_and_write_nothing(self, bench, key):
         before = bench.snapshot()
         assert bench.set(ConfigLevel.system, key, "/x").startswith("Error:")
@@ -984,8 +1088,71 @@ class TestSystemPathKeyRefusal:
         assert bench.changed(before) == {}
 
     def test_get_reads_the_config_file(self, bench):
-        bench.seed(bench.cf, ("system",), "cache", "/from/cf")
-        assert bench.get(ConfigLevel.system, "system.cache") == "/from/cf"
+        bench.seed(bench.cf, ("system",), "setup_completed", "1.8.0")
+        assert bench.get(ConfigLevel.system, "system.setup_completed") == "1.8.0"
+
+
+# ---------------------------------------------------------------------------
+# 8c. The setup MARKER — the ONE key whose destination is the bootstrap file
+# ---------------------------------------------------------------------------
+
+class TestSetupMarkerDest:
+    """set, get and reset all name ``kanibako_config.yaml``'s ``system:`` table.
+
+    ⚑ THE POINT IS THE AGREEMENT, not the file: the marker is stored in the config
+    file because ``setup`` writes it there and the staleness gate reads it there
+    (``config.read_setup_completed``), so a verb aimed anywhere else — the system
+    settings file most plausibly — would be accepted, persisted and INERT.  That is
+    the failure this whole module exists to catch, and it is why the marker did not
+    simply join ``_KEY_ROUTES`` with its ``system.*`` siblings.
+    """
+
+    def test_set_lands_in_the_bootstrap_config_file(self, bench):
+        before = bench.snapshot()
+        msg = bench.set(ConfigLevel.system, "system.setup_completed", "1.8.0")
+        assert msg == "Set system.setup_completed=1.8.0", msg
+        changed = bench.changed(before)
+        assert set(changed) == {"cf"}, changed
+        assert changed["cf"]["system"]["setup_completed"] == "1.8.0"
+
+    def test_get_reads_back_what_set_wrote(self, bench):
+        bench.set(ConfigLevel.system, "system.setup_completed", "1.8.0")
+        assert bench.get(ConfigLevel.system, "system.setup_completed") == "1.8.0"
+
+    def test_reset_removes_from_the_file_set_wrote(self, bench):
+        bench.set(ConfigLevel.system, "system.setup_completed", "1.8.0")
+        before = bench.snapshot()
+        msg = bench.reset(ConfigLevel.system, "system.setup_completed")
+        assert not msg.startswith("Error:"), msg
+        changed = bench.changed(before)
+        assert set(changed) == {"cf"}, changed
+        assert "setup_completed" not in changed["cf"].get("system", {})
+
+
+# ---------------------------------------------------------------------------
+# 8b. The ``system.*`` PATH tier — routed to the system SETTINGS file
+# ---------------------------------------------------------------------------
+
+class TestSystemPathTierDest:
+    """Every ``SYSTEM_PATH_DEFAULTS`` member writes, reads and clears in ONE file.
+
+    ⚑ DERIVED FROM THE TABLE, not from a list here (P13): a row added to
+    ``paths_defaults.SYSTEM_PATH_DEFAULTS`` without a route reds this.
+    """
+
+    def test_set_get_reset_all_name_the_settings_file(self, bench):
+        for key in sorted(SYSTEM_PATH_DEFAULTS):
+            before = bench.snapshot()
+            assert bench.set(ConfigLevel.system, key, "/x") == f"Set {key}=/x", key
+            assert set(bench.changed(before)) == {"ssp"}, key
+            assert bench.get(ConfigLevel.system, key) == "/x", key
+            assert not bench.reset(ConfigLevel.system, key).startswith("Error:"), key
+            assert bench.get(ConfigLevel.system, key) is None, key
+
+    def test_the_bootstrap_config_file_is_never_written(self, bench):
+        for key in sorted(SYSTEM_PATH_DEFAULTS):
+            bench.set(ConfigLevel.system, key, "/x")
+        assert not bench.cf.exists()
 
 
 # ---------------------------------------------------------------------------
@@ -1055,7 +1222,11 @@ class TestSystemGetCommandScopeIsInert:
          (lambda b: b.seed(b.ssp, ("system", "secret_path"), "TOKEN", "v"))),
         ("system.caches.pip",
          (lambda b: b.seed(b.ssp, ("system", "caches"), "pip", "v"))),
-        ("system.cache", (lambda b: b.seed(b.cf, ("system",), "cache", "v"))),
+        # ⚑ SEEDED IN ``ssp``, NOT ``cf``, SINCE 2026-08-23: the system PATH tier is
+        # a settings key (spec §2g) and reads where its ``set`` writes.
+        ("system.cache", (lambda b: b.seed(b.ssp, ("system",), "cache", "v"))),
+        ("system.setup_completed",
+         (lambda b: b.seed(b.cf, ("system",), "setup_completed", "v"))),
         ("agent.claude.model",
          (lambda b: b.seed(
              b.agents / "claude" / "agent.yaml",

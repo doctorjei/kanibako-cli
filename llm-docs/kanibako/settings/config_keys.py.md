@@ -23,30 +23,43 @@ operation they did not run and mis-describes what failed.
 
 ## Functions
 
-```system_key_refusal(key: str, *, verb: str) -> str```
-Refuse a CLI *verb* (`set` / `reset` / `read`) on a FILE-ONLY `system.*` key.
+```SETUP_MARKER_KEY = "system.setup_completed"```
+The setup VERSION MARKER's key, spelled once.
 
-STRUCTURAL `system.*` path-tier keys (the `SYSTEM_PATH_DEFAULTS` family — see `is_system_path_key`)
-are LAYOUT config, not behavior settings, so they are file-only: reachable in the bootstrap config
-file (or via `kanibako setup`) but never through `config set` / `config reset` / `config get`.
+⚑ **`system_key_refusal` STOOD HERE AND IS DELETED (2026-08-23).** It refused a CLI verb on a
+FILE-ONLY `system.*` key — *"'<key>' is a structural config key and cannot be {set,reset,read} from
+the CLI"* — and by the end it named an EMPTY SET. The `SYSTEM_PATH_DEFAULTS` family left the
+category first (spec §2g declares all eleven ordinary Layer-2 settings keys; §2a names
+`system.template` in the CLI-settable list beside `workset.vault_{ro,rw}`), and the setup marker
+left it the same day. Its last reachable caller was `system_cmd`'s `get` arm, where the only
+spellings still falling into it were UNDECLARED `config.*` ones — for which *"is a structural config
+key … its value lives in the config file"* asserts that a key which does not exist DOES. Those
+answer `unknown config key` now, which is what spec §0 requires of an undeclared name. 🛑 Do not
+reintroduce it for `config.*`: those have `_config_key_refusal`, which spec §2a requires NOT to
+mention `setup` — *"`setup` … is NOT how a value is set"*.
 
-The message points at the REAL RESOLVED config file — the `kanibako_config.yaml` `[system]` table
-that `resolve_system_paths` actually reads — and never at the command scope's settings file, which
-would be wrong-file advice (the F2 lesson). The path is rendered by `_user_config_file_str`, which
-is raise-proof: this is an error path and must not turn a clean refusal into a traceback.
+**Why the marker's verbs route to the BOOTSTRAP config file, not the settings file.** Spec §2g
+declares `system.setup_completed` a `system`-tier SETTINGS key and calls it *"PERSISTS,
+user-resettable"*; the registry marks it `set: cli+file`. The CODE stores it in the `system:` table
+of `kanibako_config.yaml`, because `setup` writes it there (`setup_cmd._mark_setup_complete` →
+`config_interface.write_system_value`) and the 5-band staleness gate reads it from there
+(`config.read_setup_completed`). A settings-file route would therefore have been INERT — accepted,
+persisted, and invisible to every consumer — so the verbs follow the STORAGE instead
+(`config_dest._BOOTSTRAP`, the one member of that file rule). set, get and reset now name one table.
 
-* `verb="set"` / `"reset"` — tail is *"Edit the config file directly: `<path>` (or re-run 'kanibako
-  setup')."*
-* `verb="read"` — tail is *"Its value lives in the config file: `<path>`"*, and it deliberately
-  does NOT name `setup`. ⚑ `setup` is a WRITE cure; prescribing it to someone who ran `get` is the
-  F6 lie (`_config_key_refusal` omits it for the same reason).
+⚑ **THE REMAINING DELTA IS STORAGE, AND IT IS A MIGRATION.** Moving the marker to
+`@config.settings` would make the code match §2g, and it would make every existing install read
+"setup has never run" and re-run setup. That is a decision with a user-visible cost, not a routing
+change.
 
-⚑ **KNOWN DELTA, NOT FIXED HERE (2026-08-09).** The manifest declares every `system.channels.*` key
-`set: cli+file`, yet this refusal closes the CLI half at all three verbs — and `get_config_value`
-can in fact serve the read (it resolves them from the config file before the slot rule is
-consulted), so the `get` is refused by `system_cmd`'s `is_known_key` gate rather than by any
-inability. Opening it is a user-facing POLICY decision, not a wording one; the verb fix above
-deliberately did not take it.
+⚑ **THE REFUSAL'S OWN CURE WAS THE ARGUMENT AGAINST IT.** It told the user to hand-edit the config
+file's `system:` table — the same table, with the same absence of validation, that the CLI now
+writes. Refusing bought no safety; it only withheld `reset`, which is the half spec §2g explicitly
+promises.
+
+⚑ **THE `system.channels.*` DELTA (opened 2026-08-09) IS CLOSED (2026-08-23).** The manifest
+declared every one of them `set: cli+file` while the old refusal shut all three verbs; all five
+leaves are routed and known now, exactly like the `workset.channels.*` six.
 
 ## The `workset.channels.*` family
 
@@ -246,11 +259,14 @@ per-agent override is the persona key `agent.<agent>.<key>` (spec §2d).
 * `config.journal` — the lifecycle-journal location (§3.3 ruling "needs to be recognized"):
   resolved/consumed as ``std.journal`` all along, but absent from this list, so the config verbs
   treated the key name as a project name. Recognition here gives it EXACT sibling parity: the
-  get/show path reads it through `is_system_path_key`'s ``config.`` branch, and set/reset refuse it
+  get/show path reads it through `is_config_file_only_key`'s ``config.`` branch, and set/reset refuse it
   with the ruled bootstrap-file message like the other five.
 
-**Layer-2 `system.*` path SETTINGS** (``[system]`` table, spec §2g). ``global`` is ELIMINATED
-(children inline ``@config.data/global/...``).
+**Layer-2 `system.*` path SETTINGS** (the ``system:`` table of the system SETTINGS file, spec §2g).
+``global`` is ELIMINATED (children inline ``@config.data/global/...``). ⚑ All eleven — the six
+top-level roots plus the five ``system.channels.*`` leaves — are here and in `_KEY_ROUTES` since
+2026-08-23; before that the whole family was refused as structural and the five channel leaves were
+not even recognised, so `get` answered *"unknown config key"* for a declared key.
 
 * `system.template` — M-11: ``system.base_template`` → ``system.template``. The old spelling is
   RETIRED, not aliased — it is not a declared key any more (spec §0's closed keyspace), so ``config
@@ -375,20 +391,31 @@ SETTINGS file (a downward write keeps the key's scope token, nested in the COMMA
 file — spec §0; the form `assemble_levels` mirrors). ``system`` is INCLUDED (F2 fix): a routed
 ``system.*`` SETTINGS key (the auth chain `system.auth.share_allowed`) lands in the system SETTINGS
 file (``@config.settings``) — the file the launch cascade's system tier reads — NOT the Layer-1
-`kanibako_config.yaml`. The STRUCTURAL ``system.*`` path-tier family never reaches this routing
-(refused by `is_system_path_key` first).
+`kanibako_config.yaml`. ⚑ Since 2026-08-23 the ``system.*`` PATH tier reaches this routing too, and
+lands in the same file. ``system.setup_completed`` is the one key routed elsewhere — to the
+BOOTSTRAP config file, where its shipped reader looks (`SETUP_MARKER_KEY`).
 
-`_FLAT_TO_CANONICAL` is the reverse of `_dot_to_flat` for the routing table: the CLI surface (and
-prior code) also accepts the flat underscore form of a key (``box_image``). Normalise it to the
-canonical routing key so get/set/reset all hit the SAME `_KEY_ROUTES` entry regardless of which
-spelling was given.
+**`_dot_to_flat` / `_FLAT_TO_CANONICAL` / `_route_key` ARE DELETED, and the absence is the fix.**
+They let the write verbs accept the flat underscore form of a routed key (``box_image`` for
+``box.image``). That was an UNDECLARED second user-facing surface: `key_validity` refuses the
+spelling, `is_known_key` refuses it, and `get` refused it — while `set` took it and then PRINTED it
+back in the confirmation, teaching the form no other verb served. It also chose the DESTINATION
+FILE. `config_dest._dest` reads the scope token off the key as typed, and the flat form's first
+dotted token is the whole string, so it missed `_SETTINGS_SCOPE_TOKENS` and fell to the Layer-1
+`kanibako_config.yaml` — the bootstrap floor `config.load_merged_config` puts UNDER every tier —
+while `box.image` went to the settings tier ABOVE it. A spelling silently selected precedence.
+
+⚑ **Do not reintroduce a spelling normaliser here.** Spec §0: the keyspace is CLOSED and a key has
+one spelling; a second one is not an alias, it is a second keyspace. The class guard is
+`tests/test_settings/test_config_dest_parity.py::TestOneSpellingPerKey`, which derives the
+mutation itself so it cannot go green by the production flattener disappearing.
 
 ## Per-persona agent keys (block B1)
 
 ``agent.<node>.<key>``, set on the agent's OWN settings file ``agents/<node>/settings.yaml``.
 
-`_PERSONA_STATE_LEAVES` is the settable per-persona agent leaves: the FLAT agent-state knobs
-(`_is_agent_setting` set) plus the ``env.`` section — the EXACT shape `agent_file.load`
+`_PERSONA_STATE_LEAVES` is the per-persona agent leaves this module RECOGNISES: the FLAT
+agent-state knobs plus the ``env.`` section — the EXACT shape `agent_file.load`
 reads back (`AgentConfig.state` / `.env`), so a value `set` here is what the launch snapshot resolves
 for the persona (endpoint via `effective_behavior`). The former ``env_file.`` section is RENAMED to
 the DISCRIMINATED ``agent.<node>.secret_path.<VAR>`` SECRET category (routed by
@@ -512,7 +539,8 @@ by name — and every key that still reaches that function is a SCALAR, for whic
 
 ## Functions (continued)
 
-In source order. :func:`system_key_refusal` is documented under **Functions**, above.
+In source order. :data:`SETUP_MARKER_KEY` and the deleted `system_key_refusal` are documented
+under **Functions**, above.
 
 ```_coerce_value(canonical: str, value: "str | None") -> object | str | None```
 Coerce *value* to the typed form declared for *canonical* in `KEY_TYPES`.
@@ -541,18 +569,13 @@ The guard keys on the key's TOP-LEVEL dotted token. A SCOPELESS key (the un-pref
 always permitted — it writes to the command scope's own file by construction. (The RETIRED bare
 ``env.*`` is scopeless in shape too but never arrives here: the verbs refuse it earlier — R-39.)
 
-```_dot_to_flat(key: str) -> str```
-Convert ``box.image`` to ``box_image``, etc.
-
-```_route_key(canonical: str) -> str```
-Map a flat-underscore key spelling to its canonical routing key.
-
 ```resolve_key(raw: str) -> str```
 Return the canonical config key for a user-supplied key name.
 
-Most config keys are already canonical (dot-notation like ``box.image`` or ``box.enable_vault``, or a
-raw flat key) and pass through unchanged; this is the single canonicalization seam every get/set/reset
-path routes through.
+Most config keys are already canonical (dot-notation like ``box.image`` or ``box.enable_vault``) and
+pass through unchanged; this is the single canonicalization seam every get/set/reset path routes
+through. ⚑ It does NOT normalise spellings — an underscore form is not a key and passes through to
+be refused by name (see the deleted `_route_key` above).
 
 The ONE canonicalization it performs (block B1): for a per-persona agent key ``agent.<node>.<key>`` it
 canonicalizes the ``<node>`` SEGMENT ``+`` -> ``℘`` (``agent.navigator+claude.endpoint`` ->
@@ -729,7 +752,42 @@ is gone, so a hand edit no longer reaches the box either. The message says so �
 applies it uniformly and unconditionally.
 
 ```_is_agent_setting(key: str) -> bool```
-Keys that belong in the agent section of settings.yaml.
+True iff *key* is the BARE CLI spelling of an ``agent.default.<leaf>`` key (spec §2d).
+
+⚑⚑ **BOTH THIS AND `_PERSONA_STATE_LEAVES` ARE DERIVED FROM `DECLARED_AGENT_LEAVES` (2026-08-23),
+and the hand-kept copies they replace are the exact defect P13 warns about.** Each carried its own
+list of leaves, and BOTH had fallen behind the declaration: `agent.default.{run_args,transform,
+transform_settings}` answered *"unknown config key"* at every spelling, and
+`agent.default.{template,canon}` answered a refusal whose cure — *"set the any-agent default with
+the bare key"* — itself answered *"unknown config key"*. A refusal that prescribes a failing
+command is worse than no cure. Deriving them makes the bare spelling the one the CLI serves for the
+whole declared set, which is what makes that cure TRUE.
+
+⚑ **RECOGNITION AND SETTABILITY ARE NOW SEPARATE.** `_PERSONA_STATE_LEAVES` is the WHOLE declared
+set, so a declared key is refused BY NAME rather than degraded to "unknown" (spec §0); this
+predicate is `SCALAR_AGENT_LEAVES` — the declared set MINUS `TABLE_VALUED_AGENT_LEAVES`. The one
+table-valued member, `transform_settings`, is refused by :func:`agent_leaf_table_error` at both
+spellings.
+
+```agent_leaf_table_error(canonical: str, *, verb: str) -> str | None```
+Refuse a WRITE at a declared agent leaf whose value is a TABLE (spec §2d).
+
+⚑ **ORDER IS LOAD-BEARING: it runs in the set/reset PREAMBLE, before the persona branch.** Placed
+after it, `agent.default.transform_settings` would first meet the reserved-any-agent-tier refusal,
+whose cure names the bare spelling — which this rule then refuses. That is the same broken-cure
+shape the derivation above exists to end.
+
+⚑ **IT NAMES THE KEY AND THE SHAPE, never "unknown config key".** The key is declared, `config get`
+reads it, and it is hand-authored in YAML today; what the CLI cannot do is express a map as a
+scalar. The FILE-shape twin of this fact is `agent_file.table_value_error`, and the two are pinned
+against each other by `tests/test_settings/test_agent_leaf_shape.py` — a scalar stored at
+`self.transform_settings` used to crash every subsequent `agent_file.load`, i.e. every launch.
+
+⚑ **THE REGISTRY DISAGREES, AND THE CHECK IS HELD RED RATHER THAN EXEMPTED.**
+`agent.default.transform_settings` carries `set: cli+file` while being the ONLY dict-typed row that
+does (the manifest's three other dict rows are `set: file`), and spec §2a's *"what remains
+CLI-settable: scalars…"* excludes it. Changing that row is the registry's owner's call, not the
+code's — so `tests/test_settings/test_set_column_conformance.py` names it as a FINDING.
 
 ```_is_box_agent_key(key: str) -> bool```
 The RETIRED box-scoped agent mirror ``box.agent.<key>`` (spec §2b).
@@ -857,14 +915,34 @@ The branch-by-branch reasons, in dispatch order:
   the whole agent-scope arm down with it silently. The recogniser is now derived from the same
   ``RETIRED_BIND_CATEGORIES`` the file-scope branch uses.
 
-```is_system_path_key(key: str) -> bool```
-Keys that belong in the bootstrap config file's PATH tables (file-only).
+```is_config_file_only_key(key: str) -> bool```
+Keys whose value is READ from the bootstrap config file rather than a settings file.
 
-Covers BOTH the Layer-1 ``[config]`` foundation keys (``config.*``, spec §1) and the STRUCTURAL
-Layer-2 ``system.*`` path-tier family — the exact
-:data:`~kanibako.settings.paths.SYSTEM_PATH_DEFAULTS` set that `resolve_system_paths` materializes
-from ``kanibako_config.yaml``'s ``[system]`` table — both live in ``kanibako_config.yaml`` and are
-structural (file-only).
+Two members and no more: the Layer-1 ``[config]`` foundation keys (``config.*``, spec §1) and
+``system.setup_completed``.
+
+⚑⚑ **IT IS A READ ROUTE NOW, NOT ALSO A REFUSAL (2026-08-23).** It used to double as *"and
+therefore the write verbs refuse it"*, which is how `system.setup_completed` — declared
+`set: cli+file`, *"PERSISTS, user-resettable"* (spec §2g) — ended up unsettable AND unresettable.
+The write verbs route the marker to that same config-file table via `SETUP_MARKER_KEY`; `config.*`
+is refused earlier by `_config_key_refusal`, its own ruled message. What is left here is one
+question: does a READ come from the config file.
+
+⚑⚑ **THE ``SYSTEM_PATH_DEFAULTS`` FAMILY LEFT THIS PREDICATE ON 2026-08-23, AND THE NAME CHANGED
+WITH IT** (it was `is_system_path_key`, which after the narrowing would have answered False for
+every system path key — a name that lies). All eleven are ordinary Layer-2 settings keys (spec
+§2g), the manifest marks each ``set: cli+file``, and §2a names ``system.template`` in the
+CLI-settable list; they route through `_KEY_ROUTES` to the system SETTINGS file now, like their
+``workset.*`` twins. ⚑ `resolve_system_paths` still materializes them from
+``kanibako_config.yaml``'s ``[system]`` table as the FLOOR — that table is the least-specific layer
+the cascade covers, not the store. ⚑⚑ **THE STORAGE HALF IS CLOSED (2026-08-23).**
+`load_system_config` layers the SYSTEM SETTINGS file's ``system:`` table over that floor, filtered to
+`SYSTEM_PATH_DEFAULTS`, so a repoint now reaches every `StandardPaths` field as well as the cascade.
+It did not before: `config set system.canon=/tmp/mycanon` moved the cascade value and left
+`std.canon` on the default — accepted, persisted, half-effective. The guard is
+`tests/test_settings/test_repoint_reaches_std_paths.py`, which asserts the EFFECT (does the
+repointed path come back out of `load_std_paths`), because every destination pin was green
+throughout.
 
 The F2/F3 fix: this is a PRECISE family membership check, NOT a ``system.*``-wide catch-all. A
 ``system.*`` SETTINGS key (the auth chain `system.auth.share_allowed`, `system.agent`, categories,
@@ -1040,12 +1118,11 @@ directly at the agent scope instead", prescribing a command that refuses. That i
 this function exists to prevent.
 
 ⚑ The terminal term is the WHOLE-KEY predicate (QC): *target* is a canonical scope-rooted key, so the
-category must sit where the SCOPE ends. ⚑ THE STRUCTURAL ``system.channels.*`` PATHS ARE NOT COVERED
-BY THIS FUNCTION AND NEVER WERE — the suffix test claimed ``system.channels.common`` alone, by
-coincidence of spelling, while its five siblings fell through. They are YAML-only for a DIFFERENT
-reason (:func:`is_system_path_key`), and no pref can name one: §2h admits only ``system.agent`` and
-``agent.<agent>.**`` as targets. Adding that family here is a separate call, not a silent widening of
-this one.
+category must sit where the SCOPE ends. ⚑ THE ``system.channels.*`` PATHS ARE NOT COVERED BY THIS
+FUNCTION AND NEVER WERE — the suffix test claimed ``system.channels.common`` alone, by coincidence
+of spelling, while its five siblings fell through. They are ordinary routed scalars (2026-08-23),
+not a category, and no pref can name one: §2h admits only ``system.agent`` and ``agent.<agent>.**``
+as targets. Adding that family here is a separate call, not a silent widening of this one.
 
 ```_bind_route_retired_message(display_key: str, *, verb: str, route: str, why: str, cure: str, survives: str) -> str```
 THE refusal text for a retired bind-shaped CLI write route — ONE wording for both scopes, so the two

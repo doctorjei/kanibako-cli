@@ -205,7 +205,18 @@ def noun_settings_file(
 #: by DS-BL1 = (a) and deleted by QA′.  ⚑ THE TERM IS KEPT DELIBERATELY AND IS NOT
 #: DEAD DATA: it is the declared FAMILY of the key, bound for the KeyKind
 #: descriptor.  Do not collapse it into ``SCOPED``.
-_NOUN, _SCOPED, _CATEGORY = "noun", "scoped", "category"
+#: ⚑ ``BOOTSTRAP`` = the Layer-1 ``kanibako_config.yaml`` itself, and it has exactly
+#: ONE member: ``system.setup_completed``.  The marker is WRITTEN there by ``setup``
+#: (``config_interface.write_system_value``) and READ back from there
+#: (``config.read_setup_completed``, and ``get_config_value``'s config-file arm), so a
+#: verb that wrote it anywhere else would be inert — a set the reader never sees.
+#: 🛑 IT IS NOT A GENERAL "WRITE THE CONFIG FILE" RULE, and must not grow into one:
+#: ``config.*`` keys LOCATE the files everything else lives in and are refused from
+#: every scope BEFORE this rule is reached (spec §2a).  This rule exists because the
+#: marker's STORAGE is in the config file while its DECLARATION (spec §2g,
+#: ``set: cli+file``, "PERSISTS, user-resettable") makes it settable — a delta recorded
+#: in ``config_keys.is_config_file_only_key`` and closable only by a storage migration.
+_NOUN, _SCOPED, _CATEGORY, _BOOTSTRAP = "noun", "scoped", "category", "bootstrap"
 
 
 # ⚑⚑ A DESTINATION IS DATA, NOT A KEY PATH — NEVER SPLIT IT ON A DOT. The key STOPS
@@ -239,6 +250,7 @@ def _key_slot(canonical: str) -> "tuple[tuple[str, ...], str, str] | None":
     file shape and is resolved by :func:`_agent_node_route`.
     """
     from kanibako.settings.config_keys import (
+        SETUP_MARKER_KEY,
         _is_agent_setting,
         _is_path_category_key,
         _is_pref_key,
@@ -247,10 +259,13 @@ def _key_slot(canonical: str) -> "tuple[tuple[str, ...], str, str] | None":
         _is_scope_secret_key,
         _KEY_ROUTES,
         _pref_sections_leaf,
-        _route_key,
     )
     from kanibako.settings.settings_keyspace import is_terminal_category_key
 
+    if canonical == SETUP_MARKER_KEY:
+        # The ``system:`` table of the BOOTSTRAP config file — the address ``setup`` and
+        # ``read_setup_completed`` already use, so set/get/reset name ONE storage location.
+        return ("system",), SETUP_MARKER_KEY.split(".", 1)[1], _BOOTSTRAP
     if _is_pref_key(canonical):
         sections, leaf = _pref_sections_leaf(canonical)
         return sections, leaf, _NOUN
@@ -286,7 +301,13 @@ def _key_slot(canonical: str) -> "tuple[tuple[str, ...], str, str] | None":
         # lives at the last addressing UNIT, whatever that unit is.
         tail = _category_segments(canonical)
         return tail[:-1], tail[-1], _CATEGORY
-    route = _KEY_ROUTES.get(_route_key(canonical))
+    # ⚑ THE ROUTING TABLE IS CONSULTED WITH THE KEY AS TYPED, and that is the whole
+    # point: :func:`_dest` reads the scope token off the SAME string. When a
+    # spelling normaliser sat here, the slot came from the canonical key while the
+    # FILE came from the typed one, so ``box_image`` slotted at ``box: image:`` in
+    # the Layer-1 config file while ``box.image`` slotted identically in the
+    # settings file — a spelling silently choosing the precedence tier.
+    route = _KEY_ROUTES.get(canonical)
     if route is None:
         return None
     return route[0], route[1], _SCOPED
@@ -314,14 +335,30 @@ def _dest(
     if slot is None:
         return None
     sections, leaf, rule = slot
+    if rule == _BOOTSTRAP:
+        # ⚑ The noun's OWN file, NEVER the settings file — at the system scope that IS
+        # ``kanibako_config.yaml``.  Below the system scope the key is an UPWARD write and
+        # the scope-direction guard (spec §0) refuses it before any verb asks for a route,
+        # which is why this arm may hand back the command's own file unconditionally.
+        return DestRoute(config_path, sections, leaf)
     if rule == _NOUN:
         return DestRoute(noun_settings_file(config_path, settings_path), sections, leaf)
     key_scope = canonical.split(".", 1)[0]
     from kanibako.settings.config_keys import _SETTINGS_SCOPE_TOKENS
 
-    if key_scope in _SETTINGS_SCOPE_TOKENS:
-        return DestRoute(noun_settings_file(config_path, settings_path), sections, leaf)
-    return DestRoute(config_path, sections, leaf)
+    # ⚑⚑ THE SCOPE TOKEN IS AN ASSERTION, NOT A FORK. Every family :func:`_key_slot`
+    # answers a non-NOUN rule for is scope-rooted BY CONSTRUCTION — the routing
+    # table, both bind recognisers and ``is_terminal_category_key`` all require a
+    # head in ``SCOPE_CONTAINMENT``. This used to fall through to the Layer-1
+    # ``config_path``, which is how the flat spelling ``box_image`` (first dotted
+    # token = the whole string) wrote the bootstrap floor while ``box.image`` wrote
+    # the settings tier. A slotted key whose head is NOT a scope is a broken route,
+    # and it must SAY SO rather than quietly pick the other file.
+    assert key_scope in _SETTINGS_SCOPE_TOKENS, (
+        f"'{canonical}' has a {rule} slot but '{key_scope}' is not a settings "
+        f"scope; a route may not let a SPELLING choose the destination file"
+    )
+    return DestRoute(noun_settings_file(config_path, settings_path), sections, leaf)
 
 
 def _write_dest(

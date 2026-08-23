@@ -321,11 +321,15 @@ def xdg(env_var: str, default_suffix: str) -> Path:
     return resolve_xdg(env_var, default_suffix)
 
 
-def _spec_default_xdg_map(data_home: Path | None) -> dict[str, str]:
+def spec_default_xdg_map(data_home: Path | None) -> dict[str, str]:
     """The XDG vars that HAVE a spec default (data/config/state/cache) — no ``XDG_RUNTIME_DIR``.
 
     ⚑ Side-effect-free: unlike ``XDG_RUNTIME_DIR`` (see :func:`_fallback_runtime_dir`), none of
     these four ever mkdir a fallback dir — :func:`resolve_data_leaf` relies on that to stay total.
+    ⚑ PUBLIC for the second caller that needs exactly that guarantee:
+    ``settings/workset_dirkeys.py`` resolves ``$XDG_*`` inside the ancestor WALK, where a
+    mkdir-and-warn on a directory that turns out not to be a workset is a real side effect.
+    It is the SAME builder, not a copy — :func:`host_xdg_map` still wraps it.
     """
     xdg_map: dict[str, str] = {}
     for name, suffix in XDG_SPEC_DEFAULTS.items():
@@ -339,7 +343,7 @@ def _spec_default_xdg_map(data_home: Path | None) -> dict[str, str]:
 
 def host_xdg_map(data_home: Path | None = None) -> dict[str, str]:
     """THE single builder for the ``xdg=`` argument of every host-side ``ResolveCtx``."""
-    xdg_map = _spec_default_xdg_map(data_home)
+    xdg_map = spec_default_xdg_map(data_home)
     xdg_map[XDG_RUNTIME_DIR] = str(resolve_xdg(XDG_RUNTIME_DIR, None))
     return xdg_map
 
@@ -350,7 +354,7 @@ def resolve_config_paths(set_values: Mapping[str, str], *, data_home: Path, home
 
     ⚑ *xdg_vars*, when given, REPLACES the live :func:`host_xdg_map` build — the seam
     :func:`resolve_data_leaf` uses to resolve ``config.data`` without touching
-    ``XDG_RUNTIME_DIR`` (whose fallback can mkdir; see :func:`_spec_default_xdg_map`).
+    ``XDG_RUNTIME_DIR`` (whose fallback can mkdir; see :func:`spec_default_xdg_map`).
     Every other caller leaves it unset and gets today's exact ``host_xdg_map(data_home)``.
     """
     xdg_vars = dict(xdg_vars) if xdg_vars is not None else host_xdg_map(data_home)
@@ -423,7 +427,28 @@ def resolve_system_paths(set_values: Mapping[str, str],
 
 
 def load_system_config(user_config_path: Path, *, data_home: Path, home: Path) -> dict[str, Path]:
-    """Resolve the path tier from the CONFIG file set: ``/etc`` base < user global."""
+    """Resolve the path tier: ``/etc`` config base < user config < the SYSTEM SETTINGS file.
+
+    ⚑⚑ THE SETTINGS FILE IS THE TOP LAYER, AND IT IS THE WHOLE POINT OF THE THIRD
+    ``update`` BELOW.  ``system.{template,canon,runtime,cache,backup,channelroot}`` and
+    ``system.channels.*`` are Layer-2 SETTINGS keys (spec §2g: "set in settings files at
+    the ``system`` cascade level"), and ``config set system.canon=…`` writes them to
+    ``@config.settings``.  Until 2026-08-23 this function read the CONFIG files ONLY, so
+    that write reached the launch cascade and NOT :class:`StandardPaths` — a repoint that
+    was accepted, persisted, and half-effective.  A settable key whose set does not reach
+    the thing it names is worse than a refusal, because it never confesses.
+
+    ⚑ THE LAYER-1 RESOLVE RUNS TWICE ON PURPOSE, and it is not a wasted read: locating the
+    settings file IS ``@config.settings``, so the foundation must resolve before the file
+    can be opened.  :func:`resolve_config_paths` is a pure dict resolve over set-values
+    already in hand — the second pass reopens nothing.
+
+    ⚑ FILTERED TO :data:`SYSTEM_PATH_DEFAULTS` (P13 — derived from the table, never a list
+    here).  The settings file's ``system:`` table also holds ``system.agent``, the
+    ``auth``/``env``/``secret_path`` families and the bind-shaped categories, none of which
+    belong to the path tier; and a ``config:`` table hand-written into a SETTINGS file must
+    never reach Layer 1, which lives in ``kanibako_config.yaml`` alone (spec §1).
+    """
     # ⚑ Lazy import to avoid a config <-> paths import cycle at module load — do not hoist.
     from kanibako.settings.config import (config_base_path, load_config)
     raw: dict[str, str] = {}
@@ -431,6 +456,13 @@ def load_system_config(user_config_path: Path, *, data_home: Path, home: Path) -
     # base < user; an absent file yields {}, so missing layers are skipped automatically.
     raw.update(load_config(config_base_path()).config_paths)
     raw.update(load_config(user_config_path).config_paths)
+
+    config = resolve_config_paths(
+        {k: v for k, v in raw.items() if k.startswith("config.")},
+        data_home=data_home, home=home,
+    )
+    stored = load_config(Path(config["config.settings"])).config_paths
+    raw.update({k: v for k, v in stored.items() if k in SYSTEM_PATH_DEFAULTS})
 
     return resolve_system_paths(raw, data_home=data_home, home=home)
 
@@ -451,7 +483,7 @@ def resolve_data_leaf(data_path: Path | None = None, *, config_home: Path | None
     (:data:`KANIBAKO_PATH`, matching ``CONFIG_PATH_DEFAULTS["config.data"]``'s own default).
     An absent/unreadable config is exactly TODAY's status quo (nothing has ever read it for
     this purpose either), so this can never be worse; a readable config makes it strictly
-    better. ⚑ Builds its own xdg map (:func:`_spec_default_xdg_map` — data/config/state/cache,
+    better. ⚑ Builds its own xdg map (:func:`spec_default_xdg_map` — data/config/state/cache,
     deliberately NOT ``host_xdg_map``) rather than the full Layer-1 resolve's usual map: resolving
     ``XDG_RUNTIME_DIR`` can mkdir a fallback dir when unset, and this function must create
     nothing. The one case that misses: a hand-edited config expression referencing
@@ -474,7 +506,7 @@ def resolve_data_leaf(data_path: Path | None = None, *, config_home: Path | None
         raw.update(load_config(config_file_path(ch)).config_paths)
         config_set = {k: v for k, v in raw.items() if k.startswith("config.")}
         resolved = resolve_config_paths(config_set, data_home=dh, home=Path.home(),
-                                        xdg_vars=_spec_default_xdg_map(dh))
+                                        xdg_vars=spec_default_xdg_map(dh))
         return Path(resolved["config.data"]).name
     except Exception:
         return KANIBAKO_PATH

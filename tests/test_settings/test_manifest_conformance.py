@@ -959,12 +959,15 @@ class TestSetColumnConformance:
     def test_no_never_settable_row_is_routed(self):
         """``set: never`` rows are exactly the ``meta.*`` group, and none is routed.
 
-        ⚑ THE CONVERSE IS NOT ASSERTED, AND THAT IS A MEASUREMENT, NOT AN OVERSIGHT: 26
-        of the 56 ``cli+file`` rows are absent from ``_KEY_ROUTES`` for two legitimate
-        reasons — the ``system.*`` structural path keys are hand-edited in
-        ``kanibako_config.yaml`` and CLI-REFUSED by design, and the ``agent.*`` tier is
-        written through the agent-file writer, not this table.  Asserting
-        ``cli+file ⇒ routed`` would file 26 false findings.
+        ⚑ THE CONVERSE IS NOT ASSERTED **HERE**, and the reason narrowed on 2026-08-23.
+        ``cli+file ⇒ in _KEY_ROUTES`` was never the right shape: the ``agent.*`` tier is
+        written through the agent-file writer, and the bare any-agent keys through their
+        own branch, so this table is one of several write routes.  It ALSO used to carry
+        a false reason — that the ``system.*`` path keys "are hand-edited in
+        ``kanibako_config.yaml`` and CLI-REFUSED by design".  They were refused, and it
+        was a spec violation (§2g), not a design; they are routed now.
+        ⚑ The converse IS asserted, against the VERB rather than this table, by
+        ``tests/test_settings/test_set_column_conformance.py``.
         """
         never = {
             str(k) for k, v in _keys().items()
