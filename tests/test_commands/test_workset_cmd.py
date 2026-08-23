@@ -26,6 +26,27 @@ def _workset_boxes(ws):
     return workset_registry.load_workset_boxes(registry_path)
 
 
+def _assert_every_key_declared(doc):
+    """Every dotted LEAF path in *doc* must be a DECLARED key.
+
+    The keyspace is CLOSED (spec §0): an undeclared path is not a key at all, so
+    a settings file that carries one is a violation, not merely a dead write.
+    Derived from ``key_validity`` rather than from a list of expected names.
+    """
+    from kanibako.settings.settings_keyspace import key_validity
+
+    def walk(node, prefix):
+        for key, value in node.items():
+            path = f"{prefix}.{key}" if prefix else key
+            if isinstance(value, dict):
+                walk(value, path)
+                continue
+            reason = key_validity(path, valid_agents=())
+            assert reason is None, reason
+
+    walk(doc, "")
+
+
 class TestWorksetCreate:
     def test_create_success(self, config_file, tmp_home, capsys):
         from kanibako.commands.workset_cmd import run_create
@@ -216,6 +237,100 @@ class TestWorksetCreate:
         # The name is in the GLOBAL registry, and only there.
         std = load_std_paths(load_config(config_file))
         assert list_worksets(std)["imagews"] == ws_root.resolve()
+
+    def test_create_with_image_merges_into_the_existing_box_table(
+        self, config_file, tmp_home, monkeypatch
+    ):
+        """--image sets ``box.image`` WITHIN the table already on disk.
+
+        Assigning the whole ``box:`` table would drop every other ``box.*`` key
+        the file already carries — which is exactly what the block's own "MERGE
+        into the existing file, never overwrite" comment forbids.  The stamp is
+        stubbed to leave a populated file behind, because that is the state the
+        merge exists to survive.
+        """
+        from kanibako.commands.workset_cmd import run_create
+        from kanibako.launch import templates
+
+        real_install = templates.install_workset_template
+
+        def _install_and_stamp_settings(std, workset_path, **kwargs):
+            real_install(std, workset_path, **kwargs)
+            (workset_path / "workset.yaml").write_text(
+                "box:\n  shell: /bin/zsh\n  image: mould:stamped\n"
+            )
+
+        monkeypatch.setattr(
+            templates, "install_workset_template", _install_and_stamp_settings
+        )
+
+        ws_root = tmp_home / "merge_ws"
+        args = argparse.Namespace(
+            path=str(ws_root), name="mergews",
+            standalone=False, image="custom:latest", no_vault=False,
+        )
+        assert run_create(args) == 0
+
+        import yaml
+        settings_yaml = ws_root.resolve() / "workset.yaml"
+        data = yaml.safe_load(settings_yaml.read_text())
+        # The explicit flag wins over the stamped value ...
+        assert data["box"]["image"] == "custom:latest"
+        # ... and every OTHER box.* key survives it.
+        assert data["box"]["shell"] == "/bin/zsh"
+        _assert_every_key_declared(data)
+
+    def test_create_no_vault_writes_the_key_the_reader_looks_at(
+        self, config_file, tmp_home
+    ):
+        """--no-vault lands at ``box.enable_vault``.
+
+        That is where ``read_box_enable_vault``/``write_box_enable_vault`` look;
+        a TOP-LEVEL ``enable_vault`` is not a declared key at all (spec §0), so
+        it was both unread and a keyspace violation.
+        """
+        from kanibako.commands.workset_cmd import run_create
+        from kanibako.settings.config import read_box_enable_vault
+
+        ws_root = tmp_home / "novault_ws"
+        args = argparse.Namespace(
+            path=str(ws_root), name="novaultws",
+            standalone=False, image=None, no_vault=True,
+        )
+        assert run_create(args) == 0
+
+        import yaml
+        settings_yaml = ws_root.resolve() / "workset.yaml"
+        data = yaml.safe_load(settings_yaml.read_text())
+        assert data == {"box": {"enable_vault": False}}
+        _assert_every_key_declared(data)
+        assert read_box_enable_vault(settings_yaml) is False
+
+    def test_create_standalone_writes_no_undeclared_key(self, config_file, tmp_home):
+        """--standalone writes NOTHING.
+
+        No declared key expresses "this workset's boxes are standalone" — mode is
+        RO identity (``meta.box.mode``), not a settable behaviour key — so there
+        is nothing to write, and a top-level ``standalone:`` would be an
+        undeclared key path carried into the store (spec §0).
+        """
+        from kanibako.commands.workset_cmd import run_create
+
+        ws_root = tmp_home / "standalone_ws"
+        args = argparse.Namespace(
+            path=str(ws_root), name="standalonews",
+            standalone=True, image=None, no_vault=False,
+        )
+        assert run_create(args) == 0
+
+        settings_yaml = ws_root.resolve() / "workset.yaml"
+        if settings_yaml.exists():
+            import yaml
+            _assert_every_key_declared(yaml.safe_load(settings_yaml.read_text()) or {})
+            raise AssertionError(
+                f"nothing was set, so no workset-tier file should exist: "
+                f"{settings_yaml.read_text()!r}"
+            )
 
 
 class TestWorksetList:
