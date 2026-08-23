@@ -52,6 +52,7 @@ import pytest
 import yaml
 
 from kanibako import kuid
+from kanibako.launch.templates import template_seed_defaults
 from kanibako.settings import core_defaults
 from kanibako.settings.config import (
     KanibakoConfig,
@@ -64,6 +65,7 @@ from kanibako.settings.keyspace_manifest import (
     KEYSPACE_MANIFEST_FILENAME,
     manifest_doc,
 )
+from kanibako.settings.paths import BoxMode
 from kanibako.settings.paths_defaults import CONFIG_PATH_DEFAULTS, SYSTEM_PATH_DEFAULTS
 from kanibako.settings.settings_keyspace import (
     ACCESS_TIERS,
@@ -233,7 +235,14 @@ _BEHAVIOR_KEYS = (
 #: (i-e) + the kuid sentinel — one-off rows with a single named carrier each.
 #: ``box.env.COLORTERM`` is the third: the ONE ``env`` member kanibako itself ships a
 #: default for, carried by ``core_defaults.env_default_categories`` (spec §2b:867).
-_SINGLETON_KEYS = ("agent.default.canon", "workset.kuid", "box.env.COLORTERM")
+#: ``agent.default.template`` is the fourth: the §2d DEFAULT-tier arm of the layer-2
+#: template SOURCE, carried by ``launch.templates.template_seed_defaults`` beside the
+#: per-node arm.  ⚑ Only the DEFAULT arm is pinned — the per-NODE arm is finding 1 and
+#: stays exempt in ``NO_ORACLE_REF_HOP`` below.
+_SINGLETON_KEYS = (
+    "agent.default.canon", "workset.kuid", "box.env.COLORTERM",
+    "agent.default.template",
+)
 
 #: Every manifest ``keys:`` row this file pins a VALUE for.
 PINNED_DEFAULT_KEYS: frozenset[str] = frozenset(
@@ -407,6 +416,17 @@ class TestSingletonDefaults:
         )
         assert emitted["agent.default.canon"] == _default("agent.default.canon")
 
+    def test_the_agent_default_template_root(self):
+        """``launch.templates.template_seed_defaults`` emits this literal (spec §2d).
+
+        Read from the emitter's OUTPUT, exactly as the canon sibling above is: the
+        value is what a create installs at the agent tier, which is what the manifest
+        claims.  ⚑ The PER-NODE arm is deliberately not read here — it is finding 1,
+        pinned separately and still exempt.
+        """
+        emitted = template_seed_defaults(_StubProjectPaths(), PROBE_AGENT)
+        assert emitted["agent.default.template"] == _default("agent.default.template")
+
     def test_the_core_env_floor(self):
         """``box.env.COLORTERM`` IS ``core-defaults.yaml``'s whole ``env:`` table.
 
@@ -443,6 +463,19 @@ class _StubStandardPaths:
     """
 
     agents = Path("/nonexistent/kanibako-conformance-probe/agents")
+
+
+class _StubProjectPaths:
+    """The one attribute ``template_seed_defaults`` reads — the box MODE.
+
+    Deliberately NOT a ``ProjectPaths``: building one wants a workset on disk, and
+    this case is about a literal in an emitter.  ``standalone`` is the mode that
+    reaches the agent arm with the fewest inputs — it has no workset tier (spec
+    ``:936``), so the emitter's only other branch is simply off, and the agent-tier
+    row under test does not vary by mode.
+    """
+
+    mode = BoxMode.standalone
 
 
 # --------------------------------------------------------------------------- #
@@ -721,14 +754,14 @@ class TestDefaultsCoverage:
             f"this file classifies rows the manifest no longer declares a default for: "
             f"{sorted(stale)}"
         )
-        assert len(declared) == 64, (
-            f"the manifest gives {len(declared)} rows a default, not the 64 measured — "
+        assert len(declared) == 65, (
+            f"the manifest gives {len(declared)} rows a default, not the 65 measured — "
             f"re-classify, do not adjust the count"
         )
 
     def test_the_split_is_the_measured_split(self):
-        """40 pinned rows, 24 exempted — stated so a silent migration between them reds."""
-        assert len(PINNED_DEFAULT_KEYS) == 40
+        """41 pinned rows, 24 exempted — stated so a silent migration between them reds."""
+        assert len(PINNED_DEFAULT_KEYS) == 41
         assert len(EXEMPT_DEFAULT_KEYS) == 24
         assert not (PINNED_DEFAULT_KEYS & EXEMPT_DEFAULT_KEYS)
 

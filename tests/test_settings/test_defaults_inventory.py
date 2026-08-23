@@ -15,10 +15,10 @@ are not the command's own output:
   from the other, so this is the same "two carriers, asserted equal" arrangement the
   conformance file itself uses.
 
-⚑ THE CROSS-IMPORT IS THE POINT, NOT A SHORTCUT.  Re-listing the 63 rows here would be a
-THIRD copy of the classification, and the one that rots first.  ``tests`` is a package
-(``tests/__init__.py``), so the conformance module imports like any other; the precedent
-is ``tests/e2e/test_codex_panel.py`` importing its sibling.
+⚑ THE CROSS-IMPORT IS THE POINT, NOT A SHORTCUT.  Re-listing every classified row here
+would be a THIRD copy of the classification, and the one that rots first.  ``tests`` is
+a package (``tests/__init__.py``), so the conformance module imports like any other; the
+precedent is ``tests/e2e/test_codex_panel.py`` importing its sibling.
 
 Indent note: 4 spaces, matching every sibling in ``tests/test_settings/``.
 """
@@ -66,6 +66,7 @@ LABEL_TO_CONFORMANCE_CLASS: dict[str, str] = {
     "(nothing declares it — unset until you set it)": "exempt",
     "(empty — the category starts with no entries)": "exempt",
     "core_defaults.py (canon producer, per node)": "exempt",
+    "launch/templates.py (layer-2 seed, default arm)": "pinned",
     "launch/templates.py (layer-2 seed)": "exempt",
 }
 
@@ -103,8 +104,8 @@ class TestSourcePartition:
             f"registry defaults with no source: {sorted(declared - covered)}; "
             f"sources for rows the registry no longer defaults: {sorted(covered - declared)}"
         )
-        assert len(declared) == 64, (
-            f"the manifest gives {len(declared)} rows a default, not the 64 measured"
+        assert len(declared) == 65, (
+            f"the manifest gives {len(declared)} rows a default, not the 65 measured"
         )
 
     def test_the_partition_agrees_with_the_conformance_classification(self):

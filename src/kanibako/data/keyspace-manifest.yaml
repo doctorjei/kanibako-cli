@@ -1363,19 +1363,27 @@ keys:
     scope: agent
     type: path
     set: cli+file
+    default: "@config.agents/default/template"
     note: "the all-agents fallback arm of the layer-2 TEMPLATE SOURCE, sibling of
            the agent.default.canon row below — `template` is a §2d default-tier leaf
            like every other, so the arm exists by the §2d fallback rule
-           (agent.<agent>.<key> -> agent.default.<key>). It is the all-agents
-           OVERRIDE POINT, not a value carrier.
-           ⚑ NO `default:` FIELD, AND THAT IS MEASURED, NOT AN OMISSION: no floor
-           emits a value at this tier. launch.templates.template_seed_defaults
-           installs the NODE arm agent.<agent>.template for EVERY agent (whose
-           template/ subtree ensure_agent_stores guarantee-creates), so the
-           fallback to this arm never fires. A default here would be a value
-           `system defaults` prints and no artefact produces — the same
-           'documentation of intent, not a required default' shape §2d gives
-           agent.default.bindings.{ro,rw}."
+           (agent.<agent>.<key> -> agent.default.<key>), and it is the all-agents
+           OVERRIDE POINT.
+           ⚑ THE VALUE IS THE SPEC'S OWN SUBSTITUTION, NOT OURS: §2d gives
+           agent.<agent>.template = @meta.agent.<agent>.path/template and
+           meta.agent.<agent>.path = @config.agents/@meta.agent.<agent>.name, with
+           meta.agent.default.name = \"default\". The spec performs exactly those
+           hops in prose one line later for the SIBLING key ('agent.default.canon
+           resolves to @config.agents/default/canon'), which is why this row spells
+           the result rather than the formula — matching agent.default.canon.
+           ⚑ THE ARTEFACT THAT EMITS IT is launch.templates.template_seed_defaults,
+           beside the NODE arm agent.<agent>.template and under the same agent gate.
+           It is INERT for delivery: the node arm is installed for EVERY agent (whose
+           template/ subtree ensure_agent_stores guarantee-creates), so the §2d
+           fallback to this arm never fires. It is emitted anyway because a DECLARED
+           default needs a code artefact carrying its value — `system defaults`
+           refuses to print a row it cannot source, and a default no artefact
+           produces would be exactly that row."
     spec: "§2d (default tier; the fallback arm of agent.<agent>.template)"
   agent.default.canon:
     scope: agent

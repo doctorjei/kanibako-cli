@@ -50,7 +50,7 @@ AGENT_TEMPLATE_STORE_REL = "template"
 def template_seed_defaults(
     proj: ProjectPaths, agent_id: str | None
 ) -> dict[str, object]:
-    """Return the layered box-seed DEFAULT-category table (spec §2a — THREE keys).
+    """Return the layered box-seed DEFAULT-category table (spec §2a — THREE layers).
 
     ⚑ The SOURCE scalars declared here are shared with the box HANDBOOK
     host-template copy (:func:`handbook_layer_source_keys`), which is gated by them.
@@ -67,6 +67,22 @@ def template_seed_defaults(
     defs: dict[str, object] = {"system.seeded": _layer("@system.template")}
     if agent_id:
         harness = harness_of(agent_id)
+        # The §2d DEFAULT-TIER arm of the same SOURCE key — the all-agents
+        # fallback, sibling of ``agent.default.canon`` (spec :1143 + :1123 +
+        # :1116, the composition the spec performs in prose at :1144).  ⚑ It is
+        # a DECLARED key, so an artefact has to carry its value or ``system
+        # defaults`` prints a row it cannot source; emitting it here rather than
+        # beside the canon arm keeps the template family's value in the module
+        # that owns ``AGENT_TEMPLATE_STORE_REL``.
+        # ⚑ INERT FOR DELIVERY, and that is the point: the node arm below is
+        # emitted unconditionally for every agent, so the §2d fallback to this
+        # arm never fires.
+        # ⚑ NO NODE-STORE PROBE, unlike ``canon_default_categories``' node arm
+        # (``store_canon if node_store.is_dir() else …``): that conditional is
+        # the canon key's own behaviour, not this family's.
+        defs["agent.default.template"] = (
+            f"@config.agents/default/{AGENT_TEMPLATE_STORE_REL}"
+        )
         # SOURCE key (spec §2a/§2d), not a hardcoded path: settable, so a user
         # override reroutes the layer by cascade precedence.
         defs[f"agent.{agent_id}.template"] = (
