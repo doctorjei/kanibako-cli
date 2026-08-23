@@ -1344,27 +1344,15 @@ class TestWorksetEnv:
 
 class TestPrimaryWorksetMigration:
     """The approved F4 migration behavior (director ruling (c), 2026-07-02):
-    DROP the legacy locations + document; a read-only one-shot warning while a
-    legacy ``@config.data/settings.yaml`` exists without the spec file."""
+    DROP the legacy locations — ``@config.data/settings.yaml`` is never read
+    into the cascade and never touched on disk."""
 
-    def _set_default(self, key_value: str) -> int:
-        from kanibako.commands.workset_cmd import run_set
-
-        args = argparse.Namespace(
-            workset="default", key_value=key_value, force=False,
-        )
-        return run_set(args)
-
-    def test_legacy_data_settings_yaml_dropped_with_warning(
-        self, config_file, tmp_home, capsys, monkeypatch,
-    ):
-        """Approved migration behavior (ruling (c) 2026-07-02: drop + document).
+    def test_legacy_data_settings_yaml_dropped(self, config_file, tmp_home):
+        """Approved migration behavior (ruling (c) 2026-07-02: drop the legacy location).
 
         The legacy 1.6.0 read location ``@config.data/settings.yaml`` is
-        DROPPED — never read into the cascade, never touched on disk — with a
-        one-shot stderr warning while it exists without the spec file.
+        DROPPED — never read into the cascade, never touched on disk.
         """
-        import kanibako.settings.paths as paths_mod
         from kanibako.settings.keystore import KeyStore
         from kanibako.settings.paths import (
             host_xdg_map,
@@ -1374,7 +1362,6 @@ class TestPrimaryWorksetMigration:
         from kanibako.settings.settings_launch import build_launch_snapshot
         from kanibako.settings.settings_resolve import ResolveCtx
 
-        monkeypatch.setattr(paths_mod, "_legacy_primary_settings_warned", False)
         config = load_config(config_file)
         std = load_std_paths(config)
         legacy = std.data_path / "settings.yaml"
@@ -1385,8 +1372,6 @@ class TestPrimaryWorksetMigration:
         proj = resolve_project(
             std, config, project_dir=str(tmp_home / "migproj"), initialize=True,
         )
-        err = capsys.readouterr().err
-        assert "no longer read" in err
 
         ctx = ResolveCtx(
             agent_name=None,
@@ -1405,26 +1390,6 @@ class TestPrimaryWorksetMigration:
         box = snap.box if "box" in snap else KeyStore()
         assert "shell" not in box       # the legacy value must NOT resolve
         assert legacy.read_text() == legacy_text  # and the file is untouched
-
-    def test_legacy_warning_silent_once_spec_file_exists(
-        self, config_file, tmp_home, capsys, monkeypatch,
-    ):
-        """The warning falls silent once the spec file exists (migrated)."""
-        import kanibako.settings.paths as paths_mod
-        from kanibako.settings.paths import resolve_project
-
-        monkeypatch.setattr(paths_mod, "_legacy_primary_settings_warned", False)
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        (std.data_path / "settings.yaml").write_text("box:\n  shell: /bin/legacy\n")
-        assert self._set_default("box.shell=/bin/zsh") == 0  # creates spec file
-        capsys.readouterr()
-
-        (tmp_home / "migproj2").mkdir()
-        resolve_project(
-            std, config, project_dir=str(tmp_home / "migproj2"), initialize=True,
-        )
-        assert "no longer read" not in capsys.readouterr().err
 
 
 class TestWorksetCmdSystemFloor:
