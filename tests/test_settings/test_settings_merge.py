@@ -25,6 +25,8 @@ from __future__ import annotations
 
 import copy
 
+import pytest
+
 from kanibako.settings.kb_store import Bind, BindEntry
 from kanibako.settings.kb_store import __MISSING__
 from kanibako.settings.keystore import KeyStore
@@ -222,6 +224,12 @@ def test_deep_recursion_three_levels() -> None:
     assert _probe(snap, "agent", "bindings") is __MISSING__
 
 
+@pytest.mark.writes_undeclared(
+    "box.auth",
+    reason="the SCALAR at the sub-table root IS the subject — the test proves a "
+           "higher subtree shadows a lower non-subtree at the same name, so the "
+           "lower level has to be the shape the keyspace refuses.",
+)
 def test_higher_subtree_shadows_lower_nonsubtree() -> None:
     # A higher KeyStore subtree at a name shadows a lower scalar at the same name.
     high = KeyStore({"box": {"auth": KeyStore({"global_enabled": True})}})
@@ -332,6 +340,12 @@ def test_present_none_masks_unmasked() -> None:
     assert _probe(snap, "box", "masks", "/other") is True  # sibling survives
 
 
+@pytest.mark.writes_undeclared(
+    "box.bindings",
+    reason="the present-None AT THE CATEGORY ROOT is the subject — a reset is "
+           "spelled by putting a scalar where the arm root sits, so the write the "
+           "keyspace refuses is exactly what the test has to make.",
+)
 def test_present_none_category_root_omitted() -> None:
     # A whole-category-root reset (bindings = None) OMITs the whole category — never
     # a bare None where a tier-2 Mapping is contracted (§5 coupling). The lower
@@ -558,6 +572,11 @@ def test_bindmap_dotted_dest_is_one_key_not_a_path() -> None:
     assert set(dict.keys(arm)) == {"~/.claude/settings.json", "~/.claude"}
 
 
+@pytest.mark.writes_undeclared(
+    "box.bindings",
+    reason="the same category-root present-None as above, re-exercised against the "
+           "dest-keyed reshape; the scalar at the arm root is the subject here too.",
+)
 def test_bindmap_root_reset_still_omits_the_whole_arm() -> None:
     # The whole-category-root reset is unchanged by the reshape: ``bindings = None``
     # drops the category, dest-keyed entries and all.

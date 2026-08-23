@@ -958,3 +958,238 @@ def test_the_keyspace_floor_is_the_store_set_not_a_copy():
         # attribute and ``insert_segments`` is a KeyStore method, not a dict one — so
         # calling the offender a dict method is false for two members of this loop.
         assert "dict method" not in r, name
+
+
+# ---------------------------------------------------------------------------
+# THREE CLASSES: KEY vs declared NAMESPACE vs UNDECLARED (spec §0)
+# ---------------------------------------------------------------------------
+#
+# A path fails to be a key for two OPPOSITE reasons, and the store-path classifier
+# is the one consumer that must tell them apart. Before ``key_class`` existed it
+# could not, so it substituted DEPTH — rescuing a namespace at depth 1 and reporting
+# ``meta.box.agent`` / ``agent.<agent>`` as fabrications whenever their last child
+# was legitimately dropped.
+
+
+def _probe_store(tree: dict) -> "object":
+    """A :class:`KeyStore` shaped like *tree* — nested dicts become nested nodes."""
+    from kanibako.settings.keystore import KeyStore
+
+    store = KeyStore()
+    for key, value in tree.items():
+        store[key] = _probe_store(value) if isinstance(value, dict) else value
+    return store
+
+
+def _findings(tree: dict) -> set[str]:
+    """The dotted paths ``undeclared_store_paths`` reports for *tree*."""
+    from kanibako.settings.settings_keyspace import (
+        key_class,
+        render_store_path,
+        undeclared_store_paths,
+    )
+
+    def oracle(path: str):
+        return key_class(path, valid_agents=AGENTS)
+
+    return {
+        render_store_path(segments, judgement.key_len)
+        for segments, judgement in undeclared_store_paths(
+            _probe_store(tree), oracle=oracle,
+        )
+    }
+
+
+def _manifest_prefix_cases() -> list[tuple[str, str]]:
+    """Every ``(declared key, proper prefix)`` pair the ratified manifest implies.
+
+    ⚑ DERIVED FROM THE RULE, NEVER LISTED (P13). The rule is "a declared key hangs
+    under declared interiors", so the corpus is generated from the manifest's own key
+    rows: a shape change moves the corpus with it, where a hand-kept list of
+    namespace names would silently go stale the next time one moved.
+    ``<agent>`` is substituted; a row whose LEAF is a placeholder still contributes
+    its real prefixes.
+    """
+    cases: list[tuple[str, str]] = []
+    for row in manifest_doc()["keys"]:
+        key = str(row).replace("<agent>", "claude")
+        segments = key.split(".")
+        for cut in range(1, len(segments)):
+            prefix = ".".join(segments[:cut])
+            if "<" in prefix:
+                continue
+            cases.append((key, prefix))
+    return cases
+
+
+@pytest.mark.parametrize("key,prefix", _manifest_prefix_cases())
+def test_every_prefix_of_a_declared_key_is_a_NAMESPACE_or_a_KEY(key, prefix):
+    """No declared key hangs under something the keyspace calls a fabrication.
+
+    ⚑ THE ANTI-REGRESSION FOR THE DEPTH PROXY. Under the old ``len(segments) == 1``
+    rule this held for ``box`` and failed for ``box.auth``, ``agent.claude`` and
+    ``meta.box.agent`` — every interior below the first segment.
+
+    INVERT: make any interior branch return ``UNDECLARED`` again and the prefixes
+    beneath it red, naming the key that would have been refused.
+    """
+    from kanibako.settings.settings_keyspace import KeyClass, key_class
+
+    judged = key_class(prefix, valid_agents=AGENTS)
+    assert judged.cls in (KeyClass.NAMESPACE, KeyClass.KEY), (
+        f"{prefix!r} is a proper prefix of the declared key {key!r}, so it cannot be "
+        f"UNDECLARED — {judged.reason}"
+    )
+
+
+def test_the_prefix_corpus_is_not_vacuous():
+    """⚑ The pin above must red on its own EMPTINESS (P15).
+
+    A generator that silently produced nothing would make every run green while
+    checking no prefix at all. Assert it reaches past the first segment, which is the
+    depth the old rule could not see.
+    """
+    cases = _manifest_prefix_cases()
+    assert len(cases) > 100, len(cases)
+    assert any(prefix.count(".") >= 2 for _, prefix in cases), "no deep prefix"
+
+
+@pytest.mark.parametrize("path", [
+    "box", "system", "workset", "agent", "meta", "config", "pref",
+    "meta.box", "meta.agent", "meta.runtime", "meta.assembly", "meta.workset",
+    "meta.agent.claude", "meta.box.agent",
+    "agent.claude", "agent.default",
+    "box.bindings", "box.env", "box.secret_path",
+    "system.channels", "workset.channels",
+    "pref.box", "pref.agent.claude",
+    # The mirror spans TWO declared sources, so BOTH ends of it are interiors:
+    # the ``meta.agent`` tier that owns the capability, and the box-side mirror of
+    # it ([R141] as amended; spec :1081).
+    "box.auth", "system.auth", "workset.auth",
+    "meta.box.auth", "meta.agent.claude.auth", "meta.box.agent.auth",
+])
+def test_a_declared_interior_is_a_NAMESPACE(path):
+    """Each is a grouping declared keys hang under — spec :42 calls ``meta.*`` a
+    *"TOP-LEVEL, protected (read-only) namespace, grouped as meta.<scope>.*"*, and
+    the same is true one tier down.
+    """
+    from kanibako.settings.settings_keyspace import KeyClass, key_class
+
+    assert key_class(path, valid_agents=AGENTS).cls is KeyClass.NAMESPACE
+
+
+@pytest.mark.parametrize("path", [
+    "box.zippity", "box.zippity.deeper", "agent.claude.zippity",
+    "meta.box.zippity", "meta.zippity", "zippity",
+])
+def test_a_fabrication_is_UNDECLARED_not_a_NAMESPACE(path):
+    """The half that must NOT widen: a namespace class is for what the SPEC declares,
+    never for anything that merely happens to be a node."""
+    from kanibako.settings.settings_keyspace import KeyClass, key_class
+
+    assert key_class(path, valid_agents=AGENTS).cls is KeyClass.UNDECLARED
+
+
+def test_key_validity_still_refuses_every_non_key():
+    """⚑ THE SET BOUNDARIES SEE NO CHANGE. At a write site a NAMESPACE and a
+    fabrication are equally not-a-key, so both must still come back as a REASON —
+    ``config set box.auth=…`` may not start succeeding because ``box.auth`` gained a
+    class."""
+    from kanibako.settings.settings_keyspace import KeyClass, key_class
+
+    for path in ("box", "meta.box.agent", "agent.claude", "box.env", "box.zippity"):
+        assert key_class(path, valid_agents=AGENTS).cls is not KeyClass.KEY
+        assert key_validity(path, valid_agents=AGENTS) is not None, path
+
+
+# ---------------------------------------------------------------------------
+# The store classifier: a NODE at a namespace is structure, a SCALAR is not
+# ---------------------------------------------------------------------------
+
+def test_an_empty_declared_interior_is_not_a_finding():
+    """⚑ THE MEASURED REGRESSION. Both paths reached a real launch snapshot EMPTY —
+    ``meta.box.agent`` when §6b dropped its only child (a dangling ``@``-ref
+    referent), ``agent.claude`` when a ``--null`` pref suppressed its only entry —
+    and the classifier reported each as an undeclared key.
+
+    INVERT: restore the depth rule and both red, which is the state that would have
+    refused a legal box the day resolve enforcement was armed.
+    """
+    assert _findings({"meta": {"box": {"agent": {}}}}) == set()
+    assert _findings({"agent": {"claude": {}}}) == set()
+    assert _findings({"box": {}, "meta": {}, "agent": {}, "config": {}}) == set()
+
+
+def _rescued(*rows: tuple[tuple[str, ...], bool]) -> set[tuple[str, ...]]:
+    """The paths ``container_notes`` rescues, given ``(segments, is_node)`` rows.
+
+    ⚑ Judged and rescued WITHOUT building a KeyStore, deliberately. A negative case
+    has to name a fabrication, and writing one into a real store would trip the
+    pytest write census — whose ``writes_undeclared`` marker is a SESSION-global that
+    another file pins by exact equality. The classifier is pure; drive it directly.
+    """
+    from kanibako.settings.settings_keyspace import (
+        StoreNode,
+        classify_store_path,
+        container_notes,
+        key_class,
+    )
+
+    def oracle(path: str):
+        return key_class(path, valid_agents=AGENTS)
+
+    return set(container_notes({
+        segments: StoreNode(
+            classify_store_path(segments, oracle=oracle).verdict, is_node,
+        )
+        for segments, is_node in rows
+    }))
+
+
+def _verdict(*segments: str) -> str:
+    from kanibako.settings.settings_keyspace import classify_store_path, key_class
+
+    return classify_store_path(
+        segments, oracle=lambda p: key_class(p, valid_agents=AGENTS),
+    ).verdict
+
+
+def test_a_SCALAR_at_a_declared_interior_is_still_a_finding():
+    """The ``is_node`` guard, at every depth — this is what keeps the fix a
+    CORRECTNESS change rather than a widening.
+
+    A namespace is a NODE. A value sitting on one is an undeclared SHAPE, so the
+    rescue must decline it whether it sits at depth 1 (where the old rule could see
+    it) or deeper (where it could not) — and it must still FAIL, which is why the
+    surviving ``NAMESPACE`` verdict is a member of ``FINDING_VERDICTS``.
+    """
+    from kanibako.settings.settings_keyspace import FINDING_VERDICTS, Verdict
+
+    for path in (("box",), ("meta", "box", "agent"), ("agent", "claude")):
+        assert _verdict(*path) == Verdict.NAMESPACE, path
+        assert _rescued((path, True)) == {path}, f"a NODE at {path} is structure"
+        assert _rescued((path, False)) == set(), f"a SCALAR at {path} is not"
+        assert Verdict.NAMESPACE in FINDING_VERDICTS
+
+
+def test_a_fabricated_subtree_is_still_a_finding_empty_or_not():
+    """Nothing declared beneath it and no declaration of its own ⇒ not scaffolding."""
+    from kanibako.settings.settings_keyspace import Verdict
+
+    assert _verdict("box", "zippity") == Verdict.UNDECLARED
+    # ⚑ Not rescued EITHER WAY, and the second case says why the carriers rule cannot
+    # launder a fabrication: nothing under a fabricated node classifies DECLARED, so
+    # it never becomes a carrier however much is written beneath it.
+    assert _rescued((("box", "zippity"), True)) == set()
+    assert _verdict("box", "zippity", "image") == Verdict.UNDECLARED
+    assert _rescued(
+        (("box", "zippity"), True), (("box", "zippity", "image"), False),
+    ) == set()
+
+
+def test_a_populated_interior_carries_its_children_clean():
+    """The positive control: a real snapshot shape reports nothing."""
+    assert _findings({
+        "box": {"image": "x"},
+        "meta": {"box": {"path": "/p", "agent": {"model": "m"}}},
+    }) == set()
