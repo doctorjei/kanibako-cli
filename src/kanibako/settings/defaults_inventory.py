@@ -151,6 +151,14 @@ def source_groups() -> tuple[tuple[str, frozenset[str]], ...]:
     # place). Labelled apart from the ``agent.default`` arm above because they are two
     # rows a reader will otherwise wonder about, not because two producers exist.
     ("core_defaults.py (canon producer, per node)", frozenset({"agent.<agent>.canon"})),
+    # The layer-2 SOURCE key, split by ARM for the same reason the canon pair above
+    # is: ONE producer (``template_seed_defaults``) emits both, but the per-node arm
+    # is spelled one @-hop from the registry and its divergence is a BOARDED question
+    # (test_manifest_conformance's finding 1), while the default arm is a plain
+    # literal with a value oracle. Two labels because a reader would otherwise wonder,
+    # and because the arms sit in different conformance classes.
+    ("launch/templates.py (layer-2 seed, default arm)",
+     frozenset({"agent.default.template"})),
     ("launch/templates.py (layer-2 seed)", frozenset({"agent.<agent>.template"})),
   )
 

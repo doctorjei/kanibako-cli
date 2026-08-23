@@ -47,7 +47,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   default with its **key, value, scope and the file that declares it** (`core-defaults.yaml
   (agent_default:)`, `paths_defaults.py (system tier)`, `goose plugin defaults (env:)`, and so on).
   It is install-wide and static — it takes no box, resolves nothing, reads none of your settings,
-  and works before `kanibako setup` has ever run. Three sections: the 64 declared keys, the 33 bind
+  and works before `kanibako setup` has ever run. Three sections: the 65 declared keys, the 33 bind
   and copy entries (internal ones included and marked, since a box gets them too), and the
   environment variables, which are gathered from kanibako's own defaults file plus every agent
   plugin you have installed — the footer names the agent targets consulted and which of them

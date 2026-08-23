@@ -84,7 +84,7 @@ the whitelist entry that permits it.
 
 ## `template_seed_defaults` — the DEFAULT-category table
 
-Returns the layered box-seed DEFAULT-category table (spec §2a — THREE keys): three ordered layers
+Returns the layered box-seed DEFAULT-category table (spec §2a — THREE layers): three ordered layers
 into ONE enumerated destination, as ORDINARY keystore keys, ready to fold into the seed-time
 snapshot's `default_categories` (`commands.start._apply_init_seeds`) so they resolve and apply
 through the SAME single seeded-category route as every other seed — no bespoke template plumbing
@@ -100,6 +100,19 @@ the cascade (setting `workset.template` / `agent.<a>.template` reroutes that lay
   `workset.template` defaults to `@meta.workset.path/template` (Q3, was `<None>`). STANDALONE has
   no workset tier, so the layer is OMITTED. Each layer is SKIPPED when its source dir is absent —
   the seeded category's ordinary missing-source semantics.
+
+⚑ A FOURTH KEY, AND IT IS NOT A LAYER: `agent.default.template` =
+`@config.agents/default/template`, the §2d DEFAULT-TIER arm of the layer-2 source, emitted under
+the same `if agent_id` gate. It is INERT for delivery — the node arm above is emitted
+unconditionally, so the §2d fallback to it never fires (proved by mutation: poisoning this arm
+moves no seed, poisoning the node arm reds ten cases) — and it is here because the key is DECLARED,
+so some artefact must carry its value or `system defaults` prints a row it cannot source. It is
+emitted HERE rather than beside its sibling `agent.default.canon` (`core_defaults`) because this
+module owns `AGENT_TEMPLATE_STORE_REL`; `defaults_inventory.source_groups` labels it
+`launch/templates.py (layer-2 seed, default arm)`, split from the node arm's label because the node
+arm is the BOARDED finding-1 exemption and this one has a value oracle.
+⚑ It carries NO node-store probe, unlike `canon_default_categories`' `store_canon if
+node_store.is_dir() else …` node arm — that conditional is the canon key's own behaviour.
 
 The returned dict mixes the SEED tuple keys with their SOURCE scalar keys (`workset.template` /
 `agent.<a>.template`) so both land in the snapshot floor: the scalar resolves the `@`-ref, and a
