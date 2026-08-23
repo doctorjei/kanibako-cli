@@ -6,7 +6,7 @@ never a fabricated default, never a free-form passthrough."* The resolve half of
 that is not enforced: a ``box.yaml`` carrying ``box: {zippity: wibble}`` goes
 through ``assemble_levels`` and ``merge`` and resolves to ``'wibble'`` with no error
 and no warning, because ``settings_assemble`` never asks
-:func:`~kanibako.settings.settings_keyspace.key_validity` anything.
+:func:`~kanibako.settings.settings_keyspace.key_class` anything.
 
 ⚑⚑ THIS MODULE DOES NOT CLOSE THAT GAP, AND MUST NOT BE MADE TO.
 :func:`~kanibako.settings.settings_launch.build_launch_snapshot` sits behind
@@ -31,7 +31,7 @@ THREE PROPERTIES, and all three are load-bearing:
    and the file.
 
 THE ORACLE IS DELIBERATELY PERMISSIVE ABOUT AGENT NAMES. ``valid_agents`` is
-injected into ``key_validity`` for purity, and both production and the test
+injected into ``key_class`` for purity, and both production and the test
 environment invent agent names freely (personas, ``myagent``, ``testagent``). A
 narrow set would manufacture rows saying "'x' is not a valid agent", which is a
 finding about a DISCRIMINATOR, not about the keyspace. The discriminator is conceded;
@@ -48,7 +48,9 @@ from typing import Any, Collection, Final, Iterator
 
 from kanibako.settings.keystore import KeyStore
 from kanibako.settings.settings_keyspace import (
-  key_validity,
+  KeyClass,
+  KeyJudgement,
+  key_class,
   render_store_path,
   undeclared_store_paths,
 )
@@ -125,24 +127,33 @@ def plugin_agent_leaves() -> frozenset[str]:
   return _LEAVES
 
 
-def declared_keyspace_oracle(path: str) -> str | None:
-  """``None`` when *path* is a declared key, else the REASON it is not."""
-  return key_validity(
+def declared_keyspace_oracle(path: str) -> KeyJudgement:
+  """*path*'s ``KeyClass`` — KEY, declared NAMESPACE, or UNDECLARED.
+
+  ⚑ ALL THREE, never the key-or-not view: the classifier's only other way to tell a
+  declared interior from a fabrication is to count segments, and that reports every
+  namespace below depth 1 as a violation.
+  """
+  return key_class(
     path, valid_agents=ANY_AGENT, agent_leaves=plugin_agent_leaves(),
   )
 
 
 #: Verdict per distinct dotted prefix. The prefix walk asks about every proper prefix
 #: of every path, and prefixes repeat heavily across one store.
-_verdicts: dict[str, str | None] = {}
+_verdicts: dict[str, KeyJudgement] = {}
 
 
-def _ask(path: str) -> str | None:
+def _ask(path: str) -> KeyJudgement:
   if path not in _verdicts:
     try:
       _verdicts[path] = declared_keyspace_oracle(path)
     except Exception as exc:  # pragma: no cover - an oracle fault is not a failure
-      _verdicts[path] = f"<oracle raised {type(exc).__name__}: {exc}>"
+      # ⚑ UNDECLARED, not a silent pass: an instrument that cannot judge a path must
+      # SAY so in the row rather than conceding it.
+      _verdicts[path] = KeyJudgement(
+        KeyClass.UNDECLARED, f"<oracle raised {type(exc).__name__}: {exc}>",
+      )
       _note_error(exc)
   return _verdicts[path]
 

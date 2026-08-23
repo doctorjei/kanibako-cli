@@ -129,7 +129,10 @@ from typing import TYPE_CHECKING, Any, Callable, NamedTuple
 from kanibako.settings import keystore as _keystore_mod
 from kanibako.settings.keystore import KeyStore
 from kanibako.settings.settings_keyspace import (
+  FINDING_VERDICTS,
   Judgement,
+  KeyClass,
+  KeyJudgement,
   StoreNode,
   classify_store_path,
   container_notes,
@@ -190,10 +193,10 @@ _MAX_TAG_DEPTH = 64
 #: section).  What was built instead asserts code ← manifest without touching this
 #: oracle: the family half of key-set conformance in
 #: ``tests/test_settings/test_manifest_enforces.py``.
-_oracle: Callable[[str], str | None] = declared_keyspace_oracle
+_oracle: Callable[[str], KeyJudgement] = declared_keyspace_oracle
 
 
-def set_oracle(fn: Callable[[str], str | None]) -> None:
+def set_oracle(fn: Callable[[str], KeyJudgement]) -> None:
   """Substitute the declared-keyspace oracle (see THE ORACLE SEAM above)."""
   global _oracle
   _oracle = fn
@@ -232,13 +235,37 @@ _current_negative: frozenset[str] = frozenset()
 _declared_negative: set[str] = set()
 _hit_negative: set[str] = set()
 
-#: Drained rows: segments -> row.  EVERY distinct path written, judged or not — the
-#: clean ones are the census's denominator, and they are what tells the CONTAINER
-#: rule whether a flagged NODE carries anything real underneath it.
-_rows: dict[tuple[str, ...], dict[str, Any]] = {}
+class RowKey(NamedTuple):
+  """What makes a census row DISTINCT: the path AND THE SHAPE written to it.
+
+  ⚑⚑ THE SHAPE IS PART OF THE IDENTITY, and leaving it out is a measured defect.
+  Rows used to key on *segments* alone and fold ``is_node`` across every write with
+  an OR, so a path written BOTH as a scalar and as an empty node latched to NODE and
+  the scalar write became invisible: ``agent.default.bindings`` is written as a
+  scalar by ``test_scalar_at_bindings_root_errors`` and as an empty node by
+  ``test_present_but_empty_is_not_an_error``, the merged row was rescued to
+  ``CONTAINER``, and BOTH ``writes_undeclared`` markers went unexercised — a red no
+  arrangement of markers could clear.
+
+  ⚑ A SCALAR AND A NODE AT ONE PATH ARE TWO DIFFERENT FACTS. The keyspace answers
+  the same way for both (``classify`` reads the path, never the value), but the
+  CONTAINER rule turns on shape, so one of them can be structure while the other is a
+  violation. Judging them together can only lose the violation.
+
+  ⚑ TEST-ACCOUNTING ONLY. ``undeclared_store_paths`` judges one real store, where a
+  path holds a node or a scalar and never both, and needs none of this.
+  """
+  segments: tuple[str, ...]
+  is_node: bool
+
+
+#: Drained rows: :class:`RowKey` -> row.  EVERY distinct path/shape written, judged or
+#: not — the clean ones are the census's denominator, and they are what tells the
+#: CONTAINER rule whether a flagged NODE carries anything real underneath it.
+_rows: dict[RowKey, dict[str, Any]] = {}
 
 #: dotted prefix -> oracle verdict, so the oracle runs once per distinct prefix.
-_verdicts: dict[str, str | None] = {}
+_verdicts: dict[str, KeyJudgement] = {}
 
 #: Writes the collector itself failed on.  A census bug must not red the suite for
 #: the WRONG reason, so the failure is COUNTED and reported rather than raised.
@@ -342,13 +369,15 @@ def _patched_setitem(self: KeyStore[Any], key: str, value: Any) -> None:
       _collector_errors.append(f"{type(exc).__name__}: {exc}")
 
 
-def _ask(path: str) -> str | None:
+def _ask(path: str) -> KeyJudgement:
   """The oracle's verdict on *path*, memoised per distinct dotted prefix."""
   if path not in _verdicts:
     try:
       _verdicts[path] = _oracle(path)
     except Exception as exc:  # pragma: no cover - an oracle fault is not a failure
-      _verdicts[path] = f"<oracle raised {type(exc).__name__}: {exc}>"
+      _verdicts[path] = KeyJudgement(
+        KeyClass.UNDECLARED, f"<oracle raised {type(exc).__name__}: {exc}>",
+      )
   return _verdicts[path]
 
 
@@ -373,23 +402,23 @@ def drain() -> None:
   for box, key, sites, kind, count, negatives in _pending.values():
     segments = box[0] + (key,)
     declared = ".".join(segments) in negatives
-    row: dict[str, Any] | None = _rows.get(segments)
+    # ⚑ THE SHAPE IS PART OF THE KEY (:class:`RowKey`), so ``is_node`` is CONSTANT
+    # within a row and there is no longer an OR to fold it with. That fold is what
+    # let a node write mask a scalar write at the same path.
+    row_key = RowKey(segments, kind == "KeyStore")
+    row: dict[str, Any] | None = _rows.get(row_key)
     if row is not None:
       row["count"] += count
-      # ⚑ AND, never OR: one write of this path from outside a declaring test is
-      # enough to make the path a violation again.
+      # ⚑ AND, never OR: one write of this path/shape from outside a declaring test
+      # is enough to make it a violation again.
       row["negative"] = row["negative"] and declared
-      # ⚑ OR, never "first write wins": the CONTAINER rule turns on whether a path
-      # ever held a NODE. Latching on the first write would make the verdict depend
-      # on the ORDER two tests happened to run in.
-      row["is_node"] = row["is_node"] or kind == "KeyStore"
       continue
     judged = classify(segments)
-    _rows[segments] = {
+    _rows[row_key] = {
       "path": render(segments, judged.key_len), "segments": list(segments),
       "verdict": judged.verdict, "key": judged.key, "note": judged.note,
       "negative": declared, "count": count, "site": sites.inner,
-      "outer_site": sites.outer, "value_type": kind, "is_node": kind == "KeyStore",
+      "outer_site": sites.outer, "value_type": kind, "is_node": row_key.is_node,
     }
   _pending.clear()
 
@@ -401,14 +430,31 @@ def _apply_container_rule() -> None:
   :func:`~kanibako.settings.settings_keyspace.container_notes`'.  This hands it the
   WHOLE judged set — the rule is about relationships between paths, so a partial
   view gives a wrong answer — and writes the results back onto the rows.
+
+  ⚑⚑ BOTH OF ``container_notes``' RULES ARE ABOUT NODES, which is what makes the
+  path-keyed view below correct rather than a reintroduction of the OR it replaces.
+  The verdict is shape-independent (``classify`` reads the path, never the value) and
+  the CARRIERS set must be computed over the UNION of everything written, so the view
+  says "a NODE was written here" — but the rescue then lands on the NODE row ALONE.
+  A scalar row at the same path is never a container and keeps its own verdict, which
+  is the whole of the repair.
   """
-  rescued = container_notes({
-    segments: StoreNode(row["verdict"], row["is_node"])
-    for segments, row in _rows.items()
-  })
-  for segments, note in rescued.items():
-    _rows[segments]["verdict"] = Verdict.CONTAINER
-    _rows[segments]["note"] = note
+  node_view: dict[tuple[str, ...], StoreNode] = {}
+  for row_key, row in _rows.items():
+    seen = node_view.get(row_key.segments)
+    node_view[row_key.segments] = StoreNode(
+      row["verdict"], row_key.is_node or (seen is not None and seen.is_node),
+    )
+  for segments, note in container_notes(node_view).items():
+    # ⚑ ADDRESSING, NOT A SECOND GUARD. A rescue is a statement about the NODE
+    # written at that path, so the node row is where it lands. Indexed rather than
+    # ``.get(...) or skip``: ``container_notes`` rescues only what ``is_node`` marks,
+    # and ``node_view`` sets that flag only where a node row exists, so this key
+    # ALWAYS resolves. A silent skip here would quietly re-implement the ``is_node``
+    # test and leave the census green if the real one were ever removed.
+    row = _rows[RowKey(segments, True)]
+    row["verdict"] = Verdict.CONTAINER
+    row["note"] = note
 
 
 def _apply_negative_rule() -> None:
@@ -421,14 +467,17 @@ def _apply_negative_rule() -> None:
   out to be scaffolding, or a declared key, or one that some OTHER test also writes
   undeclared, changed nothing, and saying so is the whole point of the check.
   """
-  for segments, row in _rows.items():
-    if row["verdict"] == Verdict.UNDECLARED and row["negative"]:
+  for row_key, row in _rows.items():
+    if row["verdict"] in FINDING_VERDICTS and row["negative"]:
       row["verdict"] = Verdict.NEGATIVE
       row["note"] = (
         f"the test declared this write with @pytest.mark.{NEGATIVE_MARKER} — "
         f"{row['note']}"
       )
-      _hit_negative.add(".".join(segments))
+      # ⚑ A declaration is EXERCISED by the write that justifies it. Since rows now
+      # carry the shape, the SCALAR write can discharge a marker the node write at
+      # the same path cannot — which is the case that used to red as "stale".
+      _hit_negative.add(".".join(row_key.segments))
 
 
 def unused_negatives() -> list[str]:
@@ -507,8 +556,14 @@ def _ordered() -> list[dict[str, Any]]:
 
 
 def violations() -> list[dict[str, Any]]:
-  """Every row that FAILS the run: a key the code fabricated."""
-  return [r for r in _ordered() if r["verdict"] == Verdict.UNDECLARED]
+  """Every row that FAILS the run: a key the code fabricated.
+
+  ⚑ ``FINDING_VERDICTS``, never ``UNDECLARED`` alone. A ``NAMESPACE`` row that
+  survived the container rule is a SCALAR sitting where the keyspace declares an
+  interior — a real violation, and one a bare ``UNDECLARED`` filter would pass
+  silently by going GREEN.
+  """
+  return [r for r in _ordered() if r["verdict"] in FINDING_VERDICTS]
 
 
 def _write_census(ordered: list[dict[str, Any]]) -> None:
@@ -552,7 +607,7 @@ def pytest_terminal_summary(terminalreporter: Any) -> None:
   write = terminalreporter.write_line
   write("")
   write(
-    f"KeyStore census: {len(ordered)} distinct paths written -> {_census_file()}"
+    f"KeyStore census: {len(ordered)} distinct path/shape rows -> {_census_file()}"
   )
   write("  " + "  ".join(f"{k}={v}" for k, v in sorted(counts.items())))
   if _collector_errors:
@@ -574,7 +629,9 @@ def pytest_terminal_summary(terminalreporter: Any) -> None:
   write("")
   write(f"KEYSTORE ENFORCEMENT FAILURE — {len(bad)} undeclared key(s) written:")
   for row in bad:
-    write(f"  {row['count']:>6}x  {row['path']}")
+    # ⚑ The SHAPE is printed: two rows can now share a path, and without it the
+    # report would show the same line twice with no way to tell them apart.
+    write(f"  {row['count']:>6}x  {row['path']}  [{row['value_type']}]")
     write(f"           set at {row['site']}  (via {row['outer_site']})")
     write(f"           {row['note']}")
   write(
