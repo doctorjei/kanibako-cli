@@ -88,7 +88,8 @@ class TestCreateWorkset:
 
     def test_duplicate_name_raises_even_with_force(self, std, tmp_home):
         # force overrides the CROSS-KIND check only; same-kind workset
-        # uniqueness stays hard (spec §5 cross-kind name semantics).
+        # uniqueness stays hard (system-design-1.8.0.md § "Detection &
+        # import", "Cross-kind name semantics").
         create_workset("same-name", tmp_home / "worksets" / "set1", std)
 
         with pytest.raises(WorksetError, match="already in use"):
@@ -533,7 +534,8 @@ class TestUnifiedProjectRecord:
     """The unified per-project record (B7): identity + path ONLY, no `seeded`.
 
     Registry MEMBERSHIP is the seed signal — the per-project `seeded` field and
-    `set_project_seeded` are GONE (keyspace spec §0/§5).
+    `set_project_seeded` are GONE (keyspace spec §0 "Seed-time vs cascade";
+    system-design-1.8.0.md § "Detection & import", "One per-project record").
     """
 
     def test_record_has_no_seeded_field(self, std, tmp_home):

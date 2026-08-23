@@ -9,8 +9,9 @@ exist". **Claims found FALSE against the code and the spec were DROPPED rather t
 recorded under [Dropped as false](#dropped-as-false) so nobody re-derives them from git history.
 
 **Authority:** `~/canon/workbook/specs/settings-keyspace-1.8.0.md` — §1 (the two-layer path
-foundation and its XDG resolution rule), §2g (the `system.*` path tier), §5 (the standalone
-detection marker). ⚑ **The spec is the LIVE authority; read it first.**
+foundation and its XDG resolution rule) and §2g (the `system.*` path tier); the standalone
+detection marker is `system-design-1.8.0.md` § "Detection & import". ⚑ **The specs are the LIVE
+authority; read them first.**
 
 ## What the module is
 
@@ -181,15 +182,15 @@ warning's argument contract; see [the message catalogue](#the-message-catalogue)
 ```python
 STANDALONE_META_DIR = 'box_data'
 ```
-The STANDALONE box-store dir name — `@meta.box.path`, and half the §5 marker.
+The STANDALONE box-store dir name — `@meta.box.path`, and half the detection marker.
 
-Spec §5's standalone detection is an ANCESTOR WALK looking for two things together: *"an ancestor
-with a `box_data/` marker DIR (the LOCATOR) + the ROOT `settings.yaml` declaring standalone."* This
-constant is the first half. Renaming it breaks detection for every already-created standalone box on
-disk — a data-layout change, not a code change.
+Standalone detection (`system-design-1.8.0.md` § "Detection & import") is an ANCESTOR WALK looking
+for two things together: *"an ancestor with a `box_data/` marker DIR (the LOCATOR) +
+`workset.yaml` declaring standalone."* This constant is the first half. Renaming it breaks detection
+for every already-created standalone box on disk — a data-layout change, not a code change.
 
 ⚑ It is **not a bare marker dir** (spec §4): it is the real box store, holding `home/`, the
-by-default-ABSENT `settings.yaml`, and the helper-log JSONL. `@workset.boxes` resolves to it too, as
+by-default-ABSENT `box.yaml`, and the helper-log JSONL. `@workset.boxes` resolves to it too, as
 the empty leaf.
 
 ⚑ **This constant is the ONLY carrier of the literal**, and `project/import_reconcile.py` imports it

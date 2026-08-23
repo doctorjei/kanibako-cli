@@ -400,7 +400,8 @@ class TestLockGuard:
 
 class TestConvertMoveCrossKindName:
     """``box convert/move --default --name <X>`` enforces the SAME per-kind name
-    policy as ``create`` (spec §5 cross-kind name semantics, Jei 2026-07-08).
+    policy as ``create`` (``system-design-1.8.0.md`` § "Detection & import",
+    "Cross-kind name semantics"; Jei 2026-07-08).
 
     A ``--name`` that lands a box in primary/default mode and collides with a
     WORKSET name shadows that workset in bare-name resolution, so it REFUSES

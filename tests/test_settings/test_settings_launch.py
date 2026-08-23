@@ -2042,7 +2042,7 @@ def test_standalone_box_tier_is_the_LAST_cascade_level(tmp_path):
 
     root = tmp_path / "myproj"
     (root / STANDALONE_META_DIR).mkdir(parents=True)
-    # LITERAL positions (spec §5), independent of the code under test.
+    # LITERAL positions (spec §4 STANDALONE tree), independent of the code under test.
     literal_ws = root / "workset.yaml"
     literal_box = root / STANDALONE_META_DIR / "box.yaml"
     dump_doc(literal_ws, {"box": {"image": "root/img:1"}})
