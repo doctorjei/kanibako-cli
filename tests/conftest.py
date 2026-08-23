@@ -5,7 +5,9 @@ from __future__ import annotations
 pytest_plugins = [
     "tests.conftest_integration",
     "tests._timing",
-    # Inert unless KANI_KEYSTORE_CENSUS is set; see its module docstring.
+    # DEFAULT-ON keyspace enforcement: fails the session on an undeclared key.
+    # Set KANI_KEYSTORE_CENSUS=0 to opt OUT; see its module docstring for why
+    # you almost never should.
     "tests._keystore_census",
 ]
 

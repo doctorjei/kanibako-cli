@@ -24,12 +24,14 @@ sample.  The same anti-vacuity discipline as ``test_defaults_golden.py``: assert
 corpus is the size it was measured at, assert the targets exist, and say why anything
 is left out.
 
-⚑ WHAT IS **NOT** HERE (measured, deliberate): the FAMILY half of key-set conformance —
-the 9 category families and the ``categories.scopes`` ``agent.active`` spelling.  It is
-a larger job for three measured reasons (no single code object holds the families; the
-manifest's ``plugin_contributed.conformance_must_consult_descriptors`` makes the
-agent-leaf arm environment-dependent; ``agent.active`` is not a code spelling) and it
-waits on two decisions.  This file is the SCALAR half.
+⚑ WHAT IS **NOT** HERE, AND WHERE IT LIVES INSTEAD: the FAMILY half of key-set
+conformance — the 9 category families and the ``categories.scopes`` ``agent.active``
+spelling.  It is **CLOSED**, by ``tests/test_settings/test_manifest_enforces.py`` §4
+(``TestTheFamilySetIsTheDeliveryTable``, landed 2026-08-23), whose §4 header answers all
+three reasons this note used to give for the gap.  Note the ARROW differs: that file is
+MANIFEST → CODE, this one is CODE → REGISTRY, which is why the two are not merged.  This
+file is the SCALAR half, and its own ``BIND_CATEGORIES <= declared_categories`` case
+below stays — a names-only SUBSET over 6 of the 9, belonging to this file's arrow.
 
 🛑 DO NOT conformance-test the manifest's ``set:`` column against
 ``config_keys.KNOWN_CONFIG_KEYS``.  That set's own quarantine block says it is

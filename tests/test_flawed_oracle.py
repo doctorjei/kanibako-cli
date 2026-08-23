@@ -5,8 +5,15 @@
 This file holds BOTH the frozen snapshot of the RETIRED by-name category resolver
 (``flawed_oracle_categories``, formerly ``resolve_categories``) and the tests that
 drive it. They live together so the retired model occupies exactly ONE file — it is
-a drift tripwire, NOT the live route and NOT a correctness authority. Adjudicate any
-divergence against the SPEC, never against this file.
+NOT the live route and NOT a correctness authority. Adjudicate any divergence against
+the SPEC (``~/canon/workbook/specs/settings-keyspace-1.8.0.md``), never against this file.
+
+⚑ **THIS IS NOT CONFORMANCE COVERAGE FOR THE CATEGORY ROUTE.** It once was a drift
+tripwire; that comparison died at cutover 6-R3 (see ``flawed_oracle_categories``'s own
+note). What the cases below still exercise is the LIVE resolve machinery the frozen
+resolver calls — ``resolve_value`` / ``unpack_bind`` / ``expand_expr`` — driven through
+legacy category shapes. The live category route is covered by
+``tests/test_categories_live.py``, not here.
 
 Because it is frozen, it still speaks the retired UNDISCRIMINATED key shape
 ``agent.<category>.<name>``. **That form is not a key and does not exist anywhere in
@@ -48,10 +55,17 @@ from kanibako.settings.settings_resolve import (
 # ─── FORKED FROM live ``kanibako.settings.settings_categories`` — FROZEN COPIES ─────────
 # These were imported from live code until 2026-07-29. A "frozen baseline" that
 # imports live internals is NOT frozen: a live edit silently rewrites the thing the
-# live code is being checked against, and the tripwire stops tripping. They are
-# copies ON PURPOSE. If a live edit makes the equivalence test fail, that is the
-# tripwire WORKING — decide deliberately whether to update these copies, do not
-# reflexively re-import.
+# live code is being checked against. They are copies ON PURPOSE.
+#
+# 🛑 WHAT THEY ARE COMPARED TO TODAY: NOTHING LIVE. The equivalence test that once
+# read them died at cutover 6-R3. This table and ``_bind_options`` are now INPUTS to
+# the frozen resolver only, and the cases below assert its output against literals —
+# so the category→kind MAPPING and the mount-option rule are self-referential and
+# will NOT report drift from live ``settings_categories._DELIVERY``. (The three kind
+# constants are the exception: the live ``COPY`` / ``ENV`` / ``MOUNT`` are imported
+# and asserted against, so their VALUES stay pinned.) The live nine-family set is
+# asserted equal to ``_DELIVERY`` in ``tests/test_settings/test_manifest_enforces.py``.
+# Do not reflexively re-import these; do not read them as a live check either.
 _FROZEN_COPY = "COPY"
 _FROZEN_ENV = "ENV"
 _FROZEN_MOUNT = "MOUNT"
@@ -85,8 +99,7 @@ def _bind_options(category: str) -> str:
 # so every real agent key is ``agent.<agent>.…`` or ``agent.default.…``.
 #
 # They live HERE, and only here, because this module is a FROZEN snapshot of the
-# retired by-name resolver, kept as a drift tripwire. Reproducing the old model is
-# its entire job. The live patterns in ``kanibako.settings.settings_categories`` REFUSE this
+# retired by-name resolver. Reproducing the old model is its entire job. The live patterns in ``kanibako.settings.settings_categories`` REFUSE this
 # shape on purpose.
 #
 # If you are reading this because you want an ``agent.<category>`` key to work:
@@ -170,15 +183,36 @@ def flawed_oracle_categories(
     """Resolve the unified scope-category config into ordered entries.
 
     .. note::
-       **FROZEN LEGACY BASELINE — NO product caller.** This is the OLD by-NAME
-       LevelView-cascade resolver, RETIRED because it was WRONG in a number of
-       cases.  The launch + CLI paths now resolve categories through the KeyStore
-       snapshot pipeline (``build_launch_snapshot`` →
-       ``snapshot_category_entries`` → :func:`reconcile_categories`).  This
-       function is kept SOLELY as the drift TRIPWIRE that
-       ``tests/test_settings_launch_equivalence.py`` compares the snapshot path
-       against.  It is NOT a correctness authority: on a divergence the SPEC
-       (``reference/settings-keyspace-1.6.0-target.md``) adjudicates, never this
+       **FROZEN LEGACY BASELINE — NO product caller, and NO LONGER A TRIPWIRE.**
+       This is the OLD by-NAME LevelView-cascade resolver, RETIRED because it was
+       WRONG in a number of cases.  The launch + CLI paths resolve categories
+       through the collapse route instead; ``tests/test_categories_live.py`` is
+       what drives that route.
+
+       🕯️ It WAS kept as the drift tripwire that
+       ``tests/test_settings/test_settings_launch_equivalence.py`` compared the
+       snapshot path against.  **That comparison DIED AT CUTOVER 6-R3,
+       deliberately** — see that file's own opening note, which records why
+       ``test_snapshot_path_matches_legacy_path`` was RETIRED rather than
+       rebased.  Nothing compares this function to a live implementation today,
+       and ``flawed_oracle`` is named nowhere in that file but its history.
+
+       ⚑ SO WHAT IS STILL LOAD-BEARING HERE — and it is why the file stays.  The
+       cases below drive this resolver directly and assert LITERALS, so what they
+       actually exercise is the live machinery it calls:
+       :func:`~kanibako.settings.settings_resolve.resolve_value`,
+       :func:`~kanibako.settings.settings_resolve.unpack_bind` and
+       :func:`~kanibako.settings.settings_resolve.expand_expr` — ``@``-ref
+       expansion, the cascade pick, bind unpacking, the ``empty`` sentinel and
+       the SettingsError surface.  Those are LIVE.  **Read this file as coverage
+       of the resolve primitives, NOT as conformance coverage for the category
+       route** — the category shapes it feeds them are frozen legacy, and a
+       divergence between them and live category behaviour is EXPECTED, not a
+       finding.
+
+       It is NOT a correctness authority.  On any divergence the SPEC adjudicates
+       — ``~/canon/workbook/specs/settings-keyspace-1.8.0.md``, under "CLOSED
+       keyspace" and the ``agent.<agent>.<key>`` parametric family — never this
        code (the OLD path here could be the buggy side).
 
     *levels* are MOST-SPECIFIC-FIRST (``[box, workset, agent, system, ...]``).
