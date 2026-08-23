@@ -192,10 +192,9 @@ disk — a data-layout change, not a code change.
 by-default-ABSENT `settings.yaml`, and the helper-log JSONL. `@workset.boxes` resolves to it too, as
 the empty leaf.
 
-⚑ **A SECOND literal spelling exists**: `project/import_reconcile.py` declares
-`_STANDALONE_BOX_DIR = "box_data"` and documents itself as *"mirrors `paths.STANDALONE_META_DIR`"* —
-a hand-kept copy, not an import. Boarded, not fixed here; noted so a rename is known to be a
-two-site edit.
+⚑ **This constant is the ONLY carrier of the literal**, and `project/import_reconcile.py` imports it
+at module scope. That is what makes the rename above a single-site edit: the ancestor walk's marker
+and the J2 journal key are the same string by construction, not by two edits landing together.
 
 ## Status tokens
 

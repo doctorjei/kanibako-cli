@@ -9,7 +9,6 @@ Prose for these symbols lives in `llm-docs/kanibako/project/import_reconcile.py.
 
 ```
 logger = get_logger('import_reconcile')
-_STANDALONE_BOX_DIR = 'box_data'
 ```
 
 ## Functions

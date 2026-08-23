@@ -42,7 +42,7 @@ if TYPE_CHECKING:
 
 from kanibako.agent_ref import harness_of
 from kanibako.settings.agent_file import AgentFileLevel
-from kanibako.settings.config import AGENT_META_FILE
+from kanibako.settings.config import AGENT_META_FILE, WORKSET_META_FILE
 from kanibako.settings.kb_store import SCOPE_CONTAINMENT, Bind, BindEntry
 from kanibako.settings.kb_store import __MISSING__
 from kanibako.settings.keystore import KeyStore
@@ -239,8 +239,10 @@ def meta_runtime_floor(
     floor["meta.workset.path"] = "@meta.runtime.ws_root"
     # ⚑ The SPEC's own spelling (§2c), chaining through the anchor set one line up.
     # Spelling it off @meta.runtime.ws_root would resolve to the byte-identical value
-    # but DIVERGE from the spec, and the spec is authority.
-    floor["meta.workset.settings"] = "@meta.workset.path/workset.yaml"
+    # but DIVERGE from the spec, and the spec is authority.  ⚑ The FILENAME is drawn
+    # from its one carrier, exactly as the agent-tier formula below does — the spec
+    # fixes the @-anchor, not a hand-typed leaf.
+    floor["meta.workset.settings"] = f"@meta.workset.path/{WORKSET_META_FILE}"
     # The SINGLE SOURCE for the partition token; block B2 no longer sets it directly.
     floor["meta.workset.name"] = "@meta.runtime.ws_name"
     # The RO identity anchor surfacing the runtime mode (spec §2b; was the settable

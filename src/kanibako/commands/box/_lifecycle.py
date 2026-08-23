@@ -966,8 +966,8 @@ _STANDALONE_ROOT_ARTIFACTS = frozenset({
     STANDALONE_META_DIR,   # box_data/
     "workspace",            # the subdir we are populating
     "vault",                # vault/{ro,rw}
-    "workset.yaml",         # the workset meta (drift I — at the root)
-    "box.yaml",             # the box meta (drift I — at the root)
+    WORKSET_META_FILE,      # the workset meta (drift I — at the root)
+    BOX_META_FILE,          # the box meta (drift I — at the root)
     ".kanibako",            # legacy marker dir
     "kanibako",             # legacy marker dir
     ".kanibako.lock",       # lock file
@@ -1207,7 +1207,7 @@ def _to_workset(
         from kanibako.settings.config_io import load_doc
 
         registry_path = workset_registry.resolve_workset_registry_path(
-            target_ws.root, load_doc(target_ws.root / "workset.yaml"),
+            target_ws.root, load_doc(target_ws.root / WORKSET_META_FILE),
         )
         recorded_str = workset_registry.load_workset_boxes(registry_path).get(
             new_name

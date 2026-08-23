@@ -81,7 +81,7 @@ def _find_owning_box(
     """
     target = project_dir.resolve()
     for workset_name, root, mode in _enumerate_worksets(std):
-        settings: Any = load_doc(root / "workset.yaml")
+        settings: Any = load_doc(root / WORKSET_META_FILE)
         registry_path = workset_registry.resolve_workset_registry_path(
             root, settings
         )
@@ -123,7 +123,7 @@ def find_connected_external_box(
         std.registry, "worksets"
     ).items():
         root = Path(root_str)
-        settings: Any = load_doc(root / "workset.yaml")
+        settings: Any = load_doc(root / WORKSET_META_FILE)
         registry_path = workset_registry.resolve_workset_registry_path(
             root, settings
         )
