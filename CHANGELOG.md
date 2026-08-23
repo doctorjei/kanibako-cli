@@ -84,12 +84,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   declare them — so repointing `workset.boxes` or `workset.logs` moved the real directory while
   detection went on looking for `boxes/` and `logs/`, found nothing, and resolved the root as an
   ordinary primary-mode directory. Only `workset.workspaces` was resolved correctly. All three are
-  resolved now: the walk reads the root's `settings.yaml` when one is present and falls back to the
+  resolved now: the walk reads the root's `workset.yaml` when one is present and falls back to the
   declared defaults when it is not, so detection uses the layout you configured without ever
   depending on that file existing. `vault/` remains a fixed name, deliberately — no key names it;
   it is only the default parent of `workset.vault_ro` and `workset.vault_rw`.
   ⚑ Known gap, unchanged by this fix: a repointed `workset.boxes` root is now found, but box trees
   are still created under `<root>/boxes`. Repointing that key is not yet safe end-to-end.
+
+- **`workset create --no-vault` did nothing, and `--image` discarded the rest of the `box:` table.**
+  The optional write at the end of `workset create` put `enable_vault` at the top level of the
+  workset file, while the code that reads it looks at `box.enable_vault` — so the flag was recorded
+  where nothing would ever find it. It is now written where the reader looks. `--image` assigned the
+  whole `box:` table rather than setting `box.image` inside it, discarding any other `box.*` key
+  already in the file; it now merges.
+  ⚑ Known gap, unchanged by this fix: a box **inside a named workset** still will not see
+  `box.enable_vault` from its workset file — that resolver reads the box tier only, by design — so
+  `--no-vault` takes effect for a standalone project and not yet for a named workset member.
+  ⚑ Both values were also top-level keys in a workset-tier file that are not scope names, so they
+  were carried into the merged settings snapshot as undeclared keys.
+  ⚠️ **`workset create --standalone` currently has no effect.** Its only action was writing a
+  top-level `standalone: true` that nothing has ever read; that write is gone rather than replaced,
+  because no declared key expresses "this workset's boxes default to standalone mode" and inventing
+  one is not a thing a bug fix should do. The flag and its help text are unchanged for now.
 
 - **Disconnecting an in-tree workset box left its membership row behind, and the orphan then locked
   that workspace out of its own workset.** `workset disconnect` dropped the `boxes:` row only when
@@ -188,7 +204,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   wrote a copy of the name, a `created` stamp and a `projects` list into the workset root's own
   `settings.yaml` as `workset.meta`. That copy is gone. A workset root now holds at most two files:
   `registry.yaml`, carrying its box MEMBERSHIP as flat `name: path` rows under `boxes:` and nothing
-  else, and `settings.yaml`, carrying SETTINGS ONLY — sparse, optional, and not written at all by
+  else, and `workset.yaml`, carrying SETTINGS ONLY — sparse, optional, and not written at all by
   `workset create`. A brand-new workset root contains four directories and no files. `created` is
   dropped rather than relocated, so `workset info` no longer prints a `Created:` line; nothing
   records when a workset was made. Both retired spellings (`workset.meta`, and the `meta.workset`
@@ -233,22 +249,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   two sides are addressed differently on purpose: a parent is a real box with a canon, while a
   helper home has no canon binds at all, and giving one a `canon/` directory would make the launch
   materialize a canon skeleton it was never meant to have. See [MIGRATION.md](MIGRATION.md) §2.44.
-
-- **BREAKING: a named workset's identity moves out of `settings.yaml` and into `registry.yaml`.**
-  A workset's `name`, its `created` stamp and its project records used to sit inside the workset's
-  own settings table at the workset root, as `workset.meta`. They are now the `workset:` and
-  `projects:` sections of that root's `registry.yaml` — the file that already holds the workset's
-  box membership. Identity and membership are registry-borne at every level now: a workset's name
-  comes from the registry exactly as a box's does, and a settings file carries **settings only**.
-  A workset root does not need a `settings.yaml` at all; `kanibako workset create` no longer writes
-  one. **Move the table by hand in each named workset root**: `name` and `created` become a
-  `workset:` table in `registry.yaml`, each entry of the old `projects` list becomes one entry of a
-  name-keyed `projects:` map beside it, any existing `boxes:` section is left alone, and the
-  identity is deleted from `settings.yaml` (delete the file too if nothing else is in it). Until
-  you do, kanibako **refuses** every command that has to resolve that workset, with an error naming
-  both files and the exact move — rather than quietly failing to recognise the directory as a
-  workset root and resolving it as an ordinary primary-mode box. See
-  [MIGRATION.md](MIGRATION.md) §2.43.
 
 - **BREAKING: the flattened directives file has a new link format, and generated section headers
   are gone.** Kanibako assembles your directive tree into one file for the agent to read. That file
@@ -382,7 +382,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   another scope, an unexpanded `$NAME` in a value, and an `env:` or `secret_path:` table nested
   under a second `<agent>:` level.**
   A variable set in an agent's settings file — `kanibako agent set claude env.EDITOR=vim`, or an
-  `env:` block in `agents/<node>/settings.yaml` — was delivered to the box on a path of its own,
+  `env:` block in `agents/<node>/agent.yaml` — was delivered to the box on a path of its own,
   *underneath* every `<scope>.env.<VAR>` value instead of at the position an agent-scope key has in
   the cascade. Four things followed from that, none of them announced: a `system.env.EDITOR` beat
   it, though the agent scope outranks system; the plugin's own declared default beat it, so
@@ -830,7 +830,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   there is no settled surface yet for reading or writing *one facet* of such a key. The category
   read above works at the `box` and `workset` nouns when you name the subject
   (`kanibako box get <box> box.caches`); it is **not** available at the `system` noun, which still
-  refuses every category key with `Error: unknown config key`, and an `agents/<node>/settings.yaml`
+  refuses every category key with `Error: unknown config key`, and an `agents/<node>/agent.yaml`
   entry cannot be read back at all. A readable form is planned and its shape is not decided, so
   treat today's behaviour as provisional. See [MIGRATION.md](MIGRATION.md) §2.23 for how to verify
   an edit meanwhile.
