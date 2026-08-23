@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# Reject AI/co-author trailers in commit messages.
+#
+# CONVENTIONS.md "Commit Conventions" forbids `Co-Authored-By:` and
+# "Generated with" / AI trailers outright: author and committer are Jei
+# Blanchard, full stop. The rule existed as prose and failed 37 times in 40
+# commits, because agent harnesses instruct the opposite by default and the
+# default is what is in front of the writer at commit time. Prose lost; this
+# is the mechanical form (CONVENTIONS.md P15).
+#
+# Install (once per clone -- core.hooksPath is local config, not tracked):
+#     git config core.hooksPath .githooks
+set -euo pipefail
+
+msg_file="$1"
+
+# Strip comment lines: git has not cleaned them yet at commit-msg time, and a
+# commented-out trailer in the template is not a violation.
+body="$(grep -v '^#' "$msg_file" || true)"
+
+# Anchored to line start: a trailer occupies its own line. Prose that MENTIONS
+# one -- "no Co-Authored-By trailers" -- is not a violation, and an unanchored
+# match refuses the very commit that adds this hook.
+trailer_re='^[[:space:]]*(co-authored-by:|🤖|generated with)'
+
+if printf '%s' "$body" | grep -qiE "$trailer_re"; then
+  offending="$(printf '%s' "$body" | grep -inE "$trailer_re" || true)"
+  cat >&2 <<EOF
+COMMIT REFUSED: AI/co-author trailer in the commit message.
+
+$offending
+
+CONVENTIONS.md "Commit Conventions": no \`Co-Authored-By:\`, no "Generated
+with" / AI trailer. Author and committer are Jei Blanchard <jjb@eng.ufl.edu>.
+
+If your harness added this automatically, delete the line and commit again --
+the directive outranks the harness default. Do not bypass with --no-verify.
+EOF
+  exit 1
+fi
