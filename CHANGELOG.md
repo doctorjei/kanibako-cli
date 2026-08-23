@@ -85,6 +85,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Refusal messages for a settings key that is not a key no longer invent a trailing dot, and no
+  longer offer a list of leaves from the wrong tier.** Asking about a namespace — `box`, `meta.box`,
+  `agent.<name>` — answered as though you had named a key and mistyped it: `kanibako box config set
+  box=…` replied `'box.' is not a declared box key`, quoting a `box.` that you never wrote and that
+  cannot exist. Interior paths deeper than one segment were worse: `meta.box.agent.auth` was told
+  `'auth' is not a declared agent key` and handed the agent-scope leaf list, which does not contain
+  and cannot contain `auth`, so the message pointed at the wrong tier entirely. The validator now
+  distinguishes a namespace from an undeclared key rather than collapsing both into "not a key", and
+  says which it is: `'box' names the box scope, which is a namespace, not a key`. Seventy-four
+  messages changed. **No key changed status** — every path that was accepted is still accepted and
+  every path that was refused is still refused, verified by replaying both the old and new validator
+  over every declared key, every proper prefix, and a cross-product of category tokens, reserved
+  names and fabrications; only the wording of refusals moved.
+
 - **A `synced` copy declared under a mask now stops the launch with an error naming it, instead of
   being silently dropped.** The settings spec gives a `synced` copy exactly two refusals — a mask
   that is a **parent** of the destination, and a copy of a **directory** at a mask's own point — and
