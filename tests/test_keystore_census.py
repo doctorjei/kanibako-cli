@@ -55,6 +55,13 @@ def clean_census():
   saved_funnel = KeyStore.__setitem__
   census._rows.clear()
   census._pending.clear()
+  # ⚑ CLEARED, not merely saved — the same treatment the two globals above get, and
+  # the omission was load-bearing: ``unused_negatives()`` is a SESSION accumulator, so
+  # a ``writes_undeclared`` marker in ANY co-running file leaked into the tests that
+  # pin it and broke them by exact equality. Declarations are discharged at finalize,
+  # so a marker registered earlier in the session is legitimately still "unused" here.
+  census._declared_negative.clear()
+  census._hit_negative.clear()
   yield census
   KeyStore.__setitem__ = saved_funnel  # type: ignore[method-assign]
   census._rows.clear()

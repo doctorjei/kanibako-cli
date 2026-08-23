@@ -1120,6 +1120,32 @@ def test_an_empty_declared_interior_is_not_a_finding():
     assert _findings({"box": {}, "meta": {}, "agent": {}, "config": {}}) == set()
 
 
+@pytest.mark.writes_undeclared(
+    "box",
+    reason="the SCALAR at a scope root is the subject: this is the one case that "
+           "proves undeclared_store_paths still REPORTS, so it has to make the "
+           "write the keyspace refuses.",
+)
+def test_undeclared_store_paths_REPORTS_a_scalar_at_a_namespace():
+    """⚑⚑ THE LIVENESS PIN FOR :func:`undeclared_store_paths` ITSELF.
+
+    Every other driver of it asserts ``== set()``, so the whole harness passes
+    vacuously if the function stops reporting: narrow its filter from
+    ``FINDING_VERDICTS`` back to ``{Verdict.UNDECLARED}`` and scalar-at-a-namespace
+    detection vanishes while every one of those assertions stays GREEN. That line is
+    on the PRODUCTION path — ``settings_keyspace_probe.observe`` is the instrument
+    the resolve-seam blast radius gets measured with, so a silent narrowing there
+    would hand the arm decision a number nobody measured.
+
+    ⚑ Pinning ``Verdict.NAMESPACE in FINDING_VERDICTS`` is NOT this: that pins the
+    CONSTANT, and the defect is the function no longer consulting it.
+
+    MUTATION: narrow the filter at ``undeclared_store_paths`` and this reddens,
+    ``{'box'} != set()``.
+    """
+    assert _findings({"box": "a scalar"}) == {"box"}
+
+
 def _rescued(*rows: tuple[tuple[str, ...], bool]) -> set[tuple[str, ...]]:
     """The paths ``container_notes`` rescues, given ``(segments, is_node)`` rows.
 
