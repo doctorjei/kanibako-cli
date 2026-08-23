@@ -157,9 +157,6 @@ Documentation-only, deliberately: no code auto-migrates a user's store.
 `logger` is the module logger (`get_logger("paths")`); the XDG fallback warnings and the `_flag_*`
 advisories go through it (the advisories use `get_logger(__name__)`).
 
-`_legacy_primary_settings_warned` is the module-private one-shot latch behind
-`warn_legacy_primary_settings` — it fires at most once per process.
-
 ### `_XDG_SPEC_DEFAULTS`
 
 Spec defaults for the XDG base directories that HAVE one (freedesktop Base Directory spec).
@@ -188,18 +185,7 @@ The PRIMARY (default) workset's `ProjectGroup`.
 
 Spec §2c: the PRIMARY workset roots at `@config.primary_workset` — the workset-tier settings/env
 files derive from this root (F4). `local_shared_base` stays the data path (the legacy `shared/`
-location). Also emits the one-shot legacy-settings warning (see `warn_legacy_primary_settings`).
-
-```python
-def warn_legacy_primary_settings(std: StandardPaths) -> None
-```
-One-shot warning for a leftover legacy `<data>/settings.yaml`.
-
-1.6.0's launch cascade read the primary workset's settings from `@config.data/settings.yaml` (a
-location no shipped code ever wrote); the spec §2c file is `@config.primary_workset/settings.yaml`.
-Migration ruling (2026-07-02, option (c) drop + document): the legacy file is NOT read and NOT
-touched — warn while it exists without the spec file so a hand-migrated 1.6.0 install notices, then
-fall silent once the spec file exists.
+location).
 
 ```python
 def box_tree_materialized(proj: ProjectPaths) -> bool

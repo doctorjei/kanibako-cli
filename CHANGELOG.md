@@ -69,6 +69,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   give an existing box the same text, copy the two lines into its own canon by hand — kanibako
   will not re-seed over a live handbook, by design.
 
+### Removed
+
+- **The stderr notice about a leftover `<data>/settings.yaml` is gone; a legacy settings file is now
+  ignored in silence.** 1.7.0 moved the primary workset's settings to
+  `@config.primary_workset/workset.yaml` and stopped reading the old path, and printed a one-shot
+  warning naming the stale file whenever it sat there without the new one. Nothing else changes:
+  the file was already never read and never touched, and it still is — you simply no longer hear
+  about it. v1.8.0 renames every tier's settings file and opens no deprecation window for any of
+  them (see [MIGRATION.md](MIGRATION.md) §2.45, which lists each old path and its new name); a
+  notice that survived for one of those paths alone would be a rule kanibako applies to one legacy
+  file and refuses to the rest. If you have such a file, move the values you still want into
+  `@config.primary_workset/workset.yaml` or re-set them with `kanibako workset set default
+  <key>=<value>`.
+
 ### Fixed
 
 - **A `synced` copy declared under a mask now stops the launch with an error naming it, instead of

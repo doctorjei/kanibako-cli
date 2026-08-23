@@ -9,7 +9,6 @@ Prose for these symbols lives in `llm-docs/kanibako/settings/paths.py.md`.
 
 ```
 logger = get_logger('paths')
-_legacy_primary_settings_warned = False
 _runtime_fallback_cache: dict[tuple[str, str], Path] = {}
 ```
 
@@ -26,7 +25,6 @@ def workset_settings_path(group: _WorksetRooted) -> Path
 @overload
 def workset_settings_path(group: None) -> None
 def workset_settings_path(group: _WorksetRooted | None) -> Path | None
-def warn_legacy_primary_settings(std: StandardPaths) -> None
 def box_tree_materialized(proj: ProjectPaths) -> bool
 def box_metadata_dir(mode: BoxMode, metadata_path: Path) -> Path
 def box_workset_settings_paths(proj: ProjectPaths) -> tuple[Path, Path | None]

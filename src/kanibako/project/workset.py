@@ -563,9 +563,8 @@ def list_worksets(std: StandardPaths) -> dict[str, Path]:
 
 def default_workset(std: StandardPaths) -> Workset:
     """Synthesize the default workset — ⚑ VIRTUAL: no registry write, no identity on disk."""
-    from kanibako.settings.paths import load_primary_boxes, warn_legacy_primary_settings
+    from kanibako.settings.paths import load_primary_boxes
 
-    warn_legacy_primary_settings(std)
     projects_map = load_primary_boxes(std.primary_workset)
     projects = [
         WorksetProject(name=name, source_path=Path(path))

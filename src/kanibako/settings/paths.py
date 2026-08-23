@@ -135,27 +135,8 @@ def workset_settings_path(group: _WorksetRooted | None) -> Path | None:
 
 def _default_project_group(std: StandardPaths) -> ProjectGroup:
     """The PRIMARY (default) workset's :class:`ProjectGroup`, rooted at ``@config.primary_workset``."""
-    warn_legacy_primary_settings(std)
     return ProjectGroup(name="default", root=std.primary_workset,
                         is_default=True, local_shared_base=std.data_path)
-
-
-_legacy_primary_settings_warned = False
-
-def warn_legacy_primary_settings(std: StandardPaths) -> None:
-    """One-shot warning for a leftover legacy ``<data>/settings.yaml`` (never read, never touched)."""
-    global _legacy_primary_settings_warned
-    if _legacy_primary_settings_warned:
-        return
-    legacy = std.data_path / "settings.yaml"
-    spec_file = std.primary_workset / WORKSET_META_FILE
-    if legacy.is_file() and not spec_file.is_file():
-        import sys
-
-        _legacy_primary_settings_warned = True
-        print(f"warning: {legacy} is no longer read — 1.7.0 moved primary workset's settings " +
-              f"to {spec_file}. Move wanted values there or re-set them via 'kanibako workset " +
-              "set default <key>=<value>'.", file=sys.stderr)
 
 
 @dataclass

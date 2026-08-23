@@ -72,7 +72,7 @@ into function bodies**, and keeps a decoupled primitive workset view rather than
   in the tree is import-free — a facade would drag all five in eagerly and turn a real `ImportError`
   guard into silence.
 * The function-body `from kanibako.settings.paths import …` statements scattered through THIS file
-  (`load_primary_boxes`, `warn_legacy_primary_settings`, `_register_workset_box_membership`,
+  (`load_primary_boxes`, `_register_workset_box_membership`,
   `_unregister_workset_box_membership`) are **not** cycle-motivated: `settings.paths` is already
   fully loaded by the module-scope `StandardPaths` import above them. They are historical. Do not
   "fix" the module-scope import by pushing it into a function on the theory that it closes a cycle —
