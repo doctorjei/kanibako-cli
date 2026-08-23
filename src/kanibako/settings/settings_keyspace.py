@@ -1069,7 +1069,7 @@ KEYSPACE_ROOTS: Final[frozenset[str]] = (
 
 
 class Verdict:
-    """The class a store PATH lands in. Only ``UNDECLARED`` is a FINDING.
+    """The class a store PATH lands in. :data:`FINDING_VERDICTS` are the FINDINGS.
 
     A resolved store legitimately holds a great deal that is not a key, and a
     classifier that flagged all of it would report noise. ⚑⚑ EVERY CLASS IS

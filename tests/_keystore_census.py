@@ -26,7 +26,9 @@ WHAT COUNTS AS A VIOLATION -- the half of this that is adjudication, not mechani
 
 A resolved store legitimately holds a great deal that is NOT a key, and a collector
 that flagged all of it would report noise.  Every recorded write lands in exactly
-one class (:class:`Verdict`), and only ``UNDECLARED`` fails the run.  ⚑⚑ EVERY
+one class (:class:`Verdict`), and the two in ``FINDING_VERDICTS`` fail the run:
+``UNDECLARED``, and a ``NAMESPACE`` the container rescue declined -- a SCALAR
+sitting where the keyspace declares an interior.  ⚑⚑ EVERY
 CLASS IS STRUCTURAL -- decided by the path's SHAPE or by a constant the SPEC
 sanctions.  There is no list of blessed key names here, and none may be added: a
 name-keyed exemption is exactly the carve-out that hides the next finding behind it.
@@ -205,7 +207,7 @@ def set_oracle(fn: Callable[[str], KeyJudgement]) -> None:
 ### Classification ###
 
 class Verdict(_StructuralVerdict):
-  """The classes a recorded write can land in; only ``UNDECLARED`` fails a run.
+  """The classes a recorded write can land in; ``FINDING_VERDICTS`` fails a run.
 
   ⚑ The STRUCTURAL classes — every one decided by the path's shape or by a constant
   the SPEC sanctions — are inherited from
@@ -460,8 +462,9 @@ def _apply_container_rule() -> None:
 def _apply_negative_rule() -> None:
   """Re-class a violation EVERY write of which came from a test that declared it.
 
-  ⚑ Applied AFTER the container rule and only to what is still ``UNDECLARED``, so a
-  marker cannot dress up a row some other rule already explains.
+  ⚑ Applied AFTER the container rule and only to a row that is still a FINDING
+  (``FINDING_VERDICTS``, so a scalar-at-a-namespace counts), which is what stops a
+  marker dressing up a row some other rule already explains.
   ⚑⚑ A declaration counts as EXERCISED only where it actually changed a verdict —
   which is what :func:`unused_negatives` reads.  A marker naming a path that turns
   out to be scaffolding, or a declared key, or one that some OTHER test also writes
