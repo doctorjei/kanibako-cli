@@ -4351,3 +4351,173 @@ def test_a_file_of_declared_keys_resolves_unrefused(tmp_path):
     ))
     assert snap.box.image == "myrig"
     assert snap.box.shell == "zsh"
+
+
+# --------------------------------------------------------------------------- #
+# …and a RETIRED spelling keeps the message written FOR it                    #
+# --------------------------------------------------------------------------- #
+#
+# Every retired spelling is also an undeclared key, so the §0 refusal above fires
+# on it — and the seams that own the tailored retirement messages sit DOWNSTREAM of
+# the resolve. Arming §0 therefore took the documented message away from the user
+# and replaced it with the generic one, cure and all. The pins below hold BOTH
+# directions: a retired key gets its own message, an ordinary undeclared key gets
+# the generic one, so neither can silently re-preempt the other.
+
+from kanibako.settings.settings_assemble import (  # noqa: E402
+    RETIRED_FILE_KEYS as _RETIRED_FILE_KEYS,
+)
+
+#: The settings tier each retired spelling has to be WRITTEN in to survive the read.
+#: Keyed on the nested path's ROOT segment, because directional enforcement (spec §0)
+#: drops a CONTAINING scope's table: an ``agent:`` table in a box file never reaches
+#: the merge at all.
+_RETIRED_ROOT_TIER = {"box": "box_path", "agent": "system_path"}
+
+
+def _nested_yaml(parts: tuple[str, ...], value: str) -> str:
+    """A YAML document holding *value* at the nested *parts* path."""
+    lines = [f"{'  ' * depth}{part}:" for depth, part in enumerate(parts)]
+    lines[-1] += f" {value}"
+    return "\n".join(lines) + "\n"
+
+
+@pytest.mark.writes_undeclared(
+    "box.agent", "box.agent_name",
+    "agent.default.default_agent", "meta.box.agent.default_agent",
+    reason="each parametrisation writes the retired spelling it is named for; the "
+           "meta row follows the agent-tier one, because meta.box.agent.* re-tags "
+           "the ACTIVE agent's subtree after expand.",
+)
+@pytest.mark.parametrize(
+    "parts,key", sorted(_RETIRED_FILE_KEYS.items()), ids=lambda v: str(v),
+)
+def test_a_retired_spelling_still_gets_its_own_refusal(tmp_path, parts, key):
+    """⚑ THE SET IS DERIVED FROM ``RETIRED_FILE_KEYS``, NOT LISTED HERE (P13).
+
+    A fourth retirement row added to that table without a route to this seam reds
+    instead of shipping a key whose documented cure the user never sees.
+
+    ⚑ WHAT WOULD BE LOST: ``MIGRATION.md`` §2.1 spends ~40 lines on these three,
+    quoting the message verbatim and handing over a copy-pasteable cure, because a
+    guessed agent seeds a DIFFERENT agent's credentials into the box. The generic
+    §0 text says only that the key is not a key.
+    """
+    tier = _RETIRED_ROOT_TIER[parts[0]]
+    path = tmp_path / ("box.yaml" if tier == "box_path" else "settings.yaml")
+    path.write_text(_nested_yaml(parts, "claude"), encoding="utf-8")
+    with pytest.raises(_SettingsError) as e:
+        _snapshot(**{tier: path})
+    msg = str(e.value)
+    assert f"'{key}' is RETIRED" in msg, msg
+    # The cure, with the user's own value interpolated so it can be pasted.
+    assert "claude" in msg
+    assert str(path) in msg
+    # ⚑ AND NOT THE GENERIC ONE. Without this the test passes on a message that
+    # merely MENTIONS the key, which is what the defect already did.
+    assert "is not a settings key" not in msg
+
+
+@pytest.mark.writes_undeclared(
+    "box.agent", "box.agent.model",
+    reason="the retired MIRROR is a TABLE-valued box.agent, so the node and its "
+           "leaf are two undeclared writes.",
+)
+def test_the_retired_mirror_table_gets_the_mirror_story_not_the_generic_one(tmp_path):
+    """The OTHER spelling behind ``box.agent``, told apart by the value's SHAPE.
+
+    A TABLE is the settable agent MIRROR (R-4), retired for a different reason than
+    the agent-NAME scalar and cured at a different key — so telling one story for
+    both would send half of these users at the wrong key, and telling the generic
+    story sends all of them nowhere.
+    """
+    with pytest.raises(_SettingsError) as e:
+        _snapshot(_box_yaml(tmp_path, "box:\n  agent:\n    model: sonnet\n"))
+    msg = str(e.value)
+    assert "'box.agent' is RETIRED" in msg, msg
+    assert "SETTABLE mirror" in msg
+    assert "pref.agent.<agent>.model=sonnet" in msg
+    assert "is not a settings key" not in msg
+
+
+@pytest.mark.writes_undeclared(
+    "agent.claude.auto_approve", "meta.box.agent.auto_approve",
+    reason="the retired BEHAVIOR key is undeclared too, so the resolve writes it; "
+           "the mirror row follows it for the ACTIVE agent.",
+)
+def test_the_retired_behaviour_key_gets_its_own_refusal(tmp_path):
+    """⚑ THE SECOND INSTANCE OF THE DEFECT CLASS, not a second defect.
+
+    ``auto_approve`` (R-41 / M-22) is preempted exactly as the selection keys were,
+    and on a PERMISSION axis: the generic text does not say that the box would come
+    up at the DEFAULT tier, which is the whole reason that refusal was written.
+    Repairing one instance and walking past this one is how a class survives.
+    """
+    system_path = tmp_path / "settings.yaml"
+    system_path.write_text(
+        "agent:\n  claude:\n    auto_approve: true\n", encoding="utf-8",
+    )
+    with pytest.raises(_SettingsError) as e:
+        _snapshot(system_path=system_path)
+    msg = str(e.value)
+    assert "'auto_approve' is RETIRED" in msg, msg
+    # The user's own boolean, translated to the tier it means (R-41) — the part the
+    # generic message could never carry.
+    assert "means `access: full`" in msg
+    assert "is not a settings key" not in msg
+
+
+@pytest.mark.writes_undeclared(
+    "box.zippity",
+    reason="the control for the retirement pins above: an ordinary undeclared key "
+           "must keep the GENERIC message, so the fixture writes one.",
+)
+def test_an_ordinary_undeclared_key_keeps_the_generic_refusal(tmp_path):
+    """The other direction of the same pin, and it is not redundant.
+
+    Routing a retirement message through this seam could just as easily have made
+    the tailored text the answer for EVERYTHING — the retirement scan runs over the
+    whole file, not over the offending path. A key nothing has retired must still
+    read as what it is.
+    """
+    with pytest.raises(_SettingsError) as e:
+        _snapshot(_box_yaml(tmp_path, "box:\n  zippity: wibble\n"))
+    msg = str(e.value)
+    assert "is not a settings key" in msg
+    assert "RETIRED" not in msg
+
+
+@pytest.mark.writes_undeclared(
+    "box.zippity",
+    reason="the laziness under test is only observable on a resolve that refuses, "
+           "so the second half of the fixture writes an undeclared key.",
+)
+def test_the_retirement_scan_runs_only_on_a_resolve_that_refuses(
+    tmp_path, monkeypatch,
+):
+    """⚑ THE SCAN IS LAZY, and the happy path must not pay for it.
+
+    It re-reads the settings files, which is affordable only because it runs after
+    §0 has already decided to refuse. Wiring it ahead of that decision would put a
+    second read of every tier on every resolve behind ``load_merged_config`` — which
+    is nearly every kanibako command.
+    """
+    from kanibako.settings import settings_launch as _launch
+
+    seen: list[Path | None] = []
+    real = _launch.refuse_retired_keys
+
+    def recording(raw, **kwargs):
+        seen.append(kwargs.get("path"))
+        return real(raw, **kwargs)
+
+    # ⚑ The seam's OWN binding, not ``settings_assemble``'s: the import is at module
+    # scope, so patching the source module would leave this caller on the original.
+    monkeypatch.setattr(_launch, "refuse_retired_keys", recording)
+    box_path = _box_yaml(tmp_path, "box:\n  image: myrig\n")
+    _snapshot(box_path)
+    assert seen == [], "a conforming resolve re-read its settings files for nothing"
+    box_path.write_text("box:\n  zippity: wibble\n", encoding="utf-8")
+    with pytest.raises(_SettingsError):
+        _snapshot(box_path)
+    assert seen == [box_path], "the refusing resolve skipped the retirement table"

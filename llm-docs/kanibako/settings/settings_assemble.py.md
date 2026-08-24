@@ -168,17 +168,24 @@ nothing. They are §0's CLOSED-KEYSPACE rule — *an undeclared key is an ERROR 
 to spellings that were retired. The documentation-only ruling was made against failure modes of the
 "empty dir beside a populated one" shape; the failures here are categorically worse, and Jei's own
 M-7 ruling (hard error with a migration-grade message) is the precedent for loud in exactly this arc.
-Scope is deliberately TIGHT in both cases: these keys, nothing else. Neither is general resolve
-enforcement — that follow-on stays deferred, gated on `settings_keyspace.RETIRING_KEYS` emptying,
-and neither refusal repopulates that set.
+Scope is deliberately TIGHT in both cases: these keys, nothing else. Neither IS general resolve
+enforcement — that landed separately in `settings_launch._refuse_undeclared_snapshot` — but both are
+now CALLED BY it (`_refuse_retired_spelling`), because the general refusal reaches a retired spelling
+first and would otherwise replace the message written for it with the generic one. Each remains the
+ONE carrier of its own text; the resolve seam calls, never copies.
 
 **Selection and mirror keys (P7, spec §0 / §2b / §2g; migration M-4).** THREE retired spellings:
 `box.agent`, `box.agent_name` and `system.default_agent`. A box that SILENTLY RUNS A DIFFERENT AGENT
 — and seeds that agent's CREDENTIALS into itself — is the failure being prevented, so a silent drop
 is not an option. The CURE is LEVEL-DEPENDENT: a pref is legal only in a workset or box file (spec
 §2h), so telling a SYSTEM-file reader to `box set pref…` would prescribe a write that cannot fix
-their file. Called at the SELECTION seam (`settings.agent_select`), NOT inside `assemble_levels` — a
-raise there would also break `config set`, i.e. the very command the message prescribes as the cure.
+their file. Called at the SELECTION seam (`settings.agent_select`) and, since the §0 resolve refusal
+was armed, from `settings_launch._refuse_retired_spelling` — which in practice reaches it first,
+because `load_merged_config` resolves before selection runs. NOT inside `assemble_levels`: a raise
+there would break `config set`, i.e. the very command the message prescribes as the cure.
+⚑ The resolve seam passes no *box_name*, so its cure carries the `<box>` placeholder; the selection
+seam threads `proj.name`. That difference is visible to users and is documented in `MIGRATION.md`
+§2.1 rather than left for them to notice.
 
 ⚑⚑ **`box.agent` is TWO retirements sharing ONE file path, and the VALUE'S SHAPE is the
 discriminator.** Both are manifest `renamed` rows:
@@ -197,12 +204,24 @@ one.
 
 **Behavior key (R-41, spec §2d; migration M-22).** R-41 replaced the boolean `auto_approve` with the
 enum `access` (`restricted|editing|full`, default `full`). Under the closed keyspace the old spelling
-is UNDECLARED, and an undeclared stored key is SILENT at launch — which on a PERMISSION axis means a
-box deliberately configured `auto_approve: false` comes up at the new `full` default with nothing
-printed. That is a safety-class silent regression in the UNSAFE direction, so the stale key is
-REFUSED (RQ-2, ruled by Jei 2026-08-02) with a level-appropriate cure that NAMES `access` and QUOTES
-the user's own value through the ruled mapping (`true` → `full`, `false` → `restricted`). The seam is
-the LAUNCH's BEHAVIOR tier (`commands/start.py`), NOT `assemble_levels` — same reason as above.
+is UNDECLARED, and before the resolve refusal was armed an undeclared stored key was SILENT at launch
+— which on a PERMISSION axis meant a box deliberately configured `auto_approve: false` came up at the
+new `full` default with nothing printed. That is a safety-class silent regression in the UNSAFE
+direction, so the stale key is REFUSED (RQ-2, ruled by Jei 2026-08-02) with a level-appropriate cure
+that NAMES `access` and QUOTES the user's own value through the ruled mapping (`true` → `full`,
+`false` → `restricted`). ⚑ The generic refusal says none of that, which is why the resolve seam calls
+this one first. Two seams now: the LAUNCH's BEHAVIOR tier (`commands/start.py`) and
+`settings_launch._refuse_retired_spelling`; NOT `assemble_levels` — same reason as above.
+⚑ NOT EVERY SITE ARRIVES HERE, and none of the others is a silence. MEASURED: a
+`pref.agent.<node>.auto_approve` request is refused by `apply_prefs` — inside the assemble, so ahead
+of both seams — naming the key, the level and the file, but WITHOUT the tier translation. A
+`workset`/`box` file's `agent.<sub>.auto_approve` is dropped as an upward scope with a warning and
+never becomes a key at all. The `system` file's `agent.<sub>.auto_approve` is the site MEASURED at
+the resolve seam. The agent file's own `self.auto_approve` gets this same message from whichever of
+the two seams a launch reaches first — `start.py`'s tier names the real agent, the resolve seam the
+`<agent>` placeholder — and which that is was NOT measured, only the message. ⚑ `base` is not
+scanned at the resolve seam, so a stale key in `/etc/kanibako/settings_base.yaml` reaches the
+generic message.
 
 ## Values
 
@@ -372,7 +391,8 @@ The three keys are `RETIRED_FILE_KEYS`. The message names the KEY, the FILE, the
 CHANGED, and the one-line cure — it must never read as "your config is wrong" (the M-7 precedent).
 Never a warning and never a silent drop: a dropped `box.agent_name` would leave the box launching the
 system default with that agent's credentials, which is the exact failure this refusal exists to
-prevent. Called at the SELECTION seam (`settings.agent_select`), not inside `assemble_levels`.
+prevent. Called at the SELECTION seam (`settings.agent_select`) and from the §0 resolve refusal
+(`settings_launch._refuse_retired_spelling`), not inside `assemble_levels`.
 
 ⚑ **This is where the SHAPE discriminator is read:** a found `box.agent` holding a `dict` is the
 MIRROR, anything else is the agent NAME. That one test picks BOTH halves of the message — the story
@@ -419,8 +439,9 @@ that an undeclared stored key is silent, and silence on the permission axis reso
 default.
 
 *subject* is the agent node the cure should name (the file's own node for an agent file, the box's
-active agent otherwise); `None` renders the shape `<agent>`. Called at the LAUNCH's behavior tier,
-not inside `assemble_levels`.
+active agent otherwise); `None` renders the shape `<agent>`. Called at the LAUNCH's behavior tier and
+from the §0 resolve refusal (`settings_launch._refuse_retired_spelling`, which passes no *subject* —
+it runs before agent selection, so naming one would be a guess), not inside `assemble_levels`.
 
 ⚑ The value line only ever states a translation the RULING makes. An unparseable stored value gets
 the legal tiers instead of a guess.

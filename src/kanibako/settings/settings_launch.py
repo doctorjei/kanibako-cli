@@ -46,7 +46,13 @@ from kanibako.settings.config import AGENT_META_FILE, WORKSET_META_FILE
 from kanibako.settings.kb_store import SCOPE_CONTAINMENT, Bind, BindEntry
 from kanibako.settings.kb_store import __MISSING__
 from kanibako.settings.keystore import KeyStore
-from kanibako.settings.settings_assemble import assemble_levels, dotted_partial
+from kanibako.settings.config_io import load_doc
+from kanibako.settings.settings_assemble import (
+    assemble_levels,
+    dotted_partial,
+    refuse_retired_behavior_keys,
+    refuse_retired_keys,
+)
 from kanibako.settings.settings_categories import (
     _DELIVERY,
     SECRET_MOUNT_DIR,
@@ -666,8 +672,61 @@ _SETTINGS_FILE_NAMES: Final[str] = (
 )
 
 
+#: One cascade tier this seam can name: its LEVEL token and the file it read, or
+#: ``None`` when the resolve carries no such tier. The level is not decoration — it
+#: is what :func:`_refuse_retired_spelling` needs to pick a LEVEL-APPROPRIATE cure
+#: (spec §2h makes a ``pref`` legal in a workset or box file and nowhere else).
+_TierFile = tuple[str, Path | None]
+
+
+def _refuse_retired_spelling(files: Sequence[_TierFile]) -> None:
+    """RAISE the TAILORED refusal when one of *files* still carries a RETIRED spelling.
+
+    ⚑ WHY THIS IS HERE AT ALL. Every retired spelling is ALSO an undeclared key, so
+    §0's refusal below fires on it first — and the seams that own the tailored
+    messages sit DOWNSTREAM of the resolve (``agent_select.select_agent`` for the
+    agent-selection keys, ``start.py`` for the behaviour key). Left alone, a
+    ``box.yaml`` carrying ``box: {agent_name: claude}`` got the generic "not a
+    settings key" text and the documented cure — ``kanibako box set <box>
+    pref.system.agent=claude`` — never reached the user at all.
+
+    ⚑ NOT AN EXEMPTION, AND THE DIFFERENCE IS THE WHOLE POINT. The retired key is
+    still REFUSED; this only decides WHICH refusal the user reads. A name-keyed
+    escape from §0 is the carve-out class the closed keyspace exists to reject.
+
+    ⚑ ONE CARRIER. The retirement text and its cures live in ``settings_assemble``
+    and are CALLED from here — never copied. Which is also why this runs the
+    BEHAVIOUR refusal too: a system-file ``agent.<sub>.auto_approve`` was preempted
+    the same way by the same seam, and a fix that repaired one instance of a defect
+    class and walked past the other is how the class survives. (Its other sites are
+    answered elsewhere and none of them is a silence — the llm-doc has the table.)
+
+    ⚑ LAZILY — the caller invokes this only once §0 has already decided to refuse,
+    so the happy path pays nothing and the re-read of a handful of settings files
+    lands on a run that was going to stop anyway.
+
+    ⚑ NEITHER SUBJECT IS GUESSED. ``box_name`` and the agent ``subject`` are left to
+    their placeholders (``<box>`` / ``<agent>``): this seam runs BEFORE agent
+    selection, and the resolve that reaches it first is ``load_merged_config``'s
+    narrow one, which materializes no box identity. The placeholder is the
+    documented fallback for exactly this case and fails loudly if pasted unedited —
+    a wrong name would not.
+
+    ⚑ THE ``base`` TIER (``/etc/kanibako/settings_base.yaml``) IS NOT SCANNED HERE,
+    because ``build_launch_snapshot`` is not handed its path — ``assemble_levels``
+    defaults it internally. A machine-wide stale key therefore still reaches the
+    generic message. Stated, not hidden.
+    """
+    for level, path in files:
+        if path is None or not path.exists():
+            continue
+        raw = load_doc(path)
+        refuse_retired_keys(raw, level=level, path=path)
+        refuse_retired_behavior_keys(raw, level=level, path=path)
+
+
 def _refuse_undeclared_snapshot(
-    store: KeyStore, *, files: Sequence[Path | None],
+    store: KeyStore, *, files: Sequence[_TierFile],
 ) -> None:
     """RAISE naming EVERY resolved path the CLOSED keyspace does not declare (§0).
 
@@ -689,9 +748,15 @@ def _refuse_undeclared_snapshot(
     revision of this message named ``config unset`` / ``config show``, and there is
     no ``config`` noun at all (``config_keys._SCOPE_READ_COMMAND`` says so, off its
     own measurement). A cure a user cannot type is worse than no cure.
-    *files* are the settings files THIS resolve loaded, so the message points at
-    real paths instead of a generic list; which of them carried the entry is not
-    knowable here, because the snapshot is the MERGE of all of them.
+    *files* are the settings files THIS resolve loaded, MOST-SPECIFIC FIRST, each
+    paired with its cascade LEVEL, so the message points at real paths instead of a
+    generic list; which of them carried the entry is not knowable here, because the
+    snapshot is the MERGE of all of them.
+
+    ⚑ A RETIRED SPELLING GETS ITS OWN MESSAGE, NOT THIS ONE
+    (:func:`_refuse_retired_spelling`) — the generic text is the FALLBACK for an
+    entry nothing more specific is known about. It is consulted only once there is
+    something to refuse, so an ordinary key pays nothing for it.
 
     ⚑ NO BYPASS — no env var, no exemption list, no origin discriminator. A
     name-keyed escape is the carve-out the closed keyspace exists to refuse, and it
@@ -700,11 +765,12 @@ def _refuse_undeclared_snapshot(
     findings = undeclared_store_paths(store, oracle=keyspace_verdict)
     if not findings:
         return
+    _refuse_retired_spelling(files)
     named = "\n".join(
         f"  - {render_store_path(segments, judgement.key_len)}: {judgement.note}"
         for segments, judgement in findings
     )
-    loaded = [str(path) for path in files if path is not None]
+    loaded = [str(path) for _level, path in files if path is not None]
     where = (
         "\n".join(f"    - {path}" for path in loaded) if loaded
         else f"    - {_SETTINGS_FILE_NAMES}"
@@ -934,7 +1000,13 @@ def build_launch_snapshot(
     # it: the probe is REPORT-ONLY by its own module contract, and the two share the
     # ORACLE so the refusal arms exactly what was measured.
     _refuse_undeclared_snapshot(
-        expanded, files=(box_path, workset_path, agent_path, system_path),
+        expanded,
+        files=(
+            ("box", box_path),
+            ("workset", workset_path),
+            ("agent", agent_path),
+            ("system", system_path),
+        ),
     )
     return expanded
 

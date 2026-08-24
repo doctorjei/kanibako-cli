@@ -22,15 +22,16 @@ config notes are in the [CHANGELOG](CHANGELOG.md).
 > behavior note. Back up `~/.config/kanibako*` and your data directory, read the whole
 > guide, then work top-to-bottom.
 >
-> **What a leftover key actually does.** The closed-keyspace *resolve* enforcement is a
-> deferred follow-on, so in v1.8.0 **a retired or renamed key left stored in your files
-> is silently inert at launch** — it is carried into the merged snapshot verbatim,
-> resolves to nothing, and produces no error and no warning. The exceptions that DO error
-> loudly are exactly two keys — the agent-selection pair (§2.1) — plus the retired
-> `workset.meta` identity table (§2.43, which is not a cascade key at all: it is the marker
-> that makes a directory a workset root, and no longer lives in a settings file) and the
-> typed-at-the-CLI surfaces noted below. When
-> that enforcement lands, every "silently inert" row in §2.1 becomes a loud error.
+> **What a leftover key actually does.** It **stops the command** (§2.47). The settings keyspace
+> is closed, and in v1.8.0 that is enforced where the settings are *resolved* — so a retired or
+> renamed key left stored in your files is not carried through inert any more: every command that
+> builds the resolved view refuses and names the entry. A handful of keys carry a message written
+> for them instead of the generic one, with the cure spelled out (§2.1). The retired `workset.meta`
+> identity table refuses earlier still (§2.43, and it is not a cascade key at all: it is the marker
+> that makes a directory a workset root, and no longer lives in a settings file).
+> ⚑ **Two surfaces stay quiet, deliberately**: `box show` without `--effective` prints the stored
+> file and never resolves, and `box get` / `workset get` still answer `(not set)`. Neither is a
+> clean bill of health — §2.47 lists them.
 
 Paths below: `<data>` is your kanibako data directory (default `~/.local/share/kanibako`;
 whatever `config.data` points at if you moved it).
@@ -100,8 +101,8 @@ inside boxes. In order of likely impact:
 
 9. **Rename the `shared` category to `common` in your settings files** (e.g.
    `agent.claude.shared.plugins` → `agent.claude.common.plugins`). A leftover `shared` entry
-   is silently ignored (verified — see the header note), so the bind it declared simply
-   stops appearing (§2.1).
+   is not a key, so it stops the command rather than quietly dropping the bind it declared
+   (§2.1, §2.47).
 
 10. **Relative host paths in `workset share add` no longer resolve under the workset root at
     launch.** New adds are resolved and stored absolute at write time; **already-stored relative
@@ -238,6 +239,7 @@ inside boxes. In order of likely impact:
 | `system.base_template` | `system.template` (and it now names a template ROOT — §2.5) | **hard refusal** at the resolve (§2.47) |
 | `@meta.runtime.ws_settings` (reference target) | `@meta.workset.settings` | dangling reference |
 | settable `box.agent.*` mirror (a `box: agent:` **table**) | read-only `meta.box.agent.*` read-back; write via `pref.agent.<agent>.<key>` | **hard launch error** (below); write verbs refuse with the pref cure |
+| `auto_approve` (the boolean permission switch) | `access` — a tier, `restricted` \| `editing` \| `full` | **hard launch error** of its own, mapping your stored boolean to a tier (below) |
 
 **What a stale stored key actually does, per surface** (measured on the shipped code):
 
@@ -248,12 +250,13 @@ inside boxes. In order of likely impact:
 | `kanibako box get <box> <stale key>` | prints `(not set)`, rc 0 |
 | `kanibako box get <stale key>` (no box argument) | `Error: Unknown project or workset: '<key>'` — the unknown key is taken for a project name |
 | `kanibako system get`/`set <stale key>` (typed) | **loud** — `Error: unknown config key: …`, rc 1 |
-| `box.agent_name` / `box.agent` / `system.default_agent` stored anywhere in the cascade | **hard refusal** at launch and in `box info` (below) |
+| `box.agent_name` / `box.agent` / `system.default_agent` stored anywhere in the cascade | **hard refusal** at launch and in `box info`, carrying that key's OWN message and cure (below) |
+| `auto_approve` stored in the system settings file | **hard refusal**, likewise with its own message and cure (below) |
 
 **The retired agent-selection keys get a refusal of their own**, carrying the cure rather than
 just the name, because a guessed agent would silently run a *different* agent and seed that
-agent's credentials into your box. The launch error (verified verbatim on a scratch box;
-`box info` shows the same refusal in its `Agent:` row):
+agent's credentials into your box. The launch error (verified verbatim on a scratch box; `box
+info` and `box show --effective` stop with the same message instead of printing their report):
 
 ```
 'box.agent_name' is RETIRED and is still set in the box settings file <path> (as `box: agent_name:`).
@@ -266,16 +269,16 @@ into this box.
   then delete the `box: agent_name` entry from <path>.
 ```
 
-⚠ **In 1.8.0 you will often see the generic §2.47 refusal instead of this one.** The
-closed-keyspace refusal fires at the resolve, which is earlier than the agent-selection seam that
-produces the message above, so a stored `box.agent_name` usually stops the command by naming
-itself as an undeclared key. The cure is unchanged: set `pref.system.agent` as below, then delete
-the old entry.
+⚑ **This is the message you get, even though the check that stops you is §2.47's.** A retired key
+is an undeclared key too, so the closed-keyspace refusal reaches it first — and before printing
+its own text it asks whether anything more specific is known about the file, which for these keys
+there is. One consequence is visible in the cure: the refusal happens before kanibako has settled
+which box it is looking at, so the verb's subject is always a `<box>` / `<workset>` placeholder.
+Fill it in from the file path the message prints.
 
 The cure is level-appropriate, with your own stored value interpolated so it is copy-pasteable.
 It names the verb that matches the file it found the key in, and always carries that verb's
-subject — the box name when kanibako knows it, a `<box>` / `<workset>` placeholder to fill in
-when it does not:
+subject:
 
 - `box.agent_name` in a **box** settings file:
   `kanibako box set <box> pref.system.agent=<value>` (or
@@ -329,6 +332,37 @@ leaf your table holds, one request each:
 was doing nothing. That silence is what was fixed — the box refuses to launch instead. If you have
 been running such a box and were happy with it, you were running the agent's untweaked settings all
 along; the refusal tells you what you actually asked for and how to ask for it now.
+
+**`auto_approve` gets its own refusal too, and it is a permission key**, which is why it is not
+left to the generic §2.47 message: an undeclared key is not read at all, so a box you deliberately
+restricted would have come up at the default tier — permissive — with nothing said. The refusal
+translates your stored boolean rather than making you look the mapping up (`true` → `full`,
+`false` → `restricted`), and the cure matches the file it found the key in:
+
+```
+'auto_approve' is RETIRED and is still set in the system settings file <path> (as `agent.claude.auto_approve`).
+The RULE CHANGED in kanibako 1.8.0: the permission axis is no longer a boolean — it is the TIER key
+`access` (restricted | editing | full, default full). Refusing rather than running: an undeclared key
+is not read at all, so this box would come up at the DEFAULT tier and a deliberately restricted box
+would silently run permissive.
+  Your stored `auto_approve: True` means `access: full` (R-41's mapping: true → full, false → restricted).
+  Fix: kanibako system set access=full
+  then delete the `agent.claude.auto_approve` entry from <path>.
+```
+
+An unparseable stored value maps to no tier, and the message then names the three you may choose
+from rather than guessing one for you. Where the key sits decides the cure: `kanibako agent set
+<agent> access=<tier>` for the agent's own `agent.yaml`, `kanibako box set <box>
+pref.agent.<agent>.access=<tier>` from a workset or box file, `kanibako system set access=<tier>`
+otherwise.
+
+⚑ **Two spellings are answered differently, and one of them is not answered at all.** A request
+written as `pref.agent.<agent>.auto_approve` still stops the launch, but as a *request whose target
+is not a key* — it names the file and the level without translating your boolean, so set
+`pref.agent.<agent>.access` instead. An `agent: <name>: auto_approve:` table in a **workset or box**
+file is a different case: a file may not set a containing scope's keys (§0), so that table was never
+read at all. It is dropped with a warning rather than refused — if you put one there, it has been
+doing nothing since you wrote it, and deleting it changes nothing.
 
 Notes:
 - An **empty** leaf (`box: agent_name:` with no value) still counts as the retired key and is
@@ -584,7 +618,7 @@ To carry customizations forward, note the packaged payload also **restructured**
 Then remove `global/base_template/` when you have taken what you want.
 
 If you had *set* `system.base_template` explicitly: the key is gone (typed `set`/`get` refuse
-with `unknown config key`; a stored value is silently inert — verified). Re-point via the new
+with `unknown config key`, and a stored value stops the resolve — §2.47). Re-point via the new
 key, and note it names the **root** (`…/template`), not the box dir.
 
 Agent-level and workset-level template dirs restructure the same way: the seed sources are now
@@ -761,7 +795,8 @@ files from the box home under its config dir — e.g. `<box_dir>/home/.claude/�
 ### 2.11 Housekeeping: renames you almost certainly don't carry
 
 Each of these is expected to find nothing in real stores; listed so a grep of your own files
-is quick. All are silently inert if left (see the header note), except where noted.
+is quick. None of them is a key, so any one left behind stops the resolve (§2.47) rather than
+sitting there quietly — except where noted.
 
 - **Bare `agent.<category>.*` keys** (e.g. `agent.common.plugins` with no agent name): an
   internal launch-built form that should never have been persisted. If a settings file carries
@@ -2833,8 +2868,13 @@ warning, and nothing in `box show` that marked the line as dead. The settings ke
 was the third case, and it is one now too.
 
 **Which commands.** The ones that build the resolved snapshot. They all build the same one, so they
-all stop at the same place with the same message. Measured on the shipped code: `kanibako` /
-`start`, `shell`, `box info`, `box show --effective`, `system show --effective`, `rig list`.
+all stop at the same place. Measured on the shipped code: `kanibako` / `start`, `shell`, `box info`,
+`box show --effective`, `system show --effective`, `rig list`.
+
+⚑ **A key kanibako RETIRED stops you here too, but with its own message.** Before printing the
+generic text below, the refusal asks whether the file carries a spelling it has a cure for; §2.1
+lists the ones it does, and each carries its own reason and a command you can paste. The generic
+message is the answer for a key nothing more specific is known about.
 
 **And which do not, which is worth knowing when a command stays quiet.** `box show` WITHOUT
 `--effective` prints the stored file and never resolves, so it does not mention the bad line at
