@@ -210,7 +210,15 @@ inside boxes. In order of likely impact:
     workset made by v1.6.0 or v1.7.x, and there is no auto-migration. Primary-mode and standalone
     boxes have no such table and need nothing.
 
-23. Smaller items: standalone boxes' `box get` got truthful (§2.9); a box suppressed to
+23. **A key kanibako does not declare, sitting in any settings file, now stops the command
+    instead of resolving to nothing** (§2.47). It used to parse, merge, resolve — and then be read
+    by nobody, with no error and no warning. Every command that resolves settings refuses now,
+    naming every offending entry at once and the files the resolve loaded. The cure is a
+    hand-edit: `config unset` cannot remove what is not a key, and `config show` resolves through
+    the same seam, so it refuses too. Most often this is a typo or a key retired by this release,
+    so the fix is one deleted line.
+
+24. Smaller items: standalone boxes' `box get` got truthful (§2.9); a box suppressed to
     plain-shell keeps stale credential files in its home (§2.10); several never-released or
     expected-empty renames (§2.11); two `--null` CLI bugs fixed (§2.14); a customized helper
     entrypoint script moves to `~/canon/notebook/scripts/helper-init.sh` (§2.44).
@@ -2800,6 +2808,63 @@ unaffected — the collision exists only where a single positional could be eith
 than a scalar. It is refused by name now, saying so and pointing at the settings file, instead of
 being denied as a key that does not exist. Edit it in `<data>/global/settings.yaml` under
 `agent: default: transform_settings:`, or in an agent's own `agent.yaml` under `self:`.
+
+### 2.47 An undeclared key in a settings file now stops the command, and the cure is a hand-edit
+
+**Read this if you have ever hand-edited a settings file, or are carrying one forward from an
+earlier kanibako.**
+
+**What changed.** A key kanibako does not declare used to resolve. A `box.yaml` carrying
+
+```yaml
+box:
+  zippity: wibble
+```
+
+parsed, merged and came out of the cascade as `wibble` — and then nothing read it. No error, no
+warning, and nothing in `box show` that marked the line as dead. The settings keyspace is closed:
+*reading* an undeclared key and *setting* one were already errors that named the key, and
+*resolving* one was the third case that was not. It is now.
+
+**Which commands.** Every command that resolves your settings, which is most of them — `start`,
+`shell`, `box show`, `config show`, `code`, `image`, `setup`, `baseline`, `diagnose`. They all
+build the same snapshot, so they all stop at the same place, with the same message:
+
+```
+Error: the settings resolved for this box carry 2 entries that are not settings keys (spec §0 — the keyspace is CLOSED):
+  - box.zippity: 'zippity' is not a declared box key (declared: canon, enable_vault, image, images_store, share_images, shell, plus the §2a categories)
+  - workset.frob: 'frob' is not a declared workset key (declared: boxes, canon, channelroot, kuid, logs, registry, skip_kuid_check, template, vault_ro, vault_rw, workspaces, plus the §2a categories)
+kanibako will not resolve settings that carry them: an undeclared key has no meaning to give the box, and passing it through would be the very 'anything goes' behaviour the closed keyspace replaces.
+  Fix: remove them BY HAND from the settings file that carries them — this resolve loaded:
+    - /home/you/.local/share/kanibako/worksets/demo/boxes/scratch/box.yaml
+    - /home/you/.local/share/kanibako/worksets/demo/workset.yaml
+    - /home/you/.local/share/kanibako/global/settings.yaml
+  'kanibako config unset' cannot remove what is not a key, and 'kanibako config show' resolves through this same seam, so it refuses too.
+```
+
+It names **every** offending entry, not the first one — the cure is an edit, and a message that
+revealed one line per attempt would turn one edit into several launches.
+
+**What you need to do.** Open the file and delete the line. There is no CLI cure, and the message
+says so rather than letting you find out: `config unset` cannot remove what is not a key, and
+`config show` resolves through the same seam, so it refuses as well. The message lists the files
+this resolve loaded; which of them carried the entry it cannot say, because the snapshot is the
+merge of all of them. By tier those are a box's `box.yaml`, a workset's `workset.yaml`, an agent's
+`agent.yaml` and the system's `<data>/global/settings.yaml` (§2.45).
+
+**Two things this deliberately does not refuse.**
+
+- **A settings table for an agent that is not installed on this machine.** `agent: goose: …` in a
+  file on a claude-only install still resolves. That is a fact about which plugins you have here,
+  not about the keyspace, and a config you share between machines would otherwise refuse on one of
+  them. The *key* still has to be declared, so `agent: goose: zippity: …` refuses like any other.
+- **Data that lives inside a declared key** — a bind destination, a `caches`/`seeded`/`synced`
+  destination, a `masks` entry. Those are values addressed inside a key you already declared, not
+  key paths of their own, and they are not judged as key paths. Your own paths and filenames stay
+  yours.
+
+**Scope.** §2.38 closed this same passthrough for the per-agent `agent.yaml` file. This is the same
+rule applied to every settings file and to the whole resolved snapshot.
 
 ---
 

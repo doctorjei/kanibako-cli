@@ -1314,8 +1314,11 @@ def undeclared_store_paths(
     :class:`Judgement` alone cannot be rendered (an ``UNDECLARED`` one names no key,
     which is the point of it).
 
-    ⚑ It REPORTS. Refusing is the caller's decision, and — for the resolve seam —
-    one that is not ours to take: see ``settings_keyspace_probe``.
+    ⚑ It REPORTS; refusing is the CALLER's decision, and the two live callers take
+    it oppositely off one list. ``settings_keyspace_probe.observe`` writes a row and
+    returns; ``settings_launch._refuse_undeclared_snapshot`` raises naming every
+    entry. Keeping the verdict here and the policy there is what let the refusal be
+    measured before it was armed.
     """
     judged: dict[tuple[str, ...], Judgement] = {}
     nodes: dict[tuple[str, ...], StoreNode] = {}

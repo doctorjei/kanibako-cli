@@ -582,6 +582,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   "bindings.ro.~/.cache/uv"`), where it used to print "(not set)". See
   [MIGRATION.md](MIGRATION.md) §2.38.
 
+- **BREAKING: an undeclared key in ANY settings file now stops the command, naming every one it
+  found.** The keyspace is closed, and reading or setting a key kanibako does not declare was
+  already an error that named the key — but *resolving* one was not. A `box.yaml` carrying `box:
+  {zippity: wibble}` parsed, merged and came out of the cascade as `wibble`, after which nothing
+  read it: no error, no warning, and nothing in `box show` marking the line as dead. Every command
+  that resolves settings now refuses — `start`, `shell`, `box show`, `config show`, `code`,
+  `image`, `setup`, `baseline`, `diagnose` — with one message listing **every** offending entry,
+  the reason for each, and the settings files that resolve loaded (which of them carried the entry
+  is not knowable from the merged snapshot). **The cure is a hand-edit and the message says so**:
+  `config unset` cannot remove what is not a key, and `config show` resolves through the same seam,
+  so it refuses as well. Two deliberate non-refusals: a settings table for an agent that is not
+  installed on this machine still resolves (that is a fact about your plugins, not about the
+  keyspace — the *key* under it must still be declared), and data addressed inside a declared key
+  (a bind or copy destination, a `masks` entry) is a value rather than a key path of its own and is
+  not judged as one. §2.38 closed this same passthrough for the per-agent `agent.yaml` file; this is
+  the same rule over every settings file and the whole resolved snapshot. See
+  [MIGRATION.md](MIGRATION.md) §2.47.
+
 - **BREAKING: the four `KANIBAKO_*` variables kanibako sets for itself are ordinary settings now,
   and a twin of one at another scope will refuse the launch.** `KANIBAKO_NAME`, `KANIBAKO_AGENT`,
   `KANIBAKO_DIRECTIVE_SEED` and `KANIBAKO_AGENT_MARKERS_DIR` — the box's name, the agent it runs,
