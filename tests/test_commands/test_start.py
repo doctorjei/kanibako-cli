@@ -7186,6 +7186,28 @@ class TestRetiredBehaviorRefusalWiring:
             )
         assert "the system settings file" in str(exc.value)
 
+    def test_a_dropped_agent_table_in_the_BOX_file_produces_no_cure(self, tmp_path):
+        """🛑 A CURE FOR A NO-OP IS WORSE THAN NO CURE — at THIS seam too.
+
+        An ``agent:`` table in a ``box.yaml`` is dropped by directional
+        enforcement (spec §0) before the merge, so an ``auto_approve`` inside one
+        was doing nothing: the box does NOT come up at the default permission
+        tier, because the table never set a tier in the first place.  Refusing on
+        it hands the user a ``pref.agent.<agent>.access`` write to fix a line
+        whose deletion changes nothing.
+
+        ⚑ MEASURED, and this is why the pin is here and not only at the resolve
+        seam: a ``box.yaml`` holding just this table carries NOTHING undeclared
+        into the snapshot, so ``settings_launch``'s §0 refusal never fires and
+        never runs its own retirement scan.  This seam was the entire user
+        experience of that file.
+
+        ⚑ The narrowing cannot be over-read into "the box tier is unchecked":
+        ``test_a_stale_pref_request_in_the_BOX_file_refuses`` above is the other
+        direction, on the one table §2h DOES let a box file contribute.
+        """
+        self._call(tmp_path, box_doc={"agent": {"claude": {"auto_approve": True}}})
+
 
 class TestPersonaLiveTierWiring:
     """The persona store as a LIVE resolution input (never a persisted one).

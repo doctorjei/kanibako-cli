@@ -1666,13 +1666,28 @@ def _refuse_retired_behavior(
       ``agent set <agent> auto_approve=…`` used to write, so omitting it would
       leave the commonest stale spelling silent.
 
+    ⚑⚑ IT JUDGES WHAT THE CASCADE SEES, NOT WHAT THE FILE SAYS
+    (:func:`~kanibako.settings.settings_assemble.cascade_view`) — the same rule the
+    resolve seam's retirement scan follows, for the same reason. An ``agent:``
+    table in a ``box.yaml`` is dropped by directional enforcement and a ``pref:``
+    outside a workset or box file by §2h, so an ``auto_approve`` found in one was
+    doing NOTHING; refusing on it tells a user their box is about to come up at the
+    default permission tier when deleting the line changes nothing at all. Measured
+    before this: a ``box.yaml`` holding only ``agent: claude: auto_approve: true``
+    carried no undeclared key into the snapshot at all, so the resolve seam stayed
+    silent and this was the ENTIRE user experience of that file — not a redundant
+    second copy of a refusal, the only one.
+
     Raises :class:`~kanibako.settings.settings_resolve.SettingsError`; the
     launch stops.
     """
     from kanibako.settings.config import settings_base_path
     from kanibako.settings.config_io import load_doc
     from kanibako.settings.paths import box_workset_settings_paths
-    from kanibako.settings.settings_assemble import refuse_retired_behavior_keys
+    from kanibako.settings.settings_assemble import (
+        cascade_view,
+        refuse_retired_behavior_keys,
+    )
 
     box_path, workset_path = box_workset_settings_paths(proj)
     subject = agent_id if agent_id and agent_id != "general" else None
@@ -1685,8 +1700,8 @@ def _refuse_retired_behavior(
     ):
         if path is not None and Path(path).exists():
             refuse_retired_behavior_keys(
-                load_doc(Path(path)), level=level, path=Path(path),
-                subject=subject,
+                cascade_view(load_doc(Path(path)), level=level),
+                level=level, path=Path(path), subject=subject,
             )
 
 

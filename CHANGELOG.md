@@ -588,8 +588,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   boundaries) or `full` (today's bypass, and the default). A boolean could not express the middle
   tier, and the middle tier is the one most people actually want. **Your stored value maps
   `true` → `full` and `false` → `restricted`**, and kanibako will not do it for you: a settings
-  file still carrying `auto_approve` refuses the launch, quotes your own value, names the tier it
-  means and hands over the command to write it. Refusing rather than ignoring is deliberate and
+  file whose cascade contribution still carries `auto_approve` refuses the launch, quotes your own
+  value, names the tier it means and hands over the command to write it. What the file
+  *contributes* is the whole of it — an `agent:` table in a `box.yaml` is dropped before the merge
+  and set no tier to begin with, so it is dropped with a warning rather than refused, by the same
+  rule the closed-keyspace entry below states. Refusing rather than ignoring is deliberate and
   specific to this key — an undeclared key is not read at all, so a box you had deliberately set
   to `auto_approve: false` would otherwise have come up at the permissive default with nothing
   said. An unrecognised tier is rejected at both ends, `set` time and launch, and never treated as
@@ -627,7 +630,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   printing, the refusal asks whether the files it loaded carry a spelling it has a cure for — asking
   only of the tables those files actually contribute, so a table your settings drop before the merge
   (an `agent:` block in a `box.yaml`, a `pref:` block outside a workset or box file) cannot answer
-  for a key it has nothing to do with.
+  for a key it has nothing to do with. **Every seam that judges a settings file for a retired
+  spelling reads it that way** — the launch's permission check and the agent-selection check as
+  well as this one, so a dropped table produces no cure at any of the three.
   Without that, arming the resolve took the tailored refusals away from the users they were
   written for — the retired agent-selection keys (`box.agent_name`, the scalar and table spellings
   of `box.agent`, `system.default_agent`) and the retired permission boolean `auto_approve`, each

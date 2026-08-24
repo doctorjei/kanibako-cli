@@ -422,6 +422,41 @@ class TestSelectAgentSeam:
             select_agent(std=std, proj=proj, explicit_agent=None)
         assert "system.default_agent" in str(ei.value)
 
+    def test_a_dropped_agent_table_in_the_box_file_produces_no_cure(
+        self, tmp_path, monkeypatch,
+    ):
+        """🛑 A CURE FOR A NO-OP IS WORSE THAN NO CURE — at THIS seam too.
+
+        ``agent.default.default_agent`` is the one retired spelling this scan
+        reaches under a CONTAINING scope's table, so in a box file directional
+        enforcement (spec §0) had already dropped the whole ``agent:`` table before
+        the merge. Refusing on it sent the user to run ``system set
+        system.agent=…`` over a line whose deletion changes nothing, and the box
+        selected exactly the same agent either way.
+
+        ⚑ MEASURED, and it is why the pin lives here rather than only at the
+        resolve seam: a box file carrying just this table puts NOTHING undeclared
+        into the snapshot, so ``settings_launch``'s §0 refusal never fires and
+        never runs its own retirement scan. This was the only voice that file had.
+
+        ⚑ The narrowing cannot be over-read: the ``box.*`` spellings are not under
+        a containing scope's table, so ``test_retired_box_agent_name_in_a_file_is_
+        refused`` above still refuses at this very tier.
+        """
+        from kanibako.settings.agent_select import select_agent
+
+        monkeypatch.setattr(
+            "kanibako.targets.discover_targets", lambda *a, **k: {"claude": object},
+        )
+        std, proj = _std(tmp_path), _proj(tmp_path)
+        std.settings.write_text(yaml.safe_dump({"system": {"agent": "claude"}}))
+        box_file, _ws = _box_workset(proj)
+        box_file.write_text(
+            yaml.safe_dump({"agent": {"default": {"default_agent": "goose"}}}),
+        )
+        sel = select_agent(std=std, proj=proj, explicit_agent=None)
+        assert (sel.node, sel.source) == ("claude", "settings")
+
     def test_a_present_null_retired_key_is_also_refused(self, tmp_path, monkeypatch):
         """A ``box: {agent_name: null}`` leaf is STILL the retired key — a
         3-state-aware check must not conflate PRESENT-null with ABSENT (the same
