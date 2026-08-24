@@ -1219,3 +1219,127 @@ def test_a_populated_interior_carries_its_children_clean():
         "box": {"image": "x"},
         "meta": {"box": {"path": "/p", "agent": {"model": "m"}}},
     }) == set()
+
+
+# ---------------------------------------------------------------------------
+# The agent tier's leaf VOCABULARY, where the plugin is not here to declare it
+# ---------------------------------------------------------------------------
+#
+# ⚑ THE DISCRIMINATOR AND ITS LEAVES ARE A DEPENDENT PAIR. §0 makes agent specifics
+# PLUGIN-declared, so an agent whose plugin this machine cannot read has no leaf
+# vocabulary to be judged against — and judging one anyway refuses a key that IS
+# declared. The measured case: goose declares ``provider`` through
+# ``setting_descriptors()``, and ``agent.goose.provider`` was reported "not a
+# declared agent key" on a machine with only claude installed.
+
+_KNOWN = frozenset({"claude", "default"})
+
+
+def _class(key: str, **kwargs):
+    from kanibako.settings.settings_keyspace import key_class
+
+    return key_class(key, valid_agents=AGENTS, **kwargs)
+
+
+def test_an_unverifiable_agents_leaf_is_conceded_not_refused():
+    """The defect: a DECLARED plugin key refused for want of the plugin.
+
+    ``agent_leaves`` here holds only what a claude-only install could read, which is
+    exactly the position a shared config lands in.
+    """
+    from kanibako.settings.settings_keyspace import KeyClass
+
+    judged = _class(
+        "agent.goose.provider",
+        agent_leaves=frozenset(),
+        agents_with_known_leaves=_KNOWN,
+    )
+    assert judged.cls is KeyClass.KEY, judged.reason
+
+
+def test_a_verifiable_agents_undeclared_leaf_still_refuses():
+    """The other direction, and the one that keeps this a concession rather than a
+    hole: where the vocabulary IS known, §0 is enforced against it exactly as before.
+    """
+    from kanibako.settings.settings_keyspace import KeyClass
+
+    judged = _class(
+        "agent.claude.zippity",
+        agent_leaves=frozenset(),
+        agents_with_known_leaves=_KNOWN,
+    )
+    assert judged.cls is KeyClass.UNDECLARED
+    assert "not a declared agent key" in judged.reason
+
+
+def test_the_all_agents_tier_is_never_conceded():
+    """``agent.default`` is CORE's tier, not a plugin's.
+
+    Conceding it would unarm §0 across the whole ``agent.default.*`` subtree — which
+    is where the behavior floor lands — for every install that lacks any one plugin.
+    """
+    from kanibako.settings.settings_keyspace import KeyClass
+
+    assert _class(
+        "agent.default.zippity",
+        agent_leaves=frozenset(),
+        agents_with_known_leaves=frozenset(),
+    ).cls is KeyClass.UNDECLARED
+
+
+def test_conceding_a_vocabulary_concedes_nothing_else():
+    """SHAPE and the reserved-name floor survive the concession.
+
+    The vocabulary is the plugin's; the tail SHAPE (§2d: one leaf, or a §2a category)
+    and the store-collision floor (§0 reserved names) are core's, and neither becomes
+    unknowable because a plugin is absent.
+    """
+    from kanibako.settings.settings_keyspace import KeyClass
+
+    unknown = dict(agent_leaves=frozenset(), agents_with_known_leaves=frozenset())
+    # A multi-segment tail is not an agent key whoever declares the leaves.
+    assert _class("agent.goose.a.b", **unknown).cls is KeyClass.UNDECLARED
+    # A category token still routes to the category rules.
+    assert _class("agent.goose.bindings", **unknown).cls is KeyClass.NAMESPACE
+    # A reserved leaf name would shadow a real attribute on the resolved store.
+    assert _class("agent.goose.items", **unknown).cls is KeyClass.UNDECLARED
+    # And the tier itself is still a tier.
+    assert _class("agent.goose", **unknown).cls is KeyClass.NAMESPACE
+
+
+def test_the_meta_agent_tier_is_not_conceded():
+    """🛑 ``meta.agent.<agent>.*`` is core-declared, so there is nothing to concede.
+
+    No plugin extends that tier's leaves, so its vocabulary is knowable whether or
+    not the plugin is installed. Extending the concession to it would give away a
+    subtree for a reason that does not apply to it.
+    """
+    from kanibako.settings.settings_keyspace import KeyClass
+
+    assert _class(
+        "meta.agent.goose.zippity",
+        agent_leaves=frozenset(),
+        agents_with_known_leaves=frozenset(),
+    ).cls is KeyClass.UNDECLARED
+
+
+def test_the_resolve_oracle_answers_known_by_HARNESS(monkeypatch):
+    """The seam's supplier: a PERSONA is known iff its harness is.
+
+    A persona takes its leaves from the harness right of the separator, so asking
+    about the node name would concede every persona on the machine.
+    """
+    from kanibako.settings import settings_keyspace_probe as probe
+
+    monkeypatch.setattr(
+        probe, "_PLUGINS", probe._Plugins(frozenset(), frozenset({"claude"})),
+    )
+    known = probe.KNOWN_LEAF_AGENTS
+    assert "claude" in known
+    assert "navigator℘claude" in known
+    assert "goose" not in known
+    assert "navigator℘goose" not in known
+    # ⚑ ``default`` is deliberately NOT a member: ``key_class`` never asks about it,
+    # so the all-agents tier's standing stays the keyspace's rather than a
+    # supplier's, and every supplier gets it right by not having to know it.
+    assert "default" not in known

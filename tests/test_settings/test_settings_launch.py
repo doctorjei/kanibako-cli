@@ -4266,8 +4266,7 @@ def test_an_agent_tier_for_an_uninstalled_agent_is_not_refused(tmp_path):
     The oracle is the probe's, and it concedes the agent DISCRIMINATOR — so a
     settings file carrying keys for an agent that is not installed on THIS machine
     still resolves. Refusing on it would be a finding about a discriminator rather
-    than about the keyspace, and it was never measured. The LEAF still has to be
-    declared, which is what the next assertion pins.
+    than about the keyspace, and it was never measured.
     """
     system_path = tmp_path / "settings.yaml"
     system_path.write_text(
@@ -4277,19 +4276,70 @@ def test_an_agent_tier_for_an_uninstalled_agent_is_not_refused(tmp_path):
     assert dict.get(dict.get(snap, "agent"), "zzznotinstalled").model == "opus"
 
 
-@pytest.mark.writes_undeclared(
-    "agent.zzznotinstalled.zippity",
-    reason="the conceded DISCRIMINATOR must not concede the LEAF; the undeclared "
-           "leaf under an unknown agent is the write that proves it.",
-)
-def test_a_conceded_agent_discriminator_does_not_concede_the_leaf(tmp_path):
+def test_an_uninstalled_agents_leaf_is_conceded_with_its_name(tmp_path):
+    """⚑ THE DISCRIMINATOR AND ITS LEAVES ARE A DEPENDENT PAIR.
+
+    An agent's leaves are its PLUGIN's (§0), so where the plugin is absent there is
+    no vocabulary to judge against. Judging anyway refused ``agent.goose.provider``
+    — a real goose ``setting_descriptor`` leaf — on a claude-only machine, with a
+    reason naming the wrong cause. The keyspace rule is pinned in
+    ``test_settings_keyspace.py``; this pins that the SEAM inherits it.
+
+    🛑 THE STATED COST: the leaf need not be a real plugin key either, so
+    ``agent.<uninstalled>.zippity`` resolves here too. That is bounded by install
+    state, not by a name list — the same key under an INSTALLED agent still refuses,
+    which the next test pins.
+    """
     system_path = tmp_path / "settings.yaml"
     system_path.write_text(
         "agent:\n  zzznotinstalled:\n    zippity: wibble\n", encoding="utf-8",
     )
+    snap = _snapshot(system_path=system_path)
+    assert dict.get(dict.get(snap, "agent"), "zzznotinstalled").zippity == "wibble"
+
+
+@pytest.mark.writes_undeclared(
+    "agent.claude.zippity", "meta.box.agent.zippity",
+    reason="the concession must stop at agents this machine CAN see; the undeclared "
+           "leaf under an installed one is the write that proves it. The mirror row "
+           "follows: meta.box.agent.* re-tags the ACTIVE agent's tier, so an "
+           "undeclared leaf on it arrives twice.",
+)
+def test_an_installed_agents_undeclared_leaf_still_refuses(tmp_path):
+    """Where the vocabulary is knowable, §0 is enforced against it exactly as before.
+
+    Without this the fix above reads as "the agent tier is unenforced", which is a
+    different and much larger change than the one that was made.
+    """
+    system_path = tmp_path / "settings.yaml"
+    system_path.write_text(
+        "agent:\n  claude:\n    zippity: wibble\n", encoding="utf-8",
+    )
     with pytest.raises(_SettingsError) as e:
         _snapshot(system_path=system_path)
-    assert "agent.zzznotinstalled.zippity" in str(e.value)
+    assert "agent.claude.zippity" in str(e.value)
+
+
+@pytest.mark.writes_undeclared(
+    "agent.default.zippity", "meta.box.agent.zippity",
+    reason="the all-agents tier must stay judged though no plugin declares it; the "
+           "undeclared leaf on it is the write that proves it. The mirror row "
+           "follows: the default tier feeds the ACTIVE agent's meta.box.agent.* "
+           "read-back.",
+)
+def test_the_all_agents_tier_stays_judged(tmp_path):
+    """``agent.default`` is CORE's tier, so the concession never reaches it.
+
+    It is also where the behavior floor lands, so conceding it would unarm §0 over
+    the largest agent-scope subtree there is.
+    """
+    system_path = tmp_path / "settings.yaml"
+    system_path.write_text(
+        "agent:\n  default:\n    zippity: wibble\n", encoding="utf-8",
+    )
+    with pytest.raises(_SettingsError) as e:
+        _snapshot(system_path=system_path)
+    assert "agent.default.zippity" in str(e.value)
 
 
 def test_a_file_of_declared_keys_resolves_unrefused(tmp_path):

@@ -2854,10 +2854,17 @@ agent's `agent.yaml` and the system's `<data>/global/settings.yaml` (§2.45).
 
 **Two things this deliberately does not refuse.**
 
-- **A settings table for an agent that is not installed on this machine.** `agent: goose: …` in a
-  file on a claude-only install still resolves. That is a fact about which plugins you have here,
-  not about the keyspace, and a config you share between machines would otherwise refuse on one of
-  them. The *key* still has to be declared, so `agent: goose: zippity: …` refuses like any other.
+- **An agent whose plugin is not installed on this machine — the table AND the keys under it.**
+  `agent: goose: …` in a file on a claude-only install still resolves, and so does `agent: goose:
+  provider: …`. The two go together: an agent's keys are declared by its own plugin, so where the
+  plugin is absent there is no list to check a key against — and checking it anyway rejected
+  `provider`, a real goose key, for being missing from a list that could not contain it. A config
+  you share between machines would refuse on the machine that lacks the plugin, naming a cause that
+  was not the reason.
+  The cost of that is stated rather than hidden: `agent: goose: zippity: …` resolves there too. It
+  is bounded by what you have installed, not by a list of blessed names — install goose and
+  `zippity` refuses like any other undeclared key. `agent: default: …` is checked everywhere: the
+  all-agents tier is kanibako's own, not a plugin's.
 - **Data that lives inside a declared key** — a bind destination, a `caches`/`seeded`/`synced`
   destination, a `masks` entry. Those are values addressed inside a key you already declared, not
   key paths of their own, and they are not judged as key paths. Your own paths and filenames stay
