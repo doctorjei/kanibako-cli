@@ -216,7 +216,10 @@ this one first. Two seams now: the LAUNCH's BEHAVIOR tier (`commands/start.py`) 
 `pref.agent.<node>.auto_approve` request is refused by `apply_prefs` — inside the assemble, so ahead
 of both seams — naming the key, the level and the file, but WITHOUT the tier translation. A
 `workset`/`box` file's `agent.<sub>.auto_approve` is dropped as an upward scope with a warning and
-never becomes a key at all. The `system` file's `agent.<sub>.auto_approve` is the site MEASURED at
+never becomes a key at all — and since `cascade_view` the resolve seam agrees, so that table can no
+longer HIJACK another key's refusal to prescribe a cure for itself. The same now holds for a `pref:`
+table in a base / system / agent file, which §2h drops before the merge. The `system` file's
+`agent.<sub>.auto_approve` is the site MEASURED at
 the resolve seam. The agent file's own `self.auto_approve` gets this same message from whichever of
 the two seams a launch reaches first — `start.py`'s tier names the real agent, the resolve seam the
 `<agent>` placeholder — and which that is was NOT measured, only the message. ⚑ `base` is not
@@ -494,6 +497,40 @@ raise — an unknown/base scope takes an empty containing set.
 Returns a shallow copy with the dropped keys removed (never mutates *raw*); a non-dict *raw* is
 returned unchanged. Warning-only side effect, no raise — a mis-scoped key is a config mistake, not a
 hard error.
+
+```_upward_scope_drop_set(file_scope: str) -> frozenset[str]```
+The tokens rule 1-3 above remove, WITHOUT the warnings.
+
+Split out of `_drop_upward_scopes` so `cascade_view` can read the rule and stay silent. One
+declaration, two readers — the alternative was a `warn=` flag, which is a lever a caller can pull
+the wrong way (P3).
+
+```cascade_view(raw: Any, *, level: str) -> Any```
+The part of a raw settings doc at *level* that `assemble_levels` actually MERGES.
+
+⛑ **WHY IT EXISTS.** A consumer judging a settings file has to judge what the file CONTRIBUTES,
+not what it CONTAINS. `settings_launch._refuse_retired_spelling` read the raw doc and so prescribed
+a cure for an entry the cascade had already dropped — MEASURED: a `box.yaml` carrying both
+`agent: {claude: {auto_approve: true}}` and `box: {zippity: wibble}` refused by naming
+`auto_approve`, telling the user the box "would come up at the DEFAULT tier" and handing over a
+`pref.agent.<agent>.access` write, for a table directional enforcement had dropped one log line
+earlier — while `box.zippity` was never mentioned. `MIGRATION.md` §2.1 already said of that table
+*"deleting it changes nothing"*; the record was right and the code was wrong.
+
+⛑ **SILENT.** `assemble_levels` WARNS as it drops; a second caller re-emitting those warnings
+would double every one. The rules are READ from their one declaration each, never restated.
+
+**THREE filters, one per rule.**
+
+1. Directional enforcement — `_upward_scope_drop_set`.
+2. A `pref:` table survives only at a level §2h lets one be WRITTEN (`_PREF_LEGAL_LEVELS`),
+   matching `assemble_levels`'s three `refuse_pref_table` calls.
+3. The per-agent file contributes `ROOT_SECTIONS` (`self:`) and nothing else — `level_table` reads
+   that table alone — so a top-level `agent:` in an `agent.yaml` is not a DROP; it was never an
+   input.
+
+🛑 **TOP-LEVEL ONLY**, exactly like the filters it mirrors: which TABLES reach the merge, never
+which leaves inside one survive.
 
 ```_parse_node(value, *, in_binds: bool, dest_keyed: bool = False, at_bindings: bool = False) -> Any```
 Recursively coerce a raw settings node into the `StoreValue` space.

@@ -611,7 +611,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   passthrough for the per-agent `agent.yaml` file; this is the same rule over every settings file
   and the whole resolved snapshot. See [MIGRATION.md](MIGRATION.md) §2.47.
   **A key kanibako RETIRED still gets the message written for it**, not this generic one: before
-  printing, the refusal asks whether the files it loaded carry a spelling it has a cure for.
+  printing, the refusal asks whether the files it loaded carry a spelling it has a cure for — asking
+  only of the tables those files actually contribute, so a table your settings drop before the merge
+  (an `agent:` block in a `box.yaml`, a `pref:` block outside a workset or box file) cannot answer
+  for a key it has nothing to do with.
   Without that, arming the resolve took the tailored refusals away from the users they were
   written for — the retired agent-selection keys (`box.agent_name`, the scalar and table spellings
   of `box.agent`, `system.default_agent`) and the retired permission boolean `auto_approve`, each

@@ -272,7 +272,10 @@ into this box.
 ⚑ **This is the message you get, even though the check that stops you is §2.47's.** A retired key
 is an undeclared key too, so the closed-keyspace refusal reaches it first — and before printing
 its own text it asks whether anything more specific is known about the file, which for these keys
-there is. One consequence is visible in the cure: the refusal happens before kanibako has settled
+there is. It asks only of the tables the file actually contributes: a block your settings drop
+before the merge (§0 directional enforcement, or a `pref:` outside a workset or box file) never
+supplies the message, because a cure for a line that was already doing nothing would send you to
+fix the wrong thing. One consequence is visible in the cure: the refusal happens before kanibako has settled
 which box it is looking at, so the verb's subject is always a `<box>` / `<workset>` placeholder.
 Fill it in from the file path the message prints.
 

@@ -4521,3 +4521,77 @@ def test_the_retirement_scan_runs_only_on_a_resolve_that_refuses(
     with pytest.raises(_SettingsError):
         _snapshot(box_path)
     assert seen == [box_path], "the refusing resolve skipped the retirement table"
+
+
+# --------------------------------------------------------------------------- #
+# …and it judges what the CASCADE sees, not what the FILE says                #
+# --------------------------------------------------------------------------- #
+#
+# A settings file may legally CONTAIN a table the cascade never reads. Scanning the
+# raw doc let the retirement message speak for one of those — prescribing a cure for
+# an entry that was doing nothing, and speaking INSTEAD of the entry that actually
+# stopped the resolve, which then went unnamed.
+
+#: The two ways a top-level table is legally dropped before the merge, each written
+#: so it carries a RETIRED spelling the scan has a cure for. Fields: the tier the
+#: file belongs to, its filename, the text, and the rule that drops it.
+_DROPPED_TABLE_CASES = [
+    pytest.param(
+        "box_path", "box.yaml",
+        "agent:\n  claude:\n    auto_approve: true\nbox:\n  zippity: wibble\n",
+        id="upward-scope-agent-table-in-a-box-file",
+    ),
+    pytest.param(
+        "system_path", "settings.yaml",
+        "pref:\n  agent:\n    claude:\n      auto_approve: true\n"
+        "system:\n  zippity: wibble\n",
+        id="pref-table-in-a-system-file",
+    ),
+]
+
+
+@pytest.mark.writes_undeclared(
+    "box.zippity", "system.zippity",
+    reason="the scan only runs once §0 has decided to refuse, so each case needs a "
+           "real undeclared key beside the dropped table it is about.",
+)
+@pytest.mark.parametrize("tier,filename,text", _DROPPED_TABLE_CASES)
+def test_a_dropped_table_cannot_produce_a_cure(tmp_path, tier, filename, text):
+    """🛑 A CURE FOR A NO-OP IS WORSE THAN NO CURE.
+
+    MEASURED before the fix: a ``box.yaml`` carrying both an ``agent:`` table and
+    ``box.zippity`` refused by naming ``auto_approve``, telling the user their box
+    "would come up at the DEFAULT tier" and handing over a ``pref.agent.<agent>``
+    write — for a table directional enforcement had dropped one log line earlier,
+    with ``box.zippity`` never mentioned at all. ``MIGRATION.md`` §2.1 says of that
+    table *"deleting it changes nothing"*, and it is right; the code was wrong.
+    """
+    path = tmp_path / filename
+    path.write_text(text, encoding="utf-8")
+    with pytest.raises(_SettingsError) as e:
+        _snapshot(**{tier: path})
+    msg = str(e.value)
+    assert "RETIRED" not in msg, msg
+    assert "zippity" in msg
+
+
+@pytest.mark.writes_undeclared(
+    "agent.claude.auto_approve", "meta.box.agent.auto_approve",
+    reason="the control: the SAME retired spelling in a table the cascade DOES "
+           "read, which the resolve then writes into the snapshot.",
+)
+def test_a_table_the_cascade_reads_still_produces_its_cure(tmp_path):
+    """The other direction, and it is what keeps the fix a NARROWING.
+
+    The same ``agent: claude: auto_approve:`` table, one tier up, IS merged — a
+    system file may set the agent scope — so the tailored refusal is still exactly
+    what the user needs. Silencing the scan wholesale would pass the test above and
+    lose everything ``633fc6d`` restored.
+    """
+    path = tmp_path / "settings.yaml"
+    path.write_text(
+        "agent:\n  claude:\n    auto_approve: true\n", encoding="utf-8",
+    )
+    with pytest.raises(_SettingsError) as e:
+        _snapshot(system_path=path)
+    assert "'auto_approve' is RETIRED" in str(e.value)

@@ -819,6 +819,18 @@ next finding behind itself.
 after §0 has decided to refuse. Wired ahead of that decision it would put a second read of every
 tier on every resolve behind `load_merged_config` — nearly every kanibako command.
 
+⚑⚑ **IT JUDGES WHAT THE CASCADE SEES** — each file goes through `settings_assemble.cascade_view`
+before either table is consulted. A settings file may legally CONTAIN a table the cascade never
+reads, and reading the raw doc let a retired spelling in one of those speak: MEASURED, a `box.yaml`
+holding both `agent: {claude: {auto_approve: true}}` and `box: {zippity: wibble}` refused by naming
+`auto_approve` and prescribing a `pref.agent.<agent>.access` write — for a table directional
+enforcement had dropped one log line earlier — while `box.zippity`, the entry that actually stopped
+the resolve, went unnamed. A cure for a no-op is worse than no cure: it tells a user their
+permission tier is about to change when deleting the line changes nothing. Mutation-proved BOTH
+ways — reading the raw doc reds the two dropped-table pins, and a `cascade_view` that returned
+nothing reds all five retirement pins plus the control, so the fix is a narrowing rather than a
+silencing.
+
 ⚑ **NEITHER SUBJECT IS GUESSED, AND THE COST IS USER-VISIBLE.** This seam runs before agent
 selection, and the resolve that reaches it first is `load_merged_config`'s narrow one, which
 materializes no box identity — so `box_name` and the agent `subject` keep their `<box>` / `<agent>`

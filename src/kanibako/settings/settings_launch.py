@@ -49,6 +49,7 @@ from kanibako.settings.keystore import KeyStore
 from kanibako.settings.config_io import load_doc
 from kanibako.settings.settings_assemble import (
     assemble_levels,
+    cascade_view,
     dotted_partial,
     refuse_retired_behavior_keys,
     refuse_retired_keys,
@@ -705,6 +706,15 @@ def _refuse_retired_spelling(files: Sequence[_TierFile]) -> None:
     so the happy path pays nothing and the re-read of a handful of settings files
     lands on a run that was going to stop anyway.
 
+    ⚑⚑ IT JUDGES WHAT THE CASCADE SEES, NOT WHAT THE FILE SAYS (``cascade_view``).
+    A settings file may legally CONTAIN a table the cascade never reads — an
+    ``agent:`` table in a ``box.yaml`` is dropped by directional enforcement, a
+    ``pref:`` outside a workset or box file by §2h — and a retired spelling found
+    there was doing NOTHING. Scanning the raw doc prescribed a cure for it anyway
+    and, worse, spoke INSTEAD of naming the key that actually stopped the resolve.
+    A cure for a no-op is worse than no cure: it tells a user their permission
+    setting is about to change when deleting the line changes nothing at all.
+
     ⚑ NEITHER SUBJECT IS GUESSED. ``box_name`` and the agent ``subject`` are left to
     their placeholders (``<box>`` / ``<agent>``): this seam runs BEFORE agent
     selection, and the resolve that reaches it first is ``load_merged_config``'s
@@ -720,7 +730,7 @@ def _refuse_retired_spelling(files: Sequence[_TierFile]) -> None:
     for level, path in files:
         if path is None or not path.exists():
             continue
-        raw = load_doc(path)
+        raw = cascade_view(load_doc(path), level=level)
         refuse_retired_keys(raw, level=level, path=path)
         refuse_retired_behavior_keys(raw, level=level, path=path)
 
