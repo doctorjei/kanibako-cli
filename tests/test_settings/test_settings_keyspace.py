@@ -1308,26 +1308,36 @@ def test_conceding_a_vocabulary_concedes_nothing_else():
 
 
 def _category_tokens() -> "frozenset[str]":
-    """The §2a category tokens, READ FROM THE DECLARATIONS (P13).
+    """The §2a category tokens, READ FROM THE DELIVERY TABLE (P13).
 
-    ⚑ NOT from ``_is_category_token``, which is the property under test — deriving a
-    corpus from it would empty the corpus of exactly the token that broke (P15).
-    Three independent declarations cover seven of the nine families; ``env`` is the
-    one with no declaring constant to read, so it is named HERE rather than taken
-    from the code this pins.
+    ⚑ NOT from ``_is_category_token``, which is the property under test — the corpus
+    has to name a family the predicate has FORGOTTEN, and one derived from the
+    predicate cannot (P15). ``settings_categories._DELIVERY`` names all NINE families
+    with what each delivers, and ``CATEGORY_FAMILY_ROOTS`` is its per-family root: an
+    independent declaration, and the complete one.
+
+    ⚑ THE EARLIER CORPUS UNIONED THREE SUBSET TUPLES AND THEN NAMED ``env`` BY HAND,
+    on the stated ground that ``env`` had no declaring constant to read. It had this
+    one all along. The three are kept as a FLOOR — each names a subset, so one of
+    them losing a row that the delivery table also lost would otherwise shrink the
+    corpus in silence.
     """
-    from kanibako.settings.settings_categories import CONCRETE_CATEGORIES
+    from kanibako.settings.settings_categories import (
+        CATEGORY_FAMILY_ROOTS,
+        CONCRETE_CATEGORIES,
+    )
     from kanibako.settings.settings_keyspace import (
         BIND_CATEGORIES,
         TERMINAL_CATEGORY_TAILS,
     )
 
-    declared = (
+    floor = (
         {c.split(".")[0] for c in BIND_CATEGORIES}
         | {tail[0] for tail in TERMINAL_CATEGORY_TAILS}
         | {c.split(".")[0] for c in CONCRETE_CATEGORIES}
     )
-    return frozenset(declared | {"env"})
+    assert floor <= CATEGORY_FAMILY_ROOTS, sorted(floor - CATEGORY_FAMILY_ROOTS)
+    return CATEGORY_FAMILY_ROOTS
 
 
 def test_a_category_token_under_agent_is_never_conceded(monkeypatch):

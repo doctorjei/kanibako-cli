@@ -115,6 +115,17 @@ _DELIVERY: dict[str, Delivery] = {
     "secret_path": MOUNT,
 }
 
+#: The §2a category FAMILY ROOTS — the FIRST key segment of each family, so the two
+#: ``bindings`` arms share the one root ``bindings``.  ⚑ DERIVED FROM
+#: :data:`_DELIVERY` (P13), which is the ONE table naming every family, because every
+#: family is delivered.  The bind-shaped, terminal and concrete tuples above each name
+#: a SUBSET, so a consumer that wants "is this segment a category at all" must read
+#: this and not one of them: ``masks``, ``env`` and ``secret_path`` are in no subset
+#: that also holds the four abstract ones.
+CATEGORY_FAMILY_ROOTS: Final[frozenset[str]] = frozenset(
+    name.split(".", 1)[0] for name in _DELIVERY
+)
+
 # One regex for the bind-shaped categories: scope . <category> . name (name greedily
 # captures the remainder, which may contain dots).
 #
