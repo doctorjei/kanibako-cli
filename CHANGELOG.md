@@ -592,11 +592,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the reason for each, and the settings files that resolve loaded (which of them carried the entry
   is not knowable from the merged snapshot). **The cure is a hand-edit and the message says so**:
   `box reset` cannot remove what is not a key, and `box show --effective` resolves through the same
-  seam, so it refuses as well. Two deliberate non-refusals: a settings table for an agent that is
-  not installed on this machine still resolves (that is a fact about your plugins, not about the
-  keyspace — the *key* under it must still be declared), and data addressed inside a declared key
-  (a bind or copy destination, a `masks` entry) is a value rather than a key path of its own and is
-  not judged as one. §2.38 closed this same passthrough for the per-agent `agent.yaml` file; this is
+  seam, so it refuses as well. Two deliberate non-refusals: an agent whose plugin is not installed
+  here is not judged at all — neither its table nor the keys under it, because an agent's keys are
+  its plugin's to declare and there is no list to check them against without it (the cost, stated:
+  `agent: goose: zippity:` resolves on a machine without goose, and refuses on one with it) — and
+  data addressed inside a declared key (a bind or copy destination, a `masks` entry) is a value
+  rather than a key path of its own and is not judged as one. `agent: default:` is judged
+  everywhere. §2.38 closed this same passthrough for the per-agent `agent.yaml` file; this is
   the same rule over every settings file and the whole resolved snapshot. See
   [MIGRATION.md](MIGRATION.md) §2.47.
 

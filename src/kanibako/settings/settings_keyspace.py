@@ -78,6 +78,7 @@ from typing import (
     Any,
     Callable,
     Collection,
+    Container,
     Final,
     Iterator,
     Mapping,
@@ -874,7 +875,11 @@ def _bad_agent_reason(name: str, valid_agents: Collection[str]) -> str:
 
 
 def _agent_tail_reason(
-    prefix: str, tail: list[str], leaves: Collection[str] = DECLARED_AGENT_LEAVES,
+    prefix: str,
+    tail: list[str],
+    leaves: Collection[str] = DECLARED_AGENT_LEAVES,
+    *,
+    leaves_known: bool = True,
 ) -> KeyJudgement:
     """Judge the tail of an agent-scope key, after the discriminator.
 
@@ -884,6 +889,13 @@ def _agent_tail_reason(
     never hardcoded in core"*). Without the union a real plugin key is refused:
     goose declares ``provider`` through ``setting_descriptors()`` and it is a
     legitimate ``agent.goose.provider``.
+
+    ⚑ *leaves_known* is FALSE when the caller could not read this agent's plugin at
+    all, so *leaves* does not cover it — see :func:`key_class`. Then the VOCABULARY
+    is conceded and nothing else: the SHAPE rules below still apply (a category tail
+    is judged, a multi-segment tail is still not an agent key), and so does the
+    reserved-name floor inside :func:`_leaf`, because that floor is about colliding
+    with the resolved store rather than about what a plugin declares.
     """
     if not tail:
         # An agent TIER — ``agent.<agent>``, ``agent.default``, or the
@@ -893,7 +905,7 @@ def _agent_tail_reason(
     if _looks_like_category(tail):
         return _category_reason(prefix, tail, what=f"'{prefix}'")
     if len(tail) == 1:
-        if tail[0] in leaves:
+        if not leaves_known or tail[0] in leaves:
             return _leaf(tail[0])
         return _undeclared(
             f"'{tail[0]}' is not a declared agent key (declared: "
@@ -934,6 +946,7 @@ def key_class(
     *,
     valid_agents: Collection[str],
     agent_leaves: "Collection[str] | None" = None,
+    agents_with_known_leaves: "Container[str] | None" = None,
 ) -> KeyJudgement:
     """*key*'s :class:`KeyClass` under §0, with the REASON for a non-key.
 
@@ -941,6 +954,24 @@ def key_class(
     are real, exclusive of ``"default"`` which is always legal. *agent_leaves*
     likewise injects the PLUGIN-declared agent keys to union over the core §2d
     set (``None`` = core only); see :func:`_agent_tail_reason`.
+
+    ⚑ *agents_with_known_leaves* names the agents *agent_leaves* actually COVERS.
+    ``None`` (the default) means it covers every agent, which is what a caller
+    judging only agents it can see wants. Naming a set instead concedes the LEAVES
+    of any agent outside it, because the two are a DEPENDENT PAIR: an agent's leaf
+    vocabulary is its plugin's, so an agent whose plugin the caller could not read
+    has NO knowable vocabulary, and judging one against a set that cannot contain it
+    refuses a key that is genuinely declared. ``agent.goose.provider`` is the
+    measured case — a real goose ``setting_descriptor`` leaf, refused as "not a
+    declared agent key" on a machine without goose installed.
+    ⚑ It is a ``Container`` rather than a ``Collection`` because only membership is
+    asked: the supplier for the resolve seam answers through the agent-ref grammar
+    (a persona is known iff its HARNESS is), which nothing can enumerate. ⚑ It is
+    never asked about ``default`` — see the call site.
+    🛑 It does NOT reach ``meta.agent.<agent>.*``. That tier's vocabulary is
+    core-declared (:data:`DECLARED_META_AGENT_LEAVES` + ``auth.share_support``) and
+    no plugin extends it, so it is knowable whether or not the plugin is here —
+    there is nothing to concede.
 
     The dispatch is on the FIRST segment; every branch reports against the
     spec section that declares the family.
@@ -1034,7 +1065,21 @@ def key_class(
         name = rest[0]
         if not is_valid_agent_segment(name, valid_agents):
             return _undeclared(_bad_agent_reason(name, valid_agents))
-        return _agent_tail_reason(f"agent.{name}", rest[1:], leaves)
+        return _agent_tail_reason(
+            f"agent.{name}", rest[1:], leaves,
+            # ⚑ ``default`` IS NEVER ASKED ABOUT. The all-agents tier is CORE's, not
+            # a plugin's, so its vocabulary is the core contract and is known on
+            # every machine — and it is where the behavior floor lands, so conceding
+            # it would unarm §0 over the whole ``agent.default.*`` subtree. The rule
+            # lives here rather than in a supplier for the reason
+            # :func:`is_valid_agent_segment` gives: ``default``'s standing is the
+            # KEYSPACE's, so every supplier gets it right by not having to know it.
+            leaves_known=(
+                name == "default"
+                or agents_with_known_leaves is None
+                or name in agents_with_known_leaves
+            ),
+        )
 
     return _undeclared(
         f"'{head}' is not a declared namespace (declared: config, system, "

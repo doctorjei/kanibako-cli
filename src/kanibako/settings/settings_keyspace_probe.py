@@ -40,18 +40,35 @@ THE ORACLE IS DELIBERATELY PERMISSIVE ABOUT AGENT NAMES. ``valid_agents`` is
 injected into ``key_class`` for purity, and both production and the test
 environment invent agent names freely (personas, ``myagent``, ``testagent``). A
 narrow set would manufacture rows saying "'x' is not a valid agent", which is a
-finding about a DISCRIMINATOR, not about the keyspace. The discriminator is conceded;
-the LEAF still has to be declared. ⚑ The pytest write census
-(``tests/_keystore_census.py``) reads its oracle FROM HERE rather than keeping its
-own — same question, one answer.
+finding about a DISCRIMINATOR, not about the keyspace.
+
+⚑⚑ AND THE CONCESSION REACHES THAT AGENT'S LEAVES, because the two are a DEPENDENT
+PAIR. An agent's leaf vocabulary is its PLUGIN's (§0: *"Agent specifics are
+PLUGIN-declared"*), so where the plugin is not installed there is no vocabulary to
+judge against — and ``agent.goose.provider``, a real goose ``setting_descriptor``
+leaf, was refused as "not a declared agent key" on a claude-only machine. Conceding
+the name while judging the leaves is conceding half a pair, and it produces a false
+positive on a key that IS declared. :data:`KNOWN_LEAF_AGENTS` draws the line: an
+agent this machine CAN see is judged exactly as before, a persona is judged by its
+HARNESS, and ``agent.default`` is judged always — the all-agents tier is core's, not
+a plugin's, and ``key_class`` holds that rule rather than any supplier.
+🛑 THE COST IS STATED, NOT HIDDEN: ``agent.goose.zippity`` also resolves on a
+machine without goose. That is the price of not refusing ``agent.goose.provider``
+there, and it is bounded by install state rather than by a name list — where goose
+IS installed, ``zippity`` refuses like anything else. ``meta.agent.<agent>.*`` is
+untouched: its vocabulary is core-declared, so it is knowable either way.
+
+⚑ The pytest write census (``tests/_keystore_census.py``) reads its oracle FROM HERE
+rather than keeping its own — same question, one answer.
 """
 
 from __future__ import annotations
 
 import json
 import os
-from typing import Any, Collection, Final, Iterator
+from typing import Any, Collection, Container, Final, Iterator, NamedTuple
 
+from kanibako.agent_ref import harness_of
 from kanibako.settings.keystore import KeyStore
 from kanibako.settings.settings_keyspace import (
   KeyClass,
@@ -104,36 +121,78 @@ class _AnyAgent(Collection[str]):
 
 ANY_AGENT: Final[_AnyAgent] = _AnyAgent()
 
-_LEAVES: frozenset[str] | None = None
+
+class _Plugins(NamedTuple):
+  """What ONE discovery pass tells the oracle: the leaves, and whose they are."""
+
+  leaves: frozenset[str]
+  agents: frozenset[str]
 
 
-def plugin_agent_leaves() -> frozenset[str]:
-  """PLUGIN-declared agent keys, to union over the core §2d set (spec §0).
+_PLUGINS: _Plugins | None = None
+
+
+def _discover() -> _Plugins:
+  """ONE discovery pass, memoised — the leaves the plugins declare AND their names.
+
+  ⚑ ONE pass for both, because they are a DEPENDENT PAIR: the leaf set is only
+  meaningful for the agents it was read from, and two passes could disagree about
+  which those are. The single memo is also a single priming point — the pytest
+  census calls :func:`plugin_agent_leaves` before any test patches discovery, and
+  that one call fixes both halves.
 
   ⚑ Discovered here rather than through ``settings_prefs.default_valid_agents`` on
   purpose: that supplier MEMOIZES into a process-wide cache the production code
   reads, so priming it from a probe would hand every later caller a discovery result
   computed before its own patches were in place.
-  ⚑ Every failure is conceded to an empty set. A plugin that will not import is a
-  fact about the environment; refusing to measure because of it is not an option an
-  instrument has.
+  ⚑ Every failure is conceded — to an empty leaf set AND an empty agent set, which
+  together mean "no agent's vocabulary is known here", the safe direction. A plugin
+  that will not import is a fact about the environment; refusing to measure because
+  of it is not an option an instrument has.
   """
-  global _LEAVES
-  if _LEAVES is not None:
-    return _LEAVES
+  global _PLUGINS
+  if _PLUGINS is not None:
+    return _PLUGINS
   leaves: set[str] = set()
+  agents: set[str] = set()
   try:
     from kanibako.targets import discover_targets
 
-    for target_cls in discover_targets().values():
+    for name, target_cls in discover_targets().items():
+      agents.add(name)
       try:
         leaves.update(d.key for d in target_cls().setting_descriptors())
       except Exception:
         continue
   except Exception:
     pass
-  _LEAVES = frozenset(leaves)
-  return _LEAVES
+  _PLUGINS = _Plugins(frozenset(leaves), frozenset(agents))
+  return _PLUGINS
+
+
+def plugin_agent_leaves() -> frozenset[str]:
+  """PLUGIN-declared agent keys, to union over the core §2d set (spec §0)."""
+  return _discover().leaves
+
+
+class _KnownLeafAgents(Container[str]):
+  """The agents whose LEAF VOCABULARY this machine can actually answer for.
+
+  ⚑ ANSWERED BY HARNESS, not by node name: ``persona℘claude`` takes its leaves from
+  ``claude``, so asking about the node would concede every persona on the machine.
+  Membership is asked and never enumerated — which is why this is a ``Container`` —
+  because the persona set is open.
+  ⚑ ``default`` is NOT special-cased here. ``key_class`` never asks about it: the
+  all-agents tier is core's, so its standing belongs to the keyspace and not to
+  whoever supplies this.
+  """
+
+  def __contains__(self, item: object) -> bool:
+    name = item if isinstance(item, str) else str(item)
+    return harness_of(name) in _discover().agents
+
+
+KNOWN_LEAF_AGENTS: Final[_KnownLeafAgents] = _KnownLeafAgents()
 
 
 def declared_keyspace_oracle(path: str) -> KeyJudgement:
@@ -142,9 +201,18 @@ def declared_keyspace_oracle(path: str) -> KeyJudgement:
   ⚑ ALL THREE, never the key-or-not view: the classifier's only other way to tell a
   declared interior from a fabrication is to count segments, and that reports every
   namespace below depth 1 as a violation.
+
+  ⚑ THE DISCRIMINATOR AND ITS LEAVES ARE CONCEDED TOGETHER (see the module doc).
+  ``ANY_AGENT`` concedes the agent NAME because this machine's plugin set is not the
+  keyspace; :data:`KNOWN_LEAF_AGENTS` then concedes that agent's LEAVES for the same
+  reason, since the vocabulary a leaf is judged against is the very plugin that is
+  missing.
   """
   return key_class(
-    path, valid_agents=ANY_AGENT, agent_leaves=plugin_agent_leaves(),
+    path,
+    valid_agents=ANY_AGENT,
+    agent_leaves=plugin_agent_leaves(),
+    agents_with_known_leaves=KNOWN_LEAF_AGENTS,
   )
 
 
