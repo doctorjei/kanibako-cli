@@ -214,9 +214,9 @@ inside boxes. In order of likely impact:
     instead of resolving to nothing** (§2.47). It used to parse, merge, resolve — and then be read
     by nobody, with no error and no warning. Every command that resolves settings refuses now,
     naming every offending entry at once and the files the resolve loaded. The cure is a
-    hand-edit: `config unset` cannot remove what is not a key, and `config show` resolves through
-    the same seam, so it refuses too. Most often this is a typo or a key retired by this release,
-    so the fix is one deleted line.
+    hand-edit: `box reset` cannot remove what is not a key, and `box show --effective` resolves
+    through the same seam, so it refuses too. Most often this is a typo or a key retired by this
+    release, so the fix is one deleted line.
 
 24. Smaller items: standalone boxes' `box get` got truthful (§2.9); a box suppressed to
     plain-shell keeps stale credential files in its home (§2.10); several never-released or
@@ -2839,18 +2839,18 @@ kanibako will not resolve settings that carry them: an undeclared key has no mea
     - /home/you/.local/share/kanibako/worksets/demo/boxes/scratch/box.yaml
     - /home/you/.local/share/kanibako/worksets/demo/workset.yaml
     - /home/you/.local/share/kanibako/global/settings.yaml
-  'kanibako config unset' cannot remove what is not a key, and 'kanibako config show' resolves through this same seam, so it refuses too.
+  'kanibako box reset' cannot remove what is not a key, and 'kanibako box show --effective' resolves through this same seam, so it refuses too.
 ```
 
 It names **every** offending entry, not the first one — the cure is an edit, and a message that
 revealed one line per attempt would turn one edit into several launches.
 
 **What you need to do.** Open the file and delete the line. There is no CLI cure, and the message
-says so rather than letting you find out: `config unset` cannot remove what is not a key, and
-`config show` resolves through the same seam, so it refuses as well. The message lists the files
-this resolve loaded; which of them carried the entry it cannot say, because the snapshot is the
-merge of all of them. By tier those are a box's `box.yaml`, a workset's `workset.yaml`, an agent's
-`agent.yaml` and the system's `<data>/global/settings.yaml` (§2.45).
+says so rather than letting you find out: `box reset` cannot remove what is not a key, and
+`box show --effective` resolves through the same seam, so it refuses as well. The message lists
+the files this resolve loaded; which of them carried the entry it cannot say, because the snapshot
+is the merge of all of them. By tier those are a box's `box.yaml`, a workset's `workset.yaml`, an
+agent's `agent.yaml` and the system's `<data>/global/settings.yaml` (§2.45).
 
 **Two things this deliberately does not refuse.**
 
