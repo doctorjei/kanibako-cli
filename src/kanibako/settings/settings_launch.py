@@ -684,8 +684,38 @@ _SETTINGS_FILE_NAMES: Final[str] = (
 _TierFile = tuple[str, Path | None]
 
 
-def _refuse_retired_spelling(files: Sequence[_TierFile]) -> None:
-    """RAISE the TAILORED refusal when one of *files* still carries a RETIRED spelling.
+def _loaded_tiers(files: Sequence[_TierFile]) -> tuple[tuple[str, Path], ...]:
+    """The settings files this resolve ACTUALLY read: *files* plus the machine-wide
+    ``base`` tier, minus every tier with nothing on disk.
+
+    ⚑⚑ ONE LIST, AND BOTH HALVES OF THE REFUSAL READ IT (P10). The two halves ask
+    different questions of the same tiers — :func:`_refuse_retired_spelling` scans
+    them, and the generic message NAMES them — so a tier known to one and not the
+    other produces a refusal that scans a file it never mentions. Measured before
+    this existed: an undeclared key in ``settings_base.yaml`` alone printed the
+    box's ``box.yaml``, a file that does not carry it, while disclaiming ``box
+    reset`` in the same breath — no working move for the user at all.
+
+    ⚑ THE BASE TIER IS APPENDED HERE, not passed in. ``build_launch_snapshot`` is
+    not handed that path — ``assemble_levels`` defaults it internally — so this
+    reads the SAME default, from the same function, rather than inventing a
+    parameter for a value nobody varies.
+
+    ⚑ AND A TIER WITH NO FILE IS NOT A TIER THAT WAS LOADED. Naming an absent
+    ``/etc/kanibako/settings_base.yaml`` as a file to hand-edit sends a user to a
+    file that is not there, which is the same class of false message the shared
+    list exists to end. ``base`` is absent on most machines, so this is the common
+    case, not the corner one.
+    """
+    return tuple(
+        (level, path)
+        for level, path in (*files, ("base", settings_base_path()))
+        if path is not None and path.exists()
+    )
+
+
+def _refuse_retired_spelling(tiers: Sequence[tuple[str, Path]]) -> None:
+    """RAISE the TAILORED refusal when one of *tiers* still carries a RETIRED spelling.
 
     ⚑ WHY THIS IS HERE AT ALL. Every retired spelling is ALSO an undeclared key, so
     §0's refusal below fires on it first — and the seams that own the tailored
@@ -730,19 +760,16 @@ def _refuse_retired_spelling(files: Sequence[_TierFile]) -> None:
     matters. The placeholder is the documented fallback for exactly this case and
     fails loudly if pasted unedited, where a wrong name would not.
 
-    ⚑ THE ``base`` TIER IS SCANNED, and it is appended HERE rather than passed in.
-    ``build_launch_snapshot`` is not handed that path — ``assemble_levels`` defaults
-    it internally — so this reads the SAME default, from the same function, rather
-    than inventing a parameter for a value nobody varies. It is not optional: a stale
-    key in ``/etc/kanibako/settings_base.yaml`` defaults DOWN into every box on the
-    machine, ``agent_select`` has always scanned it for exactly that reason, and this
-    seam now fires FIRST — so omitting it would give a site-wide fault strictly LESS
-    help than it got before the resolve was armed.
+    ⚑ THE ``base`` TIER IS SCANNED, and it is not optional: a stale key in
+    ``/etc/kanibako/settings_base.yaml`` defaults DOWN into every box on the machine,
+    ``agent_select`` has always scanned it for exactly that reason, and this seam now
+    fires FIRST — so omitting it would give a site-wide fault strictly LESS help than
+    it got before the resolve was armed. It arrives in *tiers* rather than being
+    appended here, because the message that names these files has to name the same
+    set (:func:`_loaded_tiers`).
     """
-    # LEAST specific LAST, matching *files*' most-specific-first order.
-    for level, path in (*files, ("base", settings_base_path())):
-        if path is None or not path.exists():
-            continue
+    # LEAST specific LAST, matching *tiers*' most-specific-first order.
+    for level, path in tiers:
         raw = cascade_view(load_doc(path), level=level)
         refuse_retired_keys(raw, level=level, path=path)
         refuse_retired_behavior_keys(raw, level=level, path=path)
@@ -771,10 +798,12 @@ def _refuse_undeclared_snapshot(
     revision of this message named ``config unset`` / ``config show``, and there is
     no ``config`` noun at all (``config_keys._SCOPE_READ_COMMAND`` says so, off its
     own measurement). A cure a user cannot type is worse than no cure.
-    *files* are the settings files THIS resolve loaded, MOST-SPECIFIC FIRST, each
-    paired with its cascade LEVEL, so the message points at real paths instead of a
-    generic list; which of them carried the entry is not knowable here, because the
-    snapshot is the MERGE of all of them.
+    *files* are the CALLER-supplied tiers, MOST-SPECIFIC FIRST, each paired with its
+    cascade LEVEL; :func:`_loaded_tiers` turns them into the list this message names
+    and the retirement scan reads — the SAME list, which is the fix for a message
+    that once pointed at a file the resolve had read and not at the one that carried
+    the entry. Which of them carried it is not knowable here, because the snapshot
+    is the MERGE of all of them.
 
     ⚑ A RETIRED SPELLING GETS ITS OWN MESSAGE, NOT THIS ONE
     (:func:`_refuse_retired_spelling`) — the generic text is the FALLBACK for an
@@ -788,12 +817,13 @@ def _refuse_undeclared_snapshot(
     findings = undeclared_store_paths(store, oracle=keyspace_verdict)
     if not findings:
         return
-    _refuse_retired_spelling(files)
+    tiers = _loaded_tiers(files)
+    _refuse_retired_spelling(tiers)
     named = "\n".join(
         f"  - {render_store_path(segments, judgement.key_len)}: {judgement.note}"
         for segments, judgement in findings
     )
-    loaded = [str(path) for _level, path in files if path is not None]
+    loaded = [str(path) for _level, path in tiers]
     where = (
         "\n".join(f"    - {path}" for path in loaded) if loaded
         else f"    - {_SETTINGS_FILE_NAMES}"

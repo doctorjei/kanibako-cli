@@ -2917,7 +2917,10 @@ says so rather than letting you find out: `box reset` cannot remove what is not 
 `box show --effective` resolves through the same seam, so it refuses as well. The message lists
 the files this resolve loaded; which of them carried the entry it cannot say, because the snapshot
 is the merge of all of them. By tier those are a box's `box.yaml`, a workset's `workset.yaml`, an
-agent's `agent.yaml` and the system's `<data>/global/settings.yaml` (§2.45).
+agent's `agent.yaml`, the system's `<data>/global/settings.yaml` (§2.45) and the machine-wide
+`/etc/kanibako/settings_base.yaml`. Only the files that are actually **there** are listed — most
+machines have no base file, and the sample above is from one of them — so a path in that list is
+always a path you can open.
 
 **Two things this deliberately does not refuse.**
 

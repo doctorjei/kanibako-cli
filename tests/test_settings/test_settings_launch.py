@@ -4640,6 +4640,72 @@ def test_the_base_tier_is_scanned_too(tmp_path, monkeypatch):
     assert "a request may be written ONLY in a workset or box settings file" in msg
 
 
+@pytest.mark.writes_undeclared(
+    "box.zippity",
+    reason="the generic message is the one under test, so the base file has to "
+           "carry an ordinary undeclared key rather than a retired spelling.",
+)
+def test_the_generic_message_names_the_base_file_the_scan_reads(
+    tmp_path, monkeypatch,
+):
+    """⚑⚑ BOTH HALVES OF THE REFUSAL SEE THE SAME TIERS, or it points at the wrong file.
+
+    MEASURED before the fix: an undeclared key in ``settings_base.yaml`` ALONE
+    refused with a list naming the box's ``box.yaml`` — a file that does not carry
+    it — while the same message disclaimed ``box reset`` and ``box show
+    --effective``. The user is told to hand-edit, told which CLI moves will not
+    work, and handed a file the entry is not in: no working move at all. The scan
+    half had been taught the base tier; the naming half had not.
+    """
+    from kanibako.settings import settings_assemble as _assemble
+    from kanibako.settings import settings_launch as _launch
+
+    base = tmp_path / "settings_base.yaml"
+    base.write_text("box:\n  zippity: wibble\n", encoding="utf-8")
+    monkeypatch.setattr(_assemble, "settings_base_path", lambda: base)
+    monkeypatch.setattr(_launch, "settings_base_path", lambda: base)
+    box_path = _box_yaml(tmp_path, "box:\n  image: myrig\n")
+    with pytest.raises(_SettingsError) as e:
+        _snapshot(box_path)
+    msg = str(e.value)
+    assert "box.zippity" in msg
+    assert str(base) in msg, msg
+    # ⚑ AND THE BOX FILE IS STILL NAMED. Which tier carried the entry is not
+    # knowable from a merged snapshot, so this is a WIDENING of the list, never a
+    # swap — a fix that named base INSTEAD would be the same defect facing the
+    # other way.
+    assert str(box_path) in msg
+
+
+@pytest.mark.writes_undeclared(
+    "box.zippity",
+    reason="the list under test only appears on a resolve that refuses, so the "
+           "box file carries an undeclared key.",
+)
+def test_a_tier_with_no_file_is_not_named_as_loaded(tmp_path, monkeypatch):
+    """⚑ AN ABSENT FILE WAS NEVER LOADED, and must not be listed as one.
+
+    ``/etc/kanibako/settings_base.yaml`` does not exist on most machines, so this
+    is the common case rather than a corner of it: listing it under "this resolve
+    loaded" would send every user who hits the refusal to open a file that is not
+    there. The scan half has always skipped a missing file; the naming half now
+    reads the same list, so it skips it for free.
+    """
+    from kanibako.settings import settings_assemble as _assemble
+    from kanibako.settings import settings_launch as _launch
+
+    absent = tmp_path / "no-such-settings_base.yaml"
+    monkeypatch.setattr(_assemble, "settings_base_path", lambda: absent)
+    monkeypatch.setattr(_launch, "settings_base_path", lambda: absent)
+    with pytest.raises(_SettingsError) as e:
+        _snapshot(_box_yaml(tmp_path, "box:\n  zippity: wibble\n"))
+    msg = str(e.value)
+    assert str(absent) not in msg, msg
+    # ⚑ REDS ON ITS OWN EMPTINESS: a message that stopped listing files at all
+    # would otherwise pass this without naming anything.
+    assert str(tmp_path / "box.yaml") in msg
+
+
 #: Every ``kanibako …`` spelling inside ONE cure string, quoted or not. The quoted
 #: form ends at its closing quote; an unquoted one runs to the end of the line.
 _ANY_COMMAND = re.compile(r"kanibako ([^\n']*)")
