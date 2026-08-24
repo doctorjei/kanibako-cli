@@ -604,6 +604,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   its own and is not judged as one. `agent: default:` is judged everywhere. §2.38 closed this same
   passthrough for the per-agent `agent.yaml` file; this is the same rule over every settings file
   and the whole resolved snapshot. See [MIGRATION.md](MIGRATION.md) §2.47.
+  **A key kanibako RETIRED still gets the message written for it**, not this generic one: before
+  printing, the refusal asks whether the files it loaded carry a spelling it has a cure for.
+  Without that, arming the resolve took the tailored refusals away from the users they were
+  written for — the retired agent-selection keys (`box.agent_name`, the scalar and table spellings
+  of `box.agent`, `system.default_agent`) and the retired permission boolean `auto_approve`, each
+  of which explains what changed and hands over a command to paste. One thing is lost at this
+  earlier seam and is stated rather than hidden: it runs before kanibako settles which box it is
+  looking at, so a cure that names a `box set` / `workset set` subject carries the `<box>` /
+  `<workset>` placeholder instead of the name. See [MIGRATION.md](MIGRATION.md) §2.1.
 
 - **BREAKING: the four `KANIBAKO_*` variables kanibako sets for itself are ordinary settings now,
   and a twin of one at another scope will refuse the launch.** `KANIBAKO_NAME`, `KANIBAKO_AGENT`,
@@ -1524,7 +1533,8 @@ migration code.** Four released config surfaces are removed outright
 - **BREAKING: `box.agent_name` and `system.default_agent`** — replaced by
   `pref.system.agent` and `system.agent`; both are refused by name at launch (above).
 - **BREAKING: the `shared` mount category** — renamed `common`, no alias. A leftover
-  `shared` entry is silently inert, so the bind it declared simply stops appearing.
+  `shared` entry is not a key, so it stops the resolve rather than quietly dropping the
+  bind it declared.
 - **BREAKING: `system.base_template`** — replaced by `system.template`, which names a
   template *root* (above).
 - **BREAKING: the settable `box.agent.*` mirror** — replaced by

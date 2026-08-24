@@ -793,6 +793,48 @@ wins a CATEGORY, as it already won a SCALAR. Pinned by
 After `merge` + `expand`, `_materialize_box_agent_mirror` runs, and the box-root assertion runs when
 the caller supplied the anchor.
 
+### The tail of the seam: measure, then enforce, then choose the message
+
+Three calls close `build_launch_snapshot`, and the ORDER of all three is load-bearing.
+
+1. `observe_keyspace` — the REPORT-ONLY probe. It runs FIRST because a raise ahead of it would blind
+   the instrument to precisely the resolves that matter, so any later re-measurement would see only
+   the snapshots that already conform.
+2. `_refuse_undeclared_snapshot` — §0's RESOLVE clause. A SIBLING of the probe, never a mode of it;
+   the two share the ORACLE, so what is armed is exactly what was measured.
+3. `_refuse_retired_spelling`, called BY the refusal once it has findings — the message CHOICE.
+
+⚑ **WHY (3) EXISTS.** Every retired spelling is also an undeclared key, so (2) reaches it first —
+and the seams that own the tailored retirement messages (`agent_select` for the selection keys,
+`commands/start.py` for the behaviour key) both sit DOWNSTREAM of the resolve. Arming (2) therefore
+took those messages away from the users they were written for: a `box.yaml` carrying
+`box: {agent_name: claude}` got "not a settings key", and the ~40 lines `MIGRATION.md` §2.1 spends
+on the cure reached nobody. Measured, and mutation-proved in both directions.
+
+⚑ **IT IS NOT AN EXEMPTION.** The retired key is still refused; only the TEXT differs. A name-keyed
+escape from §0 is the carve-out class the closed keyspace exists to reject, and it would hide the
+next finding behind itself.
+
+⚑ **LAZY, AND THAT IS WHAT MAKES IT AFFORDABLE.** It re-reads the settings files, so it runs only
+after §0 has decided to refuse. Wired ahead of that decision it would put a second read of every
+tier on every resolve behind `load_merged_config` — nearly every kanibako command.
+
+⚑ **NEITHER SUBJECT IS GUESSED, AND THE COST IS USER-VISIBLE.** This seam runs before agent
+selection, and the resolve that reaches it first is `load_merged_config`'s narrow one, which
+materializes no box identity — so `box_name` and the agent `subject` keep their `<box>` / `<agent>`
+placeholders. Reading `meta.box.name` off the snapshot would be dead code: no production path
+reaches this refusal with a materialized identity floor, because the narrow resolve always runs
+first. `MIGRATION.md` §2.1 states the placeholder rather than leaving a user to notice it.
+
+⚑ **THE `base` TIER IS NOT SCANNED HERE.** `build_launch_snapshot` is not handed
+`/etc/kanibako/settings_base.yaml` — `assemble_levels` defaults it internally — so a retired spelling
+in that machine-wide file still gets the generic message. Stated, not hidden.
+
+⚑ **ONE FILE, ONE MESSAGE.** The scan looks at the whole file, not at the offending path, so a file
+carrying BOTH a retired spelling and an ordinary undeclared key reports the retirement and reveals
+the other on the next run. That is a deliberate trade against §0's own "name every entry" rule: the
+retirement message is worth more than the second line, and the second line is not lost.
+
 ## Agent SELECTION — the narrow resolve that precedes the launch snapshot (P7)
 
 `resolve_selected_agent` resolves `system.agent` (`SELECTION_KEY`, spec §2g — the key that names the
