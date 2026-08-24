@@ -234,27 +234,26 @@ inside boxes. In order of likely impact:
 | `box.agent_name` | `pref.system.agent` (workset/box files only) | **hard launch error** (below) |
 | `box.agent` (scalar — the v1.6.0 rename of `box.crab`) | `pref.system.agent` (workset/box files only) | **hard launch error** (below) |
 | `system.default_agent` (stored as `agent: default: default_agent:` in `global/settings.yaml`) | `system.agent` (same file, `system: agent:`) | **hard launch error** (below) |
-| `<scope>.shared.<name>` (the `shared` mount category) | `<scope>.common.<name>` | silently ignored (verified) |
-| `system.base_template` | `system.template` (and it now names a template ROOT — §2.5) | silently ignored (verified) |
+| `<scope>.shared.<name>` (the `shared` mount category) | `<scope>.common.<name>` | **hard refusal** at the resolve (§2.47) |
+| `system.base_template` | `system.template` (and it now names a template ROOT — §2.5) | **hard refusal** at the resolve (§2.47) |
 | `@meta.runtime.ws_settings` (reference target) | `@meta.workset.settings` | dangling reference |
 | settable `box.agent.*` mirror (a `box: agent:` **table**) | read-only `meta.box.agent.*` read-back; write via `pref.agent.<agent>.<key>` | **hard launch error** (below); write verbs refuse with the pref cure |
 
-**What a stale stored key actually does, per surface** (measured on the shipped code — this
-is what v1.8.0 does, not the eventual closed-keyspace plan):
+**What a stale stored key actually does, per surface** (measured on the shipped code):
 
 | surface | behavior |
 |---|---|
-| launch / `box show --effective` | **silent** — carried inert; no error, no warning; a `shared` bind vanishes from the mounts |
+| launch / `box show --effective` | **hard refusal**, naming the entry and the files the resolve loaded (§2.47) |
 | `box show` (stored view) | **silent** — the undeclared entry is simply not displayed |
 | `kanibako box get <box> <stale key>` | prints `(not set)`, rc 0 |
 | `kanibako box get <stale key>` (no box argument) | `Error: Unknown project or workset: '<key>'` — the unknown key is taken for a project name |
 | `kanibako system get`/`set <stale key>` (typed) | **loud** — `Error: unknown config key: …`, rc 1 |
 | `box.agent_name` / `box.agent` / `system.default_agent` stored anywhere in the cascade | **hard refusal** at launch and in `box info` (below) |
 
-**The retired agent-selection keys are refused loudly** — the one place v1.8.0 deliberately
-errors instead of ignoring, because a guessed agent would silently run a *different* agent and
-seed that agent's credentials into your box. The launch error (verified verbatim on a scratch
-box; `box info` shows the same refusal in its `Agent:` row):
+**The retired agent-selection keys get a refusal of their own**, carrying the cure rather than
+just the name, because a guessed agent would silently run a *different* agent and seed that
+agent's credentials into your box. The launch error (verified verbatim on a scratch box;
+`box info` shows the same refusal in its `Agent:` row):
 
 ```
 'box.agent_name' is RETIRED and is still set in the box settings file <path> (as `box: agent_name:`).
@@ -266,6 +265,12 @@ into this box.
   Fix: kanibako box set <box> pref.system.agent=<value>   (or `kanibako box set <box> --null pref.system.agent` for a no-agent box)
   then delete the `box: agent_name` entry from <path>.
 ```
+
+⚠ **In 1.8.0 you will often see the generic §2.47 refusal instead of this one.** The
+closed-keyspace refusal fires at the resolve, which is earlier than the agent-selection seam that
+produces the message above, so a stored `box.agent_name` usually stops the command by naming
+itself as an undeclared key. The cure is unchanged: set `pref.system.agent` as below, then delete
+the old entry.
 
 The cure is level-appropriate, with your own stored value interpolated so it is copy-pasteable.
 It names the verb that matches the file it found the key in, and always carries that verb's
@@ -2823,12 +2828,20 @@ box:
 
 parsed, merged and came out of the cascade as `wibble` — and then nothing read it. No error, no
 warning, and nothing in `box show` that marked the line as dead. The settings keyspace is closed:
-*reading* an undeclared key and *setting* one were already errors that named the key, and
-*resolving* one was the third case that was not. It is now.
+*setting* an undeclared key was already an error that named the key, and so was *reading* one at
+`system get` (`box get` and `workset get` still print `(not set)` — §2.1's table). *Resolving* one
+was the third case, and it is one now too.
 
-**Which commands.** Every command that resolves your settings, which is most of them — `start`,
-`shell`, `box show`, `config show`, `code`, `image`, `setup`, `baseline`, `diagnose`. They all
-build the same snapshot, so they all stop at the same place, with the same message:
+**Which commands.** The ones that build the resolved snapshot. They all build the same one, so they
+all stop at the same place with the same message. Measured on the shipped code: `kanibako` /
+`start`, `shell`, `box info`, `box show --effective`, `system show --effective`, `rig list`.
+
+**And which do not, which is worth knowing when a command stays quiet.** `box show` WITHOUT
+`--effective` prints the stored file and never resolves, so it does not mention the bad line at
+all; `box get` prints `(not set)`; `box diagnose` does not resolve settings. `setup`,
+`system diagnose` and `rig diagnose` DO resolve, but each catches the failure and prints a
+`cannot check` line in place of the reason — a defect, not a design. When a command goes vague on
+you, run `kanibako box show --effective` to see the message in full:
 
 ```
 Error: the settings resolved for this box carry 2 entries that are not settings keys (spec §0 — the keyspace is CLOSED):
