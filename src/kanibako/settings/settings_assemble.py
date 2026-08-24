@@ -28,7 +28,7 @@ from kanibako.settings.kb_store import (
     BindEntry,
 )
 from kanibako.settings.keystore import KeyStore
-from kanibako.settings.settings_prefs import refuse_pref_table
+from kanibako.settings.settings_prefs import PREF_ROOT, refuse_pref_table
 from kanibako.settings.settings_resolve import (
     SettingsError,
     unpack_bind,
@@ -398,6 +398,22 @@ def _containing_scopes(file_scope: str) -> frozenset[str]:
     return frozenset(SCOPE_CONTAINMENT[:idx])
 
 
+def _upward_scope_drop_set(file_scope: str) -> frozenset[str]:
+    """The top-level tokens directional enforcement removes from a *file_scope* file (spec §0).
+
+    ONE drop-set: the containing scopes UNION the always-dropped tokens. Defensive branch —
+    ``base`` is not in SCOPE_CONTAINMENT, so ``.index`` would raise; it takes an empty set.
+    ⚑ SPLIT OUT FROM THE WARNING :func:`_drop_upward_scopes` emits, because
+    :func:`cascade_view` needs the RULE without the noise.
+    """
+    containing = (
+        _containing_scopes(file_scope)
+        if file_scope in SCOPE_CONTAINMENT
+        else frozenset()
+    )
+    return containing | frozenset({"meta", BINDING_DERIVATIONS_NODE})
+
+
 def _drop_upward_scopes(
     raw: dict, *, file_scope: str, path: Path | None
 ) -> dict:
@@ -408,14 +424,7 @@ def _drop_upward_scopes(
     """
     if not isinstance(raw, dict):
         return raw
-    # ONE drop-set: the containing scopes UNION the always-dropped tokens. Defensive branch —
-    # ``base`` is not in SCOPE_CONTAINMENT, so ``.index`` would raise; it takes an empty set.
-    containing = (
-        _containing_scopes(file_scope)
-        if file_scope in SCOPE_CONTAINMENT
-        else frozenset()
-    )
-    drop_set = containing | frozenset({"meta", BINDING_DERIVATIONS_NODE})
+    drop_set = _upward_scope_drop_set(file_scope)
     dropped = [str(k) for k in raw if str(k) in drop_set]
     if not dropped:
         return raw
@@ -458,6 +467,50 @@ def _drop_upward_scopes(
                 "directional enforcement); the key is ignored.",
                 token, file_scope, where, file_scope, token,
             )
+    return {k: v for k, v in raw.items() if str(k) not in drop_set}
+
+
+#: The cascade LEVEL whose file is the per-agent ``agent.yaml``. Its contribution is
+#: NOT its top-level tables — see :func:`cascade_view`.
+_AGENT_FILE_LEVEL: str = "agent"
+
+
+def cascade_view(raw: Any, *, level: str) -> Any:
+    """The part of a RAW settings doc at *level* that :func:`assemble_levels` actually MERGES.
+
+    ⚑ WHY IT EXISTS. A consumer that judges a settings file has to judge what the file
+    CONTRIBUTES, not what it CONTAINS. Reading the raw doc instead let the retirement scan
+    (``settings_launch._refuse_retired_spelling``) prescribe a cure for an entry the cascade had
+    already dropped: a ``box.yaml`` holding both an ``agent:`` table and an undeclared ``box``
+    key refused by naming the retired key and telling the user to rewrite it — for a table that
+    directional enforcement never read — while the key that actually stopped the resolve went
+    unnamed. A cure for a no-op is worse than no cure.
+
+    ⚑ SILENT, and that is the whole difference from the filters above it: ``assemble_levels``
+    WARNS as it drops, and a second caller re-emitting those warnings would double every one of
+    them. The RULES are read from their one declaration each, never restated.
+
+    THREE, one per rule:
+
+    * directional enforcement (spec §0) drops a CONTAINING scope's table, ``meta:`` and the
+      reserved derivations node — :func:`_upward_scope_drop_set`;
+    * a ``pref:`` table survives only where §2h permits one to be WRITTEN
+      (:data:`_PREF_LEGAL_LEVELS`), matching ``assemble_levels``'s three
+      :func:`~kanibako.settings.settings_prefs.refuse_pref_table` calls;
+    * the per-agent file contributes its ROOT table and nothing else
+      (:func:`~kanibako.settings.agent_file.level_table`), so a top-level ``agent:`` there is
+      not a DROP — it was never an input.
+
+    🛑 A TOP-LEVEL FILTER, exactly like the filters it mirrors. Nothing here descends, so it says
+    which TABLES reach the merge and never which leaves inside one survive.
+    """
+    if not isinstance(raw, dict):
+        return raw
+    if level == _AGENT_FILE_LEVEL:
+        return {k: v for k, v in raw.items() if str(k) in ROOT_SECTIONS}
+    drop_set = _upward_scope_drop_set(level)
+    if level not in _PREF_LEGAL_LEVELS:
+        drop_set = drop_set | frozenset({PREF_ROOT})
     return {k: v for k, v in raw.items() if str(k) not in drop_set}
 
 
