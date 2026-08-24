@@ -222,9 +222,10 @@ table in a base / system / agent file, which §2h drops before the merge. The `s
 `agent.<sub>.auto_approve` is the site MEASURED at
 the resolve seam. The agent file's own `self.auto_approve` gets this same message from whichever of
 the two seams a launch reaches first — `start.py`'s tier names the real agent, the resolve seam the
-`<agent>` placeholder — and which that is was NOT measured, only the message. ⚑ `base` is not
-scanned at the resolve seam, so a stale key in `/etc/kanibako/settings_base.yaml` reaches the
-generic message.
+`<agent>` placeholder — and which that is was NOT measured, only the message. ⚑ `base` IS scanned
+at the resolve seam, which appends `settings_base_path()` itself: a stale key in
+`/etc/kanibako/settings_base.yaml` defaults DOWN into every box on the machine, and that seam now
+runs ahead of `agent_select`'s own base scan.
 
 ## Values
 

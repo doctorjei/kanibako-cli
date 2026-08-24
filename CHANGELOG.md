@@ -582,6 +582,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   "bindings.ro.~/.cache/uv"`), where it used to print "(not set)". See
   [MIGRATION.md](MIGRATION.md) §2.38.
 
+- **BREAKING: the permission axis is a tier, not a boolean — `auto_approve` is now `access`.** The
+  agent-scope `auto_approve: true|false` is retired and replaced by `access`, which takes
+  `restricted` (everything prompts), `editing` (free for contained edit-class work, ask at the
+  boundaries) or `full` (today's bypass, and the default). A boolean could not express the middle
+  tier, and the middle tier is the one most people actually want. **Your stored value maps
+  `true` → `full` and `false` → `restricted`**, and kanibako will not do it for you: a settings
+  file still carrying `auto_approve` refuses the launch, quotes your own value, names the tier it
+  means and hands over the command to write it. Refusing rather than ignoring is deliberate and
+  specific to this key — an undeclared key is not read at all, so a box you had deliberately set
+  to `auto_approve: false` would otherwise have come up at the permissive default with nothing
+  said. An unrecognised tier is rejected at both ends, `set` time and launch, and never treated as
+  permissive. See [MIGRATION.md](MIGRATION.md) §2.1.
+
 - **BREAKING: an undeclared key in ANY settings file now stops the command, naming every one it
   found.** The keyspace is closed, and *setting* a key kanibako does not declare was already an
   error that named it (so was *reading* one at `system get`) — but *resolving* one was not, at any

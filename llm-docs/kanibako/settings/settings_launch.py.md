@@ -831,16 +831,24 @@ ways — reading the raw doc reds the two dropped-table pins, and a `cascade_vie
 nothing reds all five retirement pins plus the control, so the fix is a narrowing rather than a
 silencing.
 
-⚑ **NEITHER SUBJECT IS GUESSED, AND THE COST IS USER-VISIBLE.** This seam runs before agent
-selection, and the resolve that reaches it first is `load_merged_config`'s narrow one, which
-materializes no box identity — so `box_name` and the agent `subject` keep their `<box>` / `<agent>`
-placeholders. Reading `meta.box.name` off the snapshot would be dead code: no production path
-reaches this refusal with a materialized identity floor, because the narrow resolve always runs
-first. `MIGRATION.md` §2.1 states the placeholder rather than leaving a user to notice it.
+⚑ **NEITHER SUBJECT IS GUESSED, AND THE COST IS USER-VISIBLE.** `box_name` and the agent `subject`
+keep their `<box>` / `<agent>` placeholders. 🛑 **THE REASON IS ORDERING, NOT ABSENCE.**
+`commands/start.py:6394` DOES build `meta_identity` carrying `meta.box.name` and DOES pass it to
+`build_launch_snapshot` (`:6075`, `:6161`, `:6819`) — the claim that "no production path arrives
+with an identity floor" was simply false. What is true is narrower and sufficient:
+`load_merged_config` (`start.py:2417`) runs well before `select_agent` (`:2666`), so the resolve
+that REACHES this refusal is always the narrow, identity-free one, and a `meta.box.name` read here
+would find nothing on the path that matters. `MIGRATION.md` §2.1 states the placeholder rather than
+leaving a user to notice it.
 
-⚑ **THE `base` TIER IS NOT SCANNED HERE.** `build_launch_snapshot` is not handed
-`/etc/kanibako/settings_base.yaml` — `assemble_levels` defaults it internally — so a retired spelling
-in that machine-wide file still gets the generic message. Stated, not hidden.
+⚑ **THE `base` TIER IS SCANNED**, appended by `_refuse_retired_spelling` itself off
+`settings_base_path()` — the same default `assemble_levels` resolves internally, read rather than
+threaded through a parameter nobody varies. It was left out on the reasoning that
+`build_launch_snapshot` "is not handed its path", which was never a reason: `assemble_levels` takes
+`base_path: Path | None = None` and `settings_base_path` is patchable exactly like every other seam
+binding here. And the omission was worse than it read — `agent_select` has always scanned base
+("a site admin's stale key defaults DOWN into every box on the machine"), and arming the resolve
+put this seam FIRST, so a site-wide fault would have got strictly LESS help than before `505e70d`.
 
 ⚑ **ONE FILE, ONE MESSAGE.** The scan looks at the whole file, not at the offending path, so a file
 carrying BOTH a retired spelling and an ordinary undeclared key reports the retirement and reveals

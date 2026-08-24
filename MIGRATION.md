@@ -354,10 +354,13 @@ would silently run permissive.
 ```
 
 An unparseable stored value maps to no tier, and the message then names the three you may choose
-from rather than guessing one for you. Where the key sits decides the cure: `kanibako agent set
-<agent> access=<tier>` for the agent's own `agent.yaml`, `kanibako box set <box>
-pref.agent.<agent>.access=<tier>` from a workset or box file, `kanibako system set access=<tier>`
-otherwise.
+from rather than guessing one for you. Where the key sits decides the cure, and the VERB is the
+tier — `kanibako agent set <agent> access=<tier>` for the agent's own `agent.yaml`,
+`kanibako box set <box> pref.agent.<agent>.access=<tier>` in a box file,
+`kanibako workset set <workset> pref.agent.<agent>.access=<tier>` in a workset file, and
+`kanibako system set access=<tier>` for the system or `/etc` base file. Pasting a `box set` line
+at a workset would either hunt for a box named after the key or write to whatever box your cwd
+resolves to, so the verb is not interchangeable.
 
 ⚑ **Two spellings are answered differently, and one of them is not answered at all.** A request
 written as `pref.agent.<agent>.auto_approve` still stops the launch, but as a *request whose target
@@ -797,26 +800,34 @@ files from the box home under its config dir — e.g. `<box_dir>/home/.claude/�
 
 ### 2.11 Housekeeping: renames you almost certainly don't carry
 
-Each of these is expected to find nothing in real stores; listed so a grep of your own files
-is quick. None of them is a key, so any one left behind stops the resolve (§2.47) rather than
-sitting there quietly — except where noted.
+Each of these is expected to find nothing in real stores; listed so a grep of your own files is
+quick. **They are four different kinds of thing and they behave differently — each bullet says
+which**; only the first is a stale key that stops the resolve.
 
 - **Bare `agent.<category>.*` keys** (e.g. `agent.common.plugins` with no agent name): an
-  internal launch-built form that should never have been persisted. If a settings file carries
-  one, discriminate it: `agent.<agent>.<category>.<rest>`. (`agent.default.*` is legitimate —
-  leave it.) A double-prefixed relic like `agent.claude.agent.goose.…` should be unwound.
+  internal launch-built form that should never have been persisted. **Not a key, so one left
+  behind stops the resolve** (§2.47) rather than sitting there quietly. If a settings file
+  carries one, discriminate it: `agent.<agent>.<category>.<rest>`. (`agent.default.*` is
+  legitimate — leave it.) A double-prefixed relic like `agent.claude.agent.goose.…` should be
+  unwound.
 - **`<data>/agents/<agent>/share/` is deleted** (it was only ever a join root and was verified
-  empty on inspection). If yours has content, it belongs to a hand-set relative agent
-  binding — absolutise that binding (§2.7's rule); don't just delete the dir.
+  empty on inspection). **A DIRECTORY, not a key** — nothing refuses, it is simply gone. If
+  yours has content, it belongs to a hand-set relative agent binding — absolutise that binding
+  (§2.7's rule); don't just delete the dir.
 - **`workset.{boxes,vault_ro,vault_rw,logs}` overrides become live** where they were inert
-  (standalone: all four; `workset.logs` for the helper log: all modes). If a
-  settings file of yours sets one, the corresponding mount now moves — silently, since the new
-  location is guarantee-created. A broken `workset.logs` override is visible: the launch logs
+  (standalone: all four; `workset.logs` for the helper log: all modes). **These ARE declared
+  keys — do not delete one** on the strength of this section; the change is that a value you
+  already set now takes effect. The corresponding mount moves silently, since the new location
+  is guarantee-created. A broken `workset.logs` override is visible: the launch logs
   `read-only source <path> does not exist; dropping mount`. Note an override moves the
   **mount** only; kanibako's own internal writes still target the default location, so an
   override is not yet a supported way to relocate a box.
 - **`@meta.runtime.ws_settings`** in any settings file: replace with `@meta.workset.settings`
-  (identical resolved value).
+  (identical resolved value). **This one is a reference INSIDE a value, not a key path**, so the
+  closed keyspace never judges it and nothing refuses. It is the quietest of the four: an
+  absent referent propagates absence (§6b), so a whole-value `@meta.runtime.ws_settings` makes
+  the key holding it disappear from the snapshot, and one embedded in a longer string expands
+  to nothing. Grep for it — you will not be told.
 
 ### 2.12 The upgrade gate: nothing new appears until `kanibako setup` runs
 
