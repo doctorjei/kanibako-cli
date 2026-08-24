@@ -682,9 +682,13 @@ def _refuse_undeclared_snapshot(
     table of at most a handful of behaviour keys; a resolved snapshot is the whole
     cascade.)
 
-    ⚑ THE CURE IS A HAND-EDIT AND THE MESSAGE MUST SAY SO. ``config unset`` cannot
-    remove what is not a key, and ``config show`` resolves through this very seam,
-    so it refuses too — leaving a user who is told "unset it" with no working move.
+    ⚑ THE CURE IS A HAND-EDIT AND THE MESSAGE MUST SAY SO. ``box reset`` cannot
+    remove what is not a key, and ``box show --effective`` resolves through this
+    very seam, so it refuses too — leaving a user who is told "reset it" with no
+    working move. ⚑ BOTH SPELLINGS ARE MEASURED, and they have to be: an earlier
+    revision of this message named ``config unset`` / ``config show``, and there is
+    no ``config`` noun at all (``config_keys._SCOPE_READ_COMMAND`` says so, off its
+    own measurement). A cure a user cannot type is worse than no cure.
     *files* are the settings files THIS resolve loaded, so the message points at
     real paths instead of a generic list; which of them carried the entry is not
     knowable here, because the snapshot is the MERGE of all of them.
@@ -720,8 +724,8 @@ def _refuse_undeclared_snapshot(
         f"'anything goes' behaviour the closed keyspace replaces.\n"
         f"  Fix: remove {them} BY HAND from the settings file that carries {them} — "
         f"this resolve loaded:\n{where}\n"
-        f"  'kanibako config unset' cannot remove what is not a key, and 'kanibako "
-        f"config show' resolves through this same seam, so it refuses too."
+        f"  'kanibako box reset' cannot remove what is not a key, and 'kanibako box "
+        f"show --effective' resolves through this same seam, so it refuses too."
     )
 
 

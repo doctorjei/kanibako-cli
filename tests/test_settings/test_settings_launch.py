@@ -4067,8 +4067,11 @@ def test_a_persona_secret_path_discriminates_onto_the_active_agent(tmp_path):
 # §0's RESOLVE clause, enforced at the snapshot seam                          #
 # --------------------------------------------------------------------------- #
 
+import argparse  # noqa: E402
 import json  # noqa: E402
+import re  # noqa: E402
 
+from kanibako.cli import build_parser  # noqa: E402
 from kanibako.settings import settings_keyspace_probe as _probe  # noqa: E402
 
 
@@ -4137,14 +4140,14 @@ def test_the_refusal_names_every_undeclared_entry_not_just_the_first(tmp_path):
     reason="the message under test is the one produced by an undeclared key, so "
            "the fixture has to write one.",
 )
-def test_the_refusal_points_at_the_files_it_loaded_not_at_config_unset(tmp_path):
+def test_the_refusal_points_at_the_files_it_loaded_not_at_a_cli_verb(tmp_path):
     """⚑ THE CURE IS A HAND-EDIT, AND THE MESSAGE HAS TO SAY SO.
 
-    ``config unset box.zippity`` cannot remove what is not a key, and
-    ``config show`` resolves through this same seam — so a user told to reach for
-    either has no working move. The message names the settings files this resolve
-    loaded instead. WHICH of them carried the entry is not knowable here: the
-    snapshot is the merge of all of them.
+    ``kanibako box reset box.zippity`` cannot remove what is not a key, and
+    ``kanibako box show --effective`` resolves through this same seam — so a user
+    told to reach for either has no working move. The message names the settings
+    files this resolve loaded instead. WHICH of them carried the entry is not
+    knowable here: the snapshot is the merge of all of them.
     """
     box_path = _box_yaml(tmp_path, "box:\n  zippity: wibble\n")
     with pytest.raises(_SettingsError) as e:
@@ -4154,8 +4157,66 @@ def test_the_refusal_points_at_the_files_it_loaded_not_at_config_unset(tmp_path)
     assert str(box_path) in msg
     # It says what the two obvious CLI moves will do, rather than leaving the user
     # to discover that both refuse.
-    assert "config unset" in msg
-    assert "config show" in msg
+    assert "kanibako box reset" in msg
+    assert "kanibako box show --effective" in msg
+
+
+#: Every ``'kanibako …'`` spelling the refusal quotes. The message quotes a command
+#: and nothing else, so the pattern needs no vocabulary of its own.
+_QUOTED_COMMAND = re.compile(r"'kanibako ([^']+)'")
+
+
+def _unparsable_word(spelling: str) -> str | None:
+    """The first word of *spelling* the real CLI parser will not take, or ``None``.
+
+    Walks ``build_parser()``'s subcommand tree word by word, checking a ``-``-word
+    against the options of the subparser reached so far. ⚑ THE PARSER, not a list of
+    known verbs: a list would have to be kept in step with ``cli.py`` by hand, which
+    is the same proof-reading duty this exists to replace.
+    """
+    parser = build_parser()
+    for word in spelling.split():
+        if word.startswith("-"):
+            if not any(word in a.option_strings for a in parser._actions):
+                return word
+            continue
+        subs = next(
+            (a for a in parser._actions
+             if isinstance(a, argparse._SubParsersAction)),
+            None,
+        )
+        if subs is None or word not in subs.choices:
+            return word
+        parser = subs.choices[word]
+    return None
+
+
+@pytest.mark.writes_undeclared(
+    "box.zippity",
+    reason="the message under test is the one an undeclared key produces, so the "
+           "fixture has to write one.",
+)
+def test_every_command_the_refusal_names_is_a_real_command(tmp_path):
+    """⚑ THE SPELLINGS ARE CHECKED AGAINST THE PARSER, NOT PROOF-READ (P15).
+
+    The first revision of this message named ``kanibako config unset`` and
+    ``kanibako config show``. There is no ``config`` noun and no ``unset`` verb — so
+    the one sentence telling a user which CLI moves will NOT work named two commands
+    that do not exist, and it shipped into ``MIGRATION.md`` and ``CHANGELOG.md``
+    beside a block presented as literal output. Prose cannot guard a spelling; the
+    parser can.
+    """
+    with pytest.raises(_SettingsError) as e:
+        _snapshot(_box_yaml(tmp_path, "box:\n  zippity: wibble\n"))
+    spellings = _QUOTED_COMMAND.findall(str(e.value))
+    # ⚑ REDS ON ITS OWN EMPTINESS: a message that stopped naming a cure at all would
+    # otherwise pass this vacuously.
+    assert spellings, "the refusal names no command at all"
+    for spelling in spellings:
+        assert _unparsable_word(spelling) is None, (
+            f"the refusal names 'kanibako {spelling}', whose word "
+            f"{_unparsable_word(spelling)!r} is not in the CLI parser"
+        )
 
 
 @pytest.mark.writes_undeclared(
