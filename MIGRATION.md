@@ -348,7 +348,7 @@ The RULE CHANGED in kanibako 1.8.0: the permission axis is no longer a boolean �
 `access` (restricted | editing | full, default full). Refusing rather than running: an undeclared key
 is not read at all, so this box would come up at the DEFAULT tier and a deliberately restricted box
 would silently run permissive.
-  Your stored `auto_approve: True` means `access: full` (R-41's mapping: true → full, false → restricted).
+  Your stored `auto_approve: true` means `access: full` (true → full, false → restricted).
   Fix: kanibako system set access=full
   then delete the `agent.claude.auto_approve` entry from <path>.
 ```

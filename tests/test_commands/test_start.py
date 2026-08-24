@@ -7100,6 +7100,7 @@ class TestRetiredBehaviorRefusalWiring:
             mode=BoxMode.standalone,
             metadata_path=root,
             group=None,
+            name="myproj",
         )
 
     def _call(self, tmp_path, *, box_doc=None, agent_doc=None, system_doc=None):
@@ -7172,6 +7173,27 @@ class TestRetiredBehaviorRefusalWiring:
                 box_doc={"pref": {"agent": {"claude": {"auto_approve": False}}}},
             )
         assert "pref.agent.claude.auto_approve" in str(exc.value)
+
+    def test_the_BOX_cure_names_the_box_this_launch_is_for(self, tmp_path):
+        """WIRING, and this seam is the only caller that can supply it: the box
+        being launched is right there in *proj*, so the ``box set`` positional
+        is the real name rather than the ``<box>`` placeholder a caller with no
+        identity emits.  Pasted from another directory, the placeholder line
+        writes to whatever box the cwd resolves to.
+
+        INVERT: drop ``box_name=`` from the call and this reddens.
+        """
+        from kanibako.settings.settings_resolve import SettingsError
+
+        with pytest.raises(SettingsError) as exc:
+            self._call(
+                tmp_path,
+                box_doc={"pref": {"agent": {"claude": {"auto_approve": True}}}},
+            )
+        assert (
+            "kanibako box set myproj pref.agent.claude.access=full"
+            in str(exc.value)
+        )
 
     def test_outermost_offender_is_reported_first(self, tmp_path):
         """Cascade order, so fixing one then re-running walks outward→inward
