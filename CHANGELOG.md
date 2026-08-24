@@ -618,8 +618,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   declared key (a bind or copy destination, a `masks` entry) is a value rather than a key path of
   its own and is not judged as one. The first one is bounded by what could *be* an agent, not by
   what is installed: `agent: common:`, `agent: env:`, `agent: seeded:` and every other category
-  spelling refuse everywhere, because kanibako declares that list itself and an agent can never be
-  named from it. **The cost that remains, stated: a name kanibako has simply never heard of is
+  spelling are judged wherever an `agent:` table is read at all, because kanibako declares that
+  list itself and an agent can never be named from it. (Which files read one is a separate
+  question with its own answer — see [MIGRATION.md](MIGRATION.md) §2.11.) **The cost that remains, stated: a name kanibako has simply never heard of is
   indistinguishable from a harness you have not installed**, so both `agent: goose: zippity:` and a
   typo'd `agent: clade: zippity:` resolve on a machine without goose, and `zippity` refuses on one
   with it. There is no list of every agent that will ever exist to check a name against.
