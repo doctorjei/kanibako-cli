@@ -2945,8 +2945,9 @@ always a path you can open.
   What is conceded is bounded by what could *be* an agent, not by what you have installed. A §2a
   category token can never name one — kanibako declares that list itself — so `agent: common: …`,
   `agent: env: …`, `agent: seeded: …` and the rest of §2.11's undiscriminated relics refuse on
-  every machine. So does `agent: default: …`: the all-agents tier is kanibako's own, not a
-  plugin's.
+  every machine — wherever the `agent:` table holding one is read at all, which is not every
+  settings file; §2.11 says which. So does `agent: default: …`: the all-agents tier is kanibako's
+  own, not a plugin's.
   The cost that remains is stated rather than hidden, and it is irreducible: **there is no list of
   every agent that will ever exist**, so a name kanibako has never heard of is indistinguishable
   from a harness you have not installed. `agent: goose: zippity: …` resolves on a claude-only
