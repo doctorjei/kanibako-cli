@@ -52,11 +52,20 @@ positive on a key that IS declared. :data:`KNOWN_LEAF_AGENTS` draws the line: an
 agent this machine CAN see is judged exactly as before, a persona is judged by its
 HARNESS, and ``agent.default`` is judged always — the all-agents tier is core's, not
 a plugin's, and ``key_class`` holds that rule rather than any supplier.
-🛑 THE COST IS STATED, NOT HIDDEN: ``agent.goose.zippity`` also resolves on a
-machine without goose. That is the price of not refusing ``agent.goose.provider``
-there, and it is bounded by install state rather than by a name list — where goose
-IS installed, ``zippity`` refuses like anything else. ``meta.agent.<agent>.*`` is
-untouched: its vocabulary is core-declared, so it is knowable either way.
+
+⚑⚑ THE CONCESSION IS ASKED IN TWO STEPS AND THE FIRST ONE IS THE KEYSPACE'S. Before
+``KNOWN_LEAF_AGENTS`` is consulted at all, ``key_class`` asks whether the segment
+COULD name an agent (``_could_name_an_agent``): a §2a category token and ``default``
+could not, so neither is ever conceded. Asking only "is it installed" made
+``agent.common.plugins`` — the undiscriminated relic MIGRATION.md §2.11 tells users
+to grep for — resolve as a KEY, because no plugin declares an agent named ``common``.
+🛑 THE RESIDUAL COST IS STATED, NOT HIDDEN, and it is IRREDUCIBLE: an agent NAME
+cannot be enumerated, so ``agent.goose.zippity`` resolves on a machine without goose
+(the price of not refusing ``agent.goose.provider`` there), and so does a typo'd
+``agent.clade.zippity`` — ``clade`` is exactly the shape an uninstalled harness has.
+Where goose IS installed, ``zippity`` refuses like anything else.
+``meta.agent.<agent>.*`` is untouched: its vocabulary is core-declared, so it is
+knowable either way.
 
 ⚑ The pytest write census (``tests/_keystore_census.py``) reads its oracle FROM HERE
 rather than keeping its own — same question, one answer.

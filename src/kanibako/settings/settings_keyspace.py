@@ -681,18 +681,46 @@ def _category_reason(
     raise AssertionError(f"{head!r} passed _looks_like_category with no branch here")
 
 
-def _looks_like_category(rest: list[str]) -> bool:
-    """Does *rest* start with a §2a category token?"""
-    if not rest:
-        return False
-    head = rest[0]
+def _is_category_token(token: str) -> bool:
+    """Is *token* a §2a category token?
+
+    ⚑ DERIVED FROM THE DECLARATIONS, never hand-listed (P13): a category entering
+    :data:`BIND_CATEGORIES` is a category here with no edit, which matters because
+    TWO different questions read this — where a category tail begins
+    (:func:`_looks_like_category`) and which segments can never be an AGENT NAME
+    (:func:`_could_name_an_agent`).
+    """
     # ``bindings`` is the ARM ROOT for ``bindings.{ro,rw}``; the value-less and
     # scalar-valued categories are named beside the bind-shaped ones.
     return (
-        head == "bindings"
-        or head in {c for c in BIND_CATEGORIES if "." not in c}
-        or head in ("masks", "env", "secret_path")
+        token == "bindings"
+        or token in {c for c in BIND_CATEGORIES if "." not in c}
+        or token in ("masks", "env", "secret_path")
     )
+
+
+def _looks_like_category(rest: list[str]) -> bool:
+    """Does *rest* start with a §2a category token?"""
+    return bool(rest) and _is_category_token(rest[0])
+
+
+def _could_name_an_agent(segment: str) -> bool:
+    """Could *segment* EVER be the ``agent.<HERE>`` discriminator of a real agent?
+
+    ⚑ THIS IS THE CONCESSION'S TEST, and it is NOT "is this agent installed"
+    (:func:`key_class`). A machine cannot enumerate the agents it has never heard
+    of, so an unrecognised NAME has to be conceded — but the tokens below are a
+    KNOWN FINITE SET the keyspace declares itself, so there is nothing unknowable
+    about them and conceding one would un-arm §0 over a shape that is documented as
+    a RELIC (``agent.common.plugins``, ``agent.env.<VAR>``, ``agent.seeded.*`` — the
+    undiscriminated launch-built form, MIGRATION.md §2.11).
+
+    FALSE for a §2a category token and for ``default``; both are then judged by the
+    core contract, which knows them. TRUE for anything else — including a
+    plausible-looking typo such as ``agent.clade.zippity``, which is the IRREDUCIBLE
+    residual: ``clade`` is exactly the shape a real uninstalled harness has.
+    """
+    return segment != "default" and not _is_category_token(segment)
 
 
 def _scope_reason(
@@ -1072,15 +1100,20 @@ def key_class(
             return _undeclared(_bad_agent_reason(name, valid_agents))
         return _agent_tail_reason(
             f"agent.{name}", rest[1:], leaves,
-            # ⚑ ``default`` IS NEVER ASKED ABOUT. The all-agents tier is CORE's, not
-            # a plugin's, so its vocabulary is the core contract and is known on
-            # every machine — and it is where the behavior floor lands, so conceding
-            # it would unarm §0 over the whole ``agent.default.*`` subtree. The rule
-            # lives here rather than in a supplier for the reason
-            # :func:`is_valid_agent_segment` gives: ``default``'s standing is the
-            # KEYSPACE's, so every supplier gets it right by not having to know it.
+            # ⚑ THE CONCESSION IS ASKED IN THE RIGHT ORDER, and getting it backwards
+            # un-armed §0 over a documented relic shape. The question is FIRST *could
+            # this segment be an agent at all* (:func:`_could_name_an_agent`) and only
+            # then *does this machine know its leaves*. A §2a category token and
+            # ``default`` fail the first question, so they are never conceded: their
+            # vocabulary is the KEYSPACE's own and is known on every machine. Ask only
+            # the second question and ``agent.common.plugins`` — the undiscriminated
+            # relic MIGRATION.md §2.11 tells users to grep for — classifies as a KEY,
+            # because no plugin declares an agent named ``common``.
+            # ⚑ Both exclusions live HERE rather than in a supplier for the reason
+            # :func:`is_valid_agent_segment` gives: their standing is the KEYSPACE's,
+            # so every supplier gets it right by not having to know it.
             leaves_known=(
-                name == "default"
+                not _could_name_an_agent(name)
                 or agents_with_known_leaves is None
                 or name in agents_with_known_leaves
             ),

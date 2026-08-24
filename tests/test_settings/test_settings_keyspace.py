@@ -1307,6 +1307,89 @@ def test_conceding_a_vocabulary_concedes_nothing_else():
     assert _class("agent.goose", **unknown).cls is KeyClass.NAMESPACE
 
 
+def _category_tokens() -> "frozenset[str]":
+    """The §2a category tokens, READ FROM THE DECLARATIONS (P13).
+
+    ⚑ NOT from ``_is_category_token``, which is the property under test — deriving a
+    corpus from it would empty the corpus of exactly the token that broke (P15).
+    Three independent declarations cover seven of the nine families; ``env`` is the
+    one with no declaring constant to read, so it is named HERE rather than taken
+    from the code this pins.
+    """
+    from kanibako.settings.settings_categories import CONCRETE_CATEGORIES
+    from kanibako.settings.settings_keyspace import (
+        BIND_CATEGORIES,
+        TERMINAL_CATEGORY_TAILS,
+    )
+
+    declared = (
+        {c.split(".")[0] for c in BIND_CATEGORIES}
+        | {tail[0] for tail in TERMINAL_CATEGORY_TAILS}
+        | {c.split(".")[0] for c in CONCRETE_CATEGORIES}
+    )
+    return frozenset(declared | {"env"})
+
+
+def test_a_category_token_under_agent_is_never_conceded(monkeypatch):
+    """🛑 THE CONCESSION'S TEST IS "COULD THIS BE AN AGENT", NOT "IS IT INSTALLED".
+
+    ``agent.common.plugins`` is the UNDISCRIMINATED relic MIGRATION.md §2.11 tells
+    users to grep their stores for. Under the install-state test it classified KEY —
+    because nothing declares an agent named ``common`` — so the concession un-armed
+    §0 over the exact shape the migration says stops a resolve. The category tokens
+    are a KNOWN FINITE SET; there is nothing unknowable about them to concede.
+
+    ⚑ Through the RESOLVE seam's oracle, where the agent NAME is conceded too. With
+    a narrow ``valid_agents`` every case here would refuse on the name instead and
+    the pin would pass without touching the concession at all.
+    """
+    from kanibako.settings import settings_keyspace_probe as probe
+    from kanibako.settings.settings_keyspace import KeyClass
+
+    monkeypatch.setattr(
+        probe, "_PLUGINS", probe._Plugins(frozenset(), frozenset({"claude"})),
+    )
+    tokens = _category_tokens()
+    # ⚑ REDS ON ITS OWN EMPTINESS: a declaration rename that emptied the corpus
+    # would otherwise pass this vacuously (P15).
+    assert len(tokens) >= 8, sorted(tokens)
+    for token in sorted(tokens):
+        judged = probe.declared_keyspace_oracle(f"agent.{token}.zippity")
+        assert judged.cls is KeyClass.UNDECLARED, f"agent.{token}.zippity: {judged}"
+
+
+def test_an_uninstalled_agents_leaf_is_still_conceded(monkeypatch):
+    """The OTHER direction, so the narrowing above cannot be over-read.
+
+    An agent this machine has never heard of is UNENUMERABLE — the concession's
+    whole reason — so a real harness's declared leaf still resolves where its plugin
+    is absent. ⚑ THE RESIDUAL RIDES ON THIS AND IS IRREDUCIBLE: at the RESOLVE seam
+    the agent NAME is conceded too (``ANY_AGENT``), and a plausible-looking typo is
+    indistinguishable there from an uninstalled harness — so ``agent.clade.zippity``
+    resolves as well. Stated in CHANGELOG.md rather than hidden.
+
+    ⚑ Through the SEAM's own oracle, because that is where both concessions meet;
+    ``key_class`` with a narrow ``valid_agents`` would refuse ``clade`` on its NAME
+    and never reach the leaf question this is about.
+    """
+    from kanibako.settings import settings_keyspace_probe as probe
+    from kanibako.settings.settings_keyspace import KeyClass
+
+    monkeypatch.setattr(
+        probe, "_PLUGINS", probe._Plugins(frozenset(), frozenset({"claude"})),
+    )
+    assert probe.declared_keyspace_oracle(
+        "agent.goose.provider"
+    ).cls is KeyClass.KEY
+    assert probe.declared_keyspace_oracle(
+        "agent.clade.zippity"
+    ).cls is KeyClass.KEY
+    # …and the narrowing still holds under the SAME permissive name oracle.
+    assert probe.declared_keyspace_oracle(
+        "agent.common.plugins"
+    ).cls is KeyClass.UNDECLARED
+
+
 def test_the_meta_agent_tier_is_not_conceded():
     """🛑 ``meta.agent.<agent>.*`` is core-declared, so there is nothing to concede.
 

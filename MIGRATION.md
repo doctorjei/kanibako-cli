@@ -2914,10 +2914,16 @@ agent's `agent.yaml` and the system's `<data>/global/settings.yaml` (§2.45).
   `provider`, a real goose key, for being missing from a list that could not contain it. A config
   you share between machines would refuse on the machine that lacks the plugin, naming a cause that
   was not the reason.
-  The cost of that is stated rather than hidden: `agent: goose: zippity: …` resolves there too. It
-  is bounded by what you have installed, not by a list of blessed names — install goose and
-  `zippity` refuses like any other undeclared key. `agent: default: …` is checked everywhere: the
-  all-agents tier is kanibako's own, not a plugin's.
+  What is conceded is bounded by what could *be* an agent, not by what you have installed. A §2a
+  category token can never name one — kanibako declares that list itself — so `agent: common: …`,
+  `agent: env: …`, `agent: seeded: …` and the rest of §2.11's undiscriminated relics refuse on
+  every machine. So does `agent: default: …`: the all-agents tier is kanibako's own, not a
+  plugin's.
+  The cost that remains is stated rather than hidden, and it is irreducible: **there is no list of
+  every agent that will ever exist**, so a name kanibako has never heard of is indistinguishable
+  from a harness you have not installed. `agent: goose: zippity: …` resolves on a claude-only
+  install, and so does a typo'd `agent: clade: zippity: …`. Install goose and `zippity` refuses
+  like any other undeclared key.
 - **Data that lives inside a declared key** — a bind destination, a `caches`/`seeded`/`synced`
   destination, a `masks` entry. Those are values addressed inside a key you already declared, not
   key paths of their own, and they are not judged as key paths. Your own paths and filenames stay

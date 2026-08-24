@@ -598,10 +598,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `box show --effective` resolves through the same seam, so it refuses as well. Two deliberate
   non-refusals: an agent whose plugin is not installed here is not judged at all — neither its
   table nor the keys under it, because an agent's keys are its plugin's to declare and without the
-  plugin there is no list to check them against (the cost, stated: `agent: goose: zippity:`
-  resolves on a machine without goose, and refuses on one with it) — and data addressed inside a
+  plugin there is no list to check them against — and data addressed inside a
   declared key (a bind or copy destination, a `masks` entry) is a value rather than a key path of
-  its own and is not judged as one. `agent: default:` is judged everywhere. §2.38 closed this same
+  its own and is not judged as one. The first one is bounded by what could *be* an agent, not by
+  what is installed: `agent: common:`, `agent: env:`, `agent: seeded:` and every other category
+  spelling refuse everywhere, because kanibako declares that list itself and an agent can never be
+  named from it. **The cost that remains, stated: a name kanibako has simply never heard of is
+  indistinguishable from a harness you have not installed**, so both `agent: goose: zippity:` and a
+  typo'd `agent: clade: zippity:` resolve on a machine without goose, and `zippity` refuses on one
+  with it. There is no list of every agent that will ever exist to check a name against.
+  `agent: default:` is judged everywhere. §2.38 closed this same
   passthrough for the per-agent `agent.yaml` file; this is the same rule over every settings file
   and the whole resolved snapshot. See [MIGRATION.md](MIGRATION.md) §2.47.
   **A key kanibako RETIRED still gets the message written for it**, not this generic one: before
