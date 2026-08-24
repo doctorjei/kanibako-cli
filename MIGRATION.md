@@ -2912,7 +2912,8 @@ agent's `agent.yaml` and the system's `<data>/global/settings.yaml` (§2.45).
 
 - **An agent whose plugin is not installed on this machine — the table AND the keys under it.**
   `agent: goose: …` in a file on a claude-only install still resolves, and so does `agent: goose:
-  provider: …`. The two go together: an agent's keys are declared by its own plugin, so where the
+  provider: …` — and so does the request spelling of either, `pref: agent: goose: …`, which is
+  judged by exactly the same rule as its target. The two go together: an agent's keys are declared by its own plugin, so where the
   plugin is absent there is no list to check a key against — and checking it anyway rejected
   `provider`, a real goose key, for being missing from a list that could not contain it. A config
   you share between machines would refuse on the machine that lacks the plugin, naming a cause that

@@ -1050,8 +1050,17 @@ def key_class(
         # ⚑ THE TARGET'S CLASS IS INHERITED, all three of them: ``pref.box`` is the
         # request-side spelling of a namespace, and a resolved store really does
         # carry those nodes (``pref.agent.<a>`` above a requested leaf).
+        # ⚑⚑ EVERY ORACLE PARAMETER RIDES ALONG. Dropping one makes the SAME key
+        # answer differently by SPELLING — ``agent.goose.zippity`` conceded while
+        # ``pref.agent.goose.zippity`` refused — which is not a stricter pref rule,
+        # it is two keyspaces. ``agents_with_known_leaves`` was the omission, and it
+        # was invisible because ``apply_prefs`` happens to pre-filter on a
+        # coinciding set; the agreement is pinned rather than left to that.
         inner = key_class(
-            ".".join(rest), valid_agents=valid_agents, agent_leaves=agent_leaves,
+            ".".join(rest),
+            valid_agents=valid_agents,
+            agent_leaves=agent_leaves,
+            agents_with_known_leaves=agents_with_known_leaves,
         )
         if inner.cls is KeyClass.KEY:
             return _KEY
