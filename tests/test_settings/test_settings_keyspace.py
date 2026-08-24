@@ -1426,3 +1426,81 @@ def test_the_resolve_oracle_answers_known_by_HARNESS(monkeypatch):
     # so the all-agents tier's standing stays the keyspace's rather than a
     # supplier's, and every supplier gets it right by not having to know it.
     assert "default" not in known
+
+
+# ---------------------------------------------------------------------------
+# ``pref.<target>`` and its target answer with ONE voice
+# ---------------------------------------------------------------------------
+#
+# ⚑ The §2h family is valid iff its TARGET is a key, so the recursion has to hand
+# the inner call the WHOLE oracle. Dropping one parameter does not make the pref
+# rule stricter — it makes the same key answer differently by SPELLING, which is two
+# keyspaces wearing one name. ``agents_with_known_leaves`` was dropped, and it was
+# invisible because ``apply_prefs`` pre-filters on a set that happens to coincide.
+
+#: One probe PER ORACLE PARAMETER: a key whose verdict flips with that parameter,
+#: and the two oracle overrides it flips between. ⚑ The dict is checked against
+#: ``key_class``'s own signature below, so a NEW parameter reds here rather than
+#: silently going unforwarded — the exact failure this section exists for (P13).
+_ORACLE_BASE = {
+    "valid_agents": frozenset({"claude", "goose", "myagent"}),
+    "agent_leaves": frozenset(),
+    "agents_with_known_leaves": frozenset({"claude", "goose"}),
+}
+_ORACLE_PROBES = {
+    "valid_agents": (
+        "agent.myagent.model",
+        {"valid_agents": frozenset({"myagent"})},
+        {"valid_agents": frozenset()},
+    ),
+    "agent_leaves": (
+        "agent.goose.provider",
+        {"agent_leaves": frozenset({"provider"})},
+        {"agent_leaves": frozenset()},
+    ),
+    "agents_with_known_leaves": (
+        "agent.goose.zippity",
+        {"agents_with_known_leaves": frozenset({"claude"})},
+        {"agents_with_known_leaves": frozenset({"claude", "goose"})},
+    ),
+}
+
+
+def test_the_probe_set_covers_every_oracle_parameter():
+    """⚑ THE CORPUS IS DERIVED FROM THE SIGNATURE, NOT LISTED (P13).
+
+    A fourth oracle parameter added to ``key_class`` without a probe key reds here,
+    instead of joining the pref recursion's blind spot unnoticed.
+    """
+    import inspect
+
+    from kanibako.settings.settings_keyspace import key_class
+
+    keyword_only = {
+        name for name, p in inspect.signature(key_class).parameters.items()
+        if p.kind is inspect.Parameter.KEYWORD_ONLY
+    }
+    assert keyword_only == set(_ORACLE_PROBES)
+
+
+@pytest.mark.parametrize("parameter", sorted(_ORACLE_PROBES))
+def test_a_pref_target_is_judged_exactly_as_the_bare_key(parameter):
+    """The SAME key, both spellings, both verdicts — for every oracle parameter.
+
+    Each row is chosen so its verdict FLIPS with the parameter it names, so the
+    agreement is asserted on a key the parameter actually reaches; a row that
+    answered the same either way would pin nothing (P15).
+    """
+    from kanibako.settings.settings_keyspace import KeyClass, key_class
+
+    key, as_key, as_undeclared = _ORACLE_PROBES[parameter]
+    for override, expected in ((as_key, KeyClass.KEY),
+                               (as_undeclared, KeyClass.UNDECLARED)):
+        oracle = {**_ORACLE_BASE, **override}
+        bare = key_class(key, **oracle)
+        assert bare.cls is expected, f"{parameter}: {key} -> {bare}"
+        pref = key_class(f"pref.{key}", **oracle)
+        assert pref.cls is bare.cls, (
+            f"{parameter}: '{key}' is {bare.cls.name} but 'pref.{key}' is "
+            f"{pref.cls.name} — one key, two answers by spelling"
+        )
