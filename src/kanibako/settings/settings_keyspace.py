@@ -91,6 +91,9 @@ from typing import (
 
 from kanibako.settings.kb_store import BINDING_DERIVATIONS_NODE, SCOPE_CONTAINMENT
 from kanibako.settings.keystore import KeyStore
+# ⚑ MODULE SCOPE, and it closes no cycle: ``settings_categories`` is pure — it
+# imports stdlib only, with ``kb_store`` and ``keystore`` behind ``TYPE_CHECKING``.
+from kanibako.settings.settings_categories import CATEGORY_FAMILY_ROOTS
 
 # ---------------------------------------------------------------------------
 # The keyspace version stamp
@@ -684,19 +687,21 @@ def _category_reason(
 def _is_category_token(token: str) -> bool:
     """Is *token* a §2a category token?
 
-    ⚑ DERIVED FROM THE DECLARATIONS, never hand-listed (P13): a category entering
-    :data:`BIND_CATEGORIES` is a category here with no edit, which matters because
-    TWO different questions read this — where a category tail begins
-    (:func:`_looks_like_category`) and which segments can never be an AGENT NAME
-    (:func:`_could_name_an_agent`).
+    ⚑ DERIVED FROM THE DELIVERY TABLE, never hand-listed (P13):
+    :data:`~kanibako.settings.settings_categories.CATEGORY_FAMILY_ROOTS` is the one
+    place all NINE families are named, so a tenth is a category token here with no
+    edit — which matters because TWO different questions read this: where a category
+    tail begins (:func:`_looks_like_category`) and which segments can never be an
+    AGENT NAME (:func:`_could_name_an_agent`).
+
+    🛑 IT IS NOT :data:`BIND_CATEGORIES`, and that is the correction. This used to
+    read the bind-shaped set and then NAME ``masks``, ``env`` and ``secret_path``
+    beside it, so "derived" held only for a family that happens to be bind-shaped —
+    a tenth family with a value shape of its own would have reached ``agent.<HERE>``
+    as a candidate AGENT NAME and been conceded. No live hole (all eight roots
+    refuse today), but the guarantee the shape claimed was not the one it gave.
     """
-    # ``bindings`` is the ARM ROOT for ``bindings.{ro,rw}``; the value-less and
-    # scalar-valued categories are named beside the bind-shaped ones.
-    return (
-        token == "bindings"
-        or token in {c for c in BIND_CATEGORIES if "." not in c}
-        or token in ("masks", "env", "secret_path")
-    )
+    return token in CATEGORY_FAMILY_ROOTS
 
 
 def _looks_like_category(rest: list[str]) -> bool:
