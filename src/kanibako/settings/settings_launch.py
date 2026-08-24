@@ -42,7 +42,11 @@ if TYPE_CHECKING:
 
 from kanibako.agent_ref import harness_of
 from kanibako.settings.agent_file import AgentFileLevel
-from kanibako.settings.config import AGENT_META_FILE, WORKSET_META_FILE
+from kanibako.settings.config import (
+    AGENT_META_FILE,
+    WORKSET_META_FILE,
+    settings_base_path,
+)
 from kanibako.settings.kb_store import SCOPE_CONTAINMENT, Bind, BindEntry
 from kanibako.settings.kb_store import __MISSING__
 from kanibako.settings.keystore import KeyStore
@@ -716,18 +720,27 @@ def _refuse_retired_spelling(files: Sequence[_TierFile]) -> None:
     setting is about to change when deleting the line changes nothing at all.
 
     ⚑ NEITHER SUBJECT IS GUESSED. ``box_name`` and the agent ``subject`` are left to
-    their placeholders (``<box>`` / ``<agent>``): this seam runs BEFORE agent
-    selection, and the resolve that reaches it first is ``load_merged_config``'s
-    narrow one, which materializes no box identity. The placeholder is the
-    documented fallback for exactly this case and fails loudly if pasted unedited —
-    a wrong name would not.
+    their placeholders (``<box>`` / ``<agent>``). 🛑 THE REASON IS ORDERING, NOT
+    ABSENCE — do not "fix" this by reading ``meta.box.name`` off the snapshot.
+    ``commands/start.py`` DOES build an identity floor carrying that key and DOES
+    pass it to ``build_launch_snapshot``; what it also does is call
+    ``load_merged_config`` well before ``select_agent``, and that narrow resolve
+    materializes no identity. So the resolve that REACHES this refusal is always the
+    identity-free one, so a read here would find nothing on the very path that
+    matters. The placeholder is the documented fallback for exactly this case and
+    fails loudly if pasted unedited, where a wrong name would not.
 
-    ⚑ THE ``base`` TIER (``/etc/kanibako/settings_base.yaml``) IS NOT SCANNED HERE,
-    because ``build_launch_snapshot`` is not handed its path — ``assemble_levels``
-    defaults it internally. A machine-wide stale key therefore still reaches the
-    generic message. Stated, not hidden.
+    ⚑ THE ``base`` TIER IS SCANNED, and it is appended HERE rather than passed in.
+    ``build_launch_snapshot`` is not handed that path — ``assemble_levels`` defaults
+    it internally — so this reads the SAME default, from the same function, rather
+    than inventing a parameter for a value nobody varies. It is not optional: a stale
+    key in ``/etc/kanibako/settings_base.yaml`` defaults DOWN into every box on the
+    machine, ``agent_select`` has always scanned it for exactly that reason, and this
+    seam now fires FIRST — so omitting it would give a site-wide fault strictly LESS
+    help than it got before the resolve was armed.
     """
-    for level, path in files:
+    # LEAST specific LAST, matching *files*' most-specific-first order.
+    for level, path in (*files, ("base", settings_base_path())):
         if path is None or not path.exists():
             continue
         raw = cascade_view(load_doc(path), level=level)

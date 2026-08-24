@@ -19,7 +19,7 @@ import pytest
 
 from kanibako.commands.start import _bind_map_from_mounts, _emit_category_mounts
 from kanibako.settings.agent_file import _FLAT_AGENT_CATEGORIES
-from kanibako.settings.kb_store import Bind, BindEntry
+from kanibako.settings.kb_store import SCOPE_CONTAINMENT, Bind, BindEntry
 from kanibako.settings.keystore import KeyStore
 from kanibako.settings.settings_launch import (
     build_launch_snapshot,
@@ -4185,7 +4185,14 @@ def _unparsable_word(spelling: str) -> str | None:
              if isinstance(a, argparse._SubParsersAction)),
             None,
         )
-        if subs is None or word not in subs.choices:
+        if subs is None:
+            # ⚑ THE VERB CHAIN HAS ENDED. Every remaining bare word is an ARGUMENT —
+            # a positional, a `key=value`, a `<box>` placeholder — which the parser
+            # cannot judge and this must not reject. Stopping here is what lets the
+            # check reach the cures, which all carry a subject positional; the part
+            # it does judge is the part that shipped wrong (`config show`).
+            continue
+        if word not in subs.choices:
             return word
         parser = subs.choices[word]
     return None
@@ -4514,6 +4521,11 @@ def test_the_retirement_scan_runs_only_on_a_resolve_that_refuses(
     # ⚑ The seam's OWN binding, not ``settings_assemble``'s: the import is at module
     # scope, so patching the source module would leave this caller on the original.
     monkeypatch.setattr(_launch, "refuse_retired_keys", recording)
+    # ⚑ The scan also appends the BASE tier, so this pins the FILES it read rather
+    # than the machine it ran on: point base at an absent path deliberately.
+    monkeypatch.setattr(
+        _launch, "settings_base_path", lambda: tmp_path / "no-base.yaml",
+    )
     box_path = _box_yaml(tmp_path, "box:\n  image: myrig\n")
     _snapshot(box_path)
     assert seen == [], "a conforming resolve re-read its settings files for nothing"
@@ -4595,3 +4607,84 @@ def test_a_table_the_cascade_reads_still_produces_its_cure(tmp_path):
     with pytest.raises(_SettingsError) as e:
         _snapshot(system_path=path)
     assert "'auto_approve' is RETIRED" in str(e.value)
+
+
+@pytest.mark.writes_undeclared(
+    "box.agent_name",
+    reason="the base file's retired spelling is an undeclared key too, so the "
+           "cascade writes it into the snapshot — which is what fires §0 here.",
+)
+def test_the_base_tier_is_scanned_too(tmp_path, monkeypatch):
+    """⚑ A SITE-WIDE STALE KEY DEFAULTS DOWN INTO EVERY BOX ON THE MACHINE.
+
+    ``agent_select`` has always scanned ``/etc/kanibako/settings_base.yaml`` for
+    exactly that reason. Arming the resolve put THIS seam first, so leaving base out
+    would have given the most widely-felt fault strictly LESS help than it got
+    before. The path is not threaded in — this seam reads the same
+    ``settings_base_path()`` default ``assemble_levels`` resolves internally, and
+    both bindings are patched here because both do the reading.
+    """
+    from kanibako.settings import settings_assemble as _assemble
+    from kanibako.settings import settings_launch as _launch
+
+    base = tmp_path / "settings_base.yaml"
+    base.write_text("box:\n  agent_name: claude\n", encoding="utf-8")
+    monkeypatch.setattr(_assemble, "settings_base_path", lambda: base)
+    monkeypatch.setattr(_launch, "settings_base_path", lambda: base)
+    with pytest.raises(_SettingsError) as e:
+        _snapshot()
+    msg = str(e.value)
+    assert "'box.agent_name' is RETIRED" in msg, msg
+    assert str(base) in msg
+    # The cure is level-appropriate: §2h allows no request at the base tier at all.
+    assert "a request may be written ONLY in a workset or box settings file" in msg
+
+
+#: Every ``kanibako …`` spelling inside ONE cure string, quoted or not. The quoted
+#: form ends at its closing quote; an unquoted one runs to the end of the line.
+_ANY_COMMAND = re.compile(r"kanibako ([^\n']*)")
+
+#: The levels a retirement cure is built for — the four cascade scopes plus the
+#: machine-wide base file. DERIVED (P13): a new scope reaches these builders with no
+#: edit here, and each of them forks on the level.
+_CURE_LEVELS = (*SCOPE_CONTAINMENT, "base")
+
+
+def test_every_command_a_retirement_cure_names_is_a_real_command():
+    """⚑ THE OTHER HALF OF THE SPELLING GUARD, and the half that was unguarded.
+
+    ``_QUOTED_COMMAND`` matches SINGLE-QUOTED spellings, which the generic §0 refusal
+    uses and the retirement cures do not — so the commands a user is most likely to
+    paste shipped past the parser check. This asks the CURE BUILDERS directly rather
+    than scraping their message: they are pure, every level is reachable, and their
+    output carries no prose to trip over (the refusal's own "in kanibako 1.8.0" does).
+    """
+    from kanibako.settings.settings_assemble import (
+        RETIRED_BEHAVIOR_KEYS,
+        RETIRED_FILE_KEYS,
+        _retired_behavior_cure,
+        _retired_key_cure,
+    )
+
+    cures: list[str] = []
+    for level in _CURE_LEVELS:
+        for key in RETIRED_FILE_KEYS.values():
+            cures.append(_retired_key_cure(key, level=level, value="claude"))
+        # The TABLE-valued spelling of ``box.agent`` takes the other builder.
+        cures.append(_retired_key_cure(
+            "box.agent", level=level, value="claude", mirror={"model": "sonnet"},
+        ))
+        for successor in RETIRED_BEHAVIOR_KEYS.values():
+            cures.append(_retired_behavior_cure(
+                successor, level=level, tier="full", subject=None,
+            ))
+    # ⚑ REDS ON ITS OWN EMPTINESS (P15): a builder that stopped emitting commands
+    # would otherwise pass this without a single spelling checked.
+    spellings = [s for cure in cures for s in _ANY_COMMAND.findall(cure)]
+    assert len(spellings) >= len(_CURE_LEVELS), spellings
+    for spelling in spellings:
+        bad = _unparsable_word(spelling)
+        assert bad is None, (
+            f"a retirement cure names 'kanibako {spelling}', whose word {bad!r} "
+            f"is not in the CLI parser"
+        )
