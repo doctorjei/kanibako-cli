@@ -112,12 +112,19 @@ special-casing (the old `group_auth` `meta.workset` identity key is retired).
 `workset.env.<VAR>`, stored in `ws_config` like every other workset key, so there is no second
 write target at this scope.
 
-### Why two guards sit in the GET arm and none in the others
+### Why three guards sit in the GET arm and none in the others
 
-Both refusals — bare agent behavior key, and bare `env.<VAR>` — are checked at the HANDLER in the
-`get` arm specifically, because the get engine returns VALUES and never error strings. The `set`
-and `reset` engines return an `"Error: …"` string the handler already checks, so the same two
-refusals fire from inside the engine on those paths.
+All three refusals — bare agent behavior key, bare `env.<VAR>`, and the closed-keyspace read gate
+(`scope_read_key_error`, spec §0) — are checked at the HANDLER in the `get` arm specifically,
+because the get engine returns VALUES and never error strings. The `set` and `reset` engines return
+an `"Error: …"` string the handler already checks, so the equivalent refusals fire from inside the
+engine on those paths.
+
+⚑ **ORDER IS LOAD-BEARING, and §0's is LAST.** The first two recognise a SPECIFIC retired spelling
+and hand back a cure written for it; the §0 gate is the generic "that is not a key". Run generically
+first and every tailored cure disappears behind a vaguer sentence. The box handler orders its own
+pair the same way, and additionally judges the key AFTER the bare-agent redirect — there is no such
+arm here, because a workset spans several boxes and has no single agent to mirror.
 
 The three verbs ARE symmetric in OUTCOME. *(Verified on the production path: `workset set|get|reset
 <ws> model` all print "agent settings can't be set|read|reset at workset scope …", and

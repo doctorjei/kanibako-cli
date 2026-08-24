@@ -5484,3 +5484,205 @@ class TestCategorySetAgentNodeGuardsSuperseded:
         assert check_agent_node("default").reason == "reserved"
         assert check_agent_node("a+b+c").reason == "malformed"
         assert check_agent_node("navigator℘claude") is None
+
+
+class TestClosedKeyspaceReadGate:
+    """spec §0's READING third at the FILE-SCOPE nouns: ``box get`` / ``workset get``.
+
+    ⚑ *"reading, setting, or resolving an undeclared key is an ERROR that NAMES the
+    offending key — never a silent accept."* The set and resolve thirds were armed; both
+    of these verbs answered ``(not set)`` at rc 0 for a name that is not a key.
+    """
+
+    @pytest.mark.parametrize("scope", [ConfigLevel.box, ConfigLevel.workset])
+    @pytest.mark.parametrize(
+        "key", ["nonsense", "box.nonsense", "workset.bogus", "box.image.extra"],
+    )
+    def test_an_undeclared_name_is_refused_and_NAMED(self, key, scope):
+        from kanibako.settings.config_keys import scope_read_key_error
+
+        err = scope_read_key_error(key, scope, active_agent="claude")
+        assert err is not None and err.startswith("Error:")
+        # §0: the error NAMES the offending key. §2h: it says WHY.
+        assert f"'{key}'" in err
+        assert "cannot be read" in err
+
+    @pytest.mark.parametrize("scope_token", ["box", "workset"])
+    def test_masks_takes_the_GENERIC_refusal(self, scope_token):
+        """§0: ``masks`` never had entry names, so there is no retired spelling to
+        keep readable — it is undeclared and takes the ordinary refusal."""
+        from kanibako.settings.config_keys import scope_read_key_error
+
+        key = f"{scope_token}.masks.some/dest"
+        err = scope_read_key_error(key, ConfigLevel[scope_token])
+        assert err is not None and key in err
+
+    @pytest.mark.parametrize("scope_token", ["box", "workset"])
+    def test_the_R9_HONEST_READ_survives_the_gate(self, scope_token):
+        """§0: *"Refuse the write; keep the read honest."* Every BIND-SHAPED category
+        entry still reads at both scopes.
+
+        ⚑ The corpus is DERIVED from the category list the recogniser itself is built
+        from, so admitting or retiring a category moves this test with it (P13).
+        """
+        from kanibako.settings.config_keys import scope_read_key_error
+        from kanibako.settings.settings_categories import _BIND_CATEGORIES
+
+        # MUTATION-PROVED: delete the ``_is_path_category_key(...) or
+        # _is_scope_bind_key(...)`` early return from ``scope_read_key_error`` and both
+        # parametrizations red, plus both nouns' e2e ``…_bind_entry_still_reads_back``.
+        assert _BIND_CATEGORIES, "empty corpus — this test would pass vacuously (P15)"
+        for category in _BIND_CATEGORIES:
+            key = f"{scope_token}.{category}.some/dest"
+            assert scope_read_key_error(
+                key, ConfigLevel[scope_token], active_agent="claude",
+            ) is None, key
+
+    @pytest.mark.parametrize(
+        "key",
+        [
+            "pref.system.agent",          # §2h — the read verbs must answer it
+            "pref.agent.claude.model",
+            "config.data",
+            "box.image",                  # a declared scalar, set or not
+            "box.env.MY_VAR",
+            "box.secret_path.MY_TOKEN",
+            "box.masks",                  # the BARE terminal IS a key
+            "box.bindings.ro",
+        ],
+    )
+    def test_a_declared_key_passes_the_gate(self, key):
+        from kanibako.settings.config_keys import scope_read_key_error
+
+        assert scope_read_key_error(
+            key, ConfigLevel.box, active_agent="claude",
+        ) is None
+
+    def test_a_BARE_agent_key_is_judged_through_the_box_redirect(self):
+        """``box get <box> model`` is a legal read: the engine rewrites it to
+        ``pref.agent.<active>.model`` BEFORE reading, so the gate must judge the same
+        form or it refuses a working key for a true-but-irrelevant reason."""
+        from kanibako.settings.config_keys import scope_read_key_error
+
+        assert scope_read_key_error(
+            "model", ConfigLevel.box, active_agent="claude",
+        ) is None
+        # A PERSONA node is <persona>℘<harness>; the harness is what must be known.
+        assert scope_read_key_error(
+            "model", ConfigLevel.box, active_agent="work℘claude",
+        ) is None
+
+    def test_the_refusal_points_at_the_surface_that_SHOWS_the_entry(self):
+        """The only cure for an undeclared entry is a hand edit, so the refusal has to
+        say where the entry is visible — otherwise it prescribes an edit to a line the
+        user has no way to find."""
+        from kanibako.settings.config_keys import scope_read_key_error
+
+        assert "kanibako box show" in (
+            scope_read_key_error("box.nope", ConfigLevel.box) or ""
+        )
+        assert "kanibako workset show" in (
+            scope_read_key_error("workset.nope", ConfigLevel.workset) or ""
+        )
+
+
+class TestStoredViewMarksUndeclaredEntries:
+    """The STORED view lists what the user's own file carries that is not a key.
+
+    ⚑ NOT a §0 carve-out: it displays FILE CONTENT — nothing resolved, no default
+    fabricated. It is what makes the read gate's "edit the file" a followable cure.
+    """
+
+    _DIRTY = (
+        "box:\n"
+        "  image: myimage\n"
+        "  zippity: wibble\n"
+        "  auth:\n"
+        "    global_enabled: true\n"
+        "    nope: 2\n"
+        "  bindings:\n"
+        "    ro:\n"
+        "      /in/box: [/on/host, ro]\n"
+        "  masks:\n"
+        "    /in/box/thing: true\n"
+        "  env:\n"
+        "    MY_VAR: bar\n"
+        "agent:\n"
+        "  default:\n"
+        "    model: sonnet\n"
+        "pref:\n"
+        "  system:\n"
+        "    agent: claude\n"
+    )
+
+    def _show(self, tmp_path, text, capsys):
+        global_cfg = tmp_path / "kanibako_config.yaml"
+        global_cfg.write_text("")
+        project_toml = tmp_path / BOX_META_FILE
+        project_toml.write_text(text)
+        show_config(global_config_path=global_cfg, config_path=project_toml)
+        return capsys.readouterr().out
+
+    def test_an_undeclared_entry_is_printed_and_MARKED(self, tmp_path, capsys):
+        # MUTATION-PROVED: suppress the block in ``show_config`` and this reds along
+        # with ``…_UNIFORM_across_the_nouns``, ``…_not_counted_as_an_OVERRIDE`` and
+        # both nouns' e2e ``…show_marks_a_hand_written_undeclared_entry``.
+        out = self._show(tmp_path, self._DIRTY, capsys)
+        assert "undeclared" in out
+        assert "box.zippity = wibble" in out
+        assert "box.auth.nope = 2" in out
+        # The cure needs the FILE, not just the key.
+        assert BOX_META_FILE in out
+
+    def test_DATA_inside_a_declared_key_is_NOT_marked(self, tmp_path, capsys):
+        """A bind destination, a ``masks`` entry and an ``env.<VAR>`` name are values
+        addressed inside a declared key. Marking one would be false.
+
+        MUTATION-PROVED: let the walk descend into a DECLARED key and this reds on
+        ``box.masks./in/box/thing`` — a working entry reported as junk.
+        """
+        out = self._show(tmp_path, self._DIRTY, capsys)
+        for stored in ("/on/host", "/in/box/thing", "MY_VAR"):
+            assert f"box.bindings.ro.{stored}" not in out
+            assert f"box.masks.{stored}" not in out
+        assert "box.env.MY_VAR" not in out
+
+    def test_a_DECLARED_but_dropped_table_is_NOT_marked(self, tmp_path, capsys):
+        """An ``agent:`` table in a ``box.yaml`` is discarded by DIRECTIONAL
+        enforcement — a different fact. Calling it undeclared would be a lie, and this
+        block does not own that marker."""
+        out = self._show(tmp_path, self._DIRTY, capsys)
+        assert "agent.default.model" not in out
+
+    def test_a_CLEAN_file_prints_no_block_at_all(self, tmp_path, capsys):
+        """The block must red on its own emptiness (P15): a marker that always prints
+        marks nothing."""
+        out = self._show(
+            tmp_path,
+            "box:\n  image: myimage\npref:\n  system:\n    agent: claude\n",
+            capsys,
+        )
+        assert "undeclared" not in out
+
+    def test_an_undeclared_entry_is_not_counted_as_an_OVERRIDE(self, tmp_path, capsys):
+        """"(no overrides)" stays true — junk in the file is not an override."""
+        out = self._show(tmp_path, "box:\n  zippity: wibble\n", capsys)
+        assert "no overrides" in out
+        assert "box.zippity = wibble" in out
+
+    def test_the_view_is_UNIFORM_across_the_nouns(self, tmp_path, capsys):
+        """One fact, one treatment: the system noun marks its settings file the same
+        way. ``show_config`` is shared, and a noun exempted from this would be a noun
+        whose junk stays invisible."""
+        global_cfg = tmp_path / "kanibako_config.yaml"
+        global_cfg.write_text("")
+        ssp = tmp_path / "settings.yaml"
+        ssp.write_text("system:\n  agent: claude\n  frobnicate: 1\n")
+        show_config(
+            global_config_path=global_cfg, config_path=global_cfg,
+            system_settings_path=ssp,
+        )
+        out = capsys.readouterr().out
+        assert "undeclared" in out
+        assert "system.frobnicate = 1" in out
+        assert "system.agent" not in out.split("undeclared", 1)[1]

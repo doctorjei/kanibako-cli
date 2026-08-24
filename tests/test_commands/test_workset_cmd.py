@@ -1493,3 +1493,102 @@ class TestWorksetCreateIsAtomicOnRefusal:
         assert (
             root / "canon" / "handbook" / "directives" / "SYS_WORKSET.md"
         ).is_file()
+
+
+class TestWorksetGetIsWiredToTheClosedKeyspace:
+    """spec §0 at the ``workset`` noun — the twin of the box noun's gate.
+
+    ⚑ END-TO-END through the verb; the predicate itself is pinned in
+    ``tests/test_settings/test_config_interface.py``.
+    """
+
+    def _ws(self, config_file, tmp_home, name):
+        std = load_std_paths(load_config(config_file))
+        return create_workset(name, tmp_home / f"ws_{name}", std)
+
+    def _merge(self, ws, table):
+        """MERGE into the workset's settings file — never overwrite it: the create
+        wrote content of its own, and clobbering it tests a file no user has."""
+        from kanibako.commands.workset_cmd import _workset_config_path
+        from kanibako.settings.config_io import dump_doc, load_doc
+
+        path = _workset_config_path(ws)
+        doc = load_doc(path)
+        doc.setdefault("workset", {}).update(table)
+        dump_doc(path, doc)
+
+    def test_an_undeclared_key_refuses_at_rc_1_NAMING_it(
+        self, config_file, tmp_home, capsys,
+    ):
+        from kanibako.commands.workset_cmd import run_get
+
+        # MUTATION-PROVED: neuter the handler's ``scope_read_key_error`` call and this
+        # reds with ``assert 0 == 1``, as does the box noun's twin.
+        self._ws(config_file, tmp_home, "keyspacews")
+        rc = run_get(argparse.Namespace(workset="keyspacews", key="workset.frob"))
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert "(not set)" not in err
+        assert "workset.frob" in err
+
+    def test_a_DECLARED_but_unset_key_still_answers_not_set_at_rc_0(
+        self, config_file, tmp_home, capsys,
+    ):
+        from kanibako.commands.workset_cmd import run_get
+
+        self._ws(config_file, tmp_home, "unsetws")
+        rc = run_get(argparse.Namespace(workset="unsetws", key="workset.vault_ro"))
+        assert rc == 0
+        assert "(not set)" in capsys.readouterr().err
+
+    def test_a_HAND_AUTHORED_bind_entry_still_reads_back(
+        self, config_file, tmp_home, capsys,
+    ):
+        """§0: *"Refuse the write; keep the read honest."*"""
+        from kanibako.commands.workset_cmd import run_get
+
+        ws = self._ws(config_file, tmp_home, "bindws")
+        self._merge(ws, {
+            "bindings": {"ro": {"/in/box": ["/on/host", "ro"]}},
+            "synced": {"/in/box/s": ["/on/host/s"]},
+        })
+        for key in ("workset.bindings.ro./in/box", "workset.synced./in/box/s"):
+            assert run_get(
+                argparse.Namespace(workset="bindws", key=key),
+            ) == 0, key
+            assert "/on/host" in capsys.readouterr().out, key
+
+    def test_the_BARE_agent_key_refusal_still_wins_over_the_generic_one(
+        self, config_file, tmp_home, capsys,
+    ):
+        """ORDER pin: a recognised spelling keeps the cure written for it. The §0 gate
+        runs LAST, or it would overwrite a specific refusal with a vaguer one."""
+        from kanibako.commands.workset_cmd import run_get
+
+        self._ws(config_file, tmp_home, "barews")
+        assert run_get(argparse.Namespace(workset="barews", key="model")) == 1
+        err = capsys.readouterr().err
+        assert "pref.agent.<agent>.model" in err
+        assert "cannot be read" not in err
+
+    def test_workset_show_marks_a_hand_written_undeclared_entry(
+        self, config_file, tmp_home, capsys,
+    ):
+        from kanibako.commands.workset_cmd import run_show
+
+        ws = self._ws(config_file, tmp_home, "showws")
+        self._merge(ws, {"vault_ro": "/ro", "frob": 1})
+        assert run_show(argparse.Namespace(workset="showws", effective=False)) == 0
+        out = capsys.readouterr().out
+        assert "undeclared" in out
+        assert "workset.frob = 1" in out
+
+    def test_workset_show_prints_no_such_block_for_a_clean_file(
+        self, config_file, tmp_home, capsys,
+    ):
+        from kanibako.commands.workset_cmd import run_show
+
+        ws = self._ws(config_file, tmp_home, "cleanws")
+        self._merge(ws, {"vault_ro": "/ro"})
+        assert run_show(argparse.Namespace(workset="cleanws", effective=False)) == 0
+        assert "undeclared" not in capsys.readouterr().out

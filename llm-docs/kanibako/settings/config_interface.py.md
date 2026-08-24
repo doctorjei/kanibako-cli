@@ -953,6 +953,16 @@ The plain view prints the project overrides, the agent settings, the SYSTEM nest
 overrides (they ARE overrides at this level), and the `pref` REQUESTS stored at this noun (spec
 §2h "config show lists prefs" — also overrides at this level).
 
+⚑ **Then, LAST and not counted as an override, the entries the noun's settings file carries that
+the keyspace does not DECLARE** (`_undeclared_stored_entries`, whose docstring holds the reasoning).
+It is a display of FILE CONTENT, not a §0 read of a key: nothing is resolved, no default is
+fabricated. It exists because `box get` / `workset get` now REFUSE such a name (§0) and the only
+cure is a hand edit — a cure nobody can follow for a line they cannot see. The SYSTEM nested block
+SUBTRACTS this set before printing: that flatten has no key semantics, so without the subtraction
+one line would appear twice, once called an override and once called junk. The agent-settings
+block does not subtract, because it renders a leaf FLAT (`bogus`, not `agent.default.bogus`) and
+matching the two would need this display to re-derive a key's spelling.
+
 ### The env rows, and the two `.env` absences
 
 ⚑ *env_global* / *env_project* are VESTIGIAL and are NOT displayed. This display used to harvest

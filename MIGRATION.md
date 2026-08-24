@@ -29,9 +29,10 @@ config notes are in the [CHANGELOG](CHANGELOG.md).
 > for them instead of the generic one, with the cure spelled out (§2.1). The retired `workset.meta`
 > identity table refuses earlier still (§2.43, and it is not a cascade key at all: it is the marker
 > that makes a directory a workset root, and no longer lives in a settings file).
-> ⚑ **Two surfaces stay quiet, deliberately**: `box show` without `--effective` prints the stored
-> file and never resolves, and `box get` / `workset get` still answer `(not set)`. Neither is a
-> clean bill of health — §2.47 lists them.
+> ⚑ **The two surfaces that do not resolve handle it differently, and neither is silent**:
+> `box show` without `--effective` never resolves, so it prints the entry MARKED as not a key
+> rather than refusing, and `box get` / `workset get` refuse an undeclared name outright — rc 1,
+> where v1.7.2 answered `(not set)` at rc 0 (§2.48).
 
 Paths below: `<data>` is your kanibako data directory (default `~/.local/share/kanibako`;
 whatever `config.data` points at if you moved it).
@@ -217,7 +218,9 @@ inside boxes. In order of likely impact:
     naming every offending entry at once and the files the resolve loaded. The cure is a
     hand-edit: `box reset` cannot remove what is not a key, and `box show --effective` resolves
     through the same seam, so it refuses too. Most often this is a typo or a key retired by this
-    release, so the fix is one deleted line.
+    release, so the fix is one deleted line. **`box get` and `workset get` refuse such a name too
+    now — rc 1 where v1.7.2 said `(not set)` at rc 0 — and `show` lists the offending lines so you
+    know which ones to delete** (§2.48).
 
 24. Smaller items: standalone boxes' `box get` got truthful (§2.9); a box suppressed to
     plain-shell keeps stale credential files in its home (§2.10); several never-released or
@@ -246,8 +249,9 @@ inside boxes. In order of likely impact:
 | surface | behavior |
 |---|---|
 | launch / `box show --effective` | **hard refusal**, naming the entry and the files the resolve loaded (§2.47) |
-| `box show` (stored view) | **silent** — the undeclared entry is simply not displayed |
-| `kanibako box get <box> <stale key>` | prints `(not set)`, rc 0 |
+| `box show` / `workset show` / `system show` (stored view) | **listed and marked** — the entry is printed under an `(undeclared …)` heading naming the file (§2.48) |
+| `kanibako box get <box> <stale key>` | **loud** — refused naming the key and why, rc 1 (§2.48) |
+| `kanibako workset get <workset> <stale key>` | **loud** — refused naming the key and why, rc 1 (§2.48) |
 | `kanibako box get <stale key>` (no box argument) | `Error: Unknown project or workset: '<key>'` — the unknown key is taken for a project name |
 | `kanibako system get`/`set <stale key>` (typed) | **loud** — `Error: unknown config key: …`, rc 1 |
 | `box.agent_name` / `box.agent` / `system.default_agent` stored anywhere in the cascade | **hard refusal** at launch and in `box info`, carrying that key's OWN message and cure (below) |
@@ -2888,8 +2892,9 @@ box:
 parsed, merged and came out of the cascade as `wibble` — and then nothing read it. No error, no
 warning, and nothing in `box show` that marked the line as dead. The settings keyspace is closed:
 *setting* an undeclared key was already an error that named the key, and so was *reading* one at
-`system get` (`box get` and `workset get` still print `(not set)` — §2.1's table). *Resolving* one
-was the third case, and it is one now too.
+`system get`. *Resolving* one was the third case, and it is one now too. (`box get` and `workset
+get` were the hole left in the reading case; §2.48 closes it, and gives `box show` the marked line
+this paragraph says it lacked.)
 
 **Which commands.** The ones that build the resolved snapshot. They all build the same one, so they
 all stop at the same place. Measured on the shipped code: `kanibako` / `start`, `shell`, `box info`,
@@ -2901,8 +2906,8 @@ lists the ones it does, and each carries its own reason and a command you can pa
 message is the answer for a key nothing more specific is known about.
 
 **And which do not, which is worth knowing when a command stays quiet.** `box show` WITHOUT
-`--effective` prints the stored file and never resolves, so it does not mention the bad line at
-all; `box get` prints `(not set)`; `box diagnose` does not resolve settings. `setup`,
+`--effective` prints the stored file and never resolves, so it never carries THIS message — it
+marks the line instead (§2.48); `box diagnose` does not resolve settings. `setup`,
 `system diagnose` and `rig diagnose` DO resolve, but each catches the failure and prints a
 `cannot check` line in place of the reason — a defect, not a design. When a command goes vague on
 you, run `kanibako box show --effective` to see the message in full:
@@ -2960,6 +2965,66 @@ always a path you can open.
 
 **Scope.** §2.38 closed this same passthrough for the per-agent `agent.yaml` file. This is the same
 rule applied to every settings file and to the whole resolved snapshot.
+
+### 2.48 `box get` and `workset get` refuse a name that is not a key, and `show` marks the entry
+
+**Read this if a script calls `kanibako box get` or `kanibako workset get`, or if you have a
+settings file you hand-edited and never checked.**
+
+**What changed — the break.** Both verbs used to answer `(not set)` at **rc 0** for any name at
+all. `kanibako box get scratch zippity` said the same thing about a typo, a key retired in 1.8.0
+and a real key you had simply not set. They now **refuse an undeclared name, rc 1**, printing the
+key and the reason:
+
+```
+$ kanibako box get scratch box.zippity
+Error: 'box.zippity' cannot be read: 'zippity' is not a declared box key (declared: canon,
+enable_vault, image, images_store, share_images, shell, plus the §2a categories). If your settings
+file carries this entry, 'kanibako box show <box>' lists it as undeclared; removing it means
+editing that file by hand.
+```
+
+This is the reading third of the closed keyspace, which `system get` (and, since §2.38, `agent
+get`) already enforced. `(not set)` is now what it says: **a declared key with no value stored at
+this noun**, still rc 0.
+
+**What you must do.** A script that reads a key and branches on rc will now see 1 where it saw 0 —
+but only for a name that was never a key, where the `(not set)` it used to get was meaningless. If
+you were using `box get` as a spell-checker for your own key names, it is a much better one now.
+
+**Three things still read, and they are the ones people ask about.**
+
+- **Hand-authored bind and category entries.** `box get <box> box.bindings.ro.<dest>` and
+  `box get <box> box.{caches,seeded,common,synced}.<dest>` still print the stored value at both
+  scopes. Those are not declared keys — the CLI write route for them retired in 1.8.0 — but the
+  read is kept on purpose: the retirement message tells you to hand-edit the table, and you can
+  only check a hand edit if the read-back works. (`box.masks.<dest>` is not in this group and
+  never was: `masks` never had entry names, so it takes the ordinary refusal.)
+- **`pref.*` requests.** `box get <box> pref.system.agent` answers exactly as before.
+- **`config.*` keys.** Unchanged.
+
+**And `show` now tells you what is in your file.** Because the only cure for an undeclared entry
+is a hand edit (§2.47), the stored view — `box show`, `workset show`, `system show`, all three,
+without `--effective` — lists such entries under their own heading, naming the file to open:
+
+```
+$ kanibako box show scratch
+  box_image = myimage
+  pref.system.agent = claude
+  (undeclared — stored in /home/you/.local/share/kanibako/worksets/demo/boxes/scratch/box.yaml, not keys (spec §0); remove one by editing that file)
+    box.auth.nope = 2
+    box.zippity = wibble
+```
+
+That block is a **display of file content**, not a read of a key: nothing is resolved, no default
+is invented, and the value is echoed exactly as your file spells it. It is what makes §2.47's
+"open the file and delete the line" a cure you can actually follow — before this you had to open
+the YAML to discover the line existed.
+
+It marks only what the keyspace does not declare. Data inside a declared key — a bind destination,
+a `masks` entry, an `env.<VAR>` name — is not marked, and neither is a table that IS declared but
+that this file's tier is not allowed to set (an `agent:` table in a `box.yaml`, §2.11): that is a
+different fact, and calling it "undeclared" would be false.
 
 ---
 
