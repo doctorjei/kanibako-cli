@@ -1111,6 +1111,92 @@ def agent_read_key_error(node: str, tail: str) -> str | None:
     return agent_write_key_error(node, tail, verb="read")
 
 
+#: How a user SPELLS the STORED view at each file scope's own noun — the sibling of
+#: :data:`_SCOPE_READ_COMMAND`, keyed the same way (:class:`ConfigLevel`'s own value).
+#: It is the ONE surface on which an entry the keyspace does not declare is visible,
+#: which is why :func:`scope_read_key_error` names it: the cure for such an entry is a
+#: hand edit, and nobody can hand-edit a line they were never shown.
+_SCOPE_SHOW_COMMAND = {
+    "system": "kanibako system show",
+    "workset": "kanibako workset show <workset>",
+    "box": "kanibako box show <box>",
+}
+
+
+def scope_key_reason(canonical: str) -> str | None:
+    """The §0 reason *canonical* names no key, or ``None`` when it does.
+
+    ⚑ ONE CONSTRUCTION, TWO CONSUMERS — the file-scope nouns' READ gate
+    (:func:`scope_read_key_error`) and the STORED view's undeclared-entry block
+    (``config_interface.show_config``).  The rule is one, so neither restates it.
+
+    ⚑⚑ ``key_validity`` VIA ``key_reason``, NEVER ``is_known_key``, for exactly the reason
+    :func:`agent_key_reason` gives: ``is_known_key`` answers *"is this key-SHAPED, as opposed
+    to a project name"*, and §0 asks *"is this a DECLARED key"*.  The two disagree on SEVEN
+    declared keys (the six bind-shaped category terminals and ``<scope>.masks``), which is why
+    the ``system get`` gate — still on ``is_known_key`` — quarantines its own wrong answers.
+    ``key_reason`` also unions the PLUGIN-declared agent leaves, without which a legitimate
+    ``pref.agent.goose.provider`` would be refused.
+    """
+    from kanibako.settings.settings_prefs import default_valid_agents, key_reason
+
+    return key_reason(canonical, valid_agents=default_valid_agents())
+
+
+def scope_read_key_error(
+    key: str,
+    command_scope: "ConfigLevel | None",
+    *,
+    active_agent: str | None = None,
+) -> str | None:
+    """Why ``<noun> get <key>`` names no key, or ``None`` when it does (spec §0).
+
+    THE CLOSED-KEYSPACE READ GATE for the file-scope nouns, the twin of
+    :func:`agent_read_key_error`.  Without it ``box get <box> nonsense`` printed "(not set)"
+    at rc 0 — a silent accept of an undeclared name, which §0 forbids in the same breath as
+    the write: *"reading, setting, or resolving an undeclared key is an ERROR that NAMES the
+    offending key"*.
+
+    ⚑ IT JUDGES THE KEY THE ENGINE WILL ACTUALLY READ, which is two transforms deep:
+    ``resolve_key`` first, then the BOX-scope bare-agent redirect ``get_config_value`` applies
+    before it reads anything.  Judging the raw spelling instead refuses ``box get <box> model``
+    — a legal read — on the true-but-irrelevant ground that ``model`` is not a namespace.
+
+    ⚑ The bind-shaped carve-out is taken from the SAME predicate ``get_config_value`` branches
+    on, as :func:`agent_read_key_error` takes its own: ``<scope>.bindings.{ro,rw}.<name>`` and
+    ``<scope>.{caches,seeded,common,synced}.<name>`` are NOT declared keys, and §0 keeps them
+    READABLE anyway — *"Refuse the write; keep the read honest"* — because a hand-authored
+    entry reporting "(not set)" is worse than the lost write route.  ``<scope>.masks.<anything>``
+    is deliberately NOT in it: ``masks`` never had entry names, so §0 gives it the generic
+    refusal and this gate is where that refusal happens.
+
+    ⚑ LAST of the handlers' guards, never first.  ``bare_env_retired_error`` and
+    ``bare_agent_key_scope_error`` refuse a RECOGNISED spelling by name and hand back a cure;
+    a generic "not a key" arriving before either one would overwrite the cure with less truth.
+    """
+    canonical = resolve_key(key)
+    redirect = box_agent_redirect_key(canonical, command_scope, active_agent)
+    if redirect is not None:
+        canonical = redirect
+    if _is_path_category_key(canonical) or _is_scope_bind_key(canonical):
+        return None
+    reason = scope_key_reason(canonical)
+    if reason is None:
+        return None
+    shown = _SCOPE_SHOW_COMMAND.get(
+        command_scope.value if command_scope is not None else "",
+    )
+    cure = (
+        f" If your settings file carries this entry, '{shown}' lists it as "
+        f"undeclared; removing it means editing that file by hand."
+        if shown else ""
+    )
+    # ⚑ *key* AS TYPED, not the canonical form: §0 asks the error to name the OFFENDING key,
+    # and the user can only act on the string they wrote.  It is also the ``+`` spelling, so
+    # ``℘`` cannot reach a message by this route.
+    return f"Error: '{key}' cannot be read: {reason}.{cure}"
+
+
 def _is_path_category_key(key: str) -> bool:
     """True iff *key* is a PER-NAME PATH-TUPLE category key."""
     # ⚑⚑ IT IS NOW FALSE FOR EVERY KEY, AND THAT IS THE CORRECT ANSWER (2026-08-08c).

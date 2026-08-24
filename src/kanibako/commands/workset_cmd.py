@@ -713,6 +713,7 @@ def _run_workset_config(args: argparse.Namespace) -> int:
             bare_agent_key_scope_error,
             bare_env_retired_error,
             resolve_key,
+            scope_read_key_error,
         )
         _bare_err = bare_agent_key_scope_error(
             resolve_key(key), ConfigLevel.workset, verb="read",
@@ -726,6 +727,14 @@ def _run_workset_config(args: argparse.Namespace) -> int:
         )
         if _env_err is not None:
             print(_env_err, file=sys.stderr)
+            return 1
+        # ⚑ THE CLOSED-KEYSPACE READ GATE (spec §0), THIRD and last for the reason
+        # ``scope_read_key_error`` states — a generic "not a key" must not overwrite
+        # either cure above.  No redirect arm: a workset spans several boxes, so there
+        # is no single agent to mirror, which is exactly what the first guard says.
+        _key_err = scope_read_key_error(key, ConfigLevel.workset)
+        if _key_err is not None:
+            print(_key_err, file=sys.stderr)
             return 1
         val = get_config_value(
             key,

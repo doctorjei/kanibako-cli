@@ -151,7 +151,10 @@ box.caches`` is read as a PROJECT NAME. Both messages are wrong, both are KNOWN 
 cure is the promised surface — never a wider list. (The scope nouns' two-positional reads, ``kanibako
 box get <box> box.caches`` and its workset/agent siblings, are not gated by this set and do return
 the map today. That is where the behaviour currently lives; it is an accident of which door checks
-this set, not the chosen design, so do not build on it either.)
+this set, not the chosen design, so do not build on it either. ⚑ Those two doors are no longer
+UNGATED — :func:`scope_read_key_error` closes §0's read there — but they still pass ``box.caches``,
+because it asks ``key_validity``, which DECLARES it. Declining to invent a refusal for a declared
+key is not a decision about the promised map surface, and this paragraph still governs that.)
 
 ⚑ The quarantine COMMENT travels with the set — do not copy the hand-maintained pattern anywhere
 else, and do not split the block from the data.

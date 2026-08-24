@@ -79,6 +79,7 @@ from kanibako.settings.config_keys import (
     agent_node_bind_retired_error,
     scope_bind_retired_error,
     scope_env_var_error,
+    scope_key_reason,
     SETUP_MARKER_KEY,
     is_config_file_only_key,
     resolve_key,
@@ -1203,6 +1204,57 @@ def reset_all(
     return f"Reset {count} override(s)." if count else "No overrides to reset."
 
 
+def _undeclared_stored_entries(path: "Path | None") -> dict[str, str]:
+    """Entries STORED in *path* that the keyspace does not declare — ``dotted.key → value``.
+
+    ⚑⚑ THIS IS NOT A §0 CARVE-OUT AND MUST NOT BE READ AS ONE.  §0 refuses READING,
+    SETTING or RESOLVING an undeclared key; this displays STORED FILE CONTENT.  It
+    resolves nothing, fabricates no default, accepts nothing, and echoes the value
+    exactly as the file spells it — it reports that a line exists in the user's own
+    file and is not a key.  It exists BECAUSE the read verbs now refuse such a name:
+    the only cure for an undeclared entry is a hand edit, and a cure is worthless for
+    a line the user has no way to see.
+
+    The walk STOPS at a declared key.  A terminal dest-keyed category
+    (``box.bindings.ro``, ``box.caches``, ``box.masks``) holds DESTINATIONS inside its
+    value, so descending into one would report working entries as undeclared.
+    Anything else that is a non-empty mapping is a NAMESPACE (``box``, ``box.auth``,
+    ``agent.default``, ``pref.system``) and is walked through, which is what keeps a
+    DECLARED-but-dropped table — an ``agent:`` table in a ``box.yaml``, which
+    directional enforcement discards — out of the result: its leaves are declared, so
+    nothing in it is marked.  That table's fate is a DIFFERENT fact and gets no marker
+    here.
+
+    ⚑ What is marked is the DEEPEST stored path, not the shallowest refused one:
+    ``box.auth.bogus`` rather than ``box.auth``.  The user has to find the line in a
+    YAML file, and the deep form is the only one that says which line.
+    """
+    if path is None or not path.exists():
+        return {}
+    data = load_doc(path)
+    if not isinstance(data, dict):
+        return {}
+    out: dict[str, str] = {}
+
+    def _walk(node: dict, prefix: str) -> None:
+        for k, v in node.items():
+            dotted = f"{prefix}{k}"
+            if scope_key_reason(dotted) is None:
+                continue  # declared — whatever is under it is DATA, not keys
+            if isinstance(v, dict) and v:
+                _walk(v, f"{dotted}.")
+            elif isinstance(v, bool):
+                # Rendered as ``get`` renders it, so one value has one spelling.
+                out[dotted] = str(v).lower()
+            elif v is None:
+                out[dotted] = "null"
+            else:
+                out[dotted] = str(v)
+
+    _walk(data, "")
+    return out
+
+
 def show_config(
     *,
     global_config_path: Path,
@@ -1285,6 +1337,11 @@ def show_config(
         # Show only overrides
         has_output = False
 
+        # Resolved FIRST because the override blocks below subtract it: an entry the
+        # keyspace does not declare is not an override, and printing it in both places
+        # would say two different things about one line (Convention 0).
+        undeclared = _undeclared_stored_entries(settings_src)
+
         overrides = load_project_overrides(config_path) if config_path else {}
         for k, v in sorted(overrides.items()):
             print(f"  {k} = {v}", file=out)
@@ -1297,9 +1354,14 @@ def show_config(
                 has_output = True
 
         # SYSTEM scope: the nested settings-tier overrides ARE overrides at this level.
+        # ⚑ This flatten has no key semantics (``config_display``'s own contract), so it
+        # cannot tell an override from junk; the subtraction is what keeps an undeclared
+        # entry out of a list whose heading claims everything in it is an override.
         if system_settings_path is not None:
             nested = _nested_settings_overrides(system_settings_path)
             for k, v in sorted(nested.items()):
+                if k in undeclared:
+                    continue
                 print(f"  {k} = {v}", file=out)
                 has_output = True
 
@@ -1313,5 +1375,27 @@ def show_config(
 
         if not has_output:
             print("  (no overrides)", file=out)
+
+        # Entries the noun's own settings file carries that are NOT keys, resolved
+        # above.  Printed after the override list and never counted as one —
+        # "(no overrides)" stays true, because junk is not an override of anything.
+        # ⚑ UNIFORM across the box / workset / system nouns, deliberately: the fact is
+        # the same fact at every scope, and a noun exempted from it would be a noun
+        # whose junk is invisible.  Why this is not a §0 carve-out:
+        # :func:`_undeclared_stored_entries`.
+        # ⚑ ONE BLOCK DOES NOT SUBTRACT: ``read_agent_settings`` renders an agent leaf
+        # FLAT (``bogus = x`` for ``agent.default.bogus``), so an undeclared one appears
+        # there under a different spelling.  Not filtered because the two are not the
+        # same string, and matching them would need this display to re-derive the agent
+        # tier's key form — a second opinion about a key's spelling, which is the thing
+        # this module is not allowed to hold.
+        if undeclared:
+            print(
+                f"  (undeclared — stored in {settings_src}, not keys (spec §0); "
+                f"remove one by editing that file)",
+                file=out,
+            )
+            for k, v in sorted(undeclared.items()):
+                print(f"    {k} = {v}", file=out)
 
     return 0

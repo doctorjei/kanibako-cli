@@ -226,6 +226,116 @@ class TestBoxConfigGet:
         assert "hello" in capsys.readouterr().out
 
 
+class TestBoxGetIsWiredToTheClosedKeyspace:
+    """spec §0 at the ``box`` noun: an undeclared name is REFUSED, not "(not set)".
+
+    ⚑ END-TO-END through the verb. ``tests/test_settings/test_config_interface.py``
+    pins the predicate; these pin that the handler CALLS it — the gate and the wiring
+    fail independently.
+    """
+
+    def _box(self, config_file, tmp_home):
+        from kanibako.settings.paths import load_std_paths, resolve_project
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project_dir = str(tmp_home / "project")
+        proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
+        return project_dir, proj
+
+    def _merge(self, proj, table):
+        """MERGE into the box's settings file — never overwrite it: ``create`` wrote
+        content of its own, and clobbering it tests a file no user has."""
+        from kanibako.settings.config_io import dump_doc, load_doc
+
+        path = proj.metadata_path / "box.yaml"
+        doc = load_doc(path)
+        doc.setdefault("box", {}).update(table)
+        dump_doc(path, doc)
+
+    def test_an_undeclared_key_refuses_at_rc_1_NAMING_it(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        from kanibako.commands.box._parser import run_get
+
+        # MUTATION-PROVED: neuter the handler's ``scope_read_key_error`` call and this
+        # reds with ``assert 0 == 1``, as does the workset noun's twin.
+        project_dir, _ = self._box(config_file, tmp_home)
+        rc = run_get(argparse.Namespace(args=[project_dir, "box.zippity"]))
+        assert rc == 1
+        captured = capsys.readouterr()
+        assert "(not set)" not in captured.err
+        assert "box.zippity" in captured.err
+
+    def test_a_DECLARED_but_unset_key_still_answers_not_set_at_rc_0(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        """The §2a read-verb rule is untouched for a REAL key — that distinction is
+        the whole value of the refusal above."""
+        from kanibako.commands.box._parser import run_get
+
+        project_dir, _ = self._box(config_file, tmp_home)
+        rc = run_get(argparse.Namespace(args=[project_dir, "box.shell"]))
+        assert rc == 0
+        assert "(not set)" in capsys.readouterr().err
+
+    def test_a_HAND_AUTHORED_bind_entry_still_reads_back(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        """§0: *"Refuse the write; keep the read honest."* The CLI write route retired,
+        so the read-back is the ONLY way to check the hand edit it prescribes."""
+        from kanibako.commands.box._parser import run_get
+
+        project_dir, proj = self._box(config_file, tmp_home)
+        self._merge(proj, {
+            "bindings": {"ro": {"/in/box": ["/on/host", "ro"]}},
+            "caches": {"/in/box/c": ["/on/host/c"]},
+        })
+        for key in ("box.bindings.ro./in/box", "box.caches./in/box/c"):
+            assert run_get(argparse.Namespace(args=[project_dir, key])) == 0, key
+            assert "/on/host" in capsys.readouterr().out, key
+
+    def test_a_pref_request_still_reads(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        """§2h requires ``pref.system.agent`` to answer; it must not be collateral."""
+        from kanibako.commands.box._parser import run_get, run_set
+
+        project_dir, _ = self._box(config_file, tmp_home)
+        assert run_set(argparse.Namespace(
+            args=[project_dir, "pref.system.agent=claude"], force=False,
+        )) == 0
+        capsys.readouterr()
+        assert run_get(
+            argparse.Namespace(args=[project_dir, "pref.system.agent"]),
+        ) == 0
+        assert "claude" in capsys.readouterr().out
+
+    def test_box_show_marks_a_hand_written_undeclared_entry(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        """The refusal above tells the user to edit the file; this is the surface that
+        tells them WHICH LINE."""
+        from kanibako.commands.box._parser import run_show
+
+        project_dir, proj = self._box(config_file, tmp_home)
+        self._merge(proj, {"image": "myimage", "zippity": "wibble"})
+        assert run_show(argparse.Namespace(args=[project_dir], effective=False)) == 0
+        out = capsys.readouterr().out
+        assert "undeclared" in out
+        assert "box.zippity = wibble" in out
+
+    def test_box_show_prints_no_such_block_for_a_clean_file(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        from kanibako.commands.box._parser import run_show
+
+        project_dir, proj = self._box(config_file, tmp_home)
+        self._merge(proj, {"image": "myimage"})
+        assert run_show(argparse.Namespace(args=[project_dir], effective=False)) == 0
+        assert "undeclared" not in capsys.readouterr().out
+
+
 class TestBoxConfigSet:
     def test_set_image(self, config_file, tmp_home, credentials_dir, capsys):
         from kanibako.commands.box._parser import run_set

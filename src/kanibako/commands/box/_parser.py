@@ -2108,6 +2108,19 @@ def _run_box_config(args: argparse.Namespace) -> int:
             _get_agent_name = select_agent(std=std, proj=proj).node
         except Exception:
             _get_agent_name = ""
+        # ⚑ THE CLOSED-KEYSPACE READ GATE (spec §0) — an undeclared name is refused
+        # NAMING it, never answered "(not set)".  It runs AFTER the resolution above
+        # because it must judge the key the ENGINE will read, redirect included, and
+        # AFTER the retired-spelling guard above for the reason
+        # ``scope_read_key_error`` states: a generic refusal must not overwrite a
+        # specific one.
+        from kanibako.settings.config_keys import scope_read_key_error
+        _key_err = scope_read_key_error(
+            key, ConfigLevel.box, active_agent=_get_agent_name or None,
+        )
+        if _key_err is not None:
+            print(_key_err, file=sys.stderr)
+            return 1
         val = get_config_value(
             key,
             global_config_path=config_file,

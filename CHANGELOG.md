@@ -607,7 +607,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   measured: `start`, `shell`, `box info`, `box show --effective`, `system show --effective`,
   `rig list` — with one message listing **every** offending entry, the reason for each, and the
   settings files that resolve loaded (which of them carried the entry is not knowable from the
-  merged snapshot). `box show` without `--effective` never resolves and so still says nothing, and
+  merged snapshot). `box show` without `--effective` never resolves and so never carries THIS
+  message — it marks the line instead (see the `box get` / `workset get` entry below), and
   `setup`/`system diagnose`/`rig diagnose` swallow the refusal into a `cannot check` line instead
   of the reason — see [MIGRATION.md](MIGRATION.md) §2.47 for which is which. **The cure is a
   hand-edit and the message says so**: `box reset` cannot remove what is not a key, and
@@ -641,6 +642,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   earlier seam and is stated rather than hidden: it runs before kanibako settles which box it is
   looking at, so a cure that names a `box set` / `workset set` subject carries the `<box>` /
   `<workset>` placeholder instead of the name. See [MIGRATION.md](MIGRATION.md) §2.1.
+
+- **BREAKING: `box get` and `workset get` refuse a name that is not a key, and the stored view
+  lists the entries your settings file carries that are not keys.** Both verbs answered
+  `(not set)` at rc 0 for anything at all — a typo, a key this release retired and a real key you
+  had not set were one answer. That was the last hole in the *reading* third of the closed
+  keyspace, which `system get` and (§2.38) `agent get` already enforced: an undeclared name is now
+  refused at rc 1, naming the key and the reason the keyspace gives for it. `(not set)` at rc 0
+  now means what it says — a **declared** key with nothing stored at this noun. Three reads are
+  deliberately untouched: `pref.*` and `config.*` keys, and the hand-authored bind and category
+  entries `<scope>.bindings.{ro,rw}.<dest>` and `<scope>.{caches,seeded,common,synced}.<dest>`,
+  whose CLI write route retired in 1.8.0 but whose read spec §0 keeps — *"refuse the write; keep
+  the read honest"* — because the retirement message prescribes a hand edit and a hand edit is
+  only checkable if the read-back works. (`<scope>.masks.<dest>` is not in that group and never
+  was: `masks` never had entry names, so it takes the ordinary refusal.) **Paired with it, and in
+  the same change because one is unusable without the other**: `box show` / `workset show` /
+  `system show` — the stored view, no `--effective` — now print any entry the keyspace does not
+  declare under their own heading, naming the file to open. The cure for such an entry is a hand
+  edit and nothing else, so a user who cannot see the line cannot follow the cure. That block
+  displays FILE CONTENT rather than reading a key: nothing is resolved, no default is invented,
+  and the value is echoed as the file spells it. It marks only what the keyspace refuses — data
+  inside a declared key stays unmarked, and so does a table that is declared but that this file's
+  tier may not set (an `agent:` table in a `box.yaml`), which is a different fact.
+  See [MIGRATION.md](MIGRATION.md) §2.48.
 
 - **BREAKING: the four `KANIBAKO_*` variables kanibako sets for itself are ordinary settings now,
   and a twin of one at another scope will refuse the launch.** `KANIBAKO_NAME`, `KANIBAKO_AGENT`,
