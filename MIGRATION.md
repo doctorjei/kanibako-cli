@@ -802,11 +802,21 @@ files from the box home under its config dir — e.g. `<box_dir>/home/.claude/�
 
 Each of these is expected to find nothing in real stores; listed so a grep of your own files is
 quick. **They are four different kinds of thing and they behave differently — each bullet says
-which**; only the first is a stale key that stops the resolve.
+which**; only the first is a stale key that can stop the resolve, and only in some files.
 
 - **Bare `agent.<category>.*` keys** (e.g. `agent.common.plugins` with no agent name): an
-  internal launch-built form that should never have been persisted. **Not a key, so one left
-  behind stops the resolve** (§2.47) rather than sitting there quietly. If a settings file
+  internal launch-built form that should never have been persisted. **Not a key — and what that
+  costs you depends on which file it is in**, because a top-level `agent:` table is only ever an
+  input at two of them (verified for `agent.common.plugins` in each):
+  - the system's `<data>/global/settings.yaml` and the machine-wide `/etc/kanibako/settings_base.yaml`
+    **stop the resolve, naming the key** (§2.47);
+  - a **`box.yaml` or `workset.yaml`** may not set a containing scope's keys (§0), so the whole
+    `agent:` table is dropped before the merge — a warning in the launch log, and the resolve
+    continues;
+  - an agent's own **`agent.yaml`** contributes its `self:` table and nothing else, so a top-level
+    `agent:` there is not an input at all and **nothing is printed**.
+
+  Grep for it wherever it might be: only the first case tells you it is there. If a settings file
   carries one, discriminate it: `agent.<agent>.<category>.<rest>`. (`agent.default.*` is
   legitimate — leave it.) A double-prefixed relic like `agent.claude.agent.goose.…` should be
   unwound.

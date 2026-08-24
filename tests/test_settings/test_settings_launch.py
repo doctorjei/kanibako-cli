@@ -4706,6 +4706,61 @@ def test_a_tier_with_no_file_is_not_named_as_loaded(tmp_path, monkeypatch):
     assert str(tmp_path / "box.yaml") in msg
 
 
+#: Which settings file an undiscriminated ``agent.<category>.*`` relic actually stops,
+#: by tier: the file, and whether the resolve refuses. ⚑ NOT a property of the KEY —
+#: the oracle judges it undeclared at every tier (``test_settings_keyspace.py``) — but
+#: of whether a top-level ``agent:`` table is that file's CONTRIBUTION at all.
+_RELIC_TIER_CASES = [
+    pytest.param("system_path", "settings.yaml", True, id="system-refuses"),
+    pytest.param("base", "settings_base.yaml", True, id="base-refuses"),
+    pytest.param("box_path", "box.yaml", False, id="box-file-drops-the-table"),
+    pytest.param("workset_path", "workset.yaml", False, id="workset-file-drops-it"),
+    pytest.param("agent_path", "agent.yaml", False, id="agent-file-never-read-it"),
+]
+
+
+@pytest.mark.writes_undeclared(
+    "agent.common.plugins",
+    reason="the two refusing tiers resolve the relic into the snapshot, which is "
+           "what §0 then refuses; the three others never merge the table at all.",
+)
+@pytest.mark.parametrize("tier,filename,refuses", _RELIC_TIER_CASES)
+def test_where_an_undiscriminated_agent_relic_stops_the_resolve(
+    tmp_path, monkeypatch, tier, filename, refuses,
+):
+    """⚑ ``MIGRATION.md`` §2.11 SAYS THIS PER FILE, so a pin says it per file.
+
+    The bullet used to claim flatly that a leftover ``agent.common.plugins`` "stops
+    the resolve". It does in the system and base files. In a ``box.yaml`` or
+    ``workset.yaml`` the whole ``agent:`` table is a containing scope's and is
+    dropped before the merge, and in an ``agent.yaml`` only the ``self:`` table is
+    ever an input — so in the three files a user's own settings actually live in,
+    the relic resolves and the only trace is a log line or nothing at all.
+
+    That is not a defect to fix here: the table genuinely contributes nothing, and
+    refusing on it would be the cure-for-a-no-op the retirement scan already
+    rejects. It is a fact about where a grep is the only diagnostic, which is what
+    the migration guide has to get right.
+    """
+    from kanibako.settings import settings_assemble as _assemble
+    from kanibako.settings import settings_launch as _launch
+
+    path = tmp_path / filename
+    path.write_text("agent:\n  common:\n    plugins: /tmp/x\n", encoding="utf-8")
+    # ⚑ base is patched in EVERY case, so a real ``/etc/kanibako/settings_base.yaml``
+    # on the machine running this cannot decide the outcome either way.
+    base = path if tier == "base" else tmp_path / "no-base.yaml"
+    monkeypatch.setattr(_assemble, "settings_base_path", lambda: base)
+    monkeypatch.setattr(_launch, "settings_base_path", lambda: base)
+    kwargs = {} if tier == "base" else {tier: path}
+    if not refuses:
+        assert _snapshot(**kwargs) is not None
+        return
+    with pytest.raises(_SettingsError) as e:
+        _snapshot(**kwargs)
+    assert "agent.common.plugins" in str(e.value)
+
+
 #: Every ``kanibako …`` spelling inside ONE cure string, quoted or not. The quoted
 #: form ends at its closing quote; an unquoted one runs to the end of the line.
 _ANY_COMMAND = re.compile(r"kanibako ([^\n']*)")
