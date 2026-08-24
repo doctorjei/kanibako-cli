@@ -39,15 +39,14 @@ Coverage boundary — AUTHORITATIVE vs SUPPORTING (read before relying on this)
   never an outcome: under §2h any target outside the allowlist is refused by the
   allowlist filter regardless of what this module says about it.
 
-That boundary is also why this module is NOT yet wired into ``config get`` or
-into the assemble/launch path. Those two consumers turn an undeclared key into a
-user-visible failure (a launch that refuses to start), which is a change with a
-blast radius of every stored legacy key — tracked as the "closed-keyspace
-resolve enforcement" follow-on, gated on :data:`RETIRING_KEYS` being empty.
-⚑ That gate is now MET, and the follow-on is still not taken: the remaining
-question is a blast radius nobody has yet measured, which is what the
-REPORT-ONLY ``settings_keyspace_probe`` exists to measure. Enforcement is a
-separate, deliberate act.
+That boundary is why the LAUNCH path was the last consumer wired, and it now is:
+``settings_launch._refuse_undeclared_snapshot`` reads this module and RAISES,
+so an undeclared key stored anywhere in the cascade is a user-visible failure
+rather than a value nothing reads. It was taken as a deliberate act on a
+measurement — the REPORT-ONLY ``settings_keyspace_probe`` ran armed over the whole
+unit suite first — after :data:`RETIRING_KEYS` reached empty. ⚑ The real-store
+sweep that gate also named (migration-issues M-1/M-2) was WAIVED rather than run,
+so the residual risk sits exactly there and nowhere else.
 
 THREE ANSWERS, NOT TWO
 ----------------------
@@ -63,11 +62,15 @@ The second question: what is this path INTO A STORE?
 addresses, scaffolding nodes and plain data, none of which are keys and none of
 which are defects. :func:`classify_store_path` (with :func:`container_notes` and
 :func:`walk_store_paths`) answers that second question, and it is ONE carrier
-with two consumers — the pytest write census and the resolve probe.
+with THREE consumers — the pytest write census, the resolve probe, and the
+launch-seam REFUSAL, which is the only one of the three that raises.
 
-PURE. No I/O, no plugin import at module load. The set of valid AGENT names is
-an injected parameter (``valid_agents``) precisely so this module stays pure and
-testable; ``settings_prefs.default_valid_agents`` is the one production supplier.
+PURE. No I/O, no plugin import at module load. Everything the module cannot know
+about this machine is an injected parameter, so it stays pure and testable: the
+valid AGENT names (``valid_agents``, whose one production supplier is
+``settings_prefs.default_valid_agents``), the plugin-declared agent leaves
+(``agent_leaves``), and which agents those leaves COVER
+(``agents_with_known_leaves`` — see :func:`key_class`).
 """
 
 from __future__ import annotations
@@ -455,9 +458,11 @@ _VAR_RE: Final = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 #: an exemption to add.**  (It held THREE until P7 retired ``box.agent_name`` and
 #: ``system.default_agent``; the cap shrinks with the set, deliberately.)
 #:
-#: The "closed-keyspace resolve enforcement" follow-on is gated on this set
-#: being EMPTY (plus: the conformance test green with no exemptions, and a
-#: real-store sweep per migration-issues M-1/M-2).
+#: The "closed-keyspace resolve enforcement" follow-on was gated on this set being
+#: EMPTY (plus: the conformance test green with no exemptions, and a real-store sweep
+#: per migration-issues M-1/M-2). ⚑ IT IS TAKEN — ``settings_launch`` refuses at the
+#: resolve seam — on the first two conditions; the real-store sweep was WAIVED rather
+#: than run, and that is where the residual risk sits.
 #: ⚑ NOW **EMPTY** (C-CANON seeds half, 2026-08-01): M-11 renamed
 #: ``system.base_template`` → ``system.template`` and dropped the old spelling from
 #: ``KNOWN_CONFIG_KEYS``, so the spec and the settable surface agree with no
@@ -1095,9 +1100,11 @@ def key_class(
 # a second question the first one cannot: a path INTO a store may be a key, a VALUE
 # address inside one, scaffolding the store needs, or plain data. The rules below
 # answer THAT, and they live here — beside the validator they consult — because they
-# now have two consumers (the pytest write census and the report-only resolve probe
-# in ``settings_keyspace_probe``). A second carrier of one shape is the defect class
-# this project keeps paying for; there is exactly one.
+# now have THREE consumers: the pytest write census, the report-only resolve probe in
+# ``settings_keyspace_probe``, and ``settings_launch._refuse_undeclared_snapshot``,
+# which is the one that RAISES. A second carrier of one shape is the defect class this
+# project keeps paying for; there is exactly one — which is why the third consumer
+# arrived as a caller rather than as a mode of the probe.
 #
 # PURE, like the rest of this module: the declared-keyspace ORACLE is injected, so
 # nothing here reaches for plugin discovery or an agent set.

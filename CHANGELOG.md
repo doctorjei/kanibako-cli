@@ -583,24 +583,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   [MIGRATION.md](MIGRATION.md) §2.38.
 
 - **BREAKING: an undeclared key in ANY settings file now stops the command, naming every one it
-  found.** The keyspace is closed, and reading or setting a key kanibako does not declare was
-  already an error that named the key — but *resolving* one was not. A `box.yaml` carrying `box:
-  {zippity: wibble}` parsed, merged and came out of the cascade as `wibble`, after which nothing
-  read it: no error, no warning, and nothing in `box show` marking the line as dead. Every command
-  that resolves settings now refuses — `start`, `shell`, `box show`, `config show`, `code`,
-  `image`, `setup`, `baseline`, `diagnose` — with one message listing **every** offending entry,
-  the reason for each, and the settings files that resolve loaded (which of them carried the entry
-  is not knowable from the merged snapshot). **The cure is a hand-edit and the message says so**:
-  `box reset` cannot remove what is not a key, and `box show --effective` resolves through the same
-  seam, so it refuses as well. Two deliberate non-refusals: an agent whose plugin is not installed
-  here is not judged at all — neither its table nor the keys under it, because an agent's keys are
-  its plugin's to declare and there is no list to check them against without it (the cost, stated:
-  `agent: goose: zippity:` resolves on a machine without goose, and refuses on one with it) — and
-  data addressed inside a declared key (a bind or copy destination, a `masks` entry) is a value
-  rather than a key path of its own and is not judged as one. `agent: default:` is judged
-  everywhere. §2.38 closed this same passthrough for the per-agent `agent.yaml` file; this is
-  the same rule over every settings file and the whole resolved snapshot. See
-  [MIGRATION.md](MIGRATION.md) §2.47.
+  found.** The keyspace is closed, and *setting* a key kanibako does not declare was already an
+  error that named it (so was *reading* one at `system get`) — but *resolving* one was not, at any
+  scope. A `box.yaml` carrying `box: {zippity: wibble}` parsed, merged and came out of the cascade
+  as `wibble`, after which nothing read it: no error, no warning, and nothing in `box show`
+  marking the line as dead. Every command that builds the resolved snapshot now refuses —
+  measured: `start`, `shell`, `box info`, `box show --effective`, `system show --effective`,
+  `rig list` — with one message listing **every** offending entry, the reason for each, and the
+  settings files that resolve loaded (which of them carried the entry is not knowable from the
+  merged snapshot). `box show` without `--effective` never resolves and so still says nothing, and
+  `setup`/`system diagnose`/`rig diagnose` swallow the refusal into a `cannot check` line instead
+  of the reason — see [MIGRATION.md](MIGRATION.md) §2.47 for which is which. **The cure is a
+  hand-edit and the message says so**: `box reset` cannot remove what is not a key, and
+  `box show --effective` resolves through the same seam, so it refuses as well. Two deliberate
+  non-refusals: an agent whose plugin is not installed here is not judged at all — neither its
+  table nor the keys under it, because an agent's keys are its plugin's to declare and without the
+  plugin there is no list to check them against (the cost, stated: `agent: goose: zippity:`
+  resolves on a machine without goose, and refuses on one with it) — and data addressed inside a
+  declared key (a bind or copy destination, a `masks` entry) is a value rather than a key path of
+  its own and is not judged as one. `agent: default:` is judged everywhere. §2.38 closed this same
+  passthrough for the per-agent `agent.yaml` file; this is the same rule over every settings file
+  and the whole resolved snapshot. See [MIGRATION.md](MIGRATION.md) §2.47.
 
 - **BREAKING: the four `KANIBAKO_*` variables kanibako sets for itself are ordinary settings now,
   and a twin of one at another scope will refuse the launch.** `KANIBAKO_NAME`, `KANIBAKO_AGENT`,
