@@ -2,21 +2,27 @@
 
 Spec §0 (``settings-keyspace-1.8.0.md`` :245): *"reading, setting, or RESOLVING an
 undeclared key is an ERROR that NAMES the offending key — never a silent accept,
-never a fabricated default, never a free-form passthrough."* The resolve half of
-that is not enforced: a ``box.yaml`` carrying ``box: {zippity: wibble}`` goes
-through ``assemble_levels`` and ``merge`` and resolves to ``'wibble'`` with no error
-and no warning, because ``settings_assemble`` never asks
-:func:`~kanibako.settings.settings_keyspace.key_class` anything.
+never a fabricated default, never a free-form passthrough."* A ``box.yaml`` carrying
+``box: {zippity: wibble}`` used to go through ``assemble_levels`` and ``merge`` and
+resolve to ``'wibble'`` with no error and no warning, because ``settings_assemble``
+never asks :func:`~kanibako.settings.settings_keyspace.key_class` anything.
 
-⚑⚑ THIS MODULE DOES NOT CLOSE THAT GAP, AND MUST NOT BE MADE TO.
+⚑⚑ THIS MODULE STILL DOES NOT CLOSE THAT GAP, AND MUST NOT BE MADE TO.
 :func:`~kanibako.settings.settings_launch.build_launch_snapshot` sits behind
 ``load_merged_config``, whose callers are ``diagnose`` · ``commands/box/_parser`` ·
 ``baseline_cmd`` · ``image`` · ``code_cmd`` · ``setup_cmd`` · ``start`` ·
 ``config_interface`` — so a raise at the resolve seam refuses nearly every kanibako
-command, not just ``start``, and every stored legacy key becomes a bricked box. That
-is a decision with an owner, and it is not this module. What is missing before it can
-be taken is the NUMBER: how much undeclared key material actually reaches the seam
-today. This produces that number and nothing else.
+command, not just ``start``. That was a decision with an owner, it was taken on the
+number this module produced, and what enforces it is
+``settings_launch._refuse_undeclared_snapshot``: a SIBLING call, one line after
+:func:`observe`, never a mode of this module. ⚑ THE ORDER IS LOAD-BEARING — the
+instrument records the observation and the refusal fires after it, because a raise
+placed first would blind the probe to precisely the resolves that matter.
+
+What the refusal arms is EXACTLY what was measured, by reading the oracle below
+(:func:`keyspace_verdict`) rather than building a second one. That is why this
+module is on the production path with the probe DISARMED, and why a change to the
+oracle is a change to what kanibako refuses.
 
 THREE PROPERTIES, and all three are load-bearing:
 
@@ -70,7 +76,10 @@ ENV_FILE: Final[str] = "KANI_KEYSPACE_PROBE_FILE"
 DEFAULT_PROBE_FILE: Final[str] = "/tmp/kanibako-keyspace-probe.jsonl"
 
 #: Faults the probe swallowed, kept so a run can say the instrument misbehaved
-#: rather than silently reporting a clean sheet it never measured.
+#: rather than silently reporting a clean sheet it never measured. ⚑ An ORACLE
+#: fault lands here even with the probe disarmed, because the refusal reads the same
+#: oracle — the fault is still swallowed there, but it is swallowed INTO a refusal
+#: naming the exception, never into a pass.
 probe_errors: list[str] = []
 
 
@@ -144,13 +153,22 @@ def declared_keyspace_oracle(path: str) -> KeyJudgement:
 _verdicts: dict[str, KeyJudgement] = {}
 
 
-def _ask(path: str) -> KeyJudgement:
+def keyspace_verdict(path: str) -> KeyJudgement:
+  """THE oracle, memoised: what the closed keyspace says *path* is.
+
+  PUBLIC because two consumers must not answer this question twice.
+  :func:`observe` REPORTS on it and ``settings_launch._refuse_undeclared_snapshot``
+  REFUSES on it, and a refusal armed on a second oracle would refuse something
+  other than what was measured. ⚑ The memo is process-wide on purpose: the prefix
+  walk asks about every proper prefix of every path, and a launch resolves many.
+  """
   if path not in _verdicts:
     try:
       _verdicts[path] = declared_keyspace_oracle(path)
     except Exception as exc:  # pragma: no cover - an oracle fault is not a failure
-      # ⚑ UNDECLARED, not a silent pass: an instrument that cannot judge a path must
-      # SAY so in the row rather than conceding it.
+      # ⚑ UNDECLARED, not a silent pass: a classifier that cannot judge a path must
+      # SAY so — in the row, and in the refusal, which prints this note. Conceding
+      # the path instead would let a broken oracle green-light §0.
       _verdicts[path] = KeyJudgement(
         KeyClass.UNDECLARED, f"<oracle raised {type(exc).__name__}: {exc}>",
       )
@@ -191,7 +209,7 @@ def observe(store: KeyStore[Any], *, origin: str) -> None:
   if not probe_enabled():
     return
   try:
-    findings = undeclared_store_paths(store, oracle=_ask)
+    findings = undeclared_store_paths(store, oracle=keyspace_verdict)
     row = {
       "origin": origin,
       "test": os.environ.get("PYTEST_CURRENT_TEST", ""),

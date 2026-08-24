@@ -4061,3 +4061,182 @@ def test_a_persona_secret_path_discriminates_onto_the_active_agent(tmp_path):
     assert _leaf(
         snap, ("secret_path", "ANTHROPIC_AUTH_TOKEN"), agent_name="default",
     ) is _NO_LEAF
+
+
+# --------------------------------------------------------------------------- #
+# §0's RESOLVE clause, enforced at the snapshot seam                          #
+# --------------------------------------------------------------------------- #
+
+import json  # noqa: E402
+
+from kanibako.settings import settings_keyspace_probe as _probe  # noqa: E402
+
+
+def _box_yaml(tmp_path: Path, text: str) -> Path:
+    path = tmp_path / "box.yaml"
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def _snapshot(box_path: Path | None = None, **kwargs):
+    """One launch resolve, with every tier absent unless the caller names it."""
+    kwargs.setdefault("system_path", None)
+    kwargs.setdefault("agent_path", None)
+    kwargs.setdefault("workset_path", None)
+    return build_launch_snapshot(
+        agent_name="claude", ctx=_ctx(), box_path=box_path,
+        valid_agents=("claude",), **kwargs,
+    )
+
+
+@pytest.mark.writes_undeclared(
+    "box.zippity",
+    reason="the refused entry IS an undeclared key in a box.yaml; assemble_levels "
+           "writes it into the store, and the seam is what refuses it after.",
+)
+def test_an_undeclared_key_in_a_settings_file_refuses_the_resolve(tmp_path):
+    """Spec §0: RESOLVING an undeclared key is an error that NAMES it.
+
+    The read and set halves were already enforced (``config_keys``); this is the
+    third. A ``box.yaml`` carrying ``box: {zippity: wibble}`` used to resolve to
+    ``'wibble'`` with no error and no warning, because nothing between the file
+    parser and the expanded snapshot ever asked the keyspace anything.
+    """
+    with pytest.raises(_SettingsError) as e:
+        _snapshot(_box_yaml(tmp_path, "box:\n  zippity: wibble\n"))
+    msg = str(e.value)
+    # NAMES the offending key — the whole of what §0 asks for — and says WHY.
+    assert "box.zippity" in msg
+    assert "not a declared box key" in msg
+
+
+@pytest.mark.writes_undeclared(
+    "box.frob", "box.frob.nard", "box.zippity",
+    reason="a MULTI-entry refusal needs multiple undeclared writes; the nested one "
+           "is there because a fabricated NODE and its leaf are two findings.",
+)
+def test_the_refusal_names_every_undeclared_entry_not_just_the_first(tmp_path):
+    """⚑ EVERY entry, because the cure is a hand-edit.
+
+    A refusal that named one entry per attempt would turn a single edit into N
+    launches, each revealing one more line to delete.
+    """
+    with pytest.raises(_SettingsError) as e:
+        _snapshot(_box_yaml(
+            tmp_path, "box:\n  zippity: wibble\n  frob:\n    nard: 1\n",
+        ))
+    msg = str(e.value)
+    for path in ("box.zippity", "box.frob", "box.frob.nard"):
+        assert path in msg
+    # The count is stated, so a truncated reading of the list is visible as one.
+    assert "3 entries that are not settings keys" in msg
+
+
+@pytest.mark.writes_undeclared(
+    "box.zippity",
+    reason="the message under test is the one produced by an undeclared key, so "
+           "the fixture has to write one.",
+)
+def test_the_refusal_points_at_the_files_it_loaded_not_at_config_unset(tmp_path):
+    """⚑ THE CURE IS A HAND-EDIT, AND THE MESSAGE HAS TO SAY SO.
+
+    ``config unset box.zippity`` cannot remove what is not a key, and
+    ``config show`` resolves through this same seam — so a user told to reach for
+    either has no working move. The message names the settings files this resolve
+    loaded instead. WHICH of them carried the entry is not knowable here: the
+    snapshot is the merge of all of them.
+    """
+    box_path = _box_yaml(tmp_path, "box:\n  zippity: wibble\n")
+    with pytest.raises(_SettingsError) as e:
+        _snapshot(box_path)
+    msg = str(e.value)
+    assert "BY HAND" in msg
+    assert str(box_path) in msg
+    # It says what the two obvious CLI moves will do, rather than leaving the user
+    # to discover that both refuse.
+    assert "config unset" in msg
+    assert "config show" in msg
+
+
+@pytest.mark.writes_undeclared(
+    "box.zippity",
+    reason="the probe only writes a FINDING row when the snapshot carries an "
+           "undeclared path, which is the ordering under test.",
+)
+def test_the_probe_still_records_the_finding_before_the_refusal(tmp_path, monkeypatch):
+    """⚑ MEASUREMENT FIRST, THEN ENFORCEMENT — the order at the seam.
+
+    A raise placed before ``observe`` would blind the instrument to precisely the
+    resolves that matter, so a later re-measurement would see only the snapshots
+    that already conform and report a clean sheet it never measured.
+    """
+    rows = tmp_path / "probe.jsonl"
+    monkeypatch.setenv(_probe.ENV_FLAG, "1")
+    monkeypatch.setenv(_probe.ENV_FILE, str(rows))
+    with pytest.raises(_SettingsError):
+        _snapshot(_box_yaml(tmp_path, "box:\n  zippity: wibble\n"))
+    row = json.loads(rows.read_text(encoding="utf-8").splitlines()[-1])
+    assert row["origin"] == "build_launch_snapshot"
+    assert [finding["path"] for finding in row["undeclared"]] == ["box.zippity"]
+
+
+@pytest.mark.writes_undeclared(
+    "box.zippity",
+    reason="the bypass under test is the refusal's, so every parametrisation has "
+           "to present it with an undeclared key.",
+)
+@pytest.mark.parametrize("flag", ["0", "off", "", "1"])
+def test_the_refusal_has_no_probe_flag_bypass(tmp_path, monkeypatch, flag):
+    """⚑ NO BYPASS — not by the probe's own flag, and not by anything else.
+
+    The probe is OFF by default and the refusal is a SIBLING of it, not a mode of
+    it. An env var that turned enforcement off would be the carve-out class the
+    closed keyspace exists to refuse.
+    """
+    monkeypatch.setenv(_probe.ENV_FLAG, flag)
+    monkeypatch.setenv(_probe.ENV_FILE, str(tmp_path / "probe.jsonl"))
+    with pytest.raises(_SettingsError):
+        _snapshot(_box_yaml(tmp_path, "box:\n  zippity: wibble\n"))
+
+
+def test_an_agent_tier_for_an_uninstalled_agent_is_not_refused(tmp_path):
+    """STATED SCOPE: agent-name discrimination is NOT enforced at this seam.
+
+    The oracle is the probe's, and it concedes the agent DISCRIMINATOR — so a
+    settings file carrying keys for an agent that is not installed on THIS machine
+    still resolves. Refusing on it would be a finding about a discriminator rather
+    than about the keyspace, and it was never measured. The LEAF still has to be
+    declared, which is what the next assertion pins.
+    """
+    system_path = tmp_path / "settings.yaml"
+    system_path.write_text(
+        "agent:\n  zzznotinstalled:\n    model: opus\n", encoding="utf-8",
+    )
+    snap = _snapshot(system_path=system_path)
+    assert dict.get(dict.get(snap, "agent"), "zzznotinstalled").model == "opus"
+
+
+@pytest.mark.writes_undeclared(
+    "agent.zzznotinstalled.zippity",
+    reason="the conceded DISCRIMINATOR must not concede the LEAF; the undeclared "
+           "leaf under an unknown agent is the write that proves it.",
+)
+def test_a_conceded_agent_discriminator_does_not_concede_the_leaf(tmp_path):
+    system_path = tmp_path / "settings.yaml"
+    system_path.write_text(
+        "agent:\n  zzznotinstalled:\n    zippity: wibble\n", encoding="utf-8",
+    )
+    with pytest.raises(_SettingsError) as e:
+        _snapshot(system_path=system_path)
+    assert "agent.zzznotinstalled.zippity" in str(e.value)
+
+
+def test_a_file_of_declared_keys_resolves_unrefused(tmp_path):
+    """The positive control: enforcement that refused everything would pass every
+    test above while bricking every box, so one settings file of ORDINARY declared
+    keys has to come through untouched."""
+    snap = _snapshot(_box_yaml(
+        tmp_path, "box:\n  image: myrig\n  shell: zsh\n  enable_vault: true\n",
+    ))
+    assert snap.box.image == "myrig"
+    assert snap.box.shell == "zsh"

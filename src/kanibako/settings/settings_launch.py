@@ -55,6 +55,11 @@ from kanibako.settings.settings_categories import (
 )
 from kanibako.settings.settings_cli_level import guard_cli_level
 from kanibako.settings.settings_expand import expand
+from kanibako.settings.settings_keyspace import (
+    render_store_path,
+    undeclared_store_paths,
+)
+from kanibako.settings.settings_keyspace_probe import keyspace_verdict
 from kanibako.settings.settings_keyspace_probe import observe as observe_keyspace
 from kanibako.settings.settings_merge import merge
 from kanibako.settings.settings_prefs import PrefRequest, apply_prefs, collect_prefs
@@ -652,6 +657,74 @@ def resolve_auth_source(
     )
 
 
+#: Where to look when the resolve loaded NO settings file — a narrow resolve, or one
+#: whose offending entry arrived on a floor or a partial. The four tier-named files
+#: (R140), so the message still points somewhere rather than trailing off.
+_SETTINGS_FILE_NAMES: Final[str] = (
+    "the box's box.yaml, the workset's workset.yaml, the agent's agent.yaml, "
+    "or the system settings.yaml"
+)
+
+
+def _refuse_undeclared_snapshot(
+    store: KeyStore, *, files: Sequence[Path | None],
+) -> None:
+    """RAISE naming EVERY resolved path the CLOSED keyspace does not declare (§0).
+
+    Spec §0: *"reading, setting, or resolving an undeclared key is an ERROR that
+    NAMES the offending key — never a silent accept, never a fabricated default,
+    never a free-form passthrough."* This is the RESOLVE third of that sentence;
+    ``config_keys`` holds the read/set thirds.
+
+    ⚑ EVERY offending path, not the first. A user hand-edits the cure, and a
+    refusal that names one entry per attempt turns one edit into N launches.
+    (``agent_file._refuse_undeclared_state`` names one because it judges a FLAT
+    table of at most a handful of behaviour keys; a resolved snapshot is the whole
+    cascade.)
+
+    ⚑ THE CURE IS A HAND-EDIT AND THE MESSAGE MUST SAY SO. ``config unset`` cannot
+    remove what is not a key, and ``config show`` resolves through this very seam,
+    so it refuses too — leaving a user who is told "unset it" with no working move.
+    *files* are the settings files THIS resolve loaded, so the message points at
+    real paths instead of a generic list; which of them carried the entry is not
+    knowable here, because the snapshot is the MERGE of all of them.
+
+    ⚑ NO BYPASS — no env var, no exemption list, no origin discriminator. A
+    name-keyed escape is the carve-out the closed keyspace exists to refuse, and it
+    would hide the next finding behind itself.
+    """
+    findings = undeclared_store_paths(store, oracle=keyspace_verdict)
+    if not findings:
+        return
+    named = "\n".join(
+        f"  - {render_store_path(segments, judgement.key_len)}: {judgement.note}"
+        for segments, judgement in findings
+    )
+    loaded = [str(path) for path in files if path is not None]
+    where = (
+        "\n".join(f"    - {path}" for path in loaded) if loaded
+        else f"    - {_SETTINGS_FILE_NAMES}"
+    )
+    count = len(findings)
+    subject = (
+        "1 entry that is not a settings key" if count == 1
+        else f"{count} entries that are not settings keys"
+    )
+    them = "it" if count == 1 else "them"
+    raise SettingsError(
+        f"the settings resolved for this box carry {subject} "
+        f"(spec §0 — the keyspace is CLOSED):\n"
+        f"{named}\n"
+        f"kanibako will not resolve settings that carry {them}: an undeclared key "
+        f"has no meaning to give the box, and passing it through would be the very "
+        f"'anything goes' behaviour the closed keyspace replaces.\n"
+        f"  Fix: remove {them} BY HAND from the settings file that carries {them} — "
+        f"this resolve loaded:\n{where}\n"
+        f"  'kanibako config unset' cannot remove what is not a key, and 'kanibako "
+        f"config show' resolves through this same seam, so it refuses too."
+    )
+
+
 def build_launch_snapshot(
     *,
     agent_name: str,
@@ -846,12 +919,19 @@ def build_launch_snapshot(
     _materialize_box_agent_mirror(expanded, active_agent=agent_name)
     if workset_anchor and _BOX_ROOT_KEY in workset_anchor:
         _assert_box_root_resolved(expanded)
-    # ⚑ MEASUREMENT, NOT ENFORCEMENT. Spec §0 says resolving an undeclared key is an
-    # error; nothing here raises one, and this call must never be the thing that
-    # starts. It is DISARMED unless ``KANI_KEYSPACE_PROBE`` names it and cannot fail a
-    # run either way — its whole job is to size the blast radius of a refusal AT THIS
-    # LINE, which behind ``load_merged_config`` is nearly every kanibako command.
+    # ⚑ MEASUREMENT FIRST, THEN ENFORCEMENT, AND THE ORDER IS LOAD-BEARING. The probe
+    # is DISARMED unless ``KANI_KEYSPACE_PROBE`` names it and cannot fail a run; it
+    # sized the blast radius of the refusal below, which behind ``load_merged_config``
+    # is nearly every kanibako command. Raising BEFORE it would blind the instrument to
+    # exactly the resolves that matter, so a future re-measurement would see only the
+    # snapshots that already conform.
     observe_keyspace(expanded, origin="build_launch_snapshot")
+    # Spec §0's RESOLVE clause, enforced. ⚑ A SIBLING of the probe, never a mode of
+    # it: the probe is REPORT-ONLY by its own module contract, and the two share the
+    # ORACLE so the refusal arms exactly what was measured.
+    _refuse_undeclared_snapshot(
+        expanded, files=(box_path, workset_path, agent_path, system_path),
+    )
     return expanded
 
 
