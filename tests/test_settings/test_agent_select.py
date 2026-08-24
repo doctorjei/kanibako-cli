@@ -298,6 +298,20 @@ class TestRetiredKeyRefusal:
         msg = str(ei.value)
         assert "myproj" not in msg
 
+    def test_a_stored_bool_is_quoted_AS_YAML_SPELLS_IT(self, tmp_path):
+        """The message quotes the user's own leaf back at them, so it has to be
+        the spelling their FILE holds — ``true``, never Python's ``True``.  The
+        same derivation the behavior refusal uses (``_stored_spelling``).
+
+        INVERT: quote the value through bare ``str()`` and this reddens.
+        """
+        f = _yaml(tmp_path / "box.yaml", {"box": {"agent_name": True}})
+        with pytest.raises(SettingsError) as ei:
+            refuse_retired_keys(yaml.safe_load(f.read_text()), level="box", path=f)
+        msg = str(ei.value)
+        assert "pref.system.agent=true" in msg
+        assert "True" not in msg
+
     def test_system_default_agent_is_refused_with_the_cure(self, tmp_path):
         f = _yaml(
             tmp_path / "system.yaml",

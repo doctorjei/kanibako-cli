@@ -88,19 +88,32 @@ RETIRED_FILE_KEYS: "dict[tuple[str, ...], str]" = {
 _PREF_LEGAL_LEVELS: "frozenset[str]" = frozenset({"workset", "box"})
 
 
+def _stored_spelling(value: Any) -> str:
+    """A stored leaf AS THE USER'S FILE SPELLS IT — ONE derivation, shared by every message and
+    cure this module quotes a stored value back into.
+
+    ⚑ A ``bool`` takes YAML's ``true``/``false``, NEVER Python's ``True``/``False``. Both readings
+    depend on it: the message is compared against the file the reader is looking at, and a cure is
+    pasted into a CLI that parses the YAML spelling. A present-``None`` leaf has nothing to quote
+    and renders EMPTY — each caller supplies its own shape for that (``<name>``, ``(empty)``).
+    """
+    if isinstance(value, bool):
+        return str(value).lower()
+    return "" if value is None else str(value).strip()
+
+
 def _cure_assignment(sub: str, value: Any) -> str:
     """The ``<key>=<value>`` tail a cure can be COPY-PASTED with, for ONE retired mirror leaf.
 
-    ⚑ TWO shapes, because the file's leaf has two. A SCALAR is quoted verbatim so the command
-    runs as printed — ``bool`` through YAML's spelling, never Python's ``True``/``False``, which
-    is not what the CLI parses. A nested TABLE has no single-token spelling at all, so the tail
-    stays a PLACEHOLDER one level deeper rather than a repr that cannot work.
+    ⚑ TWO shapes, because the file's leaf has two. A SCALAR is quoted verbatim
+    (:func:`_stored_spelling`) so the command runs as printed. A nested TABLE has no single-token
+    spelling at all, so the tail stays a PLACEHOLDER one level deeper rather than a repr that
+    cannot work.
     """
-    if isinstance(value, bool):
-        return f"{sub}={str(value).lower()}"
     if value is None or isinstance(value, (dict, list, tuple)):
         return f"{sub}.<key>=<value>"
-    return f"{sub}={str(value).strip()}" if str(value).strip() else f"{sub}=<value>"
+    spelled = _stored_spelling(value)
+    return f"{sub}={spelled}" if spelled else f"{sub}=<value>"
 
 
 def _cure_subject(level: str, box_name: str | None) -> str:
@@ -108,8 +121,9 @@ def _cure_subject(level: str, box_name: str | None) -> str:
     every cure this module emits.
 
     ⚑ BOTH pref-legal verbs take a subject — ``box set <box>`` and ``workset set <workset>`` — and
-    the verb is the LEVEL, never a hardcoded ``box``. Only a box-level refusal knows its subject
-    (:func:`_retired_key_cure`'s *box_name*); anything else is a PLACEHOLDER, never nothing.
+    the verb is the LEVEL, never a hardcoded ``box``. Only a box-level refusal whose CALLER knows
+    the box has a subject to name (*box_name*, threaded by both retired-key cures); anything else
+    is a PLACEHOLDER, never nothing.
 
     ⚑ MEASURED, and it is why this cannot be checked by reading: dropping the positional does NOT
     fail loudly at either level. ``workset set`` binds the KEY to its ``workset`` positional and
@@ -248,7 +262,7 @@ def refuse_retired_keys(
         mirror = found if key == "box.agent" and isinstance(found, dict) else None
         # The cure quotes the value the user ACTUALLY has, so it is copy-pasteable; a
         # present-``None`` has no value to quote → the shape.
-        value = "" if found is None else str(found).strip()
+        value = _stored_spelling(found)
         cure = _retired_key_cure(
             key, level=level, value=value or "<name>", box_name=box_name, mirror=mirror,
         )
@@ -320,18 +334,20 @@ def _behavior_leaf_sites(
 
 def _retired_behavior_cure(
     successor: str, *, level: str, tier: str, subject: str | None,
+    box_name: str | None = None,
 ) -> str:
     """The LEVEL-APPROPRIATE fix for a retired BEHAVIOR key (M-22); per-level reasons in llm-docs."""
     agent = subject or "<agent>"
     if level == "agent":
         return f"kanibako agent set {agent} {successor}={tier}"
     if level in _PREF_LEGAL_LEVELS:
-        # ⚑ *subject* names the AGENT, never the box/workset the verb addresses — this seam is
-        # handed no box name at all, so the required positional is the PLACEHOLDER
-        # (:func:`_cure_subject`). Emitting the pref key straight after the verb makes the KEY
-        # read as the subject and the command fails, or lands on the wrong box.
+        # ⚑ TWO subjects, and they are not the same one. *subject* names the AGENT inside the pref
+        # key; the verb's own required positional is the BOX or WORKSET, which is *box_name* where
+        # the caller knows it and a PLACEHOLDER where it does not (:func:`_cure_subject`). Emitting
+        # the pref key straight after the verb makes the KEY read as the positional and the command
+        # fails, or lands on the wrong box.
         return (
-            f"kanibako {level} set {_cure_subject(level, None)} "
+            f"kanibako {level} set {_cure_subject(level, box_name)} "
             f"pref.agent.{agent}.{successor}={tier}"
         )
     return f"kanibako system set {successor}={tier}"
@@ -339,12 +355,17 @@ def _retired_behavior_cure(
 
 def refuse_retired_behavior_keys(
     raw: Any, *, level: str, path: Path | None, subject: str | None = None,
+    box_name: str | None = None,
 ) -> None:
     """RAISE when *raw* still carries a RETIRED behavior key (R-41 / RQ-2) —
     :data:`RETIRED_BEHAVIOR_KEYS`.
 
-    *subject* is the agent node the cure should name; ``None`` renders the shape ``<agent>``. Never
-    a warning and never a silent drop; called at the LAUNCH's behavior tier (see block comment).
+    *subject* is the agent node the cure should name; ``None`` renders the shape ``<agent>``.
+    *box_name* is the DIFFERENT subject the ``box set`` verb needs as its positional, passed
+    straight through to :func:`_retired_behavior_cure` → :func:`_cure_subject` — meaningful only at
+    ``level="box"``, and deliberately omitted by the identity-free resolve seam
+    (``settings_launch._refuse_retired_spelling``), which has no name to give. Never a warning and
+    never a silent drop; called at the LAUNCH's behavior tier (see block comment).
     """
     from kanibako.settings.config import coerce_bool
 
@@ -353,7 +374,7 @@ def refuse_retired_behavior_keys(
     for leaf, successor in RETIRED_BEHAVIOR_KEYS.items():
         for parts, found in _behavior_leaf_sites(raw, leaf):
             spelling = ".".join(parts)
-            raw_value = "" if found is None else str(found).strip()
+            raw_value = _stored_spelling(found)
             mapped = _RETIRED_BEHAVIOR_VALUE_MAP.get(leaf, {})
             as_bool = coerce_bool(raw_value) if raw_value else None
             tier = mapped.get(as_bool) if as_bool is not None else None
@@ -362,8 +383,7 @@ def refuse_retired_behavior_keys(
             if tier is not None:
                 value_line = (
                     f"Your stored `{leaf}: {raw_value}` means "
-                    f"`{successor}: {tier}` (R-41's mapping: true → full, "
-                    f"false → restricted)."
+                    f"`{successor}: {tier}` (true → full, false → restricted)."
                 )
             else:
                 tier = "<restricted|editing|full>"
@@ -373,7 +393,7 @@ def refuse_retired_behavior_keys(
                     f"restricted | editing | full."
                 )
             cure = _retired_behavior_cure(
-                successor, level=level, tier=tier, subject=subject,
+                successor, level=level, tier=tier, subject=subject, box_name=box_name,
             )
             raise SettingsError(
                 f"'{leaf}' is RETIRED and is still set in the {level} settings "

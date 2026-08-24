@@ -1254,6 +1254,41 @@ class TestRefuseRetiredBehaviorKeys:
             assert f"access={tier}" in msg, stored
             assert f"`access: {tier}`" in msg, stored
 
+    def test_the_message_quotes_a_stored_bool_AS_YAML_SPELLS_IT(
+        self, tmp_path,
+    ) -> None:
+        """DEFECT: the value came back through ``str()``, so a file saying
+        ``auto_approve: true`` was quoted at its owner as ``auto_approve: True``
+        — a spelling their file does not contain and the CLI does not parse.
+
+        INVERT: drop the ``bool`` arm of ``_stored_spelling`` and this reddens.
+        """
+        for stored, spelled in ((True, "true"), (False, "false")):
+            with pytest.raises(SettingsError) as exc:
+                self._refuse(
+                    {"agent": {"default": {"auto_approve": stored}}},
+                    level="system", path=tmp_path / "s.yaml",
+                )
+            msg = str(exc.value)
+            assert f"`auto_approve: {spelled}`" in msg, stored
+            assert str(stored) not in msg, stored
+
+    def test_the_message_cites_no_record_a_user_cannot_look_up(
+        self, tmp_path,
+    ) -> None:
+        """The MAPPING is what helps the reader; the record number that ruled it
+        is ours, and naming it in a message sends a user hunting for a document
+        they have no access to.  Kept apart from the mapping pin above so the
+        two can fail independently."""
+        with pytest.raises(SettingsError) as exc:
+            self._refuse(
+                {"agent": {"default": {"auto_approve": True}}},
+                level="system", path=tmp_path / "s.yaml",
+            )
+        msg = str(exc.value)
+        assert "R-41" not in msg
+        assert "true → full, false → restricted" in msg
+
     def test_string_booleans_map_too(self, tmp_path) -> None:
         """Settings files carry ``true``/``yes``/``0`` as often as real bools."""
         for stored, tier in (("true", "full"), ("no", "restricted"), ("1", "full")):
@@ -1313,7 +1348,7 @@ class TestRefuseRetiredBehaviorKeys:
         request (a bare agent key there is an UPWARD write and is dropped).
 
         ⚑ *subject* names the AGENT; the verb's own SUBJECT POSITIONAL is a
-        separate argument this seam is never handed, so the pref-legal cures
+        separate argument (*box_name*, not passed here), so the pref-legal cures
         carry the ``<box>`` / ``<workset>`` placeholder rather than dropping it.
         """
         cures = {}
@@ -1352,6 +1387,49 @@ class TestRefuseRetiredBehaviorKeys:
         # The subject sits BETWEEN the verb and the key — never the key alone.
         assert "kanibako workset set pref." not in cure
         assert cure.endswith("pref.agent.claude.access=full")
+
+    def test_the_box_cure_names_the_box_WHEN_THE_CALLER_KNOWS_IT(
+        self, tmp_path,
+    ) -> None:
+        """The same threading the SELECTION refusal already does: ``box set``
+        needs its positional to be copy-pasteable from outside that box's own
+        cwd, and the launch seam (``start.py``) has the name.  Without it the
+        line is pasted as-is and lands on whatever box the cwd resolves to.
+
+        Both branches in one test: a caller that knows the box gets the box, and
+        one that does not still gets the PLACEHOLDER, never nothing.
+        """
+        raw = {"pref": {"agent": {"claude": {"auto_approve": True}}}}
+        with pytest.raises(SettingsError) as named:
+            self._refuse(
+                raw, level="box", path=tmp_path / "box.yaml", subject="claude",
+                box_name="myproj",
+            )
+        assert (
+            "kanibako box set myproj pref.agent.claude.access=full"
+            in str(named.value)
+        )
+        with pytest.raises(SettingsError) as anon:
+            self._refuse(
+                raw, level="box", path=tmp_path / "box.yaml", subject="claude",
+            )
+        assert (
+            "kanibako box set <box> pref.agent.claude.access=full"
+            in str(anon.value)
+        )
+
+    def test_a_box_name_is_ignored_off_the_box_level(self, tmp_path) -> None:
+        """No SINGLE box is being refused for at workset scope, so a *box_name*
+        passed anyway must not reach the ``workset set`` positional."""
+        with pytest.raises(SettingsError) as exc:
+            self._refuse(
+                {"agent": {"default": {"auto_approve": True}}},
+                level="workset", path=tmp_path / "s.yaml", subject="claude",
+                box_name="myproj",
+            )
+        msg = str(exc.value)
+        assert "myproj" not in msg
+        assert "kanibako workset set <workset> " in msg
 
     def test_a_clean_file_passes(self, tmp_path) -> None:
         """Non-vacuity: the same shapes with the SUCCESSOR key do not raise."""
