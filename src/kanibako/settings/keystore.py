@@ -3,7 +3,9 @@
 This module defines the KeyStore class & its supporting types _only_: the recursive attribute-dict
 container (:class:`KeyStore`) & reserved key errors (:class:`ReservedKeyError`) - NOT resolution,
 merge, cascade, ``@``-ref / ``$VAR`` / ``~`` expansion, typed views, or consumers — which live
-elsewhere. It imports nothing from the settings stack beyond its own :mod:`keystore_strings`.
+elsewhere. It imports nothing from the settings stack beyond its own :mod:`keystore_strings`
+(:mod:`kanibako.errors` is the tree-wide error hierarchy, not the settings stack, & imports
+nothing itself).
 
 ⚑ This is purely a data structure, mostly unopionated about its contents; its value-agnostic design
 intentionally limits cross-dependencies."""
@@ -12,6 +14,8 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from typing import Any, Generic, TypeVar
+
+from kanibako.errors import KanibakoError
 
 from .keystore_strings import (
     ERR_ATTRIBUTE_NO_KEY,
@@ -27,8 +31,32 @@ V = TypeVar("V")
 
 ### Errors / Exceptions ###
 
-class ReservedKeyError(KeyError):
+# ⚑ BOTH BASES ARE LOAD-BEARING, and neither may be dropped.
+#
+# ``KanibakoError`` is what ``cli.py`` catches (see :mod:`kanibako.errors`), and a reserved name in
+# a SETTINGS FILE is a user-authored defect, not a crash: ``_file_partial`` walks the whole file
+# into a store, so ``box: get:`` raised out of ``assemble_levels`` BEFORE the keyspace oracle ever
+# ran, escaped every handler, and reached the user as a TRACEBACK. Spec §0 requires a refusal that
+# NAMES the offending key, so this joins the hierarchy rather than being special-cased at the
+# entry point — one base class covers ``cli.main``, the ``_setup_nudge`` gate and every in-command
+# ``except KanibakoError`` at once.
+#
+# ``KeyError`` is kept because callers already depend on it: it is a BAD-KEY error, the store is
+# dict-like, and ``config_interface``'s H1 "returns an error string, NEVER raises" probe plus
+# ``start``'s ``except (KeyError, ValueError)`` were both written against it. Listing
+# ``KanibakoError`` FIRST keeps the MRO linearizable
+# (ReservedKeyError → KanibakoError → KeyError → LookupError → Exception).
+class ReservedKeyError(KanibakoError, KeyError):
     """Raised when a :class:`KeyStore` write uses a RESERVED key name (bad-key, not bad-value)"""
+
+    # ⚑ Without this, ``KeyError.__str__`` wins the MRO (``KanibakoError`` defines none) and
+    # REPR-WRAPS the message, so the CLI's ``Error: {e}`` line reaches the user wearing a pair of
+    # stray double quotes no other refusal has. The message is already a sentence; print it.
+    def __str__(self) -> str:
+        """The message verbatim — ``KeyError`` would repr-wrap it into the user's error line."""
+        if len(self.args) == 1:
+            return str(self.args[0])
+        return Exception.__str__(self)
 
 
 ### Main KeyStore Class ###
