@@ -868,8 +868,10 @@ class TestDeclarationRoots:
         re-roots a self-resolving source. The declaration-time rule is instrumented
         by ``tests/test_agent_defaults.py`` (``test_self_resolving_source_is_stored
         _verbatim`` + ``TestLayoutSingleSource::test_prefix_rule``), which drive the
-        real loader.  ⚑ The SOURCE is deliberately NOT the agent store — the
-        second assertion below has nothing to bite on if it is.
+        real loader, and — for a user's own settings FILE at all four scopes — by
+        ``tests/test_settings/test_declaration_roots.py``.  ⚑ The SOURCE is
+        deliberately NOT the agent store — the second assertion below has nothing to
+        bite on if it is.
         """
         by_dest = self._resolve({
             "agent.claude.caches": {

@@ -2008,7 +2008,12 @@ def _emit_bind(
     the value" expressible.
 
     *host_src* is used AS-IS — a stored source resolves on its own (§2a) and NOTHING is
-    prefixed here. *box_dest_raw* is the UNRESOLVED destination, which *box_dest_fn*
+    prefixed here. ⚑ That is now GUARANTEED rather than assumed: every declaration loader
+    roots an abstract category and refuses a bare-relative concrete source AT THE PARSE
+    (``settings_assemble.parse_bind_map`` for a settings file or a floor key,
+    ``agent_defaults.load_common`` / ``load_category_binds`` for a plugin's own file), so a
+    relative source cannot reach here to tempt anyone into prefixing one.
+    *box_dest_raw* is the UNRESOLVED destination, which *box_dest_fn*
     resolves box-side. *opts* is the per-entry options override. *key_segments* is the
     DISCRIMINATED declaration key plus the entry's DEST as the last segment;
     *optional_keys* is matched on its DOTTED spelling.
