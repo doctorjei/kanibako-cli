@@ -7,6 +7,8 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from kanibako.commands.diagnose import (
     _check_agents,
     _check_image,
@@ -1219,3 +1221,133 @@ class TestParsers:
         args = parser.parse_args(["box", "diagnose", "myproject"])
         assert args.func == run_box_diagnose
         assert args.project == "myproject"
+
+
+@pytest.mark.writes_undeclared(
+    "box.frobnicate",
+    reason="the refusal these tests drive is the §0 read gate itself, so the "
+           "settings file they write has to carry an undeclared key; the write "
+           "happens inside the resolve that then refuses it.",
+)
+class TestSettingsRefusalIsSurfaced:
+    """A settings error must be NAMED, never reported as `(not configured)`.
+
+    The spec §0 read gate makes an undeclared key a refusal that names the
+    offending entry and every file the resolve loaded.  `diagnose` is what a
+    user runs when something is wrong, so swallowing that refusal into
+    "cannot check (not configured)" points them at the wrong cause.
+
+    These go through the REAL resolve -- an undeclared entry written into the
+    real system-tier settings file -- not a patched exception, so they fail if
+    the refusal stops reaching `load_merged_config` at all.
+    """
+
+    UNDECLARED = "frobnicate"
+
+    def _write_undeclared_key(self, config_file: Path) -> Path:
+        """Put an undeclared `box.frobnicate` in the system-tier settings file."""
+        from kanibako.settings.paths import load_system_config, xdg
+
+        settings_path = load_system_config(
+            config_file,
+            data_home=xdg("XDG_DATA_HOME", ".local/share"),
+            home=Path.home(),
+        )["config.settings"]
+        settings_path.parent.mkdir(parents=True, exist_ok=True)
+        settings_path.write_text(f"box:\n  {self.UNDECLARED}: yes\n")
+        return settings_path
+
+    def _assert_names_the_key(self, out: str, settings_path: Path) -> None:
+        """The refusal reached the user intact: key, spec cite, and file list."""
+        assert "[!!]" in out
+        assert "settings error -- reported below" in out
+        assert f"box.{self.UNDECLARED}" in out
+        assert "spec §0" in out
+        assert str(settings_path) in out
+        assert "cannot check (not configured)" not in out
+
+    def test_system_diagnose_surfaces_the_refusal(
+        self, config_file, tmp_home, credentials_dir, capsys
+    ) -> None:
+        """`kanibako system diagnose` names the undeclared key on the Image line."""
+        from kanibako.errors import ContainerError
+
+        settings_path = self._write_undeclared_key(config_file)
+        with patch(
+            "kanibako.runtime.container.ContainerRuntime",
+            side_effect=ContainerError("none"),
+        ):
+            rc = run_system_diagnose(argparse.Namespace())
+        assert rc == 0
+        out = capsys.readouterr().out
+        self._assert_names_the_key(out, settings_path)
+        assert "[!!] Image: settings error -- reported below" in out
+
+    def test_rig_diagnose_surfaces_the_refusal(
+        self, config_file, tmp_home, credentials_dir, capsys
+    ) -> None:
+        """`kanibako rig diagnose` names it on the Configured image line."""
+        from kanibako.errors import ContainerError
+
+        settings_path = self._write_undeclared_key(config_file)
+        with patch(
+            "kanibako.runtime.container.ContainerRuntime",
+            side_effect=ContainerError("none"),
+        ):
+            rc = run_rig_diagnose(argparse.Namespace())
+        assert rc == 0
+        out = capsys.readouterr().out
+        self._assert_names_the_key(out, settings_path)
+        assert "[!!] Configured image: settings error -- reported below" in out
+        assert "Configured image: cannot check" not in out
+
+    def test_baseline_surfaces_the_refusal(
+        self, config_file, tmp_home, credentials_dir, capsys
+    ) -> None:
+        """The baseline probe names it instead of claiming nothing is configured."""
+        mock_runtime = MagicMock()
+        mock_runtime.cmd = "podman"
+        settings_path = self._write_undeclared_key(config_file)
+        args = argparse.Namespace(only=None, skip=None, all_images=False)
+        with (
+            patch(
+                "kanibako.runtime.baseline.load_baseline",
+                return_value={"tmux": ["tmux"]},
+            ),
+            patch(
+                "kanibako.runtime.container.ContainerRuntime",
+                return_value=mock_runtime,
+            ),
+            patch(
+                "kanibako.commands.diagnose.probe_missing_executables",
+                return_value=[],
+            ) as mock_probe,
+        ):
+            _diagnose_baseline(args)
+        out = capsys.readouterr().out
+        self._assert_names_the_key(out, settings_path)
+        assert "[!!]   Baseline: settings error -- reported below" in out
+        # The refusal ends the probe -- there is no resolved image to probe.
+        mock_probe.assert_not_called()
+
+    def test_non_kanibako_failure_still_reports_not_configured(
+        self, config_file, tmp_home, credentials_dir, capsys
+    ) -> None:
+        """The `(not configured)` line survives for what it was written for."""
+        from kanibako.errors import ContainerError
+
+        with (
+            patch(
+                "kanibako.runtime.container.ContainerRuntime",
+                side_effect=ContainerError("none"),
+            ),
+            patch(
+                "kanibako.settings.config.load_merged_config",
+                side_effect=RuntimeError("boom"),
+            ),
+        ):
+            rc = run_system_diagnose(argparse.Namespace())
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "[--] Image: cannot check (not configured)" in out
+        assert "settings error -- reported below" not in out

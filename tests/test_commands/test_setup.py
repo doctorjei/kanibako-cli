@@ -217,3 +217,123 @@ class TestSetupParser:
             # main calls sys.exit(0) on success
             assert exc_info.value.code == 0
             mock_init.assert_not_called()
+
+
+@pytest.mark.writes_undeclared(
+    "box.frobnicate",
+    reason="the refusal this test drives is the §0 read gate itself, so the "
+           "settings file it writes has to carry an undeclared key; the write "
+           "happens inside the resolve that then refuses it.",
+)
+class TestSettingsRefusalStopsSetup:
+    """A settings error must STOP setup, never be reported as "not initialized".
+
+    Step 3's bare ``except Exception`` used to report every failure as
+    ``configuration not initialized yet`` and run on.  Against the spec §0
+    refusal of an undeclared key that INVERTS the cause (the configuration is
+    initialized — it is the broken thing), promises a rig pull that will not
+    happen, and closes with ``Setup Complete`` / ``You're ready to go!`` at rc 0
+    over a store no command can resolve.
+
+    These drive the REAL resolve — an undeclared entry written into the real
+    system-tier settings file — through the REAL ``main(["setup"])`` entry, so
+    they fail if the refusal stops reaching ``load_merged_config`` at all, and
+    they pin the exit code a script would actually see.
+    """
+
+    UNDECLARED = "frobnicate"
+
+    def _write_undeclared_key(self, config_file):
+        """Put an undeclared `box.frobnicate` in the system-tier settings file."""
+        from pathlib import Path
+
+        from kanibako.settings.paths import load_system_config, xdg
+
+        settings_path = load_system_config(
+            config_file,
+            data_home=xdg("XDG_DATA_HOME", ".local/share"),
+            home=Path.home(),
+        )["config.settings"]
+        settings_path.parent.mkdir(parents=True, exist_ok=True)
+        settings_path.write_text(f"box:\n  {self.UNDECLARED}: yes\n")
+        return settings_path
+
+    def test_setup_stops_and_names_the_refusal(
+        self, config_file, tmp_home, capsys
+    ) -> None:
+        """`kanibako setup` names the undeclared key and exits 1 at Step 3."""
+        from kanibako.cli import main
+
+        settings_path = self._write_undeclared_key(config_file)
+        with (
+            patch(
+                "kanibako.commands.diagnose._check_runtime",
+                return_value=("ok", "podman (podman version 5.0.0)"),
+            ),
+            patch("kanibako.targets.discover_targets", return_value={}),
+            patch(
+                "kanibako.commands.setup_cmd._run_template_refresh",
+            ) as m_templates,
+            patch(
+                "kanibako.commands.setup_cmd._write_setup_marker",
+            ) as m_marker,
+            patch(
+                "kanibako.commands.setup_cmd._write_system_agent",
+            ) as m_agent,
+            pytest.raises(SystemExit) as exc_info,
+        ):
+            main(["setup"])
+
+        # The exit code a script sees: a refusal, not a success.
+        assert exc_info.value.code == 1
+        captured = capsys.readouterr()
+
+        # The abort happens AT Step 3, in setup's own voice on stdout.
+        assert "Step 3: Container Rig" in captured.out
+        assert (
+            "[!!] Settings error -- setup cannot continue (reported below)."
+            in captured.out
+        )
+        # The inverted cause and the false promise are both gone.
+        assert "configuration not initialized yet" not in captured.out
+        assert "pulled automatically on first use" not in captured.out
+        # And so is the claim of readiness.
+        assert "Setup Complete" not in captured.out
+        assert "You're ready to go" not in captured.out
+
+        # The refusal itself reached the user intact via cli.py: the key, the
+        # spec cite, and the file that carries it.
+        assert f"box.{self.UNDECLARED}" in captured.err
+        assert "spec §0" in captured.err
+        assert str(settings_path) in captured.err
+
+        # Nothing was written: the abort precedes Steps 4 and 5 and the marker.
+        m_agent.assert_not_called()
+        m_templates.assert_not_called()
+        m_marker.assert_not_called()
+
+    def test_non_kanibako_failure_still_reports_not_initialized(
+        self, config_file, tmp_home, setup_args, capsys
+    ) -> None:
+        """The `(not initialized yet)` line survives for what it was written for."""
+        with (
+            patch(
+                "kanibako.commands.diagnose._check_runtime",
+                return_value=("ok", "podman"),
+            ),
+            patch("kanibako.targets.discover_targets", return_value={}),
+            patch(
+                "kanibako.settings.config.load_merged_config",
+                side_effect=RuntimeError("boom"),
+            ),
+            _templates_current(),
+        ):
+            rc = run_setup(setup_args)
+
+        captured = capsys.readouterr()
+        assert "[--] Cannot check (configuration not initialized yet)" in captured.out
+        assert "Settings error -- setup cannot continue" not in captured.out
+        # Unchanged behaviour: an unforeseen failure is a REPORT, and the run
+        # still reaches its summary.
+        assert rc == 0
+        assert "Setup Complete" in captured.out

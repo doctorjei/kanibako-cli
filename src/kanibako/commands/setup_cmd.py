@@ -7,7 +7,7 @@ import sys
 from enum import Enum
 from pathlib import Path
 
-from kanibako.errors import ConfigError
+from kanibako.errors import ConfigError, KanibakoError
 
 
 def add_arguments(parser: argparse.ArgumentParser) -> None:
@@ -351,6 +351,11 @@ def run_setup(args: argparse.Namespace) -> int:
     ``kanibako setup && kanibako start`` proceed and ``kanibako setup || exit 1``
     report a success that did not happen — the automation-facing form of exactly
     the false claim the marker gate exists to remove.
+
+    Two conditions never reach that summary at all, and both RAISE rather than
+    return: an unknown ``--agent`` (Step 4) and a settings error while resolving
+    the merged config (Step 3).  Both abort before anything is written, and cli.py
+    turns the ``KanibakoError`` into the same rc 1.
     """
     print()
     print("Kanibako Setup")
@@ -425,6 +430,31 @@ def run_setup(args: argparse.Namespace) -> int:
         else:
             print(f"  [--] {detail}")
             print("       The rig will be pulled automatically on first use.")
+    except KanibakoError:
+        # A settings error here is a HARD STOP, on the convention
+        # ``_run_agent_selection`` already sets for a refused configuration input:
+        # let the ``KanibakoError`` propagate, which aborts BEFORE Step 4's agent
+        # write, Step 5's template refresh and the completion marker, and leaves
+        # cli.py to print the message verbatim at rc 1.
+        #
+        # Running on is what the `(not initialized yet)` arm used to do, and it
+        # produced three lies at once: the configuration IS initialized -- it is the
+        # broken thing -- the rig will NOT be pulled on first use, and the run closed
+        # with "Setup Complete" / "You're ready to go!" at rc 0 over a store no
+        # command can resolve.  The completion marker would also have cleared the
+        # ``setup_compat_gate`` BCV block against exactly such a store.
+        #
+        # ``KanibakoError`` is the predicate and NOT a §0-specific discriminator:
+        # ``errors.py`` defines it as the hierarchy cli.py catches, i.e. the errors
+        # whose text is already written to be shown to a user (the closed-keyspace
+        # refusal names every offending entry and every file the resolve loaded).
+        # Anything else still falls through to the arm below, which keeps that path
+        # for the case it was written for.
+        print("  [!!] Settings error -- setup cannot continue (reported below).")
+        print("       Nothing has been written. Fix the file the error names,")
+        print("       then re-run `kanibako setup`.")
+        print()
+        raise
     except Exception:
         print("  [--] Cannot check (configuration not initialized yet)")
         print("       Rigs will be pulled automatically on first use.")

@@ -498,3 +498,112 @@ def test_remote_no_box_surfaces_remote_create_hint(capsys):
     assert "no box at /home/u/webapp" in err
     assert "does not exist on the remote host" in err
     assert f"ssh {dest} kanibako create webapp" in err
+
+
+# --- the settings refusal reaching a `kanibako code` user -------------------
+
+@pytest.fixture
+def _default_level_logging():
+    """Install the DEFAULT (non-verbose) kanibako log handler on captured stderr.
+
+    ``setup_logging(verbose=False)`` binds a WARNING-threshold handler to
+    ``sys.stderr`` AT CALL TIME, so calling it inside the test binds it to
+    capsys's stream — which is what makes "did the user actually see this at the
+    default log level" a real assertion rather than a level lookup.
+    """
+    import logging
+
+    from kanibako.log import setup_logging
+
+    setup_logging(verbose=False)
+    try:
+        yield
+    finally:
+        logging.getLogger("kanibako").handlers.clear()
+
+
+@pytest.mark.writes_undeclared(
+    "box.frobnicate",
+    reason="the refusal this test drives is the §0 read gate itself, so the "
+           "settings file it writes has to carry an undeclared key; the write "
+           "happens inside the resolve that then refuses it.",
+)
+def test_settings_refusal_warns_and_still_launches(
+    mock_runtime, config_file, tmp_home, capsys, _default_level_logging,
+):
+    """A settings refusal in the image fallback is WARNED, not silently swallowed.
+
+    Drives the REAL resolve: an undeclared entry in the real system-tier settings
+    file, reached through the real ``run_code`` path with no running-container
+    image (the docker leg, where ``container_image`` always returns ``None``).
+    The launch is unaffected — rc 0, ``code`` invoked — but the user is told why
+    the attach is degraded instead of getting nothing at all.
+    """
+    from pathlib import Path
+
+    from kanibako.settings.paths import load_system_config, xdg
+
+    settings_path = load_system_config(
+        config_file,
+        data_home=xdg("XDG_DATA_HOME", ".local/share"),
+        home=Path.home(),
+    )["config.settings"]
+    settings_path.parent.mkdir(parents=True, exist_ok=True)
+    settings_path.write_text("box:\n  frobnicate: yes\n")
+
+    mock_runtime.container_image.return_value = None
+    stack, _proj = _patched(mock_runtime)
+    with (
+        stack[0], stack[1], stack[2], stack[3], stack[4],
+        patch(
+            "kanibako.settings.paths.box_workset_settings_paths",
+            return_value=(None, None),
+        ),
+        patch(
+            "kanibako.commands.code_cmd.seed_attached_container_config",
+        ) as m_seed,
+        patch("kanibako.commands.code_cmd.shutil.which", return_value="/usr/bin/code"),
+        patch("kanibako.commands.code_cmd.subprocess.run") as m_run,
+    ):
+        rc = run_code(_args())
+
+    # Zero-launch-delta: the attach still happens.
+    assert rc == 0
+    m_run.assert_called_once_with(["/usr/bin/code", "--folder-uri", _EXPECTED_URI])
+    # Image unresolved → the image-keyed seed is still skipped.
+    m_seed.assert_not_called()
+
+    err = capsys.readouterr().err
+    # Visible at the DEFAULT log level, and it names the consequence...
+    assert "VS Code will attach without the box's workspace folder" in err
+    # ...and the cause, verbatim: the key, the spec cite, and the file.
+    assert "box.frobnicate" in err
+    assert "spec §0" in err
+    assert str(settings_path) in err
+
+
+def test_non_kanibako_image_failure_stays_silent(
+    mock_runtime, capsys, _default_level_logging,
+):
+    """The debug-only swallow survives for what it was written for."""
+    mock_runtime.container_image.return_value = None
+    stack, _proj = _patched(mock_runtime)
+    with (
+        stack[0], stack[1], stack[2], stack[3], stack[4],
+        patch(
+            "kanibako.settings.config.load_merged_config",
+            side_effect=RuntimeError("no config"),
+        ),
+        patch(
+            "kanibako.commands.code_cmd.seed_attached_container_config",
+        ) as m_seed,
+        patch("kanibako.commands.code_cmd.shutil.which", return_value="/usr/bin/code"),
+        patch("kanibako.commands.code_cmd.subprocess.run") as m_run,
+    ):
+        rc = run_code(_args())
+
+    assert rc == 0
+    m_run.assert_called_once_with(["/usr/bin/code", "--folder-uri", _EXPECTED_URI])
+    m_seed.assert_not_called()
+    err = capsys.readouterr().err
+    assert "VS Code will attach without" not in err
