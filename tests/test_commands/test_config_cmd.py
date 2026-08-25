@@ -1184,6 +1184,10 @@ class TestAReservedNameInASettingsFileRefusesInsteadOfCrashing:
         assert code == 1                       # a refusal, not a crash
         assert f"key '{name}' is reserved" in err   # ...that NAMES the key
         assert "fromkeys" in err               # ...and lists the set, so it is actionable
+        # ⚑ ...and NAMES THE FILE. The key is the defect; the file is the address, and a
+        # user with six cascade files had to guess which one to open. MUTATION-PROVED:
+        # drop ``path=`` from the matching ``_file_partial`` call and this alone goes red.
+        assert str(path) in err
         assert "Traceback" not in err
 
     def test_the_refusal_is_not_repr_wrapped(
