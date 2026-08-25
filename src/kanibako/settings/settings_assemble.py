@@ -32,7 +32,7 @@ from kanibako.settings.kb_store import (
     Bind,
     BindEntry,
 )
-from kanibako.settings.keystore import KeyStore
+from kanibako.settings.keystore import KeyStore, ReservedKeyError
 from kanibako.settings.settings_categories import (
     ABSTRACT_CATEGORIES,
     DECLARATION_ROOT_REF,
@@ -728,16 +728,36 @@ def _declared_source(
     )
 
 
-def _file_partial(raw: dict) -> KeyStore:
+def _file_partial(raw: dict, *, path: Path | None = None) -> KeyStore:
     """Build ONE level partial from a settings file's WHOLE nested content, SCOPE TOKEN KEPT (§0).
 
     The rule for every NON-agent level (``base`` / ``system`` / ``workset`` / ``box``); the agent
     tier uses :func:`_agent_partial`. ⚑ The bind DEPTH is not chosen here — :func:`_parse_node`
     derives it from the CATEGORY token it walks past, so there is no flag for a caller to get wrong.
+
+    ⚑ *path* EXISTS TO NAME THE FILE IN EVERY REFUSAL THIS PARSE RAISES — the same argument, with
+    the same rendering, that the siblings :func:`_drop_upward_scopes` and
+    :func:`~kanibako.settings.settings_prefs.refuse_pref_table` already take. Without it a reserved
+    leaf name (``box: get:``) and the RETIRED name-keyed §2a shape both named the offending KEY and
+    left the user to work out WHICH of six cascade files to edit — the key is the defect, but the
+    file is the address, and a cure with no address is a cure the user has to hunt for.
+    ⚑ Optional so a caller parsing a SYNTHESIZED table rather than a file may omit it (it then
+    renders ``<settings>``, exactly as the siblings do for a ``None`` path).
     """
     if not isinstance(raw, dict):
         return KeyStore()
-    parsed = _parse_node(raw, in_binds=False)
+    try:
+        parsed = _parse_node(raw, in_binds=False)
+    except (ReservedKeyError, SettingsError) as exc:
+        # ⚑ ONE wrap covers BOTH defects because both are raised UNDER this single call — the
+        # reserved name by ``KeyStore.__setitem__``, the §2a retired shape by
+        # :func:`parse_bind_map` — so nothing below has to learn what a file is.
+        # ⚑⚑ THE MESSAGE IS KEPT VERBATIM AND THE FILE APPENDED, never re-worded: the KEY must
+        # stay the first thing the user reads on ``cli.main``'s ``Error: {e}`` line.
+        # ⚑ Re-raised as ``SettingsError`` per the caller's contract; ``ReservedKeyError``'s
+        # ``KeyError`` base is read by the ``config set`` probe, not by anything on this path.
+        where = str(path) if path is not None else "<settings>"
+        raise SettingsError(f"{exc} (in settings file {where})") from exc
     assert isinstance(parsed, KeyStore)
     return parsed
 
@@ -902,14 +922,14 @@ def assemble_levels(
     # The floor is inserted FIRST and the base-file leaves overlay it, so a base-file entry wins
     # WITHIN this single level and the floor is the ultimate fallback.
     base_partial = dotted_partial(floor)
-    _overlay(base_partial, _file_partial(raw_base))
+    _overlay(base_partial, _file_partial(raw_base, path=base_p))
 
     # MOST-SPECIFIC-FIRST (S8). Each scope file's partial keeps its scope token so the merge works
     # by scope-qualified name; the agent tier keeps its §2d discriminator — NO bare-``agent``
     # collapse.
     return [
-        _file_partial(raw_box),
-        _file_partial(raw_workset),
+        _file_partial(raw_box, path=box_path),
+        _file_partial(raw_workset, path=workset_path),
         _agent_partial(
             raw_agent, sub_key=agent_name, path=agent_path, node=agent_name,
         ),
@@ -924,7 +944,7 @@ def assemble_levels(
         _agent_partial(
             raw_agent, sub_key=_AGENT_DEFAULT_SUB, path=agent_path, node=agent_name,
         ),
-        _file_partial(raw_system),
+        _file_partial(raw_system, path=system_path),
         base_partial,
     ]
 

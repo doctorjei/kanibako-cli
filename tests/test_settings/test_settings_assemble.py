@@ -1610,3 +1610,94 @@ def test_a_name_keyed_sub_table_under_an_arm_is_refused() -> None:
     with pytest.raises(SettingsError) as exc:
         parse_bind_map({"home": {"src": "/h"}})
     assert "sub-table" in str(exc.value)
+
+
+# --------------------------------------------------------------------------- #
+# A file-parse refusal NAMES THE FILE — every non-agent level (§0)             #
+# --------------------------------------------------------------------------- #
+#
+# ⚑ THE DEFECT WAS A SHAPE ASYMMETRY, NOT A MISSING STRING. ``_file_partial`` was the
+# ONE partial builder in ``assemble_levels`` handed no ``path``, while every sibling
+# (``_drop_upward_scopes``, ``_agent_partial``, ``refuse_pref_table``) took one — so a
+# refusal raised UNDER it could name the offending KEY and nothing else, and a user with
+# six cascade files was told what was illegal but not where it lived.
+#
+# BEFORE, at every one of the four scopes:
+#   ReservedKeyError: key 'get' is reserved: ... Reserved names: [...]
+#   SettingsError: common entry '~/dest' holds a sub-table, ... Re-key the entry ...
+# AFTER: the same sentence with ``(in settings file /…/box.yaml)`` appended.
+#
+# ⚑ TWO refusals, ONE seam: the reserved name comes out of ``KeyStore.__setitem__`` and
+# the retired §2a shape out of ``parse_bind_map``, but both are raised under the single
+# ``_parse_node`` call, so both are pinned here together.
+
+# The four levels ``_file_partial`` builds, each with the scope token its own file is
+# legally spelled against. ``agent`` is absent on purpose — that tier goes through
+# ``_agent_partial``, which was already handed a path.
+_FILE_LEVELS = [
+    pytest.param("base_path", "box", id="base"),
+    pytest.param("system_path", "system", id="system"),
+    pytest.param("workset_path", "workset", id="workset"),
+    pytest.param("box_path", "box", id="box"),
+]
+
+
+@pytest.mark.parametrize("kwarg,scope", _FILE_LEVELS)
+def test_a_reserved_leaf_name_refusal_NAMES_THE_FILE(
+    tmp_path: Path, kwarg: str, scope: str
+) -> None:
+    # MUTATION-PROVED: drop the ``path=`` from the matching ``_file_partial`` call in
+    # ``assemble_levels`` and this row goes red on the filename assert alone.
+    path = _write(tmp_path / f"{kwarg}.yaml", {scope: {"get": "x"}})
+    with pytest.raises(SettingsError) as exc:
+        assemble_levels(agent_name="claude", **_clean_base(tmp_path, kwarg, path))
+    msg = str(exc.value)
+    assert "key 'get' is reserved" in msg      # the KEY, as before
+    assert str(path) in msg                    # ...and now the FILE
+    # ⚑ THE KEY STAYS FIRST. ``cli.main`` prints ``Error: {e}``, so a message re-worded
+    # to lead with the filename would bury the defect behind an address.
+    assert msg.startswith("key 'get' is reserved")
+
+
+@pytest.mark.parametrize("kwarg,scope", _FILE_LEVELS)
+def test_the_retired_shape_refusal_NAMES_THE_FILE(
+    tmp_path: Path, kwarg: str, scope: str
+) -> None:
+    # The §2a name-keyed shape rides the SAME threaded path as the reserved name; it is
+    # the same defect seen at the other refusal site, not a separate fix.
+    path = _write(
+        tmp_path / f"{kwarg}.yaml",
+        {scope: {"common": {"~/dest": {"entryname": {"src": "/h/a"}}}}},
+    )
+    with pytest.raises(SettingsError) as exc:
+        assemble_levels(agent_name="claude", **_clean_base(tmp_path, kwarg, path))
+    msg = str(exc.value)
+    assert "sub-table" in msg                  # the retired SHAPE, as before
+    assert str(path) in msg                    # ...and now the FILE
+
+
+@pytest.mark.parametrize("kwarg,scope", _FILE_LEVELS)
+def test_a_clean_file_at_the_same_scope_assembles(
+    tmp_path: Path, kwarg: str, scope: str
+) -> None:
+    """NON-VACUITY: the same call on the same scope succeeds with no reserved name, so
+    the rows above pin the refusal and not a broken fixture."""
+    marker = _MARKER_KEY.get(scope, "image")
+    path = _write(tmp_path / f"{kwarg}.yaml", {scope: {marker: "ok"}})
+    levels = assemble_levels(
+        agent_name="claude", **_clean_base(tmp_path, kwarg, path)
+    )
+    assert len(levels) == 6
+
+
+def _clean_base(tmp_path: Path, kwarg: str, path: Path) -> dict[str, Path]:
+    """The ``assemble_levels`` path kwargs for a probe at ONE level.
+
+    ⚑ ``base_path`` is ALWAYS pinned, to an empty file when it is not the level under
+    test: left at ``None`` it falls back to ``settings_base_path()`` and the probe would
+    read the real machine's base settings.
+    """
+    kwargs = {kwarg: path}
+    if kwarg != "base_path":
+        kwargs["base_path"] = _write(tmp_path / "clean_base.yaml", {})
+    return kwargs
