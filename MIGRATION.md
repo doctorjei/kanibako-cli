@@ -107,8 +107,11 @@ inside boxes. In order of likely impact:
 
 10. **Relative host paths in `workset share add` no longer resolve under the workset root at
     launch.** New adds are resolved and stored absolute at write time; **already-stored relative
-    sources must be rewritten to absolute paths by hand** or they resolve against the process
-    CWD — a wrong-directory mount, not an error (§2.7).
+    sources must be rewritten to absolute paths by hand** (§2.7). A bare-relative source anywhere
+    in `bindings.ro`, `bindings.rw` or `synced` is now **refused by name** rather than passed to
+    podman, which never mounted the directory you meant — it created a named volume. In `common`,
+    `caches` and `seeded` a bare leaf is instead rooted under the declaring scope's store, so those
+    entries start working (§2.50).
 
 11. **The box template root moved and restructured** (`global/base_template/` →
     `global/template/box/home/`). Existing boxes are untouched (seeded once, long ago). The
@@ -220,7 +223,10 @@ inside boxes. In order of likely impact:
     through the same seam, so it refuses too. Most often this is a typo or a key retired by this
     release, so the fix is one deleted line. **`box get` and `workset get` refuse such a name too
     now — rc 1 where v1.7.2 said `(not set)` at rc 0 — and `show` lists the offending lines so you
-    know which ones to delete** (§2.48).
+    know which ones to delete** (§2.48). **`kanibako setup` stops at Step 3 and exits 1** when
+    settings will not resolve, where it used to name a wrong cause and finish with `Setup Complete`
+    at rc 0; `system diagnose` and `rig diagnose` print the refusal instead of `cannot check`
+    (§2.49).
 
 24. Smaller items: standalone boxes' `box get` got truthful (§2.9); a box suppressed to
     plain-shell keeps stale credential files in its home (§2.10); several never-released or
@@ -704,14 +710,14 @@ working set root"*. That launch-time join is gone: in v1.8.0 the command resolve
 path **at write time** and stores it absolute (telling you when it rewrote what you typed).
 ⚑ A bare-relative source can no longer reach a bind category through `config set` at all — that
 write route is gone for all six bind-shaped categories (§2.20), so the key itself is refused rather
-than the source shape. A bare-relative source authored **by hand** in the settings YAML is still a
-defect, and still resolves against the process CWD at launch — see the warning below.
+than the source shape. A bare-relative source authored **by hand** into a bind category in the
+settings YAML is a defect too, and is now **refused by name** wherever it is declared (§2.50).
 
-**Already-stored relative sources are NOT rewritten for you.** At launch they pass through
-as-is and resolve against whatever the process CWD happens to be — a plausibly
-*wrong-directory* mount, which is worse than an error. Check every workset's `workset.yaml` for
+**Already-stored relative sources are NOT rewritten for you, and they now stop the command.** They
+used to pass through to podman as you typed them, which never mounted the directory you meant —
+§2.50 has the detail and the message you will see. Check every workset's `workset.yaml` for
 `workset.bindings.{ro,rw}` entries whose source does not start with `/`, `~`, `$`, or `@`, and
-rewrite each to the absolute path it used to resolve to: `<workset root>/<relative>`.
+rewrite each to the absolute path it was supposed to resolve to: `<workset root>/<relative>`.
 
 One behavior change on an already-broken shape: `share add` on the **default** workset now
 refuses a relative source (it never had a root to join under — the old behavior was a silent
@@ -2908,9 +2914,9 @@ message is the answer for a key nothing more specific is known about.
 **And which do not, which is worth knowing when a command stays quiet.** `box show` WITHOUT
 `--effective` prints the stored file and never resolves, so it never carries THIS message — it
 marks the line instead (§2.48); `box diagnose` does not resolve settings. `setup`,
-`system diagnose` and `rig diagnose` DO resolve, but each catches the failure and prints a
-`cannot check` line in place of the reason — a defect, not a design. When a command goes vague on
-you, run `kanibako box show --effective` to see the message in full:
+`system diagnose` and `rig diagnose` DO resolve, and each prints this message in full: `setup`
+stops at Step 3 and exits 1, the two diagnostics report it on one check row and carry on (§2.49).
+Here is the message, as `kanibako box show --effective` prints it:
 
 ```
 Error: the settings resolved for this box carry 2 entries that are not settings keys (spec §0 — the keyspace is CLOSED):
@@ -3025,6 +3031,177 @@ It marks only what the keyspace does not declare. Data inside a declared key —
 a `masks` entry, an `env.<VAR>` name — is not marked, and neither is a table that IS declared but
 that this file's tier is not allowed to set (an `agent:` table in a `box.yaml`, §2.11): that is a
 different fact, and calling it "undeclared" would be false.
+
+### 2.49 `kanibako setup` stops at a settings error instead of finishing, and the diagnostics name it
+
+**Read this if a script runs `kanibako setup`, or if `system diagnose` or `rig diagnose` ever told
+you your rig was "not configured".**
+
+**What changed.** Five places resolved settings inside a catch-all that reported every failure as
+something else. §2.47 named three of them as a defect; this is the repair. All of them now print the
+refusal itself — and `kanibako setup` **stops** rather than reporting and running on.
+
+**The break: `kanibako setup` exits 1 at Step 3 where it used to exit 0.** The old run said the
+configuration was *not initialized yet* — the inverse of the truth, since the configuration is
+initialized and is the broken thing — promised a rig pull that would not happen, then went on
+through Step 4 and Step 5 and closed with `Setup Complete` / `You're ready to go!` at **rc 0** over
+a store no command could resolve. It now looks like this:
+
+```
+$ kanibako setup --agent claude --refresh-templates
+
+Kanibako Setup
+========================================
+
+Step 1: Container Runtime
+  [ok] /usr/bin/podman (podman version 5.4.2)
+
+Step 2: Agent Detection
+  [ok] Shell (image default; no host binary needed)
+  [ok] Claude Code detected
+
+Step 3: Container Rig
+  [!!] Settings error -- setup cannot continue (reported below).
+       Nothing has been written. Fix the file the error names,
+       then re-run `kanibako setup`.
+
+Error: the settings resolved for this box carry 1 entry that is not a settings key (spec §0 — the keyspace is CLOSED):
+  - box.zippity: 'zippity' is not a declared box key (declared: canon, enable_vault, image, images_store, share_images, shell, plus the §2a categories)
+kanibako will not resolve settings that carry it: an undeclared key has no meaning to give the box, and passing it through would be the very 'anything goes' behaviour the closed keyspace replaces.
+  Fix: remove it BY HAND from the settings file that carries it — this resolve loaded:
+    - /home/you/.local/share/kanibako/global/settings.yaml
+  'kanibako box reset' cannot remove what is not a key, and 'kanibako box show --effective' resolves through this same seam, so it refuses too.
+```
+
+**Nothing is written when it stops.** The abort precedes Step 4's system-agent write, Step 5's
+template refresh, and — the one that matters most — the `setup_completed` marker. That marker is
+what lifts the upgrade gate of §2.12, so a run that wrote it over an unresolvable store would tell
+every later command that setup had succeeded.
+
+**What you must do.** Open the file the error names, delete the line, re-run `kanibako setup`. A
+script written as `kanibako setup && kanibako start` used to walk straight past this into a launch
+that then failed for a cause the setup output had denied; it now stops where it should. A script
+written as `kanibako setup || exit 1` used to see rc 0 and carry on.
+
+**`system diagnose` and `rig diagnose` report and keep going, rc 0 unchanged.** The `[--] Image:
+cannot check (not configured)` line becomes a `[!!]` row with the refusal quoted underneath,
+alongside every other check:
+
+```
+$ kanibako system diagnose
+Kanibako System Diagnostics
+========================================
+
+[ok] Container runtime: /usr/bin/podman (podman version 5.4.2)
+[!!] Image: settings error -- reported below
+        the settings resolved for this box carry 1 entry that is not a settings key (spec §0 — the keyspace is CLOSED):
+          - box.zippity: 'zippity' is not a declared box key (declared: canon, enable_vault, image, images_store, share_images, shell, plus the §2a categories)
+        kanibako will not resolve settings that carry it: an undeclared key has no meaning to give the box, and passing it through would be the very 'anything goes' behaviour the closed keyspace replaces.
+          Fix: remove it BY HAND from the settings file that carries it — this resolve loaded:
+            - /home/you/.local/share/kanibako/global/settings.yaml
+          'kanibako box reset' cannot remove what is not a key, and 'kanibako box show --effective' resolves through this same seam, so it refuses too.
+[ok] Agent: Claude Code: (/home/you/.local/bin/claude)
+```
+
+The `rig diagnose` row is `Configured image` and the baseline probe's row is `Baseline`; both read
+the same way. `rig diagnose`'s baseline probe stops after the refusal, because there is no resolved
+image left to probe.
+
+**`kanibako code` warns and still attaches, rc 0 unchanged.** When a settings error stops it
+resolving the box's image, VS Code opens without the box's workspace folder and without the agent
+extension. That was already true; you now hear about it at the default log level —
+`VS Code will attach without the box's workspace folder or agent extension: the box image could not
+be resolved.`, followed by the refusal.
+
+**Unchanged, and deliberately: a failure kanibako did not foresee still reads the old way.** Only
+errors kanibako raises on purpose — the ones whose text is already written for you — are reported
+like this. Anything else still produces `cannot check (not configured)`, and `setup` still runs on
+past it to its summary, which is what that line was written for.
+
+### 2.50 A bare-relative host source is refused, and a bare leaf is rooted where it is declared
+
+**Read this if you hand-wrote a source in a `bindings.ro`, `bindings.rw` or `synced` entry, or a
+bare leaf in a `common`, `caches` or `seeded` entry, in any settings file.**
+
+**What changed.** v1.8.0 said category sources are rooted at their declaration rather than at
+assembly (§2.7). Exactly one loader did it — the one that reads an agent plugin's own bundled file.
+Every other path stored the string you typed and passed it to podman unchanged. Both halves of the
+rule now hold at all four scopes and in your own files: an abstract category's bare leaf is rooted
+where it is declared, and a source that cannot resolve on its own is refused where it is declared.
+
+**Why a refusal and not a warning: a bare-relative source never bound your directory.** podman reads
+a source beginning with neither `.` nor `/` as the name of a **named volume**, and creates it —
+`--rm` never removes it. So
+
+```yaml
+box:
+  bindings:
+    rw:
+      "~/notes": ["mynotes"]
+```
+
+did not mount your `mynotes` directory. It made a volume called `mynotes` in your rootless container
+store, mounted that empty volume at `~/notes` inside the box, and left the volume behind after the
+box was gone. The `rw` arm also created a directory named `mynotes` in whatever directory you
+happened to run `kanibako` from. A `./mynotes` spelling is refused too, and is no better: it
+resolves against a working directory rather than naming a place.
+
+**The three concrete categories refuse it by name, at every scope** — `bindings.ro`, `bindings.rw`
+and `synced` have no declaration root at any scope, so no later layer can supply the one a relative
+source needs:
+
+```
+$ kanibako system show --effective
+Error: bindings.ro entry at '/home/you/notes' declares a bare-relative host source 'mynotes'; a source must fully resolve on its own — absolute, ~, $var or an @-ref. bindings.ro takes NO root at any scope (spec §2a), so no later layer may supply the missing one: a relative source resolves against whatever directory kanibako happens to be run from, and for a MOUNT podman reads a source beginning with neither '.' nor '/' as the name of a NAMED VOLUME rather than as a host path at all. Spell the source out.
+```
+
+⚑ `synced` is a copy rather than a mount, so podman never saw its source: a bare-relative one was
+read as a path under whatever directory `kanibako` was run from. Wrong in a quieter way, and refused
+by the same rule.
+
+**The cure is to spell the source out** — an absolute path, `~/…`, `$VAR/…`, or an `@`-ref:
+
+```yaml
+box:
+  bindings:
+    rw:
+      "~/notes": ["/home/you/notes"]     # or ~/notes, $HOME/notes, or an @-ref
+```
+
+⚑ **`masks` and `secret_path` are untouched.** A mask declares no source, and a `secret_path` is a
+scalar rather than a bind map; neither goes through this rule.
+
+**The three abstract categories go the other way: a bare leaf is now rooted for you.** `common`,
+`caches` and `seeded` do have a declaration root — the store of the scope that declares the entry —
+so a bare leaf is joined under it when the file is read, and what is stored resolves on its own:
+
+| Declared at | A bare leaf `L` in category `C` becomes |
+|---|---|
+| `system:` | `@config.data/C/L` |
+| `self:` (an agent's `agent.yaml`) | `@meta.agent.<agent>.path/C/L` |
+| `workset:` | `@meta.workset.path/C/L` |
+| `box:` | `@meta.box.path/C/L` |
+
+A source that already resolves on its own is stored exactly as you wrote it — the root is a default
+for a relative source, not a prefix applied to everything. A `pref.agent.<name>.<category>` request
+is rooted the way the key it targets would be, so a request and a direct declaration store the same
+string.
+
+**What you must do.** Look through every settings file for a source that starts with none of
+`/`, `~`, `$`, `@`. There will usually be none — nothing kanibako ships teaches this spelling, so it
+only appears in a file you wrote.
+
+- **In `bindings.ro`, `bindings.rw` or `synced`:** the next command that resolves settings refuses
+  until you rewrite it. §2.7 told you to rewrite already-stored relative workset sources by hand and
+  warned they would otherwise pass through silently; they no longer pass through, but the rewrite is
+  the same one.
+- **In `common`, `caches` or `seeded`:** nothing refuses, and the entry starts working — which is
+  the change. It now reads `<scope root>/<category>/<leaf>` on disk. `common` and `caches` are
+  mounts, so before this the leaf was a volume name: whatever the box wrote through such an entry is
+  in that volume, not in the directory it now reads. `podman volume ls` lists the leftovers under
+  the exact source string you typed, and `podman volume rm <name>` removes one once you have taken
+  out anything worth keeping. `seeded` is a copy, so it had no volume — its source was read under
+  whatever directory `kanibako` was run from, and usually was not there at all.
 
 ---
 

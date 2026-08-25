@@ -85,6 +85,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`kanibako setup` stops when settings will not resolve, instead of naming a wrong cause and
+  finishing at rc 0 — and `system diagnose`, `rig diagnose` and `kanibako code` report the refusal
+  they were swallowing.** Five places resolved settings inside a catch-all that reported every
+  failure as something else. The costly one was `setup`: against the closed-keyspace refusal of an
+  undeclared key it answered `Cannot check (configuration not initialized yet)` — the inverse of
+  the truth, since the configuration is initialized and is the broken thing — promised a rig pull
+  that would not happen, ran on through the agent write and the template refresh, and closed with
+  `Setup Complete` / `You're ready to go!` at **rc 0** over a store no command could resolve. It
+  also wrote the `setup_completed` marker, which is the thing that lifts the upgrade gate written
+  to block exactly such a store. **`setup` now stops at Step 3 and exits 1, having written
+  nothing**: no system agent, no template refresh, no marker. `system diagnose` and `rig diagnose`
+  print the refusal under a `[!!]` row in place of `cannot check (not configured)`, still at rc 0
+  like every other failed check. `kanibako code` warns at the default log level that VS Code will
+  attach without the box's workspace folder or agent extension, and still launches, rc 0 unchanged.
+  Only errors kanibako raises deliberately — the ones whose text is already written for a user —
+  are reported this way; an unforeseen failure still produces the old `cannot check` line, and
+  `setup` still runs on past it to its summary. See [MIGRATION.md](MIGRATION.md) §2.49.
+
+- **A reserved name in a settings file is refused on one line instead of crashing with a Python
+  traceback.** A file containing `box: get:` — or `items:`, or any other name the settings store
+  reserves because a real attribute already answers to it, at any tier — was refused by the store
+  exactly as intended, and then escaped every handler in the CLI, because the exception it raised
+  was not part of the error hierarchy kanibako catches. What the user got was a stack trace. It now
+  exits 1 with the refusal alone: `Error: key 'get' is reserved: it would shadow a real attribute
+  on the settings store. Reserved names: [...]`, the full list included so the name can be
+  recognised rather than guessed at. ⚑ **The refusal names the key but not the file that carries
+  it** — the loader that walks a settings file into the store is the one partial builder not handed
+  its path, a gap wider than this case and not closed here.
+
 - **Refusal messages for a settings key that is not a key no longer invent a trailing dot, and no
   longer offer a list of leaves from the wrong tier.** Asking about a namespace — `box`, `meta.box`,
   `agent.<name>` — answered as though you had named a key and mistyped it: `kanibako box config set
@@ -609,13 +638,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   settings files that resolve loaded (which of them carried the entry is not knowable from the
   merged snapshot). `box show` without `--effective` never resolves and so never carries THIS
   message — it marks the line instead (see the `box get` / `workset get` entry below), and
-  `setup`/`system diagnose`/`rig diagnose` swallow the refusal into a `cannot check` line instead
-  of the reason — see [MIGRATION.md](MIGRATION.md) §2.47 for which is which. **The cure is a
-  hand-edit and the message says so**: `box reset` cannot remove what is not a key, and
-  `box show --effective` resolves through the same seam, so it refuses as well. Two deliberate
-  non-refusals: an agent whose plugin is not installed here is not judged at all — neither its
-  table nor the keys under it, because an agent's keys are its plugin's to declare and without the
-  plugin there is no list to check them against — and data addressed inside a
+  `setup`/`system diagnose`/`rig diagnose` print it in full, `setup` stopping at rc 1 (see the
+  `kanibako setup` entry under **Fixed**) — see [MIGRATION.md](MIGRATION.md) §2.47 for which is
+  which. **The cure is a hand-edit and the message says so**: `box reset` cannot remove what is
+  not a key, and `box show --effective` resolves through the same seam, so it refuses as well.
+  Two deliberate non-refusals: an agent whose plugin is not installed here is not judged at all —
+  neither its table nor the keys under it, because an agent's keys are its plugin's to declare and
+  without the plugin there is no list to check them against — and data addressed inside a
   declared key (a bind or copy destination, a `masks` entry) is a value rather than a key path of
   its own and is not judged as one. The first one is bounded by what could *be* an agent, not by
   what is installed: `agent: common:`, `agent: env:`, `agent: seeded:` and every other category
@@ -705,6 +734,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   name is a letter or underscore followed by letters, digits or underscores, the same shape an
   `<scope>.env.<VAR>` key is held to; an empty value is still legal (`-e QUIET=`). See
   [MIGRATION.md](MIGRATION.md) §2.39.
+
+- **BREAKING: a bare-relative host source is refused where it is declared, and an abstract
+  category's bare leaf is rooted where it is declared — at all four scopes and in your own settings
+  files.** v1.8.0 announced this rule ("category sources are rooted at their declaration, not at
+  assembly", in the 1.8.0 notes below) and exactly one loader implemented it: the one that reads an
+  agent plugin's own bundled file. Every other path stored what the author typed and handed it to
+  podman unchanged — and **podman reads a source beginning with neither `.` nor `/` as the name of
+  a named volume, and creates it**, which `--rm` never removes. So such an entry bound nothing: it
+  made an empty volume in the user's rootless store and mounted that at the destination instead of
+  their directory, and the `rw` arm additionally created the relative path as a directory in
+  whatever directory `kanibako` was run from. The two copy categories (`seeded`, `synced`) never
+  reach podman, so theirs went the quieter way: read as a path under the process CWD, and usually
+  not there at all. **The three concrete categories — `bindings.ro`, `bindings.rw`, `synced` — now
+  refuse such a source by name**, at every scope, a `./x` spelling included, because they take no
+  declaration root anywhere and so no later layer may supply the one a relative source needs.
+  **The three abstract categories — `common`, `caches`, `seeded` — root a bare leaf under the
+  declaring scope's store instead** (`@config.data`, `@meta.agent.<agent>.path`,
+  `@meta.workset.path`, `@meta.box.path`, each plus the category's own subdirectory), so what is
+  stored resolves on its own and those entries start reading a real directory. A source that
+  already resolves — absolute, `~`, `$var` or an `@`-ref — is stored exactly as written; the root
+  is a default for a relative source, not a prefix applied to everything. `masks` and `secret_path`
+  are untouched: a mask declares no source and a secret pointer is a scalar, so neither goes
+  through this rule. ⚑ **This refuses input that was accepted before**, and nothing kanibako ships
+  teaches the spelling — no shipped default, example or doc; claude's own `common` entries are the
+  one place a bare leaf appears, and they go through the loader that already rooted it — so it
+  reaches only a settings file written by hand. See
+  [MIGRATION.md](MIGRATION.md) §2.50.
 
 ### Removed
 
@@ -2036,8 +2092,8 @@ The revamp is **one breaking change set** with **no automatic migration** — se
 
 - **Config vs settings split.** Layout (`system.*`, *where things live*) and
   behavior (`agent.*`/`box.*`/`workset.*` + the category keys) now live in separate
-  file sets. A 6-tier settings cascade applies (`settings_base < system <
-  agent.<agent> < workset < box`, with `*_required` an absolute cap above `box`).
+  file sets. A 5-tier settings cascade applies (`settings_base < system <
+  agent.<agent> < workset < box`); `box` wins.
   The scoped shares/seeds/env collapse into one **category** primitive
   (`masks`/`bindings.ro`/`bindings.rw`/`caches`/`seeded`/`shared`/`synced`/`env`).
   ⚑ Dropping a project `.env` file no longer works — move vars to `<scope>.env.<VAR>`.
