@@ -673,8 +673,10 @@ def derive_binding_keys(
 #: consumer can PRINT the reason instead of restating it.
 _EFFECTIVE_DELIVERY_STUB_REASON: Final[str] = (
     "the effective binding / template-source calculation is deliberately "
-    "unimplemented pending the collapse function; the '--effective' "
-    "binding-derivations display is disabled until it lands"
+    "unimplemented: the collapse carries no declaration provenance — "
+    "CollapsedBind / CollapsedCopy do not name the declaration that produced "
+    "them — so a delivery cannot be paired with its declaration, and the "
+    "'--effective' binding-derivations display is disabled rather than guess"
 )
 
 
@@ -685,8 +687,13 @@ def effective_bindings_and_template_sources(snapshot: "KeyStore") -> Any:
     half of ``config_display``'s ``--effective`` block — is DISABLED rather than left
     to print something it cannot stand behind.  🛑 Do not grow a partial
     implementation: a stub that quietly acquires a body is worse than an honest hole,
-    because nothing announces the day it started being believed.  The body will be
-    written against the forthcoming *collapse* function (author: Jei).  ⚑ THE SINGLE
+    because nothing announces the day it started being believed.  ⚑ **THE BLOCKER IS
+    NOT THE COLLAPSE** — that landed.  It is one layer below: ``CollapsedBind`` /
+    ``CollapsedCopy`` carry NO declaration provenance (``store_shape.build_store_shape``
+    drops ``CategoryEntry.key_segments``; only the ``env`` arm was given
+    ``(scope, key)``), so a delivery cannot be traced back to the declaration that
+    produced it.  Carrying it is a PRODUCER shape change (llm-doc: that, and the
+    measured reason reading ``binding_derivations`` instead is wrong).  ⚑ THE SINGLE
     SOURCE for both answers — recomputing one is the second opinion ``--effective``
     exists to DETECT.  ⚑ The return is ``Any`` ON PURPOSE: a container chosen now
     would encode a merge semantics, which is a CHOICE (llm-doc).

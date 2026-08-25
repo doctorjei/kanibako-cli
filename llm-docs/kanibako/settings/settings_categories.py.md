@@ -734,7 +734,7 @@ are computed together, by one function, instead of being conflated by a caller t
 they behaved alike.
 
 ⚑ Nothing beyond that distinction is decided. Which entry wins a dest, how layers are ordered,
-what the return VALUE looks like — those are the collapse function's contract and are OPEN. In
+what the return VALUE looks like — those are THIS function's own contract and are OPEN. In
 particular the return is annotated `Any` ON PURPOSE: a container chosen now would encode a
 merge semantics, and merge semantics is a CHOICE, not a property of the container. The
 *snapshot* argument is the resolved settings snapshot every other reader already holds; it is
