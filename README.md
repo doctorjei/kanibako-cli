@@ -947,15 +947,17 @@ Kanibako splits **config** (layout -- *where things live*, the `system.*`
 namespace) from **settings** (behavior -- `agent.*` / `box.*` / `workset.*` plus
 the category keys).  They live in separate file sets.
 
-**Settings** follow a 6-tier cascade (box wins among the normal tiers;
-`*_required` is an absolute admin cap above box), below CLI flags:
+**Settings** follow a 5-tier cascade (box wins), below CLI flags:
 
 ```
-CLI flag > settings_required > box > workset > agent.<agent> > system > settings_base
+CLI flag > box > workset > agent.<agent> > system > settings_base
 ```
+
+Within the agent tier, `agent.default` supplies the all-agents fallback for any key
+the active agent's own layer does not set.
 
 **Config** (`system.*`) is read from the config file set
-(`config_base < ~/.config/kanibako.yaml < config_required`).  Config keys are
+(`config_base < ~/.config/kanibako.yaml`).  Config keys are
 **file-only** -- the CLI reads and shows them but refuses to set them (edit the
 file directly); `setup` and programmatic writers still write them.
 
