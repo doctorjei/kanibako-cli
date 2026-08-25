@@ -85,6 +85,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The Claude status line reports context from exact token counts instead of a rounded percentage,
+  and prints `—` when it has no reading yet.** It derived used tokens from the integer
+  `used_percentage`, so at a 1M window — where each 1% is 10,000 tokens — the figure was rounded to
+  the nearest 10k; it then added a 3,000-token compaction buffer that does not apply when
+  auto-compaction is off. With no usage data yet it printed that constant as `3k`, indistinguishable
+  from a real reading. It now sums the three input-side fields the harness already supplies
+  (`input_tokens`, `cache_creation_input_tokens`, `cache_read_input_tokens`), which is exact, and
+  renders `—` until there is something to report.
+
 - **`kanibako setup` stops when settings will not resolve, instead of naming a wrong cause and
   finishing at rc 0 — and `system diagnose`, `rig diagnose` and `kanibako code` report the refusal
   they were swallowing.** Five places resolved settings inside a catch-all that reported every
