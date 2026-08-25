@@ -18,14 +18,31 @@ def _format_check(status: str, label: str, detail: str) -> str:
 def _report_settings_error(label: str, err: KanibakoError) -> None:
     """Print *label* as a FAILED check and quote the settings error verbatim.
 
-    The three settings loads in this module used to sit inside a bare
-    ``except Exception`` whose only report was ``cannot check (not
-    configured)``.  That text is a lie for every error the settings engine
-    raises deliberately -- above all the spec §0 refusal of an undeclared key,
-    which already names every offending entry and every file the resolve
-    loaded.  ``diagnose`` is what a user runs when something is wrong, so
-    naming a missing configuration instead of the real refusal points them at
-    the WRONG cause.
+    Every settings load in this module used to sit inside a bare ``except
+    Exception`` whose only report was ``cannot check`` (some spelt ``cannot
+    check (not configured)``).  That text is a lie for every error the settings
+    engine raises deliberately, and there are TWO such triggers -- do NOT
+    collapse them:
+
+    * the spec §0 refusal of an undeclared key, which already names every
+      offending entry and every file the resolve loaded.  ONLY the loads that
+      run the keyspace resolve (``load_merged_config``) can raise it;
+    * a ``ConfigError`` from a malformed file, which names the file, the parse
+      position and the cure.  EVERY load can raise this one, including the
+      plain ``load_config`` / ``load_std_paths`` pair behind the Storage and
+      Journal checks, which never goes near the resolve.
+
+    ``diagnose`` is what a user runs when something is wrong, so naming a
+    missing configuration instead of the real error points them at the WRONG
+    cause.
+
+    One root cause is therefore reported under SEVERAL labels in one run -- a
+    malformed config file breaks the Image, Storage and Journal checks alike,
+    and each says so.  That repetition is deliberate and predates this
+    function (``rig diagnose`` already reported one error at both "Configured
+    image" and "  Baseline"): each check reports its own reason, and
+    suppressing a repeat would put some check back to a bland line or no line
+    at all, which is the defect itself.
 
     ``KanibakoError`` is exactly the right predicate and NOT a discriminator:
     ``errors.py`` defines it as the hierarchy ``cli.py`` catches, i.e. the
@@ -491,12 +508,22 @@ def run_system_diagnose(args: object) -> int:
     # (config + std + the configured image; the resolver reads the image-shell
     # store and only probes a container when nothing is stored yet).
     std = None
+    std_err: KanibakoError | None = None
     runtime = None
     image = None
+    # Unlike the other settings loads here, this block prints NOTHING of its
+    # own: `std` feeds the Agents Shell detail just below and the Journal check
+    # ~30 lines down.  So a settings error is CAPTURED and reported at the
+    # Journal line, where the check it actually breaks prints.  Reporting it at
+    # the catch site instead would emit it out of sequence AND leave Journal
+    # still saying `cannot check`.
     try:
         config_home = xdg("XDG_CONFIG_HOME", ".config")
         cf = config_file_path(config_home)
         std = load_std_paths(load_config(cf))
+    except KanibakoError as e:
+        std = None
+        std_err = e
     except Exception:
         std = None
     if merged is not None:
@@ -524,6 +551,8 @@ def run_system_diagnose(args: object) -> int:
         )["config.data"]
         status, detail = _check_storage(data_path)
         print(_format_check(status, "Storage", detail))
+    except KanibakoError as e:
+        _report_settings_error("Storage", e)
     except Exception:
         print(_format_check("--", "Storage", "cannot check"))
 
@@ -532,6 +561,8 @@ def run_system_diagnose(args: object) -> int:
     if std is not None:
         for status, detail in _check_journal(std):
             print(_format_check(status, "Journal", detail))
+    elif std_err is not None:
+        _report_settings_error("Journal", std_err)
     else:
         print(_format_check("--", "Journal", "cannot check"))
 

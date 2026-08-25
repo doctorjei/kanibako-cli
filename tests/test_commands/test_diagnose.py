@@ -1351,3 +1351,138 @@ class TestSettingsRefusalIsSurfaced:
         out = capsys.readouterr().out
         assert "[--] Image: cannot check (not configured)" in out
         assert "settings error -- reported below" not in out
+
+
+class TestMalformedConfigIsSurfaced:
+    """A malformed config file must be NAMED on the Storage and Journal lines.
+
+    Distinct from `TestSettingsRefusalIsSurfaced` above, and the distinction is
+    the whole point of this class: NEITHER of these two checks runs the
+    keyspace resolve, so neither can reach the spec §0 read gate those tests
+    drive -- which is exactly why no `writes_undeclared` marker belongs here.
+    What they bury instead is the `ConfigError` that `config_io.load_doc`
+    raises for unparseable YAML, which already names the file, the parse
+    position and the cure.  Same user-visible harm (a bland "cannot check"),
+    different trigger.
+
+    These drive the REAL loader with a REAL broken file rather than patching an
+    exception in, so they fail if the `ConfigError` stops reaching
+    `load_config` / `load_std_paths` at all.
+    """
+
+    BROKEN = 'box:\n  image: "unterminated\n   nope: [1, 2\n'
+
+    def _break_config(self, config_file: Path) -> Path:
+        """Replace the config file with unparseable YAML."""
+        config_file.write_text(self.BROKEN)
+        return config_file
+
+    def _assert_names_the_file(self, out: str, config_file: Path) -> None:
+        """The ConfigError reached the user intact: file, reason, and cure."""
+        assert "settings error -- reported below" in out
+        assert str(config_file) in out
+        assert "is not valid YAML" in out
+        assert "Fix or remove the file, then retry." in out
+
+    def test_journal_names_the_broken_file(
+        self, config_file, tmp_home, credentials_dir, capsys
+    ) -> None:
+        """The Journal line names the file instead of claiming it cannot check."""
+        from kanibako.errors import ContainerError
+
+        self._break_config(config_file)
+        with patch(
+            "kanibako.runtime.container.ContainerRuntime",
+            side_effect=ContainerError("none"),
+        ):
+            rc = run_system_diagnose(argparse.Namespace())
+        assert rc == 0
+        out = capsys.readouterr().out
+        self._assert_names_the_file(out, config_file)
+        assert "[!!] Journal: settings error -- reported below" in out
+        assert "[--] Journal: cannot check" not in out
+
+    def test_storage_names_the_broken_file(
+        self, config_file, tmp_home, credentials_dir, capsys
+    ) -> None:
+        """The Storage line names the file instead of claiming it cannot check."""
+        from kanibako.errors import ContainerError
+
+        self._break_config(config_file)
+        with patch(
+            "kanibako.runtime.container.ContainerRuntime",
+            side_effect=ContainerError("none"),
+        ):
+            rc = run_system_diagnose(argparse.Namespace())
+        assert rc == 0
+        out = capsys.readouterr().out
+        self._assert_names_the_file(out, config_file)
+        assert "[!!] Storage: settings error -- reported below" in out
+        assert "[--] Storage: cannot check" not in out
+
+    def test_journal_error_is_reported_in_line_order(
+        self, config_file, tmp_home, credentials_dir, capsys
+    ) -> None:
+        """The std-paths error prints AT the Journal line, not where it was caught.
+
+        The std-paths load happens ~30 lines above the Journal check and prints
+        nothing of its own, so its error is captured and deferred.  This pins
+        that deferral: reporting at the catch site instead would move the
+        Journal error above the Agent lines and ahead of Storage.
+        """
+        from kanibako.errors import ContainerError
+
+        self._break_config(config_file)
+        with patch(
+            "kanibako.runtime.container.ContainerRuntime",
+            side_effect=ContainerError("none"),
+        ):
+            run_system_diagnose(argparse.Namespace())
+        out = capsys.readouterr().out
+        journal_at = out.index("[!!] Journal: settings error")
+        assert out.index("[!!] Image: settings error") < journal_at
+        assert out.index("[!!] Storage: settings error") < journal_at
+
+    def test_journal_non_kanibako_failure_still_cannot_check(
+        self, config_file, tmp_home, credentials_dir, capsys
+    ) -> None:
+        """The `cannot check` Journal line survives for what it was written for."""
+        from kanibako.errors import ContainerError
+
+        with (
+            patch(
+                "kanibako.runtime.container.ContainerRuntime",
+                side_effect=ContainerError("none"),
+            ),
+            patch(
+                "kanibako.settings.paths.load_std_paths",
+                side_effect=RuntimeError("boom"),
+            ),
+        ):
+            rc = run_system_diagnose(argparse.Namespace())
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "[--] Journal: cannot check" in out
+        assert "Journal: settings error" not in out
+
+    def test_storage_non_kanibako_failure_still_cannot_check(
+        self, config_file, tmp_home, credentials_dir, capsys
+    ) -> None:
+        """The `cannot check` Storage line survives for what it was written for."""
+        from kanibako.errors import ContainerError
+
+        with (
+            patch(
+                "kanibako.runtime.container.ContainerRuntime",
+                side_effect=ContainerError("none"),
+            ),
+            patch(
+                "kanibako.commands.diagnose._check_storage",
+                side_effect=RuntimeError("boom"),
+            ),
+        ):
+            rc = run_system_diagnose(argparse.Namespace())
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "[--] Storage: cannot check" in out
+        assert "Storage: settings error" not in out
