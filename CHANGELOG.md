@@ -108,6 +108,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   print the refusal under a `[!!]` row in place of `cannot check (not configured)`, still at rc 0
   like every other failed check. `kanibako code` warns at the default log level that VS Code will
   attach without the box's workspace folder or agent extension, and still launches, rc 0 unchanged.
+  The `Storage` and `Journal` rows report the same way, and their trigger is wider than a settings
+  refusal: a config file that is not valid YAML raised an error naming the file and the cure, and
+  both rows printed `cannot check` over it. A single malformed `kanibako_config.yaml` could produce
+  one honest line and two bland ones in a single run.
   Only errors kanibako raises deliberately — the ones whose text is already written for a user —
   are reported this way; an unforeseen failure still produces the old `cannot check` line, and
   `setup` still runs on past it to its summary. See [MIGRATION.md](MIGRATION.md) §2.49.
