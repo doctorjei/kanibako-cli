@@ -3337,12 +3337,11 @@ two separate file sets.
 `system.*` keys (WHERE things live) are now set **only** in config files:
 
 ```
-/etc/kanibako/config_base.yaml      defaults (overridable)
-~/.config/kanibako.yaml             user global
-/etc/kanibako/config_required.yaml  mandatory (NOT overridable)
+/etc/kanibako/config_base.yaml  defaults (overridable)
+~/.config/kanibako.yaml         user global
 ```
 
-CONFIG precedence: `config_base < ~/.config/kanibako.yaml < config_required`.
+CONFIG precedence: `config_base < ~/.config/kanibako.yaml`.
 
 ### 1.2 SETTINGS files — behavior
 
@@ -3350,21 +3349,20 @@ CONFIG precedence: `config_base < ~/.config/kanibako.yaml < config_required`.
 in settings files:
 
 ```
-/etc/kanibako/settings_base.yaml      defaults
-<scope>/settings.yaml                 per-scope (system / workset / box)
-/etc/kanibako/settings_required.yaml  mandatory cap
+/etc/kanibako/settings_base.yaml  defaults
+<scope>/settings.yaml             per-scope (system / workset / box)
 ```
 
-### 1.3 The 6-tier settings cascade (box wins; `*_required` is the cap)
+⚑ Since v1.8.0 each per-scope file is named for its own tier — `box.yaml`,
+`workset.yaml`, `agent.yaml` — while the system tier keeps `settings.yaml` (§2.45).
+
+### 1.3 The 5-tier settings cascade (box wins)
 
 ```
-settings_base  <  system  <  agent.<agent>  <  workset  <  box  <  settings_required
+settings_base  <  system  <  agent.<agent>  <  workset  <  box
 ```
 
-- **`box` wins** among the normal tiers.
-- **`*_required.yaml` sits ABOVE box** — it is an absolute admin cap that overrides
-  everything (standard lockdown semantics). "Box wins" applies only among the
-  normal tiers.
+**`box` wins** — it is the top of the cascade.
 
 ### 1.4 Migration steps
 
@@ -4212,6 +4210,8 @@ the cascade-level and key renames in §2.)
 The per-box metadata file is renamed `project.yaml` → **`settings.yaml`** in **every**
 mode (primary, named, and standalone). See §4.6 for where each mode's file lives;
 §4.5 for the standalone walk marker (`box_data/` dir + `<root>/settings.yaml`).
+(Both filenames are superseded in v1.8.0, which names each settings file for its own
+tier — `box.yaml` for the per-box file, `workset.yaml` for a standalone root: §2.45.)
 
 ⚑ **What the file actually contained at 1.6.0 (on-disk format, now superseded — see the
 correction below).** At 1.6.0 the per-box `settings.yaml` stored construct-time box
@@ -4252,7 +4252,7 @@ The `resolved:` section is likewise dead — it is not written or read anywhere 
 code.
 
 **What to actually do when migrating an old `project.yaml`:** rename the file to
-`settings.yaml`, then **discard the `project:` / `resolved:` sections entirely** — do
+`box.yaml` (§2.45), then **discard the `project:` / `resolved:` sections entirely** — do
 NOT carry that layout forward. Recover any value you still need under its current key:
 only a **non-default** `enable_vault: false` needs recovering, written under a `box:`
 table instead:
