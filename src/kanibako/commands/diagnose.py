@@ -5,6 +5,7 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
+from kanibako.errors import KanibakoError
 from kanibako.targets.base import _validate_agent_binary
 from kanibako.vscode.vscode_config import load_jsonc as _load_jsonc
 
@@ -12,6 +13,33 @@ from kanibako.vscode.vscode_config import load_jsonc as _load_jsonc
 def _format_check(status: str, label: str, detail: str) -> str:
     """Format a single diagnostic check line."""
     return f"[{status}] {label}: {detail}"
+
+
+def _report_settings_error(label: str, err: KanibakoError) -> None:
+    """Print *label* as a FAILED check and quote the settings error verbatim.
+
+    The three settings loads in this module used to sit inside a bare
+    ``except Exception`` whose only report was ``cannot check (not
+    configured)``.  That text is a lie for every error the settings engine
+    raises deliberately -- above all the spec §0 refusal of an undeclared key,
+    which already names every offending entry and every file the resolve
+    loaded.  ``diagnose`` is what a user runs when something is wrong, so
+    naming a missing configuration instead of the real refusal points them at
+    the WRONG cause.
+
+    ``KanibakoError`` is exactly the right predicate and NOT a discriminator:
+    ``errors.py`` defines it as the hierarchy ``cli.py`` catches, i.e. the
+    errors whose messages are already written to be shown to a user.  Anything
+    else still falls through to the ``(not configured)`` line, which keeps that
+    path for the case it was written for.
+
+    The message is reproduced UNCHANGED, one 8-space-indented line each (the
+    continuation indent this module already uses); composing a new one here
+    would drop the entry names and the file list that make it actionable.
+    """
+    print(_format_check("!!", label, "settings error -- reported below"))
+    for line in str(err).splitlines():
+        print(f"        {line}")
 
 
 # ---------------------------------------------------------------------------
@@ -454,6 +482,8 @@ def run_system_diagnose(args: object) -> int:
         merged = load_merged_config(cf, None)
         status, detail = _check_image(merged)
         print(_format_check(status, "Image", detail))
+    except KanibakoError as e:
+        _report_settings_error("Image", e)
     except Exception:
         print(_format_check("--", "Image", "cannot check (not configured)"))
 
@@ -622,6 +652,8 @@ def run_rig_diagnose(args: object) -> int:
         merged = load_merged_config(cf, None)
         status, detail = _check_image(merged)
         print(_format_check(status, "Configured image", detail))
+    except KanibakoError as e:
+        _report_settings_error("Configured image", e)
     except Exception:
         print(_format_check("--", "Configured image", "cannot check"))
 
@@ -693,6 +725,9 @@ def _diagnose_baseline(args: object) -> None:
             config_home = xdg("XDG_CONFIG_HOME", ".config")
             merged = load_merged_config(config_file_path(config_home), None)
             images = [merged.box_image]
+        except KanibakoError as e:
+            _report_settings_error("  Baseline", e)
+            return
         except Exception:
             print(_format_check("--", "  Baseline", "cannot check (not configured)"))
             return

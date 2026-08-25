@@ -346,6 +346,10 @@ def _resolve_box_image(runtime, proj, container_name: str) -> str | None:
     ``box_image`` (the create-time merged config, which itself defaults to the
     packaged ``ghcr.io/doctorjei/kanibako-oci:latest``).  Returns ``None`` only
     if every source fails — callers then SKIP seeding rather than crash.
+
+    ⚑ A ``KanibakoError`` from that fallback resolve is WARNED, not swallowed: the
+    skip degrades the attach visibly (no workspace folder, no extension), so its
+    cause must not be debug-only.  The return is still ``None``.
     """
     image = runtime.container_image(container_name)
     if image:
@@ -362,6 +366,24 @@ def _resolve_box_image(runtime, proj, container_name: str) -> str | None:
             _box_path, workset_path=_ws_path,
         )
         return merged.box_image or None
+    except KanibakoError as exc:
+        # Still ``None`` — the seed stays best-effort and the launch keeps its
+        # zero-delta — but NOT silent.  A ``KanibakoError`` is a message already
+        # written to be shown to a user (``errors.py``: the hierarchy cli.py
+        # catches), above all the closed-keyspace refusal, which names the
+        # offending entry and every file the resolve loaded.  At debug level the
+        # user saw NOTHING and simply got a VS Code window with no workspace
+        # folder and no agent extension — a real symptom with its cause hidden.
+        #
+        # WARNING, not an abort: the condition needs the user's hand on a settings
+        # file, but the attach itself still works.  Anything else keeps the debug
+        # line, which is right for the unforeseen.
+        get_logger("code").warning(
+            "VS Code will attach without the box's workspace folder or agent "
+            "extension: the box image could not be resolved.\n%s",
+            exc,
+        )
+        return None
     except Exception:
         get_logger("code").debug(
             "could not resolve box image; skipping attached-config seed",
