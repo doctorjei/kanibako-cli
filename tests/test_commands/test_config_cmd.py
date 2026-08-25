@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import argparse
 
+import pytest
+
 from kanibako.settings.config import (
     load_config,
     load_project_overrides,
@@ -1100,3 +1102,111 @@ class TestStandaloneBoxTierRoundTrip:
         # ...and the duplicate still mints its OWN identity.
         assert read_workset_kuid(dst_root) != src_kuid
         assert "workset" not in load_doc(dst_box)
+
+
+class TestAReservedNameInASettingsFileRefusesInsteadOfCrashing:
+    """A RESERVED name hand-written into a settings file is a §0 refusal, NOT a traceback.
+
+    ⚑ THE DEFECT WAS THE EXCEPTION TYPE, NOT A HOLE IN THE RESERVATION. The store
+    refuses the name correctly and always did; ``ReservedKeyError`` merely subclassed
+    ``KeyError`` alone, so it flew out of ``_file_partial`` → ``assemble_levels``
+    past every ``except KanibakoError`` and reached the user as a stack trace.
+
+    ⚑ END-TO-END THROUGH ``cli.main``, deliberately. ``tests/test_settings/
+    test_keystore.py`` pins the class's two bases; these pin the OUTCOME, and the
+    two fail independently — the store could refuse perfectly while the CLI still
+    crashed, which is precisely what it did.
+    """
+
+    def _box(self, config_file, tmp_home):
+        from kanibako.settings.paths import load_std_paths, resolve_project
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project_dir = str(tmp_home / "project")
+        proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
+        return project_dir, proj
+
+    def _author(self, path, table):
+        """MERGE a hand-authored table into *path* — never overwrite: the file has
+        content of its own, and clobbering it tests a file no user has."""
+        from kanibako.settings.config_io import dump_doc, load_doc
+
+        doc = load_doc(path) or {}
+        for scope, sub in table.items():
+            if isinstance(sub, dict) and isinstance(doc.get(scope), dict):
+                doc[scope].update(sub)
+            else:
+                doc[scope] = sub
+        path.parent.mkdir(parents=True, exist_ok=True)
+        dump_doc(path, doc)
+
+    def _run(self, argv, capsys):
+        """``cli.main`` to completion; return ``(exit_code, stderr)``.
+
+        ⚑ A BARE ``main`` CALL IS THE POINT: the refusal has to survive the real
+        entry point's handler stack. ``SystemExit`` NOT being raised is the failure
+        mode under test — the old behavior — so its absence is an explicit fail.
+        """
+        from kanibako import cli
+
+        try:
+            cli.main(argv)
+        except SystemExit as exc:
+            return exc.code, capsys.readouterr().err
+        pytest.fail("cli.main returned without SystemExit — the exception escaped")
+
+    # The three reported spellings. ``agent:`` is dropped from a BOX file by
+    # ``_drop_upward_scopes``, so the agent-scope specimen is authored where a user
+    # would really put it: the SYSTEM file, whose ``agent: <name>:`` table is legal.
+    @pytest.mark.parametrize(
+        "scope_file,table,name",
+        [
+            ("box", {"box": {"get": "x"}}, "get"),
+            ("box", {"box": {"items": "x"}}, "items"),
+            ("system", {"agent": {"items": {"model": "x"}}}, "items"),
+        ],
+        ids=["box.get", "box.items", "agent.items.model"],
+    )
+    def test_it_refuses_at_rc_1_NAMING_the_key(
+        self, config_file, tmp_home, credentials_dir, capsys, scope_file, table, name,
+    ):
+        # MUTATION-PROVED: restore ``class ReservedKeyError(KeyError)`` and all three
+        # rows red on "cli.main returned without SystemExit".
+        project_dir, proj = self._box(config_file, tmp_home)
+        path = (
+            proj.metadata_path / "box.yaml" if scope_file == "box"
+            else tmp_home / "data" / "kanibako" / "global" / "settings.yaml"
+        )
+        self._author(path, table)
+
+        code, err = self._run(["box", "show", project_dir, "--effective"], capsys)
+        assert code == 1                       # a refusal, not a crash
+        assert f"key '{name}' is reserved" in err   # ...that NAMES the key
+        assert "fromkeys" in err               # ...and lists the set, so it is actionable
+        assert "Traceback" not in err
+
+    def test_the_refusal_is_not_repr_wrapped(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        """⚑ ``KeyError.__str__`` REPR-WRAPS its argument, so without ``__str__`` the
+        user's ``Error:`` line wears a pair of stray double quotes no other refusal
+        has. Pinned here because it is the half of the fix a base-class change alone
+        does not deliver."""
+        project_dir, proj = self._box(config_file, tmp_home)
+        self._author(proj.metadata_path / "box.yaml", {"box": {"get": "x"}})
+
+        _, err = self._run(["box", "show", project_dir, "--effective"], capsys)
+        assert 'Error: key' in err, err
+        assert 'Error: "key' not in err, err
+
+    def test_a_clean_file_is_untouched_by_the_refusal(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        """NON-VACUITY: the same verb on the same box succeeds when no reserved name
+        is present, so the rows above pin the NAME and not a broken fixture."""
+        project_dir, proj = self._box(config_file, tmp_home)
+        self._author(proj.metadata_path / "box.yaml", {"box": {"image": "myimage"}})
+
+        code, _ = self._run(["box", "show", project_dir, "--effective"], capsys)
+        assert code == 0

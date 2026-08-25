@@ -197,6 +197,40 @@ def test_reserved_method_name_rejected_at_construction(name: str) -> None:
     assert isinstance(exc.value, KeyError)
 
 
+def test_reserved_key_error_is_BOTH_a_kanibako_error_and_a_key_error() -> None:
+    # ⚑ BOTH BASES, AND THE ORDER, ARE THE FIX. A settings file carrying ``box: get:``
+    # walks through ``_file_partial`` into a store, so this raised out of
+    # ``assemble_levels`` BEFORE the keyspace oracle ran; as a bare ``KeyError`` it
+    # passed every ``except KanibakoError`` and reached the user as a TRACEBACK.
+    #
+    # ``KeyError`` is KEPT because callers depend on it: this is a bad-KEY error on a
+    # dict-like store, and ``config_interface``'s H1 "returns an error, NEVER raises"
+    # probe was written against it. Dropping either base is a silent control-flow change,
+    # so both are pinned here rather than left to the end-to-end row that motivated it.
+    from kanibako.errors import KanibakoError
+
+    with pytest.raises(ReservedKeyError) as exc:
+        KeyStore({"get": 1})
+    assert isinstance(exc.value, KanibakoError)
+    assert isinstance(exc.value, KeyError)
+    # MRO order — ``KanibakoError`` first, or the linearization is not what cli.py sees.
+    mro = ReservedKeyError.__mro__
+    assert mro.index(KanibakoError) < mro.index(KeyError)
+
+
+def test_reserved_key_error_str_is_the_message_NOT_a_repr_of_it() -> None:
+    # ⚑ ``KeyError.__str__`` REPR-WRAPS its single argument, and it still wins the MRO
+    # above (``KanibakoError`` defines none), so without KeyStore's own ``__str__`` the
+    # CLI's ``Error: {e}`` line reaches the user wrapped in stray double quotes that no
+    # other refusal in the tree has. The message is already a sentence.
+    with pytest.raises(ReservedKeyError) as exc:
+        KeyStore({"get": 1})
+    msg = str(exc.value)
+    assert msg == exc.value.args[0]
+    assert not msg.startswith('"')
+    assert msg.startswith("key 'get' is reserved")
+
+
 def test_reserved_method_error_names_the_set_without_crashing() -> None:
     # ⚑ REGRESSION, and a REAL bug in the handed-over file: the reserved-set
     # interpolation was left with its f-string braces (``{sorted(...)}``), which
