@@ -3107,6 +3107,12 @@ The `rig diagnose` row is `Configured image` and the baseline probe's row is `Ba
 the same way. `rig diagnose`'s baseline probe stops after the refusal, because there is no resolved
 image left to probe.
 
+The `Storage` and `Journal` rows of `system diagnose` behave the same way, and they answer to a
+wider trigger than a settings refusal: a config file that is not valid YAML. Both used to print
+`cannot check` over an error that already named the file and the fix, so one malformed
+`kanibako_config.yaml` could yield one honest line and two bland ones in the same run. rc is
+unchanged at 0.
+
 **`kanibako code` warns and still attaches, rc 0 unchanged.** When a settings error stops it
 resolving the box's image, VS Code opens without the box's workspace folder and without the agent
 extension. That was already true; you now hear about it at the default log level —
@@ -3612,7 +3618,8 @@ fresh empty dir is created on next launch).
 same dest is a **config error** (a copy can't override a live mount).
 
 ⚑ **`.env` FILES ARE RETIRED.** Dropping a project `.env` file no longer works.
-Move each var to `<scope>.env.<VAR>` in the scope's settings.yaml. Env precedence:
+Move each var to `<scope>.env.<VAR>` in the scope's settings.yaml (superseded in v1.8.0
+→ the tier's own file, `box.yaml` / `workset.yaml` / `agent.yaml`, §2.45). Env precedence:
 `system < agent < workset < box`, below CLI `-e`.
 
 ---
@@ -3672,6 +3679,12 @@ as `settings.yaml`, instead of as a sibling file next to it. This makes
 `agents/<agent>/` a uniform store dir (alongside `template/`, and the
 `plugins/`/`cache/` stores) rather than a `<agent>.yaml` file sitting next to an
 `<agent>/` directory.
+
+⚑ **The filename is superseded in v1.8.0 — see §2.45 (line 2774).** The per-agent file
+is now `agent.yaml`; only the leaf name changed, so the store-dir move described here is
+still the right move. If you are coming to v1.8.0 from pre-1.6.0, run the loop below and
+then §2.45's agent rename — a file left as `agents/<agent>/settings.yaml` is not read at
+all, and the box comes up as though you had never configured that agent.
 
 | Old | New |
 |---|---|
@@ -3794,8 +3807,10 @@ suitable dir and **warns** — it is not silently substituted.
 
 ⚑ **`@system.data` superseded in v1.8.0 — see §2.1 (line 197), now `@config.data`.**
 The tree below is otherwise still the 1.6.0-era layout described in this section;
-later v1.8.0 moves inside it (e.g. `base_template/` → `template/`, §2.5 line 460)
-are not reflected in the diagram.
+later v1.8.0 moves inside it (e.g. `base_template/` → `template/`, §2.5 line 460, and
+the per-tier settings filenames, §2.45 line 2774) are not reflected in the diagram —
+the two `settings.yaml` files under `primary_workset/` are now `workset.yaml` and
+`box.yaml`, while `global/settings.yaml` keeps its name.
 
 ```
 $XDG_DATA_HOME/kanibako/
@@ -3862,6 +3877,9 @@ $XDG_DATA_HOME/kanibako/primary_workset/   ← @config.primary_workset (= @meta.
 # the box WORKSPACE stays external: meta.box.workspace = your real project dir → ~/workspace
 ```
 
+⚑ **Both `settings.yaml` files above are superseded in v1.8.0 — see §2.45 (line 2774):**
+the workset-root file is now `workset.yaml` and the per-box file `box.yaml`.
+
 Move each primary box's home dir to `primary_workset/boxes/<box>/home/`, its vault to
 `primary_workset/vault/{ro,rw}/<box>/`, and its log to `primary_workset/logs/<box>.jsonl`.
 
@@ -3883,6 +3901,9 @@ unchanged; only the directory leaf moved.)
 ├── vault/{ro,rw}/<box>/       → ~/vault/{ro,rw}
 └── logs/<box>.jsonl
 ```
+
+⚑ **Both `settings.yaml` files above are superseded in v1.8.0 — see §2.45 (line 2774):**
+the workset-root file is now `workset.yaml` and the per-box file `box.yaml`.
 
 **NAMED workset vault path order changed `vault/<box>/{ro,rw}` → `vault/{ro,rw}/<box>`.**
 The ro/rw split now nests ABOVE the box name, matching PRIMARY and STANDALONE. No
@@ -3923,6 +3944,11 @@ left on the 1.6.0/1.7.x shape **hard-refuses**. If you are coming from a `workse
 fold described above and go straight to §2.43: put `name` / `created` / `projects` into
 `registry.yaml` and merge only the old `config.yaml` keys into `settings.yaml`.
 
+⚑ **And that settings file is itself `workset.yaml` in v1.8.0 — see §2.45 (line 2774).**
+It carries the same name as the retired pre-1.6.0 identity file but is a different file:
+it holds the old `config.yaml` keys only, never `name` / `created` / `projects`, which go
+to `registry.yaml`. A NAMED workset's per-box files become `box.yaml` at the same time.
+
 ### 4.5 STANDALONE layout & identity
 
 Standalone metadata moves from the in-tree `.kanibako`/`kanibako` dotdir to the
@@ -3947,6 +3973,13 @@ holds the agent home + the helper log.
 ├── box_data/                 ├─ home/ → ~/          └─ <box.name>.jsonl   (helper log)
 └── vault/{ro,rw}/            → ~/vault/{ro,rw}
 ```
+
+⚑ **Every `settings.yaml` in this subsection is superseded in v1.8.0 — see §2.45 (line
+2774), and read the standalone row there before you act on this one.** A standalone
+project's ROOT file is the WORKSET tier and is now `workset.yaml`; the box file is
+`box_data/box.yaml`. §2.45 calls the standalone row the one people misread, because the
+root file and the box file were indistinguishable while both were called
+`settings.yaml`.
 
 ⚑ **Two changes from earlier 1.6.0 dev builds (drift H + I):**
 
@@ -3988,7 +4021,9 @@ were not.
 The old per-project `project.yaml` (mode/layout/workspace/shell/vault_ro/vault_rw/
 group_auth/metadata/...) is replaced by a per-box **`settings.yaml`** in **every**
 mode. Its on-disk shape (the `[project]` + `[resolved]` sections it actually carries)
-is detailed in §9 — read that section before hand-editing it.
+is detailed in §9 — read that section before hand-editing it. (Both filenames are
+superseded in v1.8.0, which names each settings file for its own tier — `box.yaml` for
+the per-box file, `workset.yaml` for a standalone root: §2.45, line 2774.)
 
 Drop `layout` entirely; translate `mode` per §4.1; the path fields are derived from
 the fixed per-mode tables, not user-edited. (Where the file lives: primary →
@@ -4100,7 +4135,8 @@ directory leaf (`project/import_reconcile.py`,
 What this means for you:
 
 - **Detection is an ancestor-walk**, not a registry lookup. Standalone is detected by
-  walking up for a `box_data/` dir + a root `settings.yaml` — presence only, no
+  walking up for a `box_data/` dir + a root `settings.yaml` (in v1.8.0 that root file is
+  `workset.yaml`, §2.45 line 2774) — presence only, no
   `mode` field is read (§4.5); named by a workset root's four-directory skeleton
   (`boxes/`, the workspaces dir, `vault/`, `logs/`) — also presence only in v1.8.0,
   where a workset root carries no identity table at all (§2.43); primary by
