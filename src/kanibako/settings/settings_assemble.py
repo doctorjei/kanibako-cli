@@ -18,6 +18,11 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from kanibako.settings.agent_config import (
+    category_root_ref,
+    is_self_resolving,
+    root_relative_source,
+)
 from kanibako.settings.agent_file import ROOT_SECTIONS, level_table
 from kanibako.settings.config import settings_base_path
 from kanibako.settings.config_io import load_doc
@@ -28,6 +33,10 @@ from kanibako.settings.kb_store import (
     BindEntry,
 )
 from kanibako.settings.keystore import KeyStore
+from kanibako.settings.settings_categories import (
+    ABSTRACT_CATEGORIES,
+    DECLARATION_ROOT_REF,
+)
 from kanibako.settings.settings_prefs import PREF_ROOT, refuse_pref_table
 from kanibako.settings.settings_resolve import (
     SettingsError,
@@ -61,6 +70,47 @@ _DEST_KEYED_LEAF_CATEGORIES: frozenset[str] = frozenset(
 
 # The agent sub-table that supplies the all-agents ``agent.default`` cascade level.
 _AGENT_DEFAULT_SUB = "default"
+
+
+# ---------------------------------------------------------------------------
+# DECLARATION ROOTS for a SETTINGS FILE (spec §2a)
+# ---------------------------------------------------------------------------
+# ⚑⚑ THIS IS WHERE "DECLARATION-LOAD TIME" IS for a user-authored file: the parse
+# below is the ONE place a YAML entry becomes a stored ``BindEntry``, so it is the
+# one place the root may be supplied. Rooting anywhere downstream — the merge, the
+# expand, the emit — is "rooted at ASSEMBLY", which §2a names FORBIDDEN.
+#
+# ⚑ The SCOPE comes off the KEY PATH the parse is walking, never a caller flag: the
+# scope token is kept in the partial (§0), so the walk already carries the one fact
+# the DECLARATION-ROOT table is keyed on.
+
+
+def _declaration_root_ref(path: tuple[str, ...], category: str) -> str | None:
+    """The §2a DECLARATION ROOT for an ABSTRACT *category* declared at key *path*.
+
+    *path* is the key path ABOVE the category token, doc-root first. ``None`` means
+    "no root applies" — a CONCRETE category (which takes no root at any scope), or a
+    path whose head is not a scope, which is an UNDECLARED key that the §0 refusals
+    downstream must name as such rather than have this function guess a root for.
+
+    ⚑ A ``pref.`` head is STRIPPED, not refused: a pref's value is installed AT its
+    target key (spec §2h), so it must be stored exactly as that key's own file would
+    store it — an unrooted pref would reintroduce the divergence one level up.
+    """
+    if category not in ABSTRACT_CATEGORIES:
+        return None
+    segments = path[1:] if path[:1] == (PREF_ROOT,) else path
+    if not segments:
+        return None
+    scope = segments[0]
+    if scope not in DECLARATION_ROOT_REF:
+        return None
+    if scope == "agent":
+        # The agent tier is DISCRIMINATED (§2d): without the node there is no row.
+        if len(segments) != 2:
+            return None
+        return category_root_ref(scope, category, agent=segments[1])
+    return category_root_ref(scope, category) if len(segments) == 1 else None
 
 
 # ---------------------------------------------------------------------------
@@ -536,6 +586,7 @@ def cascade_view(raw: Any, *, level: str) -> Any:
 
 def _parse_node(
     value: Any, *, in_binds: bool, dest_keyed: bool = False, at_bindings: bool = False,
+    path: tuple[str, ...] = (),
 ) -> Any:
     """Recursively coerce a raw settings node into the ``StoreValue`` space.
 
@@ -543,6 +594,11 @@ def _parse_node(
     (R-3/R-6): both shapes admit a 2-element list with OPPOSITE meanings, so the choice is made by
     this CONTEXT FLAG — passed down from the caller that knows the node — and NEVER by the leaf's
     arity. *in_binds* / *at_bindings* and the depth rule they encode: llm-docs.
+
+    *path* is the KEY PATH walked so far, doc-root first, and exists for ONE reason: it carries the
+    SCOPE to :func:`_declaration_root_ref`, so an abstract category's bare leaf is rooted HERE
+    (spec §2a) instead of downstream. A caller whose document does not START at a scope token seeds
+    it — :func:`_agent_partial` does, because ``self:`` IS ``agent.<node>``.
     """
     if isinstance(value, dict):
         store = KeyStore()
@@ -553,7 +609,9 @@ def _parse_node(
                 # ⚑ A non-dict is a MALFORMED arm and is deliberately left to the legacy leaf path,
                 # so ``settings_launch._assert_declared_categories`` still names the key.
                 if isinstance(sub, dict):
-                    store[key_s] = parse_bind_map(sub, category=key_s)
+                    store[key_s] = parse_bind_map(
+                        sub, category=f"{_DEST_KEYED_CATEGORY}.{key_s}",
+                    )
                     continue
             if not in_binds and key_s in _DEST_KEYED_LEAF_CATEGORIES:
                 # A TERMINAL dest-keyed category — the map is HERE, not one level down, so it is
@@ -561,7 +619,10 @@ def _parse_node(
                 # ⚑ ``not in_binds`` keeps a user's entry literally NAMED ``common`` inside another
                 # category from being re-read as one — the guard ``at_bindings`` carries below.
                 if isinstance(sub, dict):
-                    store[key_s] = parse_bind_map(sub, category=key_s)
+                    store[key_s] = parse_bind_map(
+                        sub, category=key_s,
+                        root_ref=_declaration_root_ref(path, key_s),
+                    )
                     continue
             # Entering a bind-shaped category: its entries below are binds.
             descend_binds = in_binds or key_s in _BIND_CATEGORIES
@@ -570,6 +631,7 @@ def _parse_node(
                 in_binds=descend_binds,
                 dest_keyed=dest_keyed,
                 at_bindings=(not in_binds and key_s == _DEST_KEYED_CATEGORY),
+                path=(*path, key_s),
             )
         return store
     if in_binds and isinstance(value, (list, tuple)):
@@ -585,13 +647,23 @@ def _parse_node(
     return value
 
 
-def parse_bind_map(raw: Any, *, category: str = "bindings") -> KeyStore:
+def parse_bind_map(
+    raw: Any, *, category: str = "bindings", root_ref: str | None = None,
+) -> KeyStore:
     """Parse a raw DEST-KEYED category map into a :class:`KeyStore` of :class:`BindEntry`.
 
     *raw* is the ``{box_dest: [src[, opts]]}`` mapping at ANY terminal bind-shaped key — a
     ``bindings`` arm or one of the four whose token is the whole key. ONE parser, not two;
-    *category* only names the key in the refusals. Returns a nested node (not an opaque dict leaf)
+    *category* names the key in the refusals. Returns a nested node (not an opaque dict leaf)
     so it merges PER-ENTRY across levels; a ``None`` entry is preserved VERBATIM. llm-docs.
+
+    ⚑⚑ THE §2a SOURCE RULE IS ENFORCED HERE, and this is the DECLARATION-LOAD seam it belongs at:
+    what gets STORED must resolve on its own. *root_ref* is the ABSTRACT category's declaration
+    root (:func:`_declaration_root_ref`) — a bare-relative source is joined under it and a
+    self-resolving one is stored verbatim, both by :func:`~kanibako.settings.agent_config.
+    root_relative_source`, which owns that rule. Without one — every CONCRETE category, at every
+    scope — a bare-relative source is a DEFECT and is REFUSED by name, because nothing later may
+    supply the missing root (§2a: the assembler-prepend is FORBIDDEN).
     """
     from kanibako.settings.settings_resolve import normalize_bind_dest
 
@@ -617,8 +689,43 @@ def parse_bind_map(raw: Any, *, category: str = "bindings") -> KeyStore:
                 f"(bindings 2026-08-06c, the other four 2026-08-08c). Re-key the "
                 f"entry to its destination."
             )
-        store[dest] = _parse_node(sub, in_binds=True, dest_keyed=True)
+        entry = _parse_node(sub, in_binds=True, dest_keyed=True)
+        if isinstance(entry, BindEntry):
+            entry = BindEntry(
+                _declared_source(entry.src, category, dest, root_ref), entry.opts,
+            )
+        store[dest] = entry
     return store
+
+
+def _declared_source(
+    src: str, category: str, dest: str, root_ref: str | None,
+) -> str:
+    """The §2a-conforming ``host_src`` to STORE for one entry, or a refusal.
+
+    ⚑ ONE function for both halves of the rule, because they are the same rule seen from the two
+    sides of the abstract/concrete line: an ABSTRACT category HAS a declaration root and a bare
+    leaf is joined under it; a CONCRETE one has none at any scope, so a bare-relative source there
+    can only ever resolve against the process CWD and is refused where it is declared.
+    """
+    if root_ref is not None:
+        return root_relative_source(src, root_ref)
+    if is_self_resolving(src):
+        return src
+    if category in ABSTRACT_CATEGORIES:
+        # ABSTRACT, yet the key path named no scope — so this is not a KEY, and §0's
+        # undeclared-key refusal downstream is the one that must name it. Stored verbatim:
+        # a seam that prescribed a source cure here would be curing a non-key.
+        return src
+    raise SettingsError(
+        f"{category} entry at {dest!r} declares a bare-relative host source "
+        f"{src!r}; a source must fully resolve on its own — absolute, ~, $var or "
+        f"an @-ref. {category} takes NO root at any scope (spec §2a), so no later "
+        f"layer may supply the missing one: a relative source resolves against "
+        f"whatever directory kanibako happens to be run from, and for a MOUNT "
+        f"podman reads a source beginning with neither '.' nor '/' as the name of "
+        f"a NAMED VOLUME rather than as a host path at all. Spell the source out."
+    )
 
 
 def _file_partial(raw: dict) -> KeyStore:
@@ -656,7 +763,12 @@ def _agent_partial(
         return KeyStore()
     # The discriminator (``default`` / the active agent's name) is the §2d key form and is
     # load-bearing: it keeps the fallback layer and any per-agent override distinct under the merge.
-    parsed_sub = _parse_node(level.table, in_binds=False)
+    # ⚑ The path is SEEDED, unlike every other level's: this document's root table IS
+    # ``agent.<node>`` ([spec:15-21, "self"]), so the walk starts one scope in and the §2a
+    # DECLARATION ROOT would otherwise have no scope to read.
+    parsed_sub = _parse_node(
+        level.table, in_binds=False, path=("agent", level.node),
+    )
     agent_node = KeyStore()
     agent_node[level.node] = parsed_sub
     store = KeyStore()
@@ -722,9 +834,18 @@ def _insert_dotted(store: KeyStore, dotted: str, value: Any) -> None:
             node[part] = existing
         node = existing
     if at_arm and parts[-1] in _BIND_ARMS and isinstance(value, dict):
-        node[parts[-1]] = parse_bind_map(value, category=parts[-1])
+        node[parts[-1]] = parse_bind_map(
+            value, category=f"{_DEST_KEYED_CATEGORY}.{parts[-1]}",
+        )
     elif parts[-1] in _DEST_KEYED_LEAF_CATEGORIES and isinstance(value, dict):
-        node[parts[-1]] = parse_bind_map(value, category=parts[-1])
+        # ⚑ SAME §2a rule as a settings file's own walk: a floor key names its scope in
+        # its own segments, so the DECLARATION ROOT is read from them rather than left
+        # unsupplied. A producer that already rooted (``agent_defaults.load_common``)
+        # emits a self-resolving source, which is stored verbatim.
+        node[parts[-1]] = parse_bind_map(
+            value, category=parts[-1],
+            root_ref=_declaration_root_ref(tuple(parts[:-1]), parts[-1]),
+        )
     else:
         node[parts[-1]] = _parse_node(value, in_binds=in_binds)
 

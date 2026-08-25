@@ -86,13 +86,38 @@ def agent_category_root(agents_root: Path, agent: str, category: str) -> Path:
     return agents_root / agent / agent_category_dirname(category)
 
 
+def category_root_ref(scope: str, category: str, *, agent: str | None = None) -> str:
+    """The self-resolving ``@``-ref an abstract *category*'s sources root at, per SCOPE.
+
+    ⚑ What a loader STORES: it must resolve on its own, with no layer prepending
+    anything later (spec §2a).  Every row comes from the single copy of the
+    DECLARATION-ROOT table, never a local literal — the four scopes differ ONLY in
+    which row is read, which is why there is one function and not four.  *agent* is
+    REQUIRED for the agent row and is the only placeholder any row carries; an
+    undeclared *scope* is refused rather than given a bare root (spec §0).
+    """
+    try:
+        root = DECLARATION_ROOT_REF[scope]
+    except KeyError:
+        raise ValueError(
+            f"{scope!r} is not a DECLARATION-ROOT scope "
+            f"(declared: {', '.join(sorted(DECLARATION_ROOT_REF))}; spec §2a)"
+        ) from None
+    if "{agent}" in root:
+        if agent is None:
+            raise ValueError(
+                f"the {scope!r} DECLARATION ROOT is DISCRIMINATED "
+                f"({root!r}); an agent name is required to build it (spec §2d)"
+            )
+        root = root.format(agent=agent)
+    return f"{root}/{agent_category_dirname(category)}"
+
+
 def agent_category_root_ref(agent: str, category: str) -> str:
     """The self-resolving ``@``-ref an abstract *category*'s sources root at."""
-    # ⚑ What a loader STORES: it must resolve on its own, with no layer prepending
-    # anything later (spec §2a).  The AGENT row comes from the single copy of the
-    # DECLARATION-ROOT table, never a local literal.
-    root = DECLARATION_ROOT_REF["agent"].format(agent=agent)
-    return f"{root}/{agent_category_dirname(category)}"
+    # ⚑ The AGENT row of :func:`category_root_ref`, kept as a named entry point for
+    # the per-agent loaders that never see another scope.
+    return category_root_ref("agent", category, agent=agent)
 
 
 #: TOKEN prefixes that make a ``host_src`` resolve on its own when UNESCAPED
