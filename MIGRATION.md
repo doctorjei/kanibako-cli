@@ -169,10 +169,11 @@ inside boxes. In order of likely impact:
     instead** (§2.20). `kanibako box set box.bindings.rw.home=/newhome` and `kanibako system set
     agent.claude.bindings.ro.launcher=/newsrc` both used to work; both now refuse, naming the key
     and the file to edit. **Nothing you have already configured stops working** — the keys are
-    still declared, still read at launch, and `config get` still reads them back. Only the write
-    verb is gone, and there is no CLI replacement. ⚑ One exception, and it is the example above: a
-    binding at the box home is a separate change and does **not** keep mounting (item 20). If a
-    script of yours repoints a bind, that is the thing to check. The other mount categories
+    still declared, still read at launch, and the matching `get` still reads them back
+    (`kanibako box get <box> box.bindings.rw`). Only the write verb is gone, and there is no CLI
+    replacement. ⚑ One exception, and it is the example above: a binding at the box home is a
+    separate change and does **not** keep mounting (item 20). If a script of yours repoints a
+    bind, that is the thing to check. The other mount categories
     (`caches`, `seeded`, `common`, `synced`) are untouched and still settable at every scope.
 
 19. **`workset share add` / `rm` lost their NAME argument** (§2.21). `workset share add WS NAME
@@ -410,8 +411,8 @@ Notes:
 - An **empty** leaf (`box: agent_name:` with no value) still counts as the retired key and is
   refused the same way (verified).
 - The new on-disk shape of a request is a **nested table** in the box's `box.yaml` or the workset's
-  `workset.yaml` (`pref: {system: {agent: <name>}}`) — never a dotted literal; `config set` writes
-  it for you.
+  `workset.yaml` (`pref: {system: {agent: <name>}}`) — never a dotted literal; `kanibako box set`
+  (or `kanibako workset set <workset>`) writes it for you.
   Suppression ("this box runs no agent") has its own spelling: `kanibako box set --null
   pref.system.agent`. `--null` writes a real YAML `null`; the sibling `reset` VERB
   (`kanibako box reset <box> <key>`) instead *removes* the entry. ⚑ There is no `--reset` flag.
@@ -490,8 +491,8 @@ Practical notes:
 - A same-scope abstraction-vs-abstraction overlap now **warns** at every launch (not fatal).
 - **Default installs cannot hit this** — all twelve shipped configurations were verified
   collision-free byte-for-byte, with standing tests keeping them that way. Exposure is
-  limited to hand-written `workset share` / `config set` / settings-file entries that
-  duplicate a destination.
+  limited to `workset share` entries, `set`s you ran at any scope, and hand-written
+  settings-file entries that duplicate a destination.
 - **Check before you hit it:** `kanibako box show --effective` (new in 1.8.0) resolves the
   real launch pipeline and *reports* any collision in its output instead of raising — run it
   per box after upgrading.
@@ -511,11 +512,12 @@ What you must do, **before your first launch on v1.8.0**:
 1. `mv commons common` at the system channel root and in every workset's `channels/` dir.
    (If you launch first, an empty `common/` is guarantee-created beside your populated
    `commons/` — content still on disk, invisible to every box, no error.)
-2. If you ever ran `config set …channels.commons <path>`: the stored value is now **orphaned**
-   — the launch silently ignores it and reverts to the default location. Edit the settings
-   file and rename the nested `channels: commons:` slot to `common:`. (Typing the *old key* at
-   the CLI is loud — `Error: unknown config key: workset.channels.commons` — but nothing at
-   launch tells you about a stored one.)
+2. If you ever set a `…channels.commons` key (`kanibako workset set <workset>
+   workset.channels.commons=<path>`, or `kanibako system set system.channels.commons=<path>`):
+   the stored value is now **orphaned** — the launch silently ignores it and reverts to the
+   default location. Edit the settings file and rename the nested `channels: commons:` slot to
+   `common:`. (Typing the *old key* at the CLI is loud — `Error: unknown config key:
+   workset.channels.commons` — but nothing at launch tells you about a stored one.)
 3. Fix your own boxes' notes/scripts that reference `~/channels/commons` — they break silently.
 
 The packaged agent guide (now the canon bible) is updated by the upgrade itself.
@@ -734,10 +736,11 @@ What that costs you, and what to avoid:
 `kanibako workset share add` documented that *"a relative host_src is resolved under the
 working set root"*. That launch-time join is gone: in v1.8.0 the command resolves a relative
 path **at write time** and stores it absolute (telling you when it rewrote what you typed).
-⚑ A bare-relative source can no longer reach a bind category through `config set` at all — that
-write route is gone for all six bind-shaped categories (§2.20), so the key itself is refused rather
-than the source shape. A bare-relative source authored **by hand** into a bind category in the
-settings YAML is a defect too, and is now **refused by name** wherever it is declared (§2.50).
+⚑ A bare-relative source can no longer reach a bind category through a `set` at all — that write
+route is gone at every scope for all six bind-shaped categories (§2.20), so the key itself is
+refused rather than the source shape. A bare-relative source authored **by hand** into a bind
+category in the settings YAML is a defect too, and is now **refused by name** wherever it is
+declared (§2.50).
 
 **Already-stored relative sources are NOT rewritten for you, and they now stop the command.** They
 used to pass through to podman as you typed them, which never mounted the directory you meant —
@@ -798,10 +801,11 @@ One loud case: `kanibako system set` against a bind-shaped key (`bindings.{ro,rw
 `seeded`, `common`, `synced`) is refused **unconditionally, wherever the entry lives** — not with
 a cascade-existence message (no such string — *"cannot create key … it must already exist in the
 cascade"* — exists anywhere in the code; a repo-wide search turns up only this line). The real,
-current refusal and its cure are §2.20's (line 970): the *write verb* for these categories is
-retired outright, full stop, so moving the entry to `<data>/global/settings.yaml` does **not**
-make a subsequent `set` succeed — the fix is to edit that file directly. A stale entry you *don't*
-touch is simply inert, exactly as it already was.
+current refusal and its cure are §2.20's (*Bind entries are edited in the settings file, not from
+the CLI*): the *write verb* for these categories is retired outright, full stop, so moving the
+entry to `<data>/global/settings.yaml` does **not** make a subsequent `set` succeed — the fix is
+to edit that file directly. A stale entry you *don't* touch is simply inert, exactly as it
+already was.
 
 Box and workset scopes are unaffected. Agent-scope binds already routed correctly.
 
@@ -1173,8 +1177,8 @@ $ kanibako box set <path> box.env.<VAR>=<value>             # <box>/env
 ```
 
 ⚑ **A `$VAR` in an env VALUE is refused at set time.** These values go through kanibako's
-expansion grammar, which knows only `$AGENT`, `$WORKSET` and `$XDG_*` — and a `config set` has
-no live agent or workset, so in practice only `$XDG_*` resolves. A shell variable your `env`
+expansion grammar, which knows only `$AGENT`, `$WORKSET` and `$XDG_*` — and a `set` at the CLI
+has no live agent or workset, so in practice only `$XDG_*` resolves. A shell variable your `env`
 file carried happily is now an error, and the message names it:
 
 ```console
@@ -1198,7 +1202,7 @@ dangling reference), and a lone unescaped `$` is refused as a malformed value.
 
 ---
 
-### 2.20 Bind entries are edited in the settings file, not with `config set`
+### 2.20 Bind entries are edited in the settings file, not from the CLI
 
 **What changed.** Two CLI routes are retired:
 
@@ -1207,17 +1211,21 @@ kanibako box set     box.bindings.rw.home=/newhome                # was: "Set �
 kanibako system set  agent.claude.bindings.ro.launcher=/newsrc    # was: exit 0
 ```
 
-Both now refuse, naming the key and pointing at the settings file. `config reset` refuses the same
-keys symmetrically — a reset is a write.
+Both now refuse, naming the key and pointing at the settings file. The matching `reset`
+(`kanibako box reset`, `kanibako system reset`) refuses the same keys symmetrically — a reset is
+a write.
 
 **What did NOT change, and this is the part worth reading.** The keys are **not** retired:
 
 - they are still declared keys;
 - they are still read by the launch cascade, so **every binding you already have keeps mounting**;
 - they are still authored by hand in the settings YAML;
-- **`config get` still reads them** at the box and workset nouns, naming the subject
-  (`kanibako box get <box> box.bindings.ro`). ⚑ It is not a complete read surface — see the
-  known-limitation note in §2.23 before relying on it.
+- **`box get` and `workset get` still read them**, naming the subject
+  (`kanibako box get <box> box.bindings.ro`). ⚑ `kanibako system get` does **not**: at that noun
+  a whole-category key is refused by name (`Error: unknown config key: system.bindings.ro`) and
+  only a single entry reads back — see *The cure*, below. ⚑ Even at the box and workset nouns
+  this is not a complete read surface — see the known-limitation note in §2.23 before relying
+  on it.
 
 Only the *write verb* is gone.
 
@@ -1240,7 +1248,7 @@ bind reads back on its own noun, with the node as the subject and the rest as th
 refuses the whole-category key; see §2.23.
 
 **⚑ This now covers EVERY bind-shaped category, not just the two arms.** `caches`, `seeded`,
-`common` and `synced` have lost their `config set` route as well — including the source-only
+`common` and `synced` have lost their CLI `set` route as well — including the source-only
 repoint, which used to let you change an entry's host source without touching its destination.
 All six bind-shaped categories are **YAML-only**.
 
@@ -1250,7 +1258,7 @@ kanibako box set  agent.claude.common.plugins=/new   # was: repointed the host s
 ```
 
 Both now refuse, naming the key and pointing at the settings file, exactly as the two arms do.
-`config reset` refuses them symmetrically.
+The matching `reset` refuses them symmetrically.
 
 **The test for whether a script of yours is affected** is therefore *not* "does the key contain
 `bindings.ro`/`bindings.rw`" any more — it is **"is the key bind-shaped at all"**, i.e. does it name
@@ -2449,8 +2457,8 @@ answer with the same vocabulary the settings engine uses everywhere else:
   the file.
 - **`agent get` and `agent reset` speak the same vocabulary as `set`.** Reading an undeclared key
   is an error too, not "(not set)". One deliberate read carve-out: `agent get <agent>
-  bindings.ro.<dest>` still answers, because `config get` serves that read and two verbs must not
-  disagree about one file.
+  bindings.ro.<dest>` still answers, because `kanibako system get agent.<agent>.bindings.ro.<dest>`
+  serves that same read, and two verbs must not disagree about one file.
 - **`agent reset <agent> <table>`** (a whole category, or `transform_settings`) **refuses** —
   `set` cannot create those, so any such table is hand-authored and the hand-edit is the honest
   cure. `agent reset --all <agent>` still clears everything and remains the recovery for any file
@@ -2461,9 +2469,10 @@ answer with the same vocabulary the settings engine uses everywhere else:
   starting anything.
 
 Also fixed in the same pass: **a dotted destination reads back whole** — `agent get claude
-"bindings.ro.~/.cache/uv"` prints the same entry `config get` prints, where it used to answer
-"(not set)"; and the write route that fractured such a dest across YAML levels is gone (it
-refuses with the retirement message instead).
+"bindings.ro.~/.cache/uv"` prints the same entry `kanibako system get
+"agent.claude.bindings.ro.~/.cache/uv"` prints, where it used to answer "(not set)"; and the write
+route that fractured such a dest across YAML levels is gone (it refuses with the retirement
+message instead).
 
 ### 2.39 `-e` overrides the key, not the environment
 
@@ -2913,16 +2922,16 @@ spec declares them all alike. `agent.default.template` answered a refusal tellin
 any-agent default with the bare key"*, and `template` then answered `unknown config key`; `run_args`
 and `transform` had no working spelling at all. All of them are recognised now.
 
-**What that costs you.** `kanibako box config <token>` reads a lone token as a *key* when it is one
+**What that costs you.** `kanibako box get <token>` reads a lone token as a *key* when it is one
 and as a *box name* otherwise, so five names moved from the second reading to the first — exactly as
-`model` and `access` already had. If you have a box called `template`, `kanibako box config
+`model` and `access` already had. If you have a box called `template`, `kanibako box get
 template` now reports the agent key instead of that box's settings.
 
 **The cure is the two-word form, which has always worked and is never ambiguous:**
 
 ```
-kanibako box config template <key>          # the box named "template"
-kanibako box config template box.image=…    # …and setting one of its keys
+kanibako box get template <key>             # the box named "template"
+kanibako box set template box.image=…       # …and setting one of its keys
 ```
 
 `kanibako box show`, `kanibako start template` and every other verb that takes a box name are
@@ -3261,8 +3270,8 @@ only appears in a file you wrote.
 
 ### 2.51 The six `workset.channels.*` keys are read, and three of them did nothing before
 
-**Read this if you ever ran `config set` on a `workset.channels.*` key. If you never repointed one,
-nothing here applies to you and nothing is required.**
+**Read this if you ever ran `kanibako workset set` on a `workset.channels.*` key. If you never
+repointed one, nothing here applies to you and nothing is required.**
 
 **What changed.** The workset channel family declares `common`, `chat`, `share`, `broadcast`,
 `mailboxes` and `share_global`. kanibako read none of them: it resolved `workset.channelroot` and
@@ -3272,7 +3281,7 @@ is now resolved through its own key.
 
 | If you set | What happened before | What happens now |
 |---|---|---|
-| `workset.channels.broadcast`, `.mailboxes`, `.share_global` | Nothing. The value was accepted, written to `workset.yaml` and read back by `config get`, and no path moved | The value is used |
+| `workset.channels.broadcast`, `.mailboxes`, `.share_global` | Nothing. The value was accepted, written to `workset.yaml` and read back by `kanibako workset get`, and no path moved | The value is used |
 | `workset.channels.chat`, `.share` | The mount followed your override; the rest of kanibako did not | Mount, seeded files and the `meta.box.*` addresses agree |
 | `workset.channels.common` | Honoured | Unchanged |
 | `workset.channelroot` | Honoured, but a settings file referencing `@workset.channelroot` got nothing back | The launch resolves it, so the reference works |
@@ -3537,10 +3546,10 @@ independently of the base and depend on **`kanibako-cli`** with **no version pin
    nothing to port. What changed is the *documentation you give your users*: the override key
    `agent.<name>.bindings.{ro,rw}.<key>` is no longer settable with `kanibako system set` (§2.20).
    It is still a real key — still declared, still beating your descriptor's own source at launch,
-   still readable with `config get` — so the mechanism your `Binding` relies on is intact. ⚑ If your
-   plugin's README or error strings tell a user to run `kanibako system set agent.<you>.bindings…`,
-   that instruction now fails; point them at `agents/<node>/agent.yaml` instead. There is no CLI
-   verb to substitute, so do not invent one.
+   still readable with `kanibako agent get <name> bindings.<ro|rw>.<key>` — so the mechanism your
+   `Binding` relies on is intact. ⚑ If your plugin's README or error strings tell a user to run
+   `kanibako system set agent.<you>.bindings…`, that instruction now fails; point them at
+   `agents/<node>/agent.yaml` instead. There is no CLI verb to substitute, so do not invent one.
 7. **BREAKING: `Target.default_category_binds()`, `default_common()` and `default_seeds()` declare
    EVERY category keyed by DESTINATION.** **Before** — one key per entry, carrying the
    entry NAME:
