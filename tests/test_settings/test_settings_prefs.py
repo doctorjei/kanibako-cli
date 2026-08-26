@@ -423,6 +423,45 @@ def test_a_dotted_leaf_inside_the_pref_table_is_an_error(tmp_path):
     assert "NESTED table" in str(exc.value)
 
 
+# ⚑ THE PATH WAS IN SCOPE AND WAS NOT PASSED. ``collect_prefs`` builds a SYNTHESIZED
+# ``{pref: table}`` wrapper to re-use the cascade's parse, and handed it to
+# ``_file_partial`` with no path — so a refusal raised while parsing a real workset or
+# box file rendered the anonymous ``<settings>`` while the very next argument on the
+# same call, ``prefs_from_partial(..., path=path)``, already carried the filename.
+#
+# BEFORE: key 'get' is reserved: ... Reserved names: [...] (in settings file <settings>)
+# AFTER:  ... (in settings file /…/box.yaml)
+#
+# BOTH loop arms are pinned: one path threaded and one forgotten is the defect this
+# whole seam is about.
+@pytest.mark.parametrize("arm", ["workset", "box"])
+@pytest.mark.parametrize("doc,needle", [
+    pytest.param(
+        {"pref": {"system": {"get": "goose"}}}, "key 'get' is reserved", id="reserved-name",
+    ),
+    pytest.param(
+        {"pref": {"agent": {"claude": {"common": {"~/dst": {"nm": {"src": "/s"}}}}}}},
+        "sub-table",
+        id="retired-shape",
+    ),
+])
+def test_a_pref_file_parse_refusal_NAMES_THE_FILE(tmp_path, arm, doc, needle):
+    # MUTATION-PROVED: drop ``path=path`` from the ``_file_partial`` call in
+    # ``collect_prefs`` and every row goes red on the filename assert alone.
+    f = write(tmp_path / f"{arm}.yaml", doc)
+    args = (f, None) if arm == "workset" else (None, f)
+    with pytest.raises(SettingsError) as exc:
+        collect_prefs(*args)
+    msg = str(exc.value)
+    assert needle in msg                       # the DEFECT, as before
+    assert str(f) in msg                       # ...and now the FILE
+    assert "<settings>" not in msg             # ...and NOT the anonymous rendering
+    # ⚑ APPENDED, NEVER RE-WORDED: ``cli.main`` prints ``Error: {e}``, so the address goes
+    # at the END and the defect keeps the front of the line.
+    assert msg.endswith(f"(in settings file {f})")
+    assert msg.index(needle) < msg.index("in settings file")
+
+
 def test_prefs_from_partial_on_a_non_pref_store():
     assert prefs_from_partial(KeyStore(), level="box") == []
 

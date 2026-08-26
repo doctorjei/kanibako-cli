@@ -728,6 +728,31 @@ def _declared_source(
     )
 
 
+def _parse_naming_file(
+    raw: dict, *, file_path: Path | None, key_path: tuple[str, ...] = (),
+) -> KeyStore:
+    """Parse one settings file's node, NAMING *file_path* in every refusal the parse raises.
+
+    ⚑ ONE wrap covers EVERY defect under it — the reserved name from ``KeyStore.__setitem__``, the
+    §2a retired shape and the bare-relative and arity refusals from :func:`parse_bind_map` — so
+    nothing below has to learn what a file is, and no refusal added later has to be enrolled.
+    ⚑⚑ THE MESSAGE IS KEPT VERBATIM AND THE FILE APPENDED, never re-worded: the KEY must stay the
+    first thing the user reads on ``cli.main``'s ``Error: {e}`` line.
+    ⚑ Re-raised as ``SettingsError`` per both callers' contract; ``ReservedKeyError``'s ``KeyError``
+    base is read by the ``config set`` probe, not by anything on this path.
+    ⚑ SHARED by :func:`_file_partial` and :func:`_agent_partial` — the file tiers and the agent
+    tier walk the SAME parse, so they must name the file the same way; *key_path* is the only
+    difference between them (the agent file's walk starts one scope in).
+    """
+    try:
+        parsed = _parse_node(raw, in_binds=False, path=key_path)
+    except (ReservedKeyError, SettingsError) as exc:
+        where = str(file_path) if file_path is not None else "<settings>"
+        raise SettingsError(f"{exc} (in settings file {where})") from exc
+    assert isinstance(parsed, KeyStore)
+    return parsed
+
+
 def _file_partial(raw: dict, *, path: Path | None = None) -> KeyStore:
     """Build ONE level partial from a settings file's WHOLE nested content, SCOPE TOKEN KEPT (§0).
 
@@ -741,25 +766,15 @@ def _file_partial(raw: dict, *, path: Path | None = None) -> KeyStore:
     leaf name (``box: get:``) and the RETIRED name-keyed §2a shape both named the offending KEY and
     left the user to work out WHICH of six cascade files to edit — the key is the defect, but the
     file is the address, and a cure with no address is a cure the user has to hunt for.
-    ⚑ Optional so a caller parsing a SYNTHESIZED table rather than a file may omit it (it then
-    renders ``<settings>``, exactly as the siblings do for a ``None`` path).
+    ⚑ NO LIVE CALLER OMITS IT ANY MORE. It stayed optional for the one that parsed a SYNTHESIZED
+    table — ``collect_prefs``' ``{pref: …}`` wrapper — but that table is still read OFF a real
+    workset or box file, and that file is what its refusals must name, so it passes the path too.
+    The ``<settings>`` rendering a ``None`` still gives (exactly as the siblings give it) is now a
+    fallback, not a caller's option.
     """
     if not isinstance(raw, dict):
         return KeyStore()
-    try:
-        parsed = _parse_node(raw, in_binds=False)
-    except (ReservedKeyError, SettingsError) as exc:
-        # ⚑ ONE wrap covers BOTH defects because both are raised UNDER this single call — the
-        # reserved name by ``KeyStore.__setitem__``, the §2a retired shape by
-        # :func:`parse_bind_map` — so nothing below has to learn what a file is.
-        # ⚑⚑ THE MESSAGE IS KEPT VERBATIM AND THE FILE APPENDED, never re-worded: the KEY must
-        # stay the first thing the user reads on ``cli.main``'s ``Error: {e}`` line.
-        # ⚑ Re-raised as ``SettingsError`` per the caller's contract; ``ReservedKeyError``'s
-        # ``KeyError`` base is read by the ``config set`` probe, not by anything on this path.
-        where = str(path) if path is not None else "<settings>"
-        raise SettingsError(f"{exc} (in settings file {where})") from exc
-    assert isinstance(parsed, KeyStore)
-    return parsed
+    return _parse_naming_file(raw, file_path=path)
 
 
 def _agent_partial(
@@ -776,18 +791,21 @@ def _agent_partial(
     *sub_key* selects the TIER; the two agent levels are kept SEPARATE (spec §2) and merge by
     their true §2d names — NO bare-``agent`` collapse. An empty level yields an empty partial,
     which is what the all-agents tier ALWAYS is out of this file since the flatten.
-    *path* and *node* only render the boundary's refusal message; neither is read. llm-docs.
+    *path* NAMES THE FILE in every refusal this level raises — the boundary's AND this function's
+    own parse (:func:`_parse_naming_file`, the same wrap the file tiers get); *node* renders the
+    boundary's message alone. Neither is read as a VALUE. llm-docs.
     """
     level = level_table(raw, sub_key=sub_key, node=node, path=path)
     if not level.table:
         return KeyStore()
     # The discriminator (``default`` / the active agent's name) is the §2d key form and is
     # load-bearing: it keeps the fallback layer and any per-agent override distinct under the merge.
-    # ⚑ The path is SEEDED, unlike every other level's: this document's root table IS
+    # ⚑ The KEY path is SEEDED, unlike every other level's: this document's root table IS
     # ``agent.<node>`` ([spec:15-21, "self"]), so the walk starts one scope in and the §2a
-    # DECLARATION ROOT would otherwise have no scope to read.
-    parsed_sub = _parse_node(
-        level.table, in_binds=False, path=("agent", level.node),
+    # DECLARATION ROOT would otherwise have no scope to read. It is the ONLY thing this call
+    # does differently from a file tier's — the file naming is the shared wrap's.
+    parsed_sub = _parse_naming_file(
+        level.table, file_path=path, key_path=("agent", level.node),
     )
     agent_node = KeyStore()
     agent_node[level.node] = parsed_sub

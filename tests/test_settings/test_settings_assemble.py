@@ -1701,3 +1701,62 @@ def _clean_base(tmp_path: Path, kwarg: str, path: Path) -> dict[str, Path]:
     if kwarg != "base_path":
         kwargs["base_path"] = _write(tmp_path / "clean_base.yaml", {})
     return kwargs
+
+
+# --------------------------------------------------------------------------- #
+# ...AND SO DOES THE AGENT TIER — the same wrap, the other partial builder      #
+# --------------------------------------------------------------------------- #
+#
+# ⚑ ``_agent_partial`` ALREADY TOOK A PATH and forwarded it only to ``level_table``, so
+# the BOUNDARY refusal (a nested ``self.<sub>:`` table) named the file while every refusal
+# out of its OWN parse did not. Half a fix reads exactly like a whole one from the outside:
+# one agent-file defect named the file and the next one did not.
+#
+# BEFORE:  ReservedKeyError: key 'get' is reserved: ... Reserved names: [...]
+#          SettingsError: common entry '~/dest' holds a sub-table, ... Re-key the entry ...
+# AFTER:   the same sentence with ``(in settings file /…/agent.yaml)`` appended.
+#
+# ⚑ The exception TYPE changes with it: the reserved name escaped as ``ReservedKeyError``
+# here, where the file tiers re-raise as ``SettingsError``. Both are caught by the CLI, but
+# the two tiers now agree — which is what sharing ONE wrap buys.
+
+def _agent_probe(tmp_path: Path, doc: dict) -> Path:
+    """One agent file, with ``base_path`` pinned clean by the caller (see :func:`_clean_base`)."""
+    return _write(tmp_path / "agent.yaml", doc)
+
+
+@pytest.mark.parametrize("doc,needle", [
+    pytest.param(
+        {"self": {"env": {"get": "x"}}}, "key 'get' is reserved", id="reserved-name",
+    ),
+    pytest.param(
+        {"self": {"common": {"~/dest": {"entryname": {"src": "/h/a"}}}}},
+        "sub-table",
+        id="retired-shape",
+    ),
+])
+def test_an_agent_file_parse_refusal_NAMES_THE_FILE(
+    tmp_path: Path, doc: dict, needle: str
+) -> None:
+    # MUTATION-PROVED: drop ``file_path=path`` from ``_agent_partial``'s
+    # ``_parse_naming_file`` call and both rows go red on the filename assert alone.
+    agent = _agent_probe(tmp_path, doc)
+    base = _write(tmp_path / "clean_base.yaml", {})
+    with pytest.raises(SettingsError) as exc:
+        assemble_levels(agent_name="claude", agent_path=agent, base_path=base)
+    msg = str(exc.value)
+    assert needle in msg                       # the DEFECT, as before
+    assert str(agent) in msg                   # ...and now the FILE
+    # ⚑ APPENDED, NEVER RE-WORDED, for the same reason it is at the file tiers:
+    # ``cli.main`` prints ``Error: {e}`` and an address must not lead.
+    assert msg.endswith(f"(in settings file {agent})")
+    assert msg.index(needle) < msg.index("in settings file")
+
+
+def test_a_clean_agent_file_still_assembles(tmp_path: Path) -> None:
+    """NON-VACUITY: the same call with no illegal name builds the six levels, so the rows
+    above pin the refusal and not a broken fixture."""
+    agent = _agent_probe(tmp_path, {"self": {"env": {"OK": "v"}}})
+    base = _write(tmp_path / "clean_base.yaml", {})
+    levels = assemble_levels(agent_name="claude", agent_path=agent, base_path=base)
+    assert dict.get(levels[AGENT_ACTIVE]["agent"]["claude"]["env"], "OK", __MISSING__) == "v"

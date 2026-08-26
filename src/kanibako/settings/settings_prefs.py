@@ -273,7 +273,11 @@ def collect_prefs(
             continue
         out.extend(
             prefs_from_partial(
-                _file_partial({PREF_ROOT: table}), level=level, path=path,
+                # ⚑ *path* IS THE FILE THIS TABLE CAME OFF, and the parse must name it: a
+                # refusal raised in here is about the file the loop is holding, not about
+                # the synthesized ``{pref: …}`` wrapper built to carry it.
+                _file_partial({PREF_ROOT: table}, path=path),
+                level=level, path=path,
             )
         )
     return out
