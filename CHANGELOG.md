@@ -153,6 +153,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- **The legacy `data/template` location for a plugin's packaged agent-store payload.** A Target
+  plugin ships the payload that seeds its agent store under `data/base`; before the rename it was
+  `data/template`, and kanibako kept a fallback arm that accepted the old spelling and re-rooted the
+  copy so an unconverted plugin still seeded correctly. All three bundled plugins have shipped
+  `data/base` since the rename, so the arm was already unreachable — resolving `data/template`
+  through the plugin loader returns nothing for every one of them. ⚑ **This is for third-party
+  plugin authors, not for boxes:** a plugin that still ships `data/template` now contributes nothing
+  to its agent store rather than being silently re-rooted, and nothing names the omission. If you
+  maintain a plugin, rename the directory to `data/base`; the payload's internal layout is
+  unchanged.
+
 - **The stderr notice about a leftover `<data>/settings.yaml` is gone; a legacy settings file is now
   ignored in silence.** 1.7.0 moved the primary workset's settings to
   `@config.primary_workset/settings.yaml` and stopped reading the old path, and printed a one-shot

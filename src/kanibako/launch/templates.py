@@ -41,9 +41,8 @@ _SEED_DEST_HOME = "~/"
 _SEED_SRC_HOME = "box/home"
 _SEED_SRC_HANDBOOK = "box/canon/handbook"
 
-#: The ``template`` entry of a SCOPE STORE.  ⚑ Three things must agree on it and one
-#: is a transition arm whose failure is silent: the layer-2/3 source key defaults,
-#: the legacy-payload landing path, and the whitelist entry that permits it.
+#: The ``template`` entry of a SCOPE STORE.  ⚑ Two things must agree on it: the
+#: layer-2/3 source key defaults, and the whitelist entry that permits it.
 AGENT_TEMPLATE_STORE_REL = "template"
 
 
@@ -379,49 +378,34 @@ def _packaged_shared_bundle() -> Path | None:
     return path if path.is_dir() else None
 
 
-#: A plugin's packaged AGENT-STORE PAYLOAD dir (RENAMED from ``data/template``, D4:
-#: it is stamped into the agent STORE ROOT, of which ``template/`` is one entry).
+#: A plugin's packaged AGENT-STORE PAYLOAD dir — the ONE spelling (D4).
+#: ⚑⚑ IT IS STAMPED INTO THE AGENT STORE ROOT, of which ``template/`` is one entry, so
+#: the payload itself carries the ``template/box/home`` prefix.  That prefix is the
+#: half that is easy to drop: a payload spelled home-relative lands at
+#: ``agents/<name>/<file>``, where NOTHING reads it — the stamp runs, reports nothing,
+#: and still leaves the box with no agent config.  Layer 2's resolved source is what
+#: the prefix must equal, pinned by
+#: ``TestTemplateSeedDefaults.test_landing_path_equals_layer_2_source``.
 PLUGIN_STORE_PAYLOAD_DIRNAME = "base"
 
-#: The pre-D4 payload dir a PUBLISHED-BUT-NOT-YET-UPDATED plugin still ships.
-PLUGIN_LEGACY_PAYLOAD_DIRNAME = "template"
 
-#: Where a LEGACY payload's content belongs in the new store layout.
-#: ⚑⚑ IT MUST EQUAL LAYER 2's SOURCE, RESOLVED.  The ``template/`` prefix is the half
-#: that is easy to drop: a value of just ``box/home`` lands the payload where NOTHING
-#: reads it, so the transition arm would run, report nothing, and still leave the box
-#: with no agent config.  Derived from the SAME constants the seed key is built from,
-#: and pinned by a test that asserts the two are equal.
-PLUGIN_LEGACY_PAYLOAD_DEST_REL = f"{AGENT_TEMPLATE_STORE_REL}/{_SEED_SRC_HOME}"
+def _packaged_agent_store(agent_name: str) -> Path | None:
+    """Locate a plugin's packaged AGENT-STORE payload dir, or ``None``.
 
+    ``None`` if the plugin is not installed or ships no ``data/base``.
 
-def _packaged_agent_store(agent_name: str) -> tuple[Path, bool] | None:
-    """Locate a plugin's packaged AGENT-STORE payload → ``(path, is_legacy)``.
-
-    ``None`` if the plugin is not installed or ships neither payload dir.
-
-    ⚑⚑ THE TRANSITION ARM.  Plugins publish INDEPENDENTLY of the base, so a new base
-    beside an old plugin is the ordinary ``pip install -U`` outcome; with no arm here
-    that plugin contributes NOTHING and the box comes up with no agent config at all,
-    silently.
-    ⚑ REMOVAL CONDITION — delete this arm (and ``PLUGIN_LEGACY_PAYLOAD_*``) once
-    ``kanibako-agent-claude``, ``-codex`` and ``-goose`` have all PUBLISHED (not
-    merely merged) releases carrying ``data/base``.  Recorded in migration M-12.
+    ⚑ There is NO pre-D4 ``data/template`` fallback and there must not be one again:
+    the spelling is closed, and a plugin that ships anything else contributes NOTHING
+    rather than landing its payload somewhere unread.
     """
-    for dirname, legacy in (
-        (PLUGIN_STORE_PAYLOAD_DIRNAME, False),
-        (PLUGIN_LEGACY_PAYLOAD_DIRNAME, True),
-    ):
-        try:
-            ref = importlib.resources.files(
-                f"kanibako.plugins.{agent_name}"
-            ).joinpath("data", dirname)
-        except (ModuleNotFoundError, FileNotFoundError):
-            return None
-        path = Path(str(ref))
-        if path.is_dir():
-            return path, legacy
-    return None
+    try:
+        ref = importlib.resources.files(
+            f"kanibako.plugins.{agent_name}"
+        ).joinpath("data", PLUGIN_STORE_PAYLOAD_DIRNAME)
+    except (ModuleNotFoundError, FileNotFoundError):
+        return None
+    path = Path(str(ref))
+    return path if path.is_dir() else None
 
 
 def ensure_agent_stores(
@@ -451,20 +435,9 @@ def ensure_agent_stores(
             if base is not None:
                 copy_tree(base / PACKAGED_AGENT_DEFAULT, store, scope="agent")
         else:
-            found = _packaged_agent_store(name)
-            if found is not None:
-                src, legacy = found
-                if legacy:
-                    # ⚑ ``dest_root=store`` is what makes ``scope="agent"`` correct
-                    # here: the whitelist reads the STORE-relative path, not the
-                    # source-relative one.  Omit it and a perfectly legal legacy
-                    # payload is refused.
-                    copy_tree(
-                        src, store / PLUGIN_LEGACY_PAYLOAD_DEST_REL,
-                        dest_root=store, scope="agent",
-                    )
-                else:
-                    copy_tree(src, store, scope="agent")
+            src = _packaged_agent_store(name)
+            if src is not None:
+                copy_tree(src, store, scope="agent")
         # (3) the discoverable box-template skeleton (D7).
         for rel in _BOX_TEMPLATE_SKELETON:
             (store / rel).mkdir(parents=True, exist_ok=True)
@@ -708,10 +681,9 @@ def _packaged_manifest_entries(agent_names: list[str]) -> list[tuple[str, bytes]
             entries.append((f"shared/{rel}", entry.read_bytes()))
 
     for agent_name in sorted(agent_names):
-        found = _packaged_agent_store(agent_name)
-        if found is None:
+        agent_src = _packaged_agent_store(agent_name)
+        if agent_src is None:
             continue
-        agent_src, _legacy = found
         for rel, entry in walk_shipped_files(agent_src):
             entries.append((f"agent/{agent_name}/{rel}", entry.read_bytes()))
 
@@ -870,12 +842,9 @@ def plan_template_refresh(
         )
 
     for agent_name in agent_names:
-        found = _packaged_agent_store(agent_name)
-        if found is None:
+        agent_src = _packaged_agent_store(agent_name)
+        if agent_src is None:
             continue
-        agent_src, legacy = found
-        store = std.agents / agent_name
-        dest = store / PLUGIN_LEGACY_PAYLOAD_DEST_REL if legacy else store
-        _walk(agent_src, dest, user_owned=True)
+        _walk(agent_src, std.agents / agent_name, user_owned=True)
 
     return added, overwritten, kept

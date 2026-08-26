@@ -30,7 +30,7 @@ THE TWO DELIVERY LAYERS
 -----------------------
 1. SEEDED (materialized at ``kanibako create``, host-side, create-if-absent):
    the base template tree (``data/global/template`` → ``~/canon/{notebook,workbook}``)
-   plus the per-agent template tree (``plugins/<agent>/data/template`` → e.g. claude's
+   plus the per-agent template tree (``plugins/<agent>/data/base`` → e.g. claude's
    ``~/.claude.json`` + ``~/.claude/settings.json``). Driven here through the SAME
    keystore-routed seed entrypoint the create command uses,
    ``kanibako.commands.start._apply_init_seeds``.
@@ -243,8 +243,7 @@ def _seed_source_root(layer: str) -> Path | None:
     if layer == "base":
         return _packaged_base_template()
     if layer.startswith("agent:"):
-        found = _packaged_agent_store(layer.split(":", 1)[1])
-        return None if found is None else found[0]
+        return _packaged_agent_store(layer.split(":", 1)[1])
     raise AssertionError(f"unknown packaged seed layer: {layer!r}")
 
 
@@ -446,8 +445,8 @@ class TestSeededManifest:
         install_packaged_templates(std, agents)
         missing: list[str] = []
         for name, rel in PLUGIN_STORE_MANIFEST:
-            found = _packaged_agent_store(name)
-            if found is None or not (found[0] / rel).is_file():
+            src = _packaged_agent_store(name)
+            if src is None or not (src / rel).is_file():
                 missing.append(f"SOURCE {name}:{rel}")
                 continue
             if not (std.agents / name / rel).is_file():

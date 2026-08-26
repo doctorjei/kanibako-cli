@@ -235,6 +235,37 @@ class TestTemplateSeedDefaults:
             "~/": ("@agent.claude.template/box/home",),
         }
 
+    def test_landing_path_equals_layer_2_source(self, primary_proj):
+        """⚑⚑ THE MUST-FIX, pinned: layer 2's SOURCE ref resolves to exactly the
+        STORE-RELATIVE path the seed reads, and both sides are DERIVED from the same
+        constants, so they cannot drift.
+
+        The ``template/`` prefix is the half that is easy to drop: a store-relative
+        landing of just ``box/home`` puts the content at ``agents/<name>/box/home/**``,
+        which NOTHING reads — the stamp runs, reports nothing, and the box still comes
+        up with no agent config. That is what a plugin's ``data/base`` payload has to
+        be spelled against.
+
+        ⚑ It arrived here with the legacy plugin-payload arm's removal (2026-08-26);
+        the property it pins was never about legacy payloads.
+        """
+        from kanibako.launch.templates import (
+            AGENT_TEMPLATE_STORE_REL,
+            _SEED_SRC_HOME,
+        )
+
+        defs = template_seed_defaults(primary_proj, "claude")
+        # Layer 2's SOURCE, with its @-ref head resolved the way the cascade does:
+        #   @agent.claude.template -> @config.agents/claude/<store rel>
+        source = defs["agent.claude.seeded"]["~/"][0]
+        store_ref = defs["agent.claude.template"]
+        assert source.startswith("@agent.claude.template/")
+        resolved = source.replace("@agent.claude.template", store_ref, 1)
+        store_relative = resolved.split("@config.agents/claude/", 1)[1]
+        assert store_relative == f"{AGENT_TEMPLATE_STORE_REL}/{_SEED_SRC_HOME}", (
+            "the seeded payload lands where NOTHING reads it"
+        )
+
     def test_no_agent_omits_agent_layer(self, primary_proj):
         defs = template_seed_defaults(primary_proj, None)
         assert not any(k.startswith("agent.") for k in defs)
@@ -1240,99 +1271,6 @@ class TestWorksetStampSplit:
         assert root.is_dir()
 
 
-class TestLegacyPluginPayloadArm:
-    """The D8 TRANSITION ARM — and the one way it can be present but INERT.
-
-    A NEW base beside an OLD published plugin is the ordinary ``pip install -U
-    kanibako-cli`` outcome, and without this arm that box comes up with NO agent
-    config at all, silently. The arm only helps if it lands the payload where layer 2
-    READS — so "the arm exists" is not the property worth testing; "the arm's landing
-    path equals layer 2's resolved source" is.
-    """
-
-    def test_landing_path_equals_layer_2_source(self, primary_proj):
-        """⚑⚑ THE MUST-FIX, pinned. Both sides DERIVED from the same constants, so
-        they cannot drift: a landing path of ``box/home`` (dropping the ``template/``
-        prefix) puts the payload at ``agents/<name>/box/home/**``, which nothing
-        reads — the arm runs, reports nothing, and the box still has no agent config.
-        """
-        from kanibako.launch.templates import PLUGIN_LEGACY_PAYLOAD_DEST_REL
-
-        defs = template_seed_defaults(primary_proj, "claude")
-        # Layer 2's SOURCE, with its @-ref head resolved the way the cascade does:
-        #   @agent.claude.template -> @config.agents/claude/<store rel>
-        source = defs["agent.claude.seeded"]["~/"][0]
-        store_ref = defs["agent.claude.template"]
-        assert source.startswith("@agent.claude.template/")
-        resolved = source.replace("@agent.claude.template", store_ref, 1)
-        store_relative = resolved.split("@config.agents/claude/", 1)[1]
-        assert PLUGIN_LEGACY_PAYLOAD_DEST_REL == store_relative, (
-            "the legacy payload lands where NOTHING reads it"
-        )
-
-    def test_a_legacy_plugin_still_seeds_its_config(self, std, config, primary_proj,
-                                                    monkeypatch, tmp_path):
-        """END TO END on the real seed path: an OLD-shaped plugin (``data/template``
-        with box-home files at its root) still reaches the box home."""
-        from kanibako.commands.start import _apply_init_seeds
-        from kanibako.launch import templates as _t
-
-        legacy = tmp_path / "plugin" / "data" / "template"
-        (legacy / ".claude").mkdir(parents=True)
-        (legacy / ".claude.json").write_text('{"legacy": true}')
-        (legacy / ".claude" / "settings.json").write_text("{}")
-        monkeypatch.setattr(
-            _t, "_packaged_agent_store",
-            lambda name: (legacy, True) if name == "claude" else None,
-        )
-        install_packaged_templates(std, ["claude"])
-        # It landed at the layer-2 SOURCE, not at some unread sibling.
-        assert (
-            std.agents / "claude" / "template" / "box" / "home" / ".claude.json"
-        ).is_file()
-        assert not (std.agents / "claude" / "box").exists()
-
-        class _T:
-            name = "claude"
-
-            def default_seeds(self):
-                return {}
-
-        _apply_init_seeds(
-            std=std, proj=primary_proj, agent_name="claude", target=_T(),
-            global_config_path=std.settings,
-            agent_config_path=std.agents / "claude" / "agent.yaml",
-            logger=logging.getLogger("t"), deliver_creds=True,
-        )
-        assert (primary_proj.shell_path / ".claude.json").read_text() == (
-            '{"legacy": true}'
-        )
-
-    def test_the_legacy_arm_is_still_whitelisted(self, std, tmp_path, monkeypatch):
-        """The arm is SCOPED, not exempt: the whitelist reads the STORE-relative path
-        (``template/…``, allowed), so a legacy payload is checked like everything
-        else — and content that would escape the store is still refused."""
-        from kanibako.errors import TemplateScopeError
-        from kanibako.launch import templates as _t
-
-        legacy = tmp_path / "plugin" / "data" / "template"
-        legacy.mkdir(parents=True)
-        (legacy / "ok.txt").write_text("fine")
-        monkeypatch.setattr(
-            _t, "_packaged_agent_store",
-            lambda name: (legacy, True) if name == "claude" else None,
-        )
-        install_packaged_templates(std, ["claude"])
-        assert (
-            std.agents / "claude" / "template" / "box" / "home" / "ok.txt"
-        ).is_file()
-        # ...and a symlink in that same legacy payload is still refused.
-        (legacy / "escape.txt").symlink_to(tmp_path / "secret")
-        (tmp_path / "secret").write_text("PRIVATE")
-        with pytest.raises(TemplateScopeError):
-            _t.ensure_agent_stores(std, ["claude"])
-
-
 class TestCopierEnforcement:
     """The four §2a enforcement points, on the ONE shared copier."""
 
@@ -1513,7 +1451,7 @@ class TestPackagedTemplatesDigest:
         )
         monkeypatch.setattr(
             "kanibako.launch.templates._packaged_agent_store",
-            lambda name: (claude_dir, False) if name == "claude" else None,
+            lambda name: claude_dir if name == "claude" else None,
         )
         return base_dir, bundle_dir, claude_dir
 
