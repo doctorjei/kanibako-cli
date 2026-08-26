@@ -306,6 +306,74 @@ TEXT against four hard-coded names, so it was green through the whole of the abo
 
 The DEST column is the share's IDENTITY (R-10) and is exactly the argument `share rm` takes.
 
+⚑⚑ **AND IT ARBITRATES — the launch's own collapse, not a second walk (2026-08-26).** Resolving is
+only half of what a launch does. Until this date the display printed the ENTRY LIST that came out of
+`snapshot_category_entries`: every stored binding, pre-collapse, with no mask arm, no containment and
+no §0 row applied. So a workset that ALSO declared `workset.masks` over a share's destination listed
+that share as a live mount while the box received **nothing** at that path — rc 0, no message — and a
+workset whose declarations a launch REFUSES outright (a `common` extending onto a bound dest, §0 row
+3) listed cleanly at rc 0.
+
+The two calls are `store_shape.build_store_shape_set` then `store_collapse.collapse_store_shapes` —
+the same pair `commands/start._install_assembly_collapse` makes — and the per-share outcome is read
+off `store_collapse.pair_declarations`, the function `box show --effective` already pairs its own
+declarations with. **The shares stay the SUBJECT**: a share the collapse swallowed keeps its ROW and
+gains a reason rather than vanishing, because dropping a row silently is the failure this display was
+already measured wrong for once (the floor above).
+
+* **A delivered share earns the ARROW**: `<src> -> <dest>  [<mode>]`, exactly as before — this half
+  of the output did not move.
+* **A share that receives nothing is printed in DECLARATION form** — `<dest>  [<mode>]  (declared:
+  <src>)` — with `store_collapse.derivation_result`'s phrase indented beneath it. A reader skimming
+  for mounts cannot take a loss for one.
+
+⚑⚑ **A COLLISION IS CAUGHT HERE AND FRAMED — one added line, and the refusal itself is printed FROM
+the exception.** `CategoryCollisionError` used to fall out to `cli.main`, which printed the launch's
+own `Error: …` and exited 1. That is the right message and the right code, and it is context-free:
+the user asked what a box in this working set would MOUNT and got a bare collision, which reads as a
+listing failure rather than as the answer. `_print_effective_shares` now catches it and prints, to
+stderr, above the refusal:
+
+```
+Cannot say what working set 'myws' would mount: its declarations collide at '/opt/arb', so no box in it can launch. The refusal a launch gives follows.
+Error: 'workset.common./opt/arb' extends onto '/opt/arb', which
+'workset.bindings.ro./opt/arb' already binds.
+…
+```
+
+🛑 **THE COLLISION IS NEVER RESTATED.** Every word of the detail is `f"Error: {e}"` off the caught
+exception, byte-identical to what `cli.main`'s `KanibakoError` arm would have printed (`cli.py`), and
+`box_dest` in the frame is READ OFF the exception rather than re-derived. A second carrier of that
+wording would drift from the launch's, and the launch's is the one a user has to act on. There is
+exactly ONE `Error: ` prefix — the test asserts the count, because catching an error that a caller
+already formats is how a doubled prefix arrives.
+
+⚑ The frame goes ABOVE the refusal, not below: the refusal runs a dozen lines and ends in a YAML
+remedy block, and a reader should be told what they are about to read before wading into it.
+
+⚑ **THE pid-0 FOUNDATION IS `_PREVIEW_HOME_SRC`, and it is SPELLED rather than guessed.** The
+collapse folds every scope over a home bind; a workset names no BOX, and the home SOURCE is per-box
+(`@meta.box.path/home`), so there is no true answer to give. Only the foundation's DEST takes part in
+arbitration, and the placeholder cannot reach the display anyway: a share AT that dest is refused as
+a second bind at the foundation's point, and one INSIDE it holds its own destination. It carries NO
+options — home's are seam machinery (spec `:1015`), and `config_display` declines to print them for
+the same reason.
+
+⚑ The COLLISION WARNINGS a launch emits (`emit_collision_warnings`) are deliberately NOT raised here.
+§0 row 5 is an ambiguity between two ABSTRACT declarations and a share is never one of the two, so
+the surviving share is unaffected — and reaching for them would mean `workset_cmd` importing the
+`start` module, which is the import `system_path_floor` was placed in `settings/paths.py` to avoid.
+
+`tests/test_commands/test_workset_cmd.py::TestWorksetShareListArbitrates` pins it, including the
+nesting case (a bind INSIDE a bind still mounts — the guard against a fix that reports every
+containment as a loss) and TWO mutations, each on a throwaway stand-in rather than a real symbol:
+
+* a stand-in `collapse_store_shapes` returning every declared bind with no mask arm restores the
+  defect, so the other cases are pinned on the ARBITRATION and not on the resolve;
+* a stand-in `build_store_shape_set` that refuses with a SENTINEL string the source tree does not
+  contain pins that the collision detail is carried VERBATIM from the exception — if the display ever
+  composed its own version of the refusal, the sentinel would not appear.
+
 ### The retired name-keyed refusal
 
 `_workset_raw_shares` REFUSES a retired name-keyed entry (R-10), and it does so on the KEY. P4′

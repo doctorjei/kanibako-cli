@@ -240,7 +240,7 @@ def _print_category_block(snapshot: Any, error: str | None, out: Any) -> None:
         effective_bindings_and_template_sources,
     )
     from kanibako.settings.settings_launch import BOX_HOME_KEY
-    from kanibako.settings.store_collapse import HOME_DEST
+    from kanibako.settings.store_collapse import HOME_DEST, derivation_result
 
     print("", file=out)
     if error is not None:
@@ -313,67 +313,18 @@ def _print_category_block(snapshot: Any, error: str | None, out: Any) -> None:
     # ⚑ ``seeded`` derives a COPY, not a mount, and that distinction is carried by
     # the outcome rather than restated here (``settings_categories
     # .declaration_delivery`` is its one definition).
+    #
+    # ⚑ THE RESULT PHRASES MOVED OUT — ``store_collapse.derivation_result``, beside
+    # the ``DERIVED_*`` outcomes they name. ``workset share list --effective`` is a
+    # second reader of the same pairing, and one sentence about what a mask did to a
+    # declaration is not a thing to keep two copies of.
     for row in effective_bindings_and_template_sources(snapshot):
         print(f"  {row.declaration.key} = {row.declaration.src}", file=out)
         print(
             f"    {BINDING_DERIVATIONS_NODE}.{row.declaration.key} = "
-            f"{_derivation_result(row)}",
+            f"{derivation_result(row)}",
             file=out,
         )
-
-
-def _derivation_result(row: Any) -> str:
-    """One :class:`~kanibako.settings.store_collapse.Derivation` as its result phrase.
-
-    ⚑ EVERY OUTCOME PRINTS SOMETHING, and a LOSS prints WHY and WHERE. "No mount"
-    on its own is the answer a user cannot act on; the destination that swallowed
-    the declaration is the whole diagnosis, and for a mask ABOVE the declaration it
-    is not a destination the user's own key names.
-    """
-    from kanibako.settings.store_collapse import (
-        DERIVED_AMBIGUOUS,
-        DERIVED_COPY,
-        DERIVED_MASKED,
-        DERIVED_MOUNT,
-        DERIVED_SUPERSEDED,
-    )
-
-    if row.outcome == DERIVED_COPY:
-        return f"{row.copy.src} -> {row.copy.dest}  (copy)"
-    if row.outcome == DERIVED_MASKED:
-        return (
-            f"(no mount — the mask at {row.at} covers this destination, and a mask "
-            f"has no host source: the box sees nothing at that path)"
-        )
-    if row.outcome == DERIVED_SUPERSEDED:
-        if row.bind is None:
-            return (
-                "(no copy — no collapsed copy row accounts for this declaration; "
-                "another declaration at this destination took it)"
-            )
-        return (
-            f"(no mount — the binding of {row.bind.src} at {row.at} occupies this "
-            f"destination)"
-        )
-    if row.outcome == DERIVED_AMBIGUOUS:
-        return (
-            f"{row.bind.src} -> {row.at}  [{row.bind.opts}]  (mount — AMBIGUOUS: "
-            f"another declaration at this destination names the same source, and "
-            f"only one of them is this mount)"
-        )
-    if row.outcome == DERIVED_MOUNT:
-        # ⚑ THE DELIVERY IS STATED, not left to be inferred from the presence of an
-        # options column: a mount is LIVE and shadows the dest, a copy runs once and
-        # is then the box's own file, and a reader who cannot tell them apart cannot
-        # answer the question this display exists for (N2).
-        return f"{row.bind.src} -> {row.at}  [{row.bind.opts}]  (mount)"
-    # ⚑ UNCOVERED, and it is not "no mount": this resolve carries no collapsed
-    # bind map at all (a NARROW resolve writes none), so the question was not
-    # answered rather than answered in the negative.
-    return (
-        "(unknown — this resolve carries no collapsed binding map, so what the "
-        "box receives here cannot be read)"
-    )
 
 
 def _iter_agent_tiers(scope: str, scope_node: Any):

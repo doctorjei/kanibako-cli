@@ -434,10 +434,16 @@ caller does it with `is_mask` — one rule, one spelling.
 
 ### `pair_declarations(declarations, bindings, copies)` — declaration → what the box receives
 
-PURE. Takes the DECLARATIONS (whose feed is the reserved `binding_derivations` node) and the
-ARBITRATED outputs (`meta.assembly.bindings` and the two copy lists concatenated), and returns one
-`Derivation` per declaration. Nothing is re-folded: a second fold is exactly the second opinion
-`--effective` exists to DETECT.
+PURE. Takes the DECLARATIONS and the ARBITRATED outputs (`meta.assembly.bindings` and the two copy
+lists concatenated), and returns one `Derivation` per declaration. Nothing is re-folded: a second
+fold is exactly the second opinion `--effective` exists to DETECT.
+
+⚑ **THERE ARE TWO FEEDS OF DECLARATIONS, and the function is indifferent to which one it got.**
+`box show --effective` feeds the ABSTRACT declarations off the reserved `binding_derivations` node
+(via `settings_categories.effective_bindings_and_template_sources`) and pairs them against a live
+box's `meta.assembly.*`. `kanibako workset share list --effective` feeds the workset's own CONCRETE
+`bindings.{ro,rw}` entries and pairs them against a map it collapses on the spot from that one
+workset file. Same question, two subjects — and one answer, which is the point.
 
 **The input MAY contain arbitration losers, and it is meant to.** `derive_binding_keys` materialises
 a derivation for winners and losers alike, deliberately. A loser is identified HERE, by what
@@ -465,6 +471,26 @@ a diagnosis, and for a mask ABOVE the declaration it names a path the user's own
 source, so the box sees nothing at that path either way. The sweep case is the one a renderer
 misses on its own — the declaration's dest is not in the collapsed map AT ALL, so a lookup by dest
 finds nothing and "absent" reads as "fine".
+
+### `derivation_result(row)` — one `Derivation` as the phrase a display prints
+
+Every outcome prints something, and a LOSS prints WHY and WHERE. "No mount" alone is an answer a
+user cannot act on; the destination that swallowed the declaration is the whole diagnosis, and for a
+mask ABOVE it that destination is not one the user's own key names.
+
+⚑ **IT LIVES HERE, beside the `DERIVED_*` constants it names, because there are two displays.** It
+was `config_display._derivation_result` while `box show --effective` was the only reader;
+`commands/workset_cmd._print_effective_shares` became the second when that listing started
+arbitrating (2026-08-26). One sentence about what a mask did to a declaration is not a thing to keep
+two copies of — two carriers of one shape is the defect class this whole section exists because of.
+
+⚑ It takes `Any`, not `Derivation`: the optional halves of that tuple are decided BY the outcome,
+and each branch reads only the half its own outcome guarantees.
+
+⚑ The MOUNT phrase is this function's, but a display may render a delivered row in its own
+vocabulary and call in only for the rest — `workset share list --effective` does, because its column
+is the share's `ro`/`rw` MODE and not the collapsed mount options. That is a FORMAT choice, never a
+decision: the outcome is still `pair_declarations`'.
 
 ### 🛑 Why nothing was added to `CollapsedBind` / `CollapsedCopy`
 

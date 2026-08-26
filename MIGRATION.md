@@ -1259,7 +1259,11 @@ workset share rm  WS NAME                   workset share rm  WS DEST
 `rm` takes the **box destination**, typed exactly as `share list` prints it. The raw listing's
 columns change from `NAME / MODE / BIND(host:dest)` to **`DEST / MODE / SOURCE`**, and the messages
 follow it: `Added rw share 'data'` → `Added rw share at '/home/agent/data'`, and the error
-`no share 'x'` → `no share at 'x'`. `share list --effective` output is unchanged.
+`no share 'x'` → `no share at 'x'`. `share list --effective` still prints `source -> dest [mode]` for
+every share a box actually receives; a share that a `masks` entry or another binding swallows now
+prints as `dest [mode] (declared: source)` with the reason it produces no mount indented beneath. If
+the working set's declarations collide, `--effective` refuses instead of listing — one line saying it
+cannot answer and why, then the refusal a launch gives, at rc 1.
 
 **⚑ ACTION REQUIRED IF YOU HAVE EXISTING WORKSET SHARES — re-add them.** The stored shape changed
 too, and at launch an old entry is **not** rejected: it is misread. A share written by an earlier
