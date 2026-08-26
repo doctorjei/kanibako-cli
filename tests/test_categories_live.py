@@ -1200,26 +1200,29 @@ class TestEffectiveBlockAgainstARealAgentPlugin:
                 entry.key
             ]
 
-    @pytest.mark.skip(
-        reason="Asserts the ABSTRACT half of the `--effective` block renders the "
-               "declaration/derivation PAIR. That half is DISABLED while "
-               "settings_categories.effective_bindings_and_template_sources is a "
-               "deliberate stub, so the block prints a notice instead of pairs. "
-               "The collapse LANDED; the blocker is that CollapsedBind / "
-               "CollapsedCopy carry no declaration provenance. To be REWRITTEN "
-               "against that function once they do — NOT deleted: the property "
-               "it pins (a REAL plugin's own declarations survive the "
-               "derivation and come out DISCRIMINATED) has no other "
-               "renderer-side test. Its sibling "
-               "test_the_plugins_own_declarations_derive_discriminated_keys still "
-               "pins the same chain up to the display."
-    )
     def test_the_block_renders_the_pair_for_a_real_declaration(self):
+        """The pairing rendered against the SHIPPED claude plugin's own declarations.
+
+        ⚑ UN-SKIPPED when the pairing landed.  It was parked while
+        ``effective_bindings_and_template_sources`` was a deliberate stub, on the
+        stated understanding that it would be REWRITTEN against that function
+        rather than deleted — the property it pins (a REAL plugin's declarations
+        survive the derivation and come out DISCRIMINATED) has no other
+        renderer-side test.
+
+        ⚑ The plugin's declarations are all WINNERS on this floor, so every row
+        renders its mount; the LOSING shapes are pinned on hand-built floors in
+        ``TestADeclarationThatLosesIsNotShownAsAMount``, which is where a loss can
+        be constructed without depending on what the plugin happens to ship.
+        """
         import io
 
+        from kanibako.commands.start import _install_assembly_collapse
         from kanibako.settings.config_display import _print_category_block
 
         snap, entries = self._snapshot()
+        snap.insert_segments(("meta", "box", "home"), "/host/box/home")
+        _install_assembly_collapse(snap, entries, whole_box=True)
         buf = io.StringIO()
         _print_category_block(snap, None, buf)
         text = buf.getvalue()
@@ -1231,6 +1234,9 @@ class TestEffectiveBlockAgainstARealAgentPlugin:
         # The bare agent form never appears (it is not a key).
         assert "agent.common" not in text
         assert "agent.caches" not in text
+        # ⚑ And the disabled notice is GONE — a renderer that still short-circuits
+        # would satisfy every assertion above by printing nothing per declaration.
+        assert "temporarily unavailable" not in text
 
 
 class TestTheEffectiveBlockShowsThePidZeroFoundation:
@@ -1488,3 +1494,218 @@ class TestForgedDerivationsTableNeverEntersTheMerge:
             or "junk" in key
         ]
         assert not strays, f"forged content reached the snapshot: {strays}"
+
+
+# ---------------------------------------------------------------------------
+# The declaration/derivation PAIRING (keyspec `:88`).
+# ---------------------------------------------------------------------------
+
+
+def _assembled(categories: dict):
+    """A snapshot carried through the WHOLE chain a launch takes, and its entries.
+
+    floor -> ``build_launch_snapshot`` -> ``snapshot_category_entries`` ->
+    ``_install_derived_bindings`` -> ``_install_assembly_collapse``.  Both halves
+    the pairing reads are therefore produced by the seams that produce them at
+    launch: ``binding_derivations`` (PRE-arbitration, by design) and
+    ``meta.assembly.bindings`` (the arbitrated result the box receives).
+
+    ``meta.box.home`` is written directly because it is a DERIVED key the floor
+    below does not materialise; the assembly seam refuses without it.
+    """
+    from kanibako.commands.start import (
+        _install_assembly_collapse,
+        _install_derived_bindings,
+    )
+    from kanibako.settings.settings_categories import derive_binding_keys
+    from kanibako.settings.settings_launch import (
+        build_launch_snapshot,
+        meta_agent_path_floor,
+        meta_identity_floor,
+        snapshot_category_entries,
+    )
+
+    ctx = make_ctx()
+    floor: dict = {}
+    floor.update(meta_identity_floor(
+        box_name="b", project_path="/p", inbox="/i", share_global="/sg",
+        share_workset=None, agent_name="claude",
+    ))
+    floor.update(meta_agent_path_floor("claude"))
+    floor.update(categories)
+    snap = build_launch_snapshot(
+        agent_name="claude", ctx=ctx, system_path=None, agent_path=None,
+        workset_path=None, box_path=None, default_categories=floor,
+    )
+    snap.insert_segments(("meta", "box", "home"), "/host/box/home")
+    entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx)
+    _install_derived_bindings(snap, derive_binding_keys(entries))
+    _install_assembly_collapse(snap, entries, whole_box=True)
+    return snap
+
+
+def _paired(snap) -> dict:
+    """``{declaration key: Derivation}`` off the ONE function that owns the answer."""
+    from kanibako.settings.settings_categories import (
+        effective_bindings_and_template_sources,
+    )
+
+    return {
+        d.declaration.key: d
+        for d in effective_bindings_and_template_sources(snap)
+    }
+
+
+class TestTheNaiveReadIsWrong:
+    """🛑 WHY ``binding_derivations`` ALONE MAY NEVER BE THE DISPLAY'S SOURCE.
+
+    The node is populated BEFORE arbitration and that is DELIBERATE (§0 / R-8: a
+    derived binding is a property of the DECLARATION, and ``derive_binding_keys``
+    materialises one for WINNERS AND LOSERS ALIKE, because a loser's derivation is
+    what explains the warning that names it).
+
+    So the node says "this declaration derives a mount at this dest" for a
+    declaration the box then receives NOTHING for.  A renderer reading it alone
+    prints a mount that does not exist — and the mask case prints NO mask, which
+    is the silent half.  This test states that disagreement as a FACT so a future
+    rewrite cannot re-derive the display from the node and pass.
+    """
+
+    def test_the_reserved_node_and_the_assembly_DISAGREE_under_a_mask(self):
+        from kanibako.settings.kb_store import Bind
+        from kanibako.settings.store_collapse import MASK
+
+        snap = _assembled({
+            "agent.claude.common": {"~/x": ("/h/agent",)},
+            "box.masks": ["~/x"],
+        })
+        derived = _leaf(snap, "binding_derivations", "agent", "claude",
+                        "common", "/home/agent/x")
+        # The PRE-arbitration half reads as an ordinary mount...
+        assert derived == Bind(host="/h/agent", box="/home/agent/x", opts="Z,U")
+        assert isinstance(derived, Bind)
+        # ...and the box receives a MASK at that destination: no mount at all.
+        assert _leaf(snap, "meta", "assembly", "bindings")["/home/agent/x"] == MASK
+
+
+def _leaf(node, *segments):
+    """Walk *segments* under *node* with unbound ``dict`` ops (S3)."""
+    for segment in segments:
+        node = dict.get(node, segment)
+    return node
+
+
+class TestADeclarationThatLosesIsNotShownAsAMount:
+    """Keyspec ``:88`` — ``--effective`` must pair a declaration with what the box GETS.
+
+    ⚑⚑ THE THREE LOSING SHAPES, each measured on the chain above.  A declaration
+    can lose without any refusal being raised, and every one of these was reported
+    as a live mount by the read this pairing replaces:
+
+      * a MASK at the declaration's own destination (the silent one — the naive
+        read printed ``(mount)`` and printed no mask at all);
+      * a MASK ABOVE the declaration, which SWEEPS it: the declaration's dest is
+        not in the collapsed map at ALL, so a lookup by dest finds nothing and a
+        renderer that treats "absent" as "fine" says nothing;
+      * a §0 row-5 same-scope ambiguity, whose LOSER is dropped by the producer but
+        still carries a derivation in the reserved node.
+    """
+
+    def test_a_mask_at_the_declarations_own_dest_is_reported_as_masked(self):
+        from kanibako.settings.store_collapse import DERIVED_MASKED
+
+        paired = _paired(_assembled({
+            "agent.claude.common": {"~/x": ("/h/agent",)},
+            "box.masks": ["~/x"],
+        }))
+        got = paired["agent.claude.common./home/agent/x"]
+        assert got.outcome == DERIVED_MASKED
+        assert got.at == "/home/agent/x"
+        assert got.bind is not None and got.bind.src is None
+
+    def test_a_mask_ABOVE_the_declaration_sweeps_it_and_is_NAMED(self):
+        from kanibako.settings.store_collapse import DERIVED_MASKED
+
+        snap = _assembled({
+            "agent.claude.common": {"~/x/y": ("/h/agent",)},
+            "box.masks": ["~/x"],
+        })
+        # The swept dest is not in the collapsed map at all — the whole point.
+        assert "/home/agent/x/y" not in _leaf(snap, "meta", "assembly", "bindings")
+        got = _paired(snap)["agent.claude.common./home/agent/x/y"]
+        assert got.outcome == DERIVED_MASKED
+        # ⚑ NAMED: the dest that actually swallowed it, not the declaration's own.
+        assert got.at == "/home/agent/x"
+
+    def test_a_row_5_loser_is_superseded_and_the_winner_is_the_mount(self):
+        from kanibako.settings.store_collapse import (
+            DERIVED_MOUNT,
+            DERIVED_SUPERSEDED,
+        )
+
+        paired = _paired(_assembled({
+            "box.common": {"~/x": ("/h/common",)},
+            "box.caches": {"~/x": ("/h/caches",)},
+        }))
+        loser = paired["box.caches./home/agent/x"]
+        winner = paired["box.common./home/agent/x"]
+        assert loser.outcome == DERIVED_SUPERSEDED
+        assert winner.outcome == DERIVED_MOUNT
+        # The loser is paired with the binding that OCCUPIES its dest — the
+        # winner's source, never its own.
+        assert loser.bind is not None and loser.bind.src == "/h/common"
+
+    def test_a_surviving_declaration_IS_the_mount_it_derives(self):
+        """The positive control: without it, "always superseded" would pass above."""
+        from kanibako.settings.store_collapse import DERIVED_MOUNT
+
+        got = _paired(_assembled({
+            "agent.claude.common": {"~/x": ("/h/agent",)},
+        }))["agent.claude.common./home/agent/x"]
+        assert got.outcome == DERIVED_MOUNT
+        assert got.at == "/home/agent/x"
+        assert got.bind is not None and got.bind.src == "/h/agent"
+        # The MODE-folded options, read off the assembly — not the declaration's.
+        assert got.bind.opts == "Z,U,rw"
+
+    def test_a_seeded_declaration_pairs_with_its_COPY_row_not_a_mount(self):
+        """``seeded`` derives a COPY (§0), and a copy is arbitrated at no dest."""
+        from kanibako.settings.store_collapse import DERIVED_COPY
+
+        got = _paired(_assembled({
+            "box.seeded": {"~/s": ("/h/s",)},
+        }))["box.seeded./home/agent/s"]
+        assert got.outcome == DERIVED_COPY
+        assert got.copy is not None
+        assert (got.copy.src, got.copy.dest) == ("/h/s", "/home/agent/s")
+
+    def test_two_row_5_declarations_SHARING_a_source_are_called_ambiguous(self):
+        """⚑ The one tie the pre-arbitration node can produce — and it is SAID, not guessed.
+
+        Two same-scope abstractions at one dest whose sources are EQUAL: §0 row 5
+        drops one, but the collapsed map records only a source, so it cannot say
+        WHICH of the two the surviving mount came from.  Reporting both as the
+        mount would be a confident answer to a question the data cannot settle.
+        """
+        from kanibako.settings.store_collapse import DERIVED_AMBIGUOUS
+
+        paired = _paired(_assembled({
+            "box.common": {"~/x": ("/h/same",)},
+            "box.caches": {"~/x": ("/h/same",)},
+        }))
+        assert paired["box.common./home/agent/x"].outcome == DERIVED_AMBIGUOUS
+        assert paired["box.caches./home/agent/x"].outcome == DERIVED_AMBIGUOUS
+
+    def test_an_absent_assembly_is_reported_as_UNCOVERED_not_as_no_mount(self):
+        """A NARROW resolve writes no bindings leaf; "no map" is not "no mount"."""
+        from kanibako.settings.store_collapse import DERIVED_UNCOVERED
+
+        snap = _assembled({"agent.claude.common": {"~/x": ("/h/agent",)}})
+        # Drop the arbitrated half, keep the declarations: the narrow-resolve shape.
+        dict.pop(dict.__getitem__(snap, "meta"), "assembly")
+        assert dict.get(snap, "binding_derivations") is not None, (
+            "the declarations half went too — this would prove nothing"
+        )
+        got = _paired(snap)["agent.claude.common./home/agent/x"]
+        assert got.outcome == DERIVED_UNCOVERED
+        assert got.at is None and got.bind is None
