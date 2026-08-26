@@ -153,6 +153,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- **The pre-1.7 `kanibako/` → `boxes/` workset rename, and the `Migrated workset:` line it printed.**
+  Loading a registered workset renamed an old `kanibako/` subdirectory to `boxes/` on disk and said so
+  on stderr. It was the last piece of kanibako that mutated your files on a plain read, it ran on
+  every load, and it ran *before* the refusal that rejects a pre-1.7 workset identity — so a workset
+  old enough to have such a directory was renamed and then refused anyway. v1.8.0 opens no migration
+  path from that era. ⚑ **It also removes a hazard that had nothing to do with age:** the rename
+  matched the literal name `kanibako` but compared against the *default* `boxes` leaf, so a workset
+  that had legitimately repointed `workset.boxes` to `kanibako` would have had its live boxes
+  directory renamed out from under it and then resolved to an empty one.
+
 - **The legacy `data/template` location for a plugin's packaged agent-store payload.** A Target
   plugin ships the payload that seeds its agent store under `data/base`; before the rename it was
   `data/template`, and kanibako kept a fallback arm that accepted the old spelling and re-rooted the
@@ -189,6 +199,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sentence that told you what to use instead. Nothing at runtime consulted either.
 
 ### Fixed
+
+- **A directory named `kanibako` or `.kanibako` in your workspace is no longer silently dropped when
+  a box is copied.** Converting or absorbing a box excluded those two names from the copy so that a
+  pre-1.7 marker directory at a standalone root would not travel. The exclusion matched by
+  *basename, at every depth*, so it also swallowed ordinary content — a checkout of the kanibako
+  source tree itself being the obvious case — with no message. The legacy marker names are gone from
+  both the copy filter and the standalone-root artifact list; the box's own metadata directory is
+  still excluded, and the in-box `.kanibako` runtime root is a guest path underneath it and was never
+  what these names protected. Such directories are now copied and consolidated as ordinary user
+  content.
 
 - **`kanibako workset share list --effective` says what a launch would actually mount, instead of
   listing every declaration.** It resolved each share the way a launch does and then stopped, so the
