@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 from unittest.mock import MagicMock, patch
 
@@ -607,3 +608,266 @@ def test_non_kanibako_image_failure_stays_silent(
     m_seed.assert_not_called()
     err = capsys.readouterr().err
     assert "VS Code will attach without" not in err
+
+
+# --- the seed WRITE: the one seed failure a user causes AND can fix ----------
+
+def test_seed_write_failure_warns_and_still_launches(
+    mock_runtime, tmp_path, capsys, _default_level_logging,
+):
+    """An unwritable VS Code config home is WARNED, not swallowed to debug.
+
+    Drives the REAL ``seed_attached_container_config`` against a REAL 0500
+    directory, so the ``OSError`` is the genuine ``mkdir`` refusal rather than an
+    injected one.  The launch keeps its zero-delta — rc 0, ``code`` invoked — but
+    the user is told the attach is degraded and handed the errno and the path.
+    """
+    ro_root = tmp_path / "ro"
+    ro_root.mkdir()
+    seed_path = ro_root / "imageConfigs" / "box.json"
+    ro_root.chmod(0o500)
+
+    stack, _proj = _patched(mock_runtime)
+    try:
+        with (
+            stack[0], stack[1], stack[2], stack[3], stack[4],
+            patch(
+                "kanibako.commands.code_cmd.attached_container_config_path",
+                lambda image_ref, config_home: seed_path,
+            ),
+            patch(
+                "kanibako.commands.code_cmd._resolve_box_vscode_extension",
+                return_value="anthropic.claude-code",
+            ),
+            patch(
+                "kanibako.commands.code_cmd.shutil.which",
+                return_value="/usr/bin/code",
+            ),
+            patch("kanibako.commands.code_cmd.subprocess.run") as m_run,
+        ):
+            rc = run_code(_args())
+    finally:
+        # Restore before pytest's tmp_path teardown walks the tree.
+        ro_root.chmod(0o700)
+
+    assert rc == 0
+    m_run.assert_called_once_with(["/usr/bin/code", "--folder-uri", _EXPECTED_URI])
+    assert not seed_path.exists()
+
+    err = capsys.readouterr().err
+    # Visible at the DEFAULT log level, naming the consequence...
+    assert "attached-container config for this box could not be written" in err
+    assert "without the box's workspace folder" in err
+    # ...and the cause the user can act on: the errno AND the offending path.
+    assert "Permission denied" in err
+    assert str(seed_path.parent) in err
+
+
+def test_unforeseen_seed_failure_stays_silent(
+    mock_runtime, capsys, _default_level_logging,
+):
+    """The blanket catch is for the UNFORESEEN, and it keeps its debug silence.
+
+    A non-``OSError`` out of the write is a bug in the seed, not a condition the
+    user can act on: it must still cost them nothing (rc 0, editor opens) and
+    must NOT borrow the write path's user-facing warning.
+    """
+    stack, _proj = _patched(mock_runtime)
+    with (
+        stack[0], stack[1], stack[2], stack[3], stack[4],
+        patch(
+            "kanibako.commands.code_cmd.seed_attached_container_config",
+            side_effect=TypeError("seed bug"),
+        ),
+        patch("kanibako.commands.code_cmd.shutil.which", return_value="/usr/bin/code"),
+        patch("kanibako.commands.code_cmd.subprocess.run") as m_run,
+    ):
+        rc = run_code(_args())
+
+    assert rc == 0
+    m_run.assert_called_once_with(["/usr/bin/code", "--folder-uri", _EXPECTED_URI])
+    err = capsys.readouterr().err
+    assert "could not be written" not in err
+    assert err == ""
+
+
+def test_agent_refusal_never_reaches_the_blanket_catch(
+    mock_runtime, _isolate_seed_path, capsys, _default_level_logging,
+):
+    """An agent-resolution refusal is handled at ITS OWN step, not by the net.
+
+    The proof is structural rather than textual: had the ``ConfigError`` escaped
+    to ``_seed_attached_config``'s blanket catch, the write would never have run
+    and there would be NO file.  The file exists, carrying the workspace folder
+    and no ``extensions`` — so the seed degraded exactly one step and continued.
+    """
+    seed_path = _isolate_seed_path / "imageConfigs" / "box.json"
+    mock_runtime.inspect_env.return_value = "claude"
+
+    from kanibako.errors import ConfigError
+
+    stack, _proj = _patched(mock_runtime)
+    with (
+        stack[0], stack[1], stack[2], stack[3], stack[4],
+        patch(
+            "kanibako.targets.resolve_target",
+            side_effect=ConfigError("no such target"),
+        ),
+        patch("kanibako.commands.code_cmd.shutil.which", return_value="/usr/bin/code"),
+        patch("kanibako.commands.code_cmd.subprocess.run") as m_run,
+    ):
+        rc = run_code(_args())
+
+    assert rc == 0
+    m_run.assert_called_once_with(["/usr/bin/code", "--folder-uri", _EXPECTED_URI])
+    assert json.loads(seed_path.read_text()) == {
+        "workspaceFolder": "/home/agent/workspace",
+    }
+    assert capsys.readouterr().err == ""
+
+
+# --- the same seed WRITE on the `--remote` leg (ONE writer, both legs) -------
+
+def _remote_stack(seed_path, engine):
+    """The `_run_code_remote` prerequisite patches, up to a RUNNING remote box.
+
+    Everything before the seed is stubbed to succeed so the seed WRITE is the only
+    thing under test; ``attached_container_config_path`` is redirected at
+    *seed_path* because ``--remote`` seeds the LOCAL config home too.
+    """
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    started = SimpleNamespace(
+        returncode=0, stdout="kanibako-webapp\n", stderr="",
+    )
+    return [
+        patch(
+            "kanibako.commands.code_cmd._resolve_code_cli",
+            return_value="/usr/bin/code",
+        ),
+        patch(
+            "kanibako.commands.code_cmd.shutil.which",
+            return_value="/usr/bin/podman",
+        ),
+        patch("kanibako.commands.code_cmd._wire_docker_path", return_value=None),
+        patch(
+            "kanibako.commands.code_cmd.attached_container_config_path",
+            lambda image_ref, config_home: seed_path,
+        ),
+        patch(
+            "kanibako.vscode.vscode_remote.dispatch_wrapper_path",
+            return_value=Path("/w"),
+        ),
+        patch("kanibako.vscode.vscode_remote.ensure_dispatch_wrapper"),
+        patch("kanibako.vscode.vscode_remote.probe_remote", return_value=1000),
+        patch(
+            "kanibako.vscode.vscode_remote.remote_context_name",
+            return_value="ctx",
+        ),
+        patch(
+            "kanibako.vscode.vscode_remote.tunnel_socket_path",
+            return_value=Path("/tmp/s.sock"),
+        ),
+        patch(
+            "kanibako.vscode.vscode_remote.engine_url",
+            return_value="unix:///tmp/s.sock",
+        ),
+        patch(
+            "kanibako.vscode.vscode_remote.remote_socket_path",
+            return_value="/run/x.sock",
+        ),
+        patch("kanibako.vscode.vscode_remote.ensure_docker_context_meta"),
+        patch("kanibako.vscode.vscode_remote.write_context_entry"),
+        patch("kanibako.vscode.vscode_remote.ensure_tunnel"),
+        patch("kanibako.vscode.vscode_remote.RemoteEngine", return_value=engine),
+        patch("kanibako.vscode.vscode_remote.preflight_engine"),
+        patch(
+            "kanibako.vscode.vscode_remote.remote_run_kanibako",
+            return_value=started,
+        ),
+    ]
+
+
+def _remote_engine():
+    """A RemoteEngine double for a running, stamped remote box."""
+    engine = MagicMock()
+    engine.container_image.return_value = "ghcr.io/doctorjei/kanibako-oci:latest"
+    engine.inspect_env.return_value = "claude"
+    engine.running_with_stderr.return_value = (True, "")
+    return engine
+
+
+def test_remote_seed_write_failure_warns_and_still_launches(
+    tmp_path, capsys, _default_level_logging,
+):
+    """``--remote`` routes its write through the SAME warning path as the local leg.
+
+    ``--remote`` seeds the LOCAL config home (keyed by the REMOTE box's image), so
+    an unwritable config home degrades the remote attach exactly as it degrades a
+    local one — and used to do so just as silently.  Real 0500 directory, real
+    ``seed_attached_container_config``, default log level.
+    """
+    from kanibako.commands.code_cmd import _run_code_remote
+
+    ro_root = tmp_path / "ro"
+    ro_root.mkdir()
+    seed_path = ro_root / "imageConfigs" / "box.json"
+    ro_root.chmod(0o500)
+
+    dest = "myhost"
+    args = argparse.Namespace(project="webapp", box=None, remote=dest)
+    stack = _remote_stack(seed_path, _remote_engine())
+
+    try:
+        with contextlib.ExitStack() as es:
+            for cm in stack:
+                es.enter_context(cm)
+            m_run = es.enter_context(
+                patch("kanibako.commands.code_cmd.subprocess.run")
+            )
+            rc = _run_code_remote(args, dest)
+    finally:
+        ro_root.chmod(0o700)
+
+    # Zero-launch-delta on the remote leg too: the attach still happens.
+    assert rc == 0
+    m_run.assert_called_once()
+    assert m_run.call_args[0][0][0] == "/usr/bin/code"
+    assert not seed_path.exists()
+
+    err = capsys.readouterr().err
+    assert "attached-container config for this box could not be written" in err
+    assert "without the box's workspace folder" in err
+    assert "Permission denied" in err
+    assert str(seed_path.parent) in err
+
+
+def test_remote_unforeseen_seed_failure_stays_silent(
+    tmp_path, capsys, _default_level_logging,
+):
+    """The remote leg's blanket catch keeps its debug silence for the UNFORESEEN."""
+    from kanibako.commands.code_cmd import _run_code_remote
+
+    seed_path = tmp_path / "imageConfigs" / "box.json"
+    dest = "myhost"
+    args = argparse.Namespace(project="webapp", box=None, remote=dest)
+    stack = _remote_stack(seed_path, _remote_engine())
+
+    with contextlib.ExitStack() as es:
+        for cm in stack:
+            es.enter_context(cm)
+        es.enter_context(patch(
+            "kanibako.commands.code_cmd.seed_attached_container_config",
+            side_effect=TypeError("seed bug"),
+        ))
+        m_run = es.enter_context(
+            patch("kanibako.commands.code_cmd.subprocess.run")
+        )
+        rc = _run_code_remote(args, dest)
+
+    assert rc == 0
+    m_run.assert_called_once()
+    err = capsys.readouterr().err
+    assert "could not be written" not in err
+    assert err == ""
