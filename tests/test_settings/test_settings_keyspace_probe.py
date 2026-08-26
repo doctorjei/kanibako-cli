@@ -396,6 +396,91 @@ def test_one_plugins_descriptor_fault_does_not_abort_the_pass(clean_probe, monke
 
 
 # --------------------------------------------------------------------------- #
+# …and it is DEFERRED: a resolve pays for discovery only where it must           #
+# --------------------------------------------------------------------------- #
+#
+# ⚑⚑ THIS ORACLE IS ON THE PRODUCTION PATH OF EVERY SETTINGS RESOLVE, disarmed probe
+# and all — ``_refuse_undeclared_snapshot`` reads it. Discovery imports and
+# instantiates every installed plugin, and those modules parse YAML in their module
+# bodies. Passing ``plugin_agent_leaves()`` as a keyword ARGUMENT evaluated all of it
+# before ``key_class`` had looked at the head, so the FIRST path judged paid, whatever
+# its shape: a cold ``load_merged_config`` on this box judged ``box``, ``box.image``
+# and ``box.share_images``, and the discovery pass was attributed to ``box`` — a
+# NAMESPACE, which cannot carry an agent leaf at all. 223ms median -> 17ms.
+#
+# 🛑 THE COST IS INVISIBLE TO EVERY OTHER CASE IN THIS FILE. Re-materialising either
+# argument changes no verdict, so nothing else here would red. That is what these
+# cases are for.
+
+
+@pytest.fixture
+def counting_discovery(clean_probe, monkeypatch):
+  """Discovery replaced by a counter, over a one-plugin machine, starting COLD.
+
+  ⚑ It counts PASSES, not questions: ``_PLUGINS`` starts at ``None``, so the first
+  path that asks pays and every later one reads the memo. What is pinned below is
+  whether a path asks AT ALL.
+
+  ⚑ ``model`` is a CORE §2d leaf and ``provider`` is not, so the same fake plugin
+  serves both directions.
+  """
+  calls = []
+
+  def fake_discover(project_path=None):
+    calls.append(project_path)
+    return {"claude": _target("model", "provider")}
+
+  monkeypatch.setattr(probe, "_PLUGINS", None)
+  monkeypatch.setattr("kanibako.targets.discover_targets", fake_discover)
+  return calls
+
+
+@pytest.mark.parametrize("path", [
+  "box", "box.image", "box.zippity", "system.template", "workset.boxes",
+  "meta.box.path", "meta.agent.claude.zippity", "pref.box.image", "config.data",
+  "agent", "agent.claude", "agent.claude.model", "agent.default.access",
+])
+def test_a_path_the_CORE_keyspace_answers_imports_NO_plugin(path, counting_discovery):
+  """⚑ THE DEFERRAL, through the entry point the live consumers actually call.
+
+  Every path here is answerable from constants ``settings_keyspace`` declares, so a
+  plugin import to answer it is pure cost — and it was being paid on all of them.
+  """
+  probe.declared_keyspace_oracle(path)
+  assert counting_discovery == [], f"{path} imported the plugins to be judged"
+
+
+@pytest.mark.parametrize("path", ["agent.claude.provider", "agent.claude.zippity"])
+def test_a_leaf_only_a_PLUGIN_can_answer_DOES_import_one(path, counting_discovery):
+  """The other direction, and without it the case above passes on an oracle that had
+  simply stopped consulting the plugins.
+
+  ``provider`` is a real ``setting_descriptor`` leaf the core §2d table does not
+  declare; ``zippity`` is declared by nothing, and refusing it needs BOTH the plugin
+  vocabulary and the concession — one memoised pass answers both.
+  """
+  probe.declared_keyspace_oracle(path)
+  assert len(counting_discovery) == 1
+
+
+def test_plugin_agent_leaves_stays_EAGER_because_it_is_the_PRIMING_POINT(
+  counting_discovery,
+):
+  """🛑 DO NOT MAKE THIS ONE LAZY. ``tests/_keystore_census`` calls it at
+  ``pytest_configure``, before any test patches discovery, and that one call is what
+  fixes both halves of the memo for the whole session. A deferred version would prime
+  nothing and the census would measure whatever the running test had patched in.
+
+  :data:`probe.PLUGIN_LEAVES` is the deferred VIEW, and it exists BESIDE this rather
+  than in place of it — asking it anything discovers just the same.
+  """
+  probe.plugin_agent_leaves()
+  assert len(counting_discovery) == 1
+  assert "provider" in probe.PLUGIN_LEAVES
+  assert len(counting_discovery) == 1, "the deferred view must read the same memo"
+
+
+# --------------------------------------------------------------------------- #
 # The SEAM — off by default, one row per observation, incapable of failing a run
 # --------------------------------------------------------------------------- #
 

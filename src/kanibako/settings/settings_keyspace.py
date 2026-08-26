@@ -71,6 +71,15 @@ valid AGENT names (``valid_agents``, whose one production supplier is
 ``settings_prefs.default_valid_agents``), the plugin-declared agent leaves
 (``agent_leaves``), and which agents those leaves COVER
 (``agents_with_known_leaves`` — see :func:`key_class`).
+
+⚑ THAT PURITY MAKES THE INJECTED SETS EXPENSIVE, WHICH IS WHY THEY ARE ASKED LAST.
+Two of the three are answered in production by ``settings_keyspace_probe``, which
+IMPORTS every installed plugin to answer them — so ASKING one is I/O even though
+this module does none. :func:`key_class` therefore judges as much as it can from
+its own declarations before it puts a question to either, and both arrive as things
+to ASK rather than as materialised sets (:class:`_EffectiveLeaves`,
+:func:`_agent_tail_reason`'s ``leaves_known``). It changes no verdict; it decides
+whether every ``box.image`` resolve pays for a plugin import.
 """
 
 from __future__ import annotations
@@ -184,10 +193,11 @@ DECLARED_WORKSET_CHANNEL_LEAVES: Final[frozenset[str]] = frozenset({
 #:
 #: ⚑ This is the AUTHORITATIVE list — ``settings_prefs`` filter 1 rejects on it,
 #: so an omission here is a user-visible refusal of a legal request. Each entry
-#: carries its §2d line. It is UNIONED at call time with the plugin-declared
+#: carries its §2d line. It is UNIONED with the plugin-declared
 #: ``setting_descriptors()`` keys (§0 "Agent specifics are
 #: PLUGIN-declared"), which is why ``endpoint`` appearing here is a floor, not a
-#: ceiling.
+#: ceiling. ⚑ The union is LAZY and this set is the half asked FIRST — see
+#: :class:`_EffectiveLeaves`, which is where the reason lives.
 DECLARED_AGENT_LEAVES: Final[frozenset[str]] = frozenset({
     "access",              # §2d (the permission TIER — SUPERSEDES ``auto_approve``)
     "allow_helpers",       # §2d
@@ -928,12 +938,53 @@ def _bad_agent_reason(name: str, valid_agents: Collection[str]) -> str:
     )
 
 
+class _EffectiveLeaves(Collection[str]):
+    """The core §2d set with the PLUGIN-declared set behind it — unioned LAZILY.
+
+    ⚑ THE UNION IS THE COST, and materialising it eagerly made every judgement pay
+    it. The plugin set's one production supplier (``settings_keyspace_probe``)
+    answers by IMPORTING every installed plugin, and those modules parse YAML in
+    their module bodies; ``key_class`` used to build
+    ``frozenset(DECLARED_AGENT_LEAVES) | frozenset(agent_leaves)`` before dispatching
+    on the head, so a ``box.image`` resolve paid for a question only an ``agent.*``
+    leaf can ask. Asking the CORE set first defers the plugin question to a leaf the
+    core contract does not declare, which is the only leaf a plugin can answer for.
+
+    ⚑ ITERATION STILL FORCES THE UNION, and that is right: the only iterating caller
+    is the refusal message's ``sorted(leaves)`` in :func:`_agent_tail_reason`, which
+    is already on its way to UNDECLARED — the vocabulary it names the user has to be
+    the real one, so the cost is owed there.
+    """
+
+    __slots__ = ("_plugins",)
+
+    def __init__(self, plugins: Collection[str]) -> None:
+        self._plugins = plugins
+
+    def _union(self) -> "frozenset[str]":
+        return frozenset(DECLARED_AGENT_LEAVES) | frozenset(self._plugins)
+
+    def __contains__(self, item: object) -> bool:
+        return item in DECLARED_AGENT_LEAVES or item in self._plugins
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._union())
+
+    def __len__(self) -> int:
+        return len(self._union())
+
+
+def _leaves_are_known() -> bool:
+    """The default *leaves_known*: a caller that says nothing covers every agent."""
+    return True
+
+
 def _agent_tail_reason(
     prefix: str,
     tail: list[str],
     leaves: Collection[str] = DECLARED_AGENT_LEAVES,
     *,
-    leaves_known: bool = True,
+    leaves_known: Callable[[], bool] = _leaves_are_known,
 ) -> KeyJudgement:
     """Judge the tail of an agent-scope key, after the discriminator.
 
@@ -944,12 +995,19 @@ def _agent_tail_reason(
     goose declares ``provider`` through ``setting_descriptors()`` and it is a
     legitimate ``agent.goose.provider``.
 
-    ⚑ *leaves_known* is FALSE when the caller could not read this agent's plugin at
-    all, so *leaves* does not cover it — see :func:`key_class`. Then the VOCABULARY
+    ⚑ *leaves_known* answers FALSE when the caller could not read this agent's plugin
+    at all, so *leaves* does not cover it — see :func:`key_class`. Then the VOCABULARY
     is conceded and nothing else: the SHAPE rules below still apply (a category tail
     is judged, a multi-segment tail is still not an agent key), and so does the
     reserved-name floor inside :func:`_leaf`, because that floor is about colliding
     with the resolved store rather than about what a plugin declares.
+
+    ⚑⚑ IT IS A CALLABLE, AND ASKED LAST, FOR THE REASON :class:`_EffectiveLeaves`
+    GIVES. Its production supplier answers by importing every installed plugin, so
+    evaluating it to a ``bool`` at the call site re-arms on ``agent.<agent>.*`` the
+    whole cost the lazy union defers — ``agent.claude.model``, a plain core leaf,
+    would still pay it. Both operands are PURE, so the disjunction below answers the
+    same whichever is asked first; only the COST differs.
     """
     if not tail:
         # An agent TIER — ``agent.<agent>``, ``agent.default``, or the
@@ -959,7 +1017,10 @@ def _agent_tail_reason(
     if _looks_like_category(tail):
         return _category_reason(prefix, tail, what=f"'{prefix}'")
     if len(tail) == 1:
-        if not leaves_known or tail[0] in leaves:
+        # ⚑ CORE FIRST, PLUGINS SECOND, THE CONCESSION LAST — cost order, not rule
+        # order. ``leaves`` asks :data:`DECLARED_AGENT_LEAVES` before the plugin set
+        # it wraps, and ``leaves_known`` is only called when both have missed.
+        if tail[0] in leaves or not leaves_known():
             return _leaf(tail[0])
         return _undeclared(
             f"'{tail[0]}' is not a declared agent key (declared: "
@@ -1008,6 +1069,11 @@ def key_class(
     are real, exclusive of ``"default"`` which is always legal. *agent_leaves*
     likewise injects the PLUGIN-declared agent keys to union over the core §2d
     set (``None`` = core only); see :func:`_agent_tail_reason`.
+    ⚑ *agent_leaves* is ASKED, NEVER MATERIALISED HERE. Its production supplier
+    discovers plugins on the first question put to it, so a ``frozenset(...)`` around
+    it charges every path judged — ``config.*``, ``box.*``, a bare namespace — for a
+    vocabulary only an agent LEAF can consult. :class:`_EffectiveLeaves` carries the
+    measurement.
 
     ⚑ *agents_with_known_leaves* names the agents *agent_leaves* actually COVERS.
     ``None`` (the default) means it covers every agent, which is what a caller
@@ -1039,8 +1105,12 @@ def key_class(
             f"non-empty segments (spec §0)"
         )
     head, rest = parts[0], parts[1:]
-    leaves = DECLARED_AGENT_LEAVES if agent_leaves is None else (
-        frozenset(DECLARED_AGENT_LEAVES) | frozenset(agent_leaves)
+    # ⚑ LAZY, and the dispatch below is why: only the agent tail asks about leaves,
+    # and materialising the union here charged every ``box.*`` / ``system.*`` /
+    # ``meta.*`` path for a plugin import it never uses. See :class:`_EffectiveLeaves`.
+    leaves: Collection[str] = (
+        DECLARED_AGENT_LEAVES if agent_leaves is None
+        else _EffectiveLeaves(agent_leaves)
     )
 
     if head == "config":
@@ -1142,7 +1212,12 @@ def key_class(
             # ⚑ Both exclusions live HERE rather than in a supplier for the reason
             # :func:`is_valid_agent_segment` gives: their standing is the KEYSPACE's,
             # so every supplier gets it right by not having to know it.
-            leaves_known=(
+            # ⚑ DEFERRED, not merely passed: ``name in agents_with_known_leaves`` is
+            # the production supplier's plugin import, and evaluating it here would
+            # charge every ``agent.<agent>.<core-leaf>`` path for it (see
+            # :func:`_agent_tail_reason`). The thunk is pure, so WHEN it is asked
+            # changes only the cost.
+            leaves_known=lambda: (
                 not _could_name_an_agent(name)
                 or agents_with_known_leaves is None
                 or name in agents_with_known_leaves

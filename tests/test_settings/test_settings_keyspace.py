@@ -1418,6 +1418,94 @@ def test_conceding_a_vocabulary_concedes_nothing_else():
     assert _class("agent.goose", **unknown).cls is KeyClass.NAMESPACE
 
 
+# ---------------------------------------------------------------------------
+# The two injected sets are asked LAST, and most keys never ask them at all
+# ---------------------------------------------------------------------------
+#
+# ⚑ A COST RULE WITH A CORRECTNESS BILL ATTACHED. Both injected sets are answered in
+# production by ``settings_keyspace_probe``, which IMPORTS every installed plugin —
+# and ``key_class`` used to materialise ``frozenset(DECLARED_AGENT_LEAVES) |
+# frozenset(agent_leaves)`` before it looked at the head, so the FIRST path of every
+# settings resolve paid for it whatever its shape. MEASURED at ~96% of a cold
+# ``load_merged_config`` on this box (223ms median -> 17ms), with the pass attributed
+# to ``box`` — a NAMESPACE, which cannot have an agent leaf at all.
+#
+# 🛑 THE ORDER IS FREE TO CHANGE BECAUSE BOTH OPERANDS ARE PURE. What is NOT free is
+# re-materialising either one: a ``frozenset(...)`` around ``agent_leaves``, or a
+# ``bool(...)`` around the ``leaves_known`` thunk, restores the whole cost silently —
+# nothing about the CLASSIFICATION would move, so no other test in this file reds.
+
+
+class _NeverAsk:
+    """An injected set that REDS if it is consulted at all.
+
+    ⚑ IT ANSWERS NOTHING, deliberately. A stub returning ``False`` would let a
+    re-materialised union pass this file while paying the cost it exists to forbid;
+    only raising makes the ASKING itself visible.
+    """
+
+    def __contains__(self, item: object) -> bool:
+        raise AssertionError(f"the injected set was asked about {item!r}")
+
+    def __iter__(self):
+        raise AssertionError("the injected set was iterated")
+
+    def __len__(self) -> int:
+        raise AssertionError("the injected set was sized")
+
+
+@pytest.mark.parametrize("key", [
+    # Not an agent path at all — no branch under these heads has a leaf question.
+    "config.data", "system.template", "workset.boxes", "box.image", "box.zippity",
+    "meta.box.path", "meta.agent.goose.zippity", "pref.box.image",
+    # An agent path whose leaf the CORE §2d contract already declares.
+    "agent.claude.model", "agent.default.access",
+    # …and the shapes that are refused before the vocabulary is reached.
+    "agent.claude", "agent.claude.bindings.ro", "agent.claude.a.b",
+])
+def test_a_key_the_CORE_contract_can_answer_asks_NEITHER_injected_set(key):
+    """⚑ THE DEFERRAL, pinned where the classifier decides it.
+
+    Every key here is answerable from constants this module declares, so consulting a
+    plugin to answer it is pure cost. ``_NeverAsk`` raises rather than answering, so
+    the assertion is that the question was never PUT.
+    """
+    _class(key, agent_leaves=_NeverAsk(), agents_with_known_leaves=_NeverAsk())
+
+
+def test_the_plugin_set_IS_asked_for_a_leaf_only_a_plugin_can_declare():
+    """The other direction, without which the case above would pass on a classifier
+    that had simply stopped consulting the plugins.
+
+    ``provider`` is goose's real ``setting_descriptor`` leaf and is NOT in the core
+    §2d table, so the plugin set is the only thing that can declare it — and the
+    concession behind it is the only thing that can excuse it.
+    """
+    from kanibako.settings.settings_keyspace import KeyClass
+
+    assert _class(
+        "agent.goose.provider", agent_leaves=frozenset({"provider"}),
+    ).cls is KeyClass.KEY
+    with pytest.raises(AssertionError, match="asked about 'zippity'"):
+        _class("agent.goose.zippity", agent_leaves=_NeverAsk())
+    with pytest.raises(AssertionError, match="asked about 'goose'"):
+        _class(
+            "agent.goose.zippity",
+            agent_leaves=frozenset(),
+            agents_with_known_leaves=_NeverAsk(),
+        )
+
+
+def test_the_REFUSAL_message_still_names_the_whole_vocabulary():
+    """🛑 NOT AN OPTIMISATION TARGET. The render forces the union, and it is owed:
+    this branch is already refusing, and §2h wants the error to say WHAT is declared.
+    A refusal listing only the core table would be a lie on a machine with plugins.
+    """
+    judged = _class("agent.claude.zippity", agent_leaves=frozenset({"provider"}))
+    assert "provider" in judged.reason
+    assert "model" in judged.reason
+
+
 def _category_tokens() -> "frozenset[str]":
     """The §2a category tokens, READ FROM THE DELIVERY TABLE (P13).
 
