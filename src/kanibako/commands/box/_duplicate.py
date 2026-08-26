@@ -273,15 +273,16 @@ def _duplicate_to_standalone(src_proj, new_path, std, force):
         # copytree carries the skeleton's modes but not its ownership — re-assert.
         materialize_canon_skeleton(dst_shell)
 
-    # Carry the source's box-scope settings into the destination's BOX TIER (M-8) —
-    # box tier first, with a pre-P2 standalone source's root-stored ``box.*`` keys
-    # underlaid (:func:`kanibako.settings.config.carried_box_settings`).  Without that underlay
-    # EVERY box created before the box tier existed loses box.image & friends on the
-    # first duplicate.  ``establish_standalone`` below then read-modify-writes
-    # ``box.enable_vault`` into this SAME file, preserving what was carried, and
-    # writes the FRESH ``workset.kuid`` to the destination ROOT.
-    src_box, src_ws = box_workset_settings_paths(src_proj)
-    carried = carried_box_settings(src_box, src_ws)
+    # Carry the source's box-scope settings into the destination's BOX TIER (M-8) — the
+    # BOX TIER ONLY (:func:`kanibako.settings.config.carried_box_settings`).  A ``box.*``
+    # key at the source's WORKSET tier (its ROOT file) is that workset's DOWNWARD DEFAULT,
+    # not the box's, so it is not copied down into the box tier where later workset edits
+    # could not reach it.  ⚑ A duplicate is a NEW workset scope — ``establish_standalone``
+    # below writes the destination ROOT fresh — so such a key does not reach the duplicate
+    # at all; that is the rule, not a gap.  ``establish_standalone`` also read-modify-writes
+    # ``box.enable_vault`` into this SAME box-tier file, preserving what was carried.
+    src_box, _ = box_workset_settings_paths(src_proj)
+    carried = carried_box_settings(src_box)
     dst_box_settings = dst_metadata / BOX_META_FILE
     if carried:
         if force and dst_box_settings.exists():
@@ -379,10 +380,11 @@ def _duplicate_to_local(src_proj, new_path, std, config, force):
     # Copy from the right place per mode so the workspace tree is not dragged into the
     # box dir.  The carried box settings come from the ONE pair (M-8), mode-aware:
     # box tier <root>/box_data/box.yaml for a standalone source,
-    # <metadata_path>/box.yaml otherwise — with a pre-P2 standalone source's
-    # root-stored ``box.*`` keys underlaid so a legacy box does not lose them.
-    src_box, src_ws = box_workset_settings_paths(src_proj)
-    carried = carried_box_settings(src_box, src_ws)
+    # <metadata_path>/box.yaml otherwise — the BOX TIER ONLY.  A standalone source's
+    # root-stored ``box.*`` belongs to the workset scope it is leaving, so it does not
+    # travel; the destination resolves the PRIMARY workset's tier instead.
+    src_box, _ = box_workset_settings_paths(src_proj)
+    carried = carried_box_settings(src_box)
     src_meta_dir = box_metadata_dir(src_proj.mode, src_proj.metadata_path)
 
     # Failure-consistency: a crash AFTER assign_primary_box_name (which registers it)
@@ -398,10 +400,10 @@ def _duplicate_to_local(src_proj, new_path, std, config, force):
             ignore=shutil.ignore_patterns(".kanibako.lock"),
         )
         # Deliver the carried box settings to the DESTINATION's box tier (which for a
-        # primary/named destination is <dst_project>/box.yaml).  The copytree
-        # above already places a standalone source's box tier there; this overwrites
-        # it with the carried doc so the legacy underlay is applied and the source's
-        # ``workset:`` identity is not inherited.
+        # primary/named destination is <dst_project>/box.yaml).  The copytree above
+        # already places the source's box tier there, so what this rewrite still buys is
+        # the ``workset:`` strip — the source's IDENTITY must not be inherited even if a
+        # hand-edited box.yaml carries one.
         if carried:
             dump_doc(dst_project / BOX_META_FILE, carried)
 

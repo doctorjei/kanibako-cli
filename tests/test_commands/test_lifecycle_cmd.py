@@ -746,13 +746,20 @@ class TestLifecycleCarriesBoxSettings:
         # The ROOT file still exists (detection marker) and carries the FRESH kuid.
         assert (dest / "workset.yaml").is_file()
 
-    def test_legacy_root_stored_settings_are_carried_on_convert(self, env, capsys):
-        """⚑ A PRE-P2 standalone box kept its ``box.*`` in the ROOT file.  Its box
-        tier is absent, so a box-tier-only carry silently drops the settings on the
-        first convert.  The workset tier's ``box:`` subtree must be underlaid."""
+    def test_a_root_stored_value_is_not_pinned_into_the_box_tier_on_convert(
+        self, env, capsys,
+    ):
+        """⚑ A ``box.*`` key in a standalone's ROOT file sits at the WORKSET tier, and
+        a convert must NOT persist it into the destination's BOX tier (Jei, 2026-08-26:
+        "copy/persist only those elements that are within the box settings").  Doing so
+        would PIN an overridable workset default as a box-scope override that later
+        workset edits could not reach.  The box leaves the workset the value belonged
+        to, so it stops resolving — which is what a downward default MEANS.  Its own
+        BOX-tier settings still travel
+        (:meth:`test_convert_standalone_to_default_carries_box_settings`)."""
         config, std, tmp_home = env
         pdir = _standalone(env)
-        # Simulate the pre-P2 on-disk shape: box keys in the ROOT, no box tier.
+        # The value is authored at the WORKSET tier only; the box tier is absent.
         root_doc = load_doc(pdir / "workset.yaml")
         root_doc.setdefault("box", {})["image"] = "legacy/img:11"
         dump_doc(pdir / "workset.yaml", root_doc)
@@ -764,21 +771,27 @@ class TestLifecycleCarriesBoxSettings:
         proj = resolve_project(std, config, project_dir=str(pdir), initialize=False)
         from kanibako.settings.paths import box_workset_settings_paths
         box_tier, ws_tier = box_workset_settings_paths(proj)
-        assert self._effective_image(config, box_tier, ws_tier) == "legacy/img:11"
-        # ⚑ and the source's workset IDENTITY is NOT inherited.
+        assert "image" not in (load_doc(box_tier).get("box") or {})
+        assert self._effective_image(config, box_tier, ws_tier) != "legacy/img:11"
+        # ⚑ and the source's workset IDENTITY is NOT inherited either.
         assert "workset" not in load_doc(box_tier)
 
-    def test_legacy_root_stored_settings_are_carried_on_convert_to_workset(
+    def test_the_destination_workset_default_wins_over_the_source_root_value(
         self, env, capsys,
     ):
-        """The WORKSET destination needs the carry for the LEGACY shape specifically.
-
-        For a post-P2 source the metadata copytree already lands ``box_data/
-        box.yaml`` at the destination's box tier, so the delivery looks
-        redundant — it is NOT: a pre-P2 source has no box tier, and only the
-        workset-tier underlay recovers its ``box.*`` keys."""
+        """⚑ THE PAIRED HALF, at the WORKSET destination: a box that ARRIVES in a workset
+        resolves THAT workset's ``box.*`` default, and the source's own root-stored value
+        is neither carried nor pinned over it.  Were the source value persisted into the
+        box tier it would OUTRANK the destination workset (cascade ``… < workset < box``)
+        — a box-scope override the arriving user never set and could not reach by editing
+        the workset."""
         config, std, tmp_home = env
         create_workset("ws", tmp_home / "ws_root", std)
+        # The DESTINATION workset publishes a downward default...
+        ws_doc = load_doc(tmp_home / "ws_root" / "workset.yaml")
+        ws_doc.setdefault("box", {})["image"] = "dest/img:12"
+        dump_doc(tmp_home / "ws_root" / "workset.yaml", ws_doc)
+        # ...while the SOURCE has one of its own, at its own workset tier.
         pdir = _standalone(env)
         root_doc = load_doc(pdir / "workset.yaml")
         root_doc.setdefault("box", {})["image"] = "legacy/img:12"
@@ -797,12 +810,15 @@ class TestLifecycleCarriesBoxSettings:
             WorksetSpec.from_workset(ws), names[0], std, config,
         )
         box_tier, ws_tier = box_workset_settings_paths(proj)
-        assert self._effective_image(config, box_tier, ws_tier) == "legacy/img:12"
+        assert "image" not in (load_doc(box_tier).get("box") or {})
+        assert self._effective_image(config, box_tier, ws_tier) == "dest/img:12"
 
-    def test_legacy_root_stored_settings_are_carried_on_move_to_standalone(
+    def test_a_root_stored_value_is_not_pinned_into_the_box_tier_on_move(
         self, env, capsys,
     ):
-        """Same for the STANDALONE destination (the S1 site)."""
+        """Same rule at the STANDALONE destination (the S1 site): the move establishes a
+        FRESH root — a new workset scope — so a value the source authored at ITS workset
+        tier is not carried down into the destination's box tier."""
         config, std, tmp_home = env
         pdir = _standalone(env)
         root_doc = load_doc(pdir / "workset.yaml")
@@ -814,6 +830,51 @@ class TestLifecycleCarriesBoxSettings:
         assert run_move(_move_args(pdir, dest, to_standalone=True)) == 0
         capsys.readouterr()
 
-        assert load_doc(dest / "box_data" / "box.yaml")["box"]["image"] == (
-            "legacy/img:13"
+        assert "image" not in (
+            load_doc(dest / "box_data" / "box.yaml").get("box") or {}
         )
+        assert "image" not in (load_doc(dest / "workset.yaml").get("box") or {})
+
+    def test_a_workset_default_resolves_inside_and_is_never_persisted_on_the_way_out(
+        self, env, capsys,
+    ):
+        """⚑ THE RULE, both halves in one box's lifetime.  A ``box.*`` key at the WORKSET
+        tier is a downward default: a box INSIDE the workset RESOLVES it through the
+        cascade, with nothing copied into its own tier, and a box that LEAVES stops
+        resolving it — the value was the workset's and stays there for the boxes that
+        stayed.  (Mutation: restore the workset-tier underlay in ``carried_box_settings``
+        → the move writes ``wsdefault/img:14`` into the destination's box tier → RED.)"""
+        config, std, tmp_home = env
+        create_workset("ws", tmp_home / "ws_root", std)
+        ws_file = tmp_home / "ws_root" / "workset.yaml"
+        ws_doc = load_doc(ws_file)
+        ws_doc.setdefault("box", {})["image"] = "wsdefault/img:14"
+        dump_doc(ws_file, ws_doc)
+
+        pdir = _standalone(env)
+        assert run_convert(_convert_args(pdir, to_workset="ws")) == 0
+        capsys.readouterr()
+
+        from kanibako.settings.paths import WorksetSpec, box_workset_settings_paths
+        ws = load_workset(tmp_home / "ws_root", "ws")
+        names = list(ws.project_names) if hasattr(ws, "project_names") else [
+            p.name for p in ws.projects
+        ]
+        proj = resolve_workset_project(
+            WorksetSpec.from_workset(ws), names[0], std, config,
+        )
+        box_tier, ws_tier = box_workset_settings_paths(proj)
+        # INSIDE: RESOLVED through the cascade, and NOT copied down into the box tier.
+        assert self._effective_image(config, box_tier, ws_tier) == "wsdefault/img:14"
+        assert "image" not in (load_doc(box_tier).get("box") or {})
+
+        # OUTSIDE: convert it back out (an external-connected box is ``convert``'s to
+        # move, not ``move``'s) — the workset's default does not follow it.
+        assert run_convert(_convert_args(pdir, to_standalone=True)) == 0
+        capsys.readouterr()
+        assert "image" not in (
+            load_doc(pdir / "box_data" / "box.yaml").get("box") or {}
+        )
+        assert "image" not in (load_doc(pdir / "workset.yaml").get("box") or {})
+        # ...and it is untouched for the boxes that stayed.
+        assert load_doc(ws_file)["box"]["image"] == "wsdefault/img:14"

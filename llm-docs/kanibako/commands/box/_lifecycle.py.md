@@ -492,8 +492,9 @@ Write the source box's carried box-scope settings to *dst_box_tier* (M-8).
 
 A convert/move makes a NEW box that INHERITS the source's box settings. The source's box tier and
 the destination's are BOTH resolved through the single derivation, so the settings land where the
-destination will actually read them — and a pre-P2 standalone source's root-stored `box.*` keys are
-UNDERLAID rather than lost (`kanibako.settings.config.carried_box_settings`).
+destination will actually read them. It is the BOX TIER ONLY: a `box.*` key at the source's WORKSET
+tier is that workset's downward default, not the box's, and is left where it was authored
+(`kanibako.settings.config.carried_box_settings`).
 
 A no-op when the source carries nothing, so a box with no settings file still produces no
 destination file — sparse, matching `create`.
@@ -627,9 +628,9 @@ convert still carries its in-place `box_data/` marker at this point, because the
 LATER in the convert. `force` affects only a standalone-marked source, so it is a no-op for the
 non-standalone move/duplicate cases.
 
-⚑ `_deliver_carried_box_settings` is called even though the metadata was just copied: for a
-STANDALONE source the copy CANNOT supply the box settings, since its box tier is a different file
-from the root one a pre-P2 box stored them in (M-8).
+⚑ `_deliver_carried_box_settings` is called even though the metadata was just copied: the copy is
+mode-shaped, and the delivery is what guarantees the source's box tier lands at the file the
+DESTINATION reads as its box tier (M-8) — with the source's `workset:` identity stripped.
 
 ⚑ `_remove_old_metadata` is skipped when the source was a workset — the registration was ALREADY
 released above, and cleaning again would double-remove.

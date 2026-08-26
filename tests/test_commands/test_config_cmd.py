@@ -1097,14 +1097,23 @@ class TestStandaloneBoxTierRoundTrip:
         assert read_workset_kuid(dst_root) != src_kuid
         assert "workset" not in load_doc(dst_box)
 
-    def test_duplicate_of_a_LEGACY_box_carries_root_stored_settings(
+    def test_duplicate_does_not_pin_a_root_stored_value_at_the_box_tier(
         self, config_file, tmp_home, credentials_dir, capsys,
     ):
-        """⚑ A PRE-P2 standalone box kept its ``box.*`` in the ROOT file and has NO
-        box tier.  Carrying the box tier alone drops those settings on the first
-        duplicate — silently, since the duplicate simply comes up with defaults.
-        The workset tier's ``box:`` subtree must be underlaid."""
+        """⚑ A ``box.*`` key in the ROOT file is a WORKSET-tier downward default, and a
+        duplicate must NOT persist it into the destination's BOX tier (Jei, 2026-08-26:
+        "copy/persist only those elements that are within the box settings").  Pinning it
+        at the box tier would convert an overridable workset default into a box-scope
+        override that later workset edits could not reach.
+
+        ⚑ It does not reach the duplicate at all, and that is the RULE rather than a
+        gap: a standalone duplicate is a NEW workset scope — ``establish_standalone``
+        writes the destination ROOT fresh — so a value authored at the SOURCE's workset
+        tier is one the destination was never within the scope of.  What a duplicate
+        DOES carry is the box tier
+        (:meth:`test_duplicate_carries_the_box_tier_not_the_root_file`)."""
         from kanibako.commands.box._duplicate import run_duplicate
+        from kanibako.commands.box._parser import run_show
         from kanibako.settings.config import read_workset_kuid
         from kanibako.settings.config_io import dump_doc, load_doc
 
@@ -1113,7 +1122,7 @@ class TestStandaloneBoxTierRoundTrip:
         doc = load_doc(src_root)
         doc.setdefault("box", {})["image"] = "legacy/img:9"
         dump_doc(src_root, doc)
-        assert not src_box.exists()          # the pre-P2 on-disk shape
+        assert not src_box.exists()          # nothing at the BOX tier to carry
         src_kuid = read_workset_kuid(src_root)
 
         dst = tmp_home / "dup_legacy"
@@ -1125,7 +1134,15 @@ class TestStandaloneBoxTierRoundTrip:
         assert rc == 0, f"out={out.out!r} err={out.err!r}"
 
         dst_root, dst_box = self._files(dst)
-        assert load_doc(dst_box)["box"]["image"] == "legacy/img:9"
+        # NOT pinned at the destination's box tier, NOR copied to its workset tier.
+        assert "image" not in (load_doc(dst_box).get("box") or {})
+        assert "image" not in (load_doc(dst_root).get("box") or {})
+        run_show(argparse.Namespace(
+            args=[str(dst)], box=None, effective=True, force=False,
+        ))
+        assert "legacy/img:9" not in capsys.readouterr().out
+        # The SOURCE keeps it: the carry READ the source's tiers, it did not move them.
+        assert load_doc(src_root)["box"]["image"] == "legacy/img:9"
         # ...and the duplicate still mints its OWN identity.
         assert read_workset_kuid(dst_root) != src_kuid
         assert "workset" not in load_doc(dst_box)

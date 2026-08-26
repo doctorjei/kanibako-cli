@@ -794,10 +794,10 @@ def _deliver_carried_box_settings(state: ProjectState, dst_box_tier: Path) -> No
     from kanibako.settings.config_io import dump_doc
     from kanibako.settings.paths import _box_settings_files
 
-    # ⚑ ``group=None`` is deliberate: only the STANDALONE arm consults it, and standalone
-    # derives its workset tier from the root — ProjectState carries no ProjectGroup.
-    src_box, src_ws = _box_settings_files(state.mode, state.metadata_path, None)
-    carried = carried_box_settings(src_box, src_ws)
+    # ⚑ ``group=None`` is harmless: only the WORKSET tier is derived from the group, and
+    # the carry reads the BOX tier alone — ProjectState carries no ProjectGroup anyway.
+    src_box, _ = _box_settings_files(state.mode, state.metadata_path, None)
+    carried = carried_box_settings(src_box)
     if carried:
         dump_doc(dst_box_tier, carried)
 

@@ -399,21 +399,40 @@ identity section (P8b sparse create) — while `enable_vault` stays a plain box-
 two concerns are decoupled. Paired writer: :func:`write_box_enable_vault`.
 
 
-```carried_box_settings(box_tier: Path, workset_tier: Path | None) -> dict```
+```carried_box_settings(box_tier: Path) -> dict```
 The box-scope settings a LIFECYCLE op carries from a source box.
 
 `convert` / `move` / `duplicate` all make a NEW box that inherits the source's box-scope settings.
-Post-P2 those live in the source's BOX TIER, so that file's content is carried verbatim (including
+Those live in the source's BOX TIER, so that file's content is carried verbatim (including
 non-`box:` sections such as agent config). Returns the DOC to write at the DESTINATION's box tier;
 `{}` when the source carries nothing.
 
-### The legacy underlay
+### The box tier, and nothing else
 
-A standalone box created BEFORE the box tier existed wrote its `box.*` keys into its ROOT file —
-which is its WORKSET tier now (M-8). Its box tier is therefore absent or partial, so the workset
-tier's `box:` subtree is underlaid beneath the box tier's (box tier WINS, per R2). Without this,
-every pre-P2 standalone box silently loses `box.image` and friends the first time it is converted,
-moved or duplicated.
+Jei, 2026-08-26: *"we should copy/persist only those elements that are within the box settings."*
+The function reads ONE file.
+
+A `box.*` key at the WORKSET tier is not the box's — it is an OVERRIDABLE DOWNWARD DEFAULT for the
+boxes that workset contains (`read_box_enable_vault`, spec §0 *Directional view/set across
+CONTAINMENT levels*). Persisting it into a destination's box tier would PIN it: an override at the
+most authoritative scope in the bracket (`… < workset < box`), which later edits to the workset
+could no longer reach, and which the arriving user never set. So it stays where it was authored.
+A box that STAYS in the workset keeps resolving it through the cascade; a box that LEAVES stops —
+because the value was the workset's, and that is what a downward default means.
+
+⚑ Every lifecycle destination is a new scope in this sense. `convert`/`move`/`duplicate` to
+standalone all run `establish_standalone`, which writes the destination ROOT fresh, so a value the
+source authored at ITS workset tier does not reach the destination by any route. Pinned by
+`test_a_workset_default_resolves_inside_and_is_never_persisted_on_the_way_out` and its three
+siblings in `tests/test_commands/test_lifecycle_cmd.py`, plus
+`test_duplicate_does_not_pin_a_root_stored_value_at_the_box_tier`
+(`tests/test_commands/test_config_cmd.py`).
+
+⚑ HISTORY, so it is not re-litigated: this function used to underlay the workset tier's `box:`
+subtree beneath the box tier's, to keep a box created before the box tier existed from losing
+`box.image`. Jei's ruling above settles it the other way, and his same-day ruling that there is no
+installed base (*"there's not been real deployment before me up to now"*) leaves that rescue with
+no population to rescue.
 
 ### `workset:` is never carried
 
@@ -425,9 +444,9 @@ because the kuid is read directly from the ROOT file, never resolved through the
 by `test_kuid_is_read_from_the_root_file_not_the_box_tier`
 (`tests/test_settings/test_paths.py`) and verified experimentally.
 
-An earlier version of this code claimed carrying it would OVERRIDE the destination's fresh kuid,
-and used that to justify dropping the legacy underlay entirely. That claim was wrong on both
-counts, and dropping the underlay is what caused the loss described above.
+⚑ Now that the read is box-tier-only, the strip is DEFENSIVE and no test exercises it: a
+`workset:` section can only reach a `box.yaml` by hand. Removing it leaves the whole suite green.
+It is kept because a hand-authored one should not travel, not because a code path produces one.
 
 
 ```read_workset_kuid(path: Path) -> str```

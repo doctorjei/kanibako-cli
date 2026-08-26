@@ -29,7 +29,7 @@ def write_project_config(path: Path, image: str) -> None
 def persist_creation_flags(box_settings_path: Path, *, materializing: bool, image: str | None=None, share_images: bool | None=None) -> None
 def write_box_enable_vault(path: Path, enable_vault: bool=True) -> None
 def read_box_enable_vault(path: Path, *, default_from: Path | None=None) -> bool
-def carried_box_settings(box_tier: Path, workset_tier: Path | None) -> dict
+def carried_box_settings(box_tier: Path) -> dict
 def read_workset_kuid(path: Path) -> str
 def read_workset_skip_kuid_check(path: Path) -> bool
 def write_project_config_key(path: Path, flat_key: str, value: str) -> None
