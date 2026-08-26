@@ -377,7 +377,7 @@ def copy_into_workset(
             dst_workspace = ws.workspaces_dir / proj_name
             ignore = None
             if source_mode == BoxMode.standalone:
-                ignore = shutil.ignore_patterns(STANDALONE_META_DIR, ".kanibako", "kanibako")
+                ignore = shutil.ignore_patterns(STANDALONE_META_DIR)
             shutil.copytree(source_path, dst_workspace, ignore=ignore, dirs_exist_ok=True)
     except BaseException:
         try:
@@ -968,8 +968,6 @@ _STANDALONE_ROOT_ARTIFACTS = frozenset({
     "vault",                # vault/{ro,rw}
     WORKSET_META_FILE,      # the workset meta (drift I — at the root)
     BOX_META_FILE,          # the box meta (drift I — at the root)
-    ".kanibako",            # legacy marker dir
-    "kanibako",             # legacy marker dir
     ".kanibako.lock",       # lock file
 })
 
@@ -1195,7 +1193,7 @@ def _to_workset(
         dst_workspace = target_ws.workspaces_dir / new_name
         ignore = None
         if state.mode == BoxMode.standalone:
-            ignore = shutil.ignore_patterns(STANDALONE_META_DIR, ".kanibako", "kanibako")
+            ignore = shutil.ignore_patterns(STANDALONE_META_DIR)
         shutil.copytree(state.workspace_path, dst_workspace, ignore=ignore, dirs_exist_ok=True)
 
     # Determine the recorded workspace.

@@ -542,17 +542,6 @@ def load_workset(root: Path, name: str) -> Workset:
     root = root.resolve()
     if not root.is_dir():
         raise WorksetError(f"Workset root does not exist: {root}")
-    # Legacy migration: old kanibako/ subdir → boxes/.  ⚑ The DEFAULT leaf on purpose,
-    # not the resolved ``workset.boxes``: this renames a pre-key-era directory into the
-    # place that era put it, and a root old enough to have one cannot have repointed.
-    # ⚑ ``"kanibako"`` stays a literal — ``paths_defaults.KANIBAKO_PATH`` is the app-name
-    # leaf for the data/runtime dir, a DIFFERENT default that merely shares the string.
-    old_subdir = root / "kanibako"
-    new_subdir = root / BOXES_DIR_NAME
-    if old_subdir.is_dir() and not new_subdir.exists():
-        old_subdir.rename(new_subdir)
-        import sys
-        print(f"Migrated workset: {old_subdir} → {new_subdir}", file=sys.stderr)
     return _load_workset(root, name)
 
 
