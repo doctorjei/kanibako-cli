@@ -544,9 +544,9 @@ failure degrades to `None` rather than erroring.
 `_read_box_image` over a `(box_tier, workset_tier)` pair, box tier wins.
 
 `box.image` is a BOX-scope key, so it is read from the box tier; the workset tier is consulted only
-as the R2 downward-default. That fallback is what keeps a pre-P2 standalone box — whose `box.image`
-was written to its ROOT file when that file WAS the box tier (M-8) — capturable into the
-deregistered blob.
+as the R2 downward-default. That fallback is DECLARED DESIGN (keyspec §2c), not a compat path; it is
+also what keeps a pre-P2 standalone box — whose `box.image` was written to its ROOT file when that
+file WAS the box tier (M-8) — capturable into the deregistered blob.
 
 ```_purge_deregistered(std, name: str, entry: dict, args: argparse.Namespace) -> int```
 Handle `rm <name>` when *name* resolves only to a deregistered entry.
