@@ -392,14 +392,68 @@ def _resolve_box_image(runtime, proj, container_name: str) -> str | None:
         return None
 
 
+def _write_attached_config(path, extension: str | None) -> None:
+    """Write the box's attached-container config; WARNS (never aborts) on an OS failure.
+
+    ⚑ The ``OSError`` here is the ONE failure in the whole seed that a user both
+    CAUSES and can FIX: an unwritable or full VS Code config home, or an
+    ``imageConfigs`` path component that is not a directory.  It arrives from
+    ``seed_attached_container_config``'s ``mkdir``/``write_text`` carrying the
+    errno AND the offending path, so the message needs nothing but the exception
+    itself.  Under the callers' blanket debug swallow the user saw NOTHING and
+    got a VS Code window with no workspace folder and no agent extension — the
+    symptom with its cause hidden and a fix they could have acted on withheld.
+
+    WARNING, not an abort: the launch keeps its zero-delta.  ``code``'s job is to
+    open the editor; the seed only enriches the attach, so a failed seed must
+    cost the user a warning, never their editor.
+
+    ⚑ ONE writer for BOTH legs (:func:`_seed_attached_config` and
+    :func:`_seed_remote_attached_config`), and the message is leg-agnostic
+    because the FAILURE is: ``--remote`` seeds the LOCAL config home too (keyed
+    by the remote box's image), so the unwritable directory and the user's remedy
+    are the same on either path.
+    """
+    try:
+        seed_attached_container_config(
+            path,
+            workspace_folder=GUEST_HOME + "/workspace",
+            extension=extension,
+        )
+    except OSError as exc:
+        # ⚑ "may" is exact, not a hedge: a PREVIOUS successful seed may still be
+        # on disk, in which case the attach degrades only by whatever this run
+        # would have added.  A first-ever seed that fails degrades it fully.
+        get_logger("code").warning(
+            "VS Code's attached-container config for this box could not be "
+            "written, so the attach may open without the box's workspace "
+            "folder or its agent extension.\n%s",
+            exc,
+        )
+
+
 def _seed_attached_config(runtime, std, proj, container_name: str) -> None:
     """Best-effort seed of the box's attached-container config. NEVER raises.
 
     UNION-MERGES the box workspace + the box agent's editor extension into the
     IMAGE-keyed devcontainer.json-subset VS Code reads on attach (preserving
-    everything VS Code/the user already wrote).  Any failure — image resolution,
-    agent resolution, filesystem — is logged at debug and swallowed so the
-    `code` launch is unaffected (Phase-1 zero-launch-delta).
+    everything VS Code/the user already wrote).  The launch is unaffected by any
+    failure here (Phase-1 zero-launch-delta).
+
+    ⚑ Each STEP owns its own reporting, and this blanket catch is deliberately
+    NOT where a foreseen failure is handled:
+
+    * image resolution — :func:`_resolve_box_image` (WARNS a settings refusal,
+      debug otherwise) and returns ``None``, which SKIPS the seed;
+    * agent + extension resolution — :func:`_resolve_box_agent_node` /
+      :func:`_resolve_box_vscode_extension`, both debug-and-``None``;
+    * the WRITE — :func:`_write_attached_config`, which WARNS on ``OSError``.
+
+    What is left for this catch is therefore the UNFORESEEN: a bug in the seed
+    itself, or an ``OSError`` from the runtime probe inside ``_resolve_box_image``
+    (podman gone between the ``is_running`` check and here).  Neither names a
+    condition the user can act on, so both stay at debug — and the catch stays
+    blanket so a seed bug can never cost the user their editor.
     """
     try:
         image_ref = _resolve_box_image(runtime, proj, container_name)
@@ -411,11 +465,7 @@ def _seed_attached_config(runtime, std, proj, container_name: str) -> None:
         path = attached_container_config_path(
             image_ref, xdg("XDG_CONFIG_HOME", ".config"),
         )
-        seed_attached_container_config(
-            path,
-            workspace_folder=GUEST_HOME + "/workspace",
-            extension=extension,
-        )
+        _write_attached_config(path, extension)
     except Exception:
         get_logger("code").debug(
             "failed to seed VS Code attached-container config", exc_info=True,
@@ -534,6 +584,21 @@ def _seed_remote_attached_config(engine, container_name: str) -> None:
     STAMP-ONLY agent resolution (``KANIBAKO_AGENT`` via the RemoteEngine): there
     is no LOCAL box to run the merged-config cascade against, so a pre-stamp
     remote box simply seeds no extension (the workspace folder still seeds).
+
+    ⚑ Like the local leg, each STEP owns its reporting and the blanket catch is
+    NOT where a foreseen failure is handled:
+
+    * image resolution — ``RemoteEngine.container_image`` returns ``None`` on a
+      failed probe, which SKIPS the seed;
+    * agent + extension resolution — the inner ``except`` below, extension
+      ``None``;
+    * the WRITE — :func:`_write_attached_config`, which WARNS on ``OSError``.
+
+    What is left for this catch is the UNFORESEEN: a bug in the seed, or an
+    ``OSError`` from the podman probe inside ``container_image`` (the tunnel or
+    the binary gone since ``preflight_engine``).  Neither names a condition the
+    user can act on, so both stay at debug — and the catch stays blanket so a
+    seed bug can never cost the user their editor.
     """
     try:
         image_ref = engine.container_image(container_name)
@@ -550,11 +615,7 @@ def _seed_remote_attached_config(engine, container_name: str) -> None:
         path = attached_container_config_path(
             image_ref, xdg("XDG_CONFIG_HOME", ".config"),
         )
-        seed_attached_container_config(
-            path,
-            workspace_folder=GUEST_HOME + "/workspace",
-            extension=extension,
-        )
+        _write_attached_config(path, extension)
     except Exception:
         get_logger("code").debug(
             "failed to seed remote VS Code attached-container config",
