@@ -287,3 +287,93 @@ class TestWorksetFixedPaths:
         assert proj.shell_path == ws.projects_dir / name / "home"
         assert proj.vault_ro_path == ws.vault_dir / "ro" / name
         assert proj.vault_rw_path == ws.vault_dir / "rw" / name
+
+
+# ---------------------------------------------------------------------------
+# R2 downward-defaults: a NAMED box inherits ``box.enable_vault`` from its
+# workset tier (spec §0 "Directional view/set across CONTAINMENT levels" +
+# §2 "Cascade (override precedence, box wins — FULL bracket)").
+# ---------------------------------------------------------------------------
+
+class TestNamedWorksetEnableVaultDownwardDefault:
+    """``workset create --no-vault`` writes ``box.enable_vault`` at the WORKSET
+    tier; the NAMED resolver must honour it as an overridable default.
+    """
+
+    @staticmethod
+    def _write_workset_enable_vault(ws, value):
+        """Write ``box.enable_vault`` at the workset tier, as ``workset create --no-vault`` does."""
+        from kanibako.settings.config_io import dump_doc, load_doc
+        from kanibako.settings.paths import workset_settings_path
+
+        path = workset_settings_path(WorksetSpec.from_workset(ws))
+        doc = load_doc(path) if path.is_file() else {}
+        doc.setdefault("box", {})["enable_vault"] = value
+        dump_doc(path, doc)
+        return path
+
+    def test_workset_tier_false_reaches_the_box(self, workset_env, std, config):
+        ws, name = workset_env
+        self._write_workset_enable_vault(ws, False)
+        proj = resolve_workset_project(WorksetSpec.from_workset(ws), name, std, config)
+        assert proj.enable_vault is False
+
+    def test_box_tier_true_overrides_workset_tier_false(self, workset_env, std, config):
+        """The contained scope always wins per the cascade (spec §0)."""
+        from kanibako.settings.config_io import dump_doc
+        from kanibako.settings.paths import BOX_META_FILE
+
+        ws, name = workset_env
+        self._write_workset_enable_vault(ws, False)
+        box_tier = ws.projects_dir / name / BOX_META_FILE
+        box_tier.parent.mkdir(parents=True, exist_ok=True)
+        dump_doc(box_tier, {"box": {"enable_vault": True}})
+        proj = resolve_workset_project(WorksetSpec.from_workset(ws), name, std, config)
+        assert proj.enable_vault is True
+
+    def test_explicit_param_still_wins(self, workset_env, std, config):
+        ws, name = workset_env
+        self._write_workset_enable_vault(ws, False)
+        proj = resolve_workset_project(WorksetSpec.from_workset(ws), name, std, config,
+                                       enable_vault=True)
+        assert proj.enable_vault is True
+
+    def test_absent_everywhere_still_defaults_true(self, workset_env, std, config):
+        """MUTATION-GUARD: the False above comes from the workset tier, not a moved floor."""
+        ws, name = workset_env
+        proj = resolve_workset_project(WorksetSpec.from_workset(ws), name, std, config)
+        assert proj.enable_vault is True
+
+    def test_create_does_not_pin_the_inherited_default(self, workset_env, std, config,
+                                                       credentials_dir):
+        """Spec ``:868``: sparse — absent from the box file unless THE USER sets it there.
+
+        The inherited workset default must resolve, but must NOT be materialised into
+        the box tier, or a later workset edit could never reach the box.
+        """
+        from kanibako.settings.config_io import load_doc
+        from kanibako.settings.paths import BOX_META_FILE
+
+        ws, name = workset_env
+        self._write_workset_enable_vault(ws, False)
+        proj = resolve_workset_project(WorksetSpec.from_workset(ws), name, std, config,
+                                       initialize=True)
+        assert proj.enable_vault is False
+
+        box_tier = ws.projects_dir / name / BOX_META_FILE
+        stored = (load_doc(box_tier).get("box") or {}) if box_tier.is_file() else {}
+        assert "enable_vault" not in stored
+
+    def test_create_does_pin_an_explicit_box_flag(self, workset_env, std, config,
+                                                  credentials_dir):
+        """``kanibako create --no-vault`` IS the user setting it at box scope — persist it."""
+        from kanibako.settings.config_io import load_doc
+        from kanibako.settings.paths import BOX_META_FILE
+
+        ws, name = workset_env
+        proj = resolve_workset_project(WorksetSpec.from_workset(ws), name, std, config,
+                                       initialize=True, enable_vault=False)
+        assert proj.enable_vault is False
+
+        box_tier = ws.projects_dir / name / BOX_META_FILE
+        assert load_doc(box_tier)["box"]["enable_vault"] is False
