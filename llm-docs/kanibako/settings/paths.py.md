@@ -256,8 +256,8 @@ EVERY mode (spec §2c ALL PROJECTS), so the box tier is ALWAYS a real path — n
   WORKSET tier for a degenerate one-box workset, and the file DETECTION reads
   (`system-design-1.8.0.md` § "Detection & import"; `box_resolve.standalone_settings_present`).
   A `box.*` key stored THERE still resolves for box scope via R2 downward-defaults (`box` ⊂
-  `workset` in `SCOPE_CONTAINMENT` — the workset-tier read KEEPS `box.*`), which is exactly how a
-  pre-P2 standalone box keeps working with no migration.
+  `workset` in `SCOPE_CONTAINMENT` — the workset-tier read KEEPS `box.*`). That is DECLARED DESIGN
+  (keyspec §2c), and it is also how a pre-P2 standalone box keeps working with no migration.
 
 ⚑ This pair is the SINGLE SOURCE for READ, WRITE **and** ANCHOR (M-8): the launch cascade's
 `box_path`/`workset_path`, the `meta.box.settings` anchor, and the `config set` / `get` / `show` /
@@ -1381,8 +1381,10 @@ fixed `box_data/home` + `<root>/vault/{ro,rw}` positions.
 
 `enable_vault` (P5a): explicit param wins; else the stored box-scope `box.enable_vault` — read from
 the BOX tier, falling back to the WORKSET tier (the ROOT file) as an R2 downward-default. ⚑ That
-fallback is what keeps a pre-P2 standalone box, whose value was written to the root file, working
-with no migration (M-8). ALL THREE resolvers pass `default_from`; standalone alone then PERSISTS the
+fallback is LIVE DESIGN, not a compat path — keyspec §2c's STANDALONE block declares it ("Box values
+… still resolve from the workset tier … as downward defaults when no box file exists"). It is ALSO
+why a pre-P2 standalone box, whose value was written to the root file, keeps working with no
+migration (M-8) — a consequence of the rule, never its reason. ALL THREE resolvers pass `default_from`; standalone alone then PERSISTS the
 RESOLVED value — that write IS the M-8 migration, landing the root file's value at the box tier.
 
 **Box identity name (P8a):** sourced from `box_resolve` for a MATERIALIZED standalone (`box_data/` +
