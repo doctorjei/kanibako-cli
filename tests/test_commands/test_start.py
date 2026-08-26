@@ -3279,8 +3279,13 @@ class TestApplyInitSeeds:
             channels_share=tmp_path / "channels" / "share",
             # B2b: the system channel type-roots folded into resolved_sys so the
             # @system.channels.* ALL-PROJECTS channel binds resolve from the snapshot.
+            # ⚑ ALL FIVE DECLARED LEAVES. ``channels_broadcast`` was missing here for
+            # as long as the launch floor was missing ``system.channels.broadcast`` —
+            # a stub that mirrored the bug rather than the ``StandardPaths`` it stands
+            # in for, so it could not have caught it.
             channels_common=tmp_path / "channels" / "common",
             channels_chat=tmp_path / "channels" / "chat",
+            channels_broadcast=tmp_path / "channels" / "chat" / "broadcast.md",
             # B2b: the PRIMARY logs dir helper_log_path reads (= the resolved
             # workset.logs anchor the helper-log bind routes through).
             primary_logs=tmp_path / "primary_workset" / "logs",

@@ -1393,51 +1393,120 @@ class TestPrimaryWorksetMigration:
 
 
 class TestWorksetCmdSystemFloor:
-    """S-4: the SECOND ``resolved_sys`` map must carry the SAME ``system.*`` tier
-    the launch floor does.
+    """S-4: ``workset share list --effective`` must resolve the SAME ``system.*`` tier
+    a launch does — its whole job is to say what a launch would mount.
 
-    ⚑ MUTATION-PROVEN GAP. Reverting ``workset_cmd``'s floor to the retired
-    ``system.base_template`` spelling turned ZERO tests red — and the brief flagged
-    exactly this divergence risk ("both must gain the key or ``workset config show
-    --effective`` diverges from launch"). The failure is silent by construction: a
-    workset binding whose source ``@``-refs ``@system.template`` or ``@system.canon``
-    would render as an EMPTY-prefixed path in the display while mounting correctly at
-    launch — a display that lies about what a launch does.
+    ⚑⚑ THE OLD VERSION OF THIS CLASS DID NOT CATCH A MISSING KEY, and that is why it is
+    rewritten rather than extended.  It read the two functions' SOURCE TEXT for four
+    hard-coded key names, so it compared each map against a list, not against the other
+    map and not against the declared keyspace.  Both maps could be — and both were —
+    wrong about a key it did not name: the display floor carried NONE of the five
+    ``system.channels.*`` leaves and the launch floor was missing
+    ``system.channels.broadcast``, and this class was green throughout.  A pin that
+    enumerates what it checks can only ever catch the names its author already thought
+    of, which is the opposite of the property.
+
+    Both carriers now read ``settings/paths.system_path_floor``.  The cases below pin
+    that they DO (by mutation) and that the display renders everything the launch floor
+    answers (by derivation), so no key name appears in this file at all.
+
+    ⚑ The failure this guards is SILENT by construction: an unresolvable ``@``-ref is a
+    legitimately-absent referent, not an error, so the binding row simply does not
+    print, with rc 0.
     """
 
-    def _floor_keys(self):
-        import inspect
+    _DEST = "/home/agent/floor-probe"
 
+    def _workset(self, std, tmp_home):
+        """One real workset; the caller re-points its single binding per case."""
+        ws_root = tmp_home / "worksets" / "floor-set"
+        create_workset("floor-set", ws_root, std)
+        return "floor-set", ws_root
+
+    def _bind_at(self, ws_root, source):
+        """Re-point the workset's one RO binding at *source*."""
+        from kanibako.settings.config import WORKSET_META_FILE
+        from kanibako.settings.config_io import dump_doc, load_doc
+
+        doc_path = ws_root / WORKSET_META_FILE
+        doc = load_doc(doc_path) or {}
+        doc.setdefault("workset", {}).setdefault("bindings", {})["ro"] = {
+            self._DEST: [source],
+        }
+        dump_doc(doc_path, doc)
+
+    def _effective(self, name, capsys):
         from kanibako.commands import workset_cmd
 
-        src = inspect.getsource(workset_cmd._print_effective_shares)
-        return {
-            key for key in
-            ("system.channelroot", "system.template", "system.canon",
-             "system.base_template")
-            if f'"{key}"' in src
-        }
-
-    def test_floor_carries_the_current_system_path_tier(self):
-        keys = self._floor_keys()
-        assert "system.template" in keys, (
-            "workset_cmd's resolved_sys floor lost system.template — a workset "
-            "binding @-refing it would resolve differently here than at launch"
+        rc = workset_cmd.run_share_list(
+            argparse.Namespace(workset=name, effective=True)
         )
-        assert "system.canon" in keys
-        assert "system.base_template" not in keys, (
-            "the RETIRED spelling is back in workset_cmd's floor (M-11)"
+        assert rc == 0
+        return capsys.readouterr().out
+
+    def test_the_display_renders_every_key_the_launch_floor_answers(
+        self, std, config, project_dir, tmp_home, capsys,
+    ):
+        """The value oracle: the launch's OWN output supplies the key list.
+
+        A key present in one carrier and absent in the other reds here whatever it is
+        called, which is exactly what naming the keys could not do.
+        """
+        from kanibako.commands.start import _launch_snapshot_inputs
+        from kanibako.settings.paths import resolve_project
+
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        resolved_sys = _launch_snapshot_inputs(
+            std=std, proj=proj, agent_name="claude",
+        )[1]
+        assert resolved_sys, "the launch floor is empty; this oracle would be vacuous"
+
+        name, ws_root = self._workset(std, tmp_home)
+        for key, value in sorted(resolved_sys.items()):
+            self._bind_at(ws_root, f"@{key}")
+            out = self._effective(name, capsys)
+            assert f"{value} -> {self._DEST}" in out, (
+                f"@{key} is in the LAUNCH floor and did not render in the "
+                f"--effective display: the display omits a binding a launch mounts"
+            )
+
+    def test_both_carriers_read_the_one_builder(
+        self, std, config, project_dir, tmp_home, capsys, monkeypatch,
+    ):
+        """MUTATION on the shared builder: drop a key and BOTH sides must lose it.
+
+        Two hand-written maps would each keep their own copy and neither would notice.
+        """
+        from kanibako.commands.start import _launch_snapshot_inputs
+        from kanibako.settings import paths as paths_mod
+        from kanibako.settings.paths import resolve_project, system_path_floor
+
+        dropped = "system.channelroot"
+        monkeypatch.setattr(
+            paths_mod, "system_path_floor",
+            lambda s: {k: v for k, v in system_path_floor(s).items() if k != dropped},
         )
-
-    def test_floor_matches_the_launch_floor(self):
-        """The two maps are the divergence risk itself, so compare them directly."""
-        import inspect
-
+        # ⚑ ``start`` binds the name at import, so the launch side needs its own patch;
+        # ``workset_cmd`` imports it lazily and picks the module attribute up.
         from kanibako.commands import start as start_mod
 
-        launch = inspect.getsource(start_mod._launch_snapshot_inputs)
-        for key in ("system.template", "system.canon", "system.channelroot"):
-            assert f'"{key}"' in launch, key
+        monkeypatch.setattr(
+            start_mod, "system_path_floor", paths_mod.system_path_floor,
+        )
+
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        resolved_sys = _launch_snapshot_inputs(
+            std=std, proj=proj, agent_name="claude",
+        )[1]
+        assert dropped not in resolved_sys
+
+        name, ws_root = self._workset(std, tmp_home)
+        self._bind_at(ws_root, f"@{dropped}")
+        out = self._effective(name, capsys)
+        assert self._DEST not in out, (
+            "the display still resolved a key the shared builder no longer emits, so "
+            "it is reading a second map of its own"
+        )
 
 
 class TestWorksetCreateIsAtomicOnRefusal:

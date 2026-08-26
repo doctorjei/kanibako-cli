@@ -76,7 +76,13 @@ class BoxChannelAddresses:
 
 @dataclass(frozen=True)
 class OwnPartition:
-    """This box's OWN system-scope partition dirs (mailbox + share_global)."""
+    """This box's OWN partition dirs (mailbox + share_global), reached WITHOUT a ``proj``.
+
+    ⚑ The same two directories :class:`BoxChannelAddresses` calls ``inbox`` and
+    ``share_global``, and resolved through the same keys — the difference is the INPUT
+    (raw token + workset root, for the relocation path), never the answer.  They were
+    two answers once; see :func:`own_partition_dirs`.
+    """
 
     ws_token: str
     box_name: str
@@ -85,28 +91,30 @@ class OwnPartition:
 
 
 def own_partition_dirs(
-    std: StandardPaths, ws_token: str, box_name: str
+    std: StandardPaths, ws_token: str, box_name: str, *, ws_root: Path
 ) -> OwnPartition:
-    """Derive a box's OWN system-scope partition dirs from ``(ws_token, box)``.
+    """Derive a box's OWN partition dirs from ``(ws_token, ws_root, box)``.
 
-    The RAW-TOKEN primitive for move/convert relocation, which needs BOTH the OLD and
+    The RAW-INPUT primitive for move/convert relocation, which needs BOTH the OLD and
     the NEW partition and works from a pair of ``ProjectState``s rather than a resolved
     ``ProjectPaths``.
 
-    ⚑⚑ IT IS THE DEFAULT, NOT THE KEY.  :func:`box_channel_addresses` routes through
-    ``workset.channels.{mailboxes,share_global}`` and this does not — it has no workset
-    root to read a repoint from.  So a relocation between two worksets, either of which
-    repoints ``mailboxes``, moves the DEFAULT partition dir rather than the repointed
-    one.  Closing that needs the caller (``commands/box/_lifecycle.py``) to hand over
-    each side's workset root; it is a KNOWN GAP, not an oversight, and it is not
-    reachable without a repoint.
+    ⚑⚑ *ws_root* IS REQUIRED, and that is the whole repair.  This used to take
+    ``(std, ws_token)`` alone, which is exactly enough to build the partition's DEFAULT
+    and not enough to read ``workset.channels.{mailboxes,share_global}`` — so a
+    relocation moved the default directory while :func:`box_channel_addresses`, which
+    HAS routed through those keys since R-35, mounted the box's inbox at the repointed
+    one.  A ``box move`` out of a workset that repoints ``mailboxes`` therefore moved an
+    empty directory and left every message the box had received stranded at an address
+    no longer registered to it.  An OPTIONAL root would have reproduced that silently
+    for any caller who omitted it, so the caller is made to answer.
     """
-    part = system_partition(std, ws_token)
+    part = partition_key_paths(std, ws_token, ws_root)
     return OwnPartition(
         ws_token=ws_token,
         box_name=box_name,
         mailbox=part.mailboxes / box_name,
-        share_global=part.share / box_name,
+        share_global=part.share_global / box_name,
     )
 
 
@@ -165,6 +173,13 @@ def system_partition(std: StandardPaths, ws_token: str) -> SystemPartition:
 
     ⚑ Applies to EVERY mode — do NOT gate this off the workset-local channels
     (D-M9): standalone still has a ``__STANDALONE__`` partition.
+
+    ⚑⚑ IT IS THE DEFAULT, NOT THE ANSWER.  Its only PRODUCTION caller is
+    :func:`partition_key_paths`, which hands it in as the value
+    ``workset.channels.{mailboxes,share_global}`` fall back to; the tests that call it
+    directly are pinning that default and nothing else.  Reaching for it anywhere on a
+    live path is how a repoint gets ignored — that was the whole of the relocation
+    defect — so a caller wanting "the box's partition" wants that function.
     """
     return SystemPartition(
         ws_token=ws_token,
@@ -262,6 +277,35 @@ def workset_channel_paths(
     )
 
 
+def partition_key_paths(
+    std: StandardPaths, ws_token: str, ws_root: Path
+) -> WorksetPartition:
+    """Resolve ``workset.channels.{mailboxes,share_global}`` from ``(token, ws_root)``.
+
+    ⚑ THE ONE PLACE THE TWO PARTITION KEYS ARE READ.  Both entry points land here:
+    :func:`workset_partition_paths` for a resolved ``ProjectPaths``, and
+    :func:`own_partition_dirs` for the relocation path, which holds a pair of
+    ``ProjectState``s and no ``ProjectPaths`` at all.  Those two used to answer the
+    same question differently — one through the keys, one through
+    :func:`system_partition` — which is how a repoint could be honoured at launch and
+    ignored by a ``box move``.
+
+    ⚑ RAISES (``SettingsError``, naming the key) on a repoint that cannot resolve, like
+    every other pre-snapshot key read.  A best-effort caller catches it; it is not
+    softened here, because a silent fallback to the default is the failure this
+    function exists to end.
+    """
+    from kanibako.project.workset import load_workset_settings_doc
+
+    default = system_partition(std, ws_token)
+    doc = load_workset_settings_doc(ws_root)
+    return WorksetPartition(
+        ws_token=ws_token,
+        mailboxes=_channel_key(ws_root, doc, "mailboxes", default.mailboxes),
+        share_global=_channel_key(ws_root, doc, "share_global", default.share),
+    )
+
+
 def workset_partition_paths(
     proj: ProjectPaths, std: StandardPaths
 ) -> WorksetPartition:
@@ -272,16 +316,8 @@ def workset_partition_paths(
     primary one does.  Their default IS :func:`system_partition`, which is exactly why
     the un-keyed version looked correct: it produced the right value and obeyed no key.
     """
-    from kanibako.project.workset import load_workset_settings_doc
-
-    ws_token = workset_name_token(proj)
-    ws_root = workset_root(proj, std)
-    default = system_partition(std, ws_token)
-    doc = load_workset_settings_doc(ws_root)
-    return WorksetPartition(
-        ws_token=ws_token,
-        mailboxes=_channel_key(ws_root, doc, "mailboxes", default.mailboxes),
-        share_global=_channel_key(ws_root, doc, "share_global", default.share),
+    return partition_key_paths(
+        std, workset_name_token(proj), workset_root(proj, std),
     )
 
 

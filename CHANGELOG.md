@@ -129,6 +129,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   settings parse raises — a retired entry shape, a bare relative path, a wrong number of arguments —
   at every tier that reads a file, including agent files and a `pref:` table.
 
+- **`box get` and `workset get` say what `transform_settings` is, instead of denying the key
+  exists.** It is a declared agent leaf, but a table-valued one, and §2a admits only scalars at a
+  file scope — so there is no bare spelling for it there. The refusal said `'transform_settings' is
+  not a declared namespace`, which is true of the token and misleading about the key, and then
+  prescribed hand-editing the entry out of a settings file where it is legitimate one scope up. It
+  now names the shape and where the value lives: `read it at the agent noun: kanibako agent get
+  <agent> transform_settings`. No value was ever returned at that spelling and none is now; the
+  exit code is unchanged.
+
+- **A binding sourced at `@system.channels.broadcast` produces a mount.** Five `system.channels.*`
+  leaves are declared and the launch floor supplied four, so that one resolved to nothing: a
+  `config set` was accepted, `config get` read it back, and no mount appeared — no warning, rc 0.
+  The floor is now derived from the declared system path defaults rather than listed by hand, so a
+  leaf cannot go missing this way again.
+
+- **`kanibako workset share list --effective` shows bindings sourced at a `system.channels.*` key.**
+  It carried none of them, so a binding that mounts correctly at launch printed nothing at all — the
+  display was wrong about live mounts, not only about the broken key. Both the launch and the
+  display now read one shared builder.
+
+- **`box move` and `box convert` relocate a repointed channel partition instead of the default
+  one.** If either workset repointed `workset.channels.mailboxes` or `.share_global`, the relocation
+  moved the default directory while the box was already mounted at the repointed address, so mail
+  was left behind. Each side's own workset root is now used. If a channel key cannot be resolved the
+  step warns and skips rather than aborting: the files have already moved by then, so the
+  alternative is a half-completed operation. Exit codes are unchanged.
+
 - **`kanibako code` says so when it cannot write VS Code's attached-container config, instead of
   attaching silently without it.** If the config home was unwritable — a read-only or full
   directory — the write failed inside a catch-all that reported it at debug level only, so at the

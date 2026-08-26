@@ -255,10 +255,31 @@ name, so a move/convert that changes the workset and/or the box name **changes i
 address**. `_relocate_channel_partition` moves the OWN `mailboxes/<ws>/<box>` and `share/<ws>/<box>`
 dirs from the OLD partition to the NEW one.
 
-**BEST-EFFORT, by ruling.** Any failure — missing source, destination already present, permission —
-is WARNED and swallowed; the lifecycle continues. It is deliberately NOT on the unwind stack: a
-partial move is not catastrophic and re-running reconciles. No forwarding marker is left for stale
-cross-box references to the old address.
+⚑⚑ **EACH SIDE'S PARTITION IS READ THROUGH ITS OWN WORKSET'S KEYS (2026-08-26).** Both addresses
+were built from `(std, ws_token)` alone, which can only produce the partition's DEFAULT — while
+`channels.box_channel_addresses` has routed through `workset.channels.{mailboxes,share_global}`
+since R-35. So a workset that repointed `mailboxes` had its boxes MOUNTED at the repointed address
+and this step moved the default directory: an empty one, leaving every message the box had received
+stranded at an address no longer registered to it. `own_partition_dirs` now REQUIRES a `ws_root`,
+and `_state_ws_root` is the `ProjectState` twin of `channels.workset_root` that supplies it —
+primary → `std.primary_workset`, named → `state.ws.root`, standalone → `state.metadata_path` (which
+IS the standalone root). It has the same three arms in the same order as `_state_ws_token`, because
+a relocation needs both answers for both sides: the token says WHICH partition, the root says which
+`workset.yaml` may repoint it.
+
+⚑ Reading a key put a **refusing** resolver on this path for the first time — the channel key read
+raises, naming the key, on a repoint it cannot resolve. That is caught here, warned and skipped:
+this step runs AFTER the files have moved, and a settings error in a best-effort cleanup must not
+abort an otherwise-complete lifecycle operation.
+
+⚑ The idempotent no-op is still compared on the TOKEN and the box name, not on the resolved paths:
+two tokens that happen to repoint to one directory are still two partitions, and the box's own
+subdir is what moves.
+
+**BEST-EFFORT, by ruling.** Any failure — missing source, destination already present, permission,
+an unresolvable channel key — is WARNED and swallowed; the lifecycle continues. It is deliberately
+NOT on the unwind stack: a partial move is not catastrophic and re-running reconciles. No forwarding
+marker is left for stale cross-box references to the old address.
 
 ⚑ **Workset-LOCAL channels (`common` / `chat`) are NOT relocated** — they are scope-owned, not
 box-owned. The box simply stops mounting the old workset's local channels and starts mounting the

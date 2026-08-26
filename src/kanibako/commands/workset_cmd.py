@@ -1040,7 +1040,7 @@ def _workset_raw_shares(ws_config: Path) -> dict[tuple[str, str], object]:
 
 def _print_effective_shares(ws, std, ws_config: Path) -> int:
     """Resolve and print the workset's bindings as launch-time mounts (``--effective``)."""
-    from kanibako.settings.paths import host_xdg_map
+    from kanibako.settings.paths import host_xdg_map, system_path_floor
     from kanibako.settings.settings_assemble import assemble_levels
     from kanibako.settings.settings_categories import is_read_only
     from kanibako.settings.settings_expand import expand
@@ -1067,11 +1067,13 @@ def _print_effective_shares(ws, std, ws_config: Path) -> int:
 
     # Fold the resolved Layer-2 system.* tier into the floor so a value's @-ref (e.g.
     # @system.channelroot) resolves from the snapshot. Keys are flat dotted; assemble explodes.
-    floor: dict[str, object] = {
-        "system.channelroot": str(std.channels),
-        "system.template": str(std.template),
-        "system.canon": str(std.canon),
-    }
+    # ⚑⚑ THE SAME BUILDER THE LAUNCH USES (``commands/start._launch_snapshot_inputs``),
+    # because this display's whole job is to say what a launch would mount. Written out
+    # by hand, it carried three of the eight keys — so a workset binding sourcing
+    # ``@system.channels.chat`` mounted at launch and was SILENTLY OMITTED from this
+    # listing, with rc 0 and no error. A user checking their bindings here saw a row
+    # they had configured simply not appear.
+    floor: dict[str, object] = dict(system_path_floor(std))
 
     try:
         levels = assemble_levels(

@@ -1255,10 +1255,39 @@ def _state_ws_token(state: ProjectState) -> str:
     return WS_TOKEN_PRIMARY
 
 
+def _state_ws_root(state: ProjectState, std: StandardPaths) -> Path:
+    """Return ``@meta.workset.path`` for *state* — the root its channel keys live under.
+
+    ⚑ The ``ProjectState`` twin of :func:`channels.workset_root`, which takes a resolved
+    ``ProjectPaths`` this path does not have.  Same three arms, deliberately in the same
+    order as :func:`_state_ws_token`: the token says WHICH partition, this says which
+    ``workset.yaml`` may repoint it, and a relocation needs both for each side.
+    """
+    if state.mode == BoxMode.standalone:
+        # Standalone roots the workset at the project ROOT; ``metadata_path`` IS that
+        # root (the workspace is a subdir under it), matching ``channels.workset_root``.
+        return state.metadata_path
+    if state.mode == BoxMode.named:
+        if state.ws is None:
+            raise ValueError(
+                "named box is missing its workset; cannot derive the workset root."
+            )
+        return state.ws.root
+    return std.primary_workset
+
+
 def _relocate_channel_partition(
     old: ProjectState, new: ProjectState, std: StandardPaths,
 ) -> None:
-    """Best-effort relocate THIS box's OWN channel partition (D-M10, §6)."""
+    """Best-effort relocate THIS box's OWN channel partition (D-M10, §6).
+
+    ⚑⚑ EACH SIDE'S PARTITION IS READ THROUGH ITS OWN WORKSET'S KEYS.  Both addresses
+    used to be built from ``(std, ws_token)`` alone, which can only produce the
+    partition's DEFAULT — while ``box_channel_addresses`` routes through
+    ``workset.channels.{mailboxes,share_global}``, so a workset that repoints
+    ``mailboxes`` has its boxes MOUNTED at the repointed address.  Moving the default
+    directory therefore moved nothing and stranded the box's real mail.
+    """
     import sys
 
     from kanibako.channels.channels import own_partition_dirs
@@ -1266,16 +1295,33 @@ def _relocate_channel_partition(
     try:
         old_token = _state_ws_token(old)
         new_token = _state_ws_token(new)
-    except ValueError as e:  # cannot derive a token → nothing to relocate
+        old_root = _state_ws_root(old, std)
+        new_root = _state_ws_root(new, std)
+    except ValueError as e:  # cannot derive an address → nothing to relocate
         print(f"Warning: skipping channel relocation: {e}", file=sys.stderr)
         return
 
     # No address change → nothing to move (idempotent no-op).
+    # ⚑ Compared on the TOKEN, not the resolved path: two tokens that repoint to one
+    # directory are still two partitions, and the box's own subdir name is what moves.
     if old_token == new_token and old.name == new.name:
         return
 
-    src = own_partition_dirs(std, old_token, old.name)
-    dst = own_partition_dirs(std, new_token, new.name)
+    # ⚑ A REPOINT CAN REFUSE (``workset.channels.*`` names the key and raises rather
+    # than falling back), and this step runs AFTER the files have already moved. A
+    # settings error in a best-effort cleanup must not abort a lifecycle operation
+    # that is otherwise complete, so it warns with the key's own message and skips —
+    # the same treatment the per-directory move below already gives an OSError.
+    try:
+        src = own_partition_dirs(std, old_token, old.name, ws_root=old_root)
+        dst = own_partition_dirs(std, new_token, new.name, ws_root=new_root)
+    except Exception as e:  # noqa: BLE001 - best-effort (D-M10)
+        print(
+            f"Warning: skipping channel relocation, a channel key did not "
+            f"resolve: {e}",
+            file=sys.stderr,
+        )
+        return
 
     for src_dir, dst_dir, label in (
         (src.mailbox, dst.mailbox, "mailbox"),

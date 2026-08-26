@@ -407,6 +407,58 @@ def resolve_system_paths(set_values: Mapping[str, str],
     return resolved
 
 
+#: The Layer-2 ``system.*`` path keys that reach a FLOOR, as ``(key, StandardPaths
+#: attribute)``.  ⚑ The channel leaves are DERIVED from :data:`SYSTEM_PATH_DEFAULTS`
+#: below rather than listed here: that table is the declared family (pinned against the
+#: keyspace manifest), so a new leaf reaches the floor without an edit and cannot be
+#: quietly left out the way ``system.channels.broadcast`` was.
+_FLOOR_ROOT_KEYS: tuple[tuple[str, str], ...] = (
+    ("system.channelroot", "channels"),
+    ("system.template", "template"),
+    # The SYSTEM-level CANON CONTRIBUTION root (spec §2g) — the source of the
+    # handbook's SYS_CONTENTS.md + general chapter binds, and the install dest of the
+    # packaged handbook.  ⚑ It names a per-scope CONTRIBUTION root, NOT a copy of the
+    # assembled canon: ``~/canon`` (guest) is the assembled tree, ``@<scope>.canon``
+    # (host) is what that scope contributes to it.
+    ("system.canon", "canon"),
+)
+
+
+def system_path_floor(std: StandardPaths) -> dict[str, str]:
+    """The RESOLVED Layer-2 ``system.*`` path tier, keyed by its own dotted key names.
+
+    Every consumer folds this into a floor so a stored ``@system.*`` source resolves.
+    Each value equals the corresponding ``std`` attribute — the same flat foundation
+    resolves both — so an ``@``-ref-routed bind is byte-identical to a runtime-probed
+    literal.
+
+    ⚑⚑ ONE CARRIER, AND IT IS ONE BECAUSE TWO HAD ALREADY DRIFTED — in BOTH directions.
+    ``commands/start._launch_snapshot_inputs`` (the launch snapshot) and
+    ``commands/workset_cmd._print_effective_shares`` (``workset share list
+    --effective``) each built this map by hand, under paired comments telling each other
+    they must agree.  They did not: the launch map omitted
+    ``system.channels.broadcast``, so a binding sourcing that declared key collapsed to
+    ``None`` and was DROPPED with no message and rc 0; the display map omitted all five
+    ``system.channels.*`` leaves, so a workset binding sourcing
+    ``@system.channels.chat`` mounted at launch and did not appear in ``--effective``.
+    A display that lies about what a launch does is precisely what those comments
+    existed to prevent, and a hand list on each side is how they failed to.
+
+    ⚑ ``system.{backup,cache,runtime}`` are NOT here, and their absence is stated rather
+    than assumed: they are declared keys with manifest defaults that no floor has ever
+    installed either — the same finding one scope over.  Widening this to cover them is
+    a separate change with its own consumers to check, so it is reported, not smuggled
+    in; ``tests/test_channels/test_system_channel_keys.py`` pins the three by name so
+    the omission cannot become invisible.
+    """
+    floor = {key: str(getattr(std, attr)) for key, attr in _FLOOR_ROOT_KEYS}
+    prefix = "system.channels."
+    for key in SYSTEM_PATH_DEFAULTS:
+        if key.startswith(prefix):
+            floor[key] = str(getattr(std, f"channels_{key[len(prefix):]}"))
+    return floor
+
+
 def load_system_config(user_config_path: Path, *, data_home: Path, home: Path) -> dict[str, Path]:
     """Resolve the path tier: ``/etc`` config base < user config < the SYSTEM SETTINGS file.
 
