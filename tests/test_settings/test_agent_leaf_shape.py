@@ -172,6 +172,79 @@ class TestTheTableHalfIsRefusedBySHAPE:
         assert not refused, refused
 
 
+class TestTheTableHalfIsREADABLE_JustNotHere:
+    """The READ half of the same rule: refused by NAME, and told WHERE the value lives.
+
+    ⚑ THE WRITE HALF ALREADY DID THIS and the read half did not.  ``config set`` refuses
+    the bare spelling through ``agent_leaf_table_error``, naming the key and the file to
+    edit; ``box get <box> transform_settings`` answered *"'transform_settings' is not a
+    declared namespace"* and pointed nowhere — true of the bare token, useless to the
+    user, and its generic cure prescribed DELETING an entry that is legitimate one scope
+    up.  :data:`KNOWN_CONFIG_KEYS`' own comment had promised otherwise since 2026-08-23
+    ("so the READ gate admits it and the refusal can name the shape instead of denying
+    the key exists"); only the write half kept it.
+
+    ⚑ NOTHING IS TAKEN AWAY: no value was ever returned at this spelling.  What changes
+    is one printed line, at the same rc 1.
+    """
+
+    @pytest.mark.parametrize("scope_token,agent", [("box", "claude"), ("workset", None)])
+    def test_the_bare_read_refusal_names_the_agent_noun(self, scope_token, agent):
+        # MUTATION-PROVED: drop the ``table_leaf_read_cure(...) or`` from
+        # ``scope_read_key_error`` and both rows red on the missing "agent noun" alone.
+        from kanibako.settings.config_keys import ConfigLevel, scope_read_key_error
+
+        for leaf in sorted(TABLE_VALUED_AGENT_LEAVES):
+            msg = scope_read_key_error(
+                leaf, ConfigLevel[scope_token], active_agent=agent,
+            )
+            assert msg is not None, leaf
+            # ⚑ THE KEY STAYS FIRST — ``cli.main`` prints ``Error: {e}``, so the address
+            # may only follow the §0 reason, never lead it (the 0c4fa47 / 891a3b7 shape).
+            assert msg.startswith(f"Error: '{leaf}' cannot be read:"), msg
+            assert msg.index("spec §0") < msg.index("agent noun"), msg
+            assert f"kanibako agent get {agent or '<agent>'} {leaf}" in msg, msg
+            # ...and the DELETION cure is the WRONG answer here, so it is not offered.
+            assert "removing it means editing that file by hand" not in msg, msg
+
+    def test_the_cure_it_names_is_a_LEGAL_read(self):
+        """A refusal that prescribes a failing command is worse than no cure at all.
+
+        ⚑ This is the file's opening complaint, applied to the cure this module now
+        prints: ``agent get <node> <leaf>`` must be admitted by the ``agent`` noun's own
+        read gate for every leaf the refusal redirects there.
+        """
+        from kanibako.settings.config_keys import agent_read_key_error
+
+        for leaf in sorted(TABLE_VALUED_AGENT_LEAVES):
+            assert agent_read_key_error("claude", leaf) is None, leaf
+
+    def test_a_SCALAR_leaf_is_never_caught_by_it(self):
+        """The bare scalar read at box scope still resolves through the pref redirect."""
+        from kanibako.settings.config_keys import ConfigLevel, scope_read_key_error
+
+        for leaf in sorted(SCALAR_AGENT_LEAVES):
+            assert scope_read_key_error(
+                leaf, ConfigLevel.box, active_agent="claude",
+            ) is None, leaf
+
+    def test_a_neighbour_does_not_inherit_the_cure(self):
+        """⚑ The BARE spelling only — the twin of ``test_the_refusal_does_not_claim_a
+        _neighbour`` above, plus one case the write half does not have.
+
+        ``agent.<bogus>.<leaf>`` is refused about its NODE, and a shape cure appended to
+        that would answer a question the user did not ask.
+        """
+        from kanibako.settings.config_keys import ConfigLevel, scope_read_key_error
+
+        for leaf in sorted(TABLE_VALUED_AGENT_LEAVES):
+            for other in (f"box.{leaf}", f"workset.{leaf}", f"agent.bogus.{leaf}"):
+                msg = scope_read_key_error(
+                    other, ConfigLevel.box, active_agent="claude",
+                ) or ""
+                assert "agent noun" not in msg, (other, msg)
+
+
 class TestTheKeyspaceAndTheFileAgree:
     """The SAME fact, spelled in two layers — pinned against each other.
 

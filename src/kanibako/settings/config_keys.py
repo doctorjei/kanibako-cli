@@ -1143,6 +1143,38 @@ def scope_key_reason(canonical: str) -> str | None:
     return key_reason(canonical, valid_agents=default_valid_agents())
 
 
+def table_leaf_read_cure(canonical: str, active_agent: str | None = None) -> str | None:
+    """Where a BARE table-valued agent leaf is actually readable, or ``None`` (spec §2d).
+
+    ⚑ THE READ HALF of :func:`agent_leaf_table_error`, which owns the write half.  Both
+    exist for the same §0 reason — a DECLARED key must be refused by its own rule, never
+    degraded to "not a key" — and the shapes match: the write verbs refuse the bare
+    spelling and name the file to edit, so the read verb refuses it and names the noun
+    that answers.  ``config_keys``' own :data:`KNOWN_CONFIG_KEYS` comment already promised
+    this ("so the READ gate admits it and the refusal can name the shape instead of
+    denying the key exists"); until this, only the write half kept it.
+
+    ⚑ THE BARE SPELLING ONLY (``canonical`` IS the leaf).  ``agent.<node>.<leaf>`` is not
+    refused by this gate at all, and a refusal of ``agent.<bogus>.transform_settings``
+    is about the NODE — appending a shape cure to it would answer a question the user
+    did not ask.
+
+    ⚑ It replaces the generic "your settings file may carry this entry" cure rather than
+    following it: that cure prescribes a HAND DELETION, and the entry this key names is
+    legitimate one scope up.  The head of the message — the key, then the §0 reason — is
+    untouched, for the reason ``settings_assemble._parse_naming_file`` states: the key
+    must stay the first thing the user reads on ``cli.main``'s ``Error: {e}`` line.
+    """
+    if canonical not in TABLE_VALUED_AGENT_LEAVES:
+        return None
+    agent = display_agent_ref(active_agent) if active_agent else "<agent>"
+    return (
+        f" '{canonical}' IS a declared agent leaf (spec §2d), but a TABLE-valued one — "
+        f"no scalar request can carry it, so it has no bare spelling at a file scope. "
+        f"Read it at the agent noun: 'kanibako agent get {agent} {canonical}'."
+    )
+
+
 def scope_read_key_error(
     key: str,
     command_scope: "ConfigLevel | None",
@@ -1186,7 +1218,9 @@ def scope_read_key_error(
     shown = _SCOPE_SHOW_COMMAND.get(
         command_scope.value if command_scope is not None else "",
     )
-    cure = (
+    # ⚑ The ADDRESS cure wins where there is one: a declared key refused only because
+    # this scope has no spelling for it is told WHERE it lives, not offered a deletion.
+    cure = table_leaf_read_cure(canonical, active_agent) or (
         f" If your settings file carries this entry, '{shown}' lists it as "
         f"undeclared; removing it means editing that file by hand."
         if shown else ""
