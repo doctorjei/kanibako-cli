@@ -1065,7 +1065,9 @@ def _to_standalone(
     _deliver_carried_box_settings(state, dst_metadata / BOX_META_FILE)
 
     # Establish identity + meta + registration through the shared core; it writes
-    # <root>/workset.yaml (mode=standalone) and registers the box.
+    # ``workset.kuid`` to <root>/workset.yaml and a sparse ``box.enable_vault`` to the box
+    # tier, then registers the box.  ⚑ NO mode is persisted anywhere — standalone is
+    # detected from the MARKER (that root file beside ``box_data/``), never from a stored key.
     box_name, dst_shell, vault_ro, vault_rw = establish_standalone(
         std, root,
         enable_vault=state.enable_vault,
