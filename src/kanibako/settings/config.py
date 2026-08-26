@@ -415,18 +415,20 @@ def read_box_enable_vault(path: Path, *, default_from: Path | None = None) -> bo
     return True
 
 
-def carried_box_settings(box_tier: Path, workset_tier: Path | None) -> dict:
+def carried_box_settings(box_tier: Path) -> dict:
     """The box-scope settings doc a LIFECYCLE op carries to a new box's box tier.
 
-    ⚑ The legacy underlay below is what keeps a pre-P2 standalone box from
-    losing ``box.image`` on convert/move/duplicate — do not drop it.
+    ⚑ THE BOX TIER AND NOTHING ELSE (Jei, 2026-08-26: "copy/persist only those
+    elements that are within the box settings").  A ``box.*`` key at the WORKSET
+    tier is an OVERRIDABLE DEFAULT for the boxes that workset contains
+    (:func:`read_box_enable_vault`), so persisting it here would PIN it — silently
+    converting a workset default into a box-scope override that later workset edits
+    cannot reach.  It stays where it is and keeps resolving for the boxes that stay;
+    a box that leaves the workset loses it, because the value was the workset's.
+    ⚑ *box_tier* is a ``box.yaml``, so a ``workset:`` section in it is a scope
+    violation — dropped rather than carried into the destination's identity.
     """
     doc = dict(load_doc(box_tier))
-    legacy = (load_doc(workset_tier).get("box") or {}) if workset_tier else {}
-    if isinstance(legacy, dict) and legacy:
-        box_sec = dict(legacy)
-        box_sec.update(doc.get("box") or {})   # box tier wins (R2)
-        doc["box"] = box_sec
     doc.pop("workset", None)
     return doc
 

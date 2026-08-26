@@ -128,7 +128,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Nothing changes unless a workset explicitly carries `box.enable_vault: false` — an absent file, a
   workset with no `box` table, or the key set to `true` all behave exactly as before. A value
   inherited from the workset is **not** written into the box's own settings file, so later workset
-  edits keep reaching it.
+  edits keep reaching it. The same holds for `box convert`, `box move` and `box duplicate`: they carry
+  a box's own settings, never a default it was merely inheriting — so a box that leaves a workset
+  leaves that workset's defaults behind, and one that stays keeps resolving them.
 
 - **The Claude status line reports context from exact token counts instead of a rounded percentage,
   and prints `—` when it has no reading yet.** It derived used tokens from the integer
