@@ -436,9 +436,25 @@ DECLARED_META_AGENT_AUTH_LEAVES: Final[frozenset[str]] = frozenset({"share_suppo
 #: the store's own public class members (``RESERVED_KEY_NAMES``,
 #: ``insert_segments``), neither of which can be spelled as a dunder and so each
 #: names itself. Matched CASE-SENSITIVELY.
-#: ⚑ The keyspace floor IS the store's write-time floor, named in this module's
-#: vocabulary ("leaf" for what the store calls a key): one set, so there is
-#: nothing that can drift and nothing to guard.
+#: ⚑ ONE SET, TWO POSITIONS — and the second half is what the shared object does NOT
+#: buy. This IS ``KeyStore.RESERVED_KEY_NAMES`` (identity, not a copy), so the NAMES
+#: cannot drift; the two floors still APPLY them differently. This module judges the
+#: LEAF alone (:func:`_leaf` -> :func:`leaf_name_reason`), named in this module's
+#: vocabulary ("leaf" for what the store calls a key), while ``KeyStore.__setitem__``
+#: judges EVERY SEGMENT it writes. The store is therefore STRICTLY STRICTER: a leaf
+#: this floor refuses is a segment the store refuses too, and the gap runs one way —
+#: ``agent.items.model`` is a KEY here (given an agent literally named ``items``) and
+#: unwritable there. A NARROWER SUBSET, not a disagreement; the direction is pinned by
+#: ``tests/test_settings/test_settings_keyspace.py`` so it cannot silently invert.
+#: ⚑ AND THE ORDER IS WHY THIS FLOOR IS NOT REDUNDANT. For a FILE-authored key the
+#: store speaks FIRST — ``settings_assemble._parse_naming_file`` builds the
+#: ``KeyStore`` and raises before ``merge`` or any resolve — so the reserved arm of
+#: :func:`key_validity` never runs on that path. It earns its keep everywhere nothing
+#: has been written to a store yet — the file-scope READ gates
+#: (``config_keys.scope_read_key_error``), the CLI level's own guard
+#: (``settings_cli_level.guard_cli_level``), and the ``<scope>.env.<VAR>`` WRITE gate
+#: (``config_keys.scope_env_var_error``, which is the "rejected loudly at
+#: write/``config set`` time" half spec §0 asks for). All three were MEASURED speaking.
 RESERVED_LEAF_NAMES: Final[frozenset[str]] = KeyStore.RESERVED_KEY_NAMES
 
 _DUNDER_RE: Final = re.compile(r"^__.*__$")

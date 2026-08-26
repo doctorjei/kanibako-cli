@@ -960,6 +960,117 @@ def test_the_keyspace_floor_is_the_store_set_not_a_copy():
         assert "dict method" not in r, name
 
 
+class TestOneSetTwoPositions:
+    """The half the shared object does NOT buy — and the direction of the gap.
+
+    ⚑ THE COMMENT ABOVE ``RESERVED_LEAF_NAMES`` USED TO SAY *"one set, so there is
+    nothing that can drift and nothing to guard"*.  The SET half is true and is pinned
+    by :func:`test_the_keyspace_floor_is_the_store_set_not_a_copy`.  The RULE half was
+    false: this module applies the set to the LEAF alone, ``KeyStore.__setitem__``
+    applies it to EVERY SEGMENT it writes.  So there IS something that differs, inside
+    the very thing the sentence said had nothing to guard.
+
+    ⚑⚑ THE GAP IS A NARROWER SUBSET, NOT A DISAGREEMENT, and that DIRECTION is what
+    these pin.  Widening the keyspace check to every segment would be a behaviour
+    change — it would refuse keys that are legal today — and inverting the direction
+    silently would mean the keyspace refusing something the store accepts, which is
+    the failure this area has already paid for once.
+    """
+
+    def test_the_store_refuses_a_reserved_name_at_EVERY_position(self):
+        """Interior and leaf alike — the store's floor is positional, not terminal."""
+        from kanibako.settings.keystore import KeyStore, ReservedKeyError
+
+        for name in sorted(RESERVED_LEAF_NAMES):
+            for tree in ({"agent": {name: {"model": "x"}}}, {"agent": {"claude": {name: "x"}}}):
+                with pytest.raises(ReservedKeyError):
+                    KeyStore(tree)
+
+    def test_the_keyspace_judges_the_LEAF_ONLY(self):
+        """The witness path: a reserved name in an INTERIOR position is a KEY here.
+
+        ⚑ REAL BUT LATENT — ``agent.items.model`` reads as a key only if an agent is
+        literally NAMED ``items``, and no shipped plugin is.  Latent is not absent:
+        the agent segment is user-supplied (a persona node), so the only thing
+        standing between this and a real key is that nobody has picked the name.
+        """
+        agents = AGENTS | {"items"}          # an agent literally named ``items``
+        assert key_validity("agent.items.model", valid_agents=agents) is None
+        assert key_validity("agent.items.env.MYVAR", valid_agents=agents) is None
+
+    def test_the_store_is_STRICTLY_stricter(self):
+        """Both halves of "strictly": no escape upward, and a witnessed gap downward.
+
+        MUTATION-PROVED: make ``is_valid_agent_segment`` refuse a reserved name — the
+        smallest edit that "aligns the positions" for the witness path — and the second
+        block reds with *"the positional gap closed"* (the LEAF_ONLY case beside it reds
+        too).  That is the behaviour change the comment now says must not be made
+        silently: it refuses ``agent.items.model``, a key that is legal today.
+        """
+        from kanibako.settings.keystore import KeyStore, ReservedKeyError
+
+        agents = AGENTS | {"items"}
+        # (1) Nothing this floor refuses is writable to the store — the leaf is a
+        #     segment, so the store's own check catches every one of them.
+        for name in sorted(RESERVED_LEAF_NAMES):
+            assert key_validity(f"box.env.{name}", valid_agents=AGENTS) is not None
+            with pytest.raises(ReservedKeyError):
+                KeyStore({"box": {"env": {name: "x"}}})
+
+        # (2) ...and the converse FAILS, which is what makes the relation strict.
+        gap = [
+            k for k in ("agent.items.model", "agent.items.env.MYVAR")
+            if key_validity(k, valid_agents=agents) is None
+        ]
+        assert gap, "the positional gap closed — see the class docstring before 'fixing' it"
+        with pytest.raises(ReservedKeyError):
+            KeyStore({"agent": {"items": {"model": "x"}}})
+
+    def test_a_FILE_authored_reserved_name_is_refused_by_the_STORE_not_this_floor(
+        self, tmp_path,
+    ):
+        """Why this floor is not redundant, stated as its own ORDER claim.
+
+        The store speaks FIRST on the file path — ``settings_assemble._parse_naming_file``
+        builds the ``KeyStore`` and raises before ``merge`` or any resolve — so the
+        reserved arm of :func:`key_validity` never runs there at all.
+
+        ⚑ MUTATION IS THE PROOF: neuter this module's floor entirely and the file is
+        STILL refused, with the store's own wording.  ⚑ The class is ``SettingsError``
+        since 0c4fa47 lifted the file-naming wrap out of ``_file_partial``; both tiers
+        agree on it now.
+        """
+        import yaml
+
+        from kanibako.settings import settings_keyspace as ks
+        from kanibako.settings.settings_resolve import SettingsError
+        from kanibako.settings.settings_assemble import assemble_levels
+
+        box = tmp_path / "box.yaml"
+        box.write_text(yaml.safe_dump({"box": {"env": {"items": "x"}}}))
+        base = tmp_path / "base.yaml"
+        base.write_text("{}\n")
+
+        def _assemble():
+            assemble_levels(agent_name="claude", base_path=base, box_path=box)
+
+        with pytest.raises(SettingsError) as before:
+            _assemble()
+        assert "is reserved" in str(before.value)
+
+        original = ks.leaf_name_reason
+        try:
+            ks.leaf_name_reason = lambda leaf: None
+            with pytest.raises(SettingsError) as after:
+                _assemble()
+        finally:
+            ks.leaf_name_reason = original
+        assert str(after.value) == str(before.value), (
+            "the keyspace floor turned out to be the one speaking on the file path — "
+            "the order claim above the RESERVED_LEAF_NAMES declaration is wrong"
+        )
+
+
 # ---------------------------------------------------------------------------
 # THREE CLASSES: KEY vs declared NAMESPACE vs UNDECLARED (spec §0)
 # ---------------------------------------------------------------------------

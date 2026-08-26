@@ -313,6 +313,33 @@ class TestBoxGetIsWiredToTheClosedKeyspace:
         ) == 0
         assert "claude" in capsys.readouterr().out
 
+    def test_the_table_valued_agent_leaf_is_refused_WITH_AN_ADDRESS(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        """END-TO-END through the verb: the one declared leaf this noun cannot serve.
+
+        ``transform_settings`` is the single TABLE-valued agent leaf (spec §2d).  Its
+        bare spelling is a key-shaped arg (``KNOWN_CONFIG_KEYS`` admits it, so the
+        parser does not read it as a project name), the read gate refuses it, and until
+        this the refusal called it "not a declared namespace" and pointed nowhere.  It
+        now names the noun that answers.
+
+        ⚑ NOTHING REGRESSES: no value was ever returned here, and the rc is unchanged.
+        MUTATION-PROVED at the predicate in
+        ``tests/test_settings/test_agent_leaf_shape.py``; this pins that the handler
+        prints what the predicate builds.
+        """
+        from kanibako.commands.box._parser import run_get
+
+        project_dir, _ = self._box(config_file, tmp_home)
+        assert run_get(argparse.Namespace(
+            args=[project_dir, "transform_settings"],
+        )) == 1
+        captured = capsys.readouterr()
+        assert "(not set)" not in captured.err
+        assert "transform_settings" in captured.err
+        assert "kanibako agent get" in captured.err
+
     def test_box_show_marks_a_hand_written_undeclared_entry(
         self, config_file, tmp_home, credentials_dir, capsys,
     ):
