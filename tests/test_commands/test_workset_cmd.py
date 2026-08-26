@@ -1661,3 +1661,223 @@ class TestWorksetGetIsWiredToTheClosedKeyspace:
         self._merge(ws, {"vault_ro": "/ro"})
         assert run_show(argparse.Namespace(workset="cleanws", effective=False)) == 0
         assert "undeclared" not in capsys.readouterr().out
+
+
+class TestWorksetShareListArbitrates:
+    """``workset share list --effective`` must answer with the COLLAPSE, not the entry list.
+
+    Its whole job is to say what a launch would mount, and until 2026-08-26 it printed
+    the pre-collapse ENTRY LIST: every stored binding, with no mask, no containment and
+    no §0 row applied.  A workset that ALSO declared ``workset.masks`` over a share's
+    destination listed that share as a live mount while the box received nothing there —
+    rc 0, no message.
+
+    ⚑ The two carriers are now ONE walk: ``store_shape.build_store_shape_set`` +
+    ``store_collapse.collapse_store_shapes``, the same pair
+    ``commands.start._install_assembly_collapse`` makes, with the per-share outcome read
+    off ``store_collapse.pair_declarations`` — the function ``box show --effective``
+    already pairs its own declarations with.
+    """
+
+    _SRC = "/etc/hostname"
+
+    def _ws(self, std, tmp_home, name, node):
+        """One real workset carrying *node* under its ``workset:`` root."""
+        from kanibako.settings.config import WORKSET_META_FILE
+        from kanibako.settings.config_io import dump_doc, load_doc
+
+        ws_root = tmp_home / "worksets" / name
+        create_workset(name, ws_root, std)
+        doc_path = ws_root / WORKSET_META_FILE
+        doc = load_doc(doc_path) or {}
+        doc.setdefault("workset", {}).update(node)
+        dump_doc(doc_path, doc)
+        return ws_root
+
+    def _effective(self, name, capsys):
+        """``(rc, stdout, stderr)`` — the refusal path writes to stderr and rc 1."""
+        from kanibako.commands import workset_cmd
+
+        rc = workset_cmd.run_share_list(
+            argparse.Namespace(workset=name, effective=True)
+        )
+        captured = capsys.readouterr()
+        return rc, captured.out, captured.err
+
+    def test_an_undisturbed_share_still_prints_as_a_mount(
+        self, std, config, tmp_home, capsys,
+    ):
+        """The unchanged case: an arrow line, and NO result phrase under it."""
+        self._ws(std, tmp_home, "arb-plain", {
+            "bindings": {"ro": {"/opt/arb": [self._SRC]}},
+        })
+        rc, out, _err = self._effective("arb-plain", capsys)
+        assert rc == 0
+        assert f"  {self._SRC} -> /opt/arb  [ro]" in out
+        assert "no mount" not in out
+
+    def test_a_mask_at_the_destination_is_named_instead_of_a_mount(
+        self, std, config, tmp_home, capsys,
+    ):
+        """A mask takes the share's own point: the box sees nothing, and the row says so."""
+        self._ws(std, tmp_home, "arb-at", {
+            "bindings": {"ro": {"/opt/arb": [self._SRC]}},
+            "masks": {"/opt/arb": True},
+        })
+        rc, out, _err = self._effective("arb-at", capsys)
+        assert rc == 0
+        assert f"{self._SRC} -> /opt/arb" not in out, (
+            "a share a mask swallowed is printed with the delivery arrow, so the "
+            "listing claims a mount the box does not receive"
+        )
+        assert "/opt/arb  [ro]  (declared: /etc/hostname)" in out
+        assert "no mount — the mask at /opt/arb" in out
+
+    def test_a_mask_above_the_destination_is_named_instead_of_a_mount(
+        self, std, config, tmp_home, capsys,
+    ):
+        """The PARENT case: the share's own dest is absent from the map entirely.
+
+        ⚑ This is the one a dest-keyed lookup cannot answer — nothing sits at
+        ``/opt/arb/inner`` after the sweep, and reading "absent" as "fine" says nothing.
+        The mask's OWN destination is the whole diagnosis and is not a path the user's
+        binding key names.
+        """
+        self._ws(std, tmp_home, "arb-above", {
+            "bindings": {"ro": {"/opt/arb/inner": [self._SRC]}},
+            "masks": {"/opt/arb": True},
+        })
+        rc, out, _err = self._effective("arb-above", capsys)
+        assert rc == 0
+        assert f"{self._SRC} -> /opt/arb/inner" not in out
+        assert "no mount — the mask at /opt/arb " in out
+
+    def test_a_share_nested_inside_another_share_still_mounts(
+        self, std, config, tmp_home, capsys,
+    ):
+        """A bind may NEST inside a bind — both still print, and neither gains a phrase.
+
+        The guard against a fix that reports every containment as a loss.
+        """
+        self._ws(std, tmp_home, "arb-nest", {
+            "bindings": {"ro": {"/opt/n": [self._SRC], "/opt/n/in": ["/etc/hosts"]}},
+        })
+        rc, out, _err = self._effective("arb-nest", capsys)
+        assert rc == 0
+        assert f"  {self._SRC} -> /opt/n  [ro]" in out
+        assert "  /etc/hosts -> /opt/n/in  [ro]" in out
+        assert "no mount" not in out
+
+    def test_declarations_a_launch_refuses_are_refused_here_too(
+        self, std, config, tmp_home, capsys,
+    ):
+        """A workset a launch cannot assemble no longer lists cleanly at rc 0.
+
+        ``workset.common`` extending onto a bound destination is a §0 row-3 refusal.
+        Before the collapse ran here the listing printed the binding and returned 0, so
+        ``--effective`` reported a working assembly for a workset that has none.
+
+        ⚑ BOTH HALVES ARE PINNED, and they are two different obligations: the FRAMING
+        says this refusal is the answer to "what would a box here mount", and the
+        DETAIL is the launch's own refusal carried verbatim.  Dropping either one is a
+        regression — a bare collision answers a question the user did not ask, and a
+        frame with no detail names no key and no cure.
+        """
+        self._ws(std, tmp_home, "arb-refuse", {
+            "bindings": {"ro": {"/opt/arb": [self._SRC]}},
+            "common": {"/opt/arb": ["shared"]},
+        })
+        rc, out, err = self._effective("arb-refuse", capsys)
+        assert rc == 1
+        # THE FRAMING — context, and it names the dest off the exception.
+        assert "Cannot say what working set 'arb-refuse' would mount" in err
+        assert "no box in it can launch" in err
+        assert "'/opt/arb'" in err
+        # THE DETAIL — the launch's own words, including the remedy block.
+        assert "workset.common./opt/arb" in err
+        assert "already binds" in err
+        assert "Set the unwanted key to null" in err
+        # ⚑ ONE prefix, not two: ``cli.main`` would have printed exactly one
+        # ``Error:`` line, and catching the refusal here must not add a second.
+        assert err.count("Error: ") == 1
+        assert "Effective bindings for working set" not in out
+
+    def test_the_pre_arbitration_answer_is_a_mutation_that_reds(
+        self, std, config, tmp_home, capsys, monkeypatch,
+    ):
+        """MUTATION: hand the display the RETIRED answer and the defect comes back.
+
+        The stand-in is the listing's own former behaviour — every declared bind, no
+        mask arm, no containment — and it is a throwaway, never the real symbol.  If the
+        display had gone on reading the entry list, the cases above would pass anyway.
+        """
+        from kanibako.settings import store_collapse
+        from kanibako.settings.kb_store import SCOPE_CONTAINMENT
+        from kanibako.settings.store_collapse import CollapsedBind, CollapsedStore
+
+        def _no_arbitration(store_shape_set, home_bind):
+            return CollapsedStore(
+                bindings={
+                    dest: CollapsedBind(entry.src, entry.opts)
+                    for scope in SCOPE_CONTAINMENT
+                    for arm in (
+                        store_shape_set[scope].ro, store_shape_set[scope].rw,
+                    )
+                    for dest, entry in arm.items()
+                },
+                seeded=[],
+                synced=[],
+            )
+
+        monkeypatch.setattr(
+            store_collapse, "collapse_store_shapes", _no_arbitration,
+        )
+        self._ws(std, tmp_home, "arb-mutant", {
+            "bindings": {"ro": {"/opt/arb": [self._SRC]}},
+            "masks": {"/opt/arb": True},
+        })
+        rc, out, _err = self._effective("arb-mutant", capsys)
+        assert rc == 0
+        assert f"{self._SRC} -> /opt/arb" in out, (
+            "the mutant did not restore the defect, so the cases above are not "
+            "pinned on the arbitration at all"
+        )
+        assert "no mount" not in out
+
+    def test_the_collision_detail_is_carried_from_the_exception_not_rebuilt(
+        self, std, config, tmp_home, capsys, monkeypatch,
+    ):
+        """MUTATION: a throwaway raiser with a SENTINEL message, which must print VERBATIM.
+
+        The stand-in is a fake ``build_store_shape_set`` that refuses with text this
+        module could not possibly have composed.  If the display ever restated the
+        collision in its own words, the sentinel would not appear and this reds — and
+        restating it is precisely what the framing line exists to avoid, because a
+        second carrier of a refusal drifts from the launch's and the launch's is the
+        one a user has to act on.
+
+        ⚑ The stand-in is a THROWAWAY, monkeypatched for this test alone; no real
+        symbol is mutated, so a concurrent writer cannot be handed a false red.
+        """
+        from kanibako.errors import CategoryCollisionError
+        from kanibako.settings import store_shape
+
+        sentinel = "SENTINEL-9f21: this text exists nowhere in the source tree"
+
+        def _always_collides(entries):
+            raise CategoryCollisionError(
+                sentinel, kind="probe", box_dest="/opt/sentinel",
+            )
+
+        monkeypatch.setattr(store_shape, "build_store_shape_set", _always_collides)
+        self._ws(std, tmp_home, "arb-sentinel", {
+            "bindings": {"ro": {"/opt/arb": [self._SRC]}},
+        })
+        rc, _out, err = self._effective("arb-sentinel", capsys)
+        assert rc == 1
+        assert f"Error: {sentinel}" in err, (
+            "the collision detail did not come from the caught exception, so this "
+            "display is composing a second copy of the launch's refusal"
+        )
+        # The FRAME reads its destination off the exception too, not off the entries.
+        assert "collide at '/opt/sentinel'" in err

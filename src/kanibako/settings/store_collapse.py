@@ -22,7 +22,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import PurePosixPath
-from typing import Final, NamedTuple
+from typing import Any, Final, NamedTuple
 
 from kanibako.settings.kb_store import SCOPE_CONTAINMENT, BindEntry
 from kanibako.settings.settings_categories import COPY, ENV, CategoryEntry
@@ -607,4 +607,58 @@ def _pair_one(
   ambiguous = claims.get((decl.dest, decl.src), 0) > 1
   return Derivation(
     decl, DERIVED_AMBIGUOUS if ambiguous else DERIVED_MOUNT, cover, bind,
+  )
+
+
+def derivation_result(row: Any) -> str:
+  """One :class:`Derivation` as the RESULT PHRASE a display prints for it.
+
+  ⚑ EVERY OUTCOME PRINTS SOMETHING, and a LOSS prints WHY and WHERE. "No mount" on
+  its own is the answer a user cannot act on; the destination that swallowed the
+  declaration is the whole diagnosis, and for a mask ABOVE the declaration it is not
+  a destination the user's own key names.
+
+  ⚑ IT LIVES BESIDE THE ``DERIVED_*`` OUTCOMES IT NAMES, not inside either display.
+  It was ``config_display._derivation_result`` while ``box show --effective`` was the
+  only reader; ``commands.workset_cmd._print_effective_shares`` became the second one
+  when that listing started arbitrating, and two copies of these sentences would
+  drift the day an outcome's meaning moved. ⚑ ``Any`` rather than ``Derivation`` on
+  purpose: the optional halves of that tuple are decided BY the outcome, and each
+  branch below reads only the half its own outcome guarantees.
+  """
+  if row.outcome == DERIVED_COPY:
+    return f"{row.copy.src} -> {row.copy.dest}  (copy)"
+  if row.outcome == DERIVED_MASKED:
+    return (
+      f"(no mount — the mask at {row.at} covers this destination, and a mask "
+      f"has no host source: the box sees nothing at that path)"
+    )
+  if row.outcome == DERIVED_SUPERSEDED:
+    if row.bind is None:
+      return (
+        "(no copy — no collapsed copy row accounts for this declaration; "
+        "another declaration at this destination took it)"
+      )
+    return (
+      f"(no mount — the binding of {row.bind.src} at {row.at} occupies this "
+      f"destination)"
+    )
+  if row.outcome == DERIVED_AMBIGUOUS:
+    return (
+      f"{row.bind.src} -> {row.at}  [{row.bind.opts}]  (mount — AMBIGUOUS: "
+      f"another declaration at this destination names the same source, and "
+      f"only one of them is this mount)"
+    )
+  if row.outcome == DERIVED_MOUNT:
+    # ⚑ THE DELIVERY IS STATED, not left to be inferred from the presence of an
+    # options column: a mount is LIVE and shadows the dest, a copy runs once and
+    # is then the box's own file, and a reader who cannot tell them apart cannot
+    # answer the question this display exists for (N2).
+    return f"{row.bind.src} -> {row.at}  [{row.bind.opts}]  (mount)"
+  # ⚑ UNCOVERED, and it is not "no mount": this resolve carries no collapsed
+  # bind map at all (a NARROW resolve writes none), so the question was not
+  # answered rather than answered in the negative.
+  return (
+    "(unknown — this resolve carries no collapsed binding map, so what the "
+    "box receives here cannot be read)"
   )

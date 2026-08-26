@@ -85,6 +85,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`kanibako workset share list --effective` says what a launch would actually mount, instead of
+  listing every declaration.** It resolved each share the way a launch does and then stopped, so the
+  mask arm, path containment and the collision rows were never applied: a working set that also
+  declared `workset.masks` over a share's destination listed that share as a live mount while the box
+  received nothing there, at rc 0 and with no message. The listing now runs the launch's own collapse.
+  A share the box receives prints as `source -> dest [mode]` exactly as before; one that a mask or
+  another binding swallows keeps its row and gains the reason it produces no mount — a row that simply
+  vanished would be the same silent answer in a new place. If the working set's own declarations
+  collide, `--effective` now exits 1 with the refusal a launch gives, introduced by a line saying that
+  is why it cannot answer.
 - **`kanibako_config.yaml` holds bootstrap paths and nothing else, and `kanibako init` writes it
   empty.** It used to be created with three tables — the six `config.*` bootstrap paths, six
   `system.*` paths, and `box.image` / `box.share_images` — every value of which is already a built-in

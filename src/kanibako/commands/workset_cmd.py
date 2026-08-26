@@ -309,14 +309,16 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         help="List a working set's shared directories (default)",
         description=(
             "List the shared directories configured for a working set. With "
-            "--effective, resolve each share the way a box launch would and show "
-            "the final source -> dest [mode] mounts."
+            "--effective, resolve AND arbitrate each share the way a box launch "
+            "would: a delivered share shows as source -> dest [mode], and one a "
+            "mask or another binding swallows is named with the reason it "
+            "produces no mount."
         ),
     )
     share_list_p.add_argument("workset", help="Name of the working set")
     share_list_p.add_argument(
         "--effective", action="store_true",
-        help="Show resolved mounts (source -> dest [mode]) as a launch would",
+        help="Show what a launch would actually mount, and why a share would not",
     )
     share_list_p.set_defaults(func=run_share_list)
 
@@ -943,7 +945,7 @@ def run_share_remove(args: argparse.Namespace) -> int:
 
 
 def run_share_list(args: argparse.Namespace) -> int:
-    """List a workset's bindings: raw DEST/MODE/SOURCE, or resolved mounts if ``--effective``."""
+    """List a workset's bindings: raw DEST/MODE/SOURCE, or ARBITRATED mounts if ``--effective``."""
     from kanibako.settings.settings_resolve import SettingsError
 
     ws, std = _resolve_share_workset(args.workset)
@@ -1038,8 +1040,21 @@ def _workset_raw_shares(ws_config: Path) -> dict[tuple[str, str], object]:
     return out
 
 
+#: The pid-0 FOUNDATION this preview folds every scope over. ⚑ A workset names no
+#: BOX, and the home SOURCE is per-box (``@meta.box.path/home``), so it is SPELLED as
+#: what it is rather than guessed — and the guess could not surface anyway: only the
+#: foundation's DEST takes part in arbitration, a share AT that dest is refused as a
+#: second bind at the foundation's point, and one INSIDE it holds its own destination.
+#: ⚑ NO OPTIONS. Home's mount options are seam machinery (spec ``:1015``), not a facet
+#: of any key; ``config_display`` declines to print them for the same reason, and a
+#: second copy of the seam's literal here would be a copy to keep in step.
+_PREVIEW_HOME_SRC: str = "(each box's own home store)"
+
+
 def _print_effective_shares(ws, std, ws_config: Path) -> int:
-    """Resolve and print the workset's bindings as launch-time mounts (``--effective``)."""
+    """Resolve, ARBITRATE and print the workset's bindings as launch-time mounts."""
+    from kanibako.errors import CategoryCollisionError
+    from kanibako.settings.kb_store import BindEntry
     from kanibako.settings.paths import host_xdg_map, system_path_floor
     from kanibako.settings.settings_assemble import assemble_levels
     from kanibako.settings.settings_categories import is_read_only
@@ -1047,6 +1062,14 @@ def _print_effective_shares(ws, std, ws_config: Path) -> int:
     from kanibako.settings.settings_launch import snapshot_category_entries
     from kanibako.settings.settings_merge import merge
     from kanibako.settings.settings_resolve import ResolveCtx, SettingsError
+    from kanibako.settings.store_collapse import (
+        DERIVED_MOUNT,
+        Declaration,
+        collapse_store_shapes,
+        derivation_result,
+        pair_declarations,
+    )
+    from kanibako.settings.store_shape import build_store_shape_set
 
     # ⚑ Resolver SPLIT (spec §1A / JC-2): Layer-1 ``config.*`` goes in ``ctx.config``,
     # Layer-2 ``system.*`` in the snapshot floor below. The xdg map must be the FULL host
@@ -1087,14 +1110,73 @@ def _print_effective_shares(ws, std, ws_config: Path) -> int:
         entries = snapshot_category_entries(
             expanded, active_agent="general", box_ctx=ctx,
         )
+        # ⚑⚑ THE ARBITRATION IS THE LAUNCH'S OWN — the same two calls
+        # ``commands.start._install_assembly_collapse`` makes, not a second walk.
+        # Until 2026-08-26 this display printed the ENTRY LIST: every stored binding,
+        # pre-collapse, with no mask, no containment and no §0 row applied. So a
+        # workset that ALSO declared ``workset.masks`` over a share's destination
+        # listed that share as a live mount while the box received nothing at all
+        # (rc 0, no message), and one whose declarations a launch REFUSES outright
+        # listed cleanly. ⚑ The COLLISION WARNINGS a launch emits are not raised
+        # here: §0 row 5 is an ambiguity between two ABSTRACT declarations, and a
+        # share is never one of the two — the surviving share is unaffected.
+        collapsed = collapse_store_shapes(
+            build_store_shape_set(entries),
+            BindEntry(_PREVIEW_HOME_SRC, None),
+        )
+    except CategoryCollisionError as e:
+        # ⚑⚑ FRAMING ONLY, AND THE FRAME IS THE WHOLE ADDITION. The user asked what a
+        # box in this working set would MOUNT; a bare collision message answers a
+        # question they did not ask, and reads as a listing failure rather than as
+        # the answer. So one line of context goes ABOVE it — before the refusal, not
+        # after, because that refusal is a dozen lines and carries a YAML remedy
+        # block a reader should be told the purpose of before wading in.
+        # 🛑 THE COLLISION IS NOT RESTATED HERE, EVER. Every word of it is printed
+        # FROM the caught exception; a second carrier of that wording would drift
+        # from the launch's, and the launch's is the one the user has to act on.
+        # ``box_dest`` is READ OFF the exception for the same reason — carried, not
+        # re-derived.
+        print(
+            f"Cannot say what working set '{ws.name}' would mount: its "
+            f"declarations collide at '{e.box_dest}', so no box in it can launch. "
+            f"The refusal a launch gives follows.",
+            file=sys.stderr,
+        )
+        # ⚑ BYTE-IDENTICAL to what ``cli.main`` would have printed had this
+        # propagated (``cli.py``'s ``KanibakoError`` arm: ``print(f"Error: {e}",
+        # file=sys.stderr)`` then rc 1). Catching it here ADDS the line above and
+        # changes nothing else — no second prefix, no reflowed message, same rc.
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
     except SettingsError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
+    # ⚑ THE SHARES ARE THE SUBJECT, not the collapsed map: a share's IDENTITY is its
+    # destination (R-10) and that is what ``share rm`` takes, so a share the collapse
+    # swallowed must keep its ROW and gain a reason — dropping it is the silent
+    # omission this display was already measured wrong for once.
+    shares = [
+        (entry, "ro" if is_read_only(entry.options) else "rw")
+        for entry in entries
+        if entry.category in ("bindings.ro", "bindings.rw")
+    ]
+    derivations = pair_declarations(
+        [
+            Declaration(entry.key, entry.box_dest, entry.host_src, entry.delivery)
+            for entry, _ in shares
+        ],
+        collapsed.bindings,
+    )
+
     print(f"Effective bindings for working set '{ws.name}':")
-    for entry in entries:
-        if entry.category not in ("bindings.ro", "bindings.rw"):
+    for (entry, mode), row in zip(shares, derivations, strict=True):
+        # ⚑ THE ARROW IS THE DELIVERY, and only a delivered share earns one. A share
+        # that receives nothing is printed in DECLARATION form with the reason
+        # beneath it, so a reader skimming for mounts cannot take a loss for one.
+        if row.outcome == DERIVED_MOUNT:
+            print(f"  {entry.host_src} -> {entry.box_dest}  [{mode}]")
             continue
-        mode = "ro" if is_read_only(entry.options) else "rw"
-        print(f"  {entry.host_src} -> {entry.box_dest}  [{mode}]")
+        print(f"  {entry.box_dest}  [{mode}]  (declared: {entry.host_src})")
+        print(f"    {derivation_result(row)}")
     return 0
