@@ -136,6 +136,8 @@ def _pref_value_error(
     value: "str | None",
     *,
     config_path: Path,
+    command_scope: "ConfigLevel | None",
+    system_settings_path: Path | None,
     system_path: Path | None,
     agent_path: Path | None,
     workset_path: Path | None,
@@ -198,6 +200,8 @@ def _pref_value_error(
     resolves, _raw = _category_set_lookups(
         config_path,
         canonical=target,
+        command_scope=command_scope,
+        system_settings_path=system_settings_path,
         system_path=system_path,
         agent_path=agent_path,
         workset_path=workset_path,
@@ -293,6 +297,8 @@ def _category_set_lookups(
     config_path: Path,
     *,
     canonical: str,
+    command_scope: "ConfigLevel | None" = None,
+    system_settings_path: Path | None = None,
     system_path: Path | None = None,
     agent_path: Path | None = None,
     workset_path: Path | None = None,
@@ -304,11 +310,37 @@ def _category_set_lookups(
     from kanibako.settings.settings_expand import expand
     from kanibako.settings.settings_merge import merge
 
+    # The box scalars' DECLARED-DEFAULT floor, so an ``@box.image`` ref RESOLVES at set
+    # time.  ⚑⚑ DECLARED DEFAULTS, NOT A SWEEP OF ``kanibako_config.yaml``.  A
+    # ``_layer1_value_floor()`` stood here for one day and read every declared value out of
+    # the Layer-1 file into this floor; Jei ruled that file cannot carry settings at all
+    # ("kanibako_config.yaml <-- cannot have settings. Period.", 2026-08-26), so the sweep
+    # went and the DECLARED half stayed.  🛑 Do not delete the floor to finish the job:
+    # without it ``@box.image`` dangles at every command scope, which is a REGRESSION, not
+    # conformance — the defaults are a legitimate carrier, the file is not.
+    # ⚑ ``config.box_scalar_defaults_floor`` is the ONE recipe, shared with the launch-side
+    # ``_resolve_box_scalars`` so the set-time floor and the launch floor cannot drift.
+    from kanibako.settings.config import box_scalar_defaults_floor
+
     # ⚑ A path-tier failure must NOT crash a ``config set`` — fall back to an empty floor.
     try:
-        config_foundation, floor = _path_tier_split()
+        config_foundation, path_floor = _path_tier_split()
     except Exception:
-        config_foundation, floor = {}, {}
+        config_foundation, path_floor = {}, {}
+
+    # ⚑ DISJOINT BY CONSTRUCTION: the declared half is ``box.*``, the path tier is
+    # ``system.*``/``config.*``.  The merge order is stated anyway so a future overlap
+    # resolves the only way it can — the RESOLVED path wins over an unresolved expression.
+    floor: dict[str, object] = {**box_scalar_defaults_floor(), **path_floor}
+
+    # ⚑ THE DECLARED HALF IS FOLDED HERE AND NOT INSIDE ``_path_tier_split``, DELIBERATELY:
+    # the OTHER caller of that split is ``_effective_after_reset``, whose RULED contract is
+    # that a cleared key with no lower-tier setter says "falls back through the cascade" and
+    # names NO built-in default ("no fabricated built-in default", pinned by
+    # ``test_reset_absent_below_keeps_cleared_only_form``). Folding these in there would make
+    # every reset of ``box.image`` claim the shipped default as its effective value. The two
+    # set-time snapshots want different floors — the same reason ``meta_agent_path_floor``
+    # below is folded here and not there.
 
     # The agent STORE-ROOT anchor (spec §2d), from the SAME builder the launch floor uses.
     # ⚑ The SECOND anchor (the agent read out of the EDITED KEY) is GONE — do not restore it.
@@ -322,21 +354,41 @@ def _category_set_lookups(
     # ⚑ THERE IS NO SET-TIME FLOOR-REGISTRY FOLD HERE ANY MORE (R-9 / DS-BL1) — do NOT
     # restore it to "fix" a refused bind repoint; the launch-time fold is a different, live one.
 
-    # Place the COMMAND-scope file into its TRUE precedence slot by the edited key's scope token.
-    scope = canonical.split(".", 1)[0]
-    cmd = config_path if config_path.exists() else None
+    # Backfill the COMMAND's OWN cascade slot when the caller did not thread it.
+    #
+    # ⚑⚑ THE SLOT FOLLOWS THE COMMAND, NEVER THE EDITED KEY'S SCOPE TOKEN. Reading the slot
+    # off ``canonical`` made a DOWNWARD-DEFAULT write mis-file the command's settings file:
+    # ``workset set box.shell=…`` handed a real ``workset.yaml`` to the BOX slot, where
+    # ``_drop_upward_scopes`` called it a "box settings file" and stripped the file's own
+    # legitimate ``workset:`` table out of the snapshot the E3 probe judges against. At the
+    # SYSTEM scope it filed the Layer-1 ``kanibako_config.yaml`` as a real settings TIER,
+    # which spec §1 forbids ("NOT part of the keyspace; NOT a settings tier"). ⚑⚑ AND THE
+    # FILE HAS NO VALUES TO REACH ANY MORE: Jei's 2026-08-26 ruling took the settings out of
+    # it entirely, so there is neither a tier nor a reference to it — what an ``@box.*`` ref
+    # resolves against is the DECLARED-DEFAULT floor built above.
+    #
+    # ⚑ ``noun_settings_file`` IS the "which file is this command scope's settings file"
+    # test — the one occurrence, per its own docstring. Do not re-derive it here; this site
+    # WAS the fourteenth, drifted copy.
+    #
+    # ⚑ The former ``agent``-slot special case is GONE ON PURPOSE, not lost: it existed only
+    # to dodge ``_drop_upward_scopes`` on a file the key's scope token had already mis-filed.
+    # With the slot taken from the command there is nothing left for it to dodge.
+    cmd: "Path | None" = noun_settings_file(config_path, system_settings_path)
+    if cmd is not None and not cmd.exists():
+        cmd = None
     sys_p = system_path
     agent_p = agent_path
     ws_p = workset_path
     box_p = box_path
+    scope = command_scope.value if command_scope is not None else None
     if scope == "system":
         sys_p = cmd if sys_p is None else sys_p
     elif scope == "workset":
         ws_p = cmd if ws_p is None else ws_p
     elif scope == "agent":
-        # ⚑ The AGENT slot, never the box slot — ``_drop_upward_scopes`` would drop these keys.
         agent_p = cmd if agent_p is None else agent_p
-    else:  # box (the default / most-specific scope)
+    elif scope == "box":
         box_p = cmd if box_p is None else box_p
 
     # Assemble the FULL cascade with the SAME ``assemble_levels`` the launch uses, then merge.
@@ -658,6 +710,8 @@ def set_config_value(
         _resolves, _ = _category_set_lookups(
             config_path,
             canonical=canonical,
+            command_scope=command_scope,
+            system_settings_path=system_settings_path,
             system_path=cascade_system_path,
             agent_path=cascade_agent_path,
             workset_path=cascade_workset_path,
@@ -680,6 +734,8 @@ def set_config_value(
         value_err = _pref_value_error(
             canonical, value,
             config_path=config_path,
+            command_scope=command_scope,
+            system_settings_path=system_settings_path,
             system_path=cascade_system_path,
             agent_path=cascade_agent_path,
             workset_path=cascade_workset_path,

@@ -401,13 +401,25 @@ Resolve the path tier from the CONFIG file set **and the SYSTEM SETTINGS file**.
 Three layers, read in cascade order so the most-authoritative present value of each set-value wins
 **before** expression resolution:
 
-1. `/etc/kanibako/config_base.yaml` — site-wide overridable defaults (least specific).
+1. `/etc/kanibako/config_base.yaml` — site-wide overridable defaults (least specific). **`config.*`
+   only.**
 2. *user_config_path* — the user's global `~/.config/kanibako_config.yaml` (overrides the base).
-3. `@config.settings` — the SYSTEM SETTINGS file's `system:` table (most specific).
+   **`config.*` only.**
+3. `@config.settings` — the SYSTEM SETTINGS file's `system:` table, filtered to
+   `SYSTEM_PATH_DEFAULTS` (most specific).
 
 Missing files are skipped (each contributes nothing). The merged set-values are split by prefix into
 the Layer-1 `config.*` foundation and the Layer-2 `system.*` path settings, then handed to
 `resolve_system_paths`, which fills in the defaults and resolves `@`-/`$XDG_*`-references.
+
+⚑⚑ **EACH FILE CONTRIBUTES EXACTLY ONE LAYER, AND THE CONFIG FILTER IS NEW (2026-08-26).** A
+`system:` table hand-written into a CONFIG file used to enter `raw` here as a real (if lowest) layer
+of the Layer-2 path tier — which made the bootstrap file a settings source in the one place it most
+mattered, where every host path is decided. Jei: *"kanibako_config.yaml <-- cannot have settings.
+Period."* This is the exact mirror of the filter layer 3 already had in the other direction (a
+`config:` table in a SETTINGS file must never reach Layer 1, spec §1), and it is the same filter
+`resolve_data_leaf` already applied to the same two files — one rule, two sites, and this was the
+site that lacked it.
 
 Back-compat: a user with only `~/.config/kanibako_config.yaml` (no `/etc` file) gets the base layer
 empty, so the user file is the sole set-source.

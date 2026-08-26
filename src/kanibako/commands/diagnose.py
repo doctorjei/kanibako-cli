@@ -543,11 +543,14 @@ def run_system_diagnose(args: object) -> int:
     try:
         config_home = xdg("XDG_CONFIG_HOME", ".config")
         cf = config_file_path(config_home)
-        config = load_config(cf)
+        from kanibako.settings.config import bootstrap_config_paths
         from kanibako.settings.paths import resolve_system_paths
         data_home = xdg("XDG_DATA_HOME", ".local/share")
+        # ⚑ ``bootstrap_config_paths``, not ``load_config(cf).config_paths``: the raw
+        # capture also carries whatever ``system:`` table the file happens to hold, and
+        # the Layer-1 file may not supply settings (Jei, 2026-08-26).
         data_path = resolve_system_paths(
-            config.config_paths, data_home=data_home, home=Path.home(),
+            bootstrap_config_paths(cf), data_home=data_home, home=Path.home(),
         )["config.data"]
         status, detail = _check_storage(data_path)
         print(_format_check(status, "Storage", detail))

@@ -68,10 +68,11 @@ def _known_target_names() -> list[str]:
 def _settings_paths() -> tuple[Path, Path]:
     """Resolve ``(config_file, system_settings_file)`` for programmatic writes.
 
-    ``config_file`` = ``~/.config/kanibako_config.yaml`` (holds ``[system]`` values like
-    ``setup_completed``).  ``system_settings_file`` = ``@config.settings`` =
-    ``global/settings.yaml`` (holds the ``system.agent`` SETTING, where
-    ``read_system_agent`` reads it back).
+    ``config_file`` = ``~/.config/kanibako_config.yaml`` (Layer-1 ``config.*`` bootstrap
+    paths ALONE, spec §1).  ``system_settings_file`` = ``@config.settings`` =
+    ``global/settings.yaml`` — every ``system.*`` SETTING, i.e. both ``system.agent``
+    (``read_system_agent``) and ``system.setup_completed`` (``read_setup_completed``,
+    moved here 2026-08-26).
     """
     from kanibako.settings.config import config_file_path, load_config
     from kanibako.settings.paths import load_std_paths, xdg
@@ -102,13 +103,17 @@ def _write_system_agent(name: str) -> None:
 
 
 def _write_setup_marker() -> None:
-    """Write ``system.setup_completed = __version__`` to the config file."""
+    """Write ``system.setup_completed = __version__`` to the SYSTEM SETTINGS file (spec §2g)."""
+    # ⚑ THE SETTINGS FILE, NOT ``kanibako_config.yaml`` (Jei, 2026-08-26) — the same
+    # file :func:`_write_system_agent` writes and ``config.read_setup_completed`` now
+    # reads.  Spec §2g declares the marker a Layer-2 ``system.*`` settings key; Layer-1
+    # holds the ``config.*`` bootstrap paths alone (spec §1).
     from kanibako import __version__
     from kanibako.settings.config_interface import write_system_value
 
-    cf, _ = _settings_paths()
-    cf.parent.mkdir(parents=True, exist_ok=True)
-    write_system_value(cf, "setup_completed", __version__)
+    _, ssp = _settings_paths()
+    ssp.parent.mkdir(parents=True, exist_ok=True)
+    write_system_value(ssp, "setup_completed", __version__)
 
 
 class TemplateStep(Enum):

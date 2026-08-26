@@ -483,19 +483,29 @@ def load_system_config(user_config_path: Path, *, data_home: Path, home: Path) -
     ``auth``/``env``/``secret_path`` families and the bind-shaped categories, none of which
     belong to the path tier; and a ``config:`` table hand-written into a SETTINGS file must
     never reach Layer 1, which lives in ``kanibako_config.yaml`` alone (spec §1).
+
+    ⚑⚑ AND THE MIRROR OF THAT, ADDED 2026-08-26: a ``system:`` table hand-written into a
+    CONFIG file must never reach Layer 2.  The two files each hold exactly one layer —
+    *"kanibako_config.yaml <-- cannot have settings. Period."* (Jei) — so the config reads
+    below are filtered to ``config.*`` and the settings read is filtered to the path tier.
     """
     # ⚑ Lazy import to avoid a config <-> paths import cycle at module load — do not hoist.
-    from kanibako.settings.config import (config_base_path, load_config)
+    from kanibako.settings.config import (bootstrap_config_paths, config_base_path,
+                                          load_config)
     raw: dict[str, str] = {}
 
     # base < user; an absent file yields {}, so missing layers are skipped automatically.
-    raw.update(load_config(config_base_path()).config_paths)
-    raw.update(load_config(user_config_path).config_paths)
+    # ⚑⚑ FILTERED TO ``config.*`` AT THE READ (2026-08-26).  The CONFIG files carry the
+    # Layer-1 foundation and NOTHING ELSE — Jei: *"kanibako_config.yaml <-- cannot have
+    # settings. Period."*  A ``system:`` table hand-written into one used to enter ``raw``
+    # here as a real (if lowest) layer of the Layer-2 path tier, which made the bootstrap
+    # file a settings source; the SETTINGS file below is now the only one.  ⚑ The same
+    # filter ``resolve_data_leaf`` already applies to the same two files — one rule, two
+    # sites, and this was the site that lacked it.
+    for path in (config_base_path(), user_config_path):
+        raw.update(bootstrap_config_paths(path))
 
-    config = resolve_config_paths(
-        {k: v for k, v in raw.items() if k.startswith("config.")},
-        data_home=data_home, home=home,
-    )
+    config = resolve_config_paths(raw, data_home=data_home, home=home)
     stored = load_config(Path(config["config.settings"])).config_paths
     raw.update({k: v for k, v in stored.items() if k in SYSTEM_PATH_DEFAULTS})
 
@@ -534,13 +544,14 @@ def resolve_data_leaf(data_path: Path | None = None, *, config_home: Path | None
     try:
         # ⚑ Lazy import to avoid a config <-> paths import cycle at module load — do not hoist
         # (mirrors load_system_config's own deferral).
-        from kanibako.settings.config import config_base_path
+        from kanibako.settings.config import bootstrap_config_paths, config_base_path
 
         raw: dict[str, str] = {}
-        raw.update(load_config(config_base_path()).config_paths)
-        raw.update(load_config(config_file_path(ch)).config_paths)
-        config_set = {k: v for k, v in raw.items() if k.startswith("config.")}
-        resolved = resolve_config_paths(config_set, data_home=dh, home=Path.home(),
+        # ⚑ ``bootstrap_config_paths`` IS the filter this function used to spell inline —
+        # it is now the one carrier, shared with ``load_system_config`` (2026-08-26).
+        raw.update(bootstrap_config_paths(config_base_path()))
+        raw.update(bootstrap_config_paths(config_file_path(ch)))
+        resolved = resolve_config_paths(raw, data_home=dh, home=Path.home(),
                                         xdg_vars=spec_default_xdg_map(dh))
         return Path(resolved["config.data"]).name
     except Exception:

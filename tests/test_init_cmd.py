@@ -567,14 +567,20 @@ class TestCreateImage:
     ):
         """The live-cascade payoff the no-bake decision buys: change the stored
         system default AFTER create and the existing no-flag box follows it."""
-        from kanibako.settings.config import (
-            KanibakoConfig, load_merged_config, write_global_config,
-        )
+        from kanibako.settings.config import load_config, load_merged_config
+        from kanibako.settings.config_io import write_nested_key
+        from kanibako.settings.paths import load_std_paths
+
         parser = build_parser()
         args = parser.parse_args(["box", "create", "--standalone", str(project_dir)])
         run_create(args)
 
-        write_global_config(config_file, KanibakoConfig(box_image="changed-later:1"))
+        # ⚑ THE STORED SYSTEM DEFAULT IS THE SYSTEM SETTINGS FILE, which is what this
+        # case is named for. It used to write ``kanibako_config.yaml`` instead; that
+        # file cannot carry settings (Jei, 2026-08-26), and this is the file
+        # ``kanibako system set box.image=…`` has always written.
+        ssp = load_std_paths(load_config(config_file)).settings
+        write_nested_key(ssp, ("box",), "image", "changed-later:1")
         box_tier, ws_tier = _standalone_tiers(config_file, project_dir)
         merged = load_merged_config(config_file, box_tier, workset_path=ws_tier)
         assert merged.box_image == "changed-later:1"

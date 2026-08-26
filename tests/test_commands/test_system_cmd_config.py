@@ -313,7 +313,7 @@ class TestSystemEnvTier:
 
 class TestSystemStructuralFileOnly:
     """``system.setup_completed`` is SETTABLE, and every verb names the ONE table
-    the marker is stored in — the config file's ``system:``.
+    the marker is stored in — the SYSTEM SETTINGS file's ``system:``.
 
     ⚑⚑ THIS CLASS ASSERTED THE OPPOSITE UNTIL 2026-08-23, and the reversal is the
     saying-so.  It pinned a refusal on all three verbs whose cure was "hand-edit the
@@ -322,12 +322,13 @@ class TestSystemStructuralFileOnly:
     write is not a safety property; it is the surface failing to keep a declared
     promise, and the hand-edit had exactly the same lack of validation.
 
-    ⚑ WHY THE FIX WAS NOT A SETTINGS-FILE ROUTE.  ``setup`` writes the marker to the
-    config file and ``read_setup_completed`` reads it from there, so routing the verbs
-    to ``@config.settings`` like their ``system.*`` siblings would have been accepted,
-    persisted and INERT.  The remaining delta — spec §2g declares it a settings key
-    while the code stores it in the config file — is a STORAGE migration, not a
-    routing one, and is recorded at ``config_keys.SETUP_MARKER_KEY``.
+    ⚑⚑ THE FILE IS ``@config.settings`` SINCE 2026-08-26, and the invariant is
+    unchanged: every verb names the file ``read_setup_completed`` reads, because a
+    verb aimed anywhere else is accepted, persisted and INERT.  What moved was the
+    STORAGE — Jei closed the delta spec §2g had recorded all along (a Layer-2
+    ``system.*`` settings key stored in the Layer-1 config file) by moving the marker
+    to the global settings file, so ``setup``, the gate and all three verbs now name
+    the same file as ``system.agent`` does.
     """
 
     def test_set_writes_the_file_the_gate_reads(
@@ -339,7 +340,9 @@ class TestSystemStructuralFileOnly:
         assert rc == 0, capsys.readouterr()
         # The SHIPPED READER is the oracle: asserting a table exists would pass just
         # as well for a write nobody consumes.
-        assert read_setup_completed(config_file) == "1.7.0"
+        assert read_setup_completed(_std(config_file).settings) == "1.7.0"
+        # ...and the Layer-1 file did not take the write.
+        assert "setup_completed" not in load_doc(config_file).get("system", {})
 
     def test_reset_clears_it_back_to_never_run(
         self, config_file, tmp_home, capsys,
@@ -350,7 +353,7 @@ class TestSystemStructuralFileOnly:
         capsys.readouterr()
         rc = _reset("system.setup_completed")
         assert rc == 0, capsys.readouterr()
-        assert read_setup_completed(config_file) is None
+        assert read_setup_completed(_std(config_file).settings) is None
 
     def test_hand_editing_the_named_file_is_still_honored(
         self, config_file, tmp_home, capsys,
@@ -361,13 +364,14 @@ class TestSystemStructuralFileOnly:
         which meant a key the CLI now sets could not be read by the same CLI — the
         get/set asymmetry the dest-parity module exists to prevent.
         """
-        write_nested_key(config_file, ("system",), "setup_completed", "1.7.0")
+        ssp = _std(config_file).settings
+        write_nested_key(ssp, ("system",), "setup_completed", "1.7.0")
         capsys.readouterr()
         rc = _get("system.setup_completed")
         assert rc == 0, capsys.readouterr()
         assert "1.7.0" in capsys.readouterr().out
         from kanibako.settings.config import read_setup_completed
-        assert read_setup_completed(config_file) == "1.7.0"
+        assert read_setup_completed(ssp) == "1.7.0"
 
     def test_the_system_path_tier_is_settable_and_lands_in_the_settings_file(
         self, config_file, tmp_home, capsys,
@@ -381,7 +385,10 @@ class TestSystemStructuralFileOnly:
         assert rc == 0, capsys.readouterr()
         std = _std(config_file)
         assert load_doc(std.settings)["system"]["cache"] == custom
-        assert load_doc(config_file)["system"].get("cache") != custom
+        # ⚑ ``.get("system", {})``, not ``["system"]``: since 2026-08-26 the Layer-1
+        # file is written EMPTY at create time, so it has no ``system:`` table at all
+        # — which is a STRONGER statement of the same thing this line always asserted.
+        assert load_doc(config_file).get("system", {}).get("cache") != custom
         capsys.readouterr()
         assert _get("system.cache") == 0
         assert custom in capsys.readouterr().out

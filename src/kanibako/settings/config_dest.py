@@ -205,18 +205,17 @@ def noun_settings_file(
 #: by DS-BL1 = (a) and deleted by QA′.  ⚑ THE TERM IS KEPT DELIBERATELY AND IS NOT
 #: DEAD DATA: it is the declared FAMILY of the key, bound for the KeyKind
 #: descriptor.  Do not collapse it into ``SCOPED``.
-#: ⚑ ``BOOTSTRAP`` = the Layer-1 ``kanibako_config.yaml`` itself, and it has exactly
-#: ONE member: ``system.setup_completed``.  The marker is WRITTEN there by ``setup``
-#: (``config_interface.write_system_value``) and READ back from there
-#: (``config.read_setup_completed``, and ``get_config_value``'s config-file arm), so a
-#: verb that wrote it anywhere else would be inert — a set the reader never sees.
-#: 🛑 IT IS NOT A GENERAL "WRITE THE CONFIG FILE" RULE, and must not grow into one:
-#: ``config.*`` keys LOCATE the files everything else lives in and are refused from
-#: every scope BEFORE this rule is reached (spec §2a).  This rule exists because the
-#: marker's STORAGE is in the config file while its DECLARATION (spec §2g,
-#: ``set: cli+file``, "PERSISTS, user-resettable") makes it settable — a delta recorded
-#: in ``config_keys.is_config_file_only_key`` and closable only by a storage migration.
-_NOUN, _SCOPED, _CATEGORY, _BOOTSTRAP = "noun", "scoped", "category", "bootstrap"
+#: ⚑⚑ A FOURTH RULE, ``BOOTSTRAP``, IS RETIRED (2026-08-26) AND MUST NOT COME BACK.
+#: It named the Layer-1 ``kanibako_config.yaml`` itself and had exactly ONE member,
+#: ``system.setup_completed`` — a rule that existed only because the marker's STORAGE
+#: (the config file) disagreed with its DECLARATION (spec §2g: a Layer-2 ``system.*``
+#: SETTINGS key).  Jei closed the delta by moving the storage: the marker is written to
+#: and read from ``@config.settings`` like ``system.agent``, so it routes through
+#: ``_KEY_ROUTES`` under ``SCOPED`` and the class has no members left.
+#: 🛑 THERE IS NO "WRITE THE CONFIG FILE" RULE AND THERE MUST NOT BE ONE: ``config.*``
+#: keys LOCATE the files everything else lives in and are refused from every scope
+#: (spec §2a), so no key routes to Layer 1 at all.
+_NOUN, _SCOPED, _CATEGORY = "noun", "scoped", "category"
 
 
 # ⚑⚑ A DESTINATION IS DATA, NOT A KEY PATH — NEVER SPLIT IT ON A DOT. The key STOPS
@@ -250,7 +249,6 @@ def _key_slot(canonical: str) -> "tuple[tuple[str, ...], str, str] | None":
     file shape and is resolved by :func:`_agent_node_route`.
     """
     from kanibako.settings.config_keys import (
-        SETUP_MARKER_KEY,
         _is_agent_setting,
         _is_path_category_key,
         _is_pref_key,
@@ -262,10 +260,10 @@ def _key_slot(canonical: str) -> "tuple[tuple[str, ...], str, str] | None":
     )
     from kanibako.settings.settings_keyspace import is_terminal_category_key
 
-    if canonical == SETUP_MARKER_KEY:
-        # The ``system:`` table of the BOOTSTRAP config file — the address ``setup`` and
-        # ``read_setup_completed`` already use, so set/get/reset name ONE storage location.
-        return ("system",), SETUP_MARKER_KEY.split(".", 1)[1], _BOOTSTRAP
+    # ⚑ NO ``SETUP_MARKER_KEY`` BRANCH ANY MORE (2026-08-26) — the marker is an ordinary
+    # ``system.*`` settings key now and falls through to ``_KEY_ROUTES`` below, exactly
+    # like ``system.agent``.  set/get/reset still name ONE storage location; it is the
+    # SETTINGS file, and it is the one ``config.read_setup_completed`` reads.
     if _is_pref_key(canonical):
         sections, leaf = _pref_sections_leaf(canonical)
         return sections, leaf, _NOUN
@@ -335,12 +333,6 @@ def _dest(
     if slot is None:
         return None
     sections, leaf, rule = slot
-    if rule == _BOOTSTRAP:
-        # ⚑ The noun's OWN file, NEVER the settings file — at the system scope that IS
-        # ``kanibako_config.yaml``.  Below the system scope the key is an UPWARD write and
-        # the scope-direction guard (spec §0) refuses it before any verb asks for a route,
-        # which is why this arm may hand back the command's own file unconditionally.
-        return DestRoute(config_path, sections, leaf)
     if rule == _NOUN:
         return DestRoute(noun_settings_file(config_path, settings_path), sections, leaf)
     key_scope = canonical.split(".", 1)[0]

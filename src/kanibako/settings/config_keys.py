@@ -50,15 +50,15 @@ class ConfigLevel(Enum):
 # cost, and the seven False answers: llm-docs/kanibako/settings/config_keys.py.md.
 # ---------------------------------------------------------------------------
 #: The setup VERSION MARKER (spec §2g) — spelled ONCE, here.
-#: ⚑⚑ ITS STORAGE AND ITS DECLARATION DISAGREE, AND THAT IS RECORDED, NOT HIDDEN.  Spec
-#: §2g declares it a ``system`` SETTINGS key; the code keeps it in the ``system:`` table of
-#: the Layer-1 ``kanibako_config.yaml``, because ``setup`` writes it there
-#: (``setup_cmd._mark_setup_complete``) and the staleness gate reads it from there
-#: (``config.read_setup_completed``).  The verbs follow the STORAGE — see
-#: ``config_dest._BOOTSTRAP`` — so set, get and reset all name the file the marker is
-#: actually in.  Moving the storage to ``@config.settings`` would make the code match the
-#: spec, and it is a MIGRATION (every existing install would read "setup never run" and
-#: re-run setup), not a routing change.
+#: ⚑⚑ THE STORAGE/DECLARATION DELTA IS CLOSED (Jei, 2026-08-26).  Spec §2g declares this a
+#: Layer-2 ``system`` SETTINGS key, and the code now stores it as one: ``setup`` writes it
+#: to ``@config.settings`` (``setup_cmd._write_setup_marker``) and the staleness gate reads
+#: it from there (``config.read_setup_completed``), so it is an ORDINARY ``system.*`` key
+#: routed through :data:`_KEY_ROUTES` beside ``system.agent``.
+#: 🛑 It kept its own destination RULE (``config_dest._BOOTSTRAP``) and its own read family
+#: (:func:`is_config_file_only_key`) only for as long as it lived in Layer 1; both are
+#: retired.  Do not re-add either — Layer 1 holds the ``config.*`` bootstrap paths ALONE
+#: (spec §1), so no key routes there.
 SETUP_MARKER_KEY = "system.setup_completed"
 
 # The set itself: if a positional arg matches one of these, it is treated as a
@@ -172,7 +172,8 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     # system.setup_completed (spec §2g): the setup VERSION MARKER. ⚑ Here since 2026-08-23,
     # because ``system_cmd``'s get arm gates on this set: a key the CLI can now SET must be
     # a key the CLI can READ, or the two verbs disagree about whether it exists. Its storage
-    # is the config file, NOT the settings file — see :data:`SETUP_MARKER_KEY`.
+    # is the SYSTEM SETTINGS file since 2026-08-26 — the sibling of ``system.agent`` above
+    # in every respect now; see :data:`SETUP_MARKER_KEY`.
     SETUP_MARKER_KEY,
 })
 
@@ -195,6 +196,9 @@ _KEY_ROUTES: dict[str, tuple[tuple[str, ...], str]] = {
     # ``system.agent`` (the agent SELECTION default, spec §2g) and the settable 3-tier
     # auth chain: ordinary SETTINGS keys, each in its own nested scope slot.
     "system.agent": (("system",), "agent"),
+    # The setup VERSION MARKER (spec §2g) — an ORDINARY system settings key since
+    # 2026-08-26, in the same ``system:`` table of the same file as ``system.agent``.
+    SETUP_MARKER_KEY: (("system",), "setup_completed"),
     "system.auth.share_allowed": (("system", "auth"), "share_allowed"),
     # The Layer-2 ``system.*`` PATH keys (spec §2g) — the SYSTEM twins of the
     # ``workset.*`` layout anchors below, wired identically: one nested slot in the
@@ -740,16 +744,17 @@ def is_config_file_only_key(key: str) -> bool:
     # SETTINGS file like ``workset.vault_ro`` does to the workset file. Refusing them as
     # "structural" contradicted spec §0/§2g and the CLI-settable list at §2a. Do not
     # re-add the family: a spec edit would have to come first.
-    # ⚑⚑ IT IS A READ ROUTE NOW, NOT A REFUSAL (2026-08-23). It used to double as "and
+    # ⚑⚑ IT IS A READ ROUTE, NOT A REFUSAL (2026-08-23). It used to double as "and
     # therefore the write verbs refuse it", which made ``system.setup_completed`` — declared
     # ``set: cli+file``, "PERSISTS, user-resettable" — unsettable AND unresettable, with a
-    # refusal telling the user to hand-edit the file the CLI could have written. The write
-    # verbs route it to that same file via :data:`SETUP_MARKER_KEY`; this predicate now
-    # answers only "does a READ come from the config file".
-    if key.startswith("config."):
-        # ⚑ set/reset short-circuit ``config.*`` earlier (B2) with their own ruled message.
-        return True
-    return key == SETUP_MARKER_KEY
+    # refusal telling the user to hand-edit the file the CLI could have written. This
+    # predicate answers only "does a READ come from the config file".
+    # ⚑⚑ ``config.*`` IS THE WHOLE FAMILY (2026-08-26). :data:`SETUP_MARKER_KEY` was the
+    # last non-``config.*`` member and its STORAGE moved to ``@config.settings`` (spec
+    # §2g), so it reads through ``_KEY_ROUTES`` like every other setting. What is left is
+    # exactly spec §1's Layer-1 set — which is the definition, not a coincidence.
+    # ⚑ set/reset short-circuit ``config.*`` earlier (B2) with their own ruled message.
+    return key.startswith("config.")
 
 
 def _user_config_file_str() -> "Path | str":

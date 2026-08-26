@@ -85,6 +85,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`kanibako_config.yaml` holds bootstrap paths and nothing else, and `kanibako init` writes it
+  empty.** It used to be created with three tables — the six `config.*` bootstrap paths, six
+  `system.*` paths, and `box.image` / `box.share_images` — every value of which is already a built-in
+  default, so the file was a fourth copy of things the code, the defaults table and the manifest each
+  declare. Worse, two of those tables were *read back* as settings: a `system:` table there reached
+  every resolved host path, and a `box:` table entered the cascade. A setting written into that file
+  now does nothing; only `config.*` is read from it. Defaults are unchanged, so a store that never
+  edited the file resolves every path exactly as before.
+
+- **`system.setup_completed` moved to the global settings file** — `<data>/global/settings.yaml`,
+  beside `system.agent`, which is where a `system.*` settings key belongs. `kanibako setup` writes it
+  there, and `system get` / `set` / `reset` all name that file. A marker left in the old location is
+  not read: kanibako reports that setup has not run, prints its usual one-line nudge, and otherwise
+  works normally — re-running `kanibako setup` records it in the new place.
+
+- **`box show --effective` shows each abstract declaration beside the binding it derives, instead of
+  `(binding derivations temporarily unavailable)`.** The `common`, `caches` and `seeded` half of the
+  block had been disabled since the declaration/delivery pairing was routed through a stub. It now
+  prints the declaration and, under it, what the box actually receives — ending `(mount)` or `(copy)`,
+  or naming why there is neither: a mask covering the destination, a sweep above it, or a collision
+  the declaration lost. Exit codes are unchanged.
+  The distinction that makes the line trustworthy is that it reports what the box **receives**, not
+  what was declared: a declaration whose binding is masked or swept now says so, where an earlier
+  attempt at this display would have reported a mount that does not exist. What it still cannot do is
+  name the *key* of the mask that covered a destination — only the destination itself.
+
+- **A workset-tier `box.enable_vault` reaches the boxes in that workset.** `kanibako workset create
+  --no-vault NAME` wrote the setting and nothing read it back, so boxes in that workset kept their
+  vault: the flag had no effect on anything it was meant to affect. Both named and default-mode
+  worksets now resolve it as an overridable default, so a box that sets its own value still wins.
+  Nothing changes unless a workset explicitly carries `box.enable_vault: false` — an absent file, a
+  workset with no `box` table, or the key set to `true` all behave exactly as before. A value
+  inherited from the workset is **not** written into the box's own settings file, so later workset
+  edits keep reaching it.
+
 - **The Claude status line reports context from exact token counts instead of a rounded percentage,
   and prints `—` when it has no reading yet.** It derived used tokens from the integer
   `used_percentage`, so at a 1M window — where each 1% is 10,000 tokens — the figure was rounded to

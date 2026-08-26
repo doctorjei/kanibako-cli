@@ -438,11 +438,17 @@ class TestHostXdgMap:
 
 
 class TestLoadSystemConfig:
-    """The 2-file CONFIG loader: config_base < user-global.
+    """The 2-file CONFIG loader: config_base < user-global, then the SETTINGS file.
 
     ``config_base_path`` points at ``/etc/kanibako`` in production; tests redirect
     it at a tmp file via monkeypatch so the cascade can be exercised hermetically.
     (The former ``config_required`` non-overridable tier was CUT, 2026-06-29f.)
+
+    ⚑⚑ THE TWO CONFIG FILES SUPPLY ``config.*`` ONLY, SINCE 2026-08-26. Jei:
+    *"kanibako_config.yaml <-- cannot have settings. Period."* — and ``config_base.yaml``
+    is the SAME family, the site half of the Layer-1 CONFIG set (spec §1 names both;
+    the settings base is the separate ``/etc/kanibako/settings_base.yaml``). The Layer-2
+    ``system.*`` path half comes from ``@config.settings`` alone, which is layer 3.
     """
 
     def _redirect(self, monkeypatch, base: Path) -> None:
@@ -498,34 +504,72 @@ class TestLoadSystemConfig:
         assert resolved["config.agents"] == Path("/user/agents")
 
     def test_base_supplies_value_absent_from_user(self, tmp_path, monkeypatch):
-        """A base-only key is honored when the user file omits it."""
+        """A base-only key is honored when the user file omits it.
+
+        ⚑ The base-only key is a ``config.*`` one now: it was ``system.channelroot``,
+        and a CONFIG file's ``system:`` table supplies nothing since 2026-08-26.
+        """
         base = tmp_path / "config_base.yaml"
         user = tmp_path / "kanibako_config.yaml"
-        base.write_text('system:\n  channelroot: "/base/channels"\n')
+        base.write_text('config:\n  registry: "/base/registry.yaml"\n')
         user.write_text('config:\n  agents: "/user/agents"\n')
         self._redirect(monkeypatch, base)
 
         resolved = load_system_config(user, data_home=tmp_path, home=tmp_path)
-        assert resolved["system.channelroot"] == Path("/base/channels")
+        assert resolved["config.registry"] == Path("/base/registry.yaml")
         assert resolved["config.agents"] == Path("/user/agents")
 
-    def test_per_key_independent_cascade(self, tmp_path, monkeypatch):
-        """Each leaf cascades independently — base pins one key while the
-        user sets (and overrides) another (spanning BOTH layers)."""
+    def test_a_system_table_in_either_config_file_is_inert(self, tmp_path, monkeypatch):
+        """🛑 Neither CONFIG file may supply a Layer-2 ``system.*`` path.
+
+        The replacement pin for what the two cases around it used to assert. Before
+        2026-08-26 a ``system:`` table in either file entered the resolve as a real (if
+        lowest) layer, which made the bootstrap files a settings source in the one place
+        it most mattered — where every host path is decided.
+        """
+        from kanibako.settings.paths_defaults import SYSTEM_PATH_DEFAULTS
+
         base = tmp_path / "config_base.yaml"
         user = tmp_path / "kanibako_config.yaml"
-        base.write_text(
-            'config:\n  data: "/base/data"\nsystem:\n  channelroot: "/base/channels"\n'
-        )
-        user.write_text(
-            'config:\n  data: "/user/data"\n  agents: "/user/agents"\n'
-        )
+        base.write_text('system:\n  channelroot: "/base/channels"\n')
+        user.write_text('system:\n  channelroot: "/user/channels"\n')
         self._redirect(monkeypatch, base)
 
         resolved = load_system_config(user, data_home=tmp_path, home=tmp_path)
-        assert resolved["config.data"] == Path("/user/data")    # user overrides base
+        assert resolved["system.channelroot"] not in (
+            Path("/base/channels"), Path("/user/channels"),
+        )
+        # It resolves from the DECLARED default table instead.
+        assert SYSTEM_PATH_DEFAULTS["system.channelroot"] == "@config.data/channels"
+        assert resolved["system.channelroot"] == resolved["config.data"] / "channels"
+
+    def test_per_key_independent_cascade(self, tmp_path, monkeypatch):
+        """Each leaf cascades independently, spanning BOTH layers and all three files.
+
+        ⚑ The Layer-2 leaf is planted in the SETTINGS file (layer 3) rather than in the
+        base CONFIG file: since 2026-08-26 that is the only file that may supply one.
+        The property under test — per-key independence across the layers — is unchanged,
+        and the case now genuinely exercises all three inputs.
+        """
+        data = tmp_path / "userdata"
+        base = tmp_path / "config_base.yaml"
+        user = tmp_path / "kanibako_config.yaml"
+        base.write_text('config:\n  data: "/base/data"\n')
+        user.write_text(
+            f'config:\n  data: "{data}"\n  agents: "/user/agents"\n'
+        )
+        self._redirect(monkeypatch, base)
+
+        # Layer 3 — the SYSTEM SETTINGS file at the resolved ``@config.settings``
+        # (``@config.data/global/settings.yaml``, i.e. under the user-pinned data root).
+        ssp = data / "global" / "settings.yaml"
+        ssp.parent.mkdir(parents=True)
+        ssp.write_text('system:\n  channelroot: "/settings/channels"\n')
+
+        resolved = load_system_config(user, data_home=tmp_path, home=tmp_path)
+        assert resolved["config.data"] == data                    # user overrides base
         assert resolved["config.agents"] == Path("/user/agents")  # user-only
-        assert resolved["system.channelroot"] == Path("/base/channels")  # base-only
+        assert resolved["system.channelroot"] == Path("/settings/channels")  # layer 3
 
 
 class TestResolveSystemPathsXdgCtx:
