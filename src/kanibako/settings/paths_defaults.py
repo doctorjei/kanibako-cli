@@ -88,7 +88,7 @@ STATUS_NO_DATA = "no-data"
 
 # ⚑ KB_INIT ends UNTERMINATED (trailing space, no newline); MSG_DONE closes the line.
 MSG_OTS_KB_INIT =       "[One Time Setup] Initializing kanibako in %s... " # project path
-MSG_OTS_WS_PROJ_INIT =  "[One Time Setup] Initializing workset project in %s..." # metadata path
+MSG_OTS_WS_PROJ_INIT =  "[One Time Setup] Initializing workset project in %s... " # metadata path
 MSG_DONE =              "done."
 
 # ⚑ The WARN_* templates are passed to logger.warning() UNFORMATTED — an arg-count slip does not
