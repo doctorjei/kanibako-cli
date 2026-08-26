@@ -123,9 +123,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   was not part of the error hierarchy kanibako catches. What the user got was a stack trace. It now
   exits 1 with the refusal alone: `Error: key 'get' is reserved: it would shadow a real attribute
   on the settings store. Reserved names: [...]`, the full list included so the name can be
-  recognised rather than guessed at. ⚑ **The refusal names the key but not the file that carries
-  it** — the loader that walks a settings file into the store is the one partial builder not handed
-  its path, a gap wider than this case and not closed here.
+  recognised rather than guessed at. **The refusal also names the file that carries the name**, as
+  `(in settings file <path>)` after the reason, so a name reserved in one of several files in the
+  cascade does not have to be hunted for. The same address is now appended to every refusal the
+  settings parse raises — a retired entry shape, a bare relative path, a wrong number of arguments —
+  at every tier that reads a file, including agent files and a `pref:` table.
+
+- **`kanibako code` says so when it cannot write VS Code's attached-container config, instead of
+  attaching silently without it.** If the config home was unwritable — a read-only or full
+  directory — the write failed inside a catch-all that reported it at debug level only, so at the
+  default level nothing was printed: VS Code opened without the box's workspace folder and without
+  its agent extension, and the cause was visible only under `-v`. It now warns at the default level,
+  naming both the consequence and the underlying error with its path, and still launches at rc 0.
+  Both legs behave the same way, including `--remote`, which writes the *local* config home keyed by
+  the remote box's image and so fails and recovers identically.
 
 - **Refusal messages for a settings key that is not a key no longer invent a trailing dot, and no
   longer offer a list of leaves from the wrong tier.** Asking about a namespace — `box`, `meta.box`,
@@ -185,6 +196,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   follow it (repointing `channelroot` moves all five `channels.*` type-roots with it). Values
   hand-written into `kanibako_config.yaml`'s `system:` table still work and still sit underneath, as
   the floor they always were.
+
+- **All six `workset.channels.*` settings now do what setting them says they do — three of them did
+  nothing at all.** The workset channel family declares `common`, `chat`, `share`, `broadcast`,
+  `mailboxes` and `share_global`, and kanibako was reading none of them: it took the resolved
+  `workset.channelroot` and joined the directory names on by hand. Because those joins *are* each
+  key's documented default, everything looked right until you changed one.
+  `broadcast`, `mailboxes` and `share_global` had no reader whatsoever — a set was accepted, the
+  value was written to `workset.yaml`, `config get` read it straight back, and not one byte moved.
+  `mailboxes` was the one that could actually mislead you: repointing it looked for all the world
+  like you had relocated your box's own inbox, and `~/channels/inbox` stayed exactly where it was.
+  `chat` and `share` were worse in a quieter way, because half of kanibako honoured them: the
+  `~/channels/workset/chat` mount followed your override while the launch kept creating and
+  rotating `general.md` and `broadcast.md` in the *old* directory — which is mounted nowhere. A box
+  whose workset repointed `chat` therefore had an empty `~/channels/workset/chat`, and a growing
+  pile of chat logs on the host that nothing could read. ⚠️ **If you repointed `workset.channels.chat`,
+  your existing logs are in `<channelroot>/chat` and will not be picked up automatically — move
+  them into the directory the key names.** Every leaf is now resolved through its own key, in the
+  one place the workset directory keys have always been resolved, so a repoint reaches the mount,
+  the seeded log files, and the `meta.box.inbox` / `meta.box.share_global` / `meta.box.share_workset`
+  addresses together. `workset.channelroot` is now a value the launch resolves too: it carried a
+  documented default that nothing supplied, so a settings file could reference `@workset.channelroot`
+  and get nothing back. See [MIGRATION.md](MIGRATION.md) §2.51.
 
 - **The any-agent defaults `template`, `canon`, `run_args` and `transform` are settable, and the
   refusal that pointed at them stopped lying.** Six agent behaviour keys were settable by their bare

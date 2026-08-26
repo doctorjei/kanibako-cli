@@ -6447,20 +6447,16 @@ def _launch_snapshot_inputs(
     # are the workset-local channel roots — the helper-log path is no longer among
     # them: its bind is now the spec's own ``@workset.logs/@{meta.box.name}.jsonl``
     # @-ref chain (PHASE R), which resolves from the anchors below.
-    # The resolved workset-local channel roots (PRIMARY/NAMED only; STANDALONE has
-    # no workset-local channels, spec §2c).
-    _wch = None if mode == "standalone" else _channels.workset_channel_paths(proj, std)
-    _ws_channels = (
-        {
-            "common": str(_wch.common),
-            "chat": str(_wch.chat),
-            "share": str(_wch.share),
-        }
-        if _wch is not None
-        else None
-    )
+    # The resolved channel family (spec §2c). ⚑ ALL SIX DECLARED LEAVES plus the channel
+    # ROOT, not the three the floor used to be handed: ``broadcast``, ``mailboxes`` and
+    # ``share_global`` were declared keys that no floor installed in any mode, so
+    # ``config set`` took them, ``config get`` read them back, and nothing changed.
+    # The per-mode gating lives inside the helper — the four workset-LOCAL leaves are
+    # PRIMARY/NAMED, the two partition leaves are ALL PROJECTS.
+    _channelroot, _ws_channels = _workset_channel_floor_values(std, proj)
     workset_anchor = settings_launch_module.workset_anchor_floor(
         mode=mode,
+        channelroot=_channelroot,
         workset_channels=_ws_channels,
     )
     return (
@@ -8923,33 +8919,68 @@ def _channel_default_categories(std, proj) -> "core_defaults.BindArmTable":
 def _seed_channel_files(std, proj) -> None:
     """Guarantee-create the chat log files inside the channel sources (§3c).
 
-    ``chat/general.md`` (default log) + ``chat/broadcast.md`` (reserved broadcast
-    log) at the SYSTEM chat dir (every mode); and at the WORKSET chat dir for
-    primary/named.  Create-if-absent (idempotent — never overwrites a user-edited
-    log); the partition source DIRS themselves are mkdir'd by the L7 rw-branch.
-    Keeps ``_rotate_file`` on each ``broadcast.md`` (A5 — parity with the legacy
-    ``broadcast.log`` rotation).
+    The default log (``general.md``) + the reserved BROADCAST log, at the SYSTEM chat
+    dir (every mode) and at the WORKSET chat dir for primary/named.  Create-if-absent
+    (idempotent — never overwrites a user-edited log); the partition source DIRS
+    themselves are mkdir'd by the L7 rw-branch.  Keeps ``_rotate_file`` on each
+    broadcast log (A5 — parity with the legacy ``broadcast.log`` rotation).
+
+    ⚑⚑ EVERY PATH HERE IS READ OFF A RESOLVED KEY, never joined onto a channel root.
+    This function is why the split carrier MATTERED: it runs on every launch, and while
+    the ``~/channels/workset/chat`` bind followed ``workset.channels.chat``, this
+    followed ``<channelroot>/chat`` — so a repoint mounted one directory and seeded the
+    logs into another, which is mounted nowhere.  The bible tells every agent its chat
+    logs live at ``~/channels/workset/chat``; the override emptied the directory canon
+    points at.  ``broadcast`` is a DECLARED key in BOTH scopes and may sit outside its
+    chat dir, so it is created at its own resolved path, not beside ``general.md``.
     """
     from kanibako.channels import channels as _ch
 
-    chat_dirs = [std.channels_chat]
+    # (general log, broadcast log) per scope.
+    logs = [(std.channels_chat / _ch.CHAT_GENERAL_LEAF, std.channels_broadcast)]
     wch = _ch.workset_channel_paths(proj, std)
     if wch is not None:
-        chat_dirs.append(wch.chat)
+        logs.append((wch.chat_general, wch.chat_broadcast))
 
-    for chat_dir in chat_dirs:
+    for general, broadcast in logs:
         try:
-            chat_dir.mkdir(parents=True, exist_ok=True)
-            general = chat_dir / "general.md"
-            if not general.exists():
-                general.touch()
-            broadcast = chat_dir / "broadcast.md"
-            if not broadcast.exists():
-                broadcast.touch()
+            for log in (general, broadcast):
+                log.parent.mkdir(parents=True, exist_ok=True)
+                if not log.exists():
+                    log.touch()
             _rotate_file(broadcast)
         except OSError:
             # Best-effort: a genuinely unwritable source surfaces at launch.
             pass
+
+
+def _workset_channel_floor_values(std, proj) -> "tuple[str | None, dict[str, str]]":
+    """The resolved ``(workset.channelroot, workset.channels.*)`` the launch floor installs.
+
+    ⚑ TWO DIFFERENT MODE GATES, which is why this is one function and not one call.
+    The four workset-LOCAL leaves and the channel root are PRIMARY/NAMED only; the two
+    partition leaves (``mailboxes`` / ``share_global``) are ALL PROJECTS (§2c) and a
+    standalone box installs them like anyone else.  Reading the whole family off a
+    single ``None``-for-standalone helper is how three of the six ended up installed by
+    no floor in any mode.
+    """
+    from kanibako.channels import channels as _ch
+
+    part = _ch.workset_partition_paths(proj, std)
+    leaves: "dict[str, str]" = {
+        "mailboxes": str(part.mailboxes),
+        "share_global": str(part.share_global),
+    }
+    wch = _ch.workset_channel_paths(proj, std)
+    if wch is None:
+        return None, leaves
+    leaves.update({
+        "common": str(wch.common),
+        "chat": str(wch.chat),
+        "broadcast": str(wch.chat_broadcast),
+        "share": str(wch.share),
+    })
+    return str(wch.root), leaves
 
 
 def _core_default_categories(

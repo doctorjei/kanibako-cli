@@ -246,10 +246,21 @@ _SINGLETON_KEYS = (
     "agent.default.template",
 )
 
+#: (i-f) The workset CHANNEL family — ``workset.channelroot`` plus the six declared
+#: ``workset.channels.*`` leaves (spec §2c), derived by ``channels/channels.py``.
+#: ⚑ FORMERLY EXEMPT (E1).  See :class:`TestWorksetChannelDefaults` for the oracle and
+#: the E1 comment for why the exemption was wrong.
+_CHANNEL_KEYS = (
+    "workset.channelroot",
+    "workset.channels.common", "workset.channels.chat", "workset.channels.broadcast",
+    "workset.channels.share", "workset.channels.mailboxes",
+    "workset.channels.share_global",
+)
+
 #: Every manifest ``keys:`` row this file pins a VALUE for.
 PINNED_DEFAULT_KEYS: frozenset[str] = frozenset(
     set(_PATH_ORACLE) | set(_ANCHOR_KEYS) | set(_AUTH_KEYS) | set(_SCALAR_KEYS)
-    | set(_BEHAVIOR_KEYS) | set(_SINGLETON_KEYS)
+    | set(_BEHAVIOR_KEYS) | set(_SINGLETON_KEYS) | set(_CHANNEL_KEYS)
 )
 
 
@@ -455,6 +466,125 @@ class TestSingletonDefaults:
         assert arms["standalone"] == "<generated at creation>"
 
 
+#: A probe root that does not exist.  ⚑ THAT IS THE POINT: a manifest ``default:`` is
+#: by definition the value you get when no ``workset.yaml`` repoints the key, and the
+#: repoint reader is absent-tolerant by design, so an absent root selects the default
+#: arm of every channel key at once.  The REPOINT half is a different question and is
+#: measured against real worksets in ``tests/test_channels/test_channel_keys.py``.
+_PROBE_ROOT = Path("/nonexistent/kanibako-conformance-probe")
+
+
+class _StubChannelPaths:
+    """The three ``StandardPaths`` attributes the channel derivations read.
+
+    Deliberately NOT a ``StandardPaths``: constructing one probes the host XDG
+    environment, and this case is about a formula, not about the host.
+    """
+
+    primary_workset = _PROBE_ROOT / "primary"
+    channels_mailboxes = _PROBE_ROOT / "channels" / "mailboxes"
+    channels_share = _PROBE_ROOT / "channels" / "share"
+
+
+class _StubGroup:
+    """The two ``ProjectGroup`` attributes ``workset_root`` / ``workset_name_token`` read."""
+
+    name = "conformance-set"
+    root = _PROBE_ROOT / "worksets" / "conformance-set"
+
+
+class _StubChannelProject:
+    """The ``ProjectPaths`` attributes the channel derivations read — mode, group, root."""
+
+    def __init__(self, mode: BoxMode):
+        self.mode = mode
+        self.group = _StubGroup() if mode is BoxMode.named else None
+        self.metadata_path = _PROBE_ROOT / "standalone-box"
+
+
+class TestWorksetChannelDefaults:
+    """(i-f) The channel family's defaults ARE what ``channels/channels.py`` derives.
+
+    ⚑⚑ A VALUE ORACLE, NOT A SECOND RESOLVER — the distinction the retired E1 exemption
+    got wrong.  Each manifest formula is followed ONE HOP: its ``@``-refs are answered
+    by EXERCISING the code that owns them (``workset_root``, ``workset_name_token``,
+    the resolved channel root itself), and the result is compared to the ``Path`` the
+    derivation returns.  Nothing here re-implements the resolution rule; what is under
+    test is *which parent and which leaf* the manifest claims — which is exactly what a
+    hand-copied formula gets wrong.
+
+    ⚑ ANTI-VACUITY: three of the seven rows had NO code answering them at all when this
+    class was written (``broadcast`` / ``mailboxes`` / ``share_global``), and the class
+    reds by ``KeyError`` rather than passing when a key loses its derivation.
+    """
+
+    @staticmethod
+    def _derived(proj, std) -> dict[str, object]:
+        """The key → derived value map, read straight off the derivations."""
+        from kanibako.channels import channels as ch
+
+        wch = ch.workset_channel_paths(proj, std)
+        part = ch.workset_partition_paths(proj, std)
+        return {
+            "workset.channelroot": None if wch is None else wch.root,
+            "workset.channels.common": None if wch is None else wch.common,
+            "workset.channels.chat": None if wch is None else wch.chat,
+            "workset.channels.broadcast": None if wch is None else wch.chat_broadcast,
+            "workset.channels.share": None if wch is None else wch.share,
+            "workset.channels.mailboxes": part.mailboxes,
+            "workset.channels.share_global": part.share_global,
+        }
+
+    @staticmethod
+    def _refs(proj, std, derived) -> dict[str, object]:
+        """The ``@``-refs the seven formulas hang off, each answered BY THE CODE."""
+        from kanibako.channels import channels as ch
+
+        refs: dict[str, object] = {
+            "@meta.workset.path": ch.workset_root(proj, std),
+            "@meta.workset.name": ch.workset_name_token(proj),
+            "@system.channels.mailboxes": std.channels_mailboxes,
+            "@system.channels.share": std.channels_share,
+        }
+        # The two INTRA-family refs: the family roots itself, which is the shape the
+        # manifest declares and the shape a flat re-spelling would silently lose.
+        refs["@workset.channelroot"] = derived["workset.channelroot"]
+        refs["@workset.channels.chat"] = derived["workset.channels.chat"]
+        return refs
+
+    @staticmethod
+    def _follow(formula: str, refs: dict[str, object]) -> Path:
+        """Follow ``@<ref>/<tail>`` one hop; *tail* may itself be a single ``@``-ref."""
+        head, sep, tail = formula.partition("/")
+        assert sep and head in refs, f"unfollowable manifest formula {formula!r}"
+        return Path(str(refs[head])) / str(refs.get(tail, tail))
+
+    @pytest.mark.parametrize("mode", sorted(MODES))
+    def test_the_manifest_default_is_the_derived_path(self, mode):
+        proj = _StubChannelProject(BoxMode(mode))
+        std = _StubChannelPaths()
+        derived = self._derived(proj, std)
+        refs = self._refs(proj, std, derived)
+        for key in _CHANNEL_KEYS:
+            arm = _per_mode(_default(key))[mode]
+            got = derived[key]
+            if arm is None:
+                assert got is None, (
+                    f"{key} [{mode}]: manifest declares NO value, the code derived "
+                    f"{got!r}"
+                )
+                continue
+            assert got == self._follow(str(arm), refs), (
+                f"{key} [{mode}]: manifest says {arm!r} (= "
+                f"{self._follow(str(arm), refs)}), the code derived {got!r}"
+            )
+
+    def test_the_family_pinned_here_is_the_declared_family(self):
+        """Anti-vacuity: a SEVENTH leaf added to the spec must red here, not slip past."""
+        leaves = {k.split(".")[-1] for k in _CHANNEL_KEYS if ".channels." in k}
+        assert leaves == set(DECLARED_WORKSET_CHANNEL_LEAVES)
+
+
 class _StubStandardPaths:
     """The one attribute ``canon_default_categories`` reads — a directory that is absent.
 
@@ -628,14 +758,23 @@ class TestBindDefaults:
 # with the reason, is the deliverable; the exhaustiveness case makes the table binding.
 
 #: (E1) Realized as a ``Path`` join, never as a formula STRING.  ``project/workset.py``
-#: and ``channels/channels.py`` build these by joining path components, so there is no
-#: ``"@meta.workset.path/…"`` literal anywhere to compare the manifest to.  An oracle
-#: would be a second resolver.
+#: builds these by joining path components, so there is no ``"@meta.workset.path/…"``
+#: literal anywhere to compare the manifest to.  An oracle would be a second resolver.
+#:
+#: ⚑⚑ THE CHANNEL FAMILY LEFT THIS TABLE (2026-08-25) AND MUST NOT COME BACK.  Seven
+#: rows — ``workset.channelroot`` and all six ``workset.channels.*`` leaves — were
+#: filed here, and the reason was wrong twice over.  It was FALSE for ``broadcast`` /
+#: ``mailboxes`` / ``share_global``: they were realized as no join at all, because no
+#: code read them.  And for ``common`` / ``chat`` / ``share`` the reason was true but
+#: the CONCLUSION was not: EXERCISING the derivation with a known root is a value
+#: oracle, and only RE-IMPLEMENTING it would be a second resolver.  They are pinned by
+#: :class:`TestWorksetChannelDefaults`.
+#:
+#: ⚑ ``test_a_path_join_default_really_is_an_at_ref_formula`` below is a SHAPE check,
+#: not an oracle — it reads no code.  The three survivors are genuinely unpinned; the
+#: shape case is the honest floor under that, not a substitute for it.
 NO_ORACLE_PATH_JOIN: frozenset[str] = frozenset({
-    "workset.workspaces", "workset.registry", "workset.template", "workset.channelroot",
-    "workset.channels.common", "workset.channels.chat", "workset.channels.broadcast",
-    "workset.channels.share", "workset.channels.mailboxes",
-    "workset.channels.share_global",
+    "workset.workspaces", "workset.registry", "workset.template",
 })
 
 #: (E2) A PROSE PLACEHOLDER standing in for a runtime-probed value.  The manifest is
@@ -762,9 +901,14 @@ class TestDefaultsCoverage:
         )
 
     def test_the_split_is_the_measured_split(self):
-        """41 pinned rows, 24 exempted — stated so a silent migration between them reds."""
-        assert len(PINNED_DEFAULT_KEYS) == 41
-        assert len(EXEMPT_DEFAULT_KEYS) == 24
+        """48 pinned rows, 17 exempted — stated so a silent migration between them reds.
+
+        ⚑ Was 41/24 until the seven-row channel family moved from E1 to a real oracle
+        (2026-08-25).  A row may move BACK only with a reason written into E1, which is
+        what the count is here to make visible.
+        """
+        assert len(PINNED_DEFAULT_KEYS) == 48
+        assert len(EXEMPT_DEFAULT_KEYS) == 17
         assert not (PINNED_DEFAULT_KEYS & EXEMPT_DEFAULT_KEYS)
 
 

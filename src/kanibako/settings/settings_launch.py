@@ -463,6 +463,7 @@ BOX_HOME_KEY: Final[str] = "meta.box.home"
 def workset_anchor_floor(
     *,
     mode: str,
+    channelroot: str | None = None,
     workset_channels: Mapping[str, str] | None = None,
 ) -> dict[str, object]:
     """Build the LAYOUT-anchor floor keys — workset roots + the box root (spec §2c).
@@ -479,11 +480,19 @@ def workset_anchor_floor(
     spec-declared key, so under §0's closed keyspace it was not a key at all. Do not
     reintroduce it — one bind, one spelling.
 
-    *workset_channels* (PRIMARY/NAMED only) maps the resolved workset-local channel
-    roots into ``workset.channels.*``; ``None`` for STANDALONE. ⚑ Each leaf is
-    checked against :data:`_WORKSET_CHANNEL_LEAVES` and an undeclared one is REFUSED:
-    this is the one place a floor builds a key from a caller-supplied NAME, and a
-    free-form passthrough would open the closed keyspace (§0) from inside the floor.
+    *workset_channels* maps the RESOLVED channel paths into ``workset.channels.*``.
+    ⚑ Each leaf is checked against :data:`_WORKSET_CHANNEL_LEAVES` and an undeclared one
+    is REFUSED: this is the one place a floor builds a key from a caller-supplied NAME,
+    and a free-form passthrough would open the closed keyspace (§0) from inside the
+    floor. ⚑ The four workset-LOCAL leaves are PRIMARY/NAMED only, but ``mailboxes`` and
+    ``share_global`` are ALL PROJECTS (§2c) — so this argument is NOT ``None`` for a
+    standalone box, and the mode gate lives at the caller, per leaf.
+
+    *channelroot* is the resolved ``workset.channelroot`` (``None`` for STANDALONE,
+    which declares no value for it). ⚑ It is a LITERAL, not the spec's
+    ``@meta.workset.path/channels`` formula, and deliberately so: the key is read on the
+    DETECTION side before any snapshot exists, and the floor must carry the answer that
+    pass already reached or the two would resolve one key two ways.
     """
     if mode not in _BOX_MODES:
         raise SettingsError(
@@ -523,6 +532,12 @@ def workset_anchor_floor(
         "workset.canon": "@meta.workset.path/canon",
         "box.canon": "@meta.box.path/canon",
     }
+    # ⚑ The CHANNEL ROOT the six leaves default off. It was declared with a default and
+    # emitted by no floor at all, so ``@workset.channelroot`` dangled in every launch
+    # snapshot and a default primary box had no ``channelroot`` under its ``workset``
+    # node — a key the manifest promises and the keyspace could not answer.
+    if channelroot is not None:
+        floor["workset.channelroot"] = channelroot
     if workset_channels is not None:
         for leaf, path in workset_channels.items():
             if leaf not in _WORKSET_CHANNEL_LEAVES:

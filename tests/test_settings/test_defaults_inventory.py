@@ -61,6 +61,9 @@ LABEL_TO_CONFORMANCE_CLASS: dict[str, str] = {
     "config.py (read-with-default)": "pinned",
     "core_defaults.py (canon producer)": "pinned",
     "kuid.py (SENTINEL)": "pinned",
+    # ⚑ MOVED OUT of "path join at use" (2026-08-25) when the family stopped being a
+    # join and started being seven resolved keys; the conformance file pins it now.
+    "channels/channels.py (channel key derivation)": "pinned",
     "built-in (path join at use)": "exempt",
     "runtime-probed (podman graphroot)": "exempt",
     "(nothing declares it — unset until you set it)": "exempt",

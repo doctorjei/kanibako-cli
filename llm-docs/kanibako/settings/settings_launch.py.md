@@ -575,19 +575,33 @@ caller invented became a key, which is precisely what the CLOSED keyspace (spec 
 undeclared key is not a key, and code must REFUSE it rather than quietly accept it. This is the one
 place a floor builds a key from a caller-supplied NAME.
 
-⚑ It is the SPEC's declared family, not the subset the one live caller happens to pass
-(`{common, chat, share}`). Pinning it to today's caller would refuse a declared key the moment a
-second caller supplied one — the check exists to stop FABRICATION, not to freeze the current call.
+⚑ It is the SPEC's declared family, not the subset a caller happens to pass. Pinning it to today's
+caller would refuse a declared key the moment a second caller supplied one — the check exists to
+stop FABRICATION, not to freeze the current call. That mattered: the live caller passed
+`{common, chat, share}` for a long time, so `broadcast`, `mailboxes` and `share_global` were
+declared keys that NO floor installed in any mode. `config set` took them, `config get` read them
+back, and nothing changed. The caller now passes all six (R-35, "fix the CODE").
 
 ⚑ It must EQUAL `settings_keyspace.DECLARED_WORKSET_CHANNEL_LEAVES` (the validity table). The two
 declarations answer the SAME question ("is this a `workset.channels` leaf?") from different seams,
 and R-35's bug was exactly their disagreement — `mailboxes` accepted here, refused there. A test
 pins the agreement so neither set can drift alone.
 
-*workset_channels* (PRIMARY/NAMED only) maps `common` / `chat` / `share` to the resolved
-workset-local channel roots (= `workset_channel_paths(proj, std)`), materialized as
-`workset.channels.*` so the workset-channel binds (spec §2c) route through them. `None` for
-STANDALONE (no workset channels).
+*workset_channels* maps each declared leaf to its RESOLVED path, materialized as
+`workset.channels.*` so the workset-channel binds and the `meta.box.*` addresses (spec §2c) route
+through them. ⚑ **TWO MODE GATES, NOT ONE:** the four workset-LOCAL leaves come from
+`workset_channel_paths` (PRIMARY/NAMED only), the two ALL-PROJECTS leaves from
+`workset_partition_paths` (every mode, standalone included). So this argument is **not `None` for a
+standalone box** — the gate is per leaf and lives at the caller,
+`start.py::_workset_channel_floor_values`. Treating the whole family as one `None`-for-standalone
+group is how three of the six lost their floor.
+
+*channelroot* is the resolved `workset.channelroot` (`None` for STANDALONE, which declares no value
+for it). ⚑ A LITERAL, not the spec's `@meta.workset.path/channels` formula, and deliberately: the
+key is read on the DETECTION side before any snapshot exists, so the floor must carry the answer
+that pass already reached or one key would resolve two ways. It was emitted by no floor at all
+until 2026-08-25 — a manifest row with a declared default that the keyspace could not answer, so
+`@workset.channelroot` dangled in every launch snapshot.
 
 `_BOX_MODES` is the set of box modes this floor knows how to root. An undeclared variant is NOT a
 mode and is REFUSED rather than silently taking the primary/named arm.
