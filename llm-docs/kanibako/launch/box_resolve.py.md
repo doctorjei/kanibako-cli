@@ -147,7 +147,7 @@ layout, i.e. from the detected box root.
 For a standalone box the name is `<stored workset.kuid>_<live leaf>`. The kuid is the STABLE stored
 prefix and the leaf tracks the CURRENT directory, so a standalone box that is MOVED keeps its
 identity while its leaf follows the new directory. The kuid is read from the box's own
-`settings.yaml` — the workset tier, for a standalone — via `read_workset_kuid`.
+`workset.yaml` — the workset tier, for a standalone — via `read_workset_kuid`.
 
 A pre-kuid box has no stored `workset.kuid` and reads back as `kuid.SENTINEL`. It falls back to the
 registered `standalone:` registry KEY, and if that is absent too, to the directory leaf.

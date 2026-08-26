@@ -7,7 +7,7 @@ enumerated (`list`), inspected (`info`), unregistered (`rm`), gains and loses me
 directories its boxes mount (`share add` / `rm` / `list`).
 
 Two facts shape almost everything below. First, **the workset tier is ONE file** —
-`<root>/settings.yaml`, for every mode — so identity (`meta.workset`) and cascade settings coexist
+`<root>/workset.yaml`, for every mode — so identity (`meta.workset`) and cascade settings coexist
 in it and every write here must MERGE rather than overwrite. Second, **a share is a binding keyed
 BY ITS BOX DESTINATION** (R-10): a binding has no entry name, so the destination is the identity,
 the `share list` DEST column, and the `share rm` argument, all at once.
@@ -37,7 +37,7 @@ and R-39; the J2 lifecycle journal.
 ## The workset settings file
 
 `_workset_config_path` is the ONE derivation for every mode (spec §2c: `meta.workset.settings` =
-`@meta.workset.path/settings.yaml`) — always `<root>/settings.yaml`. A NAMED workset's file also
+`@meta.workset.path/workset.yaml`) — always `<root>/workset.yaml`. A NAMED workset's file also
 carries the workset identity (`meta.workset`); the cascade tables (`box`/`agent`/`workset.bindings`)
 coexist there without colliding, which is why `run_create` and `share add` both LOAD-then-MERGE.
 
@@ -49,7 +49,7 @@ is finding **F4** of `reference/2026-07-02-scoping-cascade-audit.md`.
 
 `check_workset_template` runs BEFORE `create_workset`, and the order is the point. A whitelist
 refusal part-way through the stamp would be loud but NOT atomic: it would leave a REGISTERED
-workset with a root, its own `settings.yaml` and a partial chapter copy, recoverable only by
+workset with a root, its own `workset.yaml` and a partial chapter copy, recoverable only by
 `workset rm`. Checking first is also the order `create_workset` already uses for its own name
 guards (reserved-name, same-kind uniqueness, and the cross-kind primary-box guard all raise
 BEFORE any on-disk side effect).
@@ -437,7 +437,7 @@ Resolve *name*: `(ws, std)`, or a printed error and `(None, None)` — the calle
 ```python
 def _load_share_doc(ws_config: Path) -> dict
 ```
-Load the workset `settings.yaml` as a nested dict (missing → `{}`).
+Load the workset `workset.yaml` as a nested dict (missing → `{}`).
 
 ```python
 def run_share_add(args: argparse.Namespace) -> int

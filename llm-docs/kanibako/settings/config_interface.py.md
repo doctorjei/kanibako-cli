@@ -288,7 +288,7 @@ caller that passes ONLY *config_path* still gets the file in its true slot); a c
 the full cascade (the three set handlers) passes every scope's file.
 
 ⚑ The AGENT arm is the one that is easy to get wrong. A per-node descriptor bind
-(`agent.<node>.bindings.*`, item-0) sets the AGENT-scope file (`agents/<node>/settings.yaml`);
+(`agent.<node>.bindings.*`, item-0) sets the AGENT-scope file (`agents/<node>/agent.yaml`);
 it goes in the agent slot so its own already-set tuple (read by `_agent_partial` at the
 `agent.<agent_name>` sub-table) is the cascade winner — NOT the box slot, where
 `_drop_upward_scopes` would DROP its agent-scope keys.
@@ -366,7 +366,7 @@ Absent/unknown ⇒ no redirect.
 *system_settings_path*, when supplied (the SYSTEM scope), is the file used for SETTINGS reads
 (`system.agent` + agent settings) — i.e. `@config.settings` = `global/settings.yaml`. When `None`
 (box/workset scope) the existing `project_toml`/`global_config_path` paths are used, so those
-scopes keep their own `settings.yaml` behavior. CONFIG (`system.*` layout) reads always use
+scopes keep their own `box.yaml`/`workset.yaml` behavior. CONFIG (`system.*` layout) reads always use
 `global_config_path`. For the semantics see "The get model — stored-at-noun" above; for
 *env_global* / *env_project* see "The vestigial parameters".
 
@@ -400,7 +400,7 @@ The order below is the order in the source, and several steps of it are load-bea
   same way — `noun_file` is the system settings file at SYSTEM, else the command's own
   `project_toml`.
 * **`agent.<node>.bindings.{ro,rw}.<name>`** — the per-node DESCRIPTOR bind (item-0): the RAW
-  tuple STORED in the node's OWN `agents/<node>/settings.yaml`. ⚑ Checked BEFORE the persona
+  tuple STORED in the node's OWN `agents/<node>/agent.yaml`. ⚑ Checked BEFORE the persona
   branch: a bind literally NAMED after a state leaf (`agent.<node>.bindings.ro.model`) would
   otherwise be mis-captured by the persona form (`model` is a state leaf). A plain get is
   stored-at-noun — the RESOLVED bind (descriptor floor + this override) is the `show --effective`
@@ -465,7 +465,7 @@ file in no cascade level) is RETIRED WITH THE WRITES, not fixed — there is no 
 disagree with.
 
 ⚑ The agent-scope read still routes through `_read_dest` (the `self:` table of
-`agents/<node>/settings.yaml` is what the agent tier actually reads, and re-pointing this read at
+`agents/<node>/agent.yaml` is what the agent tier actually reads, and re-pointing this read at
 it is a STORAGE-SHAPE change, deliberately NOT part of the route retirement). The per-node BIND
 form is routed EARLIER (`_is_agent_node_bind_key`, the node file). Going through the same rule
 site the write side uses is what makes `_read_dest`'s one documented divergence from
@@ -476,7 +476,7 @@ docstring nothing exercised.
 ```set_config_value(key, value, *, config_path, env_path=None, is_system=False, system_settings_path=None, cascade_system_path=None, cascade_agent_path=None, cascade_workset_path=None, cascade_box_path=None, cascade_agent_name="", command_scope=None, agents_root=None) -> str```
 Write a config value to the appropriate store; returns a message or an error, NEVER raises.
 
-*config_path* is the `settings.yaml` (for box/workset) or `kanibako_config.yaml` (for system).
+*config_path* is the `box.yaml`/`workset.yaml` (for box/workset) or `kanibako_config.yaml` (for system).
 *system_settings_path*, when supplied (the SYSTEM scope), is the file SETTINGS (`system.agent` +
 agent settings) are written to — `@config.settings` = `global/settings.yaml` — keeping them out
 of the `kanibako_config.yaml` CONFIG file. When `None` (box/workset) writes go to `config_path`
@@ -616,7 +616,7 @@ pre-existing defect still allows the set and `config set` stays usable to REPAIR
   written VERBATIM — the set-time E3 probe already ran on it (`_probes_at_set_time`: this arm IS
   host-expanded at launch, so a dangling `@`-ref must be caught now).
 * **`agent.<node>.<key>`** — the PER-PERSONA agent key (block B1): a write to the agent's OWN
-  `agents/<node>/settings.yaml` (NOT the command scope's settings file), at the FLAT slot
+  `agents/<node>/agent.yaml` (NOT the command scope's settings file), at the FLAT slot
   `agent_file.load` reads back (state leaf under `agent:`; `env.<VAR>` under `env:`). The
   SECRET pointer `secret_path.<VAR>` is handled EARLIER (discriminated node storage), not here.
   The node was `℘`-canonicalized by `resolve_key`. Sparse by construction: `write_nested_key` is

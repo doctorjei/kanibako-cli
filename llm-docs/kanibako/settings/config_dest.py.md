@@ -107,7 +107,7 @@ thread its root is not at a scope that can see it.
 
 ### `_persona_agent_target` — the three answers
 
-* an `AgentFileSlot` — the node's `agents/<node>/settings.yaml` plus the key TAIL (`model` for a flat
+* an `AgentFileSlot` — the node's `agents/<node>/agent.yaml` plus the key TAIL (`model` for a flat
   state leaf, `env.<VAR>` for an env pointer). Where inside the file that lands is the boundary's
   business, not this module's;
 * an `"Error: ..."` string — a MALFORMED node ref (validated, never routed), or the reserved-tier
@@ -313,7 +313,7 @@ that still route here are the bare terminal ones — `agent.<node>.{caches,seede
 `agent.<node>.bindings.{ro,rw}`, `agent.<node>.masks`.
 
 ⚑⚑ **AND FOR THOSE THE ROUTE IS WRONG, MEASURABLY.** It answers the NOUN's settings file, while the
-agent tier is assembled from `agents/<node>/settings.yaml`'s FLAT category tables directly under
+agent tier is assembled from `agents/<node>/agent.yaml`'s FLAT category tables directly under
 `self:` (`settings_assemble._agent_partial`; the S2 flatten — and a nested `self.<node>` table is now
 REFUSED by name). So a hand-authored `self.caches` reads back "(not set)" while a stray
 `agent.claude.caches` in the system settings file reads back instead.

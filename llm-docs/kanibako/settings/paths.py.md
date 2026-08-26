@@ -27,7 +27,7 @@ exist for the same reason: they let this module speak about a workset without im
 
 `box_data` is the STANDALONE box-store dir name. It is `@meta.box.path` for a standalone box (the
 empty leaf of `@workset.boxes`, keyspec §2c) and HALF of the detection marker
-(`system-design-1.8.0.md` § "Detection & import") — the other half is the ROOT `settings.yaml`.
+(`system-design-1.8.0.md` § "Detection & import") — the other half is the ROOT `workset.yaml`.
 Both must be present; a bare `box_data/` directory is not a marker.
 
 It is defined at the TOP of the module, not inside the detection helper that used to own it, because
@@ -169,7 +169,7 @@ Spec defaults for the XDG base directories that HAVE one (freedesktop Base Direc
 def workset_settings_path(group: _WorksetRooted | None) -> Path | None
 ```
 THE workset-tier settings-file derivation (spec §2c ALL WORKSETS: `meta.workset.settings` =
-`@meta.workset.path/settings.yaml`).
+`@meta.workset.path/workset.yaml`).
 
 `group.root` carries `@meta.workset.path` for both modes — the PRIMARY workset roots at
 `@config.primary_workset`, a NAMED workset at its own root — so the one expression serves every
@@ -242,17 +242,17 @@ def _box_settings_files(
 ```
 THE `(box_tier, workset_tier)` settings-file derivation (spec §2c).
 
-ONE expression, spelled ONCE. `meta.box.settings` is the UNIFORM `@meta.box.path/settings.yaml` in
+ONE expression, spelled ONCE. `meta.box.settings` is the UNIFORM `@meta.box.path/box.yaml` in
 EVERY mode (spec §2c ALL PROJECTS), so the box tier is ALWAYS a real path — never `None`:
 
-* **primary / named** — box tier = the box's own `<metadata_path>/settings.yaml` (`BOX_META_FILE`,
+* **primary / named** — box tier = the box's own `<metadata_path>/box.yaml` (`BOX_META_FILE`,
   which IS `@meta.box.path` for these modes); workset tier = `workset_settings_path(group)` (the
-  workset root's `settings.yaml`).
+  workset root's `workset.yaml`).
 * **standalone** — `@meta.box.path` is the `box_data/` marker dir (the empty leaf of
-  `@workset.boxes`), so the box tier is `<root>/box_data/settings.yaml` — **ABSENT BY DEFAULT**
+  `@workset.boxes`), so the box tier is `<root>/box_data/box.yaml` — **ABSENT BY DEFAULT**
   (spec §2c + §4 STANDALONE tree): an absent file is an empty tier, and `config_io.load_doc` yields
   `{}` for it, so a standalone box with no box file resolves byte-identically to one with no box
-  tier at all. The workset tier is the ROOT `<root>/settings.yaml` — the file that plays the
+  tier at all. The workset tier is the ROOT `<root>/workset.yaml` — the file that plays the
   WORKSET tier for a degenerate one-box workset, and the file DETECTION reads
   (`system-design-1.8.0.md` § "Detection & import"; `box_resolve.standalone_settings_present`).
   A `box.*` key stored THERE still resolves for box scope via R2 downward-defaults (`box` ⊂
@@ -500,7 +500,7 @@ dir); there is no layout axis. Per-box state is `boxes/<name>/` (metadata + shel
 `@config.primary_workset/vault/{ro,rw}/<name>`.
 
 *enable_vault* controls whether vault directories are created and mounted. Defaults to True for new
-projects; existing projects read from `settings.yaml`.
+projects; existing projects read from `box.yaml`.
 
 *register* (B3 interrupted-create journal): when False AND this call materializes a NEW box, the box
 dir + meta are created and `is_new` is set, but the PRIMARY membership is NOT written — the caller
@@ -560,10 +560,11 @@ to disk at all under sparse create (P8b/Option A).
 An explicit param wins; otherwise the stored box-scope `box.enable_vault` (absent ⇒ True). Decoupled
 from box identity — which now derives from the registries (`box_resolve`), not `read_project_meta`.
 
-⚑ NO `default_from`: PRIMARY reads the box tier ONLY, exactly as before P2. Extending the R2
-workset fallback here would make a workset-tier `box.enable_vault` — today an inert silent no-op —
-go live for every box in the workset; a real defect, tracked separately, deliberately NOT this
-phase's.
+⚑ `default_from` = the PRIMARY WORKSET tier. The primary workset IS a workset (spec §2c gives it the
+same `meta.workset.settings`), so spec §0's containment rule makes a `box.*` key stored there an
+OVERRIDABLE downward default for every box it contains — the box tier still wins (`… < workset <
+box`). What the create branch PERSISTS is the BOX-AUTHORED value, never the resolved one: see the
+NAMED resolver for the full reasoning.
 
 ### `resolve_project` — the create branch
 
@@ -593,7 +594,7 @@ state). The unwind only removes a dir THIS call created.
 
 **Sparse create (P8b/Option A):** NO `project:`/`resolved:` identity is written — the box's identity
 + workspace live in the PRIMARY per-workset `boxes:` membership (`box_resolve` reads it). Only a
-NON-default `box.enable_vault` is persisted, sparsely.
+NON-default BOX-AUTHORED `box.enable_vault` is persisted, sparsely (above).
 
 **Registering the PRIMARY membership** (name → external workspace) is the SOLE store since the
 global `projects:` section retired. The PRIMARY workset is NON-EXCEPTIONAL (D0/D1): its registry is
@@ -609,9 +610,9 @@ never delete a pre-existing orphan's `home/`) so a genuine invariant violation f
 stranded half-box), then re-raise. The membership write is the sole store, so a Guard-1 raise leaves
 nothing else to unwind.
 
-**No settings.yaml backfill (P8b/Option A):** a primary box's identity, workspace and
+**No box.yaml backfill (P8b/Option A):** a primary box's identity, workspace and
 `box.enable_vault` all live in the registries now (not a self-describing `project:`/`resolved:` on
-disk), so a box dir lacking a `settings.yaml` is not a defect to repair on the recovery path. The
+disk), so a box dir lacking a `box.yaml` is not a defect to repair on the recovery path. The
 former pre-v0.8 backfill materialized an identity that no longer exists on disk.
 
 ```python
@@ -658,8 +659,8 @@ Fixed STANDALONE-mode `(home, vault_ro, vault_rw)` (no layout axis).
 
 All host state lives inside the project *root*: the agent home is `<root>/box_data/home` (the
 `box_data/` marker dir also holds the `<box>.jsonl` helper log), and the vault lives at
-`<root>/vault/{ro,rw}` (per the §2c STANDALONE table). The box `settings.yaml` lives at
-`<root>/settings.yaml` (the root, NOT `box_data/`) and the workspace is the `<root>/workspace`
+`<root>/vault/{ro,rw}` (per the §2c STANDALONE table). The workset-tier `workset.yaml` lives at
+`<root>/workset.yaml` (the root, NOT `box_data/`) and the workspace is the `<root>/workspace`
 subdir — both handled by the callers, not here.
 
 ```python
@@ -747,8 +748,8 @@ def _is_standalone_meta_dir(root: Path) -> bool
 ```
 True only if *root* carries the standalone box MARKER (presence-based).
 
-P5a: the marker is a `box_data/` directory under *root* PLUS a box `settings.yaml` AT THE ROOT
-(`<root>/settings.yaml`, NOT inside `box_data/`), both PRESENT. The FILE's existence is the
+P5a: the marker is a `box_data/` directory under *root* PLUS a root `workset.yaml` AT THE ROOT
+(`<root>/workset.yaml`, NOT inside `box_data/`), both PRESENT. The FILE's existence is the
 standalone self-declaration (design D4) — the former `box.mode == "standalone"` field read is
 DROPPED (that field is gone). A box's own in-place settings file is the highest-precedence,
 authoritative standalone signal and OVERRIDES any workset determination (D3-mode #1); requiring both
@@ -770,7 +771,7 @@ Detection order:
 1. **Connected-external** — *project_dir* (or an ancestor) is an external directory bound to a
    workset by a live `boxes:` connection record. Runs FIRST so a force-connected box (which keeps
    its on-disk marker) resolves as its workset box, never re-imported as standalone.
-2. **In-place standalone marker** — a `box_data/` + root `settings.yaml` marker AT *project_dir*
+2. **In-place standalone marker** — a `box_data/` + root `workset.yaml` marker AT *project_dir*
    declares it standalone (D3-mode #1); OVERRIDES workset tree membership. Imported (registered) on
    discovery.
 3. **Workset** — *project_dir* lives inside a registered workset root (`workspaces/` subdirectory
@@ -787,7 +788,7 @@ Detection order:
 
 The connected-external check MUST run BEFORE the standalone-marker check to preserve the
 single-registry invariant. A FORCE-CONNECTED standalone box (absorbed via
-`workset.add_project(force=True)`) deliberately KEEPS its on-disk `box_data/` + root `settings.yaml`
+`workset.add_project(force=True)`) deliberately KEEPS its on-disk `box_data/` + root `workset.yaml`
 marker while its global `standalone:` registry entry is DROPPED and a per-workset `boxes:`
 connection entry is written — the box lives in EXACTLY ONE registry (no dual registration). Such a
 box is EXTERNAL (outside the workset tree), so the workset-tree check (step 3) does NOT match it;
@@ -803,7 +804,7 @@ self-declaration and OVERRIDES any workset TREE determination — a workset (eve
 physically CONTAINS this box) must NOT be able to "steal" a box that declares itself standalone. (A
 LIVE connection is the one exception, resolved by step 1.) This mirrors the marker-first precedence
 of `box_resolve.detect_box_mode` (its step 1) and keys on the SAME standalone-marker signal
-(`box_data/` + root `settings.yaml`, via `_is_standalone_meta_dir` →
+(`box_data/` + root `workset.yaml`, via `_is_standalone_meta_dir` →
 `box_resolve.standalone_settings_present`), so a workset/primary box (which never carries
 `box_data/`) is unaffected. Only the resolved dir itself is inspected there (an ancestor marker is
 still handled by the step-5 walk); this matches `detect_box_mode`, which likewise honors the
@@ -821,7 +822,7 @@ root (a `registry.yaml` carrying a `workset:` identity whose name is not in the 
 then re-runs the standard workset check, which is what actually resolves it. The STANDALONE arm is
 presence-only since D4
 (the former `box.mode == "standalone"` field read is DROPPED); a bare `box_data/` directory is not
-enough — the root `settings.yaml` must be present too.
+enough — the root `workset.yaml` must be present too.
 
 ```python
 def _check_workset(resolved_dir: Path, std: StandardPaths) -> DetectionResult | None
@@ -862,7 +863,7 @@ def _register_workset_box_membership(
 Register *box_name* → *workspace* in *ws_root*'s per-workset registry.
 
 The P5a dual-register helper (D1/D3-auth): resolves the workset's `workset.registry` path (honoring
-a repoint via its `settings.yaml`) and records the box's membership. Idempotent —
+a repoint via its `workset.yaml`) and records the box's membership. Idempotent —
 `register_workset_box` overwrites a moved box's stored path. Used for both NAMED worksets (`ws_root`
 = the workset root) and the PRIMARY workset (`ws_root` = `std.primary_workset` — NON-EXCEPTIONAL per
 D0/D1).
@@ -873,7 +874,7 @@ def _unregister_workset_box_membership(ws_root: Path, box_name: str) -> None
 Drop *box_name* from *ws_root*'s per-workset registry (compensating action).
 
 The inverse of `_register_workset_box_membership`: resolves the workset's `workset.registry` path
-(honoring a repoint via its `settings.yaml`) and removes the box's `boxes:` membership. Idempotent —
+(honoring a repoint via its `workset.yaml`) and removes the box's `boxes:` membership. Idempotent —
 `unregister_workset_box` is a no-op when the file/entry is absent. Used to unwind a connect register
 and to drop a disconnected external box's D10 connection record.
 
@@ -1020,18 +1021,24 @@ its first start, or a fresh `initialize` create) falls back to the composed defa
 B2b (Option A, Jei-ruled): the per-box `meta["shell"]` / `["vault_*"]` custom-path OVERRIDE is
 DROPPED (mirrors the PRIMARY path) — home/vault are SOLELY the spec-derived default location,
 customized via the `box.bindings` cascade. The workspace override above (an EXTERNAL-connected live
-dir) is a SEPARATE concern and STAYS. The `shell`/`vault_*` fields are still written for the on-disk
-record.
+dir) is a SEPARATE concern and STAYS.
 
-`enable_vault` (P5a): explicit param wins; else the stored box-scope `box.enable_vault` (absent ⇒
-True), read via the box-settings path. ⚑ NO `default_from`: NAMED reads the box tier ONLY, exactly
-as before P2 (see the PRIMARY resolver for why the R2 workset fallback is standalone-only).
+`enable_vault` (P5a): explicit param wins; else `box.enable_vault` (absent ⇒ True) read from the box
+tier with `default_from` = the WORKSET tier. ⚑ That fallback is REQUIRED: `workset create
+--no-vault` writes the key at the WORKSET tier, where spec §0's containment rule makes it an
+OVERRIDABLE default for the workset's boxes (the contained scope still wins — `… < workset < box`).
+Without it the flag is a silent no-op for every named box.
+
+⚑ **The resolved value is not the written one.** `actual_vault_enabled` resolves through the
+fallback and drives the mounts; `box_authored_vault` re-reads the box tier ALONE and is the only one
+persisted, since spec `:868` keeps the key sparse — persisting an inherited default would PIN it,
+turning an overridable workset default into a box override later workset edits cannot reach.
 
 ### Sparse create + dual-register on the NAMED path
 
 Sparse create (P8b/Option A): NO `project:`/`resolved:` identity — the box's name lives in the
 workset's per-workset registry (the `boxes:` entry, which `box_resolve` reads) and its workspace
-override in that same registry. Only a NON-default `box.enable_vault` is persisted, sparsely.
+override in that same registry. Only a NON-default BOX-AUTHORED `box.enable_vault` is persisted.
 
 P5a dual-register: record membership in the workset's per-workset registry (name → workspace) — the
 SOLE on-disk identity record now that sparse create writes no `project:` entry. Sourced from the
@@ -1152,7 +1159,7 @@ create, so the flag is a no-op there). Defaults True.
 
 *name_override* is forwarded to the PRIMARY resolver only, which is the sole mode whose box name is
 not derivable from the tree itself: a STANDALONE box carries its identity in its own root
-`settings.yaml`, and a NAMED box takes its name from its workspace directory. `box extract --name`
+`workset.yaml`, and a NAMED box takes its name from its workspace directory. `box extract --name`
 is the caller that needs it (re-materializing an archived box under a chosen name).
 
 ### The CLI front door
@@ -1253,7 +1260,7 @@ The kuid is USER-EDITABLE, so a bad value is FLAGGED (`Warning: invalid KUID`), 
 Returns *proj* unchanged.
 
 ⚑ `workset.kuid` / `workset.skip_kuid_check` are WORKSET-scope keys, so they are read from the
-WORKSET tier of the ONE pair — for standalone that is the ROOT `settings.yaml`, exactly where
+WORKSET tier of the ONE pair — for standalone that is the ROOT `workset.yaml`, exactly where
 `establish_standalone` writes them. Sourced from the pair rather than re-spelled, so this cannot
 drift from the writer. The `settings_file is None` guard is UNREACHABLE for standalone (its workset
 tier is the ROOT file, always a path); it exists so the reads below are TYPED, not to handle a real
@@ -1286,9 +1293,9 @@ The single shared core behind all three standalone paths (`create --standalone`,
    otherwise honoring the supplied (lowercased) `--name`: a verbatim canonical id if free (else
    refuse), or a fresh prefix over the supplied string as the leaf;
 2. writes the SPARSE settings, each key AT ITS OWN SCOPE'S TIER (M-8): the workset-scope
-   `workset.kuid` into the ROOT `<root>/settings.yaml` (which MATERIALIZES that file — half the
+   `workset.kuid` into the ROOT `<root>/workset.yaml` (which MATERIALIZES that file — half the
    standalone detection marker, `system-design-1.8.0.md` § "Detection & import"), and a NON-default
-   box-scope `box.enable_vault` into the BOX tier `<root>/box_data/settings.yaml` — the SAME file
+   box-scope `box.enable_vault` into the BOX tier `<root>/box_data/box.yaml` — the SAME file
    `config set box.*` writes, so create and set can never disagree. A default-vault box therefore
    writes NO box-tier file at all, which is the spec's "ABSENT BY DEFAULT" (§2c + §4 STANDALONE
    tree). NO `project:`/`resolved:` identity is written — the name/mode/workspace derive from
@@ -1307,7 +1314,7 @@ registration until AFTER the home seed (journal entry → seed → register → 
 mid-seed leaves an UNregistered box that recovery resolves by its on-disk root. Defaults True (the
 convert/duplicate lifecycle callers register inline, unchanged).
 
-⚑ The ROOT `settings.yaml` (the standalone marker, alongside `box_data/`) is MATERIALIZED
+⚑ The ROOT `workset.yaml` (the standalone marker, alongside `box_data/`) is MATERIALIZED
 unconditionally by the `workset.kuid` write, so moving the box key out to the box tier does NOT cost
 the file detection needs.
 
@@ -1328,7 +1335,7 @@ Resolve (and optionally initialize) per-project paths for standalone mode.
 All project state lives inside *project_dir* itself. No data is written to `$XDG_DATA_HOME`.
 
 Phase 5d/Part 3 (drift H+I): no layout axis. The project *root* (the runtime dir) is the standalone
-workset root and holds, in fixed positions: `settings.yaml` (the box meta, AT THE ROOT —
+workset root and holds, in fixed positions: `workset.yaml` (the workset tier, AT THE ROOT —
 `metadata_path`), a `workspace/` subdir (the live workspace → `~/workspace` — the `project_path`;
 the resolved `workset.workspaces`, default `@meta.workset.path/workspace`), a `box_data/` marker dir
 holding `home/` + the `<box>.jsonl` helper log, and `vault/{ro,rw}/`. The box identity is
@@ -1346,10 +1353,10 @@ subdir is the bind source, not the identity.
 
 `project_path` is the resolved `workset.workspaces` (ruled 10, 2026-08-02): the STANDALONE default
 is `@meta.workset.path/workspace` == the `workspace/` subdir, and a set `workset: {workspaces: …}`
-in the ROOT `settings.yaml` repoints it ("changeable from workset level", spec §2e).
+in the ROOT `workset.yaml` repoints it ("changeable from workset level", spec §2e).
 
 The mode-aware tier pair comes from the ONE derivation (M-8): the BOX tier is
-`box_data/settings.yaml` (absent by default) and the WORKSET tier is the ROOT `settings.yaml` — the
+`box_data/box.yaml` (absent by default) and the WORKSET tier is the ROOT `workset.yaml` — the
 file detection reads (`system-design-1.8.0.md` § "Detection & import") and where `workset.kuid`
 lives.
 
@@ -1363,12 +1370,13 @@ fixed `box_data/home` + `<root>/vault/{ro,rw}` positions.
 `enable_vault` (P5a): explicit param wins; else the stored box-scope `box.enable_vault` — read from
 the BOX tier, falling back to the WORKSET tier (the ROOT file) as an R2 downward-default. ⚑ That
 fallback is what keeps a pre-P2 standalone box, whose value was written to the root file, working
-with no migration (M-8). It is standalone-only; see the PRIMARY/NAMED resolvers.
+with no migration (M-8). ALL THREE resolvers pass `default_from`; standalone alone then PERSISTS the
+RESOLVED value — that write IS the M-8 migration, landing the root file's value at the box tier.
 
 **Box identity name (P8a):** sourced from `box_resolve` for a MATERIALIZED standalone (`box_data/` +
-`settings.yaml` present — the same gate `standalone_settings_present` uses). `box_resolve` composes
+`workset.yaml` present — the same gate `standalone_settings_present` uses). `box_resolve` composes
 the name LIVE (P6d) as `<stored workset.kuid>_<live leaf>` — the kuid is the STABLE stored prefix
-(from the box's OWN `settings.yaml`, design D6) and the leaf is re-derived from the CURRENT root
+(from the box's OWN `workset.yaml`, design D6) and the leaf is re-derived from the CURRENT root
 basename, so a moved standalone tree keeps its kuid identity while the leaf tracks the new dir (spec
 2026-07-04); a pre-kuid box (no `workset.kuid` ⇒ SENTINEL) falls back to the registered
 `standalone:` key, else the dir leaf. A not-yet-materialized root (no `box_data/`) yields `""` (the

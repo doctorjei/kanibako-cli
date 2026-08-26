@@ -53,9 +53,9 @@ when the copy runs — which is what lets a copy that happens BEFORE any guest e
 
 `~/` is the ONLY seed destination — "SEED DESTINATIONS ARE ENUMERATED, NEVER A WHOLE-DIRECTORY
 COPY", because a wholesale `template/box/* -> <box_dir>/*` copy could plant
-`<box_dir>/settings.yaml`, which IS `meta.box.settings`, the LAST cascade level. Enumerating the
+`<box_dir>/box.yaml`, which IS `meta.box.settings`, the LAST cascade level. Enumerating the
 GUEST home rather than the box dir makes that stronger, not weaker: `~/` cannot name
-`<box_dir>/settings.yaml` at all, because the box dir has no guest spelling.
+`<box_dir>/box.yaml` at all, because the box dir has no guest spelling.
 
 ⚑ RESPELLED 2026-08-08c from the host path `@meta.box.path/home`, TOGETHER with the key-shape flip.
 That absolute HOST spelling needed a per-entry `dest_space` discriminator to stop the guest
@@ -247,9 +247,9 @@ their severities differ:
 
 | scope | denied, and why it matters |
 |---|---|
-| BOX | `settings.yaml` = `meta.box.settings`, the LAST cascade level, so template content would become the box's TOP-PRIORITY settings, carrying any key it liked (CORRECTNESS). Create-if-absent is no defence: on a fresh box there is nothing there to lose the race. |
-| AGENT | `settings.yaml` = `meta.agent.<a>.settings` (CORRECTNESS); `caches/`. |
-| WORKSET | `settings.yaml`; `registry.yaml` = `workset.registry`, the AUTHORITATIVE box membership + names, so a templated one could ORPHAN or COLLIDE boxes (CORRECTNESS); `auth/` (CREDENTIALS), `vault/`, `workspaces/` (THE USER'S CODE); `boxes/`, `logs/`, `channels/`. |
+| BOX | `box.yaml` = `meta.box.settings`, the LAST cascade level, so template content would become the box's TOP-PRIORITY settings, carrying any key it liked (CORRECTNESS). Create-if-absent is no defence: on a fresh box there is nothing there to lose the race. |
+| AGENT | `agent.yaml` = `meta.agent.<a>.settings` (CORRECTNESS); `caches/`. |
+| WORKSET | `workset.yaml`; `registry.yaml` = `workset.registry`, the AUTHORITATIVE box membership + names, so a templated one could ORPHAN or COLLIDE boxes (CORRECTNESS); `auth/` (CREDENTIALS), `vault/`, `workspaces/` (THE USER'S CODE); `boxes/`, `logs/`, `channels/`. |
 
 ⚑ STANDALONE is where this bites hardest: `<workset_path>` IS the user's own project directory, so
 the workset whitelist guards the tree they actually work in.
@@ -455,7 +455,7 @@ work in, not a kanibako-managed store.
 `check_workset_template` PRE-FLIGHTS that mould against the workset whitelist and writes nothing.
 `workset create` must be ATOMIC in the way that matters to a user: either the workset exists and is
 well-formed, or nothing happened. Refusing part-way through `install_workset_template` satisfied
-"loud and leak-free" but left a REGISTERED workset with a root, its own `settings.yaml` and a
+"loud and leak-free" but left a REGISTERED workset with a root, its own `workset.yaml` and a
 PARTIAL chapter copy — recoverable only by `workset rm`. So the check runs FIRST, before anything
 is registered or created — the same order `workset.create_workset` already uses for its name guards
 ("BEFORE any on-disk side effect below"), which is why this is a pre-flight rather than an unwind:
@@ -550,7 +550,7 @@ disagreeing about severity (raise vs skip), is worse than one.
 
 ⚑ This is where it differs from `install_workset_template`, whose whitelist guards something real:
 that mould lands at `<workset_path>` — for a STANDALONE project, the user's OWN directory — where
-template CONTENT could plant a `settings.yaml` or a `registry.yaml`. Its whitelist is not an
+template CONTENT could plant a `workset.yaml` or a `registry.yaml`. Its whitelist is not an
 oversight missing here; the two copies simply have different attack surfaces.
 
 NO PRE-FLIGHT TWIN, decided explicitly (contrast `check_workset_template`). `workset create` needs
@@ -588,7 +588,7 @@ agent's native instruction slot at launch), so it has no host runtime-install ta
 
 ⚑ The two staging copies are SCOPED, and this is where J-2's box whitelist actually BITES. The
 mould MIRRORS the store it stamps, so it is subject to that store's whitelist at the moment it is
-staged — which is the earliest point a planted `settings.yaml` (= `meta.box.settings`, the LAST
+staged — which is the earliest point a planted `box.yaml` (= `meta.box.settings`, the LAST
 cascade level) can be REFUSED rather than carried forward. Unscoped, the deny-list would only be
 dead prose: nothing downstream re-checks it, because the two downstream copies (the box-home seed
 and the box-handbook host template) read `box/home` and `box/canon/handbook` directly.

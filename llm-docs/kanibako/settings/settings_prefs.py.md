@@ -80,7 +80,7 @@ carrying its own prefs, which could relocate again — unbounded, and able to os
 files pointing at each other.
 
 * `workset.boxes` → `meta.box.path` (`@workset.boxes[/@meta.box.name]`, §2c) → `meta.box.settings`
-  (`@meta.box.path/settings.yaml`, §2c ALL PROJECTS) → THE BOX SETTINGS FILE, i.e. possibly the very
+  (`@meta.box.path/box.yaml`, §2c ALL PROJECTS) → THE BOX SETTINGS FILE, i.e. possibly the very
   file the request came from.
 * `workset.kuid` → `meta.box.name` for STANDALONE (`<@workset.kuid>_%leaf%`, §2c) → the
   `meta.box.path` LEAF → the same chain, one hop further out.

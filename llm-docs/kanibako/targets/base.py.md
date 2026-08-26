@@ -136,7 +136,7 @@ is fine. `literal_src` is meaningful only when `origin == LITERAL`.
 ⚑ **The override key is settings-file-only.** There is no `config set` / `config reset` route to it
 at any scope, **so do not document one.** The key is still declared, still read by the launch
 cascade, and still readable via `config get`; a user, or a plugin's own docs, repoints a binding by
-hand-editing `agents/<node>/settings.yaml`.
+hand-editing `agents/<node>/agent.yaml`.
 
 ```python
 class Channel(Enum):

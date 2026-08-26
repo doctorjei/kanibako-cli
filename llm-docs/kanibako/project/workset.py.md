@@ -25,11 +25,11 @@ creates or resolves it:**
 {root}/
     registry.yaml           ← box MEMBERSHIP (`boxes:`), flat `name: path` — and that is
                               the whole of the file  (`workset.registry`)
-    settings.yaml           ← the workset's cascade settings — SETTINGS ONLY, and
+    workset.yaml            ← the workset's cascade settings — SETTINGS ONLY, and
                               OPTIONAL: a fresh root does not have one
     boxes/{name}/           ← per-box metadata dir (`meta.box.path`)
         home/               ← agent home (mounted as /home/agent)
-        settings.yaml       ← the BOX cascade tier (`meta.box.settings`)
+        box.yaml            ← the BOX cascade tier (`meta.box.settings`)
         .kanibako.lock      ← concurrency lock
     workspaces/{name}/      ← per-box workspace (source tree) — the DEFAULT composition only
     vault/ro/{name}/        ← per-box read-only vault
@@ -43,10 +43,10 @@ Three notes the diagram cannot carry:
 
 * ⚑ **`create_workset` makes FOUR DIRS AND NO FILES** — `boxes/`, the resolved workspaces dir,
   `vault/` and `logs/`. There is no `registry.yaml` (no members yet, so no membership to record)
-  and no `settings.yaml`. Both, plus
+  and no `workset.yaml`. Both, plus
   `auth/` and `channels/`, are created lazily by the paths that own them (a `workset set`/`share add`
   write, the plugin's auth dir, the launch-path channel guarantee-create). Their absence from a fresh
-  root is correct, not a bug — and for `settings.yaml` it is the NORMAL case.
+  root is correct, not a bug — and for `workset.yaml` it is the NORMAL case.
 * ⚑ **`workspaces/` is the DEFAULT, not the layout.** `workset.workspaces` is a repointable key
   (see below), and the PRIMARY per-mode default is `<None>` — primary boxes have EXTERNAL
   workspaces. Reading `<root>/workspaces` as a fixed fact is exactly the mistake the resolver exists
@@ -132,7 +132,7 @@ and system-design §Detect's registry-borne rule covers MEMBERSHIP only: *"Membe
 
 Four consequences, each of which someone will otherwise re-derive:
 
-* **A workset root need not have a `settings.yaml` OR a `registry.yaml`.** `create_workset` writes
+* **A workset root need not have a `workset.yaml` OR a `registry.yaml`.** `create_workset` writes
   neither. Every read path must therefore tolerate absence rather than raising —
   `load_workset_settings_doc` returns `None`, `load_workset_boxes` returns `{}`, and
   `config_io.load_doc` returns `{}`.
@@ -150,8 +150,8 @@ Four consequences, each of which someone will otherwise re-derive:
   not a fact about whether the THING is findable.
 * **`created` is gone.** Not moved — dropped. Nothing records when a workset was made.
 
-Same filename as `BOX_META_FILE` (`settings/config.py`, also `"settings.yaml"`) **by design** — both
-are the "settings.yaml at the entity's root" convention.
+Named for its TIER, as `BOX_META_FILE` is (`settings/config.py`: `"workset.yaml"` vs `"box.yaml"`)
+— the filename says which scope's settings the file at that root holds ([R140]).
 
 ## The global registry
 
@@ -182,7 +182,7 @@ The former global `connected:` section — and `_find_connected_project` / `_loa
 `box_resolve`'s own "this REPLACES …" note and three test docstrings describing the old return
 shape.)
 
-⚑ **Sparse create (P8b / Option A): connecting an external box writes NO `settings.yaml`.** The
+⚑ **Sparse create (P8b / Option A): connecting an external box writes NO `workset.yaml`.** The
 connection record IS the per-workset `boxes:` entry (`name → EXTERNAL path`), and `box_resolve` reads
 that entry for BOTH identity and the workspace override. There is no workspace-override file, and no
 identity block, anywhere on the connect path.
@@ -190,11 +190,11 @@ identity block, anywhere on the connect path.
 ## Constants
 
 ```python
-WORKSET_SETTINGS_FILE = "settings.yaml"
+WORKSET_META_FILE = "workset.yaml"   # imported from settings/config.py
 ```
 The workset-tier cascade settings file at the workset root — **SETTINGS ONLY, and OPTIONAL**. See
-**Identity is REGISTRY-BORNE**, above. (Renamed from `WORKSET_META_FILE` when the identity left it:
-the old name asserted a role the file no longer has.)
+**Identity is REGISTRY-BORNE**, above: the name is the TIER's, and is NOT a claim that the
+workset's identity lives in the file.
 
 ```python
 BOXES_DIR_NAME = "boxes"
@@ -269,7 +269,7 @@ class Workset
 ```
 In-memory representation of a workset.
 
-`workspaces_repoint` is the RAW `workset.workspaces` repoint captured from the root `settings.yaml`
+`workspaces_repoint` is the RAW `workset.workspaces` repoint captured from the root `workset.yaml`
 (the routed `workset: {workspaces: …}` slot) at load/synthesis time. `None` = unset, so the spec
 default composes in `workspaces_dir`.
 
@@ -287,14 +287,14 @@ def vault_dir(self) -> Path         # {root}/vault
 @property
 def logs_dir(self) -> Path          # {root}/logs
 @property
-def settings_path(self) -> Path     # {root}/settings.yaml — may NOT exist
+def settings_path(self) -> Path     # {root}/workset.yaml — may NOT exist
 @property
 def registry_path(self) -> Path     # the RESOLVED workset.registry
 ```
 
 ⚑ `workspaces_dir` and `registry_path` are the RESOLVED ones (§3.3: real and USED) — the repoint is
 honored and the default is spelled once, in the resolver machinery. `registry_path` re-reads
-`settings.yaml` on each access to pick up a `workset.registry` repoint, matching the five equivalent
+`workset.yaml` on each access to pick up a `workset.registry` repoint, matching the five equivalent
 helpers in `settings/paths.py`; it is not cached in a field the way `workspaces_repoint` is.
 
 *(The old "toml" names — `toml_path`, `_write_workset_toml`, `_load_workset_toml` — said "toml" and
@@ -305,7 +305,7 @@ operated on YAML. They were retired with this move; all config files in this pro
 ```python
 def load_workset_settings_doc(root: Path) -> Mapping[str, Any] | None
 ```
-Best-effort read of *root*'s workset `settings.yaml` document.
+Best-effort read of *root*'s workset `workset.yaml` document.
 
 Returns the raw document mapping, or `None` when the file is absent, unreadable, or not a mapping —
 **mirroring `load_workset_boxes`'s failure shape**, so a broken or (routinely) ABSENT settings
@@ -383,7 +383,7 @@ Build the `Workset` for the globally-registered *name* rooted at *root*.
 
 *name* is the caller's, from the global registry's `worksets:` mapping. Members come from
 `registry.yaml`'s `boxes:` section, which is the whole of what that file holds; the
-`workset.workspaces` repoint comes from `settings.yaml`, where it belongs, so `workspaces_dir`
+`workset.workspaces` repoint comes from `workset.yaml`, where it belongs, so `workspaces_dir`
 composes the resolved key.
 
 Raises `LegacyWorksetIdentityError` for a root still carrying a retired identity table, so the LOAD
@@ -400,7 +400,7 @@ retired list-shaped table preserved insertion order.
 ```python
 def refuse_retired_workset_identity(root: Path) -> None
 ```
-RAISE `LegacyWorksetIdentityError` when *root*'s `settings.yaml` still carries a workset identity
+RAISE `LegacyWorksetIdentityError` when *root*'s `workset.yaml` still carries a workset identity
 table, in EITHER retired spelling: `workset.meta` (v1.6.0/v1.7.x) or `meta.workset` (the unreleased
 v1.8.0 tree). The message names the spelling actually found, and its tail differs per spelling
 because what is left to delete differs.
@@ -497,7 +497,7 @@ in their default paths.
 ⚑ Credential sharing is a normal settable cascade key (`workset.auth.share_allowed`) resolved
 through the settings pipeline — **not** a `Workset` field.
 
-⚑ PRIMARY honors a `workset.workspaces` repoint from the primary workset's own `settings.yaml`, like
+⚑ PRIMARY honors a `workset.workspaces` repoint from the primary workset's own `workset.yaml`, like
 a named workset (unset → the same default composition as before). Note the spec declares PRIMARY's
 `workset.workspaces` default as `<None>`; composing the leaf here is today's behavior.
 
@@ -540,7 +540,7 @@ never mounted** — and the box is registered in the workset's per-workset regis
 resolve back to this workset. Sources inside the workset tree keep the normal behavior: a real
 `workspaces/{name}` directory.
 
-⚑ **No `settings.yaml` is written on either path.** See **Connected (external) boxes** for the
+⚑ **No `workset.yaml` is written on either path.** See **Connected (external) boxes** for the
 sparse-create ruling; the pre-relocation docstring claimed a `workspace` override file here and it
 was false.
 
@@ -553,7 +553,7 @@ half-connected box:
   location detection and mis-resolve. Refused with both workset names in the message.
 * **⚑ Already connected** (or nested under something that is) — the connection record is 1:1, so
   this is a mapping conflict. Refused, naming the box and workset that hold it.
-* **⚑ In-place standalone MARKER present (D3-mode #1)** — `box_data/` + `settings.yaml` is the box's
+* **⚑ In-place standalone MARKER present (D3-mode #1)** — `box_data/` + `workset.yaml` is the box's
   AUTHORITATIVE self-declaration of standalone identity. Connecting it would write a per-workset
   `boxes:` entry and let resolution report it as a `named` workset box: a silent **steal**, leaving
   the box dual-registered (global `standalone:` AND the workset `boxes:`). Refused unless *force*.
@@ -566,9 +566,9 @@ Internal sources and std-less callers (e.g. `migrate`) skip this block entirely.
 
 ### The mutation block
 
-Multi-step: the external case touches a symlink + the per-workset `boxes:` connection record + the
-durable root `settings.yaml` write. A crash between steps could strand a symlink or record with no
-identity entry — an external path locked out by a dangling connection record — or vice versa.
+Multi-step: the external case touches the box/vault dirs + a symlink + the durable per-workset
+`boxes:` write into `registry.yaml`. A crash between steps could strand a symlink or a dir with no
+membership row — or an external path locked out by a dangling connection record.
 Forward effects go on an `_Unwind`; success behavior is identical to the pre-`_Unwind` code.
 
 * **Box dir** — always real. `exist_ok=True` keeps it idempotent, and the unwind only `rmtree`s dirs
@@ -609,24 +609,24 @@ def remove_project(ws: Workset, name: str, *, remove_files: bool = False, std: S
 ```
 Remove a project from a workset. Raises `WorksetError` if no project with *name* exists.
 
-When *std* is provided, the external-connect markers written by `add_project` are undone
-**regardless of *remove_files***: the box's per-workset `boxes:` connection record (D10 — present
-only when its recorded path is EXTERNAL) is dropped, and the `workspaces/{name}` symlink is
-unlinked. ⚑ **Unlinking a symlink removes ONLY the link — never the user's external source
+The external-connect markers written by `add_project` are undone **regardless of *remove_files***:
+the box's per-workset `boxes:` membership row (D10) is dropped, and the `workspaces/{name}` symlink
+is unlinked. ⚑ **Unlinking a symlink removes ONLY the link — never the user's external source
 directory.** With *remove_files* the workset-side per-project directories go too (symlinks unlinked,
 real dirs `rmtree`'d); the external source is still left intact.
 
 ### ⚑⚑ Failure-consistency ORDERING — the reverse of `add_project`
 
-Clean the per-workset connection record and the discoverability symlink **BEFORE** the durable root
-`settings.yaml` write, so the registry removal — the step that makes the project "gone" — is the LAST
-durable one. A crash mid-cleanup then leaves the project still in `settings.yaml`: a **re-runnable**
-state. The alternative ordering would remove it from the registry while the `boxes:` connection
-record still pointed at it, **locking out the external path** with nothing left to name it. All the
-cleanups are idempotent, so a re-run finds nothing to do.
+Unlink the discoverability symlink **BEFORE** the durable `boxes:` removal from `registry.yaml`, so
+the membership drop — the step that makes the project "gone" — is the LAST durable one. A crash
+mid-cleanup then leaves the member still registered: a **re-runnable** state. The reverse ordering
+would drop the row while the symlink still pointed at the external dir, **locking out the external
+path** with nothing left to name it. All the cleanups are idempotent, so a re-run finds nothing to
+do.
 
-⚑ The external-record test is on the RECORD's path, not on the argument: an in-tree box's membership
-entry is left untouched, matching the pre-`std` behavior where only external connects were cleaned.
+⚑ The drop is UNCONDITIONAL, and *std* is now accepted unused (caller parity): dropping only
+EXTERNAL rows orphaned an in-tree disconnect's row, and that orphan then tripped the
+workspace-uniqueness refusal — locking that workspace out of its own workset under any name.
 
 ⚑ The `workspaces/{name}` symlink is unlinked regardless of *remove_files* so a discoverability
 symlink never dangles.

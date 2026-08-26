@@ -16,10 +16,10 @@ sections cited below (§1 through §5a) are its sections. ⚑ The module docstri
 A `<pid>+<hid>` agent ref whose store entry exists is a *persona agent*. Its endpoint, model,
 token pointer and env are re-read from the store at EVERY launch, as a LIVE cascade level spliced
 in BELOW the agent settings file and above `agent.default`. They are never copied into any settings
-file. A launch that reads the store leaves `agents/<node>/settings.yaml` byte-identical.
+file. A launch that reads the store leaves `agents/<node>/agent.yaml` byte-identical.
 
 ⚑ **There is deliberately NO import/sync half any more.** The store used to be copied into
-`agents/<node>/settings.yaml` by a verified swap — `build_candidate` / `persist_candidate` /
+`agents/<node>/agent.yaml` by a verified swap — `build_candidate` / `persist_candidate` /
 `import_persona_entry`. That route is GONE and must not be reintroduced, in any spelling: an
 import, an adopt, a "cache the resolved persona", or a write-back all rebuild the retired design.
 Two reasons, and both are structural rather than stylistic:

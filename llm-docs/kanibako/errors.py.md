@@ -141,7 +141,7 @@ recorded so nobody treats the labels as resolvable citations.
 A template/seed copy tried to write OUTSIDE its scope's allowed surface.
 
 **Why it is a hard refusal and never a skip.** The whitelist is a CORRECTNESS property, not a style
-rule. A template that could plant `settings.yaml` at a scope root would be planting
+rule. A template that could plant `<scope>.yaml` at a scope root would be planting
 `meta.<scope>.settings` — the cascade's own last word. At workset scope the same escape reaches
 `registry.yaml` (the AUTHORITATIVE box membership), `auth/`, `vault/` and `workspaces/`: the user's
 credentials and code. Spec §2a's note on this names those three as *"USER DATA AND SECRETS"*
@@ -213,7 +213,7 @@ Workset creation, loading, or manipulation failed.
 26 raise sites; nothing displaced.
 
 ```class LegacyWorksetIdentityError(WorksetError):```
-A workset root's `settings.yaml` still carries a RETIRED workset identity table — either the
+A workset root's `workset.yaml` still carries a RETIRED workset identity table — either the
 `workset.meta` spelling (1.6.0/1.7.x) or the `meta.workset` one (the unreleased 1.8.0 tree). A 1.8.0
 workset has no identity table anywhere under its root; it is named by the global registry.
 

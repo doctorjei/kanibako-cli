@@ -93,7 +93,7 @@ that hold a *data_path* rather than a resolved agents root — it just delegates
 `agent_settings_path(agents_root, agent_id)` is `@meta.agent.<agent>.settings`.
 
 The per-agent SETTINGS cascade file lives **inside** the per-agent store dir
-(`@meta.agent.<agent>.path` = `agents/<agent>/`) as `settings.yaml`. It is NOT the old sibling
+(`@meta.agent.<agent>.path` = `agents/<agent>/`) as `agent.yaml`. It is NOT the old sibling
 `agents/<agent>.yaml` file (decision D-2026-06-22). The layout parallels the per-agent template dir
 `agents/<agent>/template` and the per-category store dirs `agents/<agent>/{common,caches,seeded}/`.
 
