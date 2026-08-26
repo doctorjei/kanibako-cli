@@ -3315,7 +3315,7 @@ one. A ref like `kimi.k3+claude` was legal in v1.7.2 and is refused now.
 
 **What changed.** The characters an agent-ref segment may contain went from `-`, `.` and `_` to
 `-` and `_`. A node name is a **keyspace segment**, and `.` is the settings key-path separator, so
-`agent.kimi.k3℘claude.model` could not be told apart from a genuine nested key — and the same
+`agent.kimi.k3+claude.model` could not be told apart from a genuine nested key — and the same
 charset admitted `..`, a segment that resolved as a path component pointing above the agents
 directory. (Unicode letters were admitted in the same change, so a persona named in any script
 works.)
