@@ -4351,7 +4351,7 @@ class TestEffectiveCategoryBlock:
     # visible rather than papered over: destinations arrive R-11-ABSOLUTIZED
     # (``~/.claude/plugins`` is stored ``/home/agent/.claude/plugins``), which is
     # what retires the deferred-``~``-vs-resolved-dest contrast the first skipped
-    # test below states. It belongs to the collapse rewrite that test is gated on.
+    # test below states. It belongs to the rewrite that test is gated on.
     #
     # ⚑ The dest here CONTAINS DOTS, deliberately: ``binding_derivations.*`` is
     # keyed by SEGMENTS and installed with ``insert_segments``, so the dest is one
@@ -4419,9 +4419,11 @@ class TestEffectiveCategoryBlock:
                "half is DISABLED while "
                "settings_categories.effective_bindings_and_template_sources is a "
                "deliberate stub, so the block prints a notice instead of pairs. "
-               "To be REWRITTEN against that function once the collapse function "
-               "lands — NOT deleted: the adjacency, and the deferred `~` vs "
-               "resolved guest dest it contrasts, are the point of the display."
+               "The collapse LANDED; the blocker is that CollapsedBind / "
+               "CollapsedCopy carry no declaration provenance. To be REWRITTEN "
+               "against that function once they do — NOT deleted: the "
+               "adjacency, and the deferred `~` vs resolved guest dest it "
+               "contrasts, are the point of the display."
     )
     def test_declaration_and_derived_binding_print_adjacently(self, tmp_path):
         lines = self._render(tmp_path).splitlines()
@@ -4442,9 +4444,11 @@ class TestEffectiveCategoryBlock:
                "derivation's DELIVERY ((copy) vs (mount)). That half is DISABLED "
                "while settings_categories.effective_bindings_and_template_sources "
                "is a deliberate stub, so the block prints a notice instead of "
-               "pairs. To be REWRITTEN against that function once the collapse "
-               "function lands — NOT deleted: `seeded` deriving a COPY rather "
-               "than a mount is exactly what the rewrite may not quietly drop "
+               "pairs. The collapse LANDED; the blocker is that CollapsedBind / "
+               "CollapsedCopy carry no declaration provenance. To be REWRITTEN "
+               "against that function once they do — NOT deleted: `seeded` "
+               "deriving a COPY rather than a mount is exactly what the "
+               "rewrite may not quietly drop "
                "(config_display._declaration_delivery is retained, caller-less, "
                "for the same reason)."
     )
