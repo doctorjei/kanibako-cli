@@ -1291,3 +1291,41 @@ class TestThePerRunOverride:
       {"box.env.EDITOR": "vim", "box.env.PAGER": "less"}, {"EDITOR": "ed"},
     )
     assert slots["PAGER"] == CollapsedEnv("less", "box", "box.env.PAGER")
+
+
+class TestCoveringBind:
+  """``covering_bind`` — the INNERMOST collapsed dest covering a path.
+
+  ⚑ It moved here from ``commands.start._synced_cover`` when a THIRD asker
+  appeared (``pair_declarations``); that name is now a one-line delegation. The
+  cases below pin the rule where it is DEFINED, so a caller cannot grow a second
+  idea of which mount owns a path.
+  """
+
+  def test_the_INNERMOST_cover_wins_not_the_first_or_the_outermost(self):
+    from kanibako.settings.store_collapse import covering_bind
+
+    given = {"/h": CollapsedBind("/o", "Z,U"), "/h/a": CollapsedBind("/i", "Z,U")}
+    assert covering_bind(given, "/h/a/deep") == "/h/a"
+
+  def test_a_dest_at_a_binds_own_point_covers_itself(self):
+    from kanibako.settings.store_collapse import covering_bind
+
+    assert covering_bind({"/h/a": CollapsedBind("/i", None)}, "/h/a") == "/h/a"
+
+  def test_a_MASK_covers_exactly_as_a_bind_does(self):
+    # The map holds both kinds and the lookup does not discriminate — deciding
+    # what a mask MEANS is the caller's, and both callers do it with ``is_mask``.
+    from kanibako.settings.store_collapse import covering_bind
+
+    assert covering_bind({"/h/a": MASK}, "/h/a/inside") == "/h/a"
+
+  def test_a_SIBLING_prefix_is_not_a_cover(self):
+    from kanibako.settings.store_collapse import covering_bind
+
+    assert covering_bind({"/h/foo": CollapsedBind("/i", None)}, "/h/foobar") is None
+
+  def test_nothing_covering_is_None_never_an_empty_string(self):
+    from kanibako.settings.store_collapse import covering_bind
+
+    assert covering_bind({}, "/h/a") is None

@@ -4358,9 +4358,19 @@ class TestEffectiveCategoryBlock:
     # node. It used to be a dotted key handed to ``insert_dotted`` and SHATTERED
     # into nested nodes; this fixture drives the real chain that proves it no
     # longer does.
+    #
+    # ⚑ *box_bind_dest* and *assemble* exist for the PAIRING tests below, which need
+    # a collapsed ``meta.assembly.*`` to pair against. The default box binding sits
+    # at ``~`` — a SECOND bind at the pid-0 foundation, which the collapse REFUSES
+    # (cutover 6-H) — so a test that assembles must move it. The default is left
+    # exactly as it was: three tests below assert that row's rendered text, and it
+    # is the CONCRETE half's fixture, which runs no collapse at all.
     @staticmethod
-    def _snapshot(tmp_path):
-        from kanibako.commands.start import _install_derived_bindings
+    def _snapshot(tmp_path, *, box_bind_dest="~", assemble=False):
+        from kanibako.commands.start import (
+            _install_assembly_collapse,
+            _install_derived_bindings,
+        )
         from kanibako.settings.settings_categories import derive_binding_keys
         from kanibako.settings.settings_launch import (
             build_launch_snapshot,
@@ -4383,7 +4393,7 @@ class TestEffectiveCategoryBlock:
         }}))
         box_file = tmp_path / "box-settings.yaml"
         box_file.write_text(yaml.safe_dump({"box": {"bindings": {
-            "rw": {"~": ["/boxes/mybox/home", "Z,U"]},
+            "rw": {box_bind_dest: ["/boxes/mybox/home", "Z,U"]},
         }}}))
         ctx = ResolveCtx(
             agent_name="claude", workset_name=None, host_home="/home/host", xdg={},
@@ -4393,14 +4403,18 @@ class TestEffectiveCategoryBlock:
             system_path=None, agent_path=agent_file,
             workset_path=None, box_path=box_file,
         )
-        _install_derived_bindings(snapshot, derive_binding_keys(
-            snapshot_category_entries(
-                snapshot, active_agent="claude", box_ctx=ctx,
-            ),
-        ))
+        entries = snapshot_category_entries(
+            snapshot, active_agent="claude", box_ctx=ctx,
+        )
+        _install_derived_bindings(snapshot, derive_binding_keys(entries))
+        if assemble:
+            # The pid-0 foundation is a DERIVED key this floor-less build does not
+            # materialise; the assembly seam reads it and refuses without one.
+            snapshot.insert_segments(("meta", "box", "home"), "/boxes/mybox/home")
+            _install_assembly_collapse(snapshot, entries, whole_box=True)
         return snapshot
 
-    def _render(self, tmp_path):
+    def _render(self, tmp_path, **kwargs):
         import io
 
         buf = io.StringIO()
@@ -4409,64 +4423,54 @@ class TestEffectiveCategoryBlock:
             config_path=tmp_path / BOX_META_FILE,
             effective=True,
             file=buf,
-            category_snapshot=self._snapshot(tmp_path),
+            category_snapshot=self._snapshot(tmp_path, **kwargs),
         )
         return buf.getvalue()
 
-    @pytest.mark.skip(
-        reason="Asserts the ABSTRACT half of the `--effective` block renders the "
-               "declaration and its binding_derivations line ADJACENTLY. That "
-               "half is DISABLED while "
-               "settings_categories.effective_bindings_and_template_sources is a "
-               "deliberate stub, so the block prints a notice instead of pairs. "
-               "The collapse LANDED; the blocker is that CollapsedBind / "
-               "CollapsedCopy carry no declaration provenance. To be REWRITTEN "
-               "against that function once they do — NOT deleted: the "
-               "adjacency, and the deferred `~` vs resolved guest dest it "
-               "contrasts, are the point of the display."
-    )
+    #: The dest-keyed declaration key the fixture's ``common`` row resolves to.
+    #: ⚑ NOT the pre-2026-08-08c ``agent.claude.common.plugins`` these two tests
+    #: were written against: the categories went TERMINAL and dest-keyed, and
+    #: destinations arrive R-11-ABSOLUTIZED, which is what retired the deferred-``~``
+    #: contrast the first of them used to state.
+    _COMMON_KEY = "agent.claude.common./home/agent/.claude/plugins"
+    _SEEDED_KEY = "agent.claude.seeded./home/agent"
+
     def test_declaration_and_derived_binding_print_adjacently(self, tmp_path):
-        lines = self._render(tmp_path).splitlines()
+        """⚑ UN-SKIPPED when the pairing landed — REWRITTEN, not restored.
+
+        The adjacency is the point of the display: a declaration and what the box
+        receives for it are one thought, and a reader should not have to join two
+        sections to have it.
+        """
+        lines = self._render(
+            tmp_path, box_bind_dest="~/w", assemble=True,
+        ).splitlines()
         decl = next(
             i for i, ln in enumerate(lines)
-            if ln.strip().startswith("agent.claude.common.plugins =")
+            if ln.strip().startswith(f"{self._COMMON_KEY} =")
         )
         assert lines[decl + 1].strip().startswith(
-            "binding_derivations.agent.claude.common.plugins ="
+            f"binding_derivations.{self._COMMON_KEY} ="
         )
-        # The declaration carries the DEFERRED box-side ``~``; the derivation
-        # carries the resolved guest dest. Seeing both is the point.
-        assert "~/.claude/plugins" in lines[decl]
+        # The declaration names its SOURCE; the line beneath names the destination
+        # the box actually receives it at. Seeing both is the point.
+        assert "/store/agents/claude/common/plugins" in lines[decl]
         assert "/home/agent/.claude/plugins" in lines[decl + 1]
 
-    @pytest.mark.skip(
-        reason="Asserts the ABSTRACT half of the `--effective` block states each "
-               "derivation's DELIVERY ((copy) vs (mount)). That half is DISABLED "
-               "while settings_categories.effective_bindings_and_template_sources "
-               "is a deliberate stub, so the block prints a notice instead of "
-               "pairs. The collapse LANDED; the blocker is that CollapsedBind / "
-               "CollapsedCopy carry no declaration provenance. To be REWRITTEN "
-               "against that function once they do — NOT deleted: `seeded` "
-               "deriving a COPY rather than a mount is exactly what the "
-               "rewrite may not quietly drop "
-               "(config_display._declaration_delivery is retained, caller-less, "
-               "for the same reason)."
-    )
     def test_the_derivation_line_states_its_DELIVERY(self, tmp_path):
         """N2 — ``seeded`` derives a COPY, not a mount (spec §0), and the two are
         not interchangeable: a mount is live and shadows the dest, a copy runs
         once at create and is then the box's own file. A reader who cannot tell
         them apart cannot answer the question this display exists for."""
-        text = self._render(tmp_path)
-        assert "binding_derivations.agent.claude.seeded.template" in text
+        text = self._render(tmp_path, box_bind_dest="~/w", assemble=True)
         seeded_line = next(
             ln for ln in text.splitlines()
-            if "binding_derivations.agent.claude.seeded.template" in ln
+            if f"binding_derivations.{self._SEEDED_KEY}" in ln
         )
         assert seeded_line.rstrip().endswith("(copy)")
         common_line = next(
             ln for ln in text.splitlines()
-            if "binding_derivations.agent.claude.common.plugins" in ln
+            if f"binding_derivations.{self._COMMON_KEY}" in ln
         )
         assert common_line.rstrip().endswith("(mount)")
 

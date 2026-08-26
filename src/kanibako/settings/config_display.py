@@ -227,15 +227,14 @@ def _print_category_block(snapshot: Any, error: str | None, out: Any) -> None:
     destination it occupies — all read off the SAME snapshot the launch resolved.
     Nothing is re-derived here.
 
-    ⚑ The ABSTRACT half is TEMPORARILY DISABLED.  It used to list every
-    ``common`` / ``caches`` / ``seeded`` declaration with the
-    ``binding_derivations.<declaration-key>`` binding it produces indented
-    beneath it; that calculation now belongs to the single-source stub
+    The ABSTRACT half then lists every ``common`` / ``caches`` / ``seeded``
+    declaration with what the box RECEIVES for it indented beneath — keyspec
+    ``:88``, *"``--effective`` shows BOTH the declaration and the derived binding
+    and a user can see WHY a mount exists."*  The pairing is
     :func:`kanibako.settings.settings_categories.effective_bindings_and_template_sources`,
-    which is deliberately unimplemented, so the section prints a NOTICE instead
-    of pairs.  See the block below for why a notice rather than silence.
+    the single source; nothing is re-derived here either.
     """
-    from kanibako.settings.kb_store import BindEntry
+    from kanibako.settings.kb_store import BINDING_DERIVATIONS_NODE, BindEntry
     from kanibako.settings.keystore import KeyStore
     from kanibako.settings.settings_categories import (
         effective_bindings_and_template_sources,
@@ -299,70 +298,82 @@ def _print_category_block(snapshot: Any, error: str | None, out: Any) -> None:
                             file=out,
                         )
 
-    # ABSTRACT declarations, each with the binding it derives — DISABLED.
+    # ABSTRACT declarations, each with THE DELIVERY THE BOX ACTUALLY RECEIVES.
     #
-    # This half routes through the ONE function that owns the calculation, and
-    # that function is a deliberate STUB. The collapse LANDED; the blocker is a
-    # layer below it — ``CollapsedBind`` / ``CollapsedCopy`` carry no
-    # declaration provenance, so a delivery cannot be paired with the
-    # declaration that produced it. Three outcomes were available and only this
-    # one is honest:
+    # 🛑🛑 THIS IS NOT A READ OF ``binding_derivations``, and it may never become
+    # one. That node is populated BEFORE arbitration, deliberately (R-8), so every
+    # row in it reads as a live mount — including rows for declarations the box
+    # receives NOTHING for. A renderer reading it alone prints ``(mount)`` for a
+    # ``common`` declaration a mask has swallowed, and prints no mask at all: the
+    # silent half, and the measured reason this block was disabled rather than
+    # left to guess. The pairing against ``meta.assembly.*`` is what makes the
+    # answer the BOX'S, and it lives in ONE function — recomputing either half
+    # here is the second opinion ``--effective`` exists to DETECT.
     #
-    #   * print the pairs anyway (the old ``derived_bindings`` read) — that is
-    #     the SILENTLY WRONG outcome: a second opinion about what the box sees,
-    #     which is the failure this display exists to detect;
-    #   * print nothing — reads as "this box declares no ``common`` / ``caches``
-    #     / ``seeded`` entries", which for most boxes is false;
-    #   * let ``NotImplementedError`` out — a traceback for a section that is
-    #     merely turned off, and it would take the CONCRETE half down with it.
-    #
-    # So: call it, catch the refusal, and SAY SO, quoting the stub's own reason
-    # rather than restating it here.
-    #
-    # ⚑ The PRODUCING route is untouched — ``settings_categories.derive_binding_keys``
-    # still materialises the derivations and ``start._install_derived_bindings``
-    # still installs them on the snapshot; only this READ is disabled.
-    # ``_declaration_delivery`` below therefore has no caller for the moment and
-    # is retained ON PURPOSE for the rewrite: it is this renderer's one copy of
-    # the COPY/MOUNT distinction, and ``seeded`` deriving a COPY rather than a
-    # mount is not a detail the rewrite may quietly drop.
-    try:
-        effective_bindings_and_template_sources(snapshot)
-    except NotImplementedError as exc:
-        print("  (binding derivations temporarily unavailable)", file=out)
-        print(f"    {exc}", file=out)
-        return
-    # The stub RAISES today, so this is unreachable. It is here for the day it
-    # stops raising: an implemented calculation with an un-rewritten renderer
-    # would otherwise fall straight through and print NOTHING, which is exactly
-    # the silently-wrong outcome the branch above refuses.
-    print(
-        "  (binding derivations: this renderer is not yet wired to "
-        "effective_bindings_and_template_sources)",
-        file=out,
+    # ⚑ ``seeded`` derives a COPY, not a mount, and that distinction is carried by
+    # the outcome rather than restated here (``settings_categories
+    # .declaration_delivery`` is its one definition).
+    for row in effective_bindings_and_template_sources(snapshot):
+        print(f"  {row.declaration.key} = {row.declaration.src}", file=out)
+        print(
+            f"    {BINDING_DERIVATIONS_NODE}.{row.declaration.key} = "
+            f"{_derivation_result(row)}",
+            file=out,
+        )
+
+
+def _derivation_result(row: Any) -> str:
+    """One :class:`~kanibako.settings.store_collapse.Derivation` as its result phrase.
+
+    ⚑ EVERY OUTCOME PRINTS SOMETHING, and a LOSS prints WHY and WHERE. "No mount"
+    on its own is the answer a user cannot act on; the destination that swallowed
+    the declaration is the whole diagnosis, and for a mask ABOVE the declaration it
+    is not a destination the user's own key names.
+    """
+    from kanibako.settings.store_collapse import (
+        DERIVED_AMBIGUOUS,
+        DERIVED_COPY,
+        DERIVED_MASKED,
+        DERIVED_MOUNT,
+        DERIVED_SUPERSEDED,
     )
 
-
-def _declaration_delivery(decl_key: str) -> str:
-    """The COPY/MOUNT delivery of a declaration key, from the category table.
-
-    The category is the segment after the scope, and the AGENT scope is
-    DISCRIMINATED — two segments (``agent.<tier>``) where every other scope is
-    one. Parsed by position rather than by substring search, so a trailing
-    DESTINATION that happens to spell a category (``box.caches.common``) cannot be
-    misread. (The trailing segment is a dest, not a name: the four categories went
-    terminal and dest-keyed on 2026-08-08c.)
-
-    The delivery itself is read off ``settings_categories._DELIVERY``: it has ONE
-    definition, and a display keeping its own copy would drift the moment a
-    category moved between COPY and MOUNT.
-    """
-    from kanibako.settings.settings_categories import _DELIVERY
-
-    parts = decl_key.split(".")
-    idx = 2 if parts[0] == "agent" else 1
-    category = parts[idx] if len(parts) > idx else ""
-    return _DELIVERY.get(category, "MOUNT")
+    if row.outcome == DERIVED_COPY:
+        return f"{row.copy.src} -> {row.copy.dest}  (copy)"
+    if row.outcome == DERIVED_MASKED:
+        return (
+            f"(no mount — the mask at {row.at} covers this destination, and a mask "
+            f"has no host source: the box sees nothing at that path)"
+        )
+    if row.outcome == DERIVED_SUPERSEDED:
+        if row.bind is None:
+            return (
+                "(no copy — no collapsed copy row accounts for this declaration; "
+                "another declaration at this destination took it)"
+            )
+        return (
+            f"(no mount — the binding of {row.bind.src} at {row.at} occupies this "
+            f"destination)"
+        )
+    if row.outcome == DERIVED_AMBIGUOUS:
+        return (
+            f"{row.bind.src} -> {row.at}  [{row.bind.opts}]  (mount — AMBIGUOUS: "
+            f"another declaration at this destination names the same source, and "
+            f"only one of them is this mount)"
+        )
+    if row.outcome == DERIVED_MOUNT:
+        # ⚑ THE DELIVERY IS STATED, not left to be inferred from the presence of an
+        # options column: a mount is LIVE and shadows the dest, a copy runs once and
+        # is then the box's own file, and a reader who cannot tell them apart cannot
+        # answer the question this display exists for (N2).
+        return f"{row.bind.src} -> {row.at}  [{row.bind.opts}]  (mount)"
+    # ⚑ UNCOVERED, and it is not "no mount": this resolve carries no collapsed
+    # bind map at all (a NARROW resolve writes none), so the question was not
+    # answered rather than answered in the negative.
+    return (
+        "(unknown — this resolve carries no collapsed binding map, so what the "
+        "box receives here cannot be read)"
+    )
 
 
 def _iter_agent_tiers(scope: str, scope_node: Any):

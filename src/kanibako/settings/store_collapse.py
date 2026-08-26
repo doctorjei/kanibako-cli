@@ -8,18 +8,24 @@ slot is written once, and the containing scope writes it first. The per-run ``-e
 values are the CASCADE'S CLI LEVEL over that result and are applied INSIDE the same
 function, above every scope and below nothing.
 
+⚑ THE MODULE ALSO READS ITS OWN OUTPUT, in a clearly marked section at the foot:
+:func:`covering_bind` and :func:`pair_declarations` answer questions ABOUT the
+collapsed map - which mount owns a path, and what a DECLARATION actually got. They
+are here because those questions are the map's own; a second spelling elsewhere is
+how a display comes to disagree with the box. Neither re-folds anything.
+
 Prose: ``llm-docs/kanibako/settings/store_collapse.py.md``.
 """
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import Final, NamedTuple
 
 from kanibako.settings.kb_store import SCOPE_CONTAINMENT, BindEntry
-from kanibako.settings.settings_categories import ENV, CategoryEntry
+from kanibako.settings.settings_categories import COPY, ENV, CategoryEntry
 from kanibako.settings.settings_resolve import SettingsError, normalize_bind_dest
 from kanibako.settings.store_shape import StoreShape, StoreShapeSet
 
@@ -304,6 +310,27 @@ def is_within(dest: str, root: str) -> bool:
   return dest == root or dest.startswith(root.rstrip("/") + "/")
 
 
+def covering_bind(bindings: Mapping[str, CollapsedBind], dest: str) -> str | None:
+  """The collapsed dest covering *dest* - the LONGEST prefix, or ``None`` if none does.
+
+  ⚑ ONE spelling, and it now has THREE askers, which is why it moved here from
+  ``commands.start`` (where it was ``_synced_cover``, still its caller under this
+  name): the sync delivery half asks it twice - whether the covering mount refuses
+  a copy, and which mount a copy resolves through - and :func:`pair_declarations`
+  asks it to say what a DECLARATION actually got. A second lookup is how a row gets
+  refused against one mount and delivered through another, and how a display comes
+  to disagree with the box about which mount owns a path.
+
+  LONGEST PREFIX = the INNERMOST bind, which is the one the box sees at that path.
+  ⚑ Every candidate is a prefix of ONE string, so length totally orders them and
+  there is no tie to break: two covers of equal length are equal.
+
+  ⚑ A dest is DATA: it is compared and sliced as a PATH, never split on ``.``.
+  """
+  covers = [root for root in bindings if is_within(dest, root)]
+  return max(covers, key=len) if covers else None
+
+
 def _binds_under(combined: CollapsedBindings, dest: str) -> list[str]:
   """The BIND dests AT or INSIDE *dest* - what an arriving bind would subsume."""
   return [
@@ -442,3 +469,142 @@ def _refuse_mode_contradiction(dest: str, entry: BindEntry, mode: str) -> None:
       f"{entry.opts!r} carry {opposite!r}. The mode is the ARM, not an option - "
       f"declare it in the arm that means it."
     )
+
+
+# ---------------------------------------------------------------------------
+# THE READER - a DECLARATION paired with what the box ACTUALLY RECEIVES.
+# ---------------------------------------------------------------------------
+#
+# 🛑 THE PAIRING IS ASKED IN ONE DIRECTION ONLY, and that is why it needs nothing
+# added to :class:`CollapsedBind` / :class:`CollapsedCopy`. The obligation
+# (keyspec ``:88``) is DECLARATION -> DELIVERY: "``--effective`` shows BOTH the
+# declaration and the derived binding and a user can see WHY a mount exists." That
+# question is answered by CONTAINMENT against the finished map - which dest covers
+# this declaration's dest, and what sits there. The REVERSE question (given a
+# collapsed bind, name the declaration that produced it) is the one the collapse
+# cannot answer, and the one ``_refuse_bind_over_bind``'s boarded 🐞 wants; it is
+# NOT this one.
+#
+# 🛑🛑 AND THE TUPLES MAY NOT GROW. ``meta.assembly.bindings`` is spec'd as
+# ``dict[guest_dest -> (host_src, opts)]`` and the two copy leaves as
+# ``list[(host_src, guest_dest, opts)]`` (keyspec ``:434``/``:440``/``:450``) - the
+# arities are NORMATIVE, and the env leaf's ``(value, scope, key)`` shows the spec
+# grants provenance in a tuple deliberately where it means to. Widening either
+# tuple to carry a declaration key would put the code in contradiction with the
+# spec.
+#
+# ⚑ NOTHING IS RECOMPUTED HERE. The arbitrated answer is READ off the collapsed
+# map; a second fold would be exactly the second opinion ``--effective`` exists to
+# DETECT.
+
+#: The declaration IS the mount the box receives at its own destination.
+DERIVED_MOUNT: Final[str] = "mount"
+#: The declaration reaches the box as a COPY row - arbitrated at no destination.
+DERIVED_COPY: Final[str] = "copy"
+#: A MASK covers the destination: the box receives NO mount for this declaration.
+DERIVED_MASKED: Final[str] = "masked"
+#: Another declaration's delivery occupies or contains the destination.
+DERIVED_SUPERSEDED: Final[str] = "superseded"
+#: Two declarations the collapsed map cannot tell apart - SAY SO, never pick one.
+DERIVED_AMBIGUOUS: Final[str] = "ambiguous"
+#: Nothing in the collapsed map covers the destination (an INCOMPLETE map, §2 gate).
+DERIVED_UNCOVERED: Final[str] = "uncovered"
+
+
+class Declaration(NamedTuple):
+  """One declaration offered for pairing: ``(key, dest, src, delivery)``.
+
+  *dest* is the RESOLVED guest destination and *src* the host source, both as the
+  declaration's own materialised derivation spells them. *src* is ``None`` for a
+  declaration that asks for no source - a mask.
+  """
+
+  key: str
+  dest: str
+  src: str | None
+  delivery: str
+
+
+class Derivation(NamedTuple):
+  """One declaration paired with WHAT THE BOX RECEIVES - the ``--effective`` row.
+
+  *at* is the destination the outcome was found AT: the declaration's own when it
+  holds its point, an ANCESTOR when something above swallowed it. ⚑ It is the
+  field that turns "no mount" into a diagnosis, so a renderer must print it.
+  """
+
+  declaration: Declaration
+  outcome: str
+  at: str | None
+  bind: CollapsedBind | None = None
+  copy: CollapsedCopy | None = None
+
+
+def pair_declarations(
+  declarations: Sequence[Declaration],
+  bindings: Mapping[str, CollapsedBind],
+  copies: Sequence[CollapsedCopy] = (),
+) -> tuple[Derivation, ...]:
+  """Pair every declaration with the delivery the box actually receives for it (PURE).
+
+  *bindings* is the COLLAPSED map (``meta.assembly.bindings``) and *copies* the two
+  collapsed copy lists concatenated; both are the arbitrated outputs, read and never
+  re-derived.
+
+  ⚑⚑ THE INPUT MAY CONTAIN ARBITRATION LOSERS, and it is meant to: the reserved
+  ``binding_derivations`` node materialises a derivation for WINNERS AND LOSERS
+  ALIKE (``settings_categories.derive_binding_keys``), which is exactly why reading
+  THAT node alone reports a mount for a declaration the box receives nothing for.
+  A loser is identified HERE, by what occupies its destination.
+  """
+  # ⚑ A TUPLE KEY, never a joined string: a dest is DATA and may hold any character,
+  # so a separator would be a claim about paths this module has no business making.
+  claims: dict[tuple[str, str | None], int] = {}
+  for decl in declarations:
+    if decl.delivery != COPY:
+      claims[decl.dest, decl.src] = claims.get((decl.dest, decl.src), 0) + 1
+  return tuple(_pair_one(decl, bindings, copies, claims) for decl in declarations)
+
+
+def _pair_one(
+  decl: Declaration,
+  bindings: Mapping[str, CollapsedBind],
+  copies: Sequence[CollapsedCopy],
+  claims: Mapping[tuple[str, str | None], int],
+) -> Derivation:
+  """One declaration's outcome - the whole decision, in one place."""
+  if decl.delivery == COPY:
+    # ⚑ NOTHING IS ARBITRATED AT A COPY'S DESTINATION (spec :147-149), so a copy
+    # that reached the list reached it whole. One that did NOT is a declaration the
+    # PRODUCER dropped - a §0 row-5 loser - and that is a loss, not a copy.
+    row = next(
+      (c for c in copies if c.dest == decl.dest and c.src == decl.src), None,
+    )
+    if row is not None:
+      return Derivation(decl, DERIVED_COPY, decl.dest, copy=row)
+    return Derivation(decl, DERIVED_SUPERSEDED, decl.dest)
+  cover = covering_bind(bindings, decl.dest)
+  if cover is None:
+    # Reachable only from an INCOMPLETE map - a narrow resolve writes no bindings
+    # leaf (``commands.start._install_assembly_collapse``'s whole-box gate). Named
+    # rather than guessed: "no mount" and "no map" are different answers.
+    return Derivation(decl, DERIVED_UNCOVERED, None)
+  bind = bindings[cover]
+  if is_mask(bind):
+    # ⚑ AT the dest or ABOVE it, one answer: a mask is a tmpfs with no host source,
+    # so the box sees nothing at that path either way. *at* carries the difference,
+    # and it is the whole diagnosis when the mask is a PARENT - the declaration's
+    # own dest is not in the map at all, so a lookup by dest finds nothing and a
+    # renderer that reads "absent" as "fine" says nothing.
+    return Derivation(decl, DERIVED_MASKED, cover, bind)
+  if cover != decl.dest or bind.src != decl.src:
+    return Derivation(decl, DERIVED_SUPERSEDED, cover, bind)
+  # ⚑ A tie is UNCONSTRUCTIBLE from a launch's own declarations - two live binds at
+  # one dest is ``_refuse_bind_over_bind``, and one scope's two abstractions at one
+  # dest is §0 row 5, whose loser the producer drops. It IS constructible from the
+  # pre-arbitration node when a row-5 pair share a source, and there the honest
+  # answer is that the map cannot say which of them the mount came from.
+  ambiguous = claims.get((decl.dest, decl.src), 0) > 1
+  return Derivation(
+    decl, DERIVED_AMBIGUOUS if ambiguous else DERIVED_MOUNT, cover, bind,
+  )

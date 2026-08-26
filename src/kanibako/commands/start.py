@@ -8328,7 +8328,7 @@ def _apply_init_seeds(
 
 
 def _synced_cover(box_dest: str, bindings) -> "str | None":
-    """The bind dest covering *box_dest* — the LONGEST prefix, or ``None`` if none does.
+    """The bind dest covering *box_dest* — ``store_collapse.covering_bind``, no second copy.
 
     ⚑ ONE spelling, because the delivery half asks this in TWO places and they may
     not disagree: :func:`_refuse_synced_under_mask` decides whether the covering
@@ -8336,16 +8336,14 @@ def _synced_cover(box_dest: str, bindings) -> "str | None":
     it.  A second lookup is how a row gets refused against one mount and delivered
     through another.
 
-    LONGEST PREFIX = the innermost bind, which is the one the box sees at that path.
-    ⚑ Every candidate is a prefix of ONE string, so length totally orders them and
-    there is no tie to break: two covers of equal length are equal.
-
-    ⚑ A dest is DATA: it is compared and sliced as a PATH, never split on ``.``.
+    ⚑ THE BODY MOVED to ``store_collapse`` when a THIRD asker appeared —
+    ``pair_declarations``, which must say what a DECLARATION actually got.  The
+    question is the collapsed map's own, so it is answered beside that map; this
+    name stays because the two callers above read as delivery, not as collapse.
     """
-    from kanibako.settings.store_collapse import is_within
+    from kanibako.settings.store_collapse import covering_bind
 
-    covers = [dest for dest in bindings if is_within(box_dest, dest)]
-    return max(covers, key=len) if covers else None
+    return covering_bind(bindings, box_dest)
 
 
 def _refuse_synced_under_mask(copies: "list[CollapsedCopy]", bindings) -> None:

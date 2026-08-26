@@ -669,33 +669,92 @@ def derive_binding_keys(
     return out
 
 
-#: The message the stub below raises with. ⚑ Kept as ONE string so the disabled
-#: consumer can PRINT the reason instead of restating it.
-_EFFECTIVE_DELIVERY_STUB_REASON: Final[str] = (
-    "the effective binding / template-source calculation is deliberately "
-    "unimplemented: the collapse carries no declaration provenance — "
-    "CollapsedBind / CollapsedCopy do not name the declaration that produced "
-    "them — so a delivery cannot be paired with its declaration, and the "
-    "'--effective' binding-derivations display is disabled rather than guess"
-)
+def declaration_delivery(decl_key: str) -> Delivery:
+    """The COPY/MOUNT delivery of a declaration KEY, off the ONE category table.
 
+    The category is the segment after the scope, and the AGENT scope is
+    DISCRIMINATED — two segments (``agent.<tier>``) where every other scope is one.
+    Parsed BY POSITION rather than by substring search, so a trailing DESTINATION
+    that happens to spell a category (``box.caches.common``) cannot be misread.
+    (The trailing segment is a dest, not a name: the four categories went terminal
+    and dest-keyed on 2026-08-08c.)
 
-def effective_bindings_and_template_sources(snapshot: "KeyStore") -> Any:
-    """The EFFECTIVE bindings and template sources of *snapshot* — **STUB**.
-
-    ⚑ **DELIBERATELY UNIMPLEMENTED.** Its one consumer — the ``binding_derivations``
-    half of ``config_display``'s ``--effective`` block — is DISABLED rather than left
-    to print something it cannot stand behind.  🛑 Do not grow a partial
-    implementation: a stub that quietly acquires a body is worse than an honest hole,
-    because nothing announces the day it started being believed.  ⚑ **THE BLOCKER IS
-    NOT THE COLLAPSE** — that landed.  It is one layer below: ``CollapsedBind`` /
-    ``CollapsedCopy`` carry NO declaration provenance (``store_shape.build_store_shape``
-    drops ``CategoryEntry.key_segments``; only the ``env`` arm was given
-    ``(scope, key)``), so a delivery cannot be traced back to the declaration that
-    produced it.  Carrying it is a PRODUCER shape change (llm-doc: that, and the
-    measured reason reading ``binding_derivations`` instead is wrong).  ⚑ THE SINGLE
-    SOURCE for both answers — recomputing one is the second opinion ``--effective``
-    exists to DETECT.  ⚑ The return is ``Any`` ON PURPOSE: a container chosen now
-    would encode a merge semantics, which is a CHOICE (llm-doc).
+    ⚑ IT LIVES BESIDE :data:`_DELIVERY`, which is the ONE definition of what a
+    category delivers.  It was ``config_display._declaration_delivery`` until the
+    ``--effective`` pairing landed, and moved here because the pairing needs the
+    same answer: a renderer keeping its own copy would drift the moment a category
+    moved between COPY and MOUNT.
     """
-    raise NotImplementedError(_EFFECTIVE_DELIVERY_STUB_REASON)
+    parts = decl_key.split(".")
+    idx = 2 if parts[0] == "agent" else 1
+    return _DELIVERY.get(parts[idx] if len(parts) > idx else "", MOUNT)
+
+
+def effective_bindings_and_template_sources(
+    snapshot: "KeyStore",
+) -> "tuple[Any, ...]":
+    """Every ABSTRACT declaration paired with the delivery the box ACTUALLY receives.
+
+    Returns ``store_collapse.Derivation`` rows, one per declaration, sorted by
+    declaration key.  THE SINGLE SOURCE for the ``--effective``
+    binding-derivations block: a consumer that recomputes either half is the second
+    opinion that display exists to DETECT.
+
+    🛑🛑 **IT TAKES TWO INPUTS AND BOTH ARE LOAD-BEARING.**  The reserved
+    ``binding_derivations`` node supplies the DECLARATIONS and nothing else: it is
+    populated BEFORE arbitration, DELIBERATELY (R-8 — a derived binding is a
+    property of the DECLARATION, and :func:`derive_binding_keys` materialises one
+    for winners and losers ALIKE), so every row in it reads as a live mount.  What
+    the box receives is ``meta.assembly.bindings`` / ``.seeded`` / ``.synced`` — the
+    arbitrated collapse.  **Reading the reserved node ALONE is the measured failure
+    this function exists to prevent**: a ``common`` declaration under a mask at the
+    same dest collapses to a mask sentinel — no mount — and the node still says
+    mount, so the block printed ``(mount)`` and printed no mask at all.
+
+    ⚑ Absent assembly leaves are a NARROW resolve, and the pairing says so by name
+    (``DERIVED_UNCOVERED``) rather than reporting every declaration as unmounted.
+
+    ⚑ ABSTRACT DECLARATIONS ONLY, because that is what the reserved node carries
+    and what keyspec ``:88`` obliges.  The CONCRETE half of the block is rendered
+    from the per-scope ``bindings.{ro,rw}`` arms and needs no pairing: a concrete
+    declaration IS the source of truth a mount is emitted from.
+    """
+    from kanibako.settings.kb_store import BINDING_DERIVATIONS_NODE
+    from kanibako.settings.keystore import KeyStore
+    from kanibako.settings.settings_launch import snapshot_leaf
+    from kanibako.settings.settings_views import derived_bindings
+    from kanibako.settings.store_collapse import Declaration, pair_declarations
+
+    node = dict.get(snapshot, BINDING_DERIVATIONS_NODE)
+    derived = derived_bindings(node) if isinstance(node, KeyStore) else {}
+    declarations = [
+        Declaration(
+            key=key, dest=bind.box, src=bind.host,
+            delivery=declaration_delivery(key),
+        )
+        for key, bind in sorted(derived.items())
+    ]
+    bindings = snapshot_leaf(snapshot, "meta.assembly.bindings")
+    return pair_declarations(
+        declarations,
+        dict(bindings) if isinstance(bindings, dict) else {},
+        [
+            *_assembly_copy_list(snapshot, "meta.assembly.seeded"),
+            *_assembly_copy_list(snapshot, "meta.assembly.synced"),
+        ],
+    )
+
+
+def _assembly_copy_list(snapshot: "KeyStore", dotted: str) -> list[Any]:
+    """One collapsed copy leaf as a list — ABSENT and EMPTY both yield ``[]`` here.
+
+    ⚑ The distinction the launch readers keep (``commands.start
+    ._snapshot_assembly_seeded``: absent = a narrow resolve) is not one this caller
+    can act on.  A copy is arbitrated at no destination, so an absent list and an
+    empty one both mean *no copy row accounts for this declaration* — which the
+    pairing already reports as a loss, by the same route a row-5 loser takes.
+    """
+    from kanibako.settings.settings_launch import snapshot_leaf
+
+    rows = snapshot_leaf(snapshot, dotted)
+    return list(rows) if isinstance(rows, list) else []
