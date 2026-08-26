@@ -332,6 +332,23 @@ def _target(*keys, broken=False):
   return _T
 
 
+def _target_breaking_part_way(reached, unreached):
+  """As :func:`_target`, but the descriptors are a GENERATOR that raises mid-sequence.
+
+  ⚑ The shape matters: ``setting_descriptors`` is annotated ``list[TargetSetting]``,
+  but the probe consumes whatever it is handed, so a plugin that builds its list
+  lazily raises AFTER the reader has already seen some of it — ``set.update`` keeps
+  what it took. That is the only way to tell "the contribution was merged as it
+  arrived" from "it was merged once whole".
+  """
+  class _T:
+    def setting_descriptors(self):
+      yield _Descriptor(reached)
+      raise RuntimeError(f"descriptors ran out before {unreached}")
+
+  return _T
+
+
 def test_discovery_is_ONE_pass_supplying_BOTH_halves(clean_probe, monkeypatch):
   """⚑ ONE pass because the leaves and the names are a DEPENDENT PAIR: the leaf set
   is only meaningful for the agents it was read FROM, and two passes could disagree
@@ -382,10 +399,8 @@ def test_one_plugins_descriptor_fault_does_not_abort_the_pass(clean_probe, monke
   plugins their vocabulary, which is what an un-caught fault would do — the outer
   handler concedes everything.
 
-  ⚑ WHAT THIS DOES NOT ASSERT is the faulting agent's own standing. The name is
-  collected before its descriptors are read, so it lands in the known set with an
-  empty vocabulary; whether that is the intended answer is a question for the module,
-  not something to cement here.
+  ⚑ The faulting agent's OWN standing is the case below; this one is only that the
+  blast radius stops at it.
   """
   def fake_discover(project_path=None):
     return {"claude": _target("model"), "goose": _target(broken=True)}
@@ -393,6 +408,63 @@ def test_one_plugins_descriptor_fault_does_not_abort_the_pass(clean_probe, monke
   monkeypatch.setattr(probe, "_PLUGINS", None)
   monkeypatch.setattr("kanibako.targets.discover_targets", fake_discover)
   assert probe.plugin_agent_leaves() == frozenset({"model"})
+
+
+def test_a_plugin_whose_DESCRIPTORS_raise_is_conceded_like_an_ABSENT_one(
+  clean_probe, monkeypatch,
+):
+  """⚑⚑ THE DEPENDENT PAIR IS PER AGENT, NOT MERELY PER PASS.
+
+  A plugin that imports but cannot declare leaves no vocabulary for THAT agent, which
+  is the same position an uninstalled plugin leaves it in — and the module's rule for
+  a discovery failure is to concede BOTH halves. Recording the name FIRST kept the
+  agent in ``KNOWN_LEAF_AGENTS`` with an EMPTY vocabulary, so every leaf it genuinely
+  declares classified UNDECLARED: ``agent.goose.provider`` refused for having no
+  declared leaves, which is the exact false positive the concession exists to prevent,
+  one layer in. ⚑ Withholding the name IS conceding the leaves — the leaf concession
+  is the only reader of the agent set.
+
+  ⚑ THE SECOND HALF IS WHAT KEEPS IT A CONCESSION AND NOT A HOLE: the working plugin's
+  agent is still judged, so one broken plugin does not disarm §0 for the rest.
+
+  MUTATION: move ``agents.add(name)`` above the descriptor read in ``_discover`` — the
+  pre-image — and the first two assertions redden, the goose one naming "not a declared
+  agent key" as its cause.
+  """
+  def fake_discover(project_path=None):
+    return {"claude": _target("model"), "goose": _target("provider", broken=True)}
+
+  monkeypatch.setattr(probe, "_PLUGINS", None)
+  monkeypatch.setattr("kanibako.targets.discover_targets", fake_discover)
+  assert "goose" not in probe.KNOWN_LEAF_AGENTS
+  assert probe.keyspace_verdict("agent.goose.provider").cls is KeyClass.KEY
+  assert "claude" in probe.KNOWN_LEAF_AGENTS
+  assert probe.keyspace_verdict("agent.claude.zippity").cls is KeyClass.UNDECLARED
+
+
+def test_a_HALF_READ_descriptor_list_contributes_NOTHING(clean_probe, monkeypatch):
+  """⚑ THE CONCESSION POINTS OUTWARD TOO, and this is the half that is easy to miss.
+
+  The leaf set is a UNION with no per-agent partition, so a leaf salvaged from a plugin
+  whose name is then conceded is counted as declared for every OTHER agent — the same
+  half-a-pair fault, judging one agent's key against another's vocabulary. Merging the
+  contribution only once it is whole is what makes the per-agent concession total.
+
+  MUTATION: consume the descriptors straight into ``leaves`` (``leaves.update(d.key for
+  d in ...)``, the pre-image) and both the salvaged leaf and the claude verdict redden.
+  """
+  def fake_discover(project_path=None):
+    return {
+      "claude": _target("model"),
+      "goose": _target_breaking_part_way("provider", "endpoint"),
+    }
+
+  monkeypatch.setattr(probe, "_PLUGINS", None)
+  monkeypatch.setattr("kanibako.targets.discover_targets", fake_discover)
+  # ``provider`` WAS read before the fault; ``endpoint`` never was. Neither survives.
+  assert probe.plugin_agent_leaves() == frozenset({"model"})
+  assert "goose" not in probe.KNOWN_LEAF_AGENTS
+  assert probe.keyspace_verdict("agent.claude.provider").cls is KeyClass.UNDECLARED
 
 
 # --------------------------------------------------------------------------- #

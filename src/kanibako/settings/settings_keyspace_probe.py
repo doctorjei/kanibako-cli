@@ -49,7 +49,9 @@ judge against — and ``agent.goose.provider``, a real goose ``setting_descripto
 leaf, was refused as "not a declared agent key" on a claude-only machine. Conceding
 the name while judging the leaves is conceding half a pair, and it produces a false
 positive on a key that IS declared. :data:`KNOWN_LEAF_AGENTS` draws the line: an
-agent this machine CAN see is judged exactly as before, a persona is judged by its
+agent whose leaves this machine CAN READ is judged exactly as before — reading them
+is the test, not being installed, so a plugin that imports and then fails to declare
+is conceded like an absent one (see :func:`_discover`) — a persona is judged by its
 HARNESS, and ``agent.default`` is judged always — the all-agents tier is core's, not
 a plugin's, and ``key_class`` holds that rule rather than any supplier.
 
@@ -158,6 +160,21 @@ def _discover() -> _Plugins:
   together mean "no agent's vocabulary is known here", the safe direction. A plugin
   that will not import is a fact about the environment; refusing to measure because
   of it is not an option an instrument has.
+
+  ⚑⚑ AND THAT RULE IS THE SAME ONE AT BOTH FAILURE SITES, WHICH IS WHY THE NAME IS
+  RECORDED AFTER ITS DESCRIPTORS AND NOT BEFORE. The pair is dependent per AGENT, not
+  merely per pass: a plugin that imports but whose ``setting_descriptors`` raise
+  yields no vocabulary for THAT agent, and adding its name first would leave it in
+  :data:`KNOWN_LEAF_AGENTS` with an EMPTY one — so its genuinely declared leaves
+  classify UNDECLARED. That is precisely the false positive the concession exists to
+  prevent (``agent.goose.provider``), one layer in. Conceding the agent — the only
+  reader of this set is the leaf concession, so withholding the name IS conceding its
+  leaves — costs the residual typo case for that one agent and nothing else.
+
+  ⚑ The contribution is built before it is merged, so a descriptor sequence that
+  raises PART WAY leaves nothing behind either. A stray leaf salvaged from a plugin
+  whose name is then conceded would be counted as declared for every OTHER agent,
+  which is the same half-a-pair fault pointing outward.
   """
   global _PLUGINS
   if _PLUGINS is not None:
@@ -168,11 +185,12 @@ def _discover() -> _Plugins:
     from kanibako.targets import discover_targets
 
     for name, target_cls in discover_targets().items():
-      agents.add(name)
       try:
-        leaves.update(d.key for d in target_cls().setting_descriptors())
+        declared = {d.key for d in target_cls().setting_descriptors()}
       except Exception:
         continue
+      leaves.update(declared)
+      agents.add(name)
   except Exception:
     pass
   _PLUGINS = _Plugins(frozenset(leaves), frozenset(agents))
