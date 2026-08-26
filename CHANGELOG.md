@@ -69,6 +69,88 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   give an existing box the same text, copy the two lines into its own canon by hand — kanibako
   will not re-seed over a live handbook, by design.
 
+- **`--image` and `--share-images` are cascade-level entries, and a `create` that did not name
+  one no longer pins it.** Both flags join `-M` and `-N`/`-C`/`-R` in the declared flag-to-key
+  table (see **[1.8.0]**, *The command line is its own cascade level*): `--image` spells
+  `box.image` and `--share-images` spells `box.share_images`, installed at the command-line level
+  for that launch and nowhere else. Two consequences you will see. **First, `kanibako create`
+  with no `--image` now writes nothing.** It used to resolve the default rig and bake the
+  resolved name into the new box's own settings file, so every box was pinned at creation to
+  whatever the default happened to be that day. Only a flag you actually typed persists now —
+  the one create-time exception to "a flag is ephemeral" — and `--share-images` persists the same
+  way. ⚠️ `kanibako box get <newbox> box.image` prints `(not set)` for a box created without the
+  flag, and it genuinely is not set: that box follows the host-wide default and moves when the
+  default moves, while every box created by an earlier version keeps its stored value and stays
+  on the rig it was born with. Nothing in the CLI distinguishes the two; read the box's settings
+  file if you need to know which kind you have. **Second, passing either flag at a box that
+  already exists now says so.** `kanibako start <box> --image X` has always applied the image to
+  that launch alone and left the box's stored setting untouched — silently, which reads exactly
+  like a setting that took. Every such launch now prints a `Notice:` naming the flag or flags you
+  passed, saying the box's stored image or image-sharing setting is unchanged, and giving the
+  exact `kanibako box set <path> box.image=X` that would persist it. One notice however many of
+  the two you passed, and the box's *path* is the subject of that cure rather than its name,
+  because a `box set` with only a `key=value` applies to whatever box your shell is standing in —
+  and a standalone box cannot be addressed by name at all.
+
+### Changed
+
+- **BREAKING: a `.` is no longer legal in an agent or persona name.** Agent names admitted
+  letters, digits, `-`, `_` and `.`; a dot is now refused in every segment of an agent ref, and
+  the refusal says why rather than only listing what is allowed: `.` is the settings key-path
+  separator, so a node spelled `kimi.k3` could not be addressed as `agent.kimi.k3.model` without
+  the keyspace reading it as three segments. ⚠️ **An agent node you already have with a dot in
+  its name stops working at every command that parses an agent ref** — `start`, `create`,
+  `--agent`, `agent get`/`set`, `reauth` — with an error naming the ref. There is no automatic
+  rename: choose a dot-free name, rename the store directory under `<data>/agents/` to match,
+  and update any `pref.system.agent` or `system.agent` that named the old spelling.
+
+- **A `box:` table at the system tier reaches every box.** `box.image`, `box.share_images`,
+  `box.shell` and their siblings resolve through the settings cascade now, and the system tier is
+  a level of that cascade — so a `box:` table in the system settings file
+  (`<data>/global/settings.yaml`) is a host-wide default that every box inherits and any box,
+  workset or command-line flag can override. Until now the launch read those values off the
+  bootstrap config object instead, so the cascade's copy was assembled and then dropped: writing
+  one at the system tier changed nothing, silently. `kanibako system set box.image=<rig>` is
+  therefore a real machine-wide default now, where before it was a value you could store and read
+  back and never see take effect. ⚑ This is the settings file, not `kanibako_config.yaml` — a
+  `box:` table left in *that* file is dead (see *Fixed*, `kanibako_config.yaml` holds bootstrap
+  paths and nothing else).
+
+- **Image sharing follows a `box.images_store` you set, even when the host probe fails.**
+  `box.share_images` used to be gated entirely on the runtime probe finding a podman graph root:
+  probe fails, no mounts, and a warning that blamed detection and offered nothing to do about it.
+  The resolved store decides now — a value you set at any scope is enough — so a host whose probe
+  fails but whose store path you know shares its images instead of silently going without. ⚠️ On
+  such a host the box gains read-only mounts it did not have before; unset the key if you do not
+  want them. When there is no set value *and* the probe fails, the warning names the key and the
+  two cures instead of stopping at the diagnosis: `image sharing is enabled (box.share_images) but
+  the host image store probe failed and no box.images_store is set. Continuing without image
+  sharing. To share images, set box.images_store to the host store path or fix the podman storage
+  probe.`
+
+- **Three host-side state stores follow `config.data`'s directory name.** The pre-launch warning
+  file (`launch-issues.<box>`), the shadowed-flag record (`launch-shadows.<box>`) and the
+  `kanibako code --remote` connection store all lived under a hardcoded
+  `$XDG_STATE_HOME/kanibako/`; they now sit under `$XDG_STATE_HOME/<leaf of config.data>/`, so a
+  store that repointed `config.data` gets its own state instead of sharing one. **A default
+  install is unaffected** — the leaf is `kanibako` either way, and nothing moves. ⚠️ **If you did
+  repoint `config.data` to a differently-named directory**, the old files are not migrated:
+  warnings recorded before this version are never surfaced, and saved `code --remote` contexts
+  read as absent, so the next `kanibako code --remote` re-establishes the tunnel from scratch.
+  Move `$XDG_STATE_HOME/kanibako/` to the new leaf name to keep them.
+
+- **Two retired keys in an agent plugin's defaults file are refused by name at load.** Plugin
+  descriptor keys are read individually, so an unrecognised one is simply never read — which for
+  these two meant a plugin that loaded *successfully* and then behaved as though it had declared
+  nothing. `safe_bypass:` (renamed to `access_realization:`, same shape) left the agent with no
+  permission realization at all, so the launch emitted none and the harness ran at its own
+  permissive default; `container_env:` under `descriptor:` left the agent with none of its
+  required environment variables, which now belong in the file's top-level `env:` section where
+  they become `agent.<agent>.env.<VAR>` keys a user can override by name. Both now raise at
+  descriptor load, naming the file, the retired key, its replacement and what silence would have
+  cost. ⚠️ **A plugin still spelling either key fails to load** — this is the load-time half of
+  the plugin/base version pairing; upgrade the `kanibako-agent-*` packages with the base.
+
 ### Removed
 
 - **The stderr notice about a leftover `<data>/settings.yaml` is gone; a legacy settings file is now
@@ -82,6 +164,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   file and refuses to the rest. If you have such a file, move the values you still want into
   `@config.primary_workset/workset.yaml` or re-set them with `kanibako workset set default
   <key>=<value>`.
+
+- **The `kanibako.deprecation` module, and the two `SystemPaths` properties that survived only to
+  explain themselves.** `kanibako.deprecation` held a registry, a `@deprecated` decorator and the
+  CI gate that failed a build once a record's `remove_at` version arrived. Its registry has been
+  empty since the clean break that emptied it, and v1.8.0 is itself a clean break with no
+  deprecation window, so it was a mechanism with nothing to track; it is gone from the wheel.
+  Separately, `SystemPaths.share_ro` and `SystemPaths.share_rw` — deleted in the `system.*` reorg
+  and kept on as properties that raised `NotImplementedError` naming their replacements
+  (`@workset.vault_ro` / `@workset.vault_rw`) — are gone too. ⚑ **Both are import-facing, so this
+  is for plugin and script authors, not for boxes:** an `import kanibako.deprecation` now raises
+  `ModuleNotFoundError`, and `std.share_ro` raises a plain `AttributeError` rather than the
+  sentence that told you what to use instead. Nothing at runtime consulted either.
 
 ### Fixed
 
@@ -187,7 +281,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **A binding sourced at `@system.channels.broadcast` produces a mount.** Five `system.channels.*`
   leaves are declared and the launch floor supplied four, so that one resolved to nothing: a
-  `config set` was accepted, `config get` read it back, and no mount appeared — no warning, rc 0.
+  `set` was accepted, `get` read it back, and no mount appeared — no warning, rc 0.
   The floor is now derived from the declared system path defaults rather than listed by hand, so a
   leaf cannot go missing this way again.
 
@@ -214,7 +308,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Refusal messages for a settings key that is not a key no longer invent a trailing dot, and no
   longer offer a list of leaves from the wrong tier.** Asking about a namespace — `box`, `meta.box`,
-  `agent.<name>` — answered as though you had named a key and mistyped it: `kanibako box config set
+  `agent.<name>` — answered as though you had named a key and mistyped it: `kanibako box set
   box=…` replied `'box.' is not a declared box key`, quoting a `box.` that you never wrote and that
   cannot exist. Interior paths deeper than one segment were worse: `meta.box.agent.auth` was told
   `'auth' is not a declared agent key` and handed the agent-scope leaf list, which does not contain
@@ -277,7 +371,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `workset.channelroot` and joined the directory names on by hand. Because those joins *are* each
   key's documented default, everything looked right until you changed one.
   `broadcast`, `mailboxes` and `share_global` had no reader whatsoever — a set was accepted, the
-  value was written to `workset.yaml`, `config get` read it straight back, and not one byte moved.
+  value was written to `workset.yaml`, `workset get` read it straight back, and not one byte moved.
   `mailboxes` was the one that could actually mislead you: repointing it looked for all the world
   like you had relocated your box's own inbox, and `~/channels/inbox` stayed exactly where it was.
   `chat` and `share` were worse in a quieter way, because half of kanibako honoured them: the
@@ -428,7 +522,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the table have been running the agent's untweaked settings all along; see `MIGRATION.md`
   § *Settings keys renamed or retired*.
 
-- **`config set box.agent.<key>` now always says the key is retired, instead of sometimes
+- **`box set box.agent.<key>` now always says the key is retired, instead of sometimes
   complaining about its value first.** `box.agent.<key>` — the settable box-scoped mirror of an
   agent's settings — was retired in 1.8.0, and the refusal names the replacement
   (`pref.agent.<agent>.<key>`). But the set-time resolution probe, which checks that a value's
@@ -466,6 +560,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   when any of them changes — including when a previously missing file appears. Writes are atomic, so
   a harness never reads a half-written instruction file, and an identical render does not rewrite it.
   A file you edited by hand is left alone rather than clobbered.
+
+- **A settings file that is not valid YAML is refused on one line instead of crashing.** Every
+  config document kanibako reads went through one loader, and that loader let the parser's own
+  exception escape — so a stray tab, an unclosed quote or a mis-indented block in any settings file,
+  at any tier, produced a Python traceback with the parse error buried in it and no indication of
+  *which* file was at fault. The loader now catches the parse failure where it happens, which is the
+  one place that knows the filename, and raises kanibako's own error: `the config file <path> is not
+  valid YAML: <the parser's complaint>. Fix or remove the file, then retry.` — one line, exit 1.
+  It reaches every command that reads settings, and it is what lets `system diagnose`'s `Storage` and
+  `Journal` rows report a malformed `kanibako_config.yaml` instead of shrugging (see the `setup`
+  entry above).
+
+- **The missing-vault warning names the vault, not the directory above it.** A box with
+  `box.enable_vault` on but no vault directory on disk still launches, and says so — but the
+  `(expected at …)` path it printed was the vault's *parent*, so following the advice created a
+  directory one level up from where kanibako looks and the warning came back on the next launch.
+  It names `box.enable_vault`'s own read-write vault path now, which is the directory to create.
+  Advisory as before: nothing fails, and `box.enable_vault=false` still silences it.
+
+- **`config.journal`, `workset.workspaces` and `workset.channelroot` are keys the CLI recognises.**
+  All three are declared, resolved and used, and all three answered `Error: unknown config key` —
+  values kanibako reads at every launch that the tool storing them could not name.
+  `config.journal` now reads back like its five `config.*` siblings (`kanibako system get
+  config.journal` prints the resolved lifecycle-journal path; `set` and `reset` refuse it with the
+  same bootstrap-file message the rest of Layer 1 gets, because that file is edited by hand).
+  `workset.workspaces` and `workset.channelroot` are ordinary settable workset keys —
+  `kanibako workset get <workset> workset.workspaces` answers, and `workset set` writes. What each
+  of them *does* once set is covered by the entries above on the workset directory keys and the
+  `workset.channels.*` family; this is the half that made them addressable at all.
 
 ### Changed
 
@@ -724,7 +847,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bind-shaped categories refuse with the retirement message (hand-edit is the route, and the
   message shows the shape); a table-valued key given a scalar refuses naming the expected shape;
   `get` and `reset` speak the same vocabulary as `set` (one read carve-out: `agent get <agent>
-  bindings.ro.<dest>` still answers, agreeing with `config get`); and the launch snapshot's old
+  bindings.ro.<dest>` still answers, agreeing with `get`); and the launch snapshot's old
   "forward-compat" passthrough is closed — an undeclared scalar already in the file refuses the
   launch by name, while `agent list`/`info` still display the file and `agent reset --all`
   remains the recovery. Also fixed: a dotted destination reads back whole (`agent get claude
@@ -1032,15 +1155,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the same wording and now states its own.
 
 - **A category entry could not be read back when its destination contained a dot.**
-  `config get <scope>.<category>.<dest>` split the key on `.` to find where the value lives, so a
+  A `get` of `<scope>.<category>.<dest>` split the key on `.` to find where the value lives, so a
   real destination — `~/.cache/uv`, `~/.claude/plugins` — was cut apart mid-path and the read
   answered `(not set)` for an entry the launch mounts. Destinations are spelled guest-side now, so
   the dotted case is the common one. A destination is DATA: the key stops at the category and
   everything after it is one destination. This also makes good on the promise the refusal for these
-  keys prints — *"reading it back with `config get …` still works"* — which until now held only for
-  a destination with no dot in it.
+  keys prints — *"Reading it back with `kanibako box get <box> …` still works."* — which until now
+  held only for a destination with no dot in it.
 
-- **`config --effective` prescribed a command that does not work for undoing a suppression.** A
+- **`box show --effective` prescribed a command that does not work for undoing a suppression.** A
   suppressed entry was reported with *"Undo with 'reset pref.<…>.<dest>'"*; there is no way to
   address one entry of a dest-keyed key from the CLI, so that reset was refused. The line now names
   the edit instead: remove the entry from the `pref:` table of the settings file at the scope that
@@ -1082,10 +1205,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The warnings and errors from path resolution are reworded.** The messages about XDG variables,
   workset and box discovery, vault location, and the refusals that protect `$HOME` from being used as
   a project root are shorter and more plainly punctuated; a few name their subject more precisely.
-  Nothing they report has changed and no message was removed — only the wording. This is called out
-  because the text is what you see, and because anything matching on these strings (a script grepping
-  output, a test pinning a message) will need updating. The one that is most likely to be matched on:
-  `Refusing to create a project rooted at $HOME` is now `Refusing to create project rooted at $HOME`.
+  No message was removed, and with one exception nothing they report has changed — the exception is
+  the missing-vault warning, whose `(expected at …)` path was wrong and is corrected under *Fixed*.
+  This is called out because the text is what you see, and because anything matching on these strings
+  (a script grepping output, a test pinning a message) will need updating. The one that is most likely
+  to be matched on: `Refusing to create a project rooted at $HOME` is now `Refusing to create project
+  rooted at $HOME`.
 
 - **A mount set that cannot be assembled now stops the launch instead of being quietly abandoned.**
   A box's mounts are assembled by folding every scope's declarations over the box home in scope
@@ -1215,7 +1340,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `<scope>.<category>.<name>` is no longer a key at any scope. **This is a stored-format change —
   every settings file, and every plugin that declares agent-scope defaults, has to be re-spelled.**
   There is no shim and no deprecation window; a file still in the old shape is refused loudly,
-  naming the entry. `config get <scope>.<category>` now reads the whole map (it also reads
+  naming the entry. A `get` of `<scope>.<category>` now reads the whole map (it also reads
   `<scope>.bindings.{ro,rw}` and `<scope>.masks`, which had silently answered `(not set)` since
   they went dest-keyed). See [MIGRATION.md](MIGRATION.md) §2.23.
   ⚑ `seeded` and `synced` are still **copies**, not mounts. Sharing a way of writing an entry down
@@ -1236,12 +1361,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
-- **`config set` / `config reset` on every bind-shaped category.** `caches`, `seeded`, `common` and
+- **`set` / `reset` on every bind-shaped category.** `caches`, `seeded`, `common` and
   `synced` join `bindings.ro` / `bindings.rw` in refusing a write at every scope, including the
   source-only repoint that changed an entry's host source without touching its destination. All six
   are now **YAML-only**: edit the settings file for the scope you want and re-launch.
   The categories are *not* retired — they are still declared, still read by the launch cascade so
-  every existing entry keeps being delivered, and **`config get` still reads them** (at the
+  every existing entry keeps being delivered, and **`get` still reads them** (at the
   category key; see the dest-key entry above). Only the write verb is gone.
   See [MIGRATION.md](MIGRATION.md) §2.20.
   Rationale: these categories are now a single key whose value is a map keyed by the mount
@@ -1283,7 +1408,7 @@ migration code.** Four released config surfaces are removed outright
   (is the target a key at all, is it on the allowlist, does it sit in a forbidden tier)
   and a rejection names key, level and rule. Writing a `pref` is bounded to workset and
   box files, and the written value is validated against its target when it is typed — a
-  request that would fail every future launch is refused at `config set` time.
+  request that would fail every future launch is refused at `set` time.
 - **`--null` writes a suppression.** `kanibako <scope> set --null <key>` stores a real
   YAML `null` wherever the store is a nested document — the one channel a box has to
   remove an entry it inherits. The sibling `reset` verb *removes* the entry instead.
@@ -1334,10 +1459,36 @@ migration code.** Four released config surfaces are removed outright
   plugin-supplied one for this release (keyed on the destination, so the two can never
   collide into a launch error). The plugin-side deletion lands one release later,
   together with a base-version floor.
-- **`meta.derived.<declaration-key>`** — the abstract categories (`common`, `caches`,
-  `seeded`) now materialise their derived bindings as read-only entries labelled *mount*
-  or *copy*, so `--effective` shows both the declaration and what it produced and a user
-  can see why a mount exists.
+- **The abstract categories record what each declaration derived.** `common`, `caches` and
+  `seeded` expand into concrete bindings and copies as the settings collapse, and that
+  pairing — a declaration and the mount or copy it produced — is materialised into the
+  launch snapshot instead of being discarded. It is written at a reserved internal node
+  spelled `binding_derivations`, and that node is **not a key**: it cannot be set, reset,
+  read back or referenced, the closed keyspace refuses the spelling like any other name it
+  does not declare, and a `binding_derivations:` table written into a settings file is
+  dropped with a warning. What it is *for* is the display — `kanibako box show
+  --effective` prints each abstract declaration with a
+  `binding_derivations.<declaration-key>` line beneath it naming what the box actually
+  receives (see *Fixed* under **Unreleased** for that display's own history).
+- **`box.images_store` — the host image store behind `box.share_images`, as a key you can
+  set.** `box.share_images` gives a box a read-only view of the host's podman image store so
+  it does not pull what the host already has. *Which* store that was had no spelling: a
+  runtime probe found the podman graph root, and if you wanted a different one there was
+  nothing to say it in. It is a declared box key now — `kanibako box set <box>
+  box.images_store=/path`, cascadable to the system tier for a machine-wide repoint — the
+  probe result is only its default, and the mount the box receives is sourced from it, so
+  setting the key **moves that mount**. A store that never sets it resolves exactly as
+  before. ⚑ The generated `storage.conf` that makes the store mount usable is internal
+  machinery with a fixed location, not a key; there is nothing to configure there.
+- **`kanibako setup` names the template files it kept for you.** Step 5 compares your
+  template store against the one this build ships and reports what it would add and what it
+  would overwrite. A third case was silent: a file you had edited that the shipped copy has
+  since moved past is neither added nor overwritten — kanibako keeps yours — and nothing said
+  so, which read as though the file were current. The step now prints `Kept YOUR copy (N
+  file(s) differ from the shipped one):` and lists each path, on the interactive prompt and
+  under `--refresh-templates` alike. One consequence: a store whose *only* difference is
+  files in that class no longer reports `Templates are up to date` — it prints the list and
+  asks, so you can see the divergence you are carrying.
 - **`meta.box.path`** — a read-only per-mode anchor for the box root. The per-mode
   variation now lives in the anchor rather than in three downstream spellings, so
   `box.bindings.rw.home` is one declaration for every mode. The anchor and its settable
@@ -1426,7 +1577,7 @@ migration code.** Four released config surfaces are removed outright
   keys that a launch-time re-root patched onto the active slot — the bare form is not a
   key at all under the closed keyspace. Readers now build the discriminated
   `agent.<agent>.<category>.<name>` key directly, and the bind/mask/env key patterns
-  refuse an undiscriminated agent scope, so `config set` rejects it instead of quietly
+  refuse an undiscriminated agent scope, so `set` rejects it instead of quietly
   accepting a non-key.
 - **BREAKING: the `commons` channel type-root is renamed `common`** — one word now names
   both the mount category and the channel, discriminated by the `channels.` segment.
@@ -1467,7 +1618,7 @@ migration code.** Four released config surfaces are removed outright
     `~/.claude/plugins` and every installed plugin appears gone, with no message;
   - `workset share add` absolutises a relative source against the workset root **at write
     time** and stores the result (on the default workset, whose bindings never had a root
-    to join, it refuses with the reason); `config set` on a bind category refuses a bare
+    to join, it refuses with the reason); `set` on a bind category refuses a bare
     relative source outright and prints the correctly rooted form. **Already-stored
     relative sources are not rewritten** — they now resolve against the process CWD;
   - a value sitting at a category root, at a `bindings` arm, or under an arm no binding
@@ -1724,7 +1875,7 @@ migration code.** Four released config surfaces are removed outright
   shape; the path is now threaded as a required argument.
 - **A standalone box could set a value and then not find it.** The pair of paths naming a
   box's settings file and its workset tier was one expression hand-spelled at seventeen
-  sites, so `config set` wrote the project root while half the readers looked elsewhere.
+  sites, so `set` wrote the project root while half the readers looked elsewhere.
   The derivation is now one function — and the lifecycle verbs that each held their own
   copy each lost data for it: `convert` and `move` out of standalone copied the project
   root as if it were box metadata (a box setting landed in a file the destination never
@@ -1746,13 +1897,13 @@ migration code.** Four released config surfaces are removed outright
 
 ### Removed
 
-- **BREAKING: the `config set` / `config reset` route for bind entries** —
+- **BREAKING: the `set` / `reset` route for bind entries** —
   `{system,workset,box}.bindings.{ro,rw}.<name>` and `agent.<node>.bindings.{ro,rw}.<key>`
   are both refused from the CLI. `kanibako box set box.bindings.rw.home=/newhome` and
   `kanibako system set agent.claude.bindings.ro.launcher=/newsrc` used to succeed; they now
   print a refusal naming the key and the settings file to edit. ⚑ **The keys themselves are
   NOT removed** — they are still declared, still read at launch, still written by hand in the
-  settings YAML, and **`config get` still reads them**, so a binding you set is never reported
+  settings YAML, and **`get` still reads them**, so a binding you set is never reported
   as `(not set)`. There is no replacement CLI spelling: a bindings arm is becoming a single
   key whose value is a map keyed by mount *destination*, and the destinations inside that map
   are values rather than keys, so there is no per-entry key left for `set` to name. The other
@@ -2113,7 +2264,7 @@ supervisor (background/`--detach` launches and reattach), and **private boxes**
   improper" error before the retry recovered. Targets now report whether a
   resumable session exists, and the first launch goes straight to a new
   session.
-- **Category-key `config set` finds its bind anywhere in the cascade.**
+- **Category-key `set` finds its bind anywhere in the cascade.**
   Repointing a bind's host source (e.g. `box set box.bindings.rw.vault=~/x`)
   required the tuple to exist in the command scope's own file; it now
   resolves against the effective cascade, preserving the guest destination —
@@ -2136,7 +2287,7 @@ supervisor (background/`--detach` launches and reattach), and **private boxes**
   resolve time while it exists without the spec file) — move wanted values
   into `primary_workset/settings.yaml` by hand or re-set them via
   `kanibako workset set default <key>=<value>`.
-- **`workset config set env.<VAR>` now works (named and primary worksets).**
+- **`kanibako workset set <workset> env.<VAR>=<value>` now works (named and primary worksets).**
   The workset handler never threaded its env-file destination into the config
   engine, so every workset-scope `env.*` set/reset failed with "no env file
   path". The workset env tier lives at `<workset root>/env` (primary:
