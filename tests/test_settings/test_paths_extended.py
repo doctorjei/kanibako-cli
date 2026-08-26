@@ -181,3 +181,105 @@ class TestVaultOptional:
         assert proj.enable_vault is False
         assert not proj.vault_ro_path.exists()
         assert not proj.vault_rw_path.exists()
+
+
+# ---------------------------------------------------------------------------
+# R2 downward-defaults: a PRIMARY box inherits ``box.enable_vault`` from the
+# PRIMARY workset tier (spec §0 "Directional view/set across CONTAINMENT
+# levels"; §2c gives PRIMARY the same ``meta.workset.settings`` as NAMED).
+# ---------------------------------------------------------------------------
+
+class TestPrimaryEnableVaultDownwardDefault:
+    """The primary workset's ``workset.yaml`` is a real tier — ``paths.py`` already
+    resolves ``workset.registry`` from it — so ``box.*`` keys in it are defaults.
+    """
+
+    @staticmethod
+    def _write_primary_enable_vault(std, value):
+        """Write ``box.enable_vault`` at the PRIMARY workset tier."""
+        from kanibako.settings.config_io import dump_doc, load_doc
+        from kanibako.settings.paths import _default_project_group, workset_settings_path
+
+        path = workset_settings_path(_default_project_group(std))
+        path.parent.mkdir(parents=True, exist_ok=True)
+        doc = load_doc(path) if path.is_file() else {}
+        doc.setdefault("box", {})["enable_vault"] = value
+        dump_doc(path, doc)
+        return path
+
+    def test_primary_workset_tier_false_reaches_the_box(self, config_file, tmp_home,
+                                                        credentials_dir):
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        self._write_primary_enable_vault(std, False)
+
+        proj = resolve_project(std, config, project_dir=str(tmp_home / "project"),
+                               initialize=True)
+        assert proj.enable_vault is False
+        assert not proj.vault_rw_path.exists()
+
+    def test_box_tier_true_overrides_primary_workset_false(self, config_file, tmp_home,
+                                                           credentials_dir):
+        """The contained scope always wins per the cascade (spec §0)."""
+        from kanibako.settings.config import BOX_META_FILE
+        from kanibako.settings.config_io import dump_doc
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project_dir = str(tmp_home / "project")
+        # Materialize the box first, then pin its own tier True and re-resolve.
+        proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
+        dump_doc(proj.metadata_path / BOX_META_FILE, {"box": {"enable_vault": True}})
+        self._write_primary_enable_vault(std, False)
+
+        proj2 = resolve_project(std, config, project_dir=project_dir, initialize=False)
+        assert proj2.enable_vault is True
+
+    def test_explicit_param_still_wins(self, config_file, tmp_home, credentials_dir):
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        self._write_primary_enable_vault(std, False)
+
+        proj = resolve_project(std, config, project_dir=str(tmp_home / "project"),
+                               initialize=True, enable_vault=True)
+        assert proj.enable_vault is True
+
+    def test_absent_everywhere_still_defaults_true(self, config_file, tmp_home,
+                                                   credentials_dir):
+        """MUTATION-GUARD: the False above comes from the workset tier, not a moved floor."""
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        proj = resolve_project(std, config, project_dir=str(tmp_home / "project"),
+                               initialize=True)
+        assert proj.enable_vault is True
+
+    def test_create_does_not_pin_the_inherited_default(self, config_file, tmp_home,
+                                                       credentials_dir):
+        """Spec ``:868``: sparse — absent from the box file unless THE USER sets it there."""
+        from kanibako.settings.config import BOX_META_FILE
+        from kanibako.settings.config_io import load_doc
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        self._write_primary_enable_vault(std, False)
+
+        proj = resolve_project(std, config, project_dir=str(tmp_home / "project"),
+                               initialize=True)
+        assert proj.enable_vault is False
+
+        box_tier = proj.metadata_path / BOX_META_FILE
+        stored = (load_doc(box_tier).get("box") or {}) if box_tier.is_file() else {}
+        assert "enable_vault" not in stored
+
+    def test_create_does_pin_an_explicit_box_flag(self, config_file, tmp_home,
+                                                  credentials_dir):
+        """``kanibako create --no-vault`` IS the user setting it at box scope — persist it."""
+        from kanibako.settings.config import BOX_META_FILE
+        from kanibako.settings.config_io import load_doc
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        proj = resolve_project(std, config, project_dir=str(tmp_home / "project"),
+                               initialize=True, enable_vault=False)
+
+        assert load_doc(proj.metadata_path / BOX_META_FILE)["box"]["enable_vault"] is False

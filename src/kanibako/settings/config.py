@@ -347,8 +347,12 @@ def write_box_enable_vault(path: Path, enable_vault: bool = True) -> None:
 def read_box_enable_vault(path: Path, *, default_from: Path | None = None) -> bool:
     """The box-scope ``box.enable_vault`` value stored at *path*, defaulting to ``True``.
 
-    ⚑ *default_from* (the WORKSET tier) is passed ONLY by the STANDALONE
-    resolver, and it is load-bearing there — see the llm-doc before widening it.
+    ⚑ *default_from* is the WORKSET tier, and it is the R2 downward-default
+    (spec §0 "Directional view/set across CONTAINMENT levels"): the STANDALONE
+    and NAMED resolvers both pass it.  It is load-bearing in each for a
+    DIFFERENT reason — standalone's is the pre-P2 read-compat path, named's is
+    ``workset create --no-vault``.  PRIMARY still passes nothing (see the
+    resolver).
     """
     for candidate in (path, default_from):
         if candidate is None or not candidate.exists():

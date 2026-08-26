@@ -2190,13 +2190,20 @@ class TestStandaloneEnableVaultTier:
     ):
         assert self._standalone(config_file, tmp_home, box=None) is True
 
-    def test_primary_ignores_a_workset_tier_value(
+    def test_primary_inherits_a_workset_tier_value(
         self, config_file, tmp_home, credentials_dir,
     ):
-        """PRIMARY is UNCHANGED by P2: the R2 workset fallback is standalone-only, so
-        a workset-tier ``box.enable_vault`` stays inert here (a real defect, tracked
-        separately).  Pinned so extending the fallback is a DELIBERATE change, not an
-        accidental one."""
+        """The R2 workset fallback reaches PRIMARY too (2026-08-26).
+
+        ⚑ This test formerly pinned the OPPOSITE — a workset-tier ``box.enable_vault``
+        was inert for primary — and said so explicitly: "a real defect, tracked
+        separately.  Pinned so extending the fallback is a DELIBERATE change, not an
+        accidental one."  This IS that deliberate change.  The keyspec settles it:
+        §2c gives PRIMARY and NAMED the same ``meta.workset.settings``, and §0
+        "Directional view/set across CONTAINMENT levels" makes a ``box.*`` key stored
+        at a containing scope an OVERRIDABLE DEFAULT.  The tripwire is kept, pointed
+        the other way: reverting the fallback must be deliberate too.
+        """
         from kanibako.settings.config import BOX_META_FILE
         from kanibako.settings.config_io import dump_doc, load_doc
 
@@ -2214,7 +2221,7 @@ class TestStandaloneEnableVaultTier:
         proj2 = resolve_project(
             std, config, project_dir=str(tmp_home / "project"), initialize=False,
         )
-        assert proj2.enable_vault is True
+        assert proj2.enable_vault is False
 
 
 class TestPathLeafDefaultsHaveOneCarrier:
