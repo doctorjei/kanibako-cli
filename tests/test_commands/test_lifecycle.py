@@ -628,10 +628,18 @@ class TestChannelPartitionRelocation:
     identity (A9).
     """
 
-    def _seed_partition(self, std, ws_token, box_name, marker="m"):
+    def _seed_partition(self, std, ws_token, box_name, ws_root, marker="m"):
+        """Seed the box's own partition dirs.
+
+        ⚑ *ws_root* is REQUIRED because ``own_partition_dirs`` now reads
+        ``workset.channels.{mailboxes,share_global}`` off that root. Every case in
+        this class leaves those keys unset, so each resolves to its default — which
+        is what these cases are about; the REPOINT half is
+        :class:`TestRelocationFollowsThePartitionKEYS`.
+        """
         from kanibako.channels.channels import own_partition_dirs
 
-        part = own_partition_dirs(std, ws_token, box_name)
+        part = own_partition_dirs(std, ws_token, box_name, ws_root=ws_root)
         part.mailbox.mkdir(parents=True, exist_ok=True)
         (part.mailbox / "msg.txt").write_text(marker)
         part.share_global.mkdir(parents=True, exist_ok=True)
@@ -648,7 +656,9 @@ class TestChannelPartitionRelocation:
 
         pdir = _make_default(env)
         # Seed THIS box's own partition under the PRIMARY token.
-        self._seed_partition(std, WS_TOKEN_PRIMARY, "proj", marker="hello")
+        self._seed_partition(
+            std, WS_TOKEN_PRIMARY, "proj", std.primary_workset, marker="hello",
+        )
 
         state = resolve_lifecycle_target(str(pdir), std, config)
         new = execute_lifecycle(
@@ -658,8 +668,14 @@ class TestChannelPartitionRelocation:
         assert new.mode == BoxMode.standalone
 
         # OLD partition (PRIMARY) is gone; NEW (STANDALONE) holds the content.
-        old = own_partition_dirs(std, WS_TOKEN_PRIMARY, "proj")
-        dst = own_partition_dirs(std, WS_TOKEN_STANDALONE, new.name)
+        # ⚑ Each side's root is the one that side's keys live under — the primary
+        # workset for the old, the standalone box's own root for the new.
+        old = own_partition_dirs(
+            std, WS_TOKEN_PRIMARY, "proj", ws_root=std.primary_workset,
+        )
+        dst = own_partition_dirs(
+            std, WS_TOKEN_STANDALONE, new.name, ws_root=new.metadata_path,
+        )
         assert not old.mailbox.exists()
         assert not old.share_global.exists()
         assert (dst.mailbox / "msg.txt").read_text() == "hello"
@@ -698,9 +714,13 @@ class TestChannelPartitionRelocation:
         )
 
         pdir = _make_default(env)
-        self._seed_partition(std, WS_TOKEN_PRIMARY, "proj", marker="src")
+        self._seed_partition(
+            std, WS_TOKEN_PRIMARY, "proj", std.primary_workset, marker="src",
+        )
         # Pre-occupy the destination mailbox (keyed by the canonical name).
-        dst_pre = own_partition_dirs(std, WS_TOKEN_STANDALONE, canonical)
+        dst_pre = own_partition_dirs(
+            std, WS_TOKEN_STANDALONE, canonical, ws_root=pdir,
+        )
         dst_pre.mailbox.mkdir(parents=True, exist_ok=True)
         (dst_pre.mailbox / "existing.txt").write_text("keep")
 
@@ -725,7 +745,7 @@ class TestChannelPartitionRelocation:
         local = std.primary_workset / "channels" / "common"
         local.mkdir(parents=True, exist_ok=True)
         (local / "shared.txt").write_text("scope")
-        self._seed_partition(std, WS_TOKEN_PRIMARY, "proj")
+        self._seed_partition(std, WS_TOKEN_PRIMARY, "proj", std.primary_workset)
 
         state = resolve_lifecycle_target(str(pdir), std, config)
         execute_lifecycle(
@@ -735,6 +755,139 @@ class TestChannelPartitionRelocation:
         # Workset-local common untouched — the box stops MOUNTING it, the dir
         # itself is not relocated.
         assert (local / "shared.txt").read_text() == "scope"
+
+
+class TestRelocationFollowsThePartitionKEYS:
+    """``workset.channels.{mailboxes,share_global}`` are DECLARED KEYS, and a
+    relocation must move the directory the box is actually mounted at.
+
+    ⚑⚑ THE GAP THIS CLOSES was recorded at ``channels.own_partition_dirs`` itself:
+    the relocation worked from the RAW ``(std, ws_token)`` primitive, which has no
+    workset root and therefore cannot see a repoint.  ``box_channel_addresses`` DOES
+    route through the keys, so a workset that repoints ``mailboxes`` mounts the box's
+    inbox at the repointed address — and a ``box move`` / ``box convert`` then moved
+    the DEFAULT directory, which nothing was mounted at, and left every message the
+    box had received behind at an address no longer registered to it.
+
+    It was unreachable until the repoint itself became reachable (R-35 gave the six
+    ``workset.channels.*`` leaves real readers), which is why it is closed now.
+    """
+
+    def _repoint(self, ws_root, key, value):
+        """Store *value* at *key* through the CLI's own write route."""
+        from kanibako.settings.config import WORKSET_META_FILE
+        from kanibako.settings.config_io import write_nested_key
+        from kanibako.settings.config_keys import _KEY_ROUTES
+
+        sections, leaf = _KEY_ROUTES[key]
+        write_nested_key(ws_root / WORKSET_META_FILE, sections, leaf, str(value))
+
+    def _seed(self, box_dir, marker):
+        box_dir.mkdir(parents=True, exist_ok=True)
+        (box_dir / "msg.txt").write_text(marker)
+
+    def test_the_OLD_sides_repointed_mailbox_is_the_one_that_moves(self, env):
+        """Primary workset repoints ``mailboxes``; convert the box into a named one."""
+        config, std, tmp_home = env
+        ws = _make_workset(env)
+        pdir = _make_default(env)
+
+        repointed = tmp_home / "primary-mail"
+        self._repoint(
+            std.primary_workset, "workset.channels.mailboxes", repointed,
+        )
+        # ⚑ Seeded at the address the box's inbox is ACTUALLY mounted at — read off
+        # the keyed derivation, not constructed here, so the test cannot disagree
+        # with the launch about where a box's mail lives.
+        from kanibako.channels.channels import box_channel_addresses
+
+        state = resolve_lifecycle_target(str(pdir), std, config)
+        proj = resolve_project(std, config, str(pdir), initialize=False)
+        assert box_channel_addresses(proj, std).inbox == repointed / "proj"
+        self._seed(repointed / "proj", "mail-that-must-follow")
+
+        new = execute_lifecycle(
+            state, TargetSpec(location=INPLACE, ownership="ws"),
+            std, config, confirm=_conf_yes(),
+        )
+        assert new.mode == BoxMode.named
+
+        assert not (repointed / "proj").exists(), (
+            "the box's real mailbox was left behind at the OLD workset's repointed "
+            "address; the relocation moved the default directory instead"
+        )
+        landed = std.channels_mailboxes / ws.name / new.name
+        assert (landed / "msg.txt").read_text() == "mail-that-must-follow"
+
+    def test_the_NEW_sides_repoint_is_where_the_mailbox_lands(self, env):
+        """The destination workset repoints ``mailboxes``; the box must land there."""
+        config, std, tmp_home = env
+        ws = _make_workset(env)
+        pdir = _make_default(env)
+
+        target_mail = tmp_home / "ws-mail"
+        self._repoint(ws.root, "workset.channels.mailboxes", target_mail)
+        self._seed(std.channels_mailboxes / "__PRIMARY__" / "proj", "carry-me")
+
+        state = resolve_lifecycle_target(str(pdir), std, config)
+        new = execute_lifecycle(
+            state, TargetSpec(location=INPLACE, ownership="ws"),
+            std, config, confirm=_conf_yes(),
+        )
+        assert new.mode == BoxMode.named
+        assert (target_mail / new.name / "msg.txt").read_text() == "carry-me"
+        assert not (std.channels_mailboxes / ws.name / new.name).exists(), (
+            "the mailbox landed at the NEW workset's DEFAULT address while the box "
+            "will be mounted at its repointed one"
+        )
+
+    def test_share_global_follows_its_key_too(self, env):
+        """The sibling key, which moves in the same loop and off the same root."""
+        config, std, tmp_home = env
+        ws = _make_workset(env)
+        pdir = _make_default(env)
+
+        repointed = tmp_home / "primary-pub"
+        self._repoint(
+            std.primary_workset, "workset.channels.share_global", repointed,
+        )
+        self._seed(repointed / "proj", "published")
+
+        state = resolve_lifecycle_target(str(pdir), std, config)
+        new = execute_lifecycle(
+            state, TargetSpec(location=INPLACE, ownership="ws"),
+            std, config, confirm=_conf_yes(),
+        )
+        assert not (repointed / "proj").exists()
+        assert (
+            std.channels_share / ws.name / new.name / "msg.txt"
+        ).read_text() == "published"
+
+    def test_an_unresolvable_repoint_warns_and_the_lifecycle_still_completes(
+        self, env, capsys,
+    ):
+        """⚑ BEST-EFFORT IS THE CONTRACT (D-M10): a bad key must not break a move.
+
+        Reading the keys put a REFUSING resolver on this path for the first time —
+        ``workset.channels.*`` names the key and raises when it cannot resolve — and a
+        settings error in a best-effort cleanup step must never abort a lifecycle
+        operation that has already moved files.
+        """
+        config, std, tmp_home = env
+        _make_workset(env)
+        pdir = _make_default(env)
+        self._repoint(
+            std.primary_workset, "workset.channels.mailboxes", "@config.registry/nope",
+        )
+
+        state = resolve_lifecycle_target(str(pdir), std, config)
+        new = execute_lifecycle(
+            state, TargetSpec(location=INPLACE, ownership="ws"),
+            std, config, confirm=_conf_yes(),
+        )
+        assert new.mode == BoxMode.named
+        err = capsys.readouterr().err
+        assert "channel" in err and "workset.channels.mailboxes" in err
 
 
 # ---------------------------------------------------------------------------

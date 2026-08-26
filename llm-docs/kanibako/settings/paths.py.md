@@ -439,6 +439,37 @@ in `kanibako_config.yaml` alone (spec §1). Both halves are pinned.
 automatically.
 
 ```python
+def system_path_floor(std: StandardPaths) -> dict[str, str]
+```
+The resolved Layer-2 `system.*` tier projected BACK onto its own dotted key names — the inverse of
+what `resolve_system_paths` produced. Consumers fold it into a settings floor so a stored
+`@system.*` source resolves; each value equals the corresponding `std` attribute, so an
+`@`-ref-routed bind is byte-identical to a runtime-probed literal.
+
+⚑⚑ **IT IS ONE FUNCTION BECAUSE IT USED TO BE TWO HAND-WRITTEN MAPS, AND BOTH WERE WRONG.**
+`commands/start._launch_snapshot_inputs` (the launch snapshot) and
+`commands/workset_cmd._print_effective_shares` (`workset share list --effective`) each wrote the
+tier out inline, under paired comments saying they had to agree. The launch map omitted
+`system.channels.broadcast` — a declared key with a manifest default, resolved into
+`StandardPaths.channels_broadcast`, reaching no floor — so `@system.channels.broadcast` was
+`__MISSING__` in every snapshot and a binding sourced at it was **dropped from the collapse with no
+message and rc 0**. The display map omitted all five `system.channels.*` leaves, so a workset
+binding sourcing `@system.channels.chat` mounted at launch and did not print. Two carriers of one
+shape is the defect class; the repair is one carrier, not a better promise.
+
+⚑ The channel leaves are **derived from `SYSTEM_PATH_DEFAULTS`**, not listed — that table is the
+declared family (pinned against the keyspace manifest), so a new leaf reaches the floor without an
+edit and cannot be left out the way `broadcast` was. The three top roots (`system.channelroot`,
+`system.template`, `system.canon`) are named in `_FLOOR_ROOT_KEYS` because their `StandardPaths`
+attribute names do not follow from their key names.
+
+⚑ **`system.{backup,cache,runtime}` are NOT in this floor, and the omission is a STATED one.** They
+are declared keys with manifest defaults that no floor has ever installed either — the same finding
+one scope over, not yet ruled on. `tests/test_channels/test_system_channel_keys.py` pins the three
+by name, so widening the floor to cover them reds and has to be said out loud rather than arriving
+as a side effect.
+
+```python
 def load_std_paths(config: KanibakoConfig | None = None) -> StandardPaths
 ```
 Compute all standard kanibako directories.

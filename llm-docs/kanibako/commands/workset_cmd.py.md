@@ -278,8 +278,9 @@ launch (P3).
   `settings/settings_resolve.py` — it is only this function's use of it that was retired.
 
   Every stored `host_src` resolves ON ITS OWN (spec §2a), because `share add` absolutises a relative
-  source at WRITE time, so there is no root to apply here. This display therefore cannot diverge
-  from what a launch mounts, which it previously could.
+  source at WRITE time, so there is no root to apply here. No ROOT-JOIN can make this display
+  diverge from what a launch mounts, which it previously could — but see the floor below for the
+  divergence that had nothing to do with root-joins.
 
 `_print_effective_shares` builds its context from the **resolver SPLIT** (spec §1A / JC-2): Layer-1
 `config.*` becomes the `ctx.config` foundation, Layer-2 `system.*` becomes the snapshot floor (flat
@@ -287,6 +288,21 @@ dotted keys, which `assemble_levels` explodes) so a share value's `@`-ref such a
 `@system.channelroot` resolves from the snapshot itself, replicating the old `_lookup` map. The xdg
 map must be the canonical FULL host map anchored on the resolved `std.data_home` — a data-home-only
 partial map RAISES on a stored `$XDG_CACHE_HOME/…` value.
+
+⚑⚑ **THE FLOOR IS `settings/paths.system_path_floor`, AND IT IS SHARED WITH THE LAUNCH** — the
+`resolved_sys` map in `commands/start._launch_snapshot_inputs` is the same call. It was written out
+by hand in both places, under paired comments telling each other they had to agree, and they did
+not: this one carried three keys and none of the five `system.channels.*` leaves. So a workset
+binding sourcing `@system.channels.chat` mounted correctly at launch and was **silently omitted
+from this listing** — rc 0, no error, the row simply absent, because an unresolvable `@`-ref is a
+legitimately-absent referent rather than a failure. A user reading `--effective` to check their
+bindings saw one they had configured not appear at all. (The launch side of the same split was
+missing `system.channels.broadcast`, so a bind through that key was dropped from the collapse.)
+
+`tests/test_commands/test_workset_cmd.py::TestWorksetCmdSystemFloor` pins it, and pins it by
+DERIVATION now: it drives this display with a binding sourced at every key the launch floor answers
+and names no key itself. The version that guarded the split before compared each function's SOURCE
+TEXT against four hard-coded names, so it was green through the whole of the above.
 
 The DEST column is the share's IDENTITY (R-10) and is exactly the argument `share rm` takes.
 

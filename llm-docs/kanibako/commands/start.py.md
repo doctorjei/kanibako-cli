@@ -1464,7 +1464,11 @@ still different keys, still both emitted, and still reach the collision table in
 The single launch-time CATEGORY resolve (block 7b). It aggregates every runtime
 `default_categories` table (core / kani / channel / share / seeds / masks, plus the CONDITIONAL
 helper + image tables) into ONE floor, folds in the resolved `system.*` tier so @-refs resolve from
-the snapshot, represents the agent's descriptor delivery binds via 7a's `agent_default_partial`, and
+the snapshot (the `resolved_sys` map — ⚑ built by `settings/paths.system_path_floor`, **shared with
+`commands/workset_cmd._print_effective_shares`**; it was a hand-written dict here and another one
+there, and this one was missing `system.channels.broadcast`, so a binding sourcing that declared key
+was dropped from the collapse with no message and rc 0), represents the agent's descriptor delivery
+binds via 7a's `agent_default_partial`, and
 runs `assemble_levels → merge → expand` ONCE via
 `settings.settings_launch.build_launch_snapshot`. The expanded snapshot is then adapted to
 `CategoryEntry` ONCE, and that ONE list feeds every consumer below it.

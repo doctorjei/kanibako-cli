@@ -108,30 +108,44 @@ resolved before calling it.
   subdir. ⚑ **It is the DEFAULT of the two ALL-PROJECTS keys, not the keys themselves.**
 * `WorksetPartition` — the same pair of paths reached THROUGH
   `workset.channels.{mailboxes,share_global}`, so a repoint shows up here and not in
-  `SystemPartition`. Same shape, different question; do not collapse the two.
+  `SystemPartition`. Same shape, different question; do not collapse the two. Built in exactly one
+  place, `partition_key_paths(std, ws_token, ws_root)`; `workset_partition_paths` (from a resolved
+  `ProjectPaths`) and `own_partition_dirs` (from raw relocation inputs) are its two entry points,
+  and they are two entry points rather than two derivations because they used to be two
+  derivations and answered differently.
 * `WorksetChannels` — the workset-local leaves: `root`, `common`, `chat`, `chat_broadcast` (the
   `broadcast` KEY), `chat_general` (the non-key `general.md` inside the resolved chat dir), and
   `share` (whose per-box subdirs are `meta.box.share_workset`).
 * `BoxChannelAddresses` — the `meta.box.*` addresses above.
-* `OwnPartition` — this box's own system-scope dirs, `mailbox` and `share_global`, addressed by raw
-  `(ws_token, box_name)`.
+* `OwnPartition` — this box's own dirs, `mailbox` and `share_global`, addressed by raw
+  `(ws_token, ws_root, box_name)`.
 
-## `own_partition_dirs` — the raw-token primitive behind the addresses (6d)
+## `own_partition_dirs` — the raw-input primitive behind the addresses (6d)
 
 `own_partition_dirs` is the lower-level primitive underneath `box_channel_addresses`: it takes the
-workset-name token and box name directly, with no `ProjectPaths`. That is what the move/convert
-relocation in `commands/box/_lifecycle.py` needs: `_relocate_channel_partition` must compute BOTH
-the OLD and the NEW partition for a box being moved between worksets, and it works from a pair of
-`ProjectState`s (via its own `_state_ws_token`), never from a resolved `ProjectPaths`. It mirrors
-`system_partition` plus the `meta.box.{inbox, share_global}` joins (TARGET §2c).
+workset-name token, the workset ROOT and the box name directly, with no `ProjectPaths`. That is
+what the move/convert relocation in `commands/box/_lifecycle.py` needs: `_relocate_channel_partition`
+must compute BOTH the OLD and the NEW partition for a box being moved between worksets, and it
+works from a pair of `ProjectState`s (via its own `_state_ws_token` and `_state_ws_root`), never
+from a resolved `ProjectPaths`.
 
-⚑⚑ **KNOWN GAP, stated rather than papered over.** `own_partition_dirs` is the **default**, not the
-key: it has no workset root, so it cannot read a `workset.channels.{mailboxes,share_global}`
-repoint, while `box_channel_addresses` now does. A relocation between two worksets, either of which
-repoints `mailboxes`, therefore moves the DEFAULT partition dir rather than the repointed one.
-Closing it needs `commands/box/_lifecycle.py::_relocate_channel_partition` to hand over each side's
-workset root. It is unreachable without a repoint, and it is not "the launch path and the
-relocation disagree by accident" — it is one of them consulting a key the other cannot see.
+⚑⚑ **THE GAP THAT USED TO BE HERE IS CLOSED (2026-08-26), and how it read is worth keeping.** This
+function took `(std, ws_token)` alone, which is exactly enough to build the partition's DEFAULT and
+not enough to read a `workset.channels.{mailboxes,share_global}` repoint — while
+`box_channel_addresses` has routed through those keys since R-35. So a workset that repointed
+`mailboxes` had its boxes MOUNTED at the repointed address, and a `box move` out of it moved the
+default directory: an empty one, leaving every message the box had received stranded at an address
+no longer registered to it. It was not "two paths disagreeing by accident" — it was one of them
+consulting a key the other could not see, and the fix is to let it see: `ws_root` is now a REQUIRED
+keyword, and both entry points resolve through the single `partition_key_paths`. An OPTIONAL root
+would have reproduced the old behaviour for any caller who omitted it, silently, which is the shape
+of the bug rather than a mitigation of it.
+
+⚑ Reading a key put a REFUSING resolver on the relocation path for the first time —
+`partition_key_paths` raises (naming the key) on a repoint it cannot resolve, as every pre-snapshot
+key read does. `_relocate_channel_partition` catches that, warns and skips: it runs AFTER the files
+have moved, and a settings error in a best-effort cleanup step must not abort a lifecycle operation
+that is otherwise complete.
 
 Relocation itself is best-effort by contract (spec §2f, D-M10): a box's partition key is
 `@meta.workset.name`, so moving it changes its channel address; its OWN mailbox and share move,

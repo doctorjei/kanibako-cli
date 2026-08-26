@@ -66,6 +66,7 @@ from kanibako.settings.paths import (
     xdg,
     load_std_paths,
     resolve_box_target,
+    system_path_floor,
 )
 from kanibako.agent_ref import (
     canonicalize_agent_ref,
@@ -6288,31 +6289,17 @@ def _launch_snapshot_inputs(
     # The Layer-2 system.* path tier the category @-refs resolve against.  These
     # are present IN the snapshot (folded into the floor as ``system.<leaf>``
     # keys) so ``expand`` resolves them — replicating the old ``_lookup``'s
-    # ``resolved_sys`` map.  channelroot/template/canon each @-ref a config key,
-    # already resolved into ``std`` by the flat foundation.
-    # ⚑ ``commands/workset_cmd._print_effective_shares`` builds a SECOND map of the
-    # same tier for ``workset show --effective``.  Both must carry the same
-    # keys or the display diverges from what a launch mounts; pinned by
-    # ``tests/test_commands/test_workset_cmd.py::TestWorksetCmdSystemFloor``.
-    resolved_sys = {
-        "system.channelroot": str(std.channels),
-        "system.template": str(std.template),
-        # The SYSTEM-level CANON CONTRIBUTION root (spec §2g) — the source of the
-        # handbook's SYS_CONTENTS.md + general chapter binds, and the install dest of
-        # the packaged handbook. ⚑ It names a per-scope CONTRIBUTION root, NOT a copy
-        # of the assembled canon: ``~/canon`` (guest) is the assembled tree,
-        # ``@<scope>.canon`` (host) is what that scope contributes to it.
-        "system.canon": str(std.canon),
-        # B2b: the resolved system channel type-roots (spec §2g) — folded in so the
-        # @system.channels.* ALL-PROJECTS channel binds (global_common/chat/share/
-        # mailboxes, §2c) resolve from the snapshot.  Each equals the
-        # corresponding ``std.channels_*`` (the same flat foundation resolves both),
-        # so the @-ref-routed bind is byte-identical to the runtime-probed literal.
-        "system.channels.common": str(std.channels_common),
-        "system.channels.chat": str(std.channels_chat),
-        "system.channels.share": str(std.channels_share),
-        "system.channels.mailboxes": str(std.channels_mailboxes),
-    }
+    # ``resolved_sys`` map.
+    # ⚑⚑ IT IS BUILT BY ``paths.system_path_floor`` AND SO IS THE SECOND CONSUMER,
+    # ``commands/workset_cmd._print_effective_shares`` (``workset share list
+    # --effective``).  This map used to be written out by hand here and again there,
+    # under paired comments saying the two must agree — and they did not: this one had
+    # no ``system.channels.broadcast`` (a declared key, so a binding sourcing it was
+    # dropped from the collapse silently) and that one had none of the five channel
+    # leaves at all (so a workset binding sourcing ``@system.channels.chat`` mounted
+    # here and vanished from the display).  There is one map now, so "both carry the
+    # same keys" is structural rather than a promise two hand lists made each other.
+    resolved_sys = system_path_floor(std)
 
     # meta.runtime.* identity anchors (block B1, spec §1A). The per-mode
     # treewalk values are known on ``proj``; surface them as the snapshot's RO
