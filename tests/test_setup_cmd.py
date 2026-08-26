@@ -47,6 +47,12 @@ def _ns(**kw) -> argparse.Namespace:
 
 
 def _config_paths(tmp_home):
+    """``(bootstrap config file, SYSTEM SETTINGS file)``.
+
+    ⚑ The setup MARKER is read from the SECOND of these since 2026-08-26 — spec §2g
+    declares ``system.setup_completed`` a Layer-2 ``system.*`` settings key, and
+    Layer-1 holds the ``config.*`` bootstrap paths alone (spec §1).
+    """
     cf = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
     ssp = load_std_paths(load_config(cf)).settings
     return cf, ssp
@@ -98,7 +104,7 @@ def test_full_setup_bogus_agent_nonzero_no_marker_no_default(
     with pytest.raises(ConfigError):
         setup_cmd.run_setup(_ns(agent="bogus"))
     cf, ssp = _config_paths(tmp_home)
-    assert read_setup_completed(cf) is None
+    assert read_setup_completed(ssp) is None
     assert read_system_agent(ssp) is None
 
 
@@ -193,8 +199,8 @@ def test_non_tty_no_flag_no_input_graceful(tmp_home, config_file, monkeypatch, c
 
 def test_marker_written_equals_version(tmp_home, config_file):
     setup_cmd._write_setup_marker()
-    cf, _ = _config_paths(tmp_home)
-    assert read_setup_completed(cf) == __version__
+    _, ssp = _config_paths(tmp_home)
+    assert read_setup_completed(ssp) == __version__
 
 
 def _stub_probes(monkeypatch):
@@ -226,7 +232,7 @@ def test_full_setup_flag_writes_marker_and_default(
     assert rc == 0
     cf, ssp = _config_paths(tmp_home)
     assert read_system_agent(ssp) == "claude"
-    assert read_setup_completed(cf) == __version__
+    assert read_setup_completed(ssp) == __version__
 
 
 def test_full_setup_non_tty_current_templates_writes_marker_no_default(
@@ -241,7 +247,7 @@ def test_full_setup_non_tty_current_templates_writes_marker_no_default(
     assert rc == 0
     cf, ssp = _config_paths(tmp_home)
     assert read_system_agent(ssp) is None
-    assert read_setup_completed(cf) == __version__
+    assert read_setup_completed(ssp) == __version__
 
 
 def test_full_setup_non_tty_stale_templates_records_no_marker(
@@ -269,8 +275,8 @@ def test_full_setup_non_tty_stale_templates_records_no_marker(
     # recorded nothing is a failure for anything scripting it (`kanibako setup &&
     # kanibako start`, `kanibako setup || exit 1`).
     assert rc == 1
-    cf, _ = _config_paths(tmp_home)
-    assert read_setup_completed(cf) is None
+    _, ssp = _config_paths(tmp_home)
+    assert read_setup_completed(ssp) is None
     out = capsys.readouterr().out
     # The banner must not claim a completion that was not recorded, and must
     # name the cure.
@@ -293,7 +299,7 @@ def test_full_setup_non_tty_stale_templates_refresh_flag_cures(
     rc = setup_cmd.run_setup(_ns(agent="claude", refresh_templates=True))
     assert rc == 0
     cf, ssp = _config_paths(tmp_home)
-    assert read_setup_completed(cf) == __version__
+    assert read_setup_completed(ssp) == __version__
     assert read_system_agent(ssp) == "claude"
     assert _staged_marker(_resolve_std()).is_file()  # the refresh really ran
     assert "Setup Complete" in capsys.readouterr().out
@@ -315,8 +321,8 @@ def test_full_setup_tty_decline_completes_and_exits_zero(
     # No _stage_templates(): the store is stale, so Step 5 reaches the prompt.
     rc = setup_cmd.run_setup(_ns(agent="claude"))
     assert rc == 0
-    cf, _ = _config_paths(tmp_home)
-    assert read_setup_completed(cf) == __version__
+    _, ssp = _config_paths(tmp_home)
+    assert read_setup_completed(ssp) == __version__
     assert "Setup Complete" in capsys.readouterr().out
 
 
@@ -350,8 +356,8 @@ def test_full_setup_marker_write_failure_is_incomplete_and_nonzero(
     # terminal / pass --refresh-templates" advice would be simply wrong.
     assert "writing the marker failed" in cap.out
     assert "needs an informed choice" not in cap.out
-    cf, _ = _config_paths(tmp_home)
-    assert read_setup_completed(cf) is None
+    _, ssp = _config_paths(tmp_home)
+    assert read_setup_completed(ssp) is None
 
 
 # --- Step 2: binary-less shell agent ---------------------------------------
@@ -385,13 +391,19 @@ def test_step2_reports_binary_less_shell_as_ok(tmp_home, config_file, monkeypatc
 
 
 def _system_table(tmp_home):
-    """The raw ``[system]`` table of the global config file (or ``{}``)."""
+    """The raw ``system:`` table of the SYSTEM SETTINGS file (or ``{}``).
+
+    ⚑ THE SETTINGS FILE, NOT ``kanibako_config.yaml`` (2026-08-26): that is where
+    ``setup`` writes now, so this keeps its teeth.  Read against the config file, the
+    R-38 "no ``templates_stamp``" assertion below would pass vacuously — the config
+    file has no ``system:`` table at all any more.
+    """
     from kanibako.settings.config_io import load_doc
 
-    cf, _ = _config_paths(tmp_home)
-    if not cf.exists():
+    _, ssp = _config_paths(tmp_home)
+    if not ssp.exists():
         return {}
-    return load_doc(cf).get("system", {}) or {}
+    return load_doc(ssp).get("system", {}) or {}
 
 
 def _resolve_std():
@@ -548,6 +560,6 @@ def test_full_setup_with_refresh_flag_writes_marker_only(
     )
     rc = setup_cmd.run_setup(_ns(agent="claude", refresh_templates=True))
     assert rc == 0
-    cf, _ = _config_paths(tmp_home)
-    assert read_setup_completed(cf) == __version__
+    _, ssp = _config_paths(tmp_home)
+    assert read_setup_completed(ssp) == __version__
     assert "templates_stamp" not in _system_table(tmp_home)

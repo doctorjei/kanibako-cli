@@ -1072,12 +1072,13 @@ class TestConfigFileOnlyKeyRefusal:
     and are routed now — §8b below is the replacement pin, and it asserts the
     OPPOSITE.
 
-    ⚑⚑ ``system.setup_completed`` LEFT THE SAME DAY, and this is its saying-so: it
-    was parametrized into the refusal case below, and it now has its own class
-    (§8c) asserting that set and reset WRITE — spec §2g calls it "PERSISTS,
-    user-resettable" and the registry marks it ``set: cli+file``.  What is left
-    here is the ``config.*`` foundation alone, which is refused for a reason no
-    other key has: those keys LOCATE the files everything else lives in (§2a).
+    ⚑⚑ ``system.setup_completed`` LEFT THE SAME DAY, and its STORAGE followed on
+    2026-08-26: spec §2g declares it a Layer-2 ``system.*`` SETTINGS key, so it is
+    stored, set, read and reset in the system settings file like its siblings (§8c).
+    What is left here is the ``config.*`` foundation ALONE, refused for a reason no
+    other key has: those keys LOCATE the files everything else lives in (§2a) — which
+    is why this class no longer has a "get reads the config file" case for anything
+    but ``config.*`` itself.
     """
 
     @pytest.mark.parametrize("key", ["config.data"])
@@ -1088,32 +1089,40 @@ class TestConfigFileOnlyKeyRefusal:
         assert bench.changed(before) == {}
 
     def test_get_reads_the_config_file(self, bench):
-        bench.seed(bench.cf, ("system",), "setup_completed", "1.8.0")
-        assert bench.get(ConfigLevel.system, "system.setup_completed") == "1.8.0"
+        """The read route for a ``config.*`` key IS the bootstrap file — the one
+        family for which that is still true."""
+        bench.seed(bench.cf, ("config",), "data", "/x")
+        assert bench.get(ConfigLevel.system, "config.data") == "/x"
 
 
 # ---------------------------------------------------------------------------
-# 8c. The setup MARKER — the ONE key whose destination is the bootstrap file
+# 8c. The setup MARKER — an ordinary ``system.*`` settings key
 # ---------------------------------------------------------------------------
 
 class TestSetupMarkerDest:
-    """set, get and reset all name ``kanibako_config.yaml``'s ``system:`` table.
+    """set, get and reset all name the SYSTEM SETTINGS file's ``system:`` table.
 
-    ⚑ THE POINT IS THE AGREEMENT, not the file: the marker is stored in the config
-    file because ``setup`` writes it there and the staleness gate reads it there
-    (``config.read_setup_completed``), so a verb aimed anywhere else — the system
-    settings file most plausibly — would be accepted, persisted and INERT.  That is
-    the failure this whole module exists to catch, and it is why the marker did not
-    simply join ``_KEY_ROUTES`` with its ``system.*`` siblings.
+    ⚑ THE POINT IS THE AGREEMENT, not the file: a verb aimed anywhere but where
+    ``config.read_setup_completed`` looks would be accepted, persisted and INERT —
+    the failure this whole module exists to catch.  ⚑⚑ THE FILE CHANGED ON
+    2026-08-26 and the agreement did not: Jei moved the STORAGE to the global
+    settings file, which is what spec §2g always declared it to be, so the marker
+    joined ``_KEY_ROUTES`` beside ``system.agent`` and its bespoke ``BOOTSTRAP``
+    destination rule retired with no members left.
     """
 
-    def test_set_lands_in_the_bootstrap_config_file(self, bench):
+    def test_set_lands_in_the_system_settings_file(self, bench):
         before = bench.snapshot()
         msg = bench.set(ConfigLevel.system, "system.setup_completed", "1.8.0")
         assert msg == "Set system.setup_completed=1.8.0", msg
         changed = bench.changed(before)
-        assert set(changed) == {"cf"}, changed
-        assert changed["cf"]["system"]["setup_completed"] == "1.8.0"
+        assert set(changed) == {"ssp"}, changed
+        assert changed["ssp"]["system"]["setup_completed"] == "1.8.0"
+
+    def test_the_bootstrap_config_file_is_never_written(self, bench):
+        """The Layer-1 file stays untouched — no key routes there any more."""
+        bench.set(ConfigLevel.system, "system.setup_completed", "1.8.0")
+        assert not bench.cf.exists()
 
     def test_get_reads_back_what_set_wrote(self, bench):
         bench.set(ConfigLevel.system, "system.setup_completed", "1.8.0")
@@ -1125,8 +1134,8 @@ class TestSetupMarkerDest:
         msg = bench.reset(ConfigLevel.system, "system.setup_completed")
         assert not msg.startswith("Error:"), msg
         changed = bench.changed(before)
-        assert set(changed) == {"cf"}, changed
-        assert "setup_completed" not in changed["cf"].get("system", {})
+        assert set(changed) == {"ssp"}, changed
+        assert "setup_completed" not in changed["ssp"].get("system", {})
 
 
 # ---------------------------------------------------------------------------
@@ -1225,8 +1234,10 @@ class TestSystemGetCommandScopeIsInert:
         # ⚑ SEEDED IN ``ssp``, NOT ``cf``, SINCE 2026-08-23: the system PATH tier is
         # a settings key (spec §2g) and reads where its ``set`` writes.
         ("system.cache", (lambda b: b.seed(b.ssp, ("system",), "cache", "v"))),
+        # ⚑ SEEDED IN ``ssp``, NOT ``cf``, SINCE 2026-08-26: the marker's STORAGE
+        # moved to the settings file (spec §2g), so it reads where its ``set`` writes.
         ("system.setup_completed",
-         (lambda b: b.seed(b.cf, ("system",), "setup_completed", "v"))),
+         (lambda b: b.seed(b.ssp, ("system",), "setup_completed", "v"))),
         ("agent.claude.model",
          (lambda b: b.seed(
              b.agents / "claude" / "agent.yaml",

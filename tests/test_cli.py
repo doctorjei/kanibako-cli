@@ -1103,6 +1103,24 @@ class TestVerboseFlag:
         assert parser.description == "Safe, persistent workspaces for AI coding agents."
 
 
+def _marker_file(tmp_path):
+    """The SYSTEM SETTINGS file ``_setup_nudge`` resolves under these tests' patches.
+
+    ⚑ The setup marker left ``kanibako_config.yaml`` on 2026-08-26 (Jei; spec §2g has
+    always declared it a Layer-2 ``system.*`` SETTINGS key), so a test that PLANTS one
+    must plant it where the shipped code looks.  Computed by the SHIPPED resolver
+    rather than spelled out here: a literal would pin a path instead of the behaviour,
+    and would go stale the moment ``config.settings``' default moved.
+    """
+    from pathlib import Path
+
+    from kanibako.settings.paths import load_system_config
+
+    return load_system_config(
+        tmp_path / "kanibako_config.yaml", data_home=tmp_path, home=Path.home(),
+    )["config.settings"]
+
+
 class TestSetupNudge:
     """Gate-1 NON-BLOCKING setup-completion nudge (_setup_nudge)."""
 
@@ -1157,7 +1175,7 @@ class TestSetupNudge:
         from kanibako.settings.config_interface import write_system_value
 
         cf = tmp_path / "kanibako_config.yaml"
-        write_system_value(cf, "setup_completed", "1.6.0")
+        write_system_value(_marker_file(tmp_path), "setup_completed", "1.6.0")
         with patch("kanibako.settings.config.config_file_path", return_value=cf), \
              patch("kanibako.settings.paths.xdg", return_value=tmp_path), \
              patch.object(kanibako, "__version__", "1.8.0"), \
@@ -1180,7 +1198,9 @@ class TestSetupNudge:
         cf = tmp_path / "kanibako_config.yaml"
         # Marker == the current build's base version → == band → no nudge.
         write_system_value(
-            cf, "setup_completed", Version(kanibako.__version__).base_version
+            _marker_file(tmp_path),
+            "setup_completed",
+            Version(kanibako.__version__).base_version,
         )
         with patch("kanibako.settings.config.config_file_path", return_value=cf), \
              patch("kanibako.settings.paths.xdg", return_value=tmp_path):
@@ -1257,7 +1277,9 @@ class TestSetupNudge:
         from kanibako.errors import KanibakoError
 
         cf = tmp_path / "kanibako_config.yaml"
-        write_system_value(cf, "setup_completed", self._below_bcv())  # < BCV
+        write_system_value(
+            _marker_file(tmp_path), "setup_completed", self._below_bcv(),
+        )  # < BCV
         with patch("kanibako.settings.config.config_file_path", return_value=cf), \
              patch("kanibako.settings.paths.xdg", return_value=tmp_path):
             with pytest.raises(KanibakoError) as exc:
@@ -1279,7 +1301,9 @@ class TestSetupNudge:
         # A version strictly greater than the build base → "from the future".
         newer = f"{Version(kanibako.__version__).major + 1}.0.0"
         assert Version(newer) > Version(Version(kanibako.__version__).base_version)
-        write_system_value(cf, "setup_completed", newer)  # > build
+        write_system_value(
+            _marker_file(tmp_path), "setup_completed", newer,
+        )  # > build
         with patch("kanibako.settings.config.config_file_path", return_value=cf), \
              patch("kanibako.settings.paths.xdg", return_value=tmp_path):
             with pytest.raises(KanibakoError) as exc:
@@ -1318,7 +1342,9 @@ class TestSetupNudge:
 
         cf = tmp_path / "kanibako_config.yaml"
         # < BCV → ERROR band.
-        write_system_value(cf, "setup_completed", self._below_bcv())
+        write_system_value(
+            _marker_file(tmp_path), "setup_completed", self._below_bcv(),
+        )
         with patch("kanibako.settings.config.config_file_path", return_value=cf), \
              patch("kanibako.settings.paths.xdg", return_value=tmp_path), \
              patch("kanibako.cli._ensure_initialized"):
@@ -1339,14 +1365,14 @@ class TestSetupNudge:
         from kanibako.settings.config_interface import write_system_value
 
         cf = tmp_path / "kanibako_config.yaml"
-        write_system_value(cf, "setup_completed", "1.6.0")
+        write_system_value(_marker_file(tmp_path), "setup_completed", "1.6.0")
         with patch("kanibako.settings.config.config_file_path", return_value=cf), \
              patch("kanibako.settings.paths.xdg", return_value=tmp_path), \
              patch.object(kanibako, "__version__", "1.8.0"), \
              patch.object(kanibako, "SETUP_BCV", "1.6.0"), \
              patch.object(kanibako, "SETUP_FCV", "1.6.0"):
             assert _setup_nudge(self._ns("start")) is None
-            assert read_setup_completed(cf) == "1.8.0"
+            assert read_setup_completed(_marker_file(tmp_path)) == "1.8.0"
         assert capsys.readouterr().err == ""
 
 
@@ -1374,7 +1400,9 @@ class TestTemplateStalenessRetired:
 
         cf = tmp_path / "kanibako_config.yaml"
         write_system_value(
-            cf, "setup_completed", Version(kanibako.__version__).base_version
+            _marker_file(tmp_path),
+            "setup_completed",
+            Version(kanibako.__version__).base_version,
         )
         if stamp is not None:
             write_system_value(cf, "templates_stamp", stamp)

@@ -53,7 +53,10 @@ _SANCTIONED: dict[str, int] = {
     # sites: the per-scope dispatch arms plus the system-scope leaf write.
     # ⚑ 6 → 7 on 2026-08-23, and the JUSTIFICATION the guard asks for: the new site
     # is the setup MARKER's own ``set`` arm (`SETUP_MARKER_KEY`), which writes
-    # ``system.setup_completed`` into the BOOTSTRAP config file's ``system:`` table.
+    # ``system.setup_completed`` into the ``system:`` table of the SYSTEM SETTINGS
+    # file (that arm named the Layer-1 config file until 2026-08-26, when the
+    # marker's storage moved to ``@config.settings`` per spec §2g; the COUNT is
+    # unaffected — the arm moved its destination, not its call site).
     # It records USER INTENT in the strictest sense — it runs only when a user typed
     # ``system set system.setup_completed=…`` — and it writes no default: the key has
     # none (spec §2g: unset means setup has never run). It is a new ARM on an already

@@ -35,16 +35,19 @@ class TestInstallFilesystem:
         self, integration_home, integration_config
     ):
         """Running install twice is idempotent — existing config untouched."""
-        from kanibako.settings.config import load_config, write_global_config
+        from kanibako.settings.config import load_config
+        from kanibako.settings.config_io import write_nested_key
 
-        # Write a config with a custom image
-        config = load_config(integration_config)
-        config.box_image = "custom:v99"
-        write_global_config(integration_config, config)
+        # Hand-write a non-default Layer-1 value.
+        # ⚑ A ``config.*`` key, not ``box.image``: since 2026-08-26 the bootstrap file
+        # carries the ``config.*`` foundation and nothing else (Jei), so a settings key
+        # planted here is inert — this case is about the FILE surviving, and the
+        # foundation is what the file actually holds.
+        write_nested_key(integration_config, ("config",), "agents", "/custom/agents")
 
-        # Reload and verify custom value preserved
+        # Reload and verify the custom value is preserved
         reloaded = load_config(integration_config)
-        assert reloaded.box_image == "custom:v99"
+        assert reloaded.config_paths["config.agents"] == "/custom/agents"
 
     # NOTE: test_install_filters_settings_json was deleted in 1.6.0 — the host
     # .claude.json allowlist filter (filter_settings) was removed with the

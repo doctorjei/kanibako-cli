@@ -842,19 +842,24 @@ the bound `.get`.
 
 
 ```write_system_value(config_path: Path, leaf: str, value: object) -> None```
-Programmatically write a `[system] <leaf>` key to the CONFIG file, bypassing the CLI guard.
+Programmatically write a `system: <leaf>` key into the file it is given.
 
-This is the PROGRAM editing the config file on the user's behalf, at a point where no CLI verb is
-running: `kanibako setup` recording `system.setup_completed` → `[system] setup_completed`, and
-`setup_compat_gate`'s best-effort forward bump of the same marker.
+This is the PROGRAM editing a settings document on the user's behalf, at a point where no CLI verb
+is running: `kanibako setup` recording `system.setup_completed`, and `setup_compat_gate`'s
+best-effort forward bump of the same marker.
 
-⚑ **IT NO LONGER "BYPASSES A GUARD" (2026-08-23), and the old wording claimed a guard that is gone.**
-The `system.*` path tier stopped being refused with spec §2g, and the marker followed: `config set
-system.setup_completed=…` writes this very table through `config_dest`'s `_BOOTSTRAP` file rule. The
-two writers agree on the address on purpose — that agreement is what makes the CLI verb non-inert.
+⚑ **THE PARAMETER NAME SAYS `config_path`, AND BOTH LIVE CALLERS NOW PASS THE SYSTEM SETTINGS
+FILE.** The function is path-agnostic — its whole body is `write_nested_key(path, ("system",), leaf,
+value)` — and the marker's storage moved to `@config.settings` on 2026-08-26, so nothing programmatic
+writes a `system:` table into `kanibako_config.yaml` any more. That file cannot carry settings at all
+(Jei), so a caller passing it here would be writing something no reader reads.
 
-*leaf* is the bare key name under the `[system]` table (NOT prefixed with `system.`). Writes
-preserve all other config content (read-modify-write via `write_nested_key`).
+⚑ **IT DOES NOT "BYPASS A GUARD" (2026-08-23), and the older wording claimed a guard that is gone.**
+`config set system.setup_completed=…` writes the same table through `_KEY_ROUTES`. The two writers
+agree on the address on purpose — that agreement is what makes the CLI verb non-inert.
+
+*leaf* is the bare key name under the `system:` table (NOT prefixed with `system.`). Writes preserve
+all other content (read-modify-write via `write_nested_key`).
 
 
 ```_count_leaves(node: object) -> int```

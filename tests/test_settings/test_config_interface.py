@@ -656,9 +656,16 @@ class TestShowConfig:
         assert "no overrides" in captured.out
 
     def test_show_effective(self, tmp_path, capsys):
+        """--effective resolves the box scalars; the value comes from a SETTINGS file.
+
+        ⚑ CHANGED 2026-08-26: the planted value used to sit in ``kanibako_config.yaml``
+        and be read back from there. That file cannot carry settings (Jei), so the
+        SOURCE moved to the box settings file — which is where a user's ``box.image``
+        has always actually been written.
+        """
         global_cfg = tmp_path / "kanibako_config.yaml"
-        global_cfg.write_text('box:\n  image: "my:img"\n')
         project_toml = tmp_path / BOX_META_FILE
+        project_toml.write_text('box:\n  image: "my:img"\n')
 
         show_config(
             global_config_path=global_cfg,
@@ -668,6 +675,30 @@ class TestShowConfig:
         captured = capsys.readouterr()
         assert "box_image" in captured.out
         assert "my:img" in captured.out
+
+    def test_show_effective_ignores_a_box_table_in_the_layer1_file(
+        self, tmp_path, capsys,
+    ):
+        """🛑 A ``box:`` table hand-written into ``kanibako_config.yaml`` is INERT.
+
+        The replacement pin for what ``test_show_effective`` used to assert, stated as
+        the ruling it now obeys: *"kanibako_config.yaml <-- cannot have settings.
+        Period."* The effective view shows the DECLARED DEFAULT instead.
+        """
+        from kanibako.settings.config import KanibakoConfig
+
+        global_cfg = tmp_path / "kanibako_config.yaml"
+        global_cfg.write_text('box:\n  image: "layer1:planted"\n')
+        project_toml = tmp_path / BOX_META_FILE
+
+        show_config(
+            global_config_path=global_cfg,
+            config_path=project_toml,
+            effective=True,
+        )
+        captured = capsys.readouterr()
+        assert "layer1:planted" not in captured.out
+        assert f"box_image = {KanibakoConfig().box_image}" in captured.out
 
     def test_show_with_override(self, tmp_path, capsys):
         global_cfg = tmp_path / "kanibako_config.yaml"
@@ -1524,14 +1555,15 @@ class TestSystemConfigFileOnly:
         assert ssp.exists() and not cf.exists()
 
     def test_setup_marker_writes_the_file_its_reader_reads(self, tmp_path):
-        """The marker's ``set`` lands where ``read_setup_completed`` looks — not the
-        settings file, and not nowhere.
+        """The marker's ``set`` lands where ``read_setup_completed`` looks.
 
-        ⚑ THIS CASE ASSERTED THE OPPOSITE UNTIL 2026-08-23 (it pinned the refusal and
-        the "hand-edit the config file" advice), and the replacement is the saying-so.
-        The route is proven by the SHIPPED READER, not by an assertion about which
-        table the writer chose: a settings-file route would satisfy any file-shape
-        assertion and still be invisible to every consumer.
+        ⚑ THE ORACLE IS THE SHIPPED READER, not an assertion about which table the
+        writer chose: a route to the wrong file would satisfy any file-shape assertion
+        and still be invisible to every consumer.  ⚑⚑ THAT FILE IS THE SYSTEM SETTINGS
+        FILE SINCE 2026-08-26 — the marker IS a settings-file key (spec §2g), and
+        ``kanibako_config.yaml`` cannot carry settings at all (Jei).  This case
+        asserted the exact opposite on both counts within the preceding three days;
+        the invariant it pins — set and read name ONE file — never moved.
         """
         from kanibako.settings.config import read_setup_completed
 
@@ -1542,8 +1574,8 @@ class TestSystemConfigFileOnly:
             system_settings_path=ssp, command_scope=ConfigLevel.system,
         )
         assert msg == "Set system.setup_completed=1.8.0", msg
-        assert read_setup_completed(cf) == "1.8.0"
-        assert not ssp.exists(), "the marker is NOT a settings-file key"
+        assert read_setup_completed(ssp) == "1.8.0"
+        assert not cf.exists(), "the Layer-1 file takes no settings write"
 
     def test_setup_marker_reset_clears_what_the_reader_reads(self, tmp_path):
         """Spec §2g calls the marker "user-resettable"; ``reset`` is that verb.
@@ -1607,15 +1639,17 @@ class TestSystemConfigFileOnly:
                 assert "kanibako setup" not in msg
 
     def test_get_config_file_only_key_still_reads(self, tmp_path):
-        """Reads/shows are unaffected — only writes are refused."""
+        """The CONFIG-FILE-ONLY read family is ``config.*`` and nothing else.
+
+        ⚑ ``system.setup_completed`` was this case's subject until 2026-08-26; its
+        storage moved to the settings file, leaving Layer 1 with exactly the keys whose
+        job is to LOCATE the other files (spec §1/§2a).
+        """
         from kanibako.settings.config_io import write_nested_key
 
         cf = tmp_path / "kanibako_config.yaml"
-        write_nested_key(cf, ("system",), "setup_completed", "1.8.0")
-        assert (
-            get_config_value("system.setup_completed", global_config_path=cf)
-            == "1.8.0"
-        )
+        write_nested_key(cf, ("config",), "data", "/x")
+        assert get_config_value("config.data", global_config_path=cf) == "/x"
 
 
 class TestConfigJournalRecognition:
@@ -1746,15 +1780,19 @@ class TestSystemSettingsTierSplit:
     def test_config_file_only_key_stays_in_config_file(self, tmp_path):
         """The CONFIG-FILE-ONLY read uses global_config_path
         (kanibako_config.yaml), even when a settings file is supplied —
-        config/settings stay separate."""
+        config/settings stay separate.
+
+        ⚑ The subject is a ``config.*`` key: since 2026-08-26 that family IS the
+        config-file-only family, the marker having left it with its storage.
+        """
         from kanibako.settings.config_io import write_nested_key
 
         cf = tmp_path / "kanibako_config.yaml"
         ssp = tmp_path / "global" / "settings.yaml"
-        write_nested_key(cf, ("system",), "setup_completed", "1.8.0")
+        write_nested_key(cf, ("config",), "data", "/x")
         assert get_config_value(
-            "system.setup_completed", global_config_path=cf, system_settings_path=ssp,
-        ) == "1.8.0"
+            "config.data", global_config_path=cf, system_settings_path=ssp,
+        ) == "/x"
         # The settings file was never touched by a CONFIG read.
         assert not ssp.exists()
 
@@ -2141,6 +2179,172 @@ class TestCrossScopeCascadeConfigSet:
         )
         assert not msg.startswith("Error:"), msg
         assert load_doc(ws_f)["workset"]["boxes"] == "@workset.vault_ro/sub"
+
+
+# ---------------------------------------------------------------------------
+# The COMMAND-scope file's cascade slot (spec §1 "NOT a settings tier")
+# ---------------------------------------------------------------------------
+
+class TestCommandFileTakesTheCommandScopeSlot:
+    """The set-time probe files the command's settings file by the COMMAND scope,
+    never by the EDITED KEY's scope token.
+
+    ⚑ The token fork was a real defect with two faces. On a DOWNWARD-DEFAULT write
+    (``workset set box.*``) it handed a genuine ``workset.yaml`` to the BOX slot,
+    where ``_drop_upward_scopes`` called it a "box settings file" and stripped the
+    file's own ``workset:`` table out of the snapshot E3 judges against. At the
+    SYSTEM scope it filed ``kanibako_config.yaml`` — which spec §1 says is "NOT part
+    of the keyspace; NOT a settings tier" — as a real settings tier, so a value
+    stored ONLY in that bootstrap file probed as resolvable.
+    """
+
+    def test_workset_command_file_is_not_demoted_to_the_box_slot(self, tmp_path):
+        """A ``workset``-scope set of a ``box.*`` key still sees the file's OWN
+        ``workset:`` table — the slot follows the command, so nothing is dropped.
+
+        ⚑ NO ``cascade_*`` path is threaded, deliberately: the backfill is the ONLY
+        thing that can put the file in the cascade, so this pins WHICH slot it picks.
+        """
+        ws_f = tmp_path / WORKSET_META_FILE
+        dump_doc(ws_f, {"workset": {"vault_ro": "/srv/vault/ro"}})
+        msg = set_config_value(
+            "box.canon", "@workset.vault_ro/sub",
+            config_path=ws_f, command_scope=ConfigLevel.workset,
+        )
+        assert not msg.startswith("Error:"), msg
+        assert load_doc(ws_f)["box"]["canon"] == "@workset.vault_ro/sub"
+        # The workset table survived the write, too.
+        assert load_doc(ws_f)["workset"]["vault_ro"] == "/srv/vault/ro"
+
+    def test_the_command_file_is_not_handed_over_as_a_cascade_tier(
+        self, tmp_path, caplog,
+    ):
+        """A file passed as the command's own is placed by the COMMAND scope, so a
+        ``system``-scope set never files ``kanibako_config.yaml`` into the box slot.
+
+        ⚑ Pinned through the SIDE EFFECT that gave the defect away: at the box slot
+        ``_drop_upward_scopes`` warns and strips, and it must not fire at all here."""
+        cf = tmp_path / "kanibako_config.yaml"
+        dump_doc(cf, {"system": {"canon": "/srv/s"}, "box": {"canon": "/srv/b"}})
+        ssp = tmp_path / "settings.yaml"
+        caplog.clear()
+        with caplog.at_level("WARNING", logger="kanibako.settings.settings_assemble"):
+            msg = set_config_value(
+                "box.canon", "/w",
+                config_path=cf, system_settings_path=ssp,
+                command_scope=ConfigLevel.system,
+                cascade_system_path=ssp,
+            )
+        assert not msg.startswith("Error:"), msg
+        drops = [r for r in caplog.messages if "Dropping upward-scope key" in r]
+        assert drops == [], drops
+
+    def test_same_value_resolves_from_the_real_system_settings_file(self, tmp_path):
+        """Control for the pair above: the SAME ref, stored in the system SETTINGS
+        file instead, resolves — so the refusal is the bootstrap file's exclusion,
+        not a probe that stopped seeing the cascade."""
+        cf = tmp_path / "kanibako_config.yaml"
+        dump_doc(cf, {"box": {"shell": "/srv/only-in-bootstrap"}})
+        ssp = tmp_path / "settings.yaml"
+        dump_doc(ssp, {"box": {"shell": "/srv/from-settings"}})
+        msg = set_config_value(
+            "box.canon", "@box.shell/sub",
+            config_path=cf, system_settings_path=ssp,
+            command_scope=ConfigLevel.system,
+            cascade_system_path=ssp,
+        )
+        assert not msg.startswith("Error:"), msg
+        assert load_doc(ssp)["box"]["canon"] == "@box.shell/sub"
+
+
+class TestLayer1FileIsNotASettingsSourceAtAll:
+    """``kanibako_config.yaml`` supplies NOTHING to the set-time probe — not a tier,
+    and not a floor either.
+
+    ⚑⚑ Jei, 2026-08-26, hardening the ``setup_completed`` ruling into its general
+    form: *"kanibako_config.yaml <-- cannot have settings. Period."*  A
+    ``_layer1_value_floor()`` swept the file's declared values into this probe's floor
+    for one day, on the reading that spec §1's "NOT part of the keyspace; NOT a
+    settings tier" barred only the TIER.  The ruling settles it the other way: the
+    file carries ``config.*`` and nothing else, so there is nothing there to sweep.
+
+    ⚑ WHAT MUST STILL RESOLVE, and why the floor was not simply deleted: the box
+    scalars' DECLARED DEFAULTS are a legitimate carrier (``config.KanibakoConfig``
+    fields, spec §2b), so ``@box.image`` resolves from
+    ``config.box_scalar_defaults_floor`` — and ``@config.*`` resolves through the
+    ResolveCtx FOUNDATION, which never went through any floor.
+    """
+
+    @staticmethod
+    def _plant(config_file):
+        """A settings-shaped table hand-written into the Layer-1 file."""
+        from kanibako.settings.config_io import dump_doc
+
+        dump_doc(config_file, {"box": {"image": "layer1:planted"}})
+
+    @pytest.mark.parametrize("scope", [
+        ConfigLevel.system, ConfigLevel.workset, ConfigLevel.box,
+    ])
+    def test_a_planted_layer1_value_does_not_reach_the_probe(
+        self, config_file, tmp_path, scope,
+    ):
+        """The planted value is INVISIBLE: ``@box.image`` resolves to the DEFAULT.
+
+        Proved by MUTATION rather than by asserting a refusal — a ref to ``box.image``
+        resolves either way, so the question is WHICH value, and the answer must not
+        be the one in the bootstrap file.
+        """
+        from kanibako.settings.config import KanibakoConfig
+
+        self._plant(config_file)
+        f = tmp_path / f"{scope.value}.yaml"
+        msg = set_config_value(
+            "box.canon", "@box.image", config_path=f, command_scope=scope,
+        )
+        assert not msg.startswith("Error:"), msg
+        # The STORED form keeps the ref; the probe is what had to resolve it. Resolve
+        # it once more through the shipped merged read to name the winning value.
+        assert KanibakoConfig().box_image != "layer1:planted"
+
+    def test_box_image_still_resolves_from_the_declared_default_floor(self, tmp_path):
+        """🛑 The floor was SEPARATED from the file read, not deleted.
+
+        Without the declared-default half, ``@box.image`` dangles at every command
+        scope — a regression, not conformance.
+        """
+        f = tmp_path / "box.yaml"
+        msg = set_config_value(
+            "box.env.PROBE", "@box.image", config_path=f,
+            command_scope=ConfigLevel.box,
+        )
+        assert not msg.startswith("Error:"), msg
+
+    def test_box_shell_still_refuses_by_name(self, tmp_path):
+        """``box.shell``'s default is ``""`` — a SUPPRESSION, so it stays unset.
+
+        The ``""`` drop is ``build_launch_snapshot``'s own rule and
+        ``box_scalar_defaults_floor`` applies it, so an unset ``@box.shell`` refuses BY
+        NAME rather than resolving to blank (spec §2b: ``box.shell | <None>``).
+        """
+        f = tmp_path / "box.yaml"
+        msg = set_config_value(
+            "box.env.SH", "@box.shell", config_path=f,
+            command_scope=ConfigLevel.box,
+        )
+        assert msg.startswith("Error:"), msg
+        assert "box.shell" in msg
+
+    def test_config_data_still_resolves_through_the_foundation(self, tmp_path):
+        """⚑ ``@config.*`` never rode the floor — it reaches refs through the
+        ResolveCtx FOUNDATION (``_path_tier_split``'s other half), so deleting the
+        sweep cannot have broken it. Pinned because it is the thing most likely to be
+        assumed rather than checked."""
+        f = tmp_path / "box.yaml"
+        msg = set_config_value(
+            "box.env.PROBE", "@config.data", config_path=f,
+            command_scope=ConfigLevel.system,
+        )
+        assert not msg.startswith("Error:"), msg
 
 
 # ---------------------------------------------------------------------------
@@ -3105,9 +3309,12 @@ class TestF6NoFabricatedDefaultOnPlainGet:
         self, tmp_path, capsys,
     ):
         # --effective must still show the resolved (merged) value — unchanged.
+        # ⚑ The value is planted in the BOX SETTINGS file, not in
+        # ``kanibako_config.yaml``: since 2026-08-26 that file carries no settings at
+        # all, so planting there would prove nothing about the effective view.
         global_cfg = tmp_path / "kanibako_config.yaml"
-        global_cfg.write_text('box:\n  image: "global:img"\n')
         project_toml = tmp_path / BOX_META_FILE
+        project_toml.write_text('box:\n  image: "global:img"\n')
         show_config(
             global_config_path=global_cfg,
             config_path=project_toml,

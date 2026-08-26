@@ -144,23 +144,28 @@ class TestLazyInit:
     def test_lazy_init_idempotent(self, tmp_path, monkeypatch):
         """Running lazy init twice does not error or overwrite config."""
         from kanibako.cli import _ensure_initialized
-        from kanibako.settings.config import KanibakoConfig, load_config, write_global_config
+        from kanibako.settings.config import load_config, write_global_config
+        from kanibako.settings.config_io import write_nested_key
 
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
         monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
         monkeypatch.setenv("HOME", str(tmp_path / "home"))
         (tmp_path / "home").mkdir(parents=True, exist_ok=True)
 
-        # Write custom config first
+        # Write custom config first.
+        # ⚑ A ``config.*`` value, not ``box.image``: since 2026-08-26 the Layer-1 file
+        # carries the bootstrap foundation and nothing else (Jei), so a settings key
+        # planted here would be inert and the test would pass without meaning it.
         config_file = tmp_path / "config" / "kanibako_config.yaml"
         config_file.parent.mkdir(parents=True, exist_ok=True)
-        write_global_config(config_file, KanibakoConfig(box_image="custom:v1"))
+        write_global_config(config_file)
+        write_nested_key(config_file, ("config",), "agents", "/custom/agents")
 
         _ensure_initialized()
 
         # Custom config should be preserved
         loaded = load_config(config_file)
-        assert loaded.box_image == "custom:v1"
+        assert loaded.config_paths["config.agents"] == "/custom/agents"
 
     def test_agent_exempt_from_lazy_init(self):
         """'agent' command does not trigger lazy init."""

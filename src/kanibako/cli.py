@@ -285,9 +285,12 @@ def _ensure_initialized() -> None:
     if cf.exists():
         return  # Already initialized
 
-    # First run: create config and data dirs
+    # First run: create the (EMPTY) config file and the data dirs.
+    # ⚑ The file carries ``config.*`` and nothing else, and first run has no non-default
+    # ``config.*`` to record — so it is created empty and its EXISTENCE is the whole
+    # signal this function returns early on above (Jei, 2026-08-26).
     config = KanibakoConfig()
-    write_global_config(cf, config)
+    write_global_config(cf)
 
     # Create data directories
     data_home = xdg("XDG_DATA_HOME", ".local/share")
@@ -407,15 +410,27 @@ def _setup_nudge(args: argparse.Namespace) -> None:
         return
 
     try:
+        from pathlib import Path
+
         from kanibako.settings.config import config_file_path, setup_compat_gate
-        from kanibako.settings.paths import xdg
+        from kanibako.settings.paths import load_system_config, xdg
 
         cf = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+        # The marker lives in the SYSTEM SETTINGS file (``@config.settings``) since
+        # 2026-08-26 — spec §2g declares it a Layer-2 ``system.*`` settings key, and
+        # Layer-1 holds the ``config.*`` bootstrap paths alone (spec §1).
+        # ⚑ ``load_system_config``, deliberately NOT ``load_std_paths``: the latter
+        # MATERIALIZES the store, and a non-blocking advisory must not create dirs.
+        # ⚑ A resolve failure here is caught by this function's own ``except`` and
+        # degrades to "no gate ran" — the documented never-break-a-command contract.
+        settings_path = load_system_config(
+            cf, data_home=xdg("XDG_DATA_HOME", ".local/share"), home=Path.home(),
+        )["config.settings"]
         # ⚑ The separate HARD template-staleness gate that used to run here is
         # RETIRED (R-38): packaged-template drift is now announced by the bands
         # above — a content change bumps ``SETUP_FCV`` (nudge), a structural one
         # ``SETUP_BCV`` (hard block).  ``setup_compat_gate`` is the ONE gate.
-        message = setup_compat_gate(cf)
+        message = setup_compat_gate(settings_path)
     except KanibakoError:
         # Deliberate ERROR band — propagate so the CLI surfaces rc1.
         raise

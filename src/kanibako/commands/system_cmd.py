@@ -144,13 +144,16 @@ def run_info(args: argparse.Namespace) -> int:
 
     if cf.exists():
         print(f"Config:    {cf}")
-        config = load_config(cf)
         from pathlib import Path
 
+        from kanibako.settings.config import bootstrap_config_paths
         from kanibako.settings.paths import resolve_system_paths
         data_home = xdg("XDG_DATA_HOME", ".local/share")
+        # ⚑ ``bootstrap_config_paths``, not ``load_config(cf).config_paths``: the raw
+        # capture also carries whatever ``system:`` table the file happens to hold, and
+        # the Layer-1 file may not supply settings (Jei, 2026-08-26).
         data_path = resolve_system_paths(
-            config.config_paths, data_home=data_home, home=Path.home(),
+            bootstrap_config_paths(cf), data_home=data_home, home=Path.home(),
         )["config.data"]
         print(f"Data:      {data_path}")
     else:

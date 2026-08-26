@@ -163,27 +163,28 @@ the noun's own file.
 Here it answers only the question it can actually answer: does this noun keep its settings in a
 separate file?
 
-### The four file rules — `_NOUN`, `_SCOPED`, `_CATEGORY`, `_BOOTSTRAP`
+### The three file rules — `_NOUN`, `_SCOPED`, `_CATEGORY`
 
 Which FILE rule a family follows:
 
 * `NOUN` — always the noun's settings file;
 * `SCOPED` — the key is scope-rooted, and its scope token is CHECKED against
   `_SETTINGS_SCOPE_TOKENS` on the way to the settings file;
-* `CATEGORY` — the bind-shaped category families, which follow the `SCOPED` rule;
-* `BOOTSTRAP` — the Layer-1 `kanibako_config.yaml` itself, with exactly ONE member:
-  `config_keys.SETUP_MARKER_KEY` (`system.setup_completed`).
+* `CATEGORY` — the bind-shaped category families, which follow the `SCOPED` rule.
 
-⚑ **WHY `_BOOTSTRAP` EXISTS (2026-08-23), AND WHY IT IS NOT A GENERAL "WRITE THE CONFIG FILE"
-RULE.** The setup marker is WRITTEN to that file by `setup` (`config_interface.write_system_value`)
-and READ back from it by the staleness gate (`config.read_setup_completed`), so any other
-destination — the system settings file most plausibly, alongside its `system.*` siblings — would
-have been accepted, persisted and INERT. Spec §2g declares the key `set: cli+file` and
-*"user-resettable"*, and the CLI refused both verbs until this rule landed. 🛑 `config.*` keys are
-NOT this rule: they LOCATE the files everything else lives in and are refused from every scope
-before any destination is asked for (spec §2a). Below the system scope the marker is an UPWARD
-write, refused by the scope-direction guard, which is why the arm may return the command's own file
-unconditionally.
+⚑⚑ **A FOURTH RULE, `_BOOTSTRAP`, EXISTED FROM 2026-08-23 TO 2026-08-26 AND IS RETIRED.** It named
+the Layer-1 `kanibako_config.yaml` itself and had exactly ONE member, `config_keys.SETUP_MARKER_KEY`
+(`system.setup_completed`). It existed only because the marker's STORAGE disagreed with its
+DECLARATION: spec §2g declares the key a Layer-2 `system.*` SETTINGS key marked `set: cli+file` and
+*"user-resettable"*, while the code kept it in the config file because that is where `setup` wrote
+it and where the staleness gate read it — so a settings-file route would have been accepted,
+persisted and INERT. Jei closed the delta from the other side, moving the STORAGE: the marker is
+now written to and read from `@config.settings`, so it routes through `_KEY_ROUTES` under `SCOPED`
+beside `system.agent`, and the rule was left with no members.
+
+🛑 **THERE IS NO "WRITE THE CONFIG FILE" RULE AND THERE MUST NOT BE ONE.** `config.*` keys LOCATE
+the files everything else lives in and are refused from every scope before any destination is asked
+for (spec §2a), so no key routes to Layer 1 at all.
 
 This is a per-FAMILY fact, not a per-caller option: the pref request, the non-agent secret pointer,
 the non-agent env var and the bare agent key are SETTINGS by construction and have no config-file

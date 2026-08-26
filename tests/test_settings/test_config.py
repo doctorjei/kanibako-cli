@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from kanibako.settings.config_io import dump_doc, load_doc
 from kanibako.settings.config import (
     BOX_META_FILE,
     KanibakoConfig,
@@ -27,32 +28,67 @@ class TestLoadConfig:
         assert cfg.box_image == "ghcr.io/doctorjei/kanibako-oci:latest"
         assert cfg.config_paths == {}
 
-    def test_round_trip(self, tmp_path):
-        path = tmp_path / "test.yaml"
-        cfg = KanibakoConfig(box_image="custom:latest")
-        write_global_config(path, cfg)
-        loaded = load_config(path)
-        assert loaded.box_image == "custom:latest"
-        # The written [config] table holds the Layer-1 DEFAULT expressions.
-        assert loaded.config_paths["config.data"] == "$XDG_DATA_HOME/kanibako"
-        assert loaded.config_paths["config.agents"] == "@config.data/agents"
+    def test_a_written_config_is_empty_and_loads_to_the_defaults(self, tmp_path):
+        """⚑ CHANGED 2026-08-26, and the assertions are INVERTED on purpose.
 
-    def test_emits_channelroot_not_stale_channels_leaf(self, tmp_path):
-        """write_global_config emits the RENAMED ``system.channelroot`` root leaf.
-
-        The 198e6ea rename made the channels-root key ``channelroot`` (a node is a
-        scalar XOR a subtree, so the old bare ``channels`` leaf collided with the
-        ``channels.*`` branch).  This writer's L268 comment promises lock-step with
-        ``SYSTEM_PATH_DEFAULTS``, which uses ``channelroot`` — so the emitted key
-        must be ``channelroot``, never the stale ``channels``.
+        This was ``test_round_trip``: it wrote a ``KanibakoConfig`` and read the box
+        scalar back, and it pinned the ``[config]`` table's Layer-1 DEFAULT expressions
+        (a verbatim copy of ``paths_defaults.CONFIG_PATH_DEFAULTS``). There is nothing
+        left to round-trip — ``write_global_config`` creates the file EMPTY and takes no
+        config object, because that file cannot carry settings (Jei) and its own
+        ``config.*`` foundation is already declared. What loads is the defaults.
         """
-        path = tmp_path / "g.yaml"
+        path = tmp_path / "test.yaml"
         write_global_config(path)
         loaded = load_config(path)
-        assert loaded.config_paths["system.channelroot"] == "@config.data/channels"
-        # The stale bare leaf must NOT be emitted (it would collide in the
-        # nested KeyStore with the system.channels.* branch).
-        assert "system.channels" not in loaded.config_paths
+        assert loaded.box_image == KanibakoConfig().box_image
+        assert loaded.config_paths == {}
+
+    def test_empty_file_resolves_identically_to_the_old_verbatim_defaults(
+        self, tmp_path,
+    ):
+        """The EMPTY file and the old three-table file resolve to the SAME paths.
+
+        This is what makes dropping the tables safe rather than merely tidy, and it
+        is the protection the deleted ``test_emits_channelroot_not_stale_channels_leaf``
+        really provided: ``resolve_system_paths`` takes ``CONFIG_PATH_DEFAULTS`` /
+        ``SYSTEM_PATH_DEFAULTS`` as its ``LevelView`` defaults and layers STORED values
+        over them, so a file that stored exactly those defaults never moved a path.
+        The renamed ``channelroot`` leaf (198e6ea) is pinned by the equality: a stale
+        bare ``channels`` leaf on either side would break it.
+        """
+        from kanibako.settings.paths import resolve_system_paths
+        from kanibako.settings.paths_defaults import (
+            CONFIG_PATH_DEFAULTS,
+            SYSTEM_PATH_DEFAULTS,
+        )
+
+        sparse = tmp_path / "empty.yaml"
+        write_global_config(sparse)
+
+        # The file as it was written until 2026-08-26: every default, verbatim.
+        verbose = tmp_path / "verbose.yaml"
+        old = {
+            "config": {
+                k.split(".", 1)[1]: v for k, v in CONFIG_PATH_DEFAULTS.items()
+            },
+            "system": {
+                k.split(".", 1)[1]: v
+                for k, v in SYSTEM_PATH_DEFAULTS.items()
+                if "." not in k.split(".", 1)[1]
+            },
+            "box": {
+                "image": KanibakoConfig().box_image,
+                "share_images": KanibakoConfig().box_share_images,
+            },
+        }
+        dump_doc(verbose, old)
+
+        kw = {"data_home": tmp_path / "data", "home": tmp_path / "home"}
+        assert resolve_system_paths(load_config(sparse).config_paths, **kw) == \
+            resolve_system_paths(load_config(verbose).config_paths, **kw)
+        # ...and the merged scalar tier agrees too: the box defaults were the third copy.
+        assert load_config(sparse).box_image == load_config(verbose).box_image
 
     def test_channelroot_round_trips_through_load_std_paths(self, tmp_home):
         """A config written by write_global_config resolves cleanly end-to-end:
@@ -89,6 +125,107 @@ class TestLoadConfig:
         assert cfg.config_paths == {"config.agents": "/x"}
 
 
+class TestLayer1FileCannotHaveSettings:
+    """``kanibako_config.yaml`` carries ``config.*`` and NOTHING else — on the READ
+    side as well as the write side.
+
+    ⚑⚑ Jei, 2026-08-26: *"kanibako_config.yaml <-- cannot have settings. Period."*
+    Stopping the WRITE is not enough while the code still reads settings back out of
+    that file: a hand-written table, or one left behind by an older build, would go on
+    silently overriding the declared defaults. Spec §1 gives Layer 1 the bootstrap
+    ``config.*`` paths alone; spec §2b/§2g put the box and system SETTINGS in the
+    cascade files.
+    """
+
+    def test_a_box_table_in_the_layer1_file_is_inert(self, tmp_path):
+        """The planted value loses to the DECLARED DEFAULT, not to nothing.
+
+        ⚑ MUTATION, not a refusal: ``box.image`` resolves either way, so the test has
+        to name WHICH value wins. The planted one must not.
+        """
+        cf = tmp_path / "kanibako_config.yaml"
+        cf.write_text('box:\n  image: "layer1:planted"\n  share_images: true\n')
+        merged = load_merged_config(cf)
+        assert merged.box_image == KanibakoConfig().box_image
+        assert merged.box_share_images == KanibakoConfig().box_share_images
+
+    def test_a_real_settings_tier_still_wins(self, tmp_path):
+        """🛑 The BOX tier still sets the value — only the Layer-1 read went away."""
+        cf = tmp_path / "kanibako_config.yaml"
+        cf.write_text('box:\n  image: "layer1:planted"\n')
+        box_file = tmp_path / BOX_META_FILE
+        box_file.write_text('box:\n  image: "from-the-box-tier"\n')
+        merged = load_merged_config(cf, box_file)
+        assert merged.box_image == "from-the-box-tier"
+
+    def test_config_paths_keeps_config_star_and_drops_system_star(self, tmp_path):
+        """The foundation still loads; a ``system:`` table cannot ride along."""
+        cf = tmp_path / "kanibako_config.yaml"
+        cf.write_text(
+            'config:\n  agents: "/x"\nsystem:\n  cache: "/planted"\n'
+        )
+        merged = load_merged_config(cf)
+        assert merged.config_paths == {"config.agents": "/x"}
+
+    def test_a_system_table_in_the_layer1_file_moves_no_path(self, tmp_path):
+        """``load_system_config`` reads the path tier's Layer-2 half from the SETTINGS
+        file alone — the mirror of the rule it already applied the other way.
+
+        Before 2026-08-26 a ``system:`` table hand-written into the bootstrap file
+        entered the resolve as a real (lowest) layer, which made that file a settings
+        source in the one place it most mattered: where every host path is decided.
+        """
+        from kanibako.settings.paths import load_system_config
+
+        home = tmp_path / "home"
+        data_home = tmp_path / "data"
+        config_home = tmp_path / "config"
+        config_home.mkdir(parents=True)
+        cf = config_home / "kanibako_config.yaml"
+        cf.write_text(
+            f'config:\n  data: "{data_home}/kanibako"\n'
+            'system:\n  cache: "/planted-from-layer1"\n'
+        )
+        resolved = load_system_config(cf, data_home=data_home, home=home)
+        assert str(resolved["system.cache"]) != "/planted-from-layer1"
+        # ...while the SETTINGS file's own row IS honoured — the route that replaced it.
+        ssp = resolved["config.settings"]
+        ssp.parent.mkdir(parents=True, exist_ok=True)
+        ssp.write_text('system:\n  cache: "/from-the-settings-file"\n')
+        resolved = load_system_config(cf, data_home=data_home, home=home)
+        assert str(resolved["system.cache"]) == "/from-the-settings-file"
+
+
+class TestBoxScalarDefaultsFloor:
+    """The declared-default floor — SEPARATED from the file read, not deleted."""
+
+    def test_it_is_the_declared_defaults(self):
+        from kanibako.settings.config import box_scalar_defaults_floor
+
+        floor = box_scalar_defaults_floor()
+        assert floor["box.image"] == KanibakoConfig().box_image
+        assert floor["box.share_images"] is False
+
+    def test_box_shell_is_suppressed_not_blank(self):
+        """``""`` is a SUPPRESSION — "absent ≡ no default" — so an unset
+        ``@box.shell`` refuses BY NAME instead of resolving to blank (spec §2b).
+
+        ⚑ Pinned against ``build_launch_snapshot``'s own rule (``if val == "":
+        continue``), which this floor has to agree with or the launch floor and the
+        set-time floor answer differently for the same key.
+        """
+        from kanibako.settings.config import box_scalar_defaults_floor
+
+        assert KanibakoConfig().box_shell == ""
+        assert "box.shell" not in box_scalar_defaults_floor()
+
+    def test_false_survives_because_it_is_a_value(self):
+        """⚑ ``False == ""`` is False — the suppression must not eat a real bool."""
+        from kanibako.settings.config import box_scalar_defaults_floor
+
+        assert "box.share_images" in box_scalar_defaults_floor()
+
+
 class TestSetupVersionConstant:
     """SETUP_BCV/SETUP_FCV are PEP-440 strings obeying BCV <= FCV <= CurrentVer."""
 
@@ -108,46 +245,109 @@ class TestSetupVersionConstant:
         assert bcv <= fcv <= cur
 
 
+class TestWriteGlobalConfigCreatesAnEmptyFile:
+    """``write_global_config`` creates the Layer-1 file EMPTY, always (Jei, 2026-08-26).
+
+    First: *"these should be built-in defaults; the global settings file should be an
+    empty file at create time. unless non-defaults are somehow are added by the user."*
+    Then, hardened: *"kanibako_config.yaml <-- cannot have settings. Period."* — which
+    settles the "unless" for this writer, since the only non-defaults it ever wrote were
+    the box SETTINGS.
+    """
+
+    def test_create_time_file_is_empty_and_exists(self, tmp_path):
+        """Empty, and PRESENT — existence is what ``cli._ensure_initialized`` tests on."""
+        cf = tmp_path / "kanibako_config.yaml"
+        write_global_config(cf)
+        assert cf.exists(), "the file must still be CREATED; an absent one re-runs init"
+        assert cf.read_text() == "", cf.read_text()
+        assert load_doc(cf) == {}
+
+    def test_zero_bytes_not_an_empty_mapping(self, tmp_path):
+        """🛑 NOT ``{}``. This file is the hand-edit surface the ``config.*`` refusal
+        sends users to, and a leading ``{}`` makes an appended ``config:`` block a
+        YAML error."""
+        import yaml
+
+        cf = tmp_path / "kanibako_config.yaml"
+        write_global_config(cf)
+        assert cf.read_bytes() == b""
+        # The thing the ``{}`` form would break: append and re-parse.
+        cf.write_text(cf.read_text() + 'config:\n  agents: "/x"\n')
+        assert yaml.safe_load(cf.read_text()) == {"config": {"agents": "/x"}}
+        assert load_config(cf).config_paths == {"config.agents": "/x"}
+
+    def test_it_takes_no_config_object(self):
+        """⚑ THE RULING IS IN THE SIGNATURE. A ``KanibakoConfig`` is settings, so there
+        is nothing it could legitimately contribute — and a parameter that is accepted
+        and ignored is a silent no-op for every caller that passes one."""
+        import inspect
+
+        params = list(inspect.signature(write_global_config).parameters)
+        assert params == ["path"], params
+
+    def test_no_table_of_any_kind_is_emitted(self, tmp_path):
+        """The ``config:``, ``system:`` and ``box:`` tables are all GONE.
+
+        ⚑ P7 rides here too: ``box.agent_name`` is RETIRED, and a BOX key had no
+        business in the CONFIG file even while it existed (migration M-4).
+        """
+        cf = tmp_path / "kanibako_config.yaml"
+        write_global_config(cf)
+        assert load_doc(cf) == {}
+
+
 class TestReadSetupCompleted:
-    """read_setup_completed: raw [system] setup_completed reader (W1 gate)."""
+    """read_setup_completed: the raw ``system.setup_completed`` reader (W1 gate).
+
+    ⚑ ITS FILE IS THE SYSTEM SETTINGS FILE since 2026-08-26 (Jei: "there is no reason
+    whatsoever that ``system.setup_completed`` should go in the config. It should not.
+    It should go in the global settings file") — which is what spec §2g always declared.
+    The variable is named ``ssp`` here for that reason: passing ``kanibako_config.yaml``
+    is now the wrong file, and nothing in the shipped code does it.
+    """
 
     def test_reads_stored_string(self, tmp_path):
         from kanibako.settings.config_interface import write_system_value
 
-        cf = tmp_path / "kanibako_config.yaml"
-        write_system_value(cf, "setup_completed", "1.6.0")
-        assert read_setup_completed(cf) == "1.6.0"
+        ssp = tmp_path / "settings.yaml"
+        write_system_value(ssp, "setup_completed", "1.6.0")
+        assert read_setup_completed(ssp) == "1.6.0"
 
     def test_absent_key_returns_none(self, tmp_path):
-        cf = tmp_path / "kanibako_config.yaml"
-        write_global_config(cf)  # has [system] but no setup_completed
-        assert read_setup_completed(cf) is None
+        ssp = tmp_path / "settings.yaml"
+        ssp.write_text("system:\n  agent: claude\n")  # a [system] table, no marker
+        assert read_setup_completed(ssp) is None
 
     def test_missing_file_returns_none(self, tmp_path):
+        """A FRESH install has no settings file at all — "setup never run", not "done"."""
         assert read_setup_completed(tmp_path / "nope.yaml") is None
         assert read_setup_completed(None) is None
 
     def test_empty_value_returns_none(self, tmp_path):
+        ssp = tmp_path / "settings.yaml"
+        ssp.write_text("system:\n  setup_completed: ''\n")
+        assert read_setup_completed(ssp) is None
+
+    def test_a_marker_in_the_old_config_file_is_not_read(self, tmp_path):
+        """ONE location, no fallback read — the old Layer-1 slot is not consulted.
+
+        A dual-location reader would be the deprecation window this release refuses;
+        the file it names is the file it reads, and that is the whole contract.
+        """
+        from kanibako.settings.config_interface import write_system_value
+
         cf = tmp_path / "kanibako_config.yaml"
-        cf.write_text("system:\n  setup_completed: ''\n")
-        assert read_setup_completed(cf) is None
+        ssp = tmp_path / "settings.yaml"
+        write_system_value(cf, "setup_completed", "1.8.0")
+        assert read_setup_completed(ssp) is None
 
-    def test_init_writes_no_setup_completed_or_default_agent(self, tmp_path):
-        """Fresh init leaves both ABSENT — no default_agent, no marker, no 'none'."""
-        from kanibako.settings.config_io import load_doc
-
+    def test_init_writes_no_setup_completed_anywhere(self, tmp_path):
+        """Fresh init leaves the marker ABSENT — no marker, no 'none'."""
         cf = tmp_path / "kanibako_config.yaml"
         write_global_config(cf)
-        data = load_doc(cf)
-        # No setup marker on a fresh config.
-        assert "setup_completed" not in data.get("system", {})
+        assert load_doc(cf) == {}
         assert read_setup_completed(cf) is None
-        # No agent key written ANYWHERE (P7): ``box.agent_name`` is RETIRED and
-        # ``write_global_config`` no longer emits it — a BOX key had no business in
-        # the CONFIG file, and nothing ever read it back from here (migration M-4
-        # records the stale copies on existing hosts).
-        assert "agent" not in data
-        assert "agent_name" not in data["box"]
 
 
 class TestRetiredTemplatesStamp:
@@ -540,11 +740,16 @@ class TestScalarOverlayPrecedence:
     """Presence-based scalar/bool overlay across the FILE layers.
 
     The old ``/etc/kanibako/kanibako.yaml`` machine third-file was DELETED in the
-    two-layer path reshape (block #3a): ``load_merged_config`` no longer consults
-    any ``machine_config_path``.  The least-specific FILE source is now the user
-    global; the layers are user-global < workset < project < CLI, over the
-    built-in defaults.  These tests exercise the SAME overlay semantics through
-    the surviving layers.
+    two-layer path reshape (block #3a): ``load_merged_config`` no longer consults any
+    ``machine_config_path``.
+
+    ⚑⚑ AND THE ``global_path`` LAYER WENT ON 2026-08-26 — Jei: *"kanibako_config.yaml
+    <-- cannot have settings. Period."*  It used to be the least-specific FILE source
+    here, so these cases planted their LOWER value in it.  They plant it in the
+    WORKSET tier now, which is a real settings file; the layers are built-in defaults
+    < workset < box < CLI, and the overlay SEMANTICS under test — presence beats
+    absence, ``null``/empty resets to the built-in default, ``""`` is a real value —
+    are unchanged and are what these cases were always about.
     """
 
     def test_no_machine_config_path_attribute(self):
@@ -552,23 +757,23 @@ class TestScalarOverlayPrecedence:
         import kanibako.settings.config as config_mod
         assert not hasattr(config_mod, "machine_config_path")
 
-    def test_user_global_beats_builtin_defaults(self, tmp_path):
+    def test_a_settings_tier_beats_builtin_defaults(self, tmp_path):
         global_path = tmp_path / "global.yaml"
-        global_path.write_text("box:\n  image: user-image:v2\n")
-        merged = load_merged_config(global_path)
+        workset_path = tmp_path / "ws-config.yaml"
+        workset_path.write_text("box:\n  image: user-image:v2\n")
+        merged = load_merged_config(global_path, workset_path=workset_path)
         assert merged.box_image == "user-image:v2"
 
-    def test_full_precedence_user_workset_project(self, tmp_path):
+    def test_full_precedence_workset_project(self, tmp_path):
         global_path = tmp_path / "global.yaml"
-        global_path.write_text("box:\n  image: user:2\n  shell: bash\n")
         workset_path = tmp_path / "ws-config.yaml"
-        workset_path.write_text("box:\n  image: ws:3\n")
+        workset_path.write_text("box:\n  image: ws:3\n  shell: bash\n")
         project_path = tmp_path / BOX_META_FILE
         project_path.write_text("box:\n  image: proj:4\n")
         merged = load_merged_config(
             global_path, project_path, workset_path=workset_path
         )
-        # project wins for image; shell only set at user-global so it survives.
+        # project wins for image; shell only set at the workset tier so it survives.
         # (⮕ P7: this used ``agent_name``, a key that no longer exists — the agent
         # SELECTION is the §2h request ``pref.system.agent``, resolved off the
         # snapshot, not by this flat scalar loader.)
@@ -582,45 +787,57 @@ class TestScalarOverlayPrecedence:
 
     def test_higher_layer_overrides_lower(self, tmp_path):
         global_path = tmp_path / "global.yaml"
-        global_path.write_text("box:\n  image: img:global\n")
-        merged = load_merged_config(global_path)
-        assert merged.box_image == "img:global"
-        # A workset layer overrides the user-global value (presence-based).
         workset_path = tmp_path / "ws-config.yaml"
         workset_path.write_text("box:\n  image: img:workset\n")
-        merged2 = load_merged_config(global_path, workset_path=workset_path)
-        assert merged2.box_image == "img:workset"
+        merged = load_merged_config(global_path, workset_path=workset_path)
+        assert merged.box_image == "img:workset"
+        # A box layer overrides the workset value (presence-based).
+        project_path = tmp_path / BOX_META_FILE
+        project_path.write_text("box:\n  image: img:box\n")
+        merged2 = load_merged_config(
+            global_path, project_path, workset_path=workset_path
+        )
+        assert merged2.box_image == "img:box"
 
     def test_set_to_default_value_sticks(self, tmp_path):
         """A layer setting a field to the built-in default wins over a lower
         layer's non-default (presence beats the old ``!= default`` guard)."""
         default_img = "ghcr.io/doctorjei/kanibako-oci:latest"
         global_path = tmp_path / "global.yaml"
-        global_path.write_text("box:\n  image: img:custom\n")
+        workset_path = tmp_path / "ws-config.yaml"
+        workset_path.write_text("box:\n  image: img:custom\n")
         project_path = tmp_path / BOX_META_FILE
         # Explicitly set the built-in default — must win.
         project_path.write_text(f"box:\n  image: {default_img}\n")
-        merged = load_merged_config(global_path, project_path)
+        merged = load_merged_config(
+            global_path, project_path, workset_path=workset_path
+        )
         assert merged.box_image == default_img
 
     def test_null_resets_to_default(self, tmp_path):
         """A YAML ``null`` in a more-specific layer resets to the built-in
         default, discarding a lower layer's non-default value."""
         global_path = tmp_path / "global.yaml"
-        global_path.write_text("box:\n  image: img:custom\n")
+        workset_path = tmp_path / "ws-config.yaml"
+        workset_path.write_text("box:\n  image: img:custom\n")
         project_path = tmp_path / BOX_META_FILE
         project_path.write_text("box:\n  image: null\n")
-        merged = load_merged_config(global_path, project_path)
+        merged = load_merged_config(
+            global_path, project_path, workset_path=workset_path
+        )
         assert merged.box_image == "ghcr.io/doctorjei/kanibako-oci:latest"
 
     def test_empty_value_resets_to_default(self, tmp_path):
         """An empty ``foo:`` (parses to None) also resets to the built-in
         default, same as an explicit ``null``."""
         global_path = tmp_path / "global.yaml"
-        global_path.write_text("box:\n  image: img:custom\n")
+        workset_path = tmp_path / "ws-config.yaml"
+        workset_path.write_text("box:\n  image: img:custom\n")
         project_path = tmp_path / BOX_META_FILE
         project_path.write_text("box:\n  image:\n")
-        merged = load_merged_config(global_path, project_path)
+        merged = load_merged_config(
+            global_path, project_path, workset_path=workset_path
+        )
         assert merged.box_image == "ghcr.io/doctorjei/kanibako-oci:latest"
 
     def test_empty_string_is_a_real_value_not_unset(self, tmp_path):
@@ -631,23 +848,28 @@ class TestScalarOverlayPrecedence:
         (⮕ P7: was written against ``box_agent_name``, retired with spec §2b; the
         SHAPE under test is the presence-based scalar overlay, not that key.)"""
         global_path = tmp_path / "global.yaml"
-        global_path.write_text('box:\n  shell: foo\n')
+        workset_path = tmp_path / "ws-config.yaml"
+        workset_path.write_text('box:\n  shell: foo\n')
         project_path = tmp_path / BOX_META_FILE
         # Quoted empty string is a real value, not null.
         project_path.write_text('box:\n  shell: ""\n')
-        merged = load_merged_config(global_path, project_path)
+        merged = load_merged_config(
+            global_path, project_path, workset_path=workset_path
+        )
         assert merged.box_shell == ""
         # Sanity: a non-empty lower value is what we are overriding away from.
-        merged_global_only = load_merged_config(global_path)
-        assert merged_global_only.box_shell == "foo"
+        merged_ws_only = load_merged_config(global_path, workset_path=workset_path)
+        assert merged_ws_only.box_shell == "foo"
 
     def test_higher_layer_overrides_after_null(self, tmp_path):
         """A null reset is not terminal: a higher layer (CLI override) can set a
         concrete value afterward and it wins."""
         global_path = tmp_path / "global.yaml"
-        global_path.write_text("box:\n  image: null\n")
+        workset_path = tmp_path / "ws-config.yaml"
+        workset_path.write_text("box:\n  image: null\n")
         merged = load_merged_config(
-            global_path, cli_overrides={"box_image": "img:cli"}
+            global_path, workset_path=workset_path,
+            cli_overrides={"box_image": "img:cli"},
         )
         assert merged.box_image == "img:cli"
 
@@ -920,22 +1142,40 @@ class TestMergedConfigKeyspaceResolve:
     through the KEYSPACE — one resolve behind every consumer, agent-lessly.
     """
 
-    def _global(self, tmp_path, monkeypatch, image="global-img:1"):
+    def _global(self, tmp_path, monkeypatch):
+        """An EMPTY Layer-1 file + the XDG env the resolve reads.
+
+        ⚑ It used to write ``box.image=global-img:1`` in here, because the config
+        file's ``[box]`` table was the resolve's FLOOR. Jei retired that on
+        2026-08-26 ("kanibako_config.yaml <-- cannot have settings. Period."), so the
+        helper plants nothing and the cases below name their own tier.
+        """
         from kanibako.settings.config import write_global_config
 
         monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
         (tmp_path / "config").mkdir(exist_ok=True)
         gp = tmp_path / "config" / "kanibako_config.yaml"
-        write_global_config(gp, KanibakoConfig(box_image=image))
+        write_global_config(gp)
         return gp
 
-    def test_stored_system_default_is_mapped_not_stranded(self, tmp_path, monkeypatch):
-        """Consumer-map risk 1: the ``kanibako_config.yaml [box]`` table (written
-        at init on EVERY install) enters the resolve as the floor."""
+    def test_floor_is_the_declared_default_not_the_layer1_file(
+        self, tmp_path, monkeypatch,
+    ):
+        """The resolve's floor is the DECLARED DEFAULT — and a ``[box]`` table in the
+        Layer-1 file does not displace it.
+
+        ⚑ THE REPLACEMENT for ``test_stored_system_default_is_mapped_not_stranded``,
+        and it asserts the OPPOSITE. That case pinned "consumer-map risk 1": the
+        ``kanibako_config.yaml [box]`` table was written at init on EVERY install and
+        the settings cascade did not read it, so its values would be STRANDED unless
+        mapped in as the floor. Nothing settings-shaped is written there any more, so
+        there is nothing to strand — and a table left by hand must not resolve.
+        """
         gp = self._global(tmp_path, monkeypatch)
+        gp.write_text("box:\n  image: layer1:planted\n")
         merged = load_merged_config(gp, None)
-        assert merged.box_image == "global-img:1"
+        assert merged.box_image == KanibakoConfig().box_image
 
     def test_box_tier_beats_workset_beats_global(self, tmp_path, monkeypatch):
         gp = self._global(tmp_path, monkeypatch)
@@ -984,7 +1224,7 @@ class TestMergedConfigKeyspaceResolve:
         zero agents still resolves the box scalars."""
         gp = self._global(tmp_path, monkeypatch)
         merged = load_merged_config(gp, None)
-        assert merged.box_image == "global-img:1"
+        assert merged.box_image == KanibakoConfig().box_image
 
 
 class TestMalformedSettingsFileIsNamed:
@@ -1036,7 +1276,7 @@ class TestMalformedSettingsFileIsNamed:
         monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
         (tmp_path / "config").mkdir(exist_ok=True)
         gp = tmp_path / "config" / "kanibako_config.yaml"
-        write_global_config(gp, KanibakoConfig())
+        write_global_config(gp)
         ssp = tmp_path / "data" / "kanibako" / "global" / "settings.yaml"
         ssp.parent.mkdir(parents=True)
         ssp.write_text(self._CORRUPT)
@@ -1061,9 +1301,7 @@ class TestMalformedSettingsFileIsNamed:
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
         monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
         (tmp_path / "config").mkdir(exist_ok=True)
-        write_global_config(
-            tmp_path / "config" / "kanibako_config.yaml", KanibakoConfig(),
-        )
+        write_global_config(tmp_path / "config" / "kanibako_config.yaml")
         ssp = tmp_path / "data" / "kanibako" / "global" / "settings.yaml"
         ssp.parent.mkdir(parents=True)
         ssp.write_text(self._CORRUPT)

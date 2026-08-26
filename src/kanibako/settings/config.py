@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field, fields
 from pathlib import Path
 
+from kanibako._atomic import atomic_write_text
 from kanibako.settings.config_io import dump_doc, load_doc
 
 
@@ -85,6 +86,25 @@ def config_file_path(config_home: Path) -> Path:
     return config_home / "kanibako_config.yaml"
 
 
+def bootstrap_config_paths(path: Path) -> dict[str, str]:
+    """The Layer-1 file's ``config.*`` foundation — the ONLY thing that file may supply.
+
+    ⚑⚑ THE ONE RULE, SPELLED ONCE.  ``kanibako_config.yaml`` cannot have settings (Jei,
+    2026-08-26: *"kanibako_config.yaml <-- cannot have settings. Period."*), and spec §1
+    gives Layer 1 the ``config.*`` bootstrap paths alone.  :func:`load_config` stays a
+    GENERAL document reader — it reads the SETTINGS file too, where a ``system.*`` set-value
+    is exactly what is wanted — so the filter belongs at the Layer-1 READ SITES, and there
+    are four of them.  Spelling it four times is how one of them ends up without it, which
+    is precisely what happened to ``paths.load_system_config`` while ``resolve_data_leaf``
+    had the filter all along.
+    """
+    return {
+        key: val
+        for key, val in load_config(path).config_paths.items()
+        if key.startswith("config.")
+    }
+
+
 def config_base_path() -> Path:
     """The machine-wide CONFIG base file — the bootstrap-PATH set's least-specific layer."""
     return Path("/etc/kanibako/config_base.yaml")
@@ -145,9 +165,39 @@ _BOX_SCALAR_FIELDS: dict[str, str] = {
 }
 
 
+def box_scalar_defaults_floor() -> dict[str, object]:
+    """The box scalars' DECLARED-DEFAULT floor — the ONE recipe every floor builder uses.
+
+    ⚑⚑ DECLARED DEFAULTS, NEVER FILE VALUES.  ``kanibako_config.yaml`` cannot have
+    settings (Jei, 2026-08-26: *"kanibako_config.yaml <-- cannot have settings.
+    Period."*), so a floor built by reading that file is the violation; a floor built
+    from the declared defaults is what spec §1/§2b sanction.  Those two were ONE
+    expression until now — ``getattr(load_config(cf), field)`` is the file's value when
+    the file speaks and the default when it does not — so they are SEPARATED here rather
+    than deleted.  🛑 Do not delete the floor itself: ``@box.image`` resolves through it,
+    and without it a stored ``@box.image`` dangles at launch AND at set time.
+
+    Two consumers, deliberately one recipe: :func:`_resolve_box_scalars` (the launch-side
+    merged resolve) and ``config_interface._category_set_lookups`` (the set-time E3 probe).
+    """
+    defaults = KanibakoConfig()
+    floor: dict[str, object] = {}
+    for dotted, field_name in _BOX_SCALAR_FIELDS.items():
+        value = getattr(defaults, field_name)
+        # ⚑ ``build_launch_snapshot``'s OWN rule, applied here so the two floors agree:
+        # a ``""`` is a SUPPRESSION — "absent ≡ no default" (verified in that function:
+        # ``if val == "": continue``).  It is what keeps ``box.shell`` out (spec §2b:
+        # ``box.shell | <None>``), so a genuinely unset ``@box.shell`` still refuses BY
+        # NAME rather than resolving to blank.  ⚑ ``False`` is a VALUE and survives —
+        # ``False == ""`` is False.
+        if value == "":
+            continue
+        floor[dotted] = value
+    return floor
+
+
 def _resolve_box_scalars(
     global_path: Path,
-    floor_values: "dict[str, object]",
     *,
     workset_path: Path | None,
     box_path: Path | None,
@@ -171,8 +221,11 @@ def _resolve_box_scalars(
         home=Path.home(),
     )["config.settings"]
 
-    # The kanibako_config [box] tier as the FLOOR (risk 1); ``""`` drops out.
-    floor = dict(floor_values)
+    # ⚑ THE DECLARED-DEFAULT FLOOR, not the Layer-1 file's ``box:`` table.  That table
+    # WAS this floor ("risk 1": values the settings cascade does not read would be
+    # STRANDED) until 2026-08-26, when Jei ruled the file cannot carry settings at all.
+    # With nothing settings-shaped stored there, there is nothing to strand.
+    floor = box_scalar_defaults_floor()
 
     overrides = cli_overrides or {}
     image_val = overrides.get("box_image")
@@ -227,14 +280,15 @@ def load_merged_config(
             else:
                 setattr(cfg, k, v)
 
-    # The user global config is the least-specific FILE source.
-    cfg = load_config(global_path)
-    # ⚑ The FLOOR is captured BEFORE the overlays, so a workset/box value cannot
-    # masquerade as the system-stored default.
-    floor_values: dict[str, object] = {
-        dotted: getattr(cfg, field_name)
-        for dotted, field_name in _BOX_SCALAR_FIELDS.items()
-    }
+    # ⚑⚑ THE LAYER-1 FILE IS NOT A SETTINGS SOURCE (Jei, 2026-08-26: "kanibako_config.yaml
+    # <-- cannot have settings. Period.").  It WAS the least-specific FILE source here, and
+    # its ``box:`` table overrode the declared defaults; now the scalars START at those
+    # defaults and the first thing that can move them is the WORKSET tier.  ⚑ Its
+    # ``config.*`` foundation still loads — that is the file's whole job (spec §1) — and it
+    # is FILTERED, so a ``system:`` table hand-written into the bootstrap file cannot ride
+    # along in ``config_paths`` either.
+    cfg = KanibakoConfig()
+    cfg.config_paths = bootstrap_config_paths(global_path)
     if workset_path and workset_path.exists():
         _overlay_scalars(cfg, workset_path)
     if project_path and project_path.exists():
@@ -247,7 +301,7 @@ def load_merged_config(
 
     # KEYSPACE resolve (B6): a resolved value wins; ABSENT keeps the flat value.
     resolved = _resolve_box_scalars(
-        global_path, floor_values,
+        global_path,
         workset_path=workset_path, box_path=project_path,
         cli_overrides=cli_overrides,
     )
@@ -263,39 +317,36 @@ def load_merged_config(
     return cfg
 
 
-def write_global_config(path: Path, cfg: KanibakoConfig | None = None) -> None:
-    """Write a YAML config file with the structured layout; ``None`` writes defaults."""
-    if cfg is None:
-        cfg = KanibakoConfig()
-    # Bootstrap PATH tier at the DEFAULT expressions, in the ``[config]``
-    # (Layer-1, spec §1) and ``[system]`` (Layer-2, spec §2g) tables.
-    # ⚑ These literals DUPLICATE paths.CONFIG_PATH_DEFAULTS /
-    # SYSTEM_PATH_DEFAULTS — every edit here needs the matching edit there.
-    data: dict = {
-        "config": {
-            "data": "$XDG_DATA_HOME/kanibako",
-            "settings": "@config.data/global/settings.yaml",
-            "agents": "@config.data/agents",
-            "primary_workset": "@config.data/primary_workset",
-            "registry": "@config.data/global/registry.yaml",
-            "journal": "@config.data/global/journal.yaml",
-        },
-        "system": {
-            "backup": "@config.data/backup",
-            "channelroot": "@config.data/channels",
-            # M-11: ``base_template`` → ``template``, plus the ``canon`` root.
-            "template": "@config.data/global/template",
-            "canon": "@config.data/global/canon",
-            "cache": "$XDG_CACHE_HOME/kanibako",
-            "runtime": "$XDG_RUNTIME_DIR/kanibako",
-        },
-        # ⚑ NO ``agent_name`` row (P7): ``box.agent_name`` is RETIRED (§2b).
-        "box": {
-            "image": cfg.box_image,
-            "share_images": cfg.box_share_images,
-        },
-    }
-    dump_doc(path, data)
+def write_global_config(path: Path) -> None:
+    """Create the bootstrap config file EMPTY — it may carry ``config.*`` and nothing else."""
+    # ⚑⚑ THE FILE CANNOT HAVE SETTINGS (Jei, 2026-08-26: "kanibako_config.yaml <-- cannot
+    # have settings. Period.").  It used to be created carrying THREE tables:
+    #
+    #   ``config:``  — a VERBATIM copy of ``paths_defaults.CONFIG_PATH_DEFAULTS``
+    #   ``system:``  — a verbatim copy of six of the eleven ``SYSTEM_PATH_DEFAULTS`` rows
+    #   ``box:``     — the box scalars at their own ``KanibakoConfig`` field defaults
+    #
+    # The first was Layer-1's own content written at its own default — a fourth carrier of
+    # a value ``paths.resolve_config_paths`` already holds as the ``LevelView`` defaults it
+    # layers stored values over, so writing it moved nothing and made every default edit
+    # need a matching edit here.  The other two were SETTINGS (spec §2g / §2b) in the
+    # Layer-1 file, which is the thing the ruling forbids outright.
+    #
+    # ⚑ THERE IS NO ``cfg`` PARAMETER ANY MORE, and that is the ruling in the signature: a
+    # ``KanibakoConfig`` is settings, so there is nothing it could legitimately contribute
+    # here.  Keeping it and ignoring it would be a silent no-op for every caller that
+    # passed one.  A non-default ``box.image`` belongs in a SETTINGS file — which is where
+    # ``kanibako system set box.image=…`` has always written it.
+    #
+    # ⚑ THE FILE IS STILL CREATED, EMPTY.  ``cli._ensure_initialized`` uses its EXISTENCE
+    # as the "already initialized" test, so an absent file re-runs first-run init —
+    # packaged-template install and all — on every command forever.
+    #
+    # ⚑ ZERO BYTES, not ``{}``: this file is the hand-edit surface the ``config.*`` refusal
+    # sends users to (``config_keys._config_key_refusal``), and a leading ``{}`` makes an
+    # appended ``config:`` block a YAML error.  Written through the SAME atomic writer
+    # ``dump_doc`` delegates to, so the create is atomic either way.
+    atomic_write_text(path, "")
 
 
 def write_project_config(path: Path, image: str) -> None:
@@ -506,15 +557,25 @@ def read_system_agent(system_path: Path | None) -> str | None:
     return value or None
 
 
-def read_setup_completed(config_path: Path | None) -> str | None:
-    """The ``system.setup_completed`` marker from the CONFIG file; ``None`` means "setup never run".
+def read_setup_completed(settings_path: Path | None) -> str | None:
+    """The ``system.setup_completed`` marker from the SYSTEM SETTINGS file; ``None`` means "setup never run".
 
-    ⚑ A RAW reader is required: ``load_config`` DOES capture the leaf into
-    ``config_paths``, but nothing iterates that set, so it reaches no consumer.
+    ⚑⚑ *settings_path* is ``@config.settings`` = ``<data>/global/settings.yaml``, NOT
+    ``kanibako_config.yaml`` — the SAME file :func:`read_system_agent` reads and the
+    launch cascade's system tier assembles from.  It moved there on 2026-08-26 (Jei:
+    "there is no reason whatsoever that ``system.setup_completed`` should go in the
+    config. It should not. It should go in the global settings file"), which is also
+    what spec §2g has always declared: the marker is a Layer-2 ``system.*`` SETTINGS
+    key, and Layer-1 holds the ``config.*`` bootstrap paths ALONE (spec §1).
+    ⚑ ONE LOCATION, no fallback read: a FRESH install has no settings file at all and
+    must read as "setup never run", which is the absent band's NON-BLOCKING nudge
+    (:func:`setup_compat_gate`) — never "already set up", and never a block.
+
+    ⚑ A RAW reader is still required — the pre-cascade gate runs before any snapshot.
     """
-    if config_path is None or not config_path.exists():
+    if settings_path is None or not settings_path.exists():
         return None
-    data = load_doc(config_path)
+    data = load_doc(settings_path)
     system = data.get("system")
     if not isinstance(system, dict):
         return None
@@ -526,16 +587,18 @@ def read_setup_completed(config_path: Path | None) -> str | None:
 # RETIRED (R-38, M-23); the protection folds into ``setup_compat_gate`` below.
 
 
-def setup_compat_gate(config_path: Path | None) -> str | None:
+def setup_compat_gate(settings_path: Path | None) -> str | None:
     """Run the 5-band setup/config compatibility gate; a returned string is a NON-BLOCKING advisory.
 
     ⚑ Every comparison is by BASE version, so a dev/rc build of the same base
     as the released marker reads as ``==``, not "from the future".
+    ⚑ *settings_path* is the SYSTEM SETTINGS file, the marker's home since 2026-08-26
+    (:func:`read_setup_completed`) — this gate knows exactly one file, as it always did.
     """
     from kanibako import SETUP_BCV, SETUP_FCV, __version__
     from kanibako.errors import ConfigError
 
-    marker = read_setup_completed(config_path)
+    marker = read_setup_completed(settings_path)
     if marker is None:
         return "kanibako isn't set up yet. Run 'kanibako setup' to get started."
 
@@ -565,8 +628,8 @@ def setup_compat_gate(config_path: Path | None) -> str | None:
         try:
             from kanibako.settings.config_interface import write_system_value
 
-            if config_path is not None:
-                write_system_value(config_path, "setup_completed", __version__)
+            if settings_path is not None:
+                write_system_value(settings_path, "setup_completed", __version__)
         except Exception:  # pragma: no cover - defensive; bump is best-effort
             pass
         return None

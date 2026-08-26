@@ -38,19 +38,25 @@ answer `unknown config key` now, which is what spec §0 requires of an undeclare
 reintroduce it for `config.*`: those have `_config_key_refusal`, which spec §2a requires NOT to
 mention `setup` — *"`setup` … is NOT how a value is set"*.
 
-**Why the marker's verbs route to the BOOTSTRAP config file, not the settings file.** Spec §2g
-declares `system.setup_completed` a `system`-tier SETTINGS key and calls it *"PERSISTS,
-user-resettable"*; the registry marks it `set: cli+file`. The CODE stores it in the `system:` table
-of `kanibako_config.yaml`, because `setup` writes it there (`setup_cmd._mark_setup_complete` →
-`config_interface.write_system_value`) and the 5-band staleness gate reads it from there
-(`config.read_setup_completed`). A settings-file route would therefore have been INERT — accepted,
-persisted, and invisible to every consumer — so the verbs follow the STORAGE instead
-(`config_dest._BOOTSTRAP`, the one member of that file rule). set, get and reset now name one table.
+**Why the marker's verbs route to the SYSTEM SETTINGS file.** Spec §2g declares
+`system.setup_completed` a `system`-tier SETTINGS key and calls it *"PERSISTS, user-resettable"*;
+the registry marks it `set: cli+file`. It is stored, written and read as one: `setup` writes it to
+`@config.settings` (`setup_cmd._write_setup_marker`) and the 5-band staleness gate reads it from
+there (`config.read_setup_completed`), so it routes through `_KEY_ROUTES` beside `system.agent`.
 
-⚑ **THE REMAINING DELTA IS STORAGE, AND IT IS A MIGRATION.** Moving the marker to
-`@config.settings` would make the code match §2g, and it would make every existing install read
-"setup has never run" and re-run setup. That is a decision with a user-visible cost, not a routing
-change.
+⚑⚑ **THE STORAGE DELTA IS CLOSED (2026-08-26), AND IT IS WHY THE BOOTSTRAP FILE RULE IS GONE.**
+Until then the code kept the marker in the `system:` table of `kanibako_config.yaml`, and the verbs
+followed that STORAGE through a bespoke destination rule (`config_dest._BOOTSTRAP`, whose only
+member it was) — a settings-file route would have been INERT, accepted and invisible to every
+consumer. Jei closed it from the other side by moving the storage: *"there is no reason whatsoever
+that `system.setup_completed` should go in the config. It should not. It should go in the global
+settings file."* The invariant never moved — set, get, reset and the shipped reader name ONE file;
+which file changed.
+
+⚑ **THE MOVE COST NOTHING TO MIGRATE.** A marker in the old location simply reads absent, which is
+the gate's NON-BLOCKING nudge band: the advisory goes to stderr and the command proceeds unchanged
+(measured). There was no deployed installed base to carry — a documentation-only migration, in
+keeping with 1.8.0's clean break.
 
 ⚑ **THE REFUSAL'S OWN CURE WAS THE ARGUMENT AGAINST IT.** It told the user to hand-edit the config
 file's `system:` table — the same table, with the same absence of validation, that the CLI now
@@ -395,8 +401,9 @@ file — spec §0; the form `assemble_levels` mirrors). ``system`` is INCLUDED (
 ``system.*`` SETTINGS key (the auth chain `system.auth.share_allowed`) lands in the system SETTINGS
 file (``@config.settings``) — the file the launch cascade's system tier reads — NOT the Layer-1
 `kanibako_config.yaml`. ⚑ Since 2026-08-23 the ``system.*`` PATH tier reaches this routing too, and
-lands in the same file. ``system.setup_completed`` is the one key routed elsewhere — to the
-BOOTSTRAP config file, where its shipped reader looks (`SETUP_MARKER_KEY`).
+lands in the same file. ⚑ Since 2026-08-26 ``system.setup_completed`` does too — it was the one key
+routed elsewhere (to the Layer-1 config file, where its shipped reader used to look), and its
+storage moved to `@config.settings` with the rest. **No key routes to `kanibako_config.yaml`.**
 
 **`_dot_to_flat` / `_FLAT_TO_CANONICAL` / `_route_key` ARE DELETED, and the absence is the fix.**
 They let the write verbs accept the flat underscore form of a routed key (``box_image`` for
@@ -921,24 +928,28 @@ The branch-by-branch reasons, in dispatch order:
 ```is_config_file_only_key(key: str) -> bool```
 Keys whose value is READ from the bootstrap config file rather than a settings file.
 
-Two members and no more: the Layer-1 ``[config]`` foundation keys (``config.*``, spec §1) and
-``system.setup_completed``.
+ONE family and no more: the Layer-1 ``[config]`` foundation keys (``config.*``, spec §1).
+
+⚑⚑ **THAT IS THE DEFINITION, NOT A COINCIDENCE (2026-08-26).** ``system.setup_completed`` was the
+last non-``config.*`` member; its STORAGE moved to ``@config.settings`` (spec §2g), so what is left
+is exactly the set of keys whose job is to LOCATE the files everything else lives in. Jei:
+*"kanibako_config.yaml <-- cannot have settings. Period."*
 
 ⚑⚑ **IT IS A READ ROUTE NOW, NOT ALSO A REFUSAL (2026-08-23).** It used to double as *"and
 therefore the write verbs refuse it"*, which is how `system.setup_completed` — declared
 `set: cli+file`, *"PERSISTS, user-resettable"* (spec §2g) — ended up unsettable AND unresettable.
-The write verbs route the marker to that same config-file table via `SETUP_MARKER_KEY`; `config.*`
-is refused earlier by `_config_key_refusal`, its own ruled message. What is left here is one
-question: does a READ come from the config file.
+`config.*` is refused earlier by `_config_key_refusal`, its own ruled message. What is left here is
+one question: does a READ come from the config file.
 
 ⚑⚑ **THE ``SYSTEM_PATH_DEFAULTS`` FAMILY LEFT THIS PREDICATE ON 2026-08-23, AND THE NAME CHANGED
 WITH IT** (it was `is_system_path_key`, which after the narrowing would have answered False for
 every system path key — a name that lies). All eleven are ordinary Layer-2 settings keys (spec
 §2g), the manifest marks each ``set: cli+file``, and §2a names ``system.template`` in the
 CLI-settable list; they route through `_KEY_ROUTES` to the system SETTINGS file now, like their
-``workset.*`` twins. ⚑ `resolve_system_paths` still materializes them from
-``kanibako_config.yaml``'s ``[system]`` table as the FLOOR — that table is the least-specific layer
-the cascade covers, not the store. ⚑⚑ **THE STORAGE HALF IS CLOSED (2026-08-23).**
+``workset.*`` twins. ⚑⚑ **AND SINCE 2026-08-26 `kanibako_config.yaml`'s ``[system]`` table IS NOT A
+LAYER AT ALL**: `load_system_config` filters its config-file reads to ``config.*``, so the FLOOR is
+`paths_defaults.SYSTEM_PATH_DEFAULTS` alone and a ``system:`` table hand-written into the bootstrap
+file moves no path. ⚑⚑ **THE STORAGE HALF IS CLOSED (2026-08-23).**
 `load_system_config` layers the SYSTEM SETTINGS file's ``system:`` table over that floor, filtered to
 `SYSTEM_PATH_DEFAULTS`, so a repoint now reaches every `StandardPaths` field as well as the cascade.
 It did not before: `config set system.canon=/tmp/mycanon` moved the cascade value and left
@@ -953,10 +964,10 @@ env) is NOT this family — `resolve_system_paths` drops unknown ``[system]`` en
 key to the config file was a write-only no-op; the launch reads them from the system SETTINGS file
 (``@config.settings``). Those keys now fall through to their settings-tier routing.
 
-``system.setup_completed`` IS kept in this family: its shipped reader (`config.read_setup_completed`)
-reads the ``[system]`` table of ``kanibako_config.yaml`` (where `setup` writes it), so the config-file
-routing/advice is TRUE for it. (Spec §2g lists it as a settings key — flagged as a spec-vs-code
-divergence; relocating the reader is out of scope here.)
+``system.setup_completed`` IS NOT in this family any more (2026-08-26). It was, for exactly as long
+as its shipped reader read the ``[system]`` table of ``kanibako_config.yaml``; that reader now reads
+``@config.settings``, which is what spec §2g always declared it to be, so the divergence flagged
+here is closed rather than carried.
 
 The ``config.`` branch is still consulted on the READ/show path. The set/reset paths now short-circuit
 ``config.*`` earlier with the ruled refusal (block B2), so that branch no longer reaches
