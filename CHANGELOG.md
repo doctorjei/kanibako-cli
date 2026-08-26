@@ -153,6 +153,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- **The launch-time notice about stale `env` files.** v1.8.0 stopped reading `<data>/env`, the
+  workset's `env` and the box's `env`, and every launch checked all three and printed a stderr block
+  naming any that still had content, with the cure for its tier. The reader it warned about was
+  already deleted, so this was a migration notice and nothing more — and with no installed base to
+  migrate, the file it looks for cannot exist. Launching no longer stats those three paths, and
+  nothing is printed. ⚑ **If you are carrying a pre-1.8.0 `env` file, you now get no reminder:**
+  [MIGRATION.md](MIGRATION.md) §2.19 lists the three locations and what to move where. Exit codes
+  are unchanged — the notice was informational.
+
 - **The pre-1.7 `kanibako/` → `boxes/` workset rename, and the `Migrated workset:` line it printed.**
   Loading a registered workset renamed an old `kanibako/` subdirectory to `boxes/` on disk and said so
   on stderr. It was the last piece of kanibako that mutated your files on a plain read, it ran on

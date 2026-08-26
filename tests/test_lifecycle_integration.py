@@ -218,10 +218,9 @@ class TestKanibakoShell:
     ):
         """``<scope>.env.<VAR>`` reaches the box; the retired env FILE does not.
 
-        The full three-part RQ-1 contract (Jei's re-ruling, 2026-08-02), proved
-        end to end on a real container.  It landed across two commits: (a) and (b)
-        with B9 ``77c4cf4``, which retired the file and re-homed the seed; (c) with
-        ``ade2570``, which added the notice naming the retired files.
+        The RQ-1 contract (Jei's re-ruling, 2026-08-02), proved end to end on a
+        real container by B9 ``77c4cf4``, which retired the file and re-homed the
+        seed.
 
         (a) **the replacement works** — a var set through
             ``kanibako system set system.env.<VAR>`` is visible in the box.
@@ -230,10 +229,7 @@ class TestKanibakoShell:
         (b) **the retired path is genuinely dead** — a var written into the
             legacy ``<data>/env`` file does NOT arrive.  This is the half that
             matters: it is the only end-to-end proof in the tree that the old
-            launch input is gone, and a unit test cannot give it;
-        (c) **the retirement is announced, not silent** —
-            ``start._warn_legacy_env_files`` names the stale file on stderr and
-            gives the cure for its own tier.
+            launch input is gone, and a unit test cannot give it.
 
         The two variables are deliberately given DIFFERENT names so that a pass
         on (a) can never be mistaken for a pass on (b).
@@ -272,13 +268,6 @@ class TestKanibakoShell:
             f"the retired env FILE still reaches the box: {result.stdout!r}"
         )
         assert "should-not-arrive" not in result.stdout
-
-        # (c) announced on stderr, naming the file and the system-tier cure
-        assert "NO LONGER READ" in result.stderr, (
-            f"stale legacy env file was not announced: {result.stderr!r}"
-        )
-        assert str(legacy_env_file) in result.stderr
-        assert "kanibako system set system.env.<VAR>=<value>" in result.stderr
 
 
 # =========================================================================
