@@ -209,6 +209,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Duplicating a standalone box no longer buries a copy of the source — carrying the source's
+  identity — inside the new box.** The copy took the standalone source's *root* as its source
+  directory, so the destination's `box_data/` came out holding the source's `workspace`, `vault`,
+  `canon`, a nested `box_data/`, and the source's `workset.yaml`. That last file mattered: a
+  directory counts as a standalone box when it holds both a `box_data/` directory and a
+  `workset.yaml` file, and the stray one satisfied both. Running any kanibako command from inside the
+  duplicate's `box_data/workspace/` would therefore have detected `box_data/` itself as a box and
+  imported it — **registering a second box under the source's kuid.** The duplicate now copies the
+  source's box metadata directory, the same guard the convert and move paths already apply, so the
+  destination holds its own metadata and nothing else. Duplicates made before this fix have a stray
+  `box_data/box_data/` and `box_data/workset.yaml` you can delete.
+
 - **A directory named `kanibako` or `.kanibako` in your workspace is no longer silently dropped when
   a box is copied.** Converting or absorbing a box excluded those two names from the copy so that a
   pre-1.7 marker directory at a standalone root would not travel. The exclusion matched by

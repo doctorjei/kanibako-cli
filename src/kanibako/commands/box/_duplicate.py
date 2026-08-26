@@ -224,16 +224,20 @@ def _duplicate_to_standalone(src_proj, new_path, std, force):
 
     A duplicate is a NEW box, so this mirrors ``create --standalone`` /
     ``convert --standalone`` rather than copying the source verbatim: the
-    source's box metadata (agent/session state, minus the lock + home + the
+    source's box METADATA DIR (agent/session state, minus the lock + home + the
     source ``box.yaml``) is copied into ``box_data/``, its home into
-    ``box_data/home``, and its ``workset.yaml`` to the destination ROOT (drift
-    I — settings live at ``<root>/workset.yaml``, NOT in ``box_data/``), then
-    that root ``workset.yaml`` is REWRITTEN with ``mode=standalone``, a freshly
-    generated ``<kuid>_<leaf>`` identity (never the source's name), and the
-    standalone path table — and the box is registered in ``registry.standalone``.
-    Without this the dest would keep the source's ``mode`` (e.g. ``primary``) and
-    name, so standalone detection (``_is_standalone_meta_dir`` requires
-    ``mode == "standalone"``) would never find it → an orphaned box (BUG#3).
+    ``box_data/home``, and its carried box-scope settings into the destination's
+    BOX tier ``box_data/box.yaml`` (M-8).  ``establish_standalone`` then WRITES
+    the destination ROOT ``workset.yaml`` — drift I: the workset tier lives at
+    ``<root>/workset.yaml``, NOT in ``box_data/`` — with a freshly generated
+    ``<kuid>_<leaf>`` identity, never the source's, and registers the box in
+    ``registry.standalone``.
+    ⚑ The source's own ``workset.yaml`` does NOT travel: it is the source's
+    WORKSET tier and carries the source's ``workset.kuid``.  The destination's
+    root file is MINTED, not copied — without that fresh mint the destination
+    would answer to the source's identity, and detection
+    (``_is_standalone_meta_dir``: ``box_data/`` plus a root ``workset.yaml``,
+    presence-only since D4) would resolve the two boxes to one (BUG#3).
     """
     from kanibako.errors import ProjectError
     from kanibako.settings.paths import establish_standalone
@@ -250,7 +254,8 @@ def _duplicate_to_standalone(src_proj, new_path, std, force):
 
     # Copy the source box metadata into box_data/ — preserving misc session
     # files — but NOT the lock, the home (copied separately below), or the
-    # source box.yaml (which is relocated to the ROOT, drift I).
+    # source box.yaml (the destination's box tier is written from
+    # ``carried_box_settings`` below, identity-stripped).
     if force and dst_metadata.is_dir() and not remove_box_tree(dst_metadata):
         # The copytree below uses dirs_exist_ok=True, so a silently-failed removal
         # would MERGE the new box into the old one rather than replace it.
@@ -258,8 +263,16 @@ def _duplicate_to_standalone(src_proj, new_path, std, force):
             f"could not remove the existing box data at {dst_metadata}.\n"
             f"Try: podman unshare rm -rf {dst_metadata}"
         )
+    # ⚑ Copy from the box METADATA DIR, never ``metadata_path``: for a standalone
+    # source those differ (root vs ``box_data/``), and the root would drag
+    # workspace+vault into the box dir AND land the source's WORKSET-tier file at
+    # the dest's BOX tier (M-8) — the same guard ``_lifecycle.py`` applies when it
+    # re-roots a box.  The stray nested root is not inert: ``<dst>/box_data`` would
+    # then carry BOTH ``box_data/`` and a ``workset.yaml``, i.e. the standalone
+    # MARKER (``box_resolve.standalone_settings_present``), under the SOURCE's kuid.
+    src_meta_dir = box_metadata_dir(src_proj.mode, src_proj.metadata_path)
     shutil.copytree(
-        src_proj.metadata_path, dst_metadata,
+        src_meta_dir, dst_metadata,
         ignore=shutil.ignore_patterns(".kanibako.lock", "home", BOX_META_FILE),
         dirs_exist_ok=True,
     )
@@ -290,11 +303,11 @@ def _duplicate_to_standalone(src_proj, new_path, std, force):
         if not dst_box_settings.exists():
             dump_doc(dst_box_settings, carried)
 
-    # Establish the canonical standalone shape (mode=standalone, a FRESH
+    # Establish the canonical standalone shape (the root marker file, a FRESH
     # <kuid>_<leaf> identity even from a standalone source, the standalone
-    # path table) + register it, via the shared core.  The root workset.yaml
-    # was just copied above; establish overwrites its meta in place, preserving
-    # any other sections copied from the source.
+    # path table) + register it, via the shared core.  ⚑ It WRITES the destination
+    # ROOT workset.yaml — nothing above copies one there, and nothing should: the
+    # source's root file is the SOURCE's workset tier.
     establish_standalone(
         std, new_path,
         enable_vault=src_proj.enable_vault,
