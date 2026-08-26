@@ -228,7 +228,33 @@ inside boxes. In order of likely impact:
     at rc 0; `system diagnose` and `rig diagnose` print the refusal instead of `cannot check`
     (§2.49).
 
-24. Smaller items: standalone boxes' `box get` got truthful (§2.9); a box suppressed to
+24. **An agent or persona name containing a `.` now hard-errors, and that node is stuck**
+    (§2.52). `kimi.k3+claude` was legal in v1.7.2. A node name is a keyspace segment and `.` is
+    the key-path separator, so it is refused now — by *every* command that parses the ref,
+    including any that might have fixed it. The rename is by hand and in order: the node's store
+    directory under `<data>/agents/`, then `pref.system.agent` in each box's file and
+    `system.agent` in the system one. Only persona names are affected; no plugin harness name has
+    a dot.
+
+25. **A `box:` table you once wrote into the SYSTEM settings file now steers every box** (§2.53).
+    `kanibako system set box.image=…`, `box.share_images=…` and `box.shell=…` were accepted and
+    stored in v1.7.2 and then read by nothing — the box scalars resolved on a path that never
+    consulted that file. v1.8.0 resolves all three through the cascade, where the system file is a
+    real level. Read `<data>/global/settings.yaml` before your first launch and delete anything
+    under `box:` you did not mean to keep.
+
+26. **Boxes created before v1.8.0 will not follow a changed default image; boxes created after it
+    will** (§2.54). `create` used to store the resolved image into the new box's own settings file
+    whether or not you passed `--image`; it now stores only what you pass explicitly. Nothing in
+    the CLI labels the two halves — the presence of `image:` in a box's own `box.yaml` is the only
+    tell. `--share-images` moved the other way and now *does* persist at create, and passing
+    either flag to an already-existing box now prints a notice instead of doing nothing quietly.
+
+27. **If `config.data` does not end in `kanibako`, three state stores moved with it** (§2.55).
+    Saved `kanibako code --remote` tunnel contexts are the part you notice — re-run the command
+    once per context. Default installs are unaffected.
+
+28. Smaller items: standalone boxes' `box get` got truthful (§2.9); a box suppressed to
     plain-shell keeps stale credential files in its home (§2.10); several never-released or
     expected-empty renames (§2.11); two `--null` CLI bugs fixed (§2.14); a customized helper
     entrypoint script moves to `~/canon/notebook/scripts/helper-init.sh` (§2.44).
@@ -2010,12 +2036,32 @@ of them could never take effect, and you were not told which.
 **This cannot happen on a default install.** Nothing kanibako ships declares an `env` entry at two
 scopes.
 
-**⚑ But kanibako does ship ONE `env` declaration, and it is `COLORTERM`.** It is declared at **box**
-scope (§2.42), so a `COLORTERM` key of your own at any *other* scope — `system.env.COLORTERM`,
-`workset.env.COLORTERM`, `agent.<node>.env.COLORTERM` — is the second declaration this section
-refuses, even though only one of the two keys is in a file you wrote. The cure is the usual one and
-it is a re-spelling: put your value on `box.env.COLORTERM`, which is the *same* key kanibako
-declares and therefore the ordinary cascade rather than a contest.
+**⚑ But kanibako ships FIVE `env` declarations of its own, and your key can contest any of them.**
+Each is an ordinary key at exactly one scope, so a key of yours naming the same variable at a
+*different* scope is the second declaration this section refuses — even though only one of the two
+keys is in a file you wrote:
+
+| kanibako's key | scope | see |
+|---|---|---|
+| `box.env.COLORTERM` | **box** | §2.42 |
+| `system.env.KANIBAKO_NAME` | **system** | §2.36 |
+| `system.env.KANIBAKO_AGENT` | **system** | §2.36 |
+| `system.env.KANIBAKO_DIRECTIVE_SEED` | **system** | §2.36 |
+| `system.env.KANIBAKO_AGENT_MARKERS_DIR` | **system** | §2.36 |
+
+**The cure is always the same, and it is a re-spelling, not a move:** write your value on
+*kanibako's own key* — `box.env.COLORTERM`, `system.env.KANIBAKO_NAME`, and so on — in whichever
+settings file is nearest the box. That is the *same* key, so it is the ordinary cascade and the
+nearer file wins; a `COLORTERM` at system scope, or a `KANIBAKO_NAME` at box scope, is the contest.
+The two sections above spell out what each of these variables is for and what changing it costs.
+
+⚑ **A plugin's own variables are agent-scope keys and count too**, and they are not in the table
+above because which ones exist depends on which plugins you have installed. Two kinds: the ones a
+plugin ships as declared `agent.<node>.env.<VAR>` defaults (claude's
+`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` and `DISABLE_AUTOUPDATER`), and the *realized* ones
+kanibako computes from a setting and installs at the same scope (`ANTHROPIC_BASE_URL`,
+`GOOSE_MODEL`, `GOOSE_MODE`, `GOOSE_PROVIDER`, `OPENAI_HOST`). Naming either at some *other* scope
+is this refusal. §2.34 covers the first kind and §2.40 the second, each with its own cure.
 
 **What you must do.** Give the variable **one owner**: keep the key at the scope the value belongs to
 and delete the other one. `kanibako box show --effective` resolves the same settings and reports the
@@ -3252,6 +3298,182 @@ resolves is unaffected.
 
 ---
 
+### 2.52 An agent or persona name may no longer contain a dot
+
+**Read this if any agent node of yours is spelled with a `.`** — in practice that means a persona,
+because a harness name comes from the plugin (`claude`, `codex`, `goose`) and none of those has
+one. A ref like `kimi.k3+claude` was legal in v1.7.2 and is refused now.
+
+**What changed.** The characters an agent-ref segment may contain went from `-`, `.` and `_` to
+`-` and `_`. A node name is a **keyspace segment**, and `.` is the settings key-path separator, so
+`agent.kimi.k3℘claude.model` could not be told apart from a genuine nested key — and the same
+charset admitted `..`, a segment that resolved as a path component pointing above the agents
+directory. (Unicode letters were admitted in the same change, so a persona named in any script
+works.)
+
+**What you see.** Every command that parses an agent ref stops, whether the ref comes from a flag,
+from `pref.system.agent` in a settings file, or from `system.agent`:
+
+```
+Error: invalid agent ref 'kimi.k3+claude': persona segment 'kimi.k3' must be non-empty & contain
+only letters & digits (any language), '-', & '_' (no separator); '.' is reserved as settings
+key-path separator and cannot appear in an agent name
+```
+
+A bare (non-composite) name gets the sibling message, `invalid agent name '…'`, with the same
+trailing note about the dot. **The node is stuck:** the refusal happens while the ref is being
+parsed, before anything can act on it, so there is no command that will operate on the old name —
+including one that might have renamed it.
+
+**What you must do — a hand rename, in this order.** There is no `kanibako agent rename`; the node
+name appears in a directory name and in settings values, and you move both yourself.
+
+1. **Stop any box running that agent.** A running box carries the old name in `KANIBAKO_AGENT`.
+2. **Choose a name with no dot** — `kimi-k3` for `kimi.k3`; the hyphen is still legal.
+3. **Rename the node's store directory.** List `<data>/agents/` first and rename whichever entry
+   carries the old persona name, **keeping the separator character that entry already uses**:
+
+   ```bash
+   ls <data>/agents/
+   mv '<data>/agents/<the old entry>'  '<data>/agents/<same name, dot replaced>'
+   ```
+
+   A persona node's directory joins persona and harness with `+`, the same character you type in a
+   ref. Some stores carry an internal separator there instead, so read the name rather than assuming
+   it; the rename only replaces the dot in the persona part and leaves the join alone. Everything
+   inside — `agent.yaml`, `common/`, `caches/` — moves with it and needs no edit.
+4. **Rewrite the selection key wherever it names the old ref** — **by hand, in the file.** In each
+   box's `box.yaml` (`pref: {system: {agent: kimi.k3+claude}}`) and, if it names it, `system.agent`
+   in `<data>/global/settings.yaml`. Edit the YAML directly rather than reaching for
+   `kanibako box set`: the value sitting in the file is the ref that no longer parses, so the file
+   is the surface you can be sure of.
+5. **Rewrite any `agent.<node>.*` tables** keyed by the old node in any settings file, to the new
+   node spelling.
+6. **Change it everywhere else you have typed it** — `--agent` in scripts, and the persona's own
+   entry in your persona store if you use one. The ref you type must match the store entry.
+
+⚑ **Step 3 before step 4, and neither alone.** A renamed directory with an un-rewritten
+`pref.system.agent` selects an agent whose store is gone; a rewritten key with an un-renamed
+directory launches a box on an empty store, which looks like the agent losing its configuration.
+
+---
+
+### 2.53 A `box:` table in the SYSTEM settings file now takes effect
+
+**Read this if you ever ran `kanibako system set box.image=…` (or `box.share_images=…`, or
+`box.shell=…`), or hand-wrote a `box:` table into `<data>/global/settings.yaml`.** If you never
+did, this section cannot fire.
+
+**What changed.** Those writes were accepted and stored — but the three box scalars were resolved
+by a separate flat path that started at `~/.config/kanibako_config.yaml` and overlaid only the
+workset and box files. **The system settings file was not in that chain**, so the value you stored
+sat in the file and steered nothing. v1.8.0 resolves all three through the keyspace cascade, in
+which the system settings file is a real level between `base` and `agent.default`. The three keys:
+
+| key | what a stale value now does |
+|---|---|
+| `box.image` | selects the rig for every box that does not set its own |
+| `box.share_images` | turns the host image store's read-only share on or off for those boxes |
+| `box.shell` | selects the in-box shell for those boxes |
+
+**How a user notices.** A `system set box.image=…` you ran months ago, experimenting, starts
+choosing the rig for your whole install on the first launch after upgrading. Nothing announces it,
+because from v1.8.0's point of view the value was always meant to be read.
+
+**What you must do.** Open `<data>/global/settings.yaml` and look for a top-level `box:` table.
+Anything under it is now live. **Read the file** — it is the authority on what the system tier
+holds, and `kanibako system show` prints that tier's stored overrides as a CLI view of the same
+thing. Then remove what you did not mean to keep, with `kanibako system reset box.<key>` or by
+deleting the lines. To confirm what a box ends up with afterwards, `kanibako box info <box>` prints
+the resolved `Image:` row.
+
+⚑ **This is a value taking effect, not a refusal.** A `box:` table in the system file is legal and
+always was — v1.8.0 is the release that started honouring it.
+
+---
+
+### 2.54 `create` no longer stores the image it picked, and `--share-images` now does
+
+**Read this if you have boxes made before v1.8.0 and expect a change to the default rig to reach
+them.** It will not reach the old ones, and it will reach the new ones.
+
+**What changed.** v1.7.2's `box create` wrote an image into the new box's own settings file
+**whether or not you passed one** — it stored `--image` if you gave it, and the resolved default if
+you did not. v1.8.0 persists only what you passed *explicitly*: `-i` / `--image` / `--rig`, and —
+this is new — `--share-images`.
+
+**The consequence is a fleet that splits in two, with nothing in the CLI to label the halves:**
+
+- a box created on **v1.7.2** carries a **pinned** `box.image` in its own settings file and will
+  keep using that image no matter what you change the default to;
+- a box created on **v1.8.0** with no `--image` is **floating**: it has no `box.image` of its own
+  and follows the cascade, so a changed default reaches it on the next launch.
+
+`kanibako box info <box>` prints the resolved `Image:` row for both, identically. **The way to tell
+them apart is the box's own file:** open its `box.yaml` and look for an `image:` entry under `box:`.
+Present means pinned; absent means floating.
+
+**What you must do — decide which you want, per box.**
+
+- **To unpin an old box** so it follows the default: delete the `image:` line from the `box:` table
+  in that box's `box.yaml`.
+- **To pin a new box** so it never moves: `kanibako box set <box> box.image=<rig>`.
+- **To set the default for everything floating:** `kanibako system set box.image=<rig>` — which,
+  since §2.53, now actually works.
+
+**⚑ `--share-images` at create now persists, where it used to last one launch.** If you have a
+create script that passes `--share-images` habitually, it is writing `box.share_images: true` into
+each new box's settings file from now on rather than applying for that launch only.
+
+**⚑ Passing either flag to an EXISTING box now says so out loud.** It never persisted for an
+existing box and still does not, but the silence is gone — the launch prints a notice naming the
+flag and the cure:
+
+```
+Notice: --image X applies to THIS launch only — box 'myproj' already exists, so its stored
+image is unchanged.
+  To persist it: kanibako box set /path/to/myproj box.image=X
+```
+
+Scripts that start existing boxes with `--image` or `--share-images` will see this on **every**
+launch. It goes to stderr, and the behaviour it describes is unchanged from v1.7.2 — only the
+announcement is new. (Flags refused outright against a *running* box are a different change; see
+§2.17.)
+
+---
+
+### 2.55 State files follow a non-default `config.data` leaf
+
+**Read this ONLY if `config.data` points somewhere whose last path segment is not `kanibako`** —
+for example `config.data: ~/.local/share/kani-test`. On a default install nothing moves and this
+section is a no-op.
+
+**What changed.** Three state stores were hardcoded under `$XDG_STATE_HOME/kanibako/`. They now sit
+under `$XDG_STATE_HOME/<the last segment of config.data>/`, so a second store no longer writes its
+state into the first store's directory:
+
+| what | old path | new path |
+|---|---|---|
+| held-over baseline warnings | `$XDG_STATE_HOME/kanibako/launch-issues.<box>` | `$XDG_STATE_HOME/<leaf>/launch-issues.<box>` |
+| held-over bind-shadow warnings | `$XDG_STATE_HOME/kanibako/launch-shadows.<box>` | `$XDG_STATE_HOME/<leaf>/launch-shadows.<box>` |
+| `code --remote` tunnel contexts and dispatch log | `$XDG_STATE_HOME/kanibako/vscode-remote/` | `$XDG_STATE_HOME/<leaf>/vscode-remote/` |
+
+**How a user notices.** Two ways, both quiet:
+
+- **A warning that was waiting to be printed never appears.** The first two files hold a warning
+  raised during a launch so it can be shown *after* the session closes. One written before the
+  upgrade is orphaned at the old path — it is not lost data, just a message you will not see. The
+  next launch writes a fresh one at the new path.
+- **A saved `kanibako code --remote` context stops resolving.** The context store moved, so a
+  context you established before the upgrade is invisible: by name it does not exist, and the
+  generated dispatch wrapper still on disk points at the old directory.
+
+**What you must do.** Re-run `kanibako code --remote` for each context you use — that regenerates
+the wrapper against the new directory and re-establishes the tunnel. The old
+`$XDG_STATE_HOME/kanibako/vscode-remote/` tree can then be deleted; nothing reads it.
+
+---
+
 ## 3. For plugin authors
 
 ⚑ **THREE PERSONA SURFACES ON `Target` CHANGED SHAPE in 1.8.0 — a plugin built against 1.7.x needs
@@ -3454,6 +3676,30 @@ gone in this release**:
 aliases at the four old paths that warned and kept working; **they do not ship.** v1.8.0 is a
 deliberate clean break, and an alias that keeps working *is* a deprecation window. Importing a
 legacy path now raises `ModuleNotFoundError: No module named 'kanibako.agent_defaults'`.
+
+**⚑ That table is the four modules the FIRST-PARTY plugins import — it is not the whole move.**
+Package-ification moved most of the flat `src/kanibako/*.py` tree, so a plugin of your own that
+imports any other core module by its flat path (`kanibako.paths`, `kanibako.config`,
+`kanibako.settings_launch`, …) breaks the same way and is not listed above. The rule, rather than
+the list: **a module that now lives in one of the new subpackages — `kanibako.settings`,
+`kanibako.launch`, `kanibako.runtime`, `kanibako.vscode`, `kanibako.channels`, `kanibako.project`,
+`kanibako.formats`, `kanibako.proxy` — no longer answers at `kanibako.<name>`.** Import it from its
+package. (`kanibako.commands` and `kanibako.targets` were already packages in v1.7.2 and did not
+move.) The plugin-facing surface named at the top of this section did not move either, so an
+import you break here is one that reached past it.
+
+**Two things went away outright — there is no new path to switch to:**
+
+- **`kanibako.deprecation` is DELETED.** It held a deprecation registry, a `@deprecated` decorator
+  and a CI gate. Its registry has been empty since the pre-public clean break, so it had nothing to
+  track; a plugin that imports it gets `ModuleNotFoundError: No module named
+  'kanibako.deprecation'` and fails to load by name. **Delete the import** — there is no
+  replacement, and under v1.8.0's clean-break policy there is nothing for one to do.
+- **`StandardPaths.share_ro` / `.share_rw` no longer exist as attributes.** In v1.7.2 they were
+  properties that raised `NotImplementedError` naming their replacement; now they raise a plain
+  `AttributeError`, so the cure is no longer in the traceback. It is unchanged: the vault
+  (`@workset.vault_ro` / `@workset.vault_rw`) and the `common` category — the latter being what
+  §2.1's `shared` → `common` rename produced.
 
 #### This bites USERS, not just plugin authors
 
