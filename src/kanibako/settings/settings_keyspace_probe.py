@@ -180,8 +180,45 @@ def _discover() -> _Plugins:
 
 
 def plugin_agent_leaves() -> frozenset[str]:
-  """PLUGIN-declared agent keys, to union over the core §2d set (spec §0)."""
+  """PLUGIN-declared agent keys, to union over the core §2d set (spec §0).
+
+  ⚑ EAGER ON PURPOSE, and it must stay that way: this call IS the priming point.
+  ``tests/_keystore_census`` invokes it at ``pytest_configure``, before any test
+  patches discovery, and that one call fixes both halves of :func:`_discover`'s memo.
+  A lazy version of THIS function would prime nothing. :data:`PLUGIN_LEAVES` is the
+  deferred view, and it exists beside this rather than in place of it.
+  """
   return _discover().leaves
+
+
+class _PluginLeaves(Collection[str]):
+  """:func:`plugin_agent_leaves` as a set that DISCOVERS ON THE FIRST QUESTION ASKED.
+
+  ⚑⚑ WHAT THIS BUYS IS THE WHOLE POINT. ``declared_keyspace_oracle`` is called for
+  the FIRST path a resolve judges, whatever its shape, and passing
+  ``plugin_agent_leaves()`` there evaluated discovery as a keyword ARGUMENT — before
+  ``key_class`` had even looked at the head. Discovery imports and instantiates every
+  installed plugin, and those modules parse YAML in their module bodies; it was
+  measured at the great majority of an entire settings resolve, scaling with the
+  plugin count on a fixed floor, on a plugin set that is designed to grow. Handing
+  ``key_class`` this instead lets its core-first ordering decide whether the question
+  is ever asked (see ``settings_keyspace._EffectiveLeaves``).
+
+  ⚑ NOT A SECOND MEMO. Every access goes through :func:`_discover`, so a test that
+  replaces :data:`_PLUGINS` is seen here exactly as it is by every other reader.
+  """
+
+  def __contains__(self, item: object) -> bool:
+    return item in _discover().leaves
+
+  def __iter__(self) -> Iterator[str]:
+    return iter(_discover().leaves)
+
+  def __len__(self) -> int:
+    return len(_discover().leaves)
+
+
+PLUGIN_LEAVES: Final[_PluginLeaves] = _PluginLeaves()
 
 
 class _KnownLeafAgents(Container[str]):
@@ -216,11 +253,20 @@ def declared_keyspace_oracle(path: str) -> KeyJudgement:
   keyspace; :data:`KNOWN_LEAF_AGENTS` then concedes that agent's LEAVES for the same
   reason, since the vocabulary a leaf is judged against is the very plugin that is
   missing.
+
+  ⚑⚑ NOT ONE OF THESE THREE ARGUMENTS MAY EVALUATE DISCOVERY. This function runs on
+  the first path of EVERY settings resolve — ``settings_launch`` reads it through
+  ``keyspace_verdict`` with the probe disarmed — so an argument that discovers IS
+  discovery on the production path of every kanibako command, whatever the path's
+  shape. :data:`PLUGIN_LEAVES` and :data:`KNOWN_LEAF_AGENTS` are therefore things to
+  ASK, and ``key_class`` asks them only for an agent leaf its own core §2d set cannot
+  answer. 🛑 Writing ``plugin_agent_leaves()`` here again restores the whole cost, and
+  it changes no verdict, so nothing but the deferral's own tests would notice.
   """
   return key_class(
     path,
     valid_agents=ANY_AGENT,
-    agent_leaves=plugin_agent_leaves(),
+    agent_leaves=PLUGIN_LEAVES,
     agents_with_known_leaves=KNOWN_LEAF_AGENTS,
   )
 
