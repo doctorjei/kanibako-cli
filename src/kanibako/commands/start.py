@@ -1920,11 +1920,6 @@ def _assemble_launch_env(
     # outside every refusal, which is the arrangement three folds removed.
     # The docker `.env` files that used to layer in here are RETIRED
     # (RQ-1, 2026-08-02) — see ``_build_config_env``.
-    #
-    # ⚑ Which means a user who set values through the OLD spelling has a file
-    # that silently stopped being delivered.  Announce it HERE, at the seam that
-    # used to read it, so the loss is named rather than discovered.
-    _warn_legacy_env_files(std, proj)
     container_env = _build_config_env(env_slots)
     # SECRET category (spec §2a secret_path, 2026-07-06): the resolved
     # ``secret_path.<VAR>`` winners (any scope — agent/box/workset/system) are
@@ -2186,105 +2181,6 @@ def _persist_or_announce_flags(
         f"unchanged.\n{cure}",
         file=sys.stderr,
     )
-
-
-def _legacy_env_file_has_content(path) -> bool:
-    """True iff *path* is a regular file with bytes in it.
-
-    Deliberately does NOT read or parse the file: the retirement DELETED
-    ``shellenv.read_env_file``, and a warning is not a reason to bring a parser
-    for a dead format back.  Existence + size is the honest signal for "the user
-    has something here", and it costs ONE stat on the common (absent) path.
-    Any non-filesystem value — a MagicMock path in a unit test — is not a stale
-    file (same defensive shape as :func:`_rotate_file`).
-    """
-    try:
-        if not path.is_file():
-            return False
-        size = path.stat().st_size
-    except (OSError, TypeError, AttributeError):
-        return False
-    return isinstance(size, int) and size > 0
-
-
-def _warn_legacy_env_files(std, proj) -> None:
-    """NOTICE a leftover docker ``env`` FILE that no longer reaches the box.
-
-    The launch used to layer THREE such files into the container environment
-    (system < workset < box).  Jei's RQ-1 re-ruling (2026-08-02) retired them —
-    the ratified manifest records the files as DROPPED — so ``_build_config_env``
-    no longer reads them and ``shellenv`` is deleted.  Their replacement is the
-    declared key ``<scope>.env.<VAR>``.
-
-    Which means a user who ran ``config set env.FOO`` before the retirement has a
-    file whose values reached their box yesterday and do not today.  Silent value
-    loss is exactly the class this project refuses, so each stale file is named
-    with the cure for ITS OWN tier — the real verb for that scope, carrying the
-    scoped key.
-
-    ⚑ NO new persisted state, by design: the FILE'S EXISTENCE is the signal (the
-    same shape as "registry membership is the seed signal"), so the notice
-    self-clears when the user migrates the values and deletes the file, and a
-    box created after the retirement never sees it.
-    """
-    tiers: list[tuple[Path, str]] = [(
-        std.data_path / "env",
-        "kanibako system set system.env.<VAR>=<value>",
-    )]
-    # Standalone boxes have no workset tier — and never had a workset env file.
-    group = getattr(proj, "group", None)
-    if group is not None:
-        tiers.append((
-            group.root / "env",
-            f"kanibako workset set {group.name} workset.env.<VAR>=<value>",
-        ))
-    # The box tier NAMES ITS SUBJECT as a path, for the same reason the workset
-    # tier above names ``{group.name}``: a subjectless ``box set`` applies to the
-    # CWD box, not to the box being launched.  See the note in
-    # :func:`_persist_or_announce_flags` for why it is a PATH and not a name.
-    tiers.append((
-        proj.metadata_path / "env",
-        f"kanibako box set {shlex.quote(str(proj.project_path))} "
-        "box.env.<VAR>=<value>",
-    ))
-
-    seen: set[str] = set()
-    stale: list[tuple[Path, str]] = []
-    for path, cure in tiers:
-        if not _legacy_env_file_has_content(path):
-            continue
-        key = str(path)
-        if key in seen:
-            continue
-        seen.add(key)
-        stale.append((path, cure))
-    if not stale:
-        return
-
-    lines = [
-        "Notice: these env files are NO LONGER READ — values in them do not "
-        "reach the box.",
-    ]
-    for path, cure in stale:
-        lines.append(f"  {path}")
-        lines.append(f"    move values with: {cure}")
-    lines.append("  Delete the file(s) once migrated to silence this notice.")
-    # ⚑ COLORTERM IS THE ONE LINE THE GENERIC CURE ABOVE GETS WRONG, and it is the
-    # line most of these files hold: kanibako seeded it itself on every pre-1.8.0
-    # first run.  It is a DECLARED box-scope default now (MBR-2), so moving it to
-    # ``system.env.COLORTERM`` would name a variable kanibako already names at
-    # another scope and REFUSE the launch (``store_collapse.collapse_env``).
-    # ⚑ UNCONDITIONAL, not gated on the file's contents: reading the file to find
-    # out would restore a parser for a dead format, which
-    # :func:`_legacy_env_file_has_content` deliberately refuses to do.  Not
-    # tier-gated either: only the system-tier file ever got the seed, but a user's
-    # own COLORTERM line can sit in any tier's file, and moving it is the same
-    # trap wherever it sits.
-    lines.append(
-        "  ⚑ COLORTERM: DELETE that line, do not move it — truecolor is a "
-        "declared default now and a second declaration refuses the launch."
-    )
-    print("\n".join(lines), file=sys.stderr)
 
 
 def _run_container(

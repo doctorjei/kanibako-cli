@@ -716,9 +716,8 @@ class TestNothingRestampsThemAboveTheChannel:
 
         extra_mounts: list = []
         env, secret_vars = _assemble_launch_env(
-            # ⚑ Only what ``_warn_legacy_env_files`` reads: the three legacy env
-            # FILE paths it probes (none of which exist under ``tmp_path``, so it
-            # prints nothing) — this case is about what the function RETURNS.
+            # ⚑ ``std``/``proj`` contribute NOTHING to the returned env — they are
+            # passed only to satisfy the signature.
             std=SimpleNamespace(data_path=tmp_path),
             proj=SimpleNamespace(
                 name="b", group=None,

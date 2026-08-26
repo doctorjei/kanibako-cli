@@ -1127,28 +1127,27 @@ unusable.
 workset's `env` and the box's `env` into every container environment. v1.8.0 does not read
 them: the whole reader is deleted. Nothing about the files changed — they simply reach nothing.
 
-⚑ **This is the one that can bite you.** v1.7.2 wrote `COLORTERM=truecolor` into `<data>/env`
-on first run, so **essentially every pre-existing install has such a file**, and anything you
-ever added to one with `kanibako <noun> set env.FOO=…` reached your box yesterday and does not
-today. So that it cannot pass unannounced, a launch that finds a non-empty legacy file prints:
+⚑ **This is the one that can bite you, and kanibako does not warn you about it.** v1.7.2 wrote
+`COLORTERM=truecolor` into `<data>/env` on first run, so **essentially every pre-existing install
+has such a file**, and anything you ever added to one with `kanibako <noun> set env.FOO=…` reached
+your box yesterday and does not today. **Nothing is printed when a stale file is found** — the
+files simply reach nothing, silently. Check the three locations yourself:
 
 ```
-Notice: these env files are NO LONGER READ — values in them do not reach the box.
-  /home/you/.local/share/kanibako/env
-    move values with: kanibako system set system.env.<VAR>=<value>
-  Delete the file(s) once migrated to silence this notice.
-  ⚑ COLORTERM: DELETE that line, do not move it — truecolor is a declared default now and a second declaration refuses the launch.
+<data>/env                    e.g. /home/you/.local/share/kanibako/env
+<workset-root>/env
+<box-metadata>/env
 ```
 
-There is no new persisted state — the file's *existence* is the signal, so the notice
-self-clears the moment you migrate or delete the file, and never appears on a box created after
-the upgrade.
+Move any values you still want with `kanibako system set system.env.<VAR>=<value>` — or the
+`workset`/`box` noun for the other two tiers — and delete the files. Nothing reads them, so
+leaving them in place is harmless; they are simply dead.
 
 ⚑ **The `COLORTERM` line in that file is *ours*, not yours — DELETE it, do not migrate it.**
 `COLORTERM=truecolor` is a declared default in v1.8.0 (§2.42): it reaches every box with no key
-stored anywhere, so moving it to `system.env.COLORTERM` as the notice's generic cure suggests would
-create a *second* declaration of a variable kanibako already declares at box scope, and that
-refuses the launch (§2.33). Every other line in the file migrates exactly as described.
+stored anywhere, so moving it to `system.env.COLORTERM` the way the other lines migrate would create
+a *second* declaration of a variable kanibako already declares at box scope, and that refuses the
+launch (§2.33). Every other line in the file migrates exactly as described.
 
 **2. The bare `env.<VAR>` spelling is RETIRED and refuses by name.** It was an undiscriminated
 variant that meant something *different* from the key of the same name: it wrote a file, not a

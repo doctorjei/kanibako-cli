@@ -2396,9 +2396,8 @@ class TestContainerEnvPrecedence:
 
         from kanibako.commands.start import _assemble_launch_env
 
-        # ⚑ Only what the assembler reads on the way to the env: the three legacy
-        # env FILE paths ``_warn_legacy_env_files`` probes (absent under *tmp_path*,
-        # so it prints nothing) and an empty secret list.
+        # ⚑ Only ``env_slots`` reaches the returned env; ``std``/``proj`` are passed
+        # to satisfy the signature and an empty secret list adds no mounts.
         env, _secret_vars = _assemble_launch_env(
             std=SimpleNamespace(data_path=tmp_path),
             proj=SimpleNamespace(
