@@ -302,8 +302,11 @@ def _print_category_block(snapshot: Any, error: str | None, out: Any) -> None:
     # ABSTRACT declarations, each with the binding it derives — DISABLED.
     #
     # This half routes through the ONE function that owns the calculation, and
-    # that function is a deliberate STUB pending the collapse function. Three
-    # outcomes were available and only this one is honest:
+    # that function is a deliberate STUB. The collapse LANDED; the blocker is a
+    # layer below it — ``CollapsedBind`` / ``CollapsedCopy`` carry no
+    # declaration provenance, so a delivery cannot be paired with the
+    # declaration that produced it. Three outcomes were available and only this
+    # one is honest:
     #
     #   * print the pairs anyway (the old ``derived_bindings`` read) — that is
     #     the SILENTLY WRONG outcome: a second opinion about what the box sees,
