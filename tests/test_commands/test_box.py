@@ -12,7 +12,7 @@ from unittest.mock import patch
 import pytest
 
 from kanibako.settings.config import load_config
-from kanibako.settings.paths import WorksetSpec, load_std_paths, resolve_standalone_project, resolve_project, resolve_workset_project
+from kanibako.settings.paths import BoxMode, WorksetSpec, load_std_paths, resolve_standalone_project, resolve_project, resolve_workset_project
 from kanibako.project.workset import add_project, create_workset, load_workset
 
 
@@ -942,6 +942,50 @@ class TestBoxDuplicateCrossMode:
         assert (dst_dir / "workspace" / "code.py").read_text() == "print('hello')"
         # No breadcrumb in standalone.
         assert not (dst_dir / "box_data" / "project-path.txt").exists()
+
+    def test_duplicate_standalone_to_standalone_no_nested_root(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        """A standalone->standalone duplicate must not nest the SOURCE root in box_data/.
+
+        A standalone source's ``metadata_path`` IS its root, so copying THAT
+        (rather than :func:`~kanibako.settings.paths.box_metadata_dir`) drags
+        ``workspace/`` + ``vault/`` into the destination's box dir AND lands the
+        source's WORKSET-tier ``workset.yaml`` -- carrying the SOURCE box's
+        identity -- one level down inside it.
+        """
+        from kanibako.commands.box import run_duplicate
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+
+        src_dir = tmp_home / "s2s_src"
+        src_dir.mkdir()
+        proj = resolve_standalone_project(
+            std, config, project_dir=str(src_dir), initialize=True,
+        )
+        (proj.project_path / "code.py").write_text("print('s2s')")
+        (proj.shell_path.parent / "marker.txt").write_text("s2s-data")
+
+        dst_dir = tmp_home / "s2s_dst"
+        rc = run_duplicate(self._make_args(src_dir, dst_dir, "standalone"))
+        assert rc == 0
+
+        # The box metadata the duplicate needs did travel.
+        box_data = dst_dir / "box_data"
+        assert (box_data / "marker.txt").read_text() == "s2s-data"
+        # ⚑ ...and the source ROOT's shape did NOT come with it.
+        for stray in ("workset.yaml", "workspace", "vault", "box_data"):
+            assert not (box_data / stray).exists(), f"stray {stray!r} under box_data/"
+
+        # The destination's own standalone shape is intact and resolves.
+        assert (dst_dir / "workset.yaml").is_file()
+        assert (dst_dir / "workspace" / "code.py").read_text() == "print('s2s')"
+        dup = resolve_standalone_project(
+            std, config, project_dir=str(dst_dir), initialize=False,
+        )
+        assert dup.mode is BoxMode.standalone
+        assert dup.name != proj.name
 
     def test_duplicate_standalone_to_local(self, config_file, tmp_home, credentials_dir):
         from kanibako.commands.box import run_duplicate
