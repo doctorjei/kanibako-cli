@@ -109,7 +109,7 @@ selection is a KEY.
 settings (from the `[system]` table), read from `kanibako_config.yaml`. It is CONFIG-FILE-ONLY —
 project and workset configs never supply it.
 
-⚑ `BOX_META_FILE` (`"settings.yaml"`) is the per-box construct-time metadata + box-tier settings
+⚑ `BOX_META_FILE` (`"box.yaml"`) is the per-box construct-time metadata + box-tier settings
 cascade file (spec §2c, `meta.box.*`).
 
 
@@ -262,7 +262,7 @@ existing `kanibako_config.yaml` files are documentation-only (migration M-4).
 
 
 ```write_project_config(path: Path, image: str) -> None```
-Write or update a `settings.yaml` with the given image.
+Write or update a `box.yaml` with the given image.
 
 
 ```persist_creation_flags(box_settings_path, *, materializing, image=None, share_images=None) -> None```
@@ -287,7 +287,7 @@ MBR-6 refuses that case at the launch gate now — it is a repair, not a creatio
 Only EXPLICITLY-GIVEN flag values persist: an absent flag (`None`; `""` for *image* — absent ≠
 `""`) writes NOTHING, so a no-flag create bakes NO default into the box tier and the box resolves
 the live cascade (single source of truth; the stored default stays at its own tier). No flags → no
-write at all — no empty `settings.yaml` is materialized (the :func:`write_box_enable_vault` rule).
+write at all — no empty `box.yaml` is materialized (the :func:`write_box_enable_vault` rule).
 
 *box_settings_path* is the BOX-TIER settings file from `box_workset_settings_paths` — the same file
 `box set box.image=…` writes and the launch cascade reads as the box tier (M-8). *share_images* is
@@ -307,7 +307,11 @@ box identity lives in the registries (`box_resolve`), not on disk — Option A).
   (created + merged beside `box.image`);
 * the default `True` → write NOTHING, and DROP any stale `box.enable_vault` override. An empty
   `box:` table is never materialized, and a would-be no-op leaves the file untouched — so a
-  default-vault primary/named box gets no `settings.yaml` written here.
+  default-vault primary/named box gets no `box.yaml` written here.
+
+⚑ WHICH value a caller hands in is the resolver's business, not this writer's: PRIMARY and NAMED
+pass the BOX-AUTHORED read, never the workset-resolved one (spec `:868` keeps the key sparse);
+STANDALONE passes the resolved one on purpose — that write IS the M-8 migration.
 
 Paired reader: :func:`read_box_enable_vault`.
 
@@ -316,7 +320,7 @@ Paired reader: :func:`read_box_enable_vault`.
 The box-scope `box.enable_vault` value stored at *path* (default `True`).
 
 The single reader for the settable box-scope key (P2 clean break): it sources the flag DIRECTLY
-from the `box:` table of the box-tier `settings.yaml`. An absent file, an absent `box:` table, or
+from the `box:` table of the box-tier `box.yaml`. An absent file, an absent `box:` table, or
 an absent key all fall through to *default_from* (when given), then to the built-in default `True`
 (vault on).
 
@@ -325,15 +329,12 @@ box tier — the R2 downward-default (`box` ⊂ `workset`: a `box.*` key stored 
 an overridable default for the box). This key is NOT cascade-resolved — it is read directly, off
 the launch path — so the fallback has to be spelled here rather than falling out of the resolver.
 
-⚑ Only the STANDALONE resolver passes it, and it is load-bearing there: a standalone box's ROOT
-`settings.yaml` WAS its box file before the box tier moved to `box_data/settings.yaml` (M-8), and
-is its workset tier after — so the fallback is what lets an existing standalone box keep a stored
-`box.enable_vault: false` with ZERO migration. Primary/named pass nothing, so their behaviour is
-byte-identical to before P2.
-
-Known, deliberately-unfixed consequence: generalizing the fallback to every mode would make a
-`workset set box.enable_vault=false` — today a silent no-op — go live machine-wide. A real defect,
-but not this phase's.
+⚑ ALL THREE resolvers pass it, each load-bearing for its own reason. STANDALONE: its ROOT
+`workset.yaml` WAS its box file before the box tier moved to `box_data/box.yaml` (M-8), and is its
+workset tier after — the fallback lets an existing standalone box keep a stored
+`box.enable_vault: false` with ZERO migration. NAMED: `workset create --no-vault` writes the key at
+the workset tier, and without the fallback that flag is a silent no-op. PRIMARY: the primary workset
+is a workset like any other (spec §2c), so a key stored there defaults its boxes the same way.
 
 Box identity derives entirely from the registries (`box_resolve`) — there is no on-disk `project:`
 identity section (P8b sparse create) — while `enable_vault` stays a plain box-settings read: the
@@ -375,7 +376,7 @@ counts, and dropping the underlay is what caused the loss described above.
 The stored `workset.kuid` value at *path*, defaulting to the SENTINEL.
 
 The reader for the settable `workset.kuid` key (settings-conformance P6d): it sources the kuid
-DIRECTLY from the `workset:` table of a box's `settings.yaml` — for a STANDALONE box that single
+DIRECTLY from the `workset:` table of a box's `workset.yaml` — for a STANDALONE box that single
 file plays the WORKSET tier. An absent file / `workset:` table / key yields the reserved
 :data:`kanibako.kuid.SENTINEL` (`"00000"`), the primary/named default and the "no real kuid yet"
 marker.
@@ -389,7 +390,7 @@ The stored `workset.skip_kuid_check` bool at *path*, defaulting to `True`.
 
 The reader for the settable key (P6d; spec default `true` — the advisory "invalid KUID" warning is
 OPT-IN strictness, INVERTING the old D9). Sourced from the `workset:` table of a box's
-`settings.yaml`. An absent file / table / key yields `True` (checking OFF). Mirrors
+`workset.yaml`. An absent file / table / key yields `True` (checking OFF). Mirrors
 :func:`read_box_enable_vault` — the DEFAULT lives here, not a cascade floor.
 
 
@@ -407,19 +408,19 @@ advertised key.
 
 
 ```write_project_config_key(path: Path, flat_key: str, value: str) -> None```
-Write or update a single key in a `settings.yaml`.
+Write or update a single key in a `box.yaml`.
 
 *flat_key* is the underscore-joined config name (e.g. `"box_image"`).
 
 
 ```unset_project_config_key(path: Path, flat_key: str) -> bool```
-Remove a single key from a `settings.yaml`; `True` if it was found and removed.
+Remove a single key from a `box.yaml`; `True` if it was found and removed.
 
 An emptied section is cleaned up rather than left as a bare `{}`.
 
 
 ```load_project_overrides(path: Path) -> dict[str, str]```
-The project-level overrides in a `settings.yaml` — flat_key → value for keys that differ from
+The project-level overrides in a `box.yaml` — flat_key → value for keys that differ from
 defaults.
 
 

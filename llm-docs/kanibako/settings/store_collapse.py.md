@@ -409,3 +409,72 @@ destination. The call is dropped entirely, not repaired, and a test pins the two
 
 ⚑ **The sync arm contributes NO refusal to this list** (ruling 2026-08-12) — it is the one arm that
 can raise nothing at all.
+
+## The READER: `covering_bind` and `pair_declarations` (added 2026-08-26)
+
+Everything above PRODUCES the collapsed map. These two READ it, and they are here because the
+questions are the map's own — a second spelling elsewhere is how a display comes to disagree with
+the box about which mount owns a path.
+
+### `covering_bind(bindings, dest)` — the INNERMOST cover
+
+The LONGEST prefix in the map that contains *dest*, or `None`. Longest = innermost = the mount the
+box actually sees at that path. Every candidate is a prefix of ONE string, so length totally orders
+them and there is no tie to break. Separator-guarded through `is_within`, so `~/foobar` is not
+inside `~/foo`.
+
+⚑ **It was `commands/start._synced_cover`,** which now delegates to it in one line. It moved when a
+THIRD asker appeared. The three: `_refuse_synced_under_mask` (does the covering mount refuse this
+copy), `_synced_host_dest` (which mount does this copy resolve through), and `pair_declarations`
+(what did this DECLARATION actually get). A second lookup is how a row gets refused against one
+mount and delivered through another.
+
+⚑ It does not discriminate a mask from a bind. Deciding what a mask MEANS is the caller's, and every
+caller does it with `is_mask` — one rule, one spelling.
+
+### `pair_declarations(declarations, bindings, copies)` — declaration → what the box receives
+
+PURE. Takes the DECLARATIONS (whose feed is the reserved `binding_derivations` node) and the
+ARBITRATED outputs (`meta.assembly.bindings` and the two copy lists concatenated), and returns one
+`Derivation` per declaration. Nothing is re-folded: a second fold is exactly the second opinion
+`--effective` exists to DETECT.
+
+**The input MAY contain arbitration losers, and it is meant to.** `derive_binding_keys` materialises
+a derivation for winners and losers alike, deliberately. A loser is identified HERE, by what
+occupies its destination — which is why the pairing, not the node, is the display's source.
+See `llm-docs/kanibako/settings/settings_categories.py.md` for the measured failure that rule
+comes from.
+
+The decision, in full:
+
+| the declaration | the outcome |
+|---|---|
+| delivery is COPY and a row matches `(dest, src)` | `DERIVED_COPY` |
+| delivery is COPY and no row matches | `DERIVED_SUPERSEDED` — the producer dropped it (row 5) |
+| nothing covers the dest | `DERIVED_UNCOVERED` — no MAP, which is not "no mount" |
+| the cover is a MASK, at the dest or above it | `DERIVED_MASKED` |
+| the cover is elsewhere, or its src differs | `DERIVED_SUPERSEDED` |
+| the cover IS the dest and the src matches, uniquely | `DERIVED_MOUNT` |
+| …and a second declaration matches the same `(dest, src)` | `DERIVED_AMBIGUOUS` |
+
+⚑ `Derivation.at` is the destination the outcome was found AT — the declaration's own when it holds
+its point, an ANCESTOR when something above swallowed it. It is the field that turns "no mount" into
+a diagnosis, and for a mask ABOVE the declaration it names a path the user's own key does not.
+
+⚑ A mask AT the dest and a mask ABOVE it are ONE outcome, not two: a mask is a tmpfs with no host
+source, so the box sees nothing at that path either way. The sweep case is the one a renderer
+misses on its own — the declaration's dest is not in the collapsed map AT ALL, so a lookup by dest
+finds nothing and "absent" reads as "fine".
+
+### 🛑 Why nothing was added to `CollapsedBind` / `CollapsedCopy`
+
+The pairing is asked in ONE direction, declaration → delivery, and containment answers it. The
+REVERSE question — given a collapsed bind, name the declaration that produced it — is the one this
+module cannot answer, and it is the one `_refuse_bind_over_bind`'s boarded 🐞 wants; it still needs
+the producer shape change.
+
+And the tuples may not grow regardless: the keyspec declares `meta.assembly.bindings` as
+`dict[guest_dest → (host_src, opts)]` (`:434`) and both copy leaves as
+`list[(host_src, guest_dest, opts)]` (`:440`, `:450`). Those arities are NORMATIVE — and the env
+leaf's `(value, scope, key)` (`:467`) shows the spec grants provenance in a tuple deliberately where
+it means to.

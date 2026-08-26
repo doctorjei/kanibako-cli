@@ -334,7 +334,7 @@ WRITE side refuses the shape (`table_value_error`), which is what stops one bein
 **`save` is sparse for the same reason at both ends.** An EMPTY `transform_settings: {}` or `env: {}`
 would be counted as an override by `agent reset --all`, so nothing empty is materialized.
 `transform_settings` is NOT a reset-all exception — when set it is a normal override, wiped like any
-other. The file lives at `agents/<agent>/settings.yaml`, and `save` creates that directory.
+other. The file lives at `agents/<agent>/agent.yaml`, and `save` creates that directory.
 
 ```level_table(raw, *, sub_key, node=None, path=None) -> AgentFileLevel```
 Which RAW table one agent-tier level reads — the SHAPE half of the cascade seam.
@@ -497,5 +497,5 @@ RAISE on the first agent-file state key that is not a declared key (spec §0) �
 ⚑ **THE PLUGIN UNION IS LOAD-BEARING, not a nicety.** `config_keys.agent_key_reason` unions the
 leaves the INSTALLED targets declare, and without it a legitimate `agent.goose.provider` would
 refuse a working box at launch. The message names the key, says kanibako will not start a box on
-it, and points the cure at `agents/<node>/settings.yaml` while noting that `kanibako agent info
+it, and points the cure at `agents/<node>/agent.yaml` while noting that `kanibako agent info
 <node>` still lists what the file holds.

@@ -894,6 +894,11 @@ The lookup itself is `_synced_cover` — ONE spelling, shared with `_refuse_sync
 so the pass that decides whether a covering mount REFUSES a row and the pass that resolves the row
 THROUGH it can never disagree about which mount the destination sits in.
 
+⚑ **Its BODY moved to `store_collapse.covering_bind` on 2026-08-26** and `_synced_cover` is now a
+one-line delegation. A THIRD asker appeared — `store_collapse.pair_declarations`, which must say
+what a DECLARATION actually got — and the question is the collapsed map's own, so it is answered
+beside that map. The name stays here because these two callers read as DELIVERY, not as collapse.
+
 | arm | when | why it is where it is |
 |---|---|---|
 | no cover → warn+skip | dest outside every bind | there is no host location it could arrive at. Wider than the retired outside-home skip — `/etc/...` with nothing declared over it, for instance |
@@ -1353,7 +1358,7 @@ artifact is created. Returns `(endpoint, error, provider)`:
 
 ⚑ **NOTHING here mutates *agent_cfg*.** Every persona value is a LIVE resolution input resolved
 through the cascade before this seam, so there is nothing to adopt and nothing to write back to
-`agents/<node>/settings.yaml`.
+`agents/<node>/agent.yaml`.
 
 ### HARNESS-AWARE (INC 2) — exactly two gates, one picker
 

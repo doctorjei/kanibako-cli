@@ -720,8 +720,8 @@ used to pass through to podman as you typed them, which never mounted the direct
 rewrite each to the absolute path it was supposed to resolve to: `<workset root>/<relative>`.
 
 One behavior change on an already-broken shape: `share add` on the **default** workset now
-refuses a relative source (it never had a root to join under — the old behavior was a silent
-CWD-dependent path, not a feature).
+refuses a relative source (it never had a root to join under — the old behavior silently made a
+named volume or a CWD-relative path, not a feature).
 
 ### 2.8 System-scope config now lives in ONE file
 

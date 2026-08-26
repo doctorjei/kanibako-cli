@@ -269,7 +269,7 @@ value, rather than promising a `config get` of the entry.
 
 ⚑ **The one exception is the AGENT-SCOPE TERMINAL READ.** `config get agent.<node>.<category>`
 still resolves through `config_dest`'s known-broken `_CATEGORY` arm to the NOUN's settings file
-rather than to `agents/<node>/settings.yaml`, so the value it returns is the wrong file's. That
+rather than to `agents/<node>/agent.yaml`, so the value it returns is the wrong file's. That
 arm's repointing is an OWED, separately-ruled pass — it moves `agent_file`'s address rule, the
 per-agent file-shape SoT — and it is named here so nothing writes a message promising that
 read works.
@@ -684,58 +684,98 @@ identical, only the delivery differs.
 ⚑ Distinct by NAME from the READ lens `settings_views.derived_bindings` — one PRODUCES the
 keys, the other READS them back off a snapshot.
 
-## `effective_bindings_and_template_sources` — a deliberate stub
+## `declaration_delivery` — the COPY/MOUNT answer, beside the table that holds it
 
-⚑ **Deliberately unimplemented.** It raises `NotImplementedError` with
-`_EFFECTIVE_DELIVERY_STUB_REASON`, and its one consumer today — the `binding_derivations` half
-of the `--effective` block in `settings.config_display` — is DISABLED rather than left to print
-something it can no longer stand behind. The reason string is kept as ONE string so the
-disabled consumer can PRINT it instead of restating it; a second copy of that sentence is a
-second thing to drift. Do not grow a partial implementation: a stub that quietly acquires a
-body is worse than an honest hole, because nothing announces the day it started being believed.
+Parses a declaration KEY by POSITION and reads `_DELIVERY`. The category is the segment after
+the scope, and the AGENT scope is DISCRIMINATED — two segments (`agent.<tier>`) where every
+other scope is one — so position, not substring search: a trailing DESTINATION that happens to
+spell a category (`box.caches.common`) must not be misread as the category.
 
-**The single source.** This is the ONE place the effective bindings and the effective template
-sources are calculated. Anything that needs either — the launch, the display, `workset show` —
-reads it from here. A caller that recomputes its own answer is a second opinion about what the
-box sees, which is the failure the `--effective` output exists to DETECT, not to commit.
+⚑ It was `config_display._declaration_delivery` until the `--effective` pairing landed
+(2026-08-26). It moved here because a SECOND caller appeared and `_DELIVERY` lives here: a
+renderer keeping its own copy would drift the moment a category moved between COPY and MOUNT,
+and `seeded` deriving a COPY rather than a mount is precisely the distinction that would go.
 
-**Why the body is still empty — and it is NOT because the collapse is missing.** That was the
-original reason and it expired: the collapse function landed 2026-08-09 (`1472bd3`,
-`settings/store_collapse.py`), and `meta.assembly.{bindings,seeded,synced,env}` rides on every
-whole-box snapshot, so the input is available.
+## `effective_bindings_and_template_sources` — the declaration/delivery pairing
 
-The real blocker is one layer below: **the collapse carries no declaration provenance.**
-`CollapsedBind` is `(src, opts)` and `CollapsedCopy` is `(src, dest, opts)` — neither names the
-declaration that produced it. `store_shape.build_store_shape` drops `CategoryEntry.key_segments`,
-and only the `env` arm was given `(scope, key)`. Carrying it is a producer shape change, which
-`store_collapse.py` boards in its own words: *"naming them is a producer shape change."*
+Returns `store_collapse.Derivation` rows, one per ABSTRACT declaration, sorted by declaration
+key. It discharges keyspec `:88`: *"`--effective` shows BOTH the declaration and the derived
+binding and a user can see WHY a mount exists."*
 
-**The obvious shortcut is WRONG, and it was measured wrong on 2026-08-23.** Reading the installed
-`binding_derivations` node instead looks sufficient and is not: that node is populated at
-`commands/start.py:6860`, **before** arbitration at `:6903`, deliberately — *"a derived binding is a
-property of the DECLARATION, not of whether the box may receive it."* So it can name a binding the
-box does not have. Measured: an `agent.claude.common` declaration under a box-scope `masks` entry
-produced `CollapsedBind(src=None)` — a mask sentinel, **no mount** — while the node still described
-a live mount at that destination. A display built on it asserted `(mount)` for a mount that does not
-exist and did not print the mask. Collision rows 1/3/5 raise and surface as `category_error`; **the
-mask path is silent, which is the dangerous one.**
+**The single source.** This is the ONE place the pairing is calculated. A caller that recomputes
+its own answer is a second opinion about what the box sees, which is the failure `--effective`
+exists to DETECT, not to commit. Nothing inside it re-folds anything either: the arbitrated
+answer is READ off `meta.assembly.*`.
 
-⚑ This is exactly the "second opinion" the paragraph above warns about, and the warning is a
-CORRECTNESS claim, not a routing preference. The keyspec no longer dictates where the derivation is
-materialised (that clause now reserves a NAME only) — **but removing the spec's objection does not
-answer this one.** An honest stub beats a display that quietly lies about what is mounted.
+### It takes TWO inputs and both are load-bearing
 
-**The two halves DO NOT share a shape, and that is not an accident.** Bindings **COLLAPSE**: a
-destination can be occupied by exactly one winner, so the answer is a per-dest pick and the
-losers are gone, visible if at all as an explanation of why. Template sources **LAYER**: the
-seed is ordered and every layer contributes, later over earlier, so the answer is a SEQUENCE
-and dropping a member loses content. One question, two arities — which is precisely why they
-are computed together, by one function, instead of being conflated by a caller that assumed
-they behaved alike.
+| input | what it supplies | when it is written |
+|---|---|---|
+| `binding_derivations.<decl-key>.<dest>` | the DECLARATIONS | BEFORE arbitration, deliberately |
+| `meta.assembly.{bindings,seeded,synced}` | what the box RECEIVES | AFTER the collapse |
 
-⚑ Nothing beyond that distinction is decided. Which entry wins a dest, how layers are ordered,
-what the return VALUE looks like — those are THIS function's own contract and are OPEN. In
-particular the return is annotated `Any` ON PURPOSE: a container chosen now would encode a
-merge semantics, and merge semantics is a CHOICE, not a property of the container. The
-*snapshot* argument is the resolved settings snapshot every other reader already holds; it is
-there so the seam is real and callable, not because the input set is settled either.
+**The obvious shortcut is WRONG, and it was measured wrong on 2026-08-23.** Reading the
+installed `binding_derivations` node ALONE looks sufficient and is not. That node is populated
+at `commands/start._resolve_launch_snapshot` **before** the credential gate and the collapse,
+deliberately — *"a derived binding is a property of the DECLARATION, not of whether the box may
+receive it"* — and `derive_binding_keys` materialises a row for WINNERS AND LOSERS ALIKE,
+because a loser's derivation is what explains the warning that names it. So every row in the
+node reads as a live mount. Measured: an `agent.claude.common` declaration under a box-scope
+`masks` entry at the same dest collapses to `CollapsedBind(src=None)` — a mask sentinel, **no
+mount** — while the node still described a live mount there. A display built on it asserted
+`(mount)` for a mount that does not exist and did not print the mask. Collision rows 1/3/5
+raise and surface as `category_error`; **the mask path is silent, which is the dangerous one.**
+
+⚑ That episode's own lesson: it conflated *"the spec no longer FORBIDS this route"* with *"this
+route is SOUND"*, and a green suite gave false cover because **the distinguishing test was never
+written**. It is written now —
+`tests/test_categories_live.py::TestTheNaiveReadIsWrong` states the disagreement between the two
+leaves as a FACT, so a future rewrite cannot re-derive the display from the node and pass.
+
+### Why nothing was added to `CollapsedBind` / `CollapsedCopy`
+
+The stub's own diagnosis was that *"the collapse carries no declaration provenance"*, and that
+is TRUE — but only for the REVERSE question. The obligation is DECLARATION → DELIVERY, and that
+is answered by CONTAINMENT against the finished map (`store_collapse.covering_bind`): which dest
+covers this declaration's dest, and what sits there. Given a collapsed bind, naming the
+declaration that produced it is the OTHER direction, the one `_refuse_bind_over_bind`'s boarded
+🐞 wants, and it still needs the producer shape change.
+
+🛑 **And the tuples may not grow.** The keyspec declares `meta.assembly.bindings` as
+`dict[guest_dest → (host_src, opts)]` (`:434`) and both copy leaves as
+`list[(host_src, guest_dest, opts)]` (`:440`, `:450`). Those arities are NORMATIVE, and the env
+leaf's `(value, scope, key)` (`:467`) shows the spec grants provenance in a tuple deliberately
+where it means to. Widening either tuple to carry a declaration key would put the code in
+contradiction with the spec.
+
+### The two halves DO NOT share a shape, and that is not an accident
+
+Bindings **COLLAPSE**: a destination is occupied by exactly one winner, so the answer is a
+per-dest pick and the losers are visible only as an explanation of why. Template sources
+**LAYER**: the seed arm is ordered and every layer contributes, later over earlier, so no member
+may be dropped. The pairing keeps both: a MOUNT declaration is answered by containment against
+the bind map, a COPY declaration by finding its own row in the concatenated copy lists, and a
+declaration with no row is a LOSS (a §0 row-5 loser the producer dropped) rather than a silent
+absence.
+
+⚑ **What it deliberately does NOT claim: the ORDER copies apply in.** Rows come back sorted by
+declaration key, which is not scope order. `meta.assembly.{seeded,synced}` remain the authority
+for which layer lands last; this function says WHAT each declaration delivers, never WHEN.
+
+### The outcome vocabulary
+
+`store_collapse` owns it: `DERIVED_MOUNT` · `DERIVED_COPY` · `DERIVED_MASKED` ·
+`DERIVED_SUPERSEDED` · `DERIVED_AMBIGUOUS` · `DERIVED_UNCOVERED`. Every one of them prints
+something, and every LOSS prints WHERE — `Derivation.at` is the destination that actually
+carries the outcome, which for a mask ABOVE the declaration is not a destination the user's own
+key names. "No mount" without it is an answer a user cannot act on.
+
+⚑ `DERIVED_AMBIGUOUS` exists because ONE tie is constructible from this feed and cannot be
+settled by it: two same-scope abstractions at one dest whose SOURCES are equal. Row 5 drops one,
+but the collapsed map records only a source, so it cannot say which of the two the surviving
+mount came from. Saying so beats picking.
+
+⚑ `DERIVED_UNCOVERED` is not "no mount" — it is "no map". A NARROW resolve writes no bindings
+leaf (`commands/start._install_assembly_collapse`'s whole-box gate), and reporting every
+declaration as unmounted there would be the same class of confident wrongness this function was
+written to remove.

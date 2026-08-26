@@ -415,7 +415,7 @@ mutation itself so it cannot go green by the production flattener disappearing.
 
 ## Per-persona agent keys (block B1)
 
-``agent.<node>.<key>``, set on the agent's OWN settings file ``agents/<node>/settings.yaml``.
+``agent.<node>.<key>``, set on the agent's OWN settings file ``agents/<node>/agent.yaml``.
 
 `_PERSONA_STATE_LEAVES` is the per-persona agent leaves this module RECOGNISES: the FLAT
 agent-state knobs plus the ``env.`` section — the EXACT shape `agent_file.load`
@@ -669,7 +669,7 @@ True iff *key* is a per-node descriptor bind ``agent.<node>.bindings.*`` key (it
 two ``bindings`` arms are becoming a TERMINAL key whose VALUE is a dest-keyed map, and *the inner
 map's keys are not part of the keyspace*, so there is no dotted key left for `config set` / `config
 reset` to name. The key itself is NOT retired: still declared, still authored in
-``agents/<node>/settings.yaml``, still delivered at launch, still READ by `config get`. Only the CLI
+``agents/<node>/agent.yaml``, still delivered at launch, still READ by `config get`. Only the CLI
 write route is gone — a KNOWN, ACCEPTED loss (backlog DS-BL1).
 
 So this predicate now has three jobs, all live: recognise the retired spelling so the write verbs
@@ -1136,7 +1136,7 @@ spelling, never the ``℘`` canonical one, because the message ends by handing t
 get` the user is meant to run. *route* is the retired SPELLING as a shape
 (``'box.bindings.ro.<name>'``); *why* is :func:`_retired_because`'s per-CATEGORY clause; *cure* is the
 one sentence that differs between the two scopes — WHICH file to hand-edit, because the file genuinely
-differs (a scope settings file vs the node's own ``agents/<node>/settings.yaml``).
+differs (a scope settings file vs the node's own ``agents/<node>/agent.yaml``).
 
 ⚑ The cure is HONEST about the loss. There is no equivalent CLI spelling to redirect to — that is
 precisely what R-9 and DS-BL1 accepted — so the message names the settings FILE as the surface, which
@@ -1172,7 +1172,7 @@ The refusal + cure for a RETIRED AGENT-scope bind-shaped WRITE ``agent.<node>.<b
 category>.<name>``, or `None` when *canonical* is not one.
 
 The SIBLING of :func:`scope_bind_retired_error` — same ruling, same wording, one different cure: the
-tuple lives in the NODE's own settings file ``agents/<node>/settings.yaml``, under the flat
+tuple lives in the NODE's own settings file ``agents/<node>/agent.yaml``, under the flat
 ``self.<category>`` table (the shape `settings_assemble._agent_partial` reads into the launch
 cascade, re-rooting ``self`` to ``agent.<node>``), not in a scope table. Naming the scope file
 here would send a user to edit a file the launch never reads for this key.

@@ -68,7 +68,7 @@ workspace mappings, which is what replaced the retired global `projects` section
 ⚑ **This is why a per-workset `registry.yaml` must never be templated or copied between worksets.**
 The elaboration of that hazard lives with the code that could commit it: `install_workset_template`
 in `launch/templates.py` carries a whitelist precisely so template CONTENT cannot plant a
-`settings.yaml` or a `registry.yaml` at the workset path.
+`workset.yaml` or a `registry.yaml` at the workset path.
 
 ## The path contract
 

@@ -69,8 +69,8 @@ From the redesign DESIGN. `execute_lifecycle` runs it; `_run_steps` is the body.
 1. **Validate everything up front** (`_validate`) — refuse early ⇒ zero partial state.
 2. **Move files**, if relocating.
 3. **Update location records / markers.**
-4. **Apply the ownership / mode change** — re-root metadata/shell/vault, registry, names, rewrite
-   `settings.yaml` mode + paths.
+4. **Apply the ownership / mode change** — re-root metadata/shell/vault, registry, names, write the
+   destination `box.yaml` (sparse — see the drifted-claim note below for what it does NOT carry).
 5. **Clean up the old** side — never the user's external source dir.
 
 Steps 2–5 push compensating actions onto an unwind stack; on ANY exception the stack runs in
@@ -105,7 +105,7 @@ already enforced that (`STUBBORN_INPLACE_MSG`). A standard move `copytree`s the 
 
 The destination metadata roots DEPEND on the target owner, so markers cannot be written before
 ownership is decided. `_apply_ownership_and_markers` therefore does both at once: compute the new
-metadata/shell/vault dirs for the target owner, copy them, write the destination `settings.yaml`,
+metadata/shell/vault dirs for the target owner, copy them, write the destination `box.yaml`,
 update registry/names, then clean up the old side. It dispatches to exactly one of `_to_workset` /
 `_to_standalone` / `_to_default`.
 
@@ -113,7 +113,7 @@ update registry/names, then clean up the old side. It dispatches to exactly one 
 this path writes a "rewritten `settings.yaml` (mode + workspace override + hash + markers)" — in
 five places, including the module docstring and `run_remap`. **No hash is computed or written
 anywhere in this module**, and under sparse identity (P8b) the only thing written to the
-destination `settings.yaml` is the non-default `box.enable_vault`; mode and workspace override are
+destination `box.yaml` is the non-default `box.enable_vault`; mode and workspace override are
 not persisted either. The word `hash` survived only in comments, never in code. Those claims were
 DROPPED, not carried here.
 
@@ -155,7 +155,7 @@ mapping intact rather than orphaned.
 workspace. (The returned `ProjectState.workspace_path` is the `workspace/` subdir; `metadata_path`
 is the root.) A standalone box's tree roots at `<root>` with:
 
-* `settings.yaml` **AT THE ROOT** (drift I — and `ProjectState.metadata_path` for a standalone IS
+* `workset.yaml` **AT THE ROOT** (drift I — and `ProjectState.metadata_path` for a standalone IS
   that root),
 * a `box_data/` marker dir (home + helper log) — the real box metadata dir,
 * `vault/{ro,rw}/`,
@@ -189,7 +189,7 @@ hit IS the existence signal, because identity no longer self-describes on disk �
 read, decoupled from identity.
 
 And it is why `_to_workset`'s EXTERNAL arm reads the recorded workspace back out of the per-workset
-`boxes:` registry that `add_project` just wrote: under sparse create the box's own `settings.yaml`
+`boxes:` registry that `add_project` just wrote: under sparse create the box's own `box.yaml`
 stops self-describing, so the D10 connection record is the authoritative external-workspace source.
 
 ## Naming — the PRIMARY membership register
@@ -469,9 +469,9 @@ constraint.
 Re-root metadata/shell/vault into the target owner + rewrite markers.
 
 Handles EVERY transition the same way: copy the source metadata into the target owner's metadata
-root, write the destination `settings.yaml`, update registry/names, remove the old owner's
+root, write the destination `box.yaml`, update registry/names, remove the old owner's
 metadata. Returns the resulting `ProjectState`. Dispatch is purely on `target_mode`. (See the
-drift note under **STEPS 3+4** for what that `settings.yaml` write actually contains.)
+drift note under **STEPS 3+4** for what that `box.yaml` write actually contains.)
 
 ```def _unwind_box_tree(path: Path) -> None```
 Best-effort box-tree removal shaped for `_Unwind.push`.
@@ -509,7 +509,7 @@ Remove the source project's metadata/shell (+ PRIMARY vault).
 🛑 The three arms differ in what they are allowed to touch, and the difference is the whole point:
 
 * **Standalone source** — removes the in-tree kanibako artifacts (the `box_data/` marker dir, the
-  root `settings.yaml`, `vault/`) and **NOT the project root itself**. For a standalone the root IS
+  root `workset.yaml`, `vault/`) and **NOT the project root itself**. For a standalone the root IS
   `metadata_path`: deleting it would wipe the user's whole project directory AND the
   already-converted destination.
 * **Primary source** — unregisters the name, removes the `boxes/` metadata dir, and removes the
@@ -530,9 +530,9 @@ a (failing) copy-onto-self, so the existing tree is reused instead.
 ```_STANDALONE_ROOT_ARTIFACTS```
 Top-level entries that are kanibako artifacts (NOT workspace content) and so must STAY at the
 standalone root rather than move into the `workspace/` subdir during a convert (drift H
-consolidation): `box_data/`, the `workspace` subdir being populated, `vault/`, the root
-`settings.yaml` (drift I), the two legacy marker dirs `.kanibako` / `kanibako`, and
-`.kanibako.lock`.
+consolidation): `box_data/`, the `workspace` subdir being populated, `vault/`, BOTH root metas
+`workset.yaml` and `box.yaml` (drift I), the two legacy marker dirs `.kanibako` / `kanibako`,
+and `.kanibako.lock`.
 
 ```def _consolidate_workspace_subdir(root: Path, workspace_subdir: Path, unwind: _Unwind) -> None```
 Move the project's top-level files into the `workspace/` subdir.
@@ -572,8 +572,9 @@ through `box_identity.resolve_standalone_name`:
 * a non-canonical `--name` becomes a fresh `<kuid>_<sanitized name>`;
 * NO `--name` generates a fresh canonical id from the root basename.
 
-It writes `<root>/settings.yaml` with `mode=standalone` and that identity, and registers the box —
-with an unwind to drop the registration on failure. `_remove_old_metadata` purges the source's prior
+It writes `workset.kuid` into `<root>/workset.yaml` — that write MATERIALIZES the detection marker,
+and it is the ONLY key laid there; NO `mode` is persisted anywhere (see the drift note under
+**STEPS 3+4**) — then registers the box, with an unwind to drop the registration on failure. `_remove_old_metadata` purges the source's prior
 registry entry (`names.yaml` for primary/named) so it does not dangle.
 
 ⚑ `new_name` is only a *requested* name: the source's name is passed as the default when the caller
@@ -584,8 +585,8 @@ assertion and a fresh canonical id is generated instead. This is exactly why the
 ⚑ **ORDER:** consolidate the source's top-level files into `workspace/` FIRST, THEN lay down the
 kanibako artifacts — otherwise the artifacts get swept into the subdir with everything else.
 
-⚑⚑ **The `settings.yaml` landing in `box_data/` must NOT be deleted as an "orphan".** It IS the
-destination's BOX TIER now (spec §2c ALL PROJECTS: `meta.box.settings = @meta.box.path/settings.yaml`,
+⚑⚑ **The `box.yaml` landing in `box_data/` must NOT be deleted as an "orphan".** It IS the
+destination's BOX TIER now (spec §2c ALL PROJECTS: `meta.box.settings = @meta.box.path/box.yaml`,
 and `@meta.box.path` for a standalone IS `box_data/`). It used to be deleted here on the theory that
 the box meta lived only at the ROOT — that theory is the RETIRED model, and deleting the file now
 discards the box's settings. Detection is unaffected either way: it reads the ROOT file (§5), which

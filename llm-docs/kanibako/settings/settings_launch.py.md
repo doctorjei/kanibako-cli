@@ -308,15 +308,15 @@ into `meta.runtime.*`:
 
 ```
 meta.workset.path     = "@meta.runtime.ws_root"
-meta.workset.settings = "@meta.workset.path/settings.yaml"     (spec §2c)
+meta.workset.settings = "@meta.workset.path/workset.yaml"     (spec §2c)
 meta.workset.name     = "@meta.runtime.ws_name"                (spec §2c, 2026-07-04)
 meta.box.mode         = "@meta.runtime.project_type"           (RO identity anchor; spec §2b)
 ```
 
 These resolve transitively in the ONE expand pass. Primary: `meta.workset.path` →
 `@meta.runtime.ws_root` → `@config.primary_workset` → foundation. Standalone:
-`meta.workset.settings` → `@meta.workset.path/settings.yaml` → `@meta.runtime.ws_root/settings.yaml`
-→ `<root>/settings.yaml`, the workset tier.
+`meta.workset.settings` → `@meta.workset.path/workset.yaml` → `@meta.runtime.ws_root/workset.yaml`
+→ `<root>/workset.yaml`, the workset tier.
 
 `meta.workset.settings` is spelled off `@meta.workset.path` — the spec's own spelling — chaining
 through the anchor set two lines above it, the same chained-floor-ref pattern the box-root anchors
@@ -367,7 +367,7 @@ meta.box.share_global   | this box's system-scope share dir (str(addr.share_glob
 meta.box.share_workset  | this box's workset-local share dir (str | None standalone)
 meta.agent.<a>.name     | the plugin-set agent name (REQUIRED when an agent exists)
 meta.agent.<a>.settings | the agent-tier settings FILE anchor
-                          (@meta.agent.<a>.path/settings.yaml — B5, spec §2d)
+                          (@meta.agent.<a>.path/agent.yaml — B5, spec §2d)
 ```
 
 `meta.agent.<a>.{mode,exec}` — the plugin-set LAUNCH GRAMMAR — are B5 keys built by
@@ -387,13 +387,13 @@ box settings tier.
 ### `meta.box.settings` — uniform in every mode
 
 `meta.box.settings` is the RO box-TIER settings-file anchor, and it is UNIFORM in EVERY mode (spec
-§2c ALL PROJECTS: `@meta.box.path/settings.yaml`). Standalone is NOT a `<None>` terminal: its box
-tier is `<root>/box_data/settings.yaml` — a real path, merely ABSENT BY DEFAULT (§5), an absent file
+§2c ALL PROJECTS: `@meta.box.path/box.yaml`). Standalone is NOT a `<None>` terminal: its box
+tier is `<root>/box_data/box.yaml` — a real path, merely ABSENT BY DEFAULT (§5), an absent file
 being an empty tier, with box-scope values then resolving from the workset tier
 `@meta.workset.settings` as R2 downward-defaults. The WRITE target moved with the READ in the same
 change (M-8), so a `config set box.*` lands in exactly the file this anchor names.
 
-It still cannot simply BE the `@meta.box.path/settings.yaml` `@`-ref: a bootstrap anchor may not
+It still cannot simply BE the `@meta.box.path/box.yaml` `@`-ref: a bootstrap anchor may not
 derive from a key at the scope it bootstraps, and this one resolves BEFORE the cascade exists —
 unlike the launch-time home bind, which is why THAT one may root at `@meta.box.path`. It is
 materialized as the RESOLVED LITERAL the launch computes, the SAME value the cascade uses as its
@@ -420,9 +420,9 @@ returned a different `name`, the path anchor would still (rightly) follow the st
 `meta.agent.<a>.name` reported the plugin's value.
 
 `meta.agent.<a>.settings` is the agent-tier SETTINGS cascade FILE anchor (spec §2d; B5 — the §3.3
-"keep and use" ruling): the spec's own formula `@meta.agent.<a>.path/settings.yaml`, resolved
+"keep and use" ruling): the spec's own formula `@meta.agent.<a>.path/agent.yaml`, resolved
 transitively through the sibling `path` anchor by `expand` — the SAME file `agent_settings_path`
-composes (`agents/<a>/settings.yaml`, D-2026-06-22). Keyed on the DISCRIMINATOR like `name`: the
+composes (`agents/<a>/agent.yaml`, D-2026-06-22). Keyed on the DISCRIMINATOR like `name`: the
 store, and so the settings file, follows the active node.
 
 `meta.agent.<a>.auth.share_support` is the agent's credential-SHARING CAPABILITY (spec §2d; design
@@ -671,7 +671,7 @@ inside the value).
 *persona_values* are the PERSONA STORE's rendered values for the ACTIVE agent (`endpoint` / `model`
 / `secret_path.<VAR>` / `env.<VAR>`), collected ONCE per launch by the caller and threaded in as an
 IN-MEMORY level because they are NEVER persisted to any settings file — the store's rendered host
-config is a LIVE resolution input, so a launch leaves `agents/<node>/settings.yaml` byte-identical.
+config is a LIVE resolution input, so a launch leaves `agents/<node>/agent.yaml` byte-identical.
 Threading (rather than riding a file) is forced by the rebuild count: `_resolve_launch_snapshot`
 re-reads the files several times per launch, and a never-written layer has no file to be read from.
 The keys arrive UN-DISCRIMINATED (the store knows a persona, not a cascade) and are discriminated
@@ -975,7 +975,7 @@ function mirrors whatever active agent it is given.
 ## The two level-wrapping partials
 
 `_agent_state_partial` wraps one agent-file behavior LEVEL under its own slot —
-`{agent: {<level.node>: {<key>: <val>}}}`. The per-agent file (`agents/<active>/settings.yaml`,
+`{agent: {<level.node>: {<key>: <val>}}}`. The per-agent file (`agents/<active>/agent.yaml`,
 loaded as `agent_cfg.state`) stores behavior FLAT (`agent.model` — already per-agent), NOT the
 discriminated `agent.<active>.*` / `agent.default.*` sub-tables that `assemble_levels`'
 `_agent_partial` reads, which treats a flat `[agent]` table as UNSET. So passing the file raw as

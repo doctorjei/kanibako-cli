@@ -142,7 +142,7 @@ record is authoritative and must not be overwritten with possibly-different args
   the persist rule has exactly one home. Only an EXPLICITLY-GIVEN `-i`/`--image` persists: a
   no-flag create bakes NOTHING into the box tier, and the box resolves the live cascade for its
   image, so later default changes still reach it. The write target is the BOX-TIER file from the
-  ONE pair (M-8) — for standalone, `box_data/settings.yaml`, the same file `box set box.image=…`
+  ONE pair (M-8) — for standalone, `box_data/box.yaml`, the same file `box set box.image=…`
   writes and the launch cascade reads as the box tier. Deriving it independently here is exactly
   the split M-8 exists to prevent.
 * **`--private`** — turns the box private BEFORE the home seed runs, so the host OAuth cred is
@@ -221,7 +221,7 @@ stale. Worksets are NEVER parked in `deregistered` — they keep their own lifec
 index and drops the deregistered entry, and NEVER touches the box's home content or re-materializes
 templates. Membership is itself the seed signal, so a re-index must not re-seed. It unifies two
 operations (design I2): READOPT a deregistered box, resolved by NAME first, and REGISTER a
-never-registered STANDALONE box that exists on disk (`box_data/` + root `settings.yaml`) with no
+never-registered STANDALONE box that exists on disk (`box_data/` + root `workset.yaml`) with no
 index entry, resolved by PATH. Worksets are refused with a redirect; a live box gets a clean
 "already registered" at rc 0.
 
@@ -260,7 +260,7 @@ deregistered `--purge` path — same paths, same order, same guards:
 * `_teardown_primary_box` removes the box dir, then the PRIMARY vault `ro`/`rw` under
   `@config.primary_workset/vault/{ro,rw}/<name>` (which is NOT under `metadata_dir`), then the
   per-box helper log at `@config.primary_workset/logs/<box>.jsonl`, keyed by the registry name.
-* `_teardown_standalone_box` removes the in-tree `box_data/` marker, the ROOT `settings.yaml` and
+* `_teardown_standalone_box` removes the in-tree `box_data/` marker, the ROOT `workset.yaml` and
   `vault/`. The ROOT file is the WORKSET tier AND the other half of the §5 detection marker, so
   dropping it is what stops the box being re-detected; the BOX tier lives inside `box_data/` and
   goes with the dir. The user's workspace files, and `root` itself, are never touched.
@@ -457,10 +457,10 @@ persona-grata store entry EXISTS, read the store and refuse the create NOW if it
 usable persona — BEFORE the persona create verdict, so a broken store is reported as itself rather
 than as the verdict's downstream "no endpoint configured".
 
-⚑ NOTHING IS WRITTEN. This used to IMPORT the store into `agents/<node>/settings.yaml`; the store
+⚑ NOTHING IS WRITTEN. This used to IMPORT the store into `agents/<node>/agent.yaml`; the store
 is a LIVE resolution input now (`read_persona_bundle` → the launch's persona cascade level), and
 the agent settings file holds user-intent values only, so there is nothing to persist and no
-`settings.yaml` for a corrupt-file arm to trip over. The gates themselves are UNCHANGED: same hard
+`agent.yaml` for a corrupt-file arm to trip over. The gates themselves are UNCHANGED: same hard
 errors, same WARN-ONLY probe.
 
 Returns an `"Error: …"` message for the caller to print-and-refuse (malformed ref, unusable store
@@ -530,12 +530,12 @@ Returns True if the box dir was removed. ⚑ The CALLER is responsible for conta
 ```_teardown_standalone_box(root: Path) -> bool```
 Delete a STANDALONE box's in-tree metadata; the workspace and *root* are never touched.
 
-Removes the in-tree `box_data/` marker, the root `settings.yaml` and `vault/` — the same set the
+Removes the in-tree `box_data/` marker, the root `workset.yaml` and `vault/` — the same set the
 active standalone purge and the `purge` command delete. Returns True if the `box_data/` marker was
 removed.
 
 ```_read_box_image(settings_file: Path) -> str | None```
-Best-effort read of a box's `box.image` from its settings.yaml; failure is `None`.
+Best-effort read of a box's `box.image` from its box.yaml; failure is `None`.
 
 Captured into the deregistered blob for a later readopt (I2). Purge does not need it, so any read
 failure degrades to `None` rather than erroring.

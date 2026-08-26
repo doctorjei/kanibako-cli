@@ -155,7 +155,7 @@ and stale cross-box references to the old address may break, with no forwarding 
 
 `workset_channel_paths` does not join `@meta.workset.path/channels` itself. It calls
 `resolve_workset_channelroot(ws_root, load_workset_settings_doc(ws_root))` from
-`project/workset.py`, so a repoint of `workset.channelroot` in the workset's own `settings.yaml`
+`project/workset.py`, so a repoint of `workset.channelroot` in the workset's own `workset.yaml`
 is honored — the spec rules that key must be *"real and USED — not hard-coded"*. The default is
 what the join would have produced; the resolution is what makes the key mean anything.
 

@@ -201,7 +201,7 @@ materialized for the box (spec §2c; §0 meta-RO):
 * `share_global` (B2) — this box's system-scope share dir (spec §2c).
 * `share_workset` (B2) — this box's workset-local share dir, `None` for STANDALONE (spec §2c).
 * `settings` — the RO box-TIER settings-file path, UNIFORM in every mode (spec §2c, ALL PROJECTS).
-  Standalone's is `<root>/box_data/settings.yaml`, a real path that is merely ABSENT BY DEFAULT
+  Standalone's is `<root>/box_data/box.yaml`, a real path that is merely ABSENT BY DEFAULT
   (§5) — NOT a `None` terminal. It is typed `Path | None` only because a narrow or partial resolve
   may materialize no box tier; the launch always supplies one.
 
@@ -210,7 +210,7 @@ materialized for the box (spec §2c; §0 meta-RO):
 
 **`MetaWorksetView`** wraps `store.meta.workset` (block B1 + B2, spec §1A/§2c). It exposes the
 single-source re-rooted `path` (= `@meta.runtime.ws_root`, a resolved `Path`); `settings`
-(= `@meta.runtime.ws_root/settings.yaml`, a `Path` for ALL modes including standalone, whose ROOT
+(= `@meta.runtime.ws_root/workset.yaml`, a `Path` for ALL modes including standalone, whose ROOT
 file plays the workset tier — spelled directly off `ws_root` now that the `meta.runtime.ws_settings`
 hop is CUT, spec §1A); and the `name` partition token (`__PRIMARY__` / `<named>` /
 `__STANDALONE__`), which is now the `@meta.runtime.ws_name` anchor (block B1, single source, spec
@@ -224,7 +224,7 @@ hop is CUT, spec §1A); and the `name` partition token (`__PRIMARY__` / `<named>
   DECLARATION ROOT: an abstract-category source stores
   `@meta.agent.<agent>.path/<category>/<leaf>`, so the key resolves for real.
 * the B5-materialized trio (§3.3 rulings): `settings` (the agent-tier settings cascade FILE,
-  `@meta.agent.<a>.path/settings.yaml`, resolved); `mode` (the harness's INTERACTIVE launch grammar,
+  `@meta.agent.<a>.path/agent.yaml`, resolved); `mode` (the harness's INTERACTIVE launch grammar,
   `dict[mode_key → argv fragment]`); and `exec` (the STANDALONE one-shot fragment, declared under
   the Python-safe attribute `exec`). `exec` is ABSENT for an agent with no `exec` operation, so
   access it only where it is materialized.

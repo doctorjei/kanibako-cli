@@ -122,7 +122,7 @@ refusing it as "nowhere in the cascade". That CLI write route is retired (disk-s
 an accepted loss tracked as DS-BL1), so the registry had no consumer left.
 
 ⚑ **NOTHING ABOUT LAUNCH CHANGED.** `agent_default_partial` is the LAUNCH representation and is
-untouched; a user override authored by hand in `agents/<node>/settings.yaml` still beats it by
+untouched; a user override authored by hand in `agents/<node>/agent.yaml` still beats it by
 cascade merge. **Do not resurrect this function to "restore" a delivery path — it never was one.**
 
 ## `agent_env_for_node` — the env twin, and the key swap is the whole job
