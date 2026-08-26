@@ -399,11 +399,12 @@ def read_box_enable_vault(path: Path, *, default_from: Path | None = None) -> bo
     """The box-scope ``box.enable_vault`` value stored at *path*, defaulting to ``True``.
 
     ⚑ *default_from* is the WORKSET tier, and it is the R2 downward-default
-    (spec §0 "Directional view/set across CONTAINMENT levels"): the STANDALONE
-    and NAMED resolvers both pass it.  It is load-bearing in each for a
-    DIFFERENT reason — standalone's is the pre-P2 read-compat path, named's is
-    ``workset create --no-vault``.  PRIMARY still passes nothing (see the
-    resolver).
+    (spec §0 "Directional view/set across CONTAINMENT levels"): the STANDALONE,
+    NAMED and PRIMARY resolvers ALL pass it, for ONE reason — a ``box.*`` key at
+    the workset tier is an OVERRIDABLE DEFAULT for the boxes that workset
+    contains, which is what makes ``workset create --no-vault`` reach them.
+    ⚑ Standalone's is NOT a compat path: spec §2c's STANDALONE block declares
+    this same resolution, so all three modes are one rule, not two.
     """
     for candidate in (path, default_from):
         if candidate is None or not candidate.exists():

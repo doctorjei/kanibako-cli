@@ -1512,7 +1512,10 @@ def resolve_standalone_project(std: StandardPaths, config: KanibakoConfig,
     # what makes a default-shaped tree drop-in portable BY CONSTRUCTION.
     shell_path, vault_ro_path, vault_rw_path = _standalone_box_paths(root)
     # enable_vault (P5a): explicit param wins, else the BOX tier with an R2 downward-default
-    # to the WORKSET tier.  ⚑ That fallback is standalone-only; it is the pre-P2 migration path.
+    # to the WORKSET tier.  ⚑ That fallback is LIVE DESIGN, not migration: spec §2c's
+    # STANDALONE block declares it — "Box values (box.enable_vault, workset.kuid, …) still
+    # resolve from the workset tier @meta.workset.settings as downward defaults when no box
+    # file exists."  All three resolvers pass it, for that one reason.
     actual_vault_enabled = (enable_vault if enable_vault is not None
                             else read_box_enable_vault(box_settings, default_from=project_toml))
 
