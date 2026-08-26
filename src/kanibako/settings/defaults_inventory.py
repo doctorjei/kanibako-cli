@@ -129,14 +129,21 @@ def source_groups() -> tuple[tuple[str, frozenset[str]], ...]:
     # The one literal emitted by the canon bind producer (spec §2d).
     ("core_defaults.py (canon producer)", frozenset({"agent.default.canon"})),
     ("kuid.py (SENTINEL)", frozenset({"workset.kuid"})),
+    # The channel family — ``workset.channelroot`` + all six ``workset.channels.*``
+    # leaves. ⚑ THEY ARE NOT "path join at use" AND MUST NOT GO BACK THERE: each is
+    # resolved through its own declared key by ``channels/channels.py``, whose answer
+    # the launch installs into the anchor floor. They sat under the join label while
+    # three of them had no consumer at all, which is exactly the state that label made
+    # look ordinary (R-35, "fix the CODE").
+    ("channels/channels.py (channel key derivation)", frozenset({
+      "workset.channelroot", "workset.channels.common", "workset.channels.chat",
+      "workset.channels.broadcast", "workset.channels.share",
+      "workset.channels.mailboxes", "workset.channels.share_global"})),
     # --- rows with no value-carrying artefact at all --- #
-    # Realized as a Path JOIN in project/workset.py and channels/channels.py; the
-    # manifest states the formula, no literal exists anywhere to point at.
+    # Realized as a Path JOIN in project/workset.py; the manifest states the formula,
+    # no literal exists anywhere to point at.
     ("built-in (path join at use)", frozenset({
-      "workset.workspaces", "workset.registry", "workset.template", "workset.channelroot",
-      "workset.channels.common", "workset.channels.chat", "workset.channels.broadcast",
-      "workset.channels.share", "workset.channels.mailboxes",
-      "workset.channels.share_global"})),
+      "workset.workspaces", "workset.registry", "workset.template"})),
     ("runtime-probed (podman graphroot)", frozenset({"box.images_store"})),
     # ``default: <None>`` — an ABSENCE. No floor builder installs these at all.
     ("(nothing declares it — unset until you set it)", frozenset({

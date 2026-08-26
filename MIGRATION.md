@@ -3209,6 +3209,43 @@ only appears in a file you wrote.
   out anything worth keeping. `seeded` is a copy, so it had no volume — its source was read under
   whatever directory `kanibako` was run from, and usually was not there at all.
 
+### 2.51 The six `workset.channels.*` keys are read, and three of them did nothing before
+
+**Read this if you ever ran `config set` on a `workset.channels.*` key. If you never repointed one,
+nothing here applies to you and nothing is required.**
+
+**What changed.** The workset channel family declares `common`, `chat`, `share`, `broadcast`,
+`mailboxes` and `share_global`. kanibako read none of them: it resolved `workset.channelroot` and
+joined the directory names on by hand. Those joins are each key's documented default, so a default
+setup behaved correctly and still does — the keys only ever mattered if you changed one. Each leaf
+is now resolved through its own key.
+
+| If you set | What happened before | What happens now |
+|---|---|---|
+| `workset.channels.broadcast`, `.mailboxes`, `.share_global` | Nothing. The value was accepted, written to `workset.yaml` and read back by `config get`, and no path moved | The value is used |
+| `workset.channels.chat`, `.share` | The mount followed your override; the rest of kanibako did not | Mount, seeded files and the `meta.box.*` addresses agree |
+| `workset.channels.common` | Honoured | Unchanged |
+| `workset.channelroot` | Honoured, but a settings file referencing `@workset.channelroot` got nothing back | The launch resolves it, so the reference works |
+
+**What to do.**
+
+1. **If you repointed `chat`, move your existing logs.** This is the one case that leaves data
+   behind. `general.md` and `broadcast.md` were being written and rotated under
+   `<channelroot>/chat` — a directory that was mounted nowhere — while `~/channels/workset/chat`
+   in every box followed your override and stayed empty. Those logs are still on the host at
+   `<channelroot>/chat`. Move them into the directory your `chat` key names; nothing moves them
+   for you.
+2. **If you repointed `mailboxes`, check where your mail actually is.** Repointing it looked like
+   it had relocated your box's inbox and had not, so your mail is under the *default* mailboxes
+   directory. It will be read from your repointed path now.
+3. **If you repointed `broadcast` or `share_global`, expect the path to take effect** on the next
+   launch. Anything written under the old default stays there.
+
+**One new refusal.** A repoint that cannot be resolved before the launch snapshot is built now
+fails by name instead of quietly falling back to the default. This is the same closed-keyspace
+behaviour `workset.channelroot` already had; it now covers the five leaves as well. A setting that
+resolves is unaffected.
+
 ---
 
 ## 3. For plugin authors

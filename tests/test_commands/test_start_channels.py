@@ -327,6 +327,24 @@ class TestWorksetChannelFloorLeaf:
             f"bind @-refs with no floor key: {sorted(referenced - installed)}"
         )
 
-    def test_standalone_has_no_workset_channel_keys(self, standalone_proj, std):
+    def test_standalone_has_only_the_all_projects_channel_keys(
+        self, standalone_proj, std,
+    ):
+        """⚑ NOT "no channel keys" — the family splits per mode, and it always did.
+
+        The four workset-LOCAL leaves are PRIMARY/NAMED (a standalone box has no
+        ``~/channels/workset/*``), but ``mailboxes`` and ``share_global`` are ALL
+        PROJECTS (spec §2c): they aggregate at the SYSTEM scope partitioned by workset
+        name, and ``__STANDALONE__`` is a partition like any other.  This case asserted
+        the whole family was absent for as long as no floor installed those two in ANY
+        mode, so it read as a mode rule when it was really an outage.
+        """
         floor = _workset_anchor(std, standalone_proj)
-        assert not [k for k in floor if k.startswith("workset.channels.")]
+        assert {k for k in floor if k.startswith("workset.channels.")} == {
+            "workset.channels.mailboxes", "workset.channels.share_global",
+        }
+        # The channel ROOT is genuinely per-mode: standalone declares no value for it.
+        assert "workset.channelroot" not in floor
+        assert floor["workset.channels.mailboxes"] == str(
+            _ch.workset_partition_paths(standalone_proj, std).mailboxes
+        )
