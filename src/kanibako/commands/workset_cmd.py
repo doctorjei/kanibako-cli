@@ -57,9 +57,13 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         "--name", default=None,
         help="Name for the working set (default: directory basename)",
     )
+    # ⚑ DECLARED so the refusal can NAME it and hand back a cure — an undeclared
+    # flag gets argparse's "unrecognized arguments", which names it and teaches
+    # nothing. The flag is inert by construction: nothing reads ``args.standalone``.
     create_p.add_argument(
         "--standalone", action="store_true",
-        help="Use standalone mode for projects in this working set",
+        help="REFUSED: standalone is a single box's mode, not a working set's — "
+             "use 'kanibako box create --standalone [path]'",
     )
     create_p.add_argument(
         "-i", "--image", default=None,
@@ -341,8 +345,33 @@ def _workset_config_path(ws) -> Path:
     return workset_settings_path(ws)
 
 
+#: Refusal for ``workset create --standalone`` (Jei, 2026-08-27).  The flag asked for
+#: something no working set can be: a standalone box's workset ROOT is its own project
+#: directory and its ws_name is ``__STANDALONE__`` (``settings_launch``), so it is not a
+#: member of any working set — and mode is DETECTED from the box directory's marker
+#: (``detect_project_mode``), so no key could carry the request either.  Refused rather
+#: than accepted-and-inert for the reason ``commands/flags.py`` states for the blanket
+#: flags: a flag outside the set it means something for is a user error, never a no-op.
+_STANDALONE_REFUSAL = (
+    "Error: 'workset create --standalone' is refused: standalone is a single "
+    "box's mode, not a working set's. A standalone box keeps its own state and "
+    "its own workset-tier settings inside its project directory and belongs to "
+    "no working set, so a working set cannot have standalone members; mode is "
+    "detected from the box directory, never stored.\n"
+    "  For a standalone box:  kanibako box create --standalone [path]\n"
+    "  For a working set:     re-run without --standalone; boxes created in it "
+    "or connected to it are 'named' mode."
+)
+
+
 def run_create(args: argparse.Namespace) -> int:
     import os
+
+    # ⚑ FIRST, before any path work or store read: the refusal is a pure argv verdict,
+    # and a working set half-registered before it would be the defect twice over.
+    if getattr(args, "standalone", False):
+        print(_STANDALONE_REFUSAL, file=sys.stderr)
+        return 1
 
     std = _load_std()
     path = args.path
@@ -376,10 +405,9 @@ def run_create(args: argparse.Namespace) -> int:
     # top-level ``enable_vault``/``standalone`` is not a declared key at all
     # (spec §0: the keyspace is CLOSED), so it would be carried into the store as
     # an undeclared path, not merely ignored.
-    # ⚑⚑ ``--standalone`` writes NOTHING: mode is RO identity (``meta.box.mode``),
-    # and no declared key says "this workset's boxes are standalone".  The flag is
-    # therefore accepted and inert pending a ruling on its fate — do NOT invent a
-    # key for it.
+    # ⚑⚑ ``--standalone`` is NOT among them: it never reaches here (refused above),
+    # and no declared key says "this workset's boxes are standalone" — mode is RO
+    # identity (``meta.box.mode``).  Do NOT invent a key for it.
     box_updates: dict = {}
     if getattr(args, "image", None):
         box_updates["image"] = args.image
