@@ -10014,9 +10014,9 @@ class TestRestartFlag(_RunningBoxDriver):
 class TestSupervisorMarkersDirFollowsTheResolvedEnv:
     """The supervisor's ``--agent-markers-dir`` must carry the RESOLVED env value.
 
-    The box-side hooks WRITE their per-PID marker into
-    ``${KANIBAKO_AGENT_MARKERS_DIR:-<constant>}`` (``vscode.vscode_config``), and the
-    supervisor READS whatever dir it was handed on argv.  Since MBR-1 P4b the stamp is
+    The box-side hooks (``vscode.vscode_config``) call the bible's PID scripts, which
+    WRITE their per-PID marker into ``${KANIBAKO_AGENT_MARKERS_DIR:-<constant>}``, and
+    the supervisor READS whatever dir it was handed on argv.  Since MBR-1 P4b the stamp is
     an ordinary ``system.env.KANIBAKO_AGENT_MARKERS_DIR`` slot, so a user CAN override
     it (a ``system.env`` key, or per-run ``-e``) — and if argv kept quoting the
     compile-time constant the hooks would write where the supervisor never looks:

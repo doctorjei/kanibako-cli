@@ -219,33 +219,47 @@ preserved; a group with no matcher omits the key entirely rather than writing a 
 that feeds panel-watch's dead-panel detection and newcomer detection. This module is the WRITE
 side, and it is delivered per agent:
 
-* **claude** — a `SessionStart` hook writes the marker file `<dir>/$PPID`, and a `SessionEnd` hook
-  removes it on a clean exit, so a clean shutdown clears its own marker. Both are managed as their
-  own groups, idempotent and user-hook-preserving, exactly like the directive hook.
+* **claude** — a `SessionStart` hook writes the marker file, and a `SessionEnd` hook removes it on
+  a clean exit, so a clean shutdown clears its own marker. Both are managed as their own groups,
+  idempotent and user-hook-preserving, exactly like the directive hook.
 * **codex** — the SAME marker-write command, delivered as the second managed
   `[[hooks.SessionStart]]` group in the config.toml region. There is no remove side (below).
 * **goose** — no marker delivery; there is no panel-liveness surface for it yet.
 
-⚑ **Per-PID, not a single `agent.pid` file.** The FILENAME is the PID; the content is `$PPID` too,
-purely for debuggability, since readers key on the filename. The old single-path scheme was
-last-writer-wins, so a CLI incumbent and a VS Code panel newcomer sharing one path could not both
-be held. A directory of per-PID files enumerates the FULL set of live agent PIDs, which the
-supervisor prunes-dead via `kill -0` in order to detect a newcomer — a live marker PID that is not
-its own agent.
+⚑ **Neither hook is shell any more — each is a CALL** to `pid-add.sh` / `pid-rm.sh` under
+`~/canon/bible/general/scripts/util`, the PID helpers the packaged bible already ships. They reach
+a box through the `bible/general` rom bind, which `rom_default_categories` emits with no agent
+parameter and `start.py` folds in unconditionally, so a codex box has them exactly as a claude box
+does. **The hook passes `"$PPID"` as the script's argument**, and that is load-bearing: the script
+prefers its argument over its own `$PPID`, which by the time it runs is the hook's transient shell
+— a marker named for that shell would name a process that has already exited.
+
+⚑ **Per-PID files, plus the shared `agent.pid` the same script maintains.** The marker FILENAME is
+the PID; the content is the PID too, purely for debuggability, since readers key on the filename.
+The old single-path scheme was last-writer-wins, so a CLI incumbent and a VS Code panel newcomer
+sharing one path could not both be held. A directory of per-PID files enumerates the FULL set of
+live agent PIDs, which the supervisor prunes-dead via `kill -0` in order to detect a newcomer — a
+live marker PID that is not its own agent. `pid-add.sh` writes `/tmp/kanibako/agent.pid` as well,
+which is a box convention rather than anything kanibako reads; `pid-rm.sh` drops it only while it
+still names the session that is ending, so the shared path is not cleared out from under a second
+agent.
 
 ⚑ `AGENT_MARKERS_DIR` is the **single source of truth** for both ends of the contract. It is
 defined in this (low-level) module and imported by `commands/start.py` for BOTH the supervisor's
 `--agent-markers-dir` (read end) and the `KANIBAKO_AGENT_MARKERS_DIR` env it seeds (write end), so
-the two ends cannot desync. The hook command prefers the seeded env
-(`${KANIBAKO_AGENT_MARKERS_DIR:-...}`) and falls back to the same literal built from the constant.
-That fallback is belt-and-braces, not a cure for an inheritance gap: a `podman exec` panel agent
-DOES inherit the podman-set env, so both ends of the `:-` expand to the same literal anyway.
+the two ends cannot desync. The PID scripts prefer that seeded env
+(`${KANIBAKO_AGENT_MARKERS_DIR:-...}`) and fall back to their own copy of the literal. That
+fallback is belt-and-braces, not a cure for an inheritance gap: a `podman exec` panel agent DOES
+inherit the podman-set env, so both ends of the `:-` expand to the same literal anyway. ⚑ It is a
+copy all the same — a shell script cannot import a Python constant — and it is the one place this
+contract has two spellings, so `test_code_config` reads the shipped script bytes and pins their
+`:-` default to `AGENT_MARKERS_DIR`.
 
 ⚑ It MUST stay a LITERAL box-local path, byte-identical on both ends: podman sets the env verbatim
 and the supervisor reads `--agent-markers-dir` verbatim, so a shell expression like
 `${XDG_RUNTIME_DIR:-/tmp}` would resolve only in a shell context and would otherwise land as a
 literal `${...}` path — the two ends would then disagree. `/tmp` is a box-local tmpfs and the
-markers are tiny, so it is a safe universal home. The dir is created by the write hook; the reader
+markers are tiny, so it is a safe universal home. The dir is created by `pid-add.sh`; the reader
 treats an absent dir as "no agents yet".
 
 ⚑ **VALIDATION-PENDING — do not claim these hold; check at the bifrost e2e.**

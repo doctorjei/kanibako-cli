@@ -262,8 +262,9 @@ def merge_session_start_hook(settings: dict) -> dict:
 # ---------------------------------------------------------------------------
 
 # ⚑ THE CONTRACT, and it has TWO ends that must name ONE dir:
-#   * WRITE (box side) — the marker hooks below expand
-#     ``${KANIBAKO_AGENT_MARKERS_DIR:-<this constant>}``, i.e. they follow the ENV.
+#   * WRITE (box side) — the marker hooks below run the packaged bible's ``pid-add.sh`` /
+#     ``pid-rm.sh``, which expand ``${KANIBAKO_AGENT_MARKERS_DIR:-<this constant's
+#     value>}``, i.e. they follow the ENV.
 #   * READ (host side) — ``commands/start.py`` hands the supervisor
 #     ``--agent-markers-dir <the RESOLVED container_env value>``.
 # So the ENV is what actually decides the dir (since MBR-1 P4b it is an ordinary
@@ -271,22 +272,34 @@ def merge_session_start_hook(settings: dict) -> dict:
 # is the shared FALLBACK both ends use when nothing overrides it — not the sole source.
 # ⚑ Must stay a LITERAL box-local path — it is compared verbatim across the two ends, so
 # a shell expression here (``${XDG_RUNTIME_DIR:-/tmp}``) would make them disagree.
+# ⚑ THE WRITE-SIDE FALLBACK IS A SECOND SPELLING of this literal — a shell script cannot
+# import a Python constant, so ``pid-add.sh``/``pid-rm.sh`` each carry their own ``:-``
+# default. Neither language offers a way to make that drift IMPOSSIBLE, so it is made
+# LOUD instead: ``test_code_config`` reads the shipped script bytes and pins them here.
 AGENT_MARKERS_DIR = "/tmp/kanibako/agents"
 
 # Broad OR over claude's SessionEnd sources, so the marker is cleaned up on ANY clean end.
 _SESSION_END_MATCHER = "clear|logout|prompt_input_exit|other"
 
-# ⚑ Default-dir portion is built FROM :data:`AGENT_MARKERS_DIR`, never a second literal.
+# The packaged bible's PID helpers, at their BOX path. ⚑ Available in EVERY box, not just
+# a claude one: ``core_defaults.rom_default_categories`` takes no agent and ``start.py``
+# folds it in unconditionally, so ``bible/general`` is bound wherever a box is launched.
+# ⚑ This path is the bind's own dest — ``core_defaults._canon_dest`` of the scripts'
+# rom-relative source — spelled out rather than imported, so this module keeps no edge
+# into the settings layer for one string join. ``test_code_config`` computes it from
+# ``_canon_dest`` and pins it, so relocating the canon dest reds instead of leaving the
+# hook pointed at nothing.
+_PID_SCRIPT_DIR = "~/canon/bible/general/scripts/util"
+
+# ⚑ ``"$PPID"`` is passed EXPLICITLY rather than left to the script's own default: by the
+# time the script runs, ITS ``$PPID`` is this hook's transient shell, which exits at once
+# — the marker would name a dead process. The hook shell's ``$PPID`` is the agent.
+# ⚑ Silent-safe (``|| true``) by design: a marker is liveness bookkeeping and must never
+# be what fails a session start or end.
 # ⚑ UNVERIFIED (bifrost e2e): that ``$PPID`` in a claude hook IS the agent PID, and that
 # the VS Code panel claude runs the box's seeded hooks at all.
-_AGENT_MARKER_WRITE_COMMAND = (
-    f'd="${{KANIBAKO_AGENT_MARKERS_DIR:-{AGENT_MARKERS_DIR}}}"; '
-    'mkdir -p "$d" && printf %s "$PPID" > "$d/$PPID" || true'
-)
-_AGENT_MARKER_REMOVE_COMMAND = (
-    f'd="${{KANIBAKO_AGENT_MARKERS_DIR:-{AGENT_MARKERS_DIR}}}"; '
-    'rm -f "$d/$PPID" || true'
-)
+_AGENT_MARKER_WRITE_COMMAND = f'{_PID_SCRIPT_DIR}/pid-add.sh "$PPID" || true'
+_AGENT_MARKER_REMOVE_COMMAND = f'{_PID_SCRIPT_DIR}/pid-rm.sh "$PPID" || true'
 
 
 def merge_marker_write_hook(settings: dict) -> dict:
