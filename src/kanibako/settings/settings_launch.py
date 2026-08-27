@@ -289,18 +289,23 @@ def meta_agent_path_floor(agent_name: str) -> dict[str, object]:
 
     ⚑ THE single builder for this key, shared by the launch floor
     (:func:`meta_identity_floor`) and the ``config set`` SET-TIME validation
-    snapshot. That sharing is load-bearing: ``config set``'s refusal message tells a
-    user to spell an abstract-category source as
-    ``@meta.agent.<agent>.path/<category>/<name>``, and if the set-time snapshot did
-    not carry the key, the very value the tool just recommended would be rejected as
-    a dangling ``@``-reference.
+    snapshot. That sharing is load-bearing: an abstract-category source is ROOTED AT
+    ASSEMBLY into ``@meta.agent.<agent>.path/<category>/<name>``
+    (``settings_assemble._declaration_root_ref`` → ``parse_bind_map``, spec §2a), so
+    that spelling is what the walk PRODUCES and what the set-time snapshot then has to
+    resolve — without the key, the bare leaf a user just wrote is refused as a
+    dangling ``@``-reference.
 
-    ⚑ NODE **and** HARNESS are both materialized: ``load_common`` keys its entries on
-    the plugin's ``Target.name`` (the HARNESS) while callers pass the ACTIVE NODE, and
-    on a persona box those differ — materializing only the node leaves the
-    harness-keyed refs DANGLING. The harness entry is INTENTIONALLY PARTIAL (a
-    ``path``, no ``name`` / ``auth.share_support``); the llm-doc says why that
-    asymmetry is inert and must not be "fixed".
+    ⚑ NODE **and** HARNESS are both materialized — but NOT for the plugin's own
+    commons: ``agent_common_for_node`` re-keys AND re-roots those to the NODE before
+    the ref ever reaches ``expand``, so removing the harness anchor leaves them
+    BYTE-IDENTICAL (mutation-proved). What needs it is a HARNESS-KEYED ref
+    the USER wrote: at SET time the snapshot above must carry it or the value is
+    refused as a dangling dependency, and at LAUNCH a missing anchor does not raise at
+    all — §2a's embedded-ref rule renders the dangling ``@``-ref as ``""``, so the box
+    binds a garbage host source and NOTHING reports an error. The harness entry is
+    INTENTIONALLY PARTIAL (a ``path``, no ``name`` / ``auth.share_support``); the
+    llm-doc says why that asymmetry is inert and must not be "fixed".
     """
     return {
         f"meta.agent.{store_agent}.path": f"@config.agents/{store_agent}"
