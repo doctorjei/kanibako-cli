@@ -1974,8 +1974,9 @@ class TestBoxWorksetSettingsPaths:
         )
 
     def test_standalone_box_tier_is_the_box_data_settings_file(self, tmp_path: Path):
-        """STANDALONE gains a real BOX TIER at ``box_data/box.yaml`` (spec §2c
-        + §5); the ROOT file keeps playing the WORKSET tier.  (Mutation:
+        """STANDALONE gains a real BOX TIER at ``box_data/box.yaml``
+        (``settings-keyspace-1.8.0.md`` §2c ALL PROJECTS + ``system-design-1.8.0.md``
+        § "Detection & import"); the ROOT file keeps playing the WORKSET tier.  (Mutation:
         reverting the standalone arm to ``None`` → RED.)"""
         from kanibako.settings.paths import BoxMode, box_workset_settings_paths
 
@@ -1989,7 +1990,8 @@ class TestBoxWorksetSettingsPaths:
     def test_standalone_box_tier_lives_under_the_box_data_marker(self, tmp_path: Path):
         """The two tiers are the two SPEC positions, not two arbitrary files: the box
         tier sits inside ``box_data/`` (= ``@meta.box.path``) and the workset tier is
-        the ROOT file (= the file §5 DETECTION reads).  (Mutation: swapping the
+        the ROOT file (= the file DETECTION reads, ``system-design-1.8.0.md``
+        § "Detection & import").  (Mutation: swapping the
         returned pair → RED.)"""
         from kanibako.settings.paths import (
             STANDALONE_META_DIR,
@@ -2069,7 +2071,8 @@ class TestBoxWorksetSettingsPaths:
 
 
 class TestStandaloneDetectionIsRootFileOnly:
-    """§5: STANDALONE detection = the ``box_data/`` marker DIR + the ROOT
+    """``system-design-1.8.0.md`` § "Detection & import": STANDALONE detection =
+    the ``box_data/`` marker DIR + the ROOT
     ``workset.yaml`` (the WORKSET-tier file).  P2 introduces a BOX-tier file at
     ``box_data/box.yaml``; detection must NOT come to depend on it, or the
     ancestor-walk that finds a standalone project at all would break."""

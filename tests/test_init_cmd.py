@@ -497,7 +497,9 @@ def _standalone_tiers(config_file, project_dir):
     ⚑ Sourcing BOTH positions from the code under test would make every caller
     self-consistent and therefore BLIND to a swapped pair — the exact defect found in
     the cascade-order test.  So this helper ASSERTS the two literal spec positions
-    (§5) before returning them: the blindness is closed here, once, for
+    (``settings-keyspace-1.8.0.md`` §2c ALL PROJECTS for the box tier;
+    ``system-design-1.8.0.md`` § "Detection & import" for the ROOT file detection
+    reads) before returning them: the blindness is closed here, once, for
     every caller.
     """
     from kanibako.settings.config import load_config

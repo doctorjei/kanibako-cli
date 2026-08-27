@@ -3265,7 +3265,9 @@ def _run_container(
             for action in hygiene_actions:
                 logger.info(action)
 
-        # Seed at CREATE, never at launch (keyspace spec §0/§5).  The one-time
+        # Seed at CREATE, never at launch (``settings-keyspace-1.8.0.md`` §0
+        # "Seed-time vs cascade"; ``system-design-1.8.0.md`` § "Detection &
+        # import").  The one-time
         # home seed runs ATOMICALLY with box registration: registry MEMBERSHIP is
         # the seed signal, so a box that already exists was already seeded and
         # this launch must NOT re-seed it (user edits survive).  ``proj.is_new`` is
@@ -6347,7 +6349,8 @@ def _launch_snapshot_inputs(
     # UNIFORM now: primary/named = (the box's own box.yaml, the workset root's);
     # standalone = (<root>/box_data/box.yaml, <root>/workset.yaml) — the box
     # tier is a real path in EVERY mode, merely ABSENT BY DEFAULT for standalone
-    # (spec §2c ALL PROJECTS + §5). The SAME pair feeds BOTH the
+    # (``settings-keyspace-1.8.0.md`` §2c ALL PROJECTS + ``system-design-1.8.0.md``
+    # § "Detection & import"). The SAME pair feeds BOTH the
     # meta.box.settings anchor (box tier path, below) AND the cascade box_path/
     # workset_path the snapshot resolvers pass to build_launch_snapshot (returned
     # last) — so the anchor and the cascade cannot drift.

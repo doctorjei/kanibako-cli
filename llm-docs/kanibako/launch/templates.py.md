@@ -201,9 +201,10 @@ NEVER overwritten). Two phases:
 
 SKIP-IF-ABSENT: a *layers* entry that is not an existing directory is silently skipped (spec §2a
 "layer skipped if the source dir is absent" — e.g. an unpopulated `@workset.template`). SEED-ONCE:
-the caller invokes this only at box CREATE (registry MEMBERSHIP is the seed signal, spec §0/§5),
-never on a relaunch. No file is special-cased or merged — every file is a plain ordered copy (no
-CLAUDE.md merge, D-B5).
+the caller invokes this only at box CREATE (registry MEMBERSHIP is the seed signal —
+`settings-keyspace-1.8.0.md` §0 "Seed-time vs cascade", `system-design-1.8.0.md` § "Detection &
+import"), never on a relaunch. No file is special-cased or merged — every file is a plain ordered
+copy (no CLAUDE.md merge, D-B5).
 
 This is the layered-copy MECHANISM only; the layer dirs are resolved through the keystore by the
 caller (`commands.start._apply_init_seeds`), NOT derived on disk here — the "sole intermediary is
