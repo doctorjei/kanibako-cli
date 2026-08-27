@@ -20,10 +20,10 @@ import pytest
 from kanibako.settings import agent_defaults
 from kanibako.settings.agent_config import (
     agent_category_dirname,
-    agent_category_root,
     agent_category_root_ref,
     is_self_resolving,
     root_relative_source,
+    store_dirname,
 )
 from kanibako.settings.settings_resolve import SettingsError
 
@@ -438,15 +438,57 @@ class TestCategoryBindsAreDestKeyed:
 
 
 class TestLayoutSingleSource:
-    """The layout helpers are THE single source both the ref builder and the
-    persona shim read — spelled once, so they cannot drift."""
+    """The per-agent store layout is spelled ONCE, so its producers cannot drift.
 
-    def test_ref_and_path_agree(self, tmp_path):
+    ⚑ WHAT THIS CLASS PINS CHANGED WITH ITS SUBJECT. It used to compare the ref
+    builder against ``agent_category_root``, a resolved twin that composed
+    ``agents/<node>/<category>``; that twin is GONE (see the tombstone in
+    ``settings.agent_config``) because the persona shim — its only consumer — went
+    generic over categories and now carries a WHOLE store-relative path.
+
+    So the pairing asserted here is the one that is still LIVE, and both halves have
+    a real producer: what a declaration STORES (``agent_category_root_ref``, read by
+    :func:`~kanibako.settings.agent_defaults.load_common`) against where that ``@``-ref
+    RESOLVES (``settings_launch.meta_agent_path_floor``, which defines
+    ``meta.agent.<a>.path``). A test that compared a live producer with a dead one
+    would keep passing while the live pair drifted.
+    """
+
+    def test_the_declaration_root_resolves_to_the_store_dir(self):
+        """``@meta.agent.<a>.path/<category>`` must land on ``agents/<dir>/<category>``.
+
+        ⚑ Both sides are CALLS to the two production builders, never a literal
+        composed here — a hand-spelled expectation would agree with itself.
+        The literals below are the SPELLINGS, which is the other half: they are the
+        strings a stored declaration and a resolved anchor actually carry.
+        """
+        from kanibako.settings.settings_launch import meta_agent_path_floor
+
         ref = agent_category_root_ref("claude", "common")
-        real = agent_category_root(tmp_path / "agents", "claude", "common")
+        anchor = meta_agent_path_floor("claude")["meta.agent.claude.path"]
         assert ref == "@meta.agent.claude.path/common"
-        assert real == tmp_path / "agents" / "claude" / "common"
-        assert ref.rsplit("/", 1)[-1] == real.name
+        assert anchor == "@config.agents/claude"
+        # The ref is the anchor plus the category dirname — nothing else prepends.
+        assert ref == f"@meta.agent.claude.path/{agent_category_dirname('common')}"
+
+    def test_a_persona_node_keeps_the_KEY_spelling_and_the_DIR_spelling_apart(self):
+        """⚑ THE SPLIT-STORE GUARD, on the pair that survived.
+
+        A key path carries the canonical ``℘`` node; a directory carries the ``+``
+        the user typed. The ref keeps the KEY spelling because it is a key path; the
+        anchor's VALUE takes ``store_dirname``. Collapse the two either way and the
+        store SILENTLY splits in half — every path here is create-if-absent, so
+        nothing raises.
+        """
+        from kanibako.settings.settings_launch import meta_agent_path_floor
+
+        node = "navigator℘claude"
+        assert agent_category_root_ref(node, "common") == (
+            f"@meta.agent.{node}.path/common"
+        )
+        anchor = meta_agent_path_floor(node)[f"meta.agent.{node}.path"]
+        assert anchor == "@config.agents/navigator+claude"
+        assert store_dirname(node) == "navigator+claude"
 
     @pytest.mark.parametrize("category", ["common", "caches", "seeded"])
     def test_abstract_categories_have_a_dirname(self, category):

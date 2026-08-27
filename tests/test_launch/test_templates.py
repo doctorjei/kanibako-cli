@@ -655,11 +655,22 @@ class TestPersonaTemplateLayerThroughTheLink:
     _NODE = "navigator℘claude"
 
     def _shim_target(self):
-        """The shim reads only ``default_common()``; ``{}`` isolates the TEMPLATE
-        half, so nothing here depends on which commons the claude plugin declares."""
+        """A stub declaring EVERY category hook the shim reads, each ``{}``.
+
+        ⚑ TYPED LIKE THE REAL COLLABORATOR: `Target` gives all three hooks concrete
+        ``{}`` defaults, so a real target always answers them and only a hand-built
+        stub can omit one — an omission that reads as a shim bug rather than as the
+        stub lying. Empty tables isolate the TEMPLATE half, so nothing here depends
+        on which categories the claude plugin declares.
+        """
         from types import SimpleNamespace
 
-        return SimpleNamespace(name=self._HARNESS, default_common=lambda: {})
+        return SimpleNamespace(
+            name=self._HARNESS,
+            default_common=lambda: {},
+            default_seeds=lambda: {},
+            default_category_binds=lambda: {},
+        )
 
     def _node_store(self, std):
         """The node's store dir, from the production helper — the link, the key and

@@ -11,10 +11,11 @@ Each `~kanibako.targets.base.Binding` in a `~kanibako.targets.base.PluginDescrip
 `agent.<agent>.bindings.{ro,rw}` key form, which is TERMINAL (R-5: the arm is the WHOLE key and the
 destinations inside it are NOT key segments), and never a bare `agent` token (§0).
 
-Beside the bind representation live two smaller re-keying helpers for the same §2d read pick —
-`agent_env_for_node` for a plugin's `default_envs()` table and `agent_common_for_node` for its
-`default_common()` table — plus the two `harness_common_*` functions that write down where a
-harness's agent-scope store dir lives.
+Beside the bind representation live two node-adaptation helpers for the same §2d read pick —
+`agent_env_for_node` for a plugin's `default_envs()` table and `agent_categories_for_node` for
+ALL THREE of its category hooks (`default_common()`, `default_seeds()`,
+`default_category_binds()`) — sharing one private key swapper, plus the two `harness_store_*`
+functions that write down where a harness's agent-scope store lives.
 
 Historically this module is **block 7a — PURE, ALONGSIDE**, and it is item-0's hard half. The
 descriptor's OWN agent name `<name>` (`install.name`; S27) was the original root; see "Rooting"
@@ -128,7 +129,7 @@ cascade merge. **Do not resurrect this function to "restore" a delivery path —
 ## `agent_env_for_node` — the env twin, and the key swap is the whole job
 
 It re-keys a plugin's `default_envs()` table from the HARNESS to the NODE, and it exists for the
-same reason `agent_common_for_node` does: the §2d read pick overlays `agent.default` ∪
+same reason `agent_categories_for_node` does: the §2d read pick overlays `agent.default` ∪
 `agent.<ACTIVE NODE>`, so a key a plugin declared against its own HARNESS name is invisible to a
 PERSONA node (`navigator℘claude`) — which for env means a persona box launching without the
 variables its harness requires.
@@ -140,68 +141,86 @@ gets the identity back.
 ⚑ **The key is DATA:** only the leading `agent.<harness>.` PREFIX is replaced and the rest is
 carried through untouched — never split into segments and rejoined.
 
-## `agent_common_for_node` — re-key AND re-root
+## `agent_categories_for_node` — re-key AND re-root, for EVERY category hook
 
-A plugin declares its agent-scope commons against its OWN name, the HARNESS
-(`load_common(pkg, file, self.name)` → `agent.claude.common.plugins`), but the §2d read pick
-overlays `agent.default` ∪ `agent.<ACTIVE NODE>`. For a PERSONA the active node is
-`navigator℘claude`, so every harness-keyed common was invisible: a persona box mounted NEITHER
-`~/.claude/plugins` NOR `~/.claude/cache`, and `ensure_persona_share_symlinks` maintained links
-nothing consumed. This function is the P7 fix for that live bug — found while planning P3, and
-deliberately deferred to here, where the agent-key semantics were open.
+A plugin declares its agent-scope categories against its OWN name, the HARNESS
+(`load_common(pkg, file, self.name)` → `agent.claude.common`), but the §2d read pick overlays
+`agent.default` ∪ `agent.<ACTIVE NODE>`. For a PERSONA the active node is `navigator℘claude`, so
+every harness-keyed declaration was invisible: a persona box mounted NEITHER `~/.claude/plugins`
+NOR `~/.claude/cache`, and `ensure_persona_share_symlinks` maintained links nothing consumed.
 
-**A persona INHERITS its harness's commons.** That is the documented intent of the symlink shim,
-which points `agents/<node>/common/<leaf>` at `agents/<harness>/common/<leaf>` and explicitly steps
-aside when the persona has a real dir of its own. Both halves are re-keyed so that intent holds:
+⚑ **THE FIX LANDED ON `common` FIRST AND STOPPED THERE**, which is how the same defect survived on
+the other two hooks. `default_seeds()` and `default_category_binds()` were still folded HARNESS-KEYED
+at THREE call sites — twice in `_resolve_launch_snapshot`, and again on the CREATE path in
+`_apply_init_seeds`, where fixing one seed site leaves the other broken. What MASKED it is that
+every first-party plugin returns `{}` from both hooks, so no shipped configuration and no test
+driven by claude/goose/codex could show it. Hence ONE adapter over all three: a per-category
+adapter is exactly what lets the next hook be forgotten.
 
-* the KEY `agent.<harness>.common.<leaf>` → `agent.<node>.common.<leaf>`, so the pick actually sees
-  it;
-* the SOURCE `@meta.agent.<harness>.path/common/<leaf>` → `@meta.agent.<node>.path/common/<leaf>`,
-  so the bind resolves through the NODE path — the symlink (shared with the harness) by default, or
-  the persona's OWN directory when it has one. Re-keying WITHOUT re-rooting would bind the harness
-  dir directly and make the shim's own-dir branch unreachable.
+**A persona INHERITS its harness's content BY LINK.** That is the documented intent of the symlink
+shim, which points `agents/<node>/<leaf>` at `agents/<harness>/<leaf>` and explicitly steps aside
+when the persona has a real dir of its own. Both halves move so that intent holds (ruled
+2026-08-27 — *"the persona doesn't resolve to the claude dir. It resolves to its own symlink…
+This is important, because the user can change the symlink to a directory or real target"*):
 
-⚑ **The re-root rule is deliberately NARROW:** only a source that is exactly the harness's
-declaration root for this category is moved. An absolute / `~` / `$var` / unrelated `@`-ref source
-is carried VERBATIM — those are self-resolving by the plugin's own choice (spec §2a) and are not
-the plugin saying "my store dir".
+* the KEY `agent.<harness>.<category>` → `agent.<node>.<category>`, so the pick actually sees it;
+* the SOURCE `@meta.agent.<harness>.path/<leaf>` → `@meta.agent.<node>.path/<leaf>`, so the bind
+  resolves through the NODE path — the symlink (shared with the harness) by default, or the
+  persona's OWN directory when it has one. Re-keying WITHOUT re-rooting would bind the harness dir
+  directly and make the shim's own-dir branch unreachable: it looks identical in every arrival
+  assertion and silently destroys the escape hatch.
+
+🛑 **AND RE-ROOTING WITHOUT A LINK RELOCATES THE BUG.** A re-rooted source names a node path that
+does not exist until the shim creates it, so the shim's coverage MUST equal the re-root's — which
+is why both sides read `harness_store_leaf` and why the shim enumerates the same three hooks.
+
+⚑ **The re-root rule is deliberately NARROW:** only a source rooted at the harness's own STORE is
+moved. An absolute / `~` / `$var` / unrelated `@`-ref source is carried VERBATIM — those are
+self-resolving by the plugin's own choice (spec §2a) and are not the plugin saying "my store".
+
+⚑ **A value that is not a dest-keyed map** — a scalar source key, a LIST-valued `masks` — is
+re-keyed and carried through: there is no source to re-root.
 
 A BARE agent (`node_name == harness`) gets the IDENTITY back — byte-identical to the plugin's
-table, so nothing about a non-persona launch changes. A key that is not this harness's common is
-left untouched.
+table, so nothing about a non-persona launch changes. A key that is not this harness's is left
+untouched, `agent.default.*` included.
 
-### ⚑⚑ THE TABLE IS DEST-KEYED (2026-08-08c), AND THE KEY TEST MOVED WITH IT
+### ⚑⚑ THE TABLES ARE DEST-KEYED (2026-08-08c), SO THE KEY TEST IS A PREFIX ON THE NODE
 
-`common` is a TERMINAL key, so the table holds ONE entry
-`agent.<harness>.common -> {box_dest: (host_src[, opts])}` and the re-key is an EXACT match on that
-key, not a PREFIX match on `agent.<harness>.common.`.
+Each category is a TERMINAL key, so a table holds
+`agent.<harness>.<category> -> {box_dest: (host_src[, opts])}` and the swap matches the leading
+`agent.<harness>.` PREFIX — never a prefix match on `agent.<harness>.common.`, which can never fire
+against a terminal key and would leave the function a silent no-op with the original bug back.
 
-Getting that backwards is not a cosmetic slip: a trailing-dot prefix test can never match the
-terminal key, so the whole function would silently no-op and a persona box would lose
-`~/.claude/plugins` and `~/.claude/cache` again — the exact bug this function exists to fix.
+The re-root then walks each map's VALUES; the destinations (its keys) are untouched, because a
+persona and its harness deliver to the SAME in-box path. Element 1+ of each entry — the options —
+rides along, so a `ro` arm keeps its explicit option through the rebuild.
 
-The re-root then walks the map's VALUES; the destinations (its keys) are untouched, because a
-persona and its harness deliver to the SAME in-box path.
+## `harness_store_root` / `harness_store_leaf` — one rule, two consumers
 
-## `harness_common_root` / `harness_common_leaf` — one rule, two consumers
-
-`harness_common_root(node)` is the `@`-ref declaration root of *node*'s agent-scope `common` store,
-delegating to `agent_category_root_ref`. `harness_common_leaf(host_src, harness)` is its inverse:
-the store-dir LEAF that *host_src* names under *harness*'s `common` root —
-`@meta.agent.claude.path/common/plugins` → `"plugins"` for harness `claude`; anything else →
-`None`.
+`harness_store_root(node)` is the `@`-ref DECLARATION ROOT of *node*'s whole agent store, read from
+the single copy of the spec's table (`DECLARATION_ROOT_REF`). `harness_store_leaf(host_src,
+harness)` is its inverse: the store-relative path *host_src* names under *harness*'s store —
+`@meta.agent.claude.path/common/plugins` → `"common/plugins"`, `@meta.agent.claude.path/seedsrc` →
+`"seedsrc"`; anything else → `None`.
 
 ⚑ **THE LEAF RULE IS WRITTEN IN ONE PLACE**, and it has two consumers that would otherwise each
-invent it: `agent_common_for_node`, which re-roots a persona's inherited source, and
-`commands.start.ensure_persona_share_symlinks`, which needs the same dirname to lay the symlink
-shim. Before 2026-08-08c both read it off the KEY (`agent.<a>.common.<leaf>`); dest-keying removed
-the entry name, so the rooted `host_src` is the only remaining carrier.
+invent it: `_reroot_arm`, which re-roots a persona's inherited source, and
+`commands.start.ensure_persona_share_symlinks`, which lays the link that source then resolves
+through. Before 2026-08-08c both read it off the KEY (`agent.<a>.common.<leaf>`); dest-keying
+removed the entry name, so the rooted `host_src` is the only remaining carrier.
 
-⚑ **DELIBERATELY NARROW, and the narrowness IS the contract:** only a source that is EXACTLY the
-harness's declaration root for this category yields a leaf. An absolute / `~` / `$var` / unrelated
-`@`-ref source is the plugin saying "this specific path", not "my store dir" (spec §2a — such a
-source is self-resolving by the plugin's own choice), so it has no store leaf and gets `None`. A
-caller must treat `None` as "nothing to re-root / nothing to shim", never as a parse failure.
+⚑ **IT IS THE WHOLE RELATIVE PATH, not the first segment**, because the link must be laid at the
+directory the source NAMES. `launch.templates.stage_layers` selects layers with `is_dir()`, which
+FOLLOWS a symlink, so a layer that IS a link to a dir is walked for its real contents — but its
+per-entry `is_symlink()` refusal (§2a exfiltration) raises on any link found BENEATH a layer. A
+link one level too deep therefore does not merely miss: it refuses the entire seed.
+
+⚑ **DELIBERATELY NARROW, and the narrowness IS the contract:** only a source rooted at the
+harness's store yields a leaf. An absolute / `~` / `$var` / unrelated `@`-ref source is the plugin
+saying "this specific path", not "my store" (spec §2a — such a source is self-resolving by the
+plugin's own choice), so it has no leaf and gets `None`. A caller must treat `None` as "nothing to
+re-root / nothing to shim", never as a parse failure.
 
 ## Authority
 

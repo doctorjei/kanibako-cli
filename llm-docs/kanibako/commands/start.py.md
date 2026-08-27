@@ -1498,6 +1498,29 @@ collapse never sees — see `settings.settings_categories`' module docstring for
 (single-route), emitted by `_emit_category_mounts` under its `must_exist` policy at the call site —
 NOT a parallel `descriptor_mounts` route, and since cutover 2a-3 not a parallel agent emitter either.
 
+### The four plugin-declared tables are ADAPTED TO THE ACTIVE NODE before they fold
+
+A plugin keys `default_common()`, `default_seeds()`, `default_category_binds()` and
+`default_envs()` against its OWN name — the HARNESS — while the §2d read pick overlays
+`agent.default` ∪ `agent.<ACTIVE NODE>`. So each table goes through a node adapter first:
+`settings.agent_representation.agent_categories_for_node` for the three CATEGORY hooks (re-key AND
+re-root) and `agent_env_for_node` for the scalar env table (re-key only). Both are the identity for
+a bare agent.
+
+🛑 **A RAW FOLD IS A SILENT LOSS, NOT AN ERROR.** A harness-keyed entry is simply never read for a
+persona: no mount, no copy, no warning, rc 0. Only `common` was adapted at first, so the seeds and
+category-bind folds carried the defect — and were MASKED because every first-party plugin returns
+`{}` from both hooks, which is exactly why the pin
+(`tests/test_targets/test_agent_categories.py`) drives a target that declares something.
+
+⚑ **THE SEED HOOK IS FOLDED AT TWO INDEPENDENT SITES** — here, and again on the CREATE path in
+`_apply_init_seeds`. Fixing one leaves the other broken.
+
+⚑ **CONSEQUENCE, ACCEPTED:** a plugin declaring one dest in BOTH `default_common` and
+`default_category_binds` used to escape `_merge_default_categories`' dest-clash refusal on PERSONA
+launches only, because the two landed under different keys there. After the adapter both land in
+one key and that launch REFUSES — correct, and a launch that used to start. No carve-out.
+
 ### The parameters, and what each one gates
 
 **`narrow_bind_dests`** is a NARROW caller's own injected table's dests
@@ -1618,6 +1641,12 @@ expanded launch snapshot this resolve built, so the caller's SIBLING ordered ste
 step 3, the HOST-side handbook template copy) read resolved keys off the SAME snapshot instead of
 building a second one — two builds could disagree about a repointed `workset.template`, and this
 function already runs the one resolve that has the answer.
+
+⚑ **THE TARGET'S TABLE IS NODE-ADAPTED HERE TOO** (`agent_categories_for_node`) — this is the
+SECOND fold of `default_seeds()`, independent of the launch fold in `_resolve_launch_snapshot`, and
+a fix applied to one leaves the other silently dropping every declared seed for a persona. The
+template layers beside it are already NODE-keyed by `template_seed_defaults`, so exactly one of the
+two tables is adapted.
 
 It is ADDITIVE: with no seed config and no target default seeds, it copies nothing. It routes the
 category config through the ONE launch resolve and applies the COLLAPSED SEED LIST it stored at

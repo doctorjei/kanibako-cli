@@ -256,6 +256,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   boxes are seeded with real files, never a link. ⚑ For a bare (non-persona) agent nothing changes —
   node and harness are the same name, so both spellings were always the same directory.
 
+- **A persona agent now receives every directory its harness's plugin declares — shared with the
+  harness by symlink, exactly as its template store is.** A plugin declares its agent-scope binds,
+  caches and copy-once seeds against the *harness* name, and the settings cascade reads them under
+  the *active node*, so a persona (`navigator+claude`) never saw them. That was fixed in 1.8.0 for
+  the plugins/cache directories and nowhere else: a plugin's `default_seeds()` and
+  `default_category_binds()` declarations were still read under the harness name at three separate
+  places — the launch, and again when a box is created — and the failure was **silent**, with no
+  mount, no copy, no warning and exit 0. Each declared source now resolves through the persona's
+  own store, and `agents/<node>/<entry>` is created as a symlink to the harness's, so the harness's
+  content still reaches every persona by default. **To give a persona its own, delete the symlink
+  and put a real directory in its place;** kanibako never replaces a real directory, or a link you
+  have repointed yourself. ⚑ No agent kanibako ships declares either of those two hooks, so no
+  claude, goose or codex box changes — what this fixes is third-party agent plugins, and anything
+  kanibako declares here in future. ⚑ One arrangement that used to launch now refuses: a plugin
+  declaring the **same in-box destination** in both `default_common()` and
+  `default_category_binds()` was already refused for a bare agent and slipped through for a persona,
+  because the two landed under different keys there. They land under one key now, so the launch
+  refuses naming both — the same refusal, on the launch shape that used to escape it.
+
 - **Duplicating a standalone box no longer buries a copy of the source — carrying the source's
   identity — inside the new box.** The copy took the standalone source's *root* as its source
   directory, so the destination's `box_data/` came out holding the source's `workspace`, `vault`,

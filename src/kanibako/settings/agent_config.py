@@ -90,13 +90,20 @@ def agent_category_dirname(category: str) -> str:
         ) from None
 
 
-def agent_category_root(agents_root: Path, agent: str, category: str) -> Path:
-    """The REAL host dir an abstract *category* stores under for *agent*."""
-    # ⚑ The resolved twin of :func:`agent_category_root_ref`; for callers needing a
-    # real Path, never to build a STORED value.  The twin routes through
-    # ``@meta.agent.<a>.path``, whose value is this same ``+`` dirname, so the two
-    # still land on ONE directory.
-    return agents_root / store_dirname(agent) / agent_category_dirname(category)
+# ⚑ ``agent_category_root(agents_root, agent, category)`` USED TO LIVE HERE and is
+# GONE: the RESOLVED twin of :func:`agent_category_root_ref`, composing
+# ``agents/<store_dirname>/<category>``.  Its ONE consumer was the persona symlink
+# shim, which stopped asking "where does this CATEGORY store?" when the re-root went
+# generic — it now carries a WHOLE store-relative path (``common/plugins``,
+# ``seedsrc``) that names no category at all, so a per-category composer could not
+# express the question.
+# 🛑 DO NOT RESURRECT IT AS A CONVENIENCE.  A resolved store path is what
+# ``@meta.agent.<a>.path`` ALREADY resolves to (``settings_launch.meta_agent_path_floor``
+# defines that anchor as ``@config.agents/<store_dirname>``); a second composer beside
+# it is a second answer to one layout question, free to drift, and the drift is silent
+# because every path here is create-if-absent.  A caller needing a real Path composes
+# ``agents_root / store_dirname(node) / <rel>`` — the ``store_dirname`` call IS the
+# shared fact, and it is the one that must not be re-spelled.
 
 
 def category_root_ref(scope: str, category: str, *, agent: str | None = None) -> str:

@@ -375,7 +375,7 @@ class TestAPersonaNodeSeesThem:
 
     A plugin declares against its HARNESS name, so without the re-key a PERSONA box would
     launch with none of its harness's required variables — the same live bug
-    ``agent_common_for_node`` was written to close, on the env half.
+    ``agent_categories_for_node`` was written to close, on the env half.
     """
 
     def test_the_declared_variables_arrive_for_a_persona_node(self):

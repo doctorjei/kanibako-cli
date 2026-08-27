@@ -298,7 +298,7 @@ def meta_agent_path_floor(agent_name: str) -> dict[str, object]:
     dangling ``@``-reference.
 
     ⚑ NODE **and** HARNESS are both materialized — but NOT for the plugin's own
-    commons: ``agent_common_for_node`` re-keys AND re-roots those to the NODE before
+    commons: ``agent_categories_for_node`` re-keys AND re-roots those to the NODE before
     the ref ever reaches ``expand``, so removing the harness anchor leaves them
     BYTE-IDENTICAL (mutation-proved). What needs it is a HARNESS-KEYED ref
     the USER wrote: at SET time the snapshot above must carry it or the value is

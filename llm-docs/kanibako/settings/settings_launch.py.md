@@ -464,7 +464,7 @@ move — `store_dirname` is identity on a name with no separator.
 
 ⚑ **NODE and HARNESS — and the plugin's own commons are NOT the reason.** `load_common` keys its
 entries on the plugin's `Target.name` (the HARNESS, e.g. `claude`) while callers pass the ACTIVE
-NODE (`navigator℘claude` for a persona), but `agent_common_for_node`
+NODE (`navigator℘claude` for a persona), but `agent_categories_for_node`
 (`settings/agent_representation.py`) re-keys AND **re-roots** that table to the node before the ref
 ever reaches `expand`. Mutation-proved: with the harness anchor stripped from the floor,
 the claude plugin's two `common` binds resolve byte-identically, and after the re-root no

@@ -94,12 +94,12 @@ that hold a *data_path* rather than a resolved agents root — it just delegates
 module has to know the two spellings differ. A persona node is `navigator℘claude` inside a key —
 `℘` exists solely so the node is spellable in a dot-separated key path (`agent_ref`) — but a store
 directory is not a key, so it carries the `+` the user typed: `agents/navigator+claude/`. The
-function DELEGATES to `agent_ref.display_agent_ref` rather than repeating the substitution. Six
+function DELEGATES to `agent_ref.display_agent_ref` rather than repeating the substitution. Five
 independent compositions of the store path go through it: `agent_settings_path`,
-`agent_category_root`, `settings_launch.meta_agent_path_floor`'s VALUE,
+`settings_launch.meta_agent_path_floor`'s VALUE,
 `core_defaults.canon_default_categories`' value + store probe, `launch.templates.
-template_seed_defaults`' VALUE, and the TEMPLATE arm of `commands.start.
-ensure_persona_share_symlinks`. ⚑ Miss one and the store SPLITS with no error raised anywhere —
+template_seed_defaults`' VALUE, and EVERY link `commands.start.
+ensure_persona_share_symlinks` lays. ⚑ Miss one and the store SPLITS with no error raised anywhere —
 every path is create-if-absent, so the box gets two half-stores; each site is mutation-guarded by a
 literal-spelling assertion in its own test file.
 
@@ -113,10 +113,18 @@ The per-agent SETTINGS cascade file lives **inside** the per-agent store dir
 
 ## The per-agent HOST LAYOUT of the abstract categories (spec §2a)
 
-`AGENT_CATEGORY_DIRNAME` is THE single source of the agent-store category layout. Both consumers read
-it from here — the declaration-time ref builder (`agent_defaults.load_common`) and the persona symlink
-shim (`commands.start.ensure_persona_share_symlinks`) — so the dirname is spelled ONCE and the two
-cannot drift (design principle P10: no duplicated shared data).
+`AGENT_CATEGORY_DIRNAME` is THE single source of the agent-store category layout, read by the
+declaration-time ref builder (`agent_defaults.load_common`), so the dirname is spelled ONCE (design
+principle P10: no duplicated shared data).
+
+⚑ **THE PERSONA SHIM IS NO LONGER A CONSUMER.** It re-roots WHOLE store-relative paths
+(`agent_representation.harness_store_leaf`), which is generic over categories and over anything
+else a plugin names, so it composes `agents/<store_dirname>/<leaf>` directly and never asks what a
+category's dirname is. The two still land on ONE directory, because `@meta.agent.<a>.path` IS
+`@config.agents/<store_dirname>` (`settings_launch.meta_agent_path_floor`).
+
+⚑ `agent_category_root` — the resolved twin of `agent_category_root_ref` — lost its last production
+caller with that change and is exercised only by `TestLayoutSingleSource`.
 
 It maps a category to the FIXED sub-dirname under the per-agent store root, and it is DERIVED from
 `ABSTRACT_CATEGORIES` rather than re-typed: the dirname IS the category name, so spelling the three
@@ -133,18 +141,25 @@ bare root — the closed-keyspace rule, spec §0. The concrete `bindings.{ro,rw}
 root at any scope (§2a), so asking for their dirname is a caller bug, and the `ValueError` says so
 and names the declared set.
 
-### `agent_category_root` and `agent_category_root_ref` — the resolved twin and the stored ref
-
-`agent_category_root(agents_root, agent, category)` is the REAL host dir:
-`<agents_root>/<store_dirname(agent)>/<dirname>`. Used where a caller needs an actual
-`pathlib.Path` — the persona shim — and never to build a stored value. The twin below routes
-through `@meta.agent.<a>.path`, whose value is that same `+` dirname, so the two land on ONE dir.
+### `agent_category_root_ref` — the stored ref (and the twin that is GONE)
 
 `agent_category_root_ref(agent, category)` is the self-resolving `@`-ref:
 `@meta.agent.<agent>.path/<dirname>`. This is the AGENT row of the spec's DECLARATION-ROOT table
 (§2a), read from the single copy of that table in
 `kanibako.settings.settings_categories.DECLARATION_ROOT_REF`. This is what a loader STORES, so the
 stored value resolves on its own with no layer prepending anything later.
+
+⚑ **`agent_category_root` — the RESOLVED twin — is GONE**, and the module carries a tombstone
+saying why. Its one consumer was the persona symlink shim, which stopped asking "where does this
+CATEGORY store?" when the re-root went generic: it carries a WHOLE store-relative path
+(`common/plugins`, `seedsrc`) that names no category at all. A resolved store path is what
+`@meta.agent.<a>.path` already resolves to (`settings_launch.meta_agent_path_floor` defines the
+anchor as `@config.agents/<store_dirname>`), so a second composer beside it would be a second answer
+to one layout question — free to drift, and silently, because every path here is create-if-absent.
+A caller needing a real `Path` composes `agents_root / store_dirname(node) / <rel>`; the
+`store_dirname` call IS the shared fact, and it is the one that must not be re-spelled.
+`TestLayoutSingleSource` moved with the subject: it now pins the ref builder against
+`meta_agent_path_floor`, two producers that are both still live.
 
 ## Declaration-time rooting
 
