@@ -225,15 +225,46 @@ class TestTemplateSeedDefaults:
         assert dests, defs
         assert set(dests) == {"~/"}, dests
 
-    def test_agent_layer_sources_harness_store(self, primary_proj):
-        """Layer 2: agent.<node>.seeded reads @agent.<node>.template, which
-        defaults to @config.agents/<harness>/template (Q2: node = persona+
-        harness; the SOURCE dir is the harness store)."""
+    def test_agent_layer_sources_the_nodes_own_store(self, primary_proj):
+        """Layer 2: ``agent.<node>.seeded`` reads ``@agent.<node>.template``, which
+        defaults to the NODE's OWN store — ``@config.agents/<node>/template``.
+
+        ⚑ RULED 2026-08-27, and the test NAME used to say the opposite ("sources
+        harness store").  The emitter spelled ``harness_of(agent_id)``; §2d and the
+        manifest both root the key at the ACTIVE NODE, so the code moved.  A persona
+        still gets the harness's CONTENT — by SYMLINK, laid by
+        ``commands.start.ensure_persona_share_symlinks`` — which is what makes the
+        node-rooted source resolve to something.
+        """
         defs = template_seed_defaults(primary_proj, "claude")
         assert defs["agent.claude.template"] == "@config.agents/claude/template"
         assert defs["agent.claude.seeded"] == {
             "~/": ("@agent.claude.template/box/home",),
         }
+
+    def test_a_persona_node_sources_its_own_store_not_the_harness(
+        self, primary_proj,
+    ):
+        """THE CASE A BARE AGENT CANNOT SHOW: node != harness.
+
+        For ``claude`` the node-rooted and harness-rooted spellings are the SAME
+        STRING, so every assertion above stays green under either implementation.
+        Only a persona separates them — which is exactly why the old harness-rooted
+        emit survived so long, and why this case exists.
+
+        (Mutation: restore ``harness = harness_of(agent_id)`` and root the value at
+        it → this goes RED with ``@config.agents/claude/template``.)
+        """
+        node = "navigator℘claude"
+        defs = template_seed_defaults(primary_proj, node)
+        assert defs[f"agent.{node}.template"] == f"@config.agents/{node}/template"
+        assert "@config.agents/claude/template" not in defs.values()
+        # The layer keys are the node's too — nothing here is harness-keyed.
+        assert defs[f"agent.{node}.seeded"] == {
+            "~/": (f"@agent.{node}.template/box/home",),
+        }
+        assert not any("claude" == k.split(".")[1] for k in defs if
+                       k.startswith("agent.") and not k.startswith("agent.default."))
 
     def test_landing_path_equals_layer_2_source(self, primary_proj):
         """⚑⚑ THE MUST-FIX, pinned: layer 2's SOURCE ref resolves to exactly the
@@ -333,7 +364,7 @@ class _FakeTarget:
         return {}
 
 
-def _seed(std, proj, *, agent="claude", deliver_creds=True):
+def _seed(std, proj, *, agent="claude", deliver_creds=True, agent_cfg_path=None):
     """Drive the one-time home seed (the unified keystore-routed route)."""
     from kanibako.commands.start import _apply_init_seeds
 
@@ -343,7 +374,10 @@ def _seed(std, proj, *, agent="claude", deliver_creds=True):
         agent_name=agent,
         target=_FakeTarget() if agent else None,
         global_config_path=std.settings,
-        agent_config_path=std.agents / "claude" / "agent.yaml",
+        agent_config_path=(
+            agent_cfg_path if agent_cfg_path is not None
+            else std.agents / "claude" / "agent.yaml"
+        ),
         logger=logging.getLogger("test-seed"),
         deliver_creds=deliver_creds,
     )
@@ -593,6 +627,124 @@ def _seed_box(std, proj, *, agent="claude", deliver_creds=True):
         auth_src=SimpleNamespace(creds_shared=deliver_creds),
         logger=logging.getLogger("test-seed"),
     )
+
+
+class TestPersonaTemplateLayerThroughTheLink:
+    """⚑⚑ THE 2026-08-27 RULING, END TO END — a persona's layer 2 is NODE-ROOTED and
+    the harness's CONTENT arrives through the SYMLINK SHIM.
+
+    Two halves that must both hold, because either alone is satisfiable by the wrong
+    implementation:
+
+    * the SOURCE is ``@config.agents/<node>/template`` (pinned in
+      ``TestTemplateSeedDefaults``), and
+    * ``commands.start.ensure_persona_share_symlinks`` links that path at the
+      harness's store, so the source RESOLVES TO CONTENT.
+
+    Drop the link and the persona box seeds with layer 2 EMPTY — which is why the
+    control case below is here rather than only the happy path.  ⚑ ``template`` is a
+    COPY source, not a bind, so "shared" means the copier reads THROUGH the link and
+    lands BYTES; the seeded file must not itself be a symlink.
+    """
+
+    _HARNESS = "claude"
+    _NODE = "navigator℘claude"
+
+    def _shim_target(self):
+        """The shim reads only ``default_common()``; ``{}`` isolates the TEMPLATE
+        half, so nothing here depends on which commons the claude plugin declares."""
+        from types import SimpleNamespace
+
+        return SimpleNamespace(name=self._HARNESS, default_common=lambda: {})
+
+    def _harness_marker(self, std):
+        home = std.agents / self._HARNESS / "template" / "box" / "home"
+        home.mkdir(parents=True, exist_ok=True)
+        (home / "persona-layer2.txt").write_text("from the harness template")
+        return home
+
+    def _seed_node(self, std, proj):
+        _seed(
+            std, proj, agent=self._NODE,
+            agent_cfg_path=std.agents / self._NODE / "agent.yaml",
+        )
+
+    def test_persona_seeds_the_harness_template_through_the_link(
+        self, std, config, primary_proj,
+    ):
+        from kanibako.commands.start import ensure_persona_share_symlinks
+
+        install_packaged_templates(std, [self._HARNESS])
+        self._harness_marker(std)
+        ensure_persona_share_symlinks(std, self._NODE, self._shim_target())
+        self._seed_node(std, primary_proj)
+
+        landed = primary_proj.shell_path / "persona-layer2.txt"
+        assert landed.is_file(), sorted(primary_proj.shell_path.rglob("*"))
+        assert not landed.is_symlink(), "seeded BY VALUE, never as a link"
+        assert landed.read_text() == "from the harness template"
+        # The packaged claude payload rides the same layer.
+        assert (primary_proj.shell_path / ".claude.json").is_file()
+
+    def test_without_the_link_layer_2_is_EMPTY_not_the_harness_store(
+        self, std, config, primary_proj,
+    ):
+        """THE CONTROL — and the reason this file needs one.
+
+        If the emitter still rooted layer 2 at the harness, the previous test would
+        pass with no shim at all.  Skipping ``ensure_persona_share_symlinks``
+        therefore has to leave the box home WITHOUT the harness marker: that is what
+        proves the content came through the LINK rather than through a
+        harness-rooted key.  ⚑ The BASE layer still seeds — an absent layer 2 is
+        skip-if-absent, not a failed create.
+        """
+        install_packaged_templates(std, [self._HARNESS])
+        self._harness_marker(std)
+        # NO ensure_persona_share_symlinks call.
+        self._seed_node(std, primary_proj)
+
+        home = primary_proj.shell_path
+        assert not (home / "persona-layer2.txt").exists()
+        assert not (home / ".claude.json").exists()
+        # ...and the create still succeeded: layer 1 landed.
+        assert (home / "canon" / "notebook" / "MY_CONTENTS.md").is_file()
+
+    def test_a_persona_owned_template_dir_beats_the_link(
+        self, std, config, primary_proj,
+    ):
+        """THE ESCAPE HATCH, end to end: *"the user can always remove the symlink if
+        they want to create a separate template for the persona-based agent"* (Jei,
+        2026-08-27).  A real ``agents/<node>/template`` is never replaced by the
+        shim, and the seed reads it instead of the harness's.
+        """
+        from kanibako.commands.start import ensure_persona_share_symlinks
+
+        install_packaged_templates(std, [self._HARNESS])
+        self._harness_marker(std)
+        own = std.agents / self._NODE / "template" / "box" / "home"
+        own.mkdir(parents=True)
+        (own / "persona-only.txt").write_text("mine")
+        ensure_persona_share_symlinks(std, self._NODE, self._shim_target())
+
+        node_template = std.agents / self._NODE / "template"
+        assert node_template.is_dir() and not node_template.is_symlink()
+        self._seed_node(std, primary_proj)
+
+        home = primary_proj.shell_path
+        assert (home / "persona-only.txt").read_text() == "mine"
+        assert not (home / "persona-layer2.txt").exists()
+
+    def test_bare_agent_seed_is_unchanged(self, std, config, primary_proj):
+        """THE NO-CHANGE CONTROL.  For a bare agent the node-rooted and
+        harness-rooted spellings are ONE STRING, so the ruling must be invisible
+        here — no shim runs, and layer 2 seeds exactly as it always did."""
+        install_packaged_templates(std, [self._HARNESS])
+        self._harness_marker(std)
+        _seed(std, primary_proj, agent=self._HARNESS)
+        assert (
+            primary_proj.shell_path / "persona-layer2.txt"
+        ).read_text() == "from the harness template"
+        assert not (std.agents / self._HARNESS / "template").is_symlink()
 
 
 class TestHandbookLayerSourceKeys:

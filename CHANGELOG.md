@@ -209,6 +209,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A persona agent seeds its boxes from its own template store, shared with its harness by symlink —
+  so a persona can now have a template of its own.** A persona is a distinct agent node
+  (`navigator+claude`) with its own store directory, but the seed-layer-2 template source was spelled
+  with the *harness's* store, so every persona of a harness necessarily seeded identically and there
+  was no way to give one its own. The source is now the node's own store, matching what the manifest
+  and the keyspace already declared, and `agents/<node>/template` is created as a symlink to
+  `agents/<harness>/template` — so the harness's template still reaches every persona by default,
+  with nothing to keep in sync. **To give a persona its own template, delete that symlink and put a
+  real directory in its place;** kanibako never replaces a real directory, or a link you have
+  repointed yourself. Sharing by link rather than by copy is deliberate: a copy would go stale
+  against the harness, and a link cannot. The seed reads *through* the link and copies by value, so
+  boxes are seeded with real files, never a link. ⚑ For a bare (non-persona) agent nothing changes —
+  node and harness are the same name, so both spellings were always the same directory.
+
 - **Duplicating a standalone box no longer buries a copy of the source — carrying the source's
   identity — inside the new box.** The copy took the standalone source's *root* as its source
   directory, so the destination's `box_data/` came out holding the source's `workspace`, `vault`,

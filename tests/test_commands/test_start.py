@@ -1919,11 +1919,129 @@ class TestPersonaShareSymlinks:
         ensure_persona_share_symlinks(std, self._HARNESS, target)
         assert list(std.agents.iterdir()) == []
 
-    def test_none_target_is_noop(self, tmp_path):
+    def test_none_target_lays_the_template_link_and_no_common(self, tmp_path):
+        """No target ⇒ NO common shim, but the TEMPLATE link is still laid.
+
+        ⚑ The two shares differ in exactly one way and this pins it: ``common`` is
+        TARGET-DECLARED (``target.default_common()``), so with no target there is
+        nothing to enumerate; ``template`` is not — ``template_seed_defaults`` emits
+        the node-rooted layer-2 source key for EVERY agent id, whether or not the
+        harness's plugin is installed on this host.  Were the template link behind
+        the no-target return, that box would seed with layer 2 silently EMPTY.
+        """
         from kanibako.commands.start import ensure_persona_share_symlinks
         std = self._std(tmp_path)
         ensure_persona_share_symlinks(std, self._NODE, None)
-        assert list(std.agents.iterdir()) == []
+        node_link = std.agents / self._NODE / "template"
+        assert node_link.is_symlink()
+        assert node_link.readlink() == std.agents / self._HARNESS / "template"
+        # ...and NOT the common half: no target, nothing declared, nothing laid.
+        assert not (std.agents / self._NODE / "common").exists()
+        assert not (std.agents / self._HARNESS / "common").exists()
+
+    # --- the TEMPLATE share: seed layer 2 reads the NODE's own store ---------
+
+    def test_template_link_points_at_the_harness_template(self, tmp_path):
+        """``agents/<node>/template`` -> ``agents/<harness>/template``.
+
+        The other half of the 2026-08-27 ruling: ``template_seed_defaults`` now
+        roots layer 2 at the NODE (``@config.agents/<node>/template``), so without
+        this link a persona box would seed from an absent directory.
+
+        ⚑ The link path is spelled from ``AGENT_TEMPLATE_STORE_REL``, the constant
+        the KEY is built from, so a rename of the store dir cannot desync them.
+        """
+        from kanibako.commands.start import ensure_persona_share_symlinks
+        from kanibako.launch.templates import AGENT_TEMPLATE_STORE_REL
+
+        std = self._std(tmp_path)
+        ensure_persona_share_symlinks(std, self._NODE, self._target())
+        node_link = std.agents / self._NODE / AGENT_TEMPLATE_STORE_REL
+        harness_dir = std.agents / self._HARNESS / AGENT_TEMPLATE_STORE_REL
+        assert node_link.is_symlink(), f"no template link at {node_link}"
+        # Harness dir made FIRST -> the link is NOT dangling.
+        assert harness_dir.is_dir()
+        assert node_link.readlink() == harness_dir
+        assert node_link.resolve() == harness_dir.resolve()
+
+    def test_template_link_is_idempotent(self, tmp_path):
+        from kanibako.commands.start import ensure_persona_share_symlinks
+        std = self._std(tmp_path)
+        ensure_persona_share_symlinks(std, self._NODE, self._target())
+        node_link = std.agents / self._NODE / "template"
+        before = node_link.readlink()
+        ensure_persona_share_symlinks(std, self._NODE, self._target())
+        assert node_link.is_symlink()
+        assert node_link.readlink() == before
+
+    def test_a_persona_owned_real_template_dir_is_left_alone(self, tmp_path):
+        """THE ESCAPE HATCH — *"the user can always remove the symlink if they want
+        to create a separate template for the persona-based agent"* (Jei,
+        2026-08-27).  A real ``agents/<node>/template`` is the persona's OWN and is
+        never replaced by a link, so the shim can be re-run for ever without
+        reverting the user's choice."""
+        from kanibako.commands.start import ensure_persona_share_symlinks
+        std = self._std(tmp_path)
+        own = std.agents / self._NODE / "template" / "box" / "home"
+        own.mkdir(parents=True)
+        (own / "sentinel.txt").write_text("mine")
+        ensure_persona_share_symlinks(std, self._NODE, self._target())
+        node_dir = std.agents / self._NODE / "template"
+        assert node_dir.is_dir() and not node_dir.is_symlink()
+        assert (own / "sentinel.txt").read_text() == "mine"
+
+    def test_the_seed_copier_reads_THROUGH_the_template_link_by_value(
+        self, tmp_path,
+    ):
+        """⚑⚑ THE MEASUREMENT THE LINK DEPENDS ON.  ``template`` is unlike
+        ``common``: ``common`` is a live BIND, but ``template`` is a seed source
+        consumed by a COPY at create.  ``stage_layers`` REFUSES a symlink it finds
+        while walking a layer (§2a, the exfiltration escape), so the whole design
+        rests on the link being an INTERMEDIATE path component that the walk never
+        lstats — the box must get BYTES, not a link.
+
+        (Mutation: make the link a leaf INSIDE the layer — e.g. link
+        ``template/box/home/file.md`` instead of ``template`` — and
+        ``stage_layers`` raises ``TemplateScopeError``, which is the guard doing
+        its job, not a regression.)
+        """
+        from kanibako.commands.start import ensure_persona_share_symlinks
+        from kanibako.launch.templates import stage_layers
+
+        std = self._std(tmp_path)
+        harness_home = (
+            std.agents / self._HARNESS / "template" / "box" / "home"
+        )
+        harness_home.mkdir(parents=True)
+        (harness_home / "file.md").write_text("HARNESS\n")
+        ensure_persona_share_symlinks(std, self._NODE, self._target())
+
+        # Layer 2's resolved source for the NODE, spelled exactly as the key roots it.
+        layer = std.agents / self._NODE / "template" / "box" / "home"
+        dest = tmp_path / "boxhome"
+        stage_layers(dest, [layer])  # no TemplateScopeError
+        seeded = dest / "file.md"
+        assert seeded.is_file() and not seeded.is_symlink()
+        assert seeded.read_text() == "HARNESS\n"
+
+    def test_an_absent_template_layer_is_skipped_not_an_error(self, tmp_path):
+        """SKIP-IF-ABSENT, both ways: a node with no ``template`` at all, and a
+        DANGLING link (harness store removed under it).  Neither is a launch
+        failure — the layer is simply dropped, and nothing is created at *dest*."""
+        from kanibako.launch.templates import stage_layers
+
+        std = self._std(tmp_path)
+        missing = std.agents / self._NODE / "template" / "box" / "home"
+        dest = tmp_path / "boxhome"
+        stage_layers(dest, [missing])
+        assert not dest.exists()
+
+        dangling = std.agents / self._NODE / "template"
+        dangling.parent.mkdir(parents=True, exist_ok=True)
+        dangling.symlink_to(std.agents / self._HARNESS / "template")
+        assert not dangling.exists()  # the harness store was never created
+        stage_layers(dest, [dangling / "box" / "home"])
+        assert not dest.exists()
 
     # --- ORDERING: the L7 guarantee-create is a no-op on the symlink --------
 

@@ -239,8 +239,9 @@ _BEHAVIOR_KEYS = (
 #: default for, carried by ``core_defaults.env_default_categories`` (spec §2b:867).
 #: ``agent.default.template`` is the fourth: the §2d DEFAULT-tier arm of the layer-2
 #: template SOURCE, carried by ``launch.templates.template_seed_defaults`` beside the
-#: per-node arm.  ⚑ Only the DEFAULT arm is pinned — the per-NODE arm is finding 1 and
-#: stays exempt in ``NO_ORACLE_REF_HOP`` below.
+#: per-node arm.  ⚑ Only the DEFAULT arm is pinned here — the per-NODE arm stays in
+#: ``NO_ORACLE_REF_HOP`` below, where its VALUE is now asserted outright (finding 1 is
+#: closed; what is left is the ``@``-hop the canon sibling has too).
 _SINGLETON_KEYS = (
     "agent.default.canon", "workset.kuid", "box.env.COLORTERM",
     "agent.default.template",
@@ -434,8 +435,9 @@ class TestSingletonDefaults:
 
         Read from the emitter's OUTPUT, exactly as the canon sibling above is: the
         value is what a create installs at the agent tier, which is what the manifest
-        claims.  ⚑ The PER-NODE arm is deliberately not read here — it is finding 1,
-        pinned separately and still exempt.
+        claims.  ⚑ The PER-NODE arm is deliberately not read here — it is spelled one
+        ``@``-hop from the registry and is pinned separately, in
+        ``TestNoOracleExemptions``.
         """
         emitted = template_seed_defaults(_StubProjectPaths(), PROBE_AGENT)
         assert emitted["agent.default.template"] == _default("agent.default.template")
@@ -850,21 +852,47 @@ class TestNoOracleExemptions:
             f"@config.agents/{PROBE_AGENT}/canon", "@agent.default.canon",
         )
 
-    def test_the_agent_template_row_is_a_BOARDED_OPEN_QUESTION(self):
-        """⚑⚑ FINDING 1 — a REAL DELTA on personas, exempt PENDING A RULING.
+    def test_the_agent_template_row_is_one_hop_from_the_code_spelling(self):
+        """``agent.<agent>.template`` — the NODE's own store, the ``meta`` hop unrolled.
 
-        Manifest and spec §2d both say a NODE's own store supplies the seed-layer-2
-        template (``@meta.agent.<agent>.path/template``).  ``launch/templates.py`` emits
-        the HARNESS's, via ``harness_of``.  For a bare agent the two are the same string
-        and nothing shows; for a persona node (``navigator℘claude``) they diverge
-        SILENTLY, because ``meta_agent_path_floor`` materializes BOTH paths.  The code
-        looks deliberate (it carries a comment) but the decision is recorded nowhere.
+        ⚑⚑ THIS CASE REPLACES A BOARDED OPEN QUESTION (finding 1), CLOSED 2026-08-27.
+        The manifest and spec §2d say a NODE's own store supplies the seed-layer-2
+        template; ``template_seed_defaults`` used to emit the HARNESS's store, via
+        ``harness_of``.  Ruling: the CODE was wrong, and the harness's CONTENT reaches a
+        persona by SYMLINK instead (``commands.start.ensure_persona_share_symlinks``
+        links ``agents/<node>/template`` -> ``agents/<harness>/template``, the way it
+        already did for ``common``) — *"the user can always remove the symlink if they
+        want to create a separate template for the persona-based agent"*.
 
-        WHICH SIDE IS WRONG IS NOT A TEST'S CALL — it is a spec question that is boarded
-        and awaiting Jei's word.  This case pins only that the manifest still says what
-        the finding says it says, so the question cannot quietly evaporate.
+        What is left is the SAME one-hop unrolling the ``canon`` sibling above has, and
+        for the same reason: ``meta_agent_path_floor`` IS ``@config.agents/<name>``, so
+        both spellings name one directory and asserting equality would need a second
+        resolver.  ⚑ THE SHAPE IS NOT THE POINT HERE — the DISCRIMINATOR is: the arm
+        must be keyed AND rooted at the ACTIVE NODE.  A bare agent cannot show that
+        (node == harness ⇒ one string), so the persona probe below is the load-bearing
+        half and the bare probe is the no-change control.
+
+        (Mutation: put ``harness_of(...)`` back into either side of the root and the
+        persona case goes RED naming the harness store.)
         """
         assert _default("agent.<agent>.template") == "@meta.agent.<agent>.path/template"
+
+        # BARE (node == harness): unchanged by the ruling — the control.
+        bare = template_seed_defaults(_StubProjectPaths(), PROBE_AGENT)
+        assert bare[f"agent.{PROBE_AGENT}.template"] == (
+            f"@config.agents/{PROBE_AGENT}/template"
+        )
+
+        # PERSONA: the node's OWN store, NOT ``@config.agents/claude/template``.
+        from kanibako.agent_ref import CANONICAL_SEP
+
+        node = f"navigator{CANONICAL_SEP}{PROBE_AGENT}"
+        emitted = template_seed_defaults(_StubProjectPaths(), node)
+        assert emitted[f"agent.{node}.template"] == f"@config.agents/{node}/template"
+        # ...and the layer that consumes it reads the node arm, not a second spelling.
+        assert emitted[f"agent.{node}.seeded"] == {
+            "~/": (f"@agent.{node}.template/box/home",),
+        }
 
 
 class TestDefaultsCoverage:
