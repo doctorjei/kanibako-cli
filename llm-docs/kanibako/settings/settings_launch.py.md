@@ -365,7 +365,8 @@ meta.box.inbox          | this box's own mailbox dir (str(addr.inbox)) —
                           routed to box.bindings.rw.inbox
 meta.box.share_global   | this box's system-scope share dir (str(addr.share_global))
 meta.box.share_workset  | this box's workset-local share dir (str | None standalone)
-meta.agent.<a>.name     | the plugin-set agent name (REQUIRED when an agent exists)
+meta.agent.<a>.name     | the active node's STORE DIRNAME — the `+` spelling
+                          (REQUIRED when an agent exists)
 meta.agent.<a>.settings | the agent-tier settings FILE anchor
                           (@meta.agent.<a>.path/agent.yaml — B5, spec §2d)
 ```
@@ -408,16 +409,22 @@ stay on attrs / `@workset.*` (JC-B2-3 / JC-B2-4), a tracked follow-up.
 
 ### The agent identity keys
 
-When an agent exists, `meta.agent.<a>.name` is the plugin-set agent name (spec §2d, REQUIRED), under
-the agent's discriminated slot; a NO-AGENT box omits it. `agent_name` is the cascade discriminator
-(`install.name`); `agent_real_name` is the value (the plugin's `meta.agent.<agent>.name` — normally
-the same string). Both `None` for a NO-AGENT box.
+When an agent exists, `meta.agent.<a>.name` NAMES THE STORE DIR (spec §2d, REQUIRED), under the
+agent's discriminated slot; a NO-AGENT box omits it. `agent_name` is the cascade discriminator
+(`install.name`); `agent_real_name` is the value it is built from (the plugin's own — normally the
+same string). Both `None` for a NO-AGENT box.
+
+⚑ **The value passes through `agent_config.store_dirname`, so it is the `+` spelling.** §2d makes
+this key the store dirname by formula — `meta.agent.<a>.path = @config.agents/@meta.agent.<a>.name`
+— so a `℘` here would compose a directory that is not there. The DISCRIMINATOR keeps `℘` (it is a
+key path); only the VALUE swaps, and only for a persona, since `store_dirname` is identity on a
+name with no separator.
 
 ⚑ The STORE-ROOT anchor `meta.agent.<a>.path` is keyed on the DISCRIMINATOR (*agent_name*), not on
-*agent_real_name* — the store dir is `agents/<discriminator>/`, which is what `agent_settings_path`
-and the persona shim use. The two are the same string for every shipped plugin; if a plugin ever
-returned a different `name`, the path anchor would still (rightly) follow the store, while
-`meta.agent.<a>.name` reported the plugin's value.
+*agent_real_name* — the store dir is `agents/<store_dirname(discriminator)>/`, which is what
+`agent_settings_path` and the persona shim use. The two are the same string for every shipped
+plugin; if a plugin ever returned a different `name`, the path anchor would still (rightly) follow
+the store, while `meta.agent.<a>.name` reported the plugin's value.
 
 `meta.agent.<a>.settings` is the agent-tier SETTINGS cascade FILE anchor (spec §2d; B5 — the §3.3
 "keep and use" ruling): the spec's own formula `@meta.agent.<a>.path/agent.yaml`, resolved
@@ -442,9 +449,16 @@ leaf under it (spec §2a). That spelling is therefore what the file's own walk P
 what the set-time snapshot must resolve: without the key, the bare leaf a user just wrote is refused
 as a dangling `@`-reference.
 
-It is spelled `@config.agents/<name>` rather than the spec's `@config.agents/@meta.agent.<a>.name`
-chain (§2d): `<name>` IS the value of `meta.agent.<a>.name` at both seams, and the flat form avoids
-a floor entry that references its own sibling. Both resolve identically (verified).
+It is spelled `@config.agents/<store dirname>` rather than the spec's
+`@config.agents/@meta.agent.<a>.name` chain (§2d); the flat form avoids a floor entry that
+references its own sibling. The two compose to the SAME string for every node — verified for a
+persona, a bare agent and `no_agent` — because BOTH halves take the store dirname.
+
+⚑ **THAT IS WHY `meta.agent.<a>.name` CARRIES THE `+` SPELLING (2026-08-27).** The key's
+DISCRIMINATOR stays canonical (`navigator℘claude`) because a key path needs `℘`; its VALUE is
+`navigator+claude`, because §2d's formula makes that value NAME A DIRECTORY. Spell the value `℘`
+and `@config.agents/@meta.agent.<a>.name` composes a directory that does not exist. Only personas
+move — `store_dirname` is identity on a name with no separator.
 
 ⚑ **NODE and HARNESS — and the plugin's own commons are NOT the reason.** `load_common` keys its
 entries on the plugin's `Target.name` (the HARNESS, e.g. `claude`) while callers pass the ACTIVE

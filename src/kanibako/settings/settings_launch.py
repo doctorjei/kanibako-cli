@@ -41,6 +41,7 @@ if TYPE_CHECKING:
     from kanibako.targets.base import PluginDescriptor
 
 from kanibako.agent_ref import harness_of
+from kanibako.settings.agent_config import store_dirname
 from kanibako.settings.agent_file import AgentFileLevel
 from kanibako.settings.config import (
     AGENT_META_FILE,
@@ -307,8 +308,11 @@ def meta_agent_path_floor(agent_name: str) -> dict[str, object]:
     INTENTIONALLY PARTIAL (a ``path``, no ``name`` / ``auth.share_support``); the
     llm-doc says why that asymmetry is inert and must not be "fixed".
     """
+    # ⚑ THE TWO HALVES ARE SPELLED DIFFERENTLY ON PURPOSE: the KEY is a key path, so
+    # its node segment stays CANONICAL (``℘``); the VALUE is a DIRECTORY, so it takes
+    # the ``+`` store spelling (``agent_config.store_dirname``).
     return {
-        f"meta.agent.{store_agent}.path": f"@config.agents/{store_agent}"
+        f"meta.agent.{store_agent}.path": f"@config.agents/{store_dirname(store_agent)}"
         for store_agent in {agent_name, harness_of(agent_name)}
     }
 
@@ -372,8 +376,8 @@ def meta_identity_floor(
 
     *agent_name* is the cascade discriminator (``install.name``); *agent_real_name*
     is the plugin's own value. ⚑ The STORE-ROOT anchor is keyed on the DISCRIMINATOR,
-    not the real name — the store dir is ``agents/<discriminator>/``, which is what
-    ``agent_settings_path`` and the persona shim use. Both ``None`` for a NO-AGENT
+    not the real name — the store dir is ``agents/<store_dirname(discriminator)>/``,
+    which is what ``agent_settings_path`` and the persona shim use. Both ``None`` for a NO-AGENT
     box. Per-key detail: the llm-doc.
     """
     floor: dict[str, object] = {
@@ -396,7 +400,16 @@ def meta_identity_floor(
     # The agent identity key (spec §2d) — REQUIRED when an agent exists, under
     # the agent's discriminated slot. A NO-AGENT box omits it.
     if agent_name is not None:
-        floor[f"meta.agent.{agent_name}.name"] = (
+        # ⚑ THE KEY DISCRIMINATOR AND THE VALUE ARE SPELLED DIFFERENTLY, and §2d's
+        # own formula is why: ``meta.agent.<a>.path`` IS
+        # ``@config.agents/@meta.agent.<a>.name``, so this VALUE **names the store
+        # DIRECTORY** and must be the ``+`` spelling ``store_dirname`` produces.
+        # The discriminator segment stays CANONICAL (``℘``) because it is a key
+        # path. Spell the value with ``℘`` and the spec's formula stops composing:
+        # ``@config.agents/<name>`` names a directory that is not there.
+        # ⚑ A BARE AGENT IS UNAFFECTED BY CONSTRUCTION — ``store_dirname`` is
+        # identity on a name with no separator, so only personas move.
+        floor[f"meta.agent.{agent_name}.name"] = store_dirname(
             agent_real_name if agent_real_name is not None else agent_name
         )
         # The agent's STORE ROOT — see :func:`meta_agent_path_floor`.

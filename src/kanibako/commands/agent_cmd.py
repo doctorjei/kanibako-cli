@@ -175,7 +175,8 @@ def run_list(args: argparse.Namespace) -> int:
     quiet = getattr(args, "quiet", False)
     if quiet:
         for f in settings_files:
-            # The on-disk dir name is the canonical NODE (``℘``); show ``+`` to the user.
+            # ``store_dirname`` already wrote the ``+`` form; printing through the
+            # display boundary anyway keeps ONE rule for what a user is shown.
             print(display_agent_ref(f.parent.name))
         return 0
 
@@ -199,8 +200,9 @@ def run_info(args: argparse.Namespace) -> int:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
-    # The positional may be a persona ref with the typable ``+``; canonicalise to
-    # the ``℘`` node-name to locate the on-disk dir, but DISPLAY the ``+`` form.
+    # The positional may arrive in either spelling; canonicalise to the ``℘`` node —
+    # the form every KEY takes.  ``agent_settings_path`` maps it back to the ``+``
+    # store dirname, so nothing here composes a path from the node itself.
     agent_id = canonicalize_agent_ref(args.agent_id)
     agent_display = display_agent_ref(agent_id)
     path = agent_settings_path(std.agents, agent_id)
@@ -313,8 +315,8 @@ def _run_agent_config(args: argparse.Namespace) -> int:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
-    # Canonicalise the (possibly ``+``) persona ref to the ``℘`` node to locate the
-    # on-disk dir; DISPLAY the ``+`` form.
+    # Canonicalise the (possibly ``+``) persona ref to the ``℘`` node — the KEY form.
+    # ``agent_settings_path`` maps it back to the ``+`` store dirname.
     agent_id = canonicalize_agent_ref(args.agent_id)
     agent_display = display_agent_ref(agent_id)
     path = agent_settings_path(std.agents, agent_id)

@@ -3,10 +3,11 @@
 These exercise the config-interface engine directly (``set``/``get``/``reset``
 threaded with an ``agents_root``), proving:
 
-* a ``+`` node key writes the CANONICAL ``℘`` on-disk dir + the right leaf;
+* either node spelling writes ONE store dir, named with ``+`` — the KEY is
+  canonicalized to ``℘`` and the DIRNAME is swapped back by ``store_dirname``;
 * ``+`` and ``℘`` spellings hit the SAME store (canonicalization) — MUTATION-
-  proven (break the ``resolve_key`` swap and the ``+`` key lands in a
-  ``<node-with-+>`` dir the resolver never reads);
+  proven by the round-trip pair below: break the ``resolve_key`` swap and a write
+  in one spelling is no longer readable in the other;
 * ``get`` reads exactly where ``set`` wrote; ``reset`` removes it;
 * a default-only persona file stays SPARSE (only the keys the user set);
 * the persona-critical trio makes the persona LOADABLE (``_preflight_persona_
@@ -19,6 +20,7 @@ import logging
 
 import pytest
 
+from kanibako.settings.agent_config import store_dirname
 from kanibako.settings.agent_file import load as load_agent_config
 from kanibako.settings.config_keys import (
     ConfigLevel,
@@ -48,7 +50,10 @@ def _cfg_path(tmp_path):
 
 
 def _node_file(agents_root, node="navigator℘claude"):
-    return agents_root / node / "agent.yaml"
+    # ⚑ The DIRNAME comes from the production helper, so tests whose subject is the
+    # LEAF follow a spelling change instead of pinning one.  The spelling itself is
+    # asserted with literals in ``TestCanonicalizationSameStore``.
+    return agents_root / store_dirname(node) / "agent.yaml"
 
 
 # ---------------------------------------------------------------------------
@@ -96,20 +101,21 @@ class TestResolveKeyCanonicalization:
 # ---------------------------------------------------------------------------
 
 class TestSetPersona:
-    def test_set_endpoint_writes_canonical_node_dir(self, tmp_path, agents_root):
+    def test_set_endpoint_writes_the_plus_node_dir(self, tmp_path, agents_root):
         msg = set_config_value(
             "agent.navigator+claude.endpoint", _URL,
             config_path=_cfg_path(tmp_path),
             command_scope=ConfigLevel.system,
             agents_root=agents_root,
         )
-        # The DISPLAY (+form) confirmation, and the value at the ℘ dir + agent leaf.
+        # The DISPLAY (+form) confirmation, and the value at the +form dir's leaf.
         assert msg == f"Set agent.navigator+claude.endpoint={_URL}"
         f = _node_file(agents_root)
         assert f.exists()
         assert load_doc(f) == {"self": {"endpoint": _URL}}
-        # The +form dir must NOT exist (mutation guard: the swap really happened).
-        assert not (agents_root / "navigator+claude").exists()
+        # ⚑ NO ``℘`` REACHES THE DISK.  The separator is a key-path device; a store
+        # dir is not a key, so the user never has to type or read it in a path.
+        assert not (agents_root / "navigator℘claude").exists()
 
     def test_set_model_and_endpoint_flat_agent_section(self, tmp_path, agents_root):
         cp = _cfg_path(tmp_path)
@@ -225,14 +231,22 @@ class TestCanonicalizationSameStore:
         )
         assert got == _URL
 
-    def test_only_one_canonical_dir_exists(self, tmp_path, agents_root):
-        set_config_value(
-            "agent.navigator+claude.endpoint", _URL,
-            config_path=_cfg_path(tmp_path),
-            command_scope=ConfigLevel.system, agents_root=agents_root,
-        )
+    def test_only_one_store_dir_exists_and_it_is_the_plus_form(
+        self, tmp_path, agents_root,
+    ):
+        """Both spellings of the key resolve to ONE dir, and it is the ``+`` one.
+
+        LITERALS on both sides on purpose: this is the assertion that pins the
+        spelling, so it must not derive it from ``store_dirname``.
+        """
+        for spelling in ("agent.navigator+claude.endpoint",
+                         "agent.navigator℘claude.endpoint"):
+            set_config_value(
+                spelling, _URL, config_path=_cfg_path(tmp_path),
+                command_scope=ConfigLevel.system, agents_root=agents_root,
+            )
         dirs = sorted(p.name for p in agents_root.iterdir())
-        assert dirs == ["navigator℘claude"]
+        assert dirs == ["navigator+claude"]
 
 
 # ---------------------------------------------------------------------------

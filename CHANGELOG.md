@@ -104,6 +104,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rename: choose a dot-free name, rename the store directory under `<data>/agents/` to match,
   and update any `pref.system.agent` or `system.agent` that named the old spelling.
 
+- **BREAKING: a persona's store directory is now named `<persona>+<harness>`.** A persona node
+  has two spellings — `navigator+claude`, which you type, and `navigator℘claude`, which kanibako
+  uses inside a settings key. Only the second can appear in a key: a key path is split on `.`
+  into name segments and `+` is not one of them, so `agent.navigator+claude.model` would be read
+  as the key `agent.navigator` and quietly resolve the wrong thing. That reason applies to keys
+  and to nothing else, yet the directory carried it too — v1.7.2 put a persona's own store at
+  `<data>/agents/navigator℘claude/`, a path you cannot type without pasting a character that is
+  on no keyboard. Every place kanibako composes that directory now writes the `+` form: the
+  agent file, the per-node `canon` and `template` stores, and the symlinks that share the
+  harness's plugins and cache. **Key names are unchanged** — `agent.<node>.*` still canonicalises
+  to `℘` internally, and both spellings still work on the command line and reach the same store.
+  One key's *value* moves with the directory it names: `meta.agent.<node>.name` now reads
+  `navigator+claude`, which is what the spec's own formula
+  (`meta.agent.<node>.path` = `@config.agents/@meta.agent.<node>.name`) requires of it.
+  ⚠️ **If you already have a persona store, rename its directory before your first launch on
+  this version**: `mv '<data>/agents/<persona>℘<harness>' '<data>/agents/<persona>+<harness>'`.
+  Every store path is create-if-absent, so nothing will complain — kanibako makes a fresh empty
+  directory beside the old one and the persona starts over with no settings and no canon.
+
 - **A `box:` table at the system tier reaches every box.** `box.image`, `box.share_images`,
   `box.shell` and their siblings resolve through the settings cascade now, and the system tier is
   a level of that cascade — so a `box:` table in the system settings file

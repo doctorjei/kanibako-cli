@@ -888,7 +888,11 @@ class TestNoOracleExemptions:
 
         node = f"navigator{CANONICAL_SEP}{PROBE_AGENT}"
         emitted = template_seed_defaults(_StubProjectPaths(), node)
-        assert emitted[f"agent.{node}.template"] == f"@config.agents/{node}/template"
+        # ⚑ KEY vs DIRECTORY: the key segment is the canonical node, the value is a
+        # store path and carries the ``+`` dirname.  Literal on purpose.
+        assert emitted[f"agent.{node}.template"] == (
+            f"@config.agents/navigator+{PROBE_AGENT}/template"
+        )
         # ...and the layer that consumes it reads the node arm, not a second spelling.
         assert emitted[f"agent.{node}.seeded"] == {
             "~/": (f"@agent.{node}.template/box/home",),

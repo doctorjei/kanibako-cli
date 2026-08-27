@@ -27,6 +27,7 @@ from kanibako.settings import agent_file
 from kanibako.settings.agent_config import (
     agent_category_root,
     agent_settings_path,
+    store_dirname,
 )
 from kanibako.settings.kb_store import __MISSING__
 from kanibako.box_supervisor import CONTINUE_MARKER, KANIBAKO_PKG_MOUNT_ROOT
@@ -231,10 +232,14 @@ def ensure_persona_share_symlinks(std, agent_id, target) -> None:
     path component off the WHOLE value remains wrong for the reason it always was:
     ``@meta.agent.<a>.path/common/<leaf>`` is a REF, and joining it would produce
     the literal directory ``agents/<node>/@meta.agent.<a>.path/common/<leaf>``.
-    Both sides of the link are still built from
+    Both sides of the COMMONS link are built from
     :func:`~kanibako.settings.agent_config.agent_category_root` — the SAME layout
     helper the declaration-time ref builder uses — so this shim and the resolver
-    cannot drift: they are two consumers of ONE layout fact.
+    cannot drift: they are two consumers of ONE layout fact.  The TEMPLATE link
+    below cannot use that helper (``template`` is not an abstract category) and so
+    composes its own path; it takes the store dirname from
+    :func:`~kanibako.settings.agent_config.store_dirname`, which is the same fact
+    reached the other way.
     """
     harness = harness_of(agent_id)
     if agent_id == harness:
@@ -252,9 +257,12 @@ def ensure_persona_share_symlinks(std, agent_id, target) -> None:
     # and the key cannot drift.  ``template`` is NOT an abstract category
     # (``ABSTRACT_CATEGORIES`` = common/caches/seeded), so there is deliberately no
     # ``agent_category_root`` call here: it would refuse the name.
+    # ⚑ The store dirname therefore comes STRAIGHT from ``store_dirname``, the one
+    # place a node becomes a directory — link and key must name the SAME dir, or the
+    # L7 guarantee-create makes a real one beside the link and sharing stops SILENTLY.
     _link_persona_share(
-        agents_root / agent_id / AGENT_TEMPLATE_STORE_REL,
-        agents_root / harness / AGENT_TEMPLATE_STORE_REL,
+        agents_root / store_dirname(agent_id) / AGENT_TEMPLATE_STORE_REL,
+        agents_root / store_dirname(harness) / AGENT_TEMPLATE_STORE_REL,
         what="template", logger=logger,
     )
 

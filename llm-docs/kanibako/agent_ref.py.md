@@ -11,12 +11,21 @@ box/workset/system settings) is normalised before resolver so other code only se
 * **persona** — the identity, left of the separator (``navigator``); a node
   whose persona name differs from its harness is itself called *a persona*.
 * **node-name** — the canonical fused form ``persona℘harness`` (``navigator℘claude``).
-  This is the on-disk ``agents/<node>/`` dir and the keyspace ``agent.<node>.*``
-  slot.  It is what ``resolve_agent`` returns and what ``KANIBAKO_AGENT`` stamps.
+  This is the keyspace ``agent.<node>.*`` slot; it is what ``resolve_agent`` returns
+  and what ``KANIBAKO_AGENT`` stamps.  ⚑ It is NOT the on-disk dir name: a store
+  directory is not a key, so it takes the ``+`` form
+  (``settings.agent_config.store_dirname``, ``agents/navigator+claude/``).
 
 ## Separators
-Human-typable ``+`` (U+002B) & canonical ``℘`` (U+2118, SCRIPT CAPITAL P — "persona"). Both are
-accepted on input; node-name always canonicalises separator to ``℘``. Only FIRST separator splits
+Human-typable ``+`` (U+002B) & canonical ``℘`` (U+2118, SCRIPT CAPITAL P — "persona").
+
+⚑ **WHY THERE ARE TWO, and it is one reason only:** a key path is split on ``.`` into segments
+drawn from ``SEGMENT_CHAR_CLASS``, which admits no ``+`` — so ``agent.nav+claude.model`` matches
+only ``agent.nav`` and silently resolves a different key. ``℘`` exists to make a node spellable
+INSIDE a key, and nowhere else does it belong: everything a human types or looks at, the store
+directory included, is ``+``.
+
+Both are accepted on input; node-name always canonicalises separator to ``℘``. Only FIRST separator splits
 (persona segment may not itself contain separator; harness segment is whatever follows  & also
 separator-checked).
 
@@ -100,7 +109,7 @@ Return *node* with its harness segment REPLACED by *harness*.
 
 Preserves persona name (left of `℘`) while swapping harness; used when actually-RESOLVED target
 differs from requested harness (e.g., `NoAgentTarget` fallback when named agent's binary absent),
-so on-disk `agents/<node>/` dir + keyspace slot follow real target.
+so the store dir + keyspace slot follow the real target.
 
 * bare node (`"claude"`, harness `"claude"`) -> `"claude"` (unchanged);
 * bare node, fallback harness (`"claude"`, `"no_agent"`) -> `"no_agent"`;

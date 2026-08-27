@@ -207,13 +207,20 @@ def get_target(name: str, project_path: Path | None = None) -> type[Target]:
 
 
 def _require_meta_name(target: Target) -> Target:
-    """Enforce that a resolved target declares ``meta.agent.<agent>.name``.
+    """Enforce that a resolved target declares a non-empty ``name``.
 
-    The plugin's ``name`` property IS ``meta.agent.<agent>.name`` — it is
-    REQUIRED (D-2026-06-22): it identifies the per-agent store dir
-    (``agents/<name>/``) and the agent cascade key.  An agent with no
-    resolvable name has no store dir and no cascade slot, so fail loudly
-    rather than silently writing to ``agents//agent.yaml``.
+    The plugin's ``name`` is the HARNESS name — it is REQUIRED (D-2026-06-22):
+    it identifies the harness's own store dir (``agents/<name>/``) and its
+    ``agent.<name>.*`` cascade slot.  An agent with no resolvable name has
+    neither, so fail loudly rather than silently writing to
+    ``agents//agent.yaml``.
+
+    ⚑ IT IS NOT THE VALUE OF ``meta.agent.<agent>.name``, and this docstring
+    used to say it was.  That key is materialized by
+    ``settings.settings_launch.meta_identity_floor`` from the ACTIVE NODE, which
+    for a persona is not the plugin's name at all; the two coincide only for a
+    bare agent.  Nothing here feeds this value into that key — this is a
+    NON-EMPTINESS guard and nothing more.
     """
     meta_name = getattr(target, "name", None)
     if not (isinstance(meta_name, str) and meta_name.strip()):
