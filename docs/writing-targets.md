@@ -290,22 +290,100 @@ Plugin-owned pre-launch host work, run before mounts are built (enable it with
 as a synchronous binary-update gate or host auth refresh.  Must not crash the
 launch — log and swallow failures.
 
-### `default_shares() / default_seeds() -> dict[str, str]`
+### `default_common()` / `default_seeds()` / `default_category_binds()`
 
-Declare the agent's default shares/caches and copy-once seeds as full scoped
-category keys mapped to `host_src:box_dest` bind expressions:
+Declare the directories and files your agent needs kanibako to mount or copy
+into a box.  All three return the same shape — a **terminal category key**
+mapped to that category's whole **destination-keyed** map:
 
-```python
-def default_shares(self) -> dict[str, str]:
-    return {
-        "agent.shared.plugins": "@agent.claude.path/plugins:.claude/plugins",
-        "agent.caches.cache":   "@agent.claude.path/cache:.claude/cache",
-    }
+```
+{ "agent.<agent>.<category>": { box_dest: (host_src,),          # no options
+                                box_dest: (host_src, "ro") } }  # explicit option
 ```
 
-These are injected as the AGENT level's declared defaults in the category
-resolver; a user can override or suppress (terminal `""`) any of them at a
-more-specific scope.  The defaults return `{}`.
+`<category>` is one of `common`, `caches`, `seeded`, `synced`, `bindings.ro`,
+`bindings.rw`.  The **box destination is the entry's identity** — there is no
+entry-name field, and a `key:` in a defaults file is refused rather than
+ignored.  `host_src` and `box_dest` stay independent, so a user can repoint the
+source without moving the destination.
+
+The three hooks differ only in what they are *for*, and in rooting:
+
+| Hook | Declares | Source rooting |
+|---|---|---|
+| `default_common()` | your agent's shared dirs (claude's `plugins`, `cache`) | a bare leaf is **rooted at your agent store**: `plugins` → `@meta.agent.<agent>.path/common/plugins` |
+| `default_seeds()` | copy-once-at-create seeds — a **copy**, never a mount | none applied; give a self-resolving source |
+| `default_category_binds()` | any agent-scope category, sourced from an `@`-ref | **none** — a bare-relative source is refused, not rooted |
+
+An already self-resolving `host_src` (absolute, `~`, `$var`, or an `@`-ref) is
+always stored verbatim.  In a **defaults file** `box_dest` is a `$GUEST_HOME`
+(or `~`) expression, expanded and normalised by the loader.  From **Python**
+there is no expander — `$GUEST_HOME` is not a variable kanibako resolves, and a
+launch that meets one fails with `Unknown variable: $GUEST_HOME` — so write the
+guest path in full (`/home/agent/.claude/x`).  Either way kanibako owns the host
+layout only; the guest path is always spelled out.
+
+These land as the **agent level's declared floor**, under every settings file, so
+a user overrides one by writing the same key in a nearer file — the system file
+or the agent's own.  An `agent.<agent>.*` key written in a workset or box file is
+dropped at assembly with a warning; a box overrides its agent through a
+`pref.agent.<agent>.<key>` request instead.  To *remove* one of your entries
+rather than repoint it, a user present-`null`s that destination inside the value
+(`pref.agent.<agent>.common: {<box_dest>: null}`).  All three default to `{}`.
+
+**Prefer the defaults file to Python.**  The shipped plugins declare `common:`
+and `env:` in their `<agent>-defaults.yaml` and read them with the loaders, which
+apply the rooting, the `$GUEST_HOME` expansion, the destination normalisation
+and — for `env:` — the closed-keyspace check for you:
+
+```python
+from kanibako.settings.agent_defaults import load_common, load_category_binds
+
+def default_common(self) -> dict[str, BindArm]:
+    return load_common(_DEFAULTS_PACKAGE, _DEFAULTS_FILE, self.name)
+```
+
+```yaml
+common:
+  - host_src: plugins                          # rooted -> agents/<agent>/common/plugins
+    box_dest: "$GUEST_HOME/.claude/plugins"
+```
+
+`default_seeds()` has no loader — return the mapping from Python.
+
+#### Persona nodes: declare against your own name
+
+Declare everything against **your harness name** (`self.name`).  When a box runs
+a *persona* of your agent (`navigator+claude`), kanibako re-keys your table to
+that node and **re-roots any source under your agent store onto the persona's
+own store**, where it creates a symlink back to yours.  So the persona shares
+your content by default, and a user who replaces that symlink with a real
+directory gives the persona its own — which is why the source is re-rooted
+rather than pointed straight at your store.  A source that is *not* under your
+store (an absolute path, a `~`, an unrelated `@`-ref) is left exactly as you
+wrote it: that is you naming a specific path, not your store.
+
+⚑ **Do not declare the same box destination twice.**  Declaring one destination
+under the **same category key** from two hooks refuses the launch, naming both —
+a dest-keyed category holds one entry per destination, so the second would
+silently replace the first.  Across categories the rule depends on what each side
+is: two `bindings` arms at one destination refuse, and an abstract category
+(`common` / `caches` / `seeded`) extending onto a destination a `bindings` entry
+already holds refuses, both naming the two declarations.  Two *abstract*
+categories at one destination currently resolve last-wins with a warning rather
+than refusing — do not rely on it; it is a defect against spec §0 and will become
+a refusal.  Layering at one destination is expressed across *scopes*, never twice
+within your own declarations.
+
+### `default_envs() -> dict[str, str]`
+
+Declare environment variables your agent needs, as
+`agent.<agent>.env.<VAR>` keys mapped to string values (`load_envs` reads an
+`env:` section for you).  They are ordinary settings keys, not a private
+channel: a user overrides one by writing the same key in a nearer file, and
+naming the same variable at a second scope refuses the launch naming both.
+Values must be strings — quote `"1"` and `"true"` — and `$GUEST_HOME` is
+expanded at load.  Static variables belong here, not in the descriptor.
 
 ### `setting_descriptors() -> list[TargetSetting]`
 
