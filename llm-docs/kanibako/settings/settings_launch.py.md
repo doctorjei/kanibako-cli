@@ -435,19 +435,36 @@ mirror `@`-ref resolves to `<None>` and the box enables degenerate false.
 
 `meta_agent_path_floor` is THE single builder for `meta.agent.<a>.path`, used by BOTH the launch
 floor (`meta_identity_floor`) and the `config set` SET-TIME validation snapshot. That sharing is
-load-bearing, not tidiness: `config set`'s refusal message tells a user to spell an abstract-category
-source as `@meta.agent.<agent>.path/<category>/<name>`, and if the set-time snapshot did not carry
-the key, the very value the tool just recommended would be rejected as a dangling `@`-reference. A
-hint that cannot be accepted is worse than none.
+load-bearing, not tidiness: an abstract-category source is **rooted at ASSEMBLY** into
+`@meta.agent.<agent>.path/<category>/<name>` — `_declaration_root_ref`
+(`settings/settings_assemble.py:88`) supplies the root and `parse_bind_map` joins a bare-relative
+leaf under it (spec §2a). That spelling is therefore what the file's own walk PRODUCES, and it is
+what the set-time snapshot must resolve: without the key, the bare leaf a user just wrote is refused
+as a dangling `@`-reference.
 
 It is spelled `@config.agents/<name>` rather than the spec's `@config.agents/@meta.agent.<a>.name`
 chain (§2d): `<name>` IS the value of `meta.agent.<a>.name` at both seams, and the flat form avoids
 a floor entry that references its own sibling. Both resolve identically (verified).
 
-⚑ **NODE and HARNESS.** `load_common` keys its entries on the plugin's own `Target.name` (the
-HARNESS, e.g. `claude`) while callers pass the ACTIVE NODE (`navigator℘claude` for a persona). On a
-persona box those differ, so materializing only the node would leave the harness-keyed refs
-DANGLING. Both are materialized; for a bare agent, node == harness and this is a single entry.
+⚑ **NODE and HARNESS — and the plugin's own commons are NOT the reason.** `load_common` keys its
+entries on the plugin's `Target.name` (the HARNESS, e.g. `claude`) while callers pass the ACTIVE
+NODE (`navigator℘claude` for a persona), but `agent_common_for_node`
+(`settings/agent_representation.py`) re-keys AND **re-roots** that table to the node before the ref
+ever reaches `expand`. Mutation-proved: with the harness anchor stripped from the floor,
+the claude plugin's two `common` binds resolve byte-identically, and after the re-root no
+`@meta.agent.<harness>` ref survives to be dangled. Both entries are still materialized; for a bare
+agent, node == harness and this is a single entry.
+
+What DOES need the harness entry is a **user-written** harness-keyed ref — a `box.bindings.rw`
+source spelled `@meta.agent.claude.path/common/plugins` on a persona box — plus the `config set`
+snapshot above, which folds this same builder. Two failure modes, and only one is loud: at SET time
+a dangling `@`-ref in the edited value is a hard error refusing the write (spec §2a, *VALIDATION at
+set-time*), but at LAUNCH the embedded-ref rule renders it `""` and the same bind silently becomes
+`src=/common/plugins` (measured) — a garbage host source, no error anywhere.
+
+🛑 **The commons no longer needing this entry is not licence to delete it.** The two consumers above
+are its whole justification, and dropping it fails SILENTLY at launch — a bind with a garbage source
+and no error.
 
 ⚑ The harness entry is INTENTIONALLY PARTIAL on a persona box: it gets a `path` but no `name` /
 `auth.share_support`, which stay the ACTIVE agent's — what every consumer of them means. Nothing
