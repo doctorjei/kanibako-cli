@@ -8,22 +8,23 @@ Prose for these symbols lives in `llm-docs/kanibako/project/workset.py.md`.
 ## Variables
 
 ```
-WORKSET_SETTINGS_FILE = 'settings.yaml'
-BOXES_DIR_NAME = 'boxes'
+BOXES_DIR_NAME = paths_defaults.BOXES_PATH
 DEFAULT_WORKSET_ID = '__default__'
 DEFAULT_WORKSET_ALIAS = 'default'
 RESERVED_WORKSET_NAMES = frozenset({DEFAULT_WORKSET_ID, DEFAULT_WORKSET_ALIAS, '__PRIMARY__', '__STANDALONE__'})
-_WORKSPACES_LEAF = 'workspaces'
-_STANDALONE_WORKSPACE_LEAF = 'workspace'
-_CHANNELROOT_LEAF = 'channels'
-_VAULT_LEAF = 'vault'
-_LOGS_LEAF = 'logs'
+_WORKSPACES_LEAF = paths_defaults.WORKSPACES_PATH
+_STANDALONE_WORKSPACE_LEAF = paths_defaults.WORKSPACE_PATH
+_CHANNELROOT_LEAF = paths_defaults.CHANNELS_PATH
+_LOGS_LEAF = paths_defaults.LOGS_PATH
+_VAULT_LEAF = paths_defaults.VAULT_PATH
 ```
 
 ## Functions
 ```
 def load_workset_settings_doc(root: Path) -> Mapping[str, Any] | None
 def resolve_workset_workspaces(workset_root: Path, workset_settings: Mapping[str, Any] | None, *, standalone: bool=False) -> Path
+def resolve_workset_boxes(workset_root: Path, workset_settings: Mapping[str, Any] | None) -> Path
+def resolve_workset_logs(workset_root: Path, workset_settings: Mapping[str, Any] | None) -> Path
 def resolve_workset_channelroot(workset_root: Path, workset_settings: Mapping[str, Any] | None) -> Path
 def is_reserved_workset_name(name: str) -> bool
 def refuse_retired_workset_identity(root: Path) -> None
@@ -37,7 +38,6 @@ def delete_workset(name: str, std: StandardPaths, *, remove_files: bool=False) -
 def add_project(ws: Workset, name: str, source_path: Path, std: StandardPaths | None=None, force: bool=False) -> WorksetProject
 def remove_project(ws: Workset, name: str, *, remove_files: bool=False, std: StandardPaths | None=None) -> WorksetProject
 def _workset_path_repoint(workset_settings: Mapping[str, Any] | None, leaf: str) -> str | None
-def _apply_workset_dir_repoint(workset_root: Path, repoint: str | None, default_leaf: str) -> Path
 @contextmanager
 def _journal_connect(journal: Path | None, box_path: Path, *, name: str, workset: str | None=None, workspace: str | None=None)
 def _load_workset(root: Path, name: str) -> Workset
