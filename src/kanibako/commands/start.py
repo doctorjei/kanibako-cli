@@ -25,7 +25,6 @@ if TYPE_CHECKING:
 
 from kanibako.settings import agent_file
 from kanibako.settings.agent_config import (
-    agent_category_root,
     agent_settings_path,
     store_dirname,
 )
@@ -143,14 +142,21 @@ def _link_persona_share(
 ) -> None:
     """Point *node_link* at *harness_dir* — the ONE link-or-leave step of the shim.
 
-    Extracted so the ``common`` LEAVES and the ``template`` STORE ROOT cannot drift:
-    both share the harness's real dir under exactly the same never-clobber rules —
+    Extracted so the DECLARED category sources and the ``template`` STORE ROOT cannot
+    drift: both share the harness's real dir under exactly the same never-clobber rules —
     harness dir first (so the link never dangles), then link only into an EMPTY node
     path.  A pre-existing symlink elsewhere, or a real dir/file, is the persona's own
     and is LEFT.  *what* names the share in the debug log and nothing else.
     """
     # Create the harness (real) dir FIRST so the symlink never dangles.
-    harness_dir.mkdir(parents=True, exist_ok=True)
+    # ⚑ GUARDED, because a declared source may name a FILE (an agent-scope config a
+    # plugin binds by path): a bare ``mkdir(exist_ok=True)`` raises FileExistsError on
+    # an existing non-directory, which would turn a legal declaration into a launch
+    # that dies naming nothing.  An existing dir made this call a no-op anyway, so the
+    # only behaviour that changes is the raise — and a symlink to a real file shares it
+    # exactly as a link to a dir shares a dir.
+    if not harness_dir.exists():
+        harness_dir.mkdir(parents=True, exist_ok=True)
     node_link.parent.mkdir(parents=True, exist_ok=True)
 
     if node_link.is_symlink():
@@ -185,18 +191,33 @@ def ensure_persona_share_symlinks(std, agent_id, target) -> None:
 
     A persona is a distinct agent NODE (``navigator℘claude``) whose ``agents/<node>/``
     dir is its own store, but whose plugins/cache/template SHOULD be shared with the
-    bare harness (``agents/claude/``) rather than starting empty.  Rather than re-root
-    the resolver, we lay a SYMLINK shim.  TWO shares, one mechanism
-    (:func:`_link_persona_share`):
+    bare harness (``agents/claude/``) rather than starting empty.  The resolver DOES
+    re-root a declaration onto the node (``agent_categories_for_node``); what makes
+    that resolve to the harness's content is the SYMLINK laid here.  TWO sources of
+    links, one mechanism (:func:`_link_persona_share`):
 
-    * ``common`` — for every agent-scope common the target declares
-      (``target.default_common()`` — claude's ``plugins`` / ``cache``; generic over
-      harnesses, NO per-plugin code), ``agents/<node>/common/<leaf>`` becomes a
-      symlink -> ``agents/<harness>/common/<leaf>``.
+    * every agent-scope category source the target DECLARES that is rooted at the
+      harness's own store — ``default_common()`` (claude's ``plugins`` / ``cache``),
+      ``default_seeds()`` and ``default_category_binds()`` alike; generic over
+      harnesses and over categories, NO per-plugin and no per-category code.
+      ``agents/<node>/<leaf>`` becomes a symlink -> ``agents/<harness>/<leaf>``.
     * ``template`` — the seed-layer-2 SOURCE store: ``agents/<node>/template``
       becomes a symlink -> ``agents/<harness>/template``.
 
-    The resolver + spec are UNCHANGED; the L7 guarantee-create later
+    ⚑⚑ THE LINK IS LAID AT THE PATH THE SOURCE NAMES, NEVER AT AN ENTRY BENEATH IT,
+    and that granularity is load-bearing for a SEED: ``launch.templates.stage_layers``
+    refuses any symlink its ``rglob`` finds inside a layer (§2a exfiltration), but
+    selects layers with ``is_dir()``, which FOLLOWS a link — so a layer that IS a link
+    to a dir is walked for its real contents, while a link one level down refuses the
+    whole seed.
+
+    ⚑ COVERAGE MUST TRACK THE RE-ROOT.  Both sides read
+    :func:`~kanibako.settings.agent_representation.harness_store_leaf`, so a source
+    that re-roots gets a link and one that does not gets neither.  Re-rooting anything
+    this loop cannot see would leave a persona naming a path that does not exist —
+    the absent-source symptom this whole shim exists to prevent, moved one hop.
+
+    The spec is UNCHANGED; the L7 guarantee-create later
     (``mkdir parents=True, exist_ok=True`` on the rw source) is a no-op on the
     symlink-to-existing-dir, so the harness dir is the real writeback target.
 
@@ -211,8 +232,8 @@ def ensure_persona_share_symlinks(std, agent_id, target) -> None:
     link and copies BY VALUE: the link is an INTERMEDIATE path component, so
     ``stage_layers``' per-entry ``is_symlink()`` refusal (§2a source-symlink,
     exfiltration) never sees it and the box gets bytes, not a dangling link.
-    ⚑ AND IT IS NOT TARGET-DECLARED, unlike ``common`` — hence it is laid BEFORE the
-    no-target return: ``template_seed_defaults`` emits the node arm for every agent
+    ⚑ AND IT IS NOT TARGET-DECLARED, unlike the categories — hence it is laid BEFORE
+    the no-target return: ``template_seed_defaults`` emits the node arm for every agent
     id, whether or not the harness's plugin is installed on this host.
 
     PRECONDITION: call at persona-dir MATERIALIZATION, BEFORE mount assembly /
@@ -224,29 +245,26 @@ def ensure_persona_share_symlinks(std, agent_id, target) -> None:
     ⚑⚑ THE LEAF COMES FROM THE DECLARATION ROOT, NOT FROM THE KEY AND NOT FROM THE
     WHOLE VALUE.  Until 2026-08-08c it came off the key (``agent.<a>.common.<leaf>``);
     dest-keying removed the entry name, so the only remaining carrier of the store
-    DIRNAME is the rooted ``host_src``.  It is read by
-    :func:`~kanibako.settings.agent_representation.harness_common_leaf`, which
-    strips EXACTLY the harness's ``common`` declaration root and answers ``None``
-    for anything else — so this shim still never treats a self-resolving source
-    (an absolute path, a ``~``, an unrelated ``@``-ref) as a store dir.  Reading a
+    path is the rooted ``host_src``.  It is read by
+    :func:`~kanibako.settings.agent_representation.harness_store_leaf`, which
+    strips EXACTLY the harness's store declaration root and answers ``None``
+    for anything else — so this shim never treats a self-resolving source
+    (an absolute path, a ``~``, an unrelated ``@``-ref) as a store path.  Reading a
     path component off the WHOLE value remains wrong for the reason it always was:
     ``@meta.agent.<a>.path/common/<leaf>`` is a REF, and joining it would produce
     the literal directory ``agents/<node>/@meta.agent.<a>.path/common/<leaf>``.
-    Both sides of the COMMONS link are built from
-    :func:`~kanibako.settings.agent_config.agent_category_root` — the SAME layout
-    helper the declaration-time ref builder uses — so this shim and the resolver
-    cannot drift: they are two consumers of ONE layout fact.  The TEMPLATE link
-    below cannot use that helper (``template`` is not an abstract category) and so
-    composes its own path; it takes the store dirname from
-    :func:`~kanibako.settings.agent_config.store_dirname`, which is the same fact
-    reached the other way.
+    Every link path here is ``agents_root / store_dirname(<node>) / <leaf>``, which is
+    what ``@meta.agent.<node>.path/<leaf>`` resolves to
+    (``settings_launch.meta_agent_path_floor`` defines that anchor as
+    ``@config.agents/<store_dirname>``) — so this shim and the resolver cannot drift:
+    they are two consumers of ONE layout fact, reached the two ways.
     """
     harness = harness_of(agent_id)
     if agent_id == harness:
         return
 
     from kanibako.launch.templates import AGENT_TEMPLATE_STORE_REL
-    from kanibako.settings.agent_representation import harness_common_leaf
+    from kanibako.settings.agent_representation import harness_store_leaf
 
     logger = get_logger("start")
     agents_root = Path(std.agents)
@@ -255,11 +273,12 @@ def ensure_persona_share_symlinks(std, agent_id, target) -> None:
     # it (``AGENT_TEMPLATE_STORE_REL``), the same constant
     # ``template_seed_defaults`` builds the layer-2 source key from — so the link
     # and the key cannot drift.  ``template`` is NOT an abstract category
-    # (``ABSTRACT_CATEGORIES`` = common/caches/seeded), so there is deliberately no
-    # ``agent_category_root`` call here: it would refuse the name.
-    # ⚑ The store dirname therefore comes STRAIGHT from ``store_dirname``, the one
-    # place a node becomes a directory — link and key must name the SAME dir, or the
-    # L7 guarantee-create makes a real one beside the link and sharing stops SILENTLY.
+    # (``ABSTRACT_CATEGORIES`` = common/caches/seeded), which is why nothing here
+    # asks for a CATEGORY dirname: there is none to ask for.
+    # ⚑ The store dirname comes STRAIGHT from ``store_dirname``, the one place a
+    # node becomes a directory — exactly as the declared-source loop below composes
+    # its links — because link and key must name the SAME dir, or the L7
+    # guarantee-create makes a real one beside the link and sharing stops SILENTLY.
     _link_persona_share(
         agents_root / store_dirname(agent_id) / AGENT_TEMPLATE_STORE_REL,
         agents_root / store_dirname(harness) / AGENT_TEMPLATE_STORE_REL,
@@ -269,21 +288,38 @@ def ensure_persona_share_symlinks(std, agent_id, target) -> None:
     if target is None:
         return
 
-    # (2) The target-declared agent-scope COMMONS.
-    # ``default_common()`` is the TERMINAL key -> its whole dest-keyed map; the
-    # entries are its VALUES, and the store leaf is read off each rooted host_src.
-    declared = target.default_common().get(f"agent.{harness}.common", {})
-    for entry in declared.values():
-        leaf = harness_common_leaf(entry[0], harness)
-        if leaf is None:
-            # A self-resolving source the plugin chose itself — not its store dir,
-            # so there is nothing to share and nothing to shim.
-            continue
-        _link_persona_share(
-            agent_category_root(agents_root, agent_id, "common") / leaf,
-            agent_category_root(agents_root, harness, "common") / leaf,
-            what=f"common {leaf}", logger=logger,
-        )
+    # (2) EVERY target-declared agent-scope category source.  ⚑ The three hooks are
+    # enumerated because they are the three the launch folds into its floor
+    # (:func:`_resolve_launch_snapshot`, and ``default_seeds`` again at
+    # :func:`_apply_init_seeds`); a fourth hook added there needs adding here in the
+    # SAME change, or its re-rooted source names a path nothing created.
+    # Each table is the TERMINAL key -> its whole dest-keyed map, so the entries are
+    # the VALUES and the store leaf is read off each rooted host_src.
+    # ⚑ DEDUPED: two declarations may legitimately share one store dir (a plugin
+    # binding ``common/cache`` ro and rw), and the second call would only re-walk a
+    # link the first laid — but the debug log would claim two shares where the box
+    # has one.
+    linked: set[str] = set()
+    for table in (
+        target.default_common(),
+        target.default_seeds(),
+        target.default_category_binds(),
+    ):
+        for key, arm in table.items():
+            if not key.startswith(f"agent.{harness}.") or not isinstance(arm, dict):
+                continue
+            for entry in arm.values():
+                leaf = harness_store_leaf(entry[0], harness)
+                if leaf is None or leaf in linked:
+                    # ``None``: a self-resolving source the plugin chose itself — not
+                    # its own store, so there is nothing to share and nothing to shim.
+                    continue
+                linked.add(leaf)
+                _link_persona_share(
+                    agents_root / store_dirname(agent_id) / leaf,
+                    agents_root / store_dirname(harness) / leaf,
+                    what=leaf, logger=logger,
+                )
 
 
 def add_start_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -6516,7 +6552,7 @@ def _resolve_launch_snapshot(
     """
     from kanibako.settings import settings_launch
     from kanibako.settings.agent_representation import (
-        agent_common_for_node,
+        agent_categories_for_node,
         agent_default_partial,
         agent_env_for_node,
     )
@@ -6618,13 +6654,16 @@ def _resolve_launch_snapshot(
             family="channels", origins=cat_origins,
         )
         if target is not None:
-            # ⚑ Re-keyed to the ACTIVE NODE (P7): a plugin declares its commons
-            # against its own HARNESS name, but the §2d pick reads
+            # ⚑ Re-keyed AND re-rooted to the ACTIVE NODE (P7): a plugin declares
+            # its commons against its own HARNESS name, but the §2d pick reads
             # ``agent.<node>`` — so a PERSONA saw none of them (no
             # ``~/.claude/plugins``, no cache) while the symlink shim maintained
             # links nothing consumed. Identity for a bare agent.
+            # ⚑ ONE ADAPTER FOR ALL THREE CATEGORY HOOKS — see the seeds and
+            # category-bind folds below, which had the same defect and were carrying
+            # the harness table raw.
             _merge_default_categories(
-                default_categories, agent_common_for_node(
+                default_categories, agent_categories_for_node(
                     target.default_common(),
                     node_name=agent_name,
                     harness=target.name,
@@ -6643,9 +6682,18 @@ def _resolve_launch_snapshot(
                 core_defaults.rom_agent_default_categories(target),
                 family="agent rom chapter", origins=cat_origins,
             )
+            # ⚑ Re-keyed AND re-rooted like the commons above, and for the same
+            # reason: a harness-keyed ``agent.<harness>.seeded`` is invisible to the
+            # §2d pick for a persona, so the declared seed was simply never copied —
+            # no row, no error, no warning.  ⚑ THIS IS ONE OF TWO SEED SITES; the
+            # CREATE path folds the same table again in :func:`_apply_init_seeds`,
+            # and fixing one leaves the other broken.
             _merge_default_categories(
-                default_categories, target.default_seeds(),
-                family="agent seeds", origins=cat_origins,
+                default_categories, agent_categories_for_node(
+                    target.default_seeds(),
+                    node_name=agent_name,
+                    harness=target.name,
+                ), family="agent seeds", origins=cat_origins,
             )
             # PLUGIN-declared AGENT-scope env DEFAULTS (spec §2d
             # ``agent.<agent>.env.<VAR>``): the variables a harness does not work
@@ -6670,13 +6718,20 @@ def _resolve_launch_snapshot(
             # floor.  Currently empty for all first-party plugins (the former
             # ``@system.instructions`` instructions bind was retired — the guide now
             # ships via the RO bundle + launch-flatten).
+            # ⚑ Re-keyed AND re-rooted like the two folds above.  EMPTY FOR EVERY
+            # FIRST-PARTY PLUGIN is exactly what MASKED this: a persona resolved a
+            # third-party plugin's declaration to nothing at all, and no shipped
+            # configuration could show it.
             _merge_default_categories(
-                default_categories, target.default_category_binds(),
-                family="agent category binds", origins=cat_origins,
+                default_categories, agent_categories_for_node(
+                    target.default_category_binds(),
+                    node_name=agent_name,
+                    harness=target.name,
+                ), family="agent category binds", origins=cat_origins,
             )
     # A NARROW caller (``include_base_families=False``) may inject ONLY its own
-    # declared default-category table — e.g. ``_apply_init_seeds`` passing just
-    # ``target.default_seeds()`` — so the seed/synced COPY resolve flows through
+    # declared default-category table — e.g. ``_apply_init_seeds`` passing just the
+    # node-adapted ``target.default_seeds()`` — so the seed/synced COPY resolve flows through
     # the SAME ``build_launch_snapshot`` pipeline (single-route, 7c) WITHOUT
     # pulling in the unrelated core/channel/share families. This mirrors the old
     # narrow ``_resolve_launch_categories`` agent-level ``defaults=`` injection.
@@ -8171,12 +8226,24 @@ def _apply_init_seeds(
     ``seeded[~/]`` trio, the credential gate and the dest namespace.
     """
     from kanibako.settings.settings_resolve import GUEST_HOME
+    from kanibako.settings.agent_representation import agent_categories_for_node
     from kanibako.launch.templates import (
         stage_layers,
         template_seed_defaults,
     )
 
-    default_seeds = target.default_seeds() if target is not None else {}
+    # ⚑ THE SECOND SEED SITE, and it needs the node adaptation exactly as the launch
+    # fold does: ``default_seeds()`` is keyed to the plugin's HARNESS, the §2d pick
+    # reads ``agent.<node>``, and a persona CREATE therefore copied none of the
+    # plugin's declared seeds.  ⚑ The TEMPLATE layers below are already NODE-keyed by
+    # ``template_seed_defaults`` — only the plugin's table is harness-keyed, which is
+    # why exactly one of the two tables is adapted here.
+    default_seeds = (
+        agent_categories_for_node(
+            target.default_seeds(), node_name=agent_name, harness=target.name,
+        )
+        if target is not None else {}
+    )
     # The layered template seeds (spec §2a) as ordinary keystore ``seeded`` keys —
     # folded in alongside the target's cred seeds so they resolve + apply through
     # the SAME single seeded-category route (Q1: everything through the keystore).

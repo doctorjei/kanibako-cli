@@ -1756,8 +1756,8 @@ class TestPersonaShareSymlinks:
     _HARNESS = "claude"
     _NODE = "navigator℘claude"
 
-    def _target(self, common_binds=None):
-        """A stand-in target returning the REAL ``default_common()`` SHAPE.
+    def _target(self, common_binds=None, seeds=None, category_binds=None):
+        """A stand-in target returning the REAL declaration SHAPES.
 
         ⚑ The values are the DECLARATION-ROOTED ``@``-refs the live claude plugin
         emits, NOT the pre-P3 bare leaves.  A fixture carrying the old shape kept
@@ -1770,7 +1770,13 @@ class TestPersonaShareSymlinks:
         ⚑ DEST-KEYED since 2026-08-08c: ``agent.claude.common`` is the ONE
         TERMINAL key and its value is the whole ``{box_dest: (host_src,)}`` map —
         the entry name is gone, so the store leaf the shim needs is read off the
-        ROOTED ``host_src`` (``harness_common_leaf``) rather than off the key.
+        ROOTED ``host_src`` (``harness_store_leaf``) rather than off the key.
+
+        ⚑ ALL THREE HOOKS, because the shim reads all three: the re-root in
+        ``agent_categories_for_node`` covers ``seeded`` and the category binds too,
+        and a source re-rooted with no link behind it is an ABSENT source.  The two
+        extra hooks default EMPTY — exactly what every shipped plugin returns, so
+        the cases below that use the default fixture stay the ``common``-only story.
         """
         from types import SimpleNamespace
         if common_binds is None:
@@ -1785,15 +1791,21 @@ class TestPersonaShareSymlinks:
                 },
             }
         return SimpleNamespace(
-            name=self._HARNESS, default_common=lambda: common_binds
+            name=self._HARNESS,
+            default_common=lambda: common_binds,
+            default_seeds=lambda: seeds or {},
+            default_category_binds=lambda: category_binds or {},
         )
 
     def test_fixture_shape_matches_the_live_plugin(self):
         """The fixture above cannot silently rot: it must equal what the REAL
-        claude plugin declares, key-for-key and value-for-value."""
+        claude plugin declares, hook for hook."""
         from kanibako.plugins.claude import ClaudeTarget
 
-        assert self._target().default_common() == ClaudeTarget().default_common()
+        live, fixture = ClaudeTarget(), self._target()
+        assert fixture.default_common() == live.default_common()
+        assert fixture.default_seeds() == live.default_seeds()
+        assert fixture.default_category_binds() == live.default_category_binds()
 
     def _std(self, tmp_path):
         from types import SimpleNamespace
@@ -1838,11 +1850,11 @@ class TestPersonaShareSymlinks:
         ⚑ WHERE THE LEAF COMES FROM MOVED 2026-08-08c.  It used to be read off the
         KEY (``agent.<a>.common.<leaf>``); dest-keying deleted the entry name, so
         the rooted ``host_src`` is now the only carrier and
-        ``agent_representation.harness_common_leaf`` is the ONE place that rule is
-        written — it strips EXACTLY the harness's ``common`` declaration root and
-        answers ``None`` for anything else.  Both sides of the link are still built
-        from the same layout helper the ref builder uses, so shim and resolver
-        cannot drift.
+        ``agent_representation.harness_store_leaf`` is the ONE place that rule is
+        written — it strips EXACTLY the harness's STORE declaration root and
+        answers ``None`` for anything else.  Both sides of the link resolve to the
+        same directory ``@meta.agent.<node>.path/<leaf>`` names, so shim and
+        resolver cannot drift.
 
         (Mutation: join the WHOLE ``host_src`` instead of stripping the root → the
         ``@``-ref becomes a path component → RED.)
@@ -2083,6 +2095,137 @@ class TestPersonaShareSymlinks:
         assert node_link.resolve() == (
             std.agents / self._HARNESS / "common" / "plugins"
         ).resolve()
+
+    # --- COVERAGE TRACKS THE RE-ROOT: seeds + category binds get links too ---
+
+    _SEEDS = {
+        "agent.claude.seeded": {
+            "/home/agent/seeded": ("@meta.agent.claude.path/seedsrc",),
+        },
+    }
+    _CAT_BINDS = {
+        "agent.claude.caches": {
+            "/home/agent/.cache/x": ("@meta.agent.claude.path/caches/x",),
+        },
+        "agent.claude.bindings.ro": {
+            "/home/agent/ro": ("@meta.agent.claude.path/robits", "ro"),
+        },
+    }
+
+    def test_every_rerooted_declaration_gets_a_link(self, tmp_path):
+        """🛑 THE HAZARD THIS CLOSES, and it is the whole risk of the re-root.
+
+        ``agent_categories_for_node`` re-roots EVERY store-rooted source onto
+        ``@meta.agent.<node>.path``.  A source re-rooted with no link behind it
+        names a directory that does not exist — the persona gets NOTHING, which is
+        the exact symptom the re-key was fixing, moved one hop.  So the shim's
+        coverage has to equal the re-root's: all three declaration hooks.
+
+        (Mutation: drop ``default_seeds`` / ``default_category_binds`` from the
+        shim's loop and the corresponding link is absent here, while every
+        ``common`` case above stays green.)
+        """
+        from kanibako.commands.start import ensure_persona_share_symlinks
+
+        std = self._std(tmp_path)
+        ensure_persona_share_symlinks(std, self._NODE, self._target(
+            seeds=self._SEEDS, category_binds=self._CAT_BINDS,
+        ))
+        for leaf in ("seedsrc", "caches/x", "robits",
+                     "common/plugins", "common/cache"):
+            node_link = self._node_store(std) / leaf
+            harness_dir = std.agents / self._HARNESS / leaf
+            assert node_link.is_symlink(), f"no link for {leaf}"
+            assert node_link.readlink() == harness_dir
+            assert harness_dir.is_dir(), f"dangling link for {leaf}"
+
+    def test_the_link_is_at_the_path_the_source_names(self, tmp_path):
+        """⚑⚑ GRANULARITY IS LOAD-BEARING FOR A SEED, measured on the real copier.
+
+        ``stage_layers`` selects layers with ``is_dir()``, which FOLLOWS a link, so
+        a layer that IS a link to a dir is walked for its real contents.  But its
+        per-entry ``is_symlink()`` refusal (§2a exfiltration) raises on any link
+        found BENEATH a layer — so linking ``seedsrc/file`` instead of ``seedsrc``
+        would not merely miss, it would refuse the entire seed.  This asserts the
+        link is at the directory the source names and that the copy then yields
+        BYTES.
+        """
+        from kanibako.commands.start import ensure_persona_share_symlinks
+        from kanibako.launch.templates import stage_layers
+
+        std = self._std(tmp_path)
+        harness_src = std.agents / self._HARNESS / "seedsrc"
+        harness_src.mkdir(parents=True)
+        (harness_src / "file.md").write_text("HARNESS\n")
+        ensure_persona_share_symlinks(
+            std, self._NODE, self._target(seeds=self._SEEDS),
+        )
+        layer = self._node_store(std) / "seedsrc"
+        assert layer.is_symlink()          # the DIRECTORY, not an entry beneath it
+        assert not any(p.is_symlink() for p in layer.rglob("*"))
+        dest = tmp_path / "boxhome"
+        stage_layers(dest, [layer])        # no TemplateScopeError
+        seeded = dest / "file.md"
+        assert seeded.is_file() and not seeded.is_symlink()
+        assert seeded.read_text() == "HARNESS\n"
+
+    def test_a_source_outside_the_harness_store_is_not_shimmed(self, tmp_path):
+        """The shim's narrowness matches the re-root's: a plugin naming the host's
+        own dir means THAT dir for every node, so there is nothing to share."""
+        from kanibako.commands.start import ensure_persona_share_symlinks
+
+        std = self._std(tmp_path)
+        ensure_persona_share_symlinks(std, self._NODE, self._target(
+            common_binds={},
+            category_binds={"agent.claude.caches": {
+                "/home/agent/a": ("/opt/fixed",),
+                "/home/agent/b": ("~/.claude/real",),
+            }},
+        ))
+        # Only the template link — nothing invented from a self-resolving source.
+        assert [p.name for p in self._node_store(std).iterdir()] == ["template"]
+
+    def test_a_declared_source_naming_a_FILE_does_not_raise(self, tmp_path):
+        """A harness path that already exists as a FILE must not kill the launch.
+
+        The harness side used to be an unconditional
+        ``mkdir(parents=True, exist_ok=True)``, which raises ``FileExistsError`` on
+        an existing non-directory.  A plugin may legitimately bind an agent-scope
+        FILE; the link shares it exactly as a link to a dir shares a dir.
+        """
+        from kanibako.commands.start import ensure_persona_share_symlinks
+
+        std = self._std(tmp_path)
+        harness_file = std.agents / self._HARNESS / "conf.toml"
+        harness_file.parent.mkdir(parents=True)
+        harness_file.write_text("k = 1\n")
+        ensure_persona_share_symlinks(std, self._NODE, self._target(
+            common_binds={},
+            category_binds={"agent.claude.bindings.ro": {
+                "/home/agent/conf": ("@meta.agent.claude.path/conf.toml", "ro"),
+            }},
+        ))
+        node_link = self._node_store(std) / "conf.toml"
+        assert node_link.is_symlink()
+        assert node_link.read_text() == "k = 1\n"
+
+    def test_one_store_dir_named_twice_is_linked_once(self, tmp_path):
+        """Two declarations may share a store dir; the shim lays ONE link and says
+        so once, rather than reporting two shares the box does not have."""
+        from kanibako.commands.start import ensure_persona_share_symlinks
+
+        std = self._std(tmp_path)
+        ensure_persona_share_symlinks(std, self._NODE, self._target(
+            common_binds={"agent.claude.common": {
+                "/home/agent/one": ("@meta.agent.claude.path/common/shared",),
+            }},
+            category_binds={"agent.claude.bindings.ro": {
+                "/home/agent/two": ("@meta.agent.claude.path/common/shared", "ro"),
+            }},
+        ))
+        link = self._node_store(std) / "common" / "shared"
+        assert link.is_symlink()
+        assert link.readlink() == std.agents / self._HARNESS / "common" / "shared"
 
 
 class TestCredsyncRouting:

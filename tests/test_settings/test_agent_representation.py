@@ -417,24 +417,31 @@ def test_node_name_none_falls_back_to_install_name() -> None:
 
 
 # ---------------------------------------------------------------------------
-# P7 — agent-scope COMMONS re-keyed to the ACTIVE NODE (the persona fix)
+# agent-scope CATEGORIES re-keyed + re-rooted to the ACTIVE NODE (the persona fix)
 # ---------------------------------------------------------------------------
 
 
-class TestAgentCommonForNode:
+class TestAgentCategoriesForNodeOnCommon:
     """A plugin declares its commons against its HARNESS name; the §2d read pick
     reads them under the ACTIVE NODE. For a PERSONA those never matched, so the
     box mounted NEITHER ``~/.claude/plugins`` NOR ``~/.claude/cache`` while
     ``ensure_persona_share_symlinks`` maintained links nothing consumed.
 
-    This is the ONE deliberate behaviour change in P7 beyond key renames, and the
-    delta below is the phase's enumerated gate: identity for a bare agent, exactly
+    ⚑ THE ADAPTER IS GENERIC OVER CATEGORIES, and that is the second half of the
+    fix: ``common`` was adapted first, while ``default_seeds()`` and
+    ``default_category_binds()`` were still folded HARNESS-KEYED at three call
+    sites — so a persona took a declared seed or category bind with no mount, no
+    copy, no error and no warning. :class:`TestEveryDeclaredCategoryMoves` below is
+    the generalisation; these cases keep the ``common`` case measured first.
+
+    The delta below is the enumerated gate: identity for a bare agent, exactly
     two mounts gained for a claude persona, nothing for goose/codex (their
     ``default_common()`` is empty).
 
     ⚑ THE TABLE IS DEST-KEYED (2026-08-08c). ``common`` is a TERMINAL key, so the
     plugin table holds ONE entry — ``agent.<harness>.common`` → the whole
-    ``{box_dest: (host_src,)}`` map — and the re-key is an EXACT match on that key.
+    ``{box_dest: (host_src,)}`` map, and the re-key matches the ``agent.<harness>.``
+    PREFIX of it.
     The DESTINATIONS are data inside the value and do NOT move: a persona and its
     harness deliver to the same in-box path. They are spelled here the way
     ``core_defaults.add_bind`` stores them, guest-ABSOLUTE (R-11).
@@ -455,9 +462,9 @@ class TestAgentCommonForNode:
         """BYTE-IDENTICAL for every non-persona launch. INVERT: re-key
         unconditionally -> a bare agent's keys change and the equivalence gate
         for the whole phase breaks."""
-        from kanibako.settings.agent_representation import agent_common_for_node
+        from kanibako.settings.agent_representation import agent_categories_for_node
 
-        assert agent_common_for_node(
+        assert agent_categories_for_node(
             self.TABLE, node_name="claude", harness="claude",
         ) == self.TABLE
 
@@ -465,9 +472,9 @@ class TestAgentCommonForNode:
         """BOTH halves move. INVERT: re-key without re-rooting -> the persona
         binds the HARNESS dir directly, which makes the shim's "a persona that
         legitimately has its own dir wins" branch unreachable."""
-        from kanibako.settings.agent_representation import agent_common_for_node
+        from kanibako.settings.agent_representation import agent_categories_for_node
 
-        out = agent_common_for_node(
+        out = agent_categories_for_node(
             self.TABLE, node_name="nav℘claude", harness="claude",
         )
         assert set(out) == {"agent.nav℘claude.common"}
@@ -485,19 +492,19 @@ class TestAgentCommonForNode:
         """The re-root rule is NARROW: only the harness's own declaration root
         moves. An absolute / ``~`` / ``$var`` / unrelated ``@``-ref source is the
         plugin's deliberate choice (spec §2a), not "my store dir"."""
-        from kanibako.settings.agent_representation import agent_common_for_node
+        from kanibako.settings.agent_representation import agent_categories_for_node
 
         table = {"agent.claude.common": {"/home/agent/x": ("/opt/fixed",)}}
-        out = agent_common_for_node(
+        out = agent_categories_for_node(
             table, node_name="nav℘claude", harness="claude",
         )
         assert out["agent.nav℘claude.common"] == {"/home/agent/x": ("/opt/fixed",)}
 
     def test_an_empty_table_stays_empty(self):
         """goose / codex declare no commons — no delta for their personas."""
-        from kanibako.settings.agent_representation import agent_common_for_node
+        from kanibako.settings.agent_representation import agent_categories_for_node
 
-        assert agent_common_for_node({}, node_name="nav℘goose", harness="goose") == {}
+        assert agent_categories_for_node({}, node_name="nav℘goose", harness="goose") == {}
 
     def test_the_persona_gains_exactly_two_mounts_end_to_end(self):
         """⚑ THE ENUMERATED DELTA, measured through the real adapter: 0 -> 2.
@@ -505,7 +512,7 @@ class TestAgentCommonForNode:
         INVERT: revert the call site in ``start.py`` to ``target.default_common()``
         and the persona is back to ZERO agent-scope commons.
         """
-        from kanibako.settings.agent_representation import agent_common_for_node
+        from kanibako.settings.agent_representation import agent_categories_for_node
         from kanibako.settings.settings_launch import (
             build_launch_snapshot,
             snapshot_category_entries,
@@ -536,7 +543,7 @@ class TestAgentCommonForNode:
             ]
 
         assert _mounts(self.TABLE) == []          # the BUG (harness-keyed)
-        fixed = _mounts(agent_common_for_node(
+        fixed = _mounts(agent_categories_for_node(
             self.TABLE, node_name=node, harness="claude",
         ))
         # ⚑ TWO entries, identified by DESTINATION — there is no entry name in the
@@ -547,3 +554,186 @@ class TestAgentCommonForNode:
         assert [e.name for e in fixed] == [e.box_dest for e in fixed]
         # Sourced through the NODE path — the symlink the shim maintains.
         assert all(e.host_src.startswith(f"/store/agents/{node}/common/") for e in fixed)
+
+
+class TestEveryDeclaredCategoryMoves:
+    """ONE adapter for all three hooks — ``common`` is not a special case.
+
+    ``default_seeds()`` and ``default_category_binds()`` reach the launch floor by
+    the same road ``default_common()`` does, and a plugin keys all three the same
+    way: against its own HARNESS name, with sources rooted at its own store. Until
+    the fix only ``common`` was adapted, so the other two were invisible to a
+    persona — and invisible in the SILENT direction: no mount, no copy, no error.
+
+    ⚑ Every category here is exercised through the ONE function, because a
+    per-category adapter is what would let the next hook be forgotten again.
+    """
+
+    #: One dest-keyed entry per category a plugin may declare, all rooted at the
+    #: harness's own store so all of them must move.
+    TABLE = {
+        "agent.claude.seeded": {
+            "/home/agent/seed": ("@meta.agent.claude.path/seedsrc",),
+        },
+        "agent.claude.caches": {
+            "/home/agent/.cache/x": ("@meta.agent.claude.path/caches/x",),
+        },
+        "agent.claude.bindings.ro": {
+            "/home/agent/ro": ("@meta.agent.claude.path/robits", "ro"),
+        },
+        "agent.claude.bindings.rw": {
+            "/home/agent/rw": ("@meta.agent.claude.path/rwbits",),
+        },
+        "agent.claude.synced": {
+            "/home/agent/sync": ("@meta.agent.claude.path/syncsrc",),
+        },
+    }
+
+    def _out(self):
+        from kanibako.settings.agent_representation import agent_categories_for_node
+
+        return agent_categories_for_node(
+            self.TABLE, node_name="nav℘claude", harness="claude",
+        )
+
+    def test_every_category_key_is_rekeyed_to_the_node(self):
+        """INVERT: adapt only ``common`` -> every key here stays harness-keyed and
+        the §2d pick reads none of them for a persona."""
+        assert set(self._out()) == {
+            key.replace("agent.claude.", "agent.nav℘claude.", 1)
+            for key in self.TABLE
+        }
+
+    def test_every_source_is_rerooted_onto_the_node_store(self):
+        """The re-root is the half that keeps the ESCAPE HATCH reachable.
+
+        🛑 INVERT: re-key without re-rooting and every case in this module still
+        passes while the persona binds the HARNESS store DIRECTLY — replacing the
+        node's symlink with a real directory then changes nothing, which is exactly
+        the freedom the symlink exists to give (*"the user can change the symlink to
+        a directory or real target"*, ruled 2026-08-27).
+        """
+        for key, arm in self._out().items():
+            for dest, entry in arm.items():
+                assert entry[0].startswith("@meta.agent.nav℘claude.path/"), (
+                    f"{key} entry at {dest} still names the harness store"
+                )
+
+    def test_the_options_element_rides_along_untouched(self):
+        """A re-root rebuilds the tuple, so element 1+ must survive it.
+
+        INVERT: return ``(host_src,)`` and the ro arm silently loses its explicit
+        ``ro`` option, which the collapse would then fill from the category default.
+        """
+        arm = self._out()["agent.nav℘claude.bindings.ro"]
+        assert arm["/home/agent/ro"] == (
+            "@meta.agent.nav℘claude.path/robits", "ro",
+        )
+
+    def test_the_destinations_never_move(self):
+        """A persona delivers to the same IN-BOX paths its harness does."""
+        out = self._out()
+        for key, arm in self.TABLE.items():
+            node_key = key.replace("agent.claude.", "agent.nav℘claude.", 1)
+            assert set(out[node_key]) == set(arm)
+
+    def test_a_bare_agent_is_the_identity(self):
+        """BYTE-IDENTICAL for every non-persona launch — the whole shipped fleet."""
+        from kanibako.settings.agent_representation import agent_categories_for_node
+
+        assert agent_categories_for_node(
+            self.TABLE, node_name="claude", harness="claude",
+        ) == self.TABLE
+
+    def test_a_source_outside_the_harness_store_is_carried_verbatim(self):
+        """The re-root is NARROW: a plugin naming the host's real dir means THAT dir.
+
+        ⚑ The KEY still moves — the pick has to see the entry at all — so this is
+        not "leave the whole row alone", and a test that asserted the row unchanged
+        would pass on an adapter that did nothing.
+        """
+        from kanibako.settings.agent_representation import agent_categories_for_node
+
+        table = {
+            "agent.claude.caches": {
+                "/home/agent/a": ("/opt/fixed",),
+                "/home/agent/b": ("~/.claude/real",),
+                "/home/agent/c": ("@system.template/x",),
+                "/home/agent/d": ("@meta.agent.goose.path/other",),
+            },
+        }
+        out = agent_categories_for_node(
+            table, node_name="nav℘claude", harness="claude",
+        )
+        assert out["agent.nav℘claude.caches"] == table["agent.claude.caches"]
+
+    def test_a_key_outside_this_harness_is_left_alone(self):
+        """``agent.default.*`` is the all-agents BACKSTOP and another harness's keys
+        are not this plugin's to move."""
+        from kanibako.settings.agent_representation import agent_categories_for_node
+
+        table = {
+            "agent.default.caches": {"/home/agent/a": ("/opt/a",)},
+            "agent.goose.caches": {"/home/agent/b": ("/opt/b",)},
+        }
+        assert agent_categories_for_node(
+            table, node_name="nav℘claude", harness="claude",
+        ) == table
+
+    def test_a_non_map_value_is_rekeyed_and_carried(self):
+        """A scalar source key or a LIST-valued ``masks`` has no source to re-root.
+
+        INVERT: re-root unconditionally and this raises rather than carrying the
+        value — the failure would land on whichever plugin declares one first.
+        """
+        from kanibako.settings.agent_representation import agent_categories_for_node
+
+        table = {
+            "agent.claude.template": "@config.agents/claude/template",
+            "agent.claude.masks": ["/home/agent/hidden"],
+        }
+        out = agent_categories_for_node(
+            table, node_name="nav℘claude", harness="claude",
+        )
+        assert out == {
+            "agent.nav℘claude.template": "@config.agents/claude/template",
+            "agent.nav℘claude.masks": ["/home/agent/hidden"],
+        }
+
+
+class TestHarnessStoreLeaf:
+    """The ONE rule the re-root and the SYMLINK SHIM both read.
+
+    They must agree entry for entry: a source that re-roots gets a link, and one
+    that does not gets neither. A re-root with no link behind it names a path that
+    does not exist — the absent-source symptom, moved one hop.
+    """
+
+    def test_a_store_rooted_source_yields_its_whole_relative_path(self):
+        """⚑ THE WHOLE PATH, not just the first segment: the link must be laid at
+        the directory the source NAMES. ``stage_layers`` follows a layer that IS a
+        symlink but REFUSES one found beneath a layer, so a link one level too deep
+        does not merely miss — it refuses the entire seed."""
+        from kanibako.settings.agent_representation import harness_store_leaf
+
+        assert harness_store_leaf(
+            "@meta.agent.claude.path/common/plugins", "claude",
+        ) == "common/plugins"
+        assert harness_store_leaf(
+            "@meta.agent.claude.path/seedsrc", "claude",
+        ) == "seedsrc"
+
+    def test_anything_else_is_None(self):
+        """``None`` means "nothing to re-root / nothing to shim", never a parse
+        failure — so a caller must not treat it as an error."""
+        from kanibako.settings.agent_representation import harness_store_leaf
+
+        for src in (
+            "/opt/fixed", "~/.claude", "$HOME/x", "@system.template/x",
+            "@meta.agent.goose.path/x",
+            "@meta.agent.claude.path",       # the root itself — no leaf
+            "@meta.agent.claude.path/",      # trailing slash — still no leaf
+            "@meta.agent.claudex.path/y",    # a LONGER harness name, not a prefix hit
+            None, 3,
+        ):
+            assert harness_store_leaf(src, "claude") is None, src

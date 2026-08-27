@@ -795,7 +795,7 @@ def load_common(package: str, filename: str, agent: str) -> "dict[str, BindArm]"
     user's override can repoint the source without moving the destination.
     ⚑ The store DIRNAME a persona's symlink shim needs used to be read off the
     key; it now comes off the rooted ``host_src`` — see
-    :func:`~kanibako.settings.agent_representation.harness_common_leaf`, the ONE
+    :func:`~kanibako.settings.agent_representation.harness_store_leaf`, the ONE
     place that rule is written.
     """
     root_ref = agent_category_root_ref(agent, "common")
