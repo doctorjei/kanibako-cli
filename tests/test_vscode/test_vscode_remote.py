@@ -382,6 +382,36 @@ def test_remote_engine_inspect_env_and_image():
         assert eng.container_image("box") == "ghcr.io/x/y:latest"
 
 
+def test_remote_engine_container_image_shares_the_local_guard():
+    """ONE rule for both legs — asserted by IDENTITY, not by a duplicated table.
+
+    Both ``container_image`` implementations send the same ``{{.ImageName}}`` format
+    string, so a second copy of "what counts as a reference" could drift silently.
+    """
+    from kanibako.runtime import container as container_mod
+
+    assert vr.image_ref_or_none is container_mod.image_ref_or_none
+
+
+def test_remote_engine_container_image_refuses_a_non_reference_at_exit_zero():
+    """Go's ``<no value>`` at rc 0 must not key the config the remote seed writes.
+
+    Same rule as the local leg — see ``TestContainerImage`` in
+    ``tests/test_runtime/test_container.py`` for which engines actually do this.
+    """
+    eng = vr.RemoteEngine("unix:///run/x.sock", podman="podman")
+    completed = MagicMock(returncode=0, stdout="<no value>\n")
+    with patch("kanibako.vscode.vscode_remote.subprocess.run", return_value=completed):
+        assert eng.container_image("box") is None
+
+
+def test_remote_engine_container_image_none_when_inspect_fails():
+    eng = vr.RemoteEngine("unix:///run/x.sock", podman="podman")
+    completed = MagicMock(returncode=125, stdout="", stderr="Error: no such container")
+    with patch("kanibako.vscode.vscode_remote.subprocess.run", return_value=completed):
+        assert eng.container_image("box") is None
+
+
 def test_remote_engine_running_with_stderr_surfaces_inspect_error():
     eng = vr.RemoteEngine("unix:///run/x.sock", podman="podman")
     completed = MagicMock(

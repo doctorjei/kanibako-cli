@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
-from kanibako.runtime.container import ContainerRuntime
+from kanibako.runtime.container import ContainerRuntime, image_ref_or_none
 from kanibako.errors import ContainerError
 
 
@@ -788,6 +788,81 @@ class TestInspectEnv:
         with patch("kanibako.runtime.container.subprocess.run") as m:
             m.return_value = MagicMock(returncode=0, stdout=env)
             assert rt.inspect_env("box", "FOO") == "a=b=c"
+
+
+class TestImageRefOrNone:
+    """The ONE rule for "is this inspect output an image reference?"."""
+
+    @pytest.mark.parametrize("raw", [
+        "ghcr.io/doctorjei/kanibako-oci:latest\n",
+        "localhost/kanibako-min:latest",
+        "docker.io/library/busybox",
+        "registry.example.com:5000/team/img:v1.2.3",
+        "ghcr.io/x/y@sha256:" + "a" * 64,
+        "ghcr.io/x/y:RC1",          # a tag may legally carry uppercase
+        "0a1b2c3d4e5f",             # a bare image ID
+    ])
+    def test_accepts_a_reference_stripped(self, raw):
+        assert image_ref_or_none(raw) == raw.strip()
+
+    @pytest.mark.parametrize("raw", [
+        "<no value>",               # Go text/template on a missing MAP key, at exit 0
+        "<no value>\n",
+        "",
+        "   \n",
+        "Error: no such object: kanibako-foo",
+        "template parsing error: bad character",
+        "ghcr.io/x/y:latest extra",
+    ])
+    def test_refuses_anything_that_cannot_be_a_reference(self, raw):
+        assert image_ref_or_none(raw) is None
+
+
+class TestContainerImage:
+    """container_image() — the image reference a live box was created from."""
+
+    _REF = "ghcr.io/doctorjei/kanibako-oci:latest"
+
+    def test_returns_the_inspected_reference(self):
+        from unittest.mock import MagicMock
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        with patch("kanibako.runtime.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=0, stdout=self._REF + "\n")
+            assert rt.container_image("box") == self._REF
+            assert m.call_args[0][0] == [
+                "/usr/bin/podman", "inspect",
+                "--format", "{{.ImageName}}", "box",
+            ]
+
+    def test_returns_none_when_inspect_fails(self):
+        from unittest.mock import MagicMock
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        with patch("kanibako.runtime.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=125, stdout="")
+            assert rt.container_image("box") is None
+
+    def test_a_no_value_at_exit_zero_is_not_a_reference(self):
+        """Go's missing-map-key sentinel printed at rc 0 must not become a reference.
+
+        Modern docker does NOT do this — it retries the template with
+        ``missingkey=error`` and exits 1 on an unknown top-level field.  Docker built
+        with Go 1.4 (pre-1.12) DID, and ``KANIBAKO_DOCKER_CMD`` points ``self.cmd`` at
+        any engine binary the user likes.  Without the guard the literal
+        ``"<no value>"`` reaches the caller as though it were a reference and keys a
+        VS Code attached-container config file at ``%3cno%20value%3e.json``.
+        """
+        from unittest.mock import MagicMock
+        rt = ContainerRuntime(command="/usr/bin/docker")
+        with patch("kanibako.runtime.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=0, stdout="<no value>\n")
+            assert rt.container_image("box") is None
+
+    def test_empty_output_at_exit_zero_is_none(self):
+        from unittest.mock import MagicMock
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        with patch("kanibako.runtime.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=0, stdout="\n")
+            assert rt.container_image("box") is None
 
 
 class TestExec:

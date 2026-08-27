@@ -53,6 +53,39 @@ def _run_post_start(hook: "Callable[[], None]") -> None:
         logger.debug("post-start hook failed: %s", exc)
 
 
+# The smallest rule a string must satisfy to be an image reference AT ALL: a registry
+# host, a repository path, an optional ``:tag``, an optional ``@sha256:…``.  Deliberately
+# NOT the distribution/reference grammar — it is here to reject what cannot be a
+# reference, never to certify what is.
+_IMAGE_REF_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/@-]*\Z")
+
+
+def image_ref_or_none(raw: str) -> str | None:
+    """Return ``inspect`` output *raw* as an image reference, or None if it cannot be one.
+
+    The ONE guard for every ``inspect --format`` read of an image reference — the local
+    leg (:meth:`ContainerRuntime.container_image`) and the remote one
+    (``vscode.vscode_remote.RemoteEngine.container_image``) both route through it, so the
+    two cannot disagree about what a reference is.
+
+    ⚑ Why an exit-0 read needs a guard at all: Go's ``text/template`` errors on a missing
+    STRUCT field but prints the literal ``<no value>`` — at exit 0 — for a missing MAP
+    key, so an engine rendering inspect templates against a decoded map hands back a
+    string that is not a reference.  The engine is not ours to constrain: ``self.cmd`` is
+    whatever ``KANIBAKO_DOCKER_CMD`` or ``$PATH`` supplies.  Unguarded, such a value keys
+    a VS Code attached-container config — and a settings image tier — off ``"<no value>"``.
+
+    Deliberately NOT checked: that the reference names an image that exists, or that it is
+    fully qualified.  A caller wanting either must ask the engine.
+    """
+    ref = raw.strip()
+    if _IMAGE_REF_RE.match(ref):
+        return ref
+    if ref:
+        logger.debug("container inspect returned a non-reference image value: %r", ref)
+    return None
+
+
 class ContainerRuntime:
     """Wrapper around podman/docker CLI."""
 
@@ -487,7 +520,15 @@ class ContainerRuntime:
 
     def container_image(self, name: str) -> str | None:
         """Return the image reference container *name* was created from, or None."""
-        # ⚑ ``.ImageName`` is podman-only — docker has no such field, so docker → None.
+        # ⚑ ``.ImageName`` is a PODMAN field, and docker REFUSES it rather than printing
+        # Go's ``<no value>``: docker/cli renders the template against the typed struct
+        # first, then retries against the raw JSON with ``missingkey=error``
+        # (``cli/command/inspect/inspector.go``), so an unknown TOP-LEVEL field exits 1 —
+        # pinned by moby's own ``TestInspectTemplateError`` (``{{.ThisDoesNotExist}}`` →
+        # "template parsing error").  READ FROM SOURCE, never measured: no docker here.
+        # ⚑ It was NOT always so — docker built with Go 1.4 (pre-1.12) printed
+        # ``<no value>`` at exit 0 (moby#15566) — which is why the rc check below is
+        # backed by :func:`image_ref_or_none` instead of trusted on its own.
         result = subprocess.run(
             [self.cmd, "inspect", "--format", "{{.ImageName}}", name],
             capture_output=True,
@@ -495,7 +536,7 @@ class ContainerRuntime:
         )
         if result.returncode != 0:
             return None
-        return result.stdout.strip() or None
+        return image_ref_or_none(result.stdout)
 
     def list_running(self, prefix: str = "kanibako-") -> list[tuple[str, str, str]]:
         """Return running containers matching *prefix* as (name, image, status) tuples."""
