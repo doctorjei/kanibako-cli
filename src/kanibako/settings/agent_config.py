@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Final, Mapping
 
+from kanibako.agent_ref import display_agent_ref
 from kanibako.settings.config import AGENT_META_FILE
 from kanibako.settings.settings_categories import ABSTRACT_CATEGORIES, DECLARATION_ROOT_REF
 
@@ -46,11 +47,21 @@ def agents_dir(data_path: Path, paths_agents: str = "agents") -> Path:
     return data_path / (paths_agents or "agents")
 
 
+def store_dirname(node: str) -> str:
+    """The on-disk store DIRNAME for a *node* — the ``+`` spelling, never ``℘``."""
+    # ⚑ THE single place a node becomes a DIRECTORY, so every store path is spelled
+    # once.  ``℘`` is a key-path device (``agent_ref.SEPARATORS`` says why) and a
+    # store dir is not a key: a user lists it and cd's into it, so it wears the ``+``
+    # they typed.  DELEGATES rather than repeating the substitution.
+    return display_agent_ref(node)
+
+
 def agent_settings_path(agents_root: Path, agent_id: str) -> Path:
     """Return ``@meta.agent.<agent>.settings`` for *agent_id*."""
     # ⚑ INSIDE the store dir as ``agent.yaml``, not the old sibling
-    # ``agents/<agent>.yaml`` (D-2026-06-22).
-    return agents_root / agent_id / AGENT_META_FILE
+    # ``agents/<agent>.yaml`` (D-2026-06-22).  Callers pass the CANONICAL node; the
+    # ``+`` dirname is applied here, so no caller has to know the two differ.
+    return agents_root / store_dirname(agent_id) / AGENT_META_FILE
 
 
 # --------------------------------------------------------------------------- #
@@ -82,8 +93,10 @@ def agent_category_dirname(category: str) -> str:
 def agent_category_root(agents_root: Path, agent: str, category: str) -> Path:
     """The REAL host dir an abstract *category* stores under for *agent*."""
     # ⚑ The resolved twin of :func:`agent_category_root_ref`; for callers needing a
-    # real Path, never to build a STORED value.
-    return agents_root / agent / agent_category_dirname(category)
+    # real Path, never to build a STORED value.  The twin routes through
+    # ``@meta.agent.<a>.path``, whose value is this same ``+`` dirname, so the two
+    # still land on ONE directory.
+    return agents_root / store_dirname(agent) / agent_category_dirname(category)
 
 
 def category_root_ref(scope: str, category: str, *, agent: str | None = None) -> str:

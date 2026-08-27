@@ -11,6 +11,7 @@ from collections.abc import Iterable
 from typing import TYPE_CHECKING
 from pathlib import Path
 
+from kanibako.settings.agent_config import store_dirname
 from kanibako.settings.core_defaults import ROM_ROOT_PARTS, packaged_data_dir
 
 if TYPE_CHECKING:
@@ -105,8 +106,10 @@ def template_seed_defaults(
         # ⚑ STILL NO NODE-STORE PROBE (see the ``agent.default.template`` note
         # above): the shim guarantees the node's ``template`` entry exists, and
         # ``stage_layers`` is skip-if-absent for the case where it does not.
+        # ⚑ KEY vs DIRECTORY: the key segment stays the CANONICAL node, the value is
+        # a store path and takes the ``+`` dirname (``agent_config.store_dirname``).
         defs[f"agent.{agent_id}.template"] = (
-            f"@config.agents/{agent_id}/{AGENT_TEMPLATE_STORE_REL}"
+            f"@config.agents/{store_dirname(agent_id)}/{AGENT_TEMPLATE_STORE_REL}"
         )
         defs[f"agent.{agent_id}.seeded"] = _layer(f"@agent.{agent_id}.template")
     if has_workset_channels(proj):

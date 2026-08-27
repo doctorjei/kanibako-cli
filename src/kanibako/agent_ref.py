@@ -10,7 +10,11 @@ from __future__ import annotations
 import re
 from kanibako.errors import ConfigError
 
-# Persona/harness separators: one for typing [+], another internally to avoid collisions [℘]
+# Persona/harness separators.  ``+`` is the spelling wherever a human looks, the on-disk store
+# dirname included (:func:`kanibako.settings.agent_config.store_dirname`).  ``℘`` exists for ONE
+# reason: a key path is split on ``.`` into ``SEGMENT_CHAR_CLASS`` segments (below), which admit
+# no ``+`` — so ``agent.nav+claude.model`` would match only ``agent.nav`` and silently resolve a
+# different key.  A node wears ``℘`` INSIDE a key and nowhere else.
 SEPARATORS = (PLUS_SEP := "+", CANONICAL_SEP := "℘")
 
 # "Safe" characters in agent names

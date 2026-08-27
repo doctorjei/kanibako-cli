@@ -1801,6 +1801,29 @@ class TestPersonaShareSymlinks:
         agents.mkdir()
         return SimpleNamespace(agents=agents)
 
+    def _node_store(self, std):
+        """The node's store dir, from the production helper — the shim and the keys
+        must name ONE directory, and the spelling itself is pinned by
+        ``test_the_store_dir_is_the_plus_spelling`` below."""
+        from kanibako.settings.agent_config import store_dirname
+
+        return std.agents / store_dirname(self._NODE)
+
+    def test_the_store_dir_is_the_plus_spelling(self, tmp_path):
+        """⚑ THE SPELLING PIN, literal on both sides.
+
+        ``℘`` is a key-path device; a store directory is not a key, so the shim
+        writes the ``+`` form the user typed.  Both halves are asserted because the
+        failure this guards is a SPLIT store — one composer left on the other
+        spelling, create-if-absent everywhere, and no error raised.
+        """
+        from kanibako.commands.start import ensure_persona_share_symlinks
+
+        std = self._std(tmp_path)
+        ensure_persona_share_symlinks(std, self._NODE, self._target())
+        assert (std.agents / "navigator+claude" / "common" / "plugins").is_symlink()
+        assert not (std.agents / "navigator℘claude").exists()
+
     def test_links_are_under_the_common_dir(self, tmp_path):
         """T7 — the shim reads the REAL (declaration-rooted) ``common`` shape.
 
@@ -1829,15 +1852,15 @@ class TestPersonaShareSymlinks:
         std = self._std(tmp_path)
         ensure_persona_share_symlinks(std, self._NODE, self._target())
         for name in ("plugins", "cache"):
-            node_link = std.agents / self._NODE / "common" / name
+            node_link = self._node_store(std) / "common" / name
             harness_dir = std.agents / self._HARNESS / "common" / name
             assert node_link.is_symlink(), f"{name}: no link at {node_link}"
             assert harness_dir.is_dir(), f"{name}: no harness dir at {harness_dir}"
             assert node_link.readlink() == harness_dir
         # And NOTHING was created from the raw @-ref value.
         assert not any(
-            "@" in p.name for p in (std.agents / self._NODE).rglob("*")
-        ), sorted(str(p) for p in (std.agents / self._NODE).rglob("*"))
+            "@" in p.name for p in self._node_store(std).rglob("*")
+        ), sorted(str(p) for p in self._node_store(std).rglob("*"))
 
     # --- persona: symlinks created, harness dir first, no dangling -------------
 
@@ -1846,7 +1869,7 @@ class TestPersonaShareSymlinks:
         std = self._std(tmp_path)
         ensure_persona_share_symlinks(std, self._NODE, self._target())
         for name in ("plugins", "cache"):
-            node_link = std.agents / self._NODE / "common" / name
+            node_link = self._node_store(std) / "common" / name
             harness_dir = std.agents / self._HARNESS / "common" / name
             assert node_link.is_symlink(), f"{name} not a symlink"
             # Harness dir made FIRST -> the link is NOT dangling.
@@ -1859,13 +1882,13 @@ class TestPersonaShareSymlinks:
         std = self._std(tmp_path)
         ensure_persona_share_symlinks(std, self._NODE, self._target())
         before = {
-            name: (std.agents / self._NODE / "common" / name).readlink()
+            name: (self._node_store(std) / "common" / name).readlink()
             for name in ("plugins", "cache")
         }
         # Second call: still symlinks, same target (no clobber, no error).
         ensure_persona_share_symlinks(std, self._NODE, self._target())
         for name in ("plugins", "cache"):
-            link = std.agents / self._NODE / "common" / name
+            link = self._node_store(std) / "common" / name
             assert link.is_symlink()
             assert link.readlink() == before[name]
 
@@ -1873,7 +1896,7 @@ class TestPersonaShareSymlinks:
         from kanibako.commands.start import ensure_persona_share_symlinks
         std = self._std(tmp_path)
         # A persona that legitimately has its OWN real plugins dir.
-        real = std.agents / self._NODE / "common" / "plugins"
+        real = self._node_store(std) / "common" / "plugins"
         real.mkdir(parents=True)
         (real / "sentinel.txt").write_text("mine")
         ensure_persona_share_symlinks(std, self._NODE, self._target())
@@ -1881,7 +1904,7 @@ class TestPersonaShareSymlinks:
         assert real.is_dir() and not real.is_symlink()
         assert (real / "sentinel.txt").read_text() == "mine"
         # The OTHER share (cache) still got its symlink.
-        cache_link = std.agents / self._NODE / "common" / "cache"
+        cache_link = self._node_store(std) / "common" / "cache"
         assert cache_link.is_symlink()
 
     def test_persona_wrong_target_symlink_left_alone(self, tmp_path):
@@ -1890,7 +1913,7 @@ class TestPersonaShareSymlinks:
         # Pre-existing symlink pointing somewhere ELSE (not the harness dir).
         elsewhere = tmp_path / "elsewhere_plugins"
         elsewhere.mkdir()
-        node_link = std.agents / self._NODE / "common" / "plugins"
+        node_link = self._node_store(std) / "common" / "plugins"
         node_link.parent.mkdir(parents=True)
         node_link.symlink_to(elsewhere)
         ensure_persona_share_symlinks(std, self._NODE, self._target())
@@ -1932,11 +1955,11 @@ class TestPersonaShareSymlinks:
         from kanibako.commands.start import ensure_persona_share_symlinks
         std = self._std(tmp_path)
         ensure_persona_share_symlinks(std, self._NODE, None)
-        node_link = std.agents / self._NODE / "template"
+        node_link = self._node_store(std) / "template"
         assert node_link.is_symlink()
         assert node_link.readlink() == std.agents / self._HARNESS / "template"
         # ...and NOT the common half: no target, nothing declared, nothing laid.
-        assert not (std.agents / self._NODE / "common").exists()
+        assert not (self._node_store(std) / "common").exists()
         assert not (std.agents / self._HARNESS / "common").exists()
 
     # --- the TEMPLATE share: seed layer 2 reads the NODE's own store ---------
@@ -1956,7 +1979,7 @@ class TestPersonaShareSymlinks:
 
         std = self._std(tmp_path)
         ensure_persona_share_symlinks(std, self._NODE, self._target())
-        node_link = std.agents / self._NODE / AGENT_TEMPLATE_STORE_REL
+        node_link = self._node_store(std) / AGENT_TEMPLATE_STORE_REL
         harness_dir = std.agents / self._HARNESS / AGENT_TEMPLATE_STORE_REL
         assert node_link.is_symlink(), f"no template link at {node_link}"
         # Harness dir made FIRST -> the link is NOT dangling.
@@ -1968,7 +1991,7 @@ class TestPersonaShareSymlinks:
         from kanibako.commands.start import ensure_persona_share_symlinks
         std = self._std(tmp_path)
         ensure_persona_share_symlinks(std, self._NODE, self._target())
-        node_link = std.agents / self._NODE / "template"
+        node_link = self._node_store(std) / "template"
         before = node_link.readlink()
         ensure_persona_share_symlinks(std, self._NODE, self._target())
         assert node_link.is_symlink()
@@ -1982,11 +2005,11 @@ class TestPersonaShareSymlinks:
         reverting the user's choice."""
         from kanibako.commands.start import ensure_persona_share_symlinks
         std = self._std(tmp_path)
-        own = std.agents / self._NODE / "template" / "box" / "home"
+        own = self._node_store(std) / "template" / "box" / "home"
         own.mkdir(parents=True)
         (own / "sentinel.txt").write_text("mine")
         ensure_persona_share_symlinks(std, self._NODE, self._target())
-        node_dir = std.agents / self._NODE / "template"
+        node_dir = self._node_store(std) / "template"
         assert node_dir.is_dir() and not node_dir.is_symlink()
         assert (own / "sentinel.txt").read_text() == "mine"
 
@@ -2017,7 +2040,7 @@ class TestPersonaShareSymlinks:
         ensure_persona_share_symlinks(std, self._NODE, self._target())
 
         # Layer 2's resolved source for the NODE, spelled exactly as the key roots it.
-        layer = std.agents / self._NODE / "template" / "box" / "home"
+        layer = self._node_store(std) / "template" / "box" / "home"
         dest = tmp_path / "boxhome"
         stage_layers(dest, [layer])  # no TemplateScopeError
         seeded = dest / "file.md"
@@ -2031,12 +2054,12 @@ class TestPersonaShareSymlinks:
         from kanibako.launch.templates import stage_layers
 
         std = self._std(tmp_path)
-        missing = std.agents / self._NODE / "template" / "box" / "home"
+        missing = self._node_store(std) / "template" / "box" / "home"
         dest = tmp_path / "boxhome"
         stage_layers(dest, [missing])
         assert not dest.exists()
 
-        dangling = std.agents / self._NODE / "template"
+        dangling = self._node_store(std) / "template"
         dangling.parent.mkdir(parents=True, exist_ok=True)
         dangling.symlink_to(std.agents / self._HARNESS / "template")
         assert not dangling.exists()  # the harness store was never created
@@ -2053,7 +2076,7 @@ class TestPersonaShareSymlinks:
         from kanibako.commands.start import ensure_persona_share_symlinks
         std = self._std(tmp_path)
         ensure_persona_share_symlinks(std, self._NODE, self._target())
-        node_link = std.agents / self._NODE / "common" / "plugins"
+        node_link = self._node_store(std) / "common" / "plugins"
         # Simulate the L7 guarantee-create on the (already-symlinked) source.
         node_link.mkdir(parents=True, exist_ok=True)
         assert node_link.is_symlink()  # NOT replaced by a real dir

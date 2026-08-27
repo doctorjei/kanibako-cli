@@ -30,6 +30,7 @@ import argparse
 from pathlib import Path
 
 from kanibako.commands.system_cmd import run_get, run_reset, run_set, run_show
+from kanibako.settings.agent_config import store_dirname
 from kanibako.settings.config import load_config, read_system_agent
 from kanibako.settings.config_io import dump_doc, load_doc
 from kanibako.settings.config_io import write_nested_key
@@ -471,15 +472,20 @@ class TestSystemPersonaAgentKeys:
     """
 
     def _file(self, std, node="navigator℘claude"):
-        return std.agents / node / "agent.yaml"
+        # ⚑ The dirname comes from the production helper; the spelling itself is
+        # pinned with literals in ``test_set_endpoint_writes_the_plus_dir``.
+        return std.agents / store_dirname(node) / "agent.yaml"
 
-    def test_set_endpoint_writes_canonical_dir(self, config_file, tmp_home):
+    def test_set_endpoint_writes_the_plus_dir(self, config_file, tmp_home):
         rc = _set("agent.navigator+claude.endpoint=https://ep")
         assert rc == 0
         std = _std(config_file)
-        assert load_doc(self._file(std)) == {"self": {"endpoint": "https://ep"}}
-        # The +form dir must NOT exist (the ℘ canonicalization really happened).
-        assert not (std.agents / "navigator+claude").exists()
+        assert load_doc(std.agents / "navigator+claude" / "agent.yaml") == {
+            "self": {"endpoint": "https://ep"},
+        }
+        # ⚑ NO ``℘`` REACHES THE DISK: it is a key-path device, and a store dir the
+        # user lists and cd's into is not a key.
+        assert not (std.agents / "navigator℘claude").exists()
 
     def test_get_reads_back_via_plus_and_script_p(
         self, config_file, tmp_home, capsys,

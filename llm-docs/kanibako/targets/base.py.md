@@ -524,9 +524,11 @@ The declarative data a plugin exposes via `Target.descriptor`; divergent LOGIC s
 
 ### How the descriptor maps onto the keyspace
 
-It maps onto the per-agent keyspace (spec §2d), keyed by `@meta.agent.<agent>.name` (the plugin's
-`name` property). A few §2d keys are *informational* — they describe where CORE derives a path, not
-a descriptor field:
+It maps onto the per-agent keyspace (spec §2d), keyed by the `<agent>` DISCRIMINATOR — which for a
+plugin's own declarations is its `name` property, the harness. ⚑ Not by the *value* of
+`meta.agent.<agent>.name`: that is the store DIRNAME (the `+` spelling), and for a persona node it
+differs from the discriminator. A few §2d keys are *informational* — they describe where CORE
+derives a path, not a descriptor field:
 
 * `agent.<agent>.path` (`@config.agents/<name>`, derived in core),
 * `agent.<agent>.template` (the layer-2 seed source, owned by the templates layer),

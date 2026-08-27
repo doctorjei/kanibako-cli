@@ -257,7 +257,11 @@ class TestTemplateSeedDefaults:
         """
         node = "navigator℘claude"
         defs = template_seed_defaults(primary_proj, node)
-        assert defs[f"agent.{node}.template"] == f"@config.agents/{node}/template"
+        # ⚑ KEY vs DIRECTORY, both literal: the key segment stays the canonical node,
+        # the VALUE is a store path and carries the ``+`` dirname.
+        assert defs[f"agent.{node}.template"] == (
+            "@config.agents/navigator+claude/template"
+        )
         assert "@config.agents/claude/template" not in defs.values()
         # The layer keys are the node's too — nothing here is harness-keyed.
         assert defs[f"agent.{node}.seeded"] == {
@@ -657,6 +661,13 @@ class TestPersonaTemplateLayerThroughTheLink:
 
         return SimpleNamespace(name=self._HARNESS, default_common=lambda: {})
 
+    def _node_store(self, std):
+        """The node's store dir, from the production helper — the link, the key and
+        this test must all name ONE directory or the store silently splits."""
+        from kanibako.settings.agent_config import store_dirname
+
+        return std.agents / store_dirname(self._NODE)
+
     def _harness_marker(self, std):
         home = std.agents / self._HARNESS / "template" / "box" / "home"
         home.mkdir(parents=True, exist_ok=True)
@@ -666,7 +677,7 @@ class TestPersonaTemplateLayerThroughTheLink:
     def _seed_node(self, std, proj):
         _seed(
             std, proj, agent=self._NODE,
-            agent_cfg_path=std.agents / self._NODE / "agent.yaml",
+            agent_cfg_path=self._node_store(std) / "agent.yaml",
         )
 
     def test_persona_seeds_the_harness_template_through_the_link(
@@ -678,6 +689,14 @@ class TestPersonaTemplateLayerThroughTheLink:
         self._harness_marker(std)
         ensure_persona_share_symlinks(std, self._NODE, self._shim_target())
         self._seed_node(std, primary_proj)
+
+        # ⚑ THE SPLIT-STORE GUARD, and it is LITERAL on purpose.  The link and the
+        # ``agent.<node>.template`` key are composed by DIFFERENT code; leave either
+        # one on the ``℘`` spelling and they name different dirs, the guarantee-create
+        # makes the missing one, and the seed reads an empty half-store with no error
+        # raised anywhere.  Both halves are asserted, so either direction reds.
+        assert (std.agents / "navigator+claude" / "template").is_symlink()
+        assert not (std.agents / "navigator℘claude").exists()
 
         landed = primary_proj.shell_path / "persona-layer2.txt"
         assert landed.is_file(), sorted(primary_proj.shell_path.rglob("*"))
@@ -721,12 +740,12 @@ class TestPersonaTemplateLayerThroughTheLink:
 
         install_packaged_templates(std, [self._HARNESS])
         self._harness_marker(std)
-        own = std.agents / self._NODE / "template" / "box" / "home"
+        own = self._node_store(std) / "template" / "box" / "home"
         own.mkdir(parents=True)
         (own / "persona-only.txt").write_text("mine")
         ensure_persona_share_symlinks(std, self._NODE, self._shim_target())
 
-        node_template = std.agents / self._NODE / "template"
+        node_template = self._node_store(std) / "template"
         assert node_template.is_dir() and not node_template.is_symlink()
         self._seed_node(std, primary_proj)
 

@@ -23,6 +23,8 @@ from typing import TYPE_CHECKING, Any
 
 import yaml
 
+from kanibako.settings.agent_config import store_dirname
+
 if TYPE_CHECKING:
     from kanibako.settings.paths import ProjectPaths, StandardPaths
     from kanibako.targets.base import PluginDescriptor, Target
@@ -600,11 +602,16 @@ def canon_default_categories(
     resolve against; both land in the SAME floor, so a user override of the scalar reroutes
     the bind.  ⚑⚑ The ACTIVE NODE's floor value is store-dependent (J-1 option (a)).
     """
-    store_canon = f"@config.agents/{agent_name}/canon" if agent_name else None
+    # ⚑ KEY vs DIRECTORY: the ``agent.<node>.canon`` key below keeps the CANONICAL
+    # node, while the value and the probe below it are store PATHS and take the ``+``
+    # dirname (``agent_config.store_dirname``).
+    store_canon = (
+        f"@config.agents/{store_dirname(agent_name)}/canon" if agent_name else None
+    )
     out: dict[str, object] = {}
     if agent_name:
         out["agent.default.canon"] = "@config.agents/default/canon"
-        node_store = std.agents / agent_name / "canon"
+        node_store = std.agents / store_dirname(agent_name) / "canon"
         out[f"agent.{agent_name}.canon"] = (
             store_canon if node_store.is_dir() else "@agent.default.canon"
         )

@@ -1754,6 +1754,48 @@ def test_meta_identity_agent_name_under_discriminated_slot():
     assert dict.get(ma, "name") == "claude"
 
 
+class TestMetaAgentNameIsTheStoreDirname:
+    """``meta.agent.<a>.name`` NAMES THE STORE DIR, so it carries the ``+``
+    spelling while its own key DISCRIMINATOR stays canonical (``℘``).
+
+    ⚑ This is not a preference — it is what §2d's formula
+    ``meta.agent.<a>.path = @config.agents/@meta.agent.<a>.name`` REQUIRES. Spell
+    the value with ``℘`` and the formula composes a directory that is not there.
+    A bare agent cannot show any of it (node == harness ⇒ one string), which is
+    why the persona case carries the weight and the bare case is the control.
+    """
+
+    def _floor(self, node):
+        return meta_identity_floor(
+            box_name="x", project_path="/p", inbox="/i", share_global="/s",
+            share_workset=None, agent_name=node,
+        )
+
+    def test_the_persona_name_value_is_the_plus_spelling(self):
+        """LITERALS on both sides — this is the assertion that pins the spelling,
+        so it must not derive either half from ``store_dirname``."""
+        floor = self._floor("navigator℘claude")
+        # The KEY keeps ``℘`` (it is a key path); the VALUE is the store dirname.
+        assert floor["meta.agent.navigator℘claude.name"] == "navigator+claude"
+
+    def test_the_spec_formula_composes(self):
+        """⚑ THE RULE, not an inventory (P13): §2d says ``path`` IS
+        ``@config.agents/@meta.agent.<a>.name``.  Asserting the COMPOSITION reds if
+        EITHER half drifts, which a literal on one half alone would not.
+        """
+        for node in ("navigator℘claude", "claude"):
+            floor = self._floor(node)
+            assert (
+                f"@config.agents/{floor[f'meta.agent.{node}.name']}"
+                == floor[f"meta.agent.{node}.path"]
+            ), node
+
+    def test_a_bare_agent_is_byte_identical(self):
+        """THE NO-CHANGE CONTROL: ``store_dirname`` is identity on a name with no
+        separator, so a bare agent's value is exactly what it always was."""
+        assert self._floor("claude")["meta.agent.claude.name"] == "claude"
+
+
 class TestMetaAgentPath:
     """``meta.agent.<a>.path`` — the agent STORE ROOT (spec §2d) that is also
     §2a's agent DECLARATION ROOT: an abstract-category source stores
@@ -1772,8 +1814,11 @@ class TestMetaAgentPath:
             box_name="x", project_path="/p", inbox="/i", share_global="/s",
             share_workset=None, agent_name="navigator℘claude",
         )
+        # ⚑ THE TWO HALVES ARE SPELLED DIFFERENTLY, AND BOTH LITERALS ARE THE POINT:
+        # the KEY is a key path so the node stays canonical (``℘``); the VALUE is a
+        # DIRECTORY so it carries the ``+`` store spelling.
         assert floor["meta.agent.navigator℘claude.path"] == (
-            "@config.agents/navigator℘claude"
+            "@config.agents/navigator+claude"
         )
         assert floor["meta.agent.claude.path"] == "@config.agents/claude"
 

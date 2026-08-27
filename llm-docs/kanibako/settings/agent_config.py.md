@@ -90,7 +90,21 @@ not a running guarantee. That is a reason to keep it, not a reason to trust it.
 that hold a *data_path* rather than a resolved agents root — it just delegates to
 `agent_settings_path`.
 
-`agent_settings_path(agents_root, agent_id)` is `@meta.agent.<agent>.settings`.
+`store_dirname(node)` is THE one place a node becomes a DIRECTORY, and it is the reason no other
+module has to know the two spellings differ. A persona node is `navigator℘claude` inside a key —
+`℘` exists solely so the node is spellable in a dot-separated key path (`agent_ref`) — but a store
+directory is not a key, so it carries the `+` the user typed: `agents/navigator+claude/`. The
+function DELEGATES to `agent_ref.display_agent_ref` rather than repeating the substitution. Six
+independent compositions of the store path go through it: `agent_settings_path`,
+`agent_category_root`, `settings_launch.meta_agent_path_floor`'s VALUE,
+`core_defaults.canon_default_categories`' value + store probe, `launch.templates.
+template_seed_defaults`' VALUE, and the TEMPLATE arm of `commands.start.
+ensure_persona_share_symlinks`. ⚑ Miss one and the store SPLITS with no error raised anywhere —
+every path is create-if-absent, so the box gets two half-stores; each site is mutation-guarded by a
+literal-spelling assertion in its own test file.
+
+`agent_settings_path(agents_root, agent_id)` is `@meta.agent.<agent>.settings`. Callers pass the
+CANONICAL node; the `+` dirname is applied inside.
 
 The per-agent SETTINGS cascade file lives **inside** the per-agent store dir
 (`@meta.agent.<agent>.path` = `agents/<agent>/`) as `agent.yaml`. It is NOT the old sibling
@@ -122,8 +136,9 @@ and names the declared set.
 ### `agent_category_root` and `agent_category_root_ref` — the resolved twin and the stored ref
 
 `agent_category_root(agents_root, agent, category)` is the REAL host dir:
-`<agents_root>/<agent>/<dirname>`. Used where a caller needs an actual `pathlib.Path` — the persona
-shim — and never to build a stored value.
+`<agents_root>/<store_dirname(agent)>/<dirname>`. Used where a caller needs an actual
+`pathlib.Path` — the persona shim — and never to build a stored value. The twin below routes
+through `@meta.agent.<a>.path`, whose value is that same `+` dirname, so the two land on ONE dir.
 
 `agent_category_root_ref(agent, category)` is the self-resolving `@`-ref:
 `@meta.agent.<agent>.path/<dirname>`. This is the AGENT row of the spec's DECLARATION-ROOT table

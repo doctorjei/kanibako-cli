@@ -471,6 +471,22 @@ class TestCanonDefaultCategories:
         # The default tier is STILL declared — it is the fallback for everyone else.
         assert cats["agent.default.canon"] == "@config.agents/default/canon"
 
+    def test_a_persona_store_canon_is_named_with_the_plus_spelling(self, tmp_path):
+        """⚑ THE SPELLING PIN for the canon arm — literal, and a bare agent cannot
+        show it (node == harness ⇒ one string).
+
+        The KEY keeps the canonical node because it is a key path; the VALUE and the
+        store probe that selects it are DIRECTORIES and take the ``+`` form.  Leave
+        either on ``℘`` and the probe reads a dir that is not there: the persona
+        degrades to ``@agent.default.canon``, its own canon never loads, and NOTHING
+        reports an error.
+        """
+        (tmp_path / "raiju+claude" / "canon").mkdir(parents=True)
+        cats = core_defaults.canon_default_categories(_Std(tmp_path), "raiju℘claude")
+        assert cats["agent.raiju℘claude.canon"] == (
+            "@config.agents/raiju+claude/canon"
+        )
+
     def test_a_no_agent_box_emits_no_agent_chapter_and_no_agent_key(self, tmp_path):
         """A dangling embedded ref would coerce to ``""`` and yield the degenerate
         host path ``/handbook`` (§6b) — so the entry is OMITTED, not emptied."""

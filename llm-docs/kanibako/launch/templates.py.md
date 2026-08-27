@@ -95,8 +95,9 @@ the cascade (setting `workset.template` / `agent.<a>.template` reroutes that lay
 
 * `system.seeded` — ALWAYS (Q4: no carve-out).
 * `agent.<a>.seeded` — only when an agent is bound; the source key `agent.<a>.template` defaults to
-  `@config.agents/<a>/template` (spec §2a/§2d; `<a>` = the ACTIVE NODE — persona℘harness or bare
-  harness). Absent for a NO-AGENT box. ⚑ NODE-ROOTED since 2026-08-27 — see "the persona's template
+  `@config.agents/<a>/template` (spec §2a/§2d; `<a>` = the ACTIVE NODE — persona or bare harness).
+  ⚑ The KEY segment is the CANONICAL node (`persona℘harness`); the VALUE is a store DIRECTORY, so
+  it is the `+` spelling `settings.agent_config.store_dirname` produces. Absent for a NO-AGENT box. ⚑ NODE-ROOTED since 2026-08-27 — see "the persona's template
   is SHARED BY LINK" below; it used to spell `harness_of(<a>)`, which for a bare agent is the same
   string and for a persona silently named the wrong store.
 * `workset.seeded` — only for a PRIMARY/NAMED box (a workset tier exists); the source key
@@ -138,8 +139,8 @@ its workset tier is `<None>`.
 
 ### The persona's template is SHARED BY LINK, not by copy (ruled 2026-08-27)
 
-Layer 2 is rooted at the ACTIVE NODE, so a persona (`navigator℘claude`) reads
-`agents/navigator℘claude/template`, not `agents/claude/template`. The harness's CONTENT still
+Layer 2 is rooted at the ACTIVE NODE, so a persona (key `navigator℘claude`) reads
+`agents/navigator+claude/template`, not `agents/claude/template`. The harness's CONTENT still
 reaches it: `commands.start.ensure_persona_share_symlinks` — the shim that already pointed a
 persona's `common/<leaf>` dirs at the harness's — also links the whole `template` store root
 `agents/<node>/template` -> `agents/<harness>/template`.

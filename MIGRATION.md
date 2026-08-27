@@ -702,6 +702,24 @@ new box's `canon/handbook` directory, which is then bound read-only into the box
 This affects nobody upgrading from **v1.7.2**, which had neither those entries nor the box
 handbook chapter; it is written down because the `1.8.0rc1` prerelease declared them.
 
+**(d) A persona's store directory is renamed — rename it by hand or the persona starts over.**
+A persona node is spelled `navigator+claude` when you type it and `navigator℘claude` inside a
+settings key; only the second is legal in a key, because a key path is split on `.` into name
+segments and `+` is not one of them. v1.7.2 let that internal spelling reach the disk, so a
+persona's store sat at `<data>/agents/navigator℘claude/`. It is the `+` form now, everywhere
+kanibako composes it — `agent.yaml`, the per-node `canon` and `template` stores, and the
+symlinks sharing the harness's plugins and cache. Do this before your first launch on v1.8.0:
+
+```
+mv '<data>/agents/<persona>℘<harness>' '<data>/agents/<persona>+<harness>'
+```
+
+If you skip it, nothing reports an error: every store path is create-if-absent, so kanibako
+makes a fresh empty directory beside the old one and the persona launches with no settings and
+no canon of its own. The old directory is still on disk — move it and relaunch. Keys need no
+change: `agent.<node>.*` still canonicalises internally, and both spellings still address the
+same store.
+
 ### 2.6 The kickoff — upgrade base and plugins TOGETHER
 
 The "kickoff" is the file that boots a box's whole instruction chain
