@@ -315,7 +315,13 @@ def _duplicate_to_standalone(src_proj, new_path, std, force):
 
     write_project_gitignore(new_path)
 
-    # Write vault .gitignore if vault exists.
+    # Write vault .gitignore if vault exists.  ⚑ It never does on this path, and
+    # that is CONFIRMED INTENDED (2026-08-27): a duplicate does NOT carry the
+    # source's vault.  establish_standalone does not create the vault dirs, so a
+    # duplicated box with enable_vault true starts without one and
+    # _flag_missing_vault advises the user.  _duplicate_to_local does not carry a
+    # vault either.  Do NOT "fix" this by copying the source's vault across --
+    # vaults do not travel on duplicate.
     vault_dir = new_path / "vault"
     if vault_dir.is_dir():
         vault_gitignore = vault_dir / ".gitignore"
@@ -371,7 +377,12 @@ def _assert_dup_home_free(std, name: str) -> None:
 
 
 def _duplicate_to_local(src_proj, new_path, std, config, force):
-    """Copy metadata into default-mode layout for new_path."""
+    """Copy metadata into default-mode layout for new_path.
+
+    ⚑ The source's VAULT is not carried, and that is CONFIRMED INTENDED
+    (2026-08-27) -- the same holds for _duplicate_to_standalone.  Vaults do not
+    travel on duplicate.
+    """
     # Assign a new name for the duplicate.  The name MUST be registered first
     # because the destination metadata dir is derived from it (std.boxes/<name>).
     # Registers the PRIMARY membership (the sole store; a duplicate now joins the
