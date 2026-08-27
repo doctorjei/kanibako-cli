@@ -54,6 +54,10 @@ pytestmark = [pytest.mark.e2e, *e2e_requires]
 
 GUEST_HOME = "/home/agent"
 MARKERS_DIR = "/tmp/kanibako/agents"
+# ⚑ Box-side spellings, deliberately INDEPENDENT of the module constants: this file is a
+# black box that observes a real container, so its expectations are written out rather
+# than imported from the code under test.
+PID_ADD_SCRIPT = "~/canon/bible/general/scripts/util/pid-add.sh"
 
 
 def _is_running(name: str) -> bool:
@@ -139,7 +143,19 @@ def test_codex_delivery_real_box(e2e_env):
         commands = [g["hooks"][0]["command"] for g in groups]
         assert len(groups) == 2, f"expected directive+marker groups, got {commands}"
         assert "/opt/kanibako/kanibako/scripts/import-directives.py" in commands[0]
-        assert MARKERS_DIR in commands[1] and "$PPID" in commands[1]
+        # ⚑ MARKERS_DIR is deliberately NOT expected in the command any more: the
+        # marker hook is a CALL into the bible's PID helper, which is where the
+        # ``${KANIBAKO_AGENT_MARKERS_DIR:-…}`` fallback now lives.
+        assert PID_ADD_SCRIPT in commands[1] and '"$PPID"' in commands[1]
+        # ...and the call only means anything if the rom bind actually put an
+        # executable script there. A codex box gets it from the SAME unconditional
+        # ``bible/general`` bind a claude box does — this is the assertion that
+        # catches an agent-gated bind, which no config-bytes check can see.
+        probe = _exec(container_name(box), f"test -x {PID_ADD_SCRIPT}")
+        assert probe.returncode == 0, (
+            f"{PID_ADD_SCRIPT} is not an executable file in the box — the marker "
+            f"hook would silently do nothing"
+        )
         box_cfg = f"{GUEST_HOME}/.codex/config.toml"
         assert set(data["hooks"]["state"]) == {
             f"{box_cfg}:session_start:0:0",

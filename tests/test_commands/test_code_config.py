@@ -3,12 +3,17 @@
 from __future__ import annotations
 
 import json
+import os
+import re
+import shutil
+import subprocess
 import tomllib
 from pathlib import Path
 
 import pytest
 import yaml
 
+from kanibako.settings.core_defaults import ROM_ROOT_PARTS, _canon_dest, packaged_data_dir
 from kanibako.vscode.vscode_config import (
     _AGENT_MARKER_REMOVE_COMMAND,
     _AGENT_MARKER_WRITE_COMMAND,
@@ -515,30 +520,145 @@ def test_seed_session_start_tolerates_corrupt(tmp_path):
 
 
 # --- per-PID markers: write (SessionStart) + remove (SessionEnd) -----------
+#
+# The hook commands CALL the packaged bible's PID helpers rather than inlining the
+# shell they used to.  That moves two things out of this module and into shipped
+# script bytes — the marker-dir fallback and the per-PID filename scheme — so the
+# tests below reach into the shipped scripts to pin both ends of each.
 
-def test_marker_commands_default_dir_is_the_single_source_constant():
-    """SINGLE SOURCE OF TRUTH guard: the hook commands' default dir is built FROM
-    AGENT_MARKERS_DIR, so it cannot drift from the supervisor's --agent-markers-dir."""
-    default = "${KANIBAKO_AGENT_MARKERS_DIR:-" + AGENT_MARKERS_DIR + "}"
-    assert default in _AGENT_MARKER_WRITE_COMMAND
-    assert default in _AGENT_MARKER_REMOVE_COMMAND
-    # The write command writes a per-PID marker <dir>/$PPID after mkdir -p; silent-safe.
-    assert _AGENT_MARKER_WRITE_COMMAND == (
-        f'd="${{KANIBAKO_AGENT_MARKERS_DIR:-{AGENT_MARKERS_DIR}}}"; '
-        'mkdir -p "$d" && printf %s "$PPID" > "$d/$PPID" || true'
+#: The PID helpers' directory, relative to the packaged rom ROOT.  ⚑ The BOX path is
+#: derived from it by ``_canon_dest`` (the same function the bind emitter uses), never
+#: spelled a second time.
+_PID_SCRIPTS_ROM_REL = "bible/general/scripts/util"
+
+#: ``${KANIBAKO_AGENT_MARKERS_DIR:-<default>}`` as the shell scripts spell it.
+_MARKERS_DIR_FALLBACK_RE = re.compile(r"\$\{KANIBAKO_AGENT_MARKERS_DIR:-([^}]*)\}")
+
+
+def _shipped_pid_script(leaf: str) -> Path:
+    """The SHIPPED source of one bible PID helper — the bytes the rom bind exposes."""
+    rom_root = Path(str(packaged_data_dir(*ROM_ROOT_PARTS)))
+    return rom_root / _PID_SCRIPTS_ROM_REL / leaf
+
+
+def test_marker_commands_call_the_shipped_bible_pid_scripts():
+    """The hooks are CALLS into the bible's PID helpers, at the box path the rom bind
+    puts them at — derived from ``_canon_dest``, so a relocation of the canon dest
+    reds here instead of leaving a hook pointed at nothing."""
+    box_dir = _canon_dest(_PID_SCRIPTS_ROM_REL)
+    assert _AGENT_MARKER_WRITE_COMMAND == f'{box_dir}/pid-add.sh "$PPID" || true'
+    assert _AGENT_MARKER_REMOVE_COMMAND == f'{box_dir}/pid-rm.sh "$PPID" || true'
+    # A dest is only real if the SOURCE ships: the rom bind exposes the host file and
+    # its mode, so a missing or non-executable script is a hook that does nothing.
+    for leaf in ("pid-add.sh", "pid-rm.sh"):
+        script = _shipped_pid_script(leaf)
+        assert script.is_file(), f"{leaf} is not shipped under the rom root"
+        assert os.access(script, os.X_OK), f"{leaf} ships without its executable bit"
+
+
+def test_pid_scripts_fallback_dir_is_the_python_constant():
+    """CROSS-LANGUAGE P10 pin.  The marker dir's fallback now has two spellings —
+    :data:`AGENT_MARKERS_DIR` here (read side, and the env ``start.py`` seeds) and a
+    ``:-`` default inside each shell script (write side).  A script cannot import a
+    Python constant, so drift cannot be made impossible; it is made LOUD instead."""
+    for leaf in ("pid-add.sh", "pid-rm.sh"):
+        text = _shipped_pid_script(leaf).read_text()
+        defaults = _MARKERS_DIR_FALLBACK_RE.findall(text)
+        # ⚑ REDS ON ITS OWN EMPTINESS: a script that stopped spelling the fallback at
+        # all would otherwise satisfy the set comparison vacuously.
+        assert defaults, f"{leaf} no longer carries a KANIBAKO_AGENT_MARKERS_DIR default"
+        assert set(defaults) == {AGENT_MARKERS_DIR}
+
+
+def test_pid_scripts_honour_the_pid_argument_and_name_the_marker_for_it():
+    """The two halves that make ``pid-add.sh "$PPID"`` mean what the hook intends:
+    the script must PREFER its argument over its own ``$PPID`` (which by then is the
+    hook's transient shell), and it must name the marker FOR that pid, so a CLI
+    incumbent and a panel newcomer each hold their own file rather than racing for a
+    single last-writer-wins path."""
+    for leaf in ("pid-add.sh", "pid-rm.sh"):
+        text = _shipped_pid_script(leaf).read_text()
+        assert 'AGENT_PID="${1:-$PPID}"' in text, f"{leaf} ignores its pid argument"
+        assert re.search(
+            r"KANIBAKO_AGENT_MARKERS_DIR[^\n]*/\$AGENT_PID", text,
+        ), f"{leaf} does not name the marker file for the pid"
+
+
+@pytest.mark.skipif(shutil.which("sh") is None, reason="no POSIX shell available")
+def test_marker_hook_commands_really_write_and_remove_a_marker(tmp_path):
+    """MUTATION PROOF, not a byte comparison.  Run the two hook command strings through
+    a shell the way claude and codex do, against a HOME holding the shipped scripts, and
+    watch the marker appear and go.  A golden fixture cannot see a hook that silently
+    does nothing — which is the whole failure mode of moving shell into a script.
+
+    ⚑ THE DISCRIMINATING ASSERTION is the marker's NAME.  The command is compound, so
+    the shell forks and the script's own ``$PPID`` is that shell — a different pid from
+    this test process.  The marker is named for THIS process only if the script honours
+    the argument the hook passes it.
+    """
+    home = tmp_path / "home"
+    script_dir = home / "canon" / _PID_SCRIPTS_ROM_REL
+    script_dir.mkdir(parents=True)
+    for leaf in ("pid-add.sh", "pid-rm.sh"):
+        shutil.copy2(_shipped_pid_script(leaf), script_dir / leaf)
+
+    markers = tmp_path / "markers"
+    pidfile = tmp_path / "run" / "agent.pid"
+    env = {
+        **os.environ,
+        "HOME": str(home),
+        "KANIBAKO_AGENT_MARKERS_DIR": str(markers),
+        "KANIBAKO_AGENT_PIDFILE": str(pidfile),
+    }
+
+    def _run(command: str) -> None:
+        done = subprocess.run(
+            ["sh", "-c", command], env=env, capture_output=True, text=True,
+        )
+        assert done.returncode == 0, done.stderr
+
+    _run(_AGENT_MARKER_WRITE_COMMAND)
+    assert [p.name for p in markers.iterdir()] == [str(os.getpid())]
+    assert (markers / str(os.getpid())).read_text() == str(os.getpid())
+    # ⚑ WIDENED BY THE MOVE, and asserted so it stays deliberate: the inline command
+    # wrote only the marker; ``pid-add.sh`` also writes the shared pidfile.
+    assert pidfile.read_text() == str(os.getpid())
+
+    _run(_AGENT_MARKER_REMOVE_COMMAND)
+    assert list(markers.iterdir()) == []
+    # The pidfile still named us, so the remove was ours to make.
+    assert not pidfile.exists()
+
+
+@pytest.mark.skipif(shutil.which("sh") is None, reason="no POSIX shell available")
+def test_marker_remove_leaves_a_pidfile_another_agent_owns(tmp_path):
+    """The remove hook must not clear a pidfile that has since been overwritten by a
+    second agent in the same box — the marker is per-PID, the pidfile is shared."""
+    home = tmp_path / "home"
+    script_dir = home / "canon" / _PID_SCRIPTS_ROM_REL
+    script_dir.mkdir(parents=True)
+    shutil.copy2(_shipped_pid_script("pid-rm.sh"), script_dir / "pid-rm.sh")
+
+    markers = tmp_path / "markers"
+    markers.mkdir()
+    (markers / str(os.getpid())).write_text(str(os.getpid()))
+    pidfile = tmp_path / "agent.pid"
+    other = str(os.getpid() + 1)  # any pid that is not ours
+    pidfile.write_text(other)
+
+    done = subprocess.run(
+        ["sh", "-c", _AGENT_MARKER_REMOVE_COMMAND],
+        env={
+            **os.environ,
+            "HOME": str(home),
+            "KANIBAKO_AGENT_MARKERS_DIR": str(markers),
+            "KANIBAKO_AGENT_PIDFILE": str(pidfile),
+        },
+        capture_output=True, text=True,
     )
-    assert _AGENT_MARKER_REMOVE_COMMAND == (
-        f'd="${{KANIBAKO_AGENT_MARKERS_DIR:-{AGENT_MARKERS_DIR}}}"; '
-        'rm -f "$d/$PPID" || true'
-    )
-
-
-def test_marker_write_filename_is_the_pid_not_a_fixed_file():
-    """The per-PID scheme keys the marker on $PPID as the FILENAME (``$d/$PPID``),
-    so a CLI incumbent and a panel newcomer each hold their OWN marker — no single
-    last-writer-wins path."""
-    assert '"$d/$PPID"' in _AGENT_MARKER_WRITE_COMMAND
-    assert '"$d/$PPID"' in _AGENT_MARKER_REMOVE_COMMAND
+    assert done.returncode == 0, done.stderr
+    assert list(markers.iterdir()) == []
+    assert pidfile.read_text() == other
 
 
 def test_markers_dir_agrees_with_supervisor_agent_markers_dir():

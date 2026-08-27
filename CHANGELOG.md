@@ -94,6 +94,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The agent liveness-marker hooks are a script call now, not a line of shell inside your
+  config.** Kanibako seeds a `SessionStart` and a `SessionEnd` hook into a box's
+  `~/.claude/settings.json`, and a `SessionStart` hook into its `~/.codex/config.toml`, so the
+  in-box supervisor can tell a live agent session from a dead one. Each used to be a compressed
+  line of shell — `d="${KANIBAKO_AGENT_MARKERS_DIR:-/tmp/kanibako/agents}"; mkdir -p "$d" && …` —
+  sitting in a file you read and hand-edit. They now call
+  `~/canon/bible/general/scripts/util/pid-add.sh` and `pid-rm.sh`, which kanibako already ships
+  and already binds into every box, codex included. One behaviour widens with the move: those
+  scripts also maintain `/tmp/kanibako/agent.pid`, the shared pidfile a box's own hooks already
+  keep, which the inline shell never touched. ⚑ **On a box that predates this change the old
+  inline hooks stay in your `~/.claude/settings.json`** — kanibako identifies its own hook by the
+  exact command text, so the previous spelling is not one it knows to remove. Both fire, both
+  write the same marker, and nothing misbehaves; delete the two groups whose command starts
+  `d="${KANIBAKO_AGENT_MARKERS_DIR` if you would rather not carry them. A codex box needs
+  nothing — its managed region, hook and trust hash together, is regenerated at every start.
+
 - **BREAKING: a `.` is no longer legal in an agent or persona name.** Agent names admitted
   letters, digits, `-`, `_` and `.`; a dot is now refused in every segment of an agent ref, and
   the refusal says why rather than only listing what is allowed: `.` is the settings key-path

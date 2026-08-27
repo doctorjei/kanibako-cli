@@ -37,6 +37,13 @@ DELIBERATE content changes so far (each = a reviewed regeneration commit):
   gain the key and the user fixtures migrate their ``read-only`` to it;
   approval_policy was unchanged at the time (still gated on the boolean).
 
+* The per-PID marker hooks stop being inline shell and become CALLS into the
+  packaged bible's ``pid-add.sh`` / ``pid-rm.sh``: the 9 ``claude--*`` fixtures
+  change both marker commands, the 12 ``codex--*`` change the write command and
+  its ``[hooks.state]`` hash (which is a content hash OF that command, so it must
+  move with it); the 6 ``goose--*`` are byte-UNCHANGED.  The scripts arrive by the
+  unconditional ``bible/general`` rom bind, so a codex box has them too.
+
 * codex ``restricted`` SETS ``approval_policy = "untrusted"`` (Editor round,
   R-41 follow-up): the 6 ``codex--*--access-restricted--*`` fixtures gain that
   line.  ``restricted`` used to CLEAR the key, which handed the tier to codex's
