@@ -389,7 +389,9 @@ box settings tier.
 
 `meta.box.settings` is the RO box-TIER settings-file anchor, and it is UNIFORM in EVERY mode (spec
 §2c ALL PROJECTS: `@meta.box.path/box.yaml`). Standalone is NOT a `<None>` terminal: its box
-tier is `<root>/box_data/box.yaml` — a real path, merely ABSENT BY DEFAULT (§5), an absent file
+tier is `<root>/box_data/box.yaml` — a real path, merely ABSENT BY DEFAULT
+(`system-design-1.8.0.md` § "Detection & import": detection reads the ROOT file and must NOT
+depend on `box_data/box.yaml`, "which may be absent"), an absent file
 being an empty tier, with box-scope values then resolving from the workset tier
 `@meta.workset.settings` as R2 downward-defaults. The WRITE target moved with the READ in the same
 change (M-8), so a `config set box.*` lands in exactly the file this anchor names.

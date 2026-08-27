@@ -12,8 +12,10 @@ most of the notes below are about ORDER and about which of two similar-looking s
 one.
 
 **Authority:** `specs/settings-keyspace-1.8.0.md` — §2c (per-mode default tables, the workset-root
-layout), §3.3 (the `workset.*` dir keys are "real and USED — not hard-coded"), §5 (seed at
-registration). ⚑ **The spec is the LIVE authority; read it first.**
+layout), §3.3 (the `workset.*` dir keys are "real and USED — not hard-coded"); and
+`specs/system-design-1.8.0.md` § "Detection & import" (seed at registration), which the keyspec's
+§5 migrated into whole on 2026-08-20 — the keyspec section is now a pointer, not a carrier.
+⚑ **The spec is the LIVE authority; read it first.**
 
 ## 🛑 The workset-root layout — corrected against the spec
 
@@ -256,7 +258,9 @@ A project registered inside a workset.
 The unified per-project record (B7): **identity + path ONLY.** ⚑ There is no `seeded` field —
 registry MEMBERSHIP (presence in this list) is itself the seed signal. A box was seeded when
 `create` added it; `connect` adds the record WITHOUT seeding, because the external directory already
-holds the user's content. Spec §0/§5, "Seed = at registration" and "One per-project record".
+holds the user's content. `settings-keyspace-1.8.0.md` §0 "Seed-time vs cascade" (registry
+MEMBERSHIP is itself the seed signal); `system-design-1.8.0.md` § "Detection & import", "Seed = at
+registration" and "One per-project record".
 
 `source_path` is the member's REAL workspace — the `boxes:` row's value, and the one place the
 registry records it: the external dir for a connect, `workspaces/<name>` for an in-tree member. ⚑ It

@@ -64,8 +64,9 @@ loader surfacing the section AND it discards the stale block on the next write.
 
 **There is NO `seeded` section, and there must not be one.** Registry MEMBERSHIP is itself the seed
 signal: a box present here — a `standalone` entry, a NAMED workset-local list entry, or a PRIMARY
-per-workset `boxes:` membership — was seeded at its `create` (seed-then-register, §0/§5 of the
-keyspace spec). The former `seeded` flag section, and the first-launch gate that read it, are both
+per-workset `boxes:` membership — was seeded at its `create` (seed-then-register:
+`settings-keyspace-1.8.0.md` §0 "Seed-time vs cascade"; `system-design-1.8.0.md` § "Detection &
+import"). The former `seeded` flag section, and the first-launch gate that read it, are both
 gone.
 
 ⚑ **The implication runs ONE WAY: present ⇒ seeded, never the converse.** A standalone box created
