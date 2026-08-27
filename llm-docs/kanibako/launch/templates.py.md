@@ -31,8 +31,9 @@ default-category entries; the seed seam (`commands.start._apply_init_seeds`) res
 committed snapshot and applies the dest's layers IN ORDER via `stage_layers`.
 
 Sources: `@system.template` (system.* settings tier) · `@agent.<a>.template` =
-`@config.agents/<harness>/template` · `@workset.template` = `@meta.workset.path/template`
-(skip-if-absent — the seeded category drops a layer whose source dir is absent).
+`@config.agents/<a>/template` — the ACTIVE NODE's own store, harness or persona alike ·
+`@workset.template` = `@meta.workset.path/template` (skip-if-absent — the seeded category drops a
+layer whose source dir is absent).
 
 ### THERE ARE NO HANDBOOK LAYERS HERE, AND THIS IS NOT AN OVERSIGHT
 
@@ -94,8 +95,10 @@ the cascade (setting `workset.template` / `agent.<a>.template` reroutes that lay
 
 * `system.seeded` — ALWAYS (Q4: no carve-out).
 * `agent.<a>.seeded` — only when an agent is bound; the source key `agent.<a>.template` defaults to
-  `@config.agents/<harness>/template` (spec §2a/§2d; `<a>` = the persona+harness node, Q2). Absent
-  for a NO-AGENT box.
+  `@config.agents/<a>/template` (spec §2a/§2d; `<a>` = the ACTIVE NODE — persona℘harness or bare
+  harness). Absent for a NO-AGENT box. ⚑ NODE-ROOTED since 2026-08-27 — see "the persona's template
+  is SHARED BY LINK" below; it used to spell `harness_of(<a>)`, which for a bare agent is the same
+  string and for a persona silently named the wrong store.
 * `workset.seeded` — only for a PRIMARY/NAMED box (a workset tier exists); the source key
   `workset.template` defaults to `@meta.workset.path/template` (Q3, was `<None>`). STANDALONE has
   no workset tier, so the layer is OMITTED. Each layer is SKIPPED when its source dir is absent —
@@ -110,7 +113,8 @@ so some artefact must carry its value or `system defaults` prints a row it canno
 emitted HERE rather than beside its sibling `agent.default.canon` (`core_defaults`) because this
 module owns `AGENT_TEMPLATE_STORE_REL`; `defaults_inventory.source_groups` labels it
 `launch/templates.py (layer-2 seed, default arm)`, split from the node arm's label because the node
-arm is the BOARDED finding-1 exemption and this one has a value oracle.
+arm is spelled one `@`-hop from the registry and this one has a plain value oracle. (The node arm's
+harness-vs-node divergence — finding 1 — is CLOSED as of 2026-08-27; only the hop is left.)
 ⚑ It carries NO node-store probe, unlike `canon_default_categories`' `store_canon if
 node_store.is_dir() else …` node arm — that conditional is the canon key's own behaviour.
 
@@ -128,9 +132,43 @@ declares and is gated by them — that is why the handbook layers leaving the `s
 
 Each layer's value is a DEST-KEYED map, not a named entry (2026-08-08c): the destination IS the
 identity and the value is the 1-element `(src,)` — `opts` is RESERVED on a COPY and no shipped
-layer sets it. The per-agent SOURCE key is the same `@config.agents/<harness>/template` the retired
-on-disk deriver produced, now a resolvable/settable keystore key. STANDALONE (no workset channels)
-omits BOTH the workset source and its layer, because its workset tier is `<None>`.
+layer sets it. The per-agent SOURCE key is `@config.agents/<a>/template`, a resolvable/settable
+keystore key. STANDALONE (no workset channels) omits BOTH the workset source and its layer, because
+its workset tier is `<None>`.
+
+### The persona's template is SHARED BY LINK, not by copy (ruled 2026-08-27)
+
+Layer 2 is rooted at the ACTIVE NODE, so a persona (`navigator℘claude`) reads
+`agents/navigator℘claude/template`, not `agents/claude/template`. The harness's CONTENT still
+reaches it: `commands.start.ensure_persona_share_symlinks` — the shim that already pointed a
+persona's `common/<leaf>` dirs at the harness's — also links the whole `template` store root
+`agents/<node>/template` -> `agents/<harness>/template`.
+
+Jei's reasoning, and the alternative he rejected: *"I thought about copying the template. And I
+think some users will want to. But of course there is the staleness issue. And chewing on it, the
+user can always remove the symlink if they want to create a separate template for the persona-based
+agent — so I think symlinking template is the right approach here."* The ESCAPE HATCH is the shim's
+own never-clobber rule: a real `agents/<node>/template` directory is left alone for ever, so
+replacing the link IS how a persona takes ownership.
+
+⚑⚑ WHY A LINK IS SAFE HERE AND A LINK INSIDE A LAYER IS NOT. `template` is unlike `common`:
+`common` is a live BIND, but `template` is a seed source consumed by a COPY. `stage_layers` (and
+`copy_tree`) REFUSE any symlink they meet while walking a layer — the §2a exfiltration guard. The
+shim's link is an INTERMEDIATE path component of the layer root (`<node>/template` sits ABOVE
+`box/home`), so the walk's per-entry `is_symlink()` never lstats it, the OS traverses it, and the
+box is seeded with BYTES. A link at a LEAF inside the layer would still be refused, correctly.
+Measured, not assumed; pinned by
+`test_start.py::TestPersonaShareSymlinks::test_the_seed_copier_reads_THROUGH_the_template_link_by_value`
+and end-to-end by `test_templates.py::TestPersonaTemplateLayerThroughTheLink`.
+
+⚑ The shim lays the template link BEFORE its own no-target return, because `template` — unlike
+`common` — is not target-declared: `template_seed_defaults` emits the node arm for every agent id,
+installed plugin or not.
+
+⚑ Nothing guarantee-creates `agents/<node>/template` behind the shim's back. The L7
+guarantee-create acts on MOUNT sources, and a seed source is a COPY; `ensure_agent_stores` (which
+DOES mkdir a `template/box/...` skeleton, and would do it THROUGH the link) is only ever called
+with discovered plugin/harness names, never a persona node.
 
 ### `seed_keys_of` is GONE — do not rebuild it
 
@@ -377,7 +415,7 @@ layout: the old `data/template/` held box-HOME files (`.claude.json`, `.codex/co
 the old seed copied straight to `~`.
 
 ⚑⚑ IT MUST EQUAL LAYER 2's SOURCE, RESOLVED — i.e. what `@agent.<a>.template/box/home` becomes once
-`agent.<a>.template` expands to `@config.agents/<harness>/template`. That is
+`agent.<a>.template` expands to `@config.agents/<a>/template`. That is
 `<store>/template/box/home`, and the `template/` prefix is the half that is easy to drop: a value
 of just `box/home` lands the payload at `agents/<name>/box/home/**`, which NOTHING reads — so the
 transition arm would run, report nothing, and still leave the box with no agent config. It is

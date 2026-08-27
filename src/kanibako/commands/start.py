@@ -137,19 +137,82 @@ def _agent_critical_dests() -> list[tuple[str, str]]:
     return dests
 
 
+def _link_persona_share(
+    node_link: Path, harness_dir: Path, *, what: str, logger,
+) -> None:
+    """Point *node_link* at *harness_dir* — the ONE link-or-leave step of the shim.
+
+    Extracted so the ``common`` LEAVES and the ``template`` STORE ROOT cannot drift:
+    both share the harness's real dir under exactly the same never-clobber rules —
+    harness dir first (so the link never dangles), then link only into an EMPTY node
+    path.  A pre-existing symlink elsewhere, or a real dir/file, is the persona's own
+    and is LEFT.  *what* names the share in the debug log and nothing else.
+    """
+    # Create the harness (real) dir FIRST so the symlink never dangles.
+    harness_dir.mkdir(parents=True, exist_ok=True)
+    node_link.parent.mkdir(parents=True, exist_ok=True)
+
+    if node_link.is_symlink():
+        # An existing symlink: no-op if it already points at the harness dir,
+        # otherwise LEAVE it (a persona that repointed its own dir wins).
+        try:
+            correct = node_link.readlink() == harness_dir
+        except OSError:
+            correct = False
+        if correct:
+            return
+        logger.debug(
+            "persona %s: node link %s -> %s (not the harness dir %s); "
+            "leaving as-is",
+            what, node_link, os.readlink(node_link), harness_dir,
+        )
+        return
+    if node_link.exists():
+        # A real dir/file already at the node path: the persona owns it; leave.
+        logger.debug(
+            "persona %s: node path %s is a real dir; leaving as-is "
+            "(not sharing the harness dir)",
+            what, node_link,
+        )
+        return
+    node_link.symlink_to(harness_dir)
+    logger.debug("persona %s: linked %s -> %s", what, node_link, harness_dir)
+
+
 def ensure_persona_share_symlinks(std, agent_id, target) -> None:
-    """Point a persona's agent-scope common dirs at the harness's (symlink shim).
+    """Point a persona's agent-scope shared stores at the harness's (symlink shim).
 
     A persona is a distinct agent NODE (``navigator℘claude``) whose ``agents/<node>/``
-    dir is its own store, but whose plugins/cache SHOULD be shared with the bare
-    harness (``agents/claude/``) rather than starting empty.  Rather than re-root
-    the resolver, we lay a SYMLINK shim: for every agent-scope common the target
-    declares (``target.default_common()`` — claude's ``plugins`` / ``cache``; generic
-    over harnesses, NO per-plugin code), ``agents/<node>/common/<leaf>`` becomes a
-    symlink -> ``agents/<harness>/common/<leaf>``.  The resolver + spec are
-    UNCHANGED; the L7 guarantee-create later (``mkdir parents=True, exist_ok=True``
-    on the rw source) is a no-op on the symlink-to-existing-dir, so the harness dir
-    is the real writeback target.
+    dir is its own store, but whose plugins/cache/template SHOULD be shared with the
+    bare harness (``agents/claude/``) rather than starting empty.  Rather than re-root
+    the resolver, we lay a SYMLINK shim.  TWO shares, one mechanism
+    (:func:`_link_persona_share`):
+
+    * ``common`` — for every agent-scope common the target declares
+      (``target.default_common()`` — claude's ``plugins`` / ``cache``; generic over
+      harnesses, NO per-plugin code), ``agents/<node>/common/<leaf>`` becomes a
+      symlink -> ``agents/<harness>/common/<leaf>``.
+    * ``template`` — the seed-layer-2 SOURCE store: ``agents/<node>/template``
+      becomes a symlink -> ``agents/<harness>/template``.
+
+    The resolver + spec are UNCHANGED; the L7 guarantee-create later
+    (``mkdir parents=True, exist_ok=True`` on the rw source) is a no-op on the
+    symlink-to-existing-dir, so the harness dir is the real writeback target.
+
+    ⚑⚑ THE TEMPLATE LINK IS WHAT MAKES ``launch.templates.template_seed_defaults``'
+    NODE-ROOTED layer-2 source WORK (ruled 2026-08-27: *"the user can always remove
+    the symlink if they want to create a separate template for the persona-based
+    agent — so I think symlinking template is the right approach"*).  A COPY was the
+    rejected alternative: it would go stale, and a link cannot.  The persona's escape
+    hatch IS the never-clobber rule above — replace the link with a real directory
+    and the persona has its own template.
+    ⚑ SHARED BY LINK IS SAFE FOR A SEED because the seed copier reads THROUGH the
+    link and copies BY VALUE: the link is an INTERMEDIATE path component, so
+    ``stage_layers``' per-entry ``is_symlink()`` refusal (§2a source-symlink,
+    exfiltration) never sees it and the box gets bytes, not a dangling link.
+    ⚑ AND IT IS NOT TARGET-DECLARED, unlike ``common`` — hence it is laid BEFORE the
+    no-target return: ``template_seed_defaults`` emits the node arm for every agent
+    id, whether or not the harness's plugin is installed on this host.
 
     PRECONDITION: call at persona-dir MATERIALIZATION, BEFORE mount assembly /
     category source resolution, so the symlink pre-dates any real-dir
@@ -176,13 +239,29 @@ def ensure_persona_share_symlinks(std, agent_id, target) -> None:
     harness = harness_of(agent_id)
     if agent_id == harness:
         return
-    if target is None:
-        return
 
+    from kanibako.launch.templates import AGENT_TEMPLATE_STORE_REL
     from kanibako.settings.agent_representation import harness_common_leaf
 
     logger = get_logger("start")
     agents_root = Path(std.agents)
+
+    # (1) The TEMPLATE store root.  ⚑ The dirname comes from the module that OWNS
+    # it (``AGENT_TEMPLATE_STORE_REL``), the same constant
+    # ``template_seed_defaults`` builds the layer-2 source key from — so the link
+    # and the key cannot drift.  ``template`` is NOT an abstract category
+    # (``ABSTRACT_CATEGORIES`` = common/caches/seeded), so there is deliberately no
+    # ``agent_category_root`` call here: it would refuse the name.
+    _link_persona_share(
+        agents_root / agent_id / AGENT_TEMPLATE_STORE_REL,
+        agents_root / harness / AGENT_TEMPLATE_STORE_REL,
+        what="template", logger=logger,
+    )
+
+    if target is None:
+        return
+
+    # (2) The target-declared agent-scope COMMONS.
     # ``default_common()`` is the TERMINAL key -> its whole dest-keyed map; the
     # entries are its VALUES, and the store leaf is read off each rooted host_src.
     declared = target.default_common().get(f"agent.{harness}.common", {})
@@ -192,39 +271,10 @@ def ensure_persona_share_symlinks(std, agent_id, target) -> None:
             # A self-resolving source the plugin chose itself — not its store dir,
             # so there is nothing to share and nothing to shim.
             continue
-        harness_dir = agent_category_root(agents_root, harness, "common") / leaf
-        node_link = agent_category_root(agents_root, agent_id, "common") / leaf
-
-        # Create the harness (real) dir FIRST so the symlink never dangles.
-        harness_dir.mkdir(parents=True, exist_ok=True)
-        node_link.parent.mkdir(parents=True, exist_ok=True)
-
-        if node_link.is_symlink():
-            # An existing symlink: no-op if it already points at the harness dir,
-            # otherwise LEAVE it (a persona that repointed its own common dir wins).
-            try:
-                correct = node_link.readlink() == harness_dir
-            except OSError:
-                correct = False
-            if correct:
-                continue
-            logger.debug(
-                "persona common %s: node link %s -> %s (not the harness dir %s); "
-                "leaving as-is",
-                leaf, node_link, os.readlink(node_link), harness_dir,
-            )
-            continue
-        if node_link.exists():
-            # A real dir/file already at the node path: the persona owns it; leave.
-            logger.debug(
-                "persona common %s: node path %s is a real dir; leaving as-is "
-                "(not sharing the harness dir)",
-                leaf, node_link,
-            )
-            continue
-        node_link.symlink_to(harness_dir)
-        logger.debug(
-            "persona common %s: linked %s -> %s", leaf, node_link, harness_dir,
+        _link_persona_share(
+            agent_category_root(agents_root, agent_id, "common") / leaf,
+            agent_category_root(agents_root, harness, "common") / leaf,
+            what=f"common {leaf}", logger=logger,
         )
 
 

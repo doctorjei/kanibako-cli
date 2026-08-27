@@ -54,7 +54,6 @@ def template_seed_defaults(
     ⚑ The SOURCE scalars declared here are shared with the box HANDBOOK
     host-template copy (:func:`handbook_layer_source_keys`), which is gated by them.
     """
-    from kanibako.agent_ref import harness_of
     from kanibako.channels.channels import has_workset_channels
 
     def _layer(source_root: str) -> dict[str, object]:
@@ -65,7 +64,6 @@ def template_seed_defaults(
 
     defs: dict[str, object] = {"system.seeded": _layer("@system.template")}
     if agent_id:
-        harness = harness_of(agent_id)
         # The §2d DEFAULT-TIER arm of the same SOURCE key — the all-agents
         # fallback, sibling of ``agent.default.canon`` (spec :1143 + :1123 +
         # :1116, the composition the spec performs in prose at :1144).  ⚑ It is
@@ -84,8 +82,31 @@ def template_seed_defaults(
         )
         # SOURCE key (spec §2a/§2d), not a hardcoded path: settable, so a user
         # override reroutes the layer by cascade precedence.
+        # ⚑⚑ NODE-ROOTED, NEVER THE HARNESS (ruled 2026-08-27).  §2d and the
+        # manifest both give ``agent.<agent>.template =
+        # @meta.agent.<agent>.path/template``, and ``<agent>`` is the ACTIVE NODE:
+        # a persona seeds from its OWN store.  This used to spell
+        # ``harness_of(agent_id)`` — the same string for a bare agent, and for a
+        # persona a SILENT divergence: ``@config.agents/<harness>/template`` is a
+        # perfectly resolvable directory that simply names the WRONG store, so
+        # nothing anywhere had cause to complain.  (⚑ The silence is NOT about
+        # ``meta_agent_path_floor`` materializing both anchors — this arm never
+        # went through ``@meta.agent.<a>.path`` at all.)  The harness's CONTENT
+        # still reaches a persona: the shim
+        # ``commands.start.ensure_persona_share_symlinks`` links
+        # ``agents/<node>/template`` -> ``agents/<harness>/template``, exactly as it
+        # already does for ``common``.  SHARED BY LINK, not by copy — a copy would
+        # need keeping fresh, and a persona that wants its own template simply
+        # replaces the link with a real directory.
+        # ⚑ ONE HOP UNROLLED, like the ``canon`` node arm
+        # (``core_defaults.canon_default_categories``): ``meta.agent.<a>.path`` IS
+        # ``@config.agents/<a>`` (``settings_launch.meta_agent_path_floor`` defines
+        # it as that literal), so the two spellings resolve to one place.
+        # ⚑ STILL NO NODE-STORE PROBE (see the ``agent.default.template`` note
+        # above): the shim guarantees the node's ``template`` entry exists, and
+        # ``stage_layers`` is skip-if-absent for the case where it does not.
         defs[f"agent.{agent_id}.template"] = (
-            f"@config.agents/{harness}/{AGENT_TEMPLATE_STORE_REL}"
+            f"@config.agents/{agent_id}/{AGENT_TEMPLATE_STORE_REL}"
         )
         defs[f"agent.{agent_id}.seeded"] = _layer(f"@agent.{agent_id}.template")
     if has_workset_channels(proj):

@@ -367,6 +367,21 @@ def start_mocks():
                 # default so a run_start unit test does not double-resolve the box.
                 # (Connect tests that exercise the heuristic patch it locally.)
                 _resolve_bootstrap_program=DEFAULT,
+                # The persona SYMLINK SHIM.  Same MagicMock-path rationale as
+                # ``_seed_channel_files`` above, and it BECAME load-bearing on
+                # 2026-08-27: the shim now links the persona's ``template`` store
+                # UNCONDITIONALLY (it is not target-declared, unlike ``common``),
+                # so on a persona launch it reaches ``Path(std.agents).mkdir`` —
+                # and ``std.agents`` is deliberately a MagicMock here (the agent
+                # config path's ``.exists()`` is stubbed truthy just below, which a
+                # REAL dir could not be).  Left unstubbed it creates a literal
+                # ``MagicMock/`` dir in the CWD, which ``_no_magicmock_dir_leak``
+                # correctly fails.  The REAL shim is covered by
+                # ``test_start.py::TestPersonaShareSymlinks`` and end-to-end by
+                # ``test_templates.py::TestPersonaTemplateLayerThroughTheLink``,
+                # both with a REAL ``std``; the tests that assert on the shim's
+                # CALL (order / not-called) re-patch it locally, which still wins.
+                ensure_persona_share_symlinks=DEFAULT,
             ) as m_launch_mount_stubs,
             patch("kanibako.settings.agent_file.load") as m_load_agent_cfg,
             patch("kanibako.commands.start.fcntl") as m_fcntl,

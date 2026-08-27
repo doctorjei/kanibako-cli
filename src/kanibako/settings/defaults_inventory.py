@@ -160,10 +160,11 @@ def source_groups() -> tuple[tuple[str, frozenset[str]], ...]:
     ("core_defaults.py (canon producer, per node)", frozenset({"agent.<agent>.canon"})),
     # The layer-2 SOURCE key, split by ARM for the same reason the canon pair above
     # is: ONE producer (``template_seed_defaults``) emits both, but the per-node arm
-    # is spelled one @-hop from the registry and its divergence is a BOARDED question
-    # (test_manifest_conformance's finding 1), while the default arm is a plain
-    # literal with a value oracle. Two labels because a reader would otherwise wonder,
-    # and because the arms sit in different conformance classes.
+    # is spelled one @-hop from the registry, while the default arm is a plain literal
+    # with a value oracle. Two labels because a reader would otherwise wonder, and
+    # because the arms sit in different conformance classes.
+    # ⚑ The per-node arm's HARNESS-vs-NODE divergence was a boarded question and is
+    # CLOSED (2026-08-27): it is node-rooted now, and only the @-hop is left.
     ("launch/templates.py (layer-2 seed, default arm)",
      frozenset({"agent.default.template"})),
     ("launch/templates.py (layer-2 seed)", frozenset({"agent.<agent>.template"})),
