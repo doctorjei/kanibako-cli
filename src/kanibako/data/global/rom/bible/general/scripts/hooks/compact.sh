@@ -1,3 +1,9 @@
 #!/usr/bin/env bash
 
-~/canon/handbook/general/scripts/hooks/compact.sh >/dev/null 2>&1 || true
+~/canon/bible/general/scripts/util/pid-add.sh "$PPID"
+
+# ⚑ ABSENCE IS SILENT, EVERYTHING ELSE IS NOT. A layer a user never created must not
+# raise; a script that EXISTS and exits non-zero is a bug in their own hook and
+# has to stay visible. `|| true` cannot tell those apart, so it hid both.
+handbook_hook=~/canon/handbook/general/scripts/hooks/compact.sh
+if [ -e "$handbook_hook" ]; then "$handbook_hook"; fi
