@@ -225,7 +225,7 @@ shortcuts for common operations:
 
 | Subcommand | Description |
 |------------|-------------|
-| `workset create [path]` | Create working set (`--name`, `--standalone`, `--image`, `--no-vault`, `--distinct-auth`) |
+| `workset create [path]` | Create working set (`--name`, `--image`, `--no-vault`, `--distinct-auth`) |
 | `workset list` / `workset ls` | List working sets (`-q`) |
 | `workset info` / `workset inspect` | Working set details |
 | `workset rm` / `workset delete` | Remove working set (`--purge`, `--force`) |

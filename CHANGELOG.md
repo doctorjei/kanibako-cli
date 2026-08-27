@@ -579,10 +579,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `--no-vault` takes effect for a standalone project and not yet for a named workset member.
   ⚑ Both values were also top-level keys in a workset-tier file that are not scope names, so they
   were carried into the merged settings snapshot as undeclared keys.
-  ⚠️ **`workset create --standalone` currently has no effect.** Its only action was writing a
-  top-level `standalone: true` that nothing has ever read; that write is gone rather than replaced,
-  because no declared key expresses "this workset's boxes default to standalone mode" and inventing
-  one is not a thing a bug fix should do. The flag and its help text are unchanged for now.
+  ⚠️ **`workset create --standalone` is now REFUSED (exit 1), where it used to be accepted.** Its
+  only action was writing a top-level `standalone: true` that nothing has ever read; that write is
+  gone rather than replaced, because no declared key expresses "this workset's boxes default to
+  standalone mode" — nor could one, since a box's mode is detected from its own directory and never
+  stored. What the flag asked for does not exist either: a standalone box's workset root *is* its
+  project directory and its workset partition is `__STANDALONE__`, so it belongs to no working set
+  and a working set cannot have standalone members. The flag stays declared, so the refusal names it
+  and hands back `kanibako box create --standalone [path]` rather than argparse's bare "unrecognized
+  arguments"; `--help` says the same. A flag that is meaningless for a command is a user error, not
+  a silent no-op — the same rule the blanket `--agent` / `--box` flags already follow.
 
 - **Disconnecting an in-tree workset box left its membership row behind, and the orphan then locked
   that workspace out of its own workset.** `workset disconnect` dropped the `boxes:` row only when

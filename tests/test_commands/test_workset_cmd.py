@@ -306,31 +306,32 @@ class TestWorksetCreate:
         _assert_every_key_declared(data)
         assert read_box_enable_vault(settings_yaml) is False
 
-    def test_create_standalone_writes_no_undeclared_key(self, config_file, tmp_home):
-        """--standalone writes NOTHING.
+    def test_create_standalone_refused(self, config_file, tmp_home, capsys):
+        """``--standalone`` is REFUSED, not accepted-and-inert (Jei, 2026-08-27).
 
-        No declared key expresses "this workset's boxes are standalone" — mode is
-        RO identity (``meta.box.mode``), not a settable behaviour key — so there
-        is nothing to write, and a top-level ``standalone:`` would be an
-        undeclared key path carried into the store (spec §0).
+        It still PARSES — the flag stays declared so the refusal can name it and
+        hand back a cure — and it produces no working set: nothing on disk and
+        nothing in the registry, because the refusal precedes every side effect.
         """
-        from kanibako.commands.workset_cmd import run_create
+        from kanibako.cli import build_parser
+        from kanibako.settings.paths import load_std_paths
 
         ws_root = tmp_home / "standalone_ws"
-        args = argparse.Namespace(
-            path=str(ws_root), name="standalonews",
-            standalone=True, image=None, no_vault=False,
+        args = build_parser().parse_args(
+            ["workset", "create", str(ws_root), "--name", "standalonews",
+             "--standalone"],
         )
-        assert run_create(args) == 0
+        assert args.standalone is True
 
-        settings_yaml = ws_root.resolve() / "workset.yaml"
-        if settings_yaml.exists():
-            import yaml
-            _assert_every_key_declared(yaml.safe_load(settings_yaml.read_text()) or {})
-            raise AssertionError(
-                f"nothing was set, so no workset-tier file should exist: "
-                f"{settings_yaml.read_text()!r}"
-            )
+        assert args.func(args) == 1
+        err = capsys.readouterr().err
+        # The cure, not an inventory of the wording: name the flag, and hand back
+        # the spelling that DOES make a standalone box.
+        assert "--standalone" in err
+        assert "kanibako box create --standalone" in err
+
+        assert not ws_root.exists()
+        assert "standalonews" not in list_worksets(load_std_paths(load_config(config_file)))
 
 
 class TestWorksetList:
