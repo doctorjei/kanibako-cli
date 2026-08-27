@@ -83,10 +83,19 @@ def _writeback_on_stop(runtime, proj, container_name: str, *, std, config) -> No
             writeback_session_credentials,
         )
         from kanibako.settings.agent_config import agent_settings_path
-        from kanibako.agent_ref import harness_of
+        from kanibako.agent_ref import canonicalize_agent_ref, harness_of
         from kanibako.targets import resolve_target
-        # KANIBAKO_AGENT stamps the NODE-name; the target/plugin is keyed by the
-        # HARNESS. ``agent_name=agent`` below keeps the node (keyspace slot).
+        # 🛑 CANONICALISE, THEN DERIVE. The stamp is the OUTSIDE spelling (``+``) —
+        # an env var is a place a human looks — but every use below is a KEY or a
+        # key-derived lookup, so the value re-enters code as a node. ``harness_of``
+        # splits on ``℘`` ALONE: given the raw ``navigator+claude`` it returns the
+        # WHOLE string and ``resolve_target`` raises KeyError, which the blanket
+        # catch below would swallow — writeback SILENTLY stopping for every persona
+        # box. ⚑ Also the BACK-COMPAT seam: a box stamped ``℘`` by an older version
+        # still works, because ``canonicalize_agent_ref`` accepts both separators.
+        agent = canonicalize_agent_ref(agent)
+        # The target/plugin is keyed by the HARNESS; ``agent_name=agent`` below
+        # keeps the node (keyspace slot).
         target = resolve_target(harness_of(agent), proj.project_path)
         # The cascade box/workset tier files are single-sourced mode-aware inside
         # the resolver (P6c) — standalone reads its file as the WORKSET tier.

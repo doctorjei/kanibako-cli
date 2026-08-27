@@ -298,10 +298,17 @@ def _resolve_box_agent_node(runtime, std, proj, container_name: str) -> str | No
     extension seed (:func:`_resolve_box_vscode_extension`) so the box is inspected
     a single time.
     """
+    from kanibako.agent_ref import canonicalize_agent_ref
+
     try:
         stamp = runtime.inspect_env(container_name, "KANIBAKO_AGENT")
         if stamp:
-            return stamp
+            # 🛑 CANONICALISE ON READ. The stamp is the OUTSIDE spelling (``+``);
+            # this function's contract is a NODE-name, which is what the
+            # ``select_agent`` fallback below already returns — so both branches
+            # answer in ONE spelling. ⚑ Both separators are accepted, so an
+            # older box stamped ``℘`` still resolves.
+            return canonicalize_agent_ref(stamp)
 
         # Pre-stamp (older) box: fall back to the create-time selection cascade
         # (agent_select reads the SAME box-tier file ``box set
@@ -600,6 +607,8 @@ def _seed_remote_attached_config(engine, container_name: str) -> None:
     user can act on, so both stay at debug — and the catch stays blanket so a
     seed bug can never cost the user their editor.
     """
+    from kanibako.agent_ref import canonicalize_agent_ref
+
     try:
         image_ref = engine.container_image(container_name)
         if image_ref is None:
@@ -608,8 +617,14 @@ def _seed_remote_attached_config(engine, container_name: str) -> None:
         try:
             stamp = engine.inspect_env(container_name, "KANIBAKO_AGENT")
             if stamp:
-                # No LOCAL project → resolve the plugin with project_path=None.
-                extension = _extension_for_agent(stamp, None)
+                # 🛑 CANONICALISE ON READ, as the local leg does: the stamp is the
+                # OUTSIDE spelling and ``_extension_for_agent`` takes a NODE-name
+                # (it derives the harness with ``harness_of``, which splits on ``℘``
+                # alone).  No LOCAL project → resolve the plugin with
+                # project_path=None.
+                extension = _extension_for_agent(
+                    canonicalize_agent_ref(stamp), None,
+                )
         except Exception:
             extension = None
         path = attached_container_config_path(

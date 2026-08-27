@@ -499,6 +499,14 @@ def start_mocks():
             runtime.container_exists.return_value = False
             runtime.exec.return_value = 0
             runtime.rm.return_value = True
+            # ⚑ TYPED LIKE THE REAL COLLABORATOR: ``ContainerRuntime.inspect_env``
+            # returns ``str | None``, never an object.  Left unset, a bare MagicMock
+            # is a truthy NON-STRING, which every reader of the ``KANIBAKO_AGENT``
+            # stamp must now reject — the readers canonicalise the stamp, and a
+            # non-string is a caller bug the ref parser names rather than coerces.
+            # ``"claude"`` matches the agent the rest of this fixture resolves; a
+            # test wanting a persona, or a pre-stamp box, sets its own value.
+            runtime.inspect_env.return_value = "claude"
 
             # The bootstrap-attach loop gates the interactive exec on a CAPTURED
             # readiness probe (``exec_ready``).  Mirror it onto ``is_running`` so

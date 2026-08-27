@@ -1697,8 +1697,14 @@ Contracts the signature cannot carry:
 * **`KANIBAKO_AGENT`** is the resolved agent stamped ON THE CONTAINER and never in durable config
   (that is what keeps `--agent` ephemeral): a later `kanibako start` against the running box, `stop`'s
   writeback and the creds watcher all read it back rather than re-running the selection cascade. It
-  carries the NODE name (full persona identity), NOT the harness (`target.name`) — readers derive the
-  harness via `harness_of`; for a bare agent the two are identical. Emitted only for a REAL agent
+  carries the NODE identity (full persona), NOT the harness (`target.name`) — but in the OUTSIDE
+  spelling (`+`, via `display_agent_ref`), because an env var is a place a HUMAN looks: the shipped
+  ROM directive tells an in-box agent to read `$KANIBAKO_AGENT`. 🛑 **Readers CANONICALISE, THEN
+  derive** — `harness_of` splits on `℘` alone, so deriving from the raw stamp returns the whole
+  string and `resolve_target` hunts a plugin that does not exist (in `stop.py`, under a blanket
+  catch: writeback stops SILENTLY). Canonicalising on read is also what keeps a box stamped by an
+  older version working, since both separators are accepted. For a bare agent every spelling here is
+  one string. Emitted only for a REAL agent
   launch, which is why *target* is the gate: a no-agent / shell launch carries no agent and the
   variable stays unset.
 * **`KANIBAKO_AGENT_MARKERS_DIR`** is UNCONDITIONAL: both the E2b/E2c supervised path and the warm-up

@@ -2326,7 +2326,7 @@ itself:
 | variable | what it carries |
 |---|---|
 | `KANIBAKO_NAME` | the box's name — what the channel system addresses your mailbox by |
-| `KANIBAKO_AGENT` | the resolved agent node this box is running |
+| `KANIBAKO_AGENT` | the resolved agent this box is running, in the spelling you type (`navigator+claude`) |
 | `KANIBAKO_DIRECTIVE_SEED` | the in-box path of the kickoff file your guidance chain starts at |
 | `KANIBAKO_AGENT_MARKERS_DIR` | the in-box directory agent sessions write their liveness markers to |
 
@@ -2370,6 +2370,13 @@ credential watcher inspect to learn which agent a running box carries, and
 `KANIBAKO_DIRECTIVE_SEED` must name the file kanibako binds your kickoff to, or the flatten step at
 agent start finds nothing. Change one and you are telling kanibako something about the box that has
 to be true.
+
+⚑ **On a PERSONA box the value of `KANIBAKO_AGENT` changed spelling.** v1.7.2 stamped the internal
+form, `navigator℘claude`; it is the typable `navigator+claude` now — the same node, written the way
+you write it everywhere else. Nothing inside kanibako cares (every reader accepts both, so a box
+still running under the old version keeps working), and a bare agent such as `claude` is unchanged.
+**If your own scripts or directives compare `$KANIBAKO_AGENT` against a literal, check the
+separator.** Comparing against the harness alone — `${KANIBAKO_AGENT##*+}` — is the sturdier habit.
 
 ### 2.37 An agent's settings file has ONE level: everything sits directly under `self:`
 

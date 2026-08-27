@@ -123,6 +123,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Every store path is create-if-absent, so nothing will complain — kanibako makes a fresh empty
   directory beside the old one and the persona starts over with no settings and no canon.
 
+- **`$KANIBAKO_AGENT` inside a persona's box now reads `navigator+claude`, not `navigator℘claude`.**
+  The variable is how an agent learns which agent it is — kanibako's own shipped directive tells it
+  to read `$KANIBAKO_AGENT` and never to guess — so the value it finds should be the one a person
+  writes. v1.7.2 stamped the internal spelling instead, which meant the one place the separator was
+  guaranteed to be seen by a reader was the one place it had no business being. An environment
+  variable is not a settings key, and `℘` exists only so a node can sit inside a key path.
+  Everything kanibako reads back off the stamp — `kanibako stop`'s credential writeback, `kanibako
+  code`'s extension seed, the credential watcher, and a `kanibako start` that reattaches to a
+  running box — converts it back before using it, and accepts either spelling, so **a box already
+  running when you upgrade keeps working unchanged**. A bare agent such as `claude` is unaffected:
+  it has no separator to swap. ⚠️ **If your own scripts or in-box directives match
+  `$KANIBAKO_AGENT` against a literal persona name, update the separator** — or match on the
+  harness alone (`${KANIBAKO_AGENT##*+}`), which does not care.
+
 - **A `box:` table at the system tier reaches every box.** `box.image`, `box.share_images`,
   `box.shell` and their siblings resolve through the settings cascade now, and the system tier is
   a level of that cascade — so a `box:` table in the system settings file

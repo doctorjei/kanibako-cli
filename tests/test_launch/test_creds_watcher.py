@@ -315,3 +315,41 @@ def test_no_watch_context_without_an_agent_stamp(monkeypatch, stamp):
         assert _resolve_watch_context(box=None) is None
         m_auth.assert_not_called()
         m_target.assert_not_called()
+
+
+@pytest.mark.parametrize("stamp", ["navigator+claude", "navigator℘claude"])
+def test_watch_context_canonicalises_the_stamp_before_deriving(stamp):
+    """The watcher's half of canonicalise-on-read (twin of ``test_stop.py``'s).
+
+    ``KANIBAKO_AGENT`` carries the OUTSIDE spelling (``+``) because a human reads
+    it in the box; ``harness_of`` splits on ``℘`` ALONE, so the raw stamp would
+    send ``resolve_target`` after a plugin named ``navigator+claude``.  Unlike
+    ``stop``, this one is NOT under a blanket catch at this level — it would take
+    the watcher down instead of failing quietly — but the fix is the same and so
+    is the seam.
+
+    ⚑ BOTH SPELLINGS: ``+`` is what this version stamps, ``℘`` what an
+    already-running older box carries.  Identical behaviour is the back-compat
+    guarantee.
+    """
+    from unittest.mock import MagicMock, patch
+
+    from kanibako.launch.creds_watcher import _resolve_watch_context
+
+    runtime = MagicMock()
+    runtime.inspect_env.return_value = stamp
+    with (
+        patch("kanibako.runtime.container.ContainerRuntime", return_value=runtime),
+        patch("kanibako.settings.config.load_config"),
+        patch("kanibako.settings.paths.load_std_paths"),
+        patch("kanibako.settings.paths.resolve_box_target", return_value=MagicMock()),
+        patch("kanibako.commands.start._resolve_box_auth_source") as m_auth,
+        patch("kanibako.targets.resolve_target") as m_target,
+    ):
+        assert _resolve_watch_context(box=None) is not None
+        # The plugin is keyed by the HARNESS.
+        assert m_target.call_args.args[0] == "claude"
+        # The agent-tier discriminator and the §1A selection level take the NODE.
+        kwargs = m_auth.call_args.kwargs
+        assert kwargs["agent_name"] == "navigator℘claude"
+        assert kwargs["selection_level"] == {"system.agent": "navigator℘claude"}

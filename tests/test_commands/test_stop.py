@@ -272,6 +272,65 @@ class TestStopWriteback:
                 target, proj, auth_src=_SHARED_AUTH
             )
 
+    @pytest.mark.parametrize("stamp", ["navigator+claude", "navigator℘claude"])
+    def test_persona_writeback_canonicalises_the_stamp_before_deriving(
+        self, mock_runtime, stamp,
+    ):
+        """🛑 THE SILENT-FAILURE GUARD, and the reason canonicalise-on-read exists.
+
+        ``KANIBAKO_AGENT`` is stamped in the OUTSIDE spelling (``+``) because an
+        agent reads it inside the box.  ``harness_of`` splits on ``℘`` ALONE, so
+        deriving the harness from the RAW ``+`` stamp yields the whole string
+        ``navigator+claude``; ``resolve_target`` then raises ``KeyError`` — INSIDE
+        the blanket ``except Exception: pass`` of ``_writeback_on_stop``.  Nothing
+        is printed, nothing is logged, ``stop`` still exits 0, and the box's
+        credentials simply never reach the host.  A bare agent cannot show any of
+        this (node == harness ⇒ one string), so only a persona pins it.
+
+        ⚑ BOTH SPELLINGS ARE PARAMETRIZED ON PURPOSE — that is the BACK-COMPAT
+        proof: ``+`` is what this version stamps, ``℘`` is what a box already
+        running under an older version carries, and both must behave identically.
+
+        Three things are asserted, because the bug can hide in any of them: the
+        plugin is looked up by the HARNESS, the two settings-side values get the
+        CANONICAL node, and the writeback actually RAN.
+        """
+        mock_runtime.is_running.return_value = True
+        mock_runtime.inspect_env.return_value = stamp
+        with (
+            patch("kanibako.commands.stop.load_config"),
+            patch("kanibako.commands.stop.load_std_paths"),
+            patch("kanibako.commands.stop.resolve_box_target") as m_resolve,
+            patch("kanibako.targets.resolve_target") as m_resolve_target,
+            patch(
+                "kanibako.commands.start._resolve_box_auth_source",
+                return_value=_SHARED_AUTH,
+            ) as m_auth,
+            patch(
+                "kanibako.commands.start.writeback_session_credentials"
+            ) as m_wb,
+        ):
+            proj = MagicMock()
+            m_resolve.return_value = proj
+            target = MagicMock()
+            m_resolve_target.return_value = target
+
+            assert _stop_one(mock_runtime, project_dir=None) == 0
+
+            # (1) The plugin is keyed by the HARNESS — literal, not derived.
+            assert m_resolve_target.call_args.args[0] == "claude"
+            # (2) The settings-side values discriminate the agent TIER, so they
+            #     take the CANONICAL node — both the cascade discriminator and the
+            #     §1A selection level.
+            kwargs = m_auth.call_args.kwargs
+            assert kwargs["agent_name"] == "navigator℘claude"
+            assert kwargs["selection_level"] == {
+                "system.agent": "navigator℘claude"
+            }
+            # (3) …and the writeback actually ran, which is the whole point: the
+            #     failure this guards against is SILENT, so absence is the symptom.
+            m_wb.assert_called_once_with(target, proj, auth_src=_SHARED_AUTH)
+
     @pytest.mark.parametrize("stamp", [None, ""])
     def test_no_writeback_without_agent_stamp(self, mock_runtime, stamp):
         """A box with NO agent — a ``pref.system.agent: null`` box (D-M6) or a
