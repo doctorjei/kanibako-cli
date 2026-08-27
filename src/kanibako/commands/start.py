@@ -2492,13 +2492,17 @@ def _run_container(
             container_name_for(proj), "KANIBAKO_AGENT"
         )
         if stored_agent:
-            # KANIBAKO_AGENT stamps a NODE-NAME (canonical ``℘`` form); an
-            # explicit ``--agent`` may still be a raw ``+`` ref. Canonicalise both
-            # to node-form before comparing so pasting the same ref back (with
-            # either separator) is idempotent, not a false mismatch.
+            # 🛑 CANONICALISE ON READ, ONCE, AND USE THAT VALUE ONWARDS.
+            # ``KANIBAKO_AGENT`` stamps the OUTSIDE spelling (``+``); an explicit
+            # ``--agent`` may arrive in either. Both become node-form here, so the
+            # comparison is idempotent for a re-pasted ref AND the value that
+            # feeds ``resolve_agent`` below is a node — this used to canonicalise
+            # for the COMPARISON only and then propagate the raw stamp.
+            # ⚑ Both separators are accepted, so a box stamped ``℘`` by an older
+            # version reattaches unchanged.
+            stored_agent = canonicalize_agent_ref(stored_agent)
             if explicit_agent is not None and (
-                canonicalize_agent_ref(explicit_agent)
-                != canonicalize_agent_ref(stored_agent)
+                canonicalize_agent_ref(explicit_agent) != stored_agent
             ):
                 raise KanibakoError(
                     f"Box '{proj.name}' is already running agent "
@@ -8582,8 +8586,21 @@ def _core_env_default_categories(*, proj, target, agent_id) -> dict[str, str]:
     declaration of the slot (``core-defaults.yaml`` ``kickoff.box_dest``) rather than
     spelled a second time: the variable and the bind MUST name the same file.
 
-    ⚑ ``KANIBAKO_AGENT`` carries the NODE name (full persona identity), NOT the
-    harness (``target.name``); readers derive the harness via ``harness_of``.
+    ⚑ ``KANIBAKO_AGENT`` carries the NODE identity (full persona), NOT the harness
+    (``target.name``), and it is stamped in the OUTSIDE spelling — ``+``, via
+    ``display_agent_ref``.  An env var is a place a HUMAN looks: the agent reads
+    ``$KANIBAKO_AGENT`` in the box and the shipped ROM directive tells it to, so the
+    value must be the one it can type.  ``℘`` exists only so a node is spellable
+    inside a KEY path (``agent_ref``), and this is not one.
+    🛑 **READERS CANONICALISE, THEN DERIVE** — ``canonicalize_agent_ref`` first, and
+    only then ``harness_of`` / a store path / a settings value.  ``harness_of``
+    splits on ``℘`` ALONE: hand it ``navigator+claude`` and it returns the WHOLE
+    string, so ``resolve_target`` looks up a plugin that does not exist.  In
+    ``stop.py`` that sits under a blanket catch, i.e. credential writeback would
+    stop running for every persona box in SILENCE.
+    ⚑ Canonicalising on READ is also what makes this BACK-COMPATIBLE with a box
+    already running: a container stamped ``℘`` by an older version keeps working,
+    because ``canonicalize_agent_ref`` accepts both separators.
 
     See ``llm-docs/kanibako/commands/start.py.md``,
     "``_core_env_default_categories``", for the per-variable gates and contracts.
@@ -8594,7 +8611,7 @@ def _core_env_default_categories(*, proj, target, agent_id) -> dict[str, str]:
     table["system.env.KANIBAKO_DIRECTIVE_SEED"] = core_defaults.kickoff_guest_dest()
     table["system.env.KANIBAKO_AGENT_MARKERS_DIR"] = AGENT_MARKERS_DIR
     if target is not None:
-        table["system.env.KANIBAKO_AGENT"] = agent_id
+        table["system.env.KANIBAKO_AGENT"] = display_agent_ref(agent_id)
     return table
 
 

@@ -871,3 +871,56 @@ def test_remote_unforeseen_seed_failure_stays_silent(
     err = capsys.readouterr().err
     assert "could not be written" not in err
     assert err == ""
+
+
+# ---------------------------------------------------------------------------
+# The KANIBAKO_AGENT stamp is CANONICALISED on read (step 2 of the ℘ leak)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("stamp", ["navigator+claude", "navigator℘claude"])
+def test_box_agent_node_canonicalises_the_stamp(stamp):
+    """🛑 The stamp re-enters code as a NODE, in ONE spelling.
+
+    ``KANIBAKO_AGENT`` is stamped in the OUTSIDE spelling (``+``) because an
+    agent reads it inside the box.  This function's contract is a node-name —
+    its ``select_agent`` fallback returns one, and its consumer
+    ``_extension_for_agent`` derives the harness with ``harness_of``, which
+    splits on ``℘`` ALONE.  Hand the raw ``+`` form on and ``resolve_target``
+    hunts a plugin called ``navigator+claude``, the seed quietly yields no
+    extension, and the user's editor simply opens without it.
+
+    ⚑ BOTH SPELLINGS: ``+`` is what this version stamps, ``℘`` what an
+    already-running older box carries — the back-compat guarantee, pinned.
+    """
+    from kanibako.commands.code_cmd import _resolve_box_agent_node
+
+    runtime = MagicMock()
+    runtime.inspect_env.return_value = stamp
+    node = _resolve_box_agent_node(
+        runtime, MagicMock(), MagicMock(), "kanibako-foo",
+    )
+    assert node == "navigator℘claude"
+
+
+@pytest.mark.parametrize("stamp", ["navigator+claude", "navigator℘claude"])
+def test_remote_seed_hands_the_canonical_node_to_the_extension_lookup(stamp):
+    """The REMOTE leg's half of the same rule (twin of the local one above).
+
+    There is no local box to fall back on, so the stamp is the only input; it
+    must reach ``_extension_for_agent`` as a node.
+    """
+    from kanibako.commands.code_cmd import _seed_remote_attached_config
+
+    engine = MagicMock()
+    engine.container_image.return_value = "remote-img"
+    engine.inspect_env.return_value = stamp
+    with (
+        patch(
+            "kanibako.commands.code_cmd._extension_for_agent",
+            return_value="anthropic.claude-code",
+        ) as m_ext,
+        patch("kanibako.commands.code_cmd._write_attached_config"),
+    ):
+        _seed_remote_attached_config(engine, "kanibako-mybox")
+
+    assert m_ext.call_args.args[0] == "navigator℘claude"

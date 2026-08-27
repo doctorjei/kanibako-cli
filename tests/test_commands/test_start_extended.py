@@ -2291,15 +2291,21 @@ class TestReattachAgentSourcing:
             assert "--agent 'goose'" in msg
             assert "kanibako stop testproject" in msg
 
-    def test_reattach_mismatch_error_renders_plus_not_pomo(self, start_mocks):
+    @pytest.mark.parametrize("stamp", ["navigator+claude", "navigator℘claude"])
+    def test_reattach_mismatch_error_renders_plus_not_pomo(self, start_mocks, stamp):
         """A PERSONA mismatch must render the user-facing ``+`` separator, never the
-        canonical ``℘`` (display-swap rule): the stored stamp is a NODE-name with
-        ``℘``; the error text shows ``navigator+claude`` / ``pilot+goose``."""
+        canonical ``℘`` (display-swap rule): the error text shows
+        ``navigator+claude`` / ``pilot+goose``.
+
+        ⚑ BOTH STAMP SPELLINGS: ``+`` is what this version emits, ``℘`` what a box
+        already running under an older version carries.  The reader canonicalises,
+        so the two are indistinguishable from here down — that is the back-compat
+        guarantee, pinned rather than asserted in prose.
+        """
         from kanibako.errors import KanibakoError
         with start_mocks() as m:
             m.runtime.is_running.return_value = True
-            # KANIBAKO_AGENT stamps the canonical node (℘).
-            m.runtime.inspect_env.return_value = "navigator℘claude"
+            m.runtime.inspect_env.return_value = stamp
             with pytest.raises(KanibakoError) as exc:
                 _run_container(
                     project_dir=None, entrypoint=None, image_override=None,
@@ -2331,6 +2337,35 @@ class TestReattachAgentSourcing:
             assert rc == 0
             # resolve_agent saw the injected stored agent.
             assert m.resolve_agent.call_args.kwargs["explicit_agent"] == "claude"
+
+    @pytest.mark.parametrize("stamp", ["navigator+claude", "navigator℘claude"])
+    def test_reattach_injects_the_CANONICAL_node_not_the_raw_stamp(
+        self, start_mocks, stamp,
+    ):
+        """🛑 The stamp is canonicalised ONCE and *that* value is what propagates.
+
+        This path used to canonicalise for the mismatch COMPARISON only and then
+        assign the RAW stamp to ``explicit_agent``, which now means a ``+`` ref
+        flowing on into agent resolution.  It survived by luck — the resolver
+        canonicalises too — and luck is not the shape: a node is what discriminates
+        the agent tier, so it is a node that must be handed on.
+
+        A bare agent cannot show it (the sibling above is the control): only a
+        persona has two spellings to confuse.
+        """
+        with start_mocks() as m:
+            m.runtime.is_running.return_value = True
+            m.runtime.inspect_env.return_value = stamp
+            m.resolve_agent.side_effect = self._gate2a_unless_explicit()
+            rc = _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], persistent=True, explicit_agent=None,
+            )
+            assert rc == 0
+            assert m.resolve_agent.call_args.kwargs["explicit_agent"] == (
+                "navigator℘claude"
+            )
 
     def test_preexisting_running_box_no_stamp_falls_back(self, start_mocks):
         """A box running before this change has no KANIBAKO_AGENT (inspect_env
@@ -2364,6 +2399,36 @@ class TestAgentStamp:
             )
             env = m.runtime.run.call_args.kwargs["env"]
             assert env["KANIBAKO_AGENT"] == "claude"
+
+    def test_a_persona_is_stamped_in_the_typable_spelling(self):
+        """⚑ THE SPELLING PIN for the stamp — literal, and a bare agent cannot show
+        it (node == harness ⇒ one string), so only a persona pins it.
+
+        An env var is a place a HUMAN looks: the shipped ROM directive tells an
+        in-box agent to read ``$KANIBAKO_AGENT``, and documents it as
+        ``kimi_k3+codex``.  ``℘`` exists only so a node is spellable inside a KEY
+        path, and this is not one.
+
+        Driven AT THE FUNCTION: the emitter is pure, and the sibling test above
+        already proves the value reaches ``runtime.run``'s env through the seam.
+        """
+        from types import SimpleNamespace
+
+        from kanibako.commands.start import _core_env_default_categories
+
+        table = _core_env_default_categories(
+            proj=SimpleNamespace(name="b"),
+            target=SimpleNamespace(name="claude"),
+            agent_id="navigator℘claude",
+        )
+        assert table["system.env.KANIBAKO_AGENT"] == "navigator+claude"
+        # A bare agent is unchanged — ``display_agent_ref`` is identity on a name
+        # with no separator.
+        bare = _core_env_default_categories(
+            proj=SimpleNamespace(name="b"),
+            target=SimpleNamespace(name="claude"), agent_id="claude",
+        )
+        assert bare["system.env.KANIBAKO_AGENT"] == "claude"
 
     def test_shell_launch_does_not_stamp_agent_env(self, start_mocks):
         """A no-agent / shell launch (target None) carries no KANIBAKO_AGENT."""

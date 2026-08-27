@@ -120,9 +120,15 @@ so the store dir + keyspace slot follow the real target.
 ```def display_agent_ref(node: str) -> str```
 Return the USER-FACING form of a *node*-name (`℘` -> `+`).
 
-Presentation-only inverse of :func:`canonicalize_agent_ref`: internal storage, keyspace, on-disk
-paths, & `KANIBAKO_AGENT` all keep canonical `℘` form; whenever agent ref is rendered to user
-(error text, `crab`/`box` listings, session labels, log lines) it is shown with typable `+`.
+Presentation-only inverse of :func:`canonicalize_agent_ref`. **The KEYSPACE keeps canonical `℘`
+form** — that is the one thing `℘` exists for. Everything a human can see or type takes the `+`:
+error text, `box` listings, session labels, log lines, **the on-disk store dir**
+(`settings.agent_config.store_dirname`) and **the `KANIBAKO_AGENT` stamp**, which an in-box agent
+is told to read by the shipped ROM directive.
+
+⚑ The stamp is the one that ROUND-TRIPS: emitted `+`, and canonicalised back to `℘` by every reader
+before anything is derived from it (`stop`, `code`, the creds watcher, `start`'s reattach). That is
+also what keeps a box stamped by an older version working — `canonicalize_agent_ref` accepts both.
 
 Bare names contain no `℘` -> returned unchanged (existing output byte-identical).
 Does NOT validate: it is pure display swap tolerant of any string.

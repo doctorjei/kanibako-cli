@@ -302,7 +302,7 @@ def _resolve_watch_context(box: str | None):
     box cannot be resolved / has no shared-credential agent (nothing to watch).
     """
     from kanibako.settings.agent_config import agent_settings_path
-    from kanibako.agent_ref import harness_of
+    from kanibako.agent_ref import canonicalize_agent_ref, harness_of
     from kanibako.commands.start import _resolve_box_auth_source
     from kanibako.settings.config import config_file_path, load_config
     from kanibako.runtime.container import ContainerRuntime
@@ -322,6 +322,12 @@ def _resolve_watch_context(box: str | None):
     if not agent:
         log.info("box %s has no agent stamp; nothing to write back", container_name)
         return None
+    # 🛑 CANONICALISE, THEN DERIVE — the stamp is the OUTSIDE spelling (``+``) and
+    # every use below is a key or a key-derived lookup. ``harness_of`` splits on
+    # ``℘`` ALONE, so the raw ``+`` form would send ``resolve_target`` after a
+    # plugin that does not exist. ⚑ Both separators are accepted, so a box stamped
+    # by an older version keeps working.
+    agent = canonicalize_agent_ref(agent)
     target = resolve_target(harness_of(agent), proj.project_path)
     # ⚑ The §1A SELECTION LEVEL is REQUIRED (P7): ``meta.box.auth.workset_path``
     # resolves ``@workset.auth.path/@system.agent``, so without it the per-agent
