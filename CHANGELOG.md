@@ -242,6 +242,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`kanibako system get` refuses a key this scope cannot read, instead of answering `(not set)` and
+  exiting 0.** It checked only whether the argument was key-*shaped* — the test that tells a key from
+  a project name — never whether it was a declared key readable at this noun. A name that passed fell
+  through to an ordinary read, found nothing, and was reported as unset: an answer invented for
+  something that is not a key here, which `box get` and `workset get` were already fixed to refuse.
+  All three nouns now call one function, so they cannot drift into three answers for one key. Four
+  spellings change, each now exiting 1 and naming the key you typed: **`transform_settings`**, whose
+  value is a table no scalar read can carry — the refusal points at `kanibako agent get <agent>
+  transform_settings`, which does answer it; **an entry of a terminal agent category** such as
+  `agent.<node>.caches.<name>`, whose entries are box destinations inside the value rather than keys
+  of their own; **a misspelled agent node** such as `agent.nosuchagent.model`, which now names the
+  bad segment and lists the real agents; and the **retired `box.agent.<key>` mirror**, which points
+  at its `pref.agent.<agent>.<key>` replacement. ⚑ **Nothing that returned a value before returns
+  anything different.** Bare agent settings — `model`, `access`, `template` and the rest — are this
+  scope's own any-agent tier and still read and set exactly as they did; a hand-authored
+  `agent.<node>.bindings.{ro,rw}.<name>` still reads back, so you can still confirm that the hand
+  edit its write refusal prescribes took effect; scope-level category entries such as
+  `system.synced.<name>` still read; and an undeclared name keeps the `unknown config key` message it
+  always had.
+
 - **A persona agent seeds its boxes from its own template store, shared with its harness by symlink —
   so a persona can now have a template of its own.** A persona is a distinct agent node
   (`navigator+claude`) with its own store directory, but the seed-layer-2 template source was spelled
