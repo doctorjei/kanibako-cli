@@ -35,6 +35,7 @@ from kanibako.settings.config import load_config, read_system_agent
 from kanibako.settings.config_io import dump_doc, load_doc
 from kanibako.settings.config_io import write_nested_key
 from kanibako.settings.paths import load_std_paths
+from kanibako.settings.settings_keyspace import SCALAR_AGENT_LEAVES
 
 
 def _set(key_value, *, force=True):
@@ -840,3 +841,165 @@ class TestSystemAgentNodeBindSeamSuperseded:
         # Neither store was written, and no node directory was created.
         assert "agent" not in load_doc(config_file)
         assert list(_std(config_file).agents.glob("*")) == []
+
+
+class TestSystemGetClosedKeyspaceReadGate:
+    """``system get`` refuses a name this scope cannot serve, instead of faking it.
+
+    THE DEFECT: ``system get`` gated on ``is_known_key`` alone — a WIDER predicate that
+    answers "is this key-SHAPED", not "is this a DECLARED key readable HERE".  A name it
+    admitted but the scope cannot serve fell through to an ordinary read, found nothing,
+    and printed "(not set)" at rc 0: the fabricated answer spec §0 forbids in the same
+    breath as the write, and the one ``box get``/``workset get`` were already fixed to
+    refuse.  Jei, 2026-08-27: *"the system one's answer is wrong; it should also be an
+    error."*
+
+    THE CURE IS A DIFFERENT SURFACE, NOT A WIDER PREDICATE — the handler's own comment
+    says so and ``is_known_key`` is deliberately untouched, quarantined answers and all.
+    ``system get`` now calls ``scope_read_key_error``, the SAME function the sibling
+    nouns call, so three nouns cannot drift into three answers for one key.
+
+    ⚑ THE SCOPE DIFFERENCE IS REAL AND IS NOT A CARVE-OUT: at box and workset scope a
+    BARE agent leaf names no key, but at system scope it IS the any-agent tier's key
+    (``system set model=opus`` writes ``agent.default.model``).  The gate admits it via
+    ``_is_agent_setting``, which is SCALAR-only by construction — so the single leaf it
+    withholds is the TABLE-valued one, which is exactly the key that must still refuse.
+    """
+
+    def test_the_table_valued_agent_leaf_is_refused_WITH_AN_ADDRESS(
+        self, config_file, tmp_home, capsys,
+    ):
+        """The reported defect: it printed "(not set)" at rc 0 for a key no scalar
+        read can carry (spec §2d), and named nowhere to go instead."""
+        capsys.readouterr()
+        assert _get("transform_settings") == 1
+        cap = capsys.readouterr()
+        assert "(not set)" not in cap.out + cap.err, cap
+        assert "transform_settings" in cap.err, cap.err
+        assert "kanibako agent get" in cap.err, cap.err
+
+    def test_the_refusal_IS_the_sibling_nouns_refusal_not_a_lookalike(
+        self, config_file, tmp_home, capsys,
+    ):
+        """Byte-identical to what ``workset get`` prints, because it is the same
+        construction — the guard against someone re-minting a parallel message here."""
+        from kanibako.settings.config_keys import ConfigLevel, scope_read_key_error
+
+        capsys.readouterr()
+        assert _get("transform_settings") == 1
+        printed = capsys.readouterr().err.strip()
+        assert printed == scope_read_key_error(
+            "transform_settings", ConfigLevel.workset,
+        ), printed
+
+    @pytest.mark.parametrize(
+        "key",
+        [
+            "agent.claude.caches.foo",   # an ENTRY of a terminal dest-keyed key
+            "agent.claude.synced.foo",   # ditto, a second category
+            "box.agent.model",           # the RETIRED box-scoped agent mirror
+            "agent.nosuchagent.model",   # a MISSPELLED node — the likeliest typo of the four
+        ],
+    )
+    def test_the_rest_of_the_class_is_refused_too(
+        self, config_file, tmp_home, capsys, key,
+    ):
+        """ONE DEFECT, NOT ONE KEY.  Every name ``is_known_key`` admits and this scope
+        cannot serve was answered "(not set)" at rc 0; the gate names each of them."""
+        capsys.readouterr()
+        assert _get(key) == 1
+        cap = capsys.readouterr()
+        assert "(not set)" not in cap.out + cap.err, cap
+        assert key in cap.err, cap.err
+
+    def test_the_R9_bind_read_is_NOT_in_that_class_and_survives(
+        self, config_file, tmp_home, capsys,
+    ):
+        """THE LINE BETWEEN THE TWO, and it is drawn by MEASUREMENT, not by shape.
+
+        ``agent.<node>.caches.<name>`` and ``agent.<node>.bindings.ro.<name>`` look alike
+        and are NOT alike: the engine serves the second and not the first.  A
+        hand-authored ``caches`` entry reads "(not set)" — a fabrication, hence the
+        refusal above — while a hand-authored BIND reads back its tuple, because R-9 kept
+        that read alive on purpose (*"the read survived the write"*): it is the only way
+        to check the hand edit the write refusal prescribes.
+
+        ⚑ So the gate takes the NARROW ``_is_agent_node_bind_key``, not the wide
+        ``_is_agent_scope_bind_key`` that spans all six categories.  Applying the wide one
+        re-fabricates the answer; applying neither breaks this read — which is how the
+        first draft of this fix was caught, by ``test_get_still_reads_a_hand_authored_bind``
+        in ``TestSystemAgentNodeBindWriteRouteRetired``.
+        """
+        std = _std(config_file)
+        node_file = std.agents / store_dirname("claude") / "agent.yaml"
+        node_file.parent.mkdir(parents=True, exist_ok=True)
+        dump_doc(node_file, {"self": {
+            "bindings": {"ro": {"launcher": ["/newsrc", "/box/launcher", "ro"]}},
+            "caches": {"cachey": ["/csrc", "/box/cache", "rw"]},
+        }})
+        capsys.readouterr()
+        # The BIND reads back its tuple ...
+        assert _get("agent.claude.bindings.ro.launcher") == 0
+        assert "/newsrc" in capsys.readouterr().out
+        # ... while the CACHES entry beside it in the same file is refused, not faked.
+        assert _get("agent.claude.caches.cachey") == 1
+        cap = capsys.readouterr()
+        assert "(not set)" not in cap.out + cap.err, cap
+
+    @pytest.mark.parametrize("leaf", sorted(SCALAR_AGENT_LEAVES))
+    def test_every_scalar_agent_leaf_still_READS(
+        self, config_file, tmp_home, capsys, leaf,
+    ):
+        """THE REGRESSION HALF, and the reason the gate is not applied flat.
+
+        ⚑ DERIVED FROM THE RULE, NEVER LISTED (P13): the corpus is
+        ``SCALAR_AGENT_LEAVES`` itself, so declaring a new scalar leaf extends this pin
+        for free, and moving a leaf into ``TABLE_VALUED_AGENT_LEAVES`` moves it out of
+        here and into the refusal above — which is the shape change, stated as a test.
+        """
+        capsys.readouterr()
+        assert _get(leaf) == 0, capsys.readouterr().err
+
+    def test_a_bare_leaf_set_at_this_scope_reads_BACK(
+        self, config_file, tmp_home, capsys,
+    ):
+        """The concrete regression the flat gate would have caused: ``system set
+        model=opus`` is this verb's own documented example, and its read-back must
+        survive the refusal added beside it."""
+        assert _set("model=opus") == 0
+        capsys.readouterr()
+        assert _get("model") == 0
+        assert "opus" in capsys.readouterr().out
+
+    def test_a_hand_authored_scope_bind_entry_still_reads(
+        self, config_file, tmp_home, capsys,
+    ):
+        """§0 keeps these READABLE though it refuses the write — *"Refuse the write;
+        keep the read honest"*.  The gate carves them out, so adding it must not turn
+        the honest read into a refusal."""
+        write_nested_key(
+            _std(config_file).settings, ("system", "caches"), "helper",
+            ["/src", "/dst", "rw"],
+        )
+        capsys.readouterr()
+        assert _get("system.caches.helper") == 0
+        assert "/src" in capsys.readouterr().out
+
+    def test_is_known_key_was_NOT_widened(self):
+        """THE CONSTRAINT THIS FIX WAS WRITTEN UNDER, pinned so it cannot be undone
+        quietly.  ``transform_settings`` must stay key-SHAPED — that is what stops the
+        parser reading it as a project name and what carries it to the gate.  Widening
+        the predicate instead would have made this False and the refusal unreachable."""
+        from kanibako.settings.config_keys import is_known_key
+
+        assert is_known_key("transform_settings") is True
+
+    def test_an_undeclared_name_keeps_the_is_known_key_wording(
+        self, config_file, tmp_home, capsys,
+    ):
+        """ORDERING, pinned: the gate sits AFTER the ``is_known_key`` branch, so an
+        undeclared NAME still gets that branch's message.  Its wording is Jei's call to
+        change, and this gate is not the place it changes."""
+        capsys.readouterr()
+        assert _get("config.nope") == 1
+        assert "unknown config key" in capsys.readouterr().err

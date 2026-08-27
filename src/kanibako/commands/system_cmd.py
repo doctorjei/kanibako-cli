@@ -291,6 +291,7 @@ def _run_system_config(args: argparse.Namespace) -> int:
         ConfigLevel,
         bare_env_retired_error,
         is_known_key,
+        scope_read_key_error,
     )
     from kanibako.settings.config_interface import (
         ConfigAction,
@@ -387,6 +388,23 @@ def _run_system_config(args: argparse.Namespace) -> int:
             # cure is that surface, NOT a wider ``is_known_key``. Full statement:
             # the QUARANTINE block above ``config_keys.KNOWN_CONFIG_KEYS``.
             print(f"Error: unknown config key: {key}", file=sys.stderr)
+            return 1
+        # ⚑ THE CLOSED-KEYSPACE READ GATE (spec §0) — the SAME function ``box get`` and
+        # ``workset get`` call, so the three nouns cannot drift into three answers for one
+        # key.  Without it a name ``is_known_key`` ADMITS but this scope cannot serve was
+        # read anyway, found nothing, and printed "(not set)" at rc 0 — the fabricated
+        # answer §0 forbids in the same breath as the write.
+        # ⚑ It is the cure the branch above names: the gate is a DIFFERENT SURFACE, so
+        # ``is_known_key`` stays narrow and its seven quarantined answers are untouched.
+        # ⚑ Placed AFTER that branch, not before: an undeclared NAME keeps the wording
+        # above, which is Jei's call to change, not this gate's.  And after
+        # ``bare_env_retired_error`` for the reason ``scope_read_key_error`` states — a
+        # generic "not a key" must not overwrite a specific cure.
+        # ⚑ NO ``active_agent``: a bare table leaf here means the ANY-AGENT tier, so naming
+        # one agent in the cure would answer for a tier the user did not ask about.
+        _key_err = scope_read_key_error(key, ConfigLevel.system)
+        if _key_err is not None:
+            print(_key_err, file=sys.stderr)
             return 1
         val = get_config_value(
             key, global_config_path=cf,

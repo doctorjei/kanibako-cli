@@ -1215,6 +1215,32 @@ def scope_read_key_error(
     redirect = box_agent_redirect_key(canonical, command_scope, active_agent)
     if redirect is not None:
         canonical = redirect
+    # ⚑ THE SPELLINGS THE SYSTEM NOUN ITSELF SERVES, admitted here so the gate cannot refuse
+    # an honest read.  Both terms are taken from the predicate ``get_config_value`` branches
+    # on, exactly as the bind carve-out below and :func:`agent_read_key_error` take theirs —
+    # the question is "does THIS noun's read serve this spelling", never "does the name look
+    # declared".  ⚑ SYSTEM-SCOPED, and deliberately not widened past it: what box and workset
+    # print for these spellings is settled elsewhere — the redirect just above for box, the
+    # handler's ``bare_agent_key_scope_error`` for workset — so dropping the scope test here
+    # would silently change two other nouns' output to fix a third.  Any such widening is its
+    # own change, with its own measurement.
+    #   · ``_is_agent_setting`` — a BARE agent leaf IS the any-agent tier's key at this noun
+    #     (``system set model=opus`` writes ``agent.default.model``).  It is SCALAR-only BY
+    #     CONSTRUCTION (``SCALAR_AGENT_LEAVES``), so the one leaf it withholds is the
+    #     TABLE-valued one — which is the point: ``transform_settings`` falls through to the
+    #     refusal below and gets the address cure, as at the other two nouns (spec §2d).
+    #   · ``_is_agent_node_bind_key`` — R-9's *"the read survived the write, on purpose"*;
+    #     a hand-authored ``agent.<node>.bindings.{ro,rw}.<name>`` reads back, and that
+    #     read-back is the only way to check the hand edit the write refusal prescribes.
+    #     ⚑ THE NARROW PREDICATE, NOT ``_is_agent_scope_bind_key``: the wide one also spans
+    #     ``caches``/``synced``/… , which the engine does NOT serve — a hand-authored entry
+    #     there reads "(not set)", so admitting it would re-fabricate the answer this gate
+    #     exists to stop.  MEASURED, not assumed (2026-08-27).
+    # ⚑ Derived, never listed (P13): a new scalar leaf is admitted, a new table leaf refused.
+    if command_scope is ConfigLevel.system and (
+        _is_agent_setting(canonical) or _is_agent_node_bind_key(canonical)
+    ):
+        return None
     if _is_path_category_key(canonical) or _is_scope_bind_key(canonical):
         return None
     reason = scope_key_reason(canonical)
