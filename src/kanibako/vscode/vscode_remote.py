@@ -52,6 +52,7 @@ from pathlib import Path
 
 from kanibako.errors import KanibakoError
 from kanibako.log import get_logger
+from kanibako.runtime.container import image_ref_or_none
 from kanibako.settings.paths import resolve_data_leaf, xdg
 
 logger = get_logger("vscode_remote")
@@ -410,7 +411,9 @@ class RemoteEngine:
     Built on the podman remote argv prefix dialing the LOCAL end of the ssh
     tunnel (:func:`ensure_tunnel`) — podman never execs ssh here (the golang
     ``ssh:`` client is bypassed entirely).  Does NOT touch
-    :class:`ContainerRuntime`.
+    :class:`ContainerRuntime` — it does share that module's
+    :func:`~kanibako.runtime.container.image_ref_or_none`, so both legs answer
+    "is this an image reference?" from one rule.
     """
 
     def __init__(self, url: str, *, podman: str | None = None) -> None:
@@ -473,10 +476,13 @@ class RemoteEngine:
 
     def container_image(self, name: str) -> str | None:
         """The image reference remote container *name* was created from, or None."""
+        # Same format string as the local leg, so the same guard: whatever an engine
+        # without ``.ImageName`` prints must never key a config as if it were a
+        # reference (see :func:`~kanibako.runtime.container.image_ref_or_none`).
         result = self._run(["inspect", "--format", "{{.ImageName}}", name])
         if result.returncode != 0:
             return None
-        return result.stdout.strip() or None
+        return image_ref_or_none(result.stdout)
 
 
 _PREFLIGHT_TUNNEL_HINT = (
