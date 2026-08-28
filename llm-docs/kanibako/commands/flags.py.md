@@ -57,9 +57,22 @@ Two absences from that set are deliberate:
   reconcile).
 
 `BOX_FLAG_COMMANDS` is the subject/anchor selector's set: every command that acts on a subject
-box/project rather than on cwd — the launch/shell paths, the box lifecycle and inspection commands,
-stop, reauth, and `workset disconnect`. It is NOT relevant to commands with no single-box subject
-(list/ps/create, the workset/agent/system/rig groups, setup).
+box/project rather than on cwd — the launch/shell paths, `code`, the box lifecycle and inspection
+commands, stop, reauth, and `workset disconnect`. It is NOT relevant to commands with no single-box
+subject (list/ps/create, the workset/agent/system/rig groups, setup).
+
+Membership is a CLAIM ABOUT HANDLERS, and the claim is checked: every leaf whose handler reads
+`args.box` / `args.agent` must be declared for that flag, asserted over the whole parser tree
+(`TestATableEntryAgreesWithWhatTheHandlerReads`). `code` was the case that motivated it — `run_code`
+reconciled its `project` positional with `--box` through `resolve_subject_value` while the table
+refused the flag, so `kanibako code --box mybox` exited 2. It is reachable by neither the alias rule
+nor the shortcut-twin rule, because there is no `box code`.
+
+The converse is deliberately NOT asserted. `"reauth"` is declared in BOTH sets, but there is no
+top-level `reauth` parser — `kanibako reauth` parses as `start reauth` — so the key is unreachable
+by `command_key` while still appearing in the `--box` refusal message's enumeration of valid
+commands. Whether to wire the shortcut or drop the key is a CLI-shape decision, not a table
+correction.
 
 ## The shared `--null` suppression flag (B-6)
 

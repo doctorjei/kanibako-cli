@@ -67,6 +67,13 @@ BOX_FLAG_COMMANDS: frozenset[str] = frozenset({
     # stop
     "stop",
     "box stop",
+    # VS Code attach.  ⚑ ``code`` is neither an alias nor a shortcut twin — it
+    # has no ``box code`` counterpart — so neither derivation above reaches it,
+    # and its refusal came from this table alone.  It carries the SAME optional
+    # ``project`` positional the launch verbs do and reconciles it with ``--box``
+    # through ``resolve_subject_value``, so the flag is a second spelling of a
+    # subject it already takes, never a new one.
+    "code",
     # box lifecycle / inspection (subject anchor)
     "box convert",
     "box move",

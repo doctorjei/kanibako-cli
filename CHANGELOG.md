@@ -333,6 +333,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   only ever a second spelling of a subject you also typed — matching, it warns and continues;
   differing, it is a conflict. That is unchanged, and it is what `box rm` already did.
 
+- **`kanibako code --box mybox` exited 2, though `code` had read `--box` all along.** `code` takes
+  the same optional project positional the launch verbs take, and its handler reconciled that
+  positional with `--box` through the same shared function `start`, `stop` and `shell` use — but
+  `code` was never added to the table that decides which commands the flag applies to, so the
+  invocation was refused before the handler ever ran and `--help` did not offer the flag either.
+  `code` is declared now, on both legs (`--remote` included). ⚑ **This does not make `--box` a
+  substitute for the positional**, and it does not loosen anything: `code --box` is a second
+  spelling of the subject you could already type, matching it warns and continues, differing it is
+  a conflict, and `rig list --box` is still refused. Unlike the two entries above this one was
+  reachable by neither an alias nor a shortcut rule — there is no `box code` — so the check that
+  now guards it is the general one: every command whose handler reads a blanket flag must be
+  declared as taking it, asserted over the whole command tree.
+
 - **A value sourced at `@config.journal` was accepted and then silently dropped at launch.**
   Kanibako's Layer-1 config foundation declares six keys, but the map that `@config.*` references
   actually resolve against was written out by hand — five string literals, in the launch path and

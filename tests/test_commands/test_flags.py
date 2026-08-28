@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import argparse
+import inspect
+import re
+import sys
 
 import pytest
 
@@ -159,6 +162,22 @@ class TestRelevance:
 
     def test_box_relevant_on_top_level_register(self, parser):
         check_flag_relevance(_parse(parser, ["register", "--box", "foo", "foo"]))
+
+    def test_box_relevant_on_code(self, parser):
+        # ``run_code`` reads --box through ``resolve_subject_value``; the table
+        # refused it anyway, so ``kanibako code --box foo`` exited 2.
+        check_flag_relevance(_parse(parser, ["code", "--box", "foo"]))
+
+    def test_box_relevant_on_code_remote_leg_too(self, parser):
+        # Relevance runs before dispatch, so it gates BOTH legs of run_code —
+        # and ``_run_code_remote`` reads --box as well.
+        check_flag_relevance(_parse(parser, ["code", "--box", "foo", "--remote", "h"]))
+
+    def test_box_still_irrelevant_on_rig_list(self, parser):
+        # Negative control: a neighbouring leaf whose handler never reads --box
+        # must still refuse it.  Declaring ``code`` must not loosen anything.
+        with pytest.raises(FlagRelevanceError):
+            check_flag_relevance(_parse(parser, ["rig", "list", "--box", "foo"]))
 
     def test_declared_sets_are_subset_of_real_commands(self):
         # Guardrail: every declared command key is a real dotted path shape.
@@ -350,6 +369,94 @@ class TestATopLevelShortcutAgreesWithItsBoxVerb:
         assert split == []
 
 
+def _handler_reads(func, option, _depth=1, _seen=None):
+    """True if *func* — or a helper it calls in its OWN module — reads ``args.<option>``.
+
+    ⚑ Derived from the handler's SOURCE, because that is where the disagreement
+    lives: a declared set is a CLAIM about what handlers do, and only a handler
+    can settle it.  One level of intra-module following covers a handler that
+    splits a leg out (``run_code`` → ``_run_code_remote``); every consumer today
+    spells the read ``args.<option>`` or ``getattr(args, "<option>")``, and
+    ``test_the_oracle_is_not_vacuous`` pins a true AND a false case for each
+    flag, so a new spelling reddens there rather than passing silently here.
+    """
+    if func is None or _depth < 0:
+        return False
+    _seen = _seen if _seen is not None else set()
+    key = (getattr(func, "__module__", None), getattr(func, "__qualname__", None))
+    if key in _seen:
+        return False
+    _seen.add(key)
+    try:
+        source = inspect.getsource(func)
+    except (OSError, TypeError):
+        return False
+    pattern = rf'args\.{option}\b|getattr\(\s*args\s*,\s*[\'"]{option}[\'"]'
+    if re.search(pattern, source):
+        return True
+    module = sys.modules.get(getattr(func, "__module__", ""), None)
+    if module is None:
+        return False
+    for name in set(re.findall(r"\b([A-Za-z_]\w*)\s*\(", source)):
+        callee = getattr(module, name, None)
+        if inspect.isfunction(callee) and _handler_reads(
+            callee, option, _depth - 1, _seen
+        ):
+            return True
+    return False
+
+
+class TestATableEntryAgreesWithWhatTheHandlerReads:
+    """``kanibako code --box mybox`` exited 2 while ``run_code`` read ``--box``.
+
+    ``code`` is neither an argparse alias nor a shortcut twin — there is no
+    ``box code`` — so NEITHER derivation above reaches it, and its refusal came
+    from the relevance table alone.  The property that does reach it is the
+    general one: a declared set is a claim about handlers, so every leaf whose
+    handler reads a blanket flag must be declared for that flag.  INVERT: drop
+    ``"code"`` from ``BOX_FLAG_COMMANDS`` and the ``--box`` row reddens, naming
+    ``code``.
+
+    ⚑ ONE direction only.  The converse — declared ⇒ some handler reads it — is
+    deliberately NOT asserted, because ``"reauth"`` is declared in BOTH sets
+    while no top-level ``reauth`` parser exists (``kanibako reauth`` parses as
+    ``start reauth``).  That is a real disagreement, but its fix is a CLI-SHAPE
+    decision — wire the shortcut, or drop the key — not a table correction, so
+    asserting it here would force that decision instead of surfacing it.
+    """
+
+    def test_the_oracle_is_not_vacuous(self, parser):
+        # A true and a false case per flag: without these the sweep below would
+        # pass just as happily if the source scan matched nothing at all.
+        leaves = _leaves(parser)
+        assert _handler_reads(leaves["box stop"].get_default("func"), "box")
+        assert not _handler_reads(leaves["box list"].get_default("func"), "box")
+        assert _handler_reads(leaves["box create"].get_default("func"), "agent")
+        assert not _handler_reads(leaves["rig list"].get_default("func"), "agent")
+
+    @pytest.mark.parametrize(
+        "option,declared",
+        [("box", BOX_FLAG_COMMANDS), ("agent", AGENT_FLAG_COMMANDS)],
+    )
+    def test_every_handler_that_reads_a_flag_is_declared(
+        self, parser, option, declared,
+    ):
+        canonical = _alias_keys(parser)
+        undeclared = set()
+        for key, leaf in _leaves(parser).items():
+            canon = canonical.get(key, key)
+            if canon in declared:
+                continue
+            # NOT an exemption: ``check_flag_relevance`` skips the ``--agent``
+            # check outright for these (setup owns a LOCAL --agent with
+            # persistent semantics), so there is no refusal to disagree with.
+            if option == "agent" and canon in _AGENT_FLAG_EXCLUDE:
+                continue
+            if _handler_reads(leaf.get_default("func"), option):
+                undeclared.add(canon)
+        assert sorted(undeclared) == []
+
+
 class TestBlanketFlagsAreAdvertisedOnlyWhereTheyApply:
     """A leaf that would REFUSE a blanket flag must not offer it in --help.
 
@@ -473,6 +580,39 @@ class TestResolveSubjectValue:
         from kanibako.errors import KanibakoError
         with pytest.raises(KanibakoError):
             resolve_subject_value("a", "b")
+
+
+class TestBothLegsOfCodeReconcileTheSameWay:
+    """Declaring ``code`` made a second leg reachable; it must reconcile alike.
+
+    ``run_code`` returns early for ``--remote``, and that leg picked its subject
+    with a plain ``or`` — the positional silently winning over a DIFFERENT
+    ``--box``.  Nothing could reach it while the relevance table refused
+    ``--box`` for ``code``, so declaring the command would have turned a hard
+    error into a silent drop on exactly one sub-path.  Both legs now route
+    through :func:`resolve_subject_value`.  INVERT: restore the ``or`` in
+    ``_run_code_remote`` and the conflict row reddens.
+    """
+
+    def _args(self, **kw):
+        base = {"project": None, "box": None, "remote": None}
+        return argparse.Namespace(**{**base, **kw})
+
+    def test_remote_leg_errors_on_a_conflicting_subject(self):
+        from kanibako.commands.code_cmd import run_code
+        with pytest.raises(SubjectConflictError):
+            run_code(self._args(project="mybox", box="otherbox", remote="h"))
+
+    def test_local_leg_errors_on_a_conflicting_subject(self):
+        from kanibako.commands.code_cmd import run_code
+        with pytest.raises(SubjectConflictError):
+            run_code(self._args(project="mybox", box="otherbox"))
+
+    def test_remote_leg_still_requires_a_subject(self, capsys):
+        # Unchanged: --remote has no cwd to fall back on.
+        from kanibako.commands.code_cmd import run_code
+        assert run_code(self._args(remote="h")) == 1
+        assert "requires a box" in capsys.readouterr().err
 
 
 # ---------------------------------------------------------------------------

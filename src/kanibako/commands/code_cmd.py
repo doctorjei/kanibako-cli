@@ -649,7 +649,15 @@ def _run_code_remote(args: argparse.Namespace, dest: str) -> int:
 
     # --remote REQUIRES an explicit box (no remote cwd resolution): accept the
     # positional or the blanket --box flag; error if neither is given.
-    box = getattr(args, "project", None) or getattr(args, "box", None)
+    # ⚑ Reconciled through the SAME function the local leg uses, so a positional
+    # that DISAGREES with --box is a conflict on both legs rather than a silent
+    # preference for the positional.  That case was unreachable until ``code``
+    # joined ``BOX_FLAG_COMMANDS`` — the relevance check refused --box here
+    # first — so this narrows nothing that ever worked.
+    from kanibako.commands.flags import resolve_subject_value
+    box = resolve_subject_value(
+        getattr(args, "project", None), getattr(args, "box", None),
+    )
     if not box:
         print(
             "Error: 'kanibako code --remote <host> <box>' requires a box "
