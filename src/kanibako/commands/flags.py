@@ -31,6 +31,16 @@ from kanibako.errors import SubjectConflictError
 # Relevance declarations (dotted command paths).
 # ---------------------------------------------------------------------------
 
+# ⚑ Every entry in BOTH sets must NAME A REACHABLE COMMAND — a canonical dotted
+# path :func:`command_key` can actually report.  The sets are not private tables:
+# :func:`check_flag_relevance` joins each one verbatim into the refusal a user
+# reads, so a key no parse can produce is a command the message tells them to try
+# and that then fails.  ``"reauth"`` was exactly that — there is no top-level
+# ``reauth`` parser, ``kanibako reauth`` parses as ``start reauth`` and dies with
+# "no box at reauth" — while ``"agent reauth"``, declared separately, carried the
+# real command all along.  Asserted over the whole tree in
+# ``TestEveryDeclaredKeyNamesAReachableCommand``.
+
 # ``--agent`` is the ephemeral agent-resolver override: the commands that run
 # the unified cascade with the explicit-agent seam.
 # ⚑ ``shell`` is NOT here — it bypasses agent resolution entirely (the no-agent
@@ -40,7 +50,6 @@ AGENT_FLAG_COMMANDS: frozenset[str] = frozenset({
     "box start",
     "create",
     "box create",
-    "reauth",
     "agent reauth",
 })
 
@@ -93,7 +102,6 @@ BOX_FLAG_COMMANDS: frozenset[str] = frozenset({
     "rm",
     "register",
     # auth
-    "reauth",
     "agent reauth",
     # workset member
     "workset disconnect",

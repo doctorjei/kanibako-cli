@@ -346,6 +346,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   now guards it is the general one: every command whose handler reads a blanket flag must be
   declared as taking it, asserted over the whole command tree.
 
+- **A refusal named a command you cannot type: `--box is not valid for 'rig list'` listed `reauth`
+  among the commands that do take it, and `kanibako reauth --box mybox` then failed.** Both blanket
+  flags refuse an unrelated command by enumerating the commands they DO apply to, and `reauth` was
+  declared in both of those lists — but there is no top-level `reauth` command. `kanibako reauth`
+  parses as `start reauth`, taking the word as the name of a box to launch, so `kanibako reauth
+  --help` printed `start`'s usage and `kanibako reauth` stopped with "no box at reauth". The entry
+  is gone from both lists. Nothing else moves: `kanibako agent reauth` is a separate entry in both,
+  and still takes `--box` and `--agent` exactly as before, with both still offered in its `--help`.
+  ⚑ **This removes no way to re-authenticate.** `kanibako agent reauth` is the spelling, and it
+  always was; what is removed is a list entry that advertised a second one that never existed. The
+  counterpart of the check in the entry above now guards this direction too: every command a
+  relevance list names must be one the parser can actually reach, asserted over the whole tree.
+
 - **Bindings sourced at `@system.backup`, `@system.cache` or `@system.runtime` were accepted and
   then silently dropped.** All three are settings keys kanibako declares, gives a default, and lets
   you set — `kanibako system set system.cache=…` has always worked. But the map that `@system.*`

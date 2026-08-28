@@ -42,7 +42,7 @@ Relevance is keyed by the command's dotted path (e.g. `"start"`, `"agent reauth"
 
 `AGENT_FLAG_COMMANDS` is the ephemeral agent-resolver override's set: the commands that run the
 unified cascade with the explicit-agent seam. That is the launch path (`start` plus its box alias),
-reauth (top-level plus the `agent` subcommand), and create (top-level plus its box alias) —
+`agent reauth`, and create (top-level plus its box alias) —
 `run_create` threads the explicit agent to the persona verdict and the home seed, and a persona ref
 whose persona-grata store entry exists drives the initial store import.
 
@@ -58,8 +58,8 @@ Two absences from that set are deliberate:
 
 `BOX_FLAG_COMMANDS` is the subject/anchor selector's set: every command that acts on a subject
 box/project rather than on cwd — the launch/shell paths, `code`, the box lifecycle and inspection
-commands, stop, reauth, and `workset disconnect`. It is NOT relevant to commands with no single-box
-subject (list/ps/create, the workset/agent/system/rig groups, setup).
+commands, stop, `agent reauth`, and `workset disconnect`. It is NOT relevant to commands with no
+single-box subject (list/ps/create, the workset/agent/system/rig groups, setup).
 
 Membership is a CLAIM ABOUT HANDLERS, and the claim is checked: every leaf whose handler reads
 `args.box` / `args.agent` must be declared for that flag, asserted over the whole parser tree
@@ -68,11 +68,27 @@ reconciled its `project` positional with `--box` through `resolve_subject_value`
 refused the flag, so `kanibako code --box mybox` exited 2. It is reachable by neither the alias rule
 nor the shortcut-twin rule, because there is no `box code`.
 
-The converse is deliberately NOT asserted. `"reauth"` is declared in BOTH sets, but there is no
-top-level `reauth` parser — `kanibako reauth` parses as `start reauth` — so the key is unreachable
-by `command_key` while still appearing in the `--box` refusal message's enumeration of valid
-commands. Whether to wire the shortcut or drop the key is a CLI-shape decision, not a table
-correction.
+That converse — declared ⇒ a handler reads it — is deliberately NOT asserted: a command may
+legitimately be declared for a flag its own handler does not read, and an over-declaration costs a
+user nothing but a flag accepted and ignored.
+
+A different, exact converse IS asserted: **every declared key must NAME A REACHABLE COMMAND** — a
+canonical dotted path `command_key` can actually report (`TestEveryDeclaredKeyNamesAReachableCommand`).
+The sets are not private tables; `check_flag_relevance` joins each one verbatim into the refusal a
+user reads, so a key no parse can produce is a command the message tells them to try and that then
+fails. `"reauth"` was that case: declared in BOTH sets with no top-level `reauth` parser behind it —
+`kanibako reauth` parses as `start reauth`, consuming the word as a box name, so `kanibako reauth
+--help` printed `start`'s usage and `kanibako reauth` died with "no box at reauth". It changed no
+behaviour, because `command_key` could never report it; it only ever reached the user, in the
+enumeration. The real command was carried throughout by the separate `"agent reauth"` entry, so
+dropping the bare key left `agent reauth --box` / `--agent` untouched. Whether to wire a top-level
+`reauth` shortcut remains a CLI-shape decision, and an open one — the key is gone, not the question.
+
+The oracle is the canonical LEAF keys. A GROUP parser is absent from it by construction and
+correctly so: `_walk` injects the blanket flags on leaves only, so a group with a
+`set_defaults(func=...)` fallback (`kanibako box` → list) carries no `--box` action, `args.box` never
+exists, and there is no refusal for a declaration to disagree with. If a group ever gains the flags,
+the oracle must widen with them.
 
 ## The shared `--null` suppression flag (B-6)
 
