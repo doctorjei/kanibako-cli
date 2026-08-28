@@ -409,6 +409,35 @@ def resolve_system_paths(set_values: Mapping[str, str],
     return resolved
 
 
+def host_config_map(std: StandardPaths) -> dict[str, str]:
+    """THE single builder for the ``config=`` argument of every host-side ``ResolveCtx``.
+
+    The Layer-1 CONFIG-key foundation projected BACK onto its own dotted key names, so
+    a stored ``@config.*`` source resolves at launch.  The Layer-1 twin of
+    :func:`system_path_floor`, and the ``config=`` twin of :func:`host_xdg_map` — a host
+    ctx is built from those two and nothing else.
+
+    ⚑⚑ DERIVED FROM :data:`CONFIG_PATH_DEFAULTS`, WHICH IS WHY THIS EXISTS.  The map was
+    written out inline in ``settings/agent_select.launch_resolve_ctx`` and again in
+    ``commands/workset_cmd._print_effective_shares``, five string literals each — and the
+    table has held SIX keys since ``config.journal`` was declared the day after those
+    literals were written.  So ``config set config.journal=…`` was accepted, and a binding
+    sourced at ``@config.journal`` resolved at SET time and reached ``_ABSENT`` at launch:
+    the key was dropped with no message and rc 0.  That is the ``system.channels.broadcast``
+    shape exactly, one layer down — two carriers of one shape, with nothing comparing them.
+    Deriving the key set means a Layer-1 key declared tomorrow reaches every host ctx
+    without an edit here.
+
+    ⚑ The ``StandardPaths`` attribute is ``key.split(".", 1)[1]`` for all six, and that is
+    a rule rather than a coincidence: Layer 1 names its fields after its keys, which is
+    why this needs no ``_FLOOR_ROOT_KEYS``-style pair list and ``system_path_floor`` does.
+    A Layer-1 key added WITHOUT the matching field raises ``AttributeError`` on the next
+    ctx build — loud, immediate, and at every launch.  Silent omission is the failure this
+    replaces; a crash is strictly the better one.
+    """
+    return {key: str(getattr(std, key.split(".", 1)[1])) for key in CONFIG_PATH_DEFAULTS}
+
+
 #: The Layer-2 ``system.*`` path keys that reach a FLOOR, as ``(key, StandardPaths
 #: attribute)``.  ⚑ The channel leaves are DERIVED from :data:`SYSTEM_PATH_DEFAULTS`
 #: below rather than listed here: that table is the declared family (pinned against the

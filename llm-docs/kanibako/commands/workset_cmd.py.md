@@ -289,6 +289,16 @@ dotted keys, which `assemble_levels` explodes) so a share value's `@`-ref such a
 map must be the canonical FULL host map anchored on the resolved `std.data_home` — a data-home-only
 partial map RAISES on a stored `$XDG_CACHE_HOME/…` value.
 
+⚑⚑ **THE `ctx.config` FOUNDATION IS `settings/paths.host_config_map`, AND IT IS SHARED WITH THE
+LAUNCH TOO** — the identical repair, one layer down, made 2026-08-28 for the identical reason. The
+Layer-1 map was written out by hand here and again in `settings/agent_select.launch_resolve_ctx`,
+five string literals in each, while `CONFIG_PATH_DEFAULTS` has declared six since `config.journal`
+landed the day after those literals were written. `config.journal` is a fully declared, settable key,
+so a workset binding sourced at `@config.journal` was accepted by `config set` and then reached
+neither this display nor the launch: `_lookup_raw` answered `_ABSENT` and the row was dropped, rc 0.
+`host_config_map` derives the tier from the declared table, so a Layer-1 key declared tomorrow
+reaches both call sites without an edit.
+
 ⚑⚑ **THE FLOOR IS `settings/paths.system_path_floor`, AND IT IS SHARED WITH THE LAUNCH** — the
 `resolved_sys` map in `commands/start._launch_snapshot_inputs` is the same call. It was written out
 by hand in both places, under paired comments telling each other they had to agree, and they did

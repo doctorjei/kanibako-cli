@@ -86,7 +86,7 @@ def launch_resolve_ctx(std, proj, agent_name: "str | None"):
     ⚑ *agent_name* is ``None`` for the SELECTION pass — no agent is known yet, so a
     ``$AGENT`` resolves to a recorded refusal rather than to a silent ``""``.
     """
-    from kanibako.settings.paths import host_xdg_map
+    from kanibako.settings.paths import host_config_map, host_xdg_map
     from kanibako.settings.settings_resolve import ResolveCtx
 
     workset_name = (
@@ -98,14 +98,14 @@ def launch_resolve_ctx(std, proj, agent_name: "str | None"):
         agent_name=agent_name,
         workset_name=workset_name,
         host_home=str(Path.home()),
+        # ⚑⚑ BOTH MAPS ARE DERIVED BUILDERS, NEITHER IS A LITERAL HERE. The
+        # ``config=`` half used to be five string literals, and ``CONFIG_PATH_DEFAULTS``
+        # has declared SIX since ``config.journal`` landed the day after they were
+        # written: a binding sourced at ``@config.journal`` was accepted by ``config
+        # set`` and DROPPED at launch, silently, rc 0. ``paths.host_config_map`` derives
+        # the tier from the declared table, so the two cannot part again.
         xdg=host_xdg_map(std.data_home),
-        config={
-            "config.data": str(std.data),
-            "config.agents": str(std.agents),
-            "config.registry": str(std.registry),
-            "config.primary_workset": str(std.primary_workset),
-            "config.settings": str(std.settings),
-        },
+        config=host_config_map(std),
     )
 
 

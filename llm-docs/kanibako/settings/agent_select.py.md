@@ -150,6 +150,22 @@ folded into the snapshot floor so `@system.*` resolves from it.
 The xdg map is the canonical FULL host map — a data-home-only partial map raised on stored
 `$XDG_CACHE_HOME/...` values — anchored on the resolved `std.data_home`.
 
+⚑⚑ **BOTH HALVES OF THE CTX ARE DERIVED BUILDERS NOW, AND THE `config=` HALF WAS THE LAST HAND LIST.**
+`config=` is `settings/paths.host_config_map(std)`, the Layer-1 twin of `system_path_floor` and the
+`config=` twin of `host_xdg_map`. Until 2026-08-28 it was five string literals written out here and
+again in `commands/workset_cmd._print_effective_shares`, while `CONFIG_PATH_DEFAULTS` has declared
+SIX since `config.journal` was added the day after those literals were first written (`bf97bd20`
+2026-06-29 → `ee11299a` 2026-06-30; the wiring commit `256f7eba` widened `paths.py` and
+`config_keys.py` and never reached this map). The key is fully declared — manifest `layer: 1`, a
+real default, `set: file`, and in `config_keys` — so `config set config.journal=…` was ACCEPTED and
+`@config.journal` resolved at set time, then reached `_ABSENT` at launch and the referring key was
+dropped with no message and rc 0. That is the `system.channels.broadcast` shape one layer down.
+
+⚑ Nothing had ever compared the two carriers; the omission carried **no** `⚑` justification anywhere,
+which in this file set is the tell that it was an oversight rather than a decision — `system_path_floor`
+states ITS three-key omission by name. `tests/test_settings/test_path_tier_parity.py` is now the
+comparison, and it is EFFECT-based on both sides.
+
 *agent_name* is `None` for the SELECTION pass: no agent is known yet, so a `$AGENT` anywhere
 resolves to a refusal rather than to a silent `""`. That refusal is recorded (never raised) because
 selection expands LENIENTLY; see `kanibako.settings.settings_launch.resolve_selected_agent`.

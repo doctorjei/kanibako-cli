@@ -1092,7 +1092,8 @@ def _print_effective_shares(ws, std, ws_config: Path) -> int:
     """Resolve, ARBITRATE and print the workset's bindings as launch-time mounts."""
     from kanibako.errors import CategoryCollisionError
     from kanibako.settings.kb_store import BindEntry
-    from kanibako.settings.paths import host_xdg_map, system_path_floor
+    from kanibako.settings.paths import (host_config_map, host_xdg_map,
+                                         system_path_floor)
     from kanibako.settings.settings_assemble import assemble_levels
     from kanibako.settings.settings_categories import is_read_only
     from kanibako.settings.settings_expand import expand
@@ -1111,18 +1112,18 @@ def _print_effective_shares(ws, std, ws_config: Path) -> int:
     # ⚑ Resolver SPLIT (spec §1A / JC-2): Layer-1 ``config.*`` goes in ``ctx.config``,
     # Layer-2 ``system.*`` in the snapshot floor below. The xdg map must be the FULL host
     # map — a data-home-only partial raises on a stored ``$XDG_CACHE_HOME/...``.
+    # ⚑⚑ ``config=`` IS THE SAME DERIVED BUILDER THE LAUNCH USES, for the reason the
+    # ``system_path_floor`` note below gives about the OTHER half of this ctx: written out
+    # by hand here and again in ``agent_select.launch_resolve_ctx``, it carried five of the
+    # six declared Layer-1 keys in both places, so a workset binding sourced at
+    # ``@config.journal`` was accepted by ``config set`` and reached neither this display
+    # nor the launch.
     ctx = ResolveCtx(
         agent_name=None,
         workset_name=None if ws.is_default else ws.name,
         host_home=str(Path.home()),
         xdg=host_xdg_map(std.data_home),
-        config={
-            "config.data": str(std.data),
-            "config.agents": str(std.agents),
-            "config.registry": str(std.registry),
-            "config.primary_workset": str(std.primary_workset),
-            "config.settings": str(std.settings),
-        },
+        config=host_config_map(std),
     )
 
     # Fold the resolved Layer-2 system.* tier into the floor so a value's @-ref (e.g.

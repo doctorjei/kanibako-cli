@@ -379,18 +379,36 @@ def _proj(tmp_path, *, name: "str | None" = "myproj"):
 
 
 def _std(tmp_path):
+    """The ``StandardPaths`` DOUBLE ``launch_resolve_ctx`` reads.
+
+    ⚑ IT CARRIES THE WHOLE LAYER-1 TIER, not the subset some caller happened to read.
+    ``paths.host_config_map`` derives ``ctx.config`` from ``CONFIG_PATH_DEFAULTS``, so a
+    double one field short raises ``AttributeError`` at every ctx build. It used to hold
+    exactly the five fields the ctx builder spelled by hand, which made it a FOURTH
+    carrier of the same key set — and the one that would have hidden the widening.
+
+    ⚑ The completeness check below is the point: a Layer-1 key declared tomorrow fails
+    HERE, naming itself, instead of reddening every seam test with an opaque attribute
+    error on a name the reader has to go look up.
+    """
     from types import SimpleNamespace
+
+    from kanibako.settings.paths_defaults import CONFIG_PATH_DEFAULTS
 
     data = tmp_path / "data"
     (data / "global").mkdir(parents=True, exist_ok=True)
-    return SimpleNamespace(
+    std = SimpleNamespace(
         settings=data / "global" / "settings.yaml",
         data=data,
         data_home=data,
         agents=data / "agents",
         registry=data / "global" / "registry.yaml",
         primary_workset=tmp_path / "ws",
+        journal=data / "global" / "journal.yaml",
     )
+    missing = [k for k in CONFIG_PATH_DEFAULTS if not hasattr(std, k.split(".", 1)[1])]
+    assert not missing, f"the std double is short of the Layer-1 tier: {missing}"
+    return std
 
 
 class TestSelectAgentSeam:

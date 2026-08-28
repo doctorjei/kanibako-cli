@@ -3553,6 +3553,11 @@ class TestApplyInitSeeds:
             registry=tmp_path / "registry.yaml",
             primary_workset=tmp_path / "primary_workset",
             settings=tmp_path / "settings.yaml",
+            # ⚑ EVERY ``CONFIG_PATH_DEFAULTS`` LEAF MUST BE HERE, or ``host_config_map``
+            # raises: it derives the ctx from that table rather than a hand list, so a
+            # double short of one attribute fails LOUDLY instead of resolving one key
+            # short.  ``test_the_std_double_carries_every_config_leaf`` is the guard.
+            journal=tmp_path / "journal.yaml",
             # B2: the channel partition roots box_channel_addresses reads (the
             # meta.box.{inbox,share_global} identity anchors).
             channels_mailboxes=tmp_path / "channels" / "mailboxes",
@@ -3570,6 +3575,24 @@ class TestApplyInitSeeds:
             # workset.logs anchor the helper-log bind routes through).
             primary_logs=tmp_path / "primary_workset" / "logs",
         )
+
+    def test_the_std_double_carries_every_config_leaf(self, tmp_path):
+        """The double cannot fall behind ``CONFIG_PATH_DEFAULTS`` silently.
+
+        DERIVED from the table, never a hand list: ``paths.host_config_map`` builds the
+        launch ctx by reading every leaf off ``std``, so a double missing one raises
+        ``AttributeError`` deep inside an unrelated test.  That is exactly how this class
+        went red when ``config.journal`` was wired through — the table grew and four
+        separate doubles did not.
+        """
+        from kanibako.settings.paths_defaults import CONFIG_PATH_DEFAULTS
+        std = self._std(tmp_path)
+        missing = [
+            key for key in CONFIG_PATH_DEFAULTS
+            if not hasattr(std, key.split(".", 1)[1])
+        ]
+        assert not missing, f"the std double is short of {missing}"
+        assert CONFIG_PATH_DEFAULTS, "vacuity guard: an empty table would pass trivially"
 
     def _proj(self, shell_path, group=None):
         from types import SimpleNamespace
