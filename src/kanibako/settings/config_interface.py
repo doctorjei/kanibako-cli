@@ -1324,6 +1324,7 @@ def show_config(
     env_resolved: dict[str, str] | None = None,
     system_settings_path: Path | None = None,
     category_snapshot: Any = None,
+    category_ctx: Any = None,
     category_error: str | None = None,
 ) -> int:
     """Display config values — overrides only, or the full resolved view.  Returns an exit code."""
@@ -1377,8 +1378,13 @@ def show_config(
             _print_pref_block(category_snapshot, out)
 
         # Path-delivery CATEGORIES + their materialised derivations (§0).
+        # ⚑ *category_ctx* travels WITH the snapshot and is required by it: the block
+        # resolves each arm's written destination to the guest path the arbitrated map
+        # is keyed by, and only the launch's own ctx spells those the same way.
         if category_error is not None or category_snapshot is not None:
-            _print_category_block(category_snapshot, category_error, out)
+            _print_category_block(
+                category_snapshot, category_error, out, category_ctx,
+            )
 
         # ⚑ Env vars come from the resolved BOX VIEW and ONLY that — never from the retired
         # ``.env`` files, whose rows would assert an effect that does not happen.

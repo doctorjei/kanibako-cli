@@ -220,12 +220,19 @@ def _print_pref_block(snapshot: Any, out: Any) -> None:
         print(f"    -> {target} = {result}", file=out)
 
 
-def _print_category_block(snapshot: Any, error: str | None, out: Any) -> None:
+def _print_category_block(
+    snapshot: Any, error: str | None, out: Any, box_ctx: Any,
+) -> None:
     """Render the ``--effective`` PATH-DELIVERY block (spec §0; box scope, D6).
 
     The pid-0 FOUNDATION comes first, then every CONCRETE binding with the
     destination it occupies — all read off the SAME snapshot the launch resolved.
     Nothing is re-derived here.
+
+    *box_ctx* is the launch's own :class:`~kanibako.settings.settings_resolve.ResolveCtx`
+    (``agent_select.launch_resolve_ctx``, the ONE builder), needed because an arm KEY
+    still spells the destination the user WROTE while the arbitrated map is keyed by
+    the resolved guest path — see the pairing below.
 
     The ABSTRACT half then lists every ``common`` / ``caches`` / ``seeded``
     declaration with what the box RECEIVES for it indented beneath — keyspec
@@ -237,10 +244,22 @@ def _print_category_block(snapshot: Any, error: str | None, out: Any) -> None:
     from kanibako.settings.kb_store import BINDING_DERIVATIONS_NODE, BindEntry
     from kanibako.settings.keystore import KeyStore
     from kanibako.settings.settings_categories import (
+        MOUNT,
         effective_bindings_and_template_sources,
     )
-    from kanibako.settings.settings_launch import BOX_HOME_KEY
-    from kanibako.settings.store_collapse import HOME_DEST, derivation_result
+    from kanibako.settings.settings_launch import (
+        BOX_HOME_KEY,
+        resolve_box_dest,
+        snapshot_leaf,
+    )
+    from kanibako.settings.settings_resolve import normalize_bind_dest
+    from kanibako.settings.store_collapse import (
+        DERIVED_MOUNT,
+        HOME_DEST,
+        Declaration,
+        derivation_result,
+        pair_declarations,
+    )
 
     print("", file=out)
     if error is not None:
@@ -269,7 +288,8 @@ def _print_category_block(snapshot: Any, error: str | None, out: Any) -> None:
     if isinstance(home_src, str) and home_src:
         print(f"  (foundation) {BOX_HOME_KEY} = {home_src} -> {HOME_DEST}", file=out)
 
-    # CONCRETE next — the source of truth a mount is emitted from.
+    # CONCRETE next — the source of truth a mount is emitted from, PAIRED with what
+    # the collapse decided for its destination.
     #
     # ⚑ The arm is DEST-KEYED (R-5/R-6): the map KEY is the box destination and
     # the leaf is a 2-element ``BindEntry(src, opts)`` carrying no destination at
@@ -278,7 +298,9 @@ def _print_category_block(snapshot: Any, error: str | None, out: Any) -> None:
     # ``BindEntry`` are both legally 2 elements with OPPOSITE meanings
     # (``kb_store.BindEntry``, the arity trap). A leaf that is neither is a
     # malformed arm the launch already refused, which is why the display is
-    # showing *error* instead of reaching here.
+    # showing *error* instead of reaching here. A ``None`` leaf is a SUPPRESSED
+    # entry and is skipped by the same test — it declares no mount to pair.
+    rows: list[tuple[str, str, BindEntry]] = []
     for scope in ("system", "agent", "workset", "box"):
         scope_node = _leaf(scope)
         if not isinstance(scope_node, KeyStore):
@@ -291,12 +313,76 @@ def _print_category_block(snapshot: Any, error: str | None, out: Any) -> None:
                 for dest in sorted(dict.keys(mode_node)):
                     entry = dict.__getitem__(mode_node, dest)
                     if isinstance(entry, BindEntry):
-                        opts = f"  [{entry.opts}]" if entry.opts else ""
-                        print(
-                            f"  {prefix}.bindings.{mode}.{dest} = "
-                            f"{entry.src} -> {dest}{opts}",
-                            file=out,
+                        rows.append(
+                            (f"{prefix}.bindings.{mode}.{dest}", dest, entry),
                         )
+
+    # 🛑🛑 A CONCRETE ROW IS NOT SELF-EVIDENTLY A MOUNT, and printing it as one was
+    # the measured defect this pairing closes. Bind-versus-mask at one destination is
+    # SUPERSESSION, not a collision (spec ``:146``): whichever arrives against the
+    # already-collapsed state deletes the other, and a mask arriving second deletes
+    # the bind — at its point, or from ABOVE it, where the sweep leaves the bind's own
+    # destination absent from the map entirely. The arm still holds the declaration
+    # either way, so a walk that renders the arm alone printed a delivery arrow for a
+    # destination the box sees NOTHING at, at rc 0, with the mask that took it printed
+    # nowhere. ⚑ It runs BOTH WAYS — a box binding legitimately supersedes a
+    # lower-scope mask — so the answer may only come from the ARBITRATED map, never
+    # from the presence of a mask among the declarations.
+    #
+    # ⚑ THE SAME PAIRING THE ABSTRACT HALF USES, and the same one
+    # ``commands.workset_cmd._print_effective_shares`` builds for a workset's shares:
+    # ONE decision function, fed a ``Declaration`` per row. Nothing is re-derived —
+    # ``meta.assembly.bindings`` is READ, and ``covering_bind`` inside the pairing owns
+    # the containment and its separator guard.
+    bindings = snapshot_leaf(snapshot, "meta.assembly.bindings")
+    collapsed = dict(bindings) if isinstance(bindings, dict) else {}
+    # ⚑⚑ THE ARM KEY IS THE DESTINATION AS WRITTEN; THE ARBITRATED MAP IS KEYED BY THE
+    # RESOLVED ONE. The eager build defers ``~`` and ``$VAR`` in a destination, so an
+    # arm holds ``$XDG_DATA_HOME/z`` while the map holds ``/data/z`` — two spellings of
+    # one destination. Both sides are put in the map's spelling before pairing, or a
+    # row is looked up under a name nothing was ever filed under and every answer about
+    # it is a miss. ⚑ Resolution BEFORE binding OR comparison is the rule (Jei,
+    # 2026-08-27), and this is the comparison half of it.
+    #
+    # ⚑ NEITHER STEP IS A RE-DERIVATION. ``resolve_box_dest`` is the ONE box_dest
+    # expansion — the same call ``snapshot_category_entries`` fed the collapse from —
+    # and ``normalize_bind_dest`` is the ONE canonicalizer the map is keyed by,
+    # idempotent by contract (R-11 applies it at every producer AND again on read).
+    #
+    # ⚑ IT CANNOT RAISE HERE. Every arm key reached the collapse through the same
+    # expansion under the same ctx, so a dest this would refuse (an unknown ``$VAR``,
+    # a surviving ``@``-ref) stopped the LAUNCH before any display ran — measured.
+    declarations = [
+        Declaration(
+            key=key,
+            dest=normalize_bind_dest(resolve_box_dest(dest, box_ctx)),
+            src=entry.src,
+            delivery=MOUNT,
+        )
+        for key, dest, entry in rows
+    ]
+    derivations = dict(zip(
+        [declaration.key for declaration in declarations],
+        pair_declarations(declarations, collapsed),
+        strict=True,
+    ))
+    for key, dest, entry in rows:
+        opts = f"  [{entry.opts}]" if entry.opts else ""
+        derivation = derivations[key]
+        # ⚑ THE ARROW IS THE DELIVERY, and only a delivered binding earns one — the
+        # rule ``workset share list --effective`` already renders by. A row that
+        # receives nothing keeps its KEY (that key is what a user edits) and is
+        # printed in DECLARATION form with the reason beneath it, so a reader skimming
+        # the block for mounts cannot take a loss for one.
+        # ⚑ THE DESTINATION PRINTS AS THE USER WROTE IT — the key they edit is the
+        # arm's, and an answer spelled in a form absent from their files is one they
+        # cannot act on. The RESOLVED path is what the pairing decided on, and it is
+        # already in the reason line beneath a loss.
+        if derivation.outcome == DERIVED_MOUNT:
+            print(f"  {key} = {entry.src} -> {dest}{opts}", file=out)
+            continue
+        print(f"  {key} = {dest}{opts}  (declared: {entry.src})", file=out)
+        print(f"    {derivation_result(derivation)}", file=out)
 
     # ABSTRACT declarations, each with THE DELIVERY THE BOX ACTUALLY RECEIVES.
     #
