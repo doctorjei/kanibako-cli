@@ -451,6 +451,39 @@ in `kanibako_config.yaml` alone (spec §1). Both halves are pinned.
 automatically.
 
 ```python
+def host_config_map(std: StandardPaths) -> dict[str, str]
+```
+The resolved Layer-1 `config.*` foundation projected BACK onto its own dotted key names — the Layer-1
+twin of `system_path_floor`, and the `config=` twin of `host_xdg_map`. A host-side `ResolveCtx` is
+built from those two builders and nothing else; consumers put this in `ctx.config` so a stored
+`@config.*` source resolves under the resolver SPLIT (spec §1A / JC-2).
+
+⚑⚑ **IT IS ONE FUNCTION BECAUSE IT USED TO BE TWO HAND-WRITTEN MAPS, AND BOTH WERE THE SAME KEY
+SHORT** — the `system_path_floor` story below, one layer down, found 2026-08-28.
+`settings/agent_select.launch_resolve_ctx` and `commands/workset_cmd._print_effective_shares` each
+wrote five string literals; `CONFIG_PATH_DEFAULTS` has declared six since `config.journal` was added
+on 2026-06-30, the day after the original map was written on 2026-06-29. `config.journal` is
+declared `layer: 1` with a real default in the keyspace manifest, is `set: file`, and is in
+`config_keys.KNOWN_KEYS` — so `config set config.journal=…` was accepted and a binding sourced at
+`@config.journal` resolved at SET time (`config_interface._path_tier_split()[0]` iterates the whole
+resolve, so it always carried six) and hit `_ABSENT` at launch. The referring key was dropped with no
+message and rc 0: accepted-then-silently-discarded, which is strictly worse than either side being
+consistently wrong.
+
+⚑ **THE KEY SET IS DERIVED, AND THE ATTRIBUTE NAME IS A RULE, NOT A COINCIDENCE.** Layer 1 names its
+`StandardPaths` fields after its keys (`config.data` → `data`, `config.primary_workset` →
+`primary_workset`, …), all six, which is exactly why this needs no `_FLOOR_ROOT_KEYS`-style pair list
+and `system_path_floor` does — the three Layer-2 roots are hand-named there *because* their attribute
+names do not follow from their key names. A Layer-1 key declared without the matching field raises
+`AttributeError` on the next ctx build, at every launch. Silent omission is the failure this replaces;
+a crash is the strictly better one.
+
+⚑ `tests/test_settings/test_path_tier_parity.py` is the comparison that did not exist — it pins this
+map against the set-time foundation across all three box modes plus the `agent_name=None` selection
+pass, effect-based on both sides, with an anti-vacuity arm pinning the derived side to
+`CONFIG_PATH_DEFAULTS` so a filter bug emptying both cannot pass.
+
+```python
 def system_path_floor(std: StandardPaths) -> dict[str, str]
 ```
 The resolved Layer-2 `system.*` tier projected BACK onto its own dotted key names — the inverse of

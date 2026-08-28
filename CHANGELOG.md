@@ -312,6 +312,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A value sourced at `@config.journal` was accepted and then silently dropped at launch.**
+  Kanibako's Layer-1 config foundation declares six keys, but the map that `@config.*` references
+  actually resolve against was written out by hand — five string literals, in the launch path and
+  again in `workset share list --effective`. `config.journal` was the one left out: declared, with
+  a default, and settable. So a binding, seed or environment value naming it resolved when you set
+  it, reached nothing when the box started, and was discarded with no message at exit 0 — and the
+  same row simply did not appear in `workset share list --effective`. A reference that set time
+  accepts and launch discards is worse than one that is consistently refused, because it never
+  confesses. Both call sites now derive the map from the declared table, so a Layer-1 key added
+  later reaches them without an edit. **Nothing else changes:** the five keys that already resolved
+  resolve to the same values, and no key became settable that was not settable before.
+
 - **`system get agent.default.<key>` answered `(not set)` for a value `system get <key>` had just
   returned.** The any-agent tier has two spellings of one key — the bare `model` the CLI serves, and
   the full `agent.default.model` the settings registry declares — and only the bare one read. The
