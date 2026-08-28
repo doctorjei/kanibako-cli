@@ -1170,3 +1170,84 @@ class TestWorksetTierVaultDefaultIsNotPinned:
         )
         stored = load_doc(new.metadata_path / "box.yaml").get("box", {})
         assert stored.get("enable_vault") is False
+
+    # -- duplicate: a FOURTH write site, outside the lifecycle engine --
+    #
+    # ⚑ ``box duplicate --to standalone`` reaches ``establish_standalone`` through
+    # ``_duplicate.py``, not ``_lifecycle.py``, so the engine's ``box_authored_vault``
+    # does not cover it.  The rule is the same one: a duplicate is a NEW workset scope,
+    # so the source workset's downward default does not travel.
+
+    @staticmethod
+    def _duplicate_to_standalone(src, dst):
+        """Run the real ``box duplicate --to standalone`` CLI entry point."""
+        import argparse
+
+        from kanibako.commands.box._duplicate import run_duplicate
+
+        return run_duplicate(argparse.Namespace(
+            source_path=str(src), new_path=str(dst), to_mode="standalone",
+            bare=False, force=True, box=None, workset=None, project_name=None,
+        ))
+
+    def test_duplicate_to_standalone_leaves_the_worksets_default_behind(self, env):
+        """A duplicate does not acquire the source workset's default as its own override."""
+        config, std, tmp_home = env
+        pdir = _make_default(env, name="dupleaver")
+        self._publish_primary_default(std, False)
+
+        assert self._duplicate_to_standalone(pdir, tmp_home / "dupleaver_copy") == 0
+
+        dst = tmp_home / "dupleaver_copy"
+        stored = load_doc(dst / "box_data" / "box.yaml").get("box", {})
+        assert "enable_vault" not in stored
+        # The duplicate's own root workset.yaml carries only ``workset.kuid``, so the
+        # RESOLVED answer is the default — the value stayed with the workset it belonged to.
+        dup = resolve_standalone_project(std, config, project_dir=str(dst), initialize=False)
+        assert dup.enable_vault is True
+
+    def test_duplicate_from_a_standalone_source_leaves_its_root_default_behind(self, env):
+        """The source's ROOT file is its WORKSET tier; its ``box.*`` default does not travel."""
+        config, std, tmp_home = env
+        from kanibako.settings.config_io import write_nested_key
+
+        src = _make_standalone(env, name="dupsa")
+        write_nested_key(src / "workset.yaml", ("box",), "enable_vault", False)
+
+        assert self._duplicate_to_standalone(src, tmp_home / "dupsa_copy") == 0
+
+        dst = tmp_home / "dupsa_copy"
+        stored = load_doc(dst / "box_data" / "box.yaml").get("box", {})
+        assert "enable_vault" not in stored
+
+    def test_duplicate_carries_a_box_authored_value(self, env):
+        """Guard against over-fixing: the source box's OWN override still travels."""
+        config, std, tmp_home = env
+        pdir = _make_default(env, name="dupowner")
+        state = resolve_lifecycle_target(str(pdir), std, config)
+        self._author_at_box(std, state.name, False)
+
+        assert self._duplicate_to_standalone(pdir, tmp_home / "dupowner_copy") == 0
+
+        dst = tmp_home / "dupowner_copy"
+        stored = load_doc(dst / "box_data" / "box.yaml").get("box", {})
+        assert stored.get("enable_vault") is False
+        dup = resolve_standalone_project(std, config, project_dir=str(dst), initialize=False)
+        assert dup.enable_vault is False
+
+    def test_duplicate_creates_no_vault_either_way(self, env):
+        """Resolved governs CREATION, and on this path nothing is created — before or after."""
+        config, std, tmp_home = env
+        pdir = _make_default(env, name="dupvault")
+        self._publish_primary_default(std, False)
+        src_proj = resolve_project(std, config, project_dir=str(pdir), initialize=False)
+
+        assert self._duplicate_to_standalone(pdir, tmp_home / "dupvault_copy") == 0
+
+        dst = tmp_home / "dupvault_copy"
+        dup = resolve_standalone_project(std, config, project_dir=str(dst), initialize=False)
+        # A duplicate never carries a vault (``_duplicate.py``, confirmed intended) …
+        assert not dup.vault_ro_path.exists()
+        assert not dup.vault_rw_path.exists()
+        # … and never removes the source's.
+        assert src_proj.vault_rw_path.is_dir()

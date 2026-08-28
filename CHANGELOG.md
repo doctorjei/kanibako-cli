@@ -510,6 +510,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   authored. A box that leaves a workset loses the workset's value, because the value was the
   workset's; a box that set `box.enable_vault` for itself keeps it across every hop, unchanged.
 
+- **`box duplicate` was a fourth route to the same defect, and gave the copy an override it never
+  authored.** The `box.enable_vault` entry in this release covers `box remap`, `box move` and `box
+  convert`; `box duplicate --to standalone` reaches the destination's box tier through a different
+  function and went on persisting the **resolved** value. Duplicating a box out of a workset that
+  publishes `box.enable_vault: false` wrote `box.enable_vault: false` into the copy's own
+  `box_data/box.yaml` — and a duplicate is a fresh workset scope, minted with a new identity, so no
+  workset published that value and no workset edit could reach it afterwards; `kanibako vault` on the
+  copy answered "Vault is disabled for this project." forever. The duplicate now records only what
+  the **source box itself** authored, which is the same rule and the same outcome as the three
+  sibling routes: an inherited value stays with the workset that published it, and a
+  `box.enable_vault` the source box set for itself still travels. ⚑ **This creates and removes no
+  vault.** A duplicate has never carried the source's vault and still does not, and the source's is
+  untouched; what changes is the value the copy stores, and therefore the one it resolves.
+
 - **`kanibako system get` refuses a key this scope cannot read, instead of answering `(not set)` and
   exiting 0.** It checked only whether the argument was key-*shaped* — the test that tells a key from
   a project name — never whether it was a declared key readable at this noun. A name that passed fell
