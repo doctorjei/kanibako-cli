@@ -54,6 +54,11 @@ from kanibako.settings.config_interface import (
 from kanibako.settings.config_io import dump_doc, load_doc
 from kanibako.settings.keyspace_manifest import manifest_doc
 from kanibako.settings.paths_defaults import SYSTEM_PATH_DEFAULTS
+from kanibako.settings.settings_keyspace import (
+    DECLARED_AGENT_LEAVES,
+    SCALAR_AGENT_LEAVES,
+    TABLE_VALUED_AGENT_LEAVES,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -421,6 +426,67 @@ class TestBareAgentKeyDest:
         assert msg.startswith("Cleared"), msg
         changed = bench.changed(before)
         assert set(changed) == {"ssp"}, changed
+
+    # -- the SAME tier, spelled in full ------------------------------------
+
+    @pytest.mark.parametrize("leaf", sorted(DECLARED_AGENT_LEAVES))
+    def test_the_full_any_agent_spelling_reads_the_bare_spelling_s_slot(
+        self, bench, leaf,
+    ):
+        """``agent.default.<leaf>`` is the bare leaf's own key, so it reads its own slot.
+
+        ⚑ MEASURED BEFORE THE FIX, 2026-08-28: with ``system set model=opus`` stored,
+        ``system get agent.default.model`` answered "(not set)" at rc 0 — a fabricated
+        answer for a DECLARED key, which spec §0 forbids.  ``default`` is the RESERVED
+        any-agent tier, not a persona node, so the read was routed at the persona branch
+        into a reserved-node refusal that carries no read.
+
+        MUTATION: drop the ``agent_default_tier_leaf`` claim from ``config_dest._key_slot``
+        (or the guard on ``get_config_value``'s persona branch) and every row here dies
+        with ``None``.
+
+        ⚑ DERIVED FROM THE DECLARATION SoT (P13), never a hand-list: a leaf entering
+        §2d is covered here with no edit.  ``DECLARED_``, not ``SCALAR_`` —
+        ``transform_settings`` takes no CLI write but is declared, hand-authored and read.
+        """
+        # ⚑ The one TABLE-valued leaf is seeded with a table; the reader stringifies a
+        # structured value for display, exactly as it does for a category map.
+        table = leaf in TABLE_VALUED_AGENT_LEAVES
+        stored = {"tweakcc": {"theme": "dark"}} if table else f"V-{leaf}"
+        bench.seed(bench.ssp, ("agent", "default"), leaf, stored)
+        got = bench.get(ConfigLevel.system, f"agent.default.{leaf}")
+        assert got is not None, f"agent.default.{leaf} read back unset over a stored value"
+        assert got == str(stored) if table else got == stored, got
+
+    @pytest.mark.parametrize("leaf", sorted(SCALAR_AGENT_LEAVES))
+    def test_both_spellings_of_the_any_agent_tier_answer_alike(self, bench, leaf):
+        """The two spellings are ONE key, so a value SET by one is read by the other."""
+        # ⚑ ``access`` is the one enum-valued leaf and is validated at write time.
+        value = "editing" if leaf == "access" else f"V-{leaf}"
+        assert not bench.set(ConfigLevel.system, leaf, value).startswith("Error:")
+        assert bench.get(ConfigLevel.system, f"agent.default.{leaf}") == bench.get(
+            ConfigLevel.system, leaf,
+        ) == value
+
+    @pytest.mark.parametrize("leaf", sorted(DECLARED_AGENT_LEAVES))
+    def test_the_full_spelling_stays_unwritable(self, bench, leaf):
+        """⚑ THE READ MOVED; THE WRITE DID NOT.
+
+        Claiming a slot makes a write route reachable IN PRINCIPLE, so this pins that the
+        preamble refusals still fire ahead of it: ``set``/``reset`` refuse, no file moves,
+        and no ``agents/default/`` node is manufactured for a tier that has no node file.
+        """
+        key = f"agent.default.{leaf}"
+        before = bench.snapshot()
+        set_msg = bench.set(ConfigLevel.system, key, "x")
+        assert set_msg.startswith("Error:"), set_msg
+        assert bench.changed(before) == {}, bench.changed(before)
+
+        before = bench.snapshot()
+        reset_msg = bench.reset(ConfigLevel.system, key)
+        assert reset_msg.startswith("Error:"), reset_msg
+        assert bench.changed(before) == {}, bench.changed(before)
+        assert not (bench.agents / "default").exists()
 
 
 # ---------------------------------------------------------------------------

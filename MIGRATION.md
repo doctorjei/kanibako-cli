@@ -1485,8 +1485,11 @@ This closes a gap: `box.bindings.ro`, `box.bindings.rw` and `box.masks` previous
   agent.<agent>.caches` — and the other six categories under `agent.<agent>` — is refused, because
   the table lives in `agents/<agent>/agent.yaml` and the file-scope nouns do not open that file.
   The refusal points at `kanibako agent get <agent> caches`, which does read it, so the surface
-  exists; it is just at a different noun. (`agent.default.<category>`, the any-agent tier, is
-  stored in the system settings file and reads at `system get` like any other system key.)
+  exists; it is just at a different noun. (The any-agent tier is not affected: everything under
+  `agent.default.` — the seven `<category>` tables *and* the behaviour leaves, `agent.default.model`
+  and the rest — is stored in the system settings file and reads at `system get` like any other
+  system key. There is no `agents/default/agent.yaml`, so `kanibako agent get default …` is not the
+  spelling for it.)
 - **`masks` has no per-destination read anywhere.** `kanibako box get <box> "box.masks.~/.m"` is
   refused by name — a mask's value is a marker rather than a source, and nothing claims the
   per-entry slot. Read the whole `masks` map instead.

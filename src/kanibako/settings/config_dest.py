@@ -249,6 +249,7 @@ def _key_slot(canonical: str) -> "tuple[tuple[str, ...], str, str] | None":
     file shape and is resolved by :func:`_agent_node_route`.
     """
     from kanibako.settings.config_keys import (
+        agent_default_tier_leaf,
         _is_agent_setting,
         _is_path_category_key,
         _is_pref_key,
@@ -277,6 +278,18 @@ def _key_slot(canonical: str) -> "tuple[tuple[str, ...], str, str] | None":
         return (parts[0], "env"), parts[2], _NOUN
     if _is_agent_setting(canonical):
         return ("agent", "default"), canonical, _NOUN
+    # ⚑ THE SAME SLOT, THE OTHER SPELLING — ``agent.default.<leaf>`` written out in full is
+    # the any-agent tier, so it addresses the value the bare leaf above addresses, in the
+    # same table of the same file. It is a SEPARATE branch rather than a widened
+    # ``_is_agent_setting`` because that predicate answers "may a verb write this bare
+    # spelling", and the two questions have different answers: the write verbs refuse this
+    # spelling in their preamble and must keep refusing it. Claiming the slot is what stops
+    # a declared, SET value reading back "(not set)" (spec §0 forbids the fabricated answer).
+    # ⚑ DECLARED, not SCALAR: ``agent.default.transform_settings`` is read-only and must
+    # still read.
+    default_leaf = agent_default_tier_leaf(canonical)
+    if default_leaf is not None:
+        return ("agent", "default"), default_leaf, _NOUN
     # THREE TERMS, ONE SLOT RULE — they are one storage shape: a category tuple at
     # the key's own nested path in the scope's settings file.
     #
