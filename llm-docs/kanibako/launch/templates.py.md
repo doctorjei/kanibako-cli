@@ -245,8 +245,13 @@ handbook host-template copy's is key-fixed at `canon/handbook`
 (`install_box_handbook_template`), and the packaged handbook's dest is inside the canon root.
 
 *dest_root* is BOTH the containment boundary and the whitelist's frame of reference (defaults to
-*dest*). *allowed* RESPELLS that whitelist for one call and the workset stamp is its only user; it
-never widens a scope, and `None` means the declared table.
+*dest*).
+
+⚑⚑ *scope* IS A NAME OR A `WorksetStampScope`, NEVER AN ALLOW-LIST. It used to be a name plus a
+companion `allowed` tuple that the workset stamp filled in, and *respells, never widens* then held
+only because that one caller behaved. Passing the RESOLVED ROOTS instead moves the respelling
+inside `_scope_rules`, where both arms end at `SCOPE_WHITELISTS` — a widened scope is
+UNREPRESENTABLE rather than merely undone, because no parameter on the route accepts entries.
 
 ### The four enforcement points — all of §2a's, every one BEFORE any write
 
@@ -308,25 +313,49 @@ means a future one needs an explicit decision.
 keys — `template` is `workset.template`, `canon/handbook` is the chapter under `workset.canon` — so
 the workset stamp respells them per root. A repoint MOVES an entry; it never adds one.
 
+### `WorksetStampScope` — the respelling as a TYPE, not a discipline
+
+A frozen `(workset_path, canon_root, template_root)` carrying the paths the respelling is DERIVED
+from and NOTHING ELSE, with `name = "workset"` as a ClassVar because choosing the declared row is
+not a caller's decision. `allowed()` is `_workset_scope_allowed` over its three fields.
+
+⚑⚑ WHAT IT DOES NOT CARRY IS THE POINT. There is no entries field and no entries parameter anywhere
+on the route, so *a repoint MOVES an entry, it never ADDS one* is structural: every entry the
+copier can see is `SCOPE_WHITELISTS["workset"]` with its two repointable ANCHORS re-spelled — same
+cardinality, `canon/` seedable at `handbook` and nowhere else. Pinned by
+`TestTheRespellingCannotWiden` (no `allowed` parameter; fields are the three roots; cardinality and
+shape held across every repoint shape a root can have).
+
+`_scope_rules` is the ONE place a scope becomes entries: a plain name reads the declared table
+verbatim, a `WorksetStampScope` derives them.
+
 ### `_workset_scope_allowed` — the workset row, respelled for one root
 
 Returns the workset whitelist with those two entries spelled as THIS root's resolved leaves: the
 store-relative `workset.template`, and the store-relative `workset.canon` plus
 `_CANON_CHAPTER_LEAF`. Once the copy's dest follows `workset.canon`, the frame it is judged in has
 to follow too, or deny-by-default refuses the very copy the whitelist was written to permit.
+Reached only through `WorksetStampScope`.
 
 ⚑ The defaults are READ OFF `SCOPE_WHITELISTS`, never re-spelled, so an unrepointed root yields
 that tuple EXACTLY —
 `test_templates.py::TestWorksetStampFollowsTheKeys::test_the_respelling_degenerates_to_the_declared_table`.
 
-⚑ A leaf resolving OUTSIDE the workset root keeps its DEFAULT spelling and is left to
-`_assert_contained`, which refuses it: an entry that is not under the store root has no
-store-relative path to whitelist in the first place. Recorded, not endorsed — whether an
-out-of-root `workset.canon` should be stamped at all is open.
+⚑⚑ `relative_to` ALONE IS NOT THE CONTAINMENT TEST and must not be used as one. It is LEXICAL, so
+`<root>/../up` IS relative to the root, and the respelling emitted the allow-list ENTRY
+`../up/handbook` — a standing permission to write outside the store, produced by the one function
+whose contract is that it cannot. `_is_contained` resolves both sides, so an escaping leaf
+degenerates to the declared entry instead
+(`TestWorksetStampFollowsTheKeys::test_a_dotdot_leaf_does_not_widen_the_allow_list`).
+
+⚑ A leaf resolving OUTSIDE the workset root keeps its DEFAULT spelling. That arm is now a FAILSAFE
+rather than the live answer: the stamp refuses an escaping leaf in `_workset_stamp_dirs` before
+this function is reached.
 
 ### `_check_whitelist` — which relative path it reads
 
-RAISES unless *store_rel*'s leading components are inside *scope*'s allow-list.
+RAISES unless *store_rel*'s leading components are inside *scope*'s allow-list. *scope* is a NAME
+or a `WorksetStampScope`; the allow-list is computed here via `_scope_rules`, never handed in.
 
 ⚑ *store_rel* is relative to the SCOPE STORE ROOT (`copy_tree`'s *dest_root*), NOT to the copy's
 source. The two coincide for a whole-store copy, but they DIVERGE the moment a copy targets a
@@ -336,15 +365,19 @@ about which top-level store entry is being written and the store-relative path
 (`canon/handbook/SYS_CONTENTS.md` at the default leaf) says exactly that. Checking the wrong one
 would either refuse a legal copy or wave through an illegal one.
 
-*allowed* overrides `SCOPE_WHITELISTS` for ONE call, because a resolved dest does not always match
-the entry the declared table spells. `None` means that table.
+### `_is_contained` / `_assert_contained`
 
-### `_assert_contained`
+`_is_contained` is THE ONE CONTAINMENT PREDICATE: *target*'s REAL path is *root*'s real path or
+below it. It catches BOTH residual escapes §2a names — a `..` component in a declared dest, and a
+symlinked intermediate DIRECTORY in the destination tree that `mkdir` + `copy2` would happily write
+THROUGH. `resolve()` on both sides is what makes the second one visible, and what normalises the
+first; a plain string comparison sees neither.
 
-RAISES unless *target*'s REAL path stays inside *root*'s real path. Catches BOTH residual escapes
-§2a names: a `..` component in a declared dest, and a symlinked intermediate DIRECTORY in the
-destination tree that `mkdir` + `copy2` would happily write THROUGH. `resolve()` on both sides is
-what makes the second one visible — a plain string comparison would not see it.
+`_assert_contained` is its refusal FOR THE COPIER, and `_workset_stamp_dirs` is its refusal for a
+repointed stamp LEAF — two audiences, two messages, ONE rule. A second predicate could disagree
+with this one about a symlink and the two refusals would then guard different trees.
+`_assert_contained` is general and has several callers, so its message names a PATH and not a key;
+a caller that knows which settings key produced the path should refuse earlier and say so.
 
 ## Packaged content install — the ENUMERATED (packaged subtree → host store) set
 
@@ -523,6 +556,51 @@ STANDALONE `<workset_path>` is a kanibako-MANAGED wrapper (`workset.yaml` + `box
 stamp reaches. What IS true is that the wrapper is a directory the user ALREADY HAD
 (`resolve_standalone_project` requires `root.is_dir()`), so deny-by-default guards a tree nothing
 here is entitled to clean up afterwards.
+
+### An escaping leaf — the refusal that names the key
+
+`_assert_stamp_leaf_in_root`, called from inside `_workset_stamp_dirs`, refuses a
+`workset.{canon,template}` that resolves OUTSIDE the workset root, naming **the key, the file it was
+read from, the offending value, the reason and the remedy** — the bar
+`settings.workset_dirkeys` already sets for an unresolvable repoint. Before it, the same case was
+refused by `_assert_contained` with a message about some path being *"OUTSIDE the destination
+subtree"*: correct, and unactionable, because it named neither `workset.canon` nor the
+`workset.yaml` the value came from. A refusal the user cannot act on is the defect.
+
+⚑ IT REFUSES AT THE RESOLVER, not deeper, because that is where the key is still in scope: by the
+time the copier holds a destination the only fact left is a directory name. Both callers reach it
+through `_workset_stamp_dirs`, so the STAMP and its PRE-FLIGHT refuse identically, and the refusal
+lands BEFORE THE FIRST BYTE.
+
+⚑ The check is PER-LEAF and `canon_only` gates the template one: standalone's `workset.template` is
+`<None>` (spec `:936`) and that path consults neither the key nor the skeleton, so a value it never
+uses must not refuse a root that is otherwise fine.
+
+⚑ A `None` repoint still reaches it — when the DEFAULT leaf is itself a symlink out of the root —
+so the message can say *"takes its default `canon` leaf"* rather than print `set to None`.
+
+### The two guarantee-create `mkdir`s — CONTAINMENT-checked, deliberately NOT whitelist-checked
+
+The skeleton loop and the canon-chapter `mkdir` run AFTER `copy_tree` and reach neither of its
+guards. Once both leaves became RESOLVED keys that stopped being cosmetic: MEASURED, a
+`workset.template` of `../elsewhere` planted all three skeleton dirs (seven directories) outside the
+workset root with nothing refusing, and on the standalone path an out-of-root `workset.canon` was
+refused only INCIDENTALLY — by the copy that happened to share its destination. Empty the mould's
+`canon/` half and `copy_tree` returns on its first line, and the chapter `mkdir` then landed outside
+the root unremarked. Each target is `_assert_contained`-checked now.
+
+⚑ THE LEAF CHECK AND THE `mkdir` CHECK ARE NOT REDUNDANT. The leaf check judges the resolved ROOT;
+`_assert_contained` judges the actual TARGET, which is what catches a SYMLINKED INTERMEDIATE under a
+leaf that is itself perfectly in-root — the skeleton descends four levels below its leaf, and
+`mkdir(parents=True)` would build the tree THROUGH the link.
+
+⚑ THE WHITELIST, BY CONTRAST, HAS NOTHING TO SAY HERE, and adding it would only look like
+diligence. These targets are composed from the SAME two roots `_workset_scope_allowed` respells its
+entries FROM, so the check reduces to comparing each path with its own prefix; and when a root is
+out of the store the respelling has no entry for it at all, which is the leaf check's job rather
+than the table's. ⚑ It would not even be inert: a leaf repointed to the ROOT ITSELF respells to the
+entry `'.'`, which is every relative path's prefix in fact and matches none of them as a STRING, so
+the check would refuse a stamp that works today.
 
 `check_workset_template` PRE-FLIGHTS that mould against the workset whitelist and writes nothing.
 `workset create` must be ATOMIC in the way that matters to a user: either the workset exists and is
