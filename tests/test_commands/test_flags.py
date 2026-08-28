@@ -179,8 +179,10 @@ class TestRelevance:
         with pytest.raises(FlagRelevanceError):
             check_flag_relevance(_parse(parser, ["rig", "list", "--box", "foo"]))
 
-    def test_declared_sets_are_subset_of_real_commands(self):
-        # Guardrail: every declared command key is a real dotted path shape.
+    def test_the_declared_sets_carry_the_commands_they_are_for(self):
+        # Spot check that the sets are POPULATED as documented.  What makes every
+        # entry a real command is derived, not listed:
+        # TestEveryDeclaredKeyNamesAReachableCommand.
         assert "start" in AGENT_FLAG_COMMANDS
         assert "agent reauth" in AGENT_FLAG_COMMANDS
         assert "create" in AGENT_FLAG_COMMANDS
@@ -417,12 +419,14 @@ class TestATableEntryAgreesWithWhatTheHandlerReads:
     ``"code"`` from ``BOX_FLAG_COMMANDS`` and the ``--box`` row reddens, naming
     ``code``.
 
-    ⚑ ONE direction only.  The converse — declared ⇒ some handler reads it — is
-    deliberately NOT asserted, because ``"reauth"`` is declared in BOTH sets
-    while no top-level ``reauth`` parser exists (``kanibako reauth`` parses as
-    ``start reauth``).  That is a real disagreement, but its fix is a CLI-SHAPE
-    decision — wire the shortcut, or drop the key — not a table correction, so
-    asserting it here would force that decision instead of surfacing it.
+    ⚑ ONE direction only, and deliberately so.  The converse of THIS property —
+    declared ⇒ some handler reads it — stays unasserted: a command may legitimately
+    be declared for a flag its handler does not itself read (it may pass the
+    namespace on, or read it under a spelling the source scan does not model), and
+    an over-declaration costs a user nothing but a flag that is accepted and
+    ignored.  The converse that IS asserted is the weaker, exact one — declared ⇒
+    the key names a REACHABLE command — in
+    :class:`TestEveryDeclaredKeyNamesAReachableCommand`.
     """
 
     def test_the_oracle_is_not_vacuous(self, parser):
@@ -455,6 +459,76 @@ class TestATableEntryAgreesWithWhatTheHandlerReads:
             if _handler_reads(leaf.get_default("func"), option):
                 undeclared.add(canon)
         assert sorted(undeclared) == []
+
+
+def _canonical_leaf_keys(parser):
+    """Every dotted path :func:`command_key` can report for a REAL invocation.
+
+    ⚑ Derived from the tree by composing the two walks above, not re-walked: a
+    leaf key that is not an ALIAS spelling is the canonical path ``flags._walk``
+    stamps, and a stamped path is the only thing ``command_key`` returns for a
+    namespace argparse built.  A GROUP parser is absent by construction and
+    correctly so — ``_walk`` injects the blanket flags on leaves only, so a group
+    with a ``set_defaults(func=...)`` fallback (``kanibako box`` → list) has no
+    ``--box`` action at all, ``args.box`` never exists, and there is no refusal
+    for a declaration to disagree with.  If a group ever gains the flags, this
+    oracle has to widen with them.
+    """
+    return set(_leaves(parser)) - set(_alias_keys(parser))
+
+
+class TestEveryDeclaredKeyNamesAReachableCommand:
+    """``--box is not valid for 'rig list'`` named ``reauth`` among the commands
+    that DO take it, and ``kanibako reauth --box x`` then failed.
+
+    ``"reauth"`` was declared in BOTH sets, but there is no top-level ``reauth``
+    parser — ``kanibako reauth`` parses as ``start reauth``, consuming the word as
+    a box name, so ``kanibako reauth --help`` printed ``start``'s usage and
+    ``kanibako reauth`` died with "no box at reauth".  ``command_key`` could
+    therefore never report ``"reauth"`` and the entry changed no behaviour; what
+    it did do was reach the user, because both sets are joined verbatim into the
+    refusal message.  The real command was carried the whole time by the separate
+    ``"agent reauth"`` entry.
+
+    The property is the exact one the defect violated: a declared key must be a
+    command someone can type.  It is deliberately WEAKER than "declared ⇒ a
+    handler reads it" (see the class above) — over-declaring a live command is a
+    judgement call, naming a command that does not exist is not.
+    INVERT: put ``"reauth"`` back in either set and the matching rows redden.
+    """
+
+    def test_the_oracle_is_not_vacuous(self, parser):
+        # Without these, an oracle that returned every string would pass below.
+        reachable = _canonical_leaf_keys(parser)
+        assert "agent reauth" in reachable
+        assert "box convert" in reachable
+        assert "reauth" not in reachable      # the defect's key
+        assert "agent inspect" not in reachable  # an ALIAS is not a canonical key
+        assert "box" not in reachable         # a GROUP is not a leaf
+
+    @pytest.mark.parametrize("option, declared", [
+        ("--agent", AGENT_FLAG_COMMANDS),
+        ("--box", BOX_FLAG_COMMANDS),
+    ])
+    def test_no_declared_key_is_unreachable(self, parser, option, declared):
+        unreachable = sorted(set(declared) - _canonical_leaf_keys(parser))
+        assert unreachable == [], (
+            f"{option} is declared for commands that cannot be typed: "
+            f"{unreachable}"
+        )
+
+    @pytest.mark.parametrize("option", ["--agent", "--box"])
+    def test_the_refusal_a_user_reads_names_only_typeable_commands(
+        self, parser, option,
+    ):
+        # The rendered surface, not the set: ``rig list`` takes neither flag, so
+        # both messages enumerate their whole set in parentheses.
+        with pytest.raises(FlagRelevanceError) as excinfo:
+            check_flag_relevance(_parse(parser, ["rig", "list", option, "foo"]))
+        message = str(excinfo.value)
+        listed = re.search(r"\(([^()]*)\)", message).group(1).split(", ")
+        assert len(listed) > 1  # vacuity: the enumeration was actually found
+        assert sorted(set(listed) - _canonical_leaf_keys(parser)) == []
 
 
 class TestBlanketFlagsAreAdvertisedOnlyWhereTheyApply:
