@@ -62,6 +62,7 @@ no real tmux, no real agent, no real waiting and **no real process**. The seams,
 |------|---------|--------|
 | `run` / `sleep` | `subprocess.run` / `time.sleep` | every tmux subprocess call; the loop + backoff waits |
 | `pid_alive` / `list_marker_pids` | `_default_pid_alive` / `_default_list_marker_pids` | the marker probes (E2f liveness, 4a detection) |
+| `cmdline_of` / `remove_marker` | `_proc_cmdline` / `_default_remove_marker` | the marker IDENTITY probe and the marker REAP |
 | `kill` / `killpg` | `os.kill` / `os.killpg` | the 4b SIGSTOP/SIGCONT and the pane process-GROUP evict |
 | `getpgid` / `getpgrp` | `os.getpgid` / `os.getpgrp` | the group resolution the evict's safety guard rules on |
 | `reap` | `reap_zombie_children` | the PID-1 child-reap duty at the top of every tick |
@@ -444,14 +445,131 @@ so the FILENAMES enumerate the agent PIDs — no file READ is needed. Parses eac
 absent dir or any `OSError` resolves to `[]` — read by the caller as "no agents yet" — never an
 exception.
 
-```scan_marker_pids(markers_dir: str, *, list_pids: _MarkersLister, pid_alive: _PidAlive) -> tuple[set[int], set[int]]```
-PURE-ish: partition the markers dir into (LIVE pids, STALE pids).
+```_proc_cmdline(pid: int) -> list[str] | None```
+Real `_CmdlineOf`: *pid*'s ARGV, or `None` if it cannot be read.
+
+The per-PID companion to `box_lifecycle._collect_proc_cmdlines`' whole-table read, with the same
+lenient decode — but returned **split, not joined**. Which token is `argv[0]` and which is `argv[1]`
+is what separates an agent's session from its helpers, and joining throws that away. ⚑ A kernel
+thread's EMPTY cmdline returns `None`, not `[]`: the caller's three-valued contract needs
+"unreadable" and "not the session" to stay distinguishable, and an empty cmdline is the former.
+
+```_default_remove_marker(markers_dir: str, pid: int) -> None```
+Real `_MarkerRemover`: REAP the marker file naming *pid*; race-tolerant.
+
+`FileNotFoundError` is named and passed, not swallowed generically: the agent's own `pid-rm.sh` runs
+on its `SessionEnd` hook and a second supervisor scan may be mid-flight, so **two removers agreeing
+on one file is the normal case**. Any other `OSError` is logged at debug and dropped — PID-1 must not
+die because a marker dir went read-only.
+
+### Identifying the agent SESSION — the marker-identity rule
+
+⚑ **The unit of identity is the SESSION, not the program.** An agent runs helper processes under its
+own binary — claude runs a `daemon`, a `bg-pty-host` and a `bg-spare` — so "the basename is `claude`"
+calls every one of them the agent. A helper's marker then reads as a *second agent holding the
+session*, which is precisely the signal 4b acts on: measured on a live box, a `claude bg-spare`
+marker sat alongside the running agent's, and with takeover armed the supervisor would have evicted
+the real agent to make room for a background pty host. **Do not loosen this back to a name match.**
+
+The rule is DERIVED from the launch grammar, never a list of helper subcommands to exclude — a list
+is the same defect wearing a different shape, and it goes stale the moment a harness adds a helper.
+
+```_argv_head(argv: Iterable[str]) -> tuple[str, str | None] | None```
+PURE: an argv's `(PROGRAM basename, SUBCOMMAND)` head, or `None` if it has none.
+
+⚑ `argv[0]` is SPLIT ON WHITESPACE first. A harness that rewrites its process TITLE packs the
+subcommand into `argv[0]` rather than `argv[1]` — measured, `claude bg-spare` and
+`claude bg-pty-host` each arrive as a *single* argv entry — so reading `argv[1]` alone would miss the
+very distinction the head exists to draw. The SUBCOMMAND slot is the first following token that is
+not an option; an argv that goes straight to flags has `None`, which is itself the head shape a bare
+agent launch has.
+
+Only the head is read because everything after it legitimately DIVERGES between the launch and the
+process it became.
+
+```agent_launch_heads(*argvs: Iterable[str]) -> set[tuple[str, str | None]]```
+PURE: the `(PROGRAM, SUBCOMMAND)` heads the supervisor was launched to run.
+
+The launch grammars in `SupervisorConfig` (`start_argv`, `continue_argv`) are the ONLY thing PID 1
+knows about WHICH agent this box runs. `commands/start.py` wraps an agent launch in one
+`sh -c <script> sh <program> <args...>` shim per concern (`_secret_export_shim`,
+`_directive_flatten_shim`), nesting outward; each layer sets `$0=sh` and `exec "$@"`s the next, so
+peeling `["sh", "-c", <script>, "sh"]` off the front while it matches leaves the agent.
+
+BOTH grammars contribute: start and continue modes may differ in the subcommand slot (`codex` starts
+bare and continues as `codex resume`), and the running process may be either.
+
+⚑ MEASURED against a live claude box's `/proc/1/cmdline`: the real `--continue-cmd`
+`sh -c '<flatten script>' sh claude --continue --dangerously-skip-permissions --model opus` peels to
+exactly `{("claude", None)}`.
+
+⚑ The shim shape is QUARANTINED KNOWLEDGE of a sibling module, deliberately NOT imported — PID 1 is
+stdlib-only, and importing `commands.start` would put every marker scan at the mercy of the whole
+command package importing cleanly. It is SAFE UNDER SKEW: a shim shape this does not recognise leaves
+the wrapper's own `sh` as the head, which matches no real agent, so `agent_session_verdict` falls
+through to `None` and KEEPS the marker rather than reaping on a misread.
+
+```agent_session_verdict(argv, heads) -> bool | None```
+PURE: is *argv* the agent SESSION this supervisor supervises? `None` ⇒ unjudgeable.
+
+Four answers, in order:
+
+| condition | verdict | why |
+|---|---|---|
+| head is in *heads* | `True` | it begins the way the launch grammar begins |
+| same program, different subcommand | `False` | the agent's binary, but not the session — a helper |
+| different program, but the argv NAMES an agent (`_names_an_agent`) | `None` | probably an interpreter launching it |
+| nothing matches | `False` | unrelated process |
+
+**Only the head is compared, and that is the load-bearing limit.** Measured: a box launched
+`claude --continue --dangerously-skip-permissions --model opus` was running as
+`claude --resume <uuid> --allow-dangerously-skip-permissions --model opus --permission-mode
+bypassPermissions`. A user's own flags, a resumed session and a model override all move the tail;
+only the program and its subcommand slot survive. Matching further would reject real sessions, and
+**rejecting a real session deletes its marker** — the one outcome this whole mechanism exists to
+avoid.
+
+⚑ The residual risk of the tightening, stated plainly: an agent whose SESSION process runs under a
+subcommand the supervisor's grammar does not name would be judged `False`. None of the three shipped
+targets does — claude launches with flags only, `goose session`, `codex resume` — and the union of
+both grammars widens the accepted set. If a target ever grows one, this is where it shows up.
+
+```_names_an_agent(argv, heads) -> bool```
+PURE: does *argv* NAME an agent program anywhere, without being one?
+
+The loose fallback, mirroring `box_lifecycle.vscode_server_present`: PREFIX-test every `/`-delimited
+segment. It catches the shapes a head cannot judge — an interpreted install
+(`node …/claude-code/cli.js`), a shell whose argv carries an agent path — and answers only
+INCONCLUSIVE, never "agent". ⚑ A segment must START with the name, so `/home/agent/.claude/…` is NOT
+a mention (`.claude` does not begin with `claude`) while `/tmp/claude-<id>-cwd` is.
+
+Measured against a live box's whole process table: the session → `True`; all five `claude` helpers →
+`False`; `tmux`, `tmux attach`, `python3`, `head`, the supervisor itself, the VS Code server →
+`False`; one bash command whose argv mentions `/tmp/claude-…-cwd` → `None`, keeping its marker.
+
+```scan_marker_pids(markers_dir: str, *, list_pids: _MarkersLister, pid_alive: _PidAlive, is_agent: _AgentCheck | None = None, remove: _MarkerRemover | None = None) -> tuple[set[int], set[int]]```
+Partition the markers dir into (LIVE pids, STALE pids), REAPING the stale ones.
 
 Enumerates the marker PIDs via *list_pids*, drops any non-positive PID, then prunes-dead via
 *pid_alive*: a marker whose process is live lands in the LIVE set, one whose process is gone (a crash
-left the marker behind) lands in the STALE set. A *pid_alive* probe that RAISES for a given PID is
-swallowed and that PID skipped (tolerant — one bad probe must not crash PID-1). Deterministic over
-its injected probes, so tests exhaust it with no real FS / os.
+left the marker behind) lands in the STALE set. When *is_agent* is given, a LIVE pid that is
+positively **not an agent** is STALE too — that is how a leaked marker reads once the kernel has
+REISSUED its PID to something else.
+
+**Both stale kinds are handed to *remove*, and this is the fix for the stale-marker hazards.** A
+leaked marker used to be a LEVEL the supervisor read forever: `panel_agent_state` returned `DEAD` on
+every tick for the life of the box, and with `session_takeover` armed a reissued PID read as a live
+NEWCOMER and evicted the real agent. Reaping makes it an EDGE — the call still RETURNS the stale PID,
+so the panel agent's death still reaches `decide_panel` on the tick that noticed it, and no later
+tick re-decides on the same corpse.
+
+⚑ **NEVER REAP WHAT YOU CANNOT JUDGE.** A *pid_alive* probe that RAISES skips that PID entirely
+(tolerant — one bad probe must not crash PID-1), and an *is_agent* that answers `None` (nothing to
+match against, or `/proc` unreadable) leaves the marker LIVE and on disk. A PID that is genuinely
+gone reads dead on a later scan; a wrongly deleted marker is a live agent the supervisor has stopped
+seeing, which is the worst outcome available here. *remove* is OPTIONAL — omitted, this is the
+pure-ish partitioner it has always been. Deterministic over its injected probes, so tests exhaust it
+with no real FS / os.
 
 ```newcomer_pids(live_pids: set[int], own_pids: set[int]) -> set[int]```
 PURE: the LIVE marker PIDs that are NOT the supervisor's OWN agent.
@@ -626,7 +744,11 @@ Computed from the NON-OWN markers (excluding a self-healed CLI's own tmux pane):
   driving `_default_pid_alive` with kill-0 succeeding and stat state `Z` ⇒ `False`, state `S` ⇒
   `True`.
 * `DEAD` — no live non-own marker but a STALE one remains (a crash left the per-PID file behind): the
-  panel agent exited.
+  panel agent exited. ⚑ **DEAD is an EDGE, not a level.** The scan that produces this verdict also
+  REAPS the stale marker (`scan_marker_pids`), so the verdict fires on the tick that noticed the
+  death and not on every tick thereafter. Before that, a single leaked marker pinned `DEAD` for the
+  life of the box, and `decide_panel` turned `DEAD` + `vscode_server` into `SELF_HEAL_CLI` — a CLI
+  agent nobody asked for, re-spawned every time the box had no live tmux agent.
 
 ```class PanelActionKind(Enum)```
 What a PANEL-WATCH tick must DO (besides the detach hook). — `NONE`, `SELF_HEAL_CLI`, `TEARDOWN`.
@@ -652,7 +774,7 @@ self-heal that exhausts its bounded retries (principle B: then PID-1 returns so 
 
 ### Constructor state
 
-```__init__(self, config, *, run=subprocess.run, sleep=time.sleep, proc_cmdlines=None, pid_alive=_default_pid_alive, list_marker_pids=_default_list_marker_pids, kill=os.kill, killpg=os.killpg, getpgid=os.getpgid, getpgrp=os.getpgrp, reap=reap_zombie_children)```
+```__init__(self, config, *, run=subprocess.run, sleep=time.sleep, proc_cmdlines=None, pid_alive=_default_pid_alive, list_marker_pids=_default_list_marker_pids, cmdline_of=_proc_cmdline, remove_marker=_default_remove_marker, kill=os.kill, killpg=os.killpg, getpgid=os.getpgid, getpgrp=os.getpgrp, reap=reap_zombie_children)```
 
 * `_proc_cmdlines` — when provided, a fixed process-cmdline listing handed to `snapshot_attach_state`
   (tests inject it to skip the real `/proc` walk); `None` ⇒ each snapshot collects fresh from `/proc`
@@ -660,6 +782,14 @@ self-heal that exhausts its bounded retries (principle B: then PID-1 returns so 
 * `_pid_alive` / `_list_marker_pids` — the agent-marker probes (E2f liveness + 4a detection),
   injectable so unit tests never touch the real FS / os; defaults are the real PID-1
   implementations.
+* `_cmdline_of` / `_remove_marker` — the marker IDENTITY probe and the marker REAP, injectable on
+  the same rule. ⚑ Tests inject `_cmdline_of` for a reason worth keeping: the default reads the REAL
+  `/proc`, so a fixture PID that happens to exist in the runner would be judged a non-agent and
+  reclassified. `None` (cannot judge) reproduces the pre-reap behaviour exactly.
+* `_agent_heads` — the agent `(PROGRAM, SUBCOMMAND)` heads recovered from the launch grammars by
+  `agent_launch_heads`, computed ONCE (config-derived and immutable). ⚑ An EMPTY set DISARMS the
+  identity half of the scan entirely: `_is_agent_pid` then answers `None` for every PID rather than
+  judging every process a non-session, which would reap every marker in the dir.
 * `_kill` / `_killpg` / `_getpgid` / `_getpgrp` / `_reap` — the process-control primitives (4b
   signals, the pane-group evict, the PID-1 reap duty); defaults are the stdlib ops and the module
   reaper. ⚑ Every process-touching call in this class goes through one of these — never `os`

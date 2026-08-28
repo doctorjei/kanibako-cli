@@ -305,6 +305,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the `stop.sh` one, which needs no pid. Markers left behind by the old spelling need nothing done
   to them: the supervisor reaps a marker whose process is gone on its first scan.
 
+- **A leaked agent liveness marker no longer outlives the agent that wrote it, and can no longer
+  start an agent you did not ask for.** Each agent session writes a marker file named for its pid
+  under `/tmp/kanibako/agents/` and removes it on exit, and the in-box supervisor reads that
+  directory to tell a live agent session from a dead one. An agent that is killed, crashes, or
+  loses the box out from under it never runs the removal, so the file stays behind naming a dead
+  process — and nothing ever deleted it, which made a one-off leak permanent. Two things followed.
+  In `--warm-only` panel-watch mode the supervisor read "a marker whose process is gone" as *the
+  panel agent just died*, and with the VS Code panel still connected that is its cue to start a CLI
+  agent in tmux as a fallback — so a marker left behind days earlier launched an agent into a box
+  whose panel was working fine, and did it again every time the box had no live tmux agent.
+  Separately, under the experimental single-writer takeover (`KANIBAKO_SESSION_TAKEOVER`, off by
+  default), a marker naming a live process that was not the agent read as a *second agent* holding
+  the session, and the supervisor evicted the real, running agent to make room for it. The
+  supervisor now removes a marker as it scans: one whose process is gone, and one whose process is
+  alive but is not the agent session — checked by reading `/proc/<pid>/cmdline` and comparing how
+  that process was started against how this box launches its agent. A stale marker is therefore
+  seen once rather than forever, so a genuine panel-agent death still self-heals a CLI on the tick
+  it happens and never again on the same corpse. ⚑ **The test is the session, not the program
+  name.** An agent runs helper processes under its own binary — claude runs a daemon, a background
+  pty host and a spare — so matching on the name alone would call every one of them an agent, and a
+  helper's marker would read as exactly that phantom second agent. What is compared is the program
+  plus its subcommand, which is all that survives a real launch: a box started with `--continue`
+  runs as `--resume`, and your own flags and model overrides move everything after. ⚑ **A marker is
+  only ever removed on a positive judgement.** If `/proc` cannot be read, if the process is
+  something else that merely names the agent, or if the supervisor has no launch grammar to compare
+  against, the marker is left alone — deleting a live agent's marker would blind the supervisor to
+  an agent that is running, which is worse than the leak it fixes. A genuine second agent session is
+  still detected exactly as before. Boxes carrying markers from before this change need nothing done
+  to them; the leftovers go on the first scan.
+
 - **`kanibako box show --effective` no longer prints a binding as a live mount when the box
   receives nothing at that destination.** The block rendered each `<scope>.bindings.{ro,rw}` row
   straight off the stored declaration, with no arbitration applied and masks never shown at all. So
