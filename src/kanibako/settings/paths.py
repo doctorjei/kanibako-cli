@@ -11,7 +11,7 @@ from kanibako.settings.paths_defaults import (XDG_SPEC_DEFAULTS, CONFIG_PATH_DEF
                                               SHELL_D_CONTENTS, RUN_USER_UID_PATH,
 
                                               BOXES_PATH, HOME_PATH, KANIBAKO_PATH, LOGS_PATH,
-                                              RO_PATH, RW_PATH, VAULT_PATH, STANDALONE_META_DIR,
+                                              STANDALONE_META_DIR,
 
                                               STATUS_OK, STATUS_MISSING, STATUS_NO_DATA,
                                               MSG_OTS_KB_INIT, MSG_OTS_WS_PROJ_INIT, MSG_DONE,
@@ -197,7 +197,9 @@ class _WorksetLike(Protocol):
     @property
     def workspaces_dir(self) -> Path: ...
     @property
-    def vault_dir(self) -> Path: ...
+    def vault_ro_dir(self) -> Path: ...
+    @property
+    def vault_rw_dir(self) -> Path: ...
     @property
     def logs_dir(self) -> Path: ...
     @property
@@ -226,7 +228,11 @@ class WorksetSpec:
     root: Path
     projects_dir: Path
     workspaces_dir: Path
-    vault_dir: Path
+    #: ⚑ The RESOLVED ``workset.{vault_ro,vault_rw}`` — ONE ARM EACH, never a shared
+    #: ``vault/`` parent to join ``ro``/``rw`` onto.  The two are independently
+    #: repointable keys, so a single parent cannot answer both.
+    vault_ro_dir: Path
+    vault_rw_dir: Path
     project_names: tuple[str, ...]
     is_default: bool = False
 
@@ -234,7 +240,8 @@ class WorksetSpec:
     def from_workset(cls, ws: _WorksetLike) -> WorksetSpec:
         """Build a :class:`WorksetSpec` from a ``Workset``-like object."""
         return cls(name=ws.name, root=ws.root, projects_dir=ws.projects_dir,
-                   workspaces_dir=ws.workspaces_dir, vault_dir=ws.vault_dir,
+                   workspaces_dir=ws.workspaces_dir, vault_ro_dir=ws.vault_ro_dir,
+                   vault_rw_dir=ws.vault_rw_dir,
                    project_names=tuple(p.name for p in ws.projects), is_default=ws.is_default)
 
 
@@ -403,8 +410,20 @@ def resolve_system_paths(set_values: Mapping[str, str],
     # PRIMARY-workset box/vault/logs roots, derived from ``@config.primary_workset``.
     pw = resolved["config.primary_workset"]
     resolved["system._boxes"] = pw / BOXES_PATH
-    resolved["system._primary_vault_ro"] = pw / VAULT_PATH / RO_PATH
-    resolved["system._primary_vault_rw"] = pw / VAULT_PATH / RW_PATH
+    # ⚑⚑ THE VAULT ROOTS ARE RESOLVED, NOT COMPOSED.  There are no ``system.vault_*``
+    # keys at all (spec ``:335``) — these two are SURROGATES for the PRIMARY workset's
+    # ``@workset.{vault_ro,vault_rw}``, which are declared, CLI-settable and repointable
+    # in EVERY mode (§2c ALL PROJECTS, R-29).  Composing them here answered the key a
+    # second way: the settings file accepted a repoint and the filesystem ignored it.
+    # ⚑ Resolving HERE and not at ``_primary_box_paths`` is deliberate — every consumer
+    # of ``std.primary_vault_*`` (create, rm, clean, purge) then sees the ONE answer.
+    # ⚑ Deferred import: the documented ``settings.paths`` <-> ``project.workset`` cycle.
+    from kanibako.project.workset import (load_workset_settings_doc,
+                                          resolve_workset_vault_ro, resolve_workset_vault_rw)
+
+    pw_settings = load_workset_settings_doc(pw)
+    resolved["system._primary_vault_ro"] = resolve_workset_vault_ro(pw, pw_settings)
+    resolved["system._primary_vault_rw"] = resolve_workset_vault_rw(pw, pw_settings)
     resolved["system._primary_logs"] = pw / LOGS_PATH
     return resolved
 
@@ -814,20 +833,30 @@ def _primary_box_paths(std: StandardPaths,
     return shell, vault_ro, vault_rw
 
 
-def _workset_box_paths(metadata_path: Path,
-                       vault_base: Path, box_name: str) -> tuple[Path, Path, Path]:
-    """Fixed NAMED-mode ``(shell, vault_ro, vault_rw)`` (no layout axis)."""
+def _workset_box_paths(metadata_path: Path, vault_ro_base: Path, vault_rw_base: Path,
+                       box_name: str) -> tuple[Path, Path, Path]:
+    """Fixed NAMED-mode ``(shell, vault_ro, vault_rw)`` (no layout axis).
+
+    ⚑ The two bases are the RESOLVED ``workset.{vault_ro,vault_rw}`` — one arm each,
+    because either may be repointed independently of the other.  Only the per-box
+    ``@meta.box.name`` LEAF is composed here; that leaf is the whole per-mode variation.
+    """
     shell = metadata_path / HOME_PATH
-    vault_ro = vault_base / RO_PATH / box_name
-    vault_rw = vault_base / RW_PATH / box_name
-    return shell, vault_ro, vault_rw
+    return shell, vault_ro_base / box_name, vault_rw_base / box_name
 
 
 def _standalone_box_paths(root: Path) -> tuple[Path, Path, Path]:
-    """Fixed STANDALONE-mode ``(home, vault_ro, vault_rw)`` (no layout axis)."""
+    """Fixed STANDALONE-mode ``(home, vault_ro, vault_rw)`` (no layout axis).
+
+    ⚑ STANDALONE roots a degenerate workset at *root*, so *root*'s own ``workset.yaml``
+    is the workset tier and its ``workset.{vault_ro,vault_rw}`` are RESOLVED here — the
+    keys are UNIFORM in every mode (§2c ALL PROJECTS, R-29), with no standalone
+    carve-out.  Only the BIND differs: a lone box takes the arm itself, no name leaf.
+    """
+    from kanibako.project.workset import resolve_workset_vault_pair
+
     home = root / STANDALONE_META_DIR / HOME_PATH
-    vault_ro = root / VAULT_PATH / RO_PATH
-    vault_rw = root / VAULT_PATH / RW_PATH
+    vault_ro, vault_rw = resolve_workset_vault_pair(root)
     return home, vault_ro, vault_rw
 
 
@@ -882,8 +911,17 @@ def _upgrade_shell(shell_path: Path) -> None:
 
 
 def _init_common(std: StandardPaths, metadata_path: Path, shell_path: Path, vault_ro_path: Path,
-                 vault_rw_path: Path, project_path: Path, *, enable_vault: bool = True) -> None:
-    """Shared first-time project setup: create directories, bootstrap shell."""
+                 vault_rw_path: Path, project_path: Path, *, enable_vault: bool = True,
+                 vault_root: Path | None = None) -> None:
+    """Shared first-time project setup: create directories, bootstrap shell.
+
+    ⚑ *vault_root* is the workset root that owns the ``vault/`` SKELETON dir.  The
+    ``.gitignore`` belongs to that skeleton, so it is written only while the vault still
+    sits inside it: ``workset.vault_ro`` is repointable, and a repoint out of the root
+    would otherwise drop a stray ``.gitignore`` into whatever directory the user chose
+    as its parent — ``$HOME`` for ``vault_ro: ~/store``.  ``None`` keeps the
+    unconditional legacy behaviour for any caller that cannot name a root.
+    """
     import sys
 
     print(MSG_OTS_KB_INIT % project_path, end="", flush=True, file=sys.stderr)
@@ -899,18 +937,38 @@ def _init_common(std: StandardPaths, metadata_path: Path, shell_path: Path, vaul
         vault_rw_path.mkdir(parents=True, exist_ok=True)
         # .gitignore in vault/ to exclude rw from version control.
         vault_dir = vault_ro_path.parent
-        gitignore = vault_dir / IGNORE_FILE
-        if not gitignore.exists():
-            gitignore.write_text("rw/\n")
+        if vault_root is None or _host_path_within(vault_dir, vault_root):
+            gitignore = vault_dir / IGNORE_FILE
+            if not gitignore.exists():
+                gitignore.write_text("rw/\n")
 
     print(MSG_DONE, file=sys.stderr)
+
+
+def _host_path_within(candidate: Path, root: Path) -> bool:
+    """True when the HOST path *candidate* is *root* or lies beneath it (no I/O).
+
+    ⚑ DELIBERATELY NOT ``settings.store_collapse.is_within``, and not to be merged with
+    it.  That one is a separator-guarded STRING prefix test over GUEST DESTINATION
+    spellings, public because the collapse and the delivery half must answer "which
+    mount covers this dest" identically.  This is a host ``Path`` containment test, and
+    ``settings/paths.py`` is the foundation ``store_collapse`` sits above — importing
+    upward for it would invert the layering to reuse a predicate from another domain.
+    ⚑ The ``relative_to``/``ValueError`` idiom it wraps is spelled inline four more times
+    in this module; those are loop-and-``continue`` shapes and stay as they are.
+    """
+    try:
+        candidate.relative_to(root)
+    except ValueError:
+        return False
+    return True
 
 
 def _init_project(std: StandardPaths, metadata_path: Path, shell_path: Path, vault_ro_path: Path,
                   vault_rw_path: Path, project_path: Path, *, enable_vault: bool = True) -> None:
     """First-time project setup: create directories, copy credentials from host."""
     _init_common(std, metadata_path, shell_path, vault_ro_path, vault_rw_path, project_path,
-                 enable_vault=enable_vault)
+                 enable_vault=enable_vault, vault_root=std.primary_workset)
 
 
 def _find_local_ancestor(target: Path, std: StandardPaths) -> Path | None:
@@ -1203,8 +1261,8 @@ def resolve_workset_project(ws: WorksetSpec, project_name: str, std: StandardPat
             project_path = Path(identity["workspace"])
     # B2b (Option A, Jei-ruled): the per-box custom home/vault path OVERRIDE is DROPPED;
     # the workspace override above is a SEPARATE concern and STAYS.
-    shell_path, vault_ro_path, vault_rw_path = _workset_box_paths(metadata_path, ws.vault_dir,
-                                                                  project_name)
+    shell_path, vault_ro_path, vault_rw_path = _workset_box_paths(
+        metadata_path, ws.vault_ro_dir, ws.vault_rw_dir, project_name)
     # enable_vault (P5a): explicit param wins, else the BOX tier with an R2 downward-default
     # to the WORKSET tier (absent from both ⇒ True).
     # ⚑ The workset fallback is REQUIRED, not optional: ``workset create --no-vault`` writes
@@ -1630,8 +1688,12 @@ def resolve_standalone_project(std: StandardPaths, config: KanibakoConfig,
 def _init_standalone_project(std: StandardPaths, metadata_path: Path, shell_path: Path,
                              vault_ro_path: Path, vault_rw_path: Path, project_path: Path,
                              *, enable_vault: bool = True) -> None:
-    """First-time standalone project setup: all state inside the project dir (vault included)."""
+    """First-time standalone project setup: all state inside the project dir (vault included).
+
+    ⚑ *metadata_path* is the ``box_data/`` dir; the WORKSET root is its parent, and that
+    is what owns the ``vault/`` skeleton the ``.gitignore`` belongs to.
+    """
     _init_common(std, metadata_path, shell_path, vault_ro_path, vault_rw_path, project_path,
-                 enable_vault=enable_vault)
+                 enable_vault=enable_vault, vault_root=metadata_path.parent)
     # The workspace is a SUBDIR of the root (drift H); create the bind source.
     project_path.mkdir(parents=True, exist_ok=True)

@@ -34,8 +34,8 @@ creates or resolves it:**
         box.yaml            ← the BOX cascade tier (`meta.box.settings`)
         .kanibako.lock      ← concurrency lock
     workspaces/{name}/      ← per-box workspace (source tree) — the DEFAULT composition only
-    vault/ro/{name}/        ← per-box read-only vault
-    vault/rw/{name}/        ← per-box read-write vault
+    vault/ro/{name}/        ← per-box read-only vault  (`workset.vault_ro`, DEFAULT only)
+    vault/rw/{name}/        ← per-box read-write vault (`workset.vault_rw`, DEFAULT only)
     logs/{name}.jsonl       ← per-box helper message log
     auth/                   ← the per-workset credential dir (`workset.auth.path`)
     channels/               ← workset-local channels (`workset.channelroot`)
@@ -84,9 +84,9 @@ into function bodies**, and keeps a decoupled primitive workset view rather than
   `resolve_workset_template` in its body for the workset stamp. Both are `launch` → `project` edges;
   the direction that must never appear is the reverse, `project` → `launch`.
 
-## Resolved workset dir keys — six faces here, plus the registry
+## Resolved workset dir keys — eight faces here, plus the registry
 
-`workset.{workspaces,boxes,logs,channelroot,canon,template}` each get a thin per-key face in this
+`workset.{workspaces,boxes,logs,channelroot,canon,template,vault_ro,vault_rw}` each get a thin per-key face in this
 module, and `workset_registry.resolve_workset_registry_path` is another on the same route. A face
 does two things and no more: read the RAW repoint out of the routed nested slot
 `workset: {<leaf>: …}` (the location a settings-file edit — or `config set` at workset scope —
@@ -319,7 +319,11 @@ def projects_dir(self) -> Path      # {root}/boxes
 @property
 def workspaces_dir(self) -> Path    # the RESOLVED workset.workspaces
 @property
-def vault_dir(self) -> Path         # {root}/vault
+def vault_dir(self) -> Path         # {root}/vault — the SKELETON dir, a NON-KEY
+@property
+def vault_ro_dir(self) -> Path      # the RESOLVED workset.vault_ro
+@property
+def vault_rw_dir(self) -> Path      # the RESOLVED workset.vault_rw
 @property
 def logs_dir(self) -> Path          # {root}/logs
 @property
@@ -388,6 +392,29 @@ Their one caller is `launch.templates._workset_stamp_dirs`, which imports both i
 body and reads the root's `workset.yaml` ONCE for the pair. `canon` is uniform in every mode;
 `template` is primary/named only, and the stamp's standalone arm skips it accordingly. See
 **Resolved workset dir keys**.
+
+```python
+def resolve_workset_vault_ro(workset_root: Path, workset_settings: Mapping[str, Any] | None) -> Path
+def resolve_workset_vault_rw(workset_root: Path, workset_settings: Mapping[str, Any] | None) -> Path
+def resolve_workset_vault_pair(workset_root: Path) -> tuple[Path, Path]
+```
+The resolved `workset.vault_ro` / `workset.vault_rw` dirs — **the box's vault, in every mode.**
+
+Defaults are `@meta.workset.path/vault/{ro,rw}` — the only TWO-SEGMENT default leaves on the route,
+because the spec declares no `workset.vault` parent for them to hang off. ⚑⚑ **Both keys are
+declared ONCE FOR EVERY MODE** (§2c ALL PROJECTS, R-29): there is NO `standalone: <None>`
+carve-out, unlike `template`, `registry`, `auth.path` and the channel keys. Only the box BIND
+differs per mode — primary and named take a `/@meta.box.name` leaf, a lone box takes the arm
+itself. Do not add a mode parameter here; the variation is downstream.
+
+`resolve_workset_vault_pair` is the form callers should reach for: every consumer wants BOTH arms,
+and reading `workset.yaml` once per arm opens a window for the two to disagree about the same
+document. Its callers are `add_project`, `remove_project` and `settings.paths._standalone_box_paths`;
+`settings.paths.resolve_system_paths` uses the two faces directly because it already holds the read.
+
+⚑ **The arms are independent.** Repointing `vault_ro` alone leaves `vault_rw` at its default, and
+nothing may treat the two as sharing a parent — that assumption is exactly what the pre-fix
+`ws.vault_dir / "ro"` composition encoded, and it made both keys settable-but-ignored.
 
 ```python
 @contextmanager
@@ -611,9 +638,11 @@ Forward effects go on an `_Unwind`; success behavior is identical to the pre-`_U
 
 * **Box dir** — always real. `exist_ok=True` keeps it idempotent, and the unwind only `rmtree`s dirs
   we may have created (guarded on a pre-existence check).
-* **Vault** — ro/rw nest ABOVE the box name (`vault/{ro,rw}/<name>`) to match PRIMARY and
-  STANDALONE. ⚑ The unwind removes the per-box `ro`/`rw` LEAVES only — **never** the shared
-  `vault/ro` / `vault/rw` parents, which hold every box's vault.
+* **Vault** — ro/rw nest ABOVE the box name (`<resolved arm>/<name>`) to match PRIMARY and
+  STANDALONE. ⚑ The two arms come from `resolve_workset_vault_pair(ws.root)` — ONE `workset.yaml`
+  read for both — not from `ws.vault_dir / "ro"`, which would answer a repointable key with a
+  composed literal. ⚑ The unwind removes the per-box LEAVES only — **never** the shared arms,
+  which hold every box's vault.
 * **External arm** — symlink, then the `boxes:` registration (idempotent; overwrites a moved box).
 * **`--force` absorbing a self-declared standalone box** — the registration is **MOVED**, not
   duplicated: a box lives in EXACTLY ONE registry. The global `standalone:` entry is dropped so the
@@ -678,7 +707,10 @@ therefore goes through `remove_box_tree`. The workspace and vault dirs are ordin
 stay on the plain path — **the escalation is scoped to what actually needs it.**
 
 ⚑ Vault nests `ro`/`rw` ABOVE the box name, so only the per-box leaves are removed — never the
-shared `vault/ro` / `vault/rw` parents.
+shared arms. ⚑⚑ `remove_project` resolves those arms through `resolve_workset_vault_pair` FOR THE
+SAME REASON `add_project` does, and the two must never diverge: deleting the composed default while
+the box's real vault sits at a repoint would orphan the user's data AND remove a directory the box
+never used.
 
 ---
 

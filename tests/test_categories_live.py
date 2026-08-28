@@ -384,7 +384,7 @@ def _probe_cases(tmp_path):
 
     ws = tmp_path / "ws"
     md = ws / "boxes" / "nbox"
-    sh, vro, vrw = _workset_box_paths(md, ws / "vault", "nbox")
+    sh, vro, vrw = _workset_box_paths(md, ws / "vault" / "ro", ws / "vault" / "rw", "nbox")
     yield (
         "named",
         _ProbeProj(name="nbox", metadata_path=md, shell_path=sh,
