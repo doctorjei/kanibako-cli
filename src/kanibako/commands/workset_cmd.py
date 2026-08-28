@@ -1148,9 +1148,18 @@ def _print_effective_shares(ws, std, ws_config: Path) -> int:
         # listed cleanly. ⚑ The COLLISION WARNINGS a launch emits are not raised
         # here: §0 row 5 is an ambiguity between two ABSTRACT declarations, and a
         # share is never one of the two — the surviving share is unaffected.
+        # ⚑ THE ENTRY LIST GOES IN AS WELL, and it buys exactly one thing: the
+        # DECLARATION KEY behind each collapsed mount
+        # (``CollapsedStore.declared_by``). A mask is the row that needs it — every
+        # other loss names a host source the reader can recognise their own key by,
+        # and a mask has none, so "the mask at /opt/x" was the only diagnosis this
+        # listing could give and /opt/x is not a path the swallowed share's key
+        # names. ⚑ Passing it changes NO arbitration: the fold is byte-identical
+        # either way, and the map is read, never re-derived.
         collapsed = collapse_store_shapes(
             build_store_shape_set(entries),
             BindEntry(_PREVIEW_HOME_SRC, None),
+            entries,
         )
     except CategoryCollisionError as e:
         # ⚑⚑ FRAMING ONLY, AND THE FRAME IS THE WHOLE ADDITION. The user asked what a
@@ -1206,5 +1215,5 @@ def _print_effective_shares(ws, std, ws_config: Path) -> int:
             print(f"  {entry.host_src} -> {entry.box_dest}  [{mode}]")
             continue
         print(f"  {entry.box_dest}  [{mode}]  (declared: {entry.host_src})")
-        print(f"    {derivation_result(row)}")
+        print(f"    {derivation_result(row, collapsed.declared_by)}")
     return 0

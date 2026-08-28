@@ -3282,3 +3282,28 @@ There is **no migration code** — convert existing installs in a single pass:
 [1.3.2]: https://github.com/doctorjei/kanibako-cli/compare/v1.3.1...v1.3.2
 [1.3.1]: https://github.com/doctorjei/kanibako-cli/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/doctorjei/kanibako-cli/releases/tag/v1.3.0
+- **A launch refused for two mounts at one destination now names the settings KEY behind each
+  participant, not just their sources and paths.** All four of the collapse's mount refusals —
+  a binding over a binding, a binding inside a mask, a mask on a mask, and a mask at or above home
+  — told you *what* collided and *where*, and then told you to set the unwanted key to null. They
+  never said which key. On a box whose declarations come from four scopes and an agent node that is
+  often somebody else's file, that left you to find the offending entry by grepping for a path. Each
+  refusal now reads `the binding declared by 'box.bindings.rw./home/agent/x' … collides with …
+  '/home/agent/x' ('/h/sys' declared by 'system.bindings.rw./home/agent/x')`. The mask-on-mask case
+  gains the most: neither participant has a host source, so before this it named two bare
+  destinations and nothing you could match to a file you had written. ⚑ One refusal names a key for
+  only one side, and now says why: nothing declares the home binding — it is the foundation the box
+  is built on — so there is no key to suppress on that side.
+
+- **`kanibako workset share list --effective` now names the mask that swallowed a share, by its
+  settings key.** When a mask covers a share's destination the listing prints the share in
+  declaration form with a reason beneath it, and that reason could only give the mask's
+  destination: *"the mask at /opt/x covers this destination"*. A mask has no host source, so
+  unlike every other loss there was nothing in the line to match against a key you had written —
+  and where the mask sits **above** the share, `/opt/x` is not even a path your binding key
+  spells, so the row named nothing you could act on. It now reads *"the mask declared by
+  'workset.masks.~/x' at /home/agent/x covers this destination"*: the key is the thing to go and
+  edit, and it is the key of the mask that actually **survived** the collapse, not merely one
+  that names that destination. ⚑ `kanibako box show --effective` is unchanged — it answers from
+  a stored snapshot, whose collapsed binding map carries no declaration key.
+

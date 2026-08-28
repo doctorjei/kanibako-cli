@@ -34,16 +34,22 @@ from kanibako.settings.settings_launch import (
 from kanibako.settings.settings_resolve import GUEST_HOME, ResolveCtx, SettingsError
 from kanibako.settings.store_collapse import (
   CLI_PROVENANCE_SCOPE,
+  DERIVED_MASKED,
+  DERIVED_MOUNT,
+  DERIVED_SUPERSEDED,
   HOME_DEST,
   MASK,
   CollapsedBind,
   CollapsedCopy,
   CollapsedEnv,
   CollapsedStore,
+  Declaration,
   collapse_env,
   collapse_seeded,
   collapse_store_shapes,
+  derivation_result,
   fold_opt,
+  pair_declarations,
 )
 from kanibako.settings.store_shape import (
   CopyRow,
@@ -1191,6 +1197,275 @@ class TestTheLiveRoute:
     })
     assert collapsed.bindings[f"{GUEST}/x"].src == "/h/agent"
     assert collapsed.seeded == [CollapsedCopy("/h/file", f"{GUEST}/x/file", "")]
+
+
+class TestDeclarationProvenance:
+  """``CollapsedStore.declared_by`` — WHICH DECLARATION put the mount at each dest.
+
+  ⚑ THE SHAPES MAY NOT CARRY IT. ``meta.assembly.bindings`` is spec'd
+  ``dict[guest_dest -> (host_src, opts)]`` and every bind-shaped entry as a 1-or-2
+  element tuple (keyspec ``:434``/``:603-605``), so the key travels BESIDE the fold,
+  off the ENTRY LIST — the seam ``collapse_env`` already uses. Everything below is
+  therefore driven through the LIVE route (floor → snapshot → entries → producer →
+  collapse), because a hand-built shape has no entry list to pair against and would
+  pass whatever the fold did.
+
+  🛑 THE DISCRIMINATING CASE IS ``test_the_key_is_the_mask_that_SURVIVED…``: a
+  dest-keyed lookup over the entry list — the obvious cheap answer — names the WRONG
+  scope there, and nothing else in this class would catch it.
+  """
+
+  def ctx(self) -> ResolveCtx:
+    return ResolveCtx(
+      agent_name="claude", workset_name="myws", host_home="/home/u",
+      xdg={"XDG_DATA_HOME": "/data"}, config={},
+    )
+
+  def entries(self, floor: dict):
+    ctx = self.ctx()
+    snap = build_launch_snapshot(
+      agent_name="claude", ctx=ctx,
+      system_path=None, agent_path=None, workset_path=None, box_path=None,
+      default_categories=floor,
+    )
+    return snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx)
+
+  def collapsed(self, floor: dict) -> CollapsedStore:
+    entries = self.entries(floor)
+    return collapse_store_shapes(build_store_shape_set(entries), HOME, entries)
+
+  def test_omitting_the_entry_list_folds_identically_and_files_nothing(self):
+    """The launch's own call site passes no entries, and must be unaffected."""
+    floor = {
+      "system.bindings.ro": {"~/ro": ("/h/ro",)},
+      "box.masks": ["~/m"],
+      "box.seeded": {"~/seed": ("/h/seed",)},
+    }
+    entries = self.entries(floor)
+    shapes = build_store_shape_set(entries)
+    bare = collapse_store_shapes(shapes, HOME)
+    with_keys = collapse_store_shapes(shapes, HOME, entries)
+    assert bare.declared_by == {}
+    assert bare.bindings == with_keys.bindings
+    assert bare.seeded == with_keys.seeded
+    assert bare.synced == with_keys.synced
+    assert with_keys.declared_by != {}
+
+  def test_a_bind_and_a_mask_are_each_named_by_their_own_key(self):
+    collapsed = self.collapsed({
+      "system.bindings.ro": {"~/ro": ("/h/ro",)},
+      "box.masks": ["~/m"],
+    })
+    assert collapsed.declared_by[f"{GUEST}/ro"] == f"system.bindings.ro.{GUEST}/ro"
+    assert collapsed.declared_by[f"{GUEST}/m"] == "box.masks.~/m"
+
+  def test_home_is_named_by_no_key_because_no_key_names_it(self):
+    """Home is pid 0, built by the SEAM off the RO derived key — it is in no arm."""
+    assert GUEST not in self.collapsed({"box.masks": ["~/m"]}).declared_by
+
+  def test_a_subsumed_binds_key_LEAVES_WITH_IT(self):
+    """The sweep takes the declaration too: a key left behind names a mount the box lacks."""
+    collapsed = self.collapsed({
+      "system.bindings.rw": {"~/x": ("/h/sys",)},
+      "box.masks": ["~/x"],
+    })
+    assert collapsed.bindings[f"{GUEST}/x"] == MASK
+    assert collapsed.declared_by[f"{GUEST}/x"] == "box.masks.~/x"
+
+  def test_the_key_is_the_mask_that_SURVIVED_not_the_one_that_was_swept(self):
+    """🛑 THE ORACLE. Two scopes mask one dest; only the LATER one is the occupant.
+
+    A bind may take a mask's own point (the sweep removes the mask), and a later
+    scope's mask may then retake that point — so the finished map holds ONE mask at a
+    dest that TWO scopes' keys name. Reading provenance off the entry list by
+    destination answers ``system.masks.~/x`` here, which is a key whose mask the box
+    does not have. Only recording at the FOLD gets it right.
+    """
+    collapsed = self.collapsed({
+      "system.masks": ["~/x"],
+      "workset.bindings.rw": {"~/x": ("/h/ws",)},
+      "box.masks": ["~/x"],
+    })
+    assert collapsed.bindings[f"{GUEST}/x"] == MASK
+    assert collapsed.declared_by[f"{GUEST}/x"] == "box.masks.~/x"
+
+  def test_a_copy_sharing_a_binds_destination_does_not_claim_it(self):
+    """``synced`` at a bind's EXACT dest is ordinary (spec §2a) — and it is not a mount."""
+    collapsed = self.collapsed({
+      "box.bindings.rw": {"~/x": ("/h/x",)},
+      "box.synced": {"~/x": ("/h/x",)},
+    })
+    assert collapsed.declared_by[f"{GUEST}/x"] == f"box.bindings.rw.{GUEST}/x"
+
+  def test_an_abstraction_folded_into_the_rw_arm_is_named_by_ITS_key(self):
+    """``caches``/``common`` fold into ``rw``; the key filed must be the one written."""
+    collapsed = self.collapsed({"box.caches": {"~/cache": ("/h/cache",)}})
+    assert collapsed.declared_by[f"{GUEST}/cache"] == f"box.caches.{GUEST}/cache"
+
+
+class TestTheRefusalsNameBothParticipants:
+  """All FOUR mount refusals name a declaration KEY, not only a source and a dest.
+
+  keyspec ``:153-165``: *"the error MUST name the extending declaration, the occupant,
+  and the dest. The refusal is symmetric; the diagnosis is not."*  Each message's own
+  remedy tells the reader to null a KEY, so one that named no key asked for an edit
+  and did not say where to make it.
+
+  ⚑ ALL FOUR OR NONE — a mixed set is worse than none, because a reader who gets a key
+  from one refusal reads its absence in the next as "there is no key".
+
+  ⚑⚑ AND THE CLAUSES VANISH CLEANLY. Every case below is asserted BOTH ways off one
+  floor: with the entry list (a launch, and ``workset share list --effective``) and
+  without it (any caller that only wants the assembly leaves), where the text is
+  exactly what it always was. That is what lets ``TestABindCannotBeAChildOfAMask``
+  above go on matching the bare sentence.
+  """
+
+  def ctx(self) -> ResolveCtx:
+    return ResolveCtx(
+      agent_name="claude", workset_name="myws", host_home="/home/u",
+      xdg={"XDG_DATA_HOME": "/data"}, config={},
+    )
+
+  def refusal(self, floor: dict, *, with_keys: bool) -> str:
+    """The refusal *floor* provokes, folded WITH or WITHOUT the entry list."""
+    ctx = self.ctx()
+    snap = build_launch_snapshot(
+      agent_name="claude", ctx=ctx,
+      system_path=None, agent_path=None, workset_path=None, box_path=None,
+      default_categories=floor,
+    )
+    entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx)
+    with pytest.raises(SettingsError) as excinfo:
+      collapse_store_shapes(
+        build_store_shape_set(entries), HOME, entries if with_keys else None,
+      )
+    return str(excinfo.value)
+
+  def both(self, floor: dict) -> tuple[str, str]:
+    return self.refusal(floor, with_keys=True), self.refusal(floor, with_keys=False)
+
+  def test_bind_over_bind_names_the_ARRIVING_and_the_SUBSUMED_key(self):
+    keyed, bare = self.both({
+      "system.bindings.rw": {"~/x": ("/h/sys",)},
+      "box.bindings.rw": {"~/x": ("/h/box",)},
+    })
+    assert f"the binding declared by 'box.bindings.rw.{GUEST}/x' of '/h/box'" in keyed
+    assert f"'/h/sys' declared by 'system.bindings.rw.{GUEST}/x'" in keyed
+    # The remedy the keys exist to make actionable is untouched.
+    assert "Set the unwanted key to null" in keyed
+    assert "declared by" not in bare
+    assert "the binding of '/h/box'" in bare
+
+  def test_bind_under_mask_names_the_BINDING_and_the_MASK_key(self):
+    keyed, bare = self.both({
+      "system.masks": ["~/x"],
+      "box.bindings.rw": {"~/x/inner": ("/h/inner",)},
+    })
+    assert f"the binding declared by 'box.bindings.rw.{GUEST}/x/inner'" in keyed
+    assert "sits inside the mask declared by 'system.masks.~/x'" in keyed
+    assert "declared by" not in bare
+    assert "sits inside the mask at" in bare
+
+  def test_mask_on_mask_names_BOTH_masks_which_have_no_source_at_all(self):
+    """🛑 The refusal that needed keys most: neither participant has a host source."""
+    keyed, bare = self.both({
+      "system.masks": ["~/x"],
+      "box.masks": ["~/x/inner"],
+    })
+    assert "the mask declared by 'box.masks.~/x/inner'" in keyed
+    assert f"collapsed at '{GUEST}/x' declared by 'system.masks.~/x'" in keyed
+    assert "declared by" not in bare
+    assert f"the mask at '{GUEST}/x/inner' lands on" in bare
+
+  def test_mask_over_home_names_the_mask_and_SAYS_home_has_no_key(self):
+    """One participant genuinely has none — home is pid 0, in no scope's arm."""
+    keyed, bare = self.both({"box.masks": ["~"]})
+    assert "the mask declared by 'box.masks.~' at" in keyed
+    assert "no settings key declares it, so there is nothing to suppress" in keyed
+    assert "declared by" not in bare
+    # ⚑ The home clause is NOT provenance and is printed either way: it explains the
+    # absence of a second key rather than supplying one.
+    assert "no settings key declares it, so there is nothing to suppress" in bare
+
+  def test_the_agent_tiers_key_is_the_DISCRIMINATED_spelling(self):
+    """🛑 THE ORACLE AGAINST REBUILDING A KEY from the fold's own scope token.
+
+    The fold walks ``SCOPE_CONTAINMENT``, whose agent token is the bare ``agent``.
+    A message that composed ``<scope>.<category>.<dest>`` would print
+    ``agent.masks.~/x`` — a key that is in nobody's settings file. The key is READ
+    off ``CategoryEntry.key_segments``, which carries the node.
+    """
+    keyed, _bare = self.both({
+      "agent.claude.masks": ["~/x"],
+      "box.bindings.rw": {"~/x/inner": ("/h/inner",)},
+    })
+    assert "the mask declared by 'agent.claude.masks.~/x'" in keyed
+    assert "agent.masks." not in keyed
+
+
+class TestTheResultPhrasesTakeTheProvenance:
+  """``derivation_result`` names the declaration that TOOK a destination, when known.
+
+  ⚑ THE MOUNT LOSSES BOTH TAKE IT — masked and superseded alike. Keying one and not
+  the other was defensible only while the refusals named no keys either; once they do,
+  a display that keyed every outcome except the superseding binding is the odd one out.
+
+  ⚑ Driven through ``pair_declarations`` rather than a hand-built ``Derivation``: the
+  outcome is decided there, and a hand-built row could assert a phrase for a state the
+  pairing never produces.
+  """
+
+  MASK_KEY = "workset.masks./opt/m"
+  BIND_KEY = "box.bindings.rw./opt/b"
+
+  def rows(self, declarations, bindings, copies=()):
+    return pair_declarations(declarations, bindings, copies)
+
+  def test_a_masked_declaration_names_the_mask_that_covers_it(self):
+    (row,) = self.rows(
+      [Declaration("workset.bindings.ro./opt/m/in", "/opt/m/in", "/h/s", "MOUNT")],
+      {"/opt/m": MASK},
+    )
+    assert row.outcome == DERIVED_MASKED
+    keyed = derivation_result(row, {"/opt/m": self.MASK_KEY})
+    assert f"the mask declared by '{self.MASK_KEY}' at /opt/m covers" in keyed
+    assert "the mask at /opt/m covers" in derivation_result(row)
+
+  def test_a_superseded_declaration_names_the_binding_that_occupies_it(self):
+    (row,) = self.rows(
+      [Declaration("workset.bindings.ro./opt/b", "/opt/b", "/h/mine", "MOUNT")],
+      {"/opt/b": CollapsedBind("/h/theirs", "Z,U,rw")},
+    )
+    assert row.outcome == DERIVED_SUPERSEDED
+    keyed = derivation_result(row, {"/opt/b": self.BIND_KEY})
+    assert f"the binding declared by '{self.BIND_KEY}' of /h/theirs at /opt/b" in keyed
+    assert "the binding of /h/theirs at /opt/b occupies" in derivation_result(row)
+
+  def test_a_superseded_COPY_takes_no_key_because_no_MOUNT_took_it(self):
+    """⚑ The one deliberate exception: the taker is another COPY row, not a mount.
+
+    ``declared_by`` records MOUNTS. Naming the mount at this destination would name a
+    delivery that did not take it — so this branch stays silent rather than confident.
+    """
+    (row,) = self.rows(
+      [Declaration("box.seeded./opt/c", "/opt/c", "/h/c", "COPY")], {}, [],
+    )
+    assert row.outcome == DERIVED_SUPERSEDED
+    assert row.bind is None
+    assert derivation_result(row, {"/opt/c": "box.seeded./opt/c"}) == (
+      derivation_result(row)
+    )
+
+  def test_a_LIVE_mount_gains_no_clause_at_all(self):
+    """The guard against a fix that annotates the rows that are working fine."""
+    (row,) = self.rows(
+      [Declaration("box.bindings.rw./opt/b", "/opt/b", "/h/b", "MOUNT")],
+      {"/opt/b": CollapsedBind("/h/b", "Z,U,rw")},
+    )
+    assert row.outcome == DERIVED_MOUNT
+    assert derivation_result(row, {"/opt/b": self.BIND_KEY}) == derivation_result(row)
+    assert "declared by" not in derivation_result(row, {"/opt/b": self.BIND_KEY})
 
 
 class TestThePerRunOverride:

@@ -20,12 +20,12 @@ Prose: ``llm-docs/kanibako/settings/store_collapse.py.md``.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import PurePosixPath
 from typing import Any, Final, NamedTuple
 
 from kanibako.settings.kb_store import SCOPE_CONTAINMENT, BindEntry
-from kanibako.settings.settings_categories import COPY, ENV, CategoryEntry
+from kanibako.settings.settings_categories import COPY, ENV, MOUNT, CategoryEntry
 from kanibako.settings.settings_resolve import SettingsError, normalize_bind_dest
 from kanibako.settings.store_shape import StoreShape, StoreShapeSet
 
@@ -55,6 +55,28 @@ CollapsedBindings = dict[str, CollapsedBind]
 #: A collapsed copy list, SCOPE-ORDERED. ⚑ A dest MAY repeat - that IS the overlay.
 CollapsedCopies = list[CollapsedCopy]
 
+#: The DECLARATION KEY that put the mount at each collapsed dest, dest-keyed.
+#: 🛑🛑 A SIDE MAP, AND IT MAY NEVER BECOME A TUPLE SLOT. ``meta.assembly.bindings``
+#: is spec'd ``dict[guest_dest -> (host_src, opts)]`` and every bind-shaped entry as
+#: a 1-or-2 element tuple (keyspec ``:434``/``:440``/``:450``/``:603-605``); those
+#: arities are NORMATIVE, so widening :class:`CollapsedBind`, :class:`CollapsedCopy`
+#: or ``BindEntry`` to carry a key would put the code in contradiction with the spec.
+#: ⚑ The env leaf shows the spec grants provenance a SLOT deliberately where it means
+#: to (``:467``, ``(value, scope, key)``) and nowhere else - so here it travels
+#: BESIDE the shape instead, off the entry list, the seam :func:`collapse_env`
+#: already uses.
+DeclaringKeys = dict[str, str]
+
+#: The mount declaration keys the fold reads: ``(scope, kind, dest) -> key``.
+_MountKeys = dict[tuple[str, str, str], str]
+
+#: The two mount KINDS a declaration key is filed under. ⚑ ONE scope may hold a bind
+#: AND a mask at one dest - the producer keeps them in different arms and the mask
+#: loop below overrides the bind - so the kind is part of the identity, not
+#: decoration.
+_KIND_BIND: Final[str] = "bind"
+_KIND_MASK: Final[str] = "mask"
+
 
 class CollapsedEnv(NamedTuple):
   """One env slot's winner, ``(value, scope, key)`` - provenance travels WITH the value."""
@@ -79,27 +101,89 @@ HOME_DEST: Final[str] = normalize_bind_dest("~")
 
 @dataclass(frozen=True)
 class CollapsedStore:
-  """The collapse's OUTPUT: the three merged structures, and nothing else."""
+  """The collapse's OUTPUT: the three merged structures, plus WHO DECLARED each mount.
+
+  🛑 *declared_by* IS NOT A FOURTH ``meta.assembly`` LEAF AND MUST NOT BECOME ONE.
+  The three above are written into the snapshot FIELD BY FIELD
+  (``commands.start._install_assembly_collapse``), so nothing carries this one into
+  the store, and it is EMPTY unless a caller hands :func:`collapse_store_shapes` the
+  entry list. Landing it AS a leaf would be a closed-keyspace addition - a spec and
+  manifest edit, and not the code's to make.
+  """
 
   bindings: CollapsedBindings
   seeded: CollapsedCopies
   synced: CollapsedCopies
+  declared_by: DeclaringKeys = field(default_factory=dict)
 
 
 def collapse_store_shapes(
-  store_shape_set: StoreShapeSet, home_bind: BindEntry,
+  store_shape_set: StoreShapeSet,
+  home_bind: BindEntry,
+  entries: Sequence[CategoryEntry] | None = None,
 ) -> CollapsedStore:
-  """Merge the four scopes' shapes into a bind map + a seed list + a sync list (PURE)."""
+  """Merge the four scopes' shapes into a bind map + a seed list + a sync list (PURE).
+
+  *entries* is the SAME credential-gated ``CategoryEntry`` list the shapes were built
+  from, and it buys ONE thing: :attr:`CollapsedStore.declared_by`. It is OPTIONAL
+  because a caller that only wants the assembly leaves needs none of it, and omitting
+  it collapses byte-identically.
+
+  ⚑ IT IS THE ENTRY LIST, NOT A WIDER SHAPE - the same seam :func:`collapse_env`
+  takes, for the same reason its docstring gives: ``store_shape.build_store_shape``
+  drops ``CategoryEntry.key_segments`` when it writes the arm, and the arm's tuple is
+  spec-normative (see :data:`DeclaringKeys`), so a declaration key can only travel
+  beside the shape.
+  """
   # ⚑⚑ NEITHER COPY ARM MEETS THE BIND MAP. Seeds apply to the home bind ALONE and
   # complete BEFORE any binding folds; syncs apply LAST, at DELIVERY, resolving
   # through whichever bind covers each dest. Both arms are therefore plain
   # concatenations here - nothing is pruned, nothing is refused for sharing a dest
   # with a mount, and no copy competes with one.
+  bindings, declared_by = _collapse_mounts(
+    store_shape_set, home_bind,
+    _mount_declaration_keys(entries or (), store_shape_set),
+  )
   return CollapsedStore(
-    bindings=_collapse_mounts(store_shape_set, home_bind),
+    bindings=bindings,
     seeded=collapse_seeded(store_shape_set),
     synced=_collapse_synced(store_shape_set),
+    declared_by=declared_by,
   )
+
+
+def _mount_declaration_keys(
+  entries: Sequence[CategoryEntry], store_shape_set: StoreShapeSet,
+) -> _MountKeys:
+  """Each scope's MOUNT declarations, filed by ``(scope, kind, dest)`` (PURE).
+
+  ⚑ AN ENTRY IS MATCHED TO THE ARM ROW IT PRODUCED, never classified by a table of
+  its own: a bind entry is filed only when the scope's shape holds an IDENTICAL
+  ``BindEntry`` at its dest, and a mask entry only when the mask arm holds that dest.
+  That is what keeps the categories out of this module - ``store_shape`` alone
+  decides which category reaches which arm, and a second copy of that table here
+  would drift the day one moves. It also files the §0 row-5 WINNER rather than the
+  loser the producer dropped, because only the winner is in the arm.
+  """
+  keys: _MountKeys = {}
+  for scope in SCOPE_CONTAINMENT:
+    shape = store_shape_set[scope]
+    bind_rows = {
+      normalize_bind_dest(dest_path): bind
+      for arm in (shape.ro, shape.rw)
+      for dest_path, bind in arm.items()
+    }
+    mask_dests = {normalize_bind_dest(dest_path) for dest_path in shape.mask}
+    for entry in entries:
+      if entry.scope != scope or entry.delivery != MOUNT:
+        continue
+      dest = normalize_bind_dest(entry.box_dest)
+      if entry.host_src is None:
+        if dest in mask_dests:
+          keys[scope, _KIND_MASK, dest] = entry.key
+      elif bind_rows.get(dest) == BindEntry(entry.host_src, entry.options):
+        keys[scope, _KIND_BIND, dest] = entry.key
+  return keys
 
 
 def fold_opt(opts: str | None, token: str) -> str:
@@ -248,34 +332,76 @@ def _collapse_synced(store_shape_set: StoreShapeSet) -> CollapsedCopies:
 
 
 def _collapse_mounts(
-  store_shape_set: StoreShapeSet, home_bind: BindEntry,
-) -> CollapsedBindings:
+  store_shape_set: StoreShapeSet, home_bind: BindEntry, mount_keys: _MountKeys,
+) -> tuple[CollapsedBindings, DeclaringKeys]:
   """Fold every scope's bind + mask arms over the home foundation, in scope order."""
   combined: CollapsedBindings = {
     HOME_DEST: CollapsedBind(home_bind.src, home_bind.opts),
   }
+  # ⚑ HOME IS IN NO SCOPE'S SHAPE and is named by no bind-shaped key - it is the pid-0
+  # FOUNDATION the seam builds from the RO derived ``meta.box.home`` - so it starts
+  # with no declaring key and honestly stays that way.
+  declared_by: DeclaringKeys = {}
   for scope in SCOPE_CONTAINMENT:
-    _merge_bindings(combined, store_shape_set[scope])
-  return combined
+    _merge_bindings(combined, declared_by, store_shape_set[scope], scope, mount_keys)
+  return combined, declared_by
 
 
-def _merge_bindings(combined: CollapsedBindings, shape: StoreShape) -> None:
+def _merge_bindings(
+  combined: CollapsedBindings,
+  declared_by: DeclaringKeys,
+  shape: StoreShape,
+  scope: str,
+  mount_keys: _MountKeys,
+) -> None:
   """Fold ONE scope's ro/rw arms into *combined*, then let its masks override."""
+  # ⚑ THE ARRIVING KEY IS READ ONCE PER ENTRY and handed to the refusals AND to the
+  # claim below: the declaration that refuses and the declaration that lands are the
+  # same one, so they must not be looked up twice.
   for dest, entry, mode in _scope_binds(shape):
+    key = mount_keys.get((scope, _KIND_BIND, dest))
     _refuse_mode_contradiction(dest, entry, mode)
-    _refuse_bind_under_mask(combined, dest, entry)
-    _refuse_bind_over_bind(combined, dest, entry)
-    _sweep(combined, dest)
+    _refuse_bind_under_mask(combined, declared_by, dest, entry, key)
+    _refuse_bind_over_bind(combined, declared_by, dest, entry, key)
+    _sweep(combined, declared_by, dest)
     # ⚑ ``entry.opts`` ARRIVES CONCRETE - the category default was applied
     # upstream (``settings_launch._emit_bind``), which ``BindEntry.opts``'s
     # ``str | None`` type cannot say. So this ADDS the arm token to options that
     # already carry ``Z,U`` / ``ro``; it never stands in for the default.
     combined[dest] = CollapsedBind(entry.src, fold_opt(entry.opts, mode))
+    _claim(declared_by, dest, key)
   for dest in _scope_masks(shape):
-    _refuse_mask_on_mask(combined, dest)
-    _refuse_mask_over_home(dest)
-    _sweep(combined, dest)
+    key = mount_keys.get((scope, _KIND_MASK, dest))
+    _refuse_mask_on_mask(combined, declared_by, dest, key)
+    _refuse_mask_over_home(dest, key)
+    _sweep(combined, declared_by, dest)
     combined[dest] = MASK
+    _claim(declared_by, dest, key)
+
+
+def _declared_clause(key: str | None) -> str:
+  """`` declared by '<key>'``, or EMPTY when the fold was handed no entry list.
+
+  ⚑ ONE SPELLING OF THE CLAUSE, for all four refusals and both result phrases alike.
+  Two spellings is how a user reads two different sentences for one fact, and how the
+  set drifts the day one of them is reworded.
+
+  ⚑ EMPTY IS AN HONEST ANSWER, not a placeholder: a caller that passed no *entries*
+  asked a question this fold cannot answer, and every message below then reads exactly
+  as it did before provenance existed. Nothing is guessed and no key is invented.
+  """
+  return f" declared by '{key}'" if key is not None else ""
+
+
+def _claim(declared_by: DeclaringKeys, dest: str, key: str | None) -> None:
+  """File *key* as the declaration now occupying *dest*; a caller with none files none."""
+  # ⚑ RECORDED AT THE FOLD, never derived afterwards. "Which scope's mask survived at
+  # this dest" is NOT answerable from the finished map: a bind may take a mask's own
+  # point and a later scope's mask may retake it, leaving two scopes naming one dest
+  # and only one of them the occupant. Deriving it is exactly the second opinion this
+  # module exists to prevent.
+  if key is not None:
+    declared_by[dest] = key
 
 
 def _scope_binds(shape: StoreShape) -> list[tuple[str, BindEntry, str]]:
@@ -345,14 +471,24 @@ def _masks_over(combined: CollapsedBindings, dest: str) -> list[str]:
   ]
 
 
-def _sweep(combined: CollapsedBindings, dest: str) -> None:
+def _sweep(
+  combined: CollapsedBindings, declared_by: DeclaringKeys, dest: str,
+) -> None:
   """Delete every entry AT or INSIDE *dest* - the ONE operation both mounts share."""
+  # ⚑ THE SIDE MAP IS SWEPT WITH THE MAP IT DESCRIBES. A subsumed dest keeps no
+  # declaration: a key left behind names a mount the box does not have, which is the
+  # one thing this provenance exists to stop a display doing.
   for occupied in [d for d in combined if is_within(d, dest)]:
     del combined[occupied]
+    declared_by.pop(occupied, None)
 
 
 def _refuse_bind_over_bind(
-  combined: CollapsedBindings, dest: str, entry: BindEntry,
+  combined: CollapsedBindings,
+  declared_by: DeclaringKeys,
+  dest: str,
+  entry: BindEntry,
+  key: str | None,
 ) -> None:
   """A bind may NEST inside a bind - never take its point, never land above it.
 
@@ -363,19 +499,30 @@ def _refuse_bind_over_bind(
   key, resolved to an OMIT at cascade merge - it is NOT masking, and saying "suppress
   one of them" without saying HOW was this message's defect until cutover 2c, when it
   stopped being swallowed and became a user's only diagnostic.
-  🐞 BOARDED, out of 2c's scope: this still names no declaration KEY for either
-  participant and structurally cannot - ``build_store_shape`` drops
-  ``CategoryEntry.key_segments`` when it writes the arm, so naming them is a producer
-  shape change.
+
+  ⚑⚑ IT NAMES BOTH PARTICIPANTS BY KEY - the ARRIVING declaration and each SUBSUMED
+  one - which is what keyspec ``:153-165`` obliges: *"the error MUST name the
+  extending declaration, the occupant, and the dest. The refusal is symmetric; the
+  diagnosis is not."* The remedy above tells the reader to null a KEY, so a message
+  that named no key asked for an edit it did not say where to make. 🛑 The occupant's
+  key is READ OFF *declared_by*, the fold's own record - NEVER re-derived from the
+  dest, which cannot say which scope's declaration is the one sitting there.
+  🛑🛑 AND NOT BY WIDENING ``BindEntry``: the entry tuple is spec-normative (keyspec
+  ``:603-605``), and the boarded 🐞 that once said this "structurally cannot" was
+  wrong about the route, not about the prohibition. See :data:`DeclaringKeys`.
   """
   subsumed = _binds_under(combined, dest)
   if not subsumed:
     return
-  named = ", ".join(f"{d!r} ({combined[d].src!r})" for d in subsumed)
+  named = ", ".join(
+    f"{d!r} ({combined[d].src!r}{_declared_clause(declared_by.get(d))})"
+    for d in subsumed
+  )
   raise SettingsError(
-    f"the binding of {entry.src!r} at {dest!r} collides with the binding(s) already "
-    f"collapsed at or inside it: {named}. A binding may nest INSIDE another, never "
-    f"AT or OVER one - the mount order follows the path value, not the declaration "
+    f"the binding{_declared_clause(key)} of {entry.src!r} at {dest!r} collides with the "
+    f"binding(s) already collapsed at or inside it: {named}. A binding may nest "
+    f"INSIDE another, never AT or OVER one - the mount order follows the path "
+    f"value, not the declaration "
     f"order, so the subsumed binding could never be reached. To change what occupies "
     f"a destination you must SUPPRESS the entry you do not want and then declare the "
     f"one you do. An override is not enough: these are two different KEYS, so both "
@@ -386,9 +533,18 @@ def _refuse_bind_over_bind(
 
 
 def _refuse_bind_under_mask(
-  combined: CollapsedBindings, dest: str, entry: BindEntry,
+  combined: CollapsedBindings,
+  declared_by: DeclaringKeys,
+  dest: str,
+  entry: BindEntry,
+  key: str | None,
 ) -> None:
-  """A bind may not be a CHILD of a mask; the tmpfs would swallow it."""
+  """A bind may not be a CHILD of a mask; the tmpfs would swallow it.
+
+  ⚑ BOTH PARTICIPANTS BY KEY (keyspec ``:153-165``). The mask's key is the one that
+  matters here: it is the OTHER declaration, it may live in a scope the reader is not
+  looking at, and — unlike the binding — it carries no host source to recognise it by.
+  """
   # ⚑ The lone equality guard in the module, and it states the RULE rather than
   # patching a predicate: a bind may take a mask's own point (the sweep then
   # removes the mask), and may only never sit INSIDE one.
@@ -396,32 +552,56 @@ def _refuse_bind_under_mask(
   if not masks:
     return
   raise SettingsError(
-    f"the binding of {entry.src!r} at {dest!r} sits inside the mask at "
-    f"{masks[0]!r}, which would swallow it. A mask may be a child of a binding, "
-    f"never its parent - bind outside the mask, or do not declare the mask."
+    f"the binding{_declared_clause(key)} of {entry.src!r} at {dest!r} sits inside the "
+    f"mask{_declared_clause(declared_by.get(masks[0]))} at {masks[0]!r}, which would "
+    f"swallow it. A mask may be a child of a binding, never its parent - bind "
+    f"outside the mask, or do not declare the mask."
   )
 
 
-def _refuse_mask_on_mask(combined: CollapsedBindings, dest: str) -> None:
-  """A mask may not take another mask's point nor sit inside one: a void within a void."""
+def _refuse_mask_on_mask(
+  combined: CollapsedBindings,
+  declared_by: DeclaringKeys,
+  dest: str,
+  key: str | None,
+) -> None:
+  """A mask may not take another mask's point nor sit inside one: a void within a void.
+
+  ⚑ BOTH PARTICIPANTS BY KEY (keyspec ``:153-165``), and this is the refusal that
+  needed it most: NEITHER mask has a host source, so before the keys the message named
+  two bare destinations and nothing a reader could match to a file they had written.
+  """
   covering = _masks_over(combined, dest)
   if not covering:
     return
+  named = ", ".join(
+    f"{d!r}{_declared_clause(declared_by.get(d))}" for d in covering
+  )
   raise SettingsError(
-    f"the mask at {dest!r} lands on the mask(s) already collapsed at "
-    f"{', '.join(repr(d) for d in covering)}. A mask may not take another mask's "
+    f"the mask{_declared_clause(key)} at {dest!r} lands on the mask(s) already "
+    f"collapsed at {named}. A mask may not take another mask's "
     f"point nor sit inside one - a void within a void hides nothing the outer mask "
     f"is not hiding already. Declare one of them, not both."
   )
 
 
-def _refuse_mask_over_home(dest: str) -> None:
-  """Nothing may subsume home, masks included: a mask AT home or above it is refused."""
+def _refuse_mask_over_home(dest: str, key: str | None) -> None:
+  """Nothing may subsume home, masks included: a mask AT home or above it is refused.
+
+  ⚑ ONE PARTICIPANT HAS A KEY AND THE OTHER GENUINELY HAS NONE, so this message names
+  one and says why. Home is pid 0 — the FOUNDATION the launch seam builds from the RO
+  derived ``meta.box.home``, seeded beneath every scope's shape and in no scope's arm
+  (:func:`_collapse_mounts`). 🛑 There is no bind-shaped key to name and none is
+  invented: pointing a reader at a key they cannot write would be worse than the
+  silence it replaced.
+  """
   if not is_within(HOME_DEST, dest):
     return
   raise SettingsError(
-    f"the mask at {dest!r} lands at or above the home binding at {HOME_DEST!r}, "
-    f"which it would replace and leave the box with no home at all. Nothing may "
+    f"the mask{_declared_clause(key)} at {dest!r} lands at or above the home binding at "
+    f"{HOME_DEST!r}, which it would replace and leave the box with no home at all. "
+    f"Home is the foundation and no settings key declares it, so there is nothing to "
+    f"suppress on that side. Nothing may "
     f"subsume home - a mask may sit INSIDE home, never at its point nor over it: "
     f"mask a path inside home, or do not declare the mask."
   )
@@ -480,10 +660,14 @@ def _refuse_mode_contradiction(dest: str, entry: BindEntry, mode: str) -> None:
 # (keyspec ``:88``) is DECLARATION -> DELIVERY: "``--effective`` shows BOTH the
 # declaration and the derived binding and a user can see WHY a mount exists." That
 # question is answered by CONTAINMENT against the finished map - which dest covers
-# this declaration's dest, and what sits there. The REVERSE question (given a
-# collapsed bind, name the declaration that produced it) is the one the collapse
-# cannot answer, and the one ``_refuse_bind_over_bind``'s boarded 🐞 wants; it is
-# NOT this one.
+# this declaration's dest, and what sits there.
+#
+# ⚑ THE REVERSE QUESTION - given a collapsed dest, name the declaration that put a
+# mount there - is answered by :attr:`CollapsedStore.declared_by`, and ONLY for a
+# caller that handed the fold its entry list. It is what turns "the mask at /opt/x"
+# into a path the user's own key names, which for a mask ABOVE the declaration is
+# the whole diagnosis. 🛑 IT IS STILL NOT A TUPLE SLOT and must not become one -
+# see :data:`DeclaringKeys`.
 #
 # 🛑🛑 AND THE TUPLES MAY NOT GROW. ``meta.assembly.bindings`` is spec'd as
 # ``dict[guest_dest -> (host_src, opts)]`` and the two copy leaves as
@@ -610,13 +794,26 @@ def _pair_one(
   )
 
 
-def derivation_result(row: Any) -> str:
+def derivation_result(row: Any, declared_by: Mapping[str, str] | None = None) -> str:
   """One :class:`Derivation` as the RESULT PHRASE a display prints for it.
 
   ⚑ EVERY OUTCOME PRINTS SOMETHING, and a LOSS prints WHY and WHERE. "No mount" on
   its own is the answer a user cannot act on; the destination that swallowed the
   declaration is the whole diagnosis, and for a mask ABOVE the declaration it is not
   a destination the user's own key names.
+
+  *declared_by* is :attr:`CollapsedStore.declared_by` - the fold's own record of
+  which declaration put each mount where. It is OPTIONAL because only a display that
+  FOLDS IN PROCESS has it: ``box show --effective`` reads a STORED snapshot, whose
+  ``meta.assembly.bindings`` leaf carries no key and cannot be taught to without a
+  closed-keyspace addition. Given it, the two LOSS phrases name the declaration that
+  took the destination; without it each phrase is exactly what it always was.
+
+  ⚑ BOTH MOUNT LOSSES TAKE IT, not just the mask. The mask was the acute case — a
+  mask has no host source, so its row named nothing a reader could match to a file
+  they had written — but once the refusals name keys, a display that keyed every
+  outcome EXCEPT the superseding binding would be the odd one out. The copy branch
+  below is the one genuine exception, and it says why in place.
 
   ⚑ IT LIVES BESIDE THE ``DERIVED_*`` OUTCOMES IT NAMES, not inside either display.
   It was ``config_display._derivation_result`` while ``box show --effective`` was the
@@ -628,20 +825,25 @@ def derivation_result(row: Any) -> str:
   """
   if row.outcome == DERIVED_COPY:
     return f"{row.copy.src} -> {row.copy.dest}  (copy)"
+  keys = declared_by or {}
   if row.outcome == DERIVED_MASKED:
     return (
-      f"(no mount — the mask at {row.at} covers this destination, and a mask "
-      f"has no host source: the box sees nothing at that path)"
+      f"(no mount — the mask{_declared_clause(keys.get(row.at))} at {row.at} covers "
+      f"this destination, and a mask has no host source: the box sees nothing at "
+      f"that path)"
     )
   if row.outcome == DERIVED_SUPERSEDED:
     if row.bind is None:
+      # ⚑ THIS BRANCH TAKES NO KEY, and *declared_by* could not supply one: the
+      # taker here is another COPY row, and the side map records MOUNTS. Naming
+      # the mount at this dest would name a delivery that did not take it.
       return (
         "(no copy — no collapsed copy row accounts for this declaration; "
         "another declaration at this destination took it)"
       )
     return (
-      f"(no mount — the binding of {row.bind.src} at {row.at} occupies this "
-      f"destination)"
+      f"(no mount — the binding{_declared_clause(keys.get(row.at))} of {row.bind.src} "
+      f"at {row.at} occupies this destination)"
     )
   if row.outcome == DERIVED_AMBIGUOUS:
     return (

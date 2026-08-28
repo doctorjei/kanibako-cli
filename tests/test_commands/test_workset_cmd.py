@@ -1732,7 +1732,17 @@ class TestWorksetShareListArbitrates:
             "listing claims a mount the box does not receive"
         )
         assert "/opt/arb  [ro]  (declared: /etc/hostname)" in out
-        assert "no mount — the mask at /opt/arb" in out
+        # ⚑ THE MASK'S OWN KEY, not just its destination. A mask has no host source,
+        # so before 2026-08-27 this row named nothing the user could match against a
+        # key they had written — the destination alone, which for the PARENT case
+        # below is not even a path their own key spells.
+        assert (
+            "no mount — the mask declared by 'workset.masks./opt/arb' at /opt/arb"
+        ) in out
+        assert "workset.bindings.ro" not in out, (
+            "the row named the SHARE's key where the MASK's belongs: the question "
+            "is what swallowed this declaration, not what the declaration is"
+        )
 
     def test_a_mask_above_the_destination_is_named_instead_of_a_mount(
         self, std, config, tmp_home, capsys,
@@ -1742,7 +1752,8 @@ class TestWorksetShareListArbitrates:
         ⚑ This is the one a dest-keyed lookup cannot answer — nothing sits at
         ``/opt/arb/inner`` after the sweep, and reading "absent" as "fine" says nothing.
         The mask's OWN destination is the whole diagnosis and is not a path the user's
-        binding key names.
+        binding key names — so the KEY that declared it is what makes the row
+        actionable: it is the thing the reader has to go and edit.
         """
         self._ws(std, tmp_home, "arb-above", {
             "bindings": {"ro": {"/opt/arb/inner": [self._SRC]}},
@@ -1751,7 +1762,35 @@ class TestWorksetShareListArbitrates:
         rc, out, _err = self._effective("arb-above", capsys)
         assert rc == 0
         assert f"{self._SRC} -> /opt/arb/inner" not in out
-        assert "no mount — the mask at /opt/arb " in out
+        assert (
+            "no mount — the mask declared by 'workset.masks./opt/arb' at /opt/arb "
+        ) in out
+
+    def test_the_masks_key_is_READ_not_rebuilt_from_the_destination(
+        self, std, config, tmp_home, capsys,
+    ):
+        """MUTATION-PROOF for the key: a ``~`` dest makes the two spellings DIFFER.
+
+        A display could fake this row by pasting ``workset.masks.`` in front of the
+        destination it already prints, and every absolute-path case would pass.  A
+        ``~``-spelled mask breaks that: the KEY keeps the tilde the author wrote,
+        while the collapsed destination is the resolved guest path.  Both appear in
+        the line, and they are not the same string.
+        """
+        from kanibako.settings.settings_resolve import GUEST_HOME
+
+        self._ws(std, tmp_home, "arb-tilde", {
+            "bindings": {"ro": {"~/masked/inner": [self._SRC]}},
+            "masks": {"~/masked": True},
+        })
+        rc, out, _err = self._effective("arb-tilde", capsys)
+        assert rc == 0
+        assert "workset.masks.~/masked" in out
+        assert f"at {GUEST_HOME}/masked " in out
+        assert f"workset.masks.{GUEST_HOME}/masked" not in out, (
+            "the key was rebuilt from the destination, so it names a key spelling "
+            "that is not in the user's file"
+        )
 
     def test_a_share_nested_inside_another_share_still_mounts(
         self, std, config, tmp_home, capsys,
@@ -1816,7 +1855,7 @@ class TestWorksetShareListArbitrates:
         from kanibako.settings.kb_store import SCOPE_CONTAINMENT
         from kanibako.settings.store_collapse import CollapsedBind, CollapsedStore
 
-        def _no_arbitration(store_shape_set, home_bind):
+        def _no_arbitration(store_shape_set, home_bind, entries=None):
             return CollapsedStore(
                 bindings={
                     dest: CollapsedBind(entry.src, entry.opts)

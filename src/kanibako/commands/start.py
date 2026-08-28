@@ -4278,8 +4278,9 @@ def _run_container(
                 # compile-time constant: since MBR-1 P4b the stamp is an ordinary
                 # ``system.env.KANIBAKO_AGENT_MARKERS_DIR`` slot (the floor key
                 # :func:`_core_env_default_categories` derives), so a user CAN override
-                # it — and the box-side hooks that WRITE the markers read the ENV
-                # (``${KANIBAKO_AGENT_MARKERS_DIR:-…}``, see ``vscode.vscode_config``).
+                # it — and the box-side scripts that WRITE the markers read the ENV
+                # (``${KANIBAKO_AGENT_MARKERS_DIR:-…}`` in ``pid-add.sh``/``pid-rm.sh``,
+                # which the hooks merged by ``vscode.vscode_config`` invoke).
                 # Reading the env here is what keeps BOTH ends of the contract on one
                 # dir under an override; the constant is only the no-override fallback.
                 supervisor_argv += [
@@ -7135,7 +7136,18 @@ def _install_assembly_collapse(
     # ⚑ Recomputes the seed list and discards it — the SAME pure concatenation over
     # the SAME shapes, so it cannot differ. One implementation beats one saved
     # traversal.
-    collapsed = collapse_store_shapes(shapes, home_bind)
+    # ⚑⚑ THE ENTRY LIST GOES IN BESIDE THE SHAPES, and it is what makes the fold's
+    # four REFUSALS name a declaration KEY rather than only a source and a
+    # destination — the diagnostic keyspec ``:153-165`` obliges. The shapes cannot
+    # carry it: ``store_shape.build_store_shape`` drops
+    # ``CategoryEntry.key_segments`` when it writes the arm, and the arm's entry
+    # tuple is spec-normative (``:603-605``), so it may not grow a slot. It is the
+    # SAME gated list the shapes and the env fold below are built from — one list,
+    # three readers, one box described.
+    # 🛑 IT ADDS NO LEAF. ``CollapsedStore.declared_by`` is read by the refusals and
+    # by a display that folds in process; the three ``insert_segments`` below name
+    # their fields one by one, and none of them is that map.
+    collapsed = collapse_store_shapes(shapes, home_bind, entries)
     snapshot.insert_segments(_ASSEMBLY_BINDINGS, collapsed.bindings)
     snapshot.insert_segments(_ASSEMBLY_SYNCED, collapsed.synced)
     # THE ENV SLOTS, off the ENTRY LIST rather than the shapes: ``env`` folds into no

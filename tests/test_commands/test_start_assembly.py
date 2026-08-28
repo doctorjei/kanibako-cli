@@ -1232,9 +1232,26 @@ class TestTheMaskArm:
         back, and the box quietly received the pre-collapse answer (mask AND bind).
         The refusal is the launch's now: this arrangement stops the box instead of
         delivering a bind inside the void that is supposed to hide it.
+
+        ⚑⚑ IT IS ALSO THE LAUNCH-PATH ORACLE FOR DECLARATION PROVENANCE. The refusal
+        names BOTH participants by KEY, which it can only do because this seam hands
+        ``collapse_store_shapes`` its ENTRY LIST — drop that argument and the clauses
+        vanish while every other assertion here still passes.  🛑 The mask's key is
+        the DISCRIMINATED agent spelling ``agent.claude.masks.…``, not
+        ``agent.masks.…``: the key is READ off ``CategoryEntry.key_segments``, and a
+        message that rebuilt it from the fold's own scope token would name a key that
+        is in nobody's settings file.
         """
         proj = resolve_project(std, config, str(project_dir), initialize=True)
-        with pytest.raises(SettingsError, match="sits inside the mask at"):
+        with pytest.raises(
+            SettingsError,
+            match=(
+                r"the binding declared by "
+                r"'box\.bindings\.ro\./home/agent/private/notes' of '/tmp' at "
+                r"'/home/agent/private/notes' sits inside the mask declared by "
+                r"'agent\.claude\.masks\.~/private' at '/home/agent/private'"
+            ),
+        ):
             _resolve(std, proj, extra_default_categories={
                 "agent.claude.masks": ["~/private"],
                 "box.bindings.ro": {"~/private/notes": ("/tmp",)},
