@@ -35,7 +35,7 @@ prefixed a root on the way to a mount is the shape §2a calls FORBIDDEN.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Final, Literal, Mapping, NoReturn
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -334,7 +334,7 @@ def gate_credential_delivery(
 
 @dataclass(frozen=True)
 class LaunchDeliveries:
-    """What the launch entry list delivers BESIDE the collapse's mount set.
+    """What the launch entry list delivers BESIDE the collapse's mount set — and WHO DECLARED it.
 
     Built ONCE at the seam (``commands.start._resolve_launch_snapshot``) off the
     CREDENTIAL-GATED list the collapse also sees, so the two describe one box.
@@ -345,6 +345,16 @@ class LaunchDeliveries:
     ``None`` otherwise — the collapse returns before writing
     ``meta.assembly.bindings`` — and ``None`` UNLESS THE CALLER ASKED, so the main
     path cannot reach a map it never requested (P3).
+
+    ⚑⚑ *declared_by* IS THE FOLD'S OWN
+    :attr:`~kanibako.settings.store_collapse.CollapsedStore.declared_by`, carried out
+    of the resolve rather than written into the snapshot — dest-keyed, EMPTY on a
+    narrow resolve (which folds no bind map at all).  It rides HERE because this
+    carrier is the resolve's ONE out-of-band return channel: a second channel for one
+    map is the two-carriers defect, and the alternative — a fourth ``meta.assembly``
+    leaf — is the closed-keyspace addition ``store_collapse`` forbids by name.  It is
+    read by a display that must NAME the declaration a mount came from
+    (``settings.config_display``, ``box show --effective``).
 
     🛑 THE ENVIRONMENT IS NOT HERE ANY MORE — the variables are arbitrated by
     ``store_collapse.collapse_env`` and read off ``meta.assembly.env``.  A second,
@@ -357,6 +367,7 @@ class LaunchDeliveries:
     secrets: list[CategoryEntry]
     agent_dests: frozenset[str]
     narrow_bindings: "dict[str, object] | None" = None
+    declared_by: "dict[str, str]" = field(default_factory=dict)
 
 
 def secret_path_winners(entries: list[CategoryEntry]) -> list[CategoryEntry]:
@@ -427,17 +438,23 @@ def secret_path_deliveries(entries: list[CategoryEntry]) -> list[CategoryEntry]:
 def launch_deliveries(
     entries: list[CategoryEntry], *, agent_dests: frozenset[str],
     narrow_bindings: "dict[str, object] | None" = None,
+    declared_by: "dict[str, str] | None" = None,
 ) -> LaunchDeliveries:
     """Build the :class:`LaunchDeliveries` carrier from a CREDENTIAL-GATED list.
 
     ⚑ NO ``ENV`` FILTER HERE, AND ADDING ONE BACK WOULD BE A SECOND ROUTE: the ``env``
     rows leave through the assembly collapse, off this same list, so a box's variables
     and its mounts fold from one input.
+
+    ⚑ *declared_by* is HANDED IN, never derived: it is the FOLD's record (see the field),
+    and this function has no bind map to read one off.  Omitted, the carrier reports an
+    empty map and every reader of it prints exactly what it always did.
     """
     return LaunchDeliveries(
         secrets=secret_path_deliveries(entries),
         agent_dests=agent_dests,
         narrow_bindings=narrow_bindings,
+        declared_by=dict(declared_by or {}),
     )
 
 

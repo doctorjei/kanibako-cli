@@ -367,6 +367,14 @@ mounts. Three properties are deliberate:
   box's mounts MINUS the token the launch actually mounts, and minus its `env` passthrough. It is
   tolerant and `None` for a bare agent, so a store-less box renders exactly as before.
 
+⚑ **The resolve's `LaunchDeliveries` is KEPT, for its `declared_by`.** Because this display folds in
+process, per command, the collapse's record of which declaration took each destination is live right
+here — and it is on no leaf and never can be (a fourth `meta.assembly.*` leaf is a closed-keyspace
+addition). It is passed to `show_config` as `category_declared_by` and reaches
+`config_display._print_category_block`, which is what lets a loss print *"the mask declared by
+`'box.masks./opt/x'` at /opt/x covers this destination"* rather than a path with no key to go and
+edit. Discard the carrier and the block silently degrades to the bare phrase.
+
 The NODE-name keys the `agent.<node>.*` keyspace slot and the `agents/<node>/` dir; `with_harness`
 reflects the RESOLVED target (fallback-safe) with the persona preserved, and for a bare,
 as-requested agent it equals `target.name`.

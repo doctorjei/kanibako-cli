@@ -6538,7 +6538,8 @@ def _resolve_launch_snapshot(
     Returns ``(snapshot, deliveries)``.  ⚑ The
     :class:`~kanibako.settings.settings_categories.LaunchDeliveries` carrier is a
     RETURN VALUE and not a snapshot leaf on purpose: ``meta.assembly.*`` is a CLOSED
-    set of DECLARED leaves, and an undeclared one would install silently.
+    set of DECLARED leaves, and an undeclared one would install silently.  That is
+    also why the collapse's ``declared_by`` rides out on it.
 
     ⚑ THERE IS NO SECOND, CROSS-SCOPE ``reconcile`` PASS ANY MORE (cutover 6-R3).
 
@@ -6916,7 +6917,12 @@ def _resolve_launch_snapshot(
         # ⚑ NO ``emit_collision_warnings`` beside it: the §0 row-5 same-scope
         # ambiguity is announced ONCE, from the producer, inside this call (cutover
         # 5-1c). A second feed would give one ambiguity two ways to reach the user.
-        _install_assembly_collapse(
+        # ⚑ THE FOLD'S ``declared_by`` COMES BACK OUT HERE and goes onto the carrier
+        # below. It is the ONE record of which declaration took each destination, it
+        # cannot be re-derived from the finished map (a sweep drops the row with the
+        # mount it named), and it may not become a fourth ``meta.assembly`` leaf — so
+        # the resolve's own return channel is the only way a display can have it.
+        declared_by = _install_assembly_collapse(
             snapshot, delivered, whole_box=include_base_families, cli_env=cli_env,
         )
         # The carrier every consumer reads (cutover 6-R1/6-R2), built off the SAME
@@ -6933,6 +6939,7 @@ def _resolve_launch_snapshot(
                 None if narrow_bind_dests is None
                 else _narrow_bind_map(delivered, narrow_bind_dests)
             ),
+            declared_by=declared_by,
         )
     except (CategoryCollisionError, SettingsError) as exc:
         raise _annotate_pref_origin(exc, prefs) from None
@@ -7052,8 +7059,15 @@ _HOME_OPTIONS: "str" = "Z,U"
 def _install_assembly_collapse(
     snapshot, entries, *, whole_box: bool,
     cli_env: "Mapping[str, str] | None" = None,
-) -> None:
+) -> "dict[str, str]":
     """Store the collapse at ``meta.assembly.*``, each leaf on ITS OWN gate — see llm-docs.
+
+    RETURNS the fold's ``declared_by`` — dest → the declaration key that took it — and
+    EMPTY on a narrow resolve, which folds no bind map. ⚑ IT IS RETURNED, NOT STORED:
+    the map is the collapse's fourth field and the one thing the three
+    ``insert_segments`` below deliberately do not carry (see the 🛑 at the fold), so a
+    display that needs it must be HANDED it. :func:`_resolve_launch_snapshot` puts it on
+    ``LaunchDeliveries.declared_by``, the resolve's one out-of-band channel.
 
     *whole_box* is the resolve's own ``include_base_families``, forwarded rather than
     re-derived: a resolve that carries the base families is describing A BOX, and only a
@@ -7126,7 +7140,7 @@ def _install_assembly_collapse(
     # one. ⚑ THE ASYMMETRY IS DELIBERATE AND PINNED: the seed leaf is written ABOVE
     # this return, the bindings, sync and env leaves below it.
     if not whole_box:
-        return
+        return {}
     # THE pid-0 FOUNDATION, built HERE. Home does not route through ``bindings.rw``
     # (spec ``:1015``): the seam reads the RO DERIVED key and pairs it with the seam's
     # own options, and the collapse seeds it beneath every scope's shape.
@@ -7147,7 +7161,8 @@ def _install_assembly_collapse(
     # three readers, one box described.
     # 🛑 IT ADDS NO LEAF. ``CollapsedStore.declared_by`` is read by the refusals and
     # by a display that folds in process; the three ``insert_segments`` below name
-    # their fields one by one, and none of them is that map.
+    # their fields one by one, and none of them is that map — it leaves as this
+    # function's RETURN VALUE instead.
     collapsed = collapse_store_shapes(shapes, home_bind, entries)
     # ⚑⚑ COVERAGE IS ASKED HERE AND NOWHERE ELSE, and the seam is the whole reason.
     # ⚖️ RULED 2026-08-28 — *"we should be checking that the paths resolve"* — so a
@@ -7173,6 +7188,7 @@ def _install_assembly_collapse(
     # every consumer reads. Applying it after this call would put it above the
     # channel again — the arrangement P4c-1 removed.
     snapshot.insert_segments(_ASSEMBLY_ENV, collapse_env(entries, cli_env))
+    return collapsed.declared_by
 
 
 def _snapshot_home(snapshot) -> str:

@@ -538,6 +538,13 @@ two copies of — two carriers of one shape is the defect class this whole secti
 ⚑ It takes `Any`, not `Derivation`: the optional halves of that tuple are decided BY the outcome,
 and each branch reads only the half its own outcome guarantees.
 
+⚑ **The second argument is the fold's `declared_by`, and BOTH loss phrases take it** — the mask
+("the mask **declared by `'box.masks./opt/x'`** at …") and the superseding binding alike. It is
+OPTIONAL because a caller must be HANDED the map: it cannot be recovered from the collapsed leaf,
+which carries no key. Omitted, every phrase is byte-identical to what it was. The COPY-loss branch
+is the one genuine exception and says why in place — the taker there is another copy row, and the
+side map records mounts.
+
 ⚑ The MOUNT phrase is this function's, but a display may render a delivered row in its own
 vocabulary and call in only for the rest — `workset share list --effective` does, because its column
 is the share's `ro`/`rw` MODE and not the collapsed mount options. That is a FORMAT choice, never a
@@ -552,7 +559,7 @@ answered by **`CollapsedStore.declared_by`**, a dest-keyed SIDE MAP built off th
 recorded AT THE FOLD. `collapse_store_shapes` takes that list as an OPTIONAL third argument; a
 caller that omits it collapses byte-identically and files nothing, which is why every message here
 still has a bare spelling. The launch seam passes it (`commands.start._install_assembly_collapse`),
-and so does `workset share list --effective`.
+and so does `workset share list --effective`; both displays then print from it.
 
 ⚑ **Off the ENTRY LIST, because that is the only seam that has the keys** — the same one
 `collapse_env` takes, and for the same reason: `store_shape.build_store_shape` drops
@@ -569,8 +576,16 @@ key can never outlive the mount it named.
 🛑 **`declared_by` IS NOT A FOURTH `meta.assembly` LEAF and must not become one.** The three leaves
 are written field by field at the seam; nothing carries this map into the store. Landing it as a
 leaf would be a closed-keyspace addition — a spec and manifest edit, and not the code's to make.
-That is also why `box show --effective` still prints the bare phrases: it answers from a STORED
-snapshot, whose collapsed binding map carries no key.
+
+⚑ **So it is THREADED instead, and BOTH displays get it.** `_install_assembly_collapse` RETURNS the
+map beside the leaves it writes; `_resolve_launch_snapshot` puts it on
+`settings_categories.LaunchDeliveries.declared_by`, the resolve's one out-of-band return channel;
+`box show --effective` — which builds its snapshot IN PROCESS, per command — takes it from there and
+hands it to `derivation_result`. ⚑ The map that display prints from is therefore the SAME fold's as
+the `meta.assembly.bindings` it pairs against, which is the only way the key and the mount can be
+one answer. 🛑 **What the leaf cannot do is carry the key ITSELF** — a caller holding nothing but a
+snapshot still has no key to give, and re-deriving one from the finished map is impossible for the
+reason above.
 
 And the tuples may not grow regardless: the keyspec declares `meta.assembly.bindings` as
 `dict[guest_dest → (host_src, opts)]` (`:434`) and both copy leaves as

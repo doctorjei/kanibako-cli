@@ -123,17 +123,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   only one side, and now says why: nothing declares the home binding — it is the foundation the box
   is built on — so there is no key to suppress on that side.
 
-- **`kanibako workset share list --effective` now names the mask that swallowed a share, by its
-  settings key.** When a mask covers a share's destination the listing prints the share in
-  declaration form with a reason beneath it, and that reason could only give the mask's
-  destination: *"the mask at /opt/x covers this destination"*. A mask has no host source, so
-  unlike every other loss there was nothing in the line to match against a key you had written —
-  and where the mask sits **above** the share, `/opt/x` is not even a path your binding key
-  spells, so the row named nothing you could act on. It now reads *"the mask declared by
+- **`kanibako workset share list --effective` and `kanibako box show --effective` now name the mask
+  that swallowed a declaration, by its settings key.** When a mask covers a destination, both
+  listings print the declaration in declaration form with a reason beneath it, and that reason could
+  only give the mask's destination: *"the mask at /opt/x covers this destination"*. A mask has no
+  host source, so unlike every other loss there was nothing in the line to match against a key you
+  had written — and where the mask sits **above** the declaration, `/opt/x` is not even a path your
+  own key spells, so the row named nothing you could act on. It now reads *"the mask declared by
   'workset.masks.~/x' at /home/agent/x covers this destination"*: the key is the thing to go and
   edit, and it is the key of the mask that actually **survived** the collapse, not merely one
-  that names that destination. ⚑ `kanibako box show --effective` is unchanged — it answers from
-  a stored snapshot, whose collapsed binding map carries no declaration key.
+  that names that destination. ⚑ The same holds where a **binding** takes a destination from
+  another declaration, and in both halves of `box show --effective`'s category block.
 
 - **The agent liveness-marker hooks are a script call now, not a line of shell inside your
   config.** Kanibako seeds a `SessionStart` and a `SessionEnd` hook into a box's
@@ -459,8 +459,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   took it:
 
       box.bindings.ro./opt/arb = /opt/arb  (declared: /src)
-        (no mount — the mask at /opt/arb covers this destination, and a mask has no host
-        source: the box sees nothing at that path)
+        (no mount — the mask declared by 'box.masks./opt/arb' at /opt/arb covers this
+        destination, and a mask has no host source: the box sees nothing at that path)
 
   A destination you spelled with a variable — `$XDG_CACHE_HOME/models`, say — is arbitrated like
   any other, and a mask over one is reported like any other. The key is still printed the way you

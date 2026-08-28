@@ -495,6 +495,14 @@ entry list — the same list the collapse sees, so the two describe one box.
   the seam builds it only for a resolve that named its table's dests
   (`commands.start._resolve_launch_snapshot`'s *narrow_bind_dests*), so the main path cannot
   reach a map it never requested (P3).
+* *declared_by* — the FOLD's own `store_collapse.CollapsedStore.declared_by`: dest → the
+  declaration key that took it, EMPTY on a narrow resolve (which folds no bind map at all). It
+  is HANDED to `launch_deliveries` by the seam, never derived here — this function has no bind
+  map to read one off. ⚑ **It rides this carrier because this carrier IS the resolve's one
+  out-of-band channel**: a second channel for one map is the two-carriers defect, and the
+  alternative — a fourth `meta.assembly` leaf — is the closed-keyspace addition
+  `store_collapse` forbids by name. Its reader is `settings.config_display`, so that
+  `box show --effective` can print the KEY that swallowed a declaration and not just the path.
 
 🛑 **THE ENVIRONMENT IS NOT ON THIS CARRIER ANY MORE.** An `envs` list rode it until the env
 slots became a collapse output: the variables are arbitrated by `store_collapse.collapse_env`
