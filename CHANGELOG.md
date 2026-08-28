@@ -312,6 +312,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`system get agent.default.<key>` answered `(not set)` for a value `system get <key>` had just
+  returned.** The any-agent tier has two spellings of one key — the bare `model` the CLI serves, and
+  the full `agent.default.model` the settings registry declares — and only the bare one read. The
+  full spelling was routed as if `default` were an agent node, hit the reserved-tier guard that
+  exists to refuse a *write* there, and came back with nothing for the read to use. Both spellings
+  now resolve to the same slot in the same file, for all eleven declared agent leaves. **The write
+  side is unchanged and still refuses the full spelling by name**, with the cure naming the bare
+  key. Only the read moved.
+
+- **`set` and `reset` told you a declared key was not a key.** `kanibako system set
+  system.masks=/tmp` answered *"unknown config key: system.masks"*. The refusal itself is right — a
+  category table is keyed by box destination, so there is nothing for a scalar `set` to write, and
+  the registry declares these keys file-only — but the message denied the key's existence instead
+  of naming the rule. All seven categories were affected at every scope that carries them, on both
+  verbs. They are refused by name now, saying the value is a destination-keyed table, naming the
+  file to author it in and the command that reads it back. **Nothing became settable.** The
+  per-name spelling `<scope>.<category>.<name>` keeps its own message: that route was *retired*,
+  whereas the whole-key spelling never had one.
+
 - **`box get` and `workset get` answered `(not set)` for a per-agent key that was set.** A key
   naming an agent node — `agent.<node>.model`, `agent.<node>.endpoint`,
   `agent.<node>.secret_path.<VAR>` — is stored in that node's own `agents/<node>/agent.yaml`, and

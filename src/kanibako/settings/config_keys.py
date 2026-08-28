@@ -598,6 +598,34 @@ def _is_agent_setting(key: str) -> bool:
     return key in SCALAR_AGENT_LEAVES
 
 
+def agent_default_tier_leaf(key: str) -> str | None:
+    """The bare leaf *key* names when it spells the any-agent tier IN FULL, else ``None``.
+
+    ``agent.default.model`` → ``"model"``; the reserved ``default`` node is the ANY-AGENT
+    TIER, not a persona, so the key it addresses is the one the bare spelling addresses and
+    it is stored in the NOUN's settings file under ``agent: default:`` — never in an
+    ``agents/default/agent.yaml``, which does not exist.
+
+    ⚑⚑ A DESTINATION FACT, NOT A PERMISSION.  ``set``/``reset`` still refuse this spelling
+    with the cure naming the bare form (``config_dest._persona_agent_target``); what this
+    answers is where the value LIVES, which is what makes the READ honest.  Until it
+    existed, ``system get agent.default.model`` answered "(not set)" at rc 0 over a value
+    ``system get model`` returned — a fabricated answer for a declared key (spec §0).
+
+    ⚑ :data:`DECLARED_AGENT_LEAVES`, NOT :data:`SCALAR_AGENT_LEAVES`, and the difference is
+    the point: ``transform_settings`` cannot be WRITTEN from the CLI but is declared,
+    hand-authored and read, so it must read back here too.
+    ⚑ DERIVED (P13) through :func:`_parse_persona_agent_key`, whose own leaf set is the
+    declaration SoT — a leaf entering §2d reaches this surface with no edit.  The ``env.``
+    section form parses to a dotted tail and is deliberately NOT claimed: it is a different
+    family with its own scoped spelling.
+    """
+    parsed = _parse_persona_agent_key(key)
+    if parsed is None or parsed[0] != AGENT_DEFAULT_SUB:
+        return None
+    return parsed[1] if parsed[1] in DECLARED_AGENT_LEAVES else None
+
+
 def agent_leaf_table_error(canonical: str, *, verb: str) -> str | None:
     """Refuse a WRITE at a declared agent leaf whose value is a TABLE (spec §2d).
 
@@ -617,6 +645,102 @@ def agent_leaf_table_error(canonical: str, *, verb: str) -> str | None:
         f"the command line — its entries are DATA inside the table, not keys of their "
         f"own (spec §2d). Edit the '{leaf}' table in the settings file directly; the "
         f"launch reads it from there."
+    )
+
+
+def _terminal_category_message(
+    display_key: str, *, verb: str, cure: str, survives: str,
+) -> str:
+    """THE refusal text for a dest-keyed TERMINAL category write — ONE wording, three arms.
+
+    ⚑ Deliberately the wording of :func:`kanibako.settings.agent_file.table_value_error`,
+    which is the AGENT noun's half of this same fact: one key, one shape, one sentence,
+    whichever door a user knocks on.
+    ⚑ *survives* is a REQUIRED keyword, never a default — the honest read-back differs by
+    arm, and a default would let one arm inherit another's promise.
+    """
+    return (
+        f"Error: '{display_key}' holds a TABLE keyed by box DESTINATION, not a scalar, so "
+        f"it cannot be {verb} from the command line — its entries are DATA inside the "
+        f"table, not keys of their own (spec §2a). {cure} {survives}"
+    )
+
+
+def terminal_category_write_error(canonical: str, *, verb: str) -> str | None:
+    """Refuse a WRITE at a DEST-KEYED TERMINAL category key, or ``None`` (spec §2a).
+
+    ⚑⚑ MEASURED, 2026-08-28, and this is why it exists: ``kanibako system set
+    system.masks=/tmp`` answered "Error: unknown config key: system.masks" — telling a user
+    that a DECLARED key is not a key, which is the one thing §0's closed keyspace forbids in
+    both directions.  The REFUSAL is correct and stays: the registry's ``box.masks`` row
+    reads ``set: file`` and §2a makes every bind-shaped category YAML-only.  Only the
+    MESSAGE was wrong.
+
+    ⚑⚑ IT IS NOT "RETIRED", AND MUST NOT SAY SO.  ``scope_bind_retired_error`` /
+    ``agent_node_bind_retired_error`` cover the PER-NAME spellings — ``<scope>.<cat>.<name>``
+    — which once HAD a route.  The TERMINAL spelling never had one, so borrowing their word
+    would ship a false statement.  Their regexes require a trailing ``.<name>``, so the two
+    families are disjoint by construction and neither preempts the other.
+
+    ⚑ DERIVED (P13): the family is ``settings_keyspace.is_terminal_category_key``, the same
+    predicate ``agent_category_read_error`` and ``foreign_scope_read_error`` gate on — a
+    category entering or leaving §2a moves all three with no edit here.
+
+    ⚑⚑ THREE CURE ARMS, EACH MEASURED BEFORE IT WAS PRINTED.  The ``default`` tier does NOT
+    belong with the per-node arm however much its spelling suggests it: there is no
+    ``agents/default/agent.yaml`` and ``kanibako agent get default caches`` exits 1 on
+    "agent 'default' not found", so that cure would be a lie.  It is a table in the SYSTEM
+    settings file and reads back at the system noun (measured, all seven categories).
+    """
+    from kanibako.settings.agent_file import file_spelling
+    from kanibako.settings.settings_keyspace import is_terminal_category_key
+
+    if not is_terminal_category_key(canonical):
+        return None
+    scope, _, tail = canonical.partition(".")
+    if scope == "agent":
+        node, _, category = tail.partition(".")
+        if node != AGENT_DEFAULT_SUB:
+            shown_node = display_agent_ref(node)
+            return _terminal_category_message(
+                f"agent.{shown_node}.{category}",
+                verb=verb,
+                # ⚑ The file's own spelling from the BOUNDARY (``agent_file``), never a
+                # literal: this message QUOTES that file at the user.
+                cure=(
+                    f"Author it in the '{file_spelling(category)}' table of that agent's "
+                    f"own settings file (agents/{shown_node}/agent.yaml); the launch reads "
+                    f"it from there."
+                ),
+                survives=(
+                    f"Reading it back with 'kanibako agent get {shown_node} {category}' "
+                    f"still works."
+                ),
+            )
+        return _terminal_category_message(
+            canonical,
+            verb=verb,
+            cure=(
+                "Author it in the 'agent: default:' table of the system settings file; "
+                "the launch reads it from there."
+            ),
+            survives=(
+                f"Reading it back with 'kanibako system get {canonical}' still works."
+            ),
+        )
+    # ⚑ EXHAUSTIVE BY CONSTRUCTION: ``is_terminal_category_key`` requires a head in
+    # ``SCOPE_CONTAINMENT``, and the agent arm above took the only member
+    # :data:`_SCOPE_READ_COMMAND` does not key.
+    return _terminal_category_message(
+        canonical,
+        verb=verb,
+        cure=(
+            f"Author it in the '{scope}:' table of the {scope} settings file; the launch "
+            f"reads it from there."
+        ),
+        survives=(
+            f"Reading it back with '{_SCOPE_READ_COMMAND[scope]} {canonical}' still works."
+        ),
     )
 
 

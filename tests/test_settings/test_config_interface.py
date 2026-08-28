@@ -1877,6 +1877,148 @@ class TestSystemSettingsTierSplit:
 # Spec §2a / design §6d / SEAMS S24/S25.
 # ---------------------------------------------------------------------------
 
+class TestTerminalCategoryWriteRefusal:
+    """The TERMINAL category spelling is refused BY NAME, never as "unknown" (spec §2a).
+
+    ⚑⚑ MEASURED, 2026-08-28: ``kanibako system set system.masks=/tmp`` answered
+    "Error: unknown config key: system.masks" — telling a user a DECLARED key is not a
+    key, which is exactly what §0's closed keyspace forbids in both directions.  The
+    REFUSAL was right and stays (the registry's ``box.masks`` row reads ``set: file``, and
+    §2a makes every bind-shaped category YAML-only); only the MESSAGE was wrong.
+
+    ⚑ THE SIBLING CLASS BELOW COVERS THE OTHER FAMILY.  ``<scope>.<cat>.<name>`` — the
+    PER-NAME spelling — once had a route and is refused as RETIRED.  The TERMINAL spelling
+    never had one, so it must not borrow that word.  The two are disjoint by construction:
+    the retired-route regexes require a trailing ``.<name>``.
+
+    ⚑ DERIVED (P13) from ``TERMINAL_CATEGORY_TAILS`` × the scopes a category may end at, so
+    a category entering or leaving §2a is covered here with no edit.
+
+    MUTATION: drop the ``terminal_category_write_error`` call from either verb preamble in
+    ``config_interface`` and case 1 dies with "unknown config key".
+    """
+
+    # The scope tokens a terminal category may sit under, one specimen per SHAPE:
+    # the three file scopes, the reserved any-agent tier, and a discriminated node.
+    SCOPE_TOKENS = ("system", "workset", "box", "agent.default", "agent.claude")
+
+    @staticmethod
+    def _keys():
+        from kanibako.settings.settings_keyspace import TERMINAL_CATEGORY_TAILS
+
+        return [
+            f"{tok}.{'.'.join(tail)}"
+            for tok in TestTerminalCategoryWriteRefusal.SCOPE_TOKENS
+            for tail in sorted(TERMINAL_CATEGORY_TAILS)
+        ]
+
+    def test_the_derivation_is_not_vacuous(self):
+        from kanibako.settings.settings_keyspace import is_terminal_category_key
+
+        keys = self._keys()
+        assert len(keys) == 35, len(keys)
+        assert all(is_terminal_category_key(k) for k in keys)
+
+    @pytest.mark.parametrize("verb", ["set", "reset"])
+    @pytest.mark.parametrize(
+        "scope", [ConfigLevel.system, ConfigLevel.workset, ConfigLevel.box],
+    )
+    def test_no_declared_terminal_category_key_is_called_unknown(
+        self, tmp_path, scope, verb,
+    ):
+        """⚑ THE §0 VIOLATION ITSELF: a declared key reported as not a key."""
+        from tests.test_settings.test_config_dest_parity import Bench
+
+        findings = []
+        for i, key in enumerate(self._keys()):
+            bench = Bench(tmp_path / f"{scope.value}-{verb}-{i}")
+            before = bench.snapshot()
+            msg = (
+                bench.set(scope, key, "/tmp/probe") if verb == "set"
+                else bench.reset(scope, key)
+            )
+            if not msg.startswith("Error:"):
+                findings.append(f"  {key}: ACCEPTED -> {msg}")
+            elif "unknown config key" in msg:
+                findings.append(f"  {key}: {msg}")
+            elif bench.changed(before):
+                findings.append(f"  {key}: a refused {verb} WROTE a file")
+        assert not findings, (
+            f"these DECLARED keys are refused as non-keys by {verb} at the "
+            f"{scope.value} scope (spec §0):\n" + "\n".join(findings)
+        )
+
+    def test_the_refusal_does_not_claim_a_retirement(self, tmp_path):
+        """The terminal spelling never HAD a route, so "RETIRED" would be a false claim.
+
+        ⚑ The per-name sibling is driven beside it: it MUST still say RETIRED, which is
+        what proves this case is discriminating rather than asserting an absent word.
+        """
+        from tests.test_settings.test_config_dest_parity import Bench
+
+        for i, key in enumerate(self._keys()):
+            # ⚑ The SYSTEM scope writes every scope it contains, so no key here is taken
+            # by the directional guard first — every message is this rule's own.
+            msg = Bench(tmp_path / f"t{i}").set(ConfigLevel.system, key, "/tmp/probe")
+            assert "RETIRED" not in msg, msg
+            assert "spec §2a" in msg, msg
+            assert key.rsplit(".", 1)[-1] in msg, msg      # it NAMES the key
+        per_name = Bench(tmp_path / "pn").set(
+            ConfigLevel.system, "system.caches.x", "/tmp/probe",
+        )
+        assert "RETIRED" in per_name, per_name
+
+    def test_every_cure_arm_names_a_read_back_that_actually_WORKS(self, tmp_path):
+        """⚑⚑ THE PROMISE IS EXECUTED, NOT ASSERTED.
+
+        Each arm's message ends "Reading it back with '<command>' still works".  Shipping
+        that sentence without running it is how a cure becomes a lie — and one arm nearly
+        was: ``agent.default`` looks like a per-node ref, but there is no
+        ``agents/default/agent.yaml`` and ``kanibako agent get default caches`` exits 1 on
+        "agent 'default' not found", so it takes the SYSTEM-file arm instead.
+        """
+        from kanibako.settings.agent_file import read_leaf, slot_for
+        from kanibako.settings.settings_keyspace import TERMINAL_CATEGORY_TAILS
+        from tests.test_settings.test_config_dest_parity import Bench
+
+        stored = {"/box/dest": "/host/src"}
+        for i, tail in enumerate(sorted(TERMINAL_CATEGORY_TAILS)):
+            cat = ".".join(tail)
+            bench = Bench(tmp_path / f"r{i}")
+
+            # -- the three FILE scopes: the key's own noun reads its own file.
+            for scope, tok, promised in (
+                (ConfigLevel.system, "system", "kanibako system get"),
+                (ConfigLevel.workset, "workset", "kanibako workset get <workset>"),
+                (ConfigLevel.box, "box", "kanibako box get <box>"),
+            ):
+                key = f"{tok}.{cat}"
+                msg = bench.set(scope, key, "/tmp/probe")
+                assert f"{promised} {key}' still works" in msg, msg
+                file = {"system": bench.ssp, "workset": bench.ws, "box": bench.box}[tok]
+                bench.seed(file, (tok, *tail[:-1]), tail[-1], dict(stored))
+                assert bench.get(scope, key) == str(stored), key
+
+            # -- the reserved any-agent tier: a SYSTEM-file table, read at the system noun.
+            key = f"agent.default.{cat}"
+            msg = bench.set(ConfigLevel.system, key, "/tmp/probe")
+            assert f"kanibako system get {key}' still works" in msg, msg
+            bench.seed(bench.ssp, ("agent", "default", *tail[:-1]), tail[-1], dict(stored))
+            assert bench.get(ConfigLevel.system, key) == str(stored), key
+
+            # -- a discriminated node: the node's OWN file, read at the agent noun.
+            # ⚑ ``read_leaf(slot_for(...))`` is the call ``agent_cmd``'s get arm makes, so
+            # this executes the promised command's engine rather than restating it.
+            key = f"agent.claude.{cat}"
+            msg = bench.set(ConfigLevel.system, key, "/tmp/probe")
+            assert f"kanibako agent get claude {cat}' still works" in msg, msg
+            assert "agents/claude/agent.yaml" in msg, msg
+            node_file = bench.agents / "claude" / "agent.yaml"
+            node_file.parent.mkdir(parents=True, exist_ok=True)
+            bench.seed(node_file, ("self", *tail[:-1]), tail[-1], dict(stored))
+            assert read_leaf(slot_for(bench.agents, "claude", cat)) == str(stored), key
+
+
 class TestCategoryConfigSet:
     """`config set <category-key>` through the live CLI setter — REFUSED BY NAME.
 

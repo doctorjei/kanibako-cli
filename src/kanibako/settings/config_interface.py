@@ -70,12 +70,14 @@ from kanibako.settings.config_keys import (
     _persona_display_key,
     _scope_direction_error,
     access_value_error,
+    agent_default_tier_leaf,
     agent_leaf_table_error,
     bare_agent_key_scope_error,
     bare_env_retired_error,
     box_agent_redirect_key,
     box_agent_retired_error,
     is_access_key,
+    terminal_category_write_error,
     agent_node_bind_retired_error,
     scope_bind_retired_error,
     scope_env_var_error,
@@ -545,7 +547,15 @@ def get_config_value(
         return None
 
     # ``agent.<node>.<key>`` — the PER-PERSONA agent key (B1), read from the node's own file.
-    if _is_persona_agent_key(canonical):
+    # ⚑ EXCEPT THE RESERVED ``default`` NODE, WHICH IS NOT A PERSONA: it is the any-agent
+    # tier, its value lives in the NOUN's settings file, and there is no
+    # ``agents/default/agent.yaml`` to read. It falls THROUGH to the routed read below, where
+    # ``config_dest._key_slot`` gives it the same slot the bare leaf gets. Routed here it hit
+    # the reserved-node refusal — a REASON with no read attached — and every declared
+    # ``agent.default.<leaf>`` answered "(not set)" at rc 0 over a value ``get`` on the bare
+    # spelling returned.
+    # ⚑ The refusal is still the right answer for the WRITE verbs; only the read moved.
+    if _is_persona_agent_key(canonical) and agent_default_tier_leaf(canonical) is None:
         target = _persona_agent_target(canonical, agents_root)
         if isinstance(target, AgentFileSlot):
             return read_leaf(target)
@@ -654,6 +664,14 @@ def set_config_value(
     table_err = agent_leaf_table_error(canonical, verb="set")
     if table_err is not None:
         return table_err
+
+    # ⚑ A DEST-KEYED TERMINAL category key (spec §2a) — YAML-only, and refused BY NAME. The
+    # refusal is not new; the MESSAGE is. It fell to the tail's "unknown config key", which
+    # tells a user a DECLARED key is not a key. AFTER ``_scope_direction_error`` on purpose,
+    # so ``box set system.masks`` keeps its better directional message.
+    terminal_err = terminal_category_write_error(canonical, verb="set")
+    if terminal_err is not None:
+        return terminal_err
 
     # ⚑ Bare ``env.*`` — RETIRED (R-39): refused with the cure BEFORE any write machinery
     # (``--null`` included). The cure is REACHABLE — the scoped arm is routed a few branches below.
@@ -912,6 +930,13 @@ def reset_config_value(
     table_err = agent_leaf_table_error(canonical, verb="reset")
     if table_err is not None:
         return table_err
+
+    # ⚑ A DEST-KEYED TERMINAL category key — refused symmetrically with set (spec §2a).
+    # "No override for …" would be a lie about a key the CLI cannot address at all, and
+    # "unknown config key" is a lie about a key that IS declared.
+    terminal_err = terminal_category_write_error(canonical, verb="reset")
+    if terminal_err is not None:
+        return terminal_err
 
     # ⚑ Bare ``env.*`` — RETIRED (R-39): refused symmetrically with set, because "No override"
     # would be a lie (the ``.env`` file is not an override store any more).
