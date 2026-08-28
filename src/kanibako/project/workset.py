@@ -68,6 +68,17 @@ _STANDALONE_WORKSPACE_LEAF = paths_defaults.WORKSPACE_PATH
 _CHANNELROOT_LEAF = paths_defaults.CHANNELS_PATH
 _LOGS_LEAF = paths_defaults.LOGS_PATH
 
+# The two leaves the WORKSET STAMP writes (``launch/templates.py``).  ⚑ They are the
+# WORKSET-scope spelling of two entries ``templates.SCOPE_WHITELISTS["workset"]``
+# permits; ``templates.AGENT_TEMPLATE_STORE_REL`` is the AGENT-scope carrier of the
+# same word and stays separate — an agent store's ``template/`` is a fixed store leaf,
+# a workset's is the repointable ``workset.template``, and importing one for the other
+# would invert the project -> launch dependency as well as conflate two keys.
+# ⚑ They are NOT in ``paths_defaults`` with their five siblings because no OTHER module
+# spells them; add them there the moment a second consumer appears.
+_CANON_LEAF = "canon"
+_TEMPLATE_LEAF = "template"
+
 # ⚑ The ONE skeleton dir that names NO KEY: the keyspec declares ``workset.vault_ro``
 # and ``workset.vault_rw`` (``@meta.workset.path/vault/{ro,rw}``) and no ``workset.vault``
 # at all, so ``vault/`` is only their shared DEFAULT PARENT — there is nothing to resolve
@@ -78,11 +89,11 @@ _VAULT_LEAF = paths_defaults.VAULT_PATH
 
 
 # ---------------------------------------------------------------------------
-# Resolved workset dir keys (workset.workspaces / workset.channelroot) — thin
-# per-key faces over the ONE no-snapshot route,
+# Resolved workset dir keys (workset.workspaces / workset.channelroot / workset.canon
+# / workset.template) — thin per-key faces over the ONE no-snapshot route,
 # ``settings/workset_dirkeys.resolve_workset_dir_key``.  ⚑ These read the leaf out
 # of the workset.yaml table; the ROUTE owns every token rule (@-refs, $XDG, ~) and
-# owns the refusal.  ``workset_registry.resolve_workset_registry_path`` is a fifth
+# owns the refusal.  ``workset_registry.resolve_workset_registry_path`` is a seventh
 # face on the same route — do not give any of them a private expansion again.
 # ---------------------------------------------------------------------------
 
@@ -157,6 +168,30 @@ def resolve_workset_channelroot(
         _workset_path_repoint(workset_settings, "channelroot"),
         _CHANNELROOT_LEAF,
         key="channelroot",
+    )
+
+
+def resolve_workset_canon(
+    workset_root: Path, workset_settings: Mapping[str, Any] | None,
+) -> Path:
+    """Return the resolved ``workset.canon`` dir — ⚑ UNIFORM IN EVERY MODE, standalone included."""
+    return resolve_workset_dir_key(
+        workset_root,
+        _workset_path_repoint(workset_settings, _CANON_LEAF),
+        _CANON_LEAF,
+        key=_CANON_LEAF,
+    )
+
+
+def resolve_workset_template(
+    workset_root: Path, workset_settings: Mapping[str, Any] | None,
+) -> Path:
+    """Return the resolved ``workset.template`` dir — ⚑ primary/named ONLY; <None> in standalone."""
+    return resolve_workset_dir_key(
+        workset_root,
+        _workset_path_repoint(workset_settings, _TEMPLATE_LEAF),
+        _TEMPLATE_LEAF,
+        key=_TEMPLATE_LEAF,
     )
 
 

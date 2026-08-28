@@ -182,6 +182,10 @@ def stage_layers(dest: Path, layers: list[Path]) -> None:
 #: at workset scope IS the authoritative box membership), is in the llm-doc.
 #: ⚑ The sets are NOT one uniform rule — ``common/`` is AGENT-only, and only
 #: ``canon/handbook`` is seedable, never ``canon/`` wholesale.
+#: ⚑⚑ THE WORKSET ROW IS THE DEFAULT SPELLING, NOT THE ONLY ONE.  Its two entries are
+#: ``workset.template`` and ``workset.canon``, both repointable, so the workset stamp
+#: respells them per root through :func:`_workset_scope_allowed` — which reads its
+#: defaults from HERE.  A repoint MOVES an entry; it never adds one.
 SCOPE_WHITELISTS: dict[str, tuple[str, ...]] = {
     "box": ("home", "canon/handbook"),
     "agent": ("template", "canon/handbook", "common"),
@@ -189,17 +193,24 @@ SCOPE_WHITELISTS: dict[str, tuple[str, ...]] = {
 }
 
 
-def _check_whitelist(store_rel: Path, scope: str) -> None:
+def _check_whitelist(store_rel: Path, scope: str,
+                     allowed: tuple[str, ...] | None = None) -> None:
     """RAISE unless *store_rel*'s leading components are inside *scope*'s allow-list.
 
     ⚑ *store_rel* is relative to the SCOPE STORE ROOT (``copy_tree``'s *dest_root*),
     NOT to the copy's source.  They diverge whenever a copy targets a subdirectory of
     a store, and checking the wrong one would either refuse a legal copy or wave
     through an illegal one.
+
+    ⚑ *allowed* overrides :data:`SCOPE_WHITELISTS` for ONE call, and it exists for one
+    reason: two of the workset entries are REPOINTABLE KEYS, so the entry a resolved
+    dest must match is not always the entry the default table spells.  It RESPELLS the
+    scope's entries, it never adds to them — see :func:`_workset_scope_allowed`.
     """
     from kanibako.errors import TemplateScopeError
 
-    allowed = SCOPE_WHITELISTS[scope]
+    if allowed is None:
+        allowed = SCOPE_WHITELISTS[scope]
     posix = store_rel.as_posix()
     if any(posix == a or posix.startswith(f"{a}/") for a in allowed):
         return
@@ -239,6 +250,7 @@ def copy_tree(
     scope: str | None = None,
     dest_root: Path | None = None,
     check_only: bool = False,
+    allowed: tuple[str, ...] | None = None,
 ) -> None:
     """Copy every file under *src* into *dest*, skipping files that exist.
 
@@ -246,7 +258,9 @@ def copy_tree(
     survive a later kanibako upgrade.  *dest_root* (default *dest*) is BOTH the
     containment boundary and the whitelist's frame of reference; *scope* turns on
     the §2a whitelist; *check_only* is the PRE-FLIGHT form, running all four guards
-    below and writing nothing.
+    below and writing nothing.  *allowed* RESPELLS that whitelist for one call and is
+    the workset stamp's only user (:func:`_workset_scope_allowed`); it never widens a
+    scope, and ``None`` means the declared table.
 
     ⚑ *overwrite* is confined to the SYSTEM-OWNED packaged STAGING
     (``@system.template/**``).  User-owned stores — ``@system.canon/handbook``,
@@ -283,7 +297,7 @@ def copy_tree(
         target = dest / rel
         if scope is not None:
             # (1) WHITELIST — on the STORE-relative path (see _check_whitelist).
-            _check_whitelist(target.relative_to(root), scope)
+            _check_whitelist(target.relative_to(root), scope, allowed)
         # (2) BEFORE ANY WRITE, INCLUDING THE mkdir: creating the parent first would
         # litter directories outside the subtree on the very path we are refusing.
         _assert_contained(target.parent, root, what="copy destination directory")
@@ -336,26 +350,33 @@ AGENT_MOULD_DIRNAME = "agent"
 #: is discoverable.  ⚑ Spelled to the SPEC shape — ``home/canon/{notebook,workbook}``,
 #: NOT the samples' ``home/{notebook,workbook}`` (D6 calls that a sample-tree
 #: oversight).
+#: ⚑⚑ RELATIVE TO THE TEMPLATE DIR, not to the store root, and that is exactly what
+#: lets its TWO consumers spell that dir differently: at an AGENT store it is the fixed
+#: leaf :data:`AGENT_TEMPLATE_STORE_REL`; at a WORKSET root it is whatever the
+#: repointable ``workset.template`` RESOLVES to.  Fold the ``template/`` prefix back in
+#: here and the workset half silently ignores that key again.
 _BOX_TEMPLATE_SKELETON = (
-    "template/box/home/canon/notebook",
-    "template/box/home/canon/workbook",
-    "template/box/canon/handbook",
+    "box/home/canon/notebook",
+    "box/home/canon/workbook",
+    "box/canon/handbook",
 )
 
-#: The CANON HALF of the workset stamp — the ONE definition both the NAMED stamp and
-#: the CANON-ONLY (standalone) stamp read.  ⚑ It is the mould subtree that is copied
-#: AND the frame the guarantee-created chapter is spelled in; the chapter below is
-#: derived from it so the two cannot drift.
-_WORKSET_CANON_ROOT = "canon"
+#: The CANON HALF of the workset stamp ON THE MOULD SIDE — the subtree of
+#: ``@system.template/workset`` the canon-only stamp reads.  ⚑ A MOULD-LAYOUT literal,
+#: and it stays one: the mould is a SYSTEM-tier tree that every workset stamps from, so
+#: one workset's ``workset.canon`` repoint moves the DESTINATION and never the source.
+_MOULD_CANON_ROOT = "canon"
 
-#: The workset's handbook CHAPTER dir, guarantee-created (D7) in EVERY mode.  ⚑ Spec
+#: The chapter leaf under a canon root, guarantee-created (D7) in EVERY mode.  ⚑ Spec
 #: ``:962``: ``workset.canon`` is *"UNIFORM IN EVERY MODE — deliberately NOT a
 #: per-mode key"*, so a lone standalone box has this tier too.  Its sibling half — the
 #: ``template/`` skeleton above — does NOT transfer: ``workset.template`` is <None> in
 #: standalone (spec ``:936``; :func:`template_seed_defaults` omits the key there), and
 #: a workset template seeds FUTURE boxes, of which a standalone root will never have
 #: one.
-_WORKSET_CANON_CHAPTER = f"{_WORKSET_CANON_ROOT}/handbook"
+#: ⚑ ``handbook`` and not ``canon/handbook``: the canon ROOT it hangs off is now
+#: RESOLVED per workset (:func:`_workset_stamp_dirs`), so only the leaf is fixed.
+_CANON_CHAPTER_LEAF = "handbook"
 
 
 def _packaged_base_template() -> Path | None:
@@ -462,15 +483,74 @@ def ensure_agent_stores(
             src = _packaged_agent_store(name)
             if src is not None:
                 copy_tree(src, store, scope="agent")
-        # (3) the discoverable box-template skeleton (D7).
+        # (3) the discoverable box-template skeleton (D7), under the AGENT store's
+        # FIXED ``template/`` leaf — an agent store is not a workset, so nothing here
+        # is repointable and ``workset.template`` has no say over it.
         for rel in _BOX_TEMPLATE_SKELETON:
-            (store / rel).mkdir(parents=True, exist_ok=True)
+            (store / AGENT_TEMPLATE_STORE_REL / rel).mkdir(parents=True, exist_ok=True)
         touched.append(name)
     return touched
 
 
-def _workset_stamp_copy(std: StandardPaths, workset_path: Path,
-                        canon_only: bool) -> tuple[Path, Path]:
+def _workset_stamp_dirs(workset_path: Path) -> tuple[Path, Path]:
+    """*workset_path*'s RESOLVED ``(workset.canon, workset.template)`` dirs.
+
+    ⚑⚑ THE STAMP FOLLOWS THE KEYS, NOT THE LITERALS.  Both are declared repointable
+    (spec ``:962`` / ``:936``), and a stamp at the literal leaf seeds a tier the box's
+    own key resolution then never reads — the chapter binds ask ``@workset.canon``.
+
+    ⚑ ONE read of the root's ``workset.yaml`` feeds both, exactly as
+    :func:`kanibako.project.workset._workset_skeleton_dirs` does for the other four:
+    reading it per key opens a window for two answers about one file.  A root with no
+    ``workset.yaml`` — which is EVERY root ``workset create`` makes, since it refuses a
+    root that already exists and writes no settings file — yields the literal defaults,
+    so the unrepointed stamp lands exactly where it always did.
+    """
+    from kanibako.project.workset import (
+        load_workset_settings_doc, resolve_workset_canon, resolve_workset_template,
+    )
+
+    doc = load_workset_settings_doc(workset_path)
+    return (resolve_workset_canon(workset_path, doc),
+            resolve_workset_template(workset_path, doc))
+
+
+def _workset_scope_allowed(workset_path: Path,
+                           canon_root: Path, template_root: Path) -> tuple[str, ...]:
+    """The workset whitelist RESPELLED against this root's resolved leaves.
+
+    ⚑ A repoint MOVES the tier; it does not widen it.  ``SCOPE_WHITELISTS["workset"]``
+    is the set of top-level store entries the mould may write, spelled for the DEFAULT
+    leaves — so once the dest follows ``workset.canon`` the frame it is judged in has
+    to follow too, or the deny-by-default predicate refuses the copy it was written to
+    permit.  Only the two spellings change; ``canon/`` is still seedable at
+    ``handbook`` and nowhere else.
+
+    ⚑ A leaf resolving OUTSIDE *workset_path* keeps its DEFAULT spelling here and is
+    left to ``_assert_contained``, which refuses it: an entry that is not under the
+    store root has no store-relative path to whitelist in the first place.
+
+    ⚑ The defaults are READ OFF ``SCOPE_WHITELISTS``, never re-spelled: an unrepointed
+    root must produce that tuple EXACTLY, which is what
+    ``test_the_respelling_degenerates_to_the_declared_table`` pins.
+    """
+    default_template, default_chapter = SCOPE_WHITELISTS["workset"]
+
+    def store_rel(root: Path) -> str | None:
+        try:
+            return root.relative_to(workset_path).as_posix()
+        except ValueError:
+            return None
+
+    template_rel, canon_rel = store_rel(template_root), store_rel(canon_root)
+    return (
+        default_template if template_rel is None else template_rel,
+        default_chapter if canon_rel is None else f"{canon_rel}/{_CANON_CHAPTER_LEAF}",
+    )
+
+
+def _workset_stamp_copy(std: StandardPaths, workset_path: Path, canon_only: bool,
+                        canon_root: Path) -> tuple[Path, Path]:
     """The (source, destination) pair of the workset stamp's copy — ONE definition.
 
     ⚑ The PRE-FLIGHT and the STAMP must narrow identically or the check would clear a
@@ -478,12 +558,16 @@ def _workset_stamp_copy(std: StandardPaths, workset_path: Path,
 
     ⚑ The caller always passes ``dest_root=workset_path``, NOT this *dest*.  The
     whitelist reads the STORE-relative path (see :func:`_check_whitelist`), so
-    narrowing the copy to ``canon/`` must not narrow the frame it is judged in — do
+    narrowing the copy to the canon tier must not narrow the frame it is judged in — do
     that and every entry looks top-level and the deny-by-default predicate goes blind.
+
+    ⚑ The SOURCE stays :data:`_MOULD_CANON_ROOT` while the DEST is the resolved
+    ``workset.canon``: the mould is one SYSTEM tree shared by every workset, so a
+    per-workset repoint moves where content lands, never where it is read from.
     """
     mould = std.template / PACKAGED_WORKSET_TEMPLATE
     if canon_only:
-        return mould / _WORKSET_CANON_ROOT, workset_path / _WORKSET_CANON_ROOT
+        return mould / _MOULD_CANON_ROOT, canon_root
     return mould, workset_path
 
 
@@ -501,8 +585,10 @@ def check_workset_template(std: StandardPaths, workset_path: Path, *,
     never deletes, so a refusal cannot be cleaned up by removing the destination.  The
     refusal has to land before the first byte, not after.
     """
-    src, dest = _workset_stamp_copy(std, workset_path, canon_only)
-    copy_tree(src, dest, dest_root=workset_path, scope="workset", check_only=True)
+    canon_root, template_root = _workset_stamp_dirs(workset_path)
+    src, dest = _workset_stamp_copy(std, workset_path, canon_only, canon_root)
+    copy_tree(src, dest, dest_root=workset_path, scope="workset", check_only=True,
+              allowed=_workset_scope_allowed(workset_path, canon_root, template_root))
 
 
 def install_workset_template(std: StandardPaths, workset_path: Path, *,
@@ -515,9 +601,15 @@ def install_workset_template(std: StandardPaths, workset_path: Path, *,
 
     ⚑⚑ *canon_only* is the STANDALONE half: the CANON tier only, never the
     ``template/`` skeleton.  Both halves are spec-backed and the reasons differ — see
-    :data:`_WORKSET_CANON_CHAPTER`.  ⚑ The canon chapter is guarantee-created on BOTH
+    :data:`_CANON_CHAPTER_LEAF`.  ⚑ The canon chapter is guarantee-created on BOTH
     paths, which is why that one line sits outside the branch: it is the half the two
     modes SHARE, not something the standalone path also happens to do.
+
+    ⚑⚑ BOTH LEAVES ARE RESOLVED KEYS, NEVER LITERALS (:func:`_workset_stamp_dirs`).
+    The reachable repoint is the STANDALONE one: that destination is a directory the
+    user ALREADY HAD, so it may already carry a ``workset.yaml`` that repoints
+    ``workset.canon``.  Stamping the literal ``canon/`` there seeds a tier nothing
+    reads, because the chapter bind asks the key.
 
     ⚑ The whitelist matters MOST here, and not for the reason this comment used to
     give.  A STANDALONE ``<workset_path>`` is a kanibako-MANAGED wrapper
@@ -528,12 +620,14 @@ def install_workset_template(std: StandardPaths, workset_path: Path, *,
     requires ``root.is_dir()`` — so the deny-by-default predicate guards a tree nothing
     here is entitled to clean up afterwards.
     """
-    src, dest = _workset_stamp_copy(std, workset_path, canon_only)
-    copy_tree(src, dest, dest_root=workset_path, scope="workset")
+    canon_root, template_root = _workset_stamp_dirs(workset_path)
+    src, dest = _workset_stamp_copy(std, workset_path, canon_only, canon_root)
+    copy_tree(src, dest, dest_root=workset_path, scope="workset",
+              allowed=_workset_scope_allowed(workset_path, canon_root, template_root))
     if not canon_only:
         for rel in _BOX_TEMPLATE_SKELETON:
-            (workset_path / rel).mkdir(parents=True, exist_ok=True)
-    (workset_path / _WORKSET_CANON_CHAPTER).mkdir(parents=True, exist_ok=True)
+            (template_root / rel).mkdir(parents=True, exist_ok=True)
+    (canon_root / _CANON_CHAPTER_LEAF).mkdir(parents=True, exist_ok=True)
 
 
 # ---------------------------------------------------------------------------

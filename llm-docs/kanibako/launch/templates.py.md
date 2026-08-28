@@ -245,7 +245,8 @@ handbook host-template copy's is key-fixed at `canon/handbook`
 (`install_box_handbook_template`), and the packaged handbook's dest is inside the canon root.
 
 *dest_root* is BOTH the containment boundary and the whitelist's frame of reference (defaults to
-*dest*).
+*dest*). *allowed* RESPELLS that whitelist for one call and the workset stamp is its only user; it
+never widens a scope, and `None` means the declared table.
 
 ### The four enforcement points — all of §2a's, every one BEFORE any write
 
@@ -293,8 +294,8 @@ their severities differ:
 | AGENT | `agent.yaml` = `meta.agent.<a>.settings` (CORRECTNESS); `caches/`. |
 | WORKSET | `workset.yaml`; `registry.yaml` = `workset.registry`, the AUTHORITATIVE box membership + names, so a templated one could ORPHAN or COLLIDE boxes (CORRECTNESS); `auth/` (CREDENTIALS), `vault/`, `workspaces/` (THE USER'S CODE); `boxes/`, `logs/`, `channels/`. |
 
-⚑ STANDALONE is where this bites hardest: `<workset_path>` IS the user's own project directory, so
-the workset whitelist guards the tree they actually work in.
+⚑ STANDALONE is where this bites hardest: `<workset_path>` is a directory the user ALREADY HAD, and
+kanibako never deletes it — so a refused copy is not cleanable by removing the destination.
 
 ⚑ The sets are NOT one uniform rule. `common/` is allowed at AGENT scope only (Jei: there are use
 cases) and behaves differently from its siblings — `canon/` is delivered RO and `template/` is
@@ -303,17 +304,40 @@ agent, so starter content there is live data, not a template. ONLY `canon/handbo
 never `canon/` wholesale: no other canon subtree has a justified seed today, and deny-by-default
 means a future one needs an explicit decision.
 
+⚑⚑ THE WORKSET ROW IS THE DEFAULT SPELLING, NOT THE ONLY ONE. Both its entries name repointable
+keys — `template` is `workset.template`, `canon/handbook` is the chapter under `workset.canon` — so
+the workset stamp respells them per root. A repoint MOVES an entry; it never adds one.
+
+### `_workset_scope_allowed` — the workset row, respelled for one root
+
+Returns the workset whitelist with those two entries spelled as THIS root's resolved leaves: the
+store-relative `workset.template`, and the store-relative `workset.canon` plus
+`_CANON_CHAPTER_LEAF`. Once the copy's dest follows `workset.canon`, the frame it is judged in has
+to follow too, or deny-by-default refuses the very copy the whitelist was written to permit.
+
+⚑ The defaults are READ OFF `SCOPE_WHITELISTS`, never re-spelled, so an unrepointed root yields
+that tuple EXACTLY —
+`test_templates.py::TestWorksetStampFollowsTheKeys::test_the_respelling_degenerates_to_the_declared_table`.
+
+⚑ A leaf resolving OUTSIDE the workset root keeps its DEFAULT spelling and is left to
+`_assert_contained`, which refuses it: an entry that is not under the store root has no
+store-relative path to whitelist in the first place. Recorded, not endorsed — whether an
+out-of-root `workset.canon` should be stamped at all is open.
+
 ### `_check_whitelist` — which relative path it reads
 
 RAISES unless *store_rel*'s leading components are inside *scope*'s allow-list.
 
 ⚑ *store_rel* is relative to the SCOPE STORE ROOT (`copy_tree`'s *dest_root*), NOT to the copy's
 source. The two coincide for a whole-store copy, but they DIVERGE the moment a copy targets a
-subdirectory of a store — the workset stamp's `canon_only` arm copies the mould's `canon/` into
-`<workset>/canon/`, where the source-relative path (`handbook/SYS_CONTENTS.md`) says nothing about
-which top-level store entry is being written and the store-relative path
-(`canon/handbook/SYS_CONTENTS.md`) says exactly that. Checking the wrong one would either refuse a
-legal copy or wave through an illegal one.
+subdirectory of a store — the workset stamp's `canon_only` arm copies the mould's `canon/` into the
+resolved `workset.canon`, where the source-relative path (`handbook/SYS_CONTENTS.md`) says nothing
+about which top-level store entry is being written and the store-relative path
+(`canon/handbook/SYS_CONTENTS.md` at the default leaf) says exactly that. Checking the wrong one
+would either refuse a legal copy or wave through an illegal one.
+
+*allowed* overrides `SCOPE_WHITELISTS` for ONE call, because a resolved dest does not always match
+the entry the declared table spells. `None` means that table.
 
 ### `_assert_contained`
 
@@ -370,6 +394,12 @@ the shape is discoverable: a user who wants a per-workset or per-agent box templ
 the files go instead of having to know the layout. ⚑ Spelled to the SPEC shape —
 `home/canon/{notebook,workbook}`, NOT the samples' `home/{notebook,workbook}` (D6 records that as
 an oversight in the sample tree).
+
+⚑⚑ It is relative to the TEMPLATE DIR, not to the store root, and that is exactly what lets its TWO
+consumers spell that dir differently: at an AGENT store it is the fixed `AGENT_TEMPLATE_STORE_REL`
+leaf (nothing about an agent store is repointable, and `workset.template` has no say over it); at a
+workset root it is whatever `workset.template` RESOLVES to. Fold the `template/` prefix back into
+the constant and the workset half silently ignores that key again.
 
 ### Locating the packaged roots
 
@@ -458,15 +488,41 @@ names whose store was touched, for the caller's report.
 ## The workset host template
 
 `install_workset_template` stamps a NEW workset store from the host workset mould — the J-6
-A-action. `@system.template/workset` → `<workset_path>`, under the WORKSET whitelist (`template/` +
-`canon/handbook/` only). Called from `workset create`; there was no template step there before,
-which is why the workset's handbook chapter and its own box template never existed. It is
+A-action. `@system.template/workset` → `<workset_path>`, called from `workset create`, under the
+WORKSET whitelist, whose DEFAULT leaves are `template/` and `canon/handbook/`. It is
 create-if-absent, so re-running over an existing workset adds only what is missing.
 
-⚑ The whitelist matters MOST here. For a STANDALONE project `<workset_path>` IS the user's own
-project directory — it holds their `workspace/`, their `vault/`, their `auth/` and the
-AUTHORITATIVE `registry.yaml` — so the deny-by-default predicate is guarding the tree they actually
-work in, not a kanibako-managed store.
+⚑⚑ BOTH DESTINATION LEAVES ARE RESOLVED KEYS, NEVER LITERALS. `_workset_stamp_dirs` returns the
+root's `(workset.canon, workset.template)` from ONE read of its `workset.yaml` — the same shape
+`project.workset._workset_skeleton_dirs` uses for the skeleton's three, because reading that file
+per key opens a window for two answers about one file. A root with no `workset.yaml` — which is
+EVERY root `workset create` makes, since it refuses a root that already exists and writes no
+settings file — yields the literal defaults, so an unrepointed stamp lands exactly where it always
+did. The REACHABLE repoint is the STANDALONE one: that destination is a directory the user already
+had, so it may already carry a `workset.yaml`. Stamping the literal `canon/` there seeds a tier
+nothing reads, because the chapter bind asks the key.
+
+⚑ The SOURCE stays a mould-side literal (`_MOULD_CANON_ROOT`) while the DEST follows the key: the
+mould is one SYSTEM tree every workset stamps from, so a per-workset repoint moves where content
+lands, never where it is read from. `_workset_stamp_copy` — the ONE definition of the (source, dest)
+pair, shared by the stamp and its pre-flight so the two cannot narrow differently — therefore takes
+the resolved canon root as a parameter. Both callers still pass `dest_root=workset_path`, NOT that
+dest: narrowing the copy must not narrow the frame the whitelist judges it in, or every entry looks
+top-level and deny-by-default goes blind.
+
+⚑ `_CANON_CHAPTER_LEAF` is `handbook` alone, because the canon ROOT it hangs off is resolved per
+workset. The chapter is guarantee-created (D7) under `workset.canon` on BOTH paths — spec `:962`
+declares that key UNIFORM IN EVERY MODE, so a lone standalone root has the tier too — which is why
+that one line sits outside the `canon_only` branch. Its sibling half does NOT transfer:
+`workset.template` is `<None>` in standalone (spec `:936`), and the box-template skeleton rooted
+there seeds FUTURE boxes, of which a standalone root will never have one.
+
+⚑ The whitelist matters MOST here, though not because the tree is the user's own source. A
+STANDALONE `<workset_path>` is a kanibako-MANAGED wrapper (`workset.yaml` + `box_data/` +
+`vault/{ro,rw}/` + `workspace/`); the user's code lives one level down in `workspace/`, which no
+stamp reaches. What IS true is that the wrapper is a directory the user ALREADY HAD
+(`resolve_standalone_project` requires `root.is_dir()`), so deny-by-default guards a tree nothing
+here is entitled to clean up afterwards.
 
 `check_workset_template` PRE-FLIGHTS that mould against the workset whitelist and writes nothing.
 `workset create` must be ATOMIC in the way that matters to a user: either the workset exists and is
@@ -552,9 +608,9 @@ be discovered: the `mkdir` is UNCONDITIONAL, so `@box.canon/handbook` exists aft
 even when all three layers are empty or absent. The RO `canon_hb_box` bind is declared
 `optional: true`, i.e. omitted when its source is missing — so it now ALWAYS mounts, and a user who
 has emptied all three handbook template subtrees gets an EMPTY read-only mount where the bind used
-to be dropped. `install_workset_template` guarantee-creates its own `canon/handbook` the same way
-for the same reason (the chapter is a place the user is expected to fill later, not an artefact of
-the template).
+to be dropped. `install_workset_template` guarantee-creates its own canon chapter the same way for
+the same reason (the chapter is a place the user is expected to fill later, not an artefact of the
+template).
 
 ⚑ NO DEST WHITELIST HERE, and that is deliberate — do not "restore" one. There is ONE dest policy
 on this path: `_host_copy_dest`'s warn-and-skip at the caller. A `scope="box"` `SCOPE_WHITELISTS`
@@ -565,9 +621,9 @@ top-level entry of the box store no matter what a template ships. Two checks on 
 disagreeing about severity (raise vs skip), is worse than one.
 
 ⚑ This is where it differs from `install_workset_template`, whose whitelist guards something real:
-that mould lands at `<workset_path>` — for a STANDALONE project, the user's OWN directory — where
-template CONTENT could plant a `workset.yaml` or a `registry.yaml`. Its whitelist is not an
-oversight missing here; the two copies simply have different attack surfaces.
+that mould lands at `<workset_path>`, a directory the user already had, where template CONTENT could
+plant a `workset.yaml` or a `registry.yaml`. Its whitelist is not an oversight missing here; the two
+copies simply have different attack surfaces.
 
 NO PRE-FLIGHT TWIN, decided explicitly (contrast `check_workset_template`). `workset create` needs
 one because `install_workset_template` can REFUSE part-way, leaving a REGISTERED workset only

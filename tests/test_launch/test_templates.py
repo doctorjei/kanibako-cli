@@ -1453,6 +1453,155 @@ class TestWorksetStampSplit:
         assert root.is_dir()
 
 
+class TestWorksetStampFollowsTheKeys:
+    """The stamp's two leaves are ``workset.canon`` and ``workset.template``, and BOTH
+    are declared repointable (spec ``:962`` / ``:936``) — so the stamp must land where
+    the KEY says, not where the literal used to.
+
+    ⚑ THE REACHABLE CASE IS THE STANDALONE ONE, and only that one. ``workset create``
+    refuses a root that already exists and writes no ``workset.yaml`` of its own, so a
+    repoint can never be on disk when the named stamp runs (``create_workset``'s own
+    comment). The STANDALONE stamp's destination is a directory the user ALREADY HAD,
+    which may already carry a ``workset.yaml`` — that is where a repoint is real.
+    """
+
+    def _root_with_repoint(self, tmp_home, name, **repoints):
+        root = tmp_home / name
+        root.mkdir()
+        if repoints:
+            (root / "workset.yaml").write_text(
+                yaml.safe_dump({"workset": dict(repoints)})
+            )
+        return root
+
+    def test_standalone_init_honours_a_workset_canon_repoint(
+        self, std, config, tmp_home
+    ):
+        """⚑⚑ THE ORACLE, on the PRODUCT path: a standalone create into a root whose
+        own ``workset.yaml`` repoints ``workset.canon``. The chapter and the stamped
+        file must land under the repointed root and NOWHERE else — a stamp at the
+        literal ``canon/`` is a tier the box's own key resolution will never read."""
+        install_packaged_templates(std, ["claude"])
+        root = self._root_with_repoint(tmp_home, "solo-repoint", canon="my_canon")
+        resolve_standalone_project(std, config, str(root), initialize=True)
+        assert (
+            root / "my_canon" / "handbook" / "directives" / "SYS_WORKSET.md"
+        ).is_file()
+        assert (root / "my_canon" / "handbook").is_dir()
+        assert not (root / "canon").exists()
+
+    def test_canon_only_stamp_honours_a_workset_canon_repoint(self, std, tmp_home):
+        """The same thing at the seam, so a failure names the stamp and not the create."""
+        from kanibako.launch.templates import install_workset_template
+
+        install_packaged_templates(std, ["claude"])
+        root = self._root_with_repoint(tmp_home, "solo-seam", canon="elsewhere/canon")
+        install_workset_template(std, root, canon_only=True)
+        assert (
+            root / "elsewhere" / "canon" / "handbook" / "directives" / "SYS_WORKSET.md"
+        ).is_file()
+        assert not (root / "canon").exists()
+
+    def test_the_preflight_narrows_to_the_SAME_repointed_dest(self, std, tmp_home):
+        """⚑ Pre-flight and stamp share ``_workset_stamp_copy`` precisely so they
+        cannot judge different destinations. A pre-flight that still looked at the
+        literal ``canon/`` would clear a copy it never examined."""
+        from kanibako.errors import TemplateScopeError
+        from kanibako.launch.templates import check_workset_template
+
+        install_packaged_templates(std, ["claude"])
+        bad = std.template / "workset" / "canon" / "notebook" / "NOTES.md"
+        bad.parent.mkdir(parents=True, exist_ok=True)
+        bad.write_text("nope\n")
+        root = self._root_with_repoint(tmp_home, "solo-pre", canon="my_canon")
+        with pytest.raises(TemplateScopeError):
+            check_workset_template(std, root, canon_only=True)
+        assert not (root / "my_canon").exists()
+
+    def test_a_repointed_canon_is_still_whitelisted_to_handbook_only(
+        self, std, tmp_home
+    ):
+        """⚑ A repoint MOVES the canon tier; it does not widen it. ``notebook/`` under
+        the repointed root is denied exactly as it is under the literal one."""
+        from kanibako.errors import TemplateScopeError
+        from kanibako.launch.templates import install_workset_template
+
+        install_packaged_templates(std, ["claude"])
+        bad = std.template / "workset" / "canon" / "notebook" / "NOTES.md"
+        bad.parent.mkdir(parents=True, exist_ok=True)
+        bad.write_text("nope\n")
+        root = self._root_with_repoint(tmp_home, "solo-deny-repoint", canon="my_canon")
+        with pytest.raises(TemplateScopeError) as exc:
+            install_workset_template(std, root, canon_only=True)
+        assert "WORKSET" in str(exc.value)
+        assert not (root / "my_canon" / "notebook").exists()
+
+    def test_template_skeleton_honours_a_workset_template_repoint(
+        self, std, tmp_path
+    ):
+        """⚑ NOT REACHABLE THROUGH TODAY'S PRODUCT CALLERS — it pins the resolver.
+        ``workset create`` cannot present a root that already carries a
+        ``workset.yaml``, so this drives the seam directly. It is here because the
+        skeleton's leaf IS ``workset.template`` and a future caller with an existing
+        root would otherwise stamp structure into a dir the key does not name."""
+        from kanibako.launch.templates import install_workset_template
+
+        install_packaged_templates(std, ["claude"])
+        ws = tmp_path / "ws-template-repoint"
+        ws.mkdir()
+        (ws / "workset.yaml").write_text(
+            yaml.safe_dump({"workset": {"template": "moulds"}})
+        )
+        install_workset_template(std, ws)
+        assert (ws / "moulds" / "box" / "home" / "canon" / "notebook").is_dir()
+        assert (ws / "moulds" / "box" / "home" / "canon" / "workbook").is_dir()
+        assert (ws / "moulds" / "box" / "canon" / "handbook").is_dir()
+        assert not (ws / "template").exists()
+
+    def test_the_respelling_degenerates_to_the_declared_table(self, tmp_path):
+        """⚑ ONE CARRIER FOR THE DEFAULT SPELLING. An unrepointed root must produce
+        ``SCOPE_WHITELISTS["workset"]`` EXACTLY — if the respelling ever drifted from
+        the declared table, every unrepointed stamp would be judged against a set the
+        table does not contain, and the drift would be invisible in a green suite."""
+        from kanibako.launch.templates import (
+            SCOPE_WHITELISTS, _workset_scope_allowed,
+        )
+
+        root = tmp_path / "ws"
+        assert _workset_scope_allowed(
+            root, root / "canon", root / "template"
+        ) == SCOPE_WHITELISTS["workset"]
+
+    def test_a_leaf_outside_the_root_keeps_the_declared_entry(self, tmp_path):
+        """A repoint that leaves the store root has NO store-relative path to
+        whitelist, so the declared entry stands and ``_assert_contained`` is what
+        refuses the copy. ⚑ Recorded, not endorsed — whether an out-of-root
+        ``workset.canon`` should be stamped at all is an open question."""
+        from kanibako.launch.templates import (
+            SCOPE_WHITELISTS, _workset_scope_allowed,
+        )
+
+        root = tmp_path / "ws"
+        assert _workset_scope_allowed(
+            root, tmp_path / "elsewhere", root / "template"
+        ) == SCOPE_WHITELISTS["workset"]
+
+    def test_no_repoint_lands_exactly_where_it_always_did(self, std, tmp_path):
+        """The unrepointed default is the literal leaf, unchanged — the resolvers
+        degenerate to ``<root>/<leaf>`` when there is no ``workset.yaml`` to read."""
+        from kanibako.launch.templates import install_workset_template
+
+        install_packaged_templates(std, ["claude"])
+        ws = tmp_path / "ws-plain"
+        ws.mkdir()
+        install_workset_template(std, ws)
+        assert (
+            ws / "canon" / "handbook" / "directives" / "SYS_WORKSET.md"
+        ).is_file()
+        assert (ws / "template" / "box" / "home" / "canon" / "notebook").is_dir()
+        assert (ws / "template" / "box" / "canon" / "handbook").is_dir()
+
+
 class TestCopierEnforcement:
     """The four §2a enforcement points, on the ONE shared copier."""
 
