@@ -53,11 +53,10 @@ Three notes the diagram cannot carry:
   (see below), and the PRIMARY per-mode default is `<None>` — primary boxes have EXTERNAL
   workspaces. Reading `<root>/workspaces` as a fixed fact is exactly the mistake the resolver exists
   to prevent.
-* ⚑ **`boxes/` and `logs/` are ALSO spec keys** (`workset.boxes` = `@meta.workset.path/boxes`,
-  `workset.logs` = `@meta.workset.path/logs`) and this module HARD-CODES both — `BOXES_DIR_NAME`
-  and the `"logs"` literal in `Workset.logs_dir`. That is a known delta against §3.3's
-  "real and USED — not hard-coded" ruling, which was discharged for `workspaces`/`channelroot` and
-  not for these two. Recorded here so nobody re-derives it; changing it is not a doc-pass edit.
+* ⚑ **`boxes/` and `logs/` are ALSO repointable spec keys** (`@meta.workset.path/{boxes,logs}`),
+  resolved by the detection locator and composed as default leaves by the `Workset` convenience
+  properties — the KNOWN GAP recorded under **Resolved workset dir keys**. Reading either leaf off
+  this diagram as a fixed fact is the same mistake `workspaces/` invites.
 
 ## ⚑⚑ The import cycle — this module is one half of it
 
@@ -80,20 +79,27 @@ into function bodies**, and keeps a decoupled primitive workset view rather than
   "fix" the module-scope import by pushing it into a function on the theory that it closes a cycle —
   it does not, and the deferral that matters lives on the other side.
 * `kanibako.launch.box_resolve` imports `resolve_workset_workspaces` from here inside a function
-  body, so the resolver below is on a deferred edge in the other direction too.
+  body, so the resolvers below are on a deferred edge in the other direction too.
+  `launch.templates._workset_stamp_dirs` has the SAME shape, importing `resolve_workset_canon` and
+  `resolve_workset_template` in its body for the workset stamp. Both are `launch` → `project` edges;
+  the direction that must never appear is the reverse, `project` → `launch`.
 
-## Resolved workset dir keys (`workset.workspaces` / `workset.channelroot`)
+## Resolved workset dir keys — six faces here, plus the registry
 
-These mirror `kanibako.project.workset_registry.resolve_workset_registry_path` — the established
-seam for contexts WITHOUT a launch snapshot (registry lookups, mode detection, workset CRUD): a pure
-function of the workset root + its settings document, honoring the routed nested slot
-`workset: {<leaf>: …}` (the same location a settings-file edit — or a future
-`config set workset workset.<leaf>=…` — writes) and falling back to the spec default.
+`workset.{workspaces,boxes,logs,channelroot,canon,template}` each get a thin per-key face in this
+module, and `workset_registry.resolve_workset_registry_path` is another on the same route. A face
+does two things and no more: read the RAW repoint out of the routed nested slot
+`workset: {<leaf>: …}` (the location a settings-file edit — or `config set` at workset scope —
+writes), and name the spec DEFAULT leaf. Everything else belongs to the ONE no-snapshot route,
+`settings/workset_dirkeys.resolve_workset_dir_key`, which owns the token grammar
+(`@meta.workset.path` and nothing else, `$XDG_*`, `~`), anchors a still-relative result under the
+workset root, and REFUSES by name any value that would need the launch snapshot. ⚑ Do not give one
+of these faces a private expansion again.
 
-**Repoint semantics MATCH the registry resolver's:** `~` expands; an absolute path is used as-is; a
-relative repoint anchors under the workset root (deterministic, like the sibling path keys).
+They are read on the DETECTION / paths side — the pass that FINDS the workset a snapshot will later
+be built for — which is why that route exists separately from `settings_expand.expand` at all.
 
-The three leaf constants exist so the spec's per-mode default formula `@meta.workset.path/<leaf>` is
+The leaf constants exist so the spec's per-mode default formula `@meta.workset.path/<leaf>` is
 spelled ONCE. §3.3's ruling is that these keys are "real and USED — not hard-coded"; the per-mode
 default TABLE is the source, never a second literal at a consumer site.
 
@@ -105,6 +111,18 @@ default TABLE is the source, never a second literal at a consumer site.
 * **`workset.channelroot`** — spec §2c ALL-WORKSETS default `@meta.workset.path/channels`.
   Standalone has no workset channels (the key is `<None>` there), so callers gate on mode before
   calling the resolver.
+* **`workset.canon`** — default `@meta.workset.path/canon`, and spec `:962` declares it UNIFORM IN
+  EVERY MODE, deliberately not a per-mode key, so a lone standalone root carries the tier too.
+* **`workset.template`** — default `@meta.workset.path/template`; `<None>` in standalone (spec
+  `:936`), which has no future boxes for a workset template to seed. Its sibling above still
+  applies there — the two halves do not travel together.
+* **`workset.boxes` / `workset.logs`** — defaults `@meta.workset.path/{boxes,logs}`. ⚑ Resolved by
+  the DETECTION locator (`_workset_skeleton_dirs`) but NOT by the `Workset.projects_dir` /
+  `logs_dir` convenience properties, which compose the default leaf. That is a KNOWN GAP the source
+  names at both properties: a repointed root is FOUND, while its box trees are still created and
+  removed under `<root>/boxes`. Closing it moves where boxes LIVE — add/remove/move/delete and
+  `settings/paths.py` all compose off `projects_dir` — so it is a store-layout change, not a
+  doc-pass or detection fix.
 
 ⚑ **The repoint SLOT is the same key in every mode** — only the default FORMULA varies. A mode flag
 selects a default, never a different storage location.
@@ -213,11 +231,25 @@ The BOX-tree leaf under a workset root. Named because THREE sites need it and on
 that has never existed under that name. See the false-claim list.)*
 
 ```python
-_WORKSPACES_LEAF = "workspaces"
-_STANDALONE_WORKSPACE_LEAF = "workspace"
-_CHANNELROOT_LEAF = "channels"
+_WORKSPACES_LEAF   _STANDALONE_WORKSPACE_LEAF   _CHANNELROOT_LEAF   _LOGS_LEAF
+_CANON_LEAF = "canon"
+_TEMPLATE_LEAF = "template"
 ```
-The per-mode default leaves, spelled once. See **Resolved workset dir keys**.
+The per-mode default leaves, spelled once. See **Resolved workset dir keys**. ⚑ The first four, and
+`BOXES_DIR_NAME`, are ALIASES for `settings/paths_defaults.py` — the designated defaults file, where
+the values are materialized and nowhere else. The local names stay because the call sites read
+better with them.
+
+`_CANON_LEAF` / `_TEMPLATE_LEAF` are the two that are spelled HERE rather than there, and the test
+is a second consumer: no other module spells either word for a workset, because the one consumer —
+the workset stamp — asks the resolver instead of joining a leaf. They belong beside their five
+siblings in `paths_defaults` the moment a SECOND module needs them.
+
+⚑ They are the WORKSET-scope spelling of two entries `templates.SCOPE_WHITELISTS["workset"]`
+permits, and `templates.AGENT_TEMPLATE_STORE_REL` — the same word at AGENT scope — stays separate:
+an agent store's `template/` is a fixed store leaf, a workset's is the repointable
+`workset.template`. Importing one for the other would conflate two keys as well as invert the
+dependency.
 
 ```python
 DEFAULT_WORKSET_ID = "__default__"
@@ -325,13 +357,6 @@ Reads the routed nested slot `workset: {<leaf>: …}`. `None` — or a non-mappi
 value — means unset, and the caller falls back to the default formula.
 
 ```python
-def _apply_workset_dir_repoint(workset_root: Path, repoint: str | None, default_leaf: str) -> Path
-```
-Apply a workset dir-key *repoint*, or the `<root>/<default_leaf>` default.
-
-Same repoint semantics as `resolve_workset_registry_path`; see **Resolved workset dir keys**.
-
-```python
 def resolve_workset_workspaces(workset_root: Path, workset_settings: Mapping[str, Any] | None, *, standalone: bool = False) -> Path
 ```
 Return the resolved `workset.workspaces` dir for a workset.
@@ -352,6 +377,17 @@ Return the resolved `workset.channelroot` for a workset (primary/named).
 Honors a set `workset: {channelroot: …}`; else the spec default `@meta.workset.path/channels`.
 ⚑ Standalone has NO workset channels (the key is `<None>` there) — **callers gate on mode before
 calling this**; the function itself will happily compose a path that should not exist.
+
+```python
+def resolve_workset_canon(workset_root: Path, workset_settings: Mapping[str, Any] | None) -> Path
+def resolve_workset_template(workset_root: Path, workset_settings: Mapping[str, Any] | None) -> Path
+```
+The resolved `workset.canon` / `workset.template` dirs — the two leaves the WORKSET STAMP writes.
+
+Their one caller is `launch.templates._workset_stamp_dirs`, which imports both inside its function
+body and reads the root's `workset.yaml` ONCE for the pair. `canon` is uniform in every mode;
+`template` is primary/named only, and the stamp's standalone arm skips it accordingly. See
+**Resolved workset dir keys**.
 
 ```python
 @contextmanager
@@ -665,11 +701,5 @@ source was right and the CODE was corrected instead.
 
 ### Deltas found but NOT changed (code, not prose — reported for the director)
 
-* **`workset.boxes` and `workset.logs` are declared, repointable spec keys** (`@meta.workset.path/boxes`,
-  `@meta.workset.path/logs`) that this module HARD-CODES as `BOXES_DIR_NAME` and a `"logs"` literal.
-  §3.3's "real and USED — not hard-coded" ruling was discharged for `workspaces` / `channelroot` and
-  not for these two. Recorded in the layout section above.
-* **`load_workset` spells `"boxes"` as a literal** (`new_subdir = root / "boxes"`) two lines after
-  the module defines `BOXES_DIR_NAME` for exactly that purpose.
 * **The in-function `from kanibako.settings.paths import …` statements are not cycle-motivated** —
   `settings.paths` is already imported at module scope. See **The import cycle**.

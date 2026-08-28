@@ -880,7 +880,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   directory that supplies it was only ever created on the `workset create` path, so a standalone root
   had no `canon/handbook` and the chapter bind was silently omitted. Standalone roots are stamped now,
   and stamped with the canon half only: a workset template seeds *future* boxes, and a standalone root
-  will never have a second one, so no `template/` directory is created there.
+  will never have a second one, so no `template/` directory is created there. The chapter is stamped
+  where `workset.canon` resolves to rather than at a literal `canon/` — a standalone root is a
+  directory you already had, so it can already carry a `workset.yaml` that repoints the key, and a
+  chapter stamped anywhere else is one the bind never reads. `workset.template` is resolved the same
+  way on the `workset create` path.
 
 - **A workset that repointed `workset.boxes` or `workset.logs` stopped being recognised as a
   workset at all.** The ancestor walk identifies a named workset root by the directories it is made
