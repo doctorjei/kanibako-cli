@@ -33,11 +33,6 @@ class TestNoAgentTarget:
     def test_default_shares_empty(self):
         assert self.target.default_common() == {}
 
-    def test_apply_state_returns_empty(self):
-        cli_args, env_vars = self.target.apply_state({"model": "opus"})
-        assert cli_args == []
-        assert env_vars == {}
-
     def test_generate_agent_config(self):
         cfg = self.target.generate_agent_config()
         assert cfg.name == "Shell"

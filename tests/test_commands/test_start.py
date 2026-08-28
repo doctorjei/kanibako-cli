@@ -1112,9 +1112,8 @@ class TestDescriptorLaunchPath:
             assert cli_args[cli_args.index("--model") + 1] == "opus"
             assert env.get("DISABLE_AUTOUPDATER") == "1"
             assert env.get("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC") == "1"
-            # build_cli_args / apply_state are bypassed on the descriptor path.
-            m.target.build_cli_args.assert_not_called()
-            m.target.apply_state.assert_not_called()
+            # Every flag above came from the descriptor: the legacy per-method launch
+            # hooks are gone, so there is no second producer left to check for.
 
     def test_secure_omits_bypass(self, start_mocks):
         with start_mocks() as m:
@@ -2423,11 +2422,11 @@ class TestAgentConfigIntegration:
             # run_args precede extra_args, both appended after the assembled flags.
             assert cli_args[-2:] == ["--verbose", "--foo"]
 
-    def test_apply_state_called(self, start_mocks):
-        """Crab state drives the agent argv via the descriptor (model -> --model).
+    def test_model_state_reaches_argv_via_descriptor(self, start_mocks):
+        """Agent state drives the agent argv: ``model`` is emitted as ``--model <value>``.
 
-        The legacy apply_state hook is no longer dispatched; the model state
-        value is emitted as ``--model <value>`` by assembly's SettingArg path.
+        The descriptor's ``model`` SettingArg is the only producer of that flag — the
+        retired per-method state hook that used to translate it is gone.
         """
         with start_mocks() as m:
             m.target.setting_descriptors.return_value = []
@@ -2440,8 +2439,6 @@ class TestAgentConfigIntegration:
             )
             cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
             assert cli_args[cli_args.index("--model") + 1] == "opus"
-            # The legacy hook is bypassed on the descriptor path.
-            m.target.apply_state.assert_not_called()
 
     def test_state_args_appended_to_cli(self, start_mocks):
         """State-derived flags (model) reach the final cli_args via assembly."""
@@ -3000,8 +2997,8 @@ class TestTweakccIntegration:
 
         claude declares DISABLE_AUTOUPDATER=1 (so the in-container agent cannot
         self-update mid-session and break the read-only binary bind); verify core
-        threads the resolved value into the launched container.  Neither the retired
-        ``apply_state`` env return nor a descriptor field is dispatched any more.
+        threads the resolved value into the launched container.  The settings channel
+        is the whole route: no launch hook and no descriptor field emits it.
         """
         with start_mocks() as m:
             m.target.name = "claude"

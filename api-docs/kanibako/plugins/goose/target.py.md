@@ -45,6 +45,5 @@ class GooseTarget(Target):
     def invalidate_credentials(self, home: Path) -> None
     def check_auth(self) -> bool
     def generate_agent_config(self) -> AgentConfig
-    def apply_state(self, state: dict[str, str]) -> tuple[list[str], dict[str, str]]
     def setting_descriptors(self) -> list[TargetSetting]
 ```

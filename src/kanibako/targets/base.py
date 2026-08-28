@@ -374,7 +374,7 @@ class Target(ABC):
     """Abstract base class for agent targets — ALL agent knowledge lives in implementations.
 
     ⚑ The legacy per-METHOD launch hooks (`binary_mounts`, `init_home`, `build_cli_args`,
-    `resource_mappings`) are GONE — the launch is assembled from `descriptor`.
+    `resource_mappings`, `apply_state`) are GONE — the launch is assembled from `descriptor`.
     """
 
     @property
@@ -475,10 +475,6 @@ class Target(ABC):
         from kanibako.settings.agent_config import AgentConfig as _AgentConfig
 
         return _AgentConfig(name=self.display_name)
-
-    def apply_state(self, state: dict[str, str]) -> tuple[list[str], dict[str, str]]:
-        """Translate agent-state values into `(cli_args, env_vars)`; the base ignores all keys."""
-        return [], {}
 
     @property
     def default_entrypoint(self) -> str | None:

@@ -580,8 +580,9 @@ agent-agnostic.
 ⚑ **The per-METHOD launch hooks are GONE** (see `descriptor` below). Core assembles launch argv,
 bindings, container env and credential sync DECLARATIVELY from `PluginDescriptor`; do not write
 against `binary_mounts()`, `init_home()`, `build_cli_args()`, `resource_mappings()`,
-`should_retry_new_session()` or `instruction_files()` — **none of them is declared on `Target` or
-called by core.** Every surviving mention of those names in the tree is itself a removal note
+`apply_state()`, `should_retry_new_session()` or `instruction_files()` — **none of them is
+declared on `Target` or called by core.** Every surviving mention of those names in the tree is
+itself a removal note
 (`targets/assembly.py`, `targets/credsync.py`, the three plugins' module headers), and the
 credential half of `init_home` was replaced by `credsync.seed_cred_files`.
 
@@ -753,7 +754,6 @@ first-party plugins call.
 ```python
 def setting_descriptors(self) -> list[TargetSetting]              # default []
 def generate_agent_config(self) -> AgentConfig
-def apply_state(self, state: dict[str, str]) -> tuple[list[str], dict[str, str]]
 ```
 
 `setting_descriptors` declares what runtime settings this target supports, as `TargetSetting`
@@ -762,8 +762,10 @@ entries.
 `generate_agent_config` returns a default `AgentConfig` for this target; subclasses override to
 provide agent-specific defaults (template variant, state knobs, shared caches).
 
-`apply_state` translates agent-state values into `(cli_args, env_vars)`. The base implementation
-ignores ALL state keys; subclasses override to handle the keys they know.
+There is no per-method state hook. `apply_state` — which translated agent-state values into
+`(cli_args, env_vars)` — was retired with the other legacy launch hooks: a state key reaches the
+box as the `SettingArg` the plugin declares for it in its `<agent>-defaults.yaml`, resolved by
+`kanibako.targets.assembly`. Declaring the route is what a plugin does; translating it is not.
 
 ### The launch seams
 

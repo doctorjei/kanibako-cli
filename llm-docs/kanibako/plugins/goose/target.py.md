@@ -213,9 +213,11 @@ The keys and their FLOOR values are declared in `goose-defaults.yaml`'s `behavio
 this module: a default written in plugin code is a second declaration site for something the shipped
 file already owns.
 
-`apply_state` is the translation half — `provider` → `GOOSE_PROVIDER`, `model` → `GOOSE_MODEL`, both
-only when non-empty. Goose uses env vars for the provider/model override rather than CLI flags, so
-the returned args list is always empty.
+The translation half is the descriptor, not a method: `provider` → `GOOSE_PROVIDER` and `model` →
+`GOOSE_MODEL` are ENV `SettingArg` rows in `goose-defaults.yaml`, emitted by `assemble_env` only
+when the resolved value is non-empty. Goose overrides provider/model by env var rather than CLI
+flag, so neither contributes an argv token. The retired `apply_state` hook did the same translation
+in Python; it was removed once nothing dispatched it, and the descriptor rows are the whole route.
 
 ---
 

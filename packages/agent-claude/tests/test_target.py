@@ -616,54 +616,11 @@ class TestGenerateAgentConfig:
         assert isinstance(cfg, AgentConfig)
 
 
-class TestApplyState:
-    # ⚑ The hook is UNDISPATCHED — core removed the ``apply_state`` call — and it
-    # returns NO env at all.  DISABLE_AUTOUPDATER is a DECLARED KEY
-    # (``agent.claude.env.DISABLE_AUTOUPDATER``, see ``TestDefaultEnvs``); a second
-    # copy here would be a value with no way to override it, on a route no user
-    # could reach.  What survives is the argv translation.
-    _BASE_ENV: dict[str, str] = {}
-
-    def test_model_translated_to_cli_arg(self):
-        t = ClaudeTarget()
-        cli_args, env_vars = t.apply_state({"model": "opus"})
-        assert cli_args == ["--model", "opus"]
-        assert env_vars == self._BASE_ENV
-
-    def test_unknown_keys_ignored(self):
-        t = ClaudeTarget()
-        cli_args, env_vars = t.apply_state({"unknown_key": "value"})
-        assert cli_args == []
-        assert env_vars == self._BASE_ENV
-
-    def test_empty_state(self):
-        t = ClaudeTarget()
-        cli_args, env_vars = t.apply_state({})
-        assert cli_args == []
-        assert env_vars == self._BASE_ENV
-
-    def test_no_env_is_returned_for_any_state(self):
-        """The hook emits NO environment, whatever the state carries.
-
-        RED if a literal comes back: a variable reaching a box from here would be
-        one the settings channel cannot name, so nothing could override it.
-        """
-        t = ClaudeTarget()
-        for state in ({}, {"model": "opus"}, {"unknown": "x"}):
-            _, env_vars = t.apply_state(state)
-            assert env_vars == {}
-        assert "agent.claude.env.DISABLE_AUTOUPDATER" in ClaudeTarget().default_envs()
-
-    def test_model_with_other_keys(self):
-        t = ClaudeTarget()
-        cli_args, env_vars = t.apply_state({"model": "sonnet", "access": "permissive"})
-        assert cli_args == ["--model", "sonnet"]
-        assert env_vars == self._BASE_ENV
-
-    def test_empty_model_not_added(self):
-        t = ClaudeTarget()
-        cli_args, env_vars = t.apply_state({"model": ""})
-        assert cli_args == []
+# The retired ``apply_state`` hook translated ``model`` into ``--model <value>``.  That
+# route lives in the descriptor's ``model`` SettingArg now (``claude-defaults.yaml``,
+# ``flag: ["--model"]``), pinned by ``test_start_descriptor_assembly.py``.  The hook
+# returned no env at all, and that is unchanged: claude's variables are DECLARED KEYS
+# (``agent.claude.env.*``, see ``TestDefaultEnvs``), the only route a user can override.
 
 
 class TestWritebackCredentials:

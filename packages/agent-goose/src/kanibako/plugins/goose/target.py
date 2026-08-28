@@ -35,7 +35,10 @@ _BINARY = Path.home() / ".local" / "bin" / "goose"
 
 # Declarative descriptor for the generalized plugin interface.  LIVE: core start.py
 # assembles goose's launch argv / env / delivery mounts / credential lifecycle from it
-# (the legacy build_cli_args / binary_mounts / refresh/writeback hooks are bypassed).
+# (the legacy build_cli_args / binary_mounts / apply_state / refresh/writeback hooks
+# are bypassed).  ⚑ provider/model reach the box as GOOSE_PROVIDER / GOOSE_MODEL through
+# the ``settings:`` ENV realizations below — that is the route ``apply_state`` used to
+# duplicate, and the reason removing the retired hook took no capability with it.
 # The default-set itself lives in this plugin's shipped ``goose-defaults.yaml`` (P6c
 # coalesce), read by the thin :mod:`kanibako.settings.agent_defaults` loader; that file
 # documents each non-obvious field, and the llm-doc summarizes what it declares.
@@ -279,25 +282,6 @@ class GooseTarget(Target):
         from kanibako.settings.agent_config import AgentConfig as _AgentConfig
 
         return _AgentConfig(name="Goose", state={})
-
-    def apply_state(self, state: dict[str, str]) -> tuple[list[str], dict[str, str]]:
-        """Translate ``provider`` / ``model`` state into GOOSE_PROVIDER / GOOSE_MODEL.
-
-        Goose overrides provider/model by env var, not CLI flag, so the args list is
-        always empty.
-        """
-        cli_args: list[str] = []
-        env_vars: dict[str, str] = {}
-
-        provider = state.get("provider")
-        if provider:
-            env_vars["GOOSE_PROVIDER"] = provider
-
-        model = state.get("model")
-        if model:
-            env_vars["GOOSE_MODEL"] = model
-
-        return cli_args, env_vars
 
     def setting_descriptors(self) -> list[TargetSetting]:
         """Declare Goose runtime settings — ``provider``, ``model``, ``endpoint``.

@@ -346,21 +346,10 @@ class TestGenerateAgentConfig:
         assert "model" not in config.state
 
 
-class TestApplyState:
-    def test_provider_env_var(self):
-        cli_args, env_vars = GooseTarget().apply_state({"provider": "openai"})
-        assert cli_args == []
-        assert env_vars["GOOSE_PROVIDER"] == "openai"
-
-    def test_model_env_var(self):
-        cli_args, env_vars = GooseTarget().apply_state({"model": "gpt-4"})
-        assert cli_args == []
-        assert env_vars["GOOSE_MODEL"] == "gpt-4"
-
-    def test_empty_state_no_vars(self):
-        cli_args, env_vars = GooseTarget().apply_state({})
-        assert cli_args == []
-        assert env_vars == {}
+# The retired ``apply_state`` hook translated provider/model into GOOSE_PROVIDER /
+# GOOSE_MODEL.  That route lives in the descriptor's ``settings:`` ENV realizations
+# now — pinned by ``TestDescriptorAssembly.test_env_model_and_provider_from_settings``
+# and its two omission cases, which are what this class used to cover.
 
 
 class TestSettingDescriptors:

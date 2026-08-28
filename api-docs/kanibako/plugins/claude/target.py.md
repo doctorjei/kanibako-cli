@@ -53,7 +53,6 @@ class ClaudeTarget(Target):
     def default_common(self) -> dict[str, BindArm]
     def default_category_binds(self) -> CategoryBindDefaults
     def default_envs(self) -> dict[str, str]
-    def apply_state(self, state: dict[str, str]) -> tuple[list[str], dict[str, str]]
     def check_auth(self) -> bool
     def prepare_host(self, install: AgentInstall, *, auto_auth: bool, data_path: Path) -> None
     def setting_descriptors(self) -> list[TargetSetting]

@@ -3876,6 +3876,40 @@ base's number (codex and goose never have). The KICKOFF-deletion follow-up (item
 release after v1.8.0** for each plugin, and must carry the `kanibako-cli >= 1.8.0` floor
 pin.
 
+9. **`Target.apply_state()` is REMOVED.** A target used to translate its agent-state values into
+   `(cli_args, env_vars)`: claude's turned `model` into `--model <value>`, goose's turned
+   `provider` and `model` into `GOOSE_PROVIDER` and `GOOSE_MODEL`. The descriptor does that job —
+   a state key reaches the box as the `SettingArg` you declare for it — and core stopped
+   dispatching the hook before v1.8.0, leaving a concrete method that returned `[], {}` and that
+   nothing called.
+
+   **Nothing breaks at import, and an override is not an error.** Python does not object to a
+   method that overrides nothing, so a plugin defining `apply_state` keeps loading and keeps
+   working exactly as it does today. ⚑ **That is the hazard, not the reassurance:** if you
+   implemented it, your translation has not been reaching the box for some time — silently, with
+   no warning and no failed launch — and this removal does not change that. It stops the ABC
+   advertising a seam that goes nowhere. The one case that does break is calling
+   `super().apply_state(...)`, now an `AttributeError`.
+
+   **Declare the route instead.** In your `<agent>-defaults.yaml`, a `descriptor:` `settings:` row
+   names the state key and the channel it travels on:
+
+   ```yaml
+   descriptor:
+     settings:
+       - setting_key: model
+         channel: env
+         env_var: MY_AGENT_MODEL     # env channel: emitted only when the resolved value is non-empty
+       - setting_key: provider
+         channel: flag
+         flag: ["--provider"]        # flag channel: contributes an argv token
+   ```
+
+   The two channels are the whole vocabulary (`Channel.FLAG`, `Channel.ENV`), and the value that
+   reaches a row is the RESOLVED one off the settings cascade — so a user can override it by key.
+   That is why the translation moved out of plugin code: a value computed inside your target was
+   one nothing in the keyspace could name, and therefore one nobody could change.
+
 ---
 
 # Migrating to kanibako 1.6.0

@@ -511,28 +511,6 @@ class ClaudeTarget(Target):
         """
         return load_envs(_DEFAULTS_PACKAGE, _DEFAULTS_FILE, self.name)
 
-    def apply_state(self, state: dict[str, str]) -> tuple[list[str], dict[str, str]]:
-        """Translate Claude Code state values into CLI args and env vars.
-
-        Recognized keys:
-          - ``model``: passed as ``--model <value>``
-
-        Unknown keys are silently ignored.
-
-        ⚑ UNDISPATCHED: core removed the ``apply_state`` hook call, so nothing
-        reaches this.  It returns NO env — ``DISABLE_AUTOUPDATER`` is a declared
-        key (:meth:`default_envs`), and a second copy here would be a value with
-        no way to override it if the hook ever came back.
-        """
-        cli_args: list[str] = []
-        env_vars: dict[str, str] = {}
-
-        model = state.get("model")
-        if model:
-            cli_args.extend(["--model", model])
-
-        return cli_args, env_vars
-
     def check_auth(self) -> bool:
         """Check if the user is authenticated with Claude.
 
