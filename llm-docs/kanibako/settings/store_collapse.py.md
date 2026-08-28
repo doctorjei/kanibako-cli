@@ -159,6 +159,45 @@ create-side resolve (`_install_assembly_collapse`), which has no home bind, so i
 bind map — the sync arm's dests are visible to it, but where those dests LAND is not. Delivery order
 is a fact about the create path, and it belongs there.
 
+### `refuse_uncovered_synced` — a copy destination must be covered by a mount
+
+⚖️ **RULED 2026-08-28** — *"I don't think we should be checking for XDG; we should be checking that
+the paths resolve. That's it."* A `synced` dest that no mount covers is refused.
+
+**Why it is a refusal and not a warning.** `synced` resolves THROUGH the mount containing its dest,
+so with nothing bound at or above it the copy is written into the container's own ephemeral storage
+and is gone when the box stops. A `synced` row is a credential more often than not, so the skip
+produced a box that started and then failed to authenticate inside the harness, naming nothing.
+
+⚑ **IT CHECKS THE CONDITION, NEVER A CAUSE.** The rule it replaced refused a `$XDG_*` TOKEN on
+sight, and that shape was wrong in both directions: it missed a literal `/data/z` (identically
+broken, no variable anywhere) and it refused a user deliberately mirroring the box's layout under a
+bind of their own (not broken at all). Coverage answers both correctly without naming XDG.
+
+🛑 **A MASK COUNTS AS A COVER — a delegation, not an exemption.** A mask is IN the map, so
+`covering_bind` finds it; what a mask does to a copy is spec §0's two copy rows, enforced by
+`commands.start._refuse_synced_under_mask`. Treating a mask as "no cover" would put two refusals on
+one destination with two different messages, and would refuse the file-at-a-mask's-own-point cell
+the table ACCEPTS.
+
+⚑ **`seeded` IS NOT ASKED HERE, because it is asked already** — see `_refuse_seed_outside_home`
+below. Same invariant, two moments.
+
+⚑ **THE CALLER IS THE LAUNCH SEAM, NOT `_collapse_synced`, AND THAT IS MEASURED.** Every other
+refusal in this module is MONOTONE in the scope set: adding a scope can create a conflict, never
+dissolve one. Coverage runs the other way — a further scope can only ADD binds. The fold has a
+second caller that builds a deliberately partial map (`commands.workset_cmd` previews a working set
+with no box tier and a stand-in home), and there a `workset.synced` at `/opt/cred` reads UNCOVERED
+while the launch that also carries `box.bindings.rw./opt` reads COVERED. Refusing inside the fold
+would make a listing refuse a configuration that launches. So the rule lives here with its siblings
+and is asked from `commands.start._install_assembly_collapse`, inside the `whole_box` region, which
+is the first point that can honestly say the map is a whole box's.
+
+🛑 **SPEC DELTA, NOT YET RATIFIED.** Keyspec `:196` still states the `synced` refusals EXHAUSTIVELY
+as the two mask rows, and `:125` asserts a sync "meets mounts by construction" — an assertion this
+function is what MAKES true, and which was false as measured. §0's numbered list (`:133-144`) needs
+a sixth entry. The ruling licenses the code; the spec text is the user's to edit.
+
 ### The sync pass: NOT home-only, and it arbitrates NOTHING
 
 ⚑ **There is deliberately no home-only rule for `synced`.** A sync dest resolves through the

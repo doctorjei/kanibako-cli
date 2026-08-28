@@ -322,6 +322,15 @@ def _collapse_synced(store_shape_set: StoreShapeSet) -> CollapsedCopies:
   # copy lands on top of the bind and most of the bind remains intact. It is not the
   # collapse's business which mount a copy shares a destination with, so this arm
   # takes no bind map and cannot refuse for a reason the delivery half owns.
+  # ⚑ THAT RULING IS UNTOUCHED BY THE COVERAGE RULE, and the two must not be confused:
+  # 2026-08-12 forbids refusing a sync for SHARING a dest with a mount; 2026-08-28
+  # refuses one for having NO mount. Opposite conditions, so neither narrows the other
+  # - a sync at, inside, or on top of a bind is as ordinary as it ever was.
+  # 🛑 THE COVERAGE REFUSAL IS DELIBERATELY NOT CALLED FROM HERE. It needs the FINAL
+  # bind map, which this arm has by construction at its call site - but the fold's
+  # OTHER caller previews a working set with a partial map, where the same declaration
+  # reads uncovered and the launch reads covered. See ``refuse_uncovered_synced``,
+  # which states the measurement and names the seam that asks it.
   copies: CollapsedCopies = []
   for scope in SCOPE_CONTAINMENT:
     for dest_path, entry in store_shape_set[scope].sync:
@@ -607,8 +616,87 @@ def _refuse_mask_over_home(dest: str, key: str | None) -> None:
   )
 
 
+def refuse_uncovered_synced(
+  bindings: CollapsedBindings, copies: CollapsedCopies,
+) -> None:
+  """Every ``synced`` dest must be COVERED by a mount - nothing bound is nothing kept.
+
+  ⚖️ RULED 2026-08-28 - *"I don't think we should be checking for XDG; we should be
+  checking that the paths resolve. That's it."* The CONDITION is what is refused, never
+  a cause: a dest spelled with ``$XDG_DATA_HOME`` and a dest typed out as ``/data/z``
+  are the same defect and get the same answer, and a user who MIRRORS the box's layout
+  under a bind of their own is refused nothing.
+
+  ⚑⚑ IT IS THE COLLAPSE'S OWN QUESTION, ASKED WITH THE COLLAPSE'S OWN MACHINERY.
+  :func:`covering_bind` is the ONE containment lookup - the same one the sync DELIVERY
+  half resolves each row through (``commands.start._synced_host_dest``) and the same one
+  :func:`pair_declarations` reads. A second spelling here is how a row gets refused
+  against one map and delivered through another.
+
+  🛑 A MASK COUNTS AS A COVER, and that is not a carve-out - it is what keeps this rule
+  from colliding with one that already exists. A mask IS in the map, so
+  :func:`covering_bind` finds it; what a mask then does to a copy is spec §0's two copy
+  rows, already enforced by ``commands.start._refuse_synced_under_mask`` (mask as
+  PARENT, and a DIRECTORY at a mask's own point). Treating a mask as "no cover" would
+  put TWO refusals on one destination with two different messages, and would refuse the
+  file-at-a-mask's-point cell the table ACCEPTS.
+
+  ⚑ ``seeded`` IS NOT ASKED HERE, because it is asked already. A seed copies at CREATE,
+  before any binding folds, when the only mount in existence is home (pid 0) - so its
+  coverage universe is exactly ``{HOME_DEST}`` and "covered" collapses to "inside home",
+  which is precisely what :func:`_refuse_seed_outside_home` tests, through the SAME
+  :func:`is_within` primitive :func:`covering_bind` is built from. Same invariant, two
+  moments. The two can never both fire on one destination: they read different ARMS, so
+  a dest carrying a seed AND a sync has each row judged at its own moment against its
+  own map, which is the correct answer rather than a collision.
+
+  ⚑ PUBLIC, and its ONE caller is the launch seam
+  (``commands.start._install_assembly_collapse``) rather than :func:`_collapse_synced`
+  itself. MEASURED 2026-08-28, and this is the reason: every other refusal in this
+  module is MONOTONE - adding a scope can only create a conflict, never dissolve one -
+  but coverage runs the other way, since a further scope can only ADD binds. The
+  collapse has a second caller that builds a DELIBERATELY PARTIAL map
+  (``commands.workset_cmd`` previews a working set with no box tier and a stand-in home),
+  and there a ``workset.synced`` at ``/opt/cred`` reads UNCOVERED while the launch that
+  also has ``box.bindings.rw./opt`` reads COVERED. Refusing inside the fold would make a
+  listing refuse a configuration that launches. So the rule lives with its siblings and
+  is asked at the one seam that can honestly say its map is a whole box's.
+
+  🛑 SPEC DELTA, NOT YET RATIFIED. Keyspec ``:196`` still states the ``synced`` refusals
+  EXHAUSTIVELY as the two mask rows, and ``:125`` asserts that a sync "meets mounts by
+  construction" - an assertion this function is what MAKES true, and which was false as
+  measured (a literal ``/data/z`` reaches ``covering_bind`` and gets ``None``). §0's
+  numbered list (``:133-144``) needs a sixth entry. The ruling licenses the code; the
+  spec text is the user's to edit.
+  """
+  for copy in copies:
+    if covering_bind(bindings, copy.dest) is not None:
+      continue
+    raise SettingsError(
+      f"the synced copy of {copy.src!r} targets {copy.dest!r}, which NO mount covers. "
+      f"A 'synced' copy is applied LAST, after the bind map is final, and it resolves "
+      f"THROUGH the mount containing its destination - so with nothing bound at or "
+      f"above {copy.dest!r} the copy would be written into the container's own "
+      f"ephemeral storage and lost the moment the box stops, silently. Give it a "
+      f"destination inside a mount: somewhere under {HOME_DEST!r} (the home binding, "
+      f"which always exists), or under a binding you declare yourself - a "
+      f"'bindings.rw' entry at or above {copy.dest!r} makes this copy land on the host "
+      f"and persist."
+    )
+
+
 def _refuse_seed_outside_home(dest: str, entry: BindEntry) -> None:
-  """A seed resolves into the HOME bind's source, so its dest must be inside home."""
+  """A seed resolves into the HOME bind's source, so its dest must be inside home.
+
+  ⚑⚑ THIS IS THE COVERAGE RULE, AT SEEDED'S OWN MOMENT - not a different invariant.
+  A seed copies at CREATE, before any binding folds, so the only mount that exists is
+  home; "covered by a mount" and "inside home" are the same test over a one-element
+  map, and :func:`is_within` is the same primitive :func:`covering_bind` is built from.
+  🛑 Do NOT "unify" this into :func:`refuse_uncovered_synced` by handing it the whole
+  bind map: :func:`collapse_seeded` is called BARE by the create-side seed resolve,
+  which has no bind map at all, and widening it would make the seed arm uncomputable
+  exactly where it must be computed. See that function's own signature note.
+  """
   if is_within(dest, HOME_DEST):
     return
   raise SettingsError(
