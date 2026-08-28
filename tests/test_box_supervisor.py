@@ -1093,7 +1093,422 @@ def test_newcomer_pids_is_live_minus_own():
     assert newcomer_pids(set(), {9}) == set()
 
 
+# -- marker REAP: identity (agent_launch_heads / agent_session_verdict) ------
+#
+# ⚑ EVERY argv in this section was MEASURED off a live claude box's /proc, not
+# invented: the session, the five helpers it runs under its own binary, and the
+# launch grammar its PID 1 carries.  They are the fixtures because the helper
+# shapes — one packing its subcommand into argv[0] — are what a program-name test
+# gets wrong, and no plausible-looking substitute would have shown it.
+
+# The claude SESSION as it actually runs (pid 10 on the measured box).
+_SESSION_ARGV = [
+    "/home/agent/.local/bin/claude", "--resume", "a43a45f4-494f-4c10-a03c-a273d2a2beb6",
+    "--allow-dangerously-skip-permissions", "--model", "opus",
+    "--permission-mode", "bypassPermissions",
+]
+# The helpers claude runs under its OWN binary.  ⚑ The last two put the subcommand
+# INSIDE argv[0] (a rewritten process title), which is why the head is read from
+# argv[0]'s words and not from argv[1].
+_HELPER_ARGVS = [
+    ["/home/agent/.local/bin/claude", "daemon", "run", "--origin", "transient"],
+    ["claude bg-pty-host", "--bg-pty-host", "/tmp/cc-daemon-1000/x.pty.sock", "200"],
+    ["claude bg-spare", "--bg-spare", "/tmp/cc-daemon-1000/x.claim.sock"],
+]
+_CLAUDE_HEADS = {("claude", None)}
+
+
+def test_agent_launch_heads_peels_the_production_launch_shim():
+    # The EXACT continue grammar a claude box's PID 1 is launched with, measured off
+    # a live box's /proc/1/cmdline: one directive-flatten shim around the agent.
+    script = (
+        'if [ -n "$KANIBAKO_DIRECTIVE_FINAL" ]; then python3 "/opt/kanibako/kanibako/'
+        'scripts/import-directives.py" "$KANIBAKO_DIRECTIVE_SEED" '
+        '"$KANIBAKO_DIRECTIVE_FINAL" || true; fi; exec "$@"'
+    )
+    argv = [
+        "sh", "-c", script, "sh",
+        "claude", "--continue", "--dangerously-skip-permissions", "--model", "opus",
+    ]
+    # An agent launched with FLAGS ONLY has no subcommand — that is its head shape.
+    assert bs.agent_launch_heads(argv) == {("claude", None)}
+    # NESTED shims (secret export outside the flatten) peel all the way down.
+    assert bs.agent_launch_heads(
+        ["sh", "-c", "export A=1; exec \"$@\"", "sh", *argv],
+    ) == {("claude", None)}
+
+
+def test_agent_launch_heads_keeps_a_real_subcommand_and_unions_both_grammars():
+    # goose and codex DO lead with a subcommand, and it is part of the head.
+    assert bs.agent_launch_heads(["goose", "session", "--resume"]) == {("goose", "session")}
+    assert bs.agent_launch_heads(["/usr/local/bin/codex", "resume", "--last"]) == {
+        ("codex", "resume"),
+    }
+    # ⚑ Both grammars contribute: codex STARTS bare and CONTINUES as `codex resume`,
+    # so the running process may legitimately be either shape.
+    assert bs.agent_launch_heads(["codex"], ["codex", "resume", "--last"]) == {
+        ("codex", None), ("codex", "resume"),
+    }
+
+
+def test_agent_launch_heads_empty_for_nothing_to_name():
+    # An EMPTY result is what DISARMS the identity check, so the cases that must
+    # produce one are pinned: no argv at all, and an argv that leads with an option.
+    assert bs.agent_launch_heads([]) == set()
+    assert bs.agent_launch_heads([], []) == set()
+    assert bs.agent_launch_heads(["--continue", "x"]) == set()
+
+
+def test_agent_session_verdict_accepts_the_session_despite_argv_skew():
+    # ⚑ THE FALSE-NEGATIVE SIDE IS THE DANGEROUS ONE — a real session read as a
+    # non-agent has its marker DELETED.  The launched grammar says `--continue
+    # --dangerously-skip-permissions`; the process says `--resume <uuid>
+    # --allow-dangerously-skip-permissions --permission-mode bypassPermissions`.
+    # Only the HEAD survives that, which is exactly why only the head is compared.
+    assert bs.agent_session_verdict(_SESSION_ARGV, _CLAUDE_HEADS) is True
+    # Bare off PATH, and a start-mode grammar, are the same head.
+    assert bs.agent_session_verdict(["claude"], _CLAUDE_HEADS) is True
+    assert bs.agent_session_verdict(
+        ["goose", "session", "--resume"], {("goose", "session")},
+    ) is True
+
+
+@pytest.mark.parametrize("argv", _HELPER_ARGVS)
+def test_agent_session_verdict_rejects_a_helper_of_the_same_agent(argv):
+    # ⚑ THE CASE A PROGRAM-NAME TEST CANNOT SEE.  These all run the agent's own
+    # binary, so "the basename is claude" calls every one of them the agent — and a
+    # helper's marker then reads as a SECOND agent holding the session, which under
+    # 4b takeover evicts the real one.  The head separates them: none of these
+    # begins the way the launch grammar begins.
+    assert bs.agent_session_verdict(argv, _CLAUDE_HEADS) is False
+
+
+@pytest.mark.parametrize("argv", [
+    ["sleep", "120"],
+    ["tmux", "attach", "-t", "kanibako"],
+    ["python3", "-m", "kanibako.box_supervisor", "--session", "kanibako"],
+    ["/usr/bin/node", "/usr/lib/code-server/out/server-main.js"],
+])
+def test_agent_session_verdict_rejects_an_unrelated_process(argv):
+    assert bs.agent_session_verdict(argv, _CLAUDE_HEADS) is False
+
+
+@pytest.mark.parametrize("argv", [
+    # An INTERPRETED install: the agent is what runs, but argv[0] is the interpreter.
+    ["node", "/home/agent/.npm/lib/node_modules/@anthropic-ai/claude-code/cli.js"],
+    # A shell whose argv merely NAMES an agent path — measured on the live box, and
+    # kept verbatim in the part that matters: `/tmp/claude-<id>-cwd` is what makes it
+    # inconclusive.  ⚑ `/home/agent/.claude/…` alone would NOT: a segment must START
+    # with the agent name, and `.claude` does not, so the config dir is not a mention.
+    [
+        "/bin/bash", "-c",
+        "source /home/agent/.claude/shell-snapshots/snap.sh 2>/dev/null || true "
+        "&& eval 'ls' && pwd -P >| /tmp/claude-d4de-cwd",
+    ],
+])
+def test_agent_session_verdict_cannot_judge_a_process_that_only_names_the_agent(argv):
+    # ⚑ The tightening's escape hatch, and the reason it is safe: a DIFFERENT program
+    # whose argv still names the agent is INCONCLUSIVE, never "not an agent".  Both
+    # of these keep their marker instead of being reaped on a misread.
+    assert bs.agent_session_verdict(argv, _CLAUDE_HEADS) is None
+
+
+def test_agent_session_verdict_cannot_judge_without_heads_or_a_usable_argv():
+    # The disarmed shapes: nothing to match against, and an argv with no program.
+    assert bs.agent_session_verdict(_SESSION_ARGV, set()) is None
+    assert bs.agent_session_verdict([], _CLAUDE_HEADS) is None
+    assert bs.agent_session_verdict(["--continue"], _CLAUDE_HEADS) is None
+
+
+def test_proc_cmdline_reads_a_real_process_as_argv_and_tolerates_a_dead_one():
+    own = bs._proc_cmdline(_os.getpid())
+    # ⚑ SPLIT, not joined — argv[0] vs argv[1] is what the head test turns on.
+    assert own is not None and isinstance(own, list)
+    assert "python" in own[0].lower()
+    # A pid that positively does not exist → None (unreadable, never a raise).
+    dead = subprocess.Popen([_sys.executable, "-c", ""])
+    dead.wait()
+    assert bs._proc_cmdline(dead.pid) is None
+
+
+# -- marker REAP: the removal itself ----------------------------------------
+
+def test_default_remove_marker_reaps_and_is_race_tolerant(tmp_path):
+    d = tmp_path / "agents"
+    d.mkdir()
+    (d / "4242").write_text("4242")
+    bs._default_remove_marker(str(d), 4242)
+    assert not (d / "4242").exists()
+    # THE RACE: another remover (the agent's own pid-rm.sh) got there first.  A
+    # missing file is the NORMAL case, never an error.
+    bs._default_remove_marker(str(d), 4242)
+    # An unremovable path (a DIRECTORY where a marker file should be) is tolerated.
+    (d / "77").mkdir()
+    bs._default_remove_marker(str(d), 77)
+    assert (d / "77").exists()
+
+
+def test_scan_marker_pids_reaps_the_stale_and_still_returns_it(tmp_path):
+    # (a) REAP — and the EDGE property: the stale pid is still RETURNED on the tick
+    # that removed it, so panel_agent_state's DEAD verdict is not lost, while the
+    # file is gone so no LATER tick re-decides on the same corpse.
+    d = tmp_path / "agents"
+    d.mkdir()
+    for pid in (10, 20):
+        (d / str(pid)).write_text(str(pid))
+    live, stale = scan_marker_pids(
+        str(d),
+        list_pids=_default_list_marker_pids,
+        pid_alive=lambda pid: pid != 20,
+        remove=bs._default_remove_marker,
+    )
+    assert (live, stale) == ({10}, {20})
+    assert (d / "10").exists()          # the LIVE agent's marker is untouched
+    assert not (d / "20").exists()      # the stale one is gone
+    # The next scan sees only the live marker — the level has become an edge.
+    assert scan_marker_pids(
+        str(d), list_pids=_default_list_marker_pids, pid_alive=lambda pid: pid != 20,
+        remove=bs._default_remove_marker,
+    ) == ({10}, set())
+
+
+def test_scan_marker_pids_treats_a_live_non_agent_pid_as_stale_and_reaps_it(tmp_path):
+    # (b) IDENTITY — the PID-REUSE case: pid 20 is alive, but it is not an agent, so
+    # the marker is a leak whose pid the kernel handed to something else.
+    d = tmp_path / "agents"
+    d.mkdir()
+    for pid in (10, 20):
+        (d / str(pid)).write_text(str(pid))
+    live, stale = scan_marker_pids(
+        str(d),
+        list_pids=_default_list_marker_pids,
+        pid_alive=lambda _pid: True,
+        is_agent=lambda pid: pid == 10,
+        remove=bs._default_remove_marker,
+    )
+    assert (live, stale) == ({10}, {20})
+    assert (d / "10").exists()
+    assert not (d / "20").exists()
+
+
+def test_scan_marker_pids_never_reaps_what_it_cannot_judge(tmp_path):
+    # ⚑ THE SAFETY PROPERTY.  An INCONCLUSIVE identity answer (None) and a probe that
+    # RAISES both leave the marker on disk — deleting a live agent's marker is the
+    # worst outcome available here, so no guess ever removes one.
+    d = tmp_path / "agents"
+    d.mkdir()
+    for pid in (10, 20):
+        (d / str(pid)).write_text(str(pid))
+
+    def alive(pid: int) -> bool:
+        if pid == 20:
+            raise OSError("kill(0) boom")
+        return True
+
+    live, stale = scan_marker_pids(
+        str(d),
+        list_pids=_default_list_marker_pids,
+        pid_alive=alive,
+        is_agent=lambda _pid: None,     # cannot judge
+        remove=bs._default_remove_marker,
+    )
+    assert live == {10}                 # inconclusive identity keeps it LIVE
+    assert stale == set()               # the raising probe skipped 20 entirely
+    assert (d / "10").exists() and (d / "20").exists()
+
+
+def test_scan_marker_pids_without_a_remover_only_partitions(tmp_path):
+    # The reaper is OPTIONAL: with no *remove* the function is the pure-ish
+    # partitioner it always was, so a caller that only wants the verdict gets it.
+    d = tmp_path / "agents"
+    d.mkdir()
+    (d / "20").write_text("20")
+    assert scan_marker_pids(
+        str(d), list_pids=_default_list_marker_pids, pid_alive=lambda _pid: False,
+    ) == (set(), {20})
+    assert (d / "20").exists()
+
+
+# -- marker REAP: wired into the supervisor ----------------------------------
+
+def _reaping_sup(markers_dir, *, cmdlines: dict[int, list[str]], alive, **over):
+    """A supervisor scanning a REAL markers dir with an injected argv table."""
+    return BoxSupervisor(
+        _config(agent_markers_dir=str(markers_dir), **over),
+        run=FakeRun(rc={"has-session": 1}),
+        proc_cmdlines=[],
+        pid_alive=alive,
+        cmdline_of=lambda pid: cmdlines.get(pid),
+    )
+
+
+def test_is_agent_pid_refuses_to_judge_without_a_grammar_or_a_cmdline(tmp_path):
+    sup = _reaping_sup(tmp_path, cmdlines={7: ["sleep", "1"]}, alive=lambda _p: True)
+    assert sup._agent_heads == {("claude", None)}   # from _config's launch grammars
+    assert sup._is_agent_pid(7) is False
+    assert sup._is_agent_pid(8) is None         # no cmdline readable → cannot judge
+    # No launch grammar at all → judges NOTHING (never "everything is a non-agent").
+    blind = _reaping_sup(
+        tmp_path, cmdlines={7: ["sleep", "1"]}, alive=lambda _p: True,
+        start_argv=[], continue_argv=[],
+    )
+    assert blind._agent_heads == set()
+    assert blind._is_agent_pid(7) is None
+
+
+def test_scan_markers_keeps_a_live_session_and_reaps_the_rest(tmp_path):
+    # MUTATION-PROOF, three directions at once: the live SESSION's marker survives a
+    # scan (the regression that would matter most), while a dead pid, a live
+    # unrelated pid, and a live HELPER OF THE SAME AGENT are all reaped.
+    for pid in (10, 20, 30, 40):
+        (tmp_path / str(pid)).write_text(str(pid))
+    sup = _reaping_sup(
+        tmp_path,
+        cmdlines={
+            10: _SESSION_ARGV,
+            20: ["sleep", "120"],
+            40: ["claude bg-spare", "--bg-spare", "/tmp/cc-daemon-1000/x.claim.sock"],
+        },
+        alive=lambda pid: pid != 30,
+    )
+    assert sup._scan_markers() == ({10}, {20, 30, 40})
+    assert (tmp_path / "10").exists()
+    for gone in (20, 30, 40):
+        assert not (tmp_path / str(gone)).exists()
+
+
+def test_panel_agent_state_dead_is_an_edge_not_a_level(tmp_path):
+    # HAZARD 1, the fix: a stale marker still reports DEAD on the tick that finds it
+    # (the §89-96 panel-death fallback is intact), but the marker is gone afterwards,
+    # so the verdict does NOT persist forever and cannot re-fire a CLI self-heal.
+    (tmp_path / "4242").write_text("4242")
+    sup = _reaping_sup(tmp_path, cmdlines={}, alive=lambda _pid: False)
+    assert sup.panel_agent_state() is PanelAgentState.DEAD
+    assert not (tmp_path / "4242").exists()
+    assert sup.panel_agent_state() is PanelAgentState.NONE
+
+
+def test_panel_watch_self_heals_once_for_a_leaked_marker_then_stops(tmp_path):
+    # HAZARD 1 end-to-end on the REAL panel-watch loop: a leaked marker used to hold
+    # DEAD forever, re-spawning a CLI agent the box never asked for on every tick it
+    # was reachable.  It now costs at most ONE self-heal, and the second tick is
+    # quiet because the marker was reaped on the first.
+    (tmp_path / "4242").write_text("4242")
+    fake = FakeRun(rc={"has-session": 1})
+    sup = _reaping_sup(
+        tmp_path, cmdlines={}, alive=lambda _pid: False, panel_watch=True,
+    )
+    sup._run = fake                                    # type: ignore[assignment]
+    _script_snapshots(sup, [_VS])                      # panel connected throughout
+    healed: list[int] = []
+    sup._self_heal = lambda: (healed.append(1) or True)  # type: ignore[method-assign]
+    _stop_after(sup, 4)
+    assert sup.run_forever() == 0
+    assert healed == [1]                               # ONCE, not once per tick
+    assert not (tmp_path / "4242").exists()
+
+
+def test_run_forever_takeover_does_not_evict_over_a_reused_pid(tmp_path):
+    # HAZARD 2, the fix: with 4b ENFORCEMENT armed, a leaked marker whose pid the
+    # kernel reissued to a NON-agent used to read as a live newcomer and evict the
+    # real agent.  It is stale now, so no signal is sent and the marker is reaped.
+    (tmp_path / "200").write_text("200")
+    signals: list = []
+    sup = _reaping_sup(
+        tmp_path,
+        cmdlines={200: ["sleep", "120"]},          # the pid was REUSED by a sleep
+        alive=lambda _pid: True,
+        session_takeover=True,
+        takeover_grace=0.0,
+    )
+    sup._run = FakeRun(                            # type: ignore[assignment]
+        rc={"has-session": 0},
+        stdout={"list-panes": "100\n", "display-message": ""},
+    )
+    sup._kill = lambda pid, sig: signals.append(("kill", pid, sig))
+    sup._killpg = lambda pgid, sig: signals.append(("killpg", pgid, sig))
+    _script_snapshots(sup, [_NONE])
+    _stop_after(sup, 2)
+    assert sup.run_forever() == 0
+    assert signals == []                           # the live incumbent is untouched
+    assert not (tmp_path / "200").exists()
+
+
+@pytest.mark.parametrize("helper_argv", _HELPER_ARGVS)
+def test_run_forever_takeover_does_not_evict_over_an_agents_own_helper(
+    tmp_path, helper_argv,
+):
+    # ⚑ THE HELPER CASE, END TO END — the one a program-name test cannot see.  A
+    # marker naming one of the agent's OWN helper processes read as a second agent
+    # holding the session, and with 4b armed the supervisor evicted the real,
+    # running agent to make room for a background pty host.  MEASURED: a live box
+    # was carrying exactly such a marker (`claude bg-spare`) while its agent ran.
+    (tmp_path / "200").write_text("200")
+    signals: list = []
+    sup = _reaping_sup(
+        tmp_path,
+        cmdlines={200: helper_argv},
+        alive=lambda _pid: True,
+        session_takeover=True,
+        takeover_grace=0.0,
+    )
+    sup._run = FakeRun(                            # type: ignore[assignment]
+        rc={"has-session": 0},
+        stdout={"list-panes": "100\n", "display-message": ""},
+    )
+    sup._kill = lambda pid, sig: signals.append(("kill", pid, sig))
+    sup._killpg = lambda pgid, sig: signals.append(("killpg", pgid, sig))
+    _script_snapshots(sup, [_NONE])
+    _stop_after(sup, 2)
+    assert sup.run_forever() == 0
+    assert signals == []                           # the running agent is untouched
+    assert not (tmp_path / "200").exists()
+
+
+def test_run_forever_takeover_still_fires_for_a_second_session(tmp_path):
+    # ⚑ THE CAPABILITY THAT MUST SURVIVE THE TIGHTENING.  A newcomer that is a real
+    # agent SESSION — a second harness that has bound the same box — still takes
+    # over.  That split-brain is what 4b exists for, and narrowing the identity test
+    # must not quietly disarm it.
+    (tmp_path / "200").write_text("200")
+    sup = _reaping_sup(
+        tmp_path,
+        cmdlines={200: _SESSION_ARGV},
+        alive=lambda _pid: True,
+        session_takeover=True,
+        takeover_grace=0.0,
+    )
+    sup._run = FakeRun(                            # type: ignore[assignment]
+        rc={"has-session": 0},
+        stdout={"list-panes": "100\n", "display-message": ""},
+    )
+    fired: list[tuple] = []
+    sup._takeover = lambda own, new: (             # type: ignore[method-assign]
+        fired.append((own, new)) or True
+    )
+    sup._run_panel_watch = lambda: 0               # type: ignore[method-assign]
+    _script_snapshots(sup, [_NONE])
+    _stop_after(sup, 2)
+    assert sup.run_forever() == 0
+    assert fired == [({100}, {200})]
+    assert (tmp_path / "200").exists()             # a live session's marker is KEPT
+
+
 # -- panel_agent_state (dir enumeration; injectable lister + probe) -----------
+
+def _no_cmdline(_pid: int) -> None:
+    """An identity probe that can never judge — every marker keeps its old verdict.
+
+    The real probe reads the REAL ``/proc``, so a fixture pid that happens to exist
+    in the test runner would be judged a non-agent and reclassified.  ``None`` is the
+    INCONCLUSIVE answer, which is exactly the pre-reap behaviour these tests pin.
+    """
+    return None
+
+
+def _no_reap(_markers_dir: str, _pid: int) -> None:
+    """A reaper that removes nothing — these fixtures name no real marker files."""
+    return None
 
 def _panel_sup(
     *,
@@ -1115,6 +1530,8 @@ def _panel_sup(
         _config(agent_markers_dir=markers_dir),
         run=FakeRun(stdout={"list-panes": panes}),
         list_marker_pids=list_pids,
+        cmdline_of=_no_cmdline,
+        remove_marker=_no_reap,
         pid_alive=pid_alive,
     )
 
@@ -1184,6 +1601,8 @@ def _panel_watch_sup(
         run=fake,
         proc_cmdlines=[],
         list_marker_pids=lambda _p: list(marker_pids or []),
+        cmdline_of=_no_cmdline,
+        remove_marker=_no_reap,
         pid_alive=alive,
     )
 
@@ -1298,6 +1717,8 @@ def test_run_forever_detects_newcomer_log_only(monkeypatch):
         run=fake,
         proc_cmdlines=[],
         list_marker_pids=lambda _p: [100, 200],  # own pane 100 + newcomer 200
+        cmdline_of=_no_cmdline,
+        remove_marker=_no_reap,
         pid_alive=lambda pid: True,
     )
     _script_snapshots(sup, [_NONE])
@@ -1317,6 +1738,8 @@ def test_run_forever_no_newcomer_when_only_own_agent_marker(monkeypatch):
         run=fake,
         proc_cmdlines=[],
         list_marker_pids=lambda _p: [100],  # only the own pane's marker
+        cmdline_of=_no_cmdline,
+        remove_marker=_no_reap,
         pid_alive=lambda pid: True,
     )
     _script_snapshots(sup, [_NONE])
@@ -1377,6 +1800,8 @@ def test_4a_detection_takes_no_destructive_or_signal_action():
         run=fake,
         proc_cmdlines=[],
         list_marker_pids=lambda _p: [100, 200],  # own + newcomer
+        cmdline_of=_no_cmdline,
+        remove_marker=_no_reap,
         pid_alive=lambda pid: True,
         kill=spy_kill,
     )
@@ -1485,6 +1910,8 @@ def test_takeover_returns_true_and_run_forever_hands_off_to_panel_watch():
         run=fake,
         proc_cmdlines=[],
         list_marker_pids=lambda _p: [100, 200],  # own pane 100 + newcomer 200
+        cmdline_of=_no_cmdline,
+        remove_marker=_no_reap,
         pid_alive=lambda pid: True,
         kill=lambda pid, sig: None,
         killpg=lambda pgid, sig: None,
@@ -1509,6 +1936,8 @@ def test_takeover_does_not_fire_without_a_pane_incumbent():
         run=fake,
         proc_cmdlines=[],
         list_marker_pids=lambda _p: [200],  # a marker but NO own pane
+        cmdline_of=_no_cmdline,
+        remove_marker=_no_reap,
         pid_alive=lambda pid: True,
         kill=lambda pid, sig: signals.append((pid, sig)),
         killpg=lambda pgid, sig: signals.append(("pg", pgid, sig)),
@@ -1539,6 +1968,8 @@ def test_flag_off_is_4a_log_only_no_signals(monkeypatch):
         run=fake,
         proc_cmdlines=[],
         list_marker_pids=lambda _p: [100, 200],
+        cmdline_of=_no_cmdline,
+        remove_marker=_no_reap,
         pid_alive=lambda pid: True,
         kill=lambda pid, sig: signals.append(("kill", pid, sig)),
         killpg=lambda pgid, sig: signals.append(("killpg", pgid, sig)),
@@ -1626,6 +2057,8 @@ def test_panel_watch_reverse_direction_is_log_only_even_with_flag_on(monkeypatch
         run=fake,
         proc_cmdlines=[],
         list_marker_pids=lambda _p: [900, 901],  # 900 latches incumbent, 901 newcomer
+        cmdline_of=_no_cmdline,
+        remove_marker=_no_reap,
         pid_alive=lambda pid: True,
         kill=lambda pid, sig: signals.append((pid, sig)),
         killpg=lambda pgid, sig: signals.append(("pg", pgid, sig)),

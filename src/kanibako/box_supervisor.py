@@ -8,6 +8,10 @@ which ``commands/start.py`` imports at MODULE scope.
 Terminology — SELF-HEAL: restart a dead agent with the continue grammar + marker.
 PANEL-WATCH: the E2f agentless ``code`` warm-up loop.  NEWCOMER: a live marker PID that
 is not the supervisor's own agent.  TAKEOVER: the 4b single-writer evict (DEFAULT-OFF).
+REAP (markers): delete a marker file whose PID is dead, or alive but not the agent
+SESSION, so a leaked marker is an EDGE the supervisor sees once instead of a level it
+sees forever.  ⚑ SESSION, not "an agent process": an agent runs helpers under its own
+binary, and a marker naming one of those is not a second agent holding the session.
 DIRECTIVE FRESHNESS: re-flatten the agent's native instruction slot when one of the
 directive sources it was rendered from changes (:class:`DirectiveWatch`).
 
@@ -183,6 +187,12 @@ _Sleeper = Callable[[float], None]
 # touch the real FS / os.  Defaults below are the real PID-1 implementations.
 _PidAlive = Callable[[int], bool]
 _MarkersLister = Callable[[str], "list[int]"]
+# The marker IDENTITY probe and the REAP, same rule.  ⚑ The identity answer is
+# THREE-valued: True/False decide, and ``None`` means CANNOT JUDGE — which keeps the
+# marker, because deleting a live agent's marker is the worst outcome available here.
+_CmdlineOf = Callable[[int], "list[str] | None"]
+_AgentCheck = Callable[[int], "bool | None"]
+_MarkerRemover = Callable[[str, int], None]
 
 # The PROCESS-CONTROL primitives — the 4b takeover signals, the pane-group evict and the
 # PID-1 reap duty.  Injectable exactly like ``run`` / ``sleep``, so a unit test can never
@@ -209,6 +219,23 @@ def _proc_stat_state(pid: int) -> str | None:
     except OSError:
         return None
     return _parse_stat_state(text)
+
+
+def _proc_cmdline(pid: int) -> list[str] | None:
+    """Real ``_CmdlineOf``: *pid*'s ARGV, or ``None`` if it cannot be read."""
+    try:
+        raw = Path(f"/proc/{pid}/cmdline").read_bytes()
+    except OSError:
+        return None
+    # NUL-delimited argv with a trailing NUL; decode leniently, as
+    # ``box_lifecycle._collect_proc_cmdlines`` does for the whole-table read.  ⚑ Kept
+    # SPLIT, not joined: which token is argv[0] and which is argv[1] is what separates
+    # an agent's session from its helpers, and joining throws that away.  A kernel
+    # thread's EMPTY cmdline is ``None`` — unreadable, not "not an agent".
+    text = raw.rstrip(b"\x00").decode("utf-8", "replace")
+    if not text:
+        return None
+    return text.split("\x00")
 
 
 def _default_pid_alive(pid: int) -> bool:
@@ -257,13 +284,159 @@ def _default_list_marker_pids(markers_dir: str) -> list[int]:
     return pids
 
 
+def _default_remove_marker(markers_dir: str, pid: int) -> None:
+    """Real ``_MarkerRemover``: REAP the marker file naming *pid*; race-tolerant."""
+    try:
+        os.unlink(os.path.join(markers_dir, str(pid)))
+    except FileNotFoundError:
+        # The agent's own ``pid-rm.sh``, or a concurrent scan, got there first.  Two
+        # removers agreeing on one file is the NORMAL case, not a failure.
+        pass
+    except OSError as exc:
+        log.debug("could not reap marker %s/%d: %s", markers_dir, pid, exc)
+
+
+def _argv_head(argv: Iterable[str]) -> tuple[str, str | None] | None:
+    """PURE: an argv's ``(PROGRAM basename, SUBCOMMAND)`` head, or ``None`` if it has none.
+
+    ⚑ ``argv[0]`` is SPLIT ON WHITESPACE first.  A harness that rewrites its process
+    TITLE packs the subcommand into argv[0] rather than argv[1] — measured on a live
+    box, ``claude bg-spare`` arrives as a single argv entry — so reading argv[1] alone
+    would miss the very distinction this head exists to draw.
+
+    The SUBCOMMAND slot is the first following token that is not an option; an argv
+    that goes straight to flags has ``None``, which is itself the head shape a bare
+    agent launch has.  Only the head is read: everything after it (session ids,
+    permission flags, a model) is where a launch and the process it became DISAGREE.
+    """
+    parts = list(argv)
+    if not parts:
+        return None
+    words = parts[0].split()
+    if not words:
+        return None
+    program = os.path.basename(words[0])
+    # A leading OPTION means the front of this argv is not a program at all.
+    if not program or program.startswith("-"):
+        return None
+    rest = words[1:] + parts[1:]
+    sub = rest[0] if rest and not rest[0].startswith("-") else None
+    return program, sub
+
+
+def agent_launch_heads(*argvs: Iterable[str]) -> set[tuple[str, str | None]]:
+    """PURE: the ``(PROGRAM, SUBCOMMAND)`` heads the supervisor was launched to run.
+
+    The launch grammars in :class:`SupervisorConfig` are the ONLY thing PID 1 knows
+    about which agent this box runs, so they are what an "is this pid the agent" test
+    has to be built from — never a hardcoded ``claude`` / ``codex`` / ``goose``, and
+    never a list of the helper subcommands to exclude.
+
+    ``commands/start.py`` wraps an agent launch in one ``sh -c <script> sh <program>
+    <args...>`` shim per concern (secret export, directive flatten), nesting outward;
+    every layer sets ``$0=sh`` and ``exec "$@"``s the next, so the agent is what
+    remains once the layers are peeled off the front.
+
+    BOTH grammars contribute, because start and continue modes may differ in the
+    subcommand slot (``codex`` starts bare and continues as ``codex resume``), and the
+    process may be either.
+
+    ⚑ The shim shape is QUARANTINED KNOWLEDGE of a sibling module, deliberately not
+    imported: PID 1 is stdlib-only, and importing the CLI would put every marker scan
+    at the mercy of the whole command package importing cleanly.  ⚑ It is SAFE UNDER
+    SKEW — a shim shape this does not recognise leaves the wrapper's own ``sh`` as the
+    head, which matches no real agent, so :func:`agent_session_verdict` falls through
+    to ``None`` and KEEPS the marker rather than reaping on a misread.
+    """
+    heads: set[tuple[str, str | None]] = set()
+    for argv in argvs:
+        rest = list(argv)
+        while len(rest) >= 5 and rest[0] == "sh" and rest[1] == "-c" and rest[3] == "sh":
+            rest = rest[4:]
+        head = _argv_head(rest)
+        if head is not None:
+            heads.add(head)
+    return heads
+
+
+def agent_session_verdict(
+    argv: Iterable[str], heads: set[tuple[str, str | None]],
+) -> bool | None:
+    """PURE: is *argv* the agent SESSION this supervisor supervises?  ``None`` ⇒ unjudgeable.
+
+    ⚑ THE PROGRAM NAME ALONE IS NOT ENOUGH.  An agent runs its own helpers under its
+    own binary — a daemon, a background pty host, a spare — and a basename test calls
+    every one of them the agent, which is how a helper's marker reads as a second
+    agent holding the session.  The HEAD is what separates them: the session's argv
+    begins the way the launch grammar begins, and a helper's begins with a subcommand
+    the supervisor was never launched to run.
+
+    Only the head is compared, because the rest of the argv legitimately DIVERGES — a
+    box launched ``claude --continue --dangerously-skip-permissions --model opus`` was
+    measured running as ``claude --resume <uuid> --allow-dangerously-skip-permissions
+    --model opus --permission-mode bypassPermissions``.  Matching further would reject
+    real sessions, and rejecting a real session deletes its marker.
+
+    ``None`` — CANNOT JUDGE — covers the two ways this can be wrong rather than
+    guessing: nothing to match against, and a DIFFERENT program whose argv still names
+    the agent (an interpreter launching it, a shell holding its path).
+    """
+    if not heads:
+        return None
+    head = _argv_head(argv)
+    if head is None:
+        return None
+    if head in heads:
+        return True
+    if head[0] in {program for program, _ in heads}:
+        return False        # the agent's binary, but not the session's subcommand
+    if _names_an_agent(argv, heads):
+        return None
+    return False
+
+
+def _names_an_agent(argv: Iterable[str], heads: set[tuple[str, str | None]]) -> bool:
+    """PURE: does *argv* NAME an agent program anywhere, without being one?
+
+    The loose test :func:`agent_session_verdict` falls back on, mirroring
+    :func:`kanibako.box_lifecycle.vscode_server_present`: PREFIX-test every
+    ``/``-delimited segment.  It exists to catch the shapes a head cannot judge — an
+    interpreted install (``node …/claude-code/cli.js``), a shell whose argv carries an
+    agent path — and it answers only INCONCLUSIVE, never "agent".
+    """
+    names = {program for program, _ in heads}
+    return any(
+        part.startswith(name)
+        for part in " ".join(argv).split("/")
+        for name in names
+    )
+
+
 def scan_marker_pids(
     markers_dir: str,
     *,
     list_pids: _MarkersLister,
     pid_alive: _PidAlive,
+    is_agent: _AgentCheck | None = None,
+    remove: _MarkerRemover | None = None,
 ) -> tuple[set[int], set[int]]:
-    """PURE-ish: partition the markers dir into (LIVE pids, STALE pids)."""
+    """Partition the markers dir into (LIVE pids, STALE pids), REAPING the stale ones.
+
+    A marker is STALE when the pid it names is not alive — or, when *is_agent* is
+    given, is alive but is not the agent SESSION.  That second case covers both a
+    leaked marker whose pid the kernel has REISSUED, and a marker naming one of the
+    agent's OWN helper processes, which is not a second agent holding the session.
+
+    Both are handed to *remove*, so a stale marker becomes an EDGE the supervisor
+    sees once instead of a level it sees forever: this call still RETURNS the stale
+    pid, so the panel agent's death still reaches :func:`decide_panel` on the tick
+    that noticed it, and no later tick re-decides on the same corpse.
+
+    ⚑ NEVER REAP WHAT YOU CANNOT JUDGE.  A probe that raises, and an *is_agent* that
+    answers ``None`` (nothing to match against, or ``/proc`` unreadable), both leave
+    the marker alone — a pid that is genuinely gone reads dead on a later scan, while
+    a wrongly deleted marker is a live agent the supervisor has stopped seeing.
+    """
     live: set[int] = set()
     stale: set[int] = set()
     for pid in list_pids(markers_dir):
@@ -271,10 +444,17 @@ def scan_marker_pids(
             continue
         try:
             alive = pid_alive(pid)
+            if alive and is_agent is not None and is_agent(pid) is False:
+                alive = False
         except Exception:
-            log.debug("scan_marker_pids: liveness probe raised for pid %d; skipping", pid)
+            log.debug("scan_marker_pids: a probe raised for pid %d; skipping", pid)
             continue
-        (live if alive else stale).add(pid)
+        if alive:
+            live.add(pid)
+            continue
+        stale.add(pid)
+        if remove is not None:
+            remove(markers_dir, pid)
     return live, stale
 
 
@@ -527,6 +707,8 @@ class BoxSupervisor:
         proc_cmdlines: Iterable[str] | None = None,
         pid_alive: _PidAlive = _default_pid_alive,
         list_marker_pids: _MarkersLister = _default_list_marker_pids,
+        cmdline_of: _CmdlineOf = _proc_cmdline,
+        remove_marker: _MarkerRemover = _default_remove_marker,
         kill: _Signaller = os.kill,
         killpg: _Signaller = os.killpg,
         getpgid: _GroupOf = os.getpgid,
@@ -542,6 +724,15 @@ class BoxSupervisor:
         # Agent-marker probes, injectable; defaults are the real PID-1 implementations.
         self._pid_alive = pid_alive
         self._list_marker_pids = list_marker_pids
+        self._cmdline_of = cmdline_of
+        self._remove_marker = remove_marker
+        # The agent launch HEADS this box runs, recovered from the launch grammars —
+        # the only thing PID 1 knows about WHICH agent it supervises.  Config-derived
+        # and immutable, so they are computed once; EMPTY disarms the identity half of
+        # the marker scan entirely (see :meth:`_is_agent_pid`).
+        self._agent_heads = agent_launch_heads(
+            config.start_argv, config.continue_argv,
+        )
         # Process-control primitives, injectable; NOTHING here may reach ``os`` directly,
         # or a unit test would signal a REAL process.  Defaults are the stdlib ops.
         self._kill = kill
@@ -759,8 +950,21 @@ class BoxSupervisor:
 
     # -- agent markers: liveness (E2f) + newcomer detection (4a) -------------
 
+    def _is_agent_pid(self, pid: int) -> bool | None:
+        """Is the LIVE *pid* the agent SESSION?  ``None`` when it cannot be judged."""
+        if not self._agent_heads:
+            # No launch grammar to match against.  Judging nothing is right; judging
+            # everything a non-agent would reap every marker in the dir.
+            return None
+        argv = self._cmdline_of(pid)
+        if argv is None:
+            # ``/proc`` unreadable, or the pid went away between the two probes.
+            # Keep the marker — the NEXT scan sees a dead pid and reaps it then.
+            return None
+        return agent_session_verdict(argv, self._agent_heads)
+
     def _scan_markers(self) -> tuple[set[int], set[int]]:
-        """Enumerate the markers dir → (LIVE pids, STALE pids); tolerant."""
+        """Enumerate the markers dir → (LIVE pids, STALE pids), REAPING the stale."""
         markers_dir = self.config.agent_markers_dir
         if not markers_dir:
             return set(), set()
@@ -769,6 +973,8 @@ class BoxSupervisor:
                 markers_dir,
                 list_pids=self._list_marker_pids,
                 pid_alive=self._pid_alive,
+                is_agent=self._is_agent_pid,
+                remove=self._remove_marker,
             )
         except Exception:
             log.debug("_scan_markers: enumeration raised; treating as no markers")
