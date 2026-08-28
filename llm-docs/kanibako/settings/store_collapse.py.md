@@ -395,13 +395,25 @@ destination. The call is dropped entirely, not repaired, and a test pins the two
   upstream of this module. It is NOT masking, and a scope clause about masks would send the user to
   the wrong mechanism.
 
-  🐞 **BOARDED, not 2c's:** the message still names no declaration KEY for either participant and
-  structurally cannot — `build_store_shape` drops `CategoryEntry.key_segments` when it writes the
-  arm, so naming them is a producer-shape change. Its sibling one layer up publishes keys, the owning
-  scope and a copy-pasteable YAML block; this one publishes dests and sources.
-* **bind under a mask** — names the mask that would swallow it.
-* **mask on a mask** — names every mask it lands on or inside.
-* **mask over home** — names the offending dest and home's own, for a mask at home's point or above
+  ⚑ **It names BOTH participants by KEY** — the arriving declaration and each subsumed one —
+  which is what keyspec `:153-165` obliges. The remedy above tells the reader to null a KEY, so a
+  message naming none asked for an edit without saying where to make it. 🛑 **The old boarded 🐞
+  said this "structurally cannot" be done and that the fix was a producer-shape change. BOTH halves
+  were wrong and neither may be repeated.** The key travels BESIDE the shape, off the ENTRY LIST —
+  see "Why nothing was added to `CollapsedBind` / `CollapsedCopy`" below — and widening the arm's
+  entry tuple is barred by the spec, not merely awkward. Its sibling one layer up still publishes
+  more: the owning scope and a copy-pasteable YAML block, which this module cannot render because it
+  holds DOTTED keys rather than `key_segments`.
+* **bind under a mask** — names the mask that would swallow it, and both participants' keys.
+* **mask on a mask** — names every mask it lands on or inside, and every one of their keys. ⚑ The
+  refusal that needed provenance most: NEITHER participant has a host source, so without the keys it
+  named two bare destinations and nothing a reader could match to a file they had written.
+* **mask over home** — names the offending dest and its key, and home's own dest. 🛑 It names NO key
+  for home and says why in the message: home is pid 0, built by the launch seam from the RO derived
+  `meta.box.home` and in no scope's arm, so there is no bind-shaped key to suppress. Pointing a
+  reader at a key they cannot write would be worse than the silence it replaced. This is the one
+  refusal with a single-sided diagnosis, and *"the refusal is symmetric; the diagnosis is not"*
+  (`:153-165`) is the sentence that licenses it
   it. Refused BEFORE the sweep, so a mask that cannot be accepted deletes nothing first.
 * **seed outside home** — names the source and the destination, points at the home bind, and offers
   `synced` as the category that is not home-only.
@@ -494,10 +506,32 @@ decision: the outcome is still `pair_declarations`'.
 
 ### 🛑 Why nothing was added to `CollapsedBind` / `CollapsedCopy`
 
-The pairing is asked in ONE direction, declaration → delivery, and containment answers it. The
-REVERSE question — given a collapsed bind, name the declaration that produced it — is the one this
-module cannot answer, and it is the one `_refuse_bind_over_bind`'s boarded 🐞 wants; it still needs
-the producer shape change.
+The pairing is asked in ONE direction, declaration → delivery, and containment answers it.
+
+The REVERSE question — given a collapsed dest, name the declaration that put a mount there — is
+answered by **`CollapsedStore.declared_by`**, a dest-keyed SIDE MAP built off the ENTRY LIST and
+recorded AT THE FOLD. `collapse_store_shapes` takes that list as an OPTIONAL third argument; a
+caller that omits it collapses byte-identically and files nothing, which is why every message here
+still has a bare spelling. The launch seam passes it (`commands.start._install_assembly_collapse`),
+and so does `workset share list --effective`.
+
+⚑ **Off the ENTRY LIST, because that is the only seam that has the keys** — the same one
+`collapse_env` takes, and for the same reason: `store_shape.build_store_shape` drops
+`CategoryEntry.key_segments` when it writes the arm. An entry is filed only when the scope's shape
+holds the arm row it produced, so `store_shape`'s category→arm table is not copied here and the §0
+row-5 WINNER is filed rather than the loser the producer dropped.
+
+⚑ **Recorded at the FOLD, never derived from the finished map.** "Which scope's mask survived at
+this dest" is not answerable afterwards: a bind may take a mask's own point, the sweep removes that
+mask, and a LATER scope's mask may retake the point — two scopes' keys then name one dest and only
+one of them is the occupant. The sweep drops the side map's row with the mount it describes, so a
+key can never outlive the mount it named.
+
+🛑 **`declared_by` IS NOT A FOURTH `meta.assembly` LEAF and must not become one.** The three leaves
+are written field by field at the seam; nothing carries this map into the store. Landing it as a
+leaf would be a closed-keyspace addition — a spec and manifest edit, and not the code's to make.
+That is also why `box show --effective` still prints the bare phrases: it answers from a STORED
+snapshot, whose collapsed binding map carries no key.
 
 And the tuples may not grow regardless: the keyspec declares `meta.assembly.bindings` as
 `dict[guest_dest → (host_src, opts)]` (`:434`) and both copy leaves as
