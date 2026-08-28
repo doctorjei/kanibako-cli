@@ -225,26 +225,26 @@ policy:
         child_is_mask:  sweep
         parent_is_bind: nest
         parent_is_mask: refuse
-    refusals:                     # the four, stated once
+    refusals:                     # the six, stated once
       - "an existing MASK that is a PARENT of the dest refuses EVERY arrival"
       - "an arriving BIND is refused by an existing bind AT its dest or a CHILD of
          it — the arrival would subsume a binding nothing could then reach"
       - "an arriving MASK is refused by an existing mask AT its dest or a PARENT of
-         it — a void inside a void hides nothing the outer mask does not hide"
+         it — a void inside a void hides nothing the outer mask does not hide.
+         Masks are the INVERSE of binds, not their mirror"
       - "an arriving MASK is refused if HOME is at its dest or a CHILD of it —
          nothing may subsume home, masks included"
+      - "an arriving COPY of a DIRECTORY is refused by an existing mask AT its dest
+         — a directory onto a void would leave the mask partially populated"
+      - "an arriving SYNCED copy is refused if NO mount COVERS its dest — nothing
+         would persist it"
     on_accept: "the mount DELETES every mount AT or INSIDE its dest, then inserts.
                 ONE sweep covers a bind replacing a mask at its point, a mask
                 replacing a bind at its point, and a mask subsuming a child mask."
-    direction_is_reversed: "A bind may be a CHILD of a bind and refuses its own
-                kind at its point or INSIDE it; a mask may be the PARENT of a mask
-                and refuses its own kind at its point or CONTAINING it. Masks are
-                the INVERSE of binds, not their mirror."
-    mounts_only: "Copies (seeded, synced) apply to the HOME bind ALONE, resolve
-                into the box home store and complete BEFORE any binding folds, so
-                a copy never meets a mount here and has no arbitration to state.
-                A copy's only rule is that its dest lies inside home
-                (category_reconcile below)."
+    copies: "SEEDED lands inside home and completes BEFORE any binding folds, so it
+                meets no mount; a dest outside home is an ERROR (category_reconcile
+                below). SYNCED is the opposite — it copies LAST, through the final
+                bind map — so a dest NO mount covers is an ERROR."
     # ⚑ THE ONE CHANGE THAT NARROWS WHAT A USER MAY WRITE (2026-08-10). TWO MOUNTS
     # AT ONE DEST ARE NOW AN ERROR IN EVERY SCOPE COMBINATION. The two retired rows
     # resolved a cross-scope abstraction-vs-abstraction collision SILENTLY by scope
