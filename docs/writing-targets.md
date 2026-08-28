@@ -93,8 +93,7 @@ class PluginDescriptor:
 **`Binding(key, origin, box_dest, kind, scope, ro=True, literal_src=None)`** —
 one bound element that delivers the agent into the box.
 
-- `key` — stable override key; a user can redirect the host source via
-  `agent.<agent>.binding.<key>`.
+- `key` — your stable name for this binding, used in errors; not a settings key.
 - `origin` — a `HostSrcOrigin`: `LAUNCHER` / `INSTALL_DIR` / `BINARY` (taken
   from the detected `AgentInstall`) or `LITERAL` (use `literal_src`).
 - `box_dest` — absolute path inside the box (e.g.
@@ -146,10 +145,10 @@ filtered=False)`** — one credential/config file's lifecycle.
 - `filtered` — when `True`, core calls your `transform_cred` hook instead of a
   wholesale copy (use it to allowlist portable fields or merge).
 
-**`Binding` host source resolution.** The effective host source for a binding
-is the user cascade override (`agent.<agent>.binding.<key>`) if set, else the
-`origin`: a field of the detected `AgentInstall` (`LAUNCHER` / `INSTALL_DIR` /
-`BINARY`) or `literal_src` (`LITERAL`).
+**`Binding` host source resolution.** Core represents each binding as an
+`agent.<agent>.bindings.{ro,rw}` entry keyed by `box_dest` and sourced from
+`origin`, so a user repoints one by re-declaring that destination in the agent's
+settings file.  The arms are dest-keyed; `key` addresses nothing.
 
 **`AgentInstall(name, binary, install_dir, launcher=None)`** — where the agent
 lives on the host.  `binary` is the executable path; `install_dir` is the
@@ -370,10 +369,10 @@ silently replace the first.  Across categories the rule depends on what each sid
 is: two `bindings` arms at one destination refuse, and an abstract category
 (`common` / `caches` / `seeded`) extending onto a destination a `bindings` entry
 already holds refuses, both naming the two declarations.  Two *abstract*
-categories at one destination currently resolve last-wins with a warning rather
-than refusing — do not rely on it; it is a defect against spec §0 and will become
-a refusal.  Layering at one destination is expressed across *scopes*, never twice
-within your own declarations.
+categories at one destination are the residual case — reached only once both
+refusals above have been checked — and resolve last-wins with a warning naming
+what was dropped.  Layering at one destination is expressed across *scopes*,
+never twice within your own declarations.
 
 ### `default_envs() -> dict[str, str]`
 
