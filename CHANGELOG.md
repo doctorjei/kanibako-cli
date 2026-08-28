@@ -94,6 +94,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **A `synced` destination that no mount covers now refuses the launch instead of being copied
+  into nowhere.** A `synced` entry is applied last, after the mount set is final, and it resolves
+  *through* the mount containing its destination — that is what puts the file where the box can see
+  it. With nothing bound at or above the destination there is no such mount, so the copy went into
+  the container's own ephemeral storage and vanished the moment the box stopped. Kanibako logged one
+  warning and carried on. That is the wrong trade for this category: a `synced` entry is a
+  credential more often than not, so the old behaviour handed you a box that started cleanly and
+  then failed to authenticate *inside* the agent, naming nothing you could act on. It is refused at
+  assembly now, before a single row is written, and the message names the source, the destination
+  and the cure. **The fix is a binding**: declare `box.bindings.rw` (or any mount) at or above the
+  destination and the copy lands on the host and persists — or move the destination under `~`, which
+  is always covered, because the home binding is the foundation every box is built on. Two things
+  are deliberately unchanged: a `synced` destination that sits *at* a binding's exact path is still
+  accepted and still writes through into that binding's source, and a destination covered by a
+  `masks` entry is still judged by the mask rules that already existed, not by this one.
+
 - **A launch refused for two mounts at one destination now names the settings KEY behind each
   participant, not just their sources and paths.** All four of the collapse's mount refusals —
   a binding over a binding, a binding inside a mask, a mask on a mask, and a mask at or above home

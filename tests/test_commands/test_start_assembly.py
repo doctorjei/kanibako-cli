@@ -912,6 +912,53 @@ class TestTheFoundationIsBuiltAtTheSeam:
 
         assert HOME_DEST in str(e.value), str(e.value)
 
+    def test_a_synced_dest_NO_MOUNT_COVERS_refuses_the_real_resolve(
+        self, std, config, project_dir,
+    ):
+        """⚖️ RULED 2026-08-28 — *"we should be checking that the paths resolve."*
+
+        On the REAL launch seam. With nothing bound at or above ``/data/z`` the copy
+        would be written into the container's own ephemeral storage and lost when the
+        box stops, silently — and a ``synced`` row is a credential more often than not.
+
+        🛑 NO VARIABLE IS INVOLVED, deliberately. The rule this replaced refused a
+        ``$XDG_*`` token on sight; a literal destination is identically broken and that
+        check let it through. This test is what the token check could not pass.
+
+        MUTATION ANCHOR (proved by RUN): delete the ``refuse_uncovered_synced`` call
+        from ``_install_assembly_collapse`` and this goes green-with-no-exception.
+        """
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+
+        with pytest.raises(SettingsError, match="NO mount covers") as e:
+            _resolve(std, proj, extra_default_categories={
+                "box.synced": {"/data/z": ("/host/cred",)},
+            })
+
+        message = str(e.value)
+        assert "/host/cred" in message and "/data/z" in message
+        assert "bindings.rw" in message, "the cure must name the shape a user writes"
+
+    def test_the_SAME_dest_under_a_binding_the_user_declares_resolves(
+        self, std, config, project_dir,
+    ):
+        """The other half, and it is what makes the refusal above a rule not a ban.
+
+        ⚑ THE MIRRORING USER (Jei, 2026-08-28: *"a clever user might want to
+        replicate"*). Same destination as the refusal above; the bind is the whole
+        difference. A check on the SPELLING could not tell these two apart.
+        """
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+
+        snapshot, _deliveries = _resolve(std, proj, extra_default_categories={
+            "box.bindings.rw": {"/data": ("/host/data",)},
+            "box.synced": {"/data/z": ("/host/cred",)},
+        })
+
+        assert ("/host/cred", "/data/z", "") in [
+            tuple(row) for row in _assembly(snapshot)["synced"]
+        ]
+
     def test_a_NARROW_resolve_with_no_home_STILL_writes_its_seed_leaf(
         self, std, config, project_dir,
     ):
@@ -2181,19 +2228,29 @@ class TestTheSyncApplierConsumesTheLeaf:
             r.getMessage() for r in caplog.records
         ]
 
-    def test_a_dest_NO_BINDING_COVERS_is_skipped(
-        self, caplog, std, config, project_dir, tmp_path,
+    def test_a_dest_NO_BINDING_COVERS_now_REFUSES_before_delivery_runs(
+        self, std, config, project_dir, tmp_path,
     ):
-        """No cover ⇒ no host location the copy could arrive at.
+        """⚖️ RULED 2026-08-28 — no cover is a REFUSAL now, not a warn-and-skip.
 
-        ⚑ Wider than the retired outside-home skip: this fires for any guest path
-        outside every bind, not only for one outside ``/home/agent``.
+        ⚑⚑ THIS TEST INVERTED, and the inversion is the change. It used to assert the
+        skip: *"No cover ⇒ no host location the copy could arrive at"*, warned and
+        proceeded, on the reasoning that a mis-declared dest must not cost the user the
+        launch. It does now — a ``synced`` row is a credential more often than not, and
+        a skipped one hands the user a box that starts and then fails to authenticate
+        inside the harness. The refusal arrives at the ASSEMBLY, so delivery is never
+        reached; the warn arm in ``_synced_host_dest`` survives only as a backstop for a
+        map read back from a snapshot.
+
+        🛑 The other two skip arms — a MASK cover and a READ-ONLY cover — are untouched
+        and still warn; the two tests above them pin that, and this rule does not widen
+        onto either.
         """
         src = tmp_path / "out.txt"
         src.write_text("x")
         proj = resolve_project(std, config, str(project_dir), initialize=True)
 
-        with caplog.at_level(logging.WARNING):
+        with pytest.raises(SettingsError, match="NO mount covers") as e:
             _sync(
                 std, proj, logger=logging.getLogger("sync-consumer"),
                 extra_default_categories={
@@ -2201,9 +2258,7 @@ class TestTheSyncApplierConsumesTheLeaf:
                 },
             )
 
-        assert any("no binding covers" in r.getMessage() for r in caplog.records), [
-            r.getMessage() for r in caplog.records
-        ]
+        assert "/srv/outside.txt" in str(e.value)
 
     def test_an_ABSENT_leaf_REFUSES_instead_of_falling_back(
         self, monkeypatch, std, config, project_dir, tmp_path,

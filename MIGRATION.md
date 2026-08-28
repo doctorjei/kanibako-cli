@@ -3519,6 +3519,77 @@ the wrapper against the new directory and re-establishes the tunnel. The old
 
 ---
 
+### 2.56 A `synced` destination must be covered by a mount
+
+**Read this ONLY if you declare `synced` entries.** Nothing kanibako ships declares one, and a
+destination under `~` is always covered, so most configurations are a no-op here.
+
+**What changed.** A `synced` entry is applied last, after the mount set is final, and each
+destination resolves *through* the mount containing it — that is what decides where on the host the
+file actually lands. If nothing is bound at or above the destination there is no such mount, and the
+copy went into the container's own ephemeral storage, which is discarded when the box stops.
+Kanibako logged `no binding covers this destination; skipping` and continued. It now refuses the
+launch instead.
+
+The reason for the change is what a `synced` entry usually holds. It is a credential far more often
+than not, so skipping one produced a box that started cleanly and then failed to authenticate inside
+the agent, pointing at nothing. A refusal at assembly is the cheaper failure by a wide margin.
+
+```yaml
+# box.yaml — REFUSED: nothing is bound at or above /data
+box:
+  synced:
+    "/data/z": ["/host/creds/z"]
+
+# box.yaml — accepted: the destination is inside a mount you declared
+box:
+  bindings:
+    rw:
+      "/data": ["/host/data"]
+  synced:
+    "/data/z": ["/host/creds/z"]
+
+# box.yaml — accepted: ~ is always covered, because home is the foundation
+box:
+  synced:
+    "~/.aws/credentials": ["/host/creds/aws"]
+```
+
+**How a user notices.** The launch stops with a message naming the source, the destination and the
+cure:
+
+```
+the synced copy of '/host/creds/z' targets '/data/z', which NO mount covers. A 'synced'
+copy is applied LAST, after the bind map is final, and it resolves THROUGH the mount
+containing its destination - so with nothing bound at or above '/data/z' the copy would
+be written into the container's own ephemeral storage and lost the moment the box stops,
+silently. ...
+```
+
+**What you must do.** One of two things, whichever fits:
+
+- **Bind the area.** Add a `bindings.rw` entry at or above the destination. The copy then lands in
+  that binding's host source and persists.
+- **Move the destination under `~`.** The home binding always exists, so anything inside it is
+  covered.
+
+**What is unchanged**, so that you do not "fix" something that was never broken:
+
+| case | still |
+|---|---|
+| a `synced` destination **at a binding's exact path** | accepted — the copy writes through into that binding's source, and the binding remains |
+| a `synced` destination **inside** a binding | accepted, and always was |
+| a destination covered by a **`masks`** entry | judged by the mask rules, which already refused a mask as a parent; this rule does not touch it |
+| **`seeded`** | unchanged. A seed is copied at *creation*, when the only mount that exists is home — so its rule was, and remains, that its destination lies inside home. That is the same requirement at a different moment, not a second one. |
+
+⚑ If you were spelling a destination with `$XDG_DATA_HOME` or another XDG variable, note that those
+are expanded on the **host**, so `$XDG_DATA_HOME/z` becomes a path like `/data/z` — a directory on
+your own machine, which nothing in the box binds by default. Such an entry is refused by the rule
+above unless you bind that path yourself. Deliberately mirroring your host layout into the box that
+way is fine; what is refused is a destination that resolves nowhere.
+
+---
+
 ## 3. For plugin authors
 
 ⚑ **THREE PERSONA SURFACES ON `Target` CHANGED SHAPE in 1.8.0 — a plugin built against 1.7.x needs

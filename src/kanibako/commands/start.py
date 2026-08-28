@@ -7089,6 +7089,7 @@ def _install_assembly_collapse(
         collapse_env,
         collapse_seeded,
         collapse_store_shapes,
+        refuse_uncovered_synced,
     )
     from kanibako.settings.store_shape import build_store_shape_set
 
@@ -7148,6 +7149,19 @@ def _install_assembly_collapse(
     # by a display that folds in process; the three ``insert_segments`` below name
     # their fields one by one, and none of them is that map.
     collapsed = collapse_store_shapes(shapes, home_bind, entries)
+    # ⚑⚑ COVERAGE IS ASKED HERE AND NOWHERE ELSE, and the seam is the whole reason.
+    # ⚖️ RULED 2026-08-28 — *"we should be checking that the paths resolve"* — so a
+    # ``synced`` destination no mount covers REFUSES the launch rather than being
+    # written into ephemeral container storage and lost. The rule and its message live
+    # with the collapse's other copy refusals (``store_collapse``); only the ASKING is
+    # here, because this is the first point that can honestly say the bind map is a
+    # WHOLE BOX'S. Above the ``whole_box`` gate there is no map at all, and the fold's
+    # other caller (``commands.workset_cmd``) previews a working set with a partial one
+    # — where a declaration the launch covers reads UNCOVERED, MEASURED. Every other
+    # collapse refusal is monotone in the scope set and does not have this problem.
+    # 🛑 It runs BEFORE the leaves are written, so a refused launch installs no
+    # assembly a later pass could read as accepted.
+    refuse_uncovered_synced(collapsed.bindings, collapsed.synced)
     snapshot.insert_segments(_ASSEMBLY_BINDINGS, collapsed.bindings)
     snapshot.insert_segments(_ASSEMBLY_SYNCED, collapsed.synced)
     # THE ENV SLOTS, off the ENTRY LIST rather than the shapes: ``env`` folds into no
@@ -8462,6 +8476,13 @@ def _synced_host_dest(box_dest: str, bindings, *, logger) -> "Path | None":
     ``bind.src`` is touched: :data:`~kanibako.settings.store_collapse.MASK` carries
     ``src=None``, so ``Path(bind.src)`` raises ``TypeError``.
 
+    ⚑ THE FIRST ARM IS NOW A BACKSTOP, NOT A POLICY (ruling 2026-08-28): an uncovered
+    dest refuses at the collapse seam before delivery runs, so what follows describes
+    the other two arms and the residue this one is kept for.  🛑 Keyspec ``:196``
+    still spells the ``synced`` refusals as the two mask rows only; that sentence and
+    §0's numbered list are the user's to update, and the ruling is what the code
+    follows meanwhile.
+
     ⚑⚑ ALL THREE ARE WARN-AND-SKIP, AND NOT ONE OF THEM IS A REFUSAL THE SPEC NAMES.
     Spec §0 states the ``synced`` refusals EXHAUSTIVELY — *"The only refusals a
     ``synced`` copy meets are a mask as its PARENT and a copy of a DIRECTORY at a
@@ -8482,6 +8503,15 @@ def _synced_host_dest(box_dest: str, bindings, *, logger) -> "Path | None":
 
     cover = _synced_cover(box_dest, bindings)
     if cover is None:
+        # ⚑ A BACKSTOP SINCE 2026-08-28, no longer the policy for this case. An
+        # uncovered dest now REFUSES at the collapse seam
+        # (``store_collapse.refuse_uncovered_synced``, called from
+        # :func:`_install_assembly_collapse`), so a launch or a create cannot reach
+        # here with one. 🛑 It is KEPT rather than deleted because this function also
+        # runs against a bind map READ BACK from a snapshot, and a warn-and-skip is
+        # the safe residue if one ever arrives by a route the refusal does not gate —
+        # but it is no longer a licence, and the rule is not "a mis-declared dest must
+        # not cost the user the launch". It does.
         logger.warning(
             "synced %s: no binding covers this destination; skipping", box_dest,
         )

@@ -50,6 +50,7 @@ from kanibako.settings.store_collapse import (
   derivation_result,
   fold_opt,
   pair_declarations,
+  refuse_uncovered_synced,
 )
 from kanibako.settings.store_shape import (
   CopyRow,
@@ -622,6 +623,122 @@ class TestASeedMustLandInsideHome:
         system=shape(rw={"/opt/thing": BindEntry("/h/mount", "Z,U")}),
         box=shape(seed=[CopyRow("/opt/thing", BindEntry("/h/thing", ""))]),
       )
+
+
+class TestASyncMustBeCoveredByAMount:
+  """⚖️ RULED 2026-08-28 — *"we should be checking that the paths resolve. That's it."*
+
+  A ``synced`` dest no mount covers writes into the container's own ephemeral storage
+  and is lost when the box stops — silently, and a sync row is a credential more often
+  than not. ``refuse_uncovered_synced`` refuses it.
+
+  🛑 THE DISCRIMINATING CASE IS ``test_a_LITERAL_uncovered_dest_is_refused``. The rule
+  this replaced refused a ``$XDG_*`` TOKEN on sight, which is a check on the CAUSE:
+  it missed a literal ``/data/z`` — identically broken — and it refused a user who
+  deliberately mirrors the box's layout under a bind of their own, which is not broken
+  at all. Both of those are pinned below, and a token check fails both.
+
+  ⚑ It is asked with ``covering_bind``, the collapse's ONE containment lookup — the
+  same one the sync delivery half resolves each row through. No second implementation.
+  """
+
+  @staticmethod
+  def _check(**by_scope) -> CollapsedStore:
+    collapsed = collapse(**by_scope)
+    refuse_uncovered_synced(collapsed.bindings, collapsed.synced)
+    return collapsed
+
+  UNCOVERED = r"which NO mount covers"
+
+  def test_an_uncovered_sync_is_refused_naming_source_destination_and_cure(self):
+    with pytest.raises(SettingsError) as excinfo:
+      self._check(box=shape(sync=[CopyRow("/data/z", BindEntry("/h/x", ""))]))
+    message = str(excinfo.value)
+    assert "'/h/x'" in message  # the source
+    assert "'/data/z'" in message  # the destination
+    assert "lost the moment the box stops" in message  # WHY it is refused
+    assert "bindings.rw" in message  # the cure, in the shape a user writes
+
+  def test_a_LITERAL_uncovered_dest_is_refused(self):
+    # ⚑⚑ NO VARIABLE ANYWHERE. This is the case the retired token check let through,
+    # and it is exactly as broken as the spelling that check did catch.
+    with pytest.raises(SettingsError, match=self.UNCOVERED):
+      self._check(box=shape(sync=[CopyRow("/opt/loose", BindEntry("/h/x", ""))]))
+
+  def test_a_dest_the_user_covers_with_their_OWN_bind_is_accepted(self):
+    # ⚑⚑ THE MIRRORING USER. Same destination as the refusal above; a bind above it
+    # is the whole difference, and the rule reads the CONDITION, not the spelling.
+    collapsed = self._check(
+      box=shape(rw={"/data": BindEntry("/h/data", "Z,U")},
+                sync=[CopyRow("/data/z", BindEntry("/h/x", ""))]),
+    )
+    assert collapsed.synced == [CollapsedCopy("/h/x", "/data/z", "")]
+
+  def test_a_dest_under_HOME_is_covered_because_home_is_pid_zero(self):
+    # The ordinary case, and the reason most syncs never meet this rule at all.
+    collapsed = self._check(
+      box=shape(sync=[CopyRow("~/.aws/credentials", BindEntry("/h/c", ""))]),
+    )
+    assert collapsed.synced == [CollapsedCopy("/h/c", f"{GUEST}/.aws/credentials", "")]
+
+  def test_a_sync_AT_a_binds_exact_dest_is_still_accepted(self):
+    # ⚖️ 2026-08-12 — *"don't check for sync. Let it clobber whatever it wants."*
+    # ⚑ THE TWO RULINGS HAVE OPPOSITE CONDITIONS: that one forbids refusing a sync for
+    # SHARING a dest with a mount, this one refuses a sync for having NO mount. A
+    # coverage rule written as "must not collide" would turn this green test red.
+    collapsed = self._check(
+      box=shape(rw={"/opt/t": BindEntry("/h/t", "Z,U")},
+                sync=[CopyRow("/opt/t", BindEntry("/h/x", ""))]),
+    )
+    assert collapsed.synced == [CollapsedCopy("/h/x", "/opt/t", "")]
+
+  def test_a_MASK_counts_as_a_cover_and_is_NOT_refused_here(self):
+    # 🛑 NOT AN EXEMPTION — a delegation. A mask IS in the map, so `covering_bind`
+    # finds it; what a mask does to a copy is spec §0's two copy rows, enforced by
+    # ``commands.start._refuse_synced_under_mask``. Refusing here as well would put
+    # TWO refusals on one destination with two different messages, and would refuse
+    # the file-at-a-mask's-own-point cell the table ACCEPTS.
+    collapsed = self._check(
+      box=shape(mask={f"{GUEST}/private": True},
+                sync=[CopyRow(f"{GUEST}/private/f", BindEntry("/h/f", ""))]),
+    )
+    assert collapsed.synced == [CollapsedCopy("/h/f", f"{GUEST}/private/f", "")]
+
+  def test_the_SEED_arm_is_not_judged_by_this_rule(self):
+    # ⚑ A seed's coverage is decided at ITS moment, by ``_refuse_seed_outside_home``,
+    # over the one-element map that exists at create. This function reads the SYNC
+    # list alone, so a seed row passes through it untouched — which is what keeps the
+    # two refusals from both firing on one destination.
+    collapsed = self._check(box=shape(seed=[CopyRow("~/s", BindEntry("/h/s", ""))]))
+    assert collapsed.seeded == [CollapsedCopy("/h/s", f"{GUEST}/s", "")]
+
+  def test_one_dest_carrying_BOTH_a_seed_and_a_sync_gets_one_answer_each(self):
+    # ⚑⚑ THE OVERLAP CASE, pinned deliberately: the seed is judged inside-home and the
+    # sync is judged covered, and BOTH pass. Neither refusal can fire on the other's
+    # row, so a user never sees two messages about one path.
+    collapsed = self._check(
+      box=shape(seed=[CopyRow("~/x", BindEntry("/h/seed", ""))],
+                sync=[CopyRow("~/x", BindEntry("/h/sync", ""))]),
+    )
+    assert collapsed.seeded == [CollapsedCopy("/h/seed", f"{GUEST}/x", "")]
+    assert collapsed.synced == [CollapsedCopy("/h/sync", f"{GUEST}/x", "")]
+
+  def test_a_SIBLING_sharing_a_binds_prefix_is_not_covered_by_it(self):
+    # The separator guard, on the containment predicate this refusal reads through.
+    with pytest.raises(SettingsError, match=self.UNCOVERED):
+      self._check(
+        box=shape(rw={"/opt/tool": BindEntry("/h/t", "Z,U")},
+                  sync=[CopyRow("/opt/toolbox/c", BindEntry("/h/x", ""))]),
+      )
+
+  def test_an_OUTER_scopes_bind_covers_an_inner_scopes_sync(self):
+    # ⚑ Coverage is read off the COLLAPSED map, so it is a whole-box question and not
+    # a per-scope one. A system bind is what makes this box declaration legal.
+    collapsed = self._check(
+      system=shape(rw={"/opt/t": BindEntry("/h/t", "Z,U")}),
+      box=shape(sync=[CopyRow("/opt/t/c", BindEntry("/h/c", ""))]),
+    )
+    assert collapsed.synced == [CollapsedCopy("/h/c", "/opt/t/c", "")]
 
 
 class TestTheModuleNeverTouchesTheFilesystem:

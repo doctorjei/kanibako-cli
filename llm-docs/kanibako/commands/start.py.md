@@ -274,7 +274,24 @@ So `_install_assembly_collapse` gates each leaf on its OWN facts:
 | leaf | written when |
 |------|--------------|
 | `seeded` | the seed arm folds |
-| `bindings`, `synced` | the seed arm folds AND this is a WHOLE-BOX resolve AND the bind fold does not refuse |
+| `bindings`, `synced` | the seed arm folds AND this is a WHOLE-BOX resolve AND the bind fold does not refuse AND every `synced` dest is COVERED |
+
+### The coverage refusal sits between the fold and the leaves
+
+⚖️ **RULED 2026-08-28** — *"we should be checking that the paths resolve"*. Immediately after
+`collapse_store_shapes` returns and BEFORE the three `insert_segments` calls,
+`store_collapse.refuse_uncovered_synced(collapsed.bindings, collapsed.synced)` refuses a `synced`
+destination no mount covers. Running it before the writes is what stops a refused launch leaving an
+assembly behind that a later pass could read as accepted.
+
+⚑ **THE RULE LIVES IN `store_collapse`, WITH THE OTHER COPY REFUSALS; ONLY THE ASKING IS HERE**, and
+the split is deliberate rather than convenient. Coverage is ANTI-monotone in the scope set — a
+further scope can only ADD binds — so unlike every other collapse refusal it can read differently
+against a partial map. `commands.workset_cmd` calls the same fold with a deliberately partial one
+(no box tier, a stand-in home), where a `workset.synced` at `/opt/cred` measures UNCOVERED while the
+launch that also carries `box.bindings.rw./opt` measures COVERED. This is the first point that can
+honestly say the map describes a whole box, which is why the question is asked here and not inside
+`_collapse_synced`.
 
 🛑 **THE GATE IS `whole_box`, NEVER "did `meta.box.home` resolve" (cutover 6-H).** The key is
 materialised by `workset_anchor_floor`, which the launch builds unconditionally, so it resolves on a
@@ -901,19 +918,25 @@ beside that map. The name stays here because these two callers read as DELIVERY,
 
 | arm | when | why it is where it is |
 |---|---|---|
-| no cover → warn+skip | dest outside every bind | there is no host location it could arrive at. Wider than the retired outside-home skip — `/etc/...` with nothing declared over it, for instance |
+| no cover → **REFUSED UPSTREAM**; this arm is a backstop | dest outside every bind | ⚖️ **RULED 2026-08-28** — `store_collapse.refuse_uncovered_synced`, called from `_install_assembly_collapse`, stops the launch before delivery runs. The warn is KEPT because this function also runs against a bind map read back from a snapshot, but it is no longer the policy |
 | cover is a MASK → warn+skip | `is_mask(bind)` | **must precede any `Path(bind.src)`** — `MASK` is `src=None`, so it raises `TypeError`, not `AttributeError`. By this point the cover can only be the dest's OWN point with a source that is neither file nor directory; the two the spec calls refusals already raised |
 | cover is READ-ONLY → warn+skip | `is_read_only(bind.opts)` | see below |
 | else | — | `Path(bind.src) / rel` |
 
-⚑⚑ **NOT ONE OF THESE THREE IS A REFUSAL THE SPEC NAMES, and that is why they warn.** Spec §0
+⚑⚑ **THE REMAINING TWO ARE NOT REFUSALS THE SPEC NAMES, and that is why they warn.** Spec §0
 states the `synced` refusals exhaustively — *"The only refusals a `synced` copy meets are a mask as
 its PARENT and a copy of a DIRECTORY at a mask's own point"* — and `_refuse_synced_under_mask`
 RAISES on both before this function runs. What is left here is residue the containment table says
-nothing about: a dest no bind covers, a read-only cover, and a mask at the dest's own point over a
-missing or unreadable source (already the module's own class — `_apply_shell_copy` warns on any
-missing source). For residue, a mis-declared dest must not cost the user the launch. They must be
-asked in the order the table spells them.
+nothing about: a read-only cover, and a mask at the dest's own point over a missing or unreadable
+source (already the module's own class — `_apply_shell_copy` warns on any missing source). For that
+residue, a mis-declared dest must not cost the user the launch. They must be asked in the order the
+table spells them.
+
+🛑 **THE FIRST ARM LEFT THAT SET ON 2026-08-28.** A dest no mount covers is now a REFUSAL, and it is
+a THIRD `synced` refusal — which the sentence quoted above says does not exist. That sentence
+(keyspec `:196`), the "meets mounts by construction" claim at `:125`, and §0's numbered list at
+`:133-144` are the spec text the ruling obliges; **the edit is the user's**, and the code follows
+the ruling meanwhile. Do not read the exhaustiveness sentence as current.
 
 ⚑ **A dest is DATA** — compared and sliced as a path, never `.split(".")`-ed.
 
