@@ -329,8 +329,8 @@ only half of what a launch does. Until this date the display printed the ENTRY L
 `snapshot_category_entries`: every stored binding, pre-collapse, with no mask arm, no containment and
 no §0 row applied. So a workset that ALSO declared `workset.masks` over a share's destination listed
 that share as a live mount while the box received **nothing** at that path — rc 0, no message — and a
-workset whose declarations a launch REFUSES outright (a `common` extending onto a bound dest, §0 row
-3) listed cleanly at rc 0.
+workset whose declarations a launch REFUSES outright (a `common` extending onto a bound dest, which
+§0 refuses) listed cleanly at rc 0.
 
 The two calls are `store_shape.build_store_shape_set` then `store_collapse.collapse_store_shapes` —
 the same pair `commands/start._install_assembly_collapse` makes — and the per-share outcome is read
@@ -378,7 +378,7 @@ options — home's are seam machinery (spec `:1015`), and `config_display` decli
 the same reason.
 
 ⚑ The COLLISION WARNINGS a launch emits (`emit_collision_warnings`) are deliberately NOT raised here.
-§0 row 5 is an ambiguity between two ABSTRACT declarations and a share is never one of the two, so
+§0's exempt pair is an ambiguity between two ABSTRACT declarations and a share is never one of the two, so
 the surviving share is unaffected — and reaching for them would mean `workset_cmd` importing the
 `start` module, which is the import `system_path_floor` was placed in `settings/paths.py` to avoid.
 

@@ -8,17 +8,17 @@ dests, the BARE scope token), so a hand-built fixture would assert the producer
 against a fiction. The two exceptions are the closed-keyspace refusals, which are
 about entries the real emitter CANNOT produce; they say so at their own site.
 
-The seam under test (producer DESIGN §1): the producer owns exactly the §0 rows
-decidable inside ONE scope — row 3, row 5, and row 1's SAME-SCOPE case. Rows 2 and
-4 and row 1's cross-scope case are the COLLAPSE's, and several tests below assert
-that the producer deliberately does NOT decide them.
+The seam under test (producer DESIGN §1): the producer owns exactly what §0 leaves
+decidable inside ONE scope — two mounts at one dest REFUSE, bar the one exempt
+``caches``/``common`` pair. MASKS and every CROSS-scope pair are the COLLAPSE's, and
+several tests below assert that the producer deliberately does NOT decide them.
 
 ⚑ THOSE ASSERTIONS STAND ALONE SINCE 6-R3. They used to be CONTRASTS — the same
 entries run through the retired cross-scope reconcile, which DID decide them, so the
 producer's restraint was visible as a difference. That pass is gone; the surviving
 claim is the stronger half and the one the collapse depends on: the producer keeps
 BOTH sides so the collapse has something to decide BETWEEN. Where the reconcile side
-carried the only statement of a rule (row 1's single-sourced remedy text), it was
+carried the only statement of a rule (the two-bindings remedy text), it was
 re-pointed at the surviving raiser rather than deleted.
 """
 
@@ -247,7 +247,7 @@ class TestPerScope:
     assert produced["box"] == StoreShape()
 
   def test_one_dest_in_two_scopes_is_LEFT_FOR_THE_COLLAPSE(self):
-    # ⚑ Row 1's CROSS-SCOPE case is the COLLAPSE's (its double-bind error), so the
+    # ⚑ The CROSS-SCOPE case is the COLLAPSE's (its double-bind error), so the
     # producer keeps BOTH — one per scope shape — and says nothing.
     #
     # ⚑ THE CONTRAST HALF DIED AT 6-R3: it also asserted that the retired
@@ -266,8 +266,9 @@ class TestPerScope:
     assert produced.warnings == ()
 
   def test_a_cross_scope_abstraction_pair_is_left_whole(self):
-    # Row 4 (scope precedence, silent) is the collapse's loop ORDER. The producer
-    # must not pre-decide it: both entries survive, in their own scopes.
+    # A CROSS-SCOPE abstraction pair is the COLLAPSE's, never the producer's — it
+    # REFUSES them, as it does any two mounts at one dest. The producer must not
+    # pre-decide it: both entries survive, in their own scopes.
     produced = shapes({
       "system.caches": {"~/x": ("/h/sys",)},
       "box.common": {"~/x": ("/h/box",)},
@@ -278,7 +279,7 @@ class TestPerScope:
 
 
 class TestWithinScopeRows:
-  """Rows 1 (same-scope), 3 and 5 — the ones decidable inside ONE scope."""
+  """The refusals and the one warning §0 leaves decidable inside ONE scope."""
 
   def test_row1_ro_and_rw_at_one_dest_in_one_scope_is_refused(self):
     # ⚑ THE CASE THAT IS CURRENTLY INVISIBLE: the two fold into DIFFERENT arms, so
@@ -358,7 +359,7 @@ class TestWithinScopeRows:
     assert warning.loser_keys == (f"box.caches.{DEST}",)
 
   def test_row5_warns_every_launch_and_never_raises(self):
-    # §0 row 5 is PROCEED + WARN, not refuse and not silent. The warning is DATA;
+    # §0's exempt pair is PROCEED + WARN, not refuse and not silent. The warning is
     # the producer stays pure and the one emission seam renders it.
     floor = {
       "box.caches": {"~/x": ("/h/cache",)},
@@ -378,7 +379,7 @@ class TestWithinScopeRows:
 
 
 class TestTheMaskTrap:
-  """⚑⚑ Row 2 is the COLLAPSE's. Applying it per scope is a SILENT wrong answer."""
+  """⚑⚑ The MASK rule is the COLLAPSE's. Applying it per scope is a SILENT wrong answer."""
 
   FLOOR = {
     "box.bindings.rw": {"~/x": ("/h/bound",)},
@@ -386,7 +387,7 @@ class TestTheMaskTrap:
   }
 
   def test_a_mask_and_a_binding_at_one_dest_in_one_scope_BOTH_survive(self):
-    # If the producer applied row 2, the mask would EAT the binding here and
+    # If the producer applied the mask rule, the mask would EAT the binding here and
     # ``shape.rw`` would reach the collapse missing the entry the collapse's own
     # mask loop is written to override. The collapse would be correct and the
     # answer still wrong.
@@ -413,9 +414,9 @@ class TestTheMaskTrap:
     assert produced["box"].rw == {}
 
   def test_a_mask_over_an_abstraction_does_not_suppress_the_row5_warning(self):
-    # Row 5's ambiguity is real whether or not something later hides its
-    # consequence — the same reasoning §0 gives for evaluating rows 1/3 before
-    # the row-2 override.
+    # The exempt pair's ambiguity is real whether or not something later hides its
+    # consequence — the same reasoning §0 gives for evaluating the refusals before
+    # the mask override.
     produced = shapes({
       "box.caches": {"~/x": ("/h/cache",)},
       "box.common": {"~/x": ("/h/common",)},

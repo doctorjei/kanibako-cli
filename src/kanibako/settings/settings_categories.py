@@ -19,8 +19,8 @@ would close a cycle, which is why emission sits at the launch seam.
 
 ⚑ Cross-category collision resolution (the spec §0 identical-dest TABLE) is NOT here
 any more.  The by-dest reconcile was RETIRED at 6-R3 and THREE seams replaced it, each
-holding the inputs its own rows need — the per-scope ``store_shape`` PRODUCER (rows 1
-and 3 within one scope, through the two public raisers below), the ASSEMBLY COLLAPSE
+holding the inputs its own rows need — the per-scope ``store_shape`` PRODUCER (the
+refusals decidable within one scope, through the two public raisers below), the ASSEMBLY COLLAPSE
 (``store_collapse``, the cross-scope pairs), and THIS module's launch-seam pair
 :func:`secret_path_deliveries` and :func:`narrow_table_winners`, which answer the two
 questions the collapse deliberately does not: what a ``secret_path`` dest delivers,
@@ -35,6 +35,7 @@ prefixed a root on the way to a mount is the shape §2a calls FORBIDDEN.
 from __future__ import annotations
 
 import re
+import textwrap
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Final, Literal, Mapping, NoReturn
 
@@ -208,7 +209,7 @@ _SCOPE_APPLY_ORDER = {"system": 0, "agent": 1, "workset": 2, "box": 3}
 # emitted from a ``bindings.{ro,rw}`` declaration and from nothing else; the abstract
 # categories reach one only by DERIVING it, and ``secret_path`` is a concrete peer.
 # ⚑ D2 CARVE-OUT: a group whose concrete members are ALL ``secret_path`` is NOT a
-# row-1 collision — its dest is ``SECRET_MOUNT_DIR/{VAR}`` by construction, so two
+# bind-vs-bind collision — its dest is ``SECRET_MOUNT_DIR/{VAR}`` by construction, so two
 # such entries share one VAR across two scopes.
 CONCRETE_CATEGORIES: Final[tuple[str, ...]] = (
     "bindings.ro", "bindings.rw", "secret_path",
@@ -280,7 +281,7 @@ def is_read_only(options: str | None) -> bool:
 
 @dataclass(frozen=True)
 class CategoryCollision:
-    """One SAME-SCOPE abstraction ambiguity at one ``box_dest`` (§0 row 5).
+    """One SAME-SCOPE ``caches``/``common`` ambiguity at one ``box_dest`` (§0's exempt pair).
 
     Built as DATA by the ``store_shape`` PRODUCER (which stays PURE) and rendered by
     ``commands.start.emit_collision_warnings``.  ⚑ IT LIVES HERE, NOT IN
@@ -393,15 +394,15 @@ def secret_path_deliveries(entries: list[CategoryEntry]) -> list[CategoryEntry]:
 
     ⚑⚑ THE §0 CROSS-CATEGORY GATE FOR SECRET DESTS LIVES HERE (6-R2), BECAUSE NOTHING
     ELSE HOLDS THE INPUTS: ``secret_path`` carries no arm in the disk-store shape
-    (producer DESIGN §7.4), so the COLLAPSE never sees a secret.  Two rows apply over
+    (producer DESIGN §7.4), so the COLLAPSE never sees a secret.  Two rules apply over
     the SAME entry list in the SAME order, at secret dests only:
 
-    * row 1 / row 3 — a ``bindings.*`` row, or an abstraction deriving one, aimed at
-      ``SECRET_MOUNT_DIR/<VAR>`` REFUSES the launch, naming BOTH declarations.
+    * a BIND at the dest — a ``bindings.*`` row, or an abstraction deriving one, aimed
+      at ``SECRET_MOUNT_DIR/<VAR>`` REFUSES the launch, naming BOTH declarations.
       ⚑ Several ``secret_path`` rows at one dest are the per-VAR cascade and NOT a
       collision — the D2 carve-out, the CALLER's test exactly as
       :func:`raise_binding_vs_binding` says.
-    * row 2 — a ``masks`` at the dest takes it and the VAR is not delivered,
+    * a MASK at the dest — it takes the dest and the VAR is not delivered,
       SILENTLY: the tmpfs lands there anyway.
 
     ⚑ EXACT DEST ONLY, and that is not a narrowing: a bind or mask over the secrets
@@ -466,18 +467,18 @@ def narrow_table_winners(
     A narrow resolve carries one injected table (``include_base_families=False``) but
     still resolves the user's whole CASCADE, so a user's declaration reaches it —
     emitting those is the D1 defect, deleted (P4) by filtering to *dests*, the
-    table's own.  At such a dest §0 still decides, and these two rows are its:
+    table's own.  At such a dest §0 still decides, and these two rules are its:
 
-    * row 2 — a ``masks`` at the dest OVERRIDES the table's bind: the COLLAPSE's rule,
-      applied here because the collapse returns early on a narrow resolve.
-    * row 1 / row 3 — anything else contending for a table dest is REFUSED by name.
-      The producer already raised both for a SAME-scope pair; what is left here is the
+    * a MASK at the dest OVERRIDES the table's bind: the COLLAPSE's rule, applied
+      here because the collapse returns early on a narrow resolve.
+    * anything else contending for a table dest is REFUSED by name.  The producer
+      already raised both refusals for a SAME-scope pair; what is left here is the
       CROSS-scope pair.  ⚑ A bare dest-filter would let both rows into a dest-keyed
       map and resolve them by INSERTION ORDER, silently.
 
-    ⚑ NO row-4/5 SILENT PICK, deliberately — "two mounts at one dest are an error in
-    every scope combination" is the ratified rule, and a narrow resolve has no
-    cross-scope arbiter to defer to.
+    ⚑ NO SILENT PICK, deliberately — "two mounts at one destination are an error in
+    every scope combination but one" is the ratified rule, its one exception is the
+    producer's, and a narrow resolve has no cross-scope arbiter to defer to.
     """
     from kanibako.settings.settings_resolve import normalize_bind_dest
 
@@ -510,9 +511,9 @@ def narrow_table_winners(
 def raise_binding_vs_binding(
     box_dest: str, concrete: list[CategoryEntry],
 ) -> NoReturn:
-    """Raise the §0 row-1 refusal: two CONCRETE declarations at one *box_dest*.
+    """Raise §0's refusal of two CONCRETE declarations at one *box_dest*.
 
-    PUBLIC because row 1 is decidable inside ONE scope as well as across two, so it
+    PUBLIC because that is decidable inside ONE scope as well as across two, so it
     has THREE callers: the ``store_shape`` producer and the two launch-seam functions
     above.  ⚑ The D2 carve-out is the CALLER's test: it decides whether the set in
     hand is a collision at all.
@@ -540,11 +541,11 @@ def raise_binding_vs_binding(
 def raise_extension_onto_occupied(
     box_dest: str, *, extension: CategoryEntry, base: CategoryEntry,
 ) -> NoReturn:
-    """Raise the §0 row-3 refusal: *extension* extends onto the *base*'s *box_dest*.
+    """Raise §0's refusal of *extension* extending onto the *base*'s *box_dest*.
 
     PUBLIC for the same reason as :func:`raise_binding_vs_binding`, with the same
-    three callers.  ⚑ The BASE always survives, so the remedy names it without row 1's
-    "either one may be the one you keep" hedge.
+    three callers.  ⚑ The BASE always survives, so the remedy names it without the
+    two-peers "either one may be the one you keep" hedge.
     """
     from kanibako.errors import CategoryCollisionError
 
@@ -588,6 +589,26 @@ def _entry_lines(entries: list[CategoryEntry]) -> str:
     )
 
 
+#: The SUPPRESS-THEN-ADD cure (§0), unwrapped.  ⚑⚑ ONE CARRIER, and that is the whole
+#: point: a user who meets one refusal in this family has met the others, and two
+#: spellings of one cure send them to two mechanisms.  Every message that offers the
+#: remedy spells it FROM HERE — :func:`_suppress_then_add` wraps it for its YAML block,
+#: and ``store_collapse``'s refusals take it as it stands.  It carries no terminal
+#: punctuation, so a caller ends it with the ``.`` or ``:`` its own sentence needs.
+SUPPRESS_THEN_ADD: Final[str] = (
+    "To change what occupies a destination you must SUPPRESS the entry you do not "
+    "want and then declare the one you do. An override is not enough: these are two "
+    "different KEYS, so both survive the cascade. Set the unwanted key to null in the "
+    "settings file for its scope (a file may write its own scope and the scopes it "
+    "contains)"
+)
+
+#: The width :func:`_suppress_then_add` wraps at.  ⚑ It is a MESSAGE-LAYOUT choice, not
+#: the source line length: the block below sits under a key path a reader must be able
+#: to read as one unit.
+_REMEDY_WRAP: Final[int] = 80
+
+
 def _rule_changed(body: str) -> str:
     """The migration-grade paragraph (M-7) — ⚑ ONLY on a rule whose outcome changed;
     on one that did NOT it trains a reader to skip it.
@@ -604,13 +625,15 @@ def _suppress_then_add(
 ) -> str:
     """The SUPPRESS-THEN-ADD remedy (§0), spelled as the YAML edit it really is.
 
+    ⚑ The prose is :data:`SUPPRESS_THEN_ADD`, wrapped — NOT a literal of its own.
+
     ⚑ NO CLI verb can express THIS suppression — ``set``, ``reset`` and
     ``set --null pref.<key>`` each fail for a different reason (llm-doc).  So the
     remedy is a hand edit, and the message says so rather than naming a command that
     would not work.  ⚑ It also names the SCOPE: a box file may not suppress a
     containing scope's key.  *ambiguous* is True when the caller could not know WHICH
-    entry to keep (row 1: two peers), so the block is labelled an example rather than
-    a prescription; row 3 is False.
+    entry to keep (two peers), so the block is labelled an example rather than a
+    prescription; the extension-onto-occupied refusal passes False.
     """
     # ⚑ SEGMENTS, NEVER A DOTTED SPLIT — a split block is not a declaration at all.
     occupant_key = ".".join(occupant_segments)
@@ -641,11 +664,8 @@ def _suppress_then_add(
         if ambiguous else ""
     )
     return (
-        "To change what occupies a destination you must SUPPRESS the entry you do "
-        "not\nwant and then declare the one you do. An override is not enough: "
-        "these are two\ndifferent KEYS, so both survive the cascade. Set the "
-        "unwanted key to null in the\nsettings file for its scope (a file may "
-        "write its own scope and the scopes it\ncontains):\n\n"
+        textwrap.fill(SUPPRESS_THEN_ADD, _REMEDY_WRAP)
+        + ":\n\n"
         + which
         + "\n".join(lines)
         + "\n"
@@ -769,7 +789,7 @@ def _assembly_copy_list(snapshot: "KeyStore", dotted: str) -> list[Any]:
     ._snapshot_assembly_seeded``: absent = a narrow resolve) is not one this caller
     can act on.  A copy is arbitrated at no destination, so an absent list and an
     empty one both mean *no copy row accounts for this declaration* — which the
-    pairing already reports as a loss, by the same route a row-5 loser takes.
+    pairing already reports as a loss, by the same route a same-scope loser takes.
     """
     from kanibako.settings.settings_launch import snapshot_leaf
 

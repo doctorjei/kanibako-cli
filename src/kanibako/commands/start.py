@@ -6895,7 +6895,7 @@ def _resolve_launch_snapshot(
     # and the requests, so it is the only place the enrichment can happen.
     # ⚑ It used to wrap the retired by-dest reconcile, which raised FIRST and so
     # annotated in practice. The refusals that survive it are spread across three
-    # callees — the per-scope producer's rows 1/3 and the collapse's cross-scope
+    # callees — the per-scope producer's two refusals and the collapse's cross-scope
     # refusals (both inside ``_install_assembly_collapse``), and the seam's own
     # ``secret_path`` gate and narrow-table pass (both inside ``launch_deliveries``)
     # — so the wrap covers the BLOCK rather than one call. Narrowing it back to a
@@ -6914,7 +6914,7 @@ def _resolve_launch_snapshot(
         # Roadmap step 6b: the COLLAPSE, folded and STORED. ⚑ Off the GATED list, the
         # same one every other consumer sees — they must describe the same private
         # box. ⚑ Its refusals are THE LAUNCH'S (cutover 2c) — they propagate here.
-        # ⚑ NO ``emit_collision_warnings`` beside it: the §0 row-5 same-scope
+        # ⚑ NO ``emit_collision_warnings`` beside it: §0's exempt same-scope
         # ambiguity is announced ONCE, from the producer, inside this call (cutover
         # 5-1c). A second feed would give one ambiguity two ways to reach the user.
         # ⚑ THE FOLD'S ``declared_by`` COMES BACK OUT HERE and goes onto the carrier
@@ -7115,7 +7115,7 @@ def _install_assembly_collapse(
     # is seeded before any bind folds, so a NARROW resolve — including the
     # CREATE-side seed resolve — still has a seed list.
     shapes = build_store_shape_set(entries)
-    # The PRODUCER's own same-scope ambiguities (§0 row 5), handed to the ONE emission
+    # The PRODUCER's own same-scope ambiguities (§0's exempt pair), handed to the ONE emission
     # seam. Wired at cutover 5-0 ALONGSIDE the reconcile's feed; 5-1c deleted that one,
     # so this is now the SOLE producer of a ``CategoryCollision`` on any path. It sits
     # BEFORE the folds below because an ambiguity is a property of what was DECLARED,
@@ -7236,7 +7236,7 @@ def reset_collision_warnings() -> None:
 
 
 def emit_collision_warnings(collisions) -> None:
-    """Log each SAME-SCOPE abstraction ambiguity ONCE PER PROCESS (spec §0 row 5).
+    """Log each SAME-SCOPE ``caches``/``common`` ambiguity ONCE PER PROCESS (spec §0).
 
     §0 requires the warning "every launch (not deduplicated, not once-ever — a
     same-scope collision is a real ambiguity and stays visible until fixed)". The

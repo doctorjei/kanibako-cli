@@ -52,6 +52,10 @@ from kanibako.settings.store_collapse import (
   pair_declarations,
   refuse_uncovered_synced,
 )
+from kanibako.settings.settings_categories import (
+  SUPPRESS_THEN_ADD,
+  _suppress_then_add,
+)
 from kanibako.settings.store_shape import (
   CopyRow,
   StoreShape,
@@ -1420,6 +1424,34 @@ class TestDeclarationProvenance:
     assert collapsed.declared_by[f"{GUEST}/cache"] == f"box.caches.{GUEST}/cache"
 
 
+def live_refusal_both(floor: dict) -> tuple[str, str]:
+  """The refusal *floor* provokes, folded WITH the entry list and WITHOUT it.
+
+  ⚑ THE PRODUCTION PATH, never a hand-built shape: ``build_launch_snapshot`` →
+  ``snapshot_category_entries`` → producer → collapse is the chain
+  ``commands.start._install_assembly_collapse`` runs. ⚑⚑ ONE COPY, shared by the two
+  classes below — a second fixture is a second opinion about what a launch does.
+  """
+  ctx = ResolveCtx(
+    agent_name="claude", workset_name="myws", host_home="/home/u",
+    xdg={"XDG_DATA_HOME": "/data"}, config={},
+  )
+  out: list[str] = []
+  for with_keys in (True, False):
+    snap = build_launch_snapshot(
+      agent_name="claude", ctx=ctx,
+      system_path=None, agent_path=None, workset_path=None, box_path=None,
+      default_categories=floor,
+    )
+    entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx)
+    with pytest.raises(SettingsError) as excinfo:
+      collapse_store_shapes(
+        build_store_shape_set(entries), HOME, entries if with_keys else None,
+      )
+    out.append(str(excinfo.value))
+  return out[0], out[1]
+
+
 class TestTheRefusalsNameBothParticipants:
   """All FOUR mount refusals name a declaration KEY, not only a source and a dest.
 
@@ -1438,29 +1470,8 @@ class TestTheRefusalsNameBothParticipants:
   above go on matching the bare sentence.
   """
 
-  def ctx(self) -> ResolveCtx:
-    return ResolveCtx(
-      agent_name="claude", workset_name="myws", host_home="/home/u",
-      xdg={"XDG_DATA_HOME": "/data"}, config={},
-    )
-
-  def refusal(self, floor: dict, *, with_keys: bool) -> str:
-    """The refusal *floor* provokes, folded WITH or WITHOUT the entry list."""
-    ctx = self.ctx()
-    snap = build_launch_snapshot(
-      agent_name="claude", ctx=ctx,
-      system_path=None, agent_path=None, workset_path=None, box_path=None,
-      default_categories=floor,
-    )
-    entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx)
-    with pytest.raises(SettingsError) as excinfo:
-      collapse_store_shapes(
-        build_store_shape_set(entries), HOME, entries if with_keys else None,
-      )
-    return str(excinfo.value)
-
   def both(self, floor: dict) -> tuple[str, str]:
-    return self.refusal(floor, with_keys=True), self.refusal(floor, with_keys=False)
+    return live_refusal_both(floor)
 
   def test_bind_over_bind_names_the_ARRIVING_and_the_SUBSUMED_key(self):
     keyed, bare = self.both({
@@ -1519,6 +1530,71 @@ class TestTheRefusalsNameBothParticipants:
     })
     assert "the mask declared by 'agent.claude.masks.~/x'" in keyed
     assert "agent.masks." not in keyed
+
+
+class TestTheRefusalsCarryTheCure:
+  """THREE of the four offer SUPPRESS-THEN-ADD, and the fourth must not.
+
+  ⚑ THE TWO MASK REFUSALS FIRE HARDEST CROSS-SCOPE, which is exactly where their old
+  closing advice ran out: "do not declare the mask" and "declare one of them, not
+  both" name an edit in a scope the reader may not own and may not be looking at.
+  Present-``None`` is the only route left them, and a message that does not say so
+  hands a user a refusal they cannot clear.
+
+  ⚑⚑ ONE CARRIER, PINNED BY IDENTITY: every case matches ``SUPPRESS_THEN_ADD``
+  itself rather than a quotation of it, so a second spelling of the cure reds these
+  instead of passing as a near-match.
+  """
+
+  BIND_UNDER_MASK = {
+    "system.masks": ["~/x"],
+    "box.bindings.rw": {"~/x/inner": ("/h/inner",)},
+  }
+  MASK_ON_MASK = {"system.masks": ["~/x"], "box.masks": ["~/x/inner"]}
+
+  def test_bind_under_mask_offers_the_cure(self):
+    keyed, bare = live_refusal_both(self.BIND_UNDER_MASK)
+    assert SUPPRESS_THEN_ADD in keyed
+    # ⚑ BOTH FOLDS: the cure is not provenance, so it must not vanish with the keys.
+    assert SUPPRESS_THEN_ADD in bare
+
+  def test_mask_on_mask_offers_the_cure(self):
+    keyed, bare = live_refusal_both(self.MASK_ON_MASK)
+    assert SUPPRESS_THEN_ADD in keyed
+    assert SUPPRESS_THEN_ADD in bare
+
+  def test_bind_over_bind_offers_it_and_keeps_its_own_hedge(self):
+    keyed, _bare = live_refusal_both({
+      "system.bindings.rw": {"~/x": ("/h/sys",)},
+      "box.bindings.rw": {"~/x": ("/h/box",)},
+    })
+    assert SUPPRESS_THEN_ADD in keyed
+    # The AMBIGUOUS variant, and it belongs to this refusal alone: two peers, either
+    # may be the keeper. Both mask refusals have a DETERMINED occupant.
+    assert "Either declaration may be the one you keep" in keyed
+
+  def test_the_mask_refusals_do_NOT_hedge_over_which_side_to_keep(self):
+    for floor in (self.BIND_UNDER_MASK, self.MASK_ON_MASK):
+      keyed, _bare = live_refusal_both(floor)
+      assert "Either declaration may be the one you keep" not in keyed
+
+  def test_the_HOME_refusal_still_WITHHOLDS_it(self):
+    """🛑 NOT AN OVERSIGHT TO BE TIDIED UP. Home is pid 0 and no settings key
+    declares it, so "null the unwanted key" would point at an edit the reader
+    cannot make; the message explains the absence instead.
+    """
+    keyed, bare = live_refusal_both({"box.masks": ["~"]})
+    assert SUPPRESS_THEN_ADD not in keyed
+    assert SUPPRESS_THEN_ADD not in bare
+    assert "no settings key declares it, so there is nothing to suppress" in keyed
+
+  def test_the_YAML_renderer_wraps_the_SAME_object(self):
+    """The other carrier of this cure is ``_suppress_then_add``'s block, and it is a
+    WRAPPING of the constant rather than a literal of its own — which is what stops
+    the two drifting into two mechanisms.
+    """
+    block = _suppress_then_add(("box", "caches", "~/x"))
+    assert " ".join(block.split()).startswith(" ".join(SUPPRESS_THEN_ADD.split()))
 
 
 class TestTheResultPhrasesTakeTheProvenance:

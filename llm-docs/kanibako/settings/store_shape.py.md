@@ -28,9 +28,10 @@ it, and that is deliberate — the sixth arm is the obvious place and the ruled-
 `start.py:_launch_bind_map` reads `bindings` (2a-3), `_launch_seed_list` reads `seeded` (2b-2) and
 `_launch_synced_list` reads `synced` (2b-3); an ABSENT leaf on a whole-box resolve is a NAMED error,
 not a fallback. ⚑ **Cutover 6-R3 deleted the second, cross-scope route entirely** — there is no
-`reconcile_categories` and no `ReconciledCategories`. §0 is applied by this producer (rows 3, 5 and
-row 1 SAME-scope), by the collapse (rows 2, 4 and row 1 cross-scope), and by the launch seam's two
-functions for the inputs the collapse cannot see (`secret_path_deliveries`, `narrow_table_winners`).
+`reconcile_categories` and no `ReconciledCategories`. §0 is applied by this producer (all that is
+decidable inside ONE scope), by the collapse (masks and every CROSS-scope pair), and by the launch
+seam's two functions for the inputs the collapse cannot see (`secret_path_deliveries`,
+`narrow_table_winners`).
 
 ⚑ The collapse REFUSES some shapes the retired route accepted, and since cutover 2c that refusal IS
 the launch's: it propagates out of the resolve and stops the box. 🛑 **This paragraph used to say the
@@ -40,34 +41,37 @@ collapse to stop raising, and do not restore a catch to keep a launch alive.
 
 ## The seam — WITHIN-SCOPE is the producer's, CROSS-SCOPE is the collapse's
 
-Sort spec §0's five collision rows by *how many scopes you must look at to decide the outcome*:
+§0's rule at a destination is one sentence — **two mounts at one destination are an error in every
+scope combination but one** — and the exempt one is same-scope `caches`/`common`, which the producer
+decides first, WARNS about, and settles LAST-wins. Sort the cases by *how many scopes you must look
+at to decide the outcome*:
 
-| row | case | scopes needed | owner |
-|---|---|---|---|
-| 1 | two CONCRETE declarations at one dest — ERROR always | one **or** two | **both** |
-| 2 | `masks` at a dest a binding occupies — OVERRIDE | two | collapse |
-| 3 | an ABSTRACTION extending onto an occupied dest — ERROR, keep the base | one | **producer** |
-| 4 | abstraction vs abstraction, DIFFERENT scopes — scope precedence, silent | two | collapse |
-| 5 | abstraction vs abstraction, SAME scope — existing ordering + WARN | one | **producer** |
+| case | scopes needed | owner |
+|---|---|---|
+| two CONCRETE declarations at one dest — ERROR always | one **or** two | **both** |
+| `masks` at a dest a binding occupies — the mask takes it | two | collapse |
+| an ABSTRACTION extending onto an occupied dest — ERROR, keep the base | one | **producer** |
+| abstraction vs abstraction, DIFFERENT scopes — ERROR, as any two mounts at one dest | two | collapse |
+| abstraction vs abstraction, SAME scope — existing ordering + WARN | one | **producer** |
 
 "These two declarations contradict each other" is a fact about ONE scope's own configuration.
 "This scope beats that scope" is a fact about the LADDER. Different concepts, different owners —
-and the collapse implements rows 1 (cross-scope), 2 and 4 and implements rows 3 and 5 nowhere.
+and the collapse owns the masks and the cross-scope pairs, and neither of the producer's two.
 
-## What each within-scope row can actually LOOK like
+## What each within-scope case can actually LOOK like
 
 Every bind-shaped category is TERMINAL and DEST-KEYED (R-5/R-6), so within ONE scope a category
 holds at most one entry per destination. A same-scope, same-dest collision is therefore always
 CROSS-CATEGORY, and there are exactly three shapes:
 
-* **row 1** — `bindings.ro[X]` + `bindings.rw[X]`. ⚑ These fold into DIFFERENT arms, so a producer
-  that skipped the check would let both survive silently, one per arm, and the contradiction would
-  never surface anywhere.
-* **row 3** — `caches[X]` or `common[X]` onto `bindings.{ro,rw}[X]`.
-* **row 5** — `caches[X]` + `common[X]` (both fold to `rw`). This is the one same-scope abstract
-  pair that actually occurs in shipped configuration.
+* **two CONCRETES** — `bindings.ro[X]` + `bindings.rw[X]`. ⚑ These fold into DIFFERENT arms, so a
+  producer that skipped the check would let both survive silently, one per arm, and the
+  contradiction would never surface anywhere.
+* **an EXTENSION onto an occupant** — `caches[X]` or `common[X]` onto `bindings.{ro,rw}[X]`.
+* **the EXEMPT PAIR** — `caches[X]` + `common[X]` (both fold to `rw`). This is the one same-scope
+  abstract pair that actually occurs in shipped configuration.
 
-Row 5 keeps the LAST entry in input order. Within one scope that is exactly what
+The exempt pair keeps the LAST entry in input order. Within one scope that is exactly what
 `settings_categories._most_specific` computes, since its scope-precedence key is constant there.
 
 ## The fold
@@ -165,8 +169,8 @@ loudly rather than dropping its entries.
    `reconcile_categories` returned ONE winner per dest across all four scopes, which had already
    thrown away the per-scope structure the collapse needs.
 2. **Not apply the whole table per scope.** It looks like the free win — the retired
-   `_resolve_dest_group` implemented all five rows — and **the failure is silent.** It also
-   implemented row 2, and a mask and a binding can perfectly well share ONE scope: applied per scope
+   `_resolve_dest_group` implemented every case — and **the failure is silent.** It also
+   implemented MASKS, and a mask and a binding can perfectly well share ONE scope: applied per scope
    the mask would EAT the
    binding inside the producer, and `shape.rw` would arrive at the collapse missing the entry the
    collapse's own mask loop is written to override. The collapse would be correct and the answer
@@ -194,16 +198,16 @@ loudly rather than dropping its entries.
 
 Recorded so they are not discovered during step 6.
 
-* **`seeded` onto a binding.** Spec §0 row 3 names `seeded` among the ABSTRACT declarations, but no
-  code has ever refused it: `seeded` is a COPY, so it never reaches a MOUNT group where row 3 lives.
-  (The retired `reconcile_categories` resolved it through its cross-delivery ladder instead — the
-  mount won, silently — and that ladder went with it at 6-R3.) ⚑ The collapse does not rule the case
-  at all — a copy never meets a bind
+* **`seeded` onto a binding.** No code has ever refused it: `seeded` is a COPY, so it never reaches
+  a MOUNT group where the extension refusal lives, and §0 now states the same — *"`seeded` NEVER
+  REACHES THIS TABLE"*, because it applies to the HOME bind alone and completes before any binding
+  folds. (The retired `reconcile_categories` resolved it through its cross-delivery ladder instead —
+  the mount won, silently — and that ladder went with it at 6-R3.) ⚑ The collapse does not rule the
+  case at all — a copy never meets a bind
   there, so nothing is refused and nothing is removed. A mount shadowing a copied file is a DELIVERY
   fact, and it is legal ("it's ok for a mount to shadow a seeded file"). Refusing it here would have
   invented an error that neither ships today nor is wanted downstream, so the producer folds `seeded`
-  without arbitrating it against a bind. **The spec text and the two implementations disagree; that is
-  a spec question, not a writer's.**
+  without arbitrating it against a bind.
 * **`synced` vs a binding at one dest.** ⚖️ **RULED 2026-08-12 — NOBODY rules it, because it is not
   a collision** (*"don't check for sync. Let it clobber whatever it wants."*). The producer never
   implemented it, so a same-scope pair survives into `sync` and `rw` — and that is now simply the
@@ -211,12 +215,12 @@ Recorded so they are not discovered during step 6.
   `synced_vs_binding` `CategoryCollisionError` went at cutover 5-1b (the kind no longer exists) and
   `store_collapse._refuse_sync_at_a_bind_dest` went with the ruling. A sync resolves THROUGH the
   bind covering its dest into that bind's host source, at its exact point as much as inside it, so
-  it overwrites CONTENT and the mount stands. 🔴 The spec's §0 sentence still says ERROR; that edit
-  is owed.
+  it overwrites CONTENT and the mount stands. §0 now says the same: a copy at a bind's point is
+  *"ok — append"*, and *"do not reintroduce a `synced`-vs-binding refusal at an exact destination"*.
 
 ## Warnings are DATA
 
-Row 5 returns `CategoryCollision` on `StoreShapeSet.warnings`, and the ONE emission seam
+The exempt pair returns `CategoryCollision` on `StoreShapeSet.warnings`, and the ONE emission seam
 (`commands.start.emit_collision_warnings`) renders them. The producer stays PURE.
 
 ⚑ **It is the ONLY channel.** A second one existed on the retired `ReconciledCategories.warnings`;
@@ -225,14 +229,14 @@ path to the user — re-adding a second means re-adding a type, which is a visib
 
 ## Message single-sourcing
 
-The row-1 and row-3 refusals are raised through `settings_categories.raise_binding_vs_binding` and
+The two refusals are raised through `settings_categories.raise_binding_vs_binding` and
 `raise_extension_onto_occupied`, which were extracted from the retired cross-scope pass verbatim and
 made public for this second caller. They have THREE callers now — this producer, plus
 `secret_path_deliveries` and `narrow_table_winners` at the launch seam. The message text is
 spec-mandated (it must point at SUPPRESS-THEN-ADD and name the extending entry, the occupant and the
 dest), so there is ONE copy of it and no second remedy text.
 
-⚑ The row-1 message's "until 1.8.0 the more specific scope won" paragraph reads slightly oddly for a
+⚑ The two-bindings message's "until 1.8.0 the more specific scope won" paragraph reads oddly for a
 SAME-scope pair, where there is no more-specific scope. That is deliberate: every caller raises the
 identical message, which keeps them byte-identical rather than forking the wording per caller.
 

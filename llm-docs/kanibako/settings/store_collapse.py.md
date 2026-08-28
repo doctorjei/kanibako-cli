@@ -193,10 +193,10 @@ would make a listing refuse a configuration that launches. So the rule lives her
 and is asked from `commands.start._install_assembly_collapse`, inside the `whole_box` region, which
 is the first point that can honestly say the map is a whole box's.
 
-🛑 **SPEC DELTA, NOT YET RATIFIED.** Keyspec `:196` still states the `synced` refusals EXHAUSTIVELY
-as the two mask rows, and `:125` asserts a sync "meets mounts by construction" — an assertion this
-function is what MAKES true, and which was false as measured. §0's numbered list (`:133-144`) needs
-a sixth entry. The ruling licenses the code; the spec text is the user's to edit.
+⚑ **§0 NOW STATES IT.** The coverage refusal is listed in its own right — *"an arriving `synced`
+copy is refused if NO mount COVERS its destination — nothing would persist it"* — and the `synced`
+bullet names it beside the two mask refusals. The old "meets mounts by construction" claim is gone:
+this function is what MAKES coverage true, and the spec says so rather than assuming it.
 
 ### The sync pass: NOT home-only, and it arbitrates NOTHING
 
@@ -231,9 +231,9 @@ mask as the copy's PARENT, a DIRECTORY at a mask's own point), while `start._syn
 and skips the residue the table does not name — no cover, a read-only cover, and a mask at the dest's
 own point over a missing source.
 
-🔴 **SPEC DELTA, OPEN:** `specs/settings-keyspace-1.8.0.md` §0 still states this refusal, as does
-`settings-keyspace-1.8.0-annotations.md:187`. The ruling supersedes both; the spec edit is owed and
-is not the code's to take.
+⚑ **§0 AGREES:** a copy at a bind's point is *"ok — append"*, and the section says outright *"do not
+reintroduce a `synced`-vs-binding refusal at an exact destination"*. The annotations carry the old
+refusal struck through (amendment `2026-08-12b`).
 
 ## Home is pid 0
 
@@ -405,9 +405,9 @@ destination. The call is dropped entirely, not repaired, and a test pins the two
   once justified by the file-bind inode-replacement case; that concern is narrower than the
   structural blanket refusal it was generalised into, and the generalisation was an implementer's,
   not a ruling.
-  🔴 **SPEC DELTA, OPEN:** `specs/settings-keyspace-1.8.0.md` §0 still reads *"A sync dest that
-  EXACTLY EQUALS a bind dest is a config ERROR"* (annotations `:187` mirrors it). The ruling
-  supersedes that sentence and the spec edit is owed.
+  ⚑ **§0 AGREES:** *"A sync dest that EXACTLY EQUALS a bind dest is ACCEPTED — the copy lands ON TOP
+  of the bind and writes through into that bind's source, and the bind remains."* The annotations
+  carry the old ERROR reading struck through (amendment `2026-08-12b`).
 * ⚑ **it does not carry the live route's "a `synced` row REPLACES every other copy at a shared
   dest"** (`settings_categories._resolve_copy_group`). Two lists leave that rule no home in the
   collapse. The reading is that it falls out of TIME and POLARITY instead — a seed lands once at
@@ -421,7 +421,9 @@ destination. The call is dropped entirely, not repaired, and a test pins the two
   `settings_categories.raise_binding_vs_binding`: that one is written against `CategoryEntry`
   objects, and by here the entries are gone — a dest, a source and a mode are all that is left.
 
-  ⚑⚑ **Its REMEDY sentence is `raise_binding_vs_binding`'s, word for word** (and MIGRATION.md §2.2
+  ⚑⚑ **Its REMEDY sentence is `raise_binding_vs_binding`'s — now the SAME OBJECT, not a matching
+  copy:** `settings_categories.SUPPRESS_THEN_ADD`, which the two mask refusals below also take and
+  which `_suppress_then_add` WRAPS for its YAML block (and MIGRATION.md §2.2
   ships that text): suppress the entry you do not want, then declare the one you do; an override is
   not enough, because these are two different keys and both survive the cascade; set the unwanted key
   to null in the settings file for its scope. It read *"Suppress one of them, or bind them at
@@ -442,11 +444,19 @@ destination. The call is dropped entirely, not repaired, and a test pins the two
   see "Why nothing was added to `CollapsedBind` / `CollapsedCopy`" below — and widening the arm's
   entry tuple is barred by the spec, not merely awkward. Its sibling one layer up still publishes
   more: the owning scope and a copy-pasteable YAML block, which this module cannot render because it
-  holds DOTTED keys rather than `key_segments`.
-* **bind under a mask** — names the mask that would swallow it, and both participants' keys.
-* **mask on a mask** — names every mask it lands on or inside, and every one of their keys. ⚑ The
+  holds DOTTED keys rather than `key_segments`. ⚑ MEASURED: carrying segments instead would mean
+  retyping `DeclaringKeys`, which `config_display`, `config_interface` and `commands/box/_parser`
+  all read as `Mapping[str, str]` — so the BLOCK stays one carrier's, while the PROSE is now shared.
+* **bind under a mask** — names the mask that would swallow it, and both participants' keys, **and
+  offers the cure**. ⚑ It fires hardest CROSS-SCOPE, and there its old closing advice — *"do not
+  declare the mask"* — named an edit in a scope the reader may not own; present-`None` is the only
+  route left them. 🛑 No "either one may be the one you keep" hedge: the occupant is DETERMINED.
+* **mask on a mask** — names every mask it lands on or inside, and every one of their keys, **and
+  offers the cure**. ⚑ The
   refusal that needed provenance most: NEITHER participant has a host source, so without the keys it
-  named two bare destinations and nothing a reader could match to a file they had written.
+  named two bare destinations and nothing a reader could match to a file they had written. ⚑ It is
+  ALWAYS cross-scope — one scope's mask arm is dest-keyed, so two masks at one point cannot be built
+  inside one scope — so *"declare one of them, not both"* alone could never be enough.
 * **mask over home** — names the offending dest and its key, and home's own dest. 🛑 It names NO key
   for home and says why in the message: home is pid 0, built by the launch seam from the RO derived
   `meta.box.home` and in no scope's arm, so there is no bind-shaped key to suppress. Pointing a
@@ -507,7 +517,7 @@ The decision, in full:
 | the declaration | the outcome |
 |---|---|
 | delivery is COPY and a row matches `(dest, src)` | `DERIVED_COPY` |
-| delivery is COPY and no row matches | `DERIVED_SUPERSEDED` — the producer dropped it (row 5) |
+| delivery is COPY and no row matches | `DERIVED_SUPERSEDED` — the producer dropped it (same-scope pair) |
 | nothing covers the dest | `DERIVED_UNCOVERED` — no MAP, which is not "no mount" |
 | the cover is a MASK, at the dest or above it | `DERIVED_MASKED` |
 | the cover is elsewhere, or its src differs | `DERIVED_SUPERSEDED` |
@@ -564,8 +574,8 @@ and so does `workset share list --effective`; both displays then print from it.
 ⚑ **Off the ENTRY LIST, because that is the only seam that has the keys** — the same one
 `collapse_env` takes, and for the same reason: `store_shape.build_store_shape` drops
 `CategoryEntry.key_segments` when it writes the arm. An entry is filed only when the scope's shape
-holds the arm row it produced, so `store_shape`'s category→arm table is not copied here and the §0
-row-5 WINNER is filed rather than the loser the producer dropped.
+holds the arm row it produced, so `store_shape`'s category→arm table is not copied here and the
+same-scope pair's WINNER is filed rather than the loser the producer dropped.
 
 ⚑ **Recorded at the FOLD, never derived from the finished map.** "Which scope's mask survived at
 this dest" is not answerable afterwards: a bind may take a mask's own point, the sweep removes that
