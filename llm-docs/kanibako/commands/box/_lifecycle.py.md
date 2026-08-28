@@ -61,6 +61,12 @@ exemption is a real invariant rather than a convenience:
 * `is_external` is True when the live workspace lives OUTSIDE the owning workset's root — a
   connected-external project, i.e. the user's own directory. **Every destructive branch keys on
   this flag.**
+* ⚑ **Two vault fields, and they are not interchangeable.** `enable_vault` is the RESOLVED
+  `box.enable_vault` — the box tier over the containing workset's downward default.
+  `box_authored_vault` is what the BOX ITSELF authored, workset tier ignored. **Only the authored
+  value is ever persisted at a destination box tier**; writing the resolved one pins a value the box
+  was merely inheriting, so a later edit to the workset that published it can no longer reach the
+  box, and the default follows the box into a workset that never declared it.
 
 ## The canonical 5-step order
 
@@ -181,7 +187,9 @@ Neither `_to_default` nor `_to_workset` writes a `project:` or `resolved:` ident
 box's identity lives in the PRIMARY `boxes:` membership (default mode) or the global name index plus
 the target workset's `boxes:` registry (workset mode). The ONLY thing persisted is the non-default
 `box.enable_vault`, written sparsely and carried from the source so a disabled-vault box stays
-disabled across the move.
+disabled across the move — and it is `state.box_authored_vault`, **never** `state.enable_vault`
+(see `ProjectState` above). A box that leaves the workset loses the workset's default, because the
+value was the workset's.
 
 The same ruling is what makes `_default_state_from_meta` work: the PRIMARY-membership reverse-lookup
 hit IS the existence signal, because identity no longer self-describes on disk — so there is no
@@ -382,6 +390,12 @@ registered in the PRIMARY `boxes:` membership (path → name) and its metadata l
 See **Sparse identity** for why the membership hit is the existence signal, and **B2b** for why
 home/vault are the default location only.
 
+⚑ It derives its settings pair from `_default_project_group(std)` — the PRIMARY workset, the same
+group `resolve_project` builds — so `box.enable_vault` resolves through the R2 downward default
+here exactly as it does on the live path. Passing `None` as the group made `remap` answer
+differently depending only on whether the workspace directory still existed: present ⇒ the workset's
+`false` applied, gone ⇒ it did not and the vault was created.
+
 ```def _resolve_workset_state(raw_path: Path, std: StandardPaths, config: KanibakoConfig) -> ProjectState```
 Resolve a workset project (internal or external-connected) to a state.
 
@@ -391,6 +405,9 @@ lies outside the workset root.
 
 ```def _state_from_paths(owner: str, proj: ProjectPaths, *, ws: Workset | None, is_external: bool = False) -> ProjectState```
 Adapter from `ProjectPaths` to `ProjectState`.
+
+⚑ `ProjectPaths.enable_vault` is the RESOLVED value only, so the adapter re-reads the BOX TIER
+(`box_workset_settings_paths(proj)[0]`) for `box_authored_vault`.
 
 ```def copy_into_workset(ws: Workset, proj_name: str, metadata_path: Path, shell_path: Path, source_path: Path, source_mode: BoxMode, *, copy_workspace: bool, std: StandardPaths) -> None```
 Re-root a project into *ws* — the std-aware copy path for `duplicate`.
@@ -575,7 +592,11 @@ through `box_identity.resolve_standalone_name`:
 
 It writes `workset.kuid` into `<root>/workset.yaml` — that write MATERIALIZES the detection marker,
 and it is the ONLY key laid there; NO `mode` is persisted anywhere (see the drift note under
-**STEPS 3+4**) — then registers the box, with an unwind to drop the registration on failure. `_remove_old_metadata` purges the source's prior
+**STEPS 3+4**) — then registers the box, with an unwind to drop the registration on failure.
+⚑ It is handed `state.box_authored_vault`: it writes straight into the box tier
+`_deliver_carried_box_settings` just laid down, so the resolved value would undo that carry and pin
+the source workset's default on a box that has LEFT it. The new root `workset.yaml` carries only
+`workset.kuid`, so the standalone box's resolved value IS what it authored. `_remove_old_metadata` purges the source's prior
 registry entry (`names.yaml` for primary/named) so it does not dangle.
 
 ⚑ `new_name` is only a *requested* name: the source's name is passed as the default when the caller

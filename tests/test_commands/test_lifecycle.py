@@ -1064,3 +1064,109 @@ class TestDefaultStateFromMeta:
         assert state is not None
         assert state.name == "nosettings"
         assert state.enable_vault is True  # default via read_box_enable_vault
+
+
+# ---------------------------------------------------------------------------
+# A ``box.enable_vault`` published at the WORKSET tier is an OVERRIDABLE DEFAULT:
+# it must resolve the same either way, and it must never harden into a box tier.
+# ---------------------------------------------------------------------------
+
+class TestWorksetTierVaultDefaultIsNotPinned:
+    @staticmethod
+    def _publish_primary_default(std, value):
+        """Write ``box.enable_vault`` at the PRIMARY workset tier."""
+        from kanibako.settings.config_io import write_nested_key
+
+        write_nested_key(
+            std.primary_workset / "workset.yaml", ("box",), "enable_vault", value,
+        )
+
+    @staticmethod
+    def _author_at_box(std, box_name, value):
+        """Write ``box.enable_vault`` at the BOX's own tier."""
+        from kanibako.settings.config_io import write_nested_key
+
+        write_nested_key(
+            std.boxes / box_name / "box.yaml", ("box",), "enable_vault", value,
+        )
+
+    def test_remap_resolution_ignores_whether_the_workspace_dir_survives(self, env):
+        """``remap``'s metadata-only fallback resolves like the live path (one answer)."""
+        config, std, tmp_home = env
+        from kanibako.commands.box._lifecycle import _default_state_from_meta
+
+        pdir = _make_default(env, name="dvbox")
+        self._publish_primary_default(std, False)
+
+        # Workspace still on disk -> the ordinary resolver.
+        live = resolve_lifecycle_target(str(pdir), std, config)
+        assert live.enable_vault is False
+        assert live.box_authored_vault is True
+
+        # Workspace already moved away -> the registered-metadata fallback.
+        import shutil
+
+        shutil.rmtree(pdir)
+        fallback = _default_state_from_meta(pdir, std)
+        assert fallback is not None
+        assert fallback.enable_vault is False
+        assert fallback.box_authored_vault is True
+
+    def test_move_does_not_harden_the_workset_default_into_the_box_tier(self, env):
+        """A value the box merely INHERITED is not persisted as its own override."""
+        config, std, tmp_home = env
+        pdir = _make_default(env, name="inherit")
+        self._publish_primary_default(std, False)
+
+        state = resolve_lifecycle_target(str(pdir), std, config)
+        new = execute_lifecycle(
+            state, TargetSpec(location=tmp_home / "inherit_moved", ownership=UNCHANGED),
+            std, config, confirm=_conf_yes(),
+        )
+        stored = load_doc(new.metadata_path / "box.yaml").get("box", {})
+        assert "enable_vault" not in stored
+
+    def test_workset_move_leaves_the_source_worksets_default_behind(self, env):
+        """The SOURCE workset's default does not follow the box into another workset."""
+        config, std, tmp_home = env
+        pdir = _make_default(env, name="leaver")
+        self._publish_primary_default(std, False)
+        _make_workset(env, ws_name="dvdest", root_name="dvdest_root")
+
+        state = resolve_lifecycle_target(str(pdir), std, config)
+        new = execute_lifecycle(
+            state, TargetSpec(ownership="dvdest"), std, config, confirm=_conf_yes(),
+        )
+        stored = load_doc(new.metadata_path / "box.yaml").get("box", {})
+        assert "enable_vault" not in stored
+
+    def test_convert_to_standalone_leaves_the_worksets_default_behind(self, env):
+        """Leaving the workset for standalone drops the value, because it was the workset's."""
+        config, std, tmp_home = env
+        pdir = _make_default(env, name="salever")
+        self._publish_primary_default(std, False)
+
+        state = resolve_lifecycle_target(str(pdir), std, config)
+        new = execute_lifecycle(
+            state, TargetSpec(location=INPLACE, ownership="standalone"),
+            std, config, confirm=_conf_yes(),
+        )
+        stored = load_doc(new.metadata_path / "box_data" / "box.yaml").get("box", {})
+        assert "enable_vault" not in stored
+        assert new.enable_vault is True
+
+    def test_a_box_authored_value_still_travels(self, env):
+        """Guard against over-fixing: the box's OWN override survives every hop."""
+        config, std, tmp_home = env
+        pdir = _make_default(env, name="ownvalue")
+        state = resolve_lifecycle_target(str(pdir), std, config)
+        self._author_at_box(std, state.name, False)
+        _make_workset(env, ws_name="dvkeep", root_name="dvkeep_root")
+
+        state = resolve_lifecycle_target(str(pdir), std, config)
+        assert state.box_authored_vault is False
+        new = execute_lifecycle(
+            state, TargetSpec(ownership="dvkeep"), std, config, confirm=_conf_yes(),
+        )
+        stored = load_doc(new.metadata_path / "box.yaml").get("box", {})
+        assert stored.get("enable_vault") is False
