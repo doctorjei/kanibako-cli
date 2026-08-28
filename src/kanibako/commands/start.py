@@ -8476,23 +8476,20 @@ def _synced_host_dest(box_dest: str, bindings, *, logger) -> "Path | None":
     ``bind.src`` is touched: :data:`~kanibako.settings.store_collapse.MASK` carries
     ``src=None``, so ``Path(bind.src)`` raises ``TypeError``.
 
-    ⚑ THE FIRST ARM IS NOW A BACKSTOP, NOT A POLICY (ruling 2026-08-28): an uncovered
-    dest refuses at the collapse seam before delivery runs, so what follows describes
-    the other two arms and the residue this one is kept for.  🛑 Keyspec ``:196``
-    still spells the ``synced`` refusals as the two mask rows only; that sentence and
-    §0's numbered list are the user's to update, and the ruling is what the code
-    follows meanwhile.
+    ⚑ THE FIRST ARM IS NOW A BACKSTOP, NOT A POLICY (ruling 2026-08-28, spec ratified
+    the same day): an uncovered dest refuses at the collapse seam before delivery runs,
+    so what follows describes the other two arms and the residue this one is kept for.
 
-    ⚑⚑ ALL THREE ARE WARN-AND-SKIP, AND NOT ONE OF THEM IS A REFUSAL THE SPEC NAMES.
-    Spec §0 states the ``synced`` refusals EXHAUSTIVELY — *"The only refusals a
-    ``synced`` copy meets are a mask as its PARENT and a copy of a DIRECTORY at a
-    mask's own point"* — and both of those RAISE, in
-    :func:`_refuse_synced_under_mask`, before this function is reached.  What arrives
-    at these arms is the residue the containment table says nothing about: a dest no
-    bind covers, a read-only cover, and a mask at the dest's OWN point whose source is
-    neither file nor directory (a missing or unreadable one, which the module already
-    treats as its own class — see :func:`_apply_shell_copy`).  For that residue a
-    mis-declared dest must not cost the user the launch.
+    ⚑⚑ THE REMAINING TWO ARE WARN-AND-SKIP, AND NEITHER IS A REFUSAL THE SPEC NAMES.
+    Spec §0 states the ``synced`` refusals EXHAUSTIVELY — the MASK and COVERAGE
+    refusals: a mask as its PARENT, a copy of a DIRECTORY at a mask's own point, and a
+    dest NO mount covers.  The two mask cases RAISE in
+    :func:`_refuse_synced_under_mask`, and coverage RAISES at the collapse seam, both
+    before this function is reached.  What arrives at these arms is the residue the
+    containment table says nothing about: a read-only cover, and a mask at the dest's
+    OWN point whose source is neither file nor directory (a missing or unreadable one,
+    which the module already treats as its own class — see :func:`_apply_shell_copy`).
+    For that residue a mis-declared dest must not cost the user the launch.
 
     ⚑ A dest is DATA: it is compared and sliced as a PATH, never split on ``.``.
 
