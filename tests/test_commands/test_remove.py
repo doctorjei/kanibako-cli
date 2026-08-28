@@ -98,7 +98,12 @@ class TestSystemConfig:
         rc = run_get(args)
         assert rc == 1
         err = capsys.readouterr().err
-        assert "unknown config key" in err
+        # ⚑ The §0 refusal, NOT the "unknown config key" wording that stood here until
+        # 2026-08-28: ``system get`` carried an ``is_known_key`` pre-gate that refused
+        # seven DECLARED keys, and it is gone. Pinned on what §0 demands — the offending
+        # key NAMED — never on the whole string, which ``key_validity`` words.
+        assert "nonexistent_key_xyz" in err
+        assert "is not a declared namespace" in err
 
     def test_set_value(self, tmp_home, config_file, std, capsys):
         # Scope-direction guard, CONTAINMENT form (spec §0/§2a repaired

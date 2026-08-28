@@ -94,6 +94,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **A launch refused for two mounts at one destination now names the settings KEY behind each
+  participant, not just their sources and paths.** All four of the collapse's mount refusals —
+  a binding over a binding, a binding inside a mask, a mask on a mask, and a mask at or above home
+  — told you *what* collided and *where*, and then told you to set the unwanted key to null. They
+  never said which key. On a box whose declarations come from four scopes and an agent node that is
+  often somebody else's file, that left you to find the offending entry by grepping for a path. Each
+  refusal now reads `the binding declared by 'box.bindings.rw./home/agent/x' … collides with …
+  '/home/agent/x' ('/h/sys' declared by 'system.bindings.rw./home/agent/x')`. The mask-on-mask case
+  gains the most: neither participant has a host source, so before this it named two bare
+  destinations and nothing you could match to a file you had written. ⚑ One refusal names a key for
+  only one side, and now says why: nothing declares the home binding — it is the foundation the box
+  is built on — so there is no key to suppress on that side.
+
+- **`kanibako workset share list --effective` now names the mask that swallowed a share, by its
+  settings key.** When a mask covers a share's destination the listing prints the share in
+  declaration form with a reason beneath it, and that reason could only give the mask's
+  destination: *"the mask at /opt/x covers this destination"*. A mask has no host source, so
+  unlike every other loss there was nothing in the line to match against a key you had written —
+  and where the mask sits **above** the share, `/opt/x` is not even a path your binding key
+  spells, so the row named nothing you could act on. It now reads *"the mask declared by
+  'workset.masks.~/x' at /home/agent/x covers this destination"*: the key is the thing to go and
+  edit, and it is the key of the mask that actually **survived** the collapse, not merely one
+  that names that destination. ⚑ `kanibako box show --effective` is unchanged — it answers from
+  a stored snapshot, whose collapsed binding map carries no declaration key.
+
 - **The agent liveness-marker hooks are a script call now, not a line of shell inside your
   config.** Kanibako seeds a `SessionStart` and a `SessionEnd` hook into a box's
   `~/.claude/settings.json`, and a `SessionStart` hook into its `~/.codex/config.toml`, so the
@@ -258,6 +283,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`kanibako box show --effective` no longer prints a binding as a live mount when the box
+  receives nothing at that destination.** The block rendered each `<scope>.bindings.{ro,rw}` row
+  straight off the stored declaration, with no arbitration applied and masks never shown at all. So
+  a `box.bindings.ro./opt/arb` that a `box.masks./opt/arb` had taken printed as
+  `/src -> /opt/arb`, at exit code 0, with the mask that swallowed it appearing nowhere — the
+  display that exists to answer *what does my box actually get* asserting a mount the box does not
+  have. The same happened when a mask sat **above** the binding: the sweep leaves the binding's own
+  destination absent from the collapsed map entirely, so nothing was there to notice its absence.
+  Concrete rows are now paired against the arbitrated map through the same function the abstract
+  declarations and `workset share list --effective` already use. A binding that is delivered prints
+  exactly as before — including one that legitimately **supersedes** a lower-scope mask, which is
+  a real mount and not a loss. A binding that is not delivered keeps its key (that key is what you
+  edit) and is printed in declaration form with the reason beneath it, naming the destination that
+  took it:
+
+      box.bindings.ro./opt/arb = /opt/arb  (declared: /src)
+        (no mount — the mask at /opt/arb covers this destination, and a mask has no host
+        source: the box sees nothing at that path)
+
+  A destination you spelled with a variable — `$XDG_CACHE_HOME/models`, say — is arbitrated like
+  any other, and a mask over one is reported like any other. The key is still printed the way you
+  wrote it, because that is the line you edit; the reason beneath a loss names the resolved path,
+  because that is where the collision happened.
+
+- **A `box.enable_vault` published by a workset stays the workset's — `box remap`, `box move` and
+  `box convert` no longer resolve it inconsistently, nor harden it into the box that inherited it.**
+  A `box.*` key stored at a workset tier is an overridable downward default for the boxes that
+  workset contains, which is how `workset create --no-vault` reaches them. Two things went wrong with
+  it. First, `remap` gave two different answers for one store: it resolves through the ordinary path
+  when the recorded workspace directory is still on disk, and through a registered-metadata fallback
+  when it is gone — and only the first consulted the workset tier. With a workset-tier
+  `box.enable_vault: false`, remapping a box whose directory you had already moved created the vault
+  the workset had switched off; remapping one whose directory was still there did not. Second, every
+  lifecycle op then persisted the **resolved** value at the destination's box tier, so a box that had
+  merely inherited `false` came out of a `remap` carrying `box.enable_vault: false` as its own
+  override — one the publishing workset could no longer reach — and `box move --workset` carried that
+  same inherited value into a workset that had never declared it. Both paths now resolve through the
+  same downward default, and what is written at the destination is only what the **box itself**
+  authored. A box that leaves a workset loses the workset's value, because the value was the
+  workset's; a box that set `box.enable_vault` for itself keeps it across every hop, unchanged.
+
 - **`kanibako system get` refuses a key this scope cannot read, instead of answering `(not set)` and
   exiting 0.** It checked only whether the argument was key-*shaped* — the test that tells a key from
   a project name — never whether it was a declared key readable at this noun. A name that passed fell
@@ -274,9 +340,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   anything different.** Bare agent settings — `model`, `access`, `template` and the rest — are this
   scope's own any-agent tier and still read and set exactly as they did; a hand-authored
   `agent.<node>.bindings.{ro,rw}.<name>` still reads back, so you can still confirm that the hand
-  edit its write refusal prescribes took effect; scope-level category entries such as
-  `system.synced.<name>` still read; and an undeclared name keeps the `unknown config key` message it
-  always had.
+  edit its write refusal prescribes took effect; and scope-level category entries such as
+  `system.synced.<name>` still read. An undeclared name is refused as it always was, though the
+  wording changed once more — see the entry below.
+
+- **`kanibako system get` no longer reports seven declared keys as `unknown config key`.**
+  `system.masks` and the six terminal category keys — `system.bindings.ro`, `system.bindings.rw`,
+  `system.caches`, `system.seeded`, `system.common`, `system.synced` — are declared, are stored in
+  your system settings file, and are read fine by the engine; only `system get` refused them, and
+  refused them by claiming they do not exist. The cause was that this one verb ran *two*
+  vocabularies over its argument: the closed-keyspace check every other read uses, and, ahead of it,
+  an older key-shaped-or-project-name test that was never a model of what a key is. The older test
+  is gone from the read path — it still does the job it was written for, telling `kanibako box
+  <name>` apart from `kanibako box <key>` — so these seven now read their value like any other key.
+  ⚑ This is the **same-scope** read only, and reading a *foreign* scope's category key
+  (`system get box.caches`) stays refused — see the next entry. ⚑ Writing is unchanged: a terminal
+  category key is still authored in YAML, and `system set system.masks=…` still refuses.
+
+- **A key belonging to another scope is refused by name at a `get`, instead of being called an
+  unknown key.** `kanibako system get box.caches` is a question the CLI has no reason to answer —
+  the noun already names the scope — and it now says so: it names `box.caches` as a declared
+  *box*-scope key **whose value is merged entry by entry across tiers**, so this noun holds at most
+  a fragment of it and never the value, and it points at `kanibako box get <box> box.caches`.
+  Previously it answered `Error: unknown config key`, which was wrong about a declared key.
+  ⚑ A foreign-scope **scalar** is deliberately **not** in this: `kanibako system set box.image=…`
+  is a legal downward default that lands in the system settings file, and a scalar is held whole by
+  one tier, so `system get box.image` is a complete answer and still reads it back. The rule is
+  about what a read can honestly *mean*, not about the spelling matching the noun — a category
+  table is assembled from every tier, so no single tier's copy is the answer.
+  ⚑ `meta.*` keys are refused the same way and for a plainer reason:
+  they are derived per box when it launches and are stored in no settings file at all, so the
+  refusal points at `kanibako box show <box> --effective`, which resolves them against a real box.
+
+  One knock-on wording change: an **undeclared** name at `system get` now gets the closed-keyspace
+  refusal — still exit 1, still naming what you typed, and now also listing the declared
+  alternatives — in place of the flat `unknown config key`.
+
+- **A *per-agent* category table asked for at a file-scope noun is now refused with the noun that
+  answers it, instead of being reported as unset.** `agent.<agent>.caches` — and `masks`, `seeded`,
+  `synced`, `common`, `bindings.ro`, `bindings.rw` beside it — is a declared key whose value lives in
+  that agent's own `agents/<agent>/agent.yaml`, a file `system get`, `box get` and `workset get` do
+  not open. Asked there it now exits 1 naming the key and pointing at `kanibako agent get <agent>
+  <category>`, which reads the table. Previously the same question got `Error: unknown config key`,
+  which was wrong about a declared key; without this refusal it would instead have answered
+  `(not set)` over a table sitting on disk, which is worse — an invented answer rather than a wrong
+  one. ⚑ Three things are deliberately *not* in this: `agent.default.<category>`, the any-agent tier,
+  is stored in the system settings file and still reads there; a single hand-authored
+  `agent.<agent>.bindings.{ro,rw}.<dest>` still reads back, which is how you confirm the hand edit
+  its write refusal prescribes; and every scalar agent key (`agent.<agent>.model` and the rest) reads
+  exactly as before.
 
 - **A persona agent seeds its boxes from its own template store, shared with its harness by symlink —
   so a persona can now have a template of its own.** A persona is a distinct agent node
@@ -1508,12 +1620,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   **⚠️ Known limitation.** A dest-keyed category is one key with many facets inside one value, and
   there is no settled surface yet for reading or writing *one facet* of such a key. The category
-  read above works at the `box` and `workset` nouns when you name the subject
-  (`kanibako box get <box> box.caches`); it is **not** available at the `system` noun, which still
-  refuses every category key with `Error: unknown config key`, and an `agents/<node>/agent.yaml`
-  entry cannot be read back at all. A readable form is planned and its shape is not decided, so
-  treat today's behaviour as provisional. See [MIGRATION.md](MIGRATION.md) §2.23 for how to verify
-  an edit meanwhile.
+  read above works at all three file-scope nouns when you name the subject
+  (`kanibako box get <box> box.caches`, `kanibako system get system.caches`). A per-agent
+  category table is read at the **agent** noun instead (`kanibako agent get <agent> caches`);
+  asking a file-scope noun for `agent.<agent>.caches` is refused and points there. A readable
+  form is planned and its shape is not decided, so treat today's behaviour as provisional. See
+  [MIGRATION.md](MIGRATION.md) §2.23 for how to verify an edit meanwhile.
 - **Seed and sync destinations are spelled guest-side.** The three template seed layers target
   `~/` rather than a host path under the box store, and kanibako resolves that to the box store when
   the copy runs. Nothing about *where the files land* changes; the spelling is now the same one
@@ -3282,69 +3394,3 @@ There is **no migration code** — convert existing installs in a single pass:
 [1.3.2]: https://github.com/doctorjei/kanibako-cli/compare/v1.3.1...v1.3.2
 [1.3.1]: https://github.com/doctorjei/kanibako-cli/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/doctorjei/kanibako-cli/releases/tag/v1.3.0
-- **A launch refused for two mounts at one destination now names the settings KEY behind each
-  participant, not just their sources and paths.** All four of the collapse's mount refusals —
-  a binding over a binding, a binding inside a mask, a mask on a mask, and a mask at or above home
-  — told you *what* collided and *where*, and then told you to set the unwanted key to null. They
-  never said which key. On a box whose declarations come from four scopes and an agent node that is
-  often somebody else's file, that left you to find the offending entry by grepping for a path. Each
-  refusal now reads `the binding declared by 'box.bindings.rw./home/agent/x' … collides with …
-  '/home/agent/x' ('/h/sys' declared by 'system.bindings.rw./home/agent/x')`. The mask-on-mask case
-  gains the most: neither participant has a host source, so before this it named two bare
-  destinations and nothing you could match to a file you had written. ⚑ One refusal names a key for
-  only one side, and now says why: nothing declares the home binding — it is the foundation the box
-  is built on — so there is no key to suppress on that side.
-
-- **`kanibako workset share list --effective` now names the mask that swallowed a share, by its
-  settings key.** When a mask covers a share's destination the listing prints the share in
-  declaration form with a reason beneath it, and that reason could only give the mask's
-  destination: *"the mask at /opt/x covers this destination"*. A mask has no host source, so
-  unlike every other loss there was nothing in the line to match against a key you had written —
-  and where the mask sits **above** the share, `/opt/x` is not even a path your binding key
-  spells, so the row named nothing you could act on. It now reads *"the mask declared by
-  'workset.masks.~/x' at /home/agent/x covers this destination"*: the key is the thing to go and
-  edit, and it is the key of the mask that actually **survived** the collapse, not merely one
-  that names that destination. ⚑ `kanibako box show --effective` is unchanged — it answers from
-  a stored snapshot, whose collapsed binding map carries no declaration key.
-
-- **`kanibako box show --effective` no longer prints a binding as a live mount when the box
-  receives nothing at that destination.** The block rendered each `<scope>.bindings.{ro,rw}` row
-  straight off the stored declaration, with no arbitration applied and masks never shown at all. So
-  a `box.bindings.ro./opt/arb` that a `box.masks./opt/arb` had taken printed as
-  `/src -> /opt/arb`, at exit code 0, with the mask that swallowed it appearing nowhere — the
-  display that exists to answer *what does my box actually get* asserting a mount the box does not
-  have. The same happened when a mask sat **above** the binding: the sweep leaves the binding's own
-  destination absent from the collapsed map entirely, so nothing was there to notice its absence.
-  Concrete rows are now paired against the arbitrated map through the same function the abstract
-  declarations and `workset share list --effective` already use. A binding that is delivered prints
-  exactly as before — including one that legitimately **supersedes** a lower-scope mask, which is
-  a real mount and not a loss. A binding that is not delivered keeps its key (that key is what you
-  edit) and is printed in declaration form with the reason beneath it, naming the destination that
-  took it:
-
-      box.bindings.ro./opt/arb = /opt/arb  (declared: /src)
-        (no mount — the mask at /opt/arb covers this destination, and a mask has no host
-        source: the box sees nothing at that path)
-
-  A destination you spelled with a variable — `$XDG_CACHE_HOME/models`, say — is arbitrated like
-  any other, and a mask over one is reported like any other. The key is still printed the way you
-  wrote it, because that is the line you edit; the reason beneath a loss names the resolved path,
-  because that is where the collision happened.
-
-- **A `box.enable_vault` published by a workset stays the workset's — `box remap`, `box move` and
-  `box convert` no longer resolve it inconsistently, nor harden it into the box that inherited it.**
-  A `box.*` key stored at a workset tier is an overridable downward default for the boxes that
-  workset contains, which is how `workset create --no-vault` reaches them. Two things went wrong with
-  it. First, `remap` gave two different answers for one store: it resolves through the ordinary path
-  when the recorded workspace directory is still on disk, and through a registered-metadata fallback
-  when it is gone — and only the first consulted the workset tier. With a workset-tier
-  `box.enable_vault: false`, remapping a box whose directory you had already moved created the vault
-  the workset had switched off; remapping one whose directory was still there did not. Second, every
-  lifecycle op then persisted the **resolved** value at the destination's box tier, so a box that had
-  merely inherited `false` came out of a `remap` carrying `box.enable_vault: false` as its own
-  override — one the publishing workset could no longer reach — and `box move --workset` carried that
-  same inherited value into a workset that had never declared it. Both paths now resolve through the
-  same downward default, and what is written at the destination is only what the **box itself**
-  authored. A box that leaves a workset loses the workset's value, because the value was the
-  workset's; a box that set `box.enable_vault` for itself keeps it across every hop, unchanged.
-

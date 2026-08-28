@@ -290,7 +290,6 @@ def _run_system_config(args: argparse.Namespace) -> int:
     from kanibako.settings.config_keys import (
         ConfigLevel,
         bare_env_retired_error,
-        is_known_key,
         scope_read_key_error,
     )
     from kanibako.settings.config_interface import (
@@ -360,46 +359,31 @@ def _run_system_config(args: argparse.Namespace) -> int:
 
     # get
     if action == ConfigAction.get:
-        # Bare env.* — RETIRED (R-39): refused with the cure BEFORE the known-key
-        # gate (``env.`` stays key-shaped for disambiguation, so it passes
-        # ``is_known_key`` — deliberately, to reach THIS refusal).
+        # Bare env.* — RETIRED (R-39): refused with the cure BEFORE the closed-keyspace
+        # gate, for the reason ``scope_read_key_error`` states — a generic "not a key"
+        # must not overwrite a specific cure.
         _env_err = bare_env_retired_error(
             key, verb="read", command_scope=ConfigLevel.system,
         )
         if _env_err is not None:
             print(_env_err, file=sys.stderr)
             return 1
-        if not is_known_key(key):
-            # ⚑ A "structural config key" BRANCH STOOD HERE UNTIL 2026-08-23. It caught
-            # CONFIG-FILE-ONLY keys and told the user their value lives in the config
-            # file. The ``system.*`` PATH tier left that family with spec §2g, and
-            # ``system.setup_completed`` followed it into KNOWN_CONFIG_KEYS once the
-            # write verbs routed it — so the only spellings still reaching the branch
-            # were UNDECLARED ``config.*`` ones, which it answered by asserting they
-            # exist. An undeclared name is refused as unknown (spec §0), below.
-            # ⚑ THIS MESSAGE IS WRONG FOR SEVEN DECLARED KEYS AND THAT IS
-            # QUARANTINED, NOT UNNOTICED. The six bind-shaped category terminals
-            # (``<scope>.{bindings.ro,bindings.rw,caches,common,seeded,synced}``)
-            # and ``<scope>.masks`` are DECLARED, are read fine by
-            # ``get_config_value``, and still answer False above — so this prints
-            # "unknown config key" for a key that exists. Reading one facet of a
-            # multi-faceted key is NOT SUPPORTED and the readable form is an
-            # undecided promise (Jei, 2026-08-08); the wording is his call and the
-            # cure is that surface, NOT a wider ``is_known_key``. Full statement:
-            # the QUARANTINE block above ``config_keys.KNOWN_CONFIG_KEYS``.
-            print(f"Error: unknown config key: {key}", file=sys.stderr)
-            return 1
         # ⚑ THE CLOSED-KEYSPACE READ GATE (spec §0) — the SAME function ``box get`` and
         # ``workset get`` call, so the three nouns cannot drift into three answers for one
-        # key.  Without it a name ``is_known_key`` ADMITS but this scope cannot serve was
-        # read anyway, found nothing, and printed "(not set)" at rc 0 — the fabricated
-        # answer §0 forbids in the same breath as the write.
-        # ⚑ It is the cure the branch above names: the gate is a DIFFERENT SURFACE, so
-        # ``is_known_key`` stays narrow and its seven quarantined answers are untouched.
-        # ⚑ Placed AFTER that branch, not before: an undeclared NAME keeps the wording
-        # above, which is Jei's call to change, not this gate's.  And after
-        # ``bare_env_retired_error`` for the reason ``scope_read_key_error`` states — a
-        # generic "not a key" must not overwrite a specific cure.
+        # key.  Without it a declared name this scope cannot serve was read anyway, found
+        # nothing, and printed "(not set)" at rc 0 — the fabricated answer §0 forbids in
+        # the same breath as the write.
+        # ⚑⚑ IT IS THE ONLY VOCABULARY GATE ON THIS READ, and that is the point.  An
+        # ``is_known_key`` PRE-GATE stood here until 2026-08-28 printing "unknown config
+        # key" — a SECOND vocabulary, disagreeing with this one on SEVEN DECLARED KEYS
+        # (the six bind-shaped category terminals
+        # ``system.{bindings.ro,bindings.rw,caches,common,seeded,synced}`` and
+        # ``system.masks``), which it refused while ``get_config_value`` reads every one
+        # of them and its two sibling nouns already served them.  ``is_known_key`` answers
+        # "is this key-SHAPED, as opposed to a project name" — the question ``box``'s
+        # POSITIONAL PARSER asks, which is where it still lives; §0 asks "is this a
+        # DECLARED key", and only ``key_validity`` (reached here through
+        # ``scope_key_reason``) answers that.
         # ⚑ NO ``active_agent``: a bare table leaf here means the ANY-AGENT tier, so naming
         # one agent in the cure would answer for a tier the user did not ask about.
         _key_err = scope_read_key_error(key, ConfigLevel.system)

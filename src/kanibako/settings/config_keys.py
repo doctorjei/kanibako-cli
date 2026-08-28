@@ -46,6 +46,11 @@ class ConfigLevel(Enum):
 # HAND-MAINTAINED, DELIBERATELY INCOMPLETE "key or project name?" list (Jei's
 # 2026-08-08 multi-faceted-key ruling); its known-wrong messages are KNOWN.
 # ⚑⚑ DO NOT derive it from the declaration SoT — proposed and DECLINED.
+# ⚑⚑ SINCE 2026-08-28 NO VERB'S VOCABULARY IS ON IT: ``system get`` was the last
+# read gate, and the seven False answers it forwarded ("unknown config key" for a
+# key ``get_config_value`` reads) are gone with it. The quarantine now bounds a
+# PARSER's disambiguation, not a user-facing refusal — which is why widening the
+# set is still not the cure for anything.
 # ⚑ The block travels with the set; do not copy the pattern elsewhere. Ruling,
 # cost, and the seven False answers: llm-docs/kanibako/settings/config_keys.py.md.
 # ---------------------------------------------------------------------------
@@ -160,7 +165,9 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     # ⚑ THE ``system.channels.*`` FAMILY, WHOLE — the five declared leaves (spec §2g),
     # STRING paths, one nested slot; the SYSTEM twins of ``workset.channels.*`` above.
     # They are here for the same reason the workset five are: without the spelling the
-    # ``get`` gate answers "unknown config key" for a DECLARED, settable key.
+    # SET gate answers "unknown config key" for a DECLARED, settable key.  ⚑ It was the
+    # ``get`` gate too until 2026-08-28; that read is on ``key_validity`` now, so this set
+    # no longer bounds any READ.
     "system.channels.common",
     "system.channels.chat",
     "system.channels.share",
@@ -704,6 +711,12 @@ def is_known_key(arg: str) -> bool:
     # block above :data:`KNOWN_CONFIG_KEYS`. Every branch below is KEY-SHAPED
     # recognition only: a retired spelling must be refused by name, never read as a
     # project name. Per-branch reasons: llm-docs.
+    # ⚑⚑ IT GATES NO VERB'S VOCABULARY ANY MORE (2026-08-28). ``system get`` was the
+    # last read on it, and those seven False answers reached the user as "unknown
+    # config key" for keys the engine reads fine; the §0 gate
+    # (:func:`scope_read_key_error` → ``key_validity``) is the only vocabulary now.
+    # What is left is the DISAMBIGUATION callers in ``commands/box/_parser.py``, whose
+    # question really is "key or project name" — so do NOT re-wire this into a gate.
     if arg in KNOWN_CONFIG_KEYS:
         return True
     # Bare env.<VAR> — RETIRED (R-39), recognised so the verbs can refuse it.
@@ -776,8 +789,10 @@ def _user_config_file_str() -> "Path | str":
 #: the phrase named an empty set. Its last reachable caller was ``system_cmd``'s ``get``
 #: arm, where the only spellings that still fell into it were UNDECLARED ``config.*``
 #: ones — and telling a user that a key which does not exist "is a structural config key"
-#: asserts the opposite of the truth. Those now answer "unknown config key", which is what
-#: spec §0 requires of an undeclared name.
+#: asserts the opposite of the truth. Those now answer the §0 refusal
+#: :func:`scope_read_key_error` builds, which NAMES the offending key and lists the six
+#: declared Layer-1 spellings — the "unknown config key" wording that briefly stood in its
+#: place went with the ``is_known_key`` read gate on 2026-08-28.
 #: 🛑 Do not reintroduce it for ``config.*``: those keys have their own ruled message
 #: (:func:`_config_key_refusal`), which spec §2a requires NOT to mention ``setup``.
 
@@ -1139,7 +1154,8 @@ def scope_key_reason(canonical: str) -> str | None:
     :func:`agent_key_reason` gives: ``is_known_key`` answers *"is this key-SHAPED, as opposed
     to a project name"*, and §0 asks *"is this a DECLARED key"*.  The two disagree on SEVEN
     declared keys (the six bind-shaped category terminals and ``<scope>.masks``), which is why
-    the ``system get`` gate — still on ``is_known_key`` — quarantines its own wrong answers.
+    NO read gate is on ``is_known_key`` any more: ``system get`` carried one until 2026-08-28
+    and refused all seven by name.
     ``key_reason`` also unions the PLUGIN-declared agent leaves, without which a legitimate
     ``pref.agent.goose.provider`` would be refused.
     """
@@ -1177,6 +1193,137 @@ def table_leaf_read_cure(canonical: str, active_agent: str | None = None) -> str
         f" '{canonical}' IS a declared agent leaf (spec §2d), but a TABLE-valued one — "
         f"no scalar request can carry it, so it has no bare spelling at a file scope. "
         f"Read it at the agent noun: 'kanibako agent get {agent} {canonical}'."
+    )
+
+
+def agent_category_read_error(canonical: str, key: str) -> str | None:
+    """Why a FILE-SCOPE ``get`` cannot serve ``agent.<node>.<category>``, or ``None`` (spec §2a).
+
+    ⚑ THE OTHER HALF OF :func:`table_leaf_read_cure`'s JOB, for the family that half does not
+    cover.  Both answer one question — *a declared key this noun has no read for: where IS it
+    readable?* — and both end in the same sentence, because the answer is the same noun.  What
+    differs is the reason: a bare table leaf has no spelling here at all, while THIS spelling is
+    a perfectly good key whose VALUE lives in a file the file-scope nouns never open.
+
+    ⚑⚑ MEASURED, 2026-08-28, and this is why it exists: with an ``agents/claude/agent.yaml``
+    carrying all seven category tables, ``kanibako system get agent.claude.caches`` answered
+    "(not set)" at rc 0 — a fabricated answer over a table that IS there, which §0 forbids in
+    the same breath as the undeclared read.  ``key_validity`` DECLARES the key, so the closed
+    keyspace has no complaint and cannot be the thing that catches it.
+
+    ⚑ THE ``default`` TIER IS NOT THIS, AND MUST NOT BE SWEPT IN.  ``agent.default.<category>``
+    is the any-agent tier: it is stored in the SYSTEM settings file, ``get_config_value`` reads
+    it there, and ``kanibako system get agent.default.caches`` returns the map (measured beside
+    the case above).  Refusing it would break a working read, and the cure would be a lie —
+    there is no ``agents/default/agent.yaml`` and ``kanibako agent get default …`` exits 1 on
+    "agent 'default' not found".
+
+    ⚑ DERIVED (P13): the family is ``settings_keyspace.is_terminal_category_key``, the
+    declaration SoT for "dest-keyed terminal category, at the position a scope ends" — so a
+    category entering or leaving §2a moves this refusal with it, and the ``agent.<node>``
+    -vs-file-scope split is the one that predicate already makes.
+    """
+    from kanibako.settings.settings_keyspace import is_terminal_category_key
+
+    if not is_terminal_category_key(canonical):
+        return None
+    scope, _, tail = canonical.partition(".")
+    if scope != "agent":
+        return None
+    node, _, category = tail.partition(".")
+    if node == AGENT_DEFAULT_SUB:
+        return None
+    shown_node = display_agent_ref(node)
+    # ⚑ THE MESSAGE MUST NOT SPELL THE STRING "(not set)", however tempting — the refusal
+    # tests across this suite assert that literal is ABSENT from a refusal's output, which
+    # is how a fabricated answer is caught. Describing the fault beats quoting it.
+    return (
+        f"Error: '{key}' cannot be read here: a per-agent category table lives in that "
+        f"agent's own settings file (agents/{shown_node}/agent.yaml), which this noun does "
+        f"not read — reporting it unset here would invent an answer over a table that "
+        f"exists (spec §2a). Read it at the agent noun: "
+        f"'kanibako agent get {shown_node} {category}'."
+    )
+
+
+def foreign_scope_read_error(
+    canonical: str, key: str, command_scope: "ConfigLevel | None",
+) -> str | None:
+    """Why a declared key belongs to a scope THIS noun cannot answer for, or ``None``.
+
+    ⚑⚑ JEI'S RULING, 2026-08-28: *"i dont see any justification for crossscope 'get'. it makes
+    no sense at the cli."*  A ``get`` reads what its own noun answers for; asking the ``system``
+    noun for ``box.caches`` is asking a question the CLI has no reason to answer.
+
+    ⚑⚑ WHAT THE RULE IS NOT: "the key's scope must equal the noun's scope", flat.  MEASURED
+    2026-08-28 — that gate refuses **86** reads that answer today (29 at ``system``, 23 at
+    ``workset``, 34 at ``box``), because a DOWNWARD DEFAULT is spelled with the TARGET's scope
+    token while living in THIS noun's file.  ``kanibako system set box.image=…`` is a legal
+    containment write (spec §0/§2a), and refusing ``system get box.image`` would leave a write
+    with no read-back at the noun that performed it.
+
+    ⚑⚑⚑ THREE BASES WERE TRIED.  TWO ARE DEAD, AND BOTH LOOK RIGHT UNTIL MEASURED — which is
+    why the measurements are kept here rather than compressed to the verdict.
+
+    1. **THE WRITE ROUTE** (``has_no_cli_write_route``) — REJECTED, though it selects exactly
+       the right rows today.  It derives a ``get`` gate from whether ``set`` works, and Jei has
+       held the two verbs apart deliberately: *"set is different tho"*, and *"i did not say
+       anything about set. set is different, i said, specifically."*  Right rows, wrong reason:
+       if ``set``'s rules move, ``get`` would follow for a reason that has nothing to do with
+       reading.
+    2. **"DOES THIS NOUN'S OWN FILE CARRY THE KEY?"** — REJECTED BY MEASUREMENT, and this is the
+       one a future reader is most likely to re-derive.  IT CANNOT DISTINGUISH ANYTHING: a
+       higher tier carrying a lower scope's key IS the cascade.  A ``box.<category>`` table
+       authored in the SYSTEM settings file is not inert — it reaches the box at launch.  Built
+       through ``build_launch_snapshot`` → ``snapshot_category_entries`` with the system file as
+       the ONLY file supplied, every category at every scope token came through
+       (``caches``/``seeded``/``common``/``synced``/``bindings.ro``/``bindings.rw``/``masks``,
+       × ``system``/``box``/``workset`` — 21 for 21), e.g.
+       ``CategoryEntry(category='caches', scope='box', box_dest='/home/agent/.dflt',
+       host_src='/host/dflt', delivery='MOUNT')``.  So the system file legitimately carries
+       ``box.caches``, this test answers YES for it, and the gate would let the very read the
+       ruling forbids straight through.
+    3. **THE FRAGMENT BASIS** — ADOPTED, and it is ``get``-native: it is about what a READ
+       MEANS and never mentions ``set``.  A terminal category key's value is **per-entry
+       cascade-merged across tiers** (spec ``:1085``, *"per-ENTRY cascade merge"*), so any ONE
+       tier's copy is a FRAGMENT, never the key's value.  Read at its OWN noun that fragment is
+       a complete statement of that scope's contribution — which is exactly R-9's *"Refuse the
+       write; keep the read honest"*, and why ``system get system.caches`` stays.  Read at a
+       FOREIGN noun it is a partial map no box ever sees.  A SCALAR has no such problem: one
+       tier holds one whole value, so ``system get box.image`` is a complete answer and stays.
+
+    ⚑ DERIVED (P13), not hand-listed: the family is ``settings_keyspace.is_terminal_category_key``
+    — the same SoT :func:`agent_category_read_error` uses — so a category entering or leaving
+    §2a moves this refusal with it.
+
+    ⚑ ``meta.*`` IS THE SECOND ARM, and it is not a scope mismatch at all — it is DERIVED per
+    box at launch and stored in no settings file, so no file-scope noun has a value to report.
+    It reached this gate the same way the terminals did (``key_validity`` declares it), and
+    answering "(not set)" for all 24 would be the same fabrication.
+    """
+    from kanibako.settings.settings_keyspace import is_terminal_category_key
+
+    if canonical.startswith("meta."):
+        return (
+            f"Error: '{key}' cannot be read here: 'meta.*' keys are DERIVED per box when it "
+            f"launches, not stored in any settings file, so no file-scope noun holds a value "
+            f"for one (spec §2c). Use 'kanibako box show <box> --effective', which resolves "
+            f"them against a real box."
+        )
+    scope = canonical.split(".")[0]
+    noun = command_scope.value if command_scope is not None else None
+    if noun is None or scope == noun or scope not in _SCOPE_READ_COMMAND:
+        return None
+    if not is_terminal_category_key(canonical):
+        return None
+    # ⚑ THE MESSAGE STATES THE FRAGMENT REASON, and must NOT say this noun cannot STORE the
+    # key — measured false (basis 2 above: the system file carries ``box.caches`` and the
+    # launch honours it).  What is true is that storing a fragment is not holding the value.
+    return (
+        f"Error: '{key}' cannot be read at the '{noun}' noun: it is a declared {scope}-scope "
+        f"key whose value is merged entry by entry across tiers, so this noun holds at most a "
+        f"fragment of it and never the value (spec §2a). Read it with "
+        f"'{_SCOPE_READ_COMMAND[scope]} {key}'."
     )
 
 
@@ -1245,7 +1392,14 @@ def scope_read_key_error(
         return None
     reason = scope_key_reason(canonical)
     if reason is None:
-        return None
+        # ⚑ DECLARED — and still not readable HERE, in two families.  The closed keyspace has
+        # nothing to say about a key it declares, so the fabricated-answer half of §0 needs
+        # its own tests; both return ``None`` for every key this noun can actually serve.
+        # ⚑ THE AGENT ARM FIRST: ``agent.<node>.caches`` is not a scope MISMATCH (``agent`` is
+        # not a file scope), and its cure names a different noun than the other arm's.
+        return agent_category_read_error(canonical, key) or foreign_scope_read_error(
+            canonical, key, command_scope,
+        )
     shown = _SCOPE_SHOW_COMMAND.get(
         command_scope.value if command_scope is not None else "",
     )
