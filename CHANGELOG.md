@@ -3331,3 +3331,20 @@ There is **no migration code** — convert existing installs in a single pass:
   wrote it, because that is the line you edit; the reason beneath a loss names the resolved path,
   because that is where the collision happened.
 
+- **A `box.enable_vault` published by a workset stays the workset's — `box remap`, `box move` and
+  `box convert` no longer resolve it inconsistently, nor harden it into the box that inherited it.**
+  A `box.*` key stored at a workset tier is an overridable downward default for the boxes that
+  workset contains, which is how `workset create --no-vault` reaches them. Two things went wrong with
+  it. First, `remap` gave two different answers for one store: it resolves through the ordinary path
+  when the recorded workspace directory is still on disk, and through a registered-metadata fallback
+  when it is gone — and only the first consulted the workset tier. With a workset-tier
+  `box.enable_vault: false`, remapping a box whose directory you had already moved created the vault
+  the workset had switched off; remapping one whose directory was still there did not. Second, every
+  lifecycle op then persisted the **resolved** value at the destination's box tier, so a box that had
+  merely inherited `false` came out of a `remap` carrying `box.enable_vault: false` as its own
+  override — one the publishing workset could no longer reach — and `box move --workset` carried that
+  same inherited value into a workset that had never declared it. Both paths now resolve through the
+  same downward default, and what is written at the destination is only what the **box itself**
+  authored. A box that leaves a workset loses the workset's value, because the value was the
+  workset's; a box that set `box.enable_vault` for itself keeps it across every hop, unchanged.
+

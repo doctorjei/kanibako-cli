@@ -41,8 +41,10 @@ from kanibako.settings.paths import (
     _find_workset_for_path,
     _register_workset_box_membership,
     _box_settings_files,
+    _default_project_group,
     assign_primary_box_name,
     box_metadata_dir,
+    box_workset_settings_paths,
     check_primary_box_name_free,
     detect_project_mode,
     primary_box_name_for_workspace,
@@ -104,7 +106,15 @@ class ProjectState:
     vault_rw: Path
     is_external: bool = False
     ws: Workset | None = None
+    #: The RESOLVED ``box.enable_vault`` — box tier over the containing workset's default.
     enable_vault: bool = True
+    #: ⚑ What the BOX ITSELF authored, ignoring the workset tier — the ONLY value a
+    #: lifecycle op may persist at the destination's box tier.  A ``box.*`` key at the
+    #: source's workset tier is that workset's OVERRIDABLE DEFAULT
+    #: (:func:`kanibako.settings.config.carried_box_settings`), so writing the RESOLVED
+    #: value would pin an inherited default as a box-scope override the destination
+    #: workset can no longer reach.  Mirrors ``box_authored_vault`` in the resolvers.
+    box_authored_vault: bool = True
 
 
 @dataclass
@@ -269,14 +279,20 @@ def _default_state_from_meta(
     shell_path = metadata_path / "home"
     vault_ro = std.primary_vault_ro / name
     vault_rw = std.primary_vault_rw / name
+    # ⚑ The GROUP is the PRIMARY workset — the same one ``resolve_project`` derives — so
+    # this fallback resolves ``box.enable_vault`` through the SAME R2 downward default the
+    # launch path uses.  Passing ``None`` here made a ``remap`` answer differently
+    # depending only on whether the workspace dir was still on disk.
+    box_tier, workset_tier = _box_settings_files(
+        BoxMode.primary, metadata_path, _default_project_group(std),
+    )
     return ProjectState(
         owner="primary", mode=BoxMode.primary, name=name,
         workspace_path=workspace.resolve(), metadata_path=metadata_path,
         shell_path=shell_path, vault_ro=vault_ro, vault_rw=vault_rw,
         is_external=False, ws=None,
-        enable_vault=read_box_enable_vault(
-            _box_settings_files(BoxMode.primary, metadata_path, None)[0],
-        ),
+        enable_vault=read_box_enable_vault(box_tier, default_from=workset_tier),
+        box_authored_vault=read_box_enable_vault(box_tier),
     )
 
 
@@ -322,6 +338,10 @@ def _state_from_paths(
     ws: Workset | None,
     is_external: bool = False,
 ) -> ProjectState:
+    # ⚑ ``proj.enable_vault`` is the RESOLVED value; re-read the BOX TIER alone for what
+    # the box authored, so a lifecycle op never persists the workset's default as a
+    # box-scope override (see ``ProjectState.box_authored_vault``).
+    box_tier, _ = box_workset_settings_paths(proj)
     return ProjectState(
         owner=owner,
         mode=proj.mode,
@@ -334,6 +354,7 @@ def _state_from_paths(
         is_external=is_external,
         ws=ws,
         enable_vault=proj.enable_vault,
+        box_authored_vault=read_box_enable_vault(box_tier),
     )
 
 
@@ -941,7 +962,9 @@ def _to_default(
     # ⚑ SPARSE (P8b): NO ``project:``/``resolved:`` identity is written — identity lives in
     # the PRIMARY ``boxes:`` membership registered above. Only the non-default
     # ``box.enable_vault`` is persisted, carried so a disabled-vault box stays disabled.
-    write_box_enable_vault(dst_metadata / BOX_META_FILE, state.enable_vault)
+    # ⚑⚑ The BOX-AUTHORED value, never the resolved one: a workset-tier default belongs to
+    # the workset and must keep resolving from there (``carried_box_settings``).
+    write_box_enable_vault(dst_metadata / BOX_META_FILE, state.box_authored_vault)
 
     if state.enable_vault:
         vault_ro.mkdir(parents=True, exist_ok=True)
@@ -957,6 +980,7 @@ def _to_default(
         shell_path=dst_shell, vault_ro=vault_ro, vault_rw=vault_rw,
         is_external=False, ws=None,
         enable_vault=state.enable_vault,
+        box_authored_vault=state.box_authored_vault,
     )
 
 
@@ -1066,9 +1090,12 @@ def _to_standalone(
     # ``workset.kuid`` to <root>/workset.yaml and a sparse ``box.enable_vault`` to the box
     # tier, then registers the box.  ⚑ NO mode is persisted anywhere — standalone is
     # detected from the MARKER (that root file beside ``box_data/``), never from a stored key.
+    # ⚑⚑ The BOX-AUTHORED value: ``establish_standalone`` writes this straight to the box
+    # tier ``_deliver_carried_box_settings`` just laid down, so passing the RESOLVED value
+    # would undo that carry and pin the source workset's default on a box that has LEFT it.
     box_name, dst_shell, vault_ro, vault_rw = establish_standalone(
         std, root,
-        enable_vault=state.enable_vault,
+        enable_vault=state.box_authored_vault,
         name=requested_name,
     )
     unwind.push(
@@ -1090,7 +1117,11 @@ def _to_standalone(
         workspace_path=workspace_subdir, metadata_path=root,
         shell_path=dst_shell, vault_ro=vault_ro, vault_rw=vault_rw,
         is_external=False, ws=None,
-        enable_vault=state.enable_vault,
+        # ⚑ The new root ``workset.yaml`` carries ``workset.kuid`` and nothing else, so the
+        # standalone box's RESOLVED value IS what it authored — the source workset's
+        # default did not travel.
+        enable_vault=state.box_authored_vault,
+        box_authored_vault=state.box_authored_vault,
     )
 
 
@@ -1221,7 +1252,9 @@ def _to_workset(
     # ⚑ SPARSE (P8b): NO ``project:``/``resolved:`` identity is written — identity lives in
     # the global name index, workspace in the target workset's ``boxes:`` registry. Only
     # the non-default ``box.enable_vault`` is carried, so a disabled box stays disabled.
-    write_box_enable_vault(dst_project / BOX_META_FILE, state.enable_vault)
+    # ⚑⚑ The BOX-AUTHORED value, never the resolved one: the SOURCE workset's default must
+    # not follow the box into a DIFFERENT workset as a box-scope override.
+    write_box_enable_vault(dst_project / BOX_META_FILE, state.box_authored_vault)
 
     # ⚑ A workset source ALREADY released above — cleaning up again would double-remove.
     if not source_is_workset:
@@ -1234,6 +1267,7 @@ def _to_workset(
         shell_path=dst_shell, vault_ro=vault_ro, vault_rw=vault_rw,
         is_external=not internal, ws=target_ws,
         enable_vault=state.enable_vault,
+        box_authored_vault=state.box_authored_vault,
     )
 
 
