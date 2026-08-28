@@ -8,7 +8,10 @@ single root directory chosen by the user.  Terminology:
   ``registry.yaml`` and ``workset.yaml``.  ⚑ A freshly created root has FOUR
   DIRS AND NO FILES.  ⚑ Only ``vault/`` is spelled with a literal leaf here: the
   others are REPOINTABLE keys, so their on-disk names are whatever
-  ``workset.{boxes,workspaces,logs,channelroot}`` resolve to.
+  ``workset.{boxes,workspaces,logs,channelroot}`` resolve to.  ⚑⚑ ``vault/`` is
+  the literal only as a PARENT — its two arms ``workset.{vault_ro,vault_rw}``
+  are themselves repointable keys and are RESOLVED, so a box's vault need not
+  live under this root at all.
 * **identity** — the workset's entry in the GLOBAL registry's ``worksets:``
   section (``@config.registry``), mapping its NAME to its ROOT.  ⚑⚑ THAT MAPPING
   IS THE WHOLE OF A WORKSET'S IDENTITY: nothing under the workset root records a
@@ -85,15 +88,24 @@ _TEMPLATE_LEAF = "template"
 # it through and it is always ``<root>/vault``.  ⚑ DELIBERATE, not an oversight: it keeps
 # the skeleton a SINGLE list that ``create_workset`` stamps and ``is_workset_skeleton``
 # tests, at the cost of one honestly-documented non-key.
+# ⚑⚑ THE PARENT IS THE NON-KEY; THE TWO ARMS ARE NOT.  ``vault_ro`` and ``vault_rw`` are
+# declared, CLI-settable, repointable keys, so the arms are RESOLVED below and nothing may
+# compose ``_VAULT_LEAF / ro`` again — that composition WAS the defect: a repoint was
+# accepted by the settings file and ignored by the filesystem.
 _VAULT_LEAF = paths_defaults.VAULT_PATH
+_VAULT_RO_KEY = "vault_ro"
+_VAULT_RW_KEY = "vault_rw"
+_VAULT_RO_LEAF = f"{_VAULT_LEAF}/{paths_defaults.RO_PATH}"
+_VAULT_RW_LEAF = f"{_VAULT_LEAF}/{paths_defaults.RW_PATH}"
 
 
 # ---------------------------------------------------------------------------
 # Resolved workset dir keys (workset.workspaces / workset.channelroot / workset.canon
-# / workset.template) — thin per-key faces over the ONE no-snapshot route,
+# / workset.template / workset.vault_ro / workset.vault_rw) — thin per-key faces over
+# the ONE no-snapshot route,
 # ``settings/workset_dirkeys.resolve_workset_dir_key``.  ⚑ These read the leaf out
 # of the workset.yaml table; the ROUTE owns every token rule (@-refs, $XDG, ~) and
-# owns the refusal.  ``workset_registry.resolve_workset_registry_path`` is a seventh
+# owns the refusal.  ``workset_registry.resolve_workset_registry_path`` is a ninth
 # face on the same route — do not give any of them a private expansion again.
 # ---------------------------------------------------------------------------
 
@@ -193,6 +205,42 @@ def resolve_workset_template(
         _TEMPLATE_LEAF,
         key=_TEMPLATE_LEAF,
     )
+
+
+def resolve_workset_vault_ro(
+    workset_root: Path, workset_settings: Mapping[str, Any] | None,
+) -> Path:
+    """Return the resolved ``workset.vault_ro`` dir — ⚑ UNIFORM IN EVERY MODE, standalone included."""
+    return resolve_workset_dir_key(
+        workset_root,
+        _workset_path_repoint(workset_settings, _VAULT_RO_KEY),
+        _VAULT_RO_LEAF,
+        key=_VAULT_RO_KEY,
+    )
+
+
+def resolve_workset_vault_rw(
+    workset_root: Path, workset_settings: Mapping[str, Any] | None,
+) -> Path:
+    """Return the resolved ``workset.vault_rw`` dir — ⚑ UNIFORM IN EVERY MODE, standalone included."""
+    return resolve_workset_dir_key(
+        workset_root,
+        _workset_path_repoint(workset_settings, _VAULT_RW_KEY),
+        _VAULT_RW_LEAF,
+        key=_VAULT_RW_KEY,
+    )
+
+
+def resolve_workset_vault_pair(workset_root: Path) -> tuple[Path, Path]:
+    """The resolved ``(vault_ro, vault_rw)`` for *workset_root*, off ONE workset.yaml read.
+
+    ⚑ The pair form exists because EVERY consumer wants both arms, and reading the file
+    once per arm opens a window for the two to disagree about the same document — the
+    same reason ``_workset_skeleton_dirs`` takes one read for its three resolutions.
+    """
+    settings_doc = load_workset_settings_doc(workset_root)
+    return (resolve_workset_vault_ro(workset_root, settings_doc),
+            resolve_workset_vault_rw(workset_root, settings_doc))
 
 
 # ---------------------------------------------------------------------------
@@ -308,7 +356,21 @@ class Workset:
 
     @property
     def vault_dir(self) -> Path:
+        # ⚑ THE SKELETON DIR ONLY — the non-key shared DEFAULT PARENT (see _VAULT_LEAF).
+        # 🛑 DO NOT build a vault path off this: ``vault_ro``/``vault_rw`` are repointable
+        # keys, so ``vault_dir / "ro"`` answers a key the settings file may have moved.
+        # Use ``vault_ro_dir`` / ``vault_rw_dir`` (or ``resolve_workset_vault_pair``).
         return self.root / _VAULT_LEAF
+
+    @property
+    def vault_ro_dir(self) -> Path:
+        """The resolved ``workset.vault_ro`` — ⚑ RESOLVED, not composed."""
+        return resolve_workset_vault_ro(self.root, load_workset_settings_doc(self.root))
+
+    @property
+    def vault_rw_dir(self) -> Path:
+        """The resolved ``workset.vault_rw`` — ⚑ RESOLVED, not composed."""
+        return resolve_workset_vault_rw(self.root, load_workset_settings_doc(self.root))
 
     @property
     def logs_dir(self) -> Path:
@@ -733,8 +795,10 @@ def add_project(
 
         # Vault nests ro/rw ABOVE the box name, matching PRIMARY and STANDALONE.
         # ⚑ Unwind removes the per-box LEAVES only — never the shared ro/rw parents.
-        vault_ro_proj = ws.vault_dir / "ro" / name
-        vault_rw_proj = ws.vault_dir / "rw" / name
+        # ⚑ The two arms are RESOLVED keys, so the per-box leaf joins the RESOLVED arm.
+        vault_ro_base, vault_rw_base = resolve_workset_vault_pair(ws.root)
+        vault_ro_proj = vault_ro_base / name
+        vault_rw_proj = vault_rw_base / name
         existed_vault_ro = vault_ro_proj.exists()
         existed_vault_rw = vault_rw_proj.exists()
         vault_ro_proj.mkdir(parents=True, exist_ok=True)
@@ -865,11 +929,15 @@ def remove_project(
 
     if remove_files:
         # ⚑ Per-box vault LEAVES only — never the shared ro/rw parents.
+        # ⚑⚑ RESOLVED, and it MUST match ``add_project``: deleting the composed default
+        # while the box's real vault sits at the repoint leaves the user's data orphaned
+        # AND removes a directory the box never used.
+        vault_ro_base, vault_rw_base = resolve_workset_vault_pair(ws.root)
         targets = (
             ws.projects_dir / name,
             ws.workspaces_dir / name,
-            ws.vault_dir / "ro" / name,
-            ws.vault_dir / "rw" / name,
+            vault_ro_base / name,
+            vault_rw_base / name,
         )
         # ⚑ THE BOX TREE NEEDS THE UNSHARE ESCALATION (J-7): rmtree raises on the 555
         # canon skeleton EVEN WHEN THE CALLER OWNS IT.  Workspace/vault are ordinary

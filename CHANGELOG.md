@@ -312,6 +312,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`workset.vault_ro` and `workset.vault_rw` were settable and ignored — the value was written,
+  accepted, and the vault was still created and mounted at the default location.** Both keys are
+  declared for every box mode: a workset's vault is `@meta.workset.path/vault/{ro,rw}` unless you
+  say otherwise. Nothing on the path side read either one. Every site that produced a vault
+  directory composed `<root>/vault/ro` as a literal instead — the PRIMARY workset's two roots, the
+  per-box directories a named workset creates and removes, and a standalone box's own tree — so
+  `kanibako workset set workset.vault_ro=/mnt/big/ro` wrote the file, reported nothing wrong, and
+  left your vault exactly where it had been. A refusal would have been kinder than that: a refusal
+  confesses, while a value that is accepted teaches you the key works. Both keys now resolve
+  through the same route the other workset directory keys use, so they accept the same values
+  those do — an absolute path, a path relative to the workset root, `~`, `$XDG_*`, or
+  `@meta.workset.path` — and a value needing anything else is refused by name rather than becoming
+  a directory called `@config.registry`.
+  ⚑ **If you had already set either key, this MOVES the directory kanibako uses.** Whatever is
+  under the old default location is not migrated: move it across yourself, or unset the key to
+  keep the old path. ⚑ The two arms are independent — repointing `vault_ro` alone leaves
+  `vault_rw` at its default — and one small behaviour follows the move: the `.gitignore` that
+  keeps `rw/` out of version control belongs to the workset's own `vault/` directory, so pointing
+  an arm outside the workset root no longer drops that file beside whatever you pointed it at.
+  Nothing else about the vault changes. It is still gated on `box.enable_vault`, still nests
+  `ro`/`rw` above the box name for a primary or named box, and still has no per-box subdirectory
+  for a standalone one.
+
 - **An alias refused a flag its canonical spelling accepted: `box inspect --box mybox` failed
   where `box info --box mybox` worked.** `box info`/`box inspect`, `box move`/`box mv` and
   `box rm`/`box delete` are each ONE command registered under two names, but the check that

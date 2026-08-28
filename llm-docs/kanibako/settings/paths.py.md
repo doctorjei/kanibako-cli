@@ -83,9 +83,19 @@ were retired with the `_migrate_settings_to_boxes` shim. Per-box metadata/shell 
 `boxes/<name>/`; the PRIMARY vault/logs live as siblings under the PRIMARY workset (see
 `resolve_project`).
 
-The vault + logs roots are `@config.primary_workset/vault/{ro,rw}` and
+The vault + logs roots DEFAULT to `@config.primary_workset/vault/{ro,rw}` and
 `@config.primary_workset/logs`. Phase 5 moved the PRIMARY vault out of the workspace into the
 PRIMARY workset.
+
+⚑⚑ **The two vault roots are RESOLVED, not composed.** The spec declares no `system.vault_ro` /
+`system.vault_rw` at all (`:335`) — these fields are SURROGATES for the PRIMARY workset's
+`@workset.{vault_ro,vault_rw}`, which are declared, CLI-settable, repointable keys in EVERY mode
+(§2c ALL PROJECTS, R-29). So `resolve_system_paths` reads `@config.primary_workset/workset.yaml`
+and routes both through `project.workset.resolve_workset_vault_{ro,rw}`. Resolving HERE rather than
+at `_primary_box_paths` is deliberate: every consumer of `std.primary_vault_*` (box create, `box
+rm`, `clean`, purge) then sees the ONE answer, with no edit at any of those sites. `primary_logs`
+and `boxes` remain composed — `workset.{logs,boxes}` are the documented KNOWN GAP recorded on
+`Workset.projects_dir`, and closing them is a store-layout change, not this one.
 
 ## Groups and the workset tier
 
@@ -389,7 +399,11 @@ Internal notes:
 * `system.*` config paths are always scalar strings (no structured category leaves at this tier),
   which is why the now-`object`-typed value is narrowed with `str(...)` before expansion.
 * The `system._*` pseudo-keys are the PRIMARY-workset box/vault/logs roots, derived from the
-  resolved PRIMARY workset dir (`@config.primary_workset`).
+  resolved PRIMARY workset dir (`@config.primary_workset`). ⚑ `_primary_vault_ro` /
+  `_primary_vault_rw` are RESOLVED through the workset dir-key route (one `workset.yaml` read,
+  both arms), not composed — see the `primary_vault_*` field notes above. That is the only file
+  read in this function, and it is best-effort: an ABSENT or unparseable `workset.yaml` yields the
+  declared defaults, while an unresolvable `@`-ref REFUSES and names the key.
 
 ```python
 def load_system_config(
@@ -704,31 +718,46 @@ def _primary_box_paths(
 Fixed PRIMARY-mode `(shell, vault_ro, vault_rw)` (no layout axis).
 
 Shell lives under the per-box metadata dir (`boxes/<name>/home`); the vault lives under the PRIMARY
-workset (`@config.primary_workset/vault/{ro,rw}/<name>`), NOT inside the user's workspace. Phase 5
-moved the PRIMARY vault out of the workspace so the PRIMARY workset owns boxes/vault/logs just like
-a named workset.
+workset (`@config.primary_workset/vault/{ro,rw}/<name>` by default), NOT inside the user's
+workspace. Phase 5 moved the PRIMARY vault out of the workspace so the PRIMARY workset owns
+boxes/vault/logs just like a named workset. ⚑ This function composes only the per-box NAME LEAF —
+the two arms arrive already resolved on `std.primary_vault_{ro,rw}`, so a `workset.vault_ro`
+repoint in the PRIMARY workset's `workset.yaml` reaches here for free.
 
 ```python
 def _workset_box_paths(
-    metadata_path: Path, vault_base: Path, box_name: str,
+    metadata_path: Path, vault_ro_base: Path, vault_rw_base: Path, box_name: str,
 ) -> tuple[Path, Path, Path]
 ```
 Fixed NAMED-mode `(shell, vault_ro, vault_rw)` (no layout axis).
 
-Shell under the per-project box dir; vault under the workset's vault dir
-(`<vault_base>/{ro,rw}/<box_name>`). The ro/rw split nests ABOVE the box name to match PRIMARY
-(`vault/{ro,rw}/<box>`) and STANDALONE.
+Shell under the per-project box dir; vault under the workset's two RESOLVED vault arms
+(`<vault_ro_base>/<box_name>`, `<vault_rw_base>/<box_name>`). ⚑⚑ **ONE PARAMETER PER ARM, and it
+must stay that way.** The old signature took a single `vault_base` and composed `ro`/`rw` onto it —
+that spelled `workset.vault_ro` and `workset.vault_rw` as one shared parent, which they are not:
+each is an independently repointable key, so one base cannot answer both. The ro/rw split still
+nests ABOVE the box name to match PRIMARY and STANDALONE; only the `@meta.box.name` leaf is
+composed here, and that leaf is the whole per-mode variation (§2c).
 
 ```python
 def _standalone_box_paths(root: Path) -> tuple[Path, Path, Path]
 ```
 Fixed STANDALONE-mode `(home, vault_ro, vault_rw)` (no layout axis).
 
-All host state lives inside the project *root*: the agent home is `<root>/box_data/home` (the
-`box_data/` marker dir also holds the `<box>.jsonl` helper log), and the vault lives at
+All host state lives inside the project *root* BY DEFAULT: the agent home is `<root>/box_data/home`
+(the `box_data/` marker dir also holds the `<box>.jsonl` helper log), and the vault defaults to
 `<root>/vault/{ro,rw}` (per the §2c STANDALONE table). The workset-tier `workset.yaml` lives at
 `<root>/workset.yaml` (the root, NOT `box_data/`) and the workspace is the `<root>/workspace`
 subdir — both handled by the callers, not here.
+
+⚑ STANDALONE roots a DEGENERATE WORKSET at *root*, so that same `<root>/workset.yaml` is the
+workset tier, and its `workset.{vault_ro,vault_rw}` are resolved here through
+`project.workset.resolve_workset_vault_pair` (one read, both arms). The two keys carry NO
+standalone carve-out — they are declared once for every mode (§2c ALL PROJECTS, R-29); only the
+BIND differs, and a lone box takes the arm itself with no name leaf. ⚑ This is the one place where
+"standalone paths derive from the CURRENT root, never stored absolutes" admits an exception the
+USER authored: a repointed arm may be an absolute path outside the root, which makes that tree no
+longer drop-in portable. That is the user's own choice, expressed through a declared key.
 
 ```python
 def helper_log_path(std: StandardPaths, proj: ProjectPaths) -> Path
@@ -787,7 +816,7 @@ appends the source line to `.bashrc` if absent. No-op if *shell_path* does not e
 def _init_common(
     std: StandardPaths, metadata_path: Path, shell_path: Path,
     vault_ro_path: Path, vault_rw_path: Path, project_path: Path, *,
-    enable_vault: bool = True,
+    enable_vault: bool = True, vault_root: Path | None = None,
 ) -> None
 ```
 Shared first-time project setup: create directories, bootstrap shell.
@@ -796,6 +825,16 @@ Called by both `_init_project` (default) and `_init_standalone_project`. It perf
 common to both modes: print message, create metadata and shell dirs, bootstrap the shell, and set up
 vault directories when enabled. The shell dir is the one mounted as `/home/agent`; a `.gitignore` in
 `vault/` excludes `rw` from version control.
+
+⚑ **`vault_root` GATES THE `.gitignore`, NOTHING ELSE.** That file belongs to the `vault/` SKELETON
+dir — the one non-key leaf a workset root carries — and it is written at `vault_ro_path.parent`.
+Once `workset.vault_ro` became repointable that parent stopped being guaranteed to be the skeleton:
+`vault_ro: ~/store` makes it `$HOME`, and the write would drop a stray `rw/`-ignoring `.gitignore`
+into the user's home. So the write happens only while the resolved vault still sits inside
+*vault_root* — `std.primary_workset` for PRIMARY, the standalone ROOT (i.e. `metadata_path.parent`,
+since `metadata_path` is `box_data/`) for STANDALONE. `None` keeps the unconditional legacy
+behaviour for any caller that cannot name a root. ⚑ With NO repoint every mode is byte-identical to
+before: the resolved arms are still under their root, so the same file lands in the same place.
 
 Credential copy is handled separately by `target.init_home()` in `start.py`, after template
 application.
@@ -1069,9 +1108,9 @@ Resolve per-project paths for a project inside a NAMED workset.
 *ws* is a lightweight `WorksetSpec` describing the workset's name, root, auth mode, and registered
 project names. Callers holding a full `Workset` object pass `WorksetSpec.from_workset(ws)`.
 
-Phase 5: no layout axis — shell under the per-project box dir, vault under the workset vault dir
-(`<ws.vault_dir>/{ro,rw}/<name>`). Paths are name-based, not hash-based. Raises `WorksetError` if
-*project_name* is not registered in *ws*.
+Phase 5: no layout axis — shell under the per-project box dir, vault under the workset's two
+RESOLVED vault arms (`<ws.vault_ro_dir>/<name>`, `<ws.vault_rw_dir>/<name>`). Paths are name-based,
+not hash-based. Raises `WorksetError` if *project_name* is not registered in *ws*.
 
 ### Workspace override (P7/D10)
 
@@ -1473,7 +1512,10 @@ def _init_standalone_project(
 First-time standalone project setup: all state inside project dir.
 
 Unlike workset init, this *does* create vault directories and a `.gitignore` (vault lives inside the
-user's project, likely a git repo).
+user's project, likely a git repo). ⚑ It passes `metadata_path.parent` as `_init_common`'s
+`vault_root` — `metadata_path` here is `box_data/`, so its parent is the standalone ROOT, which is
+also the degenerate workset root that owns the `vault/` skeleton. A `workset.vault_ro` repointed
+OUT of that root still gets its directory created; it just gets no `.gitignore` written beside it.
 
 Credential copy is handled separately by `target.init_home()` in `start.py`, after template
 application.

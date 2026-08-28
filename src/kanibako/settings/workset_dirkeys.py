@@ -1,14 +1,15 @@
 """The NO-SNAPSHOT resolver for the workset dir keys — ONE route, ONE grammar.
 
-``workset.{workspaces,boxes,logs,channelroot,registry,canon,template}`` are read on the DETECTION /
-paths side, which runs BEFORE the per-launch KeyStore snapshot exists — it is the pass
+``workset.{workspaces,boxes,logs,channelroot,registry,canon,template,vault_ro,vault_rw}`` are read
+on the DETECTION / paths side, which runs BEFORE the per-launch KeyStore snapshot exists — it is the pass
 that FINDS the workset the snapshot will later be built for.  So it cannot call
 :func:`kanibako.settings.settings_expand.expand`, which needs that snapshot.
 
 ⚑⚑ IT STILL MUST NOT GROW A SECOND GRAMMAR.  Files store entries UNRESOLVED (spec
 ``:214`` — ``@``-refs and ``$XDG``/``~`` verbatim), so every one of these values may
-carry a token, and the spec's own per-mode DEFAULT for all seven is
-``@meta.workset.path/<leaf>``.  A resolver that merely ``expanduser()``-ed the string
+carry a token, and the spec's own per-mode DEFAULT for all nine is
+``@meta.workset.path/<leaf>`` (the two vault arms take a TWO-SEGMENT leaf,
+``vault/ro`` and ``vault/rw``).  A resolver that merely ``expanduser()``-ed the string
 turned that documented default into a literal directory named ``@meta.workset.path``
 — silently relocating the box store, while the launch snapshot resolved the same key
 correctly.  Two carriers, two answers.
