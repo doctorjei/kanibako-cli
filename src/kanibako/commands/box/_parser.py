@@ -1992,6 +1992,7 @@ def _run_box_config(args: argparse.Namespace) -> int:
         agent_state = None
         env_resolved = None
         category_snapshot = None
+        category_ctx = None
         category_error = None
         if args.effective:
             from kanibako.settings.agent_config import agent_settings_path
@@ -2042,7 +2043,13 @@ def _run_box_config(args: argparse.Namespace) -> int:
                 _resolve_launch_snapshot,
             )
             from kanibako.errors import KanibakoError
+            from kanibako.settings.agent_select import launch_resolve_ctx
             try:
+                # ⚑ THE LAUNCH'S OWN ctx, off the ONE builder (P7) with the SAME
+                # arguments ``_resolve_launch_snapshot`` passes it — so the block's
+                # destination resolution and the collapse's cannot disagree about what
+                # ``$XDG_*`` / ``$AGENT`` / ``~`` mean.
+                category_ctx = launch_resolve_ctx(std, proj, agent_id)
                 category_snapshot, _deliveries = _resolve_launch_snapshot(
                     std=std, proj=proj, agent_name=agent_id,
                     system_settings_path=std.settings,
@@ -2087,6 +2094,7 @@ def _run_box_config(args: argparse.Namespace) -> int:
             agent_state=agent_state,
             env_resolved=env_resolved,
             category_snapshot=category_snapshot,
+            category_ctx=category_ctx,
             category_error=category_error,
         )
 

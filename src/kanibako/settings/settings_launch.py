@@ -1564,6 +1564,26 @@ def meta_agent_grammar(snapshot: KeyStore, *, active_agent: str) -> AgentGrammar
 # exist ONCE precisely so two copies cannot drift apart in silence.
 
 
+def resolve_box_dest(raw: str, box_ctx: ResolveCtx) -> str:
+    """Expand a stored ``box_dest`` expression to the ABSOLUTE GUEST PATH consumers key on.
+
+    ⚑⚑ THE ONE RESOLUTION OF A ``box_dest``, and every consumer that needs one calls
+    THIS. The eager build defers ``~`` and ``$VAR`` in a destination
+    (``settings_expand._expand_dest_key``), so an arm KEY still spells
+    ``$XDG_DATA_HOME/z`` while the collapsed bind map is keyed by the expansion — two
+    strings for one destination, and anything comparing them must expand first.
+
+    Env vars resolve from the HOST perspective (keyspec ``:344``): a mount list is
+    built before any box exists, so there is no box environment to resolve against
+    and the host's is the deterministic answer. ``~`` is not an env var — it is the
+    box's home, fixed machinery.
+
+    An escaped ``\\$`` survives the deferral verbatim and unescapes here, so a literal
+    dollar the user meant stays one.
+    """
+    return expand_expr(raw, space="guest", ctx=box_ctx, lookup=_no_lookup)
+
+
 def snapshot_category_entries(
     snapshot: KeyStore,
     *,
@@ -1586,9 +1606,9 @@ def snapshot_category_entries(
     🛑 host_src is read from the expanded ``Bind`` and used AS-IS: NOTHING is prefixed
     here, ever. A stored source resolves ON ITS OWN (spec §2a); an assembly-time
     root-prepend is the shape §2a calls FORBIDDEN. Do not reintroduce a per-scope root
-    table here — a structural test scans for it. box_dest IS resolved box-side here
-    (this is a ``box_dest`` consumer, B6) against *box_ctx*, so every seam keys on the
-    SAME absolute dest. Reads via the UNBOUND ``dict`` protocol (S3).
+    table here — a structural test scans for it. Each box_dest is resolved through
+    :func:`resolve_box_dest` against *box_ctx*, so every seam keys on the SAME
+    absolute guest path. Reads via the UNBOUND ``dict`` protocol (S3).
 
     *optional_keys* is matched against the FULL DISCRIMINATED ``CategoryEntry.key``
     and sets :attr:`~kanibako.settings.settings_categories.CategoryEntry.optional`. It
@@ -1605,7 +1625,7 @@ def snapshot_category_entries(
     scope_order = {"system": 0, "agent": 1, "workset": 2, "box": 3}
 
     def _box_dest(raw: str) -> str:
-        return expand_expr(raw, space="guest", ctx=box_ctx, lookup=_no_lookup)
+        return resolve_box_dest(raw, box_ctx)
 
     for scope in _SCOPES:
         # ⚑ Two producers, two shapes: the agent arm always yields a node, the plain
@@ -2098,9 +2118,9 @@ def _emit_bind(
 
 
 def _no_lookup(ref: str, chain: tuple[str, ...]) -> str:
-    """``expand_expr`` lookup for the box-side box_dest pass: the snapshot's
-    ``@``-refs are ALREADY resolved at build (host-side), so a surviving ``@``-ref
-    in a box_dest is a build/config error — raise rather than silently emit ``""``.
+    """``expand_expr`` lookup for :func:`resolve_box_dest`: the snapshot's ``@``-refs
+    are ALREADY resolved at build, so a surviving ``@``-ref in a box_dest is a
+    build/config error — raise rather than silently emit ``""``.
     """
     raise SettingsError(
         f"unexpected unresolved @-reference in a box_dest: {ref!r} "

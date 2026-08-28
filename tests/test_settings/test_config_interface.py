@@ -4569,9 +4569,19 @@ class TestEffectiveCategoryBlock:
     # ⚑ *box_bind_dest* and *assemble* exist for the PAIRING tests below, which need
     # a collapsed ``meta.assembly.*`` to pair against. The default box binding sits
     # at ``~`` — a SECOND bind at the pid-0 foundation, which the collapse REFUSES
-    # (cutover 6-H) — so a test that assembles must move it. The default is left
-    # exactly as it was: three tests below assert that row's rendered text, and it
-    # is the CONCRETE half's fixture, which runs no collapse at all.
+    # (cutover 6-H) — so a test that assembles must move it.
+    #
+    # ⚑⚑ THE CONCRETE HALF ASSEMBLES TOO, AND MUST. It did not have to while concrete
+    # rows were rendered straight off the arm, but they are PAIRED against the
+    # arbitrated map now — a binding a mask swallowed may not print as a mount — so a
+    # snapshot with no ``meta.assembly.bindings`` makes the block answer "no collapsed
+    # binding map" for every row. That shape is not one this display meets:
+    # ``box show --effective`` resolves through ``commands.start
+    # ._resolve_launch_snapshot`` with ``include_base_families`` at its default, so
+    # the collapse always runs whole-box. The same lesson as 2026-08-08f above — a
+    # fixture that cannot meet production is worse than no test.
+    # ⚑ ``assemble=False`` survives for ``test_the_bare_agent_form_is_never_printed``,
+    # which asserts an ABSENCE that holds in either rendering.
     @staticmethod
     def _snapshot(tmp_path, *, box_bind_dest="~", assemble=False):
         from kanibako.commands.start import (
@@ -4686,10 +4696,15 @@ class TestEffectiveCategoryBlock:
         2-element ``BindEntry`` leaf TOGETHER — the leaf carries no destination
         at all (R-6). Before 2026-08-08f this block emitted nothing on a real
         snapshot: the guard tested ``isinstance(leaf, Bind)``, which is False for
-        every ``BindEntry``, so ``--effective`` listed no bindings whatsoever."""
-        text = self._render(tmp_path)
+        every ``BindEntry``, so ``--effective`` listed no bindings whatsoever.
+
+        ⚑ A DELIVERED binding still prints exactly this ARROW line — the pairing
+        changes nothing for a row the box actually receives. Only a row it does not
+        receive loses the arrow.
+        """
+        text = self._render(tmp_path, box_bind_dest="~/w", assemble=True)
         assert (
-            "box.bindings.rw./home/agent = /boxes/mybox/home -> /home/agent  [Z,U]"
+            "box.bindings.rw./home/agent/w = /boxes/mybox/home -> /home/agent/w  [Z,U]"
             in text
         )
 
@@ -4697,7 +4712,7 @@ class TestEffectiveCategoryBlock:
         """An agent-scope arm prints as ``agent.<node>.bindings.*`` — the only
         agent key form the spec defines (§2d), and the reason ``_iter_agent_tiers``
         exists at all."""
-        text = self._render(tmp_path)
+        text = self._render(tmp_path, box_bind_dest="~/w", assemble=True)
         assert (
             "agent.claude.bindings.ro./home/agent/ref = /store/ref -> /home/agent/ref"
             in text

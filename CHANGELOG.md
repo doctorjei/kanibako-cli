@@ -3307,3 +3307,27 @@ There is **no migration code** — convert existing installs in a single pass:
   that names that destination. ⚑ `kanibako box show --effective` is unchanged — it answers from
   a stored snapshot, whose collapsed binding map carries no declaration key.
 
+- **`kanibako box show --effective` no longer prints a binding as a live mount when the box
+  receives nothing at that destination.** The block rendered each `<scope>.bindings.{ro,rw}` row
+  straight off the stored declaration, with no arbitration applied and masks never shown at all. So
+  a `box.bindings.ro./opt/arb` that a `box.masks./opt/arb` had taken printed as
+  `/src -> /opt/arb`, at exit code 0, with the mask that swallowed it appearing nowhere — the
+  display that exists to answer *what does my box actually get* asserting a mount the box does not
+  have. The same happened when a mask sat **above** the binding: the sweep leaves the binding's own
+  destination absent from the collapsed map entirely, so nothing was there to notice its absence.
+  Concrete rows are now paired against the arbitrated map through the same function the abstract
+  declarations and `workset share list --effective` already use. A binding that is delivered prints
+  exactly as before — including one that legitimately **supersedes** a lower-scope mask, which is
+  a real mount and not a loss. A binding that is not delivered keeps its key (that key is what you
+  edit) and is printed in declaration form with the reason beneath it, naming the destination that
+  took it:
+
+      box.bindings.ro./opt/arb = /opt/arb  (declared: /src)
+        (no mount — the mask at /opt/arb covers this destination, and a mask has no host
+        source: the box sees nothing at that path)
+
+  A destination you spelled with a variable — `$XDG_CACHE_HOME/models`, say — is arbitrated like
+  any other, and a mask over one is reported like any other. The key is still printed the way you
+  wrote it, because that is the line you edit; the reason beneath a loss names the resolved path,
+  because that is where the collision happened.
+

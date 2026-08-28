@@ -1156,13 +1156,13 @@ class TestEffectiveBlockAgainstARealAgentPlugin:
             snap, active_agent=target.name, box_ctx=ctx,
         )
         _install_derived_bindings(snap, derive_binding_keys(entries))
-        return snap, entries
+        return snap, entries, ctx
 
     def test_the_plugins_own_declarations_derive_discriminated_keys(self):
         from kanibako.settings.keystore import KeyStore
         from kanibako.settings.settings_views import derived_bindings
 
-        snap, entries = self._snapshot()
+        snap, entries, _ctx = self._snapshot()
         abstract = [
             e for e in entries
             if e.category in ("common", "caches", "seeded")
@@ -1220,11 +1220,11 @@ class TestEffectiveBlockAgainstARealAgentPlugin:
         from kanibako.commands.start import _install_assembly_collapse
         from kanibako.settings.config_display import _print_category_block
 
-        snap, entries = self._snapshot()
+        snap, entries, ctx = self._snapshot()
         snap.insert_segments(("meta", "box", "home"), "/host/box/home")
         _install_assembly_collapse(snap, entries, whole_box=True)
         buf = io.StringIO()
-        _print_category_block(snap, None, buf)
+        _print_category_block(snap, None, buf, ctx)
         text = buf.getvalue()
         for entry in entries:
             if entry.category not in ("common", "caches", "seeded"):
@@ -1250,10 +1250,23 @@ class TestTheEffectiveBlockShowsThePidZeroFoundation:
 
     @staticmethod
     def _snapshot():
+        """⚑ THE COLLAPSE IS INSTALLED, because the display never sees a snapshot without one.
+
+        ``box show --effective`` resolves through ``commands.start
+        ._resolve_launch_snapshot`` with ``include_base_families`` left at its default,
+        so ``_install_assembly_collapse`` always runs with ``whole_box=True`` and
+        ``meta.assembly.bindings`` is always present.  This fixture used to stop at
+        ``build_launch_snapshot``, which is a NARROW resolve's shape — and once the
+        concrete rows started being paired against the arbitrated map, that fixture
+        made the block report "no collapsed binding map" for a row the production path
+        arbitrates fine.  The fixture was the thing out of step, not the renderer.
+        """
+        from kanibako.commands.start import _install_assembly_collapse
         from kanibako.settings.settings_launch import (
             build_launch_snapshot,
             meta_identity_floor,
             meta_runtime_floor,
+            snapshot_category_entries,
             workset_anchor_floor,
         )
 
@@ -1269,10 +1282,13 @@ class TestTheEffectiveBlockShowsThePidZeroFoundation:
         ctx = make_ctx(
             workset_name=None, config={"config.primary_workset": "/data/pw"},
         )
-        return build_launch_snapshot(
+        snap = build_launch_snapshot(
             agent_name="claude", ctx=ctx, system_path=None, agent_path=None,
             workset_path=None, box_path=None, default_categories=floor,
         )
+        entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx)
+        _install_assembly_collapse(snap, entries, whole_box=True)
+        return snap, ctx
 
     def test_the_foundation_is_rendered_and_labelled_as_one(self):
         """MUTATION ANCHOR: drop the foundation line and this fails — the box home is
@@ -1282,7 +1298,8 @@ class TestTheEffectiveBlockShowsThePidZeroFoundation:
         from kanibako.settings.config_display import _print_category_block
 
         buf = io.StringIO()
-        _print_category_block(self._snapshot(), None, buf)
+        snap, ctx = self._snapshot()
+        _print_category_block(snap, None, buf, ctx)
         text = buf.getvalue()
 
         assert "(foundation) meta.box.home = /data/pw/boxes/mybox/home -> /home/agent" \
@@ -1299,7 +1316,8 @@ class TestTheEffectiveBlockShowsThePidZeroFoundation:
         from kanibako.settings.config_display import _print_category_block
 
         buf = io.StringIO()
-        _print_category_block(self._snapshot(), None, buf)
+        snap, ctx = self._snapshot()
+        _print_category_block(snap, None, buf, ctx)
         text = buf.getvalue()
 
         assert "bindings.rw./home/agent =" not in text, text
@@ -1709,3 +1727,261 @@ class TestADeclarationThatLosesIsNotShownAsAMount:
         got = _paired(snap)["agent.claude.common./home/agent/x"]
         assert got.outcome == DERIVED_UNCOVERED
         assert got.at is None and got.bind is None
+
+
+def _block(categories: dict) -> str:
+    """``_print_category_block`` over a snapshot the WHOLE launch chain produced.
+
+    ⚑ ``make_ctx()`` is the SAME ctx ``_assembled`` resolved the snapshot with — the
+    launch hands the display its own, and a display given a different one would spell
+    a ``$XDG_*`` destination differently from the map it is pairing against.
+    """
+    import io
+
+    from kanibako.settings.config_display import _print_category_block
+
+    buf = io.StringIO()
+    _print_category_block(_assembled(categories), None, buf, make_ctx())
+    return buf.getvalue()
+
+
+def _collapsed(categories: dict) -> dict:
+    """The ARBITRATED bind map (``meta.assembly.bindings``) as a plain dict."""
+    return dict(_leaf(_assembled(categories), "meta", "assembly", "bindings"))
+
+
+class TestAConcreteBindingTheCollapseSwallowedIsNotShownAsAMount:
+    """Keyspec ``:88`` for the CONCRETE half — the same obligation the abstract half meets.
+
+    ``TestADeclarationThatLosesIsNotShownAsAMount`` above pins the ABSTRACT
+    declarations, which are paired through
+    ``effective_bindings_and_template_sources``.  The concrete
+    ``<scope>.bindings.{ro,rw}`` rows were rendered straight off the arm with no
+    pairing at all, so a binding the collapse swallowed printed with a delivery
+    arrow — a mount the box does not receive, at rc 0, with the mask that took it
+    printed nowhere.
+
+    ⚑⚑ THE PREMISE OF EVERY CASE HERE IS READ OFF THE COLLAPSED MAP, NEVER OFF THE
+    DECLARATIONS.  Bind-versus-mask at one destination is SUPERSESSION (spec
+    ``:146``): whichever arrives against the already-collapsed state deletes the
+    other, and NEITHER is inherently the winner.  So "there is a mask at this dest"
+    proves nothing — ``CollapsedBind(src=None)`` is the mask sentinel and is the only
+    thing that says the box sees nothing there.  A test that asserted from the
+    declarations would turn the LEGITIMATE case below (a binding that supersedes a
+    mask) into a reported defect.
+    """
+
+    #: The opening of ``derivation_result``'s MASKED phrase.  ⚑ ARRIVAL ORDER IS WHAT
+    #: DECIDES THESE CASES: entries collapse in ``(scope, category, dest)`` order and
+    #: ``"bindings.ro"`` sorts before ``"masks"``, so a SAME-scope mask always arrives
+    #: second and takes the point, while a LOWER-scope mask arrives first and loses it.
+    #: Both directions are pinned below; neither is the inherent winner.
+    _MASK_PHRASE = "no mount — the mask at "
+
+    def test_a_mask_the_collapse_gave_the_point_to_is_not_printed_as_a_mount(self):
+        """Same scope, same destination: the mask arrives second and deletes the bind."""
+        categories = {
+            "box.bindings.ro": {"/opt/arb": ("/src",)},
+            "box.masks": ["/opt/arb"],
+        }
+        # PREMISE, off the arbitrated map: the box receives the MASK here.
+        assert _collapsed(categories)["/opt/arb"].src is None
+
+        text = _block(categories)
+        assert "/src -> /opt/arb" not in text, (
+            "the binding is printed with the delivery arrow, so the block claims a "
+            "mount at a destination the box sees nothing at"
+        )
+        assert "box.bindings.ro./opt/arb = /opt/arb  (declared: /src)" in text, text
+        assert f"{self._MASK_PHRASE}/opt/arb covers this destination" in text, text
+
+    def test_a_mask_that_SWEPT_a_binding_from_a_parent_is_named(self):
+        """The mask is the PARENT and arrives second, so it deletes the child bind.
+
+        ⚑ THE CASE A DEST-KEYED LOOKUP CANNOT ANSWER: ``/opt/arb/inner`` is not in
+        the collapsed map at ALL after the sweep, so a renderer reading "absent" as
+        "fine" says nothing.  The mask's OWN destination is the whole diagnosis and
+        is not a path the user's binding key names.
+
+        ⚑ NOT the refused geometry.  A bind arriving against an ALREADY-collapsed
+        parent mask is refused outright (spec ``:134``) and never reaches a display;
+        that needs the mask at a LOWER scope, which is a different input from this one.
+        """
+        categories = {
+            "box.masks": ["/opt/arb"],
+            "box.bindings.ro": {"/opt/arb/inner": ("/src",)},
+        }
+        collapsed = _collapsed(categories)
+        assert "/opt/arb/inner" not in collapsed, (
+            "the swept dest is still in the map — this proves nothing"
+        )
+        assert collapsed["/opt/arb"].src is None
+
+        text = _block(categories)
+        assert "/src -> /opt/arb/inner" not in text, text
+        assert f"{self._MASK_PHRASE}/opt/arb covers this destination" in text, text
+
+    def test_a_LOWER_scopes_binding_a_box_mask_swallowed_is_named_too(self):
+        """The losing row need not be the box's own — the walk covers every scope."""
+        categories = {
+            "system.bindings.ro": {"/opt/arb": ("/src",)},
+            "box.masks": ["/opt/arb"],
+        }
+        assert _collapsed(categories)["/opt/arb"].src is None
+
+        text = _block(categories)
+        assert "/src -> /opt/arb" not in text, text
+        assert "system.bindings.ro./opt/arb = /opt/arb  (declared: /src)" in text, text
+        assert f"{self._MASK_PHRASE}/opt/arb covers this destination" in text, text
+
+    def test_a_binding_that_SUPERSEDES_a_mask_still_prints_as_a_mount(self):
+        """🛑 THE CASE A FIX MUST NOT BREAK — supersession runs BOTH WAYS (spec ``:146``).
+
+        A lower-scope mask, a box binding at the same exact point: the binding
+        arrives second and deletes the mask, so the box DOES receive this mount and
+        printing it is correct.  A renderer that reported "there is a mask at this
+        destination" would turn working output into a false loss.
+        """
+        categories = {
+            "system.masks": ["/opt/arb"],
+            "box.bindings.ro": {"/opt/arb": ("/src",)},
+        }
+        assert _collapsed(categories)["/opt/arb"].src == "/src"
+
+        text = _block(categories)
+        assert "box.bindings.ro./opt/arb = /src -> /opt/arb" in text, text
+        assert "no mount" not in text, text
+
+    def test_a_binding_nested_inside_another_binding_still_prints_as_a_mount(self):
+        """A bind may be a CHILD of a bind (spec ``:148``) — both are live mounts.
+
+        The guard against a fix that reads every containment as a loss.
+        """
+        categories = {
+            "box.bindings.ro": {"/opt/n": ("/src",), "/opt/n/in": ("/src2",)},
+        }
+        text = _block(categories)
+        assert "box.bindings.ro./opt/n = /src -> /opt/n" in text, text
+        assert "box.bindings.ro./opt/n/in = /src2 -> /opt/n/in" in text, text
+        assert "no mount" not in text, text
+
+    def test_a_binding_whose_CHILD_is_a_mask_still_prints_as_a_mount(self):
+        """A mask may be the CHILD of a bind (spec ``:148``) — the bind keeps its point.
+
+        ⚑ Masks are the INVERSE of binds, not their mirror, and this is the half that
+        inverts: a mask INSIDE a bind takes only its own point.
+        """
+        categories = {
+            "box.bindings.ro": {"/opt/arb": ("/src",)},
+            "box.masks": ["/opt/arb/inner"],
+        }
+        assert _collapsed(categories)["/opt/arb"].src == "/src"
+
+        text = _block(categories)
+        assert "box.bindings.ro./opt/arb = /src -> /opt/arb" in text, text
+        assert "no mount" not in text, text
+
+    def test_a_dest_spelled_with_an_XDG_var_arbitrates_like_any_other(self):
+        """⚑⚑ A ``$XDG_*`` DESTINATION IS AN ORDINARY ROW — no carve-out (Jei, 2026-08-27).
+
+        Binds are resolved on the HOST, so a ``box_dest``'s env vars derive from the
+        host and every consumer receives an absolute guest path (keyspec ``:344-347``).
+        The arm KEY still holds ``$XDG_DATA_HOME/z``, because the eager build defers the
+        token; the arbitrated map holds ``/data/z``.  The display resolves the arm's
+        spelling through the SAME ``resolve_box_dest`` the collapse was fed from, so the
+        two meet.
+
+        This row is a live mount, and it must be reported as one BY ARBITRATION rather
+        than by being skipped — the masked twin below is what proves the difference.
+        """
+        categories = {"box.bindings.ro": {"$XDG_DATA_HOME/z": ("/src",)}}
+        # PREMISE, off the arbitrated map: the box receives this mount.
+        assert _collapsed(categories)["/data/z"].src == "/src"
+
+        text = _block(categories)
+        assert "box.bindings.ro.$XDG_DATA_HOME/z = /src -> $XDG_DATA_HOME/z" in text, text
+        assert "no mount" not in text, text
+
+    def test_a_MASKED_XDG_spelled_dest_prints_the_mask_not_a_mount(self):
+        """🛑 THE CASE THE OLD ``$``-SKIP HID, and the whole reason it is gone.
+
+        Same geometry as ``test_a_mask_the_collapse_gave_the_point_to_is_not_printed_as
+        _a_mount``, with the destination spelled through a variable.  A predicate that
+        withholds arbitration from a ``$``-bearing row prints a delivery arrow here, at
+        rc 0, for a destination the box sees nothing at — the exact silent half the
+        pairing exists to close.
+        """
+        categories = {
+            "box.bindings.ro": {"$XDG_DATA_HOME/z": ("/src",)},
+            "box.masks": ["$XDG_DATA_HOME/z"],
+        }
+        # PREMISE, off the arbitrated map: the box receives the MASK here.
+        assert _collapsed(categories)["/data/z"].src is None
+
+        text = _block(categories)
+        assert "/src -> $XDG_DATA_HOME/z" not in text, (
+            "the binding is printed with the delivery arrow, so the block claims a "
+            "mount at a destination the box sees nothing at"
+        )
+        assert (
+            "box.bindings.ro.$XDG_DATA_HOME/z = $XDG_DATA_HOME/z  (declared: /src)"
+            in text
+        ), text
+        assert f"{self._MASK_PHRASE}/data/z covers this destination" in text, text
+
+    def test_a_masked_XDG_dest_is_caught_by_a_mask_spelled_the_OTHER_WAY(self):
+        """The two spellings are ONE destination, and arbitration is where that lands.
+
+        The bind names the variable, the mask names the resolved path.  Both resolve
+        through ``resolve_box_dest`` before anything is compared — *"the ``$var`` should
+        be resolved before any binding or comparison"* (Jei, 2026-08-27) — so the mask
+        takes the point exactly as it would had both been spelled alike.
+        """
+        categories = {
+            "box.bindings.ro": {"$XDG_DATA_HOME/z": ("/src",)},
+            "box.masks": ["/data/z"],
+        }
+        assert _collapsed(categories)["/data/z"].src is None
+
+        text = _block(categories)
+        assert "/src -> $XDG_DATA_HOME/z" not in text, text
+        assert f"{self._MASK_PHRASE}/data/z covers this destination" in text, text
+
+    def test_an_ESCAPED_dollar_is_a_literal_and_pairs_as_one(self):
+        """⚑ ``\\$`` IS A LITERAL DOLLAR THE USER MEANT, and it survives the round trip.
+
+        MEASURED, 2026-08-27: the eager build carries ``\\$XDG_DATA_HOME/z`` through
+        VERBATIM (a deferred escape of an environment-significant char keeps its
+        backslash), and ``resolve_box_dest`` unescapes it to ``$XDG_DATA_HOME/z`` — a
+        path whose first component is a literal ``$XDG_DATA_HOME``.  The collapsed map
+        is keyed by that same unescape, so the display pairs it like any other row.
+        The old ``"$" not in dest`` predicate caught this spelling too and withheld its
+        diagnosis.
+        """
+        categories = {
+            "box.bindings.ro": {"\\$XDG_DATA_HOME/z": ("/src",)},
+            "box.masks": ["\\$XDG_DATA_HOME/z"],
+        }
+        collapsed = _collapsed(categories)
+        # PREMISE: the escape is CONSUMED, so the map is keyed by the literal dollar —
+        # never by the expansion, which would mean the escape was ignored.
+        assert "$XDG_DATA_HOME/z" in collapsed and "/data/z" not in collapsed
+        assert collapsed["$XDG_DATA_HOME/z"].src is None
+
+        text = _block(categories)
+        assert "/src -> \\$XDG_DATA_HOME/z" not in text, text
+        assert f"{self._MASK_PHRASE}$XDG_DATA_HOME/z covers this destination" in text, text
+
+    def test_the_containment_test_is_SEPARATOR_GUARDED(self):
+        """``/opt/arb-x`` is not inside ``/opt/arb`` — a prefix is not a parent.
+
+        The display's answer now comes from ``covering_bind``, so its guard is this
+        block's guard too: without it a mask would be reported as swallowing every
+        sibling whose path merely starts with the same characters.
+        """
+        text = _block({
+            "box.masks": ["/opt/arb"],
+            "box.bindings.ro": {"/opt/arb-x": ("/src",)},
+        })
+        assert "box.bindings.ro./opt/arb-x = /src -> /opt/arb-x" in text, text
+        assert "no mount" not in text, text
