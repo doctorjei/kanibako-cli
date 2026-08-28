@@ -300,7 +300,7 @@ def read_persona_bundle(ref: str, target: Target) -> PersonaBundle | None:
         # still break it, and this seam rides paths that must not fail closed.
         # Reported, never swallowed silently.
         return PersonaBundle(reject_reason=(
-            f"persona store entry for '{entry.node}': the {entry.harness} "
+            f"persona store entry for '{display_agent_ref(entry.node)}': the {entry.harness} "
             f"config reader failed ({exc.__class__.__name__}: {exc})"
         ))
     if outcome.settings is None:
@@ -316,7 +316,7 @@ def read_persona_bundle(ref: str, target: Target) -> PersonaBundle | None:
         except ConfigError as exc:
             display = display_agent_ref(entry.node)
             return PersonaBundle(reject_reason=(
-                f"persona store entry for '{entry.node}': the {entry.harness} config "
+                f"persona store entry for '{display}': the {entry.harness} config "
                 f"at {entry.config_dir} names an endpoint that is not well-formed — "
                 f"{exc}; fix the endpoint in that config, or override it via "
                 f"`kanibako system set agent.{display}.endpoint=<url>`, then retry"
