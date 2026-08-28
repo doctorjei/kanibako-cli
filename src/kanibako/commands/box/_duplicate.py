@@ -12,6 +12,7 @@ from kanibako.settings.config import (
     carried_box_settings,
     config_file_path,
     load_config,
+    read_box_enable_vault,
 )
 from kanibako.settings.config_io import dump_doc
 from kanibako.runtime.container import remove_box_tree
@@ -308,9 +309,18 @@ def _duplicate_to_standalone(src_proj, new_path, std, force):
     # path table) + register it, via the shared core.  ⚑ It WRITES the destination
     # ROOT workset.yaml — nothing above copies one there, and nothing should: the
     # source's root file is the SOURCE's workset tier.
+    # ⚑⚑ ``enable_vault`` is the BOX-AUTHORED value — ``src_box`` alone, NEVER
+    # ``src_proj.enable_vault`` (which is RESOLVED, box tier over the source workset's
+    # downward default).  ``establish_standalone`` read-modify-writes this straight into
+    # the destination's BOX tier, so the resolved value would undo the carry above and pin
+    # the SOURCE workset's default as an override of a box that never left with it — the
+    # very thing the ``carried_box_settings`` comment above says does not reach a duplicate.
+    # Mirrors ``ProjectState.box_authored_vault`` in ``_lifecycle.py``; the caller decides
+    # because ``establish_standalone`` is also the CREATE core, where its argument is a
+    # genuinely authored ``--no-vault``.
     establish_standalone(
         std, new_path,
-        enable_vault=src_proj.enable_vault,
+        enable_vault=read_box_enable_vault(src_box),
     )
 
     write_project_gitignore(new_path)
