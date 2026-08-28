@@ -547,7 +547,7 @@ def start_mocks():
             )
             mock_agent_path.exists.return_value = True
 
-            # Target mock: resolve_target returns a mock target with detect/build_cli_args/etc.
+            # Target mock: resolve_target returns a mock target with detect/descriptor/etc.
             target = MagicMock()
             target.display_name = "Claude Code"
             target.name = "claude"

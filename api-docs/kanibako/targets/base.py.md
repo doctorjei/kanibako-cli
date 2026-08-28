@@ -196,7 +196,6 @@ class Target(ABC):
     def default_category_binds(self) -> CategoryBindDefaults
     def setting_descriptors(self) -> list[TargetSetting]
     def generate_agent_config(self) -> AgentConfig
-    def apply_state(self, state: dict[str, str]) -> tuple[list[str], dict[str, str]]
     @property
     def default_entrypoint(self) -> str | None
     def has_resumable_session(self, home: Path) -> bool

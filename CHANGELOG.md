@@ -243,6 +243,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- **`Target.apply_state()`, the last of the per-method launch hooks.** A target used to translate
+  its agent-state values into `(cli_args, env_vars)` in Python: claude's turned `model` into
+  `--model <value>`, goose's turned `provider` and `model` into `GOOSE_PROVIDER` and `GOOSE_MODEL`.
+  The descriptor took that job over — a state key reaches the box as the `SettingArg` the plugin
+  declares for it, carrying the value the settings cascade resolved — and core stopped dispatching
+  the hook before v1.8.0, leaving a concrete method on the `Target` ABC that returned `[], {}` and
+  that nothing called. Both translations still happen, from the descriptor: `claude-defaults.yaml`
+  declares `model` on the flag channel as `--model`, and `goose-defaults.yaml` declares `model` and
+  `provider` on the env channel. Nothing a box receives changes, and no exit code or printed line
+  moves. ⚑ **If you maintain a target of your own and implemented `apply_state`, your translation
+  was already not running** — the "For plugin authors" section of [MIGRATION.md](MIGRATION.md) says
+  what to declare instead.
+
 - **The launch-time notice about stale `env` files.** v1.8.0 stopped reading `<data>/env`, the
   workset's `env` and the box's `env`, and every launch checked all three and printed a stderr block
   naming any that still had content, with the cure for its tier. The reader it warned about was

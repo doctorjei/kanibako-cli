@@ -337,34 +337,6 @@ class TestGenerateAgentConfig:
         assert cfg.state == {}
 
 
-class TestApplyState:
-    """Tests for Target.apply_state() default implementation."""
-
-    def test_default_returns_empty(self):
-        class SimpleTarget(Target):
-            @property
-            def name(self) -> str:
-                return "simple"
-
-            @property
-            def display_name(self) -> str:
-                return "Simple Agent"
-
-            def detect(self):
-                return None
-
-            def refresh_credentials(self, home):
-                pass
-
-            def writeback_credentials(self, home):
-                pass
-
-        t = SimpleTarget()
-        cli_args, env_vars = t.apply_state({"model": "opus"})
-        assert cli_args == []
-        assert env_vars == {}
-
-
 class TestPublicExports:
     def test_core_types_importable_from_package(self):
         from kanibako.targets import AgentInstall, Mount, TargetSetting

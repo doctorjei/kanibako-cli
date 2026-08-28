@@ -526,12 +526,6 @@ class TestDescriptorEnv:
             "agent.claude.env.KANIBAKO_DIRECTIVE_FINAL": "/home/agent/.claude/CLAUDE.md",
         }
 
-    def test_the_retired_apply_state_hook_adds_nothing_either(self):
-        """The legacy hook is undispatched AND empty — no second copy anywhere."""
-        target = ClaudeTarget()
-        _, legacy_env = target.apply_state(DEFAULT_STATE)
-        assert legacy_env == {}
-
 
 # --------------------------------------------------------------------------- #
 # delivery mounts                                                              #
