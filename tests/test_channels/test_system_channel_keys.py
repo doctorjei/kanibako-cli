@@ -80,17 +80,44 @@ class TestTheTierBuilderIsDerivedNotListed:
         assert floor["system.template"] == str(std.template)
         assert floor["system.canon"] == str(std.canon)
 
-    def test_the_three_uninstalled_system_keys_are_still_uninstalled(self, std):
-        """⚑ A STATED SUBSET, not an accident — the same finding, one scope over.
+    def test_the_whole_declared_system_table_reaches_the_floor(self, std):
+        """⚑⚑ INVERTED 2026-08-28.  It used to pin the three keys as UNINSTALLED.
 
-        ``system.{backup,cache,runtime}`` are declared keys with manifest defaults that
-        no floor has ever installed either.  This floor does not close that; the case
-        is here so the omission is a measured fact rather than something a reader has
-        to notice, and so widening the floor to cover them reds and gets said out loud.
+        ``system.{backup,cache,runtime}`` were declared, carried manifest defaults and
+        were CLI-settable, and no floor installed them — while the SET-time tier
+        (``config_interface._path_tier_split``) resolved all eleven.  So ``config set``
+        ACCEPTED a binding sourced at ``@system.cache`` and the launch snapshot answered
+        ``__MISSING__``, dropping it with no message and rc 0: the
+        ``system.channels.broadcast`` shape, one omission over.  ``[R143]`` settles that
+        this is a defect rather than a stated omission — *"if it has a default value,
+        yes, thay value should be placed in the keystore"* — so ``system_path_floor``
+        derives from :data:`SYSTEM_PATH_DEFAULTS` ENTIRE and the floor went 8 → 11.
+
+        ⚑ THE OLD CASE IS NOT DELETED, IT IS TURNED OVER: the widening is loud in the
+        same place the omission was.  Consumers checked in that same change, both of
+        them and both taking the whole map — ``commands/start._launch_snapshot_inputs``
+        (the three are SCALARS, so they take the last-wins arm of
+        ``_merge_default_categories``, claim no category destination and provoke no
+        origin refusal; being declared, ``_refuse_undeclared_snapshot`` stays silent)
+        and ``commands/workset_cmd._print_effective_shares`` (folds the map into a
+        resolve floor and prints collapsed BINDINGS, never the floor, so ``--effective``
+        gains no row from the widening).
+
+        ⚑ RESERVED IS UNTOUCHED.  Nothing in kanibako READS the three, and nothing here
+        gives them a reader: reserved is about consumers, this floor is about the
+        keystore, and a reserved key still answers.
         """
         floor = system_path_floor(std)
-        uninstalled = set(SYSTEM_PATH_DEFAULTS) - set(floor)
-        assert uninstalled == {"system.backup", "system.cache", "system.runtime"}
+        assert set(floor) == set(SYSTEM_PATH_DEFAULTS), (
+            "the launch floor no longer covers the whole declared system.* table; "
+            f"missing={sorted(set(SYSTEM_PATH_DEFAULTS) - set(floor))} "
+            f"extra={sorted(set(floor) - set(SYSTEM_PATH_DEFAULTS))}"
+        )
+        # ⚑ EFFECT, not membership: the three newly floored keys hold the resolved
+        # value, which is also what pins the derived field-name rule for them.
+        assert floor["system.backup"] == str(std.backup)
+        assert floor["system.cache"] == str(std.cache)
+        assert floor["system.runtime"] == str(std.runtime)
 
 
 class TestTheLaunchFloorCarriesTheWholeFamily:
@@ -113,6 +140,28 @@ class TestTheLaunchFloorCarriesTheWholeFamily:
         snapshot, _deliveries = _snapshot(std, primary_proj)
         assert snapshot_leaf(snapshot, f"system.channels.{leaf}") == str(
             getattr(std, f"channels_{leaf}")
+        )
+
+    def test_the_snapshot_answers_every_declared_system_path_key(self, primary_proj, std):
+        """⚑⚑ THE WIDENING MEASURED AS AN EFFECT, not as a key-set equality.
+
+        Read off the REAL snapshot, so it cannot pass by the floor builder agreeing
+        with itself: before 2026-08-28 ``system.{backup,cache,runtime}`` were
+        ``__MISSING__`` here while the other eight answered.  One snapshot, all
+        eleven keys — the parametrized leaf case above rebuilds per leaf and this one
+        deliberately does not.
+        """
+        from kanibako.settings.paths import _floor_field
+        from kanibako.settings.settings_launch import snapshot_leaf
+
+        snapshot, _deliveries = _snapshot(std, primary_proj)
+        missing = {
+            key for key in SYSTEM_PATH_DEFAULTS
+            if snapshot_leaf(snapshot, key) != str(getattr(std, _floor_field(key)))
+        }
+        assert not missing, (
+            "declared system.* keys that the launch snapshot does not answer: "
+            f"{sorted(missing)}"
         )
 
     def test_a_binding_sourced_at_broadcast_is_not_dropped(self, primary_proj, std):
