@@ -463,15 +463,13 @@ BOTH name-based lookups AND workset discovery / list. See **The global registry*
 that made it one call.
 
 ```python
-def load_workset(root: Path) -> Workset
+def load_workset(root: Path, name: str) -> Workset
 ```
-Load a workset from its root directory.
+Load the workset registered as *name* at *root*.
 
-Takes the workset's *name* — the caller has it, because the global registry's `worksets:` mapping
-is how it reached *root*. Raises `WorksetError` if the directory is missing.
-
-⚑ Carries a legacy migration: an old `kanibako/` subdir is renamed to `boxes/` when `boxes/` does
-not yet exist, with a notice on stderr.
+*name* is REQUIRED — the caller has it, because the global registry's `worksets:` mapping is how it
+reached *root*, and that mapping is the only record of the name there is. Raises `WorksetError` if
+the directory is missing; the resolved root then goes to `_load_workset`, which does the rest.
 
 ```python
 def list_worksets(std: StandardPaths) -> dict[str, Path]
