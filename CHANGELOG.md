@@ -312,6 +312,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **An alias refused a flag its canonical spelling accepted: `box inspect --box mybox` failed
+  where `box info --box mybox` worked.** `box info`/`box inspect`, `box move`/`box mv` and
+  `box rm`/`box delete` are each ONE command registered under two names, but the check that
+  decides whether `--box` applies to a command read the name you *typed* — so one spelling of the
+  pair ran and the other exited 2 with "`--box` is not valid for 'box inspect'". `--help` made it
+  worse by advertising `--box` under both spellings, promising exactly what one of them then
+  refused. Relevance now follows the parser that actually ran, so an alias inherits its canonical
+  form's answer. That is one rule over all sixteen aliases in the command tree rather than a
+  second list of spellings to keep in step, and it does not loosen anything: `box ls` still
+  refuses `--box`, because `box list` does.
+
+- **`kanibako rm --box` and `kanibako register --box` were refused where `kanibako box rm --box`
+  and `kanibako box register --box` were not.** The two top-level shortcuts are separate parsers
+  that dispatch to the same handlers, and those handlers already read `--box`; the refusal came
+  from the relevance table alone, which declared both spellings of `start`, `stop` and `shell` but
+  only the `box` spelling of these two. Both are declared now, and `--help` offers the flag on
+  both. ⚑ **This does not make `--box` a substitute for the positional.** `rm` and `register`
+  still require their target argument, on the shortcut and on the `box` verb alike, so `--box` is
+  only ever a second spelling of a subject you also typed — matching, it warns and continues;
+  differing, it is a conflict. That is unchanged, and it is what `box rm` already did.
+
 - **A value sourced at `@config.journal` was accepted and then silently dropped at launch.**
   Kanibako's Layer-1 config foundation declares six keys, but the map that `@config.*` references
   actually resolve against was written out by hand — five string literals, in the launch path and

@@ -144,6 +144,22 @@ class TestRelevance:
     def test_no_flags_no_error(self, parser):
         check_flag_relevance(_parse(parser, ["list"]))
 
+    def test_alias_relevant_where_its_canonical_spelling_is(self, parser):
+        # ``inspect`` is an ALIAS of ``box info``, which is declared.
+        check_flag_relevance(_parse(parser, ["box", "inspect", "--box", "foo"]))
+
+    def test_alias_still_refused_where_its_canonical_spelling_is(self, parser):
+        # The inverse: canonicalising must not make an alias MORE permissive
+        # than the command it aliases.  ``box ls`` → ``box list``, undeclared.
+        with pytest.raises(FlagRelevanceError):
+            check_flag_relevance(_parse(parser, ["box", "ls", "--box", "foo"]))
+
+    def test_box_relevant_on_top_level_rm(self, parser):
+        check_flag_relevance(_parse(parser, ["rm", "--box", "foo", "foo"]))
+
+    def test_box_relevant_on_top_level_register(self, parser):
+        check_flag_relevance(_parse(parser, ["register", "--box", "foo", "foo"]))
+
     def test_declared_sets_are_subset_of_real_commands(self):
         # Guardrail: every declared command key is a real dotted path shape.
         assert "start" in AGENT_FLAG_COMMANDS
@@ -192,9 +208,11 @@ def _alias_closure(leaves, keys):
 
     ⚑ ``add_parser(aliases=[...])`` registers ONE parser object under several
     names, so an alias cannot carry different help from its canonical spelling —
-    the advertisement is a property of the parser, not of the key.  (That the
-    RELEVANCE check keys off the typed alias is a separate, pre-existing
-    behaviour: ``box mv --box`` is refused where ``box move --box`` is accepted.)
+    the advertisement is a property of the parser, not of the key.  The RELEVANCE
+    check now agrees, because :func:`command_key` reports the canonical path
+    (:class:`TestAnAliasIsJudgedAsTheCommandItAliases`); before that fix
+    ``box mv --box`` was refused where ``box move --box`` was accepted, while
+    ``box mv --help`` advertised the flag anyway.
     """
     by_object: dict[int, set[str]] = {}
     for key, leaf in leaves.items():
@@ -205,6 +223,131 @@ def _alias_closure(leaves, keys):
         if leaf is not None:
             out |= by_object[id(leaf)]
     return out
+
+
+def _alias_keys(parser):
+    """Map every ALIAS leaf key in the tree to its canonical key.
+
+    Derived from the tree itself: ``add_parser(name, aliases=[...])`` registers
+    ONE parser object under several names, canonical FIRST, so the first name a
+    given object appears under at each level is that level's canonical spelling.
+    """
+    out: dict[str, str] = {}
+
+    def sub(p):
+        for action in p._actions:
+            if isinstance(action, argparse._SubParsersAction):
+                return action
+        return None
+
+    def walk(p, typed, canon):
+        action = sub(p)
+        if action is None:
+            if " ".join(typed) != " ".join(canon):
+                out[" ".join(typed)] = " ".join(canon)
+            return
+        first: dict[int, str] = {}
+        for name, child in action.choices.items():
+            canon_name = first.setdefault(id(child), name)
+            walk(child, (*typed, name), (*canon, canon_name))
+
+    walk(parser, (), ())
+    return out
+
+
+def _shortcut_twins(parser):
+    """Top-level leaves that dispatch to the SAME handler as a ``box`` leaf.
+
+    ⚑ Derived by HANDLER IDENTITY, not from a hand-kept list: ``kanibako rm``
+    and ``kanibako box rm`` are two separate parser objects (not argparse
+    aliases) that share ``run_rm``, and that shared handler is the whole reason
+    they must agree about a flag.  Each twin is reported under its CANONICAL
+    spelling so an alias of the box verb is not counted separately.
+    """
+    leaves = _leaves(parser)
+    canonical = _alias_keys(parser)
+    pairs: set[tuple[str, str]] = set()
+    for key, leaf in leaves.items():
+        if " " in key:
+            continue
+        func = leaf.get_default("func")
+        if func is None:
+            continue
+        for other, other_leaf in leaves.items():
+            if other.startswith("box ") and other_leaf.get_default("func") is func:
+                pairs.add((key, canonical.get(other, other)))
+    return sorted(pairs)
+
+
+class TestAnAliasIsJudgedAsTheCommandItAliases:
+    """``box mv --box`` was refused where ``box move --box`` was accepted.
+
+    argparse records the name the user TYPED (``args.box_command == "mv"``), so
+    relevance was an accident of spelling on ONE parser object registered under
+    two names — and ``--help`` advertised the flag under both, promising what one
+    spelling then refused.  :func:`command_key` now reports the path stamped on
+    the leaf that actually ran.  INVERT: drop the ``set_defaults`` stamp in
+    ``_walk`` (or the ``_COMMAND_PATH_DEST`` branch in ``command_key``) and the
+    alias rows redden.
+    """
+
+    def test_every_alias_in_the_tree_carries_its_canonical_path(self, parser):
+        from kanibako.commands.flags import _COMMAND_PATH_DEST
+
+        leaves = _leaves(parser)
+        aliases = _alias_keys(parser)
+        # Guard against a vacuous pass: the aliases are really there.
+        assert "box mv" in aliases and aliases["box mv"] == "box move"
+        for alias, canon in aliases.items():
+            assert leaves[alias].get_default(_COMMAND_PATH_DEST) == canon, alias
+
+    @pytest.mark.parametrize("argv, canonical", [
+        (["box", "inspect"], "box info"),
+        (["box", "mv", "old", "new"], "box move"),
+        (["box", "delete", "x"], "box rm"),
+        (["box", "ls"], "box list"),
+        (["workset", "inspect", "ws"], "workset info"),
+        (["agent", "ls"], "agent list"),
+        (["rig", "delete", "img"], "rig rm"),
+        (["system", "inspect"], "system info"),
+    ])
+    def test_command_key_reports_the_canonical_spelling(
+        self, parser, argv, canonical,
+    ):
+        assert command_key(_parse(parser, argv)) == canonical
+
+    def test_the_typed_spelling_is_still_recorded(self, parser):
+        """Canonicalising is a RELEVANCE judgement, not a rewrite of the
+        namespace — the subcommand dest still says what the user typed."""
+        assert _parse(parser, ["box", "inspect"]).box_command == "inspect"
+
+
+class TestATopLevelShortcutAgreesWithItsBoxVerb:
+    """``kanibako rm --box`` was refused where ``kanibako box rm --box`` was not.
+
+    These are NOT argparse aliases — ``cli.py`` registers them as separate
+    parsers — so no canonicalisation can relate them and each spelling is its own
+    key.  What relates them is the HANDLER: ``run_rm`` reads ``--box`` through
+    ``resolve_subject_value`` whichever parser dispatched to it, so a shortcut
+    that refuses the flag refuses it for a handler that would have used it.
+    INVERT: drop ``"rm"``/``"register"`` from ``BOX_FLAG_COMMANDS`` and the
+    ``--box`` rows redden.
+    """
+
+    def test_the_twins_are_found(self, parser):
+        # Vacuity guard + the inventory this rule is asserted over.
+        twins = dict(_shortcut_twins(parser))
+        assert twins["rm"] == "box rm"
+        assert twins["register"] == "box register"
+        assert twins["start"] == "box start"
+
+    @pytest.mark.parametrize("declared", [AGENT_FLAG_COMMANDS, BOX_FLAG_COMMANDS])
+    def test_both_spellings_are_declared_together(self, parser, declared):
+        split = [
+            (short, full) for short, full in _shortcut_twins(parser)
+            if (short in declared) != (full in declared)
+        ]
+        assert split == []
 
 
 class TestBlanketFlagsAreAdvertisedOnlyWhereTheyApply:

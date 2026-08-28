@@ -46,6 +46,18 @@ AGENT_FLAG_COMMANDS: frozenset[str] = frozenset({
 
 # ``--box`` is the subject/anchor selector: every command that acts on a subject
 # box/project rather than on cwd.
+#
+# ⚑ Declared in CANONICAL spellings only — an argparse ALIAS is never listed.
+# ``add_parser(aliases=[...])`` registers ONE parser under several names, and
+# :func:`command_key` reports that parser's canonical name whichever the user
+# typed, so ``box mv`` inherits ``box move``'s membership.  Listing the alias
+# too would be a second carrier of one shape.
+#
+# ⚑ The top-level shortcuts are NOT argparse aliases — ``rm``/``register`` (and
+# ``start``/``stop``/``shell``) are SEPARATE parser objects in ``cli.py`` that
+# merely share the box handler, so there is no alias relation for the code to
+# derive and each spelling is its own key.  Both spellings of a shortcut pair
+# must therefore be declared together.
 BOX_FLAG_COMMANDS: frozenset[str] = frozenset({
     # launch / shell
     "start",
@@ -68,6 +80,11 @@ BOX_FLAG_COMMANDS: frozenset[str] = frozenset({
     "box rm",
     "box register",
     "box remap",
+    # top-level shortcuts for the two box verbs above (separate parsers, same
+    # handler: ``run_rm`` / ``run_register`` both read ``--box`` through
+    # ``resolve_subject_value``).
+    "rm",
+    "register",
     # auth
     "reauth",
     "agent reauth",
@@ -78,6 +95,12 @@ BOX_FLAG_COMMANDS: frozenset[str] = frozenset({
 # Commands that already own a local ``--agent`` flag with different semantics
 # and must be skipped by the blanket injection.
 _AGENT_FLAG_EXCLUDE: frozenset[str] = frozenset({"setup"})
+
+# Namespace attribute carrying the CANONICAL dotted path of the leaf parser that
+# actually ran, stamped by :func:`_walk` via ``set_defaults``.  It exists because
+# argparse records the name the user TYPED (``args.box_command == "mv"``), which
+# would make relevance an accident of spelling.
+_COMMAND_PATH_DEST = "_command_path"
 
 
 # ⚑ Both adders below pass ``default=None``: an un-given flag installs NOTHING —
@@ -327,18 +350,27 @@ def inject_blanket_flags(parser: argparse.ArgumentParser) -> None:
 def _walk(parser: argparse.ArgumentParser, prefix: tuple[str, ...]) -> None:
     subparsers_action = _find_subparsers_action(parser)
     if subparsers_action is None:
-        # Leaf parser → inject the blanket flags.
+        # Leaf parser → stamp its canonical path, then inject the blanket flags.
         cmd_key = " ".join(prefix)
+        parser.set_defaults(**{_COMMAND_PATH_DEST: cmd_key})
         if cmd_key not in _AGENT_FLAG_EXCLUDE and not _has_option(parser, "--agent"):
             _add_agent_flag(parser, advertise=cmd_key in AGENT_FLAG_COMMANDS)
         if not _has_option(parser, "--box"):
             _add_box_flag(parser, advertise=cmd_key in BOX_FLAG_COMMANDS)
         return
-    # Group parser → recurse into each named subparser.  ⚑ A parser can BOTH
-    # have subparsers AND be runnable via set_defaults(func=...) as a fallback
-    # (e.g. ``box`` defaults to list); those fallbacks take no subject, so not
-    # injecting on the group is correct.
+    # Group parser → recurse into each DISTINCT subparser, under the first name
+    # it was registered with.  ⚑ ``add_parser(name, aliases=[...])`` puts the
+    # canonical name into ``choices`` first and each alias after it, all mapped
+    # to the SAME parser object; skipping the repeats is what makes the stamped
+    # path canonical, so ``box mv`` is judged as ``box move``.
+    # ⚑ A parser can BOTH have subparsers AND be runnable via
+    # set_defaults(func=...) as a fallback (e.g. ``box`` defaults to list); those
+    # fallbacks take no subject, so not injecting on the group is correct.
+    seen: set[int] = set()
     for name, child in subparsers_action.choices.items():
+        if id(child) in seen:
+            continue
+        seen.add(id(child))
         _walk(child, prefix=(*prefix, name))
 
 
@@ -356,7 +388,18 @@ def command_key(args: argparse.Namespace) -> str:
 
     Mirrors the keys in :data:`AGENT_FLAG_COMMANDS` / :data:`BOX_FLAG_COMMANDS`,
     joining a command and its subcommand with a single space.
+
+    ⚑ The CANONICAL path stamped by :func:`_walk` wins when present, so an
+    argparse ALIAS is judged as the command it aliases: argparse stores the name
+    the user TYPED in the subcommand dest, which would otherwise make ``box mv``
+    a different command from ``box move`` and let one spelling of one parser
+    accept a flag the other refuses.  The typed-name reconstruction below stays
+    as the fallback for a namespace built by hand (tests) or by a parser tree
+    that never went through :func:`inject_blanket_flags`.
     """
+    stamped = getattr(args, _COMMAND_PATH_DEST, None)
+    if isinstance(stamped, str) and stamped:
+        return stamped
     command = getattr(args, "command", None)
     if not isinstance(command, str) or not command:
         return ""
