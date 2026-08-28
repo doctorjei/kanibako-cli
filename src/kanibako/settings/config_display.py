@@ -20,7 +20,7 @@ lives is :mod:`kanibako.settings.config_dest`; nothing here answers any of those
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 from kanibako.settings.config_io import load_doc
 from kanibako.settings.kb_store import __MISSING__
@@ -222,6 +222,7 @@ def _print_pref_block(snapshot: Any, out: Any) -> None:
 
 def _print_category_block(
     snapshot: Any, error: str | None, out: Any, box_ctx: Any,
+    declared_by: "Mapping[str, str] | None" = None,
 ) -> None:
     """Render the ``--effective`` PATH-DELIVERY block (spec §0; box scope, D6).
 
@@ -233,6 +234,14 @@ def _print_category_block(
     (``agent_select.launch_resolve_ctx``, the ONE builder), needed because an arm KEY
     still spells the destination the user WROTE while the arbitrated map is keyed by
     the resolved guest path — see the pairing below.
+
+    *declared_by* is the SAME launch's ``LaunchDeliveries.declared_by`` — the fold's
+    own record of which declaration took each destination — and it is what lets a LOSS
+    name the key that beat it rather than only the path.  ⚑ IT IS HANDED IN, and that
+    is the whole point: this display folds IN PROCESS (``commands.box._parser`` builds
+    the snapshot per command), so the map exists at the moment the block runs; the
+    collapsed leaf it is paired against carries no key and may not be taught to
+    (``store_collapse.CollapsedStore``).  Omitted, every phrase is exactly what it was.
 
     The ABSTRACT half then lists every ``common`` / ``caches`` / ``seeded``
     declaration with what the box RECEIVES for it indented beneath — keyspec
@@ -382,7 +391,10 @@ def _print_category_block(
             print(f"  {key} = {entry.src} -> {dest}{opts}", file=out)
             continue
         print(f"  {key} = {dest}{opts}  (declared: {entry.src})", file=out)
-        print(f"    {derivation_result(derivation)}", file=out)
+        # ⚑ THE SAME KEYS THE ABSTRACT HALF BELOW GETS. A concrete row loses to a mask
+        # exactly as an abstract one does — it is the case this whole pairing was added
+        # for — so keying one half and not the other would leave the acute case bare.
+        print(f"    {derivation_result(derivation, declared_by)}", file=out)
 
     # ABSTRACT declarations, each with THE DELIVERY THE BOX ACTUALLY RECEIVES.
     #
@@ -408,7 +420,7 @@ def _print_category_block(
         print(f"  {row.declaration.key} = {row.declaration.src}", file=out)
         print(
             f"    {BINDING_DERIVATIONS_NODE}.{row.declaration.key} = "
-            f"{derivation_result(row)}",
+            f"{derivation_result(row, declared_by)}",
             file=out,
         )
 

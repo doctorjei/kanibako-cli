@@ -891,10 +891,13 @@ def derivation_result(row: Any, declared_by: Mapping[str, str] | None = None) ->
 
   *declared_by* is :attr:`CollapsedStore.declared_by` - the fold's own record of
   which declaration put each mount where. It is OPTIONAL because only a display that
-  FOLDS IN PROCESS has it: ``box show --effective`` reads a STORED snapshot, whose
-  ``meta.assembly.bindings`` leaf carries no key and cannot be taught to without a
-  closed-keyspace addition. Given it, the two LOSS phrases name the declaration that
-  took the destination; without it each phrase is exactly what it always was.
+  FOLDS IN PROCESS has it, and it must be HANDED IN: the ``meta.assembly.bindings``
+  leaf it is paired against carries no key and cannot be taught to without a
+  closed-keyspace addition, so a caller reading only the snapshot has no key to give.
+  Both displays fold and both pass it — ``box show --effective`` builds its own
+  snapshot per command and takes the map off ``LaunchDeliveries.declared_by``. Given
+  it, the two LOSS phrases name the declaration that took the destination; without it
+  each phrase is exactly what it always was.
 
   ⚑ BOTH MOUNT LOSSES TAKE IT, not just the mask. The mask was the acute case — a
   mask has no host source, so its row named nothing a reader could match to a file

@@ -817,7 +817,11 @@ def start_mocks():
                 # swallowed the kwarg would make every ``-e`` driven through this
                 # fixture silently INERT and the flag tests would be asserting the
                 # harness rather than the code.
-                _install_assembly_collapse(
+                # ⚑ ITS RETURN VALUE IS THE FOLD'S ``declared_by``, and it goes onto the
+                # carrier below exactly as the orchestrator puts it there. Dropping it
+                # would leave every display driven through this fixture printing a loss
+                # with no key — the harness asserting the old behaviour.
+                _declared_by = _install_assembly_collapse(
                     snap, delivered, whole_box=True, cli_env=kw.get("cli_env"),
                 )
                 # The carrier the orchestrator returns second, built here BY THE SAME
@@ -825,6 +829,7 @@ def start_mocks():
                 # would be a second producer in the harness.
                 deliveries = launch_deliveries(
                     delivered, agent_dests=_agent_delivered_dests(delivered),
+                    declared_by=_declared_by,
                 )
                 # ⚑ DELIBERATE OMISSION: the real orchestrator also installs the
                 # ``binding_derivations.*`` materialisation (``derive_binding_keys``) and

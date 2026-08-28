@@ -1351,6 +1351,7 @@ def show_config(
     category_snapshot: Any = None,
     category_ctx: Any = None,
     category_error: str | None = None,
+    category_declared_by: Any = None,
 ) -> int:
     """Display config values — overrides only, or the full resolved view.  Returns an exit code."""
     out = file or sys.stdout
@@ -1406,9 +1407,13 @@ def show_config(
         # ⚑ *category_ctx* travels WITH the snapshot and is required by it: the block
         # resolves each arm's written destination to the guest path the arbitrated map
         # is keyed by, and only the launch's own ctx spells those the same way.
+        # ⚑ *category_declared_by* travels with it for the same reason and from the same
+        # resolve — it is the fold's dest → declaring-key record, the half the collapsed
+        # leaf cannot carry, and without it a loss names a path but no key to go edit.
         if category_error is not None or category_snapshot is not None:
             _print_category_block(
                 category_snapshot, category_error, out, category_ctx,
+                category_declared_by,
             )
 
         # ⚑ Env vars come from the resolved BOX VIEW and ONLY that — never from the retired

@@ -1994,6 +1994,7 @@ def _run_box_config(args: argparse.Namespace) -> int:
         category_snapshot = None
         category_ctx = None
         category_error = None
+        category_declared_by = None
         if args.effective:
             from kanibako.settings.agent_config import agent_settings_path
             from kanibako.settings.agent_file import load as load_agent_file
@@ -2050,7 +2051,12 @@ def _run_box_config(args: argparse.Namespace) -> int:
                 # destination resolution and the collapse's cannot disagree about what
                 # ``$XDG_*`` / ``$AGENT`` / ``~`` mean.
                 category_ctx = launch_resolve_ctx(std, proj, agent_id)
-                category_snapshot, _deliveries = _resolve_launch_snapshot(
+                # ⚑ THE CARRIER IS KEPT, not discarded: this resolve FOLDS IN PROCESS,
+                # so ``declared_by`` — which declaration took each destination — is
+                # live right here.  It is not on the snapshot and never can be (a
+                # fourth ``meta.assembly`` leaf is a closed-keyspace addition), so the
+                # display is HANDED it or prints a loss with no key to act on.
+                category_snapshot, deliveries = _resolve_launch_snapshot(
                     std=std, proj=proj, agent_name=agent_id,
                     system_settings_path=std.settings,
                     agent_cfg_path=agent_cfg_path,
@@ -2075,6 +2081,7 @@ def _run_box_config(args: argparse.Namespace) -> int:
                         else None
                     ),
                 )
+                category_declared_by = deliveries.declared_by
                 # ⚑ The SAME helper the launch uses, off the SAME collapsed leaf
                 # (``meta.assembly.env``), so the display cannot claim an env the box
                 # will not get.  It needs the RESOLVE — hence its position here.
@@ -2096,6 +2103,7 @@ def _run_box_config(args: argparse.Namespace) -> int:
             category_snapshot=category_snapshot,
             category_ctx=category_ctx,
             category_error=category_error,
+            category_declared_by=category_declared_by,
         )
 
     if action == ConfigAction.get:

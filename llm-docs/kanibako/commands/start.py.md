@@ -276,6 +276,21 @@ So `_install_assembly_collapse` gates each leaf on its OWN facts:
 | `seeded` | the seed arm folds |
 | `bindings`, `synced` | the seed arm folds AND this is a WHOLE-BOX resolve AND the bind fold does not refuse AND every `synced` dest is COVERED |
 
+### The fourth field leaves as a RETURN VALUE, not a leaf
+
+`collapse_store_shapes` produces four things and only three are written. The fourth,
+`CollapsedStore.declared_by` (dest → the declaration key that took it), **may not become a
+`meta.assembly` leaf** — that is a closed-keyspace addition, a spec and manifest edit, and not the
+code's to make. So `_install_assembly_collapse` **returns** it: `{}` on a narrow resolve, the fold's
+map on a whole-box one. `_resolve_launch_snapshot` puts it on `LaunchDeliveries.declared_by`
+(section below), and `box show --effective` reads it from there.
+
+⚑ **That display FOLDS IN PROCESS**, per command (`commands/box/_parser.py` builds its own snapshot
+through this same resolve), which is why it can have the map at all — and why the map it prints from
+is the SAME fold's as the `meta.assembly.bindings` it pairs against. 🛑 It cannot be re-derived from
+the finished map: a sweep drops a mask's row together with the mount it named, so two scopes' keys
+can name one destination with only one of them the occupant.
+
 ### The coverage refusal sits between the fold and the leaves
 
 ⚖️ **RULED 2026-08-28** — *"we should be checking that the paths resolve"*. Immediately after
@@ -452,6 +467,7 @@ every consumer onto it:
 | the secret mounts | `_emit_secret_mounts` filtering `reconciled.mounts` | `deliveries.secrets` |
 | the agent-delivery dests | `_agent_delivered_dests(reconciled.mounts)` | `deliveries.agent_dests` |
 | the narrow bind maps | `_narrow_bind_map(_img_rec.mounts)` | `deliveries.narrow_bindings` |
+| the fold's declaring keys | *(nothing — the display printed bare phrases)* | `deliveries.declared_by`, read by `box show --effective` |
 
 🛑 **6-R3 THEN DELETED THE ROUTE.** `_resolve_launch_snapshot` returns `(snapshot, deliveries)`;
 `reconcile_categories`, `ReconciledCategories`, `_resolve_dest_group`, `_resolve_mount_group`,

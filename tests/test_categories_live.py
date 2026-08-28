@@ -1520,6 +1520,11 @@ class TestForgedDerivationsTableNeverEntersTheMerge:
 
 
 def _assembled(categories: dict):
+    """The snapshot half of :func:`_assembled_pair`, for a caller that needs no keys."""
+    return _assembled_pair(categories)[0]
+
+
+def _assembled_pair(categories: dict):
     """A snapshot carried through the WHOLE chain a launch takes, and its entries.
 
     floor -> ``build_launch_snapshot`` -> ``snapshot_category_entries`` ->
@@ -1530,6 +1535,11 @@ def _assembled(categories: dict):
 
     ``meta.box.home`` is written directly because it is a DERIVED key the floor
     below does not materialise; the assembly seam refuses without it.
+
+    Returns ``(snapshot, declared_by)``.  ⚑ THE SECOND HALF IS THE SEAM'S OWN RETURN
+    VALUE, not a leaf and not a second fold: at launch it rides out on
+    ``LaunchDeliveries.declared_by``, and taking it from the same call the leaves come
+    from is what makes a display's key and its mount ONE fold's answer.
     """
     from kanibako.commands.start import (
         _install_assembly_collapse,
@@ -1558,8 +1568,8 @@ def _assembled(categories: dict):
     snap.insert_segments(("meta", "box", "home"), "/host/box/home")
     entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx)
     _install_derived_bindings(snap, derive_binding_keys(entries))
-    _install_assembly_collapse(snap, entries, whole_box=True)
-    return snap
+    declared_by = _install_assembly_collapse(snap, entries, whole_box=True)
+    return snap, declared_by
 
 
 def _paired(snap) -> dict:
@@ -1735,13 +1745,18 @@ def _block(categories: dict) -> str:
     ⚑ ``make_ctx()`` is the SAME ctx ``_assembled`` resolved the snapshot with — the
     launch hands the display its own, and a display given a different one would spell
     a ``$XDG_*`` destination differently from the map it is pairing against.
+
+    ⚑ AND THE SAME FOLD'S ``declared_by``, for the same reason: the launch seam hands
+    the display the map it just folded, so a key printed here is the key of the mount
+    that actually survived rather than one re-derived from the finished map.
     """
     import io
 
     from kanibako.settings.config_display import _print_category_block
 
     buf = io.StringIO()
-    _print_category_block(_assembled(categories), None, buf, make_ctx())
+    snapshot, declared_by = _assembled_pair(categories)
+    _print_category_block(snapshot, None, buf, make_ctx(), declared_by)
     return buf.getvalue()
 
 
@@ -1776,7 +1791,13 @@ class TestAConcreteBindingTheCollapseSwallowedIsNotShownAsAMount:
     #: ``"bindings.ro"`` sorts before ``"masks"``, so a SAME-scope mask always arrives
     #: second and takes the point, while a LOWER-scope mask arrives first and loses it.
     #: Both directions are pinned below; neither is the inherent winner.
-    _MASK_PHRASE = "no mount — the mask at "
+    #:
+    #: ⚑ IT NAMES THE MASK'S KEY. The phrase is keyed whenever the display was handed
+    #: the fold's ``declared_by``, and ``_block`` hands it the one the same fold
+    #: returned — the arrangement a launch makes. The key is the thing a user goes and
+    #: edits; the destination alone is not, and for a mask ABOVE the declaration it is
+    #: not even a path their own key spells.
+    _MASK_PHRASE = "no mount — the mask declared by "
 
     def test_a_mask_the_collapse_gave_the_point_to_is_not_printed_as_a_mount(self):
         """Same scope, same destination: the mask arrives second and deletes the bind."""
@@ -1793,7 +1814,10 @@ class TestAConcreteBindingTheCollapseSwallowedIsNotShownAsAMount:
             "mount at a destination the box sees nothing at"
         )
         assert "box.bindings.ro./opt/arb = /opt/arb  (declared: /src)" in text, text
-        assert f"{self._MASK_PHRASE}/opt/arb covers this destination" in text, text
+        assert (
+            f"{self._MASK_PHRASE}'box.masks./opt/arb' at /opt/arb covers this destination"
+            in text
+        ), text
 
     def test_a_mask_that_SWEPT_a_binding_from_a_parent_is_named(self):
         """The mask is the PARENT and arrives second, so it deletes the child bind.
@@ -1819,7 +1843,10 @@ class TestAConcreteBindingTheCollapseSwallowedIsNotShownAsAMount:
 
         text = _block(categories)
         assert "/src -> /opt/arb/inner" not in text, text
-        assert f"{self._MASK_PHRASE}/opt/arb covers this destination" in text, text
+        assert (
+            f"{self._MASK_PHRASE}'box.masks./opt/arb' at /opt/arb covers this destination"
+            in text
+        ), text
 
     def test_a_LOWER_scopes_binding_a_box_mask_swallowed_is_named_too(self):
         """The losing row need not be the box's own — the walk covers every scope."""
@@ -1832,7 +1859,10 @@ class TestAConcreteBindingTheCollapseSwallowedIsNotShownAsAMount:
         text = _block(categories)
         assert "/src -> /opt/arb" not in text, text
         assert "system.bindings.ro./opt/arb = /opt/arb  (declared: /src)" in text, text
-        assert f"{self._MASK_PHRASE}/opt/arb covers this destination" in text, text
+        assert (
+            f"{self._MASK_PHRASE}'box.masks./opt/arb' at /opt/arb covers this destination"
+            in text
+        ), text
 
     def test_a_binding_that_SUPERSEDES_a_mask_still_prints_as_a_mount(self):
         """🛑 THE CASE A FIX MUST NOT BREAK — supersession runs BOTH WAYS (spec ``:146``).
@@ -1927,7 +1957,13 @@ class TestAConcreteBindingTheCollapseSwallowedIsNotShownAsAMount:
             "box.bindings.ro.$XDG_DATA_HOME/z = $XDG_DATA_HOME/z  (declared: /src)"
             in text
         ), text
-        assert f"{self._MASK_PHRASE}/data/z covers this destination" in text, text
+        # ⚑ THE KEY KEEPS THE SPELLING THE USER WROTE while the destination is the
+        # RESOLVED one — the two halves of the same row, and the key is the half they
+        # can go and edit.
+        assert (
+            f"{self._MASK_PHRASE}'box.masks.$XDG_DATA_HOME/z' at /data/z covers this "
+            "destination" in text
+        ), text
 
     def test_a_masked_XDG_dest_is_caught_by_a_mask_spelled_the_OTHER_WAY(self):
         """The two spellings are ONE destination, and arbitration is where that lands.
@@ -1945,7 +1981,10 @@ class TestAConcreteBindingTheCollapseSwallowedIsNotShownAsAMount:
 
         text = _block(categories)
         assert "/src -> $XDG_DATA_HOME/z" not in text, text
-        assert f"{self._MASK_PHRASE}/data/z covers this destination" in text, text
+        assert (
+            f"{self._MASK_PHRASE}'box.masks./data/z' at /data/z covers this destination"
+            in text
+        ), text
 
     def test_an_ESCAPED_dollar_is_a_literal_and_pairs_as_one(self):
         """⚑ ``\\$`` IS A LITERAL DOLLAR THE USER MEANT, and it survives the round trip.
@@ -1970,7 +2009,10 @@ class TestAConcreteBindingTheCollapseSwallowedIsNotShownAsAMount:
 
         text = _block(categories)
         assert "/src -> \\$XDG_DATA_HOME/z" not in text, text
-        assert f"{self._MASK_PHRASE}$XDG_DATA_HOME/z covers this destination" in text, text
+        assert (
+            f"{self._MASK_PHRASE}'box.masks.\\$XDG_DATA_HOME/z' at $XDG_DATA_HOME/z "
+            "covers this destination" in text
+        ), text
 
     def test_the_containment_test_is_SEPARATOR_GUARDED(self):
         """``/opt/arb-x`` is not inside ``/opt/arb`` — a prefix is not a parent.
@@ -1985,3 +2027,177 @@ class TestAConcreteBindingTheCollapseSwallowedIsNotShownAsAMount:
         })
         assert "box.bindings.ro./opt/arb-x = /src -> /opt/arb-x" in text, text
         assert "no mount" not in text, text
+
+
+class TestALossInTheEffectiveBlockNamesTheDECLARATIONThatTookTheDestination:
+    """``box show --effective`` prints the KEY behind whatever beat a declaration.
+
+    ⚑⚑ THE ASYMMETRY THIS CLOSES: ``workset share list --effective`` has passed the
+    fold's ``declared_by`` into ``store_collapse.derivation_result`` since it started
+    arbitrating; this display called the same function with the key argument omitted,
+    so it printed a loss naming a PATH and no key.  For a mask that is the acute case —
+    a mask has no host source, so the row named nothing a reader could match to
+    anything they had written, and where the mask sits ABOVE the declaration the
+    destination is not even a path their own key spells.
+
+    ⚑ THE MAP IS THE SAME FOLD'S, never a second one.  ``box show --effective`` builds
+    its snapshot in process, per command, and the seam that writes ``meta.assembly.*``
+    RETURNS the record beside them (``LaunchDeliveries.declared_by``).  It cannot be
+    re-derived from the finished map — a sweep drops a mask's row together with the
+    mount it named, so two scopes' keys can name one dest with only one the occupant —
+    and it may not become a fourth ``meta.assembly`` leaf, which would be a
+    closed-keyspace addition.
+
+    🛑 EVERY CASE HERE IS A LOSS THE COLLAPSE ACTUALLY DECIDED, read off the arbitrated
+    map first.  A test written from the declarations would pass on a display that
+    merely spotted a mask among them, which is the wrong answer in both directions.
+    """
+
+    def test_an_ABSTRACT_declaration_a_mask_swallowed_names_the_masks_key(self):
+        """The abstract half — the ``binding_derivations`` line, not the arm row."""
+        categories = {
+            "agent.claude.common": {"~/x": ("/h/agent",)},
+            "box.masks": ["~/x"],
+        }
+        assert _collapsed(categories)["/home/agent/x"].src is None
+
+        text = _block(categories)
+        assert (
+            "binding_derivations.agent.claude.common./home/agent/x = (no mount — the "
+            "mask declared by 'box.masks.~/x' at /home/agent/x covers this destination"
+            in text
+        ), text
+
+    def test_a_mask_ABOVE_a_declaration_names_the_key_of_the_mask_that_SWEPT_it(self):
+        """🛑 THE CASE THE BARE PHRASE SERVED WORST: neither half was the user's own.
+
+        ``/home/agent/x`` is the mask's destination, and the declaration spells
+        ``~/x/y``; the swept dest is not in the collapsed map at all.  Without the key
+        the line gave a path the user's own key does not name and nothing else.
+        """
+        categories = {
+            "agent.claude.common": {"~/x/y": ("/h/agent",)},
+            "box.masks": ["~/x"],
+        }
+        assert "/home/agent/x/y" not in _collapsed(categories)
+
+        text = _block(categories)
+        assert (
+            "the mask declared by 'box.masks.~/x' at /home/agent/x covers this "
+            "destination" in text
+        ), text
+
+    def test_a_row_5_LOSER_names_the_declaration_that_took_its_destination(self):
+        """The §0 row-5 pair: the loser's line names the WINNER'S key, not its own.
+
+        ⚑ THE SUPERSEDED PHRASE TAKES THE KEY TOO.  It is the less acute case — the
+        line already carried the winner's host source — but a display that keyed the
+        mask and not this one would be the odd one out, and the source is not what a
+        user edits.
+        """
+        categories = {
+            "box.common": {"~/x": ("/h/common",)},
+            "box.caches": {"~/x": ("/h/caches",)},
+        }
+        assert _collapsed(categories)["/home/agent/x"].src == "/h/common"
+
+        text = _block(categories)
+        assert (
+            "binding_derivations.box.caches./home/agent/x = (no mount — the binding "
+            "declared by 'box.common./home/agent/x' of /h/common at /home/agent/x "
+            "occupies this destination)" in text
+        ), text
+        # The positive control: the WINNER is still printed as the mount it is.
+        assert (
+            "binding_derivations.box.common./home/agent/x = /h/common -> "
+            "/home/agent/x  [Z,U,rw]  (mount)" in text
+        ), text
+
+    def test_the_key_comes_from_the_FOLD_and_a_display_without_it_says_nothing_new(self):
+        """🛑 THE MUTATION GUARD — the keys are HANDED IN, never found in the snapshot.
+
+        Passing no map is the pre-change call, and it must degrade to the bare phrase
+        rather than to a wrong key: a display that could recover the key from
+        ``meta.assembly.bindings`` alone would mean the leaf carries provenance it is
+        spec-normatively not allowed to carry.
+        """
+        import io
+
+        from kanibako.settings.config_display import _print_category_block
+
+        categories = {
+            "box.bindings.ro": {"/opt/arb": ("/src",)},
+            "box.masks": ["/opt/arb"],
+        }
+        snapshot, declared_by = _assembled_pair(categories)
+        assert declared_by["/opt/arb"] == "box.masks./opt/arb", declared_by
+
+        buf = io.StringIO()
+        _print_category_block(snapshot, None, buf, make_ctx())
+        text = buf.getvalue()
+        assert "no mount — the mask at /opt/arb covers this destination" in text, text
+        assert "declared by" not in text, text
+
+
+class TestTheEffectiveDISPLAYSEAMCarriesTheDeclaringKeysEndToEnd:
+    """The two hops between the fold and the printed line, each proved on its own.
+
+    ⚑ The block-level cases above hand ``_print_category_block`` the map directly.
+    These pin the WIRE: the launch resolve must RETURN the keys, and ``show_config``
+    must forward them.  Neither is visible to a test that calls the block itself, and
+    a break in either one degrades SILENTLY — the phrase simply loses its key.
+    """
+
+    def test_the_real_launch_resolve_RETURNS_the_declaring_keys_on_its_carrier(
+        self, std, config, project_dir, tmp_path,
+    ):
+        """``LaunchDeliveries.declared_by`` off the REAL seam — what the display reads.
+
+        🛑 The map may not be a snapshot leaf, so this carrier is the only route out of
+        the resolve.  A seam that folded and dropped it would leave every consumer
+        looking at an empty map and reading it as "nothing declared anything".
+        """
+        from kanibako.commands.start import _resolve_launch_snapshot
+        from kanibako.settings.paths import resolve_project
+        from kanibako.targets.no_agent import NoAgentTarget
+
+        src = tmp_path / "masked"
+        src.mkdir()
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        _snapshot, deliveries = _resolve_launch_snapshot(
+            std=std, proj=proj, agent_name="claude",
+            system_settings_path=None, agent_cfg_path=None,
+            desc=None, install=None, target=NoAgentTarget(), agent_cfg=None,
+            deliver_creds=True, guarantee_create=False,
+            extra_default_categories={
+                "box.bindings.ro": {"/opt/arb": (str(src),)},
+                "box.masks": ["/opt/arb"],
+            },
+        )
+        assert deliveries.declared_by["/opt/arb"] == "box.masks./opt/arb", (
+            deliveries.declared_by
+        )
+
+    def test_show_config_FORWARDS_the_keys_into_the_category_block(self, tmp_path):
+        """``category_declared_by`` reaches the block, or the loss prints bare."""
+        import io
+
+        from kanibako.settings.config_interface import show_config
+
+        snapshot, declared_by = _assembled_pair({
+            "box.bindings.ro": {"/opt/arb": ("/src",)},
+            "box.masks": ["/opt/arb"],
+        })
+        buf = io.StringIO()
+        rc = show_config(
+            global_config_path=tmp_path / "kanibako_config.yaml",
+            effective=True, file=buf,
+            category_snapshot=snapshot, category_ctx=make_ctx(),
+            category_declared_by=declared_by,
+        )
+        text = buf.getvalue()
+        assert rc == 0, text
+        assert (
+            "no mount — the mask declared by 'box.masks./opt/arb' at /opt/arb "
+            "covers this destination" in text
+        ), text
