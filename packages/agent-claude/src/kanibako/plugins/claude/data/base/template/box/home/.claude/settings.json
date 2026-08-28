@@ -36,7 +36,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "~/canon/bible/general/scripts/hooks/startup.sh || true"
+            "command": "~/canon/bible/general/scripts/hooks/startup.sh \"$PPID\""
           }
         ]
       },
@@ -45,7 +45,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "~/canon/bible/general/scripts/hooks/resume.sh || true"
+            "command": "~/canon/bible/general/scripts/hooks/resume.sh \"$PPID\""
           }
         ]
       },
@@ -54,7 +54,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "~/canon/bible/general/scripts/hooks/clear-start.sh || true"
+            "command": "~/canon/bible/general/scripts/hooks/clear-start.sh \"$PPID\""
           }
         ]
       },
@@ -63,7 +63,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "~/canon/bible/general/scripts/hooks/compact.sh || true"
+            "command": "~/canon/bible/general/scripts/hooks/compact.sh \"$PPID\""
           }
         ]
       },
@@ -75,15 +75,6 @@
             "command": "python3 \"/opt/kanibako/kanibako/scripts/import-directives.py\" --additional-context \"$KANIBAKO_DIRECTIVE_SEED\" || true"
           }
         ]
-      },
-      {
-        "matcher": "startup|resume|clear|compact",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "d=\"${KANIBAKO_AGENT_MARKERS_DIR:-/tmp/kanibako/agents}\"; mkdir -p \"$d\" && printf %s \"$PPID\" > \"$d/$PPID\" || true"
-          }
-        ]
       }
     ],
     "SessionEnd": [
@@ -92,7 +83,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "~/canon/bible/general/scripts/hooks/clear-end.sh || true"
+            "command": "~/canon/bible/general/scripts/hooks/clear-end.sh \"$PPID\""
           }
         ]
       },
@@ -101,16 +92,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "~/canon/bible/general/scripts/hooks/end.sh || true"
-          }
-        ]
-      },
-      {
-        "matcher": "clear|logout|prompt_input_exit|other",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "d=\"${KANIBAKO_AGENT_MARKERS_DIR:-/tmp/kanibako/agents}\"; rm -f \"$d/$PPID\" || true"
+            "command": "~/canon/bible/general/scripts/hooks/end.sh \"$PPID\""
           }
         ]
       }
@@ -120,7 +102,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "~/canon/bible/general/scripts/hooks/stop.sh || true",
+            "command": "~/canon/bible/general/scripts/hooks/stop.sh",
             "timeout": 5
           }
         ]
