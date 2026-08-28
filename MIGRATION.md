@@ -46,7 +46,7 @@ config surfaces are removed outright: `box.agent_name`, `system.default_agent`, 
 mount category, and `system.base_template`. Directory layouts also move, on the host and
 inside boxes. In order of likely impact:
 
-1. **Your first `kanibako start` (or `create`, or `reauth`) after upgrading is a hard error
+1. **Your first `kanibako start` (or `create`, or `agent reauth`) after upgrading is a hard error
    until you run `kanibako setup`.** v1.8.0 raises the setup baseline (`SETUP_BCV`), so the
    `setup_completed` marker your v1.7.2 config recorded is too old for the running build and
    the setup-compatibility gate hard-blocks: `Error: This kanibako config (1.7.2) is too old
@@ -639,7 +639,7 @@ and the box-home seed lives two levels down (`global/template/box/home/`). What 
 happens when you upgrade a store that still has `global/base_template/` (the sequence is
 forced, not optional):
 
-1. Your first `start` / `create` / `reauth` hits the setup-compatibility gate: a hard rc 1
+1. Your first `start` / `create` / `agent reauth` hits the setup-compatibility gate: a hard rc 1
    error telling you to run `kanibako setup` (§2.12). Setup is what rebuilds the template
    store, and a setup run that could not rebuild it records no completion (§2.12), so the
    gate keeps erroring: you cannot create a box on the unmigrated store, and the "new box
@@ -907,7 +907,7 @@ and the lazy first-run installer never re-fires on an already-initialised host. 
 trigger for an upgrade is `setup`, and the **setup-compatibility gate forces it**: v1.8.0
 raises the setup baseline (`SETUP_BCV`), so the `setup_completed` marker your v1.7.2 config
 recorded is too old for the running build and every `start` / `box start` / `create` /
-`box create` / `reauth` / `agent reauth` hard-errors (rc 1) with `This kanibako config (1.7.2)
+`box create` / `agent reauth` hard-errors (rc 1) with `This kanibako config (1.7.2)
 is too old to auto-update. Re-run 'kanibako setup' before agent commands.`
 
 ⚑ The separate per-digest **template-staleness gate of the v1.7.x line is retired**. It read
