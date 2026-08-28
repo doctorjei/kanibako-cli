@@ -4981,6 +4981,12 @@ error, not a silent no-op):
   destination group (`--default/--standalone/--workset` on `move`/`convert`), which is
   an orthogonal axis: `kanibako box convert --box mybox --standalone` works.
 
+⚑ **Parsing is universal; the help is not.** Each flag is listed in a command's `--help` only where
+it applies — offering `--box` under `rig list`, or `--agent` under `system get`, would advertise a
+flag that command answers with an error. Passing one anyway still reaches that error, and the error
+names the commands the flag does apply to, so a misplaced flag is told where to go rather than
+merely rejected.
+
 ### 10.5 `-p`/`--project` removed (clean break)
 
 The old `refresh -p/--project` flag is **removed outright** with no deprecation alias.

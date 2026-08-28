@@ -9,10 +9,12 @@ spelling of the ``--null`` suppression flag every scope's ``set`` verb wires
 class that lets a flag be written in ANY position, including between two
 positionals (B-5).
 
-⚑ **Parse everywhere, relevance per-command.**  Both blanket flags PARSE on
-every command, but each is only MEANINGFUL for a declared set; passing one to an
-UNRELATED command is a hard error, never a silent no-op
-(:func:`check_flag_relevance`).
+⚑ **Parse everywhere, advertise and mean it only where declared.**  Both blanket
+flags PARSE on every command, but each is only MEANINGFUL for a declared set;
+passing one to an UNRELATED command is a hard error, never a silent no-op
+(:func:`check_flag_relevance`).  Because it is an error there, it is also
+``help=argparse.SUPPRESS`` there — ``--help`` never offers a flag the command
+would refuse.
 
 What each flag selects, the full case enumeration and the provenance:
 ``llm-docs/kanibako/commands/flags.py.md``.
@@ -81,7 +83,14 @@ _AGENT_FLAG_EXCLUDE: frozenset[str] = frozenset({"setup"})
 # ⚑ Both adders below pass ``default=None``: an un-given flag installs NOTHING —
 # no default agent, no default subject.  The CLI is its own cascade level, above
 # ``box``, and it supplies a value only when the user actually typed one.
-def _add_agent_flag(parser: argparse.ArgumentParser) -> None:
+#
+# ⚑⚑ *advertise* separates PARSING from ADVERTISING.  The flag is added to every
+# leaf either way, so it always parses and relevance stays a post-parse judgement
+# with an enumerating message; ``advertise=False`` only withholds the help text,
+# so a command that would REFUSE the flag does not offer it first.
+def _add_agent_flag(
+    parser: argparse.ArgumentParser, *, advertise: bool,
+) -> None:
     parser.add_argument(
         "--agent",
         metavar="NAME",
@@ -89,11 +98,11 @@ def _add_agent_flag(parser: argparse.ArgumentParser) -> None:
         help=(
             "Use agent NAME for this invocation (ephemeral; top of the "
             "resolution cascade, not persisted)."
-        ),
+        ) if advertise else argparse.SUPPRESS,
     )
 
 
-def _add_box_flag(parser: argparse.ArgumentParser) -> None:
+def _add_box_flag(parser: argparse.ArgumentParser, *, advertise: bool) -> None:
     parser.add_argument(
         "--box",
         metavar="VALUE",
@@ -101,7 +110,7 @@ def _add_box_flag(parser: argparse.ArgumentParser) -> None:
         help=(
             "Act on box VALUE (a registered box name or a path), even when not "
             "the current directory."
-        ),
+        ) if advertise else argparse.SUPPRESS,
     )
 
 
@@ -305,6 +314,12 @@ def inject_blanket_flags(parser: argparse.ArgumentParser) -> None:
     :data:`_AGENT_FLAG_EXCLUDE`) keeps its own ``--agent`` and gets only the
     blanket ``--box``; a parser that already defines an option string is left
     alone for that option (defensive — no duplicate-flag crash).
+
+    ⚑ A leaf outside a flag's declared set gets the flag with
+    ``help=argparse.SUPPRESS``: it still parses, so passing it still reaches
+    :func:`check_flag_relevance` and its enumerating error rather than argparse's
+    bare "unrecognized arguments" — but ``--help`` no longer offers a flag the
+    command would refuse.
     """
     _walk(parser, prefix=())
 
@@ -315,9 +330,9 @@ def _walk(parser: argparse.ArgumentParser, prefix: tuple[str, ...]) -> None:
         # Leaf parser → inject the blanket flags.
         cmd_key = " ".join(prefix)
         if cmd_key not in _AGENT_FLAG_EXCLUDE and not _has_option(parser, "--agent"):
-            _add_agent_flag(parser)
+            _add_agent_flag(parser, advertise=cmd_key in AGENT_FLAG_COMMANDS)
         if not _has_option(parser, "--box"):
-            _add_box_flag(parser)
+            _add_box_flag(parser, advertise=cmd_key in BOX_FLAG_COMMANDS)
         return
     # Group parser → recurse into each named subparser.  ⚑ A parser can BOTH
     # have subparsers AND be runnable via set_defaults(func=...) as a fallback

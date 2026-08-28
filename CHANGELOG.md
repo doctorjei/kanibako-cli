@@ -299,6 +299,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`box get` and `workset get` answered `(not set)` for a per-agent key that was set.** A key
+  naming an agent node — `agent.<node>.model`, `agent.<node>.endpoint`,
+  `agent.<node>.secret_path.<VAR>` — is stored in that node's own `agents/<node>/agent.yaml`, and
+  the read finds that file through the agents root. `system get` passed the agents root; the `box`
+  and `workset` handlers did not, so every such read resolved to nothing and printed `(not set)` at
+  exit 0 — for a value `kanibako system get` reported correctly, on the same key, in the same
+  install. Three nouns over one keyspace, giving two different answers. Both handlers now thread
+  the agents root the way `system get` always has, so the three agree. Nothing else moves: a node
+  key that genuinely is not set still answers `(not set)` at exit 0, and the write verbs are
+  untouched — `set` and `reset` refuse an `agent.*` key from the box or workset scope by name, as
+  they always have, because a config set never writes upward.
+
+- **`--help` advertised `--agent` on 96 commands that refuse it, and `--box` on 82.** `box set`,
+  `system get`, `rig list` and most of the rest of the tree listed both flags in the usage line and
+  the options list; passing one exited 2 with *"--agent is not valid for 'system get'"*. The
+  refusal is the correct half. `--agent` picks the agent for an invocation that runs one, and
+  `--box` names the subject box for a command that acts on one, so a read like `box get` or a
+  registry listing like `rig list` has nothing to do with either. What was wrong was offering them
+  first: help that lists a flag the command answers with exit 2 promises a refusal. Each flag is
+  now shown only where it applies — `--agent` on `start`, `create`, `reauth` and their `box` /
+  `agent` spellings; `--box` on the commands that take a subject box. Two commands stop advertising
+  a flag they had merely been ignoring, too: `shell` and `box shell` never launch an agent, and
+  their `--agent` prints a note and moves on. **Nothing about what is accepted changed.** Every
+  command still parses both flags, so a misplaced one still gets the error that enumerates where it
+  does apply, with its exit code, instead of argparse's bare *"unrecognized arguments"*. To choose
+  the agent a box uses, set it rather than passing it: `kanibako box set pref.system.agent=<agent>`.
+
 - **A claude box leaked one agent liveness marker per session start, and hid a failing hook layer
   while doing it.** The `~/.claude/settings.json` kanibako seeds into a claude box invoked each of
   the bible session hooks as a compound command — `…/scripts/hooks/startup.sh || true` — and both

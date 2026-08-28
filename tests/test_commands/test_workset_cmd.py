@@ -1664,6 +1664,64 @@ class TestWorksetGetIsWiredToTheClosedKeyspace:
         assert "undeclared" not in capsys.readouterr().out
 
 
+class TestWorksetGetThreadsTheAgentsRoot:
+    """``workset get <ws> agent.<node>.<key>`` reads the node's own file.
+
+    The twin of the box noun's pin. The per-node families live in
+    ``agents/<node>/agent.yaml``, reachable only through ``get_config_value``'s
+    ``agents_root``; the handler withheld it, so the read answered "(not set)" at
+    rc 0 for a value ``system get`` reported correctly on the same key.
+
+    ⚑ MUTATION-PROVED: drop ``agents_root=std.agents`` from the ``get`` branch of
+    ``commands/workset_cmd.py`` and the read-back test reds on "(not set)".
+    """
+
+    def _ws_and_agents_root(self, config_file, tmp_home, name):
+        std = load_std_paths(load_config(config_file))
+        create_workset(name, tmp_home / f"ws_{name}", std)
+        return std.agents
+
+    def _write_node(self, agents_root, key, value):
+        """Write through the PRODUCTION set route, so this pins the read rather than
+        a hand-built file shape the writer would never produce."""
+        from kanibako.settings.config_interface import set_config_value
+        from kanibako.settings.config_keys import ConfigLevel
+
+        msg = set_config_value(
+            key, value,
+            config_path=agents_root.parent / "unused-workset.yaml",
+            command_scope=ConfigLevel.system,
+            agents_root=agents_root,
+        )
+        assert not msg.startswith("Error:"), msg
+
+    def test_a_persona_agent_key_reads_back(self, config_file, tmp_home, capsys):
+        from kanibako.commands.workset_cmd import run_get
+
+        agents_root = self._ws_and_agents_root(config_file, tmp_home, "nodews")
+        self._write_node(agents_root, "agent.claude.model", "opus-test")
+
+        rc = run_get(argparse.Namespace(workset="nodews", key="agent.claude.model"))
+        assert rc == 0
+        captured = capsys.readouterr()
+        assert captured.out.strip() == "opus-test"
+        assert "(not set)" not in captured.err
+
+    def test_an_unset_node_key_is_still_honestly_not_set(
+        self, config_file, tmp_home, capsys,
+    ):
+        """The threading must not fabricate: with nothing stored, "(not set)"
+        stays "(not set)"."""
+        from kanibako.commands.workset_cmd import run_get
+
+        self._ws_and_agents_root(config_file, tmp_home, "nonodews")
+        rc = run_get(argparse.Namespace(
+            workset="nonodews", key="agent.claude.model",
+        ))
+        assert rc == 0
+        assert "(not set)" in capsys.readouterr().err
+
+
 class TestWorksetShareListArbitrates:
     """``workset share list --effective`` must answer with the COLLAPSE, not the entry list.
 
