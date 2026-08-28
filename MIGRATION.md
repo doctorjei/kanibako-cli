@@ -3639,10 +3639,9 @@ independently of the base and depend on **`kanibako-cli`** with **no version pin
    `data/base/template/box/home/<files>` (was `data/template/<files>`) and
    `data/base/canon/handbook/directives/SYS_AGENT.md` (the plugin's handbook chapter). The
    bible chapter ships at `data/rom/directives/ROM_AGENT.md`, bound at `~/canon/bible/agent`.
-   The base carries a transition arm (`templates._packaged_agent_store`): a plugin with no
-   `data/base` falls back to its legacy `data/template`, installed to the destination that
-   reproduces the old delivery byte-for-byte — so an old published plugin keeps working
-   against the new base. The `synced` credential destinations becoming host-side paths is
+   There is **no** transition arm: `templates._packaged_agent_store` reads `data/base` only, so
+   a plugin still shipping `data/template` contributes NOTHING — silently, with no error.
+   Republish against `data/base`. The `synced` credential destinations becoming host-side paths is
    still open plugin-package work. ⚑ **Correction: the base-side applier does not branch on a
    `dest_space` field** — there is no such field, and its absence is deliberate
    (`settings/settings_categories.py:527`: "THERE IS NO `dest_space` FIELD, AND ITS ABSENCE IS

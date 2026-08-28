@@ -548,9 +548,8 @@ a (failing) copy-onto-self, so the existing tree is reused instead.
 ```_STANDALONE_ROOT_ARTIFACTS```
 Top-level entries that are kanibako artifacts (NOT workspace content) and so must STAY at the
 standalone root rather than move into the `workspace/` subdir during a convert (drift H
-consolidation): `box_data/`, the `workspace` subdir being populated, `vault/`, BOTH root metas
-`workset.yaml` and `box.yaml` (drift I), the two legacy marker dirs `.kanibako` / `kanibako`,
-and `.kanibako.lock`.
+consolidation) — six entries: `box_data/`, the `workspace` subdir being populated, `vault/`, BOTH
+root metas `workset.yaml` and `box.yaml` (drift I), and `.kanibako.lock`.
 
 ```def _consolidate_workspace_subdir(root: Path, workspace_subdir: Path, unwind: _Unwind) -> None```
 Move the project's top-level files into the `workspace/` subdir.

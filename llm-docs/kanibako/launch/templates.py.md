@@ -79,9 +79,10 @@ which is why the two constants no longer sit in the same table.
 
 `AGENT_TEMPLATE_STORE_REL = "template"` is the `template` entry of a SCOPE STORE — the subtree the
 per-agent and per-workset layer SOURCES (`@agent.<a>.template` / `@workset.template`) point at by
-default. It is named because three things must agree on it and one of them is a transition arm
-whose failure is silent: the layer-2/3 source key defaults, the legacy-payload landing path, and
-the whitelist entry that permits it.
+default. It is named because three things must agree on it and one of them fails SILENTLY: the
+layer-2/3 source key defaults, the whitelist entry that permits it, and the persona-share symlink
+(`commands.start.ensure_persona_share_symlinks`) — spell that one differently and the L7
+guarantee-create makes a real directory beside the link, and sharing simply stops.
 
 ## `template_seed_defaults` — the DEFAULT-category table
 
@@ -237,7 +238,8 @@ longer name is asserting.
 
 *scope* (`"box"` / `"agent"` / `"workset"`) turns on the §2a WHITELIST, evaluated on each entry's
 path RELATIVE TO *dest_root* — so it is correct both for a whole-store copy (*dest* IS the store
-root) and for a copy into a subdirectory of one (the legacy plugin-payload arm). It is OMITTED only
+root) and for a copy into a subdirectory of one (the workset stamp's `canon_only` narrowing, which
+passes `dest_root=workset_path`). It is OMITTED only
 where the dest is not a scope store at all: the box SEED's dest is key-fixed at `home`, the box
 handbook host-template copy's is key-fixed at `canon/handbook`
 (`install_box_handbook_template`), and the packaged handbook's dest is inside the canon root.
@@ -307,10 +309,10 @@ RAISES unless *store_rel*'s leading components are inside *scope*'s allow-list.
 
 ⚑ *store_rel* is relative to the SCOPE STORE ROOT (`copy_tree`'s *dest_root*), NOT to the copy's
 source. The two coincide for a whole-store copy, but they DIVERGE the moment a copy targets a
-subdirectory of a store — the legacy plugin-payload arm lands `data/template/**` at
-`<store>/template/box/home`, where the source-relative path (`.claude.json`) says nothing about
+subdirectory of a store — the workset stamp's `canon_only` arm copies the mould's `canon/` into
+`<workset>/canon/`, where the source-relative path (`handbook/SYS_CONTENTS.md`) says nothing about
 which top-level store entry is being written and the store-relative path
-(`template/box/home/.claude.json`) says exactly that. Checking the wrong one would either refuse a
+(`canon/handbook/SYS_CONTENTS.md`) says exactly that. Checking the wrong one would either refuse a
 legal copy or wave through an illegal one.
 
 ### `_assert_contained`
@@ -329,8 +331,8 @@ The content ships as STATIC files inside the installed packages (mirroring how
 core   -> kanibako.data resource global/template/, whose FOUR subtrees
           (box, workset, agent_default, handbook) each have their OWN
           destination — the root is never copied wholesale (P-S2)
-plugin -> kanibako.plugins.<agent> resource data/base/ (RENAMED from
-          data/template — D4), the agent STORE payload
+plugin -> kanibako.plugins.<agent> resource data/base/ (D4), the agent
+          STORE payload
 ```
 
 Destinations, and their OWNERS, because the copy rule follows the owner:
@@ -401,50 +403,29 @@ used to consume the digest). ⚑ Repointed from the retired `global/rom/playbook
 root when rom became the canon: the rom ROOT is now the digest root, so a file added anywhere under
 `rom/` is watched.
 
-## The plugin payload, and the legacy transition arm
+## The plugin payload
 
-`PLUGIN_STORE_PAYLOAD_DIRNAME = "base"` is a plugin's packaged AGENT-STORE PAYLOAD dir. ⚑ RENAMED
-`data/template` → `data/base` (D4): the dir is stamped into the agent STORE ROOT
-(`@config.agents/<agent>`), of which `template/` is only one entry — it also carries
-`canon/handbook/` and may carry `common/` — so calling the whole thing "template" named it after
-one of its children.
+`PLUGIN_STORE_PAYLOAD_DIRNAME = "base"` is a plugin's packaged AGENT-STORE PAYLOAD dir, and the ONE
+spelling (D4). The dir is stamped into the agent STORE ROOT (`@config.agents/<agent>`), of which
+`template/` is only one entry — it also carries `canon/handbook/` and may carry `common/` — so
+naming the whole thing "template" would name it after one of its children.
 
-`PLUGIN_LEGACY_PAYLOAD_DIRNAME = "template"` is the pre-D4 payload dir a
-PUBLISHED-BUT-NOT-YET-UPDATED plugin still ships.
+⚑⚑ THE PAYLOAD CARRIES ITS OWN `template/box/home` PREFIX, because it lands at the store ROOT, and
+that prefix MUST EQUAL LAYER 2's SOURCE, RESOLVED — what `@agent.<a>.template/box/home` becomes
+once `agent.<a>.template` expands to `@config.agents/<a>/template`, i.e. `<store>/template/box/home`.
+The prefix is the half that is easy to drop: a payload spelled home-relative lands at
+`agents/<name>/<file>`, which NOTHING reads — so the stamp runs, reports nothing, and still leaves
+the box with no agent config. Pinned by
+`TestTemplateSeedDefaults.test_landing_path_equals_layer_2_source`.
 
-`PLUGIN_LEGACY_PAYLOAD_DEST_REL` says where a LEGACY payload's content belongs in the new store
-layout: the old `data/template/` held box-HOME files (`.claude.json`, `.codex/config.toml`, …) that
-the old seed copied straight to `~`.
+### `_packaged_agent_store`
 
-⚑⚑ IT MUST EQUAL LAYER 2's SOURCE, RESOLVED — i.e. what `@agent.<a>.template/box/home` becomes once
-`agent.<a>.template` expands to `@config.agents/<a>/template`. That is
-`<store>/template/box/home`, and the `template/` prefix is the half that is easy to drop: a value
-of just `box/home` lands the payload at `agents/<name>/box/home/**`, which NOTHING reads — so the
-transition arm would run, report nothing, and still leave the box with no agent config. It is
-derived from the SAME constants the seed key is built from (`_SEED_SRC_HOME`, plus the `template`
-element of the layer-2 source key), and pinned by a test that asserts the two are equal.
+Locates a plugin's packaged AGENT-STORE payload → `Path`, returning `None` if the plugin is not
+installed or ships no `data/base` (`no_agent` / a third-party target without curated content).
 
-### `_packaged_agent_store` — the transition arm itself
-
-Locates a plugin's packaged AGENT-STORE payload → `(path, is_legacy)`, returning `None` if the
-plugin is not installed or ships neither payload dir (`no_agent` / a third-party target without
-curated content).
-
-⚑⚑ THE TRANSITION ARM, and why it is in the code rather than in a migration note. The plugins
-publish INDEPENDENTLY of the base and pin no base version, so a NEW base beside an OLD plugin is
-not merely reachable — it is the ordinary `pip install -U kanibako-cli` outcome. A new base looks
-for `data/base`; an old plugin ships `data/template`. With no arm there that plugin contributes
-NOTHING, and the failure is silent and total: the box comes up with no agent config at all (no
-`.claude.json`, no `config.toml`, no `config.yaml`). Same failure class, same reasoning and same
-remedy as the kickoff yield gate C-CANON R2 shipped.
-
-A legacy payload is installed to `<store>/template/box/home`, which is exactly the dest that
-reproduces the old delivery byte-for-byte: the pre-restructure seed copied `data/template/**` to
-`~`, and the new layer-2 source `@agent.<a>.template/box/home` resolves to that same subtree.
-
-⚑ REMOVAL CONDITION — delete this arm (and `PLUGIN_LEGACY_PAYLOAD_*`) once
-`kanibako-agent-claude`, `-codex` and `-goose` have all PUBLISHED (not merely merged) releases
-carrying `data/base`. Recorded in migration M-12.
+⚑ THE SPELLING IS CLOSED: there is no `data/template` fallback and there must not be one again. A
+plugin shipping anything else contributes NOTHING rather than landing its payload somewhere
+unread — a loud absence beats a silent misplacement.
 
 ## `ensure_agent_stores` — the J-6 A-action
 
@@ -473,11 +454,6 @@ Create-if-absent per file makes the whole thing IDEMPOTENT and SELF-HEALING: a p
 store completes at the next trigger, and a user's edits are never touched. Fill-out happens AT
 ACTION TIME — the launch path CONSUMES stores and never creates template content. It returns the
 names whose store was touched, for the caller's report.
-
-⚑ On the legacy arm, `dest_root=store` is what makes `scope="agent"` correct: the whitelist reads
-the STORE-relative path (`template/box/home/.claude.json` → leading `template/`, which the agent
-allow-list carries), not the source-relative one. With the dest_root omitted it would read
-`.claude.json` and refuse a perfectly legal legacy payload.
 
 ## The workset host template
 
