@@ -3553,11 +3553,15 @@ class TestApplyInitSeeds:
             registry=tmp_path / "registry.yaml",
             primary_workset=tmp_path / "primary_workset",
             settings=tmp_path / "settings.yaml",
-            # ⚑ EVERY ``CONFIG_PATH_DEFAULTS`` LEAF MUST BE HERE, or ``host_config_map``
-            # raises: it derives the ctx from that table rather than a hand list, so a
-            # double short of one attribute fails LOUDLY instead of resolving one key
-            # short.  ``test_the_std_double_carries_every_config_leaf`` is the guard.
+            # ⚑ EVERY ``CONFIG_PATH_DEFAULTS`` **AND** ``SYSTEM_PATH_DEFAULTS`` LEAF MUST BE
+            # HERE.  ``host_config_map`` and ``system_path_floor`` both derive from their
+            # declared table rather than a hand list, so a double short of one attribute
+            # fails LOUDLY instead of resolving one key short.
+            # ``test_the_std_double_carries_every_declared_leaf`` is the guard.
             journal=tmp_path / "journal.yaml",
+            backup=tmp_path / "backup",
+            cache=tmp_path / "cache",
+            runtime=tmp_path / "runtime",
             # B2: the channel partition roots box_channel_addresses reads (the
             # meta.box.{inbox,share_global} identity anchors).
             channels_mailboxes=tmp_path / "channels" / "mailboxes",
@@ -3576,23 +3580,35 @@ class TestApplyInitSeeds:
             primary_logs=tmp_path / "primary_workset" / "logs",
         )
 
-    def test_the_std_double_carries_every_config_leaf(self, tmp_path):
-        """The double cannot fall behind ``CONFIG_PATH_DEFAULTS`` silently.
+    def test_the_std_double_carries_every_declared_leaf(self, tmp_path):
+        """The double cannot fall behind either declared path table silently.
 
-        DERIVED from the table, never a hand list: ``paths.host_config_map`` builds the
-        launch ctx by reading every leaf off ``std``, so a double missing one raises
-        ``AttributeError`` deep inside an unrelated test.  That is exactly how this class
-        went red when ``config.journal`` was wired through — the table grew and four
-        separate doubles did not.
+        BOTH tables are DERIVED, never hand lists: ``paths.host_config_map`` and
+        ``paths.system_path_floor`` read every leaf off ``std``, so a double missing one
+        raises ``AttributeError`` deep inside an unrelated test.  That is twice how this
+        class went red — first when ``config.journal`` was wired through, then when the
+        system floor widened from eight keys to eleven.  Guarding only the first table is
+        what let the second happen, so this asserts over both.
+
+        ⚑ ``system.channelroot`` maps to ``std.channels``: the floor's field rule is not
+        always the key's last segment, so ask ``_floor_field`` rather than re-deriving it
+        here — a second spelling of that rule is the defect one layer along.
         """
-        from kanibako.settings.paths_defaults import CONFIG_PATH_DEFAULTS
+        from kanibako.settings.paths import _floor_field
+        from kanibako.settings.paths_defaults import (
+            CONFIG_PATH_DEFAULTS, SYSTEM_PATH_DEFAULTS,
+        )
         std = self._std(tmp_path)
         missing = [
             key for key in CONFIG_PATH_DEFAULTS
             if not hasattr(std, key.split(".", 1)[1])
+        ] + [
+            key for key in SYSTEM_PATH_DEFAULTS if not hasattr(std, _floor_field(key))
         ]
         assert not missing, f"the std double is short of {missing}"
-        assert CONFIG_PATH_DEFAULTS, "vacuity guard: an empty table would pass trivially"
+        assert CONFIG_PATH_DEFAULTS and SYSTEM_PATH_DEFAULTS, (
+            "vacuity guard: an empty table would pass trivially"
+        )
 
     def _proj(self, shell_path, group=None):
         from types import SimpleNamespace
