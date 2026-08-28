@@ -283,6 +283,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A claude box leaked one agent liveness marker per session start, and hid a failing hook layer
+  while doing it.** The `~/.claude/settings.json` kanibako seeds into a claude box invoked each of
+  the bible session hooks as a compound command — `…/scripts/hooks/startup.sh || true` — and both
+  failures follow from that one `|| true`. A compound command forces the hook shell to survive and
+  evaluate the right-hand side, so it cannot `exec` the script: `$PPID` inside the hook was that
+  transient wrapper rather than the agent, and the marker written under `/tmp/kanibako/agents/`
+  named a process that was already dead. `SessionEnd` then ran under a **different** wrapper, so
+  its remove targeted a filename that had never existed and the stale marker stayed — one leak per
+  session start, on the signal the in-box supervisor reads to tell a live agent session from a dead
+  one. Separately, `|| true` swallowed the exit status of your own handbook or notebook hook layer.
+  The cascade scripts already distinguish the two cases the blanket `|| true` could not: a layer
+  you never created is absent and stays silent, while a layer that exists and exits non-zero is a
+  bug in your own hook and has to stay visible. Each seeded hook now passes `"$PPID"` explicitly —
+  the hook shell expands it, and there it is the agent — and none of them carries `|| true`. The
+  bible hooks take that pid as their first argument and fall back to their own `$PPID` only for a
+  caller that wires one of them as the hook command directly. ⚑ **A box created before this change
+  keeps the old hooks**: `~/.claude/settings.json` is seeded once at create and is yours to edit
+  afterwards, so kanibako does not rewrite it. To get the fixed behaviour, replace `|| true` with
+  `"$PPID"` on each `~/canon/bible/general/scripts/hooks/*.sh` command, and drop it outright from
+  the `stop.sh` one, which needs no pid. Markers left behind by the old spelling need nothing done
+  to them: the supervisor reaps a marker whose process is gone on its first scan.
+
 - **`kanibako box show --effective` no longer prints a binding as a live mount when the box
   receives nothing at that destination.** The block rendered each `<scope>.bindings.{ro,rw}` row
   straight off the stored declaration, with no arbitration applied and masks never shown at all. So
