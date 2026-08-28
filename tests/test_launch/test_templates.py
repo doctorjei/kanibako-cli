@@ -1574,9 +1574,12 @@ class TestWorksetStampFollowsTheKeys:
 
     def test_a_leaf_outside_the_root_keeps_the_declared_entry(self, tmp_path):
         """A repoint that leaves the store root has NO store-relative path to
-        whitelist, so the declared entry stands and ``_assert_contained`` is what
-        refuses the copy. ⚑ Recorded, not endorsed — whether an out-of-root
-        ``workset.canon`` should be stamped at all is an open question."""
+        whitelist, so the declared entry stands — the only spelling that cannot widen
+        the scope. ⚑ THIS ARM IS NOW A FAILSAFE, NOT THE LIVE ANSWER: the stamp refuses
+        an out-of-root leaf in ``_workset_stamp_dirs`` before this function is reached
+        (see ``test_an_out_of_root_canon_repoint_names_the_key_file_and_value``), so
+        what is pinned here is that the respelling still says nothing dangerous if it
+        ever is."""
         from kanibako.launch.templates import (
             SCOPE_WHITELISTS, _workset_scope_allowed,
         )
@@ -1585,6 +1588,24 @@ class TestWorksetStampFollowsTheKeys:
         assert _workset_scope_allowed(
             root, tmp_path / "elsewhere", root / "template"
         ) == SCOPE_WHITELISTS["workset"]
+
+    def test_a_dotdot_leaf_does_not_widen_the_allow_list(self, tmp_path):
+        """⚑⚑ RESPELLS, NEVER WIDENS — and ``relative_to`` alone does not enforce it.
+        ``<root>/../up`` IS lexically relative to the root, so the respelling used to
+        emit the allow-list ENTRY ``../up/handbook``: a standing permission to write
+        outside the store, produced by the function whose whole contract is that it
+        cannot. Containment has to be resolved, not string-matched."""
+        from kanibako.launch.templates import (
+            SCOPE_WHITELISTS, _workset_scope_allowed,
+        )
+
+        root = tmp_path / "ws"
+        root.mkdir()
+        allowed = _workset_scope_allowed(
+            root, root / ".." / "up", root / ".." / "moulds",
+        )
+        assert allowed == SCOPE_WHITELISTS["workset"]
+        assert not any(".." in entry for entry in allowed)
 
     def test_no_repoint_lands_exactly_where_it_always_did(self, std, tmp_path):
         """The unrepointed default is the literal leaf, unchanged — the resolvers
@@ -1600,6 +1621,241 @@ class TestWorksetStampFollowsTheKeys:
         ).is_file()
         assert (ws / "template" / "box" / "home" / "canon" / "notebook").is_dir()
         assert (ws / "template" / "box" / "canon" / "handbook").is_dir()
+
+
+class TestTheRespellingCannotWiden:
+    """⚑⚑ ENFORCED, NOT DOCUMENTED. ``copy_tree``/``_check_whitelist`` used to take a
+    finished ``allowed`` tuple, so *a repoint MOVES an entry, it never ADDS one* was
+    held by a docstring and by there being exactly one well-behaved caller. The
+    parameter now takes the PATHS the respelling is derived from
+    (``WorksetStampScope``), so every entry the copier can ever see is
+    ``SCOPE_WHITELISTS``' own — a widened workset scope is unrepresentable."""
+
+    def test_no_route_accepts_an_allow_list(self, tmp_path):
+        """THE MUTATION THE OLD SIGNATURE PERMITTED, constructed and refused: there is
+        no parameter left through which entries can arrive."""
+        import inspect
+
+        from kanibako.launch.templates import copy_tree
+
+        assert "allowed" not in inspect.signature(copy_tree).parameters
+        with pytest.raises(TypeError):
+            copy_tree(
+                tmp_path / "src", tmp_path / "dest",
+                scope="workset", allowed=("anything", "at", "all"),
+            )
+
+    def test_the_scope_object_carries_paths_and_nothing_else(self):
+        """⚑ Its FIELDS are the three roots. Were an entries field ever added, the
+        respelling would stop being derived and this class would become a second
+        carrier of the declared table."""
+        import dataclasses
+
+        from kanibako.launch.templates import WorksetStampScope
+
+        assert [f.name for f in dataclasses.fields(WorksetStampScope)] == [
+            "workset_path", "canon_root", "template_root",
+        ]
+        assert WorksetStampScope.name == "workset"
+
+    def test_every_respelling_keeps_the_declared_cardinality_and_shape(self, tmp_path):
+        """⚑ CARDINALITY AND SHAPE, pinned across every repoint shape a root can have:
+        the declared number of entries, ``canon/`` seedable at ``handbook`` and nowhere
+        else, and never an absolute or ``..`` entry."""
+        from kanibako.launch.templates import SCOPE_WHITELISTS, WorksetStampScope
+
+        root = tmp_path / "ws"
+        root.mkdir()
+        declared = SCOPE_WHITELISTS["workset"]
+        cases = [
+            (root / "canon", root / "template"),          # unrepointed
+            (root / "my_canon", root / "moulds"),         # both moved, in-root
+            (root / "deep" / "canon", root / "template"),  # nested
+            (tmp_path / "far", root / "template"),        # canon out of root
+            (root / ".." / "up", root / ".." / "away"),   # lexical escape
+        ]
+        for canon_root, template_root in cases:
+            allowed = WorksetStampScope(root, canon_root, template_root).allowed()
+            assert len(allowed) == len(declared), (canon_root, allowed)
+            assert allowed[1].split("/")[-1] == "handbook", allowed
+            assert not any(
+                entry.startswith("/") or ".." in entry.split("/") for entry in allowed
+            ), allowed
+
+    def test_an_unrepointed_root_still_yields_the_declared_table(self, tmp_path):
+        """The degeneracy property of ``test_the_respelling_degenerates_to_the_declared_table``,
+        restated through the type that is now the only route to it."""
+        from kanibako.launch.templates import SCOPE_WHITELISTS, WorksetStampScope
+
+        root = tmp_path / "ws"
+        scope = WorksetStampScope(root, root / "canon", root / "template")
+        assert scope.allowed() == SCOPE_WHITELISTS["workset"]
+
+
+class TestWorksetStampRefusesAnEscapingLeaf:
+    """Both stamp leaves are REPOINTABLE, so both can name a directory outside the
+    workset root — and the stamp writes only inside the root it is stamping.
+
+    ⚑⚑ TWO SEPARATE GUARDS, and the tests below keep them separable. The LEAF check
+    (``_assert_stamp_leaf_in_root``) judges the resolved ``workset.{canon,template}``
+    and refuses NAMING THE KEY; the two guarantee-create ``mkdir``\\ s are additionally
+    ``_assert_contained``-checked, which is what catches a SYMLINKED INTERMEDIATE under
+    a leaf that is itself perfectly in-root.
+
+    ⚑ These ``mkdir``\\ s run AFTER ``copy_tree`` and reach none of its guards, so
+    before this they were refused only INCIDENTALLY — by a copy that happened to share
+    the destination. Take the mould's content away and the escape was silent.
+    """
+
+    def _root(self, tmp_path, name, **repoints):
+        root = tmp_path / name
+        root.mkdir()
+        if repoints:
+            (root / "workset.yaml").write_text(
+                yaml.safe_dump({"workset": dict(repoints)})
+            )
+        return root
+
+    def test_an_out_of_root_canon_repoint_names_the_key_file_and_value(
+        self, std, tmp_path
+    ):
+        """⚑⚑ THE MESSAGE IS THE POINT. A refusal the user cannot act on is the defect:
+        the old text said only that some path was ``OUTSIDE the destination subtree``
+        and named neither ``workset.canon``, nor the file it was read from, nor the
+        value to change. The bar is ``workset_dirkeys``' unresolvable-repoint refusal —
+        key, file, offending token, reason, remedy."""
+        from kanibako.errors import TemplateScopeError
+        from kanibako.launch.templates import install_workset_template
+
+        install_packaged_templates(std, ["claude"])
+        outside = tmp_path / "elsewhere" / "canon"
+        root = self._root(tmp_path, "solo-out", canon=str(outside))
+        with pytest.raises(TemplateScopeError) as exc:
+            install_workset_template(std, root, canon_only=True)
+        text = str(exc.value)
+        assert "workset.canon" in text                       # the KEY
+        assert str(root / "workset.yaml") in text             # the FILE
+        assert str(outside) in text                           # the OFFENDING TOKEN
+        assert "OUTSIDE the workset root" in text             # the REASON
+        assert "Repoint workset.canon" in text                # the REMEDY
+        assert not outside.exists()
+
+    def test_the_preflight_refuses_with_the_same_named_message(self, std, tmp_path):
+        """⚑ BEFORE THE FIRST BYTE. ``check_workset_template`` exists so a destination
+        kanibako may not clean up is never half-written; the leaf check runs inside the
+        shared ``_workset_stamp_dirs``, so pre-flight and stamp cannot disagree."""
+        from kanibako.errors import TemplateScopeError
+        from kanibako.launch.templates import check_workset_template
+
+        install_packaged_templates(std, ["claude"])
+        outside = tmp_path / "elsewhere-pre" / "canon"
+        root = self._root(tmp_path, "solo-out-pre", canon=str(outside))
+        with pytest.raises(TemplateScopeError) as exc:
+            check_workset_template(std, root, canon_only=True)
+        assert "workset.canon" in str(exc.value)
+        assert str(outside) in str(exc.value)
+        assert not outside.exists()
+
+    def test_an_out_of_root_template_repoint_plants_no_skeleton_outside(
+        self, std, tmp_path
+    ):
+        """MEASURED BEFORE THE FIX: ``workset.template: ../escaped`` created all three
+        skeleton dirs (seven directories in all) outside the workset root, and nothing
+        refused — the skeleton loop never reached a guard."""
+        from kanibako.errors import TemplateScopeError
+        from kanibako.launch.templates import install_workset_template
+
+        install_packaged_templates(std, ["claude"])
+        root = self._root(tmp_path, "ws-escape", template="../escaped")
+        with pytest.raises(TemplateScopeError) as exc:
+            install_workset_template(std, root)
+        assert "workset.template" in str(exc.value)
+        assert not (tmp_path / "escaped").exists()
+
+    def test_a_standalone_canon_escape_is_refused_with_an_EMPTY_mould(
+        self, std, tmp_path
+    ):
+        """⚑⚑ THE REACHABLE ONE, and the reason the incidental refusal was not enough.
+        With the mould's ``canon/`` half absent ``copy_tree`` returns on its first line,
+        so its ``_assert_contained`` never runs — and the chapter ``mkdir`` then created
+        the directory outside the root, silently."""
+        from kanibako.errors import TemplateScopeError
+        from kanibako.launch.templates import install_workset_template
+
+        install_packaged_templates(std, ["claude"])
+        shutil.rmtree(std.template / "workset" / "canon")
+        outside = tmp_path / "OUTSIDE"
+        root = self._root(tmp_path, "solo-empty-mould", canon=str(outside))
+        with pytest.raises(TemplateScopeError):
+            install_workset_template(std, root, canon_only=True)
+        assert not outside.exists()
+
+    def test_a_symlinked_skeleton_intermediate_writes_nothing_outside(
+        self, std, tmp_path
+    ):
+        """⚑ WHAT THE LEAF CHECK CANNOT SEE. ``workset.template`` is unrepointed and
+        squarely in-root, but ``template/box`` is a symlink out — and the skeleton
+        descends four levels below the leaf, so ``mkdir(parents=True)`` would build the
+        tree THROUGH the link. Only ``_assert_contained`` on the real target sees it."""
+        from kanibako.errors import TemplateScopeError
+        from kanibako.launch.templates import install_workset_template
+
+        install_packaged_templates(std, ["claude"])
+        outside = tmp_path / "linked-away"
+        outside.mkdir()
+        root = self._root(tmp_path, "ws-symlink-skel")
+        (root / "template").mkdir()
+        (root / "template" / "box").symlink_to(outside, target_is_directory=True)
+        with pytest.raises(TemplateScopeError):
+            install_workset_template(std, root)
+        assert list(outside.iterdir()) == [], sorted(outside.rglob("*"))
+
+    def test_a_symlinked_chapter_leaf_writes_nothing_outside(self, std, tmp_path):
+        """⚑ The chapter's own twin of the case above, on the arm where the copy is
+        silent: the mould's ``canon/`` half is gone, ``workset.canon`` is the plain
+        in-root default, and only ``canon/handbook`` is the link out."""
+        from kanibako.errors import TemplateScopeError
+        from kanibako.launch.templates import install_workset_template
+
+        install_packaged_templates(std, ["claude"])
+        shutil.rmtree(std.template / "workset" / "canon")
+        outside = tmp_path / "chapter-away"
+        outside.mkdir()
+        root = self._root(tmp_path, "ws-symlink-chapter")
+        (root / "canon").mkdir()
+        (root / "canon" / "handbook").symlink_to(outside, target_is_directory=True)
+        with pytest.raises(TemplateScopeError):
+            install_workset_template(std, root, canon_only=True)
+        assert list(outside.iterdir()) == [], sorted(outside.rglob("*"))
+
+    def test_a_symlinked_default_leaf_says_it_took_the_default(self, std, tmp_path):
+        """⚑ NO REPOINT TO QUOTE. When the DEFAULT leaf is itself a link out there is no
+        settings value to name, and a message reading ``workset.canon is set to None``
+        would be a worse answer than the one it replaced."""
+        from kanibako.errors import TemplateScopeError
+        from kanibako.launch.templates import install_workset_template
+
+        install_packaged_templates(std, ["claude"])
+        outside = tmp_path / "default-away"
+        outside.mkdir()
+        root = self._root(tmp_path, "ws-symlink-default")
+        (root / "canon").symlink_to(outside, target_is_directory=True)
+        with pytest.raises(TemplateScopeError) as exc:
+            install_workset_template(std, root, canon_only=True)
+        assert "takes its default 'canon' leaf" in str(exc.value)
+        assert "None" not in str(exc.value)
+
+    def test_canon_only_ignores_an_out_of_root_template_repoint(self, std, tmp_path):
+        """⚑ THE CHECK IS PER-LEAF, and standalone's ``workset.template`` is ``<None>``
+        (spec ``:936``): that path consults neither the key nor the skeleton, so a value
+        it never uses must not refuse a root that is otherwise fine."""
+        from kanibako.launch.templates import install_workset_template
+
+        install_packaged_templates(std, ["claude"])
+        root = self._root(tmp_path, "solo-template-noise", template="../nowhere")
+        install_workset_template(std, root, canon_only=True)
+        assert (root / "canon" / "handbook").is_dir()
+        assert not (tmp_path / "nowhere").exists()
 
 
 class TestCopierEnforcement:
