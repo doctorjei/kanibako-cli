@@ -365,6 +365,141 @@ class TestBoxGetIsWiredToTheClosedKeyspace:
         assert "undeclared" not in capsys.readouterr().out
 
 
+class TestBoxGetThreadsTheAgentsRoot:
+    """``box get agent.<node>.<key>`` reads the node's own file.
+
+    The per-node families live in ``agents/<node>/agent.yaml``, reachable only
+    through ``get_config_value``'s ``agents_root``. The handler withheld it, so
+    every read of a node key resolved its target to ``None`` and printed
+    "(not set)" at rc 0 for a value that IS stored — while ``system get``, the
+    one handler that threads it, answered the SAME key correctly.
+
+    ⚑ MUTATION-PROVED: drop ``agents_root=std.agents`` from the ``get`` branch of
+    ``commands/box/_parser.py`` and the two read-back tests red on "(not set)".
+    ⚑ There is no per-node BIND case here on purpose: the closed-keyspace read gate
+    refuses ``agent.<node>.bindings.ro.<dest>`` by name at every noun (the family is
+    TERMINAL and dest-keyed), so that engine arm is unreachable from any handler.
+    """
+
+    def _box_and_agents_root(self, config_file, tmp_home):
+        from kanibako.settings.paths import load_std_paths, resolve_project
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project_dir = str(tmp_home / "project")
+        resolve_project(std, config, project_dir=project_dir, initialize=True)
+        return project_dir, std.agents
+
+    def _write_node(self, agents_root, key, value):
+        """Write through the PRODUCTION set route, so this pins the read, not a
+        hand-built file shape the writer would never produce."""
+        from kanibako.settings.config_interface import set_config_value
+        from kanibako.settings.config_keys import ConfigLevel
+
+        msg = set_config_value(
+            key, value,
+            config_path=agents_root.parent / "unused-box.yaml",
+            command_scope=ConfigLevel.system,
+            agents_root=agents_root,
+        )
+        assert not msg.startswith("Error:"), msg
+
+    def test_a_persona_agent_key_reads_back(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        from kanibako.commands.box._parser import run_get
+
+        project_dir, agents_root = self._box_and_agents_root(config_file, tmp_home)
+        self._write_node(agents_root, "agent.claude.model", "opus-test")
+
+        rc = run_get(argparse.Namespace(args=[project_dir, "agent.claude.model"]))
+        assert rc == 0
+        captured = capsys.readouterr()
+        assert captured.out.strip() == "opus-test"
+        assert "(not set)" not in captured.err
+
+    def test_a_node_secret_path_reads_back(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        from kanibako.commands.box._parser import run_get
+
+        project_dir, agents_root = self._box_and_agents_root(config_file, tmp_home)
+        self._write_node(
+            agents_root,
+            "agent.claude.secret_path.ANTHROPIC_AUTH_TOKEN", "/host/token",
+        )
+
+        rc = run_get(argparse.Namespace(args=[
+            project_dir, "agent.claude.secret_path.ANTHROPIC_AUTH_TOKEN",
+        ]))
+        assert rc == 0
+        assert capsys.readouterr().out.strip() == "/host/token"
+
+    def test_an_unset_node_key_is_still_honestly_not_set(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        """The threading must not fabricate: with nothing stored, "(not set)"
+        stays "(not set)"."""
+        from kanibako.commands.box._parser import run_get
+
+        project_dir, _ = self._box_and_agents_root(config_file, tmp_home)
+        rc = run_get(argparse.Namespace(args=[project_dir, "agent.claude.model"]))
+        assert rc == 0
+        assert "(not set)" in capsys.readouterr().err
+
+
+class TestBoxGetDoesNotAdvertiseTheAgentFlag:
+    """``box get --help`` offered ``--agent`` and the handler refused it at rc 2.
+
+    ``inject_blanket_flags`` adds the flag to every leaf so relevance can be judged
+    post-parse; ``box get`` is a READ that never runs an agent, so it is absent from
+    ``AGENT_FLAG_COMMANDS`` and the advertisement promised a refusal. The CALL: stop
+    advertising, keep the refusal — the flag still parses, so ``check_flag_relevance``
+    still names where it DOES apply instead of argparse's bare "unrecognized
+    arguments".
+    """
+
+    def _help(self, argv_leaf):
+        from kanibako import cli
+
+        parser = cli.build_parser()
+        sub = parser
+        for name in argv_leaf:
+            action = next(
+                a for a in sub._actions
+                if isinstance(a, argparse._SubParsersAction)
+            )
+            sub = action.choices[name]
+        return sub.format_help()
+
+    def test_help_does_not_mention_agent(self):
+        text = self._help(["box", "get"])
+        assert "--agent" not in text
+
+    def test_the_flag_still_parses_and_is_refused_by_name(self):
+        from kanibako import cli
+        from kanibako.commands.flags import FlagRelevanceError, check_flag_relevance
+
+        args = cli.build_parser().parse_args(
+            ["box", "get", "--agent", "claude", "model"],
+        )
+        assert args.agent == "claude"
+        with pytest.raises(FlagRelevanceError, match="box get"):
+            check_flag_relevance(args)
+
+    def test_commands_that_take_the_flag_still_advertise_it(self):
+        """No collateral on the leaves that legitimately run an agent.
+
+        ⚑ The suppression is now CLASS-WIDE, not ``box get``'s alone: ``_walk``
+        advertises ``--agent``/``--box`` only where the key is in the declared set.
+        This case is the other direction of that property, kept here because it
+        guards the arm a suppression bug would break silently.
+        ``test_flags.py`` pins the property over the whole tree.
+        """
+        for leaf in (["box", "start"], ["box", "create"], ["agent", "reauth"]):
+            assert "--agent" in self._help(leaf), leaf
+
+
 class TestBoxConfigSet:
     def test_set_image(self, config_file, tmp_home, credentials_dir, capsys):
         from kanibako.commands.box._parser import run_set

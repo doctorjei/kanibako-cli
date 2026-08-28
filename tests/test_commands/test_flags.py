@@ -11,6 +11,7 @@ from kanibako.commands.flags import (
     AGENT_FLAG_COMMANDS,
     BOX_FLAG_COMMANDS,
     FlagRelevanceError,
+    _AGENT_FLAG_EXCLUDE,
     check_flag_relevance,
     command_key,
     resolve_subject_value,
@@ -151,6 +152,156 @@ class TestRelevance:
         assert "box create" in AGENT_FLAG_COMMANDS
         assert "start" in BOX_FLAG_COMMANDS
         assert "workset disconnect" in BOX_FLAG_COMMANDS
+
+
+# ---------------------------------------------------------------------------
+# Help honesty: a leaf advertises a blanket flag only where it takes one
+# ---------------------------------------------------------------------------
+
+def _leaves(parser):
+    """Map every dotted command key to its leaf parser (walk order)."""
+    found: dict[str, argparse.ArgumentParser] = {}
+
+    def sub(p):
+        for action in p._actions:
+            if isinstance(action, argparse._SubParsersAction):
+                return action
+        return None
+
+    def walk(p, prefix):
+        action = sub(p)
+        if action is None:
+            found[" ".join(prefix)] = p
+            return
+        for name, child in action.choices.items():
+            walk(child, (*prefix, name))
+
+    walk(parser, ())
+    return found
+
+
+def _action_for(parser, option):
+    for action in parser._actions:
+        if option in action.option_strings:
+            return action
+    return None
+
+
+def _alias_closure(leaves, keys):
+    """*keys* plus every ALIAS spelling of the same leaf.
+
+    ⚑ ``add_parser(aliases=[...])`` registers ONE parser object under several
+    names, so an alias cannot carry different help from its canonical spelling —
+    the advertisement is a property of the parser, not of the key.  (That the
+    RELEVANCE check keys off the typed alias is a separate, pre-existing
+    behaviour: ``box mv --box`` is refused where ``box move --box`` is accepted.)
+    """
+    by_object: dict[int, set[str]] = {}
+    for key, leaf in leaves.items():
+        by_object.setdefault(id(leaf), set()).add(key)
+    out: set[str] = set()
+    for key in keys:
+        leaf = leaves.get(key)
+        if leaf is not None:
+            out |= by_object[id(leaf)]
+    return out
+
+
+class TestBlanketFlagsAreAdvertisedOnlyWhereTheyApply:
+    """A leaf that would REFUSE a blanket flag must not offer it in --help.
+
+    ⚑ Derived, never hand-listed: the property is asserted over the WHOLE parser
+    tree against the declared sets, so a new command cannot reintroduce the
+    defect silently — it either joins the declared set or is born suppressed.
+    """
+
+    @pytest.mark.parametrize("option, declared, extra", [
+        ("--agent", AGENT_FLAG_COMMANDS, _AGENT_FLAG_EXCLUDE),
+        ("--box", BOX_FLAG_COMMANDS, frozenset()),
+    ])
+    def test_no_leaf_advertises_a_flag_it_would_refuse(
+        self, parser, option, declared, extra,
+    ):
+        leaves = _leaves(parser)
+        allowed = _alias_closure(leaves, set(declared) | set(extra))
+        advertised = {
+            key for key, leaf in leaves.items()
+            if (act := _action_for(leaf, option)) is not None
+            and act.help != argparse.SUPPRESS
+        }
+        assert advertised <= allowed, (
+            f"{option} is advertised by leaves that refuse it: "
+            f"{sorted(advertised - allowed)}"
+        )
+
+    @pytest.mark.parametrize("option", ["--agent", "--box"])
+    def test_every_leaf_still_parses_the_flag(self, parser, option):
+        # Suppressing the HELP must not stop the flag PARSING: that is what
+        # keeps check_flag_relevance's enumerating message reachable instead of
+        # argparse's bare "unrecognized arguments".
+        leaves = _leaves(parser)
+        missing = [k for k, p in leaves.items() if _action_for(p, option) is None]
+        assert missing == []
+
+    @pytest.mark.parametrize("option, declared", [
+        ("--agent", AGENT_FLAG_COMMANDS),
+        ("--box", BOX_FLAG_COMMANDS),
+    ])
+    def test_the_commands_that_take_it_still_advertise_it(
+        self, parser, option, declared,
+    ):
+        # The other direction: suppressing everything would also pass the test
+        # above.  ⚑ A declared key with no leaf is skipped rather than failed —
+        # the sets are the relevance authority, not a command inventory.
+        leaves = _leaves(parser)
+        silent = [
+            key for key in sorted(declared)
+            if (leaf := leaves.get(key)) is not None
+            and (act := _action_for(leaf, option)) is not None
+            and act.help == argparse.SUPPRESS
+        ]
+        assert silent == []
+
+    @pytest.mark.parametrize("argv, option", [
+        (["box", "get", "--help"], "--agent"),
+        (["system", "get", "--help"], "--agent"),
+        (["rig", "list", "--help"], "--agent"),
+        (["box", "set", "--help"], "--agent"),
+        (["system", "get", "--help"], "--box"),
+        (["setup", "--help"], "--box"),
+    ])
+    def test_help_text_does_not_name_the_flag(
+        self, parser, capsys, argv, option,
+    ):
+        with pytest.raises(SystemExit):
+            parser.parse_args(argv)
+        assert option not in capsys.readouterr().out
+
+    @pytest.mark.parametrize("argv, option", [
+        (["start", "--help"], "--agent"),
+        (["box", "start", "--help"], "--box"),
+        (["setup", "--help"], "--agent"),
+    ])
+    def test_help_text_still_names_the_flag_where_it_applies(
+        self, parser, capsys, argv, option,
+    ):
+        with pytest.raises(SystemExit):
+            parser.parse_args(argv)
+        assert option in capsys.readouterr().out
+
+    @pytest.mark.parametrize("argv, option", [
+        (["box", "get", "--agent", "claude", "model"], "--agent"),
+        (["system", "get", "--agent", "claude", "model"], "--agent"),
+        (["rig", "list", "--box", "foo"], "--box"),
+    ])
+    def test_a_suppressed_flag_still_reaches_the_relevance_error(
+        self, parser, argv, option,
+    ):
+        # Not argparse's "unrecognized arguments": the enumerating message that
+        # tells the user where the flag DOES apply.
+        with pytest.raises(FlagRelevanceError) as excinfo:
+            check_flag_relevance(_parse(parser, argv))
+        assert option in str(excinfo.value)
 
 
 # ---------------------------------------------------------------------------

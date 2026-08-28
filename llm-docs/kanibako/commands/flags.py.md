@@ -185,11 +185,38 @@ checked post-parse). Two exceptions:
 
 * `setup` (and any command in `_AGENT_FLAG_EXCLUDE`) keeps its own `--agent`; only the blanket
   `--box` is added.
-* a parser that already defines an option string is left alone for that option (defensive — no
-  duplicate-flag crash). That test is `_has_option`.
+* a parser that already defines an option string is left alone for that option, so injection never
+  collides with a flag a leaf declares for itself. That test is `_has_option`. It is what lets
+  `setup` own the `--agent` spelling; it is NOT a way for a leaf to opt out of the blanket flag,
+  because a leaf that declares the flag itself also takes on answering for it.
 
 ⚑ A parser can BOTH have subparsers AND be runnable via `set_defaults(func=...)` as a fallback (e.g.
 `box` defaults to list); those fallbacks take no subject, so not injecting on the group is correct.
+
+### Parsing is unconditional; ADVERTISING is not
+
+Adding the flag and advertising it are two decisions, and `_walk` makes them separately. Every leaf
+gets the flag; a leaf whose `cmd_key` is outside the flag's declared set gets it with
+`help=argparse.SUPPRESS`, which `_add_agent_flag` / `_add_box_flag` take as their `advertise=False`
+branch.
+
+The split exists because the two properties want opposite answers. Parsing must be universal, or a
+command outside the declared set would fail with argparse's bare *"unrecognized arguments"* instead
+of `check_flag_relevance`'s message, which names the commands the flag DOES apply to — the useful
+error is only reachable if the flag parses first. Advertising must NOT be universal, because a
+`--help` that lists a flag the command answers with exit 2 is help that promises a refusal. Before
+this split, 95 command keys offered `--agent` and 82 offered `--box` that way.
+
+⚑ Aliases share ONE parser object (`add_parser(aliases=[...])`), so the advertisement is a property
+of the parser, not of the key: `box rm` and `box delete` cannot differ. `command_key`, by contrast,
+reports the alias the user actually TYPED — so `box mv --box X` is refused where `box move --box X`
+is accepted, and the three alias keys (`box delete`, `box inspect`, `box mv`) still advertise
+`--box`. That mismatch is about the relevance SETS, not about the injector.
+
+The property is pinned by a derived test
+(`tests/test_commands/test_flags.py::TestBlanketFlagsAreAdvertisedOnlyWhereTheyApply`): it walks the
+whole tree and asserts advertisement against the declared sets rather than a hand-written list, so a
+new command is born suppressed unless it joins a set.
 
 `command_key` computes the dotted command path for a parsed namespace, mirroring the keys in
 `AGENT_FLAG_COMMANDS` / `BOX_FLAG_COMMANDS`. It walks the known nested-subparser dest chain so a

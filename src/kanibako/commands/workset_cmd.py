@@ -770,6 +770,15 @@ def _run_workset_config(args: argparse.Namespace) -> int:
             key,
             global_config_path=config_file,
             project_toml=ws_config,
+            # ⚑ The AGENTS ROOT, threaded exactly as ``system get`` threads it
+            # (``system_cmd``, off the SAME ``load_std_paths``) — the per-node
+            # families (``agent.<node>.<key>`` and its bind / secret_path
+            # siblings) live in ``agents/<node>/agent.yaml``, and every one of
+            # their read branches resolves through ``agents_root``. Withheld, the
+            # target resolves to ``None`` and the read answered "(not set)" at
+            # rc 0 for a key that IS set — a fabricated answer §0 forbids, and
+            # one that disagreed with ``system get`` on the same key.
+            agents_root=std.agents,
             command_scope=ConfigLevel.workset,
         )
         if val is not None:
