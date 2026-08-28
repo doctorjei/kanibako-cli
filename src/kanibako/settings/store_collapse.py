@@ -662,12 +662,11 @@ def refuse_uncovered_synced(
   listing refuse a configuration that launches. So the rule lives with its siblings and
   is asked at the one seam that can honestly say its map is a whole box's.
 
-  🛑 SPEC DELTA, NOT YET RATIFIED. Keyspec ``:196`` still states the ``synced`` refusals
-  EXHAUSTIVELY as the two mask rows, and ``:125`` asserts that a sync "meets mounts by
-  construction" - an assertion this function is what MAKES true, and which was false as
-  measured (a literal ``/data/z`` reaches ``covering_bind`` and gets ``None``). §0's
-  numbered list (``:133-144``) needs a sixth entry. The ruling licenses the code; the
-  spec text is the user's to edit.
+  ⚑ THE SPEC CARRIES THIS RULE (ratified 2026-08-28). §0's numbered list has a SIXTH
+  entry for it, ``:196`` names the MASK **and COVERAGE** refusals, and ``:125`` now reads
+  "meets mounts or is REFUSED" - a property this function is what MAKES true, and which
+  was false as measured (a literal ``/data/z`` reaches ``covering_bind`` and gets
+  ``None``). 🛑 Cite those by their TERMS, not the line numbers: they have rotted before.
   """
   for copy in copies:
     if covering_bind(bindings, copy.dest) is not None:
