@@ -135,7 +135,7 @@ only by DERIVING one of these. `secret_path` is filed there because it is likewi
 explicit, actionable declaration that emits a mount directly and takes no root — a concrete
 peer, not an abstraction.
 
-⚑ **D2 carve-out:** a group whose concrete members are ALL `secret_path` is NOT a row-1
+⚑ **D2 carve-out:** a group whose concrete members are ALL `secret_path` is NOT a bind-vs-bind
 collision. Its dest is `SECRET_MOUNT_DIR/{VAR}` by construction, so two such entries at one
 dest are always the SAME VAR arriving from two scopes — the ordinary per-VAR cascade that spec
 §2a documents as a FEATURE ("a box `secret_path.<VAR>` overrides a workset's pointer for the
@@ -145,28 +145,28 @@ same VAR"), not two different names contending for one destination.
 
 Cutover 6-R3 deleted `reconcile_categories`, `ReconciledCategories` and the three group resolvers
 beneath them. There is no single cross-scope pass any more. §0's table is applied by the per-scope
-`store_shape` PRODUCER (rows 3, 5 and row 1 SAME-scope), by the assembly COLLAPSE (rows 2, 4 and
-row 1 cross-scope), and by this module's two launch-seam functions for the inputs the collapse
+`store_shape` PRODUCER (all that is decidable inside ONE scope), by the assembly COLLAPSE (masks
+and every CROSS-scope pair), and by this module's two launch-seam functions for the inputs the collapse
 cannot see — `secret_path_deliveries` (a `secret_path` dest has no arm in the store shape) and
 `narrow_table_winners` (a narrow resolve, where the collapse returns early).
 
-⚑ **The class went for the same reason its `warnings` field went before it.** That field carried the
-§0 row-5 ambiguities until cutover 5-1c, when the per-scope producer became the sole builder; two
+⚑ **The class went for the same reason its `warnings` field went before it.** That field carried
+§0's same-scope ambiguities until cutover 5-1c, when the per-scope producer became the sole builder; two
 feeds of one channel printed one line only because both arms happened to build an EQUAL
 `CategoryCollision` and the emitter memoises on `(box_dest, scope)` — a property of the two
 constructions, not of the channel. Making a second implementation UNAVAILABLE rather than unused
 (P3) is what stops it drifting back; re-adding one now means re-adding a function and a type, which
 is a visible design act. Full reasoning and the mutation proof:
-`llm-docs/kanibako/commands/start.py.md`, "The row-5 warning lives HERE, and ONLY here".
+`llm-docs/kanibako/commands/start.py.md`, "The same-scope warning lives HERE, and ONLY here".
 
 ⚑ **`CategoryCollision` itself still lives in this module**, and that is not leftovers: its message
 is spec §0's, written once, beside the two refusal texts (`raise_binding_vs_binding`,
 `raise_extension_onto_occupied`) that the producer also raises. `store_shape` imports all three from
 here. It is DEFINED here and BUILT there.
 
-⚑ **Row 5's BEHAVIOUR is unchanged in this module.** "Proceed on the existing ordering" is still
-`_resolve_mount_group`'s `_most_specific` pick, which is the same pick row 4 makes. Only the
-announcement moved. Rows 1 and 3 still RAISE here, and the row-2 mask override still applies here —
+⚑ **The exempt pair's BEHAVIOUR is unchanged in this module.** "Proceed on the existing ordering" is
+still `_resolve_mount_group`'s `_most_specific` pick, the same pick a cross-scope pair gets. Only the
+announcement moved. Both refusals still RAISE here, and the mask override still applies here —
 none of that is 5-1c's.
 
 ## Mount options: one writer, one reader
@@ -541,15 +541,15 @@ question is `secret_path_deliveries`', which composes the two.
 6-R2), BECAUSE NOTHING ELSE HOLDS THE INPUTS. `secret_path` carries no arm in the disk-store
 shape (producer DESIGN §7.4), so the assembly COLLAPSE never sees a secret and cannot answer
 "does anything else contend for this destination"; the only other answer was inside the by-dest
-reconcile, retired at 6-R3. So the rows that decided it are applied there, over the SAME entry
+reconcile, retired at 6-R3. So the rules that decided it are applied there, over the SAME entry
 list and in the SAME order, restricted to the destinations a secret claims:
 
-* **row 1 / row 3** — a `bindings.*` row, or an abstraction deriving one, aimed at
+* **a BIND at the dest** — a `bindings.*` row, or an abstraction deriving one, aimed at
   `SECRET_MOUNT_DIR/<VAR>` REFUSES the launch through the same two public raisers, naming BOTH
   declarations. ⚑ Several `secret_path` rows at one dest are the documented per-VAR cascade and
   not a collision — the D2 carve-out, which is the CALLER's test in exactly the way
   `raise_binding_vs_binding` says it is.
-* **row 2** — a `masks` at the dest takes it, and the VAR is simply not delivered. Hiding a
+* **a MASK at the dest** — it takes the dest, and the VAR is simply not delivered. Hiding a
   bound path is a mask's whole job, and the tmpfs lands there either way, so a secret mounted
   beside it would be hidden anyway. SILENT, as it has been since the flat authority ladder put
   `masks` on top.
@@ -572,24 +572,25 @@ from the rows that declare the binds, deletes the exposure rather than arbitrati
 user declaration cannot collide inside a narrow resolve unless it names an internal dest
 outright.
 
-At a dest that IS the table's, §0 still decides, and the two rows it needs are the two a narrow
+At a dest that IS the table's, §0 still decides, and the two rules it needs are the two a narrow
 resolve has nobody else to get:
 
-* **row 2** — a `masks` at the dest OVERRIDES the table's bind (hiding a bound path is its
+* **a MASK at the dest** OVERRIDES the table's bind (hiding a bound path is its
   whole job). It is the COLLAPSE's rule, and the collapse returns early on a narrow resolve, so
   it is applied here.
-* **row 1 / row 3** — anything else contending for a table dest is REFUSED by name. The
-  per-scope producer (`settings.store_shape`) already raised both for a SAME-scope pair — it
+* **anything else** contending for a table dest is REFUSED by name. The
+  per-scope producer (`settings.store_shape`) already raised both refusals for a SAME-scope pair — it
   runs above the collapse's `whole_box` gate, so it runs on narrow resolves too — and what is
   left for this function is the CROSS-scope pair, which the collapse would have refused on a
   whole-box resolve and which nothing else sees here. A bare dest-filter would let both rows
   through into a dest-keyed map and resolve them by INSERTION ORDER, silently.
 
-⚑ **No row-4/5 silent pick, deliberately.** Normally the table's own CONCRETE row occupies the
-dest and a second abstraction meets row 3; where the table row was skip-gated (a helper source
-that does not exist), two user abstractions could meet alone — and they are refused too,
-because "two mounts at one dest are an error in every scope combination" is the ratified rule
-and a narrow resolve has no cross-scope arbiter to defer to.
+⚑ **No silent pick, deliberately.** Normally the table's own CONCRETE row occupies the
+dest and a second abstraction meets the extension refusal; where the table row was skip-gated (a
+helper source that does not exist), two user abstractions could meet alone — and they are refused
+too, because "two mounts at one destination are an error in every scope combination but one" is the
+ratified rule, its one exception is the producer's, and a narrow resolve has no cross-scope arbiter
+to defer to.
 
 ### `_most_specific`
 
@@ -597,23 +598,23 @@ The winner among same-layer peers: SCOPE PRECEDENCE first, then input order. The
 authoritative and the CALLER's list order must not be able to override it — it takes an
 ARBITRARY list, and only the live adapter happens to hand it apply-ordered. Within one scope the
 input order decides, LAST wins. ⚑ **ONE CALLER since 6-R3** — `secret_path_winners`, where the
-rule it implements is spec §2a's per-VAR cascade. It was written for spec §0 row 4 as well, and
-the retired by-dest reconcile used it for both; the row-4 pick now belongs to the assembly
+rule it implements is spec §2a's per-VAR cascade. It was written for §0's cross-scope pick as well,
+and the retired by-dest reconcile used it for both; that pick now belongs to the assembly
 collapse.
 
 ## The two §0 refusal texts
 
-Both are PUBLIC because their rows are decidable inside ONE scope as well as across two, so
+Both are PUBLIC because they are decidable inside ONE scope as well as across two, so
 each has THREE callers: the per-scope `store_shape` producer, and the two launch-seam functions
 above that hold inputs the collapse never sees — `secret_path_deliveries` and
 `narrow_table_winners`. The messages are spec-mandated, so each is written ONCE, here; a second
 remedy text is the drift this extraction exists to prevent.
 
-* **`raise_binding_vs_binding`** — §0 row 1, two CONCRETE declarations at one `box_dest`. The
+* **`raise_binding_vs_binding`** — §0's refusal of two CONCRETE declarations at one `box_dest`. The
   D2 `secret_path` carve-out is the CALLER's test, not this function's: it decides whether the
   set in hand is a collision at all.
-* **`raise_extension_onto_occupied`** — §0 row 3, an extension onto a base's `box_dest`. The
-  BASE always survives, so the remedy names it without the row-1 "either one may be the one you
+* **`raise_extension_onto_occupied`** — §0's refusal of an extension onto a base's `box_dest`. The
+  BASE always survives, so the remedy names it without the two-peers "either one may be the one you
   keep" hedge.
 
 **`_rule_changed`** renders the migration-grade paragraph (M-7), and ONLY on a rule whose
@@ -623,6 +624,15 @@ the table left alone deliberately does not carry it.
 **`_entry_lines`** renders `    <key>  ->  <host_src>` lines, key-column aligned.
 
 ### `_suppress_then_add` — the §0 remedy, spelled as the YAML edit it really is
+
+⚑⚑ **THE PROSE IS `SUPPRESS_THEN_ADD`, ONE MODULE-LEVEL CONSTANT, AND THIS FUNCTION ONLY WRAPS
+IT** (`textwrap.fill` at `_REMEDY_WRAP`, which reproduces the previous hard-wrapped literal
+byte for byte). `store_collapse`'s three refusals that offer the cure take the SAME object
+unwrapped. **Do not re-inline the sentence here or there:** a user who meets one refusal in
+this family has met the others, and two spellings of one cure send them to two mechanisms.
+⚑ The constant carries no terminal punctuation, so each caller supplies the `.` or `:` its own
+sentence needs. ⚑ Only the BLOCK stays this module's alone — it needs `key_segments`, and
+`store_collapse` holds dotted keys.
 
 ⚑ **There is no CLI verb that can express THIS suppression.** `config set` writes a string
 value, the category set path is source-only by contract, and `reset` REMOVES this file's own
@@ -636,9 +646,9 @@ work. It also names the SCOPE, because a box file may not suppress a containing 
 writing that scope's top-level table (`settings_assemble._drop_upward_scopes` drops it) — the
 edit belongs in that scope's own file.
 
-*ambiguous* is True when the caller could not know WHICH entry the user wants to keep (row 1:
-two peers, either is a legitimate choice), so the printed block is labelled an example rather
-than a prescription. Row 3 passes False — there the occupant is determined, because the base
+*ambiguous* is True when the caller could not know WHICH entry the user wants to keep (two
+peers, either is a legitimate choice), so the printed block is labelled an example rather
+than a prescription. The extension refusal passes False — there the occupant is determined, because the base
 always survives.
 
 ⚑ **Segments, never a dotted split.** The LAST segment is the entry's DESTINATION, which is
@@ -671,7 +681,7 @@ tree levels and could silently overwrite a sibling derivation.
 
 ⚑ **It is deliberately NOT written into `<scope>.bindings.rw.<name>`,** which is §0's own
 ruling. Be precise about WHY, because the obvious argument is wrong: this map does not feed
-back into the entry list, so filing it under `bindings.rw` would NOT break row 3 at runtime —
+back into the entry list, so filing it under `bindings.rw` would NOT break the refusal at runtime —
 the reconcile never reads it. What it would break is MEANING. The concrete category is the
 layer §0 calls the source of truth; a key sitting in it that no user wrote and that emits no
 mount is a FORGERY of the one thing the table reads. Every reader — `config show`, the
@@ -731,7 +741,7 @@ because a loser's derivation is what explains the warning that names it. So ever
 node reads as a live mount. Measured: an `agent.claude.common` declaration under a box-scope
 `masks` entry at the same dest collapses to `CollapsedBind(src=None)` — a mask sentinel, **no
 mount** — while the node still described a live mount there. A display built on it asserted
-`(mount)` for a mount that does not exist and did not print the mask. Collision rows 1/3/5
+`(mount)` for a mount that does not exist and did not print the mask. The §0 refusals
 raise and surface as `category_error`; **the mask path is silent, which is the dangerous one.**
 
 ⚑ That episode's own lesson: it conflated *"the spec no longer FORBIDS this route"* with *"this
@@ -763,7 +773,7 @@ per-dest pick and the losers are visible only as an explanation of why. Template
 **LAYER**: the seed arm is ordered and every layer contributes, later over earlier, so no member
 may be dropped. The pairing keeps both: a MOUNT declaration is answered by containment against
 the bind map, a COPY declaration by finding its own row in the concatenated copy lists, and a
-declaration with no row is a LOSS (a §0 row-5 loser the producer dropped) rather than a silent
+declaration with no row is a LOSS (a same-scope loser the producer dropped) rather than a silent
 absence.
 
 ⚑ **What it deliberately does NOT claim: the ORDER copies apply in.** Rows come back sorted by
@@ -779,7 +789,7 @@ carries the outcome, which for a mask ABOVE the declaration is not a destination
 key names. "No mount" without it is an answer a user cannot act on.
 
 ⚑ `DERIVED_AMBIGUOUS` exists because ONE tie is constructible from this feed and cannot be
-settled by it: two same-scope abstractions at one dest whose SOURCES are equal. Row 5 drops one,
+settled by it: two same-scope abstractions at one dest whose SOURCES are equal. The producer drops one,
 but the collapsed map records only a source, so it cannot say which of the two the surviving
 mount came from. Saying so beats picking.
 

@@ -25,7 +25,13 @@ from pathlib import PurePosixPath
 from typing import Any, Final, NamedTuple
 
 from kanibako.settings.kb_store import SCOPE_CONTAINMENT, BindEntry
-from kanibako.settings.settings_categories import COPY, ENV, MOUNT, CategoryEntry
+from kanibako.settings.settings_categories import (
+  COPY,
+  ENV,
+  MOUNT,
+  SUPPRESS_THEN_ADD,
+  CategoryEntry,
+)
 from kanibako.settings.settings_resolve import SettingsError, normalize_bind_dest
 from kanibako.settings.store_shape import StoreShape, StoreShapeSet
 
@@ -162,8 +168,8 @@ def _mount_declaration_keys(
   ``BindEntry`` at its dest, and a mask entry only when the mask arm holds that dest.
   That is what keeps the categories out of this module - ``store_shape`` alone
   decides which category reaches which arm, and a second copy of that table here
-  would drift the day one moves. It also files the §0 row-5 WINNER rather than the
-  loser the producer dropped, because only the winner is in the arm.
+  would drift the day one moves. It also files the same-scope pair's WINNER rather
+  than the loser the producer dropped, because only the winner is in the arm.
   """
   keys: _MountKeys = {}
   for scope in SCOPE_CONTAINMENT:
@@ -502,8 +508,10 @@ def _refuse_bind_over_bind(
   """A bind may NEST inside a bind - never take its point, never land above it.
 
   ⚑ THE REMEDY SENTENCE IS THE ONE ALREADY PUBLISHED for the identical class of
-  refusal a layer up (``raise_binding_vs_binding``, MIGRATION.md §2.2), WORD FOR WORD
-  and deliberately: a user meeting one of these has met the other, and two spellings
+  refusal a layer up (``raise_binding_vs_binding``, MIGRATION.md §2.2), and it is now
+  the SAME OBJECT rather than a matching copy - :data:`~kanibako.settings
+  .settings_categories.SUPPRESS_THEN_ADD`, which the two mask refusals below take as
+  well: a user meeting one of these has met the others, and two spellings
   of one cure send them to two mechanisms. ⚑ "Suppress" is a present-``None`` at the
   key, resolved to an OMIT at cascade merge - it is NOT masking, and saying "suppress
   one of them" without saying HOW was this message's defect until cutover 2c, when it
@@ -532,12 +540,8 @@ def _refuse_bind_over_bind(
     f"binding(s) already collapsed at or inside it: {named}. A binding may nest "
     f"INSIDE another, never AT or OVER one - the mount order follows the path "
     f"value, not the declaration "
-    f"order, so the subsumed binding could never be reached. To change what occupies "
-    f"a destination you must SUPPRESS the entry you do not want and then declare the "
-    f"one you do. An override is not enough: these are two different KEYS, so both "
-    f"survive the cascade. Set the unwanted key to null in the settings file for its "
-    f"scope (a file may write its own scope and the scopes it contains). Either "
-    f"declaration may be the one you keep."
+    f"order, so the subsumed binding could never be reached. {SUPPRESS_THEN_ADD}. "
+    f"Either declaration may be the one you keep."
   )
 
 
@@ -553,6 +557,14 @@ def _refuse_bind_under_mask(
   ⚑ BOTH PARTICIPANTS BY KEY (keyspec ``:153-165``). The mask's key is the one that
   matters here: it is the OTHER declaration, it may live in a scope the reader is not
   looking at, and — unlike the binding — it carries no host source to recognise it by.
+
+  ⚑⚑ AND THE CURE, for exactly that reason. This fires hardest CROSS-SCOPE, where
+  "do not declare the mask" is not something the reader can act on: the mask is in a
+  scope they may not own, so present-``None`` is their ONLY route and the message has
+  to say so. The sentence is :data:`~kanibako.settings.settings_categories
+  .SUPPRESS_THEN_ADD`, the same object ``_refuse_bind_over_bind`` uses - never a
+  second spelling. 🛑 No "either one may be the one you keep" hedge: the occupant is
+  DETERMINED here, and the reader is told which two keys are in play.
   """
   # ⚑ The lone equality guard in the module, and it states the RULE rather than
   # patching a predicate: a bind may take a mask's own point (the sweep then
@@ -564,7 +576,7 @@ def _refuse_bind_under_mask(
     f"the binding{_declared_clause(key)} of {entry.src!r} at {dest!r} sits inside the "
     f"mask{_declared_clause(declared_by.get(masks[0]))} at {masks[0]!r}, which would "
     f"swallow it. A mask may be a child of a binding, never its parent - bind "
-    f"outside the mask, or do not declare the mask."
+    f"outside the mask, or SUPPRESS the mask. {SUPPRESS_THEN_ADD}."
   )
 
 
@@ -579,6 +591,13 @@ def _refuse_mask_on_mask(
   ⚑ BOTH PARTICIPANTS BY KEY (keyspec ``:153-165``), and this is the refusal that
   needed it most: NEITHER mask has a host source, so before the keys the message named
   two bare destinations and nothing a reader could match to a file they had written.
+
+  ⚑⚑ AND THE CURE. Two masks at one point are unconstructible inside ONE scope (the
+  mask arm is dest-keyed), so this refusal is ALWAYS cross-scope: one of the two keys
+  is in a scope the reader may not own, and "declare one of them, not both" alone
+  asks for an edit they may not be able to make. The sentence is
+  :data:`~kanibako.settings.settings_categories.SUPPRESS_THEN_ADD`, the same object
+  ``_refuse_bind_over_bind`` uses - never a second spelling.
   """
   covering = _masks_over(combined, dest)
   if not covering:
@@ -590,7 +609,7 @@ def _refuse_mask_on_mask(
     f"the mask{_declared_clause(key)} at {dest!r} lands on the mask(s) already "
     f"collapsed at {named}. A mask may not take another mask's "
     f"point nor sit inside one - a void within a void hides nothing the outer mask "
-    f"is not hiding already. Declare one of them, not both."
+    f"is not hiding already. Declare one of them, not both. {SUPPRESS_THEN_ADD}."
   )
 
 
@@ -847,7 +866,7 @@ def _pair_one(
   if decl.delivery == COPY:
     # ⚑ NOTHING IS ARBITRATED AT A COPY'S DESTINATION (spec :147-149), so a copy
     # that reached the list reached it whole. One that did NOT is a declaration the
-    # PRODUCER dropped - a §0 row-5 loser - and that is a loss, not a copy.
+    # PRODUCER dropped - a same-scope loser - and that is a loss, not a copy.
     row = next(
       (c for c in copies if c.dest == decl.dest and c.src == decl.src), None,
     )
@@ -872,8 +891,8 @@ def _pair_one(
     return Derivation(decl, DERIVED_SUPERSEDED, cover, bind)
   # ⚑ A tie is UNCONSTRUCTIBLE from a launch's own declarations - two live binds at
   # one dest is ``_refuse_bind_over_bind``, and one scope's two abstractions at one
-  # dest is §0 row 5, whose loser the producer drops. It IS constructible from the
-  # pre-arbitration node when a row-5 pair share a source, and there the honest
+  # dest is §0's exempt pair, whose loser the producer drops. It IS constructible
+  # from the pre-arbitration node when that pair share a source, and there the honest
   # answer is that the map cannot say which of them the mount came from.
   ambiguous = claims.get((decl.dest, decl.src), 0) > 1
   return Derivation(

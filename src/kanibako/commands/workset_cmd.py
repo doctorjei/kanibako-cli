@@ -1156,7 +1156,7 @@ def _print_effective_shares(ws, std, ws_config: Path) -> int:
         # listed that share as a live mount while the box received nothing at all
         # (rc 0, no message), and one whose declarations a launch REFUSES outright
         # listed cleanly. ⚑ The COLLISION WARNINGS a launch emits are not raised
-        # here: §0 row 5 is an ambiguity between two ABSTRACT declarations, and a
+        # here: §0's exempt pair is an ambiguity between two ABSTRACT declarations, and a
         # share is never one of the two — the surviving share is unaffected.
         # ⚑ THE ENTRY LIST GOES IN AS WELL, and it buys exactly one thing: the
         # DECLARATION KEY behind each collapsed mount

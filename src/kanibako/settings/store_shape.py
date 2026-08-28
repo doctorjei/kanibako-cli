@@ -71,7 +71,7 @@ class StoreShape:
 
 @dataclass(frozen=True)
 class StoreShapeSet:
-  """One :class:`StoreShape` per scope, plus the §0 row-5 warnings as DATA."""
+  """One :class:`StoreShape` per scope, plus the ``caches``/``common`` warnings as DATA."""
 
   shapes: StoreShapeSetMap
   warnings: tuple[CategoryCollision, ...] = ()
@@ -104,14 +104,14 @@ def build_store_shape_set(entries: list[CategoryEntry]) -> StoreShapeSet:
 def build_store_shape(
   entries: list[CategoryEntry],
 ) -> tuple[StoreShape, list[CategoryCollision]]:
-  """Fold ONE scope's entries into its :class:`StoreShape` + its §0 row-5 warnings.
+  """Fold ONE scope's entries into its :class:`StoreShape` + its same-scope warnings.
 
   🛑 A ROW AT THE BOX HOME IS NOT THIS FUNCTION'S TO REFUSE (P7). Home is pid 0 and
   no longer routes through ``bindings.rw`` (spec ``:1015``), so a declaration landing
-  there is a SECOND bind at the foundation's point — and the spec (§0 rule 2) places
-  that refusal in the COLLAPSE, which is the only place holding the foundation to
-  compare against. Refusing it here by DEST would be a second spelling of one rule,
-  and it would fire on the create-side seed shapes, which have no foundation at all.
+  there is a SECOND bind at the foundation's point — and §0 places that refusal in
+  the COLLAPSE, the only place holding the foundation to compare against. Refusing
+  it here by DEST would be a second spelling of one rule, and it would fire on the
+  create-side seed shapes, which have no foundation at all.
   """
   survivors, warnings = _scope_survivors(entries)
   mounts: dict[str, BindMap] = {"ro": {}, "rw": {}}
@@ -163,11 +163,12 @@ def _scope_survivors(
 def _within_scope_survivors(
   box_dest: str, group: list[CategoryEntry],
 ) -> tuple[list[CategoryEntry], list[CategoryCollision]]:
-  """Apply the §0 rows decidable inside ONE scope at ONE dest: 1 (same-scope), 3, 5.
+  """Apply §0 at ONE dest in ONE scope: two mounts there are an error, but for one pair.
 
-  ⚑ Rows 2 and 4, and row 1's CROSS-scope case, are the COLLAPSE's and are NOT
-  applied here: a mask and a binding may share one scope, and eating the binding
-  now would strand the collapse's own mask loop with nothing to override.
+  ⚑ The exempt pair is same-scope ``caches``/``common``. MASKS and every CROSS-scope
+  pair are the COLLAPSE's and are NOT applied here: a mask and a binding may share
+  one scope, and eating the binding now would strand the collapse's own mask loop
+  with nothing to override.
   """
   concrete = [e for e in group if e.category in _FOLDED_CONCRETE]
   abstract = [e for e in group if e.category in _FOLDED_ABSTRACT_MOUNT]
@@ -179,9 +180,9 @@ def _within_scope_survivors(
     )
   if len(abstract) < 2:
     return group, []
-  # ROW 5 - same-scope abstraction ambiguity: the existing ordering stands (LAST
-  # wins, as `_most_specific` resolves it once scope is held constant) and the
-  # loss is WARNED every launch, never silently swallowed.
+  # THE EXEMPT PAIR - same-scope `caches`/`common`: the existing ordering stands
+  # (LAST wins, as `_most_specific` resolves it once scope is held constant) and
+  # the loss is WARNED every launch, never silently swallowed.
   winner, losers = abstract[-1], abstract[:-1]
   warning = CategoryCollision(
     box_dest=box_dest,

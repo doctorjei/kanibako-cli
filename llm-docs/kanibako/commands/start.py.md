@@ -147,14 +147,14 @@ since MBR-1 P3 nothing rides in beside the leaf either (the agent under-layer is
 That is also why the wiring reuses the existing walk rather than adding a second one: two walks
 could disagree about what was declared, and only one of them would be the one that ships.
 
-### The row-5 warning lives HERE, and ONLY here (cutover 5-0, then 5-1c)
+### The same-scope warning lives HERE, and ONLY here (cutover 5-0, then 5-1c)
 
 🛑 **UPDATED TWICE. 5-0:** `build_store_shape_set` computed the same same-scope ambiguities all
 along and `StoreShapeSet` carried them as data, but nothing ever asked for `.warnings` — the ONLY
 emission in `src/` was `emit_collision_warnings(reconciled.warnings)`. 5-0 handed `shapes.warnings`
 to that same seam as well, so both feeds were live and reverting was one line.
 🛑 **5-1c THEN DELETED THE RECONCILE FEED — and the `ReconciledCategories.warnings` field, and the
-row-5 `CategoryCollision` construction in `_resolve_mount_group` that filled it.** The producer is
+same-scope `CategoryCollision` construction in `_resolve_mount_group` that filled it.** The producer is
 now the SOLE builder of a `CategoryCollision` anywhere in `src/`, and there is no second feed left
 to add without re-adding a field.
 
@@ -176,8 +176,8 @@ it folds each scope alone, so it applies none of the reconcile's silences:
 
 | what silenced the reconcile | what the collapse arm says | what the launch does |
 |---|---|---|
-| a `masks` entry at that dest, in ANY scope (§0 row 2 returned the mask and no warnings) | warns for the ambiguous scope | **works** — one extra line the user did not get before v1.8.0 (CHANGELOG, Unreleased/Changed) |
-| another scope's abstraction took the dest (its old row 4) | warns for the LOSING scope, a scope the reconcile never named | refused by `collapse_store_shapes` — two mounts at one dest — so the line only ever precedes that refusal |
+| a `masks` entry at that dest, in ANY scope (the mask took it and no warnings were returned) | warns for the ambiguous scope | **works** — one extra line the user did not get before v1.8.0 (CHANGELOG, Unreleased/Changed) |
+| another scope's abstraction took the dest (its old cross-scope pick) | warns for the LOSING scope, a scope the reconcile never named | refused by `collapse_store_shapes` — two mounts at one dest — so the line only ever precedes that refusal |
 
 The mask row is the one that changes what a working launch prints, and it is the reason this is a
 CHANGELOG entry at all; it is pinned by
@@ -192,8 +192,8 @@ is an ordinary entry to the producer — it warns on an ambiguity there exactly 
 else — and the collapse then refuses the survivor against the seeded foundation.
 
 ⚑ **Whether the channel should exist AT ALL is still a spec question, and still open.** §0's
-containment table makes two mounts at one destination "an error in EVERY scope combination",
-same-scope included; warn-and-proceed is the retired five-row table's row 5. 5-0 gave that behaviour
+rule makes two mounts at one destination an error "in every scope combination but one", and
+warn-and-proceed is that one exception. 5-0 gave that behaviour
 a home in the new route and 5-1c gave it exactly one; neither rules on whether it survives.
 
 ### The credential gate is HOISTED above EVERY consumer (cutover 2b-0)
@@ -252,7 +252,7 @@ is why the literal lives beside the seam and not in the keyspace.
 is unconstructible: the key is floor-produced on every resolve and
 `settings_launch._assert_box_root_resolved` refuses a box root that did not resolve. TWO is the
 COLLAPSE's `_refuse_bind_over_bind`, fired against the foundation seeded beneath every scope's shape
-— which is where §0 rule 2 puts it, and the only layer holding a foundation to compare against.
+— which is where §0 puts it, and the only layer holding a foundation to compare against.
 `_snapshot_home` therefore carries no one-home rule; what it does carry is the TYPE the snapshot
 cannot (a resolved leaf is `object`, and a non-string one would otherwise reach podman as a source).
 
@@ -353,7 +353,7 @@ fine and make the collapse raise.** That is the tightening, and it is what CHANG
 
 🐞 **AND 6-R3 CHANGED WHICH MESSAGE A CROSS-SCOPE PAIR GETS. MEASURED, not inferred.** Two binds at
 ONE identical dest in two scopes used to hit the reconcile FIRST, so the user got
-`raise_binding_vs_binding`'s row-1 text. With that pass deleted the same configuration reaches
+`raise_binding_vs_binding`'s two-bindings text. With that pass deleted the same configuration reaches
 `store_collapse._refuse_bind_over_bind` instead. **The configuration still refuses, and the REMEDY
 SENTENCE is word-for-word identical** — measured by rendering both: *"To change what occupies a
 destination you must SUPPRESS the entry you do not want … Set the unwanted key to null in the
@@ -473,8 +473,8 @@ every consumer onto it:
 `reconcile_categories`, `ReconciledCategories`, `_resolve_dest_group`, `_resolve_mount_group`,
 `_resolve_copy_group` and the dead `_DISABLE_SENTINEL` are gone, and
 `test_category_collisions.py::test_the_retired_routes_are_GONE` asserts their absence structurally.
-§0's table is applied by three seams from here on — the per-scope `store_shape` producer (rows 3, 5,
-row 1 SAME-scope), the assembly collapse (rows 2, 4, row 1 cross-scope), and this seam's own
+§0's table is applied by three seams from here on — the per-scope `store_shape` producer (all that is
+decidable inside ONE scope), the assembly collapse (masks and every CROSS-scope pair), and this seam's own
 `secret_path_deliveries` / `narrow_table_winners` for the inputs the collapse cannot see.
 
 ⚑ **6-R2's env flip was byte-identical by inspection, not by hope:** the retired pass did no env
@@ -649,7 +649,7 @@ recorded, not pending.
 `_annotate_pref_origin` names the `pref` that installed a colliding key the user never wrote. Its
 `try` used to wrap the reconcile call, which raised FIRST on the live path — so its annotated message
 is the one users actually saw. Deleting the reconcile spread the surviving raises across three
-callees: the producer's rows 1/3 and the collapse's refusals (both inside
+callees: the producer's two refusals and the collapse's refusals (both inside
 `_install_assembly_collapse`), and the secret gate and narrow-table pass (both inside
 `launch_deliveries`). **The wrap therefore covers the BLOCK, not one call**, and it catches BOTH
 `CategoryCollisionError` (the producer and the seam) AND `SettingsError` (the collapse's own
@@ -680,8 +680,8 @@ internal dest outright.
 At a dest that IS the table's, §0 still has to decide, and a narrow resolve has nobody else to ask —
 the per-scope producer already raised the SAME-scope pair (`build_store_shape_set` runs ABOVE the
 collapse's `whole_box` gate, so it runs on narrow resolves too), and the CROSS-scope pair is
-`collapse_store_shapes`', which returns early here. So `narrow_table_winners` applies rows 1/3
-(refuse, through the two surviving public raisers) and row 2 (a `masks` OVERRIDES — it is the inverse
+`collapse_store_shapes`', which returns early here. So `narrow_table_winners` applies both refusals
+(through the two surviving public raisers) and the mask rule (a `masks` OVERRIDES — it is the inverse
 of a bind, not a second one). A bare dest-filter would keep both rows and let a dest-keyed map settle
 them by INSERTION ORDER, which is the `7b64217` shape and the plan's own storage.conf
 counter-example.
@@ -739,8 +739,8 @@ two disagree, the map now decides both halves:
 * a **bind nested under a mask** is swept, and the mask survives — already true of the bind arm
   since 2a-2 (MIGRATION §2.27); the mask arm now agrees with it instead of being computed elsewhere;
 * a **bind at a mask's own destination**, declared in a LATER scope, sweeps the mask and takes the
-  point. The retired cross-scope pass resolved that same collision the other way (§0 row 2: a mask
-  OVERRIDES a binding at its dest), so between 2a-2 and 2a-4 the launch emitted BOTH — a `-v` bind and a
+  point. The retired cross-scope pass resolved that same collision the other way (a mask
+  OVERRODE a binding at its dest), so between 2a-2 and 2a-4 the launch emitted BOTH — a `-v` bind and a
   `--mount type=tmpfs` at one destination — where it now emits the bind alone;
 * a mask **at or above home**, or **on another mask**, is REFUSED by the collapse. Until 2c that left
   the leaf absent and dropped the whole launch to the fallback, so masks and binds both came from the
@@ -940,19 +940,18 @@ beside that map. The name stays here because these two callers read as DELIVERY,
 | else | — | `Path(bind.src) / rel` |
 
 ⚑⚑ **THE REMAINING TWO ARE NOT REFUSALS THE SPEC NAMES, and that is why they warn.** Spec §0
-states the `synced` refusals exhaustively — *"The only refusals a `synced` copy meets are a mask as
-its PARENT and a copy of a DIRECTORY at a mask's own point"* — and `_refuse_synced_under_mask`
-RAISES on both before this function runs. What is left here is residue the containment table says
+states the `synced` refusals exhaustively — a mask as its PARENT, a copy of a DIRECTORY at a mask's
+own point, and a dest NO mount covers — and `_refuse_synced_under_mask` RAISES on the two mask
+cases before this function runs. What is left here is residue the containment table says
 nothing about: a read-only cover, and a mask at the dest's own point over a missing or unreadable
 source (already the module's own class — `_apply_shell_copy` warns on any missing source). For that
 residue, a mis-declared dest must not cost the user the launch. They must be asked in the order the
 table spells them.
 
-🛑 **THE FIRST ARM LEFT THAT SET ON 2026-08-28.** A dest no mount covers is now a REFUSAL, and it is
-a THIRD `synced` refusal — which the sentence quoted above says does not exist. That sentence
-(keyspec `:196`), the "meets mounts by construction" claim at `:125`, and §0's numbered list at
-`:133-144` are the spec text the ruling obliges; **the edit is the user's**, and the code follows
-the ruling meanwhile. Do not read the exhaustiveness sentence as current.
+⚑ **THE FIRST ARM LEFT THAT SET ON 2026-08-28.** A dest no mount covers is a REFUSAL, and it is the
+THIRD `synced` refusal. §0 now carries it in its own right — *"an arriving `synced` copy is refused
+if NO mount COVERS its destination"* — beside the two mask refusals, so the exhaustive list above is
+current and the code and the spec agree.
 
 ⚑ **A dest is DATA** — compared and sliced as a path, never `.split(".")`-ed.
 
