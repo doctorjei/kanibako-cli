@@ -686,15 +686,15 @@ def test_a_retired_assembly_spelling_is_gone_from_the_manifest_too(leaf):
 def test_a_collapse_output_is_indistinguishable_from_a_produced_sibling(leaf):
     """UNIFORMITY, stated as sibling-equality rather than against a literal.
 
-    The honest read behaviour is that NO ``meta.*`` key has a CLI read surface at
-    all: ``is_known_key`` gates on the SETTABLE set and ``meta.*`` is ``set: never``,
-    so ``system get meta.runtime.ws_root`` — a key that IS produced — answers
-    "unknown config key" exactly as an unproduced one does. Having no producer
-    therefore costs these four nothing, and this case says so in the form that
-    survives the gate being fixed: whatever the produced sibling answers, they
-    answer. It goes RED the moment one of them is special-cased in either
-    direction — a fabricated placeholder value on the read side, or a bespoke
-    refusal naming them.
+    The honest read behaviour is that NO ``meta.*`` key has a file-scope read surface:
+    a ``meta.*`` value is DERIVED per box at launch and stored in no settings file, so
+    ``system get meta.runtime.ws_root`` — a key that IS produced — is refused with the
+    same message an unproduced one gets. Having no producer therefore costs these four
+    nothing, and this case says so in the form that SURVIVED two rewordings of that
+    refusal without an edit ("unknown config key" until 2026-08-28, then the §0 gate's
+    own ``meta.*`` message): whatever the produced sibling answers, they answer. It goes
+    RED the moment one of them is special-cased in either direction — a fabricated
+    placeholder value on the read side, or a bespoke refusal naming them.
     """
     from kanibako.settings.config_keys import is_known_key
 
@@ -741,10 +741,11 @@ def test_an_unproduced_box_leaf_is_indistinguishable_from_a_produced_sibling(lea
 
     ``meta.box.path`` is written by ``settings_launch.workset_anchor_floor``; these
     are written by nothing. That difference must not reach the read surface,
-    and today it cannot: ``is_known_key`` gates on the SETTABLE set and every
-    ``meta.*`` key is ``set: never``, so ``system get`` answers "unknown config key"
-    for the produced anchor and for these alike (verified at the CLI). The case goes
-    RED if one is ever special-cased in either direction.
+    and today it cannot: a ``meta.*`` value is derived per box at launch and lives in
+    no settings file, so ``system get`` refuses the produced anchor and these alike
+    (verified at the CLI, 2026-08-28 — the wording moved from "unknown config key" to
+    the §0 gate's own ``meta.*`` message that day, and the equality held across both).
+    The case goes RED if one is ever special-cased in either direction.
     """
     from kanibako.settings.config_keys import is_known_key
 

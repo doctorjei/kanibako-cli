@@ -151,16 +151,74 @@ Read out of that, for anyone standing here:
   ``system get box.caches`` start answering, and would thereby BUILD the surface the ruling has not
   chosen. It was proposed and DECLINED.
 
-The visible cost, recorded so nobody re-discovers it as a bug: ``kanibako system get box.caches``
-prints "unknown config key" for a key that IS declared, and the one-positional ``kanibako box get
-box.caches`` is read as a PROJECT NAME. Both messages are wrong, both are KNOWN to be wrong, and the
-cure is the promised surface — never a wider list. (The scope nouns' two-positional reads, ``kanibako
+The visible cost, recorded so nobody re-discovers it as a bug: the one-positional ``kanibako box get
+box.caches`` is read as a PROJECT NAME. That message is wrong, it is KNOWN to be wrong, and the cure
+is the promised surface — never a wider list. (The scope nouns' two-positional reads, ``kanibako
 box get <box> box.caches`` and its workset/agent siblings, are not gated by this set and do return
 the map today. That is where the behaviour currently lives; it is an accident of which door checks
 this set, not the chosen design, so do not build on it either. ⚑ Those two doors are no longer
 UNGATED — :func:`scope_read_key_error` closes §0's read there — but they still pass ``box.caches``,
 because it asks ``key_validity``, which DECLARES it. Declining to invent a refusal for a declared
 key is not a decision about the promised map surface, and this paragraph still governs that.)
+
+⚑⚑ **``system get`` JOINED THOSE DOORS ON 2026-08-28, AND THE ASYMMETRY IT LEAVES IS THE ONE TO
+KNOW.** It carried an ``is_known_key`` PRE-GATE ahead of :func:`scope_read_key_error`, so it alone
+answered "unknown config key" for all seven — a SECOND vocabulary, telling a user that a declared key
+does not exist, which §0 forbids as squarely as it forbids fabricating a value. The pre-gate is gone
+and the verb now asks ``key_validity`` like its siblings, so ``kanibako system get system.caches``
+returns the map. **Read what that did and did not decide:**
+
+* It removed a wrong refusal at the key's OWN noun; it did not CHOOSE the readable form. The
+  `repr()` is what falls out of the generic scalar renderer, not a designed rendering, and
+  🛑 **THE PROMISED SURFACE IS STILL UNCHOSEN AND STILL JEI'S** — this paragraph governs it.
+* 🛑🛑 **CROSS-SCOPE IS OUT, AND THE FIRST CUT OF THIS CHANGE GOT IT WRONG.** Removing the pre-gate
+  ALSO made ``system get box.caches`` answer — the exact outcome the DECLINED derivation would have
+  produced. **Jei, 2026-08-28: *"i dont see any justification for crosscope 'get'. it makes no sense
+  at the cli."*** It is refused again, by :func:`foreign_scope_read_error`. ⚑ THE LESSON FOR THE
+  NEXT READER: the evidence offered for the first cut — *"the sibling nouns already print the
+  map"* — was a SAME-SCOPE measurement (``workset get <ws> workset.masks``) used to argue a
+  CROSS-SCOPE case. **Two different surfaces; the 2026-08-08 decline names the cross-scope one.**
+  Weigh the OUTCOME as well as the mechanism, and check which surface a measurement is actually of.
+
+**THE CROSS-SCOPE GATE'S BASIS — THREE WERE TRIED, TWO ARE DEAD.** The full statement lives in
+:func:`foreign_scope_read_error`'s docstring; it is summarised here because the two dead ones are
+what a reader re-derives.
+
+1. **THE WRITE ROUTE** (`has_no_cli_write_route`) — selects the right rows, REJECTED anyway. It
+   derives a `get` gate from whether `set` works, and the two verbs are held apart on purpose:
+   **Jei — *"set is different tho"*, and *"i did not say anything about set. set is different, i
+   said, specifically."*** Right rows, wrong reason: if `set`'s rules move, `get` follows for a
+   reason that has nothing to do with reading.
+2. **"DOES THIS NOUN'S OWN FILE CARRY THE KEY?"** — REJECTED BY MEASUREMENT, and the most likely
+   to be re-derived because it sounds obviously right. **It distinguishes nothing: a higher tier
+   carrying a lower scope's key IS the cascade.** A `box.<category>` table authored in the SYSTEM
+   settings file is not inert — through `build_launch_snapshot` → `snapshot_category_entries`,
+   with the system file the ONLY file supplied, **21 of 21** combinations reached the box (seven
+   categories × three scope tokens), e.g. `CategoryEntry(category='caches', scope='box',
+   box_dest='/home/agent/.dflt', host_src='/host/dflt', delivery='MOUNT')`. So the answer is YES
+   for `box.caches` at the `system` noun, and the gate would pass the very read the ruling forbids.
+   🛑 A corollary worth keeping: **the message must not tell a user this noun cannot STORE the
+   key** — it can, and it does.
+3. **THE FRAGMENT BASIS** — ADOPTED. A terminal category key is **merged per entry across tiers**
+   (spec `:1085`), so one tier's copy is a FRAGMENT, never the value. At its OWN noun the fragment
+   is a complete statement of that scope's contribution (R-9's honest read — `system get
+   system.caches` stays); at a FOREIGN noun it is a partial map no box sees. A SCALAR is held
+   whole by one tier, so `system get box.image` is a complete answer and stays. `get`-native,
+   never mentions `set`, derived from `TERMINAL_CATEGORY_TAILS`.
+* 🛑 **THE DECLINED FIX IS STILL DECLINED.** Do NOT derive :data:`KNOWN_CONFIG_KEYS` from the
+  declaration SoT. What the set still bounds is a PARSER's project-name disambiguation, where
+  widening it is not the cure for anything.
+* The **WRITE** side is untouched: ``system set system.caches=…`` still refuses, and spec §2a's
+  "EVERY BIND-SHAPED CATEGORY → YAML ONLY" is a rule about ``set`` and ``--reset``, which is why the
+  read could move without it.
+* 🛑🛑 **IT ALSO UN-GATED THE *AGENT*-SCOPE TERMINALS, WHICH IS A DIFFERENT AND WORSE CASE — see
+  :func:`agent_category_read_error`.** ``agent.<node>.caches`` is declared too, but its value lives
+  in ``agents/<node>/agent.yaml``, which the file-scope nouns never open, so falling through
+  answered "(not set)" over a table on disk. ``is_known_key`` had been holding that line by
+  accident. **The lesson generalises: this predicate's `False` answers were load-bearing in places
+  nobody had enumerated, so removing a gate that consults it needs the un-gated set MEASURED, not
+  reasoned about.** The replacement refusal names ``kanibako agent get <node> <category>``, which
+  does serve the read.
 
 ⚑ The quarantine COMMENT travels with the set — do not copy the hand-maintained pattern anywhere
 else, and do not split the block from the data.
@@ -880,6 +938,13 @@ terminals and ``<scope>.masks``. Read **The QUARANTINE** above before treating t
 individual read/write of a multi-faceted key is NOT SUPPORTED, the readable form is a promise whose
 shape is undecided (Jei, 2026-08-08), and DERIVING this predicate from the declaration SoT — the
 obvious fix — was proposed and DECLINED because it would build that undecided surface.
+
+⚑⚑ **NO VERB'S VOCABULARY IS ON IT SINCE 2026-08-28.** ``system get`` was the last read gate that
+consulted it, and those seven `False` answers reached the user as "unknown config key" — a refusal
+of a DECLARED key, which is the §0 fault, not the quarantine's intent. What is left are the
+DISAMBIGUATION callers in ``commands/box/_parser.py``, whose question genuinely is "key or project
+name". 🛑 **Do not re-wire this into a gate**, and do not read its narrowness as a refusal rule:
+the predicate answers a PARSER, and the closed keyspace answers everything else.
 
 The branch-by-branch reasons, in dispatch order:
 

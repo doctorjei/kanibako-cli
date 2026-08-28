@@ -35,7 +35,10 @@ from kanibako.settings.config import load_config, read_system_agent
 from kanibako.settings.config_io import dump_doc, load_doc
 from kanibako.settings.config_io import write_nested_key
 from kanibako.settings.paths import load_std_paths
-from kanibako.settings.settings_keyspace import SCALAR_AGENT_LEAVES
+from kanibako.settings.settings_keyspace import (
+    SCALAR_AGENT_LEAVES,
+    TERMINAL_CATEGORY_TAILS,
+)
 
 
 def _set(key_value, *, force=True):
@@ -407,12 +410,21 @@ class TestSystemStructuralFileOnly:
         spellings — for which "is a structural config key … its value lives in the
         config file" asserts that a non-existent key exists.  The message is gone; the
         assertions below are the ones its own mutation guard implied.
+
+        ⚑ THE WORDING MOVED ONCE MORE (2026-08-28) and the SUBJECT did not.  The
+        ``is_known_key`` pre-gate that answered "unknown config key" is gone — it was a
+        second vocabulary that refused seven DECLARED keys — so the §0 gate's own
+        refusal is what an undeclared name gets.  Pinned on what §0 actually demands:
+        rc 1, the offending key NAMED, and the declared alternatives listed.  It must
+        NOT be pinned on the whole string, which is ``key_validity``'s to word.
         """
         capsys.readouterr()  # drain
         rc = _get("config.nope")
         assert rc == 1
         err = capsys.readouterr().err
-        assert "unknown config key" in err, err
+        assert "config.nope" in err, err
+        assert "not a declared Layer-1 config key" in err, err
+        assert "config.settings" in err, err
         assert "structural config key" not in err, err
 
     def test_a_declared_config_foundation_key_still_reads(
@@ -946,6 +958,72 @@ class TestSystemGetClosedKeyspaceReadGate:
         cap = capsys.readouterr()
         assert "(not set)" not in cap.out + cap.err, cap
 
+    @pytest.mark.parametrize(
+        "tail", sorted(TERMINAL_CATEGORY_TAILS), ids=lambda t: ".".join(t),
+    )
+    def test_a_per_agent_category_TABLE_is_refused_here_not_faked(
+        self, config_file, tmp_home, capsys, tail,
+    ):
+        """THE WHOLE-TABLE TWIN of the per-entry case above, and it went RED on
+        2026-08-28 the moment the ``is_known_key`` pre-gate came out of ``system get``.
+
+        That pre-gate was incidentally holding this line: it answered False for
+        ``agent.<node>.caches``, so the verb refused it as "unknown". With the pre-gate
+        gone, ``key_validity`` DECLARES the key, the §0 gate has no complaint, and the
+        read fell through to an engine that has no route to an agent's own file —
+        printing "(not set)" over the seven tables this fixture just wrote. A fabricated
+        answer for a key whose value is sitting on disk is the fault §0 names, so the
+        gate now refuses it and names the noun that DOES read it.
+
+        ⚑ DERIVED FROM ``TERMINAL_CATEGORY_TAILS`` (P13), the same SoT the file-scope
+        case above uses; the two differ only in scope, which is the real distinction.
+        """
+        std = _std(config_file)
+        node_file = std.agents / store_dirname("claude") / "agent.yaml"
+        node_file.parent.mkdir(parents=True, exist_ok=True)
+        dump_doc(node_file, {"self": {
+            "masks": ["~/.m"],
+            "caches": {"~/.cache/uv": "/host/uv"},
+            "seeded": {"~/.s": "/host/s"},
+            "synced": {"~/.y": "/host/y"},
+            "common": {"~/.c": "/host/c"},
+            "bindings": {"ro": {"~/.r": "/host/r"}, "rw": {"~/.w": "/host/w"}},
+        }})
+        key = ".".join(("agent", "claude", *tail))
+        capsys.readouterr()
+        assert _get(key) == 1
+        cap = capsys.readouterr()
+        assert "(not set)" not in cap.out + cap.err, cap
+        assert key in cap.err, cap.err
+        # The cure names the noun that answers — and it really does answer.
+        assert f"kanibako agent get claude {'.'.join(tail)}" in cap.err, cap.err
+
+    @pytest.mark.parametrize(
+        "tail", sorted(TERMINAL_CATEGORY_TAILS), ids=lambda t: ".".join(t),
+    )
+    def test_the_any_agent_DEFAULT_tier_is_NOT_swept_into_that_refusal(
+        self, config_file, tmp_home, capsys, tail,
+    ):
+        """THE CARVE-OUT THAT IS NOT ONE: ``agent.default.<category>`` is a different
+        STORE, not an exception to a rule.
+
+        The any-agent tier lives in the SYSTEM settings file, which this noun does read,
+        so the refusal above would break a working read — and its cure would be a lie,
+        because there is no ``agents/default/agent.yaml`` and ``kanibako agent get
+        default …`` exits 1 on "agent 'default' not found" (measured 2026-08-28).
+        """
+        std = _std(config_file)
+        std.settings.parent.mkdir(parents=True, exist_ok=True)
+        # ⚑ ``bindings`` is a TWO-segment tail, so the arm is a SECTION and only the last
+        # segment is the leaf — spelling it any other way writes ``agent.default.ro``.
+        write_nested_key(
+            std.settings, ("agent", "default", *tail[:-1]), tail[-1],
+            ["/x"] if tail[-1] == "masks" else {"~/.d": "/host/d"},
+        )
+        key = ".".join(("agent", "default", *tail))
+        capsys.readouterr()
+        assert _get(key) == 0, capsys.readouterr().err
+
     @pytest.mark.parametrize("leaf", sorted(SCALAR_AGENT_LEAVES))
     def test_every_scalar_agent_leaf_still_READS(
         self, config_file, tmp_home, capsys, leaf,
@@ -988,18 +1066,110 @@ class TestSystemGetClosedKeyspaceReadGate:
     def test_is_known_key_was_NOT_widened(self):
         """THE CONSTRAINT THIS FIX WAS WRITTEN UNDER, pinned so it cannot be undone
         quietly.  ``transform_settings`` must stay key-SHAPED — that is what stops the
-        parser reading it as a project name and what carries it to the gate.  Widening
-        the predicate instead would have made this False and the refusal unreachable."""
+        ``box`` positional parser reading it as a project name.  Widening the predicate
+        instead of adding the gate would have made this False.
+
+        ⚑ It no longer carries anything to a READ gate (2026-08-28): ``system get`` is
+        on ``key_validity`` now and asks this predicate nothing.  The pin survives on
+        the DISAMBIGUATION consumers, which are the only ones left."""
         from kanibako.settings.config_keys import is_known_key
 
         assert is_known_key("transform_settings") is True
 
-    def test_an_undeclared_name_keeps_the_is_known_key_wording(
+    @pytest.mark.parametrize(
+        "tail", sorted(TERMINAL_CATEGORY_TAILS), ids=lambda t: ".".join(t),
+    )
+    def test_a_declared_terminal_category_key_is_NOT_refused_as_unknown(
+        self, config_file, tmp_home, capsys, tail,
+    ):
+        """THE SEVEN THE ``is_known_key`` PRE-GATE ANSWERED WRONG, pinned (2026-08-28).
+
+        ``system.masks`` and the six bind-shaped category terminals are DECLARED,
+        ``get_config_value`` reads every one of them, and both sibling nouns already
+        served them — yet ``system get`` refused all seven "unknown config key" because
+        a SECOND vocabulary (``is_known_key``) gated the read ahead of the §0 one.  §0
+        forbids answering that a declared key does not exist quite as firmly as it
+        forbids fabricating a value for one that does not.
+
+        ⚑ DERIVED FROM ``TERMINAL_CATEGORY_TAILS`` (P13), the declaration SoT for the
+        set — an eighth terminal category is pinned here the day it is declared, and a
+        retired one leaves without an edit.
+        """
+        capsys.readouterr()
+        key = ".".join(("system", *tail))
+        assert _get(key) == 0, capsys.readouterr().err
+        assert "unknown config key" not in capsys.readouterr().err
+
+    @pytest.mark.parametrize(
+        "tail", sorted(TERMINAL_CATEGORY_TAILS), ids=lambda t: ".".join(t),
+    )
+    @pytest.mark.parametrize("scope", ["box", "workset"])
+    def test_a_FOREIGN_scope_category_key_is_refused_at_this_noun(
+        self, config_file, tmp_home, capsys, scope, tail,
+    ):
+        """JEI'S RULING, 2026-08-28: *"i dont see any justification for crossscope 'get'.
+        it makes no sense at the cli."*
+
+        ⚑ The refusal must NOT demote the key: it IS declared, and saying "unknown config
+        key" about it is the same §0 fault the same-scope case above fixes.  It names the
+        key, says whose scope it is, and points at the noun that reads it.
+        """
+        key = ".".join((scope, *tail))
+        capsys.readouterr()
+        assert _get(key) == 1
+        cap = capsys.readouterr()
+        assert "(not set)" not in cap.out + cap.err, cap
+        assert "unknown config key" not in cap.err, cap.err
+        assert key in cap.err, cap.err
+        assert f"kanibako {scope} get" in cap.err, cap.err
+
+    def test_a_foreign_scope_SCALAR_still_reads(
         self, config_file, tmp_home, capsys,
     ):
-        """ORDERING, pinned: the gate sits AFTER the ``is_known_key`` branch, so an
-        undeclared NAME still gets that branch's message.  Its wording is Jei's call to
-        change, and this gate is not the place it changes."""
+        """THE LINE THE RULING DOES *NOT* CROSS, and it is drawn by MEASUREMENT.
+
+        A flat "the key's scope must equal the noun's scope" gate refuses 86 reads that
+        answer today (29 here, 23 at ``workset``, 34 at ``box`` — counted over the
+        manifest, 2026-08-28).  They are DOWNWARD DEFAULTS: ``kanibako system set
+        box.image=…`` lands in THIS noun's file and reaches a box through the cascade.
+
+        ⚑ WHAT SEPARATES THIS FROM ``box.caches`` IS THE VALUE'S SHAPE, NOT THE VERB.  A
+        SCALAR is held whole by one tier, so this read is a complete answer; a terminal
+        category is merged ENTRY BY ENTRY across tiers (spec ``:1085``), so a foreign
+        noun holds only a fragment — see :func:`foreign_scope_read_error`, which records
+        the two bases that were tried and rejected before that one, including why "does
+        this noun's own file carry it" cannot tell these two apart.
+        """
+        assert _set("box.image=myimg") == 0
         capsys.readouterr()
-        assert _get("config.nope") == 1
-        assert "unknown config key" in capsys.readouterr().err
+        assert _get("box.image") == 0
+        assert "myimg" in capsys.readouterr().out
+
+    @pytest.mark.parametrize(
+        "key", ["meta.box.path", "meta.runtime.ws_root", "meta.workset.name"],
+    )
+    def test_a_meta_key_is_refused_not_reported_unset(
+        self, config_file, tmp_home, capsys, key,
+    ):
+        """``meta.*`` is DERIVED per box at launch and stored in no settings file, so a
+        file-scope noun has nothing to report — and "(not set)" would be a fabrication
+        rather than an answer.  The cure names the surface that DOES resolve them."""
+        capsys.readouterr()
+        assert _get(key) == 1
+        cap = capsys.readouterr()
+        assert "(not set)" not in cap.out + cap.err, cap
+        assert key in cap.err, cap.err
+        assert "--effective" in cap.err, cap.err
+
+    def test_a_hand_authored_terminal_category_VALUE_reads_back(
+        self, config_file, tmp_home, capsys,
+    ):
+        """The other half: admitting the seven has to make the read HONEST, not merely
+        quiet.  A refusal traded for a permanent "(not set)" would be the fabricated
+        answer §0 names, wearing rc 0."""
+        write_nested_key(
+            _std(config_file).settings, ("system",), "masks", ["/a/b"],
+        )
+        capsys.readouterr()
+        assert _get("system.masks") == 0
+        assert "/a/b" in capsys.readouterr().out

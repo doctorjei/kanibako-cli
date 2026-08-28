@@ -286,7 +286,8 @@ inside boxes. In order of likely impact:
 | `kanibako box get <box> <stale key>` | **loud** — refused naming the key and why, rc 1 (§2.48) |
 | `kanibako workset get <workset> <stale key>` | **loud** — refused naming the key and why, rc 1 (§2.48) |
 | `kanibako box get <stale key>` (no box argument) | `Error: Unknown project or workset: '<key>'` — the unknown key is taken for a project name |
-| `kanibako system get`/`set <stale key>` (typed) | **loud** — `Error: unknown config key: …`, rc 1 |
+| `kanibako system get <stale key>` (typed) | **loud** — refused naming the key and why, rc 1 (§2.48) |
+| `kanibako system set <stale key>` (typed) | **loud** — `Error: unknown config key: …`, rc 1 |
 | `box.agent_name` / `box.agent` / `system.default_agent` stored anywhere in the cascade | **hard refusal** at launch and in `box info`, carrying that key's OWN message and cure (below) |
 | `auto_approve` stored in the system settings file | **hard refusal**, likewise with its own message and cure (below) |
 
@@ -1237,12 +1238,15 @@ a write.
 - they are still declared keys;
 - they are still read by the launch cascade, so **every binding you already have keeps mounting**;
 - they are still authored by hand in the settings YAML;
-- **`box get` and `workset get` still read them**, naming the subject
-  (`kanibako box get <box> box.bindings.ro`). ⚑ `kanibako system get` does **not**: at that noun
-  a whole-category key is refused by name (`Error: unknown config key: system.bindings.ro`) and
-  only a single entry reads back — see *The cure*, below. ⚑ Even at the box and workset nouns
-  this is not a complete read surface — see the known-limitation note in §2.23 before relying
-  on it.
+- **`box get`, `workset get` and `system get` all still read them at their OWN scope**, naming
+  the subject (`kanibako box get <box> box.bindings.ro`, or `kanibako system get
+  system.bindings.ro`). ⚑ The `system` noun was the odd one out for most of the 1.8.0 cycle — it
+  answered `Error: unknown config key: system.bindings.ro` for a key it does in fact store — and
+  it reads its own scope like the other two nouns now. ⚑ **Ask a noun for another scope's
+  category key and it is refused** (`kanibako system get box.caches`): the noun already names
+  the scope, so there is nothing for a cross-scope read to mean. The refusal names the key and
+  the noun that does read it. ⚑ This is still not a complete read surface — see the
+  known-limitation note in §2.23 before relying on it.
 
 Only the *write verb* is gone.
 
@@ -1467,17 +1471,25 @@ get claude agent.claude.caches`, which repeats the node inside the key and refus
 This closes a gap: `box.bindings.ro`, `box.bindings.rw` and `box.masks` previously read back
 `(not set)` even when set, because nothing claimed the bare key.
 
-**⚠️ Known limitation — two gaps in that read surface,** both real at v1.8.0:
+**⚠️ Known limitation — three gaps in that read surface,** all real at v1.8.0:
 
-- **The `system` noun does not read a category key.** `kanibako system get system.caches` — and
-  every other bind-shaped category key under `system`, including `system.bindings.ro` and
-  `system.masks` — refuses with `Error: unknown config key`, even though the key is declared and
-  the box and workset nouns read it. A *destination inside* one does read back
-  (`kanibako system get "system.caches.~/.cache/uv"` prints the entry), so the system tier is
-  checkable an entry at a time, not as a map.
-- **`masks` has no per-destination read anywhere.** `kanibako box get <box> "box.masks.~/.m"`
-  answers `(not set)` and the `system` noun calls it an unknown key. A mask's value is a marker
-  rather than a source, and nothing claims the per-entry slot. Read the whole `masks` map instead.
+- **A category key is readable only at its OWN noun.** `kanibako system get system.caches` works;
+  `kanibako system get box.caches` is refused and points you at `kanibako box get <box>
+  box.caches`. The reason is that these tables are merged *entry by entry* across tiers, so any one
+  noun holds a fragment rather than the value — asking the `system` noun for `box.caches` would
+  print a partial map no box ever sees. There is no one place to see every scope's category tables
+  side by side; for that, use `kanibako box show <box> --effective`, which resolves the whole
+  cascade for a real box.
+
+- **A *per-agent* category key is not readable at a file-scope noun.** `kanibako system get
+  agent.<agent>.caches` — and the other six categories under `agent.<agent>` — is refused, because
+  the table lives in `agents/<agent>/agent.yaml` and the file-scope nouns do not open that file.
+  The refusal points at `kanibako agent get <agent> caches`, which does read it, so the surface
+  exists; it is just at a different noun. (`agent.default.<category>`, the any-agent tier, is
+  stored in the system settings file and reads at `system get` like any other system key.)
+- **`masks` has no per-destination read anywhere.** `kanibako box get <box> "box.masks.~/.m"` is
+  refused by name — a mask's value is a marker rather than a source, and nothing claims the
+  per-entry slot. Read the whole `masks` map instead.
 
 ⚑ The per-destination read of the other five categories is a read *into* one key's value, not a
 key of its own — which is why there is no matching `set`, and why the `agent` noun refuses
