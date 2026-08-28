@@ -430,7 +430,8 @@ def host_config_map(std: StandardPaths) -> dict[str, str]:
 
     ⚑ The ``StandardPaths`` attribute is ``key.split(".", 1)[1]`` for all six, and that is
     a rule rather than a coincidence: Layer 1 names its fields after its keys, which is
-    why this needs no ``_FLOOR_ROOT_KEYS``-style pair list and ``system_path_floor`` does.
+    why this needs no alias at all where ``system_path_floor`` needs exactly one
+    (``system.channelroot`` → ``std.channels``; see :data:`_FLOOR_FIELD_ALIASES`).
     A Layer-1 key added WITHOUT the matching field raises ``AttributeError`` on the next
     ctx build — loud, immediate, and at every launch.  Silent omission is the failure this
     replaces; a crash is strictly the better one.
@@ -438,21 +439,27 @@ def host_config_map(std: StandardPaths) -> dict[str, str]:
     return {key: str(getattr(std, key.split(".", 1)[1])) for key in CONFIG_PATH_DEFAULTS}
 
 
-#: The Layer-2 ``system.*`` path keys that reach a FLOOR, as ``(key, StandardPaths
-#: attribute)``.  ⚑ The channel leaves are DERIVED from :data:`SYSTEM_PATH_DEFAULTS`
-#: below rather than listed here: that table is the declared family (pinned against the
-#: keyspace manifest), so a new leaf reaches the floor without an edit and cannot be
-#: quietly left out the way ``system.channels.broadcast`` was.
-_FLOOR_ROOT_KEYS: tuple[tuple[str, str], ...] = (
-    ("system.channelroot", "channels"),
-    ("system.template", "template"),
-    # The SYSTEM-level CANON CONTRIBUTION root (spec §2g) — the source of the
-    # handbook's SYS_CONTENTS.md + general chapter binds, and the install dest of the
-    # packaged handbook.  ⚑ It names a per-scope CONTRIBUTION root, NOT a copy of the
-    # assembled canon: ``~/canon`` (guest) is the assembled tree, ``@<scope>.canon``
-    # (host) is what that scope contributes to it.
-    ("system.canon", "canon"),
-)
+#: The :class:`StandardPaths` FIELD a Layer-2 ``system.*`` key's resolved value lands in,
+#: for the keys where that field is not ``key.split(".", 1)[1].replace(".", "_")``.
+#: ⚑⚑ A SPELLING TABLE, NOT A MEMBERSHIP LIST, and the difference is the whole of the
+#: 2026-08-28 widening: FLOOR MEMBERSHIP is :data:`SYSTEM_PATH_DEFAULTS` entire, so a key
+#: declared tomorrow reaches the floor with no edit here, and a key whose field is missing
+#: raises ``AttributeError`` at the next floor build instead of dangling silently.  A
+#: membership list fails by SILENCE; this one fails by CRASH, which is the trade
+#: :func:`host_config_map` makes one layer down for the same reason.
+#: ⚑ ``system.channelroot`` is the only irregular pair — the field is older than the key
+#: name and is read as ``std.channels`` throughout.  ``system.canon`` and
+#: ``system.template`` follow the rule: the SYSTEM-level CANON CONTRIBUTION root (spec
+#: §2g) is the source of the handbook's SYS_CONTENTS.md + general chapter binds and the
+#: install dest of the packaged handbook — a per-scope CONTRIBUTION root, NOT a copy of
+#: the assembled canon (``~/canon`` in-guest is the assembly, ``@<scope>.canon`` on the
+#: host is what that scope contributes to it).
+_FLOOR_FIELD_ALIASES: dict[str, str] = {"system.channelroot": "channels"}
+
+
+def _floor_field(key: str) -> str:
+    """The :class:`StandardPaths` field holding *key*'s resolved value."""
+    return _FLOOR_FIELD_ALIASES.get(key, key.split(".", 1)[1].replace(".", "_"))
 
 
 def system_path_floor(std: StandardPaths) -> dict[str, str]:
@@ -475,19 +482,32 @@ def system_path_floor(std: StandardPaths) -> dict[str, str]:
     A display that lies about what a launch does is precisely what those comments
     existed to prevent, and a hand list on each side is how they failed to.
 
-    ⚑ ``system.{backup,cache,runtime}`` are NOT here, and their absence is stated rather
-    than assumed: they are declared keys with manifest defaults that no floor has ever
-    installed either — the same finding one scope over.  Widening this to cover them is
-    a separate change with its own consumers to check, so it is reported, not smuggled
-    in; ``tests/test_channels/test_system_channel_keys.py`` pins the three by name so
-    the omission cannot become invisible.
+    ⚑⚑ DERIVED FROM :data:`SYSTEM_PATH_DEFAULTS` ENTIRE SINCE 2026-08-28, which WIDENED
+    it from 8 keys to 11.  The hand-named ``_FLOOR_ROOT_KEYS`` tuple it replaced carried
+    three roots and derived only the channel leaves, so ``system.backup``,
+    ``system.cache`` and ``system.runtime`` — declared, manifest-defaulted, CLI-settable,
+    and resolved by the SET-time tier (``config_interface._path_tier_split``) — answered
+    ``__MISSING__`` in every launch snapshot.  ``config set`` therefore ACCEPTED a
+    binding sourced at ``@system.cache`` and the launch dropped it with no message and
+    rc 0: the ``system.channels.broadcast`` shape again, one omission over.  [R143]
+    settles that it is a defect rather than a report — *"if it has a default value, yes,
+    thay value should be placed in the keystore"* — universally, with no exemption list.
+
+    ⚑ RESERVED AND REACHABLE ARE ORTHOGONAL.  Nothing in kanibako READS those three yet,
+    and that stays true: *reserved* is a fact about CONSUMERS, this floor is a fact about
+    the KEYSTORE, and a reserved key still answers.  No discriminator is needed because
+    the question was never asked.
+
+    ⚑ CONSUMERS CHECKED IN THE SAME CHANGE — both, and both take the whole map:
+    ``commands/start._launch_snapshot_inputs`` (three more scalars in the snapshot floor,
+    folded by the last-wins arm of ``_merge_default_categories`` — no category key, no
+    origin claim, no refusal, and the keys are declared so ``_refuse_undeclared_snapshot``
+    is silent) and ``commands/workset_cmd._print_effective_shares`` (``workset share list
+    --effective``, which folds the map into a resolve floor and PRINTS bindings, never the
+    floor itself).  ``tests/test_channels/test_system_channel_keys.py`` carried the
+    by-name pin on the omission; it is INVERTED, not deleted.
     """
-    floor = {key: str(getattr(std, attr)) for key, attr in _FLOOR_ROOT_KEYS}
-    prefix = "system.channels."
-    for key in SYSTEM_PATH_DEFAULTS:
-        if key.startswith(prefix):
-            floor[key] = str(getattr(std, f"channels_{key[len(prefix):]}"))
-    return floor
+    return {key: str(getattr(std, _floor_field(key))) for key in SYSTEM_PATH_DEFAULTS}
 
 
 def load_system_config(user_config_path: Path, *, data_home: Path, home: Path) -> dict[str, Path]:

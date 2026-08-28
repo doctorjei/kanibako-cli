@@ -309,6 +309,14 @@ legitimately-absent referent rather than a failure. A user reading `--effective`
 bindings saw one they had configured not appear at all. (The launch side of the same split was
 missing `system.channels.broadcast`, so a bind through that key was dropped from the collapse.)
 
+⚑ **THE SHARED FLOOR WIDENED 8 → 11 ON 2026-08-28** and this display widened with it, for free:
+`system_path_floor` now derives from `SYSTEM_PATH_DEFAULTS` entire, so a workset binding sourced at
+`@system.backup`, `@system.cache` or `@system.runtime` resolves and PRINTS here instead of being
+dropped from the listing exactly as it was dropped from the launch. Measured both ways: with the
+retired hand list those three rows are absent and the literal and `@system.channelroot` controls
+still print, rc 0 either way. This display gains no row of its own from the widening — it folds the
+map into a resolve floor and prints collapsed BINDINGS, never the floor.
+
 `tests/test_commands/test_workset_cmd.py::TestWorksetCmdSystemFloor` pins it, and pins it by
 DERIVATION now: it drives this display with a binding sourced at every key the launch floor answers
 and names no key itself. The version that guarded the split before compared each function's SOURCE

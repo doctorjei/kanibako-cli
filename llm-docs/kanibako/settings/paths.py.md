@@ -472,9 +472,9 @@ consistently wrong.
 
 ⚑ **THE KEY SET IS DERIVED, AND THE ATTRIBUTE NAME IS A RULE, NOT A COINCIDENCE.** Layer 1 names its
 `StandardPaths` fields after its keys (`config.data` → `data`, `config.primary_workset` →
-`primary_workset`, …), all six, which is exactly why this needs no `_FLOOR_ROOT_KEYS`-style pair list
-and `system_path_floor` does — the three Layer-2 roots are hand-named there *because* their attribute
-names do not follow from their key names. A Layer-1 key declared without the matching field raises
+`primary_workset`, …), all six, which is exactly why this needs no alias at all where
+`system_path_floor` needs exactly one — `system.channelroot` resolves into `std.channels`, the single
+Layer-2 field whose name does not follow from its key. A Layer-1 key declared without the matching field raises
 `AttributeError` on the next ctx build, at every launch. Silent omission is the failure this replaces;
 a crash is the strictly better one.
 
@@ -502,17 +502,39 @@ message and rc 0**. The display map omitted all five `system.channels.*` leaves,
 binding sourcing `@system.channels.chat` mounted at launch and did not print. Two carriers of one
 shape is the defect class; the repair is one carrier, not a better promise.
 
-⚑ The channel leaves are **derived from `SYSTEM_PATH_DEFAULTS`**, not listed — that table is the
-declared family (pinned against the keyspace manifest), so a new leaf reaches the floor without an
-edit and cannot be left out the way `broadcast` was. The three top roots (`system.channelroot`,
-`system.template`, `system.canon`) are named in `_FLOOR_ROOT_KEYS` because their `StandardPaths`
-attribute names do not follow from their key names.
+⚑⚑ **THE KEY SET IS `SYSTEM_PATH_DEFAULTS` ENTIRE — 11 keys since 2026-08-28, and it was 8.** The
+`_FLOOR_ROOT_KEYS` tuple this replaced named three roots by hand and derived only the channel
+leaves, which left `system.backup`, `system.cache` and `system.runtime` out: declared, carrying
+manifest defaults, CLI-settable, and resolved by the SET-time tier
+(`config_interface._path_tier_split`, which iterates the whole table) — so `config set` accepted a
+binding sourced at `@system.cache` and the launch snapshot answered `__MISSING__`, dropping it with
+no message and rc 0. Measured on the real snapshot before and after: those three go `__MISSING__` →
+their resolved paths, the other eight are byte-identical, and the set-time/launch pair goes 11-vs-8
+to 11-vs-11. [R143] is the authority — *"if it has a default value, yes, thay value should be placed
+in the keystore"* — universal, no allowlist and no origin test.
 
-⚑ **`system.{backup,cache,runtime}` are NOT in this floor, and the omission is a STATED one.** They
-are declared keys with manifest defaults that no floor has ever installed either — the same finding
-one scope over, not yet ruled on. `tests/test_channels/test_system_channel_keys.py` pins the three
-by name, so widening the floor to cover them reds and has to be said out loud rather than arriving
-as a side effect.
+⚑ **RESERVED AND REACHABLE ARE ORTHOGONAL, WHICH IS WHY THIS NEEDS NO DISCRIMINATOR.** Nothing reads
+those three yet and nothing here gives them a consumer: *reserved* is a fact about consumers, this
+floor is a fact about the keystore, and a reserved key still answers.
+
+⚑ **`_FLOOR_FIELD_ALIASES` IS A SPELLING TABLE, NOT A MEMBERSHIP LIST**, and the distinction is the
+point. Membership is the declared table; the alias map only carries the one key whose
+`StandardPaths` field does not follow from its name (`system.channelroot` → `std.channels`, a field
+older than the key). Everything else is `key.split(".", 1)[1].replace(".", "_")`. A key declared
+without a matching field raises `AttributeError` at the next floor build — a membership list fails
+by silence, this fails by crash, the same trade `host_config_map` makes one layer down.
+
+⚑ **CONSUMERS, BOTH OF THEM, CHECKED IN THE SAME CHANGE.**
+`commands/start._launch_snapshot_inputs` folds the map into `default_categories` through
+`_merge_default_categories` as a deliberate late-injection override; the three additions are
+scalars, so they take the last-wins arm, claim no category destination and trigger no origin
+refusal, and being declared they pass `_refuse_undeclared_snapshot` — the snapshot gains three
+`system.*` leaves and no top-level key. `commands/workset_cmd._print_effective_shares` folds the
+same map into an `assemble_levels` floor and prints collapsed BINDINGS, never the floor, so
+`workset share list --effective` gains no row from the widening — what changes is that a binding
+sourced at one of the three now resolves instead of vanishing.
+`tests/test_channels/test_system_channel_keys.py` held the by-name pin on the omission; it is
+**inverted, not deleted**.
 
 ```python
 def load_std_paths(config: KanibakoConfig | None = None) -> StandardPaths

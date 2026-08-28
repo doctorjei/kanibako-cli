@@ -346,6 +346,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   now guards it is the general one: every command whose handler reads a blanket flag must be
   declared as taking it, asserted over the whole command tree.
 
+- **Bindings sourced at `@system.backup`, `@system.cache` or `@system.runtime` were accepted and
+  then silently dropped.** All three are settings keys kanibako declares, gives a default, and lets
+  you set — `kanibako system set system.cache=…` has always worked. But the map that `@system.*`
+  references actually resolve against when a box starts was written out by hand and named only
+  eight of the eleven, so a binding, seed or environment value sourced at one of those three
+  resolved when you set it, reached nothing at launch, and was discarded with no message and exit
+  0. The same row simply did not appear in `workset share list --effective` either, so the listing
+  a user checks their configuration against agreed with the drop instead of exposing it. The map is
+  now derived from the declared table at both sites, so those three resolve, mount and display like
+  any other path key, and one declared later arrives without an edit. **Nothing else changes:** the
+  eight keys that already resolved resolve to the same values, no key became settable that was not
+  settable before, and no new value is written to any file.
+
 - **A value sourced at `@config.journal` was accepted and then silently dropped at launch.**
   Kanibako's Layer-1 config foundation declares six keys, but the map that `@config.*` references
   actually resolve against was written out by hand — five string literals, in the launch path and
