@@ -27,7 +27,16 @@ from kanibako.settings.kb_store import Bind, BindEntry
 from kanibako.settings.kb_store import __MISSING__
 from kanibako.settings.keystore import KeyStore
 from kanibako.settings.settings_expand import _is_whole_value_ref, expand
-from kanibako.settings.settings_resolve import GUEST_HOME, ResolveCtx, SettingsError
+from kanibako.settings.settings_launch import (
+    resolve_box_dest,
+    snapshot_category_entries,
+)
+from kanibako.settings.settings_resolve import (
+    GUEST_HOME,
+    ResolveCtx,
+    SettingsError,
+    expand_expr,
+)
 
 HOST_HOME = "/home/u"
 
@@ -1014,3 +1023,207 @@ def test_lenient_mode_records_a_bind_entry_defect_against_its_leaf() -> None:
     out, errors = expand(snap, _ctx(), collect_errors=True)
     assert "box.bindings.rw.~/a" in errors
     assert _probe(out, "box", "bindings", "rw", "~/b") == BindEntry("/h/b")
+
+
+# --------------------------------------------------------------------------- #
+# WHICH ENVIRONMENT WON — host-vs-guest variable discrimination               #
+# --------------------------------------------------------------------------- #
+#
+# Every other test in this file resolves against ONE variable map, so a resolved
+# string can only prove that expansion HAPPENED — never WHICH side's values it
+# used.  These tests give the host and the guest the SAME variable NAMES with
+# DIFFERENT VALUES, so the resolved string alone names the winner.  Nothing here
+# needs a container: the whole simulation is string checks.
+#
+#   /path/h/...  a simulated HOST path        /path/b/...  a simulated BOX path
+#   host:  XDG_DATA_HOME=foo  XDG_CONFIG_HOME=bar
+#   guest: XDG_DATA_HOME=baz  XDG_CONFIG_HOME=qat
+#
+# The NEGATIVE assertions are the load-bearing half: a future change that starts
+# consulting a box-side environment reds here and NAMES the value that leaked.
+#
+# ⚑ ``$H`` / ``$B`` are not resolvable names — ``settings_resolve._resolve_var``
+# admits ``$AGENT``, ``$WORKSET`` and the ``$XDG_*`` family and nothing else — so
+# the two XDG names below play the two roles.  The values are bare leaf tokens
+# rather than absolute paths because the engine is a pure string substituter and
+# a one-word value is what makes the negative assertions readable.
+#
+# ⚑ ``~`` is NOT a variable; it is part of the path itself, and it is the one
+# genuinely two-sided token: the BOX's home in a ``box_dest``, the HOST's home in
+# a ``host_src`` — from the SAME context object.  Pinned in both directions.
+
+#: The role of the design's ``$H`` — carried by a ``host_src``.
+HOST_HALF_VAR = "XDG_DATA_HOME"
+#: The role of the design's ``$B`` — carried by a ``box_dest``.
+BOX_HALF_VAR = "XDG_CONFIG_HOME"
+
+SIMULATED_HOST_VARS = {HOST_HALF_VAR: "foo", BOX_HALF_VAR: "bar"}
+SIMULATED_GUEST_VARS = {HOST_HALF_VAR: "baz", BOX_HALF_VAR: "qat"}
+#: Values that exist ONLY on the simulated guest; none may appear in any result
+#: produced by the production path, which resolves host-side throughout.
+GUEST_ONLY_VALUES = ("baz", "qat")
+
+SIMULATED_HOST_HOME = "/path/h/home-of-the-host"
+
+HOST_SRC_EXPRESSION = f"/path/h/${HOST_HALF_VAR}"
+BOX_DEST_EXPRESSION = f"/path/b/${BOX_HALF_VAR}"
+HOST_SRC_ON_THE_HOST = "/path/h/foo"
+BOX_DEST_ON_THE_HOST = "/path/b/bar"
+
+
+def _simulated_host_ctx() -> ResolveCtx:
+    """The host-side ctx, shaped like ``agent_select.launch_resolve_ctx`` builds it."""
+    return _ctx(host_home=SIMULATED_HOST_HOME, xdg=dict(SIMULATED_HOST_VARS))
+
+
+def _simulated_guest_ctx() -> ResolveCtx:
+    """The counterfactual: the SAME names carrying the box's values."""
+    return _ctx(host_home=SIMULATED_HOST_HOME, xdg=dict(SIMULATED_GUEST_VARS))
+
+
+def _assert_no_guest_value_leaked(resolved: str) -> None:
+    """Fail naming the guest value that reached *resolved*."""
+    for guest_value in GUEST_ONLY_VALUES:
+        assert guest_value not in resolved, (
+            f"guest value {guest_value!r} leaked into {resolved!r}"
+        )
+
+
+def test_host_src_variable_resolves_from_the_host_map() -> None:
+    # Element 0 of an entry: the eager pass expands it host-side, so the host
+    # value wins and neither guest value can appear.
+    snap = _arm({"/path/b/fixed": BindEntry(HOST_SRC_EXPRESSION)})
+    out = expand(snap, _simulated_host_ctx())
+    entry = _probe(out, "box", "bindings", "rw", "/path/b/fixed")
+    assert isinstance(entry, BindEntry)
+    assert entry.src == HOST_SRC_ON_THE_HOST
+    _assert_no_guest_value_leaked(entry.src)
+
+
+def test_box_dest_variable_resolves_from_the_host_map() -> None:
+    # The map KEY: DEFERRED by the eager pass, then resolved by the ONE box_dest
+    # resolver.  Deferral is not guest resolution — the values that arrive are
+    # still the host's (keyspec :344-347).
+    snap = _arm({BOX_DEST_EXPRESSION: BindEntry("/path/h/fixed")})
+    out = expand(snap, _simulated_host_ctx())
+    # Still RAW after the eager pass: the token survived, unexpanded.
+    assert _probe(out, "box", "bindings", "rw", BOX_DEST_EXPRESSION) == BindEntry(
+        "/path/h/fixed"
+    )
+    resolved = resolve_box_dest(BOX_DEST_EXPRESSION, _simulated_host_ctx())
+    assert resolved == BOX_DEST_ON_THE_HOST
+    _assert_no_guest_value_leaked(resolved)
+
+
+def test_the_launch_seam_keeps_both_halves_on_the_host_map() -> None:
+    """The production path: ONE ctx feeds the eager pass AND the box_dest resolve.
+
+    ``commands.start`` passes ``launch_resolve_ctx``'s host-side ctx as
+    ``box_ctx``, so this mirrors what a real launch does with both halves at once.
+    """
+    snap = _arm({BOX_DEST_EXPRESSION: BindEntry(HOST_SRC_EXPRESSION)})
+    host_ctx = _simulated_host_ctx()
+    entries = snapshot_category_entries(
+        expand(snap, host_ctx), active_agent="claude", box_ctx=host_ctx,
+    )
+    assert len(entries) == 1
+    entry = entries[0]
+    assert entry.host_src == HOST_SRC_ON_THE_HOST
+    assert entry.box_dest == BOX_DEST_ON_THE_HOST
+    _assert_no_guest_value_leaked(entry.host_src)
+    _assert_no_guest_value_leaked(entry.box_dest)
+
+
+def test_a_guest_valued_context_would_change_both_answers() -> None:
+    """The discriminator is LIVE — the negatives above are not vacuous.
+
+    Feeding the same expressions a guest-valued map yields the guest strings, so
+    the map is genuinely what decides, and the host results are a real choice.
+    """
+    snap = _arm({BOX_DEST_EXPRESSION: BindEntry(HOST_SRC_EXPRESSION)})
+    guest_ctx = _simulated_guest_ctx()
+    entry = _probe(
+        expand(snap, guest_ctx), "box", "bindings", "rw", BOX_DEST_EXPRESSION
+    )
+    assert isinstance(entry, BindEntry)
+    assert entry.src == "/path/h/baz"
+    assert resolve_box_dest(BOX_DEST_EXPRESSION, guest_ctx) == "/path/b/qat"
+
+
+def test_the_context_map_is_the_only_variable_source(monkeypatch) -> None:
+    """No ambient environment is consulted — not the host's, not any box's.
+
+    ``ResolveCtx.xdg`` is the ONE variable map the engine reads; there is no
+    guest-side map to leak from, and an unknown name is a NAMED error rather than
+    a fabricated default or an ``os.environ`` fallback.
+    """
+    monkeypatch.setenv(BOX_HALF_VAR, SIMULATED_GUEST_VARS[BOX_HALF_VAR])
+    monkeypatch.setenv(HOST_HALF_VAR, SIMULATED_GUEST_VARS[HOST_HALF_VAR])
+    # The ctx still decides.
+    assert (
+        resolve_box_dest(BOX_DEST_EXPRESSION, _simulated_host_ctx())
+        == BOX_DEST_ON_THE_HOST
+    )
+    # An empty map does NOT fall through to the process environment.
+    empty_map_ctx = _ctx(host_home=SIMULATED_HOST_HOME, xdg={})
+    with pytest.raises(SettingsError) as exc:
+        resolve_box_dest(BOX_DEST_EXPRESSION, empty_map_ctx)
+    assert BOX_HALF_VAR in str(exc.value)
+
+
+def test_space_selects_the_home_and_nothing_else_about_variables() -> None:
+    """THE STRUCTURAL FACT the tests above rest on: there is no guest variable map.
+
+    ``space`` picks which home a leading ``~`` becomes and NOTHING ELSE —
+    ``_resolve_var`` never consults it — so a ``$VAR``-only expression resolves
+    IDENTICALLY in both spaces from one ctx.  A future guest-side map would have
+    to break this equality, which is what makes it worth pinning.
+    """
+    host_ctx = _simulated_host_ctx()
+    lookup = _refusing_lookup
+    in_host_space = expand_expr(
+        BOX_DEST_EXPRESSION, space="host", ctx=host_ctx, lookup=lookup
+    )
+    in_guest_space = expand_expr(
+        BOX_DEST_EXPRESSION, space="guest", ctx=host_ctx, lookup=lookup
+    )
+    assert in_host_space == in_guest_space == BOX_DEST_ON_THE_HOST
+
+    # ``~`` is the one token the space DOES change — the contrast that shows the
+    # equality above is a fact about variables, not about a dead parameter.
+    assert (
+        expand_expr("~/x", space="host", ctx=host_ctx, lookup=lookup)
+        == SIMULATED_HOST_HOME + "/x"
+    )
+    assert (
+        expand_expr("~/x", space="guest", ctx=host_ctx, lookup=lookup)
+        == GUEST_HOME + "/x"
+    )
+
+
+def _refusing_lookup(ref: str, chain: tuple[str, ...]) -> str:
+    """``expand_expr`` lookup for expressions that carry no ``@``-ref."""
+    raise AssertionError(f"unexpected @-ref lookup: {ref}")
+
+
+def test_tilde_is_the_box_home_in_a_box_dest_and_the_host_home_in_a_host_src() -> None:
+    """The one two-sided token, both directions, from a SINGLE context object.
+
+    ``~`` is not a variable — it is part of the path itself — so it does NOT
+    follow the ``$VAR`` rule pinned above: it answers per SIDE, not per map.
+    """
+    host_ctx = _simulated_host_ctx()
+    snap = _arm({"~/dest": BindEntry("~/src")})
+    entries = snapshot_category_entries(
+        expand(snap, host_ctx), active_agent="claude", box_ctx=host_ctx,
+    )
+    assert len(entries) == 1
+    entry = entries[0]
+
+    # host_src side: the HOST's home, and the box home never appears.
+    assert entry.host_src == SIMULATED_HOST_HOME + "/src"
+    assert GUEST_HOME not in entry.host_src
+
+    # box_dest side: the BOX's home, and the host home never appears.
+    assert entry.box_dest == GUEST_HOME + "/dest"
+    assert SIMULATED_HOST_HOME not in entry.box_dest
