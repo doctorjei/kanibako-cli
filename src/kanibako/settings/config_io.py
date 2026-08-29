@@ -11,6 +11,7 @@ NOT handled here.)
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Callable
 
 import yaml
 
@@ -143,8 +144,17 @@ def render_stored_scalar(v: object) -> str | None:
 
 def read_stored_leaf(
     noun_file: "Path | None", sections: tuple[str, ...], leaf: str,
+    *, render: "Callable[[object], str | None]" = render_stored_scalar,
 ) -> str | None:
-    """The value STORED at ``sections/leaf`` in *noun_file*, or ``None`` when absent / no file."""
+    """The value STORED at ``sections/leaf`` in *noun_file*, or ``None`` when absent / no file.
+
+    ⚑ *render* IS THE ONLY WAY THE ABSENT ANSWER AND A RENDERED ONE STAY APART: a leaf that
+    is not there returns ``None`` above without rendering anything, so a caller cannot tell
+    the two cases apart from the outside and must hand its rendering IN.  It exists because
+    the scalar convention is not universal — a leaf whose stored shape is not a scalar
+    (``agent_file``'s argv list) renders by a rule that belongs with the file that owns the
+    shape, not here.  The default keeps every other caller on the scalar convention.
+    """
     if noun_file is None or not noun_file.exists():
         return None
     node: object = load_doc(noun_file)
@@ -154,7 +164,7 @@ def read_stored_leaf(
         node = node.get(sec)
     if not isinstance(node, dict) or leaf not in node:
         return None
-    return render_stored_scalar(node[leaf])
+    return render(node[leaf])
 
 
 def read_stored_pref(

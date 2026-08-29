@@ -330,7 +330,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 
+- **`kanibako system set agent.claude.run_args="--verbose"` reported success and the agent never
+  got the arguments.** Two commands write this setting, and they stored two different things.
+  `kanibako agent set claude run_args="--verbose"` split the value into a list of words, which is
+  the shape kanibako reads; the full spelling stored the line verbatim as one string, and the
+  reader took a list or nothing — so the string was thrown away. The command printed `Set
+  agent.claude.run_args=--verbose` and exited 0, and every box then started with no extra
+  arguments at all. The one visible tell was a disagreement between two commands that read the same
+  file: `kanibako agent get claude run_args` echoed the value back while `kanibako agent show
+  claude` printed no `run_args` line, because `show` reads the record the launch reads. The split
+  now lives in the boundary both commands write through, so both store the words. **What you will
+  see:** a value written by the full spelling reaches the agent's command line. A `run_args`
+  already sitting in an agent settings file as a string is read as the arguments it spells —
+  nothing to migrate and nothing to re-enter — and the next time kanibako writes that file it is
+  rewritten as a list. Splitting is on whitespace and there is no quoting, exactly as before: an
+  argument that must contain a space is written into the list by hand. `run_args=` with nothing
+  after it still means *no arguments*, and stays distinct from a key you never set.
 
+- **`run_args` was printed back at you as a Python list.** `kanibako agent show claude` printed
+  `run_args = ['--a', '--b']` and `kanibako system get agent.claude.run_args` answered the same —
+  a spelling you cannot type back in. Both print `--a --b` now, the line you gave them. Nothing
+  stored changes; this is the display only.
 
 - **A setting an agent plugin declares — `agent.goose.provider`, say — was a key to `kanibako agent`
   and an unknown key to `kanibako system`.** Most agent settings are the same for every agent and

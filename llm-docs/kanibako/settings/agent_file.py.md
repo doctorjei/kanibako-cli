@@ -157,6 +157,26 @@ them). It answers ONE question — *can a SCALAR be written AT this key?* — an
 of them: an entry inside one of these tables is DATA (a box destination, a VAR, a transform knob),
 never a key segment of its own. It is the D-7 cure's rule and `_write_address`'s backstop, spelled once.
 
+```_LIST_VALUED_KEYS: Final[frozenset[str]] = frozenset({"run_args"})```
+Every ROOT key the file stores as a LIST OF ARGV WORDS rather than as the one string the command
+line hands over. **A DIFFERENT QUESTION FROM `_TABLE_VALUED_KEYS`**, and the contrast is the point:
+a table-valued key takes NO scalar and is refused by name; one of these TAKES the scalar and stores
+it as words. So a translation exists, and both ends of it live here — `write_leaf` splits in
+(`_stored_shape`), `read_leaf` joins back out (`_render_argv`).
+
+⚑ **THE DEFECT THAT PUT IT HERE (2026-08-29, measured on a real store).** The split lived in
+`agent_cmd`'s own writer and nowhere else, so the file had two write routes with two shapes:
+`agent set claude run_args="--e --f"` stored a list, `config set agent.claude.run_args="--c --d"`
+stored the string. `load` read a list or nothing, so the second route's value was accepted, echoed
+at rc 0 and DISCARDED — `agent show` printed no `run_args` line and the launch got no arguments,
+while `agent get` (which falls back to the raw file) echoed it back. Two carriers of one shape, the
+defect class this tree keeps closing.
+
+⚑ **THE PIN IS DERIVED FROM `AgentConfig`, NOT TYPED TWICE** (P13):
+`test_agent_file.py::TestTheArgvSHAPEIsTheFileS::test_the_list_valued_set_is_exactly_AgentConfig_s_
+list_FIELDS` reads the record's own annotations, so a second list-shaped field reds HERE — where
+the split is decided — instead of silently reaching a write route that does not split for it.
+
 ```_CATEGORY_PLACEHOLDER``` · ```_DEST_KEYED_PLACEHOLDER```
 What a cure renders when the refused table is EMPTY: a sample `(key, value)` for one entry.
 `<VAR>: <value>` for `env`, `<VAR>: <host-path>` for `secret_path` (a secret_path value is a
@@ -249,9 +269,34 @@ the census caught it on the first run. Route the site through `file_spelling()`.
 The per-VALUE half of the boundary — every `config_interface` per-node get/set/reset and every
 `agent set`/`reset` goes through these.
 
-⚑ `read_leaf` is a straight pass to `config_io.read_stored_leaf` and must NOT re-render on top of
-it: its two conventions (bools lowercase, a stored `""` reading as `None`) are load-bearing for
-every `get`.
+⚑ `read_leaf` goes through `config_io.read_stored_leaf` and must NOT re-render on top of it: its two
+conventions (bools lowercase, a stored `""` reading as `None`) are load-bearing for every `get`.
+The ONE leaf whose stored shape is not a scalar hands its own renderer IN instead
+(`read_stored_leaf(..., render=_render_argv)`), which is why the conventions stay untouched rather
+than being wrapped — pinned by `test_read_does_not_re_render`, which uses a scalar leaf.
+
+⚑⚑ **`write_leaf` APPLIES `_stored_shape`, AND NO CALLER MAY PRE-SPLIT.** That is the single-carrier
+rule for `_LIST_VALUED_KEYS` above: the seam every write route already goes through is the only
+place the shape is decided, so a second copy in a caller cannot exist to drift.
+
+```_argv_words(value: str) -> list[str]``` · ```argv_text(words) -> str```
+The two halves of the argv translation. `_argv_words` is deliberately `str.split`, NOT
+`shlex.split` — adding quote handling would change the MEANING of values already on disk rather
+than fix one; a word that must contain a space is hand-edited into the list. `argv_text` is public
+because two display surfaces need it: `agent_cmd._show_agent_config` (which printed the Python repr
+`run_args = ['--a', '--b']` at the user) and `_get_agent_key`.
+
+```_stored_shape(tail, value) -> object``` · ```_render_argv(v) -> str | None```
+`_stored_shape` is what `write_leaf` applies; `None` PASSES THROUGH, because it is the `--null`
+suppression idiom (spec §2h) and splitting it would forge an empty argv line.
+
+⚑ `_render_argv` renders an EMPTY list as `""`, NOT `None`. The scalar convention's empty→`None`
+rule is about an empty STRING, kanibako's idiom for no value; a present `run_args: []` is the
+user's explicit "no arguments" and collapsing it would print "(not set)" over an override that is
+really in the file. The three states stay apart: absent → `None`, present-empty → `""`,
+present-with-words → the words.
+⚑ A STRING here renders through the scalar convention unchanged — that is what the other write
+route stored before the routes agreed, and `load` reads it the same way.
 
 ```clear_overrides(path: Path) -> int```
 Drop every user override from the file at *path*, PRESERVING `name`; return the count.
@@ -325,6 +370,17 @@ pick — exactly where it needs to keep meaning "explicitly reset/keyless" rathe
 a malformed second one, where the old coercion produced a garbage path indistinguishable from a
 typo'd one. A `secret_path` value is a POINTER — the file's CONTENTS are never persisted here nor
 read, only ro-mounted and exported IN-BOX at launch.
+
+⚑ **A stored `run_args` STRING is SPLIT, not discarded**, and that is what made the write routes'
+old disagreement recoverable without touching anyone's data. This reader took a list or NOTHING, so
+every value the `config set agent.<node>.run_args=…` route wrote — verbatim, as a string — came
+back empty. It is a READ rule, not a shim: nothing writes a string here any more, the files that
+route already wrote work from the next command on, and the next `save` normalises them. A bare
+`run_args:` parses to `None` and means "no arguments", never the word `"None"` — the same trap the
+`model: null` paragraph above records; anything else scalar is one word's worth of text and splits
+like one. *(The old pin `test_run_args_must_be_list` asserted the empty list and was true of the
+code while wrong about the product; it is replaced by
+`test_a_stored_run_args_STRING_is_split_not_discarded`.)*
 
 ⚑ **Every modelled table is ISINSTANCE-GUARDED, and the READ side stays permissive on purpose**
 (S3/D-7). A hand-authored SCALAR at a table-valued key is a wrong SHAPE, but `agent info` / `list` /

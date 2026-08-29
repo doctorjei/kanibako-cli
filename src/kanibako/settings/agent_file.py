@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Final, Mapping
+from typing import Any, Final, Iterable, Mapping
 
 from kanibako.settings.agent_config import (
     IDENTITY_KEYS,
@@ -26,6 +26,7 @@ from kanibako.settings.config_io import (
     load_doc,
     read_stored_leaf,
     remove_nested_key,
+    render_stored_scalar,
     write_nested_key,
 )
 from kanibako.settings.settings_resolve import SettingsError
@@ -80,6 +81,22 @@ _VERB_WRITABLE_CATEGORIES: Final[frozenset[str]] = frozenset({"env", "secret_pat
 #: question — "can a SCALAR be written AT this key?" — and the answer is no for all of them: an
 #: entry inside one of these tables is DATA, never a key segment of its own.
 _TABLE_VALUED_KEYS: Final[frozenset[str]] = _ROOT_TABLES - IDENTITY_KEYS
+
+#: Every ROOT key the file stores as a LIST OF ARGV WORDS rather than as the one string the
+#: command line hands over.
+#:
+#: ⚑⚑ A DIFFERENT QUESTION FROM :data:`_TABLE_VALUED_KEYS`, and the contrast is the point: a
+#: table-valued key takes NO scalar at all and is refused by name; one of these TAKES the
+#: scalar and stores it as words.  So the translation exists, and it lives HERE with the rest
+#: of the shape, at BOTH ends — :func:`write_leaf` splits it in and :func:`read_leaf` joins it
+#: back out.
+#:
+#: ⚑⚑ WHY BOTH ENDS ARE IN ONE PLACE (P10).  The split used to live in ``agent set``'s own
+#: writer and nowhere else, so the file had two write routes disagreeing about one shape:
+#: ``config set agent.<node>.run_args="--c --d"`` stored the STRING, :func:`load` read a list
+#: or nothing, and the value was DISCARDED — reported set at rc 0, delivered to no launch.
+#: A reader who changes the split must see the join, and the reverse.
+_LIST_VALUED_KEYS: Final[frozenset[str]] = frozenset({"run_args"})
 
 #: What a cure renders for a category whose refused table is EMPTY (nothing to quote): a sample
 #: ``(key, value)`` for ONE entry. The dest-keyed families share
@@ -242,15 +259,65 @@ def slot_for(agents_root: Path, node: str, tail: str) -> AgentFileSlot:
     return AgentFileSlot(agent_settings_path(agents_root, node), tail)
 
 
+# ---------------------------------------------------------------------------
+# The ARGV translation — one string on the command line, a list of words on disk
+# ---------------------------------------------------------------------------
+
+def _argv_words(value: str) -> list[str]:
+    """The argv WORDS in one command-line *value*, as the file stores them.
+
+    ⚑ DELIBERATELY :meth:`str.split`, NOT ``shlex.split``.  It is what the split has always
+    done, and adding quote handling would change the MEANING of values already on disk
+    rather than fix one.  A word that must contain a space is hand-edited into the list.
+    """
+    return value.split()
+
+
+def argv_text(words: Iterable[object]) -> str:
+    """*words* as the ONE command-line string they were split from — :func:`_argv_words`
+    read backwards, for every surface that shows a stored argv list to a user."""
+    return " ".join(str(w) for w in words)
+
+
+def _stored_shape(tail: str, value: object) -> object:
+    """*value* in the shape the FILE holds at *tail* — the argv split, or *value* unchanged.
+
+    ⚑ ``None`` PASSES THROUGH: it is the ``--null`` suppression idiom (spec §2h), not an
+    empty argv line, and splitting it would silently turn a suppression into ``[]``.
+    """
+    if tail in _LIST_VALUED_KEYS and isinstance(value, str):
+        return _argv_words(value)
+    return value
+
+
+def _render_argv(v: object) -> str | None:
+    """A stored argv list rendered back as the command-line string it was split from.
+
+    ⚑ AN EMPTY LIST RENDERS ``""``, NOT ``None``, and that is deliberate: a present
+    ``run_args: []`` is the user's explicit "no arguments", and the absent answer would print
+    "(not set)" over an override that is really there.  The scalar convention's empty→``None``
+    rule is about an empty STRING, kanibako's idiom for no value; an empty LIST is a value.
+
+    ⚑ A STRING here renders through the scalar convention UNCHANGED — that is what the other
+    write route stored before both routes agreed, and :func:`load` reads it the same way.
+    """
+    return argv_text(v) if isinstance(v, list) else render_stored_scalar(v)
+
+
 def read_leaf(slot: AgentFileSlot) -> str | None:
     """The value STORED at *slot*, or ``None`` when absent / no file.
 
-    ⚑ Straight through :func:`~kanibako.settings.config_io.read_stored_leaf` — its two rendering
-    conventions (bools lowercase, a stored ``""`` reading as ``None``) are load-bearing for every
-    ``get``, so this must NOT re-render on top of them.
+    ⚑ Through :func:`~kanibako.settings.config_io.read_stored_leaf` — its two rendering
+    conventions (bools lowercase, a stored ``""`` reading as ``None``) are load-bearing for
+    every ``get``, so this must NOT re-render on top of them.  The one leaf whose stored shape
+    is NOT a scalar hands its own renderer in instead (:func:`_render_argv`); without it a
+    ``get`` printed the Python repr ``['--e', '--f']`` at the user.
     """
     sections, leaf = _read_address(slot.tail)
-    return read_stored_leaf(slot.path, sections, leaf)
+    return read_stored_leaf(
+        slot.path, sections, leaf,
+        render=_render_argv if slot.tail in _LIST_VALUED_KEYS else render_stored_scalar,
+    )
 
 
 def write_leaf(slot: AgentFileSlot, value: object) -> None:
@@ -258,9 +325,11 @@ def write_leaf(slot: AgentFileSlot, value: object) -> None:
 
     ⚑ Through :func:`_write_address`, which is NARROWER than the read side and raises on a
     dest-keyed tail — the caller gates first.
+    ⚑⚑ AND THROUGH :func:`_stored_shape`, so EVERY write route lands the shape :func:`load`
+    reads.  A caller must NOT pre-split: a second copy of that rule is the defect this closed.
     """
     sections, leaf = _write_address(slot.tail)
-    write_nested_key(slot.path, sections, leaf, value)
+    write_nested_key(slot.path, sections, leaf, _stored_shape(slot.tail, value))
 
 
 def remove_leaf(slot: AgentFileSlot) -> bool:
@@ -320,8 +389,24 @@ def load(path: Path) -> AgentConfig:
         agent_sec = {}
     _refuse_nested_tables(agent_sec, node=None, path=path)
     cfg.name = str(agent_sec.get("name", ""))
-    raw_args = agent_sec.get("run_args", [])
-    cfg.run_args = [str(a) for a in raw_args] if isinstance(raw_args, list) else []
+    # ⚑⚑ A STORED STRING IS SPLIT, NOT DISCARDED, and that is what makes the write
+    # routes' old disagreement recoverable without touching anyone's data.  This
+    # reader took a list or NOTHING, so every ``run_args`` the ``config set
+    # agent.<node>.run_args=…`` route wrote — verbatim, as a string — came back
+    # empty: the CLI said "Set", ``agent show`` showed nothing and the launch got no
+    # arguments.  Both routes write the list now (:func:`write_leaf`); reading the
+    # string keeps the files that route ALREADY wrote working from the next command
+    # on, and the next :func:`save` normalises them.  It is a read rule, not a shim:
+    # nothing writes a string here any more.
+    # ⚑ A bare ``run_args:`` parses to ``None`` — "no arguments", never the word
+    # "None"; anything else scalar is one word's worth of text and is split like one.
+    raw_args = agent_sec.get("run_args")
+    if isinstance(raw_args, list):
+        cfg.run_args = [str(a) for a in raw_args]
+    elif raw_args is None:
+        cfg.run_args = []
+    else:
+        cfg.run_args = _argv_words(str(raw_args))
 
     # Flat state = the SCALAR agent-state knobs. Exclude every key the record MODELS
     # as a field of its own, and any dict-valued entry: a CATEGORY table is a dict

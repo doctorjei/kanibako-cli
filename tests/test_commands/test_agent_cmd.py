@@ -558,6 +558,50 @@ class TestSparseWrites:
         data = load_doc(path)
         assert data["self"]["run_args"] == ["--a", "--b"]
 
+    def test_the_OTHER_write_route_stores_the_same_shape(self, agent_env, tmp_path):
+        """``config set agent.<node>.run_args=…`` and ``agent set`` are ONE shape.
+
+        ⚑ MEASURED APART, ON A REAL STORE, 2026-08-29.  ``kanibako system set
+        agent.claude.run_args="--c --d"`` wrote ``run_args: --c --d`` — a STRING —
+        while ``kanibako agent set claude run_args="--e --f"`` wrote a list; and
+        ``agent_file.load`` read a list or nothing, so the first route's value was
+        echoed back at rc 0 and then thrown away.  ``agent show`` printed no
+        ``run_args`` line at all and the launch received no arguments.
+
+        ⚑ THE ROW IS THE PAIR, not either half: the split moved into
+        ``agent_file.write_leaf``, so re-adding it to ONE caller would still pass a
+        single-route test.  Reds if either route stops going through the boundary.
+        ⚑ Not ``run_args``-by-name: whatever the file's list-valued leaves are.
+        """
+        from kanibako.commands.agent_cmd import run_set
+        from kanibako.settings.agent_file import _LIST_VALUED_KEYS
+        from kanibako.settings.agent_file import load as load_agent_config
+        from kanibako.settings.config_io import load_doc
+        from kanibako.settings.config_keys import ConfigLevel
+        from kanibako.settings.config_interface import set_config_value
+
+        adir = agents_dir(agent_env)
+        for leaf in sorted(_LIST_VALUED_KEYS):
+            path = _write_sparse(agent_env, "claude", {"self": {"endpoint": "x"}})
+
+            assert run_set(argparse.Namespace(
+                agent_id="claude", key_value=f"{leaf}=--c --d",
+            )) == 0
+            by_verb = load_doc(path)["self"][leaf]
+
+            _write_sparse(agent_env, "claude", {"self": {"endpoint": "x"}})
+            msg = set_config_value(
+                f"agent.claude.{leaf}", "--c --d",
+                config_path=tmp_path / "box.yaml",
+                command_scope=ConfigLevel.system, agents_root=adir,
+            )
+            assert not msg.startswith("Error:"), msg
+            by_config = load_doc(path)["self"][leaf]
+
+            assert by_verb == by_config == ["--c", "--d"], (leaf, by_verb, by_config)
+            # ...and the shape the record actually reads is that one.
+            assert getattr(load_agent_config(path), leaf) == ["--c", "--d"]
+
     def test_reset_key_prunes_empty_table_leaves_siblings(self, agent_env):
         """reset removes the one entry, prunes the now-empty table, and leaves
         sibling tables/keys untouched."""
