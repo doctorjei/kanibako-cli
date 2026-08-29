@@ -272,17 +272,23 @@ def _purge_all(std, config, *, force: bool) -> int:
 
     # Workset projects.
     for ws_name, ws, project_list in ws_data:
+        # ⚑ Hoisted, and RESOLVED: both properties read the root workset.yaml, so one
+        # read per workset keeps every member of it judged against the same document.
+        boxes_dir, logs_dir = ws.projects_dir, ws.logs_dir
         for proj_name, status in project_list:
             if status == "no-data":
                 continue
-            project_dir = ws.projects_dir / proj_name
+            project_dir = boxes_dir / proj_name
             if project_dir.is_dir():
                 label = f"{ws_name}/{proj_name}"
                 print(f"Removing {label}... ", end="", flush=True)
                 if not remove_box_tree(project_dir):
                     _warn_undeleted(project_dir)
-                # NAMED helper log is a sibling at <root>/logs/<box>.jsonl.
-                (ws.logs_dir / f"{proj_name}.jsonl").unlink(missing_ok=True)
+                # ⚑ NAMED helper log — the RESOLVED ``workset.logs``, which is what the
+                # box's helpers.jsonl mount is bound from; the default leaf is
+                # ``<root>/logs``, and purging that while the log lives at a repoint
+                # left the file behind AND removed one the box never wrote.
+                (logs_dir / f"{proj_name}.jsonl").unlink(missing_ok=True)
                 print("done.")
                 removed += 1
 

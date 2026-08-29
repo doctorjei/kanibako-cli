@@ -10,7 +10,7 @@ from kanibako.settings.paths_defaults import (XDG_SPEC_DEFAULTS, CONFIG_PATH_DEF
                                               PROFILE_CONTENTS, BASHRC_CONTENTS,
                                               SHELL_D_CONTENTS, RUN_USER_UID_PATH,
 
-                                              BOXES_PATH, HOME_PATH, KANIBAKO_PATH, LOGS_PATH,
+                                              HOME_PATH, KANIBAKO_PATH,
                                               STANDALONE_META_DIR,
 
                                               STATUS_OK, STATUS_MISSING, STATUS_NO_DATA,
@@ -412,23 +412,27 @@ def resolve_system_paths(set_values: Mapping[str, str],
         resolved[key] = Path(expanded)
 
     # PRIMARY-workset box/vault/logs roots, derived from ``@config.primary_workset``.
-    pw = resolved["config.primary_workset"]
-    resolved["system._boxes"] = pw / BOXES_PATH
-    # ⚑⚑ THE VAULT ROOTS ARE RESOLVED, NOT COMPOSED.  There are no ``system.vault_*``
-    # keys at all (spec ``:335``) — these two are SURROGATES for the PRIMARY workset's
-    # ``@workset.{vault_ro,vault_rw}``, which are declared, CLI-settable and repointable
-    # in EVERY mode (§2c ALL PROJECTS, R-29).  Composing them here answered the key a
-    # second way: the settings file accepted a repoint and the filesystem ignored it.
+    # ⚑⚑ ALL FOUR ARE RESOLVED, NOT COMPOSED.  There are no ``system.{boxes,logs,vault_*}``
+    # keys at all (spec ``:335``) — these are SURROGATES for the PRIMARY workset's
+    # ``@workset.{boxes,logs,vault_ro,vault_rw}``, which are declared, CLI-settable and
+    # repointable in EVERY mode (§2c ALL PROJECTS, R-29).  Composing them here answered
+    # the key a second way: the settings file accepted a repoint and the filesystem
+    # ignored it.  ⚑ The PRIMARY workset root is an ordinary workset root and carries an
+    # ordinary ``workset.yaml``, so it repoints exactly as a named one does.
     # ⚑ Resolving HERE and not at ``_primary_box_paths`` is deliberate — every consumer
-    # of ``std.primary_vault_*`` (create, rm, clean, purge) then sees the ONE answer.
+    # of ``std.boxes`` / ``std.primary_logs`` / ``std.primary_vault_*`` (create, rm,
+    # clean, purge, the helper hub) then sees the ONE answer.
     # ⚑ Deferred import: the documented ``settings.paths`` <-> ``project.workset`` cycle.
-    from kanibako.project.workset import (load_workset_settings_doc,
-                                          resolve_workset_vault_ro, resolve_workset_vault_rw)
+    pw = resolved["config.primary_workset"]
+    from kanibako.project.workset import (load_workset_settings_doc, resolve_workset_boxes,
+                                          resolve_workset_logs, resolve_workset_vault_ro,
+                                          resolve_workset_vault_rw)
 
     pw_settings = load_workset_settings_doc(pw)
+    resolved["system._boxes"] = resolve_workset_boxes(pw, pw_settings)
     resolved["system._primary_vault_ro"] = resolve_workset_vault_ro(pw, pw_settings)
     resolved["system._primary_vault_rw"] = resolve_workset_vault_rw(pw, pw_settings)
-    resolved["system._primary_logs"] = pw / LOGS_PATH
+    resolved["system._primary_logs"] = resolve_workset_logs(pw, pw_settings)
     return resolved
 
 
@@ -866,16 +870,33 @@ def _standalone_box_paths(root: Path) -> tuple[Path, Path, Path]:
 
 
 def helper_log_path(std: StandardPaths, proj: ProjectPaths) -> Path:
-    """Per-box, per-mode HOST path for the helper message log (the ``helpers.jsonl`` bind source)."""
+    """Per-box, per-mode HOST path for the helper message log (the ``helpers.jsonl`` bind source).
+
+    ⚑⚑ THIS IS THE HUB'S WRITER, and the MOUNT it must agree with is the spec's own
+    spelling ``@workset.logs/@{meta.box.name}.jsonl`` (``data/core-defaults.yaml``,
+    ``helpers``).  While the named and PRIMARY arms composed ``<root>/logs`` the two
+    disagreed the moment a user repointed ``workset.logs`` — the mount moved and the
+    writer did not (migration M-14).  Both arms now RESOLVE the key, so there is one
+    answer.  ⚑ STANDALONE still composes: its declared default is ``@meta.box.path``,
+    a CHAINED ref (``@workset.boxes``) the pre-snapshot resolver deliberately refuses,
+    so that arm of M-14 stays open — see MIGRATION.md.
+    """
     box = proj.name if proj.name else short_hash(proj.project_hash)
     if proj.mode is BoxMode.standalone:
         # Anchored under ``box_data/`` (not the root) so the standalone tree stays portable.
         return proj.metadata_path / STANDALONE_META_DIR / f"{box}.jsonl"
+    # ⚑ Deferred import: the documented ``settings.paths`` <-> ``project.workset`` cycle.
+    from kanibako.project.workset import load_workset_settings_doc, resolve_workset_logs
+
     if proj.mode is BoxMode.named:
-        # The workset root is carried on the project group (root=ws.root).
+        # The workset root is carried on the project group (root=ws.root).  ⚑ The
+        # fallback still assumes the DEFAULT box layout; it is unreachable from
+        # ``resolve_workset_project``, which always supplies the group.
         ws_root = proj.group.root if proj.group else proj.metadata_path.parent.parent
-        return ws_root / LOGS_PATH / f"{box}.jsonl"
-    # PRIMARY: the PRIMARY workset's logs dir.
+        return resolve_workset_logs(
+            ws_root, load_workset_settings_doc(ws_root)) / f"{box}.jsonl"
+    # PRIMARY: the PRIMARY workset's logs dir — ``std.primary_logs`` is already the
+    # RESOLVED ``workset.logs`` of the primary root (:func:`resolve_system_paths`).
     return std.primary_logs / f"{box}.jsonl"
 
 
@@ -1380,8 +1401,12 @@ def iter_workset_projects(std: StandardPaths, config: KanibakoConfig) -> _Workse
             continue
 
         project_list: list[tuple[str, str]] = []
+        # ⚑ Hoisted: ``projects_dir`` RESOLVES ``workset.boxes`` off the root
+        # workset.yaml, so reading it per member would re-read that file per box and
+        # open a window for two members to disagree about the same document.
+        boxes_dir = ws.projects_dir
         for proj in ws.projects:
-            has_project_dir = (ws.projects_dir / proj.name).is_dir()
+            has_project_dir = (boxes_dir / proj.name).is_dir()
             # ⚑ Presence is checked at the REGISTERED path — ``source_path`` IS the
             # ``boxes:`` value, so there is no second read and nothing to re-derive.
             has_workspace = proj.source_path.is_dir()

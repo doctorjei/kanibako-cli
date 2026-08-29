@@ -87,15 +87,21 @@ The vault + logs roots DEFAULT to `@config.primary_workset/vault/{ro,rw}` and
 `@config.primary_workset/logs`. Phase 5 moved the PRIMARY vault out of the workspace into the
 PRIMARY workset.
 
-⚑⚑ **The two vault roots are RESOLVED, not composed.** The spec declares no `system.vault_ro` /
-`system.vault_rw` at all (`:335`) — these fields are SURROGATES for the PRIMARY workset's
-`@workset.{vault_ro,vault_rw}`, which are declared, CLI-settable, repointable keys in EVERY mode
-(§2c ALL PROJECTS, R-29). So `resolve_system_paths` reads `@config.primary_workset/workset.yaml`
-and routes both through `project.workset.resolve_workset_vault_{ro,rw}`. Resolving HERE rather than
-at `_primary_box_paths` is deliberate: every consumer of `std.primary_vault_*` (box create, `box
-rm`, `clean`, purge) then sees the ONE answer, with no edit at any of those sites. `primary_logs`
-and `boxes` remain composed — `workset.{logs,boxes}` are the documented KNOWN GAP recorded on
-`Workset.projects_dir`, and closing them is a store-layout change, not this one.
+⚑⚑ **All four PRIMARY roots are RESOLVED, not composed.** The spec declares no `system.boxes`,
+`system.logs`, `system.vault_ro` or `system.vault_rw` at all (`:335`) — these fields are SURROGATES
+for the PRIMARY workset's `@workset.{boxes,logs,vault_ro,vault_rw}`, which are declared,
+CLI-settable, repointable keys in EVERY mode (§2c ALL PROJECTS, R-29). The PRIMARY workset root is
+an ordinary workset root carrying an ordinary `workset.yaml`, so it repoints exactly as a named one
+does. `resolve_system_paths` reads that `workset.yaml` ONCE and routes all four through
+`project.workset.resolve_workset_{boxes,logs,vault_ro,vault_rw}`. Resolving HERE rather than at
+`_primary_box_paths` is deliberate: every consumer of `std.boxes` / `std.primary_logs` /
+`std.primary_vault_*` (box create, `box rm`, `clean`, purge, the helper hub) then sees the ONE
+answer, with no edit at any of those sites.
+
+⚑ `boxes` and `primary_logs` joined the resolved set on 2026-08-29, with `Workset.projects_dir` /
+`logs_dir` and the named arm of `helper_log_path`. Before that they composed `pw / BOXES_PATH` and
+`pw / LOGS_PATH`, which is why the tripwire on those joins bans the CONSTANT and not just the
+string.
 
 ## Groups and the workset tier
 
@@ -773,9 +779,19 @@ Per-box, per-mode HOST path for the helper message log.
 The log is the host source of the read-only `helpers.jsonl` bind into the box; it lives inside the
 box's own workset/box tree (never the old shared `@config.data/logs/<id>/` location):
 
-* PRIMARY → `@config.primary_workset/logs/<box>.jsonl` (`std.primary_logs`)
-* NAMED → `@workset.logs/<box>.jsonl` (`<workset_root>/logs/<box>`)
-* STANDALONE → `@meta.workset.path/box_data/<box>.jsonl` (inside `box_data/`)
+* PRIMARY → the RESOLVED `workset.logs` of the primary root (`std.primary_logs`)
+* NAMED → the RESOLVED `workset.logs` of `proj.group.root`
+* STANDALONE → `@meta.workset.path/box_data/<box>.jsonl` (inside `box_data/`) — ⚑ still COMPOSED
+
+⚑⚑ **This function is the hub's WRITER, and the MOUNT it must agree with is the spec's own
+spelling** `@workset.logs/@{meta.box.name}.jsonl` (`data/core-defaults.yaml`, the `helpers` table).
+While the PRIMARY and NAMED arms composed `<root>/logs` the two disagreed the instant a user
+repointed `workset.logs`: the mount moved and the writer did not, so the box read an empty file
+forever. That is the split **migration M-14** records, and it is CLOSED for those two arms as of
+2026-08-29. 🛑 **It stays OPEN for STANDALONE**, deliberately: that mode's declared default is
+`@meta.box.path`, itself a ref to `@workset.boxes`, and `settings/workset_dirkeys` refuses a chained
+`@`-ref because it runs before the launch snapshot exists. Expressing it needs a decision about
+chaining in the pre-snapshot resolver, not a leaf swap.
 
 The caller is responsible for guarantee-creating the parent dir before the bind (L7). The box-side
 dest is the PINNED `~/.kanibako/state/helpers.jsonl` (declared in `core-defaults.yaml`), NOT a
@@ -786,7 +802,9 @@ dest is the PINNED `~/.kanibako/state/helpers.jsonl` (declared in `core-defaults
 The standalone log stays inside the `box_data/` marker dir (settings itself now lives at the root,
 so the log is anchored explicitly under `metadata_path/box_data` rather than `metadata_path`) so the
 whole standalone tree is drop-in portable. For NAMED, the workset root is carried on the project
-group (`root=ws.root`).
+group (`root=ws.root`); the `metadata_path.parent.parent` fallback beside it still assumes the
+DEFAULT box layout and is unreachable from `resolve_workset_project`, which always supplies the
+group.
 
 ```python
 _SHELL_D_SOURCE_LINE: str
