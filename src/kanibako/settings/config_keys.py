@@ -17,6 +17,7 @@ from __future__ import annotations
 import re
 from enum import Enum
 from pathlib import Path  # noqa: F401  (annotations)
+from typing import Collection, Iterator
 
 from kanibako.agent_ref import canonicalize_agent_ref, display_agent_ref
 from kanibako.errors import ConfigError
@@ -24,10 +25,10 @@ from kanibako.settings.config import coerce_bool
 from kanibako.settings.kb_store import SCOPE_CONTAINMENT
 from kanibako.settings.settings_keyspace import (
     ACCESS_TIERS,
-    DECLARED_AGENT_LEAVES,
     SCALAR_AGENT_LEAVES,
     TABLE_VALUED_AGENT_LEAVES,
     access_default,
+    effective_agent_leaves,
     leaf_name_reason,
 )
 from kanibako.settings.settings_prefs import PREF_ROOT
@@ -394,6 +395,58 @@ def resolve_key(raw: str) -> str:
     return f"agent.{node}.{tail}"
 
 # ---------------------------------------------------------------------------
+# The PLUGIN half of the agent vocabulary (spec §0) — supplied to every surface
+# in this module that asks what an agent leaf may be called.
+# ---------------------------------------------------------------------------
+
+def plugin_declared_leaves() -> "frozenset[str]":
+    """The agent leaves the INSTALLED PLUGINS declare (spec §0), or empty.
+
+    ⚑ ONE SUPPLIER FOR THIS MODULE, and that is the whole point of it being a function:
+    the per-node RECOGNISER (:data:`_PERSONA_STATE_LEAVES`) and the ``agent`` noun's
+    §0 GATE (:func:`agent_key_reason`) asked two different sources until 2026-08-29, so
+    a plugin leaf was a key at one verb and not at another.  ``default_valid_agents`` is
+    the source both use now: it is the production ``valid_agents`` supplier, it memoizes
+    per process, and it has a documented reset seam (``reset_discovery_cache``) that the
+    ``settings_keyspace_probe`` memo — primed at ``pytest_configure`` — deliberately
+    does not.
+    ⚑ IMPORTED IN THE BODY: discovery must never run at module import.
+    """
+    from kanibako.settings.settings_prefs import default_valid_agents
+
+    return frozenset(getattr(default_valid_agents(), "leaves", None) or ())
+
+
+class _PluginDeclaredLeaves(Collection[str]):
+    """:func:`plugin_declared_leaves` as a set that DISCOVERS ON THE FIRST QUESTION.
+
+    ⚑⚑ IT MUST NOT BE MATERIALISED AT IMPORT OR AT A CALL SITE.  Discovery imports and
+    instantiates every installed plugin, and those modules parse YAML in their module
+    bodies; it was measured at ``+67 ms`` per settings-resolving command (2026-08-25),
+    73% of the whole resolve, when it rode in as an eagerly-evaluated keyword argument.
+    Handed to :func:`~kanibako.settings.settings_keyspace.effective_agent_leaves`
+    instead, the CORE §2d set is asked first and this is reached only for a leaf core
+    cannot answer for.
+    ⚑ NOT A MEMO. Every access goes through the supplier, so a test that resets
+    discovery is seen here exactly as it is by every other reader.
+    """
+
+    __slots__ = ()
+
+    def __contains__(self, item: object) -> bool:
+        return item in plugin_declared_leaves()
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(plugin_declared_leaves())
+
+    def __len__(self) -> int:
+        return len(plugin_declared_leaves())
+
+
+#: The PLUGIN half of the effective agent vocabulary, as a thing to ASK.
+PLUGIN_DECLARED_LEAVES: "Collection[str]" = _PluginDeclaredLeaves()
+
+# ---------------------------------------------------------------------------
 # Per-persona agent keys (block B1) — ``agent.<node>.<key>`` set on the agent's
 # OWN settings file ``agents/<node>/agent.yaml``.
 # ---------------------------------------------------------------------------
@@ -408,7 +461,17 @@ def resolve_key(raw: str) -> str:
 # ⚑ DERIVED FROM THE DECLARATION SoT (P13). It was a hand-kept copy until 2026-08-23 and
 # had fallen three leaves behind — ``run_args``, ``transform`` and ``transform_settings``
 # are declared ``set: cli+file`` and answered "unknown config key" at every spelling.
-_PERSONA_STATE_LEAVES: frozenset[str] = DECLARED_AGENT_LEAVES
+# ⚑⚑ THE EFFECTIVE SET SINCE 2026-08-29 — core §2d UNIONED with what the PLUGINS declare
+# (§0 *"Agent specifics are PLUGIN-declared"*), through the SAME lazy union
+# ``key_class`` judges with.  Core-only, it was a SECOND vocabulary disagreeing with the
+# judge: ``kanibako system set agent.goose.provider=x`` answered "unknown config key"
+# (rc 1) for a leaf the goose target declares, and ``system get agent.goose.provider``
+# answered "(not set)" at rc 0 over a value stored in that node's own file — both
+# measured, both §0 breaches. It is a ``Collection``, NOT a ``frozenset``: materialising
+# it would put plugin discovery on every reader.
+_PERSONA_STATE_LEAVES: "Collection[str]" = effective_agent_leaves(
+    PLUGIN_DECLARED_LEAVES,
+)
 _PERSONA_ENV_SECTIONS: frozenset[str] = frozenset({"env"})
 
 # The RESERVED any-agent tier name ("no real agent may be named default"); it is
@@ -612,9 +675,9 @@ def agent_default_tier_leaf(key: str) -> str | None:
     existed, ``system get agent.default.model`` answered "(not set)" at rc 0 over a value
     ``system get model`` returned — a fabricated answer for a declared key (spec §0).
 
-    ⚑ :data:`DECLARED_AGENT_LEAVES`, NOT :data:`SCALAR_AGENT_LEAVES`, and the difference is
-    the point: ``transform_settings`` cannot be WRITTEN from the CLI but is declared,
-    hand-authored and read, so it must read back here too.
+    ⚑ THE DECLARED SET, NOT :data:`SCALAR_AGENT_LEAVES`, and the difference is the point:
+    ``transform_settings`` cannot be WRITTEN from the CLI but is declared, hand-authored
+    and read, so it must read back here too.
     ⚑ DERIVED (P13) through :func:`_parse_persona_agent_key`, whose own leaf set is the
     declaration SoT — a leaf entering §2d reaches this surface with no edit.  The ``env.``
     section form parses to a dotted tail and is deliberately NOT claimed: it is a different
@@ -623,7 +686,12 @@ def agent_default_tier_leaf(key: str) -> str | None:
     parsed = _parse_persona_agent_key(key)
     if parsed is None or parsed[0] != AGENT_DEFAULT_SUB:
         return None
-    return parsed[1] if parsed[1] in DECLARED_AGENT_LEAVES else None
+    # ⚑ NOT REDUNDANT WITH THE PARSE, and :data:`_PERSONA_STATE_LEAVES` is what makes it
+    # so: the ``env.`` arm yields a DOTTED tail (``env.FOO``), which is in no leaf set,
+    # and that is exactly how this family is excluded.  Reading the EFFECTIVE set is also
+    # what keeps the two spellings honest — ``agent.default.provider`` is a key under
+    # ``key_class``, so a stored value must read back rather than answer "(not set)".
+    return parsed[1] if parsed[1] in _PERSONA_STATE_LEAVES else None
 
 
 def agent_leaf_table_error(canonical: str, *, verb: str) -> str | None:
@@ -1198,6 +1266,12 @@ def agent_key_reason(node: str, tail: str) -> str | None:
     leaves are unioned in the OTHER direction (§0 *"Agent specifics are PLUGIN-declared"*), without
     which a legitimate ``agent.goose.provider`` would be refused.
 
+    ⚑ :data:`PLUGIN_DECLARED_LEAVES`, THE MODULE'S ONE SUPPLIER, and it is passed rather than
+    materialised.  ``default_valid_agents().leaves`` read here directly was the same VALUE reached
+    a second way, and :data:`_PERSONA_STATE_LEAVES` did not read it at all — which is how one verb
+    came to declare a key another called unknown.  Passing it also DEFERS discovery: a core §2d
+    leaf is answered without importing a single plugin.
+
     ⚑ THE IDENTITY RESIDUE: ``name`` / ``run_args`` are FILE-identity fields of ``AgentConfig``,
     not keyspace leaves (``agent_file._MODELED_KEYS`` already says so), and both are live, written
     and displayed.  ``run_args`` happens to be a declared §2d leaf as well; ``name`` is not, so the
@@ -1206,15 +1280,13 @@ def agent_key_reason(node: str, tail: str) -> str | None:
     """
     from kanibako.settings.agent_config import IDENTITY_KEYS
     from kanibako.settings.settings_keyspace import key_validity
-    from kanibako.settings.settings_prefs import default_valid_agents
 
     if tail in IDENTITY_KEYS:
         return None
-    agents = default_valid_agents()
     return key_validity(
         f"agent.{node}.{tail}",
         valid_agents=(node,),
-        agent_leaves=getattr(agents, "leaves", None),
+        agent_leaves=PLUGIN_DECLARED_LEAVES,
     )
 
 

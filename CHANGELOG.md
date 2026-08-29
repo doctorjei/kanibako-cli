@@ -94,6 +94,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+
 - **A `synced` destination that no mount covers now refuses the launch instead of being copied
   into nowhere.** A `synced` entry is applied last, after the mount set is final, and it resolves
   *through* the mount containing its destination — that is what puts the file where the box can see
@@ -311,6 +312,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sentence that told you what to use instead. Nothing at runtime consulted either.
 
 ### Fixed
+
+
+
+
+- **A setting an agent plugin declares — `agent.goose.provider`, say — was a key to `kanibako agent`
+  and an unknown key to `kanibako system`.** Most agent settings are the same for every agent and
+  kanibako declares them itself, but an agent plugin may declare settings of its own; goose declares
+  `provider`. `kanibako agent set goose provider=openrouter` stored one and `kanibako agent get
+  goose provider` read it back, exactly as documented. The same key spelled out in full went to a
+  different door and got a different answer: `kanibako system set agent.goose.provider=openrouter`
+  failed with `Error: unknown config key: agent.goose.provider`, and `kanibako system get
+  agent.goose.provider` answered `(not set)` — successfully, with the real value sitting in the
+  agent's own settings file the whole time. The cause was two lists of what an agent setting can be
+  called: the one that judges a key had the plugin's settings folded in and the one that recognises
+  the `agent.<agent>.<setting>` spelling did not. There is one list now, so both doors give the same
+  answer. **What you will see:** `set` and `reset` at these keys now succeed where they used to
+  fail, and `get` returns the stored value where it used to report nothing. A setting no agent
+  declares is refused exactly as before, and by name. Nothing stored changes, and nothing you could
+  already do stops working — a value written by `kanibako agent set` was always read at launch; it
+  was only these three commands that could not see it.
 
 - **`kanibako system set box.enable_vault=false` was accepted, stored, echoed back — and ignored by
   every box.** The setting is a declared, settable key, and writing it at the system scope is

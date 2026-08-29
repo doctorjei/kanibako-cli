@@ -3605,6 +3605,45 @@ your own machine, which nothing in the box binds by default. Such an entry is re
 above unless you bind that path yourself. Deliberately mirroring your host layout into the box that
 way is fine; what is refused is a destination that resolves nowhere.
 
+### 2.57 A plugin-declared agent setting is a key at every door, not just at `agent`
+
+**Read this if you use a setting an agent plugin declares rather than kanibako itself — goose's
+`provider` is the shipped example — or if a script of yours works around one of the commands below.
+Nothing to change on disk; two commands that used to fail now work.**
+
+**What changed.** *The agent verbs joined the closed keyspace* (see that section above) already
+told you that `kanibako agent set goose provider=openrouter` works and that plugin-declared keys
+are real keys. They are — at the `agent` verbs. Spelled out in full at the config verbs they were
+not:
+
+| command | before | now |
+|---|---|---|
+| `kanibako system set agent.goose.provider=openrouter` | `Error: unknown config key: agent.goose.provider`, rc 1 | `Set agent.goose.provider=openrouter`, rc 0 |
+| `kanibako system get agent.goose.provider` | `agent.goose.provider: (not set)`, **rc 0, with the value on disk** | the stored value, rc 0 |
+| `kanibako system reset agent.goose.provider` | `Error: unknown config key: agent.goose.provider`, rc 1 | `Cleared …`, rc 0 |
+
+The `get` row is the one worth pausing on: the answer was not an error, it was a wrong answer. A
+value you had set with `kanibako agent set` — and which every launch read — was reported as unset.
+
+**Why.** Kanibako kept two lists of what an agent setting may be called. The one that decides
+whether a key is a key had the installed plugins' declarations folded into it; the one that
+recognises the `agent.<agent>.<setting>` spelling before a command dispatches on it did not. So the
+same name was a key on one path and not a name at all on another. There is one list now.
+
+**What is unchanged.** A setting no agent declares is still refused, still by name, still rc 1 —
+this widens the vocabulary to what the plugins actually declare, and no further. Nothing stored
+changes; nothing that worked stops working. If you scripted around the failures above by calling
+`kanibako agent set <agent> <setting>=<value>` instead, that command was correct before and is
+correct now — keep it if you prefer it.
+
+⚑ **One rough edge remains, and it is not new: the BARE spelling of a plugin-declared setting is
+still not settable.** `kanibako system set provider=x` answers `unknown config key`, and
+`kanibako system set agent.default.provider=x` refuses with a cure that names that bare spelling.
+The bare form addresses the all-agents fallback tier, and a plugin's setting belongs to one agent,
+so whether it should be settable there at all is an open question rather than an oversight. Set it
+on the agent — `kanibako agent set goose provider=…`, or the full
+`kanibako system set agent.goose.provider=…` — which is where it takes effect either way.
+
 ---
 
 ## 3. For plugin authors
