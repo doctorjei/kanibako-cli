@@ -1650,8 +1650,9 @@ keys:
             named: "@workset.workspaces/@meta.box.name",
             standalone: "@workset.workspaces"}
     note: "standalone: the whole-value ref (no /@meta.box.name join — one box);
-           spelled against the KEY so a repointed workset.workspaces carries it
-           (a literal here would be the copy-that-drifts §0 forbids). R-26 rider."
+           DECLARATION only — the launch floor carries the RESOLVED dir, as
+           workset.channels.* does. Do NOT spell the floor as this formula.
+           R-26 rider."
     spec: "§2c"
   meta.box.settings:
     namespace: meta
