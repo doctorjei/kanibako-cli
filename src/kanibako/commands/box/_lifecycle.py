@@ -61,6 +61,8 @@ from kanibako.project.workset import (
     list_worksets,
     load_workset,
     remove_project,
+    resolve_workset_vault_pair,
+    standalone_vault_teardown,
 )
 
 
@@ -831,7 +833,19 @@ def _remove_old_metadata(
     preserve_name: str | None = None,
 ) -> None:
     """Remove the source project's metadata/shell (+ PRIMARY vault), per source mode."""
+    import sys
+
     if state.mode == BoxMode.standalone:
+        # ⚑⚑ ``metadata_path`` IS the standalone ROOT (drift I). Remove only the kanibako
+        # artifacts inside it — deleting the root would wipe the user's whole project dir
+        # AND the already-converted destination.
+        root = state.metadata_path
+        # ⚑⚑ RESOLVE THE VAULT BEFORE ANYTHING IS DROPPED — including the registry entry.
+        # The root ``workset.yaml`` unlinked below IS the standalone workset tier and the
+        # only carrier of a ``workset.vault_*`` repoint, so a later read answers the
+        # composed default; and an UNRESOLVABLE repoint raises here, which must happen
+        # while the source is still whole and the unwind still has something to restore.
+        removable_vault, retained_vault = standalone_vault_teardown(root)
         # ⚑ Standalone lives in registry.standalone, not names.yaml: drop that entry too,
         # or a standalone→standalone move strands the old name → root mapping.
         from kanibako.project import registry_store
@@ -840,10 +854,6 @@ def _remove_old_metadata(
                 registry_store.unregister_standalone(std.registry, state.name)
             except Exception:  # noqa: BLE001
                 pass
-        # ⚑⚑ ``metadata_path`` IS the standalone ROOT (drift I). Remove only the kanibako
-        # artifacts inside it — deleting the root would wipe the user's whole project dir
-        # AND the already-converted destination.
-        root = state.metadata_path
         box_data = root / STANDALONE_META_DIR
         if box_data.is_dir():
             # ⚑ Escalating removal: the root-owned canon skeleton makes a bare rmtree
@@ -852,9 +862,13 @@ def _remove_old_metadata(
         settings = root / WORKSET_META_FILE
         if settings.is_file():
             settings.unlink()
-        vault = root / "vault"
-        if vault.is_dir():
-            shutil.rmtree(vault, ignore_errors=True)
+        for vault in removable_vault:
+            if vault.is_dir():
+                shutil.rmtree(vault, ignore_errors=True)
+        for vault in retained_vault:
+            if vault.is_dir():
+                print(f"Note: left the vault at {vault} in place — it is outside "
+                      f"{root} and is yours to remove.", file=sys.stderr)
         return
 
     if state.mode == BoxMode.primary:
@@ -870,16 +884,27 @@ def _remove_old_metadata(
             return
         if state.metadata_path.is_dir():
             remove_box_tree(state.metadata_path)
-        # ⚑⚑ PRIMARY vault sits at @config.primary_workset/vault/{ro,rw}/<name>, NOT under
-        # metadata_path: remove the per-box dirs only — the shared parent holds EVERY box's
-        # vault, and the relative_to check below is what keeps the removal inside it.
-        for vault_dir in (state.vault_ro, state.vault_rw):
-            if vault_dir.is_dir():
-                try:
-                    vault_dir.relative_to(std.primary_workset)
-                except ValueError:
-                    continue
-                shutil.rmtree(vault_dir, ignore_errors=True)
+        # ⚑⚑ The PRIMARY vault is NOT under metadata_path: it is a per-box ``<name>`` LEAF
+        # under the primary workset's RESOLVED ``@workset.{vault_ro,vault_rw}``.  Remove the
+        # leaf only — the arm is shared and holds EVERY box's vault.
+        # ⚑⚑ THE GUARD'S SUBJECT IS THE ARM, NOT THE WORKSET ROOT.  It was the root only
+        # because the arms were composed off it and could not be anywhere else; now that
+        # both are repointable keys, a root-subject guard SKIPS an out-of-root repoint and
+        # silently leaves the box's real vault behind.  Naming the arm is also STRICTLY
+        # NARROWER than the root was: it admits exactly the leaves this loop may delete.
+        # ⚑ Containment must be STRICT — ``relative_to`` ACCEPTS an equal path, so a
+        # leafless ``vault_dir`` would take every box's vault with it.
+        for vault_dir, arm in ((state.vault_ro, std.primary_vault_ro),
+                               (state.vault_rw, std.primary_vault_rw)):
+            if not vault_dir.is_dir():
+                continue
+            if arm not in vault_dir.parents:
+                # ⚑ Reported, never silent: a skipped vault is data the user still owns
+                # and would otherwise never learn was orphaned.
+                print(f"Warning: leaving {vault_dir} in place — it is not a per-box "
+                      f"directory under {arm}", file=sys.stderr)
+                continue
+            shutil.rmtree(vault_dir, ignore_errors=True)
         if state.shell_path.is_dir() and state.shell_path != state.metadata_path / "home":
             try:
                 state.shell_path.relative_to(state.metadata_path)
@@ -986,6 +1011,14 @@ def _to_default(
 
 #: ⚑ kanibako artifacts (NOT workspace content): they STAY at the standalone root when a
 #: convert consolidates everything else into ``workspace/`` (drift H).
+#: ⚑⚑ KNOWN GAP — these are LEAF NAMES, so they cannot express a REPOINTED key.  Measured:
+#: a root carrying ``workset.vault_ro: store/ro`` has its ``store/`` swept into ``workspace/``
+#: by ``_consolidate_workspace_subdir``, because only the literal ``vault`` is listed.  The
+#: data is displaced rather than lost, but the box then resolves its vault to an empty dir.
+#: ``workspace`` has the IDENTICAL gap against ``workset.workspaces``, and an ABSOLUTE repoint
+#: is not representable in a name set at all — so the fix is a path-based comparison for BOTH
+#: keys, not another string in this frozenset.  Left as-is deliberately: it is a separate
+#: defect from the vault-resolution arc and wants its own decision.
 _STANDALONE_ROOT_ARTIFACTS = frozenset({
     STANDALONE_META_DIR,   # box_data/
     "workspace",            # the subdir we are populating
@@ -1246,8 +1279,12 @@ def _to_workset(
         recorded_workspace = (
             Path(recorded_str) if recorded_str else new_workspace
         )
-    vault_ro = target_ws.vault_dir / "ro" / new_name
-    vault_rw = target_ws.vault_dir / "rw" / new_name
+    # ⚑ RESOLVED, and it MUST agree with ``add_project`` above, which created the leaves
+    # under the target workset's resolved arms.  Composing off ``vault_dir`` handed back a
+    # state naming a directory the box does not use — two answers for one box.
+    vault_ro_base, vault_rw_base = resolve_workset_vault_pair(target_ws.root)
+    vault_ro = vault_ro_base / new_name
+    vault_rw = vault_rw_base / new_name
 
     # ⚑ SPARSE (P8b): NO ``project:``/``resolved:`` identity is written — identity lives in
     # the global name index, workspace in the target workset's ``boxes:`` registry. Only

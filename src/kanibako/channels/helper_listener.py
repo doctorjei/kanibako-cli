@@ -326,6 +326,12 @@ class HelperHub:
                 post_start=_helper_reprotect,
                 shell_path=helpers_dir_host / str(helper_num),
                 project_path=helpers_dir_host / str(helper_num) / "workspace",
+                # ⚑ NOT the workset vault, and NOT to be resolved.  ``helpers_dir`` is
+                # ``proj.shell_path/"helpers"`` (``commands/start.py``) — the DIRECTOR
+                # box's own HOME.  A helper is not a workset member and owns no
+                # ``workset.vault_*``; this private leaf is created at the same literal by
+                # ``channels/helpers.py::create_helper_dirs``, and pointing it at a
+                # repointed workset arm would give every helper the DIRECTOR's vault.
                 vault_ro_path=helpers_dir_host / str(helper_num) / "vault" / "ro",
                 vault_rw_path=helpers_dir_host / str(helper_num) / "vault" / "rw",
                 extra_mounts=mounts or None,

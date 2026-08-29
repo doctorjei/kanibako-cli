@@ -309,10 +309,18 @@ destination in place.
 
 ## Layout facts recorded here so nobody re-derives them
 
-* **PRIMARY vault** lives at `@config.primary_workset/vault/{ro,rw}/<name>` (Phase 5), so it is NOT
-  under `metadata_path`. `_remove_old_metadata` removes the per-box `ro`/`rw` dirs explicitly and
-  never their shared parent, which holds EVERY box's vault; the `relative_to(std.primary_workset)`
-  check is what keeps the removal inside the primary tree.
+* **PRIMARY vault** is a per-box `<name>` LEAF under the primary workset's RESOLVED
+  `@workset.{vault_ro,vault_rw}` (default `@config.primary_workset/vault/{ro,rw}/<name>`, Phase 5),
+  so it is NOT under `metadata_path`. `_remove_old_metadata` removes the per-box `ro`/`rw` dirs
+  explicitly and never their shared arm, which holds EVERY box's vault.
+  ⚑⚑ **The containment guard's subject is the ARM (`std.primary_vault_{ro,rw}`), not the workset
+  root.** It was the root only because the arms were composed off it and could not be anywhere
+  else; once both became repointable keys a root-subject guard began SKIPPING an out-of-root
+  repoint, silently leaving the box's real vault behind. Naming the arm is also strictly NARROWER
+  than the root was — it admits exactly the leaves this loop may delete.
+  ⚑ **Containment is STRICT** (`arm not in vault_dir.parents`, the `_assert_deletable` spelling):
+  `relative_to` ACCEPTS an equal path, so a leafless `vault_dir` would take every box's vault. A
+  path that fails the guard is REPORTED on stderr, never silently skipped.
 * **Phase 5 / A7:** layouts are gone and the vault is never "hidden" inside the workspace, so the
   human-vault / project-vault discovery symlinks were deleted. There is nothing left to clean up.
 * **B2b (Option A, Jei-ruled):** the per-box `meta["shell"]` / `meta["vault_*"]` custom-path
@@ -527,12 +535,19 @@ Remove the source project's metadata/shell (+ PRIMARY vault).
 🛑 The three arms differ in what they are allowed to touch, and the difference is the whole point:
 
 * **Standalone source** — removes the in-tree kanibako artifacts (the `box_data/` marker dir, the
-  root `workset.yaml`, `vault/`) and **NOT the project root itself**. For a standalone the root IS
-  `metadata_path`: deleting it would wipe the user's whole project directory AND the
+  root `workset.yaml`, and the vault) and **NOT the project root itself**. For a standalone the root
+  IS `metadata_path`: deleting it would wipe the user's whole project directory AND the
   already-converted destination.
+  ⚑⚑ The vault comes from `project.workset.standalone_vault_teardown(root)`, **called before
+  anything at all is dropped — the registry entry included**. Two reasons and both bite: the root
+  `workset.yaml` this arm unlinks is the only carrier of a `workset.vault_*` repoint, so a later
+  read answers the composed default; and an UNRESOLVABLE repoint raises there, which must happen
+  while the source is still whole and the unwind still has something to restore. An arm the user
+  pointed OUTSIDE the root is reported and left — see that function for why.
 * **Primary source** — unregisters the name, removes the `boxes/` metadata dir, and removes the
-  PRIMARY-workset vault dir that Phase 5 moved out of the workspace. `preserve_name` (L2) suppresses
-  both when the converted box reuses its own name in place.
+  per-box leaf under the primary workset's resolved vault arms (Phase 5 moved it out of the
+  workspace). `preserve_name` (L2) suppresses both when the converted box reuses its own name in
+  place.
 * **Workset source** — removes the workset registration (std-aware) so external markers and the
   per-workset connection record are cleaned. **The external source dir is NEVER deleted.**
 
@@ -550,6 +565,14 @@ Top-level entries that are kanibako artifacts (NOT workspace content) and so mus
 standalone root rather than move into the `workspace/` subdir during a convert (drift H
 consolidation) — six entries: `box_data/`, the `workspace` subdir being populated, `vault/`, BOTH
 root metas `workset.yaml` and `box.yaml` (drift I), and `.kanibako.lock`.
+
+⚑⚑ **KNOWN GAP, measured — these are LEAF NAMES and cannot express a REPOINTED key.** A root
+carrying `workset.vault_ro: store/ro` has its `store/` swept into `workspace/` by
+`_consolidate_workspace_subdir`, because only the literal `vault` is listed; the data is displaced
+rather than lost, but the box then resolves its vault to an empty directory. `workspace` has the
+IDENTICAL gap against `workset.workspaces`, and an ABSOLUTE repoint is not representable in a name
+set at all. The fix is therefore a path-based comparison covering BOTH keys, not another string in
+the frozenset — a separate defect from the vault-resolution work, deliberately left alone.
 
 ```def _consolidate_workspace_subdir(root: Path, workspace_subdir: Path, unwind: _Unwind) -> None```
 Move the project's top-level files into the `workspace/` subdir.
@@ -654,6 +677,13 @@ DESTINATION reads as its box tier (M-8) — with the source's `workset:` identit
 
 ⚑ `_remove_old_metadata` is skipped when the source was a workset — the registration was ALREADY
 released above, and cleaning again would double-remove.
+
+⚑⚑ **The returned state's vault comes from `resolve_workset_vault_pair(target_ws.root)`, never from
+`target_ws.vault_dir / "ro"`.** `add_project` above creates the per-box leaves under the target
+workset's RESOLVED arms; composing off `vault_dir` handed back a state naming a directory the box
+does not use — two answers for one box. Nothing reads those fields into a deletion TODAY (the state
+flows to `_relocate_channel_partition` and the summary print), which is why this was latent rather
+than destructive; it is still the wrong path to hand a caller.
 
 ```def _state_ws_token(state: ProjectState) -> str```
 Return the channel-partition workset-name token for *state*.

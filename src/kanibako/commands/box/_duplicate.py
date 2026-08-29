@@ -332,6 +332,10 @@ def _duplicate_to_standalone(src_proj, new_path, std, force):
     # _flag_missing_vault advises the user.  _duplicate_to_local does not carry a
     # vault either.  Do NOT "fix" this by copying the source's vault across --
     # vaults do not travel on duplicate.
+    # ⚑ This literal names the vault SKELETON PARENT, which is a NON-KEY (the two arms
+    # ``workset.{vault_ro,vault_rw}`` are the keys).  It needs no resolver: the ``.gitignore``
+    # belongs to the skeleton, and ``establish_standalone`` above wrote this root's
+    # workset.yaml with ``workset.kuid`` alone, so no repoint can exist here yet.
     vault_dir = new_path / "vault"
     if vault_dir.is_dir():
         vault_gitignore = vault_dir / ".gitignore"

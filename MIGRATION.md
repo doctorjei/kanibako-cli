@@ -891,6 +891,20 @@ which**; only the first is a stale key that can stop the resolve, and only in so
   `read-only source <path> does not exist; dropping mount`. Note an override moves the
   **mount** only; kanibako's own internal writes still target the default location, so an
   override is not yet a supported way to relocate a box.
+  ⚑ **`workset.{vault_ro,vault_rw}` now also steer the verbs that DELETE.** `box rm --purge`,
+  `kanibako clean --purge`, `box move` and `box convert` remove the vault at the resolved
+  location, not the old composed one — check the value before you purge a box you set it on.
+  Two safeguards limit what that can take. For a primary or named box only the per-box
+  `<box-name>` directory under the arm is ever removed, never the arm itself. For a **standalone**
+  box the arm *is* the vault, so an arm pointing outside the box's own root is treated as yours:
+  it is kept and named on screen (`Kept vault: <path>`), and you remove it yourself. An arm inside
+  the root is deleted with the box.
+  🛑 **A value that cannot be resolved now stops these commands instead of being ignored.** In
+  1.7.2 both keys were accepted and never read, so an unresolvable one — `@config.registry/ro`,
+  say — sat in a settings file doing nothing. It is read now, and a purge or move refuses by name
+  **before deleting anything** rather than part-removing the box. If `box rm --purge` exits 1
+  saying `workset.vault_ro is set to ... which cannot be resolved`, fix or unset the value and run
+  it again; nothing was removed.
 - **`@meta.runtime.ws_settings`** in any settings file: replace with `@meta.workset.settings`
   (identical resolved value). **This one is a reference INSIDE a value, not a key path**, so the
   closed keyspace never judges it and nothing refuses. It is the quietest of the four: an
