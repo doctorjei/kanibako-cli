@@ -60,7 +60,10 @@ LABEL_TO_CONFORMANCE_CLASS: dict[str, str] = {
     "config.py (KanibakoConfig field)": "pinned",
     "config.py (read-with-default)": "pinned",
     "core_defaults.py (canon producer)": "pinned",
-    "kuid.py (SENTINEL)": "pinned",
+    # ⚑ ``kuid.py (SENTINEL)`` IS GONE (2026-08-29). ``workset.kuid`` moved to the anchor
+    # floor, which emits ``kuid.SENTINEL`` by reference; both labels are "pinned", so the
+    # class unions below are unchanged and the move is invisible to the provenance case —
+    # which is why it is written down here instead.
     # ⚑ MOVED OUT of "path join at use" (2026-08-25) when the family stopped being a
     # join and started being seven resolved keys; the conformance file pins it now.
     "channels/channels.py (channel key derivation)": "pinned",
@@ -71,6 +74,15 @@ LABEL_TO_CONFORMANCE_CLASS: dict[str, str] = {
     "core_defaults.py (canon producer, per node)": "exempt",
     "launch/templates.py (layer-2 seed, default arm)": "pinned",
     "launch/templates.py (layer-2 seed)": "exempt",
+    # ⚑ MOVED OUT of "path join at use" (2026-08-29): ``workset.template`` was labelled
+    # as having no literal to point at, and ``launch/templates.py`` writes one
+    # (``@meta.workset.path/template``, via ``AGENT_TEMPLATE_STORE_REL``).
+    # ⚑⚑ "exempt" HERE ONLY MIRRORS THE CONFORMANCE FILE, WHICH STILL LISTS THE KEY IN
+    # ``NO_ORACLE_PATH_JOIN`` — and that table's stated reason ("no literal anywhere to
+    # compare the manifest to") is the SAME false claim, so the key most likely belongs
+    # in the pinned set beside ``agent.default.template``. Writing that pin is a
+    # separate change; this line does not assert the exemption is right.
+    "launch/templates.py (layer-3 seed)": "exempt",
 }
 
 
@@ -139,7 +151,25 @@ class TestSourcePartition:
         sizes = {label: len(keys) for label, keys in source_groups()}
         assert sizes["paths_defaults.py (config tier)"] == 6
         assert sizes["paths_defaults.py (system tier)"] == 11
-        assert sizes["settings_launch.py (anchor floor)"] == 6
+        # ⚑ WIDENED 6 → 9 (2026-08-29). The floor gained ``workset.skip_kuid_check``
+        # (every mode) plus ``workset.registry`` / ``workset.kuid`` (primary/named), three
+        # declared rows that no floor emitted, so each dangled as ``__MISSING__`` at
+        # launch — the ``workset.channelroot`` defect (R-35, "fix the CODE") applied to the
+        # rows it left behind. The probe is ``mode="primary"``, so it sees all three.
+        # ⚑ CONSUMERS CHECKED BEFORE WIDENING, and the measured answer is that NO
+        # user-facing listing grows a row: ``commands/start.py``'s
+        # ``_merge_default_categories`` never sees the floor (the anchor floor is its own
+        # ``build_launch_snapshot`` kwarg, not a ``default_categories`` table) ·
+        # ``_refuse_undeclared_snapshot`` has nothing new to refuse (all three are
+        # DECLARED rows) · ``config show --effective`` / ``box show --effective`` /
+        # ``workset show --effective`` render ``KanibakoConfig`` fields, agent behavior and
+        # the category snapshot — not the ``workset.*`` floor · ``config get`` reads what is
+        # STORED at the noun and never resolves the floor · ``system defaults`` still lists
+        # 65 rows, three of them relabelled to this group.
+        # What DID change is the launch snapshot itself: ``@workset.registry`` /
+        # ``@workset.kuid`` / ``@workset.skip_kuid_check`` resolve where they used to be
+        # ``__MISSING__``, in primary and named (standalone keeps the two ABSENCES).
+        assert sizes["settings_launch.py (anchor floor)"] == 9
         assert sizes["settings_launch.py (auth floor)"] == 6
         assert sizes["core-defaults.yaml (agent_default:)"] == 4
 

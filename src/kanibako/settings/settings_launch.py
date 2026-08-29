@@ -40,6 +40,7 @@ from typing import (
 if TYPE_CHECKING:
     from kanibako.targets.base import PluginDescriptor
 
+from kanibako import kuid
 from kanibako.agent_ref import harness_of
 from kanibako.settings.agent_config import store_dirname
 from kanibako.settings.agent_file import AgentFileLevel
@@ -492,6 +493,13 @@ def workset_anchor_floor(
     contribution roots, and ``meta.box.home`` are UNIFORM. The formulas and what each
     one feeds: the llm-doc.
 
+    ⚑ It also carries the three NON-LAYOUT ``workset.*`` scalars — ``skip_kuid_check``
+    (every mode), ``registry`` and ``kuid`` (primary/named only). They are here for the
+    same reason ``workset.channelroot`` is: each is a manifest row with a declared
+    default that no floor emitted, so a whole-value ``@``-ref to it resolved to
+    ``__MISSING__`` in every launch snapshot. A builder named for the anchors is the
+    honest cost of one floor per scope.
+
     ⚑ ``workset.logs`` is what makes the helper-log bind a SINGLE row for all modes.
     There is deliberately NO ``meta.box.helper_log`` anchor: that construct-time
     LITERAL existed only because the spec's spelling did not parse, and it is not a
@@ -549,7 +557,30 @@ def workset_anchor_floor(
         # word, adjacent paths, opposite directions of travel.
         "workset.canon": "@meta.workset.path/canon",
         "box.canon": "@meta.box.path/canon",
+        # The advisory kuid-CHECK knob, UNIFORM (the manifest declares one bool, not a
+        # per-mode map). ⚑ Same defect as ``workset.channelroot`` below: declared with a
+        # default and emitted by no floor, so ``@workset.skip_kuid_check`` dangled in
+        # every launch snapshot. The value is the one the pre-snapshot reader
+        # ``config.read_workset_skip_kuid_check`` already returns with no file — a
+        # conformance case pins the two equal so they cannot drift apart.
+        "workset.skip_kuid_check": True,
     }
+    if not standalone:
+        # PRIMARY/NAMED ONLY, and the STANDALONE ABSENCE is the point in both rows —
+        # each declares an arm no floor may answer:
+        #   workset.registry  standalone <None>  — a lone box has no registry tier.
+        #   workset.kuid      standalone "<generated at creation>" — PROSE, not a
+        #     value: ``paths.establish_standalone`` MINTS the kuid into the box's own
+        #     ``workset.yaml`` at create, so a floor literal here would shadow nothing
+        #     on a real box and FABRICATE an id on a half-created one.
+        # ⚑ The registry is spelled as the spec's own @-ref FORMULA, like every anchor
+        # above — not as the resolved literal ``project/workset_registry.py`` joins at
+        # use, which would make this a second carrier of one path.
+        floor["workset.registry"] = "@meta.workset.path/registry.yaml"
+        # ⚑ ``kuid.SENTINEL``, never a re-typed "00000": the sentinel's unmintable even
+        # parity is what makes PRESENT-SENTINEL ("no kuid stored") distinguishable from
+        # a wrong one, and that property lives with the codec.
+        floor["workset.kuid"] = kuid.SENTINEL
     # ⚑ The CHANNEL ROOT the six leaves default off. It was declared with a default and
     # emitted by no floor at all, so ``@workset.channelroot`` dangled in every launch
     # snapshot and a default primary box had no ``channelroot`` under its ``workset``

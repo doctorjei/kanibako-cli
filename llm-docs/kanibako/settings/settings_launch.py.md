@@ -525,7 +525,8 @@ workset-scope PATH anchors the spec's §2c binds reference (`workset.{boxes,vaul
 plus the workset-local channels) and the RO per-mode BOX ROOT `meta.box.path`, as REAL
 `@`-referenceable floor keys. The core home / vault / helper_log binds route through these anchors
 so a bind's `host_src` RESOLVES via the snapshot instead of a proj-attr literal injected at the
-seam.
+seam. It is also the floor for the three NON-LAYOUT `workset.*` scalars — see that subsection below;
+the builder's name is narrower than its job.
 
 JC-B2b-1: these `workset.*` keys do NOT exist as resolvable snapshot keys otherwise —
 `resolve_system_paths` derives only the PRIMARY pseudo-keys (`system._boxes` /
@@ -635,6 +636,46 @@ key is read on the DETECTION side before any snapshot exists, so the floor must 
 that pass already reached or one key would resolve two ways. It was emitted by no floor at all
 until 2026-08-25 — a manifest row with a declared default that the keyspace could not answer, so
 `@workset.channelroot` dangled in every launch snapshot.
+
+### The three NON-LAYOUT `workset.*` scalars
+
+The builder also emits `workset.skip_kuid_check`, `workset.registry` and `workset.kuid` — not
+layout anchors, and here for the same reason `workset.channelroot` is: each was a manifest row with a
+declared default that **no floor emitted in any mode**, so a whole-value `@`-ref to it resolved to
+`__MISSING__` in every launch snapshot (2026-08-29; the same class R-35 ruled a CODE defect, "fix the
+CODE"). A builder named for the anchors carrying them is the honest cost of one floor per scope —
+the alternative is a second `workset.*` floor whose only distinction is that its keys are not paths.
+
+```
+workset.skip_kuid_check   ALL      True                              (uniform bool)
+workset.registry          p/n      @meta.workset.path/registry.yaml
+                          s'alone  NOT EMITTED  (declared <None>)
+workset.kuid              p/n      kuid.SENTINEL  ("00000")
+                          s'alone  NOT EMITTED  ("<generated at creation>")
+```
+
+⚑ **The two standalone ABSENCES are the load-bearing part.** `workset.registry`'s standalone arm is
+`<None>` — a lone box has no registry tier — and `workset.kuid`'s is the PROSE placeholder
+`<generated at creation>`, because `paths.establish_standalone` MINTS a real kuid into the box's own
+`workset.yaml` at create time (`paths.py::establish_standalone`, via `box_identity.standalone_kuid`).
+A floor literal there would shadow nothing on a finished box and FABRICATE an identity on a
+half-created one. Neither is "a default we have not written yet".
+
+⚑ **Each value is the one the PRE-SNAPSHOT path already reaches, never a fresh literal.**
+`workset.kuid` is `kuid.SENTINEL` by reference, not a re-typed `"00000"` — the sentinel's unmintable
+EVEN parity is what keeps PRESENT-SENTINEL ("nothing stored") distinguishable from a wrong id, and
+that property belongs with the codec. `workset.skip_kuid_check` is the `True` that
+`config.read_workset_skip_kuid_check` returns with no file, and `test_manifest_conformance` pins the
+floor against that accessor so the two carriers cannot drift apart silently.
+
+⚑ `workset.registry` is spelled as the spec's `@`-ref FORMULA, like every anchor above — NOT as the
+resolved literal `project/workset_registry.py` joins at use. That is the difference from
+`channelroot`, and the reason differs too: `channelroot` is read on the DETECTION side before any
+snapshot exists, so its floor must carry the answer that pass reached; nothing reads `workset.registry`
+that early through the keyspace, so the formula is safe and a resolved literal here would make the
+floor a second carrier of one path. This also moves the row out of `test_manifest_conformance`'s
+`NO_ORACLE_PATH_JOIN` exemption (E1) — the reason for that exemption was "no `@`-ref literal exists
+anywhere to compare the manifest to", and now one does.
 
 `_BOX_MODES` is the set of box modes this floor knows how to root. An undeclared variant is NOT a
 mode and is REFUSED rather than silently taking the primary/named arm.
