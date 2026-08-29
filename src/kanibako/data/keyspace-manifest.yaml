@@ -2386,6 +2386,13 @@ not_keys:
     "config.handbook": "draft name REJECTED in favour of system.canon (R-36; §2g)
                         — the handbook root is the canon key's handbook/ subtree,
                         not a config.* key (fails §1's locate-and-load test)"
+    "machine.*":    "NEVER a namespace — §2: `base` is an AUTHORITY (cascade) tier,
+                     NOT a key namespace, so 'there are no machine.* keys'; the
+                     machine tier spells ORDINARY key names in settings_base.yaml"
+    "meta.runtime.cli.<key>": "FLOATED, NOT ADOPTED (§3): the CLI level already
+                               carries that state at the canonical key names, and a
+                               second spelling would be the two-spellings shape this
+                               keyspace retired"
 
   illegal_shapes:               # shapes CODE currently accepts/spells that are
                                 # NOT legal key shapes — recorded so the closed
@@ -2466,6 +2473,8 @@ not_keys:
                                 since 2026-08-07f — see illegal_shapes"
     "box.vault_enabled":       "-> box.enable_vault (2026-07-04)"
     "box.mode":                "-> meta.box.mode (RO identity anchor; mode is identity)"
+    "box.name":                "-> meta.box.name (RO identity anchor, §2b: `mode` and
+                                `name` do NOT become box.* keys)"
     "env_file":                "-> secret_path.<VAR>, promoted to a §2a category (2026-07-06)"
     "agent.<agent>.env_file.<VAR>": "-> agent.<agent>.secret_path.<VAR> (R-36; the
                                      namespaced twin of the bare env_file row)"
