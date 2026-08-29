@@ -884,7 +884,7 @@ which**; only the first is a stale key that can stop the resolve, and only in so
   yours has content, it belongs to a hand-set relative agent binding — absolutise that binding
   (§2.7's rule); don't just delete the dir.
 - **`workset.{boxes,vault_ro,vault_rw,logs}` overrides become live** where they were inert
-  (standalone: all four; `workset.logs` for the helper log: all modes). **These ARE declared
+  (standalone: all four; `workset.{vault_ro,vault_rw}` and `workset.logs`: all modes). **These ARE declared
   keys — do not delete one** on the strength of this section; the change is that a value you
   already set now takes effect. The corresponding mount moves silently, since the new location
   is guarantee-created. A broken `workset.logs` override is visible: the launch logs
