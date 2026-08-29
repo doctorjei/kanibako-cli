@@ -924,8 +924,13 @@ def build_launch_snapshot(
 
     *auth_chain* / *meta_runtime* / *meta_identity* / *workset_anchor* are the floor
     fragments the four builders above produce, each folded into the SAME floor so
-    ``expand`` resolves its @-ref chain ONCE (single-route). ``None`` for a NARROW
-    resolve that does not need it (seed / synced / image / helper).
+    ``expand`` resolves its @-ref chain ONCE (single-route). ``None`` for any resolve
+    that does not need that fragment.
+    ⚑ ``auth_chain=None`` IS NOT A NARROWNESS SIGNAL. Only the two auth resolves
+    (``_resolve_box_auth_source`` / ``_resolve_box_launch_decisions``) pass it; the MAIN
+    launch resolve (``commands.start._resolve_launch_snapshot``) passes none either, and
+    it is the widest resolve there is. Reading the omission as "this caller is narrow"
+    has already led two readers to infer a defect that was not there.
 
     *prefs* are the ``pref.*`` REQUESTS (spec §2h) of the workset + box files, in
     application order. ⚑ ``None`` means COLLECT THEM HERE — the fail-safe default, so

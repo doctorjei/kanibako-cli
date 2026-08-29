@@ -768,7 +768,10 @@ that way is what cost the credential path once already:
   — omit it and the per-agent credential dir collapses to the workset auth ROOT. Those two functions
   take it as a REQUIRED keyword for that reason.
 * **Not needed** by the seed / synced / image / helper narrow resolves: they carry no auth chain and
-  no shipped declaration references `@system.agent`.
+  no shipped declaration references `@system.agent`. ⚑ "Carries no auth chain" is a property of
+  those four, **not a definition of narrowness**: `_resolve_launch_snapshot` — the MAIN launch
+  resolve — passes no `auth_chain` either and still needs the level. Read a missing `auth_chain=` as
+  "this caller resolves no `meta.box.auth.*`", never as "this caller is narrow".
 * `None` for a NO-AGENT box — `system.agent` must stay absent / `None` there, not be pinned to the
   `"general"` template slot.
 
