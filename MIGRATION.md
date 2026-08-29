@@ -783,8 +783,8 @@ If you ever worked around that by hand-editing `~/.config/kanibako_config.yaml`:
 for a `system:` table containing `bindings:`, `caches:`, `seeded:`, `common:`, `synced:`, or
 `secret_path:` and move those sub-tables **verbatim** into the `system:` table of
 `<data>/global/settings.yaml`. The shape is identical; only the file changes. Confirm with
-`kanibako system get <key>` — it now answers. Only `system.setup_completed` and the `config.*`
-bootstrap keys belong in the config file and must **stay** there.
+`kanibako system get <key>` — it now answers. Only the `config.*` bootstrap keys belong in the
+config file and must **stay** there.
 
 The eleven `system.*` **path** keys — `system.template`, `system.canon`, `system.backup`,
 `system.cache`, `system.runtime`, `system.channelroot` and the five `system.channels.*`
@@ -807,9 +807,9 @@ around it by *also* moving files by hand or by pointing something else at the ol
 workaround may now be doing the opposite of what you want: run `kanibako system get <key>`,
 confirm it names the directory you actually want, and undo the workaround.
 
-**`system.setup_completed` is settable and resettable now.** It used to be refused by every verb
-with advice to hand-edit the config file. It still lives in that file's `system:` table — nothing
-moved, and a hand-edit still works — but `kanibako system set system.setup_completed=…`,
+**`system.setup_completed` is settable and resettable now, and it MOVED.** It used to be refused by
+every verb with advice to hand-edit `~/.config/kanibako_config.yaml`. It now lives in the `system:`
+table of `<data>/global/settings.yaml`, and `kanibako system set system.setup_completed=…`,
 `kanibako system get system.setup_completed` and `kanibako system reset system.setup_completed` all
 work against it directly. Clearing it is the supported way to get back to *"setup has never run"*.
 ⚠️ There is no validation on the value, exactly as there was none on the hand-edit: a marker newer
