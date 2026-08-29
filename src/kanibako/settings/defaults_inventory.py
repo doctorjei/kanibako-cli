@@ -108,6 +108,12 @@ def source_groups() -> tuple[tuple[str, frozenset[str]], ...]:
     # --- carriers that enumerate their own keys (derived, self-correcting) --- #
     ("paths_defaults.py (config tier)", frozenset(CONFIG_PATH_DEFAULTS)),
     ("paths_defaults.py (system tier)", frozenset(SYSTEM_PATH_DEFAULTS)),
+    # ⚑ WIDENED 2026-08-29, from 6 keys to 9. ``workset.{skip_kuid_check,registry,kuid}``
+    # were declared rows that no floor emitted, so a whole-value ``@``-ref to any of them
+    # resolved to ``__MISSING__`` at launch; they are now built by the same builder (the
+    # ``workset.channelroot`` fix of 2026-08-25, R-35 "fix the CODE", applied to the three
+    # rows it left behind). The group is DERIVED, so the widening arrived here on its own —
+    # what moved by hand is the three labels below that used to claim them.
     ("settings_launch.py (anchor floor)", _floor(workset_anchor_floor(mode="primary"))),
     ("settings_launch.py (auth floor)", _floor(
       auth_chain_floor(mode="primary", agent_name=_PROBE_AGENT))),
@@ -124,11 +130,20 @@ def source_groups() -> tuple[tuple[str, frozenset[str]], ...]:
     # Fields of the ``KanibakoConfig`` dataclass.
     ("config.py (KanibakoConfig field)", frozenset({"box.image", "box.share_images"})),
     # ``read_*`` accessors whose declared default is what they return with no file.
-    ("config.py (read-with-default)", frozenset({
-      "workset.skip_kuid_check", "box.enable_vault"})),
+    # ⚑ ``workset.skip_kuid_check`` LEFT THIS GROUP (2026-08-29) for the anchor floor,
+    # which now emits it. ``config.read_workset_skip_kuid_check`` is still the
+    # PRE-SNAPSHOT reader and still returns the same ``True``, so the accessor did not
+    # stop being a carrier — it stopped being the ONLY one, and the label must name the
+    # artefact the keyspace answers from. A conformance case asserts the pair equal.
+    ("config.py (read-with-default)", frozenset({"box.enable_vault"})),
     # The one literal emitted by the canon bind producer (spec §2d).
     ("core_defaults.py (canon producer)", frozenset({"agent.default.canon"})),
-    ("kuid.py (SENTINEL)", frozenset({"workset.kuid"})),
+    # ⚑ THE ``kuid.py (SENTINEL)`` LABEL IS GONE (2026-08-29) — not because the sentinel
+    # moved, but because ``workset.kuid`` did: the anchor floor emits it now (as
+    # ``kuid.SENTINEL``, by reference), and this partition must stay disjoint. One hop
+    # from the floor line reaches the codec, which is where the unmintable-parity reason
+    # for the value belongs. Do NOT re-add the label without removing the key from the
+    # floor first — a key in two groups raises out of :func:`key_rows`.
     # The channel family — ``workset.channelroot`` + all six ``workset.channels.*``
     # leaves. ⚑ THEY ARE NOT "path join at use" AND MUST NOT GO BACK THERE: each is
     # resolved through its own declared key by ``channels/channels.py``, whose answer
@@ -140,10 +155,21 @@ def source_groups() -> tuple[tuple[str, frozenset[str]], ...]:
       "workset.channels.broadcast", "workset.channels.share",
       "workset.channels.mailboxes", "workset.channels.share_global"})),
     # --- rows with no value-carrying artefact at all --- #
-    # Realized as a Path JOIN in project/workset.py; the manifest states the formula,
-    # no literal exists anywhere to point at.
-    ("built-in (path join at use)", frozenset({
-      "workset.workspaces", "workset.registry", "workset.template"})),
+    # Realized as a Path JOIN at the point of use — ``project/workset.py``'s
+    # ``resolve_workset_workspaces``, one face on ``resolve_workset_dir_key``. It joins a
+    # bare LEAF (``workspaces``/``workspace``) onto the root, and the leaf is a fallback,
+    # not a spelling of the default: the manifest states the formula and no literal
+    # exists anywhere to point at.
+    # ⚑ ``workset.template`` IS NOT ONE OF THESE AND MUST NOT COME BACK. It has a join
+    # face too (``resolve_workset_template``, the same route), but unlike this one its
+    # default IS written out — ``launch/templates.py`` emits the literal, so the layer-3
+    # label below is what a reader can go and read.
+    # ⚑ NEITHER IS ``workset.registry`` (LEFT 2026-08-29). Its join face
+    # (``project/workset_registry.py::resolve_workset_registry_path``) still exists and is
+    # still the pre-snapshot route, but the anchor floor now spells the DEFAULT out as the
+    # spec's own ``@meta.workset.path/registry.yaml`` — so "no literal to point at", the
+    # whole reason for this label, has stopped being true of it.
+    ("built-in (path join at use)", frozenset({"workset.workspaces"})),
     ("runtime-probed (podman graphroot)", frozenset({"box.images_store"})),
     # ``default: <None>`` — an ABSENCE. No floor builder installs these at all.
     ("(nothing declares it — unset until you set it)", frozenset({
@@ -168,6 +194,11 @@ def source_groups() -> tuple[tuple[str, frozenset[str]], ...]:
     ("launch/templates.py (layer-2 seed, default arm)",
      frozenset({"agent.default.template"})),
     ("launch/templates.py (layer-2 seed)", frozenset({"agent.<agent>.template"})),
+    # The layer-3 SOURCE key, from the SAME producer as the two arms above
+    # (``template_seed_defaults``, under its workset-channels gate) and a plain literal
+    # ``@meta.workset.path/template``. Its own label rather than the layer-2 one because
+    # the LAYER is what the value is spelled against, and the workset layer is 3.
+    ("launch/templates.py (layer-3 seed)", frozenset({"workset.template"})),
   )
 
 

@@ -214,6 +214,22 @@ _ANCHOR_KEYS = (
     "workset.canon", "box.canon",
 )
 
+#: (i-b2) The NON-LAYOUT ``workset.*`` scalars the SAME builder floors, split by whether
+#: the manifest gives standalone a real arm.  Added 2026-08-29: all three were declared
+#: rows that no floor emitted in any mode, so a whole-value ``@``-ref to one resolved to
+#: ``__MISSING__`` at launch — the ``workset.channelroot`` defect (R-35, "fix the CODE")
+#: applied to the rows it left behind.
+#: ⚑ ``workset.skip_kuid_check`` is ALSO in ``_SCALAR_KEYS`` below, deliberately: the
+#: floor and ``config.read_workset_skip_kuid_check`` are TWO carriers of one bool, and
+#: pinning both to the manifest is what stops them drifting apart.
+_ANCHOR_SCALAR_KEYS = ("workset.skip_kuid_check",)
+
+#: (i-b3) PRIMARY/NAMED only — their standalone arms are pinned as ABSENCES, which is the
+#: whole content of those arms: ``workset.registry`` declares ``<None>`` (a lone box has
+#: no registry tier) and ``workset.kuid`` declares the PROSE ``<generated at creation>``
+#: (``paths.establish_standalone`` mints a real id into the box's own file at create).
+_ANCHOR_SCALAR_KEYS_PRIMARY_NAMED = ("workset.registry", "workset.kuid")
+
 #: (i-c) The auth 3-tier chain built per mode by ``settings_launch.auth_chain_floor``.
 #: ⚑ SIX, not the three the wiring estimate projected: the three ``workset.auth.*``
 #: rows are per-mode MAPS whose arms are literals in the same floor builder, so they
@@ -260,7 +276,8 @@ _CHANNEL_KEYS = (
 
 #: Every manifest ``keys:`` row this file pins a VALUE for.
 PINNED_DEFAULT_KEYS: frozenset[str] = frozenset(
-    set(_PATH_ORACLE) | set(_ANCHOR_KEYS) | set(_AUTH_KEYS) | set(_SCALAR_KEYS)
+    set(_PATH_ORACLE) | set(_ANCHOR_KEYS) | set(_ANCHOR_SCALAR_KEYS)
+    | set(_ANCHOR_SCALAR_KEYS_PRIMARY_NAMED) | set(_AUTH_KEYS) | set(_SCALAR_KEYS)
     | set(_BEHAVIOR_KEYS) | set(_SINGLETON_KEYS) | set(_CHANNEL_KEYS)
 )
 
@@ -309,6 +326,80 @@ class TestAnchorDefaults:
                 f"{key} [{mode}]: manifest says {want[mode]!r}, "
                 f"workset_anchor_floor says {floors[mode][key]!r}"
             )
+
+
+class TestAnchorScalarDefaults:
+    """(i-b2/i-b3) The three NON-LAYOUT ``workset.*`` scalars the anchor floor emits.
+
+    Split from :class:`TestAnchorDefaults` because two of the three are PRIMARY/NAMED
+    only, and their standalone arms are pinned as ABSENCES rather than values — a
+    ``<None>`` arm and a PROSE arm are both "no floor may answer this", which the
+    all-three-modes loop up there cannot express.
+    """
+
+    @staticmethod
+    def _floors() -> dict[str, dict[str, object]]:
+        return {mode: workset_anchor_floor(mode=mode) for mode in MODES}
+
+    @pytest.mark.parametrize("key", _ANCHOR_SCALAR_KEYS)
+    def test_the_uniform_scalar_is_the_floor_value_in_every_mode(self, key):
+        floors = self._floors()
+        want = _default(key)
+        assert not isinstance(want, dict), f"{key} is no longer uniform — move it"
+        for mode in MODES:
+            assert key in floors[mode], f"{mode}: workset_anchor_floor no longer builds {key}"
+            assert floors[mode][key] == want, (
+                f"{key} [{mode}]: manifest says {want!r}, "
+                f"workset_anchor_floor says {floors[mode][key]!r}"
+            )
+
+    @pytest.mark.parametrize("key", _ANCHOR_SCALAR_KEYS_PRIMARY_NAMED)
+    def test_the_manifest_default_is_the_floor_value_for_primary_and_named(self, key):
+        floors = self._floors()
+        want = _per_mode(_default(key))
+        for mode in ("primary", "named"):
+            assert key in floors[mode], f"{mode}: workset_anchor_floor no longer builds {key}"
+            assert floors[mode][key] == want[mode], (
+                f"{key} [{mode}]: manifest says {want[mode]!r}, "
+                f"workset_anchor_floor says {floors[mode][key]!r}"
+            )
+
+    @pytest.mark.parametrize("key", _ANCHOR_SCALAR_KEYS_PRIMARY_NAMED)
+    def test_the_standalone_arm_is_an_absence_on_both_sides(self, key):
+        """⚑ THE ARM IS "NOTHING", and both carriers must say so.
+
+        The manifest arm is ``<None>`` or a ``<…>`` PROSE placeholder — never a value —
+        and the floor must emit NO KEY.  A floor literal here would shadow nothing on a
+        finished standalone box (create writes a real ``workset.kuid`` into its own file)
+        and FABRICATE an identity on a half-created one.
+        """
+        arm = _per_mode(_default(key))["standalone"]
+        assert arm is None or (str(arm).startswith("<") and str(arm).endswith(">")), (
+            f"{key}: the standalone arm is {arm!r}, which is a VALUE — if the manifest "
+            f"now declares one, the floor must emit it"
+        )
+        assert key not in self._floors()["standalone"], (
+            f"{key}: workset_anchor_floor emits a standalone value for a row the "
+            f"manifest declares as {arm!r}"
+        )
+
+    def test_the_kuid_floor_value_is_the_codec_sentinel(self):
+        """Not a re-typed ``"00000"``: the unmintable parity lives with the codec."""
+        assert workset_anchor_floor(mode="primary")["workset.kuid"] is kuid.SENTINEL
+
+    def test_the_skip_kuid_check_floor_equals_the_pre_snapshot_reader(self):
+        """⚑ TWO CARRIERS OF ONE BOOL, asserted equal — the floor and the file reader.
+
+        ``config.read_workset_skip_kuid_check`` is still the PRE-SNAPSHOT route (it reads
+        a ``workset.yaml`` directly, before any snapshot exists).  The floor now answers
+        the same question through the keyspace, so the two must agree; the accessor is
+        pointed at a path that does not exist, where what it returns IS the default.
+        """
+        assert not NO_SETTINGS_FILE.exists()
+        assert (
+            workset_anchor_floor(mode="primary")["workset.skip_kuid_check"]
+            == read_workset_skip_kuid_check(NO_SETTINGS_FILE)
+        )
 
 
 class TestAuthChainDefaults:
@@ -772,11 +863,19 @@ class TestBindDefaults:
 #: oracle, and only RE-IMPLEMENTING it would be a second resolver.  They are pinned by
 #: :class:`TestWorksetChannelDefaults`.
 #:
+#: ⚑⚑ ``workset.registry`` LEFT THIS TABLE (2026-08-29), for the same shape of reason.
+#: Its join face (``project/workset_registry.py::resolve_workset_registry_path``) still
+#: exists and is still the pre-snapshot route — but the row was ALSO emitted by no floor
+#: at all, so ``@workset.registry`` dangled in every launch snapshot, and the fix
+#: (``settings_launch.workset_anchor_floor``, following the ``channelroot`` precedent)
+#: writes the formula STRING out.  "No literal anywhere to compare the manifest to" has
+#: stopped being true of it; it is pinned by :class:`TestAnchorScalarDefaults`.
+#:
 #: ⚑ ``test_a_path_join_default_really_is_an_at_ref_formula`` below is a SHAPE check,
-#: not an oracle — it reads no code.  The three survivors are genuinely unpinned; the
+#: not an oracle — it reads no code.  The two survivors are genuinely unpinned; the
 #: shape case is the honest floor under that, not a substitute for it.
 NO_ORACLE_PATH_JOIN: frozenset[str] = frozenset({
-    "workset.workspaces", "workset.registry", "workset.template",
+    "workset.workspaces", "workset.template",
 })
 
 #: (E2) A PROSE PLACEHOLDER standing in for a runtime-probed value.  The manifest is
@@ -933,14 +1032,16 @@ class TestDefaultsCoverage:
         )
 
     def test_the_split_is_the_measured_split(self):
-        """48 pinned rows, 17 exempted — stated so a silent migration between them reds.
+        """49 pinned rows, 16 exempted — stated so a silent migration between them reds.
 
         ⚑ Was 41/24 until the seven-row channel family moved from E1 to a real oracle
-        (2026-08-25).  A row may move BACK only with a reason written into E1, which is
-        what the count is here to make visible.
+        (2026-08-25), then 48/17 until ``workset.registry`` followed it out of E1
+        (2026-08-29, when the anchor floor started spelling its formula).  A row may move
+        BACK only with a reason written into E1, which is what the count is here to make
+        visible.
         """
-        assert len(PINNED_DEFAULT_KEYS) == 48
-        assert len(EXEMPT_DEFAULT_KEYS) == 17
+        assert len(PINNED_DEFAULT_KEYS) == 49
+        assert len(EXEMPT_DEFAULT_KEYS) == 16
         assert not (PINNED_DEFAULT_KEYS & EXEMPT_DEFAULT_KEYS)
 
 

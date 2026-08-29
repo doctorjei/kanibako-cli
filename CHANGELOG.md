@@ -312,6 +312,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`workset.kuid`, `workset.registry` and `workset.skip_kuid_check` were declared with defaults
+  that nothing ever installed, so an `@`-reference to any of them resolved to nothing at launch.**
+  Each is a manifest row with a stated default, and each was reachable only through a Python
+  accessor consulted before the launch snapshot exists — no floor emitted the value, so a setting
+  written as `@workset.registry` expanded to an empty string rather than the registry path, in
+  every mode. This is the same defect `workset.channelroot` had: a key the manifest promises and
+  the keyspace cannot answer. All three are now emitted by the workset anchor floor, from the value
+  the pre-snapshot path already produced rather than from a fresh literal. Two declared *absences*
+  are preserved and now tested as absences: a standalone box gets neither `workset.registry` (it
+  has no registry tier) nor `workset.kuid` (its identifier is minted into its own settings file at
+  creation, so a placeholder here would fabricate an identity on a half-created box).
+
+- **`kanibako system defaults` reported the wrong source for four keys.** The column names the
+  artifact a default comes from, so you can go read it. `workset.template` was listed as having no
+  literal anywhere to point at when one exists; `workset.registry`, `workset.kuid` and
+  `workset.skip_kuid_check` were attributed to the accessors that used to be their only carrier.
+  The rows are unchanged in count and value — only the provenance was wrong, and it is the part of
+  that command a reader acts on.
+
 - **`workset.vault_ro` and `workset.vault_rw` were settable and ignored — the value was written,
   accepted, and the vault was still created and mounted at the default location.** Both keys are
   declared for every box mode: a workset's vault is `@meta.workset.path/vault/{ro,rw}` unless you

@@ -105,6 +105,15 @@ the cascade (setting `workset.template` / `agent.<a>.template` reroutes that lay
   `workset.template` defaults to `@meta.workset.path/template` (Q3, was `<None>`). STANDALONE has
   no workset tier, so the layer is OMITTED. Each layer is SKIPPED when its source dir is absent —
   the seeded category's ordinary missing-source semantics.
+  ⚑ THIS LITERAL IS WHERE `workset.template`'s DEFAULT IS WRITTEN DOWN, and `system defaults` says
+  so: `defaults_inventory.source_groups` labels the key `launch/templates.py (layer-3 seed)` (its
+  own label, not the layer-2 one — the workset layer is 3). Until 2026-08-29 it was filed under
+  `built-in (path join at use)` with `workset.workspaces` / `workset.registry`, whose stated reason
+  is "no literal exists anywhere to point at" — false for this key, which the line above emits in
+  full. It has a join face like theirs (`project/workset.py`'s `resolve_workset_template`); having
+  one does not mean the default is unwritten. ⚑ `tests/test_settings/test_manifest_conformance.py`
+  still lists it in `NO_ORACLE_PATH_JOIN` on that same false reason — an OPEN item, not a
+  contradiction of this paragraph.
 
 ⚑ A FOURTH KEY, AND IT IS NOT A LAYER: `agent.default.template` =
 `@config.agents/default/template`, the §2d DEFAULT-TIER arm of the layer-2 source, emitted under
