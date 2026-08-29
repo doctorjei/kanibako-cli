@@ -24,7 +24,12 @@ into a second opinion about where a default lives.
 two tables, the two ``settings_launch`` floor builders and ``core-defaults.yaml``'s
 ``agent_default:`` section all ENUMERATE their own keys, so those five groups are
 derived and self-correcting; only the rows whose carrier is a dataclass field, a
-read-with-default accessor or a lone constant are named by hand.
+deriving function or a lone constant are named by hand.  ⚑ "A READ-WITH-DEFAULT
+ACCESSOR" WAS A FOURTH KIND HERE AND IS NOT ANY MORE (2026-08-29): the last group of
+keys whose default lived inside the function that read the file was retired when
+``box.enable_vault`` moved to a ``KanibakoConfig`` field.  Those readers still exist and
+still return the same values — what they stopped being is the artefact the keyspace
+answers from, which is the only thing this column names.
 
 ⚑ THE LAUNCH-DERIVED ``KANIBAKO_*`` STAMPS ARE NOT LISTED, AND THE OMISSION IS PRINTED.
 They are realized per launch by ``commands.start._core_env_default_categories`` from a
@@ -108,12 +113,17 @@ def source_groups() -> tuple[tuple[str, frozenset[str]], ...]:
     # --- carriers that enumerate their own keys (derived, self-correcting) --- #
     ("paths_defaults.py (config tier)", frozenset(CONFIG_PATH_DEFAULTS)),
     ("paths_defaults.py (system tier)", frozenset(SYSTEM_PATH_DEFAULTS)),
-    # ⚑ WIDENED 2026-08-29, from 6 keys to 9. ``workset.{skip_kuid_check,registry,kuid}``
-    # were declared rows that no floor emitted, so a whole-value ``@``-ref to any of them
-    # resolved to ``__MISSING__`` at launch; they are now built by the same builder (the
-    # ``workset.channelroot`` fix of 2026-08-25, R-35 "fix the CODE", applied to the three
-    # rows it left behind). The group is DERIVED, so the widening arrived here on its own —
-    # what moved by hand is the three labels below that used to claim them.
+    # ⚑ WIDENED 2026-08-29, from 6 keys to 10.
+    # ``workset.{skip_kuid_check,registry,kuid,template}`` were declared rows that no floor
+    # emitted, so a whole-value ``@``-ref to any of them resolved to ``__MISSING__`` at
+    # launch; they are now built by the same builder (the ``workset.channelroot`` fix of
+    # 2026-08-25, R-35 "fix the CODE", applied to the rows it left behind). The group is
+    # DERIVED, so the widening arrived here on its own — what moved by hand is the labels
+    # below that used to claim them.
+    # ⚑ ``workset.template`` is the fourth, and it arrived a step later than the other
+    # three: it was not "emitted by no floor" but emitted ONLY into the CREATE-time seed
+    # resolve, which an existing box never runs again. Under the user's 2026-08-29 ruling
+    # — a declared default must answer FOR ANY BOX THAT EXISTS — that is the same defect.
     ("settings_launch.py (anchor floor)", _floor(workset_anchor_floor(mode="primary"))),
     ("settings_launch.py (auth floor)", _floor(
       auth_chain_floor(mode="primary", agent_name=_PROBE_AGENT))),
@@ -128,14 +138,20 @@ def source_groups() -> tuple[tuple[str, frozenset[str]], ...]:
      & declared),
     # --- carriers with nothing to enumerate: named, one reason each --- #
     # Fields of the ``KanibakoConfig`` dataclass.
-    ("config.py (KanibakoConfig field)", frozenset({"box.image", "box.share_images"})),
-    # ``read_*`` accessors whose declared default is what they return with no file.
-    # ⚑ ``workset.skip_kuid_check`` LEFT THIS GROUP (2026-08-29) for the anchor floor,
-    # which now emits it. ``config.read_workset_skip_kuid_check`` is still the
-    # PRE-SNAPSHOT reader and still returns the same ``True``, so the accessor did not
-    # stop being a carrier — it stopped being the ONLY one, and the label must name the
-    # artefact the keyspace answers from. A conformance case asserts the pair equal.
-    ("config.py (read-with-default)", frozenset({"box.enable_vault"})),
+    # ⚑ WIDENED 2026-08-29, 2 keys to 3: ``box.enable_vault`` is a field now, and its
+    # field default is what ``config.box_scalar_defaults_floor`` publishes into every
+    # box-scalar resolve — the same route ``box.image`` and ``box.share_images`` take.
+    ("config.py (KanibakoConfig field)",
+     frozenset({"box.image", "box.share_images", "box.enable_vault"})),
+    # ⚑⚑ THE ``config.py (read-with-default)`` LABEL IS GONE (2026-08-29), and it was the
+    # LAST of the "pre-cascade reader owns the default" group. Two keys had already left
+    # it — ``workset.skip_kuid_check`` and ``workset.kuid``, to the anchor floor — and its
+    # sole remaining member ``box.enable_vault`` has moved to the ``KanibakoConfig`` field
+    # group above. ``config.read_box_enable_vault`` still returns the same ``True`` and is
+    # still the PRE-SNAPSHOT reader — the ``workset.skip_kuid_check`` situation exactly, so
+    # it did not stop being A carrier, it stopped being the one the KEYSPACE answers from,
+    # and this column names that one. A conformance case asserts the pair equal.
+    # 🛑 Do not re-add the label: an empty group raises out of :func:`key_rows`.
     # The one literal emitted by the canon bind producer (spec §2d).
     ("core_defaults.py (canon producer)", frozenset({"agent.default.canon"})),
     # ⚑ THE ``kuid.py (SENTINEL)`` LABEL IS GONE (2026-08-29) — not because the sentinel
@@ -154,22 +170,29 @@ def source_groups() -> tuple[tuple[str, frozenset[str]], ...]:
       "workset.channelroot", "workset.channels.common", "workset.channels.chat",
       "workset.channels.broadcast", "workset.channels.share",
       "workset.channels.mailboxes", "workset.channels.share_global"})),
+    # ⚑⚑ THE ``built-in (path join at use)`` LABEL IS GONE (2026-08-29), and with it the
+    # LAST row that claimed a declared default had no artefact behind it. Its sole member
+    # was ``workset.workspaces``, now carried below. Two keys had already left it —
+    # ``workset.registry`` and ``workset.template``, both to the anchor floor — and its
+    # stated reason ("the manifest states the formula and no literal exists anywhere to
+    # point at") went false for the last one when the launch started writing the resolved
+    # value out. Do NOT re-add the label: a join FACE is not an absence of a carrier, and
+    # that conflation is what let three rows dangle at launch while looking ordinary here.
+    #
+    # The RESOLVED workset dir key ``workset.workspaces``. ⚑ Same shape as the channel
+    # family above and labelled the same way — ``project/workset.py`` DERIVES the value
+    # (``resolve_workset_workspaces``, one face on the single pre-snapshot route
+    # ``settings/workset_dirkeys.resolve_workset_dir_key``) and ``commands/start.py``
+    # hands the answer to ``workset_anchor_floor``. The label names the DERIVER, not the
+    # floor, exactly as ``channels/channels.py`` does, because that is where a wrong value
+    # would come from.
+    # ⚑ IT IS NOT IN THE DERIVED ANCHOR-FLOOR GROUP ABOVE, and cannot be: that group is
+    # probed at ``mode="primary"``, and this is the FIRST floor key with no primary arm
+    # (manifest ``{primary: null, …}``). A probe that reached it would have to hand the
+    # floor a primary value, which the floor refuses on purpose.
+    ("project/workset.py (workspaces key resolution)",
+     frozenset({"workset.workspaces"})),
     # --- rows with no value-carrying artefact at all --- #
-    # Realized as a Path JOIN at the point of use — ``project/workset.py``'s
-    # ``resolve_workset_workspaces``, one face on ``resolve_workset_dir_key``. It joins a
-    # bare LEAF (``workspaces``/``workspace``) onto the root, and the leaf is a fallback,
-    # not a spelling of the default: the manifest states the formula and no literal
-    # exists anywhere to point at.
-    # ⚑ ``workset.template`` IS NOT ONE OF THESE AND MUST NOT COME BACK. It has a join
-    # face too (``resolve_workset_template``, the same route), but unlike this one its
-    # default IS written out — ``launch/templates.py`` emits the literal, so the layer-3
-    # label below is what a reader can go and read.
-    # ⚑ NEITHER IS ``workset.registry`` (LEFT 2026-08-29). Its join face
-    # (``project/workset_registry.py::resolve_workset_registry_path``) still exists and is
-    # still the pre-snapshot route, but the anchor floor now spells the DEFAULT out as the
-    # spec's own ``@meta.workset.path/registry.yaml`` — so "no literal to point at", the
-    # whole reason for this label, has stopped being true of it.
-    ("built-in (path join at use)", frozenset({"workset.workspaces"})),
     ("runtime-probed (podman graphroot)", frozenset({"box.images_store"})),
     # ``default: <None>`` — an ABSENCE. No floor builder installs these at all.
     ("(nothing declares it — unset until you set it)", frozenset({
@@ -185,20 +208,19 @@ def source_groups() -> tuple[tuple[str, frozenset[str]], ...]:
     # rows a reader will otherwise wonder about, not because two producers exist.
     ("core_defaults.py (canon producer, per node)", frozenset({"agent.<agent>.canon"})),
     # The layer-2 SOURCE key, split by ARM for the same reason the canon pair above
-    # is: ONE producer (``template_seed_defaults``) emits both, but the per-node arm
+    # is: ONE producer (``agent_template_defaults``) emits both, but the per-node arm
     # is spelled one @-hop from the registry, while the default arm is a plain literal
     # with a value oracle. Two labels because a reader would otherwise wonder, and
     # because the arms sit in different conformance classes.
     # ⚑ The per-node arm's HARNESS-vs-NODE divergence was a boarded question and is
     # CLOSED (2026-08-27): it is node-rooted now, and only the @-hop is left.
+    # ⚑ The PRODUCER was split 2026-08-29: ``agent_template_defaults`` carries these two
+    # AGENT arms and no ``seeded`` layer, so an ordinary launch can fold it in;
+    # ``template_seed_defaults`` COMPOSES it and adds the create-time seed layer. The
+    # label is unchanged because the FILE is unchanged — only the function moved.
     ("launch/templates.py (layer-2 seed, default arm)",
      frozenset({"agent.default.template"})),
     ("launch/templates.py (layer-2 seed)", frozenset({"agent.<agent>.template"})),
-    # The layer-3 SOURCE key, from the SAME producer as the two arms above
-    # (``template_seed_defaults``, under its workset-channels gate) and a plain literal
-    # ``@meta.workset.path/template``. Its own label rather than the layer-2 one because
-    # the LAYER is what the value is spelled against, and the workset layer is 3.
-    ("launch/templates.py (layer-3 seed)", frozenset({"workset.template"})),
   )
 
 

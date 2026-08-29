@@ -54,10 +54,11 @@ import pytest
 import yaml
 
 from kanibako import kuid
-from kanibako.launch.templates import template_seed_defaults
+from kanibako.launch.templates import agent_template_defaults, template_seed_defaults
 from kanibako.settings import core_defaults
 from kanibako.settings.config import (
     KanibakoConfig,
+    box_scalar_defaults_floor,
     coerce_bool,
     read_box_enable_vault,
     read_workset_skip_kuid_check,
@@ -93,6 +94,7 @@ from kanibako.settings.settings_keyspace import (
     key_validity,
 )
 from kanibako.settings.settings_launch import auth_chain_floor, workset_anchor_floor
+from kanibako.settings.settings_resolve import SettingsError
 
 # --------------------------------------------------------------------------- #
 # Fixtures of fact
@@ -226,9 +228,33 @@ _ANCHOR_SCALAR_KEYS = ("workset.skip_kuid_check",)
 
 #: (i-b3) PRIMARY/NAMED only — their standalone arms are pinned as ABSENCES, which is the
 #: whole content of those arms: ``workset.registry`` declares ``<None>`` (a lone box has
-#: no registry tier) and ``workset.kuid`` declares the PROSE ``<generated at creation>``
+#: no registry tier), ``workset.template`` declares ``<None>`` (a lone box has no template
+#: tier — a workset template seeds FUTURE boxes, of which a standalone root has none), and
+#: ``workset.kuid`` declares the PROSE ``<generated at creation>``
 #: (``paths.establish_standalone`` mints a real id into the box's own file at create).
-_ANCHOR_SCALAR_KEYS_PRIMARY_NAMED = ("workset.registry", "workset.kuid")
+#: ⚑ ``workset.template`` JOINED 2026-08-29 from the E1 "path join at use" exemption,
+#: which is now RETIRED ENTIRELY (see the tombstone at section 4). It was filed there as
+#: "no literal anywhere to compare the
+#: manifest to", which was never true — ``launch/templates.py`` wrote one — and the row was
+#: ALSO emitted by no floor, so ``@workset.template`` resolved to ``__MISSING__`` for every
+#: box that already existed. ``workset_anchor_floor`` now spells the formula (the
+#: ``workset.registry`` shape, one more time), and the seed table only references the key.
+_ANCHOR_SCALAR_KEYS_PRIMARY_NAMED = (
+    "workset.registry", "workset.kuid", "workset.template",
+)
+
+#: (i-b4) The MIRROR of the block above — real NAMED and STANDALONE arms, ``null`` at
+#: PRIMARY.  ⚑ ``workset.workspaces`` is the only such row, and it is NOT in the tuples
+#: above because the floor carries it as a RESOLVED LITERAL rather than the spec formula
+#: (``settings/workset_dirkeys.py`` names it first among the keys read on the DETECTION
+#: side, before any snapshot exists, so a formula would let detection and the keyspace
+#: answer "what kind of box is this" two ways).  A literal cannot be compared to a
+#: manifest formula by string equality, so the oracle FOLLOWS the formula one hop against
+#: the deriver — the :class:`TestWorksetChannelDefaults` shape, for the same reason.
+#: 🛑 The PRIMARY arm is an ABSENCE and stays one: the code honors a primary ``workspaces``
+#: repoint (``project.workset.default_workset``), but that divergence is RULED and the
+#: user's (manifest note, B2-Editor S-1 — *"do NOT 'conform' the code to the null"*).
+_WORKSPACES_KEY = "workset.workspaces"
 
 #: (i-c) The auth 3-tier chain built per mode by ``settings_launch.auth_chain_floor``.
 #: ⚑ SIX, not the three the wiring estimate projected: the three ``workset.auth.*``
@@ -240,6 +266,12 @@ _AUTH_KEYS = (
 )
 
 #: (i-d) Scalars whose carrier is a config dataclass field or a read-with-default.
+#: ⚑ ``box.enable_vault`` STAYS HERE (2026-08-29) even though its carrier changed from the
+#: reader to a ``KanibakoConfig`` field: this tuple is "which rows this class pins a value
+#: for", not "which artefact carries it", and the row is still one of them. What moved is
+#: the ORACLE inside :meth:`TestScalarDefaults._oracle`. Its dual membership — here and in
+#: ``defaults_inventory``'s field group — is the same deliberate two-carrier arrangement
+#: ``workset.skip_kuid_check`` has, and the twin case in this class asserts the pair equal.
 _SCALAR_KEYS = (
     "box.image", "box.share_images", "workset.skip_kuid_check", "box.enable_vault",
 )
@@ -254,7 +286,7 @@ _BEHAVIOR_KEYS = (
 #: ``box.env.COLORTERM`` is the third: the ONE ``env`` member kanibako itself ships a
 #: default for, carried by ``core_defaults.env_default_categories`` (spec §2b:867).
 #: ``agent.default.template`` is the fourth: the §2d DEFAULT-tier arm of the layer-2
-#: template SOURCE, carried by ``launch.templates.template_seed_defaults`` beside the
+#: template SOURCE, carried by ``launch.templates.agent_template_defaults`` beside the
 #: per-node arm.  ⚑ Only the DEFAULT arm is pinned here — the per-NODE arm stays in
 #: ``NO_ORACLE_REF_HOP`` below, where its VALUE is now asserted outright (finding 1 is
 #: closed; what is left is the ``@``-hop the canon sibling has too).
@@ -277,8 +309,8 @@ _CHANNEL_KEYS = (
 #: Every manifest ``keys:`` row this file pins a VALUE for.
 PINNED_DEFAULT_KEYS: frozenset[str] = frozenset(
     set(_PATH_ORACLE) | set(_ANCHOR_KEYS) | set(_ANCHOR_SCALAR_KEYS)
-    | set(_ANCHOR_SCALAR_KEYS_PRIMARY_NAMED) | set(_AUTH_KEYS) | set(_SCALAR_KEYS)
-    | set(_BEHAVIOR_KEYS) | set(_SINGLETON_KEYS) | set(_CHANNEL_KEYS)
+    | set(_ANCHOR_SCALAR_KEYS_PRIMARY_NAMED) | {_WORKSPACES_KEY} | set(_AUTH_KEYS)
+    | set(_SCALAR_KEYS) | set(_BEHAVIOR_KEYS) | set(_SINGLETON_KEYS) | set(_CHANNEL_KEYS)
 )
 
 
@@ -402,6 +434,82 @@ class TestAnchorScalarDefaults:
         )
 
 
+class TestWorksetWorkspacesDefault:
+    """(i-b4) ``workset.workspaces`` — the resolved dir, and the PRIMARY absence.
+
+    ⚑⚑ A VALUE ORACLE, NOT A SECOND RESOLVER, and NOT a string compare against the
+    manifest formula.  The floor carries this key as a RESOLVED LITERAL (the docstring on
+    ``workset_anchor_floor`` says why: it is read on the DETECTION side before a snapshot
+    exists, harder than ``channelroot`` is), so the manifest formula is followed ONE HOP —
+    its ``@meta.workset.path`` answered by the root the caller already holds — and
+    compared to what ``project.workset.resolve_workset_workspaces`` returns.  Nothing here
+    re-implements the resolution rule; what is under test is WHICH LEAF the manifest
+    claims per mode, which is exactly what a hand-copied arm gets wrong (``workspaces``
+    plural for named, ``workspace`` singular for standalone — one character apart).
+
+    ⚑ ANTI-VACUITY: the row answered at NO terminus until 2026-08-29 while
+    ``meta.box.workspace`` ``@``-referenced it, so this class reds by ``KeyError`` if the
+    floor stops emitting the key rather than passing on an absent one.
+    """
+
+    #: The two modes the manifest gives a real arm.
+    _REAL_ARM_MODES = ("named", "standalone")
+
+    @staticmethod
+    def _derived(root: Path, mode: str) -> Path:
+        """The deriver's answer for *root* — the value the launch hands the floor."""
+        from kanibako.project.workset import (
+            load_workset_settings_doc, resolve_workset_workspaces,
+        )
+
+        return resolve_workset_workspaces(
+            root, load_workset_settings_doc(root), standalone=(mode == "standalone"),
+        )
+
+    @pytest.mark.parametrize("mode", _REAL_ARM_MODES)
+    def test_the_manifest_arm_is_the_derived_dir(self, mode, tmp_path):
+        arm = _per_mode(_default(_WORKSPACES_KEY))[mode]
+        head, sep, leaf = str(arm).partition("/")
+        assert sep and head == "@meta.workset.path", (
+            f"{_WORKSPACES_KEY} [{mode}]: unfollowable manifest formula {arm!r}"
+        )
+        assert self._derived(tmp_path, mode) == tmp_path / leaf, (
+            f"{_WORKSPACES_KEY} [{mode}]: manifest says {arm!r} (= {tmp_path / leaf}), "
+            f"resolve_workset_workspaces derived {self._derived(tmp_path, mode)}"
+        )
+
+    @pytest.mark.parametrize("mode", _REAL_ARM_MODES)
+    def test_the_floor_publishes_the_derived_dir(self, mode, tmp_path):
+        """The launch seam's half: what the deriver answers is what the keyspace gets."""
+        derived = self._derived(tmp_path, mode)
+        floor = workset_anchor_floor(mode=mode, workspaces=str(derived))
+        assert floor[_WORKSPACES_KEY] == str(derived)
+
+    def test_the_primary_arm_is_an_absence_on_both_sides(self):
+        """🛑 THE ARM IS "NOTHING", and both carriers must say so.
+
+        The manifest declares ``primary: null``.  The CODE does honor a primary
+        ``workspaces`` repoint (``project.workset.default_workset``) and that divergence
+        is ruled and the user's — but publishing the resolved value as this KEY would
+        conform the declared null to a code value, which is the wrong direction.  The
+        floor emits nothing at primary, and REFUSES a value rather than dropping one, so
+        a caller cannot re-open the arm quietly.
+        """
+        assert _per_mode(_default(_WORKSPACES_KEY))["primary"] is None
+        assert _WORKSPACES_KEY not in workset_anchor_floor(mode="primary")
+        with pytest.raises(SettingsError, match="NO primary arm"):
+            workset_anchor_floor(mode="primary", workspaces="/anywhere/workspaces")
+
+    def test_a_repoint_reaches_the_derived_dir(self, tmp_path):
+        """⚑ Why the value is RESOLVED and never composed: a repoint must survive it.
+
+        A ``<root>/workspaces`` join would pass every case above and silently drop this
+        one, which is the whole distinction between the deriver and a second carrier.
+        """
+        (tmp_path / "workset.yaml").write_text("workset:\n  workspaces: pods\n")
+        assert self._derived(tmp_path, "named") == tmp_path / "pods"
+
+
 class TestAuthChainDefaults:
     """(i-c) The auth chain's six defaults ARE ``auth_chain_floor``'s per-mode values."""
 
@@ -437,14 +545,21 @@ class TestScalarDefaults:
         return {
             "box.image": cfg.box_image,
             "box.share_images": cfg.box_share_images,
-            # The read-with-default accessors: pointed at a path that does not exist,
-            # what they return IS the declared default and nothing else.
+            # ⚑⚑ ``box.enable_vault`` MOVED HERE 2026-08-29, from the accessor block below.
+            # It used to be pinned as ``read_box_enable_vault(NO_SETTINGS_FILE)`` — i.e.
+            # this file asserted THE READER IS THE CARRIER, which is the state that let the
+            # key answer at no launch terminus and let ``read_box_enable_vault``'s two-file
+            # open silently drop the BASE and SYSTEM tiers. The carrier is now the field,
+            # published into every box-scalar resolve by ``box_scalar_defaults_floor``.
+            # 🛑 Moving it back would re-assert the defect as the contract.
+            "box.enable_vault": cfg.box_enable_vault,
+            # The read-with-default accessor: pointed at a path that does not exist,
+            # what it returns IS the declared default and nothing else.
             "workset.skip_kuid_check": read_workset_skip_kuid_check(NO_SETTINGS_FILE),
-            "box.enable_vault": read_box_enable_vault(NO_SETTINGS_FILE),
         }
 
     def test_the_probe_path_really_is_absent(self):
-        """Anti-vacuity for the two accessors: a real file there would fake the pin."""
+        """Anti-vacuity for the accessors: a real file there would fake the pin."""
         assert not NO_SETTINGS_FILE.exists()
 
     @pytest.mark.parametrize("key", _SCALAR_KEYS)
@@ -453,6 +568,29 @@ class TestScalarDefaults:
         assert _default(key) == got, (
             f"{key}: manifest says {_default(key)!r}, the code default is {got!r}"
         )
+
+    def test_the_enable_vault_floor_equals_the_pre_snapshot_reader(self):
+        """⚑ TWO CARRIERS OF ONE BOOL, asserted equal — the floor and the file reader.
+
+        The twin of :meth:`TestAnchorDefaults.
+        test_the_skip_kuid_check_floor_equals_the_pre_snapshot_reader`, and written for the
+        same reason one commit later.  ``config.read_box_enable_vault`` is still the
+        PRE-SNAPSHOT route — it opens a ``box.yaml`` directly, before any snapshot exists,
+        to answer WHICH TIER authored a value, which no merge can say.  The floor now
+        answers the DEFAULT through the keyspace, so the two must agree; the accessor is
+        pointed at a path that does not exist, where what it returns IS the default.
+
+        ⚑ ANTI-VACUITY: the floor treats ``""`` as a suppression (that is what keeps
+        ``box.shell`` out), and ``False`` is a VALUE that must survive it — so the key
+        being PRESENT is asserted separately from its value being right.
+        """
+        floor = box_scalar_defaults_floor()
+        assert "box.enable_vault" in floor, (
+            "box_scalar_defaults_floor no longer publishes box.enable_vault — the key "
+            "dangles at every launch terminus again"
+        )
+        assert not NO_SETTINGS_FILE.exists()
+        assert floor["box.enable_vault"] == read_box_enable_vault(NO_SETTINGS_FILE)
 
 
 class TestBehaviorDefaults:
@@ -522,16 +660,23 @@ class TestSingletonDefaults:
         assert emitted["agent.default.canon"] == _default("agent.default.canon")
 
     def test_the_agent_default_template_root(self):
-        """``launch.templates.template_seed_defaults`` emits this literal (spec §2d).
+        """``launch.templates.agent_template_defaults`` emits this literal (spec §2d).
 
         Read from the emitter's OUTPUT, exactly as the canon sibling above is: the
-        value is what a create installs at the agent tier, which is what the manifest
+        value is what a LAUNCH installs at the agent tier, which is what the manifest
         claims.  ⚑ The PER-NODE arm is deliberately not read here — it is spelled one
         ``@``-hop from the registry and is pinned separately, in
         ``TestNoOracleExemptions``.
+
+        ⚑⚑ THE SECOND ASSERTION IS THE NO-SECOND-SPELLING ONE.  The create-time seed
+        table COMPOSES this producer rather than restating it, so the two tables cannot
+        disagree about the arm; drop the composition and put a literal back into
+        ``template_seed_defaults`` and this reds.
         """
-        emitted = template_seed_defaults(_StubProjectPaths(), PROBE_AGENT)
+        emitted = agent_template_defaults(PROBE_AGENT)
         assert emitted["agent.default.template"] == _default("agent.default.template")
+        seeds = template_seed_defaults(_StubProjectPaths(), PROBE_AGENT)
+        assert seeds["agent.default.template"] == emitted["agent.default.template"]
 
     def test_the_core_env_floor(self):
         """``box.env.COLORTERM`` IS ``core-defaults.yaml``'s whole ``env:`` table.
@@ -850,34 +995,40 @@ class TestBindDefaults:
 # test — which pins nothing and rots twice as fast (P2/P4).  Writing them down HERE,
 # with the reason, is the deliverable; the exhaustiveness case makes the table binding.
 
-#: (E1) Realized as a ``Path`` join, never as a formula STRING.  ``project/workset.py``
-#: builds these by joining path components, so there is no ``"@meta.workset.path/…"``
-#: literal anywhere to compare the manifest to.  An oracle would be a second resolver.
+#: ⚑⚑⚑ (E1) ``NO_ORACLE_PATH_JOIN`` IS GONE (2026-08-29) — THE WHOLE CLASS, not a member.
+#: Its reason was: realized as a ``Path`` join, never as a formula STRING, so there is no
+#: ``"@meta.workset.path/…"`` literal anywhere to compare the manifest to, and an oracle
+#: would be a second resolver.  Ten rows were filed under it and every one of them left,
+#: each because the reason was false OR because the conclusion did not follow:
 #:
-#: ⚑⚑ THE CHANNEL FAMILY LEFT THIS TABLE (2026-08-25) AND MUST NOT COME BACK.  Seven
-#: rows — ``workset.channelroot`` and all six ``workset.channels.*`` leaves — were
-#: filed here, and the reason was wrong twice over.  It was FALSE for ``broadcast`` /
-#: ``mailboxes`` / ``share_global``: they were realized as no join at all, because no
-#: code read them.  And for ``common`` / ``chat`` / ``share`` the reason was true but
-#: the CONCLUSION was not: EXERCISING the derivation with a known root is a value
-#: oracle, and only RE-IMPLEMENTING it would be a second resolver.  They are pinned by
-#: :class:`TestWorksetChannelDefaults`.
+#: * THE CHANNEL FAMILY (2026-08-25) — ``workset.channelroot`` + all six
+#:   ``workset.channels.*`` leaves.  FALSE for ``broadcast`` / ``mailboxes`` /
+#:   ``share_global``: they were realized as no join at all, because no code read them.
+#:   True but not conclusive for ``common`` / ``chat`` / ``share``: EXERCISING the
+#:   derivation with a known root is a value oracle, and only RE-IMPLEMENTING it would be
+#:   a second resolver.  Pinned by :class:`TestWorksetChannelDefaults`.
+#: * ``workset.registry`` (2026-08-29) — its join face
+#:   (``project/workset_registry.py::resolve_workset_registry_path``) still exists and is
+#:   still the pre-snapshot route, but the row was ALSO emitted by no floor at all, so
+#:   ``@workset.registry`` dangled in every launch snapshot.  The fix
+#:   (``settings_launch.workset_anchor_floor``, the ``channelroot`` precedent) writes the
+#:   formula STRING out.  Pinned by :class:`TestAnchorScalarDefaults`.
+#: * ``workset.template`` (2026-08-29) — false twice over: ``launch/templates.py`` wrote
+#:   the literal out, and the row reached no terminus for a box that already existed.
+#:   Pinned by :class:`TestAnchorScalarDefaults`, arm for arm, standalone absence included.
+#: * ``workset.workspaces`` (2026-08-29) — THE LAST ONE, and the reason died the same way:
+#:   the launch now writes the RESOLVED dir out (``workset_anchor_floor``'s ``workspaces``
+#:   arm), so there is an artefact to compare to, and the row had dangled at every
+#:   terminus while its dependent ``meta.box.workspace`` demanded it.  Pinned by
+#:   :class:`TestWorksetWorkspacesDefault` — the named/standalone values against the
+#:   manifest formulas, and the PRIMARY ABSENCE on both sides.
 #:
-#: ⚑⚑ ``workset.registry`` LEFT THIS TABLE (2026-08-29), for the same shape of reason.
-#: Its join face (``project/workset_registry.py::resolve_workset_registry_path``) still
-#: exists and is still the pre-snapshot route — but the row was ALSO emitted by no floor
-#: at all, so ``@workset.registry`` dangled in every launch snapshot, and the fix
-#: (``settings_launch.workset_anchor_floor``, following the ``channelroot`` precedent)
-#: writes the formula STRING out.  "No literal anywhere to compare the manifest to" has
-#: stopped being true of it; it is pinned by :class:`TestAnchorScalarDefaults`.
+#: 🛑 DO NOT RE-CREATE THIS CLASS TO PARK A ROW IN.  A join FACE is not an absence of a
+#: carrier; treating it as one is what let four declared rows resolve to ``__MISSING__``
+#: at launch while looking ordinary in the exemption table.  The shape check that used to
+#: sit under it (``every arm is an @-ref``) went with it: it read no code, so it was never
+#: an oracle, and there is now nothing left for it to be the honest floor under.
 #:
-#: ⚑ ``test_a_path_join_default_really_is_an_at_ref_formula`` below is a SHAPE check,
-#: not an oracle — it reads no code.  The two survivors are genuinely unpinned; the
-#: shape case is the honest floor under that, not a substitute for it.
-NO_ORACLE_PATH_JOIN: frozenset[str] = frozenset({
-    "workset.workspaces", "workset.template",
-})
-
 #: (E2) A PROSE PLACEHOLDER standing in for a runtime-probed value.  The manifest is
 #: describing where the value comes from, not declaring one.
 NO_ORACLE_PLACEHOLDER: frozenset[str] = frozenset({"box.images_store"})
@@ -907,8 +1058,7 @@ NO_ORACLE_REF_HOP: frozenset[str] = frozenset({
 })
 
 EXEMPT_DEFAULT_KEYS: frozenset[str] = (
-    NO_ORACLE_PATH_JOIN | NO_ORACLE_PLACEHOLDER | NO_ORACLE_ABSENT | NO_ORACLE_EMPTY
-    | NO_ORACLE_REF_HOP
+    NO_ORACLE_PLACEHOLDER | NO_ORACLE_ABSENT | NO_ORACLE_EMPTY | NO_ORACLE_REF_HOP
 )
 
 
@@ -923,12 +1073,6 @@ class TestNoOracleExemptions:
     @pytest.mark.parametrize("key", sorted(NO_ORACLE_EMPTY))
     def test_an_empty_default_really_is_an_empty_container(self, key):
         assert _default(key) == {}
-
-    @pytest.mark.parametrize("key", sorted(NO_ORACLE_PATH_JOIN))
-    def test_a_path_join_default_really_is_an_at_ref_formula(self, key):
-        """Every arm is an ``@``-ref (or ``None``) — i.e. a FORMULA, not a literal."""
-        for mode, arm in _per_mode(_default(key)).items():
-            assert arm is None or str(arm).startswith("@"), (mode, arm)
 
     def test_the_placeholder_default_really_is_prose(self):
         assert _default("box.images_store") == "<runtime-probed podman graphroot>"
@@ -1032,16 +1176,20 @@ class TestDefaultsCoverage:
         )
 
     def test_the_split_is_the_measured_split(self):
-        """49 pinned rows, 16 exempted — stated so a silent migration between them reds.
+        """51 pinned rows, 14 exempted — stated so a silent migration between them reds.
 
         ⚑ Was 41/24 until the seven-row channel family moved from E1 to a real oracle
         (2026-08-25), then 48/17 until ``workset.registry`` followed it out of E1
-        (2026-08-29, when the anchor floor started spelling its formula).  A row may move
-        BACK only with a reason written into E1, which is what the count is here to make
-        visible.
+        (2026-08-29, when the anchor floor started spelling its formula), then 49/16, then
+        50/15 (``workset.template``, out the same way and for the same two reasons: the
+        "no literal" claim was false, and the row answered at no terminus).
+        ⚑⚑ NOW 51/14 — ``workset.workspaces``, E1's LAST member, so **the class itself is
+        gone** rather than left standing empty for a future row to be parked in. There is
+        no "path join" exemption to move back to; a row that wants one has to argue for a
+        new class with its own reason.
         """
-        assert len(PINNED_DEFAULT_KEYS) == 49
-        assert len(EXEMPT_DEFAULT_KEYS) == 16
+        assert len(PINNED_DEFAULT_KEYS) == 51
+        assert len(EXEMPT_DEFAULT_KEYS) == 14
         assert not (PINNED_DEFAULT_KEYS & EXEMPT_DEFAULT_KEYS)
 
 

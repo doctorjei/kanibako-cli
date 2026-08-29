@@ -340,6 +340,14 @@ class TestBoxGetIsWiredToTheClosedKeyspace:
         assert "transform_settings" in captured.err
         assert "kanibako agent get" in captured.err
 
+    @pytest.mark.writes_undeclared(
+        "box.zippity",
+        reason="the surface under test EXISTS for a file that carries an undeclared "
+               "entry, so the fixture has to write one. It reaches a KeyStore because "
+               "``paths.resolve_project`` resolves ``box.enable_vault`` through the "
+               "cascade as of 2026-08-29 — the narrow, non-refusing one, deliberately, "
+               "so this diagnostic still answers where ``--effective`` refuses.",
+    )
     def test_box_show_marks_a_hand_written_undeclared_entry(
         self, config_file, tmp_home, credentials_dir, capsys,
     ):

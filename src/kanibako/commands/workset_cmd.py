@@ -401,7 +401,9 @@ def run_create(args: argparse.Namespace) -> int:
     install_workset_template(std, ws.root)
 
     # ⚑ These flags set BOX-SCOPE keys at the WORKSET tier — ``box.image`` and
-    # ``box.enable_vault``, which is where ``read_box_enable_vault`` looks.  A
+    # ``box.enable_vault``.  Both reach a contained box as an OVERRIDABLE DOWNWARD DEFAULT
+    # through the ordinary settings cascade (``config.resolve_box_enable_vault`` for the
+    # vault flag; it was a hand-opened two-file read until 2026-08-29).  A
     # top-level ``enable_vault``/``standalone`` is not a declared key at all
     # (spec §0: the keyspace is CLOSED), so it would be carried into the store as
     # an undeclared path, not merely ignored.

@@ -1584,6 +1584,17 @@ resolves (whose box_dests are disjoint), so the image/helper resolve carries ONL
 plus any config-file keys — byte-for-byte the old per-family `_build_image_mounts` /
 `_build_helper_hub_mounts` resolve, which injected only that one table.
 
+⚑⚑ **The base families include `launch.templates.agent_template_defaults` (2026-08-29) — the AGENT
+`template` SOURCE arms, folded beside `core_defaults.canon_default_categories`, their declared
+sibling.** Both arms are DECLARED rows with real defaults, and until this fold they were emitted
+only inside `template_seed_defaults`, which reaches the keyspace through the CREATE-time seed
+resolve alone — so `@agent.default.template` was `__MISSING__` for every box that already existed.
+The two folds cannot collide: the seed table arrives through `extra_default_categories` with
+`include_base_families=False`. ⚑ **SOURCE SCALARS ONLY.** The `seeded` LAYERS are deliberately not
+folded here; seed-once is the failsafe against re-seed DATA LOSS, and a layer reaching an ordinary
+relaunch is that bug. (The workset arm, `workset.template`, is not in this table at all — it is
+`settings_launch.workset_anchor_floor`'s, which every resolve receives as its own kwarg.)
+
 **`persona_values`** is the persona store's LIVE tier for this launch (`_persona_values_for`) —
 `endpoint` / `model` / `secret_path.<VAR>` / `env.<VAR>`, un-discriminated. It is given by every
 resolve that has to AGREE with the launch about what the store says: the MAIN launch resolve, the

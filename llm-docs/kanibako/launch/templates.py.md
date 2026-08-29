@@ -105,41 +105,57 @@ the cascade (setting `workset.template` / `agent.<a>.template` reroutes that lay
   `workset.template` defaults to `@meta.workset.path/template` (Q3, was `<None>`). STANDALONE has
   no workset tier, so the layer is OMITTED. Each layer is SKIPPED when its source dir is absent —
   the seeded category's ordinary missing-source semantics.
-  ⚑ THIS LITERAL IS WHERE `workset.template`'s DEFAULT IS WRITTEN DOWN, and `system defaults` says
-  so: `defaults_inventory.source_groups` labels the key `launch/templates.py (layer-3 seed)` (its
-  own label, not the layer-2 one — the workset layer is 3). Until 2026-08-29 it was filed under
-  `built-in (path join at use)` with `workset.workspaces` / `workset.registry`, whose stated reason
-  is "no literal exists anywhere to point at" — false for this key, which the line above emits in
-  full. It has a join face like theirs (`project/workset.py`'s `resolve_workset_template`); having
-  one does not mean the default is unwritten. ⚑ `tests/test_settings/test_manifest_conformance.py`
-  still lists it in `NO_ORACLE_PATH_JOIN` on that same false reason — an OPEN item, not a
-  contradiction of this paragraph.
+  ⚑⚑ THE SOURCE KEY IS NO LONGER DECLARED HERE (2026-08-29). This table only `@`-REFERENCES
+  `@workset.template`; the value lives in `settings_launch.workset_anchor_floor`, beside
+  `workset.registry`. Reason: a source key spelled only in this table answered for a box being
+  CREATED and for no box that already existed, because this table's one consumer is the
+  create-time seed resolve — the defect the reachability property names.
+  ⚑ THE GATE STAYS HERE and it is the SAME condition the floor branches on:
+  `channels.has_workset_channels(proj)` IS `proj.mode is not standalone`, which is the floor's
+  `standalone` arm. One condition, two spellings of the mode; the standalone `<None>` is pinned as
+  an ABSENCE on both carriers (`TestAnchorScalarDefaults.test_the_standalone_arm_is_an_absence_on_both_sides`).
 
-⚑ A FOURTH KEY, AND IT IS NOT A LAYER: `agent.default.template` =
-`@config.agents/default/template`, the §2d DEFAULT-TIER arm of the layer-2 source, emitted under
-the same `if agent_id` gate. It is INERT for delivery — the node arm above is emitted
-unconditionally, so the §2d fallback to it never fires (proved by mutation: poisoning this arm
-moves no seed, poisoning the node arm reds ten cases) — and it is here because the key is DECLARED,
-so some artefact must carry its value or `system defaults` prints a row it cannot source. It is
-emitted HERE rather than beside its sibling `agent.default.canon` (`core_defaults`) because this
-module owns `AGENT_TEMPLATE_STORE_REL`; `defaults_inventory.source_groups` labels it
-`launch/templates.py (layer-2 seed, default arm)`, split from the node arm's label because the node
-arm is spelled one `@`-hop from the registry and this one has a plain value oracle. (The node arm's
-harness-vs-node divergence — finding 1 — is CLOSED as of 2026-08-27; only the hop is left.)
-⚑ It carries NO node-store probe, unlike `canon_default_categories`' `store_canon if
+## `agent_template_defaults` — the AGENT-tier SOURCE arms
+
+`agent.default.template` = `@config.agents/default/template` (the §2d DEFAULT-TIER arm) and
+`agent.<a>.template` = `@config.agents/<a>/template` (the NODE arm), under one `if agent_id` gate.
+SOURCE SCALARS ONLY — no `seeded` layer, which is what lets it be folded into an ORDINARY LAUNCH.
+
+⚑⚑ TWO FOLDS, AND THAT IS THE POINT. `template_seed_defaults` COMPOSES it (so the create-time seed
+resolve is unchanged), and `commands.start._resolve_launch_snapshot` folds it beside
+`core_defaults.canon_default_categories` under `include_base_families`. The two never meet — the
+narrow seed resolve runs with `include_base_families=False` — so there is one spelling of each arm
+and no second carrier. Before the split, both arms were emitted ONLY in the seed table, so
+`@agent.default.template` resolved to `__MISSING__` for every box that already existed.
+
+⚑ INERT FOR DELIVERY IS NOT UNREACHABLE, and conflating the two is how this stayed broken. The
+default arm IS inert for delivery — the node arm is emitted unconditionally, so the §2d fallback to
+it never fires (proved by mutation: poisoning this arm moves no seed, poisoning the node arm reds
+ten cases). DELIVERY asks which arm the §2d pick lands on; REACHABILITY asks whether
+`@agent.default.template` resolves at all, and the answer to that must be yes: the key is DECLARED
+with a real default, so some artefact must carry its value or `system defaults` prints a row it
+cannot source.
+
+The arms live HERE rather than beside their sibling `agent.default.canon` (`core_defaults`) because
+this module owns `AGENT_TEMPLATE_STORE_REL`; `defaults_inventory.source_groups` labels them
+`launch/templates.py (layer-2 seed, default arm)` and `launch/templates.py (layer-2 seed)`, split
+because the node arm is spelled one `@`-hop from the registry and the default arm has a plain value
+oracle. (The node arm's harness-vs-node divergence — finding 1 — is CLOSED as of 2026-08-27; only
+the hop is left.)
+⚑ Neither arm carries a node-store probe, unlike `canon_default_categories`' `store_canon if
 node_store.is_dir() else …` node arm — that conditional is the canon key's own behaviour.
 
-The returned dict mixes the SEED tuple keys with their SOURCE scalar keys (`workset.template` /
-`agent.<a>.template`) so both land in the snapshot floor: the scalar resolves the `@`-ref, and a
-user override of the scalar (config set / settings file) wins by cascade precedence and reroutes
-the seed. `system.template` is already floor-materialized (it is a `system.*` settings-tier path),
-as are `@meta.box.path` and `@box.canon` (`settings_launch.workset_anchor_floor`), so none is
-re-declared there.
+The dict `template_seed_defaults` returns therefore mixes the SEED tuple keys with the AGENT SOURCE
+scalars, so both land in the seed snapshot's floor: the scalar resolves the `@`-ref, and a user
+override of the scalar (config set / settings file) wins by cascade precedence and reroutes the
+seed. `system.template` is already floor-materialized (it is a `system.*` settings-tier path), as
+are `@meta.box.path`, `@box.canon` and now `@workset.template`
+(`settings_launch.workset_anchor_floor`), so none is re-declared there.
 
 ⚑ The SOURCE keys are shared with the box HANDBOOK host-template copy
-(`handbook_layer_source_keys`), which reads the SAME three `<scope>.template` scalars this table
-declares and is gated by them — that is why the handbook layers leaving the `seeded` category
-(2026-08-07g) did not make the box handbook any less repointable.
+(`handbook_layer_source_keys`), which enumerates the SAME three `<scope>.template` scalars and is
+gated off the LAYERS this table carries — that is why the handbook layers leaving the `seeded`
+category (2026-08-07g) did not make the box handbook any less repointable.
 
 Each layer's value is a DEST-KEYED map, not a named entry (2026-08-08c): the destination IS the
 identity and the value is the 1-element `(src,)` — `opts` is RESERVED on a COPY and no shipped
@@ -660,10 +676,15 @@ The ORDERED dotted SOURCE keys whose values root the three handbook layers: `sys
 are gated (no agent bound → no agent layer; STANDALONE has no workset tier → no workset layer).
 
 ⚑ DERIVED FROM `template_seed_defaults`, not restated beside it, and that is the whole point of the
-function: the per-agent / per-workset SOURCE scalars are declared THERE, so the gate that decides
-whether a layer exists is read from the one table rather than re-implemented here where it could
-drift. `system.template` is not in that table because it is already floor-materialized (a
-`system.*` settings-tier path), so it is named directly.
+function: the gate that decides whether a layer exists is read from the one table rather than
+re-implemented here where it could drift. `system.template` is not in that table because it is
+already floor-materialized (a `system.*` settings-tier path), so it is named directly.
+
+⚑⚑ THE GATE IS THE `seeded` LAYER ENTRY, NOT THE SOURCE SCALAR (changed 2026-08-29). A layer's
+source key may now be floored elsewhere — `workset.template` is `workset_anchor_floor`'s — so
+testing for the scalar would ask the seed table about a row it no longer declares, and the workset
+layer would silently vanish from the handbook copy. The LAYER is what this function is enumerating
+the roots of, and it is the entry the table always carries.
 
 ⚑ THESE STAY KEYS. They are separate declared SOURCE keys — NOT `seeded` entries — and they carry
 the user's repoint route (`config set workset.template` reroutes this copy, pinned by the repoint

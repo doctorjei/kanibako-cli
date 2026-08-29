@@ -978,6 +978,65 @@ class TestBoxEnableVault:
         assert data["box"]["enable_vault"] is False
 
 
+class TestTheTwoBoxScalarResolvesAgree:
+    """⚑⚑ TWO ROUTES OVER ONE CASCADE, PINNED EQUAL — the anti-drift guard.
+
+    ``box.enable_vault`` is resolved two ways on purpose (2026-08-29).
+    ``load_merged_config`` goes through ``_resolve_box_scalars`` →
+    ``build_launch_snapshot``, whose LAST step is the whole-tree §0 audit that RAISES on
+    an undeclared entry anywhere in the cascade.  ``resolve_box_enable_vault`` goes
+    through ``_narrow_box_scalar_cascade``, which stops at the merge — because its caller
+    is ``paths.resolve_project``, the PATH resolver every verb runs, including the plain
+    ``kanibako box show`` that exists to PRINT an undeclared line rather than refuse it.
+
+    🛑 The audit is the ONLY intended difference.  These cases assert the two agree on the
+    VALUE at every tier, so the split cannot quietly become two opinions about the cascade.
+    """
+
+    @staticmethod
+    def _std(config_file):
+        from kanibako.settings.paths import load_std_paths
+
+        return load_std_paths(load_config(config_file))
+
+    @pytest.mark.parametrize(
+        "system, workset, box, expected",
+        [
+            (None, None, None, True),          # nothing stored ⇒ the declared floor
+            (False, None, None, False),        # SYSTEM tier alone — the 2026-08-29 fix
+            (False, True, None, True),         # workset beats system
+            (True, False, None, False),        # workset beats system, other way
+            (True, True, False, False),        # box beats both
+            (False, False, True, True),        # box beats both, other way
+        ],
+    )
+    def test_the_narrow_cascade_agrees_with_the_merged_loader(
+        self, config_file, tmp_home, credentials_dir, system, workset, box, expected,
+    ):
+        from kanibako.settings.config import resolve_box_enable_vault
+
+        std = self._std(config_file)
+        ws_file = tmp_home / "ws.yaml"
+        box_file = tmp_home / "box.yaml"
+        for path, value in ((std.settings, system), (ws_file, workset), (box_file, box)):
+            if value is None:
+                continue
+            path.parent.mkdir(parents=True, exist_ok=True)
+            dump_doc(path, {"box": {"enable_vault": value}})
+
+        narrow = resolve_box_enable_vault(
+            std.config_file, box_path=box_file, workset_path=ws_file,
+        )
+        merged = load_merged_config(
+            std.config_file, box_file, workset_path=ws_file,
+        ).box_enable_vault
+        assert narrow is expected
+        assert narrow == merged, (
+            f"the narrow resolve says {narrow!r} and load_merged_config says {merged!r} "
+            f"for the same three files — the two routes have drifted"
+        )
+
+
 class TestConfigFilePath:
     def test_returns_new_path_when_neither_exists(self, tmp_path):
         result = config_file_path(tmp_path)

@@ -312,6 +312,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`kanibako system set box.enable_vault=false` was accepted, stored, echoed back — and ignored by
+  every box.** The setting is a declared, settable key, and writing it at the system scope is
+  something kanibako allows by design. The command returned success, wrote the value to the global
+  settings file, and `kanibako system get box.enable_vault` read it back as `false`. Every box then
+  started with the vault created and mounted anyway. The cause was that this one key never went
+  through the settings cascade at all: it was read straight out of two files — the box's own
+  settings and its workset's — so a value stored at any other level was invisible to the code that
+  actually decides whether the vault exists. It now resolves the way its siblings `box.image`,
+  `box.share_images` and `box.shell` always have, through the full cascade, and the more specific
+  level still wins: a value on the box overrides one on the workset, which overrides one set
+  system-wide. Nothing about a value already stored on a box or a workset changes — `workset create
+  --no-vault` and a per-box `box.enable_vault: false` behave exactly as before.
+
+- **`box.enable_vault` was missing from `kanibako box show --effective`.** The effective view lists
+  the resolved box settings, and this one had no row — not an empty one, no line at all — so the
+  disagreement above was invisible from the one place you would look for it. It is listed now,
+  beside `box_image` and `box_share_images`.
+
+- **`box.enable_vault` was declared with a default that nothing ever installed, so
+  `@box.enable_vault` resolved to nothing at launch.** Same defect as the five `workset.*` rows
+  below, and the last one left: the manifest promises the key defaults to `true`, and the value
+  lived only inside the function that read the file, never in a cascade floor — so a setting written
+  as `%if @box.enable_vault: …%` saw nothing to test. The key's declared default is now carried
+  where the other box scalars carry theirs, and every declared default in the keyspace is reachable
+  for a box that already exists. ⚑ `kanibako system defaults` names that new home in the source
+  column — the row reads `config.py (KanibakoConfig field)` where it used to read `config.py
+  (read-with-default)`, beside `box.image` and `box.share_images`. The key, value, scope and the
+  total of 65 declared defaults are unchanged.
+
+- **`workset.workspaces` was declared with real defaults that nothing ever installed, so
+  `@workset.workspaces` resolved to nothing at launch.** The key names the directory a workset's
+  member workspaces live under — `<workset>/workspaces` for a named workset, `<root>/workspace` for
+  a standalone box — and it is settable, honored on the detection side, and referenced by
+  `meta.box.workspace`. But no floor ever put the value into the keyspace, so a setting written as
+  `@workset.workspaces/mine` expanded to `/mine` in both of those modes, and the key that references
+  it referenced nothing. The workset anchor floor now emits it, from the directory the pre-launch
+  resolution already reached — so a `workset.workspaces` repoint carries into the keyspace instead
+  of being silently dropped. ⚑ **A PRIMARY box deliberately gets no value**, because the key
+  declares none for that mode; that is unchanged, and now enforced rather than incidental. This
+  closes the last of the four keys in this class: `workset.channelroot`, `workset.registry`,
+  `workset.kuid`, `workset.skip_kuid_check` and `workset.template` preceded it.
+
+- **`kanibako system defaults` reported `workset.workspaces` as having no artifact behind it.** The
+  source column said the value was built by joining path components at the point of use, with no
+  declaration anywhere to point at. That is no longer true — the launch writes the resolved
+  directory out — and the row now names the code that derives it. The listing is unchanged in count
+  and in value; only the provenance was wrong.
+
 - **`workset.kuid`, `workset.registry` and `workset.skip_kuid_check` were declared with defaults
   that nothing ever installed, so an `@`-reference to any of them resolved to nothing at launch.**
   Each is a manifest row with a stated default, and each was reachable only through a Python

@@ -42,7 +42,8 @@ from kanibako.log import get_logger
 
 from kanibako.settings.config import (WORKSET_META_FILE, BOX_META_FILE, KanibakoConfig, config_file_path,
                                       load_config, read_box_enable_vault, read_workset_kuid,
-                                      read_workset_skip_kuid_check, write_box_enable_vault)
+                                      read_workset_skip_kuid_check, resolve_box_enable_vault,
+                                      write_box_enable_vault)
 
 from kanibako.errors import ConfigError, ProjectError, WorksetError
 from kanibako.settings.settings_resolve import (LevelView, ResolveCtx, SettingsError,
@@ -733,17 +734,18 @@ def resolve_project(std: StandardPaths, config: KanibakoConfig, project_dir: str
                                                      primary_group)
     shell_path, vault_ro_path, vault_rw_path = _primary_box_paths(std, metadata_path,
                                                                project_name or metadata_path.name)
-    # enable_vault (P5a): explicit param wins, else the BOX tier with an R2 downward-default
-    # to the PRIMARY WORKSET tier (absent from both ⇒ True).
-    # ⚑ The workset fallback applies HERE TOO.  The primary workset is a workset — spec §2c
+    # enable_vault (P5a): explicit param wins, else THE CASCADE — base < system < workset
+    # < box (absent everywhere ⇒ the declared ``True``).
+    # ⚑ The workset tier applies HERE TOO.  The primary workset is a workset — spec §2c
     # gives PRIMARY and NAMED the same ``meta.workset.settings`` — so spec §0 "Directional
     # view/set across CONTAINMENT levels" makes a ``box.*`` key stored there an OVERRIDABLE
     # DEFAULT for the boxes it contains.  That it goes live for EVERY default-mode box is
     # what a workset-tier default MEANS, not a reason to drop the tier: this module already
     # honours that same file for ``workset.registry`` (see ``load_primary_boxes``).
     actual_vault_enabled = (enable_vault if enable_vault is not None
-                            else read_box_enable_vault(project_toml,
-                                                       default_from=workset_toml))
+                            else resolve_box_enable_vault(std.config_file,
+                                                          box_path=project_toml,
+                                                          workset_path=workset_toml))
     # ⚑ What the create branch PERSISTS is the BOX-AUTHORED value, NOT the resolved one —
     # ``box.enable_vault`` is "sparse — absent from the settings file unless THE USER sets
     # it" (spec ``:868``).  Mirrors the NAMED resolver; see it for the full reasoning.
@@ -1266,16 +1268,17 @@ def resolve_workset_project(ws: WorksetSpec, project_name: str, std: StandardPat
     # the workspace override above is a SEPARATE concern and STAYS.
     shell_path, vault_ro_path, vault_rw_path = _workset_box_paths(
         metadata_path, ws.vault_ro_dir, ws.vault_rw_dir, project_name)
-    # enable_vault (P5a): explicit param wins, else the BOX tier with an R2 downward-default
-    # to the WORKSET tier (absent from both ⇒ True).
-    # ⚑ The workset fallback is REQUIRED, not optional: ``workset create --no-vault`` writes
+    # enable_vault (P5a): explicit param wins, else THE CASCADE — base < system < workset
+    # < box (absent everywhere ⇒ the declared ``True``).
+    # ⚑ The workset tier is REQUIRED, not optional: ``workset create --no-vault`` writes
     # ``box.enable_vault`` at the workset tier, and spec §0 "Directional view/set across
     # CONTAINMENT levels" makes a ``box.*`` key stored there an OVERRIDABLE DEFAULT for the
     # boxes the workset contains — the contained scope still wins (spec §2 cascade bracket
     # ``… < workset < box``).  Without it the flag is a silent no-op for every named box.
     actual_vault_enabled = (enable_vault if enable_vault is not None
-                            else read_box_enable_vault(project_toml,
-                                                       default_from=workset_toml))
+                            else resolve_box_enable_vault(std.config_file,
+                                                          box_path=project_toml,
+                                                          workset_path=workset_toml))
     # ⚑ What the create branch PERSISTS is the BOX-AUTHORED value, NOT the resolved one.
     # ``box.enable_vault`` is "sparse — absent from the settings file unless THE USER sets
     # it" (spec ``:868``), and setting it at the workset tier is not setting it here.
@@ -1621,13 +1624,15 @@ def resolve_standalone_project(std: StandardPaths, config: KanibakoConfig,
     # ⚑ STANDALONE paths derive from the CURRENT root, never stored absolutes — that is
     # what makes a default-shaped tree drop-in portable BY CONSTRUCTION.
     shell_path, vault_ro_path, vault_rw_path = _standalone_box_paths(root)
-    # enable_vault (P5a): explicit param wins, else the BOX tier with an R2 downward-default
-    # to the WORKSET tier.  ⚑ That fallback is LIVE DESIGN, not migration: spec §2c's
-    # STANDALONE block declares it — "Box values (box.enable_vault, workset.kuid, …) still
-    # resolve from the workset tier @meta.workset.settings as downward defaults when no box
-    # file exists."  All three resolvers pass it, for that one reason.
+    # enable_vault (P5a): explicit param wins, else THE CASCADE — base < system < workset
+    # < box.  ⚑ The workset tier is LIVE DESIGN, not migration: spec §2c's STANDALONE
+    # block declares it — "Box values (box.enable_vault, workset.kuid, …) still resolve
+    # from the workset tier @meta.workset.settings as downward defaults when no box file
+    # exists."  All three resolvers pass it, for that one reason.
     actual_vault_enabled = (enable_vault if enable_vault is not None
-                            else read_box_enable_vault(box_settings, default_from=project_toml))
+                            else resolve_box_enable_vault(std.config_file,
+                                                          box_path=box_settings,
+                                                          workset_path=project_toml))
 
     # Box identity name (P8a): composed LIVE by ``box_resolve`` for a MATERIALIZED standalone;
     # a not-yet-materialized root yields "" and the create block below assigns it.
