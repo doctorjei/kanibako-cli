@@ -3697,6 +3697,47 @@ If you would rather not move anything, the equivalent fix is to delete the key f
 
 ---
 
+### 2.59 A `run_args` stored as a string now takes effect
+
+`agent.<agent>.run_args` is held in the agent's settings file as a list of words. Two commands
+write it, and until now they wrote two different shapes: `kanibako agent set <agent>
+run_args="--verbose --debug"` split the line into words, while `kanibako system set
+agent.<agent>.run_args="--verbose --debug"` stored it verbatim as one string. The reader took a
+list or nothing, so the string was dead text — the command reported success and no launch ever saw
+those arguments.
+
+Both commands write the list now, and the reader accepts either shape, so nothing on disk has to
+be edited. **The consequence to check for is a string you set once, found had no effect, and
+worked around or forgot.** Those arguments start reaching the agent's command line at the next
+launch.
+
+```yaml
+# agents/<agent>/agent.yaml — what the full spelling used to write.  Ignored by every launch.
+self:
+  run_args: --verbose --debug
+
+# The same file, unchanged on disk, is now read as the two arguments it spells — and is
+# rewritten in the stored shape the next time kanibako writes that file.
+self:
+  run_args:
+  - --verbose
+  - --debug
+```
+
+**What to do:** run `kanibako agent show <agent>` for each agent you have. Its `run_args` line now
+shows what a launch will actually pass, where a string showed no line at all; if what you see is
+not what you want, `kanibako agent reset <agent> run_args` removes it. If you added the same flags
+somewhere else to compensate — a shell alias, a per-box setting — remove one of the two, or the
+agent gets them twice.
+
+⚑ **Splitting is on whitespace, and there is no quoting.** `run_args="--flag 'two words'"` is four
+arguments, not two; that is unchanged, and it is why an argument containing a space is written
+into the list by hand. ⚑ An explicitly empty `run_args=` means *no arguments* and is still a
+different thing from a key you never set: `kanibako agent get <agent> run_args` answers with an
+empty line for the first and `(not set)` for the second.
+
+---
+
 ## 3. For plugin authors
 
 ⚑ **THREE PERSONA SURFACES ON `Target` CHANGED SHAPE in 1.8.0 — a plugin built against 1.7.x needs

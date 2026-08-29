@@ -177,7 +177,7 @@ The single rendering function, shared by the stored read below and by `config sh
 names it for the same reason.
 
 ```python
-def read_stored_leaf(noun_file: "Path | None", sections: tuple[str, ...], leaf: str) -> str | None
+def read_stored_leaf(noun_file, sections, leaf, *, render=render_stored_scalar) -> str | None
 ```
 Return the value STORED at `sections/leaf` in *noun_file* (the `get` model's stored-at-noun read),
 or `None` when absent / no file.
@@ -185,6 +185,14 @@ or `None` when absent / no file.
 A root-level scalar (empty *sections*, e.g. a flat config field) reads the document root. Bools
 render lowercase `"true"`/`"false"` (matching `set`'s coercion + `show`'s rendering); a stored empty
 string reads as `None` (`"(not set)"`), preserving the prior "empty ⇒ unset" convention.
+
+⚑ **`render` EXISTS BECAUSE THE ABSENT ANSWER NEVER REACHES A RENDERER.** A leaf that is not there
+returns `None` from the walk without rendering anything, so a caller cannot tell absence from a
+rendered value once it has the result — the rendering has to go IN, not be layered on the way out.
+The scalar convention is not universal: `agent_file.read_leaf` passes `_render_argv` for its one
+list-valued leaf (`run_args`), because a shape rule belongs with the module that owns the shape and
+`str()` on a list printed the Python repr `['--e', '--f']` at the user. Every other caller —
+`config_interface`'s four sites — takes the default.
 
 ⚑ Spec §2a's read-verb rule: **plain `get` = stored-at-noun, `--effective` = cascade.** This
 function is the stored-at-noun half. It never consults the cascade, which is why a system-scope

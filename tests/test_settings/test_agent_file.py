@@ -204,14 +204,30 @@ class TestLoad:
         cfg = load(cfg_path)
         assert cfg.name == ""
 
-    def test_run_args_must_be_list(self, tmp_path):
+    def test_a_stored_run_args_STRING_is_split_not_discarded(self, tmp_path):
+        """REPLACES ``test_run_args_must_be_list``, which pinned the DEFECT.
+
+        That row asserted ``cfg.run_args == []`` for a stored string — the reader
+        taking a list or nothing.  It was true of the code and wrong about the
+        product: ``config set agent.<node>.run_args="--c --d"`` wrote exactly that
+        string, so the value a user was told had been set reached no launch.
+        ⚑ MUTATION: restore ``[str(a) for a in raw] if isinstance(raw, list) else []``
+        and this reds on the empty list.
+        """
         cfg_path = tmp_path / "test.yaml"
         cfg_path.write_text(
             'self:\n'
-            '  run_args: "not-a-list"\n'
+            '  run_args: "--c --d"\n'
         )
-        cfg = load(cfg_path)
-        assert cfg.run_args == []
+        assert load(cfg_path).run_args == ["--c", "--d"]
+
+    def test_a_bare_run_args_is_no_arguments_not_the_word_None(self, tmp_path):
+        """``run_args:`` parses to ``None``; coercing it through ``str`` would make
+        the four-byte argument ``None`` — the same trap the ``model: null`` row
+        above records."""
+        cfg_path = tmp_path / "test.yaml"
+        cfg_path.write_text('self:\n  run_args:\n')
+        assert load(cfg_path).run_args == []
 
 
 class TestSave:
@@ -593,6 +609,119 @@ class TestTableValuedKeysTakeNoScalar:
         assert table_value_error(
             tail, path=tmp_path / "agent.yaml", verb="set",
         ) is None
+
+
+class TestTheArgvSHAPEIsTheFileS:
+    """``run_args`` is stored as a LIST OF WORDS, and this module owns that fact.
+
+    ⚑ THE DEFECT THIS CLASS EXISTS TO MAKE IMPOSSIBLE (P15).  The space-split lived in
+    ``agent_cmd``'s own writer and NOWHERE ELSE, so the file had two write routes with
+    two shapes: ``kanibako agent set claude run_args="--e --f"`` stored a list and
+    ``kanibako system set agent.claude.run_args="--c --d"`` stored the string.  :func:`load`
+    read a list or nothing, so the second route's value was accepted, echoed back at rc 0
+    and then DISCARDED — the launch got no arguments and the user was never told.
+    Measured both ways on a real store, 2026-08-29.
+
+    ⚑ THE ROWS BELOW PIN THE RULE AT :func:`write_leaf`, not at either caller: that is
+    the seam every write route already goes through, and it is the reason there is no
+    second copy to keep in step.
+    """
+
+    def _slot(self, tmp_path):
+        return slot_for(tmp_path, "claude", "run_args")
+
+    def test_write_leaf_stores_the_words(self, tmp_path):
+        """⚑ MUTATION: drop ``_stored_shape`` from ``write_leaf`` and this reds with
+        the bare string — which is exactly what ``config set`` used to store."""
+        from kanibako.settings.config_io import load_doc
+
+        write_leaf(self._slot(tmp_path), "--c --d")
+        data = load_doc(tmp_path / "claude" / "agent.yaml")
+        assert data["self"]["run_args"] == ["--c", "--d"]
+
+    def test_what_write_leaf_STORES_is_what_load_READS(self, tmp_path):
+        """The whole defect in one row: the write route and the record must agree."""
+        write_leaf(self._slot(tmp_path), "--c --d")
+        assert load(tmp_path / "claude" / "agent.yaml").run_args == ["--c", "--d"]
+
+    def test_read_leaf_gives_back_the_line_that_was_typed(self, tmp_path):
+        """⚑ NOT the Python repr.  ``kanibako system get agent.claude.run_args``
+        answered ``['--e', '--f']`` — a value the user cannot type back in — because
+        the scalar renderer ``str()``'d the list."""
+        write_leaf(self._slot(tmp_path), "--c --d")
+        assert read_leaf(self._slot(tmp_path)) == "--c --d"
+
+    def test_a_legacy_STRING_on_disk_still_reads_back(self, tmp_path):
+        """The files the retired write route already wrote keep working, unedited."""
+        path = tmp_path / "claude" / "agent.yaml"
+        path.parent.mkdir(parents=True)
+        path.write_text('self:\n  run_args: "--c --d"\n')
+        assert read_leaf(self._slot(tmp_path)) == "--c --d"
+        assert load(path).run_args == ["--c", "--d"]
+
+    def test_the_next_save_normalises_a_legacy_string(self, tmp_path):
+        """No migration step, and no second shape left on disk afterwards."""
+        from kanibako.settings.config_io import load_doc
+
+        path = tmp_path / "claude" / "agent.yaml"
+        path.parent.mkdir(parents=True)
+        path.write_text('self:\n  run_args: "--c --d"\n')
+        save(path, load(path))
+        assert load_doc(path)["self"]["run_args"] == ["--c", "--d"]
+
+    def test_an_EMPTY_value_is_a_value_and_an_ABSENT_one_is_not(self, tmp_path):
+        """The three states stay apart: absent, present-and-empty, present-with-words.
+
+        ⚑ ``""`` NOT ``None`` for the empty list, deliberately: the scalar convention
+        collapses an empty STRING to the absent answer, and applying it here would print
+        "(not set)" over an override that is really in the file.
+        """
+        slot = self._slot(tmp_path)
+        assert read_leaf(slot) is None                    # absent
+        write_leaf(slot, "")
+        assert read_leaf(slot) == ""                      # present, no arguments
+        assert load(tmp_path / "claude" / "agent.yaml").run_args == []
+        write_leaf(slot, "--c")
+        assert read_leaf(slot) == "--c"                   # present, one argument
+        assert remove_leaf(slot) is True
+        assert read_leaf(slot) is None                    # absent again
+
+    def test_a_null_is_a_SUPPRESSION_never_an_empty_argv_line(self, tmp_path):
+        """``--null`` routes a real ``None`` here; splitting it would forge a ``[]``."""
+        from kanibako.settings.config_io import load_doc
+
+        write_leaf(self._slot(tmp_path), None)
+        assert load_doc(tmp_path / "claude" / "agent.yaml")["self"]["run_args"] is None
+
+    def test_no_OTHER_leaf_is_split(self, tmp_path):
+        """The rule is one leaf's, not every leaf's — a model name keeps its spaces."""
+        from kanibako.settings.config_io import load_doc
+
+        write_leaf(slot_for(tmp_path, "claude", "model"), "opus 4 5")
+        data = load_doc(tmp_path / "claude" / "agent.yaml")
+        assert data["self"]["model"] == "opus 4 5"
+
+    def test_the_list_valued_set_is_exactly_AgentConfig_s_list_FIELDS(self):
+        """SIBLING GUARD (P13): a second list-shaped field must not get the old
+        treatment by default.
+
+        The subject is :class:`AgentConfig`'s own annotations, not a name typed twice —
+        so a field added tomorrow reds HERE, where the split is decided, instead of
+        silently reaching a write route that does not split for it.
+        """
+        import dataclasses
+
+        from kanibako.settings.agent_file import _LIST_VALUED_KEYS
+
+        list_fields = {
+            f.name for f in dataclasses.fields(AgentConfig)
+            if str(f.type).startswith("list")
+        }
+        assert list_fields == set(_LIST_VALUED_KEYS), (
+            "AgentConfig holds a list-shaped field the file's write route does not "
+            f"split for: record says {sorted(list_fields)}, agent_file says "
+            f"{sorted(_LIST_VALUED_KEYS)}"
+        )
 
 
 class TestLoadSurvivesAMalformedTable:

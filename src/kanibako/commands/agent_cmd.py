@@ -452,10 +452,14 @@ def _run_agent_config(args: argparse.Namespace) -> int:
         if gate_err is not None:
             print(gate_err, file=sys.stderr)
             return 1
-        # run_args is stored as a LIST (space-split); everything else is the
-        # raw string. Sparse write — only the touched key is materialized.
-        stored: object = value.split() if key == "run_args" else value
-        write_leaf(slot_for(std.agents, agent_id, key), stored)
+        # ⚑ NO SHAPE RULE HERE, AND ITS ABSENCE IS THE FIX. The ``run_args``
+        # space-split stood on this line and nowhere else, so this verb and
+        # ``config set agent.<node>.run_args=…`` stored two different shapes for
+        # one key and ``agent_file.load`` read only this one's — the other route's
+        # value was accepted, reported and then discarded. The split moved into
+        # ``agent_file.write_leaf``, which every write route already goes through.
+        # Sparse write — only the touched key is materialized.
+        write_leaf(slot_for(std.agents, agent_id, key), value)
         print(f"Set {key}={value}")
         return 0
 
@@ -516,6 +520,8 @@ def _agent_key_gate(
 
 def _get_agent_key(cfg: AgentConfig, key: str) -> str | None:
     """Read a single key from agent config."""
+    from kanibako.settings.agent_file import argv_text
+
     # secret_path.<VAR> — the SECRET category POINTER (host path). Checked before the
     # ``env.`` prefix. Returns the stored PATH, never the (secret) file contents.
     if key.startswith("secret_path."):
@@ -527,7 +533,11 @@ def _get_agent_key(cfg: AgentConfig, key: str) -> str | None:
     if key == "name":
         return cfg.name or None
     if key == "run_args":
-        return " ".join(cfg.run_args) if cfg.run_args else None
+        # ⚑ THE FILE'S OWN JOIN (``agent_file.argv_text``), never a second one here:
+        # it is the read half of the split ``write_leaf`` applies, and the two must
+        # not be able to drift. An empty list falls through to the file read below,
+        # which tells a present ``run_args: []`` apart from an absent key.
+        return argv_text(cfg.run_args) if cfg.run_args else None
     # Everything else goes to state
     return cfg.state.get(key)
 
@@ -542,12 +552,17 @@ def _show_agent_config(
     cfg: AgentConfig, agent_id: str, *, effective: bool = False,
 ) -> int:
     """Display agent config."""
+    from kanibako.settings.agent_file import argv_text
+
     has_output = False
 
     # Identity keys
     print(f"  name = {cfg.name or agent_id}")
     if cfg.run_args:
-        print(f"  run_args = {cfg.run_args}")
+        # ⚑ THE COMMAND-LINE SPELLING, not the list's Python repr: this line used to
+        # print ``run_args = ['--a', '--b']`` at the user — a shape they cannot type
+        # back in.
+        print(f"  run_args = {argv_text(cfg.run_args)}")
     has_output = True
 
     # agent-state keys
