@@ -16,6 +16,13 @@ view of a table-valued leaf and the FILE's.
 
 ⚑ DERIVED, NEVER LISTED (P13): the subject is ``DECLARED_AGENT_LEAVES`` itself, so a leaf
 declared tomorrow is covered with no edit here.
+
+⚑⚑ AND THE DEFECT RECURRED A THIRD TIME, one layer out: ``DECLARED_AGENT_LEAVES`` is not
+the whole vocabulary either.  §0 puts the AGENT SPECIFICS in the PLUGINS, so the real set
+is core UNIONED with ``setting_descriptors()``; ``_PERSONA_STATE_LEAVES`` read only the
+core half while ``agent_key_reason`` read the union, and the two disagreed about
+``agent.goose.provider``.  ``TestThePerNodeVocabularyIsTheAgentVerbs`` is the guard for
+THAT layer, and it does not depend on which plugins happen to be installed.
 """
 
 from __future__ import annotations
@@ -243,6 +250,183 @@ class TestTheTableHalfIsREADABLE_JustNotHere:
                     other, ConfigLevel.box, active_agent="claude",
                 ) or ""
                 assert "agent noun" not in msg, (other, msg)
+
+
+class TestThePerNodeVocabularyIsTheAgentVerbs:
+    """ONE vocabulary, two doors — the CONFIG engine's recogniser and the ``agent`` gate.
+
+    ⚑ MEASURED BEFORE THE FIX (2026-08-29), on a store built through the product path:
+    ``kanibako agent set goose provider=openrouter`` stored the value and
+    ``kanibako agent get goose provider`` read it back, while
+    ``kanibako system set agent.goose.provider=x`` answered *"Error: unknown config key"*
+    at rc 1 and ``kanibako system get agent.goose.provider`` answered *"(not set)"* at
+    rc 0 OVER THAT STORED VALUE.  A declared key refused by name at one door, and a
+    fabricated answer masking real data at another — spec §0 twice.
+
+    ⚑ THE VOCABULARY IS INJECTED, NOT READ OFF THIS MACHINE.  A guard that needs goose
+    installed passes vacuously wherever it is not (P15: the check must red on its own
+    emptiness), and the fact under test — the two doors share ONE leaf set — is a fact
+    about the wiring, not about the plugin set.
+    """
+
+    SYNTHETIC = "probe_only_leaf"
+
+    @pytest.fixture
+    def one_plugin_leaf(self, monkeypatch):
+        """Make the PLUGIN half declare exactly :attr:`SYNTHETIC`, and nothing else."""
+        from kanibako.settings import settings_prefs
+
+        agents = settings_prefs.AgentNames(("goose",), leaves={self.SYNTHETIC})
+        monkeypatch.setattr(
+            settings_prefs, "default_valid_agents", lambda: agents,
+        )
+        return self.SYNTHETIC
+
+    def test_the_injected_leaf_is_outside_the_core_contract(self, one_plugin_leaf):
+        """NON-VACUITY: a synthetic name core already declared would prove nothing."""
+        assert one_plugin_leaf not in DECLARED_AGENT_LEAVES
+
+    def test_a_plugin_leaf_reaches_the_per_node_recogniser(self, one_plugin_leaf):
+        """⚑ MUTATION: put ``DECLARED_AGENT_LEAVES`` back in ``_PERSONA_STATE_LEAVES``
+        and this dies while every core row in this file stays green."""
+        assert _parse_persona_agent_key(f"agent.goose.{one_plugin_leaf}") == (
+            "goose", one_plugin_leaf,
+        )
+
+    def test_the_agent_verbs_gate_agrees_with_it(self, one_plugin_leaf):
+        from kanibako.settings.config_keys import agent_key_reason
+
+        assert agent_key_reason("goose", one_plugin_leaf) is None
+
+    def test_the_any_agent_TIER_spelling_agrees_too(self, one_plugin_leaf):
+        """``agent.default.<leaf>`` is a key under ``key_class``, so it must have a slot.
+
+        Left on the core set this returns ``None``, the READ falls to the persona branch
+        for the reserved ``default`` node, and a stored value answers "(not set)" — the
+        exact §0 fabrication ``agent_default_tier_leaf`` was written to stop.
+        """
+        from kanibako.settings.config_keys import agent_default_tier_leaf
+
+        assert agent_default_tier_leaf(
+            f"agent.default.{one_plugin_leaf}"
+        ) == one_plugin_leaf
+
+    def test_a_leaf_NOBODY_declares_reaches_neither(self, one_plugin_leaf):
+        """THE OTHER DIRECTION: widening the vocabulary may not open it (spec §0)."""
+        from kanibako.settings.config_keys import agent_key_reason
+
+        undeclared = "not_declared_by_anyone"
+        assert undeclared not in DECLARED_AGENT_LEAVES
+        assert _parse_persona_agent_key(f"agent.goose.{undeclared}") is None
+        reason = agent_key_reason("goose", undeclared)
+        assert reason is not None and undeclared in reason
+
+    def test_the_env_SECTION_form_is_still_not_a_tier_leaf(self, one_plugin_leaf):
+        """The dotted ``env.<VAR>`` tail is a different family and stays unclaimed."""
+        from kanibako.settings.config_keys import agent_default_tier_leaf
+
+        assert agent_default_tier_leaf("agent.default.env.FOO") is None
+
+    def test_the_verbs_round_trip_a_plugin_leaf_at_the_per_node_spelling(
+        self, tmp_path,
+    ):
+        """THE EFFECT, not the predicate: set / get / reset through the real engine.
+
+        ⚑ THE REAL VOCABULARY HERE, not the injected one, and deliberately: this row
+        writes, and the keystore census judges a written key against the keyspace as the
+        INSTALLED plugins declare it.  A synthetic leaf would be a genuinely undeclared
+        write.  The rows above carry the environment-independent half.
+        ⚑ DERIVED (P13) — whichever leaf the installed plugins add, never a name.
+        ⚑ ``set`` answered *"Error: unknown config key"* at rc 1 before the fix, and
+        ``get`` answered "(not set)" over the stored value.
+        """
+        from tests.test_settings.test_config_dest_parity import Bench
+        from kanibako.settings.config_keys import ConfigLevel, plugin_declared_leaves
+
+        extra = sorted(plugin_declared_leaves() - DECLARED_AGENT_LEAVES)
+        if not extra:
+            pytest.skip("no installed plugin declares a leaf outside the core contract")
+        bench = Bench(tmp_path)
+        key = f"agent.goose.{extra[0]}"
+
+        msg = bench.set(ConfigLevel.system, key, "value-1")
+        assert not msg.startswith("Error:"), msg
+        assert bench.get(ConfigLevel.system, key) == "value-1"
+        assert "Cleared" in bench.reset(ConfigLevel.system, key)
+        assert bench.get(ConfigLevel.system, key) is None
+
+    def test_an_undeclared_leaf_is_still_refused_by_the_verb(
+        self, tmp_path, one_plugin_leaf,
+    ):
+        from tests.test_settings.test_config_dest_parity import Bench
+        from kanibako.settings.config_keys import ConfigLevel
+
+        msg = Bench(tmp_path).set(
+            ConfigLevel.system, "agent.goose.not_declared_by_anyone", "x",
+        )
+        assert msg.startswith("Error:"), msg
+
+
+class TestTheWideningDidNotREARM_PluginDiscovery:
+    """The cost half of the fix, pinned where it is decided (P15).
+
+    ⚑ **A COST RULE WITH A CORRECTNESS BILL, and this file's change is exactly the one
+    that could re-arm it.** Answering "is this a plugin leaf" IMPORTS and instantiates
+    every installed plugin, and those modules parse YAML in their module bodies — it was
+    measured 2026-08-25 at ``+67 ms`` on every settings-resolving command, 73% of the
+    whole resolve, and fixed by making the union LAZY. Nothing about the ANSWERS below
+    would move if the question were put eagerly again, so no other row in this file
+    would red — which is why these exist.
+
+    ⚑ The twin lives in ``test_settings_keyspace.py`` (``_NeverAsk``) and pins the same
+    deferral inside ``key_class``. This one pins ``config_keys``' side of it: the
+    recogniser, and the ``agent`` noun's gate.
+    """
+
+    @pytest.fixture
+    def discovery_reds(self, monkeypatch):
+        """Make plugin discovery RAISE, so ASKING it at all is visible.
+
+        ⚑ It raises rather than answering empty: a stub that answered would let a
+        re-materialised union pass while paying the cost this forbids.
+        """
+        from kanibako.settings import settings_prefs
+
+        def _never():
+            raise AssertionError("plugin discovery was asked")
+
+        monkeypatch.setattr(settings_prefs, "default_valid_agents", _never)
+
+    @pytest.mark.parametrize("key", [
+        # Not an agent path at all — the parser leaves before any leaf question.
+        "box.image", "system.template", "model", "workset.channels.chat",
+        # An agent path whose leaf the CORE §2d contract already declares.
+        "agent.claude.model", "agent.default.access", "agent.claude.transform_settings",
+        # The ``env.`` section arm, answered by its own position rule.
+        "agent.claude.env.FOO",
+    ])
+    def test_a_key_the_CORE_contract_answers_never_asks_the_plugins(
+        self, key, discovery_reds,
+    ):
+        _parse_persona_agent_key(key)
+
+    @pytest.mark.parametrize("tail", ["model", "access", "run_args", "name"])
+    def test_the_agent_gate_answers_a_core_leaf_without_discovery(
+        self, tail, discovery_reds,
+    ):
+        """⚑ NEW GUARANTEE, not a preserved one: this gate used to call
+        ``default_valid_agents()`` unconditionally, so every ``agent`` verb paid for
+        discovery even on ``model``. ``name`` rides the identity allowlist and never
+        reaches the keyspace at all."""
+        from kanibako.settings.config_keys import agent_key_reason
+
+        assert agent_key_reason("claude", tail) is None
+
+    def test_a_leaf_ONLY_a_plugin_can_declare_DOES_ask(self, discovery_reds):
+        """THE OTHER DIRECTION, without which the rows above would pass on a
+        recogniser that had simply stopped consulting the plugins."""
+        with pytest.raises(AssertionError, match="plugin discovery was asked"):
+            _parse_persona_agent_key("agent.goose.a_leaf_core_cannot_answer")
 
 
 class TestTheKeyspaceAndTheFileAgree:

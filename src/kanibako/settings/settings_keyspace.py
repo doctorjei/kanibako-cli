@@ -974,6 +974,26 @@ class _EffectiveLeaves(Collection[str]):
         return len(self._union())
 
 
+def effective_agent_leaves(
+    agent_leaves: "Collection[str] | None",
+) -> Collection[str]:
+    """The core §2d contract with the PLUGIN-declared *agent_leaves* behind it (§0).
+
+    ``None`` means core alone.  THE constructor for :class:`_EffectiveLeaves`, and it is
+    public because the effective vocabulary has TWO consumers that must not disagree:
+    :func:`key_class`, which JUDGES a key, and ``config_keys._PERSONA_STATE_LEAVES``,
+    which RECOGNISES the per-node spelling before any verb dispatches on it.  They were
+    two sets until 2026-08-29 — the judge unioned the plugin leaves and the recogniser
+    did not, so ``agent.goose.provider`` was a declared key at the ``agent`` noun and
+    "unknown config key" at ``system set`` (measured).
+    ⚑ The laziness is the contract, not an optimisation: see :class:`_EffectiveLeaves`.
+    """
+    return (
+        DECLARED_AGENT_LEAVES if agent_leaves is None
+        else _EffectiveLeaves(agent_leaves)
+    )
+
+
 def _leaves_are_known() -> bool:
     """The default *leaves_known*: a caller that says nothing covers every agent."""
     return True
@@ -1108,10 +1128,7 @@ def key_class(
     # ⚑ LAZY, and the dispatch below is why: only the agent tail asks about leaves,
     # and materialising the union here charged every ``box.*`` / ``system.*`` /
     # ``meta.*`` path for a plugin import it never uses. See :class:`_EffectiveLeaves`.
-    leaves: Collection[str] = (
-        DECLARED_AGENT_LEAVES if agent_leaves is None
-        else _EffectiveLeaves(agent_leaves)
-    )
+    leaves: Collection[str] = effective_agent_leaves(agent_leaves)
 
     if head == "config":
         if not rest:

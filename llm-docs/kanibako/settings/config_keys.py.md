@@ -490,6 +490,31 @@ the DISCRIMINATED ``agent.<node>.secret_path.<VAR>`` SECRET category (routed by
 `_is_agent_node_secret_key` → `_node_secret_target`, NOT here — a clean break; ``env_file`` only
 shipped rc0-rc2, no alias).
 
+⚑⚑ **IT IS THE EFFECTIVE SET, NOT THE CORE ONE (2026-08-29).** §0 puts the agent specifics in the
+PLUGINS, so the vocabulary is core §2d UNIONED with `setting_descriptors()`, through the SAME lazy
+union `key_class` judges with (`settings_keyspace.effective_agent_leaves`). Core-only, it was a
+SECOND vocabulary disagreeing with the judge, and both §0 breaches were **measured on a store built
+through the product path**: `kanibako system set agent.goose.provider=x` answered *"Error: unknown
+config key: agent.goose.provider"* at rc 1 for a leaf the goose target declares, and `kanibako
+system get agent.goose.provider` answered *"(not set)"* at **rc 0 over the value stored in that
+node's own file** — a fabricated default masking real data. The `agent` noun read the same key back
+fine the whole time, which is what "two carriers of one vocabulary" looks like from the outside.
+
+⚑ **THE LAZINESS IS THE CONTRACT, NOT AN OPTIMISATION.** The plugin half arrives as
+`PLUGIN_DECLARED_LEAVES` — a `Collection` that DISCOVERS ON THE FIRST QUESTION ASKED — so the core
+set is consulted first and a plain `agent.claude.model` never imports a plugin. Materialising it
+(`frozenset(...)`, or calling `plugin_declared_leaves()` at a call site) re-arms the cost measured
+2026-08-25 at **+67 ms on every settings-resolving command**, 73% of the whole resolve. Counted
+`discover_targets()` calls before and after this change: identical on every arm, and **0** on a cold
+`load_merged_config` (n=20).
+
+⚑ **ONE SUPPLIER FOR THE MODULE — `plugin_declared_leaves()`, over `settings_prefs.
+default_valid_agents().leaves`.** `agent_key_reason` reached that value a second way and
+`_PERSONA_STATE_LEAVES` did not reach it at all; both go through the one function now. **Not the
+`settings_keyspace_probe` memo**, deliberately: that one is primed at `pytest_configure` and has no
+reset seam, so production behaviour would become unpatchable from a test. `reset_discovery_cache`
+is the seam this side keeps.
+
 Two of its leaves carry their own reason:
 
 * `template` — per-agent template SOURCE (template-trio, spec §2a/§2d; Q2 2026-07-09 "agent = persona
@@ -836,6 +861,16 @@ set, so a declared key is refused BY NAME rather than degraded to "unknown" (spe
 predicate is `SCALAR_AGENT_LEAVES` — the declared set MINUS `TABLE_VALUED_AGENT_LEAVES`. The one
 table-valued member, `transform_settings`, is refused by :func:`agent_leaf_table_error` at both
 spellings.
+
+⚑⚑ **AND THEY NOW DIFFER IN A SECOND WAY — AN OPEN ASYMMETRY, NOT A DESIGN.** Since 2026-08-29
+`_PERSONA_STATE_LEAVES` is the EFFECTIVE (plugin-aware) set while this predicate is still core
+`SCALAR_AGENT_LEAVES`, so the BARE spelling of a PLUGIN-declared leaf is not settable. `key_class`
+declares `agent.default.provider` a key, `agent_default_tier_leaf` claims its slot and the READ is
+honest — but `set agent.default.provider=x` meets the reserved-any-agent-tier refusal, whose cure
+names the bare `provider`, and that bare spelling answers *"unknown config key"*. **It is the
+broken-cure shape this section already documents, one layer out.** Widening it is NOT a matter of
+deriving one more set: `KNOWN_CONFIG_KEYS` (the quarantine) would have to widen with it and
+deriving THAT was proposed and DECLINED, so the fix is a ruled decision, not a refactor.
 
 ```agent_leaf_table_error(canonical: str, *, verb: str) -> str | None```
 Refuse a WRITE at a declared agent leaf whose value is a TABLE (spec §2d).
@@ -1298,10 +1333,14 @@ predicate.**
 
 ⚑ **The node is supplied AS the valid-agent set** (`valid_agents=(node,)`): it is the on-disk store
 dir, known good, so an agent-DISCOVERY result must never be able to refuse a key on an agent the user
-is demonstrably running. The PLUGIN-declared leaves are unioned in the OTHER direction
-(`settings_prefs.default_valid_agents().leaves`) — without it a legitimate ``agent.goose.provider``
-would be refused, at the verb AND at the launch. Both directions are pinned, with the union's own
-mutation proof.
+is demonstrably running. The PLUGIN-declared leaves are unioned in the OTHER direction — without it
+a legitimate ``agent.goose.provider`` would be refused, at the verb AND at the launch. Both
+directions are pinned, with the union's own mutation proof.
+
+⚑ **THE UNION ARRIVES AS `PLUGIN_DECLARED_LEAVES`, NOT AS `default_valid_agents().leaves` READ
+HERE** (2026-08-29). Same value, but reached through the module's ONE supplier, which is what stops
+this gate and `_PERSONA_STATE_LEAVES` from drifting into two vocabularies again — and passing it
+rather than materialising it means a core §2d leaf is answered without importing a single plugin.
 
 ⚑ **THE IDENTITY RESIDUE**: `name` / `run_args` are FILE-identity fields of `AgentConfig`, not
 keyspace leaves (`agent_file._MODELED_KEYS` already says so). `run_args` happens to be a declared §2d
