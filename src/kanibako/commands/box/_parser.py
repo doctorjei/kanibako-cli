@@ -1184,9 +1184,16 @@ def _teardown_primary_box(std, name: str, metadata_dir: Path) -> bool:
 
 def _teardown_standalone_box(root: Path) -> bool:
     """Delete a STANDALONE box's in-tree metadata; the workspace and *root* are never touched."""
+    from kanibako.project.workset import standalone_vault_teardown
     from kanibako.settings.paths import STANDALONE_META_DIR
 
     metadata_dir = root / STANDALONE_META_DIR
+    # ⚑⚑ RESOLVE THE VAULT BEFORE ANYTHING IS DELETED.  Two reasons, and both bite:
+    # the root workset.yaml unlinked below carries the ``workset.vault_*`` repoint, so a
+    # later read answers the composed default; and an UNRESOLVABLE repoint raises here,
+    # which must happen while the box is still whole.  Resolving after the metadata purge
+    # left a half-removed box behind the traceback.
+    removable_vault, retained_vault = standalone_vault_teardown(root)
     if _purge_dir(metadata_dir):
         print(f"Removed metadata: {metadata_dir}")
         # ⚑ The ROOT workset.yaml is the WORKSET tier AND half the §5 detection marker —
@@ -1195,10 +1202,13 @@ def _teardown_standalone_box(root: Path) -> bool:
         if settings_file.is_file():
             settings_file.unlink()
             print(f"Removed metadata: {settings_file}")
-        vault_dir = root / "vault"
-        if vault_dir.is_dir():
-            _purge_dir(vault_dir)
-            print(f"Removed vault: {vault_dir}")
+        for vault_dir in removable_vault:
+            if vault_dir.is_dir():
+                _purge_dir(vault_dir)
+                print(f"Removed vault: {vault_dir}")
+        for vault_dir in retained_vault:
+            if vault_dir.is_dir():
+                print(f"Kept vault: {vault_dir} (outside {root} — remove it yourself)")
         return True
     print(
         f"Warning: could not fully remove {metadata_dir} "

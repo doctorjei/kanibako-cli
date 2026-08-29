@@ -409,12 +409,39 @@ itself. Do not add a mode parameter here; the variation is downstream.
 
 `resolve_workset_vault_pair` is the form callers should reach for: every consumer wants BOTH arms,
 and reading `workset.yaml` once per arm opens a window for the two to disagree about the same
-document. Its callers are `add_project`, `remove_project` and `settings.paths._standalone_box_paths`;
-`settings.paths.resolve_system_paths` uses the two faces directly because it already holds the read.
+document. Its callers are `add_project`, `remove_project`, `settings.paths._standalone_box_paths`
+and `commands.box._lifecycle._to_workset`; `settings.paths.resolve_system_paths` uses the two faces
+directly because it already holds the read.
 
 ⚑ **The arms are independent.** Repointing `vault_ro` alone leaves `vault_rw` at its default, and
 nothing may treat the two as sharing a parent — that assumption is exactly what the pre-fix
 `ws.vault_dir / "ro"` composition encoded, and it made both keys settable-but-ignored.
+
+```python
+def standalone_vault_teardown(root: Path) -> tuple[list[Path], list[Path]]
+```
+The `(removable, retained)` split a STANDALONE teardown must use — `commands.box._parser`'s
+`_teardown_standalone_box`, `commands.clean._purge_one` and
+`commands.box._lifecycle._remove_old_metadata`'s standalone arm all go through it.
+
+⚑⚑ **Why a SPLIT and not a list.** A standalone box's vault IS the resolved arm — there is no
+per-box leaf under it (`settings.paths._standalone_box_paths`). So "delete this box's vault" and
+"delete the directory `workset.vault_ro` names" are the SAME ACT here, and they are NOT the same
+act in named or primary mode, where only a `<box-name>` leaf is ever removed and the arm outlives
+every box on it. An arm STRICTLY BELOW `root` is kanibako's own skeleton inside the tree the
+teardown is already clearing, so it goes with the box; an arm the user pointed OUTSIDE `root` (or
+AT it — `vault_ro: .` would nominate the whole project dir) is the USER'S STORE and is never
+`rm -rf`ed on their behalf. **Callers must PRINT the retained paths:** the defect this replaced was
+not that a repointed vault survived, it was that it survived SILENTLY.
+
+The literal `vault/` skeleton parent is appended to *removable* when it is on disk, so the default
+layout — whose `.gitignore` lives there, and which is what every pre-repoint box has — is cleared
+exactly as before.
+
+🛑 **Call it BEFORE the teardown deletes or unlinks anything.** The root `workset.yaml` is the
+standalone workset tier and the only carrier of the repoint, so resolving after it is gone answers
+the composed default; and an unresolvable repoint RAISES `SettingsError` naming the key, which must
+land while the box is still whole rather than behind a half-finished purge.
 
 ```python
 @contextmanager

@@ -243,6 +243,47 @@ def resolve_workset_vault_pair(workset_root: Path) -> tuple[Path, Path]:
             resolve_workset_vault_rw(workset_root, settings_doc))
 
 
+def standalone_vault_teardown(root: Path) -> tuple[list[Path], list[Path]]:
+    """Split a STANDALONE box's vault into ``(removable, retained)`` for a teardown.
+
+    ⚑⚑ A standalone box's vault IS the resolved arm — there is NO per-box leaf under it
+    (``settings/paths.py::_standalone_box_paths``).  So "delete this box's vault" and
+    "delete the directory ``workset.vault_ro`` names" are THE SAME ACT here, and they
+    are NOT the same act in named or primary mode, where only a ``<box-name>`` leaf is
+    ever removed and the arm outlives every box on it.  That difference is why this
+    returns a SPLIT and not a list:
+
+    * an arm STRICTLY BELOW *root* is kanibako's own skeleton, inside the tree the
+      teardown is already clearing — it goes with the box, repointed or not;
+    * an arm the user pointed OUTSIDE *root* (or AT *root*) is the USER'S STORE.  No
+      verb ``rm -rf``\\ s that on their behalf: an absolute ``vault_rw: ~/store`` would
+      make ``box rm --purge`` delete a directory the user merely nominated.  ⚑ Callers
+      must PRINT the retained paths — the defect this replaced was not that the vault
+      survived, it was that it survived SILENTLY.
+
+    The literal ``vault/`` skeleton parent is appended to *removable* when it is on
+    disk, so the default layout (whose ``.gitignore`` lives there, and which is what
+    every pre-repoint box has) is cleared exactly as it was before.
+
+    🛑 CALL THIS BEFORE UNLINKING THE ROOT ``workset.yaml``.  That file is the standalone
+    workset tier and the only carrier of the repoint; resolving after it is gone answers
+    the composed default and walks straight back into the bug.
+    """
+    removable: list[Path] = []
+    retained: list[Path] = []
+    for arm in resolve_workset_vault_pair(root):
+        # ⚑ STRICT: ``arm == root`` must land in *retained*.  A ``vault_ro: .`` would
+        # otherwise nominate the user's whole project directory for deletion.
+        if root in arm.parents:
+            removable.append(arm)
+        else:
+            retained.append(arm)
+    skeleton = root / _VAULT_LEAF
+    if skeleton.is_dir():
+        removable.append(skeleton)
+    return removable, retained
+
+
 # ---------------------------------------------------------------------------
 # Failure-consistency: a tiny LIFO unwind stack for multi-step mutations.
 # ⚑ Mirrors ``commands/box/_lifecycle.py::_Unwind`` (minus on_success/finish).

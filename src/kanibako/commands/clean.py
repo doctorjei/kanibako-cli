@@ -169,14 +169,24 @@ def _purge_one(std, config, path: str, *, force: bool) -> int:
     if proj.mode is BoxMode.standalone:
         # metadata_path is the project ROOT — remove ONLY the in-tree kanibako
         # artifacts (box_data/ + root workset.yaml + vault/), never the root.
+        from kanibako.project.workset import standalone_vault_teardown
+
         root = proj.metadata_path
+        # ⚑⚑ RESOLVE THE VAULT FIRST: the root workset.yaml unlinked below is the only
+        # carrier of a ``workset.vault_*`` repoint, and ``root/"vault"`` is not the
+        # box's vault once one is set.
+        removable_vault, retained_vault = standalone_vault_teardown(root)
         # box_data/ holds the box home + its root-owned canon skeleton (J-7), so
         # the deletion needs the podman-unshare escalation, not a bare rmtree.
         box_data = root / STANDALONE_META_DIR
         if box_data.is_dir() and not remove_box_tree(box_data):
             _warn_undeleted(box_data)
         (root / WORKSET_META_FILE).unlink(missing_ok=True)
-        shutil.rmtree(root / "vault", ignore_errors=True)
+        for vault_dir in removable_vault:
+            shutil.rmtree(vault_dir, ignore_errors=True)
+        for vault_dir in retained_vault:
+            if vault_dir.is_dir():
+                print(f"\nKept vault: {vault_dir} (outside {root} — remove it yourself)")
     else:
         if not remove_box_tree(proj.metadata_path):
             _warn_undeleted(proj.metadata_path)

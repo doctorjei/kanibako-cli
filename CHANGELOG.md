@@ -334,6 +334,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Nothing else about the vault changes. It is still gated on `box.enable_vault`, still nests
   `ro`/`rw` above the box name for a primary or named box, and still has no per-box subdirectory
   for a standalone one.
+  ⚑ **The verbs that DELETE a vault follow the key too, and they are careful about it.** A key
+  that is honoured everywhere except where a directory is removed is worse than one that was never
+  honoured: your real vault would be orphaned while a directory the box never used was the thing
+  taken. `box rm --purge`, `kanibako clean --purge`, `box move` and `box convert` now resolve the
+  vault before they delete anything, and they draw a line the earlier code had no reason to. For a
+  primary or named box only the per-box `<box-name>` directory is ever removed, under whichever arm
+  it actually lives — never the shared arm above it. For a standalone box the arm IS the vault,
+  with no per-box directory beneath it, so an arm you pointed **outside** the box's own root is
+  treated as yours rather than kanibako's: it is left in place and named on screen (`Kept vault:
+  …`) instead of being deleted. An arm inside the root goes with the box, as it always did.
+  ⚑ One refusal is new. If either key holds a value that cannot be resolved, a purge or a move now
+  stops and names the key **before** removing anything, rather than deleting half the box and then
+  failing. Fix the value — or unset it — and run the command again.
+
+- **`kanibako archive` built a vault path out of the workspace directory for a box whose workspace
+  had gone missing.** `<workspace>/vault/ro` has not been where a vault lives in any box mode since
+  the vault moved out of the workspace, and when the workspace path was unknown the composition
+  produced a *relative* `(unknown-<box>)/vault/ro`. Nothing read the field, so no archive was ever
+  wrong because of it; it is now the same per-box path every other command resolves.
 
 - **An alias refused a flag its canonical spelling accepted: `box inspect --box mybox` failed
   where `box info --box mybox` worked.** `box info`/`box inspect`, `box move`/`box mv` and

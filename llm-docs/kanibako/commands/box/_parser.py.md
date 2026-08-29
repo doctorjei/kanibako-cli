@@ -261,9 +261,15 @@ deregistered `--purge` path — same paths, same order, same guards:
   `@config.primary_workset/vault/{ro,rw}/<name>` (which is NOT under `metadata_dir`), then the
   per-box helper log at `@config.primary_workset/logs/<box>.jsonl`, keyed by the registry name.
 * `_teardown_standalone_box` removes the in-tree `box_data/` marker, the ROOT `workset.yaml` and
-  `vault/`. The ROOT file is the WORKSET tier AND the other half of the §5 detection marker, so
-  dropping it is what stops the box being re-detected; the BOX tier lives inside `box_data/` and
+  the box's vault. The ROOT file is the WORKSET tier AND the other half of the §5 detection marker,
+  so dropping it is what stops the box being re-detected; the BOX tier lives inside `box_data/` and
   goes with the dir. The user's workspace files, and `root` itself, are never touched.
+  ⚑⚑ **The vault is RESOLVED via `project.workset.standalone_vault_teardown(root)`, and that call
+  is the FIRST thing the function does** — before the metadata purge, not after. `root/"vault"` is
+  not the box's vault once `workset.vault_ro`/`vault_rw` is repointed, the ROOT file this teardown
+  unlinks is the only carrier of that repoint, and an unresolvable repoint RAISES — a refusal that
+  has to land while the box is still whole. Resolving mid-teardown left a half-purged box behind
+  the traceback. An arm outside `root` is printed as `Kept vault: …` and left alone.
 
 `_purge_dir` is a thin alias for `kanibako.runtime.container.remove_box_tree`, which is where the
 body lives so EVERY box-tree deleter can reuse it — `extract`, `move`, `duplicate` and `purge` all
@@ -538,9 +544,13 @@ Returns True if the box dir was removed. ⚑ The CALLER is responsible for conta
 ```_teardown_standalone_box(root: Path) -> bool```
 Delete a STANDALONE box's in-tree metadata; the workspace and *root* are never touched.
 
-Removes the in-tree `box_data/` marker, the root `workset.yaml` and `vault/` — the same set the
-active standalone purge and the `purge` command delete. Returns True if the `box_data/` marker was
-removed.
+Removes the in-tree `box_data/` marker, the root `workset.yaml` and the box's RESOLVED vault — the
+same set the active standalone purge and the `purge` command delete. Returns True if the
+`box_data/` marker was removed.
+
+⚑ The vault split comes from `standalone_vault_teardown`, called FIRST (see the teardown notes
+above): an in-root repoint is removed with the box, an out-of-root arm is reported and kept, and an
+unresolvable one refuses the whole purge before anything is deleted.
 
 ```_read_box_image(settings_file: Path) -> str | None```
 Best-effort read of a box's `box.image` from its box.yaml; failure is `None`.
