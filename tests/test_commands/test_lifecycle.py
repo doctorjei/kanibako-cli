@@ -1251,3 +1251,223 @@ class TestWorksetTierVaultDefaultIsNotPinned:
         assert not dup.vault_rw_path.exists()
         # … and never removes the source's.
         assert src_proj.vault_rw_path.is_dir()
+
+
+# ---------------------------------------------------------------------------
+# The standalone consolidate sweep — kanibako's own directories are RESOLVED
+# ---------------------------------------------------------------------------
+
+def _convert_to_standalone_in_place(env, root):
+    """Run the real convert that consolidates *root* into its standalone workspace dir."""
+    config, std, _tmp_home = env
+    state = resolve_lifecycle_target(str(root), std, config)
+    return execute_lifecycle(
+        state, TargetSpec(location=INPLACE, ownership="standalone"),
+        std, config, confirm=_conf_yes(),
+    )
+
+
+def _default_with_workset_keys(env, name, table):
+    """A default-mode box whose dir carries a ``workset.yaml`` repointing *table*."""
+    config, std, tmp_home = env
+    from kanibako.settings.config_io import dump_doc
+
+    root = tmp_home / name
+    root.mkdir()
+    (root / "file.txt").write_text("mine")
+    resolve_project(std, config, project_dir=str(root), initialize=True)
+    dump_doc(root / "workset.yaml", {"workset": table})
+    return root
+
+
+class TestConsolidateResolvesTheRootsOwnKeys:
+    """``box convert --standalone`` sweeps the root into the workspace dir, and what it
+    must NOT sweep is kanibako's own layout — which is a set of RESOLVED ``workset.*``
+    directory keys, never a set of leaf names.
+
+    ⚑ The three cases below are the three shapes a name set answers differently:
+    NO repoint (a name set can express it, and still missed ``workset.canon``), an
+    IN-ROOT repoint (the root child is a name no list holds), and an ABSOLUTE repoint
+    (not representable in a name set at all).
+    """
+
+    def test_no_repoint_keeps_the_default_canon_tree(self, env):
+        """⚑ NO repoint is involved: ``canon`` was simply never in the name set, so a
+        round trip out of standalone and back swept kanibako's own canon tree into the
+        user's workspace."""
+        config, std, tmp_home = env
+        root = _make_standalone(env, name="rt")
+        (root / "canon" / "MARKER").write_text("CANON")
+
+        # Out of standalone (lifts ``workspace/`` back to the root) …
+        state = resolve_lifecycle_target(str(root), std, config)
+        execute_lifecycle(
+            state, TargetSpec(location=INPLACE, ownership="default"),
+            std, config, confirm=_conf_yes(),
+        )
+        # … and back in, which consolidates.
+        _convert_to_standalone_in_place(env, root)
+
+        assert (root / "canon" / "MARKER").read_text() == "CANON"
+        assert not (root / "workspace" / "canon").exists()
+        assert (root / "workspace" / "file.txt").is_file()
+
+    def test_in_root_repoint_keeps_the_directory_that_holds_the_arm(self, env, capsys):
+        """``vault_ro: store/ro`` makes the root child ``store`` — a name no list holds.
+        The ANCESTOR test is what keeps it; an equality test would sweep it."""
+        root = _default_with_workset_keys(
+            env, "inroot",
+            {"vault_ro": "store/ro", "vault_rw": "store/rw", "canon": "kanon"},
+        )
+        (root / "store" / "ro").mkdir(parents=True)
+        (root / "store" / "ro" / "SECRET").write_text("RO")
+        (root / "store" / "rw").mkdir(parents=True)
+        (root / "kanon").mkdir()
+        (root / "kanon" / "MARKER").write_text("CANON")
+
+        _convert_to_standalone_in_place(env, root)
+
+        assert (root / "store" / "ro" / "SECRET").read_text() == "RO"
+        assert (root / "kanon" / "MARKER").read_text() == "CANON"
+        assert not (root / "workspace" / "store").exists()
+        assert not (root / "workspace" / "kanon").exists()
+        # The user's own content still goes where a consolidate puts it.
+        assert (root / "workspace" / "file.txt").read_text() == "mine"
+
+    def test_a_repointed_keep_is_reported_and_names_the_key(self, env, capsys):
+        """[R144] — a keep that cannot name the path as the user's is just a leak.  The
+        DEFAULT layout's keeps stay silent; only what the user repointed is announced."""
+        root = _default_with_workset_keys(env, "reported", {"vault_ro": "store/ro"})
+        (root / "store" / "ro").mkdir(parents=True)
+
+        _convert_to_standalone_in_place(env, root)
+
+        err = capsys.readouterr().err
+        assert str(root / "store") in err
+        assert "workset.vault_ro" in err
+        # ⚑ Silence for the default layout: ``vault/`` is kanibako's, not the user's.
+        assert "workset.vault_rw" not in err
+
+    def test_absolute_workspaces_repoint_fills_the_dir_the_box_reads(self, env):
+        """⚑⚑ THE CASE A NAME SET CANNOT EXPRESS.  With ``workset.workspaces`` pointed
+        at an absolute path, a literal ``<root>/workspace`` destination fills a
+        directory the box never looks in: ``resolve_standalone_project`` answers the
+        repoint, so the box would open an EMPTY workspace with its files elsewhere."""
+        config, std, tmp_home = env
+        elsewhere = tmp_home / "elsewhere" / "work"
+        root = _default_with_workset_keys(
+            env, "absws", {"workspaces": str(elsewhere)},
+        )
+        (root / "code.py").write_text("CODE")
+
+        new = _convert_to_standalone_in_place(env, root)
+
+        proj = resolve_standalone_project(
+            std, config, project_dir=str(root), initialize=False,
+        )
+        assert proj.project_path == elsewhere
+        assert (elsewhere / "code.py").read_text() == "CODE"
+        assert (elsewhere / "file.txt").read_text() == "mine"
+        # ⚑ ONE answer for one box: the state the lifecycle returns and the state the
+        # resolver answers name the same directory.
+        assert new.workspace_path == proj.project_path
+        assert not (root / "workspace").exists()
+
+    def test_an_unresolvable_repoint_refuses_before_anything_moves(self, env):
+        """A root whose layout keys do not answer is a root whose children cannot be
+        told apart — and the sweep MOVES USER DATA.  Refuse while the tree is whole."""
+        from kanibako.settings.settings_resolve import SettingsError
+
+        root = _default_with_workset_keys(
+            env, "unresolvable", {"vault_ro": "@config.registry/ro"},
+        )
+        (root / "keepme").mkdir()
+
+        with pytest.raises(SettingsError) as exc:
+            _convert_to_standalone_in_place(env, root)
+        assert "workset.vault_ro" in str(exc.value)
+        # Nothing swept: the refusal lands before the first move.
+        assert (root / "keepme").is_dir()
+        assert (root / "file.txt").is_file()
+        assert not (root / "workspace").exists()
+
+    def test_a_workspaces_key_at_the_root_consolidates_nothing(self, env):
+        """``workspaces: .`` means the workspace already IS the root — there is nothing
+        to consolidate, and moving each child onto itself would raise."""
+        root = _default_with_workset_keys(env, "atroot", {"workspaces": "."})
+        (root / "keepme").mkdir()
+
+        _convert_to_standalone_in_place(env, root)
+
+        assert (root / "file.txt").read_text() == "mine"
+        assert (root / "keepme").is_dir()
+
+    def test_no_leaf_name_decides_what_the_sweep_keeps(self):
+        """⚑ TRIPWIRE (P15).  Pins the rule at the SITE, so a reintroduced name test reds
+        without anyone re-deriving the census.  ⚑ The banned spellings include the LEAF
+        CONSTANTS, not just the bare strings — a string-only pin passes
+        ``root / paths_defaults.WORKSPACE_PATH``, which is the same defect wearing an
+        import.  ⚑ ``paths_defaults.VAULT_PATH`` is deliberately absent from the ban:
+        NO key names the ``vault/`` skeleton parent (``project/workset.py::_VAULT_LEAF``),
+        so a literal is the only correct spelling for it.
+        """
+        from tests.support.repo import REPO_ROOT
+
+        src = (REPO_ROOT / "src" / "kanibako" / "commands" / "box"
+               / "_lifecycle.py").read_text(encoding="utf-8")
+        # ⚑ TWO regions, because the sweep has two ends and each broke on its own: the
+        # consolidate machinery decides what it KEEPS, and ``_to_standalone`` decides
+        # where it PUTS the rest.  A literal at either end is the same defect.  Both are
+        # bounded by their own symbols, so an edit above them does not drift the pin.
+        region = (
+            src[src.index("_STANDALONE_FIXED_ARTIFACTS = frozenset("):
+                src.index("def _undo_consolidate(")]
+            + src[src.index("def _to_standalone("):
+                  src.index("def _to_workset(")]
+        )
+        # ⚑ CODE only.  A pin that reds on PROSE is a false-alarm generator, and the
+        # comments here quote the banned spellings on purpose, to say why they are banned.
+        region = "\n".join(
+            line for line in region.splitlines()
+            if not line.lstrip().startswith("#")
+        )
+        for spelling in ('"workspace"', "'workspace'", "WORKSPACE_PATH",
+                         '"workspaces"', "WORKSPACES_PATH",
+                         '"canon"', "'canon'"):
+            assert spelling not in region, (
+                f"{spelling} decides an artifact by NAME in the consolidate region; "
+                f"resolve the workset key instead (_STANDALONE_ROOT_DIR_KEYS)"
+            )
+        # ⚑ And the DECISION PROCEDURE itself, which is what catches a leaf the list
+        # above does not name — ``VAULT_PATH`` included.  The one legitimate name test
+        # is against the un-repointable set; every other one is the defect.
+        for line in region.splitlines():
+            if ".name" not in line or "_STANDALONE_FIXED_ARTIFACTS" in line:
+                continue
+            assert not any(op in line for op in (".name ==", ".name in", ".name !=")), (
+                f"a leaf-name comparison decides an artifact here: {line.strip()!r}; "
+                f"compare RESOLVED paths (_artifact_claiming)"
+            )
+
+    def test_every_root_dir_key_is_resolved_not_defaulted(self, env):
+        """⚑ Reds on its own emptiness (P15): each declared root key must actually move
+        when repointed, so a table that silently loses an entry cannot pass."""
+        from kanibako.commands.box._lifecycle import (
+            _STANDALONE_ROOT_DIR_KEYS, _standalone_root_artifacts,
+        )
+        from kanibako.settings.config_io import dump_doc
+
+        config, std, tmp_home = env
+        assert _STANDALONE_ROOT_DIR_KEYS, "the key table must not be empty"
+        for key, _resolver in _STANDALONE_ROOT_DIR_KEYS:
+            leaf = key.split(".", 1)[1]
+            root = tmp_home / f"probe_{leaf}"
+            root.mkdir()
+            dump_doc(root / "workset.yaml", {"workset": {leaf: f"moved_{leaf}"}})
+            answered = {
+                k: (p, repointed)
+                for k, p, repointed in _standalone_root_artifacts(root)
+            }
+            path, repointed = answered[key]
+            assert path == root / f"moved_{leaf}", key
+            assert repointed is True, key

@@ -17,12 +17,14 @@ load-bearing; see ``llm-docs/kanibako/commands/box/_lifecycle.py.md``.
 from __future__ import annotations
 
 import shutil
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 from kanibako.launch.box_identity import validate_box_name
 from kanibako.runtime.container import remove_box_tree
+from kanibako.settings import paths_defaults
 from kanibako.settings.core_defaults import materialize_canon_skeleton
 from kanibako.settings.config import (
     BOX_META_FILE,
@@ -61,8 +63,13 @@ from kanibako.project.workset import (
     add_project,
     list_worksets,
     load_workset,
+    load_workset_settings_doc,
     remove_project,
+    resolve_workset_canon,
     resolve_workset_vault_pair,
+    resolve_workset_vault_ro,
+    resolve_workset_vault_rw,
+    resolve_workset_workspaces,
     standalone_vault_teardown,
 )
 
@@ -1018,24 +1025,98 @@ def _to_default(
     )
 
 
-#: ⚑ kanibako artifacts (NOT workspace content): they STAY at the standalone root when a
-#: convert consolidates everything else into ``workspace/`` (drift H).
-#: ⚑⚑ KNOWN GAP — these are LEAF NAMES, so they cannot express a REPOINTED key.  Measured:
-#: a root carrying ``workset.vault_ro: store/ro`` has its ``store/`` swept into ``workspace/``
-#: by ``_consolidate_workspace_subdir``, because only the literal ``vault`` is listed.  The
-#: data is displaced rather than lost, but the box then resolves its vault to an empty dir.
-#: ``workspace`` has the IDENTICAL gap against ``workset.workspaces``, and an ABSOLUTE repoint
-#: is not representable in a name set at all — so the fix is a path-based comparison for BOTH
-#: keys, not another string in this frozenset.  Left as-is deliberately: it is a separate
-#: defect from the vault-resolution arc and wants its own decision.
-_STANDALONE_ROOT_ARTIFACTS = frozenset({
+#: ⚑ kanibako artifacts at a standalone root whose names NO KEY CAN REPOINT: the box dir
+#: (spec §2c fixes it at ``box_data/``), the detection marker beside it, the legacy root
+#: box tier (drift I) and the lock.  They STAY at the root when a convert consolidates
+#: everything else into the workspace dir (drift H).
+#: ⚑⚑ EVERY OTHER ARTIFACT AT THE ROOT IS A DECLARED, REPOINTABLE ``workset.*`` DIRECTORY
+#: KEY AND IS ANSWERED BY :func:`_standalone_root_artifacts`, NEVER BY A NAME.  A leaf name
+#: cannot express ``workset.vault_ro: store/ro`` — the root child is then ``store``, a name
+#: no list holds — and cannot express an absolute repoint at all.  Adding a leaf here is the
+#: fix that makes the bug look fixed: it closes one spelling and leaves the other two open.
+_STANDALONE_FIXED_ARTIFACTS = frozenset({
     STANDALONE_META_DIR,   # box_data/
-    "workspace",            # the subdir we are populating
-    "vault",                # vault/{ro,rw}
     WORKSET_META_FILE,      # the workset meta (drift I — at the root)
     BOX_META_FILE,          # the box meta (drift I — at the root)
     ".kanibako.lock",       # lock file
 })
+
+
+def _resolve_standalone_workspaces(
+    root: Path, doc: Mapping[str, Any] | None,
+) -> Path:
+    """``workset.workspaces`` for a STANDALONE root — the SINGULAR ``workspace`` default."""
+    return resolve_workset_workspaces(root, doc, standalone=True)
+
+
+#: The ``workset.*`` DIRECTORY keys a STANDALONE root materializes UNDER ITSELF, each paired
+#: with the resolver that answers it.  ⚑ A standalone root is a degenerate workset root
+#: (``settings/paths.py::_standalone_box_paths``), so these are ordinary workset keys.
+#: ⚑ Derived from the rule "which keys does standalone mode resolve at the root", not from an
+#: inventory of today's directories: ``boxes`` is absent because §2c fixes the standalone box
+#: dir at :data:`STANDALONE_META_DIR` (above), and ``logs``/``template``/``channelroot`` are
+#: absent because standalone does not materialize them — each resolver says so in its own
+#: docstring, and that is the source to re-read if this list is ever questioned.
+_STANDALONE_ROOT_DIR_KEYS = (
+    ("workset.workspaces", _resolve_standalone_workspaces),
+    ("workset.vault_ro", resolve_workset_vault_ro),
+    ("workset.vault_rw", resolve_workset_vault_rw),
+    ("workset.canon", resolve_workset_canon),
+)
+
+
+def _standalone_root_artifacts(root: Path) -> list[tuple[str, Path, bool]]:
+    """The RESOLVED ``(key, path, repointed)`` directories a standalone *root* owns.
+
+    ⚑⚑ RESOLVED, NEVER A LEAF NAME — that difference IS the defect this replaced.  Filtering
+    the root's children by basename swept a repointed ``workset.vault_ro: store/ro`` into the
+    workspace dir: the user's data displaced, and the box then resolving its vault to an empty
+    directory.  ``workset.canon`` was worse — it was never listed at all, so a plain round trip
+    through ``convert --default`` and back swept kanibako's own canon tree with no repoint
+    involved.
+
+    *repointed* says the resolved path DIFFERS from that key's default leaf, i.e. the user put
+    it there.  :func:`_consolidate_workspace_subdir` reports those keeps by name ([R144]: a
+    keep that cannot name the path as the user's is just a leak); the default layout keeps
+    stay silent, as they always have.
+
+    ⚑ ONE ``workset.yaml`` read feeds every resolution — reading per key opens a window for
+    them to disagree about the same document (``_workset_skeleton_dirs``' own reason).
+
+    ⚑ RAISES (``SettingsError``, naming the key and the token) when a repoint will not resolve.
+    A root whose layout keys do not answer is a root whose children cannot be told apart, and
+    the sweep below MOVES USER DATA.  Refusing costs nothing here: this runs before
+    :func:`_to_standalone` has copied or written anything.  Same call order, and for the same
+    reason, as ``project/workset.py::standalone_vault_teardown``.
+    """
+    doc = load_workset_settings_doc(root)
+    out: list[tuple[str, Path, bool]] = []
+    for key, resolver in _STANDALONE_ROOT_DIR_KEYS:
+        resolved = resolver(root, doc)
+        out.append((key, resolved, resolved != resolver(root, None)))
+    # ⚑ The literal ``vault/`` skeleton parent, on disk only — exactly the tail
+    # ``standalone_vault_teardown`` appends, and for its reason: no key names it, the default
+    # layout's ``.gitignore`` lives there, and ``_to_standalone`` writes that file itself.
+    skeleton = root / paths_defaults.VAULT_PATH
+    if skeleton.is_dir():
+        out.append(("the vault skeleton", skeleton, False))
+    return out
+
+
+def _artifact_claiming(
+    child: Path, artifacts: list[tuple[str, Path, bool]],
+) -> tuple[str, Path, bool] | None:
+    """The artifact *child* IS or CONTAINS, else ``None`` — the ANCESTOR test is the point.
+
+    ⚑ A repoint one level down (``vault_ro: store/ro``) makes the root child ``store``, which
+    is not the resolved path but holds it.  An equality-only test keeps ``store/ro`` — a path
+    that is not a child of *root* and so was never a candidate — and sweeps ``store``.
+    """
+    for artifact in artifacts:
+        _key, path, _repointed = artifact
+        if path == child or child in path.parents:
+            return artifact
+    return None
 
 
 def _consolidate_workspace_subdir(
@@ -1043,14 +1124,32 @@ def _consolidate_workspace_subdir(
     workspace_subdir: Path,
     unwind: _Unwind,
 ) -> None:
-    """Move the project's top-level files into the ``workspace/`` subdir (drift H)."""
+    """Move the project's top-level files into the standalone workspace dir (drift H)."""
+    import sys
+
     if not root.is_dir():
         return
+    # ⚑ A ``workset.workspaces`` that resolves AT the root means the workspace already IS the
+    # root: there is nothing to consolidate, and moving each child onto itself would fail.
+    if workspace_subdir.resolve() == root.resolve():
+        return
 
-    movable = [
-        child for child in root.iterdir()
-        if child.name not in _STANDALONE_ROOT_ARTIFACTS
-    ]
+    artifacts = _standalone_root_artifacts(root)
+    movable: list[Path] = []
+    for child in root.iterdir():
+        if child.name in _STANDALONE_FIXED_ARTIFACTS:
+            continue
+        claim = _artifact_claiming(child, artifacts)
+        if claim is None:
+            movable.append(child)
+            continue
+        key, _path, repointed = claim
+        if repointed:
+            # ⚑ [R144]: the user put it there, so the keep is REPORTED and names the key —
+            # otherwise a directory sitting outside the workspace after a convert that says it
+            # consolidated everything is unexplained.  Default-layout keeps stay silent.
+            print(f"Note: left {child} at the standalone root — {key} resolves "
+                  f"inside it.", file=sys.stderr)
     if not movable:
         return
 
@@ -1113,7 +1212,14 @@ def _to_standalone(
     root = new_workspace
     root.mkdir(parents=True, exist_ok=True)
     dst_metadata = root / STANDALONE_META_DIR
-    workspace_subdir = root / "workspace"
+    # ⚑ RESOLVED, and it MUST agree with ``resolve_standalone_project``, which reads the same
+    # key to answer ``project_path``.  A literal ``root / "workspace"`` is the right answer
+    # only until the root carries a ``workset.workspaces`` repoint, and then it fills a
+    # directory the box never looks in — two answers for one box, the defect this file has
+    # already paid for twice (see the vault note in :func:`_to_workset`).
+    workspace_subdir = _resolve_standalone_workspaces(
+        root, load_workset_settings_doc(root),
+    )
     _consolidate_workspace_subdir(root, workspace_subdir, unwind)
 
     # ⚑ The box METADATA DIR (``box_data/`` for a standalone source) — the ROOT would
@@ -1146,7 +1252,9 @@ def _to_standalone(
 
     workspace_subdir.mkdir(parents=True, exist_ok=True)
     write_project_gitignore(root)
-    vault_dir = root / "vault"
+    # ⚑ The LITERAL skeleton parent, deliberately — no key names it (``_VAULT_LEAF``), and
+    # this ``.gitignore`` is the same file ``standalone_vault_teardown`` clears.
+    vault_dir = root / paths_defaults.VAULT_PATH
     if vault_dir.is_dir():
         gi = vault_dir / ".gitignore"
         if not gi.exists():

@@ -3738,6 +3738,46 @@ empty line for the first and `(not set)` for the second.
 
 ---
 
+### 2.60 `box convert --standalone` recognises a repointed directory as kanibako's
+
+**Read this if you have converted a box to standalone, or intend to.** A standalone box keeps its
+live workspace in a subdirectory of the project root, so the convert sweeps everything else at the
+root down into it. Everything it must *not* sweep — the box directory, the vault, the canon tree —
+it used to recognise by literal directory name.
+
+**What changed.** A name cannot describe a directory you have moved. Three consequences followed,
+and only the first needed a repointed setting to appear:
+
+- With `workset.vault_ro` set to `store/ro`, the root held a directory called `store`. That name
+  was in no list, so the sweep treated it as your project content and moved it into the workspace.
+  The box then opened a vault that was empty. `workset.workspaces` had the same gap.
+- `workset.canon` was in no list at all, repointed or not. Converting a box out of standalone and
+  back moved the canon tree into the workspace on a completely default layout.
+- A setting pointed at an **absolute** path could not be described by a name list under any
+  spelling. With `workset.workspaces` pointed outside the root, the convert filled a `workspace/`
+  directory the box never opens, and left your files where nothing binds them.
+
+The sweep now resolves `workset.workspaces`, `workset.vault_ro`, `workset.vault_rw` and
+`workset.canon` and compares directories, so a repointed one is recognised wherever you put it, and
+the workspace is filled at the path the box actually reads.
+
+**How a user notices.** Two new behaviours, both on `box convert --standalone`:
+
+- A directory kept because one of those four settings resolves into it is reported on standard
+  error, naming the setting: `Note: left /path/store at the standalone root — workset.vault_ro
+  resolves inside it.` The default layout is silent, exactly as before.
+- A `workset.yaml` at the root carrying a value kanibako cannot resolve now **stops the convert**
+  and names the key, rather than guessing which of your directories to move. The refusal lands
+  before anything is copied or moved, so the tree is untouched — fix the key and run the convert
+  again.
+
+**What you must do.** Nothing, unless a past convert already displaced a directory. Nothing was
+deleted: look in the workspace subdirectory for the directory a `workset.*` setting names, and move
+it back up to the project root. Then run `kanibako box show` and confirm the vault and canon paths
+point at directories with your files in them.
+
+---
+
 ## 3. For plugin authors
 
 ⚑ **THREE PERSONA SURFACES ON `Target` CHANGED SHAPE in 1.8.0 — a plugin built against 1.7.x needs
