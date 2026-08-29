@@ -210,21 +210,74 @@ policy:
     # path; child = the LONGER path that starts with it. Comparisons are over
     # NORMALIZED guest paths and are SEPARATOR-GUARDED (`~/foobar` is not inside
     # `~/foo`). REFUSE FIRST; if nothing refuses, the arrival is accepted.
-    containment_table:            # arriving kind -> what the occupant is -> outcome
-      bind:
-        point_is_bind:  refuse
-        point_is_mask:  sweep
-        child_is_bind:  refuse
-        child_is_mask:  sweep
-        parent_is_bind: nest
-        parent_is_mask: refuse
-      mask:
-        point_is_bind:  sweep_except_home_refuse
-        point_is_mask:  refuse
-        child_is_bind:  sweep_except_home_refuse
-        child_is_mask:  sweep
-        parent_is_bind: nest
-        parent_is_mask: refuse
+    # ⚑ FOUR arriving kinds x SIX occupant relations = 24 cells, and ALL 24 ARE
+    # DECLARED. The two COPY rows govern `synced` ONLY: `seeded` applies to the home
+    # bind alone and completes BEFORE any binding folds, so it meets no mount here
+    # (`copies:` below). ⚑ FILE vs DIRECTORY is the whole point of two copy rows and
+    # they differ in exactly ONE cell — at a mask's own point a copied FILE replaces
+    # the mask while a copied DIRECTORY is refused (refusal 5); everywhere else the
+    # two agree.
+    containment_table:
+      arriving_kinds:
+        - bind                    # a MOUNT carrying a host source
+        - mask                    # a MOUNT carrying none — a void (src = None)
+        - copy_file               # a `synced` copy whose SOURCE is a file
+        - copy_dir                # a `synced` copy whose SOURCE is a directory
+      # ⚑ THE COLUMNS ARE A CROSS PRODUCT: {point, child, parent} x {bind, mask}.
+      # Each names the OCCUPANT's relation to the ARRIVING dest — parent = the
+      # SHORTER path, child = the LONGER path that starts with it.
+      occupant_relations:
+        - point_is_bind
+        - point_is_mask
+        - child_is_bind
+        - child_is_mask
+        - parent_is_bind
+        - parent_is_mask
+      # The OUTCOME VOCABULARY. Every cell below is one of these and nothing else.
+      outcomes:
+        refuse: "REFUSED — one of the numbered refusals below names the arrival"
+        sweep: "ACCEPTED, and the arriving MOUNT deletes the occupant (on_accept)"
+        nest: "ACCEPTED INSIDE the occupant — both survive, the arrival mounting
+               within it"
+        sweep_except_home_refuse: "sweep, EXCEPT where the occupant is HOME, which
+               REFUSES (refusal 4) — nothing may subsume home"
+        append: "ACCEPTED — the copy lands ON TOP of the occupying mount and writes
+               THROUGH into that mount's host source, which stays intact. NOT a
+               refusal: most of the mount remains"
+        ok: "ACCEPTED — the occupant is INSIDE the arriving copy and is UNTOUCHED.
+               Only a MOUNT sweeps on accept, so a copy subsumes nothing"
+        not_applicable: "the relation CANNOT ARISE — nothing sits inside a FILE.
+               Behaviourally identical to `ok`; it is the copy_file CHILD cells and
+               no others"
+      cells:                      # arriving kind -> what the occupant is -> outcome
+        bind:
+          point_is_bind:  refuse
+          point_is_mask:  sweep
+          child_is_bind:  refuse
+          child_is_mask:  sweep
+          parent_is_bind: nest
+          parent_is_mask: refuse
+        mask:
+          point_is_bind:  sweep_except_home_refuse
+          point_is_mask:  refuse
+          child_is_bind:  sweep_except_home_refuse
+          child_is_mask:  sweep
+          parent_is_bind: nest
+          parent_is_mask: refuse
+        copy_file:
+          point_is_bind:  append
+          point_is_mask:  sweep
+          child_is_bind:  not_applicable
+          child_is_mask:  not_applicable
+          parent_is_bind: append
+          parent_is_mask: refuse
+        copy_dir:
+          point_is_bind:  append
+          point_is_mask:  refuse
+          child_is_bind:  ok
+          child_is_mask:  ok
+          parent_is_bind: append
+          parent_is_mask: refuse
     refusals:                     # the six, stated once
       - "an existing MASK that is a PARENT of the dest refuses EVERY arrival"
       - "an arriving BIND is refused by an existing bind AT its dest or a CHILD of
@@ -235,9 +288,14 @@ policy:
       - "an arriving MASK is refused if HOME is at its dest or a CHILD of it —
          nothing may subsume home, masks included"
       - "an arriving COPY of a DIRECTORY is refused by an existing mask AT its dest
-         — a directory onto a void would leave the mask partially populated"
+         — a directory onto a void would leave the mask partially populated. ⚑ A
+         copy of a FILE at that same point is ACCEPTED and DELETES the mask: one
+         file fills one void totally, and there is no such thing as a partial mask.
+         That accepted cell is `copy_file.point_is_mask: sweep` above, and it is the
+         ONE cell in which the two copy rows differ"
       - "an arriving SYNCED copy is refused if NO mount COVERS its dest — nothing
-         would persist it"
+         would persist it. ⚑ This one names NO cell of the table: every column
+         presupposes an OCCUPANT, and this refusal's premise is the ABSENCE of one"
     on_accept: "the mount DELETES every mount AT or INSIDE its dest, then inserts.
                 ONE sweep covers a bind replacing a mask at its point, a mask
                 replacing a bind at its point, and a mask subsuming a child mask."
@@ -246,11 +304,14 @@ policy:
                 below). SYNCED is the opposite — it copies LAST, through the final
                 bind map — so a dest NO mount covers is an ERROR."
     # ⚑ THE ONE CHANGE THAT NARROWS WHAT A USER MAY WRITE (2026-08-10). TWO MOUNTS
-    # AT ONE DEST ARE NOW AN ERROR IN EVERY SCOPE COMBINATION. The two retired rows
-    # resolved a cross-scope abstraction-vs-abstraction collision SILENTLY by scope
-    # precedence and a same-scope one by proceeding with a WARN; both are refusals
-    # now — the collapse arbitrates NOTHING at a destination. A box-scope override
-    # of a system-scope entry AT THE SAME DEST becomes suppress-then-add.
+    # AT ONE DEST ARE AN ERROR IN EVERY SCOPE COMBINATION BUT ONE — `common` and
+    # `caches` at one dest in ONE scope never reach the collapse at all: the
+    # store-shape PRODUCER decides that pair first, WARNS, and the LAST wins. The
+    # two retired rows resolved a cross-scope abstraction-vs-abstraction collision
+    # SILENTLY by scope precedence and a same-scope one by proceeding with a WARN;
+    # neither survives IN THE COLLAPSE, which arbitrates NOTHING at a destination.
+    # A box-scope override of a system-scope entry AT THE SAME DEST becomes
+    # suppress-then-add.
     ro_rw_is_the_serious_case: "two bindings at one dest disagreeing on MODE is a
                 semantic disagreement, not just a source disagreement — silently
                 picking one hands the user a read-only mount where they expected

@@ -9,8 +9,18 @@ inverted, and stays green when the others are. A test that passes because the ru
 is incidentally satisfied proves nothing, and the five-row table is exactly the shape
 that invites incidental passes.
 
-The table (spec §0, 2026-07-29) replaced the flat authority ladder
-``seed < cache < binding < common < synced < masks``:
+⚑⚑ THE FIVE ROWS BELOW ARE THIS FILE'S OWN CASE NUMBERING, NOT SPEC §0'S TABLE.
+They are the 2026-07-29 shape that replaced the flat authority ladder
+``seed < cache < binding < common < synced < masks``, and they stay because every
+section heading, tombstone and sibling-file reference below is written in them.
+
+🛑 SPEC §0'S TABLE IS A DIFFERENT SHAPE AND HAS BEEN SINCE 2026-08-10: four ARRIVING
+KINDS (``bind`` · ``mask`` · ``copy (file)`` · ``copy (dir)``) against six OCCUPANT
+RELATIONS — 24 cells, keyed on CONTAINMENT rather than on exact-dest equality. It
+ships in the registry as ``policy.category_collisions.containment_table`` and is
+enforced cell by cell in
+``tests/test_settings/test_manifest_enforces_collisions.py``. Do not read the rows
+below as that table, and do not add a case here by looking one up in them.
 
 ===  =============================================  =========================
 row  case                                            outcome
@@ -19,8 +29,11 @@ row  case                                            outcome
 2    ``masks`` at a dest a binding occupies          OVERRIDE
 3    an ABSTRACTION extending onto an occupied dest  ERROR — refuse the
                                                      EXTENSION
-4    abstraction vs abstraction, DIFFERENT scopes    scope precedence, SILENT
-5    abstraction vs abstraction, SAME scope          existing order + WARN
+4    abstraction vs abstraction, DIFFERENT scopes    🕯️ the silent scope-
+                                                     precedence pick is GONE
+                                                     (see the row-4 tombstone)
+5    abstraction vs abstraction, SAME scope          existing order + WARN,
+                                                     at the PRODUCER
 ===  =============================================  =========================
 
 ⚑⚑ **WHO DECIDES WHICH ROW — READ THIS BEFORE ADDING A CASE.** Until cutover 6-R3
