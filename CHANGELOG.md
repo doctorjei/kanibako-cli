@@ -329,6 +329,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Converting a box to standalone moved kanibako's own directories into your workspace.** A
+  standalone box keeps its live workspace in a subdirectory of the project root, so `kanibako box
+  convert --standalone` sweeps everything else at the root down into it. What it left behind was a
+  list of six literal names — and a name cannot describe a directory you have moved. If
+  `workset.vault_ro` pointed at `store/ro`, the sweep saw a directory called `store`, matched
+  nothing in the list, and moved your vault into the workspace; the box then opened a vault that
+  was empty. `workset.canon` was worse, because it was never in the list at all: converting a box
+  out of standalone and back moved the canon tree into the workspace with no repointed setting
+  involved. And a setting pointed at an absolute path could not be described by that list under any
+  spelling — with `workset.workspaces` pointed outside the root, the convert filled a `workspace/`
+  directory the box never opens and your files were left where nothing binds them. The sweep now
+  resolves `workset.workspaces`, `workset.vault_ro`, `workset.vault_rw` and `workset.canon` and
+  compares directories, so a repointed one is recognised as kanibako's wherever you put it, and the
+  workspace is filled at the path the box actually reads. **What you will see:** a directory kept
+  because one of these settings points into it is now reported by name on standard error — `Note:
+  left /path/store at the standalone root — workset.vault_ro resolves inside it.` The default
+  layout keeps behave exactly as before and say nothing. A `workset.yaml` at the root carrying a
+  setting kanibako cannot resolve now stops the convert and names the key, instead of guessing
+  which of your directories to move; nothing has been touched at that point. If you already ran a
+  convert that displaced a directory, it was moved and not deleted — it is under the workspace
+  subdirectory, and moving it back to the root restores the layout.
 
 - **`kanibako system set agent.claude.run_args="--verbose"` reported success and the agent never
   got the arguments.** Two commands write this setting, and they stored two different things.

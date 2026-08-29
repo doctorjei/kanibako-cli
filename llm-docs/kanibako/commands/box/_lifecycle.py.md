@@ -168,11 +168,13 @@ is the root.) A standalone box's tree roots at `<root>` with:
   that root),
 * a `box_data/` marker dir (home + helper log) — the real box metadata dir,
 * `vault/{ro,rw}/`,
-* and the **live workspace as a `workspace/` SUBDIR** (drift H).
+* and the **live workspace as a `workspace/` SUBDIR** (drift H) — ⚑ that leaf is the DEFAULT of
+  `workset.workspaces`, not a fixed name; a standalone root is a degenerate workset root, so every
+  directory in this list except `box_data/` and the root meta is a repointable key.
 
 Every other mode roots its live workspace at the project dir itself. That single difference is the
-source of the consolidate/unconsolidate pair, of `_STANDALONE_ROOT_ARTIFACTS`, and of the
-`box_metadata_dir` rule below.
+source of the consolidate/unconsolidate pair, of the root-artifact split described under
+`_STANDALONE_FIXED_ARTIFACTS`, and of the `box_metadata_dir` rule below.
 
 ### ⚑⚑ `box_metadata_dir`, never `metadata_path` (M-8)
 
@@ -565,28 +567,58 @@ See **Naming — the PRIMARY membership register** for the mint/unregister/regis
 ⚑ When the name is reused in place, the metadata ALREADY lives at the destination — copying would be
 a (failing) copy-onto-self, so the existing tree is reused instead.
 
-```_STANDALONE_ROOT_ARTIFACTS```
-Top-level entries that are kanibako artifacts (NOT workspace content) and so must STAY at the
-standalone root rather than move into the `workspace/` subdir during a convert (drift H
-consolidation) — six entries: `box_data/`, the `workspace` subdir being populated, `vault/`, BOTH
-root metas `workset.yaml` and `box.yaml` (drift I), and `.kanibako.lock`.
+### ⚑⚑ What stays at the standalone root is RESOLVED, never a leaf name
 
-⚑⚑ **KNOWN GAP, measured — these are LEAF NAMES and cannot express a REPOINTED key.** A root
-carrying `workset.vault_ro: store/ro` has its `store/` swept into `workspace/` by
-`_consolidate_workspace_subdir`, because only the literal `vault` is listed; the data is displaced
-rather than lost, but the box then resolves its vault to an empty directory. `workspace` has the
-IDENTICAL gap against `workset.workspaces`, and an ABSOLUTE repoint is not representable in a name
-set at all. The fix is therefore a path-based comparison covering BOTH keys, not another string in
-the frozenset — a separate defect from the vault-resolution work, deliberately left alone.
+The sweep decides, for each child of the root, "is this kanibako's or the user's". It answers in two
+parts, and the split is the whole design:
+
+```_STANDALONE_FIXED_ARTIFACTS```
+The four names NO key can repoint: `box_data/` (spec §2c fixes the standalone box dir), the root
+`workset.yaml` and `box.yaml` (drift I), and `.kanibako.lock`. A name test is correct for these
+because there is nothing for a name to be wrong about.
+
+```_STANDALONE_ROOT_DIR_KEYS``` / ```def _standalone_root_artifacts(root: Path) -> list[tuple[str, Path, bool]]```
+Everything else the root owns is a declared, repointable `workset.*` DIRECTORY key —
+`workspaces`, `vault_ro`, `vault_rw`, `canon` — and each is RESOLVED off one `workset.yaml` read,
+returned as `(key, path, repointed)`. `boxes` is absent because §2c fixes the box dir; `logs`,
+`template` and `channelroot` are absent because standalone does not materialize them (each
+resolver's own docstring is the source). The literal `vault/` skeleton parent is appended when it is
+on disk — exactly the tail `standalone_vault_teardown` appends, and for its reason: no key names it.
+
+⚑ This replaced a frozenset of LEAF NAMES, which could not express a repoint. A root carrying
+`workset.vault_ro: store/ro` had its `store/` swept into the workspace dir, because the root child
+is `store` — a name no list held — and the box then resolved its vault to an empty directory.
+`workset.canon` was never listed at all, so a round trip through `convert --default` and back swept
+kanibako's own canon tree with NO repoint involved. And an ABSOLUTE repoint is not representable in
+a name set at all: with `workset.workspaces` pointed outside the root, the literal
+`root / "workspace"` destination filled a directory the box never opens.
+
+⚑ `_artifact_claiming` uses an ANCESTOR test, not equality — `store/ro` is not itself a child of the
+root; `store` is, and it HOLDS the arm.
+
+⚑ [R144]: a keep whose resolved path DIFFERS from that key's default is one the USER authored, and
+it is REPORTED by key on stderr (`Note: left <path> at the standalone root — workset.vault_ro
+resolves inside it.`). Default-layout keeps stay silent, as they always have.
+
+⚑ An unresolvable repoint RAISES (`SettingsError`, naming the key and the token) instead of
+guessing. A root whose layout keys do not answer is a root whose children cannot be told apart, and
+the sweep MOVES USER DATA — so the refusal lands before `_to_standalone` has copied or written
+anything, the same call order `standalone_vault_teardown` demands for the same reason.
 
 ```def _consolidate_workspace_subdir(root: Path, workspace_subdir: Path, unwind: _Unwind) -> None```
-Move the project's top-level files into the `workspace/` subdir.
+Move the project's top-level files into the standalone workspace dir.
 
-Drift H: a standalone box's live workspace is the `<root>/workspace/` SUBDIR, not the root itself.
-On an in-place convert the user's project files currently sit AT the root; everything that is not a
-kanibako artifact (`_STANDALONE_ROOT_ARTIFACTS`) is relocated into the subdir so the BIND SOURCE
-matches the resolved layout. A no-op when there is nothing to move — an empty root, or files already
-consolidated. Each move is pushed onto *unwind* so a later failure restores the original placement.
+Drift H: a standalone box's live workspace is a SUBDIR of the root, not the root itself. On an
+in-place convert the user's project files currently sit AT the root; everything that is not a
+kanibako artifact (above) is relocated into that subdir so the BIND SOURCE matches the resolved
+layout. A no-op when there is nothing to move — an empty root, files already consolidated, or a
+`workset.workspaces` that resolves AT the root (the workspace already IS the root, and moving each
+child onto itself would raise). Each move is pushed onto *unwind* so a later failure restores the
+original placement.
+
+⚑ The destination is `_resolve_standalone_workspaces`, computed in `_to_standalone` — the SAME key
+`resolve_standalone_project` reads to answer `project_path`. Two answers for one box is the defect
+class this file has already paid for at the vault arm and the channel partition.
 
 ⚑ *root* ALWAYS holds the project's current files at this point in the convert — in-place: the
 source dir; relocating: the copy STEP 2 made at *dest*; external-in-place: the external dir that is
@@ -631,8 +663,10 @@ gave no `--name` (i.e. `new_name == state.name`), in which case it is NOT treate
 assertion and a fresh canonical id is generated instead. This is exactly why the plan carries
 `requested_name` separately (R1/R3).
 
-⚑ **ORDER:** consolidate the source's top-level files into `workspace/` FIRST, THEN lay down the
-kanibako artifacts — otherwise the artifacts get swept into the subdir with everything else.
+⚑ **ORDER:** consolidate the source's top-level files into the resolved workspace dir FIRST, THEN
+lay down the kanibako artifacts — otherwise the artifacts get swept into the subdir with everything
+else. ⚑ The destination comes from `_resolve_standalone_workspaces(root, …)`, so it is the same
+directory the box will later resolve; see the sweep's own section above.
 
 ⚑⚑ **The `box.yaml` landing in `box_data/` must NOT be deleted as an "orphan".** It IS the
 destination's BOX TIER now (spec §2c ALL PROJECTS: `meta.box.settings = @meta.box.path/box.yaml`,
