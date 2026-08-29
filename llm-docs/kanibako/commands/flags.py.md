@@ -41,8 +41,8 @@ Relevance is keyed by the command's dotted path (e.g. `"start"`, `"agent reauth"
 ## The relevance sets, and who is deliberately outside them
 
 `AGENT_FLAG_COMMANDS` is the ephemeral agent-resolver override's set: the commands that run the
-unified cascade with the explicit-agent seam. That is the launch path (`start` plus its box alias),
-`agent reauth`, and create (top-level plus its box alias) —
+unified cascade with the explicit-agent seam. That is the launch path (`start` plus its box spelling),
+`agent reauth`, and create (top-level plus its box spelling) —
 `run_create` threads the explicit agent to the persona verdict and the home seed, and a persona ref
 whose persona-grata store entry exists drives the initial store import.
 
@@ -236,21 +236,21 @@ error is only reachable if the flag parses first. Advertising must NOT be univer
 `--help` that lists a flag the command answers with exit 2 is help that promises a refusal. Before
 this split, 95 command keys offered `--agent` and 82 offered `--box` that way.
 
-⚑ Aliases share ONE parser object (`add_parser(aliases=[...])`), so the advertisement is a property
-of the parser, not of the key: `box rm` and `box delete` cannot differ. `command_key`, by contrast,
-reports the alias the user actually TYPED — so `box mv --box X` is refused where `box move --box X`
-is accepted, and the three alias keys (`box delete`, `box inspect`, `box mv`) still advertise
-`--box`. That mismatch is about the relevance SETS, not about the injector.
+⚑ Aliases share ONE parser object (`add_parser(aliases=[...])`), so advertisement is a property of
+the parser, not of the key: `box rm` and `box delete` cannot differ. Relevance agrees, because
+`command_key` reports the CANONICAL name whichever spelling was typed — `box mv --box X` is judged
+as `box move`. The declared sets therefore hold canonical spellings only: listing the aliases too
+would be a second carrier of the alias list, rotting the day someone adds one.
 
 The property is pinned by a derived test
 (`tests/test_commands/test_flags.py::TestBlanketFlagsAreAdvertisedOnlyWhereTheyApply`): it walks the
 whole tree and asserts advertisement against the declared sets rather than a hand-written list, so a
 new command is born suppressed unless it joins a set.
 
-`command_key` computes the dotted command path for a parsed namespace, mirroring the keys in
-`AGENT_FLAG_COMMANDS` / `BOX_FLAG_COMMANDS`. It walks the known nested-subparser dest chain so a
-command and its subcommand are joined by a single space. The dests are listed in walk order; only
-one level is needed for the relevance sets above, but the full chain is included for completeness.
+`command_key` computes the dotted command path for a parsed namespace. `_walk` stamps that path
+on each leaf as it injects, visiting each parser object once under its first registered name —
+which is what makes the stamp canonical. `command_key` returns that stamp when present, and
+rebuilds the path from the typed-name dest chain only for a namespace the walk never stamped.
 
 ## Subject reconciliation
 
