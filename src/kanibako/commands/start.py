@@ -6438,10 +6438,16 @@ def _launch_snapshot_inputs(
     # ``config set`` took them, ``config get`` read them back, and nothing changed.
     # The per-mode gating lives inside the helper — the four workset-LOCAL leaves are
     # PRIMARY/NAMED, the two partition leaves are ALL PROJECTS.
+    # The resolved ``workset.workspaces`` (§3.3) — NAMED/STANDALONE only; PRIMARY
+    # declares no arm. ⚑ It is fed the SAME ``ws_root_literal`` that becomes
+    # ``meta.runtime.ws_root`` above, so the dir the floor publishes and the root the
+    # snapshot anchors at cannot disagree about which workset was resolved.
+    _workspaces = _workset_workspaces_floor_value(mode, ws_root_literal)
     _channelroot, _ws_channels = _workset_channel_floor_values(std, proj)
     workset_anchor = settings_launch_module.workset_anchor_floor(
         mode=mode,
         channelroot=_channelroot,
+        workspaces=_workspaces,
         workset_channels=_ws_channels,
     )
     return (
@@ -6553,6 +6559,7 @@ def _resolve_launch_snapshot(
     the ONE launch resolve, and what gates each parameter", for every parameter.
     """
     from kanibako.settings import settings_launch
+    from kanibako.launch.templates import agent_template_defaults
     from kanibako.settings.agent_representation import (
         agent_categories_for_node,
         agent_default_partial,
@@ -6650,6 +6657,23 @@ def _resolve_launch_snapshot(
             default_categories,
             core_defaults.canon_default_categories(std, agent_name or None),
             family="canon", origins=cat_origins,
+        )
+        # The AGENT-tier ``template`` SOURCE keys (spec §2d) — the direct sibling of
+        # the ``canon`` agent scalars just above, folded HERE for the same reason they
+        # are: both arms are DECLARED rows with real defaults, and a declared key must
+        # answer for a box that ALREADY EXISTS, not only for one being created.
+        # ⚑⚑ THE ONLY OTHER EMITTER IS THE CREATE-TIME SEED TABLE
+        # (``launch.templates.template_seed_defaults``, folded through
+        # ``extra_default_categories`` in :func:`_apply_init_seeds`), which runs with
+        # ``include_base_families=False`` — so the two never meet and neither is a
+        # second spelling of the other.
+        # ⚑ SOURCE SCALARS ONLY.  The ``seeded`` LAYERS are deliberately NOT here:
+        # seed-once is the failsafe against re-seed DATA LOSS, and a layer folded into
+        # an ordinary relaunch is exactly that bug.
+        _merge_default_categories(
+            default_categories,
+            agent_template_defaults(agent_name or None),
+            family="agent template sources", origins=cat_origins,
         )
         _merge_default_categories(
             default_categories, _channel_default_categories(std, proj),
@@ -9062,6 +9086,45 @@ def _workset_channel_floor_values(std, proj) -> "tuple[str | None, dict[str, str
         "share": str(wch.share),
     })
     return str(wch.root), leaves
+
+
+def _workset_workspaces_floor_value(
+    mode: str, ws_root_literal: "str | None",
+) -> "str | None":
+    """The resolved ``workset.workspaces`` the launch floor installs — ⚑ NOT primary.
+
+    ⚑ THIS IS THE VALUE THE PRE-SNAPSHOT PASS ALREADY REACHED, not a second answer to
+    the same question.  It is the same ``project.workset.resolve_workset_workspaces``
+    call, on the same root, that ``paths.resolve_standalone_project`` makes for
+    standalone and that ``WorksetSpec.workspaces_dir`` (via ``Workset.workspaces_dir``)
+    makes for named — one function, one repoint read, one grammar
+    (``settings/workset_dirkeys.py``).  Composing ``<root>/workspaces`` here instead
+    would be a second carrier and would lose every repoint.
+
+    ⚑ PRIMARY RETURNS ``None``: the manifest declares ``{primary: null, …}``.  The code
+    does honor a primary ``workspaces`` repoint (``project.workset.default_workset``),
+    and that divergence is RULED and the user's — it is not this seam's to publish as a
+    key.  ``workset_anchor_floor`` REFUSES a primary value rather than dropping one, so
+    the rule has one carrier and a caller cannot quietly re-open the arm.
+
+    *ws_root_literal* is the SAME string ``meta.runtime.ws_root`` is built from
+    (``proj.group.root`` named / ``proj.metadata_path`` standalone), so the workspaces
+    dir and the workset root cannot be resolved against two different roots.
+    """
+    if mode == "primary":
+        return None
+    from kanibako.project.workset import (
+        load_workset_settings_doc, resolve_workset_workspaces,
+    )
+
+    if ws_root_literal is None:  # pragma: no cover - guarded by the caller's mode split
+        raise ValueError(
+            f"workset.workspaces floor: mode {mode!r} has no workset root literal"
+        )
+    root = Path(ws_root_literal)
+    return str(resolve_workset_workspaces(
+        root, load_workset_settings_doc(root), standalone=(mode == "standalone"),
+    ))
 
 
 def _core_default_categories(

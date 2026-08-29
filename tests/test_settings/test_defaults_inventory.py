@@ -58,7 +58,15 @@ LABEL_TO_CONFORMANCE_CLASS: dict[str, str] = {
     "core-defaults.yaml (agent_default:)": "pinned",
     "core-defaults.yaml (env:)": "pinned",
     "config.py (KanibakoConfig field)": "pinned",
-    "config.py (read-with-default)": "pinned",
+    # ⚑⚑ THE ``config.py (read-with-default)`` LABEL IS GONE (2026-08-29) and its
+    # ``"pinned"`` line with it. Its last member, ``box.enable_vault``, became a
+    # ``KanibakoConfig`` field, so it is claimed by the label above — and a key in two
+    # groups raises out of ``key_rows``. Both labels are "pinned", so the class unions
+    # below are unchanged and the move is invisible to the provenance case, which is why
+    # it is written down here.
+    # ⚑ The reader ``config.read_box_enable_vault`` did NOT go: it is still the
+    # pre-snapshot route and still returns the same ``True``. What it stopped being is the
+    # only carrier — the same shape ``workset.skip_kuid_check`` had one commit earlier.
     "core_defaults.py (canon producer)": "pinned",
     # ⚑ ``kuid.py (SENTINEL)`` IS GONE (2026-08-29). ``workset.kuid`` moved to the anchor
     # floor, which emits ``kuid.SENTINEL`` by reference; both labels are "pinned", so the
@@ -67,22 +75,29 @@ LABEL_TO_CONFORMANCE_CLASS: dict[str, str] = {
     # ⚑ MOVED OUT of "path join at use" (2026-08-25) when the family stopped being a
     # join and started being seven resolved keys; the conformance file pins it now.
     "channels/channels.py (channel key derivation)": "pinned",
-    "built-in (path join at use)": "exempt",
+    # ⚑⚑ THE ``built-in (path join at use)`` LABEL IS GONE (2026-08-29) and its
+    # ``"exempt"`` line with it. Its last member, ``workset.workspaces``, moved to the
+    # label below when ``settings_launch.workset_anchor_floor`` gained the named/standalone
+    # arm and ``commands/start.py`` started handing it the resolved dir — so "no literal
+    # anywhere to compare the manifest to", the label's whole reason, stopped being true
+    # of the last row that claimed it. **No "exempt" survives that label.**
+    "project/workset.py (workspaces key resolution)": "pinned",
     "runtime-probed (podman graphroot)": "exempt",
     "(nothing declares it — unset until you set it)": "exempt",
     "(empty — the category starts with no entries)": "exempt",
     "core_defaults.py (canon producer, per node)": "exempt",
     "launch/templates.py (layer-2 seed, default arm)": "pinned",
     "launch/templates.py (layer-2 seed)": "exempt",
-    # ⚑ MOVED OUT of "path join at use" (2026-08-29): ``workset.template`` was labelled
-    # as having no literal to point at, and ``launch/templates.py`` writes one
-    # (``@meta.workset.path/template``, via ``AGENT_TEMPLATE_STORE_REL``).
-    # ⚑⚑ "exempt" HERE ONLY MIRRORS THE CONFORMANCE FILE, WHICH STILL LISTS THE KEY IN
-    # ``NO_ORACLE_PATH_JOIN`` — and that table's stated reason ("no literal anywhere to
-    # compare the manifest to") is the SAME false claim, so the key most likely belongs
-    # in the pinned set beside ``agent.default.template``. Writing that pin is a
-    # separate change; this line does not assert the exemption is right.
-    "launch/templates.py (layer-3 seed)": "exempt",
+    # ⚑ THE ``launch/templates.py (layer-3 seed)`` LABEL IS GONE (2026-08-29, same day it
+    # was added) and its ``"exempt"`` line with it. ``workset.template`` now reaches the
+    # ANCHOR FLOOR, whose group is derived, so it is claimed there — and a key in two
+    # groups raises out of ``key_rows``.
+    # ⚑⚑ THE EXEMPTION THAT LINE MIRRORED IS ALSO GONE, WHICH IS THE POINT: it carried a
+    # note saying the key "most likely belongs in the pinned set beside
+    # ``agent.default.template``" because ``NO_ORACLE_PATH_JOIN``'s stated reason ("no
+    # literal anywhere to compare the manifest to") was FALSE of it. That note was right,
+    # and the pin has now been written — the key moved into
+    # ``_ANCHOR_SCALAR_KEYS_PRIMARY_NAMED``. **No "exempt" survives this arc.**
 }
 
 
@@ -169,7 +184,26 @@ class TestSourcePartition:
         # What DID change is the launch snapshot itself: ``@workset.registry`` /
         # ``@workset.kuid`` / ``@workset.skip_kuid_check`` resolve where they used to be
         # ``__MISSING__``, in primary and named (standalone keeps the two ABSENCES).
-        assert sizes["settings_launch.py (anchor floor)"] == 9
+        # ⚑ WIDENED AGAIN 9 → 10 (2026-08-29, same day): ``workset.template``.
+        # ⚑⚑ ITS DEFECT WAS A DIFFERENT SHAPE FROM THE OTHER THREE, and the distinction is
+        # the whole reason it is here. The other three were emitted by NO floor. This one
+        # WAS emitted — but only into the CREATE-time seed resolve, which an existing box
+        # never runs again (``_seed_box_home``'s only two callers are ``run_create`` and
+        # ``_run_container``'s ``if proj.is_new:`` block). Under the user's 2026-08-29
+        # ruling — *"for any box that exists"* — reachability that happens only at create
+        # is not reachability. ⇒ **"a floor emits it somewhere" is not the test; "an
+        # existing box can resolve it" is.**
+        # ⚑ Its standalone arm is ``<None>`` and stays an ABSENCE, so this ``mode="primary"``
+        # probe sees it while standalone does not.
+        # ⚑⚑ STILL 10 AFTER ``workset.workspaces`` JOINED THE FLOOR (2026-08-29), AND THE
+        # NUMBER NOT MOVING IS THE EVIDENCE. That key is the MIRROR of the three above —
+        # real NAMED and STANDALONE arms, ``null`` at PRIMARY — so a ``mode="primary"``
+        # probe must not see it, and ``workset_anchor_floor`` REFUSES a primary value
+        # rather than dropping one. It is classified under its DERIVER
+        # (``project/workset.py (workspaces key resolution)``), the way the channel family
+        # is; if it ever appears here, the primary arm has been conformed to the code and
+        # the manifest's ruled ``null`` has been overwritten.
+        assert sizes["settings_launch.py (anchor floor)"] == 10
         assert sizes["settings_launch.py (auth floor)"] == 6
         assert sizes["core-defaults.yaml (agent_default:)"] == 4
 

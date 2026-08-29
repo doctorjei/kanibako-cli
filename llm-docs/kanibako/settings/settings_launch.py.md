@@ -525,8 +525,9 @@ workset-scope PATH anchors the spec's §2c binds reference (`workset.{boxes,vaul
 plus the workset-local channels) and the RO per-mode BOX ROOT `meta.box.path`, as REAL
 `@`-referenceable floor keys. The core home / vault / helper_log binds route through these anchors
 so a bind's `host_src` RESOLVES via the snapshot instead of a proj-attr literal injected at the
-seam. It is also the floor for the three NON-LAYOUT `workset.*` scalars — see that subsection below;
-the builder's name is narrower than its job.
+seam. It is also the floor for four more `workset.*` rows — three NON-LAYOUT scalars plus the
+layer-3 seed source `workset.template`; see that subsection below. The builder's name is narrower
+than its job.
 
 JC-B2b-1: these `workset.*` keys do NOT exist as resolvable snapshot keys otherwise —
 `resolve_system_paths` derives only the PRIMARY pseudo-keys (`system._boxes` /
@@ -637,11 +638,49 @@ that pass already reached or one key would resolve two ways. It was emitted by n
 until 2026-08-25 — a manifest row with a declared default that the keyspace could not answer, so
 `@workset.channelroot` dangled in every launch snapshot.
 
-### The three NON-LAYOUT `workset.*` scalars
+*workspaces* is the resolved `workset.workspaces` — the member-workspace root. NAMED and STANDALONE
+only; `None` at PRIMARY, whose manifest arm is `null`. Same defect as `channelroot` and the same fix
+(2026-08-29): the row had real named/standalone defaults that no floor emitted, so
+`@workset.workspaces` was `__MISSING__` in every launch snapshot, and its dependent
+`meta.box.workspace` `@`-referenced a key that answered at no terminus.
 
-The builder also emits `workset.skip_kuid_check`, `workset.registry` and `workset.kuid` — not
-layout anchors, and here for the same reason `workset.channelroot` is: each was a manifest row with a
-declared default that **no floor emitted in any mode**, so a whole-value `@`-ref to it resolved to
+⚑ **A LITERAL, AND MORE STRONGLY SO THAN `channelroot`.** `settings/workset_dirkeys.py` names
+`workset.workspaces` FIRST among the keys read on the DETECTION side, and four readers run before any
+snapshot exists: `paths._check_workset`, `project.workset._workset_skeleton_dirs`,
+`launch.box_resolve.find_connected_external_box` and `project/names.py`. `channelroot` is read
+pre-snapshot to BUILD paths; `workspaces` is read pre-snapshot to decide **what kind of box this even
+is**. A floor spelling the formula would let detection and the keyspace answer that question two ways.
+
+⚑ **Measured, not assumed:** with a workset repoint `channelroot: comms`, the snapshot's
+`workset.channelroot` is the RAW unrooted `"comms"` — the launch cascade does not root a relative
+workset-tier value; only `resolve_workset_dir_key` does, and only pre-snapshot. A formula composed at
+expand time would have produced `comms/common`. The same is true of a relative `workspaces:` repoint.
+
+🛑 **A `workspaces` value at PRIMARY is REFUSED, not dropped.** The manifest declares
+`{primary: null, …}`. The CODE does honor a primary `workspaces` repoint —
+`project.workset.default_workset` composes member workspaces off it — and that divergence is RULED
+and the user's (manifest note, B2-Editor S-1: *"do NOT 'conform' the code to the null"*). Publishing
+the resolved value as this KEY would conform the declared null to a code value, which is the wrong
+direction; the absence IS the primary arm's content, exactly as the standalone absences below are
+theirs. Refusing rather than ignoring keeps the per-mode rule in ONE carrier — a caller cannot
+re-open the arm quietly.
+
+🛑 **`meta.box.workspace` IS NOT SPELLED AGAINST THIS KEY, AND MUST NOT BE.** The manifest note
+claiming it is "spelled against the KEY so a repointed `workset.workspaces` carries it" is FALSE of
+the code, and the CODE IS RIGHT: `meta.box.workspace` is the construct-time `proj.project_path`
+literal, and it is the `host_src` of the `~/workspace` bind, so its spelling decides what a box
+MOUNTS. The formula `@workset.workspaces/@meta.box.name` is worse in three measured cases — an
+external connect (D10) yields `workspaces/<name>`, a discoverability SYMLINK that is never mounted
+(the `[F2]` podman hazard); a stranded pre-repoint member names a directory that does not exist, which
+L7 guarantee-create `mkdir`s so the box mounts an EMPTY `~/workspace` and the user's code silently
+disappears; and a relative repoint yields a relative `host_src`. Correcting that manifest note is the
+user's call and is boarded.
+
+### The NON-LAYOUT `workset.*` rows
+
+The builder also emits `workset.skip_kuid_check`, `workset.registry`, `workset.kuid` and
+`workset.template` — here for the same reason `workset.channelroot` is: each was a manifest row with a
+declared default that **no floor emitted**, so a whole-value `@`-ref to it resolved to
 `__MISSING__` in every launch snapshot (2026-08-29; the same class R-35 ruled a CODE defect, "fix the
 CODE"). A builder named for the anchors carrying them is the honest cost of one floor per scope —
 the alternative is a second `workset.*` floor whose only distinction is that its keys are not paths.
@@ -650,16 +689,32 @@ the alternative is a second `workset.*` floor whose only distinction is that its
 workset.skip_kuid_check   ALL      True                              (uniform bool)
 workset.registry          p/n      @meta.workset.path/registry.yaml
                           s'alone  NOT EMITTED  (declared <None>)
+workset.template          p/n      @meta.workset.path/template
+                          s'alone  NOT EMITTED  (declared <None>)
 workset.kuid              p/n      kuid.SENTINEL  ("00000")
                           s'alone  NOT EMITTED  ("<generated at creation>")
 ```
 
-⚑ **The two standalone ABSENCES are the load-bearing part.** `workset.registry`'s standalone arm is
-`<None>` — a lone box has no registry tier — and `workset.kuid`'s is the PROSE placeholder
+⚑ **The three standalone ABSENCES are the load-bearing part.** `workset.registry`'s standalone arm is
+`<None>` — a lone box has no registry tier; `workset.template`'s is `<None>` too — a lone box has no
+template tier, and a workset template seeds FUTURE boxes, of which a standalone root will never have
+one (spec `:936`); and `workset.kuid`'s is the PROSE placeholder
 `<generated at creation>`, because `paths.establish_standalone` MINTS a real kuid into the box's own
 `workset.yaml` at create time (`paths.py::establish_standalone`, via `box_identity.standalone_kuid`).
 A floor literal there would shadow nothing on a finished box and FABRICATE an identity on a
-half-created one. Neither is "a default we have not written yet".
+half-created one. None of them is "a default we have not written yet".
+
+⚑ **`workset.template` was reachable ONLY AT CREATE, which is not reachable.** Its value used to be
+spelled by `launch.templates.template_seed_defaults`, whose one consumer is the create-time seed
+resolve (`commands.start._apply_init_seeds`, reached only from `_seed_box_home`, whose only two call
+sites are `run_create` and `_run_container`'s `if proj.is_new:` block). A box that already exists
+never runs that resolve again, so `@workset.template` was `__MISSING__` on every ordinary launch.
+The seed table now only `@`-REFERENCES the key; this floor is the one spelling. ⚑ The GATE stays in
+`launch.templates` and is the SAME condition: `channels.has_workset_channels(proj)` IS
+`proj.mode is not standalone`, which is this builder's `standalone` arm. ⚑ The `template` LEAF is
+imported from `launch.templates.AGENT_TEMPLATE_STORE_REL`, not re-typed — the workset-scope
+whitelist entry that permits the leaf reads the same constant, and the import is FUNCTION-LOCAL
+because `settings` does not depend on `launch` at module level.
 
 ⚑ **Each value is the one the PRE-SNAPSHOT path already reaches, never a fresh literal.**
 `workset.kuid` is `kuid.SENTINEL` by reference, not a re-typed `"00000"` — the sentinel's unmintable
@@ -673,9 +728,11 @@ resolved literal `project/workset_registry.py` joins at use. That is the differe
 `channelroot`, and the reason differs too: `channelroot` is read on the DETECTION side before any
 snapshot exists, so its floor must carry the answer that pass reached; nothing reads `workset.registry`
 that early through the keyspace, so the formula is safe and a resolved literal here would make the
-floor a second carrier of one path. This also moves the row out of `test_manifest_conformance`'s
-`NO_ORACLE_PATH_JOIN` exemption (E1) — the reason for that exemption was "no `@`-ref literal exists
-anywhere to compare the manifest to", and now one does.
+floor a second carrier of one path. This also moved the row out of `test_manifest_conformance`'s
+"path join at use" exemption (E1) — the reason for that exemption was "no `@`-ref literal exists
+anywhere to compare the manifest to", and now one does. ⚑ **E1 IS NOW RETIRED ENTIRELY**: its last
+member, `workset.workspaces`, left the same way on 2026-08-29, so there is no "path join" class left
+to move a row back into.
 
 `_BOX_MODES` is the set of box modes this floor knows how to root. An undeclared variant is NOT a
 mode and is REFUSED rather than silently taking the primary/named arm.

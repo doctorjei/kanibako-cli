@@ -2140,9 +2140,15 @@ class TestStandaloneDetectionIsRootFileOnly:
 
 
 class TestStandaloneEnableVaultTier:
-    """``box.enable_vault`` is read DIRECTLY (not via the cascade), so P2's tier move
-    has to be handled at the reader: box tier wins, the ROOT file is the R2
-    downward-default that keeps a pre-P2 standalone box working with no migration."""
+    """``box.enable_vault`` resolves through the CASCADE — base < system < workset < box.
+
+    ⚑ IT DID NOT UNTIL 2026-08-29.  The value came from ``config.read_box_enable_vault``,
+    which opened exactly two files (the box tier, then the workset tier as an R2
+    downward-default) — so P2's tier move was handled at the READER, and the BASE and
+    SYSTEM levels were dropped without a word.  The cases below keep every answer that
+    arrangement gave, because those answers were right; what is added is the two levels it
+    could not see.
+    """
 
     def _standalone(self, config_file, tmp_home, *, box=None, root_extra=None):
         from kanibako.settings.config import BOX_META_FILE
@@ -2225,6 +2231,83 @@ class TestStandaloneEnableVaultTier:
             std, config, project_dir=str(tmp_home / "project"), initialize=False,
         )
         assert proj2.enable_vault is False
+
+    @staticmethod
+    def _write_system_tier(std, value: bool) -> None:
+        """Store ``box.enable_vault`` where ``kanibako system set`` stores it."""
+        from kanibako.settings.config_io import dump_doc
+
+        std.settings.parent.mkdir(parents=True, exist_ok=True)
+        dump_doc(std.settings, {"box": {"enable_vault": value}})
+
+    def test_a_system_tier_value_reaches_a_primary_box(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        """⚑⚑ THE CASE THAT DID NOT EXIST WHILE THE BUG DID (2026-08-29).
+
+        ``kanibako system set box.enable_vault=false`` returns 0, writes
+        ``@config.settings``, and ``system get`` echoes it back — and until this date
+        every box still came up with the vault created and mounted, because the value was
+        read from two files that are not the system tier.  Two carriers disagreeing at a
+        level the spec sanctions (``config_keys`` lets SYSTEM write ``box.*``).
+
+        ⚑ ANTI-VACUITY: the box tier is deliberately left unwritten.  A sparse create
+        persists nothing for a default-valued ``box.enable_vault``, so the system tier
+        below is the ONLY carrier of the ``False`` — there is no second file that could
+        be supplying it.
+        (Mutation: restore the two-file read in ``resolve_box_enable_vault`` → True → RED.)
+        """
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        self._write_system_tier(std, False)
+
+        proj = resolve_project(
+            std, config, project_dir=str(tmp_home / "project"), initialize=True,
+        )
+        assert proj.enable_vault is False
+        assert not proj.vault_rw_path.is_dir(), (
+            "the vault was materialized for a box whose resolved box.enable_vault is False"
+        )
+
+    def test_the_box_tier_still_beats_the_system_tier(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        """The new level is a LEVEL, not an override: ``… < system < workset < box``."""
+        from kanibako.settings.config_io import dump_doc
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        self._write_system_tier(std, False)
+
+        proj = resolve_project(
+            std, config, project_dir=str(tmp_home / "project"), initialize=True,
+        )
+        dump_doc(proj.metadata_path / BOX_META_FILE, {"box": {"enable_vault": True}})
+
+        proj2 = resolve_project(
+            std, config, project_dir=str(tmp_home / "project"), initialize=False,
+        )
+        assert proj2.enable_vault is True
+
+    def test_a_system_tier_value_reaches_a_standalone_box(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        """A lone box has no box tier written either, and the system level still reaches it.
+
+        ⚑ The standalone arm is asserted separately BECAUSE its two files are different
+        ones (``box_data/box.yaml`` + the ROOT ``workset.yaml``), and the defect was in
+        which files got opened.
+        """
+        from kanibako.settings.paths import resolve_standalone_project
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        self._write_system_tier(std, False)
+
+        root = tmp_home / "sa-system-tier"
+        root.mkdir()
+        proj = resolve_standalone_project(std, config, str(root), initialize=True)
+        assert proj.enable_vault is False
 
 
 class TestPathLeafDefaultsHaveOneCarrier:

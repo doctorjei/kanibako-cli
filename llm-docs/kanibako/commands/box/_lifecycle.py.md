@@ -62,8 +62,11 @@ exemption is a real invariant rather than a convenience:
   connected-external project, i.e. the user's own directory. **Every destructive branch keys on
   this flag.**
 * ⚑ **Two vault fields, and they are not interchangeable.** `enable_vault` is the RESOLVED
-  `box.enable_vault` — the box tier over the containing workset's downward default.
-  `box_authored_vault` is what the BOX ITSELF authored, workset tier ignored. **Only the authored
+  `box.enable_vault` — the whole cascade, `base < system < workset < box`, via
+  `config.resolve_box_enable_vault` (it was a two-file read until 2026-08-29, which is why a
+  system-scope value used to be ignored).
+  `box_authored_vault` is what the BOX ITSELF authored: one file, `config.read_box_enable_vault`,
+  which since the same date takes no fallback parameter at all. **Only the authored
   value is ever persisted at a destination box tier**; writing the resolved one pins a value the box
   was merely inheriting, so a later edit to the workset that published it can no longer reach the
   box, and the default follows the box into a workset that never declared it.
@@ -194,7 +197,7 @@ value was the workset's.
 The same ruling is what makes `_default_state_from_meta` work: the PRIMARY-membership reverse-lookup
 hit IS the existence signal, because identity no longer self-describes on disk — so there is no
 `project.mode` presence gate to consult, and `enable_vault` is a plain box-scope `box.enable_vault`
-read, decoupled from identity.
+resolve, decoupled from identity.
 
 And it is why `_to_workset`'s EXTERNAL arm reads the recorded workspace back out of the per-workset
 `boxes:` registry that `add_project` just wrote: under sparse create the box's own `box.yaml`
@@ -399,10 +402,12 @@ See **Sparse identity** for why the membership hit is the existence signal, and 
 home/vault are the default location only.
 
 ⚑ It derives its settings pair from `_default_project_group(std)` — the PRIMARY workset, the same
-group `resolve_project` builds — so `box.enable_vault` resolves through the R2 downward default
-here exactly as it does on the live path. Passing `None` as the group made `remap` answer
-differently depending only on whether the workspace directory still existed: present ⇒ the workset's
-`false` applied, gone ⇒ it did not and the vault was created.
+group `resolve_project` builds — and hands both to the same `config.resolve_box_enable_vault`, so
+`box.enable_vault` resolves here exactly as it does on the live path. Passing `None` as the group
+made `remap` answer differently depending only on whether the workspace directory still existed:
+present ⇒ the workset's `false` applied, gone ⇒ it did not and the vault was created. ⚑ Calling the
+two-file READER here (which this did until 2026-08-29) was the same defect one level up: it made
+`remap` disagree with `resolve_project` whenever a base- or system-tier value existed.
 
 ```def _resolve_workset_state(raw_path: Path, std: StandardPaths, config: KanibakoConfig) -> ProjectState```
 Resolve a workset project (internal or external-connected) to a state.

@@ -483,6 +483,7 @@ def workset_anchor_floor(
     *,
     mode: str,
     channelroot: str | None = None,
+    workspaces: str | None = None,
     workset_channels: Mapping[str, str] | None = None,
 ) -> dict[str, object]:
     """Build the LAYOUT-anchor floor keys — workset roots + the box root (spec §2c).
@@ -493,8 +494,9 @@ def workset_anchor_floor(
     contribution roots, and ``meta.box.home`` are UNIFORM. The formulas and what each
     one feeds: the llm-doc.
 
-    ⚑ It also carries the three NON-LAYOUT ``workset.*`` scalars — ``skip_kuid_check``
-    (every mode), ``registry`` and ``kuid`` (primary/named only). They are here for the
+    ⚑ It also carries the NON-LAYOUT ``workset.*`` scalars — ``skip_kuid_check``
+    (every mode), ``registry`` and ``kuid`` (primary/named only) — and the layer-3 seed
+    source ``workset.template`` (primary/named only). They are here for the
     same reason ``workset.channelroot`` is: each is a manifest row with a declared
     default that no floor emitted, so a whole-value ``@``-ref to it resolved to
     ``__MISSING__`` in every launch snapshot. A builder named for the anchors is the
@@ -519,12 +521,39 @@ def workset_anchor_floor(
     ``@meta.workset.path/channels`` formula, and deliberately so: the key is read on the
     DETECTION side before any snapshot exists, and the floor must carry the answer that
     pass already reached or the two would resolve one key two ways.
+
+    *workspaces* is the resolved ``workset.workspaces`` — NAMED/STANDALONE only, and
+    ``None`` at PRIMARY, whose manifest arm is ``null``. ⚑⚑ IT IS A LITERAL FOR THE SAME
+    REASON AS ``channelroot``, ONLY MORE SO. ``settings/workset_dirkeys.py`` names this
+    key FIRST among the ones read on the detection side, and four readers run before any
+    snapshot exists — ``paths._check_workset``, ``project.workset._workset_skeleton_dirs``,
+    ``launch.box_resolve.find_connected_external_box`` and ``project/names.py``.
+    ``channelroot`` is read pre-snapshot to BUILD paths; ``workspaces`` is read
+    pre-snapshot to decide WHAT KIND OF BOX THIS EVEN IS, so a floor that spelled the
+    formula instead would let detection and the keyspace answer that question two ways.
+    ⚑ MEASURED, not assumed: with a workset repoint ``channelroot: comms`` the snapshot's
+    ``workset.channelroot`` is the RAW unrooted ``"comms"`` — the launch cascade does not
+    root a relative workset-tier value; only ``resolve_workset_dir_key`` does, and only
+    pre-snapshot. A formula composed at expand time would have produced ``comms/common``.
+
+    🛑 A *workspaces* value at PRIMARY is REFUSED, not dropped. The manifest declares
+    ``{primary: null, …}``, and the CODE's divergence — ``project.workset.default_workset``
+    honors a ``workspaces`` repoint at primary — is RULED and the user's (manifest note,
+    B2-Editor S-1: *"do NOT 'conform' the code to the null"*). Writing that resolved value
+    into the keyspace here would conform the declared null to a code value, which is the
+    wrong direction; the absence is the primary arm's whole content, exactly as it is for
+    ``workset.registry``/``workset.template``/``workset.kuid`` at standalone.
     """
     if mode not in _BOX_MODES:
         raise SettingsError(
             f"workset_anchor_floor: unknown box mode {mode!r} (expected one of "
             f"{', '.join(sorted(_BOX_MODES))})"
         )
+    # ⚑ The ``template`` LEAF is not re-typed here: ``launch.templates`` owns the one
+    # spelling, and the whitelist entry that permits the leaf reads the same constant.
+    # LOCAL import — ``settings`` does not depend on ``launch`` at module level.
+    from kanibako.launch.templates import AGENT_TEMPLATE_STORE_REL
+
     standalone = mode == "standalone"
     floor: dict[str, object] = {
         # boxes/logs are PER-MODE; the vault roots are UNIFORM (§2c ALL PROJECTS) —
@@ -566,9 +595,14 @@ def workset_anchor_floor(
         "workset.skip_kuid_check": True,
     }
     if not standalone:
-        # PRIMARY/NAMED ONLY, and the STANDALONE ABSENCE is the point in both rows —
+        # PRIMARY/NAMED ONLY, and the STANDALONE ABSENCE is the point in all three rows —
         # each declares an arm no floor may answer:
         #   workset.registry  standalone <None>  — a lone box has no registry tier.
+        #   workset.template  standalone <None>  — a lone box has no template tier; a
+        #     workset template seeds FUTURE boxes, of which a standalone root has none
+        #     (spec ``:936``; ``launch.templates`` omits the layer there for the same
+        #     reason, off the SAME predicate — ``channels.has_workset_channels`` IS
+        #     ``mode is not standalone``).
         #   workset.kuid      standalone "<generated at creation>" — PROSE, not a
         #     value: ``paths.establish_standalone`` MINTS the kuid into the box's own
         #     ``workset.yaml`` at create, so a floor literal here would shadow nothing
@@ -577,6 +611,14 @@ def workset_anchor_floor(
         # above — not as the resolved literal ``project/workset_registry.py`` joins at
         # use, which would make this a second carrier of one path.
         floor["workset.registry"] = "@meta.workset.path/registry.yaml"
+        # The LAYER-3 SEED SOURCE (spec §2c/§2a) — same defect, same fix. Its value was
+        # spelled ONLY by ``launch.templates.template_seed_defaults``, and that table
+        # feeds the CREATE-time seed resolve alone, so for a box that ALREADY EXISTS
+        # ``@workset.template`` resolved to ``__MISSING__`` at every launch. The seed
+        # table now REFERENCES the key instead of declaring it, so this line is the one
+        # spelling — and the ``template`` leaf itself still comes from the constant
+        # ``launch.templates`` owns.
+        floor["workset.template"] = f"@meta.workset.path/{AGENT_TEMPLATE_STORE_REL}"
         # ⚑ ``kuid.SENTINEL``, never a re-typed "00000": the sentinel's unmintable even
         # parity is what makes PRESENT-SENTINEL ("no kuid stored") distinguishable from
         # a wrong one, and that property lives with the codec.
@@ -587,6 +629,23 @@ def workset_anchor_floor(
     # node — a key the manifest promises and the keyspace could not answer.
     if channelroot is not None:
         floor["workset.channelroot"] = channelroot
+    # ⚑ The MEMBER-WORKSPACE root, same defect and same fix: a manifest row with real
+    # NAMED and STANDALONE arms that no floor emitted, so ``@workset.workspaces`` was
+    # ``__MISSING__`` in every launch snapshot and its dependent ``meta.box.workspace``
+    # demanded a key that answered nowhere. The value is the RESOLVED literal — see the
+    # docstring for why the formula would be wrong here more sharply than anywhere else.
+    if workspaces is not None:
+        if mode == "primary":
+            raise SettingsError(
+                "workset_anchor_floor: workset.workspaces declares NO primary arm "
+                "(the manifest default is {primary: null}), so no floor may emit one. "
+                "The code DOES honor a primary `workspaces` repoint — "
+                "project/workset.py::default_workset — and that divergence is ruled and "
+                "stays there; writing the resolved value into the keyspace here would "
+                "conform the declared null to a code value, which is the wrong "
+                "direction."
+            )
+        floor["workset.workspaces"] = workspaces
     if workset_channels is not None:
         for leaf, path in workset_channels.items():
             if leaf not in _WORKSET_CHANNEL_LEAVES:

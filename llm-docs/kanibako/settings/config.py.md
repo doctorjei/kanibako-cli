@@ -2,8 +2,9 @@
 
 This module owns `kanibako_config.yaml` and the flat `KanibakoConfig` dataclass built from it: the
 YAML read/write primitives, the built-in defaults, the layer-overlay merge, and a handful of
-DIRECT readers (`box.enable_vault`, `workset.kuid`, `workset.skip_kuid_check`, `system.agent`,
-`system.setup_completed`) that must answer BEFORE a cascade snapshot exists. It also carries two
+DIRECT readers (`workset.kuid`, `workset.skip_kuid_check`, `system.agent`,
+`system.setup_completed`, and — for the AUTHORING TIER only — `box.enable_vault`) that must answer
+BEFORE a cascade snapshot exists. It also carries two
 arbiters that are not config reads at all and live here only because their inputs do:
 `setup_compat_gate` and `resolve_agent`.
 
@@ -48,9 +49,10 @@ built-in default, absent leaves the underlying value untouched, and any other pr
 (INCLUDING `""`) sets it. Collapsing the two would make a deliberate reset indistinguishable from
 a key nobody wrote.
 
-## B6 — the three box scalars are KEYSPACE-resolved
+## B6 — the box scalars are KEYSPACE-resolved
 
-`box.image` / `box.share_images` / `box.shell` (`_BOX_SCALAR_FIELDS`) are no longer the flat
+`box.image` / `box.share_images` / `box.shell` / `box.enable_vault` (`_BOX_SCALAR_FIELDS`) are no
+longer the flat
 overlay's product. `load_merged_config` runs `_resolve_box_scalars`, which builds a real cascade
 snapshot and overwrites the flat fields with the resolved values. Every caller — the launch,
 `kanibako shell` (agent-less), and the box-less sites (`rig` / `diagnose` / `setup` / `baseline`,
@@ -101,13 +103,37 @@ written — now resolves too. It was silently stranded before B6.
 `config_base.yaml` / `settings_base.yaml` base tiers, resolved on the PATH side; this scalar
 loader starts from the built-in defaults.
 
-## The pre-cascade readers, and the rule they share
+## The pre-cascade readers, and the rule that no longer follows from it
 
 `read_box_enable_vault`, `read_workset_kuid`, `read_workset_skip_kuid_check` and
 `read_system_agent` all read a DECLARED key DIRECTLY out of a settings file rather than through
-the resolver, because each has a caller that runs before a snapshot exists. They share one
-consequence: **the DEFAULT lives in the reader, not in a cascade floor.** That is the P2/P6d
-reader-default pattern, and it is why each of their docstrings spells its own default.
+the resolver, because each has a caller that runs before a snapshot exists. That much is still
+true, and still the reason these functions exist.
+
+⚑⚑ **WHAT DOES NOT FOLLOW FROM IT — AND USED TO BE WRITTEN HERE AS IF IT DID — IS *"the DEFAULT
+lives in the reader, not in a cascade floor"*.** The premise ("a caller runs before a snapshot
+exists") is about a FULL launch snapshot. A NARROW resolve needs only FILE PATHS, and every one of
+these callers already computes them a line or two above the read, so the conclusion was never
+licensed by the premise. Its cost was paid twice:
+
+* the declared default reached NO cascade floor, so a whole-value `@`-reference to the key resolved
+  to `__MISSING__` in every launch snapshot; and
+* the reader defined the resolution ORDER by which files it happened to open, so tiers it did not
+  open were silently dropped — a `kanibako system set box.enable_vault=false` returned 0, persisted,
+  and was then ignored by every box.
+
+The pattern is **RETIRED** (user ruling, 2026-08-29: *"If you are asking if we should avoid a carve
+out, the answer is yes"*). Its four members left one at a time: `workset.skip_kuid_check` and
+`workset.kuid` to `settings_launch.workset_anchor_floor`, and `box.enable_vault` to
+`_BOX_SCALAR_FIELDS` / `box_scalar_defaults_floor`. 🛑 **A reader keeping a literal default is not
+the same thing as a reader OWNING it** — `read_workset_skip_kuid_check` still returns `True` and
+`read_box_enable_vault` still returns `True`, and in both cases a conformance case in
+`tests/test_settings/test_manifest_conformance.py` asserts the reader and the floor equal so the
+two carriers cannot drift.
+
+⚑ `read_box_enable_vault` did not become redundant; it became NARROWER. Its question is now *which
+TIER authored this value*, which a merge structurally cannot answer, and which lifecycle ops need
+so they never pin an inherited workset default as a box-scope override at a destination.
 
 ## Functions
 
@@ -124,8 +150,13 @@ The flat merged configuration object.
 
 Precedence over the FILE layers, least → most authoritative: hardcoded defaults <
 `kanibako_config.yaml` (user global) < the workset tier < the box tier < CLI overrides. ⚑ The
-three `box.*` scalars do NOT resolve this way any more — see "B6" above; `load_merged_config`
+four `box.*` scalars do NOT resolve this way any more — see "B6" above; `load_merged_config`
 overwrites them from the keyspace after the overlay walk.
+
+⚑ `box_enable_vault` JOINED 2026-08-29 as the fourth. Its field default is now THE carrier of
+`box.enable_vault`'s declared default — that is what `box_scalar_defaults_floor` publishes, and
+what makes `box show --effective` grow a row for the key (the display iterates `fields(cfg)`, so
+there was no row at all while the default lived inside a reader).
 
 ⚑ `box_agent_name` is GONE (P7, spec §2b). `box.agent_name` is RETIRED and a box selects its agent
 with the REQUEST `pref.system.agent` (§2h), resolved off the launch snapshot by
@@ -204,7 +235,7 @@ having moved to the settings file.
 
 
 ```_resolve_box_scalars(global_path, *, workset_path, box_path, cli_overrides) -> dict[str, object]```
-Resolve the three box scalars (:data:`_BOX_SCALAR_FIELDS`) through the KEYSPACE.
+Resolve the box scalars (:data:`_BOX_SCALAR_FIELDS`) through the KEYSPACE.
 
 The ONE resolve behind `load_merged_config` (B6, option (b)). A focused, AGENT-LESS
 `build_launch_snapshot` — the `"general"` slot, the proven `_effective_bootstrap` shape, so
@@ -249,10 +280,11 @@ to thread it from.
 module load, and `settings_assemble` does too — which is how `settings_launch` reaches it
 transitively. Hoisting any of these to module scope closes the cycle.
 
-⚑ `_BOX_SCALAR_FIELDS` maps the three box-scope SCALAR keys the merged loader resolves through the
+⚑ `_BOX_SCALAR_FIELDS` maps the box-scope SCALAR keys the merged loader resolves through the
 KEYSPACE (B6, R-11a(a)): dotted key → the flat `KanibakoConfig` field it lands on. `box.shell`
 rides the same resolve — it lives on the same object and the same `box:` tables (consumer-map
-risk 4).
+risk 4). `box.enable_vault` joined 2026-08-29; see "The pre-cascade readers" above for why it was
+not there from the start and what that cost.
 
 
 ```load_merged_config(global_path, project_path=None, *, workset_path=None, cli_overrides=None) -> KanibakoConfig```
@@ -260,7 +292,7 @@ Load global config, overlay workset, then project, then CLI overrides — then r
 
 Start from the user global config (the least-specific FILE source now that the machine third file
 is deleted), then overlay the workset and project layers so the most-specific PRESENT value wins.
-Finally the keyspace resolve for the three box scalars: a resolved value wins; an ABSENT resolve
+Finally the keyspace resolve for the box scalars: a resolved value wins; an ABSENT resolve
 keeps the flat value. See "B6" above for the whole shape, and "The old machine-wide third file"
 for what was removed.
 
@@ -268,9 +300,12 @@ The nested `_overlay_scalars` applies one file layer's PRESENT scalar/bool field
 per "The `None` sentinel" above. `config_paths` is config-file-only and handled separately, so it
 never appears there.
 
-⚑ `box_share_images` is coerced through :func:`coerce_bool` on the way back out of the resolve;
-the other two are stringified. A resolved value that is not a recognized bool literal falls back to
-`bool(value)`.
+⚑ Each resolved value lands on its field's own type via `_typed_box_scalar`: a field whose
+DATACLASS DEFAULT is a bool goes through :func:`coerce_bool` (falling back to `bool(value)` for an
+unrecognized literal), everything else is stringified. ⚑ The bool arm is selected off the default's
+TYPE rather than a hand-kept name list, because `box.enable_vault` joining as the second bool
+(2026-08-29) is exactly the edit that would otherwise ship a stringified `"False"` — which is
+truthy, i.e. a stored `enable_vault: false` silently reading as ON.
 
 
 ```write_global_config(path: Path) -> None```
@@ -374,25 +409,84 @@ STANDALONE passes the resolved one on purpose — that write IS the M-8 migratio
 Paired reader: :func:`read_box_enable_vault`.
 
 
-```read_box_enable_vault(path: Path, *, default_from: Path | None = None) -> bool```
-The box-scope `box.enable_vault` value stored at *path* (default `True`).
+```resolve_box_enable_vault(global_path: Path, *, box_path: Path, workset_path: Path | None) -> bool```
+`box.enable_vault` through the FULL cascade — base < system < workset < box.
 
-The single reader for the settable box-scope key (P2 clean break): it sources the flag DIRECTLY
-from the `box:` table of the box-tier `box.yaml`. An absent file, an absent `box:` table, or
-an absent key all fall through to *default_from* (when given), then to the built-in default `True`
-(vault on).
+**THE RESOLVED VALUE, and the only thing that should ever fill `ProjectPaths.enable_vault`.** It
+runs the same narrow, agent-less `_resolve_box_scalars` that backs `load_merged_config`, so the
+BASE floor and the SYSTEM tier are cascade LEVELS rather than files nobody thought to open.
 
-*default_from* is the WORKSET-tier settings file, consulted ONLY when the key is absent from the
-box tier — the R2 downward-default (`box` ⊂ `workset`: a `box.*` key stored at the workset tier is
-an overridable default for the box). This key is NOT cascade-resolved — it is read directly, off
-the launch path — so the fallback has to be spelled here rather than falling out of the resolver.
+⚑ WHY THE LAUNCH DOES NOT JUST READ `load_merged_config`. It could — on the live path
+`load_merged_config` (`commands/start.py`) runs before `_core_default_categories`, so the answer
+would be available in time. But the three `paths.py` resolvers run BEFORE it and are what fill
+`ProjectPaths.enable_vault`, which `settings/core_defaults.py` reads to decide whether the vault
+bind rows are emitted at all. Reading the finished launch snapshot to decide what goes INTO it is
+circular; this function answers from FILE PATHS, which is all a narrow resolve needs, at the point
+those paths first exist (two lines below `_box_settings_files`).
 
-⚑ ALL THREE resolvers pass it, each load-bearing for its own reason. STANDALONE: its ROOT
-`workset.yaml` WAS its box file before the box tier moved to `box_data/box.yaml` (M-8), and is its
-workset tier after — the fallback lets an existing standalone box keep a stored
-`box.enable_vault: false` with ZERO migration. NAMED: `workset create --no-vault` writes the key at
-the workset tier, and without the fallback that flag is a silent no-op. PRIMARY: the primary workset
-is a workset like any other (spec §2c), so a key stored there defaults its boxes the same way.
+⚑ COST: one extra narrow resolve, measured at 2.70 ms/call against 223-619 ms commands.
+
+🛑 NOT the authored value. See `read_box_enable_vault`.
+
+
+```_narrow_box_scalar_cascade(global_path, *, workset_path, box_path) -> KeyStore```
+The box scalars' cascade WITHOUT the launch snapshot's whole-tree §0 audit.
+
+⚑⚑ **THE ONE THING THAT DISTINGUISHES IT FROM `_resolve_box_scalars`, WHICH RESOLVES THE SAME
+KEYS OFF THE SAME FILES.** That function ends in `build_launch_snapshot`, whose last step is
+`_refuse_undeclared_snapshot` — a whole-tree audit that RAISES when any settings file in the
+cascade carries an entry the keyspace does not declare. That refusal is correct for a launch and
+for `box show --effective` (the refusal's own message names that command). It is **wrong for path
+resolution**: this resolve runs inside `paths.resolve_project`, which every verb goes through —
+including plain `kanibako box show`, the ONE surface designed to still answer for a box whose file
+carries an undeclared entry, so that it can print the offending line. Routing path resolution
+through the launch audit turned that diagnostic into a refusal (measured: it red
+`test_box_show_marks_a_hand_written_undeclared_entry`).
+
+⚑ THE SHAPE IS `settings_launch.resolve_selected_agent`'s — that module's own named *"narrow
+resolve that precedes the launch snapshot"* — with `box_scalar_defaults_floor()` under the base
+file. Nothing here is a second opinion about the cascade: `assemble_levels`, `merge` and the floor
+builder are the same single carriers `_resolve_box_scalars` uses.
+
+⚑ **THE TWO ROUTES ARE PINNED EQUAL** by `test_config.py::TestTheTwoBoxScalarResolvesAgree`, over
+six tier combinations, so the split cannot quietly become two answers.
+
+⚑ NO PREF RUNGS, and that is measured: `settings_prefs.ALLOWLIST` is `("system.agent",
+"agent.*.**")`, so no §2h request can name a `box.*` key. Splicing the overlays in would move no
+answer and would import `apply_prefs`' raise into path resolution.
+
+⚑ NO `expand`: `box.enable_vault` is `type: bool` in the manifest and cannot carry an `@`-ref, and
+a whole-tree expansion here would import the failure `resolve_selected_agent` had to go LENIENT to
+avoid — an unrelated defective leaf aborting a resolve that never needed it.
+
+⚑ A CONSEQUENCE WORTH STATING: `resolve_project` does NOT enforce the closed keyspace. That is the
+status quo — it never did — and the enforcement still fires at every seam that had it before.
+
+
+```read_box_enable_vault(path: Path) -> bool```
+What the BOX ITSELF authored for `box.enable_vault` at *path* — one file, no cascade (default
+`True`).
+
+⚑⚑ **THE AUTHORED READER, AND ONLY THAT.** It sources the flag DIRECTLY from the `box:` table of
+the box-tier `box.yaml`; an absent file, an absent `box:` table or an absent key all give the
+built-in `True`. What it answers is the question a MERGE STRUCTURALLY CANNOT — *which tier carried
+this value* (`settings_launch.py`, in its own words: *"Which of them carried it is not knowable
+here, because the snapshot is the MERGE of all of them"*).
+
+Its three callers are all lifecycle destination writes: `commands/box/_lifecycle.py` (×2, feeding
+`ProjectState.box_authored_vault`) and `commands/box/_duplicate.py` (×1, feeding
+`establish_standalone`). 🛑 **Do NOT give this a workset-tier fallback again and do NOT route it
+through the cascade** — either one pins an INHERITED workset default as a box-scope override at the
+destination, the exact corruption `carried_box_settings` exists to prevent.
+
+⚑ IT HAD A *default_from* PARAMETER UNTIL 2026-08-29 — the WORKSET-tier R2 downward-default
+(`box` ⊂ `workset`; spec §0 *Directional view/set across CONTAINMENT levels*), which all three
+`paths.py` resolvers passed and which made `workset create --no-vault` reach contained boxes,
+let a pre-M-8 standalone box keep a stored `box.enable_vault: false` with zero migration, and let
+the primary workset default its boxes like any other workset (spec §2c). **That capability did not
+go — it MOVED to `resolve_box_enable_vault`**, where the workset tier is one cascade level among
+four instead of a second hand-opened file. The parameter went with it because the only thing it
+could still do here is the corruption above.
 
 Box identity derives entirely from the registries (`box_resolve`) — there is no on-disk `project:`
 identity section (P8b sparse create) — while `enable_vault` stays a plain box-settings read: the
@@ -413,7 +507,7 @@ Jei, 2026-08-26: *"we should copy/persist only those elements that are within th
 The function reads ONE file.
 
 A `box.*` key at the WORKSET tier is not the box's — it is an OVERRIDABLE DOWNWARD DEFAULT for the
-boxes that workset contains (`read_box_enable_vault`, spec §0 *Directional view/set across
+boxes that workset contains (`resolve_box_enable_vault`, spec §0 *Directional view/set across
 CONTAINMENT levels*). Persisting it into a destination's box tier would PIN it: an override at the
 most authoritative scope in the bracket (`… < workset < box`), which later edits to the workset
 could no longer reach, and which the arriving user never set. So it stays where it was authored.
@@ -458,8 +552,11 @@ file plays the WORKSET tier. An absent file / `workset:` table / key yields the 
 :data:`kanibako.kuid.SENTINEL` (`"00000"`), the primary/named default and the "no real kuid yet"
 marker.
 
-Mirrors :func:`read_box_enable_vault` (the P2 reader-default pattern): the DEFAULT lives here, not
-in a cascade floor.
+⚑ THE LITERAL IS STILL HERE, BUT IT IS NO LONGER THE CARRIER. `settings_launch.workset_anchor_floor`
+emits `kuid.SENTINEL` by reference (2026-08-29, `da2050a1`), so the keyspace answers this key from
+the floor and this reader is the PRE-SNAPSHOT route to the same value. A conformance case asserts
+the pair equal. See "The pre-cascade readers" above for why the old *"the DEFAULT lives in the
+reader"* rule was retired.
 
 
 ```read_workset_skip_kuid_check(path: Path) -> bool```
@@ -467,8 +564,11 @@ The stored `workset.skip_kuid_check` bool at *path*, defaulting to `True`.
 
 The reader for the settable key (P6d; spec default `true` — the advisory "invalid KUID" warning is
 OPT-IN strictness, INVERTING the old D9). Sourced from the `workset:` table of a box's
-`workset.yaml`. An absent file / table / key yields `True` (checking OFF). Mirrors
-:func:`read_box_enable_vault` — the DEFAULT lives here, not a cascade floor.
+`workset.yaml`. An absent file / table / key yields `True` (checking OFF).
+
+⚑ SAME SHAPE AS `read_workset_kuid` ABOVE: `workset_anchor_floor` emits this key too (2026-08-29,
+`da2050a1`), so the literal here is the PRE-SNAPSHOT carrier and not the one the keyspace answers
+from; `test_the_skip_kuid_check_floor_equals_the_pre_snapshot_reader` pins the two equal.
 
 
 ```_split_config_key(flat_key: str) -> tuple[str, str]```

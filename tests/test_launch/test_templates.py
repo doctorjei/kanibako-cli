@@ -309,12 +309,29 @@ class TestTemplateSeedDefaults:
         assert "workset.seeded" in defs
 
     def test_workset_layer_default_points_at_workset_template(self, primary_proj):
-        """Layer 3 default = @meta.workset.path/template (Q3, was <None>)."""
+        """Layer 3 default = @meta.workset.path/template (Q3, was <None>).
+
+        ⚑⚑ THE SOURCE KEY IS THE FLOOR'S, NOT THIS TABLE'S (2026-08-29).  This table
+        only ``@``-REFERENCES ``@workset.template``; ``settings_launch
+        .workset_anchor_floor`` declares it, beside ``workset.registry``.  A source key
+        spelled only here answered for a box being CREATED and for no box that already
+        existed — this table's one consumer is the create-time seed resolve.
+
+        Both halves are asserted TOGETHER on purpose: the reference and the declaration
+        are what make the layer resolve, and a test that checked only one of them would
+        stay green while the other went missing.
+        """
+        from kanibako.settings.settings_launch import workset_anchor_floor
+
         defs = template_seed_defaults(primary_proj, "claude")
-        assert defs["workset.template"] == "@meta.workset.path/template"
+        assert "workset.template" not in defs
         assert defs["workset.seeded"] == {
             "~/": ("@workset.template/box/home",),
         }
+        assert (
+            workset_anchor_floor(mode="primary")["workset.template"]
+            == "@meta.workset.path/template"
+        )
 
     def test_named_includes_workset_layer(self, named_proj):
         defs = template_seed_defaults(named_proj, "claude")
@@ -796,18 +813,40 @@ class TestHandbookLayerSourceKeys:
             "system.template", "agent.claude.template",
         )
 
-    def test_every_key_is_one_template_seed_defaults_declares(self, primary_proj):
-        """THE DRIFT PIN.  ``system.template`` is floor-materialized (a ``system.*``
-        settings-tier path) and so is not in the table; every OTHER key must be a
-        SOURCE scalar the table declares — never a path this module invented."""
+    def test_every_key_is_a_declared_source_scalar_somewhere(self, primary_proj):
+        """THE DRIFT PIN.  Every key names a SOURCE scalar SOME artefact declares —
+        never a path this module invented.
+
+        ⚑ THREE KEYS, THREE CARRIERS, and naming each is the point:
+
+        * ``system.template`` — floor-materialized as a ``system.*`` settings-tier path,
+          so it is in neither table below;
+        * ``agent.<node>.template`` — ``launch.templates.agent_template_defaults``, which
+          ``template_seed_defaults`` composes;
+        * ``workset.template`` — ``settings_launch.workset_anchor_floor`` since
+          2026-08-29, which is why this case no longer requires the seed table to carry
+          every key.  Requiring that WOULD be the drift it is guarding against, in
+          reverse: it would forbid the fix that made the key answer for an existing box.
+
+        Each value is asserted to be an ``@``-ref STRING, not a seeded ``(src,)`` tuple —
+        that is the half of the pin the carrier split does not touch.
+        """
+        from kanibako.settings.settings_launch import workset_anchor_floor
+
         defs = template_seed_defaults(primary_proj, "claude")
+        floor = workset_anchor_floor(mode="primary")
         keys = handbook_layer_source_keys(primary_proj, "claude")
         assert keys[0] == "system.template"
-        assert "system.template" not in defs
+        assert "system.template" not in defs and "system.template" not in floor
         for key in keys[1:]:
-            assert key in defs, key
+            carrier = defs if key in defs else floor
+            assert key in carrier, key
             # A SOURCE scalar (an ``@``-ref string), NOT a seeded (src, dest) tuple.
-            assert isinstance(defs[key], str)
+            assert isinstance(carrier[key], str)
+        # ...and the split is the one described above, spelled out so a key silently
+        # changing carrier reds here rather than passing the loop either way.
+        assert "agent.claude.template" in defs
+        assert "workset.template" in floor and "workset.template" not in defs
 
 
 class TestInstallBoxHandbookTemplate:

@@ -641,11 +641,17 @@ to disk at all under sparse create (P8b/Option A).
 An explicit param wins; otherwise the stored box-scope `box.enable_vault` (absent ⇒ True). Decoupled
 from box identity — which now derives from the registries (`box_resolve`), not `read_project_meta`.
 
-⚑ `default_from` = the PRIMARY WORKSET tier. The primary workset IS a workset (spec §2c gives it the
-same `meta.workset.settings`), so spec §0's containment rule makes a `box.*` key stored there an
+⚑ THE WORKSET TIER HERE IS THE PRIMARY WORKSET. The primary workset IS a workset (spec §2c gives it
+the same `meta.workset.settings`), so spec §0's containment rule makes a `box.*` key stored there an
 OVERRIDABLE downward default for every box it contains — the box tier still wins (`… < workset <
 box`). What the create branch PERSISTS is the BOX-AUTHORED value, never the resolved one: see the
 NAMED resolver for the full reasoning.
+
+⚑⚑ **IT IS `config.resolve_box_enable_vault` SINCE 2026-08-29, NOT `read_box_enable_vault`.** The
+resolved value now comes from the real cascade — `base < system < workset < box` — instead of two
+hand-opened files, so a `kanibako system set box.enable_vault=false` reaches the box. It did not
+before: the write was accepted, persisted and echoed back by `system get`, and every box still came
+up with the vault created and mounted.
 
 ### `resolve_project` — the create branch
 
@@ -1129,16 +1135,22 @@ DROPPED (mirrors the PRIMARY path) — home/vault are SOLELY the spec-derived de
 customized via the `box.bindings` cascade. The workspace override above (an EXTERNAL-connected live
 dir) is a SEPARATE concern and STAYS.
 
-`enable_vault` (P5a): explicit param wins; else `box.enable_vault` (absent ⇒ True) read from the box
-tier with `default_from` = the WORKSET tier. ⚑ That fallback is REQUIRED: `workset create
---no-vault` writes the key at the WORKSET tier, where spec §0's containment rule makes it an
-OVERRIDABLE default for the workset's boxes (the contained scope still wins — `… < workset < box`).
-Without it the flag is a silent no-op for every named box.
+`enable_vault` (P5a): explicit param wins; else `box.enable_vault` (absent everywhere ⇒ True)
+resolved through the CASCADE by `config.resolve_box_enable_vault` — `base < system < workset < box`.
+⚑ The WORKSET tier is REQUIRED: `workset create --no-vault` writes the key there, where spec §0's
+containment rule makes it an OVERRIDABLE default for the workset's boxes (the contained scope still
+wins). Without it the flag is a silent no-op for every named box.
+
+⚑⚑ **IT WAS `read_box_enable_vault(box_tier, default_from=workset_tier)` UNTIL 2026-08-29** — two
+files, so `base` and `system` were dropped silently. A `kanibako system set box.enable_vault=false`
+returned 0, persisted to `global/settings.yaml`, was echoed back by `system get`, and every box
+still came up with the vault created and mounted.
 
 ⚑ **The resolved value is not the written one.** `actual_vault_enabled` resolves through the
-fallback and drives the mounts; `box_authored_vault` re-reads the box tier ALONE and is the only one
-persisted, since spec `:868` keeps the key sparse — persisting an inherited default would PIN it,
-turning an overridable workset default into a box override later workset edits cannot reach.
+cascade and drives the mounts; `box_authored_vault` reads the box tier ALONE (via
+`read_box_enable_vault`, which no longer takes a fallback at all) and is the only one persisted,
+since spec `:868` keeps the key sparse — persisting an inherited default would PIN it, turning an
+overridable workset default into a box override later workset edits cannot reach.
 
 ### Sparse create + dual-register on the NAMED path
 
@@ -1473,13 +1485,16 @@ ABSOLUTE repoint (e.g. `workset.workspaces`) is the user's own choice and travel
 `resolved.*` section in `settings.yaml` is advisory only (BUG#1 fix); home/vault always live at the
 fixed `box_data/home` + `<root>/vault/{ro,rw}` positions.
 
-`enable_vault` (P5a): explicit param wins; else the stored box-scope `box.enable_vault` — read from
-the BOX tier, falling back to the WORKSET tier (the ROOT file) as an R2 downward-default. ⚑ That
-fallback is LIVE DESIGN, not a compat path — keyspec §2c's STANDALONE block declares it ("Box values
-… still resolve from the workset tier … as downward defaults when no box file exists"). It is ALSO
-why a pre-P2 standalone box, whose value was written to the root file, keeps working with no
-migration (M-8) — a consequence of the rule, never its reason. ALL THREE resolvers pass `default_from`; standalone alone then PERSISTS the
-RESOLVED value — that write IS the M-8 migration, landing the root file's value at the box tier.
+`enable_vault` (P5a): explicit param wins; else the box-scope `box.enable_vault` resolved through
+the CASCADE by `config.resolve_box_enable_vault` — `base < system < workset < box`, the BOX tier
+being `box_data/box.yaml` and the WORKSET tier the ROOT `workset.yaml`. ⚑ The workset level is LIVE
+DESIGN, not a compat path — keyspec §2c's STANDALONE block declares it ("Box values … still resolve
+from the workset tier … as downward defaults when no box file exists"). It is ALSO why a pre-P2
+standalone box, whose value was written to the root file, keeps working with no migration (M-8) — a
+consequence of the rule, never its reason. ALL THREE resolvers go through the same cascade
+(2026-08-29; they hand-opened two files each before that, and so could not see a base- or
+system-tier value); standalone alone then PERSISTS the RESOLVED value — that write IS the M-8
+migration, landing the root file's value at the box tier.
 
 **Box identity name (P8a):** sourced from `box_resolve` for a MATERIALIZED standalone (`box_data/` +
 `workset.yaml` present — the same gate `standalone_settings_present` uses). `box_resolve` composes

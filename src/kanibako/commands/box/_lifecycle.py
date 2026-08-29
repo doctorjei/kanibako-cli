@@ -29,6 +29,7 @@ from kanibako.settings.config import (
     WORKSET_META_FILE,
     KanibakoConfig,
     read_box_enable_vault,
+    resolve_box_enable_vault,
     write_box_enable_vault,
 )
 from kanibako.errors import ProjectError, WorksetError
@@ -282,9 +283,11 @@ def _default_state_from_meta(
     vault_ro = std.primary_vault_ro / name
     vault_rw = std.primary_vault_rw / name
     # ⚑ The GROUP is the PRIMARY workset — the same one ``resolve_project`` derives — so
-    # this fallback resolves ``box.enable_vault`` through the SAME R2 downward default the
-    # launch path uses.  Passing ``None`` here made a ``remap`` answer differently
-    # depending only on whether the workspace dir was still on disk.
+    # this fallback resolves ``box.enable_vault`` through the SAME CASCADE the launch path
+    # uses.  Passing ``None`` here made a ``remap`` answer differently depending only on
+    # whether the workspace dir was still on disk; reading the two tiers DIRECTLY (which
+    # this did until 2026-08-29) made it answer differently from ``resolve_project``
+    # whenever a base- or system-tier value existed, which is the same defect one tier up.
     box_tier, workset_tier = _box_settings_files(
         BoxMode.primary, metadata_path, _default_project_group(std),
     )
@@ -293,7 +296,13 @@ def _default_state_from_meta(
         workspace_path=workspace.resolve(), metadata_path=metadata_path,
         shell_path=shell_path, vault_ro=vault_ro, vault_rw=vault_rw,
         is_external=False, ws=None,
-        enable_vault=read_box_enable_vault(box_tier, default_from=workset_tier),
+        enable_vault=resolve_box_enable_vault(
+            std.config_file, box_path=box_tier, workset_path=workset_tier,
+        ),
+        # ⚑ The AUTHORED half stays a BOX-TIER-ONLY read, no ``default_from`` and NOT the
+        # cascade: a merge cannot say which tier carried the leaf, and persisting an
+        # inherited default as a box-scope override is what ``carried_box_settings``
+        # exists to prevent.
         box_authored_vault=read_box_enable_vault(box_tier),
     )
 

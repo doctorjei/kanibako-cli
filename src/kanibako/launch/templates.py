@@ -48,13 +48,97 @@ _SEED_SRC_HANDBOOK = "box/canon/handbook"
 AGENT_TEMPLATE_STORE_REL = "template"
 
 
+def agent_template_defaults(agent_id: str | None) -> dict[str, object]:
+    """Return the AGENT-tier ``template`` SOURCE keys (spec §2d) — both arms.
+
+    The direct sibling of :func:`~kanibako.settings.core_defaults
+    .canon_default_categories`' agent scalars, and folded into the SAME two places that
+    one is: the MAIN launch floor and — through :func:`template_seed_defaults` — the
+    create-time seed resolve.
+
+    ⚑⚑ THE MAIN-LAUNCH FOLD IS THE POINT, not an extra.  These used to be emitted ONLY
+    inside ``template_seed_defaults``, whose one consumer is the CREATE-time seed
+    resolve, so ``@agent.default.template`` resolved to ``__MISSING__`` for every box
+    that already existed — a declared key with a real default that the keyspace could
+    not answer (ruled 2026-08-29: *"for any box thst exists, def."*).  A key that
+    answers only at create is not answerable to a user.
+
+    ⚑ SOURCE KEYS ONLY.  The ``seeded`` LAYERS stay in ``template_seed_defaults`` and
+    must never be folded into a launch: seed-once is the failsafe against re-seed DATA
+    LOSS, and a layer reaching an ordinary relaunch is exactly that bug.
+    """
+    if not agent_id:
+        # A NO-AGENT box has no agent tier at all — the ``canon`` sibling's own gate.
+        return {}
+    defs: dict[str, object] = {}
+    # The §2d DEFAULT-TIER arm of the SOURCE key — the all-agents fallback, sibling
+    # of ``agent.default.canon`` (spec :1143 + :1123 + :1116, the composition the
+    # spec performs in prose at :1144).  ⚑ It is a DECLARED key, so an artefact has
+    # to carry its value or ``system defaults`` prints a row it cannot source;
+    # carrying it here rather than beside the canon arm keeps the template family's
+    # value in the module that owns ``AGENT_TEMPLATE_STORE_REL``.
+    # ⚑ INERT FOR DELIVERY, and that is the point: the node arm below is emitted
+    # unconditionally for every agent, so the §2d fallback to this arm never fires.
+    # ⚑⚑ INERT FOR DELIVERY IS NOT UNREACHABLE.  Delivery asks which arm the §2d pick
+    # lands on; REACHABILITY asks whether ``@agent.default.template`` resolves at all.
+    # Two different questions, and the answer to the second must be yes.
+    # ⚑ NO NODE-STORE PROBE, unlike ``canon_default_categories``' node arm
+    # (``store_canon if node_store.is_dir() else …``): that conditional is the canon
+    # key's own behaviour, not this family's.
+    defs["agent.default.template"] = (
+        f"@config.agents/default/{AGENT_TEMPLATE_STORE_REL}"
+    )
+    # SOURCE key (spec §2a/§2d), not a hardcoded path: settable, so a user
+    # override reroutes the layer by cascade precedence.
+    # ⚑⚑ NODE-ROOTED, NEVER THE HARNESS (ruled 2026-08-27).  §2d and the
+    # manifest both give ``agent.<agent>.template =
+    # @meta.agent.<agent>.path/template``, and ``<agent>`` is the ACTIVE NODE:
+    # a persona seeds from its OWN store.  This used to spell
+    # ``harness_of(agent_id)`` — the same string for a bare agent, and for a
+    # persona a SILENT divergence: ``@config.agents/<harness>/template`` is a
+    # perfectly resolvable directory that simply names the WRONG store, so
+    # nothing anywhere had cause to complain.  (⚑ The silence is NOT about
+    # ``meta_agent_path_floor`` materializing both anchors — this arm never
+    # went through ``@meta.agent.<a>.path`` at all.)  The harness's CONTENT
+    # still reaches a persona: the shim
+    # ``commands.start.ensure_persona_share_symlinks`` links
+    # ``agents/<node>/template`` -> ``agents/<harness>/template``, exactly as it
+    # already does for ``common``.  SHARED BY LINK, not by copy — a copy would
+    # need keeping fresh, and a persona that wants its own template simply
+    # replaces the link with a real directory.
+    # ⚑ ONE HOP UNROLLED, like the ``canon`` node arm
+    # (``core_defaults.canon_default_categories``): ``meta.agent.<a>.path`` IS
+    # ``@config.agents/<a>`` (``settings_launch.meta_agent_path_floor`` defines
+    # it as that literal), so the two spellings resolve to one place.
+    # ⚑ STILL NO NODE-STORE PROBE (see the ``agent.default.template`` note
+    # above): the shim guarantees the node's ``template`` entry exists, and
+    # ``stage_layers`` is skip-if-absent for the case where it does not.
+    # ⚑ KEY vs DIRECTORY: the key segment stays the CANONICAL node, the value is
+    # a store path and takes the ``+`` dirname (``agent_config.store_dirname``).
+    defs[f"agent.{agent_id}.template"] = (
+        f"@config.agents/{store_dirname(agent_id)}/{AGENT_TEMPLATE_STORE_REL}"
+    )
+    return defs
+
+
 def template_seed_defaults(
     proj: ProjectPaths, agent_id: str | None
 ) -> dict[str, object]:
     """Return the layered box-seed DEFAULT-category table (spec §2a — THREE layers).
 
-    ⚑ The SOURCE scalars declared here are shared with the box HANDBOOK
-    host-template copy (:func:`handbook_layer_source_keys`), which is gated by them.
+    ⚑ The AGENT-tier SOURCE scalars come from :func:`agent_template_defaults`, which the
+    MAIN launch folds too; the WORKSET-tier one is not declared here at all — it is
+    ``settings_launch.workset_anchor_floor``'s ``workset.template``, and this table only
+    ``@``-REFERENCES it.  Both moves answer the same defect: a source key spelled only
+    here answered for a box being CREATED and for no box that already existed.
+
+    ⚑ The layer-3 GATE still lives here, and it is the same predicate the floor branches
+    on — ``has_workset_channels(proj)`` IS ``proj.mode is not standalone``, which is the
+    floor's ``standalone`` arm.  One condition, two spellings of the mode, no third
+    opinion about whether a workset tier exists.
+
+    ⚑ The SOURCE keys are shared with the box HANDBOOK host-template copy
+    (:func:`handbook_layer_source_keys`), which is gated off the LAYERS below.
     """
     from kanibako.channels.channels import has_workset_channels
 
@@ -65,60 +149,12 @@ def template_seed_defaults(
         return {_SEED_DEST_HOME: (f"{source_root}/{_SEED_SRC_HOME}",)}
 
     defs: dict[str, object] = {"system.seeded": _layer("@system.template")}
+    defs.update(agent_template_defaults(agent_id))
     if agent_id:
-        # The §2d DEFAULT-TIER arm of the same SOURCE key — the all-agents
-        # fallback, sibling of ``agent.default.canon`` (spec :1143 + :1123 +
-        # :1116, the composition the spec performs in prose at :1144).  ⚑ It is
-        # a DECLARED key, so an artefact has to carry its value or ``system
-        # defaults`` prints a row it cannot source; emitting it here rather than
-        # beside the canon arm keeps the template family's value in the module
-        # that owns ``AGENT_TEMPLATE_STORE_REL``.
-        # ⚑ INERT FOR DELIVERY, and that is the point: the node arm below is
-        # emitted unconditionally for every agent, so the §2d fallback to this
-        # arm never fires.
-        # ⚑ NO NODE-STORE PROBE, unlike ``canon_default_categories``' node arm
-        # (``store_canon if node_store.is_dir() else …``): that conditional is
-        # the canon key's own behaviour, not this family's.
-        defs["agent.default.template"] = (
-            f"@config.agents/default/{AGENT_TEMPLATE_STORE_REL}"
-        )
-        # SOURCE key (spec §2a/§2d), not a hardcoded path: settable, so a user
-        # override reroutes the layer by cascade precedence.
-        # ⚑⚑ NODE-ROOTED, NEVER THE HARNESS (ruled 2026-08-27).  §2d and the
-        # manifest both give ``agent.<agent>.template =
-        # @meta.agent.<agent>.path/template``, and ``<agent>`` is the ACTIVE NODE:
-        # a persona seeds from its OWN store.  This used to spell
-        # ``harness_of(agent_id)`` — the same string for a bare agent, and for a
-        # persona a SILENT divergence: ``@config.agents/<harness>/template`` is a
-        # perfectly resolvable directory that simply names the WRONG store, so
-        # nothing anywhere had cause to complain.  (⚑ The silence is NOT about
-        # ``meta_agent_path_floor`` materializing both anchors — this arm never
-        # went through ``@meta.agent.<a>.path`` at all.)  The harness's CONTENT
-        # still reaches a persona: the shim
-        # ``commands.start.ensure_persona_share_symlinks`` links
-        # ``agents/<node>/template`` -> ``agents/<harness>/template``, exactly as it
-        # already does for ``common``.  SHARED BY LINK, not by copy — a copy would
-        # need keeping fresh, and a persona that wants its own template simply
-        # replaces the link with a real directory.
-        # ⚑ ONE HOP UNROLLED, like the ``canon`` node arm
-        # (``core_defaults.canon_default_categories``): ``meta.agent.<a>.path`` IS
-        # ``@config.agents/<a>`` (``settings_launch.meta_agent_path_floor`` defines
-        # it as that literal), so the two spellings resolve to one place.
-        # ⚑ STILL NO NODE-STORE PROBE (see the ``agent.default.template`` note
-        # above): the shim guarantees the node's ``template`` entry exists, and
-        # ``stage_layers`` is skip-if-absent for the case where it does not.
-        # ⚑ KEY vs DIRECTORY: the key segment stays the CANONICAL node, the value is
-        # a store path and takes the ``+`` dirname (``agent_config.store_dirname``).
-        defs[f"agent.{agent_id}.template"] = (
-            f"@config.agents/{store_dirname(agent_id)}/{AGENT_TEMPLATE_STORE_REL}"
-        )
         defs[f"agent.{agent_id}.seeded"] = _layer(f"@agent.{agent_id}.template")
     if has_workset_channels(proj):
-        # SOURCE key (spec §2c). STANDALONE (no workset channels) omits BOTH the
-        # source and the layer — its workset tier is <None>.
-        defs["workset.template"] = (
-            f"@meta.workset.path/{AGENT_TEMPLATE_STORE_REL}"
-        )
+        # STANDALONE (no workset channels) omits the layer, exactly as the floor omits
+        # the source key: its workset tier is <None> (spec ``:936``).
         defs["workset.seeded"] = _layer("@workset.template")
     return defs
 
@@ -433,7 +469,8 @@ _MOULD_CANON_ROOT = "canon"
 #: ``:962``: ``workset.canon`` is *"UNIFORM IN EVERY MODE — deliberately NOT a
 #: per-mode key"*, so a lone standalone box has this tier too.  Its sibling half — the
 #: ``template/`` skeleton above — does NOT transfer: ``workset.template`` is <None> in
-#: standalone (spec ``:936``; :func:`template_seed_defaults` omits the key there), and
+#: standalone (spec ``:936``; ``settings_launch.workset_anchor_floor`` omits the KEY
+#: there and :func:`template_seed_defaults` omits the LAYER, off the same mode test), and
 #: a workset template seeds FUTURE boxes, of which a standalone root will never have
 #: one.
 #: ⚑ ``handbook`` and not ``canon/handbook``: the canon ROOT it hangs off is now
@@ -824,16 +861,21 @@ def handbook_layer_source_keys(
     from the one table rather than re-implemented here where it could drift.
     ``system.template`` is named directly because it is already floor-materialized.
 
+    ⚑ THE GATE IS THE ``seeded`` LAYER, NOT THE SOURCE SCALAR.  A layer's source key may
+    now be floored elsewhere (``workset.template`` is
+    ``settings_launch.workset_anchor_floor``'s), so testing for the scalar would ask the
+    seed table about a row it no longer declares.  The LAYER is what this function is
+    enumerating the roots of, and it is the entry the table always carries.
+
     ⚑ THESE STAY KEYS.  They carry the user's repoint route (``config set
     workset.template`` reroutes this copy, pinned by the repoint tests); nothing here
     hardcodes a path.
     """
     defs = template_seed_defaults(proj, agent_id)
     keys = ["system.template"]
-    agent_key = f"agent.{agent_id}.template" if agent_id else None
-    if agent_key is not None and agent_key in defs:
-        keys.append(agent_key)
-    if "workset.template" in defs:
+    if agent_id and f"agent.{agent_id}.seeded" in defs:
+        keys.append(f"agent.{agent_id}.template")
+    if "workset.seeded" in defs:
         keys.append("workset.template")
     return tuple(keys)
 
