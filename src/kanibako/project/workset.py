@@ -379,13 +379,17 @@ class Workset:
 
     @property
     def projects_dir(self) -> Path:
-        # ⚑ KNOWN GAP, deliberately NOT closed here: ``workset.boxes`` IS repointable and
-        # detection now resolves it, but this property still composes the default leaf, so
-        # a repointed root is FOUND while its box trees are still created and removed under
-        # ``<root>/boxes``.  Resolving it changes where boxes LIVE — add/remove/move/delete
-        # and ``settings/paths.py`` all compose off this — which is a store-layout change,
-        # not a detection fix.  Do not "just resolve it" without that being the task.
-        return self.root / BOXES_DIR_NAME
+        """The resolved ``workset.boxes`` dir — ⚑ RESOLVED, not composed.
+
+        ⚑⚑ This is where box trees are CREATED, MOVED and REMOVED (``add_project``,
+        ``remove_project``, ``box move``/``duplicate``/``convert``, ``clean --purge``),
+        so composing ``<root>/boxes`` here while detection resolved the key left a
+        repointed root DETECTED BUT MISLOCATED — found by the walk, then written to
+        somewhere it does not live.  The launch seam has always resolved the same key
+        (``settings_launch``, ``meta.box.path | @workset.boxes/@meta.box.name``); this
+        property is a FACE on that answer, never a second one.
+        """
+        return resolve_workset_boxes(self.root, load_workset_settings_doc(self.root))
 
     @property
     def workspaces_dir(self) -> Path:
@@ -415,10 +419,15 @@ class Workset:
 
     @property
     def logs_dir(self) -> Path:
-        # ⚑ Same KNOWN GAP as ``projects_dir``: ``workset.logs`` is repointable and the
-        # launch seam already honors it (``settings_launch``/``core_defaults``), but this
-        # convenience property composes the default leaf.  See ``projects_dir``.
-        return self.root / _LOGS_LEAF
+        """The resolved ``workset.logs`` dir — ⚑ RESOLVED, not composed; primary/named ONLY.
+
+        ⚑ The helper-log MOUNT has always been the spec spelling
+        (``@workset.logs/@{meta.box.name}.jsonl``, ``data/core-defaults.yaml``), so a
+        composed leaf here made the hub WRITE somewhere the box does not READ — the
+        split migration M-14 records.  A standalone box logs to its own tree, not here;
+        see ``settings/paths.py::helper_log_path``.
+        """
+        return resolve_workset_logs(self.root, load_workset_settings_doc(self.root))
 
     @property
     def settings_path(self) -> Path:
@@ -739,8 +748,18 @@ def delete_workset(name: str, std: StandardPaths, *, remove_files: bool = False)
         # skeleton and leaves the workset half-deleted AFTER its registry entry is gone.
         from kanibako.runtime.container import remove_box_tree
 
-        boxes_dir = root / BOXES_DIR_NAME
-        if boxes_dir.is_dir():
+        # ⚑ RESOLVED, not composed — ``workset.boxes`` is repointable, and looking under
+        # the default leaf skipped the escalation for a repointed store, so the rmtree
+        # below then failed on the very skeleton this pass exists to clear.
+        # ⚑⚑ STRICT-BELOW, and it does NOT widen what is deleted: this pass is a
+        # PRE-PASS FOR ``rmtree(root)``, so it is owed exactly to the trees that call
+        # will reach.  A store the user pointed OUTSIDE *root* is not reached by either,
+        # before this change or after — cf. ``standalone_vault_teardown``, which draws
+        # the same line for the same reason.  KNOWN AND UNCLOSED: those trees outlive
+        # ``workset rm --purge``; closing that needs a retained-path report, not a wider
+        # rmtree.
+        boxes_dir = resolve_workset_boxes(root, load_workset_settings_doc(root))
+        if root in boxes_dir.parents and boxes_dir.is_dir():
             for box_tree in sorted(boxes_dir.iterdir()):
                 if box_tree.is_dir() and not box_tree.is_symlink():
                     remove_box_tree(box_tree)
@@ -974,8 +993,11 @@ def remove_project(
         # while the box's real vault sits at the repoint leaves the user's data orphaned
         # AND removes a directory the box never used.
         vault_ro_base, vault_rw_base = resolve_workset_vault_pair(ws.root)
+        # ⚑ ONE resolution, then compared by identity below — reading ``projects_dir``
+        # twice would resolve ``workset.boxes`` twice and could name two different dirs.
+        box_tree = ws.projects_dir / name
         targets = (
-            ws.projects_dir / name,
+            box_tree,
             ws.workspaces_dir / name,
             vault_ro_base / name,
             vault_rw_base / name,
@@ -985,7 +1007,6 @@ def remove_project(
         # user content and stay on the plain path.
         from kanibako.runtime.container import remove_box_tree
 
-        box_tree = ws.projects_dir / name
         for proj_dir in targets:
             if proj_dir.is_symlink():
                 # Defensive: only the link is removed, never its target.

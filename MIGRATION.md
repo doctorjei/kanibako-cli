@@ -3646,6 +3646,57 @@ on the agent — `kanibako agent set goose provider=…`, or the full
 
 ---
 
+### 2.58 A repointed `workset.boxes` or `workset.logs` now takes effect
+
+**Read this ONLY if you have set `workset.boxes` or `workset.logs` in a `workset.yaml`.** Neither
+is set by default, and nothing kanibako ships sets them, so on an ordinary install this section is
+a no-op.
+
+**What changed.** Both keys were only half-honoured. The directory walk that identifies a workset
+root read them correctly, so a workset whose store you had moved was still *found* — but the code
+that composed the actual paths spelled `boxes` and `logs` by hand instead of reading the setting.
+So the box trees were created, moved, duplicated, converted, purged and deleted under the default
+`<workset root>/boxes/`, and each box's helper log was written under the default
+`<workset root>/logs/`, whatever you had written in the settings file. Both are now resolved
+everywhere: the box store used by `create`, `box move`, `box duplicate`, `box convert`,
+`workset connect`, `workset disconnect`, `clean --purge` and `workset rm --purge`; the primary
+workset's own box and log roots; and the host-side writer for a named box's helper log.
+
+There is a second half to the helper-log case worth stating plainly. The *mount* into the box has
+always been built from the setting, so with a repoint in place the box read
+`~/.kanibako/state/helpers.jsonl` from the directory you named while kanibako wrote the file to the
+default one. The log inside the box was therefore permanently empty. Those two now name one file.
+
+**How a user notices.** Nothing errors, before or after — which is the difficulty. Before the
+change your boxes lived at the default location and the setting was decoration; after it, kanibako
+looks where the setting says.
+
+**What you must do.** For each workset with one of these keys set:
+
+1. Look under the workset root for a `boxes/` (or `logs/`) directory that the setting says should
+   not exist. If it holds your box trees, that is the data kanibako has been using.
+2. Stop every box in that workset.
+3. Move the contents into the directory the setting names, creating it if needed. For `boxes`,
+   move each `<box-name>/` tree whole — it holds the box's home directory. For `logs`, move the
+   `<box-name>.jsonl` files, or simply delete them; a helper log is a message record, not state,
+   and a new one is created on the next launch.
+4. Start a box and confirm it comes up with its files intact.
+
+If you would rather not move anything, the equivalent fix is to delete the key from the
+`workset.yaml` — the default is the location your data is already in.
+
+⚑ **Two limits are stated rather than fixed, so you can plan around them.**
+
+- **A standalone box's helper log still ignores a `workset.logs` repoint.** The default for that
+  mode is expressed in terms of the box's own directory rather than the workset root, which the
+  pre-launch resolver cannot follow; the log stays inside the box's `box_data/`.
+- **`kanibako workset rm --purge` does not delete box trees under a `workset.boxes` you pointed
+  OUTSIDE the workset root.** The purge deletes the workset root and nothing beyond it, by design —
+  it will not remove a directory you nominated elsewhere. Those trees survive the purge and are
+  yours to delete by hand.
+
+---
+
 ## 3. For plugin authors
 
 ⚑ **THREE PERSONA SURFACES ON `Target` CHANGED SHAPE in 1.8.0 — a plugin built against 1.7.x needs

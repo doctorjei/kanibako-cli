@@ -930,6 +930,174 @@ class TestWorksetWorkspacesResolved:
             )
 
 
+class TestWorksetBoxesAndLogsResolved:
+    """``workset.boxes`` / ``workset.logs`` are DECLARED, repointable keys (keyspec
+    ``@meta.workset.path/boxes``, ``@meta.workset.path/logs``), and the launch seam
+    has always resolved them (``settings_launch``, ``meta.box.path |
+    @workset.boxes/@meta.box.name``; ``data/core-defaults.yaml``,
+    ``@workset.logs/@{meta.box.name}.jsonl``).
+
+    ⚑⚑ THE STATE THIS CLOSES was worse than plain breakage.  Detection resolved both
+    keys while ``Workset.projects_dir`` / ``.logs_dir`` composed the default leaf, so a
+    repointed root was FOUND and then WRITTEN TO SOMEWHERE ELSE — detected but
+    mislocated.  These pin the store side: every creator, mover and remover of a box
+    tree, and the hub's helper-log writer, land on the RESOLVED key.
+    """
+
+    # -- the properties ----------------------------------------------------
+
+    def test_default_is_the_spec_formula(self, std, tmp_home):
+        root = tmp_home / "worksets" / "plain"
+        ws = create_workset("plain", root, std)
+
+        resolved = root.resolve()
+        assert ws.projects_dir == resolved / "boxes"
+        assert ws.logs_dir == resolved / "logs"
+
+    def test_properties_honor_a_repoint(self, std, tmp_home):
+        from kanibako.settings.config_io import dump_doc
+
+        root = (tmp_home / "worksets" / "moved").resolve()
+        ws = create_workset("moved", root, std)
+        dump_doc(root / "workset.yaml", {"workset": {
+            "boxes": "store", "logs": str(tmp_home / "elsewhere-logs"),
+        }})
+
+        assert ws.projects_dir == root / "store"
+        assert ws.logs_dir == tmp_home / "elsewhere-logs"
+
+    # -- the STORE: box trees are created and removed at the repoint --------
+
+    def test_add_project_places_the_box_tree_at_the_repoint(self, std, tmp_home):
+        """⚑ MUTATION-PROVER, through the real ``add_project`` chain: the box tree
+        lands under the resolved ``workset.boxes`` and NOT under the default leaf."""
+        from kanibako.settings.config_io import dump_doc
+
+        root = (tmp_home / "worksets" / "boxstore").resolve()
+        ws = create_workset("boxstore", root, std)
+        store = tmp_home / "external-boxes"
+        store.mkdir()
+        dump_doc(root / "workset.yaml", {"workset": {"boxes": str(store)}})
+
+        add_project(ws, "cool-app", tmp_home / "project")
+
+        assert (store / "cool-app").is_dir()
+        assert not (root / "boxes" / "cool-app").exists()
+
+    def test_remove_project_removes_the_box_tree_at_the_repoint(self, std, tmp_home):
+        """⚑ The remover must match the creator: deleting the composed default while
+        the real tree sits at the repoint orphans the box AND removes a dir it never
+        used — exactly the failure ``remove_project`` already documents for the vault."""
+        from kanibako.settings.config_io import dump_doc
+
+        root = (tmp_home / "worksets" / "boxstore2").resolve()
+        ws = create_workset("boxstore2", root, std)
+        store = tmp_home / "external-boxes-2"
+        store.mkdir()
+        dump_doc(root / "workset.yaml", {"workset": {"boxes": str(store)}})
+
+        add_project(ws, "proj", tmp_home / "project")
+        assert (store / "proj").is_dir()
+
+        remove_project(ws, "proj", remove_files=True, std=std)
+        assert not (store / "proj").exists()
+
+    def test_delete_workset_clears_an_in_root_repointed_box_store(self, std, tmp_home):
+        """⚑ The J-7 pre-pass is owed to exactly the trees ``rmtree(root)`` reaches, so
+        a repoint that stays UNDER the root must still get the unshare escalation."""
+        from kanibako.settings.config_io import dump_doc
+
+        root = (tmp_home / "worksets" / "instore").resolve()
+        ws = create_workset("instore", root, std)
+        dump_doc(root / "workset.yaml", {"workset": {"boxes": "store"}})
+        add_project(ws, "proj", tmp_home / "project")
+        assert (root / "store" / "proj").is_dir()
+
+        delete_workset("instore", std, remove_files=True)
+        assert not root.exists()
+
+    # -- the helper-log WRITER (migration M-14) ----------------------------
+
+    def test_helper_log_path_honors_a_named_logs_repoint(self, std, tmp_home):
+        """⚑⚑ M-14: the helpers.jsonl MOUNT is the spec spelling
+        ``@workset.logs/@{meta.box.name}.jsonl``, so a composed writer path made the
+        hub write where the box does not read.  Both must name one file."""
+        from kanibako.settings.config_io import dump_doc
+        from kanibako.settings.paths import ProjectGroup, ProjectPaths, helper_log_path
+
+        root = (tmp_home / "worksets" / "logmove").resolve()
+        ws = create_workset("logmove", root, std)
+        elsewhere = tmp_home / "log-store"
+        dump_doc(root / "workset.yaml", {"workset": {"logs": str(elsewhere)}})
+
+        proj = ProjectPaths(
+            project_path=ws.workspaces_dir / "b", project_hash="h" * 12,
+            metadata_path=ws.projects_dir / "b",
+            shell_path=ws.projects_dir / "b" / "home",
+            vault_ro_path=ws.vault_ro_dir / "b", vault_rw_path=ws.vault_rw_dir / "b",
+            is_new=False, mode=BoxMode.named, enable_vault=False, name="b",
+            group=ProjectGroup(name="logmove", root=root, is_default=False,
+                               local_shared_base=root),
+        )
+        assert helper_log_path(std, proj) == elsewhere / "b.jsonl"
+
+    def test_primary_box_and_log_roots_honor_a_primary_repoint(self, tmp_home,
+                                                               config_file):
+        """⚑ The PRIMARY workset root is an ordinary workset root: ``std.boxes`` and
+        ``std.primary_logs`` are SURROGATES for its ``workset.{boxes,logs}``, so they
+        resolve the same keys the named arm does."""
+        from kanibako.settings.config import load_config
+        from kanibako.settings.config_io import dump_doc
+        from kanibako.settings.paths import load_std_paths
+
+        std = load_std_paths(load_config(config_file))
+        pw = std.primary_workset
+        pw.mkdir(parents=True, exist_ok=True)
+        dump_doc(pw / "workset.yaml", {"workset": {
+            "boxes": str(tmp_home / "pw-boxes"), "logs": "log-archive",
+        }})
+
+        moved = load_std_paths(load_config(config_file))
+        assert moved.boxes == tmp_home / "pw-boxes"
+        assert moved.primary_logs == pw / "log-archive"
+
+    # -- tripwire: the literal joins must not come back --------------------
+
+    def test_no_boxes_or_logs_literal_join_remains_at_the_sites(self):
+        """Pins the collapse the way its ``workspaces`` sibling above is pinned: at
+        the composition SITES, so a reintroduced join reds without anyone having to
+        re-run the census.  ⚑ The banned spellings include the LEAF CONSTANTS, not
+        just the bare strings — ``pw / BOXES_PATH`` was one of the defects, and a
+        string-only pin would have passed it.
+        ⚑ The file list is the same three the ``workspaces`` pin above names: the
+        modules that compose a path out of a workset-root child.  ``project/names.py``
+        carries no ``boxes``/``logs`` join today — it speaks only of the ``boxes:``
+        MEMBERSHIP section, which is a different thing wearing the same word — and is
+        listed so that a real one cannot appear there unremarked."""
+        import re
+
+        from tests.support.repo import REPO_ROOT
+
+        src = REPO_ROOT / "src" / "kanibako"
+        # file -> the spellings of the two leaves that are IN SCOPE there.  ⚑ Derived
+        # from the rule ("the only allowed spelling is the resolver's own argument"),
+        # never from an inventory of today's lines.
+        banned = {
+            "settings/paths.py": ('"boxes"', "BOXES_PATH", '"logs"', "LOGS_PATH"),
+            "project/workset.py": ('"boxes"', "BOXES_DIR_NAME", '"logs"', "_LOGS_LEAF"),
+            "project/names.py": ('"boxes"', "BOXES_PATH", '"logs"', "LOGS_PATH"),
+        }
+        for rel, spellings in banned.items():
+            text = (src / rel).read_text(encoding="utf-8")
+            for spelling in spellings:
+                join_re = re.compile(
+                    r"/\s*%s|%s\s*/" % (re.escape(spelling), re.escape(spelling)))
+                assert not join_re.search(text), (
+                    f"literal {spelling} join in {rel}; route it through "
+                    f"resolve_workset_boxes / resolve_workset_logs"
+                )
+
+
 class TestWorksetIdentityIsTheGlobalRegistry:
     """⚑⚑ A workset's identity is its ``worksets:`` entry in the GLOBAL registry, and
     nothing else.  Neither file under the root records a name: ``registry.yaml`` holds

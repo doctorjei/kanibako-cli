@@ -116,13 +116,19 @@ default TABLE is the source, never a second literal at a consumer site.
 * **`workset.template`** — default `@meta.workset.path/template`; `<None>` in standalone (spec
   `:936`), which has no future boxes for a workset template to seed. Its sibling above still
   applies there — the two halves do not travel together.
-* **`workset.boxes` / `workset.logs`** — defaults `@meta.workset.path/{boxes,logs}`. ⚑ Resolved by
-  the DETECTION locator (`_workset_skeleton_dirs`) but NOT by the `Workset.projects_dir` /
-  `logs_dir` convenience properties, which compose the default leaf. That is a KNOWN GAP the source
-  names at both properties: a repointed root is FOUND, while its box trees are still created and
-  removed under `<root>/boxes`. Closing it moves where boxes LIVE — add/remove/move/delete and
-  `settings/paths.py` all compose off `projects_dir` — so it is a store-layout change, not a
-  doc-pass or detection fix.
+* **`workset.boxes` / `workset.logs`** — defaults `@meta.workset.path/{boxes,logs}`. Resolved by
+  the DETECTION locator (`_workset_skeleton_dirs`), by the `Workset.projects_dir` / `logs_dir`
+  convenience properties, and by `delete_workset`'s unshare pre-pass — so a repointed root is both
+  FOUND and WRITTEN TO in the same place. ⚑ The intermediate state, closed 2026-08-29, was worse
+  than either endpoint: detection alone resolved the keys while the properties composed the default
+  leaf, so a repointed root was **detected but mislocated** — found by the walk, then created,
+  moved and purged under `<root>/boxes`. Two carriers of one shape, and the quieter kind of broken.
+  ⚑ **The launch seam was always the correct owner** (`settings_launch`, `meta.box.path |
+  @workset.boxes/@meta.box.name`); these properties are FACES on that answer, not a second one.
+  🛑 STILL OPEN: box trees under a `workset.boxes` the user pointed OUTSIDE the root survive
+  `workset rm --purge`, deliberately — `delete_workset`'s loop is a pre-pass for `rmtree(root)`, so
+  it is owed only to what that call reaches. Closing it needs a retained-path report, not a wider
+  rmtree (the line `standalone_vault_teardown` already draws).
 
 ⚑ **The repoint SLOT is the same key in every mode** — only the default FORMULA varies. A mode flag
 selects a default, never a different storage location.
@@ -219,13 +225,19 @@ workset's identity lives in the file.
 ```python
 BOXES_DIR_NAME = "boxes"
 ```
-The BOX-tree leaf under a workset root. Named because THREE sites need it and only one of them has a
-`Workset` instance to ask:
+The DEFAULT box-tree leaf under a workset root — ⚑ what `workset.boxes` falls back to, never a path
+component. Since the collapse it has exactly ONE use: the `default_leaf` argument of
+`resolve_workset_boxes`. Every consumer goes through that resolver instead:
 
-* `Workset.projects_dir` — the one that does;
-* `create_workset`, building the skeleton before any `Workset` exists;
+* `Workset.projects_dir`, the property the store sites compose off;
+* `_workset_skeleton_dirs`, which `create_workset` stamps and `is_workset_skeleton` tests;
 * `delete_workset`, which holds a bare root `Path` from the registry and must clear each member box
   tree through the unshare-aware deleter before the plain `rmtree`.
+
+⚑ A tripwire (`tests/test_project/test_workset.py::test_no_boxes_or_logs_literal_join_remains_at_the_sites`)
+bans a `/ BOXES_DIR_NAME` or `/ "boxes"` join — and the `logs` equivalents — from this file,
+`settings/paths.py` and `project/names.py`. It bans the CONSTANT as well as the string: `pw /
+BOXES_PATH` in `settings/paths.py` was one of the defects, and a string-only pin would have passed it.
 
 *(The pre-relocation comment said "two places" and named the third as `remove_workset` — a function
 that has never existed under that name. See the false-claim list.)*
@@ -315,7 +327,7 @@ default to `None` without a separate "not yet loaded" state.
 
 ```python
 @property
-def projects_dir(self) -> Path      # {root}/boxes
+def projects_dir(self) -> Path      # the RESOLVED workset.boxes
 @property
 def workspaces_dir(self) -> Path    # the RESOLVED workset.workspaces
 @property
@@ -325,17 +337,23 @@ def vault_ro_dir(self) -> Path      # the RESOLVED workset.vault_ro
 @property
 def vault_rw_dir(self) -> Path      # the RESOLVED workset.vault_rw
 @property
-def logs_dir(self) -> Path          # {root}/logs
+def logs_dir(self) -> Path          # the RESOLVED workset.logs
 @property
 def settings_path(self) -> Path     # {root}/workset.yaml — may NOT exist
 @property
 def registry_path(self) -> Path     # the RESOLVED workset.registry
 ```
 
-⚑ `workspaces_dir` and `registry_path` are the RESOLVED ones (§3.3: real and USED) — the repoint is
-honored and the default is spelled once, in the resolver machinery. `registry_path` re-reads
-`workset.yaml` on each access to pick up a `workset.registry` repoint, matching the five equivalent
-helpers in `settings/paths.py`; it is not cached in a field the way `workspaces_repoint` is.
+⚑ **`vault_dir` is the last composed one, and correctly so** — no key names it (§3.3: real and
+USED; every other leaf here honors its repoint and spells its default once, in the resolver
+machinery). `projects_dir`, `logs_dir`, `vault_ro_dir`, `vault_rw_dir` and `registry_path` all
+RE-READ `workset.yaml` on each access rather than caching, which is the opposite choice from
+`workspaces_dir`'s `workspaces_repoint` field. **Deliberate:** a cached field is populated only by
+the two constructors in this module, so a hand-built or test-built `Workset` silently gets the
+default leaf — a footgun that, for `boxes`, means writing a box tree to the wrong store. Re-reading
+is correct by construction. ⚑ Where a caller uses one of these in a LOOP it hoists the property
+first (`iter_workset_projects`, `clean.py`'s purge): one read per workset, so every member is
+judged against the same document — the same reason `resolve_workset_vault_pair` exists.
 
 *(The old "toml" names — `toml_path`, `_write_workset_toml`, `_load_workset_toml` — said "toml" and
 operated on YAML. They were retired with this move; all config files in this project are YAML.)*
@@ -752,7 +770,7 @@ source was right and the CODE was corrected instead.
 | 2 | `create_workset` inline comment (×3 spellings) | "the global worksets.yaml/names.yaml registries", "then the names.yaml index", "a worksets.yaml entry with no names.yaml index (bare-name resolution fails while `workset list` works)" | **FALSE, same drift as #1, and it describes a CONTROL FLOW that does not exist.** The two files were collapsed into one section, so the code has ONE registration call, not two, and the described three-step crash window has only two steps. **Corrected.** |
 | 3 | module docstring layout tree | "`settings.yaml` ← workset identity (`meta.workset.*`)" | **TRUE at the time — the CODE was the defect.** Docstring and code disagreed inside one file; that pass sided with the code and wrote `workset.meta`, which was the wrong half. ⚑ **SUPERSEDED 2026-08-22:** the identity does not live in `settings.yaml` in EITHER spelling any more — it is the `workset:` table of `registry.yaml`. Both spellings now HARD-REFUSE. See **Identity is REGISTRY-BORNE**. |
 | 4 | module docstring layout tree | "The layout is: …" followed by six entries | **INCOMPLETE.** Omits `registry.yaml` (`workset.registry`), `auth/` (`workset.auth.path`) and `channels/` (`workset.channelroot`) — all three are in the spec's own workset-root layout (§2c and the template-whitelist block) and all three exist at real roots. Presented as the layout, it teaches a wrong root shape. **Corrected, with a note on which four `create_workset` actually makes.** |
-| 5 | `BOXES_DIR_NAME` comment | "two places need it … `Workset.projects_dir` (below) and **`remove_workset`**" | **FALSE on both counts.** There is no `remove_workset` in the codebase (`grep` over `src/` + `tests/`: zero hits); the function is `delete_workset`. And there are THREE use sites, not two — `create_workset` also uses it, also without a `Workset` instance. **Corrected.** |
+| 5 | `BOXES_DIR_NAME` comment | "two places need it … `Workset.projects_dir` (below) and **`remove_workset`**" | **FALSE on both counts.** There is no `remove_workset` in the codebase (`grep` over `src/` + `tests/`: zero hits); the function is `delete_workset`. And there were THREE use sites, not two — `create_workset` also used it, also without a `Workset` instance. **Corrected**, then SUPERSEDED 2026-08-29: the constant is now the resolver's `default_leaf` argument and nothing else, so the count is ONE and the question of "which sites need the bare leaf" no longer arises. |
 | 6 | `add_project` docstring | "a `workspace` override is written into the project's `settings.yaml`" | **FALSE, and self-contradicted 120 lines later.** The external arm writes no `settings.yaml` at all; the inline comment on the same path states "Sparse create (P8b/Option A): NO settings.yaml identity is written for the connected box — the connection record IS the per-workset `boxes:` entry". A reader trusting the docstring would go looking for a file that is never created. **DROPPED**, and the sparse-create ruling recorded instead. |
 | 7 | `_Unwind` block comment | "These sequences are short (2-5 steps)" | **FALSE number.** `add_project` pushes up to SEVEN (box dir, vault ro, vault rw, symlink, membership, standalone restore, detach). **Corrected to the measured range.** |
 | 8 | `RESERVED_WORKSET_NAMES` comment | "the three-mode model (**TARGET** §2c)" | **STALE CITATION.** There is no "TARGET" document; the sentinels are declared in `specs/settings-keyspace-1.8.0.md` §2c. A §-number with no valid filename is how the wrong file gets read. **Corrected to the spec filename.** |
