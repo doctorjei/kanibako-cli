@@ -455,6 +455,11 @@ def run_setup(args: argparse.Namespace) -> int:
         # refusal names every offending entry and every file the resolve loaded).
         # Anything else still falls through to the arm below, which keeps that path
         # for the case it was written for.
+        # ⚑ WORDED DIFFERENTLY FROM ``diagnose`` ON PURPOSE — NOT AN INCONSISTENCY TO
+        # TIDY. ``setup`` ABORTS AT THE FIRST ERROR, so it has exactly one report and
+        # nothing to consolidate: the body genuinely IS immediately below, and quoting
+        # it inline is accurate. ``diagnose`` collects every error and therefore says
+        # ``see 'Settings errors' below``, which would be a lie here.
         print("  [!!] Settings error -- setup cannot continue (reported below).")
         print("       Nothing has been written. Fix the file the error names,")
         print("       then re-run `kanibako setup`.")
