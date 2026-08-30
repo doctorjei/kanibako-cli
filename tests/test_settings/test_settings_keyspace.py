@@ -1349,11 +1349,32 @@ def test_a_populated_interior_carries_its_children_clean():
 # ⚑⚑ THE PAIR IS ONE PARAMETER NOW, AND THAT IS WHY THESE ROWS READ AS THEY DO. The
 # oracle takes a MAP of harness → declared leaves, so "claude's vocabulary is
 # readable and holds nothing" is ``{"claude": frozenset()}`` while "goose's is
-# unreadable" is goose's ABSENCE from the same literal. A concession that has to be
-# spelled by omission cannot be forwarded without its vocabulary.
+# unreadable" is goose's ABSENCE from a map that SAYS it concedes what it did not
+# read. A concession that travels with the vocabulary cannot be forwarded without it.
+#
+# ⚑⚑ AND THE MAP HAS TO SAY IT — absence alone stopped meaning it on 2026-08-30, and
+# the rows below are written both ways on purpose. A DISCOVERY result concedes the
+# harnesses it could not read; a bare ``dict`` is a literal vocabulary and concedes
+# NOTHING. The two were one spelling, so a supplier that had read nothing — a default
+# ``AgentNames``, a degraded discovery pass — conceded every leaf of every named
+# agent, which is §0 failing open on an omission.
 
-#: claude's vocabulary is READABLE and EMPTY; goose's is absent, hence conceded.
-_KNOWN_MAP = {"claude": frozenset()}
+
+def _discovered(declared):
+    """*declared* AS A DISCOVERY PASS WOULD HAND IT OVER: conceding what it did not read.
+
+    The production shape (``settings_prefs.default_valid_agents``,
+    ``settings_keyspace_probe``), and the only one that concedes at all.
+    """
+    from kanibako.settings.settings_keyspace import (
+        ConcedingLeafMap, unread_harnesses,
+    )
+
+    return ConcedingLeafMap(declared, unread_harnesses(declared))
+
+
+#: claude's vocabulary is READABLE and EMPTY; goose's could not be read, hence conceded.
+_KNOWN_MAP = _discovered({"claude": frozenset()})
 
 #: goose declares ``provider`` and nobody else does — the shape ``[R150]`` turns on.
 _GOOSE_MAP = {"goose": frozenset({"provider"})}
@@ -1392,6 +1413,37 @@ def test_a_verifiable_agents_undeclared_leaf_still_refuses():
     )
     assert judged.cls is KeyClass.UNDECLARED
     assert "not a declared agent key" in judged.reason
+
+
+def test_a_map_that_does_not_SAY_it_concedes_concedes_NOTHING():
+    """🛑 THE FAIL-OPEN, AND IT IS THE DEFAULT THAT MAKES IT ONE.
+
+    The concession used to be spelled by a MISSING KEY, and two states wear that
+    spelling: *"this machine cannot read goose's vocabulary"*, which ``[R150]``
+    requires be conceded, and *"nobody supplied a vocabulary"*, which must not be.
+    They are the same ``{}``, and the second is what a hand-built ``AgentNames`` or a
+    degraded discovery pass produces — so §0 was disarmed for EVERY named agent by an
+    omission, which is the fail-open direction on a CLOSED keyspace.
+
+    ⚑ THE PAIR IS THE POINT: the same literal, wrapped and bare, must answer
+    differently. A plain mapping is a literal vocabulary; only a map that SAYS what it
+    could not read concedes it.
+
+    MUTATION: drop the ``isinstance`` guard in ``agent_declared_leaves`` and read a
+    missing key as the concession again — the first block reddens and the second does
+    not, because conceding-always is what the old code did.
+    """
+    from kanibako.settings.settings_keyspace import KeyClass
+
+    bare = {"claude": frozenset()}
+    assert _class("agent.goose.provider", agent_leaf_map=bare).cls is (
+        KeyClass.UNDECLARED
+    )
+    assert _class("agent.goose.zippity", agent_leaf_map={}).cls is KeyClass.UNDECLARED
+    # …and the SAME literal, from a supplier that has looked, concedes as before.
+    assert _class(
+        "agent.goose.provider", agent_leaf_map=_discovered(bare),
+    ).cls is KeyClass.KEY
 
 
 def test_the_all_agents_tier_is_never_conceded():
@@ -1492,7 +1544,7 @@ def test_conceding_a_vocabulary_concedes_nothing_else():
     """
     from kanibako.settings.settings_keyspace import KeyClass
 
-    unknown = dict(agent_leaf_map={})
+    unknown = dict(agent_leaf_map=_discovered({}))
     # A multi-segment tail is not an agent key whoever declares the leaves.
     assert _class("agent.goose.a.b", **unknown).cls is KeyClass.UNDECLARED
     # A category token still routes to the category rules.
@@ -1787,11 +1839,16 @@ _ORACLE_PROBES = {
             {"agent_leaf_map": {"goose": frozenset({"provider"})}},
             {"agent_leaf_map": {"goose": frozenset()}},
         ),
-        # The CONCESSION half: goose ABSENT from the map is what concedes its leaves.
+        # The CONCESSION half: goose absent from a map that CONCEDES what it did not
+        # read. ⚑ Both sides are discovery-shaped, so what flips is goose's standing
+        # and not the map's — a bare literal concedes nobody and would flip for the
+        # wrong reason.
         (
             "agent.goose.zippity",
-            {"agent_leaf_map": {"claude": frozenset()}},
-            {"agent_leaf_map": {"claude": frozenset(), "goose": frozenset()}},
+            {"agent_leaf_map": _discovered({"claude": frozenset()})},
+            {"agent_leaf_map": _discovered(
+                {"claude": frozenset(), "goose": frozenset()},
+            )},
         ),
     ],
 }

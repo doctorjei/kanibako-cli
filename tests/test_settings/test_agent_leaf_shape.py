@@ -529,12 +529,17 @@ class TestTheFourDoorsAgreeOnOneKey:
 
         names = settings_prefs.AgentNames(
             (self.KNOWN, self.DECLARER, self.UNREADABLE),
-            # ⚑ ``UNREADABLE`` is a valid NAME with NO map entry. That absence IS the
-            # concession — spelling it ``frozenset()`` would claim the opposite.
+            # ⚑ ``UNREADABLE`` is a valid NAME with NO map entry — and the absence is
+            # not enough on its own: since 2026-08-30 a supplier CONCEDES BY SAYING SO,
+            # because an empty map from a supplier that never looked used to concede
+            # every agent it had never heard of. Spelling it ``frozenset()`` in the map
+            # would claim the opposite of ``unreadable`` — that its vocabulary is
+            # readable and empty.
             leaf_map={
                 self.KNOWN: frozenset(),
                 self.DECLARER: frozenset({self.PLUGIN_LEAF}),
             },
+            unreadable=frozenset({self.UNREADABLE}),
         )
         monkeypatch.setattr(
             settings_prefs, "default_valid_agents", lambda: names,

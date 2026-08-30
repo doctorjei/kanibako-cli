@@ -32,6 +32,35 @@ from kanibako.commands.start import (
 
 
 @pytest.fixture(autouse=True)
+def _reset_agent_discovery_memo():
+    """Clear the process-wide agent-discovery memo around EVERY test.
+
+    ⚑⚑ THE MEMO OUTLIVES THE MONKEYPATCH THAT POISONED IT.
+    ``settings_prefs._DISCOVERY`` is process-scoped, and a test that patches
+    ``discover_targets`` — ``test_agent_resolution`` patches it to a bare ``object``
+    sentinel — leaves the RESULT of that patch cached under the real supplier's key.
+    ``monkeypatch`` undoes the patch it made; nothing undoes what the patched code
+    WROTE, so every later file asking for an agent vocabulary gets one derived from a
+    stub whose ``setting_descriptors`` raise.
+
+    🛑 IT IS INVISIBLE ONE FILE AT A TIME, WHICH IS WHY IT SHIPPED. The chunked gate
+    runs a file per process and cannot see cross-file state at all; CI runs
+    ``pytest tests/`` in ONE process, where 8 tests across five later files reddened
+    in collection order.
+
+    ⚑ ``reset_discovery_cache`` is the documented seam for exactly this and had no
+    caller. BOTH sides of the yield: a test must neither inherit a memo nor leave one.
+    ⚑ NOT the ``settings_keyspace_probe`` memo, which is primed at ``pytest_configure``
+    before any test patch exists and is deliberately not resettable from here.
+    """
+    from kanibako.settings.settings_prefs import reset_discovery_cache
+
+    reset_discovery_cache()
+    yield
+    reset_discovery_cache()
+
+
+@pytest.fixture(autouse=True)
 def _no_magicmock_dir_leak():
     """Fail any test that leaks a ``<MagicMock ...>`` entry into the CWD.
 

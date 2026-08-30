@@ -89,11 +89,13 @@ from typing import Any, Collection, Final, Iterator, Mapping
 
 from kanibako.settings.keystore import KeyStore
 from kanibako.settings.settings_keyspace import (
+  ConcedingLeafMap,
   KeyClass,
   KeyJudgement,
   key_class,
   render_store_path,
   undeclared_store_paths,
+  unread_harnesses,
 )
 
 #: Names the probe. UNSET (or an :data:`_OFF_TOKENS` member) means OFF — the inverse
@@ -234,7 +236,19 @@ class _AgentLeafMap(Mapping[str, "frozenset[str]"]):
     return len(_discover())
 
 
-AGENT_LEAF_MAP: Final[_AgentLeafMap] = _AgentLeafMap()
+_DECLARED_HERE: Final[_AgentLeafMap] = _AgentLeafMap()
+
+#: The deferred view, WITH the concession this instrument makes: it concedes every
+#: harness the pass did not read.
+#: ⚑⚑ THE WRAP IS WHAT KEEPS THE CONCESSION ALIVE. ``key_class`` concedes only for a
+#: map that SAYS it could not read a harness — an omission is no longer evidence — and
+#: this probe judges the whole store on every armed resolve, so without it an
+#: uninstalled agent's real leaf would be reported UNDECLARED and refused at the
+#: launch seam (``[R150]``). ⚑ The concession is as LAZY as the map: both ask
+#: :func:`_discover` and neither sooner.
+AGENT_LEAF_MAP: Final[ConcedingLeafMap] = ConcedingLeafMap(
+  _DECLARED_HERE, unread_harnesses(_DECLARED_HERE),
+)
 
 
 def declared_keyspace_oracle(path: str) -> KeyJudgement:
@@ -247,8 +261,11 @@ def declared_keyspace_oracle(path: str) -> KeyJudgement:
   ⚑ THE DISCRIMINATOR AND ITS LEAVES ARE CONCEDED TOGETHER (see the module doc).
   ``ANY_AGENT`` concedes the agent NAME because this machine's plugin set is not the
   keyspace; :data:`AGENT_LEAF_MAP` then concedes that agent's LEAVES for the same
-  reason — by not carrying a key for it — since the vocabulary a leaf is judged
-  against is the very plugin that is missing.
+  reason — by DECLARING every harness the pass could not read — since the vocabulary a
+  leaf is judged against is the very plugin that is missing. ⚑ It is declared and no
+  longer merely implied by a missing key: an empty map from a supplier that never
+  looked says nothing about this machine, and reading it as a concession opened §0
+  wherever a vocabulary was omitted rather than unreadable.
 
   ⚑⚑ NEITHER ARGUMENT MAY EVALUATE DISCOVERY. This function runs on the first path
   of EVERY settings resolve — ``settings_launch`` reads it through
