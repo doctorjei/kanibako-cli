@@ -58,6 +58,11 @@ MARKERS_DIR = "/tmp/kanibako/agents"
 # black box that observes a real container, so its expectations are written out rather
 # than imported from the code under test.
 PID_ADD_SCRIPT = "~/canon/bible/general/scripts/util/pid-add.sh"
+# The e2e fixture box's DEFAULT agent program.  ⚑ Load-bearing for the panel
+# simulation below: PID 1 judges a marker's pid against the launch grammar it was
+# given, so a simulated panel agent must carry the box's own agent name.
+AGENT_PROGRAM = "claude"
+PANEL_AGENT_DIR = "/tmp/kani-e2e-panel-agent"
 
 
 def _is_running(name: str) -> bool:
@@ -84,6 +89,49 @@ def _exec(name: str, script: str, *, detach: bool = False):
         argv.append("-d")
     argv += [name, "sh", "-c", script]
     return subprocess.run(argv, capture_output=True, text=True, timeout=30)
+
+
+def _require_executable(name: str, path: str) -> None:
+    """Assert *path* is an executable file inside the LIVE box *name*.
+
+    Names WHICH fact failed: a `podman exec` can fail because the container is
+    gone (rc 125) as easily as because the file is absent, and a message that
+    blames the file for a missing container sends the next reader into the
+    wrong tree.
+    """
+    probe = _exec(name, f"test -x {path}")
+    assert _is_running(name), (
+        f"cannot probe {path}: box {name} is NOT running, so this says nothing "
+        f"about the file (podman exec: rc={probe.returncode} "
+        f"stderr={probe.stderr.strip()!r})"
+    )
+    assert probe.returncode == 0, (
+        f"{path} is not an executable file in the running box {name} — the "
+        f"marker hook would silently do nothing (rc={probe.returncode} "
+        f"stderr={probe.stderr.strip()!r})"
+    )
+
+
+def _diag(name: str) -> str:
+    """Box-side state for a failure message: sessions, processes, markers, PID-1 log.
+
+    An assertion about a remote container is unreadable without the state that
+    produced it; every panel-watch assert below carries this.
+    """
+    parts = []
+    for label, script in (
+        ("tmux list-sessions", "tmux list-sessions 2>&1"),
+        ("ps", "ps -eo pid,ppid,args 2>&1"),
+        ("markers", f"ls -l {MARKERS_DIR} 2>&1"),
+    ):
+        r = _exec(name, script)
+        parts.append(f"--- {label} (rc={r.returncode}) ---\n{r.stdout}{r.stderr}")
+    logs = subprocess.run(
+        [_podman, "logs", "--tail", "80", name],
+        capture_output=True, text=True, timeout=30,
+    )
+    parts.append(f"--- podman logs (PID 1) ---\n{logs.stdout}{logs.stderr}")
+    return "\n".join(parts)
 
 
 def _seed_codex_stub(e2e_env: dict) -> None:
@@ -147,15 +195,10 @@ def test_codex_delivery_real_box(e2e_env):
         # marker hook is a CALL into the bible's PID helper, which is where the
         # ``${KANIBAKO_AGENT_MARKERS_DIR:-…}`` fallback now lives.
         assert PID_ADD_SCRIPT in commands[1] and '"$PPID"' in commands[1]
-        # ...and the call only means anything if the rom bind actually put an
-        # executable script there. A codex box gets it from the SAME unconditional
-        # ``bible/general`` bind a claude box does — this is the assertion that
-        # catches an agent-gated bind, which no config-bytes check can see.
-        probe = _exec(container_name(box), f"test -x {PID_ADD_SCRIPT}")
-        assert probe.returncode == 0, (
-            f"{PID_ADD_SCRIPT} is not an executable file in the box — the marker "
-            f"hook would silently do nothing"
-        )
+        # ⚑ That the CALLED script really exists in a codex box is a claim about a
+        # LIVE container, which this test does not have — its box exits the moment
+        # the ``/bin/true`` codex does.  It is asserted by
+        # ``test_codex_box_has_bible_pid_helper`` below, on a detached box.
         box_cfg = f"{GUEST_HOME}/.codex/config.toml"
         assert set(data["hooks"]["state"]) == {
             f"{box_cfg}:session_start:0:0",
@@ -175,6 +218,32 @@ def test_codex_delivery_real_box(e2e_env):
         assert cfg_path.read_bytes() == first, "restart changed delivered bytes"
     finally:
         rm(container_name(box))
+
+
+def test_codex_box_has_bible_pid_helper(e2e_env):
+    """A CODEX box really carries the bible PID helper the D2 marker hook calls.
+
+    The delivered ``config.toml`` only proves the hook COMMAND names the script;
+    an agent-gated ``bible/general`` bind would leave that command calling
+    nothing, and no config-bytes check can see it.  Needs a LIVE box, hence
+    ``--detach``: a foreground codex box exits with its ``/bin/true`` codex.
+    """
+    env, project, box = e2e_env["env"], e2e_env["project"], "codexpanel-rom"
+    _seed_codex_stub(e2e_env)
+    run_install(env)
+    name = container_name(box)
+
+    r = run_kanibako(["create", str(project), "--name", box], env=env)
+    assert r.returncode == 0, f"create failed: {r.stderr}"
+    try:
+        r = run_kanibako(["start", box, "--detach", "--agent", "codex"],
+                         env=env, timeout=120)
+        assert _poll(lambda: _is_running(name), timeout=30), (
+            f"codex box never came up: rc={r.returncode} stderr={r.stderr[-300:]!r}"
+        )
+        _require_executable(name, PID_ADD_SCRIPT)
+    finally:
+        rm(name)
 
 
 def test_simulated_panel_marker_lifecycle(e2e_env):
@@ -210,16 +279,38 @@ def test_simulated_panel_marker_lifecycle(e2e_env):
 
         # Simulated PANEL AGENT: a live process + its per-PID marker file —
         # exactly what the D2 SessionStart hook writes.
-        # NB: plain `;` before the backgrounded sleep — an `&&` list would be
-        # backgrounded WHOLE and `$!` would name the subshell, not the sleep.
+        # ⚑ TWO constraints the obvious `sleep 600` fails, both measured on a real
+        # box.  (1) It must READ AS THE AGENT, not merely be alive:
+        # ``scan_marker_pids`` reaps a marker whose pid is alive but whose argv is
+        # not the box's launch grammar (``agent_session_verdict``), so a bare
+        # ``sleep`` marker is STALE on the very first tick and the box self-heals.
+        # A copy named for the agent whose FIRST argument is an OPTION gives the
+        # ``(claude, None)`` head a bare ``claude <flags>`` launch has — what a
+        # panel-launched agent looks like to PID 1.  (2) It must SURVIVE the exec
+        # session that starts it: `tail -f` exits when its stdout pipe closes
+        # (coreutils' output-alive check) and `sleep` does not — hence an
+        # option-first `sleep -- 600` rather than a `tail -f /dev/null`.
+        # NB: plain `;` before the backgrounded agent — an `&&` list would be
+        # backgrounded WHOLE and `$!` would name the subshell, not the agent.
         r = _exec(
             name,
-            f"mkdir -p {MARKERS_DIR}; "
-            f"sleep 600 & pid=$!; "
-            f'printf %s "$pid" > {MARKERS_DIR}/$pid',
+            f"mkdir -p {MARKERS_DIR} {PANEL_AGENT_DIR} || exit 1; "
+            f"cp /bin/sleep {PANEL_AGENT_DIR}/{AGENT_PROGRAM} || exit 1; "
+            f"{PANEL_AGENT_DIR}/{AGENT_PROGRAM} -- 600 & pid=$!; "
+            f'printf %s "$pid" > {MARKERS_DIR}/$pid || exit 1; '
+            f'printf %s "$pid"',
             detach=False,
         )
         assert r.returncode == 0, f"panel-agent sim failed: {r.stderr}"
+        agent_pid = r.stdout.strip()
+        # ⚑ The simulation must RED ON ITS OWN EMPTINESS.  A panel agent that never
+        # started, or died with its exec session, leaves a marker naming a dead pid
+        # — which IS the DEAD state, so every phase below would pass through the
+        # wrong transitions and report a state machine it never exercised.
+        assert _exec(name, f"kill -0 {agent_pid}").returncode == 0, (
+            f"simulated panel agent (pid {agent_pid!r}) is not alive — the "
+            f"simulation, not the supervisor, is what failed\n{_diag(name)}"
+        )
 
         # ALIVE → hands-off: the box stays up well past several poll ticks.
         time.sleep(8)  # > 3 ticks at the default 2.0 s poll
@@ -232,7 +323,7 @@ def test_simulated_panel_marker_lifecycle(e2e_env):
         probe = _exec(name, "tmux list-sessions 2>/dev/null | wc -l")
         assert probe.stdout.strip() in ("", "0"), (
             "premature SELF_HEAL_CLI while the panel agent is ALIVE "
-            f"(tmux sessions: {probe.stdout.strip()!r})"
+            f"(tmux sessions: {probe.stdout.strip()!r})\n{_diag(name)}"
         )
 
         # Kill the marker PID (panel agent dies; surface still attached) →
@@ -246,7 +337,7 @@ def test_simulated_panel_marker_lifecycle(e2e_env):
 
         assert _poll(_healed, timeout=30), (
             "no self-healed CLI agent (tmux session) after panel-agent death "
-            "with the panel surface still attached"
+            f"with the panel surface still attached\n{_diag(name)}"
         )
         assert _is_running(name), "box died during self-heal"
 
@@ -256,6 +347,7 @@ def test_simulated_panel_marker_lifecycle(e2e_env):
         _exec(name, "tmux kill-server 2>/dev/null; true")
         assert _poll(lambda: not _is_running(name), timeout=60), (
             "box never tore down after all surfaces and agents were gone"
+            f"\n{_diag(name)}"
         )
     finally:
         rm(name)
