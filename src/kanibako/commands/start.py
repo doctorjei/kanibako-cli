@@ -2079,11 +2079,11 @@ def _start_helper_hub(
         f"{_box_name}-{_ws_token}", _run_dir,
     )
     validate_socket_path(socket_path)
-    # Per-box, per-mode HOST helper log — lives inside the box's own
-    # workset/box tree (PRIMARY and NAMED → the RESOLVED @workset.logs of
-    # that box's workset root, STANDALONE → box_data/<box>.jsonl), not the
-    # old shared @config.data/logs/<id>/ location.  Guarantee-create the
-    # parent before the ro bind (L7).
+    # Per-box, per-mode HOST helper log — the RESOLVED @workset.logs of that
+    # box's workset root in EVERY mode (STANDALONE resolves it against the
+    # degenerate workset at the project dir, default @meta.box.path =
+    # box_data/), not the old shared @config.data/logs/<id>/ location.
+    # Guarantee-create the parent before the ro bind (L7).
     # ⚑⚑ THE RESOLVED KEY IS WHAT MAKES THIS AGREE WITH THE MOUNT, which is
     # emitted as the spec spelling @workset.logs/@{meta.box.name}.jsonl —
     # writer, .exists() gate and mount all name one file (migration M-14).
