@@ -149,13 +149,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   hand instead of reading your setting. The result was the quieter kind of broken: the workset was
   recognised, so nothing looked wrong, and the files simply went somewhere else. Every path that
   creates, moves, duplicates, converts, purges or removes a box tree now reads the setting, and so
-  does the primary workset's own store and log root and the helper-log writer for a named box. ⚠️
+  does the primary workset's own store and log root and the helper-log writer — in all three modes,
+  standalone included, whose log directory is the box's own `box_data/` by default and follows the
+  setting when you move it. ⚠️
   **If you had repointed either setting, kanibako has been writing to the default directory all
   along** — see `MIGRATION.md`, *A repointed `workset.boxes` or `workset.logs` now takes effect*,
-  for how to tell and what to move. Two limits are stated rather than fixed: a standalone box's
-  helper log still ignores a `workset.logs` repoint, and box trees under a `workset.boxes` you
-  pointed *outside* the workset root still survive `kanibako workset rm --purge`, which deletes the
-  root and nothing beyond it.
+  for how to tell and what to move. Two limits are stated rather than fixed, both of them a purge
+  declining to follow a path you pointed outside the tree it owns: box trees under a
+  `workset.boxes` you pointed *outside* the workset root survive `kanibako workset rm --purge`,
+  which deletes the root and nothing beyond it; and a standalone box's helper log, once repointed
+  out of `box_data/`, survives `kanibako box rm --purge`, which removes `box_data/` whole. Both are
+  yours to delete by hand.
 
 - **A `synced` destination that no mount covers now refuses the launch instead of being copied
   into nowhere.** A `synced` entry is applied last, after the mount set is final, and it resolves
