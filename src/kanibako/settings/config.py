@@ -547,7 +547,14 @@ def read_box_enable_vault(path: Path) -> bool:
         return True
     box_tbl = load_doc(path).get("box") or {}
     if "enable_vault" in box_tbl:
-        return box_tbl["enable_vault"]
+        # ⚑ COERCED IN PLACE, through the SAME :func:`_typed_box_scalar` the resolved
+        # reader uses (2026-08-29).  A settings file is hand-editable, so the stored leaf
+        # can be the STRING ``"false"`` — truthy — and returning it raw made the AUTHORED
+        # answer contradict :func:`resolve_box_enable_vault`'s for the one command that
+        # ran before the next write normalized the file.  The coercion goes HERE and not
+        # through the cascade: the docstring's two prohibitions above still hold.
+        return bool(_typed_box_scalar(KanibakoConfig(), "box_enable_vault",
+                                      box_tbl["enable_vault"]))
     return True
 
 

@@ -329,6 +329,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A hand-written `enable_vault: "false"` in quotes was read as ON.** kanibako has two readers for
+  this setting: one resolves it through the full cascade, the other asks the narrower question of
+  what *this box's own file* says — which is what the box lifecycle commands need, so that a
+  workset's default is not silently frozen onto a box as an override of its own. The cascade reader
+  converted what it found to a true or false; the box-file reader handed back whatever the file
+  stored. Settings files are meant to be hand-editable, and in YAML a quoted `"false"` is text, not
+  a boolean — so the two readers disagreed for the rest of that one command, the box-file half
+  treating the text as *on*. It was easy to miss because it healed itself: the next command to
+  write the file stored a real boolean and the disagreement vanished. Both readers convert now.
+  **What you will see:** `kanibako box convert --standalone` on a box whose file says
+  `enable_vault: "false"` no longer treats the vault as enabled for the remainder of the convert.
+  Unquoted `enable_vault: false` was always read correctly and is unaffected.
+
 - **Converting a box to standalone moved kanibako's own directories into your workspace.** A
   standalone box keeps its live workspace in a subdirectory of the project root, so `kanibako box
   convert --standalone` sweeps everything else at the root down into it. What it left behind was a

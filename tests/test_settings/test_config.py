@@ -8,7 +8,10 @@ from kanibako.settings.config_io import dump_doc, load_doc
 from kanibako.settings.config import (
     BOX_META_FILE,
     KanibakoConfig,
+    _BOOL_FALSE,
+    _BOOL_TRUE,
     _flatten_toml,
+    coerce_bool,
     config_file_path,
     load_config,
     load_merged_config,
@@ -966,6 +969,52 @@ class TestBoxEnableVault:
         data = load_doc(p)
         assert "enable_vault" not in data.get("box", {})
         assert read_box_enable_vault(p) is True
+
+    def test_a_hand_quoted_false_is_not_the_truthy_string(self, tmp_path):
+        """The anchor case: ``enable_vault: "false"`` is False, not the truthy ``"false"``.
+
+        ⚑ Settings files are a HAND-EDIT surface, so the stored leaf can be a string.  The
+        reader is annotated ``-> bool`` and its callers feed lifecycle destination writes,
+        so returning the raw leaf made the AUTHORED answer disagree with
+        ``resolve_box_enable_vault``'s until the next write normalized the file.
+        """
+        p = tmp_path / BOX_META_FILE
+        p.write_text('box:\n  enable_vault: "false"\n')
+        assert read_box_enable_vault(p) is False
+
+    @pytest.mark.parametrize("authored", sorted(_BOOL_FALSE | _BOOL_TRUE))
+    def test_every_truth_table_token_reads_back_as_a_real_bool(self, tmp_path, authored):
+        """The RULE, not an inventory: the authored reader applies the SHARED truth table.
+
+        ⚑ The corpus is ``config``'s own ``_BOOL_TRUE``/``_BOOL_FALSE``, so a token added
+        there that this reader does not honour reds here instead of outdating a list.
+        (Mutation: return ``box_tbl["enable_vault"]`` raw → every token is a non-empty
+        string → the four ``_BOOL_FALSE`` cases go RED.)
+        """
+        p = tmp_path / BOX_META_FILE
+        p.write_text(f'box:\n  enable_vault: "{authored}"\n')
+        value = read_box_enable_vault(p)
+        assert isinstance(value, bool)
+        assert value is coerce_bool(authored)
+
+    def test_the_authored_reader_agrees_with_the_resolved_one_on_a_string(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        """The two halves cannot disagree for the one command that runs before a rewrite.
+
+        ⚑ Same box file, both readers.  ``read_box_enable_vault`` answers *what the box
+        authored* and ``resolve_box_enable_vault`` answers *what the cascade resolves*;
+        with the value present at the BOX tier and nowhere else those are the same value,
+        and a coercion on only one side is exactly how they drifted.
+        """
+        from kanibako.settings.config import resolve_box_enable_vault
+
+        box_file = tmp_home / "box.yaml"
+        box_file.write_text('box:\n  enable_vault: "false"\n')
+        resolved = resolve_box_enable_vault(
+            config_file, box_path=box_file, workset_path=None,
+        )
+        assert read_box_enable_vault(box_file) is resolved
 
     def test_disabled_merges_beside_existing_box_image(self, tmp_path):
         """(d) disabled merges beside an existing box.image (preserves it)."""
