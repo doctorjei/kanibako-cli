@@ -391,6 +391,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   convert that displaced a directory, it was moved and not deleted — it is under the workspace
   subdirectory, and moving it back to the root restores the layout.
 
+- **Converting a box *out* of standalone emptied and deleted the workspace directory
+  `workset.workspaces` named, when you had pointed that setting somewhere of your own.** A
+  standalone box keeps its live workspace in a subdirectory, so converting to any other mode lifts
+  the files back up — and the directory they were lifted *into* was counted off the workspace's
+  own path rather than read off the box. In the default layout the two are the same directory, so
+  nothing showed. With `workset.workspaces` pointed one level deeper, the files landed in the
+  in-between directory instead of at the project root, and the box was registered there. With it
+  pointed at an **absolute** path, the lift emptied the directory you had named, deleted it, and
+  left your files loose in its parent — a directory kanibako was never given. The root is now read
+  off the box, and an absolute workspace is kept where you put it: it needs no move at all, since
+  every other mode's workspace is simply its project directory, wherever that is. **What you will
+  see:** converting out of standalone with an absolute `workset.workspaces` now reports the keep on
+  standard error — `Note: left the workspace at /path/work — workset.workspaces pointed it outside
+  /path/root, so it is yours and the box keeps it as its project directory.` — and the box is
+  registered at that path. An in-root repoint lifts to the project root as it always meant to, and
+  the empty directory the repoint interposed is cleaned up; if it still holds files of yours, it
+  stays.
+
+- **Renaming a standalone box in place built a second box inside its own workspace and tore the
+  first one out.** `kanibako box convert --standalone --name <new>` on a box that is already
+  standalone was handed the box's workspace where the box's root belongs. It laid a complete second
+  standalone tree — `box_data/`, `workset.yaml`, another workspace directory — one level down
+  inside your files, then removed the original's `box_data/` (with the box's home in it) and vault,
+  because from where it stood those belonged to a different box. A rename is now what it says: the
+  identity changes, and the root, home, vault and workspace are left exactly as they were.
+
 - **`kanibako system set agent.claude.run_args="--verbose"` reported success and the agent never
   got the arguments.** Two commands write this setting, and they stored two different things.
   `kanibako agent set claude run_args="--verbose"` split the value into a list of words, which is
