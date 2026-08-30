@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import socket
+from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -85,6 +86,66 @@ def fork_hub(tmp_path, fork_ctx):
     hub.start(sock_path, fork_ctx)
     yield hub, sock_path, fork_ctx
     hub.stop()
+
+
+def _fallback_ctx(tmp_path: Path, boxes_leaf: str) -> HelperContext:
+    """Fork context whose source box is ABSENT from the membership (fallback arm only).
+
+    *boxes_leaf* is the leaf of the resolved ``workset.boxes`` store — ``"boxes"`` is
+    merely the DEFAULT, and any workset may repoint the key elsewhere.
+    """
+    project_path = tmp_path / "workspace" / "myapp"
+    project_path.mkdir(parents=True)
+    (project_path / "main.py").write_text("print('hello')\n")
+
+    data_path = tmp_path / "data"
+    boxes = data_path / boxes_leaf
+    boxes.mkdir(parents=True)
+
+    registry = data_path / "global" / "registry.yaml"
+    registry.parent.mkdir(parents=True, exist_ok=True)
+    registry.write_text("worksets: {}\n")
+    # PRIMARY membership is EMPTY: the reverse lookup misses, so the fork can only
+    # reach its source metadata through the shell_path fallback.
+    primary_reg = data_path / "primary_workset" / "registry.yaml"
+    primary_reg.parent.mkdir(parents=True, exist_ok=True)
+    primary_reg.write_text("boxes: {}\n")
+
+    meta_dir = boxes / "myapp"
+    shell_dir = meta_dir / "home"
+    shell_dir.mkdir(parents=True)
+    (shell_dir / ".bashrc").write_text("# bashrc\n")
+    (meta_dir / "box.yaml").write_text("meta: {}\n")
+    helpers_dir = shell_dir / "helpers"
+    helpers_dir.mkdir()
+
+    runtime = MagicMock()
+    runtime.run.return_value = 0
+    return HelperContext(
+        runtime=runtime,
+        image="test:latest",
+        container_name_prefix="kanibako-myapp",
+        shell_path=shell_dir,
+        helpers_dir=helpers_dir,
+        socket_path=tmp_path / "helper.sock",
+        binary_mounts=[],
+        project_path=project_path,
+        data_path=data_path,
+        registry=registry,
+        boxes=boxes,
+        primary_workset=data_path / "primary_workset",
+    )
+
+
+@contextmanager
+def _running_hub(ctx: HelperContext):
+    """Run a hub on *ctx*'s own socket path for the duration of the block."""
+    hub = HelperHub()
+    hub.start(ctx.socket_path, ctx)
+    try:
+        yield ctx.socket_path
+    finally:
+        hub.stop()
 
 
 def _send(sock_path: Path, request: dict) -> dict:
@@ -202,6 +263,32 @@ class TestHandleFork:
             assert "project_path" in resp["message"]
         finally:
             hub.stop()
+
+
+# ---------------------------------------------------------------------------
+# Source metadata dir — the shell_path fallback arm
+# ---------------------------------------------------------------------------
+
+class TestForkSourceMetaDirFallback:
+    """When the membership lookup misses, the fallback must still find the metadata dir."""
+
+    @pytest.mark.parametrize("boxes_leaf", ["boxes", "elsewhere"],
+                             ids=["default_store", "repointed_store"])
+    def test_fallback_finds_source_meta_dir(self, tmp_path, boxes_leaf):
+        from kanibako.settings.paths import primary_box_name_for_workspace
+
+        ctx = _fallback_ctx(tmp_path, boxes_leaf)
+        # Guard: the PRIMARY route must genuinely miss, or this exercises the wrong arm.
+        assert primary_box_name_for_workspace(
+            ctx.primary_workset, str(ctx.project_path)) is None
+
+        with _running_hub(ctx) as sock_path:
+            resp = _send(sock_path, {"action": "fork", "name": "fallback"})
+
+        assert resp["status"] == "ok"
+        new_meta = ctx.boxes / resp["name"]
+        assert (new_meta / "box.yaml").is_file()
+        assert (new_meta / "home" / ".bashrc").is_file()
 
 
 # ---------------------------------------------------------------------------
