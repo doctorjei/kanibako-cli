@@ -1115,8 +1115,8 @@ def test_the_flat_authority_ladder_is_gone():
     """A behavioural test can pass while a dead ladder rots in place.
 
     ``_CATEGORY_AUTHORITY`` was a TOTAL order over categories. The §0 table is
-    not a permutation of it — it is a different shape (layer membership + scope,
-    with three outcomes instead of one), so keeping the dict around would leave a
+    not a permutation of it — it is a different shape (keyed on CONTAINMENT,
+    with seven outcomes instead of one), so keeping the dict around would leave a
     structure that reads like the authority is still total: two models of one
     fact, which is how the next reader learns the wrong one.
     """
