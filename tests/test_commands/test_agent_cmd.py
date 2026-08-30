@@ -1465,6 +1465,157 @@ class TestAgentSetRoutesThroughTheOneSetter:
         assert _stored_doc(agent_env)["self"]["model"] == "opus"
 
 
+class TestAgentResetRoutesThroughTheOneSetter:
+    """``agent reset`` removed the leaf with its OWN hand while ``set`` already routed.
+
+    There was no VALIDATION hole — the verb runs the same ``_agent_key_gate`` — so the defect is
+    structural: two writers of one keyspace slot, and a removal is a write.  ``reset`` now calls
+    ``config_interface.reset_config_value``, the resetter ``workset`` / ``system`` / ``box``
+    already share, with the threading its ``set`` twin uses.
+
+    ⚑ THE GATE STAYS IN FRONT OF IT, and that is not a duplicate of the engine: the gate judges
+    the tail against the KNOWN-GOOD node (the on-disk store dir), which the shared engine
+    structurally cannot do — it reads the node OUT of the key, so ``self.model`` parses as a node
+    ``claude.self``.  Pinned by ``test_the_self_alias_is_still_refused_by_the_gate``.
+    ⚑ ``name`` is still removed at the file boundary and that is NOT a carve-out: it is a
+    FILE-identity field of ``AgentConfig``, absent from the keyspace, so the shared resetter has
+    no key to route.
+    """
+
+    _ROUTED = ("model", "run_args", "env.EDITOR", "secret_path.TOKEN")
+
+    @staticmethod
+    def _spy(monkeypatch):
+        """Record every ``reset_config_value`` call and still run the real one."""
+        from kanibako.settings import config_interface
+
+        calls = []
+        real = config_interface.reset_config_value
+
+        def recorder(key, **kwargs):
+            calls.append((key, kwargs))
+            return real(key, **kwargs)
+
+        monkeypatch.setattr(config_interface, "reset_config_value", recorder)
+        return calls
+
+    @pytest.mark.parametrize("key", _ROUTED)
+    def test_every_declared_shape_enters_the_shared_resetter(
+        self, key, agent_env, monkeypatch, capsys,
+    ):
+        """MUTATION PROOF: put ``remove_leaf(slot_for(...))`` back and no call is recorded."""
+        from kanibako.commands.agent_cmd import run_reset
+        from kanibako.settings.config_keys import ConfigLevel
+
+        calls = self._spy(monkeypatch)
+        rc = run_reset(argparse.Namespace(
+            agent_id="claude", key=key, all_keys=False, force=False,
+        ))
+        assert rc == 0, capsys.readouterr().err
+        assert len(calls) == 1
+        routed_key, kwargs = calls[0]
+        # The CANONICAL key the engine's per-node routes read, built from the KNOWN node.
+        assert routed_key == f"agent.claude.{key}"
+        # The threading that makes those routes reachable at all — the per-node agent store is
+        # global, so the command scope is SYSTEM and the node is named.
+        assert kwargs["command_scope"] is ConfigLevel.system
+        assert kwargs["cascade_agent_name"] == "claude"
+        assert kwargs["agents_root"] == agents_dir(agent_env)
+
+    def test_name_is_the_one_tail_the_verb_still_removes_itself(
+        self, agent_env, monkeypatch, capsys,
+    ):
+        """The IDENTITY residue: no key, so nothing for the shared resetter to route."""
+        from kanibako.commands.agent_cmd import run_reset
+
+        calls = self._spy(monkeypatch)
+        rc = run_reset(argparse.Namespace(
+            agent_id="claude", key="name", all_keys=False, force=False,
+        ))
+        assert rc == 0, capsys.readouterr().err
+        assert calls == []
+        assert "Cleared name set on the agent scope" in capsys.readouterr().out
+
+    def test_the_reserved_any_agent_tier_is_refused(self, agent_env, capsys):
+        """The guard the routing BUYS, and the one ``set`` has had since it routed.
+
+        ``default`` is the reserved any-agent tier, not a persona node; the engine refuses a
+        per-node write against it and prescribes the bare spelling.  The verb's own gate cannot
+        see this — ``agent_write_key_error('default', 'model')`` is ``None``, measured — so
+        while ``reset`` wrote by hand it silently removed from a store dir named ``default``.
+        MUTATION PROOF: restore ``remove_leaf(slot_for(...))`` and this returns 0 with
+        "No override for model".
+        """
+        from kanibako.commands.agent_cmd import run_reset
+
+        _write_sparse(agent_env, "default", {"self": {"model": "opus"}})
+        rc = run_reset(argparse.Namespace(
+            agent_id="default", key="model", all_keys=False, force=False,
+        ))
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert "reserved any-agent tier" in err
+
+    def test_the_refusal_is_the_one_the_shared_resetter_produces(
+        self, agent_env, capsys, tmp_path,
+    ):
+        """ONE wording, not two — the same rule ``set``'s refusal-parity test pins."""
+        from kanibako.commands.agent_cmd import run_reset
+        from kanibako.settings.config_interface import reset_config_value
+        from kanibako.settings.config_keys import ConfigLevel
+
+        _write_sparse(agent_env, "default", {"self": {"model": "opus"}})
+        assert run_reset(argparse.Namespace(
+            agent_id="default", key="model", all_keys=False, force=False,
+        )) == 1
+        by_verb = capsys.readouterr().err.strip()
+
+        by_config = reset_config_value(
+            "agent.default.model",
+            config_path=tmp_path / "box.yaml",
+            command_scope=ConfigLevel.system,
+            agents_root=agents_dir(agent_env),
+        )
+        assert by_verb == by_config.strip()
+
+    def test_the_no_op_prefix_is_the_engines(self, agent_env, tmp_path):
+        """The verb reads "did anything change" OFF the engine's answer, so pin the wording.
+
+        MUTATION PROOF for the coupling: change either half of ``"No override for "`` and the
+        verb starts reporting a cleared key it never cleared.
+        """
+        from kanibako.settings.config_interface import reset_config_value
+        from kanibako.settings.config_keys import ConfigLevel
+
+        msg = reset_config_value(
+            "agent.claude.canon",
+            config_path=tmp_path / "box.yaml",
+            command_scope=ConfigLevel.system,
+            agents_root=agents_dir(agent_env),
+        )
+        assert msg.startswith("No override for ")
+
+    def test_the_self_alias_is_still_refused_by_the_gate(self, agent_env, capsys):
+        """RULING 55 survives the routing, and it must be the GATE that says so.
+
+        Routing without the gate does not merely change the wording — it blames the AGENT NAME
+        for a bad KEY: measured, the engine answers ``agent.claude.self.model`` with "invalid
+        agent name 'claude.self'".  MUTATION PROOF: drop the gate and this reddens on both
+        assertions while the routed cases above stay green.
+        """
+        from kanibako.commands.agent_cmd import run_reset
+
+        before = _stored_doc(agent_env)
+        rc = run_reset(argparse.Namespace(
+            agent_id="claude", key="self.model", all_keys=False, force=False,
+        ))
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert "keyspace is CLOSED" in err
+        assert "invalid agent name" not in err
+        assert _stored_doc(agent_env) == before
+
+
 class TestRetiredBindRoutesRefuseByName:
     """D-4's write half: the bind-shaped categories are refused BY NAME, never degraded.
 

@@ -163,6 +163,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   out of `box_data/`, survives `kanibako box rm --purge`, which removes `box_data/` whole. Both are
   yours to delete by hand.
 
+- **`agent reset default <key>` now refuses instead of quietly reporting nothing to do.** `default`
+  is the reserved any-agent tier, not a persona you can name, and `agent set default model=...` has
+  refused it for a while — but the matching `reset` still accepted it, printed `No override for
+  <key>` and exited 0, whether or not a store directory of that name existed. It now exits 1 and
+  says which spelling to use instead. This is the last verb that addressed the per-agent settings
+  file on its own rather than through the shared setter, so the two halves finally agree; every
+  other `reset` message is unchanged.
+
 - **A `synced` destination that no mount covers now refuses the launch instead of being copied
   into nowhere.** A `synced` entry is applied last, after the mount set is final, and it resolves
   *through* the mount containing its destination — that is what puts the file where the box can see

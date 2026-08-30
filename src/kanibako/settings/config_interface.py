@@ -774,7 +774,6 @@ def set_config_value(
     *,
     config_path: Path,
     env_path: Path | None = None,
-    is_system: bool = False,
     system_settings_path: Path | None = None,
     cascade_system_path: Path | None = None,
     cascade_agent_path: Path | None = None,

@@ -314,7 +314,7 @@ class TestRegularConfigKeys:
         agents_root = tmp_path / "agents"
         msg = set_config_value(
             "agent.claude.bootstrap", "none",
-            config_path=cf, is_system=True, command_scope=ConfigLevel.system,
+            config_path=cf, command_scope=ConfigLevel.system,
             agents_root=agents_root,
         )
         assert not msg.startswith("Error:"), msg
@@ -384,7 +384,7 @@ class TestContinueMode:
         agents_root = tmp_path / "agents"
         msg = set_config_value(
             "agent.claude.continue_mode", "false",
-            config_path=cf, is_system=True, command_scope=ConfigLevel.system,
+            config_path=cf, command_scope=ConfigLevel.system,
             agents_root=agents_root,
         )
         assert not msg.startswith("Error:"), msg
@@ -995,7 +995,7 @@ class TestH1NoCrashOnAdvertisedKeys:
         cf = tmp_path / "kanibako_config.yaml"
         msg = set_config_value(
             "agent.default.access", "restricted",
-            config_path=cf, is_system=True, command_scope=ConfigLevel.system,
+            config_path=cf, command_scope=ConfigLevel.system,
             agents_root=tmp_path / "agents",
         )
         assert msg.startswith("Error:")
@@ -1381,7 +1381,7 @@ class TestH2BoolCoercion:
         agents_root = tmp_path / "agents"
         msg = set_config_value(
             "agent.claude.allow_helpers", "false",
-            config_path=cf, is_system=True, command_scope=ConfigLevel.system,
+            config_path=cf, command_scope=ConfigLevel.system,
             agents_root=agents_root,
         )
         assert not msg.startswith("Error:"), msg
@@ -1409,7 +1409,7 @@ class TestH2BoolCoercion:
         agents_root = tmp_path / "agents"
         msg = set_config_value(
             "agent.claude.access", "restricted",
-            config_path=cf, is_system=True, command_scope=ConfigLevel.system,
+            config_path=cf, command_scope=ConfigLevel.system,
             agents_root=agents_root,
         )
         assert not msg.startswith("Error:"), msg
@@ -2121,7 +2121,7 @@ class TestCategoryConfigSet:
         def agent_door(key, verb):
             if verb == "set":
                 return set_config_value(
-                    key, "/newsrc", config_path=agent_file, is_system=True,
+                    key, "/newsrc", config_path=agent_file,
                     command_scope=ConfigLevel.system,
                 )
             return reset_config_value(
@@ -2153,7 +2153,7 @@ class TestCategoryConfigSet:
         f = tmp_path / "kanibako_config.yaml"
         msg = set_config_value(
             "agent.claude.common.plugins", "/newsrc",
-            config_path=f, is_system=True, command_scope=ConfigLevel.system,
+            config_path=f, command_scope=ConfigLevel.system,
         )
         assert msg.startswith("Error:"), msg
         assert "RETIRED" in msg, msg
@@ -2213,7 +2213,7 @@ class TestCategoryConfigSet:
         f = tmp_path / "kanibako_config.yaml"
         dump_doc(f, {"system": {"setup_completed": "1.7.0"}})
         msg = set_config_value(
-            "system.setup_completed", "1.8.0", config_path=f, is_system=True,
+            "system.setup_completed", "1.8.0", config_path=f,
         )
         assert msg == "Set system.setup_completed=1.8.0", msg
         assert load_doc(f)["system"]["setup_completed"] == "1.8.0"
@@ -2625,7 +2625,7 @@ class TestScopeDirectionGuard:
         ssp = tmp_path / BOX_META_FILE
         msg = set_config_value(
             "box.image", "img:1",
-            config_path=cf, is_system=True, system_settings_path=ssp,
+            config_path=cf, system_settings_path=ssp,
             command_scope=ConfigLevel.system,
         )
         assert not msg.startswith("Error:"), msg
@@ -2640,7 +2640,7 @@ class TestScopeDirectionGuard:
         ssp = tmp_path / BOX_META_FILE
         msg = set_config_value(
             "workset.auth.share_allowed", "false",
-            config_path=cf, is_system=True, system_settings_path=ssp,
+            config_path=cf, system_settings_path=ssp,
             command_scope=ConfigLevel.system,
         )
         assert not msg.startswith("Error:"), msg
@@ -2658,7 +2658,7 @@ class TestScopeDirectionGuard:
         agents_root = tmp_path / "agents"
         msg = set_config_value(
             "agent.claude.model", "opus",
-            config_path=cf, is_system=True, command_scope=ConfigLevel.system,
+            config_path=cf, command_scope=ConfigLevel.system,
             agents_root=agents_root,
         )
         assert "cannot be set from the system scope" not in msg
@@ -2704,7 +2704,7 @@ class TestScopeDirectionGuard:
         f = tmp_path / "kanibako_config.yaml"
         msg = set_config_value(
             "meta.runtime.project_type", "primary",
-            config_path=f, is_system=True, command_scope=ConfigLevel.system,
+            config_path=f, command_scope=ConfigLevel.system,
         )
         assert msg.startswith("Error:"), msg
         assert "read-only" in msg
@@ -2777,7 +2777,7 @@ class TestScopeDirectionGuard:
         f = tmp_path / "kanibako_config.yaml"
         msg = set_config_value(
             "config.data", "/srv/data",
-            config_path=f, is_system=True, command_scope=ConfigLevel.system,
+            config_path=f, command_scope=ConfigLevel.system,
         )
         assert msg.startswith("Error: config.* keys can only be set by editing"), msg
         # Refused by B2, not by the direction guard nor the generic refusal.
@@ -2791,7 +2791,7 @@ class TestScopeDirectionGuard:
         f = tmp_path / "kanibako_config.yaml"
         msg = set_config_value(
             "system.caches.x", "/srv/cache",
-            config_path=f, is_system=True,
+            config_path=f,
             cascade_system_path=f, command_scope=ConfigLevel.system,
         )
         assert "cannot be set from the system scope" not in msg
@@ -5758,7 +5758,7 @@ class TestSystemScopeCategoryFileRouting:
         for msg in (
             set_config_value(
                 self.KEY, str(tmp_path), config_path=cf, system_settings_path=ssp,
-                is_system=True, command_scope=ConfigLevel.system,
+                command_scope=ConfigLevel.system,
                 cascade_system_path=ssp,
             ),
             reset_config_value(
