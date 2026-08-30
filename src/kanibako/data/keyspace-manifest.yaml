@@ -2691,10 +2691,20 @@ plugin_contributed:
   # R-37 (RATIFIED): the SHAPE/MEMBER split. The MANIFEST declares the plugin
   # key SHAPE (the agent.<agent>.<key> contract + the category families at the
   # agent leaf) and the VALIDATION RULES; the DESCRIPTORS supply the MEMBERS,
-  # unioned into the valid agent-leaf set at load
-  # (settings_keyspace descriptor union) and validated against the SAME rules
+  # declared into the valid leaf set FOR THEIR OWN AGENT at load
+  # (settings_keyspace descriptor read) and validated against the SAME rules
   # as core keys. A descriptor-declared leaf (e.g. agent.goose.provider) is
-  # therefore a LEGAL key — see `member_census` below and the code_residue move.
+  # therefore a LEGAL key ON THAT AGENT, and NOT on another — see
+  # `member_census` below and the code_residue move.
+  # ⚑ CORRECTED 2026-08-30 (R-150, spec §0 "partitioned by TIER"): this note
+  # read "unioned into the valid agent-leaf set", which made one plugin's leaf
+  # a key on EVERY agent and CONTRADICTED code_residue's own
+  # "agent.default.provider ... legal only as agent.<agent>.provider" twenty
+  # lines below. The keyspace is partitioned by TIER: agent.default holds the
+  # universal leaves; every other leaf belongs to the agent or HARNESS whose
+  # plugin declared it. 🛑 This does NOT narrow the CONCESSION — where an
+  # agent's vocabulary cannot be read (plugin not installed) the leaf is still
+  # CONCEDED, never refused.
   shape: manifest_declares
   members: descriptors_supply
   # ⚑ THE CONFORMANCE REQUIREMENT (R-37, stated here because the manifest

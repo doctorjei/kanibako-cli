@@ -793,6 +793,37 @@ class TestTheRealizedVariablesArriveAsKeys:
         for var in ("GOOSE_MODEL", "GOOSE_PROVIDER", "OPENAI_HOST"):
             assert var not in slots, f"{var} was realized from an unset key"
 
+    def test_an_EMPTY_floor_at_the_MOVED_tier_still_realizes_nothing(self):
+        """🛑 THE ``""``-SURVIVES CASE, END TO END, at the tier the split moved it to.
+
+        The case above resolves ``provider`` from NO floor at all, so it would pass on a
+        build that had lost the declaration entirely. This one drives goose's real
+        shipped floor value — the empty string, which ``goose-defaults.yaml`` keeps
+        deliberately so its own ``config.yaml`` stays in charge — through the floor,
+        where it now lands at ``agent.goose.provider`` rather than the undeclared
+        ``agent.default.provider``. It must arrive as a PRESENT-but-empty declaration
+        and be dropped by the fold's ``if value:``, NOT arrive as ``GOOSE_PROVIDER=''``
+        and override goose's own config with nothing.
+        """
+        slots = resolve_realized(
+            target_for("goose"),
+            behavior_floor={"provider": "", "model": "", "endpoint": ""},
+        )
+        for var in ("GOOSE_MODEL", "GOOSE_PROVIDER", "OPENAI_HOST"):
+            assert var not in slots, f"{var} was realized from an EMPTY declared floor"
+
+    def test_a_PLUGIN_ONLY_floor_key_realizes_from_the_AGENT_tier(self):
+        """The other direction: a NON-empty plugin-only floor still reaches the box.
+
+        Without this the case above would pass on a build that had simply stopped
+        carrying ``provider`` anywhere — the exact regression a tier move invites.
+        """
+        slots = resolve_realized(
+            target_for("goose"), behavior_floor={"provider": "openai"},
+        )
+        assert slots["GOOSE_PROVIDER"].value == "openai"
+        assert slots["GOOSE_PROVIDER"].key == "agent.goose.env.GOOSE_PROVIDER"
+
     def test_the_model_flag_drives_the_realization(self):
         """``-M`` rides the §1A CLI level, so the realized variable carries it.
 

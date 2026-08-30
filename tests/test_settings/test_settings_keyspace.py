@@ -1399,6 +1399,72 @@ def test_the_all_agents_tier_is_never_conceded():
     ).cls is KeyClass.UNDECLARED
 
 
+def test_the_all_agents_tier_is_judged_against_CORES_TABLE_ALONE():
+    """🛑 A PLUGIN-ONLY LEAF IS NOT A KEY AT ``agent.default``.
+
+    ``agent.default.*`` is CORE's all-agents fallback layer, and a plugin declares
+    specifics for the agent it SHIPS — never for every other agent on the machine. The
+    ratified manifest says so twice: ``not_keys.code_residue`` carries
+    *"agent.default.provider: NOT a key at the DEFAULT tier"* and
+    ``provider_disposition`` (R-37) *"agent.default.provider remains not-a-key (no
+    default-tier declaration)"*; §2d's Default-tier census enumerates no ``provider``
+    row. The classifier unioned the plugin set in anyway, so goose's descriptor leaf
+    classified KEY here — MEASURED with all three plugins installed, and pinned by
+    nothing in either direction until now.
+
+    ⚑ It is the SAME reason ``meta.agent.<agent>.*`` is judged against
+    :data:`DECLARED_META_AGENT_LEAVES`: a tier core owns has a core vocabulary.
+    """
+    from kanibako.settings.settings_keyspace import KeyClass
+
+    judged = _class("agent.default.provider", agent_leaves=frozenset({"provider"}))
+    assert judged.cls is KeyClass.UNDECLARED, judged.reason
+    # …and through the §2h spelling, which inherits its target's class.
+    assert _class(
+        "pref.agent.default.provider", agent_leaves=frozenset({"provider"}),
+    ).cls is KeyClass.UNDECLARED
+
+
+def test_the_narrowing_does_not_reach_a_CORE_DECLARED_default_leaf():
+    """The other direction, without which the pin above invites an over-application.
+
+    ``transform`` is in :data:`DECLARED_AGENT_LEAVES` — §2d, and claude declares
+    ``tweakcc`` against it — so ``agent.default.transform`` is a key and stays one. What
+    narrows is the PLUGIN half of the vocabulary, not the tier.
+    """
+    from kanibako.settings.settings_keyspace import (
+        DECLARED_AGENT_LEAVES, KeyClass,
+    )
+
+    # ⚑ READ FROM THE DECLARATION, not asserted by hand (P13): the split this test
+    # guards IS core-vs-plugin, so a leaf leaving §2d must red here rather than let the
+    # row quietly become a second copy of the table.
+    assert "transform" in DECLARED_AGENT_LEAVES
+    assert "provider" not in DECLARED_AGENT_LEAVES
+    for leaf in sorted(DECLARED_AGENT_LEAVES):
+        judged = _class(f"agent.default.{leaf}", agent_leaves=frozenset({"provider"}))
+        assert judged.cls is KeyClass.KEY, f"agent.default.{leaf}: {judged.reason}"
+
+
+def test_the_narrowing_does_not_touch_a_NAMED_agents_leaf():
+    """🛑 A DEFAULT-TIER EDIT MAY NOT REACH THE NAMED TIER — that is a separate change.
+
+    ``agent.goose.provider`` is a real goose ``setting_descriptor`` leaf and R-37 makes
+    it a legal key ON GOOSE, so this row must survive every default-tier edit.
+
+    ⚑ **DELIBERATELY ONLY GOOSE.** Whether a plugin leaf is legal on OTHER agents was
+    open when this row was written; R-150 has since closed it — a leaf is legal only on
+    the agent (or harness) whose plugin declared it — and the classifier does NOT yet
+    implement that at the named tier, where it still judges against a flat union. The
+    ``claude`` case therefore belongs to the per-agent narrowing, which must assert the
+    OPPOSITE. Asserting it here would pin behaviour the spec forbids.
+    """
+    from kanibako.settings.settings_keyspace import KeyClass
+
+    judged = _class("agent.goose.provider", agent_leaves=frozenset({"provider"}))
+    assert judged.cls is KeyClass.KEY, f"agent.goose.provider: {judged.reason}"
+
+
 def test_conceding_a_vocabulary_concedes_nothing_else():
     """SHAPE and the reserved-name floor survive the concession.
 
