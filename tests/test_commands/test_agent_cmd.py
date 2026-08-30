@@ -1331,6 +1331,99 @@ class TestAgentVerbKeyspaceGate:
         assert rc == 0
 
 
+class TestAgentSetRoutesThroughTheOneSetter:
+    """``agent set`` reached the file through its OWN writer, so no set-time validation ran.
+
+    The verb called ``agent_file.write_leaf`` directly and never entered
+    ``config_interface.set_config_value``, so the E3 RESOLUTION probe every other noun's ``set``
+    runs did not run here.  MEASURED on an isolated store: ``kanibako agent set claude
+    canon=@bogus.ref`` printed ``Set canon=@bogus.ref`` at rc 0 and stored the dangling
+    reference, while the SAME value through ``kanibako system set`` was refused by name.
+
+    Two writers of one keyspace slot is the defect, so the fix is ONE writer — not a second copy
+    of the checks in the second writer.  ⚑ ``name`` still writes through the file boundary and
+    that is NOT a carve-out: it is a FILE-identity field of ``AgentConfig``, absent from the
+    keyspace, so the shared setter has no key to route (pinned by
+    ``TestAgentVerbKeyspaceGate.test_the_live_keys_still_write``).
+    """
+
+    def test_a_dangling_ref_is_refused_and_nothing_lands(self, agent_env, capsys):
+        from kanibako.commands.agent_cmd import run_set
+
+        before = _stored_doc(agent_env)
+        rc = run_set(argparse.Namespace(
+            agent_id="claude", key_value="canon=@bogus.ref",
+        ))
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert "@bogus.ref" in err
+        assert _stored_doc(agent_env) == before
+
+    def test_the_refusal_is_the_one_the_shared_setter_produces(
+        self, agent_env, capsys, tmp_path,
+    ):
+        """ONE wording, not two: the text printed is the setter's own, reused verbatim.
+
+        A refusal drafted here would drift from the one ``system set`` prints for the same
+        value at the same key — which is how a user comes to believe two doors mean two rules.
+        """
+        from kanibako.commands.agent_cmd import run_set
+        from kanibako.settings.config_interface import set_config_value
+        from kanibako.settings.config_keys import ConfigLevel
+
+        assert run_set(argparse.Namespace(
+            agent_id="claude", key_value="canon=@bogus.ref",
+        )) == 1
+        by_verb = capsys.readouterr().err.strip()
+
+        by_config = set_config_value(
+            "agent.claude.canon", "@bogus.ref",
+            config_path=tmp_path / "box.yaml",
+            command_scope=ConfigLevel.system,
+            agents_root=agents_dir(agent_env),
+        )
+        assert by_verb == by_config.strip()
+
+    def test_a_ref_that_resolves_still_writes(self, agent_env, capsys):
+        """THE GREEN HALF, and it is what keeps the probe from refusing legal values.
+
+        ``@meta.agent.<node>.path`` is the agent STORE-ROOT anchor; the set-time snapshot
+        carries it only for a node the caller NAMES.  MUTATION PROOF: drop
+        ``cascade_agent_name`` from the verb's ``set_config_value`` call and this reddens —
+        the ref dangles — while the ``@bogus.ref`` case above stays green.
+        """
+        from kanibako.commands.agent_cmd import run_set
+
+        rc = run_set(argparse.Namespace(
+            agent_id="claude", key_value="canon=@meta.agent.claude.path/canon",
+        ))
+        assert rc == 0
+        assert (
+            _stored_doc(agent_env)["self"]["canon"]
+            == "@meta.agent.claude.path/canon"
+        )
+
+    def test_a_poisoned_file_is_still_repairable(self, agent_env, capsys):
+        """The set-time snapshot must NOT read the node's OWN file, and this is why.
+
+        A nested ``self.<sub>:`` sub-table is refused by ``agent_file``'s cascade reader, and the
+        repair verbs deliberately never go through it — a poisoned file still lists, still
+        displays, and can still be fixed from the command line.  MEASURED: threading the agent
+        tier into the set-time cascade raises ``SettingsError`` out of ``assemble_levels``, which
+        would both break ``set_config_value``'s never-raises contract and take the repair path
+        away on the one file that needs it.  MUTATION PROOF: add ``cascade_agent_path=path`` to
+        the verb's ``set_config_value`` call and this reddens with that traceback.
+        """
+        from kanibako.commands.agent_cmd import run_set
+
+        _write_sparse(
+            agent_env, "claude", {"self": {"claude": {"env": {"FOO": "bar"}}}},
+        )
+        rc = run_set(argparse.Namespace(agent_id="claude", key_value="model=opus"))
+        assert rc == 0
+        assert _stored_doc(agent_env)["self"]["model"] == "opus"
+
+
 class TestRetiredBindRoutesRefuseByName:
     """D-4's write half: the bind-shaped categories are refused BY NAME, never degraded.
 
