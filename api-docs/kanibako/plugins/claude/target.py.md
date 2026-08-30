@@ -14,6 +14,7 @@ _LAUNCHER = Path.home() / '.local' / 'bin' / 'claude'
 _INSTALL_DIR = Path.home() / '.local' / 'share' / 'claude'
 _PERSONA_BASE_URL_VAR = 'ANTHROPIC_BASE_URL'
 _PERSONA_TOKEN_VAR = 'ANTHROPIC_AUTH_TOKEN'
+_TIER_MODEL_VAR = 'ANTHROPIC_DEFAULT_{tier}_MODEL'
 _DEFAULTS_PACKAGE = 'kanibako.plugins.claude'
 _DEFAULTS_FILE = 'claude-defaults.yaml'
 _CLAUDE_DESCRIPTOR = load_descriptor(_DEFAULTS_PACKAGE, _DEFAULTS_FILE)
@@ -22,6 +23,7 @@ _CLAUDE_BEHAVIOR = load_behavior(_DEFAULTS_PACKAGE, _DEFAULTS_FILE)
 
 ## Functions
 ```
+def _wire_model(model: str | None, env: 'Mapping[str, str] | None') -> tuple[str | None, str]
 def _autoupdater_disabled_env() -> dict[str, str]
 ```
 
@@ -46,7 +48,7 @@ class ClaudeTarget(Target):
     def deliver_directive_hook(self, *, config_root: Path, access: str, model_provider: 'CodexModelProvider | None'=None) -> bool
     def credential_check_path(self, home: Path) -> Path | None
     def read_persona_settings(self, config_dir: Path) -> PersonaReadOutcome
-    def verify_persona(self, endpoint: str, token_path: Path | None, model: str | None, *, timeout: float=5.0) -> PersonaProbeOutcome
+    def verify_persona(self, endpoint: str, token_path: Path | None, model: str | None, *, env: Mapping[str, str] | None=None, timeout: float=5.0) -> PersonaProbeOutcome
     def invalidate_credentials(self, home: Path) -> None
     def detect(self) -> AgentInstall | None
     def generate_agent_config(self) -> AgentConfig

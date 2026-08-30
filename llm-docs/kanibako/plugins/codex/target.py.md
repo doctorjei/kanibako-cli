@@ -259,6 +259,13 @@ Two probe rules, both of which fail in the direction of refusing a box that actu
    a permanent warning. NEVER substitute a placeholder / default / guessed model id to make the call
    go through — same false-`REJECTED` failure as above.
 
+⚑ ***env* is accepted and DELIBERATELY UNUSED here.** It is on the base contract for a harness
+whose RUNTIME rewrites the model from an env var before the wire (claude's
+`ANTHROPIC_DEFAULT_<TIER>_MODEL`); codex names its model in `config.toml` and sends that id
+verbatim, so what is configured is already what goes out and there is nothing to resolve. Do not
+"tidy" the parameter away — the signature is the contract, and a plugin that silently drops it
+would take the keyword as an error.
+
 ⚑ **The codex LAUNCH gate is stricter than this probe; do not conflate them.** The descriptor
 declares `model_required: true` because a config-file harness structurally cannot express "no
 model": codex types `model` as `Option<String>` and resolves it with `model.or(cfg.model)` and NO

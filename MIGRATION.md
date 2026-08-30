@@ -4035,7 +4035,7 @@ union of every installed plugin's settings, which offered you a cure that would 
 
 ## 3. For plugin authors
 
-⚑ **THREE PERSONA SURFACES ON `Target` CHANGED SHAPE in 1.8.0 — a plugin built against 1.7.x needs
+⚑ **THE PERSONA SURFACES ON `Target` CHANGED SHAPE in 1.8.0 — a plugin built against 1.7.x needs
 updating, and one of them fails at IMPORT time:**
 
 - **`probe_verdict` is REMOVED** from `kanibako.targets.base`, replaced by `probe_outcome`. It was
@@ -4047,10 +4047,27 @@ updating, and one of them fails at IMPORT time:**
   present-but-unusable with a named cause · this harness has no persona reader) instead of
   `PersonaSettings | None`.
 - **`Target.verify_persona`** returns `PersonaProbeOutcome` (PASS · REJECTED · INCONCLUSIVE ·
-  NOT_APPLICABLE, each carrying a reason where one is meaningful) instead of `bool | None`.
+  NOT_APPLICABLE, each carrying a reason where one is meaningful) instead of `bool | None`, and
+  takes a new keyword-only **`env`** — the persona's passthrough environment block, the same
+  variables the box will receive. Add it to your signature (`*, env=None, timeout=5.0`) or the call
+  raises `TypeError`, which the callers treat as a probe bug.
   ⚑ Build the probe request WITHOUT a `model` key when the persona names no model, rather than
   declining to probe or substituting a default id: some endpoints do not require one, and a server
   with a hardwired model can reject an id it does not serve.
+  ⚑ **If your harness's runtime rewrites the model from an environment variable before the wire,
+  apply that rewrite in the probe too** — otherwise you ask the provider a question your box never
+  asks, and a valid persona is refused on the answer. Claude does this for its tier aliases
+  (`sonnet` → `$ANTHROPIC_DEFAULT_SONNET_MODEL`); codex sends its configured id verbatim and ignores
+  `env`. Resolving a mapping the *user* wrote is not the substitution the rule above forbids.
+
+- **The probe helpers now take a response, not a bare status.** `kanibako.targets.base.http_probe`
+  replaces `http_probe_status` and returns a `ProbeResponse(status, body)`, where `body` is the
+  provider's error text — already capped and scrubbed of your bearer token. `probe_outcome` and
+  `probe_outcome_no_model` take `(response, sent)`, where `sent` is a `ProbeEvidence` describing the
+  request you made (endpoint, the model you actually sent, the token path); they fill in the answer
+  half, so a refusal message can name what was refused. `PersonaProbeOutcome.rejected(evidence)`
+  now requires that evidence — a refusal a user cannot see the inputs of is what sent people to
+  replace tokens that were never wrong.
 - **`PersonaSpec.host_dir_adopt` is removed** along with the legacy claude host-dir path (§2.11's
   sibling entry in the CHANGELOG). A `persona:` block that still declares it keeps loading — the
   key is accepted and ignored, deliberately, so a version-skewed wheel does not break.

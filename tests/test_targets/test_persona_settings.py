@@ -307,7 +307,7 @@ class _ProbeServer:
     scripted status — or hangs (timeout case).  Runs on 127.0.0.1:<ephemeral>.
     """
 
-    def __init__(self, status: int = 200, hang: float = 0.0):
+    def __init__(self, status: int = 200, hang: float = 0.0, body: bytes = b"{}"):
         import json
         import threading
         from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -315,6 +315,7 @@ class _ProbeServer:
         outer = self
         self.status = status
         self.hang = hang
+        self.body = body
         self.last_path: str | None = None
         self.last_auth: str | None = None
         self.last_version: str | None = None
@@ -336,9 +337,9 @@ class _ProbeServer:
                 if outer.hang:
                     time.sleep(outer.hang)
                 self.send_response(outer.status)
-                self.send_header("Content-Length", "2")
+                self.send_header("Content-Length", str(len(outer.body)))
                 self.end_headers()
-                self.wfile.write(b"{}")
+                self.wfile.write(outer.body)
 
             def log_message(self, *args):  # silence test output
                 pass
@@ -763,3 +764,249 @@ class TestVerifyPersonaWithoutAToken:
         assert server.last_auth is None
         assert server.last_body is not None
         assert "model" not in server.last_body
+
+
+class TestVerifyPersonaResolvesATierAlias:
+    """⚑ THE PROBE MUST SEND WHAT THE BOX WILL SEND.
+
+    MEASURED, 2026-08-30: a persona resolving ``model: sonnet`` was probed with
+    ``sonnet`` on the wire; the endpoint answered 403 "team not allowed to access
+    model" and kanibako refused the launch, blaming a token that was perfectly
+    valid.  In the box, Claude Code reads that alias through
+    ``ANTHROPIC_DEFAULT_SONNET_MODEL`` and sends ``gemma-4-31b-it``, which the same
+    endpoint serves with a 200.  The probe was asking a question the box never asks.
+
+    ⚑ This resolves the USER's OWN mapping and never invents one — the two rules of
+    ``procedures/persona-resolution-model.md`` (omit an absent model; never
+    substitute a placeholder id) are untouched below.
+    """
+
+    def test_an_alias_is_resolved_through_the_env_var_before_the_send(
+        self, token_file,
+    ):
+        """(Mutation: send *model* instead of the resolved id → ``sonnet`` on the
+        wire → RED.)"""
+        server = _ProbeServer(status=200)
+        try:
+            outcome = ClaudeTarget().verify_persona(
+                server.endpoint, token_file, "sonnet",
+                env={"ANTHROPIC_DEFAULT_SONNET_MODEL": "gemma-4-31b-it"},
+                timeout=5.0,
+            )
+        finally:
+            server.close()
+        assert outcome.verdict is PersonaProbeVerdict.PASS
+        assert server.last_body is not None
+        assert server.last_body["model"] == "gemma-4-31b-it"
+
+    @pytest.mark.parametrize("tier,var", [
+        ("opus", "ANTHROPIC_DEFAULT_OPUS_MODEL"),
+        ("haiku", "ANTHROPIC_DEFAULT_HAIKU_MODEL"),
+        ("fable", "ANTHROPIC_DEFAULT_FABLE_MODEL"),
+    ])
+    def test_the_var_name_is_DERIVED_from_the_alias_not_a_tier_list(
+        self, token_file, tier, var,
+    ):
+        """⚑ P13: the rule is the naming convention, never an inventory of tiers.
+
+        A tier this code has never heard of resolves the moment the user names its
+        var, so a new one cannot silently outdate a hardcoded list.
+        """
+        server = _ProbeServer(status=200)
+        try:
+            ClaudeTarget().verify_persona(
+                server.endpoint, token_file, tier, env={var: f"{tier}-real"},
+                timeout=5.0,
+            )
+        finally:
+            server.close()
+        assert server.last_body is not None
+        assert server.last_body["model"] == f"{tier}-real"
+
+    def test_a_model_with_NO_mapping_is_sent_exactly_AS_GIVEN(self, token_file):
+        """🛑 Never guess.  No var, no rewrite — the configured id goes out intact."""
+        server = _ProbeServer(status=200)
+        try:
+            ClaudeTarget().verify_persona(
+                server.endpoint, token_file, "sonnet",
+                env={"ANTHROPIC_DEFAULT_OPUS_MODEL": "some-other-model"},
+                timeout=5.0,
+            )
+        finally:
+            server.close()
+        assert server.last_body is not None
+        assert server.last_body["model"] == "sonnet"
+
+    def test_a_real_provider_id_is_never_treated_as_an_alias(self, token_file):
+        """A hyphenated id cannot name an env var, so it is never looked up."""
+        server = _ProbeServer(status=200)
+        try:
+            ClaudeTarget().verify_persona(
+                server.endpoint, token_file, "gemma-4-31b-it",
+                env={"ANTHROPIC_DEFAULT_SONNET_MODEL": "wrong"}, timeout=5.0,
+            )
+        finally:
+            server.close()
+        assert server.last_body is not None
+        assert server.last_body["model"] == "gemma-4-31b-it"
+
+    def test_no_model_stays_OMITTED_even_with_tier_vars_present(self, token_file):
+        """⚑ RULE 1 IS UNTOUCHED.  A persona naming no model is still probed with
+        the key ABSENT — an env block full of tier vars is not a model.
+        """
+        server = _ProbeServer(status=200)
+        try:
+            outcome = ClaudeTarget().verify_persona(
+                server.endpoint, token_file, None,
+                env={"ANTHROPIC_DEFAULT_SONNET_MODEL": "gemma-4-31b-it"},
+                timeout=5.0,
+            )
+        finally:
+            server.close()
+        assert outcome.verdict is PersonaProbeVerdict.PASS
+        assert server.last_body is not None
+        assert "model" not in server.last_body
+
+    def test_codex_sends_its_configured_id_verbatim(self, token_file):
+        """codex names its model in ``config.toml`` and sends that id; there is no
+        alias layer to resolve, so *env* changes nothing on this wire.
+        """
+        server = _ProbeServer(status=200)
+        try:
+            CodexTarget().verify_persona(
+                server.endpoint, token_file, "sonnet",
+                env={"ANTHROPIC_DEFAULT_SONNET_MODEL": "gemma-4-31b-it"},
+                timeout=5.0,
+            )
+        finally:
+            server.close()
+        assert server.last_body is not None
+        assert server.last_body["model"] == "sonnet"
+
+
+class TestProbeEvidence:
+    """A non-PASS verdict carries WHAT WAS SENT and WHAT CAME BACK.
+
+    🛑 The refusal message it feeds names the REFUSAL, never a culprit: a 401/403
+    does not say which input was at fault, and the message that asserted "the
+    endpoint rejected the token" sent a user to replace a valid credential.
+    """
+
+    _PROVIDER_BODY = (
+        b'{"error":{"message":"team not allowed to access model. This team can '
+        b"only access models=['flux.1-dev', 'gemma-4-31b-it', 'gpt-oss-120b']\"}}"
+    )
+
+    def test_a_403_carries_status_model_token_and_provider_text(self, token_file):
+        server = _ProbeServer(status=403, body=self._PROVIDER_BODY)
+        try:
+            outcome = ClaudeTarget().verify_persona(
+                server.endpoint, token_file, "sonnet", timeout=5.0,
+            )
+        finally:
+            server.close()
+        assert outcome.verdict is PersonaProbeVerdict.REJECTED
+        ev = outcome.evidence
+        assert ev is not None
+        assert ev.status == 403
+        assert ev.model == "sonnet"
+        assert ev.token_path == token_file
+        assert ev.endpoint == server.endpoint
+        assert "team not allowed to access model" in ev.provider_text
+        block = outcome.evidence_block()
+        assert "provider: " in block
+        assert "does not say which input was at fault" in block
+
+    def test_the_evidence_says_where_a_resolved_model_came_from(self, token_file):
+        """The user configured ``sonnet`` and the wire saw something else — say so,
+        or the message reads as if kanibako invented an id.
+        """
+        server = _ProbeServer(status=403, body=self._PROVIDER_BODY)
+        try:
+            outcome = ClaudeTarget().verify_persona(
+                server.endpoint, token_file, "sonnet",
+                env={"ANTHROPIC_DEFAULT_SONNET_MODEL": "gemma-4-31b-it"},
+                timeout=5.0,
+            )
+        finally:
+            server.close()
+        block = outcome.evidence_block()
+        assert "gemma-4-31b-it" in block
+        assert "sonnet" in block
+        assert "ANTHROPIC_DEFAULT_SONNET_MODEL" in block
+
+    def test_an_omitted_model_and_a_keyless_token_render_as_such(self):
+        server = _ProbeServer(status=401, body=b"nope")
+        try:
+            outcome = ClaudeTarget().verify_persona(
+                server.endpoint, None, None, timeout=5.0,
+            )
+        finally:
+            server.close()
+        block = outcome.evidence_block()
+        assert "(omitted)" in block
+        assert "keyless" in block
+
+    def test_an_ambiguous_status_carries_evidence_too(self, token_file):
+        server = _ProbeServer(status=500, body=b"upstream on fire")
+        try:
+            outcome = ClaudeTarget().verify_persona(
+                server.endpoint, token_file, "gemma4", timeout=5.0,
+            )
+        finally:
+            server.close()
+        assert outcome.verdict is PersonaProbeVerdict.INCONCLUSIVE
+        assert "upstream on fire" in outcome.evidence_block()
+        # ⚑ The refusal reading is for 401/403 ONLY; anything else would be a guess.
+        assert "which input was at fault" not in outcome.evidence_block()
+
+    def test_an_unreachable_endpoint_renders_NO_evidence_block(self, token_file):
+        """Nothing answered, so there is nothing to lay out — four lines restating
+        the caller's own inputs is noise, not evidence.
+        """
+        server = _ProbeServer()
+        server.close()
+        outcome = ClaudeTarget().verify_persona(
+            server.endpoint, token_file, "gemma4", timeout=2.0,
+        )
+        assert outcome.verdict is PersonaProbeVerdict.INCONCLUSIVE
+        assert outcome.evidence_block() == ""
+
+    def test_a_long_provider_body_is_TRUNCATED(self, token_file):
+        server = _ProbeServer(status=403, body=b"x" * 5000)
+        try:
+            outcome = ClaudeTarget().verify_persona(
+                server.endpoint, token_file, "gemma4", timeout=5.0,
+            )
+        finally:
+            server.close()
+        assert outcome.evidence is not None
+        assert len(outcome.evidence.provider_text) <= 301   # cap + the ellipsis
+        assert outcome.evidence.provider_text.endswith("…")
+
+    @pytest.mark.parametrize("target_cls", [ClaudeTarget, CodexTarget])
+    def test_a_provider_that_ECHOES_THE_TOKEN_never_leaks_it(
+        self, token_file, target_cls,
+    ):
+        """🛑 MANDATORY.  The token is in hand at the probe and nowhere downstream,
+        so the scrub belongs beside the request or it belongs nowhere.
+
+        (Mutation: drop the scrub in ``targets.base._provider_text`` → the secret
+        appears in the printed message → RED.)
+        """
+        secret = token_file.read_text().strip()
+        server = _ProbeServer(
+            status=403,
+            body=f'{{"error":"bad key Bearer {secret} rejected"}}'.encode(),
+        )
+        try:
+            outcome = target_cls().verify_persona(
+                server.endpoint, token_file, "gemma4", timeout=5.0,
+            )
+        finally:
+            server.close()
+        assert outcome.verdict is PersonaProbeVerdict.REJECTED
+        assert outcome.evidence is not None
+        assert secret not in outcome.evidence.provider_text
+        assert secret not in outcome.evidence_block()
+        assert "<redacted>" in outcome.evidence.provider_text

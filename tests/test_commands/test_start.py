@@ -17,7 +17,19 @@ from kanibako.commands.start import (
 )
 from kanibako.settings.paths import BoxMode
 from kanibako.settings.settings_launch import AuthSource
-from kanibako.targets.base import PersonaProbeOutcome
+from kanibako.targets.base import PersonaProbeOutcome, ProbeEvidence
+
+
+def _rejected(status: int = 403, provider_text: str = "", **kw):
+    """A REJECTED outcome carrying evidence — the only shape the type now permits.
+
+    ⚑ ``rejected`` takes its evidence POSITIONALLY on purpose: a refusal a user cannot
+    see the inputs of is what sent one to replace a token that was never wrong.
+    """
+    return PersonaProbeOutcome.rejected(ProbeEvidence(
+        endpoint=kw.pop("endpoint", "https://api.navigator.example/v1"),
+        status=status, provider_text=provider_text, **kw,
+    ))
 
 
 def _sel(node: str, source: str = "settings"):
@@ -6206,7 +6218,7 @@ class TestPreflightCodexPersona:
         calls: list = []
         target = self._codex()
         target.verify_persona = (
-            lambda endpoint, token_path, model, *, timeout=5.0: (
+            lambda endpoint, token_path, model, *, env=None, timeout=5.0: (
                 calls.append((endpoint, token_path, model))
                 or PersonaProbeOutcome.passed()
             )
@@ -8585,9 +8597,11 @@ class TestPersonaPreflightBundle:
                 PersonaProbeOutcome.passed() if outcome is None else outcome
             )
             self.calls: list = []
+            self.envs: list = []
 
-        def verify_persona(self, endpoint, token_path, model, *, timeout=5.0):
+        def verify_persona(self, endpoint, token_path, model, *, env=None, timeout=5.0):
             self.calls.append((endpoint, token_path, model))
+            self.envs.append(env)
             if isinstance(self.outcome, Exception):
                 raise self.outcome
             return self.outcome
@@ -8731,13 +8745,13 @@ class TestPersonaPreflightBundle:
         """The server disagreed with the keyless assumption — a genuine, useful
         REJECTED, not suppressed just because the token was deliberately absent.
         """
-        target = self._Target(outcome=PersonaProbeOutcome.rejected())
+        target = self._Target(outcome=_rejected())
         _ep, err, _p = self._run(
             self._cfg(secret_path={"ANTHROPIC_AUTH_TOKEN": None}),
             probe=True, target=target,
         )
         assert err is not None
-        assert "rejected the token" in err
+        assert "refused the probe with HTTP 403" in err
 
     def test_present_null_in_the_file_beats_a_store_token(self, tmp_path):
         """The file rung STILL wins outright when it PRESENT-nulls the var — the
@@ -8807,14 +8821,30 @@ class TestPersonaPreflightBundle:
 
     # --- the per-launch probe -------------------------------------------------
 
-    def test_a_rejected_token_is_a_hard_error(self, tmp_path):
-        target = self._Target(outcome=PersonaProbeOutcome.rejected())
+    def test_a_refused_probe_is_a_hard_error_that_names_its_evidence(self, tmp_path):
+        """🛑 It says WHAT WAS REFUSED, never what to fix.
+
+        The message this replaced asserted the token was at fault and sent a user to
+        replace a VALID one; the measured cause was a model the account could not use.
+        A 401/403 cannot tell those apart, so the status, the inputs and the provider's
+        own words go out and the reading is the user's.
+        """
+        target = self._Target(outcome=_rejected(
+            status=403, model="sonnet",
+            token_path=self._token(tmp_path),
+            provider_text="team not allowed to access model",
+        ))
         _ep, err, _p = self._run(
             self._cfg(secret_path={"ANTHROPIC_AUTH_TOKEN": str(self._token(tmp_path))}),
             probe=True, target=target,
         )
         assert err is not None
-        assert "rejected the token" in err
+        assert "refused the probe with HTTP 403" in err
+        assert "model     sonnet" in err
+        assert "provider: team not allowed to access model" in err
+        assert "does not say which input was at fault" in err
+        assert "rejected the token" not in err
+        assert "fix the token" not in err.lower()
 
     def test_an_INCONCLUSIVE_probe_warns_and_proceeds(self, tmp_path, capsys):
         """DESIGN §5b: a blip is not a config error; the box surfaces a real 401.
@@ -8880,13 +8910,13 @@ class TestPersonaPreflightBundle:
         probed with the field omitted.  If it were skipped instead, a DEAD token
         would sail past this gate and 401 inside the box.
         """
-        target = self._Target(outcome=PersonaProbeOutcome.rejected())
+        target = self._Target(outcome=_rejected())
         _ep, err, _p = self._run(
             self._cfg(secret_path={"ANTHROPIC_AUTH_TOKEN": str(self._token(tmp_path))}),
             probe=True, target=target, model=None,
         )
         assert err is not None
-        assert "rejected the token" in err
+        assert "refused the probe with HTTP 403" in err
         assert target.calls and target.calls[0][2] is None   # probed, no model
 
     def test_a_model_less_persona_that_PASSES_launches_silently(
@@ -8969,7 +8999,7 @@ class TestPersonaPreflightBundle:
         ``probe=False``; if the hard error leaked into them, a create with a
         rejected token would be refused instead of warned about.
         """
-        target = self._Target(outcome=PersonaProbeOutcome.rejected())
+        target = self._Target(outcome=_rejected())
         _ep, err, _p = self._run(
             self._cfg(secret_path={"ANTHROPIC_AUTH_TOKEN": str(self._token(tmp_path))}),
             probe=False, target=target,

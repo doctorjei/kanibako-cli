@@ -8,6 +8,9 @@ Prose for these symbols lives in `llm-docs/kanibako/targets/base.py.md`.
 ## Variables
 
 ```
+_PROVIDER_TEXT_CAP = 300
+_PROVIDER_READ_CAP = 8 * 1024
+_REFUSAL_STATUSES = (401, 403)
 _MODEL_REQUIRED_STATUSES = (400, 422)
 ```
 
@@ -20,9 +23,12 @@ CategoryBindDefaults = dict[str, BindArm]
 
 ## Functions
 ```
-def http_probe_status(url: str, *, headers: dict[str, str], body: dict, timeout: float) -> int | None
-def probe_outcome(status: int | None) -> PersonaProbeOutcome
-def probe_outcome_no_model(status: int | None) -> PersonaProbeOutcome
+def http_probe(url: str, *, headers: dict[str, str], body: dict, timeout: float) -> ProbeResponse
+def probe_outcome(response: ProbeResponse, sent: ProbeEvidence) -> PersonaProbeOutcome
+def probe_outcome_no_model(response: ProbeResponse, sent: ProbeEvidence) -> PersonaProbeOutcome
+def _bearer_secrets(headers: Mapping[str, str]) -> tuple[str, ...]
+def _provider_text(raw: bytes, headers: Mapping[str, str]) -> str
+def _tilde(path: Path) -> str
 def _validate_agent_binary(binary: Path) -> str | None
 ```
 
@@ -112,6 +118,10 @@ class PersonaSpec:
     provider_pin: tuple[tuple[str, str], ...] = ()
     model_required: bool = False
 
+class ProbeResponse(NamedTuple):
+    status: int | None
+    body: str = ''
+
 class PersonaSettings(NamedTuple):
     endpoint: str | None
     model: str | None
@@ -129,18 +139,32 @@ class PersonaProbeVerdict(Enum):
     INCONCLUSIVE = 'inconclusive'
     NOT_APPLICABLE = 'not_applicable'
 
+@dataclass(frozen=True)
+class ProbeEvidence:
+    endpoint: str
+    model: str | None = None
+    model_origin: str = ''
+    token_path: Path | None = None
+    status: int | None = None
+    provider_text: str = ''
+
+    def lines(self, indent: str='  ') -> tuple[str, ...]
+    def block(self, indent: str='  ') -> str
+
 class PersonaProbeOutcome(NamedTuple):
     verdict: PersonaProbeVerdict
     reason: str | None = None
+    evidence: 'ProbeEvidence | None' = None
 
     @classmethod
     def passed(cls) -> 'PersonaProbeOutcome'
     @classmethod
-    def rejected(cls) -> 'PersonaProbeOutcome'
+    def rejected(cls, evidence: ProbeEvidence) -> 'PersonaProbeOutcome'
     @classmethod
-    def inconclusive(cls, reason: str) -> 'PersonaProbeOutcome'
+    def inconclusive(cls, reason: str, evidence: 'ProbeEvidence | None'=None) -> 'PersonaProbeOutcome'
     @classmethod
     def not_applicable(cls, reason: str) -> 'PersonaProbeOutcome'
+    def evidence_block(self, indent: str='  ') -> str
 
 @dataclass(frozen=True)
 class Operation:
@@ -211,7 +235,7 @@ class Target(ABC):
     def deliver_directive_hook(self, *, config_root: Path, access: str, model_provider: 'CodexModelProvider | None'=None) -> bool
     def reattach_config_notice(self) -> str | None
     def read_persona_settings(self, config_dir: Path) -> PersonaReadOutcome
-    def verify_persona(self, endpoint: str, token_path: Path | None, model: str | None, *, timeout: float=5.0) -> PersonaProbeOutcome
+    def verify_persona(self, endpoint: str, token_path: Path | None, model: str | None, *, env: Mapping[str, str] | None=None, timeout: float=5.0) -> PersonaProbeOutcome
     def invalidate_credentials(self, home: Path) -> None
     def transform_cred(self, spec: CredFileSpec, src: Path | None, dst: Path, direction: str) -> None
     def refresh_credentials(self, home: Path) -> None

@@ -2498,15 +2498,25 @@ class TestCheckPersonaStoreForCreate:
         The LAUNCH path hard-errors on the same verdict; a create must not, so a
         fixable token never blocks one.
         """
-        from kanibako.targets.base import PersonaProbeOutcome
+        from kanibako.targets.base import PersonaProbeOutcome, ProbeEvidence
 
         self._store(tmp_home)
         err = self._call(
             tmp_home, "navigator+codex", monkeypatch,
-            outcome=PersonaProbeOutcome.rejected(),
+            outcome=PersonaProbeOutcome.rejected(ProbeEvidence(
+                endpoint="https://e.example", model="m", status=403,
+                provider_text="team not allowed to access model",
+            )),
         )
         assert err is None  # warn-only: create still proceeds
-        assert "rejected the token" in capsys.readouterr().err
+        out = capsys.readouterr().err
+        assert "refused the probe with HTTP 403" in out
+        # ⚑ The evidence reaches the CREATE path too, and it does NOT accuse the token.
+        assert "team not allowed to access model" in out
+        # ⚑ It no longer ACCUSES the token: a 403 cannot tell a dead credential
+        # from a live one that lacks model entitlement.
+        assert "rejected the token" not in out
+        assert "fix the token" not in out.lower()
 
     def test_an_INCONCLUSIVE_endpoint_warns_but_still_creates(
         self, tmp_home, monkeypatch, capsys,

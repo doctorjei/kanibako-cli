@@ -24,6 +24,7 @@ import os
 import platform
 import shutil
 import subprocess
+from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -41,9 +42,10 @@ from kanibako.targets.base import (
     PersonaReadOutcome,
     PersonaSettings,
     PluginDescriptor,
+    ProbeEvidence,
     Target,
     TargetSetting,
-    http_probe_status,
+    http_probe,
     probe_outcome,
     probe_outcome_no_model,
 )
@@ -496,6 +498,7 @@ class CodexTarget(Target):
         token_path: Path | None,
         model: str | None,
         *,
+        env: Mapping[str, str] | None = None,
         timeout: float = 5.0,
     ) -> PersonaProbeOutcome:
         """Minimal OpenAI ``/responses`` ack against a persona endpoint.
@@ -527,6 +530,12 @@ class CodexTarget(Target):
         — see the llm-doc — because this is also called straight off the store on
         the CREATE path.)
 
+        ⚑ *env* is accepted and DELIBERATELY UNUSED.  It exists on the contract for a
+        harness whose runtime rewrites the model from an env var before the wire
+        (claude's ``ANTHROPIC_DEFAULT_<TIER>_MODEL``); codex names its model in
+        ``config.toml`` and sends that id verbatim, so what is configured is already
+        what goes out and there is nothing here to resolve.
+
         The one ``NOT_APPLICABLE`` decided here is a CONFIGURED (non-``None``)
         token file that is unreadable or empty.  The token is read transiently for
         this request only; never logged or persisted.
@@ -547,13 +556,16 @@ class CodexTarget(Target):
         body: dict = {"input": "ping", "max_output_tokens": 16}
         if model:
             body["model"] = model
-        status = http_probe_status(
+        sent = ProbeEvidence(endpoint=endpoint, model=model, token_path=token_path)
+        response = http_probe(
             endpoint.rstrip("/") + "/responses",
             headers=headers,
             body=body,
             timeout=timeout,
         )
-        return probe_outcome(status) if model else probe_outcome_no_model(status)
+        if model:
+            return probe_outcome(response, sent)
+        return probe_outcome_no_model(response, sent)
 
     def generate_agent_config(self) -> AgentConfig:
         """Return default Codex agent configuration.
