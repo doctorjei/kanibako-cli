@@ -229,6 +229,31 @@ The 3-state rule is unchanged from the name-keyed shape: a whole-value `src` ref
 makes the WHOLE entry `_ABSENT` (drop it — the binding cannot point anywhere); a present-`None` `src`
 yields `None` (the §3 bind/category OMIT terminal). `opts` is carried verbatim.
 
+## The host-source refusal — POST-expansion, and deliberately not [R147]'s test
+
+`_refuse_relative_host_src(raw, expanded, chain)` runs in BOTH bind arms once the source half is a
+string, and raises unless the EXPANDED source is empty or absolute. The hazard is
+`settings_categories.BARE_RELATIVE_SOURCE_HAZARD`, the shared wording: a relative source resolves
+against whatever directory kanibako happens to be run from, and for a MOUNT podman reads a source
+beginning with neither `.` nor `/` as the name of a NAMED VOLUME rather than as a host path at all.
+
+⚑ **THE PARSE CANNOT COVER THIS ONE, which is why the guard is here as well.**
+`settings_assemble._declared_source` refuses a source SPELLED relative, and that is what
+`settings_launch` relies on when it uses `host_src` AS-IS — but a source spelled
+`@box.canon/handbook` is self-resolving at the parse and becomes relative only HERE, when the path
+key it dereferences turns out to hold a bare relative. Measured before the guard existed: it reached
+the mount as `host_src='relcanon/handbook'`.
+
+🛑 The refusal names the KEY-BEARING EXPRESSION, not just the result — the fix is to the path key,
+and the expanded string no longer says which one that was.
+
+⚑ **It is NOT [R147]'s stored-value check, and the two are not interchangeable.**
+`agent_config.is_unambiguous_path_value` — the predicate behind the set-time and read-time key
+refusals — rules on the SPELLING a user stored, BEFORE any expansion, so `$XDG_DATA_HOME/kanibako`
+stays legal there whatever the environment answers. This guard rules on what a declaration's source
+EXPANDED to, which is the only layer at which the dereference case above is visible. Different rule,
+different layer, its own message; only the hazard sentence is shared.
+
 ## Embedded substitution and the `expand_expr` lookup
 
 `_expand_embedded` substitutes embedded tokens via `expand_expr`. An `@`-ref token resolves through
