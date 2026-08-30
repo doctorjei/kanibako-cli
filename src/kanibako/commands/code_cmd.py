@@ -27,7 +27,7 @@ from kanibako.settings.paths import (
     load_std_paths,
     resolve_box_target,
 )
-from kanibako.settings.settings_resolve import GUEST_HOME
+from kanibako.settings.settings_resolve import GUEST_WORKSPACE
 from kanibako.utils import container_name_for
 from kanibako.vscode.vscode_config import (
     attached_container_config_path,
@@ -83,7 +83,7 @@ def _attach_uri(container_name: str, context: str | None = None) -> str:
         payload_obj["settings"] = {"context": context}
     payload = json.dumps(payload_obj, separators=(",", ":"))
     hex_name = binascii.hexlify(payload.encode()).decode()
-    workspace_path = GUEST_HOME + "/workspace"
+    workspace_path = GUEST_WORKSPACE
     return f"vscode-remote://attached-container+{hex_name}{workspace_path}"
 
 
@@ -424,7 +424,7 @@ def _write_attached_config(path, extension: str | None) -> None:
     try:
         seed_attached_container_config(
             path,
-            workspace_folder=GUEST_HOME + "/workspace",
+            workspace_folder=GUEST_WORKSPACE,
             extension=extension,
         )
     except OSError as exc:

@@ -1216,6 +1216,34 @@ class TestPrecreateMountStubs:
         )
         assert (shell / ".secret").is_dir()
 
+    def test_mask_workspace_prefix_keeps_its_separator(self, tmp_path):
+        """``workspace_prefix`` is SLASH-TERMINATED, so a ``~/workspacefoo`` mask
+        stays HOME-side and keeps its parent loosening.
+
+        Regression guard for the trailing slash on the local ``workspace_prefix``.
+        A slashless prefix reads ``~/workspacefoo/x`` as workspace-side, which
+        passes ``traverse_root=None`` and silently drops the ``_loosen_parents``
+        walk — invisible in the stub's LOCATION, visible only in its parent's mode.
+        """
+        from kanibako.runtime.container import _precreate_mount_stubs
+        shell = tmp_path / "shell"
+        shell.mkdir()
+        project = tmp_path / "project"
+        project.mkdir()
+        # A home-side parent with NO search bits: only the loosen walk adds them.
+        sibling = shell / "workspacefoo"
+        sibling.mkdir()
+        sibling.chmod(0o700)
+        _precreate_mount_stubs(
+            shell, project, None,
+            enable_vault=False,
+            vault_ro_path=tmp_path / "no-ro",
+            vault_rw_path=tmp_path / "no-rw",
+            tmpfs_masks=["/home/agent/workspacefoo/x"],
+        )
+        assert (sibling / "x").is_dir()
+        assert sibling.stat().st_mode & 0o777 == 0o711
+
     def test_mask_stub_made_with_the_vault_disabled(self, tmp_path):
         """Mask stubs are made regardless of ``enable_vault`` — they pair with
         the emit, which no longer gates on it.
@@ -2172,3 +2200,28 @@ class TestGuestDestToHost:
         assert _guest_dest_to_host(
             "/etc/passwd", shell, project, map_home_root=True
         ) is None
+
+    def test_workspace_prefix_keeps_its_separator(self):
+        """The workspace prefix is SLASH-TERMINATED — the keyspec separator guard.
+
+        Regression guard for the trailing slash on the ``GUEST_WORKSPACE`` prefix
+        inside ``_guest_dest_to_host``.  A slashless prefix breaks BOTH ways: the
+        BARE workspace dest stops falling through to the ``agent_home`` branch and
+        maps to ``project_path / ""``, and a sibling whose name merely STARTS with
+        ``workspace`` newly matches — the very case keyspec :120-121 forbids
+        (``~/foobar`` is not inside ``~/foo``).
+        """
+        from kanibako.runtime.container import _guest_dest_to_host
+        shell, project = self._paths()
+        for kw in ({}, {"map_home_root": True}):
+            # Bare workspace dest: the home branch, NOT project_path itself.
+            assert _guest_dest_to_host(
+                "/home/agent/workspace", shell, project, **kw
+            ) == shell / "workspace"
+            # Sibling sharing the prefix: home branch, NOT project_path / "foo".
+            assert _guest_dest_to_host(
+                "/home/agent/workspacefoo", shell, project, **kw
+            ) == shell / "workspacefoo"
+            assert _guest_dest_to_host(
+                "/home/agent/workspacefoo/x", shell, project, **kw
+            ) == shell / "workspacefoo" / "x"

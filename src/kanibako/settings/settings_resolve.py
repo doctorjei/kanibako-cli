@@ -29,6 +29,24 @@ GUEST_HOME = "/home/agent"
 GUEST_UID = 1000
 GUEST_GID = 1000
 
+# The GUEST workspace/vault leaves, in the two forms their consumers need: a RELPATH to join onto
+# a host ``Path`` and an absolute to compare a box-side dest against.
+# ⚑ GUEST-SIDE ONLY. ``paths_defaults.WORKSPACE_PATH`` is a HOST leaf spelled identically and the
+# two are INDEPENDENT — this module may import NOTHING from ``settings/``, so a guest constant
+# CANNOT be expressed in terms of a host one; the separation is structural, not conventional.
+# 🛑 The values are DECLARED KEY NAMES in the closed keyspace (``box.bindings.rw[~/workspace]``,
+# ``box.bindings.ro[~/vault/ro]``, ``box.bindings.rw[~/vault/rw]``); ``canonicalize_dest`` expands
+# the ``~``. Respelling one redeclares three keys and hard-errors every existing user ``box.yaml``.
+# ⚑ ONE PYTHON CARRIER, NOT ONE CARRIER: the five bundled ``containers/Containerfile.template-*``
+# files each hardwire ``WORKDIR /home/agent/workspace`` and cannot import a Python constant.
+GUEST_WORKSPACE_RELPATH = "workspace"
+GUEST_VAULT_RELPATH = "vault"
+GUEST_VAULT_RO_RELPATH = f"{GUEST_VAULT_RELPATH}/ro"
+GUEST_VAULT_RW_RELPATH = f"{GUEST_VAULT_RELPATH}/rw"
+GUEST_WORKSPACE = f"{GUEST_HOME}/{GUEST_WORKSPACE_RELPATH}"
+GUEST_VAULT_RO = f"{GUEST_HOME}/{GUEST_VAULT_RO_RELPATH}"
+GUEST_VAULT_RW = f"{GUEST_HOME}/{GUEST_VAULT_RW_RELPATH}"
+
 # The FIXED box-side root for state that must be placed BEFORE the box is live (machinery, not a
 # settings key); ``box_supervisor.project_pinned_xdg`` restores real XDG locations after boot.
 # ⚑ HOME-RELATIVE by design — its three consumers anchor it differently, so a leading `~` or an
