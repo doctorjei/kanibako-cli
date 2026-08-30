@@ -329,6 +329,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A freshly set up agent carried a setting you never wrote, and `kanibako agent reset --all`
+  said so.** Every agent settings file kanibako seeds was written with `run_args: []` in it — an
+  empty argument list, materialized as if you had set one. Every other empty section is left out of
+  the file on purpose, precisely so that what is in it is what you put there; this one was written
+  unconditionally. The visible consequence was the reset count: `kanibako agent reset --all` counts
+  the overrides it removes, and on an untouched agent it removed that empty list and reported
+  `Reset 1 override(s).` **What you will see:** on an agent set up by this version, the same
+  command now prints `No overrides to reset.`, which is the truth. Nothing else changes — an agent
+  with real `run_args` still stores them, still starts with them, and still counts as one override.
+  Agent files already on disk keep their `run_args: []` until something rewrites them; one
+  `kanibako agent reset --all` clears it for good.
+
 - **A hand-written `enable_vault: "false"` in quotes was read as ON.** kanibako has two readers for
   this setting: one resolves it through the full cascade, the other asks the narrower question of
   what *this box's own file* says — which is what the box lifecycle commands need, so that a

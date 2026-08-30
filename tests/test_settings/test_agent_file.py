@@ -270,6 +270,39 @@ class TestSave:
         loaded = load(path)
         assert loaded.state == {"access": "permissive"}
 
+    def test_a_defaulted_run_args_is_not_materialized(self, tmp_path):
+        """Sparse: an empty ``run_args`` is a PHANTOM override, not the default on-disk state.
+
+        (Mutation: emit ``run_args`` unconditionally again → ``run_args: []`` is in the file
+        → RED.)
+        """
+        path = tmp_path / "agents" / "test.yaml"
+        save(path, AgentConfig())
+        assert "run_args" not in path.read_text()
+
+    def test_a_seeded_file_holds_zero_overrides(self, tmp_path):
+        """THE END-TO-END RULE the sparse write is FOR, pinned in its own case.
+
+        A freshly seeded file holds nothing the user wrote, so ``agent reset --all`` — which
+        counts each ROOT KEY once (:func:`clear_overrides`) — must count ZERO on it.  The
+        unconditional ``run_args`` emission made every seeded file count 1, and the command
+        reported an override nobody had set.
+        ⚑ SEPARATE FROM THE CASE ABOVE ON PURPOSE: :func:`clear_overrides` REWRITES the file,
+        so a text assertion after it would pass on the value it just deleted.
+        (Mutation: emit ``run_args`` unconditionally again → the count is 1 → RED.)
+        """
+        path = tmp_path / "agents" / "test.yaml"
+        save(path, AgentConfig())
+        assert clear_overrides(path) == 0
+
+    def test_a_real_run_args_is_still_emitted(self, tmp_path):
+        """The other half: sparse drops the EMPTY list only — a real one still round-trips
+        and still counts as the one override it is."""
+        path = tmp_path / "agents" / "test.yaml"
+        save(path, AgentConfig(run_args=["--verbose", "--debug"]))
+        assert load(path).run_args == ["--verbose", "--debug"]
+        assert clear_overrides(path) == 1
+
     def test_creates_parent_dirs(self, tmp_path):
         path = tmp_path / "deep" / "nested" / "agent.yaml"
         save(path, AgentConfig())
