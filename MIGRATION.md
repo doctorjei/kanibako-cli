@@ -3810,6 +3810,41 @@ exit code is the only signal that changed; a value that was already valid behave
 ⚑ **`name` is not affected**, because it is not a setting — it is the agent's display name, and
 `kanibako agent set <agent> name=…` writes it exactly as it always has.
 
+### 2.63 `box convert` out of standalone reads the box's root instead of counting up from the workspace
+
+**Read this if you have set `workset.workspaces` on a standalone box.** A standalone box is the one
+kind whose live workspace is a subdirectory of its root, so converting it to any other mode lifts
+those files back up to the root. The directory they were lifted *into* was the workspace's own
+parent — which is the root only when `workset.workspaces` is left at its default.
+
+**What changed.** The root is now read off the box (it is where `box_data/` and the root
+`workset.yaml` live), so the lift aims at it in every layout. Two things follow, and the second is
+the reason this is here rather than only in the changelog:
+
+- With `workset.workspaces` set **one level deeper** (`@meta.workset.path/nested/deep`), the files
+  used to land in `nested/` and the box was registered there, one level below the directory you
+  converted. They now land at the root. The interposed directory is removed once emptied; if it
+  holds anything else of yours, it stays.
+- With `workset.workspaces` set to an **absolute path**, the lift emptied that directory, deleted
+  it, and left your files loose in its parent — somewhere kanibako was never pointed at. It is now
+  kept: a converted box's workspace is simply its project directory, and that directory may be
+  anywhere, so nothing has to move. The convert reports the keep and names the setting — `Note:
+  left the workspace at /path/work — workset.workspaces pointed it outside /path/root, so it is
+  yours and the box keeps it as its project directory.` — and registers the box at that path.
+
+**Also fixed, same command.** `kanibako box convert --standalone --name <new>` on a box that is
+*already* standalone renamed it by building a second standalone tree inside the box's own workspace
+and then removing the first box's `box_data/` and vault. If you ran that, your files are under a
+doubled workspace directory and the box's home is gone; the box that remains is the nested one.
+Move the workspace contents back up and re-register with `kanibako box register` if you want the
+old root back. A rename now changes the identity and touches nothing else.
+
+**What you must do.** Nothing, unless a past convert already scattered a workspace. Nothing was
+deleted except empty directories: look in the parent of the path `workset.workspaces` names, move
+the files back into it, and run `kanibako box show` to confirm the workspace path holds them.
+
+---
+
 ## 3. For plugin authors
 
 ⚑ **THREE PERSONA SURFACES ON `Target` CHANGED SHAPE in 1.8.0 — a plugin built against 1.7.x needs

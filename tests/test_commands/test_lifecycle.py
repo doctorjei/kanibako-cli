@@ -1257,14 +1257,19 @@ class TestWorksetTierVaultDefaultIsNotPinned:
 # The standalone consolidate sweep — kanibako's own directories are RESOLVED
 # ---------------------------------------------------------------------------
 
-def _convert_to_standalone_in_place(env, root):
-    """Run the real convert that consolidates *root* into its standalone workspace dir."""
+def _convert_in_place(env, root, ownership, name=None):
+    """Run the real in-place convert of *root* to *ownership*, optionally renaming."""
     config, std, _tmp_home = env
     state = resolve_lifecycle_target(str(root), std, config)
     return execute_lifecycle(
-        state, TargetSpec(location=INPLACE, ownership="standalone"),
+        state, TargetSpec(location=INPLACE, ownership=ownership, name=name),
         std, config, confirm=_conf_yes(),
     )
+
+
+def _convert_to_standalone_in_place(env, root):
+    """Run the real convert that consolidates *root* into its standalone workspace dir."""
+    return _convert_in_place(env, root, "standalone")
 
 
 def _default_with_workset_keys(env, name, table):
@@ -1471,3 +1476,174 @@ class TestConsolidateResolvesTheRootsOwnKeys:
             path, repointed = answered[key]
             assert path == root / f"moved_{leaf}", key
             assert repointed is True, key
+
+
+# ---------------------------------------------------------------------------
+# The standalone ROOT is READ off the state, never counted off the workspace
+# ---------------------------------------------------------------------------
+
+class TestStandaloneRootIsNotAPositionInThePath:
+    """An in-place convert of a STANDALONE box must aim at the box's ROOT — and the root
+    is ``ProjectState.metadata_path`` (drift I), not ``workspace_path.parent``.
+
+    ⚑ ``workspace_path`` is the RESOLVED ``workset.workspaces``, so its parent is the root
+    ONLY in the default layout.  The three cases below are the three layouts that
+    distinguishes: no repoint, an IN-ROOT repoint (one level deeper ⇒ the parent is an
+    intermediate directory), and an ABSOLUTE repoint (the parent is not under the root at
+    all, and is a directory kanibako was never given).
+    """
+
+    def test_default_layout_lifts_into_the_root(self, env):
+        """The no-repoint case, unchanged — the parent and the root coincide here, which
+        is exactly why the positional spelling survived this long."""
+        root = _make_default(env, name="liftplain")
+        first = _convert_to_standalone_in_place(env, root)
+        assert first.workspace_path == root / "workspace"
+
+        new = _convert_in_place(env, root, "default")
+
+        assert new.workspace_path == root
+        assert (root / "file.txt").read_text() == "hello"
+        assert not (root / "workspace").exists()
+
+    def test_in_root_repoint_lifts_into_the_root_not_the_workspaces_parent(self, env):
+        """``workspaces`` one level deeper: the parent is ``<root>/nested``, a directory
+        that exists only to hold the workspace.  Lifting into it leaves the box's files
+        one level below the project dir the box now claims."""
+        config, std, tmp_home = env
+        root = _default_with_workset_keys(
+            env, "liftnested",
+            {"workspaces": "@meta.workset.path/nested/deep"},
+        )
+        _convert_to_standalone_in_place(env, root)
+        assert (root / "nested" / "deep" / "file.txt").is_file()
+
+        new = _convert_in_place(env, root, "default")
+
+        assert new.workspace_path == root
+        assert (root / "file.txt").read_text() == "mine"
+        # ⚑ The interposed directory only ever existed to hold the workspace, and the
+        # ``workset.yaml`` that named it is gone — so it does not outlive the convert.
+        assert not (root / "nested").exists()
+        # The box the user will open is registered AT the root, not below it.
+        assert str(root) in load_primary_boxes(std.primary_workset).values()
+
+    def test_absolute_repoint_keeps_the_users_workspace_and_reports_it(self, env, capsys):
+        """⚑⚑ [R144] — the case a positional parent cannot express AT ALL.  The parent of
+        an absolute workspace is a directory the user never gave kanibako: lifting into it
+        EMPTIED the directory the user named, deleted it, and scattered its contents into
+        a sibling tree.  Nothing needs to move here — every other mode roots its workspace
+        at the project dir, and that dir may be anywhere."""
+        config, std, tmp_home = env
+        elsewhere = tmp_home / "outside" / "work"
+        root = _default_with_workset_keys(
+            env, "liftabs", {"workspaces": str(elsewhere)},
+        )
+        _convert_to_standalone_in_place(env, root)
+        assert (elsewhere / "file.txt").is_file()
+        capsys.readouterr()
+
+        new = _convert_in_place(env, root, "default")
+
+        assert new.workspace_path == elsewhere
+        assert (elsewhere / "file.txt").read_text() == "mine"
+        # ⚑ The parent is NOT ours: nothing of the user's was moved up into it.
+        assert not (elsewhere.parent / "file.txt").exists()
+        assert str(elsewhere) in load_primary_boxes(std.primary_workset).values()
+        # A keep that cannot name the path as the user's is just a leak.
+        err = capsys.readouterr().err
+        assert str(elsewhere) in err
+        assert "workset.workspaces" in err
+
+    def test_rename_in_place_does_not_lay_a_second_box_in_the_workspace(self, env):
+        """A standalone box renamed AT ITS OWN ROOT.  ``_to_standalone`` reads its
+        ``root`` argument as the root, so handing it the workspace built a whole second
+        box inside the first — and then the source teardown removed the ORIGINAL's
+        ``box_data/``, meta and vault, because the destination was no longer the source.
+        """
+        from kanibako.project import registry_store
+        from kanibako.settings.paths import STANDALONE_META_DIR
+
+        config, std, tmp_home = env
+        root = _make_default(env, name="renameplain")
+        first = _convert_to_standalone_in_place(env, root)
+        # Data at every target the teardown would have taken.
+        first.vault_rw.mkdir(parents=True, exist_ok=True)
+        (first.vault_rw / "SECRET").write_text("RW")
+        (first.shell_path / "notes.md").write_text("HOME")
+
+        renamed = _convert_in_place(env, root, "standalone", name="renamedbox")
+
+        assert renamed.metadata_path == root
+        assert renamed.workspace_path == first.workspace_path
+        # ⚑ ONE box: no second root inside the live workspace.
+        assert not (renamed.workspace_path / STANDALONE_META_DIR).exists()
+        assert not (renamed.workspace_path / "workset.yaml").exists()
+        # ⚑ The rename is an IDENTITY change: home, vault and workspace are untouched.
+        assert (renamed.shell_path / "notes.md").read_text() == "HOME"
+        assert (renamed.vault_rw / "SECRET").read_text() == "RW"
+        assert (renamed.workspace_path / "file.txt").read_text() == "hello"
+        # ⚑ …and kanibako's own root ``.gitignore`` did not travel into the workspace.
+        assert not (renamed.workspace_path / ".gitignore").exists()
+        standalone = registry_store.load_section(std.registry, "standalone")
+        assert standalone[renamed.name] == str(root)
+        assert first.name not in standalone
+
+    def test_rename_in_place_under_a_repoint_stays_at_the_root(self, env):
+        """The same rename with the workspace repointed away from its default leaf — the
+        one shape where a positional root and the real root differ by more than a name."""
+        from kanibako.settings.paths import STANDALONE_META_DIR
+
+        root = _default_with_workset_keys(
+            env, "renamenested",
+            {"workspaces": "@meta.workset.path/nested/deep"},
+        )
+        first = _convert_to_standalone_in_place(env, root)
+
+        renamed = _convert_in_place(env, root, "standalone", name="renamedeep")
+
+        assert renamed.metadata_path == root
+        assert renamed.workspace_path == root / "nested" / "deep"
+        assert renamed.workspace_path == first.workspace_path
+        assert (root / STANDALONE_META_DIR).is_dir()
+        assert not (renamed.workspace_path / STANDALONE_META_DIR).exists()
+        assert (renamed.workspace_path / "file.txt").read_text() == "mine"
+
+    def test_a_failed_convert_out_puts_the_workspace_back(self, env, monkeypatch):
+        """The lift is compensated, and under a repoint the compensation has to REBUILD
+        what the lift removed: the workspace dir and the directories the repoint
+        interposed are gone by the time a later step fails, so a restore that assumed
+        them would move every file onto a missing parent and swallow the OSError."""
+        root = _default_with_workset_keys(
+            env, "unwindnested",
+            {"workspaces": "@meta.workset.path/nested/deep"},
+        )
+        _convert_to_standalone_in_place(env, root)
+
+        def boom(*a, **kw):
+            raise RuntimeError("injected failure")
+
+        monkeypatch.setattr(lc, "_to_default", boom)
+        with pytest.raises(RuntimeError, match="injected"):
+            _convert_in_place(env, root, "default")
+
+        assert (root / "nested" / "deep" / "file.txt").read_text() == "mine"
+        assert not (root / "file.txt").exists()
+
+    def test_no_positional_parent_derives_the_standalone_root(self):
+        """⚑ TRIPWIRE (P15).  Pins the RULE at the site: the standalone root is carried on
+        the state, so no step may recover it by walking up from the workspace.  A
+        reintroduced ``.parent`` reds here instead of waiting for a repointed user.
+        ⚑ CODE only — the comments quote the banned spelling on purpose, to say why.
+        """
+        from tests.support.repo import REPO_ROOT
+
+        src = (REPO_ROOT / "src" / "kanibako" / "commands" / "box"
+               / "_lifecycle.py").read_text(encoding="utf-8")
+        for line in src.splitlines():
+            if line.lstrip().startswith("#"):
+                continue
+            assert "workspace_path.parent" not in line, (
+                f"the standalone root is derived POSITIONALLY here: {line.strip()!r}; "
+                f"read it off ProjectState.metadata_path (drift I) instead"
+            )

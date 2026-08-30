@@ -106,9 +106,26 @@ already enforced that (`STUBBORN_INPLACE_MSG`). A standard move `copytree`s the 
   re-recorded; `dest` becomes the new recorded location when it is the destination of an
   internalizing move. Re-pointing an external project to some other external location is out of
   Phase-1 scope beyond the ws→ws repoint, which ownership handles.
-* **in-place convert OUT of standalone** — the reverse of drift H (below): lift the
-  `<root>/workspace/` files back up to the root and root the converted box there, so the project
-  stays at the directory the user is standing in rather than a subdir.
+* **in-place convert of a STANDALONE source** — the one arm that is about the source's SHAPE
+  rather than about relocating. ⚑⚑ **Its root is `state.metadata_path` (drift I), READ, never
+  `state.workspace_path.parent`.** The workspace is the RESOLVED `workset.workspaces`, so the
+  parent is the root only in the default layout; the positional spelling aimed a step that MOVES
+  USER DIRECTORIES at `<root>/nested` under a one-level repoint, and at a directory kanibako was
+  never given under an absolute one. Four cases, and the last two are why it is a `if/elif` and
+  not one line:
+  * **target is standalone** — an in-place RENAME. `_to_standalone` reads its `root` argument as
+    the root, so it gets the root; the earlier spelling handed it the workspace and built a
+    second box inside the first (see `_to_standalone`).
+  * **workspace resolves AT the root** (`workspaces: @meta.workset.path`) — already the shape
+    every other mode wants; nothing to lift.
+  * **workspace resolves BELOW the root** — the reverse of drift H: lift the files up to the root
+    and root the converted box there, so the project stays at the directory the user is standing
+    in rather than a subdir.
+  * **workspace resolves OUTSIDE the root** — [R144]: a directory the USER named. Nothing moves
+    and the keep is REPORTED naming the key. Every non-standalone mode's workspace is just its
+    project dir, and that dir may be anywhere, so keeping it is not a special case — it is the
+    ordinary shape. Lifting instead emptied and deleted the user's directory and scattered its
+    contents into a sibling tree.
 
 ### STEPS 3+4 are interleaved, deliberately
 
@@ -160,9 +177,11 @@ mapping intact rather than orphaned.
 
 ### Drift H + drift I — the standalone layout
 
-⚑ In `_to_standalone`, `new_workspace` IS the standalone ROOT — the project dir, not the live
-workspace. (The returned `ProjectState.workspace_path` is the `workspace/` subdir; `metadata_path`
-is the root.) A standalone box's tree roots at `<root>` with:
+⚑ `_to_standalone` takes the standalone ROOT — the project dir, not the live workspace — and says
+so in its parameter name (`root`), because the caller's variable is `new_workspace` and reading one
+as the other is the defect this pair keeps producing. (The returned `ProjectState.workspace_path` is
+the resolved workspace dir; `metadata_path` is the root, and it is where every other step must READ
+the root from.) A standalone box's tree roots at `<root>` with:
 
 * `workset.yaml` **AT THE ROOT** (drift I — and `ProjectState.metadata_path` for a standalone IS
   that root),
@@ -536,8 +555,14 @@ derived from the ROOT, not from a `ProjectGroup` (which `ProjectState` does not 
 primary/named the workset tier is therefore `None` — no legacy underlay, so those modes stay
 byte-identical to pre-P2.
 
-```def _remove_old_metadata(state: ProjectState, std: StandardPaths, config: KanibakoConfig, *, preserve_name: str | None = None) -> None```
+```def _remove_old_metadata(state: ProjectState, std: StandardPaths, config: KanibakoConfig, *, preserve_name: str | None = None, preserve_root: Path | None = None) -> None```
 Remove the source project's metadata/shell (+ PRIMARY vault).
+
+⚑ **TWO reuse signals, because each mode's IDENTITY on disk is a different thing:**
+`preserve_name` for a primary source (whose metadata dir is named after the box) and
+`preserve_root` for a standalone one (whose metadata IS a root, and whose NAME is exactly what an
+in-place rename changes). A destination that reused the source must not then have the source torn
+out from under it.
 
 🛑 The three arms differ in what they are allowed to touch, and the difference is the whole point:
 
@@ -545,6 +570,9 @@ Remove the source project's metadata/shell (+ PRIMARY vault).
   root `workset.yaml`, and the vault) and **NOT the project root itself**. For a standalone the root
   IS `metadata_path`: deleting it would wipe the user's whole project directory AND the
   already-converted destination.
+  ⚑ `preserve_root` naming THIS root (an in-place rename) drops the OLD name's `registry.standalone`
+  entry and returns: `box_data/`, the root meta and the vault are the box just re-established, and
+  the only stale thing is the name.
   ⚑⚑ The vault comes from `project.workset.standalone_vault_teardown(root)`, **called before
   anything at all is dropped — the registry entry included**. Two reasons and both bite: the root
   `workset.yaml` this arm unlinks is the only carrier of a `workset.vault_*` repoint, so a later
@@ -624,19 +652,44 @@ class this file has already paid for at the vault arm and the channel partition.
 source dir; relocating: the copy STEP 2 made at *dest*; external-in-place: the external dir that is
 BECOMING the standalone root. That uniformity is what lets one call serve every transition.
 
-```def _undo_consolidate(workspace_subdir: Path, root: Path, moved: list[Path]) -> None```
-Best-effort reversal of `_consolidate_workspace_subdir`.
+```def _undo_consolidate(src_dir: Path, dest_dir: Path, moved: list[Path]) -> None```
+Best-effort reversal of EITHER sweep — *moved*'s leaves go back from *src_dir* to *dest_dir*.
+⚑ *dest_dir* is RE-CREATED first: the unconsolidate direction removes it (with any repoint parents)
+once emptied, so a restore would otherwise land nowhere and every move would fail silently.
 
 ```def _unconsolidate_workspace_subdir(workspace_subdir: Path, root: Path, unwind: _Unwind) -> None```
-Lift the `workspace/` subdir's contents back up to *root*.
+Lift the standalone workspace dir's contents back up to *root*.
 
 The inverse of `_consolidate_workspace_subdir`, used when converting OUT of standalone in place: the
 workspace files return to the project root (where a non-standalone box roots them) and the
-now-empty subdir is removed so the converted project keeps no stray `workspace/`. A no-op when the
-subdir is absent or empty; each move is pushed onto *unwind*.
+now-empty subdir is removed so the converted project keeps no stray one. A no-op when the subdir is
+absent or empty; each move is pushed onto *unwind*.
 
-```def _to_standalone(state: ProjectState, std: StandardPaths, config: KanibakoConfig, unwind: _Unwind, *, new_name: str, new_workspace: Path, requested_name: str = "") -> ProjectState```
+⚑ *root* is the caller's READ root, never a parent counted off *workspace_subdir* — see the
+standalone arm of **STEP 2**. The removal walks UP from the workspace dir, so the directories a
+repoint interposed (`workspaces: @meta.workset.path/nested/deep` leaves `nested/`) go too: they
+existed only to hold the workspace, and the root `workset.yaml` that named them is about to be
+unlinked. `rmdir` IS the emptiness test, so a parent the user keeps their own files in stops the
+walk.
+
+```def _to_standalone(state: ProjectState, std: StandardPaths, config: KanibakoConfig, unwind: _Unwind, *, new_name: str, root: Path, requested_name: str = "") -> ProjectState```
 Convert/relocate the project so it becomes standalone (in-tree metadata).
+
+⚑⚑ The parameter is `root`, and it is the caller's `new_workspace`: standalone is the ONE target
+mode where the live workspace is not the project dir, so what arrives is the ROOT. It was named
+`new_workspace` and read as the root, and an in-place standalone RENAME then handed it the box's
+own workspace — laying a second complete standalone tree inside the first, after which
+`_remove_old_metadata` tore out the original's `box_data/` (home included) and vault, because from
+the destination's position they belonged to some other box.
+
+⚑ **`reused_in_place`** — `dst_metadata` and the source's `box_metadata_dir` are the SAME directory
+— governs three things, and each is a different failure without it: the metadata copy is SKIPPED (a
+`copytree` onto itself raises), the consolidate sweep is SKIPPED (the sweep exists because an
+in-place convert's project files sit AT the root; on a root that is ALREADY this box's, they sit in
+the workspace dir and everything beside them is kanibako's — starting with the root `.gitignore`
+this function writes, which the sweep would relocate into the user's workspace), and
+`_remove_old_metadata` is passed `preserve_root` so the teardown does not delete the box that was
+just re-established.
 
 A standalone box's identity is the canonical opaque `<kuid>_<leaf>`, matching `create --standalone`
 / `duplicate --standalone`. Standalone boxes are NOT named via `names.yaml`; they are registered in
