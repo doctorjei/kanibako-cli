@@ -15,8 +15,66 @@ def _format_check(status: str, label: str, detail: str) -> str:
     return f"[{status}] {label}: {detail}"
 
 
-def _report_settings_error(label: str, err: KanibakoError) -> None:
-    """Print *label* as a FAILED check and quote the settings error verbatim.
+class _SettingsErrorLog:
+    """One diagnose run's settings errors, reported as a single closing section.
+
+    A settings error rarely breaks just one check.  A malformed config file
+    breaks Image, Storage and Journal in one ``system diagnose``; ``rig
+    diagnose`` loads settings twice, so one undeclared key refuses at both
+    "Configured image" and "  Baseline".  Every check it broke still prints its
+    own ``[!!]`` line (see :func:`_report_settings_error`) -- this collects the
+    multi-line BODIES so the same one is printed ONCE, named with every label
+    it broke, instead of six or twelve lines repeating a single root cause.
+
+    Deduplication is on the RENDERED TEXT and deliberately nothing cleverer.
+    Both triggers already embed their own location -- the §0 refusal names
+    every offending entry and every file the resolve loaded, and the
+    ``ConfigError`` names the file and the parse position -- so identical text
+    IS the same problem in the same place, and text that differs is a different
+    problem that must print too.  Parsing key names back out of a message to
+    group by them would make this a second carrier of that message's
+    structure, and the message is the only carrier there is.
+
+    An instance belongs to one entry point and is passed down (``rig diagnose``
+    hands its own to :func:`_diagnose_baseline`, which is why the two loads
+    there share a report).  Module-level state would leak across invocations
+    and could not be tested.
+
+    The message is reproduced UNCHANGED, one 8-space-indented line each (the
+    continuation indent this module already uses); composing a new one would
+    drop the entry names and the file list that make it actionable.
+    """
+
+    def __init__(self) -> None:
+        # Rendered error text -> the labels that hit it, in first-seen order.
+        self._by_text: dict[str, list[str]] = {}
+
+    def add(self, label: str, err: KanibakoError) -> None:
+        """Record that the *label* check failed with *err*."""
+        labels = self._by_text.setdefault(str(err), [])
+        if label not in labels:
+            labels.append(label)
+
+    def emit(self) -> None:
+        """Print each distinct error once, naming every check it broke."""
+        if not self._by_text:
+            return
+        print()
+        print("Settings errors:")
+        for index, (text, labels) in enumerate(self._by_text.items()):
+            if index:
+                print()
+            # Labels are printed here without the indent some of them carry for
+            # their own check line -- this is a list, not a nested section.
+            print(f"    affects: {', '.join(label.strip() for label in labels)}")
+            for line in text.splitlines():
+                print(f"        {line}")
+
+
+def _report_settings_error(
+    label: str, err: KanibakoError, errors: _SettingsErrorLog,
+) -> None:
+    """Print *label* as a FAILED check and hand *err* to *errors* for the body.
 
     Every settings load in this module used to sit inside a bare ``except
     Exception`` whose only report was ``cannot check`` (some spelt ``cannot
@@ -36,27 +94,23 @@ def _report_settings_error(label: str, err: KanibakoError) -> None:
     missing configuration instead of the real error points them at the WRONG
     cause.
 
-    One root cause is therefore reported under SEVERAL labels in one run -- a
-    malformed config file breaks the Image, Storage and Journal checks alike,
-    and each says so.  That repetition is deliberate and predates this
-    function (``rig diagnose`` already reported one error at both "Configured
-    image" and "  Baseline"): each check reports its own reason, and
-    suppressing a repeat would put some check back to a bland line or no line
-    at all, which is the defect itself.
+    One root cause still breaks SEVERAL checks in one run, and every check it
+    breaks still prints its own ``[!!]`` line right here, in sequence.  That
+    half is not negotiable: suppressing the repeat at the check line would put
+    some check back to a bland line or no line at all, which is the defect
+    itself.  What is not repeated is the multi-line BODY -- it goes to
+    *errors*, which prints it once for all of them
+    (:meth:`_SettingsErrorLog.emit`), so the check line points at that section
+    rather than promising the detail immediately below it.
 
     ``KanibakoError`` is exactly the right predicate and NOT a discriminator:
     ``errors.py`` defines it as the hierarchy ``cli.py`` catches, i.e. the
     errors whose messages are already written to be shown to a user.  Anything
     else still falls through to the ``(not configured)`` line, which keeps that
     path for the case it was written for.
-
-    The message is reproduced UNCHANGED, one 8-space-indented line each (the
-    continuation indent this module already uses); composing a new one here
-    would drop the entry names and the file list that make it actionable.
     """
-    print(_format_check("!!", label, "settings error -- reported below"))
-    for line in str(err).splitlines():
-        print(f"        {line}")
+    print(_format_check("!!", label, "settings error -- see 'Settings errors' below"))
+    errors.add(label, err)
 
 
 # ---------------------------------------------------------------------------
@@ -487,6 +541,11 @@ def run_system_diagnose(args: object) -> int:
     print("=" * 40)
     print()
 
+    # Every settings error found below is reported at its own check line and
+    # collected here, so one root cause breaking Image, Storage and Journal
+    # prints its body once at the end instead of three times.
+    errors = _SettingsErrorLog()
+
     # Runtime
     status, detail = _check_runtime()
     print(_format_check(status, "Container runtime", detail))
@@ -500,7 +559,7 @@ def run_system_diagnose(args: object) -> int:
         status, detail = _check_image(merged)
         print(_format_check(status, "Image", detail))
     except KanibakoError as e:
-        _report_settings_error("Image", e)
+        _report_settings_error("Image", e, errors)
     except Exception:
         print(_format_check("--", "Image", "cannot check (not configured)"))
 
@@ -555,7 +614,7 @@ def run_system_diagnose(args: object) -> int:
         status, detail = _check_storage(data_path)
         print(_format_check(status, "Storage", detail))
     except KanibakoError as e:
-        _report_settings_error("Storage", e)
+        _report_settings_error("Storage", e, errors)
     except Exception:
         print(_format_check("--", "Storage", "cannot check"))
 
@@ -565,7 +624,7 @@ def run_system_diagnose(args: object) -> int:
         for status, detail in _check_journal(std):
             print(_format_check(status, "Journal", detail))
     elif std_err is not None:
-        _report_settings_error("Journal", std_err)
+        _report_settings_error("Journal", std_err, errors)
     else:
         print(_format_check("--", "Journal", "cannot check"))
 
@@ -579,6 +638,8 @@ def run_system_diagnose(args: object) -> int:
             print(_format_check(status, label, detail))
     except Exception:
         print(_format_check("--", "VS Code", "cannot check"))
+
+    errors.emit()
 
     print()
     return 0
@@ -677,6 +738,10 @@ def run_rig_diagnose(args: object) -> int:
     print("=" * 40)
     print()
 
+    # Shared with `_diagnose_baseline` below: both load settings, so one
+    # refusal would otherwise print its body twice in this one run.
+    errors = _SettingsErrorLog()
+
     status, detail = _check_runtime()
     print(_format_check(status, "Container runtime", detail))
 
@@ -687,7 +752,7 @@ def run_rig_diagnose(args: object) -> int:
         status, detail = _check_image(merged)
         print(_format_check(status, "Configured image", detail))
     except KanibakoError as e:
-        _report_settings_error("Configured image", e)
+        _report_settings_error("Configured image", e, errors)
     except Exception:
         print(_format_check("--", "Configured image", "cannot check"))
 
@@ -708,19 +773,26 @@ def run_rig_diagnose(args: object) -> int:
 
     # Baseline executable probe (one ephemeral run per image).
     print()
-    _diagnose_baseline(args)
+    _diagnose_baseline(args, errors)
+
+    errors.emit()
 
     print()
     return 0
 
 
-def _diagnose_baseline(args: object) -> None:
+def _diagnose_baseline(args: object, errors: _SettingsErrorLog) -> None:
     """Probe the image baseline executables and print the result.
 
     Honors ``--all`` (every local kanibako image), ``--only PKG`` and
     ``--skip PKG`` (default = the single configured ``box_image``).  Reuses
     :func:`probe_missing_executables` so a single ephemeral container checks all
     baseline executables per image.
+
+    *errors* is the CALLER's collector, not one of our own: the resolve here
+    and the "Configured image" resolve in :func:`run_rig_diagnose` fail
+    together, and sharing the collector is what makes one refusal print one
+    body naming both checks.  The caller emits it.
     """
     from kanibako.runtime import baseline as baseline_mod
     from kanibako.settings.config import config_file_path, load_merged_config
@@ -760,7 +832,7 @@ def _diagnose_baseline(args: object) -> None:
             merged = load_merged_config(config_file_path(config_home), None)
             images = [merged.box_image]
         except KanibakoError as e:
-            _report_settings_error("  Baseline", e)
+            _report_settings_error("  Baseline", e, errors)
             return
         except Exception:
             print(_format_check("--", "  Baseline", "cannot check (not configured)"))

@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from kanibako.commands.diagnose import (
+    _SettingsErrorLog,
     _check_agents,
     _check_image,
     _check_journal,
@@ -23,6 +24,12 @@ from kanibako.commands.diagnose import (
     run_rig_diagnose,
     run_system_diagnose,
 )
+
+# The detail `_report_settings_error` prints on the broken check's OWN line,
+# which now points at the consolidated section instead of at the next line.
+# Spelt out here rather than imported: importing it from the module under test
+# would leave these assertions comparing the code to itself.
+_SETTINGS_ERROR_DETAIL = "settings error -- see 'Settings errors' below"
 
 
 class TestFormatCheck:
@@ -859,7 +866,7 @@ class TestDiagnoseBaseline:
                 return_value=[],
             ) as mock_probe,
         ):
-            _diagnose_baseline(args)
+            _diagnose_baseline(args, _SettingsErrorLog())
         # Only ripgrep's exe (rg) should be probed.
         assert mock_probe.call_args[0][2] == ["rg"]
 
@@ -879,7 +886,7 @@ class TestDiagnoseBaseline:
                 return_value=[],
             ) as mock_probe,
         ):
-            _diagnose_baseline(args)
+            _diagnose_baseline(args, _SettingsErrorLog())
         probed = mock_probe.call_args[0][2]
         assert "fdfind" not in probed
         assert set(probed) == {"tmux", "rg"}
@@ -900,7 +907,7 @@ class TestDiagnoseBaseline:
                 return_value=[],
             ) as mock_probe,
         ):
-            _diagnose_baseline(args)
+            _diagnose_baseline(args, _SettingsErrorLog())
         # Single configured image probed.
         assert mock_probe.call_count == 1
         assert mock_probe.call_args[0][1] == "configured:latest"
@@ -922,7 +929,7 @@ class TestDiagnoseBaseline:
                 return_value=[],
             ) as mock_probe,
         ):
-            _diagnose_baseline(args)
+            _diagnose_baseline(args, _SettingsErrorLog())
         assert mock_probe.call_count == 2
 
     def test_missing_executable_reported(self, capsys) -> None:
@@ -941,7 +948,7 @@ class TestDiagnoseBaseline:
                 return_value=["rg"],
             ),
         ):
-            _diagnose_baseline(args)
+            _diagnose_baseline(args, _SettingsErrorLog())
         out = capsys.readouterr().out
         assert "[!!]" in out
         assert "ripgrep:rg" in out
@@ -1223,8 +1230,41 @@ class TestParsers:
         assert args.project == "myproject"
 
 
+_UNDECLARED_KEY = "frobnicate"
+
+
+def _write_undeclared_key(config_file: Path) -> Path:
+    """Put an undeclared `box.<_UNDECLARED_KEY>` in the system-tier settings file."""
+    from kanibako.settings.paths import load_system_config, xdg
+
+    settings_path = load_system_config(
+        config_file,
+        data_home=xdg("XDG_DATA_HOME", ".local/share"),
+        home=Path.home(),
+    )["config.settings"]
+    settings_path.parent.mkdir(parents=True, exist_ok=True)
+    settings_path.write_text(f"box:\n  {_UNDECLARED_KEY}: yes\n")
+    return settings_path
+
+
+def _quoted_body(config_file: Path) -> str:
+    """The settings error as diagnose must quote it: same load, verbatim, indented.
+
+    Re-derived by running the load rather than spelt out here, so an assertion
+    on it says "printed once" rather than "printed once in today's wording".
+    """
+    from kanibako.errors import KanibakoError
+    from kanibako.settings.config import load_merged_config
+
+    try:
+        load_merged_config(config_file, None)
+    except KanibakoError as err:
+        return "\n".join(f"        {line}" for line in str(err).splitlines())
+    raise AssertionError("the load this test is about did not fail")
+
+
 @pytest.mark.writes_undeclared(
-    "box.frobnicate",
+    f"box.{_UNDECLARED_KEY}",
     reason="the refusal these tests drive is the §0 read gate itself, so the "
            "settings file they write has to carry an undeclared key; the write "
            "happens inside the resolve that then refuses it.",
@@ -1242,26 +1282,11 @@ class TestSettingsRefusalIsSurfaced:
     the refusal stops reaching `load_merged_config` at all.
     """
 
-    UNDECLARED = "frobnicate"
-
-    def _write_undeclared_key(self, config_file: Path) -> Path:
-        """Put an undeclared `box.frobnicate` in the system-tier settings file."""
-        from kanibako.settings.paths import load_system_config, xdg
-
-        settings_path = load_system_config(
-            config_file,
-            data_home=xdg("XDG_DATA_HOME", ".local/share"),
-            home=Path.home(),
-        )["config.settings"]
-        settings_path.parent.mkdir(parents=True, exist_ok=True)
-        settings_path.write_text(f"box:\n  {self.UNDECLARED}: yes\n")
-        return settings_path
-
     def _assert_names_the_key(self, out: str, settings_path: Path) -> None:
         """The refusal reached the user intact: key, spec cite, and file list."""
         assert "[!!]" in out
-        assert "settings error -- reported below" in out
-        assert f"box.{self.UNDECLARED}" in out
+        assert _SETTINGS_ERROR_DETAIL in out
+        assert f"box.{_UNDECLARED_KEY}" in out
         assert "spec §0" in out
         assert str(settings_path) in out
         assert "cannot check (not configured)" not in out
@@ -1272,7 +1297,7 @@ class TestSettingsRefusalIsSurfaced:
         """`kanibako system diagnose` names the undeclared key on the Image line."""
         from kanibako.errors import ContainerError
 
-        settings_path = self._write_undeclared_key(config_file)
+        settings_path = _write_undeclared_key(config_file)
         with patch(
             "kanibako.runtime.container.ContainerRuntime",
             side_effect=ContainerError("none"),
@@ -1281,7 +1306,7 @@ class TestSettingsRefusalIsSurfaced:
         assert rc == 0
         out = capsys.readouterr().out
         self._assert_names_the_key(out, settings_path)
-        assert "[!!] Image: settings error -- reported below" in out
+        assert f"[!!] Image: {_SETTINGS_ERROR_DETAIL}" in out
 
     def test_rig_diagnose_surfaces_the_refusal(
         self, config_file, tmp_home, credentials_dir, capsys
@@ -1289,7 +1314,7 @@ class TestSettingsRefusalIsSurfaced:
         """`kanibako rig diagnose` names it on the Configured image line."""
         from kanibako.errors import ContainerError
 
-        settings_path = self._write_undeclared_key(config_file)
+        settings_path = _write_undeclared_key(config_file)
         with patch(
             "kanibako.runtime.container.ContainerRuntime",
             side_effect=ContainerError("none"),
@@ -1298,7 +1323,7 @@ class TestSettingsRefusalIsSurfaced:
         assert rc == 0
         out = capsys.readouterr().out
         self._assert_names_the_key(out, settings_path)
-        assert "[!!] Configured image: settings error -- reported below" in out
+        assert f"[!!] Configured image: {_SETTINGS_ERROR_DETAIL}" in out
         assert "Configured image: cannot check" not in out
 
     def test_baseline_surfaces_the_refusal(
@@ -1307,8 +1332,11 @@ class TestSettingsRefusalIsSurfaced:
         """The baseline probe names it instead of claiming nothing is configured."""
         mock_runtime = MagicMock()
         mock_runtime.cmd = "podman"
-        settings_path = self._write_undeclared_key(config_file)
+        settings_path = _write_undeclared_key(config_file)
         args = argparse.Namespace(only=None, skip=None, all_images=False)
+        # `_diagnose_baseline` reports at its check line and defers the body to
+        # the caller's collector, so the caller's `emit` is part of the path.
+        errors = _SettingsErrorLog()
         with (
             patch(
                 "kanibako.runtime.baseline.load_baseline",
@@ -1323,10 +1351,11 @@ class TestSettingsRefusalIsSurfaced:
                 return_value=[],
             ) as mock_probe,
         ):
-            _diagnose_baseline(args)
+            _diagnose_baseline(args, errors)
+        errors.emit()
         out = capsys.readouterr().out
         self._assert_names_the_key(out, settings_path)
-        assert "[!!]   Baseline: settings error -- reported below" in out
+        assert f"[!!]   Baseline: {_SETTINGS_ERROR_DETAIL}" in out
         # The refusal ends the probe -- there is no resolved image to probe.
         mock_probe.assert_not_called()
 
@@ -1350,7 +1379,7 @@ class TestSettingsRefusalIsSurfaced:
         assert rc == 0
         out = capsys.readouterr().out
         assert "[--] Image: cannot check (not configured)" in out
-        assert "settings error -- reported below" not in out
+        assert _SETTINGS_ERROR_DETAIL not in out
 
 
 class TestMalformedConfigIsSurfaced:
@@ -1379,7 +1408,7 @@ class TestMalformedConfigIsSurfaced:
 
     def _assert_names_the_file(self, out: str, config_file: Path) -> None:
         """The ConfigError reached the user intact: file, reason, and cure."""
-        assert "settings error -- reported below" in out
+        assert _SETTINGS_ERROR_DETAIL in out
         assert str(config_file) in out
         assert "is not valid YAML" in out
         assert "Fix or remove the file, then retry." in out
@@ -1399,7 +1428,7 @@ class TestMalformedConfigIsSurfaced:
         assert rc == 0
         out = capsys.readouterr().out
         self._assert_names_the_file(out, config_file)
-        assert "[!!] Journal: settings error -- reported below" in out
+        assert f"[!!] Journal: {_SETTINGS_ERROR_DETAIL}" in out
         assert "[--] Journal: cannot check" not in out
 
     def test_storage_names_the_broken_file(
@@ -1417,7 +1446,7 @@ class TestMalformedConfigIsSurfaced:
         assert rc == 0
         out = capsys.readouterr().out
         self._assert_names_the_file(out, config_file)
-        assert "[!!] Storage: settings error -- reported below" in out
+        assert f"[!!] Storage: {_SETTINGS_ERROR_DETAIL}" in out
         assert "[--] Storage: cannot check" not in out
 
     def test_journal_error_is_reported_in_line_order(
@@ -1486,3 +1515,116 @@ class TestMalformedConfigIsSurfaced:
         out = capsys.readouterr().out
         assert "[--] Storage: cannot check" in out
         assert "Storage: settings error" not in out
+
+
+@pytest.mark.writes_undeclared(
+    f"box.{_UNDECLARED_KEY}",
+    reason="the double report pinned here is two REAL resolves refusing the "
+           "same undeclared key in one run, so the settings file has to carry "
+           "one; the write happens inside the resolve that then refuses it.",
+)
+class TestSettingsErrorsAreConsolidated:
+    """One root cause, quoted ONCE, named with every check it broke.
+
+    The checks load settings independently, so one cause routinely reaches
+    several of them: `rig diagnose` resolves twice (Configured image and
+    Baseline) and a malformed config file breaks Image, Storage and Journal in
+    one `system diagnose`.  Quoting the whole error under each label turned a
+    single refusal into 12 lines of the same text, and a single broken file
+    into three copies.
+
+    What is NOT consolidated is the check line: every check that failed still
+    prints its own `[!!]`, because the check that lost its body would otherwise
+    be back to a bland line or no line at all.  These tests pin both halves,
+    and the rule that separates them -- bodies are grouped by their RENDERED
+    TEXT, so two errors naming two different files both print.
+    """
+
+    def _no_runtime(self):
+        """Patch the runtime away; these tests are about the settings load."""
+        from kanibako.errors import ContainerError
+
+        return patch(
+            "kanibako.runtime.container.ContainerRuntime",
+            side_effect=ContainerError("none"),
+        )
+
+    def test_one_error_at_two_checks_is_quoted_once(
+        self, config_file, tmp_home, credentials_dir, capsys
+    ) -> None:
+        """`rig diagnose` resolves twice; both say so, and share one quoted body."""
+        mock_runtime = MagicMock()
+        mock_runtime.cmd = "podman"
+        mock_runtime.list_local_images.return_value = []
+        settings_path = _write_undeclared_key(config_file)
+        args = argparse.Namespace(only=None, skip=None, all_images=False)
+        with (
+            patch(
+                "kanibako.runtime.baseline.load_baseline",
+                return_value={"tmux": ["tmux"]},
+            ),
+            patch(
+                "kanibako.runtime.container.ContainerRuntime",
+                return_value=mock_runtime,
+            ),
+        ):
+            rc = run_rig_diagnose(args)
+        assert rc == 0
+        out = capsys.readouterr().out
+        # Neither check is silently dropped ...
+        assert f"[!!] Configured image: {_SETTINGS_ERROR_DETAIL}" in out
+        assert f"[!!]   Baseline: {_SETTINGS_ERROR_DETAIL}" in out
+        # ... and the two of them share ONE body that names both.
+        assert "    affects: Configured image, Baseline" in out
+        assert out.count(_quoted_body(config_file)) == 1
+        assert str(settings_path) in out
+
+    def test_malformed_file_at_three_checks_is_quoted_once(
+        self, config_file, tmp_home, credentials_dir, capsys
+    ) -> None:
+        """One unparseable file breaks three checks; three names, one body."""
+        config_file.write_text('box:\n  image: "unterminated\n   nope: [1, 2\n')
+        with self._no_runtime():
+            rc = run_system_diagnose(argparse.Namespace())
+        assert rc == 0
+        out = capsys.readouterr().out
+        for label in ("Image", "Storage", "Journal"):
+            assert f"[!!] {label}: {_SETTINGS_ERROR_DETAIL}" in out
+        assert "    affects: Image, Storage, Journal" in out
+        assert out.count("is not valid YAML") == 1
+
+    def test_two_different_errors_both_print(
+        self, config_file, tmp_home, credentials_dir, capsys
+    ) -> None:
+        """Different text is a different place, so grouping must not merge them."""
+        from kanibako.errors import ConfigError
+
+        with (
+            self._no_runtime(),
+            patch(
+                "kanibako.settings.config.load_merged_config",
+                side_effect=ConfigError("first.yaml is not valid YAML"),
+            ),
+            patch(
+                "kanibako.settings.paths.load_std_paths",
+                side_effect=ConfigError("second.yaml is not valid YAML"),
+            ),
+        ):
+            rc = run_system_diagnose(argparse.Namespace())
+        assert rc == 0
+        out = capsys.readouterr().out
+        affects = [ln for ln in out.splitlines() if ln.strip().startswith("affects:")]
+        assert affects == ["    affects: Image", "    affects: Journal"]
+        assert "        first.yaml is not valid YAML" in out
+        assert "        second.yaml is not valid YAML" in out
+
+    def test_clean_run_prints_no_section(
+        self, config_file, tmp_home, credentials_dir, capsys
+    ) -> None:
+        """Nothing collected, nothing printed -- not an empty heading."""
+        with self._no_runtime():
+            rc = run_system_diagnose(argparse.Namespace())
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "Settings errors:" not in out
+        assert "affects:" not in out

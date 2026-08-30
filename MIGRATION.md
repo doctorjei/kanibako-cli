@@ -3196,8 +3196,8 @@ that then failed for a cause the setup output had denied; it now stops where it 
 written as `kanibako setup || exit 1` used to see rc 0 and carry on.
 
 **`system diagnose` and `rig diagnose` report and keep going, rc 0 unchanged.** The `[--] Image:
-cannot check (not configured)` line becomes a `[!!]` row with the refusal quoted underneath,
-alongside every other check:
+cannot check (not configured)` line becomes a `[!!]` row alongside every other check, and the
+refusal itself is quoted once, in a `Settings errors:` section at the end of the run:
 
 ```
 $ kanibako system diagnose
@@ -3205,25 +3205,33 @@ Kanibako System Diagnostics
 ========================================
 
 [ok] Container runtime: /usr/bin/podman (podman version 5.4.2)
-[!!] Image: settings error -- reported below
+[!!] Image: settings error -- see 'Settings errors' below
+[ok] Agent: Claude Code: (/home/you/.local/bin/claude)
+[ok] Storage: 47.2 GB free of 234 GB in /home/you/.local/share/kanibako
+[ok] Journal: no in-flight operations
+
+Settings errors:
+    affects: Image
         the settings resolved for this box carry 1 entry that is not a settings key (spec §0 — the keyspace is CLOSED):
           - box.zippity: 'zippity' is not a declared box key (declared: canon, enable_vault, image, images_store, share_images, shell, plus the §2a categories)
         kanibako will not resolve settings that carry it: an undeclared key has no meaning to give the box, and passing it through would be the very 'anything goes' behaviour the closed keyspace replaces.
           Fix: remove it BY HAND from the settings file that carries it — this resolve loaded:
             - /home/you/.local/share/kanibako/global/settings.yaml
           'kanibako box reset' cannot remove what is not a key, and 'kanibako box show --effective' resolves through this same seam, so it refuses too.
-[ok] Agent: Claude Code: (/home/you/.local/bin/claude)
 ```
 
 The `rig diagnose` row is `Configured image` and the baseline probe's row is `Baseline`; both read
-the same way. `rig diagnose`'s baseline probe stops after the refusal, because there is no resolved
-image left to probe.
+the same way. Those two resolve settings separately, so both rows appear — and since they fail on
+the same refusal, one entry carries them both, headed `affects: Configured image, Baseline`.
+`rig diagnose`'s baseline probe stops after the refusal, because there is no resolved image left to
+probe.
 
 The `Storage` and `Journal` rows of `system diagnose` behave the same way, and they answer to a
 wider trigger than a settings refusal: a config file that is not valid YAML. Both used to print
 `cannot check` over an error that already named the file and the fix, so one malformed
-`kanibako_config.yaml` could yield one honest line and two bland ones in the same run. rc is
-unchanged at 0.
+`kanibako_config.yaml` could yield one honest line and two bland ones in the same run. That file
+breaks the `Image` row too, so you now get three `[!!]` rows over a single quoted parse error,
+headed `affects: Image, Storage, Journal`. rc is unchanged at 0.
 
 **`kanibako code` warns and still attaches, rc 0 unchanged.** When a settings error stops it
 resolving the box's image, VS Code opens without the box's workspace folder and without the agent
