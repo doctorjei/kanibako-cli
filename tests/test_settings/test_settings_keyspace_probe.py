@@ -79,7 +79,7 @@ def clean_probe(monkeypatch):
 def claude_only(clean_probe, monkeypatch):
   """As :func:`clean_probe`, with discovery answering "claude, and no leaves"."""
   monkeypatch.setattr(
-    probe, "_PLUGINS", probe._Plugins(frozenset(), frozenset(_CLAUDE_ONLY)),
+    probe, "_PLUGINS", {name: frozenset() for name in _CLAUDE_ONLY},
   )
   return clean_probe
 
@@ -177,8 +177,9 @@ def test_the_concession_reaches_that_agents_LEAVES_too(claude_only):
   ``setting_descriptor`` leaf, refused as "not a declared agent key" on a claude-only
   machine.
 
-  MUTATION: drop ``agents_with_known_leaves`` from ``declared_keyspace_oracle`` and
-  this reddens UNDECLARED, with a reason naming the wrong cause.
+  MUTATION: give ``_discover`` a ``"goose"`` key (any vocabulary) and this reddens
+  UNDECLARED, with a reason naming the wrong cause. ABSENCE FROM THE MAP *IS* THE
+  CONCESSION, so there is no second parameter left to drop.
   """
   assert probe.keyspace_verdict("agent.goose.provider").cls is KeyClass.KEY
 
@@ -191,15 +192,20 @@ def test_an_agent_this_machine_CAN_see_is_judged_exactly_as_before(claude_only):
 
 
 def test_a_PERSONA_is_known_by_its_HARNESS(claude_only):
-  """``KNOWN_LEAF_AGENTS`` answers by harness, so a persona of an INSTALLED harness
-  is judged, not conceded. Asking about the node name instead would concede every
-  persona on the machine — and the persona set is open, which is why membership is
-  asked and never enumerated."""
-  assert "navigator℘claude" in probe.KNOWN_LEAF_AGENTS
-  assert "navigator℘goose" not in probe.KNOWN_LEAF_AGENTS
+  """A persona of an INSTALLED harness is judged, not conceded (``[R150]``: *"or
+  harness"*). Asking about the node name instead would concede every persona on the
+  machine — and the persona set is open, which is why nothing enumerates it.
+
+  ⚑ THE SUPPLIER NO LONGER ANSWERS THIS; the map it hands over is keyed by plain
+  harness name and ``settings_keyspace.agent_declared_leaves`` normalises. Asserted
+  through the VERDICT, which is the only thing that was ever load-bearing.
+  """
   assert probe.keyspace_verdict(
     "agent.navigator℘claude.zippity"
   ).cls is KeyClass.UNDECLARED
+  assert probe.keyspace_verdict(
+    "agent.navigator℘goose.zippity"
+  ).cls is KeyClass.KEY
 
 
 def test_the_concession_does_NOT_reach_the_relic_shapes(claude_only):
@@ -275,7 +281,7 @@ def test_the_memo_survives_a_change_of_DISCOVERY(clean_probe, monkeypatch):
   """
   assert probe.keyspace_verdict("agent.goose.provider").cls is KeyClass.KEY
   monkeypatch.setattr(
-    probe, "_PLUGINS", probe._Plugins(frozenset(), frozenset({"goose"})),
+    probe, "_PLUGINS", {"goose": frozenset()},
   )
   # Uncached, it would now refuse; cached, the earlier answer stands.
   assert probe.keyspace_verdict("agent.goose.provider").cls is KeyClass.KEY
@@ -355,8 +361,11 @@ def test_discovery_is_ONE_pass_supplying_BOTH_halves(clean_probe, monkeypatch):
   about which those are.
 
   The single memo is also the single priming point — ``_keystore_census`` calls
-  ``plugin_agent_leaves()`` at ``pytest_configure``, before any test patches
-  discovery, and that one call fixes both halves.
+  ``plugin_agent_leaf_map()`` at ``pytest_configure``, before any test patches
+  discovery, and that one call fixes the whole map.
+
+  ⚑ ONE MAP RATHER THAN TWO SETS since 2026-08-30: the pair is now unrepresentable
+  apart, so "which agents" and "whose leaves" cannot disagree at all.
   """
   calls = []
 
@@ -366,18 +375,18 @@ def test_discovery_is_ONE_pass_supplying_BOTH_halves(clean_probe, monkeypatch):
 
   monkeypatch.setattr(probe, "_PLUGINS", None)
   monkeypatch.setattr("kanibako.targets.discover_targets", fake_discover)
-  assert probe.plugin_agent_leaves() == frozenset({"model", "provider"})
-  assert "claude" in probe.KNOWN_LEAF_AGENTS
-  assert "goose" in probe.KNOWN_LEAF_AGENTS
-  assert "zzznotinstalled" not in probe.KNOWN_LEAF_AGENTS
-  assert len(calls) == 1, "both halves must come from the SAME discovery pass"
+  assert probe.plugin_agent_leaf_map() == {
+    "claude": frozenset({"model"}), "goose": frozenset({"provider"}),
+  }
+  assert "zzznotinstalled" not in probe.AGENT_LEAF_MAP
+  assert len(calls) == 1, "the whole map must come from the SAME discovery pass"
 
 
 def test_discovery_that_will_not_import_concedes_BOTH_halves(clean_probe, monkeypatch):
   """⚑ THE SAFE DIRECTION, and the only one an instrument has.
 
-  An empty leaf set AND an empty agent set together mean "no agent's vocabulary is
-  known here", so every agent's leaves are conceded. A plugin that will not import is
+  An EMPTY MAP means "no agent's vocabulary is known here", so every agent's leaves
+  are conceded. A plugin that will not import is
   a fact about the environment; refusing to MEASURE because of it is not an option.
 
   MUTATION: let the exception escape ``_discover`` and every resolve in the process
@@ -388,8 +397,8 @@ def test_discovery_that_will_not_import_concedes_BOTH_halves(clean_probe, monkey
 
   monkeypatch.setattr(probe, "_PLUGINS", None)
   monkeypatch.setattr("kanibako.targets.discover_targets", explode)
-  assert probe.plugin_agent_leaves() == frozenset()
-  assert "claude" not in probe.KNOWN_LEAF_AGENTS
+  assert probe.plugin_agent_leaf_map() == {}
+  assert "claude" not in probe.AGENT_LEAF_MAP
   # …so the whole agent tier is conceded rather than refused wholesale.
   assert probe.keyspace_verdict("agent.claude.zippity").cls is KeyClass.KEY
 
@@ -407,7 +416,7 @@ def test_one_plugins_descriptor_fault_does_not_abort_the_pass(clean_probe, monke
 
   monkeypatch.setattr(probe, "_PLUGINS", None)
   monkeypatch.setattr("kanibako.targets.discover_targets", fake_discover)
-  assert probe.plugin_agent_leaves() == frozenset({"model"})
+  assert probe.plugin_agent_leaf_map() == {"claude": frozenset({"model"})}
 
 
 def test_a_plugin_whose_DESCRIPTORS_raise_is_conceded_like_an_ABSENT_one(
@@ -417,41 +426,40 @@ def test_a_plugin_whose_DESCRIPTORS_raise_is_conceded_like_an_ABSENT_one(
 
   A plugin that imports but cannot declare leaves no vocabulary for THAT agent, which
   is the same position an uninstalled plugin leaves it in — and the module's rule for
-  a discovery failure is to concede BOTH halves. Recording the name FIRST kept the
-  agent in ``KNOWN_LEAF_AGENTS`` with an EMPTY vocabulary, so every leaf it genuinely
-  declares classified UNDECLARED: ``agent.goose.provider`` refused for having no
-  declared leaves, which is the exact false positive the concession exists to prevent,
-  one layer in. ⚑ Withholding the name IS conceding the leaves — the leaf concession
-  is the only reader of the agent set.
+  a discovery failure is to concede. KEYING THE AGENT IN FIRST would leave it in the
+  map with an EMPTY vocabulary, so every leaf it genuinely declares classifies
+  UNDECLARED: ``agent.goose.provider`` refused for having no declared leaves, which is
+  the exact false positive the concession exists to prevent, one layer in. ⚑ ABSENCE
+  FROM THE MAP *IS* THE CONCESSION — there is nothing else to withhold.
 
   ⚑ THE SECOND HALF IS WHAT KEEPS IT A CONCESSION AND NOT A HOLE: the working plugin's
   agent is still judged, so one broken plugin does not disarm §0 for the rest.
 
-  MUTATION: move ``agents.add(name)`` above the descriptor read in ``_discover`` — the
-  pre-image — and the first two assertions redden, the goose one naming "not a declared
-  agent key" as its cause.
+  MUTATION: set ``declared_by[name] = frozenset()`` above the descriptor read in
+  ``_discover`` and the first two assertions redden, the goose one naming "not a
+  declared agent key" as its cause.
   """
   def fake_discover(project_path=None):
     return {"claude": _target("model"), "goose": _target("provider", broken=True)}
 
   monkeypatch.setattr(probe, "_PLUGINS", None)
   monkeypatch.setattr("kanibako.targets.discover_targets", fake_discover)
-  assert "goose" not in probe.KNOWN_LEAF_AGENTS
+  assert "goose" not in probe.AGENT_LEAF_MAP
   assert probe.keyspace_verdict("agent.goose.provider").cls is KeyClass.KEY
-  assert "claude" in probe.KNOWN_LEAF_AGENTS
+  assert "claude" in probe.AGENT_LEAF_MAP
   assert probe.keyspace_verdict("agent.claude.zippity").cls is KeyClass.UNDECLARED
 
 
 def test_a_HALF_READ_descriptor_list_contributes_NOTHING(clean_probe, monkeypatch):
   """⚑ THE CONCESSION POINTS OUTWARD TOO, and this is the half that is easy to miss.
 
-  The leaf set is a UNION with no per-agent partition, so a leaf salvaged from a plugin
-  whose name is then conceded is counted as declared for every OTHER agent — the same
-  half-a-pair fault, judging one agent's key against another's vocabulary. Merging the
-  contribution only once it is whole is what makes the per-agent concession total.
+  A leaf salvaged from a plugin whose entry is then conceded would still be RECORDED —
+  under the flat union it was counted as declared for every OTHER agent, and under the
+  map it would key an agent whose vocabulary is not readable. Storing the contribution
+  only once it is whole is what makes the per-agent concession total.
 
-  MUTATION: consume the descriptors straight into ``leaves`` (``leaves.update(d.key for
-  d in ...)``, the pre-image) and both the salvaged leaf and the claude verdict redden.
+  MUTATION: accumulate the descriptors into ``declared_by[name]`` as they arrive and
+  the salvaged leaf reappears under a ``goose`` key that must not exist.
   """
   def fake_discover(project_path=None):
     return {
@@ -462,8 +470,8 @@ def test_a_HALF_READ_descriptor_list_contributes_NOTHING(clean_probe, monkeypatc
   monkeypatch.setattr(probe, "_PLUGINS", None)
   monkeypatch.setattr("kanibako.targets.discover_targets", fake_discover)
   # ``provider`` WAS read before the fault; ``endpoint`` never was. Neither survives.
-  assert probe.plugin_agent_leaves() == frozenset({"model"})
-  assert "goose" not in probe.KNOWN_LEAF_AGENTS
+  assert probe.plugin_agent_leaf_map() == {"claude": frozenset({"model"})}
+  assert "goose" not in probe.AGENT_LEAF_MAP
   assert probe.keyspace_verdict("agent.claude.provider").cls is KeyClass.UNDECLARED
 
 
@@ -474,7 +482,7 @@ def test_a_HALF_READ_descriptor_list_contributes_NOTHING(clean_probe, monkeypatc
 # ⚑⚑ THIS ORACLE IS ON THE PRODUCTION PATH OF EVERY SETTINGS RESOLVE, disarmed probe
 # and all — ``_refuse_undeclared_snapshot`` reads it. Discovery imports and
 # instantiates every installed plugin, and those modules parse YAML in their module
-# bodies. Passing ``plugin_agent_leaves()`` as a keyword ARGUMENT evaluated all of it
+# bodies. Passing ``plugin_agent_leaf_map()`` as a keyword ARGUMENT evaluated all of it
 # before ``key_class`` had looked at the head, so the FIRST path judged paid, whatever
 # its shape: a cold ``load_merged_config`` on this box judged ``box``, ``box.image``
 # and ``box.share_images``, and the discovery pass was attributed to ``box`` — a
@@ -535,20 +543,20 @@ def test_a_leaf_only_a_PLUGIN_can_answer_DOES_import_one(path, counting_discover
   assert len(counting_discovery) == 1
 
 
-def test_plugin_agent_leaves_stays_EAGER_because_it_is_the_PRIMING_POINT(
+def test_plugin_agent_leaf_map_stays_EAGER_because_it_is_the_PRIMING_POINT(
   counting_discovery,
 ):
   """🛑 DO NOT MAKE THIS ONE LAZY. ``tests/_keystore_census`` calls it at
   ``pytest_configure``, before any test patches discovery, and that one call is what
-  fixes both halves of the memo for the whole session. A deferred version would prime
-  nothing and the census would measure whatever the running test had patched in.
+  fixes the memo for the whole session. A deferred version would prime nothing and
+  the census would measure whatever the running test had patched in.
 
-  :data:`probe.PLUGIN_LEAVES` is the deferred VIEW, and it exists BESIDE this rather
+  :data:`probe.AGENT_LEAF_MAP` is the deferred VIEW, and it exists BESIDE this rather
   than in place of it — asking it anything discovers just the same.
   """
-  probe.plugin_agent_leaves()
+  probe.plugin_agent_leaf_map()
   assert len(counting_discovery) == 1
-  assert "provider" in probe.PLUGIN_LEAVES
+  assert "provider" in probe.AGENT_LEAF_MAP["claude"]
   assert len(counting_discovery) == 1, "the deferred view must read the same memo"
 
 

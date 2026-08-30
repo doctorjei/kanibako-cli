@@ -48,19 +48,27 @@ PLUGIN-declared"*), so where the plugin is not installed there is no vocabulary 
 judge against — and ``agent.goose.provider``, a real goose ``setting_descriptor``
 leaf, was refused as "not a declared agent key" on a claude-only machine. Conceding
 the name while judging the leaves is conceding half a pair, and it produces a false
-positive on a key that IS declared. :data:`KNOWN_LEAF_AGENTS` draws the line: an
-agent whose leaves this machine CAN READ is judged exactly as before — reading them
-is the test, not being installed, so a plugin that imports and then fails to declare
-is conceded like an absent one (see :func:`_discover`) — a persona is judged by its
-HARNESS, and ``agent.default`` is judged always — the all-agents tier is core's, not
-a plugin's, and ``key_class`` holds that rule rather than any supplier.
+positive on a key that IS declared.
 
-⚑⚑ THE CONCESSION IS ASKED IN TWO STEPS AND THE FIRST ONE IS THE KEYSPACE'S. Before
-``KNOWN_LEAF_AGENTS`` is consulted at all, ``key_class`` asks whether the segment
-COULD name an agent (``_could_name_an_agent``): a §2a category token and ``default``
-could not, so neither is ever conceded. Asking only "is it installed" made
-``agent.common.plugins`` — the undiscriminated relic MIGRATION.md §2.11 tells users
-to grep for — resolve as a KEY, because no plugin declares an agent named ``common``.
+⚑⚑ SO THE SUPPLIER IS A MAP, AND ABSENCE OF A HARNESS FROM IT *IS* THE CONCESSION.
+:data:`AGENT_LEAF_MAP` was a leaf SET plus a set of the agents it covered, and this
+docstring called them a dependent pair three times while every failure it narrates
+was the pair coming apart — including one caller forwarding the vocabulary and
+dropping the concession. A map cannot be forwarded by halves. What it buys beyond
+that is ``[R150]``: a leaf is legal only on the agent (or HARNESS — a persona takes
+its harness's vocabulary) whose plugin declared it, and a per-agent judgement needs
+a per-agent supplier. Reading the descriptors is the membership test, not being
+installed, so a plugin that imports and then fails to declare is conceded like an
+absent one (see :func:`_discover`).
+
+⚑⚑ THE CONCESSION IS ASKED IN FOUR STEPS AND THE FIRST TWO ARE THE KEYSPACE'S.
+Before the map is consulted at all, ``key_class`` asks whether the leaf is in core's
+UNIVERSAL table (``[R150]``: the ``agent.default`` tier is the partition line), and
+then whether the segment COULD name an agent (``_could_name_an_agent``): a §2a
+category token and ``default`` could not, so neither is ever conceded. Asking only
+"is it installed" made ``agent.common.plugins`` — the undiscriminated relic
+MIGRATION.md §2.11 tells users to grep for — resolve as a KEY, because no plugin
+declares an agent named ``common``.
 🛑 THE RESIDUAL COST IS STATED, NOT HIDDEN, and it is IRREDUCIBLE: an agent NAME
 cannot be enumerated, so ``agent.goose.zippity`` resolves on a machine without goose
 (the price of not refusing ``agent.goose.provider`` there), and so does a typo'd
@@ -77,9 +85,8 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Any, Collection, Container, Final, Iterator, NamedTuple
+from typing import Any, Collection, Final, Iterator, Mapping
 
-from kanibako.agent_ref import harness_of
 from kanibako.settings.keystore import KeyStore
 from kanibako.settings.settings_keyspace import (
   KeyClass,
@@ -133,130 +140,101 @@ class _AnyAgent(Collection[str]):
 ANY_AGENT: Final[_AnyAgent] = _AnyAgent()
 
 
-class _Plugins(NamedTuple):
-  """What ONE discovery pass tells the oracle: the leaves, and whose they are."""
-
-  leaves: frozenset[str]
-  agents: frozenset[str]
+_PLUGINS: "Mapping[str, frozenset[str]] | None" = None
 
 
-_PLUGINS: _Plugins | None = None
+def _discover() -> "Mapping[str, frozenset[str]]":
+  """ONE discovery pass, memoised — harness → the leaves that plugin declares.
 
-
-def _discover() -> _Plugins:
-  """ONE discovery pass, memoised — the leaves the plugins declare AND their names.
-
-  ⚑ ONE pass for both, because they are a DEPENDENT PAIR: the leaf set is only
-  meaningful for the agents it was read from, and two passes could disagree about
-  which those are. The single memo is also a single priming point — the pytest
-  census calls :func:`plugin_agent_leaves` before any test patches discovery, and
-  that one call fixes both halves.
+  ⚑ ONE MAP RATHER THAN A PAIR OF SETS, because the leaf set is only meaningful for
+  the agents it was read from and two sets could disagree about which those are. The
+  single memo is also a single priming point — the pytest census calls
+  :func:`plugin_agent_leaf_map` before any test patches discovery.
 
   ⚑ Discovered here rather than through ``settings_prefs.default_valid_agents`` on
   purpose: that supplier MEMOIZES into a process-wide cache the production code
   reads, so priming it from a probe would hand every later caller a discovery result
   computed before its own patches were in place.
-  ⚑ Every failure is conceded — to an empty leaf set AND an empty agent set, which
-  together mean "no agent's vocabulary is known here", the safe direction. A plugin
-  that will not import is a fact about the environment; refusing to measure because
-  of it is not an option an instrument has.
+  ⚑ Every failure is conceded — to an EMPTY MAP, which means "no agent's vocabulary
+  is known here", the safe direction. A plugin that will not import is a fact about
+  the environment; refusing to measure because of it is not an option an instrument
+  has.
 
-  ⚑⚑ AND THAT RULE IS THE SAME ONE AT BOTH FAILURE SITES, WHICH IS WHY THE NAME IS
-  RECORDED AFTER ITS DESCRIPTORS AND NOT BEFORE. The pair is dependent per AGENT, not
-  merely per pass: a plugin that imports but whose ``setting_descriptors`` raise
-  yields no vocabulary for THAT agent, and adding its name first would leave it in
-  :data:`KNOWN_LEAF_AGENTS` with an EMPTY one — so its genuinely declared leaves
-  classify UNDECLARED. That is precisely the false positive the concession exists to
-  prevent (``agent.goose.provider``), one layer in. Conceding the agent — the only
-  reader of this set is the leaf concession, so withholding the name IS conceding its
-  leaves — costs the residual typo case for that one agent and nothing else.
-
-  ⚑ The contribution is built before it is merged, so a descriptor sequence that
-  raises PART WAY leaves nothing behind either. A stray leaf salvaged from a plugin
-  whose name is then conceded would be counted as declared for every OTHER agent,
-  which is the same half-a-pair fault pointing outward.
+  ⚑⚑ AND THAT RULE IS THE SAME ONE AT BOTH FAILURE SITES, WHICH IS WHY THE ENTRY IS
+  ADDED AFTER ITS DESCRIPTORS AND NOT BEFORE. A plugin that imports but whose
+  ``setting_descriptors`` raise yields no vocabulary for THAT agent, and adding the
+  key first would leave it in the map with an EMPTY vocabulary — so its genuinely
+  declared leaves classify UNDECLARED. That is precisely the false positive the
+  concession exists to prevent (``agent.goose.provider``), one layer in. Omitting the
+  key concedes that agent's leaves and costs the residual typo case for it alone.
+  ⚑ The contribution is built before it is stored, so a descriptor sequence that
+  raises PART WAY leaves nothing behind either.
   """
   global _PLUGINS
   if _PLUGINS is not None:
     return _PLUGINS
-  leaves: set[str] = set()
-  agents: set[str] = set()
+  declared_by: dict[str, frozenset[str]] = {}
   try:
     from kanibako.targets import discover_targets
 
     for name, target_cls in discover_targets().items():
       try:
-        declared = {d.key for d in target_cls().setting_descriptors()}
+        declared = frozenset(d.key for d in target_cls().setting_descriptors())
       except Exception:
         continue
-      leaves.update(declared)
-      agents.add(name)
+      declared_by[name] = declared
   except Exception:
     pass
-  _PLUGINS = _Plugins(frozenset(leaves), frozenset(agents))
+  _PLUGINS = declared_by
   return _PLUGINS
 
 
-def plugin_agent_leaves() -> frozenset[str]:
-  """PLUGIN-declared agent keys, to union over the core §2d set (spec §0).
+def plugin_agent_leaf_map() -> "Mapping[str, frozenset[str]]":
+  """The PLUGIN-declared leaf vocabulary, harness by harness (spec §0, ``[R150]``).
 
   ⚑ EAGER ON PURPOSE, and it must stay that way: this call IS the priming point.
   ``tests/_keystore_census`` invokes it at ``pytest_configure``, before any test
-  patches discovery, and that one call fixes both halves of :func:`_discover`'s memo.
-  A lazy version of THIS function would prime nothing. :data:`PLUGIN_LEAVES` is the
-  deferred view, and it exists beside this rather than in place of it.
+  patches discovery, and that one call fixes :func:`_discover`'s memo. A lazy version
+  of THIS function would prime nothing. :data:`AGENT_LEAF_MAP` is the deferred view,
+  and it exists beside this rather than in place of it.
   """
-  return _discover().leaves
+  return _discover()
 
 
-class _PluginLeaves(Collection[str]):
-  """:func:`plugin_agent_leaves` as a set that DISCOVERS ON THE FIRST QUESTION ASKED.
+class _AgentLeafMap(Mapping[str, "frozenset[str]"]):
+  """:func:`plugin_agent_leaf_map` as a map that DISCOVERS ON THE FIRST QUESTION.
 
   ⚑⚑ WHAT THIS BUYS IS THE WHOLE POINT. ``declared_keyspace_oracle`` is called for
   the FIRST path a resolve judges, whatever its shape, and passing
-  ``plugin_agent_leaves()`` there evaluated discovery as a keyword ARGUMENT — before
-  ``key_class`` had even looked at the head. Discovery imports and instantiates every
-  installed plugin, and those modules parse YAML in their module bodies; it was
+  ``plugin_agent_leaf_map()`` there would evaluate discovery as a keyword ARGUMENT —
+  before ``key_class`` had even looked at the head. Discovery imports and instantiates
+  every installed plugin, and those modules parse YAML in their module bodies; it was
   measured at the great majority of an entire settings resolve, scaling with the
   plugin count on a fixed floor, on a plugin set that is designed to grow. Handing
   ``key_class`` this instead lets its core-first ordering decide whether the question
-  is ever asked (see ``settings_keyspace._EffectiveLeaves``).
+  is ever asked (see ``settings_keyspace.AgentVocabulary``).
 
   ⚑ NOT A SECOND MEMO. Every access goes through :func:`_discover`, so a test that
   replaces :data:`_PLUGINS` is seen here exactly as it is by every other reader.
+  ⚑ IT DOES NOT NORMALISE A PERSONA TO ITS HARNESS. That rule is the KEYSPACE's
+  (``settings_keyspace.agent_declared_leaves``), which is what keeps every supplier
+  from having to re-derive it — and what fixed a live split where the raw
+  ``agent.nav+claude.zippity`` was conceded while ``agent.nav℘claude.zippity`` was
+  refused. The keys here are HARNESS names, exactly as ``discover_targets`` reports
+  them.
   """
 
-  def __contains__(self, item: object) -> bool:
-    return item in _discover().leaves
+  def __getitem__(self, key: str) -> "frozenset[str]":
+    return _discover()[key]
 
   def __iter__(self) -> Iterator[str]:
-    return iter(_discover().leaves)
+    return iter(_discover())
 
   def __len__(self) -> int:
-    return len(_discover().leaves)
+    return len(_discover())
 
 
-PLUGIN_LEAVES: Final[_PluginLeaves] = _PluginLeaves()
-
-
-class _KnownLeafAgents(Container[str]):
-  """The agents whose LEAF VOCABULARY this machine can actually answer for.
-
-  ⚑ ANSWERED BY HARNESS, not by node name: ``persona℘claude`` takes its leaves from
-  ``claude``, so asking about the node would concede every persona on the machine.
-  Membership is asked and never enumerated — which is why this is a ``Container`` —
-  because the persona set is open.
-  ⚑ ``default`` is NOT special-cased here. ``key_class`` never asks about it: the
-  all-agents tier is core's, so its standing belongs to the keyspace and not to
-  whoever supplies this.
-  """
-
-  def __contains__(self, item: object) -> bool:
-    name = item if isinstance(item, str) else str(item)
-    return harness_of(name) in _discover().agents
-
-
-KNOWN_LEAF_AGENTS: Final[_KnownLeafAgents] = _KnownLeafAgents()
+AGENT_LEAF_MAP: Final[_AgentLeafMap] = _AgentLeafMap()
 
 
 def declared_keyspace_oracle(path: str) -> KeyJudgement:
@@ -268,24 +246,23 @@ def declared_keyspace_oracle(path: str) -> KeyJudgement:
 
   ⚑ THE DISCRIMINATOR AND ITS LEAVES ARE CONCEDED TOGETHER (see the module doc).
   ``ANY_AGENT`` concedes the agent NAME because this machine's plugin set is not the
-  keyspace; :data:`KNOWN_LEAF_AGENTS` then concedes that agent's LEAVES for the same
-  reason, since the vocabulary a leaf is judged against is the very plugin that is
-  missing.
+  keyspace; :data:`AGENT_LEAF_MAP` then concedes that agent's LEAVES for the same
+  reason — by not carrying a key for it — since the vocabulary a leaf is judged
+  against is the very plugin that is missing.
 
-  ⚑⚑ NOT ONE OF THESE THREE ARGUMENTS MAY EVALUATE DISCOVERY. This function runs on
-  the first path of EVERY settings resolve — ``settings_launch`` reads it through
+  ⚑⚑ NEITHER ARGUMENT MAY EVALUATE DISCOVERY. This function runs on the first path
+  of EVERY settings resolve — ``settings_launch`` reads it through
   ``keyspace_verdict`` with the probe disarmed — so an argument that discovers IS
   discovery on the production path of every kanibako command, whatever the path's
-  shape. :data:`PLUGIN_LEAVES` and :data:`KNOWN_LEAF_AGENTS` are therefore things to
-  ASK, and ``key_class`` asks them only for an agent leaf its own core §2d set cannot
-  answer. 🛑 Writing ``plugin_agent_leaves()`` here again restores the whole cost, and
-  it changes no verdict, so nothing but the deferral's own tests would notice.
+  shape. :data:`AGENT_LEAF_MAP` is therefore a thing to ASK, and ``key_class`` asks it
+  only for an agent leaf its own core §2d table cannot answer. 🛑 Writing
+  ``plugin_agent_leaf_map()`` here again restores the whole cost, and it changes no
+  verdict, so nothing but the deferral's own tests would notice.
   """
   return key_class(
     path,
     valid_agents=ANY_AGENT,
-    agent_leaves=PLUGIN_LEAVES,
-    agents_with_known_leaves=KNOWN_LEAF_AGENTS,
+    agent_leaf_map=AGENT_LEAF_MAP,
   )
 
 

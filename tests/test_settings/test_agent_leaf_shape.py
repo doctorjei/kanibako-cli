@@ -282,7 +282,10 @@ class TestThePerNodeVocabularyIsTheAgentVerbs:
         """Make the PLUGIN half declare exactly :attr:`SYNTHETIC`, and nothing else."""
         from kanibako.settings import settings_prefs
 
-        agents = settings_prefs.AgentNames(("goose",), leaves={self.SYNTHETIC})
+        agents = settings_prefs.AgentNames(
+            ("claude", "goose"),
+            leaf_map={"claude": frozenset(), "goose": {self.SYNTHETIC}},
+        )
         monkeypatch.setattr(
             settings_prefs, "default_valid_agents", lambda: agents,
         )
@@ -305,17 +308,24 @@ class TestThePerNodeVocabularyIsTheAgentVerbs:
         assert agent_key_reason("goose", one_plugin_leaf) is None
 
     def test_the_any_agent_TIER_spelling_agrees_too(self, one_plugin_leaf):
-        """``agent.default.<leaf>`` is a key under ``key_class``, so it must have a slot.
+        """🛑 ``agent.default.<plugin-leaf>`` IS NOT A KEY, so it must have NO slot.
 
-        Left on the core set this returns ``None``, the READ falls to the persona branch
-        for the reserved ``default`` node, and a stored value answers "(not set)" — the
-        exact §0 fabrication ``agent_default_tier_leaf`` was written to stop.
+        ⚑ THIS ROW ASSERTED THE OPPOSITE AND WAS GREEN. It read the EFFECTIVE union,
+        which agreed with ``key_class`` until the classifier narrowed the any-agent tier
+        to core's table (2026-08-30); after that the two DIVERGED — measured,
+        ``agent.default.provider`` was UNDECLARED at ``key_class`` and ``'provider'``
+        here — and nothing red, because no test asked both doors about one key.
+        ``[R150]``: ``agent.default`` carries only the leaves established AT that tier,
+        and a plugin declares specifics for the agent it ships.
+
+        The agreement it means to pin is the real one: this door and ``key_class`` must
+        answer the same, whichever way.
         """
         from kanibako.settings.config_keys import agent_default_tier_leaf
 
-        assert agent_default_tier_leaf(
-            f"agent.default.{one_plugin_leaf}"
-        ) == one_plugin_leaf
+        assert agent_default_tier_leaf(f"agent.default.{one_plugin_leaf}") is None
+        # …and the CONTROL, so this is a partition and not a broken function.
+        assert agent_default_tier_leaf("agent.default.model") == "model"
 
     def test_a_leaf_NOBODY_declares_reaches_neither(self, one_plugin_leaf):
         """THE OTHER DIRECTION: widening the vocabulary may not open it (spec §0)."""
@@ -345,13 +355,18 @@ class TestThePerNodeVocabularyIsTheAgentVerbs:
         ⚑ DERIVED (P13) — whichever leaf the installed plugins add, never a name.
         ⚑ ``set`` answered *"Error: unknown config key"* at rc 1 before the fix, and
         ``get`` answered "(not set)" over the stored value.
+        ⚑ THE LEAF IS READ FROM GOOSE'S OWN ENTRY, not from a cross-agent union: after
+        ``[R150]`` a leaf declared by some OTHER plugin is not a key on goose, so a
+        union-derived corpus would pick one and this row would refuse for the right
+        reason at the wrong key.
         """
         from tests.test_settings.test_config_dest_parity import Bench
-        from kanibako.settings.config_keys import ConfigLevel, plugin_declared_leaves
+        from kanibako.settings.config_keys import ConfigLevel, plugin_declared_leaf_map
 
-        extra = sorted(plugin_declared_leaves() - DECLARED_AGENT_LEAVES)
+        goose = plugin_declared_leaf_map().get("goose", frozenset())
+        extra = sorted(goose - DECLARED_AGENT_LEAVES)
         if not extra:
-            pytest.skip("no installed plugin declares a leaf outside the core contract")
+            pytest.skip("the goose plugin declares no leaf outside the core contract")
         bench = Bench(tmp_path)
         key = f"agent.goose.{extra[0]}"
 
@@ -457,3 +472,149 @@ class TestTheKeyspaceAndTheFileAgree:
             f"leaves hold a table: file says {sorted(refused)}, keyspace says "
             f"{sorted(TABLE_VALUED_AGENT_LEAVES)}"
         )
+
+
+# ---------------------------------------------------------------------------
+# THE FOUR DOORS ANSWER WITH ONE VOICE
+# ---------------------------------------------------------------------------
+#
+# 🛑🛑 NOTHING ANYWHERE ASKED TWO DOORS ABOUT ONE KEY, AND THAT IS WHY TWO DEFECTS
+# SURVIVED A GREEN SUITE. Four surfaces judge "is this a declared leaf of this agent",
+# and each had its own tests:
+#
+#   1. ``settings_keyspace.key_class``            — the classifier and the resolve seam
+#   2. ``config_keys.agent_key_reason``           — the ``agent`` verbs AND the LAUNCH gate
+#   3. ``settings_prefs.key_reason``              — §2h filter 1
+#   4. ``config_keys._parse_persona_agent_key``   — the per-node recogniser the verbs
+#                                                   dispatch on, plus its
+#                                                   ``agent_default_tier_leaf`` reader
+#
+# MEASURED on 3b20488e, both invisible to every existing row:
+#   · ``agent.goose.provider`` was KEY at door 1 and REFUSED at door 2 on a claude-only
+#     machine — and door 2 is the launch gate, so an uninstalled plugin stopped a box
+#     from starting.
+#   · ``agent.default.provider`` was UNDECLARED at door 1 and ``'provider'`` at door 4.
+#
+# ⚑ ONE INJECTED VOCABULARY FOR ALL FOUR. Doors 2 and 4 reach discovery through
+# ``config_keys.AGENT_LEAF_MAP`` → ``settings_prefs.default_valid_agents``, so patching
+# that one supplier is what makes the comparison a comparison rather than four readings
+# of four environments.
+
+
+class TestTheFourDoorsAgreeOnOneKey:
+    """One key, four doors, ONE verdict — over a corpus derived from the declarations.
+
+    ⚑ DERIVED, NEVER LISTED (P13): the universal rows sweep
+    :data:`DECLARED_AGENT_LEAVES` itself, so a leaf entering or leaving §2d is covered
+    with no edit here. Only the three AGENT roles and the two synthetic leaf names are
+    written down, and each is a role the rule turns on rather than a datum.
+    """
+
+    #: Vocabulary READABLE, and it declares nothing beyond core.
+    KNOWN = "claude"
+    #: Vocabulary READABLE, and it is the sole declarer of :attr:`PLUGIN_LEAF`.
+    DECLARER = "goose"
+    #: A VALID agent whose vocabulary this machine cannot read — the descriptors-raise
+    #: case, and the only way the concession is reachable.
+    UNREADABLE = "codex"
+    #: Outside the core contract, so only a plugin can declare it (non-vacuity below).
+    PLUGIN_LEAF = "probe_only_leaf"
+    #: Declared by nobody at all.
+    NOBODYS_LEAF = "not_declared_by_anyone"
+
+    @pytest.fixture
+    def agents(self, monkeypatch):
+        """The one injected vocabulary every door below reads."""
+        from kanibako.settings import settings_prefs
+
+        names = settings_prefs.AgentNames(
+            (self.KNOWN, self.DECLARER, self.UNREADABLE),
+            # ⚑ ``UNREADABLE`` is a valid NAME with NO map entry. That absence IS the
+            # concession — spelling it ``frozenset()`` would claim the opposite.
+            leaf_map={
+                self.KNOWN: frozenset(),
+                self.DECLARER: frozenset({self.PLUGIN_LEAF}),
+            },
+        )
+        monkeypatch.setattr(
+            settings_prefs, "default_valid_agents", lambda: names,
+        )
+        return names
+
+    def _doors(self, node, leaf, agents):
+        """Each door's answer to "is ``agent.<node>.<leaf>`` a key", as a bool."""
+        from kanibako.settings import settings_prefs
+        from kanibako.settings.config_keys import agent_key_reason
+        from kanibako.settings.settings_keyspace import KeyClass, key_class
+
+        key = f"agent.{node}.{leaf}"
+        return {
+            "1 key_class": key_class(
+                key, valid_agents=agents, agent_leaf_map=agents.leaf_map,
+            ).cls is KeyClass.KEY,
+            "2 agent_key_reason": agent_key_reason(node, leaf) is None,
+            "3 pref filter 1": settings_prefs.key_reason(
+                key, valid_agents=agents,
+            ) is None,
+            "4 persona recogniser": _parse_persona_agent_key(key) == (node, leaf),
+        }
+
+    def _assert_all(self, node, leaf, agents, expected):
+        doors = self._doors(node, leaf, agents)
+        disagree = {name: got for name, got in doors.items() if got is not expected}
+        assert not disagree, (
+            f"agent.{node}.{leaf}: expected {'KEY' if expected else 'NOT a key'} at "
+            f"every door, but {sorted(disagree)} disagreed — {doors}"
+        )
+
+    def test_the_synthetic_leaves_are_outside_the_core_contract(self):
+        """NON-VACUITY (P15): a name core already declares would prove nothing."""
+        assert self.PLUGIN_LEAF not in DECLARED_AGENT_LEAVES
+        assert self.NOBODYS_LEAF not in DECLARED_AGENT_LEAVES
+
+    @pytest.mark.parametrize("leaf", sorted(DECLARED_AGENT_LEAVES))
+    @pytest.mark.parametrize("node", [KNOWN, DECLARER, UNREADABLE])
+    def test_a_UNIVERSAL_leaf_is_a_key_on_every_agent(self, node, leaf, agents):
+        """``[R150]``: a leaf established at ``agent.default`` is a key on every real
+        agent. It is answered from core's table alone, so the map is never reached and
+        the vocabulary's readability cannot matter."""
+        self._assert_all(node, leaf, agents, True)
+
+    def test_a_PLUGIN_leaf_is_a_key_on_the_agent_that_declared_it(self, agents):
+        self._assert_all(self.DECLARER, self.PLUGIN_LEAF, agents, True)
+
+    def test_a_PLUGIN_leaf_is_NOT_a_key_on_another_agent(self, agents):
+        """🛑 THE HEART OF ``[R150]``, and the flat union's exact defect: goose's
+        ``provider`` was a key on claude because the vocabulary was one set."""
+        self._assert_all(self.KNOWN, self.PLUGIN_LEAF, agents, False)
+
+    def test_a_leaf_NOBODY_declares_is_a_key_NOWHERE_readable(self, agents):
+        """The other direction: per-agent judgement may not open the keyspace."""
+        self._assert_all(self.KNOWN, self.NOBODYS_LEAF, agents, False)
+        self._assert_all(self.DECLARER, self.NOBODYS_LEAF, agents, False)
+
+    @pytest.mark.parametrize("leaf", [PLUGIN_LEAF, NOBODYS_LEAF])
+    def test_an_UNREADABLE_agents_leaf_is_CONCEDED_at_every_door(self, leaf, agents):
+        """🛑 ``[R150]``: *"a narrowing that refuses ``agent.goose.provider`` on a
+        claude-only machine has misread this."*
+
+        This is the row that was RED before the fix — door 2 refused where door 1
+        conceded, and door 2 is the launch gate.
+        """
+        self._assert_all(self.UNREADABLE, leaf, agents, True)
+
+    def test_the_ANY_AGENT_tier_carries_ONLY_the_leaves_declared_AT_it(self, agents):
+        """``agent.default.<plugin-leaf>`` is not a key, at any door — and the fifth
+        surface, :func:`agent_default_tier_leaf`, must say so too.
+
+        It said ``'provider'`` while the classifier said UNDECLARED. That divergence is
+        a §0 fabrication: a destination invented for a spelling the keyspace refuses.
+        """
+        from kanibako.settings.config_keys import agent_default_tier_leaf
+
+        self._assert_all("default", self.PLUGIN_LEAF, agents, False)
+        assert agent_default_tier_leaf(f"agent.default.{self.PLUGIN_LEAF}") is None
+        # …and the CONTROL, so this is the tier's partition and not a dead branch.
+        for leaf in sorted(DECLARED_AGENT_LEAVES):
+            self._assert_all("default", leaf, agents, True)
+            assert agent_default_tier_leaf(f"agent.default.{leaf}") == leaf

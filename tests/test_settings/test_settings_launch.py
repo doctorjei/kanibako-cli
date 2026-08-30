@@ -3437,7 +3437,12 @@ class TestNoImplicitRootPrepend:
 from kanibako.settings.settings_prefs import AgentNames as _AgentNames  # noqa: E402
 from kanibako.settings.settings_resolve import SettingsError  # noqa: E402
 
-_PREF_AGENTS = _AgentNames({"claude", "goose", "codex"})
+#: ⚑ The leaf map is EXPLICIT: an agent absent from it has its leaves CONCEDED
+#: (``[R150]``), so omitting it would stop these rows testing the keyspace at all.
+_PREF_AGENTS = _AgentNames(
+    {"claude", "goose", "codex"},
+    leaf_map={"claude": frozenset(), "goose": frozenset(), "codex": frozenset()},
+)
 
 
 def _write_yaml(path, doc):
