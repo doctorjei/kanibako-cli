@@ -18,7 +18,7 @@ import re
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path  # noqa: F401  (annotations)
-from typing import Collection, Iterator, Mapping
+from typing import Collection, Final, Iterator, Mapping
 
 from kanibako.agent_ref import canonicalize_agent_ref, display_agent_ref
 from kanibako.errors import ConfigError
@@ -36,10 +36,12 @@ from kanibako.settings.settings_keyspace import (
     PATH_VALUED_AGENT_LEAVES,
     SCALAR_AGENT_LEAVES,
     TABLE_VALUED_AGENT_LEAVES,
+    ConcedingLeafMap,
     access_default,
     agent_leaf_is_declared,
     effective_agent_leaves,
     leaf_name_reason,
+    unread_harnesses,
 )
 from kanibako.settings.settings_prefs import PREF_ROOT
 
@@ -558,7 +560,7 @@ def resolve_key(raw: str) -> str:
 # in this module that asks what an agent leaf may be called.
 # ---------------------------------------------------------------------------
 
-def plugin_declared_leaf_map() -> "Mapping[str, frozenset[str]]":
+def plugin_declared_leaf_map() -> "Mapping[str, Collection[str]]":
     """harness → the leaves that PLUGIN declares (spec §0, ``[R150]``), or empty.
 
     ⚑ ONE SUPPLIER FOR THIS MODULE, and that is the whole point of it being a function:
@@ -572,13 +574,20 @@ def plugin_declared_leaf_map() -> "Mapping[str, frozenset[str]]":
     ⚑ A MAP, because ``[R150]`` makes the vocabulary per-agent: a flat set here made
     ``agent.claude.provider`` a key on the strength of goose's declaration.
     ⚑ IMPORTED IN THE BODY: discovery must never run at module import.
+    🛑 THE ATTRIBUTE IS ASKED FOR, NEVER ``getattr``-WITH-A-FALLBACK, AND NEVER
+    ``or {}``. Both were here, and both converted the STRICT signal into the
+    PERMISSIVE one: the supplier's map now carries its own concession, so replacing an
+    empty-but-conceding map with a bare ``{}`` — which concedes nothing — or a missing
+    attribute with one, silently swaps one keyspace for another. A ``getattr`` guard
+    also survives the rename that should have reddened it (``leaves`` → ``leaf_map``,
+    ``test_agent_file``).
     """
     from kanibako.settings.settings_prefs import default_valid_agents
 
-    return getattr(default_valid_agents(), "leaf_map", None) or {}
+    return default_valid_agents().leaf_map
 
 
-class _PluginDeclaredLeafMap(Mapping[str, "frozenset[str]"]):
+class _PluginDeclaredLeafMap(Mapping[str, "Collection[str]"]):
     """:func:`plugin_declared_leaf_map` as a map that DISCOVERS ON THE FIRST QUESTION.
 
     ⚑⚑ IT MUST NOT BE MATERIALISED AT IMPORT OR AT A CALL SITE.  Discovery imports and
@@ -594,7 +603,7 @@ class _PluginDeclaredLeafMap(Mapping[str, "frozenset[str]"]):
 
     __slots__ = ()
 
-    def __getitem__(self, key: str) -> "frozenset[str]":
+    def __getitem__(self, key: str) -> "Collection[str]":
         return plugin_declared_leaf_map()[key]
 
     def __iter__(self) -> Iterator[str]:
@@ -604,8 +613,21 @@ class _PluginDeclaredLeafMap(Mapping[str, "frozenset[str]"]):
         return len(plugin_declared_leaf_map())
 
 
-#: The PLUGIN-declared vocabulary, per harness, as a thing to ASK.
-AGENT_LEAF_MAP: "Mapping[str, frozenset[str]]" = _PluginDeclaredLeafMap()
+_DECLARED_HERE: Final[_PluginDeclaredLeafMap] = _PluginDeclaredLeafMap()
+
+#: The PLUGIN-declared vocabulary, per harness, as a thing to ASK — WITH the
+#: concession this module's supplier makes.
+#: ⚑⚑ THE WRAP IS NOT DECORATION. ``key_class`` concedes an agent's leaves only for a
+#: map that SAYS it could not read them, and every surface in this module is judged
+#: through this one object: without it a goose store on a claude-only machine would be
+#: refused at the ``agent`` noun's §0 gate and at the LAUNCH boundary behind it
+#: (``[R150]`` — *"an uninstalled agent's leaf is CONCEDED, never refused"*).
+#: ⚑ It concedes what DISCOVERY did not read, which is the same set the supplier's own
+#: ``AgentNames`` concedes — one rule, read off the one map, rather than a second copy
+#: of it. Both stay LAZY: neither the view nor the concession discovers until asked.
+AGENT_LEAF_MAP: "Mapping[str, Collection[str]]" = ConcedingLeafMap(
+    _DECLARED_HERE, unread_harnesses(_DECLARED_HERE),
+)
 
 # ---------------------------------------------------------------------------
 # Per-persona agent keys (block B1) — ``agent.<node>.<key>`` set on the agent's

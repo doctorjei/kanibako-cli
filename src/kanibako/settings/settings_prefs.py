@@ -42,15 +42,25 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Collection, Final, Iterable, Mapping, Sequence
+from typing import (
+    Any,
+    Collection,
+    Container,
+    Final,
+    Iterable,
+    Mapping,
+    Sequence,
+)
 
 from kanibako.settings.kb_store import StoreValue
 from kanibako.settings.keystore import KeyStore
 from kanibako.settings.settings_keyspace import (
+    ConcedingLeafMap,
     is_terminal_category_key,
     is_terminal_category_tail,
     is_valid_agent_segment,
     key_validity,
+    unread_harnesses,
 )
 from kanibako.settings.settings_resolve import SettingsError
 
@@ -584,12 +594,15 @@ class AgentNames(Collection[str]):
     store dir to already exist would be the same existence error the spec rejects
     for keys.
 
-    🛑 SUPPLY :attr:`leaf_map` OR EVERY NAMED AGENT'S LEAVES ARE CONCEDED. Absence
-    from the map means "this machine cannot read that agent's vocabulary"
-    (``[R150]``), which is a real and necessary state — a plugin whose descriptors
-    raise — but it is NOT what a hand-built instance usually means. Omitting it
-    quietly turns §2h filter 1 into a pass for every ``agent.<name>.<anything>``.
-    An agent that declares nothing is ``{name: frozenset()}``, not an absent key.
+    ⚑⚑ :attr:`leaf_map` IS THE VOCABULARY AND *unreadable* IS THE CONCESSION, AND
+    BOTH DEFAULT TO THE STRICT ANSWER. An instance that says nothing about an agent
+    judges it by core's universal table; it does NOT concede it. The default ran the
+    other way until 2026-08-30 — an omitted map turned §2h filter 1 into a pass for
+    every ``agent.<name>.<anything>``, a closed keyspace opened by saying nothing.
+    An agent that declares nothing is ``{name: frozenset()}``; an agent whose plugin
+    cannot be READ here (uninstalled, or its descriptors raise — ``[R150]``) belongs
+    in *unreadable*, and :func:`default_valid_agents` puts every harness discovery
+    could not read there.
     """
 
     def __init__(
@@ -597,19 +610,22 @@ class AgentNames(Collection[str]):
         discovered: Collection[str],
         *,
         leaf_map: "Mapping[str, Collection[str]] | None" = None,
+        unreadable: "Container[str]" = frozenset(),
         discovery_failed: bool = False,
     ) -> None:
         self._discovered = frozenset(discovered)
         #: harness → the leaves that PLUGIN declares (§0 "Agent specifics are
-        #: PLUGIN-declared"; ``[R150]`` — legal only on the agent that declared them).
+        #: PLUGIN-declared"; ``[R150]`` — legal only on the agent that declared them),
+        #: WITH the harnesses this instance could not read at all.
         #: ⚑ A MAP, NOT A SET, AND IT IS NOT ``_discovered``'s TWIN: an agent whose
         #: descriptors raise is a VALID AGENT NAME with an UNREADABLE vocabulary, so
-        #: it stays in ``_discovered`` and is absent HERE, which is exactly what
-        #: concedes its leaves. Keying it in with an empty set would refuse the very
-        #: leaves it genuinely declares (``settings_keyspace_probe._discover``).
-        self.leaf_map: "Mapping[str, frozenset[str]]" = {
-            name: frozenset(declared) for name, declared in (leaf_map or {}).items()
-        }
+        #: it stays in ``_discovered`` and is named in *unreadable* rather than keyed
+        #: here — keying it in with an empty set would refuse the very leaves it
+        #: genuinely declares (``settings_keyspace_probe._discover``).
+        self.leaf_map: ConcedingLeafMap = ConcedingLeafMap(
+            {name: frozenset(declared) for name, declared in (leaf_map or {}).items()},
+            unreadable,
+        )
         #: ⚑ Discovery FAILED (an environment fault), as distinct from "no agents
         #: are installed". Without this an unreadable plugin dir reports *"'claude'
         #: is not a valid agent"* — blaming the user's spelling for a broken box.
@@ -659,6 +675,13 @@ def default_valid_agents() -> AgentNames:
     ⚑ The map is NOT ``targets.keys()``. A plugin whose descriptors raise is still a
     VALID AGENT NAME — refusing ``agent.goose.model`` because goose's descriptor list
     threw would blame the user's spelling for a broken plugin.
+
+    ⚑⚑ AND THE CONCESSION IS STATED, NOT LEFT TO BE INFERRED: this is a DISCOVERY
+    result, so it concedes every harness it did not read — the broken plugin above and
+    the agent that is not installed at all, which are the same fact from the judge's
+    side (``[R150]``). It used to be carried by absence from the map, and absence is
+    also what an EMPTY map looks like, so any degraded or hand-built supplier read as
+    *"concede everything"*. Only a supplier that has actually looked may say this.
     """
     cached = _DISCOVERY.get("default")
     if cached is not None:
@@ -681,10 +704,19 @@ def default_valid_agents() -> AgentNames:
                 )
                 continue
             leaf_map[name] = declared
-        result = AgentNames(targets.keys(), leaf_map=leaf_map)
+        result = AgentNames(
+            targets.keys(),
+            leaf_map=leaf_map,
+            unreadable=unread_harnesses(leaf_map),
+        )
     except Exception:
         _log.debug("agent discovery failed while validating a pref", exc_info=True)
-        result = AgentNames((), discovery_failed=True)
+        # ⚑ A FAILED PASS READ NOTHING, so it concedes EVERYTHING — the same rule as
+        # the line above, applied to an empty result. Refusing instead would blame a
+        # broken plugin directory on the user's spelling of a leaf.
+        result = AgentNames(
+            (), unreadable=unread_harnesses({}), discovery_failed=True,
+        )
     _DISCOVERY["default"] = result
     return result
 

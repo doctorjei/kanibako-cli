@@ -3437,8 +3437,10 @@ class TestNoImplicitRootPrepend:
 from kanibako.settings.settings_prefs import AgentNames as _AgentNames  # noqa: E402
 from kanibako.settings.settings_resolve import SettingsError  # noqa: E402
 
-#: ⚑ The leaf map is EXPLICIT: an agent absent from it has its leaves CONCEDED
-#: (``[R150]``), so omitting it would stop these rows testing the keyspace at all.
+#: ⚑ The leaf map is EXPLICIT: these three agents' vocabularies are READABLE and
+#: core-only, which is what these rows are about. A hand-built ``AgentNames`` concedes
+#: nothing it is not told to concede (``unreadable=``, ``[R150]``), so what an omission
+#: would cost here is the vocabulary, not the concession.
 _PREF_AGENTS = _AgentNames(
     {"claude", "goose", "codex"},
     leaf_map={"claude": frozenset(), "goose": frozenset(), "codex": frozenset()},

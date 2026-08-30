@@ -34,10 +34,12 @@ from kanibako.settings.settings_prefs import (
 )
 from kanibako.settings.settings_resolve import SettingsError
 
-#: ⚑ THE LEAF MAP IS SUPPLIED EXPLICITLY, and it has to be: an agent ABSENT from the
-#: map is one whose vocabulary this machine cannot read, so its leaves are CONCEDED
-#: (``[R150]``). A hand-built ``AgentNames`` with no map concedes every named agent and
-#: quietly stops testing filter 1. Empty vocabularies = "readable, and core-only".
+#: ⚑ THE LEAF MAP IS SUPPLIED EXPLICITLY, and it still has to be: an agent absent from
+#: a DISCOVERY result is one whose vocabulary this machine could not read, so its
+#: leaves are CONCEDED (``[R150]``). A hand-built ``AgentNames`` concedes nothing it is
+#: not told to concede — it fails closed — so an omission here would judge these agents
+#: against core's table alone rather than against the vocabulary these rows are about.
+#: Empty vocabularies = "readable, and core-only".
 AGENTS = AgentNames(
     {"claude", "codex", "goose"},
     leaf_map={"claude": frozenset(), "codex": frozenset(), "goose": frozenset()},
@@ -864,8 +866,15 @@ class TestDiscoveryIsLazyCachedAndHonest:
         the name only after its descriptors succeeded; this one swallowed and kept
         going. They agree by RULE now, not by luck.
 
-        MUTATION: add ``leaf_map[name] = frozenset()`` before the descriptor read and
-        the last two assertions redden.
+        ⚑⚑ AND THE CONCESSION IS ASSERTED WHERE IT IS NOW SAID, not merely where it is
+        absent. Absence used to BE the concession, and that made ``{}`` — a map from a
+        supplier that had read nothing — concede every named agent's every leaf. A
+        DISCOVERY result says what it could not read; the missing key is now the
+        vocabulary half of the same fact, and both halves are pinned below.
+
+        MUTATION: add ``leaf_map[name] = frozenset()`` before the descriptor read, or
+        drop ``unreadable=`` from the ``AgentNames`` this supplier returns, and the
+        goose rows redden while the claude rows stay green.
         """
         import kanibako.settings.settings_prefs as sp
 
@@ -891,6 +900,11 @@ class TestDiscoveryIsLazyCachedAndHonest:
         # …and its vocabulary does NOT, which is what concedes its leaves.
         assert "goose" not in agents.leaf_map
         assert agents.leaf_map == {"claude": frozenset({"provider"})}
+        # 🛑 AND THE SUPPLIER SAYS SO OUT LOUD. Without this the map is indistinguishable
+        # from one nobody filled in, and a judge that reads silence as a concession
+        # concedes the whole agent tier to any caller who supplies nothing.
+        assert "goose" in agents.leaf_map.conceded
+        assert "claude" not in agents.leaf_map.conceded
         # THE EFFECT: goose's own declared leaf is conceded, not refused.
         assert key_reason("agent.goose.provider", valid_agents=agents) is None
         # …and the working plugin is still judged, so §0 is not disarmed wholesale.

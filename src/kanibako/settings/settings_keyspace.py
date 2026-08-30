@@ -77,7 +77,15 @@ DEPENDENT pair: an agent's leaves are its PLUGIN's, so the set is only meaningfu
 for the agents it was read from. Two parameters can be forwarded singly, and were:
 the ``pref.<target>`` recursion passed one and dropped the other, so one key
 answered two ways by spelling. A ``Mapping`` of harness → declared leaves makes
-that unrepresentable — ABSENCE OF A KEY *IS* THE CONCESSION.
+that unrepresentable.
+
+⚑⚑ AND THE CONCESSION RIDES IN THAT SAME PARAMETER, SPOKEN RATHER THAN INFERRED
+(:class:`ConcedingLeafMap`). It was carried by a MISSING KEY until 2026-08-30, and
+a missing key cannot tell *"this machine has no goose plugin to read"* — which
+``[R150]`` requires be conceded — from *"nobody supplied a vocabulary at all"*,
+which must not be. ``{}`` was both, and the second is what a hand-built or degraded
+supplier produces, so §0 failed OPEN on the default. A map now SAYS what it
+concedes; a plain mapping concedes nothing.
 
 ⚑ THAT PURITY MAKES THE INJECTED MAP EXPENSIVE, WHICH IS WHY IT IS ASKED LAST. Its
 production supplier (``settings_keyspace_probe``) answers by IMPORTING every
@@ -97,6 +105,7 @@ from typing import (
     Any,
     Callable,
     Collection,
+    Container,
     Final,
     Iterator,
     Mapping,
@@ -962,13 +971,87 @@ def _bad_agent_reason(name: str, valid_agents: Collection[str]) -> str:
     )
 
 
-#: harness → the leaves that harness's PLUGIN declares (spec §0). ABSENCE OF A KEY
-#: IS THE CONCESSION: an agent this machine cannot read a vocabulary for is simply
-#: not in the map, and its leaves are conceded rather than refused. ``None`` in
-#: place of a whole map means "judge by core's universal table alone".
+#: harness → the leaves that harness's PLUGIN declares (spec §0). A PLAIN mapping is
+#: a LITERAL vocabulary and concedes NOTHING: a harness it does not carry is judged
+#: by core's universal table alone, exactly as ``None`` in place of a whole map means
+#: that for every harness. Conceding is :class:`ConcedingLeafMap`'s to do, and it is
+#: said out loud — see :func:`agent_declared_leaves`.
 AgentLeafMap = Mapping[str, Collection[str]]
 
 _NOT_ASKED: Final[object] = object()
+
+
+class _UnreadHarnesses(Container[str]):
+    """Every harness a discovery result did NOT read — its concession, as a predicate.
+
+    ⚑ A ``Container`` AND NOT A SET, because the honest answer is CO-INFINITE: it
+    holds every agent name this machine has never heard of, which is exactly the
+    population ``[R150]`` concedes (*"an uninstalled agent's leaf is CONCEDED rather
+    than refused"*). :func:`_could_name_an_agent` makes the same point about NAMES —
+    a machine cannot enumerate what it has never heard of, so it cannot judge it.
+    """
+
+    __slots__ = ("_declared",)
+
+    def __init__(self, declared: "AgentLeafMap") -> None:
+        self._declared = declared
+
+    def __contains__(self, item: object) -> bool:
+        return item not in self._declared
+
+
+def unread_harnesses(declared: "AgentLeafMap") -> "Container[str]":
+    """THE CONCESSION A DISCOVERY RESULT MAKES: every harness *declared* did not read.
+
+    ⚑ ONE SPELLING FOR IT, and all three discovery-backed suppliers use this one:
+    ``settings_keyspace_probe``, ``config_keys``' lazy view, and
+    ``settings_prefs.default_valid_agents``. A supplier that derived the rule for
+    itself would be a second place for it to be got wrong, and the two states it
+    separates look identical from the outside.
+    ⚑ IT STAYS LAZY: *declared* may be a map that discovers on its first question, and
+    this asks it no sooner than the judgement does.
+    """
+    return _UnreadHarnesses(declared)
+
+
+class ConcedingLeafMap(Mapping[str, "Collection[str]"]):
+    """A leaf map that SAYS which harnesses it could not read (``[R150]``).
+
+    ⚑⚑ THE CONCESSION IS A CLAIM A SUPPLIER MAKES, NEVER A GAP A JUDGE INFERS. It was
+    absence-of-a-key until 2026-08-30, and absence cannot tell apart the two states
+    that wear it: *"this machine has no goose plugin, so goose's vocabulary is
+    unreadable here"* — where ``[R150]`` requires ``agent.goose.provider`` be
+    CONCEDED — and *"no vocabulary was supplied at all"*, where conceding hands every
+    named agent every tail it likes. Both are ``{}``, and the second one was the
+    DEFAULT: a supplier that had read nothing conceded everything, so §0 failed OPEN
+    on an omission.
+    🛑 A PLAIN ``dict`` THEREFORE CONCEDES NOTHING, and that is the fail-closed
+    direction — a map with no standing to concede refuses what it cannot vouch for.
+    The way to concede is to say so here.
+
+    ⚑ THE PAIR IS STILL ONE PARAMETER. The vocabulary and the concession were two
+    arguments once and were forwarded singly (``key_class``); making the concession
+    explicit must not un-collapse them, so it rides INSIDE the map rather than beside
+    it in a signature.
+    """
+
+    __slots__ = ("_declared", "conceded")
+
+    def __init__(
+        self, declared: "AgentLeafMap", conceded: "Container[str]",
+    ) -> None:
+        self._declared = declared
+        #: The harnesses whose vocabulary is UNREADABLE here — conceded, not refused.
+        self.conceded = conceded
+
+    def __getitem__(self, key: str) -> "Collection[str]":
+        return self._declared[key]
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._declared)
+
+    def __len__(self) -> int:
+        return len(self._declared)
 
 
 def agent_declared_leaves(
@@ -981,6 +1064,13 @@ def agent_declared_leaves(
     against and ``agent.goose.provider`` — a real goose ``setting_descriptor`` leaf —
     must not be refused on a claude-only machine (``[R150]``: *"a narrowing that
     refuses ``agent.goose.provider`` on a claude-only machine has misread this"*).
+
+    ⚑⚑ AND THE MAP HAS TO SAY SO. A harness the map neither declares nor concedes
+    gets core's table, because the silence of a map is not evidence about this
+    machine: an empty or partial literal says only that its author supplied nothing,
+    and reading that as *"nothing here is knowable"* conceded every leaf of every
+    named agent — the closed keyspace opened by an omission. :class:`ConcedingLeafMap`
+    is how a supplier that HAS looked reports what it could not read.
 
     ⚑ THE NORMALISATION IS THE KEYSPACE'S, NOT A SUPPLIER'S, for the same reason
     :func:`is_valid_agent_segment` gives: a rule every supplier has to re-implement is
@@ -1005,7 +1095,13 @@ def agent_declared_leaves(
         node = canonicalize_agent_ref(name)
     except ConfigError:
         return frozenset()
-    return agent_leaf_map.get(harness_of(node))
+    harness = harness_of(node)
+    declared = agent_leaf_map.get(harness)
+    if declared is not None:
+        return declared
+    if isinstance(agent_leaf_map, ConcedingLeafMap):
+        return None if harness in agent_leaf_map.conceded else frozenset()
+    return frozenset()
 
 
 class AgentVocabulary(Collection[str]):
@@ -1248,10 +1344,14 @@ def key_class(
     the rule (``[R150]``, spec §0 L214-217): a leaf established at ``agent.default``
     is UNIVERSAL, and every OTHER leaf is legal only on the agent or harness whose
     plugin declared it. ``None`` means core's universal table alone.
-    ⮕ **ABSENCE OF A HARNESS FROM THE MAP IS THE CONCESSION.** An agent whose plugin
-    this machine cannot read has NO knowable vocabulary, so judging it against any
-    set refuses a key that is genuinely declared — ``agent.goose.provider``, a real
-    goose ``setting_descriptor`` leaf, refused on a machine without goose. It was two
+    ⮕ **THE MAP CARRIES THE CONCESSION TOO, AND SPEAKS IT** — a
+    :class:`ConcedingLeafMap` names the harnesses it could not read, and every other
+    map concedes nothing. An agent whose plugin this machine cannot read has NO
+    knowable vocabulary, so judging it against any set refuses a key that is genuinely
+    declared — ``agent.goose.provider``, a real goose ``setting_descriptor`` leaf,
+    refused on a machine without goose. 🛑 That concession rode on mere ABSENCE until
+    2026-08-30, which is also what an empty or hand-built map looks like, so a
+    supplier that had read nothing conceded EVERYTHING. It was two
     parameters until 2026-08-30 (a flat set, plus the agents it covered) and they are
     a DEPENDENT PAIR: a set is only meaningful for the agents it was read from. Two
     parameters can be forwarded singly, and the ``pref.<target>`` recursion did
