@@ -751,7 +751,7 @@ generated automatically on first use (via the target plugin's
 ```yaml
 agent:
   name: "Claude Code"
-  run_args: []              # extra CLI args prepended on every launch
+  run_args: ["--verbose"]   # extra CLI args prepended on every launch (omit if none)
   model: "opus"             # agent-specific state knobs (e.g. --model for Claude)
   access: "permissive"
 env:

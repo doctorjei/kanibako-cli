@@ -465,8 +465,19 @@ def save(path: Path, cfg: AgentConfig) -> None:
     """Write an AgentConfig to a YAML file."""
     agent_sec: dict = {
         "name": cfg.name,
-        "run_args": list(cfg.run_args),
     }
+    # Sparse, for the SAME reason as every emission below — and this one is the
+    # DEFAULT state, so it was the widest phantom in the file: ``run_args`` was emitted
+    # unconditionally, so every freshly seeded agent file carried ``run_args: []`` and
+    # ``agent reset --all`` counted that empty list as an override the user never wrote.
+    # ⚑ A PRESENT ``run_args: []`` IS STILL A VALUE (:func:`_render_argv`) and is NOT at
+    # risk here: all three :func:`save` callers write a file that does not yet exist
+    # (``cli._ensure_initialized``, and start.py's two ``agent_cfg_dirty`` sites, which
+    # are first-use only), so nothing round-trips a user's explicit empty list through
+    # here.  ``agent set <node> run_args=""`` writes through :func:`write_leaf` and keeps
+    # materializing the empty list.
+    if cfg.run_args:
+        agent_sec["run_args"] = list(cfg.run_args)
     for k, v in cfg.state.items():
         agent_sec[k] = v
     # secret_path (spec §2a SECRET category) is stored DIRECTLY under the root — the
