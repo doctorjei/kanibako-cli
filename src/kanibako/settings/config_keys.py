@@ -1327,6 +1327,28 @@ def agent_read_key_error(node: str, tail: str) -> str | None:
     return agent_write_key_error(node, tail, verb="read")
 
 
+def agent_file_identity_only(tail: str) -> bool:
+    """True iff *tail* is a per-agent FILE-identity field and NOT a declared key (spec §0).
+
+    THE IDENTITY RESIDUE :func:`agent_key_reason` admits by allowlist, asked as its own
+    question because the ``agent`` noun's ``set`` has to ACT on it: a declared leaf is written
+    through ``config_interface.set_config_value``, the ONE setter every noun shares, and this is
+    the tail for which that setter has no key to route — so it goes to the file boundary
+    directly.  ⚑ THAT IS NOT A CARVE-OUT: an undeclared key would be a §0 breach, and ``name``
+    is not a key at all — it is a field of :class:`~kanibako.settings.agent_config.AgentConfig`,
+    live, written and displayed since long before the keyspace closed.
+
+    ⚑ DERIVED, NEVER LISTED (P13).  ``name`` is the whole of it today only because ``run_args``
+    — the other identity field — is ALSO a declared §2d leaf; a leaf entering or leaving either
+    set moves this answer with no edit here.  The vocabulary is the EFFECTIVE one (core ∪
+    plugin-declared), the same set :func:`_is_persona_agent_key` routes on, so the two cannot
+    disagree about which tails the shared setter claims.
+    """
+    from kanibako.settings.agent_config import IDENTITY_KEYS
+
+    return tail in IDENTITY_KEYS and tail not in _PERSONA_STATE_LEAVES
+
+
 #: How a user SPELLS the STORED view at each file scope's own noun — the sibling of
 #: :data:`_SCOPE_READ_COMMAND`, keyed the same way (:class:`ConfigLevel`'s own value).
 #: It is the ONE surface on which an entry the keyspace does not declare is visible,

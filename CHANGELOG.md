@@ -354,6 +354,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `enable_vault: "false"` no longer treats the vault as enabled for the remainder of the convert.
   Unquoted `enable_vault: false` was always read correctly and is unaffected.
 
+- **`kanibako agent set` stored a value the same setting refused everywhere else.** Every other
+  command that writes a setting checks the value first: an `@`-reference that points at no key, or
+  a `$VAR`/`@ref` that is not even well formed, is refused by name and nothing is written. This one
+  command reached the agent's settings file through a writer of its own, so none of that ran —
+  `kanibako agent set claude canon=@bogus.ref` printed `Set canon=@bogus.ref` and exited 0, while
+  `kanibako system set agent.claude.canon=@bogus.ref` — the same setting, the other spelling —
+  refused it. The stored reference then resolved to nothing at launch, silently: a key pointed at
+  an empty string rather than at the directory you named. `agent set` writes through the shared
+  setter now, so one setting gets one answer whichever command you use, and the refusal is the
+  wording the other command already prints. **What you will see:** a value that cannot resolve is
+  refused with a non-zero exit and the file is untouched, where it used to be accepted. Values with
+  no `@` or `$` in them are unaffected. `name` is the one thing this command still writes directly,
+  because it is not a setting at all — it is the agent's display name, held in the same file.
+  See MIGRATION.md, "`kanibako agent set` now validates the value you give it".
+
 - **Converting a box to standalone moved kanibako's own directories into your workspace.** A
   standalone box keeps its live workspace in a subdirectory of the project root, so `kanibako box
   convert --standalone` sweeps everything else at the root down into it. What it left behind was a

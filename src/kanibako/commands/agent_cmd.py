@@ -134,14 +134,20 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _config_file() -> Path:
+    """The Layer-1 CONFIG file's path — this module's ONE recipe for locating it."""
+    from kanibako.settings.config import config_file_path
+    from kanibako.settings.paths import xdg
+
+    return config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+
+
 def _load_std() -> StandardPaths:
     """Load config and return the resolved standard paths."""
-    from kanibako.settings.config import config_file_path, load_config
-    from kanibako.settings.paths import xdg, load_std_paths
+    from kanibako.settings.config import load_config
+    from kanibako.settings.paths import load_std_paths
 
-    config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
-    config = load_config(config_file)
-    return load_std_paths(config)
+    return load_std_paths(load_config(_config_file()))
 
 
 def run_list(args: argparse.Namespace) -> int:
@@ -287,12 +293,15 @@ def run_show(args: argparse.Namespace) -> int:
 
 
 def _run_agent_config(args: argparse.Namespace) -> int:
-    """Shared agent-config engine dispatch.
+    """Shared agent-config engine dispatch — the get / set / show / reset bodies.
 
-    Maps config keys to agent config sections:
-      model, continue_mode, etc. -> state keys
-      env.X                   -> [env]
-      shell, run_args, name   -> identity keys
+    Each verb addresses ONE agent's settings file by a bare TAIL (``model``, ``env.<VAR>``,
+    ``secret_path.<VAR>``); the canonical key it names is ``agent.<node>.<tail>``.
+
+    ⚑ ``set`` ROUTES ITS WRITE to ``config_interface.set_config_value``, the setter every other
+    noun shares — this verb is not a second writer of that slot.  ``name`` is the exception and
+    is not a carve-out: it is not a key at all (see :func:`agent_file_identity_only`).  ``get``
+    and ``reset`` still address the file directly through ``agent_file``'s slot boundary.
     """
     from kanibako.settings.agent_config import agent_settings_path
     from kanibako.settings.agent_file import (
@@ -304,9 +313,8 @@ def _run_agent_config(args: argparse.Namespace) -> int:
         write_leaf,
     )
     from kanibako.settings.config_keys import (
-        access_value_error,
+        agent_file_identity_only,
         agent_read_key_error,
-        is_access_key,
     )
 
     try:
@@ -433,33 +441,60 @@ def _run_agent_config(args: argparse.Namespace) -> int:
         key, _, value = key_value.partition("=")
         key = key.strip()
         value = value.strip()
-        # Write-time validation for the auth-critical ``access`` permission key
-        # (parity with the ``config set`` path in config_interface.py; R-41
-        # respelled the key and the guard followed it). This sibling ``agent set``
-        # verb writes the SAME keyspace slot but through a different setter, so
-        # without this guard a typo (``access=fll``) would land verbatim as the
-        # string ``"fll"`` and be re-read at LAUNCH. Reject an off-enum value NOW
-        # through the SAME validator (``access_value_error``) the ``config set``
-        # path uses — one message, one truth table; only ``access`` is guarded,
-        # never ``model`` / ``allow_helpers`` / ``run_args`` / ``env.*`` /
-        # ``secret_path.*``.
-        if is_access_key(key):
-            access_err = access_value_error(key, value)
-            if access_err is not None:
-                print(access_err, file=sys.stderr)
-                return 1
+        # ⚑ THE NOUN'S OWN §0 GATE, ahead of the shared setter and NOT a duplicate of it: it
+        # judges the tail against the KNOWN-GOOD node (the on-disk store dir), which is the one
+        # thing ``set_config_value`` cannot do — that engine reads the node OUT of the key, so
+        # ``self.model`` parses as a node ``claude.self`` and ruling 55's spelling would be
+        # refused for the wrong reason, blaming the agent name rather than naming the key.
         gate_err = _agent_key_gate(agent_id, key, path=path, verb="set")
         if gate_err is not None:
             print(gate_err, file=sys.stderr)
             return 1
-        # ⚑ NO SHAPE RULE HERE, AND ITS ABSENCE IS THE FIX. The ``run_args``
-        # space-split stood on this line and nowhere else, so this verb and
-        # ``config set agent.<node>.run_args=…`` stored two different shapes for
-        # one key and ``agent_file.load`` read only this one's — the other route's
-        # value was accepted, reported and then discarded. The split moved into
-        # ``agent_file.write_leaf``, which every write route already goes through.
-        # Sparse write — only the touched key is materialized.
-        write_leaf(slot_for(std.agents, agent_id, key), value)
+        # ⚑ ``name`` IS THE ONE TAIL THIS VERB STILL WRITES ITSELF, AND IT IS NOT A CARVE-OUT:
+        # it is a FILE-identity field of ``AgentConfig``, absent from the keyspace, so the
+        # shared setter has no key to route (:func:`agent_file_identity_only` derives that from
+        # the declaration, so it moves on its own). Everything else — every declared leaf,
+        # ``env.<VAR>`` and ``secret_path.<VAR>`` — goes through the ONE setter below.
+        if agent_file_identity_only(key):
+            # Sparse write — only the touched key is materialized. ⚑ NO SHAPE RULE HERE, AND
+            # ITS ABSENCE IS THE FIX: the ``run_args`` space-split stood on this line and
+            # nowhere else, so this verb and ``config set agent.<node>.run_args=…`` stored two
+            # different shapes for one key. It moved into ``agent_file.write_leaf``, which
+            # every write route goes through.
+            write_leaf(slot_for(std.agents, agent_id, key), value)
+        else:
+            # ⚑⚑ THE ONE SETTER. This verb had its OWN writer straight to ``write_leaf``, so
+            # none of the set-time validation ran: measured, ``agent set claude
+            # canon=@bogus.ref`` stored the dangling reference at rc 0 while the same value
+            # through ``system set`` was refused by name. Two writers of one keyspace slot is
+            # the defect — so the checks are NOT copied here; the write is routed to where they
+            # already live (the E3 resolution probe, the typed-scalar check and the
+            # auth-critical ``access`` enum guard among them).
+            # ⚑ The command scope is SYSTEM because the per-node agent store is global (under
+            # ``config.agents``) and the engine's per-node routes are reachable only there —
+            # see ``config_dest._agent_node_route``. The threading otherwise mirrors
+            # ``system set``'s, with ONE datum that verb does not have (P7): the NODE being
+            # written, which anchors ``@meta.agent.<node>.path`` in the set-time snapshot. A
+            # legal value spelled against the agent's own store root dangles without it.
+            from kanibako.settings.config_interface import set_config_value
+            from kanibako.settings.config_keys import ConfigLevel
+
+            msg = set_config_value(
+                f"agent.{agent_id}.{key}", value,
+                config_path=_config_file(),
+                system_settings_path=std.settings,
+                cascade_system_path=std.settings,
+                cascade_agent_name=agent_id,
+                command_scope=ConfigLevel.system,
+                agents_root=std.agents,
+            )
+            if msg.startswith("Error:"):
+                print(msg, file=sys.stderr)
+                return 1
+        # ⚑ THE KEY AS THE USER TYPED IT, never the canonical ``agent.<node>.<tail>`` the
+        # setter echoes: this noun takes a BARE tail on the command line, and its ``reset``
+        # twin already answers in that spelling (``_honest_reset_message(key, …)``). A
+        # confirmation is a lesson, and the form it teaches must be the form this verb accepts.
         print(f"Set {key}={value}")
         return 0
 
@@ -596,12 +631,11 @@ def run_reauth(args: argparse.Namespace) -> int:
     """Check authentication and login if needed."""
     from kanibako.agent_ref import harness_of
     from kanibako.settings.agent_select import select_agent
-    from kanibako.settings.config import config_file_path, load_config
+    from kanibako.settings.config import load_config
     from kanibako.targets import resolve_target
-    from kanibako.settings.paths import xdg, load_std_paths
+    from kanibako.settings.paths import load_std_paths
 
-    config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
-    config = load_config(config_file)
+    config = load_config(_config_file())
 
     # Resolve project to check auth mode.  Reconcile the positional subject with
     # the blanket --box flag (same → warn / differ → error), then route through

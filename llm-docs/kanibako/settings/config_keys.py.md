@@ -1362,6 +1362,31 @@ gate exists at all: ``agent get claude self.model`` REFUSES instead of answering
 *verb* is the op word (``"set"`` / ``"reset"``). Gates itself — `None` for every other key — so every
 verb door applies it uniformly.
 
+```agent_file_identity_only(tail: str) -> bool```
+True iff *tail* is a per-agent FILE-identity field and NOT a declared key — the IDENTITY RESIDUE
+above, asked as its own question because `agent set` has to ACT on it.
+
+⚑ **IT EXISTS BECAUSE THE `agent` NOUN NOW HAS ONE WRITER** (2026-08-29). `agent set` wrote through
+`agent_file.write_leaf` directly, so nothing in `config_interface.set_config_value` ran for it: no E3
+resolution probe, no typed-scalar check. MEASURED on an isolated store — `kanibako agent set claude
+canon=@bogus.ref` printed `Set canon=@bogus.ref` at rc 0 and stored the dangling reference, while the
+same value through `kanibako system set` was refused by name. The verb routes its writes to the shared
+setter now, and this predicate answers the one question that routing needs: *does the setter have a
+key here at all?*
+
+⚑ **`name` STAYS ON THE FILE BOUNDARY AND IT IS NOT A CARVE-OUT.** It is not a key — it is an
+`AgentConfig` field, live, written and displayed since long before the keyspace closed — so the
+shared setter has nothing to route it to; sending it there would earn *"unknown config key"* for a
+shipped surface. An EXEMPTION would be admitting an undeclared key past a gate, which is the opposite
+of what this does.
+
+⚑ **DERIVED, NEVER LISTED (P13).** `name` is the whole of it today only because `run_args` — the other
+`IDENTITY_KEYS` member — is ALSO a declared §2d leaf; a leaf entering or leaving either set moves the
+answer with no edit here. The vocabulary asked is the EFFECTIVE one (`_PERSONA_STATE_LEAVES`, core ∪
+plugin-declared), the same set `_is_persona_agent_key` routes on, so the router and the residue cannot
+disagree about which tails the setter claims. ⚑ The cheap term is FIRST: only an `IDENTITY_KEYS`
+member reaches the leaf set at all, so no ordinary `set` pays plugin discovery for this.
+
 ```_is_path_category_key(key: str) -> bool```
 True iff *key* is a PER-NAME PATH-TUPLE category key.
 

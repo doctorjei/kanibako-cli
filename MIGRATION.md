@@ -3778,6 +3778,38 @@ point at directories with your files in them.
 
 ---
 
+### 2.61 `kanibako agent set` now validates the value you give it
+
+**Read this if you have ever set an agent setting to a value containing `@` or `$`.** Kanibako
+checks such a value before writing it: `@config.canon` has to name a real key, `$HOME` has to be a
+well-formed variable, and if either fails the command refuses and writes nothing. `kanibako agent
+set` skipped that check — it reached the agent's settings file by a route of its own — so it
+accepted values that the same setting's other spelling refused:
+
+```
+$ kanibako agent set claude canon=@bogus.ref
+Set canon=@bogus.ref                          # exit 0, written to the file
+
+$ kanibako system set agent.claude.canon=@bogus.ref
+Error: 'agent.claude.canon': dangling @-reference '@bogus.ref' (no such config key
+in the keyspace)                              # exit 1, nothing written
+```
+
+Both commands give the second answer now.
+
+**What to do.** Nothing on disk changes, and a value with no `@` or `$` in it is unaffected. What
+is worth a look is a setting you wrote through `agent set` and never saw take effect: an
+unresolvable reference is not an error at launch, it resolves to an empty string, so the box came
+up with the setting pointed at nothing. Run `kanibako agent show <agent>` for each agent you have
+and re-enter any value carrying an `@` or a `$` — a value that cannot resolve now says so instead
+of being accepted.
+
+⚑ **A script that calls `kanibako agent set` can now exit non-zero where it used to exit 0.** The
+exit code is the only signal that changed; a value that was already valid behaves exactly as before.
+
+⚑ **`name` is not affected**, because it is not a setting — it is the agent's display name, and
+`kanibako agent set <agent> name=…` writes it exactly as it always has.
+
 ## 3. For plugin authors
 
 ⚑ **THREE PERSONA SURFACES ON `Target` CHANGED SHAPE in 1.8.0 — a plugin built against 1.7.x needs
