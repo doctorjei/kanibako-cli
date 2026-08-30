@@ -422,6 +422,32 @@ def path_key_anchor(canonical: str) -> "tuple[str, str]":
     node = parsed[0] if parsed is not None else AGENT_DEFAULT_SUB
     return DECLARATION_ROOT_REF["agent"].format(agent=node), DEFAULT_ROOT_LABEL
 
+
+def agent_node_of(canonical: str) -> str:
+    """The agent NODE a per-node *canonical* key ADDRESSES, or ``""`` when it names none.
+
+    THE QUESTION A WRITE VERB ASKS to name the agent its command is about when the KEY is
+    the only place that says so.  ``agent set`` is handed the node; ``system set
+    agent.<node>.canon=…`` holds it nowhere but the key, and without it the set-time
+    snapshot floors no ``meta.agent.<node>.path`` — so a value spelled against the very
+    store root the write lands in is refused as a dangling ``@``-reference.
+
+    ⚑ DERIVED FROM THE SAME TWO PARSERS :func:`path_key_anchor` CONSULTS, in the same
+    order, so the anchor a refusal NAMES and the anchor the set-time floor PROVIDES cannot
+    disagree about which store root a key hangs off.  No third parser is introduced.
+
+    ⚑ THE BIND ARM IS DELIBERATELY ABSENT, and its absence is the lesson the removed
+    ``_agent_scope_node`` left: an ``agent.<node>.bindings.{ro,rw}.<name>`` set is refused
+    BY NAME in the verb preamble (R-9), so an arm for it could never change an outcome —
+    it would be dead the day it was written.  :func:`resolve_key` carries that arm because
+    it canonicalises a key the READ verbs still serve; this answers a WRITE-time question.
+    """
+    parsed = (
+        _parse_agent_node_secret_key(canonical)
+        or _parse_persona_agent_key(canonical)
+    )
+    return parsed[0] if parsed is not None else ""
+
 # ---------------------------------------------------------------------------
 # Scope-direction guard (block B4, spec §0 directional view/set + §2a)
 # ---------------------------------------------------------------------------

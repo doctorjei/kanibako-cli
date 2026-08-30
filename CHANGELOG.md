@@ -375,6 +375,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`kanibako system set` refused to point an agent setting at that agent's own directory.**
+  Every per-agent setting can be written two ways — `kanibako agent set claude canon=…` or
+  `kanibako system set agent.claude.canon=…` — and `@meta.agent.claude.path` is the reference that
+  names where claude's own files live. The first spelling accepted it; the second answered
+  `dangling @-reference '@meta.agent.claude.path' (no such config key in the keyspace)` and exited
+  1, though the reference is perfectly good and resolves at launch. Kanibako checks such a value
+  against a snapshot of the settings it can see, and that snapshot only ever included an agent's own
+  directory when the command said which agent it was about — which `agent set` knows and `system
+  set` was not working out for itself. It reads the agent's name out of the key now. **What you will
+  see:** `kanibako system set agent.<agent>.canon=@meta.agent.<agent>.path/canon` is accepted and
+  written, where it used to be refused. A genuinely broken reference is still refused by name, and
+  so is a reference to a *different* agent's directory than the one you are writing to — the check
+  is anchored to the agent whose file the value lands in, not loosened for the whole family.
+
 - **A freshly set up agent carried a setting you never wrote, and `kanibako agent reset --all`
   said so.** Every agent settings file kanibako seeds was written with `run_args: []` in it — an
   empty argument list, materialized as if you had set one. Every other empty section is left out of

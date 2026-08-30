@@ -1173,3 +1173,67 @@ class TestSystemGetClosedKeyspaceReadGate:
         capsys.readouterr()
         assert _get("system.masks") == 0
         assert "/a/b" in capsys.readouterr().out
+
+
+class TestSystemSetAnchorsTheNodeItWrites:
+    """``system set agent.<node>.canon=@meta.agent.<node>.path/canon`` was refused as a
+    dangling ``@``-reference, though ``meta.agent.<node>.path`` is a declared key.
+
+    The set-time snapshot floors the agent STORE-ROOT anchor only for the agent the
+    COMMAND names (``_set_time_anchor``'s ``meta_agent_path_floor`` fold).  ``agent set``
+    names it because the verb is handed the node; this verb was handing over nothing, so
+    the one anchor a per-node key is spelled against was absent and its own store root
+    read as a dangling dependency.  ``agent set claude canon=…`` accepted the value and
+    ``system set agent.claude.canon=…`` — the same key, the other spelling — refused it.
+    """
+
+    KEY = "agent.claude.canon"
+    VALUE = "@meta.agent.claude.path/canon"
+
+    def _stored(self, config_file):
+        std = _std(config_file)
+        return load_doc(std.agents / store_dirname("claude") / "agent.yaml")
+
+    def test_the_node_s_own_store_root_resolves(self, config_file, tmp_home, capsys):
+        """MUTATION PROOF: drop ``cascade_agent_name`` from ``system_cmd``'s
+        ``set_config_value`` call and this reddens with
+        ``dangling @-reference '@meta.agent.claude.path'`` — while the two refusals below
+        stay green, so the fix cannot be a blanket accept wearing a pass."""
+        capsys.readouterr()
+        rc = _set(f"{self.KEY}={self.VALUE}")
+        assert rc == 0, capsys.readouterr().err
+        assert self._stored(config_file)["self"]["canon"] == self.VALUE
+
+    def test_a_bogus_ref_is_still_refused_by_name(self, config_file, tmp_home, capsys):
+        """The floor anchors ONE node, so it cannot become a blanket accept."""
+        capsys.readouterr()
+        assert _set(f"{self.KEY}=@bogus.ref") == 1
+        assert "@bogus.ref" in capsys.readouterr().err
+
+    def test_the_secret_family_is_anchored_too(self, config_file, tmp_home, capsys):
+        """THE SECOND ARM, and it is the reason ``agent_node_of`` reads TWO parsers.
+
+        ``agent.<node>.secret_path.<VAR>`` is a per-node PATH key anchored at the same
+        store root (``path_key_anchor``'s first arm), but it is parsed by
+        ``_parse_agent_node_secret_key`` — ``_parse_persona_agent_key`` does NOT match it.
+        A one-parser ``agent_node_of`` would leave this half refused while every other
+        test in this class stayed green, so this is the row that pins the choice.
+
+        MUTATION PROOF: drop ``_parse_agent_node_secret_key`` from ``agent_node_of`` and
+        THIS test reds alone — the three ``canon`` rows above do not move.
+        """
+        capsys.readouterr()
+        value = "@meta.agent.claude.path/tok"
+        rc = _set(f"agent.claude.secret_path.ANTHROPIC_AUTH_TOKEN={value}")
+        assert rc == 0, capsys.readouterr().err
+        assert self._stored(config_file)["self"]["secret_path"][
+            "ANTHROPIC_AUTH_TOKEN"
+        ] == value
+
+    def test_another_node_s_root_still_dangles(self, config_file, tmp_home, capsys):
+        """WHAT "THE NODE EXISTS" MEANS HERE: the node this write ADDRESSES.  A ref
+        spelled against a DIFFERENT node's store root is not anchored by this write and
+        is refused, so the shape ``@meta.agent.*.path`` is never accepted on sight."""
+        capsys.readouterr()
+        assert _set(f"{self.KEY}=@meta.agent.goose.path/canon") == 1
+        assert "meta.agent.goose.path" in capsys.readouterr().err
