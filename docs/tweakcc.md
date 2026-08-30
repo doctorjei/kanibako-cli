@@ -19,27 +19,29 @@ Kanibako orchestrates the full patching lifecycle:
 in the box where patching runs).  The patching invocation is under
 active development -- see the implementation plan for current status.
 
-Enable in the agent config (`agents/claude/settings.yaml`):
+Enable in the agent config (`agents/claude/agent.yaml`):
 
 ```yaml
-tweakcc:
-  enabled: true
-  config: "~/.tweakcc/config.json"
+self:
+  transform_settings:
+    enabled: true
+    config: "~/.tweakcc/config.json"
 ```
 
 Inline settings override the external config:
 
 ```yaml
-tweakcc:
-  enabled: true
-  config: "~/.tweakcc/config.json"
-  settings:
-    misc:
-      mcpConnectionNonBlocking: true
+self:
+  transform_settings:
+    enabled: true
+    config: "~/.tweakcc/config.json"
+    settings:
+      misc:
+        mcpConnectionNonBlocking: true
 ```
 
 If patching fails (missing tweakcc, bad binary, etc.), Kanibako falls back
 gracefully to the unpatched binary.
 
-The `config` and inline `settings` are read from the `tweakcc:` section of the
-agent's settings file (it is part of the per-agent `AgentConfig`).
+The `config` and inline `settings` are read from the `self.transform_settings:`
+section of the agent's settings file (it is part of the per-agent `AgentConfig`).

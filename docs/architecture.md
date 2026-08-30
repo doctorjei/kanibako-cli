@@ -28,7 +28,8 @@ cross-cutting entry points and utilities stay at the package root.
 | `project/names.py` | Workset name registry (the `worksets` section of `config.registry`) |
 | `project/registry_store.py` | Consolidated `registry.yaml` index (`worksets`/`standalone`/`deregistered`/`rigs`/`image_shells`; a `projects` section is retired and dropped on the next write) |
 | `runtime/registry.py` | OCI Distribution API client for remote image digests (stdlib only) |
-| `settings/agent_config.py` | Per-agent YAML config (`agents/<agent>/settings.yaml`): load, write, resolve |
+| `settings/agent_config.py` | Agent identity WITHOUT the file: the `AgentConfig` record, the per-agent store's paths (`agents/<agent>/`), the abstract categories' declaration roots, and the shared bare-relative refusal for stored path values. No file I/O — that is `agent_file.py` |
+| `settings/agent_file.py` | The per-agent settings file's SHAPE (`agents/<agent>/agent.yaml`) — the ONLY module that spells its root table and the `self` file-surface alias: `load`/`save`, the per-leaf `read_leaf`/`write_leaf`/`remove_leaf` verbs, and the raw level table `settings_assemble` consumes |
 | `launch/templates.py` | Layered seed-once template resolution and application (base → agent → workset) |
 | `runtime/templates_image.py` | Image-template helpers: user-template image naming + bundled-template discovery (`Containerfile.template-<name>` convention, `# kanibako-template:` descriptions) |
 | `runtime/containerfiles.py` | Resolve bundled/override Containerfiles by suffix (`get_containerfile`, `list_containerfile_suffixes`) |

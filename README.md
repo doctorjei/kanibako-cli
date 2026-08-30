@@ -505,8 +505,8 @@ and cannot be used as a named-workset name.
 
 ```
 $XDG_DATA_HOME/kanibako/primary_workset/
-├── settings.yaml
-├── boxes/{name}/{home/ → ~/ , settings.yaml}
+├── workset.yaml
+├── boxes/{name}/{home/ → ~/ , box.yaml}
 ├── vault/{ro,rw}/{name}/                        → ~/vault/{ro,rw}
 └── logs/{name}.jsonl
 # the box WORKSPACE stays external: your real project dir → ~/workspace
@@ -515,7 +515,7 @@ $XDG_DATA_HOME/kanibako/primary_workset/
 ### Named workset
 
 A workset is a *named* project group rooted at a directory you pick.  It groups
-related projects under one human-readable root, with a single `<root>/settings.yaml`
+related projects under one human-readable root, with a single `<root>/workset.yaml`
 (identity + member list + a group-level settings/auth tier that member boxes
 inherit; see [Configuration](#configuration)).  A workset name is a shared
 address and must be unique -- a collision at create/import time is refused.
@@ -529,8 +529,8 @@ kanibako
 
 ```
 {workset}/
-├── settings.yaml
-├── boxes/{name}/{home/ → ~/ , settings.yaml}
+├── workset.yaml
+├── boxes/{name}/{home/ → ~/ , box.yaml}
 ├── workspaces/{name}/                  → ~/workspace
 ├── vault/{ro,rw}/{name}/               → ~/vault/{ro,rw}
 └── logs/{name}.jsonl
@@ -559,9 +559,9 @@ kanibako box register ~/myproj         # or opt in afterwards
 
 ```
 {project}/                       ← project root
-├── settings.yaml                ← box metadata (at the root)
+├── workset.yaml                 ← workset tier (degenerate workset at the root)
 ├── workspace/                   → ~/workspace  (a subdir, not the root)
-├── box_data/{home/ → ~/ , {name}.jsonl}
+├── box_data/{home/ → ~/ , box.yaml, {name}.jsonl}
 └── vault/{ro,rw}/               → ~/vault/{ro,rw}
 ```
 
@@ -744,31 +744,33 @@ support `shell.d/` on the next launch.
 ## Agent Configuration
 
 Each agent gets a YAML configuration file inside its per-agent store directory
-at `$XDG_DATA_HOME/kanibako/agents/{agent}/settings.yaml`.  The file is
+at `$XDG_DATA_HOME/kanibako/agents/{agent}/agent.yaml`.  The file is
 generated automatically on first use (via the target plugin's
 `generate_agent_config()` method) and can be edited afterwards.
 
 ```yaml
-agent:
+self:
   name: "Claude Code"
   run_args: ["--verbose"]   # extra CLI args prepended on every launch (omit if none)
   model: "opus"             # agent-specific state knobs (e.g. --model for Claude)
   access: "permissive"
-env:
-  # KEY: "value"            # raw env vars injected into the box
-tweakcc:
-  # enabled: false          # enable tweakcc binary patching
-  # config: "~/.tweakcc/config.json"  # external tweakcc config file
+  env:
+    # KEY: "value"          # raw env vars injected into the box
+  transform_settings:
+    # enabled: false        # enable tweakcc binary patching
+    # config: "~/.tweakcc/config.json"  # external tweakcc config file
 ```
 
 **Sections:**
-- `agent:` -- identity and defaults (`name`, `run_args`) plus runtime state
-  knobs translated by the target plugin into CLI args and env vars (e.g. Claude
-  maps `model` -> `--model`). Effective state resolves across the settings
-  cascade `system < agent.<agent> < workset < box` with the target's declared
-  defaults as the floor.
-- `env:` -- environment variables injected into the box
-- `tweakcc:` -- optional tweakcc integration for binary patching
+- `self:` -- the file's root table, which stands for the agent whose file it is
+  (`agent.<agent>`); it is a spelling of this file only and has no CLI form. It
+  holds identity and defaults (`name`, `run_args`) plus runtime state knobs
+  translated by the target plugin into CLI args and env vars (e.g. Claude maps
+  `model` -> `--model`). Effective state resolves across the settings cascade
+  `system < agent.<agent> < workset < box` with the target's declared defaults
+  as the floor.
+- `self.env:` -- environment variables injected into the box
+- `self.transform_settings:` -- optional tweakcc integration for binary patching
   (see [docs/tweakcc.md](docs/tweakcc.md))
 
 Per-agent common dirs/caches are declared by the plugin (`agent.<agent>.common` /
@@ -996,13 +998,13 @@ All kanibako config/settings files are YAML.
 
 - **Config (global)**: `$XDG_CONFIG_HOME/kanibako.yaml` (`system.*` layout only)
 - **System settings**: `$XDG_DATA_HOME/kanibako/global/settings.yaml`
-- **Workset settings**: `<workset_root>/settings.yaml` (optional -- a workset root has
+- **Workset settings**: `<workset_root>/workset.yaml` (optional -- a workset root has
   one only once you set something there)
 - **Workset membership**: `<workset_root>/registry.yaml` (its boxes, as flat `name: path`
   rows -- and nothing else; a workset is NAMED by the global registry's `worksets:` section,
   never by a file under its own root)
-- **Per-agent settings**: `$XDG_DATA_HOME/kanibako/agents/{agent}/settings.yaml`
-- **Per-box settings**: `boxes/{name}/settings.yaml` (standalone: `<root>/settings.yaml`)
+- **Per-agent settings**: `$XDG_DATA_HOME/kanibako/agents/{agent}/agent.yaml`
+- **Per-box settings**: `boxes/{name}/box.yaml` (standalone: `<root>/box_data/box.yaml`)
 - **Template root**: `$XDG_DATA_HOME/kanibako/global/template/` (the `box`,
   `workset` and `agent` moulds new stores are stamped from)
 - **System handbook**: `$XDG_DATA_HOME/kanibako/global/canon/handbook/` -- your
