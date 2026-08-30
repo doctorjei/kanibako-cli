@@ -267,18 +267,112 @@ class TestStandaloneFixedPaths:
         assert (resolved / "box_data").is_dir()
         assert not (resolved / "box_data" / "box.yaml").exists()
 
-    def test_helper_log_stays_in_box_data(
+    @staticmethod
+    def _set_workset_key(root, leaf: str, value: str) -> None:
+        """Merge ONE ``workset.<leaf>`` into the root workset.yaml, keeping the rest.
+
+        ⚑ Merge, never overwrite: that file is the standalone box's WORKSET tier AND
+        half the detection marker, so a wholesale dump would test a different box.
+        """
+        from kanibako.settings.config_io import dump_doc, load_doc
+
+        path = root / "workset.yaml"
+        doc = dict(load_doc(path) or {})
+        table = dict(doc.get("workset") or {})
+        table[leaf] = value
+        doc["workset"] = table
+        dump_doc(path, doc)
+
+    def test_helper_log_defaults_into_box_data(
         self, std, config, project_dir, credentials_dir,
     ):
-        """The helper log lives INSIDE box_data/ (drift critical interaction):
-        settings moved to the root, but the <box>.jsonl log is anchored under
-        box_data/ so the whole standalone tree stays drop-in portable."""
+        """UNREPOINTED, the helper log lands inside box_data/ (drift critical
+        interaction): settings moved to the root, but the default for the key that
+        names the log directory is the box's own dir, so the whole standalone tree
+        stays drop-in portable.  ⚑ The location is the RESOLVED ``workset.logs``, not
+        a composed leaf — the sibling assertion pins that it is the key's answer, and
+        the repoint cases below are what make the two distinguishable."""
+        from kanibako.project.workset import (
+            load_workset_settings_doc,
+            resolve_workset_logs,
+        )
+
         proj = resolve_standalone_project(
             std, config, str(project_dir), initialize=True,
         )
         resolved = project_dir.resolve()
         log = helper_log_path(std, proj)
         assert log == resolved / "box_data" / f"{proj.name}.jsonl"
+        assert log.parent == resolve_workset_logs(
+            resolved, load_workset_settings_doc(resolved), standalone=True,
+        )
+
+    def test_helper_log_follows_a_standalone_logs_repoint(
+        self, std, config, project_dir, credentials_dir, tmp_path,
+    ):
+        """⚑⚑ M-14, standalone arm: the MOUNT has always been the spec spelling
+        ``@workset.logs/@{meta.box.name}.jsonl``, so a writer that composed
+        ``box_data/`` sent the hub's writes where the box does not read — silently,
+        because a repoint errors nowhere.  Writer and mount name ONE file."""
+        proj = resolve_standalone_project(
+            std, config, str(project_dir), initialize=True,
+        )
+        resolved = project_dir.resolve()
+        elsewhere = tmp_path / "log-store"
+        self._set_workset_key(resolved, "logs", str(elsewhere))
+        assert helper_log_path(std, proj) == elsewhere / f"{proj.name}.jsonl"
+
+    def test_helper_log_resolves_a_logs_value_written_as_the_box_ref(
+        self, std, config, project_dir, credentials_dir,
+    ):
+        """``@meta.box.path`` is the STANDALONE default's own spelling, so a user may
+        write it — and a subdir under it is the obvious tidy-up.  It resolves here and
+        refuses on the un-widened route; both are pinned (test_workset_dirkeys)."""
+        proj = resolve_standalone_project(
+            std, config, str(project_dir), initialize=True,
+        )
+        resolved = project_dir.resolve()
+        self._set_workset_key(resolved, "logs", "@meta.box.path/logs")
+        assert helper_log_path(std, proj) == (
+            resolved / "box_data" / "logs" / f"{proj.name}.jsonl"
+        )
+
+    def test_helper_log_default_follows_a_boxes_repoint(
+        self, std, config, project_dir, credentials_dir,
+    ):
+        """With ``workset.logs`` UNSET the default is ``@meta.box.path``, which for a
+        lone box is ``@workset.boxes`` — so moving the box store moves the log with it.
+        🛑 This does NOT make the standalone box store repointable end to end: home,
+        the vault teardown, ``clean --purge`` and detection still compose ``box_data``.
+        """
+        proj = resolve_standalone_project(
+            std, config, str(project_dir), initialize=True,
+        )
+        resolved = project_dir.resolve()
+        self._set_workset_key(resolved, "boxes", "@meta.workset.path/store")
+        assert helper_log_path(std, proj) == (
+            resolved / "store" / f"{proj.name}.jsonl"
+        )
+
+    def test_an_unresolvable_standalone_logs_value_refuses_naming_key_and_file(
+        self, std, config, project_dir, credentials_dir,
+    ):
+        """Widening the route for TWO refs it can answer widens it for no others: a
+        value needing the launch snapshot still refuses, naming the key, the value and
+        the file that carries it — never a directory called ``@config.data``."""
+        from kanibako.settings.settings_resolve import SettingsError
+
+        proj = resolve_standalone_project(
+            std, config, str(project_dir), initialize=True,
+        )
+        resolved = project_dir.resolve()
+        self._set_workset_key(resolved, "logs", "@config.data/x")
+        with pytest.raises(SettingsError) as excinfo:
+            helper_log_path(std, proj)
+        message = str(excinfo.value)
+        assert "workset.logs" in message
+        assert "@config.data/x" in message
+        assert str(resolved / "workset.yaml") in message
 
 
 # ---------------------------------------------------------------------------

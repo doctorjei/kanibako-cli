@@ -907,19 +907,23 @@ def helper_log_path(std: StandardPaths, proj: ProjectPaths) -> Path:
 
     ⚑⚑ THIS IS THE HUB'S WRITER, and the MOUNT it must agree with is the spec's own
     spelling ``@workset.logs/@{meta.box.name}.jsonl`` (``data/core-defaults.yaml``,
-    ``helpers``).  While the named and PRIMARY arms composed ``<root>/logs`` the two
-    disagreed the moment a user repointed ``workset.logs`` — the mount moved and the
-    writer did not (migration M-14).  Both arms now RESOLVE the key, so there is one
-    answer.  ⚑ STANDALONE still composes: its declared default is ``@meta.box.path``,
-    a CHAINED ref (``@workset.boxes``) the pre-snapshot resolver deliberately refuses,
-    so that arm of M-14 stays open — see MIGRATION.md.
+    ``helpers``).  While an arm COMPOSED its directory the two disagreed the moment a
+    user repointed ``workset.logs`` — the mount moved and the writer did not (migration
+    M-14).  ⚑ ALL THREE arms now RESOLVE the key, so there is one answer in every mode.
+    STANDALONE resolves it against the degenerate workset rooted at the project dir,
+    whose declared default is ``@meta.box.path`` = ``box_data/`` — the same directory
+    the composed form named, now reached through the key that may move it.
     """
     box = proj.name if proj.name else short_hash(proj.project_hash)
-    if proj.mode is BoxMode.standalone:
-        # Anchored under ``box_data/`` (not the root) so the standalone tree stays portable.
-        return proj.metadata_path / STANDALONE_META_DIR / f"{box}.jsonl"
     # ⚑ Deferred import: the documented ``settings.paths`` <-> ``project.workset`` cycle.
     from kanibako.project.workset import load_workset_settings_doc, resolve_workset_logs
+
+    if proj.mode is BoxMode.standalone:
+        # ``metadata_path`` IS the standalone root (drift I), i.e. the workset root of
+        # the degenerate workset — so the key is read from the root ``workset.yaml``.
+        root = proj.metadata_path
+        return resolve_workset_logs(
+            root, load_workset_settings_doc(root), standalone=True) / f"{box}.jsonl"
 
     if proj.mode is BoxMode.named:
         # The workset root is carried on the project group (root=ws.root).  ⚑ The

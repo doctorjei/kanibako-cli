@@ -907,10 +907,10 @@ def helper_default_categories(
         box_dest = str(entry["box_dest"])
         category = entry["category"]
         # ⚑ B2b: the ``.exists()`` gate above keys off the PROBED path while ``helper_log``'s
-        # emitted host_src is the spec FORMULA.  The two agree in PRIMARY and NAMED mode —
-        # ``paths.helper_log_path`` resolves ``workset.logs`` there, closing those arms of
-        # migration M-14 — and STILL SPLIT in STANDALONE, whose default is the chained
-        # ``@meta.box.path`` the pre-snapshot resolver refuses.  ⚑ ``helper_sock`` is NOT
+        # emitted host_src is the spec FORMULA.  The two agree in EVERY mode — as of
+        # 2026-08-30 ``paths.helper_log_path`` resolves ``workset.logs`` in standalone too
+        # (its ``@meta.box.path`` default is answered by the caller, which holds the
+        # resolved ``workset.boxes``), closing migration M-14.  ⚑ ``helper_sock`` is NOT
         # routed: its hashed, length-bounded socket name has no spec spelling (JC-B2b-3).
         host_src = entry.get("meta_ref", str(src_path))
         add_bind(binds, category, box_dest, host_src, str(entry["options"]))

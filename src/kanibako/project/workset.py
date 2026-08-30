@@ -66,6 +66,7 @@ from kanibako.settings.paths import StandardPaths
 # (§3.3: real and USED).  ⚑ A default leaf is what a key falls back to, NOT the path
 # component: every one of these is repointable, so nothing may join it directly.
 BOXES_DIR_NAME = paths_defaults.BOXES_PATH
+_STANDALONE_BOXES_LEAF = paths_defaults.STANDALONE_META_DIR
 _WORKSPACES_LEAF = paths_defaults.WORKSPACES_PATH
 _STANDALONE_WORKSPACE_LEAF = paths_defaults.WORKSPACE_PATH
 _CHANNELROOT_LEAF = paths_defaults.CHANNELS_PATH
@@ -81,6 +82,14 @@ _LOGS_LEAF = paths_defaults.LOGS_PATH
 # spells them; add them there the moment a second consumer appears.
 _CANON_LEAF = "canon"
 _TEMPLATE_LEAF = "template"
+
+# The two refs the STANDALONE ``workset.logs`` default chains through (spec §2c:
+# ``workset.logs | @meta.box.path``, and standalone's ``meta.box.path | @workset.boxes``
+# — no ``@meta.box.name`` leaf, because a lone box is the only box).  ⚑ They are REF
+# NAMES, not leaves: the resolver answers them from a value this module resolves first,
+# and nothing here may join either one as a path component.
+_BOX_PATH_REF = "meta.box.path"
+_BOXES_REF = f"workset.{BOXES_DIR_NAME}"
 
 # ⚑ The ONE skeleton dir that names NO KEY: the keyspec declares ``workset.vault_ro``
 # and ``workset.vault_rw`` (``@meta.workset.path/vault/{ro,rw}``) and no ``workset.vault``
@@ -149,25 +158,53 @@ def resolve_workset_workspaces(
 
 def resolve_workset_boxes(
     workset_root: Path, workset_settings: Mapping[str, Any] | None,
+    *, standalone: bool = False,
 ) -> Path:
-    """Return the resolved ``workset.boxes`` dir — the BOX-tree root under a workset."""
+    """Return the resolved ``workset.boxes`` dir (*standalone* selects the ``box_data`` default).
+
+    ⚑ THE FLAG SELECTS A DEFAULT LEAF, NOTHING ELSE — the same shape as
+    ``resolve_workset_workspaces``: spec §2c gives standalone
+    ``@meta.workset.path/box_data`` where primary/named get ``.../boxes``.
+    🛑 It does NOT make the standalone box store repointable end to end: home, the
+    vault teardown, ``clean --purge`` and DETECTION still compose the literal
+    ``box_data`` (``system-design`` makes that locator a spec clause).  Today the one
+    caller that passes it is ``resolve_workset_logs(..., standalone=True)``, which
+    needs the value to answer ``@meta.box.path``.
+    """
     return resolve_workset_dir_key(
         workset_root,
         _workset_path_repoint(workset_settings, BOXES_DIR_NAME),
-        BOXES_DIR_NAME,
+        _STANDALONE_BOXES_LEAF if standalone else BOXES_DIR_NAME,
         key=BOXES_DIR_NAME,
     )
 
 
 def resolve_workset_logs(
     workset_root: Path, workset_settings: Mapping[str, Any] | None,
+    *, standalone: bool = False,
 ) -> Path:
-    """Return the resolved ``workset.logs`` dir — ⚑ primary/named ONLY; standalone logs to the box."""
+    """Return the resolved ``workset.logs`` dir (*standalone* takes the box-anchored default).
+
+    ⚑ STANDALONE's declared default is ``@meta.box.path`` (spec §2c), a ref the
+    no-snapshot route refuses BY NAME — in primary/named it chains through
+    ``@meta.box.name``, which does not exist before the launch snapshot.  A lone box
+    has no name leaf (``meta.box.path | @workset.boxes``), so in THIS mode the caller
+    can answer both refs itself: ``workset.boxes`` is resolved once, through the same
+    route, and handed in.  ⚑ The default is expressed as the spec's own ref rather
+    than a leaf, so a set and an unset value take one grammar and one answer.
+    """
+    repoint = _workset_path_repoint(workset_settings, _LOGS_LEAF)
+    if not standalone:
+        return resolve_workset_dir_key(
+            workset_root, repoint, _LOGS_LEAF, key=_LOGS_LEAF,
+        )
+    boxes = str(resolve_workset_boxes(workset_root, workset_settings, standalone=True))
     return resolve_workset_dir_key(
         workset_root,
-        _workset_path_repoint(workset_settings, _LOGS_LEAF),
-        _LOGS_LEAF,
+        repoint or f"@{_BOX_PATH_REF}",
+        "",  # unreachable: the standalone default above is a ref, never a leaf
         key=_LOGS_LEAF,
+        extra_refs={_BOX_PATH_REF: boxes, _BOXES_REF: boxes},
     )
 
 
@@ -424,8 +461,9 @@ class Workset:
         ⚑ The helper-log MOUNT has always been the spec spelling
         (``@workset.logs/@{meta.box.name}.jsonl``, ``data/core-defaults.yaml``), so a
         composed leaf here made the hub WRITE somewhere the box does not READ — the
-        split migration M-14 records.  A standalone box logs to its own tree, not here;
-        see ``settings/paths.py::helper_log_path``.
+        split migration M-14 records.  A standalone box's log is resolved through the
+        same key with ``standalone=True``, not through this property, which is a
+        WORKSET face; see ``settings/paths.py::helper_log_path``.
         """
         return resolve_workset_logs(self.root, load_workset_settings_doc(self.root))
 

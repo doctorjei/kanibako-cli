@@ -92,9 +92,11 @@ does two things and no more: read the RAW repoint out of the routed nested slot
 `workset: {<leaf>: …}` (the location a settings-file edit — or `config set` at workset scope —
 writes), and name the spec DEFAULT leaf. Everything else belongs to the ONE no-snapshot route,
 `settings/workset_dirkeys.resolve_workset_dir_key`, which owns the token grammar
-(`@meta.workset.path` and nothing else, `$XDG_*`, `~`), anchors a still-relative result under the
-workset root, and REFUSES by name any value that would need the launch snapshot. ⚑ Do not give one
-of these faces a private expansion again.
+(`@meta.workset.path`, `$XDG_*`, `~`, plus any ref the FACE itself can already answer and hands in
+as `extra_refs`), anchors a still-relative result under the workset root, and REFUSES by name any
+value that would need the launch snapshot. ⚑ Do not give one of these faces a private expansion
+again. ⚑ `extra_refs` has exactly one user — `resolve_workset_logs(..., standalone=True)`, below —
+and the bar for a second is that the caller HOLDS the value, not that it knows the formula.
 
 They are read on the DETECTION / paths side — the pass that FINDS the workset a snapshot will later
 be built for — which is why that route exists separately from `settings_expand.expand` at all.
@@ -125,6 +127,19 @@ default TABLE is the source, never a second literal at a consumer site.
   moved and purged under `<root>/boxes`. Two carriers of one shape, and the quieter kind of broken.
   ⚑ **The launch seam was always the correct owner** (`settings_launch`, `meta.box.path |
   @workset.boxes/@meta.box.name`); these properties are FACES on that answer, not a second one.
+  ⚑ **BOTH take a `standalone=` flag, and it selects a DEFAULT LEAF** — the same shape as
+  `resolve_workset_workspaces`. Spec §2c gives standalone `workset.boxes` the leaf `box_data`
+  (not `boxes`) and `workset.logs` the value `@meta.box.path`, which for a lone box is
+  `@workset.boxes` with no name leaf. So `resolve_workset_logs(..., standalone=True)` resolves
+  `workset.boxes` with ITS standalone leaf first and hands it to the route as `extra_refs`, so the
+  host-side writer (`settings/paths.py::helper_log_path`) and the `helpers.jsonl` MOUNT name one
+  file in standalone too — the last arm of **migration M-14**, closed 2026-08-30. 🛑 The `boxes`
+  flag does NOT make the standalone box STORE repointable end to end: home, the vault teardown,
+  `clean --purge` and standalone DETECTION all still compose the literal `box_data`, which
+  `system-design-1.8.0.md` makes a spec clause. It selects a default leaf so the logs default can
+  chain through it, and nothing more. A repointed
+  standalone log lands outside `box_data/` and therefore survives `box rm --purge`, which removes
+  `box_data/` wholesale; that is a retained path, documented in MIGRATION.md, not a wider rmtree.
   🛑 STILL OPEN: box trees under a `workset.boxes` the user pointed OUTSIDE the root survive
   `workset rm --purge`, deliberately — `delete_workset`'s loop is a pre-pass for `rmtree(root)`, so
   it is owed only to what that call reaches. Closing it needs a retained-path report, not a wider

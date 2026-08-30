@@ -895,10 +895,11 @@ which**; only the first is a stale key that can stop the resolve, and only in so
   (standalone: all four; `workset.{vault_ro,vault_rw}` and `workset.logs`: all modes). **These ARE declared
   keys — do not delete one** on the strength of this section; the change is that a value you
   already set now takes effect. The corresponding mount moves silently, since the new location
-  is guarantee-created. A broken `workset.logs` override is visible: the launch logs
-  `read-only source <path> does not exist; dropping mount`. Note an override moves the
-  **mount** only; kanibako's own internal writes still target the default location, so an
-  override is not yet a supported way to relocate a box.
+  is guarantee-created. ⚑ **`workset.boxes` and `workset.logs` no longer move the mount alone.**
+  They used to: kanibako's own writes went to the default location while the mount followed your
+  setting. Both now steer the writes as well, in every mode — read *A repointed `workset.boxes`
+  or `workset.logs` now takes effect* (§2.58) before you next start a box, because it means data
+  you already have may be in the other place.
   ⚑ **`workset.{vault_ro,vault_rw}` now also steer the verbs that DELETE.** `box rm --purge`,
   `kanibako clean --purge`, `box move` and `box convert` remove the vault at the resolved
   location, not the old composed one — check the value before you purge a box you set it on.
@@ -3676,7 +3677,8 @@ So the box trees were created, moved, duplicated, converted, purged and deleted 
 `<workset root>/logs/`, whatever you had written in the settings file. Both are now resolved
 everywhere: the box store used by `create`, `box move`, `box duplicate`, `box convert`,
 `workset connect`, `workset disconnect`, `clean --purge` and `workset rm --purge`; the primary
-workset's own box and log roots; and the host-side writer for a named box's helper log.
+workset's own box and log roots; and the host-side writer for every box's helper log, in all three
+modes — primary, named and standalone.
 
 There is a second half to the helper-log case worth stating plainly. The *mount* into the box has
 always been built from the setting, so with a repoint in place the box read
@@ -3701,15 +3703,22 @@ looks where the setting says.
 If you would rather not move anything, the equivalent fix is to delete the key from the
 `workset.yaml` — the default is the location your data is already in.
 
-⚑ **Two limits are stated rather than fixed, so you can plan around them.**
+A standalone project is a workset too — a degenerate one rooted at the project directory, whose
+`workset.yaml` sits at the root. Its `workset.logs` default is the box's own `box_data/`, so if you
+have repointed the key there, your existing log is the `<box-name>.jsonl` file inside `box_data/`.
 
-- **A standalone box's helper log still ignores a `workset.logs` repoint.** The default for that
-  mode is expressed in terms of the box's own directory rather than the workset root, which the
-  pre-launch resolver cannot follow; the log stays inside the box's `box_data/`.
+⚑ **Two limits are stated rather than fixed, so you can plan around them.** They are the same
+shape: a purge clears the tree it owns and will not follow a path you pointed outside it.
+
 - **`kanibako workset rm --purge` does not delete box trees under a `workset.boxes` you pointed
   OUTSIDE the workset root.** The purge deletes the workset root and nothing beyond it, by design —
   it will not remove a directory you nominated elsewhere. Those trees survive the purge and are
   yours to delete by hand.
+- **A standalone box's helper log survives `kanibako box rm --purge` when `workset.logs` points
+  outside the box.** That purge removes the box's `box_data/` directory whole, and a log you sent
+  elsewhere is not inside it, so the file is retained and is yours to delete. Nothing is lost by
+  deleting it — a helper log is a message record, not state. (`kanibako clean --purge` removes the
+  log file itself in either case; only the directory you nominated is left standing.)
 
 ---
 

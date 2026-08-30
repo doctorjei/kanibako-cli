@@ -16,15 +16,29 @@ correctly.  Two carriers, two answers.
 
 ⚑ What this module does instead: it is a THIRD CALLER of the single expression scanner
 :func:`~kanibako.settings.settings_resolve.expand_expr` (seam S25), with a lookup
-NARROWED to the one reference that is knowable without a snapshot —
-:data:`WORKSET_PATH_REF`, whose value is the workset root the caller already holds.
-``~`` and ``$XDG_*`` expand host-side exactly as they do at launch.  Every other
-reference is REFUSED BY NAME.  A refusal that names the key and the token is a correct
-answer to "this cannot be resolved yet"; a directory called ``@config.registry`` is not.
+NARROWED to the references that are knowable without a snapshot — :data:`WORKSET_PATH_REF`,
+whose value is the workset root the caller already holds, plus whatever the CALLER can
+itself answer and hands in as ``extra_refs``.  ``~`` and ``$XDG_*`` expand host-side
+exactly as they do at launch.  Every reference the caller cannot itself answer is
+REFUSED BY NAME.  A refusal that names the key and the token is a correct answer to
+"this cannot be resolved yet"; a directory called ``@config.registry`` is not.
+
+🛑 ``extra_refs`` IS NOT A GENERALITY HATCH, and the reason is the shape of the one
+caller that uses it.  A ref is admissible here only when the caller ALREADY HOLDS its
+value before the snapshot exists — not when it merely knows the formula.
+``resolve_workset_logs(..., standalone=True)`` qualifies: a lone box's
+``meta.box.path`` is ``@workset.boxes`` with NO name leaf (the launch floor's own
+standalone formula), and ``workset.boxes`` resolves through this very route, so the
+caller resolves it once and passes the ANSWER.  The same ref in primary or named mode
+does NOT qualify — there ``meta.box.path`` is ``@workset.boxes/@meta.box.name``, and
+``meta.box.name`` is construct-time.  Admitting it there would not refuse; it would
+yield a trailing-separator box root — a syntactically perfect ``/mybox`` that no shape
+check rejects and that then holds data.  Widen this only with a value in hand.
 """
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
 
 from kanibako.settings.agent_config import (
@@ -60,10 +74,13 @@ def _host_ctx() -> ResolveCtx:
 
 def resolve_workset_dir_key(
     workset_root: Path, repoint: str | None, default_leaf: str, *, key: str,
+    extra_refs: Mapping[str, str] | None = None,
 ) -> Path:
     """Resolve the ``workset.<key>`` *repoint* (or its ``<root>/<default_leaf>`` default).
 
     *repoint* is the RAW value as stored: it may carry ``@``-refs, ``$XDG_*`` or ``~``.
+    *extra_refs* maps ref name -> ALREADY-RESOLVED value for refs the caller can answer
+    itself; see the module docstring for why it is not a general widening.
     An unset repoint takes the default leaf under *workset_root*.  Raises
     :class:`~kanibako.settings.settings_resolve.SettingsError`, naming the key, the file
     and the token, when the value cannot be resolved without the launch snapshot.
@@ -94,22 +111,31 @@ def resolve_workset_dir_key(
         )
 
     def lookup(ref: str, chain: tuple[str, ...]) -> str:
-        del chain  # No transitive resolution here: the one referent is a terminal.
+        del chain  # No transitive resolution here: every referent is a terminal.
         if ref == WORKSET_PATH_REF:
             return str(workset_root)
+        if extra_refs is not None and ref in extra_refs:
+            return extra_refs[ref]
+        available = [f"'@{WORKSET_PATH_REF}' (this workset's root)"]
+        available += [f"'@{name}'" for name in (extra_refs or ())]
+        detail = (
+            f"{available[0]} is the only reference available to it"
+            if len(available) == 1
+            else f"only {', '.join(available)} are available to it"
+        )
         raise SettingsError(
             f"'@{ref}' cannot be resolved here: this key is read before the launch "
-            f"snapshot exists, so '@{WORKSET_PATH_REF}' (this workset's root) is the "
-            f"only reference available to it"
+            f"snapshot exists, so {detail}"
         )
 
     try:
         expanded = expand_expr(repoint, space="host", ctx=_host_ctx(), lookup=lookup)
     except SettingsError as exc:
+        usable = ", ".join(f"'@{name}'" for name in (WORKSET_PATH_REF, *(extra_refs or ())))
         raise SettingsError(
             f"workset.{key} is set to {repoint!r} in "
             f"{workset_root / WORKSET_META_FILE}, which cannot be resolved: {exc}. "
-            f"Use an absolute path, '~', '$XDG_*', or '@{WORKSET_PATH_REF}'; a "
+            f"Use an absolute path, '~', '$XDG_*', or {usable}; a "
             f"LITERAL '$', '~' or '@' in a directory name must be "
             f"backslash-escaped."
         ) from exc

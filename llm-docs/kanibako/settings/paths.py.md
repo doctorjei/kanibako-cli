@@ -781,17 +781,27 @@ box's own workset/box tree (never the old shared `@config.data/logs/<id>/` locat
 
 * PRIMARY → the RESOLVED `workset.logs` of the primary root (`std.primary_logs`)
 * NAMED → the RESOLVED `workset.logs` of `proj.group.root`
-* STANDALONE → `@meta.workset.path/box_data/<box>.jsonl` (inside `box_data/`) — ⚑ still COMPOSED
+* STANDALONE → the RESOLVED `workset.logs` of the project root (default `@meta.box.path`, i.e.
+  `box_data/`), read from the root `workset.yaml`
 
 ⚑⚑ **This function is the hub's WRITER, and the MOUNT it must agree with is the spec's own
 spelling** `@workset.logs/@{meta.box.name}.jsonl` (`data/core-defaults.yaml`, the `helpers` table).
-While the PRIMARY and NAMED arms composed `<root>/logs` the two disagreed the instant a user
-repointed `workset.logs`: the mount moved and the writer did not, so the box read an empty file
-forever. That is the split **migration M-14** records, and it is CLOSED for those two arms as of
-2026-08-29. 🛑 **It stays OPEN for STANDALONE**, deliberately: that mode's declared default is
-`@meta.box.path`, itself a ref to `@workset.boxes`, and `settings/workset_dirkeys` refuses a chained
-`@`-ref because it runs before the launch snapshot exists. Expressing it needs a decision about
-chaining in the pre-snapshot resolver, not a leaf swap.
+While an arm COMPOSED its directory the two disagreed the instant a user repointed `workset.logs`:
+the mount moved and the writer did not, so the box read an empty file forever. That is the split
+**migration M-14** records, and it is CLOSED in ALL THREE modes — PRIMARY and NAMED as of
+2026-08-29, STANDALONE as of 2026-08-30. The standalone arm was the hard one: its declared default
+`@meta.box.path` is itself a ref to `@workset.boxes`, which `settings/workset_dirkeys` refuses
+because it runs before the launch snapshot exists. The fix is NOT chaining in the pre-snapshot
+resolver — it is that in standalone, and only there, the caller already HOLDS the answer
+(`meta.box.path | @workset.boxes`, no name leaf), so `resolve_workset_logs(..., standalone=True)`
+resolves `workset.boxes` once and passes it as `extra_refs`. In primary/named the same ref would
+need the construct-time `@meta.box.name` and keeps refusing.
+
+🛑 A repointed standalone `workset.logs` puts the log OUTSIDE `box_data/`, and `box rm --purge`
+tears a standalone box down by removing `box_data/` wholesale — so the log file survives it, the
+same way a repointed vault arm does (`standalone_vault_teardown`). `kanibako clean --purge` unlinks
+the log explicitly through this function and is unaffected. Documented as a retained path in
+MIGRATION.md; do not widen the purge to chase it.
 
 The caller is responsible for guarantee-creating the parent dir before the bind (L7). The box-side
 dest is the PINNED `~/.kanibako/state/helpers.jsonl` (declared in `core-defaults.yaml`), NOT a
@@ -799,9 +809,10 @@ dest is the PINNED `~/.kanibako/state/helpers.jsonl` (declared in `core-defaults
 `kanibako.settings.settings_resolve.BOX_PINNED_ROOT_RELPATH` for why, and
 `box_supervisor.project_pinned_xdg` for the post-boot XDG projection.
 
-The standalone log stays inside the `box_data/` marker dir (settings itself now lives at the root,
-so the log is anchored explicitly under `metadata_path/box_data` rather than `metadata_path`) so the
-whole standalone tree is drop-in portable. For NAMED, the workset root is carried on the project
+The standalone log defaults inside the `box_data/` marker dir (settings itself lives at the root, so
+the default resolves to `metadata_path/box_data` rather than `metadata_path`) so the whole
+standalone tree is drop-in portable unless the user repoints the key. For NAMED, the workset root
+is carried on the project
 group (`root=ws.root`); the `metadata_path.parent.parent` fallback beside it still assumes the
 DEFAULT box layout and is unreachable from `resolve_workset_project`, which always supplies the
 group.

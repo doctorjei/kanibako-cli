@@ -842,11 +842,11 @@ carries that through the bind entry's optional 2nd slot.
 `meta.box.name` resolve to exactly what `helper_log_path(std, proj)` builds (gated by a before/after
 comparison of the resolved bind, PHASE R). ⚑ The `.exists()` gate keys off the PROBED path while the
 emitted host_src is the FORMULA, so the two agree only where the probe resolves the same key. **In
-PRIMARY and NAMED mode it now does** — `paths.helper_log_path` resolves `workset.logs` as of
-2026-08-29, so writer, gate and mount name one file and those arms of **migration M-14** are closed.
-**In STANDALONE it still does not:** that mode's default is `@meta.box.path`, a chained ref to
-`@workset.boxes`, and `settings/workset_dirkeys` refuses a chained `@`-ref because it runs before
-the launch snapshot exists — so a standalone repoint still moves the MOUNT and not the WRITER.
+every mode it now does** — `paths.helper_log_path` resolves `workset.logs` in PRIMARY and NAMED as
+of 2026-08-29 and in STANDALONE as of 2026-08-30, so writer, gate and mount name one file and
+**migration M-14** is closed. The standalone arm resolves its `@meta.box.path` default through
+`resolve_workset_logs(..., standalone=True)`, which hands the pre-snapshot route the already-resolved
+`workset.boxes` (a lone box has no `@meta.box.name` leaf under it).
 
 ⚑ **`helper_sock` is NOT routed:** its host path is the LENGTH-BOUNDED (hashable) socket name
 `bounded_socket_name(<box>-<ws>, run_dir)`, which the spec form `@system.runtime/<box>-<ws>.sock`

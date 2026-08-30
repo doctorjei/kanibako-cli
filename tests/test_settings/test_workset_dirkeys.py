@@ -239,3 +239,61 @@ class TestTheRouteItself:
         assert resolve_workset_dir_key(
             Path("/ws"), "$XDG_DATA_HOME/b", "boxes", key="boxes",
         ).is_absolute()
+
+
+class TestExtraRefsIsNarrow:
+    """``extra_refs`` admits ONLY what the caller passes, and only where it passes it.
+
+    ⚑ The sweep above is the other half of this pair and must stay untouched: it calls
+    every face on the UN-WIDENED route, where ``@meta.box.path`` is one of the
+    ``_UNRESOLVABLE`` poisons.  If widening this route ever made that sweep go green
+    without ``extra_refs``, the refusal would have become a guess — and in primary/named
+    the guess is a trailing-separator box root, not an error anyone would see.
+    """
+
+    #: The one ref a caller supplies today (standalone ``workset.logs``), with a value
+    #: it has already resolved.  The NAME alone buys nothing — the value is the point.
+    _BOX_PATH = {"meta.box.path": "/ws/box_data"}
+
+    def test_a_supplied_ref_resolves(self):
+        assert resolve_workset_dir_key(
+            Path("/ws"), "@meta.box.path/x", "", key="logs",
+            extra_refs=self._BOX_PATH,
+        ) == Path("/ws/box_data/x")
+
+    def test_the_same_ref_still_refuses_without_it(self):
+        with pytest.raises(SettingsError) as excinfo:
+            resolve_workset_dir_key(
+                Path("/ws"), "@meta.box.path/x", "logs", key="logs",
+            )
+        message = str(excinfo.value)
+        assert "meta.box.path" in message
+        assert "workset.logs" in message
+        assert "/ws/workset.yaml" in message
+
+    def test_a_ref_outside_the_supplied_map_still_refuses(self):
+        # Widening for ONE name must not widen for the next one along.
+        with pytest.raises(SettingsError) as excinfo:
+            resolve_workset_dir_key(
+                Path("/ws"), "@config.data/x", "", key="logs",
+                extra_refs=self._BOX_PATH,
+            )
+        message = str(excinfo.value)
+        assert "@config.data" in message
+        # The refusal lists what IS available, supplied refs included.
+        assert WORKSET_PATH_REF in message
+        assert "meta.box.path" in message
+
+    def test_the_workset_root_ref_survives_the_widening(self):
+        assert resolve_workset_dir_key(
+            Path("/ws"), f"@{WORKSET_PATH_REF}/logs", "", key="logs",
+            extra_refs=self._BOX_PATH,
+        ) == Path("/ws/logs")
+
+    def test_a_supplied_value_is_a_leaf_not_a_second_expansion_pass(self):
+        # ⚑ ``expand_expr`` never re-scans a substituted value; a host dir whose NAME
+        # contains an ``@`` must survive verbatim rather than being resolved again.
+        assert resolve_workset_dir_key(
+            Path("/ws"), "@meta.box.path/x", "", key="logs",
+            extra_refs={"meta.box.path": "/store/@config.data"},
+        ) == Path("/store/@config.data/x")
