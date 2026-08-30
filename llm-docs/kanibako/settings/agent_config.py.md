@@ -196,6 +196,64 @@ OPPOSITE sides.** This is why the test cannot be a plain first-character check:
 So a leading `/` is tested AFTER unescaping, while the token prefixes count only when they are NOT
 escaped. That asymmetry is the whole content of the function.
 
+## Stored path values — [R147]'s predicate and its refusal
+
+A path key's STORED value must say ON ITS OWN where it points ([R147], 2026-08-29): a bare relative
+is AMBIGUOUS and is REFUSED rather than anchored. `is_unambiguous_path_value` is that test and
+`ambiguous_path_value_error` is the wording every seam refuses with. Both live here so the rule has
+ONE predicate and ONE message wherever it fires: `config_interface._bare_relative_path_error` at set
+time,
+`paths._refuse_bare_relative` on the Layer-1/Layer-2 read, and
+`workset_dirkeys.resolve_workset_dir_key` on the workset dir keys.
+
+### `is_unambiguous_path_value(value)`
+
+True for an absolute path, `~`, an `@`-ref, or a `$XDG_*` variable. Anything else — a bare leaf,
+`./x`, `../x` — is ambiguous.
+
+⚑⚑ **THE TEST IS ON THE STORED SPELLING, BEFORE EXPANSION, and that is the load-bearing part.**
+[R147] rules on what is a legal value to have WRITTEN, so `$XDG_DATA_HOME/kanibako` is legal even in
+an environment where that variable answers something odd. Testing the EXPANDED value would refuse it
+there — reporting a KEY defect for an ENVIRONMENT one, with a "did you mean" line that pastes the
+token back into itself. A SOURCE that expands to a relative path is a different rule at a different
+layer (`settings_expand._refuse_relative_host_src`), with its own message; the two are not one check
+and must not be merged.
+
+⚑ **It is NARROWER than `is_self_resolving`, on purpose, and the difference is `$VAR`.** That
+predicate rules on a BIND SOURCE, where a declaration may name any variable the launch namespace
+supplies. This one rules on a path a USER typed, and the keyspace's non-XDG variables (`$AGENT`,
+`$WORKSET`) expand to a bare NAME — so `$AGENT/logs` is exactly as relative as `logs`. A `$` is
+therefore PARSED (`settings_resolve.match_var`) and the variable's own name tested for the `XDG_`
+prefix; a malformed `$…` answers False rather than raising. The leading-escape cases fall the way
+they do above: `\/foo` unescapes to an absolute path, `\~foo` to a plain relative dir.
+
+### `ambiguous_path_value_error(key, value, ...)`
+
+⚑ **Naming BOTH readings is the rule, not decoration.** The user had two plausible meanings that
+land in DIFFERENT directories, and a message that only said "be absolute" would move the guess onto
+the user instead of removing it. The text therefore prints the *anchor* reading and the
+run-from-directory reading as two resolved paths, one per line, before naming the legal forms.
+
+*anchor* is the RESOLVED other candidate; *anchor_ref* is that root's legal spelling
+(`@meta.workset.path`, `$XDG_DATA_HOME`), offered so the user can paste the fix; *where* names the
+file the value was read from, when the seam has one. ⚑ An UNRESOLVABLE anchor is passed as its own
+ref spelling with *anchor_ref* left unset — the reading is still named, and in a pasteable form,
+without the line saying the same thing twice.
+
+`anchor_label` introduces that reading, and the two constants are NOT interchangeable.
+`DEFAULT_ROOT_LABEL` (*"this key's default root"*) is for a key whose own declared default sits
+under the anchor: every Layer-1/Layer-2 path key and every workset dir key. `DECLARATION_ROOT_LABEL`
+(*"this key's scope root"*) is for a path key that declares no root of its own — `box.images_store`
+(runtime-probed from podman) and the whole `secret_path.<VAR>` family — whose other reading is the
+spec §2a DECLARATION ROOT and is introduced as one (`config_keys.path_key_anchor` picks between
+them). ⚑ **The label is not decoration either:** calling a declaration root "this key's default
+root" would tell the reader a default exists to fall back to, which is the single thing a message
+about an unset, ambiguous value must not invent.
+
+⚑ `secret_path.<VAR>` reaches this refusal at SET time only. At launch it is refused by
+`settings_launch`'s own §2a SOURCE message, because it is the one path key with no declared default
+— so there is no second candidate anchor for a two-readings message to name.
+
 ---
 
 ## Relocation pass, 2026-08-20
