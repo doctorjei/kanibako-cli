@@ -149,11 +149,13 @@ bearing one as a reference expression rather than a literal.
    literal scalar to type-check: its terminal type is only known after build, so it is skipped
    here (§0 again).
 
-⚑ **How step 3 detects failure, and why it is not a prefix match.** This mirrors the live setter in
-`set_config_value`: for a TYPED key — `KEY_TYPES.get(key)` truthy — `_coerce_value` returns a `str`
-ONLY when coercion FAILED; success yields the typed Python value, e.g. a real `bool`. Since the
-branch already gates on `key in KEY_TYPES`, any `str` coming back IS the H2 coercion-failure
-signal, and the returned string is the message. No brittle prefix matching is needed or wanted.
+⚑ **How step 3 detects failure, and why it is neither a prefix match nor a type sniff.** This
+mirrors the live setter in `set_config_value`: `_coerce_value` returns a `CoercionError` and nothing
+else on failure, so the check is `isinstance(coerced, CoercionError)` and the carried `.message` is
+what the user reads. It USED to read "a typed key gave back a `str`, so coercion failed", which was
+true only while every declared type coerced to a NON-string. `KEY_TYPES` carries `path` since
+[R147], a path stays a raw string, and under the old test a legal path value would have been handed
+straight back to the user as its own error message.
 
 ---
 

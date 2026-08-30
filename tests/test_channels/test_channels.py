@@ -207,7 +207,7 @@ class TestWorksetChannelPaths:
         assert named_proj.group is not None
         settings = named_proj.group.root / "workset.yaml"
         data = load_doc(settings)
-        data.setdefault("workset", {})["channelroot"] = "comms"
+        data.setdefault("workset", {})["channelroot"] = "@meta.workset.path/comms"
         dump_doc(settings, data)
 
         wch = channels.workset_channel_paths(named_proj, std)

@@ -1318,11 +1318,15 @@ class TestConsolidateResolvesTheRootsOwnKeys:
         assert (root / "workspace" / "file.txt").is_file()
 
     def test_in_root_repoint_keeps_the_directory_that_holds_the_arm(self, env, capsys):
-        """``vault_ro: store/ro`` makes the root child ``store`` — a name no list holds.
-        The ANCESTOR test is what keeps it; an equality test would sweep it."""
+        """``vault_ro: @meta.workset.path/store/ro`` makes the root child ``store`` — a
+        name no list holds.  The ANCESTOR test is what keeps it; an equality test would
+        sweep it.  ⚑ The repoint carries the ``@``-ref because [R147] refuses a bare
+        relative; the directory it names is the same one ``store/ro`` used to reach."""
         root = _default_with_workset_keys(
             env, "inroot",
-            {"vault_ro": "store/ro", "vault_rw": "store/rw", "canon": "kanon"},
+            {"vault_ro": "@meta.workset.path/store/ro",
+             "vault_rw": "@meta.workset.path/store/rw",
+             "canon": "@meta.workset.path/kanon"},
         )
         (root / "store" / "ro").mkdir(parents=True)
         (root / "store" / "ro" / "SECRET").write_text("RO")
@@ -1342,7 +1346,9 @@ class TestConsolidateResolvesTheRootsOwnKeys:
     def test_a_repointed_keep_is_reported_and_names_the_key(self, env, capsys):
         """[R144] — a keep that cannot name the path as the user's is just a leak.  The
         DEFAULT layout's keeps stay silent; only what the user repointed is announced."""
-        root = _default_with_workset_keys(env, "reported", {"vault_ro": "store/ro"})
+        root = _default_with_workset_keys(
+            env, "reported", {"vault_ro": "@meta.workset.path/store/ro"},
+        )
         (root / "store" / "ro").mkdir(parents=True)
 
         _convert_to_standalone_in_place(env, root)
@@ -1397,9 +1403,13 @@ class TestConsolidateResolvesTheRootsOwnKeys:
         assert not (root / "workspace").exists()
 
     def test_a_workspaces_key_at_the_root_consolidates_nothing(self, env):
-        """``workspaces: .`` means the workspace already IS the root — there is nothing
-        to consolidate, and moving each child onto itself would raise."""
-        root = _default_with_workset_keys(env, "atroot", {"workspaces": "."})
+        """``workspaces: @meta.workset.path`` means the workspace already IS the root —
+        there is nothing to consolidate, and moving each child onto itself would raise.
+        ⚑ It used to be spelled ``.``, which [R147] refuses along with every other bare
+        relative; the ``@``-ref names the same directory and names it unambiguously."""
+        root = _default_with_workset_keys(
+            env, "atroot", {"workspaces": "@meta.workset.path"},
+        )
         (root / "keepme").mkdir()
 
         _convert_to_standalone_in_place(env, root)
@@ -1468,7 +1478,9 @@ class TestConsolidateResolvesTheRootsOwnKeys:
             leaf = key.split(".", 1)[1]
             root = tmp_home / f"probe_{leaf}"
             root.mkdir()
-            dump_doc(root / "workset.yaml", {"workset": {leaf: f"moved_{leaf}"}})
+            dump_doc(root / "workset.yaml", {
+                "workset": {leaf: f"@meta.workset.path/moved_{leaf}"},
+            })
             answered = {
                 k: (p, repointed)
                 for k, p, repointed in _standalone_root_artifacts(root)

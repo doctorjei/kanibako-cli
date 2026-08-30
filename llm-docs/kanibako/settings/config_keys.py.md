@@ -70,8 +70,8 @@ leaves are routed and known now, exactly like the `workset.channels.*` six.
 ## The `workset.channels.*` family
 
 All six declared leaves (`common`, `chat`, `share`, `broadcast`, `mailboxes`, `share_global` —
-`settings_keyspace.DECLARED_WORKSET_CHANNEL_LEAVES`, spec §2c) are `set: cli+file` STRING paths with
-no `KEY_TYPES` entry, routed to the SAME `workset: channels:` nested slot, which is where
+`settings_keyspace.DECLARED_WORKSET_CHANNEL_LEAVES`, spec §2c) are `set: cli+file` STRING paths
+(`KEY_TYPES` type `path` — stored raw, never coerced), routed to the SAME `workset: channels:` nested slot, which is where
 `settings_assemble._file_partial` reads the whole table into the cascade.
 
 ⚑ Three of them — `broadcast`, `mailboxes`, `share_global` — were absent from `KNOWN_CONFIG_KEYS`
@@ -264,8 +264,8 @@ per-agent override is the persona key `agent.<agent>.<key>` (spec §2d).
 
 * `box.images_store` — the host image-store root behind the shared-images bind (spec §2b; B3): a
   USER key whose DEFAULT is the runtime-probed podman graphroot, injected as a floor scalar at the
-  launch seam (`core_defaults.image_default_categories`). A STRING path — no `KEY_TYPES` entry (only
-  bools are coerced, cf. `box.share_images`).
+  launch seam (`core_defaults.image_default_categories`). A STRING path — `KEY_TYPES` type `path`, so stored raw
+  (only bools are coerced, cf. `box.share_images`) and swept by [R147]'s bare-relative refusal.
 * `box.enable_vault` — ⚑ `mode` is NO LONGER a settable config-set key (block B1, spec §2b / §0):
   the project mode is the RO identity anchor `meta.box.mode` (surfacing the runtime-resolved
   `@meta.runtime.project_type`), set by the construct-time/bootstrap layer (`[project].mode` at box
@@ -294,19 +294,19 @@ per-agent override is the persona key `agent.<agent>.<key>` (spec §2d).
   them SETTABLE: they are per-workset REPOINTABLE dirs (the same nested-settings STRING-path keys as
   `workset.auth.share_allowed`/`workset.registry`). A ``config set workset workset.boxes=…`` writes
   an EXPLICIT workset-level value that WINS over the base floor default by cascade precedence
-  (workset ⊐ base). NO `KEY_TYPES` entry (all STRING paths, no bool coercion); routed to the
+  (workset ⊐ base). `KEY_TYPES` type `path` (STRING paths, no coercion); routed to the
   ``workset:`` nested slot. Downward-default-able from a containing scope per R2.
 * `workset.workspaces` / `workset.channelroot` — the two RESOLVED workset dir keys (§3.3: real and
   USED; manifest ``set: cli+file``). Declared in the keyspace and consumed live
   (`resolve_workset_workspaces` / `resolve_workset_channelroot` read the ``workset:`` nested slot this
   route writes), but absent from the set — so ``workset set workset.workspaces=…`` refused with
   "unknown config key" and a repoint required a settings-file edit (bifrost A1). Same shape as the
-  sibling anchors: STRING paths (no `KEY_TYPES`), routed to the ``workset:`` nested slot.
+  sibling anchors: STRING paths (`KEY_TYPES` type `path`), routed to the ``workset:`` nested slot.
 * `workset.template` — per-workset template SOURCE (template-trio, spec §2c; Q3 2026-07-09). A NORMAL
   settable STRING-path key (default ``@meta.workset.path/template``); the layer-3 seed
   ``workset.seeded = {~/: (@workset.template/box/home,)}`` reads it, so repointing this key reroutes
   the workset template seed. Routed to the ``workset:`` nested slot (same pattern as
-  `workset.registry`); a STRING path (no `KEY_TYPES`). STANDALONE has no workset tier (source
+  `workset.registry`); a STRING path (`KEY_TYPES` type `path`). STANDALONE has no workset tier (source
   `<None>`).
 * `workset.canon` — per-workset CANON CONTRIBUTION root (spec §2c ALL PROJECTS). Same shape and same
   reason as `workset.template`: a NORMAL settable STRING-path key (default
@@ -385,23 +385,23 @@ Per-entry notes displaced from the table:
   create) and derives from `box_resolve` at resolve time.
 * `workset.registry` (settings-conformance P3) — the per-workset registry file location, routed to
   the ``workset:`` table nested slot ``registry`` (same nested-settings pattern as `box.image`). A
-  STRING path — NO `KEY_TYPES` entry (no bool coercion); written sparsely on set. ADDITIVE: no
+  STRING path — `KEY_TYPES` type `path` (no coercion); written sparsely on set. ADDITIVE: no
   consumer wiring yet (P4/P5).
 * The **workset-scope LAYOUT anchors** (P6a) — the per-workset REPOINTABLE dirs floor-materialized in
   `workset_anchor_floor`, now settable. Each routes to its nested ``workset.<...>`` slot in the
   command-scope settings file — the SAME nested-settings pattern as `workset.auth.share_allowed` /
   `workset.registry` — so a set-value lands where `assemble_levels` mirrors it and OUT-PRECEDES the
-  base floor default at launch. STRING paths (no `KEY_TYPES`).
+  base floor default at launch. STRING paths (`KEY_TYPES` type `path`).
 * `workset.workspaces` / `workset.channelroot` (§3.3, bifrost A1) — routed to the ``workset:`` nested
   slot, EXACTLY where `resolve_workset_workspaces` / `resolve_workset_channelroot` (and
-  `resolve_workset_registry_path`'s sibling pattern) read the repoint back. STRING paths (no
-  `KEY_TYPES`).
+  `resolve_workset_registry_path`'s sibling pattern) read the repoint back. STRING paths
+  (`KEY_TYPES` type `path`).
 * `workset.template` (template-trio, spec §2c; Q3) — the layer-3 seed source, routed to the
-  ``workset:`` table slot (same nested-settings pattern as `workset.registry`). STRING path (no
-  `KEY_TYPES` / no bool coerce).
+  ``workset:`` table slot (same nested-settings pattern as `workset.registry`). STRING path
+  (`KEY_TYPES` type `path`, never coerced).
 * `workset.canon` / `box.canon` — the per-scope CANON CONTRIBUTION roots (spec §2c/§2b), routed
   exactly like `workset.template` / `box.image` — the ``workset:`` and ``box:`` table slots. STRING
-  paths (no `KEY_TYPES` / no bool coerce).
+  paths (`KEY_TYPES` type `path`, never coerced).
 * `workset.kuid` / `workset.skip_kuid_check` (P6d) — the same nested-settings pattern as
   `workset.registry`, routed to the ``workset:`` table slot. `workset.kuid` is a STRING (no
   `KEY_TYPES` entry); `workset.skip_kuid_check` is a bool (see `KEY_TYPES`). A standalone box's kuid
@@ -411,19 +411,57 @@ Per-entry notes displaced from the table:
   — the bare key routes through `_is_agent_setting` to the `agent.default` tier, per-agent via the
   `_PERSONA_STATE_LEAVES` form ``agent.<agent>.allow_helpers``, exactly like `model`.
 
-## `KEY_TYPES` — the values coerced before writing (the H2 fix)
+## `KEY_TYPES` — the DECLARED TYPE of every key the CLI acts on the type of
 
-Boolean keys parse true/false/1/0/yes/no (case-insensitive) to a Python bool so the loader reads back
-a real bool (``set box.share_images false`` actually disables it). Build this extensibly — later
-phases add `vault_enabled` etc. The truth table itself lives in `config` (shared with the box.meta
-writer); see `config.coerce_bool`.
+Two kinds live in one table, and one table is the point: a key has ONE declared type, the registry
+column that states it is ONE column, and two code tables would be two answers to "what is this key".
 
-NOTE: the agent-scope scalars (`allow_helpers` / `access`) are NOT here — the bare key routes through
-`_is_agent_setting` (verbatim string write, like `model`) and the launch reader coerces at read; this
-table only governs the ROUTED `_KEY_ROUTES` writer + the category `validate_config_set` path.
-`access` is an ENUM, not a bool: its set-time guard is :func:`access_value_error` (which REFUSES an
-unknown value outright rather than coercing it), not a `KEY_TYPES` coercion. `workset.skip_kuid_check`
-(P6d) gates the advisory invalid-KUID warning (default true, set via config).
+**`bool`** — parses true/false/1/0/yes/no (case-insensitive) to a Python bool so the loader reads
+back a real bool (``set box.share_images false`` actually disables it). The truth table itself lives
+in `config` (shared with the box.meta writer); see `config.coerce_bool`.
+
+**`path`** — a host PATH, added 2026-08-29 with [R147]'s set-time half. It is **not** coerced: the
+file keeps the raw spelling, tokens and all (spec §0). What the type governs is the BARE-RELATIVE
+REFUSAL — `is_path_valued_key` reads this table, and `set_config_value`'s preamble refuses a value
+that does not say on its own where it points. The `system.*` and `config.*` rows are DERIVED from
+`paths_defaults`' two declared-default tables (P13), so a path key added to either arrives here with
+no edit; the `workset.*` and `box.*` rows are spelled out because no live table enumerates them.
+
+⚑ **The PARAMETRIC path keys are not spellable here** — `agent.<node>.{template,canon}`, the bare
+any-agent spelling the CLI serves for the same two leaves, and the whole `secret_path.<VAR>` family
+have no fixed canonical string. `is_path_valued_key` is the predicate to ask; this table is only its
+first term.
+
+⚑ **`_coerce_value` signals failure with `CoercionError`, not with a bare `str`.** Its two callers
+used to test ``isinstance(result, str) and KEY_TYPES.get(key)`` — "a typed key gave back a string, so
+coercion failed" — which was true only while every declared type coerced to a NON-string. `path` does
+not, and a legal path value would have been handed back to the user as its own error message.
+
+NOTE: the agent-scope BEHAVIOR scalars (`allow_helpers` / `access`) are NOT here — the bare key
+routes through `_is_agent_setting` (verbatim string write, like `model`) and the launch reader
+coerces at read. `access` is an ENUM, not a bool: its set-time guard is :func:`access_value_error`
+(which REFUSES an unknown value outright rather than coercing it), not a `KEY_TYPES` coercion.
+`workset.skip_kuid_check` (P6d) gates the advisory invalid-KUID warning (default true, set via
+config).
+
+## `is_path_valued_key` / `path_key_anchor` — [R147] at set time
+
+`is_path_valued_key` answers "is this key's value a host path", over the fixed `KEY_TYPES` rows plus
+the three parametric families. `path_key_anchor` answers the second half the refusal needs: the ROOT
+the user might have meant INSTEAD of the cwd, plus the LABEL that introduces it.
+
+The anchor is chosen so a key cannot get two answers at its two ends. A Layer-1/Layer-2 key takes its
+own declared default's leading token, exactly as `paths._refuse_bare_relative` derives it. Every
+`workset.*` path key takes `@meta.workset.path`, which is what `workset_dirkeys.resolve_workset_dir_key`
+names for all of them — the six `channels.*` leaves included, because `channels.py` resolves those
+through that same seam rather than through `@workset.channelroot`. Everything else takes its spec §2a
+DECLARATION ROOT.
+
+⚑ **The label is part of the answer, not decoration.** `box.images_store` is probed from podman at
+runtime and `secret_path.<VAR>` declares nothing at all, so for those the anchor is a scope root and
+is introduced as one. Calling a declaration root "this key's default root" would tell a reader a
+default exists to fall back to, which is the single thing a message about an unset ambiguous value
+must not invent.
 
 ## The scope-direction guard (block B4, spec §0 directional view/set + §2a)
 
@@ -635,12 +673,13 @@ by name — and every key that still reaches that function is a SCALAR, for whic
 In source order. :data:`SETUP_MARKER_KEY` and the deleted `system_key_refusal` are documented
 under **Functions**, above.
 
-```_coerce_value(canonical: str, value: "str | None") -> object | str | None```
+```_coerce_value(canonical: str, value: "str | None") -> object | None```
 Coerce *value* to the typed form declared for *canonical* in `KEY_TYPES`.
 
-Returns the typed Python value (e.g. a real `bool`) on success, or an ``"Error: ..."`` string when a
-bool key is given an unparseable value. Scalars (no `KEY_TYPES` entry) pass through unchanged as the
-raw string. A `None` *value* is an explicit present-None request (`--null`) and is never coerced.
+Returns the typed Python value (e.g. a real `bool`) on success, or a `CoercionError` when a bool key
+is given an unparseable value. A `path`-typed value and an untyped scalar both pass through unchanged
+as the raw string — the file keeps the spelling the user wrote. A `None` *value* is an explicit
+present-None request (`--null`) and is never coerced.
 
 ```_scope_direction_error(canonical: str, command_scope: "ConfigLevel | None") -> str | None```
 Enforce the §0 directional-WRITE rule for `config set` (block B4).

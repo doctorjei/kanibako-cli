@@ -1238,6 +1238,47 @@ def _stored_doc(agent_env):
     return load_doc(agent_settings_path(agents_dir(agent_env), "claude"))
 
 
+class TestAgentSetRefusesABareRelativePath:
+    """[R147] reaches ``agent set`` BECAUSE the verb routes through ``set_config_value``.
+
+    ⚑ THIS IS THE PAYOFF OF THAT ROUTING, pinned at the CLI surface rather than at the
+    engine: while this verb had its own writer straight to ``write_leaf``, no set-time
+    rule saw the value at all — the same class of hole that let a dangling ``@``-ref
+    store at rc 0.  ``canon`` and ``template`` are the two path-valued agent leaves.
+    ⚑ MUTATION: restore a direct ``write_leaf`` for these two leaves and both rows go
+    green-with-a-stored-value; the engine-level sweep in
+    ``tests/test_settings/test_path_key_set_refusal.py`` stays green throughout, which is
+    exactly why this row is here and not only there.
+    """
+
+    @pytest.mark.parametrize("leaf", ("canon", "template"))
+    def test_a_bare_relative_is_refused_and_the_file_is_unchanged(
+        self, leaf, agent_env, capsys,
+    ):
+        from kanibako.commands.agent_cmd import run_set
+
+        before = _stored_doc(agent_env)
+        rc = run_set(argparse.Namespace(agent_id="claude", key_value=f"{leaf}=mydir"))
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert "BARE RELATIVE" in err
+        # Both readings named — the refusal removes the guess rather than relaying it.
+        assert str(Path.cwd() / "mydir") in err
+        assert "@meta.agent.claude.path" in err or "/mydir" in err
+        assert _stored_doc(agent_env) == before
+
+    @pytest.mark.parametrize("value", ("/srv/x", "~/x", "$XDG_DATA_HOME/x",
+                                       "@meta.agent.claude.path/x"))
+    def test_the_legal_spellings_still_write(self, value, agent_env, capsys):
+        """⚑ THE OVER-FIRE GUARD. A refusal one notch too wide here bans the ``@``-ref
+        the message itself offers as the cure."""
+        from kanibako.commands.agent_cmd import run_set
+
+        rc = run_set(argparse.Namespace(agent_id="claude", key_value=f"canon={value}"))
+        assert rc == 0, capsys.readouterr().err
+        assert _stored_doc(agent_env)["self"]["canon"] == value
+
+
 class TestAgentVerbKeyspaceGate:
     """D-5: ``agent set`` had NO keyspace validation and stored whatever it was handed.
 

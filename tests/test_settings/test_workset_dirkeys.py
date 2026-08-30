@@ -39,6 +39,11 @@ _UNRESOLVABLE = (
     "$WORKSET/x",
 )
 
+# ⚑ Every value shape [R147] calls AMBIGUOUS: it resolves fine, but to two different
+# directories depending on an anchor nobody stated.  Distinct from ``_UNRESOLVABLE``
+# above — those refuse because the seam CANNOT answer, these because it MUST NOT.
+_AMBIGUOUS = ("comms", "sub/dir", "./here", "../sibling")
+
 
 class _AnyLeaf(dict):
     """A ``workset:`` table that answers the SAME value for EVERY leaf name.
@@ -113,8 +118,10 @@ class TestNoResolverLeaksAToken:
             assert poison in message, f"{label}: refusal does not quote the value"
             assert "/ws/workset.yaml" in message, f"{label}: refusal names no file"
 
+    # ⚑ ``leaf`` USED TO BE IN THIS LIST and is now in ``_AMBIGUOUS`` below: [R147]
+    # made a bare relative a REFUSAL, so it cannot also be a value that resolves.
     @pytest.mark.parametrize(
-        "value", ["@meta.workset.path/leaf", "$XDG_DATA_HOME/leaf", "~/leaf", "leaf"]
+        "value", ["@meta.workset.path/leaf", "$XDG_DATA_HOME/leaf", "~/leaf"]
     )
     def test_resolvable_value_leaves_no_token_behind(self, value):
         for label, resolver in _discover_resolvers().items():
@@ -127,6 +134,26 @@ class TestNoResolverLeaksAToken:
         for label, resolver in _discover_resolvers().items():
             resolved = str(resolver(Path("/ws"), None))
             assert not any(c in resolved for c in "@$~"), f"{label}: {resolved}"
+
+
+class TestNoResolverAnchorsAnAmbiguousValue:
+    """[R147] over EVERY discovered resolver, not over a list of key names.
+
+    The twin of :class:`TestNoResolverLeaksAToken`: that one sweeps values this seam
+    cannot resolve, this one sweeps values it MUST NOT resolve.  A tenth workset dir
+    key added tomorrow is covered the moment its resolver exists.
+    """
+
+    @pytest.mark.parametrize("value", _AMBIGUOUS)
+    def test_bare_relative_refuses_rather_than_anchoring(self, value):
+        for label, resolver in _discover_resolvers().items():
+            with pytest.raises(SettingsError) as excinfo:
+                resolver(Path("/ws"), _poisoned(value))
+            message = str(excinfo.value)
+            assert value in message, f"{label}: refusal does not quote the value"
+            # BOTH readings, spelled out — the whole point of the refusal ([R147]).
+            assert str(Path("/ws") / value) in message, f"{label}: no workset reading"
+            assert str(Path.cwd() / value) in message, f"{label}: no cwd reading"
 
 
 class TestEveryFaceRoutesThroughTheOneResolver:
@@ -167,10 +194,19 @@ class TestTheRouteItself:
             Path("/ws"), "/elsewhere/boxes", "boxes", key="boxes",
         ) == Path("/elsewhere/boxes")
 
-    def test_relative_repoint_anchors_under_the_root(self):
-        assert resolve_workset_dir_key(
-            Path("/ws"), "sub/dir", "boxes", key="boxes",
-        ) == Path("/ws/sub/dir")
+    def test_bare_relative_repoint_is_refused_naming_both_readings(self):
+        # ⚑ INVERTED, NOT DELETED, by [R147] (2026-08-29).  It used to assert
+        # ``== Path("/ws/sub/dir")``.  The reason to set one of these keys at all is
+        # to move the directory OFF the workset root, so anchoring there assumes the
+        # very intent the user is overriding — and a wrong guess is not a confusing
+        # message, it is data written to the wrong directory.
+        with pytest.raises(SettingsError) as excinfo:
+            resolve_workset_dir_key(Path("/ws"), "sub/dir", "boxes", key="boxes")
+        message = str(excinfo.value)
+        assert "/ws/sub/dir" in message
+        assert str(Path.cwd() / "sub/dir") in message
+        assert "workset.boxes" in message
+        assert "/ws/workset.yaml" in message
 
     def test_embedded_ref_resolves_mid_path(self):
         assert resolve_workset_dir_key(

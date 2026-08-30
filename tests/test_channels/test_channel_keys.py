@@ -101,7 +101,7 @@ class TestWorksetLocalLeafRepoints:
     def test_channelroot_repoint_moves_the_whole_family(self, named_proj, std):
         """The pre-existing behaviour, kept honest: the leaves follow their root."""
         ws_root = named_proj.group.root
-        _repoint(ws_root, "workset.channelroot", "comms")
+        _repoint(ws_root, "workset.channelroot", "@meta.workset.path/comms")
         wch = channels.workset_channel_paths(named_proj, std)
         assert wch is not None
         assert wch.root == ws_root / "comms"
@@ -169,10 +169,30 @@ class TestWorksetLocalLeafRepoints:
         assert "workset.channels.chat" in str(exc.value)
         assert "@config.registry" in str(exc.value)
 
-    def test_a_relative_repoint_anchors_at_the_workset_root(self, named_proj, std):
-        """The ONE pre-snapshot grammar, unchanged: relative anchors at the root."""
+    def test_a_bare_relative_repoint_is_REFUSED_naming_both_readings(
+        self, named_proj, std,
+    ):
+        """[R147]: the six channel leaves route through the same one resolver, so the
+        ambiguity refusal reaches them by the same seam the token refusal above does.
+
+        ⚑ INVERTED, NOT DELETED: this used to assert ``wch.chat == ws_root / "talk"``
+        under the heading "the ONE pre-snapshot grammar, unchanged".  The grammar IS
+        still one — the root-relative reading just has to be SPELLED now.
+        """
+        from kanibako.settings.settings_resolve import SettingsError
+
         ws_root = named_proj.group.root
         _repoint(ws_root, "workset.channels.chat", "talk")
+        with pytest.raises(SettingsError) as exc:
+            channels.workset_channel_paths(named_proj, std)
+        message = str(exc.value)
+        assert "workset.channels.chat" in message
+        assert str(ws_root / "talk") in message
+        assert str(Path.cwd() / "talk") in message
+
+    def test_the_root_relative_reading_stays_expressible(self, named_proj, std):
+        ws_root = named_proj.group.root
+        _repoint(ws_root, "workset.channels.chat", "@meta.workset.path/talk")
         wch = channels.workset_channel_paths(named_proj, std)
         assert wch is not None
         assert wch.chat == ws_root / "talk"

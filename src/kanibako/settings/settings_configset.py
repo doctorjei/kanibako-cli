@@ -13,7 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable, Union
 
-from kanibako.settings.config_keys import KEY_TYPES, _coerce_value
+from kanibako.settings.config_keys import KEY_TYPES, CoercionError, _coerce_value
 from kanibako.settings.settings_resolve import SettingsError, match_ref, match_var
 
 __all__ = [
@@ -128,9 +128,11 @@ def validate_config_set(
     #    value has no terminal type until build, so it is NOT type-checked here.
     if key in KEY_TYPES and not (ref_names or var_names):
         coerced = _coerce_value(key, value)
-        # ⚑ For a TYPED key ``_coerce_value`` returns a ``str`` ONLY when coercion FAILED
-        # (success yields the typed value), so any ``str`` here IS the H2 failure signal.
-        if isinstance(coerced, str) and KEY_TYPES.get(key):
-            return Error(f"'{key}': {coerced}")
+        # ⚑ THE FAILURE IS A TYPE, NOT A STRING. This used to read "a typed key gave back
+        # a ``str``, so coercion failed" — true only while every declared type coerced to
+        # a NON-string. ``path`` does not, and a legal path value would have been reported
+        # as its own error message.
+        if isinstance(coerced, CoercionError):
+            return Error(f"'{key}': {coerced.message}")
 
     return OK

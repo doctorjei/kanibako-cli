@@ -65,8 +65,10 @@ class TestResolveStandaloneProject:
     ):
         """A set ``workset: {workspaces: …}`` in the ROOT workset.yaml
         repoints the standalone workspace (ruled 10, 2026-08-02: the spec's
-        "changeable from workset level").  A relative repoint anchors under
-        the root, matching the sibling workset dir-key resolvers."""
+        "changeable from workset level").  ⚑ The repoint is spelled
+        ``@meta.workset.path/code`` because [R147] refuses a BARE relative; it
+        used to read ``"code"``, and the root-relative reading it meant is the
+        one this spelling states."""
         from kanibako.settings.config_io import dump_doc, load_doc
 
         resolve_standalone_project(
@@ -74,7 +76,7 @@ class TestResolveStandaloneProject:
         )
         settings = project_dir.resolve() / "workset.yaml"
         data = load_doc(settings)
-        data.setdefault("workset", {})["workspaces"] = "code"
+        data.setdefault("workset", {})["workspaces"] = "@meta.workset.path/code"
         dump_doc(settings, data)
 
         proj = resolve_standalone_project(std, config, str(project_dir))

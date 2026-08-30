@@ -108,6 +108,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   error already name their own file and location. A run with no settings error prints no section
   at all.
 
+- **A path setting written as a bare relative path is now refused instead of being anchored
+  somewhere.** `workset.channelroot: comms` used to mean *under the workset root* for the workset
+  directory keys, and *under whatever directory you happened to run the command from* for every
+  other path key — two answers to one question, and neither of them stated anywhere you would see
+  it. Both readings are defensible, and that is exactly the problem: the reason to set one of these
+  keys at all is to move the directory *off* its default, so "keep it with the workset" assumes the
+  very intent you are overriding. A wrong guess here does not produce a confusing message; it
+  produces a directory that gets created in the wrong place and then holds your data. Every
+  path-typed key now requires a value that says on its own where it points — an absolute path,
+  `~/…`, `$XDG_*/…`, or an `@`-ref — and a bare relative is refused with **both readings spelled
+  out**, so you can see the two directories and say which one you meant. The root-relative reading
+  is still expressible: `@meta.workset.path/comms` *is* it, said out loud. This also closes a mount
+  hole, because a bind source such as `@box.canon/handbook` is self-resolving where it is declared
+  and only becomes relative once the key is read — and podman reads a mount source beginning with
+  neither `.` nor `/` as the name of a *named volume*, so a box would have quietly received an
+  empty volume in place of the directory you pointed at. ⚠️ **If you had set one of these keys to
+  a bare relative path, kanibako now refuses rather than guessing** — see `MIGRATION.md`, *A bare
+  relative path in a settings key is refused*, for the four legal spellings and how to pick one.
+
+- **…and `set` refuses it too, so the value never reaches the file.** The refusal above is what
+  you get when kanibako *reads* a settings file, which is the right place to catch a value you
+  hand-edited in — but it meant `kanibako workset set workset.channelroot=comms` still succeeded
+  at exit 0, wrote the ambiguous value, and only failed the next time anything read it. Every set
+  route now refuses first: `system set`, `workset set`, `box set`, `agent set` and a
+  `pref.<target>` request naming a path key all exit **1** with the same message naming the same
+  two readings, and nothing is written. `secret_path.<VAR>` is covered at every scope. ⚠️ **A
+  script that sets a path key to a bare relative path will now stop at that line instead of
+  carrying on** — and the same script fixed to the `@`-ref spelling works, which it did not
+  before: `@meta.workset.path/comms` and `@meta.box.path/canon` are the spellings this refusal
+  offers as the cure, and `set` used to reject them as dangling references because the set-time
+  check could not see the workset or box root. It can now.
+
 - **Repointing `workset.boxes` or `workset.logs` now actually moves the box store and the helper
   logs.** Both are settings you have always been allowed to write, and until now kanibako only
   half-honoured them. It would *find* a workset whose store you had moved — the directory walk that
@@ -547,9 +579,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   left your vault exactly where it had been. A refusal would have been kinder than that: a refusal
   confesses, while a value that is accepted teaches you the key works. Both keys now resolve
   through the same route the other workset directory keys use, so they accept the same values
-  those do — an absolute path, a path relative to the workset root, `~`, `$XDG_*`, or
-  `@meta.workset.path` — and a value needing anything else is refused by name rather than becoming
-  a directory called `@config.registry`.
+  those do — an absolute path, `~`, `$XDG_*`, or `@meta.workset.path` — and a value needing
+  anything else is refused by name rather than becoming a directory called `@config.registry`.
   ⚑ **If you had already set either key, this MOVES the directory kanibako uses.** Whatever is
   under the old default location is not migrated: move it across yourself, or unset the key to
   keep the old path. ⚑ The two arms are independent — repointing `vault_ro` alone leaves

@@ -62,6 +62,7 @@ from kanibako.settings.settings_assemble import (
 )
 from kanibako.settings.settings_categories import (
     _DELIVERY,
+    BARE_RELATIVE_SOURCE_HAZARD,
     SECRET_MOUNT_DIR,
     CategoryEntry,
     _bind_options,
@@ -2058,6 +2059,25 @@ def _emit_scope_node(
             path_val = dict.__getitem__(secret, var)
             if path_val is None:
                 continue  # a reset secret_path has no path to mount.
+            host_src = path_val if isinstance(path_val, str) else str(path_val)
+            if host_src and not host_src.startswith("/"):
+                # ⚑ [R147] REACHES THIS FAMILY, and a ``type: path`` grep MISSES it:
+                # the manifest declares ``secret_path`` as ``value: path``, parametric
+                # on VAR, so the VALUE is a path key like any other. It is also the
+                # ONE path key with no declared default, hence no second candidate
+                # anchor to name — so the refusal is the §2a SOURCE refusal rather
+                # than the two-readings one.
+                # 🛑 NOT SOFTENED BY ``fail_soft``: that covers a path that is missing
+                # or unreadable, and this path is neither. podman would MAKE the named
+                # volume, so the mount "succeeds" and the box gets an empty directory
+                # where its credential should be — the exact silence fail-soft's WARN
+                # exists to break.
+                raise SettingsError(
+                    f"{decl_scope_fn('secret_path', var)}.secret_path.{var} is set "
+                    f"to {host_src!r}, a BARE RELATIVE path. A secret's host path must "
+                    f"resolve on its own — absolute, '~/...', '$XDG_*/...' or an "
+                    f"'@'-ref: {BARE_RELATIVE_SOURCE_HAZARD}."
+                )
             box_dest = f"{SECRET_MOUNT_DIR}/{var}"
             sort_key = (order, "secret_path", var)
             collected.append((
@@ -2066,9 +2086,7 @@ def _emit_scope_node(
                     category="secret_path",
                     scope=scope,
                     box_dest=box_dest,
-                    host_src=(
-                        path_val if isinstance(path_val, str) else str(path_val)
-                    ),
+                    host_src=host_src,
                     delivery="MOUNT",
                     options="ro",
                     name=var,

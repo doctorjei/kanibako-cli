@@ -759,15 +759,33 @@ class TestWorksetWorkspacesResolved:
         assert resolve_workset_workspaces(tmp_path, None) == tmp_path / "workspaces"
         assert resolve_workset_channelroot(tmp_path, None) == tmp_path / "channels"
 
-    def test_resolver_relative_repoint_anchors_under_root(self, tmp_path):
+    def test_resolver_root_relative_repoint_is_spelled_with_the_ref(self, tmp_path):
         from kanibako.project.workset import (
             resolve_workset_channelroot,
             resolve_workset_workspaces,
         )
 
-        doc = {"workset": {"workspaces": "pods", "channelroot": "comms"}}
+        # ⚑ INVERTED BY [R147]: this pair used to be spelled ``"pods"`` / ``"comms"``
+        # and to assert that a BARE relative anchored under the root.  Keeping the
+        # directory with the workset is still expressible — it just has to be SAID.
+        doc = {"workset": {"workspaces": "@meta.workset.path/pods",
+                           "channelroot": "@meta.workset.path/comms"}}
         assert resolve_workset_workspaces(tmp_path, doc) == tmp_path / "pods"
         assert resolve_workset_channelroot(tmp_path, doc) == tmp_path / "comms"
+
+    def test_resolver_bare_relative_repoint_is_refused(self, tmp_path):
+        """[R147]: the anchor is ~50/50 between the workset root and the cwd, so the
+        seam refuses and NAMES BOTH readings rather than creating a data directory in
+        one of them."""
+        from kanibako.settings.settings_resolve import SettingsError
+        from kanibako.project.workset import resolve_workset_channelroot
+
+        doc = {"workset": {"channelroot": "comms"}}
+        with pytest.raises(SettingsError) as excinfo:
+            resolve_workset_channelroot(tmp_path, doc)
+        message = str(excinfo.value)
+        assert str(tmp_path / "comms") in message
+        assert str(Path.cwd() / "comms") in message
 
     def test_resolver_absolute_repoint_used_as_is(self, tmp_path):
         from kanibako.project.workset import resolve_workset_workspaces
@@ -786,8 +804,8 @@ class TestWorksetWorkspacesResolved:
 
     def test_boxes_and_logs_resolvers_default_to_the_spec_formula(self, tmp_path):
         """⚑ ``workset.boxes``/``workset.logs`` are declared keys and resolve exactly
-        like ``workspaces``: default ``@meta.workset.path/<leaf>``, relative repoint
-        anchored under the root, absolute repoint used as-is."""
+        like ``workspaces``: default ``@meta.workset.path/<leaf>``, an ``@``-ref
+        repoint resolved through the one route, absolute repoint used as-is."""
         from kanibako.project.workset import (
             resolve_workset_boxes,
             resolve_workset_logs,
@@ -796,7 +814,7 @@ class TestWorksetWorkspacesResolved:
         assert resolve_workset_boxes(tmp_path, None) == tmp_path / "boxes"
         assert resolve_workset_logs(tmp_path, None) == tmp_path / "logs"
 
-        doc = {"workset": {"boxes": "trees", "logs": "/var/log/kani"}}
+        doc = {"workset": {"boxes": "@meta.workset.path/trees", "logs": "/var/log/kani"}}
         assert resolve_workset_boxes(tmp_path, doc) == tmp_path / "trees"
         assert resolve_workset_logs(tmp_path, doc) == Path("/var/log/kani")
 
@@ -821,7 +839,7 @@ class TestWorksetWorkspacesResolved:
         # Merge the repoint into the root workset.yaml (identity preserved).
         settings = root.resolve() / "workset.yaml"
         data = load_doc(settings)
-        data.setdefault("workset", {})["workspaces"] = "pods"
+        data.setdefault("workset", {})["workspaces"] = "@meta.workset.path/pods"
         dump_doc(settings, data)
 
         ws = load_workset(root, "repointed")
@@ -843,7 +861,7 @@ class TestWorksetWorkspacesResolved:
         std.primary_workset.mkdir(parents=True, exist_ok=True)
         dump_doc(
             std.primary_workset / "workset.yaml",
-            {"workset": {"workspaces": "pods"}},
+            {"workset": {"workspaces": "@meta.workset.path/pods"}},
         )
         ws = default_workset(std)
         assert ws.workspaces_dir == std.primary_workset / "pods"
@@ -862,7 +880,7 @@ class TestWorksetWorkspacesResolved:
         create_workset("det", root, std)
         settings = root.resolve() / "workset.yaml"
         data = load_doc(settings)
-        data.setdefault("workset", {})["workspaces"] = "pods"
+        data.setdefault("workset", {})["workspaces"] = "@meta.workset.path/pods"
         dump_doc(settings, data)
 
         app = root.resolve() / "pods" / "app"
@@ -960,7 +978,8 @@ class TestWorksetBoxesAndLogsResolved:
         root = (tmp_home / "worksets" / "moved").resolve()
         ws = create_workset("moved", root, std)
         dump_doc(root / "workset.yaml", {"workset": {
-            "boxes": "store", "logs": str(tmp_home / "elsewhere-logs"),
+            "boxes": "@meta.workset.path/store",
+            "logs": str(tmp_home / "elsewhere-logs"),
         }})
 
         assert ws.projects_dir == root / "store"
@@ -1009,7 +1028,7 @@ class TestWorksetBoxesAndLogsResolved:
 
         root = (tmp_home / "worksets" / "instore").resolve()
         ws = create_workset("instore", root, std)
-        dump_doc(root / "workset.yaml", {"workset": {"boxes": "store"}})
+        dump_doc(root / "workset.yaml", {"workset": {"boxes": "@meta.workset.path/store"}})
         add_project(ws, "proj", tmp_home / "project")
         assert (root / "store" / "proj").is_dir()
 
@@ -1054,7 +1073,8 @@ class TestWorksetBoxesAndLogsResolved:
         pw = std.primary_workset
         pw.mkdir(parents=True, exist_ok=True)
         dump_doc(pw / "workset.yaml", {"workset": {
-            "boxes": str(tmp_home / "pw-boxes"), "logs": "log-archive",
+            "boxes": str(tmp_home / "pw-boxes"),
+            "logs": "@meta.workset.path/log-archive",
         }})
 
         moved = load_std_paths(load_config(config_file))

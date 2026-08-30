@@ -14,6 +14,7 @@ import pytest
 
 from kanibako.project import workset_registry
 from kanibako.settings.config_io import dump_doc, load_doc
+from kanibako.settings.settings_resolve import SettingsError
 
 
 @pytest.fixture
@@ -261,11 +262,29 @@ def test_resolve_expands_user_home_repoint(tmp_path: Path) -> None:
     assert resolved.is_absolute()
 
 
-def test_resolve_relative_repoint_anchors_under_workset_root(tmp_path: Path) -> None:
-    """A relative repoint anchors under the workset root (deterministic)."""
+def test_resolve_bare_relative_repoint_is_refused(tmp_path: Path) -> None:
+    """A BARE relative repoint is refused, naming both readings ([R147]).
+
+    ⚑ INVERTED, NOT DELETED.  It used to assert ``== workset_root / "sub" /
+    "reg.yaml"`` and called that "deterministic" — deterministic it was, but the
+    determination was a guess between the workset root and the cwd, and the loser is
+    a registry written where nothing will look for it.
+    """
+    workset_root = tmp_path / "myws"
+    with pytest.raises(SettingsError) as excinfo:
+        workset_registry.resolve_workset_registry_path(
+            workset_root, {"workset": {"registry": "sub/reg.yaml"}}
+        )
+    message = str(excinfo.value)
+    assert str(workset_root / "sub" / "reg.yaml") in message
+    assert str(Path.cwd() / "sub" / "reg.yaml") in message
+
+
+def test_resolve_root_relative_repoint_is_spelled_with_the_ref(tmp_path: Path) -> None:
+    """Keeping the registry with the workset stays expressible — it has to be SAID."""
     workset_root = tmp_path / "myws"
     resolved = workset_registry.resolve_workset_registry_path(
-        workset_root, {"workset": {"registry": "sub/reg.yaml"}}
+        workset_root, {"workset": {"registry": "@meta.workset.path/sub/reg.yaml"}}
     )
     assert resolved == workset_root / "sub" / "reg.yaml"
 

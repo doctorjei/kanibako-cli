@@ -14,6 +14,7 @@ from typing import Final, Mapping
 from kanibako.agent_ref import display_agent_ref
 from kanibako.settings.config import AGENT_META_FILE
 from kanibako.settings.settings_categories import ABSTRACT_CATEGORIES, DECLARATION_ROOT_REF
+from kanibako.settings.settings_resolve import SettingsError, match_var
 
 # Keys that live directly in the [agent] section as agent identity (not state).
 IDENTITY_KEYS = frozenset({"name", "run_args"})
@@ -158,6 +159,79 @@ def is_self_resolving(src: str) -> bool:
         return True
     # A leading ``/``, escaped or not, is absolute once the resolver unescapes it.
     return src[:1] == "/" or src[:2] == "\\/"
+
+
+def is_unambiguous_path_value(value: str) -> bool:
+    r"""Whether a STORED PATH-KEY value says ON ITS OWN where it points ([R147]).
+
+    Legal: absolute, ``~``-rooted, ``$XDG_*`` or an ``@``-ref.  Anything else — a
+    bare leaf, ``./x``, ``../x`` — is AMBIGUOUS and is refused rather than anchored
+    (:func:`ambiguous_path_value_error` says why and names both readings).
+
+    ⚑ NARROWER THAN :func:`is_self_resolving`, ON PURPOSE, AND THE DIFFERENCE IS
+    ``$VAR``.  That predicate rules on a BIND SOURCE, where a declaration may name
+    any variable the launch namespace supplies; this one rules on a path a USER
+    typed, and the keyspace's non-XDG variables (``$AGENT``, ``$WORKSET``) expand to
+    a bare NAME — so ``$AGENT/logs`` is exactly as relative as ``logs``.
+    ⚑ The leading-escape cases fall the same way they do there: ``\/foo`` unescapes
+    to an absolute path, ``\~foo`` to a plain relative dir.
+    """
+    if value[:1] in ("~", "@"):
+        return True
+    if value[:1] == "$":
+        try:
+            name, _ = match_var(value, 0)
+        except SettingsError:
+            return False
+        return name.startswith("XDG_")
+    return value[:1] == "/" or value[:2] == "\\/"
+
+
+#: How the other reading is INTRODUCED when the anchor is the root the key's own
+#: declared default sits under — every Layer-1/Layer-2 path key and every workset dir key.
+DEFAULT_ROOT_LABEL = "this key's default root"
+
+#: The same, for a path key that declares NO root of its own: ``box.images_store``
+#: (runtime-probed from podman) and the whole ``secret_path.<VAR>`` family.  The other
+#: reading is then the key's spec §2a DECLARATION ROOT, and it is introduced as one.
+#: ⚑ THE LABEL IS NOT DECORATION.  Calling a declaration root "this key's default root"
+#: would tell a reader a default exists to fall back to, which is the single thing a
+#: message about an unset, ambiguous value must not invent.
+DECLARATION_ROOT_LABEL = "this key's scope root"
+
+
+def ambiguous_path_value_error(
+    key: str, value: str, *, anchor: str, anchor_ref: str | None = None,
+    where: str | None = None, anchor_label: str = DEFAULT_ROOT_LABEL,
+) -> str:
+    """The [R147] refusal for a bare-relative *value* stored at *key* — BOTH readings named.
+
+    *anchor* is the RESOLVED directory of the other candidate reading: the root this
+    key's own default sits under, which is the only anchor besides the cwd that the
+    user could plausibly have meant.  *anchor_ref* is that root's legal spelling
+    (``@meta.workset.path``, ``$XDG_DATA_HOME``), offered so the user can paste the
+    fix.  *where* names the file the value was read from, when the seam has one.
+    *anchor_label* introduces the reading — see :data:`DECLARATION_ROOT_LABEL` for the
+    one case where the default wording would be a lie.
+
+    ⚑ NAMING BOTH READINGS IS THE POINT, not decoration.  The user had two plausible
+    meanings that land in different directories; a message that only said "be
+    absolute" would move the guess onto the user instead of removing it.
+    ⚑ AN UNRESOLVABLE ANCHOR IS PASSED AS ITS OWN REF SPELLING and *anchor_ref* is then
+    left unset — the reading is still named, and in a form the user can paste, without
+    the line saying the same thing twice.
+    """
+    in_file = f" in {where}" if where else ""
+    spelled = f", spelled '{anchor_ref}/{value}'" if anchor_ref else ""
+    return (
+        f"{key} is set to {value!r}{in_file}, which is a BARE RELATIVE path. "
+        f"kanibako will not guess what it is relative to — both of these readings "
+        f"are plausible and they are DIFFERENT directories:\n"
+        f"    {Path(anchor) / value}   ({anchor_label}{spelled})\n"
+        f"    {Path.cwd() / value}   (the directory kanibako was run from)\n"
+        f"Set the one you mean, spelled so it resolves on its own: an absolute "
+        f"path, '~/...', '$XDG_*/...', or an '@'-ref."
+    )
 
 
 def root_relative_source(src: str, root_ref: str) -> str:

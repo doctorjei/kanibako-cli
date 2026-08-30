@@ -521,6 +521,14 @@ def test_adapter_does_not_root_a_relative_host_src():
     not invent a root: an invented root is exactly the silent-wrong-path failure
     §2a exists to prevent. Pinning the pass-through is what makes a
     re-introduced prepend RED.
+
+    ⚑ THE "SHOULD NEVER REACH HERE" PREMISE IS NOW TRUE, and it was not when this
+    was written: a source spelled ``@box.canon/handbook`` passed the declaration
+    parse and only became relative once the key it dereferences was read, so it
+    reached the mount as a bare relative — which podman takes for a NAMED VOLUME.
+    [R147] closed that on both sides (``settings_expand._refuse_relative_host_src``
+    post-expansion, and the path-value refusal at set time).  The pass-through this
+    case pins is unchanged; only its premise moved from hope to guarantee.
     """
     snap = KeyStore(
         {"agent": {"claude": {"common": {"/box/p": BindEntry("plugins", None)}}}}
@@ -4854,3 +4862,37 @@ def test_every_command_a_retirement_cure_names_is_a_real_command():
             f"a retirement cure names 'kanibako {spelling}', whose word {bad!r} "
             f"is not in the CLI parser"
         )
+
+
+# --------------------------------------------------------------------------- #
+# [R147] — the secret_path family is path-typed too                            #
+# --------------------------------------------------------------------------- #
+
+
+def test_a_bare_relative_secret_path_is_refused_at_the_emit_seam():
+    """⚑ ``secret_path`` is in [R147]'s corpus and a ``type: path`` GREP MISSES IT —
+    the manifest declares it ``value: path``, parametric on VAR, so the family's rows
+    carry no ``type:`` line at all.
+
+    🛑 The refusal is the §2a SOURCE one, not the two-readings one, and that is not a
+    softening: ``secret_path`` is the one path key with NO declared default, so there
+    is no second candidate anchor for a message to name. What there IS is the mount
+    hazard — a source beginning with neither ``.`` nor ``/`` is a NAMED VOLUME to
+    podman, so the box gets an empty directory where its credential should be.
+    ⚑ NOT covered by ``fail_soft``: the file is neither missing nor unreadable, and
+    the volume makes the mount "succeed", so nothing warns.
+    """
+    snap = KeyStore({"box": {"secret_path": {"API_KEY": "tokens/api"}}})
+    with pytest.raises(SettingsError) as exc:
+        snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
+    message = str(exc.value)
+    assert "secret_path.API_KEY" in message
+    assert "'tokens/api'" in message
+    assert "NAMED VOLUME" in message
+
+
+def test_an_absolute_secret_path_still_emits_its_mount():
+    """Anti-vacuity for the case above."""
+    snap = KeyStore({"box": {"secret_path": {"API_KEY": "/t/api"}}})
+    entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
+    assert [(e.category, e.host_src) for e in entries] == [("secret_path", "/t/api")]
