@@ -298,10 +298,11 @@ def _run_agent_config(args: argparse.Namespace) -> int:
     Each verb addresses ONE agent's settings file by a bare TAIL (``model``, ``env.<VAR>``,
     ``secret_path.<VAR>``); the canonical key it names is ``agent.<node>.<tail>``.
 
-    ⚑ ``set`` ROUTES ITS WRITE to ``config_interface.set_config_value``, the setter every other
-    noun shares — this verb is not a second writer of that slot.  ``name`` is the exception and
-    is not a carve-out: it is not a key at all (see :func:`agent_file_identity_only`).  ``get``
-    and ``reset`` still address the file directly through ``agent_file``'s slot boundary.
+    ⚑ ``set`` AND ``reset`` ROUTE THEIR WRITES to ``config_interface``'s ``set_config_value`` /
+    ``reset_config_value``, the pair every other noun shares — this verb is not a second writer
+    of that slot.  ``name`` is the exception in BOTH and is not a carve-out: it is not a key at
+    all (see :func:`agent_file_identity_only`).  ``get`` still addresses the file directly
+    through ``agent_file``'s slot boundary.
     """
     from kanibako.settings.agent_config import agent_settings_path
     from kanibako.settings.agent_file import (
@@ -377,13 +378,47 @@ def _run_agent_config(args: argparse.Namespace) -> int:
         if gate_err is not None:
             print(gate_err, file=sys.stderr)
             return 1
-        changed = remove_leaf(slot_for(std.agents, agent_id, key))
+        if agent_file_identity_only(key):
+            # ⚑ THE SAME ONE TAIL ``set`` WRITES ITSELF, for the same reason and not as a
+            # carve-out: ``name`` is a FILE-identity field of ``AgentConfig``, absent from
+            # the keyspace, so the shared resetter has no key to route.
+            changed = remove_leaf(slot_for(std.agents, agent_id, key))
+        else:
+            # ⚑⚑ THE ONE SETTER'S RESET HALF. This verb removed the leaf with its own hand
+            # while ``set`` — one branch above — already routed; two writers of one keyspace
+            # slot is the defect class, and a removal is a WRITE. The threading MIRRORS the
+            # set call exactly (system command scope, because the per-node agent store is
+            # global and the engine's per-node routes are reachable only there; the NODE
+            # named so a per-node route resolves), so the two halves cannot drift into
+            # disagreeing about which slot the key names.
+            from kanibako.settings.config_interface import reset_config_value
+            from kanibako.settings.config_keys import ConfigLevel
+
+            msg = reset_config_value(
+                f"agent.{agent_id}.{key}",
+                config_path=_config_file(),
+                system_settings_path=std.settings,
+                cascade_system_path=std.settings,
+                cascade_agent_name=agent_id,
+                command_scope=ConfigLevel.system,
+                agents_root=std.agents,
+            )
+            if msg.startswith("Error:"):
+                print(msg, file=sys.stderr)
+                return 1
+            # ⚑ The ENGINE'S OWN ANSWER to "did anything change", not a second read of the
+            # file: ``reset_config_value`` reports a no-op with exactly this prefix at every
+            # one of its branches (pinned by
+            # ``TestAgentResetRoutesThroughTheOneSetter.test_the_no_op_prefix_is_the_engines``).
+            changed = not msg.startswith("No override for ")
         if changed:
-            # Honest cleared-form (F7), same contract as every other noun's
-            # reset. This engine edits the sparse settings file directly, NOT
-            # the assemble/merge cascade, so it has no resolved cascade inputs
-            # to thread — the cleared-only fallback (effective=None) is the
-            # correct honest form here (no new plumbing for this micro-block).
+            # Honest cleared-form (F7), same contract as every other noun's reset.
+            # ⚑ THE KEY AS THE USER TYPED IT and the AGENT scope, never the canonical
+            # ``agent.<node>.<tail>`` at the system scope the engine echoes: this noun takes
+            # a BARE tail on the command line and its ``set`` twin answers in that spelling,
+            # so the confirmation teaches the form this verb accepts. The cleared-only
+            # fallback (effective=None) is the honest form — the agent file is not a cascade
+            # tier a reset can resolve through.
             from kanibako.settings.config_keys import ConfigLevel
             from kanibako.settings.config_interface import _honest_reset_message
 

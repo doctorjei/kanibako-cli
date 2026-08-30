@@ -473,7 +473,7 @@ site the write side uses is what makes `_read_dest`'s one documented divergence 
 docstring nothing exercised.
 
 
-```set_config_value(key, value, *, config_path, env_path=None, is_system=False, system_settings_path=None, cascade_system_path=None, cascade_agent_path=None, cascade_workset_path=None, cascade_box_path=None, cascade_agent_name="", command_scope=None, agents_root=None) -> str```
+```set_config_value(key, value, *, config_path, env_path=None, system_settings_path=None, cascade_system_path=None, cascade_agent_path=None, cascade_workset_path=None, cascade_box_path=None, cascade_agent_name="", command_scope=None, agents_root=None) -> str```
 Write a config value to the appropriate store; returns a message or an error, NEVER raises.
 
 *config_path* is the `box.yaml`/`workset.yaml` (for box/workset) or `kanibako_config.yaml` (for system).

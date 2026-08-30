@@ -66,7 +66,7 @@ def _set(key: str, value, files: dict, scope: ConfigLevel) -> str:
     """Drive ``set_config_value`` with the threading the matching noun command uses."""
     if scope is ConfigLevel.system:
         return set_config_value(
-            key, value, config_path=files["config"], is_system=True,
+            key, value, config_path=files["config"],
             system_settings_path=files["system"], cascade_system_path=files["system"],
             command_scope=scope, agents_root=files["agents"],
         )

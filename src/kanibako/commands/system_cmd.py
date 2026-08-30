@@ -449,7 +449,6 @@ def _run_system_config(args: argparse.Namespace) -> int:
         # ``℘`` in the keyspace, and the setter parses the CANONICAL form.
         msg = set_config_value(
             key, value, config_path=cf,
-            is_system=True,
             system_settings_path=ssp,
             cascade_system_path=ssp,
             cascade_agent_name=agent_node_of(resolve_key(key)),

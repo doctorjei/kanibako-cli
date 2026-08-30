@@ -179,7 +179,7 @@ class Bench:
             extra.setdefault("config_path", self.cf)
             return set_config_value(
                 key, value, env_path=self.env_sys,
-                is_system=True, system_settings_path=self.ssp,
+                system_settings_path=self.ssp,
                 cascade_system_path=self.ssp,
                 command_scope=ConfigLevel.system, agents_root=self.agents,
                 **extra,
