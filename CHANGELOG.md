@@ -94,6 +94,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`diagnose` now quotes a settings error once and names every check it broke.** Each settings
+  load reports its own failure, and that half is deliberate — a check that swallowed the reason
+  would be back to a bland `cannot check`. But each one also quoted the entire error underneath its
+  own line, and one root cause routinely reaches several checks: `rig diagnose` resolves settings
+  twice, so a single undeclared key printed the §0 refusal at both `Configured image` and
+  `Baseline` — twelve lines for one problem — and one malformed config file broke Image, Storage
+  and Journal in `system diagnose`, printing the same parse error three times. Every failing check
+  still prints its own `[!!]` line; what moved is the detail, which now lands in one
+  `Settings errors:` section at the end of the run, one entry per distinct error, each naming the
+  checks it affected (`affects: Configured image, Baseline`). Two errors in two different places
+  still print as two entries — entries are grouped by the error text, and both kinds of settings
+  error already name their own file and location. A run with no settings error prints no section
+  at all.
+
 - **Repointing `workset.boxes` or `workset.logs` now actually moves the box store and the helper
   logs.** Both are settings you have always been allowed to write, and until now kanibako only
   half-honoured them. It would *find* a workset whose store you had moved — the directory walk that
