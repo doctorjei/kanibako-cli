@@ -30,7 +30,17 @@ from pathlib import Path
 from kanibako.errors import ContainerError
 from kanibako.log import get_logger
 from kanibako.settings.core_defaults import CANON_SEED_DENY_PREFIXES
-from kanibako.settings.settings_resolve import GUEST_GID, GUEST_HOME, GUEST_UID
+from kanibako.settings.settings_resolve import (
+    GUEST_GID,
+    GUEST_HOME,
+    GUEST_UID,
+    GUEST_VAULT_RO,
+    GUEST_VAULT_RO_RELPATH,
+    GUEST_VAULT_RW,
+    GUEST_VAULT_RW_RELPATH,
+    GUEST_WORKSPACE,
+    GUEST_WORKSPACE_RELPATH,
+)
 
 
 logger = get_logger("container")
@@ -335,7 +345,7 @@ class ContainerRuntime:
         cmd: list[str] = [
             self.cmd, "run", *run_flags,
             # ⚑ NO hardwired binds: home/workspace/vault arrive via *extra_mounts* (single route).
-            "-w", f"{GUEST_HOME}/workspace",
+            "-w", GUEST_WORKSPACE,
         ]
         # ⚑ ``notmpcopyup`` IS LOAD-BEARING: the ``tmpcopyup`` default copies the dest's
         # content UP, downgrading the path to read-only instead of emptying it.  A mask is
@@ -757,7 +767,10 @@ def _guest_dest_to_host(
     """
     if map_home_root and dest.rstrip("/") == GUEST_HOME:
         return shell_path
-    workspace = GUEST_HOME + "/workspace/"
+    # ⚑ BOTH prefixes keep their TRAILING SLASH: it is the separator guard the keyspec requires
+    # (``~/foobar`` is not inside ``~/foo``), and dropping it also strands the bare
+    # ``<guest workspace>`` dest on the workspace branch as ``project_path / ""``.
+    workspace = GUEST_WORKSPACE + "/"
     agent_home = GUEST_HOME + "/"
     if dest.startswith(workspace):
         return project_path / dest[len(workspace):]
@@ -779,12 +792,12 @@ def detect_shadowed_mounts(
     """
     candidates: list[str] = []
     if enable_vault:
-        candidates.append(f"{GUEST_HOME}/vault/ro")
-        candidates.append(f"{GUEST_HOME}/vault/rw")
+        candidates.append(GUEST_VAULT_RO)
+        candidates.append(GUEST_VAULT_RW)
     for mount in extra_mounts or []:
         candidates.append(mount.destination)
 
-    base_roots = {GUEST_HOME, f"{GUEST_HOME}/workspace"}
+    base_roots = {GUEST_HOME, GUEST_WORKSPACE}
     shadowed: list[str] = []
     seen_hosts: set[Path] = set()
     for dest in candidates:
@@ -912,17 +925,19 @@ def _precreate_mount_stubs(
 
     # ⚑ Only HOME-side parents are loosened; workspace parents are the user's real tree
     # and pass ``traverse_root=None``.
-    workspace_prefix = GUEST_HOME + "/workspace/"
+    # ⚑ TRAILING SLASH, as in ``_guest_dest_to_host``: without it a ``~/workspacefoo`` mask would
+    # be read as workspace-side and silently lose its home-parent loosening.
+    workspace_prefix = GUEST_WORKSPACE + "/"
 
     def _home_root(dest: str) -> Path | None:
         return None if dest.startswith(workspace_prefix) else shell_path
 
     # Built-in directory mounts — all shell_path-side, so their loosen walks are no-ops.
-    _ensure_dir(shell_path / "workspace", traverse_root=shell_path)
+    _ensure_dir(shell_path / GUEST_WORKSPACE_RELPATH, traverse_root=shell_path)
     if enable_vault:
         # Vault is UNIVERSAL unless disabled, so its dest stubs are always made.
-        _ensure_dir(shell_path / "vault" / "ro", traverse_root=shell_path)
-        _ensure_dir(shell_path / "vault" / "rw", traverse_root=shell_path)
+        _ensure_dir(shell_path / GUEST_VAULT_RO_RELPATH, traverse_root=shell_path)
+        _ensure_dir(shell_path / GUEST_VAULT_RW_RELPATH, traverse_root=shell_path)
     # ⚑ Mask stubs sit OUTSIDE the vault arm on purpose and must STAY outside: ``run``
     # emits a declared mask vault-or-not, and without its stub the mount fails in LXC.
     for mask in tmpfs_masks:

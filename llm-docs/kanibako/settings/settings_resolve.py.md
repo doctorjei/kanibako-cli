@@ -154,13 +154,59 @@ and the `--userns=keep-id:uid=…,gid=…` mapping (`runtime/container.py`, `KEE
 built from the two ids so the calling host user always lands on the in-box agent user.
 
 ⚑ **`GUEST_HOME` is the single source of truth for the box-side home, but it is NOT enforced, and
-the old comment claiming otherwise was false.** Measured in `src/`: two `/home/agent` literals
-sit in executable Python that does not go through the constant —
-`channels/helper_listener.py` (the `helper-init.sh` entrypoint path) and `commands/start.py` (the
-`kanibako-entry` mount destination) — and six more are `WORKDIR` / `ENV PATH` lines in the
-bundled `containers/Containerfile.template-*` files, which cannot import a Python constant at
-all. The remaining occurrences are prose. **Treat "derives from `GUEST_HOME`" as the standard to
-hold new code to, never as a description of the tree as it stands.**
+the old comment claiming otherwise was false.** Measured in `src/` on 2026-08-30: ONE `/home/agent`
+literal sits in an executable Python path that does not go through the constant —
+`commands/start.py` (the `kanibako-entry` mount destination). `channels/helper_listener.py`, named
+here before, no longer does: its `helper-init.sh` entrypoint path derives from `GUEST_HOME`. Two
+further Python occurrences are `--help` EXAMPLE lines in `commands/workset_cmd.py`, and **seven are
+`WORKDIR` / `ENV PATH` lines across the five bundled `containers/Containerfile.template-*` files,
+which cannot import a Python constant at all.** The remaining occurrences are prose. **Treat
+"derives from `GUEST_HOME`" as the standard to hold new code to, never as a description of the tree
+as it stands.**
+
+### The GUEST workspace and vault leaves
+
+`GUEST_WORKSPACE`, `GUEST_VAULT_RO` and `GUEST_VAULT_RW` name the box-side workspace and vault
+destinations; `GUEST_WORKSPACE_RELPATH`, `GUEST_VAULT_RELPATH`, `GUEST_VAULT_RO_RELPATH` and
+`GUEST_VAULT_RW_RELPATH` are the same leaves without the `GUEST_HOME` prefix. **Both forms exist
+because both are needed**: a box-side dest is compared as an absolute string, while the mount-stub
+pre-creation in `runtime/container.py` joins the leaf onto a HOST `Path` (`shell_path / …`) and
+cannot use an absolute one. Seven names, not three, and that is the price of the pair.
+
+⚑ **These are GUEST constants and they are INDEPENDENT of the host leaves.**
+`settings/paths_defaults.WORKSPACE_PATH` is a HOST leaf spelled `"workspace"` too, and nothing but
+convention ever kept the two apart. This module may import NOTHING from `settings/` (see the top of
+the file), so a guest constant *cannot* be expressed in terms of a host one — the independence is
+now structural rather than accidental.
+
+⚑ **What this step does NOT buy, despite the obvious guess:** a host-leaf rename could not already
+move a guest mount dest. Neither `runtime/container.py` nor `commands/code_cmd.py` imports anything
+from `paths_defaults`, so the two namespaces were already disjoint in fact. What changes is that
+they are now disjoint by CONSTRUCTION, and that three of the five residual false positives fall out
+of the future path tripwire.
+
+🛑 **The VALUES are declared key names in the closed keyspace** — `box.bindings.rw[~/workspace]`,
+`box.bindings.ro[~/vault/ro]` and `box.bindings.rw[~/vault/rw]`, whose `~` `canonicalize_dest`
+expands to `GUEST_HOME`. Respelling one redeclares three keys and hard-errors every existing user
+`box.yaml` that carries `~/vault/rw:`. Naming them changed nothing; changing them is a migration.
+
+⚑ **ONE PYTHON CARRIER IS NOT ONE CARRIER.** The five bundled
+`containers/Containerfile.template-{jvm,dotnet,systems,js,android}` files each hardwire
+`WORKDIR /home/agent/workspace` and cannot be collapsed into these constants at all. A reader who
+takes "single source of truth" literally here will be wrong about the images.
+
+⚑ **The two agent-plugin sites are deliberately NOT converted.**
+`packages/agent-claude/…/target.py` and `packages/agent-codex/…/target.py` still compose
+`f"{GUEST_HOME}/workspace"` through a function-local import. Plugins pin `kanibako-cli` with no
+upper bound, so a new plugin on an old core would raise `ImportError` mid-launch — a late failure
+bought for no additional guarantee, since `GUEST_HOME` is already the shared carrier there.
+
+⚑ **The workspace PREFIX comparisons keep a trailing slash** (`GUEST_WORKSPACE + "/"`, twice in
+`runtime/container.py`). That slash is the separator guard the keyspec requires — `~/foobar` is not
+inside `~/foo` — and dropping it also strands the bare workspace dest on the workspace branch as
+`project_path / ""`. Both sites are covered by named regression tests in
+`tests/test_runtime/test_container.py`; a substitution that only checks the constant's NAME will
+not notice.
 
 ### `BOX_PINNED_ROOT_RELPATH` — the resolve-before-liveness compromise
 
