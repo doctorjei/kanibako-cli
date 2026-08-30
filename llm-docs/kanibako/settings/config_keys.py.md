@@ -463,6 +463,40 @@ is introduced as one. Calling a declaration root "this key's default root" would
 default exists to fall back to, which is the single thing a message about an unset ambiguous value
 must not invent.
 
+## `agent_node_of` — which node a write is ABOUT
+
+```agent_node_of(canonical: str) -> str```
+The agent NODE a per-node *canonical* key addresses, or `""` when it names none.
+
+`cascade_agent_name` on `set_config_value` is "the agent this command is about", and each write door
+gets it from somewhere different: `box set` resolves the box's ACTIVE agent through `select_agent`,
+`agent set` is handed the node the verb was invoked on, and `system set` has only the key. This
+answers that last case. Its consumer is the set-time snapshot's `meta_agent_path_floor` fold, so
+without it `system set agent.claude.canon=@meta.agent.claude.path/canon` was refused as a dangling
+`@`-reference while `agent set claude canon=…` — the same key, the other spelling — accepted it.
+
+⚑ **Derived from the same two parsers `path_key_anchor` consults, in the same order.** The anchor a
+refusal NAMES and the anchor the floor PROVIDES are then one answer; a second key parser for this
+family is the drift that has already cost this module once.
+
+⚑ **Both arms are load-bearing — `_parse_persona_agent_key` does NOT match
+`agent.<node>.secret_path.<VAR>`.** That family has its own parser, it is a per-node PATH key with
+the same store-root anchor, and dropping the secret arm as a "simplification" leaves exactly that
+half refused. Pinned by
+`TestSystemSetAnchorsTheNodeItWrites::test_the_secret_family_is_anchored_too`, which reds ALONE for
+that mutation while the `canon` rows beside it stay green.
+
+⚑ **The bind arm is deliberately absent**, and that is the lesson the removed `_agent_scope_node`
+left (see `config_interface.py.md`, "the second anchor that is gone"): an
+`agent.<node>.bindings.{ro,rw}.<name>` set is refused BY NAME in the verb preamble (R-9), so an arm
+for it could not change any outcome — it would be dead the day it was written. `resolve_key` carries
+that arm because it canonicalises a key the READ verbs still serve; this is a WRITE-time question.
+
+⚑ **It is not an existence check and must not be read as one.** It says which node the write
+ADDRESSES — the node whose `agents/<node>/agent.yaml` the setter is about to reach — which is exactly
+the store root `@meta.agent.<node>.path` names for that write. A ref against a DIFFERENT node's root
+is not floored and still dangles, so the `@meta.agent.*.path` SHAPE is never accepted on sight.
+
 ## The scope-direction guard (block B4, spec §0 directional view/set + §2a)
 
 `_SCOPE_NAMESPACES` is the recognized SCOPE namespaces a key may live in (its TOP-LEVEL dotted

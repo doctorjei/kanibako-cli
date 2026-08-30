@@ -289,7 +289,9 @@ def _run_system_config(args: argparse.Namespace) -> int:
 
     from kanibako.settings.config_keys import (
         ConfigLevel,
+        agent_node_of,
         bare_env_retired_error,
+        resolve_key,
         scope_read_key_error,
     )
     from kanibako.settings.config_interface import (
@@ -430,11 +432,27 @@ def _run_system_config(args: argparse.Namespace) -> int:
         # file this command's RESET handler threads. It passed cf (the CONFIG file)
         # here while a system category set wrote to cf, so the must-exist probe agreed
         # with neither the launch nor reset; both halves now name ssp.
+        # ⚑ THE ONE DATUM THIS VERB HAS TO READ OFF THE KEY (P7). ``cascade_agent_name``
+        # is "the agent this command is about": ``box set`` resolves the box's ACTIVE
+        # agent, ``agent set`` is handed the node it was invoked on, and here the key is
+        # the only carrier — so a per-node key names its own node and every other key
+        # names none. It anchors ``@meta.agent.<node>.path`` in the set-time snapshot;
+        # withheld, ``system set agent.claude.canon=@meta.agent.claude.path/canon`` was
+        # refused as a dangling reference while ``agent set claude canon=…`` — the same
+        # key, the other spelling — accepted it.
+        # ⚑ THE NODE IS READ, NOT GUESSED: ``agent_node_of`` derives it from the same
+        # parsers ``path_key_anchor`` uses, so only the node this write ADDRESSES is
+        # floored. A ref against any OTHER node's store root still dangles, and a key
+        # naming no node threads nothing — this cannot become a blanket accept of
+        # ``@meta.agent.*.path``.
+        # ⚑ CANONICAL FIRST: the node segment is spelled ``+`` on the command line and
+        # ``℘`` in the keyspace, and the setter parses the CANONICAL form.
         msg = set_config_value(
             key, value, config_path=cf,
             is_system=True,
             system_settings_path=ssp,
             cascade_system_path=ssp,
+            cascade_agent_name=agent_node_of(resolve_key(key)),
             command_scope=ConfigLevel.system,
             agents_root=std.agents,
         )
