@@ -27,6 +27,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from kanibako.settings.agent_config import (
+    ambiguous_path_value_error,
+    is_unambiguous_path_value,
+)
 from kanibako.settings.config import WORKSET_META_FILE
 from kanibako.settings.settings_resolve import ResolveCtx, SettingsError, expand_expr
 
@@ -60,13 +64,34 @@ def resolve_workset_dir_key(
     """Resolve the ``workset.<key>`` *repoint* (or its ``<root>/<default_leaf>`` default).
 
     *repoint* is the RAW value as stored: it may carry ``@``-refs, ``$XDG_*`` or ``~``.
-    An unset repoint takes the default leaf under *workset_root*; a resolved value that
-    is still RELATIVE anchors under *workset_root* too.  Raises
+    An unset repoint takes the default leaf under *workset_root*.  Raises
     :class:`~kanibako.settings.settings_resolve.SettingsError`, naming the key, the file
     and the token, when the value cannot be resolved without the launch snapshot.
+
+    ⚑⚑ A BARE-RELATIVE *repoint* IS REFUSED, NOT ANCHORED ([R147], 2026-08-29).  It
+    used to anchor under *workset_root*, and this seam's own refusal text used to OFFER
+    that form.  The reason it cannot: the reason to set one of these keys AT ALL is to
+    move the directory OFF its ``@meta.workset.path/<leaf>`` default, so "keep it with
+    the workset" assumes precisely the intent the user is overriding — and the guess is
+    not a confusing message, it is a directory created in the wrong place that then
+    holds data.  The root-relative reading stays expressible; it has to be SAID.
     """
     if not repoint:
         return workset_root / default_leaf
+
+    if not is_unambiguous_path_value(repoint):
+        # ⚑ TESTED ON THE STORED SPELLING, and BEFORE the expand, so this seam and the
+        # Layer-1/2 one (``paths._refuse_bare_relative``) ask the ONE question [R147]
+        # asks — "is this a legal value to have written?" — rather than two variants of
+        # it.  A post-expansion absoluteness test would agree here on every reachable
+        # input and disagree in the message, which quotes the value the user typed.
+        raise SettingsError(
+            ambiguous_path_value_error(
+                f"workset.{key}", repoint,
+                anchor=str(workset_root), anchor_ref=f"@{WORKSET_PATH_REF}",
+                where=str(workset_root / WORKSET_META_FILE),
+            )
+        )
 
     def lookup(ref: str, chain: tuple[str, ...]) -> str:
         del chain  # No transitive resolution here: the one referent is a terminal.
@@ -84,10 +109,9 @@ def resolve_workset_dir_key(
         raise SettingsError(
             f"workset.{key} is set to {repoint!r} in "
             f"{workset_root / WORKSET_META_FILE}, which cannot be resolved: {exc}. "
-            f"Use an absolute path, a path relative to the workset root, '~', "
-            f"'$XDG_*', or '@{WORKSET_PATH_REF}'; a LITERAL '$', '~' or '@' in a "
-            f"directory name must be backslash-escaped."
+            f"Use an absolute path, '~', '$XDG_*', or '@{WORKSET_PATH_REF}'; a "
+            f"LITERAL '$', '~' or '@' in a directory name must be "
+            f"backslash-escaped."
         ) from exc
 
-    resolved = Path(expanded)
-    return resolved if resolved.is_absolute() else workset_root / resolved
+    return Path(expanded)

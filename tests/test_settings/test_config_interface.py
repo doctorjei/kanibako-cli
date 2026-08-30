@@ -1087,7 +1087,9 @@ class TestH1NoCrashOnAdvertisedKeys:
         assert msg.startswith("Set")
         data = load_doc(project_toml)
         assert data["workset"]["registry"] == "/custom/reg.yaml"
-        # A real string path — NOT coerced to a bool (no KEY_TYPES entry).
+        # A real string path — NOT coerced. ⚑ It IS a KEY_TYPES entry since [R147]
+        # (``type: path``), and a path is deliberately stored RAW: the type governs the
+        # bare-relative refusal, never a coercion.
         assert isinstance(data["workset"]["registry"], str)
         # Sparse: nothing lands in [project] or elsewhere.
         assert "registry" not in data.get("project", {})
@@ -5422,15 +5424,39 @@ class TestNullSpelling:
 
     def test_the_string_null_is_NOT_magic(self, tmp_path):
         """No pref-only dialect: `config set` stores scalars verbatim, so the
-        literal text 'null' must stay a string wherever it is legal."""
+        literal text 'null' must stay a string wherever it is legal.
+
+        ⚑ THE TARGET MOVED, THE CLAIM DID NOT (2026-08-29, [R147]). This row used to
+        make the point at ``pref.agent.claude.template`` and asserted the literal
+        stored there — but ``template`` is a PATH key, and 'null' is a bare relative
+        path, so that spelling is now refused at set time. ``model`` is the same
+        verbatim-scalar route with no path rule over it, so the claim this row exists
+        for is pinned intact; the twin below pins what the old target now does.
+        """
         f = tmp_path / BOX_META_FILE
         set_config_value(
-            "pref.agent.claude.template", "null",
+            "pref.agent.claude.model", "null",
             config_path=f, command_scope=ConfigLevel.box,
         )
         assert yaml.safe_load(f.read_text())["pref"]["agent"]["claude"][
-            "template"
+            "model"
         ] == "null"
+
+    def test_the_string_null_at_a_PATH_target_is_refused(self, tmp_path):
+        """The INVERSION of this class's old ``template`` case ([R147]).
+
+        It used to assert that ``pref.agent.claude.template=null`` STORED the literal
+        string. A pref is installed at its target during resolution (§2h), so that
+        value reached the launch as the value of a path key — where 'null' is a bare
+        relative path and kanibako will not guess what it is relative to.
+        """
+        f = tmp_path / BOX_META_FILE
+        msg = set_config_value(
+            "pref.agent.claude.template", "null",
+            config_path=f, command_scope=ConfigLevel.box,
+        )
+        assert msg.startswith("Error:") and "BARE RELATIVE" in msg, msg
+        assert not f.exists()
 
     def test_null_writes_a_real_yaml_null(self, tmp_path):
         # ⚑ The suppression is spelled at the CATEGORY: ``common`` is TERMINAL and

@@ -35,6 +35,7 @@ from typing import overload
 
 from kanibako.settings.kb_store import Bind, BindEntry, StoreValue
 from kanibako.settings.keystore import KeyStore
+from kanibako.settings.settings_categories import BARE_RELATIVE_SOURCE_HAZARD
 from kanibako.settings.settings_resolve import (
     MAX_REF_DEPTH,
     ResolveCtx,
@@ -285,6 +286,31 @@ class _Expander:
         # No token to expand. (A present-None leaf is a terminal, not _ABSENT.)
         return value
 
+    def _refuse_relative_host_src(
+        self, raw: str, expanded: str, *, chain: tuple[str, ...]
+    ) -> None:
+        """Refuse a host source that EXPANDED to a bare relative path (spec §2a, [R147]).
+
+        ⚑ THE PARSE CANNOT COVER THIS ONE, which is why the guard is here as well.
+        ``settings_assemble._declared_source`` refuses a source SPELLED relative, and
+        that is what ``settings_launch`` relies on when it uses ``host_src`` AS-IS —
+        but a source spelled ``@box.canon/handbook`` is self-resolving at the parse and
+        only becomes relative HERE, when the path key it dereferences turns out to hold
+        a bare relative.  Measured before the guard existed: it reached the mount as
+        ``host_src='relcanon/handbook'``.
+        🛑 The refusal names the KEY-BEARING EXPRESSION, not just the result — the fix
+        is to the path key, and the expanded string no longer says which one that was.
+        """
+        if not expanded or expanded[0] == "/":
+            return
+        became = "" if raw == expanded else f", which resolved to {expanded!r}"
+        raise SettingsError(
+            f"{chain[0]} declares the host source {raw!r}{became} — a BARE RELATIVE "
+            f"path. A stored source must resolve on its own (spec §2a): "
+            f"{BARE_RELATIVE_SOURCE_HAZARD}. Set the path key it dereferences to an "
+            f"absolute path, '~/...', '$XDG_*/...' or an '@'-ref."
+        )
+
     def _expand_bind(self, bind: Bind, *, chain: tuple[str, ...]) -> StoreValue | _Absent:
         """Expand a :class:`Bind`: ``host_src`` fully host-side; ``box_dest``
         ``@``-refs only (``$XDG``/``~`` left RAW, deferred box-side — S17).
@@ -311,6 +337,7 @@ class _Expander:
             )
         assert isinstance(host, str)
         assert isinstance(box, str)
+        self._refuse_relative_host_src(bind.host, host, chain=chain)
         return Bind(host, box, bind.opts)
 
     def _expand_bind_entry(
@@ -328,6 +355,7 @@ class _Expander:
             # Whole-value src ref absent/None → the entry inherits that 3-state.
             return src
         assert isinstance(src, str)
+        self._refuse_relative_host_src(entry.src, src, chain=chain)
         return BindEntry(src, entry.opts)
 
     def _expand_str(

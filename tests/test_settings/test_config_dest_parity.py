@@ -56,9 +56,37 @@ from kanibako.settings.keyspace_manifest import manifest_doc
 from kanibako.settings.paths_defaults import SYSTEM_PATH_DEFAULTS
 from kanibako.settings.settings_keyspace import (
     DECLARED_AGENT_LEAVES,
+    PATH_VALUED_AGENT_LEAVES,
     SCALAR_AGENT_LEAVES,
     TABLE_VALUED_AGENT_LEAVES,
+    access_default,
 )
+
+
+def sample_leaf_value(leaf: str, tag: str = "V") -> str:
+    """A LEGAL sample value for an agent *leaf*, derived from what its TYPE admits.
+
+    A sweep that writes "some string" to every scalar leaf is measuring the ROUTE, so it
+    has to hand each leaf a value that route will accept — otherwise it reds on a
+    value guard and reports it as a routing failure.  Two declared leaves refuse an
+    arbitrary string, each for its own declared reason, and both are DERIVED here rather
+    than named: ``access`` is an ENUM (``access_value_error``), and ``template``/``canon``
+    are PATHS, where a bare relative is refused as ambiguous ([R147], 2026-08-29).
+
+    ⚑ THE PATH ARM IS AN INVERSION, NOT A LOOSENING.  These sweeps used to pass
+    ``V-canon`` / ``probe`` and assert acceptance, which pinned the OLD permissive
+    behaviour for the two path leaves as a side effect of pinning the route.  The claim
+    each sweep exists for is unchanged; only the sample moved to a spelling the keyspace
+    admits, and the refusal itself is pinned in
+    ``tests/test_settings/test_path_key_set_refusal.py``.
+    ⚑ A leaf that ACQUIRES a type lands here with no edit, which is the point of deriving
+    it from the two declared sets instead of from a list of names.
+    """
+    if leaf == "access":
+        return access_default()
+    if leaf in PATH_VALUED_AGENT_LEAVES:
+        return f"/srv/{tag}-{leaf}"
+    return f"{tag}-{leaf}"
 
 
 # ---------------------------------------------------------------------------
@@ -461,8 +489,10 @@ class TestBareAgentKeyDest:
     @pytest.mark.parametrize("leaf", sorted(SCALAR_AGENT_LEAVES))
     def test_both_spellings_of_the_any_agent_tier_answer_alike(self, bench, leaf):
         """The two spellings are ONE key, so a value SET by one is read by the other."""
-        # ⚑ ``access`` is the one enum-valued leaf and is validated at write time.
-        value = "editing" if leaf == "access" else f"V-{leaf}"
+        # ⚑ The sample is DERIVED from the leaf's declared type — ``access`` is an enum
+        # and ``template``/``canon`` are paths, both validated at write time. See
+        # :func:`sample_leaf_value` for what this row used to pass and why it moved.
+        value = sample_leaf_value(leaf)
         assert not bench.set(ConfigLevel.system, leaf, value).startswith("Error:")
         assert bench.get(ConfigLevel.system, f"agent.default.{leaf}") == bench.get(
             ConfigLevel.system, leaf,

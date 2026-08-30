@@ -542,6 +542,33 @@ The order is deliberate at every step.
    never degraded to "unknown config key" (spec §0) and never quietly accepted. The keys
    themselves are NOT retired — only these routes — so each message points at the settings file
    that actually holds the tuple, and `config get` still reads both.
+8. **A BARE RELATIVE value for a PATH key ([R147])** — the LAST guard, and the only VALUE rule in
+   a preamble otherwise made of NAME rules. That is why it is last: a retired or wrong-scope
+   spelling gets its own specific message rather than this generic value complaint. It runs
+   BEFORE the E3 probe, which splices the value into a candidate store — an illegal value is
+   refused, not resolved. `_bare_relative_path_error` shares `is_unambiguous_path_value` and
+   `ambiguous_path_value_error` with the two READ-time seams (`paths._refuse_bare_relative`,
+   `workset_dirkeys.resolve_workset_dir_key`), so the rule has one wording at both ends. ⚑ The
+   `config.*` tier never reaches it — guard 1 short-circuits — and that is correct: those six are
+   `set: file` with no CLI write route, so read time is their only enforcement. ⚑ The `pref.*`
+   spelling does not reach it either; it is checked AT THE TARGET in `_pref_value_error`, beside
+   the `access` and `transform_settings` guards, for the same reason those live there.
+
+### The `@meta.{workset,box}.path` anchors, and why the refusal needed them
+
+`_meta_scope_anchor_floor` is folded into the set-time snapshot beside `meta_agent_path_floor`,
+one scope out, and for the identical reason: a value spelled against a declared root DANGLES at
+set time unless the root is floored. It went in with [R147]'s set-time half because the refusal
+OFFERS `@meta.workset.path/<value>` as the cure — `MIGRATION.md` § *A bare relative path in a
+settings key is refused* names it as the first row of the replacement table — and the E3 probe
+was answering "dangling @-reference" to it. A rule that bans a form and then refuses its own
+replacement has not removed the guess, it has removed the key.
+
+⚑ **It is not a second derivation of either root.** Both tiers' settings files are DECLARED as
+`<that root>/<filename>` (`paths.workset_settings_path`, `paths._box_settings_files`), so a
+threaded tier file NAMES its root by its parent. A tier the command did not thread yields
+nothing — `system set box.canon=x` names no box — and the refusal message then falls back to the
+ref SPELLING, dropping its `, spelled '…'` clause so the line does not say the same thing twice.
 
 ### `--null` route coverage
 

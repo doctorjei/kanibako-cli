@@ -218,7 +218,7 @@ class TestResolveName:
         (ws_root / "pods" / "api").mkdir(parents=True)
         # A decoy under the DEFAULT leaf proves the repoint is what resolves.
         (ws_root / "workspaces" / "api").mkdir(parents=True)
-        dump_doc(ws_root / "workset.yaml", {"workset": {"workspaces": "pods"}})
+        dump_doc(ws_root / "workset.yaml", {"workset": {"workspaces": "@meta.workset.path/pods"}})
         register_name(registry, "myws", str(ws_root), section="worksets")
 
         path, kind = resolve_name(registry, "api", cwd=ws_root)
@@ -378,7 +378,7 @@ class TestResolveQualifiedName:
 
         ws_root = tmp_path / "ws"
         (ws_root / "pods" / "api").mkdir(parents=True)
-        dump_doc(ws_root / "workset.yaml", {"workset": {"workspaces": "pods"}})
+        dump_doc(ws_root / "workset.yaml", {"workset": {"workspaces": "@meta.workset.path/pods"}})
         register_name(registry, "myws", str(ws_root), section="worksets")
 
         path, ws_name = resolve_qualified_name(registry, "myws/api")

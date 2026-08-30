@@ -531,6 +531,26 @@ def start_mocks():
             # <primary_workset>/boxes/testproject and the seed dests are contained.
             m_load_std.return_value.primary_workset = _pw
             m_load_std.return_value.data = Path(_store_tmp.name) / "data"
+            # ⚑ AND ``template``, for the SAME reason one step further on ([R147]).
+            # The system seed layer's source is ``@system.template/box/home``, and
+            # ``system_path_floor`` reads that key off ``std.template`` — so a MagicMock
+            # here makes the source the string ``<MagicMock ...>/box/home``, which is
+            # not an absolute path at all. It used to reach podman as a NAMED VOLUME
+            # name; it is now refused post-expansion, which is what surfaced the double
+            # as under-specified rather than the double being newly wrong.
+            m_load_std.return_value.template = Path(_store_tmp.name) / "template"
+            # ⚑ ``agents`` gets the same realism, but only on its STRING form, and the
+            # split is deliberate.  ``host_config_map`` publishes ``config.agents`` as
+            # ``str(std.agents)``, which every ``@agent.<a>.template`` /
+            # ``@agent.<a>.canon`` source dereferences — a MagicMock repr there is not
+            # an absolute path, and [R147]'s post-expansion guard now says so.  But the
+            # ``/`` HOPS must stay mocked: the derived ``agent.yaml`` path's truthy
+            # ``.exists()`` below is what keeps the "config already present" branch, and
+            # ``test_shell_mode_uses_general_agent`` reads the ``__truediv__`` call args.
+            # Making the attribute a real Path would take both of those with it.
+            m_load_std.return_value.agents.__str__.return_value = str(
+                Path(_store_tmp.name) / "agents"
+            )
 
             # Agent config mock: empty defaults (no run_args, no state, no env)
             agent_cfg = AgentConfig()

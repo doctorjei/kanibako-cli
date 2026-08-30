@@ -49,6 +49,20 @@ COPY: Final[Delivery] = "COPY"
 MOUNT: Final[Delivery] = "MOUNT"
 ENV: Final[Delivery] = "ENV"
 
+#: WHY a bare-relative host source is REFUSED rather than resolved (spec §2a) — the
+#: sentence, once, for every seam that refuses one.  ⚑ THE SECOND CLAUSE IS THE ONE
+#: PEOPLE DO NOT KNOW, which is why it travels with the first: a relative source is not
+#: merely resolved against a surprising directory, it stops being a host path at all.
+#: Read by the declaration parse (``settings_assemble._declared_source``) and by the
+#: post-expansion guard (``settings_expand``), which catch the same defect at the two
+#: ends of the resolve — one for a source spelled relative, one for a source whose
+#: ``@``-ref dereferences a path key holding a bare relative ([R147]).
+BARE_RELATIVE_SOURCE_HAZARD: Final[str] = (
+    "a relative source resolves against whatever directory kanibako happens to be run "
+    "from, and for a MOUNT podman reads a source beginning with neither '.' nor '/' as "
+    "the name of a NAMED VOLUME rather than as a host path at all"
+)
+
 #: Where ``secret_path`` ro-mounts each host secret file, as ``{dir}/{VAR}`` (§2a).
 #: ⚑ NOT under the box ``~`` home — it must stay disjoint from the home/workspace/
 #: vault mounts and OUT of the ``~``-rooted depth-sort.

@@ -247,8 +247,11 @@ def _standalone_with_vault(config_file, tmp_home, name, vault_repoint=None):
 
 
 class TestStandalonePurgeFollowsAnInRootRepoint:
-    """An IN-ROOT repoint (``vault_ro: store/ro``) is unambiguously kanibako's to delete:
-    it is inside the box root the purge is already clearing."""
+    """An IN-ROOT repoint (``vault_ro: @meta.workset.path/store/ro``) is unambiguously
+    kanibako's to delete: it is inside the box root the purge is already clearing.
+
+    ⚑ The repoint used to read ``store/ro``; [R147] refuses a bare relative, so the
+    workset-root anchor it always meant is now stated. Same directory, same case."""
 
     def test_purge_removes_an_in_root_repoint(
         self, config_file, tmp_home, credentials_dir, capsys,
@@ -258,8 +261,8 @@ class TestStandalonePurgeFollowsAnInRootRepoint:
         std, config = _reload(config_file)
         root = tmp_home / "sa_store"
         root.mkdir()
-        _repoint(root, "vault_ro", "store/ro")
-        _repoint(root, "vault_rw", "store/rw")
+        _repoint(root, "vault_ro", "@meta.workset.path/store/ro")
+        _repoint(root, "vault_rw", "@meta.workset.path/store/rw")
         proj = resolve_standalone_project(std, config, project_dir=str(root),
                                           initialize=True)
         assert proj.vault_ro_path == root / "store" / "ro"
@@ -368,8 +371,8 @@ class TestCleanPurgeFollowsTheRepoint:
         std, config = _reload(config_file)
         root = tmp_home / "cl_store"
         root.mkdir()
-        _repoint(root, "vault_ro", "store/ro")
-        _repoint(root, "vault_rw", "store/rw")
+        _repoint(root, "vault_ro", "@meta.workset.path/store/ro")
+        _repoint(root, "vault_rw", "@meta.workset.path/store/rw")
         proj = resolve_standalone_project(std, config, project_dir=str(root),
                                           initialize=True)
         (proj.vault_ro_path / "keep.txt").write_text("vault data")
@@ -418,8 +421,8 @@ class TestStandaloneMoveSourceCleanupFollowsTheRepoint:
         root = tmp_home / "mv_store"
         root.mkdir()
         (root / "file.txt").write_text("x")
-        _repoint(root, "vault_ro", "store/ro")
-        _repoint(root, "vault_rw", "store/rw")
+        _repoint(root, "vault_ro", "@meta.workset.path/store/ro")
+        _repoint(root, "vault_rw", "@meta.workset.path/store/rw")
         proj = resolve_standalone_project(std, config, project_dir=str(root),
                                           initialize=True)
         assert proj.vault_ro_path == root / "store" / "ro"

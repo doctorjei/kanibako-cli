@@ -1521,7 +1521,7 @@ class TestWorksetStampFollowsTheKeys:
         file must land under the repointed root and NOWHERE else — a stamp at the
         literal ``canon/`` is a tier the box's own key resolution will never read."""
         install_packaged_templates(std, ["claude"])
-        root = self._root_with_repoint(tmp_home, "solo-repoint", canon="my_canon")
+        root = self._root_with_repoint(tmp_home, "solo-repoint", canon="@meta.workset.path/my_canon")
         resolve_standalone_project(std, config, str(root), initialize=True)
         assert (
             root / "my_canon" / "handbook" / "directives" / "SYS_WORKSET.md"
@@ -1534,7 +1534,7 @@ class TestWorksetStampFollowsTheKeys:
         from kanibako.launch.templates import install_workset_template
 
         install_packaged_templates(std, ["claude"])
-        root = self._root_with_repoint(tmp_home, "solo-seam", canon="elsewhere/canon")
+        root = self._root_with_repoint(tmp_home, "solo-seam", canon="@meta.workset.path/elsewhere/canon")
         install_workset_template(std, root, canon_only=True)
         assert (
             root / "elsewhere" / "canon" / "handbook" / "directives" / "SYS_WORKSET.md"
@@ -1552,7 +1552,7 @@ class TestWorksetStampFollowsTheKeys:
         bad = std.template / "workset" / "canon" / "notebook" / "NOTES.md"
         bad.parent.mkdir(parents=True, exist_ok=True)
         bad.write_text("nope\n")
-        root = self._root_with_repoint(tmp_home, "solo-pre", canon="my_canon")
+        root = self._root_with_repoint(tmp_home, "solo-pre", canon="@meta.workset.path/my_canon")
         with pytest.raises(TemplateScopeError):
             check_workset_template(std, root, canon_only=True)
         assert not (root / "my_canon").exists()
@@ -1569,7 +1569,7 @@ class TestWorksetStampFollowsTheKeys:
         bad = std.template / "workset" / "canon" / "notebook" / "NOTES.md"
         bad.parent.mkdir(parents=True, exist_ok=True)
         bad.write_text("nope\n")
-        root = self._root_with_repoint(tmp_home, "solo-deny-repoint", canon="my_canon")
+        root = self._root_with_repoint(tmp_home, "solo-deny-repoint", canon="@meta.workset.path/my_canon")
         with pytest.raises(TemplateScopeError) as exc:
             install_workset_template(std, root, canon_only=True)
         assert "WORKSET" in str(exc.value)
@@ -1589,7 +1589,7 @@ class TestWorksetStampFollowsTheKeys:
         ws = tmp_path / "ws-template-repoint"
         ws.mkdir()
         (ws / "workset.yaml").write_text(
-            yaml.safe_dump({"workset": {"template": "moulds"}})
+            yaml.safe_dump({"workset": {"template": "@meta.workset.path/moulds"}})
         )
         install_workset_template(std, ws)
         assert (ws / "moulds" / "box" / "home" / "canon" / "notebook").is_dir()
@@ -1798,14 +1798,19 @@ class TestWorksetStampRefusesAnEscapingLeaf:
     def test_an_out_of_root_template_repoint_plants_no_skeleton_outside(
         self, std, tmp_path
     ):
-        """MEASURED BEFORE THE FIX: ``workset.template: ../escaped`` created all three
+        """MEASURED BEFORE THE FIX: an escaping ``workset.template`` created all three
         skeleton dirs (seven directories in all) outside the workset root, and nothing
-        refused — the skeleton loop never reached a guard."""
+        refused — the skeleton loop never reached a guard.
+
+        ⚑ Spelled ``@meta.workset.path/../escaped`` since [R147]; it read ``../escaped``
+        when it was written.  The escape is unchanged — it is the ANCHOR that now has to
+        be stated, and stating it is what lets this case still reach the scope guard
+        instead of dying earlier on an ambiguous value."""
         from kanibako.errors import TemplateScopeError
         from kanibako.launch.templates import install_workset_template
 
         install_packaged_templates(std, ["claude"])
-        root = self._root(tmp_path, "ws-escape", template="../escaped")
+        root = self._root(tmp_path, "ws-escape", template="@meta.workset.path/../escaped")
         with pytest.raises(TemplateScopeError) as exc:
             install_workset_template(std, root)
         assert "workset.template" in str(exc.value)
@@ -1891,7 +1896,7 @@ class TestWorksetStampRefusesAnEscapingLeaf:
         from kanibako.launch.templates import install_workset_template
 
         install_packaged_templates(std, ["claude"])
-        root = self._root(tmp_path, "solo-template-noise", template="../nowhere")
+        root = self._root(tmp_path, "solo-template-noise", template="@meta.workset.path/../nowhere")
         install_workset_template(std, root, canon_only=True)
         assert (root / "canon" / "handbook").is_dir()
         assert not (tmp_path / "nowhere").exists()

@@ -35,7 +35,7 @@ import tempfile
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import NamedTuple, Protocol, overload
 
 from kanibako.log import get_logger
@@ -46,6 +46,8 @@ from kanibako.settings.config import (WORKSET_META_FILE, BOX_META_FILE, Kanibako
                                       write_box_enable_vault)
 
 from kanibako.errors import ConfigError, ProjectError, WorksetError
+from kanibako.settings.agent_config import (ambiguous_path_value_error,
+                                            is_unambiguous_path_value)
 from kanibako.settings.settings_resolve import (LevelView, ResolveCtx, SettingsError,
                                                 _Unset, expand_expr, resolve_value)
 
@@ -342,6 +344,35 @@ def host_xdg_map(data_home: Path | None = None) -> dict[str, str]:
     return xdg_map
 
 
+def _refuse_bare_relative(key: str, raw: object, default: str, *,
+                          ctx: ResolveCtx,
+                          lookup: Callable[[str, tuple[str, ...]], str]) -> None:
+    """Refuse a Layer-1/Layer-2 path key whose STORED value is a bare relative ([R147]).
+
+    ⚑⚑ THE TEST IS ON THE STORED SPELLING, NOT ON WHAT IT RESOLVED TO, and the
+    difference is load-bearing.  [R147] rules on the value a user WROTE: ``$XDG_DATA_HOME
+    /kanibako`` is a legal stored value even in an environment where that variable
+    answers something odd, and refusing it there would report a KEY defect for an
+    ENVIRONMENT one — with a "did you mean" line that pastes the token back into itself.
+    A source that resolves to a relative path is a different rule at a different layer
+    (``settings_expand._refuse_relative_host_src``), with its own message.
+    ⚑ The other candidate root is DERIVED from this key's own declared *default* (P13),
+    never listed: it is the default's leading token, so a key added to either table
+    carries its own anchor into this message.
+    """
+    value = str(raw)
+    if not value or is_unambiguous_path_value(value):
+        return
+    anchor_ref = default.split("/", 1)[0]
+    try:
+        anchor = expand_expr(anchor_ref, space="host", ctx=ctx, lookup=lookup)
+    except SettingsError:
+        anchor = anchor_ref  # An unresolvable anchor still names the reading.
+    raise SettingsError(ambiguous_path_value_error(
+        key, value, anchor=anchor, anchor_ref=anchor_ref,
+    ))
+
+
 def resolve_config_paths(set_values: Mapping[str, str], *, data_home: Path, home: Path,
                          xdg_vars: Mapping[str, str] | None = None) -> dict[str, str]:
     """Resolve the Layer-1 CONFIG-key foundation to concrete host paths (flat by design).
@@ -362,10 +393,11 @@ def resolve_config_paths(set_values: Mapping[str, str], *, data_home: Path, home
         return expand_expr(str(rv.value), space="host", ctx=ctx, lookup=lookup, chain=chain)
 
     resolved: dict[str, str] = {}
-    for key in CONFIG_PATH_DEFAULTS:
+    for key, default in CONFIG_PATH_DEFAULTS.items():
         rv = resolve_value(key, levels=levels, ctx=ctx, lookup=lookup)
         if isinstance(rv, _Unset):  # Unreachable: every key has a default.
             raise SettingsError(ERR_SETTINGS_BAD_PATH % ("config", key))
+        _refuse_bare_relative(key, rv.value, default, ctx=ctx, lookup=lookup)
         resolved[key] = expand_expr(str(rv.value), space="host", ctx=ctx, lookup=lookup)
     return resolved
 
@@ -404,10 +436,11 @@ def resolve_system_paths(set_values: Mapping[str, str],
     for key, val in config.items():
         resolved[key] = Path(val)
     # Layer 2 system path keys, resolving ``@config.*`` via the foundation.
-    for key in SYSTEM_PATH_DEFAULTS:
+    for key, default in SYSTEM_PATH_DEFAULTS.items():
         rv = resolve_value(key, levels=levels, ctx=ctx, lookup=lookup)
         if isinstance(rv, _Unset):  # Unreachable: every key has a default.
             raise SettingsError(ERR_SETTINGS_BAD_PATH % ("system", key))
+        _refuse_bare_relative(key, rv.value, default, ctx=ctx, lookup=lookup)
         expanded = expand_expr(str(rv.value), space="host", ctx=ctx, lookup=lookup)
         resolved[key] = Path(expanded)
 

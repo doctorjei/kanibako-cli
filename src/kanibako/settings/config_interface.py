@@ -29,6 +29,10 @@ from kanibako.settings.config_display import (
     _print_category_block,
     _print_pref_block,
 )
+from kanibako.settings.agent_config import (
+    ambiguous_path_value_error,
+    is_unambiguous_path_value,
+)
 from kanibako.settings.agent_file import (
     AgentFileSlot,
     read_leaf,
@@ -45,7 +49,7 @@ from kanibako.settings.config_dest import (
     _persona_agent_target,
 )
 from kanibako.settings.config_keys import (
-    KEY_TYPES,
+    CoercionError,
     _KEY_ROUTES,
     _SCOPE_WRITE_ALLOWED,
     _SETTINGS_SCOPE_TOKENS,
@@ -77,6 +81,8 @@ from kanibako.settings.config_keys import (
     box_agent_redirect_key,
     box_agent_retired_error,
     is_access_key,
+    is_path_valued_key,
+    path_key_anchor,
     terminal_category_write_error,
     agent_node_bind_retired_error,
     scope_bind_retired_error,
@@ -198,6 +204,25 @@ def _pref_value_error(
             f"(that WRITES a suppression; 'reset {canonical}' undoes it)"
         )
 
+    # ⚑ [R147]'s bare-relative refusal, checked AT THE TARGET for the third time and the
+    # same reason ``access`` and ``transform_settings`` are: the preamble guard gates on
+    # the key AS TYPED, and ``pref.agent.<node>.{canon,template}`` — the pref allowlist
+    # admits every ``agent.*.**`` leaf — is a path key wearing a ``pref.`` prefix. A pref
+    # is INSTALLED at its target during resolution (§2h), so a bare relative requested here
+    # reaches the launch as the value of a path key, which is the state [R147] refuses.
+    path_err = _bare_relative_path_error(
+        target, value,
+        display_key=canonical, route_key=canonical,
+        config_path=config_path,
+        system_settings_path=system_settings_path,
+        command_scope=command_scope,
+        workset_path=workset_path,
+        box_path=box_path,
+        agents_root=None,  # a pref is set at box/workset scope, which holds no agents root.
+    )
+    if path_err is not None:
+        return path_err
+
     # ⚑ A SCALAR target: the E3 probe runs AT THE TARGET — probing at ``pref.*`` is a NO-OP.
     resolves, _raw = _category_set_lookups(
         config_path,
@@ -295,6 +320,129 @@ def _path_tier_split() -> "tuple[dict[str, str], dict[str, object]]":
     return config_foundation, floor
 
 
+def _meta_scope_anchor_floor(
+    workset_path: "Path | None", box_path: "Path | None",
+) -> dict[str, object]:
+    """The ``@meta.{workset,box}.path`` anchors the COMMAND holds, from its threaded tiers.
+
+    ⚑⚑ THE SET-TIME TWIN OF ``settings_launch.meta_agent_path_floor``, and it exists for
+    the reason that one does: a value spelled against a root the keyspace declares
+    DANGLES at set time unless the root is floored.  Without it ``workset set
+    workset.channelroot=@meta.workset.path/comms`` — the very spelling [R147]'s refusal
+    offers as the cure, and the first row of ``MIGRATION.md`` § 2.62's table — was
+    refused as a dangling reference, so the rule banned a form and then refused its own
+    replacement.
+
+    ⚑ NOT A SECOND DERIVATION OF EITHER ROOT.  Both tiers' settings files are DECLARED as
+    ``<that root>/<filename>``: ``paths.workset_settings_path`` says so in its own
+    docstring (``@meta.workset.path/workset.yaml``) and ``paths._box_settings_files``
+    builds the box tier under ``box_metadata_dir``.  So a threaded tier file NAMES its
+    root by its parent; nothing here decides where a root is.
+    ⚑ A TIER THE COMMAND DID NOT THREAD YIELDS NOTHING — ``system set box.canon=x`` names
+    no box, and a fabricated anchor would be exactly the guess this whole rule removes.
+    """
+    floor: dict[str, object] = {}
+    if workset_path is not None:
+        floor["meta.workset.path"] = str(workset_path.parent)
+    if box_path is not None:
+        floor["meta.box.path"] = str(box_path.parent)
+    return floor
+
+
+def _set_time_anchor(
+    anchor_ref: str,
+    *,
+    scope_anchors: "dict[str, object]",
+    agents_root: "Path | None",
+) -> "str | None":
+    """The DIRECTORY *anchor_ref* names AT SET TIME, or ``None`` when it is not knowable here."""
+    from kanibako.settings.settings_resolve import SettingsError, match_var
+
+    if anchor_ref.startswith("$"):
+        # ⚑ PARSED, never prefix-matched — the same reader ``is_unambiguous_path_value``
+        # admitted the value's own ``$XDG_*`` root with.
+        try:
+            name, _ = match_var(anchor_ref, 0)
+        except SettingsError:
+            return None
+        return _host_xdg_map().get(name)
+    ref = anchor_ref[1:] if anchor_ref.startswith("@") else anchor_ref
+    if ref in scope_anchors:
+        return str(scope_anchors[ref])
+    if ref.startswith("meta.agent.") and ref.endswith(".path"):
+        if agents_root is None:
+            return None
+        from kanibako.settings.agent_config import store_dirname
+
+        return str(agents_root / store_dirname(ref[len("meta.agent."):-len(".path")]))
+    # The Layer-1/Layer-2 path tier, ALREADY RESOLVED — the same split the set-time E3
+    # probe floors itself from. A tier that cannot be built leaves the anchor unresolved.
+    try:
+        config_foundation, path_floor = _path_tier_split()
+    except Exception:
+        return None
+    resolved = config_foundation.get(ref) or path_floor.get(ref)
+    return str(resolved) if resolved else None
+
+
+def _bare_relative_path_error(
+    canonical: str,
+    value: "str | None",
+    *,
+    display_key: str,
+    route_key: str,
+    config_path: Path,
+    system_settings_path: "Path | None",
+    command_scope: "ConfigLevel | None",
+    workset_path: "Path | None",
+    box_path: "Path | None",
+    agents_root: "Path | None",
+) -> "str | None":
+    """[R147] at SET TIME — refuse a bare-relative value for a PATH key, naming both readings.
+
+    The SET-TIME twin of the two read-time seams (``paths._refuse_bare_relative`` and
+    ``settings/workset_dirkeys.resolve_workset_dir_key``), sharing their predicate and
+    their message rather than restating the rule: one rule, one wording, at both ends.
+
+    *canonical* is the PATH key whose type and anchor govern; *display_key* is the
+    spelling the message names (the ``+`` form for a persona node, never ``℘``); and
+    *route_key* is the key whose destination file the message reports.  All three are the
+    same string on the direct route and three different ones for a ``pref.<target>``
+    request, which is TYPED by its target, NAMED by what the user wrote, and STORED in the
+    requesting scope's own file.
+
+    ⚑⚑ THE TEST IS ON THE SPELLING THE USER TYPED, BEFORE ANY EXPANSION, exactly as it is
+    at read time.  [R147] rules on what is a legal value to have WRITTEN, so
+    ``$XDG_DATA_HOME/kanibako`` is legal here even in an environment where that variable
+    answers something odd — refusing it there would report a KEY defect for an
+    ENVIRONMENT one.
+    ⚑ AN EMPTY VALUE IS NOT THIS RULE'S BUSINESS, and the guard matches the read-time one:
+    there is no bare relative to disambiguate, and calling ``''`` a relative path would be
+    a refusal a user cannot act on.
+    """
+    if not value or not is_path_valued_key(canonical):
+        return None
+    if is_unambiguous_path_value(value):
+        return None
+    anchor_ref, anchor_label = path_key_anchor(canonical)
+    anchor = _set_time_anchor(
+        anchor_ref,
+        scope_anchors=_meta_scope_anchor_floor(workset_path, box_path),
+        agents_root=agents_root,
+    )
+    dest = _write_dest(
+        route_key, command_scope=command_scope,
+        config_path=config_path, settings_path=system_settings_path,
+    )
+    return "Error: " + ambiguous_path_value_error(
+        display_key, value,
+        anchor=anchor or anchor_ref,
+        anchor_ref=anchor_ref if anchor else None,
+        where=str(dest.file) if dest is not None else None,
+        anchor_label=anchor_label,
+    )
+
+
 def _category_set_lookups(
     config_path: Path,
     *,
@@ -350,6 +498,13 @@ def _category_set_lookups(
 
     if agent_name:
         floor.update(meta_agent_path_floor(agent_name))
+
+    # The WORKSET and BOX store-root anchors, from the tier files the command threaded.
+    # ⚑ THE SAME REASON THE AGENT ANCHOR ABOVE IS HERE, one scope out: a value spelled
+    # against a declared root dangles at set time unless the root is floored, and
+    # ``@meta.workset.path/<leaf>`` is what [R147] tells the user to write instead of the
+    # bare relative it refuses. Withheld, the cure was refused as a dangling reference.
+    floor.update(_meta_scope_anchor_floor(workset_path, box_path))
 
     ctx = _set_time_ctx(config=config_foundation)
 
@@ -718,6 +873,35 @@ def set_config_value(
             canonical, verb="set", active_agent=cascade_agent_name or None,
         )
 
+    # [R147] — a BARE RELATIVE value for a PATH key is AMBIGUOUS and is REFUSED, the twin of
+    # the read-time refusals in ``paths._refuse_bare_relative`` and
+    # ``workset_dirkeys.resolve_workset_dir_key``. ⚑ THE ONE PLACE IT IS SPELLED for the
+    # whole CLI: ``system``/``workset``/``box``/``agent set`` all arrive here, so the rule
+    # cannot be reachable at one noun and not another.
+    # ⚑ POSITION: after every NAME-level refusal above (a retired or wrong-scope spelling
+    # gets its own specific message, never this generic value complaint), and BEFORE the E3
+    # probe, which splices the value into a candidate store — an illegal value is refused
+    # rather than resolved. ⚑ The ``config.*`` tier short-circuits at the TOP of this
+    # function; it is ``set: file`` with no CLI write route, so read time is the only
+    # enforcement those six keys have, and it already refuses them there.
+    path_err = _bare_relative_path_error(
+        canonical, value,
+        display_key=(
+            _node_secret_display_key(canonical)
+            if _is_agent_node_secret_key(canonical)
+            else _persona_display_key(canonical)
+        ),
+        route_key=canonical,
+        config_path=config_path,
+        system_settings_path=system_settings_path,
+        command_scope=command_scope,
+        workset_path=cascade_workset_path,
+        box_path=cascade_box_path,
+        agents_root=agents_root,
+    )
+    if path_err is not None:
+        return path_err
+
     # SET-TIME RESOLUTION PROBE for a value the EXPANDER will see (E3, spec §2a / Q9); see
     # :func:`_probes_at_set_time` for which keys qualify. It blocks ONLY on the edited value's
     # own upstream chain, so ``config set`` stays usable to REPAIR a broken config.
@@ -864,9 +1048,8 @@ def set_config_value(
     if route is None:
         return f"Error: unknown config key: {key}"
     typed = _coerce_value(canonical, value)  # the H2 fix (real bool/etc.)
-    if isinstance(typed, str) and KEY_TYPES.get(canonical):
-        # ``_coerce_value`` signalled a parse error (a str only comes back for a typed key).
-        return typed
+    if isinstance(typed, CoercionError):
+        return typed.message
     # A scope-prefixed SETTINGS key lands in the COMMAND scope's SETTINGS file with the key's
     # scope token KEPT — never remapped to the key-scope's own file.
     dest = _write_dest(

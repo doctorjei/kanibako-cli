@@ -229,6 +229,18 @@ DECLARED_AGENT_LEAVES: Final[frozenset[str]] = frozenset({
 #: ``tests/test_settings/test_agent_leaf_shape.py`` pins the two against each other.
 TABLE_VALUED_AGENT_LEAVES: Final[frozenset[str]] = frozenset({"transform_settings"})
 
+#: The declared agent leaves whose value is a HOST PATH — the manifest's ``type: path``
+#: rows in the ``agent`` scope (``agent.default.{template,canon}`` and the per-node
+#: ``agent.<agent>.{template,canon}``).
+#:
+#: ⚑ IT IS A SUBSET OF :data:`DECLARED_AGENT_LEAVES`, NOT A SECOND KEYSPACE — the same
+#: shape as :data:`TABLE_VALUED_AGENT_LEAVES` above and for the same reason: what it
+#: answers is a narrower question about a fully declared key, here "does [R147]'s
+#: bare-relative refusal reach this value?".  It is the agent-scope half of
+#: ``config_keys.is_path_valued_key``; the other scopes' path keys are spelled in full
+#: in ``config_keys.KEY_TYPES``.
+PATH_VALUED_AGENT_LEAVES: Final[frozenset[str]] = frozenset({"template", "canon"})
+
 #: The declared agent leaves a CLI ``set`` can actually WRITE — every leaf holding a SCALAR.
 #: ⚑ DERIVED, NEVER LISTED (P13): a leaf entering :data:`DECLARED_AGENT_LEAVES` becomes
 #: settable at both the bare ``agent.default`` spelling and the per-persona one with no edit

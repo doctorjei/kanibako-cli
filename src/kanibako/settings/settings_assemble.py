@@ -35,6 +35,7 @@ from kanibako.settings.kb_store import (
 from kanibako.settings.keystore import KeyStore, ReservedKeyError
 from kanibako.settings.settings_categories import (
     ABSTRACT_CATEGORIES,
+    BARE_RELATIVE_SOURCE_HAZARD,
     DECLARATION_ROOT_REF,
 )
 from kanibako.settings.settings_prefs import PREF_ROOT, refuse_pref_table
@@ -721,10 +722,8 @@ def _declared_source(
         f"{category} entry at {dest!r} declares a bare-relative host source "
         f"{src!r}; a source must fully resolve on its own — absolute, ~, $var or "
         f"an @-ref. {category} takes NO root at any scope (spec §2a), so no later "
-        f"layer may supply the missing one: a relative source resolves against "
-        f"whatever directory kanibako happens to be run from, and for a MOUNT "
-        f"podman reads a source beginning with neither '.' nor '/' as the name of "
-        f"a NAMED VOLUME rather than as a host path at all. Spell the source out."
+        f"layer may supply the missing one: {BARE_RELATIVE_SOURCE_HAZARD}. "
+        f"Spell the source out."
     )
 
 

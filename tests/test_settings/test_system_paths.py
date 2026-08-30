@@ -176,6 +176,51 @@ class TestResolveSystemPathsOverrides:
             )
 
 
+class TestBareRelativeIsRefusedNotAnchored:
+    """[R147] over the WHOLE of both path tables, not over a hand-picked key.
+
+    ⚑ The corpus is derived from :data:`CONFIG_PATH_DEFAULTS` /
+    :data:`SYSTEM_PATH_DEFAULTS` (P13), so a seventeenth path key added to either
+    table is swept the moment it is declared — and the sweep reds on its own
+    emptiness via the non-vacuity case below.
+    """
+
+    def test_the_two_tables_are_not_empty(self):
+        assert CONFIG_PATH_DEFAULTS and SYSTEM_PATH_DEFAULTS
+
+    @pytest.mark.parametrize("key", sorted(CONFIG_PATH_DEFAULTS))
+    def test_every_config_key_refuses_a_bare_relative(self, key, tmp_path):
+        with pytest.raises(SettingsError) as exc:
+            resolve_config_paths(
+                {key: "somewhere"}, data_home=tmp_path, home=tmp_path,
+            )
+        message = str(exc.value)
+        assert key in message
+        # BOTH readings named — the refusal removes the guess, it does not relay it.
+        assert str(Path.cwd() / "somewhere") in message
+        assert "BARE RELATIVE" in message
+
+    @pytest.mark.parametrize("key", sorted(SYSTEM_PATH_DEFAULTS))
+    def test_every_system_key_refuses_a_bare_relative(self, key, tmp_path):
+        with pytest.raises(SettingsError) as exc:
+            resolve_system_paths(
+                {key: "somewhere"}, data_home=tmp_path, home=tmp_path,
+            )
+        message = str(exc.value)
+        assert key in message
+        assert str(Path.cwd() / "somewhere") in message
+
+    def test_the_legal_shapes_still_resolve(self, tmp_path):
+        home = tmp_path / "h"
+        resolved = resolve_system_paths(
+            {"config.data": "~/.kani", "system.backup": "@config.data/bk",
+             "system.cache": "$XDG_CACHE_HOME/c", "system.canon": "/abs/canon"},
+            data_home=tmp_path, home=home,
+        )
+        assert resolved["system.backup"] == home / ".kani" / "bk"
+        assert resolved["system.canon"] == Path("/abs/canon")
+
+
 class TestLoadConfigPaths:
     def test_config_table_populates(self, tmp_path):
         toml = tmp_path / "kanibako_config.yaml"

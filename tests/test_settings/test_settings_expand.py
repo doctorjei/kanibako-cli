@@ -1227,3 +1227,95 @@ def test_tilde_is_the_box_home_in_a_box_dest_and_the_host_home_in_a_host_src() -
     # box_dest side: the BOX's home, and the host home never appears.
     assert entry.box_dest == GUEST_HOME + "/dest"
     assert SIMULATED_HOST_HOME not in entry.box_dest
+
+
+# --------------------------------------------------------------------------- #
+# [R147] — a path key that holds a bare relative must not reach a MOUNT        #
+# --------------------------------------------------------------------------- #
+
+
+def test_ref_to_a_bare_relative_path_key_is_refused_not_mounted() -> None:
+    """🛑 THE HOLE [R147] CLOSES, measured before the guard existed.
+
+    ``box.canon: relcanon`` is self-resolving where it is DECLARED — the source is
+    spelled ``@box.canon/handbook``, so ``_declared_source``'s parse-time refusal
+    never sees a relative — and it only becomes one HERE, when the key is read.
+    The launch seam then uses ``host_src`` AS-IS, and podman reads a source
+    beginning with neither ``.`` nor ``/`` as a NAMED VOLUME: the box would have
+    silently received an EMPTY VOLUME in place of the user's directory.
+
+    Pre-guard measurement: ``dest=/canon/handbook/box host_src='relcanon/handbook'``.
+    """
+    snap = KeyStore({
+        "box": {
+            "canon": "relcanon",
+            "bindings": {"ro": {"/canon/handbook/box": BindEntry("@box.canon/handbook")}},
+        },
+    })
+    with pytest.raises(SettingsError) as exc:
+        expand(snap, _ctx())
+    message = str(exc.value)
+    assert "@box.canon/handbook" in message, "the refusal must name the EXPRESSION"
+    assert "relcanon/handbook" in message
+    assert "NAMED VOLUME" in message
+
+
+def test_the_same_key_spelled_absolutely_still_mounts() -> None:
+    """Anti-vacuity for the case above: the guard refuses the value, not the shape."""
+    snap = KeyStore({
+        "box": {
+            "canon": "/srv/canon",
+            "bindings": {"ro": {"/canon/handbook/box": BindEntry("@box.canon/handbook")}},
+        },
+    })
+    out = expand(snap, _ctx())
+    entry = _probe(out, "box", "bindings", "ro", "/canon/handbook/box")
+    assert entry == BindEntry("/srv/canon/handbook")
+
+
+@pytest.mark.parametrize("canon,expected", [
+    ("/srv/canon", "/srv/canon/handbook"),
+    ("~/canon", "/home/u/canon/handbook"),
+    ("$XDG_DATA_HOME/canon", "/home/u/.local/share/canon/handbook"),
+    ("${XDG_STATE_HOME}/canon", "/home/u/.local/state/canon/handbook"),
+])
+def test_every_legal_path_value_reaches_the_mount_unrefused(canon, expected) -> None:
+    """🛑 THE GUARD MUST NOT OVER-FIRE, and this is the case that would prove it did.
+
+    ⚑ It tests the EXPANDED value, never the stored spelling — which is the whole
+    reason [R147]'s four legal forms survive it: ``~``, ``$XDG_*`` (bare and braced)
+    and an ``@``-ref have all become an absolute path by the time the check runs.
+    A guard placed on the STORED string instead would refuse every row here.
+    """
+    snap = KeyStore({
+        "box": {
+            "canon": canon,
+            "bindings": {"ro": {"/canon/handbook": BindEntry("@box.canon/handbook")}},
+        },
+    })
+    out = expand(snap, _ctx())
+    entry = _probe(out, "box", "bindings", "ro", "/canon/handbook")
+    assert entry == BindEntry(expected)
+
+
+@pytest.mark.parametrize("src,expected", [
+    ("~/notes", "/home/u/notes"),
+    ("$XDG_DATA_HOME/seed", "/home/u/.local/share/seed"),
+    ("${XDG_STATE_HOME}/seed", "/home/u/.local/state/seed"),
+    ("/srv/notes", "/srv/notes"),
+])
+def test_a_directly_spelled_legal_host_source_is_unrefused(src, expected) -> None:
+    """The same four shapes written straight into the source, not behind a key."""
+    snap = KeyStore({"box": {"bindings": {"ro": {"/box/d": BindEntry(src)}}}})
+    out = expand(snap, _ctx())
+    assert _probe(out, "box", "bindings", "ro", "/box/d") == BindEntry(expected)
+
+
+def test_a_name_keyed_bind_host_is_guarded_too() -> None:
+    """Both bind shapes route through the one guard — the legacy ``Bind`` included."""
+    snap = KeyStore({
+        "box": {"canon": "relcanon",
+                "bindings": {"ro": {"h": Bind("@box.canon/x", "/box/x", "ro")}}},
+    })
+    with pytest.raises(SettingsError, match="BARE RELATIVE"):
+        expand(snap, _ctx())

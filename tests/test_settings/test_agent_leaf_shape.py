@@ -110,12 +110,15 @@ class TestTheScalarHalfIsSettable:
         ``template``, ``canon``, ``run_args`` and ``transform`` are refused and this
         dies with their names in the message.
         """
-        from tests.test_settings.test_config_dest_parity import Bench
+        from tests.test_settings.test_config_dest_parity import Bench, sample_leaf_value
         from kanibako.settings.config_keys import ConfigLevel
 
         refused = {}
         for i, leaf in enumerate(sorted(SCALAR_AGENT_LEAVES)):
-            value = "full" if leaf == "access" else "probe"
+            # ⚑ The sample is DERIVED from the leaf's declared type, so this row keeps
+            # measuring the ROUTE rather than a value guard — ``sample_leaf_value``
+            # carries what it used to pass (``probe``) and why that moved.
+            value = sample_leaf_value(leaf, tag="probe")
             msg = Bench(tmp_path / f"s{i}").set(ConfigLevel.system, leaf, value)
             if msg.startswith("Error:"):
                 refused[leaf] = msg
@@ -165,12 +168,15 @@ class TestTheTableHalfIsRefusedBySHAPE:
 
     def test_a_scalar_leaf_pref_still_works(self, tmp_path):
         """The other half: shutting that door may not shut the legal requests beside it."""
-        from tests.test_settings.test_config_dest_parity import Bench
+        from tests.test_settings.test_config_dest_parity import Bench, sample_leaf_value
         from kanibako.settings.config_keys import ConfigLevel
 
         refused = {}
         for i, leaf in enumerate(sorted(SCALAR_AGENT_LEAVES)):
-            value = "full" if leaf == "access" else "probe"
+            # ⚑ DERIVED from the TARGET leaf's type, because a pref is validated AT its
+            # target: ``pref.agent.<node>.canon`` is a path key wearing a prefix, so a
+            # bare-relative sample reds this row on [R147] and not on the pref route.
+            value = sample_leaf_value(leaf, tag="probe")
             msg = Bench(tmp_path / f"q{i}").set(
                 ConfigLevel.box, f"pref.agent.claude.{leaf}", value,
             )

@@ -255,7 +255,15 @@ inside boxes. In order of likely impact:
     Saved `kanibako code --remote` tunnel contexts are the part you notice — re-run the command
     once per context. Default installs are unaffected.
 
-28. Smaller items: standalone boxes' `box get` got truthful (§2.9); a box suppressed to
+28. **A path key set to a bare relative value — `workset.channelroot: comms` — is now refused
+    instead of being anchored somewhere** (§2.62). It used to mean *under the workset root* for
+    the workset directory keys and *under your current directory* for every other path key; one
+    key cannot have two answers, and a wrong guess here creates a directory that then holds your
+    data. Respell as `@meta.workset.path/comms` (the old workset-root reading, said out loud),
+    `@config.data/…`, an absolute path, `~/…` or `$XDG_*/…`. Nothing kanibako ships uses this
+    spelling, so this only bites a value you wrote by hand.
+
+29. Smaller items: standalone boxes' `box get` got truthful (§2.9); a box suppressed to
     plain-shell keeps stale credential files in its home (§2.10); several never-released or
     expected-empty renames (§2.11); two `--null` CLI bugs fixed (§2.14); a customized helper
     entrypoint script moves to `~/canon/notebook/scripts/helper-init.sh` (§2.44).
@@ -3817,6 +3825,73 @@ exit code is the only signal that changed; a value that was already valid behave
 
 ⚑ **`name` is not affected**, because it is not a setting — it is the agent's display name, and
 `kanibako agent set <agent> name=…` writes it exactly as it always has.
+
+### 2.62 A bare relative path in a settings key is refused
+
+**Read this if you set any path key to a value that does not start with `/`, `~`, `$` or `@` —
+`workset.channelroot: comms`, `system.cache: mycache`, `box.canon: canon`.**
+
+**What changed.** A bare relative path had two different meanings depending on which key carried
+it. The nine workset directory keys and the six `workset.channels.*` leaves anchored it under the
+**workset root**. Every other path key — the six `config.*`, the eleven `system.*`, `box.canon`,
+`box.images_store`, the four `agent.<node>.{canon,template}` and `workset.auth.path` — passed it
+through raw, so it resolved against **whatever directory you happened to be standing in when you
+ran the command**. One key, one answer is the rule; this was one keyspace, two answers, and neither
+was written down where you would see it.
+
+It is now refused, at both ends: when you `set` it, and when kanibako reads it back.
+
+⚑ **`secret_path.<VAR>` is in the rule too, and for it the `set` end is the only end.** A secret
+pointer's value is deliberately never read into a snapshot — kanibako mounts the file and never
+looks at it — so there is no read-back to catch a bare relative at. `kanibako system set
+system.secret_path.MY_TOKEN=token.txt` is refused with the same message; a value already sitting in
+a settings file is not, and you should check those by hand.
+
+**Why refused rather than picked.** Both readings are defensible, which is precisely the problem.
+The reason to set one of these keys at all is to move the directory *off* its default — and the
+default is under the workset root — so "keep it with the workset" assumes the very intent you are
+overriding. Roughly half the time the other reading is what you meant. And this is not a key where
+a wrong guess produces a confusing message: the path gets created, and then it holds your data.
+
+```
+$ kanibako workset set workset.channelroot=comms
+Error: workset.channelroot is set to 'comms' in /home/you/ws/workset.yaml, which is a BARE RELATIVE path. kanibako will not guess what it is relative to — both of these readings are plausible and they are DIFFERENT directories:
+    /home/you/ws/comms   (this key's default root, spelled '@meta.workset.path/comms')
+    /home/you/projects/comms   (the directory kanibako was run from)
+Set the one you mean, spelled so it resolves on its own: an absolute path, '~/...', '$XDG_*/...', or an '@'-ref.
+```
+
+**The four legal spellings**, and one of them is the old root-relative reading said out loud:
+
+| You want | Write |
+|---|---|
+| under the workset root | `@meta.workset.path/comms` |
+| under the kanibako data root | `@config.data/comms` |
+| an exact place | `/srv/comms` |
+| under your home / an XDG base | `~/comms`, `$XDG_DATA_HOME/comms` |
+
+⚑ **`$XDG_*` only.** `$AGENT` and `$WORKSET` expand to a bare *name*, so `$AGENT/logs` is as
+relative as `logs` is; they are not accepted as a root.
+
+**This also closes a mount hole.** A bind source such as `@box.canon/handbook` resolves on its own
+where it is declared, so §2.50's parse-time refusal never saw it — it only became relative once
+`box.canon` was read. podman reads a mount source beginning with neither `.` nor `/` as the name of
+a **named volume**, so a box with `box.canon: canon` received an empty volume where your handbook
+should have been, and nothing said so. That case is now refused too, naming the expression rather
+than only the result.
+
+**What you must do.** In each settings file you have written — the system
+`global/settings.yaml`, your `kanibako_config.yaml`, each workset root's `workset.yaml`, each box
+dir's `box.yaml`, each agent store's `agent.yaml` — look at the value of every key in the list
+above, and of every `secret_path.<VAR>` you have configured, and check its first character. If it is not `/`, `~`, `$` or `@`, respell it from the table.
+There is usually nothing to find: no default kanibako ships is written this way, so a bare relative
+only appears where you typed one. If it was one of the workset directory keys or a
+`workset.channels.*` leaf, `@meta.workset.path/<value>` reproduces exactly what kanibako was doing
+before, and nothing on disk moves. For every other key the old reading was cwd-relative, which
+means the directory kanibako actually used depended on where you ran the command — decide where you
+want it, write that, and move the contents if anything is there.
+
+---
 
 ### 2.63 `box convert` out of standalone reads the box's root instead of counting up from the workspace
 

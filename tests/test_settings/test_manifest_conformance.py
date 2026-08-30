@@ -506,7 +506,9 @@ class TestWorksetWorkspacesDefault:
         A ``<root>/workspaces`` join would pass every case above and silently drop this
         one, which is the whole distinction between the deriver and a second carrier.
         """
-        (tmp_path / "workset.yaml").write_text("workset:\n  workspaces: pods\n")
+        (tmp_path / "workset.yaml").write_text(
+            "workset:\n  workspaces: '@meta.workset.path/pods'\n"
+        )
         assert self._derived(tmp_path, "named") == tmp_path / "pods"
 
 
@@ -1403,3 +1405,62 @@ class TestSetColumnConformance:
             k for k in never if not k.startswith("meta.")
         )
         assert not (never & set(_KEY_ROUTES))
+
+
+class TestThePathTypeColumnHasOneCodeCarrier:
+    """The registry's ``type: path`` rows and what the CODE treats as a path must AGREE.
+
+    ⚑ WHY THIS PIN EXISTS (P15).  [R147]'s refusal reaches exactly the keys
+    ``config_keys.is_path_valued_key`` claims, and a registry row the code does not claim
+    is a path key that quietly takes an ambiguous value at every set route.  Completeness
+    is by HAND for the ``workset.*`` and ``box.*`` rows — no live table enumerates them —
+    so it is bought back here, LOUDLY, instead of being trusted.
+
+    ⚑ THE FOUR ``agent`` ROWS AND THE ``secret_path`` FAMILY ARE PARAMETRIC and carry no
+    fixed canonical spelling, so they are asserted through the predicate at the shapes the
+    keyspace admits rather than through ``KEY_TYPES``.
+    """
+
+    def test_every_registry_path_row_is_claimed_by_the_predicate(self):
+        from kanibako.settings.config_keys import is_path_valued_key
+
+        declared = {
+            str(key) for key, row in _keys().items()
+            if isinstance(row, dict) and row.get("type") == "path"
+        }
+        assert len(declared) >= 39, "the registry's path rows shrank — re-measure this pin"
+        # ⚑ ``<agent>`` is the registry's PLACEHOLDER for a discriminated node, not a
+        # spelling; substituting a node is what the keyspace itself does.
+        unclaimed = {
+            key for key in declared
+            if not is_path_valued_key(key.replace("<agent>", "claude"))
+        }
+        assert not unclaimed, (
+            f"the registry declares these keys ``type: path`` and the code does not "
+            f"treat them as paths, so [R147]'s refusal never reaches them: "
+            f"{sorted(unclaimed)}"
+        )
+
+    def test_the_code_claims_no_path_key_the_registry_does_not_declare(self):
+        from kanibako.settings.config_keys import KEY_TYPES
+
+        declared = {str(key) for key in _keys()}
+        invented = {
+            key for key, kind in KEY_TYPES.items()
+            if kind == "path" and key not in declared
+        }
+        assert not invented, (
+            f"KEY_TYPES types these as paths but the registry declares no such key "
+            f"(the keyspace is CLOSED, spec §0): {sorted(invented)}"
+        )
+
+    def test_the_parametric_secret_path_family_is_claimed_at_every_spelling(self):
+        """``secret_path`` carries ``value: path``, which a ``type:`` grep MISSES."""
+        from kanibako.settings.config_keys import is_path_valued_key
+
+        assert manifest_doc()["categories"]["secret_path"]["value"] == "path"
+        for spelling in (
+            "system.secret_path.TOKEN", "workset.secret_path.TOKEN",
+            "box.secret_path.TOKEN", "agent.claude.secret_path.TOKEN",
+        ):
+            assert is_path_valued_key(spelling), spelling

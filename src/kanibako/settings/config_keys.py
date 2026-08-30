@@ -15,16 +15,24 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path  # noqa: F401  (annotations)
 from typing import Collection, Iterator
 
 from kanibako.agent_ref import canonicalize_agent_ref, display_agent_ref
 from kanibako.errors import ConfigError
+from kanibako.settings.agent_config import (
+    DECLARATION_ROOT_LABEL,
+    DEFAULT_ROOT_LABEL,
+)
 from kanibako.settings.config import coerce_bool
 from kanibako.settings.kb_store import SCOPE_CONTAINMENT
+from kanibako.settings.paths_defaults import CONFIG_PATH_DEFAULTS, SYSTEM_PATH_DEFAULTS
+from kanibako.settings.settings_categories import DECLARATION_ROOT_REF
 from kanibako.settings.settings_keyspace import (
     ACCESS_TIERS,
+    PATH_VALUED_AGENT_LEAVES,
     SCALAR_AGENT_LEAVES,
     TABLE_VALUED_AGENT_LEAVES,
     access_default,
@@ -262,9 +270,21 @@ _KEY_ROUTES: dict[str, tuple[tuple[str, ...], str]] = {
     # ⚑ ``allow_helpers`` is NOT routed here — it is an agent-keyspace key (spec §2d).
 }
 
-# Keys whose values must be coerced to a real type before writing (the H2 fix).
-# ⚑ The agent-scope scalars are NOT here, and ``access`` is an ENUM guarded by
-# :func:`access_value_error`, never a coercion. See llm-docs.
+# The DECLARED TYPE of every key whose type the CLI acts on — the code carrier of the
+# registry's ``type:`` column.  ⚑ ``access`` is an ENUM guarded by
+# :func:`access_value_error`, never a type here.
+#
+# ``bool``  — coerced to a real bool before writing (the H2 fix).
+# ``path``  — a host PATH, so [R147]'s bare-relative refusal reaches it at set time
+#             (:func:`is_path_valued_key`).  NOT coerced: the file keeps the raw
+#             spelling, tokens and all (spec §0).
+#
+# ⚑ THE TWO KINDS ARE ONE TABLE ON PURPOSE.  A key has one declared type, and the
+# manifest column that states it is one column; two code tables would be two answers to
+# "what is this key" and would drift the way every split carrier here has.
+# ⚑ THE PARAMETRIC PATH KEYS ARE NOT SPELLABLE HERE — ``agent.<node>.{template,canon}``
+# and the ``secret_path.<VAR>`` family have no fixed canonical string, so
+# :func:`is_path_valued_key` is the predicate to ask, never this table directly.
 KEY_TYPES: dict[str, str] = {
     "box.share_images": "bool",
     "system.auth.share_allowed": "bool",
@@ -274,10 +294,54 @@ KEY_TYPES: dict[str, str] = {
     "box.auth.workset_enabled": "bool",
     "box.enable_vault": "bool",
     "workset.skip_kuid_check": "bool",
+    # The Layer-1 config tier and the Layer-2 ``system.*`` tier, DERIVED from the two
+    # declared-default tables they are (P13) — a path key added to either arrives here
+    # with no edit.  ⚑ The six ``config.*`` rows are ``set: file`` and have no CLI write
+    # route at all; they are typed anyway because this table answers what a key IS, not
+    # what a verb may do to it, and their read-time guard shares the same predicate.
+    **{key: "path" for key in CONFIG_PATH_DEFAULTS},
+    **{key: "path" for key in SYSTEM_PATH_DEFAULTS},
+    # The workset LAYOUT anchors and the six-leaf ``channels`` family (spec §2c) — the
+    # keys ``workset_dirkeys.resolve_workset_dir_key`` refuses a bare relative for when
+    # it READS them.  ⚑ Spelled out because no live table enumerates them: their
+    # defaults reach the launch through ``settings_launch.workset_anchor_floor`` as
+    # RESOLVED values, which carry no type.
+    "workset.workspaces": "path",
+    "workset.boxes": "path",
+    "workset.logs": "path",
+    "workset.vault_ro": "path",
+    "workset.vault_rw": "path",
+    "workset.canon": "path",
+    "workset.registry": "path",
+    "workset.template": "path",
+    "workset.auth.path": "path",
+    "workset.channelroot": "path",
+    "workset.channels.common": "path",
+    "workset.channels.chat": "path",
+    "workset.channels.broadcast": "path",
+    "workset.channels.share": "path",
+    "workset.channels.mailboxes": "path",
+    "workset.channels.share_global": "path",
+    # The two box-scope paths (spec §2b).
+    "box.canon": "path",
+    "box.images_store": "path",
 }
 
-def _coerce_value(canonical: str, value: "str | None") -> object | str | None:
+
+@dataclass(frozen=True)
+class CoercionError:
+    """A typed key's value could not be read as its declared type — the H2 failure."""
+
+    #: The whole user-facing line, already prefixed ``Error:``.
+    message: str
+
+
+def _coerce_value(canonical: str, value: "str | None") -> object | None:
     """Coerce *value* to the typed form declared for *canonical* in KEY_TYPES."""
+    # ⚑ A FAILURE COMES BACK AS :class:`CoercionError`, NEVER AS A BARE ``str``. The
+    # callers used to test ``isinstance(result, str) and KEY_TYPES.get(key)`` — which
+    # reads "a typed key returned a string, so it must be the error" and stops being
+    # true the moment a declared type's own values ARE strings. ``path`` is that type.
     if value is None:
         return None  # an explicit present-None request (--null): never coerced.
     kind = KEY_TYPES.get(canonical)
@@ -285,11 +349,78 @@ def _coerce_value(canonical: str, value: "str | None") -> object | str | None:
         coerced = coerce_bool(value)
         if coerced is not None:
             return coerced
-        return (
+        return CoercionError(
             f"Error: {canonical} expects a boolean "
             f"(true/false/1/0/yes/no), got {value!r}"
         )
     return value
+
+
+# ---------------------------------------------------------------------------
+# PATH-valued keys — the SET-TIME half of [R147]
+# ---------------------------------------------------------------------------
+
+def is_path_valued_key(canonical: str) -> bool:
+    """True iff *canonical* names a key whose value is a HOST PATH (registry ``type: path``).
+
+    The FIXED spellings come from :data:`KEY_TYPES`; the three PARAMETRIC families —
+    the bare agent leaves the CLI serves for the any-agent tier, the per-node
+    ``agent.<node>.{template,canon}``, and ``secret_path.<VAR>`` at every scope — have
+    no fixed string and are recognised by their own parsers.
+    """
+    if KEY_TYPES.get(canonical) == "path":
+        return True
+    if canonical in PATH_VALUED_AGENT_LEAVES:
+        return True
+    parsed = _parse_persona_agent_key(canonical)
+    if parsed is not None and parsed[1] in PATH_VALUED_AGENT_LEAVES:
+        return True
+    return _is_scope_secret_key(canonical) or _is_agent_node_secret_key(canonical)
+
+
+def path_key_anchor(canonical: str) -> "tuple[str, str]":
+    """``(anchor ref, label)`` for [R147]'s OTHER reading of a bare relative at *canonical*.
+
+    The anchor is the root the user might have meant INSTEAD of the cwd, and it is the
+    one the READ-TIME seams already name, so a key cannot get two answers:
+
+    * a Layer-1/Layer-2 path key takes its own declared default's leading token, exactly
+      as ``paths._refuse_bare_relative`` derives it (P13 — a key added to either table
+      carries its own anchor here with no edit);
+    * every ``workset.*`` path key takes ``@meta.workset.path``, which is what
+      ``workset_dirkeys.resolve_workset_dir_key`` names for all of them — the six
+      ``channels.*`` leaves included, since ``channels.py`` resolves them through that
+      same seam rather than through ``@workset.channelroot``;
+    * the rest take their spec §2a DECLARATION ROOT
+      (:data:`~kanibako.settings.settings_categories.DECLARATION_ROOT_REF`).
+
+    ⚑ THE LABEL IS PART OF THE ANSWER.  ``box.images_store`` is probed from podman at
+    runtime and ``secret_path.<VAR>`` declares nothing at all, so for those two the
+    anchor is a scope root and is introduced as one — see :data:`DECLARATION_ROOT_LABEL`.
+    """
+    # ⚑ THE TWO ``secret_path`` SHAPES ARE TESTED FIRST, and the order is load-bearing:
+    # ``workset.secret_path.TOKEN`` is a ``workset.*`` key that declares NO default, so
+    # the prefix arms below would give it the right root under the wrong label.
+    secret = _parse_agent_node_secret_key(canonical)
+    if secret is not None:
+        return (DECLARATION_ROOT_REF["agent"].format(agent=secret[0]),
+                DECLARATION_ROOT_LABEL)
+    if _is_scope_secret_key(canonical):
+        return DECLARATION_ROOT_REF[canonical.split(".", 1)[0]], DECLARATION_ROOT_LABEL
+    declared_default = CONFIG_PATH_DEFAULTS.get(canonical) or SYSTEM_PATH_DEFAULTS.get(canonical)
+    if declared_default is not None:
+        return declared_default.split("/", 1)[0], DEFAULT_ROOT_LABEL
+    if canonical.startswith("workset."):
+        return DECLARATION_ROOT_REF["workset"], DEFAULT_ROOT_LABEL
+    if canonical == "box.images_store":
+        return DECLARATION_ROOT_REF["box"], DECLARATION_ROOT_LABEL
+    if canonical.startswith("box."):
+        return DECLARATION_ROOT_REF["box"], DEFAULT_ROOT_LABEL
+    # The two agent-scope path leaves, anchored at the NODE'S OWN store root. The bare
+    # CLI spelling writes the any-agent tier, whose node is the reserved ``default``.
+    parsed = _parse_persona_agent_key(canonical)
+    node = parsed[0] if parsed is not None else AGENT_DEFAULT_SUB
+    return DECLARATION_ROOT_REF["agent"].format(agent=node), DEFAULT_ROOT_LABEL
 
 # ---------------------------------------------------------------------------
 # Scope-direction guard (block B4, spec §0 directional view/set + §2a)
