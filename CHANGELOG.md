@@ -1885,12 +1885,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   skipped. Every other agent keeps working. The two fallback discovery paths already tolerated a
   failing plugin; the main one now matches them.
 
-- **`kanibako-agent-goose` and `kanibako-agent-codex` are now 0.4.0, and older ones are refused.**
+- **`kanibako-agent-goose` and `kanibako-agent-codex` are now 0.5.0, and older ones are refused.**
   Their published `0.3.0` packages predate the `access_realization` and top-level `env:` changes, so
   the current kanibako cannot load them — it refuses them by name, which is correct but left no
-  version to upgrade *to*, since `0.3.0` was the newest published. Both are republished at `0.4.0`
-  and the meta package now requires that. **If you installed the meta package and saw errors about
-  `safe_bypass`, `container_env`, or `BindDefault`, upgrading is the fix.**
+  version to upgrade *to*, since `0.3.0` was the newest published. Both were republished at `0.4.0`,
+  and again at `0.5.0` when their plugin code and seeded canon changed further; the meta package
+  requires the current pair. **If you installed the meta package and saw errors about `safe_bypass`,
+  `container_env`, or `BindDefault`, upgrading is the fix.**
+  Unlike the CLI and the Claude plugin, these two are **not** stamped with the release train — they
+  carry their own version, so a change to either has to be published under a new number or it cannot
+  ship at all. The release now refuses to build when their content has moved and the version has
+  not, rather than uploading under the old number and silently keeping the old files.
 
 - **Installing a pre-release of the meta package could pull an older Claude plugin than the one it
   was built with.** The meta pins the CLI to the exact version it shipped with, so the two can never
