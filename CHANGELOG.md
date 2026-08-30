@@ -94,6 +94,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **A leaf only one plugin declares is no longer a key on the all-agents tier, and a plugin's own
+  floor now lands under the agent that declares it.** `agent.default.*` is the universal
+  vocabulary — a leaf there is a key on every agent — so a leaf only goose declares, `provider`,
+  was never meant to live at that tier. The spelling is `agent.goose.provider`. Two things follow.
+  A refusal for an undeclared `agent.default.<leaf>` now lists core's own table rather than the
+  union of every installed plugin, which at that tier is the honest list. And a plugin's declared
+  defaults are keyed under the agent that declared them, which on a goose box removes a
+  resolve-time refusal that — sitting behind the shared settings load — reached very nearly every
+  kanibako command, not just `start`. ⚠️ **If a settings file of yours carries
+  `agent: default: provider:`, move it under `agent: goose:`** — see `MIGRATION.md`,
+  *`agent.default.<plugin-leaf>` is no longer a key*. Core-declared leaves — `model`, `endpoint`,
+  `transform`, `access`, `allow_helpers`, `bootstrap`, `continue_mode`, `run_args`, `template`,
+  `canon`, `transform_settings` — are unaffected at `agent.default`, including where a plugin
+  declares one too. Precedence is unchanged: a settings file at any scope still outranks a
+  floored value.
+
 - **`diagnose` now quotes a settings error once and names every check it broke.** Each settings
   load reports its own failure, and that half is deliberate — a check that swallowed the reason
   would be back to a bland `cannot check`. But each one also quoted the entire error underneath its

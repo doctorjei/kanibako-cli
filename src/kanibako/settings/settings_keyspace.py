@@ -1227,17 +1227,44 @@ def key_class(
         name = rest[0]
         if not is_valid_agent_segment(name, valid_agents):
             return _undeclared(_bad_agent_reason(name, valid_agents))
+        if name == "default":
+            # 🛑 CORE OWNS THIS TIER, so CORE's table is the whole of its vocabulary —
+            # the same reason ``meta.agent.<agent>.*`` is judged against
+            # :data:`DECLARED_META_AGENT_LEAVES` above. ``agent.default.<leaf>`` is the
+            # ALL-AGENTS fallback layer, and a plugin declares specifics for the agent it
+            # ships, never for every other agent on the machine. Spec §0 says it outright:
+            # *"the base system owns ONLY universal keys: agent.default.* + the generic
+            # agent.<agent>.<key> contract SHAPE. Every non-universal specific … is
+            # established AND modified by the PLUGIN"* — so a plugin's specific has no
+            # slot HERE, only under its own agent. Unioning the plugin set in let goose's
+            # ``provider`` classify as ``agent.default.provider``, which the ratified
+            # manifest names not-a-key twice (``not_keys.code_residue``;
+            # ``provider_disposition``, R-37) for want of any default-tier declaration,
+            # and which §2d's Default-tier census does not enumerate.
+            # ⚑ ``transform`` IS in the core table, so ``agent.default.transform`` stays
+            # a key: this narrows to plugin-ONLY leaves, nothing else.
+            # ⚑ ``leaves_known`` is left at its default because the CONCESSION was
+            # already off here — ``_could_name_an_agent('default')`` is False — so this
+            # changes the VOCABULARY and not the concession.
+            # ⚑ It also asks NEITHER injected set, which strengthens the deferral rather
+            # than re-arming it: even the refusal message now names core's table alone,
+            # which at this tier is the honest list.
+            return _agent_tail_reason(
+                f"agent.{name}", rest[1:], DECLARED_AGENT_LEAVES,
+            )
         return _agent_tail_reason(
             f"agent.{name}", rest[1:], leaves,
             # ⚑ THE CONCESSION IS ASKED IN THE RIGHT ORDER, and getting it backwards
             # un-armed §0 over a documented relic shape. The question is FIRST *could
             # this segment be an agent at all* (:func:`_could_name_an_agent`) and only
-            # then *does this machine know its leaves*. A §2a category token and
-            # ``default`` fail the first question, so they are never conceded: their
-            # vocabulary is the KEYSPACE's own and is known on every machine. Ask only
-            # the second question and ``agent.common.plugins`` — the undiscriminated
-            # relic MIGRATION.md §2.11 tells users to grep for — classifies as a KEY,
-            # because no plugin declares an agent named ``common``.
+            # then *does this machine know its leaves*. A §2a category token fails the
+            # first question, so it is never conceded: its vocabulary is the KEYSPACE's
+            # own and is known on every machine. (``default`` no longer REACHES this
+            # call — the branch above judges it against core's table, for that same
+            # reason one step further — and the predicate still answers False for it.)
+            # Ask only the second question and ``agent.common.plugins`` — the
+            # undiscriminated relic MIGRATION.md §2.11 tells users to grep for —
+            # classifies as a KEY, because no plugin declares an agent named ``common``.
             # ⚑ Both exclusions live HERE rather than in a supplier for the reason
             # :func:`is_valid_agent_segment` gives: their standing is the KEYSPACE's,
             # so every supplier gets it right by not having to know it.

@@ -70,6 +70,7 @@ from kanibako.settings.settings_categories import (
 from kanibako.settings.settings_cli_level import guard_cli_level
 from kanibako.settings.settings_expand import expand
 from kanibako.settings.settings_keyspace import (
+    DECLARED_AGENT_LEAVES,
     render_store_path,
     undeclared_store_paths,
 )
@@ -995,14 +996,17 @@ def build_launch_snapshot(
 ) -> KeyStore:
     """Build the ONE expanded launch snapshot.
 
-    Folds the behavior floor (mapped to ``agent.default.<key>`` — OS1) and every
+    Folds the behavior floor (mapped to ``agent.default.<key>`` for a CORE-declared
+    leaf and ``agent.<active>.<key>`` for a plugin-only one — OS1) and every
     runtime ``default_categories`` table into ONE base-level floor, assembles the
     6-level cascade (S8) with 7a's *agent_partial* as an additional agent-level
     source (S27), merges (S15), and expands (S17/S19) with *ctx*. There is NO bare
     ``agent.<key>`` in the snapshot (spec §2d / §0) — the agent tier is DISCRIMINATED
     throughout. Returns the expanded snapshot.
 
-    *behavior_floor* is the BARE behavior-default dict; *default_categories* the
+    *behavior_floor* is the BARE behavior-default dict — core and plugin-declared
+    together, since the TIER each lands at is decided per-leaf at the fold and not by
+    the caller; *default_categories* the
     already-scope-qualified category default tables, each KEY a whole category ARM and
     each VALUE the whole DEST-KEYED map under it (the shape ``core_defaults.add_bind``
     builds; R-5 / 2026-08-08c — TERMINAL, no entry-name segment, no dest in the value).
@@ -1047,11 +1051,37 @@ def build_launch_snapshot(
     caller by caller: the llm-doc.
     """
     floor: dict[str, object] = {}
-    # OS1: bare behavior keys → scope-qualified agent.default.<key>, the ALL-AGENTS
-    # backstop. There is NO bare ``agent.<key>`` (spec §0).
+    # OS1: bare behavior keys → their scope-qualified §2d spelling. There is NO bare
+    # ``agent.<key>`` (spec §0).
+    #
+    # ⚑⚑ THE TIER IS CHOSEN BY THE LEAF, NOT BY WHO SUPPLIED IT, and the discriminator
+    # is :data:`DECLARED_AGENT_LEAVES` — the KEYSPACE's own declared set, read rather
+    # than restated, so this and ``key_class`` CANNOT DRIFT. [R150]: ``agent.default.*``
+    # is the UNIVERSAL vocabulary and every other leaf is agent-specific. So a
+    # CORE-declared leaf floors at ``agent.default.<key>`` exactly as it always has,
+    # and a PLUGIN-ONLY leaf — goose's ``provider``, declared solely by its
+    # ``setting_descriptors()`` — floors at ``agent.<active>.<key>``, the only tier that
+    # declares it. Before this split every floor landed at ``agent.default.``, which
+    # wrote ``agent.default.provider``: not a key, and the §0 audit below now says so.
+    #
+    # 🛑 SPLITTING BY SOURCE INSTEAD — core dict to ``default``, descriptor dict to the
+    # agent — IS WRONG, and silently: plugins declare CORE leaves too (goose ``model``
+    # / ``endpoint``, claude ``transform``). Moving those to the active slot puts them
+    # where the §2d pick in :func:`effective_behavior` prefers them UNCONDITIONALLY over
+    # the default slot, so goose's deliberate ``""`` would beat a user's explicit
+    # ``agent.default.model`` at any scope. Keying on the LEAF never creates that
+    # collision, because a core leaf never leaves the tier it shares with the user's.
+    #
+    # ⚑ PRECEDENCE IS UNMOVED: both tiers ride this ONE floor into ``base_levels[5]``,
+    # the LOWEST rung, so every settings scope — box, workset, agent file, system —
+    # still outranks a floored value by merge level alone. That is also why the
+    # per-agent descriptor rung ``agent_partial`` is NOT the carrier for this: it sits
+    # ABOVE ``system``, and routing behavior floors through it would promote a plugin
+    # default over a user's system-tier setting.
     if behavior_floor:
         for key, val in behavior_floor.items():
-            floor[f"agent.default.{key}"] = val
+            tier = "default" if key in DECLARED_AGENT_LEAVES else agent_name
+            floor[f"agent.{tier}.{key}"] = val
     # Category default tables are already scope-qualified dotted keys, and the
     # agent-scope ones arrive ALREADY DISCRIMINATED from the declaring plugin. A live
     # ""-suppression of a DEFAULT means "this default is disabled" → DROP it

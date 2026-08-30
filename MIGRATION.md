@@ -3653,13 +3653,15 @@ changes; nothing that worked stops working. If you scripted around the failures 
 `kanibako agent set <agent> <setting>=<value>` instead, that command was correct before and is
 correct now — keep it if you prefer it.
 
-⚑ **One rough edge remains, and it is not new: the BARE spelling of a plugin-declared setting is
-still not settable.** `kanibako system set provider=x` answers `unknown config key`, and
-`kanibako system set agent.default.provider=x` refuses with a cure that names that bare spelling.
-The bare form addresses the all-agents fallback tier, and a plugin's setting belongs to one agent,
-so whether it should be settable there at all is an open question rather than an oversight. Set it
-on the agent — `kanibako agent set goose provider=…`, or the full
-`kanibako system set agent.goose.provider=…` — which is where it takes effect either way.
+⚑ **The BARE spelling of a plugin-declared setting is not settable, and that is now a decision
+rather than an open question.** `kanibako system set provider=x` answers `unknown config key`, and
+`kanibako system set agent.default.provider=x` is refused as an undeclared key, listing the leaves
+core itself declares. The bare form addresses the all-agents tier, which is the *universal*
+vocabulary — a leaf there is a key on every agent — and a plugin's setting belongs to the agent
+whose plugin declared it. Set it on the agent: `kanibako agent set goose provider=…`, or the full
+`kanibako system set agent.goose.provider=…`, which is where it takes effect either way.
+**If a settings file of yours already carries the `agent.default` spelling, read
+*`agent.default.<plugin-leaf>` is no longer a key* below — that value needs moving.**
 
 ---
 
@@ -3934,6 +3936,49 @@ old root back. A rename now changes the identity and touches nothing else.
 **What you must do.** Nothing, unless a past convert already scattered a workspace. Nothing was
 deleted except empty directories: look in the parent of the path `workset.workspaces` names, move
 the files back into it, and run `kanibako box show` to confirm the workspace path holds them.
+
+---
+
+### 2.64 `agent.default.<plugin-leaf>` is no longer a key
+
+**Read this if a settings file of yours sets a plugin's own setting on the all-agents tier —
+goose's `provider` is the shipped case. One value may need moving; everything else is unaffected.**
+
+**What changed.** `agent.default.*` is the *universal* vocabulary: a leaf declared there is a key
+on every agent. A leaf that only one plugin declares belongs to that plugin's agent, so it is a key
+only under that agent's own name. `provider` is declared by goose alone, which makes
+`agent.goose.provider` the spelling and `agent.default.provider` not a key at all.
+
+**What you must do.** If a settings file carries
+
+```yaml
+agent:
+  default:
+    provider: openai
+```
+
+move it under the agent that declares it:
+
+```yaml
+agent:
+  goose:
+    provider: openai
+```
+
+Left where it is, it is not a key: the resolve refuses it by name rather than ignoring it quietly,
+so you will be told rather than left wondering why the setting had no effect.
+
+**What is NOT affected.** The leaves kanibako itself declares stay keys at `agent.default` and mean
+what they always did — `model`, `endpoint`, `transform`, `access`, `allow_helpers`, `bootstrap`,
+`continue_mode`, `run_args`, `template`, `canon`, `transform_settings` — **including where a plugin
+declares one of them too.** goose declaring `model` does not move `agent.default.model`.
+
+⚑ **A second, invisible half of the same change.** A plugin's own declared defaults were being
+recorded internally under `agent.default.` as well, which on a goose box made the resolve refuse
+its own floor — and because nearly every command loads settings, that reached far more than
+`start`. Those defaults are now recorded under the agent that declares them. You did not set them
+and you cannot see them; the symptom was commands failing on a goose box, and it is gone.
+Precedence is unchanged: a value in a settings file at any scope still beats a plugin's default.
 
 ---
 
