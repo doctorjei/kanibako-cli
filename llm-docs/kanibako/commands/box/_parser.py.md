@@ -498,6 +498,11 @@ PROBED, with the model field omitted, so a dead token still warns here.
 The probe contract is never-raise, and plugins are held to it: a plugin bug IS an anomaly, so it
 becomes an inconclusive verdict that warns rather than going quiet.
 
+🛑 **The refusal warning names WHAT WAS REFUSED, never the token.** A 403 on a model the account may
+not use is indistinguishable here from a dead credential, and the wording this replaced told users
+to fix a valid one. The evidence block is rendered by `PersonaProbeOutcome.evidence_block()` — the
+same call the launch error makes, so the two shapes cannot drift.
+
 ```run_create(args: argparse.Namespace) -> int```
 Create a new kanibako project (replaces `kanibako init`).
 

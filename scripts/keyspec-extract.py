@@ -33,7 +33,7 @@ for:
    no cache, no write-back.  Every message this script prints is scrubbed of the
    bearer before it reaches a stream, tracebacks included.
 
-Stdlib only -- ``urllib.request``, as ``targets.base.http_probe_status`` does.
+Stdlib only -- ``urllib.request``, as ``targets.base.http_probe`` does.
 ``src/kanibako/proxy/`` is NOT reusable here: it speaks the ANTHROPIC surface.
 """
 

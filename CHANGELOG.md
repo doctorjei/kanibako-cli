@@ -422,6 +422,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A persona whose model was a tier alias could not be launched at all, and the error blamed a
+  token that was perfectly valid.** Claude Code accepts `sonnet`, `opus`, `haiku` and `fable` as
+  aliases and resolves each through an environment variable — `ANTHROPIC_DEFAULT_SONNET_MODEL` and
+  its siblings — before it puts anything on the wire. Kanibako's pre-launch probe did not: it sent
+  the alias itself. An endpoint that serves only its own catalogue answered `403 team not allowed to
+  access model`, kanibako read the 403 as an auth reject, and the launch was refused with a message
+  telling you to fix the token. The box, had it been allowed to start, would have sent the resolved
+  model and worked. The probe now resolves the alias through the persona's own environment block
+  first, so it asks the endpoint the same question the box asks. **It resolves only a mapping you
+  wrote, and never invents one:** a model with no such variable is sent exactly as configured, and a
+  persona that names no model is still probed with the field omitted.
+
+- **A refused persona probe told you to fix the token, when a 401 or 403 never says which input was
+  at fault.** The message asserted `the endpoint rejected the token` and pointed at the persona's
+  `.secret_path` — the one thing a refusal does *not* identify. It now names the refusal and hands
+  you the evidence instead: the HTTP status, the endpoint, the model actually sent (or `(omitted)`),
+  the token path, and the provider's own error text, followed by a plain statement that the status
+  does not say which input was at fault. **What you will see** on a refused launch:
+
+  ```
+  Error: persona 'navigator+claude' cannot be loaded — the endpoint refused the probe with HTTP 403.
+    endpoint  https://api.example.edu
+    model     sonnet
+    token     ~/tokens/navigator
+    provider: team not allowed to access model. This team can only access models=[…]
+    An HTTP 403 means the endpoint refused this request — it does not say which input was at fault.
+  ```
+
+  The same block is appended to the create-time warning and to an inconclusive launch warning when
+  the endpoint answered something. Your token value is scrubbed out of the provider's text before it
+  is printed, and the provider's text is truncated. An endpoint that could not be reached prints no
+  block — there is nothing it could report.
+
 - **`kanibako system set` refused to point an agent setting at that agent's own directory.**
   Every per-agent setting can be written two ways — `kanibako agent set claude canon=…` or
   `kanibako system set agent.claude.canon=…` — and `@meta.agent.claude.path` is the reference that

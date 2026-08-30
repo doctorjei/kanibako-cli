@@ -576,21 +576,30 @@ def _check_persona_store_for_create(agent_ref: str, project_path) -> str | None:
         try:
             outcome = target.verify_persona(
                 bundle.endpoint, bundle.token_path, bundle.model,
+                env=bundle.env,
             )
         except Exception:
             # The probe contract is never-raise; hold plugins to it, and warn on a bug.
             outcome = PersonaProbeOutcome.inconclusive("the probe itself failed")
         if outcome.verdict is PersonaProbeVerdict.REJECTED:
+            # ⚑ WARN-ONLY, and it names WHAT WAS REFUSED — never the token.  A 403 on a
+            # model the account may not use is indistinguishable here from a dead
+            # credential, and the old wording sent users to replace a valid one.
+            status = outcome.evidence.status if outcome.evidence is not None else None
+            refused = (
+                f"refused the probe with HTTP {status}" if status is not None
+                else "refused the probe"
+            )
             print(
-                f"Warning: the persona endpoint rejected the token for "
-                f"'{display}'; creating anyway — fix the token in the store "
-                f"before starting.",
+                f"Warning: the persona endpoint {refused} for '{display}'; "
+                f"creating anyway.{outcome.evidence_block()}",
                 file=sys.stderr,
             )
         elif outcome.verdict is PersonaProbeVerdict.INCONCLUSIVE:
             print(
                 f"Warning: could not verify the persona endpoint for "
-                f"'{display}' ({outcome.reason}); creating unverified.",
+                f"'{display}' ({outcome.reason}); creating unverified."
+                f"{outcome.evidence_block()}",
                 file=sys.stderr,
             )
         elif outcome.verdict is PersonaProbeVerdict.NOT_APPLICABLE:

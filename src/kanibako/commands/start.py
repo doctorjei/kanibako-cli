@@ -5352,7 +5352,7 @@ def _persona_secret_path_keys(agent_cfg, bundle) -> "list[str]":
 
 def _persona_probe_error(
     target, endpoint: str, token_ptr: "str | None", model: "str | None", display: str,
-    logger,
+    logger, env: "Mapping[str, str] | None" = None,
 ) -> "str | None":
     """PER-LAUNCH persona verify probe — the load gate's last question.
 
@@ -5386,6 +5386,17 @@ def _persona_probe_error(
       still hard-errors here.
     * ``PASS`` ⇒ proceed silently.
 
+    ⚑ *env* is the persona's passthrough env block, handed to the probe so the harness
+    can send the model the BOX would send (claude resolves a tier alias through
+    ``ANTHROPIC_DEFAULT_<TIER>_MODEL``).  Probing a raw alias is what produced the
+    measured false REJECTED this signature exists to prevent.
+
+    🛑 THE REJECTED MESSAGE NAMES WHAT WAS REFUSED, NEVER WHAT TO FIX.  It used to
+    assert the token was bad and send the user to replace a VALID one; the probe cannot
+    tell a dead credential from a live one that lacks model entitlement, and a 403 does
+    not say which input was at fault.  State the status, the inputs and the provider's
+    own words, and let the user read them.
+
     The probe contract is NEVER-RAISE; a third-party plugin can still break it,
     so a raise is caught and treated as INCONCLUSIVE (a plugin bug IS an anomaly
     worth surfacing) — no launch may die on a probe bug.  Returns the error
@@ -5398,6 +5409,7 @@ def _persona_probe_error(
     try:
         outcome = target.verify_persona(
             endpoint, Path(token_ptr) if token_ptr is not None else None, model,
+            env=env,
         )
     except Exception:
         if logger is not None:
@@ -5405,19 +5417,20 @@ def _persona_probe_error(
                          display, exc_info=True)
         outcome = PersonaProbeOutcome.inconclusive("the probe itself failed")
     if outcome.verdict is PersonaProbeVerdict.REJECTED:
+        status = outcome.evidence.status if outcome.evidence is not None else None
+        refused = (
+            f"refused the probe with HTTP {status}" if status is not None
+            else f"({endpoint}) refused the probe"
+        )
         return (
             f"Error: persona '{display}' cannot be loaded — the endpoint "
-            f"({endpoint}) rejected the token.\n"
-            f"  The credentials this persona resolves are not accepted by its "
-            f"provider; kanibako will not launch it on a token that 401s.\n"
-            f"  Fix the token this persona resolves (its persona-store "
-            f"`.secret_path`, or the `secret_path` key configured for it), "
-            f"then retry."
+            f"{refused}.{outcome.evidence_block()}"
         )
     if outcome.verdict is PersonaProbeVerdict.INCONCLUSIVE:
         print(
             f"Warning: persona '{display}': could not verify the endpoint "
-            f"({endpoint}) — {outcome.reason}; launching unverified.",
+            f"({endpoint}) — {outcome.reason}; launching unverified."
+            f"{outcome.evidence_block()}",
             file=sys.stderr,
         )
     elif outcome.verdict is PersonaProbeVerdict.NOT_APPLICABLE and logger is not None:
@@ -5654,6 +5667,7 @@ def _preflight_env_persona(
     if probe:
         probe_err = _persona_probe_error(
             target, endpoint, token_ptr, model, display, logger,
+            env=bundle.env if bundle is not None else None,
         )
         if probe_err is not None:
             return None, probe_err, None
@@ -5812,6 +5826,7 @@ def _preflight_config_file_persona(
             target, endpoint,
             probe_token_state if isinstance(probe_token_state, str) else None,
             model, display, logger,
+            env=bundle.env if bundle is not None else None,
         )
         if probe_err is not None:
             return None, probe_err, None

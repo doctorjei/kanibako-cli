@@ -13,9 +13,10 @@ The module holds four kinds of thing:
   `BindKind` / `HostSrcOrigin` / `BindScope` / `Binding`, `Channel` / `SettingArg`,
   `AccessTierRow` / `AccessRealization`, `PersonaSpec`, `Operation`, `Cadence` / `CredFileSpec`,
   and the `PluginDescriptor` that collects them;
-* the **persona read-back and probe machinery** — `http_probe_status`, `PersonaSettings`,
-  `PersonaReadOutcome`, `PersonaProbeVerdict`, `PersonaProbeOutcome`, `probe_outcome`,
-  `probe_outcome_no_model`, and the host-binary validator `_validate_agent_binary`;
+* the **persona read-back and probe machinery** — `http_probe` / `ProbeResponse`,
+  `PersonaSettings`, `PersonaReadOutcome`, `PersonaProbeVerdict`, `PersonaProbeOutcome`,
+  `ProbeEvidence`, `probe_outcome`, `probe_outcome_no_model`, and the host-binary validator
+  `_validate_agent_binary`;
 * the **`Target` ABC** itself, whose default method bodies ARE the contract for a plugin that does
   not override.
 
@@ -295,9 +296,13 @@ is what keeps the fallback claude-shaped; the field defaults above are the decla
 defaults.
 
 ```python
-def http_probe_status(url: str, *, headers: dict[str, str], body: dict, timeout: float) -> int | None
+class ProbeResponse(NamedTuple):
+    status: int | None
+    body: str = ""
+
+def http_probe(url: str, *, headers: dict[str, str], body: dict, timeout: float) -> ProbeResponse
 ```
-POST *body* as JSON to *url*; return the HTTP status, else `None`.
+POST *body* as JSON to *url*; return the HTTP status and the provider's error text.
 
 The shared transport for `Target.verify_persona` probes. ANY HTTP response yields its integer
 status — an error status like 401 is a real ANSWER from the endpoint, not a transport failure — and
@@ -310,9 +315,18 @@ unreachable/can't-tell shape.
 every header — the `Authorization` bearer included — to the redirect target, possibly cross-origin.
 A 3xx comes back as its status instead.
 
-The response body is not read: the status alone answers "does this endpoint accept this token". The
-bare `except Exception` arm catches `URLError` / `socket.timeout` / `ConnectionError` / ssl /
+The bare `except Exception` arm catches `URLError` / `socket.timeout` / `ConnectionError` / ssl /
 `ValueError` (bad URL) — all transport shapes, and the contract is never-raises.
+
+**The ERROR body is read, capped and scrubbed** (`_provider_text`, `_PROVIDER_READ_CAP` bytes off
+the wire then `_PROVIDER_TEXT_CAP` characters). The status alone answers "was this refused" but not
+"what was refused", and the difference is what made a 403 on a model the account may not use read
+as a dead credential. A success body is still not read — there is nothing to explain.
+
+⚑ **The token scrub lives HERE, beside the request, and that placement is the whole guarantee.**
+The bearer is in *headers* at this call and nowhere downstream, so a provider that echoes a
+credential back in its own error cannot reach any message a caller prints. Scrubbing precedes the
+cap deliberately: truncating first could leave half a token standing.
 
 ```python
 class PersonaSettings(NamedTuple):
@@ -371,16 +385,26 @@ class PersonaProbeVerdict(Enum):
     INCONCLUSIVE = "inconclusive"
     NOT_APPLICABLE = "not_applicable"
 
+@dataclass(frozen=True)
+class ProbeEvidence:
+    endpoint: str
+    model: str | None = None
+    model_origin: str = ""
+    token_path: Path | None = None
+    status: int | None = None
+    provider_text: str = ""
+
 class PersonaProbeOutcome(NamedTuple):
     verdict: PersonaProbeVerdict
     reason: str | None = None
+    evidence: ProbeEvidence | None = None
 
     @classmethod
     def passed(cls) -> "PersonaProbeOutcome"
     @classmethod
-    def rejected(cls) -> "PersonaProbeOutcome"
+    def rejected(cls, evidence: ProbeEvidence) -> "PersonaProbeOutcome"
     @classmethod
-    def inconclusive(cls, reason: str) -> "PersonaProbeOutcome"
+    def inconclusive(cls, reason: str, evidence=None) -> "PersonaProbeOutcome"
     @classmethod
     def not_applicable(cls, reason: str) -> "PersonaProbeOutcome"
 ```
@@ -409,10 +433,36 @@ perfectly valid and that no user can act on.**
 `None` for `PASS`/`REJECTED`, which name themselves. It is written to interpolate into a sentence,
 e.g. `f"could not verify … ({outcome.reason})"`.
 
+### `ProbeEvidence` — what was sent, and what came back
+
+🛑 **A REFUSAL MESSAGE NAMES THE REFUSAL, NEVER A CULPRIT.** The message this type exists to fix
+asserted *"the endpoint rejected the token"* and told the user to replace it; the measured cause
+(2026-08-30) was a model the account had no entitlement to, on a token that was perfectly valid.
+**A 401/403 does not say which input was at fault**, and the probe has no way to find out — so it
+states the status, the inputs and the provider's own words, and the reading is the user's.
+
+*model* is what went ON THE WIRE, which is not always what the user configured: a harness that
+resolves a tier alias through an env var records the id it SENT and says where it came from in
+*model_origin*, or the message reads as if kanibako invented an id. *token_path* is a PATH, never a
+value; *provider_text* was capped and scrubbed of the bearer by `http_probe` before it could get
+here, so the whole record is safe to print.
+
+It is filled in TWO halves — a plugin builds the request half before the call, `probe_outcome`
+fills *status* / *provider_text* from the answer, **so no plugin can forget to.** `rejected` takes
+it POSITIONALLY for the same reason: a refusal whose inputs a user cannot see is the failure mode.
+
+`PersonaProbeOutcome.evidence_block()` is THE single renderer for both consumers (the launch hard
+error in `commands/start.py::_persona_probe_error` and the create warning in
+`commands/box/_parser.py::_check_persona_store_for_create`), so the two shapes cannot drift. It is
+EMPTY unless the endpoint ANSWERED: a probe that never reached it has no facts to lay out, and four
+lines restating the caller's own inputs is noise. The closing "which input was at fault" sentence
+is emitted for a REFUSAL status ONLY — for any other status the caller's own *reason* already says
+what was seen, and a second reading would be a guess.
+
 ```python
-def probe_outcome(status: int | None) -> PersonaProbeOutcome
+def probe_outcome(response: ProbeResponse, sent: ProbeEvidence) -> PersonaProbeOutcome
 ```
-Map an HTTP probe *status* onto a `PersonaProbeOutcome`.
+Map an HTTP probe *response* onto a `PersonaProbeOutcome`.
 
 Covers ONLY the arms an ATTEMPTED HTTP probe can reach — every caller has already decided a request
 was possible, so `NOT_APPLICABLE` never comes from here:
@@ -426,7 +476,7 @@ was possible, so `NOT_APPLICABLE` never comes from here:
 ```python
 _MODEL_REQUIRED_STATUSES = (400, 422)
 
-def probe_outcome_no_model(status: int | None) -> PersonaProbeOutcome
+def probe_outcome_no_model(response: ProbeResponse, sent: ProbeEvidence) -> PersonaProbeOutcome
 ```
 
 `_MODEL_REQUIRED_STATUSES` is the set of statuses an endpoint answers when the request is
@@ -912,7 +962,7 @@ def read_persona_settings(self, config_dir: Path) -> PersonaReadOutcome
 
 def verify_persona(
     self, endpoint: str, token_path: Path | None, model: str | None,
-    *, timeout: float = 5.0,
+    *, env: Mapping[str, str] | None = None, timeout: float = 5.0,
 ) -> PersonaProbeOutcome
 ```
 
@@ -954,6 +1004,17 @@ that refuses a working box — the same rule *model* already follows.
 ⚑ ***model* MAY be `None`:** a persona that names none is valid, and an implementation must probe
 it with the `model` field OMITTED rather than decline — never with a placeholder or default id (see
 `probe_outcome_no_model`).
+
+⚑ ***env* is the persona's passthrough env block — THE SAME VARIABLES THE BOX WILL RECEIVE.** A
+harness whose RUNTIME rewrites the model from one of them MUST apply that rewrite here, or the
+probe asks the provider a question the box never asks. **MEASURED, 2026-08-30:** a persona
+resolving `model: sonnet` was probed with `sonnet` on the wire, the endpoint answered 403 *"team
+not allowed to access model"*, and the launch was refused on a VALID token — in the box, Claude
+Code reads that alias through `ANTHROPIC_DEFAULT_SONNET_MODEL` and sends `gemma-4-31b-it`, which
+the same endpoint serves. Claude implements this in `_wire_model`; codex names its model in
+`config.toml` and sends it verbatim, so it accepts *env* and ignores it.
+⚑ **Resolving a mapping the USER wrote is not the substitution the rule above forbids; inventing
+one is.** A model with no such var goes out AS GIVEN, and `None` stays `None`.
 
 The OUTCOME is all this reports; what to do with it belongs to the CALLER, and the two callers
 deliberately answer it DIFFERENTLY. The per-LAUNCH probe treats `REJECTED` as a HARD ERROR, because

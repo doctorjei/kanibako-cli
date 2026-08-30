@@ -7,6 +7,7 @@ import os
 import shutil
 import subprocess
 import sys
+from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -27,9 +28,10 @@ from kanibako.targets.base import (
     PersonaReadOutcome,
     PersonaSettings,
     PluginDescriptor,
+    ProbeEvidence,
     Target,
     TargetSetting,
-    http_probe_status,
+    http_probe,
     probe_outcome,
     probe_outcome_no_model,
 )
@@ -67,6 +69,41 @@ _INSTALL_DIR = Path.home() / ".local" / "share" / "claude"
 # it, and this is the only place that reads it out of a rendered settings.json.
 _PERSONA_BASE_URL_VAR = "ANTHROPIC_BASE_URL"
 _PERSONA_TOKEN_VAR = "ANTHROPIC_AUTH_TOKEN"
+
+# Claude Code reads a bare TIER ALIAS (``sonnet``, ``opus``, ``haiku``, ``fable``)
+# through this env var, so the id that reaches the wire IN THE BOX is the var's value
+# — never the alias itself.  A TEMPLATE, not a tier inventory (P13): a tier this file
+# has never heard of resolves the moment the user names its var.
+_TIER_MODEL_VAR = "ANTHROPIC_DEFAULT_{tier}_MODEL"
+
+
+def _wire_model(model: str | None, env: "Mapping[str, str] | None") -> tuple[str | None, str]:
+    """The model id the BOX would put on the wire, and a note saying where it came from.
+
+    ⚑ THE MEASURED FAILURE THIS EXISTS FOR: a persona whose ``model`` resolved to the
+    alias ``sonnet`` was probed with ``sonnet`` on the wire, the endpoint answered 403
+    ("team not allowed to access model"), and a working box was refused on a VALID
+    token.  In the box that same launch sends ``$ANTHROPIC_DEFAULT_SONNET_MODEL``, which
+    the endpoint serves.  A probe that sends something the box never sends is not
+    verifying the box.
+
+    ⚑ It resolves ONLY a mapping the USER wrote, and never invents one: a model with no
+    such var is returned AS GIVEN, and ``None`` stays ``None`` so the key is still
+    OMITTED (both rules of ``procedures/persona-resolution-model.md``, unchanged).  The
+    alias test is the shape of an alias — a real provider id (``claude-sonnet-4-5``,
+    ``gemma-4-31b-it``) is never a bare ASCII word, and a bare word that names no var
+    still goes out untouched.
+    """
+    if not model:
+        return None, ""
+    alias = model.strip()
+    if not (alias.isascii() and alias.isalnum()):
+        return alias, ""
+    var = _TIER_MODEL_VAR.format(tier=alias.upper())
+    resolved = (env or {}).get(var, "")
+    if not resolved:
+        return alias, ""
+    return resolved, f"the box resolves '{alias}' through {var}"
 
 
 # Declarative descriptor for the generalized plugin interface.  LIVE: core
@@ -338,6 +375,7 @@ class ClaudeTarget(Target):
         token_path: Path | None,
         model: str | None,
         *,
+        env: Mapping[str, str] | None = None,
         timeout: float = 5.0,
     ) -> PersonaProbeOutcome:
         """Minimal anthropic ``/v1/messages`` ack against a persona endpoint.
@@ -369,6 +407,13 @@ class ClaudeTarget(Target):
         does not serve, and a false ``REJECTED`` is a hard error that would
         refuse a working box.  Omitting the key is the only correct behavior.
 
+        ⚑ **A TIER ALIAS is resolved through *env* first** (:func:`_wire_model`):
+        claude reads ``sonnet`` through ``ANTHROPIC_DEFAULT_SONNET_MODEL``, so the
+        alias is not what the box puts on the wire and probing with it refuses a
+        working box on the provider's answer to a question the box never asks.
+        That is a resolve of the USER's own mapping, not the substitution the rule
+        above forbids — with no mapping the id goes out exactly as given.
+
         The one ``NOT_APPLICABLE`` this decides for itself is a CONFIGURED
         (non-``None``) token file that is unreadable or empty.  The token is
         read transiently for this request only; never logged or persisted.
@@ -386,19 +431,28 @@ class ClaudeTarget(Target):
                     f"the token file ({token_path}) is empty"
                 )
             headers["Authorization"] = f"Bearer {token}"
+        wire_model, model_origin = _wire_model(model, env)
         body: dict = {
             "max_tokens": 1,
             "messages": [{"role": "user", "content": "ping"}],
         }
-        if model:
-            body["model"] = model
-        status = http_probe_status(
+        if wire_model:
+            body["model"] = wire_model
+        sent = ProbeEvidence(
+            endpoint=endpoint,
+            model=wire_model,
+            model_origin=model_origin,
+            token_path=token_path,
+        )
+        response = http_probe(
             endpoint.rstrip("/") + "/v1/messages",
             headers=headers,
             body=body,
             timeout=timeout,
         )
-        return probe_outcome(status) if model else probe_outcome_no_model(status)
+        if wire_model:
+            return probe_outcome(response, sent)
+        return probe_outcome_no_model(response, sent)
 
     def invalidate_credentials(self, home: Path) -> None:
         """Remove credential files from a shell directory."""

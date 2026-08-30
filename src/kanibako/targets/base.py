@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from abc import ABC, abstractmethod
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum
 from pathlib import Path
 from types import MappingProxyType
@@ -167,16 +167,63 @@ class PersonaSpec:
     model_required: bool = False     # harness VETO: error if endpoint set but no model
 
 
-def http_probe_status(
+#: Cap on the provider's own words as echoed back to a user, in CHARACTERS.
+_PROVIDER_TEXT_CAP = 300
+#: Bytes taken off an error response before capping — a hostile body is never slurped.
+_PROVIDER_READ_CAP = 8 * 1024
+
+
+class ProbeResponse(NamedTuple):
+    """What `http_probe` saw: an HTTP status (`None` = never reached) and the error text."""
+
+    status: int | None
+    # ⚑ Already normalized to ONE line, capped, and SCRUBBED of the bearer — see
+    # `_provider_text`.  Safe to print verbatim; empty when there was nothing to read.
+    body: str = ""
+
+
+def _bearer_secrets(headers: Mapping[str, str]) -> tuple[str, ...]:
+    """Every substring of *headers* that must never survive into printed text."""
+    out: list[str] = []
+    for name, value in headers.items():
+        if name.lower() != "authorization" or not value:
+            continue
+        out.append(value)
+        _, _, bearer = value.partition(" ")
+        if bearer:
+            out.append(bearer)
+    return tuple(out)
+
+
+def _provider_text(raw: bytes, headers: Mapping[str, str]) -> str:
+    """Normalize an error body into ONE capped, token-scrubbed line.
+
+    ⚑ THE SCRUB IS THIS FUNCTION'S JOB, NOT A CALLER'S, and that is why it lives beside
+    the request: the bearer is in *headers* HERE and nowhere downstream, so a provider
+    that echoes a credential back cannot reach any message a caller prints.  Scrubbing
+    precedes the cap deliberately — truncating first could leave half a token standing.
+    """
+    text = raw.decode("utf-8", "replace")
+    for secret in _bearer_secrets(headers):
+        text = text.replace(secret, "<redacted>")
+    text = " ".join(text.split())
+    if len(text) > _PROVIDER_TEXT_CAP:
+        text = text[:_PROVIDER_TEXT_CAP].rstrip() + "…"
+    return text
+
+
+def http_probe(
     url: str,
     *,
     headers: dict[str, str],
     body: dict,
     timeout: float,
-) -> int | None:
-    """POST *body* as JSON to *url*; return the HTTP status, else `None`.
+) -> ProbeResponse:
+    """POST *body* as JSON to *url*; return the HTTP status and the provider's error text.
 
     ⚑ NEVER raises, and never logs the request: *headers* carry a bearer token.
+    ⚑ The returned text is scrubbed of that bearer (`_provider_text`), so the never-log
+    property survives a provider that echoes the credential back in its own error.
     """
     import json as _json
     import urllib.error
@@ -196,12 +243,16 @@ def http_probe_status(
         req.add_header("Content-Type", "application/json")
         opener = urllib.request.build_opener(_NoRedirects)
         with opener.open(req, timeout=timeout) as resp:  # noqa: S310
-            return int(resp.status)
+            return ProbeResponse(int(resp.status))
     except urllib.error.HTTPError as exc:
-        return int(exc.code)
+        try:
+            raw = exc.read(_PROVIDER_READ_CAP)
+        except Exception:
+            raw = b""
+        return ProbeResponse(int(exc.code), _provider_text(raw, headers))
     except Exception:
         # Every transport shape (URLError / timeout / ssl / bad URL); the contract is never-raises.
-        return None
+        return ProbeResponse(None)
 
 
 class PersonaSettings(NamedTuple):
@@ -231,43 +282,144 @@ class PersonaProbeVerdict(Enum):
     NOT_APPLICABLE = "not_applicable"    # no probe was attempted, and none will be
 
 
+# Statuses at which the endpoint POSITIVELY refused the request it was handed.
+# ⚑ NOT "the token is bad": neither code says WHICH input was at fault, and a 403 on a
+# model the caller's team is not entitled to reads identically to a dead credential.
+_REFUSAL_STATUSES = (401, 403)
+
+
+def _tilde(path: Path) -> str:
+    """*path* with the user's home abbreviated to `~` — DISPLAY only, never a resolve."""
+    try:
+        return f"~/{path.relative_to(Path.home())}"
+    except (ValueError, RuntimeError, OSError):
+        return str(path)
+
+
+@dataclass(frozen=True)
+class ProbeEvidence:
+    """What a persona probe SENT and what came back — the facts a non-PASS verdict rests on.
+
+    Filled in TWO halves: a plugin builds the request half before the call, and
+    `probe_outcome` fills *status* / *provider_text* from the answer.  ⚑ It carries no
+    secret by construction — *token_path* is a PATH, and *provider_text* was scrubbed of
+    the bearer by `http_probe` before it could ever get here.
+
+    ⚑ *model* is what went ON THE WIRE, which is not always what the user configured: a
+    harness that resolves a tier alias through an env var records the id it SENT here and
+    says where it came from in *model_origin*.
+    """
+
+    endpoint: str
+    model: str | None = None        # None = the `model` key was deliberately OMITTED
+    model_origin: str = ""          # "" = sent exactly as configured
+    token_path: Path | None = None  # None = a KEYLESS probe (no `Authorization` header)
+    status: int | None = None       # None = the endpoint was never reached
+    provider_text: str = ""         # the provider's own words, capped and scrubbed
+
+    def lines(self, indent: str = "  ") -> tuple[str, ...]:
+        """The evidence block: one labeled line per input, then the provider's own words.
+
+        ⚑ The closing sentence is emitted for a REFUSAL status ONLY, and it exists to stop
+        the one wrong conclusion this block is here to prevent — that a refusal names the
+        token.  For any other status the caller's own reason sentence already says what
+        was seen, and a second interpretation would be guessing.
+        """
+        model = "(omitted)" if not self.model else self.model
+        if self.model and self.model_origin:
+            model = f"{self.model}  ({self.model_origin})"
+        token = (
+            "(none — this persona declares the endpoint keyless)"
+            if self.token_path is None else _tilde(self.token_path)
+        )
+        out = [
+            f"{indent}{'endpoint':<10}{self.endpoint}",
+            f"{indent}{'model':<10}{model}",
+            f"{indent}{'token':<10}{token}",
+        ]
+        if self.provider_text:
+            out.append(f"{indent}{'provider:':<10}{self.provider_text}")
+        if self.status in _REFUSAL_STATUSES:
+            out.append(
+                f"{indent}An HTTP {self.status} means the endpoint refused this request — "
+                f"it does not say which input was at fault."
+            )
+        return tuple(out)
+
+    def block(self, indent: str = "  ") -> str:
+        """`lines`, joined — the form a printed message interpolates."""
+        return "\n".join(self.lines(indent))
+
+
 class PersonaProbeOutcome(NamedTuple):
-    """The result of `Target.verify_persona`: a verdict plus a named cause."""
+    """The result of `Target.verify_persona`: a verdict, a named cause, and its evidence."""
 
     verdict: PersonaProbeVerdict
     reason: str | None = None   # set for the two non-answer arms; interpolates into a sentence
+    # ⚑ REQUIRED for a REJECTED (`rejected` takes it positionally): a refusal a user cannot
+    # see the inputs of is the message that sent them to fix a token that was never wrong.
+    evidence: "ProbeEvidence | None" = None
 
     @classmethod
     def passed(cls) -> "PersonaProbeOutcome":
-        """2xx: the endpoint accepted the token."""
+        """2xx: the endpoint accepted the request."""
         return cls(PersonaProbeVerdict.PASS)
 
     @classmethod
-    def rejected(cls) -> "PersonaProbeOutcome":
-        """401/403: the endpoint positively refused the token."""
-        return cls(PersonaProbeVerdict.REJECTED)
+    def rejected(cls, evidence: ProbeEvidence) -> "PersonaProbeOutcome":
+        """401/403: the endpoint positively refused the request *evidence* describes."""
+        return cls(PersonaProbeVerdict.REJECTED, None, evidence)
 
     @classmethod
-    def inconclusive(cls, reason: str) -> "PersonaProbeOutcome":
-        """The probe ran and could not decide; *reason* says what it saw."""
-        return cls(PersonaProbeVerdict.INCONCLUSIVE, reason)
+    def inconclusive(
+        cls, reason: str, evidence: "ProbeEvidence | None" = None,
+    ) -> "PersonaProbeOutcome":
+        """The probe ran and could not decide; *reason* says what it saw.
+
+        *evidence* is absent for the one arm that has none — a probe that never got as far
+        as a request (a plugin that raised).
+        """
+        return cls(PersonaProbeVerdict.INCONCLUSIVE, reason, evidence)
 
     @classmethod
     def not_applicable(cls, reason: str) -> "PersonaProbeOutcome":
         """No probe was attempted; *reason* says why none is possible."""
         return cls(PersonaProbeVerdict.NOT_APPLICABLE, reason)
 
+    def evidence_block(self, indent: str = "  ") -> str:
+        """The evidence lines to append to a printed message, newline-led; `""` when none.
 
-def probe_outcome(status: int | None) -> PersonaProbeOutcome:
-    """Map an HTTP probe *status* onto a `PersonaProbeOutcome`; `NOT_APPLICABLE` never comes here."""
-    if status is None:
-        return PersonaProbeOutcome.inconclusive("the endpoint could not be reached")
-    if 200 <= status < 300:
+        ⚑ Empty unless the endpoint ANSWERED.  A probe that never reached it has no facts
+        to lay out, and four lines restating the caller's own inputs is noise, not
+        evidence.  THE single renderer for both the launch error and the create warning —
+        one shape, so the two can never drift.
+        """
+        if self.evidence is None or self.evidence.status is None:
+            return ""
+        return "\n" + self.evidence.block(indent)
+
+
+def probe_outcome(response: ProbeResponse, sent: ProbeEvidence) -> PersonaProbeOutcome:
+    """Map an HTTP probe *response* onto a `PersonaProbeOutcome`; `NOT_APPLICABLE` never comes here.
+
+    *sent* is the request half of the evidence, built by the plugin that made the call;
+    the answer half is filled in here so no plugin can forget to.
+    """
+    evidence = replace(
+        sent, status=response.status, provider_text=response.body,
+    )
+    if response.status is None:
+        return PersonaProbeOutcome.inconclusive(
+            "the endpoint could not be reached", evidence
+        )
+    if 200 <= response.status < 300:
         return PersonaProbeOutcome.passed()
-    if status in (401, 403):
-        return PersonaProbeOutcome.rejected()
+    if response.status in _REFUSAL_STATUSES:
+        return PersonaProbeOutcome.rejected(evidence)
     return PersonaProbeOutcome.inconclusive(
-        f"the endpoint answered HTTP {status}, which is neither an accept nor an auth reject"
+        f"the endpoint answered HTTP {response.status}, which is neither an accept "
+        f"nor an auth reject",
+        evidence,
     )
 
 
@@ -276,14 +428,16 @@ def probe_outcome(status: int | None) -> PersonaProbeOutcome:
 _MODEL_REQUIRED_STATUSES = (400, 422)
 
 
-def probe_outcome_no_model(status: int | None) -> PersonaProbeOutcome:
+def probe_outcome_no_model(
+    response: ProbeResponse, sent: ProbeEvidence,
+) -> PersonaProbeOutcome:
     """`probe_outcome`, for a probe that deliberately OMITTED `model`."""
-    if status in _MODEL_REQUIRED_STATUSES:
+    if response.status in _MODEL_REQUIRED_STATUSES:
         return PersonaProbeOutcome.not_applicable(
-            f"the endpoint requires a model in the request (HTTP {status}) and "
+            f"the endpoint requires a model in the request (HTTP {response.status}) and "
             f"the persona names none"
         )
-    return probe_outcome(status)
+    return probe_outcome(response, sent)
 
 
 @dataclass(frozen=True)
@@ -567,6 +721,7 @@ class Target(ABC):
         token_path: Path | None,
         model: str | None,
         *,
+        env: Mapping[str, str] | None = None,
         timeout: float = 5.0,
     ) -> PersonaProbeOutcome:
         """Probe *endpoint*, bearer-authed with the token at *token_path* — a minimal real ack.
@@ -574,6 +729,12 @@ class Target(ABC):
         ⚑ *token_path* MAY be `None` (a KEYLESS persona): probe it with the `Authorization`
         header OMITTED rather than decline, and NEVER substitute a placeholder credential.
         ⚑ *model* MAY be `None`: probe with the field OMITTED, never a placeholder id.
+        ⚑ *env* is the persona's passthrough env block — the SAME variables the box will
+        receive.  A harness whose runtime resolves *model* through one of them (claude reads
+        a tier alias through `ANTHROPIC_DEFAULT_<TIER>_MODEL`) MUST resolve it here too, or
+        the probe asks the provider a question the box never asks and a valid persona is
+        refused on the answer.  Resolving a mapping the USER wrote is not the substitution
+        the rule above forbids; inventing one is.
         ⚑ Contract: NEVER raises; SHORT *timeout*; the token is read TRANSIENTLY for the
         request only — never logged, never persisted, never returned.
         """
