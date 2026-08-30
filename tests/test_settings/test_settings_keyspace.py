@@ -8,6 +8,8 @@ mid-retiring.
 
 from __future__ import annotations
 
+from typing import Mapping
+
 import pytest
 
 from kanibako.settings.keyspace_manifest import manifest_doc
@@ -1343,8 +1345,18 @@ def test_a_populated_interior_carries_its_children_clean():
 # declared. The measured case: goose declares ``provider`` through
 # ``setting_descriptors()``, and ``agent.goose.provider`` was reported "not a
 # declared agent key" on a machine with only claude installed.
+#
+# ⚑⚑ THE PAIR IS ONE PARAMETER NOW, AND THAT IS WHY THESE ROWS READ AS THEY DO. The
+# oracle takes a MAP of harness → declared leaves, so "claude's vocabulary is
+# readable and holds nothing" is ``{"claude": frozenset()}`` while "goose's is
+# unreadable" is goose's ABSENCE from the same literal. A concession that has to be
+# spelled by omission cannot be forwarded without its vocabulary.
 
-_KNOWN = frozenset({"claude", "default"})
+#: claude's vocabulary is READABLE and EMPTY; goose's is absent, hence conceded.
+_KNOWN_MAP = {"claude": frozenset()}
+
+#: goose declares ``provider`` and nobody else does — the shape ``[R150]`` turns on.
+_GOOSE_MAP = {"goose": frozenset({"provider"})}
 
 
 def _class(key: str, **kwargs):
@@ -1363,8 +1375,7 @@ def test_an_unverifiable_agents_leaf_is_conceded_not_refused():
 
     judged = _class(
         "agent.goose.provider",
-        agent_leaves=frozenset(),
-        agents_with_known_leaves=_KNOWN,
+        agent_leaf_map=_KNOWN_MAP,
     )
     assert judged.cls is KeyClass.KEY, judged.reason
 
@@ -1377,8 +1388,7 @@ def test_a_verifiable_agents_undeclared_leaf_still_refuses():
 
     judged = _class(
         "agent.claude.zippity",
-        agent_leaves=frozenset(),
-        agents_with_known_leaves=_KNOWN,
+        agent_leaf_map=_KNOWN_MAP,
     )
     assert judged.cls is KeyClass.UNDECLARED
     assert "not a declared agent key" in judged.reason
@@ -1394,8 +1404,7 @@ def test_the_all_agents_tier_is_never_conceded():
 
     assert _class(
         "agent.default.zippity",
-        agent_leaves=frozenset(),
-        agents_with_known_leaves=frozenset(),
+        agent_leaf_map={},
     ).cls is KeyClass.UNDECLARED
 
 
@@ -1417,11 +1426,11 @@ def test_the_all_agents_tier_is_judged_against_CORES_TABLE_ALONE():
     """
     from kanibako.settings.settings_keyspace import KeyClass
 
-    judged = _class("agent.default.provider", agent_leaves=frozenset({"provider"}))
+    judged = _class("agent.default.provider", agent_leaf_map=_GOOSE_MAP)
     assert judged.cls is KeyClass.UNDECLARED, judged.reason
     # …and through the §2h spelling, which inherits its target's class.
     assert _class(
-        "pref.agent.default.provider", agent_leaves=frozenset({"provider"}),
+        "pref.agent.default.provider", agent_leaf_map=_GOOSE_MAP,
     ).cls is KeyClass.UNDECLARED
 
 
@@ -1442,7 +1451,7 @@ def test_the_narrowing_does_not_reach_a_CORE_DECLARED_default_leaf():
     assert "transform" in DECLARED_AGENT_LEAVES
     assert "provider" not in DECLARED_AGENT_LEAVES
     for leaf in sorted(DECLARED_AGENT_LEAVES):
-        judged = _class(f"agent.default.{leaf}", agent_leaves=frozenset({"provider"}))
+        judged = _class(f"agent.default.{leaf}", agent_leaf_map=_GOOSE_MAP)
         assert judged.cls is KeyClass.KEY, f"agent.default.{leaf}: {judged.reason}"
 
 
@@ -1452,17 +1461,26 @@ def test_the_narrowing_does_not_touch_a_NAMED_agents_leaf():
     ``agent.goose.provider`` is a real goose ``setting_descriptor`` leaf and R-37 makes
     it a legal key ON GOOSE, so this row must survive every default-tier edit.
 
-    ⚑ **DELIBERATELY ONLY GOOSE.** Whether a plugin leaf is legal on OTHER agents was
-    open when this row was written; R-150 has since closed it — a leaf is legal only on
-    the agent (or harness) whose plugin declared it — and the classifier does NOT yet
-    implement that at the named tier, where it still judges against a flat union. The
-    ``claude`` case therefore belongs to the per-agent narrowing, which must assert the
-    OPPOSITE. Asserting it here would pin behaviour the spec forbids.
+    ⚑ **AND THE ``claude`` CASE ASSERTS THE OPPOSITE, WHICH IS THE WHOLE OF ``[R150]``.**
+    ``provider`` is goose's declaration, so it is a key on goose and on nothing else —
+    *"every other leaf is agent- or harness-specific, legal only on the agent (or
+    harness) whose plugin declared it"*. Until 2026-08-30 the named tier judged against
+    a FLAT CROSS-AGENT UNION and ``agent.claude.provider`` was a key; the two rows below
+    are the same map read from both sides, which is what makes this a partition rather
+    than a narrowing of one agent.
     """
     from kanibako.settings.settings_keyspace import KeyClass
 
-    judged = _class("agent.goose.provider", agent_leaves=frozenset({"provider"}))
+    judged = _class("agent.goose.provider", agent_leaf_map=_GOOSE_MAP)
     assert judged.cls is KeyClass.KEY, f"agent.goose.provider: {judged.reason}"
+    # 🛑 THE OPPOSITE SIDE. claude's vocabulary is READABLE here — it is a key of the
+    # map — so there is nothing to concede and goose's leaf has no slot on it.
+    other = _class(
+        "agent.claude.provider",
+        agent_leaf_map={**_GOOSE_MAP, "claude": frozenset()},
+    )
+    assert other.cls is KeyClass.UNDECLARED, "a plugin leaf is not a key on every agent"
+    assert "provider" in other.reason
 
 
 def test_conceding_a_vocabulary_concedes_nothing_else():
@@ -1474,7 +1492,7 @@ def test_conceding_a_vocabulary_concedes_nothing_else():
     """
     from kanibako.settings.settings_keyspace import KeyClass
 
-    unknown = dict(agent_leaves=frozenset(), agents_with_known_leaves=frozenset())
+    unknown = dict(agent_leaf_map={})
     # A multi-segment tail is not an agent key whoever declares the leaves.
     assert _class("agent.goose.a.b", **unknown).cls is KeyClass.UNDECLARED
     # A category token still routes to the category rules.
@@ -1503,22 +1521,26 @@ def test_conceding_a_vocabulary_concedes_nothing_else():
 # nothing about the CLASSIFICATION would move, so no other test in this file reds.
 
 
-class _NeverAsk:
-    """An injected set that REDS if it is consulted at all.
+class _NeverAsk(Mapping):
+    """An injected leaf MAP that REDS if it is consulted at all.
 
     ⚑ IT ANSWERS NOTHING, deliberately. A stub returning ``False`` would let a
     re-materialised union pass this file while paying the cost it exists to forbid;
     only raising makes the ASKING itself visible.
+    ⚑ A ``Mapping`` since 2026-08-30, and the collapse is visible in the rows below:
+    the vocabulary and the concession used to be two injected sets asked at two
+    moments, so a key could red on one and not the other. There is ONE question now —
+    ``map.get(<harness>)`` — and it is asked about the AGENT, never the leaf.
     """
 
-    def __contains__(self, item: object) -> bool:
-        raise AssertionError(f"the injected set was asked about {item!r}")
+    def __getitem__(self, item):
+        raise AssertionError(f"the injected map was asked about {item!r}")
 
     def __iter__(self):
-        raise AssertionError("the injected set was iterated")
+        raise AssertionError("the injected map was iterated")
 
     def __len__(self) -> int:
-        raise AssertionError("the injected set was sized")
+        raise AssertionError("the injected map was sized")
 
 
 @pytest.mark.parametrize("key", [
@@ -1537,7 +1559,7 @@ def test_a_key_the_CORE_contract_can_answer_asks_NEITHER_injected_set(key):
     plugin to answer it is pure cost. ``_NeverAsk`` raises rather than answering, so
     the assertion is that the question was never PUT.
     """
-    _class(key, agent_leaves=_NeverAsk(), agents_with_known_leaves=_NeverAsk())
+    _class(key, agent_leaf_map=_NeverAsk())
 
 
 def test_the_plugin_set_IS_asked_for_a_leaf_only_a_plugin_can_declare():
@@ -1545,30 +1567,36 @@ def test_the_plugin_set_IS_asked_for_a_leaf_only_a_plugin_can_declare():
     that had simply stopped consulting the plugins.
 
     ``provider`` is goose's real ``setting_descriptor`` leaf and is NOT in the core
-    §2d table, so the plugin set is the only thing that can declare it — and the
-    concession behind it is the only thing that can excuse it.
+    §2d table, so the map is the only thing that can declare it — and the concession
+    behind it is the only thing that can excuse it.
+
+    ⚑ ONE ``raises`` WHERE THERE WERE TWO, and that is the collapse rather than a lost
+    row: the vocabulary and the concession were two sets asked at two moments, and are
+    now one ``map.get(<harness>)``. The question is put about the AGENT, so the match
+    below is ``'goose'`` and not ``'zippity'``.
     """
     from kanibako.settings.settings_keyspace import KeyClass
 
     assert _class(
-        "agent.goose.provider", agent_leaves=frozenset({"provider"}),
+        "agent.goose.provider", agent_leaf_map=_GOOSE_MAP,
     ).cls is KeyClass.KEY
-    with pytest.raises(AssertionError, match="asked about 'zippity'"):
-        _class("agent.goose.zippity", agent_leaves=_NeverAsk())
     with pytest.raises(AssertionError, match="asked about 'goose'"):
-        _class(
-            "agent.goose.zippity",
-            agent_leaves=frozenset(),
-            agents_with_known_leaves=_NeverAsk(),
-        )
+        _class("agent.goose.zippity", agent_leaf_map=_NeverAsk())
 
 
 def test_the_REFUSAL_message_still_names_the_whole_vocabulary():
-    """🛑 NOT AN OPTIMISATION TARGET. The render forces the union, and it is owed:
+    """🛑 NOT AN OPTIMISATION TARGET. The render forces the map, and it is owed:
     this branch is already refusing, and §2h wants the error to say WHAT is declared.
-    A refusal listing only the core table would be a lie on a machine with plugins.
+    A refusal listing only the core table would be a lie on an agent with a plugin.
+
+    ⚑ THIS AGENT'S vocabulary, not every agent's. Under the flat union the message
+    offered the user leaves that were keys on some OTHER agent — which after
+    ``[R150]`` would be naming a cure that does not work.
     """
-    judged = _class("agent.claude.zippity", agent_leaves=frozenset({"provider"}))
+    judged = _class(
+        "agent.claude.zippity",
+        agent_leaf_map={"claude": frozenset({"provider"})},
+    )
     assert "provider" in judged.reason
     assert "model" in judged.reason
 
@@ -1623,7 +1651,7 @@ def test_a_category_token_under_agent_is_never_conceded(monkeypatch):
     from kanibako.settings.settings_keyspace import KeyClass
 
     monkeypatch.setattr(
-        probe, "_PLUGINS", probe._Plugins(frozenset(), frozenset({"claude"})),
+        probe, "_PLUGINS", {"claude": frozenset()},
     )
     tokens = _category_tokens()
     # ⚑ REDS ON ITS OWN EMPTINESS: a declaration rename that emptied the corpus
@@ -1652,7 +1680,7 @@ def test_an_uninstalled_agents_leaf_is_still_conceded(monkeypatch):
     from kanibako.settings.settings_keyspace import KeyClass
 
     monkeypatch.setattr(
-        probe, "_PLUGINS", probe._Plugins(frozenset(), frozenset({"claude"})),
+        probe, "_PLUGINS", {"claude": frozenset()},
     )
     assert probe.declared_keyspace_oracle(
         "agent.goose.provider"
@@ -1677,31 +1705,47 @@ def test_the_meta_agent_tier_is_not_conceded():
 
     assert _class(
         "meta.agent.goose.zippity",
-        agent_leaves=frozenset(),
-        agents_with_known_leaves=frozenset(),
+        agent_leaf_map={},
     ).cls is KeyClass.UNDECLARED
 
 
 def test_the_resolve_oracle_answers_known_by_HARNESS(monkeypatch):
-    """The seam's supplier: a PERSONA is known iff its harness is.
+    """A PERSONA is known iff its HARNESS is (``[R150]``: *"or harness"*).
 
     A persona takes its leaves from the harness right of the separator, so asking
     about the node name would concede every persona on the machine.
+
+    ⚑⚑ THE RULE MOVED FROM THE SUPPLIER TO THE KEYSPACE, and the pin moved with it.
+    The supplier used to answer ``harness_of(node)`` itself; the map it now hands over
+    is keyed by plain harness name, and ``settings_keyspace.agent_declared_leaves``
+    does the normalising — which is what keeps the rule from having to be re-derived
+    by every future supplier. It is asserted through the oracle rather than against a
+    set, because the verdict is the only thing that was ever load-bearing.
     """
     from kanibako.settings import settings_keyspace_probe as probe
+    from kanibako.settings.settings_keyspace import KeyClass
 
     monkeypatch.setattr(
-        probe, "_PLUGINS", probe._Plugins(frozenset(), frozenset({"claude"})),
+        probe, "_PLUGINS", {"claude": frozenset()},
     )
-    known = probe.KNOWN_LEAF_AGENTS
-    assert "claude" in known
-    assert "navigator℘claude" in known
-    assert "goose" not in known
-    assert "navigator℘goose" not in known
-    # ⚑ ``default`` is deliberately NOT a member: ``key_class`` never asks about it,
-    # so the all-agents tier's standing stays the keyspace's rather than a
-    # supplier's, and every supplier gets it right by not having to know it.
-    assert "default" not in known
+
+    def verdict(key):
+        return probe.declared_keyspace_oracle(key).cls
+
+    # claude's vocabulary is readable and empty ⇒ judged, not conceded…
+    assert verdict("agent.claude.zippity") is KeyClass.UNDECLARED
+    assert verdict("agent.navigator℘claude.zippity") is KeyClass.UNDECLARED
+    # …goose's is not ⇒ conceded, personas included.
+    assert verdict("agent.goose.zippity") is KeyClass.KEY
+    assert verdict("agent.navigator℘goose.zippity") is KeyClass.KEY
+    # 🛑 THE RAW SPELLING, AND IT WAS A LIVE HOLE: ``harness_of`` splits on ``℘``
+    # alone, so ``nav+claude`` used to miss the lookup entirely and be CONCEDED while
+    # its own canonical form was refused — one key, two answers by spelling. The
+    # keyspace canonicalises before it looks, so both agree.
+    assert verdict("agent.navigator+claude.zippity") is KeyClass.UNDECLARED
+    # ⚑ ``default`` is never conceded: the all-agents tier's standing is the
+    # keyspace's, so every supplier gets it right by not having to know it.
+    assert verdict("agent.default.zippity") is KeyClass.UNDECLARED
 
 
 # ---------------------------------------------------------------------------
@@ -1713,32 +1757,43 @@ def test_the_resolve_oracle_answers_known_by_HARNESS(monkeypatch):
 # rule stricter — it makes the same key answer differently by SPELLING, which is two
 # keyspaces wearing one name. ``agents_with_known_leaves`` was dropped, and it was
 # invisible because ``apply_prefs`` pre-filters on a set that happens to coincide.
+# ⚑⚑ THAT PARAMETER NO LONGER EXISTS TO DROP: the vocabulary and the concession are
+# one MAP, so the pair cannot come apart at a forwarding site. The rows below are
+# what still can — and the signature guard is what makes a THIRD parameter red here.
 
-#: One probe PER ORACLE PARAMETER: a key whose verdict flips with that parameter,
-#: and the two oracle overrides it flips between. ⚑ The dict is checked against
+#: Probes PER ORACLE PARAMETER: keys whose verdict FLIPS with that parameter, and the
+#: two oracle overrides each flips between. ⚑ The dict is checked against
 #: ``key_class``'s own signature below, so a NEW parameter reds here rather than
 #: silently going unforwarded — the exact failure this section exists for (P13).
+#: ⚑ A LIST per parameter, because collapsing two parameters into one must not
+#: collapse the coverage with them: the map carries the VOCABULARY and the CONCESSION,
+#: and each gets its own row.
 _ORACLE_BASE = {
     "valid_agents": frozenset({"claude", "goose", "myagent"}),
-    "agent_leaves": frozenset(),
-    "agents_with_known_leaves": frozenset({"claude", "goose"}),
+    "agent_leaf_map": {"claude": frozenset(), "goose": frozenset()},
 }
 _ORACLE_PROBES = {
-    "valid_agents": (
-        "agent.myagent.model",
-        {"valid_agents": frozenset({"myagent"})},
-        {"valid_agents": frozenset()},
-    ),
-    "agent_leaves": (
-        "agent.goose.provider",
-        {"agent_leaves": frozenset({"provider"})},
-        {"agent_leaves": frozenset()},
-    ),
-    "agents_with_known_leaves": (
-        "agent.goose.zippity",
-        {"agents_with_known_leaves": frozenset({"claude"})},
-        {"agents_with_known_leaves": frozenset({"claude", "goose"})},
-    ),
+    "valid_agents": [
+        (
+            "agent.myagent.model",
+            {"valid_agents": frozenset({"myagent"})},
+            {"valid_agents": frozenset()},
+        ),
+    ],
+    "agent_leaf_map": [
+        # The VOCABULARY half: goose's own declaration, present or absent.
+        (
+            "agent.goose.provider",
+            {"agent_leaf_map": {"goose": frozenset({"provider"})}},
+            {"agent_leaf_map": {"goose": frozenset()}},
+        ),
+        # The CONCESSION half: goose ABSENT from the map is what concedes its leaves.
+        (
+            "agent.goose.zippity",
+            {"agent_leaf_map": {"claude": frozenset()}},
+            {"agent_leaf_map": {"claude": frozenset(), "goose": frozenset()}},
+        ),
+    ],
 }
 
 
@@ -1759,8 +1814,12 @@ def test_the_probe_set_covers_every_oracle_parameter():
     assert keyword_only == set(_ORACLE_PROBES)
 
 
-@pytest.mark.parametrize("parameter", sorted(_ORACLE_PROBES))
-def test_a_pref_target_is_judged_exactly_as_the_bare_key(parameter):
+@pytest.mark.parametrize("parameter,probe", [
+    (parameter, probe)
+    for parameter in sorted(_ORACLE_PROBES)
+    for probe in _ORACLE_PROBES[parameter]
+])
+def test_a_pref_target_is_judged_exactly_as_the_bare_key(parameter, probe):
     """The SAME key, both spellings, both verdicts — for every oracle parameter.
 
     Each row is chosen so its verdict FLIPS with the parameter it names, so the
@@ -1769,7 +1828,7 @@ def test_a_pref_target_is_judged_exactly_as_the_bare_key(parameter):
     """
     from kanibako.settings.settings_keyspace import KeyClass, key_class
 
-    key, as_key, as_undeclared = _ORACLE_PROBES[parameter]
+    key, as_key, as_undeclared = probe
     for override, expected in ((as_key, KeyClass.KEY),
                                (as_undeclared, KeyClass.UNDECLARED)):
         oracle = {**_ORACLE_BASE, **override}

@@ -952,17 +952,23 @@ class TestTheForwardCompatPassthroughIsClosed:
         assert state_level(state, node="claude").table == state
 
     def test_a_plugin_declared_leaf_still_launches(self):
-        """THE POSITIVE CONTROL, and the mutation proof for the union.
+        """THE POSITIVE CONTROL, and the mutation proof for the per-agent vocabulary.
 
         ``provider`` is declared by the goose target via ``setting_descriptors()``, not by core's
-        §2d table. MUTATION: drop ``agent_leaves=`` from ``config_keys.agent_key_reason``'s
-        ``key_validity`` call and this reddens — a refusal without the union kills a working box.
+        §2d table. MUTATION: drop ``agent_leaf_map=`` from ``config_keys.agent_key_reason``'s
+        ``key_validity`` call and this reddens — a refusal without goose's own vocabulary kills a
+        working box.
+
+        🛑 THE GUARD READS ``leaf_map``, AND THAT SPELLING IS LOAD-BEARING. It was a ``getattr``
+        for ``leaves`` — the pre-map attribute — which went on answering ``None`` after the rename,
+        so the skip fired every run and this control silently stopped guarding anything. A
+        ``getattr`` guard survives the rename that should have reded it; ask for the attribute.
         """
         from kanibako.settings.settings_prefs import default_valid_agents
 
-        leaves = getattr(default_valid_agents(), "leaves", None) or ()
+        leaves = default_valid_agents().leaf_map.get("goose", ())
         if "provider" not in leaves:
-            pytest.skip("no installed plugin declares 'provider' in this environment")
+            pytest.skip("the goose plugin does not declare 'provider' in this environment")
         assert state_level({"provider": "ollama"}, node="goose").table == {
             "provider": "ollama",
         }

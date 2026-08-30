@@ -68,16 +68,23 @@ launch-seam REFUSAL, which is the only one of the three that raises.
 PURE. No I/O, no plugin import at module load. Everything the module cannot know
 about this machine is an injected parameter, so it stays pure and testable: the
 valid AGENT names (``valid_agents``, whose one production supplier is
-``settings_prefs.default_valid_agents``), the plugin-declared agent leaves
-(``agent_leaves``), and which agents those leaves COVER
-(``agents_with_known_leaves`` — see :func:`key_class`).
+``settings_prefs.default_valid_agents``) and the plugin-declared leaf VOCABULARY,
+harness by harness (``agent_leaf_map`` — see :func:`key_class`).
 
-⚑ THAT PURITY MAKES THE INJECTED SETS EXPENSIVE, WHICH IS WHY THEY ARE ASKED LAST.
-Two of the three are answered in production by ``settings_keyspace_probe``, which
-IMPORTS every installed plugin to answer them — so ASKING one is I/O even though
-this module does none. :func:`key_class` therefore judges as much as it can from
-its own declarations before it puts a question to either, and both arrive as things
-to ASK rather than as materialised sets (:class:`_EffectiveLeaves`,
+⚑⚑ THE VOCABULARY IS A MAP BECAUSE THE PAIR MUST NOT COME APART. It used to be two
+parameters — a flat leaf set plus the agents that set COVERED — and they are a
+DEPENDENT pair: an agent's leaves are its PLUGIN's, so the set is only meaningful
+for the agents it was read from. Two parameters can be forwarded singly, and were:
+the ``pref.<target>`` recursion passed one and dropped the other, so one key
+answered two ways by spelling. A ``Mapping`` of harness → declared leaves makes
+that unrepresentable — ABSENCE OF A KEY *IS* THE CONCESSION.
+
+⚑ THAT PURITY MAKES THE INJECTED MAP EXPENSIVE, WHICH IS WHY IT IS ASKED LAST. Its
+production supplier (``settings_keyspace_probe``) answers by IMPORTING every
+installed plugin, so ASKING it is I/O even though this module does none.
+:func:`key_class` therefore judges as much as it can from its own declarations
+before it puts a question to the map, and the map arrives as a thing to ASK rather
+than as a materialised set (:class:`AgentVocabulary`, :class:`_EffectiveLeaves`,
 :func:`_agent_tail_reason`'s ``leaves_known``). It changes no verdict; it decides
 whether every ``box.image`` resolve pays for a plugin import.
 """
@@ -90,7 +97,6 @@ from typing import (
     Any,
     Callable,
     Collection,
-    Container,
     Final,
     Iterator,
     Mapping,
@@ -98,6 +104,12 @@ from typing import (
     Sequence,
 )
 
+# ⚑ MODULE SCOPE, and it closes no cycle: ``agent_ref`` is pure — stdlib ``re``
+# plus ``kanibako.errors``, no settings import in either direction. The keyspace
+# needs it because NORMALISING a node to its harness is the KEYSPACE's rule, not a
+# supplier's: see :func:`agent_declared_leaves`.
+from kanibako.agent_ref import canonicalize_agent_ref, harness_of
+from kanibako.errors import ConfigError
 from kanibako.settings.kb_store import BINDING_DERIVATIONS_NODE, SCOPE_CONTAINMENT
 from kanibako.settings.keystore import KeyStore
 # ⚑ MODULE SCOPE, and it closes no cycle: ``settings_categories`` is pure — it
@@ -950,34 +962,157 @@ def _bad_agent_reason(name: str, valid_agents: Collection[str]) -> str:
     )
 
 
-class _EffectiveLeaves(Collection[str]):
-    """The core §2d set with the PLUGIN-declared set behind it — unioned LAZILY.
+#: harness → the leaves that harness's PLUGIN declares (spec §0). ABSENCE OF A KEY
+#: IS THE CONCESSION: an agent this machine cannot read a vocabulary for is simply
+#: not in the map, and its leaves are conceded rather than refused. ``None`` in
+#: place of a whole map means "judge by core's universal table alone".
+AgentLeafMap = Mapping[str, Collection[str]]
 
-    ⚑ THE UNION IS THE COST, and materialising it eagerly made every judgement pay
-    it. The plugin set's one production supplier (``settings_keyspace_probe``)
-    answers by IMPORTING every installed plugin, and those modules parse YAML in
-    their module bodies; ``key_class`` used to build
-    ``frozenset(DECLARED_AGENT_LEAVES) | frozenset(agent_leaves)`` before dispatching
-    on the head, so a ``box.image`` resolve paid for a question only an ``agent.*``
-    leaf can ask. Asking the CORE set first defers the plugin question to a leaf the
-    core contract does not declare, which is the only leaf a plugin can answer for.
+_NOT_ASKED: Final[object] = object()
 
-    ⚑ ITERATION STILL FORCES THE UNION, and that is right: the only iterating caller
-    is the refusal message's ``sorted(leaves)`` in :func:`_agent_tail_reason`, which
-    is already on its way to UNDECLARED — the vocabulary it names the user has to be
-    the real one, so the cost is owed there.
+
+def agent_declared_leaves(
+    name: str, agent_leaf_map: "AgentLeafMap | None",
+) -> "Collection[str] | None":
+    """The leaves agent *name*'s OWN plugin declares, or ``None`` when unreadable here.
+
+    ``None`` is the CONCESSION and nothing else is: §0 makes agent specifics
+    PLUGIN-declared, so where the plugin is absent there is no vocabulary to judge
+    against and ``agent.goose.provider`` — a real goose ``setting_descriptor`` leaf —
+    must not be refused on a claude-only machine (``[R150]``: *"a narrowing that
+    refuses ``agent.goose.provider`` on a claude-only machine has misread this"*).
+
+    ⚑ THE NORMALISATION IS THE KEYSPACE'S, NOT A SUPPLIER'S, for the same reason
+    :func:`is_valid_agent_segment` gives: a rule every supplier has to re-implement is
+    a rule some supplier gets wrong. A persona takes its HARNESS's vocabulary
+    (``[R150]``'s *"or harness"*), and the ref arrives RAW — ``config_keys`` hands this
+    pre-canonicalisation keys — so ``harness_of`` alone is not enough: it splits on
+    ``℘`` only, and a raw ``nav+claude`` would miss the map and be silently CONCEDED.
+    That was live at the resolve seam: ``agent.nav+claude.zippity`` classified KEY
+    while the canonical ``agent.nav℘claude.zippity`` classified UNDECLARED — one key,
+    two answers by spelling.
+
+    TWO segments get core's table and NO concession — a §2a category token, and
+    ``default``. Neither is withheld from the concession by policy: their standing is
+    the KEYSPACE's own, so it is knowable on every machine and there is nothing a
+    missing plugin could make unreadable (:func:`_could_name_an_agent`). ⚑ A ref that
+    will not canonicalise joins them, for the same reason pointing the other way — it
+    names no agent, so there is no plugin whose absence could excuse it.
+    """
+    if agent_leaf_map is None or not _could_name_an_agent(name):
+        return frozenset()
+    try:
+        node = canonicalize_agent_ref(name)
+    except ConfigError:
+        return frozenset()
+    return agent_leaf_map.get(harness_of(node))
+
+
+class AgentVocabulary(Collection[str]):
+    """Every leaf legal on ONE agent: core's universal table, plus that agent's own.
+
+    ⚑⚑ THE TIER IS THE PARTITION LINE (``[R150]``). A leaf established at
+    ``agent.default`` is UNIVERSAL — a key on every real agent; every OTHER leaf is
+    legal only on the agent (or harness) whose plugin declared it. So the core §2d
+    table is asked FIRST and unconditionally, and the map is asked only for a leaf
+    core cannot answer for.
+
+    ⚑ THAT ORDER IS ALSO THE COST ORDER, and the two agree by construction rather
+    than by coincidence. Asking the map IMPORTS every installed plugin, and those
+    modules parse YAML in their module bodies; it was measured at 73% of a whole
+    settings resolve. ``agent.claude.model`` is a core leaf and pays nothing.
+    🛑 A ``frozenset(...)`` around this restores the cost silently — no classification
+    would move, so nothing but the deferral's own tests would red.
+
+    ⚑ ITERATION FORCES THE MAP, and that is owed: the only iterating caller is the
+    refusal message's ``sorted(leaves)`` in :func:`_agent_tail_reason`, already on its
+    way to UNDECLARED, and a refusal must name the vocabulary the user actually has.
+    ⚑ It names THIS AGENT'S vocabulary, which is the honest list — a cross-agent union
+    would offer the user a leaf that is not a key here.
     """
 
-    __slots__ = ("_plugins",)
+    __slots__ = ("_name", "_map", "_own")
 
-    def __init__(self, plugins: Collection[str]) -> None:
-        self._plugins = plugins
+    def __init__(self, name: str, agent_leaf_map: "AgentLeafMap | None") -> None:
+        self._name = name
+        self._map = agent_leaf_map
+        self._own: Any = _NOT_ASKED
 
-    def _union(self) -> "frozenset[str]":
-        return frozenset(DECLARED_AGENT_LEAVES) | frozenset(self._plugins)
+    def _declared(self) -> "Collection[str] | None":
+        """The agent's own leaves, asked ONCE — ``None`` = conceded."""
+        if self._own is _NOT_ASKED:
+            self._own = agent_declared_leaves(self._name, self._map)
+        return self._own  # type: ignore[no-any-return]
+
+    def is_known(self) -> bool:
+        """Can this machine read this agent's vocabulary at all? (the concession)"""
+        return self._declared() is not None
 
     def __contains__(self, item: object) -> bool:
-        return item in DECLARED_AGENT_LEAVES or item in self._plugins
+        if item in DECLARED_AGENT_LEAVES:
+            return True
+        own = self._declared()
+        return own is not None and item in own
+
+    def __iter__(self) -> Iterator[str]:
+        own = self._declared() or ()
+        return iter(frozenset(DECLARED_AGENT_LEAVES) | frozenset(own))
+
+    def __len__(self) -> int:
+        return len(frozenset(self))
+
+
+def agent_leaf_is_declared(
+    name: str, tail: str, agent_leaf_map: "AgentLeafMap | None",
+) -> bool:
+    """Is *tail* a declared leaf of agent *name* (spec §0, ``[R150]``)?
+
+    ⚑ ONE CARRIER FOR THE PER-AGENT RULE. :func:`key_class` judges through
+    :class:`AgentVocabulary` because it owes a REASON; ``config_keys``' per-node
+    recogniser needs only the bool, and taking it from here is what keeps the two
+    from becoming two keyspaces — which is exactly what they were until 2026-08-30,
+    when the recogniser read a flat cross-agent union the classifier had stopped
+    honouring at the ``agent.default`` tier.
+
+    ⚑ SHAPE IS NOT ASKED HERE: this answers only "is this word in that agent's
+    vocabulary". The tail SHAPE rules (one leaf, or a §2a category) are
+    :func:`_agent_tail_reason`'s, and they apply whoever declares the leaves.
+    """
+    vocabulary = AgentVocabulary(name, agent_leaf_map)
+    return tail in vocabulary or not vocabulary.is_known()
+
+
+class _EffectiveLeaves(Collection[str]):
+    """The core §2d set with EVERY harness's declared leaves behind it — lazily.
+
+    🛑 THE FLAT CROSS-AGENT UNION, AND IT HAS EXACTLY ONE QUESTION LEFT TO ANSWER.
+    ``[R150]`` killed it as a judge — a plugin's leaf is a key only on the agent whose
+    plugin declared it — so what survives is the two surfaces that carry NO
+    DISCRIMINATOR to judge per-agent with, where the partition is not expressible:
+    the RO ``meta.box.agent.*`` mirror (whose agent is a runtime fact, absent from the
+    key) and ``config_keys.agent_file_identity_only`` (which is handed a bare tail).
+    Narrowing either to core alone would refuse a leaf that reads back a real value,
+    which is a capability removal no ruling asks for. ⚑ Its being the ONLY remaining
+    union is why it is worth a name: a third caller wants an agent, not this.
+
+    ⚑ THE UNION IS THE COST, and materialising it eagerly made every judgement pay it.
+    ``key_class`` used to build ``frozenset(DECLARED_AGENT_LEAVES) |
+    frozenset(agent_leaves)`` before dispatching on the head, so a ``box.image``
+    resolve paid for a question only an ``agent.*`` leaf can ask.
+    """
+
+    __slots__ = ("_map",)
+
+    def __init__(self, agent_leaf_map: AgentLeafMap) -> None:
+        self._map = agent_leaf_map
+
+    def _union(self) -> "frozenset[str]":
+        return frozenset(DECLARED_AGENT_LEAVES).union(*self._map.values(), frozenset())
+
+    def __contains__(self, item: object) -> bool:
+        return item in DECLARED_AGENT_LEAVES or any(
+            item in declared for declared in self._map.values()
+        )
 
     def __iter__(self) -> Iterator[str]:
         return iter(self._union())
@@ -987,22 +1122,20 @@ class _EffectiveLeaves(Collection[str]):
 
 
 def effective_agent_leaves(
-    agent_leaves: "Collection[str] | None",
+    agent_leaf_map: "AgentLeafMap | None",
 ) -> Collection[str]:
-    """The core §2d contract with the PLUGIN-declared *agent_leaves* behind it (§0).
+    """Core §2d unioned over EVERY harness in *agent_leaf_map* (``None`` = core alone).
 
-    ``None`` means core alone.  THE constructor for :class:`_EffectiveLeaves`, and it is
-    public because the effective vocabulary has TWO consumers that must not disagree:
-    :func:`key_class`, which JUDGES a key, and ``config_keys._PERSONA_STATE_LEAVES``,
-    which RECOGNISES the per-node spelling before any verb dispatches on it.  They were
-    two sets until 2026-08-29 — the judge unioned the plugin leaves and the recogniser
-    did not, so ``agent.goose.provider`` was a declared key at the ``agent`` noun and
-    "unknown config key" at ``system set`` (measured).
-    ⚑ The laziness is the contract, not an optimisation: see :class:`_EffectiveLeaves`.
+    THE constructor for :class:`_EffectiveLeaves`, and public because its two
+    remaining consumers must not disagree: :func:`key_class`'s ``meta.box.agent``
+    mirror and ``config_keys._PERSONA_STATE_LEAVES``.
+    🛑 NOT THE ANSWER FOR A KEY THAT NAMES AN AGENT — that is
+    :func:`agent_leaf_is_declared`. Reach for this only where the key carries no
+    discriminator at all; the class docstring says why those two do not.
     """
     return (
-        DECLARED_AGENT_LEAVES if agent_leaves is None
-        else _EffectiveLeaves(agent_leaves)
+        DECLARED_AGENT_LEAVES if agent_leaf_map is None
+        else _EffectiveLeaves(agent_leaf_map)
     )
 
 
@@ -1020,12 +1153,13 @@ def _agent_tail_reason(
 ) -> KeyJudgement:
     """Judge the tail of an agent-scope key, after the discriminator.
 
-    *leaves* is the effective agent-leaf set: the core §2d contract UNIONED with
-    what the PLUGINS declare (§0 — *"Agent specifics are PLUGIN-declared
-    … Every non-universal specific is established AND modified by the PLUGIN,
-    never hardcoded in core"*). Without the union a real plugin key is refused:
-    goose declares ``provider`` through ``setting_descriptors()`` and it is a
-    legitimate ``agent.goose.provider``.
+    *leaves* is the effective agent-leaf vocabulary: core's universal §2d table plus
+    whatever the PLUGINS declare for THIS agent (§0 — *"Agent specifics are
+    PLUGIN-declared … Every non-universal specific is established AND modified by the
+    PLUGIN, never hardcoded in core"*; ``[R150]`` partitions by TIER). Without the
+    plugin half a real key is refused: goose declares ``provider`` through
+    ``setting_descriptors()`` and ``agent.goose.provider`` is legitimate. With it
+    unioned ACROSS agents, ``agent.claude.provider`` was a key too — which it is not.
 
     ⚑ *leaves_known* answers FALSE when the caller could not read this agent's plugin
     at all, so *leaves* does not cover it — see :func:`key_class`. Then the VOCABULARY
@@ -1055,7 +1189,10 @@ def _agent_tail_reason(
         if tail[0] in leaves or not leaves_known():
             return _leaf(tail[0])
         return _undeclared(
-            f"'{tail[0]}' is not a declared agent key (declared: "
+            # ⚑ THE AGENT IS NAMED, and after ``[R150]`` it has to be: the vocabulary
+            # is per-agent, so "not a declared agent key" alone reads as though the
+            # leaf were a key NOWHERE. The pinned phrase is kept intact inside it.
+            f"'{tail[0]}' is not a declared agent key of '{prefix}' (declared: "
             f"{', '.join(sorted(leaves))}, plus the §2a "
             f"categories) (spec §0 — the keyspace is CLOSED)"
         )
@@ -1069,7 +1206,7 @@ def key_validity(
     key: str,
     *,
     valid_agents: Collection[str],
-    agent_leaves: "Collection[str] | None" = None,
+    agent_leaf_map: "AgentLeafMap | None" = None,
 ) -> str | None:
     """``None`` when *key* is a legal key under §0; else a REASON naming why not.
 
@@ -1081,9 +1218,17 @@ def key_validity(
     A REASON string rather than a bool because every consumer must be able to
     tell the user WHY (spec §2h: *"the error NAMES which key, at which
     level, and WHY"*, and §0: an undeclared key errors NAMING the key).
+
+    ⚑⚑ IT FORWARDS THE WHOLE ORACLE, and it did not until 2026-08-30: it took a flat
+    leaf set and had NO concession parameter at all, so its consumers — the ``agent``
+    noun's §0 gate and the LAUNCH boundary behind it, and §2h filter 1 — were
+    STRUCTURALLY incapable of conceding. Measured on a simulated claude-only machine:
+    ``agent.goose.provider`` classified KEY at :func:`key_class` and REFUSED here, so
+    a goose store on a machine where goose had been uninstalled would not launch. One
+    parameter cannot be dropped where there is only one.
     """
     judgement = key_class(
-        key, valid_agents=valid_agents, agent_leaves=agent_leaves,
+        key, valid_agents=valid_agents, agent_leaf_map=agent_leaf_map,
     )
     return None if judgement.cls is KeyClass.KEY else judgement.reason
 
@@ -1092,34 +1237,29 @@ def key_class(
     key: str,
     *,
     valid_agents: Collection[str],
-    agent_leaves: "Collection[str] | None" = None,
-    agents_with_known_leaves: "Container[str] | None" = None,
+    agent_leaf_map: "AgentLeafMap | None" = None,
 ) -> KeyJudgement:
     """*key*'s :class:`KeyClass` under §0, with the REASON for a non-key.
 
     *valid_agents* is injected (purity) — the set of agent discriminators that
-    are real, exclusive of ``"default"`` which is always legal. *agent_leaves*
-    likewise injects the PLUGIN-declared agent keys to union over the core §2d
-    set (``None`` = core only); see :func:`_agent_tail_reason`.
-    ⚑ *agent_leaves* is ASKED, NEVER MATERIALISED HERE. Its production supplier
-    discovers plugins on the first question put to it, so a ``frozenset(...)`` around
-    it charges every path judged — ``config.*``, ``box.*``, a bare namespace — for a
-    vocabulary only an agent LEAF can consult. :class:`_EffectiveLeaves` carries the
-    measurement.
+    are real, exclusive of ``"default"`` which is always legal.
 
-    ⚑ *agents_with_known_leaves* names the agents *agent_leaves* actually COVERS.
-    ``None`` (the default) means it covers every agent, which is what a caller
-    judging only agents it can see wants. Naming a set instead concedes the LEAVES
-    of any agent outside it, because the two are a DEPENDENT PAIR: an agent's leaf
-    vocabulary is its plugin's, so an agent whose plugin the caller could not read
-    has NO knowable vocabulary, and judging one against a set that cannot contain it
-    refuses a key that is genuinely declared. ``agent.goose.provider`` is the
-    measured case — a real goose ``setting_descriptor`` leaf, refused as "not a
-    declared agent key" on a machine without goose installed.
-    ⚑ It is a ``Container`` rather than a ``Collection`` because only membership is
-    asked: the supplier for the resolve seam answers through the agent-ref grammar
-    (a persona is known iff its HARNESS is), which nothing can enumerate. ⚑ It is
-    never asked about ``default`` — see the call site.
+    ⚑⚑ *agent_leaf_map* IS THE LEAF VOCABULARY, HARNESS BY HARNESS, and the shape is
+    the rule (``[R150]``, spec §0 L214-217): a leaf established at ``agent.default``
+    is UNIVERSAL, and every OTHER leaf is legal only on the agent or harness whose
+    plugin declared it. ``None`` means core's universal table alone.
+    ⮕ **ABSENCE OF A HARNESS FROM THE MAP IS THE CONCESSION.** An agent whose plugin
+    this machine cannot read has NO knowable vocabulary, so judging it against any
+    set refuses a key that is genuinely declared — ``agent.goose.provider``, a real
+    goose ``setting_descriptor`` leaf, refused on a machine without goose. It was two
+    parameters until 2026-08-30 (a flat set, plus the agents it covered) and they are
+    a DEPENDENT PAIR: a set is only meaningful for the agents it was read from. Two
+    parameters can be forwarded singly, and the ``pref.<target>`` recursion did
+    exactly that. One cannot.
+    ⚑ It is ASKED, NEVER MATERIALISED HERE. Its production supplier discovers plugins
+    on the first question put to it, so a ``dict(...)`` around it charges every path
+    judged — ``config.*``, ``box.*``, a bare namespace — for a vocabulary only an
+    agent LEAF can consult. :class:`AgentVocabulary` carries the measurement.
     🛑 It does NOT reach ``meta.agent.<agent>.*``. That tier's vocabulary is
     core-declared (:data:`DECLARED_META_AGENT_LEAVES` + ``auth.share_support``) and
     no plugin extends it, so it is knowable whether or not the plugin is here —
@@ -1140,7 +1280,11 @@ def key_class(
     # ⚑ LAZY, and the dispatch below is why: only the agent tail asks about leaves,
     # and materialising the union here charged every ``box.*`` / ``system.*`` /
     # ``meta.*`` path for a plugin import it never uses. See :class:`_EffectiveLeaves`.
-    leaves: Collection[str] = effective_agent_leaves(agent_leaves)
+    # ⚑ THE FLAT UNION, and its ONE reader is ``meta.box.agent.*`` — the RO mirror,
+    # whose agent is a runtime fact absent from the key, so ``[R150]``'s per-agent
+    # partition has no discriminator to work from there. The ``agent.<name>`` branch
+    # below builds an :class:`AgentVocabulary` instead and never reads this.
+    leaves: Collection[str] = effective_agent_leaves(agent_leaf_map)
 
     if head == "config":
         if not rest:
@@ -1173,14 +1317,14 @@ def key_class(
         # ⚑⚑ EVERY ORACLE PARAMETER RIDES ALONG. Dropping one makes the SAME key
         # answer differently by SPELLING — ``agent.goose.zippity`` conceded while
         # ``pref.agent.goose.zippity`` refused — which is not a stricter pref rule,
-        # it is two keyspaces. ``agents_with_known_leaves`` was the omission, and it
-        # was invisible because ``apply_prefs`` happens to pre-filter on a
-        # coinciding set; the agreement is pinned rather than left to that.
+        # it is two keyspaces. ``agents_with_known_leaves`` was that omission, and it
+        # was invisible because ``apply_prefs`` happens to pre-filter on a coinciding
+        # set. It is now UNDROPPABLE: the vocabulary and the concession are one
+        # parameter, so there is no half of the pair left to forget.
         inner = key_class(
             ".".join(rest),
             valid_agents=valid_agents,
-            agent_leaves=agent_leaves,
-            agents_with_known_leaves=agents_with_known_leaves,
+            agent_leaf_map=agent_leaf_map,
         )
         if inner.cls is KeyClass.KEY:
             return _KEY
@@ -1227,57 +1371,34 @@ def key_class(
         name = rest[0]
         if not is_valid_agent_segment(name, valid_agents):
             return _undeclared(_bad_agent_reason(name, valid_agents))
-        if name == "default":
-            # 🛑 CORE OWNS THIS TIER, so CORE's table is the whole of its vocabulary —
-            # the same reason ``meta.agent.<agent>.*`` is judged against
-            # :data:`DECLARED_META_AGENT_LEAVES` above. ``agent.default.<leaf>`` is the
-            # ALL-AGENTS fallback layer, and a plugin declares specifics for the agent it
-            # ships, never for every other agent on the machine. Spec §0 says it outright:
-            # *"the base system owns ONLY universal keys: agent.default.* + the generic
-            # agent.<agent>.<key> contract SHAPE. Every non-universal specific … is
-            # established AND modified by the PLUGIN"* — so a plugin's specific has no
-            # slot HERE, only under its own agent. Unioning the plugin set in let goose's
-            # ``provider`` classify as ``agent.default.provider``, which the ratified
-            # manifest names not-a-key twice (``not_keys.code_residue``;
-            # ``provider_disposition``, R-37) for want of any default-tier declaration,
-            # and which §2d's Default-tier census does not enumerate.
-            # ⚑ ``transform`` IS in the core table, so ``agent.default.transform`` stays
-            # a key: this narrows to plugin-ONLY leaves, nothing else.
-            # ⚑ ``leaves_known`` is left at its default because the CONCESSION was
-            # already off here — ``_could_name_an_agent('default')`` is False — so this
-            # changes the VOCABULARY and not the concession.
-            # ⚑ It also asks NEITHER injected set, which strengthens the deferral rather
-            # than re-arming it: even the refusal message now names core's table alone,
-            # which at this tier is the honest list.
-            return _agent_tail_reason(
-                f"agent.{name}", rest[1:], DECLARED_AGENT_LEAVES,
-            )
+        # ⚑⚑ ONE BRANCH FOR EVERY DISCRIMINATOR, ``default`` INCLUDED, and the
+        # collapse is the map's doing rather than a simplification laid over it.
+        # ``agent.default`` had its own branch pinned to core's table because CORE
+        # OWNS THAT TIER — spec §0 outright: *"the base system owns ONLY universal
+        # keys: agent.default.* + the generic agent.<agent>.<key> contract SHAPE.
+        # Every non-universal specific … is established AND modified by the PLUGIN"* —
+        # so a plugin's specific has no slot there, only under its own agent, and
+        # unioning the plugin set in let goose's ``provider`` classify as
+        # ``agent.default.provider``, which the ratified manifest names not-a-key
+        # twice (``not_keys.code_residue``; ``provider_disposition``, R-37).
+        # :func:`agent_declared_leaves` reaches the same answer from the general rule:
+        # ``_could_name_an_agent('default')`` is False, so ``default`` gets core's
+        # table and NO concession — which is also what a §2a category token gets, and
+        # for the same reason. Their standing is the KEYSPACE's own, so it is knowable
+        # on every machine and there is nothing to concede.
+        # ⚑ THE ORDER INSIDE IS LOAD-BEARING and it is the COST order too: the
+        # universal table is asked first, ``_could_name_an_agent`` second, the map
+        # third. Ask the map first and ``agent.common.plugins`` — the undiscriminated
+        # relic MIGRATION.md §2.11 tells users to grep for — classifies as a KEY,
+        # because no plugin declares an agent named ``common``.
+        # ⚑ DEFERRED, not merely passed: reading the map is the production supplier's
+        # plugin import, and ``AgentVocabulary`` asks it only for a leaf core cannot
+        # answer. ``is_known`` is a bound method rather than a ``bool`` for the same
+        # reason — see :func:`_agent_tail_reason`.
+        vocabulary = AgentVocabulary(name, agent_leaf_map)
         return _agent_tail_reason(
-            f"agent.{name}", rest[1:], leaves,
-            # ⚑ THE CONCESSION IS ASKED IN THE RIGHT ORDER, and getting it backwards
-            # un-armed §0 over a documented relic shape. The question is FIRST *could
-            # this segment be an agent at all* (:func:`_could_name_an_agent`) and only
-            # then *does this machine know its leaves*. A §2a category token fails the
-            # first question, so it is never conceded: its vocabulary is the KEYSPACE's
-            # own and is known on every machine. (``default`` no longer REACHES this
-            # call — the branch above judges it against core's table, for that same
-            # reason one step further — and the predicate still answers False for it.)
-            # Ask only the second question and ``agent.common.plugins`` — the
-            # undiscriminated relic MIGRATION.md §2.11 tells users to grep for —
-            # classifies as a KEY, because no plugin declares an agent named ``common``.
-            # ⚑ Both exclusions live HERE rather than in a supplier for the reason
-            # :func:`is_valid_agent_segment` gives: their standing is the KEYSPACE's,
-            # so every supplier gets it right by not having to know it.
-            # ⚑ DEFERRED, not merely passed: ``name in agents_with_known_leaves`` is
-            # the production supplier's plugin import, and evaluating it here would
-            # charge every ``agent.<agent>.<core-leaf>`` path for it (see
-            # :func:`_agent_tail_reason`). The thunk is pure, so WHEN it is asked
-            # changes only the cost.
-            leaves_known=lambda: (
-                not _could_name_an_agent(name)
-                or agents_with_known_leaves is None
-                or name in agents_with_known_leaves
-            ),
+            f"agent.{name}", rest[1:], vocabulary,
+            leaves_known=vocabulary.is_known,
         )
 
     return _undeclared(

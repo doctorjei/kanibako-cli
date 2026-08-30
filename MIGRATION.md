@@ -3648,7 +3648,8 @@ recognises the `agent.<agent>.<setting>` spelling before a command dispatches on
 same name was a key on one path and not a name at all on another. There is one list now.
 
 **What is unchanged.** A setting no agent declares is still refused, still by name, still rc 1 —
-this widens the vocabulary to what the plugins actually declare, and no further. Nothing stored
+this widens the vocabulary to what the plugins actually declare, and no further **— and, since
+§2.65, only under the agent that declares it, not under every agent.** Nothing stored
 changes; nothing that worked stops working. If you scripted around the failures above by calling
 `kanibako agent set <agent> <setting>=<value>` instead, that command was correct before and is
 correct now — keep it if you prefer it.
@@ -3979,6 +3980,56 @@ its own floor — and because nearly every command loads settings, that reached 
 `start`. Those defaults are now recorded under the agent that declares them. You did not set them
 and you cannot see them; the symptom was commands failing on a goose box, and it is gone.
 Precedence is unchanged: a value in a settings file at any scope still beats a plugin's default.
+
+---
+
+### 2.65 A plugin's setting is a key on its own agent, and on no other
+
+**Read this if a settings file or an agent file of yours sets a plugin's own setting under a
+different agent — goose's `provider` under `agent: claude:` is the shipped case. One value may
+need moving; if you have none, nothing here applies to you.**
+
+**What changed.** `agent.default.*` is the *universal* vocabulary — a leaf there is a key on every
+agent (that is the previous section). Every other leaf belongs to the agent whose plugin declares
+it. Kanibako used to pool the installed plugins' declarations into one list and check every agent
+against all of it, so goose declaring `provider` made `agent.claude.provider` a key too. It is not
+one, and it never meant anything: nothing reads it, on any agent but goose.
+
+**What you must do.** Move the value under the agent that declares it.
+
+```yaml
+# before — accepted, and did nothing
+agent:
+  claude:
+    provider: openai
+
+# after
+agent:
+  goose:
+    provider: openai
+```
+
+Left where it is, the resolve refuses it by name — with the same message any undeclared key gets,
+naming the files this resolve loaded. That refusal sits behind the shared settings load, so it
+stops nearly every kanibako command, not just `start`. The same value in an agent's *own* file
+(`agents/claude/agent.yaml`) stops the launch and names the file and the line to delete.
+
+**What is NOT affected.**
+
+- The leaves kanibako itself declares — `model`, `endpoint`, `transform`, `access`,
+  `allow_helpers`, `bootstrap`, `continue_mode`, `run_args`, `template`, `canon`,
+  `transform_settings` — are keys on **every** agent and always were. goose declaring `model` does
+  not make `agent.claude.model` goose's.
+- `agent.goose.provider` is unchanged, at every command.
+- **An agent whose plugin is not installed here is still conceded**, exactly as §2.47 describes:
+  `agent: goose: provider:` on a claude-only machine still resolves, because there is no list to
+  check it against. That concession now also holds at the two gates that read the agent's own
+  file — it did not before, so a goose box on a machine where you had removed the goose plugin
+  refused to start. That is fixed.
+
+⚑ **A refusal now names the agent and lists that agent's own vocabulary.** It used to list the
+union of every installed plugin's settings, which offered you a cure that would not have worked:
+`kanibako agent set claude provider=x` was told `provider` was among the declared keys.
 
 ---
 

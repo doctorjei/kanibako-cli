@@ -110,6 +110,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   declares one too. Precedence is unchanged: a settings file at any scope still outranks a
   floored value.
 
+- **A setting an agent plugin declares is a key on that agent alone, at every door.** The rule the
+  entry above applies to the all-agents tier applies to the named tier too: every leaf other than
+  the universal ones is legal only under the agent — or harness — whose plugin declared it.
+  Kanibako pooled the installed plugins' declarations into one list and judged every agent against
+  all of it, so goose declaring `provider` made `agent.claude.provider` a key that nothing read.
+  The vocabulary is now supplied per harness, which also closed two faults a pooled list could not
+  express. The gate that reads an agent's own settings file could not concede at all, so a goose
+  box on a machine where the goose plugin had been removed refused to start — measured, and the
+  concession has always been the documented behaviour everywhere else. And the surface deciding
+  where an `agent.default.<leaf>` value is *stored* still read the pooled list after the classifier
+  had stopped, so the two disagreed. Four surfaces judge this question and none of them had a test
+  asking two of them about one key; there is one now. A refusal also names the agent and lists that
+  agent's own vocabulary, rather than offering a cure drawn from a plugin you were not using.
+  ⚠️ **If a settings file of yours sets `provider` under an agent other than goose, move it** — see
+  `MIGRATION.md`, *A plugin's setting is a key on its own agent, and on no other*. Core-declared
+  leaves are unaffected on every agent, including where a plugin declares one too.
+
 - **`diagnose` now quotes a settings error once and names every check it broke.** Each settings
   load reports its own failure, and that half is deliberate — a check that swallowed the reason
   would be back to a bland `cannot check`. But each one also quoted the entire error underneath its

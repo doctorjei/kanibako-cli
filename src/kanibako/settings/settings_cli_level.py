@@ -102,7 +102,7 @@ def guard_cli_level(
     *,
     active_agent: "str | None" = None,
     valid_agents: "Collection[str] | None" = None,
-    agent_leaves: "Collection[str] | None" = None,
+    agent_leaf_map: "Mapping[str, Collection[str]] | None" = None,
 ) -> None:
     """Refuse an illegal CLI-level key, NAMING it (spec §1A, §0).
 
@@ -128,7 +128,7 @@ def guard_cli_level(
 
     for key in level:
         reason = key_validity(
-            key, valid_agents=agents, agent_leaves=agent_leaves,
+            key, valid_agents=agents, agent_leaf_map=agent_leaf_map,
         )
         if reason is not None:
             raise SettingsError(

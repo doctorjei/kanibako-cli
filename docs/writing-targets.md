@@ -400,6 +400,14 @@ def setting_descriptors(self) -> list[TargetSetting]:
     ]
 ```
 
+> **A key you declare here is a key on YOUR agent, and on no other.**  kanibako itself
+> declares the universal vocabulary — `model`, `access`, `endpoint`, `transform` and the
+> rest — which is a key on every agent.  Anything you add is reachable only as
+> `agent.<your-agent>.<key>`, never as `agent.default.<key>` and never under another
+> plugin's agent.  Where your plugin is not installed, your keys are *conceded* rather
+> than refused, so a settings file shared between machines does not break on the one
+> that lacks you.
+
 > **The shipped plugins do not write these values in code.**  Each ships a
 > `<agent>-defaults.yaml` whose top-level `behavior:` section declares one row per
 > key (`key` / `description` / `default`, optional `choices`), and

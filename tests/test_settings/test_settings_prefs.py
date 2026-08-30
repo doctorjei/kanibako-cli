@@ -34,7 +34,14 @@ from kanibako.settings.settings_prefs import (
 )
 from kanibako.settings.settings_resolve import SettingsError
 
-AGENTS = AgentNames({"claude", "codex", "goose"})
+#: ⚑ THE LEAF MAP IS SUPPLIED EXPLICITLY, and it has to be: an agent ABSENT from the
+#: map is one whose vocabulary this machine cannot read, so its leaves are CONCEDED
+#: (``[R150]``). A hand-built ``AgentNames`` with no map concedes every named agent and
+#: quietly stops testing filter 1. Empty vocabularies = "readable, and core-only".
+AGENTS = AgentNames(
+    {"claude", "codex", "goose"},
+    leaf_map={"claude": frozenset(), "codex": frozenset(), "goose": frozenset()},
+)
 
 
 def req(target, value="v", level="box", source=None):
@@ -756,15 +763,22 @@ class TestPluginDeclaredAgentLeaves:
         from kanibako.settings.settings_prefs import default_valid_agents
 
         agents = default_valid_agents()
-        if "provider" not in agents.leaves:      # no goose plugin installed here
+        if "provider" not in agents.leaf_map.get("goose", ()):
             pytest.skip("goose plugin not installed in this environment")
         assert validate_pref(
             req("agent.goose.provider", level="box"), valid_agents=agents,
         ) is None
 
-    def test_the_union_does_not_widen_the_core_contract(self):
-        agents = AgentNames({"claude"}, leaves={"provider"})
-        assert key_reason("agent.claude.provider", valid_agents=agents) is None
+    def test_a_plugin_leaf_is_a_key_ONLY_on_the_agent_that_declared_it(self):
+        agents = AgentNames(
+            {"claude", "goose"},
+            leaf_map={"claude": frozenset(), "goose": frozenset({"provider"})},
+        )
+        # 🛑 ``provider`` IS GOOSE'S, SO IT IS A KEY ON GOOSE AND NOWHERE ELSE
+        # (``[R150]``). The union used to make it a key on claude too — this row
+        # asserted exactly that, and was green.
+        assert key_reason("agent.goose.provider", valid_agents=agents) is None
+        assert key_reason("agent.claude.provider", valid_agents=agents) is not None
         assert key_reason("agent.claude.notakey", valid_agents=agents) is not None
 
 
@@ -831,6 +845,57 @@ class TestDiscoveryIsLazyCachedAndHonest:
                 [req("agent.claude.model", "opus", "box")], valid_agents=empty,
             )
         assert calls == []                    # and discovery was never consulted
+
+    def test_a_plugin_whose_DESCRIPTORS_raise_is_a_VALID_NAME_with_NO_ENTRY(
+        self, monkeypatch,
+    ):
+        """⚑⚑ THE TWO HALVES PART COMPANY HERE, and only under a MAP.
+
+        A plugin that imports but whose ``setting_descriptors`` raise is a real,
+        installed agent — refusing ``agent.goose.model`` because its descriptor list
+        threw would blame the user's spelling for a broken plugin — but its VOCABULARY
+        is unreadable. Under a flat leaf set that distinction cost nothing: the plugin
+        contributed no leaves and the name stayed valid. Under a map, swallowing the
+        fault and keeping the key would leave the agent with an EMPTY vocabulary, which
+        REFUSES every leaf it genuinely declares — the exact false positive the
+        concession exists to prevent (``[R150]``).
+
+        ⚑ The sibling supplier (``settings_keyspace_probe._discover``) already recorded
+        the name only after its descriptors succeeded; this one swallowed and kept
+        going. They agree by RULE now, not by luck.
+
+        MUTATION: add ``leaf_map[name] = frozenset()`` before the descriptor read and
+        the last two assertions redden.
+        """
+        import kanibako.settings.settings_prefs as sp
+
+        class _Broken:
+            def setting_descriptors(self):
+                raise RuntimeError("this plugin cannot declare")
+
+        class _Fine:
+            def setting_descriptors(self):
+                from kanibako.targets.base import TargetSetting
+
+                return [TargetSetting(key="provider", description="p", default="")]
+
+        sp.reset_discovery_cache()
+        monkeypatch.setattr(
+            "kanibako.targets.discover_targets",
+            lambda project_path=None: {"goose": _Broken, "claude": _Fine},
+        )
+        agents = sp.default_valid_agents()
+        # The NAME survives: a broken plugin is still an installed agent.
+        assert "goose" in agents
+        assert not agents.discovery_failed
+        # …and its vocabulary does NOT, which is what concedes its leaves.
+        assert "goose" not in agents.leaf_map
+        assert agents.leaf_map == {"claude": frozenset({"provider"})}
+        # THE EFFECT: goose's own declared leaf is conceded, not refused.
+        assert key_reason("agent.goose.provider", valid_agents=agents) is None
+        # …and the working plugin is still judged, so §0 is not disarmed wholesale.
+        assert key_reason("agent.claude.provider", valid_agents=agents) is None
+        assert key_reason("agent.claude.zippity", valid_agents=agents) is not None
 
     def test_a_discovery_FAILURE_gets_its_own_message(self, monkeypatch):
         """SHOULD-5 — never blame the user's spelling for an environment fault."""

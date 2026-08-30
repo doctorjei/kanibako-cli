@@ -18,7 +18,7 @@ import re
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path  # noqa: F401  (annotations)
-from typing import Collection, Iterator
+from typing import Collection, Iterator, Mapping
 
 from kanibako.agent_ref import canonicalize_agent_ref, display_agent_ref
 from kanibako.errors import ConfigError
@@ -32,10 +32,12 @@ from kanibako.settings.paths_defaults import CONFIG_PATH_DEFAULTS, SYSTEM_PATH_D
 from kanibako.settings.settings_categories import DECLARATION_ROOT_REF
 from kanibako.settings.settings_keyspace import (
     ACCESS_TIERS,
+    DECLARED_AGENT_LEAVES,
     PATH_VALUED_AGENT_LEAVES,
     SCALAR_AGENT_LEAVES,
     TABLE_VALUED_AGENT_LEAVES,
     access_default,
+    agent_leaf_is_declared,
     effective_agent_leaves,
     leaf_name_reason,
 )
@@ -556,52 +558,54 @@ def resolve_key(raw: str) -> str:
 # in this module that asks what an agent leaf may be called.
 # ---------------------------------------------------------------------------
 
-def plugin_declared_leaves() -> "frozenset[str]":
-    """The agent leaves the INSTALLED PLUGINS declare (spec §0), or empty.
+def plugin_declared_leaf_map() -> "Mapping[str, frozenset[str]]":
+    """harness → the leaves that PLUGIN declares (spec §0, ``[R150]``), or empty.
 
     ⚑ ONE SUPPLIER FOR THIS MODULE, and that is the whole point of it being a function:
-    the per-node RECOGNISER (:data:`_PERSONA_STATE_LEAVES`) and the ``agent`` noun's
+    the per-node RECOGNISER (:func:`_parse_persona_agent_key`) and the ``agent`` noun's
     §0 GATE (:func:`agent_key_reason`) asked two different sources until 2026-08-29, so
     a plugin leaf was a key at one verb and not at another.  ``default_valid_agents`` is
     the source both use now: it is the production ``valid_agents`` supplier, it memoizes
     per process, and it has a documented reset seam (``reset_discovery_cache``) that the
     ``settings_keyspace_probe`` memo — primed at ``pytest_configure`` — deliberately
     does not.
+    ⚑ A MAP, because ``[R150]`` makes the vocabulary per-agent: a flat set here made
+    ``agent.claude.provider`` a key on the strength of goose's declaration.
     ⚑ IMPORTED IN THE BODY: discovery must never run at module import.
     """
     from kanibako.settings.settings_prefs import default_valid_agents
 
-    return frozenset(getattr(default_valid_agents(), "leaves", None) or ())
+    return getattr(default_valid_agents(), "leaf_map", None) or {}
 
 
-class _PluginDeclaredLeaves(Collection[str]):
-    """:func:`plugin_declared_leaves` as a set that DISCOVERS ON THE FIRST QUESTION.
+class _PluginDeclaredLeafMap(Mapping[str, "frozenset[str]"]):
+    """:func:`plugin_declared_leaf_map` as a map that DISCOVERS ON THE FIRST QUESTION.
 
     ⚑⚑ IT MUST NOT BE MATERIALISED AT IMPORT OR AT A CALL SITE.  Discovery imports and
     instantiates every installed plugin, and those modules parse YAML in their module
     bodies; it was measured at ``+67 ms`` per settings-resolving command (2026-08-25),
     73% of the whole resolve, when it rode in as an eagerly-evaluated keyword argument.
-    Handed to :func:`~kanibako.settings.settings_keyspace.effective_agent_leaves`
-    instead, the CORE §2d set is asked first and this is reached only for a leaf core
-    cannot answer for.
+    Handed to :class:`~kanibako.settings.settings_keyspace.AgentVocabulary` instead, the
+    CORE §2d table is asked first and this is reached only for a leaf core cannot
+    answer for.
     ⚑ NOT A MEMO. Every access goes through the supplier, so a test that resets
     discovery is seen here exactly as it is by every other reader.
     """
 
     __slots__ = ()
 
-    def __contains__(self, item: object) -> bool:
-        return item in plugin_declared_leaves()
+    def __getitem__(self, key: str) -> "frozenset[str]":
+        return plugin_declared_leaf_map()[key]
 
     def __iter__(self) -> Iterator[str]:
-        return iter(plugin_declared_leaves())
+        return iter(plugin_declared_leaf_map())
 
     def __len__(self) -> int:
-        return len(plugin_declared_leaves())
+        return len(plugin_declared_leaf_map())
 
 
-#: The PLUGIN half of the effective agent vocabulary, as a thing to ASK.
-PLUGIN_DECLARED_LEAVES: "Collection[str]" = _PluginDeclaredLeaves()
+#: The PLUGIN-declared vocabulary, per harness, as a thing to ASK.
+AGENT_LEAF_MAP: "Mapping[str, frozenset[str]]" = _PluginDeclaredLeafMap()
 
 # ---------------------------------------------------------------------------
 # Per-persona agent keys (block B1) — ``agent.<node>.<key>`` set on the agent's
@@ -618,17 +622,16 @@ PLUGIN_DECLARED_LEAVES: "Collection[str]" = _PluginDeclaredLeaves()
 # ⚑ DERIVED FROM THE DECLARATION SoT (P13). It was a hand-kept copy until 2026-08-23 and
 # had fallen three leaves behind — ``run_args``, ``transform`` and ``transform_settings``
 # are declared ``set: cli+file`` and answered "unknown config key" at every spelling.
-# ⚑⚑ THE EFFECTIVE SET SINCE 2026-08-29 — core §2d UNIONED with what the PLUGINS declare
-# (§0 *"Agent specifics are PLUGIN-declared"*), through the SAME lazy union
-# ``key_class`` judges with.  Core-only, it was a SECOND vocabulary disagreeing with the
-# judge: ``kanibako system set agent.goose.provider=x`` answered "unknown config key"
-# (rc 1) for a leaf the goose target declares, and ``system get agent.goose.provider``
-# answered "(not set)" at rc 0 over a value stored in that node's own file — both
-# measured, both §0 breaches. It is a ``Collection``, NOT a ``frozenset``: materialising
-# it would put plugin discovery on every reader.
-_PERSONA_STATE_LEAVES: "Collection[str]" = effective_agent_leaves(
-    PLUGIN_DECLARED_LEAVES,
-)
+# ⚑⚑ THE FLAT CROSS-AGENT UNION, AND IT HAS ONE READER LEFT.  It was this module's leaf
+# vocabulary until ``[R150]`` partitioned the keyspace by TIER: a leaf established at
+# ``agent.default`` is universal, every other leaf is legal only on the agent whose plugin
+# declared it.  Every surface here that HAS a node now judges per-agent through
+# ``settings_keyspace.agent_leaf_is_declared``; what still reads this is
+# :func:`agent_file_identity_only`, which is handed a bare tail and has no agent to judge
+# against.  See that function for why core-alone would be wrong there.
+# ⚑ It is a ``Collection``, NOT a ``frozenset``: materialising it would put plugin
+# discovery on every reader.
+_PERSONA_STATE_LEAVES: "Collection[str]" = effective_agent_leaves(AGENT_LEAF_MAP)
 _PERSONA_ENV_SECTIONS: frozenset[str] = frozenset({"env"})
 
 # The RESERVED any-agent tier name ("no real agent may be named default"); it is
@@ -637,7 +640,25 @@ AGENT_DEFAULT_SUB = "default"
 
 
 def _parse_persona_agent_key(key: str) -> "tuple[str, str] | None":
-    """Split an ``agent.<node>.<tail>`` persona key into ``(node_raw, tail)``."""
+    """Split an ``agent.<node>.<tail>`` persona key into ``(node_raw, tail)``.
+
+    ⚑⚑ THE LEAF TEST IS WHAT DECIDES WHERE THE NODE ENDS, so the node is a BY-PRODUCT
+    of the leaf verdict rather than the other way round — which is why ``[R150]``'s
+    per-agent judgement had to reach in here and not merely sit beside it.  The node
+    offered to :func:`~kanibako.settings.settings_keyspace.agent_leaf_is_declared` is
+    the whole of ``parts[:-1]``, and that function normalises it: the keys arriving
+    here are RAW (``resolve_key`` calls this BEFORE canonicalisation), and
+    ``harness_of`` splits on ``℘`` alone, so a raw ``nav+claude`` judged without
+    normalising would miss the map and be silently CONCEDED.
+
+    🛑 IT IS NOT PURELY STRUCTURAL, AND MUST NOT BECOME SO.  Returning
+    ``("claude", "zippity")`` for an undeclared tail flips :func:`_is_persona_agent_key`
+    to True and turns ``config_interface``'s ``set`` dispatch from "unknown config key"
+    into "write the file" — a §0 breach on a first-class write path.  ``None`` here is
+    the closed keyspace's answer, not a parse failure.
+    ⚑ NON-RAISING, like every recogniser: a malformed ref is not a key, and saying so
+    is the whole of the answer.
+    """
     if not key.startswith("agent."):
         return None
     rest = key[len("agent."):]
@@ -645,8 +666,10 @@ def _parse_persona_agent_key(key: str) -> "tuple[str, str] | None":
     # env.<VAR> — the section is the 2nd-from-last segment.
     if len(parts) >= 3 and parts[-2] in _PERSONA_ENV_SECTIONS:
         return (".".join(parts[:-2]), f"{parts[-2]}.{parts[-1]}")
-    # Flat state leaf — the last segment.
-    if len(parts) >= 2 and parts[-1] in _PERSONA_STATE_LEAVES:
+    # Flat state leaf — the last segment, judged against THAT NODE's vocabulary.
+    if len(parts) >= 2 and agent_leaf_is_declared(
+        ".".join(parts[:-1]), parts[-1], AGENT_LEAF_MAP,
+    ):
         return (".".join(parts[:-1]), parts[-1])
     return None
 
@@ -835,20 +858,25 @@ def agent_default_tier_leaf(key: str) -> str | None:
     ⚑ THE DECLARED SET, NOT :data:`SCALAR_AGENT_LEAVES`, and the difference is the point:
     ``transform_settings`` cannot be WRITTEN from the CLI but is declared, hand-authored
     and read, so it must read back here too.
-    ⚑ DERIVED (P13) through :func:`_parse_persona_agent_key`, whose own leaf set is the
-    declaration SoT — a leaf entering §2d reaches this surface with no edit.  The ``env.``
+    ⚑ DERIVED (P13) through :data:`DECLARED_AGENT_LEAVES`, the §2d declaration SoT — a
+    leaf entering the any-agent tier reaches this surface with no edit.  The ``env.``
     section form parses to a dotted tail and is deliberately NOT claimed: it is a different
     family with its own scoped spelling.
     """
     parsed = _parse_persona_agent_key(key)
     if parsed is None or parsed[0] != AGENT_DEFAULT_SUB:
         return None
-    # ⚑ NOT REDUNDANT WITH THE PARSE, and :data:`_PERSONA_STATE_LEAVES` is what makes it
-    # so: the ``env.`` arm yields a DOTTED tail (``env.FOO``), which is in no leaf set,
-    # and that is exactly how this family is excluded.  Reading the EFFECTIVE set is also
-    # what keeps the two spellings honest — ``agent.default.provider`` is a key under
-    # ``key_class``, so a stored value must read back rather than answer "(not set)".
-    return parsed[1] if parsed[1] in _PERSONA_STATE_LEAVES else None
+    # ⚑ NOT REDUNDANT WITH THE PARSE: the ``env.`` arm yields a DOTTED tail
+    # (``env.FOO``), which is in no leaf set, and that is exactly how this family is
+    # excluded.
+    # 🛑 CORE'S TABLE, AND THAT IS THE WHOLE POINT OF THE ANY-AGENT TIER.  This read the
+    # EFFECTIVE union, which DIVERGED from ``key_class`` the moment the classifier
+    # narrowed ``agent.default`` to core (2026-08-30, ``3b20488e``): measured,
+    # ``agent.default.provider`` was UNDECLARED at ``key_class`` and ``'provider'`` here
+    # — a destination fabricated for a spelling the keyspace refuses, which is the §0
+    # breach this function exists to prevent, pointing the other way.  ``[R150]``:
+    # ``agent.default`` carries only the leaves established AT that tier.
+    return parsed[1] if parsed[1] in DECLARED_AGENT_LEAVES else None
 
 
 def agent_leaf_table_error(canonical: str, *, verb: str) -> str | None:
@@ -1423,11 +1451,18 @@ def agent_key_reason(node: str, tail: str) -> str | None:
     leaves are unioned in the OTHER direction (§0 *"Agent specifics are PLUGIN-declared"*), without
     which a legitimate ``agent.goose.provider`` would be refused.
 
-    ⚑ :data:`PLUGIN_DECLARED_LEAVES`, THE MODULE'S ONE SUPPLIER, and it is passed rather than
-    materialised.  ``default_valid_agents().leaves`` read here directly was the same VALUE reached
-    a second way, and :data:`_PERSONA_STATE_LEAVES` did not read it at all — which is how one verb
-    came to declare a key another called unknown.  Passing it also DEFERS discovery: a core §2d
-    leaf is answered without importing a single plugin.
+    ⚑ :data:`AGENT_LEAF_MAP`, THE MODULE'S ONE SUPPLIER, and it is passed rather than
+    materialised.  ``default_valid_agents().leaf_map`` read here directly would be the same
+    VALUE reached a second way, and the per-node recogniser did not read it at all — which is
+    how one verb came to declare a key another called unknown.  Passing it also DEFERS
+    discovery: a core §2d leaf is answered without importing a single plugin.
+
+    ⚑⚑ AND THE MAP IS WHAT MAKES THIS GATE CAPABLE OF CONCEDING AT ALL.  ``key_validity`` took a
+    FLAT leaf set and had no concession parameter, so this refused ``agent.goose.provider``
+    wherever goose was not installed — measured on a simulated claude-only machine, and this is
+    the LAUNCH gate (``agent_file.state_level``), so a goose store on a machine where goose had
+    been uninstalled would not start.  ``[R150]``: *"per-agent judgement applies where the
+    vocabulary is readable; where it is not, the concession still governs."*
 
     ⚑ THE IDENTITY RESIDUE: ``name`` / ``run_args`` are FILE-identity fields of ``AgentConfig``,
     not keyspace leaves (``agent_file._MODELED_KEYS`` already says so), and both are live, written
@@ -1443,7 +1478,7 @@ def agent_key_reason(node: str, tail: str) -> str | None:
     return key_validity(
         f"agent.{node}.{tail}",
         valid_agents=(node,),
-        agent_leaves=PLUGIN_DECLARED_LEAVES,
+        agent_leaf_map=AGENT_LEAF_MAP,
     )
 
 
@@ -1497,9 +1532,17 @@ def agent_file_identity_only(tail: str) -> bool:
 
     ⚑ DERIVED, NEVER LISTED (P13).  ``name`` is the whole of it today only because ``run_args``
     — the other identity field — is ALSO a declared §2d leaf; a leaf entering or leaving either
-    set moves this answer with no edit here.  The vocabulary is the EFFECTIVE one (core ∪
-    plugin-declared), the same set :func:`_is_persona_agent_key` routes on, so the two cannot
-    disagree about which tails the shared setter claims.
+    set moves this answer with no edit here.
+
+    ⚑⚑ THE LAST READER OF THE FLAT CROSS-AGENT UNION, and it reads it because it is handed a
+    BARE TAIL with no agent to judge against — ``[R150]``'s partition needs a discriminator and
+    there is none here.  Core alone would be the WRONG narrowing: a plugin that declared
+    ``name`` would make it a real key on that agent, and this would still route it away from the
+    shared setter.  The union answers "is this tail a declared key ANYWHERE", which is the
+    weakest claim that keeps the routing safe.  ⚑ All three candidate sets — core, the union,
+    per-agent — agree today (``IDENTITY_KEYS`` is ``{name, run_args}``; ``run_args`` is core's
+    and no plugin declares either), so this is a shape choice, not a live divergence.  The
+    honest long-term fix is the NODE: ``agent_cmd`` has it at both call sites.
     """
     from kanibako.settings.agent_config import IDENTITY_KEYS
 

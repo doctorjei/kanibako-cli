@@ -42,7 +42,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Collection, Final, Iterable, Sequence
+from typing import Any, Collection, Final, Iterable, Mapping, Sequence
 
 from kanibako.settings.kb_store import StoreValue
 from kanibako.settings.keystore import KeyStore
@@ -325,11 +325,17 @@ def key_reason(target: str, *, valid_agents: Collection[str]) -> str | None:
     :func:`key_validity`, correctly. The families that DO still carry a free
     ``<name>`` are ``env.<VAR>``, ``secret_path.<VAR>`` and the agent
     discriminator itself.
+
+    ⚑ THE LEAF MAP RIDES ALONG, and it is a MAP so that the vocabulary and the
+    concession cannot be forwarded apart (``[R150]``, ``key_class``). ``getattr``
+    rather than an attribute because *valid_agents* may be any ``Collection`` — a
+    plain ``frozenset`` in tests — and one that carries no map is judged against
+    core's universal table alone.
     """
     return key_validity(
         target,
         valid_agents=valid_agents,
-        agent_leaves=getattr(valid_agents, "leaves", None),
+        agent_leaf_map=getattr(valid_agents, "leaf_map", None),
     )
 
 
@@ -577,19 +583,33 @@ class AgentNames(Collection[str]):
     a pref pre-configure an agent you may switch to, so requiring the persona's
     store dir to already exist would be the same existence error the spec rejects
     for keys.
+
+    🛑 SUPPLY :attr:`leaf_map` OR EVERY NAMED AGENT'S LEAVES ARE CONCEDED. Absence
+    from the map means "this machine cannot read that agent's vocabulary"
+    (``[R150]``), which is a real and necessary state — a plugin whose descriptors
+    raise — but it is NOT what a hand-built instance usually means. Omitting it
+    quietly turns §2h filter 1 into a pass for every ``agent.<name>.<anything>``.
+    An agent that declares nothing is ``{name: frozenset()}``, not an absent key.
     """
 
     def __init__(
         self,
         discovered: Collection[str],
         *,
-        leaves: "Collection[str] | None" = None,
+        leaf_map: "Mapping[str, Collection[str]] | None" = None,
         discovery_failed: bool = False,
     ) -> None:
         self._discovered = frozenset(discovered)
-        #: PLUGIN-declared agent keys, unioned over the core §2d contract by the
-        #: validator (§0 "Agent specifics are PLUGIN-declared").
-        self.leaves = frozenset(leaves or ())
+        #: harness → the leaves that PLUGIN declares (§0 "Agent specifics are
+        #: PLUGIN-declared"; ``[R150]`` — legal only on the agent that declared them).
+        #: ⚑ A MAP, NOT A SET, AND IT IS NOT ``_discovered``'s TWIN: an agent whose
+        #: descriptors raise is a VALID AGENT NAME with an UNREADABLE vocabulary, so
+        #: it stays in ``_discovered`` and is absent HERE, which is exactly what
+        #: concedes its leaves. Keying it in with an empty set would refuse the very
+        #: leaves it genuinely declares (``settings_keyspace_probe._discover``).
+        self.leaf_map: "Mapping[str, frozenset[str]]" = {
+            name: frozenset(declared) for name, declared in (leaf_map or {}).items()
+        }
         #: ⚑ Discovery FAILED (an environment fault), as distinct from "no agents
         #: are installed". Without this an unreadable plugin dir reports *"'claude'
         #: is not a valid agent"* — blaming the user's spelling for a broken box.
@@ -621,13 +641,24 @@ class AgentNames(Collection[str]):
 
 def default_valid_agents() -> AgentNames:
     """The production ``valid_agents`` supplier — every DISCOVERED agent, plus
-    the agent keys those plugins DECLARE.
+    the agent keys those plugins DECLARE, harness by harness.
 
     MEMOIZED for the process (:data:`_DISCOVERY`) and reached only when a request
     actually names ``agent.*`` (:func:`_needs_agent_discovery`), so laziness is
     enforced by the call site, not just asserted. A discovery FAILURE is recorded
     on the result rather than swallowed: an environment fault must not be reported
     as a bad agent name.
+
+    ⚑⚑ THE ENTRY IS ADDED AFTER ITS DESCRIPTORS SUCCEED, and that is a CORRECTION,
+    not a restatement: this loop used to swallow the exception and keep contributing
+    to a FLAT leaf set, where a failed plugin cost nothing. Under a map the same
+    swallow would leave that harness keyed with an EMPTY vocabulary — refusing every
+    leaf it genuinely declares — instead of absent, which is what CONCEDES them. The
+    ``settings_keyspace_probe`` supplier already answered it this way; the two agree
+    now by rule rather than by luck.
+    ⚑ The map is NOT ``targets.keys()``. A plugin whose descriptors raise is still a
+    VALID AGENT NAME — refusing ``agent.goose.model`` because goose's descriptor list
+    threw would blame the user's spelling for a broken plugin.
     """
     cached = _DISCOVERY.get("default")
     if cached is not None:
@@ -636,19 +667,21 @@ def default_valid_agents() -> AgentNames:
 
     try:
         targets = discover_targets()
-        leaves: set[str] = set()
-        for target_cls in targets.values():
+        leaf_map: dict[str, frozenset[str]] = {}
+        for name, target_cls in targets.items():
             try:
                 # ``discover_targets`` yields CLASSES; descriptors are declared
                 # per-instance, so instantiate to read them. A plugin whose
                 # constructor or descriptor list raises must not break config
-                # validation — it simply contributes no extra leaves.
-                leaves.update(d.key for d in target_cls().setting_descriptors())
+                # validation — its vocabulary is simply unreadable, and conceded.
+                declared = frozenset(d.key for d in target_cls().setting_descriptors())
             except Exception:  # pragma: no cover - a plugin must not break config
                 _log.debug(
                     "setting_descriptors() failed for a target", exc_info=True,
                 )
-        result = AgentNames(targets.keys(), leaves=leaves)
+                continue
+            leaf_map[name] = declared
+        result = AgentNames(targets.keys(), leaf_map=leaf_map)
     except Exception:
         _log.debug("agent discovery failed while validating a pref", exc_info=True)
         result = AgentNames((), discovery_failed=True)

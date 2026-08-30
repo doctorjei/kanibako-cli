@@ -143,7 +143,7 @@ from kanibako.settings.settings_keyspace import Verdict as _StructuralVerdict
 from kanibako.settings.settings_keyspace import render_store_path as render
 from kanibako.settings.settings_keyspace_probe import (
   declared_keyspace_oracle,
-  plugin_agent_leaves,
+  plugin_agent_leaf_map,
 )
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -517,7 +517,7 @@ def pytest_configure(config: "pytest.Config") -> None:
   )
   if not _enabled() or _original_setitem is not None:
     return
-  plugin_agent_leaves()  # discover before any test patches discovery
+  plugin_agent_leaf_map()  # discover before any test patches discovery
   _original_setitem = KeyStore.__setitem__
   KeyStore.__setitem__ = _patched_setitem  # type: ignore[method-assign]
 
