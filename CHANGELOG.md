@@ -151,7 +151,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   creates, moves, duplicates, converts, purges or removes a box tree now reads the setting, and so
   does the primary workset's own store and log root and the helper-log writer — in all three modes,
   standalone included, whose log directory is the box's own `box_data/` by default and follows the
-  setting when you move it. ⚠️
+  setting when you move it. Forking a box that is not in the workset's membership also stopped
+  recognising the store on a repointed workset, and so silently gave the fork no source metadata;
+  it now compares against the resolved directory rather than the name `boxes`. ⚠️
   **If you had repointed either setting, kanibako has been writing to the default directory all
   along** — see `MIGRATION.md`, *A repointed `workset.boxes` or `workset.logs` now takes effect*,
   for how to tell and what to move. Two limits are stated rather than fixed, both of them a purge

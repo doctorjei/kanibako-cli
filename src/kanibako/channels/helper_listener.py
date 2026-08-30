@@ -40,7 +40,7 @@ class HelperContext:
     box_shell: str | None = None       # resolved box.shell (no-agent fallback)
     project_path: Path | None = None   # host-side workspace directory
     data_path: Path | None = None      # kanibako data root (~/.local/share/kanibako/)
-    boxes: Path | None = None          # resolved system.path.boxes (std.boxes)
+    boxes: Path | None = None          # resolved PRIMARY workset.boxes (std.boxes)
     registry: Path | None = None       # resolved config.registry file (std.registry)
     primary_workset: Path | None = None  # resolved config.primary_workset (std.primary_workset)
 
@@ -443,10 +443,16 @@ class HelperHub:
             if candidate.is_dir():
                 source_meta_dir = candidate
 
-        # Fallback: derive from shell_path (shell_path is typically boxes/{name}/home/)
+        # Fallback: derive from shell_path (a box's shell is @meta.box.path/home, so its
+        # parent is the metadata dir).  ⚑ The predicate compares that dir's parent to the
+        # RESOLVED box store, never to a literal leaf name: ``workset.boxes`` is
+        # repointable, so a name test silently missed every workset that repointed it and
+        # the fork lost its source metadata.  Direct child, not containment — the store
+        # holds one metadata dir per box name, which is the same shape ``new_meta_dir``
+        # below composes.
         if source_meta_dir is None:
             candidate = ctx.shell_path.parent
-            if candidate.is_dir() and candidate.parent.name == "boxes":
+            if candidate.is_dir() and candidate.parent.resolve() == boxes_base.resolve():
                 source_meta_dir = candidate
 
         # Assign + register a new name for the fork in the PRIMARY membership
