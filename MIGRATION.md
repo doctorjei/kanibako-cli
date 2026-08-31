@@ -4288,19 +4288,54 @@ import you break here is one that reached past it.
 
 The plugins declare `dependencies = ["kanibako-cli"]` with **no upper bound**. So *old plugin
 beside new core* is not an exotic combination — it is what you get by default if you upgrade
-`kanibako-cli` (or install a plugin) without pinning. **These published plugin versions import
-at least one removed path and will not load on v1.8.0:**
+`kanibako-cli` (or install a plugin) without pinning.
 
-| Removed module | `kanibako-agent-claude` | `kanibako-agent-codex` | `kanibako-agent-goose` |
-|---|---|---|---|
-| `kanibako.agent_config` | every `1.7.0` → `1.8.0rc1` | `0.2.0`–`0.3.0` | `0.2.0`–`0.3.0` |
-| `kanibako.agent_defaults` | `1.7.0` → `1.8.0rc1` | `0.2.1`–`0.3.0` | `0.2.1`, `0.3.0` |
-| `kanibako.settings_resolve` | `1.7.2`, `1.7.2rc3`–`rc5`, `1.8.0rc1` | `0.2.3`–`0.3.0` | — |
-| `kanibako.vscode_config` | `1.7.2`, `1.7.2rc3`–`rc5`, `1.8.0rc1` | `0.2.3`–`0.3.0` | `0.3.0` |
+**Which published plugins load on v1.8.0** — determined by resolving every published wheel's
+import-time `kanibako.*` imports against the v1.8.0 tree, so these are the whole released sets,
+not a sample:
 
-`kanibako.agent_config` is the widest: **every** `kanibako-agent-claude` from `1.7.0` through
-`1.8.0rc1` imports it. **Clean (unaffected):** `kanibako-agent-claude` `1.8.0.dev95` / `dev98`,
-`kanibako-agent-codex` `0.6.0`, `kanibako-agent-goose` `0.5.0`.
+| Plugin | Published versions that FAIL to load | Published versions that LOAD |
+|---|---|---|
+| `kanibako-agent-claude` | **every one**, `1.1.0` through `1.8.0rc2` | none |
+| `kanibako-agent-codex` | **every one**, `0.1.0` through `0.5.0` | none |
+| `kanibako-agent-goose` | `0.1.0` through `0.3.0` | `0.4.0`, `0.5.0` |
+
+`kanibako-agent-goose` `0.4.0` and `0.5.0` are the *only* plugin wheels published before this
+release that work with it. For everything else the cure is the same, and it is the v1.8.0 train
+described below.
+
+**Which removed import a given version hits — and *when*.** All four raise
+`ModuleNotFoundError`, but not at the same moment. Only `kanibako.agent_defaults` is imported at
+module scope, so it alone fails the plugin at **load**. The other three are imported inside method
+bodies: a version in those rows imports fine and raises later, when the method runs — during a
+launch or a box seed.
+
+| Removed module | Imported at | `kanibako-agent-claude` | `kanibako-agent-codex` | `kanibako-agent-goose` |
+|---|---|---|---|---|
+| `kanibako.agent_defaults` | module scope — fails to **load** | `1.6.0.dev36` → `1.7.2`, and `1.8.0rc1` | `0.2.1`–`0.3.0` | `0.2.1`, `0.3.0` |
+| `kanibako.agent_config` | method body — raises on **use** | `1.6.0.dev24` → `1.7.2`, and `1.8.0rc1` | `0.2.0`–`0.3.0` | `0.2.0`–`0.3.0` |
+| `kanibako.settings_resolve` | method body — raises on **use** | `1.7.2rc3`–`rc5`, `1.7.2`, `1.8.0rc1` | `0.2.3`–`0.3.0` | — |
+| `kanibako.vscode_config` | method body — raises on **use** | `1.7.2rc3`–`rc5`, `1.7.2`, `1.8.0rc1` | `0.2.3`–`0.3.0` | `0.3.0` |
+
+⚑ Two reading traps in that table. `1.8.0.dev95` and `1.8.0.dev98` sort *below* `1.8.0rc1` yet
+import none of these, which is why the claude ranges stop at `1.7.2` and pick `1.8.0rc1` back up
+separately. And grepping a wheel will show `agent_config` and `vscode_config` at the *top* of a
+file too — those are `if TYPE_CHECKING:` imports, which never execute, so they break nothing.
+
+⚑ **A removed module is not the only way a plugin fails, so absence from that table is not a
+clean bill of health.** `kanibako.targets.base` kept its path but lost **symbols**, and importing
+one of those fails just as hard, with `ImportError` instead: `http_probe_status` and
+`probe_verdict` (now `http_probe` and `probe_outcome`), `BindDefault` (now
+`CategoryBindDefaults`), `SafeBypass`, `ResourceMapping` and `ResourceScope`. Unlike three of the
+four rows above, these imports are at **module scope**, so they fail the plugin at load.
+
+That is not an edge case — it is both ends of the published range. Every `kanibako-agent-claude`
+from `1.1.0` through `1.6.0.dev31`, and `kanibako-agent-codex` and `-goose` `0.1.0` and `0.2.0`,
+fails on `ResourceMapping` / `ResourceScope` / `SafeBypass`. At the other end, the newest
+pre-v1.8.0 wheels — `kanibako-agent-claude` `1.8.0.dev95`, `1.8.0.dev98` and `1.8.0rc2`,
+`kanibako-agent-codex` `0.4.0` and `0.5.0` — had already moved to the new module paths and fail
+on `http_probe_status`. Only a middle band touches a removed module at module scope at all. **So
+the table above answers *which removed module*; the first table answers *does my install work?*.**
 
 **What you see.** kanibako does not die — a plugin that cannot import is skipped by name and
 every other agent, plus `kanibako setup`, keeps working:

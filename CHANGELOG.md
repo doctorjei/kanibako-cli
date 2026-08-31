@@ -1938,13 +1938,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   code is preserved in git history, not in the wheel. Importing a legacy path now raises
   `ModuleNotFoundError`. **This reaches users, not only plugin authors:** the agent plugins pin no
   upper bound on `kanibako-cli`, so an old plugin beside a new core is what an unpinned upgrade
-  produces by default. Every `kanibako-agent-claude` from `1.7.0` through `1.8.0rc1`, and
-  `kanibako-agent-codex` / `-goose` through `0.3.0`, import at least one removed path;
-  `kanibako-agent-claude` `1.8.0.dev95`+, `-codex` `0.6.0` and `-goose` `0.5.0` are clean. Nothing
-  crashes — a plugin that cannot import is reported by name on standard error and skipped, and
-  every other agent plus `kanibako setup` keeps working (see the discovery fix below). The cure is
-  to upgrade that plugin, or to install the `kanibako` meta package, which pins a compatible set.
-  See [MIGRATION.md](MIGRATION.md) §3.1, which lists the affected versions.
+  produces by default. Two independent breaks are in play, and between them they cover almost the
+  whole published set. A middle band of wheels imports one of the four removed paths. The rest fail
+  on the *other* break: `kanibako.targets.base` kept its path and lost **symbols**, which catches
+  the oldest wheels and the newest pre-release ones alike — so being clear of the removed paths
+  proves nothing on its own. **No published `kanibako-agent-claude` or `kanibako-agent-codex` wheel
+  loads on v1.8.0**; `kanibako-agent-goose` `0.4.0` and `0.5.0` are the only published plugin
+  wheels that do. Nothing crashes — a plugin that cannot import is reported by name on standard
+  error and skipped, and every other agent plus `kanibako setup` keeps working (see the discovery
+  fix below). The cure is to upgrade that plugin, or to install the `kanibako` meta package, which
+  pins a compatible set. The version-by-version matrix is in *3.1 Core module paths moved
+  (package-ification)* in [MIGRATION.md](MIGRATION.md).
 
 ### Fixed
 

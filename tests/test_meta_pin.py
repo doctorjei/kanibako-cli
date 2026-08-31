@@ -28,13 +28,32 @@ matches must hit each stamped dep line (and ONLY it), and the in-tree lines must
 stay ranges.  If someone reformats a dep line so the workflow anchor no longer
 matches, this fails loudly instead of the workflow silently shipping an unpinned
 meta.
+
+The file also pins the OTHER cross-package version contracts, which have the same
+shape — one fact written in two files that nothing forced to agree:
+
+* Each agent plugin carries its version in ``packages/agent-<name>/pyproject.toml``
+  AND in ``.../src/kanibako/plugins/<name>/__init__.py``.  ``.bumpversion.cfg``
+  stamps claude's pair only; goose and codex have neither stamped, so a bump that
+  edits one file and forgets the other ships a wheel whose ``__version__`` lies.
+  ``scripts/check-publish-collisions.py`` structurally cannot catch it — an
+  unpublished version short-circuits before any content comparison.
+* The meta package's floor for an independently-versioned plugin must not sit
+  below that plugin's own version, or ``pip install kanibako`` can resolve a wheel
+  older than the one this release needs.
 """
 
 from __future__ import annotations
 
+import ast
 import re
+import tomllib
+from pathlib import Path
 
 import pytest
+from packaging.requirements import Requirement
+from packaging.utils import canonicalize_name
+from packaging.version import Version
 
 from tests.support.repo import REPO_ROOT
 
@@ -127,9 +146,144 @@ def test_an_rc_outranks_a_dev_which_is_why_the_pin_is_required() -> None:
     be relaxed.  While it holds, a ``.devN`` meta with a ranged agent-claude
     resolves to any published rc — which is exactly the 2026-08-17 failure.
     """
-    from packaging.version import Version
-
     assert Version("1.8.0rc1") > Version("1.8.0.dev98")
     assert max(
         map(Version, ["1.8.0.dev95", "1.8.0.dev98", "1.8.0rc1"]),
     ) == Version("1.8.0rc1")
+
+
+# ---------------------------------------------------------------------------
+# The two-file version pair every agent plugin carries.
+# ---------------------------------------------------------------------------
+
+# DISCOVERED, never listed: a fourth plugin is covered the day its directory
+# lands, and a renamed one fails here rather than dropping silently out of the
+# corpus.  `test_agent_plugin_packages_are_discovered` keeps that from emptying.
+_AGENT_PYPROJECTS = sorted((REPO_ROOT / "packages").glob("agent-*/pyproject.toml"))
+
+
+def _package_id(pyproject: Path) -> str:
+    return pyproject.parent.name
+
+
+def _project_table(pyproject: Path) -> dict:
+    return tomllib.loads(pyproject.read_text(encoding="utf-8"))["project"]
+
+
+def _dunder_version(init_py: Path) -> str:
+    """Read ``__version__`` out of a file by PARSING it — never by importing it.
+
+    ``import kanibako.plugins.<name>`` resolves through ``sys.path``, where an
+    editable or site-packages install of the same plugin can shadow the copy
+    under ``packages/``.  The test would then read a DIFFERENT file than the one
+    it names and pass while the repo is broken — the exact silence this test
+    exists to remove.  Parsing addresses the file by path, so it cannot.
+    """
+    for node in ast.parse(init_py.read_text(encoding="utf-8"), str(init_py)).body:
+        if isinstance(node, ast.Assign) and any(
+            isinstance(target, ast.Name) and target.id == "__version__"
+            for target in node.targets
+        ):
+            return ast.literal_eval(node.value)
+    raise AssertionError(f"{init_py} declares no module-level __version__")
+
+
+def _plugin_init(pyproject: Path) -> Path:
+    """The one ``kanibako/plugins/<name>/__init__.py`` a distribution ships."""
+    plugins = pyproject.parent / "src" / "kanibako" / "plugins"
+    inits = sorted(plugins.glob("*/__init__.py"))
+    assert len(inits) == 1, (
+        f"{_package_id(pyproject)} ships {len(inits)} plugin packages under "
+        f"{plugins}; the version pair assumes exactly one"
+    )
+    return inits[0]
+
+
+def test_agent_plugin_packages_are_discovered() -> None:
+    """The glob must find the plugins, or every test below passes vacuously.
+
+    A parametrized test over an empty list collects nothing and reports green.
+    This is the guard that makes the emptiness itself RED.
+    """
+    assert _AGENT_PYPROJECTS, (
+        f"no packages/agent-*/pyproject.toml found under {REPO_ROOT / 'packages'} — "
+        f"the version-pair tests would silently cover nothing"
+    )
+
+
+@pytest.mark.parametrize("pyproject", _AGENT_PYPROJECTS, ids=_package_id)
+def test_plugin_version_pair_agrees(pyproject: Path) -> None:
+    """A plugin's distribution version and its ``__version__`` must be identical.
+
+    Nothing else forces them together: ``.bumpversion.cfg`` stamps claude's pair
+    and neither goose's nor codex's, and the publish-collision check compares
+    content only for a version that is ALREADY on PyPI — so a fresh number with a
+    stale ``__version__`` sails straight through it.
+    """
+    init_py = _plugin_init(pyproject)
+    declared = _project_table(pyproject)["version"]
+    dunder = _dunder_version(init_py)
+    assert declared == dunder, (
+        f"{_package_id(pyproject)} version pair disagrees: "
+        f"{pyproject.relative_to(REPO_ROOT)} says {declared!r} but "
+        f"{init_py.relative_to(REPO_ROOT)} says {dunder!r} — bump both"
+    )
+
+
+# Plugins the release train does NOT stamp: their floor in the meta package is
+# hand-maintained, which is what makes it drift.  Derived from `_STAMPED` rather
+# than relisted, so the rule and not an inventory decides membership.
+_INDEPENDENT_PYPROJECTS = [
+    pyproject
+    for pyproject in _AGENT_PYPROJECTS
+    if _project_table(pyproject)["name"] not in _STAMPED
+]
+
+
+def _meta_floor(dist: str) -> Version:
+    """The lower bound the meta package declares for ``dist``."""
+    deps = _project_table(_META_PYPROJECT)["dependencies"]
+    for raw in deps:
+        req = Requirement(raw)
+        if canonicalize_name(req.name) != canonicalize_name(dist):
+            continue
+        floors = [
+            Version(spec.version) for spec in req.specifier if spec.operator == ">="
+        ]
+        assert len(floors) == 1, f"{dist} declares {len(floors)} lower bounds in meta"
+        return floors[0]
+    raise AssertionError(f"the meta package declares no dependency on {dist}")
+
+
+def test_independent_plugins_are_discovered() -> None:
+    """Same vacuity guard, for the filtered corpus below."""
+    assert _INDEPENDENT_PYPROJECTS, (
+        f"every packages/agent-* distribution is in _STAMPED {_STAMPED}; the meta "
+        f"floor test below would cover nothing"
+    )
+
+
+@pytest.mark.parametrize("pyproject", _INDEPENDENT_PYPROJECTS, ids=_package_id)
+def test_meta_floor_is_not_below_an_independent_plugins_own_version(
+    pyproject: Path,
+) -> None:
+    """The meta must not floor an unstamped plugin below the version in tree.
+
+    These are published on their own cadence, so their floors are typed by
+    hand.  A floor left behind a bump lets ``pip install kanibako`` resolve the
+    PREVIOUS wheel — content this release has already moved past — and the user
+    gets a plugin that fails to import, which is the failure the meta package
+    exists to prevent.
+
+    ⚑ Deliberately one-sided.  A floor ABOVE the in-tree version is also wrong,
+    but it announces itself at the first resolve; a floor below is silent.  The
+    stamped train members are excluded because their in-tree floor is a ``.dev0``
+    range ON PURPOSE — the workflow replaces it with ``==<VER>`` at build time.
+    """
+    dist = _project_table(pyproject)["name"]
+    version = Version(_project_table(pyproject)["version"])
+    floor = _meta_floor(dist)
+    assert floor >= version, (
+        f"{_META_PYPROJECT.relative_to(REPO_ROOT)} floors {dist} at {floor}, "
+        f"below its own {version} — bump the floor with the package"
+    )
