@@ -32,12 +32,17 @@ meta.
 The file also pins the OTHER cross-package version contracts, which have the same
 shape — one fact written in two files that nothing forced to agree:
 
-* Each agent plugin carries its version in ``packages/agent-<name>/pyproject.toml``
-  AND in ``.../src/kanibako/plugins/<name>/__init__.py``.  ``.bumpversion.cfg``
-  stamps claude's pair only; goose and codex have neither stamped, so a bump that
+* Every distribution that SHIPS CODE carries its version twice — the cli in
+  ``pyproject.toml`` and ``src/kanibako/__init__.py``, each plugin in
+  ``packages/agent-<name>/pyproject.toml`` and
+  ``.../src/kanibako/plugins/<name>/__init__.py``.  ``.bumpversion.cfg`` stamps
+  the cli's pair and claude's and neither goose's nor codex's, so a bump that
   edits one file and forgets the other ships a wheel whose ``__version__`` lies.
   ``scripts/check-publish-collisions.py`` structurally cannot catch it — an
   unpublished version short-circuits before any content comparison.
+  ⚑ Being STAMPED is not being ASSERTED: agent-claude was stamped too, and its
+  pair still needed this test.  A stamp is a convention a hand edit, a merge or a
+  config change steps around in silence.
 * The meta package's floor for an independently-versioned plugin must not sit
   below that plugin's own version, or ``pip install kanibako`` can resolve a wheel
   older than the one this release needs.
@@ -153,7 +158,7 @@ def test_an_rc_outranks_a_dev_which_is_why_the_pin_is_required() -> None:
 
 
 # ---------------------------------------------------------------------------
-# The two-file version pair every agent plugin carries.
+# The two-file version pair every distribution that ships code carries.
 # ---------------------------------------------------------------------------
 
 # DISCOVERED, never listed: a fourth plugin is covered the day its directory
@@ -161,46 +166,80 @@ def test_an_rc_outranks_a_dev_which_is_why_the_pin_is_required() -> None:
 # corpus.  `test_agent_plugin_packages_are_discovered` keeps that from emptying.
 _AGENT_PYPROJECTS = sorted((REPO_ROOT / "packages").glob("agent-*/pyproject.toml"))
 
+# Every DISTRIBUTION in the tree, from the two places a pyproject can live: the
+# repo root (the cli itself) and one directory per package.
+_DISTRIBUTIONS = [
+    REPO_ROOT / "pyproject.toml",
+    *sorted((REPO_ROOT / "packages").glob("*/pyproject.toml")),
+]
 
-def _package_id(pyproject: Path) -> str:
-    return pyproject.parent.name
+# ...of which the ones that SHIP CODE are the ones carrying a version twice.  The
+# membership rule is "has a src/ tree", never a list of names: `packages/meta` is
+# a dependency shell with no source, so it has no second copy to disagree with,
+# and a distribution that grows one joins this corpus by EXISTING rather than by
+# somebody remembering to add it here.
+_VERSIONED_PYPROJECTS = [p for p in _DISTRIBUTIONS if (p.parent / "src").is_dir()]
+
+
+def _dist_id(pyproject: Path) -> str:
+    """The DECLARED distribution name — stable where a directory name is not.
+
+    The ONE id spelling in this file, because the repo root's directory name is
+    whatever the checkout was called: it cannot identify the cli the way
+    ``packages/agent-claude`` identifies claude, and two id spellings would leave
+    the next reader picking the one that breaks on the root.
+    """
+    return _project_table(pyproject)["name"]
 
 
 def _project_table(pyproject: Path) -> dict:
     return tomllib.loads(pyproject.read_text(encoding="utf-8"))["project"]
 
 
-def _dunder_version(init_py: Path) -> str:
+def _dunder_version(module: Path) -> str | None:
     """Read ``__version__`` out of a file by PARSING it — never by importing it.
 
     ``import kanibako.plugins.<name>`` resolves through ``sys.path``, where an
-    editable or site-packages install of the same plugin can shadow the copy
-    under ``packages/``.  The test would then read a DIFFERENT file than the one
-    it names and pass while the repo is broken — the exact silence this test
+    editable or site-packages install of the same distribution can shadow the
+    copy under ``packages/``.  The test would then read a DIFFERENT file than the
+    one it names and pass while the repo is broken — the exact silence this test
     exists to remove.  Parsing addresses the file by path, so it cannot.
+
+    ``None`` means the module declares none, which is how :func:`_version_module`
+    tells a version carrier from any other ``__init__.py``.
     """
-    for node in ast.parse(init_py.read_text(encoding="utf-8"), str(init_py)).body:
+    for node in ast.parse(module.read_text(encoding="utf-8"), str(module)).body:
         if isinstance(node, ast.Assign) and any(
             isinstance(target, ast.Name) and target.id == "__version__"
             for target in node.targets
         ):
             return ast.literal_eval(node.value)
-    raise AssertionError(f"{init_py} declares no module-level __version__")
+    return None
 
 
-def _plugin_init(pyproject: Path) -> Path:
-    """The one ``kanibako/plugins/<name>/__init__.py`` a distribution ships."""
-    plugins = pyproject.parent / "src" / "kanibako" / "plugins"
-    inits = sorted(plugins.glob("*/__init__.py"))
-    assert len(inits) == 1, (
-        f"{_package_id(pyproject)} ships {len(inits)} plugin packages under "
-        f"{plugins}; the version pair assumes exactly one"
+def _version_module(pyproject: Path) -> Path:
+    """The one module under a distribution's ``src/`` that declares ``__version__``.
+
+    Found by the DECLARATION rather than by a path shape, so the cli's
+    ``src/kanibako/__init__.py`` and a plugin's
+    ``src/kanibako/plugins/<name>/__init__.py`` are one rule instead of two.
+    Exactly one: zero would leave that distribution's pair silently unasserted,
+    and two make "the pair" ambiguous.
+    """
+    src = pyproject.parent / "src"
+    carriers = sorted(
+        p for p in src.rglob("__init__.py") if _dunder_version(p) is not None
     )
-    return inits[0]
+    assert len(carriers) == 1, (
+        f"{_dist_id(pyproject)} declares __version__ in {len(carriers)} modules "
+        f"under {src} ({[str(p.relative_to(src)) for p in carriers]}); the "
+        f"version pair assumes exactly one"
+    )
+    return carriers[0]
 
 
 def test_agent_plugin_packages_are_discovered() -> None:
-    """The glob must find the plugins, or every test below passes vacuously.
+    """The glob must find the plugins, or the corpora built from it cover nothing.
 
     A parametrized test over an empty list collects nothing and reports green.
     This is the guard that makes the emptiness itself RED.
@@ -211,22 +250,45 @@ def test_agent_plugin_packages_are_discovered() -> None:
     )
 
 
-@pytest.mark.parametrize("pyproject", _AGENT_PYPROJECTS, ids=_package_id)
-def test_plugin_version_pair_agrees(pyproject: Path) -> None:
-    """A plugin's distribution version and its ``__version__`` must be identical.
+def test_versioned_distributions_are_discovered() -> None:
+    """The pair corpus must hold the cli AND every agent plugin.
 
-    Nothing else forces them together: ``.bumpversion.cfg`` stamps claude's pair
-    and neither goose's nor codex's, and the publish-collision check compares
-    content only for a version that is ALREADY on PyPI — so a fresh number with a
-    stale ``__version__`` sails straight through it.
+    Same vacuity guard as above, plus the half a plain "non-empty" would miss: a
+    corpus that quietly lost the repo-root distribution still collects three
+    plugins and reports green over exactly the row this test was widened to add.
     """
-    init_py = _plugin_init(pyproject)
+    assert REPO_ROOT / "pyproject.toml" in _VERSIONED_PYPROJECTS, (
+        f"the repo-root distribution is not in the version-pair corpus — no "
+        f"{REPO_ROOT / 'src'} tree, so the cli's own pair is unasserted again"
+    )
+    missing = sorted(set(_AGENT_PYPROJECTS) - set(_VERSIONED_PYPROJECTS))
+    assert not missing, (
+        f"agent packages missing from the version-pair corpus: {missing} — each "
+        f"ships code, so each must carry a src/ tree the corpus can find"
+    )
+
+
+@pytest.mark.parametrize("pyproject", _VERSIONED_PYPROJECTS, ids=_dist_id)
+def test_version_pair_agrees(pyproject: Path) -> None:
+    """A distribution's declared version and its ``__version__`` must be identical.
+
+    Nothing else forces them together: ``.bumpversion.cfg`` stamps the cli's pair
+    and claude's and neither goose's nor codex's, and the publish-collision check
+    compares content only for a version that is ALREADY on PyPI — so a fresh
+    number with a stale ``__version__`` sails straight through it.
+
+    ⚑ The stamped pairs are in this corpus BECAUSE they are stamped, not despite
+    it.  agent-claude was stamped too and drifted anyway, which is why this test
+    exists at all: a stamp is a convention that a hand edit, a merge or an edit to
+    ``.bumpversion.cfg`` itself steps around in silence.
+    """
+    module = _version_module(pyproject)
     declared = _project_table(pyproject)["version"]
-    dunder = _dunder_version(init_py)
+    dunder = _dunder_version(module)
     assert declared == dunder, (
-        f"{_package_id(pyproject)} version pair disagrees: "
+        f"{_dist_id(pyproject)} version pair disagrees: "
         f"{pyproject.relative_to(REPO_ROOT)} says {declared!r} but "
-        f"{init_py.relative_to(REPO_ROOT)} says {dunder!r} — bump both"
+        f"{module.relative_to(REPO_ROOT)} says {dunder!r} — bump both"
     )
 
 
@@ -263,7 +325,7 @@ def test_independent_plugins_are_discovered() -> None:
     )
 
 
-@pytest.mark.parametrize("pyproject", _INDEPENDENT_PYPROJECTS, ids=_package_id)
+@pytest.mark.parametrize("pyproject", _INDEPENDENT_PYPROJECTS, ids=_dist_id)
 def test_meta_floor_is_not_below_an_independent_plugins_own_version(
     pyproject: Path,
 ) -> None:
@@ -280,7 +342,7 @@ def test_meta_floor_is_not_below_an_independent_plugins_own_version(
     stamped train members are excluded because their in-tree floor is a ``.dev0``
     range ON PURPOSE — the workflow replaces it with ``==<VER>`` at build time.
     """
-    dist = _project_table(pyproject)["name"]
+    dist = _dist_id(pyproject)
     version = Version(_project_table(pyproject)["version"])
     floor = _meta_floor(dist)
     assert floor >= version, (
