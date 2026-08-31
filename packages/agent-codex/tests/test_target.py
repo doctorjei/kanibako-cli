@@ -439,16 +439,23 @@ class TestGenerateAgentConfig:
     def test_defaults(self):
         # FILE PURITY: the generated agent settings file carries USER INTENT
         # only, so state is EMPTY — ``model`` comes from the descriptor floor
-        # (setting_descriptors -> default "gpt-5.5"), never from a seed.
+        # (setting_descriptors -> EMPTY, i.e. codex's own built-in default),
+        # never from a seed.
         config = CodexTarget().generate_agent_config()
         assert config.name == "OpenAI Codex CLI"
         assert config.state == {}
 
     def test_model_default_comes_from_the_descriptor_floor(self):
+        # ... and that floor imposes nothing: spec §2d ships
+        # ``agent.codex.model | default <None> (use codex's built-in default)``,
+        # and an empty floor is how a plugin spells <None>.  ``assemble_argv``
+        # omits an empty value (``if value:``), so a box the user has set no model
+        # on launches with no ``--model`` at all.  The ALL-AGENTS form of this rule
+        # is pinned in ``tests/test_targets/test_agent_behavior_defaults.py``.
         t = CodexTarget()
         assert "model" not in t.generate_agent_config().state
         model = next(d for d in t.setting_descriptors() if d.key == "model")
-        assert model.default == "gpt-5.5"
+        assert model.default == ""
 
 
 class TestSettingDescriptors:
@@ -715,9 +722,9 @@ class TestDescriptorAssembly:
         d = CodexTarget().descriptor
         argv = assembly.assemble_argv(
             d, mode_fragment=d.mode["start"], access="restricted",
-            setting_values={"model": "gpt-5.5"}, op_fragment=None, extra_args=[],
+            setting_values={"model": "some-model-id"}, op_fragment=None, extra_args=[],
         )
-        assert argv == ["--model", "gpt-5.5"]
+        assert argv == ["--model", "some-model-id"]
 
     def test_exec_op_argv(self):
         d = CodexTarget().descriptor

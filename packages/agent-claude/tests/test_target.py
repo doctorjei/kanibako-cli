@@ -563,10 +563,16 @@ class TestSettingDescriptors:
         assert all(isinstance(d, TargetSetting) for d in descriptors)
 
     def test_model_setting(self):
+        # DECLARED but with NO opinionated floor: spec §2d ships
+        # ``agent.claude.model | default <None> (use claude's built-in default)``,
+        # and an empty floor is how a plugin spells <None>.  ``assemble_argv``
+        # omits an empty value (``if value:``), so a box the user has set no model
+        # on launches with no ``--model`` at all.  The ALL-AGENTS form of this rule
+        # is pinned in ``tests/test_targets/test_agent_behavior_defaults.py``.
         t = ClaudeTarget()
         descriptors = {d.key: d for d in t.setting_descriptors()}
         assert "model" in descriptors
-        assert descriptors["model"].default == "opus"
+        assert descriptors["model"].default == ""
         assert descriptors["model"].choices == ()  # freeform
 
     def test_access_is_not_a_declared_setting(self):
@@ -596,18 +602,20 @@ class TestGenerateAgentConfig:
         assert cfg.name == "Claude Code"
         # FILE PURITY: the generated agent settings file carries USER INTENT
         # only, so state is EMPTY.  ``model`` comes from the descriptor floor
-        # (setting_descriptors -> default "opus") and ``access`` is UNSET (the
-        # launch reader defaults it to the ``full`` tier); seeding either would
-        # pin the install above the floor and freeze the default forever.
+        # (setting_descriptors -> EMPTY, i.e. claude's own built-in default) and
+        # ``access`` is UNSET (the launch reader defaults it to the ``full``
+        # tier); seeding either would pin the install above the floor and freeze
+        # the default forever.
         assert cfg.state == {}
         assert cfg.run_args == []
         assert cfg.env == {}
 
     def test_model_default_comes_from_the_descriptor_floor(self):
+        # ... and that floor imposes nothing (spec §2d ``<None>``).
         t = ClaudeTarget()
         assert "model" not in t.generate_agent_config().state
         model = next(d for d in t.setting_descriptors() if d.key == "model")
-        assert model.default == "opus"
+        assert model.default == ""
 
     def test_is_crab_config_instance(self):
         from kanibako.settings.agent_config import AgentConfig
