@@ -41,8 +41,8 @@ from kanibako.errors import SubjectConflictError
 # real command all along.  Asserted over the whole tree in
 # ``TestEveryDeclaredKeyNamesAReachableCommand``.
 
-# ``--agent`` is the ephemeral agent-resolver override: the commands that run
-# the unified cascade with the explicit-agent seam.
+# ``--agent`` names the agent to resolve: the commands that run the unified
+# cascade with the explicit-agent seam.
 # ⚑ ``shell`` is NOT here — it bypasses agent resolution entirely (the no-agent
 # recovery hatch).  ``setup`` is NOT here — it has its own persistent --agent.
 AGENT_FLAG_COMMANDS: frozenset[str] = frozenset({
@@ -51,6 +51,19 @@ AGENT_FLAG_COMMANDS: frozenset[str] = frozenset({
     "create",
     "box create",
     "agent reauth",
+})
+
+# The subset of the above where ``--agent`` is SAVED rather than per-invocation:
+# ``run_create`` writes the §2h request ``pref.system.agent`` into the new box's
+# own settings (``commands/box/_parser.py``), so the box keeps that agent and a
+# later bare ``kanibako start`` launches it.  On every other member the flag is
+# per-invocation and nothing is written.
+# ⚑ This set exists because ONE help string covered both meanings and told every
+# ``create`` user their choice was "not persisted" — false, and a reader built
+# instructions on it.  :func:`_add_agent_flag` picks the wording from here.
+AGENT_FLAG_PERSISTS: frozenset[str] = frozenset({
+    "create",
+    "box create",
 })
 
 # ``--box`` is the subject/anchor selector: every command that acts on a subject
@@ -126,17 +139,32 @@ _COMMAND_PATH_DEST = "_command_path"
 # leaf either way, so it always parses and relevance stays a post-parse judgement
 # with an enumerating message; ``advertise=False`` only withholds the help text,
 # so a command that would REFUSE the flag does not offer it first.
+
+# The two claims ``--agent`` can truthfully make, split on
+# :data:`AGENT_FLAG_PERSISTS`.  Plain wording on purpose: this text is the only
+# place most users learn whether their choice sticks.
+AGENT_FLAG_HELP_PER_RUN = (
+    "Use agent NAME for this run only. It overrides the agent saved for the "
+    "box, and is not saved itself."
+)
+AGENT_FLAG_HELP_PERSISTED = (
+    "Create the box with agent NAME and save NAME as the box's agent, so "
+    "later commands use it without the flag. Change it afterwards with "
+    "'kanibako box set pref.system.agent=<name>'."
+)
+
+
 def _add_agent_flag(
-    parser: argparse.ArgumentParser, *, advertise: bool,
+    parser: argparse.ArgumentParser, *, advertise: bool, persists: bool,
 ) -> None:
     parser.add_argument(
         "--agent",
         metavar="NAME",
         default=None,
         help=(
-            "Use agent NAME for this invocation (ephemeral; top of the "
-            "resolution cascade, not persisted)."
-        ) if advertise else argparse.SUPPRESS,
+            (AGENT_FLAG_HELP_PERSISTED if persists else AGENT_FLAG_HELP_PER_RUN)
+            if advertise else argparse.SUPPRESS
+        ),
     )
 
 
@@ -369,7 +397,11 @@ def _walk(parser: argparse.ArgumentParser, prefix: tuple[str, ...]) -> None:
         cmd_key = " ".join(prefix)
         parser.set_defaults(**{_COMMAND_PATH_DEST: cmd_key})
         if cmd_key not in _AGENT_FLAG_EXCLUDE and not _has_option(parser, "--agent"):
-            _add_agent_flag(parser, advertise=cmd_key in AGENT_FLAG_COMMANDS)
+            _add_agent_flag(
+                parser,
+                advertise=cmd_key in AGENT_FLAG_COMMANDS,
+                persists=cmd_key in AGENT_FLAG_PERSISTS,
+            )
         if not _has_option(parser, "--box"):
             _add_box_flag(parser, advertise=cmd_key in BOX_FLAG_COMMANDS)
         return
@@ -504,8 +536,8 @@ def check_flag_relevance(args: argparse.Namespace) -> None:
             raise FlagRelevanceError(
                 f"--agent is not valid for '{key}'. It applies to agent "
                 f"commands ({', '.join(sorted(AGENT_FLAG_COMMANDS))}); for those "
-                f"it picks the agent for this invocation. To set a persistent "
-                f"default, run 'kanibako setup'."
+                f"it picks the agent to run. To set a persistent default, run "
+                f"'kanibako setup'."
             )
     if isinstance(box, str):
         if key not in BOX_FLAG_COMMANDS:

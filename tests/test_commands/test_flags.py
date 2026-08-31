@@ -12,6 +12,9 @@ import pytest
 from kanibako import cli
 from kanibako.commands.flags import (
     AGENT_FLAG_COMMANDS,
+    AGENT_FLAG_HELP_PER_RUN,
+    AGENT_FLAG_HELP_PERSISTED,
+    AGENT_FLAG_PERSISTS,
     BOX_FLAG_COMMANDS,
     FlagRelevanceError,
     _AGENT_FLAG_EXCLUDE,
@@ -626,6 +629,138 @@ class TestBlanketFlagsAreAdvertisedOnlyWhereTheyApply:
         with pytest.raises(FlagRelevanceError) as excinfo:
             check_flag_relevance(_parse(parser, argv))
         assert option in str(excinfo.value)
+
+
+# ---------------------------------------------------------------------------
+# Help honesty: --agent says whether the choice is SAVED
+# ---------------------------------------------------------------------------
+
+def _handler_persists_the_agent(func):
+    """True if *func* WRITES the box's agent setting through the settings seam.
+
+    ⚑ The CALL, not the key name: ``run_reauth`` names ``pref.system.agent`` in a
+    message it prints, and a substring match would read that as a write.  Only
+    the leaf handler's own source is scanned — the write is the verb's own act,
+    and one that moved into a helper should re-state its claim here deliberately
+    rather than be followed to silently.
+    """
+    if func is None:
+        return False
+    try:
+        source = inspect.getsource(func)
+    except (OSError, TypeError):
+        return False
+    return re.search(
+        r'set_config_value\(\s*["\']pref\.system\.agent["\']', source,
+    ) is not None
+
+
+class TestTheAgentFlagHelpSaysWhetherItSticks:
+    """``kanibako create --help`` told the user the agent was "not persisted".
+
+    It is: ``run_create`` writes the §2h request ``pref.system.agent`` into the
+    new box's own settings, so the box keeps that agent and a later bare
+    ``kanibako start`` launches it.  ONE help string served all five members of
+    ``AGENT_FLAG_COMMANDS``, so the launch pair's truth was printed as create's —
+    and a reader built instructions on the false half.  The claim now splits on
+    ``AGENT_FLAG_PERSISTS``.
+
+    ⚑ Swept over the whole tree against the two constants, never hand-listed, so
+    re-merging the strings reddens every row rather than one.  INVERT: put
+    ``"start"`` into ``AGENT_FLAG_PERSISTS`` (or drop ``"create"``) and the
+    wiring row names it; make the two constants say the same thing and the
+    contradiction row reddens.
+    """
+
+    def test_the_persisting_set_is_part_of_the_declared_set(self):
+        # A command that refuses --agent cannot persist one; and neither an
+        # empty nor an all-of-it subset would test anything below.
+        assert AGENT_FLAG_PERSISTS <= AGENT_FLAG_COMMANDS
+        assert AGENT_FLAG_PERSISTS
+        assert AGENT_FLAG_PERSISTS != AGENT_FLAG_COMMANDS
+
+    def test_the_two_claims_contradict_each_other(self):
+        per_run = AGENT_FLAG_HELP_PER_RUN.lower()
+        persisted = AGENT_FLAG_HELP_PERSISTED.lower()
+        assert "not saved" in per_run
+        assert "not saved" not in persisted
+        assert "save" in persisted
+
+    def test_the_persisting_set_is_what_the_handlers_actually_do(self, parser):
+        """The set is a CLAIM about handlers, so the handlers settle it."""
+        leaves = _leaves(parser)
+        canonical = _alias_keys(parser)
+        # Vacuity: a true AND a false case, so a scan that matched nothing (or
+        # everything) cannot pass the sweep below.
+        assert _handler_persists_the_agent(
+            leaves["box create"].get_default("func"))
+        assert not _handler_persists_the_agent(
+            leaves["start"].get_default("func"))
+        disagree = set()
+        for key in AGENT_FLAG_COMMANDS:
+            leaf = leaves.get(key)
+            if leaf is None:
+                continue
+            canon = canonical.get(key, key)
+            persists = _handler_persists_the_agent(leaf.get_default("func"))
+            if persists != (canon in AGENT_FLAG_PERSISTS):
+                disagree.add(canon)
+        assert sorted(disagree) == []
+
+    def test_every_advertised_leaf_carries_the_claim_that_fits_it(self, parser):
+        leaves = _leaves(parser)
+        canonical = _alias_keys(parser)
+        persisting = _alias_closure(leaves, AGENT_FLAG_PERSISTS)
+        wrong: list[str] = []
+        saw_persisted: set[str] = set()
+        saw_per_run: set[str] = set()
+        for key, leaf in leaves.items():
+            # setup owns a LOCAL --agent with its own help; the blanket flag is
+            # never injected there, so there is no claim of ours to check.
+            if canonical.get(key, key) in _AGENT_FLAG_EXCLUDE:
+                continue
+            act = _action_for(leaf, "--agent")
+            if act is None or act.help == argparse.SUPPRESS:
+                continue
+            if key in persisting:
+                saw_persisted.add(key)
+                expected = AGENT_FLAG_HELP_PERSISTED
+            else:
+                saw_per_run.add(key)
+                expected = AGENT_FLAG_HELP_PER_RUN
+            if act.help != expected:
+                wrong.append(key)
+        assert sorted(wrong) == []
+        # Vacuity: both claims were really exercised by the sweep.
+        assert saw_persisted and saw_per_run
+
+    @pytest.mark.parametrize("argv", [
+        ["create", "--help"],
+        ["box", "create", "--help"],
+    ])
+    def test_create_help_does_not_deny_that_it_saves(self, parser, capsys, argv):
+        # The rendered surface a user reads, unwrapped: this is the exact text
+        # that misled one.
+        with pytest.raises(SystemExit):
+            parser.parse_args(argv)
+        text = " ".join(capsys.readouterr().out.split()).lower()
+        assert "not saved" not in text
+        assert "not persisted" not in text
+        assert "save" in text
+
+    @pytest.mark.parametrize("argv", [
+        ["start", "--help"],
+        ["box", "start", "--help"],
+        ["agent", "reauth", "--help"],
+    ])
+    def test_the_per_run_verbs_still_say_the_choice_is_not_saved(
+        self, parser, capsys, argv,
+    ):
+        with pytest.raises(SystemExit):
+            parser.parse_args(argv)
+        text = " ".join(capsys.readouterr().out.split()).lower()
+        assert "this run only" in text
+        assert "not saved" in text
 
 
 # ---------------------------------------------------------------------------

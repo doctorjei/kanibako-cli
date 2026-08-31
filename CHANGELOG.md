@@ -431,6 +431,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   live one whose command line did not match the agent launch grammar, with the grammar test that
   failed — so a box that stops seeing a running agent leaves a readable trail.
 
+- **`kanibako create --help` told you your `--agent` choice was thrown away; it was being saved.**
+  One help string served all five commands that take the blanket `--agent`, and it read *"for this
+  invocation (ephemeral; top of the resolution cascade, not persisted)"* — true for `start`, `box
+  start` and `agent reauth`, false for `create` and `box create`, which write the choice into the
+  new box's own `pref.system.agent` so a later bare `kanibako start` runs that agent. The two
+  spellings of `create` now say they save it (and how to change it afterwards); the other three say
+  the choice lasts one run. The refusal you get for `--agent` on an unrelated command no longer
+  repeats the "for this invocation" claim either.
+
 - **A persona whose model was a tier alias could not be launched at all, and the error blamed a
   token that was perfectly valid.** Claude Code accepts `sonnet`, `opus`, `haiku` and `fable` as
   aliases and resolves each through an environment variable — `ANTHROPIC_DEFAULT_SONNET_MODEL` and

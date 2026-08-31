@@ -397,7 +397,7 @@ error, not a silent no-op).
 | Flag | Description |
 |------|-------------|
 | `-v, --verbose` | Show debug output (target detection, container command) |
-| `--agent NAME` | Top-precedence, ephemeral (this-invocation) agent override; wins over the cascade. See [Agent Selection](#agent-selection). |
+| `--agent NAME` | Top-precedence agent override; wins over the cascade. See [Agent Selection](#agent-selection) for how long a given command makes it last. |
 | `--box NAME-OR-PATH` | Universal subject/anchor selector -- act on a box that isn't your cwd, by box name (precedence) or path. See [Agent Selection](#agent-selection). |
 
 > **`setup` keeps its own `--agent`** flag (it persists the chosen default rather
@@ -434,8 +434,10 @@ first):
 
 A box or workset REQUESTS an agent with `pref.system.agent` (a request to set a key
 that resolves earlier than the file making it); `system.agent` is the host-global
-default and `--agent` is the ephemeral per-launch override. `kanibako create --agent
-<name>` persists the request into the new box, so a plain `kanibako start` runs it.
+default and `--agent` is the per-run override on `start`, `box start` and `agent
+reauth`. The two spellings of `create` are the exception: `kanibako create --agent
+<name>` persists the request into the new box, so a plain `kanibako start` runs it
+-- change it afterwards with `kanibako box set pref.system.agent=<name>`.
 
 If a name resolves, it is used (and an error is raised if that agent's plugin
 isn't installed). If **nothing** resolves, the **installed-agent count** decides --
