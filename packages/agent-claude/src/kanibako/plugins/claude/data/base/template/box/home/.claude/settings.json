@@ -6,7 +6,6 @@
     "commit": "",
     "pr": ""
   },
-  "model": "default",
   "hooks": {
     "PostToolUse": [
       {
@@ -113,7 +112,7 @@
     "type": "command",
     "command": "~/canon/handbook/agent/scripts/interface/statusline.sh"
   },
-  "effortLevel": "xhigh",
+  "effortLevel": "high",
   "skipDangerousModePermissionPrompt": true,
   "autoCompactEnabled": false
 }

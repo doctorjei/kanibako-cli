@@ -422,6 +422,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A new claude box's VS Code panel loaded a model named `default`, and every message failed.** The
+  seeded `~/.claude/settings.json` carried `"model": "default"`, pasted in wholesale with a working
+  box's real settings. `default` is not one of Claude Code's model aliases, so it went to the
+  endpoint verbatim, no such model existed, and the panel answered every prompt with *"There's an
+  issue with the selected model (default). It may not exist or you may not have access to it."* A
+  fresh box was unusable from its first screen. The seed no longer names a model at all: a static
+  template value cannot track the model kanibako resolves through `agent.<node>.model`, and with the
+  key absent Claude Code picks, in the panel, the default the account actually has. (A box's CLI
+  session is unaffected either way — kanibako passes it a resolved `--model`, which is why only the
+  panel broke.) The seeded `effortLevel` moved from `xhigh` to `high` in the same pass. **This
+  repairs boxes created from now on, and only those.** A box home is seeded once, at create, and the
+  home bind owns the file afterwards, so upgrading rewrites nothing — a box you already have keeps
+  the bad line. Cure it from inside the box: `/model <name>` in the panel fixes the current session,
+  and deleting the `"model"` line from `~/.claude/settings.json` fixes it for good. Only boxes
+  created by `v1.8.0-rc2`, or by a dev build cut after 2026-08-17, carry it; `v1.8.0-rc1` and 1.7.2
+  seeded no model.
+
 - **PID 1 now writes its decisions to `podman logs`.** The box supervisor logged every consequential
   thing it does — self-heal restart attempts, panel-watch entry, teardown, agent-marker reaps — and
   emitted none of it: nothing configured the `kanibako` logger inside the box, so Python discarded

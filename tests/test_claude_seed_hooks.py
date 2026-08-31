@@ -72,8 +72,12 @@ _PIDLESS_HOOKS = ("stop",)
 _HAS_BASH = shutil.which("bash") is not None
 
 
-def _shipped_settings() -> dict:
-    """Parse the SHIPPED claude seed template — the bytes a box gets at create."""
+def shipped_settings() -> dict:
+    """Parse the SHIPPED claude seed template — the bytes a box gets at create.
+
+    ⚑ PUBLIC because ``test_claude_seed_settings`` asserts a different property of the
+    SAME bytes; one reader, so a relocated template reds both modules together.
+    """
     store = _packaged_agent_store("claude")
     assert store is not None, "the claude plugin ships no agent-store payload"
     path = Path(store) / _SETTINGS_REL
@@ -103,7 +107,7 @@ def _shipped_script(rom_rel: str, leaf: str) -> Path:
 def test_seeded_pid_hooks_pass_the_agent_pid_explicitly():
     """Each marker-owning hook is invoked with ``"$PPID"`` — expanded by the HOOK
     SHELL, where it names the agent, and handed down the cascade as ``$1``."""
-    commands = _hook_commands(_shipped_settings())
+    commands = _hook_commands(shipped_settings())
     box_dir = _canon_dest(_HOOKS_ROM_REL)
     for leaf in _PID_HOOKS:
         expected = f'{box_dir}/{leaf}.sh "$PPID"'
@@ -115,7 +119,7 @@ def test_seeded_pid_hooks_pass_the_agent_pid_explicitly():
 
 def test_seeded_pidless_hooks_are_bare_calls():
     """``Stop`` is a turn boundary: its hook takes no pid, but must still be bare."""
-    commands = _hook_commands(_shipped_settings())
+    commands = _hook_commands(shipped_settings())
     box_dir = _canon_dest(_HOOKS_ROM_REL)
     for leaf in _PIDLESS_HOOKS:
         assert commands.count(f"{box_dir}/{leaf}.sh") == 1, (
@@ -132,7 +136,7 @@ def test_no_seeded_bible_hook_swallows_its_exit_status():
     box_dir = _canon_dest(_SCRIPTS_ROM_REL)
     offenders = [
         command
-        for command in _hook_commands(_shipped_settings())
+        for command in _hook_commands(shipped_settings())
         if command.startswith(box_dir) and "||" in command
     ]
     assert not offenders, f"bible hook commands swallow their exit status: {offenders}"
@@ -201,7 +205,7 @@ def _run_hook(command: str, env: dict) -> subprocess.CompletedProcess:
 def _seeded(leaf: str) -> str:
     """The command string the shipped template seeds for one bible hook."""
     box_dir = _canon_dest(_HOOKS_ROM_REL)
-    commands = _hook_commands(_shipped_settings())
+    commands = _hook_commands(shipped_settings())
     matches = [c for c in commands if c.startswith(f"{box_dir}/{leaf}.sh")]
     assert len(matches) == 1, f"expected exactly one seeded command for {leaf}.sh, got {matches}"
     return matches[0]
