@@ -4109,9 +4109,9 @@ independently of the base and depend on **`kanibako-cli`** with **no version pin
    Republish against `data/base`. The `synced` credential destinations becoming host-side paths is
    still open plugin-package work. ⚑ **Correction: the base-side applier does not branch on a
    `dest_space` field** — there is no such field, and its absence is deliberate
-   (`settings/settings_categories.py:527`: "THERE IS NO `dest_space` FIELD, AND ITS ABSENCE IS
-   THE DESIGN"). The real mechanism is longest-prefix cover over the final bind map
-   (`commands/start.py:8659`, `_synced_host_dest`): a `synced` guest dest resolves to a host
+   (`settings/settings_categories.py:CategoryEntry`: "THERE IS NO `dest_space` FIELD, AND ITS
+   ABSENCE IS THE DESIGN"). The real mechanism is longest-prefix cover over the final bind map
+   (`commands/start.py`, `_synced_host_dest`): a `synced` guest dest resolves to a host
    path by finding the bind that covers it, not by consulting a separate namespace field.
 5. **Build hygiene:** `rm -rf build/ packages/*/build` before any local wheel build — stale
    `build/lib/` trees ship deleted files (CI builds clean; local builds do not).

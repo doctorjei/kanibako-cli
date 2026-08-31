@@ -152,13 +152,24 @@ def _seed_codex_stub(e2e_env: dict) -> None:
     e2e_env["env"]["OPENAI_API_KEY"] = "kani-e2e-fake-key"
 
 
-def _find_box_codex_config(e2e_env: dict) -> Path:
+def _find_box_codex_config(
+    e2e_env: dict, start: subprocess.CompletedProcess[str],
+) -> Path:
     """The BOX-HOME host-side ~/.codex/config.toml the launch delivery wrote.
 
     Filtered to the box-home tree (``boxes/*/home/``): the data home ALSO holds
     an agent-template copy of ``.codex/config.toml`` (the packaged template the
     seed stages), which a bare rglob would pick up and trip the ambiguity
     assert (bifrost finding).
+
+    *start* is the launch whose delivery this reads, carried for the failure
+    message alone: a start that never ran leaves nothing under any box home, and
+    a bare "not delivered" then blames the delivery seam for a launch failure.
+    ⚑ Its rc is deliberately NOT asserted.  A foreground box whose agent exits
+    at once is this test's DESIGN (the ``/bin/true`` codex), and ``start``
+    reports that as NON-ZERO — ``_container_exit_code(...) or 1``, since tmux
+    masks the inner program's code — so an ``rc == 0`` assert here would red on
+    the passing case.
     """
     candidates = [
         p
@@ -167,7 +178,8 @@ def _find_box_codex_config(e2e_env: dict) -> Path:
     ]
     assert candidates, (
         ".codex/config.toml not delivered under any box home "
-        f"(data home: {e2e_env['data_home']})"
+        f"(data home: {e2e_env['data_home']}; start: rc={start.returncode} "
+        f"stderr={start.stderr[-300:]!r})"
     )
     assert len(candidates) == 1, f"ambiguous box homes: {candidates}"
     return candidates[0]
@@ -185,8 +197,8 @@ def test_codex_delivery_real_box(e2e_env):
     r = run_kanibako(["create", str(project), "--name", box], env=env)
     assert r.returncode == 0, f"create failed: {r.stderr}"
     try:
-        run_kanibako(["start", box, "--agent", "codex"], env=env, timeout=90)
-        cfg_path = _find_box_codex_config(e2e_env)
+        r = run_kanibako(["start", box, "--agent", "codex"], env=env, timeout=90)
+        cfg_path = _find_box_codex_config(e2e_env, r)
         first = cfg_path.read_bytes()
         data = tomllib.loads(first.decode())
 
@@ -217,8 +229,13 @@ def test_codex_delivery_real_box(e2e_env):
         assert "SessionEnd" not in first.decode()  # codex has no such event
 
         # restart → byte-identical (both seams idempotent on the real path).
-        run_kanibako(["start", box, "--agent", "codex"], env=env, timeout=90)
-        assert cfg_path.read_bytes() == first, "restart changed delivered bytes"
+        # ⚑ VACUOUSLY SATISFIABLE: a restart that never ran leaves the bytes trivially
+        # identical. No discriminator is testable without a real box; boarded.
+        r = run_kanibako(["start", box, "--agent", "codex"], env=env, timeout=90)
+        assert cfg_path.read_bytes() == first, (
+            f"restart changed delivered bytes (restart: rc={r.returncode} "
+            f"stderr={r.stderr[-300:]!r})"
+        )
     finally:
         rm(container_name(box))
 
