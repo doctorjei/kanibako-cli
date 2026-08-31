@@ -25,6 +25,9 @@ _Runner = Callable[..., 'subprocess.CompletedProcess[str]']
 _Sleeper = Callable[[float], None]
 _PidAlive = Callable[[int], bool]
 _MarkersLister = Callable[[str], 'list[int]']
+_CmdlineOf = Callable[[int], 'list[str] | None']
+_AgentCheck = Callable[[int], 'bool | None']
+_MarkerRemover = Callable[[str, int], None]
 _Signaller = Callable[[int, int], None]
 _GroupOf = Callable[[int], int]
 _OwnGroup = Callable[[], int]
@@ -38,7 +41,9 @@ def project_pinned_xdg(home: Path | None=None, environ: Mapping[str, str] | None
 def xdg_projection_sh() -> str
 def scrub_bootstrap_pythonpath(environ: MutableMapping[str, str] | None=None) -> None
 def reap_zombie_children(max_reaps: int=32) -> int
-def scan_marker_pids(markers_dir: str, *, list_pids: _MarkersLister, pid_alive: _PidAlive) -> tuple[set[int], set[int]]
+def agent_launch_heads(*argvs: Iterable[str]) -> set[tuple[str, str | None]]
+def agent_session_verdict(argv: Iterable[str], heads: set[tuple[str, str | None]]) -> bool | None
+def scan_marker_pids(markers_dir: str, *, list_pids: _MarkersLister, pid_alive: _PidAlive, is_agent: _AgentCheck | None=None, remove: _MarkerRemover | None=None) -> tuple[set[int], set[int]]
 def newcomer_pids(live_pids: set[int], own_pids: set[int]) -> set[int]
 def decide(prev_state: AttachState, cur_state: AttachState, agent_alive: bool) -> SupervisorAction
 def decide_panel(tmux_alive: bool, panel: PanelAgentState, vscode_server: bool, any_attached: bool, seen_surface: bool) -> PanelAction
@@ -47,8 +52,12 @@ def config_from_argv(argv: list[str]) -> SupervisorConfig
 def main(argv: list[str] | None=None) -> int
 def _parse_stat_state(stat_text: str) -> str | None
 def _proc_stat_state(pid: int) -> str | None
+def _proc_cmdline(pid: int) -> list[str] | None
 def _default_pid_alive(pid: int) -> bool
 def _default_list_marker_pids(markers_dir: str) -> list[int]
+def _default_remove_marker(markers_dir: str, pid: int) -> None
+def _argv_head(argv: Iterable[str]) -> tuple[str, str | None] | None
+def _names_an_agent(argv: Iterable[str], heads: set[tuple[str, str | None]]) -> bool
 def _build_parser() -> argparse.ArgumentParser
 def _directive_watch(ns: argparse.Namespace) -> DirectiveWatch | None
 ```
@@ -113,7 +122,7 @@ class DirectiveVerdict(Enum):
     HAND_EDITED = 'hand_edited'
 
 class BoxSupervisor:
-    def __init__(self, config: SupervisorConfig, *, run: _Runner=subprocess.run, sleep: _Sleeper=time.sleep, proc_cmdlines: Iterable[str] | None=None, pid_alive: _PidAlive=_default_pid_alive, list_marker_pids: _MarkersLister=_default_list_marker_pids, kill: _Signaller=os.kill, killpg: _Signaller=os.killpg, getpgid: _GroupOf=os.getpgid, getpgrp: _OwnGroup=os.getpgrp, reap: _Reaper=reap_zombie_children) -> None
+    def __init__(self, config: SupervisorConfig, *, run: _Runner=subprocess.run, sleep: _Sleeper=time.sleep, proc_cmdlines: Iterable[str] | None=None, pid_alive: _PidAlive=_default_pid_alive, list_marker_pids: _MarkersLister=_default_list_marker_pids, cmdline_of: _CmdlineOf=_proc_cmdline, remove_marker: _MarkerRemover=_default_remove_marker, kill: _Signaller=os.kill, killpg: _Signaller=os.killpg, getpgid: _GroupOf=os.getpgid, getpgrp: _OwnGroup=os.getpgrp, reap: _Reaper=reap_zombie_children) -> None
 
     def start_agent_session(self) -> bool
     def restart_agent_session(self) -> bool
@@ -137,6 +146,7 @@ class BoxSupervisor:
     def _kill_process_group(self, pid: int, sig: int) -> bool
     def _snapshot(self) -> AttachState
     def _other_surface_attached(self, state: AttachState) -> bool
+    def _is_agent_pid(self, pid: int) -> bool | None
     def _scan_markers(self) -> tuple[set[int], set[int]]
     def _own_agent_pids(self) -> set[int]
     def _log_newcomers(self, live_pids: set[int], own_pids: set[int]) -> None
