@@ -1239,7 +1239,7 @@ git push && git push --tags
 
 ## Architecture
 
-For the full module-by-module breakdown, see
+For a map of the main modules, see
 [docs/architecture.md](docs/architecture.md).
 
 **Overview:** Kanibako's core (`kanibako-cli`) handles container lifecycle,

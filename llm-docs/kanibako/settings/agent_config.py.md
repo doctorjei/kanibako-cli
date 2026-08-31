@@ -1,14 +1,21 @@
-# Agent Identity — the `AgentConfig` record, the agent store's paths, and category roots
+# Agent Identity and Path Spelling — two subjects, neither needing a settings file open
 
-`agent_config` holds what a caller knows about an agent **independently of any file**: the
-`AgentConfig` record itself, where the per-agent store lives on the host, and where an abstract
-category's sources root. It is the `meta.agent.<agent>.settings` route — paths and a value object,
-not I/O.
+`agent_config` holds two things, and they are not one subject. The first is an agent's **identity
+and where its store sits on the host**: the `AgentConfig` record, the `agents/<agent>/` paths around
+it, and each abstract category's root under them. The second is **shared and not agent-shaped at
+all** ([R147]): whether a stored path value says on its own where it points, what a bare relative one
+roots under, and the refusal when it can say neither. [R147]'s own predicate and message are consumed
+by `settings/paths.py`, `settings/workset_dirkeys.py`, `settings/config_interface.py` and
+`settings/config_keys.py` (the two anchor labels), none of which is asking about an agent; the §2a
+rooting half is consumed by `settings/agent_defaults.py` and `settings/settings_assemble.py`, which
+pass a root ref IN — an agent's among them — but never ask this module for one, and by
+`commands/workset_cmd.py`, which tests workset-scope sources and destinations with no root at all.
+Read the two as two, and do not fold either into the other's wording.
 
 ⚑ **The FILE's shape is not here.** Reading, writing and addressing the per-agent settings file
 belong to `kanibako.settings.agent_file`, which is the one module that spells the file's root table
-(spec §15-21, `self`). Anything about *how the YAML is laid out* is that module's question, not this
-one's.
+([spec:15-21, "self"]). Anything about *how the YAML is laid out* is that module's question, not
+this one's.
 
 ## Naming
 
