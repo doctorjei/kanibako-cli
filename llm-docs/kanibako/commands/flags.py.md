@@ -14,10 +14,11 @@ single command owns.
 
 Two flags are added to (nearly) every subcommand via a post-construction walk of the argparse tree:
 
-* `--agent NAME` — the top-precedence, ephemeral (this-invocation-only) input to the unified agent
-  resolver (`config.resolve_agent` cascade). It feeds the C2 resolver seam
-  (`getattr(args, "agent", None)`) so a command resolves as if NAME were the configured agent.
-  Relevant only to agent-touching commands.
+* `--agent NAME` — the top-precedence input to the unified agent resolver (`config.resolve_agent`
+  cascade). It feeds the C2 resolver seam (`getattr(args, "agent", None)`) so a command resolves as
+  if NAME were the configured agent. Relevant only to agent-touching commands. ⚑ It is
+  this-invocation-only on `start` / `box start` / `agent reauth`, but `create` (both spellings)
+  SAVES it — see "The two claims the `--agent` help text makes" below.
 * `--box VALUE` — the SUBJECT selector: which box/project the command acts on (path OR registered
   box name; name precedence), even when not cwd. Routed through
   `kanibako.settings.paths.resolve_box_target`. Relevant only to commands that act on a subject
@@ -40,7 +41,7 @@ Relevance is keyed by the command's dotted path (e.g. `"start"`, `"agent reauth"
 
 ## The relevance sets, and who is deliberately outside them
 
-`AGENT_FLAG_COMMANDS` is the ephemeral agent-resolver override's set: the commands that run the
+`AGENT_FLAG_COMMANDS` is the agent-resolver override's set: the commands that run the
 unified cascade with the explicit-agent seam. That is the launch path (`start` plus its box spelling),
 `agent reauth`, and create (top-level plus its box spelling) —
 `run_create` threads the explicit agent to the persona verdict and the home seed, and a persona ref
@@ -53,8 +54,23 @@ Two absences from that set are deliberate:
   `_AGENT_FLAG_EXCLUDE`: commands that already own a local `--agent` flag with different semantics
   and must be skipped by the blanket injection. `setup` is intentionally EXCLUDED from the blanket
   `--agent` injection because its flag has PERSISTENT semantics (it writes `system.agent`), distinct
-  from the blanket flag's ephemeral override — so the two never collide (see the Phase B / Phase D
-  reconcile).
+  from the blanket flag's per-invocation override — so the two never collide (see the Phase B /
+  Phase D reconcile).
+
+## The two claims the `--agent` help text makes
+
+`AGENT_FLAG_PERSISTS` is the SUBSET of `AGENT_FLAG_COMMANDS` where the flag is SAVED rather than
+per-invocation: `create` and `box create`. `run_create` writes the §2h request `pref.system.agent`
+into the new box's own settings file (`commands/box/_parser.py`, right after the `--private` auth
+writes), so the box keeps that agent and a later bare `kanibako start` launches it. On `start`,
+`box start` and `agent reauth` nothing is written — `--agent` reaches `select_agent` /
+`_run_container` as `explicit_agent` and dies with the process.
+
+`_add_agent_flag` picks between `AGENT_FLAG_HELP_PER_RUN` and `AGENT_FLAG_HELP_PERSISTED` on that
+membership. Before the split, ONE string told every command's user the choice was "ephemeral …
+not persisted" — true for the launch pair, FALSE for both create spellings, and a reader had already
+built instructions on the false half. `TestTheAgentFlagHelpSaysWhetherItSticks` asserts the split
+over the whole parser tree, so the two strings cannot silently re-merge.
 
 `BOX_FLAG_COMMANDS` is the subject/anchor selector's set: every command that acts on a subject
 box/project rather than on cwd — the launch/shell paths, `code`, the box lifecycle and inspection

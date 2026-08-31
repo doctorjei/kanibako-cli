@@ -5466,8 +5466,12 @@ invocations with a `setup` run or a direct file edit.
 Two flags now parse on every command (passing one to an unrelated command is an
 error, not a silent no-op):
 
-- **`--agent <name>`** — uniform, top-precedence, **ephemeral** (this invocation only)
-  agent override. Pulls that agent's whole config; never persisted.
+- **`--agent <name>`** — uniform, top-precedence agent override. Pulls that agent's
+  whole config. **How long it lasts depends on the command:** `start`, `box start`
+  and `agent reauth` apply it for that invocation only; `create` and `box create`
+  **save** it into the new box's own `pref.system.agent`, so a later bare
+  `kanibako start` runs that agent (change it with
+  `kanibako box set pref.system.agent=<name>`).
 - **`--box <name-or-path>`** — universal **subject/anchor** selector: act on a box
   that is not your cwd. The value is a path OR a box name (**name takes precedence**);
   it replaces the need to `cd` into the box. It coexists with the box-command
