@@ -19,6 +19,9 @@ directive sources it was rendered from changes (:class:`DirectiveWatch`).
 ⚑ Every impure op — subprocess, sleep, marker probe, process signal, child reap — funnels
 through an INJECTABLE seam on :class:`BoxSupervisor`, so a test never touches a real tmux,
 a real clock or a real process.
+⚑ PID 1 CONFIGURES LOGGING ITSELF (:func:`main`) — the only entry point besides
+``cli.main`` that does — because its stderr is the box's ``podman logs`` and nobody
+else runs before it.
 ⚑ Prose lives in ``llm-docs/kanibako/box_supervisor.py.md``.
 """
 
@@ -45,7 +48,7 @@ from kanibako.box_lifecycle import (
     classify_transition,
     snapshot_attach_state,
 )
-from kanibako.log import get_logger
+from kanibako.log import get_logger, setup_logging
 
 #: The continue-marker a self-heal restart delivers via ``tmux send-keys`` as a
 #: real acting turn (design §108).  ⚑ Single-sourced HERE — ``commands/start.py``
@@ -444,8 +447,14 @@ def scan_marker_pids(
             continue
         try:
             alive = pid_alive(pid)
+            # ⚑ The two stale reasons take the SAME branch but are not the same event:
+            # a gone process is hygiene, a live one judged not-the-session is what can
+            # silently unsee a running agent.  A reap read back off ``podman logs`` is
+            # useless if it cannot tell them apart.
+            reason = "the pid it names is not alive"
             if alive and is_agent is not None and is_agent(pid) is False:
                 alive = False
+                reason = "the pid it names is LIVE but is not the agent session"
         except Exception:
             log.debug("scan_marker_pids: a probe raised for pid %d; skipping", pid)
             continue
@@ -453,6 +462,7 @@ def scan_marker_pids(
             live.add(pid)
             continue
         stale.add(pid)
+        log.info("marker %s/%d is STALE: %s", markers_dir, pid, reason)
         if remove is not None:
             remove(markers_dir, pid)
     return live, stale
@@ -961,7 +971,22 @@ class BoxSupervisor:
             # ``/proc`` unreadable, or the pid went away between the two probes.
             # Keep the marker — the NEXT scan sees a dead pid and reaps it then.
             return None
-        return agent_session_verdict(argv, self._agent_heads)
+        verdict = agent_session_verdict(argv, self._agent_heads)
+        if verdict is False:
+            # ⚑ ONLY ``False`` is logged: it is the only verdict that DELETES anything,
+            # and it retires itself (the marker is gone by the next scan), so a healthy
+            # box stays silent while every reap of a LIVE process's marker records the
+            # head that failed and the heads it lost to — the whole question when an
+            # agent stops being seen.
+            log.info(
+                "pid %d is not the agent SESSION: argv head %r matches none of the "
+                "launch heads %s; argv was %s",
+                pid,
+                _argv_head(argv),
+                sorted(str(head) for head in self._agent_heads),
+                shlex.join(argv),
+            )
+        return verdict
 
     def _scan_markers(self) -> tuple[set[int], set[int]]:
         """Enumerate the markers dir → (LIVE pids, STALE pids), REAPING the stale."""
@@ -1599,6 +1624,15 @@ def config_from_argv(argv: list[str]) -> SupervisorConfig:
 
 def main(argv: list[str] | None = None) -> int:
     """CLI: parse args, build the supervisor, run the watch loop forever."""
+    # ⚑ FIRST, ahead of the parse: ``config_from_argv`` itself logs (a half-armed
+    # directive watch), and PID-1's stderr IS the box's ``podman logs`` — unconfigured,
+    # every ``info``/``debug`` decision this module makes went nowhere.
+    # ⚑ HERE and not at module scope: ``commands/start.py`` imports this module on the
+    # HOST, where configuring at import would reconfigure the CLI's own logging.
+    # ⚑ ``verbose=True`` because it is the rung that emits what this module decides at;
+    # no tick logs unconditionally, so a healthy box stays quiet.  Nothing threads a
+    # level in from outside — the prose says why that was left alone.
+    setup_logging(verbose=True)
     args = list(sys.argv[1:] if argv is None else argv)
     config = config_from_argv(args)
     # ⚑ Serve the box's XDG locations from the pinned root now that the box is LIVE.

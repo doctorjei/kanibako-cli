@@ -422,6 +422,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **PID 1 now writes its decisions to `podman logs`.** The box supervisor logged every consequential
+  thing it does — self-heal restart attempts, panel-watch entry, teardown, agent-marker reaps — and
+  emitted none of it: nothing configured the `kanibako` logger inside the box, so Python discarded
+  everything below WARNING and `podman logs <box>` was empty on a box that had just self-healed or
+  forked a second agent. The supervisor now configures logging itself, before it parses its own
+  arguments. Marker reaps in particular say *which* pid was reaped and *why* — a dead process, or a
+  live one whose command line did not match the agent launch grammar, with the grammar test that
+  failed — so a box that stops seeing a running agent leaves a readable trail.
+
 - **A persona whose model was a tier alias could not be launched at all, and the error blamed a
   token that was perfectly valid.** Claude Code accepts `sonnet`, `opus`, `haiku` and `fable` as
   aliases and resolves each through an environment variable — `ANTHROPIC_DEFAULT_SONNET_MODEL` and

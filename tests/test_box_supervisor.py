@@ -958,7 +958,21 @@ def test_config_from_argv_requires_session_and_marker():
         config_from_argv(["--", "claude"])
 
 
-def test_main_wires_config_and_runs_the_loop(monkeypatch):
+@pytest.fixture
+def pid1_logging_isolated():
+    """Save/restore the ``kanibako`` logger — ``main()`` configures it as a side effect."""
+    import logging
+
+    root = logging.getLogger("kanibako")
+    saved_handlers, saved_level = list(root.handlers), root.level
+    try:
+        yield root
+    finally:
+        root.handlers[:] = saved_handlers
+        root.setLevel(saved_level)
+
+
+def test_main_wires_config_and_runs_the_loop(monkeypatch, pid1_logging_isolated):
     seen: dict[str, object] = {}
 
     def fake_run_forever(self: BoxSupervisor) -> int:
@@ -972,6 +986,50 @@ def test_main_wires_config_and_runs_the_loop(monkeypatch):
     assert isinstance(cfg, SupervisorConfig)
     assert cfg.session == "kanibako"
     assert cfg.start_argv == ["claude", "--continue"]
+
+
+def test_main_configures_logging_before_it_parses(monkeypatch):
+    # ⚑ PID 1 has no ``cli.main`` above it, so it is the one that must configure the
+    # ``kanibako`` logger — and it must do so BEFORE ``config_from_argv``, which itself
+    # logs (the half-armed directive watch).  The ORDER is asserted, not inferred.
+    events: list[str] = []
+    real_config_from_argv = bs.config_from_argv
+
+    def spy_config_from_argv(argv: list[str]) -> SupervisorConfig:
+        events.append("parse")
+        return real_config_from_argv(argv)
+
+    monkeypatch.setattr(bs, "setup_logging", lambda *a, **k: events.append("configure"))
+    monkeypatch.setattr(bs, "config_from_argv", spy_config_from_argv)
+    monkeypatch.setattr(bs, "project_pinned_xdg", lambda: [])
+    monkeypatch.setattr(BoxSupervisor, "run_forever", lambda self: 0)
+    assert main(["--session", "kanibako", "--marker", _MARKER, "--", "claude"]) == 0
+    assert events == ["configure", "parse"]
+
+
+def test_main_leaves_pid1_emitting_its_decisions_on_stderr(
+    monkeypatch, pid1_logging_isolated
+):
+    # THE PROPERTY, not the call.  Every decision this module makes is written at
+    # ``info`` or ``debug``, so after ``main()`` the module logger must EMIT at debug —
+    # the lowest level it writes one at — onto STDERR, which under ``podman run -dt``
+    # is the stream ``podman logs`` replays.  Unconfigured, all of it went nowhere.
+    import logging
+
+    root = pid1_logging_isolated
+    # Boot from the state a real box starts in: nothing configured.  ⚑ This also lets
+    # the test red on its own emptiness — the pre-assert fails if the setup is wrong.
+    root.handlers.clear()
+    root.setLevel(logging.WARNING)
+    assert not bs.log.isEnabledFor(logging.DEBUG)
+
+    monkeypatch.setattr(bs, "project_pinned_xdg", lambda: [])
+    monkeypatch.setattr(BoxSupervisor, "run_forever", lambda self: 0)
+    assert main(["--session", "kanibako", "--marker", _MARKER, "--", "claude"]) == 0
+
+    assert bs.log.isEnabledFor(logging.DEBUG)
+    assert len(root.handlers) == 1
+    assert root.handlers[0].stream is _sys.stderr
 
 
 # ---------------------------------------------------------------------------
@@ -1354,6 +1412,45 @@ def test_is_agent_pid_refuses_to_judge_without_a_grammar_or_a_cmdline(tmp_path):
     )
     assert blind._agent_heads == set()
     assert blind._is_agent_pid(7) is None
+
+
+def test_a_reap_says_which_pid_and_which_grammar_test_failed(tmp_path, caplog):
+    # ⚑ THE RECORD A SPLIT-BRAIN INVESTIGATION READS.  A reap has TWO reasons and the
+    # log must say WHICH: a dead pid is hygiene, a LIVE pid judged not-the-session is
+    # the one that can unsee a running agent.  The second must additionally carry the
+    # argv head that failed and the launch heads it lost to, or "why was this marker
+    # deleted" has no answer.  MUTATION-PROOF in three directions at once: collapsing
+    # the two reasons into one, dropping the grammar detail, and logging the healthy
+    # session (a quiet box must stay quiet) each fail a different assertion.
+    import logging
+
+    d = tmp_path / "agents"
+    d.mkdir()
+    for pid in (10, 20, 30):
+        (d / str(pid)).write_text(str(pid))
+    sup = _reaping_sup(
+        d,
+        cmdlines={
+            10: ["claude", "--continue", "--model", "opus"],  # the agent SESSION
+            20: ["claude", "bg-spare"],                       # its HELPER — reaped
+        },                                                    # 30 is a corpse — reaped
+        alive=lambda pid: pid != 30,
+    )
+    with caplog.at_level(logging.INFO, logger="kanibako.box_supervisor"):
+        assert sup._scan_markers() == ({10}, {20, 30})
+
+    lines = [r.getMessage() for r in caplog.records]
+    # Keyed on the FULL marker path: a bare "20" would match a digit in tmp_path.
+    reaped = {pid: next(m for m in lines if f"{d}/{pid}" in m) for pid in (20, 30)}
+    assert reaped[20] != reaped[30]              # not one reason wearing two hats
+    assert "not alive" in reaped[30]
+    assert "not the agent session" in reaped[20]
+    assert not any(f"{d}/10" in m for m in lines)  # the live session is never named
+
+    grammar = next(m for m in lines if "not the agent SESSION" in m)
+    assert "bg-spare" in grammar                 # the head that failed the test
+    assert "('claude', None)" in grammar         # the launch head it was tested against
+    assert "claude bg-spare" in grammar          # and the whole argv, for the reader
 
 
 def test_scan_markers_keeps_a_live_session_and_reaps_the_rest(tmp_path):
