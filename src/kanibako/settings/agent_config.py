@@ -1,4 +1,9 @@
-"""Agent identity: the ``AgentConfig`` record, the agent store's paths and category roots.
+"""Agent identity and store paths, plus the shared spelling rules for a stored path value.
+
+TWO SUBJECTS, and neither of them needs a settings file open.  The first is the ``AgentConfig``
+record and where an agent's store sits on the host, down to each abstract category's root.  The
+second is SHARED and not agent-shaped at all ([R147]): whether a stored value says on its own
+where it points, what a bare relative one roots under, and the refusal when it can say neither.
 
 ⚑ THE FILE'S SHAPE IS NOT HERE — :mod:`kanibako.settings.agent_file` is the one module that
 spells the file's root table [spec:15-21, "self"].  Design notes:

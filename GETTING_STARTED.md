@@ -194,6 +194,6 @@ directly. See [Configuration](README.md#configuration).
   is resolved.
 - [Container Rigs](README.md#container-rigs) -- base rigs and building your own.
 - [Configuration](README.md#configuration) -- the full settings model.
-- [docs/architecture.md](docs/architecture.md) -- module-by-module internals.
+- [docs/architecture.md](docs/architecture.md) -- a map of the main modules.
 - [docs/writing-targets.md](docs/writing-targets.md) -- write your own agent
   plugin.

@@ -9,6 +9,12 @@ Paths are relative to `src/kanibako/`. Modules with a domain live in a
 subpackage (`settings/`, `runtime/`, `launch/`, `channels/`, `vscode/`); the
 cross-cutting entry points and utilities stay at the package root.
 
+The table is a map for finding your way in, not an inventory, and its coverage
+is uneven: `settings/store_collapse.py` and `persona_store.py` are both central
+and both missing, so an absence here says nothing about a module's weight. Every
+module's role lives in its own docstring, beside the code; these rows are finding
+aids, not the authority.
+
 | Module | Role |
 |--------|------|
 | `cli.py` | Argparse tree, main() entry, `-v` flag |
@@ -28,7 +34,7 @@ cross-cutting entry points and utilities stay at the package root.
 | `project/names.py` | Workset name registry (the `worksets` section of `config.registry`) |
 | `project/registry_store.py` | Consolidated `registry.yaml` index (`worksets`/`standalone`/`deregistered`/`rigs`/`image_shells`; a `projects` section is retired and dropped on the next write) |
 | `runtime/registry.py` | OCI Distribution API client for remote image digests (stdlib only) |
-| `settings/agent_config.py` | Agent identity WITHOUT the file: the `AgentConfig` record, the per-agent store's paths (`agents/<agent>/`), the abstract categories' declaration roots, and the shared bare-relative refusal for stored path values. No file I/O — that is `agent_file.py` |
+| `settings/agent_config.py` | Two subjects, neither needing a settings file open: an agent's identity record and where its store sits (`agents/<agent>/`), and the shared rules for spelling a stored path value. No file I/O — that is `agent_file.py` |
 | `settings/agent_file.py` | The per-agent settings file's SHAPE (`agents/<agent>/agent.yaml`) — the ONLY module that spells its root table and the `self` file-surface alias: `load`/`save`, the per-leaf `read_leaf`/`write_leaf`/`remove_leaf` verbs, and the raw level table `settings_assemble` consumes |
 | `launch/templates.py` | Layered seed-once template resolution and application (base → agent → workset) |
 | `runtime/templates_image.py` | Image-template helpers: user-template image naming + bundled-template discovery (`Containerfile.template-<name>` convention, `# kanibako-template:` descriptions) |
