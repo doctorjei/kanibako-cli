@@ -729,12 +729,19 @@ class Target(ABC):
         ⚑ *token_path* MAY be `None` (a KEYLESS persona): probe it with the `Authorization`
         header OMITTED rather than decline, and NEVER substitute a placeholder credential.
         ⚑ *model* MAY be `None`: probe with the field OMITTED, never a placeholder id.
-        ⚑ *env* is the persona's passthrough env block — the SAME variables the box will
-        receive.  A harness whose runtime resolves *model* through one of them (claude reads
-        a tier alias through `ANTHROPIC_DEFAULT_<TIER>_MODEL`) MUST resolve it here too, or
-        the probe asks the provider a question the box never asks and a valid persona is
-        refused on the answer.  Resolving a mapping the USER wrote is not the substitution
-        the rule above forbids; inventing one is.
+        ⚑ *env* is the PERSONA-STORE passthrough env block — that store entry's own `env:`
+        map, less the two single-source vars — and NOTHING ELSE.  🛑 IT IS NOT THE COLLAPSED
+        `env` FAMILY the box receives: those slots are folded at `meta.assembly.env` by the
+        WHOLE-BOX resolve, which runs AFTER this pre-flight, so a mapping the user set at
+        the agent-file (`kanibako agent set <a> env.<VAR>=…`), workset or box rung — or on a
+        keyspace-only persona, which has no store block at all — is ABSENT here.  A harness
+        whose runtime resolves *model* through one of them (claude reads a tier alias through
+        `ANTHROPIC_DEFAULT_<TIER>_MODEL`) MUST resolve it here too, or the probe asks the
+        provider a question the box never asks and a valid persona is refused on the answer.
+        ⚑ Where the mapping lives OUTSIDE this block the alias still goes out raw and that
+        false `REJECTED` survives: a KNOWN UNCLOSED HOLE, not a contract this argument keeps.
+        Resolving a mapping the USER wrote is not the substitution the rule above forbids;
+        inventing one is.
         ⚑ Contract: NEVER raises; SHORT *timeout*; the token is read TRANSIENTLY for the
         request only — never logged, never persisted, never returned.
         """

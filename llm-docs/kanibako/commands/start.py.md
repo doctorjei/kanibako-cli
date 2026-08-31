@@ -1444,9 +1444,12 @@ would refuse every keyspace-configured goose persona that owns a store directory
 **`probe`** runs the PER-LAUNCH verify probe once endpoint and token both resolve
 (`_persona_probe_error`). It is opt-in and set ONLY by the launch: the create path keeps its own
 WARN-ONLY probe (locked ruling #2), so a create must not inherit this one's hard error on a rejected
-token. The bundle's `env` rides along so the harness can send the model the BOX would send — see
-`Target.verify_persona` in the `targets/base.py` llm-doc for the measured false `REJECTED` that
-requires it.
+token. The bundle's `env` — the persona STORE's own block, not the collapsed `env` family — rides
+along so the harness can rewrite a tier alias the way its runtime will. See `Target.verify_persona`
+in the `targets/base.py` llm-doc for the measured false `REJECTED` that requires it, **and for the
+residual hole it does not close:** a mapping at the agent-file, workset or box rung (or a
+keyspace-only persona) is not in the bundle, and the collapse that would carry it is folded only by
+the whole-box resolve, which runs after this pre-flight.
 
 🛑 **THE REJECTED MESSAGE NAMES WHAT WAS REFUSED, NEVER WHAT TO FIX.** It used to assert *"the
 endpoint rejected the token"* and send the user to replace a VALID one; the probe cannot tell a dead

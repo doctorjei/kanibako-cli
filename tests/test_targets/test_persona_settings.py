@@ -779,6 +779,14 @@ class TestVerifyPersonaResolvesATierAlias:
     ⚑ This resolves the USER's OWN mapping and never invents one — the two rules of
     ``procedures/persona-resolution-model.md`` (omit an absent model; never
     substitute a placeholder id) are untouched below.
+
+    🛑 WHAT THESE PIN IS THE REWRITE, NOT THE WHOLE RULE ABOVE.  ``env`` reaches the
+    probe as ``PersonaBundle.env`` — the persona STORE entry's own block — and NOT as
+    the collapsed ``env`` family the box receives, which only a whole-box resolve
+    folds and which the launch does not have at pre-flight time.  A mapping written
+    at the agent-file / workset / box rung, or a keyspace-only persona with no store
+    block, therefore STILL probes with the raw alias and can still be refused on the
+    403.  Do not read a green class here as the heading being satisfied end to end.
     """
 
     def test_an_alias_is_resolved_through_the_env_var_before_the_send(
@@ -831,6 +839,41 @@ class TestVerifyPersonaResolvesATierAlias:
                 server.endpoint, token_file, "sonnet",
                 env={"ANTHROPIC_DEFAULT_OPUS_MODEL": "some-other-model"},
                 timeout=5.0,
+            )
+        finally:
+            server.close()
+        assert server.last_body is not None
+        assert server.last_body["model"] == "sonnet"
+
+    @pytest.mark.parametrize("env", [
+        None,                                            # the default call shape
+        {},                                              # present but empty
+        {"ANTHROPIC_DEFAULT_OPUS_MODEL": "unrelated"},   # present, other tiers only
+    ])
+    def test_the_PROCESS_environment_is_NEVER_read_as_a_fallback(
+        self, token_file, monkeypatch, env,
+    ):
+        """🛑 *env* is the ONLY source; ``os.environ`` is never consulted.
+
+        The process environment belongs to whoever ran ``kanibako`` — an id taken
+        from it was written for some other purpose and never for this persona's
+        endpoint, so sending it is the substitution rule 2 of
+        ``procedures/persona-resolution-model.md`` forbids ("NEVER substitute a
+        placeholder model id" — a hardwired-model server can reject an id it does
+        not serve, and a false REJECTED refuses a working box).
+
+        ⚑ THE HOLE THIS CLOSES: every other test in this class hands the var in
+        *env*, so widening the read to ``(env or os.environ)`` leaves all of them
+        GREEN while the probe silently sends what the box never will.
+
+        (Mutation: ``(env or {})`` → ``(env or os.environ)`` → ``host-only`` on the
+        wire for the first two cases → RED.)
+        """
+        monkeypatch.setenv("ANTHROPIC_DEFAULT_SONNET_MODEL", "host-only")
+        server = _ProbeServer(status=200)
+        try:
+            ClaudeTarget().verify_persona(
+                server.endpoint, token_file, "sonnet", env=env, timeout=5.0,
             )
         finally:
             server.close()
