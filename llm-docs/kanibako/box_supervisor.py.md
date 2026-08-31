@@ -571,6 +571,14 @@ seeing, which is the worst outcome available here. *remove* is OPTIONAL — omit
 pure-ish partitioner it has always been. Deterministic over its injected probes, so tests exhaust it
 with no real FS / os.
 
+⚑ **Every stale verdict says WHICH of the two reasons it was**, at `info`, naming the markers dir and
+the PID: *"the pid it names is not alive"* versus *"the pid it names is LIVE but is not the agent
+session"*. The two take the same branch but are not the same event — the first is hygiene, the second
+is the one that can unsee a running agent — and a reap read back off `podman logs` is useless if it
+cannot tell them apart. `_is_agent_pid` supplies the other half of the WHY: on a `False` verdict it
+logs the argv head that was tested, the launch heads it was tested against, and the full argv. See
+"Identifying the agent SESSION" for what those heads mean.
+
 ```newcomer_pids(live_pids: set[int], own_pids: set[int]) -> set[int]```
 PURE: the LIVE marker PIDs that are NOT the supervisor's OWN agent.
 
@@ -1246,14 +1254,49 @@ python3 -m kanibako.box_supervisor --session NAME --marker 'STR' [--poll SEC]
 In `--panel-watch` mode (E2f) the trailing `-- <agent argv>` is OMITTED (no agent starts at launch);
 `--continue-cmd` carries the self-heal grammar.
 
-**Two ordered calls before the loop, both load-bearing:**
+**Three ordered calls before the loop, all load-bearing:**
 
-1. `project_pinned_xdg()` — serve the box's XDG locations from the pinned root now that the box is
+1. `setup_logging(verbose=True)` — see below. It is FIRST because `config_from_argv` itself logs.
+2. `project_pinned_xdg()` — serve the box's XDG locations from the pinned root now that the box is
    LIVE. ⚑ This is the earliest point at which it is SAFE and the only one at which it is correct:
    every podman mount is already in place, so the link is invisible to mount-time symlink resolution.
-2. `scrub_bootstrap_pythonpath()` — strip the host-package mount from `PYTHONPATH` before the loop
+3. `scrub_bootstrap_pythonpath()` — strip the host-package mount from `PYTHONPATH` before the loop
    spawns tmux / the agent, so those children do not inherit our import path. Safe here: this
    process's own imports are already resolved, and `PYTHONPATH` only affects newly spawned processes.
+
+### Why PID 1 configures logging, and why at DEBUG
+
+Every other module in the package logs through a logger that `cli.main` configured. PID 1 has no
+`cli.main` above it — it is exec'd directly as `python3 -m kanibako.box_supervisor` — so until this
+call landed the `kanibako` logger had no handler at all, and Python dropped everything below WARNING.
+(WARNING and above still escaped, via `logging.lastResort`. That is why the symptom was *thin* logs
+rather than obviously broken ones.) Measured consequence: `podman logs <box>` was EMPTY on a box that
+had just forked a second agent, because self-heal, panel-watch entry, teardown and every marker reap
+are `info`/`debug` decisions.
+
+**Placement.** In `main`, ahead of `config_from_argv` — `_directive_watch` warns there about a
+half-armed directive watch, and that warning is itself a decision worth reading. **Not** at module
+scope: `commands/start.py` imports this module on the HOST at module scope, so an import-time
+`setup_logging` would silently reconfigure the CLI's own logging as a side effect of importing three
+constants.
+
+**Level.** `setup_logging` offers two rungs, WARNING and DEBUG; only DEBUG emits what this module
+decides at, so DEBUG it is. The standing cost is near zero because **no tick logs unconditionally**
+at either level: on a healthy box `_reap`, `_snapshot`, `agent_session_alive`, `_scan_markers` and
+`_own_agent_pids` log only on an error path or on a real event (a reaped child, a stale marker), so a
+quiet box stays quiet and a noisy log is itself the signal.
+
+**It is not settable.** Nothing threads a verbosity into PID 1 — `kanibako -v` configures the HOST
+process only, and the supervisor's argv carries no level. Making it settable would mean a new
+supervisor flag threaded from `commands/start.py`, or a new settings key; the keyspace is CLOSED, so
+the second is not available without a spec edit. Left alone deliberately.
+
+**The stream.** Detached boxes run with `-dt` (`runtime/container.py`, `run_container`), so podman
+allocates a pty and merges the container's stdout and stderr onto it; `podman logs` shows that merged
+stream, and `--timestamps` supplies per-line times from the log driver, so the handler does not need a
+timestamp of its own. `setup_logging` writes to `sys.stderr`, which Python line-buffers, so nothing
+sits in a buffer waiting for a flush. ⚑ `[UNVERIFIED-PLATFORM]` — the dev box has no working podman;
+what is verified here is the argv (`-dt`) and the handler stream, not a `podman logs` capture.
 
 ## `[UNVERIFIED-PLATFORM]` index
 
@@ -1293,6 +1336,9 @@ real tmux server under PID-1). None was dropped; none was independently confirme
     respawning it.
 20. codex's hook surface has NO SessionEnd/exit event (verified against codex-rs rust-v0.141.0 and
     0.144.x), so a cleanly-exited codex agent leaves a stale marker.
+21. Under `podman run -dt` the pty merges the container's stdout and stderr into the single stream
+    `podman logs` replays, so PID-1's stderr handler reaches the host. The `-dt` argv and the
+    handler's stream are verified on the dev box; the capture itself is not.
 
 ## Corrections made in this pass
 
