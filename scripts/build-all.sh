@@ -35,6 +35,8 @@ for arg in "$@"; do
             echo ""
             echo "Options:"
             echo "  --upload   Upload to PyPI via twine after building"
+            echo "             (refuses first if PyPI already serves a built"
+            echo "              version with different content)"
             echo "  --clean    Remove dist/ dirs without building"
             echo "  -h,--help  Show this help"
             exit 0
@@ -95,8 +97,13 @@ if $UPLOAD; then
         echo "Error: twine not found. Install it: pip install twine" >&2
         exit 1
     fi
-    echo ""
-    echo "=== Uploading to PyPI ==="
+
+    # Decide the SET first, guard all of it, ship it: three passes, not one
+    # loop. A guard folded into the upload loop refuses on the fourth package
+    # having already published the first three, and the meta refusal below
+    # REMOVES a package from the set -- guarding what nobody will upload would
+    # abort a release over an artifact that was never going anywhere.
+    UPLOADS=()
     for pkg in "${PACKAGES[@]}"; do
         # The meta package must never publish with a RANGE dep on kanibako-cli:
         # PyPI propagates packages independently, so an unpinned meta can pair
@@ -108,6 +115,24 @@ if $UPLOAD; then
             echo "  Publish the train via release.yml (it pins meta -> cli)." >&2
             continue
         fi
+        UPLOADS+=("$pkg")
+    done
+
+    # The same guard release.yml runs ahead of each of its publish steps; its
+    # own docstring explains the failure it exists for. The upload below ships
+    # with --skip-existing, so this path needs it: `set -e` turns the refusal
+    # into an abort before anything is sent. One invocation per package because
+    # this path builds into per-package dist/ directories, where release.yml
+    # builds all five into a single dist/.
+    echo ""
+    echo "=== Refusing a version collision with different content ==="
+    for pkg in "${UPLOADS[@]}"; do
+        python3 "$REPO_ROOT/scripts/check-publish-collisions.py" "$REPO_ROOT/$pkg/dist"
+    done
+
+    echo ""
+    echo "=== Uploading to PyPI ==="
+    for pkg in "${UPLOADS[@]}"; do
         twine upload --skip-existing "$REPO_ROOT/$pkg/dist/"*
     done
     echo ""
