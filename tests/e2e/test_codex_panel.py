@@ -370,10 +370,16 @@ def _host_codex_auth() -> Path | None:
     ⚑ Runs at COLLECTION time (the skip marker below is built at module scope),
     so like ``conftest``'s probes it must never raise: an unresolvable home or an
     unreadable file is simply "this host has no codex credential".
+
+    ⚑ The predicate is ``CodexTarget.check_auth``'s, ``is_file()`` included.  A
+    DIRECTORY at that path stats non-empty, so dropping the ``is_file()`` would
+    let it open the gate below and then raise ``IsADirectoryError`` out of
+    :func:`_forward_real_codex_creds`'s ``copy2`` — an ERROR where the honest
+    answer is a skip.
     """
     try:
         auth = Path.home() / ".codex" / "auth.json"
-        return auth if auth.stat().st_size > 0 else None
+        return auth if auth.is_file() and auth.stat().st_size > 0 else None
     except (OSError, RuntimeError):
         return None
 
@@ -436,7 +442,16 @@ def _forward_real_codex_creds(e2e_env: dict) -> None:
     ⚑ SECRET HYGIENE — a real credential lands in a temp dir here.  The value is
     never bound to a name, never asserted on and never formatted into a message:
     the file arm copies wholesale, and the env arm streams straight from
-    ``os.environ`` into a file opened 0600.
+    ``os.environ`` into a file opened 0600, inside a 0700 directory.
+    ⚑ ...and it is deleted at teardown, but only BEST-EFFORT.  ``dest`` sits under
+    ``tmp_path``, which this directory's autouse ``_reap_subuid_owned_tmp`` fixture
+    reaps for every e2e test, so pytest's tree retention never gets the chance to
+    hold the token.  That reap is best-effort by contract — ``reap_tree`` returns
+    False rather than raising, and the conftest then prints a diagnostic — so the
+    credential outlives the run only when the reap FAILS, and that case announces
+    itself.  The modes keep it unreadable by other users, so this is a RISK to
+    weigh before opting in with ``KANI_E2E_CODEX_REAL=1``, not an exposure — if
+    the diagnostic fires on a shared host, delete the named tree.
     ⚑ NOT :func:`_seed_codex_stub`, which plants a FAKE key and a ``/bin/true``
     codex — the exact opposite of what this test needs.
 
@@ -448,7 +463,10 @@ def _forward_real_codex_creds(e2e_env: dict) -> None:
     half of, so re-running ``codex login`` on the host is the recovery.
     """
     dest = e2e_env["home"] / ".codex" / "auth.json"
-    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    # mkdir's mode= is a silent no-op if .codex already exists, so state the 0700
+    # outright — the same reason dest.chmod follows the 0600 os.open below.
+    dest.parent.chmod(0o700)
     if _HOST_CODEX_AUTH is not None:
         shutil.copy2(_HOST_CODEX_AUTH, dest)
     else:
@@ -470,9 +488,12 @@ def test_codex_ppid_marker_real_cli(e2e_env):
     r = run_kanibako(["create", str(project), "--name", box], env=env)
     assert r.returncode == 0, f"create failed: {r.stderr}"
     try:
-        run_kanibako(["start", box, "--detach", "--agent", "codex"], env=env,
-                     timeout=120)
-        assert _poll(lambda: _is_running(name), timeout=30)
+        r = run_kanibako(["start", box, "--detach", "--agent", "codex"], env=env,
+                         timeout=120)
+        assert _poll(lambda: _is_running(name), timeout=30), (
+            f"real-codex box never came up: rc={r.returncode} "
+            f"stderr={r.stderr[-300:]!r}"
+        )
 
         def _marker_matches_codex_pid() -> bool:
             markers = _exec(name, f"ls {MARKERS_DIR} 2>/dev/null")
