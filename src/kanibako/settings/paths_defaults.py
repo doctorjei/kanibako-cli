@@ -1,5 +1,8 @@
-# The declared path tables, name leaves & message text behind :mod:`kanibako.settings.paths`.
-# ⚑ Every ``MSG_``/``WARN_``/``ERR_`` literal here is USER-VISIBLE output.
+"""The declared path tables, name leaves and message text behind :mod:`kanibako.settings.paths`.
+
+⚑ Every ``MSG_``/``WARN_``/``ERR_`` literal here is USER-VISIBLE output.
+"""
+
 XDG_DATA_HOME = "XDG_DATA_HOME"
 XDG_CONFIG_HOME = "XDG_CONFIG_HOME"
 XDG_RUNTIME_DIR = "XDG_RUNTIME_DIR"
