@@ -262,12 +262,10 @@ literal `${...}` path — the two ends would then disagree. `/tmp` is a box-loca
 markers are tiny, so it is a safe universal home. The dir is created by `pid-add.sh`; the reader
 treats an absent dir as "no agents yet".
 
-⚑ **VALIDATION-PENDING — do not claim these hold; check at the bifrost e2e.**
-1. That `$PPID` inside a claude SessionStart `command` hook equals the claude agent PID. A
-   `type:command` hook is spawned by claude, so `$PPID` is plausibly claude, but this is
-   undocumented and unverified. If it is wrong, swap the write command for a `/proc` scan.
-2. That the VS Code panel claude executes the box's seeded `~/.claude/settings.json` hooks at all.
-   Likely, but only checkable on a real claude-in-podman box.
+⚑ **VERIFIED on real podman — 2026-08-30 panel dogfood, both harnesses.** Two facts this delivery
+rests on were open until then, and both hold: the VS Code panel **does** execute the box's seeded
+`SessionStart` hook, and the `$PPID` that hook passes **is** the agent PID. The `/proc`-scan
+rewrite the doubt reserved as a fallback is therefore not needed.
 
 ## The codex `config.toml` manager
 
@@ -424,6 +422,10 @@ there is no marker-REMOVE hook, and a cleanly-exited codex leaves a stale marker
 `box_supervisor`'s `kill -0` scan classifies dead. That is the intended semantics: the panel's
 sessions are threads inside one long-lived `codex app-server` process, so marker-PID death is
 effectively "the panel process itself is gone".
+
+⚑ Marker **LIFETIME** on codex is a separate, still-OPEN question: the `⚑ VERIFIED on real podman`
+block above settles that the hook fires and what `$PPID` names, not how long the marker it writes
+survives.
 
 ⚑ `box_config_path` is the BOX-absolute config path (`/home/agent/.codex/config.toml`), NOT the host
 write path — codex keys trust by the path it reads in-box. `group_index` is the count of USER
