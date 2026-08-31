@@ -20,12 +20,15 @@ when it dies — so the box persists independent of any one agent session. Desig
 a genuine exit-of-everything, or an explicit `kanibako stop`, tears the box down.
 
 ⚑ **Read the module's scope as TWO jobs, not one.** Besides the in-box supervisor it is also the
-**single source of truth for three host-side launch literals** — `CONTINUE_MARKER`,
-`KANIBAKO_PKG_MOUNT_ROOT` and `PINNED_ROOT_RELPATH` / `XDG_PROJECTIONS`. `commands/start.py` imports
-`CONTINUE_MARKER` and `KANIBAKO_PKG_MOUNT_ROOT` from here at MODULE scope (`start.py:31`), on the
-host, on every launch. The module docstring described only the supervisor job; a reader who took that
+**single source of truth for two host-side launch literals** — `CONTINUE_MARKER` and
+`KANIBAKO_PKG_MOUNT_ROOT`, which `commands/start.py` imports from here at MODULE scope, on the host,
+on every launch. The module docstring described only the supervisor job; a reader who took that
 framing literally would move a constant out of a "box-only" module and break the host launcher. The
 constants live at the LOWEST module that needs them, and that module happens to be this one.
+
+`PINNED_ROOT_RELPATH` / `XDG_PROJECTIONS` are **not** in that set. Nothing host-side imports either
+(the projection is applied in-box), and the pinned root's single source lives in another module —
+see "`PINNED_ROOT_RELPATH` is a QUARANTINED DUPLICATE" below.
 
 ## The PID-1 contract — stdlib-only, pinned flat, dotted-literal invocation
 
@@ -258,10 +261,10 @@ when the two are the same place.
 ## The host-package mount and the PYTHONPATH scrub
 
 `KANIBAKO_PKG_MOUNT_ROOT` (`/opt/kanibako`) is the in-box read-only bind-mount ROOT of the HOST
-kanibako package. `_kanibako_mounts` (`commands/start.py:8014`) lands the host package dir at
+kanibako package. `_kanibako_mounts` (`commands/start.py`) lands the host package dir at
 `f"{KANIBAKO_PKG_MOUNT_ROOT}/kanibako"`; the in-box `kanibako` CLI puts this dir on `sys.path`
-(`scripts/kanibako-entry:13`); and the host launcher `_build_supervisor_pid1` (`start.py:1375`) also
-injects it as `PYTHONPATH`.
+(`scripts/kanibako-entry`'s `sys.path.insert`); and the host launcher `_build_supervisor_pid1`
+(`commands/start.py`) also injects it as `PYTHONPATH`.
 
 **Why:** so PID-1 imports THIS supervisor from the fresh host package (version == host CLI) rather
 than the image's baked copy. **[UNVERIFIED-PLATFORM]** Published images ship an OLD kanibako WITHOUT
@@ -272,8 +275,8 @@ Single-sourced HERE — the lowest module that needs it: `start.py` imports it a
 `scrub_bootstrap_pythonpath` strips it back out — so the mount dest and the injected/scrubbed
 PYTHONPATH can never drift. ⚑ `scripts/kanibako-entry` and `data/core-defaults.yaml` also carry this
 literal (the entry script runs BEFORE kanibako is importable, and a YAML data file cannot reference a
-constant); keep those literals in sync. *(Both confirmed present this pass:
-`data/core-defaults.yaml:227`, `scripts/kanibako-entry:13`.)*
+constant); keep those literals in sync. *(Both confirmed present this pass: the `kani_pkg` entry's
+`box_dest` in `data/core-defaults.yaml`, and `scripts/kanibako-entry`'s `sys.path.insert`.)*
 
 ### Why the children must NOT inherit it
 
@@ -290,12 +293,12 @@ and drops `PYTHONPATH` entirely when nothing else remains.
 
 ## `PINNED_ROOT_RELPATH` is a QUARANTINED DUPLICATE
 
-The single source of truth is `kanibako.settings.settings_resolve.BOX_PINNED_ROOT_RELPATH`
-(`src/kanibako/settings/settings_resolve.py:80`), which this module deliberately does **NOT** import
-— see the stdlib-only contract above. `tests/test_channels/test_helpers.py:485` pins the two literals
-together (`PINNED_ROOT_RELPATH == BOX_PINNED_ROOT_RELPATH == ".kanibako"`), and
-`scripts/helper-init.sh:42` carries the third (bash can import neither). All three confirmed present
-this pass.
+The single source of truth is `kanibako.settings.settings_resolve.BOX_PINNED_ROOT_RELPATH`, which
+this module deliberately does **NOT** import — see the stdlib-only contract above.
+`test_pinned_socket_dest_agrees_across_every_spelling` (`tests/test_channels/test_helpers.py`) pins
+the two literals together (`PINNED_ROOT_RELPATH == BOX_PINNED_ROOT_RELPATH == ".kanibako"`), and
+`scripts/helper-init.sh`'s `_kb_pin` carries the third (bash can import neither). All three confirmed
+present this pass.
 
 ⚑ `XDG_PROJECTIONS` has **ONE ROW TODAY and is deliberately a TABLE**: the pinned root is the fixed
 answer for the whole resolve-before-liveness class, so a second facet (cache, runtime, …) is a ROW
@@ -368,8 +371,8 @@ Single-sourced because BOTH halves of the projection spell it: `project_pinned_x
 The subprocess-runner signature the tmux actions call.
 
 `subprocess.run` matches it; tests inject a fake so nothing touches a real tmux server. Shared in
-spirit with `box_lifecycle`'s `_Runner` (`box_lifecycle.py:177` — same alias, defined separately
-because neither module may depend on the other's privates).
+spirit with `box_lifecycle`'s own `_Runner` (same alias, defined separately because neither module
+may depend on the other's privates).
 
 ```_Sleeper = Callable[[float], None]```
 The `time.sleep` signature the loop / backoff use; injectable so tests never actually wait.
@@ -663,7 +666,7 @@ unit-testable without any tmux / FS / os.
 
 | Field | Meaning |
 |-------|---------|
-| `session` | the tmux session name the agent lives in (E2b keeps `"kanibako"` for attach/reattach compat; `start.py:4138` passes it) |
+| `session` | the tmux session name the agent lives in (E2b keeps `"kanibako"` for attach/reattach compat; `_run_container` passes it in `supervisor_argv`) |
 | `start_argv` | the agent launch grammar for the INITIAL start (entrypoint + args), run as `tmux new-session -d -s <session> -- <start_argv...>` |
 | `continue_argv` | the launch grammar for a self-heal RESTART (the `--continue` form, which re-reads the box's `~/.claude` history). Defaults to *start_argv* when a caller does not distinguish the two |
 | `marker` | the continue-marker sent via `tmux send-keys` as a real acting turn so a restarted agent autonomously resumes |
@@ -691,10 +694,10 @@ than `"teardown"` is treated as `"self-heal"`** (safe default). ⚑ It also deci
 eviction; the newcomer path is 4a-identical. ⚑ Note the teardown/self-heal process-group kill is
 flag-INDEPENDENT. `True` ⇒ full single-writer TAKEOVER (pause the panel newcomer, grace + evict the
 CLI incumbent, resume the newcomer). Gated behind an internal/experimental env
-(`KANIBAKO_SESSION_TAKEOVER`, threaded by `commands/start.py:4170`), **NOT a spec settings key** —
-flipping the default to `True` is a follow-up gated on desktop validation of the `$PPID` ==
-agent-PID / panel invariant, and promoting it to a proper `agent.default.*` key is a later
-spec-delta.
+(`KANIBAKO_SESSION_TAKEOVER`, threaded by `_run_container`'s `--session-takeover` arm in
+`commands/start.py`), **NOT a spec settings key** — flipping the default to `True` is a follow-up
+gated on desktop validation of the `$PPID` == agent-PID / panel invariant, and promoting it to a
+proper `agent.default.*` key is a later spec-delta.
 
 **`takeover_grace`** — seconds the takeover waits (after pausing the newcomer plus a best-effort
 heads-up) for the CLI incumbent to wind down before the process-group evict. **[UNVERIFIED-PLATFORM]**
@@ -1276,9 +1279,10 @@ are `info`/`debug` decisions.
 
 **Placement.** In `main`, ahead of `config_from_argv` — `_directive_watch` warns there about a
 half-armed directive watch, and that warning is itself a decision worth reading. **Not** at module
-scope: `commands/start.py` imports this module on the HOST at module scope, so an import-time
-`setup_logging` would silently reconfigure the CLI's own logging as a side effect of importing three
-constants.
+scope: `commands/start.py` imports this module on the HOST at module scope — for the launch
+literals, not for the supervisor (*Read the module's scope as TWO jobs, not one*, above) — so an
+import-time `setup_logging` would silently reconfigure the CLI's own logging as a side effect of
+that import.
 
 **Level.** `setup_logging` offers two rungs, WARNING and DEBUG; only DEBUG emits what this module
 decides at, so DEBUG it is. The standing cost is near zero because **no tick logs unconditionally**
@@ -1291,11 +1295,11 @@ process only, and the supervisor's argv carries no level. Making it settable wou
 supervisor flag threaded from `commands/start.py`, or a new settings key; the keyspace is CLOSED, so
 the second is not available without a spec edit. Left alone deliberately.
 
-**The stream.** Detached boxes run with `-dt` (`runtime/container.py`, `run_container`), so podman
-allocates a pty and merges the container's stdout and stderr onto it; `podman logs` shows that merged
-stream, and `--timestamps` supplies per-line times from the log driver, so the handler does not need a
-timestamp of its own. `setup_logging` writes to `sys.stderr`, which Python line-buffers, so nothing
-sits in a buffer waiting for a flush. ⚑ `[UNVERIFIED-PLATFORM]` — the dev box has no working podman;
+**The stream.** Detached boxes run with `-dt` (`runtime/container.py`, `ContainerRuntime.run`'s
+`if detach:` arm), so podman allocates a pty and merges the container's stdout and stderr onto it;
+`podman logs` shows that merged stream, and `--timestamps` supplies per-line times from the log
+driver, so the handler does not need a timestamp of its own. `setup_logging` writes to `sys.stderr`,
+which Python line-buffers, so nothing sits in a buffer waiting for a flush. ⚑ `[UNVERIFIED-PLATFORM]` — the dev box has no working podman;
 what is verified here is the argv (`-dt`) and the handler stream, not a `podman logs` capture.
 
 ## `[UNVERIFIED-PLATFORM]` index

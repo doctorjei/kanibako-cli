@@ -8,6 +8,6 @@ Prose for these symbols lives in `llm-docs/kanibako/plugins/codex/__init__.py.md
 ## Variables
 
 ```
-__version__ = '0.4.0'
+__version__ = '0.6.0'
 __all__ = ['CodexTarget', '__version__']
 ```
