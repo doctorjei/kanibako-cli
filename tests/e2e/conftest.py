@@ -415,6 +415,78 @@ def _reap_subuid_owned_tmp(tmp_path):
         _diag(f"tmp reap did not fully clear {tmp_path}")
 
 
+def write_e2e_settings_files(
+    config_home: Path, data_home: Path, *, home: Path, agent: str | None = None,
+) -> None:
+    """Pre-seed the two files an e2e env starts from: the bootstrap config and the settings.
+
+    ⚑⚑ THE IMAGE PIN USED TO BE DEAD.  Every e2e env wrote
+    ``kanibako:\\n  image: "<E2E_IMAGE>"`` into ``kanibako_config.yaml`` — a file that
+    cannot carry settings (the rule is spelled once, at
+    ``settings/config.bootstrap_config_paths``).  The stanza was INERT, so every e2e
+    box launched the DECLARED DEFAULT ``ghcr.io/doctorjei/kanibako-oci:latest`` and not
+    the ``kanibako-oci:latest`` this suite pre-warms (``ensure_image_in_pinned_store``)
+    and gates on (``requires_image``).  Both of those were curating an image no test ever
+    ran BY REFERENCE — on CI the retag below makes the two names the same image — and the
+    gate passed on a fact about a launch it did not describe.
+
+    The image pin now goes where a pin belongs: the ``box:`` table of ``@config.settings``,
+    the SYSTEM tier of the settings cascade — the same table, in the same file, that
+    ``kanibako system set box.image=<img>`` writes to.  ⚑ NEITHER THE LOCATION NOR THE
+    BYTES IS ASSERTED HERE.  The FILE is located by resolving ``@config.settings`` through
+    the product's own ``paths.load_system_config``, so a storage repoint carries this write
+    with it instead of leaving it writing where nothing reads — which is the dead stanza's
+    failure wearing a new hat.  The BYTES come from ``config_io.dump_doc``, the serializer
+    ``write_nested_key`` — and so every ``system set`` — already writes through, so the two
+    agree for ANY value rather than only for values PyYAML happens to emit as plain scalars.
+    ⚑ The TABLE is the one part still hand-shaped, and
+    ``TestRoutedScalarDest.test_set_dotted_scope_key`` (``test_config_dest_parity``) is what
+    pins it: ``box.image`` at system scope routes to a ``box:`` table.  That pin covers the
+    ROUTE only; the file's LOCATION is derived above and is not covered there.
+
+    ⚑ THE BARE TAG IS NOT A CHANGE OF IMAGE ON CI, and ``requires_image`` is not the reason.
+    ``resolve_image_reference``'s top precedence rule is official-and-local: an unqualified
+    ``kanibako-oci:latest`` gains the ``ghcr.io/doctorjei`` fallback prefix and resolves to
+    ``ghcr.io/doctorjei/kanibako-oci:latest`` whenever that ref is present locally — and the
+    e2e job retags its HEAD build onto exactly that ref (``.github/workflows/test.yml``
+    states why).  CI therefore launches the same image it launched while the stanza was
+    dead.  Off CI the official ref is absent, the bare local tag wins, and nothing is
+    pulled — strictly less work than the declared default's cold pull.
+
+    🛑 THE BOOTSTRAP FILE IS STILL CREATED, and it is not optional: ``cli._ensure_initialized``
+    early-returns on its EXISTENCE alone, so an env without it re-runs first-run init —
+    packaged-template install and all — which ``test_instructions_delivery`` explicitly
+    relies on NOT happening.  It goes through the product's own ``write_global_config``
+    so its shape has one source.
+
+    ⚑ ONE SITE, deliberately.  The dead stanza was copied into FOUR fixtures and was
+    wrong in all four; a single writer is what stops the next shape change hiding in
+    three of them.
+
+    ⚑ *home* is the fixture's ISOLATED home, not the host's.  The resolve above runs in the
+    test process, before the env dict is installed anywhere, so ``Path.home()`` here would
+    read the real host home while the CLI under test reads ``$HOME`` = the fixture's — and a
+    Layer-1 value spelled with ``~`` would then send the two to different files.  Passing it
+    is what keeps the derivation answering the same question the launch asks.
+
+    ⚑ Creates the settings file's parent — by default ``$XDG_DATA_HOME/kanibako/global``, and
+    so ``$XDG_DATA_HOME/kanibako`` with it — so a caller that also mkdirs one of those must
+    pass ``exist_ok``.
+    """
+    from kanibako.settings.config import config_file_path, write_global_config
+    from kanibako.settings.config_io import dump_doc
+    from kanibako.settings.paths import load_system_config
+
+    config_file = config_file_path(config_home)
+    write_global_config(config_file)
+
+    doc: dict[str, dict[str, str]] = {"box": {"image": E2E_IMAGE}}
+    if agent is not None:
+        doc["system"] = {"agent": agent}
+    resolved = load_system_config(config_file, data_home=data_home, home=home)
+    dump_doc(resolved["config.settings"], doc)
+
+
 # ---------------------------------------------------------------------------
 # Function-scoped fixtures
 # ---------------------------------------------------------------------------
@@ -461,16 +533,11 @@ def e2e_env(tmp_path, stub_script, host_storage_conf) -> dict:
     creds = {"claudeAiOauth": {"accessToken": "e2e-test-token"}}
     (claude_config_dir / ".credentials.json").write_text(json.dumps(creds))
 
-    # Build kanibako config
-    kanibako_config = config_home / "kanibako_config.yaml"
-    kanibako_config.write_text(
-        f'kanibako:\n  image: "{E2E_IMAGE}"\n'
-    )
     # Create a name file so container_name_for() gives a predictable name
     # We register via kanibako create later, but for name computation we
     # need the names.yaml to exist.
     names_dir = data_home / "kanibako"
-    names_dir.mkdir(parents=True)
+    names_dir.mkdir(parents=True, exist_ok=True)
 
     # Pin the system default agent to "claude" so these claude-only tests resolve
     # the agent unambiguously even when OTHER agent plugins (e.g.
@@ -484,12 +551,14 @@ def e2e_env(tmp_path, stub_script, host_storage_conf) -> dict:
     # the settings cascade reads; it wins BEFORE the installed-count rule, so this
     # is faithful to real usage (a configured default agent) and fixes the
     # ambiguity in one place rather than threading --agent through every call.
+    # ⚑ That path is the DEFAULT resolution of ``@config.settings``, not a fixed location;
+    # write_e2e_settings_files resolves the key rather than assuming it.
     # ⮕ P7: this file used to carry ``agent.default.default_agent`` — the RETIRED
     # spelling, which the launch now REFUSES BY NAME (migration M-4). Writing the
     # new location here is also the in-repo proof of the new store shape.
-    system_settings = names_dir / "global" / "settings.yaml"
-    system_settings.parent.mkdir(parents=True, exist_ok=True)
-    system_settings.write_text("system:\n  agent: claude\n")
+    # ⚑ The e2e IMAGE pin rides in the same file, and the (empty) bootstrap file is
+    # written too — see write_e2e_settings_files for both reasons.
+    write_e2e_settings_files(config_home, data_home, home=home, agent="claude")
 
     # Environment with isolated paths and stub on PATH
     env = os.environ.copy()
@@ -573,7 +642,7 @@ def goose_e2e_env(tmp_path, goose_stub_script, host_storage_conf) -> dict:
       - host ``~/.config/goose/secrets.yaml`` + ``config.yaml`` seeded with
         KNOWN content (GOOSE_SECRETS_CONTENT / GOOSE_CONFIG_CONTENT) so the
         credsync engine has real SYNC cred files to deliver / write back
-      - ``kanibako_config.yaml`` pinned to the e2e image
+      - the e2e image pinned at the SYSTEM settings tier (``write_e2e_settings_files``)
       - the same ``CONTAINERS_STORAGE_CONF`` pin as ``e2e_env`` so the
         kanibako-launched podman sees the host's image store
 
@@ -610,13 +679,13 @@ def goose_e2e_env(tmp_path, goose_stub_script, host_storage_conf) -> dict:
     secrets_path.write_text(GOOSE_SECRETS_CONTENT)
     config_path.write_text(GOOSE_CONFIG_CONTENT)
 
-    # Build kanibako config pinned to the e2e image.
-    kanibako_config = config_home / "kanibako_config.yaml"
-    kanibako_config.write_text(
-        f'kanibako:\n  image: "{E2E_IMAGE}"\n'
-    )
     names_dir = data_home / "kanibako"
-    names_dir.mkdir(parents=True)
+    names_dir.mkdir(parents=True, exist_ok=True)
+    # Pin the e2e image at the SYSTEM settings tier, and write the (empty) bootstrap
+    # file this fixture has always written (write_e2e_settings_files).
+    # ⚑ No agent pin here, matching what this fixture has always written: the goose
+    # tests force selection with an explicit ``--agent goose`` on the launch.
+    write_e2e_settings_files(config_home, data_home, home=home)
 
     env = os.environ.copy()
     env.update({

@@ -36,9 +36,9 @@ import pytest
 pexpect = pytest.importorskip("pexpect")
 
 from tests.e2e.conftest import (  # noqa: E402
-    E2E_IMAGE,
     e2e_requires,
     run_kanibako,
+    write_e2e_settings_files,
 )
 
 pytestmark = [pytest.mark.e2e, *e2e_requires]
@@ -72,7 +72,7 @@ def dead_env(tmp_path, host_storage_conf) -> dict:
     """Isolated e2e environment whose default agent crashes on launch.
 
     Mirrors :func:`e2e_env` (isolated HOME / XDG dirs, image pinned via
-    ``kanibako_config.yaml``, podman storage pinned via the reused ``host_storage_conf``
+    ``write_e2e_settings_files``, podman storage pinned via the reused ``host_storage_conf``
     fixture) but targets the TESTING-ONLY ``DeadTarget`` instead of claude:
 
       - the ``dead-agent`` crash script is installed at
@@ -107,20 +107,14 @@ def dead_env(tmp_path, host_storage_conf) -> dict:
 
     # The DeadTarget plugin in the user directory-plugin tier.
     plugin_dir = data_home / "kanibako" / "plugins"
-    plugin_dir.mkdir(parents=True)
+    plugin_dir.mkdir(parents=True, exist_ok=True)
     shutil.copy2(_PLUGIN_SRC, plugin_dir / "dead.py")
 
-    # Pin the e2e image (exactly as e2e_env does).
-    kanibako_config = config_home / "kanibako_config.yaml"
-    kanibako_config.write_text(
-        f'kanibako:\n  image: "{E2E_IMAGE}"\n'
-    )
-    # System settings: system.agent = dead, so selection picks DeadTarget
+    # Pin the e2e image and system.agent = dead, so selection picks DeadTarget
     # (mirrors e2e_env's claude pin; the stored key wins before the
-    # installed-count rule).
-    system_settings = data_home / "kanibako" / "global" / "settings.yaml"
-    system_settings.parent.mkdir(parents=True, exist_ok=True)
-    system_settings.write_text("system:\n  agent: dead\n")
+    # installed-count rule).  Both pins, plus the empty bootstrap file, come from
+    # the one writer — see write_e2e_settings_files.
+    write_e2e_settings_files(config_home, data_home, home=home, agent="dead")
 
     env = os.environ.copy()
     env.update({
@@ -276,20 +270,14 @@ def live_env(tmp_path, host_storage_conf) -> dict:
 
     # The LiveTarget plugin in the user directory-plugin tier.
     plugin_dir = data_home / "kanibako" / "plugins"
-    plugin_dir.mkdir(parents=True)
+    plugin_dir.mkdir(parents=True, exist_ok=True)
     shutil.copy2(_LIVE_PLUGIN_SRC, plugin_dir / "live.py")
 
-    # Pin the e2e image (exactly as e2e_env / dead_env do).
-    kanibako_config = config_home / "kanibako_config.yaml"
-    kanibako_config.write_text(
-        f'kanibako:\n  image: "{E2E_IMAGE}"\n'
-    )
-    # System settings: system.agent = live, so selection picks LiveTarget
+    # Pin the e2e image and system.agent = live, so selection picks LiveTarget
     # (mirrors dead_env's dead pin; the stored key wins before the
-    # installed-count rule).
-    system_settings = data_home / "kanibako" / "global" / "settings.yaml"
-    system_settings.parent.mkdir(parents=True, exist_ok=True)
-    system_settings.write_text("system:\n  agent: live\n")
+    # installed-count rule).  Both pins, plus the empty bootstrap file, come from
+    # the one writer — see write_e2e_settings_files.
+    write_e2e_settings_files(config_home, data_home, home=home, agent="live")
 
     env = os.environ.copy()
     env.update({

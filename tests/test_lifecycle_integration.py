@@ -41,25 +41,44 @@ def _run_kanibako(
 
 
 def _setup_with_image(cli_env: dict, image: str) -> None:
-    """Trigger lazy init via system info and override the configured container image."""
+    """Trigger lazy init, create the box on *image*, and PROVE the image took."""
     result = _run_kanibako("system", "info", env=cli_env["env"], cwd=str(cli_env["project"]))
     assert result.returncode == 0, f"lazy init failed: {result.stderr}"
 
-    # Patch the config to use the requested image.
-    config_file = cli_env["config_home"] / "kanibako_config.yaml"
-    text = config_file.read_text()
-    import re
-
-    text = re.sub(r'^(\s*)image\s*:\s*.*$', rf'\1image: "{image}"', text, flags=re.MULTILINE)
-    config_file.write_text(text)
-
     # v1.7.0 explicit-create: launches (start / shell / bare / code) no longer
-    # auto-create a box — they ERROR on an absent box. Create the box now (after
-    # the image patch, so `create` persists the requested image into the box
-    # meta) so the subsequent launch finds an existing box. Default mode, cwd
-    # project — matching how the launch calls below are invoked.
-    result = _run_kanibako("create", env=cli_env["env"], cwd=str(cli_env["project"]))
+    # auto-create a box — they ERROR on an absent box. Create the box now so the
+    # subsequent launch finds an existing one. Default mode, cwd project —
+    # matching how the launch calls below are invoked.
+    #
+    # ⚑ THE IMAGE TRAVELS ON ``create -i``, the route a user actually has: it
+    # persists ``box.image`` through the §1A create exception
+    # (``config.persist_creation_flags``). This helper used to regex-patch an
+    # ``image:`` line into ``kanibako_config.yaml`` instead — a file that cannot
+    # carry settings (the rule is spelled once, at
+    # ``settings/config.bootstrap_config_paths``) and that
+    # ``write_global_config`` creates at ZERO BYTES. The substitution therefore
+    # matched nothing, the write was a silent no-op, and every test below
+    # launched the DECLARED DEFAULT rig while its name said ``busybox:latest``.
+    result = _run_kanibako(
+        "create", "-i", image, env=cli_env["env"], cwd=str(cli_env["project"]),
+    )
     assert result.returncode == 0, f"create failed: {result.stderr}"
+
+    # ⚑⚑ THE READ-BACK IS THE MEASURE, not decoration. What let the old bug pass
+    # was a helper that could CLAIM to set the image and never check. This asks
+    # the product's OWN read verb what the box will launch, so a dead route fails
+    # HERE, by name, instead of silently exercising the default.
+    # 🛑 ``box get`` exits 0 for an unset key — it prints "(not set)" to STDERR —
+    # so the return code is NOT the check; the stdout equality is. ``run_get``
+    # prints the BARE value, which is what this compares against.
+    probe = _run_kanibako(
+        "box", "get", "box.image", env=cli_env["env"], cwd=str(cli_env["project"]),
+    )
+    assert probe.stdout.strip() == image, (
+        f"the box did not take the requested image: `box get box.image` said "
+        f"{probe.stdout.strip()!r} (stderr: {probe.stderr.strip()!r}), "
+        f"expected {image!r}"
+    )
 
 
 # =========================================================================
