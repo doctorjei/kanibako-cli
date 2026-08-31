@@ -42,10 +42,21 @@ def config_file(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / ".local" / "state"))
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / ".cache"))
 
-    cfg_dir = tmp_path / ".config" / "kanibako"
+    # ⚑ AT ``config_file_path($XDG_CONFIG_HOME)`` — the file the product opens.  It used
+    # to be written a directory deeper, in the LEGACY ``.config/kanibako/`` location that
+    # ``config_file_path`` deliberately no longer recognizes (pinned by
+    # ``test_ignores_legacy_old_subdir_location``).  So ``load_std_paths`` resolved its
+    # path tier from a file that did not exist while the tests read one the product never
+    # saw.
+    cfg_dir = tmp_path / ".config"
     cfg_dir.mkdir(parents=True)
     cfg_file = cfg_dir / "kanibako_config.yaml"
-    cfg_file.write_text('box:\n  image: "kanibako-oci"\n')
+    # EMPTY is what MINIMAL means here, and it is what the product writes on first run:
+    # ``settings.config.write_global_config`` does ``atomic_write_text(path, "")``, called
+    # by ``cli._ensure_initialized`` when the file is absent.  The ``box: image:`` table
+    # this used to hold was not minimal, it was a settings table the Layer-1 file cannot
+    # carry — and no detection path reads ``box_image`` anyway.
+    cfg_file.write_text("")
     return cfg_file
 
 
