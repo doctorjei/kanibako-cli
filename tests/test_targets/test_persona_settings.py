@@ -17,6 +17,7 @@ no-reader default: BOTH fields ``None``.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -29,6 +30,16 @@ from kanibako.targets.base import (
     PersonaReadOutcome,
     PersonaSettings,
     Target,
+    _EMBED_DEPTH,
+    _NEST_DEPTH,
+    _PROVIDER_READ_CAP,
+    _PROVIDER_TEXT_CAP,
+    _SECRET_MIN_CHARS,
+    _UNREADABLE,
+    _WITHHELD,
+    _provider_text,
+    _scrub_decoded,
+    http_probe,
 )
 from kanibako.targets.no_agent import NoAgentTarget
 
@@ -1053,3 +1064,452 @@ class TestProbeEvidence:
         assert secret not in outcome.evidence.provider_text
         assert secret not in outcome.evidence_block()
         assert "<redacted>" in outcome.evidence.provider_text
+
+
+@pytest.fixture
+def slashed_token_file(tmp_path):
+    """A key from the STANDARD base64 alphabet — the one an encoder escapes.
+
+    Nothing constrains a third-party provider's key to base64url: the persona's
+    ``secret_path`` file holds whatever THAT provider issued, and ``/`` is exactly
+    the character a JSON encoder is free to write as ``\\/``.
+    """
+    tok = tmp_path / "slashed-token"
+    tok.write_text("sk-abc/def+ghi=\n")
+    return tok
+
+
+class TestProviderTextScrub:
+    """The provider's echoed words are scrubbed — for the spellings the scrub reaches,
+    and for EVERY header a plugin authenticates with.
+
+    The defects this class pins, all reachable, none theoretical:
+
+    * the scrub was a LITERAL replace over the wire bytes, so any ESCAPED rendering
+      of the key walked past it (a ``/`` written ``\\/`` — PHP's ``json_encode``
+      does that by default — printed the key in full);
+    * only ``Authorization`` was scrubbed, though ``http_probe`` is a PUBLISHED
+      plugin helper a third-party plugin may authenticate through any way it likes.
+      The first-party plugins both send ``Authorization``; that made them safe by luck;
+    * a body EMBEDDING another JSON document as a string value kept its own escape
+      layer inside that string, hiding the key one level below the outer parse;
+    * and one the CURE introduced — decoding the body hands back real lone surrogates
+      that ``ensure_ascii=False`` writes straight out, so the returned line could
+      raise ``UnicodeEncodeError`` in a caller's own ``print``.  Undoing an encoding
+      layer is not free, and this is what it cost.
+
+    🛑 AND IT PINS WHAT IS STILL OPEN.  Two tests here assert a KNOWN LEAK on
+    purpose — a re-encoding that is not backslash escaping (``%2F``), and a key
+    straddling ``_PROVIDER_READ_CAP``.  Neither is caught, neither is withheld, and
+    both are documented on ``ProbeResponse.body``.  A reader who finds only the
+    green cases would conclude the coverage is total; it is not.
+    """
+
+    @staticmethod
+    def _unescape_once(text: str) -> str:
+        """*text* with ONE backslash-escape layer undone — what a reader recovers by eye.
+
+        ``sk-…A\\u0026B`` is not the key's raw spelling, so ``secret in text`` calls it
+        absent; it is nonetheless the key, legible to anyone reading the line.  The leak
+        tests below ask THIS question instead — and it is strictly stronger than
+        ``_survives``, which only DELETES backslashes and so reads that spelling as
+        ``u0026``.  Not a JSON parse: the printed line need not be a JSON document.
+        """
+        return re.sub(
+            r"\\u([0-9a-fA-F]{4})|\\(.)",
+            lambda m: chr(int(m[1], 16)) if m[1] else m[2],
+            text,
+        )
+
+    @staticmethod
+    def _echo(headers: dict[str, str], body: bytes, status: int = 403):
+        """Probe a server that answers *status* with *body*; return the scrubbed text."""
+        server = _ProbeServer(status=status, body=body)
+        try:
+            return http_probe(
+                server.endpoint, headers=headers, body={"ping": 1}, timeout=5.0,
+            ).body
+        finally:
+            server.close()
+
+    # -- Defect A: an escaped rendering of the key ----------------------------
+
+    @pytest.mark.parametrize(
+        ("label", "echoed"),
+        [
+            ("solidus", rb"sk-abc\/def+ghi="),        # PHP json_encode's default
+            # The same '/' as a JSON \\uXXXX escape, spelled without a literal
+            # backslash-u in this source so no tool in the chain can normalize it away.
+            ("unicode", b"sk-abc" + b"\\" + b"u002fdef+ghi="),
+        ],
+    )
+    @pytest.mark.parametrize("target_cls", [ClaudeTarget, CodexTarget])
+    def test_an_ESCAPED_echo_of_the_key_never_leaks_it(
+        self, slashed_token_file, target_cls, label, echoed,
+    ):
+        """🛑 MANDATORY.  A literal replace only ever sees a secret's RAW spelling.
+
+        (Mutation: scrub the wire bytes instead of the decoded body — as
+        ``_provider_text`` did before — and both the ``<redacted>`` marker and the
+        surviving ``def+ghi=`` fragment go RED.)
+        """
+        secret = slashed_token_file.read_text().strip()
+        tail = secret.split("/")[-1]   # a distinctive run of the key, unescaped in both forms
+        server_body = b'{"error":{"message":"invalid key: Bearer ' + echoed + b' rejected"}}'
+        server = _ProbeServer(status=403, body=server_body)
+        try:
+            outcome = target_cls().verify_persona(
+                server.endpoint, slashed_token_file, "gemma4", timeout=5.0,
+            )
+        finally:
+            server.close()
+        assert outcome.verdict is PersonaProbeVerdict.REJECTED
+        assert outcome.evidence is not None
+        text = outcome.evidence.provider_text
+        assert secret not in text
+        assert tail not in text, f"the {label} spelling left a fragment of the key standing"
+        assert secret not in text.replace("\\", "")
+        assert "<redacted>" in text
+        assert tail not in outcome.evidence_block()
+
+    def test_a_DOUBLY_escaped_echo_is_WITHHELD_rather_than_printed(self):
+        """Decoding undoes ONE layer; the guard catches the residue and drops the body.
+
+        A message the user does not get is a cost; a key the user's terminal prints
+        is a breach.  The guard picks the cost.
+        """
+        secret = "sk-abc/def+ghi="
+        body = rb'{"error":"invalid key sk-abc\\/def+ghi= rejected"}'
+        assert self._echo({"Authorization": f"Bearer {secret}"}, body) == _WITHHELD
+
+    def test_a_key_straddling_the_TEXT_cap_is_scrubbed_before_truncation(self):
+        """``_PROVIDER_TEXT_CAP`` — the ONE of the two caps this module gets to order.
+
+        Applied first it would leave the head of a key standing in the output, so
+        the scrub runs ahead of it.  The other cap is not ours to order; see
+        ``test_a_key_straddling_the_READ_cap_leaks_its_head_KNOWN_RESIDUE``.
+        """
+        secret = "sk-" + "z" * 40
+        pad = "y" * (_PROVIDER_TEXT_CAP - 30)   # the key opens inside the cap, ends past it
+        text = self._echo(
+            {"Authorization": f"Bearer {secret}"},
+            f"not json: {pad}{secret} trailing".encode(),
+        )
+        assert secret[:20] not in text
+        assert "<redacted>" in text
+
+    def test_a_key_straddling_the_READ_cap_leaks_its_head_KNOWN_RESIDUE(self):
+        """🛑 THIS TEST ASSERTS A KNOWN LEAK, DELIBERATELY, SO IT CANNOT BE BELIEVED AWAY.
+
+        ``http_probe`` cuts the body at ``_PROVIDER_READ_CAP`` BYTES before the scrub
+        ever runs, and nothing downstream can reorder that.  A key straddling the cut
+        arrives bisected, matches no secret, and the whitespace collapse pulls its
+        surviving head inside the character cap — printed in cleartext.
+
+        Closing it means reading more of a hostile body, which is the trade the read
+        cap exists to refuse.  If this ever goes RED because the class was closed,
+        delete it and say so in the commit.
+        """
+        secret = "sk-" + "Q" * 40
+        pad = b" " * (_PROVIDER_READ_CAP - len("error: ") - 20)
+        text = self._echo(
+            {"Authorization": f"Bearer {secret}"},
+            b"error: " + pad + secret.encode() + b" tail",
+        )
+        assert secret not in text                      # the whole key does not survive
+        assert text == f"error: {secret[:20]}"         # ...but twenty characters of it do
+
+    # -- Defect B: every caller-supplied header, not just Authorization -------
+
+    @pytest.mark.parametrize("header", ["x-api-key", "X-Goog-Api-Key", "Proxy-Authorization"])
+    def test_a_NON_authorization_credential_is_scrubbed_TOO(self, header):
+        """``http_probe`` is a published helper; a plugin may authenticate any way.
+
+        (Mutation: restrict the secret set to ``Authorization`` — as
+        ``_bearer_secrets`` did — and every parametrization goes RED.)
+        """
+        secret = "sk-third-party-plugin-key-0001"
+        text = self._echo({header: secret}, b'{"error":"rejected key ' + secret.encode() + b'"}')
+        assert secret not in text
+        assert "<redacted>" in text
+
+    def test_a_value_TOO_SHORT_to_be_a_credential_stays_legible(self):
+        """The one exclusion is LENGTH, never a header name — and the rule is pinned
+        from ``_SECRET_MIN_CHARS`` itself, so moving the constant moves the test.
+        """
+        short = "v" * (_SECRET_MIN_CHARS - 1)
+        long_ = "v" * _SECRET_MIN_CHARS
+        kept = self._echo({"x-thing": short}, f'{{"e":"unsupported {short}"}}'.encode())
+        assert short in kept
+        hidden = self._echo({"x-thing": long_}, f'{{"e":"unsupported {long_}"}}'.encode())
+        assert long_ not in hidden
+        assert "<redacted>" in hidden
+
+    def test_an_EMPTY_header_value_does_not_splice_the_marker_into_the_body(self):
+        """``"abc".replace("", m)`` puts *m* between every character — the reason the
+        length floor is not merely a noise filter.
+        """
+        assert self._echo({"x-blank": ""}, b'{"e":"plain words"}') == '{"e":"plain words"}'
+
+    def test_a_value_that_PREFIXES_another_cannot_eat_the_longer_one(self):
+        """Replacement order is a security property, so it is not left to the caller.
+
+        Where one header value is a strict prefix of another, replacing the short
+        one first consumes the long one's anchor and leaves its tail in cleartext.
+        ``_request_secrets`` returns longest-first so the shape is unavailable.
+
+        (Mutation: return the secrets in ``dict`` order and this goes RED with
+        ``<redacted>SECRETTAIL`` standing — and ``_survives`` does NOT fire on it.)
+        """
+        short, long_ = "sk-abcdefgh", "sk-abcdefghSECRETTAIL"
+        text = self._echo(
+            {"x-api-key": short, "x-api-key-full": long_},
+            b'{"e":"rejected ' + long_.encode() + b'"}',
+        )
+        assert "SECRETTAIL" not in text
+        assert text == '{"e":"rejected <redacted>"}'
+
+    # -- Defect C: a document embedded in the body as a STRING ----------------
+
+    def test_an_EMBEDDED_json_document_is_FOLLOWED_and_scrubbed(self):
+        """A gateway echoing an upstream error body as a string value hides the key.
+
+        The inner document keeps its own escape layer, so scrubbing the outer
+        string as text sees only raw spellings — the top-level defect, one level in.
+        Fronting one provider with another is ordinary deployment, and a persona's
+        ``ANTHROPIC_BASE_URL`` may name any third party at all.
+
+        (Mutation: drop the ``_scrub_embedded`` descent and this goes RED with the
+        credential recoverable by a second ``json.loads``.)
+        """
+        secret = "sk-abc/def+ghi="
+        # The inner '/' as a JSON \\uXXXX escape, spelled without a literal
+        # backslash-u here so no tool in the chain can normalize it away.
+        inner = '{"tok":"sk-abc' + "\\" + 'u002fdef+ghi="}'
+        text = self._echo(
+            {"Authorization": f"Bearer {secret}"},
+            json.dumps({"e": inner}).encode(),
+        )
+        assert secret not in text
+        assert "def+ghi=" not in text
+        assert "<redacted>" in text
+        assert json.loads(json.loads(text)["e"])["tok"] == "<redacted>"
+
+    def test_embedding_PAST_the_depth_bound_is_REDACTED_IN_PLACE_not_skipped(self):
+        """The bound is a bound, never a silent cliff — and it costs only what it must.
+
+        A document we declined to read is a place a secret could be, so the whole
+        over-budget document is replaced.  IN PLACE: only IT disappears — the documents
+        within budget are still scrubbed and re-serialized around it, and the user keeps
+        a message instead of losing the body.  The depth is derived from the constant,
+        so moving it moves the test.
+
+        (Mutation: raise past the budget and withhold the whole body — as ``_TooDeep``
+        did — and the surroundings go RED.)
+        """
+        secret = "sk-abc/def+ghi="
+        headers = {"Authorization": f"Bearer {secret}"}
+        node = {"tok": secret}
+        for _ in range(_EMBED_DEPTH):
+            node = {"e": json.dumps(node)}
+        assert secret not in self._echo(headers, json.dumps(node).encode())
+        node = {"e": json.dumps(node)}   # one embedded document past the budget
+        text = self._echo(headers, json.dumps({"note": "read the docs", **node}).encode())
+        assert secret not in self._unescape_once(text)
+        assert text != _WITHHELD
+        assert '"note":"read the docs"' in text   # its surroundings survived the refusal
+        assert "<redacted>" in text
+
+    def test_a_body_TOO_DEEP_FOR_THE_WALK_is_not_printed_undecoded(self):
+        """🛑 The ``_EMBED_DEPTH`` rule, applied to the OTHER way the decode can stop.
+
+        A parse returns trees the walk over its result cannot follow — that walk is
+        Python recursion and dies near CPython's limit.  Swallowing that
+        ``RecursionError`` fell through to the plain-text path, where the scrub sees only
+        the credential's RAW spelling — so an escaped echo printed with the key
+        recoverable by one unescape, and ``_survives`` could not see it (deleting
+        backslashes leaves ``u0026``, not ``&``).  ``&`` is not exotic: Go's
+        ``encoding/json`` HTML-escapes ``&``, ``<`` and ``>`` by DEFAULT, so any Go
+        gateway echoing a key containing one writes exactly this.  ``_NEST_DEPTH`` answers
+        it by REDACTING IN PLACE, so the user still gets the surrounding message.
+
+        ⚑ THE DEPTH IS DERIVED FROM ``_NEST_DEPTH``, NOT PICKED.  A literal deep enough to
+        look convincing (1100) is past ``json.loads``' OWN floor on the oldest interpreter
+        kanibako supports — the body would die in the parse, take the catch-all arm and
+        never reach the walk at all, so the test would pass or fail for a reason it does
+        not name.  ``_provider_text``'s docstring carries that floor.
+
+        (Mutation: drop ``_NEST_DEPTH`` from ``_scrub_decoded`` and restore the bare
+        ``except Exception: pass`` — as ``_provider_text`` had — and both asserts go RED.)
+        """
+        secret = "sk-ant-api03-A&BcDeFgHiJkLmN"
+        # The '&' as a JSON \\uXXXX escape, spelled without a literal backslash-u
+        # here so no tool in the chain can normalize it away.
+        escaped = "sk-ant-api03-A" + "\\" + "u0026BcDeFgHiJkLmN"
+        depth = _NEST_DEPTH + 1   # one container past the walk's budget
+        raw = (
+            '{"error":"invalid key ' + escaped + '","d":'
+            + "[" * depth + "1" + "]" * depth + "}"
+        )
+        body = raw.encode()
+        assert len(body) < _PROVIDER_READ_CAP
+        # 🛑 RED ON ITS OWN EMPTINESS.  If an interpreter ever parses shallower than this,
+        # the assertions below would be measuring the catch-all arm instead of the walk.
+        json.loads(raw)
+        text = self._echo({"Authorization": f"Bearer {secret}"}, body)
+        assert text not in (_UNREADABLE, _WITHHELD)   # the walk finished; nothing was withheld
+        assert secret not in self._unescape_once(text)
+        assert "<redacted>" in text
+
+    def test_ORDINARY_nesting_past_ITS_bound_is_redacted_IN_PLACE_too(self):
+        """The walk carries its own depth budget rather than borrowing the interpreter's.
+
+        Leaving the limit to CPython rests a security property on
+        ``sys.setrecursionlimit`` — a tunable global that differs by build.  ``_NEST_DEPTH``
+        is spent on ordinary containers, ``_EMBED_DEPTH`` on embedded documents, and
+        both replace what they decline to read with the same marker, in place.  Depths
+        are derived from the constant, so moving it moves the test.
+        """
+        secrets = ("sk-abcdefghijkl",)
+        under = json.loads("[" * (_NEST_DEPTH - 1) + '"deep"' + "]" * (_NEST_DEPTH - 1))
+        assert "deep" in json.dumps(_scrub_decoded(under, secrets))
+        over = json.loads("[" * (_NEST_DEPTH + 1) + '"deep"' + "]" * (_NEST_DEPTH + 1))
+        walked = json.dumps(_scrub_decoded(over, secrets))
+        assert "deep" not in walked
+        assert "<redacted>" in walked
+        # IN PLACE: a sibling of the over-deep branch is untouched by its refusal.
+        mixed = {"keep": "visible", "d": over}
+        assert "visible" in json.dumps(_scrub_decoded(mixed, secrets))
+
+    def test_a_body_the_decode_CANNOT_FINISH_is_withheld_and_SAYS_SO_ACCURATELY(self):
+        """The residual arm: what neither bound owns still fails LOUD, never quietly.
+
+        The bounds keep the WALK inside the interpreter's limit; they cannot answer
+        for the stack already under this call, for ``_compact``, or for a decode shape
+        nobody foresaw.  A body ``_provider_text`` set out to read and could not is a
+        document we declined to read, so it withholds rather than falling through to
+        the raw-spelling scrub.
+
+        🛑 AND IT GETS ITS OWN SENTENCE.  ``_WITHHELD`` reports a MATCH against a
+        request value; nothing matched here, so reusing it would tell the user about
+        a match that never happened.  Two causes, two messages.
+
+        ⚑ Reached through ``_provider_text`` directly and DELIBERATELY: the depth here is
+        past EVERY supported interpreter's parse floor, and nesting THAT deep no longer
+        fits under ``_PROVIDER_READ_CAP``, so ``http_probe`` could not have handed it over.
+
+        🛑 THAT IS THIS TEST'S SHAPE, NOT A CLAIM ABOUT THE ARM.  On the oldest interpreter
+        kanibako supports the parse floor sits under 2 KB of nesting — a body a server can
+        serve perfectly well — so this arm is ORDINARY there, not residual.
+        ``_provider_text`` carries the floor and the command that re-derives it.
+
+        (Mutation: make the catch-all ``pass`` instead of withholding and this goes RED.)
+        """
+        secret = "sk-ant-api03-A&BcDeFgHiJkLmN"
+        escaped = "sk-ant-api03-A" + "\\" + "u0026BcDeFgHiJkLmN"
+        depth = 20_000   # past `json.loads`' OWN recursion, so the parse never returns
+        body = (
+            '{"error":"invalid key ' + escaped + '","d":'
+            + "[" * depth + "1" + "]" * depth + "}"
+        ).encode()
+        assert len(body) > _PROVIDER_READ_CAP
+        assert _provider_text(body, {"Authorization": f"Bearer {secret}"}) == _UNREADABLE
+        assert _UNREADABLE != _WITHHELD
+        assert "matched" not in _UNREADABLE
+
+    def test_a_LONE_SURROGATE_cannot_make_the_returned_line_UNPRINTABLE(self):
+        r"""The decode hands back a REAL surrogate, and ``ensure_ascii=False`` writes it out.
+
+        ``json.loads`` turns ``\ud800`` into an unpaired surrogate, and ``_compact`` keeps
+        it raw ON PURPOSE — re-escaping is exactly what would hide a non-ASCII credential
+        from the scrub that follows.  So the sanitize belongs at ``_provider_text``'s
+        return, after the scrub, and not on ``_compact``.
+
+        Without it the returned string raises ``UnicodeEncodeError`` in the CALLER's own
+        ``print``.  Kanibako's own sinks are all ``sys.stderr``, whose ``backslashreplace``
+        handler swallows it — but ``http_probe`` is a PUBLISHED plugin helper and
+        ``sys.stdout`` is strict, so the plugin author gets a traceback instead of the
+        error they asked for.  The pre-image could not reach this at all: it printed
+        ``raw.decode("utf-8", "replace")``, which never yields a surrogate.
+
+        (Mutation: drop the ``encode``/``decode`` at ``_provider_text``'s return and the
+        ``text.encode("utf-8")`` below raises.)
+        """
+        secret = "sk-abcdefghijkl"
+        text = self._echo(
+            {"Authorization": f"Bearer {secret}"},
+            rb'{"e":"bad key \ud800 here"}',
+        )
+        text.encode("utf-8")                # 🛑 THE POINT: this must not raise
+        assert "\ud800" not in text
+        assert "bad key" in text            # ...and the user still gets the message
+
+    def test_the_ENCODABLE_sanitize_does_not_defeat_the_scrub(self):
+        """A body carrying BOTH a surrogate and the key comes back printable AND scrubbed.
+
+        The two treatments co-exist: the sanitize does not eat the ``<redacted>`` the scrub
+        wrote, and the scrub is not thrown by the surrogate sitting beside its match.
+
+        🛑 IT DOES NOT PIN THE ORDER, AND NO INPUT HERE COULD.  ``json.loads`` undoes the
+        ``\\/`` before either step runs, so the key is present in its raw spelling and the
+        scrub catches it whichever way round the two go — a distinguishing body would need
+        a secret the sanitize could damage, and a replacement only ever destroys.  That the
+        sanitize must nonetheless FOLLOW the scrub — it can never rebuild a secret, and
+        running it first would hand ``_survives`` a string the scrub never saw — is an
+        invariant argued at ``_provider_text``'s call site and UNPINNED here.
+        """
+        secret = "sk-abc/def+ghi="
+        text = self._echo(
+            {"Authorization": f"Bearer {secret}"},
+            rb'{"e":"bad key \ud800 sk-abc\/def+ghi= here"}',
+        )
+        text.encode("utf-8")
+        assert secret not in text
+        assert "def+ghi=" not in text
+        assert "<redacted>" in text
+
+    def test_a_secret_the_WHITESPACE_COLLAPSE_would_break_is_scrubbed_first(self):
+        """The collapse can DESTROY a match as easily as create one, so both sides scrub.
+
+        A header value carrying a double space matches the wire body exactly; collapse
+        it first and the body no longer contains the value, ``_survives`` agrees it is
+        gone, and the full credential prints.
+
+        (Mutation: drop the scrub ahead of the join and this goes RED with the whole
+        value standing.)
+        """
+        secret = "sk-abcdefghijkl  m"
+        text = self._echo({"x-api-key": secret}, b"not json: rejected sk-abcdefghijkl  m here")
+        assert "sk-abcdefghijkl" not in text
+        assert text == "not json: rejected <redacted> here"
+
+    def test_a_RE_ENCODED_key_is_PRINTED_and_that_residue_is_DOCUMENTED(self):
+        """🛑 THIS TEST ASSERTS A KNOWN LEAK, DELIBERATELY, SO IT CANNOT BE BELIEVED AWAY.
+
+        ``%2F`` is not a JSON escape: no decode layer here undoes it, the scrub
+        never sees the key's own characters, and ``_survives`` cannot tell that
+        anything happened — so the body prints with the credential in it.  Nothing
+        is withheld.  ``_survives`` is a guard, not coverage.
+
+        Closing this class takes another DECODE layer ahead of the scrub, the way
+        ``_scrub_embedded`` closed embedded JSON — never a wider ``_survives``,
+        which would become an enumeration of spellings, wrong the moment a provider
+        picks a new one.  If this ever goes RED because the class was closed, delete
+        it and say so in the commit.
+        """
+        secret = "sk-abc/def+ghi="
+        body = b'{"e":"bad key sk-abc%2Fdef+ghi="}'
+        assert self._echo({"Authorization": f"Bearer {secret}"}, body) == body.decode()
+
+    def test_WITHHELD_states_the_outcome_and_accuses_the_provider_of_nothing(self):
+        """The secret set is length-keyed, so a match is not proof of a credential.
+
+        The claude plugin ships ``anthropic-version: 2023-06-01``; an escaped
+        mention of that date trips ``_survives`` and drops the whole message.
+        Telling the user their provider echoed a key back would be an accusation
+        this code cannot support.
+        """
+        headers = {"anthropic-version": "2023-06-01", "Authorization": "Bearer sk-zzzzzzzzzzzz"}
+        assert self._echo(headers, b"unsupported anthropic-version 2023-\\06-01 here") == _WITHHELD
+        assert "credential" not in _WITHHELD
+        assert "echoed" not in _WITHHELD

@@ -4104,7 +4104,13 @@ updating, and one of them fails at IMPORT time:**
 
 - **The probe helpers now take a response, not a bare status.** `kanibako.targets.base.http_probe`
   replaces `http_probe_status` and returns a `ProbeResponse(status, body)`, where `body` is the
-  provider's error text — already capped and scrubbed of your bearer token. `probe_outcome` and
+  provider's error text — capped, and scrubbed of every header value your request carried, not just
+  the bearer token. ⚑ **Read `ProbeResponse`'s own docstring — `help(ProbeResponse)` shows it —
+  before you print `body` anywhere: scrubbed is not proven clean.** kanibako redacts what it can
+  match and withholds the whole line when it detects a leftover; a reply it could not decode at all
+  is withheld too, and says which of the two happened. But a provider that re-encodes a credential
+  in a spelling the scrub cannot see will still have it printed. Treat `body` as an error message
+  for a human, not as a value proven free of secrets. `probe_outcome` and
   `probe_outcome_no_model` take `(response, sent)`, where `sent` is a `ProbeEvidence` describing the
   request you made (endpoint, the model you actually sent, the token path); they fill in the answer
   half, so a refusal message can name what was refused. `PersonaProbeOutcome.rejected(evidence)`

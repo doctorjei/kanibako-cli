@@ -513,9 +513,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ```
 
   The same block is appended to the create-time warning and to an inconclusive launch warning when
-  the endpoint answered something. Your token value is scrubbed out of the provider's text before it
-  is printed, and the provider's text is truncated. An endpoint that could not be reached prints no
-  block — there is nothing it could report.
+  the endpoint answered something. Every header value your request carried is scrubbed out of the
+  provider's text before it is printed, not just the bearer token, and the scrub reads the body as
+  the provider *meant* it rather than as the provider's encoder spelled it — so an escaped spelling
+  of a key, or one buried in an error body a gateway echoed back as text, is caught along with the
+  plain one. If a value still matches after that, kanibako withholds the provider's line rather
+  than print it; a reply kanibako could not decode at all is withheld too, and says so. The text is
+  truncated either way. **It is a scrub, not a proof:** a provider that re-encodes a credential some
+  other way can still get it printed, so read that line as an error message rather than as a
+  guarantee. An endpoint that could not be reached prints no block — there is nothing it could
+  report.
 
 - **`kanibako system set` refused to point an agent setting at that agent's own directory.**
   Every per-agent setting can be written two ways — `kanibako agent set claude canon=…` or
