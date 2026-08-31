@@ -25,7 +25,9 @@ Two automated halves of the §P2.3 e2e boundary (``codex-vscode-BUILD.md``):
 The third §P2.3 item — ``$PPID`` == agent PID under a REAL codex — is
 creds-gated (an unauthenticated codex never reaches SessionStart) and belongs
 to the manual dogfood checklist (M1) unless ``KANI_E2E_CODEX_REAL=1`` with a
-real authenticated codex is provided; see the skip below.
+real authenticated codex is provided.  That gate PROBES the host rather than
+trusting the variable, and forwards the credential it found into the fixture's
+isolated home; see ``_real_codex_gate`` and ``_forward_real_codex_creds``.
 
 Timings assume the supervisor defaults (poll_interval 2.0 s); every wait is a
 bounded POLL, not a bare sleep, so a slow VM only slows the test, never flakes
@@ -34,6 +36,7 @@ it (within the outer bound).
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -353,21 +356,115 @@ def test_simulated_panel_marker_lifecycle(e2e_env):
         rm(name)
 
 
-@pytest.mark.skipif(
-    os.environ.get("KANI_E2E_CODEX_REAL") != "1",
-    reason=(
-        "needs a REAL authenticated codex (an unauthenticated codex never "
-        "reaches SessionStart, so the $PPID==agent-PID validation cannot run); "
-        "set KANI_E2E_CODEX_REAL=1 on a host with codex + creds — otherwise "
-        "this check lives on the manual dogfood checklist (M1, "
-        "codex-vscode-BUILD.md §P2.3)"
-    ),
-)
+# --------------------------------------------------------------------------- #
+# The REAL-codex credential gate                                              #
+# --------------------------------------------------------------------------- #
+# ⚑ Everything below reads the HOST's home — the one place in this module that
+# does.  Every other path here is the fixture's ISOLATED home, and the gap
+# between the two is precisely the defect this section closes.
+
+
+def _host_codex_auth() -> Path | None:
+    """The host user's real ``~/.codex/auth.json``, or ``None`` if absent/empty.
+
+    ⚑ Runs at COLLECTION time (the skip marker below is built at module scope),
+    so like ``conftest``'s probes it must never raise: an unresolvable home or an
+    unreadable file is simply "this host has no codex credential".
+    """
+    try:
+        auth = Path.home() / ".codex" / "auth.json"
+        return auth if auth.stat().st_size > 0 else None
+    except (OSError, RuntimeError):
+        return None
+
+
+_HOST_CODEX_AUTH = _host_codex_auth()
+
+
+def _real_codex_gate() -> str | None:
+    """Why this host cannot run the REAL-codex check, or ``None`` if it can.
+
+    ⚑ Every clause PROBES.  The gate used to be the opt-in variable alone, which
+    asserted a precondition — "a real authenticated codex" — that nothing checked
+    and the isolated-``HOME`` fixture then made unreachable: codex found no
+    credential, printed an OAuth URL, and blocked on interactive login until the
+    subprocess budget SIGKILLed the start.  That is a failure no host could
+    avoid, however well authenticated (measured 2026-08-30), so the skip
+    condition has to name the real preconditions and
+    :func:`_forward_real_codex_creds` has to satisfy the one the fixture broke.
+    """
+    if os.environ.get("KANI_E2E_CODEX_REAL") != "1":
+        return (
+            "opt-in: needs a REAL authenticated codex (an unauthenticated codex "
+            "never reaches SessionStart, so the $PPID==agent-PID validation "
+            "cannot run); set KANI_E2E_CODEX_REAL=1 on a host with codex + "
+            "creds — otherwise this check lives on the manual dogfood checklist "
+            "(M1, codex-vscode-BUILD.md §P2.3)"
+        )
+    if shutil.which("codex") is None:
+        return (
+            "KANI_E2E_CODEX_REAL=1 but no `codex` on PATH — CodexTarget.detect "
+            "would find no binary to bind"
+        )
+    if _HOST_CODEX_AUTH is None and not os.environ.get("OPENAI_API_KEY"):
+        return (
+            "KANI_E2E_CODEX_REAL=1 but this host has no codex credential to "
+            "forward: neither a non-empty ~/.codex/auth.json nor OPENAI_API_KEY"
+        )
+    return None
+
+
+_REAL_CODEX_SKIP = _real_codex_gate()
+
+
+def _forward_real_codex_creds(e2e_env: dict) -> None:
+    """Put the HOST's codex credential where the ISOLATED fixture home can see it.
+
+    ``e2e_env`` hands every test a private ``HOME`` under ``/tmp``; the user's
+    codex login lives in the real ``~/.codex``.  The credential therefore has to
+    make one hop, and the destination is ``<isolated home>/.codex/auth.json`` —
+    the exact host source the codex descriptor's declared ``cred_files`` entry
+    already syncs into the box (``host_rel`` == ``home_rel`` ==
+    ``.codex/auth.json``).  NO new delivery route: this only moves the credential
+    to where the existing one starts.
+
+    Two sources, in the order ``CodexTarget.check_auth`` itself accepts them: the
+    host ``auth.json``, else ``OPENAI_API_KEY`` written into that file's own
+    top-level API-key field (codex's spelling for an API-key login).  The gate
+    above guarantees one of them exists.
+
+    ⚑ SECRET HYGIENE — a real credential lands in a temp dir here.  The value is
+    never bound to a name, never asserted on and never formatted into a message:
+    the file arm copies wholesale, and the env arm streams straight from
+    ``os.environ`` into a file opened 0600.
+    ⚑ NOT :func:`_seed_codex_stub`, which plants a FAKE key and a ``/bin/true``
+    codex — the exact opposite of what this test needs.
+
+    ⚑ ONE-WAY, by construction rather than by care: the credsync WRITEBACK also
+    resolves off the subprocess ``HOME``, so a token the box refreshes lands back
+    in the ISOLATED copy and the run cannot rewrite the user's real
+    ``~/.codex/auth.json``.  The flip side is the reader's to know — an OAuth
+    refresh inside the box rotates a token the host copy still holds the old
+    half of, so re-running ``codex login`` on the host is the recovery.
+    """
+    dest = e2e_env["home"] / ".codex" / "auth.json"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if _HOST_CODEX_AUTH is not None:
+        shutil.copy2(_HOST_CODEX_AUTH, dest)
+    else:
+        fd = os.open(dest, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump({"OPENAI_API_KEY": os.environ["OPENAI_API_KEY"]}, fh)
+    dest.chmod(0o600)
+
+
+@pytest.mark.skipif(_REAL_CODEX_SKIP is not None, reason=_REAL_CODEX_SKIP or "")
 def test_codex_ppid_marker_real_cli(e2e_env):
     """CREDS-GATED: with a real codex, the SessionStart marker hook writes a
     file named for the codex process's PID (validates the $PPID assumption for
     the CLI half; the panel/app-server half stays manual M1)."""
     env, project, box = e2e_env["env"], e2e_env["project"], "codexpanel-ppid"
+    _forward_real_codex_creds(e2e_env)
     run_install(env)
     name = container_name(box)
     r = run_kanibako(["create", str(project), "--name", box], env=env)
