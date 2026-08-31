@@ -7942,9 +7942,10 @@ class TestPersonaLiveTierWiring:
 
         Neither call is handed the store values: the display resolves them
         internally and the launch decisions get them from the launch's single
-        read, and the two must agree.  ``model`` is the sharp end — the harness
-        default is ``opus``, so a display that missed the tier would report
-        ``opus`` while the launch shipped ``gemma4``.
+        read, and the two must agree.  ``model`` is the sharp end — kanibako
+        imposes no model, so the harness default is EMPTY and a display that
+        missed the tier would report nothing while the launch shipped
+        ``gemma4``.
         """
         from kanibako.commands.start import (
             _effective_behavior_for_display,
@@ -7981,16 +7982,26 @@ class TestPersonaLiveTierWiring:
     def test_without_the_store_the_display_falls_back_to_the_harness_default(
         self, std, config_file, tmp_home,
     ):
-        """The control for the test above: no store entry, no tier, ``opus``."""
+        """The control for the test above: no store entry, no tier, the FLOOR."""
         from kanibako.commands.start import _effective_behavior_for_display
 
         target = self._target()
+        floor = {d.key: d.default for d in target.setting_descriptors()}
         display = _effective_behavior_for_display(
             target, target.generate_agent_config(), None,
             system_settings_path=None,
             node_name=self._NODE,
         )
-        assert display["model"] == "opus"
+        assert display["model"] == floor["model"]
+        # ⚑ The `model` floor is EMPTY — kanibako imposes no model (spec §2d
+        # `agent.claude.model | default <None> (use claude's built-in default)`,
+        # held for every shipped plugin by `test_no_shipped_plugin_imposes_a_model`
+        # in `tests/test_targets/test_agent_behavior_defaults.py`) — so the line
+        # above can no longer tell "resolved the floor" from "resolved nothing".
+        # `transform` still carries a NON-empty floor and is the witness that
+        # the display really did read the harness defaults.
+        assert floor["transform"]
+        assert display["transform"] == floor["transform"]
         assert not display.get("endpoint")
 
     # --- the model THREE-STATE reaches _resolve_box_launch_decisions REAL ----
@@ -8114,12 +8125,21 @@ class TestPersonaLiveTierWiring:
         assert not dict.get(active, "env")
         assert not dict.get(active, "secret_path")
         # The lower rungs still resolve — emptiness never overrode them.
+        floor = {d.key: d.default for d in target.setting_descriptors()}
         display = _effective_behavior_for_display(
             target, target.generate_agent_config(), None,
             system_settings_path=None,
             node_name=self._NODE,
         )
-        assert display["model"] == "opus"
+        assert display["model"] == floor["model"]
+        # ⚑ `model`'s floor is EMPTY — kanibako imposes no model (spec §2d
+        # `agent.claude.model | default <None> (use claude's built-in default)`,
+        # held for every shipped plugin by `test_no_shipped_plugin_imposes_a_model`
+        # in `tests/test_targets/test_agent_behavior_defaults.py`) — so it cannot
+        # witness "resolved" against "resolved nothing".  `transform` has a
+        # non-empty floor and does.
+        assert floor["transform"]
+        assert display["transform"] == floor["transform"]
 
     def test_the_store_read_itself_is_silent(
         self, std, config_file, tmp_home, capsys,
