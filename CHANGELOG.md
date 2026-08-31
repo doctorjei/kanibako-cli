@@ -1476,6 +1476,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   of anything that looks at the value. Nothing was ever written to your settings file in either
   case; only the message changes.
 
+- **A production promote now refuses to publish a package whose version PyPI already serves with
+  different content**, instead of letting `skip-existing` drop the upload in silence. That mattered
+  most for `kanibako-agent-goose` and `kanibako-agent-codex`, which version independently of the
+  release train: a promote rebuilds them at whatever their own `pyproject.toml` says, so content
+  that moved without a bump was uploaded, silently skipped, and PyPI kept serving the **old** wheel
+  under a release claiming the new files. That is the failure that shipped retired-key plugin wheels
+  once already. The check had run on the `dev` and single-agent publish paths since; the `promote`
+  job — the only path that reaches production PyPI — did not run it, and now does, before the
+  upload. A test asserts the rule rather than the arrangement: every job in the workflow that
+  uploads to PyPI must run the check first, so a new publishing job that forgets it fails on the day
+  it lands.
 - **A manual dispatch can no longer trigger the production promote.** The `promote` job gated on the
   ref shape alone, so dispatching `release.yml` at a bare `v<ver>` tag ran the production publish —
   the dispatch path exists for a branch (dev) or an rc tag (rc), and neither of those is a promote.

@@ -76,24 +76,31 @@ every build step in `release.yml` use exactly this list:
 **not** in it: they version independently and are published either alongside a
 train release or on their own ([section 5](#5-publishing-a-single-agent-package)).
 
-⚑ **Every plugin carries its version in TWO files** — its `pyproject.toml` and
-`__version__` in its `__init__.py`. `.bumpversion.cfg` stamps both of claude's
-and neither of goose's or codex's, so those two are hand-edited and can drift
-apart. What holds them together is
-`tests/test_meta_pin.py::test_plugin_version_pair_agrees`, over every
-`packages/agent-*`; it runs in CI's `pytest tests/`, and the test explains why
-nothing else can catch the drift. Read a failure there as *bump the other file*,
-not as a broken test.
+⚑ **Every distribution that ships code carries its version in TWO files** — its
+`pyproject.toml` and `__version__` in its `__init__.py`. That is the cli as well
+as each plugin. `.bumpversion.cfg` stamps the cli's pair and claude's and
+neither goose's nor codex's, so those two are hand-edited and can drift apart —
+and being stamped is not being asserted, so the stamped pairs are checked too.
+What holds them together is
+`tests/test_meta_pin.py::test_version_pair_agrees`, over every distribution with
+a `src/` tree (`packages/meta` has none, so it has no second copy to disagree
+with); it runs in CI's `pytest tests/`, and the test explains why nothing else
+can catch the drift. Read a failure there as *bump the other file*, not as a
+broken test.
 
-**Meta pinning.** In-tree, `packages/meta` depends on `kanibako-cli` as a
-*range*, so a source checkout or a dev flow never breaks. Every publish path in
-`release.yml` rewrites that one line to an exact `kanibako-cli==<version>` pin
-at build time, so a freshly published meta can never pair with a stale cli
-during PyPI index propagation. The contract is asserted by
-`tests/test_meta_pin.py`. Meta's *agent* dependencies stay `>=` floors — which
-is why the `dev` and `promote` jobs also build goose and codex and upload them
-with `skip-existing`: the versions meta's floors point at must be resolvable on
-the index, but an unchanged agent version must not fail the publish.
+**Meta pinning.** In-tree, `packages/meta` depends on the train as *ranges*, so
+a source checkout or a dev flow never breaks. Every publish path in
+`release.yml` rewrites the **stamped-train** lines — `kanibako-cli` **and**
+`kanibako-agent-claude` — to exact `==<version>` pins at build time, so a
+freshly published meta can never pair with a stale train member during PyPI
+index propagation. ⚑ **Both, not just the cli:** leaving agent-claude a range
+shipped a plugin built against a different cli once already. The contract is
+asserted by `tests/test_meta_pin.py`, which records that incident. Meta's
+*independently-versioned* agent dependencies — goose and codex — stay `>=`
+floors, which is why the `dev` and `promote` jobs also build those two and
+upload them with `skip-existing`: the versions meta's floors point at must be
+resolvable on the index, but an unchanged agent version must not fail the
+publish.
 
 **Version stamping, by path:**
 
@@ -301,13 +308,22 @@ Pushing the bare `v1.8.0` tag triggers `release.yml`'s `promote` job
    prod publish.
 2. Validates the tag shape (`v<MAJOR>.<MINOR>.<PATCH>`, no `-rc`) and derives
    `VER`.
-3. Pins `packages/meta`'s `kanibako-cli` dependency to `==$VER` at build time.
+3. Pins `packages/meta`'s **stamped-train** dependencies — `kanibako-cli` and
+   `kanibako-agent-claude` — to `==$VER` at build time
+   ([section 2](#2-the-packages)). The goose and codex floors are left alone.
 4. Builds all five packages from the tagged tree.
-5. **Publishes to prod PyPI** via OIDC trusted publishing
+5. **Refuses a version collision with different content**
+   (`scripts/check-publish-collisions.py`), comparing **every** built wheel
+   against what PyPI already serves. It bites hardest on the
+   independently-versioned agents: they rebuild at their static version, and
+   `skip-existing` below would drop that upload in silence — leaving PyPI
+   serving the old wheel under a release claiming the new files. The same guard
+   runs on the `dev` and `publish-agent` paths.
+6. **Publishes to prod PyPI** via OIDC trusted publishing
    (`pypa/gh-action-pypi-publish`, `skip-existing: true`, no token) — so the
    independently-versioned agents are skipped rather than failing when their
    version is unchanged.
-6. Publishes the GitHub release with generated notes and **deletes** any
+7. Publishes the GitHub release with generated notes and **deletes** any
    matching `v<ver>-rc*` draft prereleases.
 
 ### 4.3 Verify + broadcast
@@ -336,7 +352,9 @@ gh workflow run release.yml --ref main -f agent=agent-codex
 ```
 
 The `publish-agent` job validates the input (only `agent-goose` and
-`agent-codex` are accepted), builds **only** that package into `dist/`, and
+`agent-codex` are accepted), builds **only** that package into `dist/`, refuses
+a version collision with different content
+(`scripts/check-publish-collisions.py`, the same guard `promote` runs), and
 publishes it to prod PyPI at its static `pyproject.toml` version with
 `skip-existing`. There is no `publish` toggle on this path and no version
 stamping, so the bump is yours to make in a commit first — and it is **three
@@ -346,6 +364,13 @@ and the matching `>=` floor in `packages/meta/pyproject.toml`. Nothing *stamps*
 the second one ([section 2](#2-the-packages)); missing it publishes a wheel that
 misreports its own version, which is why the test named there gates it — so run
 the suite before you tag, not after you publish.
+
+⚑ **The guard covers only one of the two forgettings.** Forgetting the bump
+*entirely* — changed files, unchanged version — the job refuses, rather than
+letting `skip-existing` drop the upload without a word. Bumping
+`pyproject.toml` but not `__version__` it cannot: that is a version PyPI has
+never seen, so the comparison short-circuits before it looks at any content, and
+the test above is the only thing between you and a wheel that misreports itself.
 
 **Ordering across the base/plugin contract.** Meta's agent dependencies are
 `>=` floors, so an agent version that meta requires must be on the index **no
