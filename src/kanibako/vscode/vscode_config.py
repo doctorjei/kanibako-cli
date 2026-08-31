@@ -296,8 +296,8 @@ _PID_SCRIPT_DIR = "~/canon/bible/general/scripts/util"
 # — the marker would name a dead process. The hook shell's ``$PPID`` is the agent.
 # ⚑ Silent-safe (``|| true``) by design: a marker is liveness bookkeeping and must never
 # be what fails a session start or end.
-# ⚑ UNVERIFIED (bifrost e2e): that ``$PPID`` in a claude hook IS the agent PID, and that
-# the VS Code panel claude runs the box's seeded hooks at all.
+# ⚑ VERIFIED on real podman (2026-08-30 panel dogfood, both harnesses): the VS Code panel
+# DOES run the box's seeded SessionStart hook, and the ``$PPID`` it writes IS the agent.
 _AGENT_MARKER_WRITE_COMMAND = f'{_PID_SCRIPT_DIR}/pid-add.sh "$PPID" || true'
 _AGENT_MARKER_REMOVE_COMMAND = f'{_PID_SCRIPT_DIR}/pid-rm.sh "$PPID" || true'
 
