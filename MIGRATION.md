@@ -1033,15 +1033,16 @@ floor, so every install seeded that way stayed pinned to the value current when 
 after the plugin's default moved on. New agent settings files no longer carry it.
 
 ⚑ **This is not persona-only** — it applies to bare agents too. **`kanibako agent get <agent> model`
-on a fresh install now reports `(not set)` where 1.7.2 reported `opus`.** Nothing about resolution
-changed; `agent get` reads the file and the file no longer states a value the floor already
-supplies.
+on a fresh install now reports `(not set)` where 1.7.2 reported `opus`.** `agent get` reads the file
+and the file no longer states a value. ⚑ **As of this release the *floor* no longer supplies one
+either** — see *"Kanibako no longer passes a model, and that exposes a bad line in some boxes"*.
 
 **Existing files are not touched.** A `model: opus` line left in place keeps working and keeps
-pinning; deleting it changes nothing today and un-pins you from future default evolution. A
-hand-typed pin is indistinguishable from the seed, so if you meant it, leave it.
+pinning. ⚑ **Deleting it is no longer a no-op:** with the plugin floors emptied, nothing supplies a
+model at all and the harness picks its own. A hand-typed pin is indistinguishable from the seed, so
+if you meant it, leave it.
 
-⚑ **One real behaviour change, codex personas only.** The launch resolve deliberately drops the
+⚑ **A behaviour change beyond the file, codex personas only.** The launch resolve deliberately drops the
 harness `model` default so that an unset persona model surfaces an actionable error rather than
 shipping an own-endpoint default into a third-party provider block. On a first launch there is no
 settings file, so the seed had been re-supplying exactly the value that exclusion dropped. A fresh
@@ -4030,6 +4031,39 @@ stops nearly every kanibako command, not just `start`. The same value in an agen
 ⚑ **A refusal now names the agent and lists that agent's own vocabulary.** It used to list the
 union of every installed plugin's settings, which offered you a cure that would not have worked:
 `kanibako agent set claude provider=x` was told `provider` was among the declared keys.
+
+---
+
+### 2.66 Kanibako no longer passes a model, and that exposes a bad line in some boxes
+
+kanibako used to floor claude at `opus` and codex at `gpt-5.5`, so every launch carried a `--model`
+flag. Both floors are empty now: with no model set anywhere, kanibako puts no `--model` on the
+command line and the agent uses its own built-in default. *"A generated agent settings file no
+longer carries a model default"* covered the half of this that stopped **writing** a model into a
+new agent settings file; this is the half that stopped **passing** one at launch.
+`agent.<node>.model` at any scope, and `-M` for a single launch, are unchanged and still win.
+
+**Who is affected by the exposed defect.** claude boxes **created** between 2026-08-17 and
+2026-08-31, including any created by `v1.8.0-rc2`. Their box home was seeded with a
+`~/.claude/settings.json` containing `"model": "default"`, which is not one of Claude Code's model
+aliases. A box home is seeded once, at create, and the home bind owns the file afterwards, so
+upgrading kanibako does not rewrite it. Boxes created by `v1.8.0-rc1`, by 1.7.2, or from this
+release on, seeded no model and are fine. codex boxes are unaffected — nothing ever seeded a model
+into `~/.codex/config.toml`.
+
+**How you tell.** The agent starts and every prompt fails with *"There's an issue with the selected
+model (default). It may not exist or you may not have access to it."* Until now that appeared only
+in the VS Code panel, because the `--model` kanibako passed overrode the settings file on the CLI
+path. With no flag passed, the CLI session reads the same line and fails the same way. To check
+before you hit it, from inside the box:
+
+```
+grep model ~/.claude/settings.json
+```
+
+**The cure, one step, from inside the box:** delete the `"model"` line from
+`~/.claude/settings.json`. That fixes it for good — with the key absent, Claude Code picks the
+default your account actually has. (`/model <name>` fixes a running session only.)
 
 ---
 

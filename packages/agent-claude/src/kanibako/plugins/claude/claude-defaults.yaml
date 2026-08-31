@@ -148,9 +148,17 @@ descriptor:
 # which env var), and `transform` below is realized on NO channel at all — kanibako's
 # own patch pipeline consumes it, so it has a floor here and no row there.
 behavior:
+  # ⚑ NO OPINIONATED DEFAULT, and do not put one back.  Spec §2d ships
+  # `agent.claude.model | default <None> (use claude's built-in default)`, and an
+  # EMPTY floor is how a plugin spells <None>: it resolves to "", which
+  # `assemble_argv` omits (`if value:`), so a box the user has set no model on
+  # launches with no `--model` on the argv at all and claude picks for itself.
+  # kanibako imposes no model — the same reason goose's row is empty.
+  # The key stays DECLARED, so an explicit `agent.<node>.model` at any cascade
+  # scope (or `-M`) still wins and IS emitted.
   - key: model
-    description: Claude model to use
-    default: opus
+    description: "Claude model to use (unset = claude's own built-in default)"
+    default: ""
   - key: endpoint
     description: "Alternate base-URL endpoint (persona); unset uses the harness
       default and syncs the OAuth login"

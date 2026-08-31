@@ -94,6 +94,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Kanibako no longer chooses a model for your agent.** claude boxes were floored at `opus` and
+  codex boxes at `gpt-5.5`, so every launch put a `--model` on the command line whether you had
+  asked for one or not, and the agent's own default was unreachable. Both floors are empty now,
+  which is what the key has always declared (`agent.<agent>.model`, default `<None>` — *use the
+  harness's built-in default*) and what goose already shipped. With no model set anywhere, kanibako
+  emits no `--model` flag and the CLI picks for itself. Setting one is unchanged and still wins:
+  `kanibako system set model=<name>` for every box, `kanibako agent set <agent> model=<name>` for
+  one agent, `-M <name>` for a single launch. The key stays declared, so those commands still
+  validate and resolve. **A fresh claude box no longer starts on opus, and a fresh codex box no
+  longer starts on gpt-5.5** — each starts on whatever that CLI defaults to. Pin either back with
+  the commands above if you want the old behavior.
+  ⚑ **This exposes a bad line in claude boxes created between 2026-08-17 and 2026-08-31**, including
+  any created by `v1.8.0-rc2`. Their seeded `~/.claude/settings.json` carries `"model": "default"`,
+  which is not a Claude Code model, and until now the `--model` kanibako passed overrode it — which
+  is why only the VS Code panel broke. With no flag passed, the CLI session fails the same way:
+  *"There's an issue with the selected model (default). It may not exist or you may not have access
+  to it."* Deleting the `"model"` line from `~/.claude/settings.json` fixes it for good. See
+  `MIGRATION.md`, *"Kanibako no longer passes a model, and that exposes a bad line in some boxes"*.
+
 - **A leaf only one plugin declares is no longer a key on the all-agents tier, and a plugin's own
   floor now lands under the agent that declares it.** `agent.default.*` is the universal
   vocabulary — a leaf there is a key on every agent — so a leaf only goose declares, `provider`,
@@ -429,9 +448,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   issue with the selected model (default). It may not exist or you may not have access to it."* A
   fresh box was unusable from its first screen. The seed no longer names a model at all: a static
   template value cannot track the model kanibako resolves through `agent.<node>.model`, and with the
-  key absent Claude Code picks, in the panel, the default the account actually has. (A box's CLI
-  session is unaffected either way — kanibako passes it a resolved `--model`, which is why only the
-  panel broke.) The seeded `effortLevel` moved from `xhigh` to `high` in the same pass. **This
+  key absent Claude Code picks, in the panel, the default the account actually has. (Only the panel
+  broke, because kanibako always passed the CLI a resolved `--model`, which overrode the settings
+  value. **kanibako no longer imposes a model** — see *Changed* — so on a box that already carries
+  the bad line, the CLI session now fails the same way. The two cures below fix both.) The seeded
+  `effortLevel` moved from `xhigh` to `high` in the same pass. **This
   repairs boxes created from now on, and only those.** A box home is seeded once, at create, and the
   home bind owns the file afterwards, so upgrading rewrites nothing — a box you already have keeps
   the bad line. Cure it from inside the box: `/model <name>` in the panel fixes the current session,

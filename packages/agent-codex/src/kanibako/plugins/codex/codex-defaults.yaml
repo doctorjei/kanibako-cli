@@ -194,9 +194,22 @@ descriptor:
 # there.  Declaring it keeps `config set agent.<node>℘codex.endpoint` a first-class
 # settable, cascade-resolved key.
 behavior:
+  # ⚑ NO OPINIONATED DEFAULT, and do not put one back.  Spec §2d ships
+  # `agent.codex.model | default <None> (use codex's built-in default)`, and an
+  # EMPTY floor is how a plugin spells <None>: it resolves to "", which
+  # `assemble_argv` omits (`if value:`), so a box the user has set no model on
+  # launches with no `--model` on the argv at all and codex picks for itself.
+  # kanibako imposes no model — the same reason goose's row is empty.
+  # The key stays DECLARED, so an explicit `agent.<node>.model` at any cascade
+  # scope (or `-M`) still wins and IS emitted.
+  # ⚑ This is the BARE-BOX floor and it is NOT the persona gate: a codex PERSONA
+  # still needs a model, vetoed by `persona.model_required` above, because a
+  # config-file harness cannot express "no model".  That gate never read this
+  # floor — `start.py` `_resolve_box_launch_decisions` drops `model` from the
+  # persona floor on purpose — so emptying the row does not weaken it.
   - key: model
-    description: Model to use
-    default: gpt-5.5
+    description: "Model to use (unset = codex's own built-in default)"
+    default: ""
   - key: endpoint
     description: "Alternate model-provider base-URL (persona); unset uses the
       harness default and syncs the codex login"

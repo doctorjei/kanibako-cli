@@ -37,8 +37,8 @@ _TARGETS = {
 #: The SHIPPED floor, key → default, in declaration order.  Changing one of these is a
 #: change to what every box of that agent runs at when the user has set nothing.
 _SHIPPED: dict[str, list[tuple[str, str]]] = {
-    "claude": [("model", "opus"), ("endpoint", ""), ("transform", "tweakcc")],
-    "codex": [("model", "gpt-5.5"), ("endpoint", "")],
+    "claude": [("model", ""), ("endpoint", ""), ("transform", "tweakcc")],
+    "codex": [("model", ""), ("endpoint", "")],
     "goose": [("provider", ""), ("model", ""), ("endpoint", "")],
 }
 
@@ -111,20 +111,60 @@ def test_every_shipped_behavior_row_describes_itself(agent: str) -> None:
         assert d.description.strip(), f"{agent}.{d.key} has no description"
 
 
-def test_goose_pins_no_provider_or_model() -> None:
-    """goose's three floors are the EMPTY STRING, and that is load-bearing.
+@pytest.mark.parametrize("agent", sorted(_TARGETS))
+def test_no_shipped_plugin_imposes_a_model(agent: str) -> None:
+    """KANIBAKO IMPOSES NO MODEL — every plugin's ``model`` floor is EMPTY.
+
+    Spec §2d ships ``agent.default.model | <None>`` and each per-agent row as
+    *"default <None> (use <agent>'s built-in default)"*.  An empty floor resolves to
+    ``""``, which ``assemble_argv`` / ``assemble_env`` OMIT (``if value:``), so
+    kanibako puts nothing on the argv and the harness picks for itself.
+
+    ⚑ THIS IS THE RULE, NOT A VALUE.  ``_SHIPPED`` above is an inventory: it reds
+    when a listed row changes, but it can say nothing about a plugin nobody added to
+    it.  This one reds for ANY opinionated model default on ANY shipped plugin,
+    which is the property the ruling actually asserts — so it is the test that
+    catches the reintroduction, and ``_SHIPPED`` only records what the tables hold.
+
+    ⚑ The corpus is ``_TARGETS`` — three classes imported BY NAME at module scope —
+    and not the plugin discovery registry, on purpose: a discovery-derived corpus
+    can come back empty (nothing installed) and pass vacuously, whereas a missing
+    import here reds at collection (P15).
+
+    ⚑ The key must stay DECLARED, which is why this asserts an EMPTY value and not
+    an ABSENT key: deleting the row would take ``model`` off ``setting_descriptors``
+    and ``config set agent.<node>.model`` would refuse a real key.
+
+    (Mutation: put ``default: opus`` back on claude's ``behavior:`` model row → RED
+    here by name; delete the row entirely → RED here on the declared-key assert.)
+    """
+    floors = {d.key: d.default for d in _TARGETS[agent]().setting_descriptors()}
+    assert "model" in floors, (
+        f"{agent} declares no 'model' behavior row; the key stays DECLARED with an "
+        f"EMPTY floor so an explicit agent.<node>.model still resolves"
+    )
+    assert floors["model"] == "", (
+        f"{agent} ships an opinionated model floor {floors['model']!r}; kanibako "
+        f"imposes no model (spec §2d agent.<agent>.model | <None>) — each harness "
+        f"uses its own built-in default until the user sets one"
+    )
+
+
+def test_goose_pins_no_provider() -> None:
+    """goose's ``provider`` floor is the EMPTY STRING, and that is load-bearing.
 
     An empty floor resolves to ``""``, which ``assemble_env`` omits (``if value:``) —
     so goose's own ``config.yaml`` (from ``goose configure``, persisted by the home
-    bind) keeps owning the provider/model, exactly as on the host.  Any non-empty
-    value here would override the user's own config on EVERY launch (spec §2d, the
-    goose section: kanibako *"does NOT impose or pre-declare provider/model"*).
+    bind) keeps owning the provider, exactly as on the host.  Any non-empty value
+    here would override the user's own config on EVERY launch (spec §2d, the goose
+    section: kanibako *"does NOT impose or pre-declare provider/model"*).
 
-    The keys stay DECLARED, so an explicit ``agent.goose.model`` still wins the
-    cascade and IS emitted.
+    The key stays DECLARED, so an explicit ``agent.goose.provider`` still wins the
+    cascade and IS emitted.  ⚑ ``model`` is not asserted here any more: it is no
+    longer a goose peculiarity but the ALL-AGENTS rule above.
     """
     floors = {d.key: d.default for d in GooseTarget().setting_descriptors()}
-    assert floors == {"provider": "", "model": "", "endpoint": ""}
+    assert floors["provider"] == ""
 
 
 def test_a_behavior_key_with_no_realization_row_is_still_declared() -> None:
