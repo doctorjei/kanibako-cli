@@ -13,10 +13,10 @@ user installing the meta package was a wheel the current cli refuses to load --
 and because plugin discovery was unguarded, that bricked every command including
 ``kanibako setup``.
 
-The check: for each locally built distribution, if PyPI already serves that exact
-name+version, compare the CONTENT.  Identical is fine (a genuine re-run).  Any
-difference means the version must be bumped, and we say so and exit non-zero
-BEFORE the upload step can silently swallow it.
+The check: for each locally built WHEEL (sdists are not compared), if PyPI already
+serves that exact name+version, compare the CONTENT.  Identical is fine (a genuine
+re-run).  Any difference means the version must be bumped, and we say so and exit
+non-zero BEFORE the upload step can silently swallow it.
 
 Deliberately compares extracted MEMBER CONTENT, not the archive bytes: wheels are
 not byte-reproducible (zip entry timestamps differ per build), so an archive hash

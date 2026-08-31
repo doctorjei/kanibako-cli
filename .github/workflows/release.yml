@@ -64,7 +64,8 @@ jobs:
       - name: Build all distributable packages
         # Mirrors scripts/build-all.sh's package list. agent-goose and
         # agent-codex are built/checked here too; they version independently
-        # of the 1.5.x train (currently 0.1.0).
+        # of the stamped train — `.bumpversion.cfg` does not stamp them, so each
+        # ships at whatever its own pyproject.toml says.
         run: |
           for pkg in . packages/agent-claude packages/agent-goose packages/agent-codex packages/meta; do
             python -m build "$pkg" --outdir "$PWD/dist"
@@ -232,11 +233,24 @@ jobs:
       - name: Build all distributable packages
         # Mirrors scripts/build-all.sh's package list. agent-goose and
         # agent-codex are built/published here too; they version independently
-        # of the 1.5.x train (currently 0.1.0).
+        # of the stamped train — `.bumpversion.cfg` does not stamp them, so each
+        # ships at whatever its own pyproject.toml says.
         run: |
           for pkg in . packages/agent-claude packages/agent-goose packages/agent-codex packages/meta; do
             python -m build "$pkg" --outdir "$PWD/dist"
           done
+
+      - name: Refuse a version collision with different content
+        # ⚑ THE PRODUCTION PATH NEEDS THIS MOST, AND WAS THE ONE JOB WITHOUT IT.
+        # `dev` and `publish-agent` have run this guard since 2026-08-17; promote
+        # did not, so the only path that reaches PROD PyPI was the only path that
+        # could ship the failure the guard exists for. agent-goose and agent-codex
+        # are not stamped (see the build step above), so a promote rebuilds them at
+        # their static version — and `skip-existing: true` below then drops that
+        # upload in SILENCE whenever PyPI already serves the version, leaving the
+        # OLD wheel served under a release claiming the new files.
+        # Stdlib-only, so it needs nothing beyond the build tooling above.
+        run: python scripts/check-publish-collisions.py dist
 
       - name: Publish to PyPI
         # OIDC trusted publishing — no token. Default packages-dir is dist/.
@@ -271,7 +285,8 @@ jobs:
   # skip the real promote). Stamps and builds the train (cli + agent-claude +
   # meta), and ALSO builds agent-goose + agent-codex at their static pyproject
   # version (not stamped) and publishes them with skip-existing, so a dev/rc
-  # meta (which pins those agents >= 0.2.0) is always installable from PyPI.
+  # meta (whose deps on those agents are `>=` floors) is always installable
+  # from PyPI.
   # Build + twine-check always; upload only when `publish` is true. Shares this
   # workflow file (and its env `pypi`) so the existing Trusted Publisher
   # applies. The official tag-driven rc->promote flow is untouched.
@@ -390,11 +405,11 @@ jobs:
           grep -nE 'kanibako-cli==|kanibako-agent-claude==' packages/meta/pyproject.toml
 
       - name: Build all distributable packages
-        # The 1.5.x train (cli + agent-claude + meta) is dev-stamped above and
+        # The stamped train (cli + agent-claude + meta) is dev-stamped above and
         # built here. agent-goose and agent-codex version independently and are
         # NOT dev-stamped; they are built below at their static pyproject
         # version into the same dist/ and published with skip-existing, so a
-        # dev/rc meta (which pins agent-goose/agent-codex >= 0.2.0) is always
+        # dev/rc meta (whose deps on those agents are `>=` floors) is always
         # installable from PyPI even when those agent versions are unchanged.
         run: |
           for pkg in . packages/agent-claude packages/meta; do
@@ -432,12 +447,12 @@ jobs:
   # ---------------------------------------------------------------------------
   # publish-agent path: on-demand (workflow_dispatch with `agent` set) publish
   # of ONE independently-versioned agent package (agent-goose | agent-codex) to
-  # prod PyPI. These agents version independently of the 1.5.x train (currently
-  # 0.1.0) — the train ships via the tag-driven rc->promote path; this job lets
-  # a single agent be published on demand at its static pyproject version, with
-  # no version stamping. Only the selected package is built into dist/, so only
-  # it is published. Shares this workflow file (env `pypi`) so the existing
-  # Trusted Publisher applies.
+  # prod PyPI. These agents version independently of the stamped train
+  # (`.bumpversion.cfg` does not stamp them) — the train ships via the tag-driven
+  # rc->promote path; this job lets a single agent be published on demand at its
+  # static pyproject version, with no version stamping. Only the selected
+  # package is built into dist/, so only it is published. Shares this workflow
+  # file (env `pypi`) so the existing Trusted Publisher applies.
   # ---------------------------------------------------------------------------
 
   publish-agent:
