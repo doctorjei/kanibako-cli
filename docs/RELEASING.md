@@ -66,8 +66,8 @@ every build step in `release.yml` use exactly this list:
 | `kanibako-cli` | `.` (repo root) | the train (`.bumpversion.cfg`) |
 | `kanibako-agent-claude` | `packages/agent-claude` | the train (`.bumpversion.cfg`) |
 | `kanibako` (meta) | `packages/meta` | the train (`.bumpversion.cfg`) |
-| `kanibako-agent-goose` | `packages/agent-goose` | **independent** (currently `0.3.0`) |
-| `kanibako-agent-codex` | `packages/agent-codex` | **independent** (currently `0.3.0`) |
+| `kanibako-agent-goose` | `packages/agent-goose` | **independent** — its own `pyproject.toml` |
+| `kanibako-agent-codex` | `packages/agent-codex` | **independent** — its own `pyproject.toml` |
 
 `.bumpversion.cfg` stamps five files — `pyproject.toml`,
 `src/kanibako/__init__.py`, `packages/agent-claude/pyproject.toml`,
