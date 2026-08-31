@@ -4292,7 +4292,7 @@ at least one removed path and will not load on v1.8.0:**
 
 `kanibako.agent_config` is the widest: **every** `kanibako-agent-claude` from `1.7.0` through
 `1.8.0rc1` imports it. **Clean (unaffected):** `kanibako-agent-claude` `1.8.0.dev95` / `dev98`,
-`kanibako-agent-codex` `0.4.0`, `kanibako-agent-goose` `0.4.0`.
+`kanibako-agent-codex` `0.6.0`, `kanibako-agent-goose` `0.5.0`.
 
 **What you see.** kanibako does not die — a plugin that cannot import is skipped by name and
 every other agent, plus `kanibako setup`, keeps working:
@@ -4329,8 +4329,8 @@ import and stay silent, and a stale plugin degrades to the named warning above r
 traceback).
 
 **Version numbers.** This release ships as `kanibako-cli` **1.8.0**, `kanibako` (meta)
-**1.8.0**, `kanibako-agent-claude` **1.8.0**, `kanibako-agent-codex` **0.4.0** and
-`kanibako-agent-goose` **0.4.0**. The plugins version independently and do not adopt the
+**1.8.0**, `kanibako-agent-claude` **1.8.0**, `kanibako-agent-codex` **0.6.0** and
+`kanibako-agent-goose` **0.5.0**. The plugins version independently and do not adopt the
 base's number (codex and goose never have). The KICKOFF-deletion follow-up (item 3) is **the
 release after v1.8.0** for each plugin, and must carry the `kanibako-cli >= 1.8.0` floor
 pin.

@@ -1899,7 +1899,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   upper bound on `kanibako-cli`, so an old plugin beside a new core is what an unpinned upgrade
   produces by default. Every `kanibako-agent-claude` from `1.7.0` through `1.8.0rc1`, and
   `kanibako-agent-codex` / `-goose` through `0.3.0`, import at least one removed path;
-  `kanibako-agent-claude` `1.8.0.dev95`+, `-codex` `0.4.0` and `-goose` `0.4.0` are clean. Nothing
+  `kanibako-agent-claude` `1.8.0.dev95`+, `-codex` `0.6.0` and `-goose` `0.5.0` are clean. Nothing
   crashes — a plugin that cannot import is reported by name on standard error and skipped, and
   every other agent plus `kanibako setup` keeps working (see the discovery fix below). The cure is
   to upgrade that plugin, or to install the `kanibako` meta package, which pins a compatible set.
@@ -1918,13 +1918,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   skipped. Every other agent keeps working. The two fallback discovery paths already tolerated a
   failing plugin; the main one now matches them.
 
-- **`kanibako-agent-goose` and `kanibako-agent-codex` are now 0.5.0, and older ones are refused.**
-  Their published `0.3.0` packages predate the `access_realization` and top-level `env:` changes, so
-  the current kanibako cannot load them — it refuses them by name, which is correct but left no
-  version to upgrade *to*, since `0.3.0` was the newest published. Both were republished at `0.4.0`,
-  and again at `0.5.0` when their plugin code and seeded canon changed further; the meta package
-  requires the current pair. **If you installed the meta package and saw errors about `safe_bypass`,
-  `container_env`, or `BindDefault`, upgrading is the fix.**
+- **`kanibako-agent-goose` is now 0.5.0 and `kanibako-agent-codex` is now 0.6.0; older ones are
+  refused.** Their published `0.3.0` packages predate the `access_realization` and top-level `env:`
+  changes, so the current kanibako cannot load them — it refuses them by name, which is correct but
+  left no version to upgrade *to*, since `0.3.0` was the newest published. Both were republished at
+  `0.4.0`, and again at `0.5.0` when their plugin code and seeded canon changed further. Codex moved
+  once more, to `0.6.0`: the published `0.5.0` calls a probe helper that this release replaces, so
+  that wheel would fail to import against the new CLI. Goose stayed at `0.5.0` — its content has not
+  moved since it was published. The meta package requires the current pair. **If you installed the
+  meta package and saw errors about `safe_bypass`, `container_env`, or `BindDefault`, upgrading is
+  the fix.**
   Unlike the CLI and the Claude plugin, these two are **not** stamped with the release train — they
   carry their own version, so a change to either has to be published under a new number or it cannot
   ship at all. The release now refuses to build when their content has moved and the version has
