@@ -323,10 +323,113 @@ the wire then `_PROVIDER_TEXT_CAP` characters). The status alone answers "was th
 "what was refused", and the difference is what made a 403 on a model the account may not use read
 as a dead credential. A success body is still not read — there is nothing to explain.
 
-⚑ **The token scrub lives HERE, beside the request, and that placement is the whole guarantee.**
-The bearer is in *headers* at this call and nowhere downstream, so a provider that echoes a
-credential back in its own error cannot reach any message a caller prints. Scrubbing precedes the
-cap deliberately: truncating first could leave half a token standing.
+⚑ **The credential scrub lives HERE, beside the request, and that placement is the whole
+guarantee.** The credentials are in *headers* at this call and nowhere downstream, so a provider
+that echoes one back in its own error cannot reach any message a caller prints.
+
+**EVERY caller-supplied header value is a secret, not just `Authorization`** (`_request_secrets`).
+`http_probe` is a *published* helper: a third-party plugin authenticating with `x-api-key` — or a
+header name nobody here foresaw — must not depend on this module recognizing it. Both first-party
+plugins happen to send `Authorization`, which made them safe by luck rather than by construction.
+A scheme-prefixed value contributes its remainder too, so `Bearer <tok>` redacts on the bare token
+as well. **The only exclusion is LENGTH, never a header name** — `_SECRET_MIN_CHARS` — because a
+name-keyed exemption list is exactly the shape that lets the next credential through under an
+unforeseen name; an empty value would splice the marker between every character of the body, and
+nothing that short carries credential entropy. The floor is *eight* because that is where ordinary
+header values stop being collateral (`gzip` and `close` are under it, `keep-alive` and
+`application/json` are caught by it) while staying below anything anyone issues as a key.
+
+The set is returned **longest-first**, and `_scrub` replaces in that order: where one header value
+strictly prefixes another, replacing the short one first would eat the long one's anchor and leave
+its tail in cleartext. Sorting makes that unavailable rather than resting a security property on
+`dict` insertion order.
+
+⚑ **The set is therefore not all credentials, and a false member is not cheap.** `2023-06-01` — the
+claude plugin's `anthropic-version` — is in it; an error naming that date has the date redacted and
+can trip `_survives` and lose the *whole* message. The trade still favors redaction, and it is why
+`_WITHHELD` reports a **match against a request value** and never accuses the provider of echoing a
+key back.
+
+⚑ **The scrub runs on the DECODED body, never on the wire bytes alone.** A literal replace sees
+only a secret's raw spelling, so any *escaped* rendering walks past it: a key containing `/`,
+echoed by a provider whose encoder writes it `\/` (PHP's `json_encode` does that by default),
+printed in full. `_provider_text` parses the body first and scrubs the decoded strings — keys
+included (`_scrub_decoded`) — so the whole JSON escape alphabet is undone by the parser instead of
+enumerated here, and the re-encoding that follows can only escape text the secret has already left.
+A body that does not parse as JSON has no encoding layer to undo and is scrubbed as plain text.
+
+🛑 **"Does not parse" means `ValueError` and nothing else.** A body that *is* JSON but whose decode
+could not FINISH has an encoding layer, un-undone, and the raw spelling is all the plain-text scrub
+can see — so it withholds. It gets its OWN message, `_UNREADABLE`: `_WITHHELD` reports a *match*
+against a request value, nothing matched here, and reusing it would tell the user about a match that
+never happened. This was a
+leak: a parse returns trees far deeper than the walk over its result can follow — that walk is
+Python frames — and a swallowed `RecursionError` printed the wire body with a `&`-escaped key
+legible in it (`_survives` deletes backslashes, so it read that as `u0026`, not `&`; Go's
+`encoding/json` HTML-escapes `&`, `<` and `>` by *default*, so a Go gateway echoing such a key
+writes exactly this). The safe default therefore lives on the **catch-all**, not on the one failure
+that was foreseen — and only the parse itself sits inside the `ValueError` guard, so a `ValueError`
+out of the walk or the re-serialization cannot take the "not JSON" arm.
+
+🛑 **`json.loads` itself is one of the catch-all's owners, and on the minimum supported interpreter
+it is an ordinary one.** Before 3.12 the decoder's own recursion is charged against
+`sys.getrecursionlimit()`, so a merely deep body — 995 levels, under 2 KB, less than a quarter of
+`_PROVIDER_READ_CAP`, something a server can serve — dies in the parse and the user loses the whole
+message. `json.loads` exposes no depth knob; `_provider_text`'s docstring carries the floor and the
+command that re-derives it.
+
+⚑ **The walk carries TWO budgets, and neither is spent on the other's axis.** `_EMBED_DEPTH` buys a
+descent into an embedded document; `_NEST_DEPTH` buys one ordinary container, so a deep tree of
+dicts and lists is one document and costs no embed budget. `_NEST_DEPTH` exists so the walk's depth
+is not `sys.getrecursionlimit()` — a global any code in the process may retune, and no place to
+rest a security property. It carries ACROSS an embed hop rather than restarting: restarting would
+multiply the two, and a body spending the product fits under `_PROVIDER_READ_CAP`.
+
+⚑ **Past EITHER budget the region is replaced by `_REDACTED` IN PLACE**, never skipped and never
+escalated to withholding the body: a document we declined to read is a place a secret could be, so
+it is treated as one, while its scrubbed surroundings still reach the user. The unread document is
+the only thing lost. A corollary for anyone reading the output: **a `<redacted>` in
+`ProbeResponse.body` is not evidence a secret was there** — the same marker stands for an
+over-budget region.
+
+⚑ **`_scrub_embedded` carries the decode move inward.** A gateway fronting another provider
+routinely echoes the upstream error body as a **string value**, and that string keeps its own
+escape layer — the identical defect, one level down. A string that parses to a *container* is
+followed and scrubbed recursively; anything else (a bare number, `null`, a quoted word) is left as
+written, so ordinary prose is never rewritten into a JSON rendering of itself.
+
+⚑ **A JSON body is RE-SERIALIZED, not edited in place.** The printed line is the provider's
+*meaning*, not its bytes: a pretty-printed body prints compacted, `é` prints as itself (the
+`ensure_ascii=False` in `_compact` is load-bearing — the default would re-escape a non-ASCII
+credential into a `\uXXXX` spelling the following scrub cannot see), `1.50` prints as `1.5`, `1e3`
+as `1000.0`, and duplicate keys collapse to the last. None of that is reversible from the output. A
+non-JSON body passes through unchanged apart from the whitespace collapse.
+
+⚑ **There are TWO caps and only one of them is ordered safely.** `_PROVIDER_TEXT_CAP` is applied
+after the scrub deliberately — truncating first could leave half a token standing.
+`_PROVIDER_READ_CAP` is not `_provider_text`'s to order: `http_probe` cut the body at that many
+*bytes* before the scrub ever saw it, so a key straddling the cut arrives bisected, matches no
+secret, and its surviving head prints whenever the whitespace collapse pulls it inside the character
+cap. Reading more of a hostile body is the only fix, and it is not one.
+
+⚑ **`_survives` is the last guard, it FAILS LOUD — and it is a guard, not coverage.** After the
+scrub it re-reads the text with backslash escaping deleted; if a secret is still recoverable — a
+body escaped *twice* is the case it catches — the whole body is replaced by `_WITHHELD` rather than
+printed. 🛑 **The two outcomes are not the same outcome.** What it *catches* costs the user an error
+message. What *walks past* it — any re-encoding that is not backslash escaping: `%2F`, `&#47;`,
+base64, an entity nobody has thought of — is **not caught and IS printed, credential and all**;
+nothing is withheld, because nothing here can tell that anything happened. Closing one of those
+classes takes another **decode layer ahead of the scrub**, the way `_scrub_embedded` closed embedded
+JSON; widening this guard cannot do it, and trying turns it into an enumeration of spellings that is
+wrong the moment a provider picks a new one.
+
+⚑ **So `ProbeResponse.body` says "scrubbed", never "clean".** The residue above is documented on
+`ProbeResponse`'s own class docstring — the surface `help(ProbeResponse)` prints, so an author's
+tooling shows it without opening the source — and it is a residue that **reaches printed output**,
+so the warning is not reserved for some other use: the value is an error message fit to show a
+human, not a string proven free of secrets. The same docstring carries the re-serialization note,
+because printing `response.body` is where an author meets it, and one guarantee it *does* make:
+the string is always encodable, so printing it to a strict stream (`sys.stdout`) cannot raise.
 
 ```python
 class PersonaSettings(NamedTuple):
@@ -444,8 +547,11 @@ states the status, the inputs and the provider's own words, and the reading is t
 *model* is what went ON THE WIRE, which is not always what the user configured: a harness that
 resolves a tier alias through an env var records the id it SENT and says where it came from in
 *model_origin*, or the message reads as if kanibako invented an id. *token_path* is a PATH, never a
-value; *provider_text* was capped and scrubbed of the bearer by `http_probe` before it could get
-here, so the whole record is safe to print.
+value, so it carries no secret by construction. *provider_text* is different: `http_probe` capped
+and scrubbed it of every header value the request carried, and it is also **re-serialized** when the
+body was JSON — the provider's meaning, not its bytes. 🛑 **Scrubbed is not proven clean.** The
+record inherits `ProbeResponse.body`'s documented residue verbatim; read this block as an error
+message fit for a human, not as a record proven free of secrets.
 
 It is filled in TWO halves — a plugin builds the request half before the call, `probe_outcome`
 fills *status* / *provider_text* from the answer, **so no plugin can forget to.** `rejected` takes
@@ -985,7 +1091,7 @@ The default `PersonaReadOutcome(None, None)` means this harness has no persona r
 
 #### `verify_persona`
 
-Probes *endpoint*, bearer-authed with the token at *token_path* — a minimal real ack.
+Probes *endpoint*, credential-authed with the token at *token_path* — a minimal real ack.
 
 The persona verify probe (DESIGN §3b): a FEW-token genuine completion round-trip against the
 persona's endpoint, specific to the harness API (anthropic messages vs OpenAI responses wire).

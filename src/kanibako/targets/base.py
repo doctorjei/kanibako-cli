@@ -171,42 +171,316 @@ class PersonaSpec:
 _PROVIDER_TEXT_CAP = 300
 #: Bytes taken off an error response before capping — a hostile body is never slurped.
 _PROVIDER_READ_CAP = 8 * 1024
+#: Shortest header value treated as secret-bearing; see `_request_secrets` for why LENGTH.
+#: ⚑ EIGHT is where ordinary header values stop being collateral (`gzip` under it,
+#: `keep-alive` caught by it) and still below anything issued as a key.
+_SECRET_MIN_CHARS = 8
+#: How many EMBEDDED JSON documents deep the scrub follows a string value (`_scrub_embedded`).
+#: ⚑ One step per proxy hop.  A BOUND, not a measured limit: the input is already capped at
+#: `_PROVIDER_READ_CAP`, so hostile work is at most that cap times this depth.
+_EMBED_DEPTH = 3
+#: How many ORDINARY containers deep the scrub walks one document (`_scrub_decoded`).
+#: ⚑ Also a bound, and it exists so the walk's depth is NOT `sys.getrecursionlimit()` — a global
+#: any code in the process may retune, and no place to rest a security property.  Orders of
+#: magnitude past a real error body.
+#: ⚑ IT IS HALF THE STACK, NOT A CORNER OF IT.  A container level costs TWO Python frames before
+#: 3.12 (the comprehension takes one of its own until PEP 709 inlines it) and one after, so a full
+#: budget peaks at a recursion limit of 508 on the oldest interpreter we support, against a default
+#: of 1000.  Stated rather than shrunk because spending it all is NOT a leak: a `RecursionError`
+#: out of this walk lands on `_provider_text`'s catch-all and takes `_UNREADABLE`, so a budget set
+#: wrong costs the user a message, never an unscrubbed one.  Re-derive the peak from the repo root:
+#:     python -c "import sys;sys.path.insert(0,'src')
+#:     from kanibako.targets.base import _scrub_decoded as w, _NEST_DEPTH as d
+#:     n = 'x'
+#:     for _ in range(d): n = {'k': n}
+#:     for r in range(50, 2000):
+#:         sys.setrecursionlimit(r)
+#:         try: w(n, ()); print('peak recursionlimit', r); break
+#:         except RecursionError: pass"
+_NEST_DEPTH = 250
+#: What a secret is replaced BY — and what an over-budget region is replaced by, IN PLACE.
+#: ⚑ SAME MARKER FOR BOTH ON PURPOSE: a document we declined to read is a place a secret could
+#: be, so it is treated as one.  Replacing it in place, rather than withholding the whole body,
+#: is what keeps a bound from costing the user the message that says what went wrong.
+_REDACTED = "<redacted>"
+# ⚑ STATES THE OUTCOME, NEVER A DIAGNOSIS.  What fired is a MATCH against a request header
+# value, and `_request_secrets` is length-keyed, so the match may be an `anthropic-version`
+# date.  Telling a user their provider echoed a key back is an accusation this cannot support.
+_WITHHELD = "(withheld — the reply still matched a value from the request after scrubbing)"
+# ⚑ ITS SIBLING, AND A DIFFERENT FACT — so it does not borrow the sentence above.  Nothing
+# matched here; the body was never read, so the scrub's guarantee never applied to it at all.
+# Saying "still matched a value from the request" would report a match that never happened.
+_UNREADABLE = "(withheld — the reply could not be decoded, so it could not be scrubbed)"
 
 
 class ProbeResponse(NamedTuple):
-    """What `http_probe` saw: an HTTP status (`None` = never reached) and the error text."""
+    """What `http_probe` saw: an HTTP status (`None` = never reached) and the error text.
+
+    *body* is the provider's own words — normalized to ONE line, capped, and scrubbed of
+    every header value the request carried (`_provider_text`).  Empty when there was
+    nothing to read; one of two fixed sentences when the text was withheld instead
+    (`_WITHHELD`, `_UNREADABLE`).
+
+    🛑 SCRUBBED IS NOT PROVEN CLEAN.  THIS IS THE PUBLISHED CONTRACT FOR *body*, and it is
+    on the class so `help(ProbeResponse)` carries it — read it before printing that string
+    anywhere.  The scrub matches a credential's OWN CHARACTERS: in plain text, through one
+    JSON decode, and through `_EMBED_DEPTH` embedded documents.  A provider that re-encodes
+    it otherwise (`%2F`, `&#47;`, base64) defeats the scrub SILENTLY — nothing is withheld
+    and this string prints with the credential in it (`_survives`); a credential straddling
+    `_PROVIDER_READ_CAP` leaks its head the same way.  An error message for a human, NOT a
+    value proven free of secrets.
+
+    ⚑ AND IT IS THE PROVIDER'S MEANING, NOT ITS BYTES: a JSON body is re-serialized, so it
+    prints compacted, `1.50` prints as `1.5` and duplicate keys collapse to the last, and a
+    region past `_EMBED_DEPTH` or `_NEST_DEPTH` is replaced by the same marker a secret gets
+    — so a `<redacted>` here is NOT evidence a secret was there.  Nothing round-trips; do
+    not parse this looking for what the provider sent.
+
+    ⚑ ENCODABLE, THOUGH: `_provider_text` guarantees this string survives `str.encode`, so
+    printing it to a strict stream cannot raise (`UnicodeEncodeError`).
+    """
 
     status: int | None
-    # ⚑ Already normalized to ONE line, capped, and SCRUBBED of the bearer — see
-    # `_provider_text`.  Safe to print verbatim; empty when there was nothing to read.
-    body: str = ""
+    body: str = ""   # 🛑 the contract above governs — read it before you print this
 
 
-def _bearer_secrets(headers: Mapping[str, str]) -> tuple[str, ...]:
-    """Every substring of *headers* that must never survive into printed text."""
+def _request_secrets(headers: Mapping[str, str]) -> tuple[str, ...]:
+    """Every caller-supplied header substring that must never survive into printed text.
+
+    ⚑ EVERY VALUE, not just `Authorization`.  `http_probe` is a PUBLISHED plugin helper, so
+    a plugin authenticating with `x-api-key` — or any header name nobody here thought of —
+    must not depend on this function recognizing it.  The first-party plugins both happen
+    to send `Authorization`: that made them safe by luck, not by construction.
+    ⚑ A scheme-prefixed value contributes its REMAINDER too, so `Bearer <tok>` redacts on
+    the bare token as well as on the whole header.
+    ⚑ THE ONLY EXCLUSION IS LENGTH, NEVER A HEADER NAME — a name-keyed exemption list is
+    exactly the shape that lets the next credential through under an unforeseen name.  A
+    value shorter than `_SECRET_MIN_CHARS` is skipped because an EMPTY one would splice the
+    marker between every character of the body.
+    ⚑ SO THIS SET IS NOT ALL CREDENTIALS, and a false member is not cheap: the claude
+    plugin's `anthropic-version: 2023-06-01` is in it, and an error naming that date can
+    trip `_survives` and lose the WHOLE message.  Redaction still wins the trade — but it
+    is why `_WITHHELD` reports a MATCH and never accuses the provider of echoing a key.
+    ⚑ RETURNED LONGEST-FIRST for `_scrub`, which explains why.
+    """
     out: list[str] = []
-    for name, value in headers.items():
-        if name.lower() != "authorization" or not value:
-            continue
-        out.append(value)
-        _, _, bearer = value.partition(" ")
-        if bearer:
-            out.append(bearer)
-    return tuple(out)
+    for value in headers.values():
+        if len(value) >= _SECRET_MIN_CHARS:
+            out.append(value)
+        _, sep, remainder = value.partition(" ")
+        if sep and len(remainder) >= _SECRET_MIN_CHARS:
+            out.append(remainder)
+    return tuple(sorted(out, key=len, reverse=True))
+
+
+def _scrub(text: str, secrets: tuple[str, ...]) -> str:
+    """*text* with every secret in it replaced by `_REDACTED`.
+
+    ⚑ ORDER-SENSITIVE, and `_request_secrets` owns the order: LONGEST FIRST, because a
+    secret landing first that merely PREFIXES another eats the longer one's anchor and
+    leaves its tail in cleartext.  Sorting there makes that shape unavailable rather than
+    resting a security property on the caller's `dict` insertion order.
+    """
+    for secret in secrets:
+        text = text.replace(secret, _REDACTED)
+    return text
+
+
+def _compact(node: object) -> str:
+    r"""*node* re-serialized as ONE compact JSON line.
+
+    ⚑ `ensure_ascii=False` is load-bearing, not cosmetic: the default would re-escape a
+    non-ASCII credential into a `\uXXXX` spelling the scrub after this cannot see.
+    """
+    import json as _json
+
+    return _json.dumps(node, ensure_ascii=False, separators=(",", ":"))
+
+
+def _scrub_decoded(
+    node: object,
+    secrets: tuple[str, ...],
+    embed: int = _EMBED_DEPTH,
+    depth: int = _NEST_DEPTH,
+) -> object:
+    """A `json.loads` result with every string it carries — KEYS INCLUDED — scrubbed.
+
+    TWO BUDGETS, spent on different axes and neither on the other's.  *embed* buys a
+    descent into an EMBEDDED document (`_scrub_embedded`); *depth* buys one ordinary
+    container, so a deep tree of dicts and lists is one document and costs no *embed*.
+    ⚑ Past EITHER, the region we declined to read is replaced by `_REDACTED` IN PLACE
+    and the walk carries on around it — see that constant for why the two agree.
+    ⚑ *depth* is what keeps this recursion inside the interpreter's limit BY
+    CONSTRUCTION.  A parse returns trees far deeper than this walk may follow — how much
+    deeper varies by interpreter, and `_provider_text` says where that floor is — and the
+    walk is Python frames, so without the budget a body well inside `_PROVIDER_READ_CAP`
+    raises `RecursionError`, which `_provider_text` can only answer by losing the whole
+    message.  It once answered by printing the undecoded body instead; see that docstring.
+    """
+    if depth <= 0:
+        return _REDACTED
+    if isinstance(node, str):
+        return _scrub_embedded(node, secrets, embed, depth)
+    if isinstance(node, list):
+        return [_scrub_decoded(item, secrets, embed, depth - 1) for item in node]
+    if isinstance(node, dict):
+        return {
+            _scrub_embedded(k, secrets, embed, depth): _scrub_decoded(v, secrets, embed, depth - 1)
+            for k, v in node.items()
+        }
+    return node
+
+
+def _scrub_embedded(text: str, secrets: tuple[str, ...], embed: int, depth: int) -> str:
+    """*text* scrubbed, FOLLOWED into an embedded JSON document when it is one.
+
+    ⚑ A gateway fronting another provider routinely echoes the upstream body as a string
+    VALUE, which keeps its own escape layer — `_provider_text`'s defect, one level down.
+    ⚑ ONLY A CONTAINER IS FOLLOWED, so a string parsing to a number, `null` or a quoted
+    word is left as written and ordinary prose is never rewritten as JSON.
+    ⚑ Past *embed* the string is REPLACED, not skipped: a document we declined to read is
+    a place a secret could be.  It goes IN PLACE — only the unread document disappears,
+    and its scrubbed surroundings still reach the user.
+    ⚑ `ValueError`, not `Exception`: that is the ONE failure meaning "not JSON".  A wider
+    catch would treat a decode we could not FINISH as plain text and scrub it for raw
+    spellings alone, which is exactly the shape `_provider_text`'s decode exists to stop.
+    ⚑ *depth* CARRIES ACROSS the hop rather than restarting, because it is the recursion
+    budget for the whole walk, not for one document.  Restarting it would multiply by
+    `_EMBED_DEPTH`, and a body spending the product fits under `_PROVIDER_READ_CAP`.
+    """
+    import json as _json
+
+    try:
+        inner = _json.loads(text)
+    except ValueError:
+        inner = None
+    if isinstance(inner, (dict, list)):
+        if embed <= 0:
+            return _REDACTED
+        return _compact(_scrub_decoded(inner, secrets, embed - 1, depth - 1))
+    return _scrub(text, secrets)
+
+
+def _survives(text: str, secrets: tuple[str, ...]) -> bool:
+    r"""Is any secret still recoverable from *text* once backslash escaping is deleted?
+
+    ⚑ A replace is exact-match, so any encoder can hide a secret by escaping the secret's
+    own characters.  `_provider_text` undoes the JSON escape alphabet by PARSING; this
+    catches one layer past that — a body escaped twice, or a non-JSON body carrying `\/`
+    anyway — and FAILS LOUD, replacing the body with `_WITHHELD` rather than printing it.
+
+    🛑 A GUARD, NOT COVERAGE, AND THE TWO OUTCOMES DIFFER.  What it CATCHES costs the user
+    an error message.  What WALKS PAST it — any re-encoding that is not backslash escaping:
+    `%2F`, `&#47;`, base64 — is NOT caught and IS PRINTED, credential and all, with nothing
+    withheld, because nothing here can tell that anything happened.
+    ⚑ Closing such a class takes another DECODE layer ahead of the scrub, as
+    `_scrub_embedded` did; widening this guard only enumerates spellings.
+    """
+    bare = text.replace("\\", "")
+    return any(secret in text or secret in bare for secret in secrets)
 
 
 def _provider_text(raw: bytes, headers: Mapping[str, str]) -> str:
-    """Normalize an error body into ONE capped, token-scrubbed line.
+    r"""Normalize an error body into ONE capped, secret-scrubbed line.
 
     ⚑ THE SCRUB IS THIS FUNCTION'S JOB, NOT A CALLER'S, and that is why it lives beside
-    the request: the bearer is in *headers* HERE and nowhere downstream, so a provider
-    that echoes a credential back cannot reach any message a caller prints.  Scrubbing
-    precedes the cap deliberately — truncating first could leave half a token standing.
+    the request: the credentials are in *headers* HERE and nowhere downstream, so this is
+    the only place a provider echoing one back can be caught at all.
+
+    ⚑ THE SCRUB RUNS ON THE DECODED BODY, NEVER ON THE WIRE BYTES ALONE.  A replace over
+    the wire text sees only a secret's raw spelling, and any ESCAPED rendering of it walks
+    straight past — a token containing `/`, echoed by a provider whose encoder writes it
+    `\/` (PHP's `json_encode` does by default), printed in full.  Decoding first hands the
+    scrub the string the provider MEANT, so the escape alphabet is undone by the parser
+    instead of enumerated here, and the re-encoding that follows can only escape text the
+    secret has already left.  `_scrub_embedded` carries that move `_EMBED_DEPTH` documents
+    inward.  A body that does not parse as JSON has no encoding layer to undo and is
+    scrubbed as plain text; `_survives` guards both paths — and what walks past IT is
+    printed, so read that docstring before trusting this output.
+
+    🛑 "DOES NOT PARSE" MEANS `ValueError` AND NOTHING ELSE.  A body that IS JSON but
+    that the decode could not FINISH has an encoding layer, un-undone, and the raw
+    spelling is all the plain-text scrub can see — so it takes `_UNREADABLE` instead, which
+    reports THAT fact and not a match that never happened.  This was a leak: the walk over
+    a decoded body is Python frames, and a swallowed `RecursionError` printed the wire body
+    with a `&`-escaped key legible in it (`_survives` deletes backslashes, so it saw
+    `u0026`, not `&`).  `_NEST_DEPTH` now keeps the WALK inside the limit; only the parse
+    is inside the `ValueError` guard, so nothing past it can take the "not JSON" arm; and
+    the catch-all answers for the rest — the stack already under this call, `_compact`, an
+    unforeseen shape, and `json.loads` ITSELF.
+
+    🛑 `json.loads` ITSELF IS THE FOURTH, AND IT IS ORDINARY, NOT EXOTIC.  Before 3.12 the
+    decoder's own recursion is charged against `sys.getrecursionlimit()`, so on the oldest
+    interpreter kanibako supports a merely DEEP body — 995 levels, under 2 KB, less than a
+    quarter of `_PROVIDER_READ_CAP` — dies in the parse and costs the user the whole
+    message.  A server CAN serve that.  `json.loads` exposes no depth knob, so the honest
+    move is to say it rather than to claim a floor we do not have.  Re-derive it with:
+
+        python -c "import json
+        d = 0
+        try:
+            while True:
+                d += 1
+                json.loads('[' * d + '1' + ']' * d)
+        except RecursionError:
+            print('deepest nesting parsed:', d - 1)"
+
+    ⚑ A JSON BODY IS RE-SERIALIZED, NOT EDITED: the result is the provider's MEANING, not
+    its bytes.  It prints compacted, `1.50` prints as `1.5` and `1e3` as `1000.0`, and
+    duplicate keys collapse to the last — none of it reversible from the printed line.  A
+    non-JSON body passes through unchanged apart from the whitespace collapse.
+
+    ⚑ TWO CAPS, AND ONLY ONE IS ORDERED SAFELY.  `_PROVIDER_TEXT_CAP` is applied HERE,
+    after the scrub, deliberately — truncating first could leave half a token standing.
+    `_PROVIDER_READ_CAP` is not ours to order: `http_probe` cut the body at that many BYTES
+    before *raw* arrived, so a secret straddling the cut comes in bisected, matches nothing
+    in *secrets*, and its surviving head prints whenever the whitespace collapse pulls it
+    inside the character cap.  That cut also truncates mid-JSON, so such a body cannot
+    parse and lands on the plain-text path.  Only reading more of a hostile body would
+    close it, and that is not a trade this function may make.
     """
+    import json as _json
+
+    secrets = _request_secrets(headers)
     text = raw.decode("utf-8", "replace")
-    for secret in _bearer_secrets(headers):
-        text = text.replace(secret, "<redacted>")
-    text = " ".join(text.split())
+    # ⚑ THE `ValueError` GUARD HOLDS THE PARSE AND NOTHING ELSE, by construction rather
+    # than by the docstring saying so.  Widen it over the walk or the re-serialization and
+    # a `ValueError` out of EITHER reaches the "not JSON" arm and prints a body whose
+    # encoding layer was never undone — the exact shape the catch-all exists to stop.
+    try:
+        decoded = _json.loads(text)
+    except ValueError:
+        # Not JSON: there is no encoding layer to undo, so the wire text IS the display text.
+        pass
+    except Exception:
+        # We set out to read it and could not.  Never fall through to the raw-spelling
+        # scrub — see this function's docstring; the safe default belongs on the CATCH-ALL,
+        # so a decode failure nobody foresaw withholds instead of printing.
+        return _UNREADABLE
+    else:
+        try:
+            text = _compact(_scrub_decoded(decoded, secrets))
+        except Exception:
+            return _UNREADABLE   # the same safe default, for the same reason
+    # ⚑ Scrub BOTH SIDES of the whitespace collapse.  Collapsing can join two runs into a
+    # match that was not there before, and can equally destroy one that was — a header value
+    # carrying a double space matches the wire body and not the collapsed body.  This is the
+    # only scrub the non-JSON path gets, so it does not get to be order-sensitive.
+    text = _scrub(text, secrets)
+    text = _scrub(" ".join(text.split()), secrets)
+    if _survives(text, secrets):
+        return _WITHHELD
+    # ⚑ ENCODABLE BY CONSTRUCTION, and this is the boundary that owes it.  `json.loads`
+    # turns a `\udXXX` escape into a REAL lone surrogate and `_compact`'s
+    # `ensure_ascii=False` — load-bearing, see `_compact` — writes it straight back, so
+    # without this the returned string raises `UnicodeEncodeError` in the CALLER's print.
+    # Every sink kanibako ships is `sys.stderr`, whose `backslashreplace` handler hides it;
+    # `http_probe` is a PUBLISHED helper and a plugin printing to `sys.stdout` gets the
+    # traceback instead of the error it asked for.
+    # ⚑ AFTER the scrub, never before: a replacement can only DESTROY characters, so it
+    # cannot rebuild a secret the scrub already took — and running it first would hand
+    # `_survives` a string the scrub never saw.
+    text = text.encode("utf-8", "replace").decode("utf-8")
     if len(text) > _PROVIDER_TEXT_CAP:
         text = text[:_PROVIDER_TEXT_CAP].rstrip() + "…"
     return text
@@ -221,16 +495,27 @@ def http_probe(
 ) -> ProbeResponse:
     """POST *body* as JSON to *url*; return the HTTP status and the provider's error text.
 
-    ⚑ NEVER raises, and never logs the request: *headers* carry a bearer token.
-    ⚑ The returned text is scrubbed of that bearer (`_provider_text`), so the never-log
-    property survives a provider that echoes the credential back in its own error.
+    ⚑ NEVER raises, and never logs the request: *headers* carry credentials.
+    ⚑ The returned text is scrubbed of EVERY caller-supplied header value
+    (`_provider_text`) — whatever header the caller authenticated with, not just
+    `Authorization`.  🛑 That scrub has a documented residue, and the residue REACHES
+    PRINTED OUTPUT — see `ProbeResponse.body`, which also says what re-serialization
+    did to the provider's words, before printing this anywhere.
+    ⚑ The body is cut at `_PROVIDER_READ_CAP` BYTES here, ahead of the scrub, and that
+    order is not reorderable — a secret straddling the cut arrives bisected and cannot be
+    matched (`_provider_text`).
     """
     import json as _json
     import urllib.error
     import urllib.request
 
     class _NoRedirects(urllib.request.HTTPRedirectHandler):
-        """Refuse every redirect: urllib would re-send the `Authorization` bearer cross-origin."""
+        """Refuse every redirect: urllib would re-send the caller's headers cross-origin.
+
+        ⚑ EVERY header, not just `Authorization` — this module treats each one as
+        credential-bearing (`_request_secrets`), and naming a single header is the
+        defect that let a third-party plugin's `x-api-key` through in the first place.
+        """
 
         def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[override]
             return None
@@ -301,9 +586,12 @@ class ProbeEvidence:
     """What a persona probe SENT and what came back — the facts a non-PASS verdict rests on.
 
     Filled in TWO halves: a plugin builds the request half before the call, and
-    `probe_outcome` fills *status* / *provider_text* from the answer.  ⚑ It carries no
-    secret by construction — *token_path* is a PATH, and *provider_text* was scrubbed of
-    the bearer by `http_probe` before it could ever get here.
+    `probe_outcome` fills *status* / *provider_text* from the answer.
+    ⚑ *token_path* is a PATH, never a value, so it carries no secret by construction.
+    *provider_text* is different: `http_probe` scrubbed it of every header value the
+    request carried, but 🛑 SCRUBBED IS NOT PROVEN CLEAN — `ProbeResponse.body` names the
+    residue that scrub does not close, and this record inherits it verbatim.  Read this
+    block as an error message for a human, not as a record proven free of secrets.
 
     ⚑ *model* is what went ON THE WIRE, which is not always what the user configured: a
     harness that resolves a tier alias through an env var records the id it SENT here and
@@ -313,9 +601,11 @@ class ProbeEvidence:
     endpoint: str
     model: str | None = None        # None = the `model` key was deliberately OMITTED
     model_origin: str = ""          # "" = sent exactly as configured
-    token_path: Path | None = None  # None = a KEYLESS probe (no `Authorization` header)
+    token_path: Path | None = None  # None = a KEYLESS probe (no credential header at all)
     status: int | None = None       # None = the endpoint was never reached
-    provider_text: str = ""         # the provider's own words, capped and scrubbed
+    # ⚑ The provider's MEANING, not its bytes: scrubbed, capped, and — when the body was
+    # JSON — re-serialized compactly by `_provider_text`, never edited in place.
+    provider_text: str = ""
 
     def lines(self, indent: str = "  ") -> tuple[str, ...]:
         """The evidence block: one labeled line per input, then the provider's own words.
@@ -724,10 +1014,11 @@ class Target(ABC):
         env: Mapping[str, str] | None = None,
         timeout: float = 5.0,
     ) -> PersonaProbeOutcome:
-        """Probe *endpoint*, bearer-authed with the token at *token_path* — a minimal real ack.
+        """Probe *endpoint*, credential-authed with the token at *token_path* — a minimal real ack.
 
-        ⚑ *token_path* MAY be `None` (a KEYLESS persona): probe it with the `Authorization`
-        header OMITTED rather than decline, and NEVER substitute a placeholder credential.
+        ⚑ *token_path* MAY be `None` (a KEYLESS persona): probe it with the credential header
+        (`Authorization` for the first-party plugins) OMITTED rather than decline, and NEVER
+        substitute a placeholder credential.
         ⚑ *model* MAY be `None`: probe with the field OMITTED, never a placeholder id.
         ⚑ *env* is the PERSONA-STORE passthrough env block — that store entry's own `env:`
         map, less the two single-source vars — and NOTHING ELSE.  🛑 IT IS NOT THE COLLAPSED

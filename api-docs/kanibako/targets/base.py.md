@@ -10,6 +10,12 @@ Prose for these symbols lives in `llm-docs/kanibako/targets/base.py.md`.
 ```
 _PROVIDER_TEXT_CAP = 300
 _PROVIDER_READ_CAP = 8 * 1024
+_SECRET_MIN_CHARS = 8
+_EMBED_DEPTH = 3
+_NEST_DEPTH = 250
+_REDACTED = '<redacted>'
+_WITHHELD = '(withheld — the reply still matched a value from the request after scrubbing)'
+_UNREADABLE = '(withheld — the reply could not be decoded, so it could not be scrubbed)'
 _REFUSAL_STATUSES = (401, 403)
 _MODEL_REQUIRED_STATUSES = (400, 422)
 ```
@@ -26,7 +32,12 @@ CategoryBindDefaults = dict[str, BindArm]
 def http_probe(url: str, *, headers: dict[str, str], body: dict, timeout: float) -> ProbeResponse
 def probe_outcome(response: ProbeResponse, sent: ProbeEvidence) -> PersonaProbeOutcome
 def probe_outcome_no_model(response: ProbeResponse, sent: ProbeEvidence) -> PersonaProbeOutcome
-def _bearer_secrets(headers: Mapping[str, str]) -> tuple[str, ...]
+def _request_secrets(headers: Mapping[str, str]) -> tuple[str, ...]
+def _scrub(text: str, secrets: tuple[str, ...]) -> str
+def _compact(node: object) -> str
+def _scrub_decoded(node: object, secrets: tuple[str, ...], embed: int=_EMBED_DEPTH, depth: int=_NEST_DEPTH) -> object
+def _scrub_embedded(text: str, secrets: tuple[str, ...], embed: int, depth: int) -> str
+def _survives(text: str, secrets: tuple[str, ...]) -> bool
 def _provider_text(raw: bytes, headers: Mapping[str, str]) -> str
 def _tilde(path: Path) -> str
 def _validate_agent_binary(binary: Path) -> str | None
