@@ -4048,9 +4048,9 @@ updating, and one of them fails at IMPORT time:**
   `PersonaSettings | None`.
 - **`Target.verify_persona`** returns `PersonaProbeOutcome` (PASS · REJECTED · INCONCLUSIVE ·
   NOT_APPLICABLE, each carrying a reason where one is meaningful) instead of `bool | None`, and
-  takes a new keyword-only **`env`** — the persona's passthrough environment block, the same
-  variables the box will receive. Add it to your signature (`*, env=None, timeout=5.0`) or the call
-  raises `TypeError`, which the callers treat as a probe bug.
+  takes a new keyword-only **`env`** — the persona-grata **store entry's own** environment block,
+  less the endpoint and token variables. Add it to your signature (`*, env=None, timeout=5.0`) or
+  the call raises `TypeError`, which the callers treat as a probe bug.
   ⚑ Build the probe request WITHOUT a `model` key when the persona names no model, rather than
   declining to probe or substituting a default id: some endpoints do not require one, and a server
   with a hardwired model can reject an id it does not serve.
@@ -4059,6 +4059,14 @@ updating, and one of them fails at IMPORT time:**
   asks, and a valid persona is refused on the answer. Claude does this for its tier aliases
   (`sonnet` → `$ANTHROPIC_DEFAULT_SONNET_MODEL`); codex sends its configured id verbatim and ignores
   `env`. Resolving a mapping the *user* wrote is not the substitution the rule above forbids.
+  🛑 **`env` is NOT the whole set of variables the box will receive, and the gap is a known open
+  defect.** The box's variables are the arbitrated `<scope>.env.<VAR>` slots, and they are folded
+  only by the whole-box resolve, which runs after the pre-flight that probes. So a mapping set with
+  `kanibako agent set <agent> env.<VAR>=…`, or at the workset or box scope, or on a persona
+  configured entirely through the keyspace with no store entry, does **not** appear in `env`: your
+  probe sends the unrewritten id, and a `REJECTED` on it hard-errors a launch that would have
+  worked. Until that is closed, a tier-alias mapping has to live in the persona store entry for the
+  probe to see it.
 
 - **The probe helpers now take a response, not a bare status.** `kanibako.targets.base.http_probe`
   replaces `http_probe_status` and returns a `ProbeResponse(status, body)`, where `body` is the

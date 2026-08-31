@@ -5386,10 +5386,18 @@ def _persona_probe_error(
       still hard-errors here.
     * ``PASS`` ⇒ proceed silently.
 
-    ⚑ *env* is the persona's passthrough env block, handed to the probe so the harness
-    can send the model the BOX would send (claude resolves a tier alias through
-    ``ANTHROPIC_DEFAULT_<TIER>_MODEL``).  Probing a raw alias is what produced the
-    measured false REJECTED this signature exists to prevent.
+    ⚑ *env* is the PERSONA STORE's passthrough env block (``PersonaBundle.env``),
+    handed to the probe so the harness can rewrite a tier alias the way its runtime
+    will (claude resolves one through ``ANTHROPIC_DEFAULT_<TIER>_MODEL``).  Probing a
+    raw alias is what produced the measured false REJECTED this signature exists to
+    prevent.
+    🛑 IT IS NOT THE COLLAPSED ``env`` FAMILY, AND THAT GAP IS AN OPEN DEFECT.  The box's
+    variables are the ``meta.assembly.env`` slots, which only a WHOLE-BOX resolve folds
+    (:func:`_install_assembly_collapse`, below its ``whole_box`` gate) — and on this path
+    that resolve runs AFTER this pre-flight, which must precede box materialization.  So
+    a mapping at the agent-file / workset / box rung, or a keyspace-only persona with no
+    store block, still probes with the RAW alias and can still be refused on the 403.
+    Closing it means collapsing before materialization: a design change, not a wiring.
 
     🛑 THE REJECTED MESSAGE NAMES WHAT WAS REFUSED, NEVER WHAT TO FIX.  It used to
     assert the token was bad and send the user to replace a VALID one; the probe cannot

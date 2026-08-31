@@ -447,10 +447,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the alias itself. An endpoint that serves only its own catalogue answered `403 team not allowed to
   access model`, kanibako read the 403 as an auth reject, and the launch was refused with a message
   telling you to fix the token. The box, had it been allowed to start, would have sent the resolved
-  model and worked. The probe now resolves the alias through the persona's own environment block
-  first, so it asks the endpoint the same question the box asks. **It resolves only a mapping you
-  wrote, and never invents one:** a model with no such variable is sent exactly as configured, and a
-  persona that names no model is still probed with the field omitted.
+  model and worked. The probe now resolves the alias through the persona store entry's own
+  environment block first, so a mapping written there puts the same question to the endpoint that
+  the box will ask. **It resolves only a mapping you wrote, and never invents one:** a model
+  with no such variable is sent exactly as configured, and a persona that names no model is still
+  probed with the field omitted. **The fix has a limit, and it is worth knowing before you configure
+  around it:** the probe reads the persona-grata **store entry's** environment block. A tier-alias
+  mapping written with `kanibako agent set <agent> env.<VAR>=…`, or at the workset or box scope, or
+  on a persona configured entirely through the keyspace with no store entry, is still not visible to
+  the probe — those launches can still be refused on the endpoint's 403. The box itself receives the
+  variable normally; it is only the pre-launch check that does not see it.
 
 - **A refused persona probe told you to fix the token, when a 401 or 403 never says which input was
   at fault.** The message asserted `the endpoint rejected the token` and pointed at the persona's

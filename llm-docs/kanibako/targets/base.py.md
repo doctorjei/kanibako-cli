@@ -1005,14 +1005,28 @@ that refuses a working box — the same rule *model* already follows.
 it with the `model` field OMITTED rather than decline — never with a placeholder or default id (see
 `probe_outcome_no_model`).
 
-⚑ ***env* is the persona's passthrough env block — THE SAME VARIABLES THE BOX WILL RECEIVE.** A
-harness whose RUNTIME rewrites the model from one of them MUST apply that rewrite here, or the
-probe asks the provider a question the box never asks. **MEASURED, 2026-08-30:** a persona
-resolving `model: sonnet` was probed with `sonnet` on the wire, the endpoint answered 403 *"team
-not allowed to access model"*, and the launch was refused on a VALID token — in the box, Claude
-Code reads that alias through `ANTHROPIC_DEFAULT_SONNET_MODEL` and sends `gemma-4-31b-it`, which
-the same endpoint serves. Claude implements this in `_wire_model`; codex names its model in
-`config.toml` and sends it verbatim, so it accepts *env* and ignores it.
+⚑ ***env* is the PERSONA-STORE passthrough env block** — the store entry's own `env:` map, less
+the two single-source vars (`PersonaBundle.env`). A harness whose RUNTIME rewrites the model from
+one of them MUST apply that rewrite here, or the probe asks the provider a question the box never
+asks. **MEASURED, 2026-08-30:** a persona resolving `model: sonnet` was probed with `sonnet` on the
+wire, the endpoint answered 403 *"team not allowed to access model"*, and the launch was refused on
+a VALID token — in the box, Claude Code reads that alias through `ANTHROPIC_DEFAULT_SONNET_MODEL`
+and sends `gemma-4-31b-it`, which the same endpoint serves. Claude implements this in `_wire_model`;
+codex names its model in `config.toml` and sends it verbatim, so it accepts *env* and ignores it.
+
+🛑 **IT IS NOT THE COLLAPSED `env` FAMILY, AND THE DIFFERENCE IS AN OPEN DEFECT, NOT A NUANCE.** The
+variables a box actually receives are the arbitrated `meta.assembly.env` slots, folded by
+`store_collapse.collapse_env` inside `_install_assembly_collapse` — *below* its `if not whole_box`
+gate, so ONLY the whole-box resolve (`commands.start._resolve_launch_snapshot`) produces them, and
+on the launch path that resolve runs long AFTER the pre-flight that probes. What the pre-flight has
+already resolved (`_resolve_box_launch_decisions`) is a `build_launch_snapshot` carrying the raw
+per-scope cascade and the persona tier — no collapse, no base families, no realized env, no `-e`.
+So a mapping written at the agent-file rung (`kanibako agent set <a> env.<VAR>=…` — the DOCUMENTED
+route), at the workset or box rung, or on a keyspace-only persona that has no store block at all,
+**does not reach this argument**: the alias goes out raw, the endpoint answers 403, and the launch
+hard-errors on a box that would have run. Closing it needs the collapse before box materialization,
+which is a design change, not a wiring.
+
 ⚑ **Resolving a mapping the USER wrote is not the substitution the rule above forbids; inventing
 one is.** A model with no such var goes out AS GIVEN, and `None` stays `None`.
 
