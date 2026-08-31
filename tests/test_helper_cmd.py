@@ -35,10 +35,28 @@ def helpers_env(tmp_path, monkeypatch):
     (home / "canon" / "notebook" / "scripts").mkdir(parents=True)
     monkeypatch.setattr(Path, "home", staticmethod(lambda: home))
 
+    # ⚑ THE ``XDG_CONFIG_HOME`` REDIRECT IS THE LOAD-BEARING HALF, not the file — and the
+    # ``Path.home`` patch above does NOT subsume it.  ``run_spawn`` opens
+    # ``config_file_path(xdg("XDG_CONFIG_HOME", ".config"))`` for a host spawn budget, and
+    # ``settings.paths.resolve_xdg`` honors the ENV VAR OVER ``Path.home()``: it falls back
+    # to ``Path.home() / ".config"`` only when the var is UNSET or set to a RELATIVE value
+    # (which it warns about and ignores, per the XDG spec).  Unset — this box, and CI — that
+    # fallback does land in the fake home, so dropping this line still passes here.
+    # The developer who EXPORTS ``XDG_CONFIG_HOME`` is the one who leaks a REAL config, and
+    # its spawn budget, into what these tests assert on.  Test it with the var exported AT A
+    # CONFIG THAT HAS A ``spawn:`` SECTION — exporting alone proves nothing, since a real
+    # config without one reads back the same ``None`` — or the test cannot see what the line
+    # is for.
     config_dir = tmp_path / "config"
     config_dir.mkdir()
     config_file = config_dir / "kanibako_config.yaml"
-    config_file.write_text('box:\n  image: "test"\n')
+    # EMPTY, exactly as ``settings.config.write_global_config`` writes it
+    # (``atomic_write_text(path, "")``, called by ``cli._ensure_initialized`` on first run
+    # when the file is absent) — an initialized host that overrides nothing.  ⚑ It used to
+    # hold ``box: image:``, which configured NOTHING: the Layer-1 file cannot carry
+    # settings, and the host budget ``read_spawn_config`` looks for is a ``spawn:``
+    # section.  That is the route to use if a test ever needs a host budget.
+    config_file.write_text("")
     monkeypatch.setenv("XDG_CONFIG_HOME", str(config_dir))
     return home
 
