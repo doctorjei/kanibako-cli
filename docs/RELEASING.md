@@ -66,8 +66,8 @@ every build step in `release.yml` use exactly this list:
 | `kanibako-cli` | `.` (repo root) | the train (`.bumpversion.cfg`) |
 | `kanibako-agent-claude` | `packages/agent-claude` | the train (`.bumpversion.cfg`) |
 | `kanibako` (meta) | `packages/meta` | the train (`.bumpversion.cfg`) |
-| `kanibako-agent-goose` | `packages/agent-goose` | **independent** — its own `pyproject.toml` |
-| `kanibako-agent-codex` | `packages/agent-codex` | **independent** — its own `pyproject.toml` |
+| `kanibako-agent-goose` | `packages/agent-goose` | **independent** — its own `pyproject.toml` **and** `packages/agent-goose/src/kanibako/plugins/goose/__init__.py` |
+| `kanibako-agent-codex` | `packages/agent-codex` | **independent** — its own `pyproject.toml` **and** `packages/agent-codex/src/kanibako/plugins/codex/__init__.py` |
 
 `.bumpversion.cfg` stamps five files — `pyproject.toml`,
 `src/kanibako/__init__.py`, `packages/agent-claude/pyproject.toml`,
@@ -75,6 +75,15 @@ every build step in `release.yml` use exactly this list:
 `packages/meta/pyproject.toml`. The goose and codex packages are deliberately
 **not** in it: they version independently and are published either alongside a
 train release or on their own ([section 5](#5-publishing-a-single-agent-package)).
+
+⚑ **Every plugin carries its version in TWO files** — its `pyproject.toml` and
+`__version__` in its `__init__.py`. `.bumpversion.cfg` stamps both of claude's
+and neither of goose's or codex's, so those two are hand-edited and can drift
+apart. What holds them together is
+`tests/test_meta_pin.py::test_plugin_version_pair_agrees`, over every
+`packages/agent-*`; it runs in CI's `pytest tests/`, and the test explains why
+nothing else can catch the drift. Read a failure there as *bump the other file*,
+not as a broken test.
 
 **Meta pinning.** In-tree, `packages/meta` depends on `kanibako-cli` as a
 *range*, so a source checkout or a dev flow never breaks. Every publish path in
@@ -330,7 +339,13 @@ The `publish-agent` job validates the input (only `agent-goose` and
 `agent-codex` are accepted), builds **only** that package into `dist/`, and
 publishes it to prod PyPI at its static `pyproject.toml` version with
 `skip-existing`. There is no `publish` toggle on this path and no version
-stamping — bump the package's `pyproject.toml` version in a commit first.
+stamping, so the bump is yours to make in a commit first — and it is **three
+edits, not one**: the package's `pyproject.toml`, `__version__` in its
+`__init__.py` (`packages/agent-<name>/src/kanibako/plugins/<name>/__init__.py`),
+and the matching `>=` floor in `packages/meta/pyproject.toml`. Nothing *stamps*
+the second one ([section 2](#2-the-packages)); missing it publishes a wheel that
+misreports its own version, which is why the test named there gates it — so run
+the suite before you tag, not after you publish.
 
 **Ordering across the base/plugin contract.** Meta's agent dependencies are
 `>=` floors, so an agent version that meta requires must be on the index **no
