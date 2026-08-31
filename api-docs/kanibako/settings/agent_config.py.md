@@ -10,6 +10,8 @@ Prose for these symbols lives in `llm-docs/kanibako/settings/agent_config.py.md`
 ```
 IDENTITY_KEYS = frozenset({'name', 'run_args'})
 AGENT_CATEGORY_DIRNAME: Final[Mapping[str, str]] = {category: category for category in ABSTRACT_CATEGORIES}
+DEFAULT_ROOT_LABEL = "this key's default root"
+DECLARATION_ROOT_LABEL = "this key's scope root"
 _SELF_RESOLVING_TOKENS: Final[tuple[str, ...]] = ('~', '$', '@')
 ```
 
@@ -22,6 +24,8 @@ def agent_category_dirname(category: str) -> str
 def category_root_ref(scope: str, category: str, *, agent: str | None=None) -> str
 def agent_category_root_ref(agent: str, category: str) -> str
 def is_self_resolving(src: str) -> bool
+def is_unambiguous_path_value(value: str) -> bool
+def ambiguous_path_value_error(key: str, value: str, *, anchor: str, anchor_ref: str | None=None, where: str | None=None, anchor_label: str=DEFAULT_ROOT_LABEL) -> str
 def root_relative_source(src: str, root_ref: str) -> str
 def agent_config_path(data_path: Path, agent_id: str, paths_agents: str='agents') -> Path
 ```
