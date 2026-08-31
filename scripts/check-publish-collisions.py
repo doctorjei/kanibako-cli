@@ -26,6 +26,22 @@ toolchain's version, and RECORD is derived from the other members, so it can onl
 differ when they already do.  ``METADATA`` is deliberately KEPT: a dependency
 floor changing under a fixed version is exactly the bug this is looking for.
 
+WHY SDISTS ARE NOT COMPARED, AND WHAT THAT LEAVES OPEN.  The same trick does not
+carry over.  An sdist's member set and its rendered metadata -- ``PKG-INFO``,
+``*.egg-info/SOURCES.txt`` -- are artifacts of whichever setuptools built it, so a
+local build measured against a PyPI one built on a different toolchain can differ
+without its CONTENT differing: a FALSE refusal, which is precisely how a guard
+gets switched off.  Excluding members would need to start from WHICH ones are
+toolchain-dependent, and answering that takes a reproducibility study nobody has
+run; widening the glob is an open item on the task board, gated on that study.
+Dependency coverage does not ride on this either way -- every package here builds
+a wheel too, and its ``METADATA`` is compared at the same name+version.  So the
+gap is real and NAMED: a content change confined to the sdist -- a file that ships
+in the sdist and not the wheel -- passes this check.  Both artifacts are built
+from one tree, which makes that unlikely, not impossible.  A run says so whenever
+sdists are present, rather than leaving the limit in this docstring where the
+operator will not be reading it.
+
 Usage:  check-publish-collisions.py DIST_DIR
 Exit:   0 nothing to flag  ·  1 a collision needs a version bump  ·  2 bad usage
 """
@@ -88,6 +104,7 @@ def main(argv: list[str]) -> int:
   if not wheels:
     print(f"No wheels in {dist_dir} — nothing to check.", file=sys.stderr)
     return 2
+  sdists = sorted(dist_dir.glob("*.tar.gz"))
 
   collisions: list[str] = []
   for wheel in wheels:
@@ -118,6 +135,11 @@ def main(argv: list[str]) -> int:
     if len(changed) > 10:
       print(f"          … and {len(changed) - 10} more")
 
+  # Say the limit where the operator is looking, not only in the docstring: the
+  # sign-off below would otherwise read as covering everything in the directory.
+  for sdist in sdists:
+    print(f"  NOT CHECKED  {sdist.name}: sdists are not content-compared")
+
   if collisions:
     print(
       "\nERROR: the above package(s) would be published at a version PyPI "
@@ -129,7 +151,7 @@ def main(argv: list[str]) -> int:
     )
     return 1
 
-  print("\nAll distributions are safe to publish.")
+  print("\nEvery WHEEL is safe to publish.")
   return 0
 
 
