@@ -323,12 +323,13 @@ class TestImageSharingInRunContainer:
         store emits the mounts FROM THE SET STORE, with no warning.
         """
         from kanibako.commands.start import _run_container
+        from kanibako.settings.config import BOX_META_FILE
 
         store_dir = tmp_path / "host-store"
         store_dir.mkdir()
         box_meta = tmp_path / "box-meta"
         box_meta.mkdir()
-        (box_meta / "box.yaml").write_text(
+        (box_meta / BOX_META_FILE).write_text(
             f"box:\n  images_store: {store_dir}\n"
         )
 
@@ -662,7 +663,26 @@ class TestVirtiofsPreflightInRunContainer:
 # ---------------------------------------------------------------------------
 
 class TestImageSharingConfig:
-    """Tests for share_images config option."""
+    """Tests for the ``box.share_images`` SETTINGS key.
+
+    ⚑⚑ THE FIXTURE FILE AND THE CLAIM MOVED HERE ON 2026-08-31 (R153), NOT THE
+    BEHAVIOUR.  Every case below wrote its ``box:`` table into a path named
+    ``kanibako_config.yaml`` and read it back with ``load_config`` — green, because that
+    was a GENERAL document reader.  Spec §1 gives the Layer-1 bootstrap file the
+    ``config.*`` paths ALONE, so the key's file is a SETTINGS file and its reader is
+    ``load_merged_config``.  The Layer-1 positional is the EMPTY file the ``config_file``
+    fixture writes, which also isolates the XDG env the box-scalar resolve reads.
+
+    ⚑ THE CASCADE-PRECEDENCE CLAIM IS NOT RE-ASSERTED HERE.  It lives, over a lower-tier
+    floor that DIFFERS from its declared default, at ``tests/test_settings/test_config.py
+    ::TestMergedConfigKeyspaceResolve::test_box_tier_beats_workset_beats_global``
+    (``box.image``: ``ws-img:2`` witnessed live, then ``box-img:3`` winning).  A version
+    of it on ``box.share_images`` cannot fail: ``false`` IS this key's declared default
+    (spec §2b), so a workset tier holding ``false`` is indistinguishable from no workset
+    tier at all.  What belongs here is this key's own behaviour as a real bool — and the
+    ``true``-floor case below carries the precedence anyway, in the one direction where
+    the assertion can tell the tiers apart.
+    """
 
     def test_default_is_false(self):
         """box_share_images defaults to False in KanibakoConfig."""
@@ -670,28 +690,42 @@ class TestImageSharingConfig:
         cfg = KanibakoConfig()
         assert cfg.box_share_images is False
 
-    def test_loaded_from_toml(self, tmp_path):
-        """share_images can be set in kanibako_config.yaml ([box] section)."""
-        from kanibako.settings.config import load_config
-        toml_path = tmp_path / "kanibako_config.yaml"
-        toml_path.write_text("box:\n  share_images: true\n")
-        cfg = load_config(toml_path)
+    def test_loaded_from_a_settings_file(self, config_file, tmp_path):
+        """``box.share_images: true`` in the BOX-tier settings file reaches the merged object."""
+        from kanibako.settings.config import BOX_META_FILE, load_merged_config
+
+        box_settings = tmp_path / BOX_META_FILE
+        box_settings.write_text("box:\n  share_images: true\n")
+        cfg = load_merged_config(config_file, box_settings)
         assert cfg.box_share_images is True
 
-    def test_false_in_toml(self, tmp_path):
-        """share_images = false is loaded correctly."""
-        from kanibako.settings.config import load_config
-        toml_path = tmp_path / "kanibako_config.yaml"
-        toml_path.write_text("box:\n  share_images: false\n")
-        cfg = load_config(toml_path)
+    def test_false_in_a_settings_file(self, config_file, tmp_path):
+        """A stored ``false`` is a real value — it beats a ``true`` at the tier below.
+
+        ⚑ THE ``true`` FLOOR IS THE POINT (P15).  ``False`` is also the declared
+        default, so a bare "reads back as False" case passes with the file ignored
+        outright AND with the stored ``false`` mis-coerced to the truthy string
+        ``"False"`` — the exact defect ``_typed_box_scalar``'s bool arm exists to stop.
+        Against a ``true`` floor, both of those RED.  ⚑ It is also the ONE direction in
+        which this key can witness box-over-workset at all (class docstring).
+        """
+        from kanibako.settings.config import (
+            BOX_META_FILE,
+            WORKSET_META_FILE,
+            load_merged_config,
+        )
+
+        workset_settings = tmp_path / WORKSET_META_FILE
+        workset_settings.write_text("box:\n  share_images: true\n")
+        # ⚑ SELF-EMPTINESS GUARD (P15): the floor has to be LIVE, or the ``False``
+        # below is just the declared default and this case witnesses nothing.
+        assert load_merged_config(
+            config_file, workset_path=workset_settings,
+        ).box_share_images is True
+
+        box_settings = tmp_path / BOX_META_FILE
+        box_settings.write_text("box:\n  share_images: false\n")
+        cfg = load_merged_config(
+            config_file, box_settings, workset_path=workset_settings,
+        )
         assert cfg.box_share_images is False
-
-    def test_merged_config_project_override(self, tmp_path):
-        """Project-level box.share_images overrides global config."""
-        from kanibako.settings.config import load_merged_config
-        global_toml = tmp_path / "global.yaml"
-        global_toml.write_text("box:\n  share_images: false\n")
-        project_toml = tmp_path / "box.yaml"
-        project_toml.write_text("box:\n  share_images: true\n")
-        cfg = load_merged_config(global_toml, project_toml)
-        assert cfg.box_share_images is True
