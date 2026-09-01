@@ -5,12 +5,14 @@ from __future__ import annotations
 import pytest
 
 from kanibako.settings.config_io import dump_doc, load_doc
+from kanibako.errors import ConfigError
 from kanibako.settings.config import (
     BOX_META_FILE,
     KanibakoConfig,
     _BOOL_FALSE,
     _BOOL_TRUE,
-    _flatten_toml,
+    _present_scalar_fields,
+    bootstrap_config_paths,
     coerce_bool,
     config_file_path,
     load_config,
@@ -27,9 +29,14 @@ from kanibako.settings.config import (
 
 class TestLoadConfig:
     def test_defaults(self, tmp_path):
+        """An absent Layer-1 file reads as an EMPTY foundation.
+
+        ⚑ It no longer answers ``box_image`` at all: :func:`load_config` returns a
+        ``BootstrapConfig``, which has no settings field to answer with.
+        """
         cfg = load_config(tmp_path / "nonexistent.yaml")
-        assert cfg.box_image == "ghcr.io/doctorjei/kanibako-oci:latest"
         assert cfg.config_paths == {}
+        assert not hasattr(cfg, "box_image")
 
     def test_a_written_config_is_empty_and_loads_to_the_defaults(self, tmp_path):
         """⚑ CHANGED 2026-08-26, and the assertions are INVERTED on purpose.
@@ -43,9 +50,8 @@ class TestLoadConfig:
         """
         path = tmp_path / "test.yaml"
         write_global_config(path)
-        loaded = load_config(path)
-        assert loaded.box_image == KanibakoConfig().box_image
-        assert loaded.config_paths == {}
+        assert load_config(path).config_paths == {}
+        assert load_merged_config(path).box_image == KanibakoConfig().box_image
 
     def test_empty_file_resolves_identically_to_the_old_verbatim_defaults(
         self, tmp_path,
@@ -61,37 +67,53 @@ class TestLoadConfig:
         bare ``channels`` leaf on either side would break it.
         """
         from kanibako.settings.paths import resolve_system_paths
-        from kanibako.settings.paths_defaults import (
-            CONFIG_PATH_DEFAULTS,
-            SYSTEM_PATH_DEFAULTS,
-        )
+        from kanibako.settings.paths_defaults import CONFIG_PATH_DEFAULTS
 
         sparse = tmp_path / "empty.yaml"
         write_global_config(sparse)
 
-        # The file as it was written until 2026-08-26: every default, verbatim.
+        # The Layer-1 half of the file as it was written until 2026-08-26: every
+        # ``config.*`` default, verbatim.  ⚑ ITS OTHER TWO TABLES ARE NOT HERE, and that
+        # is the next test: since 2026-08-31 a ``system:`` or ``box:`` table in this file
+        # is not merely inert, it REFUSES.
         verbose = tmp_path / "verbose.yaml"
-        old = {
+        dump_doc(verbose, {
             "config": {
                 k.split(".", 1)[1]: v for k, v in CONFIG_PATH_DEFAULTS.items()
             },
-            "system": {
-                k.split(".", 1)[1]: v
-                for k, v in SYSTEM_PATH_DEFAULTS.items()
-                if "." not in k.split(".", 1)[1]
-            },
-            "box": {
-                "image": KanibakoConfig().box_image,
-                "share_images": KanibakoConfig().box_share_images,
-            },
-        }
-        dump_doc(verbose, old)
+        })
 
         kw = {"data_home": tmp_path / "data", "home": tmp_path / "home"}
         assert resolve_system_paths(load_config(sparse).config_paths, **kw) == \
             resolve_system_paths(load_config(verbose).config_paths, **kw)
         # ...and the merged scalar tier agrees too: the box defaults were the third copy.
-        assert load_config(sparse).box_image == load_config(verbose).box_image
+        assert load_merged_config(sparse).box_image == \
+            load_merged_config(verbose).box_image
+
+    def test_the_old_three_table_file_refuses_and_names_both_tables(self, tmp_path):
+        """The file as it was written until 2026-08-26 is now an ERROR, not an ignore.
+
+        ⚑ THE OTHER HALF of the test above, and the reason its ``system:``/``box:``
+        tables moved out of the comparison: the two tables were settings, and a user who
+        still has them was silently running something other than what they read.
+        """
+        from kanibako.settings.paths_defaults import SYSTEM_PATH_DEFAULTS
+
+        verbose = tmp_path / "verbose.yaml"
+        dump_doc(verbose, {
+            "config": {"data": "/x"},
+            "system": {
+                k.split(".", 1)[1]: v
+                for k, v in SYSTEM_PATH_DEFAULTS.items()
+                if "." not in k.split(".", 1)[1]
+            },
+            "box": {"image": "planted:1"},
+        })
+        with pytest.raises(ConfigError) as exc:
+            load_config(verbose)
+        assert str(verbose) in str(exc.value)
+        assert "box.image" in str(exc.value)
+        assert "system.cache" in str(exc.value)
 
     def test_channelroot_round_trips_through_load_std_paths(self, tmp_home):
         """A config written by write_global_config resolves cleanly end-to-end:
@@ -107,18 +129,22 @@ class TestLoadConfig:
         assert std.channels_broadcast == std.channels / "chat" / "broadcast.md"
 
     def test_null_value_resolves_to_default(self, tmp_path):
-        """A lone file with ``foo: null`` resolves foo to its built-in default."""
-        path = tmp_path / "n.yaml"
-        path.write_text("box:\n  image: null\n")
-        cfg = load_config(path)
-        assert cfg.box_image == "ghcr.io/doctorjei/kanibako-oci:latest"
+        """A SETTINGS file with ``box: image: null`` resolves the key to its default.
+
+        ⚑ THE FILE MOVED, not the rule: the reset sentinel is a settings-tier idiom, and
+        the Layer-1 file cannot carry the key to reset.
+        """
+        box_file = tmp_path / BOX_META_FILE
+        box_file.write_text("box:\n  image: null\n")
+        merged = load_merged_config(tmp_path / "kanibako_config.yaml", box_file)
+        assert merged.box_image == "ghcr.io/doctorjei/kanibako-oci:latest"
 
     def test_empty_value_resolves_to_default(self, tmp_path):
-        """An empty ``foo:`` (None) resolves foo to its built-in default."""
-        path = tmp_path / "e.yaml"
-        path.write_text("box:\n  image:\n")
-        cfg = load_config(path)
-        assert cfg.box_image == "ghcr.io/doctorjei/kanibako-oci:latest"
+        """An empty ``image:`` (None) resolves the key to its built-in default."""
+        box_file = tmp_path / BOX_META_FILE
+        box_file.write_text("box:\n  image:\n")
+        merged = load_merged_config(tmp_path / "kanibako_config.yaml", box_file)
+        assert merged.box_image == "ghcr.io/doctorjei/kanibako-oci:latest"
 
     def test_config_table_populates_config_paths(self, tmp_path):
         """[config] keys land in cfg.config_paths (full dotted names)."""
@@ -138,45 +164,78 @@ class TestLayer1FileCannotHaveSettings:
     silently overriding the declared defaults. Spec §1 gives Layer 1 the bootstrap
     ``config.*`` paths alone; spec §2b/§2g put the box and system SETTINGS in the
     cascade files.
+
+    ⚑⚑ AND SINCE 2026-08-31 THE ANSWER IS A REFUSAL, NOT AN IGNORE (Jei). Dropping the
+    table in silence left a user running a different image than their file said, with
+    nothing anywhere reporting the difference. The refusal names the file and the keys.
     """
 
-    def test_a_box_table_in_the_layer1_file_is_inert(self, tmp_path):
-        """The planted value loses to the DECLARED DEFAULT, not to nothing.
-
-        ⚑ MUTATION, not a refusal: ``box.image`` resolves either way, so the test has
-        to name WHICH value wins. The planted one must not.
-        """
+    def test_a_box_table_in_the_layer1_file_refuses_and_names_it(self, tmp_path):
+        """The planted table stops the read, naming the file and BOTH keys."""
         cf = tmp_path / "kanibako_config.yaml"
         cf.write_text('box:\n  image: "layer1:planted"\n  share_images: true\n')
-        merged = load_merged_config(cf)
-        assert merged.box_image == KanibakoConfig().box_image
-        assert merged.box_share_images == KanibakoConfig().box_share_images
+        with pytest.raises(ConfigError) as exc:
+            load_merged_config(cf)
+        assert str(cf) in str(exc.value)
+        assert "box.image" in str(exc.value)
+        assert "box.share_images" in str(exc.value)
+
+    def test_the_undeclared_flat_spelling_refuses_there_too(self, tmp_path):
+        """A top-level ``box_image:`` is not a key anywhere, and Layer 1 says so by name.
+
+        ⚑ It USED to resolve identically to the declared ``box: image:`` — two spellings
+        for one key, one of them undeclared (spec §0).
+        """
+        cf = tmp_path / "kanibako_config.yaml"
+        cf.write_text('box_image: "layer1:planted"\n')
+        with pytest.raises(ConfigError) as exc:
+            load_config(cf)
+        assert "box_image" in str(exc.value)
+
+    @pytest.mark.parametrize("text", [
+        "box:\n",             # YAML parses this to None, NOT {}
+        "box: {}\n",          # the explicit empty mapping
+        "box:\n  sub: {}\n",  # a table whose only leaf flattens away
+    ])
+    def test_every_empty_table_spelling_refuses_alike(self, tmp_path, text):
+        """🛑 THE THREE EMPTY SPELLINGS AGREE, and two of them used not to.
+
+        A user reads all three as "an empty ``box:`` table". ``box:`` alone was refused as a
+        bare ``box``; the other two were silently ACCEPTED — two forms meaning one thing
+        giving opposite answers (Convention 0), and the accepting arm was the only thing in
+        this rule that behaved like a carve-out. An empty table is still a settings table in
+        a file that may not carry one, so all three refuse, named by the table.
+        """
+        cf = tmp_path / "kanibako_config.yaml"
+        cf.write_text(text)
+        with pytest.raises(ConfigError) as exc:
+            load_config(cf)
+        assert "box" in str(exc.value)
 
     def test_a_real_settings_tier_still_wins(self, tmp_path):
-        """🛑 The BOX tier still sets the value — only the Layer-1 read went away."""
+        """🛑 The BOX tier still sets the value — the Layer-1 read is what went away."""
         cf = tmp_path / "kanibako_config.yaml"
-        cf.write_text('box:\n  image: "layer1:planted"\n')
+        write_global_config(cf)
         box_file = tmp_path / BOX_META_FILE
         box_file.write_text('box:\n  image: "from-the-box-tier"\n')
         merged = load_merged_config(cf, box_file)
         assert merged.box_image == "from-the-box-tier"
 
-    def test_config_paths_keeps_config_star_and_drops_system_star(self, tmp_path):
-        """The foundation still loads; a ``system:`` table cannot ride along."""
+    def test_the_config_table_alone_is_accepted(self, tmp_path):
+        """The foundation still loads — the file's whole job, and the only thing in it."""
         cf = tmp_path / "kanibako_config.yaml"
-        cf.write_text(
-            'config:\n  agents: "/x"\nsystem:\n  cache: "/planted"\n'
-        )
-        merged = load_merged_config(cf)
-        assert merged.config_paths == {"config.agents": "/x"}
+        cf.write_text('config:\n  agents: "/x"\n')
+        assert bootstrap_config_paths(cf) == {"config.agents": "/x"}
 
-    def test_a_system_table_in_the_layer1_file_moves_no_path(self, tmp_path):
+    def test_a_system_table_in_the_layer1_file_refuses_the_path_resolve(self, tmp_path):
         """``load_system_config`` reads the path tier's Layer-2 half from the SETTINGS
-        file alone — the mirror of the rule it already applied the other way.
+        file alone — and refuses a ``system:`` table in the CONFIG file rather than
+        quietly resolving around it.
 
-        Before 2026-08-26 a ``system:`` table hand-written into the bootstrap file
-        entered the resolve as a real (lowest) layer, which made that file a settings
-        source in the one place it most mattered: where every host path is decided.
+        Before 2026-08-26 such a table entered the resolve as a real (lowest) layer,
+        which made that file a settings source in the one place it most mattered: where
+        every host path is decided. It was then dropped in silence, which is what the
+        2026-08-31 ruling replaced.
         """
         from kanibako.settings.paths import load_system_config
 
@@ -189,9 +248,13 @@ class TestLayer1FileCannotHaveSettings:
             f'config:\n  data: "{data_home}/kanibako"\n'
             'system:\n  cache: "/planted-from-layer1"\n'
         )
-        resolved = load_system_config(cf, data_home=data_home, home=home)
-        assert str(resolved["system.cache"]) != "/planted-from-layer1"
+        with pytest.raises(ConfigError) as exc:
+            load_system_config(cf, data_home=data_home, home=home)
+        assert "system.cache" in str(exc.value)
+
         # ...while the SETTINGS file's own row IS honoured — the route that replaced it.
+        cf.write_text(f'config:\n  data: "{data_home}/kanibako"\n')
+        resolved = load_system_config(cf, data_home=data_home, home=home)
         ssp = resolved["config.settings"]
         ssp.parent.mkdir(parents=True, exist_ok=True)
         ssp.write_text('system:\n  cache: "/from-the-settings-file"\n')
@@ -369,44 +432,47 @@ class TestRetiredTemplatesStamp:
         assert not hasattr(config_mod, "read_templates_stamp")
         assert not hasattr(config_mod, "template_staleness_gate")
 
-    def test_orphaned_leaf_loads_without_error(self, tmp_path):
-        """An old config carrying the leaf loads; nothing raises, nothing maps."""
+    def test_the_leaf_reaches_no_dataclass_field(self):
+        """Neither flat object has a home for it — the symbols went, so did the slot."""
         from dataclasses import fields
 
-        from kanibako.settings.config import KanibakoConfig, load_config
+        from kanibako.settings.config import BootstrapConfig, KanibakoConfig
+
+        names = {fld.name for fld in fields(KanibakoConfig)}
+        names |= {fld.name for fld in fields(BootstrapConfig)}
+        assert "templates_stamp" not in names
+
+    def test_the_orphan_in_the_LAYER1_file_refuses_by_name(self, tmp_path):
+        """⚑ CHANGED 2026-08-31, and the change is the ruling.
+
+        The orphan used to land in the raw ``config_paths`` set and reach no consumer —
+        "orphaned-ignored". A ``system:`` table is a SETTINGS table wherever it sits, and
+        the Layer-1 file may not carry one, so the read now names it instead of carrying
+        it inertly. ⚑ The orphan in a SETTINGS file is a different question and stays
+        §2.47's (an undeclared key stops the command).
+        """
+        from kanibako.settings.config import load_config
         from kanibako.settings.config_interface import write_system_value
 
         cf = tmp_path / "kanibako_config.yaml"
         write_global_config(cf)
         write_system_value(cf, "templates_stamp", "deadbeef")
 
-        cfg = load_config(cf)  # must not raise
-        # It reaches no dataclass field...
-        assert "templates_stamp" not in {fld.name for fld in fields(KanibakoConfig)}
-        assert not hasattr(cfg, "templates_stamp")
-        # ...and it DOES land in the raw ``config_paths`` set (the whole [system]
-        # table is flattened there verbatim), which is the honest statement of
-        # "orphaned-ignored": the set is only ever READ BY KEY — resolve_system_paths
-        # iterates SYSTEM_PATH_DEFAULTS — so an undeclared leaf reaches no consumer.
-        # The next test proves the inertness rather than asserting it here.
-        assert cfg.config_paths["system.templates_stamp"] == "deadbeef"
+        with pytest.raises(ConfigError) as exc:
+            load_config(cf)
+        assert "system.templates_stamp" in str(exc.value)
 
-    def test_orphaned_leaf_resolves_paths_identically(self, tmp_path):
-        """The orphan changes NO resolved system path (it reaches no consumer)."""
+    def test_a_clean_config_still_resolves_every_path(self, tmp_path):
+        """The other half: with the orphan gone the resolve is untouched."""
         from kanibako.settings.config import load_config
-        from kanibako.settings.config_interface import write_system_value
         from kanibako.settings.paths import resolve_system_paths
+        from kanibako.settings.paths_defaults import SYSTEM_PATH_DEFAULTS
 
         clean = tmp_path / "clean.yaml"
-        stamped = tmp_path / "stamped.yaml"
         write_global_config(clean)
-        write_global_config(stamped)
-        write_system_value(stamped, "templates_stamp", "deadbeef")
-
         kw = {"data_home": tmp_path / "data", "home": tmp_path / "home"}
-        assert resolve_system_paths(
-            load_config(stamped).config_paths, **kw
-        ) == resolve_system_paths(load_config(clean).config_paths, **kw)
+        resolved = resolve_system_paths(load_config(clean).config_paths, **kw)
+        assert set(resolved) >= set(SYSTEM_PATH_DEFAULTS)
 
     def test_orphaned_leaf_does_not_disturb_the_setup_gate(self, tmp_path):
         """The one gate that remains reads the same answer with the orphan present."""
@@ -877,36 +943,55 @@ class TestScalarOverlayPrecedence:
         assert merged.box_image == "img:cli"
 
 
-class TestFlattenToml:
-    def test_nested_dict(self):
-        data = {"paths": {"boxes": "x", "shell": "y"}}
-        flat = _flatten_toml(data)
-        assert flat == {"paths_boxes": "x", "paths_shell": "y"}
+class TestPresentScalarFields:
+    """The settings-file read is a walk THROUGH the declared dotted keys.
 
-    def test_deeply_nested(self):
-        data = {"a": {"b": {"c": "deep"}}}
-        flat = _flatten_toml(data)
-        assert flat == {"a_b_c": "deep"}
+    ⚑ It replaced a whole-document flatten into underscore-joined names
+    (``_flatten_toml``, deleted 2026-08-31) whose namespace collided with the
+    ``KanibakoConfig`` field names — which is how an undeclared top-level
+    ``box_image:`` came to resolve exactly like the declared ``box: image:``.
+    """
 
-    def test_flat_input(self):
-        data = {"key": "val"}
-        flat = _flatten_toml(data)
-        assert flat == {"key": "val"}
+    def test_the_declared_nested_spelling_is_read(self, tmp_path):
+        path = tmp_path / BOX_META_FILE
+        path.write_text('box:\n  image: "x"\n  shell: "y"\n')
+        assert _present_scalar_fields(path) == {"box_image": "x", "box_shell": "y"}
+
+    def test_the_flat_spelling_is_not_a_key(self, tmp_path):
+        """🛑 THE CLOSED-KEYSPACE HALF (spec §0): ``box_image`` is not a declared key."""
+        path = tmp_path / BOX_META_FILE
+        path.write_text('box_image: "x"\n')
+        assert _present_scalar_fields(path) == {}
+
+    def test_an_undeclared_leaf_under_a_declared_table_is_not_read(self, tmp_path):
+        """The walk asks for the four keys by name; it does not sweep the table."""
+        path = tmp_path / BOX_META_FILE
+        path.write_text('box:\n  image: "x"\n  not_a_key: "y"\n')
+        assert _present_scalar_fields(path) == {"box_image": "x"}
+
+    def test_a_present_none_is_the_reset_sentinel(self, tmp_path):
+        path = tmp_path / BOX_META_FILE
+        path.write_text("box:\n  image:\n")
+        assert _present_scalar_fields(path) == {"box_image": None}
+
+    def test_a_bool_stays_a_bool(self, tmp_path):
+        """``str(False)`` is the truthy ``"False"`` — the coercion must not stringify."""
+        path = tmp_path / BOX_META_FILE
+        path.write_text("box:\n  enable_vault: false\n")
+        assert _present_scalar_fields(path) == {"box_enable_vault": False}
 
 
 class TestWriteProjectConfig:
     def test_creates_new(self, tmp_path):
         path = tmp_path / BOX_META_FILE
         write_project_config(path, "new-image:latest")
-        cfg = load_config(path)
-        assert cfg.box_image == "new-image:latest"
+        assert _present_scalar_fields(path)["box_image"] == "new-image:latest"
 
     def test_updates_existing(self, tmp_path):
         path = tmp_path / BOX_META_FILE
         write_project_config(path, "first:latest")
         write_project_config(path, "second:latest")
-        cfg = load_config(path)
-        assert cfg.box_image == "second:latest"
+        assert _present_scalar_fields(path)["box_image"] == "second:latest"
 
     def test_update_existing_image(self, tmp_path):
         p = tmp_path / BOX_META_FILE
@@ -1184,8 +1269,7 @@ class TestTargetSettings:
         write_agent_setting(p, "model", "haiku", "claude")
 
         # The base box section should still be intact.
-        cfg = load_config(p)
-        assert cfg.box_image == "base:image"
+        assert _present_scalar_fields(p)["box_image"] == "base:image"
 
 
 class TestPersistCreationFlags:
@@ -1279,11 +1363,20 @@ class TestMergedConfigKeyspaceResolve:
         the settings cascade did not read it, so its values would be STRANDED unless
         mapped in as the floor. Nothing settings-shaped is written there any more, so
         there is nothing to strand — and a table left by hand must not resolve.
+
+        ⚑ 2026-08-31: the planted table is REFUSED rather than merely not resolving, so
+        the floor is measured on a CLEAN file. Which value the planted one loses to is
+        no longer a question the code can be asked.
         """
         gp = self._global(tmp_path, monkeypatch)
-        gp.write_text("box:\n  image: layer1:planted\n")
+        gp.write_text("")
         merged = load_merged_config(gp, None)
         assert merged.box_image == KanibakoConfig().box_image
+
+        gp.write_text("box:\n  image: layer1:planted\n")
+        with pytest.raises(ConfigError) as exc:
+            load_merged_config(gp, None)
+        assert "box.image" in str(exc.value)
 
     def test_box_tier_beats_workset_beats_global(self, tmp_path, monkeypatch):
         gp = self._global(tmp_path, monkeypatch)

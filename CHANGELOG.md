@@ -94,6 +94,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **A settings table left in `kanibako_config.yaml` now stops the command, naming the file and the
+  keys.** That file holds the `config.*` bootstrap paths and nothing else, and anything else in it
+  was previously dropped in silence — so a `box: image:` table there looked like it was choosing
+  your image while the launch used something different, and nothing reported the difference. The
+  rule used to be a filter applied at each of the four places that read the file, over an object
+  that carried the box settings too, which is why a read could still hand a `box.image` back. The
+  Layer-1 read now produces the `config.*` foundation and has nowhere to put anything else, so
+  there is no filter left to forget: a settings table is refused, with the offending keys listed
+  and the `kanibako system set` line that puts them where they take effect. See MIGRATION.md
+  § *2.67 A settings table in `kanibako_config.yaml` stops the command, instead of being ignored*.
+
+- **An undeclared FLAT key spelling is no longer read as a settings key.** A top-level `box_image:`
+  resolved identically to the declared `box: image:` — two spellings for one key, one of which the
+  keyspace does not declare — because the reader flattened a whole document into a namespace that
+  collided with its own field names. Settings are read through the declared dotted spelling now,
+  so only `box: image:` (and `box: shell:`, `box: share_images:`, `box: enable_vault:`) is a key.
+  The same read drops `paths.project_toml`, which was never declared and which nothing read.
+  `kanibako config show --effective` therefore stops printing two rows that were never yours to
+  set — `paths_project_toml` and `config_paths` — both of which were internal plumbing surfacing
+  in a user view.
+
 - **Kanibako no longer chooses a model for your agent.** claude boxes were floored at `opus` and
   codex boxes at `gpt-5.5`, so every launch put a `--model` on the command line whether you had
   asked for one or not, and the agent's own default was unreachable. Both floors are empty now,

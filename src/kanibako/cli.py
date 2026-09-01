@@ -280,7 +280,6 @@ def _normalize_command(effective: list[str]) -> list[str]:
 def _ensure_initialized() -> None:
     """Ensure kanibako is initialized (create config + data dirs on first run)."""
     from kanibako.settings.config import (
-        KanibakoConfig,
         config_file_path,
         write_global_config,
     )
@@ -298,13 +297,16 @@ def _ensure_initialized() -> None:
     # ⚑ The file carries ``config.*`` and nothing else, and first run has no non-default
     # ``config.*`` to record — so it is created empty and its EXISTENCE is the whole
     # signal this function returns early on above (Jei, 2026-08-26).
-    config = KanibakoConfig()
     write_global_config(cf)
 
-    # Create data directories
+    # Create data directories.
+    # ⚑ NO SET-VALUES, spelled as the empty mapping: the file was just written EMPTY two
+    # lines above, so the Layer-1 foundation here is the DECLARED DEFAULTS and nothing else.
+    # It used to read ``KanibakoConfig().config_paths``, which was the same ``{}`` wearing a
+    # settings object's name.
     data_home = xdg("XDG_DATA_HOME", ".local/share")
     sys_paths = resolve_system_paths(
-        config.config_paths, data_home=data_home, home=Path.home(),
+        {}, data_home=data_home, home=Path.home(),
     )
     data_path = sys_paths["config.data"]
     (data_path / "containers").mkdir(parents=True, exist_ok=True)
@@ -368,7 +370,9 @@ def _ensure_initialized() -> None:
     from kanibako.settings.paths import load_std_paths
     from kanibako.launch.templates import install_packaged_templates
 
-    std_paths = load_std_paths(config)
+    # ⚑ NO ARGUMENT: the config file was written above, so the default read finds it — and
+    # a Layer-1 read carries no settings for this call to have wanted.
+    std_paths = load_std_paths()
     install_packaged_templates(std_paths, target_names)
 
     # ⚑ NOTHING SEEDS ``COLORTERM`` HERE ANY MORE (MBR-2/D1-4).  It was a

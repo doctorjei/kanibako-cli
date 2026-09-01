@@ -436,11 +436,12 @@ The order below is the order in the source, and several steps of it are load-bea
   SYSTEM-scope category key (`system.caches`) only LOOKS like a `system.*` config key —
   categories are gettable at every scope. See below for the missing write twin.
 * **`config.*` / `system.*` path keys** — the raw set-value from the bootstrap config file's
-  `[config]`/`[system]` tables (file-only tier; not a merged-config field). ⚑ `load_config`, not
-  `load_merged_config`: `config_paths` is CONFIG-FILE-ONLY (project/workset files never
+  `[config]` table (file-only tier; not a merged-config field). ⚑ `load_config`, not
+  `load_merged_config`: the Layer-1 read is CONFIG-FILE-ONLY (project/workset files never
   contribute it), and the merged loader now runs the B6 box-scalar KEYSPACE resolve — pure cost
   here, and a malformed box settings file must not break a bootstrap-tier read (the doctrine
-  boundary the B6 consumer map fences off).
+  boundary the B6 consumer map fences off). ⚑ `system.*` path keys do NOT read here: they are
+  Layer-2 settings and fall through to the routed read (spec §2g).
 * **Regular config keys** — routed via the SAME known-key table set/reset use (no
   get-validated/set-unguarded asymmetry). ⚑ The OLD path returned
   `getattr(load_merged_config(...), flat)` — the merged dataclass, which fabricates the built-in
@@ -933,12 +934,13 @@ It runs three clears in order: the project-level config overrides (always from `
 the agent settings table (agent-keyed `{<agent>: {key: val}}`; every agent's subsection, the
 reserved `default` tier included), and the nested SCOPE tables.
 
-⚑ **COUNT ONLY WHAT WAS ACTUALLY REMOVED (Editor F2).** `load_project_overrides` can report a
-phantom `config_paths` field for any file carrying a `[system]`/`[config]` table (`KanibakoConfig`
-folds those), and `unset_project_config_key` returns `False` when the flat key names no real
-top-level entry — so an unconditional `count += 1` over-reported: a file with only a `[system]`
-table said "Reset 1" while removing nothing, and SYSTEM-scope `--all` could never say "No
-overrides".
+⚑ **COUNT ONLY WHAT WAS ACTUALLY REMOVED (Editor F2).** `unset_project_config_key` returns
+`False` when the flat key names no real top-level entry, so an unconditional `count += 1`
+over-reported: a file with only a `[system]` table said "Reset 1" while removing nothing, and
+SYSTEM-scope `--all` could never say "No overrides". ⚑ The other half of that defect is GONE at its
+source (2026-08-31): `load_project_overrides` used to report a phantom `config_paths` field for any
+file carrying a `[system]`/`[config]` table, because the flat object folded those in. It reads the
+DECLARED `box.*` spellings now and can report nothing else.
 
 ⚑ The nested SCOPE table pass exists because the flat `load_project_overrides` pass only reaches
 the `KanibakoConfig` dataclass fields, leaving nested scope tables (`<scope>.auth` /

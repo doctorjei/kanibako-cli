@@ -466,9 +466,12 @@ in `kanibako_config.yaml` alone (spec §1). Both halves are pinned.
 ⚑ The `kanibako.settings.config` import inside the body is a lazy import that avoids a
 `config` ↔ `paths` cycle at module load — do not hoist it.
 
-`load_config(...).config_paths` yields the file's set-values keyed by their full dotted name
-(`config.*` / `system.*`), or `{}` when the file is absent — so missing layers are skipped
-automatically.
+`bootstrap_config_paths(...)` yields the CONFIG file's set-values keyed by their full dotted name
+(`config.*` alone), or `{}` when the file is absent — so missing layers are skipped automatically.
+🛑 It RAISES on a settings table in that file (2026-08-31), which is why every verb that resolves a
+path is where a user with a stale `kanibako_config.yaml` first hears about it. The SETTINGS file's
+`system.*` half is read by `config.system_path_set_values`, a separate walk over that file's
+`system:` table.
 
 ```python
 def host_config_map(std: StandardPaths) -> dict[str, str]
@@ -557,7 +560,7 @@ sourced at one of the three now resolves instead of vanishing.
 **inverted, not deleted**.
 
 ```python
-def load_std_paths(config: KanibakoConfig | None = None) -> StandardPaths
+def load_std_paths(config: BootstrapConfig | None = None) -> StandardPaths
 ```
 Compute all standard kanibako directories.
 
@@ -571,7 +574,7 @@ behavior: default leaf `kanibako` under each XDG base).
 
 ```python
 def resolve_project(
-    std: StandardPaths, config: KanibakoConfig, project_dir: str | None = None, *,
+    std: StandardPaths, config: BootstrapConfig, project_dir: str | None = None, *,
     initialize: bool = False, enable_vault: bool | None = None,
     name_override: str | None = None, register: bool = True,
 ) -> ProjectPaths
@@ -899,7 +902,7 @@ parts keeps an unrelated `box_data/` directory from being mistaken for a marker.
 
 ```python
 def detect_project_mode(
-    project_dir: Path, std: StandardPaths, config: KanibakoConfig,
+    project_dir: Path, std: StandardPaths, config: BootstrapConfig,
 ) -> DetectionResult
 ```
 Infer which project mode applies to *project_dir*.
@@ -1134,7 +1137,7 @@ delegation to `_unregister_workset_box_membership`; idempotent.
 
 ```python
 def resolve_workset_project(
-    ws: WorksetSpec, project_name: str, std: StandardPaths, config: KanibakoConfig, *,
+    ws: WorksetSpec, project_name: str, std: StandardPaths, config: BootstrapConfig, *,
     initialize: bool = False, enable_vault: bool | None = None,
 ) -> ProjectPaths
 ```
@@ -1217,7 +1220,7 @@ repo). The shell dir is the one mounted as `/home/agent`. Credential copy is han
 
 ```python
 def iter_projects(
-    std: StandardPaths, config: KanibakoConfig,
+    std: StandardPaths, config: BootstrapConfig,
 ) -> list[tuple[Path, Path | None]]
 ```
 Return `(metadata_path, project_path | None)` for every known project.
@@ -1236,7 +1239,7 @@ PRIMARY boxes: `std.boxes` == `@config.primary_workset/boxes`, so the PRIMARY re
 
 ```python
 def iter_workset_projects(
-    std: StandardPaths, config: KanibakoConfig,
+    std: StandardPaths, config: BootstrapConfig,
 ) -> list[tuple[str, _WorksetLike, list[tuple[str, str]]]]
 ```
 Return workset project info for all registered worksets.
@@ -1291,7 +1294,7 @@ callers preserve their own distinct "inside workset but not in a project" error.
 
 ```python
 def resolve_any_project(
-    std: StandardPaths, config: KanibakoConfig, project_dir: str | None = None, *,
+    std: StandardPaths, config: BootstrapConfig, project_dir: str | None = None, *,
     initialize: bool = False, register: bool = True, name_override: str | None = None,
 ) -> ProjectPaths
 ```
@@ -1339,7 +1342,7 @@ and fails exactly as before.
 
 ```python
 def resolve_box_target(
-    std: StandardPaths, config: KanibakoConfig, value: str | None = None, *,
+    std: StandardPaths, config: BootstrapConfig, value: str | None = None, *,
     initialize: bool = False, register: bool = True, warn: bool = True,
 ) -> ProjectPaths
 ```
@@ -1472,7 +1475,7 @@ launch re-composes the name as `<stored kuid>_<live leaf>` so a moved box keeps 
 
 ```python
 def resolve_standalone_project(
-    std: StandardPaths, config: KanibakoConfig, project_dir: str | None = None, *,
+    std: StandardPaths, config: BootstrapConfig, project_dir: str | None = None, *,
     initialize: bool = False, enable_vault: bool | None = None, name: str = "",
     register: bool = True,
 ) -> ProjectPaths

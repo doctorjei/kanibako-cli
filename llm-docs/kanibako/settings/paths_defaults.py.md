@@ -321,11 +321,18 @@ says "vault" unqualified; and its first falls back to the project PATH when the 
 ### Errors — settings and config
 
 ```python
-ERR_SETTINGS_BAD_PATH  # ("config" | "system", key)
-ERR_SETTINGS_BAD_REF   # ("" | "config", ref)
-ERR_CONFIG_NO_FILE     # (config file path)
+ERR_SETTINGS_BAD_PATH       # ("config" | "system", key)
+ERR_SETTINGS_BAD_REF        # ("" | "config", ref)
+ERR_CONFIG_NO_FILE          # (config file path)
+ERR_CONFIG_LAYER1_SETTINGS  # (the Layer-1 file path, the offending keys)
 ```
-Unresolvable path-tier keys and refs.
+Unresolvable path-tier keys and refs, plus the Layer-1 file's own contract.
+
+⚑ **`ERR_CONFIG_LAYER1_SETTINGS`'s CURE IS ORDERED, and the order is load-bearing** (Jei,
+2026-08-31). Every verb resolves its paths through `config.bootstrap_config_paths`, `system set`
+included, so a message that led with the command would send the user to a command that refuses for
+this same reason. It leads with the hand-edit: delete the lines, then set what you meant. Its second
+argument is the offending keys, dotted and sorted, one per line — the file itself is the first.
 
 ⚑ **The first argument of each is a LAYER DISCRIMINATOR, not a value.** `ERR_SETTINGS_BAD_PATH`'s is
 literally `"config"` or `"system"`, naming which of the two layers failed. `ERR_SETTINGS_BAD_REF`'s is

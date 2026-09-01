@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Literal, NamedTuple
 
 if TYPE_CHECKING:
     from kanibako.persona_store import PersonaBundle
-    from kanibako.settings.config import KanibakoConfig
+    from kanibako.settings.config import BootstrapConfig
     from kanibako.settings.keystore import KeyStore
     from kanibako.settings.paths import ProjectPaths, StandardPaths
     from kanibako.settings.settings_launch import AuthSource
@@ -1110,7 +1110,7 @@ def _check_box_components(proj) -> str | None:
 
 
 def _resolve_existing_box(
-    std: StandardPaths, config: KanibakoConfig, project_dir: str | None,
+    std: StandardPaths, config: BootstrapConfig, project_dir: str | None,
 ) -> ProjectPaths | None:
     """Non-materialising probe: the :class:`ProjectPaths` of an EXISTING registered box.
 

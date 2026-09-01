@@ -40,7 +40,7 @@ from typing import NamedTuple, Protocol, overload
 
 from kanibako.log import get_logger
 
-from kanibako.settings.config import (WORKSET_META_FILE, BOX_META_FILE, KanibakoConfig, config_file_path,
+from kanibako.settings.config import (WORKSET_META_FILE, BOX_META_FILE, BootstrapConfig, config_file_path,
                                       load_config, read_box_enable_vault, read_workset_kuid,
                                       read_workset_skip_kuid_check, resolve_box_enable_vault,
                                       write_box_enable_vault)
@@ -593,29 +593,31 @@ def load_system_config(user_config_path: Path, *, data_home: Path, home: Path) -
     belong to the path tier; and a ``config:`` table hand-written into a SETTINGS file must
     never reach Layer 1, which lives in ``kanibako_config.yaml`` alone (spec §1).
 
-    ⚑⚑ AND THE MIRROR OF THAT, ADDED 2026-08-26: a ``system:`` table hand-written into a
-    CONFIG file must never reach Layer 2.  The two files each hold exactly one layer —
-    *"kanibako_config.yaml <-- cannot have settings. Period."* (Jei) — so the config reads
-    below are filtered to ``config.*`` and the settings read is filtered to the path tier.
+    ⚑⚑ AND THE MIRROR OF THAT: a ``system:`` table hand-written into a CONFIG file must
+    never reach Layer 2.  The two files each hold exactly one layer —
+    *"kanibako_config.yaml <-- cannot have settings. Period."* (Jei) — and since 2026-08-31
+    that is a property of the READS rather than of filters applied after them:
+    ``bootstrap_config_paths`` walks the ``config:`` table and REFUSES anything else in the
+    file, while ``system_path_set_values`` walks the ``system:`` table.  The one filter left
+    below is the P13 path-tier selection, which is a different question.
     """
     # ⚑ Lazy import to avoid a config <-> paths import cycle at module load — do not hoist.
     from kanibako.settings.config import (bootstrap_config_paths, config_base_path,
-                                          load_config)
+                                          system_path_set_values)
     raw: dict[str, str] = {}
 
     # base < user; an absent file yields {}, so missing layers are skipped automatically.
-    # ⚑⚑ FILTERED TO ``config.*`` AT THE READ (2026-08-26).  The CONFIG files carry the
-    # Layer-1 foundation and NOTHING ELSE — Jei: *"kanibako_config.yaml <-- cannot have
-    # settings. Period."*  A ``system:`` table hand-written into one used to enter ``raw``
-    # here as a real (if lowest) layer of the Layer-2 path tier, which made the bootstrap
-    # file a settings source; the SETTINGS file below is now the only one.  ⚑ The same
-    # filter ``resolve_data_leaf`` already applies to the same two files — one rule, two
-    # sites, and this was the site that lacked it.
+    # ⚑⚑ ``config.*`` BY CONSTRUCTION (2026-08-31).  The CONFIG files carry the Layer-1
+    # foundation and NOTHING ELSE — Jei: *"kanibako_config.yaml <-- cannot have settings.
+    # Period."*  A ``system:`` table hand-written into one used to enter ``raw`` here as a
+    # real (if lowest) layer of the Layer-2 path tier, which made the bootstrap file a
+    # settings source; then it was dropped in silence; now the read REFUSES it, naming the
+    # file and the keys.
     for path in (config_base_path(), user_config_path):
         raw.update(bootstrap_config_paths(path))
 
     config = resolve_config_paths(raw, data_home=data_home, home=home)
-    stored = load_config(Path(config["config.settings"])).config_paths
+    stored = system_path_set_values(Path(config["config.settings"]))
     raw.update({k: v for k, v in stored.items() if k in SYSTEM_PATH_DEFAULTS})
 
     return resolve_system_paths(raw, data_home=data_home, home=home)
@@ -667,7 +669,7 @@ def resolve_data_leaf(data_path: Path | None = None, *, config_home: Path | None
         return KANIBAKO_PATH
 
 
-def load_std_paths(config: KanibakoConfig | None = None) -> StandardPaths:
+def load_std_paths(config: BootstrapConfig | None = None) -> StandardPaths:
     """Compute all standard kanibako directories, creating them as needed."""
     config_home = xdg(XDG_CONFIG_HOME, XDG_SPEC_DEFAULTS[XDG_CONFIG_HOME])
     data_home = xdg(XDG_DATA_HOME, XDG_SPEC_DEFAULTS[XDG_DATA_HOME])
@@ -715,7 +717,7 @@ def load_std_paths(config: KanibakoConfig | None = None) -> StandardPaths:
                      primary_logs=resolved["system._primary_logs"])
 
 
-def resolve_project(std: StandardPaths, config: KanibakoConfig, project_dir: str | None = None, *,
+def resolve_project(std: StandardPaths, config: BootstrapConfig, project_dir: str | None = None, *,
                     initialize: bool = False, enable_vault: bool | None = None,
                     name_override: str | None = None, register: bool = True) -> ProjectPaths:
     """Resolve (and optionally initialize) per-project paths (PRIMARY mode)."""
@@ -1062,7 +1064,7 @@ def _is_standalone_meta_dir(root: Path) -> bool:
 
 
 def detect_project_mode(project_dir: Path, std: StandardPaths,
-                        config: KanibakoConfig) -> DetectionResult:
+                        config: BootstrapConfig) -> DetectionResult:
     """Infer which project mode applies to *project_dir*, walking ancestors for markers."""
     resolved = project_dir.resolve()
     home = Path.home().resolve()
@@ -1299,7 +1301,7 @@ def unregister_primary_box_name(primary_workset: Path, name: str) -> None:
 
 
 def resolve_workset_project(ws: WorksetSpec, project_name: str, std: StandardPaths,
-                            config: KanibakoConfig, *, initialize: bool = False,
+                            config: BootstrapConfig, *, initialize: bool = False,
                             enable_vault: bool | None = None) -> ProjectPaths:
     """Resolve per-project paths for a project inside a NAMED workset."""
     # Look up project in workset.
@@ -1394,7 +1396,7 @@ def _init_workset_project(std: StandardPaths, metadata_path: Path, shell_path: P
     print(MSG_DONE, file=sys.stderr)
 
 
-def iter_projects(std: StandardPaths, config: KanibakoConfig) -> list[tuple[Path, Path | None]]:
+def iter_projects(std: StandardPaths, config: BootstrapConfig) -> list[tuple[Path, Path | None]]:
     """Return ``(metadata_path, project_path | None)`` for every known project."""
     projects_dir = std.boxes
     if not projects_dir.is_dir():
@@ -1417,7 +1419,7 @@ def iter_projects(std: StandardPaths, config: KanibakoConfig) -> list[tuple[Path
     return results
 
 
-def iter_workset_projects(std: StandardPaths, config: KanibakoConfig) -> _WorksetProjectRows:
+def iter_workset_projects(std: StandardPaths, config: BootstrapConfig) -> _WorksetProjectRows:
     """Return ``(workset_name, workset, [(project_name, status), ...])`` for every workset."""
     import sys
 
@@ -1510,7 +1512,7 @@ def _resolve_workset_or_connected(project_dir: Path,
     return ws, proj_name
 
 
-def resolve_any_project(std: StandardPaths, config: KanibakoConfig, project_dir: str | None = None,
+def resolve_any_project(std: StandardPaths, config: BootstrapConfig, project_dir: str | None = None,
                         *, initialize: bool = False, register: bool = True,
                         name_override: str | None = None) -> ProjectPaths:
     """Auto-detect project mode and resolve paths accordingly."""
@@ -1563,7 +1565,7 @@ def resolve_any_project(std: StandardPaths, config: KanibakoConfig, project_dir:
                            register=register, name_override=name_override)
 
 
-def resolve_box_target(std: StandardPaths, config: KanibakoConfig, value: str | None = None,
+def resolve_box_target(std: StandardPaths, config: BootstrapConfig, value: str | None = None,
                        *, initialize: bool = False, register: bool = True,
                        warn: bool = True) -> ProjectPaths:
     """Resolve a ``--box`` value (a box NAME or a path) to its :class:`ProjectPaths`, NAME first."""
@@ -1659,7 +1661,7 @@ def establish_standalone(std: StandardPaths, root: Path, *, enable_vault: bool,
     return box_name, shell_path, vault_ro_path, vault_rw_path
 
 
-def resolve_standalone_project(std: StandardPaths, config: KanibakoConfig,
+def resolve_standalone_project(std: StandardPaths, config: BootstrapConfig,
                                project_dir: str | None = None, *, initialize: bool = False,
                                enable_vault: bool | None = None, name: str = "",
                                register: bool = True) -> ProjectPaths:

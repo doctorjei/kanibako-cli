@@ -386,7 +386,7 @@ Map a TargetSpec ownership value to `(mode, workset_name | None)`.
 
 A string that is neither `"default"` nor `"standalone"` is treated as a workset name.
 
-```def resolve_lifecycle_target(old: str | None, std: StandardPaths, config: KanibakoConfig | None = None) -> ProjectState```
+```def resolve_lifecycle_target(old: str | None, std: StandardPaths, config: BootstrapConfig | None = None) -> ProjectState```
 Resolve an existing project (by path or name) to a `ProjectState`.
 
 *old* may be a path or a registered project/workset-relative name; `None` means the current working
@@ -430,7 +430,7 @@ present ⇒ the workset's `false` applied, gone ⇒ it did not and the vault was
 two-file READER here (which this did until 2026-08-29) was the same defect one level up: it made
 `remap` disagree with `resolve_project` whenever a base- or system-tier value existed.
 
-```def _resolve_workset_state(raw_path: Path, std: StandardPaths, config: KanibakoConfig) -> ProjectState```
+```def _resolve_workset_state(raw_path: Path, std: StandardPaths, config: BootstrapConfig) -> ProjectState```
 Resolve a workset project (internal or external-connected) to a state.
 
 Falls back to `box_resolve.find_connected_external_box` when the path is not inside any workset
@@ -477,7 +477,7 @@ See **The unwind stack**, above.
 ```def _resolve_target_workset(name: str, std: StandardPaths) -> Workset```
 Load a named workset from the registry, or raise `WorksetError`.
 
-```def _validate(state: ProjectState, spec: TargetSpec, std: StandardPaths, config: KanibakoConfig, *, force: bool, cwd: Path) -> dict```
+```def _validate(state: ProjectState, spec: TargetSpec, std: StandardPaths, config: BootstrapConfig, *, force: bool, cwd: Path) -> dict```
 Validate the requested operation up front; return resolved plan facts.
 
 Refuses early (raising `ProjectError` / `WorksetError`) so steps 2–5 only ever run on a sound
@@ -505,18 +505,18 @@ The guards, in order, and what each protects:
 "`--name <source-name>`" — the standalone target treats only a REAL `--name` as a user assertion
 (R1/R3).
 
-```def execute_lifecycle(state: ProjectState, spec: TargetSpec, std: StandardPaths, config: KanibakoConfig | None = None, *, force: bool = False, confirm: Callable[[], bool] | None = None) -> ProjectState```
+```def execute_lifecycle(state: ProjectState, spec: TargetSpec, std: StandardPaths, config: BootstrapConfig | None = None, *, force: bool = False, confirm: Callable[[], bool] | None = None) -> ProjectState```
 Apply *spec* to *state* transactionally and return the new state.
 
 See **The canonical 5-step order**.
 
-```def _run_steps(state: ProjectState, spec: TargetSpec, std: StandardPaths, config: KanibakoConfig, plan: dict, unwind: _Unwind) -> ProjectState```
+```def _run_steps(state: ProjectState, spec: TargetSpec, std: StandardPaths, config: BootstrapConfig, plan: dict, unwind: _Unwind) -> ProjectState```
 The step body of `execute_lifecycle`.
 
 Steps 2, 3+4, 4b and 5 in order; see the step-order section for each arm and each ordering
 constraint.
 
-```def _apply_ownership_and_markers(state: ProjectState, std: StandardPaths, config: KanibakoConfig, unwind: _Unwind, *, target_mode: BoxMode, target_ws: Workset | None, new_name: str, new_workspace: Path, relocating: bool, dest: Path | None, requested_name: str = "", force: bool = False) -> ProjectState```
+```def _apply_ownership_and_markers(state: ProjectState, std: StandardPaths, config: BootstrapConfig, unwind: _Unwind, *, target_mode: BoxMode, target_ws: Workset | None, new_name: str, new_workspace: Path, relocating: bool, dest: Path | None, requested_name: str = "", force: bool = False) -> ProjectState```
 Re-root metadata/shell/vault into the target owner + rewrite markers.
 
 Handles EVERY transition the same way: copy the source metadata into the target owner's metadata
@@ -555,7 +555,7 @@ derived from the ROOT, not from a `ProjectGroup` (which `ProjectState` does not 
 primary/named the workset tier is therefore `None` — no legacy underlay, so those modes stay
 byte-identical to pre-P2.
 
-```def _remove_old_metadata(state: ProjectState, std: StandardPaths, config: KanibakoConfig, *, preserve_name: str | None = None, preserve_root: Path | None = None) -> None```
+```def _remove_old_metadata(state: ProjectState, std: StandardPaths, config: BootstrapConfig, *, preserve_name: str | None = None, preserve_root: Path | None = None) -> None```
 Remove the source project's metadata/shell (+ PRIMARY vault).
 
 ⚑ **TWO reuse signals, because each mode's IDENTITY on disk is a different thing:**
@@ -586,7 +586,7 @@ out from under it.
 * **Workset source** — removes the workset registration (std-aware) so external markers and the
   per-workset connection record are cleaned. **The external source dir is NEVER deleted.**
 
-```def _to_default(state: ProjectState, std: StandardPaths, config: KanibakoConfig, unwind: _Unwind, *, new_name: str, new_workspace: Path, requested_name: str = "", force: bool = False) -> ProjectState```
+```def _to_default(state: ProjectState, std: StandardPaths, config: BootstrapConfig, unwind: _Unwind, *, new_name: str, new_workspace: Path, requested_name: str = "", force: bool = False) -> ProjectState```
 Convert/relocate the project so its owner becomes the default workset.
 
 See **Naming — the PRIMARY membership register** for the mint/unregister/register ordering, and
@@ -672,7 +672,7 @@ existed only to hold the workspace, and the root `workset.yaml` that named them 
 unlinked. `rmdir` IS the emptiness test, so a parent the user keeps their own files in stops the
 walk.
 
-```def _to_standalone(state: ProjectState, std: StandardPaths, config: KanibakoConfig, unwind: _Unwind, *, new_name: str, root: Path, requested_name: str = "") -> ProjectState```
+```def _to_standalone(state: ProjectState, std: StandardPaths, config: BootstrapConfig, unwind: _Unwind, *, new_name: str, root: Path, requested_name: str = "") -> ProjectState```
 Convert/relocate the project so it becomes standalone (in-tree metadata).
 
 ⚑⚑ The parameter is `root`, and it is the caller's `new_workspace`: standalone is the ONE target
@@ -728,7 +728,7 @@ the box meta lived only at the ROOT — that theory is the RETIRED model, and de
 discards the box's settings. Detection is unaffected either way: it reads the ROOT file (§5), which
 `establish_standalone` writes.
 
-```def _to_workset(state: ProjectState, std: StandardPaths, config: KanibakoConfig, unwind: _Unwind, *, target_ws: Workset, new_name: str, new_workspace: Path, relocating: bool, dest: Path | None) -> ProjectState```
+```def _to_workset(state: ProjectState, std: StandardPaths, config: BootstrapConfig, unwind: _Unwind, *, target_ws: Workset, new_name: str, new_workspace: Path, relocating: bool, dest: Path | None) -> ProjectState```
 Convert/relocate the project into *target_ws* (std-aware external wiring).
 
 `source_for_add` is the path `add_project` records and decides external wiring from: the in-tree

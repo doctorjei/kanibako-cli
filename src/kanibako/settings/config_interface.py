@@ -746,7 +746,9 @@ def get_config_value(
         assert dest is not None  # a category key always has a slot
         return read_stored_leaf(dest.path, dest.sections, dest.leaf)
 
-    # ``config.*`` + the setup MARKER — the raw value from the bootstrap config file.
+    # ``config.*`` — the raw value from the bootstrap config file.  ⚑ The setup MARKER left
+    # this family on 2026-08-26 (its storage moved to ``@config.settings``), and
+    # ``is_config_file_only_key`` is now exactly ``key.startswith("config.")``.
     # ⚑ ``load_config``, NOT ``load_merged_config``: this tier is CONFIG-FILE-ONLY, and a
     # malformed box settings file must not break a bootstrap-tier read.
     # ⚑ The ``system.*`` PATH tier is NO LONGER READ HERE (spec §2g): those are settings
@@ -1617,8 +1619,10 @@ def show_config(
         undeclared = _undeclared_stored_entries(settings_src)
 
         overrides = load_project_overrides(config_path) if config_path else {}
-        for k, v in sorted(overrides.items()):
-            print(f"  {k} = {v}", file=out)
+        # ⚑ Its OWN loop names: the box scalars are ``object`` (two of the four are real
+        # bools), while the ``k, v`` below are the string agent settings.
+        for okey in sorted(overrides):
+            print(f"  {okey} = {overrides[okey]}", file=out)
             has_output = True
 
         if settings_src and settings_src.exists():

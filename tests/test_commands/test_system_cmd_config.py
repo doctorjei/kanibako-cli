@@ -454,16 +454,19 @@ class TestSystemStructuralFileOnly:
         std = _std(config_file)
         assert load_doc(std.settings)["agent"]["default"]["model"] == "gpt-5"
 
-    def test_reset_all_never_touches_structural_config_table(
-        self, config_file, tmp_home,
-    ):
-        """Residuals item 3, Editor condition (i): reset --all at the SYSTEM
-        scope clears the settings file's ``system.auth`` SETTINGS table but NEVER
-        the kanibako_config.yaml ``[system]`` STRUCTURAL path table (cache etc.)
-        — those are file-only, not overrides."""
+    def test_reset_all_clears_the_settings_auth_table(self, config_file, tmp_home):
+        """Residuals item 3: reset --all at the SYSTEM scope clears the settings file's
+        ``system.auth`` SETTINGS table.
+
+        ⚑ CHANGED 2026-08-31. The other half — *"but NEVER the
+        ``kanibako_config.yaml [system]`` STRUCTURAL path table"* — was measured by
+        hand-writing ``system.cache`` into the config file, which no longer READS at
+        all: that table refuses (see the case below). The surviving question, whether
+        ``reset --all`` overreaches into a second file, is answered by the config file
+        staying byte-identical.
+        """
         std = _std(config_file)
-        # A structural path value hand-written into the config file's [system].
-        write_nested_key(config_file, ("system",), "cache", "/custom/cache")
+        before = config_file.read_bytes()
         # A settings-tier system.auth override in the SETTINGS file (ssp).
         std.settings.parent.mkdir(parents=True, exist_ok=True)
         write_nested_key(
@@ -474,8 +477,20 @@ class TestSystemStructuralFileOnly:
         # The SETTINGS system.auth table was cleared (item 3).
         settings_doc = load_doc(std.settings)
         assert "auth" not in settings_doc.get("system", {}), settings_doc
-        # The CONFIG file's structural [system] cache is INTACT (condition i).
-        assert load_doc(config_file)["system"]["cache"] == "/custom/cache"
+        # The CONFIG file was not written at all (condition i).
+        assert config_file.read_bytes() == before
+
+    def test_a_structural_table_in_the_config_file_refuses(self, config_file, tmp_home):
+        """🛑 A ``system:`` path table hand-written into ``kanibako_config.yaml`` is not
+        "file-only, not an override" — it is not readable there at all (Jei, 2026-08-31).
+        """
+        from kanibako.errors import ConfigError
+
+        write_nested_key(config_file, ("system",), "cache", "/custom/cache")
+        with pytest.raises(ConfigError) as exc:
+            _std(config_file)
+        assert str(config_file) in str(exc.value)
+        assert "system.cache" in str(exc.value)
 
 
 class TestSystemPersonaAgentKeys:
@@ -736,16 +751,25 @@ class TestSystemCategoryFileRouting:
         assert load_doc(std.settings)["system"]["synced"]["helper"] == self.SEEDED
         assert "synced" not in load_doc(config_file).get("system", {})
 
-    def test_a_tuple_only_in_the_config_file_is_not_read(
+    def test_a_tuple_only_in_the_config_file_refuses(
         self, config_file, tmp_home, capsys,
     ):
-        """The control: the same key hand-written into kanibako_config.yaml reads
-        back "(not set)", because that file is in NO cascade level."""
+        """The control: the same key hand-written into kanibako_config.yaml STOPS the
+        command, because that file may not carry a settings key at all.
+
+        ⚑ CHANGED 2026-08-31. It used to read back "(not set)" — true of the cascade and
+        useless to the user, who had written the entry in front of them and was told
+        nothing about it.
+        """
+        from kanibako.errors import ConfigError
+
         std = _std(config_file)
         self._seed(config_file)
         capsys.readouterr()
-        assert _get(self.KEY) == 0
-        assert "(not set)" in capsys.readouterr().out
+        with pytest.raises(ConfigError) as exc:
+            _get(self.KEY)
+        assert str(config_file) in str(exc.value)
+        assert "system.synced.helper" in str(exc.value)
         assert not load_doc(std.settings).get("system", {}).get("synced")
 
     def test_reset_all_still_sweeps_the_scope_table(

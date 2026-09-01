@@ -1392,7 +1392,15 @@ class TestTemplateStalenessRetired:
         return argparse.Namespace(command=command, **kw)
 
     def _init_cf(self, tmp_path, stamp=None):
-        """An initialized config (current setup marker) + an optional ORPHAN stamp."""
+        """An initialized config (current setup marker) + an optional ORPHAN stamp.
+
+        ⚑ THE ORPHAN GOES IN THE SETTINGS FILE, beside the marker (2026-08-31). It used
+        to be written into ``kanibako_config.yaml``, which is where the retired writer
+        put it — and that file refuses a ``system:`` table now, so planting it there
+        would exercise the Layer-1 refusal instead of the retired staleness gate this
+        class is about. The Layer-1 case has its own pin in
+        ``test_settings/test_config.py``.
+        """
         from packaging.version import Version
 
         import kanibako
@@ -1405,7 +1413,7 @@ class TestTemplateStalenessRetired:
             Version(kanibako.__version__).base_version,
         )
         if stamp is not None:
-            write_system_value(cf, "templates_stamp", stamp)
+            write_system_value(_marker_file(tmp_path), "templates_stamp", stamp)
         return cf
 
     @pytest.mark.parametrize("stamp", [None, "stale-digest"])

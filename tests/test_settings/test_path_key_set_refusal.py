@@ -237,7 +237,11 @@ class TestTheLegalShapesAreAccepted:
         "@config.data/comms",         # an @-ref to another key
         "@meta.workset.path/comms",   # ...including the one [R147]'s cure offers
     ])
-    def test_workset_scope_accepts_it(self, value, tmp_path):
+    def test_workset_scope_accepts_it(self, value, config_file, tmp_path):
+        # ⚑ ``config_file`` (hence ``tmp_home``) is REQUIRED for the ``@config.*`` cases:
+        # the set-time probe resolves that foundation from the REAL
+        # ``$XDG_CONFIG_HOME/kanibako_config.yaml`` and CONCEDES on any failure, so an
+        # unisolated run answers "dangling @-reference" off the host's own file.
         files = _files(tmp_path)
         message = _set("workset.channelroot", value, files, ConfigLevel.workset)
         assert not message.startswith("Error:"), message
@@ -246,7 +250,8 @@ class TestTheLegalShapesAreAccepted:
     @pytest.mark.parametrize("value", [
         "/srv/c", "~/c", "$XDG_CACHE_HOME/c", "${XDG_CACHE_HOME}/c", "@config.data/c",
     ])
-    def test_system_scope_accepts_it(self, value, tmp_path):
+    def test_system_scope_accepts_it(self, value, config_file, tmp_path):
+        """⚑ ``config_file`` for the same reason as the case above — host isolation."""
         files = _files(tmp_path)
         message = _set("system.cache", value, files, ConfigLevel.system)
         assert not message.startswith("Error:"), message

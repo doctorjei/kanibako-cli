@@ -222,32 +222,47 @@ class TestBareRelativeIsRefusedNotAnchored:
 
 
 class TestLoadConfigPaths:
+    """The Layer-1 read produces ``config.*`` and refuses everything else.
+
+    ⚑ CHANGED 2026-08-31. ``load_config`` used to flatten the ``config:`` AND the
+    ``system:`` table of whatever document it was given into ONE ``config_paths`` set —
+    which is exactly how each layer's file came to speak for the other. The two questions
+    have two readers now: ``bootstrap_config_paths`` for the Layer-1 file, and
+    ``system_path_set_values`` for a SETTINGS file's ``system:`` table.
+    """
+
     def test_config_table_populates(self, tmp_path):
         toml = tmp_path / "kanibako_config.yaml"
         toml.write_text('config:\n  agents: "/x"\n')
         cfg = load_config(toml)
         assert cfg.config_paths == {"config.agents": "/x"}
 
-    def test_system_table_populates(self, tmp_path):
+    def test_a_system_table_refuses_and_names_the_key(self, tmp_path):
+        from kanibako.errors import ConfigError
+
         toml = tmp_path / "kanibako_config.yaml"
         toml.write_text('system:\n  channelroot: "/x"\n')
-        cfg = load_config(toml)
-        assert cfg.config_paths == {"system.channelroot": "/x"}
+        with pytest.raises(ConfigError) as exc:
+            load_config(toml)
+        assert str(toml) in str(exc.value)
+        assert "system.channelroot" in str(exc.value)
 
-    def test_both_tables_merge(self, tmp_path):
+    def test_the_config_table_does_not_rescue_a_system_table(self, tmp_path):
+        """🛑 The refusal is not conditional on the file being otherwise empty."""
+        from kanibako.errors import ConfigError
+
         toml = tmp_path / "kanibako_config.yaml"
         toml.write_text('config:\n  data: "/d"\nsystem:\n  channelroot: "/c"\n')
-        cfg = load_config(toml)
-        assert cfg.config_paths == {
-            "config.data": "/d",
-            "system.channelroot": "/c",
-        }
+        with pytest.raises(ConfigError):
+            load_config(toml)
 
-    def test_nested_system_subkey_flattens(self, tmp_path):
-        toml = tmp_path / "kanibako_config.yaml"
-        toml.write_text('system:\n  channels:\n    common: "/c"\n')
-        cfg = load_config(toml)
-        assert cfg.config_paths == {"system.channels.common": "/c"}
+    def test_nested_system_subkey_flattens_in_the_settings_file(self, tmp_path):
+        """The dotted flatten of a nested ``system:`` table, on the file that owns it."""
+        from kanibako.settings.config import system_path_set_values
+
+        settings = tmp_path / "settings.yaml"
+        settings.write_text('system:\n  channels:\n    common: "/c"\n')
+        assert system_path_set_values(settings) == {"system.channels.common": "/c"}
 
     def test_empty_config_has_no_config_paths(self, tmp_path):
         cfg = load_config(tmp_path / "absent.yaml")
@@ -564,15 +579,15 @@ class TestLoadSystemConfig:
         assert resolved["config.registry"] == Path("/base/registry.yaml")
         assert resolved["config.agents"] == Path("/user/agents")
 
-    def test_a_system_table_in_either_config_file_is_inert(self, tmp_path, monkeypatch):
+    def test_a_system_table_in_either_config_file_refuses(self, tmp_path, monkeypatch):
         """🛑 Neither CONFIG file may supply a Layer-2 ``system.*`` path.
 
-        The replacement pin for what the two cases around it used to assert. Before
-        2026-08-26 a ``system:`` table in either file entered the resolve as a real (if
-        lowest) layer, which made the bootstrap files a settings source in the one place
-        it most mattered — where every host path is decided.
+        Before 2026-08-26 a ``system:`` table in either file entered the resolve as a
+        real (if lowest) layer, which made the bootstrap files a settings source in the
+        one place it most mattered — where every host path is decided. It was then
+        INERT; since 2026-08-31 it REFUSES, and each file is named in its own turn.
         """
-        from kanibako.settings.paths_defaults import SYSTEM_PATH_DEFAULTS
+        from kanibako.errors import ConfigError
 
         base = tmp_path / "config_base.yaml"
         user = tmp_path / "kanibako_config.yaml"
@@ -580,11 +595,32 @@ class TestLoadSystemConfig:
         user.write_text('system:\n  channelroot: "/user/channels"\n')
         self._redirect(monkeypatch, base)
 
+        # The SITE file is read first, so it is the one named.
+        with pytest.raises(ConfigError) as exc:
+            load_system_config(user, data_home=tmp_path, home=tmp_path)
+        assert str(base) in str(exc.value)
+        assert "system.channelroot" in str(exc.value)
+
+        # With the site file clean, the USER file is named in its place.
+        base.write_text("")
+        with pytest.raises(ConfigError) as exc:
+            load_system_config(user, data_home=tmp_path, home=tmp_path)
+        assert str(user) in str(exc.value)
+
+    def test_the_declared_default_is_what_a_clean_pair_resolves(
+        self, tmp_path, monkeypatch,
+    ):
+        """The other half of the case above: with neither file speaking, the DECLARED
+        table answers — which is what the planted values were failing to displace."""
+        from kanibako.settings.paths_defaults import SYSTEM_PATH_DEFAULTS
+
+        base = tmp_path / "config_base.yaml"
+        user = tmp_path / "kanibako_config.yaml"
+        base.write_text("")
+        user.write_text("")
+        self._redirect(monkeypatch, base)
+
         resolved = load_system_config(user, data_home=tmp_path, home=tmp_path)
-        assert resolved["system.channelroot"] not in (
-            Path("/base/channels"), Path("/user/channels"),
-        )
-        # It resolves from the DECLARED default table instead.
         assert SYSTEM_PATH_DEFAULTS["system.channelroot"] == "@config.data/channels"
         assert resolved["system.channelroot"] == resolved["config.data"] / "channels"
 

@@ -7,7 +7,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from kanibako._atomic import atomic_write_text
+from kanibako.errors import ConfigError
 from kanibako.settings.config_io import dump_doc, load_doc
+from kanibako.settings.paths_defaults import ERR_CONFIG_LAYER1_SETTINGS
 
 if TYPE_CHECKING:
     # ⚑ TYPE-ONLY: ``keystore`` imports this module transitively, so a runtime import
@@ -46,12 +48,6 @@ def coerce_bool(value: object) -> bool | None:
     return None
 
 
-# ⚑ No default filename: the box-tier file is named for its tier (``box.yaml``), so
-# there is no ONE global settings filename left to default to.  This key only ever
-# holds a value when a user overrides it — hence its own carrier, kept out of
-# ``_DEFAULTS`` so that dict stays ``dict[str, str]``.
-_DEFAULT_PROJECT_TOML: str | None = None
-
 _DEFAULTS: dict[str, str] = {
     "box_image": "ghcr.io/doctorjei/kanibako-oci:latest",
     "box_shell": "",
@@ -60,9 +56,15 @@ _DEFAULTS: dict[str, str] = {
 
 @dataclass
 class KanibakoConfig:
-    """The flat merged configuration object (defaults < config file < workset < box < CLI)."""
+    """The flat merged SETTINGS object (defaults < workset < box < CLI).
 
-    paths_project_toml: str | None = _DEFAULT_PROJECT_TOML
+    ⚑ NO ``config_paths`` FIELD, AND NO ``paths_project_toml`` (R153, 2026-08-31).  The
+    first was Layer 1 living inside a Layer-2 object, which is what let one read answer both
+    layers' questions — it is :class:`BootstrapConfig` now.  The second named
+    ``paths.project_toml``, which the keyspace does not declare at all (spec §0), and no
+    caller ever read it.
+    """
+
     box_image: str = _DEFAULTS["box_image"]
     # ⚑ NO ``box_agent_name`` field (P7, spec §2b) — the selection is a KEY.
     box_shell: str = _DEFAULTS["box_shell"]
@@ -74,24 +76,30 @@ class KanibakoConfig:
     # reason ``box_share_images`` is: the field default IS the floor the keyspace
     # resolves from (:func:`box_scalar_defaults_floor`).
     box_enable_vault: bool = True
-    # Bootstrap PATH set-values keyed by dotted name; config-file-only.
+
+
+@dataclass(frozen=True)
+class BootstrapConfig:
+    """The Layer-1 bootstrap file's WHOLE content: the ``config.*`` foundation, and nothing else.
+
+    ⚑⚑ THE TYPE IS THE RULE (P3/P4; Jei's ruling, 2026-08-31).  ``kanibako_config.yaml``
+    cannot have settings (Jei, 2026-08-26: *"kanibako_config.yaml <-- cannot have settings.
+    Period."*), and spec §1 gives Layer 1 the ``config.*`` bootstrap paths alone.  That rule
+    used to be a ``config.``-PREFIX FILTER spelled at each of the four Layer-1 read sites,
+    over a :class:`KanibakoConfig` that also carried the box scalars — so a Layer-1 read
+    still RETURNED settings (``load_config(<file with a box: table>).box_image`` was the
+    file's value), and the filter dropped the rest in SILENCE.  This class has nowhere to
+    put a settings value, so the filter is not weakened here — it is DELETED, because
+    nothing it could have removed can be built.  A settings table in that file now REFUSES,
+    naming the file and the keys (:func:`bootstrap_config_paths`).
+    """
+
     config_paths: dict[str, str] = field(default_factory=dict)
 
 
-def _flatten_toml(data: dict, prefix: str = "") -> dict[str, object]:
-    """Flatten a nested config dict into underscore-joined keys (``None`` = the reset sentinel)."""
-    out: dict[str, object] = {}
-    for k, v in data.items():
-        key = f"{prefix}_{k}" if prefix else k
-        if isinstance(v, dict):
-            out.update(_flatten_toml(v, key))
-        elif isinstance(v, bool):
-            out[key] = v
-        elif v is None:
-            out[key] = None
-        else:
-            out[key] = str(v)
-    return out
+#: The Layer-1 file's ONE legal top-level table (spec §1). Everything else in that document
+#: is a settings key, which the file cannot carry.
+_LAYER1_TABLE = "config"
 
 
 def config_file_path(config_home: Path) -> Path:
@@ -99,23 +107,63 @@ def config_file_path(config_home: Path) -> Path:
     return config_home / "kanibako_config.yaml"
 
 
-def bootstrap_config_paths(path: Path) -> dict[str, str]:
-    """The Layer-1 file's ``config.*`` foundation — the ONLY thing that file may supply.
+def _layer1_settings_keys(data: dict) -> list[str]:
+    """Every SETTINGS entry a Layer-1 document carries, dotted and sorted; empty ⇒ the file is clean.
 
-    ⚑⚑ THE ONE RULE, SPELLED ONCE.  ``kanibako_config.yaml`` cannot have settings (Jei,
-    2026-08-26: *"kanibako_config.yaml <-- cannot have settings. Period."*), and spec §1
-    gives Layer 1 the ``config.*`` bootstrap paths alone.  :func:`load_config` stays a
-    GENERAL document reader — it reads the SETTINGS file too, where a ``system.*`` set-value
-    is exactly what is wanted — so the filter belongs at the Layer-1 READ SITES, and there
-    are four of them.  Spelling it four times is how one of them ends up without it, which
-    is precisely what happened to ``paths.load_system_config`` while ``resolve_data_leaf``
-    had the filter all along.
+    ⚑⚑ A TABLE WITH NO LEAF IS NAMED BY ITS TABLE NAME, and that is the whole reason for the
+    ``or [name]`` (Jei, 2026-08-31).  The three empty spellings a user reads as identical —
+    ``box:`` with nothing under it (which YAML parses to ``None``, NOT ``{}``), an explicit
+    ``box: {}``, and a ``box:`` whose only leaf is itself an empty table — used to give TWO
+    different answers: the first was refused as a bare ``box`` (the non-dict arm), the other
+    two were silently accepted.  Convention 0: two forms meaning one thing are worse than one
+    awkward form meaning one thing, and the silent arm was the only thing in this rule that
+    behaved like a carve-out.  All three are settings tables that do not belong in this file,
+    so all three are refused, and the message names the table it can see.
     """
-    return {
-        key: val
-        for key, val in load_config(path).config_paths.items()
-        if key.startswith("config.")
-    }
+    keys: list[str] = []
+    for name, value in data.items():
+        if name == _LAYER1_TABLE:
+            continue
+        # ⚑ ``_flatten_dotted`` handles a scalar too (``box_image: x`` → ``box_image``); the
+        # fallback is for a table that flattens away to nothing, at any depth.
+        # ⚑ THE LEFT OPERAND IS A DICT, and ``extend`` takes its KEYS — so the ``or`` tests
+        # the MAPPING's emptiness, never a leaf's truthiness.  A falsy leaf (``foo: 0``,
+        # ``foo: ''``) yields a one-entry dict and is named like any other.
+        keys.extend(_flatten_dotted({name: value}) or [name])
+    return sorted(keys)
+
+
+def bootstrap_config_paths(path: Path) -> dict[str, str]:
+    """The Layer-1 file's ``config.*`` foundation, read from its ``config:`` table ALONE.
+
+    ⚑ NO FILTER, AND THAT IS THE POINT (P4).  The walk STARTS at the ``config:`` table, so
+    a ``config.`` prefix is the only thing it can produce; the rule is in the shape of the
+    read rather than in a test applied after it.
+    🛑 A settings table here is REFUSED, not dropped (Jei, 2026-08-31) — a user running a
+    different image than their file says should learn it.
+    """
+    data = load_doc(path)
+    settings_keys = _layer1_settings_keys(data)
+    if settings_keys:
+        raise ConfigError(ERR_CONFIG_LAYER1_SETTINGS % (path, "\n  ".join(settings_keys)))
+    table = data.get(_LAYER1_TABLE)
+    return _flatten_dotted(table, _LAYER1_TABLE) if isinstance(table, dict) else {}
+
+
+def system_path_set_values(settings_path: Path) -> dict[str, str]:
+    """A SETTINGS file's ``system.*`` set-values, dotted — the Layer-2 half of the path tier.
+
+    ⚑ ITS OWN READER since 2026-08-31.  This was ``load_config(path).config_paths`` — the
+    very call the LAYER-1 read used, over one field that held ``config.*`` and ``system.*``
+    together.  One function answering two layers' questions is what let each layer's file
+    speak for the other; the walk here starts at the ``system:`` table, so ``system.`` is
+    the only prefix it can produce.
+    ⚑ NOT filtered to the path tier — that is :func:`~kanibako.settings.paths.load_system_config`'s
+    own P13 job, and this file's ``system:`` table legitimately holds ``system.agent`` and
+    the category families too.
+    """
+    table = load_doc(settings_path).get("system")
+    return _flatten_dotted(table, "system") if isinstance(table, dict) else {}
 
 
 def config_base_path() -> Path:
@@ -128,49 +176,11 @@ def settings_base_path() -> Path:
     return Path("/etc/kanibako/settings_base.yaml")
 
 
-def _present_scalar_fields(path: Path) -> dict[str, object]:
-    """The scalar/bool fields actually PRESENT in a config file (``None`` = the reset sentinel)."""
-    if not path.exists():
-        return {}
-    data = load_doc(path)
-    # Pop the bootstrap-PATH tier so it can't leak into the scalar overlay.
-    data.pop("config", None)
-    data.pop("system", None)
-    flat = _flatten_toml(data)
-    valid_keys = {fld.name for fld in fields(KanibakoConfig)}
-    present: dict[str, object] = {}
-    for k, v in flat.items():
-        if k in valid_keys:
-            present[k] = v
-    return present
-
-
-def load_config(path: Path) -> KanibakoConfig:
-    """Read a single config file and return a KanibakoConfig with defaults filled in."""
-    cfg = KanibakoConfig()
-    if path.exists():
-        data = load_doc(path)
-        # ⚑ The bootstrap-PATH extraction is UNFILTERED — an unknown leaf lands
-        # in ``config_paths`` too, and reaches no consumer (see the llm-doc).
-        merged: dict[str, str] = {}
-        config_tbl = data.get("config", {})
-        if isinstance(config_tbl, dict):
-            merged.update(_flatten_dotted(config_tbl, "config"))
-        system_tbl = data.get("system", {})
-        if isinstance(system_tbl, dict):
-            merged.update(_flatten_dotted(system_tbl, "system"))
-        cfg.config_paths = merged
-        # A present key sets the field; a present ``None`` resets to the default.
-        for k, v in _present_scalar_fields(path).items():
-            if v is None:
-                setattr(cfg, k, getattr(KanibakoConfig(), k))
-            else:
-                setattr(cfg, k, v)
-    return cfg
-
-
 #: The box-scope SCALAR keys resolved through the KEYSPACE (B6, R-11a(a)):
 #: dotted key → the flat ``KanibakoConfig`` field it lands on.
+#: ⚑⚑ IT IS ALSO THE READ's KEY SET since 2026-08-31 — :func:`_present_scalar_fields` walks
+#: a settings document THROUGH these dotted spellings, so this table is the one place that
+#: says which scalars exist and how they are spelled, for the read and the resolve alike.
 #: ⚑ ``box.enable_vault`` JOINED 2026-08-29 as the fourth.  It was the last member of the
 #: "pre-cascade reader owns the default" pattern, and its two halves were both defects: the
 #: declared default reached no launch snapshot, and :func:`read_box_enable_vault` opened
@@ -186,6 +196,48 @@ _BOX_SCALAR_FIELDS: dict[str, str] = {
     "box.shell": "box_shell",
     "box.enable_vault": "box_enable_vault",
 }
+
+
+def _scalar_value(value: object) -> object:
+    """A settings-file scalar as the flat object carries it (``None`` = the reset sentinel)."""
+    if isinstance(value, bool) or value is None:
+        return value
+    return str(value)
+
+
+def _present_scalar_fields(path: Path) -> dict[str, object]:
+    """The DECLARED box scalars PRESENT in a SETTINGS file (``None`` = the reset sentinel).
+
+    ⚑⚑ KEYED ON THE DECLARED DOTTED KEYS (:data:`_BOX_SCALAR_FIELDS`), NEVER ON A FLATTENED
+    NAMESPACE.  This used to flatten the whole document to underscore-joined names and keep
+    whichever matched a :class:`KanibakoConfig` FIELD name — a namespace that COLLIDES with
+    those field names, so an undeclared top-level ``box_image:`` resolved identically to the
+    declared ``box: image:`` and spec §0's closed keyspace was breached by the shape of the
+    read.  Walking IN through the declared spelling makes the flat one unreachable rather
+    than refused by a list (P4), and it is also why the ``config``/``system`` pops are gone:
+    a table the walk never enters cannot leak.
+    """
+    data = load_doc(path)
+    present: dict[str, object] = {}
+    for dotted, field_name in _BOX_SCALAR_FIELDS.items():
+        section, leaf = dotted.split(".", 1)
+        table = data.get(section)
+        if isinstance(table, dict) and leaf in table:
+            present[field_name] = _scalar_value(table[leaf])
+    return present
+
+
+def load_config(path: Path) -> BootstrapConfig:
+    """Read the LAYER-1 bootstrap file — the one reader of ``kanibako_config.yaml``.
+
+    ⚑⚑ IT RETURNS A :class:`BootstrapConfig`, AND THAT IS THE WHOLE OF THE 2026-08-31
+    RULING: a Layer-1 read has no settings field to return.  It was a GENERAL document
+    reader — the same call read the settings file — which is how the Layer-1 file came to
+    hand back a ``box.image`` it may not carry.  The box scalars are read from SETTINGS
+    files by :func:`load_merged_config`; a settings file's ``system.*`` path set-values by
+    :func:`system_path_set_values`.
+    """
+    return BootstrapConfig(config_paths=bootstrap_config_paths(path))
 
 
 def box_scalar_defaults_floor() -> dict[str, object]:
@@ -306,12 +358,12 @@ def load_merged_config(
     # ⚑⚑ THE LAYER-1 FILE IS NOT A SETTINGS SOURCE (Jei, 2026-08-26: "kanibako_config.yaml
     # <-- cannot have settings. Period.").  It WAS the least-specific FILE source here, and
     # its ``box:`` table overrode the declared defaults; now the scalars START at those
-    # defaults and the first thing that can move them is the WORKSET tier.  ⚑ Its
-    # ``config.*`` foundation still loads — that is the file's whole job (spec §1) — and it
-    # is FILTERED, so a ``system:`` table hand-written into the bootstrap file cannot ride
-    # along in ``config_paths`` either.
+    # defaults and the first thing that can move them is the WORKSET tier.
+    # ⚑ *global_path* is still a PARAMETER, and it is not dead: it is what
+    # :func:`_resolve_box_scalars` locates the SYSTEM tier from, below.  What is gone is the
+    # ``config_paths`` field this function used to fill from it — a settings object never
+    # carried Layer 1 legitimately (:class:`BootstrapConfig`, 2026-08-31).
     cfg = KanibakoConfig()
-    cfg.config_paths = bootstrap_config_paths(global_path)
     if workset_path and workset_path.exists():
         _overlay_scalars(cfg, workset_path)
     if project_path and project_path.exists():
@@ -647,18 +699,22 @@ def unset_project_config_key(path: Path, flat_key: str) -> bool:
     return True
 
 
-def load_project_overrides(path: Path) -> dict[str, str]:
-    """The project-level overrides in a box.yaml — flat_key → value for keys differing from defaults."""
-    if not path.exists():
-        return {}
-    proj_cfg = load_config(path)
+def load_project_overrides(path: Path) -> dict[str, object]:
+    """The project-level overrides in a box.yaml — flat_key → value for keys differing from defaults.
+
+    ⚑ OFF THE PRESENT SET, not off a loaded object (2026-08-31): ``load_config`` reads the
+    LAYER-1 file now, and a box.yaml is a settings file.  The answer is unchanged — a key
+    absent from the file, and a present ``None`` (the reset sentinel), both resolve to the
+    default and so are not overrides.
+    ⚑ The value type is ``object`` because ``box.share_images`` and ``box.enable_vault`` are
+    real bools, which is what the callers print.
+    """
     defaults = KanibakoConfig()
-    overrides: dict[str, str] = {}
-    for fld in fields(proj_cfg):
-        val = getattr(proj_cfg, fld.name)
-        if val != getattr(defaults, fld.name):
-            overrides[fld.name] = val
-    return overrides
+    return {
+        key: value
+        for key, value in _present_scalar_fields(path).items()
+        if value is not None and value != getattr(defaults, key)
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -869,8 +925,8 @@ def write_agent_setting(path: Path, key: str, value: str, agent_name: str) -> No
 def _flatten_dotted(data: dict, prefix: str = "") -> dict[str, str]:
     """Flatten a nested dict into DOTTED-key form, stringifying scalar leaves.
 
-    ⚑ NOT a scope-category helper — its only callers are ``load_config``'s
-    bootstrap ``[config]`` / ``[system]`` extraction.
+    ⚑ NOT a scope-category helper — its callers are the Layer-1 ``config:`` read, the
+    Layer-2 ``system:`` path-tier read, and the Layer-1 refusal that names its keys.
     """
     out: dict[str, str] = {}
     for k, v in data.items():

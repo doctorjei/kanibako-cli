@@ -98,17 +98,29 @@ class TestTheSettingsFileFeedsThePathTier:
 
 class TestTheLayeringIsNotReversed:
 
-    def test_the_settings_file_BEATS_the_config_file(self, repointed, tmp_home):
+    def test_a_leftover_system_value_in_the_config_file_refuses(
+        self, repointed, tmp_home,
+    ):
         """Spec §2g: ``system.*`` paths are SETTINGS, set at the ``system`` cascade
-        level — so a leftover value in the bootstrap config file must not win."""
+        level — so a leftover value in the bootstrap config file must not win.
+
+        ⚑ CHANGED 2026-08-31: it used to LOSE silently, which meant a user with the
+        leftover saw the settings file's value and never learned their config file said
+        something else. It is named now, and the settings file's value is what the
+        surrounding cases still assert.
+        """
+        from kanibako.errors import ConfigError
+
         key = sorted(SYSTEM_PATH_DEFAULTS)[0]
         write_nested_key(
             repointed, tuple(key.split(".")[:-1]), key.split(".")[-1], "/from-config",
         )
-        resolved = load_system_config(
-            repointed, data_home=tmp_home / "data", home=tmp_home / "home",
-        )
-        assert str(resolved[key]) == _sentinel(key)
+        with pytest.raises(ConfigError) as exc:
+            load_system_config(
+                repointed, data_home=tmp_home / "data", home=tmp_home / "home",
+            )
+        assert str(repointed) in str(exc.value)
+        assert key in str(exc.value)
 
     def test_a_config_table_in_the_settings_file_does_NOT_reach_layer_1(
         self, config_file, tmp_home,

@@ -1,7 +1,7 @@
 """New-model box identity derivation (registry + layout).
 
 Every helper is PURE: it takes the resolved
-:class:`~kanibako.settings.paths.StandardPaths`, the ``KanibakoConfig``, and the
+:class:`~kanibako.settings.paths.StandardPaths`, the ``BootstrapConfig``, and the
 target directory EXPLICITLY (no hidden global reads), and never writes.
 
 Design letters (D0/D1, D1b, D3-mode, D3-auth, D4, D10, P6d), the history this
@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any, NamedTuple
 
 from kanibako.project import registry_store, workset_registry
-from kanibako.settings.config import WORKSET_META_FILE, KanibakoConfig
+from kanibako.settings.config import WORKSET_META_FILE, BootstrapConfig
 from kanibako.settings.config_io import load_doc
 from kanibako.settings.paths import (
     STANDALONE_META_DIR,
@@ -71,7 +71,7 @@ class _OwnedBox(NamedTuple):
 def _find_owning_box(
     project_dir: Path,
     std: StandardPaths,
-    config: KanibakoConfig,  # noqa: ARG001 — signature parity; enumeration is std-sourced
+    config: BootstrapConfig,  # noqa: ARG001 — signature parity; enumeration is std-sourced
 ) -> _OwnedBox | None:
     """Scan every workset's per-workset registry for a box AT *project_dir*.
 
@@ -161,7 +161,7 @@ def find_connected_external_box(
 def detect_box_mode(
     project_dir: Path,
     std: StandardPaths,
-    config: KanibakoConfig,
+    config: BootstrapConfig,
 ) -> DetectionResult | None:
     """Detect *project_dir*'s box mode by the D3-mode PRECEDENCE (first wins).
 
@@ -190,7 +190,7 @@ def detect_box_mode(
 def resolve_box_identity(
     project_dir: Path,
     std: StandardPaths,
-    config: KanibakoConfig,
+    config: BootstrapConfig,
 ) -> dict[str, Any] | None:
     """Return ``{mode, name, workspace, registered}`` for the box at *project_dir*.
 

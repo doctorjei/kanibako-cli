@@ -122,6 +122,17 @@ WARN_BOX_NO_VAULT =    ("Warning: cannot find vault for box '%s' (expected at %s
 ERR_SETTINGS_BAD_PATH = "Unresolvable %s path: %s" # "config" | "system", key
 ERR_SETTINGS_BAD_REF =  "Unknown @%s-reference: %s" # "" | "config", ref
 ERR_CONFIG_NO_FILE =    "%s is missing. Run any kanibako command to initialize." # config file path
+# ⚑ The LOUD half of R153 (Jei, 2026-08-31). A stale settings table in the Layer-1 file used
+# to be DROPPED in silence, so a box ran a different image than its owner's file said.
+# ⚑ THE CURE IS ORDERED, AND THE ORDER IS LOAD-BEARING: the hand-edit comes FIRST. Every
+# verb resolves its paths through this read, ``system set`` included, so a message that
+# led with the command would send the user to a command that refuses for this same reason.
+ERR_CONFIG_LAYER1_SETTINGS = (
+                        "%s carries settings, which it cannot hold:\n  %s\n" +
+                        "That file holds the config.* bootstrap paths and nothing else. " +
+                        "Delete those lines from it, then set what you meant with " +
+                        "'kanibako system set <key>=<value>', which writes the settings file.")
+                                                    # the Layer-1 file path, the offending keys
 ERR_PROJECT_NO_PATH =   "Project path '%s' does not exist." # the path that does not exist
 # ⚑ The two $HOME-guard messages take NO arguments (raised bare).
 ERR_PROJECT_NEW_HOME = ("Refusing to create project rooted at $HOME: this would mount the " +
