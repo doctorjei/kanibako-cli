@@ -2,31 +2,50 @@
 
 from __future__ import annotations
 
-from kanibako.settings.config import load_config
-
 
 class TestCommsConfig:
     def test_default_comms_path(self, tmp_path):
-        from kanibako.settings.config import KanibakoConfig
+        """With NO stored path set-values, the channel root is ``@config.data/channels``.
+
+        ⚑ NO SET-VALUES, SPELLED AS THE EMPTY MAPPING (R153, 2026-08-31).  This built a
+        ``KanibakoConfig()`` for the sole purpose of passing its ``config_paths`` — a
+        Layer-1 field on a Layer-2 SETTINGS object, and always ``{}``.  The cure is
+        ``cli._ensure_initialized``'s: pass the ``{}`` under its own name.
+        """
         from kanibako.settings.paths import resolve_system_paths
 
-        cfg = KanibakoConfig()
-        resolved = resolve_system_paths(
-            cfg.config_paths, data_home=tmp_path, home=tmp_path,
-        )
+        resolved = resolve_system_paths({}, data_home=tmp_path, home=tmp_path)
         # channelroot is a Layer-2 system.* SETTING (@config.data/channels).
         assert resolved["system.channelroot"] == tmp_path / "kanibako" / "channels"
 
-    def test_comms_from_toml(self, tmp_path):
+    def test_comms_from_the_settings_file(self, tmp_path):
+        """A ``system.channelroot`` repoint takes effect — read from the SETTINGS file.
+
+        🛑 NOT FROM ``kanibako_config.yaml`` (R153, 2026-08-31).  Spec §1 gives Layer 1
+        the ``config.*`` bootstrap paths ALONE and names ``system.channelroot`` among the
+        Layer-2 keys that KEEP the ``system.*`` name, so the bootstrap file cannot carry
+        it and now REFUSES it.  This case planted it there and read it back through
+        ``load_config(...).config_paths``, never touching ``bootstrap_config_paths`` —
+        which is why deleting that read's ``config.``-prefix filter would NOT have
+        reddened it.  The key moves to the tier the spec gives it, and
+        ``system_path_set_values`` is that tier's reader.
+        """
         from pathlib import Path
 
+        from kanibako.settings.config import system_path_set_values
         from kanibako.settings.paths import resolve_system_paths
 
-        toml = tmp_path / "kanibako_config.yaml"
-        toml.write_text('system:\n  channelroot: "/custom-channels"\n')
-        cfg = load_config(toml)
+        settings = tmp_path / "settings.yaml"
+        settings.write_text('system:\n  channelroot: "/custom-channels"\n')
+
+        set_values = system_path_set_values(settings)
+        # ⚑ SELF-EMPTINESS GUARD (P15): the repoint below is a witness only while the
+        # reader still carries the planted key.  An emptied set reds HERE, naming the
+        # reader, instead of leaving the resolve to fall back to the default.
+        assert set_values == {"system.channelroot": "/custom-channels"}
+
         resolved = resolve_system_paths(
-            cfg.config_paths, data_home=tmp_path, home=tmp_path,
+            set_values, data_home=tmp_path, home=tmp_path,
         )
         assert resolved["system.channelroot"] == Path("/custom-channels")
 
