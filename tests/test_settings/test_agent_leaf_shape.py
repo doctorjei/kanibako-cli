@@ -475,11 +475,11 @@ class TestTheKeyspaceAndTheFileAgree:
 
 
 # ---------------------------------------------------------------------------
-# THE FOUR DOORS ANSWER WITH ONE VOICE
+# THE FIVE DOORS ANSWER WITH ONE VOICE
 # ---------------------------------------------------------------------------
 #
 # 🛑🛑 NOTHING ANYWHERE ASKED TWO DOORS ABOUT ONE KEY, AND THAT IS WHY TWO DEFECTS
-# SURVIVED A GREEN SUITE. Four surfaces judge "is this a declared leaf of this agent",
+# SURVIVED A GREEN SUITE. Five surfaces judge "is this a declared leaf of this agent",
 # and each had its own tests:
 #
 #   1. ``settings_keyspace.key_class``            — the classifier and the resolve seam
@@ -488,6 +488,7 @@ class TestTheKeyspaceAndTheFileAgree:
 #   4. ``config_keys._parse_persona_agent_key``   — the per-node recogniser the verbs
 #                                                   dispatch on, plus its
 #                                                   ``agent_default_tier_leaf`` reader
+#   5. ``settings_cli_level.guard_cli_level``     — the §1A CLI LEVEL's closed-keyspace arm
 #
 # MEASURED on 3b20488e, both invisible to every existing row:
 #   · ``agent.goose.provider`` was KEY at door 1 and REFUSED at door 2 on a claude-only
@@ -495,14 +496,21 @@ class TestTheKeyspaceAndTheFileAgree:
 #     from starting.
 #   · ``agent.default.provider`` was UNDECLARED at door 1 and ``'provider'`` at door 4.
 #
-# ⚑ ONE INJECTED VOCABULARY FOR ALL FOUR. Doors 2 and 4 reach discovery through
+# ⚑ DOOR 5 WAS ENROLLED 2026-09-01, WITH THE SAME DEFECT AND OUTSIDE THE SAME MATRIX.
+# It took its vocabulary as a PARAMETER no caller passed, so it judged every agent
+# against core's §2d table alone and refused ``agent.goose.provider`` — door 2's defect,
+# a second time, at a second launch gate. Sourcing the map fixed the verdict; enrolling
+# it here is what stops the next door from drifting, since a door outside the matrix is
+# a door the matrix can forget.
+#
+# ⚑ ONE INJECTED VOCABULARY FOR ALL FIVE. Doors 2, 4 and 5 reach discovery through
 # ``config_keys.AGENT_LEAF_MAP`` → ``settings_prefs.default_valid_agents``, so patching
-# that one supplier is what makes the comparison a comparison rather than four readings
-# of four environments.
+# that one supplier is what makes the comparison a comparison rather than five readings
+# of five environments.
 
 
-class TestTheFourDoorsAgreeOnOneKey:
-    """One key, four doors, ONE verdict — over a corpus derived from the declarations.
+class TestTheFiveDoorsAgreeOnOneKey:
+    """One key, five doors, ONE verdict — over a corpus derived from the declarations.
 
     ⚑ DERIVED, NEVER LISTED (P13): the universal rows sweep
     :data:`DECLARED_AGENT_LEAVES` itself, so a leaf entering or leaving §2d is covered
@@ -546,6 +554,24 @@ class TestTheFourDoorsAgreeOnOneKey:
         )
         return names
 
+    def _cli_level_accepts(self, key, node):
+        """Door 5: does the §1A CLI-level guard accept *key*? (``guard_cli_level``)
+
+        ⚑ IT IS ASKED IN ITS PRODUCTION SHAPE — ``valid_agents=None``, the NAME carried
+        by the active-agent union — because that is the shape the defect lived in. A
+        door interrogated through a parameter production never supplies is not the door
+        that runs. Only the vocabulary comes from the fixture, through the one supplier
+        every other door here reads.
+        """
+        from kanibako.settings.settings_cli_level import guard_cli_level
+        from kanibako.settings.settings_resolve import SettingsError
+
+        try:
+            guard_cli_level({key: "x"}, active_agent=node)
+        except SettingsError:
+            return False
+        return True
+
     def _doors(self, node, leaf, agents):
         """Each door's answer to "is ``agent.<node>.<leaf>`` a key", as a bool."""
         from kanibako.settings import settings_prefs
@@ -562,6 +588,7 @@ class TestTheFourDoorsAgreeOnOneKey:
                 key, valid_agents=agents,
             ) is None,
             "4 persona recogniser": _parse_persona_agent_key(key) == (node, leaf),
+            "5 cli level": self._cli_level_accepts(key, node),
         }
 
     def _assert_all(self, node, leaf, agents, expected):
@@ -609,8 +636,8 @@ class TestTheFourDoorsAgreeOnOneKey:
         self._assert_all(self.UNREADABLE, leaf, agents, True)
 
     def test_the_ANY_AGENT_tier_carries_ONLY_the_leaves_declared_AT_it(self, agents):
-        """``agent.default.<plugin-leaf>`` is not a key, at any door — and the fifth
-        surface, :func:`agent_default_tier_leaf`, must say so too.
+        """``agent.default.<plugin-leaf>`` is not a key, at any door — and the
+        :func:`agent_default_tier_leaf` reader, which door 4 carries, must say so too.
 
         It said ``'provider'`` while the classifier said UNDECLARED. That divergence is
         a §0 fabrication: a destination invented for a spelling the keyspace refuses.
