@@ -150,6 +150,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   declares one too. Precedence is unchanged: a settings file at any scope still outranks a
   floored value.
 
+- **A refusal at `agent.default.env.<VAR>` no longer sends you to a spelling that also refuses.**
+  `agent.default` is the all-agents tier, not a persona, so a write there is refused — and the
+  refusal used to offer one cure to everybody: *set it with the bare key*. For an env variable the
+  bare key is `env.FOO`, the retired docker-`.env` spelling, which answers *"the bare `env.<VAR>`
+  spelling is RETIRED"*. The refusal now says this tail has no bare CLI spelling and names the
+  place that works: the `agent: default:` table of the system settings file, which the launch
+  reads. Behaviour for every other `agent.default.<leaf>` is unchanged.
+
 - **A setting an agent plugin declares is a key on that agent alone, at every door.** The rule the
   entry above applies to the all-agents tier applies to the named tier too: every leaf other than
   the universal ones is legal only under the agent — or harness — whose plugin declared it.
