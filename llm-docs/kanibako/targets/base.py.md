@@ -313,7 +313,9 @@ unreachable/can't-tell shape.
 
 ⚑ **Redirects are NOT followed** (the private `_NoRedirects` handler), because urllib would re-send
 every header — the `Authorization` bearer included — to the redirect target, possibly cross-origin.
-A 3xx comes back as its status instead.
+A 3xx comes back as its status instead. The handler names NO header, deliberately: stripping a
+named one and following the redirect anyway would carry a third-party plugin's `x-api-key` to the
+target — the same name-keyed shape `_request_secrets` refuses below.
 
 The bare `except Exception` arm catches `URLError` / `socket.timeout` / `ConnectionError` / ssl /
 `ValueError` (bad URL) — all transport shapes, and the contract is never-raises.
@@ -371,12 +373,25 @@ writes exactly this). The safe default therefore lives on the **catch-all**, not
 that was foreseen — and only the parse itself sits inside the `ValueError` guard, so a `ValueError`
 out of the walk or the re-serialization cannot take the "not JSON" arm.
 
+🛑 **The catch-all has FOUR owners, and both `except Exception` arms are written bare for that reason:**
+the stack already consumed above this call, `_compact`, a shape nobody foresaw, and `json.loads`
+itself. `_compact` is the owner a reader narrowing the second arm will miss — `json.dumps` recurses
+once per container over the tree the walk just built, up to `_NEST_DEPTH` deep, and before 3.12 that
+is charged against `sys.getrecursionlimit()` exactly as the decoder is (from 3.12 it draws on a
+separate C-recursion budget). The re-serialization is therefore a `RecursionError` source in its own
+right, not the walk's postscript. Neither depth starts from an empty stack, either: `_provider_text`
+runs under `verify_persona` and whatever called that, so how much limit is left is the caller's to
+spend and not this module's to know. And narrowing an arm costs more than a message —
+`_provider_text` is called from inside `http_probe`'s `except HTTPError` handler, where a raised
+exception is NOT caught by that `try`'s sibling `except Exception`, so it leaves `http_probe` and
+breaks the never-raises contract.
+
 🛑 **`json.loads` itself is one of the catch-all's owners, and on the minimum supported interpreter
 it is an ordinary one.** Before 3.12 the decoder's own recursion is charged against
 `sys.getrecursionlimit()`, so a merely deep body — 995 levels, under 2 KB, less than a quarter of
 `_PROVIDER_READ_CAP`, something a server can serve — dies in the parse and the user loses the whole
-message. `json.loads` exposes no depth knob; `_provider_text`'s docstring carries the floor and the
-command that re-derives it.
+message. `json.loads` exposes no depth knob, so the floor is stated rather than guarded;
+`_provider_text`'s docstring carries the command that re-derives it.
 
 ⚑ **The walk carries TWO budgets, and neither is spent on the other's axis.** `_EMBED_DEPTH` buys a
 descent into an embedded document; `_NEST_DEPTH` buys one ordinary container, so a deep tree of
@@ -384,6 +399,18 @@ dicts and lists is one document and costs no embed budget. `_NEST_DEPTH` exists 
 is not `sys.getrecursionlimit()` — a global any code in the process may retune, and no place to
 rest a security property. It carries ACROSS an embed hop rather than restarting: restarting would
 multiply the two, and a body spending the product fits under `_PROVIDER_READ_CAP`.
+
+Both are BOUNDS, not measured limits. `_EMBED_DEPTH` is one step per proxy hop, and because the
+input is already capped at `_PROVIDER_READ_CAP` the hostile work a body can buy is at most that cap
+times the depth.
+
+⚑ **`_NEST_DEPTH` is HALF THE STACK, not a corner of it, and that is deliberate.** A container level
+costs TWO Python frames before 3.12 — the comprehension takes one of its own until PEP 709 inlines
+it — and one after, so a full budget peaks at a recursion limit of **508** on the oldest interpreter
+kanibako supports, against a default of 1000. It is stated rather than shrunk because spending it
+all is NOT a leak: a `RecursionError` out of this walk lands on `_provider_text`'s catch-all and
+takes `_UNREADABLE`, so a budget set wrong costs the user a message, never an unscrubbed one. The
+`_NEST_DEPTH` comment carries the command that re-derives the peak.
 
 ⚑ **Past EITHER budget the region is replaced by `_REDACTED` IN PLACE**, never skipped and never
 escalated to withholding the body: a document we declined to read is a place a secret could be, so
@@ -396,7 +423,10 @@ over-budget region.
 routinely echoes the upstream error body as a **string value**, and that string keeps its own
 escape layer — the identical defect, one level down. A string that parses to a *container* is
 followed and scrubbed recursively; anything else (a bare number, `null`, a quoted word) is left as
-written, so ordinary prose is never rewritten into a JSON rendering of itself.
+written, so ordinary prose is never rewritten into a JSON rendering of itself. Its own decode guard
+is `ValueError` and nothing wider, for the same reason `_provider_text`'s is: a wider catch would
+treat a decode it could not FINISH as plain text and scrub it for raw spellings alone, which is
+exactly the shape the decode exists to stop.
 
 ⚑ **A JSON body is RE-SERIALIZED, not edited in place.** The printed line is the provider's
 *meaning*, not its bytes: a pretty-printed body prints compacted, `é` prints as itself (the
@@ -411,6 +441,12 @@ after the scrub deliberately — truncating first could leave half a token stand
 *bytes* before the scrub ever saw it, so a key straddling the cut arrives bisected, matches no
 secret, and its surviving head prints whenever the whitespace collapse pulls it inside the character
 cap. Reading more of a hostile body is the only fix, and it is not one.
+
+⚑ **The scrub runs on BOTH SIDES of the whitespace collapse, and neither call is redundant.**
+Collapsing runs of whitespace can JOIN two runs into a match that was not there before, and can
+equally DESTROY one that was — a header value carrying a double space matches the wire body and not
+the collapsed body. It is also the only scrub the non-JSON path gets, so it does not get to be
+order-sensitive about which side it runs on.
 
 ⚑ **`_survives` is the last guard, it FAILS LOUD — and it is a guard, not coverage.** After the
 scrub it re-reads the text with backslash escaping deleted; if a secret is still recoverable — a
@@ -430,6 +466,16 @@ so the warning is not reserved for some other use: the value is an error message
 human, not a string proven free of secrets. The same docstring carries the re-serialization note,
 because printing `response.body` is where an author meets it, and one guarantee it *does* make:
 the string is always encodable, so printing it to a strict stream (`sys.stdout`) cannot raise.
+
+⚑ **That encodability is BUILT, not inherited, and the final re-encode in `_provider_text` is what
+builds it.** `json.loads` turns a `\udXXX` escape into a REAL lone surrogate and `_compact`'s
+`ensure_ascii=False` — load-bearing, above — writes it straight back, so without that round-trip the
+returned string raises `UnicodeEncodeError` in the CALLER's print. Every sink kanibako itself ships
+is `sys.stderr`, whose `backslashreplace` handler hides it; `http_probe` is a PUBLISHED helper, and
+a plugin printing to `sys.stdout` would get the traceback instead of the error it asked for. The
+round-trip runs AFTER the scrub, never before: a replacement can only DESTROY characters, so it
+cannot rebuild a secret the scrub already took, and running it first would hand `_survives` a string
+the scrub never saw.
 
 ```python
 class PersonaSettings(NamedTuple):

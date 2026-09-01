@@ -1,4 +1,10 @@
-"""The Target plugin contract: the ABC, its descriptor types, and the bind-shaped key map."""
+"""The Target plugin contract: the ABC, its descriptor types, and the bind-shaped key map.
+
+⚑ The REASONING — why each shape is this shape, the measured incidents behind the credential
+scrub, the bounds arithmetic and the design history — lives in
+``llm-docs/kanibako/targets/base.py.md``.  What is here is what a reader needs to understand the
+code: the rules, and the contracts the type system cannot carry.
+"""
 
 from __future__ import annotations
 
@@ -162,33 +168,22 @@ class PersonaSpec:
     endpoint_delivery: str = "env"   # "env" | "config_file"; picks the preflight gate in start.py
     wire_api: str = "responses"      # config-file wire; codex dropped "chat" (openai/codex#7782)
     provider_pin: tuple[tuple[str, str], ...] = ()  # setting pins when endpoint active
-    # ⚑ A HARNESS-CAPABILITY veto, NARROWED by the present-null model key: env delivery can
-    # omit a model, so a present-null SUPPRESSES this; a config-file harness conflict-refuses.
+    # ⚑ A HARNESS-CAPABILITY veto: a present-null model SUPPRESSES it under `"env"` delivery;
+    # a config-file harness conflict-refuses instead (llm-doc).
     model_required: bool = False     # harness VETO: error if endpoint set but no model
 
 
 #: Cap on the provider's own words as echoed back to a user, in CHARACTERS.
 _PROVIDER_TEXT_CAP = 300
-#: Bytes taken off an error response before capping — a hostile body is never slurped.
+#: Bytes taken off an error response before capping.
 _PROVIDER_READ_CAP = 8 * 1024
-#: Shortest header value treated as secret-bearing; see `_request_secrets` for why LENGTH.
-#: ⚑ EIGHT is where ordinary header values stop being collateral (`gzip` under it,
-#: `keep-alive` caught by it) and still below anything issued as a key.
+#: Shortest header value treated as secret-bearing (`_request_secrets`).
 _SECRET_MIN_CHARS = 8
 #: How many EMBEDDED JSON documents deep the scrub follows a string value (`_scrub_embedded`).
-#: ⚑ One step per proxy hop.  A BOUND, not a measured limit: the input is already capped at
-#: `_PROVIDER_READ_CAP`, so hostile work is at most that cap times this depth.
 _EMBED_DEPTH = 3
 #: How many ORDINARY containers deep the scrub walks one document (`_scrub_decoded`).
-#: ⚑ Also a bound, and it exists so the walk's depth is NOT `sys.getrecursionlimit()` — a global
-#: any code in the process may retune, and no place to rest a security property.  Orders of
-#: magnitude past a real error body.
-#: ⚑ IT IS HALF THE STACK, NOT A CORNER OF IT.  A container level costs TWO Python frames before
-#: 3.12 (the comprehension takes one of its own until PEP 709 inlines it) and one after, so a full
-#: budget peaks at a recursion limit of 508 on the oldest interpreter we support, against a default
-#: of 1000.  Stated rather than shrunk because spending it all is NOT a leak: a `RecursionError`
-#: out of this walk lands on `_provider_text`'s catch-all and takes `_UNREADABLE`, so a budget set
-#: wrong costs the user a message, never an unscrubbed one.  Re-derive the peak from the repo root:
+#: ⚑ It caps the walk's recursion INSTEAD OF `sys.getrecursionlimit()` (llm-doc).  Re-derive the
+#: interpreter recursion limit a full budget peaks at, from the repo root:
 #:     python -c "import sys;sys.path.insert(0,'src')
 #:     from kanibako.targets.base import _scrub_decoded as w, _NEST_DEPTH as d
 #:     n = 'x'
@@ -198,18 +193,13 @@ _EMBED_DEPTH = 3
 #:         try: w(n, ()); print('peak recursionlimit', r); break
 #:         except RecursionError: pass"
 _NEST_DEPTH = 250
-#: What a secret is replaced BY — and what an over-budget region is replaced by, IN PLACE.
-#: ⚑ SAME MARKER FOR BOTH ON PURPOSE: a document we declined to read is a place a secret could
-#: be, so it is treated as one.  Replacing it in place, rather than withholding the whole body,
-#: is what keeps a bound from costing the user the message that says what went wrong.
+#: What a secret is replaced BY — and, IN PLACE, what a region past `_EMBED_DEPTH` or
+#: `_NEST_DEPTH` is replaced by.  ⚑ ONE MARKER FOR BOTH (llm-doc).
 _REDACTED = "<redacted>"
-# ⚑ STATES THE OUTCOME, NEVER A DIAGNOSIS.  What fired is a MATCH against a request header
-# value, and `_request_secrets` is length-keyed, so the match may be an `anthropic-version`
-# date.  Telling a user their provider echoed a key back is an accusation this cannot support.
+#: Whole-body replacement when `_survives` still finds a request value after the scrub.
 _WITHHELD = "(withheld — the reply still matched a value from the request after scrubbing)"
-# ⚑ ITS SIBLING, AND A DIFFERENT FACT — so it does not borrow the sentence above.  Nothing
-# matched here; the body was never read, so the scrub's guarantee never applied to it at all.
-# Saying "still matched a value from the request" would report a match that never happened.
+#: Whole-body replacement when the body could not be decoded, so the scrub never applied.
+#: ⚑ A DIFFERENT FACT from `_WITHHELD`, never interchangeable with it (llm-doc).
 _UNREADABLE = "(withheld — the reply could not be decoded, so it could not be scrubbed)"
 
 
@@ -221,12 +211,11 @@ class ProbeResponse(NamedTuple):
     nothing to read; one of two fixed sentences when the text was withheld instead
     (`_WITHHELD`, `_UNREADABLE`).
 
-    🛑 SCRUBBED IS NOT PROVEN CLEAN.  THIS IS THE PUBLISHED CONTRACT FOR *body*, and it is
-    on the class so `help(ProbeResponse)` carries it — read it before printing that string
-    anywhere.  The scrub matches a credential's OWN CHARACTERS: in plain text, through one
-    JSON decode, and through `_EMBED_DEPTH` embedded documents.  A provider that re-encodes
-    it otherwise (`%2F`, `&#47;`, base64) defeats the scrub SILENTLY — nothing is withheld
-    and this string prints with the credential in it (`_survives`); a credential straddling
+    🛑 SCRUBBED IS NOT PROVEN CLEAN — read this before printing *body* anywhere.  The scrub
+    matches a credential's OWN CHARACTERS: in plain text, through one JSON decode, and
+    through `_EMBED_DEPTH` embedded documents.  A provider that re-encodes it otherwise
+    (`%2F`, `&#47;`, base64) defeats the scrub SILENTLY — nothing is withheld and this
+    string prints with the credential in it (`_survives`); a credential straddling
     `_PROVIDER_READ_CAP` leaks its head the same way.  An error message for a human, NOT a
     value proven free of secrets.
 
@@ -247,21 +236,12 @@ class ProbeResponse(NamedTuple):
 def _request_secrets(headers: Mapping[str, str]) -> tuple[str, ...]:
     """Every caller-supplied header substring that must never survive into printed text.
 
-    ⚑ EVERY VALUE, not just `Authorization`.  `http_probe` is a PUBLISHED plugin helper, so
-    a plugin authenticating with `x-api-key` — or any header name nobody here thought of —
-    must not depend on this function recognizing it.  The first-party plugins both happen
-    to send `Authorization`: that made them safe by luck, not by construction.
-    ⚑ A scheme-prefixed value contributes its REMAINDER too, so `Bearer <tok>` redacts on
-    the bare token as well as on the whole header.
-    ⚑ THE ONLY EXCLUSION IS LENGTH, NEVER A HEADER NAME — a name-keyed exemption list is
-    exactly the shape that lets the next credential through under an unforeseen name.  A
-    value shorter than `_SECRET_MIN_CHARS` is skipped because an EMPTY one would splice the
-    marker between every character of the body.
-    ⚑ SO THIS SET IS NOT ALL CREDENTIALS, and a false member is not cheap: the claude
-    plugin's `anthropic-version: 2023-06-01` is in it, and an error naming that date can
-    trip `_survives` and lose the WHOLE message.  Redaction still wins the trade — but it
-    is why `_WITHHELD` reports a MATCH and never accuses the provider of echoing a key.
-    ⚑ RETURNED LONGEST-FIRST for `_scrub`, which explains why.
+    EVERY value qualifies, not just `Authorization`, and a scheme-prefixed value contributes
+    its REMAINDER too, so `Bearer <tok>` yields the bare token as well as the whole header.
+    ⚑ THE ONLY EXCLUSION IS LENGTH (`_SECRET_MIN_CHARS`), NEVER A HEADER NAME — do not add a
+    name-keyed exemption (llm-doc).
+    ⚑ SO THIS SET IS NOT ALL CREDENTIALS: length alone admits ordinary header values too.
+    ⚑ RETURNED LONGEST-FIRST, which `_scrub` requires.
     """
     out: list[str] = []
     for value in headers.values():
@@ -276,10 +256,8 @@ def _request_secrets(headers: Mapping[str, str]) -> tuple[str, ...]:
 def _scrub(text: str, secrets: tuple[str, ...]) -> str:
     """*text* with every secret in it replaced by `_REDACTED`.
 
-    ⚑ ORDER-SENSITIVE, and `_request_secrets` owns the order: LONGEST FIRST, because a
-    secret landing first that merely PREFIXES another eats the longer one's anchor and
-    leaves its tail in cleartext.  Sorting there makes that shape unavailable rather than
-    resting a security property on the caller's `dict` insertion order.
+    ⚑ ORDER-SENSITIVE: *secrets* must arrive LONGEST FIRST, as `_request_secrets` returns
+    them (llm-doc).
     """
     for secret in secrets:
         text = text.replace(secret, _REDACTED)
@@ -287,10 +265,10 @@ def _scrub(text: str, secrets: tuple[str, ...]) -> str:
 
 
 def _compact(node: object) -> str:
-    r"""*node* re-serialized as ONE compact JSON line.
+    """*node* re-serialized as ONE compact JSON line.
 
-    ⚑ `ensure_ascii=False` is load-bearing, not cosmetic: the default would re-escape a
-    non-ASCII credential into a `\uXXXX` spelling the scrub after this cannot see.
+    ⚑ `ensure_ascii=False` is load-bearing, not cosmetic: the default defeats the scrub that
+    follows this call (llm-doc).
     """
     import json as _json
 
@@ -305,17 +283,11 @@ def _scrub_decoded(
 ) -> object:
     """A `json.loads` result with every string it carries — KEYS INCLUDED — scrubbed.
 
-    TWO BUDGETS, spent on different axes and neither on the other's.  *embed* buys a
-    descent into an EMBEDDED document (`_scrub_embedded`); *depth* buys one ordinary
-    container, so a deep tree of dicts and lists is one document and costs no *embed*.
-    ⚑ Past EITHER, the region we declined to read is replaced by `_REDACTED` IN PLACE
-    and the walk carries on around it — see that constant for why the two agree.
-    ⚑ *depth* is what keeps this recursion inside the interpreter's limit BY
-    CONSTRUCTION.  A parse returns trees far deeper than this walk may follow — how much
-    deeper varies by interpreter, and `_provider_text` says where that floor is — and the
-    walk is Python frames, so without the budget a body well inside `_PROVIDER_READ_CAP`
-    raises `RecursionError`, which `_provider_text` can only answer by losing the whole
-    message.  It once answered by printing the undecoded body instead; see that docstring.
+    TWO BUDGETS, neither spent on the other's axis: *embed* buys a descent into an EMBEDDED
+    document (`_scrub_embedded`), *depth* buys one ordinary container — so a deep tree of
+    dicts and lists is one document and costs no *embed*.
+    ⚑ Past EITHER, the region we declined to read is replaced by `_REDACTED` IN PLACE and
+    the walk carries on around it (llm-doc).
     """
     if depth <= 0:
         return _REDACTED
@@ -334,19 +306,12 @@ def _scrub_decoded(
 def _scrub_embedded(text: str, secrets: tuple[str, ...], embed: int, depth: int) -> str:
     """*text* scrubbed, FOLLOWED into an embedded JSON document when it is one.
 
-    ⚑ A gateway fronting another provider routinely echoes the upstream body as a string
-    VALUE, which keeps its own escape layer — `_provider_text`'s defect, one level down.
-    ⚑ ONLY A CONTAINER IS FOLLOWED, so a string parsing to a number, `null` or a quoted
-    word is left as written and ordinary prose is never rewritten as JSON.
-    ⚑ Past *embed* the string is REPLACED, not skipped: a document we declined to read is
-    a place a secret could be.  It goes IN PLACE — only the unread document disappears,
-    and its scrubbed surroundings still reach the user.
-    ⚑ `ValueError`, not `Exception`: that is the ONE failure meaning "not JSON".  A wider
-    catch would treat a decode we could not FINISH as plain text and scrub it for raw
-    spellings alone, which is exactly the shape `_provider_text`'s decode exists to stop.
-    ⚑ *depth* CARRIES ACROSS the hop rather than restarting, because it is the recursion
-    budget for the whole walk, not for one document.  Restarting it would multiply by
-    `_EMBED_DEPTH`, and a body spending the product fits under `_PROVIDER_READ_CAP`.
+    ⚑ ONLY A CONTAINER IS FOLLOWED: a string parsing to a number, `null` or a quoted word
+    is left as written.
+    ⚑ `ValueError`, not `Exception` — that is the ONE failure meaning "not JSON"; do not
+    widen it (llm-doc).
+    ⚑ *depth* CARRIES ACROSS the hop rather than restarting: it is the recursion budget for
+    the whole walk, not for one document.
     """
     import json as _json
 
@@ -362,59 +327,32 @@ def _scrub_embedded(text: str, secrets: tuple[str, ...], embed: int, depth: int)
 
 
 def _survives(text: str, secrets: tuple[str, ...]) -> bool:
-    r"""Is any secret still recoverable from *text* once backslash escaping is deleted?
+    """Is any secret still recoverable from *text* once backslash escaping is deleted?
 
-    ⚑ A replace is exact-match, so any encoder can hide a secret by escaping the secret's
-    own characters.  `_provider_text` undoes the JSON escape alphabet by PARSING; this
-    catches one layer past that — a body escaped twice, or a non-JSON body carrying `\/`
-    anyway — and FAILS LOUD, replacing the body with `_WITHHELD` rather than printing it.
-
-    🛑 A GUARD, NOT COVERAGE, AND THE TWO OUTCOMES DIFFER.  What it CATCHES costs the user
-    an error message.  What WALKS PAST it — any re-encoding that is not backslash escaping:
-    `%2F`, `&#47;`, base64 — is NOT caught and IS PRINTED, credential and all, with nothing
-    withheld, because nothing here can tell that anything happened.
-    ⚑ Closing such a class takes another DECODE layer ahead of the scrub, as
-    `_scrub_embedded` did; widening this guard only enumerates spellings.
+    A `True` FAILS LOUD: the caller replaces the whole body with `_WITHHELD`.
+    🛑 A GUARD, NOT COVERAGE.  Only backslash escaping is undone here; any other re-encoding
+    (`%2F`, `&#47;`, base64) is NOT caught and IS printed, credential and all (llm-doc).
     """
     bare = text.replace("\\", "")
     return any(secret in text or secret in bare for secret in secrets)
 
 
 def _provider_text(raw: bytes, headers: Mapping[str, str]) -> str:
-    r"""Normalize an error body into ONE capped, secret-scrubbed line.
+    """Normalize an error body into ONE capped, secret-scrubbed line.
 
-    ⚑ THE SCRUB IS THIS FUNCTION'S JOB, NOT A CALLER'S, and that is why it lives beside
-    the request: the credentials are in *headers* HERE and nowhere downstream, so this is
-    the only place a provider echoing one back can be caught at all.
+    ⚑ *raw* ARRIVES ALREADY CUT at `_PROVIDER_READ_CAP` BYTES (`http_probe`): a secret
+    straddling that cut is bisected and matches nothing here, and such a body cannot parse,
+    so it lands on the plain-text path.  `_PROVIDER_TEXT_CAP` is applied HERE, AFTER the
+    scrub (llm-doc).
+    ⚑ A JSON body is RE-SERIALIZED, not edited, so the return is the provider's MEANING and
+    not its bytes; `ProbeResponse.body` is the published contract for what that costs.  A
+    non-JSON body passes through unchanged apart from the whitespace collapse.
+    🛑 `_survives` guards both paths, and what walks past IT is PRINTED — read that
+    docstring before trusting this output.
 
-    ⚑ THE SCRUB RUNS ON THE DECODED BODY, NEVER ON THE WIRE BYTES ALONE.  A replace over
-    the wire text sees only a secret's raw spelling, and any ESCAPED rendering of it walks
-    straight past — a token containing `/`, echoed by a provider whose encoder writes it
-    `\/` (PHP's `json_encode` does by default), printed in full.  Decoding first hands the
-    scrub the string the provider MEANT, so the escape alphabet is undone by the parser
-    instead of enumerated here, and the re-encoding that follows can only escape text the
-    secret has already left.  `_scrub_embedded` carries that move `_EMBED_DEPTH` documents
-    inward.  A body that does not parse as JSON has no encoding layer to undo and is
-    scrubbed as plain text; `_survives` guards both paths — and what walks past IT is
-    printed, so read that docstring before trusting this output.
-
-    🛑 "DOES NOT PARSE" MEANS `ValueError` AND NOTHING ELSE.  A body that IS JSON but
-    that the decode could not FINISH has an encoding layer, un-undone, and the raw
-    spelling is all the plain-text scrub can see — so it takes `_UNREADABLE` instead, which
-    reports THAT fact and not a match that never happened.  This was a leak: the walk over
-    a decoded body is Python frames, and a swallowed `RecursionError` printed the wire body
-    with a `&`-escaped key legible in it (`_survives` deletes backslashes, so it saw
-    `u0026`, not `&`).  `_NEST_DEPTH` now keeps the WALK inside the limit; only the parse
-    is inside the `ValueError` guard, so nothing past it can take the "not JSON" arm; and
-    the catch-all answers for the rest — the stack already under this call, `_compact`, an
-    unforeseen shape, and `json.loads` ITSELF.
-
-    🛑 `json.loads` ITSELF IS THE FOURTH, AND IT IS ORDINARY, NOT EXOTIC.  Before 3.12 the
-    decoder's own recursion is charged against `sys.getrecursionlimit()`, so on the oldest
-    interpreter kanibako supports a merely DEEP body — 995 levels, under 2 KB, less than a
-    quarter of `_PROVIDER_READ_CAP` — dies in the parse and costs the user the whole
-    message.  A server CAN serve that.  `json.loads` exposes no depth knob, so the honest
-    move is to say it rather than to claim a floor we do not have.  Re-derive it with:
+    🛑 Before 3.12 `json.loads` charges its OWN recursion against `sys.getrecursionlimit()`,
+    so a body nested past the floor below dies in the PARSE and takes `_UNREADABLE`.  There
+    is no depth knob to raise.  Re-derive the floor with:
 
         python -c "import json
         d = 0
@@ -424,62 +362,36 @@ def _provider_text(raw: bytes, headers: Mapping[str, str]) -> str:
                 json.loads('[' * d + '1' + ']' * d)
         except RecursionError:
             print('deepest nesting parsed:', d - 1)"
-
-    ⚑ A JSON BODY IS RE-SERIALIZED, NOT EDITED: the result is the provider's MEANING, not
-    its bytes.  It prints compacted, `1.50` prints as `1.5` and `1e3` as `1000.0`, and
-    duplicate keys collapse to the last — none of it reversible from the printed line.  A
-    non-JSON body passes through unchanged apart from the whitespace collapse.
-
-    ⚑ TWO CAPS, AND ONLY ONE IS ORDERED SAFELY.  `_PROVIDER_TEXT_CAP` is applied HERE,
-    after the scrub, deliberately — truncating first could leave half a token standing.
-    `_PROVIDER_READ_CAP` is not ours to order: `http_probe` cut the body at that many BYTES
-    before *raw* arrived, so a secret straddling the cut comes in bisected, matches nothing
-    in *secrets*, and its surviving head prints whenever the whitespace collapse pulls it
-    inside the character cap.  That cut also truncates mid-JSON, so such a body cannot
-    parse and lands on the plain-text path.  Only reading more of a hostile body would
-    close it, and that is not a trade this function may make.
     """
     import json as _json
 
     secrets = _request_secrets(headers)
     text = raw.decode("utf-8", "replace")
-    # ⚑ THE `ValueError` GUARD HOLDS THE PARSE AND NOTHING ELSE, by construction rather
-    # than by the docstring saying so.  Widen it over the walk or the re-serialization and
-    # a `ValueError` out of EITHER reaches the "not JSON" arm and prints a body whose
-    # encoding layer was never undone — the exact shape the catch-all exists to stop.
+    # ⚑ THE `ValueError` GUARD HOLDS THE PARSE AND NOTHING ELSE.  Widening it over the walk
+    # or the re-serialization sends a `ValueError` out of EITHER to the "not JSON" arm
+    # (llm-doc).
     try:
         decoded = _json.loads(text)
     except ValueError:
-        # Not JSON: there is no encoding layer to undo, so the wire text IS the display text.
+        # Not JSON: no encoding layer to undo, so the wire text IS the display text.
         pass
     except Exception:
-        # We set out to read it and could not.  Never fall through to the raw-spelling
-        # scrub — see this function's docstring; the safe default belongs on the CATCH-ALL,
-        # so a decode failure nobody foresaw withholds instead of printing.
+        # Every other decode failure withholds; it must never reach the raw-spelling scrub.
         return _UNREADABLE
     else:
         try:
             text = _compact(_scrub_decoded(decoded, secrets))
         except Exception:
-            return _UNREADABLE   # the same safe default, for the same reason
-    # ⚑ Scrub BOTH SIDES of the whitespace collapse.  Collapsing can join two runs into a
-    # match that was not there before, and can equally destroy one that was — a header value
-    # carrying a double space matches the wire body and not the collapsed body.  This is the
-    # only scrub the non-JSON path gets, so it does not get to be order-sensitive.
+            return _UNREADABLE   # the same safe default
+    # ⚑ BOTH CALLS ARE LOAD-BEARING: the whitespace collapse between them can create a match
+    # and can destroy one (llm-doc).
     text = _scrub(text, secrets)
     text = _scrub(" ".join(text.split()), secrets)
     if _survives(text, secrets):
         return _WITHHELD
-    # ⚑ ENCODABLE BY CONSTRUCTION, and this is the boundary that owes it.  `json.loads`
-    # turns a `\udXXX` escape into a REAL lone surrogate and `_compact`'s
-    # `ensure_ascii=False` — load-bearing, see `_compact` — writes it straight back, so
-    # without this the returned string raises `UnicodeEncodeError` in the CALLER's print.
-    # Every sink kanibako ships is `sys.stderr`, whose `backslashreplace` handler hides it;
-    # `http_probe` is a PUBLISHED helper and a plugin printing to `sys.stdout` gets the
-    # traceback instead of the error it asked for.
-    # ⚑ AFTER the scrub, never before: a replacement can only DESTROY characters, so it
-    # cannot rebuild a secret the scrub already took — and running it first would hand
-    # `_survives` a string the scrub never saw.
+    # ⚑ NOT A NO-OP: it makes the result ENCODABLE, which `ProbeResponse.body` promises.  A
+    # decoded body can carry a lone surrogate, which raises `UnicodeEncodeError` in the
+    # CALLER's print.  ⚑ It must run AFTER the scrub, never before (llm-doc).
     text = text.encode("utf-8", "replace").decode("utf-8")
     if len(text) > _PROVIDER_TEXT_CAP:
         text = text[:_PROVIDER_TEXT_CAP].rstrip() + "…"
@@ -496,26 +408,18 @@ def http_probe(
     """POST *body* as JSON to *url*; return the HTTP status and the provider's error text.
 
     ⚑ NEVER raises, and never logs the request: *headers* carry credentials.
-    ⚑ The returned text is scrubbed of EVERY caller-supplied header value
-    (`_provider_text`) — whatever header the caller authenticated with, not just
-    `Authorization`.  🛑 That scrub has a documented residue, and the residue REACHES
-    PRINTED OUTPUT — see `ProbeResponse.body`, which also says what re-serialization
-    did to the provider's words, before printing this anywhere.
-    ⚑ The body is cut at `_PROVIDER_READ_CAP` BYTES here, ahead of the scrub, and that
-    order is not reorderable — a secret straddling the cut arrives bisected and cannot be
-    matched (`_provider_text`).
+    ⚑ The returned text is scrubbed of EVERY caller-supplied header value, not just
+    `Authorization` (`_provider_text`).  🛑 That scrub has a documented residue and the
+    residue REACHES PRINTED OUTPUT — read `ProbeResponse.body` before printing this.
+    ⚑ The body is cut at `_PROVIDER_READ_CAP` BYTES here, AHEAD of the scrub: a secret
+    straddling the cut arrives bisected and cannot be matched.
     """
     import json as _json
     import urllib.error
     import urllib.request
 
     class _NoRedirects(urllib.request.HTTPRedirectHandler):
-        """Refuse every redirect: urllib would re-send the caller's headers cross-origin.
-
-        ⚑ EVERY header, not just `Authorization` — this module treats each one as
-        credential-bearing (`_request_secrets`), and naming a single header is the
-        defect that let a third-party plugin's `x-api-key` through in the first place.
-        """
+        """Refuse every redirect: urllib would re-send the caller's headers cross-origin."""
 
         def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[override]
             return None
@@ -568,8 +472,7 @@ class PersonaProbeVerdict(Enum):
 
 
 # Statuses at which the endpoint POSITIVELY refused the request it was handed.
-# ⚑ NOT "the token is bad": neither code says WHICH input was at fault, and a 403 on a
-# model the caller's team is not entitled to reads identically to a dead credential.
+# ⚑ NOT "the token is bad" — neither code says WHICH input was at fault (llm-doc).
 _REFUSAL_STATUSES = (401, 403)
 
 
@@ -588,10 +491,9 @@ class ProbeEvidence:
     Filled in TWO halves: a plugin builds the request half before the call, and
     `probe_outcome` fills *status* / *provider_text* from the answer.
     ⚑ *token_path* is a PATH, never a value, so it carries no secret by construction.
-    *provider_text* is different: `http_probe` scrubbed it of every header value the
-    request carried, but 🛑 SCRUBBED IS NOT PROVEN CLEAN — `ProbeResponse.body` names the
-    residue that scrub does not close, and this record inherits it verbatim.  Read this
-    block as an error message for a human, not as a record proven free of secrets.
+    *provider_text* is what `http_probe` returned: 🛑 SCRUBBED IS NOT PROVEN CLEAN — this
+    record inherits `ProbeResponse.body`'s residue verbatim.  Read the block as an error
+    message for a human, not as a record proven free of secrets.
 
     ⚑ *model* is what went ON THE WIRE, which is not always what the user configured: a
     harness that resolves a tier alias through an env var records the id it SENT here and
@@ -603,17 +505,12 @@ class ProbeEvidence:
     model_origin: str = ""          # "" = sent exactly as configured
     token_path: Path | None = None  # None = a KEYLESS probe (no credential header at all)
     status: int | None = None       # None = the endpoint was never reached
-    # ⚑ The provider's MEANING, not its bytes: scrubbed, capped, and — when the body was
-    # JSON — re-serialized compactly by `_provider_text`, never edited in place.
     provider_text: str = ""
 
     def lines(self, indent: str = "  ") -> tuple[str, ...]:
         """The evidence block: one labeled line per input, then the provider's own words.
 
-        ⚑ The closing sentence is emitted for a REFUSAL status ONLY, and it exists to stop
-        the one wrong conclusion this block is here to prevent — that a refusal names the
-        token.  For any other status the caller's own reason sentence already says what
-        was seen, and a second interpretation would be guessing.
+        ⚑ The closing sentence is emitted for a REFUSAL status ONLY (llm-doc).
         """
         model = "(omitted)" if not self.model else self.model
         if self.model and self.model_origin:
@@ -646,8 +543,7 @@ class PersonaProbeOutcome(NamedTuple):
 
     verdict: PersonaProbeVerdict
     reason: str | None = None   # set for the two non-answer arms; interpolates into a sentence
-    # ⚑ REQUIRED for a REJECTED (`rejected` takes it positionally): a refusal a user cannot
-    # see the inputs of is the message that sent them to fix a token that was never wrong.
+    # ⚑ REQUIRED for a REJECTED — `rejected` takes it POSITIONALLY (llm-doc).
     evidence: "ProbeEvidence | None" = None
 
     @classmethod
@@ -679,10 +575,8 @@ class PersonaProbeOutcome(NamedTuple):
     def evidence_block(self, indent: str = "  ") -> str:
         """The evidence lines to append to a printed message, newline-led; `""` when none.
 
-        ⚑ Empty unless the endpoint ANSWERED.  A probe that never reached it has no facts
-        to lay out, and four lines restating the caller's own inputs is noise, not
-        evidence.  THE single renderer for both the launch error and the create warning —
-        one shape, so the two can never drift.
+        ⚑ Empty unless the endpoint ANSWERED.  THE single renderer for both consumers —
+        the launch error and the create warning (llm-doc).
         """
         if self.evidence is None or self.evidence.status is None:
             return ""
@@ -692,8 +586,8 @@ class PersonaProbeOutcome(NamedTuple):
 def probe_outcome(response: ProbeResponse, sent: ProbeEvidence) -> PersonaProbeOutcome:
     """Map an HTTP probe *response* onto a `PersonaProbeOutcome`; `NOT_APPLICABLE` never comes here.
 
-    *sent* is the request half of the evidence, built by the plugin that made the call;
-    the answer half is filled in here so no plugin can forget to.
+    *sent* is the request half of the evidence, built by the plugin that made the call; the
+    answer half is filled in HERE.
     """
     evidence = replace(
         sent, status=response.status, provider_text=response.body,
@@ -881,8 +775,7 @@ class Target(ABC):
     def rom_root(self) -> Path | None:
         """Locate this plugin's packaged BIBLE CHAPTER root (`<pkg>/data/rom`); `None` on ANY failure.
 
-        ⚑ Derived from `__package__`, NOT from `name`: `name` is the HARNESS name and only
-        happens to match `kanibako.plugins.<name>` for the first-party plugins.
+        ⚑ Derived from `__package__`, NOT from `name` (llm-doc).
         """
         import importlib.resources
         import sys
@@ -901,8 +794,7 @@ class Target(ABC):
     def default_category_binds(self) -> CategoryBindDefaults:
         """Declare default AGENT-scope `@`-ref-sourced category binds: TERMINAL key -> `BindArm`.
 
-        ⚑ Every destination must be normalized with `settings_resolve.normalize_bind_dest` —
-        the launch floor merge DEDUPES on these keys BEFORE anything parses them.
+        ⚑ Every destination must be normalized with `settings_resolve.normalize_bind_dest`.
         ⚑ ONE SHAPE, TWO DELIVERIES: `seeded` and `synced` are COPIES and stay copies.
         ⚑ A retired name-keyed `agent.<agent>.<category>.<name>` key is REFUSED BY NAME at
         `settings_assemble._insert_dotted`; there is no shim.
@@ -966,7 +858,7 @@ class Target(ABC):
         """Persist the box's resolved `access` TIER onto this agent's panel-visible config.
 
         ⚑ Keyed on the CASCADE-resolved `access`, NEVER the per-launch `-S`/`-A` flags
-        (spec §1A's projected-surface exception — the projection OUTLIVES the launch).
+        (spec §1A's projected-surface exception).
         ⚑ An implementation MUST render every tier explicitly and MUST NOT fall through to
         the permissive arm; an unrecognised value here is a BUG and should raise.
         Best-effort: the caller wraps the call. Returns whether a write occurred.
@@ -992,8 +884,7 @@ class Target(ABC):
     def reattach_config_notice(self) -> str | None:
         """A heads-up to print when REATTACHING to an ALREADY-RUNNING box; `None` = no notice.
 
-        ⚑ A reattach does NOT re-deliver config: it is unsafe to rewrite config under an
-        app-server that already read it.
+        ⚑ A reattach does NOT re-deliver config (llm-doc).
         """
         return None
 
@@ -1022,17 +913,14 @@ class Target(ABC):
         ⚑ *model* MAY be `None`: probe with the field OMITTED, never a placeholder id.
         ⚑ *env* is the PERSONA-STORE passthrough env block — that store entry's own `env:`
         map, less the two single-source vars — and NOTHING ELSE.  🛑 IT IS NOT THE COLLAPSED
-        `env` FAMILY the box receives: those slots are folded at `meta.assembly.env` by the
-        WHOLE-BOX resolve, which runs AFTER this pre-flight, so a mapping the user set at
-        the agent-file (`kanibako agent set <a> env.<VAR>=…`), workset or box rung — or on a
-        keyspace-only persona, which has no store block at all — is ABSENT here.  A harness
-        whose runtime resolves *model* through one of them (claude reads a tier alias through
-        `ANTHROPIC_DEFAULT_<TIER>_MODEL`) MUST resolve it here too, or the probe asks the
-        provider a question the box never asks and a valid persona is refused on the answer.
-        ⚑ Where the mapping lives OUTSIDE this block the alias still goes out raw and that
-        false `REJECTED` survives: a KNOWN UNCLOSED HOLE, not a contract this argument keeps.
-        Resolving a mapping the USER wrote is not the substitution the rule above forbids;
-        inventing one is.
+        `env` FAMILY the box receives: a mapping set at the agent-file, workset or box rung,
+        or on a keyspace-only persona, is ABSENT here.  A harness whose runtime resolves
+        *model* through one of these (claude reads a tier alias through
+        `ANTHROPIC_DEFAULT_<TIER>_MODEL`) MUST resolve it here too.
+        ⚑ Where the mapping lives OUTSIDE this block the alias goes out raw and a false
+        `REJECTED` survives: a KNOWN UNCLOSED HOLE, not a contract this argument keeps
+        (llm-doc).  Resolving a mapping the USER wrote is not the substitution the rule
+        above forbids; inventing one is.
         ⚑ Contract: NEVER raises; SHORT *timeout*; the token is read TRANSIENTLY for the
         request only — never logged, never persisted, never returned.
         """
