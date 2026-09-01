@@ -7,7 +7,7 @@ name = "kanibako-agent-goose"
 version = "0.5.0"
 description = "Goose agent target plugin for kanibako"
 requires-python = ">=3.11"
-dependencies = ["kanibako-cli", "pyyaml"]
+dependencies = ["kanibako-cli>=1.8.0.dev0,<2.0", "pyyaml"]
 
 [project.entry-points."kanibako.agents"]
 goose = "kanibako.plugins.goose:GooseTarget"

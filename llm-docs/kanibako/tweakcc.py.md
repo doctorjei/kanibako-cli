@@ -19,8 +19,10 @@ Two DIFFERENT facts share the spelling `"tweakcc"`, and they are matched, not sh
   FILE, not in plugin code (D1-7), so a reader looking for the literal should open the YAML.
 
 The plugin does NOT import this constant. Spec §0 makes every non-universal agent specific
-PLUGIN-established, and plugins declare `dependencies = ["kanibako-cli"]` with no upper bound —
-a new plugin importing a new core symbol breaks against an older installed core. When the
+PLUGIN-established. Plugins declare `kanibako-cli>=1.8.0.dev0,<2.0` (bounded 2026-09-01; wheels
+published before v1.8.0 carry a bare `["kanibako-cli"]`), so a new plugin importing a new core
+symbol is now refused at resolve time against an older core rather than installing and breaking —
+but only where the bounded wheel is the one resolving. When the
 tweakcc implementation eventually migrates into the claude plugin (boarded, not done), this
 constant leaves core with it and the plugin's declaration is unchanged.
 

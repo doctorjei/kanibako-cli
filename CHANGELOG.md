@@ -94,6 +94,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The agent plugins now bound the core they accept: `kanibako-cli>=1.8.0.dev0,<2.0`.** Previously
+  every plugin declared a bare `kanibako-cli`, so nothing stopped pip from installing a plugin beside
+  a core it was never built against — you found out from a startup warning naming the skipped agent,
+  or, in the other direction, from a failure somewhere later. A resolver now refuses the pair up
+  front. This does not help on the way *into* 1.8.0, because the wheel doing the resolving is the old
+  unbounded one; it makes every upgrade after 1.8.0 safe by construction. The bound is spelled with
+  `.dev0` deliberately — by PEP 440 a specifier carrying no prerelease excludes prereleases, so a
+  bare `>=1.8` would refuse `1.8.0.dev98` and `1.8.0rc2`.
+
 - **A settings table left in `kanibako_config.yaml` now stops the command, naming the file and the
   keys.** That file holds the `config.*` bootstrap paths and nothing else, and anything else in it
   was previously dropped in silence — so a `box: image:` table there looked like it was choosing

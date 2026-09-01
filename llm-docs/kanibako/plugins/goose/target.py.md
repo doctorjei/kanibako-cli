@@ -7,9 +7,11 @@ it, and this class is the code that (a) finds the host binary, (b) answers the f
 file cannot answer, and (c) states the two places kanibako must NOT speak for goose — its
 provider/model, and its own `config.yaml`.
 
-Plugins declare `dependencies = ["kanibako-cli"]` with **no upper bound**, so an old plugin wheel
-can land on a new core; when the contract it was written against is gone, the failure is a NAMED
-error rather than a silent misbehaviour. That is the reason the surface here stays small and the
+Plugins declare `kanibako-cli>=1.8.0.dev0,<2.0` (bounded 2026-09-01). **Every wheel published before
+v1.8.0 carries a bare `["kanibako-cli"]`**, so an old plugin wheel can still land on a new core; when
+the contract it was written against is gone, the failure is a NAMED error rather than a silent
+misbehaviour. The bound removes that pairing only for wheels published from v1.8.0 on, so the named
+error stays the safety net and the reason this surface stays small. That is the reason the surface here stays small and the
 declarations stay in the data file.
 
 **Authority:** `specs/settings-keyspace-1.8.0.md` — §2d (the per-agent keyspace: `agent.goose.env.*`,
