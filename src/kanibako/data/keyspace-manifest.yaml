@@ -1517,6 +1517,15 @@ keys:
     type: enum
     choices: [standalone, primary, named]
     spec: "§1A"
+  meta.runtime.config_file:
+    namespace: meta
+    set: never
+    origin: bootstrap
+    type: path
+    value: "$XDG_CONFIG_HOME/kanibako_config.yaml, or ~/.config/ if unset / not absolute"
+    note: "the COMPLETE user file, not a base dir to concatenate; the SITE file
+           /etc/kanibako/config_base.yaml is separate"
+    spec: "§1A (L0.2)"
   ## meta.assembly.* — the COLLAPSE outputs (ratified 2026-08-08f; MOVED out of
   ## meta.runtime on 2026-08-09). Their own group because they sit at the OPPOSITE
   ## END OF THE LIFECYCLE from the three rows above: the treewalk answers where the

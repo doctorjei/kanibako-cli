@@ -187,8 +187,8 @@ class TestManifestLoader:
         for section in ("registry", "policy", "categories", "keys",
                         "bind_default_entries", "not_keys"):
             assert section in doc, f"manifest section {section!r} is missing"
-        assert len(doc["keys"]) == 98, (
-            f"the manifest declares {len(doc['keys'])} key rows, not the 98 this "
+        assert len(doc["keys"]) == 99, (
+            f"the manifest declares {len(doc['keys'])} key rows, not the 99 this "
             f"file's counts were measured against — re-measure, do not adjust blindly"
         )
 
@@ -1400,9 +1400,19 @@ class TestSetColumnConformance:
             str(k) for k, v in _keys().items()
             if isinstance(v, dict) and v.get("set") == "never"
         }
-        assert len(never) == 31
-        assert all(k.startswith("meta.") for k in never), sorted(
-            k for k in never if not k.startswith("meta.")
+        # ⚑ THE PROPERTY IS AN IFF AND IS ASSERTED AS ONE (P13).  The manifest's own
+        # ``keys:`` header states it — *"set == never IFF the key is meta.*.  The
+        # conformance test should ASSERT that property rather than trust each entry"* —
+        # and half of it used to be bought with ``len(never) == 31``, a hand-maintained
+        # count that says nothing about the ``meta.*`` row a future edit forgets to mark
+        # ``never``.  The re-measure tripwire is the row count in
+        # ``TestManifestLoader.test_the_document_carries_the_sections_this_file_asserts_against``;
+        # a second one here was a second carrier of the same fact.
+        meta_rows = {str(k) for k in _keys() if str(k).startswith("meta.")}
+        assert never, "no row is set: never — the corpus is empty, not clean"
+        assert never == meta_rows, (
+            f"set: never rows that are not meta.*: {sorted(never - meta_rows)}; "
+            f"meta.* rows that are not set: never: {sorted(meta_rows - never)}"
         )
         assert not (never & set(_KEY_ROUTES))
 
@@ -1419,15 +1429,31 @@ class TestThePathTypeColumnHasOneCodeCarrier:
     ⚑ THE FOUR ``agent`` ROWS AND THE ``secret_path`` FAMILY ARE PARAMETRIC and carry no
     fixed canonical spelling, so they are asserted through the predicate at the shapes the
     keyspace admits rather than through ``KEY_TYPES``.
+
+    ⚑ THE CORPUS IS THE **SETTABLE** PATH ROWS, AND THE ``set:`` COLUMN IS WHAT SPLITS IT —
+    not a name list.  [R147] governs a STORED value: its own words are *"not a legal STORED
+    VALUE … refused at SET TIME and at READ TIME"*, the keyspace set/get routes.  A
+    ``set: never`` row has NO set route — ``TestSetColumnConformance`` asserts the whole
+    ``meta.*`` group is absent from ``_KEY_ROUTES`` — so there is no seam at which the
+    predicate could reach one, and ``is_path_valued_key``'s own header says it is the
+    SET-TIME half.  Both directions are still asserted below: the settable rows must be
+    claimed, and the never-settable ones must NOT be, so ``KEY_TYPES`` cannot quietly grow
+    a ``meta.*`` entry that reads as a set-time guard which can never fire.
     """
 
-    def test_every_registry_path_row_is_claimed_by_the_predicate(self):
-        from kanibako.settings.config_keys import is_path_valued_key
-
-        declared = {
-            str(key) for key, row in _keys().items()
+    def _declared_path_rows(self) -> "tuple[set[str], set[str]]":
+        """The registry's ``type: path`` rows, split ``(settable, never)`` by ``set:``."""
+        rows = {
+            str(key): row for key, row in _keys().items()
             if isinstance(row, dict) and row.get("type") == "path"
         }
+        never = {key for key, row in rows.items() if row.get("set") == "never"}
+        return set(rows) - never, never
+
+    def test_every_settable_registry_path_row_is_claimed_by_the_predicate(self):
+        from kanibako.settings.config_keys import is_path_valued_key
+
+        declared, _ = self._declared_path_rows()
         assert len(declared) >= 39, "the registry's path rows shrank — re-measure this pin"
         # ⚑ ``<agent>`` is the registry's PLACEHOLDER for a discriminated node, not a
         # spelling; substituting a node is what the keyspace itself does.
@@ -1439,6 +1465,34 @@ class TestThePathTypeColumnHasOneCodeCarrier:
             f"the registry declares these keys ``type: path`` and the code does not "
             f"treat them as paths, so [R147]'s refusal never reaches them: "
             f"{sorted(unclaimed)}"
+        )
+
+    def test_a_never_settable_path_row_is_not_claimed_by_the_set_time_predicate(self):
+        """The other half of the split — asserted, not assumed away.
+
+        A ``set: never`` path row is DERIVED, so its value is produced by the code that
+        derives it and never travels a set route; ``meta.runtime.config_file`` is resolved
+        by ``resolve_xdg`` and ``meta.box.home`` off ``@meta.box.path``.  Claiming one in
+        ``is_path_valued_key`` would advertise a set-time refusal that has nothing to
+        refuse, and would hand ``path_key_anchor`` a key with no anchor to name.
+        """
+        from kanibako.settings.config_keys import is_path_valued_key
+
+        _, never = self._declared_path_rows()
+        assert never, (
+            "no ``set: never`` row declares ``type: path`` — this case is vacuous, so "
+            "the split in the sibling test above is buying nothing; re-measure"
+        )
+        assert all(key.startswith("meta.") for key in never), sorted(
+            key for key in never if not key.startswith("meta.")
+        )
+        claimed = {
+            key for key in never
+            if is_path_valued_key(key.replace("<agent>", "claude"))
+        }
+        assert not claimed, (
+            f"the code treats these never-settable rows as set-time path keys, but they "
+            f"have no set route for [R147] to reach: {sorted(claimed)}"
         )
 
     def test_the_code_claims_no_path_key_the_registry_does_not_declare(self):
