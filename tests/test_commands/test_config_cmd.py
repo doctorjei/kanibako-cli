@@ -12,6 +12,7 @@ from kanibako.settings.config import (
     write_project_config,
     write_project_config_key,
 )
+from kanibako.settings.config_io import load_doc
 
 
 # ---------------------------------------------------------------------------
@@ -864,59 +865,60 @@ class TestBoxConfigTooManyArgs:
 # ---------------------------------------------------------------------------
 
 class TestWriteProjectConfigKey:
-    def test_write_paths_key(self, tmp_path):
-        p = tmp_path / "box.yaml"
-        write_project_config_key(p, "paths_project_toml", "custom.yaml")
-        loaded = load_config(p)
-        assert loaded.paths_project_toml == "custom.yaml"
-        text = p.read_text()
-        assert "paths:" in text
-        assert 'project_toml: custom.yaml' in text
+    """⚑ ASSERTED ON THE DOCUMENT, not through a loader (2026-08-31).
+
+    These used to read the value back with ``load_config``, which is the LAYER-1 reader
+    now — and reading a writer's work through an unrelated reader was always the weaker
+    assertion. ``load_doc`` is what the writer itself round-trips through.
+    """
+
+    # ⚑ ``test_write_paths_key`` LIVED HERE AND IS GONE (2026-08-31). It asserted that
+    # ``write_project_config_key`` writes ``paths_project_toml`` — a spelling the manifest
+    # classes ``not_keys.code_residue``, which nothing now reads, in the very diff whose
+    # point is that an undeclared spelling is not a key. A green test asserting we write one
+    # is a false message. ``_split_config_key``'s ``paths_`` arm survives and is still
+    # covered by ``TestSplitConfigKey`` — that is a string-splitting rule, not a claim that
+    # the key exists.
 
     def test_write_box_key(self, tmp_path):
         p = tmp_path / "box.yaml"
         write_project_config_key(p, "box_image", "myimg:v1")
-        loaded = load_config(p)
-        assert loaded.box_image == "myimg:v1"
-        text = p.read_text()
-        assert "box:" in text
-        assert 'image: myimg:v1' in text
+        assert load_doc(p) == {"box": {"image": "myimg:v1"}}
 
     def test_write_shell_key(self, tmp_path):
         # (⮕ P7: was ``box_agent_name``, retired with spec §2b — the SHAPE under
         # test is the nested box-table write, not that key.)
         p = tmp_path / "box.yaml"
         write_project_config_key(p, "box_shell", "bash")
-        loaded = load_config(p)
-        assert loaded.box_shell == "bash"
-        text = p.read_text()
-        assert "box:" in text
-        assert 'shell: bash' in text
+        assert load_doc(p) == {"box": {"shell": "bash"}}
 
-    def test_write_multiple_sections(self, tmp_path):
-        """Writing keys from different sections should create both."""
+    def test_a_second_key_joins_the_section_without_clobbering(self, tmp_path):
+        """A second write lands beside the first, not on top of it.
+
+        ⚑ This was ``test_write_multiple_sections``, which paired ``box_image`` with
+        ``paths_project_toml`` to make two sections. There is no declared second section left
+        to pair with — ``box`` is the only one — so the shape it can honestly assert is
+        section REUSE. The two-section branch of ``write_project_config_key`` is reachable
+        only through the undeclared ``paths_`` spelling and is now uncovered; that is the
+        truthful state, recorded here rather than propped up by a test that writes a non-key.
+        """
         p = tmp_path / "box.yaml"
         write_project_config_key(p, "box_image", "multi:v1")
-        write_project_config_key(p, "paths_project_toml", "multi.yaml")
-        loaded = load_config(p)
-        assert loaded.box_image == "multi:v1"
-        assert loaded.paths_project_toml == "multi.yaml"
+        write_project_config_key(p, "box_shell", "bash")
+        assert load_doc(p) == {"box": {"image": "multi:v1", "shell": "bash"}}
 
     def test_update_existing_key(self, tmp_path):
         p = tmp_path / "box.yaml"
         write_project_config_key(p, "box_image", "old:v1")
         write_project_config_key(p, "box_image", "new:v2")
-        loaded = load_config(p)
-        assert loaded.box_image == "new:v2"
-        text = p.read_text()
-        assert "old:v1" not in text
+        assert load_doc(p) == {"box": {"image": "new:v2"}}
+        assert "old:v1" not in p.read_text()
 
     def test_backward_compat_with_write_project_config(self, tmp_path):
         """write_project_config (old API) should still work."""
         p = tmp_path / "box.yaml"
         write_project_config(p, "compat:v1")
-        loaded = load_config(p)
-        assert loaded.box_image == "compat:v1"
+        assert load_doc(p) == {"box": {"image": "compat:v1"}}
 
 
 class TestUnsetProjectConfigKey:
@@ -925,18 +927,16 @@ class TestUnsetProjectConfigKey:
         p = tmp_path / "box.yaml"
         write_project_config_key(p, "box_image", "remove-me:v1")
         assert unset_project_config_key(p, "box_image") is True
-        loaded = load_config(p)
-        # Should revert to default
-        assert loaded.box_image == "ghcr.io/doctorjei/kanibako-oci:latest"
+        # The now-empty section is pruned, so the key resolves to its default again.
+        assert load_doc(p) == {}
 
     def test_unset_nonexistent_key(self, tmp_path):
         from kanibako.settings.config import unset_project_config_key
         p = tmp_path / "box.yaml"
         write_project_config_key(p, "box_image", "keep:v1")
-        assert unset_project_config_key(p, "paths_project_toml") is False
+        assert unset_project_config_key(p, "box_shell") is False
         # Original key should still be there
-        loaded = load_config(p)
-        assert loaded.box_image == "keep:v1"
+        assert load_doc(p) == {"box": {"image": "keep:v1"}}
 
     def test_unset_no_file(self, tmp_path):
         from kanibako.settings.config import unset_project_config_key
@@ -947,11 +947,9 @@ class TestUnsetProjectConfigKey:
         from kanibako.settings.config import unset_project_config_key
         p = tmp_path / "box.yaml"
         write_project_config_key(p, "box_image", "img:v1")
-        write_project_config_key(p, "paths_project_toml", "my.yaml")
+        write_project_config_key(p, "box_shell", "bash")
         assert unset_project_config_key(p, "box_image") is True
-        loaded = load_config(p)
-        assert loaded.paths_project_toml == "my.yaml"
-        assert loaded.box_image == "ghcr.io/doctorjei/kanibako-oci:latest"
+        assert load_doc(p) == {"box": {"shell": "bash"}}
 
 
 class TestLoadProjectOverrides:
@@ -962,11 +960,22 @@ class TestLoadProjectOverrides:
     def test_returns_only_overrides(self, tmp_path):
         p = tmp_path / "box.yaml"
         write_project_config_key(p, "box_image", "override:v1")
+        write_project_config_key(p, "box_shell", "")
         overrides = load_project_overrides(p)
-        assert "box_image" in overrides
-        assert overrides["box_image"] == "override:v1"
-        # Other keys should not appear (they are defaults)
-        assert "paths_project_toml" not in overrides
+        # ⚑ ``box.shell``'s declared default IS ``""``, so a stored ``""`` is not an
+        # override — the answer is BY VALUE against the default, not by presence.
+        assert overrides == {"box_image": "override:v1"}
+
+    def test_an_undeclared_flat_spelling_is_not_an_override(self, tmp_path):
+        """🛑 ``box_image`` at top level is not a key (spec §0), so it overrides nothing.
+
+        ⚑ It USED to: the read flattened the document into a namespace that collided with
+        the ``KanibakoConfig`` field names, so the undeclared spelling and the declared
+        ``box: image:`` were indistinguishable by the time anything looked.
+        """
+        p = tmp_path / "box.yaml"
+        p.write_text('box_image: "flat:v1"\n')
+        assert load_project_overrides(p) == {}
 
 
 class TestSplitConfigKey:

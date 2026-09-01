@@ -137,9 +137,10 @@ not the current reachability.
 
 ⚑ **The prior docstring's claim — "*used for flat `KanibakoConfig` fields that live at the document
 root*" — is FALSE and was dropped.** `KanibakoConfig`'s fields (`box_image`, `box_shell`,
-`paths_project_toml`, `box_share_images`, `config_paths`) are the **flattened in-memory** names
-produced by `config._flatten_toml`; on disk they are NESTED (`box:` → `image:`), which is precisely
-why the flattener exists. Nothing writes them through this function.
+`box_share_images`, `box_enable_vault`) are **in-memory** names; on disk they are NESTED
+(`box:` → `image:`). Nothing writes them through this function. ⚑ Since 2026-08-31 the reader walks
+IN through the declared dotted spellings rather than flattening the document outward, so a
+root-level `box_image:` is not read as that field at all — the on-disk shape is the ONLY shape.
 
 ```python
 def write_nested_key(path: Path, sections: tuple[str, ...], key: str, value: object) -> None

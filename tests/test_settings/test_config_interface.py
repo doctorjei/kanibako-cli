@@ -676,19 +676,38 @@ class TestShowConfig:
         assert "box_image" in captured.out
         assert "my:img" in captured.out
 
-    def test_show_effective_ignores_a_box_table_in_the_layer1_file(
-        self, tmp_path, capsys,
-    ):
-        """🛑 A ``box:`` table hand-written into ``kanibako_config.yaml`` is INERT.
+    def test_show_effective_refuses_a_box_table_in_the_layer1_file(self, tmp_path):
+        """🛑 A ``box:`` table hand-written into ``kanibako_config.yaml`` STOPS the view.
 
         The replacement pin for what ``test_show_effective`` used to assert, stated as
         the ruling it now obeys: *"kanibako_config.yaml <-- cannot have settings.
-        Period."* The effective view shows the DECLARED DEFAULT instead.
+        Period."* It was INERT (the view showed the declared default) until 2026-08-31,
+        when Jei ruled the stale table must refuse loudly rather than be dropped — a
+        user reading their own file should not be shown a different answer in silence.
         """
-        from kanibako.settings.config import KanibakoConfig
+        from kanibako.errors import ConfigError
 
         global_cfg = tmp_path / "kanibako_config.yaml"
         global_cfg.write_text('box:\n  image: "layer1:planted"\n')
+        project_toml = tmp_path / BOX_META_FILE
+
+        with pytest.raises(ConfigError) as exc:
+            show_config(
+                global_config_path=global_cfg,
+                config_path=project_toml,
+                effective=True,
+            )
+        assert str(global_cfg) in str(exc.value)
+        assert "box.image" in str(exc.value)
+
+    def test_show_effective_prints_the_declared_default_on_a_clean_file(
+        self, tmp_path, capsys,
+    ):
+        """The other half: with the file clean, the view shows the DECLARED DEFAULT."""
+        from kanibako.settings.config import KanibakoConfig
+
+        global_cfg = tmp_path / "kanibako_config.yaml"
+        global_cfg.write_text("")
         project_toml = tmp_path / BOX_META_FILE
 
         show_config(
@@ -697,7 +716,6 @@ class TestShowConfig:
             effective=True,
         )
         captured = capsys.readouterr()
-        assert "layer1:planted" not in captured.out
         assert f"box_image = {KanibakoConfig().box_image}" in captured.out
 
     def test_show_with_override(self, tmp_path, capsys):
@@ -719,8 +737,10 @@ class TestShowConfig:
     ):
         """With workset_path/agent_state/env_resolved=None, output is unchanged."""
         global_cfg = tmp_path / "kanibako_config.yaml"
-        global_cfg.write_text('box:\n  image: "my:img"\n')
+        global_cfg.write_text("")
+        # ⚑ The image sits at the BOX tier: the Layer-1 file cannot carry it (2026-08-31).
         project_toml = tmp_path / BOX_META_FILE
+        project_toml.write_text('box:\n  image: "my:img"\n')
 
         show_config(
             global_config_path=global_cfg,
@@ -742,9 +762,15 @@ class TestShowConfig:
         assert with_none == baseline
 
     def test_effective_workset_path_overlays(self, tmp_path, capsys):
-        """A value set only at the workset level is reflected when supplied."""
+        """A value set only at the workset level is reflected when supplied.
+
+        ⚑ The value it must BEAT is the declared default: the Layer-1 file used to hold
+        the losing side, and since 2026-08-31 it cannot hold a ``box:`` table at all.
+        """
+        from kanibako.settings.config import KanibakoConfig
+
         global_cfg = tmp_path / "kanibako_config.yaml"
-        global_cfg.write_text('box:\n  image: "sys:img"\n')
+        global_cfg.write_text("")
         project_toml = tmp_path / BOX_META_FILE
         workset_cfg = tmp_path / "config.yaml"
         workset_cfg.write_text('box:\n  image: "ws:img"\n')
@@ -758,7 +784,7 @@ class TestShowConfig:
         captured = capsys.readouterr()
         assert "box_image" in captured.out
         assert "ws:img" in captured.out
-        assert "sys:img" not in captured.out
+        assert KanibakoConfig().box_image not in captured.out
 
     def test_effective_agent_state_renders_with_override_marker(
         self, tmp_path, capsys,
@@ -1338,7 +1364,7 @@ class TestH2BoolCoercion:
     """H2: bool keys must store a real bool, not the string ``'false'``."""
 
     def test_set_box_share_images_false_loads_as_real_bool(self, tmp_path):
-        from kanibako.settings.config import load_config
+        from kanibako.settings.config import load_merged_config
 
         project_toml = tmp_path / BOX_META_FILE
         set_config_value("box.share_images", "false", config_path=project_toml)
@@ -1347,8 +1373,9 @@ class TestH2BoolCoercion:
         data = load_doc(project_toml)
         assert data["box"]["share_images"] is False
 
-        # Loader reads back a real bool -> a truthiness check sees it disabled.
-        cfg = load_config(project_toml)
+        # ⚑ Read back through the MERGED settings load — ``load_config`` is the Layer-1
+        # reader, and a box.yaml is a settings file.
+        cfg = load_merged_config(tmp_path / "kanibako_config.yaml", project_toml)
         assert cfg.box_share_images is False
         assert not cfg.box_share_images  # consumer disable-check honored
 
@@ -2478,11 +2505,19 @@ class TestLayer1FileIsNotASettingsSourceAtAll:
         assert msg.startswith("Error:"), msg
         assert "box.shell" in msg
 
-    def test_config_data_still_resolves_through_the_foundation(self, tmp_path):
+    def test_config_data_still_resolves_through_the_foundation(
+        self, config_file, tmp_path,
+    ):
         """⚑ ``@config.*`` never rode the floor — it reaches refs through the
         ResolveCtx FOUNDATION (``_path_tier_split``'s other half), so deleting the
         sweep cannot have broken it. Pinned because it is the thing most likely to be
-        assumed rather than checked."""
+        assumed rather than checked.
+
+        ⚑ IT TAKES ``config_file`` (hence ``tmp_home``) since 2026-08-31, and that is a
+        REQUIREMENT rather than tidiness: this foundation is read from the REAL
+        ``$XDG_CONFIG_HOME/kanibako_config.yaml`` unless the environment is isolated, so
+        without the fixture the case passes or fails on the host's own file.
+        """
         f = tmp_path / "box.yaml"
         msg = set_config_value(
             "box.env.PROBE", "@config.data", config_path=f,
@@ -3519,7 +3554,14 @@ class TestF7HonestResetMessage:
         assert "workset" in msg.lower()
         assert "reverts to default" not in msg
 
-    def test_reset_message_shows_effective_value_and_source_tier(self, tmp_path):
+    def test_reset_message_shows_effective_value_and_source_tier(
+        self, config_file, tmp_path,
+    ):
+        # ⚑ ``config_file`` (hence ``tmp_home``) is REQUIRED, not decoration: the
+        # effective-value arm resolves the path tier from the REAL
+        # ``$XDG_CONFIG_HOME/kanibako_config.yaml``, concedes on any failure, and falls
+        # back to the generic tail — so on an unisolated run this case is answered by
+        # the host's own config file rather than by the code under test.
         # Residuals item 1: threading the cascade lets the honest message APPEND
         # the now-effective value + its source tier. workset holds a downward
         # box.image default; box overrides it; resetting the box override falls

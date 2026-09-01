@@ -109,8 +109,13 @@ class TestAntiVacuity:
     assert SYSTEM_PATH_DEFAULTS, "SYSTEM_PATH_DEFAULTS is empty"
     assert CONFIG_PATH_DEFAULTS, "CONFIG_PATH_DEFAULTS is empty"
 
-  def test_the_set_time_system_tier_is_the_whole_declared_table(self):
-    """The SET side is the derived one, so it is the side that can be pinned."""
+  def test_the_set_time_system_tier_is_the_whole_declared_table(self, config_file):
+    """The SET side is the derived one, so it is the side that can be pinned.
+
+    ⚑ ``config_file`` (hence ``tmp_home``) is REQUIRED: ``_path_tier_split`` reads the
+    REAL ``$XDG_CONFIG_HOME/kanibako_config.yaml`` unless the environment is isolated,
+    so without it this case is answered by whatever the host happens to have.
+    """
     _, floor = config_interface._path_tier_split()
     assert set(floor) == set(SYSTEM_PATH_DEFAULTS), (
       "the set-time system.* tier no longer equals its own declared table; "
@@ -118,7 +123,8 @@ class TestAntiVacuity:
       f"extra={sorted(set(floor) - set(SYSTEM_PATH_DEFAULTS))}"
     )
 
-  def test_the_set_time_config_tier_is_the_whole_declared_table(self):
+  def test_the_set_time_config_tier_is_the_whole_declared_table(self, config_file):
+    """⚑ ``config_file`` for the same reason as the case above — host isolation."""
     foundation, _ = config_interface._path_tier_split()
     assert set(foundation) == set(CONFIG_PATH_DEFAULTS), (
       "the set-time config.* foundation no longer equals its own declared table; "

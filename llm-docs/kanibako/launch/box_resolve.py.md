@@ -7,7 +7,7 @@ on-disk LAYOUT. Nothing else. There is no marker file in the user's repository s
 here"; the registries collectively ARE the reverse index.
 
 Every helper in the module is PURE. Each takes the resolved
-`kanibako.settings.paths.StandardPaths`, the `KanibakoConfig`, and the target directory
+`kanibako.settings.paths.StandardPaths`, the `BootstrapConfig`, and the target directory
 EXPLICITLY — no hidden global reads — and none of them writes. That is deliberate: identity
 derivation is consulted from several call sites and must never have a side effect that the second
 caller inherits.

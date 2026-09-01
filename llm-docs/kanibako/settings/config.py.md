@@ -1,6 +1,8 @@
 # The Bootstrap Config File — loading, writing, and the flat merged object
 
-This module owns `kanibako_config.yaml` and the flat `KanibakoConfig` dataclass built from it: the
+This module owns `kanibako_config.yaml` and the two flat dataclasses either side of it —
+`BootstrapConfig` (Layer 1, what that file holds) and `KanibakoConfig` (Layer 2, the merged box
+scalars) — plus the
 YAML read/write primitives, the built-in defaults, the layer-overlay merge, and a handful of
 DIRECT readers (`workset.kuid`, `workset.skip_kuid_check`, `system.agent`,
 `system.setup_completed`, and — for the AUTHORING TIER only — `box.enable_vault`) that must answer
@@ -27,12 +29,18 @@ Two DIFFERENT file families are read here and confusing them is the standing haz
 
 * **The CONFIG (bootstrap PATH) set** — `/etc/kanibako/config_base.yaml` < the user's
   `$XDG_CONFIG_HOME/kanibako_config.yaml`. It carries the Layer-1 `[config]` foundation keys and
-  the Layer-2 `[system]` path settings, and it is what tells everything else where the settings
-  files LIVE. Read by `load_config` into `KanibakoConfig.config_paths`. ⚑ Since 2026-08-26 the
-  CONFIG member of that pair contributes `config.*` ONLY — `paths.load_system_config` filters its
-  config-file reads, so a `system:` table there reaches no path. `load_config` itself stays a
-  GENERAL document reader (it reads the settings file too, where `system.*` is exactly what is
-  wanted), so the filter lives at the Layer-1 read sites, not in the reader.
+  NOTHING ELSE, and it is what tells everything else where the settings files LIVE. Read by
+  `load_config` into `BootstrapConfig.config_paths`.
+  ⚑⚑ **THE RULE IS IN THE READ's SHAPE since 2026-08-31 (Jei), and this is the passage most
+  likely to be remembered wrong.** It was a `config.`-PREFIX FILTER applied at each of the four
+  Layer-1 read sites, over a `KanibakoConfig` that also carried the box scalars — `load_config`
+  being a GENERAL document reader that read the settings file too. So a Layer-1 read still
+  RETURNED settings (`load_config(<file with a box: table>).box_image` was the file's value) and
+  the filter dropped the rest in silence. Now `bootstrap_config_paths` walks IN through the
+  `config:` table, so `config.`-prefixed is all it can produce, and its return type has nowhere to
+  put a settings value. A settings table in that file is REFUSED, naming the file and the keys
+  (`paths_defaults.ERR_CONFIG_LAYER1_SETTINGS`). The settings file's own `system:` path table has
+  its own reader, `system_path_set_values`.
 * **The SETTINGS (behavior) set** — `/etc/kanibako/settings_base.yaml` < `global/settings.yaml` <
   the agent file < the workset tier < the box tier. This is the real 6-level cascade; nothing in
   this module resolves it except `_resolve_box_scalars`, which delegates.
@@ -59,17 +67,19 @@ snapshot and overwrites the flat fields with the resolved values. Every caller �
 which pass no project) — reads the SAME resolve through the SAME fields, so there is ONE live
 source.
 
-The flat overlay walk still runs underneath it. It owns `paths_project_toml` and the corner
-semantics the resolve falls back to (present-`None` reset; `""`).
+The flat overlay walk still runs underneath it. It owns the corner semantics the resolve falls
+back to (present-`None` reset; `""`). ⚑ It no longer owns `paths_project_toml`: `paths.project_toml`
+is not a declared key (spec §0), no caller ever read it, and the declared-key walk described under
+`_present_scalar_fields` cannot reach it — so the field went with the read that produced it.
 
 ⚑⚑ **`load_merged_config` NO LONGER READS SETTINGS OUT OF THE LAYER-1 FILE.** *"kanibako_config.yaml
 <-- cannot have settings. Period."* — that file was the least-specific FILE source of the scalar
 overlay, and its `[box]` table overrode the declared defaults; the scalars now START at those
-defaults and the first thing that can move them is the WORKSET tier. The file's `config.*`
-foundation still loads into `config_paths` (that is the file's whole job, spec §1) and is FILTERED,
-so a `system:` table hand-written into the bootstrap file cannot ride along either. Stopping the
-WRITE alone would not have been enough: a hand-written table, or one left by an older build, would
-have gone on silently overriding the defaults.
+defaults and the first thing that can move them is the WORKSET tier. Stopping the WRITE alone would
+not have been enough: a hand-written table, or one left by an older build, would have gone on
+silently overriding the defaults. ⚑ *global_path* is still a parameter and is not dead — it is what
+`_resolve_box_scalars` locates the SYSTEM tier from — but the `config_paths` field this function
+used to fill from it is gone: a settings object never carried Layer 1 legitimately.
 
 ### The floor, and why it is captured before the overlays
 
@@ -89,10 +99,10 @@ drift. A `""` default (`box.shell`) is dropped as a SUPPRESSION — `build_launc
 (`if val == "": continue`) — so an unset `@box.shell` still refuses BY NAME rather than resolving to
 blank.
 
-⚑ The floor is captured from the `load_config` read of *global_path* BEFORE any overlay, so a
-workset or box value cannot masquerade as the system-stored default — it enters the resolve at its
-OWN tier instead. `""` entries drop out of the fold (absent ≡ no default) and the flat fallback
-then applies the built-in default, preserving the `""` corner byte-identically.
+⚑ The floor is the DECLARED DEFAULTS and is built before any overlay, so a workset or box value
+cannot masquerade as the system-stored default — it enters the resolve at its OWN tier instead.
+`""` entries drop out of the fold (absent ≡ no default) and the flat fallback then applies the
+built-in default, preserving the `""` corner byte-identically.
 
 A `box:` table in `global/settings.yaml` — where `kanibako system set box.image=…` has always
 written — now resolves too. It was silently stranded before B6.
@@ -145,11 +155,22 @@ through. The truth tables (`_BOOL_TRUE` / `_BOOL_FALSE`) are shared by the typed
 writer (`config_interface`) AND the box.meta writer so both round-trip identically.
 
 
-```class KanibakoConfig```
-The flat merged configuration object.
+```class BootstrapConfig```
+The Layer-1 bootstrap file's WHOLE content: the `config.*` foundation, and nothing else.
 
-Precedence over the FILE layers, least → most authoritative: hardcoded defaults <
-`kanibako_config.yaml` (user global) < the workset tier < the box tier < CLI overrides. ⚑ The
+⚑⚑ **THE TYPE IS THE RULE (P3/P4).** It has no settings field, so no filter can be needed and none
+exists — the code that used to enforce *"`kanibako_config.yaml` cannot have settings"* at four call
+sites is DELETED rather than moved. `load_config` returns this; `load_std_paths`, `resolve_project`
+and every pass-through signature down through `commands/box/_lifecycle.py` and
+`launch/box_resolve.py` are annotated with it, so a `KanibakoConfig` handed to one of them is a
+type error rather than a value that silently carries the wrong layer.
+
+
+```class KanibakoConfig```
+The flat merged SETTINGS object.
+
+Precedence over the FILE layers, least → most authoritative: hardcoded defaults < the workset
+tier < the box tier < CLI overrides. ⚑ The
 four `box.*` scalars do NOT resolve this way any more — see "B6" above; `load_merged_config`
 overwrites them from the keyspace after the overlay walk.
 
@@ -163,20 +184,25 @@ with the REQUEST `pref.system.agent` (§2h), resolved off the launch snapshot by
 :mod:`kanibako.settings.agent_select`. There is no flat-scalar agent field any more — the
 selection is a KEY.
 
-`config_paths` holds the bootstrap PATH set-values keyed by full dotted name: the MERGED Layer-1
-`config.<leaf>` foundation keys (from the `[config]` table) AND the Layer-2 `system.<leaf>` path
-settings (from the `[system]` table), read from `kanibako_config.yaml`. It is CONFIG-FILE-ONLY —
-project and workset configs never supply it.
+⚑ **THERE IS NO `config_paths` FIELD HERE** (2026-08-31). It used to hold the bootstrap PATH
+set-values — the Layer-1 `config.<leaf>` foundation AND the Layer-2 `system.<leaf>` path settings,
+merged into one set — which is exactly how one read came to answer two layers' questions. It is
+`BootstrapConfig.config_paths` now, and it carries `config.*` alone.
 
 ⚑ `BOX_META_FILE` (`"box.yaml"`) is the per-box construct-time metadata + box-tier settings
 cascade file (spec §2c, `meta.box.*`).
 
 
-```_flatten_toml(data: dict, prefix: str = "") -> dict[str, object]```
-Flatten nested config dict into underscore-joined keys.
+```_scalar_value(value: object) -> object```
+A settings-file scalar as the flat object carries it.
 
-`{"paths": {"boxes": "x"}}` → `{"paths_boxes": "x"}`. Booleans are preserved; `None` is preserved
-as the reset sentinel (see "The `None` sentinel" above); other scalars are stringified.
+Booleans are preserved (`str(False)` is the truthy `"False"`); `None` is preserved as the reset
+sentinel (see "The `None` sentinel" above); other scalars are stringified.
+
+⚑ It replaced `_flatten_toml`, which flattened a whole document into underscore-joined names
+(`{"paths": {"boxes": "x"}}` → `{"paths_boxes": "x"}`) — the namespace that collided with the
+`KanibakoConfig` field names. Only the per-leaf coercion survived the change; see
+`_present_scalar_fields`.
 
 
 ```config_file_path(config_home: Path) -> Path```
@@ -203,35 +229,68 @@ current behavior.
 
 
 ```_present_scalar_fields(path: Path) -> dict[str, object]```
-The scalar/bool fields actually PRESENT in a config file, as field-name → value.
+The DECLARED box scalars PRESENT in a SETTINGS file, as field-name → value.
 
 `None` is preserved as the reset sentinel; callers must distinguish it from an absent key (which
 simply will not appear in the returned dict).
 
-The `[config]` (Layer-1) and `[system]` (Layer-2) tables are POPPED before flattening: they are the
-bootstrap-PATH tier, handled by `load_config`'s `config_paths` extraction, and must not leak into
-the scalar field overlay. The dict field (`config_paths`) is likewise NOT included here; it keeps
-its own dedicated parsing/merge logic.
+⚑⚑ **IT WALKS IN THROUGH `_BOX_SCALAR_FIELDS`' DOTTED SPELLINGS, and that is the closed-keyspace
+half of the 2026-08-31 change.** It used to flatten the whole document into underscore-joined names
+and keep whichever matched a `KanibakoConfig` FIELD name — a namespace that COLLIDES with those
+names, so an undeclared top-level `box_image:` resolved identically to the declared `box: image:`
+(spec §0: an undeclared key is not a key). Reading in through the declared spelling makes the flat
+one UNREACHABLE rather than refused by a list (P4), and it is also why the `[config]`/`[system]`
+pops are gone: a table the walk never enters cannot leak.
 
 
-```load_config(path: Path) -> KanibakoConfig```
-Read a single config file and return a `KanibakoConfig` with defaults filled in.
+```_layer1_settings_keys(data: dict) -> list[str]```
+Every SETTINGS entry a Layer-1 document carries, dotted and sorted; empty ⇒ the file is clean.
 
-The bootstrap-PATH tables are extracted first: the Layer-1 `[config]` foundation keys
-(`config.<leaf>`) and the Layer-2 `[system]` path settings (`system.<leaf>`), merged into ONE
-`config_paths` set keyed by full dotted name. Each table is flattened so nested sub-keys (e.g.
-`system.channels.common`) become dotted keys while scalar leaves (e.g. `config.data`) stay flat.
+The message's key list. ⚑⚑ **A TABLE WITH NO LEAF IS NAMED BY ITS TABLE NAME**, which is what the
+`or [name]` fallback is for. The three empty spellings a user reads as identical — `box:` with
+nothing under it (**YAML parses that to `None`, not `{}`**), an explicit `box: {}`, and a `box:`
+whose only leaf is itself an empty table — used to give TWO different answers: the first was
+refused as a bare `box`, the other two were silently ACCEPTED. Convention 0 forbids that pair, and
+the silent arm was the only thing in this rule that behaved like a carve-out. All three are
+settings tables that do not belong in this file, so all three refuse.
 
-Scalar/bool fields follow: a present key sets the field; a present `None` resets it to the
-built-in default.
 
-⚑ The extraction is UNFILTERED — every leaf under `[config]` / `[system]` lands in `config_paths`
-under its dotted name, including leaves this build has never heard of. Nothing downstream consults
-it by iteration (`resolve_system_paths` walks `SYSTEM_PATH_DEFAULTS`, never the file's set-values),
-so an unknown leaf is orphaned-ignored rather than rejected. This is the mechanism that makes a
-stale `[system] templates_stamp` inert — see "The retired template-stamp gate" below — and, since
-2026-08-26, the one that makes a stale `[system] setup_completed` inert too, that leaf's storage
-having moved to the settings file.
+```bootstrap_config_paths(path: Path) -> dict[str, str]```
+The Layer-1 file's `config.*` foundation, read from its `config:` table ALONE.
+
+⚑ **NO FILTER, AND THAT IS THE POINT (P4).** The walk STARTS at the `config:` table, so a `config.`
+prefix is the only thing it can produce; the rule is in the shape of the read rather than in a test
+applied after it. 🛑 A settings table here RAISES `ConfigError` naming the file and the keys — it is
+not dropped. That refusal is what a user with a stale `[box]` or `[system]` table now sees instead
+of silently running something other than what their file says.
+
+⚑ The extraction inside `config:` is unfiltered by leaf name: an unrecognised `config.<leaf>` lands
+in the set under its dotted name. Nothing downstream consults it by iteration
+(`resolve_system_paths` walks `CONFIG_PATH_DEFAULTS`, never the file's set-values), so an unknown
+`config.*` leaf is orphaned-ignored. ⚑ A stale `[system] templates_stamp` or `[system]
+setup_completed` is NOT in that band — it is a `system:` table, so it refuses; see "The retired
+template-stamp gate" below.
+
+
+```system_path_set_values(settings_path: Path) -> dict[str, str]```
+A SETTINGS file's `system.*` set-values, dotted — the Layer-2 half of the path tier.
+
+Its own reader since 2026-08-31. This was `load_config(path).config_paths`, the very call the
+LAYER-1 read used, over one field that held `config.*` and `system.*` together — one function
+answering two layers' questions is what let each layer's file speak for the other. Nested sub-keys
+(e.g. `system.channels.common`) become dotted keys. ⚑ NOT filtered to the path tier: that is
+`paths.load_system_config`'s own P13 job, and this file's `system:` table legitimately holds
+`system.agent` and the category families too.
+
+
+```load_config(path: Path) -> BootstrapConfig```
+Read the LAYER-1 bootstrap file — the one reader of `kanibako_config.yaml`.
+
+⚑⚑ **IT RETURNS A `BootstrapConfig`, AND THAT IS THE WHOLE OF THE 2026-08-31 RULING:** a Layer-1
+read has no settings field to return. It was a GENERAL document reader — the same call read the
+settings file — which is how the Layer-1 file came to hand back a `box.image` it may not carry. The
+box scalars are read from SETTINGS files by `load_merged_config`; a settings file's `system.*` path
+set-values by `system_path_set_values`.
 
 
 ```_resolve_box_scalars(global_path, *, workset_path, box_path, cli_overrides) -> dict[str, object]```
@@ -297,8 +356,8 @@ keeps the flat value. See "B6" above for the whole shape, and "The old machine-w
 for what was removed.
 
 The nested `_overlay_scalars` applies one file layer's PRESENT scalar/bool fields. Presence-based,
-per "The `None` sentinel" above. `config_paths` is config-file-only and handled separately, so it
-never appears there.
+per "The `None` sentinel" above. Layer 1 cannot appear there at all: `_present_scalar_fields` walks
+in through the declared `box.*` spellings and never enters a `config:` table.
 
 ⚑ Each resolved value lands on its field's own type via `_typed_box_scalar`: a field whose
 DATACLASS DEFAULT is a bool goes through :func:`coerce_bool` (falling back to `bool(value)` for an
@@ -662,9 +721,11 @@ advisory goes to stderr and the command proceeds to its own outcome unchanged.
 
 ⚑ **Why a RAW reader is required.** The gate runs PRE-CASCADE, before any snapshot exists.
 (Historically there was a second reason, now moot: while the marker lived in `kanibako_config.yaml`,
-`load_config` captured the leaf into `KanibakoConfig.config_paths` — the bootstrap-PATH set, whose
-only consumer `resolve_system_paths` iterates `SYSTEM_PATH_DEFAULTS` and never the file's
-set-values — so the captured leaf reached nothing.)
+`load_config` captured the leaf into the bootstrap-PATH set, whose only consumer
+`resolve_system_paths` iterates `SYSTEM_PATH_DEFAULTS` and never the file's set-values — so the
+captured leaf reached nothing. Since 2026-08-31 a marker left in that file does not reach nothing:
+it REFUSES. `setup_compat_gate` still reads through `load_doc`, not `load_config`, so the gate
+itself is unaffected — but every verb that resolves a path first will have refused already.)
 
 *(The older wording here claimed the typed loader "maps only KNOWN system leaves and ignores
 unknown ones". It has no known/unknown filter at all — measured 2026-08-11 — so that mechanism was
@@ -684,9 +745,12 @@ packaged-template digest against the previous tag to REQUIRE the bump.
 ACCEPTED LOSS (ruled): drift WITHIN one version — a dev build, or a plugin pip-installed after
 first run — is no longer detected; the cure is the same `kanibako setup` the gate used to demand.
 
-A stored `[system] templates_stamp` leaf on an existing host is ORPHANED-IGNORED, by the unfiltered
-extraction described under `load_config` above (verified 2026-08-02, re-verified 2026-08-11): an
-unknown `system.*` leaf reaches no consumer and raises nothing. Migration record: M-23.
+A stored `[system] templates_stamp` leaf on an existing host was ORPHANED-IGNORED until
+2026-08-31 — an unknown `system.*` leaf reached no consumer and raised nothing. 🛑 **It now
+REFUSES**, and not as a special case: it is a `system:` table in the Layer-1 file, which that file
+may not carry at all, so the read names it like any other stale settings key. The cure is the same
+hand-edit `MIGRATION.md` § *2.67 A settings table in `kanibako_config.yaml` stops the command,
+instead of being ignored* prescribes. Migration records: M-23, and §2.67.
 
 
 ```setup_compat_gate(settings_path: Path | None) -> str | None```
@@ -793,8 +857,9 @@ Flatten nested dict into DOTTED-key form, stringifying scalar leaves.
 
 `{"system": {"bindings": {"rw": {"foo": "h:g"}}}}` → `{"system.bindings.rw.foo": "h:g"}`.
 
-⚑ Despite the illustrative example, this is NOT a scope-category helper. Its only two callers are
-`load_config`'s extraction of the bootstrap `[config]` and `[system]` tables. The scope categories
+⚑ Despite the illustrative example, this is NOT a scope-category helper. Its callers are the
+Layer-1 `config:` read, the Layer-2 `system:` path-tier read, and the Layer-1 refusal that names its
+keys. The scope categories
 live in `settings_categories` / `settings_keyspace`, and their keys are TERMINAL — a destination is
 DATA, not a key segment — so nothing here flattens one.
 

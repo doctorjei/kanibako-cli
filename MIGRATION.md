@@ -56,6 +56,15 @@ inside boxes. In order of likely impact:
    `--agent <name>` to skip the menu). ⚑ Pass `--refresh-templates` on a headless run: a
    non-interactive setup that cannot ask about the template refresh deliberately records
    nothing, prints `Setup Incomplete` and exits **rc 1**, so the block stays up (§2.12).
+   🛑 **Check one file before you run that `kanibako setup`.** Through v1.7.2, kanibako wrote
+   settings into `~/.config/kanibako_config.yaml`: initialising a host emitted `system:` and
+   `box:` tables, and setup recorded its marker there as `system: setup_completed:`. In
+   v1.8.0 that file may hold the `config.*` bootstrap paths and nothing else, and reading it
+   refuses by name (§2.67) — including when the command doing the reading is `kanibako setup`,
+   which is why this comes first. So open `~/.config/kanibako_config.yaml` and look: **if any
+   top-level table other than `config:` is in it, delete that table.** A `setup_completed`
+   marker is not worth carrying across — the release raises the setup baseline anyway, so a
+   v1.7.2 value is refused as too old wherever it sits.
 
 2. **Every settings file except the system one must be renamed by hand, or it is silently not
    read** (§2.45). Each cascade tier's file was called `settings.yaml`; each is now named for its
@@ -426,8 +435,10 @@ Notes:
   pref.system.agent`. `--null` writes a real YAML `null`; the sibling `reset` VERB
   (`kanibako box reset <box> <key>`) instead *removes* the entry. ⚑ There is no `--reset` flag.
 - A stale `box: {agent_name: ""}` row may also sit in `~/.config/kanibako_config.yaml` — old
-  versions wrote it into every freshly-initialised host. Nothing ever read it there; it is
-  inert and safe to delete for tidiness. It does **not** trigger the refusal (verified).
+  versions wrote it into every freshly-initialised host. Nothing ever read it there, and it does
+  **not** trigger THIS section's launch refusal (verified) — but that file may no longer carry a
+  `box:` table at all, so it stops every command and names `box.agent_name` (§2.67). Deleting it
+  is required now, not tidiness.
 - **`shared` → `common`:** rename the category token in your settings files, keeping scope,
   agent name, entry name, and value (`shared:` table → `common:`). There is no alias.
 - **Underscore key spellings are gone — type the dots.** `kanibako system set box_image=…` used to
@@ -799,9 +810,8 @@ The eleven `system.*` **path** keys — `system.template`, `system.canon`, `syst
 type-roots — are settings keys, and `kanibako system set` accepts them (it used to refuse them as
 "structural config keys" and send you to the config file). A set lands in the `system:` table of
 `<data>/global/settings.yaml`, and `get`/`reset` read and clear it there. **If you hand-placed any
-of these in `~/.config/kanibako_config.yaml`, leave them.** They still apply — that table is the
-floor the settings file layers over — but `kanibako system get` reports what the *settings* file
-says, so it answers `(not set)` until you set one. To see what is actually in effect, use
+of these in `~/.config/kanibako_config.yaml`, move them out** — a `system:` table there does not
+apply, and reading that file now refuses by name (§2.67). To see what is actually in effect, use
 `kanibako system show --effective`.
 
 **These repoints now move the directories they name, not just the cascade.** If you set one of
@@ -831,7 +841,8 @@ cascade"* — exists anywhere in the code; a repo-wide search turns up only this
 current refusal and its cure are §2.20's (*Bind entries are edited in the settings file, not from
 the CLI*): the *write verb* for these categories is retired outright, full stop, so moving the
 entry to `<data>/global/settings.yaml` does **not** make a subsequent `set` succeed — the fix is
-to edit that file directly. A stale entry you *don't* touch is simply inert, exactly as it
+to edit that file directly. A stale entry left in `~/.config/kanibako_config.yaml` is not inert
+any more — it refuses (§2.67); one left in the settings file is simply unread, exactly as it
 already was.
 
 Box and workset scopes are unaffected. Agent-scope binds already routed correctly.
@@ -939,8 +950,9 @@ hard-blocked hosts whose only sin was never having recorded a digest. Its protec
 into the band above: packaged content that changes with a RELEASE is announced by a
 `SETUP_FCV` nudge or a `SETUP_BCV` block. The accepted loss is that template drift *within one
 version* (a dev build, or a plugin pip-installed after first run) is no longer detected; the
-cure is the same `kanibako setup`. A `[system] templates_stamp` leaf left in your config is
-inert — read by nothing, and no error.
+cure is the same `kanibako setup`. A `[system] templates_stamp` leaf left in
+`~/.config/kanibako_config.yaml` is no longer inert: that file may not carry a `system:` table, so
+reading it refuses and names the leaf (§2.67). Delete it along with the setup marker.
 
 **What clears the block.** Only a `setup` run that reached a settled template state: one that
 refreshed the store, one that found nothing to do, or an interactive one where you were asked
@@ -4064,6 +4076,83 @@ grep model ~/.claude/settings.json
 **The cure, one step, from inside the box:** delete the `"model"` line from
 `~/.claude/settings.json`. That fixes it for good — with the key absent, Claude Code picks the
 default your account actually has. (`/model <name>` fixes a running session only.)
+
+### 2.67 A settings table in `kanibako_config.yaml` stops the command, instead of being ignored
+
+`kanibako_config.yaml` holds the `config.*` bootstrap paths and nothing else. In v1.7.2 it also
+carried settings; in v1.8.0 those settings are read from the settings files, and anything else
+left in the config file was **dropped without a word**. It is now an error that names the file
+and every key in it that does not belong:
+
+```
+Error: /home/you/.config/kanibako_config.yaml carries settings, which it cannot hold:
+  box.image
+That file holds the config.* bootstrap paths and nothing else. Delete those lines from it, then
+set what you meant with 'kanibako system set <key>=<value>', which writes the settings file.
+```
+
+⚑ **The order in that message is deliberate: the hand-edit comes first.** Every verb resolves its
+paths through this read, `kanibako system set` included, so setting the key before you have cleaned
+the file just meets the same error again.
+
+**Why this is worth an error rather than a quiet ignore.** A `box:` table sitting in that file
+looks like it is choosing your image. It is not, and it has not been for the whole of v1.8.0 — so
+a box could run a different image than the file in front of you said, with nothing anywhere
+reporting the difference. The point of the message is that you find out.
+
+🛑 **If there is a leftover, it is most likely one kanibako itself wrote — and TWO different
+writers put one there.** **Initialising** the host wrote it: v1.7.2 created this file carrying
+three tables, not one — the `config:` foundation, a `system:` table (`backup`, `channelroot`,
+`base_template`, `cache`, `runtime`) and a `box:` table (`image`, `agent_name`, `share_images`).
+That is the broader case, and it does not depend on `kanibako setup` ever having been run: a file
+**written by v1.7.x at all** carries the two extra tables. Separately, **`kanibako setup`** recorded
+`system: setup_completed:` — and `system: templates_stamp:` — in the same file; the marker moved to
+`<data>/global/settings.yaml` during 1.8.0 development, and nothing removes the old line when it
+does.
+
+So the first v1.8.0 command that reads such a file stops — `kanibako setup` included, which is why
+the hand-edit comes before it (§1, item 1). Whether yours has a leftover is a question about your
+file, not about your version: **open it and look.** If a `setup_completed` line is there, delete it
+rather than moving it — v1.8.0 raises the setup baseline, so a v1.7.2 value is refused as too old
+wherever it sits.
+
+**What to do**, once, per file. The files are `$XDG_CONFIG_HOME/kanibako_config.yaml`
+(`~/.config/kanibako_config.yaml` when that variable is unset) and, if you have one, the site file
+`/etc/kanibako/config_base.yaml`. Delete every top-level table that is not `config:`, and set what
+you actually wanted:
+
+```yaml
+# ~/.config/kanibako_config.yaml — REFUSED
+config:
+  data: /srv/kanibako
+box:
+  image: ghcr.io/you/your-rig:latest    # never applied; now an error
+system:
+  channelroot: /srv/channels            # never applied; now an error
+```
+
+```yaml
+# ~/.config/kanibako_config.yaml — the whole of it
+config:
+  data: /srv/kanibako
+```
+
+```
+# and the two settings, where they take effect
+kanibako system set box.image=ghcr.io/you/your-rig:latest
+kanibako system set system.channelroot=/srv/channels
+```
+
+⚑ **§2.8** (*System-scope config now lives in ONE file*) **used to tell you the opposite** for the
+eleven `system.*` path keys — to leave hand-placed ones in the config file, because they still
+applied as a floor. They did not apply, and they now refuse; that paragraph has been corrected and
+points here.
+
+⚑ **The same release stops an undeclared FLAT spelling from being read as a key.** A top-level
+`box_image:` in a settings file resolved exactly as the declared `box: image:` did — two
+spellings for one key, one of which the keyspace does not declare. Only `box: image:` is read
+now. In the config file the flat spelling is refused by name like any other; in a settings file
+see §2.47 (*An undeclared key in a settings file now stops the command*).
 
 ---
 

@@ -29,7 +29,7 @@ from kanibako.settings.core_defaults import materialize_canon_skeleton
 from kanibako.settings.config import (
     BOX_META_FILE,
     WORKSET_META_FILE,
-    KanibakoConfig,
+    BootstrapConfig,
     read_box_enable_vault,
     resolve_box_enable_vault,
     write_box_enable_vault,
@@ -201,7 +201,7 @@ def _ownership_to_mode(ownership: str) -> tuple[BoxMode, str | None]:
 def resolve_lifecycle_target(
     old: str | None,
     std: StandardPaths,
-    config: KanibakoConfig | None = None,
+    config: BootstrapConfig | None = None,
 ) -> ProjectState:
     """Resolve an existing project (by path or name) to a :class:`ProjectState`."""
     import os
@@ -315,7 +315,7 @@ def _default_state_from_meta(
 
 
 def _resolve_workset_state(
-    raw_path: Path, std: StandardPaths, config: KanibakoConfig,
+    raw_path: Path, std: StandardPaths, config: BootstrapConfig,
 ) -> ProjectState:
     """Resolve a workset project (internal or external-connected) to a state."""
     ws: Workset | None = None
@@ -484,7 +484,7 @@ def _validate(
     state: ProjectState,
     spec: TargetSpec,
     std: StandardPaths,
-    config: KanibakoConfig,
+    config: BootstrapConfig,
     *,
     force: bool,
     cwd: Path,
@@ -653,7 +653,7 @@ def execute_lifecycle(
     state: ProjectState,
     spec: TargetSpec,
     std: StandardPaths,
-    config: KanibakoConfig | None = None,
+    config: BootstrapConfig | None = None,
     *,
     force: bool = False,
     confirm: Callable[[], bool] | None = None,
@@ -686,7 +686,7 @@ def _run_steps(
     state: ProjectState,
     spec: TargetSpec,
     std: StandardPaths,
-    config: KanibakoConfig,
+    config: BootstrapConfig,
     plan: dict,
     unwind: _Unwind,
 ) -> ProjectState:
@@ -783,7 +783,7 @@ def _run_steps(
 def _apply_ownership_and_markers(
     state: ProjectState,
     std: StandardPaths,
-    config: KanibakoConfig,
+    config: BootstrapConfig,
     unwind: _Unwind,
     *,
     target_mode: BoxMode,
@@ -873,7 +873,7 @@ def _deliver_carried_box_settings(state: ProjectState, dst_box_tier: Path) -> No
 def _remove_old_metadata(
     state: ProjectState,
     std: StandardPaths,
-    config: KanibakoConfig,
+    config: BootstrapConfig,
     *,
     preserve_name: str | None = None,
     preserve_root: Path | None = None,
@@ -984,7 +984,7 @@ def _remove_old_metadata(
 def _to_default(
     state: ProjectState,
     std: StandardPaths,
-    config: KanibakoConfig,
+    config: BootstrapConfig,
     unwind: _Unwind,
     *,
     new_name: str,
@@ -1265,7 +1265,7 @@ def _unconsolidate_workspace_subdir(
 def _to_standalone(
     state: ProjectState,
     std: StandardPaths,
-    config: KanibakoConfig,
+    config: BootstrapConfig,
     unwind: _Unwind,
     *,
     new_name: str,
@@ -1362,7 +1362,7 @@ def _to_standalone(
 def _to_workset(
     state: ProjectState,
     std: StandardPaths,
-    config: KanibakoConfig,
+    config: BootstrapConfig,
     unwind: _Unwind,
     *,
     target_ws: Workset,
