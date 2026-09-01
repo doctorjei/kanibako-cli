@@ -87,8 +87,11 @@ inside boxes. In order of likely impact:
    instruction/directive chain (no error is printed). Upgrade via the `kanibako` meta package,
    or upgrade the plugins first (§2.6). ⚑ A pre-1.8.0 plugin also **will not load at all** on
    this base — the flat core modules it imports are deleted, so kanibako skips that agent with a
-   named warning (§3.1 lists the affected plugin versions). The plugins pin no upper bound on
-   `kanibako-cli`, so this is what an unpinned `pip install --upgrade kanibako-cli` gives you.
+   named warning (§3.1 lists the affected plugin versions). Every plugin published **before**
+   v1.8.0 pins no upper bound on `kanibako-cli`, so this is what an unpinned
+   `pip install --upgrade kanibako-cli` gives you. ⚑ From v1.8.0 the plugins declare
+   `kanibako-cli>=1.8.0.dev0,<2.0`, so pip refuses the mismatch instead of installing it — but that
+   only protects you once the v1.8.0 plugins are the ones being resolved.
 
 5. **Claude plugins and cache will look EMPTY unless you move two directories** before your
    first launch on v1.8.0 (§2.5). Nothing errors — the box just sees empty dirs:
@@ -4415,9 +4418,15 @@ import you break here is one that reached past it.
 
 #### This bites USERS, not just plugin authors
 
-The plugins declare `dependencies = ["kanibako-cli"]` with **no upper bound**. So *old plugin
-beside new core* is not an exotic combination — it is what you get by default if you upgrade
-`kanibako-cli` (or install a plugin) without pinning.
+Every plugin published **before v1.8.0** declares `dependencies = ["kanibako-cli"]` with **no upper
+bound**. So *old plugin beside new core* is not an exotic combination — it is what you get by default
+if you upgrade `kanibako-cli` (or install a plugin) without pinning.
+
+**v1.8.0 closes this going forward, not retroactively.** The v1.8.0 plugins declare
+`kanibako-cli>=1.8.0.dev0,<2.0`, so a resolver refuses an incompatible pair at install time rather
+than producing one you find out about from a skipped-agent warning. It cannot help you on the way
+*into* v1.8.0, because the wheel doing the resolving is the old one — which is why the upgrade
+advice above still stands for this migration.
 
 **Which published plugins load on v1.8.0** — determined by resolving every published wheel's
 import-time `kanibako.*` imports against the v1.8.0 tree, so these are the whole released sets,
