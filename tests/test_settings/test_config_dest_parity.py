@@ -519,6 +519,92 @@ class TestBareAgentKeyDest:
         assert not (bench.agents / "default").exists()
 
 
+#: Every tail ``config_keys._parse_persona_agent_key`` recognises under the RESERVED
+#: ``default`` node — the ``env.<VAR>`` section form (structural) and the core §2d leaf
+#: table. ⚑ NOT the same as "reaches the reserved refusal": ``transform_settings`` is
+#: intercepted a branch earlier by ``agent_leaf_table_error``, and the sweep covers it
+#: DELIBERATELY, since what is asserted is that NO ``agent.default.<tail>`` refusal
+#: prescribes a failing command, whichever refusal answers.
+#: ⚑ DERIVED, NEVER LISTED (P13) — a leaf declared tomorrow arrives here with no edit,
+#: and the row that broke cannot be the row that is missing.
+_RESERVED_TIER_TAILS = ("env.PROBE_VAR", *sorted(DECLARED_AGENT_LEAVES))
+
+#: The cure's bare-key form, as the message spells it.
+_BARE_CURE = re.compile(r"bare key \(e\.g\. '(?P<cure>[^']+)'\)")
+
+
+class TestTheReservedTierCureIsReachable:
+    """A refusal at ``agent.default`` may not prescribe a command that then refuses.
+
+    ⚑⚑ MEASURED, 2026-09-01: ``agent.default.env.FOO`` is a DECLARED key (§2a declares
+    ``<scope>.env.<VAR>`` at ``agent.default``) and its refusal cured with the bare key
+    ``env.FOO`` — the RETIRED bare docker-``.env`` spelling (R-39), which refuses. The
+    error text routed the user out of one dead end into another.
+
+    ⚑ THE TWO ARMS ARE PINNED AT DIFFERENT STRENGTHS, and the docstring says so rather
+    than claiming one bar for both. The BARE arm's oracle is the cure ITSELF, not its
+    wording: whatever bare key the message names is RUN, and the run must not error, so
+    a cure that stops working reddens here even if nobody edits the sentence. The FILE
+    arm's is a SUBSTRING — this file answers "which file holds the value", and the
+    message's other half ("the launch reads it from there") is a launch-seam claim,
+    pinned where the launch is: ``tests/test_targets/test_agent_envs.py``'s
+    ``TestTheOverrideStory::test_the_all_agents_default_tier_arrives_at_all``, which
+    drives a system file's ``agent: default: env:`` table through ``resolve_envs`` and
+    asserts the winning slot's key. Asserting it a second time here would be the
+    traveling copy P10 forbids.
+
+    MUTATION: collapse ``config_dest._reserved_tier_refusal`` back to the single bare-key
+    cure and ``env.PROBE_VAR`` reds — the prescribed ``env.PROBE_VAR`` answers
+    "the bare env.<VAR> spelling is RETIRED".
+    """
+
+    def test_the_witness_sets_are_not_empty(self):
+        """P15 — a DERIVED corpus that empties must RED, never pass vacuously.
+
+        ⚑ ONLY THE DERIVED HALF NEEDS A GUARD.  The sweep's leaf rows come out of
+        ``DECLARED_AGENT_LEAVES``, which can empty; the file arm's witness is the
+        LITERAL ``env.PROBE_VAR`` in :data:`_RESERVED_TIER_TAILS`, and it is covered a
+        second time by a standalone row below — neither can empty, so neither is
+        asserted here.
+        """
+        assert DECLARED_AGENT_LEAVES
+        assert SCALAR_AGENT_LEAVES, "no tail would exercise the bare-key cure"
+
+    @pytest.mark.parametrize("tail", _RESERVED_TIER_TAILS)
+    def test_every_reserved_tier_refusal_names_a_route_that_works(self, bench, tail):
+        # ⚑ The value is DERIVED from the leaf's declared type (see
+        # :func:`sample_leaf_value`): a sweep that hands every leaf "x" reds on
+        # ``access``'s enum guard and reports a value refusal as a routing one.
+        before = bench.snapshot()
+        msg = bench.set(
+            ConfigLevel.system, f"agent.default.{tail}", sample_leaf_value(tail),
+        )
+        assert msg.startswith("Error:"), msg
+        assert bench.changed(before) == {}, bench.changed(before)
+
+        cure = _BARE_CURE.search(msg)
+        if cure is None:
+            # No bare spelling exists, so the message must send the user to the FILE
+            # that holds the tier — the one destination the launch actually reads.
+            # ⚑ ``transform_settings`` is refused a branch earlier, by
+            # ``agent_leaf_table_error``; it names the same file, which is the point.
+            assert "settings file" in msg, msg
+            return
+        # A bare key was prescribed: RUN it. The value is derived from the leaf's own
+        # declared type, so a value guard cannot be mistaken for a broken cure.
+        assert not bench.set(
+            ConfigLevel.system, cure.group("cure"), sample_leaf_value(tail),
+        ).startswith("Error:"), msg
+
+    def test_the_env_section_form_is_not_sent_to_the_retired_bare_spelling(self, bench):
+        """The measured case, pinned by NAME as well as by the sweep above."""
+        msg = bench.set(ConfigLevel.system, "agent.default.env.PROBE_VAR", "x")
+        assert "reserved any-agent tier" in msg
+        assert "env.PROBE_VAR" in msg
+        assert "bare key" not in msg, msg
+        assert "'agent: default:' table of the system settings file" in msg, msg
+
+
 # ---------------------------------------------------------------------------
 # 3. ``<scope>.secret_path.<VAR>`` — the non-agent SECRET category
 # ---------------------------------------------------------------------------

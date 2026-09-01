@@ -23,6 +23,7 @@ from kanibako.errors import ConfigError
 from kanibako.settings.agent_file import AgentFileSlot, slot_for
 from kanibako.settings.config_keys import (
     AGENT_DEFAULT_SUB,
+    _is_agent_setting,
     _parse_agent_node_secret_key,
     _parse_persona_agent_key,
     parse_agent_node_bind_key,
@@ -79,6 +80,30 @@ def check_agent_node(node: str) -> "NodeRouteRefusal | None":
     return None
 
 
+def _reserved_tier_refusal(tail: str) -> str:
+    """Refuse a write at the RESERVED ``agent.default`` tier, with the cure for *tail*.
+
+    ⚑ TWO CURES, PICKED BY ``_is_agent_setting`` — the SAME predicate
+    ``config_interface`` dispatches its bare-key write on, so the bare key this names
+    is reachable.  A *tail* with no bare spelling is sent to the settings FILE.
+    ⚑ It promises NO READ-BACK: ``config get`` answers "(not set)" over a
+    hand-authored ``agent.default.env.<VAR>``, and no message may say otherwise (see
+    :func:`_read_dest`).
+    Reasoning: ``llm-docs/kanibako/settings/config_dest.py.md``.
+    """
+    head = "Error: 'default' is the reserved any-agent tier, not a persona node"
+    if _is_agent_setting(tail):
+        return (
+            f"{head}; set the any-agent default with the bare key "
+            f"(e.g. '{tail}') instead."
+        )
+    return (
+        f"{head}, and '{tail}' has no bare CLI spelling. Author it in the "
+        f"'agent: default:' table of the system settings file; the launch reads it "
+        f"from there."
+    )
+
+
 def _persona_agent_target(
     canonical: str, agents_root: "Path | None",
 ) -> "AgentFileSlot | str | None":
@@ -97,11 +122,7 @@ def _persona_agent_target(
     route = _agent_node_route(node, tail, agents_root)
     if isinstance(route, NodeRouteRefusal):
         if route.reason == "reserved":
-            return (
-                f"Error: 'default' is the reserved any-agent tier, not a persona "
-                f"node; set the any-agent default with the bare key "
-                f"(e.g. '{tail}') instead."
-            )
+            return _reserved_tier_refusal(tail)
         return f"Error: {route.detail}"
     return route
 

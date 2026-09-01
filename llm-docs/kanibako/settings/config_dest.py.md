@@ -111,8 +111,48 @@ thread its root is not at a scope that can see it.
   state leaf, `env.<VAR>` for an env pointer). Where inside the file that lands is the boundary's
   business, not this module's;
 * an `"Error: ..."` string — a MALFORMED node ref (validated, never routed), or the reserved-tier
-  refusal rendered as the cure ("set the any-agent default with the bare key");
+  refusal (`_reserved_tier_refusal`, below);
 * `None` — not a persona key, or *agents_root* was not supplied.
+
+### `_reserved_tier_refusal` — why the cure has TWO arms
+
+`default` is the any-agent tier, so there is no `agents/default/agent.yaml` to write and the refusal
+is right. The old message then said one thing to everybody: *"set the any-agent default with the bare
+key (e.g. `<tail>`)"*. That is true only where a bare key EXISTS, and one tail reaches this arm where
+it does not.
+
+**MEASURED, 2026-09-01.** `agent.default.env.FOO` is a DECLARED key — keyspec §2a declares
+`<scope>.env.<VAR>` at every scope and names `agent.default` among them — and it took the cure
+`env.FOO`, which is the RETIRED bare docker-`.env` spelling (R-39). `config set env.FOO` answers
+*"the bare env.<VAR> spelling is RETIRED"*. The refusal routed the user from one dead end into a
+second one, which is the same defect shape `test_agent_leaf_shape.py` opens on: *a refusal that
+prescribes a failing command is worse than no cure at all*.
+
+**WHY `_is_agent_setting` IS THE TEST AND NOT A LIST.** It is the predicate `config_interface`'s own
+bare-write branch dispatches on, so "this tail has a working bare spelling" and "the bare cure is
+reachable" are the SAME question asked once. It derives through `SCALAR_AGENT_LEAVES` =
+`DECLARED_AGENT_LEAVES − TABLE_VALUED_AGENT_LEAVES`, so a leaf declared tomorrow lands on the right
+arm with no edit here (P13), and nothing is exempted by name.
+
+**THE TAIL THAT REACHES THE FILE ARM IS `env.<VAR>`** — the section form
+`_parse_persona_agent_key` recognises structurally — and it gets there by construction, not by
+enumeration. `transform_settings` is the only other tail the arm would take, and MEASURED it never
+arrives: `agent_leaf_table_error` refuses it a branch earlier (its message carries no *"reserved
+any-agent tier"*) and names the SAME file. So the arm has one live member and a second that agrees
+with it — which is why the arm needs no list.
+
+**THE FILE CURE IS MEASURED TOO.** A system settings file carrying `agent: default: env: {UNIVERSAL:
+…}` produces the category entry `agent.default.env.UNIVERSAL` and collapses into `meta.assembly.env`,
+so *"the launch reads it from there"* is a fact about running code, not an inference from the spec.
+It is deliberately the wording `config_keys._terminal_category_message` already gives the
+`agent.default` arm — one key, one destination, one sentence, whichever door a user knocks on.
+
+**WHAT IT DOES NOT SAY, AND MUST NOT.** The sibling `caches` message ends by promising the value
+reads back; this one does not, because it does not. `config get agent.default.env.FOO` answers
+"(not set)" over a hand-authored value: `config_interface.get_config_value` gates its persona branch
+on `agent_default_tier_leaf(canonical) is None`, and that function deliberately declines the dotted
+`env.` tail, so the read returns before it ever reaches `_read_dest`. The read hole is real and is
+NOT closed here — closing it is an edit to that guard, outside this module.
 
 ### `_node_bind_target` — READ-ONLY since R-9
 
