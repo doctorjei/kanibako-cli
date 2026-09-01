@@ -435,8 +435,16 @@ def is_terminal_category_key(key: str) -> bool:
 # meta.* — the RO families (spec §0, §2c, §2d)
 # ---------------------------------------------------------------------------
 
+# The L0.2 group (spec §1A). ⚑ `config_file` is the ONE member that is not a
+# treewalk result — its `origin` is `bootstrap`, an `$XDG_CONFIG_HOME` read with
+# the `~/.config` fallback — so "the runtime treewalk values" is no longer a
+# description of the whole family; the manifest row carries what the key holds.
+# ⚑ It has NO PRODUCER yet, deliberately: under the closed keyspace (spec §0) the
+# DECLARATION is what makes the name legal, and the call sites that will read it
+# are their own seam. Declared-but-unproduced is a state the manifest already
+# describes, as it does for `meta.box.{container_name,helper_num}` below.
 DECLARED_META_RUNTIME_LEAVES: Final[frozenset[str]] = frozenset({
-    "ws_root", "ws_name", "project_type",
+    "ws_root", "ws_name", "project_type", "config_file",
 })
 # The COLLAPSE outputs (spec §1A): folded AFTER every scope resolves, not at the L0.2
 # treewalk above — which is why they are their OWN group. ⚑ ALL FOUR ARE PRODUCED,
