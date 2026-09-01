@@ -12,7 +12,8 @@ selection. P8 generalises it into the builder and the guard here (P8 also being 
 principle the split pays for).
 
 **PURE:** no I/O and no plugin import at module load, like `kanibako.settings.settings_keyspace`.
-The set of valid agent names is INJECTED by the caller rather than discovered here.
+The set of valid agent NAMES is INJECTED by the caller rather than discovered here; the per-agent
+leaf VOCABULARY is the opposite and the guard section says why.
 
 ## What the level IS, and is not
 
@@ -159,7 +160,7 @@ It refuses in this order, each arm reporting the key and the section that bars i
 3. **Locator closure** — `kanibako.settings.settings_prefs.LOCATOR_CLOSURE`. This is the arm §1A
    explicitly asks for.
 
-### The injected agent sets
+### The agent NAMES are injected
 
 `valid_agents` injects the agent-discriminator set for arm 1, and `active_agent` is UNIONED into it —
 the active agent is valid BY CONSTRUCTION, having just been resolved by
@@ -170,8 +171,37 @@ builds is spelled against that same discriminator, so plugin discovery would be 
 flag-free launch keeps paying nothing, the same trade `settings_prefs.apply_prefs` makes. The union
 is not a bypass: a key naming any OTHER agent is still refused.
 
-`agent_leaves` likewise unions the plugin-declared agent keys over the core §2d set when a caller has
-them.
+### The leaf VOCABULARY is sourced, and that asymmetry is the point
+
+Arm 1 also needs to know what an agent's leaves may be CALLED, and that question is not the caller's
+to answer. This door is the TWIN of `config_keys.agent_key_reason`: names injected narrowly (there,
+the on-disk store dir; here, the agent the launch just resolved), vocabulary read from
+`config_keys.AGENT_LEAF_MAP`.
+
+It was a PARAMETER until 2026-09-01 and **no caller ever passed one**, so the door judged every agent
+against core's §2d table alone. `agent.goose.provider` — a real goose `setting_descriptor` leaf — was
+refused at the CLI level while the config verb and the pref door both accepted it. That is a §0
+breach in the STRICT direction, which is why it went unnoticed for as long as it did: the failure
+mode is a user being told no. It was harmless only because `build_cli_level` emits nothing but core
+leaves; it would have stopped being harmless the first time a plugin leaf got a flag, and a rule a
+caller can forget is not a rule (P15 — the shape is now unavailable, not merely discouraged).
+
+Two properties of the map are load-bearing, and neither survives being "simplified":
+
+* **It is a thing to ASK, not a value.** `AgentVocabulary` consults core's table first and reaches the
+  map only for a leaf core cannot answer, so `-M` and `-N`/`-C`/`-R` still import no plugin. Handing
+  the guard a materialised map instead would change no verdict and restore the whole cost silently
+  (measured at 73% of a settings resolve) — `test_a_CORE_leaf_costs_no_plugin_discovery` is the only
+  thing that would notice.
+* **It CONCEDES rather than refuses** what discovery could not read (`[R150]`, spec §0: *"Where an
+  agent's vocabulary cannot be read — its plugin is not installed — the leaf is CONCEDED, never
+  refused."*). A bare `{}` or a
+  `getattr`-with-a-fallback here would swap the strict signal for the permissive one in one
+  direction and, for an uninstalled agent, refuse a leaf that names a real value in the other.
+
+⚑ The vocabulary is per-AGENT, never a union: goose declaring `provider` does not make
+`agent.claude.provider` a key. That partition is `[R150]`'s content and `key_class` enforces it; this
+door only has to hand it the map.
 
 ### The dotted-key split
 

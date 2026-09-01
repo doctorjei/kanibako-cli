@@ -293,6 +293,119 @@ def test_the_active_agent_is_unioned_into_a_supplied_valid_set() -> None:
 
 
 # --------------------------------------------------------------------------- #
+# the guard's LEAF VOCABULARY — [R150], spec §0                               #
+# --------------------------------------------------------------------------- #
+
+
+def _vocabulary(monkeypatch, leaf_map, *, unreadable=frozenset()):
+    """Make the machine's plugin vocabulary exactly *leaf_map*.
+
+    The guard reads it through ``config_keys.AGENT_LEAF_MAP``, whose supplier is
+    ``settings_prefs.default_valid_agents`` — patched here rather than
+    ``discover_targets`` so the test states the VOCABULARY it means instead of a
+    plugin shape that yields one. Returns the call counter, which is what the
+    laziness pin below reads.
+    """
+    from kanibako.settings.settings_prefs import AgentNames
+
+    calls: list[int] = []
+
+    def supplier():
+        calls.append(1)
+        return AgentNames(
+            leaf_map.keys(), leaf_map=leaf_map, unreadable=unreadable,
+        )
+
+    monkeypatch.setattr(
+        "kanibako.settings.settings_prefs.default_valid_agents", supplier,
+    )
+    return calls
+
+
+def test_a_plugin_declared_leaf_is_a_key_at_the_CLI_LEVEL(monkeypatch) -> None:
+    """The defect this door carried until 2026-09-01, in its measured shape.
+
+    ``provider`` is a real goose ``setting_descriptor`` leaf and no part of core's
+    §2d table. The guard took the vocabulary as a PARAMETER and no caller passed
+    one, so every agent was judged against core alone and this was REFUSED — a §0
+    breach in the STRICT direction, which is why nothing noticed: the failure mode
+    is a user being told no. ``[R150]``, and the twin gate
+    ``config_keys.agent_key_reason`` was fixed for exactly this.
+    """
+    _vocabulary(monkeypatch, {"goose": frozenset({"provider"})})
+    guard_cli_level({"agent.goose.provider": "openai"}, active_agent="goose")
+
+
+def test_a_plugin_leaf_is_NOT_a_key_on_a_DIFFERENT_agent(monkeypatch) -> None:
+    """``[R150]``'s partition line: the vocabulary is per-agent, never a union.
+
+    Sourcing the map must not restore the flat cross-agent union the ruling killed
+    — goose declaring ``provider`` does not make ``agent.claude.provider`` a key.
+    """
+    _vocabulary(
+        monkeypatch,
+        {"claude": frozenset({"transform"}), "goose": frozenset({"provider"})},
+    )
+    guard_cli_level({"agent.claude.transform": "tweakcc"}, active_agent="claude")
+    with pytest.raises(SettingsError) as exc:
+        guard_cli_level({"agent.claude.provider": "x"}, active_agent="claude")
+    assert "agent.claude.provider" in str(exc.value)
+
+
+def test_an_undeclared_leaf_is_still_refused_on_a_READABLE_agent(
+    monkeypatch,
+) -> None:
+    """The other direction — the fix widens the vocabulary, it does not open §0."""
+    _vocabulary(monkeypatch, {"goose": frozenset({"provider"})})
+    with pytest.raises(SettingsError) as exc:
+        guard_cli_level({"agent.goose.zippity": "x"}, active_agent="goose")
+    assert "agent.goose.zippity" in str(exc.value)
+
+
+def test_an_UNREADABLE_agents_leaf_is_conceded_not_refused(monkeypatch) -> None:
+    """``[R150]``: *"a narrowing that refuses ``agent.goose.provider`` on a
+    claude-only machine has misread this"*.
+
+    Where the plugin cannot be read there is no vocabulary to judge against, so the
+    leaf is CONCEDED (spec §0). The active-agent union answers the NAME; the map's
+    concession must answer the LEAF, or a goose box on a machine where goose was
+    uninstalled cannot be given a ``-M``-shaped flag at all.
+    """
+    _vocabulary(
+        monkeypatch, {"claude": frozenset()}, unreadable=frozenset({"goose"}),
+    )
+    guard_cli_level({"agent.goose.provider": "openai"}, active_agent="goose")
+
+
+def test_a_CORE_leaf_costs_no_plugin_discovery(monkeypatch) -> None:
+    """THE DEFERRAL'S OWN TEST, and nothing else would notice it regressing.
+
+    The map is handed to ``key_class`` as a thing to ASK, so its core-first ordering
+    decides whether discovery is ever reached. Every leaf ``build_cli_level`` emits
+    is a core §2d leaf, so the flag-carrying launch this door guards imports no
+    plugin — materialising the map instead would change no verdict and restore the
+    whole cost silently (``config_keys._PluginDeclaredLeafMap``: measured at 73% of
+    a settings resolve).
+
+    ⚑ DEFERRED, NOT FREE, and this counter cannot see the difference: the guard's own
+    ``config_keys`` import is likely a launch's first, and it is not counted here.
+    """
+    calls = _vocabulary(monkeypatch, {"goose": frozenset({"provider"})})
+    guard_cli_level(
+        {
+            SELECTION_KEY: "goose",
+            "agent.goose.model": "opus",
+            "agent.goose.continue_mode": True,
+            "box.image": "ghcr.io/x:y",
+        },
+        active_agent="goose",
+    )
+    assert calls == [], "a core leaf must not import a single plugin"
+    guard_cli_level({"agent.goose.provider": "openai"}, active_agent="goose")
+    assert calls != [], "…and a plugin leaf must actually ask"
+
+
+# --------------------------------------------------------------------------- #
 # equivalence — the P8 bar: the deleted folds must not move behaviour          #
 # --------------------------------------------------------------------------- #
 

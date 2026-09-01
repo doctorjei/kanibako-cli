@@ -10,7 +10,9 @@ cascade-input file (``meta.agent.<agent>.settings``); it is excluded from
 the feature, and a guard that refused it would break P7.
 
 PURE: no I/O and no plugin import at module load, like
-:mod:`kanibako.settings.settings_keyspace`. The set of valid agent names is injected.
+:mod:`kanibako.settings.settings_keyspace`. The set of valid agent NAMES is injected; the
+per-agent leaf VOCABULARY is not — the guard reads it from the one supplier every other
+§0 door reads it from, and asks it only for a leaf core cannot answer.
 
 See ``llm-docs/kanibako/settings/settings_cli_level.py.md`` for the level's contract
 (ephemeral · no recompute · not a scope) and for why the guard is written even though the
@@ -102,7 +104,6 @@ def guard_cli_level(
     *,
     active_agent: "str | None" = None,
     valid_agents: "Collection[str] | None" = None,
-    agent_leaf_map: "Mapping[str, Collection[str]] | None" = None,
 ) -> None:
     """Refuse an illegal CLI-level key, NAMING it (spec §1A, §0).
 
@@ -114,6 +115,13 @@ def guard_cli_level(
     been resolved. The union is not a bypass: a key naming any OTHER agent is still refused.
     The llm-doc explains why ``None`` there means "do not pay for plugin discovery".
 
+    ⚑⚑ THE LEAF VOCABULARY IS SOURCED, NEVER TAKEN AS A PARAMETER. This door is the TWIN of
+    ``config_keys.agent_key_reason``: NAMES injected, vocabulary from
+    :data:`~kanibako.settings.config_keys.AGENT_LEAF_MAP` — which is a thing to ASK, so a core
+    §2d leaf still costs no plugin import, and which CONCEDES an agent it could not read
+    rather than refusing it (``[R150]``, spec §0). A vocabulary a caller may omit judges every
+    agent against core alone; the llm-doc has the measured refusal that cost.
+
     ⚑ A dotted key is split on ``.``, so an agent NODE whose name contains a dot is refused
     by arm 1 rather than silently mis-parsed. Defence in depth since ``agent_ref`` banned
     ``.`` in a persona/harness segment (2026-08-04), kept because every dotted-key builder in
@@ -121,6 +129,12 @@ def guard_cli_level(
     """
     if not level:
         return
+    # IMPORTED IN THE BODY TO KEEP THE LAYERING ONE-DIRECTIONAL — ``config_keys``
+    # imports ``settings_prefs`` at module scope, which this module also sits above, and
+    # a module-scope edge back would pull a ~100 KB module into every importer of this
+    # one. NOT for load purity: a module-scope import measures pure too (no file opens,
+    # no plugin import, no cycle in either order).
+    from kanibako.settings.config_keys import AGENT_LEAF_MAP
 
     agents: set[str] = set(valid_agents or ())
     if active_agent:
@@ -128,7 +142,7 @@ def guard_cli_level(
 
     for key in level:
         reason = key_validity(
-            key, valid_agents=agents, agent_leaf_map=agent_leaf_map,
+            key, valid_agents=agents, agent_leaf_map=AGENT_LEAF_MAP,
         )
         if reason is not None:
             raise SettingsError(
