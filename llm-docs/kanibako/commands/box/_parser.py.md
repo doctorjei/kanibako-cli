@@ -168,6 +168,17 @@ record is authoritative and must not be overwritten with possibly-different args
   `box_data/` and `vault/` live and need ignoring. `project_path` is the workspace SUBDIR, not the
   root.
 
+⚑ **`--agent` has a SECOND consumer outside the guard, and that is why it is normalized once.**
+`seed_new_box` takes an `explicit_agent`, and the seed runs after the journal write — outside
+`if proj.is_new:` — so on a recovery re-run a raw `args.agent` steered the seed while the persist
+above could not move: the home was seeded for the new agent and the settings still named attempt
+one's, with no way back (the home bind owns the content from create onward and nothing re-seeds).
+`_agent_arg` is therefore computed ONCE, right after `is_recovery` is known, as
+`None if is_recovery else args.agent`, and the persona store check, the create verdict, the persist
+and the seed all read that one name. `None` sends each of them through the ordinary cascade, which
+reads the very `pref.system.agent` the persist wrote — so the seeded agent and the configured agent
+cannot disagree. Spelling `args.agent` at any of those four sites again reopens the defect.
+
 Explicit-create: `create` MAKES the box but does NOT launch it. A launch (`start` / bare
 `kanibako` / `code` / `shell`) no longer auto-creates, so the closing hint names the verb.
 

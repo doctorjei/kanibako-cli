@@ -9,6 +9,8 @@ Prose for these symbols lives in `llm-docs/kanibako/commands/box/_parser.py.md`.
 
 ```
 _MODE_CHOICES = ['default', 'standalone', 'workset']
+_CREATE_SHAPING_FLAGS = ('name', 'image', 'agent', 'private', 'no_vault')
+_CREATE_SUBJECT_FLAGS = ('path', 'standalone', 'allow_home', 'force', 'register')
 ```
 
 ## Functions

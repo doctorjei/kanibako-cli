@@ -17,6 +17,7 @@ entry``) replace the marker helpers; the recovery tests are NON-VACUOUS —
 from __future__ import annotations
 
 import argparse
+import ast
 from pathlib import Path
 
 import pytest
@@ -798,6 +799,329 @@ class TestRecoveryStandalone:
         out = capsys.readouterr().out
         assert "Not registered" not in out
         assert "box register" not in out
+
+
+class TestRecoveryAgentIdentity:
+    """A recovery re-run may not seed one agent while the box is configured for
+    another.
+
+    ``--agent`` persists ``pref.system.agent`` under ``if proj.is_new:``, so a
+    recovery re-run — which is by definition NOT new — cannot adopt a new one.
+    The seed call sits OUTSIDE that guard, so a re-run carrying a different
+    ``--agent`` used to seed the box's home for the new agent while its settings
+    still named the old one: seeded for one, configured for the other, with no
+    way back (the home bind owns the content after create; nothing re-seeds).
+    """
+
+    def _interrupt_create_with_agent(self, path, agent):
+        """Run a REAL ``create --agent`` that dies at the deferred register.
+
+        Leaves the half-built box exactly as a crash would: box dir on disk,
+        ``pref.system.agent`` already persisted, journal entry still pending.
+        ⚑ Its own patch scope, so the caller's spy is not shadowed by the stub.
+        """
+        from kanibako.commands.box._parser import run_create
+        from kanibako.errors import ProjectError
+
+        def boom(std, proj, **kw):
+            raise ProjectError("simulated registry collision")
+
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr(
+                "kanibako.commands.start.seed_new_box",
+                lambda std, config, proj, **kw: None,
+            )
+            mp.setattr("kanibako.commands.start._register_new_box", boom)
+            with pytest.raises(ProjectError):
+                run_create(_create_args(path, name="halfbox", agent=agent))
+
+    def test_recovery_seeds_the_agent_the_box_is_configured_for(
+        self, config_file, tmp_home, credentials_dir, monkeypatch
+    ):
+        """Re-run with a DIFFERENT ``--agent``: the seed must resolve the agent
+        the box's own settings resolve to, not the flag the re-run carried.
+
+        ⚑ Asserted as the RULE — "what the seed resolves == what the box
+        resolves" — not as "``explicit_agent`` is None", so the pin survives a
+        change in HOW the two are kept together.
+
+        INVERT: hand ``seed_new_box`` the re-run's ``--agent`` again and the seed
+        resolves goose while the box stays claude.
+        """
+        from kanibako.commands.box._parser import run_create
+        from kanibako.settings.agent_select import select_agent
+        from kanibako.settings.config import load_config
+        from kanibako.settings.config_io import load_doc
+        from kanibako.settings.paths import load_std_paths
+
+        std = load_std_paths(load_config(config_file))
+        path = tmp_home / "halfbox"
+        path.mkdir()
+
+        self._interrupt_create_with_agent(path, "claude")
+
+        box_key = str(std.boxes / "halfbox")
+        assert journal.pending_create(std.journal, box_key) is not None
+        # The persist DID happen on attempt one — it precedes the journal window,
+        # so a pending entry means the box already has its agent.
+        box_yaml = load_doc(std.boxes / "halfbox" / "box.yaml")
+        assert box_yaml["pref"]["system"]["agent"] == "claude"
+
+        seen: dict[str, str] = {}
+
+        def spy_seed(std, config, proj, **kw):
+            seen["seeded"] = select_agent(
+                std=std, proj=proj, explicit_agent=kw.get("explicit_agent"),
+            ).node
+            seen["configured"] = select_agent(
+                std=std, proj=proj, explicit_agent=None,
+            ).node
+
+        monkeypatch.setattr("kanibako.commands.start.seed_new_box", spy_seed)
+        assert run_create(_create_args(path, name="halfbox", agent="goose")) == 0
+
+        assert seen["configured"] == "claude"
+        assert seen["seeded"] == seen["configured"]
+        # The re-run's flag changed nothing on disk either (the ``is_new`` guard).
+        assert load_doc(std.boxes / "halfbox" / "box.yaml") == box_yaml
+        assert journal.pending_create(std.journal, box_key) is None
+
+    def test_fresh_create_still_seeds_the_agent_the_flag_names(
+        self, config_file, tmp_home, credentials_dir, monkeypatch
+    ):
+        """The other half — a FRESH ``create --agent`` is unchanged: the flag
+        both persists and steers the seed.  Without this, "ignore the flag"
+        would pass the test above by breaking every ordinary create."""
+        from kanibako.commands.box._parser import run_create
+        from kanibako.settings.agent_select import select_agent
+        from kanibako.settings.config import load_config
+        from kanibako.settings.config_io import load_doc
+        from kanibako.settings.paths import load_std_paths
+
+        std = load_std_paths(load_config(config_file))
+        path = tmp_home / "fresh"
+        path.mkdir()
+
+        seen: dict[str, str] = {}
+
+        def spy_seed(std, config, proj, **kw):
+            seen["seeded"] = select_agent(
+                std=std, proj=proj, explicit_agent=kw.get("explicit_agent"),
+            ).node
+
+        monkeypatch.setattr("kanibako.commands.start.seed_new_box", spy_seed)
+        assert run_create(_create_args(path, name="fresh", agent="goose")) == 0
+
+        assert seen["seeded"] == "goose"
+        assert load_doc(
+            std.boxes / "fresh" / "box.yaml"
+        )["pref"]["system"]["agent"] == "goose"
+
+
+def _agent_flag_reads(node: ast.AST) -> list[ast.AST]:
+    """Every read of the RAW ``--agent`` flag off ``args`` under *node*."""
+    def is_read(n: ast.AST) -> bool:
+        if isinstance(n, ast.Attribute):
+            return (
+                n.attr == "agent"
+                and isinstance(n.value, ast.Name) and n.value.id == "args"
+            )
+        return (
+            isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+            and n.func.id == "getattr" and len(n.args) >= 2
+            and isinstance(n.args[0], ast.Name) and n.args[0].id == "args"
+            and isinstance(n.args[1], ast.Constant) and n.args[1].value == "agent"
+        )
+
+    return [n for n in ast.walk(node) if is_read(n)]
+
+
+class TestAgentFlagIsReadOnce:
+    """STRUCTURAL twin of ``TestRecoveryAgentIdentity``: ``run_create`` reads the
+    raw ``--agent`` flag EXACTLY ONCE, and that read IS the ``_agent_arg``
+    normalization every consumer downstream of it goes through.
+
+    The behavioral pins above exercise the four consumers that exist today; a
+    FIFTH one spelling the flag again would route around all of them in silence.
+    Asserted over the AST, so the prose that names the spelling is not counted.
+    """
+
+    def test_run_create_reads_the_agent_flag_exactly_once(self) -> None:
+        import inspect
+
+        from kanibako.commands.box._parser import run_create
+
+        fn = ast.parse(inspect.getsource(run_create)).body[0]
+        # ⚑ Both assignment shapes — an added type annotation is the SAME rule,
+        # and a pin that reds on it would be pinning the spelling, not the rule.
+        norm = [
+            n for n in ast.walk(fn)
+            if isinstance(n, (ast.Assign, ast.AnnAssign))
+            and any(
+                isinstance(t, ast.Name) and t.id == "_agent_arg"
+                for t in (
+                    n.targets if isinstance(n, ast.Assign) else [n.target]
+                )
+            )
+        ]
+        assert norm, (
+            "run_create must fold --agent into _agent_arg: one answer to "
+            "'which agent is this create steering' IS the mechanism."
+        )
+        reads = _agent_flag_reads(fn)
+        norm_reads = [r for n in norm for r in _agent_flag_reads(n)]
+        assert len(reads) == 1 and reads == norm_reads, (
+            f"run_create reads the raw --agent flag at {len(reads)} site(s); "
+            "exactly one is allowed and it must BE the _agent_arg "
+            "normalization. A recovery re-run folds the flag to None because "
+            "the pref.system.agent persist is is_new-only while the seed is "
+            "not: a second raw read seeds the box's home for the flag's agent "
+            "while the box's settings still name the one the interrupted "
+            "attempt persisted, and nothing ever re-seeds. Read _agent_arg "
+            "instead; llm-docs/kanibako/commands/box/_parser.py.md carries the "
+            "full reasoning."
+        )
+
+
+# ---------------------------------------------------------------------------
+# The create flag classes: every create flag is shaping or subject
+# ---------------------------------------------------------------------------
+
+def _create_parsers() -> "dict[str, argparse.ArgumentParser]":
+    """The two parsers a user can spell ``create`` with, off the REAL CLI tree.
+
+    Built through :func:`build_parser` on purpose: the blanket ``--agent`` /
+    ``--box`` flags are injected only once the whole tree exists, so a parser
+    reached any other way is missing part of the create surface.
+    """
+    from kanibako.cli import build_parser
+
+    def sub(parser: argparse.ArgumentParser) -> argparse._SubParsersAction:
+        for action in parser._actions:
+            if isinstance(action, argparse._SubParsersAction):
+                return action
+        raise AssertionError(f"no subparsers under {parser.prog!r}")
+
+    root = sub(build_parser())
+    return {
+        "create": root.choices["create"],
+        "box create": sub(root.choices["box"]).choices["create"],
+    }
+
+
+def _advertised_flags(
+    parser: argparse.ArgumentParser,
+) -> "tuple[set[str], set[str], set[str]]":
+    """A create parser's advertised (dests, option strings), plus the dests it
+    SUPPRESSES — its user surface and exactly what was held out of it.
+
+    One thing is dropped outright: argparse's own ``-h`` is machinery rather
+    than a create flag, so it goes by TYPE.  A ``help=argparse.SUPPRESS`` action
+    is NOT dropped silently — it is REPORTED in the third set, because
+    suppression on its own says nothing about whether a flag reaches the
+    command (``commands/helper_cmd.py`` hides a live, functional surface that
+    way).  The caller pins that set to a named list; this walk decides nothing.
+    """
+    dests: set[str] = set()
+    options: set[str] = set()
+    suppressed: set[str] = set()
+    for action in parser._actions:
+        if isinstance(action, argparse._HelpAction):
+            continue
+        if action.help is argparse.SUPPRESS:
+            suppressed.add(action.dest)
+            continue
+        dests.add(action.dest)
+        options.update(action.option_strings)
+    return dests, options, suppressed
+
+
+class TestCreateFlagsAreClassified:
+    """Every flag ``create`` advertises is SHAPING or SUBJECT, on BOTH spellings.
+
+    The recovery refusal turns on that partition — shaping flags cannot be
+    honoured on a replay because attempt one already wrote the box's state and
+    the journal records the intent, not the arguments — so a create flag nobody
+    classified is a flag the refusal silently ignores.  Asserted against the
+    parser, never against an inventory: adding a flag to ``create`` without
+    filing it reds here.
+
+    Together the two tests pin the chain ``dests(box create) == dests(create) ==
+    shaping | subject | {"recover"}``.
+    """
+
+    def test_every_advertised_create_flag_is_classified(self) -> None:
+        from kanibako.commands.box._parser import (
+            _CREATE_SHAPING_FLAGS,
+            _CREATE_SUBJECT_FLAGS,
+        )
+
+        shaping, subject = set(_CREATE_SHAPING_FLAGS), set(_CREATE_SUBJECT_FLAGS)
+        assert not shaping & subject, (
+            f"a create flag is in BOTH classes: {sorted(shaping & subject)}. "
+            "The refusal reads the two as a partition; a member of both makes "
+            "'is this flag refused on a recovery' unanswerable."
+        )
+        assert "recover" not in shaping | subject, (
+            "--recover selects the behaviour the classes are consulted FOR; "
+            "it is not itself a create flag to be classified."
+        )
+
+        dests, _, suppressed = _advertised_flags(_create_parsers()["box create"])
+        # ⚑ P15: the parser lookup supplying nothing must RED, not compare two
+        # empty sets and report a partition that was never checked.
+        assert dests, (
+            "no advertised flags found on 'box create' — the parser walk is "
+            "broken, so this pin proves nothing about the classification."
+        )
+        # ⚑ The ONE exclusion from the partition below, bounded and named. It is
+        # not a carve-out for "hidden": see the message.
+        assert suppressed == {"box"}, (
+            "the help=SUPPRESS flags on 'box create' are not the reviewed set.\n"
+            f"  unreviewed suppressed flag(s): {sorted(suppressed - {'box'})}\n"
+            f"  expected but absent:           {sorted({'box'} - suppressed)}\n"
+            "'box' is exempt from the classification NOT because it is hidden "
+            "but because it can never reach run_create: 'create' and 'box "
+            "create' are absent from BOX_FLAG_COMMANDS, so a typed --box makes "
+            "check_flag_relevance raise FlagRelevanceError, which main() prints "
+            "and turns into sys.exit(2) BEFORE any func() dispatch "
+            "(commands/flags.py, cli.py). Suppression alone proves nothing — "
+            "commands/helper_cmd.py hides a live, functional 'helper register' "
+            "the same way. A new suppressed flag must be SHOWN to be refused "
+            "before dispatch to be added here; if it does reach run_create, "
+            "file it in _CREATE_SHAPING_FLAGS or _CREATE_SUBJECT_FLAGS instead."
+        )
+        assert dests == shaping | subject | {"recover"}, (
+            "'box create' flags and the create flag classes disagree.\n"
+            f"  unclassified on the parser: {sorted(dests - (shaping | subject | {'recover'}))}\n"
+            f"  classified but not a flag:  {sorted((shaping | subject) - dests)}\n"
+            "File a new flag in _CREATE_SHAPING_FLAGS if it initializes stored "
+            "box state, else in _CREATE_SUBJECT_FLAGS (commands/box/_parser.py)."
+        )
+
+    def test_both_create_spellings_declare_the_same_flags(self) -> None:
+        """``create`` and ``box create`` are separate parsers; keep them equal.
+
+        ``--rig`` was on ``box create`` alone, so the preferred spelling of
+        ``--image`` did not exist on the shortcut most users type.
+        """
+        parsers = _create_parsers()
+        top_dests, top_options, _ = _advertised_flags(parsers["create"])
+        box_dests, box_options, _ = _advertised_flags(parsers["box create"])
+        assert top_options and box_options, (
+            "one create parser advertises no options at all — the walk is "
+            "broken and the parity below is vacuous."
+        )
+        assert top_dests == box_dests, (
+            f"only on 'create': {sorted(top_dests - box_dests)}; "
+            f"only on 'box create': {sorted(box_dests - top_dests)}"
+        )
+        assert top_options == box_options, (
+            f"only on 'create': {sorted(top_options - box_options)}; "
+            f"only on 'box create': {sorted(box_options - top_options)}. "
+            "The two parsers declare their flags separately (cli.py and "
+            "commands/box/_parser.py); every create flag needs both."
+        )
 
 
 # ---------------------------------------------------------------------------

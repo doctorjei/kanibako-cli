@@ -152,7 +152,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     create_p.add_argument(
         "-i", "--image", default=None,
-        help="Container image to use for this project",
+        help="Container image to use for this project (--rig is the preferred spelling)",
+    )
+    create_p.add_argument(
+        "--rig", dest="image", default=None,
+        help="Rig (image) to use; synonym for --image",
     )
     create_p.add_argument(
         "--no-vault", action="store_true",
@@ -172,6 +176,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--force", action="store_true",
         help="Create even if --name is already used by a workset (the box "
              "shadows that workset in bare-name resolution)",
+    )
+    create_p.add_argument(
+        "--recover", action="store_true",
+        help="Finish an interrupted 'create' on this path instead of starting a "
+             "new box; it keeps the name and settings the first attempt chose",
     )
     create_p.set_defaults(func=run_create)
 
