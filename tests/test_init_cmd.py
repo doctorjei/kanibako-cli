@@ -83,12 +83,42 @@ class TestBoxCreateParser:
 
     def test_top_level_create_parser_register(self):
         """⚑ The top-level ``create`` alias declares its flags SEPARATELY
-        (``cli.py``), so a flag added to ``box create`` alone is missing here."""
+        (``cli.py``), so a flag added to ``box create`` alone is missing here.
+        ``TestCreateFlagsAreClassified`` (``tests/test_create_recovery.py``)
+        pins the two surfaces equal, so the drift now reds rather than hiding."""
         parser = build_parser()
         args = parser.parse_args(["create", "--standalone", "--register"])
         assert args.command == "create"
         assert args.register is True
         assert parser.parse_args(["create", "--standalone"]).register is False
+
+    def test_create_parser_recover_defaults_off(self):
+        """``--recover`` is opt-in on both spellings: replay is never implicit."""
+        parser = build_parser()
+        args = parser.parse_args(["box", "create", "--standalone", "--recover"])
+        assert args.box_command == "create"
+        assert args.recover is True
+        assert parser.parse_args(
+            ["box", "create", "--standalone"]
+        ).recover is False
+
+    def test_top_level_create_parser_recover(self):
+        parser = build_parser()
+        args = parser.parse_args(["create", "--standalone", "--recover"])
+        assert args.command == "create"
+        assert args.recover is True
+        assert parser.parse_args(["create", "--standalone"]).recover is False
+
+    def test_top_level_create_parser_rig(self):
+        """``--rig`` is the preferred spelling of ``--image`` and must reach the
+        SAME ``image`` dest on both create spellings."""
+        parser = build_parser()
+        assert parser.parse_args(
+            ["create", "--standalone", "--rig", "kanibako-oci"]
+        ).image == "kanibako-oci"
+        assert parser.parse_args(
+            ["box", "create", "--standalone", "--rig", "kanibako-oci"]
+        ).image == "kanibako-oci"
 
 
 # ---------------------------------------------------------------------------

@@ -441,6 +441,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A recovery re-run of `create` carrying a different `--agent` seeded the box for one agent and
+  configured it for another.** `--agent` persists `pref.system.agent` only on a fresh create, so a
+  re-run that completes an interrupted create cannot change what the box is configured for — but the
+  home seed sat outside that guard and took the new flag anyway. The box came out seeded for the agent
+  named on the re-run while its settings still named the one the first attempt persisted, and there was
+  no way back: a home is seeded once, at create, and the bind owns it afterward. A recovery re-run now
+  steers everything — the persona pre-flight, the persist and the seed — from the one agent the box
+  already has.
+
 - **A new claude box's VS Code panel loaded a model named `default`, and every message failed.** The
   seeded `~/.claude/settings.json` carried `"model": "default"`, pasted in wholesale with a working
   box's real settings. `default` is not one of Claude Code's model aliases, so it went to the

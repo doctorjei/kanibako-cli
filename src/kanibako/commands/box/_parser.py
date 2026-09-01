@@ -50,6 +50,19 @@ from kanibako.utils import container_name_for, short_hash, write_project_gitigno
 
 _MODE_CHOICES = ["default", "standalone", "workset"]
 
+# The two ``create`` flag classes.  Their union is pinned against the parser by
+# ``TestCreateFlagsAreClassified``, so a NEW create flag reds until it is filed.
+
+# SHAPING — writes stored box state.  Attempt one already wrote it, and the create
+# journal records the INTENT and never the arguments, so on a replay a shaping flag
+# can be neither honoured nor compared against what was asked for the first time.
+_CREATE_SHAPING_FLAGS = ("name", "image", "agent", "private", "no_vault")
+
+# SUBJECT — writes no stored box state.  Each one selects WHICH box, bypasses a
+# refusal, or performs the deferred registration (``--register``, governed by
+# ``--force``) that is itself part of what a recovery completes.
+_CREATE_SUBJECT_FLAGS = ("path", "standalone", "allow_home", "force", "register")
+
 
 def _add_target_group(
     parser: argparse.ArgumentParser, *, required: bool = False,
@@ -139,6 +152,11 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         "--force", action="store_true",
         help="Create even if --name is already used by a workset (the box "
              "shadows that workset in bare-name resolution)",
+    )
+    create_p.add_argument(
+        "--recover", action="store_true",
+        help="Finish an interrupted 'create' on this path instead of starting a "
+             "new box; it keeps the name and settings the first attempt chose",
     )
     create_p.set_defaults(func=run_create)
 
@@ -709,9 +727,21 @@ def run_create(args: argparse.Namespace) -> int:
     # ⚑ CAPTURE BEFORE ``_name_new_box_probe``, which mutates ``_probe.name``.
     _already = box_tree_materialized(_probe)
     _name_new_box_probe(std, _probe)
+    # ⚑ The JOURNAL ENTRY, not ``is_new``, drives recovery.  Decided HERE — ahead of its
+    # own refusal below — because the agent normalization next needs it.
+    is_recovery = _already and _pending_create_entry(std, _probe) is not None
+    # ⚑⚑ THE ONE ANSWER TO "which agent is this create steering" — the persona pre-flight,
+    # the ``pref.system.agent`` persist and the seed all read it, and spelling
+    # ``args.agent`` at any of them again reopens the defect (pinned by
+    # ``TestAgentFlagIsReadOnce``).  A recovery re-run normalizes it to ``None``: the
+    # persist is ``proj.is_new``-only and the seed is NOT, so a raw flag seeds the home
+    # for one agent while the box's settings name another, and nothing re-seeds.  ``None``
+    # here is "resolve from settings", NEVER "no agent": it routes each consumer to the
+    # ``pref.system.agent`` the persist wrote, so seed and settings cannot disagree.  The
+    # module's llm-doc carries the full reasoning.
+    _agent_arg = None if is_recovery else getattr(args, "agent", None)
     # ⚑ The store check runs BEFORE the verdict below, so a broken store is reported as
     # itself rather than as the verdict's downstream "no endpoint configured".
-    _agent_arg = getattr(args, "agent", None)
     if isinstance(_agent_arg, str) and _agent_arg:
         _store_err = _check_persona_store_for_create(
             _agent_arg, _probe.project_path,
@@ -720,7 +750,7 @@ def run_create(args: argparse.Namespace) -> int:
             print(_store_err, file=sys.stderr)
             return 1
     _persona_err = persona_create_verdict(
-        std, config, _probe, explicit_agent=getattr(args, "agent", None)
+        std, config, _probe, explicit_agent=_agent_arg
     )
     if _persona_err is not None:
         print(_persona_err, file=sys.stderr)
@@ -728,8 +758,7 @@ def run_create(args: argparse.Namespace) -> int:
 
     # ⚑ THE ALREADY-INITIALIZED REFUSAL IS HOISTED ABOVE THE MATERIALISING RESOLVE, and
     # asks the PROBE: the resolve's recovery arms would bootstrap the home the message
-    # then claims already existed.  ⚑ The JOURNAL ENTRY, not ``is_new``, drives recovery.
-    is_recovery = _already and _pending_create_entry(std, _probe) is not None
+    # then claims already existed.
     if _already and not is_recovery:
         print(
             f"Error: project already initialized in {_probe.project_path}",
@@ -789,12 +818,11 @@ def run_create(args: argparse.Namespace) -> int:
 
         # ⚑ `create --agent` persists the §2h REQUEST `pref.system.agent`, NOT the retired
         # `box.agent_name`, and stores the RAW ref (selection canonicalizes on read).
-        _agent_sel = getattr(args, "agent", None)
-        if isinstance(_agent_sel, str) and _agent_sel.strip():
+        if isinstance(_agent_arg, str) and _agent_arg.strip():
             from kanibako.settings.config_interface import set_config_value
             from kanibako.settings.config_keys import ConfigLevel
             _msg = set_config_value(
-                "pref.system.agent", _agent_sel.strip(),
+                "pref.system.agent", _agent_arg.strip(),
                 config_path=project_toml,
                 command_scope=ConfigLevel.box,
             )
@@ -816,7 +844,7 @@ def run_create(args: argparse.Namespace) -> int:
     # register → clear entry.  Clearing is IMMEDIATE after the registry write (HARD
     # INVARIANT: registered ==> no pending entry at rest).  Do not reorder these four.
     _write_create_entry(std, proj)
-    seed_new_box(std, config, proj, explicit_agent=getattr(args, "agent", None))
+    seed_new_box(std, config, proj, explicit_agent=_agent_arg)
     # ⚑ THE CANON SKELETON (J-7) — AFTER the seed (it makes the root 555; protect first
     # and the seed's copies die EACCES) and INSIDE the journal window (it must replay).
     materialize_canon_skeleton(proj.shell_path)
