@@ -2597,7 +2597,10 @@ not_keys:
                                ⚑ load-bearing rider at the code step: SETUP_BCV→1.8.0 in the
                                SAME change (RULINGS R-38)."
     "meta.runtime.ws_settings": "CUT (R-36) — 'no longer needed (unified path)': the §1A
-                                 meta.runtime block is ws_root/ws_name/project_type ONLY (the
+                                 meta.runtime block held ws_root/ws_name/project_type at the time
+                                 of the cut, and config_file joined them 2026-09-01 (R154) — this
+                                 note scopes what ws_settings was cut FROM, not the block's
+                                 current membership (the
                                  collapse outputs it briefly sat beside became their own
                                  meta.assembly group on 2026-08-09);
                                  meta.workset.settings spells @meta.workset.path/workset.yaml
