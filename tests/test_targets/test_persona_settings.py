@@ -1337,7 +1337,7 @@ class TestProviderTextScrub:
         look convincing (1100) is past ``json.loads``' OWN floor on the oldest interpreter
         kanibako supports — the body would die in the parse, take the catch-all arm and
         never reach the walk at all, so the test would pass or fail for a reason it does
-        not name.  ``_provider_text``'s docstring carries that floor.
+        not name.  ``_provider_text``'s docstring carries the command that re-derives that floor.
 
         (Mutation: drop ``_NEST_DEPTH`` from ``_scrub_decoded`` and restore the bare
         ``except Exception: pass`` — as ``_provider_text`` had — and both asserts go RED.)
@@ -1401,7 +1401,7 @@ class TestProviderTextScrub:
         🛑 THAT IS THIS TEST'S SHAPE, NOT A CLAIM ABOUT THE ARM.  On the oldest interpreter
         kanibako supports the parse floor sits under 2 KB of nesting — a body a server can
         serve perfectly well — so this arm is ORDINARY there, not residual.
-        ``_provider_text`` carries the floor and the command that re-derives it.
+        ``_provider_text`` carries the command that re-derives the floor.
 
         (Mutation: make the catch-all ``pass`` instead of withholding and this goes RED.)
         """
