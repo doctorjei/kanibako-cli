@@ -14,17 +14,14 @@ instructions and information should go in the box's notebook (not here).
 When saving memories, notes, or other persistent files, remind yourself to review your directives
 to ensure alignment with the elements of the handbook (playbook, notebook, and workbook).
 
-Update the `devnotes.md` file as you work — especially after build checks.
-
 --
 
 ### Starting a New Session
 
 **Always** complete these steps when starting a new session.
 
-1. Read `devnotes.md` (usually in the _workbook_)for session history and current status
-2. Check your mailbox for messages from others; monitor for mid-session messages via hook handles
-3. If workspace or its subdirectories are git repositories, check status for uncommitted changes
+1. Check your mailbox for messages from others; monitor for mid-session messages via hook handles
+2. If workspace or its subdirectories are git repositories, check status for uncommitted changes
 
 --
 

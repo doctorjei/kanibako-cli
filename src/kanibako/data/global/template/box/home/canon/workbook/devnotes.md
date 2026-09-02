@@ -1,14 +1,11 @@
-# Development Notes
+# Session Log
 
-## Current Status
+<!--[STOCK]
+Record each session: date, work done, files modified, build status
 
-<!--[STOCK] Version, what's working, what's in progress, blockers -->
+This section should include ONLY sessions that are directly relevant to current
+development; all other sessions should be moved to the archives.
 
----
-
-## Session Log
-
-<!--[STOCK] Record each session: date, work done, files modified, build status -->
-<!--[STOCK] Format: ### Session (YYYY-MM-DD, brief topic) -->
+Format: ### Session (YYYY-MM-DD, brief topic) -->
 
 ---

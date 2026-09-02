@@ -15,5 +15,11 @@ _(Local Tome)_
 - Reminders or conventions that aren't project code and don't fit the project's own docs.
 - Anything a future session should see that isn't captured elsewhere.
 -->
+## Preparation
+
+At startup, **always** read `status.md` (usually in the _workbook_) for current session status.
+Before begining any actual work, read `devnotes.md` (usually in the same place as `status.md`.
+As you work, update the `devnotes.md` file — especially after build checks.
+
 ## Contents
 3.1 [Conventions](@directives/CONVENTIONS.md)
