@@ -22,6 +22,7 @@ from pathlib import Path
 
 import yaml
 
+from kanibako.settings.bootstrap import SITE_CONFIG_DIR
 from kanibako.settings.paths import xdg
 
 # Filename used both for the shipped default (in kanibako.data) and the overlays.
@@ -60,7 +61,7 @@ def _overlay_paths() -> list[Path]:
     """Overlay locations, in additive merge order (machine then user)."""
     config_home = xdg("XDG_CONFIG_HOME", ".config")
     return [
-        Path("/etc/kanibako") / BASELINE_FILENAME,
+        Path(SITE_CONFIG_DIR) / BASELINE_FILENAME,
         config_home / "kanibako" / BASELINE_FILENAME,
     ]
 

@@ -40,6 +40,8 @@ from kanibako.settings.paths import (
 )
 from kanibako.settings.settings_resolve import SettingsError
 
+from tests.support.filenames import CONFIG_FILENAME
+
 
 class TestResolveSystemPathsDefaults:
     def test_defaults_match_layout(self, tmp_path):
@@ -232,7 +234,7 @@ class TestLoadConfigPaths:
     """
 
     def test_config_table_populates(self, tmp_path):
-        toml = tmp_path / "kanibako_config.yaml"
+        toml = tmp_path / CONFIG_FILENAME
         toml.write_text('config:\n  agents: "/x"\n')
         cfg = load_config(toml)
         assert cfg.config_paths == {"config.agents": "/x"}
@@ -240,7 +242,7 @@ class TestLoadConfigPaths:
     def test_a_system_table_refuses_and_names_the_key(self, tmp_path):
         from kanibako.errors import ConfigError
 
-        toml = tmp_path / "kanibako_config.yaml"
+        toml = tmp_path / CONFIG_FILENAME
         toml.write_text('system:\n  channelroot: "/x"\n')
         with pytest.raises(ConfigError) as exc:
             load_config(toml)
@@ -251,7 +253,7 @@ class TestLoadConfigPaths:
         """🛑 The refusal is not conditional on the file being otherwise empty."""
         from kanibako.errors import ConfigError
 
-        toml = tmp_path / "kanibako_config.yaml"
+        toml = tmp_path / CONFIG_FILENAME
         toml.write_text('config:\n  data: "/d"\nsystem:\n  channelroot: "/c"\n')
         with pytest.raises(ConfigError):
             load_config(toml)
@@ -320,7 +322,7 @@ class TestBoxesOverrideConsumers:
         custom_boxes = custom_data / "primary_workset" / "boxes"
 
         # Write a config that overrides config.data to the custom dir.
-        cf = tmp_home / "config" / "kanibako_config.yaml"
+        cf = tmp_home / "config" / CONFIG_FILENAME
         cf.write_text(f'config:\n  data: "{custom_data}"\n')
 
         config = load_config(cf)
@@ -527,7 +529,7 @@ class TestLoadSystemConfig:
         base = tmp_path / "config_base.yaml"       # absent
         self._redirect(monkeypatch, base)
 
-        user = tmp_path / "kanibako_config.yaml"
+        user = tmp_path / CONFIG_FILENAME
         user.write_text('config:\n  agents: "/u/agents"\n')
 
         resolved = load_system_config(user, data_home=tmp_path, home=tmp_path)
@@ -537,7 +539,7 @@ class TestLoadSystemConfig:
 
     def test_all_files_absent_yields_defaults(self, tmp_path, monkeypatch):
         base = tmp_path / "config_base.yaml"
-        user = tmp_path / "kanibako_config.yaml"  # absent
+        user = tmp_path / CONFIG_FILENAME  # absent
         self._redirect(monkeypatch, base)
 
         resolved = load_system_config(user, data_home=tmp_path, home=tmp_path)
@@ -555,7 +557,7 @@ class TestLoadSystemConfig:
 
     def test_user_wins_over_base(self, tmp_path, monkeypatch):
         base = tmp_path / "config_base.yaml"
-        user = tmp_path / "kanibako_config.yaml"
+        user = tmp_path / CONFIG_FILENAME
         base.write_text('config:\n  agents: "/base/agents"\n')
         user.write_text('config:\n  agents: "/user/agents"\n')
         self._redirect(monkeypatch, base)
@@ -570,7 +572,7 @@ class TestLoadSystemConfig:
         and a CONFIG file's ``system:`` table supplies nothing since 2026-08-26.
         """
         base = tmp_path / "config_base.yaml"
-        user = tmp_path / "kanibako_config.yaml"
+        user = tmp_path / CONFIG_FILENAME
         base.write_text('config:\n  registry: "/base/registry.yaml"\n')
         user.write_text('config:\n  agents: "/user/agents"\n')
         self._redirect(monkeypatch, base)
@@ -590,7 +592,7 @@ class TestLoadSystemConfig:
         from kanibako.errors import ConfigError
 
         base = tmp_path / "config_base.yaml"
-        user = tmp_path / "kanibako_config.yaml"
+        user = tmp_path / CONFIG_FILENAME
         base.write_text('system:\n  channelroot: "/base/channels"\n')
         user.write_text('system:\n  channelroot: "/user/channels"\n')
         self._redirect(monkeypatch, base)
@@ -614,7 +616,7 @@ class TestLoadSystemConfig:
         table answers — which is what the planted values were failing to displace."""
 
         base = tmp_path / "config_base.yaml"
-        user = tmp_path / "kanibako_config.yaml"
+        user = tmp_path / CONFIG_FILENAME
         base.write_text("")
         user.write_text("")
         self._redirect(monkeypatch, base)
@@ -635,7 +637,7 @@ class TestLoadSystemConfig:
         """
         data = tmp_path / "userdata"
         base = tmp_path / "config_base.yaml"
-        user = tmp_path / "kanibako_config.yaml"
+        user = tmp_path / CONFIG_FILENAME
         base.write_text('config:\n  data: "/base/data"\n')
         user.write_text(
             f'config:\n  data: "{data}"\n  agents: "/user/agents"\n'
@@ -786,7 +788,7 @@ class TestResolveDataLeaf:
         self._redirect_etc_base(monkeypatch, tmp_path)
         config_home = tmp_path / "cfg"
         config_home.mkdir()
-        (config_home / "kanibako_config.yaml").write_text(
+        (config_home / CONFIG_FILENAME).write_text(
             f'config:\n  data: "{tmp_path / "custom_store"}"\n'
         )
         leaf = resolve_data_leaf(config_home=config_home, data_home=tmp_path / "data")
@@ -804,7 +806,7 @@ class TestResolveDataLeaf:
         self._redirect_etc_base(monkeypatch, tmp_path)
         config_home = tmp_path / "cfg"
         config_home.mkdir()
-        (config_home / "kanibako_config.yaml").write_text("not: [valid: yaml: at all")
+        (config_home / CONFIG_FILENAME).write_text("not: [valid: yaml: at all")
         # Mutation proof: without the try/except this raises ConfigError and the
         # test errors out rather than reaching the assertion.
         leaf = resolve_data_leaf(config_home=config_home, data_home=tmp_path / "data")
@@ -816,7 +818,7 @@ class TestResolveDataLeaf:
         self._redirect_etc_base(monkeypatch, tmp_path)
         config_home = tmp_path / "cfg"
         config_home.mkdir()
-        (config_home / "kanibako_config.yaml").write_text(
+        (config_home / CONFIG_FILENAME).write_text(
             f'config:\n  data: "{tmp_path / "custom_store"}"\n'
         )
         data_home = tmp_path / "data"
@@ -846,7 +848,7 @@ class TestResolveDataLeaf:
     def test_load_std_paths_uses_the_resolver_for_its_leaf(self, tmp_home):
         """Observable-behaviour parity: overriding ``config.data`` still cascades to
         ``state_path``/``cache_path`` exactly as the old inline ``data_path.name`` did."""
-        cf = tmp_home / "config" / "kanibako_config.yaml"
+        cf = tmp_home / "config" / CONFIG_FILENAME
         cf.write_text(f'config:\n  data: "{tmp_home / "srv_data"}"\n')
         config = load_config(cf)
         std = load_std_paths(config)

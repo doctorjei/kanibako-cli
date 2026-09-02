@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING
 
 from kanibako._atomic import atomic_write_text
 from kanibako.errors import ConfigError
+from kanibako.settings.bootstrap import (CONFIG_FILE, SITE_CONFIG_DIR, SITE_CONFIG_FILE,
+                                         SITE_SETTINGS_FILE)
 from kanibako.settings.config_io import dump_doc, load_doc
 from kanibako.settings.messages import ERR_CONFIG_LAYER1_SETTINGS
 
@@ -104,7 +106,7 @@ _LAYER1_TABLE = "config"
 
 def config_file_path(config_home: Path) -> Path:
     """The bootstrap config file ``$XDG_CONFIG_HOME/kanibako_config.yaml`` (JC-1 clean break)."""
-    return config_home / "kanibako_config.yaml"
+    return config_home / CONFIG_FILE
 
 
 def _layer1_settings_keys(data: dict) -> list[str]:
@@ -168,12 +170,12 @@ def system_path_set_values(settings_path: Path) -> dict[str, str]:
 
 def config_base_path() -> Path:
     """The machine-wide CONFIG base file — the bootstrap-PATH set's least-specific layer."""
-    return Path("/etc/kanibako/config_base.yaml")
+    return Path(SITE_CONFIG_DIR) / SITE_CONFIG_FILE
 
 
 def settings_base_path() -> Path:
     """The machine-wide SETTINGS base file — the behavior cascade's bottom layer, below every scope."""
-    return Path("/etc/kanibako/settings_base.yaml")
+    return Path(SITE_CONFIG_DIR) / SITE_SETTINGS_FILE
 
 
 #: The box-scope SCALAR keys resolved through the KEYSPACE (B6, R-11a(a)):

@@ -2311,6 +2311,37 @@ class TestStandaloneEnableVaultTier:
         assert proj.enable_vault is False
 
 
+def _code_string_literals(path: Path):
+    """Yield ``(lineno, value)`` for every CODE string literal in *path*.
+
+    Comments do not exist in the AST at all; a docstring is identified positionally, as
+    the first statement of a module, class or function.  Both are therefore excluded BY
+    CONSTRUCTION rather than by name — prose carries no value, so only what this yields
+    can make a second carrier of one.
+
+    ⚑ Shared by the source tripwires below so this module's copies are ONE: a second walk
+    here would be a second place to get the positional test subtly wrong.  (Two more live
+    in ``test_plugin_store_isolation`` and ``test_agent_file_boundary``; consolidating all
+    three is its own change.)
+    """
+    import ast
+
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    docstrings = set()
+    for node in ast.walk(tree):
+        body = getattr(node, "body", None)
+        if (isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef,
+                              ast.AsyncFunctionDef)) and body
+                and isinstance(body[0], ast.Expr)
+                and isinstance(body[0].value, ast.Constant)
+                and isinstance(body[0].value.value, str)):
+            docstrings.add(id(body[0].value))
+    for node in ast.walk(tree):
+        if (isinstance(node, ast.Constant) and isinstance(node.value, str)
+                and id(node) not in docstrings):
+            yield node.lineno, node.value
+
+
 class TestPathLeafDefaultsHaveOneCarrier:
     """⚑⚑ A default is materialized in EXACTLY ONE place.  ``project/workset.py``
     used to re-spell four of these as its own literals, which is two carriers of one
@@ -2320,9 +2351,9 @@ class TestPathLeafDefaultsHaveOneCarrier:
     ⚑ ONE carrier per VALUE — not one carrier FILE.  There are two designated
     carriers and the split is structural, so do not "fix" it by merging them:
 
-    * ``settings/bootstrap.py`` — the path LEAVES.  Like ``messages`` beside it
-      (pinned by :meth:`test_messages_imports_only_the_terminal_leaf`) it must
-      import nothing at all:
+    * ``settings/bootstrap.py`` — the path LITERALS, leaf and absolute alike.  Like
+      ``messages`` beside it (pinned by :meth:`test_messages_imports_only_the_terminal_leaf`)
+      it must import nothing at all:
       that is what lets ``project/workset.py`` import them while ``settings/paths.py``
       imports ``project/workset.py``.  Moving anything into either that needs an import
       closes that documented cycle.
@@ -2331,7 +2362,7 @@ class TestPathLeafDefaultsHaveOneCarrier:
       that use them and which reach ``config_io``.  Relocating them into the leaf
       would either drag that import in or strand them from their callers.
 
-    Each value still has exactly one home; the two tripwires below enforce that per
+    Each value still has exactly one home; the tripwires below enforce that per
     carrier."""
 
     def test_workset_module_agrees_with_the_defaults_file(self):
@@ -2411,7 +2442,6 @@ class TestPathLeafDefaultsHaveOneCarrier:
         let through, while line 384 of that same module had been composing the
         agent-tier formula off the constant all along.
         """
-        import ast
         import inspect
 
         from kanibako.settings import config as config_mod
@@ -2422,27 +2452,10 @@ class TestPathLeafDefaultsHaveOneCarrier:
         carrier = Path(inspect.getfile(config_mod)).resolve()
         src = REPO_ROOT / "src" / "kanibako"
 
-        def code_literals(tree):
-            """Every str constant that is not a docstring (comments are not in the AST)."""
-            docstrings = set()
-            for node in ast.walk(tree):
-                body = getattr(node, "body", None)
-                if (isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef,
-                                      ast.AsyncFunctionDef)) and body
-                        and isinstance(body[0], ast.Expr)
-                        and isinstance(body[0].value, ast.Constant)
-                        and isinstance(body[0].value.value, str)):
-                    docstrings.add(id(body[0].value))
-            for node in ast.walk(tree):
-                if (isinstance(node, ast.Constant) and isinstance(node.value, str)
-                        and id(node) not in docstrings):
-                    yield node.lineno, node.value
-
         for path in sorted(src.rglob("*.py")):
             if path.resolve() == carrier:
                 continue
-            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-            for lineno, value in code_literals(tree):
+            for lineno, value in _code_string_literals(path):
                 if value.split() != [value]:
                     continue
                 assert value.rsplit("/", 1)[-1] not in filenames, (
@@ -2451,6 +2464,74 @@ class TestPathLeafDefaultsHaveOneCarrier:
                     f"settings.config ({carrier.name}) instead — that constant is "
                     f"its ONE carrier"
                 )
+
+    def test_no_second_spelling_of_a_bootstrap_path_literal(self):
+        """Tripwire: the BOOTSTRAP FILES — the user config file, and the site directory
+        with its two bases — have ONE carrier, ``settings/bootstrap.py``, and no other
+        module may spell any of them.
+
+        ⚑ Scope, the carrier skip and the three by-construction exclusions are the sibling
+        tripwire's above, deliberately shared rather than restated: read
+        :meth:`test_no_second_spelling_of_a_tier_settings_filename` for why there is no
+        exempt-module list and why prose goes unflagged.  ONE thing differs here, and the
+        values force it:
+
+        * The three FILENAMES match on the final ``/``-segment, exactly as over there.
+        * ``SITE_CONFIG_DIR`` CANNOT.  Its own final segment is the bare word
+          ``kanibako``, so a segment test would either miss the directory outright or
+          fire on every unrelated path that ends in it.  It matches as a SUBSTRING —
+          which is also what catches it inside a composed ``/etc/kanibako/<file>``.
+
+        ⚑ THIS IS OWED, NOT THEORETICAL.  ``runtime/baseline.py`` composed its overlay
+        from a hand-typed ``"/etc/kanibako"`` for as long as the constant existed — the
+        third of the three host-side spellings `[R157]` measures as one defect — and
+        ``bootstrap``'s own promise that these live "here and NOWHERE ELSE" was prose
+        until this assertion.
+
+        ⚑ THE REMEDY DEPENDS ON THE SUBJECT, AND AN EXEMPTION IS NOT IT.  A HOST-side hit
+        imports ``SITE_CONFIG_DIR``.  A GUEST-side one — an IN-IMAGE path that merely
+        shares the spelling, as ``commands/image.py``'s ``/etc/kanibako/rig.yaml`` does —
+        must NOT: `[R157]` holds the two INDEPENDENT, and an import would couple a
+        container path to a host path.  🛑 Naming it in place does not work either — a
+        guest constant is still a code literal outside the carrier, so THIS TEST REDS IT.
+        The guest side needs its own DESIGNATED CARRIER, found the way the host one is:
+        from where its constants are defined, never from a module list.  (Today every
+        guest-side mention is prose, so no second carrier exists and nothing is exempted.)
+
+        ⚑ The CARRIER is checked to trip every needle before the tree is swept, so a
+        green run means the carrier was skipped and nothing else matched — never that the
+        scan matched nothing at all (P15).
+        """
+        import inspect
+
+        from tests.support.repo import REPO_ROOT
+
+        carrier = Path(inspect.getfile(bootstrap)).resolve()
+        filenames = {bootstrap.CONFIG_FILE, bootstrap.SITE_CONFIG_FILE,
+                     bootstrap.SITE_SETTINGS_FILE}
+        site_dir = bootstrap.SITE_CONFIG_DIR
+        src = REPO_ROOT / "src" / "kanibako"
+
+        def spellings(path):
+            """The ``(lineno, value)`` literals in *path* that re-spell a bootstrap value."""
+            return [(lineno, value) for lineno, value in _code_string_literals(path)
+                    if value.split() == [value]
+                    and (value.rsplit("/", 1)[-1] in filenames or site_dir in value)]
+
+        assert filenames | {site_dir} <= {value for _, value in spellings(carrier)}, (
+            f"{carrier.name} no longer spells all four bootstrap path literals as code; "
+            f"this test's needles came from it, so the sweep below would pass vacuously"
+        )
+
+        offenders = [(path, lineno, value)
+                     for path in sorted(src.rglob("*.py")) if path.resolve() != carrier
+                     for lineno, value in spellings(path)]
+        assert not offenders, "\n".join(
+            f'{path.relative_to(src.parent)}:{lineno} hand-types a bootstrap path '
+            f'literal in "{value}"; the HOST-side carrier is settings.bootstrap '
+            f"({carrier.name}) — read this test's docstring if the path is GUEST-side"
+            for path, lineno, value in offenders
+        )
 
     def test_bootstrap_is_import_free(self):
         """⚑ The path-literal file must stay a LEAF, for the same reason its sibling does:

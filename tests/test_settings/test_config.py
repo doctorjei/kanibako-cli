@@ -27,6 +27,8 @@ from kanibako.settings.config import (
 )
 from kanibako.settings.bootstrap import CONFIG_PATH_DEFAULTS, SYSTEM_PATH_DEFAULTS
 
+from tests.support.filenames import CONFIG_FILENAME
+
 
 class TestLoadConfig:
     def test_defaults(self, tmp_path):
@@ -119,7 +121,7 @@ class TestLoadConfig:
         the renamed channelroot leaf AND the channels.* children all resolve."""
         from kanibako.settings.paths import load_std_paths
 
-        cf = tmp_home / "config" / "kanibako_config.yaml"
+        cf = tmp_home / "config" / CONFIG_FILENAME
         write_global_config(cf)
         std = load_std_paths(load_config(cf))
         # channelroot leaf -> the channels root dir; children hang off it.
@@ -135,14 +137,14 @@ class TestLoadConfig:
         """
         box_file = tmp_path / BOX_META_FILE
         box_file.write_text("box:\n  image: null\n")
-        merged = load_merged_config(tmp_path / "kanibako_config.yaml", box_file)
+        merged = load_merged_config(tmp_path / CONFIG_FILENAME, box_file)
         assert merged.box_image == "ghcr.io/doctorjei/kanibako-oci:latest"
 
     def test_empty_value_resolves_to_default(self, tmp_path):
         """An empty ``image:`` (None) resolves the key to its built-in default."""
         box_file = tmp_path / BOX_META_FILE
         box_file.write_text("box:\n  image:\n")
-        merged = load_merged_config(tmp_path / "kanibako_config.yaml", box_file)
+        merged = load_merged_config(tmp_path / CONFIG_FILENAME, box_file)
         assert merged.box_image == "ghcr.io/doctorjei/kanibako-oci:latest"
 
     def test_config_table_populates_config_paths(self, tmp_path):
@@ -171,7 +173,7 @@ class TestLayer1FileCannotHaveSettings:
 
     def test_a_box_table_in_the_layer1_file_refuses_and_names_it(self, tmp_path):
         """The planted table stops the read, naming the file and BOTH keys."""
-        cf = tmp_path / "kanibako_config.yaml"
+        cf = tmp_path / CONFIG_FILENAME
         cf.write_text('box:\n  image: "layer1:planted"\n  share_images: true\n')
         with pytest.raises(ConfigError) as exc:
             load_merged_config(cf)
@@ -185,7 +187,7 @@ class TestLayer1FileCannotHaveSettings:
         ⚑ It USED to resolve identically to the declared ``box: image:`` — two spellings
         for one key, one of them undeclared (spec §0).
         """
-        cf = tmp_path / "kanibako_config.yaml"
+        cf = tmp_path / CONFIG_FILENAME
         cf.write_text('box_image: "layer1:planted"\n')
         with pytest.raises(ConfigError) as exc:
             load_config(cf)
@@ -205,7 +207,7 @@ class TestLayer1FileCannotHaveSettings:
         this rule that behaved like a carve-out. An empty table is still a settings table in
         a file that may not carry one, so all three refuse, named by the table.
         """
-        cf = tmp_path / "kanibako_config.yaml"
+        cf = tmp_path / CONFIG_FILENAME
         cf.write_text(text)
         with pytest.raises(ConfigError) as exc:
             load_config(cf)
@@ -213,7 +215,7 @@ class TestLayer1FileCannotHaveSettings:
 
     def test_a_real_settings_tier_still_wins(self, tmp_path):
         """🛑 The BOX tier still sets the value — the Layer-1 read is what went away."""
-        cf = tmp_path / "kanibako_config.yaml"
+        cf = tmp_path / CONFIG_FILENAME
         write_global_config(cf)
         box_file = tmp_path / BOX_META_FILE
         box_file.write_text('box:\n  image: "from-the-box-tier"\n')
@@ -222,7 +224,7 @@ class TestLayer1FileCannotHaveSettings:
 
     def test_the_config_table_alone_is_accepted(self, tmp_path):
         """The foundation still loads — the file's whole job, and the only thing in it."""
-        cf = tmp_path / "kanibako_config.yaml"
+        cf = tmp_path / CONFIG_FILENAME
         cf.write_text('config:\n  agents: "/x"\n')
         assert bootstrap_config_paths(cf) == {"config.agents": "/x"}
 
@@ -242,7 +244,7 @@ class TestLayer1FileCannotHaveSettings:
         data_home = tmp_path / "data"
         config_home = tmp_path / "config"
         config_home.mkdir(parents=True)
-        cf = config_home / "kanibako_config.yaml"
+        cf = config_home / CONFIG_FILENAME
         cf.write_text(
             f'config:\n  data: "{data_home}/kanibako"\n'
             'system:\n  cache: "/planted-from-layer1"\n'
@@ -322,7 +324,7 @@ class TestWriteGlobalConfigCreatesAnEmptyFile:
 
     def test_create_time_file_is_empty_and_exists(self, tmp_path):
         """Empty, and PRESENT — existence is what ``cli._ensure_initialized`` tests on."""
-        cf = tmp_path / "kanibako_config.yaml"
+        cf = tmp_path / CONFIG_FILENAME
         write_global_config(cf)
         assert cf.exists(), "the file must still be CREATED; an absent one re-runs init"
         assert cf.read_text() == "", cf.read_text()
@@ -334,7 +336,7 @@ class TestWriteGlobalConfigCreatesAnEmptyFile:
         YAML error."""
         import yaml
 
-        cf = tmp_path / "kanibako_config.yaml"
+        cf = tmp_path / CONFIG_FILENAME
         write_global_config(cf)
         assert cf.read_bytes() == b""
         # The thing the ``{}`` form would break: append and re-parse.
@@ -357,7 +359,7 @@ class TestWriteGlobalConfigCreatesAnEmptyFile:
         ⚑ P7 rides here too: ``box.agent_name`` is RETIRED, and a BOX key had no
         business in the CONFIG file even while it existed (migration M-4).
         """
-        cf = tmp_path / "kanibako_config.yaml"
+        cf = tmp_path / CONFIG_FILENAME
         write_global_config(cf)
         assert load_doc(cf) == {}
 
@@ -402,14 +404,14 @@ class TestReadSetupCompleted:
         """
         from kanibako.settings.config_interface import write_system_value
 
-        cf = tmp_path / "kanibako_config.yaml"
+        cf = tmp_path / CONFIG_FILENAME
         ssp = tmp_path / "settings.yaml"
         write_system_value(cf, "setup_completed", "1.8.0")
         assert read_setup_completed(ssp) is None
 
     def test_init_writes_no_setup_completed_anywhere(self, tmp_path):
         """Fresh init leaves the marker ABSENT — no marker, no 'none'."""
-        cf = tmp_path / "kanibako_config.yaml"
+        cf = tmp_path / CONFIG_FILENAME
         write_global_config(cf)
         assert load_doc(cf) == {}
         assert read_setup_completed(cf) is None
@@ -453,7 +455,7 @@ class TestRetiredTemplatesStamp:
         from kanibako.settings.config import load_config
         from kanibako.settings.config_interface import write_system_value
 
-        cf = tmp_path / "kanibako_config.yaml"
+        cf = tmp_path / CONFIG_FILENAME
         write_global_config(cf)
         write_system_value(cf, "templates_stamp", "deadbeef")
 
@@ -480,7 +482,7 @@ class TestRetiredTemplatesStamp:
         from kanibako.settings.config import setup_compat_gate
         from kanibako.settings.config_interface import write_system_value
 
-        cf = tmp_path / "kanibako_config.yaml"
+        cf = tmp_path / CONFIG_FILENAME
         write_system_value(
             cf, "setup_completed", Version(kanibako.__version__).base_version
         )
@@ -508,7 +510,7 @@ class TestSetupCompatGate:
     def _marker(self, tmp_path, value):
         from kanibako.settings.config_interface import write_system_value
 
-        cf = tmp_path / "kanibako_config.yaml"
+        cf = tmp_path / CONFIG_FILENAME
         write_system_value(cf, "setup_completed", value)
         return cf
 
@@ -526,7 +528,7 @@ class TestSetupCompatGate:
 
     # --- absent / unparseable ---------------------------------------------
     def test_absent_marker_nudges_setup(self, tmp_path):
-        cf = tmp_path / "kanibako_config.yaml"
+        cf = tmp_path / CONFIG_FILENAME
         write_global_config(cf)  # no setup_completed
         assert self._gate()(cf) == (
             "kanibako isn't set up yet. Run 'kanibako setup' to get started."
@@ -1172,10 +1174,10 @@ class TestTheTwoBoxScalarResolvesAgree:
 class TestConfigFilePath:
     def test_returns_new_path_when_neither_exists(self, tmp_path):
         result = config_file_path(tmp_path)
-        assert result == tmp_path / "kanibako_config.yaml"
+        assert result == tmp_path / CONFIG_FILENAME
 
     def test_returns_new_path_when_new_exists(self, tmp_path):
-        new = tmp_path / "kanibako_config.yaml"
+        new = tmp_path / CONFIG_FILENAME
         new.write_text("paths:\n")
         result = config_file_path(tmp_path)
         assert result == new
@@ -1183,11 +1185,11 @@ class TestConfigFilePath:
     def test_ignores_legacy_old_subdir_location(self, tmp_path):
         # An old-location file is no longer recognized: always resolves
         # to the current top-level location.
-        old = tmp_path / "kanibako" / "kanibako_config.yaml"
+        old = tmp_path / "kanibako" / CONFIG_FILENAME
         old.parent.mkdir()
         old.write_text("paths:\n")
         result = config_file_path(tmp_path)
-        assert result == tmp_path / "kanibako_config.yaml"
+        assert result == tmp_path / CONFIG_FILENAME
 
 
 class TestTargetSettings:
@@ -1345,7 +1347,7 @@ class TestMergedConfigKeyspaceResolve:
         monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
         (tmp_path / "config").mkdir(exist_ok=True)
-        gp = tmp_path / "config" / "kanibako_config.yaml"
+        gp = tmp_path / "config" / CONFIG_FILENAME
         write_global_config(gp)
         return gp
 
@@ -1474,7 +1476,7 @@ class TestMalformedSettingsFileIsNamed:
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
         monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
         (tmp_path / "config").mkdir(exist_ok=True)
-        gp = tmp_path / "config" / "kanibako_config.yaml"
+        gp = tmp_path / "config" / CONFIG_FILENAME
         write_global_config(gp)
         ssp = tmp_path / "data" / "kanibako" / "global" / "settings.yaml"
         ssp.parent.mkdir(parents=True)
@@ -1500,7 +1502,7 @@ class TestMalformedSettingsFileIsNamed:
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
         monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
         (tmp_path / "config").mkdir(exist_ok=True)
-        write_global_config(tmp_path / "config" / "kanibako_config.yaml")
+        write_global_config(tmp_path / "config" / CONFIG_FILENAME)
         ssp = tmp_path / "data" / "kanibako" / "global" / "settings.yaml"
         ssp.parent.mkdir(parents=True)
         ssp.write_text(self._CORRUPT)
