@@ -854,7 +854,7 @@ appends the source line to `.bashrc` if absent. No-op if *shell_path* does not e
 def _init_common(
     std: StandardPaths, metadata_path: Path, shell_path: Path,
     vault_ro_path: Path, vault_rw_path: Path, project_path: Path, *,
-    enable_vault: bool = True, vault_root: Path | None = None,
+    enable_vault: bool = True, vault_root: Path,
 ) -> None
 ```
 Shared first-time project setup: create directories, bootstrap shell.
@@ -864,15 +864,32 @@ common to both modes: print message, create metadata and shell dirs, bootstrap t
 vault directories when enabled. The shell dir is the one mounted as `/home/agent`; a `.gitignore` in
 `vault/` excludes `rw` from version control.
 
-⚑ **`vault_root` GATES THE `.gitignore`, NOTHING ELSE.** That file belongs to the `vault/` SKELETON
-dir — the one non-key leaf a workset root carries — and it is written at `vault_ro_path.parent`.
-Once `workset.vault_ro` became repointable that parent stopped being guaranteed to be the skeleton:
-`vault_ro: ~/store` makes it `$HOME`, and the write would drop a stray `rw/`-ignoring `.gitignore`
-into the user's home. So the write happens only while the resolved vault still sits inside
-*vault_root* — `std.primary_workset` for PRIMARY, the standalone ROOT (i.e. `metadata_path.parent`,
-since `metadata_path` is `box_data/`) for STANDALONE. `None` keeps the unconditional legacy
-behaviour for any caller that cannot name a root. ⚑ With NO repoint every mode is byte-identical to
-before: the resolved arms are still under their root, so the same file lands in the same place.
+### ⚑⚑ The `.gitignore`'s directory is COMPOSED off `vault_root`, never POSITIONED off an arm
+
+`vault_root` is the workset root that owns the `vault/` SKELETON dir — `std.primary_workset` for
+PRIMARY, the standalone ROOT for STANDALONE — and the skeleton is `<vault_root>/vault`, the one
+non-key leaf a workset root carries (`project/workset.py::_VAULT_LEAF`; `_lifecycle._to_standalone`
+and `_duplicate` write the same literal). ⚑ It is REQUIRED, because without a root there is no
+skeleton and so nothing to answer; the old `None` default existed only to excuse the derivation
+below.
+
+⚑ It USED to be `vault_ro_path.parent`, and `workset.vault_ro` is repointable, so that parent
+stopped being the skeleton the moment the key moved. Three shapes, and the containment guard against
+*vault_root* caught only the last:
+
+* `vault_ro: @meta.workset.path/store/ro` named `<root>/store` — a directory no key gave us, INSIDE
+  the root, so the guard admitted it and a stray `rw/`-ignoring `.gitignore` landed there while the
+  real skeleton got none.
+* In PRIMARY the arm carries a `/@meta.box.name` leaf, so the parent was the `ro` ARM ITSELF: the
+  file landed at `<primary_workset>/vault/ro/.gitignore`, where an `rw/` pattern matches nothing.
+* `vault_ro: ~/store` made it `$HOME` — the escape the guard stopped, and that the composition now
+  makes unreachable.
+
+⚑ The guard now compares the RESOLVED `workset.vault_rw` against the composed skeleton, because the
+file's whole content is a CLAIM that `rw/` is a child of it: a repoint out of the skeleton makes the
+claim false, so nothing is written. STRICT — an arm pointed AT the skeleton is the user's rw store,
+not its parent. ⚑ With NO repoint STANDALONE is byte-identical to before; PRIMARY's file moves from
+inside the `ro` arm up to the skeleton, which is the fix.
 
 Credential copy is handled separately by `target.init_home()` in `start.py`, after template
 application.
@@ -1561,8 +1578,13 @@ First-time standalone project setup: all state inside project dir.
 Unlike workset init, this *does* create vault directories and a `.gitignore` (vault lives inside the
 user's project, likely a git repo). ⚑ It passes `metadata_path.parent` as `_init_common`'s
 `vault_root` — `metadata_path` here is `box_data/`, so its parent is the standalone ROOT, which is
-also the degenerate workset root that owns the `vault/` skeleton. A `workset.vault_ro` repointed
-OUT of that root still gets its directory created; it just gets no `.gitignore` written beside it.
+also the degenerate workset root that owns the `vault/` skeleton. 🛑 The leaf is NOT fixed by spec —
+§2c declares `workset.boxes` *changeable from workset level*. What makes `.parent` exact here is
+narrower and purely structural: every standalone site composes the leaf as the `STANDALONE_META_DIR`
+literal, so the parent is exact by construction rather than by key. It merely re-derives the root the
+caller already holds — `root` is in scope at the `_init_standalone_project` call site, so passing it
+through would remove the re-derivation entirely. A `workset.vault_ro` repointed anywhere still gets its directory
+created — the `.gitignore` never follows it, and never has anything written beside it.
 
 Credential copy is handled separately by `target.init_home()` in `start.py`, after template
 application.
