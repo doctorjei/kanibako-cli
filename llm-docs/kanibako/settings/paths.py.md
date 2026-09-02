@@ -138,7 +138,7 @@ module (which depends on `paths.py`). Callers holding a full `Workset` build one
 
 ### Layer 1 — the CONFIG-key FOUNDATION (`CONFIG_PATH_DEFAULTS`, spec §1)
 
-The 5 bootstrap CONFIG keys live in `kanibako_config.yaml` (`.config` / `/etc`) and resolve via a
+The 5 bootstrap CONFIG keys live in `kanibako.cfg` (`.config` / `/etc`) and resolve via a
 flat foundation resolver, **NOT** the keyspace pipeline — chicken-and-egg: the pipeline needs these
 resolved to find its own input files. `config.global` is ELIMINATED; its children inline
 `@config.data/global/...` (the `global/` dir is created on demand by the atomic writer when those
@@ -372,7 +372,7 @@ def resolve_config_paths(
 ```
 Resolve the Layer-1 CONFIG-key foundation to concrete host paths.
 
-*set_values* holds raw user-set `config.<leaf>` expressions (from the `kanibako_config.yaml` set).
+*set_values* holds raw user-set `config.<leaf>` expressions (from the `kanibako.cfg` set).
 Returns `{config.<key>: resolved_str}` for every key in `CONFIG_PATH_DEFAULTS` — the FOUNDATION
 mapping injected into `kanibako.settings.settings_resolve.ResolveCtx.config` so `@config.*` refs
 resolve there (spec §1A / JC-2). Flat by design (chicken-and-egg): the keyspace pipeline needs these
@@ -421,9 +421,9 @@ Resolve the path tier from the CONFIG file set **and the SYSTEM SETTINGS file**.
 Three layers, read in cascade order so the most-authoritative present value of each set-value wins
 **before** expression resolution:
 
-1. `/etc/kanibako/config_base.yaml` — site-wide overridable defaults (least specific). **`config.*`
+1. `/etc/kanibako/base.cfg` — site-wide overridable defaults (least specific). **`config.*`
    only.**
-2. *user_config_path* — the user's global `~/.config/kanibako_config.yaml` (overrides the base).
+2. *user_config_path* — the user's global `~/.config/kanibako.cfg` (overrides the base).
    **`config.*` only.**
 3. `@config.settings` — the SYSTEM SETTINGS file's `system:` table, filtered to
    `SYSTEM_PATH_DEFAULTS` (most specific).
@@ -435,13 +435,13 @@ the Layer-1 `config.*` foundation and the Layer-2 `system.*` path settings, then
 ⚑⚑ **EACH FILE CONTRIBUTES EXACTLY ONE LAYER, AND THE CONFIG FILTER IS NEW (2026-08-26).** A
 `system:` table hand-written into a CONFIG file used to enter `raw` here as a real (if lowest) layer
 of the Layer-2 path tier — which made the bootstrap file a settings source in the one place it most
-mattered, where every host path is decided. Jei: *"kanibako_config.yaml <-- cannot have settings.
-Period."* This is the exact mirror of the filter layer 3 already had in the other direction (a
-`config:` table in a SETTINGS file must never reach Layer 1, spec §1), and it is the same filter
-`resolve_data_leaf` already applied to the same two files — one rule, two sites, and this was the
-site that lacked it.
+mattered, where every host path is decided. *"kanibako_config.yaml <-- cannot have settings.
+Period."* (Jei, on what is now `kanibako.cfg`) This is the exact mirror of the filter layer 3
+already had in the other direction (a `config:` table in a SETTINGS file must never reach Layer 1,
+spec §1), and it is the same filter `resolve_data_leaf` already applied to the same two files —
+one rule, two sites, and this was the site that lacked it.
 
-Back-compat: a user with only `~/.config/kanibako_config.yaml` (no `/etc` file) gets the base layer
+Back-compat: a user with only `~/.config/kanibako.cfg` (no `/etc` file) gets the base layer
 empty, so the user file is the sole set-source.
 
 ⚑⚑ **LAYER 3 IS NEW (2026-08-23), AND ITS ABSENCE WAS A PARTIAL SUCCESS — the failure shape that is
@@ -461,7 +461,7 @@ resolve over set-values already in hand, so the second pass reopens nothing.
 list at the call site). That file's `system:` table also holds `system.agent`, the
 `auth`/`env`/`secret_path` families and the bind-shaped categories, none of which belong to the path
 tier — and a `config:` table hand-written into a SETTINGS file must never reach Layer 1, which lives
-in `kanibako_config.yaml` alone (spec §1). Both halves are pinned.
+in `kanibako.cfg` alone (spec §1). Both halves are pinned.
 
 ⚑ The `kanibako.settings.config` import inside the body is a lazy import that avoids a
 `config` ↔ `paths` cycle at module load — do not hoist it.
@@ -469,7 +469,7 @@ in `kanibako_config.yaml` alone (spec §1). Both halves are pinned.
 `bootstrap_config_paths(...)` yields the CONFIG file's set-values keyed by their full dotted name
 (`config.*` alone), or `{}` when the file is absent — so missing layers are skipped automatically.
 🛑 It RAISES on a settings table in that file (2026-08-31), which is why every verb that resolves a
-path is where a user with a stale `kanibako_config.yaml` first hears about it. The SETTINGS file's
+path is where a user with a stale `kanibako.cfg` first hears about it. The SETTINGS file's
 `system.*` half is read by `config.system_path_set_values`, a separate walk over that file's
 `system:` table.
 
@@ -568,7 +568,7 @@ If *config* is None, it is loaded from the config file (which must exist). Direc
 as needed.
 
 The system-level path tier (settings-framework `system.path.*`) is resolved from the CONFIG file
-set: `/etc` `config_base` < user-global. A user with only `~/.config/kanibako_config.yaml` gets the
+set: `/etc` `base.cfg` < user-global. A user with only `~/.config/kanibako.cfg` gets the
 prior behavior (empty `/etc` layer). The state/cache paths track the data dir's leaf name (unchanged
 behavior: default leaf `kanibako` under each XDG base).
 

@@ -16,6 +16,7 @@ import sys
 import pytest
 
 from kanibako.settings.config import write_global_config
+from tests.support.filenames import CONFIG_FILENAME
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -122,7 +123,7 @@ def integration_home(tmp_path, monkeypatch):
 def integration_config(integration_home):
     """Write a default ``kanibako_config.yaml`` and return its path."""
     config_home = integration_home / "int_config"
-    cf = config_home / "kanibako_config.yaml"
+    cf = config_home / CONFIG_FILENAME
     write_global_config(cf)
     return cf
 

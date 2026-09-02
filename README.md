@@ -960,8 +960,8 @@ CLI flag > box > workset > agent.<agent> > system > settings_base
 Within the agent tier, `agent.default` supplies the all-agents fallback for any key
 the active agent's own layer does not set.
 
-**Config** (`system.*`) is read from the config file set
-(`config_base < ~/.config/kanibako.yaml`).  Config keys are
+**Config** (`config.*`) is read from the config file set
+(`/etc/kanibako/base.cfg < ~/.config/kanibako.cfg`).  Config keys are
 **file-only** -- the CLI reads and shows them but refuses to set them (edit the
 file directly); `setup` and programmatic writers still write them.
 
@@ -988,17 +988,22 @@ kanibako system set model=opus
 kanibako system reset --all             # reset all global settings
 ```
 
-`system.*` LAYOUT-PATH keys are **file-only**: the CLI shows them but refuses to
-set/reset them, pointing you at the config file. `system.agent` is NOT one of those —
-it is an ordinary system-scope setting, so `kanibako system set
-system.agent=<name>` works (as does `kanibako setup`). Edit structural paths in
-`~/.config/kanibako_config.yaml` directly.
+`system.*` LAYOUT-PATH keys — `system.template`, `system.channelroot`,
+`system.backup`, `system.cache`, `system.runtime`, `system.canon` and the
+`system.channels.*` type-roots — are ordinary system-scope settings, not config
+keys: `kanibako system set system.template=<path>` writes one to the system
+settings file, and `get` and `reset` read and clear it there. They do not belong
+in `~/.config/kanibako.cfg`.
 
 ### Files
 
-All kanibako config/settings files are YAML.
+All kanibako config and settings files are YAML.  The extension names the layer:
+a `.cfg` file is bootstrap config and holds `config.*` keys only; everything else
+is `.yaml`.
 
-- **Config (global)**: `$XDG_CONFIG_HOME/kanibako.yaml` (`system.*` layout only)
+- **Config (global)**: `$XDG_CONFIG_HOME/kanibako.cfg` (`config.*` bootstrap paths only)
+- **Config (site, optional)**: `/etc/kanibako/base.cfg`
+- **Settings (site, optional)**: `/etc/kanibako/settings_base.yaml`
 - **System settings**: `$XDG_DATA_HOME/kanibako/global/settings.yaml`
 - **Workset settings**: `<workset_root>/workset.yaml` (optional -- a workset root has
   one only once you set something there)
@@ -1034,21 +1039,23 @@ All kanibako config/settings files are YAML.
 
 ### Global config file
 
-The global config (`~/.config/kanibako.yaml`) holds only `system.*` layout keys
-(the `.path` infix is gone).  Values may use the resolver grammar -- `@`-refs,
-`$XDG_*`, `~`:
+The global config (`~/.config/kanibako.cfg`) holds only the `config.*` bootstrap
+paths -- the ones kanibako must resolve before it can find anything else.  Values
+may use the resolver grammar -- `@`-refs, `$XDG_*`, `~`:
 
 ```yaml
-system:
-  data: "$XDG_DATA_HOME/kanibako"         # data root
-  agents: "@system.data/agents"           # per-agent store
-  primary_workset: "@system.data/primary_workset"
-  channels: "@system.data/channels"
-  global: "@system.data/global"           # settings.yaml + registry.yaml
+config:
+  data: "$XDG_DATA_HOME/kanibako"                 # data root
+  settings: "@config.data/global/settings.yaml"   # the system settings file
+  agents: "@config.data/agents"                   # per-agent store
+  primary_workset: "@config.data/primary_workset"
+  registry: "@config.data/global/registry.yaml"   # name -> path resolution
+  journal: "@config.data/global/journal.yaml"     # lifecycle write-ahead log
 ```
 
-Behavior defaults (`box.*`, agent settings, caches) go in
-`global/settings.yaml`, not in the config file.
+Everything else is a setting and goes in `global/settings.yaml`, including the
+`system.*` layout paths and the behavior defaults (`box.*`, agent settings,
+caches).  A settings table left in a `.cfg` file is an error that names it.
 
 ## Helper Spawning
 

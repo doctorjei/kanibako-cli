@@ -1,6 +1,6 @@
 # The Bootstrap Config File — loading, writing, and the flat merged object
 
-This module owns `kanibako_config.yaml` and the two flat dataclasses either side of it —
+This module owns `kanibako.cfg` and the two flat dataclasses either side of it —
 `BootstrapConfig` (Layer 1, what that file holds) and `KanibakoConfig` (Layer 2, the merged box
 scalars) — plus the
 YAML read/write primitives, the built-in defaults, the layer-overlay merge, and a handful of
@@ -11,7 +11,7 @@ arbiters that are not config reads at all and live here only because their input
 `setup_compat_gate` and `resolve_agent`.
 
 ⚑ **`system.agent` and `system.setup_completed` read the SYSTEM SETTINGS file, not
-`kanibako_config.yaml`** — they live in this module for their pre-cascade TIMING, not for their
+`kanibako.cfg`** — they live in this module for their pre-cascade TIMING, not for their
 file. The marker joined its sibling on 2026-08-26; see `read_setup_completed`.
 
 It is the OLDEST tier in the settings stack and the most nearly-retired. Almost everything a box
@@ -27,8 +27,8 @@ derivation), §2g (the Layer-2 `system.*` path settings + `system.agent`), §2h 
 
 Two DIFFERENT file families are read here and confusing them is the standing hazard:
 
-* **The CONFIG (bootstrap PATH) set** — `/etc/kanibako/config_base.yaml` < the user's
-  `$XDG_CONFIG_HOME/kanibako_config.yaml`. It carries the Layer-1 `[config]` foundation keys and
+* **The CONFIG (bootstrap PATH) set** — `/etc/kanibako/base.cfg` < the user's
+  `$XDG_CONFIG_HOME/kanibako.cfg`. It carries the Layer-1 `[config]` foundation keys and
   NOTHING ELSE, and it is what tells everything else where the settings files LIVE. Read by
   `load_config` into `BootstrapConfig.config_paths`.
   ⚑⚑ **THE RULE IS IN THE READ's SHAPE since 2026-08-31 (Jei), and this is the passage most
@@ -110,7 +110,7 @@ written — now resolves too. It was silently stranded before B6.
 ### The old machine-wide third file is DELETED
 
 `/etc/kanibako/kanibako.yaml` is gone (spec §2). The admin authority is exactly the
-`config_base.yaml` / `settings_base.yaml` base tiers, resolved on the PATH side; this scalar
+`base.cfg` / `settings_base.yaml` base tiers, resolved on the PATH side; this scalar
 loader starts from the built-in defaults.
 
 ## The pre-cascade readers, and the rule that no longer follows from it
@@ -206,16 +206,16 @@ sentinel (see "The `None` sentinel" above); other scalars are stringified.
 
 
 ```config_file_path(config_home: Path) -> Path```
-The bootstrap config file `$XDG_CONFIG_HOME/kanibako_config.yaml`.
+The bootstrap config file `$XDG_CONFIG_HOME/kanibako.cfg`.
 
 CLEAN BREAK (JC-1): the old `kanibako.yaml` name is NOT read-compat (pre-release; Jei's own data).
 
 
 ```config_base_path() -> Path```
-The machine-wide CONFIG base file (`/etc/kanibako/config_base.yaml`).
+The machine-wide CONFIG base file (`/etc/kanibako/base.cfg`).
 
 The least-specific layer of the bootstrap-PATH file set: a site admin supplies overridable
-defaults that the user's `~/.config/kanibako_config.yaml` can still beat. Missing file → treated
+defaults that the user's `~/.config/kanibako.cfg` can still beat. Missing file → treated
 as an empty level.
 
 
@@ -284,7 +284,7 @@ answering two layers' questions is what let each layer's file speak for the othe
 
 
 ```load_config(path: Path) -> BootstrapConfig```
-Read the LAYER-1 bootstrap file — the one reader of `kanibako_config.yaml`.
+Read the LAYER-1 bootstrap file — the one reader of `kanibako.cfg`.
 
 ⚑⚑ **IT RETURNS A `BootstrapConfig`, AND THAT IS THE WHOLE OF THE 2026-08-31 RULING:** a Layer-1
 read has no settings field to return. It was a GENERAL document reader — the same call read the
@@ -305,7 +305,7 @@ floor(declared box-scalar defaults) < /etc settings_base.yaml < system
 (global/settings.yaml) < workset < box < CLI level
 ```
 
-⚑ **THE FLOOR WAS `kanibako_config.yaml`'s `[box]` TABLE UNTIL 2026-08-26**, when Jei ruled that
+⚑ **THE FLOOR WAS `kanibako.cfg`'s `[box]` TABLE UNTIL 2026-08-26**, when Jei ruled that
 file cannot carry settings at all. It is `config.box_scalar_defaults_floor()` now — the DECLARED
 defaults, shared with `config_interface._category_set_lookups` so the launch floor and the set-time
 floor cannot drift. Nothing else about the chain moved.
@@ -410,7 +410,7 @@ to, so the create is atomic either way.
 
 ⚑ **NO `agent_name` row** (P7): `box.agent_name` is RETIRED (§2b), and writing a BOX key into the
 CONFIG file was wrong even while it existed — nothing ever read it back from here. Stale copies in
-existing `kanibako_config.yaml` files are documentation-only (migration M-4).
+existing `kanibako.cfg` files are documentation-only (migration M-4).
 
 
 ```write_project_config(path: Path, image: str) -> None```
@@ -685,7 +685,7 @@ The stored `system.agent` SETTING from the system settings tier; `None` when uns
 a config path), so it lives in the `system:` table of the system settings file `@config.settings` =
 `@config.data/global/settings.yaml` (the `std.settings` path), exactly where `assemble_levels`
 reads the system tier from. Callers pass that settings-file path as *system_path*, NOT
-`~/.config/kanibako_config.yaml`, which holds only the bootstrap PATH tables.
+`~/.config/kanibako.cfg`, which holds only the bootstrap PATH tables.
 
 `None` means "no system default" — callers fall through to the installed-count rule.
 
@@ -709,7 +709,7 @@ The `system.setup_completed` marker from the SYSTEM SETTINGS file; `None` when a
 
 ⚑⚑ **ITS FILE IS `@config.settings` (`<data>/global/settings.yaml`) SINCE 2026-08-26** — the same
 file `read_system_agent` reads and the launch cascade's system tier assembles from, NOT
-`kanibako_config.yaml`. Jei: *"there is no reason whatsoever that `system.setup_completed` should go
+`kanibako.cfg`. Jei: *"there is no reason whatsoever that `system.setup_completed` should go
 in the config. It should not. It should go in the global settings file."* That is also what spec §2g
 has always declared — a Layer-2 `system.*` SETTINGS key — while spec §1 gives Layer 1 the `config.*`
 bootstrap paths ALONE. It is exactly one file: **there is no fallback read of the old location**, and
@@ -720,7 +720,7 @@ its NON-BLOCKING nudge — never "already set up", and never a block. Measured o
 advisory goes to stderr and the command proceeds to its own outcome unchanged.
 
 ⚑ **Why a RAW reader is required.** The gate runs PRE-CASCADE, before any snapshot exists.
-(Historically there was a second reason, now moot: while the marker lived in `kanibako_config.yaml`,
+(Historically there was a second reason, now moot: while the marker lived in `kanibako.cfg`,
 `load_config` captured the leaf into the bootstrap-PATH set, whose only consumer
 `resolve_system_paths` iterates `SYSTEM_PATH_DEFAULTS` and never the file's set-values — so the
 captured leaf reached nothing. Since 2026-08-31 a marker left in that file does not reach nothing:
@@ -749,7 +749,7 @@ A stored `[system] templates_stamp` leaf on an existing host was ORPHANED-IGNORE
 2026-08-31 — an unknown `system.*` leaf reached no consumer and raised nothing. 🛑 **It now
 REFUSES**, and not as a special case: it is a `system:` table in the Layer-1 file, which that file
 may not carry at all, so the read names it like any other stale settings key. The cure is the same
-hand-edit `MIGRATION.md` § *2.67 A settings table in `kanibako_config.yaml` stops the command,
+hand-edit `MIGRATION.md` § *2.67 A settings table in `kanibako.cfg` stops the command,
 instead of being ignored* prescribes. Migration records: M-23, and §2.67.
 
 

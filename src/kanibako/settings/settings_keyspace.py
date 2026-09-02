@@ -141,7 +141,7 @@ KEYSPACE_VERSION: Final[str] = "1.8.0rc"
 # ---------------------------------------------------------------------------
 
 #: The Layer-1 bootstrap CONFIG keys (spec §1). Human-edited in
-#: ``kanibako_config.yaml``; never CLI-settable (block B2) but unquestionably KEYS.
+#: ``kanibako.cfg``; never CLI-settable (block B2) but unquestionably KEYS.
 DECLARED_CONFIG_LEAVES: Final[frozenset[str]] = frozenset({
     "data", "settings", "agents", "primary_workset", "registry", "journal",
 })

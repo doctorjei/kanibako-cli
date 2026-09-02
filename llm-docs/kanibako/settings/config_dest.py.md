@@ -213,7 +213,7 @@ Which FILE rule a family follows:
 * `CATEGORY` — the bind-shaped category families, which follow the `SCOPED` rule.
 
 ⚑⚑ **A FOURTH RULE, `_BOOTSTRAP`, EXISTED FROM 2026-08-23 TO 2026-08-26 AND IS RETIRED.** It named
-the Layer-1 `kanibako_config.yaml` itself and had exactly ONE member, `config_keys.SETUP_MARKER_KEY`
+the Layer-1 `kanibako.cfg` itself and had exactly ONE member, `config_keys.SETUP_MARKER_KEY`
 (`system.setup_completed`). It existed only because the marker's STORAGE disagreed with its
 DECLARATION: spec §2g declares the key a Layer-2 `system.*` SETTINGS key marked `set: cli+file` and
 *"user-resettable"*, while the code kept it in the config file because that is where `setup` wrote
@@ -236,7 +236,7 @@ It used to FALL THROUGH to the command's Layer-1 config file when the token was 
 scope. Nothing legitimate reaches that arm — the routing table, both bind recognisers and
 `is_terminal_category_key` all require a head in `SCOPE_CONTAINMENT` — but the UNDECLARED flat
 spelling did: `box_image`'s first dotted token is the whole string, so a `set box_image=…` slotted
-at `box: image:` in `kanibako_config.yaml` (the bootstrap FLOOR) while `box.image` slotted
+at `box: image:` in `kanibako.cfg` (the bootstrap FLOOR) while `box.image` slotted
 identically in the settings tier ABOVE it. The spelling chose the precedence, silently. The
 normaliser is deleted (`config_keys`), and this arm now says so instead of routing around it.
 

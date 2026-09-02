@@ -461,7 +461,7 @@ def _category_set_lookups(
     from kanibako.settings.settings_merge import merge
 
     # The box scalars' DECLARED-DEFAULT floor, so an ``@box.image`` ref RESOLVES at set
-    # time.  ⚑⚑ DECLARED DEFAULTS, NOT A SWEEP OF ``kanibako_config.yaml``.  A
+    # time.  ⚑⚑ DECLARED DEFAULTS, NOT A SWEEP OF ``kanibako.cfg``.  A
     # ``_layer1_value_floor()`` stood here for one day and read every declared value out of
     # the Layer-1 file into this floor; Jei ruled that file cannot carry settings at all
     # ("kanibako_config.yaml <-- cannot have settings. Period.", 2026-08-26), so the sweep
@@ -518,7 +518,7 @@ def _category_set_lookups(
     # ``workset set box.shell=…`` handed a real ``workset.yaml`` to the BOX slot, where
     # ``_drop_upward_scopes`` called it a "box settings file" and stripped the file's own
     # legitimate ``workset:`` table out of the snapshot the E3 probe judges against. At the
-    # SYSTEM scope it filed the Layer-1 ``kanibako_config.yaml`` as a real settings TIER,
+    # SYSTEM scope it filed the Layer-1 ``kanibako.cfg`` as a real settings TIER,
     # which spec §1 forbids ("NOT part of the keyspace; NOT a settings tier"). ⚑⚑ AND THE
     # FILE HAS NO VALUES TO REACH ANY MORE: Jei's 2026-08-26 ruling took the settings out of
     # it entirely, so there is neither a tier nor a reference to it — what an ``@box.*`` ref

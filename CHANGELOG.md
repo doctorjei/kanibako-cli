@@ -94,6 +94,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **BREAKING (config files): `kanibako_config.yaml` → `kanibako.cfg`, and `config_base.yaml` →
+  `base.cfg`.** The user bootstrap config keeps its directory (`$XDG_CONFIG_HOME`, or `~/.config`
+  when that is unset) and the site config keeps `/etc/kanibako/`; only the names change. Nothing
+  inside either file changes, so migrating is `mv` and nothing else. **`settings_base.yaml` is
+  unchanged** — and that is the point of the new extension rather than an accident of it: `.cfg`
+  now marks Layer 1. A `.cfg` file holds the `config.*` bootstrap paths kanibako must resolve
+  before it can find anything else, and holds nothing but those; a settings file is `.yaml`. The
+  two files in `/etc/kanibako/` now say which layer they belong to. Clean break, no auto-detection
+  of the old name: a file left under the old name is not read, not reported, and not mentioned at
+  launch, so a host whose `config.data` pointed elsewhere comes up looking empty rather than
+  misconfigured. See MIGRATION.md § *2.68 The bootstrap config files are renamed: `kanibako.cfg`
+  and `base.cfg`*.
+
 - **`kanibako system defaults` names a different file in its `source` column.** Every path literal
   kanibako ships moved into one module, so the provenance that column reports now reads
   `bootstrap.py (config tier)` / `bootstrap.py (system tier)` where it read `paths_defaults.py`. The
@@ -109,7 +122,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `.dev0` deliberately — by PEP 440 a specifier carrying no prerelease excludes prereleases, so a
   bare `>=1.8` would refuse `1.8.0.dev98` and `1.8.0rc2`.
 
-- **A settings table left in `kanibako_config.yaml` now stops the command, naming the file and the
+- **A settings table left in `kanibako.cfg` now stops the command, naming the file and the
   keys.** That file holds the `config.*` bootstrap paths and nothing else, and anything else in it
   was previously dropped in silence — so a `box: image:` table there looked like it was choosing
   your image while the launch used something different, and nothing reported the difference. The
@@ -118,7 +131,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Layer-1 read now produces the `config.*` foundation and has nowhere to put anything else, so
   there is no filter left to forget: a settings table is refused, with the offending keys listed
   and the `kanibako system set` line that puts them where they take effect. See MIGRATION.md
-  § *2.67 A settings table in `kanibako_config.yaml` stops the command, instead of being ignored*.
+  § *2.67 A settings table in `kanibako.cfg` stops the command, instead of being ignored*.
 
 - **An undeclared FLAT key spelling is no longer read as a settings key.** A top-level `box_image:`
   resolved identically to the declared `box: image:` — two spellings for one key, one of which the
@@ -375,8 +388,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bootstrap config object instead, so the cascade's copy was assembled and then dropped: writing
   one at the system tier changed nothing, silently. `kanibako system set box.image=<rig>` is
   therefore a real machine-wide default now, where before it was a value you could store and read
-  back and never see take effect. ⚑ This is the settings file, not `kanibako_config.yaml` — a
-  `box:` table left in *that* file is dead (see *Fixed*, `kanibako_config.yaml` holds bootstrap
+  back and never see take effect. ⚑ This is the settings file, not `kanibako.cfg` — a
+  `box:` table left in *that* file is dead (see *Fixed*, `kanibako.cfg` holds bootstrap
   paths and nothing else).
 
 - **Image sharing follows a `box.images_store` you set, even when the host probe fails.**
@@ -1189,7 +1202,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   vanished would be the same silent answer in a new place. If the working set's own declarations
   collide, `--effective` now exits 1 with the refusal a launch gives, introduced by a line saying that
   is why it cannot answer.
-- **`kanibako_config.yaml` holds bootstrap paths and nothing else, and `kanibako init` writes it
+- **`kanibako.cfg` holds bootstrap paths and nothing else, and `kanibako init` writes it
   empty.** It used to be created with three tables — the six `config.*` bootstrap paths, six
   `system.*` paths, and `box.image` / `box.share_images` — every value of which is already a built-in
   default, so the file was a fourth copy of things the code, the defaults table and the manifest each
@@ -1251,7 +1264,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   attach without the box's workspace folder or agent extension, and still launches, rc 0 unchanged.
   The `Storage` and `Journal` rows report the same way, and their trigger is wider than a settings
   refusal: a config file that is not valid YAML raised an error naming the file and the cure, and
-  both rows printed `cannot check` over it. A single malformed `kanibako_config.yaml` could produce
+  both rows printed `cannot check` over it. A single malformed `kanibako.cfg` could produce
   one honest line and two bland ones in a single run.
   Only errors kanibako raises deliberately — the ones whose text is already written for a user —
   are reported this way; an unforeseen failure still produces the old `cannot check` line, and
@@ -1339,7 +1352,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The eleven `system.*` path settings — `template`, `canon`, `backup`, `cache`, `runtime`,
   `channelroot` and the five `channels.*` type-roots — are settable from the CLI again.**
   `kanibako system set system.template=…` answered *"'system.template' is a structural config key
-  and cannot be set from the CLI"* and sent you to hand-edit `kanibako_config.yaml`. These are not
+  and cannot be set from the CLI"* and sent you to hand-edit `kanibako.cfg`. These are not
   structural config keys: they are ordinary Layer-2 settings keys, and the two keys named in the
   same breath as `system.template` in the settings spec — `workset.vault_ro` and
   `agent.<agent>.canon` — always set fine, which is what made the refusal look like a rule rather
@@ -1362,7 +1375,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   refusal it replaced, because a refusal at least tells you it did not work. The resolver now reads
   the system settings file as the top layer, so a repoint reaches both halves, and derived keys
   follow it (repointing `channelroot` moves all five `channels.*` type-roots with it). Values
-  hand-written into `kanibako_config.yaml`'s `system:` table still work and still sit underneath, as
+  hand-written into `kanibako.cfg`'s `system:` table still work and still sit underneath, as
   the floor they always were.
 
 - **All six `workset.channels.*` settings now do what setting them says they do — three of them did
@@ -1408,7 +1421,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`system.setup_completed` is settable and resettable, as the settings spec has always said it
   is.** The setup version marker is described in the spec as persisting and user-resettable, and
   every verb refused it: *"'system.setup_completed' is a structural config key and cannot be set
-  from the CLI"*, with advice to hand-edit `kanibako_config.yaml` instead. Hand-editing that file is
+  from the CLI"*, with advice to hand-edit `kanibako.cfg` instead. Hand-editing that file is
   exactly what the CLI now does for you — the same table, the same absence of validation — so the
   refusal bought no safety; it only withheld `reset`, which is the supported way back to *"setup has
   never run"*. `get` was refused too, so a value you could see in the file could not be read by the
@@ -1425,7 +1438,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   had printed back at you, because the confirmation echoed the undeclared form rather than the one
   you typed. The two spellings also disagreed about *where the value went*. The rule that picks the
   destination file reads the scope off the key as typed, and `box_image`'s first dotted segment is
-  the whole string — so the flat form landed in the `[box]` table of `kanibako_config.yaml`, the
+  the whole string — so the flat form landed in the `[box]` table of `kanibako.cfg`, the
   bootstrap floor beneath every tier, while `box.image` landed in the system settings tier above
   it. Picking a spelling silently picked a precedence, and neither spelling said so. The keyspace
   is closed and a key has exactly one spelling: the flat form is gone from every verb and is
@@ -1590,7 +1603,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   one place that knows the filename, and raises kanibako's own error: `the config file <path> is not
   valid YAML: <the parser's complaint>. Fix or remove the file, then retry.` — one line, exit 1.
   It reaches every command that reads settings, and it is what lets `system diagnose`'s `Storage` and
-  `Journal` rows report a malformed `kanibako_config.yaml` instead of shrugging (see the `setup`
+  `Journal` rows report a malformed `kanibako.cfg` instead of shrugging (see the `setup`
   entry above).
 
 - **The missing-vault warning names the vault, not the directory above it.** A box with

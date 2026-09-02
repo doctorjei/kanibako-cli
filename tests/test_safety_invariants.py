@@ -29,6 +29,7 @@ from kanibako.settings.config import load_config
 from kanibako.targets.base import Mount
 from kanibako.plugins.claude import ClaudeTarget
 from kanibako.utils import short_hash
+from tests.support.filenames import CONFIG_FILENAME
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────
@@ -50,7 +51,7 @@ def config_file(tmp_path, monkeypatch):
     # saw.
     cfg_dir = tmp_path / ".config"
     cfg_dir.mkdir(parents=True)
-    cfg_file = cfg_dir / "kanibako_config.yaml"
+    cfg_file = cfg_dir / CONFIG_FILENAME
     # EMPTY is what MINIMAL means here, and it is what the product writes on first run:
     # ``settings.config.write_global_config`` does ``atomic_write_text(path, "")``, called
     # by ``cli._ensure_initialized`` when the file is absent.  The ``box: image:`` table

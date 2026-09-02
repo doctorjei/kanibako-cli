@@ -82,14 +82,14 @@ other reader of the table. That is why the absence carries a marker at the line.
 Spec §1's **TERMINOLOGY**, which is exactly what the two tables below are: *"Config keys = the
 Layer-1 bootstrap paths, prefix `config.*`, living in `kanibako_config.yaml`, resolved by the flat
 foundation. Settings keys = the Layer-2 keyspace (`system.*` / `workset.*` / `box.*` / `agent.*`),
-resolved by `assemble→merge→expand`."*
+resolved by `assemble→merge→expand`."* (on what is now `kanibako.cfg`)
 
 ```python
 CONFIG_PATH_DEFAULTS: dict[str, str]      # Layer 1 — spec §1
 ```
 The bootstrap CONFIG keys and their defaults.
 
-Bootstrap keys read from `kanibako_config.yaml`, resolved FLAT — **not** by the keyspace pipeline.
+Bootstrap keys read from `kanibako.cfg`, resolved FLAT — **not** by the keyspace pipeline.
 Chicken-and-egg: the pipeline needs these resolved to find its own input files, so
 `paths.resolve_config_paths` runs them through a SINGLE-level `LevelView` with no cascade. `@config.*`
 refs resolve against THIS set; `$XDG_*` against the environment.
@@ -142,7 +142,7 @@ into one layer.
 at the system scope: `config set` / `reset` / `get` route it through `config_keys._KEY_ROUTES` to
 the `system:` table of the SYSTEM SETTINGS file, which the cascade layers OVER these defaults. It
 used to refuse the whole family as "structural layout config" and send the user to the
-`kanibako_config.yaml` `[system]` table — a spec violation (§2g declares them Layer-2 settings keys;
+`kanibako.cfg` `[system]` table — a spec violation (§2g declares them Layer-2 settings keys;
 §2a names `system.template` among the CLI-settable). Adding a row here therefore also needs a
 `_KEY_ROUTES` entry and a `KNOWN_CONFIG_KEYS` spelling, or the new key sets nowhere.
 

@@ -19,6 +19,7 @@ from kanibako.settings.paths import BoxMode
 from kanibako.settings.settings_launch import AuthSource
 from kanibako.targets.base import PersonaProbeOutcome, ProbeEvidence
 from kanibako.settings.bootstrap import CONFIG_PATH_DEFAULTS, SYSTEM_PATH_DEFAULTS
+from tests.support.filenames import CONFIG_FILENAME
 
 
 def _rejected(status: int = 403, provider_text: str = "", **kw):
@@ -3666,7 +3667,7 @@ class TestApplyInitSeeds:
     def test_empty_no_config_no_target_copies_nothing(self, tmp_path):
         """No seed config and target=None → nothing copied (no behavior change)."""
         shell = self._shell(tmp_path)
-        glob = tmp_path / "kanibako_config.yaml"
+        glob = tmp_path / CONFIG_FILENAME
         glob.write_text('box_image: "img"\nagent:\n  default:\n    model: "sonnet"\n')
         self._call(
             tmp_path,
@@ -3715,7 +3716,7 @@ class TestApplyInitSeeds:
         src = tmp_path / "src"
         src.mkdir()
         (src / "file.txt").write_text("hello")
-        glob = tmp_path / "kanibako_config.yaml"
+        glob = tmp_path / CONFIG_FILENAME
         glob.write_text(f'agent:\n  default:\n    seeded:\n      "~/foo": ["{src}"]\n')
         self._call(
             tmp_path,

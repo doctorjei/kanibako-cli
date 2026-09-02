@@ -2329,7 +2329,7 @@ def _run_container(
 
     std = load_std_paths(config)
     # SYSTEM tier of the SETTINGS cascade = @config.settings = global/settings.yaml
-    # (behavior keys), distinct from the kanibako_config.yaml CONFIG file (system.* layout).
+    # (behavior keys), distinct from the kanibako.cfg CONFIG file (system.* layout).
     system_settings_path = std.settings
 
     # project_dir is the reconciled subject (positional OR --box) computed in
@@ -5992,7 +5992,7 @@ def _effective_behavior_for_display(
         ctx=ctx,
         # The system SETTINGS file (@config.settings = global/settings.yaml) —
         # the SAME system-tier file derivation the launch snapshot uses
-        # (std.settings, see _run_container), NEVER the kanibako_config.yaml
+        # (std.settings, see _run_container), NEVER the kanibako.cfg
         # CONFIG file: a system-level settings value that is live at launch
         # must be equally visible to `show --effective` (F2/F3 sibling; the
         # parameter was formerly named global_config_path, which invited

@@ -1,6 +1,6 @@
 """Centralized load/dump/mutate for kanibako config documents (YAML).
 
-Terminology: a config DOCUMENT is one settings-cascade file (``kanibako_config.yaml``,
+Terminology: a config DOCUMENT is one settings-cascade file (``kanibako.cfg``,
 a scope's settings file (``yaml``), an agent file, ``names.yaml``, ``spawn.yaml``); a
 DOCUMENT MUTATOR is a read-modify-write at a ``(sections, leaf)`` path.  The
 mutators know nothing about the KEYSPACE — which file and which nested slot a

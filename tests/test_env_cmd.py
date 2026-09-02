@@ -23,6 +23,8 @@ from kanibako.settings.config_interface import (
 from kanibako.settings.config_io import load_doc
 from kanibako.settings.config_keys import ConfigLevel
 
+from tests.support.filenames import CONFIG_FILENAME
+
 
 class TestBareEnvRetired:
     """R-39 refusals through the config engine."""
@@ -78,7 +80,7 @@ class TestBareEnvRetired:
         env_path.write_text("EDITOR=vim\n")
         val = get_config_value(
             "env.EDITOR",
-            global_config_path=tmp_path / "kanibako_config.yaml",
+            global_config_path=tmp_path / CONFIG_FILENAME,
             env_project=env_path,
         )
         # The engine returns values, never error strings — the read refusal
@@ -132,7 +134,7 @@ class TestScopeEnvIsSettable:
 
         assert get_config_value(
             "box.env.EDITOR",
-            global_config_path=tmp_path / "kanibako_config.yaml",
+            global_config_path=tmp_path / CONFIG_FILENAME,
             project_toml=f,
             command_scope=ConfigLevel.box,
         ) == "vim"
@@ -143,7 +145,7 @@ class TestScopeEnvIsSettable:
         assert not msg.startswith("Error:"), msg
         assert get_config_value(
             "box.env.EDITOR",
-            global_config_path=tmp_path / "kanibako_config.yaml",
+            global_config_path=tmp_path / CONFIG_FILENAME,
             project_toml=f,
             command_scope=ConfigLevel.box,
         ) is None
@@ -163,7 +165,7 @@ class TestScopeEnvIsSettable:
         ) == "Set workset.env.EDITOR=vim"
         assert load_doc(ws)["workset"]["env"]["EDITOR"] == "vim"
 
-        cf = tmp_path / "kanibako_config.yaml"
+        cf = tmp_path / CONFIG_FILENAME
         ssp = tmp_path / "settings.yaml"
         assert set_config_value(
             "system.env.EDITOR", "nano",

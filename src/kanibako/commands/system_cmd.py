@@ -267,7 +267,7 @@ def _run_system_config(args: argparse.Namespace) -> int:
     """Shared global-config engine dispatch.
 
     The SYSTEM scope keeps STRUCTURAL CONFIG (the ``system.*`` path-tier
-    family) in the ``~/.config/kanibako_config.yaml`` CONFIG file (``cf``) and
+    family) in the ``~/.config/kanibako.cfg`` CONFIG file (``cf``) and
     routes SETTINGS (``system.agent``, the ``system.auth.*`` chain,
     agent settings, downward scope defaults) to ``@config.settings`` =
     ``global/settings.yaml`` (``ssp``), via the ``system_settings_path`` arg —
@@ -283,7 +283,7 @@ def _run_system_config(args: argparse.Namespace) -> int:
 
     config_home = xdg("XDG_CONFIG_HOME", ".config")
     cf = config_file_path(config_home)
-    # The system SETTINGS file (separate from the kanibako_config.yaml CONFIG file).
+    # The system SETTINGS file (separate from the kanibako.cfg CONFIG file).
     std = load_std_paths(load_config(cf))
     ssp = std.settings
 

@@ -29,6 +29,7 @@ from kanibako.settings.config import KanibakoConfig, load_config, write_global_c
 from kanibako.commands.start import (
     _resolve_launch_snapshot as _REAL_RESOLVE_LAUNCH_SNAPSHOT,
 )
+from tests.support.filenames import CONFIG_FILENAME
 
 
 @pytest.fixture(autouse=True)
@@ -133,7 +134,7 @@ def tmp_home(tmp_path, monkeypatch):
 def config_file(tmp_home):
     """Write a default kanibako_config.yaml and return its path."""
     config_home = tmp_home / "config"
-    cf = config_home / "kanibako_config.yaml"
+    cf = config_home / CONFIG_FILENAME
     write_global_config(cf)
     return cf
 

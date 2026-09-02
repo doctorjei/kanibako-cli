@@ -15,6 +15,8 @@ import pytest
 from kanibako.settings.agent_config import AgentConfig
 from kanibako.targets.base import TargetSetting
 
+from tests.support.filenames import CONFIG_FILENAME
+
 
 class TestKanibakoMounts:
     """Tests for _kanibako_mounts() in start.py."""
@@ -209,7 +211,7 @@ class TestBuildEffectiveState:
         """Create a minimal global kanibako_config.yaml, optionally with [agent]."""
         from kanibako.settings.config import write_agent_setting
 
-        global_toml = tmp_path / "kanibako_config.yaml"
+        global_toml = tmp_path / CONFIG_FILENAME
         global_toml.write_text("")
         if settings:
             for k, v in settings.items():
@@ -577,7 +579,7 @@ class TestXdgFallbackRegression:
         ]
         target.name = "claude"
 
-        global_toml = tmp_path / "kanibako_config.yaml"
+        global_toml = tmp_path / CONFIG_FILENAME
         global_toml.write_text(
             "system:\n"
             "  cache: $XDG_CACHE_HOME/kanibako\n"

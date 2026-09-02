@@ -28,6 +28,7 @@ from kanibako.settings.settings_categories import narrow_table_winners
 from kanibako.settings.settings_resolve import (
     ResolveCtx,
 )
+from tests.support.filenames import CONFIG_FILENAME
 from tests.support.narrow_resolve import table_bind_dests
 
 HOST_HOME = "/home/u"
@@ -2190,7 +2191,7 @@ class TestTheEffectiveDISPLAYSEAMCarriesTheDeclaringKeysEndToEnd:
         })
         buf = io.StringIO()
         rc = show_config(
-            global_config_path=tmp_path / "kanibako_config.yaml",
+            global_config_path=tmp_path / CONFIG_FILENAME,
             effective=True, file=buf,
             category_snapshot=snapshot, category_ctx=make_ctx(),
             category_declared_by=declared_by,

@@ -9,6 +9,8 @@ import pytest
 from kanibako.errors import KanibakoError, UserCancelled
 from kanibako.settings.paths import ProjectGroup, BoxMode
 
+from tests.support.filenames import CONFIG_FILENAME
+
 
 class TestMainExitCodes:
     def test_user_cancelled_exits_2(self):
@@ -126,7 +128,7 @@ class TestLazyInit:
 
         _ensure_initialized()
 
-        config_file = tmp_path / "config" / "kanibako_config.yaml"
+        config_file = tmp_path / "config" / CONFIG_FILENAME
         assert config_file.exists()
         # Data directories should also be created
         assert (tmp_path / "data" / "kanibako" / "containers").is_dir()
@@ -156,7 +158,7 @@ class TestLazyInit:
         # ⚑ A ``config.*`` value, not ``box.image``: since 2026-08-26 the Layer-1 file
         # carries the bootstrap foundation and nothing else (Jei), so a settings key
         # planted here would be inert and the test would pass without meaning it.
-        config_file = tmp_path / "config" / "kanibako_config.yaml"
+        config_file = tmp_path / "config" / CONFIG_FILENAME
         config_file.parent.mkdir(parents=True, exist_ok=True)
         write_global_config(config_file)
         write_nested_key(config_file, ("config",), "agents", "/custom/agents")

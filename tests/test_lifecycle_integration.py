@@ -15,6 +15,7 @@ import pytest
 import yaml
 
 from tests.conftest_integration import requires_runtime
+from tests.support.filenames import CONFIG_FILENAME
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -105,8 +106,8 @@ class TestKanibakoLazyInit:
         result = _run_kanibako("system", "info", env=cli_env["env"], cwd=str(cli_env["project"]))
         assert result.returncode == 0, f"lazy init failed: {result.stderr}"
 
-        config_file = cli_env["config_home"] / "kanibako_config.yaml"
-        assert config_file.is_file(), "kanibako_config.yaml not created"
+        config_file = cli_env["config_home"] / CONFIG_FILENAME
+        assert config_file.is_file(), f"{CONFIG_FILENAME} not created"
 
         data_path = cli_env["data_home"] / "kanibako"
         agents_dir = data_path / "agents"

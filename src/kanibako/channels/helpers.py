@@ -98,7 +98,7 @@ def resolve_spawn_budget(
 
 
 def read_spawn_config(path: Path) -> SpawnBudget | None:
-    """Read spawn limits from a config file (kanibako_config.yaml or RO spawn config).
+    """Read spawn limits from a config file (kanibako.cfg or RO spawn config).
 
     Looks for a ``spawn`` section with ``depth`` and ``breadth`` keys.
     Returns ``None`` if the file or section is absent.
@@ -119,7 +119,7 @@ def write_spawn_config(path: Path, budget: SpawnBudget) -> None:
     """Write spawn limits as a ``spawn`` section in a config file.
 
     For RO spawn configs this creates a standalone file.
-    For kanibako_config.yaml this preserves other sections.
+    For kanibako.cfg this preserves other sections.
     """
     existing = load_doc(path)
     existing["spawn"] = {"depth": budget.depth, "breadth": budget.breadth}

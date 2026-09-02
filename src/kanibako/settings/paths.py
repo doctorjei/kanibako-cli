@@ -588,11 +588,12 @@ def load_system_config(user_config_path: Path, *, data_home: Path, home: Path) -
     here).  The settings file's ``system:`` table also holds ``system.agent``, the
     ``auth``/``env``/``secret_path`` families and the bind-shaped categories, none of which
     belong to the path tier; and a ``config:`` table hand-written into a SETTINGS file must
-    never reach Layer 1, which lives in ``kanibako_config.yaml`` alone (spec §1).
+    never reach Layer 1, which lives in ``kanibako.cfg`` alone (spec §1).
 
     ⚑⚑ AND THE MIRROR OF THAT: a ``system:`` table hand-written into a CONFIG file must
     never reach Layer 2.  The two files each hold exactly one layer —
-    *"kanibako_config.yaml <-- cannot have settings. Period."* (Jei) — and since 2026-08-31
+    *"kanibako_config.yaml <-- cannot have settings. Period."* (Jei, on what is now
+    ``kanibako.cfg``) — and since 2026-08-31
     that is a property of the READS rather than of filters applied after them:
     ``bootstrap_config_paths`` walks the ``config:`` table and REFUSES anything else in the
     file, while ``system_path_set_values`` walks the ``system:`` table.  The one filter left

@@ -20,6 +20,8 @@ import pytest
 from kanibako.vscode import vscode_remote as vr
 from kanibako.errors import KanibakoError
 
+from tests.support.filenames import CONFIG_FILENAME
+
 
 @pytest.fixture(autouse=True)
 def _isolate_xdg(tmp_path, monkeypatch):
@@ -247,7 +249,7 @@ def test_state_dir_tracks_non_default_config_data_leaf(tmp_path):
     is now REACHED — closing the gap the hardcoded leaf left open."""
     config_home = Path(os.environ["XDG_CONFIG_HOME"])
     config_home.mkdir(parents=True, exist_ok=True)
-    (config_home / "kanibako_config.yaml").write_text(
+    (config_home / CONFIG_FILENAME).write_text(
         f'config:\n  data: "{tmp_path / "custom_store"}"\n'
     )
     d = vr._vscode_remote_state_dir()
@@ -259,7 +261,7 @@ def test_state_dir_creates_nothing(tmp_path):
     """Calling it is a pure path computation — no directory materializes."""
     config_home = Path(os.environ["XDG_CONFIG_HOME"])
     config_home.mkdir(parents=True, exist_ok=True)
-    (config_home / "kanibako_config.yaml").write_text(
+    (config_home / CONFIG_FILENAME).write_text(
         f'config:\n  data: "{tmp_path / "custom_store"}"\n'
     )
     before = set(tmp_path.rglob("*"))
@@ -271,7 +273,7 @@ def test_state_dir_creates_nothing(tmp_path):
 def test_state_dir_malformed_config_degrades_without_raising():
     config_home = Path(os.environ["XDG_CONFIG_HOME"])
     config_home.mkdir(parents=True, exist_ok=True)
-    (config_home / "kanibako_config.yaml").write_text("not: [valid: yaml: at all")
+    (config_home / CONFIG_FILENAME).write_text("not: [valid: yaml: at all")
     d = vr._vscode_remote_state_dir()  # must not raise
     assert d.parent.name == "kanibako"
 

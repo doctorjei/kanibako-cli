@@ -25,6 +25,7 @@ from kanibako.commands.helper_cmd import (
     run_stop,
 )
 from kanibako.channels.helpers import SpawnBudget, write_spawn_config
+from tests.support.filenames import CONFIG_FILENAME
 
 
 @pytest.fixture
@@ -49,7 +50,7 @@ def helpers_env(tmp_path, monkeypatch):
     # is for.
     config_dir = tmp_path / "config"
     config_dir.mkdir()
-    config_file = config_dir / "kanibako_config.yaml"
+    config_file = config_dir / CONFIG_FILENAME
     # EMPTY, exactly as ``settings.config.write_global_config`` writes it
     # (``atomic_write_text(path, "")``, called by ``cli._ensure_initialized`` on first run
     # when the file is absent) — an initialized host that overrides nothing.  ⚑ It used to

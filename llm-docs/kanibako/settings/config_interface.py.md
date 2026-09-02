@@ -423,7 +423,7 @@ The order below is the order in the source, and several steps of it are load-bea
   agent-agnostic `config` CLI reads/writes the reserved any-agent `agent.default` tier; per-agent
   overrides live under `agent.<name>` and are resolved by the launch-time effective-state
   cascade. For the SYSTEM scope these are SETTINGS in the system settings file, not the
-  `kanibako_config.yaml` CONFIG file.
+  `kanibako.cfg` CONFIG file.
 * **`box.agent.<key>`** — RETIRED (P7, spec §2b): there is no settable box-scoped agent mirror
   any more, so there is no stored value to read. Returning `None` (rather than reading a
   hand-written legacy leaf) is deliberate: reading it would report a value that no longer has ANY
@@ -460,7 +460,7 @@ now.** DS-BL1 = (a) retired the CLI write route for every bind-shaped category a
 the verbs refuse those keys BY NAME in their preamble. The READ SURVIVES ON PURPOSE — see "The
 retired routes" above.
 
-⚑ The old get/set-symmetry note here (a SYSTEM-scope set once wrote the `kanibako_config.yaml`
+⚑ The old get/set-symmetry note here (a SYSTEM-scope set once wrote the `kanibako.cfg`
 CONFIG file this branch never read; an AGENT-scope category set was a SILENT NO-OP WRITE into a
 file in no cascade level) is RETIRED WITH THE WRITES, not fixed — there is no longer a write to
 disagree with.
@@ -477,10 +477,10 @@ docstring nothing exercised.
 ```set_config_value(key, value, *, config_path, env_path=None, system_settings_path=None, cascade_system_path=None, cascade_agent_path=None, cascade_workset_path=None, cascade_box_path=None, cascade_agent_name="", command_scope=None, agents_root=None) -> str```
 Write a config value to the appropriate store; returns a message or an error, NEVER raises.
 
-*config_path* is the `box.yaml`/`workset.yaml` (for box/workset) or `kanibako_config.yaml` (for system).
+*config_path* is the `box.yaml`/`workset.yaml` (for box/workset) or `kanibako.cfg` (for system).
 *system_settings_path*, when supplied (the SYSTEM scope), is the file SETTINGS (`system.agent` +
 agent settings) are written to — `@config.settings` = `global/settings.yaml` — keeping them out
-of the `kanibako_config.yaml` CONFIG file. When `None` (box/workset) writes go to `config_path`
+of the `kanibako.cfg` CONFIG file. When `None` (box/workset) writes go to `config_path`
 as before. Returns a human-readable confirmation message.
 
 The `cascade_*` kwargs supply the FULL launch cascade (every scope's settings file + the active
@@ -668,7 +668,7 @@ pre-existing defect still allows the set and `config set` stays usable to REPAIR
   `agent` is not one. The ordering is still right — it is just belt-and-braces, not a live
   collision.
 * **STRUCTURAL `system.*` path-tier keys (the `SYSTEM_PATH_DEFAULTS` family) — FILE-ONLY.** They
-  live in `kanibako_config.yaml`'s `[system]` table (the file `resolve_system_paths` reads),
+  live in `kanibako.cfg`'s `[system]` table (the file `resolve_system_paths` reads),
   editable there or via `kanibako setup` (`write_system_value` bypasses this guard). The refusal
   names THAT file. ⚑ This is a precise family check (F2): a `system.*` SETTINGS key (auth chain /
   `system.agent` / categories / env) was routed above or falls through to the routing table below
@@ -683,7 +683,7 @@ pre-existing defect still allows the set and `config set` stays usable to REPAIR
   COMMAND scope's SETTINGS file with the key's scope token KEPT (the nested form
   `assemble_levels` mirrors — never remapped to the key-scope's own file). `settings_dest` ==
   `config_path` at box/workset; at SYSTEM it is the system settings file (`@config.settings`) —
-  settings keys never land in the Layer-1 `kanibako_config.yaml` (spec §1). Non-scope keys
+  settings keys never land in the Layer-1 `kanibako.cfg` (spec §1). Non-scope keys
   (`allow_helpers`) and `system.*` regular keys keep their historical `config_path` slot.
 
 ### The category SET branch that is gone
@@ -879,7 +879,7 @@ best-effort forward bump of the same marker.
 ⚑ **THE PARAMETER NAME SAYS `config_path`, AND BOTH LIVE CALLERS NOW PASS THE SYSTEM SETTINGS
 FILE.** The function is path-agnostic — its whole body is `write_nested_key(path, ("system",), leaf,
 value)` — and the marker's storage moved to `@config.settings` on 2026-08-26, so nothing programmatic
-writes a `system:` table into `kanibako_config.yaml` any more. That file cannot carry settings at all
+writes a `system:` table into `kanibako.cfg` any more. That file cannot carry settings at all
 (Jei), so a caller passing it here would be writing something no reader reads.
 
 ⚑ **IT DOES NOT "BYPASS A GUARD" (2026-08-23), and the older wording claimed a guard that is gone.**
