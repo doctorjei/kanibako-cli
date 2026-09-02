@@ -45,7 +45,7 @@ the registry marks it `set: cli+file`. It is stored, written and read as one: `s
 there (`config.read_setup_completed`), so it routes through `_KEY_ROUTES` beside `system.agent`.
 
 ⚑⚑ **THE STORAGE DELTA IS CLOSED (2026-08-26), AND IT IS WHY THE BOOTSTRAP FILE RULE IS GONE.**
-Until then the code kept the marker in the `system:` table of `kanibako_config.yaml`, and the verbs
+Until then the code kept the marker in the `system:` table of `kanibako.cfg`, and the verbs
 followed that STORAGE through a bespoke destination rule (`config_dest._BOOTSTRAP`, whose only
 member it was) — a settings-file route would have been INERT, accepted and invisible to every
 consumer. Jei closed it from the other side by moving the storage: *"there is no reason whatsoever
@@ -530,10 +530,10 @@ SETTINGS file (a downward write keeps the key's scope token, nested in the COMMA
 file — spec §0; the form `assemble_levels` mirrors). ``system`` is INCLUDED (F2 fix): a routed
 ``system.*`` SETTINGS key (the auth chain `system.auth.share_allowed`) lands in the system SETTINGS
 file (``@config.settings``) — the file the launch cascade's system tier reads — NOT the Layer-1
-`kanibako_config.yaml`. ⚑ Since 2026-08-23 the ``system.*`` PATH tier reaches this routing too, and
+`kanibako.cfg`. ⚑ Since 2026-08-23 the ``system.*`` PATH tier reaches this routing too, and
 lands in the same file. ⚑ Since 2026-08-26 ``system.setup_completed`` does too — it was the one key
 routed elsewhere (to the Layer-1 config file, where its shipped reader used to look), and its
-storage moved to `@config.settings` with the rest. **No key routes to `kanibako_config.yaml`.**
+storage moved to `@config.settings` with the rest. **No key routes to `kanibako.cfg`.**
 
 **`_dot_to_flat` / `_FLAT_TO_CANONICAL` / `_route_key` ARE DELETED, and the absence is the fix.**
 They let the write verbs accept the flat underscore form of a routed key (``box_image`` for
@@ -542,7 +542,7 @@ spelling, `is_known_key` refuses it, and `get` refused it — while `set` took i
 back in the confirmation, teaching the form no other verb served. It also chose the DESTINATION
 FILE. `config_dest._dest` reads the scope token off the key as typed, and the flat form's first
 dotted token is the whole string, so it missed `_SETTINGS_SCOPE_TOKENS` and fell to the Layer-1
-`kanibako_config.yaml` — the bootstrap floor `config.load_merged_config` puts UNDER every tier —
+`kanibako.cfg` — the bootstrap floor `config.load_merged_config` puts UNDER every tier —
 while `box.image` went to the settings tier ABOVE it. A spelling silently selected precedence.
 
 ⚑ **Do not reintroduce a spelling normaliser here.** Spec §0: the keyspace is CLOSED and a key has
@@ -1105,8 +1105,8 @@ ONE family and no more: the Layer-1 ``[config]`` foundation keys (``config.*``, 
 
 ⚑⚑ **THAT IS THE DEFINITION, NOT A COINCIDENCE (2026-08-26).** ``system.setup_completed`` was the
 last non-``config.*`` member; its STORAGE moved to ``@config.settings`` (spec §2g), so what is left
-is exactly the set of keys whose job is to LOCATE the files everything else lives in. Jei:
-*"kanibako_config.yaml <-- cannot have settings. Period."*
+is exactly the set of keys whose job is to LOCATE the files everything else lives in.
+*"kanibako_config.yaml <-- cannot have settings. Period."* (Jei, on what is now `kanibako.cfg`)
 
 ⚑⚑ **IT IS A READ ROUTE NOW, NOT ALSO A REFUSAL (2026-08-23).** It used to double as *"and
 therefore the write verbs refuse it"*, which is how `system.setup_completed` — declared
@@ -1119,7 +1119,7 @@ WITH IT** (it was `is_system_path_key`, which after the narrowing would have ans
 every system path key — a name that lies). All eleven are ordinary Layer-2 settings keys (spec
 §2g), the manifest marks each ``set: cli+file``, and §2a names ``system.template`` in the
 CLI-settable list; they route through `_KEY_ROUTES` to the system SETTINGS file now, like their
-``workset.*`` twins. ⚑⚑ **AND SINCE 2026-08-26 `kanibako_config.yaml`'s ``[system]`` table IS NOT A
+``workset.*`` twins. ⚑⚑ **AND SINCE 2026-08-26 `kanibako.cfg`'s ``[system]`` table IS NOT A
 LAYER AT ALL**: `load_system_config` filters its config-file reads to ``config.*``, so the FLOOR is
 `bootstrap.SYSTEM_PATH_DEFAULTS` alone and a ``system:`` table hand-written into the bootstrap
 file moves no path. ⚑⚑ **THE STORAGE HALF IS CLOSED (2026-08-23).**
@@ -1138,7 +1138,7 @@ key to the config file was a write-only no-op; the launch reads them from the sy
 (``@config.settings``). Those keys now fall through to their settings-tier routing.
 
 ``system.setup_completed`` IS NOT in this family any more (2026-08-26). It was, for exactly as long
-as its shipped reader read the ``[system]`` table of ``kanibako_config.yaml``; that reader now reads
+as its shipped reader read the ``[system]`` table of ``kanibako.cfg``; that reader now reads
 ``@config.settings``, which is what spec §2g always declared it to be, so the divergence flagged
 here is closed rather than carried.
 

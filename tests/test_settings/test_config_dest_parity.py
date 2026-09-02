@@ -61,6 +61,7 @@ from kanibako.settings.settings_keyspace import (
     access_default,
 )
 from kanibako.settings.bootstrap import SYSTEM_PATH_DEFAULTS
+from tests.support.filenames import CONFIG_FILENAME
 
 
 def sample_leaf_value(leaf: str, tag: str = "V") -> str:
@@ -102,7 +103,7 @@ class Bench:
 
     def __init__(self, tmp: Path) -> None:
         self.tmp = tmp
-        self.cf = tmp / "kanibako_config.yaml"   # Layer-1 bootstrap config
+        self.cf = tmp / CONFIG_FILENAME              # Layer-1 bootstrap config
         self.ssp = tmp / "global" / "settings.yaml"  # system SETTINGS (@config.settings)
         self.box = tmp / "box" / "box.yaml"          # a box settings file
         self.ws = tmp / "ws" / "workset.yaml"        # a workset settings file

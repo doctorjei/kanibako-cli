@@ -36,19 +36,19 @@ XDG_SPEC_DEFAULTS: dict[str, str] = {
 # The BOOTSTRAP FILES — the paths that cannot be key-derived
 # ---------------------------------------------------------------------------
 # The user bootstrap config file, resolved under ``$XDG_CONFIG_HOME`` (spec §1).
-CONFIG_FILE = "kanibako_config.yaml"
+CONFIG_FILE = "kanibako.cfg"
 
 # The machine-wide site directory and its two base files.
 # ⚑ Compose both from the DIR — it is spelled once.
 SITE_CONFIG_DIR = "/etc/kanibako"
-SITE_CONFIG_FILE = "config_base.yaml"
+SITE_CONFIG_FILE = "base.cfg"
 SITE_SETTINGS_FILE = "settings_base.yaml"
 
 
 # ---------------------------------------------------------------------------
 # Layer 1 — the CONFIG-key FOUNDATION (spec §1)
 # ---------------------------------------------------------------------------
-# Bootstrap keys from ``kanibako_config.yaml``, resolved FLAT — not by the keyspace pipeline.
+# Bootstrap keys from ``kanibako.cfg``, resolved FLAT — not by the keyspace pipeline.
 # ⚑ The set may GROW; spec §1 states no count. Its SIZE is pinned by test_manifest_conformance.
 CONFIG_PATH_DEFAULTS: dict[str, str] = {
     "config.data":                  "$XDG_DATA_HOME/kanibako",

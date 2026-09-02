@@ -56,15 +56,19 @@ inside boxes. In order of likely impact:
    `--agent <name>` to skip the menu). ⚑ Pass `--refresh-templates` on a headless run: a
    non-interactive setup that cannot ask about the template refresh deliberately records
    nothing, prints `Setup Incomplete` and exits **rc 1**, so the block stays up (§2.12).
-   🛑 **Check one file before you run that `kanibako setup`.** Through v1.7.2, kanibako wrote
-   settings into `~/.config/kanibako_config.yaml`: initialising a host emitted `system:` and
-   `box:` tables, and setup recorded its marker there as `system: setup_completed:`. In
-   v1.8.0 that file may hold the `config.*` bootstrap paths and nothing else, and reading it
-   refuses by name (§2.67) — including when the command doing the reading is `kanibako setup`,
-   which is why this comes first. So open `~/.config/kanibako_config.yaml` and look: **if any
-   top-level table other than `config:` is in it, delete that table.** A `setup_completed`
-   marker is not worth carrying across — the release raises the setup baseline anyway, so a
-   v1.7.2 value is refused as too old wherever it sits.
+   🛑 **Rename one file, then check it, before you run that `kanibako setup`.** The bootstrap
+   config file is `~/.config/kanibako.cfg` in v1.8.0; through v1.7.2 it was
+   `~/.config/kanibako_config.yaml`, and the old name is not read at all (§2.68) — leave it
+   as it is and every command runs as though you had never configured a host. So rename it
+   first: `mv ~/.config/kanibako_config.yaml ~/.config/kanibako.cfg`.
+   Then look at what is in it. Through v1.7.2 kanibako wrote settings there too: initialising
+   a host emitted `system:` and `box:` tables, and setup recorded its marker as
+   `system: setup_completed:`. In v1.8.0 that file may hold the `config.*` bootstrap paths and
+   nothing else, and reading it refuses by name (§2.67) — including when the command doing the
+   reading is `kanibako setup`, which is why this comes first. So open the renamed
+   `~/.config/kanibako.cfg` and look: **if any top-level table other than `config:` is in it,
+   delete that table.** A `setup_completed` marker is not worth carrying across — the release
+   raises the setup baseline anyway, so a v1.7.2 value is refused as too old wherever it sits.
 
 2. **Every settings file except the system one must be renamed by hand, or it is silently not
    read** (§2.45). Each cascade tier's file was called `settings.yaml`; each is now named for its
@@ -133,7 +137,7 @@ inside boxes. In order of likely impact:
     nothing warns about it, and new boxes seed the stock files instead of yours (§2.5).
 
 12. **System-scope binds/caches/secret pointers now live in ONE file** — `global/settings.yaml`,
-    not `~/.config/kanibako_config.yaml`. If you ever hand-placed such entries in the config
+    not `~/.config/kanibako.cfg`. If you ever hand-placed such entries in the config
     file (working around the old broken routing), move them (§2.8).
 
 13. **A symlink anywhere in a template directory now fails box creation loudly** — if you
@@ -437,7 +441,7 @@ Notes:
   Suppression ("this box runs no agent") has its own spelling: `kanibako box set --null
   pref.system.agent`. `--null` writes a real YAML `null`; the sibling `reset` VERB
   (`kanibako box reset <box> <key>`) instead *removes* the entry. ⚑ There is no `--reset` flag.
-- A stale `box: {agent_name: ""}` row may also sit in `~/.config/kanibako_config.yaml` — old
+- A stale `box: {agent_name: ""}` row may also sit in `~/.config/kanibako.cfg` — old
   versions wrote it into every freshly-initialised host. Nothing ever read it there, and it does
   **not** trigger THIS section's launch refusal (verified) — but that file may no longer carry a
   `box:` table at all, so it stops every command and names `box.agent_name` (§2.67). Deleting it
@@ -801,7 +805,7 @@ settings file** (`<data>/global/settings.yaml`) — the file the launch actually
 v1.7.2 the verbs disagreed: `set` wrote to `~/.config/kanibako_config.yaml`, `get` read the
 settings file, and the launch never saw the value.
 
-If you ever worked around that by hand-editing `~/.config/kanibako_config.yaml`: look there
+If you ever worked around that by hand-editing `~/.config/kanibako.cfg`: look there
 for a `system:` table containing `bindings:`, `caches:`, `seeded:`, `common:`, `synced:`, or
 `secret_path:` and move those sub-tables **verbatim** into the `system:` table of
 `<data>/global/settings.yaml`. The shape is identical; only the file changes. Confirm with
@@ -813,7 +817,7 @@ The eleven `system.*` **path** keys — `system.template`, `system.canon`, `syst
 type-roots — are settings keys, and `kanibako system set` accepts them (it used to refuse them as
 "structural config keys" and send you to the config file). A set lands in the `system:` table of
 `<data>/global/settings.yaml`, and `get`/`reset` read and clear it there. **If you hand-placed any
-of these in `~/.config/kanibako_config.yaml`, move them out** — a `system:` table there does not
+of these in `~/.config/kanibako.cfg`, move them out** — a `system:` table there does not
 apply, and reading that file now refuses by name (§2.67). To see what is actually in effect, use
 `kanibako system show --effective`.
 
@@ -844,7 +848,7 @@ cascade"* — exists anywhere in the code; a repo-wide search turns up only this
 current refusal and its cure are §2.20's (*Bind entries are edited in the settings file, not from
 the CLI*): the *write verb* for these categories is retired outright, full stop, so moving the
 entry to `<data>/global/settings.yaml` does **not** make a subsequent `set` succeed — the fix is
-to edit that file directly. A stale entry left in `~/.config/kanibako_config.yaml` is not inert
+to edit that file directly. A stale entry left in `~/.config/kanibako.cfg` is not inert
 any more — it refuses (§2.67); one left in the settings file is simply unread, exactly as it
 already was.
 
@@ -954,7 +958,7 @@ into the band above: packaged content that changes with a RELEASE is announced b
 `SETUP_FCV` nudge or a `SETUP_BCV` block. The accepted loss is that template drift *within one
 version* (a dev build, or a plugin pip-installed after first run) is no longer detected; the
 cure is the same `kanibako setup`. A `[system] templates_stamp` leaf left in
-`~/.config/kanibako_config.yaml` is no longer inert: that file may not carry a `system:` table, so
+`~/.config/kanibako.cfg` is no longer inert: that file may not carry a `system:` table, so
 reading it refuses and names the leaf (§2.67). Delete it along with the setup marker.
 
 **What clears the block.** Only a `setup` run that reached a settled template state: one that
@@ -3254,7 +3258,7 @@ probe.
 The `Storage` and `Journal` rows of `system diagnose` behave the same way, and they answer to a
 wider trigger than a settings refusal: a config file that is not valid YAML. Both used to print
 `cannot check` over an error that already named the file and the fix, so one malformed
-`kanibako_config.yaml` could yield one honest line and two bland ones in the same run. That file
+`kanibako.cfg` could yield one honest line and two bland ones in the same run. That file
 breaks the `Image` row too, so you now get three `[!!]` rows over a single quoted parse error,
 headed `affects: Image, Storage, Journal`. rc is unchanged at 0.
 
@@ -3908,8 +3912,8 @@ a **named volume**, so a box with `box.canon: canon` received an empty volume wh
 should have been, and nothing said so. That case is now refused too, naming the expression rather
 than only the result.
 
-**What you must do.** In each settings file you have written — the system
-`global/settings.yaml`, your `kanibako_config.yaml`, each workset root's `workset.yaml`, each box
+**What you must do.** In each config or settings file you have written — your
+`kanibako.cfg`, the system `global/settings.yaml`, each workset root's `workset.yaml`, each box
 dir's `box.yaml`, each agent store's `agent.yaml` — look at the value of every key in the list
 above, and of every `secret_path.<VAR>` you have configured, and check its first character. If it is not `/`, `~`, `$` or `@`, respell it from the table.
 There is usually nothing to find: no default kanibako ships is written this way, so a bare relative
@@ -4080,15 +4084,15 @@ grep model ~/.claude/settings.json
 `~/.claude/settings.json`. That fixes it for good — with the key absent, Claude Code picks the
 default your account actually has. (`/model <name>` fixes a running session only.)
 
-### 2.67 A settings table in `kanibako_config.yaml` stops the command, instead of being ignored
+### 2.67 A settings table in `kanibako.cfg` stops the command, instead of being ignored
 
-`kanibako_config.yaml` holds the `config.*` bootstrap paths and nothing else. In v1.7.2 it also
+`kanibako.cfg` holds the `config.*` bootstrap paths and nothing else. In v1.7.2 it also
 carried settings; in v1.8.0 those settings are read from the settings files, and anything else
 left in the config file was **dropped without a word**. It is now an error that names the file
 and every key in it that does not belong:
 
 ```
-Error: /home/you/.config/kanibako_config.yaml carries settings, which it cannot hold:
+Error: /home/you/.config/kanibako.cfg carries settings, which it cannot hold:
   box.image
 That file holds the config.* bootstrap paths and nothing else. Delete those lines from it, then
 set what you meant with 'kanibako system set <key>=<value>', which writes the settings file.
@@ -4119,13 +4123,13 @@ file, not about your version: **open it and look.** If a `setup_completed` line 
 rather than moving it — v1.8.0 raises the setup baseline, so a v1.7.2 value is refused as too old
 wherever it sits.
 
-**What to do**, once, per file. The files are `$XDG_CONFIG_HOME/kanibako_config.yaml`
-(`~/.config/kanibako_config.yaml` when that variable is unset) and, if you have one, the site file
-`/etc/kanibako/config_base.yaml`. Delete every top-level table that is not `config:`, and set what
+**What to do**, once, per file. The files are `$XDG_CONFIG_HOME/kanibako.cfg`
+(`~/.config/kanibako.cfg` when that variable is unset) and, if you have one, the site file
+`/etc/kanibako/base.cfg`. Delete every top-level table that is not `config:`, and set what
 you actually wanted:
 
 ```yaml
-# ~/.config/kanibako_config.yaml — REFUSED
+# ~/.config/kanibako.cfg — REFUSED
 config:
   data: /srv/kanibako
 box:
@@ -4135,7 +4139,7 @@ system:
 ```
 
 ```yaml
-# ~/.config/kanibako_config.yaml — the whole of it
+# ~/.config/kanibako.cfg — the whole of it
 config:
   data: /srv/kanibako
 ```
@@ -4156,6 +4160,51 @@ points here.
 spellings for one key, one of which the keyspace does not declare. Only `box: image:` is read
 now. In the config file the flat spelling is refused by name like any other; in a settings file
 see §2.47 (*An undeclared key in a settings file now stops the command*).
+
+### 2.68 The bootstrap config files are renamed: `kanibako.cfg` and `base.cfg`
+
+**Read this if you have a config file**, which is nearly everyone — v1.7.x wrote one the first
+time it set up a host. Nothing inside the file changes; only its name does.
+
+**What changed.** Both bootstrap config files are renamed:
+
+| file | v1.7.2 | v1.8.0 |
+|---|---|---|
+| user config | `$XDG_CONFIG_HOME/kanibako_config.yaml` (`~/.config/kanibako_config.yaml` when that variable is unset) | `kanibako.cfg`, same directory |
+| site config | `/etc/kanibako/config_base.yaml` | `/etc/kanibako/base.cfg` |
+| site settings | `/etc/kanibako/settings_base.yaml` | **unchanged** |
+
+🛑 **`settings_base.yaml` keeps its name, and it sits in the same directory as the file that
+lost one.** That is the reason for the new extension rather than an accident of it: **`.cfg`
+marks Layer 1.** A `.cfg` file is bootstrap config — the `config.*` paths kanibako must resolve
+before it can find anything else — and it holds nothing but those. A settings file is `.yaml`.
+The two files in `/etc/kanibako/` now say which layer they belong to, so you no longer have to
+know.
+
+**What you must do.** Rename each file you have. Same keys, same shape, same values, so this is
+`mv` and nothing else:
+
+```bash
+mv ~/.config/kanibako_config.yaml      ~/.config/kanibako.cfg     # or under $XDG_CONFIG_HOME
+sudo mv /etc/kanibako/config_base.yaml /etc/kanibako/base.cfg     # only if you have one
+```
+
+Most installs have no site file. An `mv` that reports a missing source is a file you never had,
+and there is nothing to carry.
+
+**What you see if you don't.** Nothing. There is no compatibility read and no detection: a file
+left under the old name is not read, not reported, and not mentioned at launch. Kanibako runs on
+the default layout, exactly as though you had never configured it. So if your `config.data`
+pointed the store somewhere other than `$XDG_DATA_HOME/kanibako`, the next command looks in the
+default location and finds a host with no boxes, no worksets and no agents in it. **The failure
+looks like kanibako losing your whole install**, so if a host comes up empty, check for a file
+still called `kanibako_config.yaml` before anything else.
+
+⚑ **Rename before you clean out, and the order matters.** §2.67's refusal — a settings table in
+a file that may hold only `config:` — is raised by the code that *reads* the config file, which
+is now `kanibako.cfg`. A file still under the old name is ignored rather than refused, so the
+rename is what surfaces the message that tells you what to delete. §1's item 1 walks both steps
+in that order.
 
 ---
 

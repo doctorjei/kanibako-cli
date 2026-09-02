@@ -475,7 +475,7 @@ _SCOPE_WRITE_ALLOWED: dict[ConfigLevel, frozenset[str]] = {
 
 # The scope tokens whose prefixed keys are SETTINGS keys stored in a SETTINGS file.
 # ⚑ ``system`` is INCLUDED (F2 fix) — a routed ``system.*`` SETTINGS key lands in the
-# system settings file, never the Layer-1 kanibako_config.yaml.
+# system settings file, never the Layer-1 kanibako.cfg.
 _SETTINGS_SCOPE_TOKENS: frozenset[str] = frozenset(_SCOPE_CONTAINMENT)
 
 
@@ -512,7 +512,7 @@ def _scope_direction_error(
 # user-facing surface, refused by ``key_validity`` and by ``get`` while ``set``
 # accepted it — and worse, the two spellings landed in DIFFERENT FILES: the dest
 # rule reads the scope token off the key AS TYPED, so ``box_image`` (whose first
-# dotted token is the whole string) fell to the Layer-1 ``kanibako_config.yaml``
+# dotted token is the whole string) fell to the Layer-1 ``kanibako.cfg``
 # floor while ``box.image`` went to the settings tier. The SPELLING chose the
 # precedence. There is no mapping left to consult, so no verb can route one.
 # ⚑ DO NOT REINTRODUCE A SPELLING NORMALISER HERE. A key has ONE spelling (spec §0,

@@ -28,6 +28,7 @@ from kanibako.settings.config_keys import (
     is_path_valued_key,
     path_key_anchor,
 )
+from tests.support.filenames import CONFIG_FILENAME
 
 #: Every FIXED path spelling a CLI verb can write.  ⚑ The six ``config.*`` rows are
 #: excluded BY THEIR OWN DECLARATION (``set: file``): they are refused at the top of
@@ -54,7 +55,7 @@ def _files(tmp_path: Path) -> dict:
     ws.mkdir(parents=True)
     box.mkdir(parents=True)
     return {
-        "config": tmp_path / "kanibako_config.yaml",
+        "config": tmp_path / CONFIG_FILENAME,
         "system": tmp_path / "settings.yaml",
         "workset": ws / WORKSET_META_FILE,
         "box": box / BOX_META_FILE,

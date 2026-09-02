@@ -68,7 +68,7 @@ def _known_target_names() -> list[str]:
 def _settings_paths() -> tuple[Path, Path]:
     """Resolve ``(config_file, system_settings_file)`` for programmatic writes.
 
-    ``config_file`` = ``~/.config/kanibako_config.yaml`` (Layer-1 ``config.*`` bootstrap
+    ``config_file`` = ``~/.config/kanibako.cfg`` (Layer-1 ``config.*`` bootstrap
     paths ALONE, spec §1).  ``system_settings_file`` = ``@config.settings`` =
     ``global/settings.yaml`` — every ``system.*`` SETTING, i.e. both ``system.agent``
     (``read_system_agent``) and ``system.setup_completed`` (``read_setup_completed``,
@@ -104,7 +104,7 @@ def _write_system_agent(name: str) -> None:
 
 def _write_setup_marker() -> None:
     """Write ``system.setup_completed = __version__`` to the SYSTEM SETTINGS file (spec §2g)."""
-    # ⚑ THE SETTINGS FILE, NOT ``kanibako_config.yaml`` (Jei, 2026-08-26) — the same
+    # ⚑ THE SETTINGS FILE, NOT ``kanibako.cfg`` (Jei, 2026-08-26) — the same
     # file :func:`_write_system_agent` writes and ``config.read_setup_completed`` now
     # reads.  Spec §2g declares the marker a Layer-2 ``system.*`` settings key; Layer-1
     # holds the ``config.*`` bootstrap paths alone (spec §1).

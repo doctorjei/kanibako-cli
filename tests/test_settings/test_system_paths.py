@@ -40,7 +40,7 @@ from kanibako.settings.paths import (
 )
 from kanibako.settings.settings_resolve import SettingsError
 
-from tests.support.filenames import CONFIG_FILENAME
+from tests.support.filenames import CONFIG_FILENAME, SITE_CONFIG_FILENAME
 
 
 class TestResolveSystemPathsDefaults:
@@ -526,7 +526,7 @@ class TestLoadSystemConfig:
     def test_only_user_global_still_works(self, tmp_path, monkeypatch):
         """Back-compat: a user with only ~/.config/kanibako_config.yaml (absent
         /etc base) gets exactly the prior behavior."""
-        base = tmp_path / "config_base.yaml"       # absent
+        base = tmp_path / SITE_CONFIG_FILENAME  # absent
         self._redirect(monkeypatch, base)
 
         user = tmp_path / CONFIG_FILENAME
@@ -538,7 +538,7 @@ class TestLoadSystemConfig:
         assert resolved["config.data"] == tmp_path / "kanibako"
 
     def test_all_files_absent_yields_defaults(self, tmp_path, monkeypatch):
-        base = tmp_path / "config_base.yaml"
+        base = tmp_path / SITE_CONFIG_FILENAME
         user = tmp_path / CONFIG_FILENAME  # absent
         self._redirect(monkeypatch, base)
 
@@ -556,7 +556,7 @@ class TestLoadSystemConfig:
         assert resolved["config.data"] == tmp_path / "kanibako"
 
     def test_user_wins_over_base(self, tmp_path, monkeypatch):
-        base = tmp_path / "config_base.yaml"
+        base = tmp_path / SITE_CONFIG_FILENAME
         user = tmp_path / CONFIG_FILENAME
         base.write_text('config:\n  agents: "/base/agents"\n')
         user.write_text('config:\n  agents: "/user/agents"\n')
@@ -571,7 +571,7 @@ class TestLoadSystemConfig:
         ⚑ The base-only key is a ``config.*`` one now: it was ``system.channelroot``,
         and a CONFIG file's ``system:`` table supplies nothing since 2026-08-26.
         """
-        base = tmp_path / "config_base.yaml"
+        base = tmp_path / SITE_CONFIG_FILENAME
         user = tmp_path / CONFIG_FILENAME
         base.write_text('config:\n  registry: "/base/registry.yaml"\n')
         user.write_text('config:\n  agents: "/user/agents"\n')
@@ -591,7 +591,7 @@ class TestLoadSystemConfig:
         """
         from kanibako.errors import ConfigError
 
-        base = tmp_path / "config_base.yaml"
+        base = tmp_path / SITE_CONFIG_FILENAME
         user = tmp_path / CONFIG_FILENAME
         base.write_text('system:\n  channelroot: "/base/channels"\n')
         user.write_text('system:\n  channelroot: "/user/channels"\n')
@@ -615,7 +615,7 @@ class TestLoadSystemConfig:
         """The other half of the case above: with neither file speaking, the DECLARED
         table answers — which is what the planted values were failing to displace."""
 
-        base = tmp_path / "config_base.yaml"
+        base = tmp_path / SITE_CONFIG_FILENAME
         user = tmp_path / CONFIG_FILENAME
         base.write_text("")
         user.write_text("")
@@ -636,7 +636,7 @@ class TestLoadSystemConfig:
         and the case now genuinely exercises all three inputs.
         """
         data = tmp_path / "userdata"
-        base = tmp_path / "config_base.yaml"
+        base = tmp_path / SITE_CONFIG_FILENAME
         user = tmp_path / CONFIG_FILENAME
         base.write_text('config:\n  data: "/base/data"\n')
         user.write_text(

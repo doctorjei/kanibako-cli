@@ -1,7 +1,7 @@
 # Config Document I/O — the one YAML seam, and the document mutators
 
 `config_io` is where a settings-cascade document becomes a `dict` and where a `dict` becomes a file
-on disk. Every level of the cascade — the bootstrap `kanibako_config.yaml`, each scope's own
+on disk. Every level of the cascade — the bootstrap `kanibako.cfg`, each scope's own
 settings file, the agent files, plus the name registry (`names.yaml`) and the helper spawn budget
 (`spawn.yaml`) — is read by `load_doc` and written by `dump_doc`. Serialization is PyYAML
 throughout; there is no hand-rolled serializer. (`pyproject.toml` is Python packaging and is NOT

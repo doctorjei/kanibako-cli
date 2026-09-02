@@ -227,7 +227,7 @@ def noun_settings_file(
 #: DEAD DATA: it is the declared FAMILY of the key, bound for the KeyKind
 #: descriptor.  Do not collapse it into ``SCOPED``.
 #: ⚑⚑ A FOURTH RULE, ``BOOTSTRAP``, IS RETIRED (2026-08-26) AND MUST NOT COME BACK.
-#: It named the Layer-1 ``kanibako_config.yaml`` itself and had exactly ONE member,
+#: It named the Layer-1 ``kanibako.cfg`` itself and had exactly ONE member,
 #: ``system.setup_completed`` — a rule that existed only because the marker's STORAGE
 #: (the config file) disagreed with its DECLARATION (spec §2g: a Layer-2 ``system.*``
 #: SETTINGS key).  Jei closed the delta by moving the storage: the marker is written to

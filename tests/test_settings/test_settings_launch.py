@@ -28,6 +28,8 @@ from kanibako.settings.settings_launch import (
 )
 from kanibako.settings.settings_resolve import GUEST_HOME, ResolveCtx
 
+from tests.support.filenames import SITE_SETTINGS_FILENAME
+
 
 def _ctx() -> ResolveCtx:
     return ResolveCtx(
@@ -4849,7 +4851,7 @@ def test_the_base_tier_is_scanned_too(tmp_path, monkeypatch):
     from kanibako.settings import settings_assemble as _assemble
     from kanibako.settings import settings_launch as _launch
 
-    base = tmp_path / "settings_base.yaml"
+    base = tmp_path / SITE_SETTINGS_FILENAME
     base.write_text("box:\n  agent_name: claude\n", encoding="utf-8")
     monkeypatch.setattr(_assemble, "settings_base_path", lambda: base)
     monkeypatch.setattr(_launch, "settings_base_path", lambda: base)
@@ -4882,7 +4884,7 @@ def test_the_generic_message_names_the_base_file_the_scan_reads(
     from kanibako.settings import settings_assemble as _assemble
     from kanibako.settings import settings_launch as _launch
 
-    base = tmp_path / "settings_base.yaml"
+    base = tmp_path / SITE_SETTINGS_FILENAME
     base.write_text("box:\n  zippity: wibble\n", encoding="utf-8")
     monkeypatch.setattr(_assemble, "settings_base_path", lambda: base)
     monkeypatch.setattr(_launch, "settings_base_path", lambda: base)
@@ -4916,7 +4918,7 @@ def test_a_tier_with_no_file_is_not_named_as_loaded(tmp_path, monkeypatch):
     from kanibako.settings import settings_assemble as _assemble
     from kanibako.settings import settings_launch as _launch
 
-    absent = tmp_path / "no-such-settings_base.yaml"
+    absent = tmp_path / f"no-such-{SITE_SETTINGS_FILENAME}"
     monkeypatch.setattr(_assemble, "settings_base_path", lambda: absent)
     monkeypatch.setattr(_launch, "settings_base_path", lambda: absent)
     with pytest.raises(_SettingsError) as e:
@@ -4934,7 +4936,7 @@ def test_a_tier_with_no_file_is_not_named_as_loaded(tmp_path, monkeypatch):
 #: of whether a top-level ``agent:`` table is that file's CONTRIBUTION at all.
 _RELIC_TIER_CASES = [
     pytest.param("system_path", "settings.yaml", True, id="system-refuses"),
-    pytest.param("base", "settings_base.yaml", True, id="base-refuses"),
+    pytest.param("base", SITE_SETTINGS_FILENAME, True, id="base-refuses"),
     pytest.param("box_path", "box.yaml", False, id="box-file-drops-the-table"),
     pytest.param("workset_path", "workset.yaml", False, id="workset-file-drops-it"),
     pytest.param("agent_path", "agent.yaml", False, id="agent-file-never-read-it"),

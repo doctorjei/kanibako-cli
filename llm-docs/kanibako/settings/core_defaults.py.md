@@ -626,7 +626,7 @@ against: `system.canon` in the resolved `system.*` tier (`StandardPaths.canon`),
 `agent.<a>.canon` is settable at the SYSTEM scope only (the per-persona agent-leaf rule
 `agent.<a>.template` already follows), and `system.canon` is CLI-REFUSED as a structural path key —
 it is a `SYSTEM_PATH_DEFAULTS` member, so it lives in the hand-edited `[system]` table of
-`kanibako_config.yaml`, exactly like `system.template`.
+`kanibako.cfg`, exactly like `system.template`.
 
 ⚑⚑ **THE AGENT TIER** — J-1 option (a) (*"the `agent.default` tier must be able to win"*),
 implemented against a resolver that has NO agent-tier fallback:

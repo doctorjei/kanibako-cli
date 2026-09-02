@@ -84,7 +84,7 @@ class KanibakoConfig:
 class BootstrapConfig:
     """The Layer-1 bootstrap file's WHOLE content: the ``config.*`` foundation, and nothing else.
 
-    ⚑⚑ THE TYPE IS THE RULE (P3/P4; Jei's ruling, 2026-08-31).  ``kanibako_config.yaml``
+    ⚑⚑ THE TYPE IS THE RULE (P3/P4; Jei's ruling, 2026-08-31).  ``kanibako.cfg``
     cannot have settings (Jei, 2026-08-26: *"kanibako_config.yaml <-- cannot have settings.
     Period."*), and spec §1 gives Layer 1 the ``config.*`` bootstrap paths alone.  That rule
     used to be a ``config.``-PREFIX FILTER spelled at each of the four Layer-1 read sites,
@@ -105,7 +105,7 @@ _LAYER1_TABLE = "config"
 
 
 def config_file_path(config_home: Path) -> Path:
-    """The bootstrap config file ``$XDG_CONFIG_HOME/kanibako_config.yaml`` (JC-1 clean break)."""
+    """The bootstrap config file ``$XDG_CONFIG_HOME/kanibako.cfg`` (JC-1 clean break)."""
     return config_home / CONFIG_FILE
 
 
@@ -230,7 +230,7 @@ def _present_scalar_fields(path: Path) -> dict[str, object]:
 
 
 def load_config(path: Path) -> BootstrapConfig:
-    """Read the LAYER-1 bootstrap file — the one reader of ``kanibako_config.yaml``.
+    """Read the LAYER-1 bootstrap file — the one reader of ``kanibako.cfg``.
 
     ⚑⚑ IT RETURNS A :class:`BootstrapConfig`, AND THAT IS THE WHOLE OF THE 2026-08-31
     RULING: a Layer-1 read has no settings field to return.  It was a GENERAL document
@@ -245,7 +245,7 @@ def load_config(path: Path) -> BootstrapConfig:
 def box_scalar_defaults_floor() -> dict[str, object]:
     """The box scalars' DECLARED-DEFAULT floor — the ONE recipe every floor builder uses.
 
-    ⚑⚑ DECLARED DEFAULTS, NEVER FILE VALUES.  ``kanibako_config.yaml`` cannot have
+    ⚑⚑ DECLARED DEFAULTS, NEVER FILE VALUES.  ``kanibako.cfg`` cannot have
     settings (Jei, 2026-08-26: *"kanibako_config.yaml <-- cannot have settings.
     Period."*), so a floor built by reading that file is the violation; a floor built
     from the declared defaults is what spec §1/§2b sanction.  Those two were ONE
@@ -749,7 +749,7 @@ def read_system_agent(system_path: Path | None) -> str | None:
     """The stored ``system.agent`` SETTING from the system settings tier; ``None`` when unset.
 
     ⚑ *system_path* is the SETTINGS file (``@config.settings``), NOT
-    ``kanibako_config.yaml``. ⚑ PRE-CASCADE reader — the LAUNCH does not use it.
+    ``kanibako.cfg``. ⚑ PRE-CASCADE reader — the LAUNCH does not use it.
     """
     if system_path is None or not system_path.exists():
         return None
@@ -765,7 +765,7 @@ def read_setup_completed(settings_path: Path | None) -> str | None:
     """The ``system.setup_completed`` marker from the SYSTEM SETTINGS file; ``None`` means "setup never run".
 
     ⚑⚑ *settings_path* is ``@config.settings`` = ``<data>/global/settings.yaml``, NOT
-    ``kanibako_config.yaml`` — the SAME file :func:`read_system_agent` reads and the
+    ``kanibako.cfg`` — the SAME file :func:`read_system_agent` reads and the
     launch cascade's system tier assembles from.  It moved there on 2026-08-26 (Jei:
     "there is no reason whatsoever that ``system.setup_completed`` should go in the
     config. It should not. It should go in the global settings file"), which is also

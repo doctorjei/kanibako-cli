@@ -34,6 +34,8 @@ from kanibako.settings.config_interface import (
 )
 from kanibako.settings.config_io import load_doc
 
+from tests.support.filenames import CONFIG_FILENAME
+
 _URL = "https://gemma.example/v1"
 _TOKEN_VAR = "ANTHROPIC_AUTH_TOKEN"
 
@@ -213,7 +215,7 @@ class TestCanonicalizationSameStore:
         )
         got = get_config_value(
             "agent.navigator℘claude.endpoint",
-            global_config_path=tmp_path / "kanibako_config.yaml",
+            global_config_path=tmp_path / CONFIG_FILENAME,
             agents_root=agents_root,
         )
         assert got == _URL
@@ -226,7 +228,7 @@ class TestCanonicalizationSameStore:
         )
         got = get_config_value(
             "agent.navigator+claude.endpoint",
-            global_config_path=tmp_path / "kanibako_config.yaml",
+            global_config_path=tmp_path / CONFIG_FILENAME,
             agents_root=agents_root,
         )
         assert got == _URL
@@ -255,7 +257,7 @@ class TestCanonicalizationSameStore:
 
 class TestGetResetPersona:
     def _gc(self, tmp_path):
-        return tmp_path / "kanibako_config.yaml"
+        return tmp_path / CONFIG_FILENAME
 
     def test_get_returns_stored_value(self, tmp_path, agents_root):
         set_config_value(
