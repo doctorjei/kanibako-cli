@@ -53,7 +53,6 @@ from kanibako.settings.config_interface import (
 )
 from kanibako.settings.config_io import dump_doc, load_doc
 from kanibako.settings.keyspace_manifest import manifest_doc
-from kanibako.settings.paths_defaults import SYSTEM_PATH_DEFAULTS
 from kanibako.settings.settings_keyspace import (
     DECLARED_AGENT_LEAVES,
     PATH_VALUED_AGENT_LEAVES,
@@ -61,6 +60,7 @@ from kanibako.settings.settings_keyspace import (
     TABLE_VALUED_AGENT_LEAVES,
     access_default,
 )
+from kanibako.settings.bootstrap import SYSTEM_PATH_DEFAULTS
 
 
 def sample_leaf_value(leaf: str, tag: str = "V") -> str:

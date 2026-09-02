@@ -26,6 +26,7 @@ from kanibako.settings.paths import (
     resolve_workset_project,
 )
 from kanibako.utils import project_hash
+from kanibako.settings import bootstrap
 
 
 def _reg_primary(std, name: str, workspace) -> None:
@@ -2342,19 +2343,18 @@ class TestPathLeafDefaultsHaveOneCarrier:
         what actually detects a second spelling.
         """
         from kanibako.settings import config as config_mod
-        from kanibako.settings import paths_defaults
         from kanibako.project import workset as ws_mod
 
         # The workset settings FILENAME is no longer a path-leaf default: the
         # per-tier rename gave it one carrier in ``settings/config.py``, which the
         # workset module imports rather than re-spelling.
         assert ws_mod.WORKSET_META_FILE is config_mod.WORKSET_META_FILE
-        assert ws_mod.BOXES_DIR_NAME == paths_defaults.BOXES_PATH
-        assert ws_mod._LOGS_LEAF == paths_defaults.LOGS_PATH
-        assert ws_mod._VAULT_LEAF == paths_defaults.VAULT_PATH
-        assert ws_mod._WORKSPACES_LEAF == paths_defaults.WORKSPACES_PATH
-        assert ws_mod._STANDALONE_WORKSPACE_LEAF == paths_defaults.WORKSPACE_PATH
-        assert ws_mod._CHANNELROOT_LEAF == paths_defaults.CHANNELS_PATH
+        assert ws_mod.BOXES_DIR_NAME == bootstrap.BOXES_PATH
+        assert ws_mod._LOGS_LEAF == bootstrap.LOGS_PATH
+        assert ws_mod._VAULT_LEAF == bootstrap.VAULT_PATH
+        assert ws_mod._WORKSPACES_LEAF == bootstrap.WORKSPACES_PATH
+        assert ws_mod._STANDALONE_WORKSPACE_LEAF == bootstrap.WORKSPACE_PATH
+        assert ws_mod._CHANNELROOT_LEAF == bootstrap.CHANNELS_PATH
 
     def test_no_second_spelling_of_a_leaf_in_the_workset_module(self):
         """Tripwire: re-introducing any of these as a literal in ``project/workset.py``

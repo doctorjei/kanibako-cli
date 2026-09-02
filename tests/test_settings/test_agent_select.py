@@ -24,6 +24,7 @@ from kanibako.settings.kb_store import __MISSING__
 from kanibako.settings.settings_assemble import refuse_retired_keys
 from kanibako.settings.settings_launch import build_launch_snapshot, resolve_selected_agent
 from kanibako.settings.settings_resolve import ResolveCtx, SettingsError
+from kanibako.settings.bootstrap import CONFIG_PATH_DEFAULTS
 
 AGENTS = frozenset({"claude", "goose", "codex"})
 
@@ -392,8 +393,6 @@ def _std(tmp_path):
     error on a name the reader has to go look up.
     """
     from types import SimpleNamespace
-
-    from kanibako.settings.paths_defaults import CONFIG_PATH_DEFAULTS
 
     data = tmp_path / "data"
     (data / "global").mkdir(parents=True, exist_ok=True)

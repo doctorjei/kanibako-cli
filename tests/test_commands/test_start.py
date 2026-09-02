@@ -18,6 +18,7 @@ from kanibako.commands.start import (
 from kanibako.settings.paths import BoxMode
 from kanibako.settings.settings_launch import AuthSource
 from kanibako.targets.base import PersonaProbeOutcome, ProbeEvidence
+from kanibako.settings.bootstrap import CONFIG_PATH_DEFAULTS, SYSTEM_PATH_DEFAULTS
 
 
 def _rejected(status: int = 403, provider_text: str = "", **kw):
@@ -3607,9 +3608,6 @@ class TestApplyInitSeeds:
         here — a second spelling of that rule is the defect one layer along.
         """
         from kanibako.settings.paths import _floor_field
-        from kanibako.settings.paths_defaults import (
-            CONFIG_PATH_DEFAULTS, SYSTEM_PATH_DEFAULTS,
-        )
         std = self._std(tmp_path)
         missing = [
             key for key in CONFIG_PATH_DEFAULTS

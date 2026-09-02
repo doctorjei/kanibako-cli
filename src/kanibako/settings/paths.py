@@ -2,17 +2,8 @@
 
 from __future__ import annotations
 
-from kanibako.settings.paths_defaults import (XDG_SPEC_DEFAULTS, CONFIG_PATH_DEFAULTS,
-                                              SYSTEM_PATH_DEFAULTS, XDG_DATA_HOME, XDG_CONFIG_HOME,
-                                              XDG_RUNTIME_DIR, XDG_STATE_HOME, XDG_CACHE_HOME,
-
-                                              SHELL_D_FILE, PROFILE_FILE, BASHRC_FILE, IGNORE_FILE,
-                                              VAULT_PATH,
-                                              PROFILE_CONTENTS, BASHRC_CONTENTS,
+from kanibako.settings.paths_defaults import (PROFILE_CONTENTS, BASHRC_CONTENTS,
                                               SHELL_D_CONTENTS, RUN_USER_UID_PATH,
-
-                                              HOME_PATH, KANIBAKO_PATH,
-                                              STANDALONE_META_DIR,
 
                                               STATUS_OK, STATUS_MISSING, STATUS_NO_DATA,
                                               MSG_OTS_KB_INIT, MSG_OTS_WS_PROJ_INIT, MSG_DONE,
@@ -54,6 +45,7 @@ from kanibako.settings.settings_resolve import (LevelView, ResolveCtx, SettingsE
 
 from kanibako.project.names import (resolve_name, resolve_qualified_name)
 from kanibako.utils import project_hash, short_hash
+from kanibako.settings.bootstrap import BASHRC_FILE, CONFIG_PATH_DEFAULTS, HOME_PATH, IGNORE_FILE, KANIBAKO_PATH, PROFILE_FILE, SHELL_D_FILE, STANDALONE_META_DIR, SYSTEM_PATH_DEFAULTS, VAULT_PATH, XDG_CACHE_HOME, XDG_CONFIG_HOME, XDG_DATA_HOME, XDG_RUNTIME_DIR, XDG_SPEC_DEFAULTS, XDG_STATE_HOME
 
 
 class BoxMode(Enum):

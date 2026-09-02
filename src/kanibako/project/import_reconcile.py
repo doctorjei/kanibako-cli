@@ -41,9 +41,9 @@ from pathlib import Path
 from kanibako.project import registry_store
 from kanibako.project.names import cross_kind_shadow_hatch, register_name
 from kanibako.settings.config import WORKSET_META_FILE
-from kanibako.settings.paths_defaults import STANDALONE_META_DIR
 from kanibako.errors import KanibakoError
 from kanibako.log import get_logger
+from kanibako.settings.bootstrap import STANDALONE_META_DIR
 
 logger = get_logger("import_reconcile")
 

@@ -25,6 +25,7 @@ from kanibako.settings.config import (
     write_project_config,
     write_agent_setting,
 )
+from kanibako.settings.bootstrap import CONFIG_PATH_DEFAULTS, SYSTEM_PATH_DEFAULTS
 
 
 class TestLoadConfig:
@@ -67,7 +68,6 @@ class TestLoadConfig:
         bare ``channels`` leaf on either side would break it.
         """
         from kanibako.settings.paths import resolve_system_paths
-        from kanibako.settings.paths_defaults import CONFIG_PATH_DEFAULTS
 
         sparse = tmp_path / "empty.yaml"
         write_global_config(sparse)
@@ -97,7 +97,6 @@ class TestLoadConfig:
         tables moved out of the comparison: the two tables were settings, and a user who
         still has them was silently running something other than what they read.
         """
-        from kanibako.settings.paths_defaults import SYSTEM_PATH_DEFAULTS
 
         verbose = tmp_path / "verbose.yaml"
         dump_doc(verbose, {
@@ -466,7 +465,6 @@ class TestRetiredTemplatesStamp:
         """The other half: with the orphan gone the resolve is untouched."""
         from kanibako.settings.config import load_config
         from kanibako.settings.paths import resolve_system_paths
-        from kanibako.settings.paths_defaults import SYSTEM_PATH_DEFAULTS
 
         clean = tmp_path / "clean.yaml"
         write_global_config(clean)
