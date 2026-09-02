@@ -200,6 +200,38 @@ class TestPrimaryModeVault:
         assert proj.vault_rw_path == std.primary_workset / "vault" / "rw" / proj.name
         assert proj.vault_ro_path.is_dir()
 
+    def test_gitignore_lands_in_the_skeleton_not_inside_the_ro_arm(self, std, config, tmp_home):
+        """⚑ PRIMARY's arm carries a ``@meta.box.name`` leaf, so its PARENT is the arm itself."""
+        workspace = tmp_home / "code" / "giapp"
+        workspace.mkdir(parents=True)
+        proj = resolve_project(std, config, str(workspace), initialize=True)
+        vault = std.primary_workset / "vault"
+        # Anti-vacuity: the default layout really is in play here.
+        assert proj.vault_ro_path == vault / "ro" / proj.name
+        assert (vault / ".gitignore").read_text() == "rw/\n"
+        # ``rw/`` names nothing from inside the ``ro`` arm.
+        assert not (vault / "ro" / ".gitignore").exists()
+
+    def test_in_root_ro_repoint_writes_no_gitignore_beside_the_repointed_arm(
+        self, std, config_file, tmp_home,
+    ):
+        """🐞 The skeleton is COMPOSED off the root, never POSITIONED off ``workset.vault_ro``."""
+        _repoint(std.primary_workset, "vault_ro", "@meta.workset.path/store/ro")
+        reloaded = load_std_paths(load_config(config_file))
+        workspace = tmp_home / "code" / "storeapp"
+        workspace.mkdir(parents=True)
+        proj = resolve_project(reloaded, load_config(config_file), str(workspace),
+                               initialize=True)
+        root = reloaded.primary_workset
+        # Anti-vacuity: the repoint took effect AND stayed inside the root, so the
+        # containment guard admits it — the derivation is the only thing wrong.
+        assert proj.vault_ro_path == root / "store" / "ro" / proj.name
+        assert proj.vault_ro_path.is_dir()
+        # ``store/`` is a directory no key gave us.
+        assert not (root / "store" / ".gitignore").exists()
+        # ``workset.vault_rw`` is untouched, so the skeleton still gets its file.
+        assert (root / "vault" / ".gitignore").read_text() == "rw/\n"
+
 
 # ---------------------------------------------------------------------------
 # STANDALONE mode — the project root IS the workset root (no per-box leaf)
@@ -240,3 +272,45 @@ class TestStandaloneModeVault:
         assert proj.vault_ro_path == outside / "ro"
         assert (outside / "ro").is_dir()
         assert not (outside / ".gitignore").exists()
+
+    def test_in_root_ro_repoint_writes_no_gitignore_beside_the_repointed_arm(
+        self, std, config, project_dir,
+    ):
+        """🐞 The skeleton is COMPOSED off the root, never POSITIONED off ``workset.vault_ro``."""
+        root = project_dir.resolve()
+        _repoint(root, "vault_ro", "@meta.workset.path/store/ro")
+        proj = resolve_standalone_project(std, config, str(project_dir), initialize=True)
+        # Anti-vacuity: the repoint took effect AND stayed INSIDE the root, so the
+        # containment guard admits it — the derivation is the only thing wrong.
+        assert proj.vault_ro_path == root / "store" / "ro"
+        assert (root / "store" / "ro").is_dir()
+        # ``store/`` is a directory no key gave us: nothing of ours belongs in it.
+        assert not (root / "store" / ".gitignore").exists()
+        # ``workset.vault_rw`` is untouched, so the skeleton still gets its file.
+        assert (root / "vault" / ".gitignore").read_text() == "rw/\n"
+
+    def test_rw_repointed_out_leaves_the_skeleton_claiming_nothing(
+        self, std, config, project_dir, tmp_home,
+    ):
+        """⚑ The file CLAIMS ``rw/`` is a child; only ``workset.vault_rw`` can make that true."""
+        root = project_dir.resolve()
+        elsewhere = tmp_home / "rwstore"
+        _repoint(root, "vault_rw", str(elsewhere))
+        proj = resolve_standalone_project(std, config, str(project_dir), initialize=True)
+        # Anti-vacuity: the ro arm is still the default, so the skeleton dir exists.
+        assert proj.vault_ro_path == root / "vault" / "ro"
+        assert (root / "vault" / "ro").is_dir()
+        assert proj.vault_rw_path == elsewhere
+        assert elsewhere.is_dir()
+        assert not (root / "vault" / ".gitignore").exists()
+
+    def test_rw_pointed_at_the_skeleton_gets_no_gitignore_inside_it(
+        self, std, config, project_dir,
+    ):
+        """⚑ STRICT: an arm pointed AT the skeleton is the user's rw store, not its parent."""
+        root = project_dir.resolve()
+        _repoint(root, "vault_rw", "@meta.workset.path/vault")
+        proj = resolve_standalone_project(std, config, str(project_dir), initialize=True)
+        assert proj.vault_rw_path == root / "vault"
+        assert (root / "vault").is_dir()
+        assert not (root / "vault" / ".gitignore").exists()

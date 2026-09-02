@@ -7,6 +7,7 @@ from kanibako.settings.paths_defaults import (XDG_SPEC_DEFAULTS, CONFIG_PATH_DEF
                                               XDG_RUNTIME_DIR, XDG_STATE_HOME, XDG_CACHE_HOME,
 
                                               SHELL_D_FILE, PROFILE_FILE, BASHRC_FILE, IGNORE_FILE,
+                                              VAULT_PATH,
                                               PROFILE_CONTENTS, BASHRC_CONTENTS,
                                               SHELL_D_CONTENTS, RUN_USER_UID_PATH,
 
@@ -977,15 +978,14 @@ def _upgrade_shell(shell_path: Path) -> None:
 
 def _init_common(std: StandardPaths, metadata_path: Path, shell_path: Path, vault_ro_path: Path,
                  vault_rw_path: Path, project_path: Path, *, enable_vault: bool = True,
-                 vault_root: Path | None = None) -> None:
+                 vault_root: Path) -> None:
     """Shared first-time project setup: create directories, bootstrap shell.
 
-    ⚑ *vault_root* is the workset root that owns the ``vault/`` SKELETON dir.  The
-    ``.gitignore`` belongs to that skeleton, so it is written only while the vault still
-    sits inside it: ``workset.vault_ro`` is repointable, and a repoint out of the root
-    would otherwise drop a stray ``.gitignore`` into whatever directory the user chose
-    as its parent — ``$HOME`` for ``vault_ro: ~/store``.  ``None`` keeps the
-    unconditional legacy behaviour for any caller that cannot name a root.
+    ⚑⚑ *vault_root* is the workset root that owns the ``vault/`` SKELETON dir, and it is
+    REQUIRED because the skeleton is composed off it — ``<vault_root>/vault``, the one
+    non-key leaf a workset root carries (``project/workset.py::_VAULT_LEAF``, and the
+    same literal ``_lifecycle._to_standalone`` and ``_duplicate`` write into).  Without a
+    root there is no skeleton, so there is nothing to answer.
     """
     import sys
 
@@ -1000,9 +1000,18 @@ def _init_common(std: StandardPaths, metadata_path: Path, shell_path: Path, vaul
     if enable_vault:
         vault_ro_path.mkdir(parents=True, exist_ok=True)
         vault_rw_path.mkdir(parents=True, exist_ok=True)
-        # .gitignore in vault/ to exclude rw from version control.
-        vault_dir = vault_ro_path.parent
-        if vault_root is None or _host_path_within(vault_dir, vault_root):
+        # ⚑⚑ THE SKELETON IS COMPOSED OFF THE ROOT, NEVER POSITIONED OFF A RESOLVED ARM.
+        # ``vault_ro_path.parent`` was that position, and ``workset.vault_ro`` is a
+        # repointable key, so the parent stopped being the skeleton the moment it moved:
+        # ``vault_ro: @meta.workset.path/store/ro`` named ``<root>/store`` — a directory
+        # no key gave us — and in PRIMARY the arm carries a ``@meta.box.name`` leaf, so
+        # the parent was the ``ro`` arm ITSELF, where an ``rw/`` pattern matches nothing.
+        vault_dir = vault_root / VAULT_PATH
+        # ⚑ The file CLAIMS ``rw/`` is a child of the skeleton, so it is written only
+        # while the RESOLVED ``workset.vault_rw`` really is under it — a repoint out
+        # makes the claim false and the file a stray beside a directory the USER named.
+        # ⚑ STRICT: an arm pointed AT the skeleton is the user's rw store, not its parent.
+        if vault_rw_path != vault_dir and _host_path_within(vault_rw_path, vault_dir):
             gitignore = vault_dir / IGNORE_FILE
             if not gitignore.exists():
                 gitignore.write_text("rw/\n")

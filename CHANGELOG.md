@@ -794,9 +794,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ⚑ **If you had already set either key, this MOVES the directory kanibako uses.** Whatever is
   under the old default location is not migrated: move it across yourself, or unset the key to
   keep the old path. ⚑ The two arms are independent — repointing `vault_ro` alone leaves
-  `vault_rw` at its default — and one small behaviour follows the move: the `.gitignore` that
-  keeps `rw/` out of version control belongs to the workset's own `vault/` directory, so pointing
-  an arm outside the workset root no longer drops that file beside whatever you pointed it at.
+  `vault_rw` at its default — and one small behavior follows the move: the `.gitignore` that
+  keeps `rw/` out of version control belongs to the workset's own `vault/` directory, and is now
+  written there in every mode. Repointing an arm — whether outside the workset root or to another
+  directory inside it — no longer drops that file beside whatever you pointed it at. It is written
+  only while `workset.vault_rw` actually resolves inside that `vault/` directory: point `rw`
+  elsewhere and you get no `.gitignore`, because there would be no `rw/` there for it to name.
+  ⚑ In a primary or named box the file MOVES up one level, from `<primary_workset>/vault/ro/` to
+  `<primary_workset>/vault/` — the `ro` arm carries a per-box name leaf, so the old location was
+  inside the read-only arm, where an `rw/` pattern matched nothing. An existing copy in the old
+  place is left alone and is inert.
   Nothing else about the vault changes. It is still gated on `box.enable_vault`, still nests
   `ro`/`rw` above the box name for a primary or named box, and still has no per-box subdirectory
   for a standalone one.
