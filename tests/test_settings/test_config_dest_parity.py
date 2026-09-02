@@ -1328,7 +1328,7 @@ class TestSystemPathTierDest:
     """Every ``SYSTEM_PATH_DEFAULTS`` member writes, reads and clears in ONE file.
 
     ⚑ DERIVED FROM THE TABLE, not from a list here (P13): a row added to
-    ``paths_defaults.SYSTEM_PATH_DEFAULTS`` without a route reds this.
+    ``bootstrap.SYSTEM_PATH_DEFAULTS`` without a route reds this.
     """
 
     def test_set_get_reset_all_name_the_settings_file(self, bench):

@@ -424,7 +424,7 @@ in `config` (shared with the box.meta writer); see `config.coerce_bool`.
 file keeps the raw spelling, tokens and all (spec §0). What the type governs is the BARE-RELATIVE
 REFUSAL — `is_path_valued_key` reads this table, and `set_config_value`'s preamble refuses a value
 that does not say on its own where it points. The `system.*` and `config.*` rows are DERIVED from
-`paths_defaults`' two declared-default tables (P13), so a path key added to either arrives here with
+`bootstrap`' two declared-default tables (P13), so a path key added to either arrives here with
 no edit; the `workset.*` and `box.*` rows are spelled out because no live table enumerates them.
 
 ⚑ **The PARAMETRIC path keys are not spellable here** — `agent.<node>.{template,canon}`, the bare
@@ -1121,7 +1121,7 @@ every system path key — a name that lies). All eleven are ordinary Layer-2 set
 CLI-settable list; they route through `_KEY_ROUTES` to the system SETTINGS file now, like their
 ``workset.*`` twins. ⚑⚑ **AND SINCE 2026-08-26 `kanibako_config.yaml`'s ``[system]`` table IS NOT A
 LAYER AT ALL**: `load_system_config` filters its config-file reads to ``config.*``, so the FLOOR is
-`paths_defaults.SYSTEM_PATH_DEFAULTS` alone and a ``system:`` table hand-written into the bootstrap
+`bootstrap.SYSTEM_PATH_DEFAULTS` alone and a ``system:`` table hand-written into the bootstrap
 file moves no path. ⚑⚑ **THE STORAGE HALF IS CLOSED (2026-08-23).**
 `load_system_config` layers the SYSTEM SETTINGS file's ``system:`` table over that floor, filtered to
 `SYSTEM_PATH_DEFAULTS`, so a repoint now reaches every `StandardPaths` field as well as the cascade.

@@ -31,7 +31,7 @@ GUEST_GID = 1000
 
 # The GUEST workspace/vault leaves, in the two forms their consumers need: a RELPATH to join onto
 # a host ``Path`` and an absolute to compare a box-side dest against.
-# ⚑ GUEST-SIDE ONLY. ``paths_defaults.WORKSPACE_PATH`` is a HOST leaf spelled identically and the
+# ⚑ GUEST-SIDE ONLY. ``bootstrap.WORKSPACE_PATH`` is a HOST leaf spelled identically and the
 # two are INDEPENDENT — this module may import NOTHING from ``settings/``, so a guest constant
 # CANNOT be expressed in terms of a host one; the separation is structural, not conventional.
 # 🛑 The values are DECLARED KEY NAMES in the closed keyspace (``box.bindings.rw[~/workspace]``,

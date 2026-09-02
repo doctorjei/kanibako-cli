@@ -49,10 +49,10 @@ from tests.test_settings.test_manifest_conformance import (
 #: HERE, not in ``src``: whether a default has a value ORACLE is a property the test
 #: suite cares about, while the command only cares WHERE the value is written down.
 #: Several labels refine one conformance class (the two canon-producer arms, the two
-#: ``paths_defaults`` tiers), so the assertion below is per-class UNION, never 1:1.
+#: ``bootstrap`` tiers), so the assertion below is per-class UNION, never 1:1.
 LABEL_TO_CONFORMANCE_CLASS: dict[str, str] = {
-    "paths_defaults.py (config tier)": "pinned",
-    "paths_defaults.py (system tier)": "pinned",
+    "bootstrap.py (config tier)": "pinned",
+    "bootstrap.py (system tier)": "pinned",
     "settings_launch.py (anchor floor)": "pinned",
     "settings_launch.py (auth floor)": "pinned",
     "core-defaults.yaml (agent_default:)": "pinned",
@@ -164,8 +164,8 @@ class TestSourcePartition:
         naming the carrier.
         """
         sizes = {label: len(keys) for label, keys in source_groups()}
-        assert sizes["paths_defaults.py (config tier)"] == 6
-        assert sizes["paths_defaults.py (system tier)"] == 11
+        assert sizes["bootstrap.py (config tier)"] == 6
+        assert sizes["bootstrap.py (system tier)"] == 11
         # ⚑ WIDENED 6 → 9 (2026-08-29). The floor gained ``workset.skip_kuid_check``
         # (every mode) plus ``workset.registry`` / ``workset.kuid`` (primary/named), three
         # declared rows that no floor emitted, so each dangled as ``__MISSING__`` at
@@ -279,7 +279,7 @@ class TestKeyRows:
         full = inv.source_groups()
         monkeypatch.setattr(
             inv, "source_groups",
-            lambda: tuple(g for g in full if not g[0].startswith("paths_defaults.py")),
+            lambda: tuple(g for g in full if not g[0].startswith("bootstrap.py")),
         )
         with pytest.raises(RuntimeError) as exc:
             inv.key_rows()
@@ -489,7 +489,7 @@ class TestRendering:
         import kanibako.settings.defaults_inventory as inv
 
         flipped = tuple(
-            ("A WRONG LABEL", keys) if label == "paths_defaults.py (config tier)"
+            ("A WRONG LABEL", keys) if label == "bootstrap.py (config tier)"
             else (label, keys)
             for label, keys in inv.source_groups()
         )

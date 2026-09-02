@@ -377,9 +377,9 @@ is created **EMPTY — zero bytes**, always.
 Until then it wrote THREE tables:
 
 * `[config]` — the six Layer-1 foundation keys (spec §1), a VERBATIM copy of
-  `paths_defaults.CONFIG_PATH_DEFAULTS`;
+  `bootstrap.CONFIG_PATH_DEFAULTS`;
 * `[system]` — six of the eleven Layer-2 `system.*` path SETTINGS (spec §2g), a verbatim copy of
-  that slice of `paths_defaults.SYSTEM_PATH_DEFAULTS`;
+  that slice of `bootstrap.SYSTEM_PATH_DEFAULTS`;
 * `[box]` — `image` and `share_images` at their own `KanibakoConfig` field defaults.
 
 The first was Layer-1's own content at its own default. The other two were **SETTINGS** (spec §2g /

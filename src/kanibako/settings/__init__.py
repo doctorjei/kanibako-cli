@@ -21,7 +21,7 @@ The resolver chain, in build order:
   image contract plus the GUEST workspace/vault leaves
   (``GUEST_WORKSPACE``/``GUEST_VAULT_RO``/``GUEST_VAULT_RW`` and their
   ``*_RELPATH`` forms), which are guest-side and independent of the
-  identically-spelled HOST leaves in ``paths_defaults``.
+  identically-spelled HOST leaves in ``bootstrap``.
 * ``settings_views``      — the typed 3-tier read surface over the snapshot.
 * ``settings_categories`` — the nine CATEGORIES and the ``CategoryEntry`` list
   they resolve to: the single route by which anything is bound or copied.  It
