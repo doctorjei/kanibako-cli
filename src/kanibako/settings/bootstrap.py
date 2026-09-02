@@ -10,11 +10,10 @@ flat and stdlib-only), the bundled ``Containerfile.template-*``, and seeded in-b
 
 ⚑ THIS FILE MUST STAY IMPORT-FREE. ``settings/paths.py`` imports it and ``project/workset.py``
 imports that, so an import added here can close the tree's documented cycle — the same
-invariant ``paths_defaults`` carries, and for the same reason.
+invariant ``messages`` carries, and for the same reason.
 
-⚑ ``RUN_USER_UID_PATH`` is deliberately NOT here yet: it is spliced into
-``WARN_RUNDIR_UNUSABLE``, which stays in ``paths_defaults``, so moving it would force that
-file to grow an import. It follows in its own step.
+⚑ ``RUN_USER_UID_PATH`` lives here even though ``WARN_RUNDIR_UNUSABLE`` splices it: the
+message file imports it back, which is safe precisely because this module is a terminal leaf.
 """
 
 XDG_DATA_HOME = "XDG_DATA_HOME"
@@ -90,9 +89,20 @@ VAULT_PATH = "vault"
 # constant, never the string.
 WORKSPACES_PATH = "workspaces"
 WORKSPACE_PATH = "workspace"
+RUN_USER_UID_PATH = "/run/user/%d"
 
 # The STANDALONE box-store dir name — ``@meta.box.path`` and half the detection
 # marker (``system-design-1.8.0.md`` § "Detection & import").
 # ⚑ THE only carrier: ``project/import_reconcile`` used to hand-keep a second
 # spelling and now imports this one.  Import it; never re-spell the string.
 STANDALONE_META_DIR = 'box_data'
+
+
+# The two PROJECT KINDS. Fundamental to kanibako's core, and path-shaped in practice:
+# a kind decides which tree a box resolves into.
+# The box-store leaf for a box with no registry entry — used as a PATH component
+# (``std.boxes / UNREGISTERED_MARKER``), which is what puts it here.
+UNREGISTERED_MARKER = "__unregistered__"
+
+KIND_PROJECT = "project"
+KIND_WORKSET = "workset"

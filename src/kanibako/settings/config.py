@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 from kanibako._atomic import atomic_write_text
 from kanibako.errors import ConfigError
 from kanibako.settings.config_io import dump_doc, load_doc
-from kanibako.settings.paths_defaults import ERR_CONFIG_LAYER1_SETTINGS
+from kanibako.settings.messages import ERR_CONFIG_LAYER1_SETTINGS
 
 if TYPE_CHECKING:
     # ⚑ TYPE-ONLY: ``keystore`` imports this module transitively, so a runtime import

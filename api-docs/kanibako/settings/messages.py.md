@@ -1,42 +1,18 @@
-# `src/kanibako/settings/paths_defaults.py` — API surface
+# `src/kanibako/settings/messages.py` — API surface
 
 _Signatures only: no comments, no docstrings, no bodies._
 **GENERATED — do not hand-edit; regenerate with `notebook/scripts/dev-tools/gen-api-doc.py`.**
-Prose for these symbols lives in `llm-docs/kanibako/settings/paths_defaults.py.md`.
+Prose for these symbols lives in `llm-docs/kanibako/settings/messages.py.md`.
 
 
 ## Variables
 
 ```
-XDG_DATA_HOME = 'XDG_DATA_HOME'
-XDG_CONFIG_HOME = 'XDG_CONFIG_HOME'
-XDG_RUNTIME_DIR = 'XDG_RUNTIME_DIR'
-XDG_STATE_HOME = 'XDG_STATE_HOME'
-XDG_CACHE_HOME = 'XDG_CACHE_HOME'
-XDG_SPEC_DEFAULTS: dict[str, str] = {XDG_DATA_HOME: '.local/share', XDG_CONFIG_HOME: '.config', XDG_STATE_HOME: '.local/state', XDG_CACHE_HOME: '.cache'}
-CONFIG_PATH_DEFAULTS: dict[str, str] = {'config.data': '$XDG_DATA_HOME/kanibako', 'config.settings': '@config.data/global/settings.yaml', 'config.agents': '@config.data/agents', 'config.primary_workset': '@config.data/primary_workset', 'config.registry': '@config.data/global/registry.yaml', 'config.journal': '@config.data/global/journal.yaml'}
-SYSTEM_PATH_DEFAULTS: dict[str, str] = {'system.backup': '@config.data/backup', 'system.channelroot': '@config.data/channels', 'system.template': '@config.data/global/template', 'system.canon': '@config.data/global/canon', 'system.cache': '$XDG_CACHE_HOME/kanibako', 'system.runtime': '$XDG_RUNTIME_DIR/kanibako', 'system.channels.common': '@system.channelroot/common', 'system.channels.chat': '@system.channelroot/chat', 'system.channels.broadcast': '@system.channels.chat/broadcast.md', 'system.channels.mailboxes': '@system.channelroot/mailboxes', 'system.channels.share': '@system.channelroot/share'}
-PROFILE_FILE = '.profile'
-BASHRC_FILE = '.bashrc'
-SHELL_D_FILE = '.shell.d'
-IGNORE_FILE = '.gitignore'
-BOXES_PATH = 'boxes'
-CHANNELS_PATH = 'channels'
-HOME_PATH = 'home'
-KANIBAKO_PATH = 'kanibako'
-LOGS_PATH = 'logs'
-RO_PATH = 'ro'
-RW_PATH = 'rw'
-VAULT_PATH = 'vault'
-WORKSPACES_PATH = 'workspaces'
-WORKSPACE_PATH = 'workspace'
-RUN_USER_UID_PATH = '/run/user/%d'
-STANDALONE_META_DIR = 'box_data'
 STATUS_OK = 'ok'
 STATUS_MISSING = 'missing'
 STATUS_NO_DATA = 'no-data'
 MSG_OTS_KB_INIT = '[One Time Setup] Initializing kanibako in %s... '
-MSG_OTS_WS_PROJ_INIT = '[One Time Setup] Initializing workset project in %s...'
+MSG_OTS_WS_PROJ_INIT = '[One Time Setup] Initializing workset project in %s... '
 MSG_DONE = 'done.'
 WARN_RELATIVE_XDG = '%s=%r is relative (not absolute); ignoring per XDG spec & using default.'
 WARN_FALLBACK_RT_DIR = '%s not set; falling back to %s for runtime files ' + '(helper sockets). Set %s to a per-user runtime dir to silence this.'
@@ -49,6 +25,7 @@ WARN_BOX_NO_VAULT = "Warning: cannot find vault for box '%s' (expected at %s); i
 ERR_SETTINGS_BAD_PATH = 'Unresolvable %s path: %s'
 ERR_SETTINGS_BAD_REF = 'Unknown @%s-reference: %s'
 ERR_CONFIG_NO_FILE = '%s is missing. Run any kanibako command to initialize.'
+ERR_CONFIG_LAYER1_SETTINGS = '%s carries settings, which it cannot hold:\n  %s\n' + 'That file holds the config.* bootstrap paths and nothing else. ' + 'Delete those lines from it, then set what you meant with ' + "'kanibako system set <key>=<value>', which writes the settings file."
 ERR_PROJECT_NO_PATH = "Project path '%s' does not exist."
 ERR_PROJECT_NEW_HOME = 'Refusing to create project rooted at $HOME: this would mount the ' + 'entire home directory as the workspace.\n If you really want a ' + 'project here, use:\nkanibako create --standalone ~ --allow-home'
 ERR_PROJECT_REG_HOME = 'Refusing to register $HOME as a project path: this would mount the ' + 'entire home directory as the workspace.'
@@ -61,8 +38,5 @@ ERR_WORKSET_NOT_IN_BOX = "Inside workset '%s' but not in a specific project work
 BASHRC_CONTENTS = '# kanibako shell environment\n' + '[ -f /etc/bashrc ] && . /etc/bashrc\n' + 'export PS1="${KANIBAKO_PS1:-(kanibako) \\u@\\h:\\w\\$ }"\n' + '# Source user init scripts\n%s\n' % _SHELL_D_SOURCE_LINE
 SHELL_D_CONTENTS = '# Source user init scripts\n%s\n' % _SHELL_D_SOURCE_LINE
 PROFILE_CONTENTS = '# kanibako login profile\n' + '[ -f ~/.bashrc ] && . ~/.bashrc\n'
-UNREGISTERED_MARKER = '__unregistered__'
-KIND_PROJECT = 'project'
-KIND_WORKSET = 'workset'
 _SHELL_D_SOURCE_LINE = 'for _f in ~/.shell.d/*.sh; do [ -r "$_f" ] && . "$_f"; done\nunset _f'
 ```

@@ -3,7 +3,7 @@
 _no logic, no I/O: only the values `settings/paths.py` resolves and the words it prints_
 
 ⚠️ **RELOCATION PASS, 2026-08-18.** Every explanatory comment that used to live in
-`src/kanibako/settings/paths_defaults.py` is here; the source keeps one-line descriptors and `⚑`
+`src/kanibako/settings/messages.py` is here; the source keeps one-line descriptors and `⚑`
 markers only. Absence of a symbol below means "nothing was displaced from it", never "does not
 exist". **Claims found FALSE against the code and the spec were DROPPED rather than moved** — each is
 recorded under [Dropped as false](#dropped-as-false) so nobody re-derives them from git history.

@@ -4,14 +4,15 @@
 🛑 PATH LITERALS DO NOT LIVE HERE — they moved to :mod:`kanibako.settings.bootstrap`
 (`[R157]`). Do not reintroduce one; add it there and import it.
 
-⚑ ``RUN_USER_UID_PATH`` is the ONE path constant still here, deliberately: it is spliced into
-``WARN_RUNDIR_UNUSABLE`` below, and moving it would force this file to grow an import — which
-:func:`test_paths_defaults_is_import_free` forbids, because an import here can close the
-tree's documented cycle. It moves in its own step, once that splice is resolved.
+⚑ NO path literal is defined here. ``RUN_USER_UID_PATH`` is IMPORTED from ``bootstrap`` for
+``WARN_RUNDIR_UNUSABLE``'s splice — the single permitted import, and safe because ``bootstrap``
+imports nothing and so cannot complete a cycle back to this file.
 """
 
-# ⚑ Spliced into WARN_RUNDIR_UNUSABLE below — see the module docstring.
-RUN_USER_UID_PATH = "/run/user/%d"
+# ⚑⚑ THE ONE PERMITTED IMPORT, AND IT KEEPS THE GRAPH A DAG: ``bootstrap`` imports nothing
+# (pinned by ``test_bootstrap_is_import_free``), so it is a TERMINAL leaf and no path through
+# it returns here. ``RUN_USER_UID_PATH`` is spliced into ``WARN_RUNDIR_UNUSABLE`` below.
+from kanibako.settings.bootstrap import RUN_USER_UID_PATH
 
 
 STATUS_OK = "ok"
@@ -98,6 +99,3 @@ SHELL_D_CONTENTS =        "# Source user init scripts\n%s\n" % _SHELL_D_SOURCE_L
 PROFILE_CONTENTS =       ("# kanibako login profile\n" +
                           "[ -f ~/.bashrc ] && . ~/.bashrc\n")
 
-UNREGISTERED_MARKER = "__unregistered__"
-KIND_PROJECT = "project"
-KIND_WORKSET = "workset"
