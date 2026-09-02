@@ -8,6 +8,8 @@ import pytest
 
 from kanibako.cli import build_parser
 
+from tests.support.filenames import CONFIG_FILENAME
+
 
 def _run_main_capturing(cmd: str, extra: list[str], *, target: str = "start") -> dict:
     """Run cli.main and capture the args namespace seen by the dispatcher.
@@ -1050,7 +1052,7 @@ class TestLazyInitExemptions:
             main(["system", "info"])
         assert exc_info.value.code == 0
         # Config should have been created by lazy init
-        assert (tmp_path / "config" / "kanibako_config.yaml").exists()
+        assert (tmp_path / "config" / CONFIG_FILENAME).exists()
 
 
 class TestVerboseFlag:
@@ -1117,7 +1119,7 @@ def _marker_file(tmp_path):
     from kanibako.settings.paths import load_system_config
 
     return load_system_config(
-        tmp_path / "kanibako_config.yaml", data_home=tmp_path, home=Path.home(),
+        tmp_path / CONFIG_FILENAME, data_home=tmp_path, home=Path.home(),
     )["config.settings"]
 
 
@@ -1135,7 +1137,7 @@ class TestSetupNudge:
 
         from kanibako.cli import _setup_nudge
 
-        cf = tmp_path / "kanibako_config.yaml"  # does not exist → absent marker
+        cf = tmp_path / CONFIG_FILENAME  # does not exist → absent marker
         with patch("kanibako.settings.config.config_file_path", return_value=cf), \
              patch("kanibako.settings.paths.xdg", return_value=tmp_path):
             result = _setup_nudge(self._ns("start"))
@@ -1154,7 +1156,7 @@ class TestSetupNudge:
 
         from kanibako.cli import _setup_nudge
 
-        cf = tmp_path / "kanibako_config.yaml"  # absent marker
+        cf = tmp_path / CONFIG_FILENAME  # absent marker
         with patch("kanibako.settings.config.config_file_path", return_value=cf), \
              patch("kanibako.settings.paths.xdg", return_value=tmp_path):
             _setup_nudge(self._ns("start"))
@@ -1174,7 +1176,7 @@ class TestSetupNudge:
         from kanibako.cli import _setup_nudge
         from kanibako.settings.config_interface import write_system_value
 
-        cf = tmp_path / "kanibako_config.yaml"
+        cf = tmp_path / CONFIG_FILENAME
         write_system_value(_marker_file(tmp_path), "setup_completed", "1.6.0")
         with patch("kanibako.settings.config.config_file_path", return_value=cf), \
              patch("kanibako.settings.paths.xdg", return_value=tmp_path), \
@@ -1195,7 +1197,7 @@ class TestSetupNudge:
 
         import kanibako
 
-        cf = tmp_path / "kanibako_config.yaml"
+        cf = tmp_path / CONFIG_FILENAME
         # Marker == the current build's base version → == band → no nudge.
         write_system_value(
             _marker_file(tmp_path),
@@ -1212,7 +1214,7 @@ class TestSetupNudge:
 
         from kanibako.cli import _setup_nudge
 
-        cf = tmp_path / "kanibako_config.yaml"
+        cf = tmp_path / CONFIG_FILENAME
         with patch("kanibako.settings.config.config_file_path", return_value=cf), \
              patch("kanibako.settings.paths.xdg", return_value=tmp_path):
             _setup_nudge(self._ns("agent", agent_command="reauth"))
@@ -1224,7 +1226,7 @@ class TestSetupNudge:
 
         from kanibako.cli import _setup_nudge
 
-        cf = tmp_path / "kanibako_config.yaml"  # absent marker
+        cf = tmp_path / CONFIG_FILENAME  # absent marker
         with patch("kanibako.settings.config.config_file_path", return_value=cf), \
              patch("kanibako.settings.paths.xdg", return_value=tmp_path):
             _setup_nudge(self._ns("shell"))
@@ -1235,7 +1237,7 @@ class TestSetupNudge:
 
         from kanibako.cli import _setup_nudge
 
-        cf = tmp_path / "kanibako_config.yaml"
+        cf = tmp_path / CONFIG_FILENAME
         with patch("kanibako.settings.config.config_file_path", return_value=cf), \
              patch("kanibako.settings.paths.xdg", return_value=tmp_path):
             _setup_nudge(self._ns("setup"))
@@ -1247,7 +1249,7 @@ class TestSetupNudge:
 
         from kanibako.cli import _setup_nudge
 
-        cf = tmp_path / "kanibako_config.yaml"
+        cf = tmp_path / CONFIG_FILENAME
         with patch("kanibako.settings.config.config_file_path", return_value=cf), \
              patch("kanibako.settings.paths.xdg", return_value=tmp_path):
             _setup_nudge(self._ns("list"))
@@ -1276,7 +1278,7 @@ class TestSetupNudge:
         from kanibako.settings.config_interface import write_system_value
         from kanibako.errors import KanibakoError
 
-        cf = tmp_path / "kanibako_config.yaml"
+        cf = tmp_path / CONFIG_FILENAME
         write_system_value(
             _marker_file(tmp_path), "setup_completed", self._below_bcv(),
         )  # < BCV
@@ -1297,7 +1299,7 @@ class TestSetupNudge:
         from kanibako.settings.config_interface import write_system_value
         from kanibako.errors import KanibakoError
 
-        cf = tmp_path / "kanibako_config.yaml"
+        cf = tmp_path / CONFIG_FILENAME
         # A version strictly greater than the build base → "from the future".
         newer = f"{Version(kanibako.__version__).major + 1}.0.0"
         assert Version(newer) > Version(Version(kanibako.__version__).base_version)
@@ -1316,7 +1318,7 @@ class TestSetupNudge:
 
         from kanibako.cli import _setup_nudge
 
-        cf = tmp_path / "kanibako_config.yaml"
+        cf = tmp_path / CONFIG_FILENAME
         with patch("kanibako.settings.config.config_file_path", return_value=cf), \
              patch("kanibako.settings.paths.xdg", return_value=tmp_path), \
              patch(
@@ -1340,7 +1342,7 @@ class TestSetupNudge:
         from kanibako.cli import main
         from kanibako.settings.config_interface import write_system_value
 
-        cf = tmp_path / "kanibako_config.yaml"
+        cf = tmp_path / CONFIG_FILENAME
         # < BCV → ERROR band.
         write_system_value(
             _marker_file(tmp_path), "setup_completed", self._below_bcv(),
@@ -1364,7 +1366,7 @@ class TestSetupNudge:
         from kanibako.settings.config import read_setup_completed
         from kanibako.settings.config_interface import write_system_value
 
-        cf = tmp_path / "kanibako_config.yaml"
+        cf = tmp_path / CONFIG_FILENAME
         write_system_value(_marker_file(tmp_path), "setup_completed", "1.6.0")
         with patch("kanibako.settings.config.config_file_path", return_value=cf), \
              patch("kanibako.settings.paths.xdg", return_value=tmp_path), \
@@ -1406,7 +1408,7 @@ class TestTemplateStalenessRetired:
         import kanibako
         from kanibako.settings.config_interface import write_system_value
 
-        cf = tmp_path / "kanibako_config.yaml"
+        cf = tmp_path / CONFIG_FILENAME
         write_system_value(
             _marker_file(tmp_path),
             "setup_completed",
@@ -1721,7 +1723,7 @@ class TestBoxConfigVerbsAcceptBoxFlag:
 
         from kanibako.cli import _setup_nudge
 
-        cf = tmp_path / "kanibako_config.yaml"  # absent marker
+        cf = tmp_path / CONFIG_FILENAME  # absent marker
         with patch("kanibako.settings.config.config_file_path", return_value=cf), \
              patch("kanibako.settings.paths.xdg", return_value=tmp_path):
             _setup_nudge(argparse.Namespace(command="shell"))

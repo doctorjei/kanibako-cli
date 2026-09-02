@@ -43,7 +43,7 @@ from kanibako.settings.settings_keyspace import (
     unread_harnesses,
 )
 from kanibako.settings.settings_prefs import PREF_ROOT
-from kanibako.settings.bootstrap import CONFIG_PATH_DEFAULTS, SYSTEM_PATH_DEFAULTS
+from kanibako.settings.bootstrap import CONFIG_FILE, CONFIG_PATH_DEFAULTS, SYSTEM_PATH_DEFAULTS
 
 
 class ConfigLevel(Enum):
@@ -1166,7 +1166,7 @@ def _user_config_file_str() -> "Path | str":
     try:
         return config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
     except Exception:
-        return "~/.config/kanibako_config.yaml"
+        return f"~/.config/{CONFIG_FILE}"
 
 
 #: ⚑ ``system_key_refusal`` LIVED HERE AND IS DELETED (2026-08-23). It answered "'<key>'
