@@ -8,7 +8,6 @@ import yaml
 from kanibako.settings.config import BOX_META_FILE, WORKSET_META_FILE
 from kanibako.settings.config_io import dump_doc, load_doc
 from kanibako.settings.config_keys import ConfigLevel, is_known_key
-from kanibako.settings.paths_defaults import SYSTEM_PATH_DEFAULTS
 from kanibako.settings.config_interface import (
     ConfigAction,
     get_config_value,
@@ -18,6 +17,7 @@ from kanibako.settings.config_interface import (
     show_config,
     reset_all,
 )
+from kanibako.settings.bootstrap import SYSTEM_PATH_DEFAULTS
 
 
 # ---------------------------------------------------------------------------

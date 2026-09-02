@@ -612,13 +612,14 @@ class TestLoadSystemConfig:
     ):
         """The other half of the case above: with neither file speaking, the DECLARED
         table answers — which is what the planted values were failing to displace."""
-        from kanibako.settings.paths_defaults import SYSTEM_PATH_DEFAULTS
 
         base = tmp_path / "config_base.yaml"
         user = tmp_path / "kanibako_config.yaml"
         base.write_text("")
         user.write_text("")
         self._redirect(monkeypatch, base)
+
+        from kanibako.settings.bootstrap import SYSTEM_PATH_DEFAULTS
 
         resolved = load_system_config(user, data_home=tmp_path, home=tmp_path)
         assert SYSTEM_PATH_DEFAULTS["system.channelroot"] == "@config.data/channels"

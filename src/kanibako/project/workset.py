@@ -45,7 +45,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from kanibako.project import registry_store, workset_registry
-from kanibako.settings import paths_defaults
+from kanibako.settings import bootstrap
 from kanibako.settings.config_io import load_doc
 from kanibako.errors import LegacyWorksetIdentityError, WorksetError
 from kanibako.project.names import register_name, unregister_name
@@ -65,12 +65,12 @@ from kanibako.settings.paths import StandardPaths
 # formula ``@meta.workset.path/<leaf>``, applied ONCE per key in its resolver below
 # (§3.3: real and USED).  ⚑ A default leaf is what a key falls back to, NOT the path
 # component: every one of these is repointable, so nothing may join it directly.
-BOXES_DIR_NAME = paths_defaults.BOXES_PATH
-_STANDALONE_BOXES_LEAF = paths_defaults.STANDALONE_META_DIR
-_WORKSPACES_LEAF = paths_defaults.WORKSPACES_PATH
-_STANDALONE_WORKSPACE_LEAF = paths_defaults.WORKSPACE_PATH
-_CHANNELROOT_LEAF = paths_defaults.CHANNELS_PATH
-_LOGS_LEAF = paths_defaults.LOGS_PATH
+BOXES_DIR_NAME = bootstrap.BOXES_PATH
+_STANDALONE_BOXES_LEAF = bootstrap.STANDALONE_META_DIR
+_WORKSPACES_LEAF = bootstrap.WORKSPACES_PATH
+_STANDALONE_WORKSPACE_LEAF = bootstrap.WORKSPACE_PATH
+_CHANNELROOT_LEAF = bootstrap.CHANNELS_PATH
+_LOGS_LEAF = bootstrap.LOGS_PATH
 
 # The two leaves the WORKSET STAMP writes (``launch/templates.py``).  ⚑ They are the
 # WORKSET-scope spelling of two entries ``templates.SCOPE_WHITELISTS["workset"]``
@@ -101,11 +101,11 @@ _BOXES_REF = f"workset.{BOXES_DIR_NAME}"
 # declared, CLI-settable, repointable keys, so the arms are RESOLVED below and nothing may
 # compose ``_VAULT_LEAF / ro`` again — that composition WAS the defect: a repoint was
 # accepted by the settings file and ignored by the filesystem.
-_VAULT_LEAF = paths_defaults.VAULT_PATH
+_VAULT_LEAF = bootstrap.VAULT_PATH
 _VAULT_RO_KEY = "vault_ro"
 _VAULT_RW_KEY = "vault_rw"
-_VAULT_RO_LEAF = f"{_VAULT_LEAF}/{paths_defaults.RO_PATH}"
-_VAULT_RW_LEAF = f"{_VAULT_LEAF}/{paths_defaults.RW_PATH}"
+_VAULT_RO_LEAF = f"{_VAULT_LEAF}/{bootstrap.RO_PATH}"
+_VAULT_RW_LEAF = f"{_VAULT_LEAF}/{bootstrap.RW_PATH}"
 
 
 # ---------------------------------------------------------------------------

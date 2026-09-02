@@ -69,7 +69,6 @@ from kanibako.settings.keyspace_manifest import (
     manifest_doc,
 )
 from kanibako.settings.paths import BoxMode
-from kanibako.settings.paths_defaults import CONFIG_PATH_DEFAULTS, SYSTEM_PATH_DEFAULTS
 from kanibako.settings.settings_keyspace import (
     ACCESS_TIERS,
     BIND_CATEGORIES,
@@ -95,6 +94,7 @@ from kanibako.settings.settings_keyspace import (
 )
 from kanibako.settings.settings_launch import auth_chain_floor, workset_anchor_floor
 from kanibako.settings.settings_resolve import SettingsError
+from kanibako.settings.bootstrap import CONFIG_PATH_DEFAULTS, SYSTEM_PATH_DEFAULTS
 
 # --------------------------------------------------------------------------- #
 # Fixtures of fact

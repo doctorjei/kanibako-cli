@@ -28,7 +28,6 @@ from kanibako.settings.agent_config import (
 )
 from kanibako.settings.config import coerce_bool
 from kanibako.settings.kb_store import SCOPE_CONTAINMENT
-from kanibako.settings.paths_defaults import CONFIG_PATH_DEFAULTS, SYSTEM_PATH_DEFAULTS
 from kanibako.settings.settings_categories import DECLARATION_ROOT_REF
 from kanibako.settings.settings_keyspace import (
     ACCESS_TIERS,
@@ -44,6 +43,7 @@ from kanibako.settings.settings_keyspace import (
     unread_harnesses,
 )
 from kanibako.settings.settings_prefs import PREF_ROOT
+from kanibako.settings.bootstrap import CONFIG_PATH_DEFAULTS, SYSTEM_PATH_DEFAULTS
 
 
 class ConfigLevel(Enum):

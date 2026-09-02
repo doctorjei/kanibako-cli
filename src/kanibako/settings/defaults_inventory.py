@@ -100,7 +100,7 @@ def source_groups() -> tuple[tuple[str, frozenset[str]], ...]:
   (rows are sorted for display), but the partition must be exhaustive and disjoint —
   :func:`key_rows` raises if it is not, so an unclassified row cannot print blank.
   """
-  from kanibako.settings.paths_defaults import CONFIG_PATH_DEFAULTS, SYSTEM_PATH_DEFAULTS
+  from kanibako.settings.bootstrap import CONFIG_PATH_DEFAULTS, SYSTEM_PATH_DEFAULTS
   from kanibako.settings.settings_launch import auth_chain_floor, workset_anchor_floor
 
   declared = frozenset(manifest_default_rows())

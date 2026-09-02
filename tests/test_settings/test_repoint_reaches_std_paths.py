@@ -29,7 +29,7 @@ import pytest
 
 from kanibako.settings.config_io import write_nested_key
 from kanibako.settings.paths import load_std_paths, load_system_config
-from kanibako.settings.paths_defaults import SYSTEM_PATH_DEFAULTS
+from kanibako.settings.bootstrap import SYSTEM_PATH_DEFAULTS
 
 
 def _sentinel(key: str) -> str:

@@ -38,9 +38,9 @@ from kanibako.settings.paths import (
     resolve_project,
     system_path_floor,
 )
-from kanibako.settings.paths_defaults import SYSTEM_PATH_DEFAULTS
 from kanibako.settings.settings_keyspace import DECLARED_SYSTEM_CHANNEL_LEAVES
 from kanibako.targets.no_agent import NoAgentTarget
+from kanibako.settings.bootstrap import SYSTEM_PATH_DEFAULTS
 
 
 @pytest.fixture

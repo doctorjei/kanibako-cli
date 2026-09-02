@@ -24,7 +24,7 @@ from typing import Any, Callable
 
 from kanibako.launch.box_identity import validate_box_name
 from kanibako.runtime.container import remove_box_tree
-from kanibako.settings import paths_defaults
+from kanibako.settings import bootstrap
 from kanibako.settings.core_defaults import materialize_canon_skeleton
 from kanibako.settings.config import (
     BOX_META_FILE,
@@ -1145,7 +1145,7 @@ def _standalone_root_artifacts(root: Path) -> list[tuple[str, Path, bool]]:
     # ⚑ The literal ``vault/`` skeleton parent, on disk only — exactly the tail
     # ``standalone_vault_teardown`` appends, and for its reason: no key names it, the default
     # layout's ``.gitignore`` lives there, and ``_to_standalone`` writes that file itself.
-    skeleton = root / paths_defaults.VAULT_PATH
+    skeleton = root / bootstrap.VAULT_PATH
     if skeleton.is_dir():
         out.append(("the vault skeleton", skeleton, False))
     return out
@@ -1336,7 +1336,7 @@ def _to_standalone(
     write_project_gitignore(root)
     # ⚑ The LITERAL skeleton parent, deliberately — no key names it (``_VAULT_LEAF``), and
     # this ``.gitignore`` is the same file ``standalone_vault_teardown`` clears.
-    vault_dir = root / paths_defaults.VAULT_PATH
+    vault_dir = root / bootstrap.VAULT_PATH
     if vault_dir.is_dir():
         gi = vault_dir / ".gitignore"
         if not gi.exists():

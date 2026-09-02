@@ -54,7 +54,7 @@ from kanibako.settings.paths import (
   resolve_standalone_project,
   resolve_workset_project,
 )
-from kanibako.settings.paths_defaults import CONFIG_PATH_DEFAULTS, SYSTEM_PATH_DEFAULTS
+from kanibako.settings.bootstrap import CONFIG_PATH_DEFAULTS, SYSTEM_PATH_DEFAULTS
 
 
 # ---------------------------------------------------------------------------
