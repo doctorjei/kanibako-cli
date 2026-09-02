@@ -10,6 +10,7 @@ Prose for these symbols lives in `llm-docs/kanibako/settings/paths.py.md`.
 ```
 logger = get_logger('paths')
 _runtime_fallback_cache: dict[tuple[str, str], Path] = {}
+_FLOOR_FIELD_ALIASES: dict[str, str] = {'system.channelroot': 'channels'}
 ```
 
 ## Types
@@ -34,12 +35,14 @@ def spec_default_xdg_map(data_home: Path | None) -> dict[str, str]
 def host_xdg_map(data_home: Path | None=None) -> dict[str, str]
 def resolve_config_paths(set_values: Mapping[str, str], *, data_home: Path, home: Path, xdg_vars: Mapping[str, str] | None=None) -> dict[str, str]
 def resolve_system_paths(set_values: Mapping[str, str], *, data_home: Path, home: Path) -> dict[str, Path]
+def host_config_map(std: StandardPaths) -> dict[str, str]
+def system_path_floor(std: StandardPaths) -> dict[str, str]
 def load_system_config(user_config_path: Path, *, data_home: Path, home: Path) -> dict[str, Path]
 def resolve_data_leaf(data_path: Path | None=None, *, config_home: Path | None=None, data_home: Path | None=None) -> str
-def load_std_paths(config: KanibakoConfig | None=None) -> StandardPaths
-def resolve_project(std: StandardPaths, config: KanibakoConfig, project_dir: str | None=None, *, initialize: bool=False, enable_vault: bool | None=None, name_override: str | None=None, register: bool=True) -> ProjectPaths
+def load_std_paths(config: BootstrapConfig | None=None) -> StandardPaths
+def resolve_project(std: StandardPaths, config: BootstrapConfig, project_dir: str | None=None, *, initialize: bool=False, enable_vault: bool | None=None, name_override: str | None=None, register: bool=True) -> ProjectPaths
 def helper_log_path(std: StandardPaths, proj: ProjectPaths) -> Path
-def detect_project_mode(project_dir: Path, std: StandardPaths, config: KanibakoConfig) -> DetectionResult
+def detect_project_mode(project_dir: Path, std: StandardPaths, config: BootstrapConfig) -> DetectionResult
 def load_primary_boxes(primary_workset: Path) -> dict[str, str]
 def primary_box_name_for_workspace(primary_workset: Path, workspace: str) -> str | None
 def check_primary_box_name_free(primary_workset: Path, registry: Path, name: str, workspace: str, *, force: bool=False) -> None
@@ -48,25 +51,28 @@ def register_primary_box_name(primary_workset: Path, registry: Path, name: str, 
 def register_primary_box_name_if_absent(primary_workset: Path, registry: Path, name: str, workspace: Path | str, *, force: bool=False) -> None
 def assign_primary_box_name(primary_workset: Path, registry: Path, workspace: Path | str, boxes_dir: Path | None=None) -> str
 def unregister_primary_box_name(primary_workset: Path, name: str) -> None
-def resolve_workset_project(ws: WorksetSpec, project_name: str, std: StandardPaths, config: KanibakoConfig, *, initialize: bool=False, enable_vault: bool | None=None) -> ProjectPaths
-def iter_projects(std: StandardPaths, config: KanibakoConfig) -> list[tuple[Path, Path | None]]
-def iter_workset_projects(std: StandardPaths, config: KanibakoConfig) -> _WorksetProjectRows
-def resolve_any_project(std: StandardPaths, config: KanibakoConfig, project_dir: str | None=None, *, initialize: bool=False, register: bool=True, name_override: str | None=None) -> ProjectPaths
-def resolve_box_target(std: StandardPaths, config: KanibakoConfig, value: str | None=None, *, initialize: bool=False, register: bool=True, warn: bool=True) -> ProjectPaths
+def resolve_workset_project(ws: WorksetSpec, project_name: str, std: StandardPaths, config: BootstrapConfig, *, initialize: bool=False, enable_vault: bool | None=None) -> ProjectPaths
+def iter_projects(std: StandardPaths, config: BootstrapConfig) -> list[tuple[Path, Path | None]]
+def iter_workset_projects(std: StandardPaths, config: BootstrapConfig) -> _WorksetProjectRows
+def resolve_any_project(std: StandardPaths, config: BootstrapConfig, project_dir: str | None=None, *, initialize: bool=False, register: bool=True, name_override: str | None=None) -> ProjectPaths
+def resolve_box_target(std: StandardPaths, config: BootstrapConfig, value: str | None=None, *, initialize: bool=False, register: bool=True, warn: bool=True) -> ProjectPaths
 def establish_standalone(std: StandardPaths, root: Path, *, enable_vault: bool, name: str='', register: bool=True) -> tuple[str, Path, Path, Path]
-def resolve_standalone_project(std: StandardPaths, config: KanibakoConfig, project_dir: str | None=None, *, initialize: bool=False, enable_vault: bool | None=None, name: str='', register: bool=True) -> ProjectPaths
+def resolve_standalone_project(std: StandardPaths, config: BootstrapConfig, project_dir: str | None=None, *, initialize: bool=False, enable_vault: bool | None=None, name: str='', register: bool=True) -> ProjectPaths
 def _default_project_group(std: StandardPaths) -> ProjectGroup
 def _standalone_settings_files(root: Path) -> tuple[Path, Path]
-def _box_settings_files(mode: BoxMode, metadata_path: Path, group: 'ProjectGroup | None') -> tuple[Path, Path | None]
+def _box_settings_files(mode: BoxMode, metadata_path: Path, group: '_WorksetRooted | None') -> tuple[Path, Path | None]
 def _fallback_runtime_dir(var_name: str) -> Path
 def _runtime_base_usable(base: Path) -> bool
+def _refuse_bare_relative(key: str, raw: object, default: str, *, ctx: ResolveCtx, lookup: Callable[[str, tuple[str, ...]], str]) -> None
+def _floor_field(key: str) -> str
 def _resolve_local_dir(std: StandardPaths, project_path_str: str) -> tuple[str, Path]
 def _primary_box_paths(std: StandardPaths, metadata_path: Path, box_name: str) -> tuple[Path, Path, Path]
-def _workset_box_paths(metadata_path: Path, vault_base: Path, box_name: str) -> tuple[Path, Path, Path]
+def _workset_box_paths(metadata_path: Path, vault_ro_base: Path, vault_rw_base: Path, box_name: str) -> tuple[Path, Path, Path]
 def _standalone_box_paths(root: Path) -> tuple[Path, Path, Path]
 def _bootstrap_shell(shell_path: Path) -> None
 def _upgrade_shell(shell_path: Path) -> None
-def _init_common(std: StandardPaths, metadata_path: Path, shell_path: Path, vault_ro_path: Path, vault_rw_path: Path, project_path: Path, *, enable_vault: bool=True) -> None
+def _init_common(std: StandardPaths, metadata_path: Path, shell_path: Path, vault_ro_path: Path, vault_rw_path: Path, project_path: Path, *, enable_vault: bool=True, vault_root: Path) -> None
+def _host_path_within(candidate: Path, root: Path) -> bool
 def _init_project(std: StandardPaths, metadata_path: Path, shell_path: Path, vault_ro_path: Path, vault_rw_path: Path, project_path: Path, *, enable_vault: bool=True) -> None
 def _find_local_ancestor(target: Path, std: StandardPaths) -> Path | None
 def _is_standalone_meta_dir(root: Path) -> bool
@@ -156,7 +162,8 @@ class WorksetSpec:
     root: Path
     projects_dir: Path
     workspaces_dir: Path
-    vault_dir: Path
+    vault_ro_dir: Path
+    vault_rw_dir: Path
     project_names: tuple[str, ...]
     is_default: bool = False
 
@@ -177,7 +184,9 @@ class _WorksetLike(Protocol):
     @property
     def workspaces_dir(self) -> Path
     @property
-    def vault_dir(self) -> Path
+    def vault_ro_dir(self) -> Path
+    @property
+    def vault_rw_dir(self) -> Path
     @property
     def logs_dir(self) -> Path
     @property

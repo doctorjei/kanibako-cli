@@ -2320,8 +2320,9 @@ class TestPathLeafDefaultsHaveOneCarrier:
     ⚑ ONE carrier per VALUE — not one carrier FILE.  There are two designated
     carriers and the split is structural, so do not "fix" it by merging them:
 
-    * ``settings/bootstrap.py`` — the path LEAVES.  Like ``paths_defaults`` beside it
-      (pinned by :meth:`test_paths_defaults_is_import_free`) it must stay import-free:
+    * ``settings/bootstrap.py`` — the path LEAVES.  Like ``messages`` beside it
+      (pinned by :meth:`test_messages_imports_only_the_terminal_leaf`) it must
+      import nothing at all:
       that is what lets ``project/workset.py`` import them while ``settings/paths.py``
       imports ``project/workset.py``.  Moving anything into either that needs an import
       closes that documented cycle.
@@ -2466,16 +2467,26 @@ class TestPathLeafDefaultsHaveOneCarrier:
             "settings/bootstrap.py grew an import; it is a pure-constant leaf"
         )
 
-    def test_paths_defaults_is_import_free(self):
-        """⚑ The defaults file must stay a LEAF: ``project/workset.py`` now imports it,
-        and ``settings/paths.py`` imports ``project/workset.py``, so any import added
-        here can close that documented cycle."""
+    def test_messages_imports_only_the_terminal_leaf(self):
+        """⚑ ``settings/messages.py`` may import ``bootstrap`` AND NOTHING ELSE.
+
+        ⚑⚑ THE INVARIANT IS NOT "no imports" — it is "nothing that can reach back".
+        ``project/workset.py`` imports this file and ``settings/paths.py`` imports
+        ``project/workset.py``, so an import here that leads anywhere closes the tree's
+        documented cycle.  ``bootstrap`` cannot: it imports nothing at all, pinned by
+        :meth:`test_bootstrap_is_import_free`, so it is a TERMINAL leaf and no path
+        through it returns.  It carries ``RUN_USER_UID_PATH`` for the
+        ``WARN_RUNDIR_UNUSABLE`` splice.
+        🛑 Widening this to a second module needs that module proved terminal too.
+        """
         import re
 
         from tests.support.repo import REPO_ROOT
 
-        text = (REPO_ROOT / "src" / "kanibako" / "settings" / "paths_defaults.py"
+        text = (REPO_ROOT / "src" / "kanibako" / "settings" / "messages.py"
                 ).read_text(encoding="utf-8")
-        assert not re.search(r"(?m)^\s*(import|from)\s", text), (
-            "settings/paths_defaults.py grew an import; it is a pure-constant leaf"
+        imports = re.findall(r"(?m)^\s*(?:import|from)\s+(\S+)", text)
+        assert imports == ["kanibako.settings.bootstrap"], (
+            "settings/messages.py may import ONLY kanibako.settings.bootstrap "
+            f"(a terminal leaf); found {imports}"
         )

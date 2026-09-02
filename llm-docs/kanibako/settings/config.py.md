@@ -39,7 +39,7 @@ Two DIFFERENT file families are read here and confusing them is the standing haz
   the filter dropped the rest in silence. Now `bootstrap_config_paths` walks IN through the
   `config:` table, so `config.`-prefixed is all it can produce, and its return type has nowhere to
   put a settings value. A settings table in that file is REFUSED, naming the file and the keys
-  (`paths_defaults.ERR_CONFIG_LAYER1_SETTINGS`). The settings file's own `system:` path table has
+  (`messages.ERR_CONFIG_LAYER1_SETTINGS`). The settings file's own `system:` path table has
   its own reader, `system_path_set_values`.
 * **The SETTINGS (behavior) set** — `/etc/kanibako/settings_base.yaml` < `global/settings.yaml` <
   the agent file < the workset tier < the box tier. This is the real 6-level cascade; nothing in

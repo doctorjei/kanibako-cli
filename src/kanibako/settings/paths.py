@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from kanibako.settings.paths_defaults import (PROFILE_CONTENTS, BASHRC_CONTENTS,
-                                              SHELL_D_CONTENTS, RUN_USER_UID_PATH,
+from kanibako.settings.messages import (PROFILE_CONTENTS, BASHRC_CONTENTS,
+                                              SHELL_D_CONTENTS,
 
                                               STATUS_OK, STATUS_MISSING, STATUS_NO_DATA,
                                               MSG_OTS_KB_INIT, MSG_OTS_WS_PROJ_INIT, MSG_DONE,
@@ -18,9 +18,7 @@ from kanibako.settings.paths_defaults import (PROFILE_CONTENTS, BASHRC_CONTENTS,
                                               ERR_PROJECT_NEW_HOME, ERR_PROJECT_REG_HOME,
                                               ERR_PROJECT_NAME_USED, ERR_PROJECT_DIR_IS_WS,
                                               ERR_WORKSET_NO_PROJECT, ERR_WORKSET_NO_WORKSET,
-                                              ERR_WORKSET_WS_NOT_BOX, ERR_WORKSET_NOT_IN_BOX,
-
-                                              UNREGISTERED_MARKER, KIND_PROJECT, KIND_WORKSET)
+                                              ERR_WORKSET_WS_NOT_BOX, ERR_WORKSET_NOT_IN_BOX)
 
 import os
 import tempfile
@@ -45,7 +43,13 @@ from kanibako.settings.settings_resolve import (LevelView, ResolveCtx, SettingsE
 
 from kanibako.project.names import (resolve_name, resolve_qualified_name)
 from kanibako.utils import project_hash, short_hash
-from kanibako.settings.bootstrap import BASHRC_FILE, CONFIG_PATH_DEFAULTS, HOME_PATH, IGNORE_FILE, KANIBAKO_PATH, PROFILE_FILE, SHELL_D_FILE, STANDALONE_META_DIR, SYSTEM_PATH_DEFAULTS, VAULT_PATH, XDG_CACHE_HOME, XDG_CONFIG_HOME, XDG_DATA_HOME, XDG_RUNTIME_DIR, XDG_SPEC_DEFAULTS, XDG_STATE_HOME
+from kanibako.settings.bootstrap import (BASHRC_FILE, CONFIG_PATH_DEFAULTS, HOME_PATH,
+                                         IGNORE_FILE, KANIBAKO_PATH, KIND_PROJECT, KIND_WORKSET,
+                                         PROFILE_FILE, RUN_USER_UID_PATH, SHELL_D_FILE,
+                                         STANDALONE_META_DIR, SYSTEM_PATH_DEFAULTS,
+                                         UNREGISTERED_MARKER, VAULT_PATH, XDG_CACHE_HOME,
+                                         XDG_CONFIG_HOME, XDG_DATA_HOME, XDG_RUNTIME_DIR,
+                                         XDG_SPEC_DEFAULTS, XDG_STATE_HOME)
 
 
 class BoxMode(Enum):
