@@ -42,7 +42,8 @@ The roject-specific `~/canon/workbook` uses these conventions:
 
 | Path (relative) | Description | Loaded at start by default? |
 |---------------------------|-------------|-------------------------------------|
-| `devnotes.md` | Detailed changelog & current status; should reflect relevant actions/updates | Yes |
+| `devnotes.md` | Detailed changelog; should reflect relevant actions/updates | No |
+| `status.md` | Detailed current status; should reflect relevant actions/updates | Yes |
 | `tasks.md` | Task board (kanban or simple list) | No; _Authoritative_. |
 | `designs/` | Project design(s) | No; _Authoritative_. |
 | `plans/` | Active implementation plans | When executing a plan |
