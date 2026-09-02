@@ -94,6 +94,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`kanibako system defaults` names a different file in its `source` column.** Every path literal
+  kanibako ships moved into one module, so the provenance that column reports now reads
+  `bootstrap.py (config tier)` / `bootstrap.py (system tier)` where it read `paths_defaults.py`. The
+  values, scopes and keys are unchanged — only the file named as declaring them. Nothing else about
+  the command moved. If you parse that column, it is the one thing to re-point.
+
 - **The agent plugins now bound the core they accept: `kanibako-cli>=1.8.0.dev0,<2.0`.** Previously
   every plugin declared a bare `kanibako-cli`, so nothing stopped pip from installing a plugin beside
   a core it was never built against — you found out from a startup warning naming the skipped agent,
