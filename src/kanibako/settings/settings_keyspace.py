@@ -1191,11 +1191,12 @@ class _EffectiveLeaves(Collection[str]):
 
     🛑 THE FLAT CROSS-AGENT UNION, AND IT HAS EXACTLY ONE QUESTION LEFT TO ANSWER.
     ``[R150]`` killed it as a judge — a plugin's leaf is a key only on the agent whose
-    plugin declared it — so what survives is the two surfaces that carry NO
+    plugin declared it — so what survives is the ONE surface that carries NO
     DISCRIMINATOR to judge per-agent with, where the partition is not expressible:
-    the RO ``meta.box.agent.*`` mirror (whose agent is a runtime fact, absent from the
-    key) and ``config_keys.agent_file_identity_only`` (which is handed a bare tail).
-    Narrowing either to core alone would refuse a leaf that reads back a real value,
+    the RO ``meta.box.agent.*`` mirror, whose agent is a runtime fact, absent from the
+    key.  (``config_keys.agent_file_identity_only`` was the other until 2026-09-02,
+    when its two call sites started passing the NODE they already held.)
+    Narrowing it to core alone would refuse a leaf that reads back a real value,
     which is a capability removal no ruling asks for. ⚑ Its being the ONLY remaining
     union is why it is worth a name: a third caller wants an agent, not this.
 
@@ -1230,9 +1231,10 @@ def effective_agent_leaves(
 ) -> Collection[str]:
     """Core §2d unioned over EVERY harness in *agent_leaf_map* (``None`` = core alone).
 
-    THE constructor for :class:`_EffectiveLeaves`, and public because its two
-    remaining consumers must not disagree: :func:`key_class`'s ``meta.box.agent``
-    mirror and ``config_keys._PERSONA_STATE_LEAVES``.
+    THE constructor for :class:`_EffectiveLeaves`.  Its second consumer,
+    ``config_keys._PERSONA_STATE_LEAVES``, was DELETED on 2026-09-02 when
+    :func:`agent_file_identity_only` began taking a node, leaving :func:`key_class`'s
+    ``meta.box.agent`` mirror as the only one.
     🛑 NOT THE ANSWER FOR A KEY THAT NAMES AN AGENT — that is
     :func:`agent_leaf_is_declared`. Reach for this only where the key carries no
     discriminator at all; the class docstring says why those two do not.

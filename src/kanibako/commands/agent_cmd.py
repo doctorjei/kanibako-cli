@@ -378,10 +378,12 @@ def _run_agent_config(args: argparse.Namespace) -> int:
         if gate_err is not None:
             print(gate_err, file=sys.stderr)
             return 1
-        if agent_file_identity_only(key):
+        if agent_file_identity_only(agent_id, key):
             # ⚑ THE SAME ONE TAIL ``set`` WRITES ITSELF, for the same reason and not as a
             # carve-out: ``name`` is a FILE-identity field of ``AgentConfig``, absent from
             # the keyspace, so the shared resetter has no key to route.
+            # ⚑ THE NODE, as at ``set``: the tail is judged against THIS agent's vocabulary
+            # ([R150]), never a cross-agent union — see :func:`agent_file_identity_only`.
             changed = remove_leaf(slot_for(std.agents, agent_id, key))
         else:
             # ⚑⚑ THE ONE SETTER'S RESET HALF. This verb removed the leaf with its own hand
@@ -477,7 +479,7 @@ def _run_agent_config(args: argparse.Namespace) -> int:
         key = key.strip()
         value = value.strip()
         # ⚑ THE NOUN'S OWN §0 GATE, ahead of the shared setter and NOT a duplicate of it: it
-        # judges the tail against the KNOWN-GOOD node (the on-disk store dir), which is the one
+        # judges the tail against the KNOWN-GOOD node (the canonical ``℘`` node), which is the one
         # thing ``set_config_value`` cannot do — that engine reads the node OUT of the key, so
         # ``self.model`` parses as a node ``claude.self`` and ruling 55's spelling would be
         # refused for the wrong reason, blaming the agent name rather than naming the key.
@@ -490,7 +492,10 @@ def _run_agent_config(args: argparse.Namespace) -> int:
         # shared setter has no key to route (:func:`agent_file_identity_only` derives that from
         # the declaration, so it moves on its own). Everything else — every declared leaf,
         # ``env.<VAR>`` and ``secret_path.<VAR>`` — goes through the ONE setter below.
-        if agent_file_identity_only(key):
+        # ⚑ THE NODE IS PASSED, and it is the whole point of the call: ``[R150]`` makes the
+        # vocabulary per-agent, so "is this tail a key" has no answer without naming the agent
+        # whose file is about to be written. ``agent_id`` is the canonical ``℘`` node — known good.
+        if agent_file_identity_only(agent_id, key):
             # Sparse write — only the touched key is materialized. ⚑ NO SHAPE RULE HERE, AND
             # ITS ABSENCE IS THE FIX: the ``run_args`` space-split stood on this line and
             # nowhere else, so this verb and ``config set agent.<node>.run_args=…`` stored two

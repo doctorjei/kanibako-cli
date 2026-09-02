@@ -36,10 +36,10 @@ from kanibako.settings.settings_keyspace import (
     PATH_VALUED_AGENT_LEAVES,
     SCALAR_AGENT_LEAVES,
     TABLE_VALUED_AGENT_LEAVES,
+    AgentVocabulary,
     ConcedingLeafMap,
     access_default,
     agent_leaf_is_declared,
-    effective_agent_leaves,
     leaf_name_reason,
     unread_harnesses,
 )
@@ -634,26 +634,14 @@ AGENT_LEAF_MAP: "Mapping[str, Collection[str]]" = ConcedingLeafMap(
 # OWN settings file ``agents/<node>/agent.yaml``.
 # ---------------------------------------------------------------------------
 
-# The per-persona agent leaves this module RECOGNISES — the FLAT agent-state knobs plus
-# the ``env.`` section, the EXACT shape ``agent_file.load`` reads back.
-# ⚑⚑ RECOGNITION, NOT SETTABILITY, AND THE WHOLE DECLARED SET (spec §0): a declared key
-# must be refused BY NAME with its own rule, never degraded to "unknown config key".
-# ``transform_settings`` is in here so :func:`agent_leaf_table_error` can say what is
-# actually wrong with writing a scalar to it; :data:`SCALAR_AGENT_LEAVES` is the settable
-# half, and the verbs consult that one.
-# ⚑ DERIVED FROM THE DECLARATION SoT (P13). It was a hand-kept copy until 2026-08-23 and
-# had fallen three leaves behind — ``run_args``, ``transform`` and ``transform_settings``
-# are declared ``set: cli+file`` and answered "unknown config key" at every spelling.
-# ⚑⚑ THE FLAT CROSS-AGENT UNION, AND IT HAS ONE READER LEFT.  It was this module's leaf
-# vocabulary until ``[R150]`` partitioned the keyspace by TIER: a leaf established at
-# ``agent.default`` is universal, every other leaf is legal only on the agent whose plugin
-# declared it.  Every surface here that HAS a node now judges per-agent through
-# ``settings_keyspace.agent_leaf_is_declared``; what still reads this is
-# :func:`agent_file_identity_only`, which is handed a bare tail and has no agent to judge
-# against.  See that function for why core-alone would be wrong there.
-# ⚑ It is a ``Collection``, NOT a ``frozenset``: materialising it would put plugin
-# discovery on every reader.
-_PERSONA_STATE_LEAVES: "Collection[str]" = effective_agent_leaves(AGENT_LEAF_MAP)
+# ⚑ NO FLAT CROSS-AGENT UNION LIVES HERE ANY MORE, and re-adding one is the regression.
+# This module kept ``_PERSONA_STATE_LEAVES`` — core §2d unioned over every readable
+# harness — as its leaf vocabulary until ``[R150]`` partitioned the keyspace by AGENT: a
+# leaf established at ``agent.default`` is universal, every other leaf is legal only on
+# the agent whose plugin declared it.  Every surface here judges per-agent now, through
+# ``settings_keyspace.agent_leaf_is_declared`` (which owes the concession) or
+# :class:`~kanibako.settings.settings_keyspace.AgentVocabulary` (which does not); the last
+# union reader, :func:`agent_file_identity_only`, took the NODE instead on 2026-09-02.
 _PERSONA_ENV_SECTIONS: frozenset[str] = frozenset({"env"})
 
 # The RESERVED any-agent tier name ("no real agent may be named default"); it is
@@ -1541,8 +1529,8 @@ def agent_read_key_error(node: str, tail: str) -> str | None:
     return agent_write_key_error(node, tail, verb="read")
 
 
-def agent_file_identity_only(tail: str) -> bool:
-    """True iff *tail* is a per-agent FILE-identity field and NOT a declared key (spec §0).
+def agent_file_identity_only(node: str, tail: str) -> bool:
+    """True iff *tail* is a FILE-identity field and NOT a key on *node* (spec §0).
 
     THE IDENTITY RESIDUE :func:`agent_key_reason` admits by allowlist, asked as its own
     question because the ``agent`` noun's ``set`` has to ACT on it: a declared leaf is written
@@ -1556,19 +1544,33 @@ def agent_file_identity_only(tail: str) -> bool:
     — the other identity field — is ALSO a declared §2d leaf; a leaf entering or leaving either
     set moves this answer with no edit here.
 
-    ⚑⚑ THE LAST READER OF THE FLAT CROSS-AGENT UNION, and it reads it because it is handed a
-    BARE TAIL with no agent to judge against — ``[R150]``'s partition needs a discriminator and
-    there is none here.  Core alone would be the WRONG narrowing: a plugin that declared
-    ``name`` would make it a real key on that agent, and this would still route it away from the
-    shared setter.  The union answers "is this tail a declared key ANYWHERE", which is the
-    weakest claim that keeps the routing safe.  ⚑ All three candidate sets — core, the union,
-    per-agent — agree today (``IDENTITY_KEYS`` is ``{name, run_args}``; ``run_args`` is core's
-    and no plugin declares either), so this is a shape choice, not a live divergence.  The
-    honest long-term fix is the NODE: ``agent_cmd`` has it at both call sites.
+    ⚑⚑ THE NODE IS WHAT MAKES THE ANSWER HONEST, AND IT IS WHY THIS TAKES ONE.  It read the
+    FLAT CROSS-AGENT UNION until 2026-09-02, for want of a discriminator — so ONE plugin
+    declaring ``name`` would have made it a real key on THAT agent and routed it away from the
+    shared setter on EVERY OTHER agent too, which is ``[R150]``'s partition read backwards.
+    Both call sites (``agent_cmd``'s ``set`` and its ``reset``) hold the node already — the
+    CANONICAL ``℘`` node, validated by the store-existence check above (NOT the store dirname,
+    which ``agent_settings_path`` maps back to the ``+`` spelling) — so the question is put to
+    the one vocabulary that governs the file being written.  🛑 Narrowing to CORE alone would have been the mirror
+    mistake: one answer for every agent, and the wrong one wherever a plugin really declares
+    the tail.  ⚑ All three candidate sets agree TODAY (``IDENTITY_KEYS`` is
+    ``{name, run_args}``; ``run_args`` is core's and no plugin declares either), so this moved
+    no live answer — it is the shape that bites when the first plugin declares an identity key.
+
+    ⚑⚑ :class:`~kanibako.settings.settings_keyspace.AgentVocabulary`, NOT
+    :func:`~kanibako.settings.settings_keyspace.agent_leaf_is_declared` — the same question
+    PLUS the concession, and the concession runs the WRONG WAY for a ROUTE.  That function
+    concedes an unreadable agent's tail so a real plugin key is never REFUSED; here a conceded
+    ``name`` is not admitted but SENT to a setter with no slot to route it to.  Measured: on a
+    claude-only machine ``goose`` is conceded by :data:`AGENT_LEAF_MAP`, so conceding here
+    would take ``kanibako agent set goose name=…`` — a live, shipped write — off the file
+    boundary on every machine that lacks that agent's plugin.  Asking the vocabulary directly
+    answers *"is this tail a key on THIS agent, as far as this machine can READ"*, which is the
+    weakest claim that keeps the routing safe.
     """
     from kanibako.settings.agent_config import IDENTITY_KEYS
 
-    return tail in IDENTITY_KEYS and tail not in _PERSONA_STATE_LEAVES
+    return tail in IDENTITY_KEYS and tail not in AgentVocabulary(node, AGENT_LEAF_MAP)
 
 
 #: How a user SPELLS the STORED view at each file scope's own noun — the sibling of

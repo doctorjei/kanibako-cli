@@ -296,8 +296,8 @@ class TestThePerNodeVocabularyIsTheAgentVerbs:
         assert one_plugin_leaf not in DECLARED_AGENT_LEAVES
 
     def test_a_plugin_leaf_reaches_the_per_node_recogniser(self, one_plugin_leaf):
-        """⚑ MUTATION: put ``DECLARED_AGENT_LEAVES`` back in ``_PERSONA_STATE_LEAVES``
-        and this dies while every core row in this file stays green."""
+        """⚑ MUTATION: narrow the recogniser's leaf question to ``DECLARED_AGENT_LEAVES``
+        — core alone, the way it was — and this dies while every core row stays green."""
         assert _parse_persona_agent_key(f"agent.goose.{one_plugin_leaf}") == (
             "goose", one_plugin_leaf,
         )
@@ -386,6 +386,84 @@ class TestThePerNodeVocabularyIsTheAgentVerbs:
             ConfigLevel.system, "agent.goose.not_declared_by_anyone", "x",
         )
         assert msg.startswith("Error:"), msg
+
+
+class TestTheIdentityResidueIsJudgedPerAgent:
+    """``agent set/reset``'s ROUTE is decided against ONE agent's vocabulary (``[R150]``).
+
+    ⚑ THE FACT: ``agent_file_identity_only`` decides whether the ``agent`` noun writes the
+    per-agent FILE itself or routes to ``config_interface``'s shared setter.  It was handed a
+    BARE TAIL and read the flat cross-agent union until 2026-09-02, so ONE plugin declaring an
+    identity key would have moved the route for EVERY agent — the partition read backwards.
+    Both call sites (``agent_cmd``'s ``set`` and its ``reset``) hold the node already.
+
+    ⚑ NOTHING DIVERGES TODAY: ``IDENTITY_KEYS`` is ``{name, run_args}``, ``run_args`` is core's
+    and no plugin declares either, so core, the union and the per-agent set all agree.  That is
+    exactly why this file has to inject a vocabulary — the shape is only visible against a
+    plugin that declares one, and there is none to observe.
+    """
+
+    @staticmethod
+    def _vocabulary(monkeypatch, leaf_map):
+        """Make the PLUGIN half say exactly *leaf_map* — a harness left OUT is UNREADABLE."""
+        from kanibako.settings import settings_prefs
+
+        agents = settings_prefs.AgentNames(("claude", "goose"), leaf_map=leaf_map)
+        monkeypatch.setattr(settings_prefs, "default_valid_agents", lambda: agents)
+
+    def test_the_subject_is_not_vacuous(self):
+        """NON-VACUITY: ``name`` must be an identity field that core does NOT declare."""
+        from kanibako.settings.agent_config import IDENTITY_KEYS
+
+        assert "name" in IDENTITY_KEYS
+        assert "name" not in DECLARED_AGENT_LEAVES
+        assert "run_args" in IDENTITY_KEYS and "run_args" in DECLARED_AGENT_LEAVES
+
+    def test_todays_answer_name_is_the_file_route_on_every_agent(self, monkeypatch):
+        """THE SHIPPED STATE — both vocabularies readable, neither declaring an identity key."""
+        from kanibako.settings.config_keys import agent_file_identity_only
+
+        self._vocabulary(monkeypatch, {"claude": frozenset(), "goose": frozenset()})
+        assert agent_file_identity_only("claude", "name") is True
+        assert agent_file_identity_only("goose", "name") is True
+
+    def test_todays_answer_run_args_is_never_the_file_route(self, monkeypatch):
+        """The OTHER identity field is a declared §2d leaf, so the ONE setter owns it."""
+        from kanibako.settings.config_keys import agent_file_identity_only
+
+        self._vocabulary(monkeypatch, {"claude": frozenset(), "goose": frozenset()})
+        assert agent_file_identity_only("claude", "run_args") is False
+        assert agent_file_identity_only("goose", "run_args") is False
+
+    def test_a_plugin_declaring_name_takes_THAT_agent_off_the_file_route(self, monkeypatch):
+        """A declared key is a key: it must reach the ONE setter, not the file boundary."""
+        from kanibako.settings.config_keys import agent_file_identity_only
+
+        self._vocabulary(monkeypatch, {"claude": frozenset(), "goose": {"name"}})
+        assert agent_file_identity_only("goose", "name") is False
+
+    def test_and_leaves_every_OTHER_agent_ON_it(self, monkeypatch):
+        """⚑ THE MUTATION ROW.  Judge the tail against ANY cross-agent union — the old
+        ``tail not in _PERSONA_STATE_LEAVES`` — and this reds while every row above stays
+        green: goose's declaration would strip claude's ``name`` of its only writer."""
+        from kanibako.settings.config_keys import agent_file_identity_only
+
+        self._vocabulary(monkeypatch, {"claude": frozenset(), "goose": {"name"}})
+        assert agent_file_identity_only("claude", "name") is True
+
+    def test_an_UNREADABLE_agent_keeps_the_file_route(self, monkeypatch):
+        """⚑ THE CONCESSION MUST NOT FLIP A ROUTE, and this is the row that says so.
+
+        ``agent_leaf_is_declared`` concedes a harness it cannot read, so that a real plugin key
+        is never REFUSED; used HERE it would not admit ``name`` but SEND it to a setter with no
+        slot for it — measured, that is every machine without the agent's plugin installed, and
+        ``kanibako agent set goose name=…`` is a live shipped write.  Swap the predicate for
+        ``agent_leaf_is_declared`` and only this row reds.
+        """
+        from kanibako.settings.config_keys import agent_file_identity_only
+
+        self._vocabulary(monkeypatch, {"claude": frozenset()})  # goose: unreadable
+        assert agent_file_identity_only("goose", "name") is True
 
 
 class TestTheWideningDidNotREARM_PluginDiscovery:
