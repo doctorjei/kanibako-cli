@@ -1495,17 +1495,49 @@ class TestThePathTypeColumnHasOneCodeCarrier:
             f"have no set route for [R147] to reach: {sorted(claimed)}"
         )
 
-    def test_the_code_claims_no_path_key_the_registry_does_not_declare(self):
+    def test_the_code_types_every_key_the_registry_declares_it_at(self):
+        """``KEY_TYPES`` ⊆ the registry's ``type:`` COLUMN — the pairs, not just the names.
+
+        ⚑ THE NAME-ONLY VERSION OF THIS TEST WAS NARROWER THAN ITS OWN TITLE.  It asked
+        whether a ``path``-typed ``KEY_TYPES`` entry NAMED a declared row and stopped
+        there, so the registry's ``type:`` was never consulted and the code could type a
+        real key as anything it liked.  Measured on the honest tree: injecting
+        ``KEY_TYPES["meta.box.home"] = "path"`` passed, because ``meta.box.home`` IS a
+        declared row.
+
+        ⚑⚑ AND THE REGISTRY'S TYPE COLUMN IS PARTIAL, WHICH IS WHAT MADE THAT INJECTION
+        INVISIBLE RATHER THAN MERELY UNCHECKED: 23 rows carry NO ``type:`` FIELD AT ALL —
+        22 derived ``meta.*`` shapes, ``meta.box.home`` among them, plus the parametric
+        ``agent.<agent>.<key>`` contract shape, which is ``set: cli+file`` and untyped
+        because it is a SHAPE, not a key.  A missing type is
+        therefore asserted as a MISMATCH (``None != kind``) rather than skipped, because
+        an absent registry type cannot license a code type; that is the closed keyspace
+        (spec §0) applied one level down from the key name to the key's SHAPE.
+
+        The existence half is kept — a ``KEY_TYPES`` entry naming no declared row at all
+        is the §0 violation proper — but it is now asserted for EVERY type rather than
+        for ``path`` alone, so the two halves are one carrier of one property.
+        """
         from kanibako.settings.config_keys import KEY_TYPES
 
-        declared = {str(key) for key in _keys()}
-        invented = {
-            key for key, kind in KEY_TYPES.items()
-            if kind == "path" and key not in declared
-        }
+        rows = {str(key): row for key, row in _keys().items() if isinstance(row, dict)}
+        assert KEY_TYPES, "KEY_TYPES is empty — this corpus is vacuous, not clean"
+
+        invented = {str(key) for key in KEY_TYPES if str(key) not in rows}
         assert not invented, (
-            f"KEY_TYPES types these as paths but the registry declares no such key "
+            f"KEY_TYPES types these but the registry declares no such key "
             f"(the keyspace is CLOSED, spec §0): {sorted(invented)}"
+        )
+        mistyped = {
+            str(key): (kind, rows[str(key)].get("type"))
+            for key, kind in KEY_TYPES.items()
+            if str(key) in rows and rows[str(key)].get("type") != kind
+        }
+        assert not mistyped, (
+            f"KEY_TYPES disagrees with the registry's type: column — "
+            f"{{key: (code says, registry says)}}: {mistyped}. The registry is "
+            f"authority; a registry type of None means the row declares no type, which "
+            f"licenses no code type at all"
         )
 
     def test_the_parametric_secret_path_family_is_claimed_at_every_spelling(self):
