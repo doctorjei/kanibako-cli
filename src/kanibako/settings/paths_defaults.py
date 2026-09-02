@@ -1,88 +1,17 @@
-"""The declared path tables, name leaves and message text behind :mod:`kanibako.settings.paths`.
+"""User-visible message text, status tokens and shell file CONTENTS.
 
 ⚑ Every ``MSG_``/``WARN_``/``ERR_`` literal here is USER-VISIBLE output.
+🛑 PATH LITERALS DO NOT LIVE HERE — they moved to :mod:`kanibako.settings.bootstrap`
+(`[R157]`). Do not reintroduce one; add it there and import it.
+
+⚑ ``RUN_USER_UID_PATH`` is the ONE path constant still here, deliberately: it is spliced into
+``WARN_RUNDIR_UNUSABLE`` below, and moving it would force this file to grow an import — which
+:func:`test_paths_defaults_is_import_free` forbids, because an import here can close the
+tree's documented cycle. It moves in its own step, once that splice is resolved.
 """
 
-XDG_DATA_HOME = "XDG_DATA_HOME"
-XDG_CONFIG_HOME = "XDG_CONFIG_HOME"
-XDG_RUNTIME_DIR = "XDG_RUNTIME_DIR"
-XDG_STATE_HOME = "XDG_STATE_HOME"
-XDG_CACHE_HOME = "XDG_CACHE_HOME"
-
-
-# Spec defaults for the XDG base dirs that HAVE one (home-relative suffixes).
-# ⚑ ``XDG_RUNTIME_DIR`` is deliberately ABSENT — no spec default; :func:`resolve_xdg` handles it.
-XDG_SPEC_DEFAULTS: dict[str, str] = {
-    XDG_DATA_HOME:             '.local/share',
-    XDG_CONFIG_HOME:           '.config',
-    XDG_STATE_HOME:            '.local/state',
-    XDG_CACHE_HOME:            '.cache'}
-
-
-# ---------------------------------------------------------------------------
-# Layer 1 — the CONFIG-key FOUNDATION (spec §1)
-# ---------------------------------------------------------------------------
-# Bootstrap keys from ``kanibako_config.yaml``, resolved FLAT — not by the keyspace pipeline.
-# ⚑ The set may GROW; spec §1 states no count. Its SIZE is pinned by test_manifest_conformance.
-CONFIG_PATH_DEFAULTS: dict[str, str] = {
-    "config.data":                  "$XDG_DATA_HOME/kanibako",
-    "config.settings":              "@config.data/global/settings.yaml",
-    "config.agents":                "@config.data/agents",
-    "config.primary_workset":       "@config.data/primary_workset",
-    "config.registry":              "@config.data/global/registry.yaml",
-    # The LIFECYCLE JOURNAL — the TRANSIENT truth beside the steady-state registry.
-    "config.journal":               "@config.data/global/journal.yaml"}
-
-
-# ---------------------------------------------------------------------------
-# Layer 2 — system-scope SETTINGS keys that are PATHS (spec §1/§2g)
-# ---------------------------------------------------------------------------
-# SETTINGS keys, not bootstrap config: each ``@``-refs a Layer-1 config key, an XDG base,
-# or another key in THIS table.  ⚑ THIS TABLE IS THE FLOOR, NOT THE STORE: every key here is
-# CLI-settable at the system scope (``config_keys._KEY_ROUTES``) and a set lands in the ``system:``
-# table of the SYSTEM SETTINGS file, which the cascade layers OVER these defaults.
-SYSTEM_PATH_DEFAULTS: dict[str, str] = {
-   "system.backup":                 "@config.data/backup",
-   "system.channelroot":            "@config.data/channels",
-   "system.template":               "@config.data/global/template",
-   "system.canon":                  "@config.data/global/canon",
-   "system.cache":                  "$XDG_CACHE_HOME/kanibako",
-   "system.runtime":                "$XDG_RUNTIME_DIR/kanibako",
-   # Channels skeleton.  ⚑ ORDER-DEPENDENT: broadcast refs chat, the rest ref channelroot.
-   "system.channels.common":        "@system.channelroot/common",
-   "system.channels.chat":          "@system.channelroot/chat",
-   "system.channels.broadcast":     "@system.channels.chat/broadcast.md",
-   "system.channels.mailboxes":     "@system.channelroot/mailboxes",
-   "system.channels.share":         "@system.channelroot/share"}
-
-
-PROFILE_FILE = ".profile"
-BASHRC_FILE = ".bashrc"
-SHELL_D_FILE = ".shell.d"
-IGNORE_FILE = ".gitignore"
-
-
-BOXES_PATH = "boxes"
-CHANNELS_PATH = "channels"
-HOME_PATH = "home"
-KANIBAKO_PATH = "kanibako"
-LOGS_PATH = "logs"
-RO_PATH = "ro"
-RW_PATH = "rw"
-VAULT_PATH = "vault"
-# ⚑⚑ SINGULAR vs PLURAL, and they are DIFFERENT DIRS: ``workspaces`` is the primary/named
-# workset's container of per-box workspaces, ``workspace`` is the STANDALONE box's single
-# one.  Reading one for the other silently repoints every box of that mode — spell the
-# constant, never the string.
-WORKSPACES_PATH = "workspaces"
-WORKSPACE_PATH = "workspace"
+# ⚑ Spliced into WARN_RUNDIR_UNUSABLE below — see the module docstring.
 RUN_USER_UID_PATH = "/run/user/%d"
-
-# The STANDALONE box-store dir name — ``@meta.box.path`` and half the detection
-# marker (``system-design-1.8.0.md`` § "Detection & import").
-# ⚑ THE only carrier: ``project/import_reconcile`` used to hand-keep a second
-# spelling and now imports this one.  Import it; never re-spell the string.
-STANDALONE_META_DIR = 'box_data'
 
 
 STATUS_OK = "ok"

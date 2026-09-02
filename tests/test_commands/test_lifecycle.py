@@ -1421,8 +1421,8 @@ class TestConsolidateResolvesTheRootsOwnKeys:
         """⚑ TRIPWIRE (P15).  Pins the rule at the SITE, so a reintroduced name test reds
         without anyone re-deriving the census.  ⚑ The banned spellings include the LEAF
         CONSTANTS, not just the bare strings — a string-only pin passes
-        ``root / paths_defaults.WORKSPACE_PATH``, which is the same defect wearing an
-        import.  ⚑ ``paths_defaults.VAULT_PATH`` is deliberately absent from the ban:
+        ``root / bootstrap.WORKSPACE_PATH``, which is the same defect wearing an
+        import.  ⚑ ``bootstrap.VAULT_PATH`` is deliberately absent from the ban:
         NO key names the ``vault/`` skeleton parent (``project/workset.py::_VAULT_LEAF``),
         so a literal is the only correct spelling for it.
         """

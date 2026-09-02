@@ -315,7 +315,7 @@ PINNED_DEFAULT_KEYS: frozenset[str] = frozenset(
 
 
 class TestPathDefaults:
-    """(i-a) The 17 path defaults ARE ``paths_defaults``' two tables, verbatim."""
+    """(i-a) The 17 path defaults ARE ``bootstrap``' two tables, verbatim."""
 
     def test_the_corpus_is_the_two_declared_tables(self):
         assert len(CONFIG_PATH_DEFAULTS) == 6
@@ -325,7 +325,7 @@ class TestPathDefaults:
     @pytest.mark.parametrize("key", sorted(_PATH_ORACLE))
     def test_the_manifest_default_is_the_code_literal(self, key):
         assert _default(key) == _PATH_ORACLE[key], (
-            f"{key}: manifest says {_default(key)!r}, paths_defaults says "
+            f"{key}: manifest says {_default(key)!r}, bootstrap says "
             f"{_PATH_ORACLE[key]!r}"
         )
 

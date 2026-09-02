@@ -101,7 +101,7 @@ every command fail.
 The standalone box's host-side box dir is a sibling of the root `workset.yaml`, and holds `home/`.
 
 ⚑ Its name is **not declared in this module**. `STANDALONE_META_DIR` is imported from
-`settings/paths_defaults` at module scope and used at both call sites, so the string has a single
+`settings/bootstrap` at module scope and used at both call sites, so the string has a single
 carrier and the detection marker cannot drift from the journal key below.
 
 The J2 journal entry for a standalone import is keyed by `<root>/box_data` — the dir *containing*

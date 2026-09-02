@@ -20,7 +20,7 @@ below are the human-plain spelling of its classes.
 the moment a row moves between classes there, this listing goes red rather than drifting
 into a second opinion about where a default lives.
 
-⚑ WHERE A GROUP'S KEY SET CAN BE READ OFF THE LIVE CARRIER, IT IS.  ``paths_defaults``'
+⚑ WHERE A GROUP'S KEY SET CAN BE READ OFF THE LIVE CARRIER, IT IS.  ``bootstrap``'
 two tables, the two ``settings_launch`` floor builders and ``core-defaults.yaml``'s
 ``agent_default:`` section all ENUMERATE their own keys, so those five groups are
 derived and self-correcting; only the rows whose carrier is a dataclass field, a
@@ -111,8 +111,8 @@ def source_groups() -> tuple[tuple[str, frozenset[str]], ...]:
 
   return (
     # --- carriers that enumerate their own keys (derived, self-correcting) --- #
-    ("paths_defaults.py (config tier)", frozenset(CONFIG_PATH_DEFAULTS)),
-    ("paths_defaults.py (system tier)", frozenset(SYSTEM_PATH_DEFAULTS)),
+    ("bootstrap.py (config tier)", frozenset(CONFIG_PATH_DEFAULTS)),
+    ("bootstrap.py (system tier)", frozenset(SYSTEM_PATH_DEFAULTS)),
     # ⚑ WIDENED 2026-08-29, from 6 keys to 10.
     # ``workset.{skip_kuid_check,registry,kuid,template}`` were declared rows that no floor
     # emitted, so a whole-value ``@``-ref to any of them resolved to ``__MISSING__`` at

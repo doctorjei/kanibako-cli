@@ -57,7 +57,7 @@ from kanibako.settings.workset_dirkeys import resolve_workset_dir_key
 from kanibako.settings.paths import StandardPaths
 
 # ⚑⚑ EVERY NAME BELOW IS AN ALIAS, NEVER A VALUE.  The defaults themselves live in
-# ``settings/paths_defaults.py``, the designated defaults file, and are materialized
+# ``settings/bootstrap.py``, the designated path-literal file, and are materialized
 # THERE AND NOWHERE ELSE; re-spelling one here made a second carrier that could drift.
 # The local names stay only because the call sites read better with them.
 
@@ -78,7 +78,7 @@ _LOGS_LEAF = bootstrap.LOGS_PATH
 # same word and stays separate — an agent store's ``template/`` is a fixed store leaf,
 # a workset's is the repointable ``workset.template``, and importing one for the other
 # would invert the project -> launch dependency as well as conflate two keys.
-# ⚑ They are NOT in ``paths_defaults`` with their five siblings because no OTHER module
+# ⚑ They are NOT in ``bootstrap`` with their five siblings because no OTHER module
 # spells them; add them there the moment a second consumer appears.
 _CANON_LEAF = "canon"
 _TEMPLATE_LEAF = "template"

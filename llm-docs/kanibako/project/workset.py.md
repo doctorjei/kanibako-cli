@@ -263,14 +263,14 @@ _CANON_LEAF = "canon"
 _TEMPLATE_LEAF = "template"
 ```
 The per-mode default leaves, spelled once. See **Resolved workset dir keys**. ⚑ The first four, and
-`BOXES_DIR_NAME`, are ALIASES for `settings/paths_defaults.py` — the designated defaults file, where
+`BOXES_DIR_NAME`, are ALIASES for `settings/bootstrap.py` — the designated path-literal file, where
 the values are materialized and nowhere else. The local names stay because the call sites read
 better with them.
 
 `_CANON_LEAF` / `_TEMPLATE_LEAF` are the two that are spelled HERE rather than there, and the test
 is a second consumer: no other module spells either word for a workset, because the one consumer —
 the workset stamp — asks the resolver instead of joining a leaf. They belong beside their five
-siblings in `paths_defaults` the moment a SECOND module needs them.
+siblings in `bootstrap` the moment a SECOND module needs them.
 
 ⚑ They are the WORKSET-scope spelling of two entries `templates.SCOPE_WHITELISTS["workset"]`
 permits, and `templates.AGENT_TEMPLATE_STORE_REL` — the same word at AGENT scope — stays separate:

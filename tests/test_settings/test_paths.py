@@ -2320,11 +2320,11 @@ class TestPathLeafDefaultsHaveOneCarrier:
     ⚑ ONE carrier per VALUE — not one carrier FILE.  There are two designated
     carriers and the split is structural, so do not "fix" it by merging them:
 
-    * ``settings/paths_defaults.py`` — the path LEAVES.  It is deliberately
-      import-free (pinned by :meth:`test_paths_defaults_is_import_free`), which is
-      what lets ``project/workset.py`` import it while ``settings/paths.py`` imports
-      ``project/workset.py``.  Moving anything here that needs an import closes that
-      documented cycle.
+    * ``settings/bootstrap.py`` — the path LEAVES.  Like ``paths_defaults`` beside it
+      (pinned by :meth:`test_paths_defaults_is_import_free`) it must stay import-free:
+      that is what lets ``project/workset.py`` import them while ``settings/paths.py``
+      imports ``project/workset.py``.  Moving anything into either that needs an import
+      closes that documented cycle.
     * ``settings/config.py`` — the per-tier settings FILENAMES (``box.yaml``,
       ``workset.yaml``, ``agent.yaml``), which sit beside the readers and writers
       that use them and which reach ``config_io``.  Relocating them into the leaf
@@ -2374,7 +2374,7 @@ class TestPathLeafDefaultsHaveOneCarrier:
             bad = re.compile(r'=\s*"%s"|/\s*"%s"|"%s"\s*/' % (leaf, leaf, leaf))
             assert not bad.search(text), (
                 f'literal "{leaf}" in project/workset.py; draw it from '
-                f"settings.paths_defaults instead"
+                f"settings.bootstrap instead"
             )
 
     def test_no_second_spelling_of_a_tier_settings_filename(self):
@@ -2450,6 +2450,21 @@ class TestPathLeafDefaultsHaveOneCarrier:
                     f"settings.config ({carrier.name}) instead — that constant is "
                     f"its ONE carrier"
                 )
+
+    def test_bootstrap_is_import_free(self):
+        """⚑ The path-literal file must stay a LEAF, for the same reason its sibling does:
+        ``settings/paths.py`` imports it and ``project/workset.py`` imports that, so any
+        import added here can close the tree's documented cycle.  Its own docstring
+        promises this; without an assertion the promise is prose only."""
+        import re
+
+        from tests.support.repo import REPO_ROOT
+
+        text = (REPO_ROOT / "src" / "kanibako" / "settings" / "bootstrap.py"
+                ).read_text(encoding="utf-8")
+        assert not re.search(r"(?m)^\s*(import|from)\s", text), (
+            "settings/bootstrap.py grew an import; it is a pure-constant leaf"
+        )
 
     def test_paths_defaults_is_import_free(self):
         """⚑ The defaults file must stay a LEAF: ``project/workset.py`` now imports it,

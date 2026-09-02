@@ -14,7 +14,7 @@ than the destination — the destination is ``test_config_dest_parity``'s subjec
 was already green while this was broken.
 
 ⚑ DERIVED, NEVER LISTED (P13).  The subject is every member of
-``paths_defaults.SYSTEM_PATH_DEFAULTS``, so a path key added to that table is covered
+``bootstrap.SYSTEM_PATH_DEFAULTS``, so a path key added to that table is covered
 here with no edit, and a key removed cannot leave a row asserting about nothing.
 
 ⚑ IT REDS ON ITS OWN EMPTINESS: the table is asserted non-empty, and every sentinel must

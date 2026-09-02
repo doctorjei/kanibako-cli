@@ -502,7 +502,7 @@ def write_global_config(path: Path) -> None:
     # ⚑⚑ THE FILE CANNOT HAVE SETTINGS (Jei, 2026-08-26: "kanibako_config.yaml <-- cannot
     # have settings. Period.").  It used to be created carrying THREE tables:
     #
-    #   ``config:``  — a VERBATIM copy of ``paths_defaults.CONFIG_PATH_DEFAULTS``
+    #   ``config:``  — a VERBATIM copy of ``bootstrap.CONFIG_PATH_DEFAULTS``
     #   ``system:``  — a verbatim copy of six of the eleven ``SYSTEM_PATH_DEFAULTS`` rows
     #   ``box:``     — the box scalars at their own ``KanibakoConfig`` field defaults
     #

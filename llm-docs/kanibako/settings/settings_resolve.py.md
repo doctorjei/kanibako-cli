@@ -174,14 +174,14 @@ pre-creation in `runtime/container.py` joins the leaf onto a HOST `Path` (`shell
 cannot use an absolute one. Seven names, not three, and that is the price of the pair.
 
 ⚑ **These are GUEST constants and they are INDEPENDENT of the host leaves.**
-`settings/paths_defaults.WORKSPACE_PATH` is a HOST leaf spelled `"workspace"` too, and nothing but
+`settings/bootstrap.WORKSPACE_PATH` is a HOST leaf spelled `"workspace"` too, and nothing but
 convention ever kept the two apart. This module may import NOTHING from `settings/` (see the top of
 the file), so a guest constant *cannot* be expressed in terms of a host one — the independence is
 now structural rather than accidental.
 
 ⚑ **What this step does NOT buy, despite the obvious guess:** a host-leaf rename could not already
 move a guest mount dest. Neither `runtime/container.py` nor `commands/code_cmd.py` imports anything
-from `paths_defaults`, so the two namespaces were already disjoint in fact. What changes is that
+from `bootstrap`, so the two namespaces were already disjoint in fact. What changes is that
 they are now disjoint by CONSTRUCTION, and that three of the five residual false positives fall out
 of the future path tripwire.
 

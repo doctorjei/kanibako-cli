@@ -44,7 +44,7 @@ class TestLoadConfig:
 
         This was ``test_round_trip``: it wrote a ``KanibakoConfig`` and read the box
         scalar back, and it pinned the ``[config]`` table's Layer-1 DEFAULT expressions
-        (a verbatim copy of ``paths_defaults.CONFIG_PATH_DEFAULTS``). There is nothing
+        (a verbatim copy of ``bootstrap.CONFIG_PATH_DEFAULTS``). There is nothing
         left to round-trip — ``write_global_config`` creates the file EMPTY and takes no
         config object, because that file cannot carry settings (Jei) and its own
         ``config.*`` foundation is already declared. What loads is the defaults.

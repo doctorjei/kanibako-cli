@@ -160,7 +160,7 @@ leaves room for further subtrees without minting a new key (spec §2g).
 literals DUPLICATE paths.CONFIG_PATH_DEFAULTS / SYSTEM_PATH_DEFAULTS — every edit here needs the
 matching edit there."* The pointer exists only on that side; there is nothing at this end saying an
 edit here obliges an edit there. `settings/defaults_inventory.py` registers both tables by name
-(`"paths_defaults.py (config tier)"` / `"(system tier)"`), so the inventory is a third reader.
+(`"bootstrap.py (config tier)"` / `"(system tier)"`), so the inventory is a third reader.
 **Before adding, renaming or removing a key in either table, grep `config.py` too.**
 
 ## File and directory name leaves
