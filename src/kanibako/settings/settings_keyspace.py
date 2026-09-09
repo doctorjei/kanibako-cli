@@ -220,6 +220,10 @@ DECLARED_WORKSET_CHANNEL_LEAVES: Final[frozenset[str]] = frozenset({
 #: ceiling. ⚑ The union is LAZY and this set is the half asked FIRST — see
 #: :class:`_EffectiveLeaves`, which is where the reason lives.
 DECLARED_AGENT_LEAVES: Final[frozenset[str]] = frozenset({
+    # §2d — the agent's human-readable DESCRIPTION. ⚑ Not ``meta.agent.<agent>.name``
+    # (the store dir, RO) and not the agent FILE's ``name`` identity field
+    # (``agent_config.IDENTITY_KEYS``), which is not a keyspace leaf at all.
+    "label",
     "access",              # §2d (the permission TIER — SUPERSEDES ``auto_approve``)
     "allow_helpers",       # §2d
     "continue_mode",       # §2d

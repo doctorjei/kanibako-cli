@@ -187,8 +187,8 @@ class TestManifestLoader:
         for section in ("registry", "policy", "categories", "keys",
                         "bind_default_entries", "not_keys"):
             assert section in doc, f"manifest section {section!r} is missing"
-        assert len(doc["keys"]) == 99, (
-            f"the manifest declares {len(doc['keys'])} key rows, not the 99 this "
+        assert len(doc["keys"]) == 100, (
+            f"the manifest declares {len(doc['keys'])} key rows, not the 100 this "
             f"file's counts were measured against — re-measure, do not adjust blindly"
         )
 
@@ -280,6 +280,7 @@ _SCALAR_KEYS = (
 _BEHAVIOR_KEYS = (
     "agent.default.access", "agent.default.allow_helpers",
     "agent.default.continue_mode", "agent.default.bootstrap",
+    "agent.default.label",
 )
 
 #: (i-e) + the kuid sentinel — one-off rows with a single named carrier each.
@@ -619,6 +620,7 @@ class TestBehaviorDefaults:
             "agent.default.allow_helpers": "bool",
             "agent.default.continue_mode": "bool",
             "agent.default.bootstrap": "str",
+            "agent.default.label": "str",
         }, types
 
     @pytest.mark.parametrize("key", _BEHAVIOR_KEYS)
@@ -1172,13 +1174,13 @@ class TestDefaultsCoverage:
             f"this file classifies rows the manifest no longer declares a default for: "
             f"{sorted(stale)}"
         )
-        assert len(declared) == 65, (
-            f"the manifest gives {len(declared)} rows a default, not the 65 measured — "
+        assert len(declared) == 66, (
+            f"the manifest gives {len(declared)} rows a default, not the 66 measured — "
             f"re-classify, do not adjust the count"
         )
 
     def test_the_split_is_the_measured_split(self):
-        """51 pinned rows, 14 exempted — stated so a silent migration between them reds.
+        """52 pinned rows, 14 exempted — stated so a silent migration between them reds.
 
         ⚑ Was 41/24 until the seven-row channel family moved from E1 to a real oracle
         (2026-08-25), then 48/17 until ``workset.registry`` followed it out of E1
@@ -1189,8 +1191,12 @@ class TestDefaultsCoverage:
         gone** rather than left standing empty for a future row to be parked in. There is
         no "path join" exemption to move back to; a row that wants one has to argue for a
         new class with its own reason.
+        ⚑ 51/14 → 52/14 (2026-09-08): ``agent.default.label`` joined the BEHAVIOR floor.
+        It arrived PINNED, not exempt — the spec declares a literal value and
+        ``core-defaults.yaml``'s ``agent_default:`` carries it, so there is an artefact to
+        compare against and no reason to decline one.
         """
-        assert len(PINNED_DEFAULT_KEYS) == 51
+        assert len(PINNED_DEFAULT_KEYS) == 52
         assert len(EXEMPT_DEFAULT_KEYS) == 14
         assert not (PINNED_DEFAULT_KEYS & EXEMPT_DEFAULT_KEYS)
 

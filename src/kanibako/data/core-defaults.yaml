@@ -450,11 +450,15 @@ images:
 # — there is no `ACCESS_DEFAULT` constant any more.
 # ⚑ Its value set is CLOSED (`settings_keyspace.ACCESS_TIERS`): a spelling outside
 # `restricted | editing | full` is REFUSED at read, never treated as permissive.
+# `label` (spec §2d) is the agent's human-readable description.  The value here is the
+# ALL-AGENTS fallback the spec declares verbatim; each plugin's `behavior:` floor
+# overrides it for its own agent by the ordinary §2d cascade.
 agent_default:
   access: "full"
   allow_helpers: "true"
   continue_mode: "true"
   bootstrap: "tmux"
+  label: "Agent Description (None)"
 
 # ---------------------------------------------------------------------------
 # STATIC core `<scope>.env.<VAR>` defaults (spec §2d) — the file route for core

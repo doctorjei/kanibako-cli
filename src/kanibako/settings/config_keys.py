@@ -94,6 +94,8 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     "bootstrap",
     # continue_mode: agent-scope BEHAVIOR key; the persisted continue-vs-fresh fallback (spec §2d).
     "continue_mode",
+    # label: the agent's human-readable description (spec §2d).
+    "label",
     # ⚑ THE REST OF ``DECLARED_AGENT_LEAVES``, ADDED 2026-08-23 — the six above were the
     # whole bare surface, so ``config get template`` answered "unknown config key" for a
     # key the manifest declares ``set: cli+file``.  Hand-written because deriving this set

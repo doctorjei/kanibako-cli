@@ -134,8 +134,8 @@ class TestSourcePartition:
             f"registry defaults with no source: {sorted(declared - covered)}; "
             f"sources for rows the registry no longer defaults: {sorted(covered - declared)}"
         )
-        assert len(declared) == 65, (
-            f"the manifest gives {len(declared)} rows a default, not the 65 measured"
+        assert len(declared) == 66, (
+            f"the manifest gives {len(declared)} rows a default, not the 66 measured"
         )
 
     def test_the_partition_agrees_with_the_conformance_classification(self):
@@ -205,7 +205,9 @@ class TestSourcePartition:
         # the manifest's ruled ``null`` has been overwritten.
         assert sizes["settings_launch.py (anchor floor)"] == 10
         assert sizes["settings_launch.py (auth floor)"] == 6
-        assert sizes["core-defaults.yaml (agent_default:)"] == 4
+        # ⚑ WIDENED 4 → 5 (2026-09-08): ``agent.default.label``, the spec §2d description
+        # leaf, declared in ``agent_default:`` beside the other four behavior scalars.
+        assert sizes["core-defaults.yaml (agent_default:)"] == 5
 
     def test_the_auth_floor_key_set_does_not_depend_on_the_probe_agent(self):
         """The probe agent name is inert for the six auth rows — pinned, not assumed.
