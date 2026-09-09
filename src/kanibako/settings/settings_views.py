@@ -27,7 +27,7 @@ from collections.abc import Iterator, Mapping
 from pathlib import Path
 from typing import Any, Callable, Generic, TypeVar
 
-from kanibako.settings.kb_store import Bind, BindEntry
+from kanibako.settings.kb_store import BINDING_DERIVATIONS_NODE, Bind, BindEntry
 from kanibako.settings.keystore import KeyStore
 
 __all__ = [
@@ -187,7 +187,7 @@ def bind_maps(node: KeyStore, *, label: str = "bindings") -> tuple[
 
 
 def derived_bindings(
-    node: KeyStore, *, label: str = "binding_derivations",
+    node: KeyStore, *, label: str = BINDING_DERIVATIONS_NODE,
 ) -> dict[str, Bind]:
     """FLATTEN the ``binding_derivations`` subtree to ``{declaration-key: Bind}``.
 

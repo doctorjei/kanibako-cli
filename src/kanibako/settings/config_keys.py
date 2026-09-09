@@ -460,9 +460,10 @@ def agent_node_of(canonical: str) -> str:
 
 # The recognized SCOPE namespaces a key may live in (its TOP-LEVEL dotted token);
 # a key whose first segment is not one of these is SCOPELESS and unguarded.
-_SCOPE_NAMESPACES: frozenset[str] = frozenset({
-    "system", "agent", "workset", "box", "config", "meta",
-})
+# ⚑ The four CONTAINMENT scopes are read off ``kb_store`` and never re-spelled;
+# ``config`` and ``meta`` are namespaces that CONTAIN nothing, which is why they are
+# added here and are absent from the order below.
+_SCOPE_NAMESPACES: frozenset[str] = frozenset({*SCOPE_CONTAINMENT, "config", "meta"})
 
 # The module-local alias of the CONTAINMENT order (spec §0): ``system ⊃ agent ⊃
 # workset ⊃ box``, OUTERMOST first — declared in ``kb_store``, the stack leaf.
@@ -1239,7 +1240,7 @@ def _pref_write_site_error(
     scope = target.split(".", 1)[0]
     hint = (
         f" Set '{target}' directly at the {scope} scope instead."
-        if scope in ("system", "agent", "workset", "box")
+        if scope in _SCOPE_CONTAINMENT
         # ⚑ ...but NOT for a YAML-only target: there is no direct set to redirect to
         # (:func:`has_no_cli_write_route`), and naming one would prescribe a command
         # that refuses.

@@ -52,7 +52,7 @@ from typing import (
     Sequence,
 )
 
-from kanibako.settings.kb_store import StoreValue
+from kanibako.settings.kb_store import SCOPE_CONTAINMENT, StoreValue
 from kanibako.settings.keystore import KeyStore
 from kanibako.settings.settings_keyspace import (
     ConcedingLeafMap,
@@ -400,9 +400,7 @@ def allowlist_reason(
     # edge back to the key registry.
     from kanibako.settings.config_keys import has_no_cli_write_route
 
-    if scope in ("system", "agent", "workset", "box") and not has_no_cli_write_route(
-        target
-    ):
+    if scope in SCOPE_CONTAINMENT and not has_no_cli_write_route(target):
         return f"{base}. Set '{target}' directly at the {scope} scope instead"
     return base
 

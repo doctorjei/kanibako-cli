@@ -51,7 +51,9 @@ from __future__ import annotations
 from typing import Any, NamedTuple
 
 from kanibako.settings import core_defaults
+from kanibako.settings.kb_store import SCOPE_CONTAINMENT
 from kanibako.settings.keyspace_manifest import manifest_doc
+from kanibako.settings.paths import BoxMode
 
 #: Substituted for the manifest's ``<agent>`` placeholder when a floor builder needs an
 #: agent name.  ONLY the builder's KEY SET is consumed (never a value), and none of the
@@ -62,7 +64,7 @@ from kanibako.settings.keyspace_manifest import manifest_doc
 _PROBE_AGENT = "default"
 
 #: The three box modes, in the order the spec tables them.
-_MODES = ("primary", "named", "standalone")
+_MODES: tuple[str, ...] = tuple(mode.value for mode in BoxMode)
 
 
 class DefaultRow(NamedTuple):
@@ -509,8 +511,10 @@ def _sorted(rows: list[DefaultRow]) -> list[DefaultRow]:
   the answer being looked up, not the index.  The scope stays on every line rather than
   becoming a heading, so one line still carries the whole answer for a ``grep``.
   """
-  order = {name: i for i, name in enumerate(
-    ("config", "system", "agent", "workset", "box"))}
+  # ⚑ ``config`` FIRST and then the CONTAINMENT order (``kb_store``): the bootstrap
+  # tier resolves before any scope, so it is not a member of that order — it is
+  # prepended to it, never re-spelled with it.
+  order = {name: i for i, name in enumerate(("config", *SCOPE_CONTAINMENT))}
   return sorted(rows, key=lambda r: (order.get(r.scope, len(order)), r.key))
 
 

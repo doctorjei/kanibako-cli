@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from kanibako.settings.config_io import load_doc
-from kanibako.settings.kb_store import __MISSING__
+from kanibako.settings.kb_store import SCOPE_CONTAINMENT, __MISSING__
 from kanibako.settings.settings_prefs import PREF_ROOT
 
 
@@ -310,7 +310,7 @@ def _print_category_block(
     # showing *error* instead of reaching here. A ``None`` leaf is a SUPPRESSED
     # entry and is skipped by the same test — it declares no mount to pair.
     rows: list[tuple[str, str, BindEntry]] = []
-    for scope in ("system", "agent", "workset", "box"):
+    for scope in SCOPE_CONTAINMENT:
         scope_node = _leaf(scope)
         if not isinstance(scope_node, KeyStore):
             continue
