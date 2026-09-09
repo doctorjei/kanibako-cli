@@ -728,6 +728,12 @@ the box meta lived only at the ROOT — that theory is the RETIRED model, and de
 discards the box's settings. Detection is unaffected either way: it reads the ROOT file (§5), which
 `establish_standalone` writes.
 
+⚑ The vault `.gitignore` goes through `settings/paths.py::write_vault_gitignore`, handed the arm
+`establish_standalone` just RESOLVED against this root's `workset.yaml`. This site used to write it
+on `(<root>/vault).is_dir()` alone — a position answering a key, and the fourth sighting of the class
+`722c3d59` cured in `_init_common`: the skeleton is the `ro` arm's DEFAULT parent, so it can sit on
+disk while `workset.vault_rw` points elsewhere and the file's `rw/` names nothing.
+
 ```def _to_workset(state: ProjectState, std: StandardPaths, config: BootstrapConfig, unwind: _Unwind, *, target_ws: Workset, new_name: str, new_workspace: Path, relocating: bool, dest: Path | None) -> ProjectState```
 Convert/relocate the project into *target_ws* (std-aware external wiring).
 

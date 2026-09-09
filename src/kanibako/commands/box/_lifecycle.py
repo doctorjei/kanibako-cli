@@ -56,6 +56,7 @@ from kanibako.settings.paths import (
     resolve_standalone_project,
     resolve_workset_project,
     unregister_primary_box_name,
+    write_vault_gitignore,
 )
 from kanibako.utils import write_project_gitignore
 from kanibako.project.workset import (
@@ -1334,13 +1335,12 @@ def _to_standalone(
 
     workspace_subdir.mkdir(parents=True, exist_ok=True)
     write_project_gitignore(root)
-    # ⚑ The LITERAL skeleton parent, deliberately — no key names it (``_VAULT_LEAF``), and
-    # this ``.gitignore`` is the same file ``standalone_vault_teardown`` clears.
-    vault_dir = root / bootstrap.VAULT_PATH
-    if vault_dir.is_dir():
-        gi = vault_dir / ".gitignore"
-        if not gi.exists():
-            gi.write_text("rw/\n")
+    # ⚑ The RESOLVED ``workset.vault_rw`` gates this, never the skeleton's existence: the
+    # skeleton is the ``ro`` arm's DEFAULT parent, so ``<root>/vault`` can sit on disk while
+    # ``vault_rw`` points elsewhere — and then the file's ``rw/`` claims nothing that is
+    # there.  ``establish_standalone`` resolved the arm against this root's ``workset.yaml``,
+    # repoint included, which is why its return value is what gets passed.
+    write_vault_gitignore(root, vault_rw)
 
     _remove_old_metadata(
         state, std, config, preserve_root=root if reused_in_place else None,

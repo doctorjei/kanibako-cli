@@ -861,17 +861,24 @@ Shared first-time project setup: create directories, bootstrap shell.
 
 Called by both `_init_project` (default) and `_init_standalone_project`. It performs every step
 common to both modes: print message, create metadata and shell dirs, bootstrap the shell, and set up
-vault directories when enabled. The shell dir is the one mounted as `/home/agent`; a `.gitignore` in
-`vault/` excludes `rw` from version control.
+vault directories when enabled. The shell dir is the one mounted as `/home/agent`; the `.gitignore`
+in `vault/` that excludes `rw` from version control is `write_vault_gitignore`'s, below, and
+`vault_root` is REQUIRED because that function composes the skeleton off it.
+
+Credential copy is handled separately by `target.init_home()` in `start.py`, after template
+application.
+
+```python
+def write_vault_gitignore(vault_root: Path, vault_rw_path: Path) -> None
+```
+Write the vault skeleton's `.gitignore` while `workset.vault_rw` makes its claim true.
 
 ### ⚑⚑ The `.gitignore`'s directory is COMPOSED off `vault_root`, never POSITIONED off an arm
 
 `vault_root` is the workset root that owns the `vault/` SKELETON dir — `std.primary_workset` for
 PRIMARY, the standalone ROOT for STANDALONE — and the skeleton is `<vault_root>/vault`, the one
-non-key leaf a workset root carries (`project/workset.py::_VAULT_LEAF`; `_lifecycle._to_standalone`
-and `_duplicate` write the same literal). ⚑ It is REQUIRED, because without a root there is no
-skeleton and so nothing to answer; the old `None` default existed only to excuse the derivation
-below.
+non-key leaf a workset root carries (`project/workset.py::_VAULT_LEAF`), the same file
+`standalone_vault_teardown` clears.
 
 ⚑ It USED to be `vault_ro_path.parent`, and `workset.vault_ro` is repointable, so that parent
 stopped being the skeleton the moment the key moved. Three shapes, and the containment guard against
@@ -885,14 +892,24 @@ stopped being the skeleton the moment the key moved. Three shapes, and the conta
 * `vault_ro: ~/store` made it `$HOME` — the escape the guard stopped, and that the composition now
   makes unreachable.
 
-⚑ The guard now compares the RESOLVED `workset.vault_rw` against the composed skeleton, because the
+⚑ The guard compares the RESOLVED `workset.vault_rw` against the composed skeleton, because the
 file's whole content is a CLAIM that `rw/` is a child of it: a repoint out of the skeleton makes the
 claim false, so nothing is written. STRICT — an arm pointed AT the skeleton is the user's rw store,
 not its parent. ⚑ With NO repoint STANDALONE is byte-identical to before; PRIMARY's file moves from
 inside the `ro` arm up to the skeleton, which is the fix.
 
-Credential copy is handled separately by `target.init_home()` in `start.py`, after template
-application.
+### ⚑⚑ ONE CARRIER FOR THREE WRITE SITES
+
+`_init_common` here, `_lifecycle._to_standalone` and `_duplicate._duplicate_to_standalone`. The gate
+travelled as PROSE and only the first site had it: both convert sites kept writing on
+`vault_dir.is_dir()` alone, which is a POSITION answering a KEY. The skeleton is the `ro` arm's
+DEFAULT parent, so it sits on disk for every un-repointed box while `vault_rw` — an independent key —
+may be anywhere; an existing skeleton is no evidence about where `rw` is (P10).
+
+⚑ The skeleton must already be on disk. An absent one means no vault was laid at this root — a
+`duplicate` never carries one — and inventing an empty `vault/` to hold the file would make this a
+creator of the thing it only annotates. That existence check is a precondition for writing into a
+directory, not a derivation of the root.
 
 ```python
 def _find_local_ancestor(target: Path, std: StandardPaths) -> Path | None
