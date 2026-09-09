@@ -48,8 +48,12 @@ TIER = "agent.default."
 #: The §2d subsection whose fenced block IS the Default tier, and the marker that opens
 #: it.  Both are read as HEADINGS/markers, never as line numbers: the spec is edited
 #: constantly and any stored offset would be wrong within the week.
+#: ⚑ RETITLED 2026-09-08, and the pin FOUND IT: the spec renamed this marker from
+#: ``**Default tier**`` to the line below, so the walk located 0 markers and every case
+#: in this file ERRORED — a vacuous green would have been far worse. The registry
+#: follows the spec (this file's own rule), so the constant moved, not the spec.
 SECTION = "2d"
-MARKER = "**Default tier**"
+MARKER = "**default** (holds default values for agents)"
 
 #: The spec fence's spelling for the three values YAML cannot spell the same way.  A
 #: manifest value is rendered INTO this notation and the spec token is compared as
@@ -147,6 +151,13 @@ def _spec_rows(lines: list[str]) -> dict[str, str]:
     A row is ``<key> | <value>[  <description>]``.  Continuation and comment lines start
     with ``#`` and are not rows; lines declaring some OTHER tier's key (§2d's fence also
     states two ``meta.agent.*`` rows) are not this file's corpus.
+
+    ⚑ DOUBLE QUOTES ARE THE FENCE'S STRING DELIMITER, not part of the value — the fourth
+    notation this file translates, beside ``<None>`` / ``true`` / ``{}``.  ``label`` is
+    the first Default-tier value to use it (its value has spaces, so the spec quotes it
+    where ``bootstrap | tmux`` needs no quoting), and YAML cannot spell a string with its
+    delimiters retained.  Stripping them equates nothing that differs: no declared value
+    in this fence contains a quote character, so a stripped pair is the same string.
     """
     rows: dict[str, str] = {}
     for raw in lines:
@@ -154,6 +165,8 @@ def _spec_rows(lines: list[str]) -> dict[str, str]:
             continue
         written_key, _, remainder = raw.partition("|")
         value = _VALUE_END.split(remainder.strip())[0].strip()
+        if len(value) >= 2 and value.startswith('"') and value.endswith('"'):
+            value = value[1:-1]
         for key in _expand_braces(written_key.strip()):
             rows[key] = value
     return rows

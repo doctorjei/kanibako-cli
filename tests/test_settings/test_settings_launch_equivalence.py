@@ -504,13 +504,14 @@ def test_box_config_effective_display_matches_launch_behavior_read(tmp_path):
     # the box agent.default "haiku" — the correction the retired old resolver did
     # NOT do), access = the per-agent passthrough, allow_helpers = the floor default
     # (declared by BOTH contributors, at the same value), and continue_mode +
-    # bootstrap = the core floor alone.
+    # bootstrap + label = the core floor alone.
     assert display == {
         "model": "opus",
         "access": "editing",
         "allow_helpers": "true",
         "continue_mode": "true",
         "bootstrap": "tmux",
+        "label": "Agent Description (None)",
     }
     # ...and it MATCHES the live launch behavior read over the same inputs.
     assert display == launch_read

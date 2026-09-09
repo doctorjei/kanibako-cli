@@ -475,11 +475,14 @@ class TestCoreBehaviorDefaults:
     #: :1252-1253).  ⚑ STRINGS,
     #: including the booleans: the floor is consumed through ``coerce_bool`` and
     #: ``effective_behavior`` stringifies, so a YAML bool would arrive as ``"True"``.
+    #: ⚑ ``label`` joined 2026-09-08 — the spec's ``agent.default.label`` row, cited by
+    #: KEY rather than by the line offsets above, which rot (P16).
     _SPEC_2D = {
         "access": "full",
         "allow_helpers": "true",
         "continue_mode": "true",
         "bootstrap": "tmux",
+        "label": "Agent Description (None)",
     }
 
     def test_the_core_behavior_defaults_match_spec_2d(self):

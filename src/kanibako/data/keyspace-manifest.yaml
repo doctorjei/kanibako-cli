@@ -1292,6 +1292,28 @@ keys:
   ## ---- LAYER 2: agent.* settings keys (§2d) -------------------------------
   ## agent.default.* is the all-agents FALLBACK layer; agent.<agent>.<key> falls
   ## back to agent.default.<key>. Both are cascade levels (§2).
+  # `label` is the agent's HUMAN-READABLE description (spec §2d, 2026-09-08). It is an
+  # ORDINARY declared leaf — set: cli+file, cascading and overridable like every other
+  # §2d key — so it needs no allowlist to be readable or writable.
+  # ⚑ THE PER-AGENT VALUES ARE PLUGIN-DECLARED and are NOT enumerated here (see
+  # plugin_contributed): spec §2d states agent.claude.label | "Claude Code",
+  # agent.codex.label | "Codex CLI" and agent.goose.label | "Goose Harness", and each
+  # belongs in that plugin's `behavior:` floor, reaching the keyspace through
+  # agent.<agent>.<key>. ⚑ NOT SHIPPED YET — until a plugin declares one, its agent
+  # reads this fallback. The pseudo-agent `agent.shell.label | "Box Shell"` has no
+  # plugin and no carrier either.
+  # ⚑ NOT `meta.agent.<agent>.name`, which is the STORE DIR (a machine identity, RO).
+  # ⚑ The agent FILE still carries an identity field spelled `name`
+  # (agent_config.IDENTITY_KEYS); it is NOT a keyspace leaf and it is untouched here.
+  agent.default.label:
+    scope: agent
+    type: str
+    set: cli+file
+    default: "Agent Description (None)"
+    note: "the all-agents FALLBACK description; a plugin's own label overrides it by
+           the ordinary §2d cascade. The default is DELIBERATELY self-describing —
+           an agent that declares none reads as having none."
+    spec: "§2d"
   # R-41: `access` supersedes the boolean auto_approve (tombstoned in not_keys.renamed
   # with its value mapping). The pre-07-06 code-only `access` spelling (retired at
   # e7b4aea) returns as the successor key — both code_residue entries for it are gone.
