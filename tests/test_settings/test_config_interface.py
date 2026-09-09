@@ -2195,6 +2195,52 @@ class TestCategoryConfigSet:
         assert "agents/claude/agent.yaml" in msg, msg
         assert not f.exists()  # a refused write creates nothing
 
+    def test_the_reserved_tier_is_never_sent_to_a_file_that_cannot_exist(
+        self, tmp_path,
+    ):
+        """``agent.default`` is the ANY-AGENT TIER, not a node, so the per-node cure
+        above is false at it in BOTH halves.
+
+        ⚑⚑ MEASURED PRE-IMAGE, 2026-09-09: every retired category answered *"Edit the
+        'self.<cat>' table of that agent's own settings file (agents/default/
+        agent.yaml)"* and, on the ``bindings`` arms, *"Reading it back with 'kanibako
+        agent get default …' still works."*  ``agents/default/agent.yaml`` DOES NOT
+        EXIST AND MUST NOT (:func:`config_keys.agent_default_tier_leaf`), and that read
+        exits 1 on "agent 'default' not found" — so the refusal named a file the user
+        cannot create and promised a read that cannot run.
+        ⚑ THE SIBLING ALREADY KNEW: ``terminal_category_write_error`` has carried the
+        tier arm since 2026-08-28. This pins the bind door to the same answer.
+        ⚑ DERIVED (P13) over ``RETIRED_BIND_CATEGORIES``, never a literal list — a
+        category joining the retired set is covered here with no edit.
+        """
+        from kanibako.settings.settings_categories import RETIRED_BIND_CATEGORIES
+
+        f = tmp_path / CONFIG_FILENAME
+        # ⚑ NON-VACUITY: the loop below proves nothing over an empty set.
+        assert RETIRED_BIND_CATEGORIES, "no retired categories — the loop is vacuous"
+        for cat in RETIRED_BIND_CATEGORIES:
+            msg = set_config_value(
+                f"agent.default.{cat}.x", "/newsrc",
+                config_path=f, command_scope=ConfigLevel.system,
+            )
+            assert msg.startswith("Error:"), (cat, msg)
+            assert "RETIRED" in msg, (cat, msg)
+            # THE DEFECT: neither the file that must not exist...
+            assert "agents/default/agent.yaml" not in msg, (cat, msg)
+            # ...nor the read at the ``agent`` noun that exits 1 on it.
+            assert "kanibako agent get default" not in msg, (cat, msg)
+            # THE CURE: the tier is a table in the SYSTEM settings file, and the
+            # surviving read is the WHOLE dest-keyed map at the system noun — the
+            # per-entry read does NOT survive here (measured: "(not set)").
+            assert "'agent: default:' table of the system settings file" in msg, (
+                cat, msg,
+            )
+            assert f"kanibako system get agent.default.{cat}" in msg, (cat, msg)
+            assert f"agent.default.{cat}.x" not in msg.split("The surviving key")[1], (
+                cat, msg,
+            )
+        assert not f.exists()  # a refused write creates nothing
+
     def test_reset_is_refused_symmetrically(self, tmp_path):
         """A reset is a WRITE. "No override for …" would imply the spelling could
         have been written from the CLI, while the hand-authored tuple sits in the

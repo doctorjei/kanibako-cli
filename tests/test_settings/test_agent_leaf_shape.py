@@ -388,6 +388,96 @@ class TestThePerNodeVocabularyIsTheAgentVerbs:
         assert msg.startswith("Error:"), msg
 
 
+class TestTheEnvVarIsJUDGED_NotJustCounted:
+    """``agent.<node>.env.<VAR>`` obeys §2a's VAR shape at the WRITE door too.
+
+    ⚑⚑ THE DEFECT, MEASURED 2026-09-09 THROUGH THE REAL CLI: ``kanibako system set
+    agent.claude.env.=x`` printed *"Set agent.claude.env.=x"* at rc 0 and left
+    ``env: {'': 'x'}`` in the agent file — an EMPTY variable name stored as a key.
+    ``env.foo-bar`` and ``env.1FOO`` wrote the same way.  None is declared under §2a's
+    ``env.<VAR>``, so this is a §0 breach on a first-class write path.
+
+    🔑 THE CAUSE WAS AN ASYMMETRY, NOT A MISSING RULE.  Three of the four doors already
+    judged the VAR — the scope route (``_SCOPE_ENV_RE``), the secret twin
+    (``_AGENT_NODE_SECRET_RE``) and :func:`key_validity` — while
+    ``_parse_persona_agent_key``'s ``env.`` arm tested only that the section segment
+    said ``env``, so ``config_interface``'s ``set`` dispatch took the WRITE branch.
+    That arm is the one thing that function's own docstring forbids: purely structural.
+    ⚑ THE RESERVED-NAME FLOOR IS NOT THIS GUARD and cannot be: it catches ``__x__`` and
+    ``keys`` — pinned below so a regression cannot hide behind them — but
+    ``leaf_name_reason('')`` is ``None``, so an empty VAR walked straight past it.
+    """
+
+    # ⚑ Shapes §2a's VAR rule refuses, one per REASON: empty · illegal character ·
+    # leading digit. NOT an inventory of every bad string (P13) — each row names a
+    # distinct way the shape can fail.
+    ILLEGAL = ("", "foo-bar", "1FOO")
+
+    def test_the_recogniser_declines_an_illegal_var(self):
+        for var in self.ILLEGAL:
+            assert _parse_persona_agent_key(f"agent.claude.env.{var}") is None, var
+        # THE CONTROL, so this is a partition and not a broken recogniser.
+        assert _parse_persona_agent_key("agent.claude.env.FOO") == ("claude", "env.FOO")
+
+    def test_the_keyspace_ALREADY_refused_every_one_of_them(self):
+        """The door now agrees with the oracle it should never have outvoted."""
+        from kanibako.settings.settings_keyspace import key_validity
+
+        agents = ("claude", "goose", "codex")
+        for var in self.ILLEGAL:
+            reason = key_validity(
+                f"agent.claude.env.{var}", valid_agents=agents,
+            )
+            assert reason is not None, var
+        assert key_validity(
+            "agent.claude.env.FOO", valid_agents=agents,
+        ) is None
+
+    def test_the_write_door_refuses_and_stores_NOTHING(self, tmp_path):
+        """THE EFFECT, not the predicate — this is the half that lost data."""
+        from tests.test_settings.test_config_dest_parity import Bench
+        from kanibako.settings.config_keys import ConfigLevel
+
+        for i, var in enumerate(self.ILLEGAL):
+            bench = Bench(tmp_path / f"illegal{i}")
+            before = bench.snapshot()
+            msg = bench.set(ConfigLevel.system, f"agent.claude.env.{var}", "x")
+            assert msg.startswith("Error:"), (var, msg)
+            assert "Set " not in msg, (var, msg)
+            # ⚑ THE MUTATION PROOF, not the message: the pre-image wrote the file.
+            assert bench.changed(before) == {}, (var, bench.changed(before))
+
+    def test_a_LEGAL_var_still_round_trips(self, tmp_path):
+        """The guard narrows the illegal shapes and nothing else."""
+        from tests.test_settings.test_config_dest_parity import Bench
+        from kanibako.settings.config_keys import ConfigLevel
+
+        bench = Bench(tmp_path)
+        key = "agent.claude.env.KANI_SHAPE_PROBE"
+        assert not bench.set(ConfigLevel.system, key, "v").startswith("Error:")
+        assert bench.get(ConfigLevel.system, key) == "v"
+
+    def test_the_reserved_floor_still_speaks_for_the_names_it_owns(self, tmp_path):
+        """``__x__`` / ``keys`` are refused by the RESERVED floor, not by the shape
+        guard — pinned so the shape guard cannot silently take over their message and
+        leave the floor untested."""
+        from tests.test_settings.test_config_dest_parity import Bench
+        from kanibako.settings.config_keys import ConfigLevel
+        from kanibako.settings.settings_keyspace import leaf_name_reason
+
+        for name in ("__x__", "keys"):
+            # Still SHAPE-legal — which is why the floor is the thing refusing them.
+            assert _parse_persona_agent_key(f"agent.claude.env.{name}") is not None
+            assert leaf_name_reason(name) is not None, name
+            msg = Bench(tmp_path / name).set(
+                ConfigLevel.system, f"agent.claude.env.{name}", "x",
+            )
+            assert msg.startswith("Error:") and "reserved" in msg.lower(), (name, msg)
+        # …and the floor is silent on the empty name, which is the whole reason the
+        # shape guard had to exist.
+        assert leaf_name_reason("") is None
+
+
 class TestTheIdentityResidueIsJudgedPerAgent:
     """``agent set/reset``'s ROUTE is decided against ONE agent's vocabulary (``[R150]``).
 

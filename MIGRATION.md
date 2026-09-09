@@ -4245,6 +4245,66 @@ is now `kanibako.cfg`. A file still under the old name is ignored rather than re
 rename is what surfaces the message that tells you what to delete. §1's item 1 walks both steps
 in that order.
 
+### 2.69 A malformed `env:` entry an older kanibako wrote for you now stops the box
+
+**Read this if you ever ran `kanibako … set agent.<agent>.env.<something>` on a 1.8.0 development
+build** — and note that you may be carrying this without ever having hand-edited a file, which is
+what separates it from §2.47 (*An undeclared key in a settings file now stops the command, and the
+cure is a hand-edit*).
+
+**What happened.** The command that writes an agent's environment variables did not check that
+what followed `env.` was a usable variable name. It checked only that the key said `env` somewhere,
+so it accepted and stored names it should have refused:
+
+```console
+$ kanibako system set agent.claude.env.=x
+Set agent.claude.env.=x
+```
+
+That reports success and writes an entry whose name is the empty string. `agent.claude.env.foo-bar`
+and `agent.claude.env.1FOO` were stored the same way. The door is fixed — all three are refused
+now, with nothing written — but **the fix does not reach into a file that already has one**:
+
+```yaml
+# agents/<agent>/agent.yaml — what the old command left behind.
+self:
+  env:
+    ? ''
+    : x
+    FOO: good
+```
+
+**What you see.** The box will not start. Kanibako refuses to resolve settings that are not keys,
+so the entry stops every command that builds the resolved snapshot — `start`, `shell`,
+`box show --effective` and the rest of the list in §2.47 — with that section's message:
+
+```
+Error: the settings resolved for this box carry 2 entries that are not settings keys (spec §0 — the keyspace is CLOSED):
+  - agent.claude.env.: 'agent.claude.env.' has an empty path segment; a key is dot-separated non-empty segments (spec §0)
+  - meta.box.agent.env.: 'meta.box.agent.env.' has an empty path segment; a key is dot-separated non-empty segments (spec §0)
+```
+
+⚑ **The key reads oddly, and that is the tell.** `agent.claude.env.` ends in a dot with nothing
+after it because the name *is* empty — it is not a truncated line or a typo in the error. A
+`foo-bar` entry names itself plainly instead, with §2a's reason: *'foo-bar' is not a legal
+environment variable name*. Both are listed twice, once as the agent key and once under
+`meta.box.agent.env.`; that is one entry seen through two spellings, and removing it clears both.
+
+**What you need to do.** Delete the entry from the `env:` table of the agent's settings file and
+start again. Nothing else moves, on disk or anywhere else — a legal variable in the same table is
+untouched, and the box needs no other repair.
+
+```console
+$ kanibako agent info claude       # the quickest way to see which name is malformed
+Env:
+   = x                             ← the empty name; delete this line
+  FOO = good
+```
+
+There is no CLI cure and the message says so: `kanibako box reset` cannot remove what is not a key.
+`agent info` and `agent list` still read the file and still display the entry, which is deliberate —
+a poisoned file stays inspectable and repairable, and only *starting a box* on it refuses.
+
 ---
 
 ## 3. For plugin authors

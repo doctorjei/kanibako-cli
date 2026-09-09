@@ -528,6 +528,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A refusal for the any-agent tier told you to edit a file that does not exist.** Setting a bind,
+  cache, seed, sync or common entry on `agent.default` — the tier that configures *every* agent — is
+  correctly refused, because those tables are authored in YAML rather than from the command line. But
+  the refusal prescribed the cure for a *real* agent: *"Edit the `self.bindings.ro` table of that
+  agent's own settings file (`agents/default/agent.yaml`)"*, and on the two `bindings` arms it added
+  *"Reading it back with `kanibako agent get default bindings.ro.x` still works."* Neither is true.
+  `default` is a reserved tier, not an agent: `agents/default/agent.yaml` does not exist and must not,
+  so the file named could not be opened, and the read prescribed alongside it exits 1 with *"agent
+  'default' not found"*. A user following the message exactly had nowhere to go. The refusal now names
+  where the tier actually lives — the `agent: default:` table of the system settings file — and offers
+  the read that actually works, `kanibako system get agent.default.<category>`, which returns the whole
+  destination-keyed map. It deliberately does not offer the per-entry read the real-agent message
+  offers, because at this tier that one answers *"(not set)"* over a value that is genuinely there.
+  The equivalent refusal for a whole category (`agent.default.caches`) already said the right thing;
+  the two messages now take that sentence from one place instead of each spelling it.
+
+- **`agent.<agent>.env.` with no variable name was accepted, and stored an empty key.** `kanibako
+  system set agent.claude.env.=x` answered *"Set agent.claude.env.=x"* and wrote an entry with an empty
+  name into the agent's settings file; `agent.claude.env.foo-bar` and `agent.claude.env.1FOO` were
+  stored the same way. None of them is a variable name kanibako can export, and none is a key the
+  keyspace declares — the keyspace had in fact already computed a precise refusal for all three, but
+  the command that writes agent settings never consulted it, checking only that the key *said* `env`
+  somewhere. The three other doors that accept a variable name — the `system`/`workset`/`box` env keys,
+  the `secret_path` pointers, and the keyspace's own validator — all checked the name's shape; this one
+  did not. It does now, and the write is refused with nothing stored. Reserved names (`keys`, `__x__`)
+  were already refused and still are, with their own message. The refusal for the any-agent tier
+  (`agent.default.env.` and friends) is now the generic *"unknown config key"* rather than the
+  tier-specific message it used to print — a small loss of precision, and a deliberate one: that
+  message prescribed authoring the entry by hand into the system settings file, so a user who followed
+  it produced exactly the malformed entry described here. The tier-specific message is unchanged for a
+  well-formed variable, where its advice is sound. **If an earlier version wrote such an entry into an
+  agent file, it is still there, and the box will not start until it is removed** — this fixes the
+  door, not the file. Kanibako refuses to resolve settings that are not keys, so `kanibako start`
+  stops with *"the settings resolved for this box carry N entries that are not settings keys (spec §0
+  — the keyspace is CLOSED)"*, naming `agent.<agent>.env.` (with the trailing dot — the empty name is
+  what makes it read oddly) and the file that carries it. `kanibako box reset` cannot remove it,
+  because it is not a key; `kanibako box show --effective` refuses through the same seam. Delete the
+  entry from the `env:` table of the agent's settings file by hand and the box starts again.
+  `kanibako agent info <agent>` still lists the file's variables, which is the quickest way to see
+  which one is malformed.
+
 - **A hook that printed to the model was silenced by the layer above it.** Kanibako ships a hook
   cascade — the bible layer chains to the handbook layer, which chains to a box's own notebook layer
   — and `edited.sh` was the only one of the eight hooks in either layer that redirected its child's
