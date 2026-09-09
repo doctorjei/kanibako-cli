@@ -1834,10 +1834,10 @@ keys:
   ## resolved); identifies the store dir"), materialized from the launch-resolved
   ## ACTIVE NODE by settings_launch.meta_identity_floor — block B2, "the REMAINING
   ## construct-time IDENTITY anchors" — the same function that carries this token for
-  ## meta.box.{name,path,workspace,settings}. `path` and `settings` ride that anchor:
+  ## meta.box.{name,workspace,settings}. `path` and `settings` ride that anchor:
   ## a meta identity triple carries ONE origin, the machinery that materializes it
   ## (compare meta.workset.{path,name,settings}, all `bootstrap`).
-  ## ⚑ THE PLUGIN SEAM IS A DIFFERENT FUNCTION AND KEEPS ITS TOKEN:
+  ## ⚑ THE PLUGIN SEAM IS A DIFFERENT SOURCE AND KEEPS ITS TOKEN:
   ## meta.agent.<agent>.{mode,exec,auth.share_support} come from PluginDescriptor
   ## fields via meta_agent_grammar_floor / the descriptor's auth_share_support, so
   ## `origin: plugin` is correct THERE and must not be swept with these.
