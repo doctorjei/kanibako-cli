@@ -241,7 +241,7 @@ def _duplicate_to_standalone(src_proj, new_path, std, force):
     presence-only since D4) would resolve the two boxes to one (BUG#3).
     """
     from kanibako.errors import ProjectError
-    from kanibako.settings.paths import establish_standalone
+    from kanibako.settings.paths import establish_standalone, write_vault_gitignore
     from kanibako.utils import write_project_gitignore
 
     dst_metadata = new_path / STANDALONE_META_DIR
@@ -318,29 +318,26 @@ def _duplicate_to_standalone(src_proj, new_path, std, force):
     # Mirrors ``ProjectState.box_authored_vault`` in ``_lifecycle.py``; the caller decides
     # because ``establish_standalone`` is also the CREATE core, where its argument is a
     # genuinely authored ``--no-vault``.
-    establish_standalone(
+    _box_name, _dst_shell, _dst_vault_ro, dst_vault_rw = establish_standalone(
         std, new_path,
         enable_vault=read_box_enable_vault(src_box),
     )
 
     write_project_gitignore(new_path)
 
-    # Write vault .gitignore if vault exists.  ⚑ It never does on this path, and
-    # that is CONFIRMED INTENDED (2026-08-27): a duplicate does NOT carry the
-    # source's vault.  establish_standalone does not create the vault dirs, so a
-    # duplicated box with enable_vault true starts without one and
-    # _flag_missing_vault advises the user.  _duplicate_to_local does not carry a
-    # vault either.  Do NOT "fix" this by copying the source's vault across --
-    # vaults do not travel on duplicate.
-    # ⚑ This literal names the vault SKELETON PARENT, which is a NON-KEY (the two arms
-    # ``workset.{vault_ro,vault_rw}`` are the keys).  It needs no resolver: the ``.gitignore``
-    # belongs to the skeleton, and ``establish_standalone`` above wrote this root's
-    # workset.yaml with ``workset.kuid`` alone, so no repoint can exist here yet.
-    vault_dir = new_path / "vault"
-    if vault_dir.is_dir():
-        vault_gitignore = vault_dir / ".gitignore"
-        if not vault_gitignore.exists():
-            vault_gitignore.write_text("rw/\n")
+    # Write the vault ``.gitignore`` if the skeleton is there.  ⚑ On a FRESH destination it
+    # never is, and that is CONFIRMED INTENDED (2026-08-27): a duplicate does NOT carry the
+    # source's vault.  establish_standalone does not create the vault dirs, so a duplicated
+    # box with enable_vault true starts without one and _flag_missing_vault advises the user.
+    # _duplicate_to_local does not carry a vault either.  Do NOT "fix" this by copying the
+    # source's vault across -- vaults do not travel on duplicate.
+    # ⚑ A destination that ALREADY held a standalone box is the case that made this reachable:
+    # ``--force`` rebuilds ``box_data/`` and leaves the old ``vault/`` and root ``workset.yaml``
+    # in place, and ``establish_standalone`` read-modify-writes ``workset.kuid`` INTO that file
+    # rather than replacing it, so a ``workset.vault_rw`` repoint survives the duplicate — the
+    # same pre-existing repoint the workspace copy above deliberately honors.  The gate is
+    # therefore the RESOLVED arm, which is why establish_standalone's return value is unpacked.
+    write_vault_gitignore(new_path, dst_vault_rw)
 
 
 def _unwind_local_name(std, project_name: str, dst_project: Path) -> None:

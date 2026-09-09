@@ -979,10 +979,9 @@ def _init_common(std: StandardPaths, metadata_path: Path, shell_path: Path, vaul
     """Shared first-time project setup: create directories, bootstrap shell.
 
     ⚑⚑ *vault_root* is the workset root that owns the ``vault/`` SKELETON dir, and it is
-    REQUIRED because the skeleton is composed off it — ``<vault_root>/vault``, the one
-    non-key leaf a workset root carries (``project/workset.py::_VAULT_LEAF``, and the
-    same literal ``_lifecycle._to_standalone`` and ``_duplicate`` write into).  Without a
-    root there is no skeleton, so there is nothing to answer.
+    REQUIRED because the skeleton is composed off it — see :func:`write_vault_gitignore`,
+    which answers the whole question.  Without a root there is no skeleton, so there is
+    nothing to answer.
     """
     import sys
 
@@ -997,21 +996,9 @@ def _init_common(std: StandardPaths, metadata_path: Path, shell_path: Path, vaul
     if enable_vault:
         vault_ro_path.mkdir(parents=True, exist_ok=True)
         vault_rw_path.mkdir(parents=True, exist_ok=True)
-        # ⚑⚑ THE SKELETON IS COMPOSED OFF THE ROOT, NEVER POSITIONED OFF A RESOLVED ARM.
-        # ``vault_ro_path.parent`` was that position, and ``workset.vault_ro`` is a
-        # repointable key, so the parent stopped being the skeleton the moment it moved:
-        # ``vault_ro: @meta.workset.path/store/ro`` named ``<root>/store`` — a directory
-        # no key gave us — and in PRIMARY the arm carries a ``@meta.box.name`` leaf, so
-        # the parent was the ``ro`` arm ITSELF, where an ``rw/`` pattern matches nothing.
-        vault_dir = vault_root / VAULT_PATH
-        # ⚑ The file CLAIMS ``rw/`` is a child of the skeleton, so it is written only
-        # while the RESOLVED ``workset.vault_rw`` really is under it — a repoint out
-        # makes the claim false and the file a stray beside a directory the USER named.
-        # ⚑ STRICT: an arm pointed AT the skeleton is the user's rw store, not its parent.
-        if vault_rw_path != vault_dir and _host_path_within(vault_rw_path, vault_dir):
-            gitignore = vault_dir / IGNORE_FILE
-            if not gitignore.exists():
-                gitignore.write_text("rw/\n")
+        # ⚑ ORDER IS LOAD-BEARING: the mkdir above is what puts the skeleton on disk
+        # whenever the gate would pass, satisfying this call's precondition silently.
+        write_vault_gitignore(vault_root, vault_rw_path)
 
     print(MSG_DONE, file=sys.stderr)
 
@@ -1033,6 +1020,43 @@ def _host_path_within(candidate: Path, root: Path) -> bool:
     except ValueError:
         return False
     return True
+
+
+def write_vault_gitignore(vault_root: Path, vault_rw_path: Path) -> None:
+    """Write the vault skeleton's ``.gitignore`` while ``workset.vault_rw`` makes its claim true.
+
+    ⚑⚑ THE SKELETON IS COMPOSED OFF *vault_root*, NEVER POSITIONED OFF A RESOLVED ARM.  It
+    is ``<vault_root>/vault`` — the one non-key leaf a workset root carries
+    (``project/workset.py::_VAULT_LEAF``), and the same file ``standalone_vault_teardown``
+    clears.  ``vault_ro_path.parent`` was that position, and ``workset.vault_ro`` is a
+    repointable key, so the parent stopped being the skeleton the moment it moved:
+    ``vault_ro: @meta.workset.path/store/ro`` named ``<root>/store`` — a directory no key
+    gave us — and in PRIMARY the arm carries a ``@meta.box.name`` leaf, so the parent was
+    the ``ro`` arm ITSELF, where an ``rw/`` pattern matches nothing.
+
+    ⚑ The file's entire content is a CLAIM that ``rw/`` is a child of the skeleton, so it is
+    written only while the RESOLVED *vault_rw_path* really is under it — a repoint out makes
+    the claim false and the file a stray beside a directory the USER named.
+    ⚑ STRICT: an arm pointed AT the skeleton is the user's rw store, not its parent.
+
+    ⚑⚑ ONE CARRIER FOR THREE WRITE SITES — this, ``_lifecycle._to_standalone`` and
+    ``_duplicate._duplicate_to_standalone``.  The gate used to travel as prose, and both
+    convert sites kept writing on ``vault_dir.is_dir()`` alone: the skeleton is the ``ro``
+    arm's DEFAULT parent, so it can sit on disk while ``vault_rw`` points elsewhere and the
+    ``rw/`` claim is already false.  A position cannot answer a key (P10).
+
+    ⚑ The skeleton must already be on disk — an absent one means no vault was laid here (a
+    duplicate never carries one), and inventing an empty ``vault/`` to hold the file would
+    make this function a creator of the thing it only annotates.
+    """
+    vault_dir = vault_root / VAULT_PATH
+    if not vault_dir.is_dir():
+        return
+    if vault_rw_path == vault_dir or not _host_path_within(vault_rw_path, vault_dir):
+        return
+    gitignore = vault_dir / IGNORE_FILE
+    if not gitignore.exists():
+        gitignore.write_text("rw/\n")
 
 
 def _init_project(std: StandardPaths, metadata_path: Path, shell_path: Path, vault_ro_path: Path,

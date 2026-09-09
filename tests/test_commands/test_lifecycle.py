@@ -108,6 +108,18 @@ def _conf_yes():
     return lambda: True
 
 
+def _duplicate_to_standalone(src, dst):
+    """Run the real ``box duplicate --to standalone`` CLI entry point."""
+    import argparse
+
+    from kanibako.commands.box._duplicate import run_duplicate
+
+    return run_duplicate(argparse.Namespace(
+        source_path=str(src), new_path=str(dst), to_mode="standalone",
+        bare=False, force=True, box=None, workset=None, project_name=None,
+    ))
+
+
 # ---------------------------------------------------------------------------
 # resolve_lifecycle_target
 # ---------------------------------------------------------------------------
@@ -1178,25 +1190,13 @@ class TestWorksetTierVaultDefaultIsNotPinned:
     # does not cover it.  The rule is the same one: a duplicate is a NEW workset scope,
     # so the source workset's downward default does not travel.
 
-    @staticmethod
-    def _duplicate_to_standalone(src, dst):
-        """Run the real ``box duplicate --to standalone`` CLI entry point."""
-        import argparse
-
-        from kanibako.commands.box._duplicate import run_duplicate
-
-        return run_duplicate(argparse.Namespace(
-            source_path=str(src), new_path=str(dst), to_mode="standalone",
-            bare=False, force=True, box=None, workset=None, project_name=None,
-        ))
-
     def test_duplicate_to_standalone_leaves_the_worksets_default_behind(self, env):
         """A duplicate does not acquire the source workset's default as its own override."""
         config, std, tmp_home = env
         pdir = _make_default(env, name="dupleaver")
         self._publish_primary_default(std, False)
 
-        assert self._duplicate_to_standalone(pdir, tmp_home / "dupleaver_copy") == 0
+        assert _duplicate_to_standalone(pdir, tmp_home / "dupleaver_copy") == 0
 
         dst = tmp_home / "dupleaver_copy"
         stored = load_doc(dst / "box_data" / "box.yaml").get("box", {})
@@ -1214,7 +1214,7 @@ class TestWorksetTierVaultDefaultIsNotPinned:
         src = _make_standalone(env, name="dupsa")
         write_nested_key(src / "workset.yaml", ("box",), "enable_vault", False)
 
-        assert self._duplicate_to_standalone(src, tmp_home / "dupsa_copy") == 0
+        assert _duplicate_to_standalone(src, tmp_home / "dupsa_copy") == 0
 
         dst = tmp_home / "dupsa_copy"
         stored = load_doc(dst / "box_data" / "box.yaml").get("box", {})
@@ -1227,7 +1227,7 @@ class TestWorksetTierVaultDefaultIsNotPinned:
         state = resolve_lifecycle_target(str(pdir), std, config)
         self._author_at_box(std, state.name, False)
 
-        assert self._duplicate_to_standalone(pdir, tmp_home / "dupowner_copy") == 0
+        assert _duplicate_to_standalone(pdir, tmp_home / "dupowner_copy") == 0
 
         dst = tmp_home / "dupowner_copy"
         stored = load_doc(dst / "box_data" / "box.yaml").get("box", {})
@@ -1242,7 +1242,7 @@ class TestWorksetTierVaultDefaultIsNotPinned:
         self._publish_primary_default(std, False)
         src_proj = resolve_project(std, config, project_dir=str(pdir), initialize=False)
 
-        assert self._duplicate_to_standalone(pdir, tmp_home / "dupvault_copy") == 0
+        assert _duplicate_to_standalone(pdir, tmp_home / "dupvault_copy") == 0
 
         dst = tmp_home / "dupvault_copy"
         dup = resolve_standalone_project(std, config, project_dir=str(dst), initialize=False)
@@ -1488,6 +1488,91 @@ class TestConsolidateResolvesTheRootsOwnKeys:
             path, repointed = answered[key]
             assert path == root / f"moved_{leaf}", key
             assert repointed is True, key
+
+
+# ---------------------------------------------------------------------------
+# The vault .gitignore claims `rw/` — only workset.vault_rw can make that true
+# ---------------------------------------------------------------------------
+
+class TestTheVaultGitignoreClaimsOnlyWhatVaultRwAnswers:
+    """``<root>/vault/.gitignore`` says one thing: ``rw/`` is a child of this directory.
+    Both write sites outside ``_init_common`` gated it on the SKELETON EXISTING instead.
+
+    ⚑⚑ THAT IS A POSITION ANSWERING A KEY.  The skeleton is the ``ro`` arm's DEFAULT
+    parent, so ``<root>/vault`` sits on disk for every un-repointed box — while
+    ``workset.vault_rw`` is a separate key that moves on its own.  The two arms are
+    independent, so an existing skeleton is no evidence at all about where ``rw`` is.
+    """
+
+    def test_convert_writes_no_gitignore_when_vault_rw_points_out_of_the_skeleton(self, env):
+        """🐞 ``box convert --to standalone`` — the fourth sighting of the class ``722c3d59``
+        cured in ``_init_common``, one function away and out of that writer's seam."""
+        root = _default_with_workset_keys(
+            env, "claimfalse", {"vault_rw": "@meta.workset.path/store/rw"},
+        )
+        # The skeleton is on disk because ``vault_ro`` is UNTOUCHED and defaults into it —
+        # exactly the state that made the old ``is_dir()`` gate fire.
+        (root / "vault" / "ro").mkdir(parents=True)
+        (root / "store" / "rw").mkdir(parents=True)
+
+        new = _convert_to_standalone_in_place(env, root)
+
+        # Anti-vacuity: the repoint took effect AND the old gate's whole input is present,
+        # so the only thing that can suppress the write is the resolved arm.
+        assert new.vault_rw == root / "store" / "rw"
+        assert (root / "vault").is_dir()
+        assert not (root / "vault" / ".gitignore").exists()
+
+    def test_convert_still_writes_the_gitignore_for_the_default_layout(self, env):
+        """Guard against over-fixing: an un-repointed ``vault_rw`` DOES live in there."""
+        root = _make_default(env, name="claimtrue")
+        (root / "vault" / "ro").mkdir(parents=True)
+
+        new = _convert_to_standalone_in_place(env, root)
+
+        assert new.vault_rw == root / "vault" / "rw"
+        assert (root / "vault" / ".gitignore").read_text() == "rw/\n"
+
+    def test_duplicate_writes_no_gitignore_when_the_destinations_vault_rw_moved(self, env):
+        """🐞 ``box duplicate --to standalone`` — the sibling site, whose comment argued the
+        vault never exists here.  Half of that is true (nothing on this path CREATES one) and
+        half is not: ``--force`` rebuilds ``box_data/`` and leaves a pre-existing root's
+        ``vault/`` and ``workset.yaml`` alone, and ``establish_standalone`` merges
+        ``workset.kuid`` INTO that file, so a ``vault_rw`` repoint outlives the duplicate."""
+        config, std, tmp_home = env
+        from kanibako.settings.config_io import dump_doc
+
+        src = _make_default(env, name="dupclaimfalse")
+        dst = tmp_home / "dupclaimfalse_copy"
+        dst.mkdir()
+        dump_doc(dst / "workset.yaml", {
+            "workset": {"vault_rw": "@meta.workset.path/store/rw"},
+        })
+        (dst / "vault" / "ro").mkdir(parents=True)
+        (dst / "store" / "rw").mkdir(parents=True)
+
+        assert _duplicate_to_standalone(src, dst) == 0
+
+        # Anti-vacuity: the destination's repoint survived the duplicate, and the skeleton
+        # the old gate read is still on disk.
+        dup = resolve_standalone_project(std, config, project_dir=str(dst), initialize=False)
+        assert dup.vault_rw_path == dst / "store" / "rw"
+        assert (dst / "vault").is_dir()
+        assert not (dst / "vault" / ".gitignore").exists()
+
+    def test_duplicate_still_writes_the_gitignore_for_the_default_layout(self, env):
+        """Reds on its own emptiness (P15): without this the assertion above would pass on a
+        duplicate path that had simply stopped writing the file at all."""
+        config, std, tmp_home = env
+        src = _make_default(env, name="dupclaimtrue")
+        dst = tmp_home / "dupclaimtrue_copy"
+        (dst / "vault" / "ro").mkdir(parents=True)
+
+        assert _duplicate_to_standalone(src, dst) == 0
+
+        dup = resolve_standalone_project(std, config, project_dir=str(dst), initialize=False)
+        assert dup.vault_rw_path == dst / "vault" / "rw"
+        assert (dst / "vault" / ".gitignore").read_text() == "rw/\n"
 
 
 # ---------------------------------------------------------------------------
