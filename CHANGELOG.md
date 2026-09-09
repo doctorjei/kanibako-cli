@@ -47,7 +47,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   default with its **key, value, scope and the file that declares it** (`core-defaults.yaml
   (agent_default:)`, `paths_defaults.py (system tier)`, `goose plugin defaults (env:)`, and so on).
   It is install-wide and static — it takes no box, resolves nothing, reads none of your settings,
-  and works before `kanibako setup` has ever run. Three sections: the 65 declared keys, the 33 bind
+  and works before `kanibako setup` has ever run. Three sections: the declared keys, the bind
   and copy entries (internal ones included and marked, since a box gets them too), and the
   environment variables, which are gathered from kanibako's own defaults file plus every agent
   plugin you have installed — the footer names the agent targets consulted and which of them
@@ -91,6 +91,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the two you passed, and the box's *path* is the subject of that cure rather than its name,
   because a `box set` with only a `key=value` applies to whatever box your shell is standing in —
   and a standalone box cannot be addressed by name at all.
+
+- **An agent's human-readable description has a declared key: `agent.<agent>.label`.** The keyspace
+  had no place for one. `label` is an ordinary agent-scope key and behaves like every other
+  one: `agent.default.label` is the all-agents fallback, a per-agent `agent.<agent>.label` overrides
+  it by the ordinary cascade, and you set either with `kanibako agent set` or by hand in a settings
+  file. The shipped fallback is `Agent Description (None)`, deliberately self-describing so that an
+  agent with no label of its own reads as having none. `kanibako system defaults` lists it
+  with the file that declares it, and `kanibako box show --effective` shows it among a box's agent
+  settings.
 
 ### Changed
 
