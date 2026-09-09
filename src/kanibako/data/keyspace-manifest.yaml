@@ -1806,25 +1806,46 @@ keys:
     value: "kanibako-@meta.box.name%if @meta.box.helper_num: -helper-@meta.box.helper_num%"
     note: "a RENDERING of the identity pair, NEVER a source to parse back from"
     spec: "§2c (F5)"
+  ## ⚑ THE AGENT IDENTITY ANCHORS ARE `construct_time`, NOT `plugin` (2026-09-08).
+  ## `origin` names where the VALUE comes from, and no plugin supplies any of these
+  ## four. `name` is the RESOLVED AGENT SELECTION (spec §2d: "system.agent (as
+  ## resolved); identifies the store dir"), materialized from the launch-resolved
+  ## ACTIVE NODE by settings_launch.meta_identity_floor — block B2, "the REMAINING
+  ## construct-time IDENTITY anchors" — the same function that carries this token for
+  ## meta.box.{name,path,workspace,settings}. `path` and `settings` ride that anchor:
+  ## a meta identity triple carries ONE origin, the machinery that materializes it
+  ## (compare meta.workset.{path,name,settings}, all `bootstrap`).
+  ## ⚑ THE PLUGIN SEAM IS A DIFFERENT FUNCTION AND KEEPS ITS TOKEN:
+  ## meta.agent.<agent>.{mode,exec,auth.share_support} come from PluginDescriptor
+  ## fields via meta_agent_grammar_floor / the descriptor's auth_share_support, so
+  ## `origin: plugin` is correct THERE and must not be swept with these.
+  ## ⚑ THE TRAP a plugin origin sets: a plugin DOES declare a `name`, and it is a
+  ## different value — targets.__init__._require_meta_name is a NON-EMPTINESS guard
+  ## that feeds nothing, and "for a persona [it] is not the plugin's name at all".
   meta.agent.default.name:
     namespace: meta
     set: never
-    origin: plugin
+    origin: construct_time
     value: "default"
+    note: "CORE-owned: there is NO default PLUGIN PACKAGE (§0 'the base system owns
+           agent.default.*'), so this fixed literal cannot have a plugin origin"
     spec: "§2d"
   meta.agent.<agent>.name:
     namespace: meta
     parametric: [agent]
     set: never
-    origin: plugin
+    origin: construct_time
     required: true
-    note: "REQUIRED whenever an agent exists; identifies the store dir + cascade key"
+    note: "the resolved @system.agent, REQUIRED whenever an agent exists (a NO-AGENT
+           box omits it); identifies the STORE DIR. ⚑ Not the cascade key: the key
+           SEGMENT is the canonical discriminator and this VALUE is the `+` store
+           spelling, and for a persona the two DIFFER (settings_launch)."
     spec: "§2d"
   meta.agent.<agent>.path:
     namespace: meta
     parametric: [agent]
     set: never
-    origin: plugin
+    origin: construct_time
     value: "@config.agents/@meta.agent.<agent>.name"
     note: "META so agent/workset/box cascade CANNOT override it (D-2026-06-22)"
     spec: "§2d"
@@ -1832,7 +1853,7 @@ keys:
     namespace: meta
     parametric: [agent]
     set: never
-    origin: plugin
+    origin: construct_time
     value: "@meta.agent.<agent>.path/agent.yaml"
     spec: "§2d"
   meta.agent.<agent>.mode:
