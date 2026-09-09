@@ -263,6 +263,108 @@ class TestLayer1FileCannotHaveSettings:
         assert str(resolved["system.cache"]) == "/from-the-settings-file"
 
 
+class TestLayer1ExoticKeyTypes:
+    """A YAML key need not be a STRING, and the refusal must survive one that is not.
+
+    🛑 ``sorted`` and ``"\\n  ".join`` both assume ``str``, so ``1: x`` / ``true: x`` /
+    ``~: x`` raised a ``TypeError`` TRACEBACK instead of the named refusal — in the one
+    file whose whole point is that a hand-editing user finds out. The population that
+    reaches this is exactly the population the refusal exists to help.
+    """
+
+    @pytest.mark.parametrize("text,named", [
+        ("1: x\n", "1"),
+        ("true: x\n", "True"),
+        ("~: x\n", "None"),
+        ("1: x\nbox: y\n", "box"),  # the SORT arm: a str and an int in one document
+    ])
+    def test_a_non_string_top_level_key_refuses_by_name(self, tmp_path, text, named):
+        cf = tmp_path / CONFIG_FILENAME
+        cf.write_text(text)
+        with pytest.raises(ConfigError) as exc:
+            bootstrap_config_paths(cf)
+        assert named in str(exc.value)
+
+
+class TestLayer1UndeclaredConfigKeys:
+    """Spec §1: *"The Layer-1 set is exactly the config keys in the table below."*
+
+    ⚑⚑ THE ASYMMETRY IS THE DEFECT. Starting the walk at the ``config:`` table makes the
+    ``config.`` PREFIX unfakeable and says nothing about the TAIL, so a bare ``nonsense``
+    was refused loudly while ``config.nonsense`` was accepted, handed to
+    ``resolve_config_paths`` — which iterates the DECLARED table — and dropped unread.
+    """
+
+    @pytest.mark.parametrize("text,named", [
+        ("config:\n  nonsense: /x\n", "config.nonsense"),
+        ("config:\n  box:\n    image: SMUGGLE\n", "config.box.image"),
+    ])
+    def test_an_undeclared_leaf_inside_config_refuses_by_name(self, tmp_path, text, named):
+        cf = tmp_path / CONFIG_FILENAME
+        cf.write_text(text)
+        with pytest.raises(ConfigError) as exc:
+            bootstrap_config_paths(cf)
+        assert named in str(exc.value)
+
+    def test_both_spellings_of_one_typo_now_agree(self, tmp_path):
+        """The finding itself: inside and outside ``config:``, one rule, one answer."""
+        cf = tmp_path / CONFIG_FILENAME
+        for text in ("nonsense: /x\n", "config:\n  nonsense: /x\n"):
+            cf.write_text(text)
+            with pytest.raises(ConfigError):
+                bootstrap_config_paths(cf)
+
+    def test_the_refusal_names_the_declared_set(self, tmp_path):
+        """⚑ DERIVED (P13): the message enumerates :data:`CONFIG_PATH_DEFAULTS`, so a key
+        joining §1 joins the message rather than outdating a list."""
+        cf = tmp_path / CONFIG_FILENAME
+        cf.write_text("config:\n  nonsense: /x\n")
+        with pytest.raises(ConfigError) as exc:
+            bootstrap_config_paths(cf)
+        for key in CONFIG_PATH_DEFAULTS:
+            assert key in str(exc.value)
+
+    def test_the_admitted_set_is_the_keyspaces_own(self):
+        """🛑 THE COUPLING THE REFUSAL RESTS ON, asserted where it is relied upon.
+
+        ``bootstrap_config_paths`` admits :data:`CONFIG_PATH_DEFAULTS` — the table
+        ``resolve_config_paths`` iterates, so *accepted here* ⇒ *resolved there*. That is
+        only a CLOSED-KEYSPACE refusal while the same six spellings are what the keyspace
+        declares. Both are pinned to the manifest separately; nothing pinned them to EACH
+        OTHER, and a divergence would re-open the hole this closed.
+        """
+        from kanibako.settings.settings_keyspace import DECLARED_CONFIG_LEAVES
+
+        assert set(CONFIG_PATH_DEFAULTS) == {
+            f"config.{leaf}" for leaf in DECLARED_CONFIG_LEAVES
+        }
+
+    @pytest.mark.parametrize("key", sorted(CONFIG_PATH_DEFAULTS))
+    def test_every_declared_key_is_still_read(self, tmp_path, key):
+        """Anti-vacuity: the widened refusal must not have caught a real bootstrap key."""
+        cf = tmp_path / CONFIG_FILENAME
+        cf.write_text(f'config:\n  {key.split(".", 1)[1]}: "/x"\n')
+        assert bootstrap_config_paths(cf) == {key: "/x"}
+
+    def test_a_non_table_config_entry_refuses(self, tmp_path):
+        """``config: /x`` used to yield ``{}`` in SILENCE — the whole store back at its
+        default location for a user whose one line meant to move it."""
+        cf = tmp_path / CONFIG_FILENAME
+        cf.write_text("config: /x\n")
+        with pytest.raises(ConfigError) as exc:
+            bootstrap_config_paths(cf)
+        assert "/x" in str(exc.value)
+
+    @pytest.mark.parametrize("text", ["", "config:\n", "config: {}\n"])
+    def test_the_empty_spellings_all_read_as_an_empty_foundation(self, tmp_path, text):
+        """🛑 THE COUNTERWEIGHT to the refusal above: ``write_global_config`` writes ZERO
+        bytes, so absent, null and ``{}`` must agree — a ``config:`` carrying nothing is
+        the created file's own state, not a malformed entry."""
+        cf = tmp_path / CONFIG_FILENAME
+        cf.write_text(text)
+        assert bootstrap_config_paths(cf) == {}
+
+
 class TestBoxScalarDefaultsFloor:
     """The declared-default floor — SEPARATED from the file read, not deleted."""
 

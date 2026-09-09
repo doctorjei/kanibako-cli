@@ -8,10 +8,11 @@ from typing import TYPE_CHECKING
 
 from kanibako._atomic import atomic_write_text
 from kanibako.errors import ConfigError
-from kanibako.settings.bootstrap import (CONFIG_FILE, SITE_CONFIG_DIR, SITE_CONFIG_FILE,
-                                         SITE_SETTINGS_FILE)
+from kanibako.settings.bootstrap import (CONFIG_FILE, CONFIG_PATH_DEFAULTS, SITE_CONFIG_DIR,
+                                         SITE_CONFIG_FILE, SITE_SETTINGS_FILE)
 from kanibako.settings.config_io import dump_doc, load_doc
-from kanibako.settings.messages import ERR_CONFIG_LAYER1_SETTINGS
+from kanibako.settings.messages import (ERR_CONFIG_LAYER1_SETTINGS, ERR_CONFIG_LAYER1_TABLE,
+                                        ERR_CONFIG_LAYER1_UNDECLARED)
 
 if TYPE_CHECKING:
     # ⚑ TYPE-ONLY: ``keystore`` imports this module transitively, so a runtime import
@@ -121,6 +122,11 @@ def _layer1_settings_keys(data: dict) -> list[str]:
     awkward form meaning one thing, and the silent arm was the only thing in this rule that
     behaved like a carve-out.  All three are settings tables that do not belong in this file,
     so all three are refused, and the message names the table it can see.
+
+    ⚑ ``str(name)`` BECAUSE A YAML KEY NEED NOT BE A STRING (2026-09-09).  ``1: x``,
+    ``true: x`` and ``~: x`` are all legal YAML, and the raw key reached ``sorted`` and
+    ``"\\n  ".join`` as an ``int``/``bool``/``None`` — a ``TypeError`` traceback in the one
+    file whose whole purpose is that a hand-editing user FINDS OUT.
     """
     keys: list[str] = []
     for name, value in data.items():
@@ -131,7 +137,7 @@ def _layer1_settings_keys(data: dict) -> list[str]:
         # ⚑ THE LEFT OPERAND IS A DICT, and ``extend`` takes its KEYS — so the ``or`` tests
         # the MAPPING's emptiness, never a leaf's truthiness.  A falsy leaf (``foo: 0``,
         # ``foo: ''``) yields a one-entry dict and is named like any other.
-        keys.extend(_flatten_dotted({name: value}) or [name])
+        keys.extend(_flatten_dotted({name: value}) or [str(name)])
     return sorted(keys)
 
 
@@ -143,13 +149,46 @@ def bootstrap_config_paths(path: Path) -> dict[str, str]:
     read rather than in a test applied after it.
     🛑 A settings table here is REFUSED, not dropped (Jei, 2026-08-31) — a user running a
     different image than their file says should learn it.
+
+    ⚑⚑ AND SO IS AN UNDECLARED LEAF *INSIDE* ``config:`` (2026-09-09).  Starting the walk
+    at that table is what makes the ``config.`` PREFIX unfakeable; it says nothing about the
+    TAIL, so ``config: {nonsense: /x}`` and ``config: {box: {image: X}}`` were carried to
+    :func:`~kanibako.settings.paths.resolve_config_paths`.  🛑 THEY WERE NOT MERELY DROPPED
+    THERE: that function's OUTPUT loop iterates the DECLARED table, but its inner ``lookup``
+    resolves ``@``-refs against a ``LevelView`` built from the FILE's set-values — so an
+    undeclared leaf was an undeclared NAME THE RESOLVER WOULD FOLLOW, and
+    ``data: "@config.nonsense/kanibako"`` beside ``nonsense: /srv/elsewhere`` really did
+    root the store at ``/srv/elsewhere/kanibako`` (measured both sides, 2026-09-09).  The
+    refusal was therefore narrower than spec §1 (*"The Layer-1 set is exactly the config
+    keys in the table below"*) in one direction only: a bare ``nonsense`` was loud,
+    ``config.nonsense`` silent — and the silent one was resolvable.
+    ⚑ THE DECLARED SET IS :data:`~kanibako.settings.bootstrap.CONFIG_PATH_DEFAULTS`, the
+    table ``resolve_config_paths`` itself iterates — so ACCEPTED HERE ⇒ RESOLVED THERE holds
+    by construction, and a key added to §1 carries its own admission (P13).  It is the same
+    six spellings as the keyspace's ``DECLARED_CONFIG_LEAVES``, and the two are pinned equal
+    through the manifest (``test_manifest_conformance``); this reader takes the Layer-1
+    table because Layer 1 is resolved by the flat resolver, NOT the keyspace pipeline
+    (spec §1).
+
+    ⚑ A ``config:`` with NOTHING under it is the created file's own state, not an error —
+    ``write_global_config`` writes zero bytes, so absent and empty must agree.  A ``config:``
+    holding a VALUE cannot mean anything and is refused rather than read as empty.
     """
     data = load_doc(path)
     settings_keys = _layer1_settings_keys(data)
     if settings_keys:
         raise ConfigError(ERR_CONFIG_LAYER1_SETTINGS % (path, "\n  ".join(settings_keys)))
     table = data.get(_LAYER1_TABLE)
-    return _flatten_dotted(table, _LAYER1_TABLE) if isinstance(table, dict) else {}
+    if table is None:
+        return {}
+    if not isinstance(table, dict):
+        raise ConfigError(ERR_CONFIG_LAYER1_TABLE % (path, table))
+    paths = _flatten_dotted(table, _LAYER1_TABLE)
+    undeclared = sorted(key for key in paths if key not in CONFIG_PATH_DEFAULTS)
+    if undeclared:
+        raise ConfigError(ERR_CONFIG_LAYER1_UNDECLARED % (
+            path, "\n  ".join(undeclared), ", ".join(sorted(CONFIG_PATH_DEFAULTS))))
+    return paths
 
 
 def system_path_set_values(settings_path: Path) -> dict[str, str]:
@@ -929,10 +968,13 @@ def _flatten_dotted(data: dict, prefix: str = "") -> dict[str, str]:
 
     ⚑ NOT a scope-category helper — its callers are the Layer-1 ``config:`` read, the
     Layer-2 ``system:`` path-tier read, and the Layer-1 refusal that names its keys.
+    ⚑ ``str(k)`` ON THE UNPREFIXED ARM: a YAML key need not be a string, and only the
+    f-string arm stringified one — so a top-level ``1: x`` handed an ``int`` to callers
+    that sort and join (:func:`_layer1_settings_keys`).
     """
     out: dict[str, str] = {}
     for k, v in data.items():
-        key = f"{prefix}.{k}" if prefix else k
+        key = f"{prefix}.{k}" if prefix else str(k)
         if isinstance(v, dict):
             out.update(_flatten_dotted(v, key))
         else:

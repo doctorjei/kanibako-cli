@@ -325,8 +325,19 @@ ERR_SETTINGS_BAD_PATH       # ("config" | "system", key)
 ERR_SETTINGS_BAD_REF        # ("" | "config", ref)
 ERR_CONFIG_NO_FILE          # (config file path)
 ERR_CONFIG_LAYER1_SETTINGS  # (the Layer-1 file path, the offending keys)
+ERR_CONFIG_LAYER1_UNDECLARED # (the Layer-1 file path, the offending keys, the declared set)
+ERR_CONFIG_LAYER1_TABLE     # (the Layer-1 file path, the offending value)
 ```
 Unresolvable path-tier keys and refs, plus the Layer-1 file's own contract.
+
+⚑⚑ **THE THREE LAYER-1 REFUSALS ARE ONE RULE FROM THREE SIDES** (spec §1: *"The Layer-1 set is
+exactly the config keys in the table below"*). `…_SETTINGS` catches a table OUTSIDE `config:`;
+`…_UNDECLARED` catches a leaf INSIDE it that names no config key; `…_TABLE` catches a `config:`
+that carries a VALUE instead of a table. The middle one closed an asymmetry (2026-09-09) — a bare
+`nonsense` was refused loudly while `config.nonsense` was accepted in silence and dropped unread by
+`resolve_config_paths`. ⚑ `…_UNDECLARED`'s third argument is the DECLARED set itself, enumerated
+from `bootstrap.CONFIG_PATH_DEFAULTS` at the raise site (P13), so a key joining §1 joins the
+message.
 
 ⚑ **`ERR_CONFIG_LAYER1_SETTINGS`'s CURE IS ORDERED, and the order is load-bearing** (Jei,
 2026-08-31). Every verb resolves its paths through `config.bootstrap_config_paths`, `system set`
