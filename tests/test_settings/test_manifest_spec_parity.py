@@ -48,12 +48,15 @@ TIER = "agent.default."
 #: The §2d subsection whose fenced block IS the Default tier, and the marker that opens
 #: it.  Both are read as HEADINGS/markers, never as line numbers: the spec is edited
 #: constantly and any stored offset would be wrong within the week.
-#: ⚑ RETITLED 2026-09-08, and the pin FOUND IT: the spec renamed this marker from
-#: ``**Default tier**`` to the line below, so the walk located 0 markers and every case
-#: in this file ERRORED — a vacuous green would have been far worse. The registry
-#: follows the spec (this file's own rule), so the constant moved, not the spec.
+#: ⚑ THE MARKER IS THE BOLD NAME ALONE, matched as the START of the line: the name is a
+#: RESERVED pseudo-agent name §2d is committed to, while the gloss beside it —
+#: ``**default** (holds default values for agents)`` — is prose, rewordable at any time.
+#: ⚑ THE PREFIX BUYS THE GLOSS ONLY.  The 2026-09-08 outage was a RETITLE of the NAME
+#: (``**Default tier**``): the walk located 0 markers and every case ERRORED — the pin
+#: working, loudly — and a rename still reds here.  Pinning the gloss too, as this
+#: constant briefly did, would have bought a second outage that size for prose churn.
 SECTION = "2d"
-MARKER = "**default** (holds default values for agents)"
+MARKER = "**default**"
 
 #: The spec fence's spelling for the three values YAML cannot spell the same way.  A
 #: manifest value is rendered INTO this notation and the spec token is compared as
@@ -95,6 +98,14 @@ def _canonical(value: object) -> str:
     return str(value)
 
 
+#: The fence's sentinel spellings, obtained by ASKING ``_canonical`` for each of the
+#: values YAML cannot spell as itself rather than restating its literals here — so a
+#: respelled sentinel cannot drift out of sync between the two (P13).  A spec row whose
+#: value is the QUOTED form of one of these is a literal STRING that merely reads like
+#: a sentinel, and the strip below must not turn it into one.
+_SENTINELS = frozenset(_canonical(value) for value in (None, True, False, {}))
+
+
 # --------------------------------------------------------------------------- #
 # The spec side
 # --------------------------------------------------------------------------- #
@@ -124,16 +135,16 @@ def _default_tier_fence(lines: list[str]) -> list[str]:
     span = sections[SECTION]
     body = lines[span.start - 1:span.end]
 
-    marks = [n for n, raw in enumerate(body) if raw.strip() == MARKER]
+    marks = [n for n, raw in enumerate(body) if raw.strip().startswith(MARKER)]
     assert len(marks) == 1, (
-        f"§{SECTION} carries {len(marks)} {MARKER!r} markers, expected exactly 1 — the "
-        f"Default tier's opening marker moved or was renamed"
+        f"§{SECTION} carries {len(marks)} lines opening with {MARKER!r}, expected "
+        f"exactly 1 — the Default tier's opening marker moved or was renamed"
     )
 
     rest = body[marks[0] + 1:]
     opens = next((n for n, raw in enumerate(rest) if raw.strip()), None)
     assert opens is not None and rest[opens].startswith("```"), (
-        f"the line after {MARKER!r} does not open a fenced block "
+        f"the line after the {MARKER!r} marker does not open a fenced block "
         f"({rest[opens] if opens is not None else '<end of section>'!r})"
     )
     closes = next(
@@ -156,8 +167,18 @@ def _spec_rows(lines: list[str]) -> dict[str, str]:
     notation this file translates, beside ``<None>`` / ``true`` / ``{}``.  ``label`` is
     the first Default-tier value to use it (its value has spaces, so the spec quotes it
     where ``bootstrap | tmux`` needs no quoting), and YAML cannot spell a string with its
-    delimiters retained.  Stripping them equates nothing that differs: no declared value
-    in this fence contains a quote character, so a stripped pair is the same string.
+    delimiters retained.  No declared value in this fence contains a quote character, so
+    a stripped pair is the same string.
+
+    ⚑ THE STRIP IS CONDITIONAL, AND THE CONDITION IS THE WHOLE POINT.  ``"<None>"`` is
+    the literal six-character STRING; ``<None>`` is the fence's spelling for null.  They
+    are different declarations, so a quoted sentinel keeps its quotes and compares
+    unequal to a native one rather than silently passing as it.
+
+    ⚑ ONE-SIDED, DELIBERATELY.  ``_canonical`` renders the literal string ``<None>`` and
+    null IDENTICALLY, so the registry cannot state the distinction this side now draws:
+    a quoted sentinel reds against EITHER manifest spelling.  No §2d row states one; if
+    one ever does, the fix is on the manifest side.
     """
     rows: dict[str, str] = {}
     for raw in lines:
@@ -166,7 +187,9 @@ def _spec_rows(lines: list[str]) -> dict[str, str]:
         written_key, _, remainder = raw.partition("|")
         value = _VALUE_END.split(remainder.strip())[0].strip()
         if len(value) >= 2 and value.startswith('"') and value.endswith('"'):
-            value = value[1:-1]
+            unquoted = value[1:-1]
+            if unquoted not in _SENTINELS:
+                value = unquoted
         for key in _expand_braces(written_key.strip()):
             rows[key] = value
     return rows
