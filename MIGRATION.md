@@ -67,7 +67,9 @@ inside boxes. In order of likely impact:
    nothing else, and reading it refuses by name (§2.67) — including when the command doing the
    reading is `kanibako setup`, which is why this comes first. So open the renamed
    `~/.config/kanibako.cfg` and look: **if any top-level table other than `config:` is in it,
-   delete that table.** A `setup_completed` marker is not worth carrying across — the release
+   delete that table** — and if you ever hand-edited the `config:` table itself, read the key names
+   under it, because an unrecognized one is refused now as well (§2.67). A `setup_completed` marker
+   is not worth carrying across — the release
    raises the setup baseline anyway, so a v1.7.2 value is refused as too old wherever it sits.
 
 2. **Every settings file except the system one must be renamed by hand, or it is silently not
@@ -4084,7 +4086,7 @@ grep model ~/.claude/settings.json
 `~/.claude/settings.json`. That fixes it for good — with the key absent, Claude Code picks the
 default your account actually has. (`/model <name>` fixes a running session only.)
 
-### 2.67 A settings table in `kanibako.cfg` stops the command, instead of being ignored
+### 2.67 Anything in `kanibako.cfg` that is not a declared `config.*` key stops the command
 
 `kanibako.cfg` holds the `config.*` bootstrap paths and nothing else. In v1.7.2 it also
 carried settings; in v1.8.0 those settings are read from the settings files, and anything else
@@ -4160,6 +4162,43 @@ points here.
 spellings for one key, one of which the keyspace does not declare. Only `box: image:` is read
 now. In the config file the flat spelling is refused by name like any other; in a settings file
 see §2.47 (*An undeclared key in a settings file now stops the command*).
+
+⚑ **The refusal now reaches INSIDE the `config:` table too.** Until this release the rule ran one
+way only: a top-level `nonsense:` was refused by name, while `config:` with a `nonsense:` under it
+was accepted without a word. It did not reach the resolved foundation — the resolver builds that
+from the declared keys alone — **but a declared key could still `@`-reference it**, so
+`config: {nonsense: /srv/elsewhere, data: "@config.nonsense/kanibako"}` put your store under
+`/srv/elsewhere/kanibako` off a name that is not a key. Layer 1 holds the `config.*` keys the
+message lists and no others, so a key that is not one of them is an error that names it:
+
+```
+Error: /home/you/.config/kanibako.cfg carries config keys that do not exist:
+  config.nonsense
+Layer 1 declares exactly these (spec §1): config.agents, config.data, config.journal,
+config.primary_workset, config.registry, config.settings. Fix or delete those lines;
+config.* keys are only ever set by editing that file.
+```
+
+That is the shape a typo takes — `data_home:` where `data:` was meant, or a `box:` table indented
+one level too far and so sitting *under* `config:`. Neither took effect before, and neither said
+so. **If you have ever hand-written this file, read the keys under `config:` once.**
+
+🛑 **The `@`-reference case is the one that can break a working host, so check for it specifically.**
+If a declared key's value contains `@config.<something>` and that something is not in the list the
+message prints, the file now refuses where it used to resolve. The cure is to inline the value:
+write `data: /srv/elsewhere/kanibako` and delete the invented key. Nothing moves on disk — the path
+you were already resolving to is the one you write down.
+
+⚑ **A `config:` entry that is not a table is refused rather than read as empty.** Writing the value
+where the table goes —
+
+```yaml
+config: /srv/kanibako
+```
+
+— used to resolve to no bootstrap paths at all, in silence: the store back at its default location,
+which is the failure §2.68 describes from the other side, and it looks like kanibako losing your
+install. A `config:` with nothing under it is still fine; it means what an empty file means.
 
 ### 2.68 The bootstrap config files are renamed: `kanibako.cfg` and `base.cfg`
 

@@ -63,6 +63,23 @@ ERR_CONFIG_LAYER1_SETTINGS = (
                         "Delete those lines from it, then set what you meant with " +
                         "'kanibako system set <key>=<value>', which writes the settings file.")
                                                     # the Layer-1 file path, the offending keys
+# ⚑⚑ THE OTHER DIRECTION OF THE SAME RULE (2026-09-09). The refusal above catches a
+# settings table OUTSIDE ``config:``; an UNDECLARED leaf INSIDE it was accepted in
+# silence, so a bare ``nonsense`` was loud while ``config.nonsense`` was not — one rule
+# with two answers (Convention 0). Spec §1: "The Layer-1 set is exactly the config keys
+# in the table below."
+ERR_CONFIG_LAYER1_UNDECLARED = (
+                        "%s carries config keys that do not exist:\n  %s\n" +
+                        "Layer 1 declares exactly these (spec §1): %s. Fix or delete " +
+                        "those lines; config.* keys are only ever set by editing that file.")
+                                    # the Layer-1 file path, the offending keys, the declared set
+# ⚑ A NON-TABLE ``config:`` resolved to the EMPTY foundation in SILENCE, which is the whole
+# store at its default location for a user whose one line meant to move it.
+ERR_CONFIG_LAYER1_TABLE = (
+                        "%s has a 'config:' entry that is not a table: %s\n" +
+                        "It carries the config.* bootstrap paths as keys under it, e.g.\n" +
+                        "  config:\n    data: /path/to/kanibako")
+                                                    # the Layer-1 file path, the offending value
 ERR_PROJECT_NO_PATH =   "Project path '%s' does not exist." # the path that does not exist
 # ⚑ The two $HOME-guard messages take NO arguments (raised bare).
 ERR_PROJECT_NEW_HOME = ("Refusing to create project rooted at $HOME: this would mount the " +

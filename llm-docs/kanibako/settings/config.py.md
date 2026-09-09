@@ -254,6 +254,9 @@ refused as a bare `box`, the other two were silently ACCEPTED. Convention 0 forb
 the silent arm was the only thing in this rule that behaved like a carve-out. All three are
 settings tables that do not belong in this file, so all three refuse.
 
+⚑ The fallback is `str(name)`, not `name` (2026-09-09) — see `_flatten_dotted` for why a YAML key
+that is not a string used to reach `sorted` and `join` raw.
+
 
 ```bootstrap_config_paths(path: Path) -> dict[str, str]```
 The Layer-1 file's `config.*` foundation, read from its `config:` table ALONE.
@@ -264,12 +267,31 @@ applied after it. 🛑 A settings table here RAISES `ConfigError` naming the fil
 not dropped. That refusal is what a user with a stale `[box]` or `[system]` table now sees instead
 of silently running something other than what their file says.
 
-⚑ The extraction inside `config:` is unfiltered by leaf name: an unrecognised `config.<leaf>` lands
-in the set under its dotted name. Nothing downstream consults it by iteration
-(`resolve_system_paths` walks `CONFIG_PATH_DEFAULTS`, never the file's set-values), so an unknown
-`config.*` leaf is orphaned-ignored. ⚑ A stale `[system] templates_stamp` or `[system]
-setup_completed` is NOT in that band — it is a `system:` table, so it refuses; see "The retired
-template-stamp gate" below.
+⚑⚑ **AN UNDECLARED LEAF INSIDE `config:` REFUSES TOO (2026-09-09), and closing that was closing an
+ASYMMETRY.** Starting the walk at the table makes the `config.` PREFIX unfakeable and says nothing
+about the TAIL, so the extraction used to be unfiltered by leaf name: an unrecognized
+`config.<leaf>` landed in the set under its dotted name. 🛑 **It was NOT inert.** `resolve_config_paths`
+walks `CONFIG_PATH_DEFAULTS` for its **output** — that is the sense in which an undeclared leaf never
+became a resolved path — but its inner `lookup` resolves `@`-refs through
+`LevelView("config", values=dict(set_values), …)`, i.e. **the file's set-values, undeclared leaves
+included**. So `data: "@config.nonsense/kanibako"` beside `nonsense: /srv/elsewhere` rooted the store
+at `/srv/elsewhere/kanibako`: an undeclared NAME the resolver would follow, which is a §0 breach and
+not a silent typo-drop (measured on both sides, 2026-09-09). A bare `nonsense` loud,
+`config.nonsense` silent *and resolvable* — one rule with two answers.
+Spec §1: *"The Layer-1 set is exactly the config keys in the table below."* The admitted set is
+`CONFIG_PATH_DEFAULTS`, **the table `resolve_config_paths` itself iterates**, so ACCEPTED HERE ⇒
+RESOLVED THERE holds by construction and a key joining §1 carries its own admission (P13). It is the
+same six spellings as `settings_keyspace.DECLARED_CONFIG_LEAVES`, pinned equal through the manifest
+(`test_manifest_conformance`); the Layer-1 table is what this reader takes because Layer 1 resolves
+through the flat resolver, NOT the keyspace pipeline (spec §1).
+
+⚑ A `config:` entry that is **not a table** refuses as well; it used to yield `{}` in silence, which
+is the whole store back at its default location for a user whose one line meant to move it. A
+`config:` with NOTHING under it is not that case — `write_global_config` writes zero bytes, so
+absent, `config:` and `config: {}` must agree, and all three read as the empty foundation.
+
+⚑ A stale `[system] templates_stamp` or `[system] setup_completed` is in neither band — it is a
+`system:` table, so it refuses as settings; see "The retired template-stamp gate" below.
 
 
 ```system_path_set_values(settings_path: Path) -> dict[str, str]```
@@ -749,8 +771,8 @@ A stored `[system] templates_stamp` leaf on an existing host was ORPHANED-IGNORE
 2026-08-31 — an unknown `system.*` leaf reached no consumer and raised nothing. 🛑 **It now
 REFUSES**, and not as a special case: it is a `system:` table in the Layer-1 file, which that file
 may not carry at all, so the read names it like any other stale settings key. The cure is the same
-hand-edit `MIGRATION.md` § *2.67 A settings table in `kanibako.cfg` stops the command,
-instead of being ignored* prescribes. Migration records: M-23, and §2.67.
+hand-edit `MIGRATION.md` § *2.67 Anything in `kanibako.cfg` that is not a declared `config.*` key
+stops the command* prescribes. Migration records: M-23, and §2.67.
 
 
 ```setup_compat_gate(settings_path: Path | None) -> str | None```
@@ -862,6 +884,11 @@ Layer-1 `config:` read, the Layer-2 `system:` path-tier read, and the Layer-1 re
 keys. The scope categories
 live in `settings_categories` / `settings_keyspace`, and their keys are TERMINAL — a destination is
 DATA, not a key segment — so nothing here flattens one.
+
+⚑ **`str(k)` ON THE UNPREFIXED ARM (2026-09-09): a YAML key need not be a string.** Only the
+f-string arm stringified one, so a top-level `1:` / `true:` / `~:` handed an `int`/`bool`/`None`
+out to `_layer1_settings_keys`, which sorts and joins — a `TypeError` traceback in the one file
+whose whole purpose is that a hand-editing user finds out.
 
 *(A section banner above this function used to read "Scope categories (settings-framework
 {scope}.&lt;category&gt;.\* — the unified masks/bindings/caches/seeded/shared/synced/env

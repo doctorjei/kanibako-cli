@@ -140,7 +140,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Layer-1 read now produces the `config.*` foundation and has nowhere to put anything else, so
   there is no filter left to forget: a settings table is refused, with the offending keys listed
   and the `kanibako system set` line that puts them where they take effect. See MIGRATION.md
-  § *2.67 A settings table in `kanibako.cfg` stops the command, instead of being ignored*.
+  § *2.67 Anything in `kanibako.cfg` that is not a declared `config.*` key stops the command*.
+
+- **An undeclared key *inside* `kanibako.cfg`'s `config:` table now stops the command too, and a
+  `config:` that is not a table is refused instead of read as empty.** The rule ran one way only: a
+  top-level `nonsense:` was refused by name while `config:` with a `nonsense:` under it was
+  accepted without a word — one rule, two answers, and the silent half was the one a typo actually
+  lands in. It never reached the resolved foundation, which the resolver builds from the declared
+  keys alone, **but a declared key could still `@`-reference it**: `data: "@config.nonsense/kanibako"`
+  beside `nonsense: /srv/elsewhere` put the store under `/srv/elsewhere/kanibako` off a name the
+  keyspace does not declare. Layer 1 holds exactly the `config.*` keys the refusal enumerates, and
+  it enumerates them from the same table the resolver itself walks, so what is accepted is what
+  takes effect. MIGRATION.md says how to unwind such a reference. Separately, `config: /srv/kanibako` —
+  the value written where the table goes — used to resolve to no bootstrap paths at all, putting
+  the whole store back at its default location in silence; it now names the offending value. A
+  `config:` with nothing under it still reads as the empty foundation, which is what an
+  `init`-written (zero-byte) file means. Same MIGRATION.md section as above.
+
+- **A non-string top-level key in `kanibako.cfg` produces the refusal instead of a traceback.**
+  `1: x`, `true: x` and `~: x` are all legal YAML, and the key reached the refusal's sort-and-join
+  as an `int`/`bool`/`None`, so the file whose whole purpose is that you find out answered with a
+  `TypeError` stack instead. Reachable only by hand-writing that file — which is the population
+  the refusal exists for.
 
 - **An undeclared FLAT key spelling is no longer read as a settings key.** A top-level `box_image:`
   resolved identically to the declared `box: image:` — two spellings for one key, one of which the
