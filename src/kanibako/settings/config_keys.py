@@ -28,7 +28,7 @@ from kanibako.settings.agent_config import (
 )
 from kanibako.settings.config import coerce_bool
 from kanibako.settings.kb_store import SCOPE_CONTAINMENT
-from kanibako.settings.settings_categories import DECLARATION_ROOT_REF
+from kanibako.settings.settings_categories import DECLARATION_ROOT_REF, SECRET_VAR_RE
 from kanibako.settings.settings_keyspace import (
     ACCESS_TIERS,
     DECLARED_AGENT_LEAVES,
@@ -651,6 +651,24 @@ _PERSONA_ENV_SECTIONS: frozenset[str] = frozenset({"env"})
 # NOT a persona node, so an ``agent.default.<key>`` write is refused.
 AGENT_DEFAULT_SUB = "default"
 
+#: WHERE THE ANY-AGENT TIER LIVES, in the ONE sentence every refusal that cures it
+#: prints.  ⚑⚑ MEASURED, and the obvious guess is wrong in BOTH halves: there is no
+#: ``agents/default/agent.yaml`` (:func:`agent_default_tier_leaf` says so) and
+#: ``kanibako agent get default <category>`` exits 1 on "agent 'default' not found".
+#: The tier is a table in the SYSTEM settings file.
+#: ⚑ ONE SOURCE (P10) BECAUSE IT ALREADY TRAVELLED WRONG: two sibling refusals in this
+#: module name this destination — :func:`terminal_category_write_error` and
+#: :func:`agent_node_bind_retired_error` — and only the first had the measurement, so
+#: the second sent users to the file that must not exist. Both take it from here now.
+#: 🛑 A THIRD CARRIER SURVIVES OUTSIDE THIS MODULE and is NOT yet folded in:
+#: ``config_dest._reserved_tier_refusal`` spells the same sentence by hand. It can
+#: import this (``config_dest`` sits ABOVE ``config_keys``); it was left alone only
+#: because it is a different seam. Fold it in rather than adding a fourth.
+_AGENT_DEFAULT_TIER_CURE: Final = (
+    "Author it in the 'agent: default:' table of the system settings file; the "
+    "launch reads it from there."
+)
+
 
 def _parse_persona_agent_key(key: str) -> "tuple[str, str] | None":
     """Split an ``agent.<node>.<tail>`` persona key into ``(node_raw, tail)``.
@@ -669,6 +687,11 @@ def _parse_persona_agent_key(key: str) -> "tuple[str, str] | None":
     to True and turns ``config_interface``'s ``set`` dispatch from "unknown config key"
     into "write the file" — a §0 breach on a first-class write path.  ``None`` here is
     the closed keyspace's answer, not a parse failure.
+    ⚑⚑ BOTH ARMS JUDGE, AND ONLY SINCE 2026-09-09: the rule above was written for the
+    leaf arm and the ``env.`` arm below simply did not obey it, so the §0 breach it
+    describes was live at that spelling.  A new section admitted to
+    :data:`_PERSONA_ENV_SECTIONS` owes a judgement of its own tail — never a shape test
+    alone.
     ⚑ NON-RAISING, like every recogniser: a malformed ref is not a key, and saying so
     is the whole of the answer.
     """
@@ -676,8 +699,21 @@ def _parse_persona_agent_key(key: str) -> "tuple[str, str] | None":
         return None
     rest = key[len("agent."):]
     parts = rest.split(".")
-    # env.<VAR> — the section is the 2nd-from-last segment.
+    # env.<VAR> — the section is the 2nd-from-last segment, and the VAR is JUDGED, not
+    # merely counted. ⚑⚑ THIS ARM WAS PURELY STRUCTURAL, WHICH IS THE ONE THING THIS
+    # FUNCTION'S DOCSTRING FORBIDS: measured 2026-09-09, ``config set
+    # agent.claude.env.`` wrote ``{'env': {'': 'x'}}``, and ``env.foo-bar`` /
+    # ``env.1FOO`` wrote too. None of the three is a declared key under §2a's
+    # ``env.<VAR>``, and the reserved-name floor never sees them — it catches ``__x__``
+    # and ``keys``, but ``leaf_name_reason('')`` is ``None``.
+    # ⚑ FORWARDED, NOT RE-IMPLEMENTED: :data:`~kanibako.settings.settings_categories.
+    # SECRET_VAR_RE` is the declared §2a VAR shape and is NOT a secret-only rule (the
+    # launch emit reads it as the bare env-var shape); ``settings_keyspace._VAR_RE``,
+    # which is what already refuses these at :func:`key_validity`, is a compiled MIRROR
+    # of it. The shape has one source and this door now asks it rather than guessing.
     if len(parts) >= 3 and parts[-2] in _PERSONA_ENV_SECTIONS:
+        if not SECRET_VAR_RE.match(parts[-1]):
+            return None
         return (".".join(parts[:-2]), f"{parts[-2]}.{parts[-1]}")
     # Flat state leaf — the last segment, judged against THAT NODE's vocabulary.
     if len(parts) >= 2 and agent_leaf_is_declared(
@@ -986,10 +1022,7 @@ def terminal_category_write_error(canonical: str, *, verb: str) -> str | None:
         return _terminal_category_message(
             canonical,
             verb=verb,
-            cure=(
-                "Author it in the 'agent: default:' table of the system settings file; "
-                "the launch reads it from there."
-            ),
+            cure=_AGENT_DEFAULT_TIER_CURE,
             survives=(
                 f"Reading it back with 'kanibako system get {canonical}' still works."
             ),
@@ -1398,8 +1431,11 @@ def agent_node_bind_retired_error(canonical: str, *, verb: str) -> str | None:
     """The refusal + cure for a RETIRED AGENT-scope bind-shaped WRITE, or ``None``."""
     # ⚑ ONE PARSER, ALL SIX (``AGENT_BIND_KEY_RE``) — it used to be two, and the second
     # half went silently DEAD on 2026-08-08c. Do not re-split it.
-    # ⚑ WHAT SURVIVES DIFFERS BY ARM: only a ``bindings`` arm keeps a per-entry READ.
-    # ⚑ The cure names the NODE's own settings file, never a scope table.
+    # ⚑ WHAT SURVIVES DIFFERS BY ARM: only a ``bindings`` arm on a REAL node keeps a
+    # per-entry READ.
+    # ⚑ THREE ARMS, AND THE TIER IS THE FIRST CUT: on a real node the cure names that
+    # NODE's own settings file, never a scope table; the reserved ``default`` tier has no
+    # such file and takes :data:`_AGENT_DEFAULT_TIER_CURE`.
     from kanibako.settings.agent_file import file_spelling
 
     m = _agent_bind_match(canonical)
@@ -1408,6 +1444,31 @@ def agent_node_bind_retired_error(canonical: str, *, verb: str) -> str | None:
     node, category, name = m.group("node"), m.group("category"), m.group("name")
     shown_node = display_agent_ref(node)
     display_key = f"agent.{shown_node}.{category}.{name}"
+    if node == AGENT_DEFAULT_SUB:
+        # ⚑⚑ THE RESERVED TIER IS NOT A NODE, so the per-node arm below is false here in
+        # BOTH halves — it named ``agents/default/agent.yaml``, a file that does not
+        # exist and MUST NOT, and promised a read at the ``agent`` noun that exits 1
+        # (measured, ``kanibako agent get default bindings.ro.x``). The sibling
+        # :func:`terminal_category_write_error` has carried this arm since 2026-08-28;
+        # this one did not, which is the whole of the defect.
+        # ⚑ THE PER-ENTRY READ DOES NOT SURVIVE AT THIS TIER EITHER — measured, ``system
+        # get agent.default.bindings.ro.x`` answers "(not set)" over a hand-authored
+        # value while ``…bindings.ro`` returns the whole map — so the ``bindings``
+        # concession below is deliberately NOT extended here. Promising it would rebuild
+        # the same broken cure one level down.
+        return _bind_route_retired_message(
+            display_key,
+            verb=verb,
+            route=f"agent.<node>.{category}.<name>",
+            why=_retired_because(category),
+            cure=_AGENT_DEFAULT_TIER_CURE,
+            survives=(
+                f"The surviving key is 'agent.{shown_node}.{category}' — the whole "
+                f"dest-keyed map, read with 'kanibako system get "
+                f"agent.{shown_node}.{category}'; an entry inside it is DATA, not a "
+                f"key of its own."
+            ),
+        )
     if _is_agent_node_bind_key(canonical):
         # ⚑ The AGENT noun's own verb, and it takes the TAIL — the node is the
         # SUBJECT, so repeating ``agent.<node>.`` inside the key double-prefixes it

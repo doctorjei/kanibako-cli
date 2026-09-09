@@ -778,6 +778,31 @@ Parsed from the RIGHT: the closed set of settable tails is unambiguous, so every
 recognised tail is the node. ``env`` is matched BEFORE the flat leaves so ``agent.<node>.env.MODEL``
 is an env var named ``MODEL``, never mis-split as the state leaf ``model``.
 
+⚑⚑ **BOTH ARMS JUDGE THEIR TAIL, and the ``env.`` arm only since 2026-09-09.** The flat arm has
+always asked :func:`agent_leaf_is_declared`; the ``env.`` arm tested ONLY that the second-from-last
+segment said ``env``, which made it purely structural — the one thing this function's docstring
+forbids, and for exactly the reason it gives. MEASURED through the real CLI: ``kanibako system set
+agent.claude.env.=x`` printed *"Set agent.claude.env.=x"* at **rc 0** and stored ``env: {'': 'x'}`` in
+the agent file; ``env.foo-bar`` and ``env.1FOO`` stored the same way. An empty variable name is not a
+declared key under §2a's ``env.<VAR>``, so this was a §0 breach on a first-class WRITE path.
+
+⚑ The guard **FORWARDS** `settings_categories.SECRET_VAR_RE` rather than compiling a fourth copy of
+the VAR shape. That name says SECRET but the rule is not secret-only — the launch emit reads it as the
+bare env-var shape, and ``settings_keyspace._VAR_RE``, which already refused these at
+:func:`key_validity`, is a compiled MIRROR of it. The asymmetry was the whole defect: the scope route
+(`_SCOPE_ENV_RE`), the secret twin (`_AGENT_NODE_SECRET_RE`) and `key_validity` all judged the VAR;
+this door alone did not, so `config_interface`'s ``set`` dispatch took the WRITE branch.
+
+⚑ **The RESERVED-NAME floor is a different guard and does not cover this.** ``leaf_name_reason``
+catches ``__x__`` and ``keys`` — those remain SHAPE-legal and are still refused by the floor, with the
+floor's own message — but ``leaf_name_reason('')`` is ``None``. A shape rule and a name rule are two
+rules; neither substitutes for the other.
+
+🛑 **The refusal reason is currently the GENERIC one.** After this guard, ``set agent.claude.env.``
+answers *"Error: unknown config key: agent.claude.env."* at rc 1 — correct and non-destructive, but
+`key_validity` already computed the precise §2a reason and `config_interface`'s tail refusal discards
+it. That discard is a SEPARATE boarded defect at `config_interface`, not a gap in this guard.
+
 ```_is_persona_agent_key(key: str) -> bool```
 True iff *key* is a settable per-persona ``agent.<node>.<key>`` key (B1).
 
@@ -1386,6 +1411,29 @@ exist.
 
 The node is rendered in its USER-FACING ``+`` spelling (:func:`display_agent_ref`) — ``℘`` is a
 keyspace-internal separator and must never reach a message.
+
+⚑⚑ **THREE ARMS, AND THE TIER IS THE FIRST CUT — since 2026-09-09.** Everything above describes a
+REAL node. ``agent.default`` is the reserved ANY-AGENT TIER, not a persona, and the per-node cure was
+false at it in **both** halves: it named ``agents/default/agent.yaml`` — a file that **does not exist
+and must not** (:func:`agent_default_tier_leaf` says so, and a test asserts the directory is never
+created) — and, on the ``bindings`` arms, promised *"Reading it back with 'kanibako agent get default
+bindings.ro.x' still works"*, a command that exits **1** on *"agent 'default' not found"* (measured).
+A refusal that prescribes a file the user cannot create and a read that cannot run is the broken-cure
+shape this whole family of messages exists to avoid.
+
+The tier arm names `_AGENT_DEFAULT_TIER_CURE`: the any-agent tier is a table in the **SYSTEM** settings
+file under ``agent: default:``. Its ``survives`` clause offers the **whole dest-keyed map** at the
+system noun (``kanibako system get agent.default.<category>``) and deliberately does NOT extend the
+``bindings`` per-entry concession — measured, ``system get agent.default.bindings.ro.x`` answers
+*"(not set)"* over a hand-authored value while ``…bindings.ro`` returns the map. Promising the
+per-entry read would rebuild the same broken cure one level down.
+
+⚑ **THE SIBLING ALREADY KNEW, WHICH IS WHY THIS IS ONE SOURCE NOW.**
+:func:`terminal_category_write_error` has carried a ``default`` arm since 2026-08-28, recording the
+very measurement this door lacked; one of two sibling messages had learned the lesson. Both now take
+the sentence from `_AGENT_DEFAULT_TIER_CURE` instead of spelling it. 🛑 A THIRD carrier survives
+outside this module — ``config_dest._reserved_tier_refusal`` spells it by hand and can import this
+constant (`config_dest` sits ABOVE `config_keys`). Fold it in rather than adding a fourth.
 
 ```agent_key_reason(node: str, tail: str) -> str | None```
 The §0 reason *tail* is not a declared key of agent *node*, or `None` when it is — **the `agent`
