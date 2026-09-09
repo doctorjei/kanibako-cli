@@ -473,8 +473,14 @@ _MOULD_CANON_ROOT = "canon"
 #: there and :func:`template_seed_defaults` omits the LAYER, off the same mode test), and
 #: a workset template seeds FUTURE boxes, of which a standalone root will never have
 #: one.
-#: ⚑ ``handbook`` and not ``canon/handbook``: the canon ROOT it hangs off is now
-#: RESOLVED per workset (:func:`_workset_stamp_dirs`), so only the leaf is fixed.
+#: ⚑ ``handbook`` and not ``canon/handbook``: the canon ROOT it hangs off is RESOLVED —
+#: per workset (:func:`_workset_stamp_dirs`) or per any other scope — so only the leaf is
+#: fixed.  It is the chapter leaf under ANY canon contribution root, not the workset one
+#: alone: spec ``:1373`` binds ``system.canon``'s ``handbook/`` subtree the same way, and
+#: ``core-defaults.yaml`` spells ``@<scope>.canon/handbook`` for all four scopes.
+#: ⚑ Not to be confused with :data:`PACKAGED_HANDBOOK`, which names the SOURCE subtree of
+#: the packaged template root.  An install is a (packaged subtree → host dest) PAIR, and
+#: the two halves are independent facts that happen to share a spelling.
 _CANON_CHAPTER_LEAF = "handbook"
 
 
@@ -945,7 +951,7 @@ def install_packaged_templates(
         # ⚑ UNSCOPED on purpose: the dest is INSIDE the canon root, not a scope store
         # root, so there is no store whitelist to apply.
         copy_tree(
-            base_src / PACKAGED_HANDBOOK, std.canon / "handbook",
+            base_src / PACKAGED_HANDBOOK, std.canon / _CANON_CHAPTER_LEAF,
         )
     # The agent MOULD dir exists even though nothing packages it (D5/D7).
     (std.template / AGENT_MOULD_DIRNAME).mkdir(parents=True, exist_ok=True)
@@ -1160,7 +1166,7 @@ def plan_template_refresh(
             std.template / PACKAGED_WORKSET_TEMPLATE, user_owned=False,
         )
         # USER-OWNED (create-if-absent; differences reported, never written).
-        _walk(base_src / PACKAGED_HANDBOOK, std.canon / "handbook", user_owned=True)
+        _walk(base_src / PACKAGED_HANDBOOK, std.canon / _CANON_CHAPTER_LEAF, user_owned=True)
         _walk(
             base_src / PACKAGED_AGENT_DEFAULT, std.agents / "default", user_owned=True,
         )

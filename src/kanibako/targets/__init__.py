@@ -10,6 +10,12 @@ import sys
 from importlib.metadata import entry_points
 from pathlib import Path
 
+from kanibako.settings.bootstrap import (
+    KANIBAKO_PATH,
+    STANDALONE_META_DIR,
+    XDG_DATA_HOME,
+    XDG_SPEC_DEFAULTS,
+)
 from kanibako.targets.base import AgentInstall, Mount, Target, TargetSetting
 from kanibako.targets.no_agent import NoAgentTarget
 
@@ -184,12 +190,12 @@ def discover_targets(project_path: Path | None = None) -> dict[str, type[Target]
     # User-level file-drop plugins
     from kanibako.settings.paths import xdg
 
-    data_home = xdg("XDG_DATA_HOME", ".local/share")
-    _scan_directory_plugins(data_home / "kanibako" / "plugins", targets)
+    data_home = xdg(XDG_DATA_HOME, XDG_SPEC_DEFAULTS[XDG_DATA_HOME])
+    _scan_directory_plugins(data_home / KANIBAKO_PATH / "plugins", targets)
 
-    # Project-level file-drop plugins
+    # Project-level file-drop plugins.  Absence is not an error.
     if project_path is not None:
-        _scan_directory_plugins(project_path / "box_data" / "plugins", targets)
+        _scan_directory_plugins(project_path / STANDALONE_META_DIR / "plugins", targets)
 
     return targets
 
