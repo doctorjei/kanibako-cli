@@ -4868,7 +4868,7 @@ this table (the `system.channelroot`/`system.channels.*`, `system.backup`,
 | `system.path.share_rw` | **DELETED** | subsumed by `@workset.vault_rw` / category `shared` |
 | — | `system.backup` | NEW (`@system.data/backup`) |
 | — | `system.global` | NEW (`@system.data/global`; holds `settings.yaml`, `registry.yaml`) |
-| — | `system.settings` → **`config.settings`** | NEW (`@config.data/global/settings.yaml`, the "system"-tier settings file — `@system.global` does not resolve today; `global` is a literal path segment under `config.data`, not an addressable key: `settings/paths_defaults.py`) |
+| — | `system.settings` → **`config.settings`** | NEW (`@config.data/global/settings.yaml`, the "system"-tier settings file — `@system.global` does not resolve today; `global` is a literal path segment under `config.data`, not an addressable key: `settings/bootstrap.py`) |
 | — | `system.primary_workset` → **`config.primary_workset`** | NEW (`@system.data/primary_workset`; the PRIMARY workset root) |
 | — | `system.cache` | NEW (`$XDG_CACHE_HOME/kanibako`; **not** under data) |
 | — | `system.runtime` | NEW (`$XDG_RUNTIME_DIR/kanibako`; helper sockets; **not** under data) |
