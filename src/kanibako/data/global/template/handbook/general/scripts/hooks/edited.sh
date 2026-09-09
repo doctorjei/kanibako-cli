@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
-# ⚑ ABSENCE IS SILENT, FAILURE IS NOT — see the sibling hooks. This one fires on
-# EVERY Write/Edit, so its chatter is suppressed; its exit STATUS is not. Hiding
-# output is a courtesy, hiding a failure is a defect.
+# ⚑ ABSENCE IS SILENT, EVERYTHING ELSE IS NOT. The notebook layer is never seeded, so a box
+# that has no hook here is the NORMAL case and must not raise. A script that EXISTS
+# and exits non-zero is a bug in someone's own hook.
 notebook_hook=~/canon/notebook/scripts/hooks/edited.sh
-if [ -e "$notebook_hook" ]; then "$notebook_hook" >/dev/null 2>&1; fi
+if [ -e "$notebook_hook" ]; then "$notebook_hook"; fi

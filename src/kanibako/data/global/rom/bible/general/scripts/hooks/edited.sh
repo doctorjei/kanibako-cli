@@ -4,4 +4,4 @@
 # raise; a script that EXISTS and exits non-zero is a bug in their own hook and
 # has to stay visible. `|| true` cannot tell those apart, so it hid both.
 handbook_hook=~/canon/handbook/general/scripts/hooks/edited.sh
-if [ -e "$handbook_hook" ]; then "$handbook_hook" >/dev/null 2>&1; fi
+if [ -e "$handbook_hook" ]; then "$handbook_hook"; fi
