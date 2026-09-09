@@ -507,6 +507,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A hook that printed to the model was silenced by the layer above it.** Kanibako ships a hook
+  cascade — the bible layer chains to the handbook layer, which chains to a box's own notebook layer
+  — and `edited.sh` was the only one of the eight hooks in either layer that redirected its child's
+  output at all; the other seven forward cleanly. A `PostToolUse` hook speaks to the model through
+  stdout, so a hook whose child's output *is* the interface cannot be treated like one whose child
+  only logs. Both layers had to move together: unsuppressing the inner one changes nothing while the
+  outer one still sends both streams to `/dev/null`, and the outer redirect wins. Nothing that
+  worked before stops — mail and broadcast notification never travelled this cascade, because
+  `check-comms.sh` is wired directly into `settings.json` and prints its own message. A box with no
+  notebook hook is unaffected: the template ships nothing at that endpoint, so the cascade's
+  existence check is simply false and nothing runs.
+
 - **A recovery re-run of `create` carrying a different `--agent` seeded the box for one agent and
   configured it for another.** `--agent` persists `pref.system.agent` only on a fresh create, so a
   re-run that completes an interrupted create cannot change what the box is configured for — but the
