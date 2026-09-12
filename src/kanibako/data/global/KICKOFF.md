@@ -2,7 +2,7 @@
 ~/.config/kanibako/kickoff.md as the SEED the box-start flattener resolves into agent's native
 instruction slot (whichever slot the harness names via KANIBAKO_DIRECTIVE_FINAL, loaded every
 session). Its sole job is to pull in the canon entry point: ~/canon/COLLECTION.md (kanibako-owned
-index of the bible / handbook / notebook books) and, through it, the user's own directives.
+index of the charter / handbook books) and, through it, the user's own directives.
 
 ⚑ CORE-OWNED (P-5, C-CANON R2): this content moved out of the three agent plugins and into the
 base, so the kickoff and the canon paths it imports now ship in ONE package and can never disagree:

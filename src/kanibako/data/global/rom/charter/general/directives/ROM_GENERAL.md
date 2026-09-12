@@ -2,7 +2,7 @@
 ## Identity & Environment
 _(Core Tome)_
 
-> This file is the entrypoint for the "general" chapter of the "bible"; it is read directly from
+> This file is the entrypoint for the "general" chapter of the "charter"; it is read directly from
 > the package's "rom" index and cannot be edited. The core instructions are updated together with
 > the package(s). This file describes the box environment & universal operating instructions for
 > agents inside a *Kanibako* box, for all projects/harnesses (Claude, Codex, Goose, …). Your own
@@ -37,7 +37,7 @@ For example, if your box is _"fantasy"_ and your agent is _"hero"_, you are **"f
 'Canon' is the agent guide, comprised of **Canon Law** (required) & **Canon Lore** (supporting),
 made up of distinct _tomes_:
 
-1. Bible (`~/canon/bible`) - Core tome; Read-only (from core & plugins)
+1. Charter (`~/canon/charter`) - Core tome; Read-only (from core & plugins)
 2. Handbook (`~/canon/handbook`) - System tome; user editable, read-only to agents
 3. Notebook (`~/canon/notebook`) - Box tome; often directives, archives, & resources; read-write.
 4. Workbook (`~/canon/workbook`) - Box working tome; specific process, progress, state, & other
@@ -57,7 +57,7 @@ resources required to construct project _artifacts_ (vs info on process / progre
 _Law_ and _Lore_ can live in any tome, but each has a unique role.
 
 **Canon Law** - Binding, COMPULSORY canon text; holds directives (this text), procedures, & specs.
-**Supreme Law** - Law from the bible (core) and handbook (system) tomes.
+**Supreme Law** - Law from the charter (core) and handbook (system) tomes.
 **Local Law** - Law from the notebook (user) and workbook (if applicable) tomes.
 **Canon Lore** - non-law elements of canon; information, plans, resources, & working files.
 **References** - Information, citations, and rulings of nuance.
