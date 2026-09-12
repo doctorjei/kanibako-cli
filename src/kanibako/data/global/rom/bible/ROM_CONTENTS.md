@@ -7,6 +7,8 @@ _Entrypoint to Core Instructions_
 > with the package(s). Your own system/configuration and/or project-/agent-specific instructions
 > should go in the handbook and/or notebook chapters.
 >
+> "## Preamble" section is omitted here for brevity.
+>
 > The core tome chapters cover instructions directed as follows:
 >
 > 1. general - broad, overarching
@@ -17,7 +19,12 @@ _Entrypoint to Core Instructions_
 
 ## Bible Contents
 
-1.1 [Identity & Environment](@general/directives/ROM_GENERAL.md)
-1.2 [Agent Information](@agent/directives/ROM_AGENT.md)
-1.3 [Workset Information](@workset/directives/ROM_WORKSET.md)
-1.4 [Box Information](@box/directives/ROM_BOX.md)
+{{current}}.{{section}} [*](@general/ROM_GENERAL.md)
+{{current}}.{{section}} [*](@agent/ROM_AGENT.md)
+{{current}}.{{section}} [*](@workset/ROM_WORKSET.md)
+{{current}}.{{section}} [*](@box/ROM_BOX.md)
+
+<!-- 1.1 [Identity & Environment](@general/ROM_GENERAL.md)
+1.2 [Agent Information](@agent/ROM_AGENT.md)
+1.3 [Workset Information](@workset/ROM_WORKSET.md)
+1.4 [Box Information](@box/ROM_BOX.md) -->
