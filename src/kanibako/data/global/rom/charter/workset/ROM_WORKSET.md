@@ -1,7 +1,5 @@
 <!--[STOCK]
-## Workset Instructions
-_(Core Tome)_
-
+## Workset Instructions (Core)
 > This file is the entrypoint for the "workset" chapter of the "charter"; it is read directly from
 > the package's "rom" index and cannot be edited. The core instructions are updated together with
 > the package(s). This file covers workset-specific information that applies to all instances.

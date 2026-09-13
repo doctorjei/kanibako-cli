@@ -1,6 +1,5 @@
 <!--[STOCK]
-## 2.2 Agent Directives
-_(System Tome)_
+## 2.2 Agent Information (System)
 
 ***NOTE TO EDITING AGENTS OR NATURAL PERSONS***: *Only directives that apply SPECIFICALLY to agents
 should go in these files! Anything that is global or specific to project worksets or a particular

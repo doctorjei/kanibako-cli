@@ -1,5 +1,5 @@
 <!--[STOCK]
-# 1. Bible (Core Tome)
+**Book 1**
 _Entrypoint to Core Instructions_
 
 > This file contains the Table of Contents for the _core tome_ of the canon. It is read directly
@@ -17,14 +17,10 @@ _Entrypoint to Core Instructions_
 > 4. box - box/project-specific
 -->
 
-## Bible Contents
+# Charter (Core Tome, Read-Only)
 
-{{current}}.{{section}} [*](@general/ROM_GENERAL.md)
-{{current}}.{{section}} [*](@agent/ROM_AGENT.md)
-{{current}}.{{section}} [*](@workset/ROM_WORKSET.md)
-{{current}}.{{section}} [*](@box/ROM_BOX.md)
-
-<!-- 1.1 [Identity & Environment](@general/ROM_GENERAL.md)
-1.2 [Agent Information](@agent/ROM_AGENT.md)
-1.3 [Workset Information](@workset/ROM_WORKSET.md)
-1.4 [Box Information](@box/ROM_BOX.md) -->
+## Charter Contents
+__IMPORTSECTION__("general/ROM_GENERAL.md")
+__IMPORTSECTION__("agent/ROM_AGENT.md")
+__IMPORTSECTION__("workset/ROM_WORKSET.md")
+__IMPORTSECTION__("@box/ROM_BOX.md")

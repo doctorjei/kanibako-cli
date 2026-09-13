@@ -1,6 +1,5 @@
 <!--[STOCK]
-## 2.3 Workset Directives
-_(System Tome)_
+> Workset Information (System)
 
 ***NOTE TO EDITING AGENTS OR NATURAL PERSONS***: *Only directives that apply to ALL and ONLY
 projects in the workset should go in these files! Anything that is global, specific to agents, or

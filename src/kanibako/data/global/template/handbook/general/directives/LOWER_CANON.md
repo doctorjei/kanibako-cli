@@ -1,7 +1,6 @@
 <!--[STOCK]
-### 2.1.1 Canon Sections 
-_(System Tome))_
-
+> Lower Canon (System Tome)
+>
 > This file holds the system-wide canon policy; it is read from the global canon/handbook path and
 > can only be edited from the host system by the user (not from within the box). Agent-editable
 > instructions and information should go in the box's notebook (not here).
@@ -9,12 +8,15 @@ _(System Tome))_
 > This file is seeded from the core package. Defaults contents are included here; they are meant
 > as a starting point and can be extended or replaced.
 -->
+### Lower Canon
 
-#### Handbook
+Lower Canon includes these books:
 
-The handbook is usually read-only to agents. Users may grant handbook editing access to agents;
-if granted access, observe & reinforce existing layouts, design approaches, & structure, subject
-to user requests or commands.
+- Notebook (`~/canon/notebook`): Box tome; often directives, archives, & resources; read-write.
+- Workbook (`~/canon/workbook`): Box working tome; specific process, progress, state, & other
+  data (optional, but recommended)
+
+Non-draft specification and design documents are also considered _Law_.
 
 #### Notebook
 
