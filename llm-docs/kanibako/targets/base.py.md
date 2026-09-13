@@ -21,7 +21,7 @@ The module holds four kinds of thing:
   not override.
 
 **Authority:** `specs/settings-keyspace-1.8.0.md` — §0 (closed keyspace, ONE DEST SPACE / TWO
-DELIVERIES), §1A (CLI level, the projected-surface exception), §2c (the bible chapter bind), §2d
+DELIVERIES), §1A (CLI level, the projected-surface exception), §2c (the charter chapter bind), §2d
 (the per-agent keyspace this module maps onto). ⚑ The spec is the live authority; read it first.
 
 ## The terminal bind-shaped map
@@ -891,13 +891,13 @@ A plugin that ships its declarations in its `<agent>-defaults.yaml` `env:` secti
 ```python
 def rom_root(self) -> Path | None
 ```
-Locate this plugin's packaged BIBLE CHAPTER root (`<pkg>/data/rom`), or `None`.
+Locate this plugin's packaged CHARTER CHAPTER root (`<pkg>/data/rom`), or `None`.
 
-The source of the `box.bindings.ro.canon_bible_agent` bind (spec §2c), which CORE emits from the
+The source of the `box.bindings.ro.canon_charter_agent` bind (spec §2c), which CORE emits from the
 resolved target — see `core_defaults.rom_agent_default_categories`.
 
-The plugin's `data/rom` **IS** the chapter root: it ships `directives/ROM_AGENT.md`, not a deep
-`canon/bible/agent/...` mirror, so CONTAINMENT holds BY CONSTRUCTION — a plugin cannot place a file
+The plugin's `data/rom` **IS** the chapter root: it ships `ROM_AGENT.md`, not a deep
+`canon/charter/agent/...` mirror, so CONTAINMENT holds BY CONSTRUCTION — a plugin cannot place a file
 outside its own chapter, so there is nothing to guard and no silently-ignored out-of-chapter file.
 
 ⚑ The package is derived from `sys.modules[type(self).__module__].__package__` rather than from
@@ -943,7 +943,7 @@ per-harness path knowledge in core (spec §2d). A user can override or suppress 
 of them at a more-specific level, **BY ITS DESTINATION**, since that is now the key.
 
 A plugin owns its own harness-slot `box_dest` while an `@`-ref source keeps core agent-agnostic. ⚑ A
-plugin's own bible chapter is **NOT** declared here: it is the INTERNAL `canon_bible_agent` bind
+plugin's own charter chapter is **NOT** declared here: it is the INTERNAL `canon_charter_agent` bind
 core emits from `rom_root`, kept out of the agent keyspace precisely so it stays UNREPOINTABLE like
 the rest of the book.
 

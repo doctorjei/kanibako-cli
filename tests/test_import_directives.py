@@ -1014,9 +1014,9 @@ class TestLinkedIncludeDepth:
         assert "###" not in out
 
     def test_rom_contents_shape(self, home):
-        """``rom/bible/ROM_CONTENTS.md``: ``## Bible Contents`` + ``1.1`` -> ``##``."""
+        """``rom/charter/ROM_CONTENTS.md``: ``## Charter Contents`` + ``1.1`` -> ``##``."""
         out = _body(_run(home, {
-            "root.md": "## Bible Contents\n\n1.1 [Identity & Environment](@g.md)\n",
+            "root.md": "## Charter Contents\n\n1.1 [Identity & Environment](@g.md)\n",
             "g.md": "general body",
         }))
         assert "\n## 1.1 Identity & Environment\n" in out
@@ -1026,15 +1026,15 @@ class TestLinkedIncludeDepth:
         UPWARD — read absolutely this is ``#``, which OUTRANKS the ``## Library``
         it came from."""
         out = _body(_run(home, {
-            "root.md": "## Library\n\n1. [Bible (Core)](@b.md)\n2. [Handbook](@h.md)\n",
-            "b.md": "bible body", "h.md": "handbook body",
+            "root.md": "## Library\n\n1. [Charter (Core)](@b.md)\n2. [Handbook](@h.md)\n",
+            "b.md": "charter body", "h.md": "handbook body",
         }))
-        assert "\n## 1. Bible (Core)\n" in out
+        assert "\n## 1. Charter (Core)\n" in out
         assert "\n## 2. Handbook\n" in out
         assert re.search(r"^# \d", out, re.M) is None
 
     def test_sys_general_shape(self, home):
-        """``template/handbook/general/directives/SYS_GENERAL.md``: ``### Rules``
+        """``template/handbook/general/SYS_GENERAL.md``: ``### Rules``
         + ``1.`` -> ``###``."""
         out = _body(_run(home, {
             "root.md": "### Rules\n\n1. [Canon Sections](@c.md)\n2. [Project Work](@d.md)\n",
@@ -1075,10 +1075,10 @@ class TestGeneratedFragmentIds:
 
     def test_parentheses_are_dropped(self, home):
         out = _body(_run(home, {
-            "root.md": "1. [Bible (Core)](@a.md)\n", "a.md": "A",
+            "root.md": "1. [Charter (Core)](@a.md)\n", "a.md": "A",
         }))
-        assert "1. [Bible (Core)](#1-bible-core)" in out
-        assert "# 1. Bible (Core)" in out
+        assert "1. [Charter (Core)](#1-charter-core)" in out
+        assert "# 1. Charter (Core)" in out
 
     def test_the_target_takes_exactly_one_hash(self, home):
         """A target beginning with ``#`` is a FRAGMENT and everything after the
@@ -1351,7 +1351,7 @@ class TestNumberSeam:
 
     def test_gfm_anchor_derivation(self):
         assert flattener.gfm_anchor("1.1 Foo Man") == "11-foo-man"
-        assert flattener.gfm_anchor("1. Bible (Core)") == "1-bible-core"
+        assert flattener.gfm_anchor("1. Charter (Core)") == "1-charter-core"
         assert flattener.gfm_anchor("1.1 Identity & Environment") == (
             "11-identity--environment"
         )

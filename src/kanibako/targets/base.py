@@ -773,7 +773,7 @@ class Target(ABC):
         return {}
 
     def rom_root(self) -> Path | None:
-        """Locate this plugin's packaged BIBLE CHAPTER root (`<pkg>/data/rom`); `None` on ANY failure.
+        """Locate this plugin's packaged CHARTER CHAPTER root (`<pkg>/data/rom`); `None` on ANY failure.
 
         ⚑ Derived from `__package__`, NOT from `name` (llm-doc).
         """
@@ -798,7 +798,7 @@ class Target(ABC):
         ⚑ ONE SHAPE, TWO DELIVERIES: `seeded` and `synced` are COPIES and stay copies.
         ⚑ A retired name-keyed `agent.<agent>.<category>.<name>` key is REFUSED BY NAME at
         `settings_assemble._insert_dotted`; there is no shim.
-        ⚑ A plugin's own bible chapter is NOT declared here — see `rom_root`.
+        ⚑ A plugin's own charter chapter is NOT declared here — see `rom_root`.
         """
         return {}
 

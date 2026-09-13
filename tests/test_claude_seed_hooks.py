@@ -1,10 +1,10 @@
-"""The SEEDED claude hook commands — the bible hooks a real box runs at session edges.
+"""The SEEDED claude hook commands — the charter hooks a real box runs at session edges.
 
 WHY THIS MODULE EXISTS
 ----------------------
 ``test_delivery_manifest`` asserts the claude template's ``settings.json`` is
 DELIVERED; nothing asserted what was IN it. That hole hid a live defect for a
-release: every bible hook was invoked as a COMPOUND command
+release: every charter hook was invoked as a COMPOUND command
 (``…/startup.sh || true``), and a compound command costs two things at once.
 
 1. THE PID. A compound command forces the hook shell to survive and evaluate the
@@ -45,10 +45,10 @@ from kanibako.settings.core_defaults import ROM_ROOT_PARTS, _canon_dest, package
 from kanibako.launch.templates import _packaged_agent_store
 from kanibako.vscode.vscode_config import _AGENT_MARKER_WRITE_COMMAND
 
-#: Rom-root-relative home of the bible's hook cascade and its PID helpers. The BOX
+#: Rom-root-relative home of the charter's hook cascade and its PID helpers. The BOX
 #: paths are derived by ``_canon_dest`` — the same function the bind emitter uses —
 #: so relocating the canon dest reds here instead of leaving a hook pointed at nothing.
-_SCRIPTS_ROM_REL = "bible/general/scripts"
+_SCRIPTS_ROM_REL = "charter/general/scripts"
 _HOOKS_ROM_REL = f"{_SCRIPTS_ROM_REL}/hooks"
 
 #: Seed-source-relative path of the claude harness config the box actually reads.
@@ -66,7 +66,7 @@ _PID_HOOKS = {
     "clear-end": "pid-rm",
 }
 
-#: Bible hooks seeded without a pid argument — they must still be BARE calls.
+#: Charter hooks seeded without a pid argument — they must still be BARE calls.
 _PIDLESS_HOOKS = ("stop",)
 
 _HAS_BASH = shutil.which("bash") is not None
@@ -97,7 +97,7 @@ def _hook_commands(settings: dict) -> list[str]:
 
 
 def _shipped_script(rom_rel: str, leaf: str) -> Path:
-    """The SHIPPED source of one bible script — the bytes the rom bind exposes."""
+    """The SHIPPED source of one charter script — the bytes the rom bind exposes."""
     rom_root = Path(str(packaged_data_dir(*ROM_ROOT_PARTS)))
     return rom_root / rom_rel / leaf
 
@@ -128,18 +128,18 @@ def test_seeded_pidless_hooks_are_bare_calls():
         )
 
 
-def test_no_seeded_bible_hook_swallows_its_exit_status():
+def test_no_seeded_charter_hook_swallows_its_exit_status():
     """LOUDNESS. ``|| true`` cannot tell "the user created no layer" (silent, and the
     cascade scripts already handle it with an existence test) from "a layer that
     EXISTS raised" (a bug in the user's own hook, which has to stay visible). It also
-    forces the compound form that costs the pid. No bible hook may carry one."""
+    forces the compound form that costs the pid. No charter hook may carry one."""
     box_dir = _canon_dest(_SCRIPTS_ROM_REL)
     offenders = [
         command
         for command in _hook_commands(shipped_settings())
         if command.startswith(box_dir) and "||" in command
     ]
-    assert not offenders, f"bible hook commands swallow their exit status: {offenders}"
+    assert not offenders, f"charter hook commands swallow their exit status: {offenders}"
 
 
 # --- The shipped cascade scripts -------------------------------------------
@@ -169,7 +169,7 @@ def test_shipped_pidless_hooks_touch_no_pid_helper():
 
 @pytest.fixture
 def cascade_box(tmp_path):
-    """A HOME holding the shipped bible cascade, plus the env the helpers read.
+    """A HOME holding the shipped charter cascade, plus the env the helpers read.
 
     Returns ``(env, markers_dir, pidfile, home)``. The handbook layer is deliberately
     ABSENT, which is the ordinary case and must stay silent.
@@ -203,7 +203,7 @@ def _run_hook(command: str, env: dict) -> subprocess.CompletedProcess:
 
 
 def _seeded(leaf: str) -> str:
-    """The command string the shipped template seeds for one bible hook."""
+    """The command string the shipped template seeds for one charter hook."""
     box_dir = _canon_dest(_HOOKS_ROM_REL)
     commands = _hook_commands(shipped_settings())
     matches = [c for c in commands if c.startswith(f"{box_dir}/{leaf}.sh")]
@@ -211,7 +211,7 @@ def _seeded(leaf: str) -> str:
     return matches[0]
 
 
-@pytest.mark.skipif(not _HAS_BASH, reason="the bible cascade is bash")
+@pytest.mark.skipif(not _HAS_BASH, reason="the charter cascade is bash")
 @pytest.mark.parametrize(("start_leaf", "end_leaf"), [
     ("startup", "end"),
     ("resume", "end"),
@@ -243,7 +243,7 @@ def test_seeded_cascade_marks_the_agent_pid_and_clears_it(
     assert not pidfile.exists()
 
 
-@pytest.mark.skipif(not _HAS_BASH, reason="the bible cascade is bash")
+@pytest.mark.skipif(not _HAS_BASH, reason="the charter cascade is bash")
 def test_seeded_end_cascade_leaves_a_pidfile_another_agent_owns(cascade_box):
     """The pidfile is a SINGLE SHARED PATH while markers are per-pid, so the cascade
     must drop it only while it still names the leaver — and must still exit 0 when it
@@ -262,7 +262,7 @@ def test_seeded_end_cascade_leaves_a_pidfile_another_agent_owns(cascade_box):
     assert pidfile.read_text() == other_agent, "the cascade cleared another agent's pidfile"
 
 
-@pytest.mark.skipif(not _HAS_BASH, reason="the bible cascade is bash")
+@pytest.mark.skipif(not _HAS_BASH, reason="the charter cascade is bash")
 def test_seeded_cascade_surfaces_a_failing_handbook_layer(cascade_box):
     """LOUDNESS, proved by mutation rather than by reading the string. A handbook hook
     that EXISTS and exits non-zero is a bug in the user's own hook; the seeded command
@@ -281,12 +281,12 @@ def test_seeded_cascade_surfaces_a_failing_handbook_layer(cascade_box):
     )
 
 
-@pytest.mark.skipif(not _HAS_BASH, reason="the bible cascade is bash")
+@pytest.mark.skipif(not _HAS_BASH, reason="the charter cascade is bash")
 def test_seed_and_panel_carriers_name_the_same_pid(cascade_box):
     """TWO CARRIERS, ONE AGENT. The seeded template and ``vscode_config``'s panel hook
     both write a liveness marker, and ``box_supervisor`` reads one dir — so the two must
     agree on WHICH pid they name. They reach the helper by different routes (the seed
-    goes through the bible CASCADE and passes ``$1``; the panel calls ``pid-add.sh``
+    goes through the charter CASCADE and passes ``$1``; the panel calls ``pid-add.sh``
     directly), which is exactly how they could drift apart unnoticed."""
     env, markers, _, home = cascade_box
     agent_pid = str(os.getpid())

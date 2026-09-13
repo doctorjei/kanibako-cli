@@ -23,7 +23,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "~/canon/bible/general/scripts/hooks/edited.sh",
+            "command": "~/canon/charter/general/scripts/hooks/edited.sh",
             "timeout": 5
           }
         ]
@@ -35,7 +35,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "~/canon/bible/general/scripts/hooks/startup.sh \"$PPID\""
+            "command": "~/canon/charter/general/scripts/hooks/startup.sh \"$PPID\""
           }
         ]
       },
@@ -44,7 +44,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "~/canon/bible/general/scripts/hooks/resume.sh \"$PPID\""
+            "command": "~/canon/charter/general/scripts/hooks/resume.sh \"$PPID\""
           }
         ]
       },
@@ -53,7 +53,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "~/canon/bible/general/scripts/hooks/clear-start.sh \"$PPID\""
+            "command": "~/canon/charter/general/scripts/hooks/clear-start.sh \"$PPID\""
           }
         ]
       },
@@ -62,7 +62,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "~/canon/bible/general/scripts/hooks/compact.sh \"$PPID\""
+            "command": "~/canon/charter/general/scripts/hooks/compact.sh \"$PPID\""
           }
         ]
       },
@@ -82,7 +82,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "~/canon/bible/general/scripts/hooks/clear-end.sh \"$PPID\""
+            "command": "~/canon/charter/general/scripts/hooks/clear-end.sh \"$PPID\""
           }
         ]
       },
@@ -91,7 +91,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "~/canon/bible/general/scripts/hooks/end.sh \"$PPID\""
+            "command": "~/canon/charter/general/scripts/hooks/end.sh \"$PPID\""
           }
         ]
       }
@@ -101,7 +101,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "~/canon/bible/general/scripts/hooks/stop.sh",
+            "command": "~/canon/charter/general/scripts/hooks/stop.sh",
             "timeout": 5
           }
         ]

@@ -33,7 +33,7 @@ from tests.support.protected_trees import reap_box_stores, reap_tree
 def _make_box_store(root: Path, name: str = "demo") -> Path:
     """Build a directory with the skeleton's on-disk signature (``home/canon``)."""
     store = root / "primary_workset" / "boxes" / name
-    (store / "home" / "canon" / "bible").mkdir(parents=True)
+    (store / "home" / "canon" / "charter").mkdir(parents=True)
     (store / "home" / "canon" / "COLLECTION.md").touch()
     (store / "canon" / "handbook").mkdir(parents=True)
     return store

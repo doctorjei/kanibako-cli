@@ -328,7 +328,7 @@ class TestBindRows:
         """A dest is DATA and contains dots; it must survive whole into the key cell."""
         row = next(
             r for r in bind_rows()
-            if r.key == "box.bindings.ro[~/canon/bible/ROM_CONTENTS.md]"
+            if r.key == "box.bindings.ro[~/canon/charter/ROM_CONTENTS.md]"
         )
         assert row.scope == "box"
         assert "ROM_CONTENTS.md" in row.key

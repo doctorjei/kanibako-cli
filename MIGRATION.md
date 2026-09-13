@@ -108,10 +108,12 @@ inside boxes. In order of likely impact:
    an empty `common/` is created beside your populated `commons/`, silently (§2.3). Any
    scripts/notes of yours that reference the old path break silently.
 
-7. **Instruction files move into the canon.** New boxes get `~/canon/{bible,handbook,notebook,
+7. **Instruction files move into the canon.** New boxes get `~/canon/{charter,handbook,notebook,
    workbook}` with a read-only, root-owned skeleton; `~/playbook` is retired as the entry
    point. Existing boxes keep launching but their own `~/playbook` directives **silently stop
-   being loaded** and need hand-triage (§2.4).
+   being loaded** and need hand-triage (§2.4). The packaged book is named `charter`; the
+   `1.8.0rc1` and `rc2` prereleases spelled it `bible`, and that rename leaves two hand-fixes
+   behind on a box made by one of them (§2.70).
 
 8. **Two mounts at one destination now refuse to launch** where the more specific scope used
    to win silently (§2.2). The error says the rule changed and prints the exact YAML cure.
@@ -281,7 +283,17 @@ inside boxes. In order of likely impact:
     `@config.data/…`, an absolute path, `~/…` or `$XDG_*/…`. Nothing kanibako ships uses this
     spelling, so this only bites a value you wrote by hand.
 
-29. Smaller items: standalone boxes' `box get` got truthful (§2.9); a box suppressed to
+29. **Only if you ran a `1.8.0` prerelease: the packaged canon book was renamed `bible` →
+    `charter`, and two things you own still spell the old path** (§2.70). A claude box made by
+    `1.8.0rc2` has eight hook commands under `~/canon/bible/general/scripts/hooks/` in its own
+    `~/.claude/settings.json` — that file is the box's, seeded once at create, so the upgrade
+    does not touch it and those hooks stop running. One `sed` per box fixes it. Any
+    `bindings.ro` entry of yours pointing under `~/canon/bible/` now names a place nothing
+    reads, and nothing warns about it. In the same section: the handbook's per-scope entry
+    files moved up out of `directives/`. **Upgrading from v1.7.2 you have none of this** — the
+    canon books are new in v1.8.0.
+
+30. Smaller items: standalone boxes' `box get` got truthful (§2.9); a box suppressed to
     plain-shell keeps stale credential files in its home (§2.10); several never-released or
     expected-empty renames (§2.11); two `--null` CLI bugs fixed (§2.14); a customized helper
     entrypoint script moves to `~/canon/notebook/scripts/helper-init.sh` (§2.44).
@@ -549,7 +561,7 @@ What you must do, **before your first launch on v1.8.0**:
    workset.channels.commons` — but nothing at launch tells you about a stored one.)
 3. Fix your own boxes' notes/scripts that reference `~/channels/commons` — they break silently.
 
-The packaged agent guide (now the canon bible) is updated by the upgrade itself.
+The packaged agent guide (now the canon charter) is updated by the upgrade itself.
 
 ### 2.4 The canon books — where your instruction files now live
 
@@ -559,14 +571,14 @@ playbook) is replaced by a four-book **canon** under one root, entered at
 
 | book | in-box path | contents | writable? |
 |---|---|---|---|
-| bible | `~/canon/bible/` | packaged core guidance, per-chapter (`general/`, `workset/`, `box/`), plus a per-agent chapter (`bible/agent/`, from your agent plugin) | **no** (bound read-only from the packages) |
+| charter | `~/canon/charter/` | packaged core guidance, per-chapter (`general/`, `workset/`, `box/`), plus a per-agent chapter (`charter/agent/`, from your agent plugin) | **no** (bound read-only from the packages) |
 | handbook | `~/canon/handbook/` | host-side guidance, assembled from per-scope chapters: `general/` from the system store, `agent/`, `workset/`, `box/` from each scope's own `canon/handbook` contribution | **no** (bound read-only from the host) |
 | notebook | `~/canon/notebook/` | box-specific directives/procedures (seeded at create) | yes (box-owned) |
 | workbook | `~/canon/workbook/` | box working state (devnotes, plans, tasks…; seeded at create) | yes (box-owned) |
 
 The delivery is a set of **sibling binds onto mountpoints the box home already contains**: the
-bible and `COLLECTION.md` come from the base package, the `bible/agent` chapter from your agent
-plugin, the handbook chapters from the host (`<data>/global/canon/handbook` for `general`;
+charter and `COLLECTION.md` come from the base package, the `charter/agent` chapter from your
+agent plugin, the handbook chapters from the host (`<data>/global/canon/handbook` for `general`;
 `<data>/agents/<agent>/canon/handbook`, `<workset>/canon/handbook`, and the box store's own
 `canon/handbook` for the per-scope chapters — each per-scope chapter is skip-if-absent). The
 host-side handbook is ordinary user-owned content: edit it freely; that is where host-shared
@@ -585,11 +597,11 @@ What a v1.7.2 user needs to know:
   succeed). The box works normally…"* (verified) — and the box is fully functional, just
   without the write protection.
 - **Existing boxes keep launching** (including on LXC — the launch self-heals missing canon
-  mountpoints rather than dying on crun's mkdir limitation), and they receive the new bible +
+  mountpoints rather than dying on crun's mkdir limitation), and they receive the new charter +
   `COLLECTION.md` automatically at their next launch after the upgrade, because those are
   package binds. **But** the directive chain now *enters* at `~/canon/COLLECTION.md`, whose
   notebook import points at `~/canon/notebook` — which an existing box never had seeded. Net
-  effect: an existing box gains the new bible/handbook and **silently stops loading its own
+  effect: an existing box gains the new charter/handbook and **silently stops loading its own
   `~/playbook`/`~/notebook` directives.** Nothing errors; you will see an
   `unresolved import` warning per launch on stderr for the missing notebook (and one more
   while base/plugin versions are mixed — §2.6).
@@ -4305,6 +4317,83 @@ There is no CLI cure and the message says so: `kanibako box reset` cannot remove
 `agent info` and `agent list` still read the file and still display the entry, which is deliberate —
 a poisoned file stays inspectable and repairable, and only *starting a box* on it refuses.
 
+### 2.70 The packaged canon book is `charter`, and the handbook lost a level
+
+**Upgrading from v1.7.2, only part (a) concerns you, and it needs nothing done:** the canon books
+are new in v1.8.0 (§2.4), so you have no file, box or settings entry that spells the old paths.
+Parts (b) to (d) are for anyone who ran **`1.8.0rc1` or `rc2`**, which shipped the book as `bible`
+and the handbook one level deeper.
+
+**(a) `~/canon/bible/` is now `~/canon/charter/`.** The same book with the same chapters —
+`general/`, `workset/`, `box/`, plus the `agent/` chapter your agent plugin contributes — and the
+same `ROM_CONTENTS.md` index at its root. The book is delivered by read-only binds from the
+packages, so a box picks up the new root at its next start with nothing for you to do. One file
+inside it moved too: the box guide is `charter/general/ROM_GENERAL.md`, up a level from
+`bible/general/directives/ROM_GENERAL.md`, and `charter/general/directives/` holds a new
+`IDENTITY.md` instead. Both are packaged read-only content, so the only thing to check is a note or
+a script of your own that names an old path.
+
+**(b) A claude box made by `1.8.0rc2` keeps eight `bible` hook paths in its own settings, and
+those hooks stop running.** `~/.claude/settings.json` is seeded into the box home once, at create,
+and the home bind owns it afterwards — so it is the box's file, not kanibako's, and no upgrade
+rewrites it. A box made before the rename still points its `edited`, `startup`, `resume`,
+`clear-start`, `compact`, `clear-end`, `end` and `stop` hooks at
+`~/canon/bible/general/scripts/hooks/*.sh`, which no longer exists. Fix it host-side, per box,
+before your next start:
+
+```console
+$ sed -i 's|canon/bible/|canon/charter/|g' <box_dir>/home/.claude/settings.json
+```
+
+The two paths in that file that name `~/canon/handbook/` — the `check-comms.sh` behavior hook and
+the statusline — are unchanged, and the `sed` above leaves them alone. A box created on v1.8.0
+proper is seeded with the new paths and needs nothing.
+
+**(c) The handbook's per-scope entry files moved up out of `directives/`.** Each scope contributes
+one chapter to the handbook, and that chapter's entry file now sits at the chapter root:
+
+| chapter | the file, host-side | was |
+|---|---|---|
+| general (system store) | `<data>/global/canon/handbook/general/SYS_GENERAL.md` | `…/general/directives/SYS_GENERAL.md` |
+| agent | `<data>/agents/<node>/canon/handbook/SYS_AGENT.md` | `…/canon/handbook/directives/SYS_AGENT.md` |
+| workset | `<workset>/canon/handbook/SYS_WORKSET.md` | `…/canon/handbook/directives/SYS_WORKSET.md` |
+| box | `<box_dir>/canon/handbook/SYS_BOX.md` | `…/canon/handbook/directives/SYS_BOX.md` |
+
+⚑ **These are host-side files you own and edit, and nothing moves them for you.** The handbook
+index `<data>/global/canon/handbook/SYS_CONTENTS.md` names `<chapter>/SYS_*.md` and names nothing
+under `directives/`, so a chapter left at the old path is named by nothing. `kanibako setup` will
+not sort it out either: every one of these stores is create-if-absent on every path, so a refresh
+never moves your file and never overwrites it — it only adds stock content beside it. Move each
+file you wrote up one level, keep your content, and delete the old copy you moved it from.
+
+Inside the general chapter, `directives/rules/` flattened into `directives/` in the same pass:
+`rules/CANON.md` became `directives/LOWER_CANON.md` and `rules/DATAPOLICY.md` became
+`directives/DATAPOLICY.md`, while `rules/INTERACTION.md` moved up and was rewritten. Two procedures
+joined the chapter, `DOCUMENT_UPDATES.md` and `STATE_CLEANUP.md`, beside the existing
+`USING_CHANNELS.md`. ⚑ **Take anything you wrote out of
+`<data>/global/canon/handbook/general/directives/rules/`, then delete that directory.**
+Create-if-absent leaves it where it is and adds the new flat files beside it, and the two do not
+line up for a clean diff: `CANON.md` was renamed as well as rewritten, so your `rules/CANON.md` is
+the file that became `directives/LOWER_CANON.md`. Leaving it is not inert, either — `SYS_GENERAL.md`
+pulls the chapter's directives in with a glob, `directives/*`, and a surviving `rules/`
+subdirectory falls inside that pattern rather than outside it.
+
+**(d) Delete any bind entry of yours whose destination is under `~/canon/bible/`.** A bind is keyed
+by its destination (§2.23), and a destination is data rather than a declared name, so this is **not**
+refused as an unknown key:
+
+```yaml
+# any settings file — accepted, and now delivers where nothing reads
+box:
+  bindings:
+    ro:
+      "~/canon/bible/general": ["/host/my-guidance"]
+```
+
+Nothing warns about it and no verb cleans it up, because from kanibako's side it is an ordinary
+bind at an ordinary destination. Grep your settings files for `canon/bible` and delete what you
+find.
+
 ---
 
 ## 3. For plugin authors
@@ -4382,8 +4471,17 @@ independently of the base and depend on **`kanibako-cli`** with **no version pin
 4. **Data layout in the plugin packages (shipped):** the payload dir is now `data/base/`
    — it stamps the whole agent STORE root, of which the template is one entry:
    `data/base/template/box/home/<files>` (was `data/template/<files>`) and
-   `data/base/canon/handbook/directives/SYS_AGENT.md` (the plugin's handbook chapter). The
-   bible chapter ships at `data/rom/directives/ROM_AGENT.md`, bound at `~/canon/bible/agent`.
+   `data/base/canon/handbook/SYS_AGENT.md` (was `…/canon/handbook/directives/SYS_AGENT.md`) —
+   the plugin's handbook chapter. The charter chapter ships at `data/rom/ROM_AGENT.md` (was
+   `data/rom/directives/ROM_AGENT.md`), bound at `~/canon/charter/agent`.
+   ⚑ **Both chapter files moved UP out of `directives/`, and a plugin that keeps them there ships
+   a chapter nobody reads — silently, and by two different routes.** The charter chapter is gated
+   on `ROM_AGENT.md` sitting at the `data/rom` ROOT: miss it and core emits **no
+   `~/canon/charter/agent` bind at all**, so the chapter is never delivered and nothing says so.
+   The handbook chapter is copied into the agent store from wherever it sits, so a nested one is
+   stamped normally — but `SYS_CONTENTS.md` names `agent/SYS_AGENT.md` and names nothing under
+   `directives/`, so it is written and never named. Neither failure prints anything, at build time
+   or at launch. Move both files up one level and republish.
    There is **no** transition arm: `templates._packaged_agent_store` reads `data/base` only, so
    a plugin still shipping `data/template` contributes NOTHING — silently, with no error.
    Republish against `data/base`. The `synced` credential destinations becoming host-side paths is
@@ -5933,7 +6031,7 @@ slugs.
 A new import form both includes a file **and** links to it:
 
 ```markdown
-1.1 [Identity & Environment](@general/directives/ROM_GENERAL.md)
+1.1 [Identity & Environment](@general/directives/IDENTITY.md)
 ```
 
 which produces the heading `## 1.1 Identity & Environment` and a link that

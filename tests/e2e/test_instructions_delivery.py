@@ -10,9 +10,9 @@ mount/env outcome end-to-end and that podman auto-creates the (absent)
 mount-parent dir.  The unit-level bind wiring is in
 ``tests/test_instructions_bind.py``.
 
-⚑ C-CANON R2 adds the PLUGIN's bible chapter to what each test asserts: every
-first-party plugin now ships ``data/rom/directives/ROM_AGENT.md``, so core emits the
-sixth canon bind (``canon_bible_agent``) onto the skeleton's ``~/canon/bible/agent``
+⚑ C-CANON R2 adds the PLUGIN's charter chapter to what each test asserts: every
+first-party plugin now ships ``data/rom/ROM_AGENT.md``, so core emits the
+sixth canon bind (``canon_charter_agent``) onto the skeleton's ``~/canon/charter/agent``
 mountpoint and the chapter is readable in-box.
 
 The box-start FLATTEN of the SEED into each agent's native instruction slot (the
@@ -25,10 +25,10 @@ inspect the exited container's Mounts/Env.
 ``_ensure_initialized`` early-returns and the packaged-template install is skipped.
 Each test runs the real ``install_packaged_templates`` against the fixture data dir
 first — exactly what first-init does — so the install + bind path is genuinely
-exercised.  (The box guide itself is delivered live inside the ``canon_bible_general``
-CHAPTER RO bind at ``~/canon/bible/general`` — the guide sits at
-``directives/ROM_GENERAL.md`` inside it — plus launch-flatten, not installed to a
-host path.  J-7 replaced R1's single whole-dir ``~/canon/bible`` bind with these
+exercised.  (The box guide itself is delivered live inside the ``canon_charter_general``
+CHAPTER RO bind at ``~/canon/charter/general`` — the guide sits at
+``ROM_GENERAL.md`` inside it — plus launch-flatten, not installed to a
+host path.  J-7 replaced R1's single whole-dir ``~/canon/charter`` bind with these
 per-chapter siblings.)
 """
 
@@ -127,27 +127,27 @@ LEGACY_DIRECTIVE_IMPORT = "@~/playbook/kanibako/directives/KANIBAKO.md"
 # The FIVE CORE canon binds (spec §2c, J-7 SIBLING model), asserted on the REAL
 # container Mounts — the physical materialization host-side tests cannot see.
 # ⚑ The two indexes are FILE binds, landing file-onto-file on the 0-byte mountpoints
-# the box-create skeleton made; each bible chapter is its own directory bind.  NEITHER
-# book ROOT is bound: ~/canon holds the SEEDED notebook/workbook, and ~/canon/bible is
+# the box-create skeleton made; each charter chapter is its own directory bind.  NEITHER
+# book ROOT is bound: ~/canon holds the SEEDED notebook/workbook, and ~/canon/charter is
 # R1's retired whole-dir bind (re-introducing it would put the agent chapter's
 # mountpoint back inside a bind SOURCE, which is what J-7 removed).
 CANON_CORE_DESTS = (
     f"{GUEST_HOME}/canon/COLLECTION.md",
-    f"{GUEST_HOME}/canon/bible/ROM_CONTENTS.md",
-    f"{GUEST_HOME}/canon/bible/general",
-    f"{GUEST_HOME}/canon/bible/workset",
-    f"{GUEST_HOME}/canon/bible/box",
+    f"{GUEST_HOME}/canon/charter/ROM_CONTENTS.md",
+    f"{GUEST_HOME}/canon/charter/general",
+    f"{GUEST_HOME}/canon/charter/workset",
+    f"{GUEST_HOME}/canon/charter/box",
 )
-CANON_UNBOUND_ROOTS = (f"{GUEST_HOME}/canon", f"{GUEST_HOME}/canon/bible")
+CANON_UNBOUND_ROOTS = (f"{GUEST_HOME}/canon", f"{GUEST_HOME}/canon/charter")
 
-# The SIXTH canon bind — the resolved plugin's own bible chapter (``canon_bible_agent``).
-# ⚑ C-CANON R2: every first-party plugin now ships ``data/rom/directives/ROM_AGENT.md``,
-# so this bind is EMITTED on a real agent box and the bible's
-# ``@agent/directives/ROM_AGENT.md`` import resolves instead of dangling.  ⚑ The
+# The SIXTH canon bind — the resolved plugin's own charter chapter (``canon_charter_agent``).
+# ⚑ C-CANON R2: every first-party plugin now ships ``data/rom/ROM_AGENT.md``,
+# so this bind is EMITTED on a real agent box and the charter's
+# ``agent/ROM_AGENT.md`` import resolves instead of dangling.  ⚑ The
 # ``@notebook/MY_CONTENTS.md`` import RESOLVES from the seeds half onward (the notebook
 # is seeded into the box home at create); the kickoff's pre-canon transition import is
 # the one remaining expected ``unresolved import`` line, until M-12's window closes.
-CANON_AGENT_DEST = f"{GUEST_HOME}/canon/bible/agent"
+CANON_AGENT_DEST = f"{GUEST_HOME}/canon/charter/agent"
 
 # The HANDBOOK book's SIBLING binds (spec §2c, the seeds half).  ⚑ Only the two SYSTEM
 # rows are unconditional: the system store is materialised by install/setup, so a
@@ -192,23 +192,23 @@ def assert_canon_binds_ro(cfg: dict) -> None:
 
 
 def assert_agent_chapter_bound_ro(cfg: dict, box: str) -> None:
-    """The PLUGIN's bible chapter is mounted RO at ~/canon/bible/agent (C-CANON R2).
+    """The PLUGIN's charter chapter is mounted RO at ~/canon/charter/agent (C-CANON R2).
 
     Host-side tests prove core emits the bind from the resolved target; only a real
     container proves the whole-directory bind lands on the skeleton's pre-created
     (root-owned, EMPTY) mountpoint and that the chapter is actually readable in-box —
-    which is what makes the bible's ``@agent/directives/ROM_AGENT.md`` import resolve
+    which is what makes the charter's ``agent/ROM_AGENT.md`` import resolve
     instead of dangling.
     """
     m = find_mount(cfg, CANON_AGENT_DEST)
-    assert m is not None, f"plugin bible chapter not bound at {CANON_AGENT_DEST}"
-    assert m.get("RW") is False, "the plugin bible chapter must be read-only"
-    assert Path(m["Source"], "directives/ROM_AGENT.md").is_file(), (
+    assert m is not None, f"plugin charter chapter not bound at {CANON_AGENT_DEST}"
+    assert m.get("RW") is False, "the plugin charter chapter must be read-only"
+    assert Path(m["Source"], "ROM_AGENT.md").is_file(), (
         f"the bound chapter source {m['Source']} carries no ROM_AGENT.md"
     )
     in_box = podman_exec(
         container_name(box),
-        ["cat", f"{CANON_AGENT_DEST}/directives/ROM_AGENT.md"],
+        ["cat", f"{CANON_AGENT_DEST}/ROM_AGENT.md"],
     ).stdout
     assert "Core Tome" in in_box, (
         f"the agent chapter is not readable in-box, got {in_box!r}"
@@ -223,7 +223,7 @@ def assert_canon_locked_down(box: str) -> None:
     1. ``mkdir ~/canon/scratch`` is REFUSED. Under R1 it SUCCEEDED — that is exactly
        the stray-file pollution the skeleton exists to prevent, so its refusal is the
        behavioural contract.
-    2. ``~/canon`` and ``~/canon/bible`` are owned by uid 0 IN-BOX. Without this a
+    2. ``~/canon`` and ``~/canon/charter`` are owned by uid 0 IN-BOX. Without this a
        wrong ``UNSHARE_BOX_ROOT_UID`` landing on some other non-agent subuid would
        satisfy assertion 1 and sail through the entire suite — and that uid is
        precisely the derivation this e2e is here to prove (``chown 0:0`` inside
@@ -244,7 +244,7 @@ def assert_canon_locked_down(box: str) -> None:
 
     owners = podman_exec(
         container_name(box),
-        ["sh", "-c", "stat -c %u ~/canon ~/canon/bible"],
+        ["sh", "-c", "stat -c %u ~/canon ~/canon/charter"],
     ).stdout.split()
     assert owners == ["0", "0"], (
         f"the canon book roots must be ROOT-OWNED in-box, got uids {owners!r}. "

@@ -451,15 +451,15 @@ class TestLayeredHomeSeed:
         is step 3's host-side copy.
 
         MUTATION-PROVED, and it had to be: this is a negative about a route, and the
-        packaged system template really does ship ``box/canon/handbook/directives/
-        SYS_BOX.md``, so the source exists and the assertion discriminates.  Putting
+        packaged system template really does ship ``box/canon/handbook/SYS_BOX.md``,
+        so the source exists and the assertion discriminates.  Putting
         the handbook entry back into ``templates._layer()`` makes it FAIL.
         ``TestBoxHandbookHostCopyThroughTheSeam`` pins that the chapter still
         ARRIVES, so this is not proving delivery was dropped."""
         install_packaged_templates(std, ["claude"])
         # The source the retired layer 4 read is really shipped and really there.
         assert (
-            std.template / "box" / "canon" / "handbook" / "directives" / "SYS_BOX.md"
+            std.template / "box" / "canon" / "handbook" / "SYS_BOX.md"
         ).is_file()
         _seed(std, primary_proj)
         box_root = primary_proj.shell_path.parent
@@ -1013,7 +1013,7 @@ class TestBoxHandbookHostCopyThroughTheSeam:
         assert (hb / "workset-only.md").read_text() == "workset"
         assert (hb / "shared.md").read_text() == "workset"
         # The packaged box chapter rides the system layer.
-        assert (hb / "directives" / "SYS_BOX.md").is_file()
+        assert (hb / "SYS_BOX.md").is_file()
 
     def test_it_lands_on_the_host_store_and_never_in_the_box_home(
         self, std, config, primary_proj,
@@ -1173,7 +1173,7 @@ class TestBoxHandbookHostCopyThroughTheSeam:
         assert after.get("agent-only.md") == b"agent"
         assert after.get("workset-only.md") == b"workset"
         assert after.get("shared.md") == b"workset"
-        assert "directives/SYS_BOX.md" in after, sorted(after)
+        assert "SYS_BOX.md" in after, sorted(after)
 
 
 # ---------------------------------------------------------------------------
@@ -1194,11 +1194,10 @@ class TestInstallPackagedTemplates:
             std.template / "box" / "home" / "canon" / "workbook" / "devnotes.md"
         ).is_file()
         assert (
-            std.template / "box" / "canon" / "handbook" / "directives" / "SYS_BOX.md"
+            std.template / "box" / "canon" / "handbook" / "SYS_BOX.md"
         ).is_file()
         assert (
-            std.template / "workset" / "canon" / "handbook" / "directives"
-            / "SYS_WORKSET.md"
+            std.template / "workset" / "canon" / "handbook" / "SYS_WORKSET.md"
         ).is_file()
 
     def test_handbook_goes_straight_to_system_canon(self, std):
@@ -1208,7 +1207,7 @@ class TestInstallPackagedTemplates:
         install_packaged_templates(std, ["claude"])
         assert (std.canon / "handbook" / "SYS_CONTENTS.md").is_file()
         assert (
-            std.canon / "handbook" / "general" / "directives" / "SYS_GENERAL.md"
+            std.canon / "handbook" / "general" / "SYS_GENERAL.md"
         ).is_file()
         assert not (std.template / "handbook").exists()
 
@@ -1236,8 +1235,7 @@ class TestInstallPackagedTemplates:
         would be read once and never again."""
         install_packaged_templates(std, ["claude"])
         assert (
-            std.agents / "default" / "canon" / "handbook" / "directives"
-            / "SYS_AGENT.md"
+            std.agents / "default" / "canon" / "handbook" / "SYS_AGENT.md"
         ).is_file()
 
     def test_claude_store_landed(self, std):
@@ -1249,9 +1247,7 @@ class TestInstallPackagedTemplates:
         assert (
             store / "template" / "box" / "home" / ".claude" / "settings.json"
         ).is_file()
-        assert (
-            store / "canon" / "handbook" / "directives" / "SYS_AGENT.md"
-        ).is_file()
+        assert (store / "canon" / "handbook" / "SYS_AGENT.md").is_file()
         import json
         data = json.loads(
             (store / "template" / "box" / "home" / ".claude.json").read_text()
@@ -1275,7 +1271,10 @@ class TestInstallPackagedTemplates:
         install_packaged_templates(std, ["no_agent"])
         store = std.agents / "no_agent"
         assert (store / "template" / "box" / "home").is_dir()
-        assert not (store / "canon" / "handbook" / "directives").exists()
+        # ⚑ Pinned on the CHAPTER, not a level inside it: a wrong payload reds this
+        # whatever shape it arrives in.  D7 creates the skeleton under ``template/``,
+        # never under ``canon/``, so the negative is not vacuous.
+        assert not (store / "canon" / "handbook").exists()
 
     def test_create_if_absent_does_not_clobber(self, std):
         """A user-edited template file survives a re-install (create-if-absent)."""
@@ -1300,10 +1299,7 @@ class TestEnsureAgentStores:
         from kanibako.launch.templates import ensure_agent_stores
 
         install_packaged_templates(std, ["claude"])
-        chapter = (
-            std.agents / "claude" / "canon" / "handbook" / "directives"
-            / "SYS_AGENT.md"
-        )
+        chapter = std.agents / "claude" / "canon" / "handbook" / "SYS_AGENT.md"
         chapter.unlink()
         ensure_agent_stores(std, ["claude"])
         assert chapter.is_file(), "a partial store must complete at the next trigger"
@@ -1312,10 +1308,7 @@ class TestEnsureAgentStores:
         from kanibako.launch.templates import ensure_agent_stores
 
         install_packaged_templates(std, ["claude"])
-        chapter = (
-            std.agents / "claude" / "canon" / "handbook" / "directives"
-            / "SYS_AGENT.md"
-        )
+        chapter = std.agents / "claude" / "canon" / "handbook" / "SYS_AGENT.md"
         chapter.write_text("MY CHAPTER")
         ensure_agent_stores(std, ["claude"])
         assert chapter.read_text() == "MY CHAPTER"
@@ -1357,7 +1350,7 @@ class TestInstallWorksetTemplate:
         ws.mkdir()
         install_workset_template(std, ws)
         assert (
-            ws / "canon" / "handbook" / "directives" / "SYS_WORKSET.md"
+            ws / "canon" / "handbook" / "SYS_WORKSET.md"
         ).is_file()
         assert (ws / "template" / "box" / "home").is_dir()
 
@@ -1407,7 +1400,7 @@ class TestWorksetStampSplit:
             path=str(ws_root), name=None, standalone=False, image=None, no_vault=False,
         ))
         assert rc == 0
-        assert (ws_root / "canon" / "handbook" / "directives" / "SYS_WORKSET.md").is_file()
+        assert (ws_root / "canon" / "handbook" / "SYS_WORKSET.md").is_file()
         assert (ws_root / "template" / "box" / "home" / "canon" / "notebook").is_dir()
         assert (ws_root / "template" / "box" / "canon" / "handbook").is_dir()
 
@@ -1416,7 +1409,7 @@ class TestWorksetStampSplit:
         install_packaged_templates(std, ["claude"])
         root = self._fresh_root(tmp_home, "solo")
         resolve_standalone_project(std, config, str(root), initialize=True)
-        assert (root / "canon" / "handbook" / "directives" / "SYS_WORKSET.md").is_file()
+        assert (root / "canon" / "handbook" / "SYS_WORKSET.md").is_file()
         # ⚑ THE POINT OF THE SPLIT.
         assert not (root / "template").exists()
         # A second resolve is the recovery pass; it must not grow the template half.
@@ -1431,7 +1424,7 @@ class TestWorksetStampSplit:
         install_packaged_templates(std, ["claude"])
         root = self._fresh_root(tmp_home, "solo-idem")
         install_workset_template(std, root, canon_only=True)
-        stamped = root / "canon" / "handbook" / "directives" / "SYS_WORKSET.md"
+        stamped = root / "canon" / "handbook" / "SYS_WORKSET.md"
         stamped.write_text("MINE\n")
         theirs = root / "canon" / "handbook" / "notes.md"
         theirs.write_text("keep me\n")
@@ -1524,7 +1517,7 @@ class TestWorksetStampFollowsTheKeys:
         root = self._root_with_repoint(tmp_home, "solo-repoint", canon="@meta.workset.path/my_canon")
         resolve_standalone_project(std, config, str(root), initialize=True)
         assert (
-            root / "my_canon" / "handbook" / "directives" / "SYS_WORKSET.md"
+            root / "my_canon" / "handbook" / "SYS_WORKSET.md"
         ).is_file()
         assert (root / "my_canon" / "handbook").is_dir()
         assert not (root / "canon").exists()
@@ -1537,7 +1530,7 @@ class TestWorksetStampFollowsTheKeys:
         root = self._root_with_repoint(tmp_home, "solo-seam", canon="@meta.workset.path/elsewhere/canon")
         install_workset_template(std, root, canon_only=True)
         assert (
-            root / "elsewhere" / "canon" / "handbook" / "directives" / "SYS_WORKSET.md"
+            root / "elsewhere" / "canon" / "handbook" / "SYS_WORKSET.md"
         ).is_file()
         assert not (root / "canon").exists()
 
@@ -1656,7 +1649,7 @@ class TestWorksetStampFollowsTheKeys:
         ws.mkdir()
         install_workset_template(std, ws)
         assert (
-            ws / "canon" / "handbook" / "directives" / "SYS_WORKSET.md"
+            ws / "canon" / "handbook" / "SYS_WORKSET.md"
         ).is_file()
         assert (ws / "template" / "box" / "home" / "canon" / "notebook").is_dir()
         assert (ws / "template" / "box" / "canon" / "handbook").is_dir()
@@ -2044,8 +2037,8 @@ class TestCopierEnforcement:
         from kanibako.launch.templates import copy_tree
 
         src = tmp_path / "src"
-        (src / "canon" / "bible").mkdir(parents=True)
-        (src / "canon" / "bible" / "z.md").write_text("z")
+        (src / "canon" / "charter").mkdir(parents=True)
+        (src / "canon" / "charter" / "z.md").write_text("z")
         dest = tmp_path / "dest"
         dest.mkdir()
         with pytest.raises(TemplateScopeError):
@@ -2066,8 +2059,8 @@ class TestPackagedTemplatesDigest:
         base_dir.mkdir()
         (base_dir / "INSTRUCTIONS.md").write_text(base)
         # The RO packaged CANON carries the box guide at
-        # canon/bible/general/directives/ROM_GENERAL.md — the SOLE manifest
-        # source of the guide now (C-CANON R1).
+        # canon/charter/general/ROM_GENERAL.md — the SOLE manifest source of the
+        # guide now (C-CANON R1).
         bundle_dir = tmp_path / "pbundle"
         (bundle_dir / _GUIDE_REL).parent.mkdir(parents=True)
         (bundle_dir / _GUIDE_REL).write_text(guide)

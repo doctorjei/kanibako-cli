@@ -278,7 +278,7 @@ def gfm_anchor(text: str) -> str:
         ``11-identity--environment`` -- because the spaces around it become
         hyphens and the ``&`` itself is dropped. That is GitHub's behaviour; the
         link resolves.
-      * Parentheses are dropped: ``1. Bible (Core)`` -> ``1-bible-core``.
+      * Parentheses are dropped: ``1. Charter (Core)`` -> ``1-charter-core``.
     """
     return re.sub(r"[^\w-]", "", text.strip().lower().replace(" ", "-"))
 

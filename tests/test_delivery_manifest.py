@@ -38,12 +38,13 @@ THE TWO DELIVERY LAYERS
 2. BIND-delivered (SOURCE+DEST resolvable host-side; physical bind needs podman):
    * the RO packaged CANON → FIVE SIBLING binds from
      ``core_defaults.rom_default_categories`` (spec §2c, J-7): ``canon_collection``
-     and ``canon_bible_contents`` as FILE binds, plus one whole-directory bind per
-     packaged bible chapter (``canon_bible_{general,workset,box}``), resolved
+     and ``canon_charter_contents`` as FILE binds, plus one whole-directory bind per
+     packaged charter chapter (``canon_charter_{general,workset,box}``), resolved
      through the category route; plus
-   * the PLUGIN's bible chapter (``canon_bible_agent``) at ``~/canon/bible/agent``,
+   * the PLUGIN's charter chapter (``canon_charter_agent``) at
+     ``~/canon/charter/agent``,
      emitted by core from the RESOLVED target and GATED on that plugin shipping
-     ``data/rom/directives/ROM_AGENT.md`` — which, since C-CANON R2, all three
+     ``data/rom/ROM_AGENT.md`` — which, since C-CANON R2, all three
      first-party plugins DO, so this manifest requires it of each; and
    * the KICKOFF loader → ``~/.config/kanibako/kickoff.md``. ⚑ TWO SOURCES COEXIST
      this release: core's packaged ``data/global/KICKOFF.md``
@@ -57,11 +58,12 @@ THE TWO DELIVERY LAYERS
    native-slot bind is RETIRED (see ``test_instructions_bind.py``), AND the per-file
    rom enumerator that replaced the old whole-dir ``playbook_kanibako`` bind is
    itself retired (C-CANON R1). The guide now reaches the box ONLY as a file INSIDE
-   the ``canon_bible_general`` CHAPTER bind, at
-   ``~/canon/bible/general/directives/ROM_GENERAL.md`` — so this manifest asserts
+   the ``canon_charter_general`` CHAPTER bind, at
+   ``~/canon/charter/general/ROM_GENERAL.md`` — so this manifest asserts
    the packaged guide under that chapter's SOURCE and the bind at its dest, NOT a
    bind of its own. (Under R1 the same guide rode a whole-dir ``canon_bible`` bind;
-   J-7 replaced that book-level bind with per-chapter siblings.)
+   J-7 replaced that book-level bind with per-chapter siblings. ⚑ That name is
+   HISTORY, not a missed rename — R1 shipped it spelled ``bible``.)
 """
 
 from __future__ import annotations
@@ -74,10 +76,10 @@ import pytest
 
 from kanibako.settings import core_defaults
 from kanibako.settings.core_defaults import (
-    BIBLE_AGENT_CHAPTER,
+    CHARTER_AGENT_CHAPTER,
     PLUGIN_CHAPTER_MARKER_REL,
-    ROM_BIBLE_CHAPTERS,
-    ROM_BIBLE_REL,
+    ROM_CHARTER_CHAPTERS,
+    ROM_CHARTER_REL,
     ROM_COLLECTION_REL,
     ROM_CONTENTS_REL,
     ROM_GUIDE_REL,
@@ -185,8 +187,8 @@ SEED_MANIFEST: tuple[SeedFile, ...] = (
              "home/canon/workbook/tasks.md"),
     # ---- base: the box's HANDBOOK CHAPTER — lands OUTSIDE the home, and by the
     # ---- HOST-template copy rather than the ``seeded`` category (2026-08-07g) ----
-    SeedFile("base", "box/canon/handbook/directives/SYS_BOX.md",
-             "canon/handbook/directives/SYS_BOX.md"),
+    SeedFile("base", "box/canon/handbook/SYS_BOX.md",
+             "canon/handbook/SYS_BOX.md"),
     # ---- claude agent store payload (harness config stubs) ----
     SeedFile("agent:claude", "template/box/home/.claude.json",
              "home/.claude.json"),
@@ -206,20 +208,20 @@ SEED_MANIFEST: tuple[SeedFile, ...] = (
 STORE_MANIFEST: tuple[tuple[str, str], ...] = (
     # packaged rel under data/global/template  ->  host path rel to the store root
     ("handbook/SYS_CONTENTS.md", "canon:handbook/SYS_CONTENTS.md"),
-    ("handbook/general/directives/SYS_GENERAL.md",
-     "canon:handbook/general/directives/SYS_GENERAL.md"),
-    ("handbook/general/directives/rules/CANON.md",
-     "canon:handbook/general/directives/rules/CANON.md"),
-    ("handbook/general/directives/rules/DATAPOLICY.md",
-     "canon:handbook/general/directives/rules/DATAPOLICY.md"),
-    ("handbook/general/directives/rules/INTERACTION.md",
-     "canon:handbook/general/directives/rules/INTERACTION.md"),
-    ("agent_default/canon/handbook/directives/SYS_AGENT.md",
-     "agents:default/canon/handbook/directives/SYS_AGENT.md"),
+    ("handbook/general/SYS_GENERAL.md",
+     "canon:handbook/general/SYS_GENERAL.md"),
+    ("handbook/general/directives/LOWER_CANON.md",
+     "canon:handbook/general/directives/LOWER_CANON.md"),
+    ("handbook/general/directives/DATAPOLICY.md",
+     "canon:handbook/general/directives/DATAPOLICY.md"),
+    ("handbook/general/directives/INTERACTION.md",
+     "canon:handbook/general/directives/INTERACTION.md"),
+    ("agent_default/canon/handbook/SYS_AGENT.md",
+     "agents:default/canon/handbook/SYS_AGENT.md"),
     ("box/home/canon/notebook/MY_CONTENTS.md",
      "template:box/home/canon/notebook/MY_CONTENTS.md"),
-    ("workset/canon/handbook/directives/SYS_WORKSET.md",
-     "template:workset/canon/handbook/directives/SYS_WORKSET.md"),
+    ("workset/canon/handbook/SYS_WORKSET.md",
+     "template:workset/canon/handbook/SYS_WORKSET.md"),
 )
 
 
@@ -228,9 +230,9 @@ STORE_MANIFEST: tuple[tuple[str, str], ...] = (
 # ``canon_hb_agent`` bind, so a plugin that stopped shipping it would silently give
 # every box of that agent an empty handbook/agent mountpoint.
 PLUGIN_STORE_MANIFEST: tuple[tuple[str, str], ...] = (
-    ("claude", "canon/handbook/directives/SYS_AGENT.md"),
-    ("codex", "canon/handbook/directives/SYS_AGENT.md"),
-    ("goose", "canon/handbook/directives/SYS_AGENT.md"),
+    ("claude", "canon/handbook/SYS_AGENT.md"),
+    ("codex", "canon/handbook/SYS_AGENT.md"),
+    ("goose", "canon/handbook/SYS_AGENT.md"),
 )
 
 
@@ -263,16 +265,18 @@ _KICKOFF_BOX_DEST = f"{GUEST_HOME}/.config/kanibako/kickoff.md"
 # --- BIND layer: the RO packaged canon (five core siblings + the gated plugin one). ---
 #
 # ⚑ rom-root-relative source paths are NO LONGER their own ``~``-dests: the packaged
-# tree is FLAT (``rom/{COLLECTION.md, bible/**}``, no ``canon/`` wrapper — J-7 /
+# tree is FLAT (``rom/{COLLECTION.md, charter/**}``, no ``canon/`` wrapper — J-7 /
 # Jei's samples), while every guest dest lives under ``~/canon``. The two are spelled
 # separately here on purpose, so a relayout that moves one without the other fails.
 _COLLECTION_REL_IN_ROM = ROM_COLLECTION_REL
 _CONTENTS_REL_IN_ROM = ROM_CONTENTS_REL
-_BIBLE_REL_IN_ROM = ROM_BIBLE_REL
+_CHARTER_REL_IN_ROM = ROM_CHARTER_REL
 _GUIDE_REL_IN_ROM = ROM_GUIDE_REL  # a file INSIDE the general chapter, not its own bind
 
 _CANON_BOX_ROOT = f"{GUEST_HOME}/canon"
-_BIBLE_AGENT_BOX_DEST = f"{_CANON_BOX_ROOT}/{_BIBLE_REL_IN_ROM}/{BIBLE_AGENT_CHAPTER}"
+_CHARTER_AGENT_BOX_DEST = (
+    f"{_CANON_BOX_ROOT}/{_CHARTER_REL_IN_ROM}/{CHARTER_AGENT_CHAPTER}"
+)
 
 # ⚑ DEST-KEYED (disk-store R-3/R-5/R-10). The canon producers return ONE terminal
 # arm key whose value is ``{box_dest: (src, options)}``; the ``canon_*`` NAMES that
@@ -286,13 +290,13 @@ _CANON_BINDS: dict[str, tuple[str, bool]] = {
     f"{_CANON_BOX_ROOT}/{_COLLECTION_REL_IN_ROM}": (_COLLECTION_REL_IN_ROM, False),
     f"{_CANON_BOX_ROOT}/{_CONTENTS_REL_IN_ROM}": (_CONTENTS_REL_IN_ROM, False),
     **{
-        f"{_CANON_BOX_ROOT}/{_BIBLE_REL_IN_ROM}/{chapter}": (
-            f"{_BIBLE_REL_IN_ROM}/{chapter}", True,
+        f"{_CANON_BOX_ROOT}/{_CHARTER_REL_IN_ROM}/{chapter}": (
+            f"{_CHARTER_REL_IN_ROM}/{chapter}", True,
         )
-        for chapter in ROM_BIBLE_CHAPTERS
+        for chapter in ROM_CHARTER_CHAPTERS
     },
 }
-_GENERAL_BOX_DEST = f"{_CANON_BOX_ROOT}/{_BIBLE_REL_IN_ROM}/general"
+_GENERAL_BOX_DEST = f"{_CANON_BOX_ROOT}/{_CHARTER_REL_IN_ROM}/general"
 
 # The plugin chapter's gate marker, relative to a plugin's ``data/rom`` root.
 _CHAPTER_MARKER = PLUGIN_CHAPTER_MARKER_REL
@@ -415,7 +419,7 @@ class TestSeededManifest:
         the guest translator would have put it, silently, reporting success."""
         store = self._seed_primary_claude_box(std, config, project_dir)
         home = store / "home"
-        assert (store / "canon" / "handbook" / "directives" / "SYS_BOX.md").is_file()
+        assert (store / "canon" / "handbook" / "SYS_BOX.md").is_file()
         assert not list(home.rglob("SYS_BOX.md")), sorted(home.rglob("SYS_BOX.md"))
 
     def test_every_store_manifest_file_installs(self, std):
@@ -460,7 +464,7 @@ class TestSeededManifest:
 
 
 class TestRomBindManifest:
-    """The RO packaged CANON: the COLLECTION.md index, the bible's ROM_CONTENTS.md
+    """The RO packaged CANON: the COLLECTION.md index, the charter's ROM_CONTENTS.md
     and one bind per packaged chapter — each declared with a stable key and
     resolving to a read-only Mount.
 
@@ -508,17 +512,17 @@ class TestRomBindManifest:
         """The shapes are load-bearing: the two indexes mount FILE-onto-file over the
         skeleton's 0-byte mountpoints, while each chapter replaces a whole directory.
         Neither book ROOT is ever bound — ``~/canon`` holds the SEEDED
-        notebook/workbook, and ``~/canon/bible`` is R1's retired whole-dir bind."""
+        notebook/workbook, and ``~/canon/charter`` is R1's retired whole-dir bind."""
         cats, _winners = self._resolve_rom()
         for box_dest, (_rel, is_dir) in _CANON_BINDS.items():
             assert Path(cats[_ARM][box_dest][0]).is_dir() == is_dir, box_dest
         dests = set(_CANON_BINDS)
         assert f"{GUEST_HOME}/canon" not in dests
-        assert f"{GUEST_HOME}/canon/{_BIBLE_REL_IN_ROM}" not in dests
+        assert f"{GUEST_HOME}/canon/{_CHARTER_REL_IN_ROM}" not in dests
 
     def test_box_guide_delivered_inside_the_general_chapter_bind(self):
         """The guide has NO bind of its own — it is a file inside the ``general``
-        CHAPTER bind, at ``~/canon/bible/general/directives/ROM_GENERAL.md``.
+        CHAPTER bind, at ``~/canon/charter/general/ROM_GENERAL.md``.
 
         The former per-agent ``@system.instructions`` → native-slot bind is retired,
         and so is the per-file rom enumerator that used to give the guide its own
@@ -530,7 +534,7 @@ class TestRomBindManifest:
         general_src = Path(cats[_ARM][_GENERAL_BOX_DEST][0])
         rom_root = _packaged_shared_bundle()
         assert rom_root is not None
-        assert general_src == rom_root / f"{_BIBLE_REL_IN_ROM}/general"
+        assert general_src == rom_root / f"{_CHARTER_REL_IN_ROM}/general"
 
         guide = rom_root / _GUIDE_REL_IN_ROM
         assert guide.is_file(), f"box guide source missing: {guide}"
@@ -539,23 +543,28 @@ class TestRomBindManifest:
         by_dest = {m.box_dest: m for m in winners}
         general_dest = _GENERAL_BOX_DEST
         assert general_dest in by_dest
-        assert general_dest == f"{GUEST_HOME}/canon/bible/general"
+        assert general_dest == f"{GUEST_HOME}/canon/charter/general"
         # No separate mount for the guide: it arrives with its chapter.
         assert f"{GUEST_HOME}/canon/{_GUIDE_REL_IN_ROM}" not in by_dest
 
-    def test_plugin_bible_chapter_ships_and_binds_for_every_harness(self):
-        """The SIXTH canon bind (``canon_bible_agent``): R1 landed the emitter and the
-        ``Target.rom_root`` interface; **R2 shipped the CONTENT** in all three plugin
-        packages, so this is now a MANIFEST row like any other — every first-party
-        harness MUST ship ``data/rom/directives/ROM_AGENT.md`` and MUST bind it at
-        ``~/canon/bible/agent``.
+    def test_plugin_charter_chapter_ships_and_binds_for_every_harness(self):
+        """The SIXTH canon bind (``canon_charter_agent``): R1 landed the emitter and
+        the ``Target.rom_root`` interface; **R2 shipped the CONTENT** in all three
+        plugin packages, so this is now a MANIFEST row like any other — every
+        first-party harness MUST ship ``data/rom/ROM_AGENT.md`` and MUST bind it at
+        ``~/canon/charter/agent``.
+
+        ⚑ FLAT, like the core charter chapters: ``data/rom`` IS the chapter and is
+        bound whole, so the entry file at its root is what the charter's
+        ``ROM_CONTENTS.md`` reaches as ``agent/ROM_AGENT.md``.
 
         A missing chapter is what this catches: it is not a neutral no-op but a
-        dangling ``@agent/directives/ROM_AGENT.md`` import in the bible's
-        ``ROM_CONTENTS.md`` on every box that harness runs. (The emitter's GATE — no
-        marker, no bind — stays covered by the temp-plugin tests in
-        ``test_canon_delivery.py``, which is where a gate-false plugin can still be
-        constructed.)
+        dangling import in the charter's ``ROM_CONTENTS.md`` on every box that harness
+        runs. ⚑ That the INDEX names this position is a different claim and is not
+        checked here — it is pinned by ``test_canon_delivery.py``'s
+        ``test_the_index_imports_the_plugin_chapter_where_the_bind_puts_it``, as is
+        the emitter's GATE (no marker, no bind), which needs a temp plugin no shipped
+        package can demonstrate.
         """
         missing: list[str] = []
         for agent in _BIND_AGENTS:
@@ -568,12 +577,12 @@ class TestRomBindManifest:
 
             cats = core_defaults.rom_agent_default_categories(target)
             assert set(cats) == {_ARM}, agent
-            assert set(cats[_ARM]) == {_BIBLE_AGENT_BOX_DEST}, agent
-            src, opts = cats[_ARM][_BIBLE_AGENT_BOX_DEST]
+            assert set(cats[_ARM]) == {_CHARTER_AGENT_BOX_DEST}, agent
+            src, opts = cats[_ARM][_CHARTER_AGENT_BOX_DEST]
             assert Path(src) == root
             assert opts == "ro"
-            assert _BIBLE_AGENT_BOX_DEST == f"{GUEST_HOME}/canon/bible/agent"
-        assert not missing, f"packaged plugin bible chapter missing for: {missing}"
+            assert _CHARTER_AGENT_BOX_DEST == f"{GUEST_HOME}/canon/charter/agent"
+        assert not missing, f"packaged plugin charter chapter missing for: {missing}"
 
 
 class TestKickoffLoaderManifest:

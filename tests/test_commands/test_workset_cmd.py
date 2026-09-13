@@ -1560,9 +1560,7 @@ class TestWorksetCreateIsAtomicOnRefusal:
             argparse.Namespace(path=str(root), name="okset", force=False)
         ) == 0
         assert "okset" in list_worksets(std)
-        assert (
-            root / "canon" / "handbook" / "directives" / "SYS_WORKSET.md"
-        ).is_file()
+        assert (root / "canon" / "handbook" / "SYS_WORKSET.md").is_file()
 
 
 class TestWorksetGetIsWiredToTheClosedKeyspace:

@@ -41,7 +41,7 @@ groups with **different mode rules**:
 produced the right paths and obeyed no key. What it cost (R-35, ratified "fix the CODE"): `chat`
 became a split carrier — the `~/channels/workset/chat` bind followed the override while
 `start.py._seed_channel_files` kept joining `<channelroot>/chat`, so a repoint mounted one
-directory and seeded the chat logs into another, mounted nowhere, while the bible tells every agent
+directory and seeded the chat logs into another, mounted nowhere, while the charter tells every agent
 its logs live at `~/channels/workset/chat`. `share` had the same split, latent. `broadcast`,
 `mailboxes` and `share_global` had no consumer at all: `config set` took the value, `config get`
 read it back, and nothing changed.

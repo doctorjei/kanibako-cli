@@ -3,18 +3,21 @@
 Two delivery mechanisms land kanibako's shipped directive content into a box:
 
 * the RO packaged CANON (``data/global/rom``) is bound by FIVE SIBLING binds (spec
-  §2c, J-7) — ``canon_collection`` and ``canon_bible_contents`` as FILE binds, plus
-  one whole-directory bind per packaged bible chapter
-  (``canon_bible_{general,workset,box}``) — with a SIXTH, ``canon_bible_agent``, that
-  core emits from the resolved target when that plugin ships a bible chapter; and
+  §2c, J-7) — ``canon_collection`` and ``canon_charter_contents`` as FILE binds, plus
+  one whole-directory bind per packaged charter chapter
+  (``canon_charter_{general,workset,box}``) — with a SIXTH, ``canon_charter_agent``,
+  that core emits from the resolved target when that plugin ships a charter chapter;
+  and
 * the writable user tree (``data/global/template``) is SEEDED create-if-absent
   through the existing base-template layer at box create.
 
 ⚑ J-7 (2026-07-31) REPLACED R1's whole-directory ``canon_bible`` bind (shipped only
 in the unreleased ``93b9a9d``) and the nested ``canon_bible_agent`` that sat inside
-it. The nested-mount physics PASSED on real podman; the model was retired anyway
+it. ⚑ THOSE TWO NAMES ARE HISTORY, NOT A MISSED RENAME: what shipped in ``93b9a9d``
+was spelled ``bible``, and the keyspec keeps the retired spelling at its ``:1030``
+row. Renaming a name inside a sentence about the past makes the sentence untrue. The nested-mount physics PASSED on real podman; the model was retired anyway
 because nesting forced MOUNTPOINTS to live inside bind SOURCES — site-packages for
-the bible chapter, the user's own stores for the handbook chapters — where a wheel
+the charter chapter, the user's own stores for the handbook chapters — where a wheel
 cannot ship an empty directory and no runtime may safely write. Under the sibling
 model every mountpoint lives in the box home, materialised once at box create by
 ``core_defaults.materialize_canon_skeleton`` and made root-owned + 555.
@@ -34,14 +37,14 @@ import pytest
 from kanibako.settings import core_defaults
 from kanibako.launch import templates
 from kanibako.settings.core_defaults import (
-    BIBLE_AGENT_CHAPTER,
     CANON_SEED_DENY_PREFIXES,
     CANON_SKELETON_DIR_MODE,
     CANON_SKELETON_FILE_MODE,
+    CHARTER_AGENT_CHAPTER,
     HANDBOOK_CHAPTERS,
     PLUGIN_CHAPTER_MARKER_REL,
-    ROM_BIBLE_CHAPTERS,
-    ROM_BIBLE_REL,
+    ROM_CHARTER_CHAPTERS,
+    ROM_CHARTER_REL,
     ROM_COLLECTION_REL,
     ROM_CONTENTS_REL,
     ROM_GUIDE_REL,
@@ -72,20 +75,20 @@ _ARM = "box.bindings.ro"
 
 # The COMPLETE set of canon binds core emits: guest DEST -> rom-root-relative
 # SOURCE.  ⚑ FIVE from the packaged rom + ONE gated plugin chapter; there is NO
-# whole-dir ``~/canon/bible`` bind any more (RETIRED by J-7).
+# whole-dir ``~/canon/charter`` bind any more (RETIRED by J-7).
 _CORE_DESTS = {
     f"{GUEST_HOME}/canon/COLLECTION.md": ROM_COLLECTION_REL,
-    f"{GUEST_HOME}/canon/bible/ROM_CONTENTS.md": ROM_CONTENTS_REL,
-    f"{GUEST_HOME}/canon/bible/general": f"{ROM_BIBLE_REL}/general",
-    f"{GUEST_HOME}/canon/bible/workset": f"{ROM_BIBLE_REL}/workset",
-    f"{GUEST_HOME}/canon/bible/box": f"{ROM_BIBLE_REL}/box",
+    f"{GUEST_HOME}/canon/charter/ROM_CONTENTS.md": ROM_CONTENTS_REL,
+    f"{GUEST_HOME}/canon/charter/general": f"{ROM_CHARTER_REL}/general",
+    f"{GUEST_HOME}/canon/charter/workset": f"{ROM_CHARTER_REL}/workset",
+    f"{GUEST_HOME}/canon/charter/box": f"{ROM_CHARTER_REL}/box",
 }
 # The two FILE binds (file-onto-file, over the skeleton's 0-byte mountpoints).
 _FILE_DESTS = {
     f"{GUEST_HOME}/canon/COLLECTION.md",
-    f"{GUEST_HOME}/canon/bible/ROM_CONTENTS.md",
+    f"{GUEST_HOME}/canon/charter/ROM_CONTENTS.md",
 }
-_BIBLE_AGENT_DEST = f"{GUEST_HOME}/canon/bible/agent"
+_CHARTER_AGENT_DEST = f"{GUEST_HOME}/canon/charter/agent"
 
 
 def _ctx() -> ResolveCtx:
@@ -149,15 +152,19 @@ def _winners(cats: dict) -> list:
 def _make_fake_rom(root: Path) -> Path:
     """Build a COMPLETE, valid packaged-canon tree under *root*; return the rom root.
 
-    ⚑ FLAT: ``rom/{COLLECTION.md, bible/**}`` with no ``canon/`` wrapper, and NO
-    ``bible/agent/`` — matching what the wheel actually ships under J-7.
+    ⚑ FLAT: ``rom/{COLLECTION.md, charter/**}`` with no ``canon/`` wrapper, and NO
+    ``charter/agent/`` — matching what the wheel actually ships under J-7.
+
+    ⚑ A chapter's entry file sits DIRECTLY in the chapter dir
+    (``charter/general/ROM_GENERAL.md``), not under a ``directives/`` level — the
+    layout the packaged tree flattened to, and what ``ROM_GUIDE_REL`` now spells.
     """
     rom = root / "rom"
-    (rom / ROM_BIBLE_REL).mkdir(parents=True)
+    (rom / ROM_CHARTER_REL).mkdir(parents=True)
     (rom / ROM_COLLECTION_REL).write_text("# collection\n")
     (rom / ROM_CONTENTS_REL).write_text("# contents\n")
-    for chapter in ROM_BIBLE_CHAPTERS:
-        d = rom / ROM_BIBLE_REL / chapter / "directives"
+    for chapter in ROM_CHARTER_CHAPTERS:
+        d = rom / ROM_CHARTER_REL / chapter
         d.mkdir(parents=True)
         (d / f"ROM_{chapter.upper()}.md").write_text("x\n")
     assert (rom / ROM_GUIDE_REL).is_file(), "fixture must satisfy the guide guard"
@@ -182,6 +189,31 @@ def fake_rom(tmp_path, monkeypatch):
 
     monkeypatch.setattr(core_defaults, "packaged_data_dir", _fake)
     return rom
+
+
+def _import_line(rel: str) -> str:
+    """The packaged index's IMPORT DIRECTIVE for a chapter-relative path *rel*.
+
+    ⚑ THE FULL FORM, NEVER A BARE SUBSTRING. Every index carries prose naming its
+    chapters (the ``<!--[STOCK]-->`` header lists them), so ``rel in contents`` can be
+    satisfied by a file that imports nothing at all — a detector that cannot red.
+    """
+    return f'__IMPORTSECTION__("{rel}")'
+
+
+def _plant_plugin_chapter(chapter: Path, body: str = "# harness chapter\n") -> Path:
+    """Plant a temp plugin's charter chapter at *chapter* (its ``data/rom`` root).
+
+    ⚑ The marker path comes from ``PLUGIN_CHAPTER_MARKER_REL``, so a fixture meant to
+    SATISFY the emission gate can never drift from it — which is what silently turns a
+    gate-TRUE test into a gate-FALSE one that still passes its ``== {}`` assertion
+    somewhere else. The spelling itself is pinned separately, against what the packages
+    actually ship (``TestPluginChapterBind``).
+    """
+    marker = chapter / PLUGIN_CHAPTER_MARKER_REL
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text(body)
+    return chapter
 
 
 class _ChapterTarget:
@@ -210,15 +242,16 @@ class TestCanonBinds:
 
     def test_keys_are_the_spec_names_and_emission_is_deterministic(self):
         """Stable SPEC names — not the retired content-derived ``rom_<slug>_<hash>``
-        family, and not R1's retired whole-dir ``canon_bible``."""
+        family, and not R1's retired whole-dir ``canon_bible`` (the name it shipped
+        under; see the module docstring)."""
         first = core_defaults.rom_default_categories()
         assert first == core_defaults.rom_default_categories()
         # ⚑ Since R-10 there are no bind NAMES left to be stable, so what this
-        # pins moved to the DESTINATIONS: no whole-dir ``~/canon/bible`` entry
+        # pins moved to the DESTINATIONS: no whole-dir ``~/canon/charter`` entry
         # (RETIRED by J-7), and no content-derived ``rom_<slug>_<hash>`` segment
         # anywhere in a dest.
-        assert f"{GUEST_HOME}/canon/bible" not in first[_ARM], (
-            "the whole-dir bible bind is RETIRED (J-7) — not a bind at all"
+        assert f"{GUEST_HOME}/canon/charter" not in first[_ARM], (
+            "the whole-dir charter bind is RETIRED (J-7) — not a bind at all"
         )
         assert not any("rom_" in d for d in first[_ARM]), first
 
@@ -242,14 +275,14 @@ class TestCanonBinds:
             else:
                 assert Path(src).is_dir(), dest
 
-    def test_neither_canon_root_nor_bible_root_is_ever_bound(self):
+    def test_neither_canon_root_nor_charter_root_is_ever_bound(self):
         """⚑ THE SIBLING CONTRACT. ``~/canon`` must never be bound (it holds the
-        SEEDED notebook/workbook), and neither must ``~/canon/bible`` — re-introducing
-        that whole-dir bind is exactly the R1 model J-7 retired, and it would put the
-        agent chapter's mountpoint back inside a bind source."""
+        SEEDED notebook/workbook), and neither must ``~/canon/charter`` —
+        re-introducing that whole-dir bind is exactly the R1 model J-7 retired, and it
+        would put the agent chapter's mountpoint back inside a bind source."""
         dests = set(core_defaults.rom_default_categories()[_ARM])
         assert f"{GUEST_HOME}/canon" not in dests
-        assert f"{GUEST_HOME}/canon/bible" not in dests
+        assert f"{GUEST_HOME}/canon/charter" not in dests
         assert GUEST_HOME not in dests
 
     def test_sources_are_the_packaged_canon_never_a_copy(self):
@@ -260,7 +293,7 @@ class TestCanonBinds:
         # The guide has NO bind of its own — it rides the ``general`` chapter's.
         guide = rom / ROM_GUIDE_REL
         assert guide.is_file()
-        general_src = cats[_ARM][f"{GUEST_HOME}/canon/bible/general"][0]
+        general_src = cats[_ARM][f"{GUEST_HOME}/canon/charter/general"][0]
         assert guide.is_relative_to(Path(general_src))
 
     def test_resolves_to_ro_mounts_at_every_guest_slot(self):
@@ -315,11 +348,11 @@ class TestFailClosed:
             core_defaults.rom_default_categories()
 
     def test_packaged_agent_chapter_is_NOT_required(self, fake_rom):
-        """⚑ THE INVERTED R1 ASSERTION. R1 REQUIRED a packaged ``bible/agent/``
+        """⚑ THE INVERTED R1 ASSERTION. R1 REQUIRED a packaged ``charter/agent/``
         directory as the nested bind's mountpoint (podman silently mkdir'd a missing
         one into site-packages). J-7 removed the nesting, so that placeholder must NOT
         ship — and its absence must NOT raise. The fixture never creates it."""
-        assert not (fake_rom / ROM_BIBLE_REL / BIBLE_AGENT_CHAPTER).exists()
+        assert not (fake_rom / ROM_CHARTER_REL / CHARTER_AGENT_CHAPTER).exists()
         assert set(core_defaults.rom_default_categories()[_ARM]) == set(_CORE_DESTS)
 
     def test_absent_rom_root_is_a_no_rom_install(self, tmp_path, monkeypatch):
@@ -344,7 +377,7 @@ class TestDisjointness:
         region is root-owned at create, so the copy fails with EACCES."""
         with pytest.raises(RuntimeError, match="EACCES AT CREATE"):
             core_defaults.assert_canon_bind_seed_disjoint(
-                {"canon/bible"}, {"canon/bible/general/directives/ROM_GENERAL.md"},
+                {"canon/charter"}, {"canon/charter/general/ROM_GENERAL.md"},
             )
 
     def test_exact_collision_raises(self):
@@ -354,33 +387,34 @@ class TestDisjointness:
             )
 
     def test_seed_into_the_agent_chapter_still_raises(self):
-        """⚑ THE J-7 WIDENING. Under sibling binds ``canon/bible`` is no longer itself
-        a bind dest — only its chapters are — so a guard built from the LITERAL dests
-        would silently start allowing a seed at ``canon/bible/agent/…``. Spec §2c
-        forbids seeding anywhere under ``canon/bible/``, and under J-7 that path is a
-        root-owned 555 mountpoint, so the copy fails with EACCES at create rather than
-        merely being shadowed at launch. RED if someone narrows the deny list back to
-        the dests.
+        """⚑ THE J-7 WIDENING. Under sibling binds ``canon/charter`` is no longer
+        itself a bind dest — only its chapters are — so a guard built from the LITERAL
+        dests would silently start allowing a seed at ``canon/charter/agent/…``. Spec
+        §2c forbids seeding anywhere under ``canon/charter/``, and under J-7 that path
+        is a root-owned 555 mountpoint, so the copy fails with EACCES at create rather
+        than merely being shadowed at launch. RED if someone narrows the deny list back
+        to the dests.
         """
         with pytest.raises(RuntimeError, match="EACCES AT CREATE"):
             core_defaults.assert_canon_bind_seed_disjoint(
-                CANON_SEED_DENY_PREFIXES, {"canon/bible/agent/directives/ROM_AGENT.md"},
+                CANON_SEED_DENY_PREFIXES,
+                {"canon/charter/agent/ROM_AGENT.md"},
             )
 
-    def test_deny_list_covers_the_whole_bible_not_just_its_chapters(self):
-        assert "canon/bible" in CANON_SEED_DENY_PREFIXES
+    def test_deny_list_covers_the_whole_charter_not_just_its_chapters(self):
+        assert "canon/charter" in CANON_SEED_DENY_PREFIXES
         assert "canon/COLLECTION.md" in CANON_SEED_DENY_PREFIXES
 
     def test_sibling_and_prefix_lookalike_seeds_are_allowed(self):
-        """``canon/notebook`` and ``canon/bibles-of-mine`` are NOT under
-        ``canon/bible`` — a naive ``startswith`` without the separator would
+        """``canon/notebook`` and ``canon/charters-of-mine`` are NOT under
+        ``canon/charter`` — a naive ``startswith`` without the separator would
         wrongly reject the second."""
         core_defaults.assert_canon_bind_seed_disjoint(
             CANON_SEED_DENY_PREFIXES,
             {
                 "canon/notebook/MY_CONTENTS.md",
                 "canon/workbook/devnotes.md",
-                "canon/bibles-of-mine/x.md",
+                "canon/charters-of-mine/x.md",
                 "canon/COLLECTION.md.bak",
                 "workspace/README.md",
             },
@@ -410,13 +444,13 @@ class TestDisjointness:
         assert "canon/notebook/MY_CONTENTS.md" in rels, rels
 
     def test_emitter_raises_on_a_colliding_template(self, monkeypatch):
-        """Driven through the real emitter: a template seed under ``canon/bible``
+        """Driven through the real emitter: a template seed under ``canon/charter``
         aborts rather than being carried to a create that would EACCES."""
         real_walk = templates.walk_shipped_files
 
         def _walk(root: Path) -> list[tuple[str, Path]]:
             if root == packaged_box_home_template():
-                return [("canon/bible/general/directives/ROM_GENERAL.md", root / "x")]
+                return [("canon/charter/general/ROM_GENERAL.md", root / "x")]
             return real_walk(root)
 
         monkeypatch.setattr(templates, "walk_shipped_files", _walk)
@@ -431,31 +465,39 @@ class TestDisjointness:
 
 class TestPackagedCanonTree:
     def test_layout_is_flat_with_no_canon_wrapper(self):
-        """J-7 / Jei's samples: the packaged rom is ``rom/{COLLECTION.md, bible/**}``.
+        """J-7 / Jei's samples: the packaged rom is ``rom/{COLLECTION.md, charter/**}``.
         The old ``rom/canon/**`` level is gone, so a rom-relative path is no longer
-        its own ``~``-dest — every dest goes through ``_canon_dest``."""
+        its own ``~``-dest — every dest goes through ``_canon_dest``.
+
+        ⚑ The literals are deliberate: this is the OUTSIDE oracle on the shipped
+        layout, so it must not be re-derived from the constants it is checking."""
         rom = _packaged_rom_root()
         assert (rom / "COLLECTION.md").is_file()
-        assert (rom / "bible").is_dir()
+        assert (rom / "charter").is_dir()
         assert not (rom / "canon").exists()
 
-    def test_ships_every_packaged_chapter_directory(self):
+    def test_ships_every_packaged_chapter_entry_file(self):
+        """⚑ A wheel has no empty directories, so "the chapter ships" IS "its entry
+        file ships" — and since the packaged tree flattened, that file sits directly
+        in the chapter dir rather than under a ``directives/`` level. Asserting the
+        FILE rather than the dir is what keeps this from passing on a chapter that
+        shipped an empty shell."""
         rom = _packaged_rom_root()
         missing = [
-            c for c in ROM_BIBLE_CHAPTERS
-            if not (rom / ROM_BIBLE_REL / c / "directives").is_dir()
+            c for c in ROM_CHARTER_CHAPTERS
+            if not (rom / ROM_CHARTER_REL / c / f"ROM_{c.upper()}.md").is_file()
         ]
-        assert not missing, f"packaged bible is missing chapter dirs: {missing}"
+        assert not missing, f"packaged charter is missing chapter entries: {missing}"
 
     def test_agent_chapter_does_NOT_ship_in_the_package(self):
         """⚑ J-7 KILLED THE WHEEL MOUNTPOINT. R1 shipped a 0-byte
-        ``bible/agent/directives/ROM_AGENT.md`` purely to make that directory exist in
-        git and in the wheel, because a NESTED bind's mountpoint had to live inside its
-        parent's SOURCE. With siblings the mountpoint lives in the box home instead, so
-        the package must carry nothing here — a stray empty chapter would bind over the
-        plugin's, or be mistaken for content."""
+        ``charter/agent/directives/ROM_AGENT.md`` purely to make that directory exist
+        in git and in the wheel, because a NESTED bind's mountpoint had to live inside
+        its parent's SOURCE. With siblings the mountpoint lives in the box home
+        instead, so the package must carry nothing here — a stray empty chapter would
+        bind over the plugin's, or be mistaken for content."""
         rom = _packaged_rom_root()
-        assert not (rom / ROM_BIBLE_REL / BIBLE_AGENT_CHAPTER).exists()
+        assert not (rom / ROM_CHARTER_REL / CHARTER_AGENT_CHAPTER).exists()
 
     def test_index_and_contents_ship(self):
         rom = _packaged_rom_root()
@@ -463,16 +505,16 @@ class TestPackagedCanonTree:
         assert (rom / ROM_CONTENTS_REL).is_file()
         assert (rom / ROM_GUIDE_REL).is_file()
 
-    def test_no_bytecode_or_python_under_the_packaged_bible(self):
+    def test_no_bytecode_or_python_under_the_packaged_charter(self):
         """A directory bind exposes whatever is physically in the packaged dir at
         runtime — the per-file walk's ``_is_shipped_content`` filter no longer stands
         between a dev checkout's ``__pycache__`` and the box."""
         rom = _packaged_rom_root()
         junk = [
-            str(p.relative_to(rom)) for p in (rom / ROM_BIBLE_REL).rglob("*")
+            str(p.relative_to(rom)) for p in (rom / ROM_CHARTER_REL).rglob("*")
             if "__pycache__" in p.parts or p.suffix in (".pyc", ".pyo", ".py")
         ]
-        assert not junk, f"packaged bible carries non-content files: {junk}"
+        assert not junk, f"packaged charter carries non-content files: {junk}"
 
     def test_flattener_ships_in_the_package_not_the_canon(self):
         """P-2: ``import-directives.py`` is MACHINERY. It reaches the box through the
@@ -486,7 +528,7 @@ class TestPackagedCanonTree:
 
 
 # ===========================================================================
-# The PLUGIN chapter — ``canon_bible_agent`` (spec §2c, the sixth canon bind).
+# The PLUGIN chapter — ``canon_charter_agent`` (spec §2c, the sixth canon bind).
 # ===========================================================================
 
 
@@ -504,10 +546,20 @@ class TestPluginChapterBind:
     def test_every_first_party_harness_ships_a_chapter_so_the_gate_is_positive(
         self, agent: str,
     ):
-        """⚑ THE R2 FLIP. Each plugin now ships ``data/rom/directives/ROM_AGENT.md``,
-        so the gate is TRUE for all three and the bible's agent chapter is a REAL bind
-        on every first-party box — which is what makes ``@agent/directives/ROM_AGENT.md``
-        in the bible's ``ROM_CONTENTS.md`` resolve instead of dangling.
+        """⚑ THE R2 FLIP. Each plugin now ships its chapter entry at its ``data/rom``
+        root, so the gate is TRUE for all three and the charter's agent chapter is a
+        REAL bind on every first-party box.
+
+        ⚑ THE PLUGIN CHAPTER IS FLAT, LIKE THE CORE ONES. ``data/rom`` IS the chapter
+        and is bound whole at ``~/canon/charter/agent``, so an entry file at its root
+        is what makes the charter's ``ROM_CONTENTS.md`` import resolve instead of
+        dangling.
+
+        ⚑ THIS ASSERTION CHECKS THE SHIPPED POSITION ONLY — it never opens
+        ``ROM_CONTENTS.md``. The index's agreement with that position is pinned
+        separately by
+        ``test_the_index_imports_the_plugin_chapter_where_the_bind_puts_it``.
+        Neither check alone makes the import safe; both together do.
 
         Gate-FALSE is not left uncovered: it is exercised by the two temp-plugin tests
         below (bare ``data/rom`` with no marker, and no ``rom_root`` at all), which is
@@ -516,14 +568,14 @@ class TestPluginChapterBind:
         root = target.rom_root()
         assert root is not None
         assert (root / PLUGIN_CHAPTER_MARKER_REL).is_file(), (
-            f"{agent}: the plugin must ship its bible chapter at "
+            f"{agent}: the plugin must ship its charter chapter at "
             f"data/rom/{PLUGIN_CHAPTER_MARKER_REL}"
         )
 
         cats = core_defaults.rom_agent_default_categories(target)
         assert set(cats) == {_ARM}, cats
-        assert set(cats[_ARM]) == {_BIBLE_AGENT_DEST}, cats
-        src, opts = cats[_ARM][_BIBLE_AGENT_DEST]
+        assert set(cats[_ARM]) == {_CHARTER_AGENT_DEST}, cats
+        src, opts = cats[_ARM][_CHARTER_AGENT_DEST]
         assert Path(src) == root, "the plugin's data/rom IS the chapter root (D3)"
         assert opts == "ro"
 
@@ -544,7 +596,7 @@ class TestPluginChapterBind:
     @pytest.mark.parametrize("agent", _AGENTS)
     def test_no_bytecode_or_python_under_a_packaged_plugin_chapter(self, agent: str):
         """R1's N3 handoff — the CORE-side twin of
-        ``TestPackagedCanonTree::test_no_bytecode_or_python_under_the_packaged_bible``.
+        ``TestPackagedCanonTree::test_no_bytecode_or_python_under_the_packaged_charter``.
 
         The plugin's ``data/rom`` is now a REAL whole-directory bind source, and a
         whole-dir bind exposes whatever is physically in the packaged dir: the
@@ -559,24 +611,66 @@ class TestPluginChapterBind:
         assert not junk, f"{agent}: packaged plugin chapter carries non-content: {junk}"
 
     def test_emits_one_bind_when_the_plugin_ships_a_chapter(self, tmp_path):
-        chapter = tmp_path / "data" / "rom"
-        (chapter / "directives").mkdir(parents=True)
-        (chapter / "directives" / "ROM_AGENT.md").write_text("# harness chapter\n")
+        chapter = _plant_plugin_chapter(tmp_path / "data" / "rom")
 
         cats = core_defaults.rom_agent_default_categories(_ChapterTarget(chapter))
         assert set(cats) == {_ARM}
         # ⚑ The dest carries NO agent segment — asserted as the arm's ONLY key,
         # which is stronger than the retired ``dest ==`` check: under dest-keying
         # a wrong dest cannot hide behind a right name.
-        assert set(cats[_ARM]) == {_BIBLE_AGENT_DEST}
-        src, opts = cats[_ARM][_BIBLE_AGENT_DEST]
+        assert set(cats[_ARM]) == {_CHARTER_AGENT_DEST}
+        src, opts = cats[_ARM][_CHARTER_AGENT_DEST]
         assert Path(src) == chapter, "the plugin's data/rom IS the chapter root"
         assert opts == "ro"
+
+    def test_the_index_imports_the_plugin_chapter_where_the_bind_puts_it(self):
+        """⚑⚑ THE CHARTER-SIDE TWIN of
+        ``TestCanonSkeleton::test_the_fallback_names_match_what_SYS_CONTENTS_imports``
+        — and the gap that let this arc ship a dangling import unnoticed.
+
+        The gate above proves a plugin SHIPS an entry file; nothing proved the
+        charter's own index IMPORTS it at the position the bind delivers it to. Move
+        ``PLUGIN_CHAPTER_MARKER_REL`` and the three packages together and every other
+        test in this module stays green while ``agent/ROM_AGENT.md`` dangles on every
+        first-party box — the silent failure MIGRATION.md warns plugin authors about.
+
+        ⚑ THE TWO SIDES ARE DERIVED INDEPENDENTLY: the path from the constants that
+        decide WHERE the bind puts the file (the chapter dest leaf + the marker rel),
+        the import from the packaged ``ROM_CONTENTS.md`` itself. Restating one
+        spelling on both sides would make them agree by construction.
+        """
+        contents = (_packaged_rom_root() / ROM_CONTENTS_REL).read_text()
+        imported = f"{CHARTER_AGENT_CHAPTER}/{PLUGIN_CHAPTER_MARKER_REL}"
+        assert _import_line(imported) in contents, (
+            f"{ROM_CONTENTS_REL} does not import {imported!r}, which is where the "
+            "plugin chapter bind delivers the file; the import would dangle on every "
+            "box of every first-party harness"
+        )
 
     def test_no_bind_when_the_chapter_marker_is_absent(self, tmp_path):
         chapter = tmp_path / "data" / "rom"
         chapter.mkdir(parents=True)
         (chapter / "_bundled_future_use_").write_text("")
+        assert core_defaults.rom_agent_default_categories(_ChapterTarget(chapter)) == {}
+
+    def test_no_bind_when_the_entry_file_is_at_the_RETIRED_nested_position(
+        self, tmp_path,
+    ):
+        """⚑ THE UNMIGRATED PLUGIN — the shape a real author actually ships, and the
+        case his flattening ruling turned from working into refused.
+
+        ``data/rom/directives/ROM_AGENT.md`` WAS the marker. It is now one level below
+        what the charter's index imports, so binding it would deliver a chapter whose
+        entry file nothing reaches. Refusing is the honest answer: the author sees no
+        agent chapter at all rather than a chapter that silently resolves to nothing.
+
+        ⚑ THE RETIRED PATH IS SPELLED LITERALLY HERE, deliberately — deriving it from
+        ``PLUGIN_CHAPTER_MARKER_REL`` would make this test follow the constant and
+        stop describing the shape it exists to refuse.
+        """
+        chapter = tmp_path / "data" / "rom"
+        (chapter / "directives").mkdir(parents=True)
+        (chapter / "directives" / "ROM_AGENT.md").write_text("# unmigrated plugin\n")
         assert core_defaults.rom_agent_default_categories(_ChapterTarget(chapter)) == {}
 
     def test_no_bind_when_the_target_has_no_rom_root(self):
@@ -594,9 +688,7 @@ class TestSiblingAssembly:
     """
 
     def test_no_canon_dest_is_a_prefix_of_another(self, tmp_path):
-        chapter = tmp_path / "data" / "rom"
-        (chapter / "directives").mkdir(parents=True)
-        (chapter / "directives" / "ROM_AGENT.md").write_text("")
+        chapter = _plant_plugin_chapter(tmp_path / "data" / "rom", "")
 
         cats = _merged_canon_cats(chapter)
         assert len(cats[_ARM]) == 6
@@ -620,16 +712,14 @@ class TestSiblingAssembly:
         from kanibako.settings.store_shape import build_store_shape_set
         from tests.support.narrow_resolve import table_bind_dests
 
-        chapter = tmp_path / "data" / "rom"
-        (chapter / "directives").mkdir(parents=True)
-        (chapter / "directives" / "ROM_AGENT.md").write_text("")
+        chapter = _plant_plugin_chapter(tmp_path / "data" / "rom", "")
 
         cats = _merged_canon_cats(chapter)
         entries = _entries(cats)
         produced = build_store_shape_set(entries)
         assert not produced.warnings, produced.warnings
         winners = narrow_table_winners(entries, table_bind_dests(cats))
-        assert f"{GUEST_HOME}/canon/bible/agent" in {m.box_dest for m in winners}
+        assert f"{GUEST_HOME}/canon/charter/agent" in {m.box_dest for m in winners}
 
 
 # ===========================================================================
@@ -726,23 +816,21 @@ class TestLaunchWiring:
             assert dest in by_dest, sorted(by_dest)
             assert by_dest[dest].options == "ro"
         # ⚑ Neither book ROOT is mounted: ~/canon holds the SEEDED notebook/workbook,
-        # and ~/canon/bible is the retired whole-dir bind.
+        # and ~/canon/charter is the retired whole-dir bind.
         assert f"{GUEST_HOME}/canon" not in by_dest
-        assert f"{GUEST_HOME}/canon/bible" not in by_dest
+        assert f"{GUEST_HOME}/canon/charter" not in by_dest
 
     def test_plugin_chapter_bind_reaches_a_real_launch(
         self, std, config, project_dir, tmp_path,
     ):
         """RED if ``core_defaults.rom_agent_default_categories(target)`` stops being
         unioned in: the chapter mount vanishes."""
-        chapter = tmp_path / "plugin-pkg" / "data" / "rom"
-        (chapter / "directives").mkdir(parents=True)
-        (chapter / "directives" / "ROM_AGENT.md").write_text("# chapter\n")
+        chapter = _plant_plugin_chapter(tmp_path / "plugin-pkg" / "data" / "rom")
 
         proj = resolve_project(std, config, str(project_dir), initialize=True)
         by_dest = self._launch_mounts(std, proj, _WiringTarget(chapter))
 
-        agent_dest = f"{GUEST_HOME}/canon/bible/agent"
+        agent_dest = f"{GUEST_HOME}/canon/charter/agent"
         assert agent_dest in by_dest, sorted(by_dest)
         assert by_dest[agent_dest].options == "ro"
         assert Path(by_dest[agent_dest].source) == chapter
@@ -759,11 +847,11 @@ class TestLaunchWiring:
 
         proj = resolve_project(std, config, str(project_dir), initialize=True)
         by_dest = self._launch_mounts(std, proj, _WiringTarget(bare))
-        assert f"{GUEST_HOME}/canon/bible/agent" not in by_dest
+        assert f"{GUEST_HOME}/canon/charter/agent" not in by_dest
 
         with patch("kanibako.runtime.container.ContainerRuntime"):
             core_defaults.materialize_canon_skeleton(proj.shell_path)
-        chapter_dir = proj.shell_path / "canon" / "bible" / "agent"
+        chapter_dir = proj.shell_path / "canon" / "charter" / "agent"
         assert chapter_dir.is_dir(), "the mountpoint must exist even with no bind"
         assert not any(chapter_dir.iterdir()), "and it must be EMPTY"
 
@@ -778,7 +866,7 @@ class TestLaunchWiring:
 
         for dest in _CORE_DESTS:
             assert dest in by_dest
-        assert f"{GUEST_HOME}/canon/bible/agent" not in by_dest
+        assert f"{GUEST_HOME}/canon/charter/agent" not in by_dest
 
     def test_an_absent_chapter_is_SKIPPED_SILENTLY_at_a_real_launch(
         self, std, config, project_dir, caplog,
@@ -861,7 +949,7 @@ class TestCanonSkeleton:
 
         for rel in (
             "canon/COLLECTION.md",
-            "canon/bible/ROM_CONTENTS.md",
+            "canon/charter/ROM_CONTENTS.md",
             "canon/handbook/SYS_CONTENTS.md",
         ):
             p = home / rel
@@ -874,7 +962,7 @@ class TestCanonSkeleton:
         under the retired nested model meant mkdir-ing into site-packages, the exact
         failure J-7 exists to remove."""
         cats = core_defaults.rom_default_categories()
-        dests = set(cats[_ARM]) | {_BIBLE_AGENT_DEST}
+        dests = set(cats[_ARM]) | {_CHARTER_AGENT_DEST}
         skeleton = {rel for rel, _ in core_defaults.canon_skeleton_rels()}
         for dest in dests:
             assert dest.removeprefix(f"{GUEST_HOME}/") in skeleton, dest
@@ -899,9 +987,13 @@ class TestCanonSkeleton:
         ``SYS_CONTENTS.md`` imports all FOUR chapters UNCONDITIONALLY, and
         skip-if-absent governs the BIND, not the INDEX — so without these, every box
         with no workset chapter (i.e. every primary box) printed ``unresolved import
-        @workset/directives/SYS_WORKSET.md`` on EVERY launch. With them, an unbound
-        chapter RESOLVES-TO-EMPTY; a bound one has its whole directory replaced by the
-        mount, so the store's real file shadows the fallback.
+        workset/SYS_WORKSET.md`` on EVERY launch. With them, an unbound chapter
+        RESOLVES-TO-EMPTY; a bound one has its whole directory replaced by the mount,
+        so the store's real file shadows the fallback.
+
+        ⚑ The entry file sits DIRECTLY in the chapter dir. A ``directives/`` level
+        would still materialise a 0-byte file — and still warn on every launch,
+        because nothing imports that path.
         """
         home = tmp_path / "home"
         home.mkdir()
@@ -909,37 +1001,65 @@ class TestCanonSkeleton:
 
         hb = home / "canon" / "handbook"
         for chapter, entry in core_defaults.HANDBOOK_FALLBACK_ENTRIES:
-            fallback = hb / chapter / "directives" / entry
+            fallback = hb / chapter / entry
             assert fallback.is_file(), fallback
             assert fallback.read_bytes() == b"", "the fallback must be 0-byte"
 
     def test_general_gets_no_import_fallback(self, tmp_path, fake_runtime):
         """⚑ DELIBERATE ASYMMETRY. The system store ALWAYS supplies ``general``, so a
         fallback there would mask a genuinely missing system handbook — which is
-        precisely what ``canon_hb_general`` being NON-optional exists to surface."""
+        precisely what ``canon_hb_general`` being NON-optional exists to surface.
+
+        ⚑ The MOUNTPOINT must still exist (it is bound non-optionally); what must not
+        exist is anything INSIDE it. Asserting emptiness rather than one filename
+        catches a fallback planted under any spelling."""
         home = tmp_path / "home"
         home.mkdir()
         core_defaults.materialize_canon_skeleton(home)
-        assert not (home / "canon" / "handbook" / "general" / "directives").exists()
+
+        general = home / "canon" / "handbook" / "general"
+        assert general.is_dir(), "the general chapter mountpoint is still skeleton-owned"
+        assert not list(general.iterdir()), sorted(general.iterdir())
 
     def test_the_fallback_names_match_what_SYS_CONTENTS_imports(self):
-        """The fallback filenames are only useful if they are the ones the packaged
-        index actually imports — spelled in a different file, so drift is silent."""
+        """The fallback paths are only useful if they are the ones the packaged index
+        actually imports — spelled in a different file, so drift is silent.
+
+        ⚑⚑ THE EXPECTATION IS DERIVED FROM THE SKELETON, NEVER RESTATED HERE. The
+        import path is read back out of ``canon_skeleton_rels()`` — the function that
+        PLACES the file — so if the skeleton ever re-introduces a level below the
+        chapter, the derived path stops matching what ``SYS_CONTENTS.md`` imports and
+        this REDS. Spelling the flat form on both sides would make the two agree by
+        construction and detect nothing.
+        """
         contents = (
             templates._packaged_base_template()
             / "handbook" / "SYS_CONTENTS.md"
         ).read_text()
+        book = f"{core_defaults.CANON_GUEST_ROOT}/{core_defaults.HANDBOOK_REL}"
+        skeleton_files = [
+            rel for rel, is_dir in core_defaults.canon_skeleton_rels() if not is_dir
+        ]
         for chapter, entry in core_defaults.HANDBOOK_FALLBACK_ENTRIES:
-            assert f"@{chapter}/directives/{entry}" in contents, (
-                f"SYS_CONTENTS.md does not import @{chapter}/directives/{entry}; "
-                "the skeleton's import-fallback would resolve nothing"
+            placed = [
+                rel for rel in skeleton_files
+                if rel.startswith(f"{book}/{chapter}/") and rel.endswith(f"/{entry}")
+            ]
+            assert len(placed) == 1, (chapter, entry, placed)
+            imported = placed[0].removeprefix(f"{book}/")
+            assert _import_line(imported) in contents, (
+                f"SYS_CONTENTS.md does not import {imported!r} (where the skeleton "
+                "puts the fallback); the import-fallback would resolve nothing"
             )
 
     def test_fallbacks_are_protected_like_the_rest_of_the_skeleton(
         self, tmp_path, fake_runtime,
     ):
         """They are MACHINERY, not content: root-owned and unwritable like every
-        other skeleton entry, so the agent cannot edit its own 'empty chapter'."""
+        other skeleton entry, so the agent cannot edit its own 'empty chapter'.
+
+        ⚑ The chapter dir is covered too — it is the fallback's parent, and it is
+        already a skeleton entry in its own right as that chapter's MOUNTPOINT."""
         home = tmp_path / "home"
         home.mkdir()
         core_defaults.materialize_canon_skeleton(home)
@@ -948,8 +1068,8 @@ class TestCanonSkeleton:
         covered = {str(p) for p in chown_paths}
         hb = home / "canon" / "handbook"
         for chapter, entry in core_defaults.HANDBOOK_FALLBACK_ENTRIES:
-            assert str(hb / chapter / "directives" / entry) in covered
-            assert str(hb / chapter / "directives") in covered
+            assert str(hb / chapter / entry) in covered
+            assert str(hb / chapter) in covered
 
     def test_does_not_create_the_seeded_books(self, tmp_path, fake_runtime):
         """``notebook``/``workbook`` are SEEDED, agent-owned and writable. They become
@@ -1038,7 +1158,7 @@ class TestCanonSkeleton:
                 caplog.at_level(logging.WARNING):
             core_defaults.materialize_canon_skeleton(home)
 
-        assert (home / "canon" / "bible" / "general").is_dir(), "skeleton still built"
+        assert (home / "canon" / "charter" / "general").is_dir(), "skeleton still built"
         assert any("left writable" in r.message for r in caplog.records), caplog.text
 
     @pytest.mark.parametrize("failing", ("unshare_chown", "unshare_chmod"))

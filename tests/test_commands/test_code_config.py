@@ -521,7 +521,7 @@ def test_seed_session_start_tolerates_corrupt(tmp_path):
 
 # --- per-PID markers: write (SessionStart) + remove (SessionEnd) -----------
 #
-# The hook commands CALL the packaged bible's PID helpers rather than inlining the
+# The hook commands CALL the packaged charter's PID helpers rather than inlining the
 # shell they used to.  That moves two things out of this module and into shipped
 # script bytes — the marker-dir fallback and the per-PID filename scheme — so the
 # tests below reach into the shipped scripts to pin both ends of each.
@@ -529,20 +529,20 @@ def test_seed_session_start_tolerates_corrupt(tmp_path):
 #: The PID helpers' directory, relative to the packaged rom ROOT.  ⚑ The BOX path is
 #: derived from it by ``_canon_dest`` (the same function the bind emitter uses), never
 #: spelled a second time.
-_PID_SCRIPTS_ROM_REL = "bible/general/scripts/util"
+_PID_SCRIPTS_ROM_REL = "charter/general/scripts/util"
 
 #: ``${KANIBAKO_AGENT_MARKERS_DIR:-<default>}`` as the shell scripts spell it.
 _MARKERS_DIR_FALLBACK_RE = re.compile(r"\$\{KANIBAKO_AGENT_MARKERS_DIR:-([^}]*)\}")
 
 
 def _shipped_pid_script(leaf: str) -> Path:
-    """The SHIPPED source of one bible PID helper — the bytes the rom bind exposes."""
+    """The SHIPPED source of one charter PID helper — the bytes the rom bind exposes."""
     rom_root = Path(str(packaged_data_dir(*ROM_ROOT_PARTS)))
     return rom_root / _PID_SCRIPTS_ROM_REL / leaf
 
 
-def test_marker_commands_call_the_shipped_bible_pid_scripts():
-    """The hooks are CALLS into the bible's PID helpers, at the box path the rom bind
+def test_marker_commands_call_the_shipped_charter_pid_scripts():
+    """The hooks are CALLS into the charter's PID helpers, at the box path the rom bind
     puts them at — derived from ``_canon_dest``, so a relocation of the canon dest
     reds here instead of leaving a hook pointed at nothing."""
     box_dir = _canon_dest(_PID_SCRIPTS_ROM_REL)

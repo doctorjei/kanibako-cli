@@ -28,7 +28,7 @@ prove that declaration for all three first-party agents:
   native slot.
 
 The former Route-A ``@system.instructions`` → native-slot category bind is RETIRED
-(the guide now reaches the box inside the RO ``~/canon/bible`` bind + the flattened
+(the guide now reaches the box inside the RO ``~/canon/charter/general`` bind + the flattened
 FINAL file), so we also prove no plugin still emits it.  The start-time flatten +
 hook is a LATER increment and is NOT exercised here.
 """

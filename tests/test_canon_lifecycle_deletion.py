@@ -39,11 +39,11 @@ def protected_box_home(box_dir: Path) -> Path:
     enough to break ``shutil.rmtree``.
     """
     home = box_dir / "home"
-    (home / "canon" / "bible" / "general").mkdir(parents=True)
-    (home / "canon" / "bible" / "agent").mkdir()
+    (home / "canon" / "charter" / "general").mkdir(parents=True)
+    (home / "canon" / "charter" / "agent").mkdir()
     (home / "canon" / "handbook" / "box").mkdir(parents=True)
     (home / "canon" / "COLLECTION.md").touch()
-    (home / "canon" / "bible" / "ROM_CONTENTS.md").touch()
+    (home / "canon" / "charter" / "ROM_CONTENTS.md").touch()
     # The seeded books stay agent-owned + writable (undeletable only via the parent).
     (home / "canon" / "notebook").mkdir()
     (home / "canon" / "notebook" / "MY_CONTENTS.md").write_text("mine\n")

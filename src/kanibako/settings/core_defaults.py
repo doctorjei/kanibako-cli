@@ -386,35 +386,41 @@ CANON_GUEST_ROOT = "canon"
 
 # The rom-ROOT-relative posix paths of the packaged CANON bind SOURCES (spec §2c).
 ROM_COLLECTION_REL = "COLLECTION.md"
-ROM_BIBLE_REL = "bible"
-ROM_CONTENTS_REL = f"{ROM_BIBLE_REL}/ROM_CONTENTS.md"
+ROM_CHARTER_REL = "charter"
+ROM_CONTENTS_REL = f"{ROM_CHARTER_REL}/ROM_CONTENTS.md"
 
-# The handbook BOOK root, guest-only (nothing packages a handbook); beside ``ROM_BIBLE_REL``
+# The handbook BOOK root, guest-only (nothing packages a handbook); beside ``ROM_CHARTER_REL``
 # because the managed-region deny list below needs both book roots.
 HANDBOOK_REL = "handbook"
 
-# ⚑ The load-bearing box guide (the bible's GENERAL chapter), rom-root-relative; it MUST ship
+# ⚑ The load-bearing box guide (the charter's GENERAL chapter), rom-root-relative; it MUST ship
 # whenever the rom root is populated — see the fail-closed guard in ``rom_default_categories``.
-ROM_GUIDE_REL = "bible/general/directives/ROM_GENERAL.md"
+# ⚑ It sits at the CHAPTER ROOT, not under ``directives/`` — that directory now holds the
+# chapter's ``IDENTITY.md`` instead.
+ROM_GUIDE_REL = f"{ROM_CHARTER_REL}/general/ROM_GENERAL.md"
 
-# The bible chapters core PACKAGES, one whole-directory sibling bind each.  ⚑ Deliberately no
+# The charter chapters core PACKAGES, one whole-directory sibling bind each.  ⚑ Deliberately no
 # ``agent``: J-7 retired the packaged placeholder chapter with the nested-bind model.
-ROM_BIBLE_CHAPTERS = ("general", "workset", "box")
+ROM_CHARTER_CHAPTERS = ("general", "workset", "box")
 
-# The bible's PLUGIN chapter.  Guest-only: a mountpoint the box-create skeleton materialises.
-BIBLE_AGENT_CHAPTER = "agent"
+# The charter's PLUGIN chapter.  Guest-only: a mountpoint the box-create skeleton materialises.
+CHARTER_AGENT_CHAPTER = "agent"
 
 # The plugin-rom EMISSION GATE marker, relative to a plugin's ``data/rom`` chapter root.
-PLUGIN_CHAPTER_MARKER_REL = "directives/ROM_AGENT.md"
+# ⚑ FLAT, matching the core charter chapters: the plugin's ``data/rom`` IS the chapter, and
+# it is bound whole at ``~/canon/charter/agent``, so the entry file must sit where
+# ``ROM_CONTENTS.md``'s ``__IMPORTSECTION__("agent/ROM_AGENT.md")`` looks for it.  A
+# ``directives/`` level would put the chapter's own entry one level below its import path.
+PLUGIN_CHAPTER_MARKER_REL = "ROM_AGENT.md"
 
 # The MANAGED CANON REGION no template seed may write into (spec §2c), as ``~``-relative
-# PREFIXES.  ⚑ Prefixes, not the literal bind dests: under J-7 ``canon/bible`` is not itself a
-# dest, so literal dests would stop rejecting a seed at ``canon/bible/agent/x.md``.
+# PREFIXES.  ⚑ Prefixes, not the literal bind dests: under J-7 ``canon/charter`` is not itself a
+# dest, so literal dests would stop rejecting a seed at ``canon/charter/agent/x.md``.
 # ⚑ ``canon/handbook`` is here on the SKELETON's authority ("does box create own it?"), which
 # holds independently of what is bound.
 CANON_SEED_DENY_PREFIXES = (
     f"{CANON_GUEST_ROOT}/COLLECTION.md",
-    f"{CANON_GUEST_ROOT}/{ROM_BIBLE_REL}",
+    f"{CANON_GUEST_ROOT}/{ROM_CHARTER_REL}",
     f"{CANON_GUEST_ROOT}/{HANDBOOK_REL}",
 )
 
@@ -459,7 +465,7 @@ def rom_default_categories() -> BindArmTable:
 
     ⚑⚑ SIBLINGS, NOT A WHOLE-DIR BOOK: every entry lands on a mountpoint
     :func:`materialize_canon_skeleton` already made, so no mountpoint lives inside a bind SOURCE.
-    ⚑ ``bible/agent/`` is deliberately NOT required and must NOT ship.
+    ⚑ ``charter/agent/`` is deliberately NOT required and must NOT ship.
     """
     from kanibako.launch import templates
 
@@ -490,10 +496,10 @@ def rom_default_categories() -> BindArmTable:
     # drives BOTH the completeness guard and the emission, so they cannot drift apart.
     binds: list[tuple[str, str, bool]] = [
         ("canon_collection", ROM_COLLECTION_REL, False),
-        ("canon_bible_contents", ROM_CONTENTS_REL, False),
+        ("canon_charter_contents", ROM_CONTENTS_REL, False),
         *(
-            (f"canon_bible_{chapter}", f"{ROM_BIBLE_REL}/{chapter}", True)
-            for chapter in ROM_BIBLE_CHAPTERS
+            (f"canon_charter_{chapter}", f"{ROM_CHARTER_REL}/{chapter}", True)
+            for chapter in ROM_CHARTER_CHAPTERS
         ),
     ]
 
@@ -503,7 +509,7 @@ def rom_default_categories() -> BindArmTable:
         (rel, (rom_root / rel).is_dir() if is_dir else (rom_root / rel).is_file())
         for _key, rel, is_dir in binds
     ]
-    present.append((ROM_BIBLE_REL, (rom_root / ROM_BIBLE_REL).is_dir()))
+    present.append((ROM_CHARTER_REL, (rom_root / ROM_CHARTER_REL).is_dir()))
     present.append((ROM_GUIDE_REL, guide_shipped))
     missing = [rel for rel, ok in present if not ok]
     if missing:
@@ -535,10 +541,10 @@ def rom_default_categories() -> BindArmTable:
 def rom_agent_default_categories(
     target: "Target",
 ) -> BindArmTable:
-    """Build the PLUGIN's bible chapter bind — the SIXTH canon bind (spec §2c).
+    """Build the PLUGIN's charter chapter bind — the SIXTH canon bind (spec §2c).
 
     ⚑ Emitted by CORE from the RESOLVED *target*, NOT by the plugin and NOT through the
-    agent-scope descriptor route; ``bible/agent`` is per-HARNESS, ``handbook/agent`` per-NODE.
+    agent-scope descriptor route; ``charter/agent`` is per-HARNESS, ``handbook/agent`` per-NODE.
     """
     rom_root = target.rom_root()
     if rom_root is None:
@@ -550,7 +556,7 @@ def rom_agent_default_categories(
     out: BindArmTable = {}
     add_bind(
         out, "bindings.ro",
-        _canon_dest(f"{ROM_BIBLE_REL}/{BIBLE_AGENT_CHAPTER}"), str(rom_root), "ro",
+        _canon_dest(f"{ROM_CHARTER_REL}/{CHARTER_AGENT_CHAPTER}"), str(rom_root), "ro",
     )
     return out
 
@@ -643,15 +649,16 @@ HANDBOOK_CONTENTS_REL = f"{HANDBOOK_REL}/SYS_CONTENTS.md"
 # UNCONDITIONAL imports resolve-to-empty rather than warn on every launch.
 # ⚑ ``general`` is deliberately ABSENT: a fallback there would mask a missing system handbook.
 # ⚑ MACHINERY, NOT CONTENT — these live in the BOX's skeleton and are installed nowhere.
+# ⚑⚑ A chapter's entry file sits DIRECTLY in the chapter dir — ``SYS_CONTENTS.md`` imports
+# ``<chapter>/<entry>``, and the packaged per-scope chapters ship the same flat shape.  A
+# ``directives/`` level here puts the 0-byte file where nothing imports it, which is a
+# SILENT failure: the fallback still materialises and the unresolved-import warning returns
+# on every launch of every box lacking that chapter.
 HANDBOOK_FALLBACK_ENTRIES: tuple[tuple[str, str], ...] = (
     ("agent", "SYS_AGENT.md"),
     ("workset", "SYS_WORKSET.md"),
     ("box", "SYS_BOX.md"),
 )
-
-# The directory each chapter's entry file sits in — the ``@<chapter>/directives/...``
-# spelling ``SYS_CONTENTS.md`` imports.
-HANDBOOK_DIRECTIVES_DIRNAME = "directives"
 
 # ⚑⚑ THE OWNER THAT APPEARS AS ROOT INSIDE A BOX — deliberately NOT 0; under
 # :data:`kanibako.runtime.container.KEEP_ID_USERNS`, ``chown 0:0`` inside ``podman unshare``
@@ -676,14 +683,14 @@ def canon_skeleton_rels() -> tuple[tuple[str, bool], ...]:
     rels: list[tuple[str, bool]] = [
         (root, True),
         (f"{root}/{ROM_COLLECTION_REL}", False),
-        (f"{root}/{ROM_BIBLE_REL}", True),
+        (f"{root}/{ROM_CHARTER_REL}", True),
         (f"{root}/{ROM_CONTENTS_REL}", False),
     ]
     rels += [
-        (f"{root}/{ROM_BIBLE_REL}/{chapter}", True)
+        (f"{root}/{ROM_CHARTER_REL}/{chapter}", True)
         # ⚑ ``agent`` is ALWAYS pre-created, emission gate or not (J-7): a gate-false
         # launch must show an EMPTY root-owned mountpoint, not a missing directory.
-        for chapter in (*ROM_BIBLE_CHAPTERS, BIBLE_AGENT_CHAPTER)
+        for chapter in (*ROM_CHARTER_CHAPTERS, CHARTER_AGENT_CHAPTER)
     ]
     rels += [
         (f"{root}/{HANDBOOK_REL}", True),
@@ -692,12 +699,13 @@ def canon_skeleton_rels() -> tuple[tuple[str, bool], ...]:
     rels += [
         (f"{root}/{HANDBOOK_REL}/{chapter}", True) for chapter in HANDBOOK_CHAPTERS
     ]
-    # The IMPORT-FALLBACK entry files (F1), INSIDE three of those mountpoints; their
-    # ``directives/`` parents are part of the skeleton too, so nothing here is agent-creatable.
-    for chapter, entry in HANDBOOK_FALLBACK_ENTRIES:
-        chapter_dir = f"{root}/{HANDBOOK_REL}/{chapter}"
-        rels.append((f"{chapter_dir}/{HANDBOOK_DIRECTIVES_DIRNAME}", True))
-        rels.append((f"{chapter_dir}/{HANDBOOK_DIRECTIVES_DIRNAME}/{entry}", False))
+    # The IMPORT-FALLBACK entry files (F1), INSIDE three of those chapter mountpoints —
+    # which the loop above already listed, so the file's parent is skeleton-owned and
+    # nothing here is agent-creatable.
+    rels += [
+        (f"{root}/{HANDBOOK_REL}/{chapter}/{entry}", False)
+        for chapter, entry in HANDBOOK_FALLBACK_ENTRIES
+    ]
     return tuple(rels)
 
 

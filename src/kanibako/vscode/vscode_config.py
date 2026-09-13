@@ -262,7 +262,7 @@ def merge_session_start_hook(settings: dict) -> dict:
 # ---------------------------------------------------------------------------
 
 # ⚑ THE CONTRACT, and it has TWO ends that must name ONE dir:
-#   * WRITE (box side) — the marker hooks below run the packaged bible's ``pid-add.sh`` /
+#   * WRITE (box side) — the marker hooks below run the packaged charter's ``pid-add.sh`` /
 #     ``pid-rm.sh``, which expand ``${KANIBAKO_AGENT_MARKERS_DIR:-<this constant's
 #     value>}``, i.e. they follow the ENV.
 #   * READ (host side) — ``commands/start.py`` hands the supervisor
@@ -281,15 +281,15 @@ AGENT_MARKERS_DIR = "/tmp/kanibako/agents"
 # Broad OR over claude's SessionEnd sources, so the marker is cleaned up on ANY clean end.
 _SESSION_END_MATCHER = "clear|logout|prompt_input_exit|other"
 
-# The packaged bible's PID helpers, at their BOX path. ⚑ Available in EVERY box, not just
+# The packaged charter's PID helpers, at their BOX path. ⚑ Available in EVERY box, not just
 # a claude one: ``core_defaults.rom_default_categories`` takes no agent and ``start.py``
-# folds it in unconditionally, so ``bible/general`` is bound wherever a box is launched.
+# folds it in unconditionally, so ``charter/general`` is bound wherever a box is launched.
 # ⚑ This path is the bind's own dest — ``core_defaults._canon_dest`` of the scripts'
 # rom-relative source — spelled out rather than imported, so this module keeps no edge
 # into the settings layer for one string join. ``test_code_config`` computes it from
 # ``_canon_dest`` and pins it, so relocating the canon dest reds instead of leaving the
 # hook pointed at nothing.
-_PID_SCRIPT_DIR = "~/canon/bible/general/scripts/util"
+_PID_SCRIPT_DIR = "~/canon/charter/general/scripts/util"
 
 # ⚑ ``"$PPID"`` is passed EXPLICITLY rather than left to the script's own default: by the
 # time the script runs, ITS ``$PPID`` is this hook's transient shell, which exits at once

@@ -176,8 +176,8 @@ descriptor:
 
 # The former Route-A `category_binds:` `instructions` entry (@system.instructions →
 # ~/.config/goose/KANIBAKO.md) is RETIRED: the box guide now reaches the box INSIDE
-# the RO whole-dir canon bind at `~/canon/bible` + the flattened per-agent FINAL file (seeded by
-# the `managed_pointer` kickoff-loader above), arriving at ~/.config/goose/AGENTS.md
+# the RO `general` chapter bind at `~/canon/charter/general` + the flattened per-agent FINAL
+# file (seeded by the `managed_pointer` kickoff-loader above), arriving at ~/.config/goose/AGENTS.md
 # (still listed in CONTEXT_FILE_NAMES), not a per-agent KANIBAKO.md native-slot bind.
 
 # AGENT-scope BEHAVIOR defaults -> the `agent.goose.<key>` FLOOR (spec §2d), read by
