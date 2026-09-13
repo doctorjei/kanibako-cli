@@ -179,8 +179,8 @@ descriptor:
 
 # The former Route-A `category_binds:` `instructions` entry (@system.instructions →
 # ~/.codex/AGENTS.md) is RETIRED: the box guide now reaches the box INSIDE the RO
-# whole-dir canon bind at `~/canon/bible` + the flattened per-agent FINAL file (seeded by the
-# `managed_pointer` kickoff-loader above), not a per-agent native-slot bind.
+# `general` chapter bind at `~/canon/charter/general` + the flattened per-agent FINAL file
+# (seeded by the `managed_pointer` kickoff-loader above), not a per-agent native-slot bind.
 
 # AGENT-scope BEHAVIOR defaults -> the `agent.codex.<key>` FLOOR (spec §2d), read by
 # the launch off `setting_descriptors()` and laid UNDER the whole cascade, so a user

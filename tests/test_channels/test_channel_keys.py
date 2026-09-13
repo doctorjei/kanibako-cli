@@ -9,7 +9,7 @@ only the first is visible from a default-value test:
 
 * ``chat`` was a SPLIT CARRIER — the bind followed the key while
   ``commands/start.py._seed_channel_files`` kept joining ``<channelroot>/chat``, so a
-  repoint mounted one directory and seeded the chat logs into another.  The bible tells
+  repoint mounted one directory and seeded the chat logs into another.  The charter tells
   every agent its logs live at ``~/channels/workset/chat``; the override emptied the
   directory canon points at.
 * ``share`` was the same split, latent — bind at the override, ``meta.box.share_workset``

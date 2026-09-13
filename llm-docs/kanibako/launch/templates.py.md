@@ -481,9 +481,11 @@ guard (whose seed rels must be comparable with the `canon/...` bind dests) and a
 home-layout check.
 
 `_packaged_shared_bundle` locates the packaged read-only built-in CANON tree (the rom root):
-`kanibako.data/global/rom` — the `canon/COLLECTION.md` index plus the whole `canon/bible/` book,
-which the launch path bind-mounts LIVE (ro) at `~/canon/COLLECTION.md` and `~/canon/bible` (see
-`kanibako.settings.core_defaults.rom_default_categories`). It is NOT copied/seeded to a host
+`kanibako.data/global/rom` — the `canon/COLLECTION.md` index plus the whole `canon/charter/` book,
+which the launch path bind-mounts LIVE (ro) at `~/canon/COLLECTION.md` and at each of the book's
+CHAPTERS (see `kanibako.settings.core_defaults.rom_default_categories`). ⚑ The book ROOT
+`~/canon/charter` is NOT itself bound — under J-7 every entry is its own sibling bind onto a
+pre-created mountpoint, so no mountpoint ever lives inside a bind SOURCE. It is NOT copied/seeded to a host
 runtime dir, so it has no `install`/`plan_template_refresh` target; it is enumerated only for the
 content DIGEST, so a drift in the shipped canon content is visible to the release-time check that
 requires the matching `SETUP_FCV`/`SETUP_BCV` bump (R-38 retired the host-side staleness gate that
@@ -762,8 +764,8 @@ whole point of J-6's action taxonomy: a B-action (template update) changes what 
 instantiations get and never touches an existing store; only a C-action (instance update), which
 does not exist yet and will never be implicit, may rewrite one.
 
-The agent-agnostic box guide (the bible's `ROM_GENERAL.md`) is NOT installed here — it is delivered
-LIVE from the read-only packaged canon (bound at `~/canon/bible/general` + flattened into each
+The agent-agnostic box guide (the charter's `ROM_GENERAL.md`) is NOT installed here — it is delivered
+LIVE from the read-only packaged canon (bound at `~/canon/charter/general` + flattened into each
 agent's native instruction slot at launch), so it has no host runtime-install target.
 
 ⚑ The two staging copies are SCOPED, and this is where J-2's box whitelist actually BITES. The
@@ -802,12 +804,13 @@ It enumerates every packaged file the setup gate must watch — the base seed tr
 (`_packaged_base_template`), each installed agent's store payload (`_packaged_agent_store`), AND
 the RO packaged canon (`_packaged_shared_bundle`, which is bind-mounted rather than installed but
 still needs drift detection; it carries the box guide at
-`canon/bible/general/directives/ROM_GENERAL.md`). Each file contributes ONE
+`canon/charter/general/ROM_GENERAL.md`). Each file contributes ONE
 `(namespaced-relative-path, file-bytes)` pair under a source-distinct prefix (`base/` / `shared/` /
 `agent/<name>/`), so no file is double-counted; the pairs are SORTED so the manifest is
 deterministic across runs and machines regardless of filesystem walk order.
 
-The RO packaged canon (bound live at `~/canon/{COLLECTION.md,bible}`, never installed) is
+The RO packaged canon (bound live as the `~/canon/COLLECTION.md` file bind plus one bind per
+`~/canon/charter` CHAPTER — the book root itself is not bound — and never installed) is
 enumerated ONLY so the setup gate still trips when the shipped canon content drifts — it has no
 install target. It is the SOLE source of the box guide in this manifest (the retired
 `@system.instructions` flat-copy no longer contributes a second entry). Both this digest and the

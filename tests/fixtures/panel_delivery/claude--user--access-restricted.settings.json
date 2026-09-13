@@ -32,7 +32,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "~/canon/bible/general/scripts/util/pid-add.sh \"$PPID\" || true"
+            "command": "~/canon/charter/general/scripts/util/pid-add.sh \"$PPID\" || true"
           }
         ]
       }
@@ -54,7 +54,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "~/canon/bible/general/scripts/util/pid-rm.sh \"$PPID\" || true"
+            "command": "~/canon/charter/general/scripts/util/pid-rm.sh \"$PPID\" || true"
           }
         ]
       }

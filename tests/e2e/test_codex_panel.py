@@ -60,7 +60,7 @@ MARKERS_DIR = "/tmp/kanibako/agents"
 # ⚑ Box-side spellings, deliberately INDEPENDENT of the module constants: this file is a
 # black box that observes a real container, so its expectations are written out rather
 # than imported from the code under test.
-PID_ADD_SCRIPT = "~/canon/bible/general/scripts/util/pid-add.sh"
+PID_ADD_SCRIPT = "~/canon/charter/general/scripts/util/pid-add.sh"
 # The e2e fixture box's DEFAULT agent program.  ⚑ Load-bearing for the panel
 # simulation below: PID 1 judges a marker's pid against the launch grammar it was
 # given, so a simulated panel agent must carry the box's own agent name.
@@ -207,13 +207,13 @@ def test_codex_delivery_real_box(e2e_env):
         assert len(groups) == 2, f"expected directive+marker groups, got {commands}"
         assert "/opt/kanibako/kanibako/scripts/import-directives.py" in commands[0]
         # ⚑ MARKERS_DIR is deliberately NOT expected in the command any more: the
-        # marker hook is a CALL into the bible's PID helper, which is where the
+        # marker hook is a CALL into the charter's PID helper, which is where the
         # ``${KANIBAKO_AGENT_MARKERS_DIR:-…}`` fallback now lives.
         assert PID_ADD_SCRIPT in commands[1] and '"$PPID"' in commands[1]
         # ⚑ That the CALLED script really exists in a codex box is a claim about a
         # LIVE container, which this test does not have — its box exits the moment
         # the ``/bin/true`` codex does.  It is asserted by
-        # ``test_codex_box_has_bible_pid_helper`` below, on a detached box.
+        # ``test_codex_box_has_charter_pid_helper`` below, on a detached box.
         box_cfg = f"{GUEST_HOME}/.codex/config.toml"
         assert set(data["hooks"]["state"]) == {
             f"{box_cfg}:session_start:0:0",
@@ -240,11 +240,11 @@ def test_codex_delivery_real_box(e2e_env):
         rm(container_name(box))
 
 
-def test_codex_box_has_bible_pid_helper(e2e_env):
-    """A CODEX box really carries the bible PID helper the D2 marker hook calls.
+def test_codex_box_has_charter_pid_helper(e2e_env):
+    """A CODEX box really carries the charter PID helper the D2 marker hook calls.
 
     The delivered ``config.toml`` only proves the hook COMMAND names the script;
-    an agent-gated ``bible/general`` bind would leave that command calling
+    an agent-gated ``charter/general`` bind would leave that command calling
     nothing, and no config-bytes check can see it.  Needs a LIVE box, hence
     ``--detach``: a foreground codex box exits with its ``/bin/true`` codex.
     """

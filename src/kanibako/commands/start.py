@@ -6667,7 +6667,7 @@ def _resolve_launch_snapshot(
             ), family="core env", origins=cat_origins,
         )
         # The packaged CANON: five READ-ONLY SIBLING binds (spec §2c, J-7) — the
-        # COLLECTION.md index and the bible's ROM_CONTENTS.md as FILE binds, plus one
+        # COLLECTION.md index and the charter's ROM_CONTENTS.md as FILE binds, plus one
         # whole-directory bind per packaged chapter (general/workset/box).  Each
         # lands on a mountpoint the box-create skeleton already made, so nothing
         # nests and no mountpoint has to live inside a bind source.
@@ -6721,12 +6721,12 @@ def _resolve_launch_snapshot(
                     harness=target.name,
                 ), family="agent common", origins=cat_origins,
             )
-            # The plugin's BIBLE CHAPTER (spec §2c ``canon_bible_agent``), emitted
+            # The plugin's CHARTER CHAPTER (spec §2c ``canon_charter_agent``), emitted
             # by CORE from the RESOLVED target beside the five core canon binds —
             # gated on the plugin actually shipping one.  A SIBLING of them (J-7),
-            # not nested: it lands on ~/canon/bible/agent, a mountpoint the skeleton
+            # not nested: it lands on ~/canon/charter/agent, a mountpoint the skeleton
             # always pre-creates whether or not this bind is emitted.  A box-scoped
-            # INTERNAL bind, not an agent key — so the bible's agent chapter stays as
+            # INTERNAL bind, not an agent key — so the charter's agent chapter stays as
             # unrepointable as the rest of the book, and the bind follows the
             # resolved target however the agent was selected.
             _merge_default_categories(
@@ -9060,7 +9060,7 @@ def _seed_channel_files(std, proj) -> None:
     This function is why the split carrier MATTERED: it runs on every launch, and while
     the ``~/channels/workset/chat`` bind followed ``workset.channels.chat``, this
     followed ``<channelroot>/chat`` — so a repoint mounted one directory and seeded the
-    logs into another, which is mounted nowhere.  The bible tells every agent its chat
+    logs into another, which is mounted nowhere.  The charter tells every agent its chat
     logs live at ``~/channels/workset/chat``; the override emptied the directory canon
     points at.  ``broadcast`` is a DECLARED key in BOTH scopes and may sit outside its
     chat dir, so it is created at its own resolved path, not beside ``general.md``.

@@ -1920,9 +1920,11 @@ keys:
 ## the identity), but the rows are kept because their `note:` fields carry
 ## reasons nothing else records ("Not repointable: the index defines the canon's
 ## shape and load order", the brace-form rule, the empty-options socket rule, …).
-## ⚑ EVERY `note:` BELOW IS PRESERVED VERBATIM from its pre-demotion row. Where a
-## note refers to a sibling by its retired NAME the quoted text is left intact and
-## the current spelling is given beside it in `see:` — do not edit inside a note.
+## ⚑ EVERY `note:` BELOW IS PRESERVED VERBATIM from its pre-demotion row. When one
+## drifts, the fix turns on whether substitution recovers the truth (Jei, 2026-09-13):
+## a retired NAME keeps its quoted text and gets the current spelling beside it in
+## `see:`; a LIVE MECHANISM gone false is corrected IN PLACE — a `see:` says "read
+## this word as that word", and no substitution recovers a false predicate.
 ##
 ## `user_key:` semantics are UNCHANGED and still real (R-10):
 ##   true  — an ORDINARY user-facing entry with a settable default (`default:`)
@@ -1952,7 +1954,7 @@ bind_default_entries:
   box.bindings.ro:
 
     ## ---- CANON BOOKS + KICKOFF — the 12 §2c book/kickoff entries ----------
-    ## 7 INTERNAL (the canon index, the five bible chapters, kickoff) — the
+    ## 7 INTERNAL (the canon index, the five charter chapters, kickoff) — the
     ## package-sourced ones; 5 USER KEYS (the handbook chapters) — the spec's
     ## own LOAD-BEARING distinction: the handbook is sourced from the
     ## `<scope>.canon` keys "or wherever the user redirects it, because it IS a
@@ -1966,39 +1968,41 @@ bind_default_entries:
              the canon's shape and load order, so a redirect could silently replace
              the canon wholesale."
       spec: "§2c (CANON books; R-10)"
-    "~/canon/bible/ROM_CONTENTS.md":
+    "~/canon/charter/ROM_CONTENTS.md":
       user_key: false
-      value: "(<packaged rom bible/ROM_CONTENTS.md>)"
+      value: "(<packaged rom charter/ROM_CONTENTS.md>)"
       note: "INTERNAL, FILE bind (same pre-created-mountpoint rule)"
       spec: "§2c (CANON books; R-10)"
-    "~/canon/bible/general":
+    "~/canon/charter/general":
       user_key: false
-      value: "(<packaged rom bible/general>)"
+      value: "(<packaged rom charter/general>)"
       note: "INTERNAL, dir ro. Successor delivery of the retired system.instructions
-             box guide: the packaged rom's general chapter (directives/ROM_GENERAL.md
+             box guide: the packaged rom's general chapter (ROM_GENERAL.md
              — verified against the packaged tree, A3/D-8) arrives here; no
              host-editable copy, no repoint."
       spec: "§2c (CANON books; R-10) / §3 (system.instructions row)"
-    "~/canon/bible/workset":
+    "~/canon/charter/workset":
       user_key: false
-      value: "(<packaged rom bible/workset>)"
+      value: "(<packaged rom charter/workset>)"
       note: "INTERNAL, dir ro"
       spec: "§2c (CANON books; R-10)"
-    "~/canon/bible/box":
+    "~/canon/charter/box":
       user_key: false
-      value: "(<packaged rom bible/box>)"
+      value: "(<packaged rom charter/box>)"
       note: "INTERNAL, dir ro"
       spec: "§2c (CANON books; R-10)"
-    "~/canon/bible/agent":
+    "~/canon/charter/agent":
       user_key: false
       value: "(<plugin pkg data/rom>)"
       note: "INTERNAL, dir ro — the PLUGIN's bible chapter, emitted by CORE from the
              RESOLVED target (emission gate: rom_root exists AND contains
-             directives/ROM_AGENT.md). bible/agent = per-HARNESS (packaged);
+             ROM_AGENT.md). bible/agent = per-HARNESS (packaged);
              handbook/agent = per-AGENT-NODE (host, agent.<agent>.canon) — two
              books, two cardinalities, no overlap. Not a user key, not repointable,
              no floor (§0: the one book a user cannot edit is the one they cannot
              repoint)."
+      see: "the note's `bible` is the retired spelling of the CHARTER book; the
+            chapter is packaged at rom/charter/ and bound at ~/canon/charter/agent"
       spec: "§2c (CANON books; R-10)"
     "~/canon/handbook/SYS_CONTENTS.md":
       user_key: true
@@ -2624,8 +2628,8 @@ not_keys:
     "system.vault_ro":    "-> @workset.vault_ro"
     "system.vault_rw":    "-> @workset.vault_rw"
     "system.instructions": "RETIRED 2026-07-28 (spec conformed to code) — the box guide ships
-                            INSIDE the package under rom/ as the bible general chapter and
-                            arrives via the bible general chapter bind at ~/canon/bible/general/
+                            INSIDE the package under rom/ as the charter general chapter and
+                            arrives via the charter general chapter bind at ~/canon/charter/general/
                             (§2c; path conformed to the canon-books model, D-8);
                             no key, no repoint"
     "system.templates_stamp": "RETIRED (R-38, Jei 2026-08-01) — was a LIVE, UNDECLARED key in
@@ -2653,13 +2657,13 @@ not_keys:
                              is @meta.workset.path (standalone) or meta.box.workspace
                              (primary) (§2c)"
     "box.bindings.ro.canon_bible": "RETIRED 2026-07-31 (R-36) — the whole-dir bible bind;
-                                    undeclared from that edit forward. The bible ships as
-                                    per-chapter INTERNAL binds (canon_bible_*, §2c).
+                                    undeclared from that edit forward. The charter ships as
+                                    per-chapter INTERNAL binds (canon_charter_*, §2c).
                                     ⚑ DOUBLY DEAD since 2026-08-06c (R-5/R-10): the whole
                                     NAME-BEARING binding spelling is gone, so this key
-                                    could not exist even if the bind returned. The bible
+                                    could not exist even if the bind returned. The charter
                                     chapters are now dest-keyed ENTRIES of box.bindings.ro
-                                    (~/canon/bible/*) — see bind_default_entries."
+                                    (~/canon/charter/*) — see bind_default_entries."
     "box.bindings.ro.canon_handbook": "RETIRED 2026-07-31 (R-36) — the whole-dir
                                        handbook-base bind; the handbook is per-chapter
                                        binds (canon_hb_*, §2c) sourced from the

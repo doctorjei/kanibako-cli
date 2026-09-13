@@ -182,15 +182,15 @@ class TestRunCreate:
         home = project_dir.resolve() / "box_data" / "home"
         for rel in (
             "canon",
-            "canon/bible",
-            "canon/bible/general",
-            "canon/bible/agent",
+            "canon/charter",
+            "canon/charter/general",
+            "canon/charter/agent",
             "canon/handbook",
         ):
             assert (home / rel).is_dir(), rel
         for rel in (
             "canon/COLLECTION.md",
-            "canon/bible/ROM_CONTENTS.md",
+            "canon/charter/ROM_CONTENTS.md",
             "canon/handbook/SYS_CONTENTS.md",
         ):
             assert (home / rel).is_file(), rel
@@ -214,7 +214,7 @@ class TestRunCreate:
 
         std = load_std_paths(load_config(config_file))
         proj = resolve_any_project(std, "prim")
-        assert (proj.shell_path / "canon" / "bible" / "agent").is_dir()
+        assert (proj.shell_path / "canon" / "charter" / "agent").is_dir()
         assert (proj.shell_path / "canon" / "COLLECTION.md").is_file()
 
     def test_create_protects_the_skeleton_after_seeding(
@@ -263,7 +263,7 @@ class TestRunCreate:
 
         assert rc == 0
         home = project_dir.resolve() / "box_data" / "home"
-        assert (home / "canon" / "bible" / "general").is_dir()
+        assert (home / "canon" / "charter" / "general").is_dir()
 
     def test_create_standalone_cwd(
         self, config_file, credentials_dir, project_dir, monkeypatch, capsys,

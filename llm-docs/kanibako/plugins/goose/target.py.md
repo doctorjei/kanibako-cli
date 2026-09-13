@@ -72,8 +72,10 @@ is written in this module; goose's three floors are EMPTY on purpose, and the YA
 `goose-defaults.yaml`, and the answer today is an empty map.
 
 The former `@system.instructions` → `~/.config/goose/KANIBAKO.md` instructions bind was **retired**.
-The box guide now ships INSIDE the read-only whole-dir canon bind at `~/canon/bible`, together with
-the flattened FINAL file. Do not reintroduce a per-agent instructions bind to "fix" the emptiness.
+The box guide now ships INSIDE the read-only `general` chapter bind at `~/canon/charter/general`,
+together with the flattened FINAL file. Do not reintroduce a per-agent instructions bind to "fix" the
+emptiness. ⚑ The book ROOT `~/canon/charter` is not bound at all — under J-7 each chapter is its own
+sibling bind, so there is no whole-dir canon bind to ship inside.
 
 ## The env defaults, and the two variables kanibako refuses to declare
 

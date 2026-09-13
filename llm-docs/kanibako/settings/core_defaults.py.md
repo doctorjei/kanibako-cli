@@ -361,7 +361,7 @@ exists to end, so a missing packaged file RAISES here rather than emitting a bin
 ## The packaged ROM canon — constants
 
 ```ROM_ROOT_PARTS = ("global", "rom")```
-The packaged rom root — the READ-ONLY built-in CANON content (the BIBLE, plus the `COLLECTION.md`
+The packaged rom root — the READ-ONLY built-in CANON content (the CHARTER, plus the `COLLECTION.md`
 index that enters it).
 
 A module constant, symmetric with :func:`templates._packaged_base_template`'s hardcoded
@@ -370,50 +370,50 @@ A module constant, symmetric with :func:`templates._packaged_base_template`'s ha
 ```CANON_GUEST_ROOT = "canon"```
 The guest canon root, `~/canon`.
 
-⚑ The packaged rom tree is FLAT — `rom/{COLLECTION.md, bible/**}`, with NO `canon/` wrapper level
+⚑ The packaged rom tree is FLAT — `rom/{COLLECTION.md, charter/**}`, with NO `canon/` wrapper level
 (J-7, 2026-07-31). It therefore NO LONGER mirrors the guest layout, so a rom-relative path is NOT
 its own `~/`-dest: every guest dest is built by :func:`_canon_dest`, which prefixes the guest canon
 root.
 
-```ROM_COLLECTION_REL · ROM_BIBLE_REL · ROM_CONTENTS_REL```
+```ROM_COLLECTION_REL · ROM_CHARTER_REL · ROM_CONTENTS_REL```
 The rom-ROOT-relative posix paths of the packaged CANON bind SOURCES (spec §2c).
 
 ```HANDBOOK_REL = "handbook"```
 The handbook BOOK root, guest-only (nothing packages a handbook).
 
-Declared beside `ROM_BIBLE_REL` for symmetry and because the managed-region deny list needs both
+Declared beside `ROM_CHARTER_REL` for symmetry and because the managed-region deny list needs both
 book roots.
 
-```ROM_GUIDE_REL = "bible/general/directives/ROM_GENERAL.md"```
-The load-bearing box guide (the bible's GENERAL chapter), rom-root-relative.
+```ROM_GUIDE_REL = "charter/general/ROM_GENERAL.md"```
+The load-bearing box guide (the charter's GENERAL chapter), rom-root-relative.
 
 It MUST ship whenever the rom root is populated (fail-closed guard) — a box launched without the
 guide is a silent degradation of EVERY box.
 
-```ROM_BIBLE_CHAPTERS = ("general", "workset", "box")```
-The bible chapters core PACKAGES, one whole-directory sibling bind each.
+```ROM_CHARTER_CHAPTERS = ("general", "workset", "box")```
+The charter chapters core PACKAGES, one whole-directory sibling bind each.
 
 ⚑ There is deliberately no `agent` here: J-7 retired the packaged placeholder chapter along with the
 nested-bind model that needed it (a wheel cannot ship an empty directory, and a mountpoint must never
 live inside a bind SOURCE).
 
-```BIBLE_AGENT_CHAPTER = "agent"```
-The bible's PLUGIN chapter. Guest-only: it is a mountpoint the box-create skeleton materialises in
+```CHARTER_AGENT_CHAPTER = "agent"```
+The charter's PLUGIN chapter. Guest-only: it is a mountpoint the box-create skeleton materialises in
 the box home, never a packaged directory.
 
-```PLUGIN_CHAPTER_MARKER_REL = "directives/ROM_AGENT.md"```
+```PLUGIN_CHAPTER_MARKER_REL = "ROM_AGENT.md"```
 The plugin-rom EMISSION GATE marker, relative to a plugin's `data/rom` chapter root: a plugin gets a
-bible chapter bind ONLY if it actually ships one.
+charter chapter bind ONLY if it actually ships one.
 
 ```CANON_SEED_DENY_PREFIXES```
 The MANAGED CANON REGION that no template seed may write into, as `~`-relative prefixes.
 
-Spec §2c: *"a template MUST NOT seed into `canon/COLLECTION.md`, `canon/bible/…` or
-`canon/handbook/…`; seeds target `canon/{notebook,workbook}` ONLY"*.
+Spec §2c: *"a template MUST NOT seed into the `canon/COLLECTION.md` · `canon/charter/…` ·
+`canon/handbook/…` REGION, and seeds target `canon/{notebook,workbook}` ONLY"*.
 
-⚑ **WHY PREFIXES AND NOT THE LITERAL BIND DESTS.** Under J-7's SIBLING binds `canon/bible` is no
+⚑ **WHY PREFIXES AND NOT THE LITERAL BIND DESTS.** Under J-7's SIBLING binds `canon/charter` is no
 longer itself a bind dest — only its chapters are — so passing the literal dests would silently stop
-rejecting a seed at `canon/bible/agent/x.md`. That seed is still forbidden, and under J-7 doubly so:
+rejecting a seed at `canon/charter/agent/x.md`. That seed is still forbidden, and under J-7 doubly so:
 the whole region is root-owned, so the copy would fail with EACCES at create rather than merely be
 shadowed at launch. The deny list therefore names the managed REGION, which is what §2c actually
 states.
@@ -430,14 +430,14 @@ regardless of what is bound. *(It is also bound today, by
 ```_canon_dest(rel: str) -> str```
 Return the `~`-relative guest dest for a canon path *rel*.
 
-*rel* is spelled relative to the BOOK ROOT (`COLLECTION.md`, `bible/general`, …), which is the
+*rel* is spelled relative to the BOOK ROOT (`COLLECTION.md`, `charter/general`, …), which is the
 rom-root-relative spelling for packaged sources and the home-relative-under-`canon` spelling for
 everything else.
 
 ```assert_canon_bind_seed_disjoint(bind_dests: Iterable[str], seed_rels: Iterable[str]) -> None```
 RAISE if any template SEED lands at or under a MANAGED `~/canon` path.
 
-Both arguments are `~`-RELATIVE posix paths (`canon/bible`, `canon/notebook/MY_CONTENTS.md`, …):
+Both arguments are `~`-RELATIVE posix paths (`canon/charter`, `canon/notebook/MY_CONTENTS.md`, …):
 *bind_dests* are the managed canon prefixes (:data:`CANON_SEED_DENY_PREFIXES` — the BOOK ROOTS,
 which under J-7's sibling binds are a superset of the literal bind dests; see that constant for
 why), *seed_rels* the files a seed layer would copy to the box home.
@@ -451,7 +451,7 @@ decide that scope, it only enforces what it is handed — **WIDENING THE INPUTS 
 which is exactly why the bind dests and seed rels are parameters rather than computed inside.
 
 ⚑⚑ **BOTH SIDES MUST BE HOME-RELATIVE, and that is easy to break silently.** The `~`-relative bind
-prefixes (`canon/bible`, `canon/handbook`) can only be compared against seed rels spelled the same
+prefixes (`canon/charter`, `canon/handbook`) can only be compared against seed rels spelled the same
 way. Before the canon restructure the packaged template ROOT happened to BE the home-relative root,
 so passing its walk worked by coincidence; it no longer is (`box/home/...`), and passing the root
 walk today would make every comparison a guaranteed miss — a guard that runs, passes, and checks
@@ -459,8 +459,8 @@ nothing. Hence :func:`kanibako.launch.templates.packaged_box_home_template`, whi
 that IS home-relative.
 
 **PREFIX CONTAINMENT, not set intersection.** The managed region is root-owned from create, so a
-seed does not have to hit an exact path to fail: anything under it — `canon/bible/general/x.md` no
-less than `canon/bible` itself — fails with EACCES at create. Second, and weaker: where a copy could
+seed does not have to hit an exact path to fail: anything under it — `canon/charter/general/x.md` no
+less than `canon/charter` itself — fails with EACCES at create. Second, and weaker: where a copy could
 land at all, spec §0's copy-vs-mount rule makes the mount's shadowing of it ORDER-INDEPENDENT and
 SILENT. Hence a guard rather than a runtime resolution.
 
@@ -472,14 +472,14 @@ All five are ENTRIES of the ONE terminal `box.bindings.ro` arm, keyed by DESTINA
 labels):
 
 ```
-/home/agent/canon/COLLECTION.md          = (<rom>/COLLECTION.md,         ro)
-/home/agent/canon/bible/ROM_CONTENTS.md  = (<rom>/bible/ROM_CONTENTS.md, ro)
-/home/agent/canon/bible/general          = (<rom>/bible/general,         ro)
-/home/agent/canon/bible/workset          = (<rom>/bible/workset,         ro)
-/home/agent/canon/bible/box              = (<rom>/bible/box,             ro)
+/home/agent/canon/COLLECTION.md           = (<rom>/COLLECTION.md,           ro)
+/home/agent/canon/charter/ROM_CONTENTS.md = (<rom>/charter/ROM_CONTENTS.md, ro)
+/home/agent/canon/charter/general         = (<rom>/charter/general,         ro)
+/home/agent/canon/charter/workset         = (<rom>/charter/workset,         ro)
+/home/agent/canon/charter/box             = (<rom>/charter/box,             ro)
 ```
 
-The sixth canon bind, the plugin's `~/canon/bible/agent` chapter, is emitted separately — see
+The sixth canon bind, the plugin's `~/canon/charter/agent` chapter, is emitted separately — see
 :func:`rom_agent_default_categories`.
 
 All INTERNAL/generated binds, not user keys: `config set` refuses them exactly as it does `kani_pkg`
@@ -517,7 +517,7 @@ with no directives):
   missing source would otherwise be silently DROPPED by `_emit_category_mounts` with only a
   per-launch warning.
 
-⚑ `bible/agent/` is deliberately NOT required (and must NOT ship): J-7 retired the packaged
+⚑ `charter/agent/` is deliberately NOT required (and must NOT ship): J-7 retired the packaged
 placeholder chapter together with the nesting that needed it.
 
 An absent or genuinely EMPTY rom root yields an empty dict — a no-rom install, which is fine. That
@@ -534,35 +534,35 @@ after the canon restructure a root-relative walk yields `box/home/...` / `workse
 would still run, still pass, and check NOTHING.
 
 ```rom_agent_default_categories(target: "Target") -> BindArmTable```
-Build the PLUGIN's bible chapter bind — the SIXTH canon bind (spec §2c).
+Build the PLUGIN's charter chapter bind — the SIXTH canon bind (spec §2c).
 
 One entry in the terminal `box.bindings.ro` arm, keyed by destination:
 
 ```
-/home/agent/canon/bible/agent = (<plugin pkg>/data/rom, ro)
+/home/agent/canon/charter/agent = (<plugin pkg>/data/rom, ro)
 ```
 
 Emitted by CORE from the RESOLVED *target*, beside the five core canon binds — NOT by the plugin,
 and NOT through the agent-scope descriptor route. That choice is the whole design: an
 `agent.<node>.bindings.ro` entry would have ridden the per-node descriptor floor into the set-time
-cascade and made the bible's agent chapter the SOLE repointable page of an otherwise unrepointable
+cascade and made the charter's agent chapter the SOLE repointable page of an otherwise unrepointable
 book, and it would discriminate on the NODE (a persona) while the content is a property of the
 HARNESS PACKAGE. (R-9 has since retired the bind CLI write route at every scope, so no page of the
 book is repointable from the CLI — the asymmetry the choice avoided cannot arise at all now.) As a
 box-scoped INTERNAL bind there is no discriminator at all, which is spec §2d's *"storage is varied,
 binding is not"*.
 
-⚑ `bible/agent` = per-HARNESS (packaged, one per plugin). `handbook/agent` = per-AGENT-NODE (host,
-`agent.<agent>.canon`, personas included). A persona has no package, so it has no bible chapter;
+⚑ `charter/agent` = per-HARNESS (packaged, one per plugin). `handbook/agent` = per-AGENT-NODE (host,
+`agent.<agent>.canon`, personas included). A persona has no package, so it has no charter chapter;
 what it can have is a handbook chapter. Two books, two cardinalities, no overlap.
 
 ⚑ **A SIBLING, not a nested bind** (J-7, 2026-07-31 — REPLACES R1's shadow model). Its dest no
-longer sits inside another bind's: `~/canon/bible` is not bound at all, only its chapters are, and
+longer sits inside another bind's: `~/canon/charter` is not bound at all, only its chapters are, and
 this one lands on a mountpoint the box-create skeleton already made. Nothing shadows anything, so
 the ascending mount depth-sort is not load-bearing here any more.
 
 **GATE** — emit ONLY when the plugin actually ships a chapter (`rom_root` exists AND contains
-`directives/ROM_AGENT.md`). With no packaged placeholder chapter left to shadow, an ungated bare
+`ROM_AGENT.md`). With no packaged placeholder chapter left to shadow, an ungated bare
 `data/rom/` would bind an EMPTY directory over the mountpoint: visibly identical to emitting
 nothing, but paid for with a per-launch missing-source WARNING from `_emit_category_mounts` — the
 wrong signal for the perfectly ordinary "this plugin has no chapter". Gate-false is the honest
@@ -667,7 +667,7 @@ the skeleton pre-creates 0-byte, keyed chapter → entry filename.
 **WHY THEY EXIST, and why skip-if-absent did NOT already cover it:** the packaged `SYS_CONTENTS.md`
 imports all FOUR chapters UNCONDITIONALLY, and skip-if-absent governs the BIND, not the INDEX. So on
 a box with no workset chapter — i.e. every primary box — the flattener printed `unresolved import
-@workset/directives/SYS_WORKSET.md` on EVERY launch. That is the warning-noise failure the
+@workset/SYS_WORKSET.md` on EVERY launch. That is the warning-noise failure the
 skip-if-absent work exists to prevent, arriving through the other door.
 
 With a 0-byte entry file already inside the mountpoint: an UNBOUND chapter RESOLVES-TO-EMPTY (no
@@ -682,9 +682,12 @@ NON-optional exists to surface.
 only. These files live in the BOX's skeleton, are root-owned like the rest of it, and are never
 installed anywhere.
 
-```HANDBOOK_DIRECTIVES_DIRNAME = "directives"```
-The directory each chapter's entry file sits in — the `@<chapter>/directives/...` spelling
-`SYS_CONTENTS.md` imports.
+⚑⚑ **THE ENTRY FILE SITS DIRECTLY IN THE CHAPTER DIRECTORY**, with no `directives/` level:
+`SYS_CONTENTS.md` imports `<chapter>/<entry>`, and the packaged per-scope chapters ship that same
+flat shape. A `directives/` level would put the 0-byte file where nothing imports it — and that is a
+SILENT failure, not a cosmetic one: the fallback still materialises, so the skeleton looks right,
+while the unresolved-import warning returns on every launch of every box lacking that chapter. The
+flat spelling is the whole mechanism working.
 
 ```UNSHARE_BOX_ROOT_UID = 1 · UNSHARE_BOX_ROOT_GID = 1```
 ⚑⚑ THE OWNER THAT APPEARS AS ROOT INSIDE A BOX — deliberately NOT 0.
@@ -710,7 +713,7 @@ so the books stay unwritable by the agent; only the cosmetic "shows as uid 0" wo
 ⚑ TWO MODES, NOT ONE (spec J-7 banner, amended 2026-07-31).
 
 **DIRS `r-xr-xr-x`:** unwritable by everyone, but the SEARCH bit stays set so crun's openat2
-destination resolution can still traverse `~/canon` and `~/canon/bible` to reach the chapter
+destination resolution can still traverse `~/canon` and `~/canon/charter` to reach the chapter
 mountpoints — a 444 directory would break every canon bind.
 
 **FILE mountpoints `r--r--r--`:** the search bit is meaningless on a file, and 555 would mark a
@@ -721,7 +724,7 @@ sets need different modes.
 The canon skeleton as `(home-relative posix path, is_dir)` pairs (J-7).
 
 ⚑ **DERIVED FROM THE SAME CONSTANTS AS THE BIND DESTS, never restated:** the skeleton IS the mirror
-image of the canon binds, so one edit to :data:`ROM_BIBLE_CHAPTERS` / :data:`HANDBOOK_CHAPTERS` moves
+image of the canon binds, so one edit to :data:`ROM_CHARTER_CHAPTERS` / :data:`HANDBOOK_CHAPTERS` moves
 both sides at once. A hand-kept second list is exactly the duplicated-shared-data class the design
 principles forbid — and a skeleton that drifts from the binds is a mountpoint podman then creates
 itself, which is the whole failure J-7 exists to remove.
@@ -732,15 +735,15 @@ Ordered PARENTS-FIRST so a caller can create them in sequence.
 writable, and become undeletable only because their parent is 555 — which is intended, not a side
 effect.
 
-⚑ `agent` is ALWAYS pre-created among the bible chapters, emission gate or not (J-7): a gate-false
+⚑ `agent` is ALWAYS pre-created among the charter chapters, emission gate or not (J-7): a gate-false
 launch must show an EMPTY root-owned mountpoint, not a missing directory.
 
 ⚑ **THE CHAPTER MOUNTPOINTS ARE NOT EMPTY (F1):** three of them carry a 0-byte IMPORT-FALLBACK entry
 file, so `SYS_CONTENTS.md`'s unconditional imports resolve-to-empty instead of warning on every
 launch of every box that has no workset or box chapter. A BOUND chapter replaces the whole directory,
-fallback included. Their `directives/` parents are part of the skeleton too — root-owned like
-everything else here, so nothing in the books is agent-creatable. See
-:data:`HANDBOOK_FALLBACK_ENTRIES`.
+fallback included. Each entry file sits DIRECTLY in its chapter mountpoint, which the chapter loop
+above has already listed — so its parent is skeleton-owned and root-owned like everything else here,
+and nothing in the books is agent-creatable. See :data:`HANDBOOK_FALLBACK_ENTRIES`.
 
 ```materialize_canon_skeleton(shell_path: Path, *, logger=None, quiet: bool = False) -> None```
 Create the canon SKELETON in a box home and make it root-owned + unwritable.

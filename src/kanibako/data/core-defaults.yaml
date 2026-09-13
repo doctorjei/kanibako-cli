@@ -231,14 +231,14 @@ kani:
   # NOTE: the read-only packaged CANON is not a hand-declared entry here either.
   # ``core_defaults.rom_default_categories`` emits FIVE SIBLING binds from the
   # packaged rom root (``global/rom``, which is FLAT — no ``canon/`` wrapper):
-  # ``canon_collection`` + ``canon_bible_contents`` as FILE binds (file-onto-file
+  # ``canon_collection`` + ``canon_charter_contents`` as FILE binds (file-onto-file
   # over the 0-byte mountpoints box create materialises), and one whole-directory
-  # bind per packaged bible chapter — ``canon_bible_{general,workset,box}``.
+  # bind per packaged charter chapter — ``canon_charter_{general,workset,box}``.
   # ``rom_agent_default_categories`` adds the resolved plugin's own chapter at
-  # ``~/canon/bible/agent`` when it ships one.  All six are INTERNAL/generated
+  # ``~/canon/charter/agent`` when it ships one.  All six are INTERNAL/generated
   # (spec §2c): not user keys, in no set-time floor, not repointable.
   # ⚑ SIBLINGS, NOT A WHOLE-DIR BOOK (J-7, 2026-07-31).  Neither ``~/canon`` nor
-  # ``~/canon/bible`` is ever bound: every bind lands on a mountpoint that already
+  # ``~/canon/charter`` is ever bound: every bind lands on a mountpoint that already
   # exists in the box home (``core_defaults.materialize_canon_skeleton``, run at box
   # create and made root-owned), so nothing nests and no mountpoint has to live
   # inside a bind SOURCE.

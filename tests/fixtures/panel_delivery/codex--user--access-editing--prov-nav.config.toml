@@ -28,13 +28,13 @@ matcher = "startup|resume|clear|compact"
 
 [[hooks.SessionStart.hooks]]
 type = "command"
-command = "~/canon/bible/general/scripts/util/pid-add.sh \"$PPID\" || true"
+command = "~/canon/charter/general/scripts/util/pid-add.sh \"$PPID\" || true"
 
 [hooks.state."/home/agent/.codex/config.toml:session_start:1:0"]
 trusted_hash = "sha256:fcb5a2573b270adbe492e97a1b21a4cbc868744df607884eed6e2ada3023d905"
 
 [hooks.state."/home/agent/.codex/config.toml:session_start:2:0"]
-trusted_hash = "sha256:d4ad15d130dc1966b42ba2cffad07a5c40a4826082ae944b77a72d0bf2613467"
+trusted_hash = "sha256:c90b7c4ad95f9b6c314fd5ddc24ed55368411e7a7ba4e76befff4a4db592e7b1"
 
 [projects."/home/agent/workspace"]
 trust_level = "trusted"

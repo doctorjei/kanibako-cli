@@ -48,8 +48,9 @@ Two consequences worth knowing without opening the YAML:
 
 * `default_category_binds()` is currently **EMPTY**. The former `@system.instructions` →
   `~/.codex/AGENTS.md` instructions bind was retired: the box guide now ships INSIDE the RO
-  whole-dir canon bind at `~/canon/bible` plus the flattened per-agent FINAL file, not a per-agent
-  native-slot bind.
+  `general` chapter bind at `~/canon/charter/general` plus the flattened per-agent FINAL file, not a
+  per-agent native-slot bind. ⚑ The book ROOT `~/canon/charter` is not bound at all — under J-7 each
+  chapter is its own sibling bind, so there is no whole-dir canon bind to ship inside.
 * `default_envs()` declares exactly one variable, `KANIBAKO_DIRECTIVE_FINAL`, naming codex's native
   `~/.codex/AGENTS.md` slot — the file the box-start flattener writes. It is an ordinary settings
   key (spec §2d `agent.codex.env.*`): overridable by the SAME key in a nearer file, and refused

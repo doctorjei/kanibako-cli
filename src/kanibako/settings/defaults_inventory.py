@@ -321,12 +321,12 @@ def _scalar(value: Any) -> str:
 #: still names a live manifest row.
 _BIND_SOURCES_OUTSIDE_THE_FILE: dict[str, str] = {
   "~/canon/COLLECTION.md": "core_defaults.py (packaged rom tree)",
-  "~/canon/bible/ROM_CONTENTS.md": "core_defaults.py (packaged rom tree)",
-  "~/canon/bible/general": "core_defaults.py (packaged rom tree)",
-  "~/canon/bible/workset": "core_defaults.py (packaged rom tree)",
-  "~/canon/bible/box": "core_defaults.py (packaged rom tree)",
-  # The plugin's own bible chapter — emitted by CORE from the resolved target.
-  "~/canon/bible/agent": "core_defaults.py (plugin rom chapter)",
+  "~/canon/charter/ROM_CONTENTS.md": "core_defaults.py (packaged rom tree)",
+  "~/canon/charter/general": "core_defaults.py (packaged rom tree)",
+  "~/canon/charter/workset": "core_defaults.py (packaged rom tree)",
+  "~/canon/charter/box": "core_defaults.py (packaged rom tree)",
+  # The plugin's own charter chapter — emitted by CORE from the resolved target.
+  "~/canon/charter/agent": "core_defaults.py (plugin rom chapter)",
   # A PLACEHOLDER dest, not a dest: the manifest writes the whole row as the
   # `%if @box.share_images …%` conditional, whose code row is the unconditional
   # `images` entry gated at its injection site.

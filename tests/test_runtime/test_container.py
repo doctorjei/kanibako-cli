@@ -207,7 +207,7 @@ class TestUnshareChownChmod:
     agent-owned ``notebook/`` and ``workbook/`` with it).
     """
 
-    _PATHS = [Path("/boxes/p/home/canon"), Path("/boxes/p/home/canon/bible")]
+    _PATHS = [Path("/boxes/p/home/canon"), Path("/boxes/p/home/canon/charter")]
 
     def test_chown_invokes_podman_unshare_with_every_path(self):
         from unittest.mock import MagicMock
@@ -217,7 +217,7 @@ class TestUnshareChownChmod:
             assert rt.unshare_chown(self._PATHS, 1, 1) is True
         assert m.call_args[0][0] == [
             "/usr/bin/podman", "unshare", "chown", "1:1",
-            "/boxes/p/home/canon", "/boxes/p/home/canon/bible",
+            "/boxes/p/home/canon", "/boxes/p/home/canon/charter",
         ]
 
     def test_chmod_invokes_podman_unshare_with_every_path(self):
@@ -228,7 +228,7 @@ class TestUnshareChownChmod:
             assert rt.unshare_chmod(self._PATHS, "555") is True
         assert m.call_args[0][0] == [
             "/usr/bin/podman", "unshare", "chmod", "555",
-            "/boxes/p/home/canon", "/boxes/p/home/canon/bible",
+            "/boxes/p/home/canon", "/boxes/p/home/canon/charter",
         ]
 
     def test_never_emits_a_recursive_flag(self):
@@ -1307,7 +1307,7 @@ class TestPrecreateMountStubs:
         other = tmp_path / "other"
         other.mkdir(exist_ok=True)
         return [
-            FakeMount(source=src_dir, destination="/home/agent/canon/bible/general"),
+            FakeMount(source=src_dir, destination="/home/agent/canon/charter/general"),
             FakeMount(source=src_file, destination="/home/agent/canon/COLLECTION.md"),
             FakeMount(source=src_dir, destination="/home/agent/canon/handbook/box"),
             # A NON-canon dest in the same call must still be stubbed — the skip is
@@ -1328,7 +1328,7 @@ class TestPrecreateMountStubs:
         project.mkdir()
 
         # Pre-create the skeleton mountpoints the four mounts land on, as create does.
-        for rel in ("canon/bible/general", "canon/handbook/box"):
+        for rel in ("canon/charter/general", "canon/handbook/box"):
             (shell / rel).mkdir(parents=True)
         (shell / "canon" / "COLLECTION.md").touch()
         before = sorted(p.relative_to(shell) for p in (shell / "canon").rglob("*"))
@@ -1371,7 +1371,7 @@ class TestPrecreateMountStubs:
             vault_rw_path=tmp_path / "y",
             tmpfs_masks=[],
         )
-        assert (shell / "canon" / "bible" / "general").is_dir()
+        assert (shell / "canon" / "charter" / "general").is_dir()
         assert (shell / "canon" / "handbook" / "box").is_dir()
         assert (shell / "canon" / "COLLECTION.md").is_file()
         assert (shell / "comms").is_dir()
@@ -1382,7 +1382,7 @@ class TestPrecreateMountStubs:
         from kanibako.runtime.container import _is_managed_canon_dest
 
         assert _is_managed_canon_dest("/home/agent/canon")
-        assert _is_managed_canon_dest("/home/agent/canon/bible/general")
+        assert _is_managed_canon_dest("/home/agent/canon/charter/general")
         assert _is_managed_canon_dest("/home/agent/canon/COLLECTION.md")
         assert not _is_managed_canon_dest("/home/agent/canon-of-mine")
         assert not _is_managed_canon_dest("/home/agent/canonical")
@@ -1991,19 +1991,19 @@ class TestDetectShadowedMounts:
         assert not (shell / "vault").exists()
         assert before == after
 
-    def test_managed_canon_bible_excluded(self, tmp_path):
-        """Finding #7: the box-create skeleton owns canon/bible — never report it shadowed."""
+    def test_managed_canon_charter_excluded(self, tmp_path):
+        """Finding #7: the box-create skeleton owns canon/charter — never report it shadowed."""
         from kanibako.runtime.container import detect_shadowed_mounts
         shell = tmp_path / "shell"
         shell.mkdir()
         project = tmp_path / "project"
         project.mkdir()
-        chapter = shell / "canon" / "bible" / "general"
+        chapter = shell / "canon" / "charter" / "general"
         chapter.mkdir(parents=True)
         (chapter / "existing.md").write_text("pre-existing skeleton content")
         src = tmp_path / "src-general"
         src.mkdir()
-        mounts = [self._mount(src, "/home/agent/canon/bible/general")]
+        mounts = [self._mount(src, "/home/agent/canon/charter/general")]
         result = detect_shadowed_mounts(shell, project, mounts, enable_vault=False)
         assert result == []
 

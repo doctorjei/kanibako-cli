@@ -227,8 +227,8 @@ side, and it is delivered per agent:
 * **goose** — no marker delivery; there is no panel-liveness surface for it yet.
 
 ⚑ **Neither hook is shell any more — each is a CALL** to `pid-add.sh` / `pid-rm.sh` under
-`~/canon/bible/general/scripts/util`, the PID helpers the packaged bible already ships. They reach
-a box through the `bible/general` rom bind, which `rom_default_categories` emits with no agent
+`~/canon/charter/general/scripts/util`, the PID helpers the packaged charter already ships. They reach
+a box through the `charter/general` rom bind, which `rom_default_categories` emits with no agent
 parameter and `start.py` folds in unconditionally, so a codex box has them exactly as a claude box
 does. **The hook passes `"$PPID"` as the script's argument**, and that is load-bearing: the script
 prefers its argument over its own `$PPID`, which by the time it runs is the hook's transient shell
