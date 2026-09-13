@@ -128,9 +128,10 @@ The bind-shaped categories are `bindings.ro`, `bindings.rw`, `caches`, `seeded`,
 ⚑ **EVERY bind-shaped category is DEST-KEYED.** Each is a TERMINAL key whose value is a `BindMap` =
 `dict[box_dest → [src[, opts]]]` parsed to `BindEntry` leaves; the destination is the dict key and
 the entry's identity, and there is NO entry name (spec §2a REPRESENTATION).
-*(The `_BIND_CATEGORIES` comment described the leaf as the retired `[host_src, box_dest[, options]]`
-name-keyed pair and said "each is parsed to a `Bind` at assembly"; both were false — `_parse_node`'s
-own note says no bind-shaped category reaches the `Bind` branch any more. Dropped, not relocated.)*
+*(The `BIND_CATEGORY_TOKENS` comment described the leaf as the retired
+`[host_src, box_dest[, options]]` name-keyed pair and said "each is parsed to a `Bind` at assembly";
+both were false — `_parse_node`'s own note says no bind-shaped category reaches the `Bind` branch any
+more. Dropped, not relocated.)*
 
 ⚑ **A DATE DISCREPANCY, DELIBERATELY NOT CARRIED HERE — and NOT fixed in the source either.** The
 source dated the four categories' move to dest-keying **2026-08-08c** in four prose sites and two
@@ -229,13 +230,6 @@ runs ahead of `agent_select`'s own base scan.
 
 ## Values
 
-```_BIND_CATEGORIES: frozenset[str]```
-The bind-shaped category tokens whose subtree holds bind entries.
-
-`{"bindings", "caches", "seeded", "common", "synced"}` — the tokens as they appear in a file.
-`bindings` carries the `ro` / `rw` sub-tables, each of which holds the map; the other four hold it
-directly. Also read by `settings_merge`.
-
 ```_DEST_KEYED_CATEGORY = "bindings"```
 The ARMED bind-shaped category — the one whose category token is not the whole key.
 
@@ -247,7 +241,26 @@ The bind-shaped categories whose CATEGORY TOKEN IS THE WHOLE KEY.
 
 `{"caches", "seeded", "common", "synced"}` — terminal ONE LEVEL SHALLOWER than a `bindings` arm,
 with a `BindMap` for a value. See "the depth rule" above for why this set is not redundant with
-`_BIND_CATEGORIES`.
+`BIND_CATEGORY_TOKENS`.
+
+```BIND_CATEGORY_TOKENS: frozenset[str]```
+The bind-shaped category tokens whose subtree holds bind entries. Spelled
+`frozenset({_DEST_KEYED_CATEGORY} | _DEST_KEYED_LEAF_CATEGORIES)`.
+
+`{"bindings", "caches", "seeded", "common", "synced"}` — the tokens as they appear in a file. These
+are path SEGMENTS met on a tree walk, so `bindings` is UNSPLIT here: the walk meets that segment
+before it can see the arm. `bindings` carries the `ro` / `rw` sub-tables, each of which holds the
+map; the other four hold it directly. Also read by `settings_merge`, which is why the name carries
+NO leading underscore — the import crosses a module boundary.
+
+⚑ **DERIVED (P13), not hand-listed** — the ARMED category plus the terminal leaves ARE the tokens,
+so the declaration sits BELOW its two operands and the spellings cannot drift. No pin test guards
+it, and none should be added: both operands live in THIS file, so there is nothing to drift against
+and a pin would assert a tautology. Contrast `settings_categories._TERMINAL_BIND_CATEGORIES`, which
+mirrors a constant in a module it deliberately cannot import and therefore DOES need one.
+
+⚑ The `frozenset(...)` wrap is load-bearing, not decoration: `{x} | frozenset(...)` evaluates to a
+plain `set`, so without it the annotation would be a lie.
 
 ```_AGENT_DEFAULT_SUB = "default"```
 The agent sub-table that supplies the all-agents `agent.default` cascade level.

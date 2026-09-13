@@ -72,8 +72,8 @@ level is treated specially anywhere in this module.**
   `level.keys()`, `dict.__getitem__` rather than subscripting, so a key named `keys` / `items` /
   `get` cannot shadow the protocol.
 * **S15** — the merge does NOT mutate its input partials; it builds a fresh tree.
-* **S16** — category-awareness keys off the SAME `_BIND_CATEGORIES` / `masks` segment rule block 2a
-  uses. Reused, single-source, not re-derived.
+* **S16** — category-awareness keys off the SAME `BIND_CATEGORY_TOKENS` / `masks` segment rule
+  block 2a uses. Reused, single-source, not re-derived.
 
 ## The per-name rule, in full — `merge` / `_merge_nodes`
 
@@ -148,7 +148,7 @@ reset). Its `__repr__` is a debug aid only.
 ## `_resolve_present_none` — the classification
 
 Classifies a present-`None` leaf at *path* by CATEGORY: the §3 type-split, keyed by PATH per S16,
-using the SAME `_BIND_CATEGORIES` / `masks` segment rule block 2a uses. It returns `_OMIT` for a
+using the SAME `BIND_CATEGORY_TOKENS` / `masks` segment rule block 2a uses. It returns `_OMIT` for a
 bind / category / masks leaf (drop it — no mount, or unmask) or `None` for a scalar leaf (keep it —
 the consumer's default). *path* is the full segment trail to the leaf.
 
@@ -182,7 +182,7 @@ segment anywhere.
 
 ### ⚑ Both reset spellings survived the 2026-08-08c dest-key retool with NO edit here
 
-That is the frozenset doing its job: `_BIND_CATEGORIES` already held all five tokens, and the
+That is the frozenset doing its job: `BIND_CATEGORY_TOKENS` already held all five tokens, and the
 ancestor test never cared whether the segment below a category was a NAME or a DESTINATION. The path
 shape changed; the classification did not.
 
@@ -199,8 +199,9 @@ silent on a whole-category reset, and that flag was raised in chat.
 
 * `_MASKS_SEGMENT = "masks"` — the scope-category segment whose present-`None` leaf means UNMASK,
   not a scalar reset. S16: reuse 2a's category awareness. `masks` is the one keyed `bool|None`
-  category (S5); the bind-shaped categories are `_BIND_CATEGORIES`, imported from
-  `settings_assemble`.
+  category (S5); the bind-shaped categories are `BIND_CATEGORY_TOKENS`, imported from
+  `settings_assemble`. That name carries no leading underscore precisely BECAUSE of this import:
+  the module-private claim an underscore makes would be false across a module boundary.
 * `_PREF_ROOT = "pref"` — the top-level table holding `pref.*` REQUESTS (spec §2h). It is SPELLED
   here rather than imported from `settings_prefs` to keep this module's import surface at
   `settings_assemble` plus `keystore` / `kb_store`: it is one fixed token, and `settings_prefs`

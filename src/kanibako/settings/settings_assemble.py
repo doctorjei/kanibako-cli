@@ -47,13 +47,6 @@ from kanibako.settings.settings_resolve import (
 
 _log = logging.getLogger(__name__)
 
-# The bind-shaped category tokens; every one holds dest-keyed ``BindMap``(s). ``masks`` (a keyed
-# 3-state, S5) and the scalar ``env`` / ``secret_path`` families keep their natural nested shape and
-# are NOT bind-parsed. ``bindings`` carries the ``ro`` / ``rw`` sub-tables, each holding a map.
-_BIND_CATEGORIES: frozenset[str] = frozenset(
-    {"bindings", "caches", "seeded", "common", "synced"}
-)
-
 # ⚑ The ARMED bind-shaped category: ``bindings`` is the one whose category token
 # is NOT the whole key — its two ARMS are (``bindings.ro`` / ``bindings.rw``), and
 # each arm holds a ``BindMap``.
@@ -67,6 +60,17 @@ _BIND_ARMS: tuple[str, str] = ("ro", "rw")
 #: cannot replace it (the 2-element arity trap): llm-docs.
 _DEST_KEYED_LEAF_CATEGORIES: frozenset[str] = frozenset(
     {"caches", "seeded", "common", "synced"}
+)
+
+# The bind-shaped category tokens; every one holds dest-keyed ``BindMap``(s). ``masks`` (a keyed
+# 3-state, S5) and the scalar ``env`` / ``secret_path`` families keep their natural nested shape and
+# are NOT bind-parsed. ``bindings`` carries the ``ro`` / ``rw`` sub-tables, each holding a map.
+# ⚑ These are path SEGMENTS met on a tree walk, so ``bindings`` is UNSPLIT: the walk meets that
+# segment before it can see the arm. DERIVED (P13) from the two constants above — the ARMED
+# category plus the terminal leaves ARE the tokens, so the two spellings cannot drift.
+# ⚑ The ``frozenset(...)`` wrap is load-bearing: ``{x} | frozenset(...)`` evaluates to a ``set``.
+BIND_CATEGORY_TOKENS: frozenset[str] = frozenset(
+    {_DEST_KEYED_CATEGORY} | _DEST_KEYED_LEAF_CATEGORIES
 )
 
 # The agent sub-table that supplies the all-agents ``agent.default`` cascade level.
@@ -626,7 +630,7 @@ def _parse_node(
                     )
                     continue
             # Entering a bind-shaped category: its entries below are binds.
-            descend_binds = in_binds or key_s in _BIND_CATEGORIES
+            descend_binds = in_binds or key_s in BIND_CATEGORY_TOKENS
             store[key_s] = _parse_node(
                 sub,
                 in_binds=descend_binds,
@@ -839,7 +843,7 @@ def _insert_dotted(store: KeyStore, dotted: str, value: Any) -> None:
     """
     parts = dotted.split(".")
     # A leaf is bind-shaped iff any ancestor segment is a bind category.
-    in_binds = any(p in _BIND_CATEGORIES for p in parts[:-1])
+    in_binds = any(p in BIND_CATEGORY_TOKENS for p in parts[:-1])
     at_arm = len(parts) >= 2 and parts[-2] == _DEST_KEYED_CATEGORY
     if in_binds and _DEST_KEYED_CATEGORY in parts[:-1] and not at_arm:
         terminal_key = ".".join(parts[: parts.index(_DEST_KEYED_CATEGORY) + 2])

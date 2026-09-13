@@ -19,7 +19,7 @@ from __future__ import annotations
 from kanibako.settings.kb_store import StoreValue
 from kanibako.settings.kb_store import __MISSING__
 from kanibako.settings.keystore import KeyStore
-from kanibako.settings.settings_assemble import _BIND_CATEGORIES
+from kanibako.settings.settings_assemble import BIND_CATEGORY_TOKENS
 
 # The scope-category segment whose present-None leaf means UNMASK, not a scalar
 # reset (S16 — ``masks`` is the one keyed bool|None category, S5).
@@ -146,7 +146,7 @@ _OMIT = _Omit()
 def _resolve_present_none(*, path: tuple[str, ...]) -> StoreValue | _Omit:
     """Classify a present-``None`` leaf at *path* by CATEGORY (§3 type-split, S16).
 
-    Keyed by PATH, the SAME ``_BIND_CATEGORIES`` / ``masks`` rule block 2a uses.
+    Keyed by PATH, the SAME ``BIND_CATEGORY_TOKENS`` / ``masks`` rule block 2a uses.
     :data:`_OMIT` for a bind / category / masks leaf; ``None`` for a scalar leaf. A
     leaf is a category leaf when EITHER an ANCESTOR segment is a category (an ENTRY
     reset) OR the leaf's OWN segment is one (a CATEGORY-ROOT reset).
@@ -160,9 +160,9 @@ def _resolve_present_none(*, path: tuple[str, ...]) -> StoreValue | _Omit:
         return None  # a REQUEST record — kept verbatim, never classified (§2h).
     own = path[-1] if path else ""
     ancestors = path[:-1]
-    if own in _BIND_CATEGORIES or own == _MASKS_SEGMENT:
+    if own in BIND_CATEGORY_TOKENS or own == _MASKS_SEGMENT:
         return _OMIT  # whole-category-root reset → drop the category.
-    if any(seg in _BIND_CATEGORIES for seg in ancestors):
+    if any(seg in BIND_CATEGORY_TOKENS for seg in ancestors):
         return _OMIT  # an entry under a bind category (incl. bindings.ro/rw).
     if _MASKS_SEGMENT in ancestors:
         return _OMIT  # a masks path entry → unmask.
