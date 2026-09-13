@@ -1,8 +1,7 @@
 <!--[STOCK]
-## System-Wide Information & Directives
 _(System Tome)_
 
-> This file is the entrypoint for the "agent" chapter of the "handbook"; it is read from the
+> This file is the entrypoint for the "general" chapter of the "handbook"; it is read from the
 > global canon/handbook directory and can only be edited from the host system by the user (not
 > from within the box). This chapter should ONLY include SYSTEM-WIDE information! Agent-editable
 instructions and information should go in the box's notebook (not here).
@@ -11,10 +10,10 @@ instructions and information should go in the box's notebook (not here).
 > as a starting point and can be extended or replaced.
 -->
 
+## System-Wide Information
+
 When saving memories, notes, or other persistent files, remind yourself to review your directives
 to ensure alignment with the elements of the handbook (playbook, notebook, and workbook).
-
---
 
 ### Starting a New Session
 
@@ -25,14 +24,8 @@ to ensure alignment with the elements of the handbook (playbook, notebook, and w
 
 --
 
-### Rules
-
-3.1 [Canon Sections](@rules/CANON.md)
-3.2 [Project Work](@rules/DATAPOLICY.md)
-3.3 [Interaction Guide](@rules/INTERACTION.md)
+### Directives
+__IMPORTSECTION__("directives/*")
 
 ### Procedures
-
-Only and always load these procedures to complete the tasks they address:
-
-3.4 [Using Channel System (Includes Mail)](../procedures/USING_CHANNELS.md)
+__LINKSECTION__("procedures/*")

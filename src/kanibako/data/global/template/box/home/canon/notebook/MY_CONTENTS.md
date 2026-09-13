@@ -1,7 +1,6 @@
 <!--[STOCK]
-# 3 Notebook
-_(Local Tome)_
-
+> Book 3 (Local)
+>
 > This file is the entrypoint for the "box" chapter of the "notebook"; it is read from the box's
 > canon/notebook directory and can edited by agents and the user of the system (including from
 > within the box). Box/project information and instructions should be freely added here.
@@ -15,11 +14,16 @@ _(Local Tome)_
 - Reminders or conventions that aren't project code and don't fit the project's own docs.
 - Anything a future session should see that isn't captured elsewhere.
 -->
+# Notebook
+
 ## Preparation
 
 At startup, **always** read `status.md` (usually in the _workbook_) for current session status.
 Before begining any actual work, read `devnotes.md` (usually in the same place as `status.md`.
 As you work, update the `devnotes.md` file — especially after build checks.
 
-## Contents
-3.1 [Conventions](@directives/CONVENTIONS.md)
+## Directives
+__IMPORTSECTION__("directives/*")
+
+## Procedures
+__LINKSECTION__("procedures/*")

@@ -1,7 +1,6 @@
 <!--[STOCK]
-## 3.1 Project Conventions
-_(Local Tome)_
-
+> Project Conventions (Local)
+>
 > This file holds the project's conventions; it is read from the box's canon/notebook directory
 > and can edited by agents and the user of the system (including from within the box). Box/project
 > information and instructions should be freely added here.

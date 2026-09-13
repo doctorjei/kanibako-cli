@@ -1,7 +1,6 @@
 <!--[STOCK]
-### 2.1.2 Data Policy
-_(System Tome)_
-
+> Data Policy (System Tome)
+>
 > This file holds the system-wide data policy; it is read from the global canon/handbook path and
 > can only be edited from the host system by the user (not from within the box). Agent-editable
 > instructions and information should go in the box's notebook (not here).
@@ -9,6 +8,7 @@ _(System Tome)_
 > This file is seeded from the core package. Defaults contents are included here; they are meant
 > as a starting point and can be extended or replaced.
 -->
+### Data Policy
 
 #### Context Management
 
@@ -29,8 +29,8 @@ The document structure is designed around **deferred loading**:
 
 #### Records
 
-Persist state incrementally, as you work. Context is summarized; containers are ephemeral. Durable
-records live in files you write to bound paths. Capture decisions when they are made.
+Persist state incrementally, as you work. Context is summarized and ephemeral. Durable records live
+in files written to bound paths. Capture decisions when made.
 
 - **Write future work and multi-phase plans immediately**, before writing any code, once decided.
   Items only in conversation context vanish on clear or compaction.

@@ -1,7 +1,6 @@
 <!--[STOCK]
-## 2.4 Box Directives
-_(System Tome)_
-
+> Box Information (System)
+>
 > This file is the entrypoint for the "box" chapter of the "handbook"; it is read from the box's
 > canon/handbook directory and can only be edited from the host system by the user (not from within
 > the box). This file covers box-specific information. Agent-editable instructions and information
