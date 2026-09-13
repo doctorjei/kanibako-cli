@@ -103,6 +103,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **BREAKING (canon layout): the packaged core tome is `charter`, not `bible`, and the handbook
+  lost a level.** In every box, `~/canon/bible/` is now `~/canon/charter/`; the chapter names
+  (`general`, `agent`, `workset`, `box`) and `ROM_CONTENTS.md` are unchanged, so only the book root
+  moves. Two things move *within* the books, and they are the ones that need a person: each
+  chapter's entry file now sits at the chapter root rather than under `directives/` — the box guide
+  is `charter/general/ROM_GENERAL.md`, and `charter/general/directives/` holds a new `IDENTITY.md`
+  — and the handbook's per-scope entry files do the same, so a scope's own canon contribution
+  directory wants `<scope>/canon/handbook/SYS_<SCOPE>.md` where it used to want
+  `…/handbook/directives/SYS_<SCOPE>.md`. The charter arrives by read-only bind and re-lays itself
+  out on the next start with nothing to do; **the handbook chapters are host-side files you own, and
+  nothing moves them for you.** A chapter left at the old path is not an error — the index simply
+  names nothing there, so it is silently never read. Plugin packages move with it: a plugin's own
+  chapter is `data/rom/ROM_AGENT.md` and its store payload `data/base/canon/handbook/SYS_AGENT.md`,
+  and a plugin still shipping the nested position now has its chapter refused outright rather than
+  half-delivered. Boxes made by an earlier prerelease also keep the old hook paths in their own
+  `~/.claude/settings.json`, which is the box's file and therefore yours to update. `MIGRATION.md`
+  carries the per-file table and the commands.
+
 - **BREAKING (config files): `kanibako_config.yaml` → `kanibako.cfg`, and `config_base.yaml` →
   `base.cfg`.** The user bootstrap config keeps its directory (`$XDG_CONFIG_HOME`, or `~/.config`
   when that is unset) and the site config keeps `/etc/kanibako/`; only the names change. Nothing
