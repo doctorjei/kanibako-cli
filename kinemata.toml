@@ -1,0 +1,425 @@
+# kinemata REGISTRY config for kanibako-cli. Drives `check` (duplication),
+# `undeclared`, `unused`, `ids`, `review` and `clusters`.
+#
+# ⚑⚑ THERE IS A SECOND CONFIG IN THIS REPOSITORY: `kinemata-docs.toml`, which
+# drives `claims` (the DOCUMENTATION gate). Run it with
+# `kinemata -c kinemata-docs.toml claims`; it is not auto-discovered.
+#
+# THE TWO ARE SEPARATE ON PURPOSE AND NEITHER IS A SUPERSET OF THE OTHER.
+# `exclude` in this tool is GLOBAL to a config -- it applies to every scan the
+# config drives -- and this file excludes `api-docs/` and `llm-docs/`, which the
+# documentation gate must NOT exclude. Merging the two files would silently
+# weaken the documentation gate by the width of that difference. The two answer
+# different questions and are kept apart deliberately.
+#
+# Merged 2026-09-14 from three drafts, none of which was in this repository
+# before: the kinemata box's `kinemata-config-for-kanibako-cli-2026-09-12-r2.toml`
+# (the `keyspace`, `constants` and `canonical` registries, plus `exclude`), and
+# this project's own `kinemata-registries.toml` (five `python-constants`
+# registries). Where the two declared overlapping modules they are merged into
+# one registry rather than declared twice -- see `store-layout` below.
+#
+# Governing rule: [R159]. "The adoption is judged by what it CATCHES, not by how
+# clean it comes up." Every entry below carries a reason of kind. Nothing here
+# exists to make a number smaller.
+#
+# ⚑ Every figure quoted in a comment below states the commit it was measured
+# against. They are NOT re-measured at each commit, and several predate the tree
+# you are reading. Run the command before quoting the number.
+
+[project]
+# RELATIVE, deliberately: two of the source drafts carried an absolute path to
+# one box's checkout, which means something different in CI and in any other
+# clone. `root = "."` is resolved against the config's own directory.
+root = "."
+
+# `tests/` and `salvage/` are excluded on this project's own authority rather
+# than on a guess: salvage/README.md says the directory is dormant source,
+# deliberately carrying "frozen local copies of logic since deleted from the
+# live path", and this project already excludes it from ruff, mypy and pytest.
+# A duplication checker pointed at a holding pen for deliberate duplicates
+# reports the pen.
+#
+# Tests are excluded for the reason `tests/support/filenames.py` states about
+# itself: its literals ARE the pin. A test that respells a constant on purpose
+# is the check, not a bypass of it.
+#
+# `api-docs/` carries a "GENERATED -- do not hand-edit" banner and mirrors every
+# signature in the tree, so it respells every declared value by construction.
+# `llm-docs/` is hand-written prose and is excluded for a weaker reason worth
+# stating: prose naturally spells values while describing them, and this config
+# has not yet been measured against it. Consider dropping this line once the
+# code findings are down -- it is a scope decision, not a judgment about the
+# documents.
+#
+# ⚑ `kinemata-registries.toml` excluded NOTHING and said so as a position: a
+# test that respells a constant is a test that keeps passing after the constant
+# changes. That position is OVERRULED here by the four reasons above, which are
+# reasons of kind rather than of count. It is recorded rather than dropped,
+# because the next person to widen this line should know it was once empty.
+#
+# ⚑ `build/` and `dist/` are absent on purpose: the scanner prunes both in
+# `SKIP_DIRS` before descending, so naming them here would be ceremony.
+exclude = ["tests/", "salvage/", "api-docs/", "llm-docs/"]
+
+# 🛑 THE CLAIMS SCAN IS TURNED OFF HERE, DELIBERATELY, AND IT IS NOT A
+# SUPPRESSION. `claims` runs with defaults whenever a config does not say
+# otherwise, and `baseline --record` runs every check the config can run. Left
+# on, this file's FIRST baseline recorded 356 claim findings measured under the
+# four excludes above -- a second, WEAKER claims scan than `kinemata-docs.toml`
+# performs, accepted into a baseline that nothing ever consults, because `claims`
+# is never run with this config. Two baselines of one check, one of them
+# invisible, is the defect this split exists to avoid in the other direction.
+# ⇒ claims belongs to ONE config, and it is the other one.
+[claims]
+suffixes = []
+
+# The keyspace: each key carries the spec section it traces to, which is exactly
+# the clause linkage the registry contract asks for.
+#
+# ⚑ DELIBERATELY NOT `closed = true`, and this is the measurement rather than
+# caution. Closing it makes an identifier no entry declares a hard failure, and
+# run that way this tree reports 24 distinct identifiers across 48 sites --
+# ALL of them false. Every one is declared, just not in `keys:`:
+#
+#   system._boxes, system._primary_*   -> not_keys.code_residue
+#   box.agent, box.agent_name          -> not_keys.renamed
+#   workset.seeded, system.seeded      -> category_default_entries
+#   agent.claude.common                -> plugin_contributed
+#
+# That is this project's own audit finding measured from the other side: the
+# keyspace is CLOSED BUT NOT FLAT, and membership is answered by six manifest
+# sections rather than one. `kind = "yaml-mapping"` reads a single section, so
+# it cannot answer the closed-world question here however it is configured.
+#
+# The fix is `kind = "import"`, which exists for this case -- a project-authored
+# class answering `declared()` across all six sections. Until that adapter is
+# written this registry stays open, and the catch it would buy stays unbought.
+# An advisory list of 24 false positives is not a weaker catch, it is a habit of
+# skimming red.
+#
+# ⚑ IT CONTRIBUTES NOTHING TO `check`, and that is not a defect. Verified at
+# source: `adapters/mapping.py` yields entries with no `antipatterns`, so the
+# duplication gate has nothing to match. This registry pays for itself through
+# `ids` and `unused` -- measured 2026-09-14 at `75f7da94`: `kinemata ids` exits
+# 0 and projects 100 entries, `kinemata unused` exits 0 and names 8 keys nothing
+# mentions outside the `machinery` below.
+#
+# 🛑 BUT IT DOES NOT PAY THROUGH `undeclared`, WHICH REFUSES OUTRIGHT. Measured
+# 2026-09-14 at `75f7da94`, kinemata `a365474` -- `kinemata undeclared`, exit 2:
+#
+#   error: no declared registry can recognize its own identifiers, so none can
+#   say what is undeclared. This needs a registry with an identifier syntax
+#   (today: kind = "yaml-mapping" with `syntax`). Running anyway would report
+#   nothing and mean nothing.
+#
+# The r2 config claimed this registry answers `undeclared`, and as written it
+# cannot: `syntax` -- the pattern recognizing anything SHAPED LIKE a kanibako key
+# -- is not declared. That is not repaired here on purpose. Choosing the pattern
+# decides what counts as a key MENTION across the whole tree, which is a
+# declaration in its own right and a larger decision than a merge; writing a
+# plausible one to clear an exit code is how a gate comes to report a number
+# nobody derived. The refusal is correct behavior and is recorded rather than
+# worked around. ⚑ The `closed = true` discussion above is downstream of this:
+# `adapters/mapping.py` refuses `closed` without `syntax` too, so the 24-false-
+# positive measurement was made under a config this one does not yet reproduce.
+[[registry]]
+name = "keyspace"
+kind = "yaml-mapping"
+source = "src/kanibako/data/keyspace-manifest.yaml"
+section = "keys"
+clause_field = "spec"
+
+# The files that DECLARE keys rather than use them. Without this, `unused`
+# refuses outright: every entry is mentioned by its own declaring machinery, so
+# the check has nothing to report. It is a review list and never a cut list --
+# it detects mention, not use.
+machinery = [
+  "src/kanibako/settings/keyspace_manifest.py",
+  "src/kanibako/settings/settings_keyspace.py",
+  "src/kanibako/settings/config_keys.py",
+]
+
+# ---------------------------------------------------------------------------
+# FACT: the channel system's wire vocabulary -- the two synthesized workset
+# tokens, the default chat leaf, and where helper scripts live inside a box.
+# AUTHORITY: `channels.py` is the module every other package imports these from;
+# `helpers.py` owns the helper-script side of the same subject. Nothing else in
+# the tree declares a workset token.
+# CATCHES: the known finding -- `project/workset.py:377` spelling "__PRIMARY__"
+# and "__STANDALONE__" as literals beside `channels/channels.py:26-27`.
+[[registry]]
+name = "channels"
+kind = "python-constants"
+modules = [
+  "src/kanibako/channels/channels.py",
+  "src/kanibako/channels/helpers.py",
+]
+
+# ---------------------------------------------------------------------------
+# ⚑ MERGED 2026-09-14. Two drafts declared overlapping modules over this
+# subject: `kinemata-registries.toml`'s `store-layout` (`bootstrap.py`) and the
+# r2 config's `constants` (`bootstrap.py` + `kb_store.py`). Two registries over
+# one module is two carriers of one declaration, so this is the union, and BOTH
+# stated reasons are kept below rather than one being chosen.
+#
+# THE NAME `constants` WAS DROPPED. It names the ADAPTER KIND, not the fact, and
+# the rule the registry comments here follow -- state the FACT and the AUTHORITY
+# -- cannot be satisfied by it. `store-layout` names a fact, so it survives.
+# Anything quoting a figure "from the `constants` registry" is quoting this one.
+#
+# FACT (from `store-layout`): the on-disk store layout and the XDG environment it
+# is derived from -- every directory name under the kanibako store, the config
+# filenames, the site config location, the shell files seeded into a box home.
+# AUTHORITY: `bootstrap.py` is where the store is laid out before anything else
+# runs; it is the module the layout tier is built on, so a directory name spelled
+# anywhere else is a second copy of the layout. Its own docstring states the rule
+# ([R157]): every path literal in the tree belongs here and nowhere else.
+#
+# FACT (from `constants`): the key store's own reserved node names, alongside the
+# path leaves and XDG variable names above. AUTHORITY: `kb_store.py` declares the
+# value space a `KeyStore` holds.
+#
+# ⚑ `kb_store.py` was ADDED after scoring the r2 config against `f26b70e1`, and it
+# is the whole of the one miss. The first draft declared `bootstrap.py` alone and
+# missed `settings_views.py:190`, which defaulted a parameter to
+# "binding_derivations" rather than reading `kb_store.BINDING_DERIVATIONS_NODE`
+# -- the one site of the ten that commit enumerates which that config did not
+# reach. It was a module absent from a declaration, not a mechanism that failed:
+# adding the file catches the site with no other change. (That particular site is
+# HISTORY as of `f26b70e1`, which fixed it; the module stays declared because it
+# is the authority, not because of one site.)
+[[registry]]
+name = "store-layout"
+kind = "python-constants"
+modules = [
+  "src/kanibako/settings/bootstrap.py",
+  "src/kanibako/settings/kb_store.py",
+]
+
+# ---------------------------------------------------------------------------
+# FACT: the settings tier's own filenames and the two key/subkey tokens the
+# config engine reserves -- `box.yaml` / `workset.yaml` / `agent.yaml` ([R140]),
+# the setup marker key, and the `default` agent sub-scope.
+# AUTHORITY: `config.py` declares the three meta filenames the whole config
+# engine opens; `config_keys.py` declares the key tokens that engine reserves.
+# This pair is the config file layer's single declared place.
+# NOTE: `WORKSET_META_FILE = "workset.yaml"` is the example kinemata's own
+# introduction.md uses for this adapter, taken from this very module.
+#
+# ⚑ IT WAS MEASURED SILENT at `f26b70e1` under the 2026-09-09 config: every one
+# of its five entries exceeded the default frequency suppression of 20 sites
+# (`workset.yaml` alone had 160), so it reported zero, and per [R159] that was
+# reported rather than tuned away.
+# ⚑ NO LONGER SILENT, re-measured 2026-09-14 at `75f7da94` under THIS file:
+# `kinemata check` reports SETUP_MARKER_KEY at 1 site,
+# `settings/defaults_inventory.py:201`. Do not carry the old sentence forward --
+# the difference is at least partly this file's `exclude`, which the 2026-09-09
+# config did not have, so the two figures are not a before-and-after of the tree.
+[[registry]]
+name = "meta-files"
+kind = "python-constants"
+modules = [
+  "src/kanibako/settings/config.py",
+  "src/kanibako/settings/config_keys.py",
+]
+
+# ---------------------------------------------------------------------------
+# FACT: user-facing text -- status tokens, one-time-setup progress lines,
+# warnings, and the error strings the settings layer and the key store raise.
+# AUTHORITY: `messages.py` is the settings tier's declared string table;
+# `keystore_strings.py` is the same thing for the key store, split out because
+# the store is imported by code that must not import the settings package.
+# A printed line respelled inline is invisible to a test tally, which is exactly
+# the class this catches.
+[[registry]]
+name = "messages"
+kind = "python-constants"
+modules = [
+  "src/kanibako/settings/messages.py",
+  "src/kanibako/settings/keystore_strings.py",
+]
+
+# ---------------------------------------------------------------------------
+# FACT: the canon skeleton and the template store -- the guest-side canon tree
+# (bible/handbook/directives layout, the ROM guide path, skeleton modes) and the
+# names of the packaged template moulds.
+# AUTHORITY: `core_defaults.py` declares the canon layout that the defaults files
+# and the seeding path both read; `launch/templates.py` declares the template
+# store's own directory names. Both sides of one subject: what gets laid into a
+# box's canon and template trees at create.
+[[registry]]
+name = "canon-layout"
+kind = "python-constants"
+modules = [
+  "src/kanibako/settings/core_defaults.py",
+  "src/kanibako/launch/templates.py",
+]
+
+# ---------------------------------------------------------------------------
+# Canonical values that are NOT module-level strings, so `python-constants`
+# cannot reach them. Each of these is a collection literal or an enum, and the
+# duplication is a second literal spelling the same sequence.
+#
+# ⚑ This registry is the reason `kb_store.py` and `core-defaults.yaml` appear
+# both here and in a `python-constants` registry above WITHOUT being a second
+# declaration of one fact: a `home` is per ENTRY and says where that entry is
+# defined, while `modules` is what the constants adapter derives antipatterns
+# FROM. The two adapters reach different values in the same file -- that is the
+# stated reason this registry exists at all.
+[[registry]]
+name = "canonical"
+kind = "code-patterns"
+
+  # kb_store.py:11 calls itself the single source for every directional
+  # derivation. Seven sites respell the sequence anyway, two of them as a
+  # superset with `config` prepended and two as an order-carrying dict.
+  [[registry.entry]]
+  id = "SCOPE_CONTAINMENT"
+  antipatterns = [
+    '"system",\s*"agent",\s*"workset",\s*"box"',
+    '"system":\s*0,\s*"agent":\s*1',
+  ]
+  home = ["src/kanibako/settings/kb_store.py"]
+  clauses = ["§2"]
+  note = "containment order; one declared sequence, not a literal per site"
+
+  # The box.mode tokens. The enum at paths.py:55 is the home.
+  #
+  # ⚑ Two sites match and they are NOT the same finding.
+  # `defaults_inventory.py:65` is a plain copy. `settings_launch.py:459` is a
+  # deliberate exception -- a floor module with no module-level kanibako
+  # imports -- and belongs in the baseline with that reason, not in an
+  # `exclude` line that would also hide the next real one.
+  [[registry.entry]]
+  id = "BoxMode"
+  antipatterns = ['"primary",\s*"named",\s*"standalone"']
+  home = ["src/kanibako/settings/paths.py"]
+  note = "the box.mode tokens; the enum is the home"
+
+  # The canon chapter leaf. `core-defaults.yaml` spells `@<scope>.canon/handbook`
+  # for all four scopes, so the destination is a CHAPTER fact.
+  #
+  # ⚑ `PACKAGED_HANDBOOK` in templates.py is a different fact that happens to
+  # share the spelling -- the packaged SOURCE subtree -- which is why the home
+  # here is the YAML rather than that constant. The two call sites pair them in
+  # one expression: `base_src / PACKAGED_HANDBOOK, std.canon / "handbook"`,
+  # constant for the source and a bare literal for the destination.
+  [[registry.entry]]
+  id = "CANON_CHAPTER_LEAF"
+  antipatterns = ['canon\s*/\s*"handbook"', '"canon/handbook"']
+  home = ["src/kanibako/data/core-defaults.yaml"]
+  note = "the chapter destination -- a chapter fact, not a packaging fact"
+
+  # FACT: `settings_categories.py` is the declaring authority for the
+  # bind-category name; a second declaration of that name elsewhere is a
+  # collision. CATCHES: a module that redeclares `_BIND_CATEGORIES` instead of
+  # importing it or naming its own subject.
+  #
+  # 🛑 THE r2 CONFIG'S COMMENT ON THIS ENTRY IS STALE AND IS NOT CARRIED. It
+  # said the rename was "OPEN on this project's own board as an undecided
+  # rename" and that "a finding here is correct behavior and must NOT be
+  # exempted". The rename LANDED in `75f7da94`: the 5-member frozenset of path
+  # segments in `settings_assemble.py` became `BIND_CATEGORY_TOKENS` (and lost
+  # its underscore, because `settings_merge.py` imports it across a module
+  # boundary). The 6-member tuple of category key tails here kept the name.
+  #
+  # ⚑ SO THERE IS NO SPELLING TO UPDATE, and that is the measurement rather than
+  # an omission: the symbol at the declared home is still `_BIND_CATEGORIES`.
+  # What the rename removed was the SECOND spelling -- which is the finding this
+  # entry existed to report. The entry is therefore CURRENTLY SILENT, by the
+  # defect being fixed rather than by the check being weakened.
+  #
+  # 🛑 `BIND_CATEGORY_TOKENS` is deliberately NOT added as an antipattern. It is
+  # now a distinct name for a distinct fact with its own home, and
+  # `settings_merge.py` names it four times as an IMPORT and its uses -- which
+  # is the correct behavior. Adding it would report four correct lines to make
+  # this entry fire, which is inventing a pattern rather than repairing one.
+  #
+  # ⚑ SILENCE CONFIRMED BY MEASUREMENT, not by reading. 2026-09-14 at
+  # `75f7da94`: `kinemata -r canonical check` reports 6 bypasses across
+  # CANON_CHAPTER_LEAF, SCOPE_CONTAINMENT and BoxMode, and none for this entry;
+  # `kinemata unused` lists `_BIND_CATEGORIES` among the entries nothing mentions
+  # outside the file that declares it, which is the same fact from the other
+  # side. KEPT ANYWAY -- the entry is what makes a future second declaration a
+  # finding, and deleting a check because the defect it caught was fixed is how
+  # the defect comes back unobserved.
+  [[registry.entry]]
+  id = "_BIND_CATEGORIES"
+  antipatterns = ['_BIND_CATEGORIES']
+  home = ["src/kanibako/settings/settings_categories.py"]
+  note = "the category-declaration authority; a second declaration is a collision"
+
+# ---------------------------------------------------------------------------
+# CONSIDERED AND NOT DECLARED, recorded so the next rebuild does not re-derive it
+# from scratch. NEITHER is an exclusion: no finding is suppressed by their
+# absence, because no registry here claims their subject.
+#
+# 1. guest paths -- `settings/settings_resolve.py` (GUEST_HOME, and the workspace
+#    / vault / pinned-root relpaths) plus `box_supervisor.py`. NOT declared
+#    because the two modules are NOT one authority: `box_supervisor.py` is half
+#    the PID-1 pair, pinned flat and stdlib-only, and it re-declares
+#    `.kanibako` because it CANNOT import the settings package. A registry over
+#    both reports that documented, deliberate duplication as its principal
+#    output. Declaring `settings_resolve.py` alone is defensible and was measured
+#    separately; it is left out here so this file matches the five-registry shape
+#    the 2026-09-09 run used.
+# 2. `commands/flags.py`, `commands/start.py`, `runtime/image_sharing.py`,
+#    `project/workset.py`, `settings/agent_config.py` -- each holds two or three
+#    constants that are local to one command or one module. Command-local
+#    constants are not "information used broadly across the project"
+#    (design.md ss6), so they are not registry material.
+#
+# MEASURED YIELD OF EVERY OTHER CONSTANT-CARRYING MODULE IN THE TREE, so the
+# next person deciding this does it with numbers instead of re-deriving them.
+# One registry per module, `check` at default suppression, f26b70e1 -- and
+# ⚑ NOT re-measured since, nor under this file's `exclude`, which the 2026-09-09
+# config did not have. Treat them as the shape of the answer, not the answer:
+#
+#   settings/bootstrap.py        39   (declared above, in store-layout)
+#   settings/messages.py         13   (declared above)
+#   settings/core_defaults.py    11   (declared above, in canon-layout)
+#   runtime/image_sharing.py      8
+#   launch/templates.py           6   (declared above, in canon-layout)
+#   commands/start.py             4
+#   project/workset.py            3
+#   vscode/vscode_config.py       2
+#   settings/agent_config.py      2
+#   proxy/server.py               2
+#   box_supervisor.py             2
+#   settings/keyspace_manifest.py 1
+#   runtime/rig_bundle.py         1
+#   settings/config.py            0    settings/config_keys.py        0
+#   settings/keystore_strings.py  0    settings/settings_resolve.py   0
+#   settings/workset_dirkeys.py   0    settings/settings_launch.py    0
+#   settings/agent_select.py      0    launch/creds_watcher.py        0
+#   commands/flags.py             0    commands/box/_lifecycle.py     0
+#   runtime/baseline.py           0    __init__.py                    0
+#
+# ⚑ THE ONE PRODUCTION FINDING THE FIVE CONSTANTS REGISTRIES MISS:
+#   `proxy/server.py` declares `MESSAGES_PATH = "/v1/messages"` and
+#   `packages/agent-claude/.../claude/target.py:448` spells it inline. That is a
+#   genuine duplication across the distribution boundary. It is left undeclared
+#   here only because two sites is not "used broadly"; if that judgment is wrong,
+#   this is the registry to add, and it is worth one finding.
+#
+# OVERLAP AUDIT, 2026-09-14 -- every pair checked before the merge above was
+# called the only one. By declared module:
+#   store-layout x constants        bootstrap.py         -> MERGED (above)
+#   constants x channels/meta-files/messages/canon-layout  none
+#   store-layout x channels/meta-files/messages/canon-layout  none
+#   channels x meta-files/messages/canon-layout          none
+#   meta-files x messages/canon-layout                   none
+#   messages x canon-layout                              none
+# Two near-misses that are NOT overlaps, checked and recorded so they are not
+# re-checked:
+#   * `keyspace.machinery` names `settings/config_keys.py`, which `meta-files`
+#     declares as a module. Different roles over one file: `machinery` is read
+#     ONLY by `unused` and means "this file mentions keys because it declares
+#     them", while `modules` is what the constants adapter derives antipatterns
+#     from. Neither declares the other's fact, and the kinds differ.
+#   * `canonical` homes `kb_store.py` (in store-layout) and
+#     `src/kanibako/data/core-defaults.yaml` -- which is the DATA file, not
+#     `settings/core_defaults.py`, the module `canon-layout` declares. Different
+#     files with adjacent names; checked rather than assumed.
+# ---------------------------------------------------------------------------

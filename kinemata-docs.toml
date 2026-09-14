@@ -1,0 +1,206 @@
+# kinemata CLAIMS config for kanibako-cli -- the DOCUMENTATION gate.
+# Run it by name: `kinemata -c kinemata-docs.toml claims`. It is NOT
+# auto-discovered; the walk upward finds `kinemata.toml` instead.
+#
+# ⚑⚑ THERE IS A SECOND CONFIG IN THIS REPOSITORY: `kinemata.toml`, which
+# declares the `[[registry]]` tables and drives `check`, `undeclared`, `unused`
+# and `ids`. This file declares no registry; that one declares no `[claims]`.
+# Neither is a superset of the other.
+#
+# 🛑 THEY ARE TWO FILES FOR ONE CONCRETE REASON, NOT FOR TIDINESS. `exclude` is
+# GLOBAL to a config -- it applies to every scan that config drives -- and
+# `kinemata.toml` excludes `api-docs/` and `llm-docs/` for reasons that hold for
+# a duplication scan and do NOT hold for a documentation scan. Section 3 below
+# refuses those two excludes BY NAME as tuning-to-green. A single merged config
+# could not hold both positions, and the one it would silently drop is this
+# one: the documentation gate would lose the width of that difference and still
+# report green. Do not merge them without deciding what the merged file is for.
+#
+# Sourced from `~/canon/notebook/resources/kinemata-adoption/kinemata-proposed.toml`,
+# first-run triage 2026-09-09, landed here 2026-09-14.
+#
+# Governing rule: [R159]. "The adoption is judged by what it CATCHES, not by how
+# clean it comes up." Every entry below carries a reason of kind. Nothing is
+# listed because it made a finding go away.
+#
+# Before/after, measured 2026-09-09 against an older tree: 929 failing claims ->
+# 769. The 160 suppressed are ALL positively classified as historicity false
+# positives. Nothing is suppressed that could not be classified.
+# ⚑ NOT re-measured at each commit. Run the command before quoting the number.
+#
+# This config is DELIBERATELY still red. See "What is NOT here" at the bottom.
+
+[project]
+# RELATIVE, deliberately: the draft this came from carried an absolute path to
+# one box's checkout, which means something different in CI and in any other
+# clone.
+root = "."
+# ⚑ Both are already in the scanner's own `SKIP_DIRS`, so this line is belt and
+# braces rather than a suppression. It is the whole of this config's `exclude`,
+# and section 3 below is why.
+exclude = ["build/", "dist/"]
+
+# 🛑 ITS OWN BASELINE, AND THIS IS NOT A PREFERENCE. `baseline` defaults to
+# `.kinemata-baseline.json` for EVERY config, and `--record` rewrites the whole
+# file from the scan it just ran. Two configs at one root sharing one baseline
+# means each `--record` silently drops the other's accepted records -- the second
+# run would look like a clean prune. Separate files, so each records what it can
+# actually re-derive.
+baseline = ".kinemata-baseline-docs.json"
+
+[claims]
+suffixes = [".md"]
+
+historical = [
+  # REASON OF KIND: a changelog is by definition a record of what was true at
+  # each release. Verified, not assumed: its repo-shaped claims are the pre-1.0
+  # flat layout (`paths_defaults.py`, renamed to messages.py by 10390ce4), the
+  # `worksets.toml` -> `working_sets.toml` rename entry, and the host
+  # provisioning kit (`host-definitions/`, `lint-vm.yml`,
+  # `docs/host-deployment.md`) that left for the kanibako-images repo at the
+  # 2026-06-12 split. Every one was correct when written.
+  "CHANGELOG.md",
+
+  # REASON OF KIND: eight dated implementation/design plans, 2026-03-06..08, for
+  # work that has since shipped (the CLI restructure, the droste image rebase).
+  # Verified: they cite the pre-split FLAT module layout -- `src/kanibako/paths.py`,
+  # `src/kanibako/config.py`, `src/kanibako/templates_image.py`,
+  # `src/kanibako/commands/status.py` -- which v1.8.0 replaced with the
+  # settings/ and runtime/ packages, plus `host-definitions/` which moved repos.
+  # These are the record of a plan, not a claim about today's tree.
+  # NOTE: the LIVE plan set lives in ~/canon/workbook/plans/, not here.
+  "docs/plans/",
+]
+
+# ---------------------------------------------------------------------------
+# THE COST `historical` USED TO PAY, AND WHY IT NO LONGER DOES. Kept because the
+# entries above were adopted while the cost was live, and a reader who finds the
+# old warning elsewhere should find its resolution here.
+#
+# Until kinemata's 2026-09-09 change, `historical` silenced URL claims as well
+# as path claims: the `url` kind was `current_only`, and every `current_only`
+# kind was skipped on a file matched by `historical`. Measured here: the two
+# entries above removed 17 of this repository's 36 external links from the check
+# -- including BOTH of its genuine 404s.
+#
+# ✅ FIXED UPSTREAM, verified at source 2026-09-14 against kinemata `a365474`:
+# `claims.py` now declares the `url` kind `current_only=False`, with the reason
+# this project argued -- a URL is a claim about the world, not about the tree,
+# so there is nothing for a record to have been right about at the time. A dead
+# link in a changelog is a dead link. The measurement above is quoted in
+# kinemata's own source as the case that forced it.
+#
+# ⇒ THE BLIND SPOT IS CLOSED and needs no countermeasure here. The two known
+# 404s -- `compare/v1.8.0...HEAD` and `compare/v1.7.2...v1.8.0` -- are back in
+# the check, and they 404 because `v1.8.0` is not tagged on origin (verified
+# 2026-09-14 by `git ls-remote --tags origin`: only `-rc1` and `-rc2` exist).
+# That is the honest Keep-a-Changelog shape and it resolves at the cut. Expect
+# them red until then; `external` is off in this config, so they are not fetched
+# unless it is turned on.
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# WHAT IS DELIBERATELY *NOT* HERE, and why. Each of these would cut the failure
+# count substantially and each was refused. ⚑ These refusals are binding, not
+# commentary: adding any of them needs a reason of kind, not a smaller number.
+#
+# 1. historical = ["MIGRATION.md"]  -- REFUSED. The largest single file by
+#    findings -- 188 measured 2026-09-09 against an older tree, 197 measured
+#    2026-09-14 at `75f7da94` -- and the temptation is obvious. But MIGRATION.md
+#    is the LIVE user-facing guide whose readiness gates the release cut, not a
+#    record. Marking it historical would have suppressed MIGRATION.md:4871, the
+#    one genuine defect the 2026-09-09 run found. Proof by construction that
+#    "reason of kind" is not a formality.
+#    ⚑ That LINE NUMBER is stale and is kept only as the record of why the
+#    refusal was made: the file has been edited since and nothing is reported at
+#    4871 today. The defect was not re-identified at its new line, and this
+#    refusal does not rest on it -- the reason is of kind.
+#
+# 2. resolve_in = ["../../canon"] -- REFUSED, twice over.
+#    (a) It is a ROT SUPPRESSOR. ~/canon held
+#        notebook/archives/temp-20260819/p5-editor/pristine/, a full snapshot of
+#        an OLDER kanibako-cli tree. Measured: it silently resolved 5 repo-shaped
+#        claims (src/kanibako/config_interface.py, tests/test_config_interface.py,
+#        tests/test_templates_image.py, src/kanibako/templates_image.py,
+#        tests/test_commands/test_install.py) against stale copies. That is
+#        exactly the defect class kinemata was adopted to catch.
+#        ⚑ PAST TENSE, verified 2026-09-14: that snapshot directory no longer
+#        exists anywhere under ~/canon. The refusal is NOT relaxed on that
+#        account -- a suppressor whose current occupant happens to have been
+#        deleted is still a suppressor, and the next archived tree lands under
+#        the same knob. Reason (b) is independently sufficient.
+#    (b) It FAILS OPEN. claims.py guards with `if elsewhere.is_dir()`, so on any
+#        machine without ~/canon -- i.e. CI -- it silently does nothing and 255
+#        findings return. A config that means something different in CI than it
+#        does locally is not a config.
+#
+# 3. exclude = ["llm-docs/", "api-docs/"] -- REFUSED as tuning-to-green. Their
+#    findings are real (see the api-docs generator defect in the report).
+#    ⚑ MEASURED 2026-09-14 at `75f7da94`, so the size of the refusal is on the
+#    record rather than implied: of 772 failing claims, 336 are in `llm-docs/`
+#    and 217 in `api-docs/`. That is 553 -- 72% -- and by a wide margin the
+#    largest cut available anywhere in this file. It is refused anyway.
+#    🛑 `kinemata.toml` DOES exclude both, and that is not a contradiction: it
+#    excludes them from a DUPLICATION scan, where generated signature mirrors
+#    and explanatory prose respell every declared value by construction. A
+#    documentation gate is asking whether those same documents tell the truth,
+#    which is the one question they must answer. This is the difference the two
+#    files exist to hold, and merging them would resolve it the wrong way.
+#
+# 4. [[promise]] for docs/architecture.md:71 -- NOT ADDED. The path
+#    `src/kanibako/deprecation.py` is conditional on an EVENT ("when the first
+#    real deprecation is declared"), not a date. `until` is required and there is
+#    no honest date to write. Inventing one would be a fabricated deferral.
+#    Left red, and reported as a gap in what the tool can express.
+#    ⚑ Re-verified 2026-09-14: the section still reads that way, the machinery
+#    still sits in `salvage/`, and `src/kanibako/deprecation.py` is still absent.
+#
+# 5. Nothing addresses the ~474 RUNTIME/HOST-STORE path claims (box_data/,
+#    workset.yaml, box.yaml, agent.yaml, registry.yaml, kanibako.cfg, vault/ ...).
+#    There is no principled knob for them: they name paths in the tree kanibako
+#    CREATES for a user, not in this repo, and they are spread across live docs.
+#    They are not history and they are not excludable by file. This is the
+#    "check cannot be made to mean something here" outcome R159 allows.
+#    The tool's own designed answer is `kinemata baseline --record --until <date>`,
+#    which dates them rather than pretending they are false. That is a decision
+#    for the director, not for this config.
+#
+# 6. external = true -- NOT SET, and this is a scope decision rather than a
+#    judgment. Turning it on reaches the network on every run, which an
+#    air-gapped CI would fail with nothing wrong. The two links it would flag
+#    today are the known untagged-version pair named above.
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# THE GATE INVENTORY. It lives in THIS config and not beside the registries in
+# `kinemata.toml` for a mechanical reason: `[[gate]]` is verified by the `claims`
+# command, so it must sit in the config `claims` is run with. Declared in the
+# other file it would read better and would never be checked.
+#
+# 🛑 IT IS LAST IN THE FILE ON PURPOSE, AND THAT IS NOT COSMETIC. These are TOML
+# TABLES: every key after a `[[gate]]` header belongs to that gate, not to
+# `[claims]`. Placed between `suffixes` and `historical` -- which is where they
+# first went -- they silently adopted the `historical` list, the suppression
+# stopped applying, and the claim count moved 1652 -> 1991 with nothing in the
+# output saying a table had changed owner. Keep new `[claims]` keys ABOVE this
+# line.
+#
+# What this buys, stated honestly because the tool's own docs are blunt about it:
+# deleting a step from CI now FAILS `claims` instead of passing quietly. An agent
+# can still delete the step and this declaration in one commit. That turns silent
+# removal into STATED removal -- a reminder, not a catch. What would make it a
+# catch is branch protection with the job as a required status check, which lives
+# outside this repo and is not ours to set.
+#
+# `where` is pinned rather than left to the default (any file under
+# `.github/workflows`), because these two commands live in the Tests workflow
+# beside the suite, not in a workflow of their own.
+[[gate]]
+command = "kinemata check"
+where = [".github/workflows/test.yml"]
+note = "code that re-derives a declared fact"
+
+[[gate]]
+command = "kinemata -c kinemata-docs.toml claims"
+where = [".github/workflows/test.yml"]
+note = "documentation claims, and this inventory"
