@@ -92,6 +92,13 @@ class StandardPaths:
     # Lifecycle journal — write-ahead log of in-flight box-lifecycle ops (``config.journal``).
     journal: Path
     cache: Path
+    # ⚑ ``system.state`` — the declared KEY's resolved value, NOT ``state_path`` above.
+    # ``state_path`` tracks the ``config.data`` LEAF under ``$XDG_STATE_HOME``; the key
+    # defaults to ``$XDG_STATE_HOME/kanibako``, which is the same place ONLY where that
+    # leaf is the default -- for a repointed store the two differ, and the key is
+    # repointable on its own.  The ``cache`` / ``cache_path`` pair is the same
+    # arrangement, for the same reason.
+    state: Path
     runtime: Path
     # Channels skeleton — keys/defaults only; sub-key wiring is Phase 6.
     channels_common: Path
@@ -703,7 +710,8 @@ def load_std_paths(config: BootstrapConfig | None = None) -> StandardPaths:
                      canon=resolved["system.canon"], settings=resolved["config.settings"],
                      primary_workset=resolved["config.primary_workset"],
                      registry=resolved["config.registry"], journal=resolved["config.journal"],
-                     cache=resolved["system.cache"], runtime=resolved["system.runtime"],
+                     cache=resolved["system.cache"], state=resolved["system.state"],
+                     runtime=resolved["system.runtime"],
                      channels_common=resolved["system.channels.common"],
                      channels_chat=resolved["system.channels.chat"],
                      channels_broadcast=resolved["system.channels.broadcast"],

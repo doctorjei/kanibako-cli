@@ -176,6 +176,7 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     "system.template",
     "system.canon",
     "system.cache",
+    "system.state",
     "system.runtime",
     # ⚑ THE ``system.channels.*`` FAMILY, WHOLE — the five declared leaves (spec §2g),
     # STRING paths, one nested slot; the SYSTEM twins of ``workset.channels.*`` above.
@@ -226,13 +227,15 @@ _KEY_ROUTES: dict[str, tuple[tuple[str, ...], str]] = {
     # ``workset.*`` layout anchors below, wired identically: one nested slot in the
     # system SETTINGS file, STRING paths, no type coercion, the same set-time E3
     # resolution probe (``_has_dedicated_route``). ⚑ They are SETTINGS keys, not §1
-    # config keys — the manifest marks all eleven ``set: cli+file``, and §2a names
-    # ``system.template`` in the CLI-settable list beside ``workset.vault_{ro,rw}``.
+    # config keys — the manifest marks every :data:`SYSTEM_PATH_DEFAULTS` row
+    # ``set: cli+file``, and §2a names ``system.template`` in the CLI-settable list
+    # beside ``workset.vault_{ro,rw}``.
     "system.backup": (("system",), "backup"),
     "system.channelroot": (("system",), "channelroot"),
     "system.template": (("system",), "template"),
     "system.canon": (("system",), "canon"),
     "system.cache": (("system",), "cache"),
+    "system.state": (("system",), "state"),
     "system.runtime": (("system",), "runtime"),
     # The five declared channel type-roots (spec §2g); ``broadcast`` is a FILE.
     "system.channels.common": (("system", "channels"), "common"),

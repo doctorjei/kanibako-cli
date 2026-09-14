@@ -989,11 +989,11 @@ kanibako system reset --all             # reset all global settings
 ```
 
 `system.*` LAYOUT-PATH keys — `system.template`, `system.channelroot`,
-`system.backup`, `system.cache`, `system.runtime`, `system.canon` and the
-`system.channels.*` type-roots — are ordinary system-scope settings, not config
-keys: `kanibako system set system.template=<path>` writes one to the system
-settings file, and `get` and `reset` read and clear it there. They do not belong
-in `~/.config/kanibako.cfg`.
+`system.backup`, `system.cache`, `system.state`, `system.runtime`,
+`system.canon` and the `system.channels.*` type-roots — are ordinary
+system-scope settings, not config keys: `kanibako system set
+system.template=<path>` writes one to the system settings file, and `get` and
+`reset` read and clear it there. They do not belong in `~/.config/kanibako.cfg`.
 
 ### Files
 

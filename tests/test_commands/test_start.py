@@ -3575,6 +3575,7 @@ class TestApplyInitSeeds:
             journal=tmp_path / "journal.yaml",
             backup=tmp_path / "backup",
             cache=tmp_path / "cache",
+            state=tmp_path / "state",
             runtime=tmp_path / "runtime",
             # B2: the channel partition roots box_channel_addresses reads (the
             # meta.box.{inbox,share_global} identity anchors).

@@ -134,8 +134,8 @@ class TestSourcePartition:
             f"registry defaults with no source: {sorted(declared - covered)}; "
             f"sources for rows the registry no longer defaults: {sorted(covered - declared)}"
         )
-        assert len(declared) == 66, (
-            f"the manifest gives {len(declared)} rows a default, not the 66 measured"
+        assert len(declared) == 67, (
+            f"the manifest gives {len(declared)} rows a default, not the 67 measured"
         )
 
     def test_the_partition_agrees_with_the_conformance_classification(self):
@@ -165,7 +165,7 @@ class TestSourcePartition:
         """
         sizes = {label: len(keys) for label, keys in source_groups()}
         assert sizes["bootstrap.py (config tier)"] == 6
-        assert sizes["bootstrap.py (system tier)"] == 11
+        assert sizes["bootstrap.py (system tier)"] == 12
         # ⚑ WIDENED 6 → 9 (2026-08-29). The floor gained ``workset.skip_kuid_check``
         # (every mode) plus ``workset.registry`` / ``workset.kuid`` (primary/named), three
         # declared rows that no floor emitted, so each dangled as ``__MISSING__`` at

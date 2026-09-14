@@ -123,6 +123,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with the file that declares it, and `kanibako box show --effective` shows it among a box's agent
   settings.
 
+- **The host state root has a declared key: `system.state`, defaulting to
+  `$XDG_STATE_HOME/kanibako`.** It joins `system.cache` and `system.runtime` as a Layer-2
+  `system.*` path key: `kanibako system set system.state=<path>` writes it to the `system:` table
+  of `<data>/global/settings.yaml`, `get` and `reset` read and clear it there, `@system.state`
+  resolves in any settings value, and `kanibako system defaults` lists it with the file that
+  declares it. Every verb refused the name before, because the key was not declared — a closed
+  keyspace has no silent accept. Nothing is required of you and no file moves: declaring a key
+  adds a door, it does not relocate anything.
+
 ### Changed
 
 - **BREAKING (canon layout): the packaged core tome is `charter`, not `bible`, and the handbook

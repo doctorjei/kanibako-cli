@@ -73,6 +73,7 @@ SYSTEM_PATH_DEFAULTS: dict[str, str] = {
    "system.template":               "@config.data/global/template",
    "system.canon":                  "@config.data/global/canon",
    "system.cache":                  "$XDG_CACHE_HOME/kanibako",
+   "system.state":                  "$XDG_STATE_HOME/kanibako",
    "system.runtime":                "$XDG_RUNTIME_DIR/kanibako",
    # Channels skeleton.  ⚑ ORDER-DEPENDENT: broadcast refs chat, the rest ref channelroot.
    "system.channels.common":        "@system.channelroot/common",
