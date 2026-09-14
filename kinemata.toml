@@ -23,7 +23,9 @@
 # THE MEASUREMENT THAT RETIRED IT: a registry scan never reads a `.md` file. The
 # suffix set is per registry and defaults to `.py` alone (`kinemata/config.py`,
 # `suffixes: tuple[str, ...] = (".py",)`, verified at source 2026-09-14 against
-# kinemata `a365474`), and no registry below declares `suffixes`. Counted the
+# kinemata `a365474` and RE-VERIFIED the same day at `00044f2`, nine commits
+# later, where the line is `config.py:137`), and no registry below declares
+# `suffixes`. Counted the
 # same day: `api-docs/` holds 136 `.md` and 0 `.py`, `llm-docs/` holds 55 `.md`
 # and 0 `.py` -- 191 documents, no code. Those two excludes therefore suppressed
 # NOTHING on the registry side. They were inert, and the difference the split
@@ -341,8 +343,9 @@ machinery = [
 #
 # ⚑ IT EARNS ITS PLACE THROUGH `parity` ALONE, and a reader must not take a
 # green `check` as covering it. A `yaml-mapping` registry contributes NOTHING to
-# the duplication gate: verified at source against kinemata `a365474`,
-# `adapters/mapping.py` yields entries with no `antipatterns`, so `check` has
+# the duplication gate: verified at source against kinemata `a365474` and
+# RE-VERIFIED at `00044f2` (`adapters/mapping.py` is byte-unchanged across those
+# nine commits), `adapters/mapping.py` yields entries with no `antipatterns`, so `check` has
 # nothing to match -- the same published limit already recorded against
 # `keyspace` above. Every row here is a row `check` never looks at.
 #
@@ -675,7 +678,9 @@ kind = "code-patterns"
 #
 # ⚑ EXPECTED RED, AND THE RED IS THE FINDING RATHER THAN A FAULT IN THIS TABLE.
 # Measured 2026-09-14 at `71c327e3`, kinemata `a365474`: 0 undeclared, 2
-# unproduced -- `scopes` and `scopes_spec`. Those two are METADATA sitting
+# unproduced -- `scopes` and `scopes_spec`. RE-MEASURED the same day at
+# `366afce0`, kinemata `00044f2`: unchanged -- 11 declared, 9 produced, in
+# agreement, the same 2 accepted by date. Those two are METADATA sitting
 # inside the table of categories rather than categories themselves, so the
 # manifest declares eleven keys under `categories:` where the code declares nine
 # families. Whether that shape is right is a manifest-and-spec question and is
