@@ -2,7 +2,7 @@
   "version": 1,
   "until": "2026-09-22",
   "by": "Jei Blanchard",
-  "note": "First baseline of the kinemata adoption, recorded at kanibako-cli 75f7da94 with kinemata a365474. What is accepted is the residue the tool finds on the day the config first landed, not a judgment that any of it is correct. The date is a tripwire set just past where the 1.8.0 cut is expected: a deferral should lapse at a moment that already has attention, rather than firing into a random week.",
+  "note": "Re-recorded at kanibako-cli 71c327e3 with kinemata a365474, alongside the registry baseline, when the first [[parity]] check landed. Nothing here is a parity finding: 'parity' is declared in kinemata.toml and its records are in .kinemata-baseline.json, where the note explains the two 'unproduced' identifiers it accepts. This file is re-recorded so the two carry one date and one acceptance rather than drifting apart. What is accepted here is unchanged in kind -- the documentation residue this gate finds, the bulk of it runtime and host-store paths that name the tree kanibako creates for a user rather than anything in this repository, which is the outcome R159 allows when a check cannot be made to mean something. It is a DATE and not a judgment that the documents are right: the tripwire is set just past where the 1.8.0 cut is expected, so the question comes back at a moment that already has attention.",
   "findings": [
     {
       "registry": "claims",

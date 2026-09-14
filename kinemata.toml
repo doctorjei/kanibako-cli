@@ -141,6 +141,38 @@ machinery = [
 ]
 
 # ---------------------------------------------------------------------------
+# FACT: the NINE delivery families -- the whole of what may be bound, copied,
+# shared or synced into a box, which is the single-route invariant written down.
+# AUTHORITY: the manifest's `categories:` section is the SPEC side of that list;
+# `settings/settings_categories.py` is the CODE side, where `_DELIVERY` is, in
+# that module's own words about it, "the ONE table naming every family, because
+# every family is delivered".
+# CATCHES: a family declared on one side and not the other. See `[[parity]]` at
+# the END of this file -- that table, and nothing else here, is what reads this
+# registry.
+#
+# ⚑ IT EARNS ITS PLACE THROUGH `parity` ALONE, and a reader must not take a
+# green `check` as covering it. A `yaml-mapping` registry contributes NOTHING to
+# the duplication gate: verified at source against kinemata `a365474`,
+# `adapters/mapping.py` yields entries with no `antipatterns`, so `check` has
+# nothing to match -- the same published limit already recorded against
+# `keyspace` above. Every row here is a row `check` never looks at.
+#
+# ⚑ `clause_field = "spec"` IS MEASURED, not copied from `keyspace` above. The
+# records under `categories:` are heterogeneous -- `scopes` is a list and
+# `scopes_spec` is a string, so neither has a field to read -- and the question
+# was whether the loader errors on them. It does not: `_clauses_of` returns an
+# empty tuple for any record that is not a mapping. Measured 2026-09-14 at
+# `71c327e3` through the loader itself: all nine families read their `spec`
+# value, the two above read `()`. The linkage is kept for the nine that have one.
+[[registry]]
+name = "categories"
+kind = "yaml-mapping"
+source = "src/kanibako/data/keyspace-manifest.yaml"
+section = "categories"
+clause_field = "spec"
+
+# ---------------------------------------------------------------------------
 # FACT: the channel system's wire vocabulary -- the two synthesized workset
 # tokens, the default chat leaf, and where helper scripts live inside a box.
 # AUTHORITY: `channels.py` is the module every other package imports these from;
@@ -422,4 +454,55 @@ kind = "code-patterns"
 #     `src/kanibako/data/core-defaults.yaml` -- which is the DATA file, not
 #     `settings/core_defaults.py`, the module `canon-layout` declares. Different
 #     files with adjacent names; checked rather than assumed.
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# THE PARITY ORACLES. Each one runs a command that prints what the CODE really
+# produces and compares that set against what a registry above DECLARES.
+#
+# 🛑 THEY ARE LAST IN THE FILE ON PURPOSE, AND THAT IS NOT COSMETIC. These are
+# TOML TABLES: every key after a `[[parity]]` header belongs to that parity, not
+# to the registry above it. `kinemata-docs.toml` paid for this lesson already --
+# a `[[gate]]` table placed in the middle of that file silently adopted the
+# `historical` list and moved the claim count 1652 -> 1991 with nothing in the
+# output saying a table had changed owner. Keep new `[[registry]]` tables ABOVE
+# this line.
+#
+# ⚑ AN ORACLE READS THE CODE, NEVER THE FILE IT IS BEING CHECKED AGAINST. One
+# that parsed `keyspace-manifest.yaml` would compare that file with itself and
+# pass for a tree in any state -- and a vacuous run is indistinguishable from a
+# clean one, which is the failure mode this whole adoption exists to avoid.
+#
+# ⚑ `{python}` IS SUBSTITUTED WITH THE INTERPRETER KINEMATA IS RUNNING UNDER
+# (`claims.run_oracle`), so the oracle cannot silently read a different
+# environment's kanibako. It follows that kanibako must be IMPORTABLE beside
+# kinemata: the `conformance` job installs the project for exactly this reason,
+# and an oracle that cannot run is a FAILURE no baseline can accept.
+#
+# ⚑ `extract` NEEDS ITS OWN `(?m)`. The pattern is applied with `finditer` to
+# stdout and stderr JOINED, not line by line, so a bare `^` anchors at the start
+# of the whole output and matches once. Group 1 of each match is one identifier.
+
+# FACT under test: the manifest's `categories:` section and `_DELIVERY` name the
+# same delivery families. The prefix on each printed line is there so that
+# nothing incidental on either stream -- a warning, a traceback -- can be read
+# as a family name.
+#
+# ⚑ EXPECTED RED, AND THE RED IS THE FINDING RATHER THAN A FAULT IN THIS TABLE.
+# Measured 2026-09-14 at `71c327e3`, kinemata `a365474`: 0 undeclared, 2
+# unproduced -- `scopes` and `scopes_spec`. Those two are METADATA sitting
+# inside the table of categories rather than categories themselves, so the
+# manifest declares eleven keys under `categories:` where the code declares nine
+# families. Whether that shape is right is a manifest-and-spec question and is
+# NOT settled here: filtering the two out of the registry above would make the
+# check agree with itself and report nothing, which is the same as not having
+# it. They are accepted BY DATE in `.kinemata-baseline.json`.
+[[parity]]
+registry = "categories"
+command = ["{python}", "-c", """
+from kanibako.settings.settings_categories import _DELIVERY
+for name in _DELIVERY:
+    print("kanibako-category:", name)
+"""]
+extract = '(?m)^kanibako-category: (\S+)$'
 # ---------------------------------------------------------------------------
