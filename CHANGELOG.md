@@ -10,6 +10,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **The canon templates' `__IMPORTSECTION__` and `__LINKSECTION__` calls are now resolved instead of
+  being copied into the assembled file verbatim.** The shipped canon documents have called these since
+  the tome layout landed, but the importer only ever understood two forms — a bare `@path` and
+  `[text](@path)` — so neither call matched anything and both were emitted as literal text. Nothing
+  reported an error, because from the importer's point of view a line it does not recognise is just a
+  line: the assembled canon came out a few lines long, and an agent starting in a box got almost none
+  of its instructions and no indication that anything was missing. The two calls, and the
+  `__IMPORT__` / `__LINK__` forms they wrap, now import or link their target, give each one a section
+  number under the document that imported it, and rewrite its heading to match — so a chapter added to
+  a tome appears in the assembled canon with a number, and one whose file is missing is recorded as
+  absent in the build receipt rather than passed over in silence.
+
 ### Added
 
 - **A persona endpoint that is not a well-formed URL is refused at the store boundary, naming the
