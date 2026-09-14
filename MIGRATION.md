@@ -826,17 +826,18 @@ for a `system:` table containing `bindings:`, `caches:`, `seeded:`, `common:`, `
 `kanibako system get <key>` — it now answers. Only the `config.*` bootstrap keys belong in the
 config file and must **stay** there.
 
-The eleven `system.*` **path** keys — `system.template`, `system.canon`, `system.backup`,
-`system.cache`, `system.runtime`, `system.channelroot` and the five `system.channels.*`
-type-roots — are settings keys, and `kanibako system set` accepts them (it used to refuse them as
-"structural config keys" and send you to the config file). A set lands in the `system:` table of
-`<data>/global/settings.yaml`, and `get`/`reset` read and clear it there. **If you hand-placed any
-of these in `~/.config/kanibako.cfg`, move them out** — a `system:` table there does not
-apply, and reading that file now refuses by name (§2.67). To see what is actually in effect, use
-`kanibako system show --effective`.
+The twelve `system.*` **path** keys — `system.template`, `system.canon`, `system.backup`,
+`system.cache`, `system.state`, `system.runtime`, `system.channelroot` and the five
+`system.channels.*` type-roots — are settings keys, and `kanibako system set` accepts them (all but
+one used to be refused as "structural config keys" and sent to the config file; `system.state` is
+new in this release and was refused by name before it, never redirected). A set lands in the
+`system:` table of `<data>/global/settings.yaml`, and `get`/`reset` read and clear it there. **If
+you hand-placed any of these in `~/.config/kanibako.cfg`, move them out** — a `system:` table there
+does not apply, and reading that file now refuses by name (§2.67). To see what is actually in
+effect, use `kanibako system show --effective`.
 
 **These repoints now move the directories they name, not just the cascade.** If you set one of
-these eleven keys on an earlier 1.8.0 build, check it. The value was stored and the launch honoured
+these keys on an earlier 1.8.0 build, check it. The value was stored and the launch honoured
 it — binds, seeds and `show --effective` all moved — but kanibako's own path resolver read the
 config file only, so anything asking directly for "the template root" or "the channel root" still
 got the default. A `system.template` repoint did not move the seed source; a `system.channelroot`
@@ -3879,7 +3880,7 @@ exit code is the only signal that changed; a value that was already valid behave
 
 **What changed.** A bare relative path had two different meanings depending on which key carried
 it. The nine workset directory keys and the six `workset.channels.*` leaves anchored it under the
-**workset root**. Every other path key — the six `config.*`, the eleven `system.*`, `box.canon`,
+**workset root**. Every other path key — the six `config.*`, the `system.*` path keys, `box.canon`,
 `box.images_store`, the four `agent.<node>.{canon,template}` and `workset.auth.path` — passed it
 through raw, so it resolved against **whatever directory you happened to be standing in when you
 ran the command**. One key, one answer is the rule; this was one keyspace, two answers, and neither

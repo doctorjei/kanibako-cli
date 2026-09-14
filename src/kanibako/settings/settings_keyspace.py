@@ -155,7 +155,7 @@ DECLARED_CONFIG_LEAVES: Final[frozenset[str]] = frozenset({
 #: ``system.default_agent`` is RETIRED and REFUSED by name at assembly
 #: (``settings_assemble.RETIRED_FILE_KEYS``).
 DECLARED_SYSTEM_LEAVES: Final[frozenset[str]] = frozenset({
-    "channelroot", "template", "canon", "backup", "cache", "runtime",
+    "channelroot", "template", "canon", "backup", "cache", "state", "runtime",
     "agent", "setup_completed",
 })
 

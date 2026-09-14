@@ -187,8 +187,8 @@ class TestManifestLoader:
         for section in ("registry", "policy", "categories", "keys",
                         "bind_default_entries", "not_keys"):
             assert section in doc, f"manifest section {section!r} is missing"
-        assert len(doc["keys"]) == 100, (
-            f"the manifest declares {len(doc['keys'])} key rows, not the 100 this "
+        assert len(doc["keys"]) == 101, (
+            f"the manifest declares {len(doc['keys'])} key rows, not the 101 this "
             f"file's counts were measured against — re-measure, do not adjust blindly"
         )
 
@@ -316,12 +316,12 @@ PINNED_DEFAULT_KEYS: frozenset[str] = frozenset(
 
 
 class TestPathDefaults:
-    """(i-a) The 17 path defaults ARE ``bootstrap``' two tables, verbatim."""
+    """(i-a) The 18 path defaults ARE ``bootstrap``' two tables, verbatim."""
 
     def test_the_corpus_is_the_two_declared_tables(self):
         assert len(CONFIG_PATH_DEFAULTS) == 6
-        assert len(SYSTEM_PATH_DEFAULTS) == 11
-        assert len(_PATH_ORACLE) == 17, "the two tables must not overlap"
+        assert len(SYSTEM_PATH_DEFAULTS) == 12
+        assert len(_PATH_ORACLE) == 18, "the two tables must not overlap"
 
     @pytest.mark.parametrize("key", sorted(_PATH_ORACLE))
     def test_the_manifest_default_is_the_code_literal(self, key):
@@ -1174,13 +1174,13 @@ class TestDefaultsCoverage:
             f"this file classifies rows the manifest no longer declares a default for: "
             f"{sorted(stale)}"
         )
-        assert len(declared) == 66, (
-            f"the manifest gives {len(declared)} rows a default, not the 66 measured — "
+        assert len(declared) == 67, (
+            f"the manifest gives {len(declared)} rows a default, not the 67 measured — "
             f"re-classify, do not adjust the count"
         )
 
     def test_the_split_is_the_measured_split(self):
-        """52 pinned rows, 14 exempted — stated so a silent migration between them reds.
+        """53 pinned rows, 14 exempted — stated so a silent migration between them reds.
 
         ⚑ Was 41/24 until the seven-row channel family moved from E1 to a real oracle
         (2026-08-25), then 48/17 until ``workset.registry`` followed it out of E1
@@ -1195,8 +1195,11 @@ class TestDefaultsCoverage:
         It arrived PINNED, not exempt — the spec declares a literal value and
         ``core-defaults.yaml``'s ``agent_default:`` carries it, so there is an artefact to
         compare against and no reason to decline one.
+        ⚑ 52/14 → 53/14 (2026-09-14): ``system.state`` was declared in the code, closing a
+        spec-conformance gap (the keyspec §2g has carried the row since R-43). It arrives
+        PINNED with no edit here — ``_PATH_ORACLE`` IS ``SYSTEM_PATH_DEFAULTS``.
         """
-        assert len(PINNED_DEFAULT_KEYS) == 52
+        assert len(PINNED_DEFAULT_KEYS) == 53
         assert len(EXEMPT_DEFAULT_KEYS) == 14
         assert not (PINNED_DEFAULT_KEYS & EXEMPT_DEFAULT_KEYS)
 

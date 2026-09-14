@@ -984,6 +984,12 @@ keys:
     set: cli+file
     default: "$XDG_CACHE_HOME/kanibako"
     spec: "§2g"
+  system.state:
+    scope: system
+    type: path
+    set: cli+file
+    default: "$XDG_STATE_HOME/kanibako"
+    spec: "§2g"
   system.runtime:
     scope: system
     type: path
