@@ -1,23 +1,49 @@
-# kinemata REGISTRY config for kanibako-cli. Drives `check` (duplication),
-# `undeclared`, `unused`, `ids`, `review` and `clusters`.
+# kinemata config for kanibako-cli -- THE config. It drives every command this
+# project runs: `check` (duplication), `parity`, `claims` (the DOCUMENTATION
+# gate), `unused`, `ids`, and the `undeclared`, `review` and `clusters` commands
+# that are not yet in CI.
 #
-# ⚑⚑ THERE IS A SECOND CONFIG IN THIS REPOSITORY: `kinemata-docs.toml`, which
-# drives `claims` (the DOCUMENTATION gate). Run it with
-# `kinemata -c kinemata-docs.toml claims`; it is not auto-discovered.
+# ⚑ THERE IS EXACTLY ONE CONFIG IN THIS REPOSITORY, and one baseline
+# (`.kinemata-baseline.json`, the default name). Every command is run plainly --
+# `kinemata check`, `kinemata claims` -- with no `-c` and no custom baseline.
 #
-# THE TWO ARE SEPARATE ON PURPOSE AND NEITHER IS A SUPERSET OF THE OTHER.
-# `exclude` in this tool is GLOBAL to a config -- it applies to every scan the
-# config drives -- and this file excludes `api-docs/` and `llm-docs/`, which the
-# documentation gate must NOT exclude. Merging the two files would silently
-# weaken the documentation gate by the width of that difference. The two answer
-# different questions and are kept apart deliberately.
+# ---------------------------------------------------------------------------
+# THERE WERE TWO FILES UNTIL 2026-09-14, AND THE REASON THEY SPLIT WAS WRONG.
+# Recorded rather than dropped, because the reasoning was stated at length in
+# both files and a reader who finds it quoted elsewhere must find its correction
+# here.
+#
+# THE SPLIT: `kinemata.toml` held the registries and drove `check`;
+# `kinemata-docs.toml` held `[claims]` and was run by name. THE ARGUMENT FOR IT:
+# `exclude` is GLOBAL to a config -- it applies to every scan that config drives
+# -- and the registry side excluded `api-docs/` and `llm-docs/`, which the
+# documentation gate must NOT exclude. Merging, the argument ran, would silently
+# weaken the documentation gate by the width of that difference.
+#
+# THE MEASUREMENT THAT RETIRED IT: a registry scan never reads a `.md` file. The
+# suffix set is per registry and defaults to `.py` alone (`kinemata/config.py`,
+# `suffixes: tuple[str, ...] = (".py",)`, verified at source 2026-09-14 against
+# kinemata `a365474`), and no registry below declares `suffixes`. Counted the
+# same day: `api-docs/` holds 136 `.md` and 0 `.py`, `llm-docs/` holds 55 `.md`
+# and 0 `.py` -- 191 documents, no code. Those two excludes therefore suppressed
+# NOTHING on the registry side. They were inert, and the difference the split
+# existed to hold did not exist.
+#
+# ⚑ CONFIRMED BY RUNNING IT, not by reading the code alone. Measured 2026-09-14
+# at `75f7da94` with the four-entry exclude replaced by `["tests/"]`: `kinemata
+# check`, `kinemata unused` and `kinemata ids` each produced output BYTE-
+# IDENTICAL to the same command under the old exclude, all rc=0. It follows that
+# every `check`, `unused` and `ids` figure quoted in this file survived the
+# narrowing unchanged -- they are not stale by reason of this merge.
 #
 # Merged 2026-09-14 from three drafts, none of which was in this repository
 # before: the kinemata box's `kinemata-config-for-kanibako-cli-2026-09-12-r2.toml`
-# (the `keyspace`, `constants` and `canonical` registries, plus `exclude`), and
-# this project's own `kinemata-registries.toml` (five `python-constants`
-# registries). Where the two declared overlapping modules they are merged into
-# one registry rather than declared twice -- see `store-layout` below.
+# (the `keyspace`, `constants` and `canonical` registries, plus `exclude`), this
+# project's own `kinemata-registries.toml` (five `python-constants` registries),
+# and `~/canon/notebook/resources/kinemata-adoption/kinemata-proposed.toml`
+# (`[claims]`, first-run triage 2026-09-09). Where two drafts declared
+# overlapping modules they are merged into one registry rather than declared
+# twice -- see `store-layout` below.
 #
 # Governing rule: [R159]. "The adoption is judged by what it CATCHES, not by how
 # clean it comes up." Every entry below carries a reason of kind. Nothing here
@@ -26,6 +52,9 @@
 # ⚑ Every figure quoted in a comment below states the commit it was measured
 # against. They are NOT re-measured at each commit, and several predate the tree
 # you are reading. Run the command before quoting the number.
+#
+# This config is DELIBERATELY still red on the documentation side. See "WHAT IS
+# DELIBERATELY *NOT* HERE" below.
 
 [project]
 # RELATIVE, deliberately: two of the source drafts carried an absolute path to
@@ -33,46 +62,205 @@
 # clone. `root = "."` is resolved against the config's own directory.
 root = "."
 
-# `tests/` and `salvage/` are excluded on this project's own authority rather
-# than on a guess: salvage/README.md says the directory is dormant source,
-# deliberately carrying "frozen local copies of logic since deleted from the
-# live path", and this project already excludes it from ruff, mypy and pytest.
-# A duplication checker pointed at a holding pen for deliberate duplicates
-# reports the pen.
-#
-# Tests are excluded for the reason `tests/support/filenames.py` states about
+# `tests/` is excluded for the reason `tests/support/filenames.py` states about
 # itself: its literals ARE the pin. A test that respells a constant on purpose
-# is the check, not a bypass of it.
+# is the check, not a bypass of it. ⚑ IT IS LOAD-BEARING, measured 2026-09-14 at
+# `75f7da94`: with this line removed `kinemata check` goes rc=1 and reports
+# WS_TOKEN_STANDALONE at 12 sites, CHAT_GENERAL_LEAF at 8 and more, all of them
+# in `tests/` and all of them the deliberate respellings above.
 #
-# `api-docs/` carries a "GENERATED -- do not hand-edit" banner and mirrors every
-# signature in the tree, so it respells every declared value by construction.
-# `llm-docs/` is hand-written prose and is excluded for a weaker reason worth
-# stating: prose naturally spells values while describing them, and this config
-# has not yet been measured against it. Consider dropping this line once the
-# code findings are down -- it is a scope decision, not a judgment about the
-# documents.
+# 🛑 IT IS ALSO A SUBSTRING, NOT A PATH PREFIX, AND IT REACHES TWO DOCUMENTS.
+# `claims.py` strips the trailing slash (`fragment.rstrip("/")`) and matches with
+# `any(fragment in rel ...)`, so this line excludes every relative path
+# CONTAINING "tests" -- which, besides `tests/` and the three
+# `packages/*/tests/` trees, catches `docs/plans/2026-03-07-smoke-tests-design.md`
+# and `-plan.md`. Measured 2026-09-14: the documentation gate checks 1650 claims
+# with this line and 1652 without it, and the 2 it loses are those two files'.
+# ⚑ ACCEPTED, and here is the whole of what it costs: both files are already
+# matched by `historical = ["docs/plans/"]` below, so their path claims were
+# suppressed either way; the one live claim lost is a single `https://github.com`
+# link, which `external = false` does not fetch anyway. There is no anchored
+# form to write instead -- the fragment is a substring by construction, and a
+# narrower one ("tests/support", say) stops excluding the test trees this line
+# exists for. If the two plan documents ever need to be scanned, the lever is a
+# narrower `historical` and an upstream request for anchored excludes, not a
+# weaker exclusion here.
+#
+# ⚑ `api-docs/` AND `llm-docs/` ARE NO LONGER EXCLUDED, and the inherited
+# reasoning for excluding them is recorded here because it is TRUE ABOUT THE
+# TEXT and IRRELEVANT TO THE SCAN. It ran: `api-docs/` carries a "GENERATED --
+# do not hand-edit" banner and mirrors every signature in the tree, so it
+# respells every declared value by construction; `llm-docs/` is hand-written
+# prose, and prose naturally spells values while describing them. Both
+# observations hold. Neither reaches a duplication scan, which reads `.py` and
+# those directories contain none -- see the merge note above for the counts. An
+# exclude that suppresses nothing is not a scope decision, it is a line.
+#
+# 🛑 `salvage/` IS DELIBERATELY NOT EXCLUDED, AND THIS IS THE ONE JUDGMENT HERE
+# THAT THE NEXT PERSON WILL WANT TO REVERSE. The upstream reason for excluding
+# it is a genuine reason of kind: salvage/README.md says the directory is
+# dormant source, deliberately carrying "frozen local copies of logic since
+# deleted from the live path", and this project already excludes it from ruff,
+# mypy and pytest. A duplication checker pointed at a holding pen for deliberate
+# duplicates reports the pen. That argument is sound -- it is simply not what
+# [R159] measures by, which is what a check CATCHES. Measured 2026-09-14 at
+# `75f7da94` under THIS file: excluding `salvage/` removes ZERO findings from
+# `check`, `unused` and `ids` (byte-identical output either way), and removes 17
+# claims from the documentation gate by way of salvage/README.md -- 1650 checked
+# with the directory in, 1633 with it out. So the exclusion buys nothing and
+# costs seventeen claims' worth of coverage.
+# ⇒ IF IT EVER LIGHTS UP, EXAMINE THE FINDING. Do not reflexively restore the
+# exclude line: a finding out of `salvage/` is either a real second spelling in
+# live code or a genuine dormant-copy report, and only reading it says which.
 #
 # ⚑ `kinemata-registries.toml` excluded NOTHING and said so as a position: a
 # test that respells a constant is a test that keeps passing after the constant
-# changes. That position is OVERRULED here by the four reasons above, which are
-# reasons of kind rather than of count. It is recorded rather than dropped,
-# because the next person to widen this line should know it was once empty.
+# changes. That position is OVERRULED for `tests/` by the reason of kind above.
+# It is recorded rather than dropped, because the next person to widen this line
+# should know it was once empty.
 #
 # ⚑ `build/` and `dist/` are absent on purpose: the scanner prunes both in
-# `SKIP_DIRS` before descending, so naming them here would be ceremony.
-exclude = ["tests/", "salvage/", "api-docs/", "llm-docs/"]
+# `SKIP_DIRS` before descending, so naming them here would be ceremony. The
+# claims config that merged into this one named them anyway, belt and braces;
+# the line is dropped rather than carried, because a config that lists what the
+# tool already does invites a reader to believe the list is the mechanism.
+exclude = ["tests/"]
 
-# 🛑 THE CLAIMS SCAN IS TURNED OFF HERE, DELIBERATELY, AND IT IS NOT A
-# SUPPRESSION. `claims` runs with defaults whenever a config does not say
-# otherwise, and `baseline --record` runs every check the config can run. Left
-# on, this file's FIRST baseline recorded 356 claim findings measured under the
-# four excludes above -- a second, WEAKER claims scan than `kinemata-docs.toml`
-# performs, accepted into a baseline that nothing ever consults, because `claims`
-# is never run with this config. Two baselines of one check, one of them
-# invisible, is the defect this split exists to avoid in the other direction.
-# ⇒ claims belongs to ONE config, and it is the other one.
+# ---------------------------------------------------------------------------
+# THE DOCUMENTATION GATE. `[claims]` and its keys sit HERE, above every
+# `[[registry]]` and `[[parity]]` and `[[gate]]` table, and that placement is
+# load-bearing -- see the ordering warning above the gates at the END of this
+# file.
 [claims]
-suffixes = []
+suffixes = [".md"]
+
+historical = [
+  # REASON OF KIND: a changelog is by definition a record of what was true at
+  # each release. Verified, not assumed: its repo-shaped claims are the pre-1.0
+  # flat layout (`paths_defaults.py`, renamed to messages.py by 10390ce4), the
+  # `worksets.toml` -> `working_sets.toml` rename entry, and the host
+  # provisioning kit (`host-definitions/`, `lint-vm.yml`,
+  # `docs/host-deployment.md`) that left for the kanibako-images repo at the
+  # 2026-06-12 split. Every one was correct when written.
+  "CHANGELOG.md",
+
+  # REASON OF KIND: eight dated implementation/design plans, 2026-03-06..08, for
+  # work that has since shipped (the CLI restructure, the droste image rebase).
+  # Verified: they cite the pre-split FLAT module layout -- `src/kanibako/paths.py`,
+  # `src/kanibako/config.py`, `src/kanibako/templates_image.py`,
+  # `src/kanibako/commands/status.py` -- which v1.8.0 replaced with the
+  # settings/ and runtime/ packages, plus `host-definitions/` which moved repos.
+  # These are the record of a plan, not a claim about today's tree.
+  # NOTE: the LIVE plan set lives in ~/canon/workbook/plans/, not here.
+  "docs/plans/",
+]
+
+# Before/after, measured 2026-09-09 against an older tree: 929 failing claims ->
+# 769. The 160 suppressed are ALL positively classified as historicity false
+# positives. Nothing is suppressed that could not be classified.
+# ⚑ NOT re-measured at each commit. Run the command before quoting the number.
+
+# ---------------------------------------------------------------------------
+# THE COST `historical` USED TO PAY, AND WHY IT NO LONGER DOES. Kept because the
+# entries above were adopted while the cost was live, and a reader who finds the
+# old warning elsewhere should find its resolution here.
+#
+# Until kinemata's 2026-09-09 change, `historical` silenced URL claims as well
+# as path claims: the `url` kind was `current_only`, and every `current_only`
+# kind was skipped on a file matched by `historical`. Measured here: the two
+# entries above removed 17 of this repository's 36 external links from the check
+# -- including BOTH of its genuine 404s.
+#
+# ✅ FIXED UPSTREAM, verified at source 2026-09-14 against kinemata `a365474`:
+# `claims.py` now declares the `url` kind `current_only=False`, with the reason
+# this project argued -- a URL is a claim about the world, not about the tree,
+# so there is nothing for a record to have been right about at the time. A dead
+# link in a changelog is a dead link. The measurement above is quoted in
+# kinemata's own source as the case that forced it.
+#
+# ⇒ THE BLIND SPOT IS CLOSED and needs no countermeasure here. The two known
+# 404s -- `compare/v1.8.0...HEAD` and `compare/v1.7.2...v1.8.0` -- are back in
+# the check, and they 404 because `v1.8.0` is not tagged on origin (verified
+# 2026-09-14 by `git ls-remote --tags origin`: only `-rc1` and `-rc2` exist).
+# That is the honest Keep-a-Changelog shape and it resolves at the cut. Expect
+# them red until then; `external` is off in this config, so they are not fetched
+# unless it is turned on.
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# WHAT IS DELIBERATELY *NOT* HERE, and why. Each of these would cut the failure
+# count substantially and each was refused. ⚑ These refusals are binding, not
+# commentary: adding any of them needs a reason of kind, not a smaller number.
+#
+# 1. historical = ["MIGRATION.md"]  -- REFUSED. The largest single file by
+#    findings -- 188 measured 2026-09-09 against an older tree, 197 measured
+#    2026-09-14 at `75f7da94` -- and the temptation is obvious. But MIGRATION.md
+#    is the LIVE user-facing guide whose readiness gates the release cut, not a
+#    record. Marking it historical would have suppressed MIGRATION.md:4871, the
+#    one genuine defect the 2026-09-09 run found. Proof by construction that
+#    "reason of kind" is not a formality.
+#    ⚑ That LINE NUMBER is stale and is kept only as the record of why the
+#    refusal was made: the file has been edited since and nothing is reported at
+#    4871 today. The defect was not re-identified at its new line, and this
+#    refusal does not rest on it -- the reason is of kind.
+#
+# 2. resolve_in = ["../../canon"] -- REFUSED, twice over.
+#    (a) It is a ROT SUPPRESSOR. ~/canon held
+#        notebook/archives/temp-20260819/p5-editor/pristine/, a full snapshot of
+#        an OLDER kanibako-cli tree. Measured: it silently resolved 5 repo-shaped
+#        claims (src/kanibako/config_interface.py, tests/test_config_interface.py,
+#        tests/test_templates_image.py, src/kanibako/templates_image.py,
+#        tests/test_commands/test_install.py) against stale copies. That is
+#        exactly the defect class kinemata was adopted to catch.
+#        ⚑ PAST TENSE, verified 2026-09-14: that snapshot directory no longer
+#        exists anywhere under ~/canon. The refusal is NOT relaxed on that
+#        account -- a suppressor whose current occupant happens to have been
+#        deleted is still a suppressor, and the next archived tree lands under
+#        the same knob. Reason (b) is independently sufficient.
+#    (b) It FAILS OPEN. claims.py guards with `if elsewhere.is_dir()`, so on any
+#        machine without ~/canon -- i.e. CI -- it silently does nothing and 255
+#        findings return. A config that means something different in CI than it
+#        does locally is not a config.
+#
+# 3. exclude = ["llm-docs/", "api-docs/"] -- REFUSED as tuning-to-green. Their
+#    findings are real (see the api-docs generator defect in the report).
+#    ⚑ MEASURED 2026-09-14 at `75f7da94`, so the size of the refusal is on the
+#    record rather than implied: of 772 failing claims, 336 are in `llm-docs/`
+#    and 217 in `api-docs/`. That is 553 -- 72% -- and by a wide margin the
+#    largest cut available anywhere in this file. It is refused anyway.
+#    🛑 THIS REFUSAL WAS ONCE ALSO THE REASON FOR A SECOND CONFIG, and it is not
+#    any more. The claims config argued that the registry side's exclusion of
+#    those two directories was legitimate for a DUPLICATION scan while being
+#    fatal for a documentation scan, so the two positions could not live in one
+#    `exclude`. The premise was false: the registry scan reads `.py` and those
+#    directories hold none, so the registry-side exclude was inert and there was
+#    never a second position to hold. One `exclude` now serves both scans and
+#    this refusal is the only position either of them takes on the two
+#    directories -- they are scanned, and they are red.
+#
+# 4. [[promise]] for docs/architecture.md:71 -- NOT ADDED. The path
+#    `src/kanibako/deprecation.py` is conditional on an EVENT ("when the first
+#    real deprecation is declared"), not a date. `until` is required and there is
+#    no honest date to write. Inventing one would be a fabricated deferral.
+#    Left red, and reported as a gap in what the tool can express.
+#    ⚑ Re-verified 2026-09-14: the section still reads that way, the machinery
+#    still sits in `salvage/`, and `src/kanibako/deprecation.py` is still absent.
+#
+# 5. Nothing addresses the ~474 RUNTIME/HOST-STORE path claims (box_data/,
+#    workset.yaml, box.yaml, agent.yaml, registry.yaml, kanibako.cfg, vault/ ...).
+#    There is no principled knob for them: they name paths in the tree kanibako
+#    CREATES for a user, not in this repo, and they are spread across live docs.
+#    They are not history and they are not excludable by file. This is the
+#    "check cannot be made to mean something here" outcome R159 allows.
+#    The tool's own designed answer is `kinemata baseline --record --until <date>`,
+#    which dates them rather than pretending they are false. That is a decision
+#    for the director, not for this config.
+#
+# 6. external = true -- NOT SET, and this is a scope decision rather than a
+#    judgment. Turning it on reaches the network on every run, which an
+#    air-gapped CI would fail with nothing wrong. The two links it would flag
+#    today are the known untagged-version pair named above.
+# ---------------------------------------------------------------------------
 
 # The keyspace: each key carries the spec section it traces to, which is exactly
 # the clause linkage the registry contract asks for.
@@ -147,9 +335,9 @@ machinery = [
 # `settings/settings_categories.py` is the CODE side, where `_DELIVERY` is, in
 # that module's own words about it, "the ONE table naming every family, because
 # every family is delivered".
-# CATCHES: a family declared on one side and not the other. See `[[parity]]` at
-# the END of this file -- that table, and nothing else here, is what reads this
-# registry.
+# CATCHES: a family declared on one side and not the other. See `[[parity]]`
+# near the END of this file -- that table, and nothing else here, is what reads
+# this registry.
 #
 # ⚑ IT EARNS ITS PLACE THROUGH `parity` ALONE, and a reader must not take a
 # green `check` as covering it. A `yaml-mapping` registry contributes NOTHING to
@@ -460,13 +648,10 @@ kind = "code-patterns"
 # THE PARITY ORACLES. Each one runs a command that prints what the CODE really
 # produces and compares that set against what a registry above DECLARES.
 #
-# 🛑 THEY ARE LAST IN THE FILE ON PURPOSE, AND THAT IS NOT COSMETIC. These are
-# TOML TABLES: every key after a `[[parity]]` header belongs to that parity, not
-# to the registry above it. `kinemata-docs.toml` paid for this lesson already --
-# a `[[gate]]` table placed in the middle of that file silently adopted the
-# `historical` list and moved the claim count 1652 -> 1991 with nothing in the
-# output saying a table had changed owner. Keep new `[[registry]]` tables ABOVE
-# this line.
+# 🛑 NOTHING BELOW THIS LINE MAY BE A `[[registry]]`, AND THAT IS NOT COSMETIC.
+# These are TOML TABLES: every key after a `[[parity]]` or `[[gate]]` header
+# belongs to that table, not to the registry above it. Keep new `[[registry]]`
+# tables ABOVE this line and new `[claims]` keys up beside `[claims]`.
 #
 # ⚑ AN ORACLE READS THE CODE, NEVER THE FILE IT IS BEING CHECKED AGAINST. One
 # that parsed `keyspace-manifest.yaml` would compare that file with itself and
@@ -505,4 +690,42 @@ for name in _DELIVERY:
     print("kanibako-category:", name)
 """]
 extract = '(?m)^kanibako-category: (\S+)$'
+
 # ---------------------------------------------------------------------------
+# THE GATE INVENTORY. `[[gate]]` is verified by the `claims` command, so a gate
+# must sit in the config `claims` is run with -- which, since the 2026-09-14
+# merge, is the only config there is.
+#
+# 🛑 THE GATES ARE LAST IN THE FILE ON PURPOSE, AND THIS REPOSITORY HAS ALREADY
+# PAID FOR THE LESSON ONCE. These are TOML TABLES: every key after a `[[gate]]`
+# header belongs to that gate, not to `[claims]`. Placed between `suffixes` and
+# `historical` -- which is where they first went, in the claims config that has
+# since merged into this one -- they silently adopted the `historical` list, the
+# suppression stopped applying, and the claim count moved 1652 -> 1991 with
+# nothing in the output saying a table had changed owner. Add a `[claims]` key
+# up beside `[claims]` at the top of this file, never here.
+#
+# What this buys, stated honestly because the tool's own docs are blunt about it:
+# deleting a step from CI now FAILS `claims` instead of passing quietly. An agent
+# can still delete the step and this declaration in one commit. That turns silent
+# removal into STATED removal -- a reminder, not a catch. What would make it a
+# catch is branch protection with the job as a required status check, which lives
+# outside this repo and is not ours to set.
+#
+# `where` is pinned rather than left to the default (any file under
+# `.github/workflows`), because these commands live in the Tests workflow
+# beside the suite, not in a workflow of their own.
+[[gate]]
+command = "kinemata check"
+where = [".github/workflows/test.yml"]
+note = "code that re-derives a declared fact"
+
+[[gate]]
+command = "kinemata parity"
+where = [".github/workflows/test.yml"]
+note = "a registry's declared identifiers against what the code prints"
+
+[[gate]]
+command = "kinemata claims"
+where = [".github/workflows/test.yml"]
+note = "documentation claims, and this inventory"
