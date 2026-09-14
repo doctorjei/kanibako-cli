@@ -697,6 +697,231 @@ kind = "code-patterns"
 # ---------------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
+# FACT: the CALL SEAMS and the RETIRED NAMES -- identifiers that may be written
+# only at a named set of sites, and identifiers that may be written nowhere.
+# AUTHORITY: each entry's `home` IS the sanctioned set; an entry with no `home`
+# names a mechanism that was removed and must not come back.
+#
+# ⚑ WHY A SECOND `code-patterns` REGISTRY AND NOT ROWS IN `canonical`: that one
+# holds canonical VALUES that `python-constants` cannot reach (collection
+# literals, enums). These are not values at all -- they are function names and
+# call shapes -- and the two facts want different comments, not one heap.
+#
+# 🛑 EACH `home` IS A LITERAL REPO-RELATIVE PATH FRAGMENT. The tests these come
+# from find the same carrier through `inspect.getfile` on the imported module,
+# so a module MOVE keeps the test green and silently empties the declaration
+# here. Re-read every `home` below when a module moves.
+# ⚑ WHICH MOVES SURVIVE, EXACTLY: `bypass._is_home` compares path PARTS by
+# SUFFIX, in both directions. A move that changes only LEADING directories
+# still matches, so the trailing parts are the whole of what is pinned. A
+# RENAME, or a package move that changes a trailing directory, does not -- and
+# it fails SILENT: the entry keeps scanning, its sanctioned site stops being
+# recognized, and the failure is visible only as a finding nobody expected.
+#
+# 🛑 EVERY ENTRY IN THIS BLOCK IS INERT ON A CLEAN TREE, AND THAT IS WHAT A
+# PROHIBITION LOOKS LIKE. Measured 2026-09-14 under kinemata `0.1.0a2.dev1`:
+# `check` reports ZERO sites for all fourteen and stays rc=0, because the pytest
+# families they come from are green. They were proved LIVE rather than assumed,
+# by planting one mutant per entry in a throwaway tree: `check` went rc=1 with
+# 17 bypasses, all fourteen entries firing, and `home` suppressed every
+# sanctioned site. A zero here is the claim holding.
+# 🛑 THAT MUTATION HARNESS IS THE ORACLE FOR THIS GREEN, AND NOTHING ELSE IS.
+# A prohibition that matched nothing because it was misspelled reports exactly
+# what a prohibition that holds reports. Re-plant before trusting a zero here:
+# unmeasured, the green is silence.
+# 🛑 THE COST, STATED UP FRONT: `kinemata unused` goes from 25 entries to 39,
+# every one of the fourteen on its list. That command is "a review list, never a
+# cut list" in its own words, and these are the entries it is most wrong about --
+# an entry nothing mentions is the POINT of a prohibition. Do not cut them on
+# its say-so.
+#
+# 🛑 EACH ENTRY IS BROADER THAN THE TEST IT COMES FROM, and deliberately so:
+# kinemata scans the whole tree and `home` is an ALLOWLIST, where the tests name
+# a handful of files to scan and assert absence there. There is no way to say
+# "fires only inside these three files". Every entry below therefore bans the
+# spelling EVERYWHERE except its `home`, which is the stronger claim. Where that
+# is not the invariant we mean, the entry is marked.
+# 🛑 THE WIDENING IS A DECISION, NOT AN ARTEFACT OF THE TOOL. The broader claim
+# -- this spelling belongs to its `home` and nowhere else -- is the invariant we
+# actually mean; the source tests name one to three files only because that is
+# what a pytest scan could reach. IT FOLLOWS THAT A RED HERE ON A SITE NO TEST
+# COVERS IS A FINDING TO EXAMINE, NOT A REASON TO NARROW THE ENTRY BACK. Narrow
+# one only by deciding, on the record, that the wider claim was wrong.
+[[registry]]
+name = "seams"
+kind = "code-patterns"
+
+  # ⚑ THE ALLOWLIST IS THE WHOLE POINT, and it is the one family in this block
+  # whose test and this entry say EXACTLY the same thing:
+  # `tests/test_settings/test_defaults_enforcement.py` keeps `_SANCTIONED` (four
+  # files) plus an empty `_QUARANTINED`, and `home` below is that list plus the
+  # definition site. The test's OTHER direction -- every allowlist entry still
+  # HAS a call site -- is NOT expressible here and stays in pytest.
+  [[registry.entry]]
+  id = "write_nested_key"
+  antipatterns = ['write_nested_key']
+  home = [
+    "src/kanibako/settings/config_io.py",
+    "src/kanibako/settings/config_interface.py",
+    "src/kanibako/settings/agent_file.py",
+    "src/kanibako/settings/paths.py",
+    "src/kanibako/commands/setup_cmd.py",
+  ]
+  note = "the single write seam into a settings document; home is the sanctioned caller set"
+
+  # ⚑ INVERTED RELATIVE TO THE TEST. `test_import_recovery.py` asserts the name
+  # is ABSENT from `commands/box/_lifecycle.py`; this asserts it is PRESENT
+  # nowhere but the two files that own it. Same defect caught, wider net.
+  [[registry.entry]]
+  id = "_journal_connect"
+  antipatterns = ['_journal_connect']
+  home = [
+    "src/kanibako/project/workset.py",
+    "src/kanibako/commands/workset_cmd.py",
+  ]
+  note = "only run_connect journals a connect op; the move/convert path must not"
+
+  # The create-journal pair and the two seed entry points. A register-only
+  # replay that reaches any of these re-seeds a box that already has a home
+  # bind, which is the data-loss class `seed-and-create-model.md` exists for.
+  [[registry.entry]]
+  id = "_write_create_entry"
+  antipatterns = ['_write_create_entry']
+  home = [
+    "src/kanibako/commands/start.py",
+    "src/kanibako/commands/box/_parser.py",
+  ]
+  note = "create-journal write; import/connect and the lifecycle flows must not reach it"
+
+  [[registry.entry]]
+  id = "_pending_create_entry"
+  antipatterns = ['_pending_create_entry']
+  home = [
+    "src/kanibako/commands/start.py",
+    "src/kanibako/commands/box/_parser.py",
+  ]
+  note = "create-journal read; same rule as the write"
+
+  [[registry.entry]]
+  id = "seed_new_box"
+  antipatterns = ['seed_new_box']
+  home = [
+    "src/kanibako/commands/start.py",
+    "src/kanibako/commands/box/_parser.py",
+  ]
+  note = "seed once at create; a register-only flow naming this is the bug"
+
+  [[registry.entry]]
+  id = "_seed_box_home"
+  antipatterns = ['_seed_box_home']
+  home = ["src/kanibako/commands/start.py"]
+  note = "the home-seed itself; thereafter the home bind owns the tree"
+
+  [[registry.entry]]
+  id = "_sync_box_at_create"
+  antipatterns = ['_sync_box_at_create']
+  home = ["src/kanibako/commands/start.py"]
+  note = "create-time sync; joined the forbidden set 2026-08-11"
+
+  # ⚑ NO `home` ON PURPOSE -- a retired mechanism has no sanctioned site. Spec
+  # §2a removed the implicit root prepend; these are the two names it was
+  # spelled with. Measured 2026-09-14: ZERO sites in any `.py` in the tree, so
+  # this entry is INERT TODAY BY DESIGN. It is a deletion instrument, and the
+  # day it reports anything the mechanism came back.
+  # 🛑 `kinemata unused` WILL LIST BOTH as mentioned by nobody. That is this
+  # entry working, not this entry rotting.
+  # ⚑ The names DO survive in `src/kanibako/data/keyspace-manifest.yaml` as
+  # retired-key chain rows. A registry reads `.py` only, so they are out of
+  # reach here -- and they are load-bearing MIGRATION DATA, not a reappearance.
+  [[registry.entry]]
+  id = "scope_roots"
+  antipatterns = ['scope_roots']
+  home = []
+  note = "retired implicit-root-prepend mechanism; must exist nowhere in shipped .py"
+
+  [[registry.entry]]
+  id = "_root_join"
+  antipatterns = ['_root_join']
+  home = []
+  note = "the other half of the same retired mechanism"
+
+  # ⚑ THE CONSTANT-JOIN HALF ONLY. The STRING half of these three tripwires is
+  # already declared: `store-layout` derives "boxes" / "logs" / "workspaces" /
+  # "workspace" / "channels" from `bootstrap.py`, so `pw / "boxes"` is already a
+  # bypass of `BOXES_PATH`. What no registry reaches is `pw / BOXES_PATH` -- the
+  # CONSTANT spelled into a join, which is the real defect
+  # `test_workset.py`'s docstring says a string-only pin would have missed.
+  # Declaring the string form again here would be a second carrier of one fact.
+  # ⚑ The resolvers themselves never join: they hand the leaf to
+  # `resolve_workset_dir_key`. Measured 2026-09-14: ZERO sites, so these three
+  # are INERT TODAY BY DESIGN, exactly as the tests are green today.
+  [[registry.entry]]
+  id = "WORKSPACES_LEAF_JOIN"
+  antipatterns = ['/\s*WORKSPACES_PATH\b', '\bWORKSPACES_PATH\s*/', '/\s*_WORKSPACES_LEAF\b', '\b_WORKSPACES_LEAF\s*/']
+  home = []
+  note = "compose the workspaces dir through resolve_workset_workspaces, never a join"
+
+  [[registry.entry]]
+  id = "STANDALONE_WORKSPACE_LEAF_JOIN"
+  antipatterns = ['/\s*WORKSPACE_PATH\b', '\bWORKSPACE_PATH\s*/', '/\s*_STANDALONE_WORKSPACE_LEAF\b', '\b_STANDALONE_WORKSPACE_LEAF\s*/']
+  home = []
+  note = "the singular standalone leaf; resolve_workset_workspaces(standalone=True) is the route"
+
+  [[registry.entry]]
+  id = "BOXES_LEAF_JOIN"
+  antipatterns = ['/\s*BOXES_PATH\b', '\bBOXES_PATH\s*/', '/\s*BOXES_DIR_NAME\b', '\bBOXES_DIR_NAME\s*/']
+  home = []
+  note = "compose the boxes dir through resolve_workset_boxes, never a join"
+
+  [[registry.entry]]
+  id = "LOGS_LEAF_JOIN"
+  antipatterns = ['/\s*LOGS_PATH\b', '\bLOGS_PATH\s*/', '/\s*_LOGS_LEAF\b', '\b_LOGS_LEAF\s*/']
+  home = []
+  note = "compose the logs dir through resolve_workset_logs, never a join"
+
+# ---------------------------------------------------------------------------
+# FACT: `self` is a FILE-SURFACE alias and nothing else. The per-agent file's
+# root table is spelled in exactly one module.
+# AUTHORITY: `settings/agent_file.py` is the boundary; every other site reaches
+# the file through a slot, a level, or `file_spelling()`.
+#
+# ⚑ A SEPARATE REGISTRY BECAUSE OF `match_mode`, WHICH IS PER REGISTRY, NOT PER
+# ENTRY. This entry MUST match inside string literals only. In the `code` mode
+# the `seams` registry above uses, `self` matches the first parameter of every
+# method in the tree -- thousands of sites, none of them the fact.
+#
+# 🛑 THE ANTIPATTERN IS WRITTEN TO FULL-MATCH ON PURPOSE. In `strings` mode
+# kinemata grades a hit STRONG when the regex fullmatches the literal and WEAK
+# when it merely occurs inside one, and only strong findings gate. A bare
+# `self` pattern would grade `"self.model"` weak and the gate would not see it,
+# so the pattern wraps itself in `.*` to fullmatch any literal CONTAINING the
+# word -- which is what the census asserts.
+#
+# ⚑ THE PROCFS LOOKBEHIND IS THE TEST'S OWN EXEMPTION, NOT A NEW CARVE-OUT:
+# `test_agent_file_boundary.py` skips any value containing `/proc/self`, the
+# KERNEL's self-reference (`runtime/image_sharing.py`, `/proc/self/mountinfo`).
+# `(?<!/proc/)` is narrower than the test -- it excuses that one occurrence
+# rather than the whole literal it sits in.
+#
+# 🛑 ONE PLACE THIS IS WEAKER THAN THE TEST, MEASURED NOT ASSUMED: an F-STRING.
+# The census walks `ast.Constant`, so `f"self.{agent}.model"` presents it the
+# part `"self."` and it fires. kinemata's literal extractor does not hand the
+# parts of a JoinedStr to the matcher, and the same line is NOT reported here.
+# Planted and confirmed silent 2026-09-14. ⇒ THIS ENTRY DOES NOT RETIRE
+# `test_census`; it is a second, wider-corpus arm of the same pin, and the
+# f-string case is the test's alone.
+[[registry]]
+name = "file-surface"
+kind = "code-patterns"
+match_mode = "strings"
+
+  [[registry.entry]]
+  id = "AGENT_FILE_ROOT"
+  antipatterns = ['(?s).*(?<![\w.])(?<!/proc/)self(?![\w-]).*']
+  home = ["src/kanibako/settings/agent_file.py"]
+  note = "the per-agent file's root section; a literal elsewhere is a leaked file address"
+
+# ---------------------------------------------------------------------------
 # THE PARITY ORACLES. Each one runs a command that prints what the CODE really
 # produces and compares that set against what a registry above DECLARES.
 #
