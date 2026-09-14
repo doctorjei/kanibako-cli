@@ -1482,3 +1482,727 @@ class TestCanonicalExample:
         body = _body(_run(home, dict(self.SOURCE)))
         assert "1.1   [Foo Man]" in body
         assert "11.2  [Baz Man]" in body
+
+
+# --------------------------------------------------------------------------
+# The template functions: __SUPER__, __SECTION__, and the title formatter.
+# --------------------------------------------------------------------------
+
+
+def _canon_data(rel: str) -> str:
+    """A shipped canon file's real path, under ``kanibako.data``."""
+    return str(importlib.resources.files("kanibako.data").joinpath(f"global/{rel}"))
+
+
+def _scope(fl=None, **extra):
+    """A title-format namespace of the shape ``preplink`` builds."""
+    fl = fl or flattener.Flattener()
+    scope = {"__SECTION__": fl.next_section, "__SUPER__": flattener.super_of}
+    scope.update(extra)
+    return scope
+
+
+class TestSectionIdAlgebra:
+    """``__SUPER__`` and ``__SECTION__`` — the ids a template function MINTS,
+    which is a different job from the authored numbers ``assign_section_numbers``
+    renumbers: one reads a number off the page, the other allocates a new one."""
+
+    def test_super_of_his_worked_examples(self):
+        assert flattener.super_of("5.4") == "5"
+        assert flattener.super_of("1.1") == "1"
+        assert flattener.super_of("1-2-3", "-") == "1-2"
+
+    def test_the_other_separator_is_ordinary_text_inside_a_part(self):
+        """Which is what makes these two differ at all: read with ``.``, the ``-``
+        in ``1-2`` is just characters."""
+        assert flattener.super_of("1.2-3") == "1"
+        assert flattener.super_of("1-2.3") == "1-2"
+
+    def test_no_separator_means_no_parent(self):
+        """🛑 Not ``"1"``. ``rsplit`` would return the element itself, making a
+        root element its own parent."""
+        assert flattener.super_of("1") == ""
+        assert flattener.super_of("1-2") == ""     # read with the default ``.``
+
+    def test_section_allocates_his_worked_sequence(self):
+        """His six examples, in order, against ONE render's counters."""
+        fl = flattener.Flattener()
+        assert fl.next_section("2", ".") == "2.1"
+        assert fl.next_section("1", ".") == "1.1"
+        assert fl.next_section("1", "-") == "1-2"
+        assert fl.next_section("1.2", ".") == "1.2.1"
+        assert fl.next_section("1.2", "-") == "1.2-2"
+        assert fl.next_section("1-2", ".") == "1-2.1"
+
+    def test_one_counter_per_source_shared_across_separators(self):
+        """🛑 Keyed on *source* ALONE. The second call is the SECOND section of
+        source ``1`` however it is asked to render the join, so it is ``2`` —
+        and ``1.2`` / ``1-2`` remain distinct SOURCES with counters of their own."""
+        fl = flattener.Flattener()
+        assert [fl.next_section("1", sep) for sep in (".", "-", ".")] == [
+            "1.1", "1-2", "1.3",
+        ]
+
+    def test_a_root_source_carries_no_leading_separator(self):
+        """Root is the common case — ``COLLECTION.md`` IS the root, where
+        ``__CURRENT__`` is ``""``. Join only the non-empty parts."""
+        fl = flattener.Flattener()
+        assert [fl.next_section() for _ in range(3)] == ["1", "2", "3"]
+        assert flattener.Flattener().next_section("", "-") == "1"
+
+    def test_counters_reset_with_the_render_not_the_process(self):
+        """The reset boundary is ONE assembly run, which is what makes a repeated
+        render of the same tree reproducible."""
+        first = flattener.Flattener()
+        assert [first.next_section("1") for _ in range(3)] == ["1.1", "1.2", "1.3"]
+        assert flattener.Flattener().next_section("1") == "1.1"
+
+
+class TestRenderFormat:
+    """The formatter. 🛑 NOT ``str.format`` — the braces are an EVALUATION
+    MARKER, and the shipped default dies under ``str.format`` (measured)."""
+
+    def test_str_format_cannot_do_this_which_is_why_it_has_its_own_name(self):
+        """The SHIPPED default format, run through ``str.format``. ⚑ The ``noqa``
+        is itself the evidence: ruff's F524 sees the same defect, statically."""
+        with pytest.raises(KeyError):
+            "{__SECTION__(source, sep)} {}".format("Foobar Info")  # noqa: F524
+
+    def test_the_title_slot(self):
+        assert flattener.render_format("@", "Foo Man", _scope()) == "Foo Man"
+
+    def test_brace_escapes_are_literal_braces(self):
+        assert flattener.render_format("{{@}}", "Foo", _scope()) == "{Foo}"
+        assert flattener.render_format("{{{{@}}}}", "Foo", _scope()) == "{{Foo}}"
+
+    def test_empty_braces_are_the_title_slot_too(self):
+        """Defined as the slot, not left to fall out as an empty expression."""
+        assert flattener.render_format("{} @", "Foo", _scope()) == "Foo Foo"
+
+    def test_an_expression_is_evaluated_in_the_given_scope(self):
+        scope = _scope(source="1.2", sep="-")
+        assert flattener.render_format("{source + sep} @", "Foo", scope) == "1.2- Foo"
+
+    def test_an_expression_can_call_the_section_allocator(self):
+        """The shipped default format. ⚑ It ALLOCATES, so two renders of the same
+        format take consecutive numbers."""
+        scope = _scope(source="1", sep=".")
+        fmt = "{__SECTION__(source, sep)} @"
+        assert flattener.render_format(fmt, "Foo", scope) == "1.1 Foo"
+        assert flattener.render_format(fmt, "Bar", scope) == "1.2 Bar"
+
+    def test_an_expression_can_call_super(self):
+        scope = _scope(source="1.2", sep=".")
+        assert flattener.render_format("{__SUPER__(source, sep)}: @", "Foo", scope) == (
+            "1: Foo"
+        )
+
+    def test_at_at_is_a_literal_at_and_is_not_a_slot(self):
+        assert flattener.render_format("@@ @", "Foo", _scope()) == "@ Foo"
+        assert flattener.render_format("@@@", "Foo", _scope()) == "@Foo"
+
+    def test_exactly_one_unescaped_at_is_required(self):
+        for fmt in ("", "no slot here", "@ and @", "@@ @ @"):
+            with pytest.raises(flattener.FormatError):
+                flattener.render_format(fmt, "Foo", _scope())
+
+    def test_four_ats_escape_to_zero_slots_and_are_refused(self):
+        """⚑ His escape ORDER, checked: ``@@@@`` is two literals, hence ZERO
+        slots — so it raises, exactly as the empty format does."""
+        with pytest.raises(flattener.FormatError):
+            flattener.render_format("@@@@", "Foo", _scope())
+
+    def test_a_format_with_no_at_is_refused_even_when_braces_would_render(self):
+        """``{}`` alone is the ``str.format`` reflex, and it is not a title slot
+        DECLARATION — the ``@`` is."""
+        with pytest.raises(flattener.FormatError):
+            flattener.render_format("{}", "Foo", _scope())
+
+    def test_a_substituted_title_is_inert(self):
+        """🛑 Never rescan what was just substituted. Titles come from arbitrary
+        markdown, so a heading carrying a brace is not hypothetical — and the
+        expression it looks like would be a ``NameError`` if it were evaluated."""
+        assert flattener.render_format("@", "Use {foo} syntax", _scope()) == (
+            "Use {foo} syntax"
+        )
+        assert flattener.render_format("@", "an @ and a }", _scope()) == "an @ and a }"
+
+    def test_an_evaluated_value_is_inert_too(self):
+        scope = _scope(brace="{@}")
+        assert flattener.render_format("{brace}@", "T", scope) == "{@}T"
+
+    def test_the_output_is_final_and_is_never_re_rendered(self):
+        """Unescape EXACTLY ONCE. Pass one consumed ``{{``, so a second pass over
+        the same text would read the surviving ``{`` as an expression."""
+        once = flattener.render_format("{{literal}} @", "Foo", _scope())
+        assert once == "{literal} Foo"
+        with pytest.raises(NameError):
+            flattener.render_format("@" + once, "Foo", _scope())
+
+    def test_unbalanced_braces_are_refused(self):
+        for fmt in ("{unclosed @", "} @"):
+            with pytest.raises(flattener.FormatError):
+                flattener.render_format(fmt, "Foo", _scope())
+
+
+class TestPreplink:
+    """The workhorse: what each target of one call is to be TITLED. It decides
+    titles and nothing else — no content is read or collected here, which is what
+    lets ``__LINK__`` share it with ``__IMPORT__``."""
+
+    def test_returns_four_tuples(self, home):
+        """🛑 The arity is load-bearing: both callers unpack exactly four."""
+        (home / "a.md").write_text("# Alpha\nbody\n", encoding="utf-8")
+        rows = flattener.Flattener().preplink(str(home / "a.md"))
+        assert len(rows) == 1
+        entry, old_title, new_title, header = rows[0]
+        assert entry == home / "a.md"
+        assert (old_title, new_title, header) == ("# Alpha", "Alpha", "# ")
+
+    def test_a_heading_is_split_into_header_and_title(self, home):
+        (home / "d.md").write_text("#### Foobar Info\n", encoding="utf-8")
+        _entry, old_title, new_title, header = flattener.Flattener().preplink(
+            str(home / "d.md")
+        )[0]
+        assert (old_title, header, new_title) == ("#### Foobar Info", "#### ", "Foobar Info")
+        assert header + new_title == old_title
+
+    def test_a_first_line_that_is_not_a_heading_takes_no_header(self, home):
+        (home / "p.md").write_text("Just a paragraph.\n# Later Heading\n", encoding="utf-8")
+        _entry, old_title, new_title, header = flattener.Flattener().preplink(
+            str(home / "p.md")
+        )[0]
+        assert (old_title, new_title, header) == (
+            "Just a paragraph.", "Just a paragraph.", "",
+        )
+
+    def test_glob_results_are_sorted_lexicographically(self, home):
+        """Canon order is law; a directory walk is not an order."""
+        for name in ("gamma.md", "alpha.md", "beta.md"):
+            (home / "ch" / name).parent.mkdir(parents=True, exist_ok=True)
+            (home / "ch" / name).write_text(f"# {name}\n", encoding="utf-8")
+        rows = flattener.Flattener().preplink(str(home / "ch" / "*.md"))
+        assert [entry.name for entry, _, _, _ in rows] == [
+            "alpha.md", "beta.md", "gamma.md",
+        ]
+
+    def test_a_missing_target_is_skipped_silently(self, home):
+        """⚑ NOT the fail-open the required-material tests forbid: required vs
+        optional is a different layer, and the flattener has no notion of it."""
+        assert flattener.Flattener().preplink(str(home / "nope.md")) == []
+        assert flattener.Flattener().preplink(str(home / "nothing" / "*.md")) == []
+
+    def test_an_empty_target_is_skipped_silently(self, home):
+        (home / "blank.md").write_text("\n\n   \n", encoding="utf-8")
+        (home / "comments.md").write_text(
+            "<!--\n# Heading Shaped Decoy\nstill a comment\n-->\n\n", encoding="utf-8"
+        )
+        fl = flattener.Flattener()
+        assert fl.preplink(str(home / "blank.md")) == []
+        assert fl.preplink(str(home / "comments.md")) == []
+
+    def test_the_title_is_the_first_line_of_real_text_not_the_first_hash(self, home):
+        """🛑 A COMMENT IS NOT REAL TEXT, and the blocks contain heading-shaped
+        decoys, so the naive test picks the wrong title."""
+        (home / "c.md").write_text(
+            "# Real Title\n<!--\n# Decoy\n-->\nbody\n", encoding="utf-8"
+        )
+        (home / "after.md").write_text(
+            "<!--\n# Decoy\n\nstill inside\n-->\n\n## Real Title\n", encoding="utf-8"
+        )
+        fl = flattener.Flattener()
+        assert fl.preplink(str(home / "c.md"))[0][1] == "# Real Title"
+        assert fl.preplink(str(home / "after.md"))[0][1] == "## Real Title"
+
+    # The six shipped canon files, measured through the real stripper. Every one
+    # opens with a multi-line ``[STOCK]`` authoring comment, and COLLECTION.md's
+    # runs sixteen lines with ``# Entrypoint to Canon`` inside it.
+    SHIPPED_TITLES = [
+        ("rom/COLLECTION.md", "# Canon Law - Introduction"),
+        ("rom/charter/ROM_CONTENTS.md", "# Charter (Core Tome, Read-Only)"),
+        ("template/handbook/SYS_CONTENTS.md", "# Handbook (System Tome)"),
+        ("template/handbook/general/SYS_GENERAL.md", "## System-Wide Information"),
+        ("template/box/home/canon/notebook/MY_CONTENTS.md", "# Notebook"),
+        ("rom/charter/general/ROM_GENERAL.md", "## The Canon"),
+    ]
+
+    @pytest.mark.parametrize("rel,expected", SHIPPED_TITLES)
+    def test_shipped_canon_titles(self, rel, expected):
+        rows = flattener.Flattener().preplink(_canon_data(rel))
+        assert [old for _, old, _, _ in rows] == [expected]
+
+    def test_the_default_format_yields_the_bare_title(self, home):
+        (home / "a.md").write_text("# Alpha\n", encoding="utf-8")
+        fl = flattener.Flattener()
+        assert fl.preplink(str(home / "a.md"))[0][2] == "Alpha"
+        assert fl.preplink(str(home / "a.md"), title_fmt="")[0][2] == "Alpha"
+
+    def test_the_section_format_numbers_each_entry_in_turn(self, home):
+        """⚑ ``__SECTION__`` increments ONCE PER ENTRY — the format is rendered
+        inside the loop, so each globbed file gets its own number."""
+        for name in ("a.md", "b.md", "c.md"):
+            (home / "n" / name).parent.mkdir(parents=True, exist_ok=True)
+            (home / "n" / name).write_text(f"## {name}\n", encoding="utf-8")
+        rows = flattener.Flattener().preplink(
+            str(home / "n" / "*.md"), "1", ".", "{__SECTION__(source, sep)} @"
+        )
+        assert [new for _, _, new, _ in rows] == ["1.1 a.md", "1.2 b.md", "1.3 c.md"]
+
+    def test_a_bad_format_is_refused_before_anything_is_numbered(self, home):
+        (home / "a.md").write_text("# Alpha\n", encoding="utf-8")
+        with pytest.raises(flattener.FormatError):
+            flattener.Flattener().preplink(str(home / "a.md"), title_fmt="no slot")
+
+    def test_a_relative_target_is_anchored_at_the_given_base(self, home, monkeypatch):
+        """⚑ NOT the process CWD, which in a box is wherever the agent stood."""
+        (home / "ch").mkdir()
+        (home / "ch" / "a.md").write_text("# Anchored\n", encoding="utf-8")
+        (home / "elsewhere").mkdir()
+        monkeypatch.chdir(home / "elsewhere")
+        fl = flattener.Flattener()
+        assert fl.preplink("ch/a.md") == []                     # CWD-relative: nothing
+        assert fl.preplink("ch/a.md", base=home)[0][1] == "# Anchored"
+        assert fl.preplink("ch/*.md", base=home)[0][1] == "# Anchored"
+
+    def test_current_is_bound_in_the_expression_namespace(self, home):
+        (home / "a.md").write_text("# Alpha\n", encoding="utf-8")
+        rows = flattener.Flattener().preplink(
+            str(home / "a.md"), title_fmt="{__CURRENT__}/@", current="2.4",
+        )
+        assert rows[0][2] == "2.4/Alpha"
+
+    def test_the_id_each_entry_was_minted_is_recorded(self, home):
+        """The id is minted INSIDE the format and only the rendered title comes
+        back, so the allocator's answer is recorded rather than parsed out of
+        prose. It is what an imported document's own ``__CURRENT__`` becomes."""
+        for name in ("a.md", "b.md"):
+            (home / "m" / name).parent.mkdir(parents=True, exist_ok=True)
+            (home / "m" / name).write_text(f"# {name}\n", encoding="utf-8")
+        fl = flattener.Flattener()
+        fl.preplink(str(home / "m" / "*.md"), "1", ".", flattener.SECTION_TITLE_FMT)
+        assert fl.last_minted == ["1.1", "1.2"]
+        # A format that mints nothing leaves the entry without an id.
+        fl.preplink(str(home / "m" / "*.md"))
+        assert fl.last_minted == [None, None]
+
+
+# --------------------------------------------------------------------------
+# The four call forms: __IMPORT__, __LINK__ and their SECTION wrappers.
+# --------------------------------------------------------------------------
+
+
+class TestTemplateCallParsing:
+    """Recognition only — a line is a call, or it is prose. 🛑 Parsed with
+    ``ast``, never with a regex over the argument text."""
+
+    def test_the_four_names_are_recognized_alone_on_a_line(self):
+        for name in ("__IMPORT__", "__LINK__", "__IMPORTSECTION__", "__LINKSECTION__"):
+            got = flattener.parse_template_call(f'{name}("a.md")')
+            assert got == (name, "", {"target": "a.md"})
+
+    def test_indentation_is_kept(self):
+        name, indent, args = flattener.parse_template_call('    __IMPORT__("a.md")')
+        assert (name, indent, args) == ("__IMPORT__", "    ", {"target": "a.md"})
+
+    def test_positional_arguments_bind_in_signature_order(self):
+        _n, _i, args = flattener.parse_template_call('__IMPORT__("a", "1", "-", "@!")')
+        assert args == {"target": "a", "source": "1", "sep": "-", "title_fmt": "@!"}
+
+    def test_keyword_arguments_are_supported_though_no_call_site_uses_one(self):
+        """The signature has four named parameters; a source is entitled to name
+        them, and a regex over the argument text could not read this."""
+        _n, _i, args = flattener.parse_template_call(
+            '__LINKSECTION__("a", sep="-", title_fmt=None)'
+        )
+        assert args == {"target": "a", "sep": "-", "title_fmt": None}
+
+    def test_a_comma_inside_an_argument_survives(self):
+        """Which is the whole reason this is not a split on commas."""
+        _n, _i, args = flattener.parse_template_call('__IMPORT__("a,b.md", "1,2")')
+        assert args == {"target": "a,b.md", "source": "1,2"}
+
+    def test_prose_is_not_a_call(self):
+        for line in (
+            "Some prose about __IMPORT__ and how it works.",
+            "`__IMPORTSECTION__(\"a.md\")`",
+            "__SECTION__(\"1\")",
+            "",
+        ):
+            assert flattener.parse_template_call(line) is None
+
+    def test_a_line_that_is_not_a_whole_call_is_left_alone(self):
+        """⚑ WHOLE-LINE, deliberately: the name must open the line and the call
+        must close it, so no run of prose around a call is ever consumed."""
+        for line in (
+            '__IMPORT__("a.md"',                 # unclosed
+            '__IMPORT__("a.md") and prose',      # trailing prose
+            'See __IMPORT__("a.md")',            # leading prose
+        ):
+            assert flattener.parse_template_call(line) is None
+
+    def test_a_malformed_call_is_refused_rather_than_guessed_at(self):
+        for line in (
+            '__IMPORT__(some_name)',             # not a literal
+            '__IMPORT__(*args)',                 # not a literal either
+            '__IMPORT__(42)',                    # not a string
+            '__IMPORT__()',                      # no target
+            '__IMPORT__("a", "b", "c", "d", "e")',   # too many
+            '__IMPORT__("a", nope="x")',         # unknown argument
+            '__IMPORT__("a", target="a")',       # given twice
+            '__IMPORT__("a") + (1)',             # not a single call
+            '__IMPORT__("a",,)',                 # a syntax error
+        ):
+            with pytest.raises(flattener.TemplateCallError):
+                flattener.parse_template_call(line)
+
+
+class TestTemplateImportAndLink:
+    """What the four forms DO. ``__IMPORT__`` re-titles its target's own heading
+    and pulls its body in; ``__LINK__`` writes the row and nothing else."""
+
+    def test_importsection_numbers_titles_and_includes(self, home):
+        out = _body(_run(home, {
+            "root.md": '# Root\n\n__IMPORTSECTION__("child.md")\n',
+            "child.md": "# Child\n\nbody\n",
+        }))
+        # The row carries the minted title; the SECTION carries it as a heading.
+        assert "[1 Child](#1-child)" in out
+        assert "# 1 Child" in out
+        assert "body" in out
+        assert "__IMPORTSECTION__" not in out
+
+    def test_import_without_a_section_format_takes_the_bare_title(self, home):
+        out = _body(_run(home, {
+            "root.md": '# Root\n\n__IMPORT__("child.md")\n',
+            "child.md": "## Child\n\nbody\n",
+        }))
+        assert "[Child](#child)" in out
+        assert "## Child" in out          # the heading level is the file's own
+
+    def test_linksection_writes_a_row_and_imports_nothing(self, home):
+        out = _body(_run(home, {
+            "root.md": '# Root\n\n__LINKSECTION__("proc.md")\n',
+            "proc.md": "# Procedure\n\nload me on demand\n",
+        }))
+        assert f"[1 Procedure]({(home / 'proc.md').as_posix()})" in out
+        assert "load me on demand" not in out      # NOT imported
+        assert "#1-procedure" not in out           # points at the FILE, not a section
+
+    def test_link_without_a_section_format_takes_the_bare_title(self, home):
+        out = _body(_run(home, {
+            "root.md": '# Root\n\n__LINK__("proc.md")\n',
+            "proc.md": "# Procedure\n\nbody\n",
+        }))
+        assert f"[Procedure]({(home / 'proc.md').as_posix()})" in out
+
+    def test_a_glob_expands_to_one_row_per_entry_in_sorted_order(self, home):
+        out = _body(_run(home, {
+            "root.md": '# Root\n\n__IMPORTSECTION__("ch/*.md")\n',
+            "ch/gamma.md": "# Gamma\n",
+            "ch/alpha.md": "# Alpha\n",
+            "ch/beta.md": "# Beta\n",
+        }))
+        rows = [ln for ln in out.split("\n") if ln.startswith("[")]
+        assert rows == [
+            "[1 Alpha](#1-alpha)", "[2 Beta](#2-beta)", "[3 Gamma](#3-gamma)",
+        ]
+
+    def test_the_call_lines_indentation_is_kept_on_every_row(self, home):
+        out = _body(_run(home, {
+            "root.md": '# Root\n\n  __IMPORTSECTION__("ch/*.md")\n',
+            "ch/a.md": "# A\n",
+            "ch/b.md": "# B\n",
+        }))
+        assert "  [1 A](#1-a)\n  [2 B](#2-b)" in out
+
+    def test_imports_and_links_share_one_section_sequence(self, home):
+        """⚑ THE SHIPPED PAIRING, and it is deliberate: directives are IMPORTED
+        inline, procedures are LINKED because they are load-on-demand, and the
+        two calls run one continuous sequence over the parent document."""
+        out = _body(_run(home, {
+            "root.md": (
+                '# Root\n\n## Directives\n__IMPORTSECTION__("d/*.md")\n'
+                '\n## Procedures\n__LINKSECTION__("p/*.md")\n'
+            ),
+            "d/one.md": "# One\n",
+            "d/two.md": "# Two\n",
+            "p/three.md": "# Three\n",
+        }))
+        rows = [ln for ln in out.split("\n") if ln.startswith("[")]
+        assert rows[:2] == ["[1 One](#1-one)", "[2 Two](#2-two)"]
+        assert rows[2] == f"[3 Three]({(home / 'p' / 'three.md').as_posix()})"
+
+    def test_a_call_line_is_not_import_only_so_its_file_keeps_its_section(self, home):
+        """Like the ``[text](@path)`` form: the call leaves DISPLAY TEXT behind,
+        and collapsing the file that carries it would delete the very table of
+        contents the call exists to produce."""
+        out = _body(_run(home, {
+            "root.md": '@index.md\n',
+            "index.md": '__IMPORTSECTION__("child.md")\n',
+            "child.md": "# Child\n\nbody\n",
+        }))
+        assert "[1 Child](#1-child)" in out
+
+    def test_an_at_inside_a_call_argument_is_not_a_bare_import(self, home, capsys):
+        """The call is recognized FIRST and returns, so the argument text never
+        reaches the ``@path`` scanner."""
+        out = _body(_run(home, {"root.md": '# Root\n\n__IMPORTSECTION__("@box/c.md")\n'}))
+        assert "@box" not in out
+        assert "`@" not in out                     # not neutralized as a mention
+        assert "unresolved import @box" not in capsys.readouterr().err
+
+
+class TestTemplateCurrent:
+    """``__CURRENT__`` — the section id of the document being processed."""
+
+    def test_current_is_empty_at_the_root(self, home):
+        """🛑 ROOT IS THE COMMON CASE: ``COLLECTION.md`` IS the root, so the very
+        first id minted is ``1`` and not ``.1``."""
+        out = _body(_run(home, {
+            "root.md": '# Root\n\n__IMPORTSECTION__("a.md")\n__IMPORTSECTION__("b.md")\n',
+            "a.md": "# A\n",
+            "b.md": "# B\n",
+        }))
+        assert "[1 A](#1-a)" in out and "[2 B](#2-b)" in out
+        assert ".1 A" not in out
+
+    def test_an_imported_document_mints_under_its_own_id(self, home):
+        """An entry minted ``X`` carries ``__CURRENT__ == X`` while it is
+        processed, so the calls nested inside it mint ``X.1``, ``X.2``, ..."""
+        out = _body(_run(home, {
+            "root.md": '# Root\n\n__IMPORTSECTION__("mid.md")\n',
+            "mid.md": '# Mid\n\n__IMPORTSECTION__("leaf.md")\n__IMPORTSECTION__("two.md")\n',
+            "leaf.md": '# Leaf\n\n__IMPORTSECTION__("deep.md")\n',
+            "two.md": "# Two\n",
+            "deep.md": "# Deep\n",
+        }))
+        for expected in (
+            "[1 Mid](#1-mid)",
+            "[1.1 Leaf](#11-leaf)",
+            "[1.2 Two](#12-two)",
+            "[1.1.1 Deep](#111-deep)",
+        ):
+            assert expected in out, out
+        assert "# 1.1.1 Deep" in out
+
+    def test_an_explicit_source_overrides_current(self, home):
+        out = _body(_run(home, {
+            "root.md": '# Root\n\n__IMPORTSECTION__("a.md", "7-3", "-")\n',
+            "a.md": "# A\n",
+        }))
+        assert "[7-3-1 A](#7-3-1-a)" in out
+
+    def test_the_flattener_records_each_documents_current(self, home):
+        fl = flattener.Flattener()
+        for rel, body in {
+            "root.md": '# Root\n__IMPORTSECTION__("mid.md")\n',
+            "mid.md": '# Mid\n__IMPORTSECTION__("leaf.md")\n',
+            "leaf.md": "# Leaf\n",
+        }.items():
+            (home / rel).write_text(body, encoding="utf-8")
+        fl.collect((home / "root.md").resolve())
+        assert fl.current_id.get((home / "root.md").resolve(), "") == ""
+        assert fl.current_id[(home / "mid.md").resolve()] == "1"
+        assert fl.current_id[(home / "leaf.md").resolve()] == "1.1"
+
+
+class TestTemplateGlobBase:
+    """A glob is resolved relative to the file the call is WRITTEN IN — never
+    the process CWD, which in a box is wherever the agent happened to stand."""
+
+    def test_a_glob_follows_the_containing_file_not_the_cwd(self, home, monkeypatch):
+        decoy = home / "decoy"
+        (decoy / "ch").mkdir(parents=True)
+        (decoy / "ch" / "wrong.md").write_text("# Wrong\n", encoding="utf-8")
+        monkeypatch.chdir(decoy)
+        out = _body(_run(home, {
+            "root.md": '# Root\n\n@sub/index.md\n',
+            "sub/index.md": '# Index\n\n__IMPORTSECTION__("ch/*.md")\n',
+            "sub/ch/right.md": "# Right\n",
+        }))
+        assert "[1 Right](#1-right)" in out
+        assert "Wrong" not in out
+
+    def test_a_named_target_follows_the_containing_file_too(self, home, monkeypatch):
+        """The same anchoring a bare ``@path`` already gets — the two must
+        agree, or one form of the same relative path would resolve and the
+        other would not."""
+        monkeypatch.chdir(home)
+        out = _body(_run(home, {
+            "root.md": '# Root\n\n@sub/index.md\n',
+            "sub/index.md": '# Index\n\n__IMPORTSECTION__("near.md")\n',
+            "sub/near.md": "# Near\n",
+        }))
+        assert "[1 Near](#1-near)" in out
+
+
+class TestTemplateTitleRewrite:
+    """🛑 ONE replacement, at the title line's own offset — not every occurrence
+    of the same text."""
+
+    def test_a_second_occurrence_of_the_title_text_is_untouched(self, home):
+        out = _body(_run(home, {
+            "root.md": '# Root\n\n__IMPORTSECTION__("child.md")\n',
+            "child.md": (
+                "# Child\n\nA contents block repeats it:\n\n# Child\n\n"
+                "```\n# Child\n```\n"
+            ),
+        }))
+        assert out.count("# 1 Child") == 1
+        assert out.count("\n# Child") == 2       # the echo and the fenced one
+
+    def test_an_indented_atx_title_is_still_matched(self, home):
+        """⚑ ``old_title`` comes back STRIPPED while the line in the body is as
+        authored, and an ATX heading may carry up to three leading spaces — so
+        the match cannot assume the raw line equals the title."""
+        out = _body(_run(home, {
+            "root.md": '# Root\n\n__IMPORTSECTION__("child.md")\n',
+            "child.md": "   ## Child\n\nbody\n",
+        }))
+        assert "## 1 Child" in out
+
+    def test_the_authored_indentation_is_put_back(self, home):
+        """⚑ Asserted on the BODY rather than the artifact: a section's leading
+        whitespace is stripped when it is joined into the output, so the
+        document cannot show what the rewrite itself preserved."""
+        (home / "child.md").write_text("   ## Child\n\nbody\n", encoding="utf-8")
+        fl = flattener.Flattener()
+        path = (home / "child.md").resolve()
+        fl.collect(path)
+        fl._retitle(path, "## Child", "## 1 Child")
+        assert fl.sections[path].split("\n")[0] == "   ## 1 Child"
+
+    def test_a_title_that_did_not_survive_processing_says_so(self, home, capsys):
+        """The title is read off DISK and the body is the PROCESSED text, so a
+        title line that processing rewrote is not there to re-title. Invisible
+        in the artifact, hence said out loud."""
+        out = _body(_run(home, {
+            "root.md": '# Root\n\n__IMPORTSECTION__("child.md")\n',
+            "child.md": "# See @other.md\n\nbody\n",
+            "other.md": "other body\n",
+        }))
+        assert "could not re-title" in capsys.readouterr().err
+        assert "1 See" not in out
+
+    def test_a_title_that_is_not_a_heading_is_still_re_titled(self, home):
+        out = _body(_run(home, {
+            "root.md": '# Root\n\n__IMPORTSECTION__("child.md")\n',
+            "child.md": "Just a paragraph.\n\nmore\n",
+        }))
+        assert "1 Just a paragraph." in out
+        assert "[1 Just a paragraph.](#1-just-a-paragraph)" in out
+
+    def test_one_file_imported_twice_keeps_one_title(self, home):
+        """Import-once means ONE heading however many calls name the file, so the
+        first call owns the title and every row reads it back — a row and the
+        heading it points at can never disagree."""
+        out = _body(_run(home, {
+            "root.md": (
+                '# Root\n\n__IMPORTSECTION__("child.md")\n'
+                '__IMPORTSECTION__("child.md")\n'
+            ),
+            "child.md": "# Child\n\nbody\n",
+        }))
+        assert out.count("[1 Child](#1-child)") == 2
+        assert out.count("# 1 Child") == 1
+
+
+class TestTemplateMisses:
+    """The manifest's absent side: a NAMED path that is not there is still
+    watched, so a chapter that starts existing takes effect."""
+
+    def _flatten(self, home, files: dict[str, str]) -> dict:
+        for rel, body in files.items():
+            p = home / rel
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(body, encoding="utf-8")
+        rc = flattener.flatten(
+            str(home / "root.md"), str(home / "out.md"),
+            manifest=str(home / "manifest.json"),
+        )
+        assert rc == 0
+        return json.loads((home / "manifest.json").read_text(encoding="utf-8"))
+
+    def test_a_missing_named_target_is_recorded_as_absent(self, home):
+        man = self._flatten(home, {
+            "root.md": '# Root\n\n__IMPORTSECTION__("gone.md")\n',
+        })
+        by_path = {e["path"]: e for e in man["inputs"]}
+        assert by_path[str(home / "gone.md")] == {
+            "path": str(home / "gone.md"), "absent": True,
+        }
+
+    def test_a_missing_link_target_is_recorded_too(self, home):
+        man = self._flatten(home, {
+            "root.md": '# Root\n\n__LINKSECTION__("gone.md")\n',
+        })
+        assert {"path": str(home / "gone.md"), "absent": True} in man["inputs"]
+
+    def test_a_glob_matching_nothing_is_not_a_miss_of_a_named_path(self, home):
+        """⚑ No path was NAMED, so there is nothing to watch and no spelling to
+        invent for it."""
+        man = self._flatten(home, {
+            "root.md": '# Root\n\n__IMPORTSECTION__("ch/*.md")\n',
+        })
+        assert [e for e in man["inputs"] if e.get("absent")] == []
+
+    def test_a_missing_target_is_skipped_without_a_warning(self, home, capsys):
+        """Required-vs-optional lives in another layer; an absent OPTIONAL
+        chapter must not shout on every launch."""
+        _run(home, {"root.md": '# Root\n\n__IMPORTSECTION__("gone.md")\n'})
+        assert capsys.readouterr().err == ""
+
+
+class TestTemplateFailureModes:
+    """A broken call is REPORTED, never fatal: a flatten that died would leave
+    the box with no canon at all."""
+
+    def test_a_malformed_call_warns_and_stays_literal(self, home, capsys):
+        out = _body(_run(home, {"root.md": "# Root\n\n__IMPORT__(child)\n"}))
+        assert "__IMPORT__(child)" in out
+        assert "must be a literal" in capsys.readouterr().err
+
+    def test_a_bad_title_format_warns_and_stays_literal(self, home, capsys):
+        out = _body(_run(home, {
+            "root.md": '# Root\n\n__IMPORT__("child.md", "1", ".", "no slot")\n',
+            "child.md": "# Child\n",
+        }))
+        assert '__IMPORT__("child.md", "1", ".", "no slot")' in out
+        assert "exactly one '@' symbol" in capsys.readouterr().err
+
+    def test_a_raising_expression_warns_and_stays_literal(self, home, capsys):
+        """🛑 Phase 3 is what first lets a DOCUMENT reach the ``{expr}``
+        evaluator, and an expression can raise anything at all. The canon must
+        survive one bad call."""
+        out = _body(_run(home, {
+            "root.md": '# Root\n\n__IMPORT__("child.md", "1", ".", "{boom} @")\n',
+            "child.md": "# Child\n\nbody\n",
+        }))
+        assert '__IMPORT__("child.md", "1", ".", "{boom} @")' in out
+        assert "NameError" in capsys.readouterr().err
+
+    def test_the_existing_import_once_guard_still_holds_a_cycle(self, home, capsys):
+        """🛑 REUSED, not rebuilt: ``Flattener.started`` is the cycle guard, and
+        a cycle terminates with each file contributing exactly one section."""
+        out = _body(_run(home, {
+            "root.md": '# Root\n\n__IMPORTSECTION__("a.md")\n',
+            "a.md": '# A\n\n__IMPORTSECTION__("b.md")\n',
+            "b.md": '# B\n\n__IMPORTSECTION__("a.md")\n',
+        }))
+        assert out.count("# 1.1 B") == 1
+        assert out.count("# 1 A") == 1
+        assert "[1 A](#1-a)" in out and "[1.1 B](#11-b)" in out
+
+    def test_a_self_import_terminates(self, home, capsys):
+        out = _body(_run(home, {"root.md": '# Root\n\n__IMPORTSECTION__("root.md")\n'}))
+        assert "# Root" in out
+        assert "import cycle" in capsys.readouterr().err
+
+    def test_a_cycle_back_to_an_ancestor_says_so(self, home, capsys):
+        """The ancestor's body does not exist to re-title yet, so the row has no
+        heading to point at and disappears — invisible unless it is said."""
+        _run(home, {
+            "root.md": '# Root\n\n__IMPORTSECTION__("a.md")\n',
+            "a.md": '# A\n\n__IMPORTSECTION__("root.md")\n',
+        })
+        assert "import cycle" in capsys.readouterr().err
