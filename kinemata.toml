@@ -71,22 +71,64 @@ root = "."
 # WS_TOKEN_STANDALONE at 12 sites, CHAT_GENERAL_LEAF at 8 and more, all of them
 # in `tests/` and all of them the deliberate respellings above.
 #
-# 🛑 IT IS ALSO A SUBSTRING, NOT A PATH PREFIX, AND IT REACHES TWO DOCUMENTS.
-# `claims.py` strips the trailing slash (`fragment.rstrip("/")`) and matches with
-# `any(fragment in rel ...)`, so this line excludes every relative path
-# CONTAINING "tests" -- which, besides `tests/` and the three
-# `packages/*/tests/` trees, catches `docs/plans/2026-03-07-smoke-tests-design.md`
-# and `-plan.md`. Measured 2026-09-14: the documentation gate checks 1650 claims
-# with this line and 1652 without it, and the 2 it loses are those two files'.
-# ⚑ ACCEPTED, and here is the whole of what it costs: both files are already
+# 🛑 THE FOUR FRAGMENTS ARE ONE DECISION. DO NOT COLLAPSE THEM BACK INTO ONE.
+# A leading slash means anchored, and it anchors at the ROOT, not at a directory
+# boundary anywhere along the path: `kinemata/exclusion.py`, `matches()`, keeps
+# an anchored fragment only when the relative path IS the stem or begins with
+# the stem plus a slash. So `/tests/` reaches this project's own `tests/` and
+# nothing whatever under `packages/`; each plugin tree has to be named in full.
+# They are named because the reason of kind above is exactly as true of a
+# plugin's tests as of this project's own, and because dropping them changes
+# what this line removes. Measured, not assumed, 2026-09-14: with `/tests/`
+# alone `check` stays rc=0 and `claims` stays at 1652, and what moves is the
+# weak-signal tally, 28 to 29. So the three are not inert -- but nothing this
+# gate fails on rests on them today, and a reader who finds them silent should
+# know that before deciding they are decoration.
+#
+# 🛑 THE LEADING SLASH IS A VERSION FLOOR, AND IT IS THE REASON THIS LINE AND
+# THE CI PIN MOVED IN ONE COMMIT. It needs kinemata >= `0.1.0a2.dev1` (upstream
+# `a26ab29`); an earlier build has no `exclusion.py` at all, reads `/tests/` as
+# a literal substring, matches NOTHING, and scans all four test trees. Measured
+# 2026-09-14 against `00044f2` -- the build CI pinned until this config changed
+# -- with the four fragments below: `kinemata check` goes rc=1 with "FAIL: 92
+# new bypass(es) of declared things", and 24 baseline records read as no longer
+# present. Those 92 are the deliberate respellings this exclusion exists to
+# suppress. ⇒ LOWERING THE PIN IN `.github/workflows/test.yml` BELOW THAT
+# VERSION REDS THE CONFORMANCE JOB UNTIL THIS LINE IS UNANCHORED TOO.
+#
+# ⚑ AN UNANCHORED FRAGMENT ALSO MEANS TWO THINGS AT ONCE, which is the second
+# reason not to go back: `claims` strips its trailing slash before matching and
+# the scans do not, so one line removes two different sets depending on which
+# command is running. That is "a real defect and is deliberately not fixed"
+# upstream (`exclusion.py`, `_widest`), because repairing it would narrow every
+# config already written. An anchored fragment is immune to it.
+#
+# ⚑ THEY WERE ONE FRAGMENT, `["tests/"]`, UNTIL 2026-09-14. Unanchored, it
+# matched every relative path CONTAINING "tests", which besides the four test
+# trees caught `docs/plans/2026-03-07-smoke-tests-design.md` and `-plan.md` by
+# their filenames. That was ACCEPTED here, and cheaply: both documents are also
 # matched by `historical = ["docs/plans/"]` below, so their path claims were
-# suppressed either way; the one live claim lost is a single `https://github.com`
-# link, which `external = false` does not fetch anyway. There is no anchored
-# form to write instead -- the fragment is a substring by construction, and a
-# narrower one ("tests/support", say) stops excluding the test trees this line
-# exists for. If the two plan documents ever need to be scanned, the lever is a
-# narrower `historical` and an upstream request for anchored excludes, not a
-# weaker exclusion here.
+# suppressed either way, and the one live claim lost was a single
+# `https://github.com` link that `external = false` does not fetch. It was
+# accepted because there was no anchored form to write -- the fragment was a
+# substring by construction, and a narrower one ("tests/support", say) stops
+# excluding the trees the line exists for. The lever this comment named instead
+# was an upstream request for anchored excludes. It was made and it was granted:
+# upstream `a26ab29` added the leading-slash spelling, and the old spelling is
+# unchanged, so nothing already written moved underneath us.
+#
+# ⚑ WHAT ANCHORING RECOVERED, measured 2026-09-14 under kinemata
+# `0.1.0a2.dev1` (the published wheel, file-identical to upstream `f6fc5f7`):
+# the documentation gate checks 1652 claims against these four fragments and
+# 1650 against the old `["tests/"]`, the 2 being those two plan documents.
+# `unused` and `ids` are byte-identical across the change, and `check` differs
+# by exactly one line -- the advisory the new build prints when a fragment
+# removes paths by substring rather than by directory, which named nine such
+# paths on every run and is now gone.
+# ⚑ IT DID NOT UN-SUPPRESS THOSE DOCUMENTS' PATH CLAIMS. `historical =
+# ["docs/plans/"]` below still matches both, exactly as it did when they were
+# excluded outright; a narrower `historical` remains the lever if they ever need
+# checking in full.
 #
 # ⚑ `api-docs/` AND `llm-docs/` ARE NO LONGER EXCLUDED, and the inherited
 # reasoning for excluding them is recorded here because it is TRUE ABOUT THE
@@ -106,11 +148,12 @@ root = "."
 # mypy and pytest. A duplication checker pointed at a holding pen for deliberate
 # duplicates reports the pen. That argument is sound -- it is simply not what
 # [R159] measures by, which is what a check CATCHES. Measured 2026-09-14 at
-# `75f7da94` under THIS file: excluding `salvage/` removes ZERO findings from
-# `check`, `unused` and `ids` (byte-identical output either way), and removes 17
-# claims from the documentation gate by way of salvage/README.md -- 1650 checked
-# with the directory in, 1633 with it out. So the exclusion buys nothing and
-# costs seventeen claims' worth of coverage.
+# `75f7da94`: excluding `salvage/` removes ZERO findings from `check`, `unused`
+# and `ids` (byte-identical output either way), and removes 17 claims from the
+# documentation gate by way of salvage/README.md. Anchoring the `exclude` above
+# moved the pair those 17 sit in, so it is re-measured under it the same day:
+# 1652 claims checked with the directory in, 1635 with it out. So the exclusion
+# buys nothing and costs seventeen claims' worth of coverage.
 # ⇒ IF IT EVER LIGHTS UP, EXAMINE THE FINDING. Do not reflexively restore the
 # exclude line: a finding out of `salvage/` is either a real second spelling in
 # live code or a genuine dormant-copy report, and only reading it says which.
@@ -126,7 +169,12 @@ root = "."
 # claims config that merged into this one named them anyway, belt and braces;
 # the line is dropped rather than carried, because a config that lists what the
 # tool already does invites a reader to believe the list is the mechanism.
-exclude = ["tests/"]
+exclude = [
+  "/tests/",
+  "/packages/agent-claude/tests/",
+  "/packages/agent-codex/tests/",
+  "/packages/agent-goose/tests/",
+]
 
 # ---------------------------------------------------------------------------
 # THE DOCUMENTATION GATE. `[claims]` and its keys sit HERE, above every

@@ -50,14 +50,12 @@ jobs:
       - run: pytest -v
         working-directory: packages/agent-goose
 
-  # ⚑ THE CONFORMANCE CHECKER IS PINNED BY SHA, NOT BY VERSION, AND THAT IS NOT
-  # CAUTION. The published `kinemata==0.1.0a1` wheel does NOT contain `parity`;
-  # upstream `main` is several commits past that tag and still declares
-  # `version = "0.1.0a1"`, so a version pin cannot tell the two builds apart and
-  # would silently install a tool without the command this gate turns on.
-  # Upstream's own starter workflow installs from `@main`, which is worse: it
-  # changes what this job means without changing what it says. Bump this SHA
-  # deliberately, as its own commit.
+  # ⚑ THE CONFORMANCE CHECKER IS PINNED TO AN EXACT PUBLISHED VERSION, AND THE
+  # WORD THAT CARRIES THE WEIGHT IS EXACT. Never a range, and never `@main` --
+  # which is what upstream's own starter workflow installs, and it changes what
+  # this job means without changing what it says. A version specifier here names
+  # one immutable artifact on PyPI; anything looser hands the job a tool nobody
+  # chose. Bump this pin deliberately, as its own commit.
   #
   # ONE config and one baseline, so every command below runs plainly. There were
   # two until 2026-09-14, on the ground that `exclude` is global to a config and
@@ -79,14 +77,28 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
-      # ⚑⚑ PIN THE SHA, NEVER THE VERSION: kinemata's `pyproject.toml` still reads
-      # `0.1.0a1` eighteen commits past that tag, so the version string does not
-      # distinguish one build from another. Confirmed on both sides 2026-09-14.
-      # 🛑 THIS PIN MUST NOT LAG THE TREE WE DEVELOP AGAINST. `[[parity]]` does not
-      # refuse unknown keys, so a config using `field`/`authority` against a build
-      # that predates them is SILENTLY DOWNGRADED to membership-only -- green here,
-      # checking less than it says. `a365474` was exactly that build.
-      - run: pip install "kinemata[yaml] @ git+https://github.com/doctorjei/kinemata@00044f2"
+      # ⚑⚑ THIS WAS A GIT SHA UNTIL 2026-09-14, AND THE REASON IT WAS IS SPENT.
+      # kinemata's `pyproject.toml` read `0.1.0a1` eighteen commits past that
+      # tag, and the published `0.1.0a1` wheel did not contain `parity` at all --
+      # so a version string could not tell two builds apart and could install a
+      # tool missing the command this gate turns on. The version pinned below is a
+      # published build that does identify itself: its package tree is file-
+      # identical to upstream `f6fc5f7` (`diff -rq`, `__pycache__` aside) and it
+      # carries both `parity` and `shape`. The value is written once, on the run
+      # line -- restating it here would be a second copy to bump.
+      # ⚑ It is a pre-release, and pip honors an exact `==` pin on it without
+      # `--pre`. Verified 2026-09-14 in an empty venv.
+      # 🛑 THIS PIN MUST NOT LAG THE TREE WE DEVELOP AGAINST. An older `[[parity]]`
+      # did not refuse a key it could not mean, so a config using `field`/`authority`
+      # against a build that predates them is SILENTLY DOWNGRADED to membership-only
+      # -- green here, checking less than it says. `a365474` was exactly that build.
+      # The pinned build refuses by name at rc=2 instead (verified 2026-09-14), so
+      # lagging is now the only road back into that silence.
+      # 🛑 AND IT IS A FLOOR, NOT A PREFERENCE. `kinemata.toml`'s `exclude` uses the
+      # `/`-anchored spelling, which an earlier build reads as a literal substring
+      # matching nothing -- lower this pin and the conformance job reds. The
+      # measurement is in that file's version-floor note, above its `exclude`.
+      - run: pip install "kinemata[yaml]==0.1.0a2.dev1"
       # ⚑ THE PROJECT ITSELF IS INSTALLED HERE BECAUSE THE PARITY ORACLE IMPORTS
       # IT. `parity` runs a command that prints what the code produces, and an
       # oracle it cannot run is a FAILURE that no baseline can accept -- so a
