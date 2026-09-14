@@ -406,35 +406,43 @@ def _retry_after(headers) -> float | None:
     return None  # HTTP-date form: fall back to our own backoff
 
 
-def completion_text(body: bytes) -> tuple[str | None, str | None]:
-  """Return ``(text, why_unusable)`` for a 200 body -- EXACTLY one side is set.
+def completion_text(body: bytes) -> tuple[str | None, str | None, str | None]:
+  """Return ``(text, why_unusable, finish_reason)`` for a 200 body.
+
+  EXACTLY one of ``text`` / ``why_unusable`` is set.  ``finish_reason`` is
+  independent of both -- it is the endpoint's own word on why generation stopped,
+  and a usable completion can still carry ``"length"``.  It is None whenever the
+  reply did not carry a string one; see :class:`Attempt` for what that means.
 
   ⚑ Every arm here is a DISTINCT loud failure, because a rate-limited body and a
   bad extraction both look like "nothing came back" if they are collapsed.
   """
   if not body.strip():
-    return None, f"HTTP 200 but the response body was EMPTY ({len(body)} bytes)"
+    return None, f"HTTP 200 but the response body was EMPTY ({len(body)} bytes)", None
   try:
     data = json.loads(body)
   except ValueError as exc:
-    return None, f"HTTP 200 but the response body is not JSON ({exc})"
+    return None, f"HTTP 200 but the response body is not JSON ({exc})", None
   if isinstance(data, dict) and data.get("error"):
-    return None, f"HTTP 200 carrying a JSON error object: {json.dumps(data['error'])[:400]}"
+    return None, f"HTTP 200 carrying a JSON error object: {json.dumps(data['error'])[:400]}", None
   if not isinstance(data, dict):
-    return None, f"HTTP 200 but the response JSON is a {type(data).__name__}, not an object"
+    return None, f"HTTP 200 but the response JSON is a {type(data).__name__}, not an object", None
   choices = data.get("choices")
   if not isinstance(choices, list) or not choices:
-    return None, "HTTP 200 but the response carries no 'choices' array"
-  message = choices[0].get("message") if isinstance(choices[0], dict) else None
+    return None, "HTTP 200 but the response carries no 'choices' array", None
+  first = choices[0] if isinstance(choices[0], dict) else {}
+  # ⚑ A non-string is NOT a finish reason -- same treatment the content gets below.
+  raw_finish = first.get("finish_reason")
+  finish = raw_finish if isinstance(raw_finish, str) else None
+  message = first.get("message")
   content = message.get("content") if isinstance(message, dict) else None
   if not isinstance(content, str) or not content.strip():
-    finish = choices[0].get("finish_reason") if isinstance(choices[0], dict) else None
     return None, (
       "HTTP 200 but the completion content was EMPTY "
       f"(finish_reason={finish!r}) -- this is NOT a rate limit; the endpoint "
       "accepted the request and returned nothing"
-    )
-  return content, None
+    ), finish
+  return content, None, finish
 
 
 @dataclass
@@ -445,6 +453,13 @@ class Attempt:
   transport_error: str | None
   bytes_in: int
   seconds: float
+  # ⚑ None means UNKNOWN, never "not truncated": no HTTP 200, a body we could not
+  # parse as far as choices[0], or a reply carrying no string finish_reason all
+  # land here. A string is the endpoint's own word and is recorded whether or not
+  # the completion was usable -- "length" is a TRUNCATED section. The key is
+  # always present in the meta record, so a reader tells UNKNOWN from evidence
+  # without guessing.
+  finish_reason: str | None = None
 
 
 def run_section(
@@ -469,10 +484,15 @@ def run_section(
     started = time.monotonic()
     ex = post_chat(conn.url, payload, bearer, args.timeout)
     elapsed = time.monotonic() - started
-    attempts.append(Attempt(ex.status, ex.transport_error, len(ex.body), round(elapsed, 3)))
+    # ⚑ Parsed BEFORE the attempt is recorded, so the record is built complete:
+    # finish_reason is the endpoint's only DIRECT word on truncation, and it has
+    # to land on a USABLE 200 too -- that is what a truncated section looks like.
+    text, why, finish = completion_text(ex.body) if ex.status == 200 else (None, None, None)
+    attempts.append(
+      Attempt(ex.status, ex.transport_error, len(ex.body), round(elapsed, 3), finish)
+    )
 
     if ex.status == 200:
-      text, why = completion_text(ex.body)
       if text is not None:
         return text, None, attempts
       failure = why or "unusable 200 response"
@@ -554,7 +574,8 @@ def build_parser() -> argparse.ArgumentParser:
     epilog=(
       "SECTION OUTPUT (per section, under --out):\n"
       "  section-<id>.md          the extractor's text. Written ONLY on a usable 200.\n"
-      "  section-<id>.meta.json   status code of every attempt, timings, byte counts.\n"
+      "  section-<id>.meta.json   per attempt: status, finish_reason, timing, byte count.\n"
+      "                           finish_reason null = UNKNOWN, not 'not truncated'.\n"
       "  section-<id>.FAILED.json why it failed. Never mistakable for a result.\n"
       "  RUN.json                 the derived ranges, the connection, the outcome.\n"
       "  keys-merged.txt          heuristic key roll-up; the raw sections are authority.\n"
@@ -709,6 +730,7 @@ def main(argv: list[str]) -> int:
       "prompt_chars": len(prompt), "model": conn.model, "url": conn.url,
       "attempts": [a.__dict__ for a in attempts],
       "statuses": [a.status for a in attempts],
+      "finish_reasons": [a.finish_reason for a in attempts],
       "ok": text is not None,
     }
     (args.out / f"section-{sid}.meta.json").write_text(
