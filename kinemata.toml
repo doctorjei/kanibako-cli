@@ -337,7 +337,8 @@ machinery = [
 # `settings/settings_categories.py` is the CODE side, where `_DELIVERY` is, in
 # that module's own words about it, "the ONE table naming every family, because
 # every family is delivered".
-# CATCHES: a family declared on one side and not the other. See `[[parity]]`
+# CATCHES: a family declared on one side and not the other, AND a family whose
+# declared delivery MECHANISM disagrees with what the code produces. See `[[parity]]`
 # near the END of this file -- that table, and nothing else here, is what reads
 # this registry.
 #
@@ -672,9 +673,32 @@ kind = "code-patterns"
 # of the whole output and matches once. Group 1 of each match is one identifier.
 
 # FACT under test: the manifest's `categories:` section and `_DELIVERY` name the
-# same delivery families. The prefix on each printed line is there so that
-# nothing incidental on either stream -- a warning, a traceback -- can be read
-# as a family name.
+# same delivery families AND agree on each family's DELIVERY MECHANISM. The prefix
+# on each printed line is there so that nothing incidental on either stream -- a
+# warning, a traceback -- can be read as a family name.
+#
+# ⚑ TWO HALVES, AND MEMBERSHIP STILL RUNS. `field = "delivery"` adds the VALUE
+# half: for every family both sides name, the manifest's `delivery:` cell is
+# compared with the `_DELIVERY` tag the oracle prints. Membership is unaffected --
+# a family on one side only is still a finding, so the value half cannot be made
+# vacuous by an oracle that goes quiet.
+#
+# ⚑ `authority = "declared"` -- THE MANIFEST CELL IS THE EXPECTED VALUE AND THE
+# CODE IS ON TRIAL. That is the direction because the nine values were sourced
+# from the SPECIFICATIONS, not read off `_DELIVERY`: seven from the five-arm fold
+# table in the system design, `env` from its by-name exclusion from all five arms,
+# `secret_path` from the system design's ARM'S-LENGTH rule. The spec is authority
+# over the code here, so a divergence means the code moved away from the declared
+# shape -- never that the manifest "has not kept up".
+#
+# ⚑ THE LITERALS ARE SPELLED UPPERCASE ON BOTH SIDES (`Delivery = Literal["COPY",
+# "MOUNT", "ENV"]`), so this is a plain equality and needs NO `translate` -- a
+# normalization that is wrong does not fail, it passes.
+#
+# ⚑ `extract` HAS TWO GROUPS BECAUSE IT MUST: group 1 the family, group 2 its
+# value. A one-group extract beside a `field` does not report a divergence -- it
+# BLOCKS. The identifier group excludes `=` so the greedy split lands in the one
+# place the printed line puts it.
 #
 # ⚑ EXPECTED RED, AND THE RED IS THE FINDING RATHER THAN A FAULT IN THIS TABLE.
 # Measured 2026-09-14 at `71c327e3`, kinemata `a365474`: 0 undeclared, 2
@@ -691,10 +715,12 @@ kind = "code-patterns"
 registry = "categories"
 command = ["{python}", "-c", """
 from kanibako.settings.settings_categories import _DELIVERY
-for name in _DELIVERY:
-    print("kanibako-category:", name)
+for name, delivery in _DELIVERY.items():
+    print(f"kanibako-category: {name}={delivery}")
 """]
-extract = '(?m)^kanibako-category: (\S+)$'
+extract = '(?m)^kanibako-category: ([^\s=]+)=(\S+)$'
+field = "delivery"
+authority = "declared"
 
 # ---------------------------------------------------------------------------
 # THE GATE INVENTORY. `[[gate]]` is verified by the `claims` command, so a gate
