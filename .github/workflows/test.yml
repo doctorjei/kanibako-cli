@@ -50,6 +50,30 @@ jobs:
       - run: pytest -v
         working-directory: packages/agent-goose
 
+  # ⚑ THE CONFORMANCE CHECKER IS PINNED BY SHA, NOT BY VERSION, AND THAT IS NOT
+  # CAUTION. The published `kinemata==0.1.0a1` wheel does NOT contain `parity`;
+  # upstream `main` is several commits past that tag and still declares
+  # `version = "0.1.0a1"`, so a version pin cannot tell the two builds apart and
+  # would silently install a tool without the command this gate turns on.
+  # Upstream's own starter workflow installs from `@main`, which is worse: it
+  # changes what this job means without changing what it says. Bump this SHA
+  # deliberately, as its own commit.
+  #
+  # Two configs, because `exclude` in this tool is global to a config: the
+  # registry scan excludes `api-docs/` (generated, respells every declared value
+  # by construction) while the documentation gate must NOT, since its findings
+  # there are real. See the header of either file.
+  conformance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - run: pip install "kinemata[yaml] @ git+https://github.com/doctorjei/kinemata@a365474"
+      - run: kinemata check
+      - run: kinemata -c kinemata-docs.toml claims
+
   integration:
     runs-on: ubuntu-latest
     steps:
