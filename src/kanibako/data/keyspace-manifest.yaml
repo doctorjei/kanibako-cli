@@ -633,6 +633,23 @@ policy:
 ## and never keyspace segments. The four that were name-keyed (caches, seeded,
 ## common, synced) joined shape (2) on 2026-08-07f; there is no name-keyed
 ## bind-shaped category left.
+##
+## ⚑ `delivery:` ON EVERY FAMILY IS THE DELIVERY MECHANISM — HOW the entry reaches
+## the box. Spelled in UPPERCASE exactly as `settings_categories.Delivery` spells it
+## (COPY / MOUNT / ENV), so a check against the code is a plain equality with no
+## normalization seam. SEVEN of the nine follow from the FIVE-ARM fold table (system
+## design, "the store shape"): three dest-keyed MOUNT arms (ro, rw, mask) and two
+## ordered COPY lists (seed, sync). `env` is excluded from all five arms BY NAME —
+## it "is not a path delivery and reaches no store arm" (§0, which points onward to
+## §2a `env` and §1A -- the sentence itself lives in §0, not in either), so it is
+## ENV. `secret_path` is ruled separately, ARM'S-LENGTH, by the system design.
+## 🛑 `secret_path: MOUNT` IS NOT A TYPO AND MUST NOT BE "FIXED". It has a STATED
+## DUAL: the MECHANISM is an RO bind mount of the 0600 host file (under
+## SECRET_MOUNT_DIR, no `:U`), while the OBSERVABLE EFFECT is an environment
+## variable a box-side hook exports FROM that mount at agent start. The spec
+## forecloses it in the MOUNT direction: "A distinct category because an `env`-value
+## would persist plaintext — do NOT fold into `env`" (§2a `secret_path`). This field
+## records the MECHANISM, never the effect.
 ## ---------------------------------------------------------------------------
 categories:
   # Token mapping: the spec (§2a) spells the active-agent level `agent.<active>`; this file spells it `agent.active`.
@@ -640,6 +657,7 @@ categories:
   scopes_spec: "§2a"
 
   masks:
+    delivery: MOUNT             # the `mask` arm of the five-arm fold
     terminal_key: true          # the value is the whole map; inner keys are data
     dest_keyed: true
     value: "dict[box_dest -> bool|None]"
@@ -652,6 +670,7 @@ categories:
   # so `<scope>.bindings.<arm>.<name>` is NOT a key and is refused (unknown_key).
   # There is no entry `name` — the DESTINATION is the identity. NO MIGRATION (R-4).
   bindings.ro:
+    delivery: MOUNT             # the `ro` arm of the five-arm fold
     value: bindmap              # dict[box_dest -> [host_src] | [host_src, options]]
     terminal_key: true          # the value is the whole map; inner keys are data
     dest_keyed: true
@@ -664,6 +683,7 @@ categories:
     default: {}
     spec: "§2a (REPRESENTATION; dest-keyed 2026-08-06c, R-5/R-6/R-9/R-10)"
   bindings.rw:
+    delivery: MOUNT             # the `rw` arm of the five-arm fold
     value: bindmap
     terminal_key: true
     dest_keyed: true
@@ -678,6 +698,7 @@ categories:
   # identity. ⚑⚑ THIS IS A KEY-SHAPE CHANGE ONLY: `kind: copy` on seeded and
   # synced is UNCHANGED — they were copies before and are copies after.
   caches:
+    delivery: MOUNT             # folds INTO the `rw` arm; not an arm of its own
     value: bindmap              # dict[box_dest -> [host_src] | [host_src, options]]
     terminal_key: true          # the value is the whole map; inner keys are data
     dest_keyed: true
@@ -693,6 +714,7 @@ categories:
            is live and declared (that 2026-06-27 reading was superseded 2026-08-08c)."
     spec: "§2a / §2d (dest-keyed 2026-08-07f)"
   seeded:
+    delivery: COPY              # the `seed` list of the five-arm fold
     value: bindmap
     terminal_key: true
     dest_keyed: true
@@ -702,6 +724,7 @@ categories:
     default: {}
     spec: "§2a (dest-keyed 2026-08-07f)"
   common:
+    delivery: MOUNT             # folds INTO the `rw` arm; not an arm of its own
     value: bindmap
     terminal_key: true
     dest_keyed: true
@@ -714,6 +737,7 @@ categories:
            migration M-3."
     spec: "§2a (R-5; migration M-3; dest-keyed 2026-08-07f)"
   synced:
+    delivery: COPY              # the `sync` list of the five-arm fold
     value: bindmap
     terminal_key: true
     dest_keyed: true
@@ -724,12 +748,15 @@ categories:
     suppressed_when: "box shares no credentials (auth tier private)"
     spec: "§2a (D-M4; auth-level redesign 2026-07-01; dest-keyed 2026-08-07f)"
   env:
+    delivery: ENV               # reaches NO store arm — excluded from the fold by name
     value: scalar               # env.<VAR>
     parametric: [VAR]
     cli_set: true
     reserved_names_apply: true
     spec: "§2a"
   secret_path:
+    delivery: MOUNT             # ⚑ THE MECHANISM, not the effect — read the 🛑 note
+                                #   above this block before calling this wrong
     value: path                 # secret_path.<VAR> — a PATH to secret material
     parametric: [VAR]
     cli_set: true               # scalar ⇒ full set/create (unlike source-only binds)
