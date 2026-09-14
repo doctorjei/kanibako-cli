@@ -68,11 +68,25 @@ jobs:
   conformance:
     runs-on: ubuntu-latest
     steps:
+      # ⚑ FULL HISTORY IS REQUIRED, NOT AN OPTIMIZATION TO UNDO. The default
+      # shallow clone (depth 1) has no commit objects, so every `commit does not
+      # resolve` claim in `llm-docs/` fails here while resolving locally. That is
+      # what reddened this job the first time it ever ran: 24 of 1650 claims, all
+      # of them true, none of them checkable in a shallow tree.
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
-      - run: pip install "kinemata[yaml] @ git+https://github.com/doctorjei/kinemata@a365474"
+      # ⚑⚑ PIN THE SHA, NEVER THE VERSION: kinemata's `pyproject.toml` still reads
+      # `0.1.0a1` eighteen commits past that tag, so the version string does not
+      # distinguish one build from another. Confirmed on both sides 2026-09-14.
+      # 🛑 THIS PIN MUST NOT LAG THE TREE WE DEVELOP AGAINST. `[[parity]]` does not
+      # refuse unknown keys, so a config using `field`/`authority` against a build
+      # that predates them is SILENTLY DOWNGRADED to membership-only -- green here,
+      # checking less than it says. `a365474` was exactly that build.
+      - run: pip install "kinemata[yaml] @ git+https://github.com/doctorjei/kinemata@00044f2"
       # ⚑ THE PROJECT ITSELF IS INSTALLED HERE BECAUSE THE PARITY ORACLE IMPORTS
       # IT. `parity` runs a command that prints what the code produces, and an
       # oracle it cannot run is a FAILURE that no baseline can accept -- so a
