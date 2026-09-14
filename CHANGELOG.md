@@ -24,6 +24,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a tome appears in the assembled canon with a number, and one whose file is missing is recorded as
   absent in the build receipt rather than passed over in silence.
 
+- **The charter's box chapter is now spelled so that it resolves.** `ROM_CONTENTS.md` named its
+  fourth chapter `@box/ROM_BOX.md`, carrying a leading `@` that its three siblings do not, so the
+  import looked for a directory literally named `@box` — a path that has never existed. The chapter
+  could not have appeared in the assembled canon whatever it held, and the build receipt recorded
+  the misspelled path as absent rather than watching the real one. The shipped file holds only
+  comments today, so the assembled text does not change; what changes is that anything written into
+  that chapter now appears in it, numbered, under the charter's contents.
+
 ### Added
 
 - **A persona endpoint that is not a well-formed URL is refused at the store boundary, naming the

@@ -23,4 +23,4 @@ _Entrypoint to Core Instructions_
 __IMPORTSECTION__("general/ROM_GENERAL.md")
 __IMPORTSECTION__("agent/ROM_AGENT.md")
 __IMPORTSECTION__("workset/ROM_WORKSET.md")
-__IMPORTSECTION__("@box/ROM_BOX.md")
+__IMPORTSECTION__("box/ROM_BOX.md")
