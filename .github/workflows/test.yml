@@ -71,7 +71,17 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install "kinemata[yaml] @ git+https://github.com/doctorjei/kinemata@a365474"
+      # ⚑ THE PROJECT ITSELF IS INSTALLED HERE BECAUSE THE PARITY ORACLE IMPORTS
+      # IT. `parity` runs a command that prints what the code produces, and an
+      # oracle it cannot run is a FAILURE that no baseline can accept -- so a
+      # missing install here is a permanently red job, not a quiet skip.
+      # Plain `-e .` is enough and the agent plugin packages the `test` job
+      # installs are deliberately absent: the oracle imports
+      # `settings/settings_categories.py`, which is stdlib-only by invariant.
+      # Verified 2026-09-14 in a venv holding only kinemata and this project.
+      - run: pip install -e .
       - run: kinemata check
+      - run: kinemata parity
       - run: kinemata -c kinemata-docs.toml claims
 
   integration:

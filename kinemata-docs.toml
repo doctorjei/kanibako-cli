@@ -204,3 +204,12 @@ note = "code that re-derives a declared fact"
 command = "kinemata -c kinemata-docs.toml claims"
 where = [".github/workflows/test.yml"]
 note = "documentation claims, and this inventory"
+
+# ⚑ `parity` is declared in `kinemata.toml` beside the registry it reads, and
+# the gate for it is declared HERE for the same mechanical reason as the two
+# above: `claims` is what verifies a `[[gate]]`, so a gate has to sit in the
+# config `claims` is run with. The two files are not a split of one subject.
+[[gate]]
+command = "kinemata parity"
+where = [".github/workflows/test.yml"]
+note = "a registry's declared identifiers against what the code prints"

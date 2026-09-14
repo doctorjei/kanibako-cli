@@ -2,7 +2,7 @@
   "version": 1,
   "until": "2026-09-22",
   "by": "Jei Blanchard",
-  "note": "First baseline of the kinemata adoption, recorded at kanibako-cli 75f7da94 with kinemata a365474. What is accepted is the residue the tool finds on the day the config first landed, not a judgment that any of it is correct. The date is a tripwire set just past where the 1.8.0 cut is expected: a deferral should lapse at a moment that already has attention, rather than firing into a random week.",
+  "note": "Re-recorded at kanibako-cli 71c327e3 with kinemata a365474, when the first [[parity]] check landed. What is new is two 'unproduced' identifiers from the 'categories' registry: 'scopes' and 'scopes_spec'. Both are metadata that happen to sit inside the manifest's table of categories -- one names the scope levels a category may be set at, the other cites the spec section for them -- so the manifest declares eleven keys under 'categories:' where the code's _DELIVERY declares nine delivery families. Neither of the two is a category, and the code is not missing one. Whether the manifest should carry metadata inside that table is a question about the manifest and the spec, not about this config, and it is deliberately not answered by making the check agree with itself: filtering the two out of the registry would leave a check that reports nothing, which is the same as not having it. Everything else is the residue the first baseline accepted, carried forward. This is a DATE and not a verdict that the shape is right -- the tripwire is set just past where the 1.8.0 cut is expected, so the question comes back at a moment that already has attention.",
   "findings": [
     {
       "registry": "canon-layout",
@@ -159,6 +159,20 @@
       "antipattern": "system\\.setup_completed",
       "path": "src/kanibako/settings/defaults_inventory.py",
       "text": "\"system.agent\", \"system.setup_completed\", \"box.shell\", \"agent.default.model\","
+    },
+    {
+      "registry": "parity:categories:unproduced",
+      "entry": "scopes",
+      "antipattern": "",
+      "path": "categories",
+      "text": "scopes"
+    },
+    {
+      "registry": "parity:categories:unproduced",
+      "entry": "scopes_spec",
+      "antipattern": "",
+      "path": "categories",
+      "text": "scopes_spec"
     },
     {
       "registry": "store-layout",
