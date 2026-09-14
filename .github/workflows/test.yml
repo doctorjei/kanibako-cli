@@ -59,10 +59,12 @@ jobs:
   # changes what this job means without changing what it says. Bump this SHA
   # deliberately, as its own commit.
   #
-  # Two configs, because `exclude` in this tool is global to a config: the
-  # registry scan excludes `api-docs/` (generated, respells every declared value
-  # by construction) while the documentation gate must NOT, since its findings
-  # there are real. See the header of either file.
+  # ONE config and one baseline, so every command below runs plainly. There were
+  # two until 2026-09-14, on the ground that `exclude` is global to a config and
+  # the registry scan needed `api-docs/` and `llm-docs/` excluded where the
+  # documentation gate must not. That premise was false -- a registry scan reads
+  # `.py` and those directories hold none, so the exclusion was inert. The
+  # measurement is in the header of `kinemata.toml`.
   conformance:
     runs-on: ubuntu-latest
     steps:
@@ -82,7 +84,7 @@ jobs:
       - run: pip install -e .
       - run: kinemata check
       - run: kinemata parity
-      - run: kinemata -c kinemata-docs.toml claims
+      - run: kinemata claims
 
   integration:
     runs-on: ubuntu-latest
