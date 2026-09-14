@@ -723,6 +723,158 @@ field = "delivery"
 authority = "declared"
 
 # ---------------------------------------------------------------------------
+# THE SHAPE RULES. `[[shape]]` reads only the declaration and asks whether it is
+# the shape this project says it is -- the one mechanism here that compares the
+# manifest to ITSELF rather than to the code. It is a REMINDER, not a catch: an
+# agent can edit a row and the rule that governs it in one commit, exactly as it
+# can with a `[[gate]]`.
+#
+# 🛑 A RULE THAT SELECTS NOTHING FAILS, and that is the property being bought.
+# Every guard below is therefore a claim about how many rows it reaches, and the
+# `examined` count the command prints is the part to read -- a rule that passes
+# while narrowing to the wrong group is the failure this whole file exists to
+# avoid. The counts stated in each comment were measured 2026-09-14, kanibako-cli
+# `6126bae0`, kinemata `00044f2`.
+#
+# ⚑ THE HEADER LINE UNDERSTATES THE REGISTRY. `cli.py` prints `over N entry(s)`
+# where N is `max(examined)` across the block's rules, NOT the registry's size --
+# so `categories` (11 entries) prints "over 7". Read the per-rule counts.
+
+[[shape]]
+registry = "keyspace"
+
+  # FACT: every row carries `set:`, one of exactly `file`, `cli+file`, `never`.
+  # AUTHORITY: the legend at the head of the manifest's `keys:` table declares the
+  # three-token vocabulary; spec §0's directional rule is what the tokens mean.
+  # CATCHES: a fourth value, on ANY row.
+  #
+  # ⚑ IT IS NOT A SECOND COPY OF THE EXISTING TEST, AND THE DIFFERENCE IS THE
+  # ELEVEN PARAMETRIC ROWS. `tests/test_settings/test_set_column_conformance.py`
+  # already asserts `declared == {"cli+file", "file", "never"}` -- but over
+  # `_static_rows()`, which drops every row whose id carries a `<placeholder>`.
+  # Measured: 100 rows declared, 11 of them parametric (`agent.<agent>.<key>`,
+  # `meta.box.agent.<key>`, the six `meta.agent.<agent>.*` and three more), so a
+  # bad `set:` cell on any of those eleven passes the suite today. This rule has no
+  # guard and reaches all 100.
+  [[shape.rule]]
+  name = "set-vocabulary"
+  field = "set"
+  choices = ["file", "cli+file", "never"]
+
+  # FACT: where a row declares `type:`, it is one of eight tokens.
+  # AUTHORITY: the `type:` cells themselves; `_VALUE_FOR_TYPE` in
+  # `tests/test_settings/test_set_column_conformance.py` is the code side that
+  # must have a benign value per type, so a ninth token silently unexercises a row.
+  # CATCHES: a typo'd or invented type, which nothing else reads until a set verb
+  # does.
+  #
+  # ⚑ GUARDED BECAUSE THE COLUMN IS NOT UNIVERSAL, and the guard is the honest
+  # statement of that: 77 of the 100 rows carry `type:`; the 23 that do not are
+  # `agent.<agent>.<key>` plus the whole `meta.*` derived group, which are typed by
+  # what derives them. `when = { present = "type" }` makes this a rule ABOUT rows
+  # that have one, rather than a rule that would have to name 23 exceptions.
+  [[shape.rule]]
+  name = "type-vocabulary"
+  when = { present = "type" }
+  field = "type"
+  choices = ["path", "str", "bool", "dict", "enum", "list", "int", "version_marker"]
+
+  # FACT: `type: enum` and a `choices:` cell are the same fact, an exact IFF.
+  # AUTHORITY: an enum with no members is not a type, and a member list on a row
+  # of another type is a value space nothing enforces.
+  # CATCHES: both halves of the drift -- an enum row that lost its members, and a
+  # `choices:` list left behind on a row whose type was changed away from enum.
+  #
+  # ⚑ TWO GUARDED RULES, WHICH IS THE FORM `shape.py` NAMES FOR AN IFF ("an IFF is
+  # two guarded rules"): each side guards on one half and claims the other. One
+  # rule can express only one direction, and the direction it leaves out is the
+  # one that goes unwatched. Measured: 3 rows each way, in agreement.
+  [[shape.rule]]
+  name = "enum-carries-choices"
+  when = { field = "type", equals = "enum" }
+  present = "choices"
+
+  [[shape.rule]]
+  name = "choices-means-enum"
+  when = { present = "choices" }
+  field = "type"
+  equals = "enum"
+
+  # FACT: every row is traced to a spec section.
+  # AUTHORITY: the manifest's own header, verbatim -- "CONVENTION: every entry
+  # carries `spec:` = the section it is traced from". It is stated in prose and
+  # NOTHING ENFORCES IT, which is the gap this closes. The same cell is already
+  # load-bearing elsewhere in this file: the registry above declares
+  # `clause_field = "spec"`, so a row without one is also a row `claims` cannot link.
+  # CATCHES: a row added without its clause -- the edit that is shorter, invisible
+  # and rewarded, which is the spend test this mechanism is judged by.
+  #
+  # ⚑ `present` IS KEY-PRESENCE, NOT NON-BLANKNESS. A row carrying `spec: ""`
+  # would pass. Measured today: all 100 rows carry the cell and none is blank, so
+  # nothing is being papered over -- but do not read this rule as promising more
+  # than it claims.
+  [[shape.rule]]
+  name = "spec-on-every-row"
+  present = "spec"
+
+# ---------------------------------------------------------------------------
+# FACT: the nine delivery families split into TWO KEY SHAPES, and each shape is
+# declared by a pair of flags. Seven are bind-shaped -- `masks`, `bindings.ro`,
+# `bindings.rw`, `caches`, `common`, `seeded`, `synced` -- and carry
+# `terminal_key: true` with `dest_keyed: true`: the key ends at the family and the
+# destination is the sub-key. Two are parametric -- `env`, `secret_path` -- and
+# carry NEITHER, because the sub-key is a name the user chooses.
+# AUTHORITY: the `categories:` records are the SPEC side of the single-route
+# invariant; the shape of a family's key is what `settings/settings_categories.py`
+# resolves against.
+# CATCHES: a family whose flags stop matching its shape -- a new bind-shaped family
+# added without `dest_keyed`, or a parametric one that acquires a flag it cannot
+# honour. A flag is one line in a record nobody reads until a launch does.
+#
+# 🛑 THE GUARD IS `cli_set`, AND THE OBVIOUS ALTERNATIVE IS WRONG. The
+# `categories:` section also holds TWO NON-FAMILY records -- `scopes` (a list) and
+# `scopes_spec` (a string) -- which the mapping adapter yields as `extra =
+# {"value": ...}`. They carry no flags at all, so `when = { absent = "parametric" }`
+# sweeps both into the bind-shaped group: measured, that guard selects 9 and
+# reports `scopes` and `scopes_spec` as violations, rc=1. `cli_set` is present on
+# the nine families and on neither of the two, so guarding on its VALUE partitions
+# exactly the families -- 7 on `false`, 2 on `true`.
+# ⚑ AND THE GUARD MUST NOT READ WHAT THE CLAIM ASSERTS, or the rule checks a row
+# against itself. `cli_set` is a third, independent cell; `terminal_key` would not
+# be. (The same two records are the KNOWN, accepted red in the `[[parity]]` table
+# below -- 2 unproduced. They are metadata inside the table of categories, and
+# whether that shape is right is a manifest question settled in neither place.)
+#
+# ⚑ FOUR RULES FOR TWO FACTS, because one rule carries one claim: asserting both
+# flags on both sides is 2 x 2. Naming them separately is also what makes a
+# finding actionable -- `bind-shaped-is-dest-keyed: synced` says which flag on
+# which family, where one merged rule would say only "synced is mis-shaped".
+[[shape]]
+registry = "categories"
+
+  [[shape.rule]]
+  name = "bind-shaped-is-terminal-key"
+  when = { field = "cli_set", equals = false }
+  field = "terminal_key"
+  equals = true
+
+  [[shape.rule]]
+  name = "bind-shaped-is-dest-keyed"
+  when = { field = "cli_set", equals = false }
+  field = "dest_keyed"
+  equals = true
+
+  [[shape.rule]]
+  name = "parametric-is-not-terminal-key"
+  when = { field = "cli_set", equals = true }
+  absent = "terminal_key"
+
+  [[shape.rule]]
+  name = "parametric-is-not-dest-keyed"
+  when = { field = "cli_set", equals = true }
+  absent = "dest_keyed"
+
+# ---------------------------------------------------------------------------
 # THE GATE INVENTORY. `[[gate]]` is verified by the `claims` command, so a gate
 # must sit in the config `claims` is run with -- which, since the 2026-09-14
 # merge, is the only config there is.
