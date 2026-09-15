@@ -447,6 +447,11 @@ class TestPrepareHost:
         m_auth.assert_called_once()
         env = m_auth.call_args.kwargs.get("env")
         assert env is not None and env.get("DISABLE_AUTOUPDATER") == "1"
+        # [R168]: the OAuth session jar is STATE and ``browser_state`` locates it from
+        # ``system.state`` itself, so the binary is the ONLY thing this hand-off carries.
+        # A data directory threaded back through here is the retired shape.
+        assert m_auth.call_args.args == (str(install.binary),)
+        assert "data_path" not in m_auth.call_args.kwargs
 
     def test_auto_auth_skipped_when_disabled(self, tmp_path, monkeypatch):
         """When auto_auth is False, auto_refresh_auth is not called."""
