@@ -18,10 +18,11 @@ The sweep should include evaluation of all of the following, unless otherwise in
  - Any and all other relevant written information that is part of the project
 
 ## Things to Remember
- - Do the sweep yourself; this is not a job that should be assigned to subagents, as they lack the
-   critical context to make appropriate calls about what is relevant and appropriate.
- - Be thorough - anything you miss will likely be gone forever after the context is clear, so it is
-   important not to cut corners.
+ - Do the sweep yourself; do not assign it to subagents, who lack critical context to determine relevance.
+ - Be thorough; anything missed is likely gone forever after context is cleared, so don't cut corners.
+ - Shipped code owes shipped docs, in the same commit if it changes behavior non-trivially.
+ - Sweep for information that surfaces only in conversation - decisions, rulings, and future promises.
+   Fresh agents won't have it, so you have to capture it.
 
 ## Sweep Steps
 
