@@ -534,14 +534,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Two retired keys in an agent plugin's defaults file are refused by name at load.** Plugin
   descriptor keys are read individually, so an unrecognised one is simply never read — which for
   these two meant a plugin that loaded *successfully* and then behaved as though it had declared
-  nothing. `safe_bypass:` (renamed to `access_realization:`, same shape) left the agent with no
-  permission realization at all, so the launch emitted none and the harness ran at its own
-  permissive default; `container_env:` under `descriptor:` left the agent with none of its
-  required environment variables, which now belong in the file's top-level `env:` section where
-  they become `agent.<agent>.env.<VAR>` keys a user can override by name. Both now raise at
-  descriptor load, naming the file, the retired key, its replacement and what silence would have
-  cost. ⚠️ **A plugin still spelling either key fails to load** — this is the load-time half of
-  the plugin/base version pairing; upgrade the `kanibako-agent-*` packages with the base.
+  nothing. `safe_bypass:` (renamed to `access_realization:`, and reshaped with it — the
+  two-polarity pair became per-tier rows under `tiers:`) left the agent with no permission
+  realization at all, so the launch emitted none and the harness ran at its own permissive default;
+  `container_env:` under `descriptor:` left the agent with none of its required environment
+  variables, which now belong in the file's top-level `env:` section where they become
+  `agent.<agent>.env.<VAR>` keys a user can override by name. Both now raise at descriptor load,
+  naming the file, the retired key, its replacement and what silence would have cost — and for
+  `safe_bypass:`, the reshape too, because renaming the key alone is refused again.
+  ⚠️ **A plugin still spelling either key fails to load** — this is the load-time half of the
+  plugin/base version pairing; upgrade the `kanibako-agent-*` packages with the base.
 
 ### Removed
 
