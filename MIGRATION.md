@@ -4395,6 +4395,64 @@ Nothing warns about it and no verb cleans it up, because from kanibako's side it
 bind at an ordinary destination. Grep your settings files for `canon/bible` and delete what you
 find.
 
+### 2.71 A store set up by `1.8.0rc2` has a broken comms hook, and upgrading does not replace it
+
+**Upgrading from v1.7.2:** `check-comms.sh` is new in v1.8.0, so you have no copy of it and no store
+surgery to do — but it only arrives if you **accept the template refresh** described below, because
+the automatic first-run install fires on a first run only and you already have a config file.
+
+**This section is for anyone whose store was created or set up under `1.8.0rc2`** — which includes
+people who never ran `kanibako setup` at all, because the first kanibako command you run on a fresh
+install lays the templates down for you.
+
+**`rc2` shipped the hook with two defects.** (`rc1` did not ship this file at all.) It watched
+`chat/broadcast.log`, a name retired in **1.6.0** when broadcasts moved to `chat/broadcast.md`, so **broadcast alerts never
+fired at all**; and a directory-read error inside your mailbox could abort it with no message,
+stopping mail detection **for as long as that condition lasted** and printing a bare hook failure on
+every tool call meanwhile. Both are fixed in this release.
+
+**Upgrading the package does not give you the fix, and neither does making a new box.** The hook is
+delivered from one store-wide directory — `global/canon/handbook/general/` under your kanibako data
+directory (`$XDG_DATA_HOME/kanibako`, i.e. `~/.local/share/kanibako`, unless you repointed
+`config.data` or `system.canon`) — that the installer treats as yours: it is written
+**create-if-absent**, so a file already there is never overwritten. That is deliberate, because your
+edits to a seeded template are meant to survive an upgrade. `kanibako setup --refresh-templates`
+does not **overwrite** it either; that refresh covers packaged **staging** content only. (It will
+*create* the file once it is absent, which is what the remedy below relies on.) Every box on the
+store binds that same directory read-only, so a new box, a recreated box, and anything an agent
+could do from inside a box all see the same stale file.
+
+**To take the fix, act on the store, host-side.** Either copy the corrected file out of the
+installed package — `kanibako/data/global/template/handbook/general/scripts/behavior/check-comms.sh`
+inside your site-packages — over the store copy, or delete the store copy and let the installer
+re-lay it, which it will because the file is then absent:
+
+🛑 **Read the two warnings under this block before running it** — deleting discards any edits you
+made to that file, and there is a safe way to see what is at stake first.
+
+```
+rm ~/.local/share/kanibako/global/canon/handbook/general/scripts/behavior/check-comms.sh
+kanibako setup --refresh-templates
+```
+
+⚠️ **Plain `kanibako setup` is not enough.** The template step is behind a prompt that defaults to
+**no** (`Update templates now? [y/N]`), and in a non-interactive shell with no flag it is skipped
+entirely — so deleting the file and pressing Enter leaves you with **no hook at all**, which is
+worse than the stale one. Pass the flag, or answer `y`.
+
+⚠️ **`--refresh-templates` is wider than this one file:** it also replaces edits you made to other
+*shipped* template files. If you have such edits, prefer the copy-one-file route above.
+
+⚠️ **Deleting discards any edits you made to `check-comms.sh`** — which is exactly why the installer
+refuses to overwrite it. **To see what is at stake before you touch anything, run plain
+`kanibako setup` and answer `n`** (or press Enter) at `Update templates now? [y/N]`. Plain `setup` is
+fine for *looking* — it is only insufficient for *fixing*, which is what the warning above is about.
+It lists `Kept YOUR copy (N file(s) differ from the shipped one):`, and `Files to ADD` /
+`Files to UPDATE` when those are non-empty, tells you that edits to shipped files would be replaced,
+and then writes nothing when you decline.
+🛑 **Do not use `--refresh-templates` to look:** it is not a dry run — it writes first and reports
+afterwards, so by the time you read the list your shipped-template edits are already gone.
+
 ---
 
 ## 3. For plugin authors
