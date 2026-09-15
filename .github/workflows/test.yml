@@ -81,24 +81,27 @@ jobs:
       # kinemata's `pyproject.toml` read `0.1.0a1` eighteen commits past that
       # tag, and the published `0.1.0a1` wheel did not contain `parity` at all --
       # so a version string could not tell two builds apart and could install a
-      # tool missing the command this gate turns on. The version pinned below is a
-      # published build that does identify itself: its package tree is file-
-      # identical to upstream `f6fc5f7` (`diff -rq`, `__pycache__` aside) and it
-      # carries both `parity` and `shape`. The value is written once, on the run
-      # line -- restating it here would be a second copy to bump.
-      # ⚑ It is a pre-release, and pip honors an exact `==` pin on it without
-      # `--pre`. Verified 2026-09-14 in an empty venv.
+      # tool missing the command this gate turns on. The value pinned below is a
+      # published build that does identify itself: `0.1.0` is the final release
+      # (no longer a pre-release, so no `--pre` question applies), and its
+      # package tree is file-identical to upstream tag `v0.1.0` = commit
+      # `9f7d1da` (`diff -rq` against `src/kinemata`, `__pycache__` aside;
+      # verified 2026-09-15). It carries both `parity` and `shape`. The value is
+      # written once, on the run line -- restating it here would be a second
+      # copy to bump.
       # 🛑 THIS PIN MUST NOT LAG THE TREE WE DEVELOP AGAINST. An older `[[parity]]`
       # did not refuse a key it could not mean, so a config using `field`/`authority`
       # against a build that predates them is SILENTLY DOWNGRADED to membership-only
       # -- green here, checking less than it says. `a365474` was exactly that build.
-      # The pinned build refuses by name at rc=2 instead (verified 2026-09-14), so
-      # lagging is now the only road back into that silence.
+      # The fix that makes a build refuse by name at rc=2 instead landed before
+      # `0.1.0a2.dev1` (verified 2026-09-14); `0.1.0` is a later release and
+      # carries the fix forward, so lagging is now the only road back into that
+      # silence.
       # 🛑 AND IT IS A FLOOR, NOT A PREFERENCE. `kinemata.toml`'s `exclude` uses the
       # `/`-anchored spelling, which an earlier build reads as a literal substring
       # matching nothing -- lower this pin and the conformance job reds. The
       # measurement is in that file's version-floor note, above its `exclude`.
-      - run: pip install "kinemata[yaml]==0.1.0a2.dev1"
+      - run: pip install "kinemata[yaml]==0.1.0"
       # ⚑ THE PROJECT ITSELF IS INSTALLED HERE BECAUSE THE PARITY ORACLE IMPORTS
       # IT. `parity` runs a command that prints what the code produces, and an
       # oracle it cannot run is a FAILURE that no baseline can accept -- so a
