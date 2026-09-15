@@ -4669,9 +4669,9 @@ independently of the base and depend on **`kanibako-cli`** with **no version pin
    ```
 
    ⚑ **A `container_env:` left under `descriptor:` is REFUSED by name**, naming the file and the
-   replacement — the same treatment `safe_bypass:` gets, and for the same reason: left unread it
-   would load your plugin as an agent whose required variables are silently absent, which is a box
-   that misbehaves rather than one that fails.
+   replacement — the same treatment the other retired descriptor key, `safe_bypass:`, gets below,
+   and for the same reason: left unread it would load your plugin as an agent whose required
+   variables are silently absent, which is a box that misbehaves rather than one that fails.
 
    **Values must be STRINGS** — quote `"1"` and `"true"`. An unquoted `1` or `true` is refused
    rather than coerced, because YAML would hand you an int or a bool whose `str()` is not what you
@@ -4688,6 +4688,70 @@ independently of the base and depend on **`kanibako-cli`** with **no version pin
    goes nowhere. `default_envs()` is the only route a plugin has into the box environment; the
    descriptor's `settings` and `access_realization` still realize RESOLVED values onto the env
    channel, which is a different job.
+
+9. **BREAKING: the descriptor's `safe_bypass:` block is now `access_realization:`, and its body
+   changed shape with it.** It is still the one place a plugin declares how its harness realizes the
+   permission axis. What changed is the axis: the boolean `auto_approve` became the three-valued
+   `access` tier (`restricted` | `editing` | `full`) — the **Settings keys renamed or retired**
+   section covers the user-facing half — so a two-polarity safe/unsafe toggle no longer describes
+   it. The name moved with the shape, because nothing here is a bypass: `restricted` is the opposite
+   of one.
+
+   **Before** — v1.7.2, one emission per polarity, redeeming `auto_approve`:
+
+   ```yaml
+   descriptor:
+     safe_bypass:
+       channel: env
+       env_var: GOOSE_MODE
+       env_value: auto             # safe-mode OFF (-A)
+       secure_env_value: approve   # safe-mode ON  (-S)
+       setting_key: auto_approve
+   ```
+
+   **After** — one row per tier this harness can render:
+
+   ```yaml
+   descriptor:
+     access_realization:
+       channel: env
+       env_var: GOOSE_MODE
+       setting_key: access
+       tiers:
+         restricted: {env_value: approve}
+         full: {env_value: auto}
+   ```
+
+   Three things to carry across, and only the first of them is the rename:
+
+   - **The key and the field are renamed, with no alias.** `PluginDescriptor.safe_bypass` is
+     `PluginDescriptor.access_realization`, and the class `SafeBypass` is `AccessRealization`;
+     neither old name survives in `kanibako.targets.base`.
+   - **The polarity pair becomes `tiers:` rows.** `flag:`/`secure_flag:` and
+     `env_value:`/`secure_env_value:` no longer exist on the block — each emission moves into a row
+     under `tiers.<tier>`, carrying `flag:` (FLAG channel) or `env_value:` (ENV channel). The block
+     itself now carries only `channel`, `env_var`, `tiers` and `setting_key`, and any other field is
+     refused by name at load.
+   - **`setting_key: auto_approve` becomes `setting_key: access`** — and this is the one that fails
+     QUIETLY if you miss it. The launch redeems `setting_key` against the resolved agent state; a
+     key that is no longer in the keyspace resolves to nothing there, which reads as *unset*, and an
+     unset tier takes its declared default of `full`. The box would run fully permissive whatever
+     the user stored.
+
+   ⚑ **A tier you OMIT is one your harness CANNOT render**, and the launch refuses that tier by
+   name rather than substituting a neighbour — goose declares no `editing` row, so asking goose for
+   `editing` is an error naming the tiers it does render. An EMPTY row means something else: *emit
+   nothing, deliberately*, which is the correct realization on the FLAG channel for a harness whose
+   own default already prompts (claude's `restricted: {}`). On the ENV channel an empty row is
+   refused at load, because there an unset variable is the harness's own default and that default
+   is the permissive one.
+
+   **If you do nothing:** a defaults file still spelling `safe_bypass:` is **refused by name** at
+   descriptor load, naming the file and the replacement. Descriptor keys are read one at a time, so
+   an unread `safe_bypass:` would have loaded your plugin with no permission realization at all and
+   launched it with nothing emitted — which on the ENV channel *is* the bypass. ⚑ A hand-built
+   `AccessRealization` carrying no rows is not caught there; it reaches the launch, which names it
+   as plugin version skew rather than as a limit of your agent.
 
 ### 3.1 Core module paths moved (package-ification) — the flat compatibility shims are DELETED
 
