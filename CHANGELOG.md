@@ -12,6 +12,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The seeded `check-comms.sh` hook never reported a broadcast, and an error inside your mailbox
+  could stop it reporting mail.** Two defects, both shipped in `1.8.0rc2`. It watched
+  `chat/broadcast.log`, a filename retired in 1.6.0 when broadcasts moved to `chat/broadcast.md`, so
+  the alert branch was unreachable in every box since the hook was added — the rename simply missed
+  it. Separately, the script runs under `set -euo pipefail` and captured `find` into a variable with
+  stderr discarded, which hides the message but not the exit status: one unreadable directory under
+  the mailbox aborted the whole hook with an **empty** stderr, so the harness surfaced a bare failure
+  on every tool call and no mail was reported for as long as that condition lasted. The hook now
+  separates `find`'s status from its output, keeps and reports whatever it could read, and says
+  plainly that the scan was incomplete rather than implying there is no mail. A failure anywhere else
+  degrades to one explanatory message and a clean exit instead of silence.
+  ⚠️ **Upgrading does not replace an existing copy** — the file lives in a store directory the
+  installer treats as yours and writes create-if-absent. See
+  `MIGRATION.md` § *2.71 A store set up by `1.8.0rc2` has a broken comms hook, and upgrading does not
+  replace it* for the host-side fix, which is needed if your store was created or set up under `rc2`
+  — including if you never ran `kanibako setup`, since the first command on a fresh install lays the
+  templates down for you.
+
 - **The canon templates' `__IMPORTSECTION__` and `__LINKSECTION__` calls are now resolved instead of
   being copied into the assembled file verbatim.** The shipped canon documents have called these since
   the tome layout landed, but the importer only ever understood two forms — a bare `@path` and
