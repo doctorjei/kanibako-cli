@@ -1992,11 +1992,11 @@ class TestCheckLaunchBaselineUnit:
 
     def _std(self, tmp_path):
         from types import SimpleNamespace
-        # ``_launch_issues_path``/``_shadow_issues_path`` read ``std.state_path``
-        # (finding #4 fix — no more hardcoded "kanibako" leaf), so the stand-in
-        # must carry it; mirrors the default-leaf resolution of a real
-        # ``load_std_paths()`` against ``XDG_STATE_HOME=<tmp_path>/state``.
-        return SimpleNamespace(state_path=tmp_path / "state" / "kanibako")
+        # ``_launch_issues_path``/``_shadow_issues_path`` read ``std.state`` — the
+        # resolved ``system.state`` ([R166]) — so the stand-in must carry it; this
+        # mirrors a real ``load_std_paths()`` resolving the key's own default against
+        # ``XDG_STATE_HOME=<tmp_path>/state``.
+        return SimpleNamespace(state=tmp_path / "state" / "kanibako")
 
     def test_tier1_missing_returns_sentinel_with_shell_reminder(
         self, tmp_path, monkeypatch, capsys
@@ -2121,25 +2121,21 @@ class TestCheckLaunchBaselineUnit:
         start_mod._persist_shadow_issues(std, "box1", [])
         assert not issues.exists()
 
-    def test_launch_and_shadow_issues_track_a_non_default_state_leaf(self, tmp_path):
-        """⚑ MUTATION PROOF (finding #4): both state-file paths must follow
-        ``std.state_path`` — an isolated store (a non-default ``config.data``
-        leaf) must relocate them, not always land under a hardcoded "kanibako".
-        A leaf-blind implementation (the pre-fix ``xdg(...) / "kanibako" /
-        ...``) would put both under ``.../state/kanibako/...`` regardless of
-        *std*, failing these assertions.
+    def test_launch_and_shadow_issues_follow_a_repointed_state_root(self, tmp_path):
+        """⚑ MUTATION PROOF ([R166]): both state-file paths must follow ``std.state``,
+        the resolved ``system.state``, so a user who repoints that key takes them with
+        it.  Either a path composed from ``$XDG_STATE_HOME`` directly or one derived
+        from ``config.data`` would ignore *std* and fail these assertions.
         """
         from types import SimpleNamespace
 
         from kanibako.commands import start as start_mod
 
-        std = SimpleNamespace(state_path=tmp_path / "state" / "kanibako-custom")
+        std = SimpleNamespace(state=tmp_path / "elsewhere" / "kanibako-state")
         launch_issues = start_mod._launch_issues_path(std, "box1")
         shadow_issues = start_mod._shadow_issues_path(std, "box1")
-        assert launch_issues == tmp_path / "state" / "kanibako-custom" / "launch-issues.box1"
-        assert shadow_issues == tmp_path / "state" / "kanibako-custom" / "launch-shadows.box1"
-        assert "kanibako-custom" in str(launch_issues)
-        assert "kanibako-custom" in str(shadow_issues)
+        assert launch_issues == std.state / "launch-issues.box1"
+        assert shadow_issues == std.state / "launch-shadows.box1"
 
     def test_single_probe_covers_bootstrap_and_baseline(
         self, tmp_path, monkeypatch

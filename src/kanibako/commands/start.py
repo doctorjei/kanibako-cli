@@ -1332,11 +1332,12 @@ _BOOTSTRAP_MISSING = object()
 def _launch_issues_path(std, container_name: str) -> Path:
     """State-file path for a box's tier-2 launch warnings.
 
-    Uses ``std.state_path`` (``$XDG_STATE_HOME/<store leaf>``) so the warnings
-    survive the bootstrap session and can be reprinted on exit, and so an
-    isolated store's warnings never land in another store's state dir.
+    Uses ``std.state`` — the resolved ``system.state``, which every state store
+    derives from and nothing else ([R166]) — so the warnings survive the
+    bootstrap session and can be reprinted on exit, and a user who repoints the
+    state root takes them with it.
     """
-    return std.state_path / f"launch-issues.{container_name}"
+    return std.state / f"launch-issues.{container_name}"
 
 
 def _check_launch_baseline(runtime, image, bootstrap_program, container_name, std):
@@ -1440,10 +1441,10 @@ def _print_launch_issues(std, container_name: str) -> None:
 def _shadow_issues_path(std, container_name: str) -> Path:
     """State-file path for a box's bind-shadow warnings.
 
-    Mirrors :func:`_launch_issues_path` (same ``std.state_path`` root) so the
+    Mirrors :func:`_launch_issues_path` (same ``std.state`` root) so the
     warnings survive the bootstrap session and can be reprinted on exit.
     """
-    return std.state_path / f"launch-shadows.{container_name}"
+    return std.state / f"launch-shadows.{container_name}"
 
 
 def _persist_shadow_issues(std, container_name: str, shadowed: list[str]) -> None:

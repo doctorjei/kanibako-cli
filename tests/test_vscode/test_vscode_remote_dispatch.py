@@ -39,7 +39,7 @@ def wrapper_env(tmp_path, monkeypatch):
     (missing-socket re-establish is covered by its own test).
     """
     # ⚑ CONFIG_HOME isolated too: _vscode_remote_state_dir reads it via
-    # resolve_data_leaf() (see test_vscode_remote.py's _isolate_xdg for why).
+    # resolve_state_path() (see test_vscode_remote.py's _isolate_xdg for why).
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))

@@ -32,11 +32,18 @@ from kanibako.settings.paths import load_std_paths, load_system_config
 from kanibako.settings.bootstrap import SYSTEM_PATH_DEFAULTS
 
 
-def _sentinel(key: str) -> str:
+def _sentinel(tmp_home: Path, key: str) -> str:
     """A unique, obviously-not-a-default host path for *key*."""
-    # ⚑ Under /repointed, not tmp_path: a sentinel that shares a prefix with the
-    # default tree could be "reached" by accident when a default happens to nest.
-    return "/repointed/" + key.replace(".", "-")
+    # ⚑ Under a SIBLING of the default tree, never inside one: a sentinel sharing a
+    # prefix with a default could be "reached" by accident when a default happens to
+    # nest.  ``tmp_home`` itself is that common parent and holds no default of its own
+    # (``tests/conftest.py::tmp_home``: ``config``/``data``/``state``/``cache``/``home``/
+    # ``project`` are its children), so nothing under ``repointed/`` is reached by nesting.
+    # ⚑ AND IT MUST BE WRITABLE.  ``load_std_paths`` MATERIALIZES the bases it resolves,
+    # and since [R166] the state base is the resolved ``system.state`` rather than a leaf
+    # composed under ``$XDG_STATE_HOME`` — so an unwritable sentinel root now fails the
+    # consumer case on that mkdir instead of on the assertion it exists to make.
+    return str(tmp_home / "repointed" / key.replace(".", "-"))
 
 
 @pytest.fixture
@@ -51,7 +58,8 @@ def repointed(config_file, tmp_home):
     settings_file.parent.mkdir(parents=True, exist_ok=True)
     for key in SYSTEM_PATH_DEFAULTS:
         sections = tuple(key.split(".")[:-1])
-        write_nested_key(settings_file, sections, key.split(".")[-1], _sentinel(key))
+        write_nested_key(settings_file, sections, key.split(".")[-1],
+                         _sentinel(tmp_home, key))
     return config_file
 
 
@@ -69,14 +77,14 @@ class TestTheSettingsFileFeedsThePathTier:
         )
         wrong = {
             key: str(resolved[key]) for key in SYSTEM_PATH_DEFAULTS
-            if str(resolved[key]) != _sentinel(key)
+            if str(resolved[key]) != _sentinel(tmp_home, key)
         }
         assert not wrong, (
             "these system path keys were repointed in the system settings file and "
             f"resolved to something else: {wrong}"
         )
 
-    def test_every_repoint_reaches_standard_paths(self, repointed):
+    def test_every_repoint_reaches_standard_paths(self, repointed, tmp_home):
         """The CONSUMER half: a repoint the resolver honours must also be what the
         rest of kanibako is handed.
 
@@ -89,7 +97,8 @@ class TestTheSettingsFileFeedsThePathTier:
         std = load_std_paths()
         surfaced = {str(getattr(std, f.name)) for f in _fields(std)}
         missing = sorted(
-            key for key in SYSTEM_PATH_DEFAULTS if _sentinel(key) not in surfaced
+            key for key in SYSTEM_PATH_DEFAULTS
+            if _sentinel(tmp_home, key) not in surfaced
         )
         assert not missing, (
             f"repointed keys that never reach StandardPaths: {missing}"
@@ -145,8 +154,8 @@ def _fields(std) -> tuple:
     return fields(std)
 
 
-def test_the_probe_paths_are_all_distinct():
+def test_the_probe_paths_are_all_distinct(tmp_home):
     """⚑ A sentinel collision would let one honoured repoint vouch for another."""
-    sentinels = {_sentinel(key) for key in SYSTEM_PATH_DEFAULTS}
+    sentinels = {_sentinel(tmp_home, key) for key in SYSTEM_PATH_DEFAULTS}
     assert len(sentinels) == len(SYSTEM_PATH_DEFAULTS)
     assert all(Path(s).is_absolute() for s in sentinels)
