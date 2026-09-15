@@ -2,7 +2,7 @@
   "version": 1,
   "until": "2026-09-22",
   "by": "Jei Blanchard",
-  "note": "One baseline for one config, re-recorded 2026-09-14 when kinemata-docs.toml merged into kinemata.toml. It accepts three residues, all of them reported rather than tuned away, per [R159]. (1) REGISTRY: the duplication findings check still reports -- second spellings of declared constants, including the settings_launch.py BoxMode site that is a deliberate floor-module exception and belongs here with that reason rather than in an exclude line that would also hide the next real one. (2) PARITY: the two unproduced identifiers on the categories registry, scopes and scopes_spec. They are metadata sitting inside the manifest's table of categories rather than categories themselves, so the manifest declares eleven keys where the code declares nine delivery families. The fix is a manifest-and-spec question, not a config one; filtering them out of the registry would make the check agree with itself and report nothing. (3) CLAIMS: the documentation residue, the bulk of it runtime and host-store path claims naming paths in the tree kanibako creates for a user rather than in this repo -- not history, and not excludable by file. Dating them is the tool's own designed answer and is preferred to pretending they are false. Nothing in llm-docs/ or api-docs/ is excluded; those findings are real and are accepted by date, not suppressed.",
+  "note": "One baseline for one config. Re-recorded 2026-09-15 on the upgrade to kinemata 0.1.0; the expiry is DELIBERATELY left at the previous record's 2026-09-22, so nothing already accepted gains a longer life than it had. Four residues, all reported rather than tuned away, per [R159]. (1) REGISTRY: the duplication findings check still reports -- second spellings of declared constants, including the settings_launch.py BoxMode site that is a deliberate floor-module exception and belongs here with that reason rather than in an exclude line that would also hide the next real one. (2) PARITY: the two unproduced identifiers on the categories registry, scopes and scopes_spec. They are metadata sitting inside the manifest's table of categories rather than categories themselves, so the manifest declares eleven keys where the code declares nine delivery families. The fix is a manifest-and-spec question, not a config one; filtering them out of the registry would make the check agree with itself and report nothing. (3) CLAIMS: the documentation residue, the bulk of it runtime and host-store path claims naming paths in the tree kanibako creates for a user rather than in this repo -- not history, and not excludable by file. Dating them is the tool's own designed answer and is preferred to pretending they are false. Nothing in llm-docs/ or api-docs/ is excluded; those findings are real and are accepted by date, not suppressed. (4) CLAIMS, NEW AT 0.1.0 AND THE REASON FOR THIS RE-RECORD: 44 further claims of that same kind became visible when 0.1.0 fixed a negation window that had been silently swallowing them -- the distance bound was measured per line and the two concatenated, and a full stop did not end a negation's clause. They are NOT new text. Four were read at source before accepting any of them: MIGRATION.md:77, :2958, :5510 and llm-docs/kanibako/project/workset.py.md:47, every one prose naming a box-store runtime file that resolves in no tree. The fix discriminates both ways here -- the genuinely negated claims stayed suppressed -- so this block is the designed answer, not a workaround. MEASURED CONDITION ON THIS COUNT: it is 44 only while no gitignored directory at the repo root has a name that is a substring of a tracked path. An empty .claude/worktrees/ made it read 46 by dropping a tracked, shipped .claude/settings.json from the file index; that directory was moved aside and the defect reported upstream. If this count reads 46 again, check for it before accepting anything.",
   "findings": [
     {
       "registry": "canon-layout",
@@ -91,34 +91,6 @@
     {
       "registry": "claims",
       "entry": "claim:path",
-      "antipattern": ".claude.json",
-      "path": "MIGRATION.md",
-      "text": "The removal of host agent-config import (claude `.claude.json`/`oauthAccount`, codex"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": ".claude.json",
-      "path": "MIGRATION.md",
-      "text": "| claude | `~/.claude.json` (the `oauthAccount` / `hasCompletedOnboarding` / `installMethod` allowlist) | a curated stat"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": ".claude.json",
-      "path": "llm-docs/kanibako/targets/base.py.md",
-      "text": "`claudeAiOauth` merge + `.claude.json` allowlist; goose `config.yaml` allowlist)."
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": ".claude/settings.json",
-      "path": "llm-docs/kanibako/targets/base.py.md",
-      "text": "beneath it (claude `.claude/settings.json`, goose `.config/goose/config.yaml`, codex"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
       "antipattern": ".codex/auth.json",
       "path": "llm-docs/kanibako/plugins/codex/target.py.md",
       "text": "`--model` FLAG; the single SYNC `.codex/auth.json` cred file (`filtered=False`, a wholesale copy,"
@@ -164,6 +136,13 @@
       "antipattern": "CLAUDE.md",
       "path": "MIGRATION.md",
       "text": "directly into the appropriate template-layer `CLAUDE.md`."
+    },
+    {
+      "registry": "claims",
+      "entry": "claim:path",
+      "antipattern": "CLAUDE.md",
+      "path": "MIGRATION.md",
+      "text": "project layers of `CLAUDE.md`) is **deleted**. `CLAUDE.md` is now an ordinary"
     },
     {
       "registry": "claims",
@@ -240,6 +219,13 @@
       "entry": "claim:path",
       "antipattern": "agent.yaml",
       "path": "MIGRATION.md",
+      "text": "tier \u2014 `box.yaml`, `workset.yaml`, `agent.yaml`. There is no compatibility read and no warning:"
+    },
+    {
+      "registry": "claims",
+      "entry": "claim:path",
+      "antipattern": "agent.yaml",
+      "path": "MIGRATION.md",
       "text": "tier \u2014 `kanibako agent set <agent> access=<tier>` for the agent's own `agent.yaml`,"
     },
     {
@@ -269,6 +255,13 @@
       "antipattern": "agent.yaml",
       "path": "llm-docs/kanibako/launch/templates.py.md",
       "text": "| AGENT | `agent.yaml` = `meta.agent.<a>.settings` (CORRECTNESS); `caches/`. |"
+    },
+    {
+      "registry": "claims",
+      "entry": "claim:path",
+      "antipattern": "agent.yaml",
+      "path": "llm-docs/kanibako/settings/agent_config.py.md",
+      "text": "(`@meta.agent.<agent>.path` = `agents/<agent>/`) as `agent.yaml`. It is NOT the old sibling"
     },
     {
       "registry": "claims",
@@ -323,6 +316,13 @@
       "registry": "claims",
       "entry": "claim:path",
       "antipattern": "agents/navigator+claude/",
+      "path": "llm-docs/kanibako/agent_ref.py.md",
+      "text": "(``settings.agent_config.store_dirname``, ``agents/navigator+claude/``)."
+    },
+    {
+      "registry": "claims",
+      "entry": "claim:path",
+      "antipattern": "agents/navigator+claude/",
       "path": "llm-docs/kanibako/settings/agent_config.py.md",
       "text": "directory is not a key, so it carries the `+` the user typed: `agents/navigator+claude/`. The"
     },
@@ -360,6 +360,13 @@
       "antipattern": "auth/",
       "path": "llm-docs/kanibako/launch/templates.py.md",
       "text": "| WORKSET | `workset.yaml`; `registry.yaml` = `workset.registry`, the AUTHORITATIVE box membership + names, so a templat"
+    },
+    {
+      "registry": "claims",
+      "entry": "claim:path",
+      "antipattern": "auth/",
+      "path": "llm-docs/kanibako/project/workset.py.md",
+      "text": "`auth/` and `channels/`, are created lazily by the paths that own them (a `workset set`/`share add`"
     },
     {
       "registry": "claims",
@@ -422,6 +429,13 @@
       "entry": "claim:path",
       "antipattern": "box.yaml",
       "path": "MIGRATION.md",
+      "text": "**What changed.** A key kanibako does not declare used to resolve. A `box.yaml` carrying"
+    },
+    {
+      "registry": "claims",
+      "entry": "claim:path",
+      "antipattern": "box.yaml",
+      "path": "MIGRATION.md",
       "text": "- The new on-disk shape of a request is a **nested table** in the box's `box.yaml` or the workset's"
     },
     {
@@ -437,6 +451,13 @@
       "antipattern": "box.yaml",
       "path": "MIGRATION.md",
       "text": "`box.yaml`, while `global/settings.yaml` keeps its name."
+    },
+    {
+      "registry": "claims",
+      "entry": "claim:path",
+      "antipattern": "box.yaml",
+      "path": "MIGRATION.md",
+      "text": "box's `box.yaml` (`pref: {system: {agent: kimi.k3+claude}}`) and, if it names it, `system.agent`"
     },
     {
       "registry": "claims",
@@ -501,6 +522,13 @@
       "antipattern": "box.yaml",
       "path": "MIGRATION.md",
       "text": "tier \u2014 `box.yaml` for the per-box file, `workset.yaml` for a standalone root: \u00a72.45.)"
+    },
+    {
+      "registry": "claims",
+      "entry": "claim:path",
+      "antipattern": "box.yaml",
+      "path": "MIGRATION.md",
+      "text": "tier \u2014 `box.yaml`, `workset.yaml`, `agent.yaml`. There is no compatibility read and no warning:"
     },
     {
       "registry": "claims",
@@ -696,6 +724,13 @@
       "entry": "claim:path",
       "antipattern": "box_data/",
       "path": "MIGRATION.md",
+      "text": "**workset** tier, not the box tier \u2014 its box file is the one under `box_data/`. The two were"
+    },
+    {
+      "registry": "claims",
+      "entry": "claim:path",
+      "antipattern": "box_data/",
+      "path": "MIGRATION.md",
       "text": "The `box_data/` directory is now ONLY the marker dir + home + helper log; the box"
     },
     {
@@ -809,6 +844,13 @@
       "antipattern": "box_data/",
       "path": "llm-docs/kanibako/commands/box/_lifecycle.py.md",
       "text": "`_remove_old_metadata` tore out the original's `box_data/` (home included) and vault, because from"
+    },
+    {
+      "registry": "claims",
+      "entry": "claim:path",
+      "antipattern": "box_data/",
+      "path": "llm-docs/kanibako/commands/box/_lifecycle.py.md",
+      "text": "and `@meta.box.path` for a standalone IS `box_data/`). It used to be deleted here on the theory that"
     },
     {
       "registry": "claims",
@@ -984,6 +1026,13 @@
       "antipattern": "box_data/",
       "path": "llm-docs/kanibako/settings/paths.py.md",
       "text": "*metadata_path* is the `box_data/` marker dir (home + helper log); *project_path* is the"
+    },
+    {
+      "registry": "claims",
+      "entry": "claim:path",
+      "antipattern": "box_data/",
+      "path": "llm-docs/kanibako/settings/paths.py.md",
+      "text": "2. **In-place standalone marker** \u2014 a `box_data/` + root `workset.yaml` marker AT *project_dir*"
     },
     {
       "registry": "claims",
@@ -1177,6 +1226,13 @@
     {
       "registry": "claims",
       "entry": "claim:path",
+      "antipattern": "build/lib/kanibako/errors.py",
+      "path": "llm-docs/kanibako/settings/config_io.py.md",
+      "text": "`build/lib/kanibako/errors.py`. It was misleading twice over, since it is also not the message"
+    },
+    {
+      "registry": "claims",
+      "entry": "claim:path",
       "antipattern": "caches/",
       "path": "llm-docs/kanibako/launch/templates.py.md",
       "text": "| AGENT | `agent.yaml` = `meta.agent.<a>.settings` (CORRECTNESS); `caches/`. |"
@@ -1311,6 +1367,13 @@
       "registry": "claims",
       "entry": "claim:path",
       "antipattern": "common/",
+      "path": "llm-docs/kanibako/launch/templates.py.md",
+      "text": "\u2691 The sets are NOT one uniform rule. `common/` is allowed at AGENT scope only (Jei: there are use"
+    },
+    {
+      "registry": "claims",
+      "entry": "claim:path",
+      "antipattern": "common/",
       "path": "src/kanibako/data/global/rom/charter/general/directives/IDENTITY.md",
       "text": "If your box belongs to a **workset** (named group of projects), you'll have a workset-local tree at `~/channels/workset/"
     },
@@ -1334,6 +1397,13 @@
       "antipattern": "commons/",
       "path": "MIGRATION.md",
       "text": "\u2691 **`commons/` superseded in v1.8.0 \u2014 see \u00a72.3 (line 326).** Every `commons/` path"
+    },
+    {
+      "registry": "claims",
+      "entry": "claim:path",
+      "antipattern": "comms/",
+      "path": "MIGRATION.md",
+      "text": "| Primary store | scattered `boxes/`, `comms/`, `share_*/` under data root | **PRIMARY workset** is a real dir at `@syst"
     },
     {
       "registry": "claims",
@@ -1576,6 +1646,13 @@
     {
       "registry": "claims",
       "entry": "claim:path",
+      "antipattern": "global/canon/handbook/general/",
+      "path": "MIGRATION.md",
+      "text": "delivered from one store-wide directory \u2014 `global/canon/handbook/general/` under your kanibako data"
+    },
+    {
+      "registry": "claims",
+      "entry": "claim:path",
       "antipattern": "global/journal.yaml",
       "path": "llm-docs/kanibako/launch/journal.py.md",
       "text": "`global/journal.yaml`, holding one entry per box-lifecycle operation that is currently mid-flight."
@@ -1628,6 +1705,13 @@
       "antipattern": "global/settings.yaml",
       "path": "MIGRATION.md",
       "text": "`kanibako.cfg`, the system `global/settings.yaml`, each workset root's `workset.yaml`, each box"
+    },
+    {
+      "registry": "claims",
+      "entry": "claim:path",
+      "antipattern": "global/settings.yaml",
+      "path": "MIGRATION.md",
+      "text": "and are written to `global/settings.yaml`. **No automatic migration:** if you"
     },
     {
       "registry": "claims",
@@ -1740,6 +1824,13 @@
       "antipattern": "kanibako.cfg",
       "path": "MIGRATION.md",
       "text": "`kanibako.cfg`, the system `global/settings.yaml`, each workset root's `workset.yaml`, each box"
+    },
+    {
+      "registry": "claims",
+      "entry": "claim:path",
+      "antipattern": "kanibako.cfg",
+      "path": "MIGRATION.md",
+      "text": "is now `kanibako.cfg`. A file still under the old name is ignored rather than refused, so the"
     },
     {
       "registry": "claims",
@@ -2542,6 +2633,13 @@
     {
       "registry": "claims",
       "entry": "claim:path",
+      "antipattern": "logs/",
+      "path": "llm-docs/kanibako/project/workset.py.md",
+      "text": "`vault/` and `logs/`. There is no `registry.yaml` (no members yet, so no membership to record)"
+    },
+    {
+      "registry": "claims",
+      "entry": "claim:path",
       "antipattern": "mailboxes/",
       "path": "MIGRATION.md",
       "text": "now plural (`mailboxes/`) and **partitioned by workset name** first. `<ws>` is"
@@ -2552,6 +2650,13 @@
       "antipattern": "myagent/",
       "path": "docs/writing-targets.md",
       "text": "files \u2014 the base package owns those. Only your leaf package (`myagent/`) gets"
+    },
+    {
+      "registry": "claims",
+      "entry": "claim:path",
+      "antipattern": "names.yaml",
+      "path": "MIGRATION.md",
+      "text": "2. Merge the contents of `names.yaml`, `worksets.yaml`, `connected.yaml`,"
     },
     {
       "registry": "claims",
@@ -2587,6 +2692,13 @@
       "antipattern": "nested/",
       "path": "llm-docs/kanibako/commands/box/_lifecycle.py.md",
       "text": "repoint interposed (`workspaces: @meta.workset.path/nested/deep` leaves `nested/`) go too: they"
+    },
+    {
+      "registry": "claims",
+      "entry": "claim:path",
+      "antipattern": "notebook/archives/keystore-2026-06/",
+      "path": "llm-docs/kanibako/settings/settings_assemble.py.md",
+      "text": "* **`keystore-design.md`** (archived at `notebook/archives/keystore-2026-06/`) \u00a72 (storage \u2014"
     },
     {
       "registry": "claims",
@@ -3550,6 +3662,13 @@
     {
       "registry": "claims",
       "entry": "claim:path",
+      "antipattern": "packages/agent-codex/\u2026/target.py",
+      "path": "llm-docs/kanibako/settings/settings_resolve.py.md",
+      "text": "`packages/agent-claude/\u2026/target.py` and `packages/agent-codex/\u2026/target.py` still compose"
+    },
+    {
+      "registry": "claims",
+      "entry": "claim:path",
       "antipattern": "persona-grata-autoimport-BUILD.md",
       "path": "llm-docs/kanibako/persona_store.py.md",
       "text": "`persona-grata-autoimport-BUILD.md`, a DIFFERENT document. The procedure that governs any change here is"
@@ -3676,6 +3795,13 @@
     {
       "registry": "claims",
       "entry": "claim:path",
+      "antipattern": "primary_workset/",
+      "path": "MIGRATION.md",
+      "text": "the two `settings.yaml` files under `primary_workset/` are now `workset.yaml` and"
+    },
+    {
+      "registry": "claims",
+      "entry": "claim:path",
       "antipattern": "project-path.txt",
       "path": "llm-docs/kanibako/settings/paths.py.md",
       "text": "`read_project_meta` (`settings.yaml` `resolved.workspace`) + legacy `project-path.txt` breadcrumb"
@@ -3711,9 +3837,23 @@
     {
       "registry": "claims",
       "entry": "claim:path",
+      "antipattern": "prose-pass-check.py",
+      "path": "llm-docs/kanibako/settings/agent_config.py.md",
+      "text": "this document \u2014 no removed line is orphaned. `prose-pass-check.py`: AST identical with docstrings"
+    },
+    {
+      "registry": "claims",
+      "entry": "claim:path",
       "antipattern": "prose-relocation-check.py",
       "path": "llm-docs/kanibako/plugins/codex/target.py.md",
       "text": "`prose-relocation-check.py`: **281 prose lines at HEAD, 233 removed, 0 scoring below 0.6** against"
+    },
+    {
+      "registry": "claims",
+      "entry": "claim:path",
+      "antipattern": "prose-relocation-check.py",
+      "path": "llm-docs/kanibako/plugins/goose/target.py.md",
+      "text": "dropped as false or obsolete. `prose-relocation-check.py`: 179 prose lines at HEAD, 163 removed"
     },
     {
       "registry": "claims",
@@ -3819,6 +3959,13 @@
       "antipattern": "registry.yaml",
       "path": "llm-docs/kanibako/errors.py.md",
       "text": "`registry.yaml` (the AUTHORITATIVE box membership), `auth/`, `vault/` and `workspaces/`: the user's"
+    },
+    {
+      "registry": "claims",
+      "entry": "claim:path",
+      "antipattern": "registry.yaml",
+      "path": "llm-docs/kanibako/launch/templates.py.md",
+      "text": "plant a `workset.yaml` or a `registry.yaml`. Its whitelist is not an oversight missing here; the two"
     },
     {
       "registry": "claims",
@@ -4131,62 +4278,6 @@
     {
       "registry": "claims",
       "entry": "claim:path",
-      "antipattern": "settings.json",
-      "path": "MIGRATION.md",
-      "text": "overriding the store \u2014 you edit the persona's `settings.json` and nothing changes, silently. Remove"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "settings.json",
-      "path": "MIGRATION.md",
-      "text": "put a variable in a persona's `settings.json` for the benefit of the host harness, it now also"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "settings.json",
-      "path": "llm-docs/kanibako/targets/assembly.py.md",
-      "text": "`settings.json`, codex `config.toml`, goose `config.yaml` \u2014 resolve the tier from the CASCADE"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "settings.json",
-      "path": "llm-docs/kanibako/targets/base.py.md",
-      "text": "config file (codex `config.toml`, claude `settings.json`); `Target.read_persona_settings` parses"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "settings.json",
-      "path": "llm-docs/kanibako/vscode/vscode_config.py.md",
-      "text": "Project the box's `access` tier into the box's claude `settings.json`. The WHOLE of"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "settings.json",
-      "path": "llm-docs/kanibako/vscode/vscode_config.py.md",
-      "text": "Seed all THREE managed claude hooks into `settings.json` in one read-modify-write. The CLAUDE"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "settings.json",
-      "path": "llm-docs/kanibako/vscode/vscode_config.py.md",
-      "text": "VS Code's `settings.json` is JSONC \u2014 it permits `//` and `/* */` comments and trailing commas,"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "settings.json",
-      "path": "llm-docs/kanibako/vscode/vscode_config.py.md",
-      "text": "`settings.json`, the codex `config.toml`, the goose `config.yaml` \u2014 is a file a user or another"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
       "antipattern": "settings.yaml",
       "path": "MIGRATION.md",
       "text": "### 4.6 `project.yaml` \u2192 per-box `settings.yaml`"
@@ -4245,6 +4336,13 @@
       "entry": "claim:path",
       "antipattern": "settings.yaml",
       "path": "MIGRATION.md",
+      "text": "correction below).** At 1.6.0 the per-box `settings.yaml` stored construct-time box"
+    },
+    {
+      "registry": "claims",
+      "entry": "claim:path",
+      "antipattern": "settings.yaml",
+      "path": "MIGRATION.md",
       "text": "file still called `settings.yaml` before anything else."
     },
     {
@@ -4267,6 +4365,20 @@
       "antipattern": "settings.yaml",
       "path": "MIGRATION.md",
       "text": "project root: the box `settings.yaml` lives **at the root**, the live workspace is"
+    },
+    {
+      "registry": "claims",
+      "entry": "claim:path",
+      "antipattern": "settings.yaml",
+      "path": "MIGRATION.md",
+      "text": "root holds the kanibako artifacts (`settings.yaml`, `box_data/`, `vault/`); your"
+    },
+    {
+      "registry": "claims",
+      "entry": "claim:path",
+      "antipattern": "settings.yaml",
+      "path": "MIGRATION.md",
+      "text": "standalone tree, place `settings.yaml` at the root, keep a `box_data/` dir"
     },
     {
       "registry": "claims",
@@ -4322,6 +4434,13 @@
       "entry": "claim:path",
       "antipattern": "settings.yaml",
       "path": "llm-docs/kanibako/project/workset.py.md",
+      "text": "| 3 | module docstring layout tree | \"`settings.yaml` \u2190 workset identity (`meta.workset.*`)\" | **TRUE at the time \u2014 the "
+    },
+    {
+      "registry": "claims",
+      "entry": "claim:path",
+      "antipattern": "settings.yaml",
+      "path": "llm-docs/kanibako/project/workset.py.md",
       "text": "| 6 | `add_project` docstring | \"a `workspace` override is written into the project's `settings.yaml`\" | **FALSE, and se"
     },
     {
@@ -4330,6 +4449,13 @@
       "antipattern": "settings.yaml",
       "path": "llm-docs/kanibako/project/workset_registry.py.md",
       "text": "the `settings.yaml` table `project/workset.py` refuses."
+    },
+    {
+      "registry": "claims",
+      "entry": "claim:path",
+      "antipattern": "settings.yaml",
+      "path": "llm-docs/kanibako/settings/config_io.py.md",
+      "text": "2. **`settings.yaml` listed TWICE** in the same parenthetical list. **Dropped one.**"
     },
     {
       "registry": "claims",
@@ -4442,6 +4568,13 @@
       "antipattern": "specs/settings-keyspace-1.8.0.md",
       "path": "llm-docs/kanibako/project/workset.py.md",
       "text": "**Authority:** `specs/settings-keyspace-1.8.0.md` \u2014 \u00a72c (per-mode default tables, the workset-root"
+    },
+    {
+      "registry": "claims",
+      "entry": "claim:path",
+      "antipattern": "specs/settings-keyspace-1.8.0.md",
+      "path": "llm-docs/kanibako/project/workset.py.md",
+      "text": "| 8 | `RESERVED_WORKSET_NAMES` comment | \"the three-mode model (**TARGET** \u00a72c)\" | **STALE CITATION.** There is no \"TARG"
     },
     {
       "registry": "claims",
@@ -4628,6 +4761,13 @@
     {
       "registry": "claims",
       "entry": "claim:path",
+      "antipattern": "tests/support/flawed_oracle.py",
+      "path": "llm-docs/kanibako/settings/settings_categories.py.md",
+      "text": "authority. (\u2691 That path read `tests/support/flawed_oracle.py` until 6-R3; the module moved in"
+    },
+    {
+      "registry": "claims",
+      "entry": "claim:path",
       "antipattern": "tests/test_settings_prefs.py",
       "path": "llm-docs/kanibako/settings/settings_prefs.py.md",
       "text": "`tests/test_settings_prefs.py` `test_pref_propagates_to_a_derived_key`, and neither that path nor"
@@ -4713,8 +4853,22 @@
       "registry": "claims",
       "entry": "claim:path",
       "antipattern": "vault/",
+      "path": "llm-docs/kanibako/project/workset.py.md",
+      "text": "`vault/` and `logs/`. There is no `registry.yaml` (no members yet, so no membership to record)"
+    },
+    {
+      "registry": "claims",
+      "entry": "claim:path",
+      "antipattern": "vault/",
       "path": "llm-docs/kanibako/settings/paths.py.md",
       "text": "`vault_root` is the workset root that owns the `vault/` SKELETON dir \u2014 `std.primary_workset` for"
+    },
+    {
+      "registry": "claims",
+      "entry": "claim:path",
+      "antipattern": "vault/",
+      "path": "llm-docs/kanibako/settings/paths.py.md",
+      "text": "also the degenerate workset root that owns the `vault/` skeleton. \ud83d\uded1 The leaf is NOT fixed by spec \u2014"
     },
     {
       "registry": "claims",
@@ -4750,6 +4904,13 @@
       "antipattern": "workset.yaml",
       "path": "MIGRATION.md",
       "text": "(verbatim; `<path>` is the workset root's `workset.yaml`, `<registry>` its `registry.yaml`):"
+    },
+    {
+      "registry": "claims",
+      "entry": "claim:path",
+      "antipattern": "workset.yaml",
+      "path": "MIGRATION.md",
+      "text": "(was: presence of `workset.yaml`). No auto-migration: for each existing NAMED workset,"
     },
     {
       "registry": "claims",
@@ -4833,6 +4994,13 @@
       "entry": "claim:path",
       "antipattern": "workset.yaml",
       "path": "MIGRATION.md",
+      "text": "directory. Only a table still sitting in a `workset.yaml` refuses."
+    },
+    {
+      "registry": "claims",
+      "entry": "claim:path",
+      "antipattern": "workset.yaml",
+      "path": "MIGRATION.md",
       "text": "fold `workset.yaml`'s keys under a `workset:`\u2192`meta:` table in `settings.yaml` and merge"
     },
     {
@@ -4890,6 +5058,27 @@
       "entry": "claim:path",
       "antipattern": "workset.yaml",
       "path": "MIGRATION.md",
+      "text": "tier \u2014 `box.yaml`, `workset.yaml`, `agent.yaml`. There is no compatibility read and no warning:"
+    },
+    {
+      "registry": "claims",
+      "entry": "claim:path",
+      "antipattern": "workset.yaml",
+      "path": "MIGRATION.md",
+      "text": "until first written); the project-root `workset.yaml` is the workset tier. No data"
+    },
+    {
+      "registry": "claims",
+      "entry": "claim:path",
+      "antipattern": "workset.yaml",
+      "path": "MIGRATION.md",
+      "text": "which is now `workset.yaml`. A root still holding both the old table and the old filename is"
+    },
+    {
+      "registry": "claims",
+      "entry": "claim:path",
+      "antipattern": "workset.yaml",
+      "path": "MIGRATION.md",
       "text": "| **standalone project root** | `<project root>/settings.yaml` | `workset.yaml` |"
     },
     {
@@ -4918,6 +5107,13 @@
       "entry": "claim:path",
       "antipattern": "workset.yaml",
       "path": "MIGRATION.md",
+      "text": "\u2192 the tier's own file, `box.yaml` / `workset.yaml` / `agent.yaml`, \u00a72.45). Env precedence:"
+    },
+    {
+      "registry": "claims",
+      "entry": "claim:path",
+      "antipattern": "workset.yaml",
+      "path": "MIGRATION.md",
       "text": "\u2691 **And that settings file is itself `workset.yaml` in v1.8.0 \u2014 see \u00a72.45 (line 2774).**"
     },
     {
@@ -4940,6 +5136,13 @@
       "antipattern": "workset.yaml",
       "path": "llm-docs/kanibako/commands/box/_lifecycle.py.md",
       "text": "* `workset.yaml` **AT THE ROOT** (drift I \u2014 and `ProjectState.metadata_path` for a standalone IS"
+    },
+    {
+      "registry": "claims",
+      "entry": "claim:path",
+      "antipattern": "workset.yaml",
+      "path": "llm-docs/kanibako/commands/box/_lifecycle.py.md",
+      "text": "`establish_standalone` just RESOLVED against this root's `workset.yaml`. This site used to write it"
     },
     {
       "registry": "claims",
@@ -5141,6 +5344,13 @@
       "registry": "claims",
       "entry": "claim:path",
       "antipattern": "workset.yaml",
+      "path": "llm-docs/kanibako/settings/config.py.md",
+      "text": "`workset.yaml`. An absent file / table / key yields `True` (checking OFF)."
+    },
+    {
+      "registry": "claims",
+      "entry": "claim:path",
+      "antipattern": "workset.yaml",
       "path": "llm-docs/kanibako/settings/config_interface.py.md",
       "text": "*config_path* is the `box.yaml`/`workset.yaml` (for box/workset) or `kanibako.cfg` (for system)."
     },
@@ -5331,7 +5541,21 @@
       "entry": "claim:path",
       "antipattern": "worksets.yaml",
       "path": "MIGRATION.md",
+      "text": "2. Merge the contents of `names.yaml`, `worksets.yaml`, `connected.yaml`,"
+    },
+    {
+      "registry": "claims",
+      "entry": "claim:path",
+      "antipattern": "worksets.yaml",
+      "path": "MIGRATION.md",
       "text": "| Registry | `names.yaml` + `worksets.yaml` + `connected.yaml` | one `registry.yaml` (`@system.registry`, superseded in "
+    },
+    {
+      "registry": "claims",
+      "entry": "claim:path",
+      "antipattern": "worksets.yaml",
+      "path": "llm-docs/kanibako/project/registry_store.py.md",
+      "text": "`worksets.yaml` (workset name \u2192 root). Neither is read or written any more."
     },
     {
       "registry": "claims",
@@ -5666,13 +5890,6 @@
     },
     {
       "registry": "store-layout",
-      "entry": "XDG_DATA_HOME",
-      "antipattern": "XDG_DATA_HOME",
-      "path": "src/kanibako/vscode/vscode_remote.py",
-      "text": "xdg(\"XDG_DATA_HOME\", \".local/share\")"
-    },
-    {
-      "registry": "store-layout",
       "entry": "XDG_RUNTIME_DIR",
       "antipattern": "XDG_RUNTIME_DIR",
       "path": "src/kanibako/vscode/vscode_remote.py",
@@ -5691,13 +5908,6 @@
       "antipattern": "XDG_STATE_HOME",
       "path": "src/kanibako/launch/creds_watcher.py",
       "text": "lock_path = xdg(\"XDG_STATE_HOME\", \".local/state\") / \"kanibako\" / \"creds-writeback.lock\""
-    },
-    {
-      "registry": "store-layout",
-      "entry": "XDG_STATE_HOME",
-      "antipattern": "XDG_STATE_HOME",
-      "path": "src/kanibako/vscode/vscode_remote.py",
-      "text": "return xdg(\"XDG_STATE_HOME\", \".local/state\") / resolve_data_leaf() / \"vscode-remote\""
     }
   ]
 }
