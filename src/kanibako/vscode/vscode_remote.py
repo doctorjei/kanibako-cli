@@ -53,7 +53,7 @@ from pathlib import Path
 from kanibako.errors import KanibakoError
 from kanibako.log import get_logger
 from kanibako.runtime.container import image_ref_or_none
-from kanibako.settings.paths import resolve_data_leaf, resolve_data_path, xdg
+from kanibako.settings.paths import resolve_data_path, resolve_state_path
 
 logger = get_logger("vscode_remote")
 
@@ -348,15 +348,17 @@ def remote_context_name(dest: str) -> str:
 # ---------------------------------------------------------------------------
 
 def _vscode_remote_state_dir() -> Path:
-    """State dir for the connection store + dispatch log — tracks ``config.data``'s leaf.
+    """State dir for the connection store + dispatch log — under ``system.state``.
 
-    :func:`resolve_data_leaf` is PURE and TOTAL (never raises, creates nothing): it degrades
-    to the default leaf ("kanibako") whenever the host config is absent/unreadable/malformed,
-    which is today's exact behaviour — so this function stays as pure and total as it was
-    with the leaf hardcoded, while tracking a non-default ``config.data`` when config IS
-    readable (closes the store-isolation gap the hardcoded leaf left open).
+    [R166]: a state store derives from ``system.state`` and from nothing else, so this is
+    the declared key's resolved value, never ``$XDG_STATE_HOME`` composed with a leaf.
+    :func:`resolve_state_path` is PURE and TOTAL (never raises, creates nothing): it
+    degrades to the key's own default, ``$XDG_STATE_HOME/kanibako``, whenever the host
+    config or settings file is absent/unreadable/malformed — so this function stays as pure
+    and total as it was with that path hardcoded, and reaches a repointed state root when
+    the files ARE readable.
     """
-    return xdg("XDG_STATE_HOME", ".local/state") / resolve_data_leaf() / "vscode-remote"
+    return resolve_state_path() / "vscode-remote"
 
 
 def contexts_dir() -> Path:
@@ -567,11 +569,10 @@ def vscode_remote_bin_dir() -> Path:
 
     Anchored on ``config.data`` itself ([R155]), not on the XDG data base plus a hardcoded
     leaf: a user who repoints ``config.data`` gets the generated wrapper inside the store
-    they configured. ⚑ Contrast :func:`_vscode_remote_state_dir`, which stays on
-    ``$XDG_STATE_HOME`` and tracks only the same key's LEAF. That base DOES have a key —
-    ``system.state`` — and its leaf reading is RETIRED, not provisional: state is being
-    rewired onto that key and stops tracking ``config.data``. See
-    :func:`kanibako.settings.paths.resolve_data_leaf`, which owns that explanation.
+    they configured. ⚑ Contrast :func:`_vscode_remote_state_dir`, the module's other
+    resolved root: the wrapper is a generated ARTIFACT and belongs in the data store, while
+    the connection store is STATE and derives from ``system.state`` ([R166]). Two keys,
+    two bases, neither derived from the other.
     :func:`resolve_data_path` is PURE and TOTAL, so this stays as total as it was.
     """
     return resolve_data_path() / "vscode-remote" / "bin"

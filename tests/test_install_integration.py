@@ -28,7 +28,7 @@ class TestInstallFilesystem:
 
         assert std.config_file.parent.is_dir()
         assert std.data_path.is_dir()
-        assert std.state_path.is_dir()
+        assert std.state.is_dir()
         assert std.cache_path.is_dir()
 
     def test_install_preserves_existing_config(

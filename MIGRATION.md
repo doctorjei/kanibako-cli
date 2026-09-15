@@ -271,11 +271,7 @@ inside boxes. In order of likely impact:
     tell. `--share-images` moved the other way and now *does* persist at create, and passing
     either flag to an already-existing box now prints a notice instead of doing nothing quietly.
 
-27. **If `config.data` does not end in `kanibako`, three state stores moved with it** (§2.55).
-    Saved `kanibako code --remote` tunnel contexts are the part you notice — re-run the command
-    once per context. Default installs are unaffected.
-
-28. **A path key set to a bare relative value — `workset.channelroot: comms` — is now refused
+27. **A path key set to a bare relative value — `workset.channelroot: comms` — is now refused
     instead of being anchored somewhere** (§2.62). It used to mean *under the workset root* for
     the workset directory keys and *under your current directory* for every other path key; one
     key cannot have two answers, and a wrong guess here creates a directory that then holds your
@@ -283,7 +279,7 @@ inside boxes. In order of likely impact:
     `@config.data/…`, an absolute path, `~/…` or `$XDG_*/…`. Nothing kanibako ships uses this
     spelling, so this only bites a value you wrote by hand.
 
-29. **Only if you ran a `1.8.0` prerelease: the packaged canon book was renamed `bible` →
+28. **Only if you ran a `1.8.0` prerelease: the packaged canon book was renamed `bible` →
     `charter`, and two things you own still spell the old path** (§2.70). A claude box made by
     `1.8.0rc2` has eight hook commands under `~/canon/bible/general/scripts/hooks/` in its own
     `~/.claude/settings.json` — that file is the box's, seeded once at create, so the upgrade
@@ -293,13 +289,13 @@ inside boxes. In order of likely impact:
     files moved up out of `directives/`. **Upgrading from v1.7.2 you have none of this** — the
     canon books are new in v1.8.0.
 
-30. **If `config.data` points anywhere but `$XDG_DATA_HOME/kanibako`, your own file-drop plugins
+29. **If `config.data` points anywhere but `$XDG_DATA_HOME/kanibako`, your own file-drop plugins
     are now discovered in it — and stop being discovered in the default store** (§2.72). The
     plugin directory and the `code --remote` wrapper directory were the last two built from the
     XDG *data* base plus a hardcoded `kanibako`; a plugin you had dropped in your store was silently
     never loaded. Move the `.py` files, and re-run `kanibako code --remote` per remote.
 
-31. Smaller items: standalone boxes' `box get` got truthful (§2.9); a box suppressed to
+30. Smaller items: standalone boxes' `box get` got truthful (§2.9); a box suppressed to
     plain-shell keeps stale credential files in its home (§2.10); several never-released or
     expected-empty renames (§2.11); two `--null` CLI bugs fixed (§2.14); a customized helper
     entrypoint script moves to `~/canon/notebook/scripts/helper-init.sh` (§2.44).
@@ -3562,38 +3558,6 @@ announcement is new. (Flags refused outright against a *running* box are a diffe
 
 ---
 
-### 2.55 State files follow a non-default `config.data` leaf
-
-**Read this ONLY if `config.data` points somewhere whose last path segment is not `kanibako`** —
-for example `config.data: ~/.local/share/kani-test`. On a default install nothing moves and this
-section is a no-op.
-
-**What changed.** Three state stores were hardcoded under `$XDG_STATE_HOME/kanibako/`. They now sit
-under `$XDG_STATE_HOME/<the last segment of config.data>/`, so a second store no longer writes its
-state into the first store's directory:
-
-| what | old path | new path |
-|---|---|---|
-| held-over baseline warnings | `$XDG_STATE_HOME/kanibako/launch-issues.<box>` | `$XDG_STATE_HOME/<leaf>/launch-issues.<box>` |
-| held-over bind-shadow warnings | `$XDG_STATE_HOME/kanibako/launch-shadows.<box>` | `$XDG_STATE_HOME/<leaf>/launch-shadows.<box>` |
-| `code --remote` tunnel contexts and dispatch log | `$XDG_STATE_HOME/kanibako/vscode-remote/` | `$XDG_STATE_HOME/<leaf>/vscode-remote/` |
-
-**How a user notices.** Two ways, both quiet:
-
-- **A warning that was waiting to be printed never appears.** The first two files hold a warning
-  raised during a launch so it can be shown *after* the session closes. One written before the
-  upgrade is orphaned at the old path — it is not lost data, just a message you will not see. The
-  next launch writes a fresh one at the new path.
-- **A saved `kanibako code --remote` context stops resolving.** The context store moved, so a
-  context you established before the upgrade is invisible: by name it does not exist, and the
-  generated dispatch wrapper still on disk points at the old directory.
-
-**What you must do.** Re-run `kanibako code --remote` for each context you use — that regenerates
-the wrapper against the new directory and re-establishes the tunnel. The old
-`$XDG_STATE_HOME/kanibako/vscode-remote/` tree can then be deleted; nothing reads it.
-
----
-
 ### 2.56 A `synced` destination must be covered by a mount
 
 **Read this ONLY if you declare `synced` entries.** Nothing kanibako ships declares one, and a
@@ -4476,9 +4440,8 @@ where yours actually was:
 | your own file-drop plugins | `$XDG_DATA_HOME/kanibako/plugins/` | `<data>/plugins/` |
 | the generated `code --remote` dispatch wrapper (`podman-dispatch`) | `$XDG_DATA_HOME/kanibako/vscode-remote/bin/` | `<data>/vscode-remote/bin/` |
 
-This is the data-side counterpart of § *2.55 State files follow a non-default `config.data` leaf*,
-and it is wider: 2.55 is about a store whose last path segment is not `kanibako`, whereas a store
-moved to a different *parent* — `/srv/kanibako` — was affected here too.
+The trigger is the whole path, not its last segment. A store moved to a different *parent* while
+keeping the `kanibako` name — `/srv/kanibako` — was affected exactly as one renamed outright.
 
 **How a user notices.** Both ways are quiet:
 

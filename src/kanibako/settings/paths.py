@@ -25,7 +25,7 @@ import tempfile
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from typing import NamedTuple, Protocol, overload
 
 from kanibako.log import get_logger
@@ -74,7 +74,6 @@ class StandardPaths:
     cache_home: Path
     config_file: Path
     data_path: Path
-    state_path: Path
     cache_path: Path
     # System-level derived dirs: the Layer-1 ``config.*`` foundation + Layer-2 ``system.*``.
     data: Path
@@ -92,12 +91,11 @@ class StandardPaths:
     # Lifecycle journal — write-ahead log of in-flight box-lifecycle ops (``config.journal``).
     journal: Path
     cache: Path
-    # ⚑ ``system.state`` — the declared KEY's resolved value, NOT ``state_path`` above.
-    # ``state_path`` tracks the ``config.data`` LEAF under ``$XDG_STATE_HOME``; the key
-    # defaults to ``$XDG_STATE_HOME/kanibako``, which is the same place ONLY where that
-    # leaf is the default -- for a repointed store the two differ, and the key is
-    # repointable on its own.  The ``cache`` / ``cache_path`` pair is the same
-    # arrangement, for the same reason.
+    # ⚑ ``system.state`` — THE host state root, and the only thing a state store derives
+    # from ([R166]).  State has no relationship to ``config.data``: the ``state_path``
+    # field that tracked that key's LEAF under ``$XDG_STATE_HOME`` was a defect and is
+    # gone.  ``cache_path`` above still tracks the leaf; the same repair for
+    # ``system.cache`` is a separate change.
     state: Path
     runtime: Path
     # Channels skeleton — keys/defaults only; sub-key wiring is Phase 6.
@@ -406,21 +404,32 @@ def resolve_config_paths(set_values: Mapping[str, str], *, data_home: Path, home
     return resolved
 
 
-def resolve_system_paths(set_values: Mapping[str, str],
-                         *, data_home: Path, home: Path) -> dict[str, Path]:
-    """Resolve the path tier (Layer-1 ``config.*`` + Layer-2 ``system.*``) to concrete host paths."""
-    xdg_vars = host_xdg_map(data_home)
+def _resolve_system_path_keys(set_values: Mapping[str, str], keys: Iterable[str], *,
+                              data_home: Path, home: Path, xdg_vars: Mapping[str, str],
+                              ) -> tuple[dict[str, str], dict[str, Path]]:
+    """Resolve *keys* of the Layer-2 ``system.*`` table over the Layer-1 foundation.
 
+    Returns the Layer-1 resolve and the requested Layer-2 paths, as ``(config, resolved)``.
+
+    ⚑ SPLIT OUT FOR THE CALLER THAT MUST CREATE NOTHING.  :func:`resolve_system_paths` is
+    the whole-table caller and builds :func:`host_xdg_map`; :func:`resolve_state_path`
+    needs one key and passes :func:`spec_default_xdg_map`, which never resolves
+    ``XDG_RUNTIME_DIR`` (whose fallback can mkdir and warn).  The *xdg_vars* argument is
+    what lets the two share this resolve instead of keeping a copy each.
+    ⚑ *keys* narrows what is RETURNED, not what is REACHABLE: the ``@``-ref lookup below
+    still sees the whole table, so a stored ``@system.<other>`` resolves for a one-key
+    caller exactly as it does for the full pass.
+    """
     # Split the merged set-values by layer prefix.
     config_set = {k: v for k, v in set_values.items() if k.startswith("config.")}
-    set_values = {k: v for k, v in set_values.items() if k.startswith("system.")}
+    system_set = {k: v for k, v in set_values.items() if k.startswith("system.")}
 
     # Layer 1: resolve the config-key foundation first (chicken-and-egg).
-    config = resolve_config_paths(config_set, data_home=data_home, home=home)
+    config = resolve_config_paths(config_set, data_home=data_home, home=home, xdg_vars=xdg_vars)
 
     ctx = ResolveCtx(agent_name=None, workset_name=None,
-                     host_home=str(home), xdg=xdg_vars, config=config)
-    levels = [LevelView("system", values=dict(set_values), defaults=SYSTEM_PATH_DEFAULTS)]
+                     host_home=str(home), xdg=dict(xdg_vars), config=config)
+    levels = [LevelView("system", values=system_set, defaults=SYSTEM_PATH_DEFAULTS)]
 
     def lookup(ref: str, chain: tuple[str, ...]) -> str:
         # Resolver SPLIT (spec §1A / JC-2), prefix-driven: ``@config.*`` vs ``@system.*``.
@@ -435,18 +444,27 @@ def resolve_system_paths(set_values: Mapping[str, str],
         # system.* config paths are always scalar strings; narrow the ``object``-typed value.
         return expand_expr(str(rv.value), space="host", ctx=ctx, lookup=lookup, chain=chain)
 
-    resolved: dict[str, Path] = {}
-    # Layer 1 foundation paths are surfaced under their ``config.*`` keys.
-    for key, val in config.items():
-        resolved[key] = Path(val)
     # Layer 2 system path keys, resolving ``@config.*`` via the foundation.
-    for key, default in SYSTEM_PATH_DEFAULTS.items():
+    resolved: dict[str, Path] = {}
+    for key in keys:
         rv = resolve_value(key, levels=levels, ctx=ctx, lookup=lookup)
         if isinstance(rv, _Unset):  # Unreachable: every key has a default.
             raise SettingsError(ERR_SETTINGS_BAD_PATH % ("system", key))
-        _refuse_bare_relative(key, rv.value, default, ctx=ctx, lookup=lookup)
+        _refuse_bare_relative(key, rv.value, SYSTEM_PATH_DEFAULTS[key], ctx=ctx, lookup=lookup)
         expanded = expand_expr(str(rv.value), space="host", ctx=ctx, lookup=lookup)
         resolved[key] = Path(expanded)
+    return config, resolved
+
+
+def resolve_system_paths(set_values: Mapping[str, str],
+                         *, data_home: Path, home: Path) -> dict[str, Path]:
+    """Resolve the path tier (Layer-1 ``config.*`` + Layer-2 ``system.*``) to concrete host paths."""
+    config, resolved = _resolve_system_path_keys(set_values, SYSTEM_PATH_DEFAULTS,
+                                                 data_home=data_home, home=home,
+                                                 xdg_vars=host_xdg_map(data_home))
+    # Layer 1 foundation paths are surfaced under their ``config.*`` keys.
+    for key, val in config.items():
+        resolved[key] = Path(val)
 
     # PRIMARY-workset box/vault/logs roots, derived from ``@config.primary_workset``.
     # ⚑⚑ ALL FOUR ARE RESOLVED, NOT COMPOSED.  There are no ``system.{boxes,logs,vault_*}``
@@ -574,22 +592,26 @@ def system_path_floor(std: StandardPaths) -> dict[str, str]:
     return {key: str(getattr(std, _floor_field(key))) for key in SYSTEM_PATH_DEFAULTS}
 
 
-def load_system_config(user_config_path: Path, *, data_home: Path, home: Path) -> dict[str, Path]:
-    """Resolve the path tier: ``/etc`` config base < user config < the SYSTEM SETTINGS file.
+def _path_tier_set_values(user_config_path: Path, *, data_home: Path, home: Path,
+                          xdg_vars: Mapping[str, str]) -> dict[str, str]:
+    """The path tier's merged SET-VALUES: ``/etc`` config base < user config < SETTINGS file.
 
     ⚑⚑ THE SETTINGS FILE IS THE TOP LAYER, AND IT IS THE WHOLE POINT OF THE THIRD
     ``update`` BELOW.  ``system.{template,canon,runtime,cache,backup,channelroot}`` and
     ``system.channels.*`` are Layer-2 SETTINGS keys (spec §2g: "set in settings files at
     the ``system`` cascade level"), and ``config set system.canon=…`` writes them to
-    ``@config.settings``.  Until 2026-08-23 this function read the CONFIG files ONLY, so
+    ``@config.settings``.  Until 2026-08-23 the path tier read the CONFIG files ONLY, so
     that write reached the launch cascade and NOT :class:`StandardPaths` — a repoint that
     was accepted, persisted, and half-effective.  A settable key whose set does not reach
     the thing it names is worse than a refusal, because it never confesses.
 
     ⚑ THE LAYER-1 RESOLVE RUNS TWICE ON PURPOSE, and it is not a wasted read: locating the
     settings file IS ``@config.settings``, so the foundation must resolve before the file
-    can be opened.  :func:`resolve_config_paths` is a pure dict resolve over set-values
-    already in hand — the second pass reopens nothing.
+    can be opened.  The second pass is the caller's own, over the values returned here;
+    :func:`resolve_config_paths` is a pure dict resolve over set-values already in hand, so
+    it reopens nothing.
+    ⚑ *xdg_vars* is the caller's map, passed straight to that first resolve — the seam
+    :func:`resolve_state_path` needs to stay free of the ``XDG_RUNTIME_DIR`` fallback.
 
     ⚑ FILTERED TO :data:`SYSTEM_PATH_DEFAULTS` (P13 — derived from the table, never a list
     here).  The settings file's ``system:`` table also holds ``system.agent``, the
@@ -621,10 +643,16 @@ def load_system_config(user_config_path: Path, *, data_home: Path, home: Path) -
     for path in (config_base_path(), user_config_path):
         raw.update(bootstrap_config_paths(path))
 
-    config = resolve_config_paths(raw, data_home=data_home, home=home)
+    config = resolve_config_paths(raw, data_home=data_home, home=home, xdg_vars=xdg_vars)
     stored = system_path_set_values(Path(config["config.settings"]))
     raw.update({k: v for k, v in stored.items() if k in SYSTEM_PATH_DEFAULTS})
+    return raw
 
+
+def load_system_config(user_config_path: Path, *, data_home: Path, home: Path) -> dict[str, Path]:
+    """Resolve the whole path tier to concrete host paths, from the files that set it."""
+    raw = _path_tier_set_values(user_config_path, data_home=data_home, home=home,
+                                xdg_vars=host_xdg_map(data_home))
     return resolve_system_paths(raw, data_home=data_home, home=home)
 
 
@@ -675,20 +703,54 @@ def resolve_data_path(*, config_home: Path | None = None,
         return dh / KANIBAKO_PATH
 
 
+def resolve_state_path(*, config_home: Path | None = None,
+                       data_home: Path | None = None) -> Path:
+    """The resolved ``system.state`` DIRECTORY — PURE and TOTAL; creates nothing, never raises.
+
+    The state-base sibling of :func:`resolve_data_path`, for a caller holding no
+    :class:`StandardPaths` that must still land in the state root the user configured
+    ([R166]: every state store derives from ``system.state``, and from nothing else).
+    :func:`kanibako.vscode.vscode_remote._vscode_remote_state_dir` is that caller.
+
+    ⚑ IT READS ONE FILE MORE THAN :func:`resolve_data_path` DOES, and that is the key's
+    layer talking: ``system.state`` is Layer 2, so ``system set system.state=…`` writes to
+    the SETTINGS file, and a resolve that stopped at the CONFIG files would miss every
+    value a user ever set.
+    ⚑ TOTAL: any failure to read or resolve — either file absent, unreadable or malformed,
+    or a stored expression that fails to resolve — degrades to ``$XDG_STATE_HOME`` joined to
+    ``KANIBAKO_PATH``, matching ``SYSTEM_PATH_DEFAULTS["system.state"]``'s own default.
+    ⚑ Side-effect-free by :func:`resolve_data_path`'s route, for the same reason: the
+    ``xdg`` map is :func:`spec_default_xdg_map`, which never resolves ``XDG_RUNTIME_DIR``
+    (whose fallback can mkdir a directory and warn).  ONE case misses because of it — a
+    ``system.state`` a user stored as an expression over ``$XDG_RUNTIME_DIR`` degrades to
+    the default instead of resolving — the same trade, made the same way.
+    """
+    ch = config_home if config_home is not None else xdg(XDG_CONFIG_HOME,
+                                                          XDG_SPEC_DEFAULTS[XDG_CONFIG_HOME])
+    dh = data_home if data_home is not None else xdg(XDG_DATA_HOME,
+                                                      XDG_SPEC_DEFAULTS[XDG_DATA_HOME])
+    xdg_vars = spec_default_xdg_map(dh)
+    try:
+        raw = _path_tier_set_values(config_file_path(ch), data_home=dh, home=Path.home(),
+                                    xdg_vars=xdg_vars)
+        _, resolved = _resolve_system_path_keys(raw, ("system.state",), data_home=dh,
+                                                home=Path.home(), xdg_vars=xdg_vars)
+        return resolved["system.state"]
+    except Exception:
+        return Path(xdg_vars[XDG_STATE_HOME]) / KANIBAKO_PATH
+
+
 def resolve_data_leaf(data_path: Path | None = None, *, config_home: Path | None = None,
                       data_home: Path | None = None) -> str:
     """The leaf (basename) of ``config.data`` — PURE and TOTAL, via :func:`resolve_data_path`.
 
     Given an ALREADY-RESOLVED *data_path* (e.g. a caller's own
     ``load_system_config(...)["config.data"]``), this is just ``data_path.name`` — no re-read.
-    Without one it is :func:`resolve_data_path`'s leaf, which is what lets a caller anchored on
-    a DIFFERENT base (:func:`kanibako.vscode.vscode_remote._vscode_remote_state_dir`, under
-    ``$XDG_STATE_HOME``) track a non-default ``config.data`` without leaving that base.
-    ⚑ ``$XDG_STATE_HOME`` DOES have a key of its own — ``system.state``, ``set: cli+file`` —
-    whose default is the fixed literal ``$XDG_STATE_HOME/kanibako`` and does NOT follow
-    ``config.data``'s leaf. It is resolved onto ``StandardPaths.state``, which nothing reads
-    yet. 🛑 The leaf reading for STATE is RETIRED, not merely provisional: state is being
-    rewired onto ``system.state`` and stops tracking ``config.data`` at all (boarded).
+    Without one it is :func:`resolve_data_path`'s leaf.
+    ⚑ ONE CALLER LEFT, and the leaf reading is retired everywhere else: ``load_std_paths``
+    joins it to ``$XDG_CACHE_HOME`` for ``cache_path``.  ``$XDG_CACHE_HOME`` has a key of
+    its own — ``system.cache`` — so that is the same defect [R166] removed from the STATE
+    side, a different key and its own repair; this function loses its last caller with it.
     ⚑ A caller anchored on the DATA base wants the whole path, not this:
     a repointed ``config.data`` moves its parent too, and rejoining the leaf to the XDG base
     would silently drop that move.
@@ -715,20 +777,19 @@ def load_std_paths(config: BootstrapConfig | None = None) -> StandardPaths:
     # Resolve the system-level path tier from the CONFIG file set: /etc base < user-global.
     resolved = load_system_config(config_file, data_home=data_home, home=Path.home())
     data_path = resolved["config.data"]
-    # state/cache paths track the data dir's leaf name (default leaf "kanibako").
-    rel = resolve_data_leaf(data_path)
-    state_path = state_home / rel
-    cache_path = cache_home / rel
+    # ⚑ The CACHE path still tracks the data dir's leaf (default leaf "kanibako"); STATE
+    # does not, and has no such field — it is ``system.state`` and nothing else ([R166]).
+    cache_path = cache_home / resolve_data_leaf(data_path)
 
     # Ensure directories exist.
     config_file.parent.mkdir(parents=True, exist_ok=True)
     data_path.mkdir(parents=True, exist_ok=True)
-    state_path.mkdir(parents=True, exist_ok=True)
+    resolved["system.state"].mkdir(parents=True, exist_ok=True)
     cache_path.mkdir(parents=True, exist_ok=True)
 
     return StandardPaths(config_home=config_home, data_home=data_home, state_home=state_home,
                      cache_home=cache_home, config_file=config_file, data_path=data_path,
-                     state_path=state_path, cache_path=cache_path, data=resolved["config.data"],
+                     cache_path=cache_path, data=resolved["config.data"],
                      backup=resolved["system.backup"], agents=resolved["config.agents"],
                      channels=resolved["system.channelroot"], template=resolved["system.template"],
                      canon=resolved["system.canon"], settings=resolved["config.settings"],

@@ -19,9 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   who repointed `config.data` therefore had plugin discovery scanning a store they no
   longer used — an agent they had written simply never appeared in `kanibako setup` or `--agent`,
   with nothing printed to explain the absence — while the wrapper was written into that abandoned
-  tree. Both now resolve through `config.data`, the declared key, as the state-side stores already
-  did. A default install is unaffected: `config.data` defaults to `$XDG_DATA_HOME/kanibako`, which
-  is the path both sites were hardcoding. ⚠️ **If you repointed `config.data`, plugins in the old
+  tree. Both now resolve through `config.data`, the declared key. A default install is unaffected:
+  `config.data` defaults to `$XDG_DATA_HOME/kanibako`, which is the path both sites were
+  hardcoding. ⚠️ **If you repointed `config.data`, plugins in the old
   location stop being discovered** — see `MIGRATION.md` § *2.72 Plugins and the `code --remote`
   wrapper follow a repointed `config.data`* for the two host-side moves.
 
@@ -160,8 +160,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   of `<data>/global/settings.yaml`, `get` and `reset` read and clear it there, `@system.state`
   resolves in any settings value, and `kanibako system defaults` lists it with the file that
   declares it. Every verb refused the name before, because the key was not declared — a closed
-  keyspace has no silent accept. Nothing is required of you and no file moves: declaring a key
-  adds a door, it does not relocate anything.
+  keyspace has no silent accept. Three host-side stores derive from it and from nothing else —
+  the pre-launch warning file (`launch-issues.<box>`), the shadowed-flag record
+  (`launch-shadows.<box>`) and the `kanibako code --remote` connection store — so setting the key
+  moves all three together, and `config.data` does not move any of them. Nothing is required of
+  you and nothing moves on upgrade: the default is the `$XDG_STATE_HOME/kanibako` those three
+  already used.
 
 ### Changed
 
@@ -513,17 +517,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the host image store probe failed and no box.images_store is set. Continuing without image
   sharing. To share images, set box.images_store to the host store path or fix the podman storage
   probe.`
-
-- **Three host-side state stores follow `config.data`'s directory name.** The pre-launch warning
-  file (`launch-issues.<box>`), the shadowed-flag record (`launch-shadows.<box>`) and the
-  `kanibako code --remote` connection store all lived under a hardcoded
-  `$XDG_STATE_HOME/kanibako/`; they now sit under `$XDG_STATE_HOME/<leaf of config.data>/`, so a
-  store that repointed `config.data` gets its own state instead of sharing one. **A default
-  install is unaffected** — the leaf is `kanibako` either way, and nothing moves. ⚠️ **If you did
-  repoint `config.data` to a differently-named directory**, the old files are not migrated:
-  warnings recorded before this version are never surfaced, and saved `code --remote` contexts
-  read as absent, so the next `kanibako code --remote` re-establishes the tunnel from scratch.
-  Move `$XDG_STATE_HOME/kanibako/` to the new leaf name to keep them.
 
 - **Two retired keys in an agent plugin's defaults file are refused by name at load.** Plugin
   descriptor keys are read individually, so an unrecognised one is simply never read — which for

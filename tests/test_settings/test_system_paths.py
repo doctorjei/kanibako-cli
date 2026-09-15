@@ -36,6 +36,7 @@ from kanibako.settings.paths import (
     resolve_config_paths,
     resolve_data_leaf,
     resolve_data_path,
+    resolve_state_path,
     resolve_system_paths,
     resolve_xdg,
 )
@@ -833,12 +834,112 @@ class TestResolveDataPath:
         spy.assert_called_once()
 
 
+class TestResolveStatePath:
+    """``resolve_state_path`` — the PURE, TOTAL ``system.state`` DIRECTORY resolver.
+
+    THE single source for a caller that holds no ``StandardPaths`` and must still land in
+    the state root the user configured ([R166]: state derives from ``system.state`` and
+    from nothing else).  ``vscode_remote._vscode_remote_state_dir`` is that caller.
+    """
+
+    def _isolate(self, monkeypatch, tmp_path: Path) -> Path:
+        """Point the /etc base at an absent file and ``$XDG_STATE_HOME`` at a tmp dir."""
+        import kanibako.settings.config as cfg_mod
+
+        monkeypatch.setattr(cfg_mod, "config_base_path", lambda: tmp_path / "etc_absent.cfg")
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+        return tmp_path / "state"
+
+    def _store(self, tmp_path: Path, config_home: Path, *, state: str | None = None) -> Path:
+        """Write a config file pointing ``config.data`` at a tmp store, and (optionally) a
+        settings file setting ``system.state``.  Returns the store root."""
+        store = tmp_path / "srv" / "custom_store"
+        config_home.mkdir(parents=True, exist_ok=True)
+        (config_home / CONFIG_FILENAME).write_text(f'config:\n  data: "{store}"\n')
+        if state is not None:
+            settings = store / "global" / "settings.yaml"
+            settings.parent.mkdir(parents=True, exist_ok=True)
+            settings.write_text(f'system:\n  state: "{state}"\n')
+        return store
+
+    def test_no_config_file_returns_the_key_default(self, tmp_path, monkeypatch):
+        state_home = self._isolate(monkeypatch, tmp_path)
+        path = resolve_state_path(config_home=tmp_path / "cfg-absent",
+                                  data_home=tmp_path / "data")
+        assert path == state_home / "kanibako"
+
+    def test_reads_a_set_value_from_the_settings_file(self, tmp_path, monkeypatch):
+        """MUTATION PROOF that the resolve reaches LAYER 2: ``system.state`` is a settings
+        key, so a resolver that stopped at the CONFIG files would return the default here."""
+        self._isolate(monkeypatch, tmp_path)
+        config_home = tmp_path / "cfg"
+        self._store(tmp_path, config_home, state=str(tmp_path / "elsewhere" / "state"))
+        path = resolve_state_path(config_home=config_home, data_home=tmp_path / "data")
+        assert path == tmp_path / "elsewhere" / "state"
+
+    def test_never_tracks_config_datas_leaf(self, tmp_path, monkeypatch):
+        """[R166]: a repointed ``config.data`` moves no state.  The retired behaviour put
+        this under ``$XDG_STATE_HOME/custom_store``; nothing may reach that spelling again."""
+        state_home = self._isolate(monkeypatch, tmp_path)
+        config_home = tmp_path / "cfg"
+        self._store(tmp_path, config_home)
+        path = resolve_state_path(config_home=config_home, data_home=tmp_path / "data")
+        assert path == state_home / "kanibako"
+
+    def test_malformed_config_degrades_without_raising(self, tmp_path, monkeypatch):
+        state_home = self._isolate(monkeypatch, tmp_path)
+        config_home = tmp_path / "cfg"
+        config_home.mkdir()
+        (config_home / CONFIG_FILENAME).write_text("not: [valid: yaml: at all")
+        # Mutation proof: without the try/except this raises ConfigError and the
+        # test errors out rather than reaching the assertion.
+        assert resolve_state_path(config_home=config_home,
+                                  data_home=tmp_path / "data") == state_home / "kanibako"
+
+    def test_malformed_settings_file_degrades_without_raising(self, tmp_path, monkeypatch):
+        """The SETTINGS file is the second file this reads, and it fails the same way."""
+        state_home = self._isolate(monkeypatch, tmp_path)
+        config_home = tmp_path / "cfg"
+        store = self._store(tmp_path, config_home)
+        settings = store / "global" / "settings.yaml"
+        settings.parent.mkdir(parents=True, exist_ok=True)
+        settings.write_text("system: [valid: yaml: at all")
+        assert resolve_state_path(config_home=config_home,
+                                  data_home=tmp_path / "data") == state_home / "kanibako"
+
+    def test_creates_no_directories(self, tmp_path, monkeypatch):
+        self._isolate(monkeypatch, tmp_path)
+        config_home = tmp_path / "cfg"
+        target = tmp_path / "elsewhere" / "state"
+        self._store(tmp_path, config_home, state=str(target))
+        before = set(tmp_path.rglob("*"))
+        resolve_state_path(config_home=config_home, data_home=tmp_path / "data")
+        assert set(tmp_path.rglob("*")) == before
+        assert not target.exists()
+
+    def test_never_touches_xdg_runtime_dir_fallback(self, tmp_path, monkeypatch):
+        """Mutation proof, and it bites HARDER than on the Layer-1 resolver: the Layer-2
+        table holds ``system.runtime``, so a resolve routed through ``host_xdg_map`` (which
+        resolves ``XDG_RUNTIME_DIR`` and can mkdir a fallback dir when unset) would fire."""
+        import kanibako.settings.paths as paths_mod
+
+        self._isolate(monkeypatch, tmp_path)
+        monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
+        monkeypatch.setattr(paths_mod, "_runtime_fallback_cache", {})
+        spy = MagicMock()
+        monkeypatch.setattr(paths_mod, "_fallback_runtime_dir", spy)
+
+        resolve_state_path(config_home=tmp_path / "cfg", data_home=tmp_path / "data")
+        spy.assert_not_called()
+
+
 class TestResolveDataLeaf:
     """``resolve_data_leaf`` — the PURE, TOTAL leaf-of-``config.data`` resolver.
 
-    THE single source ``load_std_paths`` and ``vscode_remote._vscode_remote_state_dir``
-    both route through, instead of each re-deriving ``data_path.name`` (or hardcoding the
-    default leaf) on their own.
+    THE single source for the one caller left: ``load_std_paths``' ``cache_path``, which
+    joins the leaf to ``$XDG_CACHE_HOME`` instead of re-deriving ``data_path.name`` on its
+    own.  ⚑ The STATE side used to route through here too; [R166] retired that reading, so
+    a state assertion in this class would be testing a rule the code no longer states.
     """
 
     def _redirect_etc_base(self, monkeypatch, tmp_path: Path) -> None:
@@ -918,13 +1019,18 @@ class TestResolveDataLeaf:
 
     def test_load_std_paths_uses_the_resolver_for_its_leaf(self, tmp_home):
         """Observable-behaviour parity: overriding ``config.data`` still cascades to
-        ``state_path``/``cache_path`` exactly as the old inline ``data_path.name`` did."""
+        ``cache_path`` exactly as the old inline ``data_path.name`` did.
+
+        ⚑ MUTATION PROOF for [R166] in the same assertion pair: the repointed store moves
+        the CACHE path and leaves ``std.state`` on the key's own default.  A resolve that
+        re-grew a leaf reading for state would put ``std.state`` under ``srv_data``.
+        """
         cf = tmp_home / "config" / CONFIG_FILENAME
         cf.write_text(f'config:\n  data: "{tmp_home / "srv_data"}"\n')
         config = load_config(cf)
         std = load_std_paths(config)
-        assert std.state_path == std.state_home / "srv_data"
         assert std.cache_path == std.cache_home / "srv_data"
+        assert std.state == std.state_home / "kanibako"
 
     def test_load_std_paths_calls_resolve_data_leaf(self, tmp_home, config_file, monkeypatch):
         """Wiring proof: ``load_std_paths`` must call the shared resolver, not keep its

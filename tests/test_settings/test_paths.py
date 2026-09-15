@@ -49,7 +49,7 @@ class TestLoadStdPaths:
         std = load_std_paths(config)
 
         assert std.data_path.is_dir()
-        assert std.state_path.is_dir()
+        assert std.state.is_dir()
         assert std.cache_path.is_dir()
 
     def test_uses_xdg_dirs(self, config_file, tmp_home):
