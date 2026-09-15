@@ -387,12 +387,17 @@ machinery = [
 # every family is delivered".
 # CATCHES: a family declared on one side and not the other, AND a family whose
 # declared delivery MECHANISM disagrees with what the code produces. See `[[parity]]`
-# near the END of this file -- that table, and nothing else here, is what reads
-# this registry.
+# near the END of this file.
+# ⚑ TWO MECHANISMS READ THIS REGISTRY, corrected 2026-09-15: that table, and the
+# second `[[shape]]` block, which arrived after this comment said "nothing else
+# here". A THIRD reads the same SECTION through a different registry -- the
+# `bind-shaped` view below, which is a narrowing of these rows and not of this
+# registry.
 #
-# ⚑ IT EARNS ITS PLACE THROUGH `parity` ALONE, and a reader must not take a
-# green `check` as covering it. A `yaml-mapping` registry contributes NOTHING to
-# the duplication gate: verified at source against kinemata `a365474` and
+# ⚑ IT EARNS ITS PLACE THROUGH `parity` AND `shape`, NEVER `check`, and a reader
+# must not take a green `check` as covering it. A `yaml-mapping` registry
+# contributes NOTHING to the duplication gate: verified at source against
+# kinemata `a365474` and
 # RE-VERIFIED at `00044f2` (`adapters/mapping.py` is byte-unchanged across those
 # nine commits), `adapters/mapping.py` yields entries with no `antipatterns`, so `check` has
 # nothing to match -- the same published limit already recorded against
@@ -411,6 +416,161 @@ kind = "yaml-mapping"
 source = "src/kanibako/data/keyspace-manifest.yaml"
 section = "categories"
 clause_field = "spec"
+
+# ---------------------------------------------------------------------------
+# THE NARROWED VIEWS. The four registries below arrived 2026-09-15 with kinemata
+# `0.1.0`, and three of them are the SAME YAML section a registry above already
+# declares, narrowed by `where` to a group. That is not a second copy of the
+# declaration: `where` makes the registry BE the subset, so membership keeps its
+# meaning ("and there is nothing else") over the group rather than over the file,
+# which is the whole reason the key sits on the registry and not on the check.
+#
+# ⚑ A NARROWED VIEW DECLARES NO `clause_field`, and the omission is deliberate.
+# `clause_field = "spec"` links a row to the specification clause it is traced
+# from, and `claims` reads that link; declaring it on a view of rows another
+# registry already links would state the same linkage twice for one row.
+#
+# 🛑 WHAT A `where` CANNOT DO, AND IT IS THE LIMIT TO KNOW: a selector SELECTS. A
+# row that stops satisfying the guard leaves the view SILENTLY -- it does not
+# become a finding. So each of these declarations claims something about the rows
+# that are in the group, never that the group still has the members it had. The
+# hand-written tests these mirror claim BOTH, which is why none of them is
+# retired here; see the note on each `[[parity]]` table below for which half a
+# declaration reaches.
+#
+# ⚑ A `where` IS EVALUATED AT CONFIG LOAD, so a predicate that will not import
+# refuses the config for EVERY command, not just the one reading the view.
+# `src/kinemata_views.py` carries the measurement of where such a predicate can
+# live in this repository and what that costs; read its header before moving it.
+#
+# ⚑ `kinemata unused` SKIPS ALL FIVE, and it skipped `categories` before them.
+# Measured 2026-09-15, `0.1.0`: the command prints one `skipped:` line per
+# registry that declares no `machinery` and no `home`, because every entry is
+# mentioned by the file that declares it and the check would have nothing to
+# report. That is the SAME condition `categories` has always been in, it is not
+# new, and `unused` is not a CI gate. Declaring `machinery` on these would be
+# declaring it a second time for rows the `keyspace` registry already covers;
+# adding it is the lever if `unused` is ever turned on.
+#
+# ⚑ AND `kinemata check`'s `silent:` TALLY MOVED 115/206 TO 155/246 BY ADDING
+# THEM -- exactly the 40 entries the five declare, and no finding either way
+# (rc=0 before and after, 2026-09-15). A `yaml-mapping` registry yields entries
+# with no `antipatterns`, so every row it declares is silent to the duplication
+# scan by construction; the `keyspace` registry's own note above says the same
+# thing about itself. The tally is arithmetic, not a signal.
+
+# FACT: seven of the nine delivery families are BIND-SHAPED -- the key ends at
+# the family and the destination is the sub-key -- and the code's terminal tails
+# are the same seven.
+# AUTHORITY: `settings_keyspace.TERMINAL_CATEGORY_TAILS` is the code side; the
+# manifest's `categories:` records are the spec side, as they are for the
+# `[[parity]]` on `categories` above.
+# CATCHES: a family that is bind-shaped on one side and not the other -- the
+# `manifest == code` half of `TestTheCategoriesBlockShape`.
+#
+# 🛑 THE GUARD IS `cli_set`, AND THE ALTERNATIVES ARE MEASURED, NOT ARGUED. The
+# `categories:` section holds two NON-FAMILY records, `scopes` (a list) and
+# `scopes_spec` (a string), which the mapping adapter yields as
+# `extra = {"value": ...}`; `cli_set` is present on all nine families and on
+# neither of those, so guarding on its VALUE partitions exactly the families --
+# the same reasoning, and the same cell, the `[[shape]]` block on `categories`
+# already rests on. It is a THIRD, independent cell: the claim this view makes is
+# about the terminal tails, so the guard reads neither side of its own comparison.
+#
+# ⚑ UPSTREAM PROPOSED A PROJECT-SUPPLIED PREDICATE HERE AND IT IS DECLINED, by
+# running both rather than by reading them. Their `bind_shaped(entry)` is
+# `set(entry.extra) != {"value"} and not entry.extra.get("parametric")` -- two
+# filters, which is why it could not be a guard in the vocabulary they had.
+# Measured 2026-09-15 under `0.1.0`, both spellings against this tree: the
+# predicate reports `7 declared, 7 produced, in agreement` and `cli_set` reports
+# the identical line, over the identical seven. The declarative guard is kept
+# because it needs no import and therefore cannot refuse the config.
+# ⚑ AND IT SIDESTEPS A ROUGH EDGE UPSTREAM FLAGGED AND WE AGREE IS REAL: a
+# `yaml-mapping` row that is not a mapping arrives as `extra = {"value": <raw>}`,
+# and a mapping row carrying its own `value:` field is spread in with `value`
+# among the others -- every family here carries `value:` -- so the two shapes are
+# indistinguishable by that key and their predicate has to discriminate on the
+# FIELD SET instead. That is a heuristic standing in for a type test, exactly as
+# they say; it happens to be right on this data and nothing makes it stay right.
+# Not filed as a defect upstream by us either: the guard below does not need it.
+[[registry]]
+name = "bind-shaped"
+kind = "yaml-mapping"
+source = "src/kanibako/data/keyspace-manifest.yaml"
+section = "categories"
+where = { field = "cli_set", equals = false }
+
+# FACT: the workset seed DENY list names the workset metadata file.
+# AUTHORITY: `settings/config.py`'s `WORKSET_META_FILE` is the code side; the
+# manifest's `policy.seed_whitelists.workset.deny` map is the declared side.
+# CATCHES: the file being renamed on one side -- a deny row that stops naming the
+# real metadata file denies nothing, silently, at seed time.
+#
+# ⚑ THE REGISTRY IS NOT NARROWED; the `relation` on its `[[parity]]` is what
+# makes this expressible. The deny map legitimately names MORE than this one file
+# (eight rows), so an equality would report the other seven forever.
+[[registry]]
+name = "workset-denials"
+kind = "yaml-mapping"
+source = "src/kanibako/data/keyspace-manifest.yaml"
+section = ["policy", "seed_whitelists", "workset", "deny"]
+
+# FACT: where the manifest declares a row's `standalone` arm as NOTHING, the
+# standalone anchor floor must emit NO KEY for it.
+# AUTHORITY: `settings_launch.workset_anchor_floor(mode="standalone")` is the code
+# side; the `default:` map's `standalone` arm is the declared side.
+# CATCHES: a floor literal appearing for a row declared empty -- which would
+# shadow nothing on a finished standalone box and FABRICATE an identity on a
+# half-created one, in the words of the test this mirrors.
+#
+# ⚑ THE PREDICATE IS REQUIRED AND THE REASON IS IN ITS DOCSTRING: "the arm is
+# declared empty" and "the row has no arm at all" collapse to the same value in a
+# declarative guard, so `matches` would sweep in every row that never had one.
+[[registry]]
+name = "standalone-absences"
+kind = "yaml-mapping"
+source = "src/kanibako/data/keyspace-manifest.yaml"
+section = "keys"
+where = { holds = "kinemata_views:standalone_is_absent" }
+
+# FACT: a `type: path` row that is `set: never` is DERIVED, has no set route, and
+# must NOT be claimed by the set-time path predicate.
+# AUTHORITY: `config_keys.is_path_valued_key` is the code side -- [R147]'s
+# SET-TIME half, by its own header; the manifest's `type:`/`set:` columns are the
+# declared side.
+# CATCHES: `KEY_TYPES` quietly growing a `meta.*` entry, which would advertise a
+# set-time refusal that can never fire and hand `path_key_anchor` a key with no
+# anchor to name.
+[[registry]]
+name = "never-settable-paths"
+kind = "yaml-mapping"
+source = "src/kanibako/data/keyspace-manifest.yaml"
+section = "keys"
+where = { holds = "kinemata_views:never_settable_path" }
+
+# FACT: the three `workset.auth.*` rows declare a PER-MODE default, and their
+# `primary` arm is what the auth chain floor emits.
+# AUTHORITY: `settings_launch.auth_chain_floor` is the code side; the `primary`
+# arm of each row's `default:` map is the declared side, and it is the authority
+# -- the arms are `@`-ref FORMULAS sourced from the spec, so a divergence means
+# the code moved.
+# CATCHES: a floor formula edited away from the declared one -- a value question,
+# which every mechanism in this file before 2026-09-15 was unable to ask of a
+# mode-keyed row at all.
+#
+# ⚑ `id_matches` RATHER THAN `matches`: a guard's `matches` needs a field, and
+# the operator that claims something about the entry's own identifier is spelled
+# separately. (`0.1.0` says so in the refusal, which is how this was found.)
+# ⚑ THE ORACLE FILTERS ON THE SAME PREFIX THE VIEW DOES, and it has to: the floor
+# emits eight keys, five of which are not `workset.auth.*` rows. Both sides scoped
+# by one rule, spelled twice, is the cost of a narrowed view whose code side
+# answers for more than the view holds.
+[[registry]]
+name = "workset-auth-chain"
+kind = "yaml-mapping"
+source = "src/kanibako/data/keyspace-manifest.yaml"
+section = "keys"
+where = { id_matches = "^workset\\.auth\\." }
 
 # ---------------------------------------------------------------------------
 # FACT: the channel system's wire vocabulary -- the two synthesized workset
@@ -993,6 +1153,184 @@ for name, delivery in _DELIVERY.items():
 """]
 extract = '(?m)^kanibako-category: ([^\s=]+)=(\S+)$'
 field = "delivery"
+authority = "declared"
+
+# ---------------------------------------------------------------------------
+# THE 0.1.0 TABLES. Five declarations landed 2026-09-15 on kinemata `0.1.0`, four
+# of them offered by the kinemata box already run against this tree and adopted
+# here only after being RE-RUN against it. Every number below is the tool's own
+# output line and its exit code, `kinemata parity -c <probe>` from the repository
+# root, probe configs under `/tmp` and gone.
+#
+# 🛑 EACH ONE CARRIES ITS NEGATIVE CONTROL, AND THE CONTROL IS THE EVIDENCE. A
+# declaration that cannot be made to fail is not a check, it is a line that says
+# there is one. The controls were run, not reasoned about; where a control is one
+# key changed, the change is named so it can be repeated.
+#
+# 🛑 NONE OF THESE RETIRES A HAND-WRITTEN TEST, and that is not deferred tidying.
+# Each reaches ONE of the claims its test makes -- see the per-table notes -- so
+# deleting the test would remove a capability to satisfy a design. What a
+# declaration actually replaces is a separate decision, made against the test.
+
+# Measured 2026-09-15, kinemata `0.1.0`:
+#   `# bind-shaped: 7 declared, 7 produced, in agreement.`  rc=0
+# NEGATIVE CONTROL, same table with `where = { absent = "parametric" }` on the
+# registry: rc=1, `FAIL: 2 disagreement(s)`, naming `scopes` and `scopes_spec`
+# as "declared, produced by nothing" -- the two non-family records, which is the
+# group the `cli_set` guard exists to exclude. The comparison discriminates.
+# ⚑ THE UPSTREAM PREDICATE WAS RUN TOO and reports the identical line over the
+# identical seven; the registry note above records why the guard is kept instead.
+# ⚑ THIS IS THE `manifest == code` HALF OF `TestTheCategoriesBlockShape` ONLY.
+[[parity]]
+registry = "bind-shaped"
+command = ["{python}", "-c", """
+from kanibako.settings.settings_keyspace import TERMINAL_CATEGORY_TAILS
+for tail in sorted(TERMINAL_CATEGORY_TAILS):
+    print(".".join(tail))
+"""]
+extract = '(?m)^(\S+)$'
+
+# Measured 2026-09-15, kinemata `0.1.0`:
+#   `# workset-denials: 8 declared, 1 produced, every identifier the code
+#   produces is declared.`  rc=0
+# ⚑ `relation` IS WHAT MAKES THIS WRITABLE, and the alternative is measured, not
+# assumed. The same table WITHOUT the `relation` line: rc=1, `FAIL: 7
+# disagreement(s)`, every other deny row "declared, produced by nothing" -- seven
+# findings that are not wrong about anything, that a baseline would have to
+# accept, and that would have to be RE-ACCEPTED every time a deny row lands.
+# NEGATIVE CONTROL, and it is a different question from that one: with the oracle
+# printing `config.BOX_META_FILE` instead, rc=1, `FAIL: 1 disagreement(s)`,
+# `box.yaml: produced, declared by nothing`. A containment that admits anything
+# would have passed that; this one does not.
+# ⚑ `declared_contains` FAILS A RUN WHOSE ORACLE PRODUCED NOTHING -- upstream's
+# own rule, and the reason a vacuous run here cannot read as a clean one.
+# 🛑 THIS REACHES THE `workset` ARM OF A THREE-SCOPE TEST.
+# `TestTheSettingsFileDenialsNameRealFiles.test_the_deny_row_is_the_code_filename`
+# is parametrized over `box`, `workset` and `agent` against `BOX_META_FILE`,
+# `WORKSET_META_FILE` and `AGENT_META_FILE`; only the workset deny map is
+# declared here, so the other two scopes stay with the test.
+[[parity]]
+registry = "workset-denials"
+relation = "declared_contains"
+command = ["{python}", "-c", """
+from kanibako.settings import config
+print(config.WORKSET_META_FILE)
+"""]
+extract = '(?m)^(\S+)$'
+
+# Measured 2026-09-15, kinemata `0.1.0`:
+#   `# standalone-absences: 9 declared, 9 produced, no identifier is both
+#   declared and produced.`  rc=0
+# NEGATIVE CONTROL, the oracle pointed at the PRIMARY floor instead: rc=1,
+# `FAIL: 3 disagreement(s)` naming `workset.kuid`, `workset.registry` and
+# `workset.template` as "declared and produced, where neither may be" -- the
+# three that floor really does emit, which reproduces upstream's control on our
+# data exactly.
+# 🛑 THIS COVERS THE SECOND OF THE TEST'S TWO ASSERTIONS, NOT THE FIRST.
+# `test_the_standalone_arm_is_an_absence_on_both_sides` asserts (1) the arm is
+# `<None>` or a `<…>` placeholder and (2) the floor emits no key for it. The
+# predicate SELECTS on (1), so a row whose arm became a real value drops out of
+# the view rather than failing -- the selector limit stated at the head of the
+# narrowed views. (2) is what this table checks. The test keeps (1).
+[[parity]]
+registry = "standalone-absences"
+relation = "disjoint"
+command = ["{python}", "-c", """
+from kanibako.settings.settings_launch import workset_anchor_floor
+for key in sorted(workset_anchor_floor(mode="standalone")):
+    print(key)
+"""]
+extract = '(?m)^(\S+)$'
+
+# Measured 2026-09-15, kinemata `0.1.0`:
+#   `# never-settable-paths: 13 declared, 36 produced, no identifier is both
+#   declared and produced.`  rc=0
+# NEGATIVE CONTROL, the registry widened to `where = { field = "type", equals =
+# "path" }` -- every path row, settable ones included: rc=1, `FAIL: 36
+# disagreement(s)`, all "declared and produced, where neither may be". So the
+# `set: never` half of the predicate is doing the work, and the disjointness is
+# not true of path rows in general.
+# ⚑ OUR NUMBERS ARE NOT UPSTREAM'S, AND THE DIFFERENCE IS THE DECLARATION. They
+# report `1 declared, 39 produced` for this shape; re-run here it is 13 and 36.
+# 39 is the floor the sibling test in `TestThePathTypeColumnHasOneCodeCarrier`
+# pins on the SETTABLE path rows, parametric spellings included -- so their
+# produced side was the manifest's settable rows handed to the predicate, which
+# is the weakness they flag about their own version: the oracle is derived from
+# the declaration.
+# ⚑ THE ORACLE HERE ENUMERATES FROM THE CODE INSTEAD. `KEY_TYPES` is the code's
+# own table, so the produced side owes the manifest nothing; the predicate is
+# then run over it, which is the function the claim is about. 36 of its entries
+# are claimed as paths.
+# 🛑 WHAT THAT COSTS, SO THE GREEN IS NOT READ AS MORE THAN IT IS: `KEY_TYPES`
+# holds FIXED spellings only. `is_path_valued_key` also claims three PARAMETRIC
+# families no table enumerates, and the two never-settable parametric rows
+# (`meta.agent.<agent>.{path,settings}`) carry a `<agent>` PLACEHOLDER that no
+# oracle prints, so those two are in the declared side and could not collide with
+# anything whatever this table did. The hand-written test substitutes a node and
+# reaches them. It stays.
+[[parity]]
+registry = "never-settable-paths"
+relation = "disjoint"
+command = ["{python}", "-c", """
+from kanibako.settings.config_keys import KEY_TYPES, is_path_valued_key
+for key in sorted(KEY_TYPES):
+    if is_path_valued_key(key):
+        print(key)
+"""]
+extract = '(?m)^(\S+)$'
+
+# ---------------------------------------------------------------------------
+# THE FIRST VALUE COMPARISON THIS FILE MAKES AGAINST A MODE-KEYED ROW. A path
+# `field` is new in `0.1.0`: `["default", "primary"]` reaches the `primary` arm of
+# a row's `default:` map, where a bare `field = "default"` reaches the map.
+#
+# Measured 2026-09-15, kinemata `0.1.0`:
+#   `# workset-auth-chain: 3 declared, 3 produced, in agreement, agreeing on
+#   default.primary.`  rc=0
+# NEGATIVE CONTROL, the oracle moved to `mode="standalone"` with the declaration
+# still reading `default.primary`: rc=1, `FAIL: 3 disagreement(s)`, each naming
+# the pair, e.g. `workset.auth.share_allowed: default.primary declared
+# '@system.auth.share_allowed', code produces 'False'`. The values are compared,
+# not merely the names.
+# ⚑ SECOND CONTROL, AND IT IS THE MEMBERSHIP FIX UPSTREAM SHIPPED, SEEN RUNNING.
+# The same table with `field = "default"` -- the bare key, reaching the mode map:
+# rc=1, and the report is `BLOCKED: declares workset.auth.share_allowed with a
+# 'default' holding dict, which is not a scalar or a list of them and has no
+# spelling an oracle could be expected to print`. Under the build CI pinned until
+# today that block ALSO threw away the membership result, so a run like this one
+# reported nothing about a membership question it had never looked at. 18 of the
+# 67 rows that carry a `default:` hold a dict (re-measured here 2026-09-15;
+# upstream's mail says 66), so the silence was ours to inherit.
+# ⚑ AND THE ONE `field` TABLE THIS FILE ALREADY HAD WAS NEVER AFFECTED, checked
+# rather than assumed: `[[parity]] categories` compares `delivery`, a scalar on
+# all nine families, so no cell of it could block. Re-run under `0.1.0` it reads
+# `11 declared, 9 produced, in agreement, agreeing on delivery`, rc=0 -- the same
+# line, and the same two by-date acceptances, as under the previous pin.
+#
+# 🛑 THE `standalone` ARM OF THESE ROWS IS NOT EXPRESSIBLE, and the reason is a
+# real limit rather than an omission. `workset.auth.path` declares `standalone:
+# null`, and on the declared side a null arm and a missing arm are the same claim
+# ("no value declared"); on the produced side the floor emits the key with a
+# `None` value. An oracle that prints it diverges, an oracle that skips it goes
+# `unproduced`, and there is no third spelling. The `primary` arm is landed; the
+# `standalone` arm stays with the hand-written test.
+# 🛑 SO IS THE WIDER CORPUS, FOR A SHARPER REASON: 14 rows carry a per-mode
+# `default:`, and the two floors together answer for 8 of them -- `workspaces`,
+# `channelroot` and the four `channels.*` are resolved from a real workset root,
+# not produced as formulas. Comparing values over the 8 needs `field` together
+# with `relation = "declared_contains"`, and `0.1.0` refuses that combination by
+# name ("a value comparison needs identifiers on both sides, which is the thing
+# this relation is about"). Reported upstream rather than worked around.
+[[parity]]
+registry = "workset-auth-chain"
+command = ["{python}", "-c", """
+from kanibako.settings.settings_launch import auth_chain_floor
+for name, value in sorted(auth_chain_floor(mode="primary", agent_name="default").items()):
+    if name.startswith("workset.auth."):
+        print(f"kanibako-auth: {name}={value}")
+"""]
+extract = '(?m)^kanibako-auth: ([^\s=]+)=(\S+)$'
+field = ["default", "primary"]
 authority = "declared"
 
 # ---------------------------------------------------------------------------
