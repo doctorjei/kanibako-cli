@@ -710,7 +710,8 @@ def resolve_state_path(*, config_home: Path | None = None,
     The state-base sibling of :func:`resolve_data_path`, for a caller holding no
     :class:`StandardPaths` that must still land in the state root the user configured
     ([R166]: every state store derives from ``system.state``, and from nothing else).
-    :func:`kanibako.vscode.vscode_remote._vscode_remote_state_dir` is that caller.
+    :func:`kanibako.vscode.vscode_remote._vscode_remote_state_dir` and
+    :func:`kanibako.browser_state.state_path` are those callers.
 
     ⚑ IT READS ONE FILE MORE THAN :func:`resolve_data_path` DOES, and that is the key's
     layer talking: ``system.state`` is Layer 2, so ``system set system.state=…`` writes to

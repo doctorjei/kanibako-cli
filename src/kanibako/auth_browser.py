@@ -9,7 +9,6 @@ Requires: ``pip install playwright && playwright install chromium``
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 
 from kanibako.browser_state import (
@@ -57,7 +56,6 @@ def _check_playwright() -> bool:
 
 def refresh_auth(
     url: str,
-    data_path: Path,
     *,
     headless: bool = True,
 ) -> AuthResult:
@@ -68,6 +66,9 @@ def refresh_auth(
     4. If IdP login form is shown → abort (manual login required)
     5. Save updated browser state on success
 
+    The stored session is :mod:`kanibako.browser_state`'s to locate — it derives from
+    ``system.state`` itself ([R168]), so nothing about the jar is threaded through here.
+
     Returns :class:`AuthResult` with success status and optional key.
     """
     if not _check_playwright():
@@ -76,7 +77,7 @@ def refresh_auth(
             error="Playwright not installed. Run: pip install playwright && playwright install chromium",
         )
 
-    state = load_state(data_path)
+    state = load_state()
     storage_state = to_playwright_context(state) if state.cookies else None
 
     try:
@@ -100,7 +101,7 @@ def refresh_auth(
                     # Save updated browser context
                     ctx_data = context.storage_state()
                     new_state = from_playwright_context(ctx_data)
-                    save_state(data_path, new_state)
+                    save_state(new_state)
                     logger.info("OAuth refresh succeeded")
 
                 context.close()
@@ -175,7 +176,6 @@ def _handle_auth_page(page) -> AuthResult:
 
 def auto_refresh_auth(
     claude_path: str,
-    data_path: Path,
     *,
     headless: bool = True,
     login_timeout: float = 60,
@@ -244,7 +244,7 @@ def auto_refresh_auth(
         return AuthResult(success=False, error="No OAuth URL found in auth output")
 
     logger.info("Auto-auth: navigating to %s", url)
-    result = refresh_auth(url, data_path, headless=headless)
+    result = refresh_auth(url, headless=headless)
 
     if result.success:
         # If we got a key and the process is waiting for input, feed it.

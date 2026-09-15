@@ -662,6 +662,11 @@ class ClaudeTarget(Target):
 
         This method MUST NOT crash the launch: every step is best-effort and
         failures are logged, not raised.
+
+        ⚑ *data_path* is the ABC's parameter and this plugin reads none of it: the
+        OAuth session store it used to locate derives from ``system.state`` itself
+        ([R168]), so the jar is ``kanibako.browser_state``'s to find.  Do not thread
+        it back through the auth call.
         """
         # Anchor to the contract launcher; never let $PATH choose the binary we
         # exec on the host.
@@ -704,7 +709,7 @@ class ClaudeTarget(Target):
                 from kanibako.auth_browser import auto_refresh_auth
 
                 auto_result = auto_refresh_auth(
-                    str(install.binary), data_path, env=host_env,
+                    str(install.binary), env=host_env,
                 )
                 if auto_result.success:
                     logger.info("Auto-auth succeeded")

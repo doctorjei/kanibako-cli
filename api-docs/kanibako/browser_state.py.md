@@ -13,9 +13,9 @@ logger = get_logger('browser_state')
 
 ## Functions
 ```
-def state_path(data_path: Path) -> Path
-def load_state(data_path: Path) -> BrowserState
-def save_state(data_path: Path, state: BrowserState) -> None
+def state_path() -> Path
+def load_state() -> BrowserState
+def save_state(state: BrowserState) -> None
 def to_playwright_context(state: BrowserState) -> dict
 def from_playwright_context(context: dict) -> BrowserState
 ```

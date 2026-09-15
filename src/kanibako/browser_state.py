@@ -3,6 +3,14 @@
 Stores Playwright browser context (cookies, localStorage) so that the
 OAuth provider recognizes the session on subsequent refreshes without
 requiring a full re-login.
+
+⚑ THE JAR IS STATE, NOT DATA ([R168]).  It persists between runs on purpose, and that
+never decided anything: the test is precious-and-portable vs regenerable-and-machine-local,
+and a cookie jar is the latter — worthless on another machine, authored by nobody, and worth
+an authorization rather than anything of the user's if it is lost.  So it derives from
+``system.state`` and from nothing else ([R166]), and this module resolves that key ITSELF
+rather than taking a directory from its caller: the one parameter ``auth_browser`` ever
+threaded here existed only to locate this file.
 """
 
 from __future__ import annotations
@@ -13,6 +21,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from kanibako.log import get_logger
+from kanibako.settings.paths import resolve_state_path
 
 logger = get_logger("browser_state")
 
@@ -21,7 +30,7 @@ logger = get_logger("browser_state")
 class BrowserState:
     """Persistent browser context for OAuth session reuse.
 
-    Serialized as JSON at ``{data_path}/browser-state/context.json``.
+    Serialized as JSON at ``<system.state>/browser-state/context.json``.
     """
 
     cookies: list[dict] = field(default_factory=list)
@@ -29,14 +38,23 @@ class BrowserState:
     updated_at: float = 0.0
 
 
-def state_path(data_path: Path) -> Path:
-    """Return the browser state file path."""
-    return data_path / "browser-state" / "context.json"
+def state_path() -> Path:
+    """The browser state file — under ``system.state``, the declared key.
+
+    [R166]: a state store derives from ``system.state`` and from nothing else, so this is
+    the key's RESOLVED value, never ``$XDG_STATE_HOME`` composed with a leaf and never
+    ``config.data``.  :func:`resolve_state_path` is PURE and TOTAL (never raises, creates
+    nothing): it degrades to the key's own default, ``$XDG_STATE_HOME/kanibako``, whenever
+    the host config or settings file is absent, unreadable or malformed — so this function
+    is as total as the hardcoded join it replaces, and reaches a repointed state root when
+    those files ARE readable.
+    """
+    return resolve_state_path() / "browser-state" / "context.json"
 
 
-def load_state(data_path: Path) -> BrowserState:
+def load_state() -> BrowserState:
     """Load browser state from disk.  Returns empty state on missing/corrupt file."""
-    path = state_path(data_path)
+    path = state_path()
     if not path.is_file():
         return BrowserState()
 
@@ -55,9 +73,9 @@ def load_state(data_path: Path) -> BrowserState:
         return BrowserState()
 
 
-def save_state(data_path: Path, state: BrowserState) -> None:
+def save_state(state: BrowserState) -> None:
     """Persist browser state to disk."""
-    path = state_path(data_path)
+    path = state_path()
     path.parent.mkdir(parents=True, exist_ok=True)
 
     state.updated_at = time.time()

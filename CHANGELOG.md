@@ -160,14 +160,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   of `<data>/global/settings.yaml`, `get` and `reset` read and clear it there, `@system.state`
   resolves in any settings value, and `kanibako system defaults` lists it with the file that
   declares it. Every verb refused the name before, because the key was not declared — a closed
-  keyspace has no silent accept. Three host-side stores derive from it and from nothing else —
+  keyspace has no silent accept. Four host-side stores derive from it and from nothing else —
   the pre-launch warning file (`launch-issues.<box>`), the shadowed-flag record
-  (`launch-shadows.<box>`) and the `kanibako code --remote` connection store — so setting the key
-  moves all three together, and `config.data` does not move any of them. Nothing is required of
-  you and nothing moves on upgrade: the default is the `$XDG_STATE_HOME/kanibako` those three
-  already used.
+  (`launch-shadows.<box>`), the `kanibako code --remote` connection store and the saved OAuth
+  browser session — so setting the key moves all four together, and `config.data` does not move
+  any of them. Nothing is required of you: the default is the `$XDG_STATE_HOME/kanibako` the
+  first three already used, and the session store is the one that changes place — see *The saved
+  OAuth browser session is kept with the state, not the data* under **Changed**.
 
 ### Changed
+
+- **The saved OAuth browser session is kept with the state, not the data.** The Playwright session
+  that an automated `claude` re-authorization reuses — cookies and localStorage — was written to
+  `<config.data>/browser-state/context.json`. It now lives under `system.state`, at
+  `<system.state>/browser-state/context.json`, which on a default install is
+  `~/.local/state/kanibako/browser-state/context.json`. The file is a cookie jar: nothing in it is
+  yours, it is worth nothing on another machine, and losing it costs an authorization rather than
+  anything you made — which is what the state store is for, while the data store holds what you
+  authored and would carry to another host. The automated refresh is the only thing that writes it,
+  and it starts from scratch at the new location; nothing is required of you. ⚠️ If a
+  `browser-state` directory exists at the old path, nothing reads or clears it any more — delete
+  it, since it holds session cookies.
 
 - **BREAKING (canon layout): the packaged core tome is `charter`, not `bible`, and the handbook
   lost a level.** In every box, `~/canon/bible/` is now `~/canon/charter/`; the chapter names

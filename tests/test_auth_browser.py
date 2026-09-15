@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+import pytest
 
 from kanibako.auth_browser import (
     AuthResult,
@@ -11,6 +12,21 @@ from kanibako.auth_browser import (
     auto_refresh_auth,
     refresh_auth,
 )
+
+
+@pytest.fixture(autouse=True)
+def _isolate_browser_state(tmp_home, monkeypatch):
+    """Isolate the browser-state jar for the whole module.
+
+    Every route through :func:`refresh_auth` loads and may save it, and its location is
+    resolved from the host config + settings files ([R168]: it derives from
+    ``system.state``).  A test that mocks Playwright must still never read or write the
+    developer's real state tree, so the XDG bases (``tmp_home``) and the ``/etc`` config
+    base are pinned once, here, rather than per test.
+    """
+    import kanibako.settings.config as cfg_mod
+
+    monkeypatch.setattr(cfg_mod, "config_base_path", lambda: tmp_home / "etc_absent.cfg")
 
 
 class TestAuthResult:
@@ -33,14 +49,14 @@ class TestAuthResult:
 
 
 class TestRefreshAuth:
-    def test_no_playwright(self, tmp_path):
+    def test_no_playwright(self):
         """Returns error when playwright is not installed."""
         with patch("kanibako.auth_browser._check_playwright", return_value=False):
-            result = refresh_auth("https://example.com/auth", tmp_path)
+            result = refresh_auth("https://example.com/auth")
         assert result.success is False
         assert "Playwright not installed" in result.error
 
-    def test_with_playwright_success(self, tmp_path):
+    def test_with_playwright_success(self):
         """Successful flow with mocked playwright."""
         mock_page = MagicMock()
         mock_context = MagicMock()
@@ -61,12 +77,12 @@ class TestRefreshAuth:
             mock_sp.return_value.__exit__ = MagicMock(return_value=False)
             mock_handle.return_value = AuthResult(success=True, key="KEY123")
 
-            result = refresh_auth("https://console.anthropic.com/auth", tmp_path)
+            result = refresh_auth("https://console.anthropic.com/auth")
 
         assert result.success is True
         assert result.key == "KEY123"
 
-    def test_with_playwright_failure(self, tmp_path):
+    def test_with_playwright_failure(self):
         """Failed flow returns error."""
         mock_page = MagicMock()
         mock_context = MagicMock()
@@ -88,12 +104,12 @@ class TestRefreshAuth:
                 success=False, error="IdP session expired"
             )
 
-            result = refresh_auth("https://console.anthropic.com/auth", tmp_path)
+            result = refresh_auth("https://console.anthropic.com/auth")
 
         assert result.success is False
         assert "IdP session expired" in result.error
 
-    def test_browser_exception(self, tmp_path):
+    def test_browser_exception(self):
         """Exception during browser automation returns error."""
         # Use a distinct timeout class so PWTimeout doesn't catch RuntimeError
         fake_timeout = type("PlaywrightTimeout", (Exception,), {})
@@ -108,12 +124,12 @@ class TestRefreshAuth:
             )
             mock_sp.return_value.__exit__ = MagicMock(return_value=False)
 
-            result = refresh_auth("https://console.anthropic.com/auth", tmp_path)
+            result = refresh_auth("https://console.anthropic.com/auth")
 
         assert result.success is False
         assert "browser crashed" in result.error
 
-    def test_loads_stored_state(self, tmp_path):
+    def test_loads_stored_state(self):
         """Uses stored browser state when available."""
         from kanibako.browser_state import BrowserState, save_state
 
@@ -121,7 +137,7 @@ class TestRefreshAuth:
             cookies=[{"name": "session", "value": "abc"}],
             origins=[],
         )
-        save_state(tmp_path, state)
+        save_state(state)
 
         mock_page = MagicMock()
         mock_context = MagicMock()
@@ -142,7 +158,7 @@ class TestRefreshAuth:
             mock_sp.return_value.__exit__ = MagicMock(return_value=False)
             mock_handle.return_value = AuthResult(success=True)
 
-            refresh_auth("https://console.anthropic.com/auth", tmp_path)
+            refresh_auth("https://console.anthropic.com/auth")
 
         # Should have passed storage_state to new_context
         call_kwargs = mock_browser.new_context.call_args
@@ -213,21 +229,21 @@ class TestHandleAuthPage:
 class TestAutoRefreshAuth:
     """Tests for auto_refresh_auth orchestrator."""
 
-    def test_no_playwright(self, tmp_path):
+    def test_no_playwright(self):
         """Returns error when playwright is not installed."""
         with patch("kanibako.auth_browser._check_playwright", return_value=False):
-            result = auto_refresh_auth("/usr/bin/claude", tmp_path)
+            result = auto_refresh_auth("/usr/bin/claude")
         assert result.success is False
         assert "Playwright not installed" in result.error
 
-    def test_binary_not_found(self, tmp_path):
+    def test_binary_not_found(self):
         """Returns error when claude binary doesn't exist."""
         with patch("kanibako.auth_browser._check_playwright", return_value=True):
-            result = auto_refresh_auth("/nonexistent/claude", tmp_path)
+            result = auto_refresh_auth("/nonexistent/claude")
         assert result.success is False
         assert "Failed to start auth" in result.error
 
-    def test_no_url_in_output(self, tmp_path):
+    def test_no_url_in_output(self):
         """Returns error when auth output contains no OAuth URL."""
         mock_proc = MagicMock()
         mock_proc.stdout = iter(["Welcome to Claude\n", "Please log in\n"])
@@ -240,13 +256,13 @@ class TestAutoRefreshAuth:
             patch("kanibako.auth_browser._check_playwright", return_value=True),
             patch("subprocess.Popen", return_value=mock_proc),
         ):
-            result = auto_refresh_auth("/usr/bin/claude", tmp_path)
+            result = auto_refresh_auth("/usr/bin/claude")
 
         assert result.success is False
         assert "No OAuth URL" in result.error
         mock_proc.kill.assert_called_once()
 
-    def test_successful_auto_auth(self, tmp_path):
+    def test_successful_auto_auth(self):
         """Successful flow: URL found → browser clicks authorize → login completes."""
         mock_proc = MagicMock()
         mock_proc.stdout = iter([
@@ -262,7 +278,7 @@ class TestAutoRefreshAuth:
             patch("kanibako.auth_browser.refresh_auth") as mock_refresh,
         ):
             mock_refresh.return_value = AuthResult(success=True, key="KEY123")
-            result = auto_refresh_auth("/usr/bin/claude", tmp_path)
+            result = auto_refresh_auth("/usr/bin/claude")
 
         assert result.success is True
         assert result.key == "KEY123"
@@ -271,7 +287,7 @@ class TestAutoRefreshAuth:
         call_args = mock_refresh.call_args
         assert "console.anthropic.com" in call_args.args[0]
 
-    def test_browser_auth_fails(self, tmp_path):
+    def test_browser_auth_fails(self):
         """Browser automation fails → process is killed."""
         mock_proc = MagicMock()
         mock_proc.stdout = iter([
@@ -290,12 +306,12 @@ class TestAutoRefreshAuth:
             mock_refresh.return_value = AuthResult(
                 success=False, error="IdP session expired"
             )
-            result = auto_refresh_auth("/usr/bin/claude", tmp_path)
+            result = auto_refresh_auth("/usr/bin/claude")
 
         assert result.success is False
         mock_proc.kill.assert_called_once()
 
-    def test_feeds_key_to_stdin(self, tmp_path):
+    def test_feeds_key_to_stdin(self):
         """When refresh_auth returns a key, it's fed to the login process."""
         mock_proc = MagicMock()
         mock_proc.stdout = iter([
@@ -312,7 +328,7 @@ class TestAutoRefreshAuth:
             patch("kanibako.auth_browser.refresh_auth") as mock_refresh,
         ):
             mock_refresh.return_value = AuthResult(success=True, key="MYKEY")
-            auto_refresh_auth("/usr/bin/claude", tmp_path)
+            auto_refresh_auth("/usr/bin/claude")
 
         mock_stdin.write.assert_called_once_with("MYKEY\n")
         mock_stdin.flush.assert_called_once()

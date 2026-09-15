@@ -22,8 +22,8 @@ PWTimeout: type[Exception] = Exception
 
 ## Functions
 ```
-def refresh_auth(url: str, data_path: Path, *, headless: bool=True) -> AuthResult
-def auto_refresh_auth(claude_path: str, data_path: Path, *, headless: bool=True, login_timeout: float=60, env: dict[str, str] | None=None) -> AuthResult
+def refresh_auth(url: str, *, headless: bool=True) -> AuthResult
+def auto_refresh_auth(claude_path: str, *, headless: bool=True, login_timeout: float=60, env: dict[str, str] | None=None) -> AuthResult
 def _check_playwright() -> bool
 def _handle_auth_page(page) -> AuthResult
 def _extract_key(page) -> str | None
