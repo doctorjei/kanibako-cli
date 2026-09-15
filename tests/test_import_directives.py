@@ -12,6 +12,7 @@ import importlib.util
 import json
 import os
 import re
+from pathlib import Path
 
 import pytest
 
@@ -1884,7 +1885,7 @@ class TestTemplateImportAndLink:
             "root.md": '# Root\n\n__LINKSECTION__("proc.md")\n',
             "proc.md": "# Procedure\n\nload me on demand\n",
         }))
-        assert f"[1 Procedure]({(home / 'proc.md').as_posix()})" in out
+        assert "[1 Procedure](~/proc.md)" in out
         assert "load me on demand" not in out      # NOT imported
         assert "#1-procedure" not in out           # points at the FILE, not a section
 
@@ -1893,7 +1894,7 @@ class TestTemplateImportAndLink:
             "root.md": '# Root\n\n__LINK__("proc.md")\n',
             "proc.md": "# Procedure\n\nbody\n",
         }))
-        assert f"[Procedure]({(home / 'proc.md').as_posix()})" in out
+        assert "[Procedure](~/proc.md)" in out
 
     def test_a_glob_expands_to_one_row_per_entry_in_sorted_order(self, home):
         out = _body(_run(home, {
@@ -1930,7 +1931,7 @@ class TestTemplateImportAndLink:
         }))
         rows = [ln for ln in out.split("\n") if ln.startswith("[")]
         assert rows[:2] == ["[1 One](#1-one)", "[2 Two](#2-two)"]
-        assert rows[2] == f"[3 Three]({(home / 'p' / 'three.md').as_posix()})"
+        assert rows[2] == "[3 Three](~/p/three.md)"
 
     def test_a_call_line_is_not_import_only_so_its_file_keeps_its_section(self, home):
         """Like the ``[text](@path)`` form: the call leaves DISPLAY TEXT behind,
@@ -1950,6 +1951,60 @@ class TestTemplateImportAndLink:
         assert "@box" not in out
         assert "`@" not in out                     # not neutralized as a mention
         assert "unresolved import @box" not in capsys.readouterr().err
+
+
+class TestLinkTargetsAreHomeRelative:
+    """🛑 A LINK TARGET NEVER CARRIES THE HOST PATH — his call, and he classed it as
+    a security issue rather than a cosmetic one; the why is in the flattener's
+    ``home_relative``.
+
+    ``__LINK__`` is the only form that emits a PATH at all: every other row points at
+    a fragment inside the document it already sits in — which is what makes one class
+    enough to cover the rule.
+    """
+
+    def test_no_emitted_target_carries_the_host_path(self, home):
+        """THE RULE, over every row a render produces — not one specimen line.
+
+        The corpus is deliberately mixed: a bare ``@path`` mention (slug-anchored),
+        an import (fragment-anchored) and links reached through two different
+        depths of containing file, which is what makes a leak visible wherever it
+        could come from.
+        """
+        out = _body(_run(home, {
+            "root.md": (
+                '# Root\n\n@notes.md\n\n__IMPORTSECTION__("d/one.md")\n'
+                '__LINKSECTION__("p/*.md")\n'
+            ),
+            "notes.md": "# Notes\n\nmentioned\n",
+            "d/one.md": '# One\n\n__LINKSECTION__("sub/two.md")\n',
+            "d/sub/two.md": "# Two\n",
+            "p/alpha.md": "# Alpha\n",
+            "p/beta.md": "# Beta\n",
+        }))
+        targets = re.findall(r"\]\(([^)]*)\)", out)
+        assert targets, "the render produced no rows to measure"
+        assert str(home) not in out
+        assert sorted(t for t in targets if not t.startswith("#")) == [
+            "~/d/sub/two.md", "~/p/alpha.md", "~/p/beta.md",
+        ]
+
+    def test_a_target_outside_home_keeps_its_own_absolute_spelling(self, home, tmp_path_factory):
+        """⚑ THE DOCUMENTED FALLBACK (``home_relative``), pinned so a later reader
+        cannot mistake it for a hole and "fix" it."""
+        outside = tmp_path_factory.mktemp("outside") / "elsewhere.md"
+        outside.write_text("# Elsewhere\n", encoding="utf-8")
+        assert not str(outside).startswith(str(home))
+        out = _body(_run(home, {"root.md": f'# Root\n\n__LINK__("{outside}")\n'}))
+        assert f"[Elsewhere]({outside.as_posix()})" in out
+
+    def test_home_relative_spells_a_path_under_home_with_a_tilde(self, home):
+        """The helper itself, both branches: the ``~/`` is KEPT, and a path outside
+        home is returned verbatim."""
+        assert flattener.home_relative(home / "canon" / "x.md") == "~/canon/x.md"
+        assert flattener.home_relative(Path("/etc/kanibako/base.cfg")) == (
+            "/etc/kanibako/base.cfg"
+        )
 
 
 class TestTemplateCurrent:
