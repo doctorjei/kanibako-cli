@@ -24,8 +24,9 @@ for:
 
 2. A 429 IS INDISTINGUISHABLE FROM A BAD EXTRACTION IF YOU ONLY LOOK AT THE BODY.
    Its body parses as an empty result.  So the status code is recorded for every
-   exchange, a non-200 NEVER produces a section output file, and "HTTP 200 with an
-   empty completion" is reported as its own distinct, loud failure.
+   exchange, a non-200 NEVER produces a section output file, and both "HTTP 200
+   with an empty completion" and "HTTP 200 that stopped short of 'stop'" are
+   reported as their own distinct, loud failures.
 
 3. THE TOKEN COMES FROM THE PERSONA-GRATA STORE, ARM'S-LENGTH, AND IS NEVER
    PERSISTED, LOGGED OR ECHOED.  The store is a LIVE resolution input read fresh
@@ -456,9 +457,10 @@ class Attempt:
   # ⚑ None means UNKNOWN, never "not truncated": no HTTP 200, a body we could not
   # parse as far as choices[0], or a reply carrying no string finish_reason all
   # land here. A string is the endpoint's own word and is recorded whether or not
-  # the completion was usable -- "length" is a TRUNCATED section. The key is
-  # always present in the meta record, so a reader tells UNKNOWN from evidence
-  # without guessing.
+  # the completion was usable -- "length" is a TRUNCATED section, and a BLANK one
+  # is recorded verbatim as the evidence it is, though run_section reads it as
+  # UNKNOWN. The key is always present in the meta record, so a reader tells
+  # UNKNOWN from evidence without guessing.
   finish_reason: str | None = None
 
 
@@ -494,6 +496,34 @@ def run_section(
 
     if ex.status == 200:
       if text is not None:
+        # ⚑ FAIL LOUD on a non-'stop' finish_reason: a truncated completion is a
+        # USABLE 200 with non-empty content, so this is the one place that catches
+        # it -- completion_text() has no reason to call it unusable. Only 'stop' is
+        # treated as complete; every other non-empty string (length, content_filter,
+        # tool_calls, ...) is fatal by the same rule rather than an enumerated
+        # list, because this run never asks for tools and has no use for a
+        # partial answer. Not retried, for the same reason the unusable-200 case
+        # below is not: max_tokens is unchanged between attempts, so a repeat is
+        # expected to truncate again, and retrying would hide rather than fix it.
+        if finish and finish != "stop":
+          failure = (
+            f"attempt {attempt}: HTTP 200 with usable content but "
+            f"finish_reason={finish!r} (not 'stop') -- truncated or otherwise "
+            "incomplete; not a rate limit, so retrying would not change it"
+          )
+          break
+        # ⚑ finish_reason UNKNOWN (none reported, blank, or a non-string) is NOT
+        # treated as fatal: hard-failing here would refuse every section on any
+        # endpoint that simply does not report the field, which is worse than the
+        # gap it closes -- a check that red-lines a working run gets switched off.
+        # It is surfaced instead, so a clean run's silence is never mistaken for a
+        # confirmed absence of truncation -- see the Attempt.finish_reason note.
+        if not finish:
+          print(
+            f"    attempt {attempt}: finish_reason UNKNOWN (none reported, blank, "
+            "or not a string) -- truncation cannot be ruled out for this attempt",
+            file=sys.stderr,
+          )
         return text, None, attempts
       failure = why or "unusable 200 response"
       break  # a 200 we cannot use is not a rate limit; retrying hides the cause
@@ -585,6 +615,7 @@ def build_parser() -> argparse.ArgumentParser:
       "FAILURE CLASSES, deliberately kept apart:\n"
       "  HTTP 429 / 5xx / no response  -> retried with backoff, then reported with the code.\n"
       "  HTTP 200, empty completion    -> reported as its own failure, NOT retried.\n"
+      "  HTTP 200, non-'stop' finish   -> truncated or incomplete; its own failure, NOT retried.\n"
       "A rate-limited body parses as an empty result; collapsing the two is the bug this\n"
       "script exists to avoid.\n"
       "\n"
@@ -717,6 +748,12 @@ def main(argv: list[str]) -> int:
     if body.exists() and not args.force:
       # ⚑ RE-HARVEST, do not merely skip: the merge is rewritten every run, so a
       # resumed section that contributed nothing would silently empty the roll-up.
+      # ⚑ EXEMPT from the finish_reason fail-loud check in run_section: resuming
+      # makes no new attempt, so there is nothing fresh to fail on, and the prior
+      # run's .meta.json may predate this check entirely (or not exist). Re-validating
+      # an old section retroactively is a different feature -- it would need its
+      # own handling for missing/malformed meta -- and is left for `--force` to
+      # cover by re-running the section for real, not for this change to add.
       kept = body.read_text(encoding="utf-8")
       results[sid] = {"chars": len(kept), "keys": harvest_keys(kept)}
       print(f"§{sid:<5} lines {sec.start}-{sec.end}  SKIPPED (already extracted; --force to redo)")
