@@ -11,6 +11,8 @@ from kanibako.targets import discover_targets, get_target, resolve_target
 from kanibako.targets.base import AgentInstall, Target
 from kanibako.targets.no_agent import NoAgentTarget
 
+from tests.support.filenames import CONFIG_FILENAME
+
 
 class _FakeTarget(Target):
     """Minimal concrete Target for testing."""
@@ -267,6 +269,42 @@ def _write_plugin(directory: Path, filename: str, name: str) -> None:
 
 class TestDirectoryPluginDiscovery:
     """Tests for file-drop plugin directories."""
+
+    @pytest.fixture(autouse=True)
+    def _isolate_config(self, tmp_path, monkeypatch):
+        """Pin the CONFIG side of the user plugin dir, which is ``config.data``/plugins.
+
+        ⚑ ``XDG_DATA_HOME`` alone no longer determines where the scan looks ([R155]), so an
+        unisolated ``XDG_CONFIG_HOME`` — or the site base under ``/etc`` — would let whatever
+        config happens to be on the box running the suite move the directory away from the one
+        these tests write into.
+        """
+        import kanibako.settings.config as cfg_mod
+
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
+        monkeypatch.setattr(cfg_mod, "config_base_path", lambda: tmp_path / "etc_absent.cfg")
+
+    def test_user_dir_follows_repointed_config_data(self, tmp_path, monkeypatch):
+        """[R155]: the user scan follows ``config.data``, never the XDG base plus a leaf.
+
+        On the hardcoded reading the configured store was not scanned at all, so a plugin
+        dropped there silently did not exist — and the stale default location won instead.
+        """
+        store = tmp_path / "srv" / "custom_store"
+        _write_plugin(store / "plugins", "repointed.py", "repointed")
+        config_home = tmp_path / "cfg"
+        config_home.mkdir(parents=True, exist_ok=True)
+        (config_home / CONFIG_FILENAME).write_text(f'config:\n  data: "{store}"\n')
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+        # The abandoned default location holds a DIFFERENT plugin, so the old reading does
+        # not merely come up empty — it discovers the wrong store's plugin and says nothing.
+        _write_plugin(tmp_path / "data" / "kanibako" / "plugins", "stale.py", "stale")
+
+        with patch("kanibako.targets.entry_points", return_value=[]):
+            targets = discover_targets()
+
+        assert "repointed" in targets
+        assert "stale" not in targets
 
     def test_discover_user_dir_plugins(self, tmp_path, monkeypatch):
         """Plugins in user data dir are discovered."""

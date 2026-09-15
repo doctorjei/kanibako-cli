@@ -27,12 +27,22 @@ from tests.support.filenames import CONFIG_FILENAME
 def _isolate_xdg(tmp_path, monkeypatch):
     """Point every XDG base the module reads at a per-test tmp dir.
 
-    ⚑ ``XDG_CONFIG_HOME`` is isolated too: ``_vscode_remote_state_dir`` now tracks
-    ``config.data``'s leaf via :func:`kanibako.settings.paths.resolve_data_leaf`,
-    which reads ``$XDG_CONFIG_HOME/kanibako_config.yaml`` — an unisolated env would
-    read the REAL host config and make the leaf (hence every path in this file)
-    depend on whatever happens to be on the box running the suite.
+    ⚑ ``XDG_CONFIG_HOME`` is isolated too: ``_vscode_remote_state_dir`` tracks
+    ``config.data``'s leaf via :func:`kanibako.settings.paths.resolve_data_leaf`, and
+    ``vscode_remote_bin_dir`` resolves the whole key via
+    :func:`kanibako.settings.paths.resolve_data_path`; both read
+    ``$XDG_CONFIG_HOME/kanibako.cfg`` — an unisolated env would read the REAL host config
+    and make those paths (hence much of this file) depend on whatever happens to be on the
+    box running the suite.
+    ⚑ The site base under ``/etc`` is pinned for the same reason and needs its own patch,
+    since both resolvers read :func:`kanibako.settings.config.config_base_path`
+    unconditionally, BELOW the user layer — env isolation alone does not reach it (same
+    pin, same reason, as ``TestDirectoryPluginDiscovery._isolate_config`` in
+    ``tests/test_targets/test_discovery.py``).
     """
+    import kanibako.settings.config as cfg_mod
+
+    monkeypatch.setattr(cfg_mod, "config_base_path", lambda: tmp_path / "etc_absent.cfg")
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
@@ -276,6 +286,30 @@ def test_state_dir_malformed_config_degrades_without_raising():
     (config_home / CONFIG_FILENAME).write_text("not: [valid: yaml: at all")
     d = vr._vscode_remote_state_dir()  # must not raise
     assert d.parent.name == "kanibako"
+
+
+# --- vscode_remote_bin_dir is anchored on config.data itself (resolve_data_path) ---
+
+def test_bin_dir_defaults_under_xdg_data_home_when_no_config():
+    """No config under the isolated ``XDG_CONFIG_HOME`` → the shipped default location,
+    exactly the prior hardcoded behaviour."""
+    assert vr.vscode_remote_bin_dir() == (
+        Path(os.environ["XDG_DATA_HOME"]) / "kanibako" / "vscode-remote" / "bin"
+    )
+
+
+def test_bin_dir_follows_repointed_config_data(tmp_path):
+    """[R155]: the generated wrapper lives inside the store the user configured — the WHOLE
+    ``config.data`` path. A store outside ``$XDG_DATA_HOME`` also rules out a leaf-only
+    reading, which would rejoin "custom_store" to the XDG base and miss the move."""
+    config_home = Path(os.environ["XDG_CONFIG_HOME"])
+    config_home.mkdir(parents=True, exist_ok=True)
+    (config_home / CONFIG_FILENAME).write_text(
+        f'config:\n  data: "{tmp_path / "srv" / "custom_store"}"\n'
+    )
+    assert vr.vscode_remote_bin_dir() == (
+        tmp_path / "srv" / "custom_store" / "vscode-remote" / "bin"
+    )
 
 
 # --- connection store round-trip + greppability ----------------------------

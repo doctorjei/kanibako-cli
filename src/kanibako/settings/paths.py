@@ -325,7 +325,7 @@ def spec_default_xdg_map(data_home: Path | None) -> dict[str, str]:
     """The XDG vars that HAVE a spec default (data/config/state/cache) — no ``XDG_RUNTIME_DIR``.
 
     ⚑ Side-effect-free: unlike ``XDG_RUNTIME_DIR`` (see :func:`_fallback_runtime_dir`), none of
-    these four ever mkdir a fallback dir — :func:`resolve_data_leaf` relies on that to stay total.
+    these four ever mkdir a fallback dir — :func:`resolve_data_path` relies on that to stay total.
     ⚑ PUBLIC for the second caller that needs exactly that guarantee:
     ``settings/workset_dirkeys.py`` resolves ``$XDG_*`` inside the ancestor WALK, where a
     mkdir-and-warn on a directory that turns out not to be a workset is a real side effect.
@@ -382,7 +382,7 @@ def resolve_config_paths(set_values: Mapping[str, str], *, data_home: Path, home
     """Resolve the Layer-1 CONFIG-key foundation to concrete host paths (flat by design).
 
     ⚑ *xdg_vars*, when given, REPLACES the live :func:`host_xdg_map` build — the seam
-    :func:`resolve_data_leaf` uses to resolve ``config.data`` without touching
+    :func:`resolve_data_path` uses to resolve ``config.data`` without touching
     ``XDG_RUNTIME_DIR`` (whose fallback can mkdir; see :func:`spec_default_xdg_map`).
     Every other caller leaves it unset and gets today's exact ``host_xdg_map(data_home)``.
     """
@@ -628,31 +628,32 @@ def load_system_config(user_config_path: Path, *, data_home: Path, home: Path) -
     return resolve_system_paths(raw, data_home=data_home, home=home)
 
 
-def resolve_data_leaf(data_path: Path | None = None, *, config_home: Path | None = None,
-                      data_home: Path | None = None) -> str:
-    """The leaf (basename) of ``config.data`` — PURE and TOTAL; creates nothing, never raises.
+def resolve_data_path(*, config_home: Path | None = None,
+                      data_home: Path | None = None) -> Path:
+    """The resolved ``config.data`` DIRECTORY — PURE and TOTAL; creates nothing, never raises.
 
-    Given an ALREADY-RESOLVED *data_path* (e.g. a caller's own
-    ``load_system_config(...)["config.data"]``), this is just ``data_path.name`` — no re-read.
-    Without one, resolves ``config.data`` fresh from the host CONFIG file set (base < user,
-    the same Layer-1 foundation :func:`load_system_config` reads) and returns ITS leaf — so a
-    caller with no path in hand yet (:func:`kanibako.vscode.vscode_remote._vscode_remote_state_dir`)
-    still tracks a non-default ``config.data`` instead of hardcoding the default leaf.
+    Resolves ``config.data`` fresh from the host CONFIG file set (base < user, the same
+    Layer-1 foundation :func:`load_system_config` reads), so a caller holding no
+    :class:`StandardPaths` reaches the directory the user CONFIGURED instead of composing the
+    XDG data base with a hardcoded ``kanibako`` leaf ([R155]: a kanibako subdirectory
+    references ``config.data``; it is never composed from the XDG base).
+    :func:`kanibako.targets.discover_targets` and
+    :func:`kanibako.vscode.vscode_remote.vscode_remote_bin_dir` are those callers: both run on
+    paths where ``load_std_paths`` is unavailable, since it REQUIRES a config file and
+    MATERIALIZES directories, and this requires neither.
 
     ⚑ TOTAL: any failure to read or resolve config — the file is absent, unreadable, or
-    malformed YAML, or a stored expression fails to resolve — degrades to the DEFAULT leaf
-    (:data:`KANIBAKO_PATH`, matching ``CONFIG_PATH_DEFAULTS["config.data"]``'s own default).
-    An absent/unreadable config is exactly TODAY's status quo (nothing has ever read it for
-    this purpose either), so this can never be worse; a readable config makes it strictly
-    better. ⚑ Builds its own xdg map (:func:`spec_default_xdg_map` — data/config/state/cache,
+    malformed YAML, or a stored expression fails to resolve — degrades to
+    ``data_home / KANIBAKO_PATH``, matching ``CONFIG_PATH_DEFAULTS["config.data"]``'s own
+    default. An absent/unreadable config is exactly what every caller computed when the leaf
+    was hardcoded, so this can never be worse; a readable config makes it strictly better.
+    ⚑ Builds its own xdg map (:func:`spec_default_xdg_map` — data/config/state/cache,
     deliberately NOT ``host_xdg_map``) rather than the full Layer-1 resolve's usual map: resolving
     ``XDG_RUNTIME_DIR`` can mkdir a fallback dir when unset, and this function must create
     nothing. The one case that misses: a hand-edited config expression referencing
-    ``$XDG_RUNTIME_DIR`` (no shipped default does) degrades to the default leaf rather than
+    ``$XDG_RUNTIME_DIR`` (no shipped default does) degrades to the default rather than
     resolving it — an acceptable trade for staying total and side-effect-free.
     """
-    if data_path is not None:
-        return data_path.name
     ch = config_home if config_home is not None else xdg(XDG_CONFIG_HOME,
                                                           XDG_SPEC_DEFAULTS[XDG_CONFIG_HOME])
     dh = data_home if data_home is not None else xdg(XDG_DATA_HOME,
@@ -669,9 +670,32 @@ def resolve_data_leaf(data_path: Path | None = None, *, config_home: Path | None
         raw.update(bootstrap_config_paths(config_file_path(ch)))
         resolved = resolve_config_paths(raw, data_home=dh, home=Path.home(),
                                         xdg_vars=spec_default_xdg_map(dh))
-        return Path(resolved["config.data"]).name
+        return Path(resolved["config.data"])
     except Exception:
-        return KANIBAKO_PATH
+        return dh / KANIBAKO_PATH
+
+
+def resolve_data_leaf(data_path: Path | None = None, *, config_home: Path | None = None,
+                      data_home: Path | None = None) -> str:
+    """The leaf (basename) of ``config.data`` — PURE and TOTAL, via :func:`resolve_data_path`.
+
+    Given an ALREADY-RESOLVED *data_path* (e.g. a caller's own
+    ``load_system_config(...)["config.data"]``), this is just ``data_path.name`` — no re-read.
+    Without one it is :func:`resolve_data_path`'s leaf, which is what lets a caller anchored on
+    a DIFFERENT base (:func:`kanibako.vscode.vscode_remote._vscode_remote_state_dir`, under
+    ``$XDG_STATE_HOME``) track a non-default ``config.data`` without leaving that base.
+    ⚑ ``$XDG_STATE_HOME`` DOES have a key of its own — ``system.state``, ``set: cli+file`` —
+    whose default is the fixed literal ``$XDG_STATE_HOME/kanibako`` and does NOT follow
+    ``config.data``'s leaf. It is resolved onto ``StandardPaths.state``, which nothing reads
+    yet. 🛑 The leaf reading for STATE is RETIRED, not merely provisional: state is being
+    rewired onto ``system.state`` and stops tracking ``config.data`` at all (boarded).
+    ⚑ A caller anchored on the DATA base wants the whole path, not this:
+    a repointed ``config.data`` moves its parent too, and rejoining the leaf to the XDG base
+    would silently drop that move.
+    """
+    if data_path is not None:
+        return data_path.name
+    return resolve_data_path(config_home=config_home, data_home=data_home).name
 
 
 def load_std_paths(config: BootstrapConfig | None = None) -> StandardPaths:

@@ -293,7 +293,13 @@ inside boxes. In order of likely impact:
     files moved up out of `directives/`. **Upgrading from v1.7.2 you have none of this** — the
     canon books are new in v1.8.0.
 
-30. Smaller items: standalone boxes' `box get` got truthful (§2.9); a box suppressed to
+30. **If `config.data` points anywhere but `$XDG_DATA_HOME/kanibako`, your own file-drop plugins
+    are now discovered in it — and stop being discovered in the default store** (§2.72). The
+    plugin directory and the `code --remote` wrapper directory were the last two built from the
+    XDG *data* base plus a hardcoded `kanibako`; a plugin you had dropped in your store was silently
+    never loaded. Move the `.py` files, and re-run `kanibako code --remote` per remote.
+
+31. Smaller items: standalone boxes' `box get` got truthful (§2.9); a box suppressed to
     plain-shell keeps stale credential files in its home (§2.10); several never-released or
     expected-empty renames (§2.11); two `--null` CLI bugs fixed (§2.14); a customized helper
     entrypoint script moves to `~/canon/notebook/scripts/helper-init.sh` (§2.44).
@@ -4452,6 +4458,53 @@ It lists `Kept YOUR copy (N file(s) differ from the shipped one):`, and `Files t
 and then writes nothing when you decline.
 🛑 **Do not use `--refresh-templates` to look:** it is not a dry run — it writes first and reports
 afterwards, so by the time you read the list your shipped-template edits are already gone.
+
+---
+
+### 2.72 Plugins and the `code --remote` wrapper follow a repointed `config.data`
+
+**Read this ONLY if `config.data` points somewhere other than `$XDG_DATA_HOME/kanibako`** — for
+example `config.data: /srv/kanibako`. On a default install both paths below resolve exactly where
+they did before and this section is a no-op.
+
+**What changed.** Two directories were built from `$XDG_DATA_HOME` plus a hardcoded `kanibako`
+segment instead of being read from `config.data`, so they stayed in the default store no matter
+where yours actually was:
+
+| what | old path | new path |
+|---|---|---|
+| your own file-drop plugins | `$XDG_DATA_HOME/kanibako/plugins/` | `<data>/plugins/` |
+| the generated `code --remote` dispatch wrapper (`podman-dispatch`) | `$XDG_DATA_HOME/kanibako/vscode-remote/bin/` | `<data>/vscode-remote/bin/` |
+
+This is the data-side counterpart of § *2.55 State files follow a non-default `config.data` leaf*,
+and it is wider: 2.55 is about a store whose last path segment is not `kanibako`, whereas a store
+moved to a different *parent* — `/srv/kanibako` — was affected here too.
+
+**How a user notices.** Both ways are quiet:
+
+- **A plugin in your store was never discovered.** Discovery scanned the default location, so a
+  target you had written and dropped into `<data>/plugins/` did not appear in `kanibako setup` or
+  as an `--agent` value, and nothing said why. Now it is found — and a copy left behind in
+  `$XDG_DATA_HOME/kanibako/plugins/` stops being found, which is the same change seen from the
+  other side.
+- **`kanibako code --remote` regenerates its wrapper at a new path.** The wrapper VS Code's
+  `dev.containers.dockerPath` points at is written under your store now, so the setting recorded
+  before the upgrade names a file kanibako no longer maintains.
+
+**What you must do.**
+
+1. Move any file-drop plugins from `$XDG_DATA_HOME/kanibako/plugins/` into `<data>/plugins/`.
+   Nothing kanibako ships lives there — this directory holds only `.py` files you put there
+   yourself. Plugins installed with `pip` are unaffected; they are found through entry points.
+2. Re-run `kanibako code --remote` once per remote you use. That rewrites `dockerPath` and
+   regenerates the wrapper in the new location; the old `vscode-remote/bin/` tree can then be
+   deleted, as nothing reads it. **If your VS Code `settings.json` contains comments or trailing
+   commas** — JSONC, and common — the command will not rewrite it, because doing so would drop
+   your comments. It prints the exact `"dev.containers.dockerPath"` line to paste and exits `1`
+   **before** regenerating the wrapper, so neither half of the step has happened: paste the line
+   yourself, then re-run the command to get the wrapper. Nothing is modified or lost in the
+   refusal. The same happens if the file cannot be read, or if you run this without a terminal
+   (the update is a y/N prompt).
 
 ---
 
