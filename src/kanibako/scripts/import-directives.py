@@ -316,6 +316,39 @@ def gfm_anchor(text: str) -> str:
     return re.sub(r"[^\w-]", "", text.strip().lower().replace(" ", "-"))
 
 
+def home_relative(path: Path) -> str:
+    """*path* spelled from HOME -- ``~/canon/...`` -- instead of as a host path.
+
+    🛑 SECURITY, NOT COSMETICS, and that is his classification of it. The flattened
+    artifact is SHIPPED TEXT: it is written into the agent's native instruction slot
+    and travels wherever that file is read, quoted or pasted. A host-absolute target
+    baked into it hands every reader the host's directory layout and its account
+    name. Nothing in canon is AUTHORED absolute -- the two shipped ``__LINKSECTION__``
+    call sites spell ``procedures/*`` and the kickoff spells ``@~/canon/COLLECTION.md``
+    -- so absolute was something this script INVENTED while resolving them.
+
+    ⚑ HOME IS THE ANCHOR, and it is the only fixed point all three delivery modes
+    share. Two of them (``--additional-context`` and stdout) write no DEST at all, so
+    a target relative to the OUTPUT FILE is undefined there; in the third -- the
+    SOURCE->DEST file mode the launch shim runs -- the DEST is the agent's own
+    instruction slot, so the same content would spell one target three ways. Canon
+    reaches the box under ``~/canon`` by the home bind, in every mode.
+
+    ⚑ THE ``~/`` IS KEPT rather than stripped to a bare relative path. A bare
+    ``canon/...`` claims "relative to the file you are reading", which is false
+    wherever this artifact lands. ``~/canon/...`` is the spelling canon itself
+    already uses, and so does every ``box_dest:`` in ``core-defaults.yaml``.
+
+    A path OUTSIDE home comes back UNCHANGED. There is no true relative spelling for
+    it, and an author who wrote an absolute target should get that target back --
+    this function never invents one, which is the whole defect it exists to end.
+    """
+    try:
+        return "~/" + path.relative_to(Path.home()).as_posix()
+    except ValueError:
+        return path.as_posix()
+
+
 #: Markdown has no ``#######``. A generated heading is clamped here rather than
 #: emitted invalid: past six levels of nesting an included section stops getting
 #: DEEPER and sits alongside its parent instead. Depth is a reading aid; a
@@ -1171,11 +1204,15 @@ class Flattener:
 
     # -- slugs -------------------------------------------------------------
     def _slugify(self, path: Path) -> str:
-        try:
-            base = path.relative_to(Path.home()).as_posix()
-        except ValueError:
-            base = path.as_posix().lstrip("/")
-        token = re.sub(r"[^A-Za-z0-9]+", "_", base).strip("_")
+        """A slug for *path*, off the SAME home-relative spelling a link target uses.
+
+        ⚑ ONE CARRIER for "a path written without the host prefix"
+        (:func:`home_relative`); this is the second reader of it, and the mangling
+        below is all that separates the two. Every non-alphanumeric run collapses to
+        ``_`` and the ends are stripped, so the leading ``~/`` -- or the leading
+        ``/`` of a path outside home -- contributes nothing either way.
+        """
+        token = re.sub(r"[^A-Za-z0-9]+", "_", home_relative(path)).strip("_")
         return token or "section"
 
     def slug(self, path: Path) -> str:
@@ -1584,7 +1621,11 @@ class Flattener:
         #     which is not in this document at all.
         for row, entry in zip(self.rows, assigned):
             if row.kind == "link":
-                self.replacements.append(f"[{row.text}]({row.target.as_posix()})")
+                # 🛑 HOME-RELATIVE, NEVER ``as_posix()``. The target was resolved
+                # against the containing file's directory and is therefore absolute
+                # however the author spelled it -- writing it out raw is what put a
+                # host path into shipped text. See :func:`home_relative`.
+                self.replacements.append(f"[{row.text}]({home_relative(row.target)})")
                 continue
             if row.kind == "import":
                 title = self.import_title.get(row.target)
