@@ -664,6 +664,111 @@ class TestRetiredSafeBypassKey:
         assert "access_realization" in msg   # ...and the cure
         assert filename in msg               # ...and the file to fix
 
+    # ── The refusal must CURE, and the cure is two changes, not one ───────────
+    #
+    # A plugin author hitting this refusal is running a v1.7.2-shaped file, and
+    # those are the bodies below: ``channel`` + a ``flag``/``secure_flag`` or
+    # ``env_value``/``secure_env_value`` polarity pair + ``setting_key:
+    # auto_approve``, with NO ``tiers:``.  The rename (``c65b1d48``) and the
+    # reshape (``fca775ff``) were two separate commits, so "rename the key" alone
+    # is refused a SECOND time.  These three tests walk that author's path:
+    # refused → rename only → STILL refused → rename + reshape → loads.
+    #
+    # (Mutation: restore the old "(same shape). Rename the key:" wording →
+    # ``test_refusal_names_the_reshape_not_just_the_rename`` RED on 'tiers'.
+    # Mutation: drop the unknown-field guard in ``_build_access_realization`` →
+    # ``test_rename_alone_is_refused_again`` RED, and the message's own claim
+    # about the fields left behind becomes false with it.)
+
+    _V172_ENV_BODY = (
+        "    channel: env\n"
+        "    env_var: PROBE_MODE\n"
+        "    env_value: auto\n"
+        "    secure_env_value: approve\n"
+        "    setting_key: auto_approve\n"
+    )
+    _V172_FLAG_BODY = (
+        "    channel: flag\n"
+        "    flag: [\"--dangerously-skip-permissions\"]\n"
+        "    setting_key: auto_approve\n"
+    )
+
+    @pytest.mark.parametrize(
+        "body", [_V172_ENV_BODY, _V172_FLAG_BODY], ids=["v1.7.2-env", "v1.7.2-flag"],
+    )
+    def test_refusal_names_the_reshape_not_just_the_rename(self, declfile, body):
+        """The printed cure covers BOTH changes and points somewhere real.
+
+        The message used to say the block was renamed "(same shape)" — true only
+        of the intermediate dev state between the two commits, and false of the
+        v1.7.2 baseline every refused author is actually holding.
+        """
+        package, filename = declfile(
+            "descriptor:\n  command: [\"probe\"]\n  safe_bypass:\n" + body
+        )
+        with pytest.raises(SettingsError) as exc:
+            agent_defaults.load_descriptor(package, filename)
+        msg = str(exc.value)
+        assert "safe_bypass" in msg           # names what is wrong
+        assert "access_realization" in msg    # ...the renamed key
+        assert "tiers" in msg                 # ...the RESHAPE, not just the rename
+        assert "MIGRATION.md" in msg          # ...where the before/after lives
+        assert "same shape" not in msg        # ...and never the claim that failed
+        assert "auto_approve" in msg          # ...the setting_key that fails SILENTLY
+        assert filename in msg                # ...and the file to fix
+
+    @pytest.mark.parametrize(
+        "body", [_V172_ENV_BODY, _V172_FLAG_BODY], ids=["v1.7.2-env", "v1.7.2-flag"],
+    )
+    def test_rename_alone_is_refused_again(self, declfile, body):
+        """Following the OLD message literally walks into a second refusal.
+
+        This is the defect the message now warns about, pinned as behavior: the
+        v1.7.2 body under the NEW key is refused by ``_build_access_realization``
+        for the polarity fields the reshape retired.
+        """
+        package, filename = declfile(
+            "descriptor:\n  command: [\"probe\"]\n  access_realization:\n" + body
+        )
+        with pytest.raises(SettingsError) as exc:
+            agent_defaults.load_descriptor(package, filename)
+        assert "unknown field(s)" in str(exc.value)
+
+    @pytest.mark.parametrize(
+        "body",
+        [
+            (
+                "    channel: env\n"
+                "    env_var: PROBE_MODE\n"
+                "    setting_key: access\n"
+                "    tiers:\n"
+                "      restricted: {env_value: approve}\n"
+                "      full: {env_value: auto}\n"
+            ),
+            (
+                "    channel: flag\n"
+                "    setting_key: access\n"
+                "    tiers:\n"
+                "      restricted: {}\n"
+                "      full: {flag: [\"--dangerously-skip-permissions\"]}\n"
+            ),
+        ],
+        ids=["cured-env", "cured-flag"],
+    )
+    def test_the_printed_cure_actually_loads(self, declfile, body):
+        """Rename AND reshape, exactly as the message says — and it loads.
+
+        Non-vacuity for the two tests above: what the refusal asks for is a shape
+        the loader accepts, so the message is a cure rather than a description.
+        """
+        package, filename = declfile(
+            "descriptor:\n  command: [\"probe\"]\n  access_realization:\n" + body
+        )
+        ar = agent_defaults.load_descriptor(package, filename).access_realization
+        assert ar is not None
+        assert ar.rendered_tiers() == ("restricted", "full")
+        assert ar.setting_key == "access"
+
     def test_new_key_still_loads(self, declfile):
         """The guard keys off the RETIRED spelling only — the new one is fine."""
         package, filename = declfile(

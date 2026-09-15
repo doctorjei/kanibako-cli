@@ -489,6 +489,14 @@ def load_descriptor(package: str, filename: str) -> PluginDescriptor:
     with no permission emission at all.  On the ENV channel that IS the bypass
     (goose: an unset ``GOOSE_MODE`` means ``auto``).  A renamed key must fail
     loudly and name its replacement, never degrade quietly into permissive.
+
+    ⚑ The refusal names the RESHAPE too, because the rename alone does not cure.
+    The key and the body changed in two separate commits, and only one of them
+    was a pure rename: a v1.7.2 block is ``flag``/``secure_flag`` or
+    ``env_value``/``secure_env_value`` with no ``tiers:`` at all, so an author
+    who renames and changes nothing else is refused a SECOND time — by
+    :func:`_build_access_realization`, for the fields left behind.  A refusal
+    whose cure is refused is not a cure.
     """
     doc = _load_doc(package, filename)
     desc = doc.get("descriptor", {})
@@ -496,11 +504,17 @@ def load_descriptor(package: str, filename: str) -> PluginDescriptor:
     if "safe_bypass" in desc:
         raise SettingsError(
             f"{filename}: descriptor declares the RETIRED key 'safe_bypass'. "
-            f"The access-tier realization block is now 'access_realization' "
-            f"(same shape). Rename the key: left as-is it is an unknown "
-            f"descriptor key, so this agent would load with NO permission "
-            f"realization and launch with none emitted — which on the 'env' "
-            f"channel is the harness's own PERMISSIVE default."
+            f"The access-tier realization block is now 'access_realization', "
+            f"and its BODY changed shape with it: the 'flag'/'secure_flag' and "
+            f"'env_value'/'secure_env_value' polarity pair became one row per "
+            f"tier under 'tiers:', and 'setting_key: auto_approve' became "
+            f"'setting_key: access'. Rename the key AND reshape the body — "
+            f"renaming alone is refused again, by name, for the fields left "
+            f"behind. The before/after is in MIGRATION.md, \"For plugin "
+            f"authors\". Left as-is this is an unknown descriptor key, so the "
+            f"agent would load with NO permission realization and launch with "
+            f"none emitted — which on the 'env' channel is the harness's own "
+            f"PERMISSIVE default (goose: an unset 'GOOSE_MODE' means 'auto')."
         )
 
     if "container_env" in desc:
