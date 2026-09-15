@@ -158,43 +158,91 @@ owns and binds as-is.
 ## A complete example
 
 The shipped **Codex** plugin is the canonical descriptor-only reference (it was
-written *after* the interface, proving the contract generalizes).  Its
+written *after* the interface, proving the contract generalizes).  As of the
+defaults-file refactor, **no shipped plugin builds its `PluginDescriptor` or its
+behavior floor in Python.**  Each ships a declarative `<agent>-defaults.yaml`,
+and `target.py` builds both with two loader calls —
+`kanibako.settings.agent_defaults.load_descriptor` and `.load_behavior` — at
+import time.  This is pinned, not merely a style preference:
+`test_a_plugin_behavior_default_lives_in_the_yaml_not_the_code` reds if a
+shipped `target.py` constructs a `TargetSetting` anywhere in the module, and
+`test_no_shipped_plugin_imposes_a_model` reds if any shipped agent's `model`
+floor is non-empty.
+
+Codex's `codex-defaults.yaml` (trimmed to the fields covered above):
+
+```yaml
 descriptor:
+  command: ["codex"]
+
+  bindings:
+    - key: binary
+      origin: binary
+      box_dest: "$GUEST_HOME/.local/bin/codex"
+      kind: file
+      scope: agent_critical
+      ro: true
+
+  mode:
+    start: []
+    continue: ["resume", "--last"]
+
+  operations:
+    exec:
+      fragment: ["exec"]
+
+  access_realization:
+    channel: flag
+    setting_key: access
+    tiers:
+      restricted: {}                                       # emit nothing on the argv
+      editing: {flag: ["-s", "workspace-write"]}
+      full: {flag: ["--dangerously-bypass-approvals-and-sandbox"]}
+
+  settings:
+    - setting_key: model
+      channel: flag
+      flag: ["--model"]
+
+  cred_files:
+    - home_rel: ".codex/auth.json"
+      host_rel: ".codex/auth.json"
+      cadence: sync
+      mtime_gate: true
+      filtered: false
+
+  init_dirs: [".codex"]
+
+# The `agent.codex.*` BEHAVIOR floor (spec §2d) -- setting_descriptors() returns
+# exactly this table, in file order.  `default:` is mandatory; an empty floor is
+# written "" rather than omitted.
+behavior:
+  # 🛑 NO OPINIONATED DEFAULT.  kanibako imposes no model on any shipped agent —
+  # an empty floor resolves to "", which the launch's argv/env assembly omits,
+  # so codex falls back to its OWN built-in default until a user sets one
+  # explicitly (`agent.codex.model` or `-M`).  Pinned by
+  # `test_no_shipped_plugin_imposes_a_model`; do not put a value back here.
+  - key: model
+    description: "Model to use (unset = codex's own built-in default)"
+    default: ""
+  - key: endpoint
+    description: "Alternate model-provider base-URL (persona); unset uses the
+      harness default"
+    default: ""
+```
+
+`target.py` loads both tables at import time and returns them unmodified —
+nothing in the module constructs a `PluginDescriptor` or a `TargetSetting`:
 
 ```python
-from kanibako.targets.base import (
-    AccessRealization, AccessTierRow, AgentInstall, BindKind, Binding, BindScope,
-    Cadence, Channel, CredFileSpec, HostSrcOrigin, Operation, PluginDescriptor,
-    SettingArg, Target, TargetSetting,
-)
+from kanibako.settings.agent_defaults import load_behavior, load_descriptor
+from kanibako.targets.base import AgentInstall, PluginDescriptor, Target, TargetSetting
 
-_CODEX_DESCRIPTOR = PluginDescriptor(
-    command=("codex",),
-    bindings=(
-        Binding(
-            "binary", HostSrcOrigin.BINARY,
-            "/home/agent/.local/bin/codex",
-            BindKind.FILE, BindScope.AGENT_CRITICAL, ro=True,
-        ),
-    ),
-    mode={"start": (), "continue": ("resume", "--last")},
-    operations={"exec": Operation(("exec",))},
-    access_realization=AccessRealization(
-        Channel.FLAG,
-        restricted=AccessTierRow(),                       # codex already prompts
-        editing=AccessTierRow(flag=("-s", "workspace-write")),
-        full=AccessTierRow(
-            flag=("--dangerously-bypass-approvals-and-sandbox",),
-        ),
-        setting_key="access",
-    ),
-    settings=(SettingArg("model", Channel.FLAG, flag=("--model",)),),
-    cred_files=(
-        CredFileSpec(".codex/auth.json", ".codex/auth.json",
-                     cadence=Cadence.SYNC, mtime_gate=True, filtered=False),
-    ),
-    init_dirs=(".codex",),
-)
+_DEFAULTS_PACKAGE = "kanibako.plugins.codex"
+_DEFAULTS_FILE = "codex-defaults.yaml"
+
+_CODEX_DESCRIPTOR = load_descriptor(_DEFAULTS_PACKAGE, _DEFAULTS_FILE)
+_CODEX_BEHAVIOR = load_behavior(_DEFAULTS_PACKAGE, _DEFAULTS_FILE)
 
 
 class CodexTarget(Target):
@@ -224,12 +272,25 @@ class CodexTarget(Target):
         return AgentInstall(name="codex", binary=binary, install_dir=binary.parent)
 
     def setting_descriptors(self) -> list[TargetSetting]:
-        return [TargetSetting(key="model", description="Model to use", default="gpt-5.5")]
+        return list(_CODEX_BEHAVIOR)
 ```
+
+(`detect()` above is simplified for the guide — the real codex `detect()` also
+falls back to the native binary an npm-vendored install ships, per the
+host-binary preference order; see
+`packages/agent-codex/src/kanibako/plugins/codex/target.py`.)
 
 Codex overrides nothing else: both its credential files are wholesale copies
 (so no `transform_cred`), the descriptor's `init_dirs` creates `.codex`, and
 core assembles its argv / binds / env / credential sync from the descriptor.
+
+**The loader route is not mandatory for a third-party plugin** — `Target` only
+requires that `descriptor` return a `PluginDescriptor` and `setting_descriptors()`
+return a list of `TargetSetting`s, and both may be built by hand in Python (the
+"Method reference" section below still shows that shape, and it works).  What is
+never acceptable on *any* plugin, shipped or third-party: an opinionated `model`
+default.  Kanibako imposes no model — ship an empty floor (`default=""`) and let
+the harness pick its own, exactly as codex, claude and goose all do.
 
 For agents whose host config or auth files mix portable and non-portable
 fields, set `filtered=True` on the relevant `CredFileSpec` and override
@@ -394,11 +455,17 @@ value.
 ```python
 def setting_descriptors(self) -> list[TargetSetting]:
     return [
-        TargetSetting(key="model", description="AI model", default="default-model"),
-        TargetSetting(key="access", description="Permission mode",
-                      default="permissive", choices=("permissive", "default")),
+        # ⚑ An EMPTY model floor: kanibako imposes no model, so myagent picks
+        # its own until a user sets `agent.myagent.model`.
+        TargetSetting(key="model", description="Model to use", default=""),
+        TargetSetting(key="verbosity", description="Output verbosity", default="normal",
+                      choices=("quiet", "normal", "verbose")),
     ]
 ```
+
+(`verbosity` here is a key `myagent` invents for itself, reachable only as
+`agent.myagent.verbosity` — see the note below on why `access` would be the
+wrong choice for this example: it is one of the names core already declares.)
 
 > **A key you declare here is a key on YOUR agent, and on no other.**  kanibako itself
 > declares the universal vocabulary — `model`, `access`, `endpoint`, `transform` and the
