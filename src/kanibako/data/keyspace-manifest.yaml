@@ -1551,10 +1551,29 @@ keys:
   ## ---- meta.* — TOP-LEVEL protected RO namespace (§0) ---------------------
   ## Materialized ONLY by construct-time / plugin / runtime derivation.
   ## Design property: set == never IFF meta.*.
+  ## ⚑ THE `type:` COLUMN IS PARTIAL IN THIS GROUP BY RULE, NOT BY OMISSION.
+  ## A row whose `value:` COMPOSES one — a join, a %if% template, a per-mode map — is
+  ## TYPED by what the expression PRODUCES, whatever its referents are. A row whose
+  ## `value:` is EXACTLY `@<one key>` is a BARE MIRROR and stays UNTYPED: the referent
+  ## declares the type, and restating it here would be a second carrier of it —
+  ## meta.box.mode reads `enum` off meta.runtime.project_type and must not say so twice.
+  ## And meta.box.agent.<key> mirrors a whole SUBTREE, whose member types vary per
+  ## <key>, so it has no single type to state — an answer, not a gap.
+  ## 🛑 THE RULE IS LANDED FOR THE PATH-VALUED ROWS ONLY (ratified 2026-09-14 as
+  ## "type 12, derive 1").  Four composed rows are `str` and are STILL UNTYPED —
+  ## meta.box.name, meta.box.container_name, meta.agent.default.name and
+  ## meta.agent.<agent>.name — so THIS COMMENT CURRENTLY DESCRIBES MORE THAN THE FILE
+  ## DOES.  That gap is deliberate and boarded, not an oversight: the rule as stated
+  ## reaches them, the ratified OUTCOME did not.  Do not cite this paragraph as proof
+  ## that an untyped composed row is a defect until that is settled.
+  ## ⚑ meta.runtime.ws_name carries `str` because meta.workset.name BARE-MIRRORS it:
+  ## without it the mirror rationale above is false of its own row — a derivation
+  ## that derives nothing.
   meta.runtime.ws_root:
     namespace: meta
     set: never
     origin: runtime_treewalk
+    type: path
     value: "standalone=<runtime project dir> · primary=@config.primary_workset ·
             named=<detected workset root>"
     spec: "§1A (L0.2)"
@@ -1562,6 +1581,7 @@ keys:
     namespace: meta
     set: never
     origin: runtime_treewalk
+    type: str
     value: "standalone=__STANDALONE__ · primary=__PRIMARY__ · named=<detected name>"
     note: "the workset PARTITION token; reserved names may not be user-chosen"
     spec: "§1A / §3 (D-B3)"
@@ -1723,6 +1743,7 @@ keys:
     namespace: meta
     set: never
     origin: bootstrap
+    type: path
     value: "@meta.workset.path/workset.yaml"
     note: "the §1A SINGLE-SOURCE canonical spelling; the former
            @meta.runtime.ws_settings anchor is CUT (unified path; R-36)"
@@ -1741,6 +1762,7 @@ keys:
     namespace: meta
     set: never
     origin: construct_time
+    type: path
     value: {primary: "@workset.boxes/@meta.box.name",
             named: "@workset.boxes/@meta.box.name",
             standalone: "@workset.boxes"}
@@ -1756,6 +1778,7 @@ keys:
     namespace: meta
     set: never
     origin: derived
+    type: path
     value: "@meta.box.path/home"
     note: "RO DERIVED box-home SOURCE — the pid-0 FOUNDATION bind's src_path,
            seeded into the collapse before any other entry (§0). It does NOT route
@@ -1771,6 +1794,7 @@ keys:
     namespace: meta
     set: never
     origin: construct_time
+    type: path
     value: {primary: "<the user's real project dir>",
             named: "@workset.workspaces/@meta.box.name",
             standalone: "@workset.workspaces"}
@@ -1783,6 +1807,7 @@ keys:
     namespace: meta
     set: never
     origin: construct_time
+    type: path
     value: "@meta.box.path/box.yaml"
     note: "UNIFORM — ALL PROJECTS, every mode (R-30): standalone HAS a box tier
            whose file is merely ABSENT by default; box values then resolve from
@@ -1801,24 +1826,28 @@ keys:
     namespace: meta
     set: never
     origin: derived
+    type: path
     value: "@workset.channels.mailboxes/@meta.box.name"
     spec: "§2c (ALL PROJECTS)"
   meta.box.share_global:
     namespace: meta
     set: never
     origin: derived
+    type: path
     value: "@workset.channels.share_global/@meta.box.name"
     spec: "§2c (ALL PROJECTS)"
   meta.box.share_workset:
     namespace: meta
     set: never
     origin: derived
+    type: path
     value: "@workset.channels.share/@meta.box.name"    # <None> for standalone
     spec: "§2c"
   meta.box.auth.workset_path:
     namespace: meta
     set: never
     origin: derived
+    type: path
     value: "@workset.auth.path/@system.agent"          # <None> for standalone
     note: "reclassified from the old SETTABLE box.auth.workset_path (2026-07-04):
            being meta means it can't be set to a dangling @-ref. Respelled from
@@ -1901,6 +1930,7 @@ keys:
     parametric: [agent]
     set: never
     origin: construct_time
+    type: path
     value: "@config.agents/@meta.agent.<agent>.name"
     note: "META so agent/workset/box cascade CANNOT override it (D-2026-06-22)"
     spec: "§2d"
@@ -1909,6 +1939,7 @@ keys:
     parametric: [agent]
     set: never
     origin: construct_time
+    type: path
     value: "@meta.agent.<agent>.path/agent.yaml"
     spec: "§2d"
   meta.agent.<agent>.mode:
