@@ -120,9 +120,14 @@ jobs:
       # ⚑ EVERY GATE THE CONFIG DECLARES IS INVOKED HERE. `kinemata.toml` had
       # declared two `[[shape]]` blocks since 2026-09-14 and `shape` ran in no
       # pipeline at all -- a declared gate that executes nowhere is a gate we do
-      # not have, and nothing in the config or the workflow would have said so.
-      # Adding a section kind without adding its command is silent by
-      # construction, so check this list against `kinemata.toml` when either moves.
+      # not have.
+      # 🛑 AND THE CHECK THAT SHOULD HAVE CAUGHT THAT READ GREEN THROUGHOUT.
+      # `kinemata claims` prints `gates: N of N declared check(s) run in
+      # .github/workflows/test.yml`, but the `[[gate]]` blocks it counts declared
+      # only the commands already listed here, so the inventory agreed with
+      # itself. A section kind added without BOTH its command below and its
+      # `[[gate]]` block is silent by construction -- keep this list and
+      # `kinemata.toml`'s gate blocks together. `shape` still has no gate block.
       - run: kinemata check
       - run: kinemata parity
       - run: kinemata shape
