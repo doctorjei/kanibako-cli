@@ -117,8 +117,15 @@ jobs:
       # `settings/settings_categories.py`, which is stdlib-only by invariant.
       # Verified 2026-09-14 in a venv holding only kinemata and this project.
       - run: pip install -e .
+      # ⚑ EVERY GATE THE CONFIG DECLARES IS INVOKED HERE. `kinemata.toml` had
+      # declared two `[[shape]]` blocks since 2026-09-14 and `shape` ran in no
+      # pipeline at all -- a declared gate that executes nowhere is a gate we do
+      # not have, and nothing in the config or the workflow would have said so.
+      # Adding a section kind without adding its command is silent by
+      # construction, so check this list against `kinemata.toml` when either moves.
       - run: kinemata check
       - run: kinemata parity
+      - run: kinemata shape
       - run: kinemata claims
 
   integration:
