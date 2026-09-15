@@ -1025,10 +1025,11 @@ registry = "keyspace"
   # ELEVEN PARAMETRIC ROWS. `tests/test_settings/test_set_column_conformance.py`
   # already asserts `declared == {"cli+file", "file", "never"}` -- but over
   # `_static_rows()`, which drops every row whose id carries a `<placeholder>`.
-  # Measured: 100 rows declared, 11 of them parametric (`agent.<agent>.<key>`,
+  # Measured: 101 rows declared, 11 of them parametric (`agent.<agent>.<key>`,
   # `meta.box.agent.<key>`, the six `meta.agent.<agent>.*` and three more), so a
   # bad `set:` cell on any of those eleven passes the suite today. This rule has no
-  # guard and reaches all 100.
+  # guard and reaches all 101.  (Re-derive, do not trust: `kinemata shape` prints
+  # `set-vocabulary: N examined`.)
   [[shape.rule]]
   name = "set-vocabulary"
   field = "set"
@@ -1042,10 +1043,19 @@ registry = "keyspace"
   # does.
   #
   # ⚑ GUARDED BECAUSE THE COLUMN IS NOT UNIVERSAL, and the guard is the honest
-  # statement of that: 77 of the 100 rows carry `type:`; the 23 that do not are
-  # `agent.<agent>.<key>` plus the whole `meta.*` derived group, which are typed by
-  # what derives them. `when = { present = "type" }` makes this a rule ABOUT rows
-  # that have one, rather than a rule that would have to name 23 exceptions.
+  # statement of that: most rows carry `type:`; the ones that do not are
+  # `agent.<agent>.<key>` plus the `meta.*` rows nothing here should type -- the BARE
+  # MIRRORS and a handful of composed `str` rows the ratified pass did not reach.
+  # (Re-derive, do not trust a figure here: `kinemata shape` prints
+  # `type-vocabulary: N examined` against its own `N entry(s)` header. A count written
+  # into this comment went stale twice in one day -- once when `system.state` landed
+  # and once when the typing pass ran.)
+  # ⚑ THE RULE ITSELF IS STATED ONCE, AT THE POINT OF USE -- the `##` header above the
+  # `meta.*` group in `src/kanibako/data/keyspace-manifest.yaml`. Do not restate it
+  # here: this comment drifted into a THIRD bucket the ratification never named, which
+  # is the two-carriers defect the rule exists to prevent.
+  # `when = { present = "type" }` makes this a rule ABOUT rows that have one, rather
+  # than one naming 11 exceptions.
   [[shape.rule]]
   name = "type-vocabulary"
   when = { present = "type" }

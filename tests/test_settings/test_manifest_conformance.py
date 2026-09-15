@@ -1511,15 +1511,17 @@ class TestThePathTypeColumnHasOneCodeCarrier:
         whether a ``path``-typed ``KEY_TYPES`` entry NAMED a declared row and stopped
         there, so the registry's ``type:`` was never consulted and the code could type a
         real key as anything it liked.  Measured on the honest tree: injecting
-        ``KEY_TYPES["meta.box.home"] = "path"`` passed, because ``meta.box.home`` IS a
-        declared row.
+        ``KEY_TYPES["meta.box.name"] = "path"`` passes the name-only version, because
+        ``meta.box.name`` IS a declared row; here it is a MISMATCH.
 
         ⚑⚑ AND THE REGISTRY'S TYPE COLUMN IS PARTIAL, WHICH IS WHAT MADE THAT INJECTION
-        INVISIBLE RATHER THAN MERELY UNCHECKED: 23 rows carry NO ``type:`` FIELD AT ALL —
-        22 derived ``meta.*`` shapes, ``meta.box.home`` among them, plus the parametric
+        INVISIBLE RATHER THAN MERELY UNCHECKED.  The rows carrying NO ``type:`` FIELD AT
+        ALL are the untyped ``meta.*`` shapes and the parametric
         ``agent.<agent>.<key>`` contract shape, which is ``set: cli+file`` and untyped
-        because it is a SHAPE, not a key.  A missing type is
-        therefore asserted as a MISMATCH (``None != kind``) rather than skipped, because
+        because it is a SHAPE, not a key.  ⚑ WHICH ``meta.*`` ROWS GO UNTYPED IS STATED
+        ONCE, in the ``##`` header above that group in the manifest — do not restate the
+        rule here, which is how this docstring grew a bucket the ratification never
+        named.  A missing type is therefore asserted as a MISMATCH (``None != kind``) rather than skipped, because
         an absent registry type cannot license a code type; that is the closed keyspace
         (spec §0) applied one level down from the key name to the key's SHAPE.
 
