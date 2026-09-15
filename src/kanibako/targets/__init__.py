@@ -10,12 +10,7 @@ import sys
 from importlib.metadata import entry_points
 from pathlib import Path
 
-from kanibako.settings.bootstrap import (
-    KANIBAKO_PATH,
-    STANDALONE_META_DIR,
-    XDG_DATA_HOME,
-    XDG_SPEC_DEFAULTS,
-)
+from kanibako.settings.bootstrap import STANDALONE_META_DIR
 from kanibako.targets.base import AgentInstall, Mount, Target, TargetSetting
 from kanibako.targets.no_agent import NoAgentTarget
 
@@ -122,7 +117,8 @@ def discover_targets(project_path: Path | None = None) -> dict[str, type[Target]
 
     1. Entry points (pip-installed packages)
     2. ``kanibako.plugins.*`` module scan (bind-mount fallback)
-    3. User directory (``~/.local/share/kanibako/plugins/``)
+    3. User directory (``<config.data>/plugins/``, by default
+       ``~/.local/share/kanibako/plugins/``)
     4. Project directory (``{project}/box_data/plugins/``)
     """
     targets: dict[str, type[Target]] = {}
@@ -187,11 +183,17 @@ def discover_targets(project_path: Path | None = None) -> dict[str, type[Target]
     # Fallback: scan kanibako.plugins.* for bind-mounted plugins
     _scan_plugin_modules(targets)
 
-    # User-level file-drop plugins
-    from kanibako.settings.paths import xdg
+    # User-level file-drop plugins, under the ``config.data`` directory the user actually
+    # configured — never the XDG data base plus a hardcoded "kanibako" leaf ([R155]).  The
+    # store a user repoints ``config.data`` to was not scanned at all before, so a plugin
+    # dropped there simply never appeared, and one left in the default store was loaded
+    # instead without a word.
+    # ⚑ ``resolve_data_path`` is PURE and TOTAL (creates nothing, never raises, degrades to
+    # the default): discovery runs on every command, including before a config file exists,
+    # so it must not acquire a failure mode here.
+    from kanibako.settings.paths import resolve_data_path
 
-    data_home = xdg(XDG_DATA_HOME, XDG_SPEC_DEFAULTS[XDG_DATA_HOME])
-    _scan_directory_plugins(data_home / KANIBAKO_PATH / "plugins", targets)
+    _scan_directory_plugins(resolve_data_path() / "plugins", targets)
 
     # Project-level file-drop plugins.  Absence is not an error.
     if project_path is not None:

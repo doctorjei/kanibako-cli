@@ -914,7 +914,7 @@ Later sources override earlier ones when two plugins register the same name.
 | Tier | Location | Use case |
 |------|----------|----------|
 | 1. Entry points | `kanibako.agents` entry point group + `kanibako.plugins.*` namespace scan | Pip-installed packages and bind-mounted plugins in nested containers |
-| 2. User directory | `~/.local/share/kanibako/plugins/*.py` | Personal plugins shared across all projects |
+| 2. User directory | `<config.data>/plugins/*.py`, by default `~/.local/share/kanibako/plugins/*.py` | Personal plugins shared across all projects |
 | 3. Project directory | `{project}/box_data/plugins/*.py` | Project-specific plugins |
 
 Drop a `.py` file containing a `Target` subclass into the user or project

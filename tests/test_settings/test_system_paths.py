@@ -35,6 +35,7 @@ from kanibako.settings.paths import (
     load_system_config,
     resolve_config_paths,
     resolve_data_leaf,
+    resolve_data_path,
     resolve_system_paths,
     resolve_xdg,
 )
@@ -760,6 +761,76 @@ class TestConfigDataCascade:
         assert resolved["system.channelroot"] == root / "channels"
         assert resolved["system.backup"] == root / "backup"
         assert resolved["system.template"] == root / "global" / "template"
+
+
+class TestResolveDataPath:
+    """``resolve_data_path`` — the PURE, TOTAL ``config.data`` DIRECTORY resolver.
+
+    THE single source for a caller that holds no ``StandardPaths`` and must still land in the
+    store the user configured ([R155]): ``targets.discover_targets`` and
+    ``vscode_remote.vscode_remote_bin_dir``. ``resolve_data_leaf`` is its leaf.
+    """
+
+    def _redirect_etc_base(self, monkeypatch, tmp_path: Path) -> None:
+        """Point the /etc base CONFIG path at an absent tmp file (mirrors
+        ``TestLoadSystemConfig._redirect`` — hermetic, doesn't depend on the real host)."""
+        import kanibako.settings.config as cfg_mod
+
+        monkeypatch.setattr(cfg_mod, "config_base_path", lambda: tmp_path / "etc_absent.yaml")
+
+    def test_tracks_non_default_config_data(self, tmp_path, monkeypatch):
+        """The WHOLE configured path, not the XDG base rejoined to its leaf — a repointed
+        ``config.data`` moves its parent too, and a leaf-only reading drops that move."""
+        self._redirect_etc_base(monkeypatch, tmp_path)
+        config_home = tmp_path / "cfg"
+        config_home.mkdir()
+        (config_home / CONFIG_FILENAME).write_text(
+            f'config:\n  data: "{tmp_path / "srv" / "custom_store"}"\n'
+        )
+        path = resolve_data_path(config_home=config_home, data_home=tmp_path / "data")
+        assert path == tmp_path / "srv" / "custom_store"
+
+    def test_no_config_file_returns_default_under_data_home(self, tmp_path, monkeypatch):
+        self._redirect_etc_base(monkeypatch, tmp_path)
+        path = resolve_data_path(config_home=tmp_path / "cfg-absent",
+                                 data_home=tmp_path / "data")
+        assert path == tmp_path / "data" / "kanibako"
+
+    def test_malformed_config_degrades_without_raising(self, tmp_path, monkeypatch):
+        self._redirect_etc_base(monkeypatch, tmp_path)
+        config_home = tmp_path / "cfg"
+        config_home.mkdir()
+        (config_home / CONFIG_FILENAME).write_text("not: [valid: yaml: at all")
+        # Mutation proof: without the try/except this raises ConfigError and the
+        # test errors out rather than reaching the assertion.
+        path = resolve_data_path(config_home=config_home, data_home=tmp_path / "data")
+        assert path == tmp_path / "data" / "kanibako"
+
+    def test_creates_no_directories(self, tmp_path, monkeypatch):
+        self._redirect_etc_base(monkeypatch, tmp_path)
+        config_home = tmp_path / "cfg"
+        config_home.mkdir()
+        (config_home / CONFIG_FILENAME).write_text(
+            f'config:\n  data: "{tmp_path / "custom_store"}"\n'
+        )
+        data_home = tmp_path / "data"
+        before = set(tmp_path.rglob("*"))
+        resolve_data_path(config_home=config_home, data_home=data_home)
+        assert set(tmp_path.rglob("*")) == before
+        assert not data_home.exists()
+        assert not (tmp_path / "custom_store").exists()
+
+    def test_leaf_routes_through_the_path_resolver(self, tmp_path, monkeypatch):
+        """Wiring proof (P10): ``resolve_data_leaf`` keeps no second copy of the resolve."""
+        import kanibako.settings.paths as paths_mod
+
+        self._redirect_etc_base(monkeypatch, tmp_path)
+        spy = MagicMock(side_effect=paths_mod.resolve_data_path)
+        monkeypatch.setattr(paths_mod, "resolve_data_path", spy)
+
+        assert resolve_data_leaf(config_home=tmp_path / "cfg-absent",
+                                 data_home=tmp_path / "data") == "kanibako"
+        spy.assert_called_once()
 
 
 class TestResolveDataLeaf:

@@ -12,6 +12,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Plugins you drop in your own store are now found, and the `code --remote` wrapper is generated
+  inside it.** Two directories were composed from `$XDG_DATA_HOME` plus a hardcoded `kanibako`
+  segment rather than read from `config.data`: the user-level file-drop plugin directory
+  (discovery tier 2) and the directory holding the generated `podman-dispatch` wrapper. A user
+  who repointed `config.data` therefore had plugin discovery scanning a store they no
+  longer used — an agent they had written simply never appeared in `kanibako setup` or `--agent`,
+  with nothing printed to explain the absence — while the wrapper was written into that abandoned
+  tree. Both now resolve through `config.data`, the declared key, as the state-side stores already
+  did. A default install is unaffected: `config.data` defaults to `$XDG_DATA_HOME/kanibako`, which
+  is the path both sites were hardcoding. ⚠️ **If you repointed `config.data`, plugins in the old
+  location stop being discovered** — see `MIGRATION.md` § *2.72 Plugins and the `code --remote`
+  wrapper follow a repointed `config.data`* for the two host-side moves.
+
 - **The seeded `check-comms.sh` hook never reported a broadcast, and an error inside your mailbox
   could stop it reporting mail.** Two defects, both shipped in `1.8.0rc2`. It watched
   `chat/broadcast.log`, a filename retired in 1.6.0 when broadcasts moved to `chat/broadcast.md`, so

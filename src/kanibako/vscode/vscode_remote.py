@@ -53,7 +53,7 @@ from pathlib import Path
 from kanibako.errors import KanibakoError
 from kanibako.log import get_logger
 from kanibako.runtime.container import image_ref_or_none
-from kanibako.settings.paths import resolve_data_leaf, xdg
+from kanibako.settings.paths import resolve_data_leaf, resolve_data_path, xdg
 
 logger = get_logger("vscode_remote")
 
@@ -559,15 +559,22 @@ def ensure_docker_context_meta(name: str, url: str) -> Path:
 
 
 # ---------------------------------------------------------------------------
-# Generated dispatch wrapper + ssh mux shim
+# Generated dispatch wrapper
 # ---------------------------------------------------------------------------
 
 def vscode_remote_bin_dir() -> Path:
-    """Directory holding the generated ``podman-dispatch`` wrapper + ``ssh`` shim."""
-    return (
-        xdg("XDG_DATA_HOME", ".local/share")
-        / "kanibako" / "vscode-remote" / "bin"
-    )
+    """Directory holding the generated ``podman-dispatch`` wrapper.
+
+    Anchored on ``config.data`` itself ([R155]), not on the XDG data base plus a hardcoded
+    leaf: a user who repoints ``config.data`` gets the generated wrapper inside the store
+    they configured. ⚑ Contrast :func:`_vscode_remote_state_dir`, which stays on
+    ``$XDG_STATE_HOME`` and tracks only the same key's LEAF. That base DOES have a key —
+    ``system.state`` — and its leaf reading is RETIRED, not provisional: state is being
+    rewired onto that key and stops tracking ``config.data``. See
+    :func:`kanibako.settings.paths.resolve_data_leaf`, which owns that explanation.
+    :func:`resolve_data_path` is PURE and TOTAL, so this stays as total as it was.
+    """
+    return resolve_data_path() / "vscode-remote" / "bin"
 
 
 def dispatch_wrapper_path() -> Path:
