@@ -60,7 +60,7 @@ _FLAT_AGENT_CATEGORIES: tuple[str, ...] = (
 #: ⚑⚑ THIS SET *IS* THE REFUSAL RULE — a dict-valued root key not in here is a nested
 #: ``self.<sub>:`` sub-table and refuses by name, so there is no second list of refused names to
 #: keep in step with it. UNIFORM over any ``<sub>``, ``default`` included.
-#: ⚑ The IDENTITY keys stay in the set deliberately: a malformed dict-valued ``name:`` is a
+#: ⚑ The IDENTITY key stays in the set deliberately: a malformed dict-valued ``run_args:`` is a
 #: mistyped scalar, not a nested sub-table, and keeps its old handling.
 _ROOT_TABLES: Final[frozenset[str]] = _MODELED_KEYS | frozenset(_FLAT_AGENT_CATEGORIES)
 
@@ -166,7 +166,7 @@ def _read_address(tail: str) -> tuple[tuple[str, ...], str]:
     are dotted-leaf-safe: *leaf* is a literal dict key.
 
     ⚑ THE FALLTHROUGH IS LOAD-BEARING: a tail whose head is not a category is a FLAT root leaf
-    (``model``, ``name``, ``run_args``) and reads ``(root,) / tail`` — including a dotted one,
+    (``model``, ``label``, ``run_args``) and reads ``(root,) / tail`` — including a dotted one,
     which lands on a literal dotted key rather than being exploded.
     """
     category, sep, rest = tail.partition(".")
@@ -183,7 +183,7 @@ def _write_address(tail: str) -> tuple[tuple[str, ...], str]:
     """Map a per-agent-file key TAIL to the ``(sections, leaf)`` a SCALAR is WRITTEN at.
 
     ⚑⚑ NARROWER THAN :func:`_read_address` BY CONSTRUCTION, AND THAT IS THE POINT (P3/P4).  The
-    file holds exactly three kinds of scalar: a FLAT root leaf (``model``, ``name``, ``run_args``),
+    file holds exactly three kinds of scalar: a FLAT root leaf (``model``, ``label``, ``run_args``),
     an ``env.<VAR>`` and a ``secret_path.<VAR>`` (:data:`_VERB_WRITABLE_CATEGORIES`).  Every other
     category is DEST-KEYED — its entries are box destinations INSIDE its value — so there is no
     address to produce and this raises rather than inventing one.
@@ -343,10 +343,15 @@ def remove_leaf(slot: AgentFileSlot) -> bool:
 
 
 def clear_overrides(path: Path) -> int:
-    """Drop every user override from the file at *path*, PRESERVING ``name``; return the count.
+    """Drop every user override from the file at *path*; return the count.
 
-    Sparse: from the root table, every key EXCEPT ``name``, then prune the now-empty root table.
-    No default keys re-materialized ([[settings-must-map-to-keystore-key]]).
+    Sparse: the whole root table, then prune it. No default keys re-materialized
+    ([[settings-must-map-to-keystore-key]]).
+
+    ⚑ IT USED TO PRESERVE ONE KEY, ``name`` — the file's non-key identity field, which D8b
+    retired (2026-09-15). Nothing in the file is exempt now: every root key IS an override, so
+    preserving one would be preserving a user's setting from a verb whose whole promise is that
+    it clears them. The widening is user-visible and documented in ``MIGRATION.md``.
 
     The COUNT is part of the contract, in the same terms the other scopes' ``reset_all`` uses:
     EACH REMOVED ROOT KEY COUNTS ONCE, whatever it holds — a category table counts as the one
@@ -356,11 +361,8 @@ def clear_overrides(path: Path) -> int:
     count = 0
     agent_sec = data.get(_ROOT)
     if isinstance(agent_sec, dict):
-        for k in [k for k in agent_sec if k != "name"]:
-            count += 1
-            del agent_sec[k]
-        if not agent_sec:
-            del data[_ROOT]
+        count = len(agent_sec)
+        del data[_ROOT]
     dump_doc(path, data)
     return count
 
@@ -388,7 +390,10 @@ def load(path: Path) -> AgentConfig:
     if not isinstance(agent_sec, dict):
         agent_sec = {}
     _refuse_nested_tables(agent_sec, node=None, path=path)
-    cfg.name = str(agent_sec.get("name", ""))
+    # ⚑ NO ``name`` READ, AND ITS ABSENCE IS THE POINT (D8b): the field is retired, so a
+    # ``name:`` still in the file falls into ``cfg.state`` below like any other undeclared
+    # entry and REFUSES the launch by name. ``load`` itself stays permissive — the repair
+    # verbs must still be able to show the user the line they have to delete.
     # ⚑⚑ A STORED STRING IS SPLIT, NOT DISCARDED, and that is what makes the write
     # routes' old disagreement recoverable without touching anyone's data.  This
     # reader took a list or NOTHING, so every ``run_args`` the ``config set
@@ -462,10 +467,13 @@ def load(path: Path) -> AgentConfig:
 
 
 def save(path: Path, cfg: AgentConfig) -> None:
-    """Write an AgentConfig to a YAML file."""
-    agent_sec: dict = {
-        "name": cfg.name,
-    }
+    """Write an AgentConfig to a YAML file.
+
+    ⚑ EVERY EMISSION IS SPARSE, so a freshly generated file's root table is EMPTY — that is
+    the FILE-PURITY invariant, not an oversight: the file holds user intent, and a new agent
+    has none. The one unconditional line was ``name``, which D8b retired.
+    """
+    agent_sec: dict = {}
     # Sparse, for the SAME reason as every emission below — and this one is the
     # DEFAULT state, so it was the widest phantom in the file: ``run_args`` was emitted
     # unconditionally, so every freshly seeded agent file carried ``run_args: []`` and

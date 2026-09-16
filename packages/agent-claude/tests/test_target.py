@@ -604,7 +604,6 @@ class TestGenerateAgentConfig:
     def test_returns_claude_defaults(self):
         t = ClaudeTarget()
         cfg = t.generate_agent_config()
-        assert cfg.name == "Claude Code"
         # FILE PURITY: the generated agent settings file carries USER INTENT
         # only, so state is EMPTY.  ``model`` comes from the descriptor floor
         # (setting_descriptors -> EMPTY, i.e. claude's own built-in default) and
@@ -614,6 +613,23 @@ class TestGenerateAgentConfig:
         assert cfg.state == {}
         assert cfg.run_args == []
         assert cfg.env == {}
+
+    def test_the_description_is_a_DECLARED_KEY_not_a_file_field(self):
+        """D8b: ``AgentConfig`` has no ``name``; the description is ``agent.claude.label``.
+
+        ⚑ NON-VACUITY: the string is the one spec §2d states, so a plugin that stopped
+        declaring it would read the all-agents ``Agent Description (None)`` backstop —
+        the display regression shipping this row exists to prevent.
+        """
+        import dataclasses
+
+        from kanibako.settings.agent_config import AgentConfig
+
+        assert "name" not in {f.name for f in dataclasses.fields(AgentConfig)}
+        label = next(
+            d for d in ClaudeTarget().setting_descriptors() if d.key == "label"
+        )
+        assert label.default == "Claude Code"
 
     def test_model_default_comes_from_the_descriptor_floor(self):
         # ... and that floor imposes nothing (spec §2d ``<None>``).

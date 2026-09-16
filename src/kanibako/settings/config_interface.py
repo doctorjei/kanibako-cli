@@ -14,7 +14,7 @@ import sys
 from dataclasses import fields
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 from kanibako.settings.config import (
     load_config,
@@ -484,7 +484,7 @@ def _category_set_lookups(
     floor: dict[str, object] = {**box_scalar_defaults_floor(), **path_floor}
 
     # ⚑ THE DECLARED HALF IS FOLDED HERE AND NOT INSIDE ``_path_tier_split``, DELIBERATELY:
-    # the OTHER caller of that split is ``_effective_after_reset``, whose RULED contract is
+    # the OTHER caller of that split is ``effective_value``, whose RULED contract is
     # that a cleared key with no lower-tier setter says "falls back through the cascade" and
     # names NO built-in default ("no fabricated built-in default", pinned by
     # ``test_reset_absent_below_keeps_cleared_only_form``). Folding these in there would make
@@ -1250,7 +1250,9 @@ def reset_config_value(
         # ⚑ GATED (F1): ONLY a scope-prefixed SETTINGS key READS through the cascade, so only
         # for those is a cascade-derived "effective" a true claim.
         effective = (
-            _effective_after_reset(
+            # ⚑ NO ``floor=``, and the omission is the contract (F7): a cleared key with no
+            # lower-tier setter must name NO built-in default. See ``effective_value``.
+            effective_value(
                 canonical, dest.sections, dest.leaf,
                 agent_name=cascade_agent_name,
                 system_path=cascade_system_path,
@@ -1304,7 +1306,7 @@ def _honest_reset_message(
     return f"{base}it now falls back through the cascade."
 
 
-def _effective_after_reset(
+def effective_value(
     canonical: str,
     sections: tuple[str, ...],
     leaf: str,
@@ -1314,8 +1316,28 @@ def _effective_after_reset(
     agent_path: Path | None,
     workset_path: Path | None,
     box_path: Path | None,
+    floor: "Mapping[str, object] | None" = None,
 ) -> "tuple[str, str] | None":
-    """The now-effective ``(value, source_tier)`` for *canonical* AFTER a reset, else ``None``."""
+    """The cascade-effective ``(value, source_tier)`` for *canonical*, or ``None``.
+
+    The BOX-LESS cascade resolve: the four settings files assembled into the six §2 levels,
+    merged, expanded, and read at ``(*sections, leaf)``. ``None`` means "no single scalar to
+    name" — the key is absent from every level, its value is a bind/subtree/list/present-``None``,
+    its reference does not resolve, or it renders EMPTY (never report a blank as a value).
+
+    ⚑⚑ *floor* IS THE CALLER'S ARGUMENT AND MUST NOT BE BAKED IN, BECAUSE THE TWO CALLERS WANT
+    OPPOSITE FLOORS.  ``reset_config_value`` passes NOTHING: its ruled contract is that a cleared
+    key with no lower-tier setter names no built-in default (pinned by
+    ``test_reset_absent_below_keeps_cleared_only_form``), so folding declared defaults in here
+    would make every reset of ``box.image`` claim the shipped default as its effective value.  A
+    DISPLAY caller wants the opposite — ``agent info`` printing ``label`` DOES want the §2d
+    declared fallback — so it hands the declared floor in.  This is the same split the set-time
+    probe makes for the same reason; see the note above ``meta_agent_path_floor``.
+
+    *floor* is DOTTED-KEYED and folds UNDER the base file with the path tier (so every settings
+    scope still outranks it).  It is applied LAST, so an explicit entry wins a path-tier key of
+    the same name; the two are disjoint today (``system.*``/``config.*`` vs everything else).
+    """
     if all(
         p is None for p in (system_path, agent_path, workset_path, box_path)
     ):
@@ -1329,9 +1351,10 @@ def _effective_after_reset(
     # ⚑ The path tier — identical inputs to the set-time probe, but the failure arm DIFFERS:
     # an "effective" computed without the floor would name a value the cascade never resolves.
     try:
-        config_foundation, floor = _path_tier_split()
+        config_foundation, path_floor = _path_tier_split()
     except Exception:
         return None
+    floor = {**path_floor, **floor} if floor else path_floor
 
     ctx = _set_time_ctx(config=config_foundation)
     levels = assemble_levels(
@@ -1364,7 +1387,7 @@ def _effective_after_reset(
             source_tier = tier_names[idx] if idx < len(tier_names) else "base"
             break
     if source_tier is None:
-        return None  # absent post-reset → nothing effective to name.
+        return None  # absent from every level → nothing effective to name.
 
     # Read the winning RAW value from the merged snapshot and lenient-expand it.
     snapshot = merge(levels)
@@ -1375,7 +1398,7 @@ def _effective_after_reset(
     assert isinstance(result, tuple)  # lenient mode → (snapshot, errors)
     resolved_snap, errors = result
     if canonical in errors:
-        return None  # unresolved post-reset (dangling ref / cycle) — no guess.
+        return None  # unresolved (dangling ref / cycle) — no guess.
     found, eff = _reads(resolved_snap, key_path)
     if not found or isinstance(eff, (Bind, KeyStore, list)) or eff is None:
         return None

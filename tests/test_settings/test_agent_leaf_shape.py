@@ -478,82 +478,44 @@ class TestTheEnvVarIsJUDGED_NotJustCounted:
         assert leaf_name_reason("") is None
 
 
-class TestTheIdentityResidueIsJudgedPerAgent:
-    """``agent set/reset``'s ROUTE is decided against ONE agent's vocabulary (``[R150]``).
+class TestTheAgentFileIdentityFieldIsRetired:
+    """``name`` was a FILE-identity field, not a key, and D8b (2026-09-15) removed it.
 
-    ⚑ THE FACT: ``agent_file_identity_only`` decides whether the ``agent`` noun writes the
-    per-agent FILE itself or routes to ``config_interface``'s shared setter.  It was handed a
-    BARE TAIL and read the flat cross-agent union until 2026-09-02, so ONE plugin declaring an
-    identity key would have moved the route for EVERY agent — the partition read backwards.
-    Both call sites (``agent_cmd``'s ``set`` and its ``reset``) hold the node already.
+    ⚑ WHAT THIS REPLACES, and why the replacement is smaller than what it replaces:
+    ``TestTheIdentityResidueIsJudgedPerAgent`` stood here and pinned
+    ``config_keys.agent_file_identity_only`` — the predicate that decided whether ``agent
+    set``/``reset`` wrote the per-agent FILE itself or routed to the shared setter.  ``name``
+    was the whole of its answer; with the field gone the predicate could never return True
+    again, so it was deleted rather than left as a guard that cannot fire (P4).
 
-    ⚑ NOTHING DIVERGES TODAY: ``IDENTITY_KEYS`` is ``{name, run_args}``, ``run_args`` is core's
-    and no plugin declares either, so core, the union and the per-agent set all agree.  That is
-    exactly why this file has to inject a vocabulary — the shape is only visible against a
-    plugin that declares one, and there is none to observe.
+    ⚑ WHAT IS PINNED INSTEAD is the fact that made the predicate necessary and now makes it
+    unnecessary: ``name`` is not a key at any door, and ``IDENTITY_KEYS`` no longer carries
+    it.  Re-add the allowlist ``agent_key_reason`` used to hold and the first row reds.
     """
 
-    @staticmethod
-    def _vocabulary(monkeypatch, leaf_map):
-        """Make the PLUGIN half say exactly *leaf_map* — a harness left OUT is UNREADABLE."""
-        from kanibako.settings import settings_prefs
+    def test_name_is_not_a_key_at_the_agent_gate(self):
+        """The §0 gate refuses it, by name, with no allowlist above it."""
+        from kanibako.settings.config_keys import agent_key_reason
 
-        agents = settings_prefs.AgentNames(("claude", "goose"), leaf_map=leaf_map)
-        monkeypatch.setattr(settings_prefs, "default_valid_agents", lambda: agents)
+        reason = agent_key_reason("claude", "name")
+        assert reason is not None and "name" in reason
 
-    def test_the_subject_is_not_vacuous(self):
-        """NON-VACUITY: ``name`` must be an identity field that core does NOT declare."""
+    def test_the_remaining_identity_field_is_a_declared_leaf(self):
+        """⚑ THE REASON THE ALLOWLIST IS GONE, not merely unused: the one field left in
+        ``IDENTITY_KEYS`` is a declared §2d leaf, so the gate below admits it unaided.
+        A field added here that core does NOT declare would need the route decided again."""
         from kanibako.settings.agent_config import IDENTITY_KEYS
 
-        assert "name" in IDENTITY_KEYS
-        assert "name" not in DECLARED_AGENT_LEAVES
-        assert "run_args" in IDENTITY_KEYS and "run_args" in DECLARED_AGENT_LEAVES
+        assert "name" not in IDENTITY_KEYS
+        assert IDENTITY_KEYS <= DECLARED_AGENT_LEAVES
 
-    def test_todays_answer_name_is_the_file_route_on_every_agent(self, monkeypatch):
-        """THE SHIPPED STATE — both vocabularies readable, neither declaring an identity key."""
-        from kanibako.settings.config_keys import agent_file_identity_only
+    def test_the_record_models_no_name(self):
+        """The field itself, at its declaration site — a settings file holds keys only."""
+        import dataclasses
 
-        self._vocabulary(monkeypatch, {"claude": frozenset(), "goose": frozenset()})
-        assert agent_file_identity_only("claude", "name") is True
-        assert agent_file_identity_only("goose", "name") is True
+        from kanibako.settings.agent_config import AgentConfig
 
-    def test_todays_answer_run_args_is_never_the_file_route(self, monkeypatch):
-        """The OTHER identity field is a declared §2d leaf, so the ONE setter owns it."""
-        from kanibako.settings.config_keys import agent_file_identity_only
-
-        self._vocabulary(monkeypatch, {"claude": frozenset(), "goose": frozenset()})
-        assert agent_file_identity_only("claude", "run_args") is False
-        assert agent_file_identity_only("goose", "run_args") is False
-
-    def test_a_plugin_declaring_name_takes_THAT_agent_off_the_file_route(self, monkeypatch):
-        """A declared key is a key: it must reach the ONE setter, not the file boundary."""
-        from kanibako.settings.config_keys import agent_file_identity_only
-
-        self._vocabulary(monkeypatch, {"claude": frozenset(), "goose": {"name"}})
-        assert agent_file_identity_only("goose", "name") is False
-
-    def test_and_leaves_every_OTHER_agent_ON_it(self, monkeypatch):
-        """⚑ THE MUTATION ROW.  Judge the tail against ANY cross-agent union — the old
-        ``tail not in _PERSONA_STATE_LEAVES`` — and this reds while every row above stays
-        green: goose's declaration would strip claude's ``name`` of its only writer."""
-        from kanibako.settings.config_keys import agent_file_identity_only
-
-        self._vocabulary(monkeypatch, {"claude": frozenset(), "goose": {"name"}})
-        assert agent_file_identity_only("claude", "name") is True
-
-    def test_an_UNREADABLE_agent_keeps_the_file_route(self, monkeypatch):
-        """⚑ THE CONCESSION MUST NOT FLIP A ROUTE, and this is the row that says so.
-
-        ``agent_leaf_is_declared`` concedes a harness it cannot read, so that a real plugin key
-        is never REFUSED; used HERE it would not admit ``name`` but SEND it to a setter with no
-        slot for it — measured, that is every machine without the agent's plugin installed, and
-        ``kanibako agent set goose name=…`` is a live shipped write.  Swap the predicate for
-        ``agent_leaf_is_declared`` and only this row reds.
-        """
-        from kanibako.settings.config_keys import agent_file_identity_only
-
-        self._vocabulary(monkeypatch, {"claude": frozenset()})  # goose: unreadable
-        assert agent_file_identity_only("goose", "name") is True
+        assert "name" not in {f.name for f in dataclasses.fields(AgentConfig)}
 
 
 class TestTheWideningDidNotREARM_PluginDiscovery:
@@ -599,14 +561,15 @@ class TestTheWideningDidNotREARM_PluginDiscovery:
     ):
         _parse_persona_agent_key(key)
 
-    @pytest.mark.parametrize("tail", ["model", "access", "run_args", "name"])
+    @pytest.mark.parametrize("tail", ["model", "access", "run_args", "label"])
     def test_the_agent_gate_answers_a_core_leaf_without_discovery(
         self, tail, discovery_reds,
     ):
         """⚑ NEW GUARANTEE, not a preserved one: this gate used to call
         ``default_valid_agents()`` unconditionally, so every ``agent`` verb paid for
-        discovery even on ``model``. ``name`` rides the identity allowlist and never
-        reaches the keyspace at all."""
+        discovery even on ``model``. ⚑ ``name`` stood in this list and rode an identity
+        allowlist above the gate; it is retired (D8b), and ``label`` — the declared key
+        that replaced it — is answered from core's own table like the other three."""
         from kanibako.settings.config_keys import agent_key_reason
 
         assert agent_key_reason("claude", tail) is None

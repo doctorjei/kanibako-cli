@@ -340,10 +340,25 @@ class TestGenerateAgentConfig:
         # win the resolver cascade and force GOOSE_PROVIDER/GOOSE_MODEL, which
         # override the user's in-box ``goose configure`` choice.  State is empty.
         config = GooseTarget().generate_agent_config()
-        assert config.name == "Goose"
         assert config.state == {}
         assert "provider" not in config.state
         assert "model" not in config.state
+
+    def test_the_description_is_a_DECLARED_KEY_not_a_file_field(self):
+        """D8b: ``AgentConfig`` has no ``name``; the description is ``agent.goose.label``.
+
+        ⚑ NON-VACUITY: the string is the one spec §2d states, so a plugin that stopped
+        declaring it would read the all-agents ``Agent Description (None)`` backstop.
+        """
+        import dataclasses
+
+        from kanibako.settings.agent_config import AgentConfig
+
+        assert "name" not in {f.name for f in dataclasses.fields(AgentConfig)}
+        label = next(
+            d for d in GooseTarget().setting_descriptors() if d.key == "label"
+        )
+        assert label.default == "Goose Harness"
 
 
 # The retired ``apply_state`` hook translated provider/model into GOOSE_PROVIDER /
@@ -360,7 +375,9 @@ class TestSettingDescriptors:
         assert "model" in keys
         # endpoint (persona): first-class SETTABLE key mirroring claude/codex.
         assert "endpoint" in keys
-        assert len(settings) == 3
+        # ⚑ FOUR SINCE D8b: ``label`` joined them, declared in the same ``behavior:`` table.
+        assert "label" in keys
+        assert len(settings) == 4
 
     def test_provider_and_model_have_no_default(self):
         # The keys stay declared/settable, but with EMPTY defaults so the

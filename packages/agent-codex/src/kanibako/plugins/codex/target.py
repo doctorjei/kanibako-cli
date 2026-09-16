@@ -574,13 +574,15 @@ class CodexTarget(Target):
         settings file holds USER INTENT only, and defaults come from the
         descriptor floor.  Seeding one into the file would pin every install ABOVE
         the floor, where a later change to the default can never reach it.
+
+        ⚑ AND SO IS THE REST OF IT: the ``name=self.display_name`` this wrote is gone
+        (2026-09-15).  It was not a settings key, so it had no place in a settings file
+        at all; the description is declared as ``label`` in ``codex-defaults.yaml``'s
+        ``behavior:`` floor — ``agent.codex.label``, spec §2d.
         """
         from kanibako.settings.agent_config import AgentConfig as _AgentConfig
 
-        return _AgentConfig(
-            name=self.display_name,
-            state={},
-        )
+        return _AgentConfig(state={})
 
     def setting_descriptors(self) -> list[TargetSetting]:
         """Declare Codex runtime settings: ``model`` and the persona ``endpoint``.

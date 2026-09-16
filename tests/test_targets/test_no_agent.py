@@ -34,8 +34,10 @@ class TestNoAgentTarget:
         assert self.target.default_common() == {}
 
     def test_generate_agent_config(self):
+        # ⚑ EMPTY (D8b): the per-agent settings file holds user intent only, and the
+        # ``name="Shell"`` this used to carry was not a settings key.  ``no_agent``
+        # declares no ``label`` either, so it reads the all-agents ``agent.default.label``.
         cfg = self.target.generate_agent_config()
-        assert cfg.name == "Shell"
         assert cfg.run_args == []
         assert cfg.state == {}
 

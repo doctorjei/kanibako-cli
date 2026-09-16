@@ -88,7 +88,16 @@ inside boxes. In order of likely impact:
    pre-v1.6.0 `box.crab`) or table (the settable agent mirror) — is refused the same way, with
    its own cure per shape (§2.1).
 
-4. **Upgrade the agent plugins WITH the base — never the base alone.** Upgrading only
+4. **Every agent settings file needs one line deleted, or your boxes refuse to launch**
+   (§2.73). `kanibako setup` wrote a `name:` line into each `agents/<agent>/agent.yaml` it
+   created — so every host carries them — and `name` is not a settings key. An undeclared entry
+   in a settings file stops the command, by name, with the file and the line in the message.
+   Delete the `name:` line from each file. Nothing replaces it: the three shipped plugins declare
+   their own descriptions now, so `kanibako agent info claude` reads `Claude Code` after the edit
+   exactly as before it (codex and goose read the spec's strings, which differ slightly from what
+   setup wrote — §2.73 has the table). If you had changed that line to a description of your own,
+   it goes back as the key: `kanibako agent set <agent> label="My Claude"`.
+5. **Upgrade the agent plugins WITH the base — never the base alone.** Upgrading only
    `kanibako-cli` while keeping v1.7.2-era agent plugins silently deletes your boxes' entire
    instruction/directive chain (no error is printed). Upgrade via the `kanibako` meta package,
    or upgrade the plugins first (§2.6). ⚑ A pre-1.8.0 plugin also **will not load at all** on
@@ -99,33 +108,33 @@ inside boxes. In order of likely impact:
    `kanibako-cli>=1.8.0.dev0,<2.0`, so pip refuses the mismatch instead of installing it — but that
    only protects you once the v1.8.0 plugins are the ones being resolved.
 
-5. **Claude plugins and cache will look EMPTY unless you move two directories** before your
+6. **Claude plugins and cache will look EMPTY unless you move two directories** before your
    first launch on v1.8.0 (§2.5). Nothing errors — the box just sees empty dirs:
    `mkdir -p <data>/agents/claude/common && mv <data>/agents/claude/{plugins,cache} <data>/agents/claude/common/`
 
-6. **The `commons` channel is now `common`** — on disk (host) and in-box
+7. **The `commons` channel is now `common`** — on disk (host) and in-box
    (`~/channels/commons` → `~/channels/common`). Move the directories before first launch or
    an empty `common/` is created beside your populated `commons/`, silently (§2.3). Any
    scripts/notes of yours that reference the old path break silently.
 
-7. **Instruction files move into the canon.** New boxes get `~/canon/{charter,handbook,notebook,
+8. **Instruction files move into the canon.** New boxes get `~/canon/{charter,handbook,notebook,
    workbook}` with a read-only, root-owned skeleton; `~/playbook` is retired as the entry
    point. Existing boxes keep launching but their own `~/playbook` directives **silently stop
    being loaded** and need hand-triage (§2.4). The packaged book is named `charter`; the
    `1.8.0rc1` and `rc2` prereleases spelled it `bible`, and that rename leaves two hand-fixes
    behind on a box made by one of them (§2.70).
 
-8. **Two mounts at one destination now refuse to launch** where the more specific scope used
+9. **Two mounts at one destination now refuse to launch** where the more specific scope used
    to win silently (§2.2). The error says the rule changed and prints the exact YAML cure.
    Default installs are proven collision-free; only hand-added shares/binds can collide.
    After upgrading, `kanibako box show --effective` reports collisions without launching.
 
-9. **Rename the `shared` category to `common` in your settings files** (e.g.
+10. **Rename the `shared` category to `common` in your settings files** (e.g.
    `agent.claude.shared.plugins` → `agent.claude.common.plugins`). A leftover `shared` entry
    is not a key, so it stops the command rather than quietly dropping the bind it declared
    (§2.1, §2.47).
 
-10. **Relative host paths in `workset share add` no longer resolve under the workset root at
+11. **Relative host paths in `workset share add` no longer resolve under the workset root at
     launch.** New adds are resolved and stored absolute at write time; **already-stored relative
     sources must be rewritten to absolute paths by hand** (§2.7). A bare-relative source anywhere
     in `bindings.ro`, `bindings.rw` or `synced` is now **refused by name** rather than passed to
@@ -133,28 +142,28 @@ inside boxes. In order of likely impact:
     `caches` and `seeded` a bare leaf is instead rooted under the declaring scope's store, so those
     entries start working (§2.50).
 
-11. **The box template root moved and restructured** (`global/base_template/` →
+12. **The box template root moved and restructured** (`global/base_template/` →
     `global/template/box/home/`). Existing boxes are untouched (seeded once, long ago). The
     forced `kanibako setup` (item 1) re-creates the NEW tree with **stock packaged content**,
     so new boxes do NOT seed empty — but **any customizations you made in
     `global/base_template/` are orphaned there, silently**: nothing reads the old directory,
     nothing warns about it, and new boxes seed the stock files instead of yours (§2.5).
 
-12. **System-scope binds/caches/secret pointers now live in ONE file** — `global/settings.yaml`,
+13. **System-scope binds/caches/secret pointers now live in ONE file** — `global/settings.yaml`,
     not `~/.config/kanibako.cfg`. If you ever hand-placed such entries in the config
     file (working around the old broken routing), move them (§2.8).
 
-13. **A symlink anywhere in a template directory now fails box creation loudly** — if you
+14. **A symlink anywhere in a template directory now fails box creation loudly** — if you
     symlinked template files into a dotfiles repo, replace them with real files or a bind
     (§2.13).
 
-14. **If you use PERSONA agents, delete persona values you did not write yourself** from
+15. **If you use PERSONA agents, delete persona values you did not write yourself** from
     `agents/<node>/agent.yaml` — the store is now read live and a leftover synced value
     silently outranks it (§2.15). Also: a persona's whole `env` block now reaches the box, a
     rejected token is now a hard error on every `start`, and a generated agent settings file no
     longer carries `model` (§2.15, §2.16).
 
-15. **If you pass flags to a box that may already be running, they are now refused instead of
+16. **If you pass flags to a box that may already be running, they are now refused instead of
     silently ignored** (§2.17). `kanibako start -N <running box>` used to reattach you to the OLD
     conversation without a word; it now errors. Same for `--rig`, `-e` (except where a second
     process in the box will apply it — see §2.17), `--browser`, `--share-images`, `--no-helpers`,
@@ -165,7 +174,7 @@ inside boxes. In order of likely impact:
     makes network calls it cannot use, and `--entrypoint` against a live box now runs your command
     in it as a second process instead of being dropped.)
 
-16. **If anything you run deletes a box directory and lets the next `start` put it back, it now
+17. **If anything you run deletes a box directory and lets the next `start` put it back, it now
     errors instead** (§2.18). A launch never rebuilds a box: with the registration intact and the
     box directory gone, `kanibako start` used to silently re-create and re-seed it. It now refuses
     and prints the command that rebuilds it (`kanibako create <workspace>`, or `workset disconnect`
@@ -173,7 +182,7 @@ inside boxes. In order of likely impact:
     box.<key>=<value>` from a directory that is **not** a box now errors instead of writing a
     settings file for a box that does not exist.
 
-17. **Your `env` files are no longer read, silently** — and the bare `env.<VAR>` key is refused
+18. **Your `env` files are no longer read, silently** — and the bare `env.<VAR>` key is refused
     (§2.19). The three docker-style `env` files (`<data>/env`, the workset one, the per-box one)
     were dropped; every `VAR=value` line in them stops reaching your boxes. v1.7.2 seeded
     `COLORTERM=truecolor` into `<data>/env` on first run, so **essentially every pre-existing
@@ -185,18 +194,18 @@ inside boxes. In order of likely impact:
     so it needs no key at all, and re-creating it at `system` scope would *refuse* your
     launches as a contested variable (§2.33). Just delete the line with the file.
 
-18. **You can no longer `set` or `reset` a bind entry from the CLI — edit the settings file
+19. **You can no longer `set` or `reset` a bind entry from the CLI — edit the settings file
     instead** (§2.20). `kanibako box set box.bindings.rw.home=/newhome` and `kanibako system set
     agent.claude.bindings.ro.launcher=/newsrc` both used to work; both now refuse, naming the key
     and the file to edit. **Nothing you have already configured stops working** — the keys are
     still declared, still read at launch, and the matching `get` still reads them back
     (`kanibako box get <box> box.bindings.rw`). Only the write verb is gone, and there is no CLI
     replacement. ⚑ One exception, and it is the example above: a binding at the box home is a
-    separate change and does **not** keep mounting (item 20). If a script of yours repoints a
+    separate change and does **not** keep mounting (item 21). If a script of yours repoints a
     bind, that is the thing to check. The other mount categories
     (`caches`, `seeded`, `common`, `synced`) are untouched and still settable at every scope.
 
-19. **`workset share add` / `rm` lost their NAME argument** (§2.21). `workset share add WS NAME
+20. **`workset share add` / `rm` lost their NAME argument** (§2.21). `workset share add WS NAME
     host:guest` is now `workset share add WS host:guest`, and `workset share rm WS NAME` is now
     `workset share rm WS DEST` — the box destination, exactly as `share list` prints it. ⚑ **The
     stored shape changed too, and an old entry is MISREAD rather than rejected** — a two-element
@@ -208,7 +217,7 @@ inside boxes. In order of likely impact:
     the thing to check, and so is anything that parses `share list`, whose columns are now
     `DEST / MODE / SOURCE`.
 
-20. **If you gave a box a custom home with a binding at `~`, that box no longer starts** (§2.32).
+21. **If you gave a box a custom home with a binding at `~`, that box no longer starts** (§2.32).
     The box home stopped being a binding — it is the foundation the rest of the mount set folds
     over — so an entry at `~` in any settings file is now a second claim on one place and refuses
     the launch by name. Nothing else moves: a binding *inside* home (`~/work`) is unaffected, and
@@ -217,7 +226,7 @@ inside boxes. In order of likely impact:
     also leaves the per-scope `bindings.*` listing in `kanibako box show --effective` and appears
     above it as a labelled foundation line.
 
-21. **If the same environment variable is declared at two scopes, that box no longer starts**
+22. **If the same environment variable is declared at two scopes, that box no longer starts**
     (§2.33). `system.env.EDITOR` alongside `box.env.EDITOR` used to launch with the innermost
     scope's value and no word about the declaration it discarded; it now refuses, naming both
     keys. A variable is a slot with one value, and each scope acts in turn from the outside in
@@ -227,7 +236,7 @@ inside boxes. In order of likely impact:
     keys is not in any of your files:** a persona's store config supplies `env:` entries as
     live agent-scope keys that are never written to disk (§2.33, §2.15).
 
-22. **Every NAMED workset needs a one-time hand edit to its root `workset.yaml`, or it stops
+23. **Every NAMED workset needs a one-time hand edit to its root `workset.yaml`, or it stops
     resolving** (§2.43). The identity moved OUT of the root settings file and into the root
     `registry.yaml`, where the box membership already lives: `workset: {meta: {…}}` becomes a
     `workset:` table plus a name-keyed `projects:` map in `registry.yaml`. Until you do it, every
@@ -236,7 +245,7 @@ inside boxes. In order of likely impact:
     workset made by v1.6.0 or v1.7.x, and there is no auto-migration. Primary-mode and standalone
     boxes have no such table and need nothing.
 
-23. **A key kanibako does not declare, sitting in any settings file, now stops the command
+24. **A key kanibako does not declare, sitting in any settings file, now stops the command
     instead of resolving to nothing** (§2.47). It used to parse, merge, resolve — and then be read
     by nobody, with no error and no warning. Every command that resolves settings refuses now,
     naming every offending entry at once and the files the resolve loaded. The cure is a
@@ -249,7 +258,7 @@ inside boxes. In order of likely impact:
     at rc 0; `system diagnose` and `rig diagnose` print the refusal instead of `cannot check`
     (§2.49).
 
-24. **An agent or persona name containing a `.` now hard-errors, and that node is stuck**
+25. **An agent or persona name containing a `.` now hard-errors, and that node is stuck**
     (§2.52). `kimi.k3+claude` was legal in v1.7.2. A node name is a keyspace segment and `.` is
     the key-path separator, so it is refused now — by *every* command that parses the ref,
     including any that might have fixed it. The rename is by hand and in order: the node's store
@@ -257,21 +266,21 @@ inside boxes. In order of likely impact:
     `system.agent` in the system one. Only persona names are affected; no plugin harness name has
     a dot.
 
-25. **A `box:` table you once wrote into the SYSTEM settings file now steers every box** (§2.53).
+26. **A `box:` table you once wrote into the SYSTEM settings file now steers every box** (§2.53).
     `kanibako system set box.image=…`, `box.share_images=…` and `box.shell=…` were accepted and
     stored in v1.7.2 and then read by nothing — the box scalars resolved on a path that never
     consulted that file. v1.8.0 resolves all three through the cascade, where the system file is a
     real level. Read `<data>/global/settings.yaml` before your first launch and delete anything
     under `box:` you did not mean to keep.
 
-26. **Boxes created before v1.8.0 will not follow a changed default image; boxes created after it
+27. **Boxes created before v1.8.0 will not follow a changed default image; boxes created after it
     will** (§2.54). `create` used to store the resolved image into the new box's own settings file
     whether or not you passed `--image`; it now stores only what you pass explicitly. Nothing in
     the CLI labels the two halves — the presence of `image:` in a box's own `box.yaml` is the only
     tell. `--share-images` moved the other way and now *does* persist at create, and passing
     either flag to an already-existing box now prints a notice instead of doing nothing quietly.
 
-27. **A path key set to a bare relative value — `workset.channelroot: comms` — is now refused
+28. **A path key set to a bare relative value — `workset.channelroot: comms` — is now refused
     instead of being anchored somewhere** (§2.62). It used to mean *under the workset root* for
     the workset directory keys and *under your current directory* for every other path key; one
     key cannot have two answers, and a wrong guess here creates a directory that then holds your
@@ -279,7 +288,7 @@ inside boxes. In order of likely impact:
     `@config.data/…`, an absolute path, `~/…` or `$XDG_*/…`. Nothing kanibako ships uses this
     spelling, so this only bites a value you wrote by hand.
 
-28. **Only if you ran a `1.8.0` prerelease: the packaged canon book was renamed `bible` →
+29. **Only if you ran a `1.8.0` prerelease: the packaged canon book was renamed `bible` →
     `charter`, and two things you own still spell the old path** (§2.70). A claude box made by
     `1.8.0rc2` has eight hook commands under `~/canon/bible/general/scripts/hooks/` in its own
     `~/.claude/settings.json` — that file is the box's, seeded once at create, so the upgrade
@@ -289,7 +298,7 @@ inside boxes. In order of likely impact:
     files moved up out of `directives/`. **Upgrading from v1.7.2 you have none of this** — the
     canon books are new in v1.8.0.
 
-29. **If `config.data` points anywhere but `$XDG_DATA_HOME/kanibako`, your own file-drop plugins
+30. **If `config.data` points anywhere but `$XDG_DATA_HOME/kanibako`, your own file-drop plugins
     are now discovered in it — and stop being discovered in the default store** (§2.72). The
     plugin directory and the `code --remote` wrapper directory were the last two built from the
     XDG *data* base plus a hardcoded `kanibako`; a plugin you had dropped in your store was silently
@@ -2546,8 +2555,9 @@ answer with the same vocabulary the settings engine uses everywhere else:
 
 - **`agent set <agent> <key>=<value>` refuses an undeclared `<key>` by name**, rc 1, file
   unchanged. The live keys still write: the state keys (`model`, `access`, `endpoint`, …),
-  `name`, `run_args`, `env.<VAR>`, `secret_path.<VAR>`, and every plugin-declared key
-  (`agent set goose provider=…`).
+  `label`, `run_args`, `env.<VAR>`, `secret_path.<VAR>`, and every plugin-declared key
+  (`agent set goose provider=…`). ⚑ `name` was on that list and is not a key at all any more —
+  see *An agent's description is a settings key, and the agent file's `name:` is gone*.
 - **The bind-shaped categories (`bindings`, `caches`, `seeded`, `common`, `synced`) refuse with
   the retirement message.** Those tables are hand-edited in the file; the message shows the shape
   to write.
@@ -3840,8 +3850,10 @@ of being accepted.
 ⚑ **A script that calls `kanibako agent set` can now exit non-zero where it used to exit 0.** The
 exit code is the only signal that changed; a value that was already valid behaves exactly as before.
 
-⚑ **`name` is not affected**, because it is not a setting — it is the agent's display name, and
-`kanibako agent set <agent> name=…` writes it exactly as it always has.
+⚑ **`name` is gone entirely**, and the check above never reaches it: it was not a setting, and
+`kanibako agent set <agent> name=…` now refuses by name. See *An agent's description is a settings
+key, and the agent file's `name:` is gone* — the key that replaced it, `label`, takes this check
+like every other.
 
 ### 2.62 A bare relative path in a settings key is refused
 
@@ -4469,6 +4481,80 @@ keeping the `kanibako` name — `/srv/kanibako` — was affected exactly as one 
    refusal. The same happens if the file cannot be read, or if you run this without a terminal
    (the update is a y/N prompt).
 
+### 2.73 An agent's description is a settings key, and the agent file's `name:` is gone
+
+**Read this if you have ever run `kanibako setup`** — which is everyone. Setup wrote a `name:` line
+into every agent settings file it created, and **the next launch refuses on that line**. Two
+commands per agent fix it, and the section below gives them.
+
+**What changed.** The per-agent file carried an identity field spelled `name`. It was not a settings
+key: it was a field of the record, outside the keyspace, reachable only through the `agent` verbs and
+kept working by an allowlist written for it alone. `agent.<agent>.label` is the key that carries an
+agent's human-readable description now, and it is an ordinary agent-scope key — it cascades,
+`agent.default.label` is the all-agents fallback, and every door reaches it.
+
+```yaml
+# agents/claude/agent.yaml — before
+self:
+  name: Claude Code
+  model: opus
+
+# agents/claude/agent.yaml — after
+self:
+  model: opus
+```
+
+**What you must do.** Delete the `name:` line from every `agents/<agent>/agent.yaml` under your data
+directory. You do not have to replace it: `kanibako-agent-claude`, `-codex` and `-goose` now declare
+their own descriptions, and those are what `kanibako agent info` reads once the line is gone.
+
+| agent | setup wrote | you now read |
+|---|---|---|
+| claude | `Claude Code` | `Claude Code` |
+| codex | `OpenAI Codex CLI` | `Codex CLI` |
+| goose | `Goose` | `Goose Harness` |
+| any other | its plugin's `display_name` | its plugin's `label`, or `Agent Description (None)` |
+
+The two that moved are the spec's own strings. If you had **changed** the line to something of your
+own, set it as the key instead — which writes to the same file, under the same `self:` root:
+
+```bash
+kanibako agent set claude label="My Claude"
+```
+
+**What you see if you don't.** The launch refuses, by name, naming the file and the line — `name` is
+not a declared key, and an undeclared entry in a settings file stops the command (§2.47). There is
+no compatibility read and no grace period, and that is deliberate: an entry the keyspace does not
+declare has no meaning to give the box, and carrying it through unread is the behaviour the closed
+keyspace replaced.
+
+```
+Error: the agent settings file for 'claude' carries 'name', which is not a settings key: 'name' is not a declared agent key of 'agent.claude' …
+  Fix: remove `self.name` from agents/claude/agent.yaml (or correct the spelling); 'kanibako agent info claude' still lists what the file holds.
+```
+
+⚑ **`kanibako agent info` and `agent show` still read and display such a file** — the repair verbs
+keep working on a file the launch will not start, so you can see the line before you delete it.
+
+**What else moves.**
+
+- **`kanibako agent set/get/reset <agent> name` refuse by name, rc 1**, the way any other non-key
+  does. The allowlist that kept `name` working is gone, and with it the last tail the `agent` verbs
+  wrote by hand rather than through the shared setter.
+- **`kanibako agent info` prints `Label:` where it printed `Name:`**, and `agent show` lists
+  `label = …` where it listed `name = …`. Both now show the **resolved** value, in cascade order:
+  the agent's own file, then the system file's `agent.<agent>.label`, then its `agent.default.label`,
+  then the plugin's declaration — so the line names a key you can set. ⚑ `kanibako agent get <agent>
+  label` still reads the **stored** value and answers `(not set)` when you have set none; that is
+  what `get` means at every noun.
+- **`kanibako agent reset --all <agent>` clears the whole file.** It used to preserve `name`.
+  Nothing is exempt now, because nothing left in the file is anything but an override.
+- **A freshly generated agent file is empty** (`self: {}`). The one line it used to arrive with was
+  `name`, and the file holds what you set and nothing else.
+
+⚑ **The other two things spelled `name` are untouched.** `meta.agent.<agent>.name` is the agent's
+store DIRECTORY, read-only and unrelated; `<box>` names and `--name` have nothing to do with either.
+
 ---
 
 ## 3. For plugin authors
@@ -4523,6 +4609,32 @@ updating, and one of them fails at IMPORT time:**
 - **`PersonaSpec.host_dir_adopt` is removed** along with the legacy claude host-dir path (§2.11's
   sibling entry in the CHANGELOG). A `persona:` block that still declares it keeps loading — the
   key is accepted and ignored, deliberately, so a version-skewed wheel does not break.
+
+⚑ **`AgentConfig` HAS NO `name` FIELD — `generate_agent_config()` must stop passing one, and a
+plugin that still does raises `TypeError` the first time kanibako generates your agent's file.**
+The per-agent settings file holds user intent only, so the default your plugin returns is empty:
+
+```python
+def generate_agent_config(self) -> AgentConfig:
+    return AgentConfig(state={})     # was: AgentConfig(name=self.display_name, state={})
+```
+
+Declare your agent's description as a `label` row in your defaults file's `behavior:` section
+instead. It is the declared key `agent.<agent>.label` (§2d) — it cascades like every other agent
+key, a user can override it, and it is what `kanibako agent info` prints:
+
+```yaml
+behavior:
+  - key: label
+    description: "Human-readable description of this agent"
+    default: "My Agent"
+```
+
+Declare nothing and your agent reads `agent.default.label`, whose shipped value is
+`Agent Description (None)` — honest, and visibly a placeholder. `Target.display_name` is unchanged
+and still yours; it is the harness's own name, not a settings value. **Users of your plugin are
+affected too** — see *An agent's description is a settings key, and the agent file's `name:` is
+gone* above for the one-line edit they owe each agent file.
 
 The three agent plugins (`kanibako-agent-claude`, `-codex`, `-goose`) version and publish
 independently of the base and depend on **`kanibako-cli`** with **no version pin**; only the

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import sys
 from typing import TYPE_CHECKING
 
@@ -14,6 +15,8 @@ if TYPE_CHECKING:
 
     from kanibako.settings.agent_config import AgentConfig
     from kanibako.settings.paths import StandardPaths
+
+_log = logging.getLogger(__name__)
 
 
 def add_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -219,7 +222,9 @@ def run_info(args: argparse.Namespace) -> int:
         return 1
 
     cfg = load(path)
-    print(f"Name:         {cfg.name or agent_display}")
+    # ⚑ THE §2d KEY, RESOLVED — not a field of the file. The line is spelled for the key it
+    # prints, so a reader can reach it: `kanibako agent set <agent> label=…`.
+    print(f"Label:        {_agent_label(std, agent_id)}")
     if cfg.run_args:
         print(f"Default args: {' '.join(cfg.run_args)}")
     else:
@@ -300,23 +305,19 @@ def _run_agent_config(args: argparse.Namespace) -> int:
 
     ⚑ ``set`` AND ``reset`` ROUTE THEIR WRITES to ``config_interface``'s ``set_config_value`` /
     ``reset_config_value``, the pair every other noun shares — this verb is not a second writer
-    of that slot.  ``name`` is the exception in BOTH and is not a carve-out: it is not a key at
-    all (see :func:`agent_file_identity_only`).  ``get`` still addresses the file directly
-    through ``agent_file``'s slot boundary.
+    of that slot.  ⚑ THERE IS NO EXCEPTION TO THAT ANY MORE: ``name`` was the one tail written
+    by hand, because it was not a key and the shared setter had no slot to route it to.  D8b
+    retired it (2026-09-15), so every tail this verb accepts is a declared key and takes the one
+    route.  ``get`` still addresses the file directly through ``agent_file``'s slot boundary.
     """
     from kanibako.settings.agent_config import agent_settings_path
     from kanibako.settings.agent_file import (
         clear_overrides,
         load,
         read_leaf,
-        remove_leaf,
         slot_for,
-        write_leaf,
     )
-    from kanibako.settings.config_keys import (
-        agent_file_identity_only,
-        agent_read_key_error,
-    )
+    from kanibako.settings.config_keys import agent_read_key_error
 
     try:
         std = _load_std()
@@ -378,41 +379,34 @@ def _run_agent_config(args: argparse.Namespace) -> int:
         if gate_err is not None:
             print(gate_err, file=sys.stderr)
             return 1
-        if agent_file_identity_only(agent_id, key):
-            # ⚑ THE SAME ONE TAIL ``set`` WRITES ITSELF, for the same reason and not as a
-            # carve-out: ``name`` is a FILE-identity field of ``AgentConfig``, absent from
-            # the keyspace, so the shared resetter has no key to route.
-            # ⚑ THE NODE, as at ``set``: the tail is judged against THIS agent's vocabulary
-            # ([R150]), never a cross-agent union — see :func:`agent_file_identity_only`.
-            changed = remove_leaf(slot_for(std.agents, agent_id, key))
-        else:
-            # ⚑⚑ THE ONE SETTER'S RESET HALF. This verb removed the leaf with its own hand
-            # while ``set`` — one branch above — already routed; two writers of one keyspace
-            # slot is the defect class, and a removal is a WRITE. The threading MIRRORS the
-            # set call exactly (system command scope, because the per-node agent store is
-            # global and the engine's per-node routes are reachable only there; the NODE
-            # named so a per-node route resolves), so the two halves cannot drift into
-            # disagreeing about which slot the key names.
-            from kanibako.settings.config_interface import reset_config_value
-            from kanibako.settings.config_keys import ConfigLevel
+        # ⚑⚑ THE ONE SETTER'S RESET HALF, AND THERE IS NO LONGER A SECOND ARM BESIDE IT.
+        # This verb removed the leaf with its own hand for ``name``; two writers of one
+        # keyspace slot is the defect class, and a removal is a WRITE. ``name`` was never a
+        # key, so it had no slot to route to — retiring it (D8b) deletes the branch, and
+        # every tail this verb accepts now goes through the shared resetter. The threading
+        # MIRRORS the set call exactly (system command scope, because the per-node agent
+        # store is global and the engine's per-node routes are reachable only there; the
+        # NODE named so a per-node route resolves).
+        from kanibako.settings.config_interface import reset_config_value
+        from kanibako.settings.config_keys import ConfigLevel
 
-            msg = reset_config_value(
-                f"agent.{agent_id}.{key}",
-                config_path=_config_file(),
-                system_settings_path=std.settings,
-                cascade_system_path=std.settings,
-                cascade_agent_name=agent_id,
-                command_scope=ConfigLevel.system,
-                agents_root=std.agents,
-            )
-            if msg.startswith("Error:"):
-                print(msg, file=sys.stderr)
-                return 1
-            # ⚑ The ENGINE'S OWN ANSWER to "did anything change", not a second read of the
-            # file: ``reset_config_value`` reports a no-op with exactly this prefix at every
-            # one of its branches (pinned by
-            # ``TestAgentResetRoutesThroughTheOneSetter.test_the_no_op_prefix_is_the_engines``).
-            changed = not msg.startswith("No override for ")
+        msg = reset_config_value(
+            f"agent.{agent_id}.{key}",
+            config_path=_config_file(),
+            system_settings_path=std.settings,
+            cascade_system_path=std.settings,
+            cascade_agent_name=agent_id,
+            command_scope=ConfigLevel.system,
+            agents_root=std.agents,
+        )
+        if msg.startswith("Error:"):
+            print(msg, file=sys.stderr)
+            return 1
+        # ⚑ The ENGINE'S OWN ANSWER to "did anything change", not a second read of the
+        # file: ``reset_config_value`` reports a no-op with exactly this prefix at every
+        # one of its branches (pinned by
+        # ``TestAgentResetRoutesThroughTheOneSetter.test_the_no_op_prefix_is_the_engines``).
+        changed = not msg.startswith("No override for ")
         if changed:
             # Honest cleared-form (F7), same contract as every other noun's reset.
             # ⚑ THE KEY AS THE USER TYPED IT and the AGENT scope, never the canonical
@@ -472,7 +466,10 @@ def _run_agent_config(args: argparse.Namespace) -> int:
     if key_value is None:
         # Show mode — read the config only where the READ paths need it.
         cfg = load(path)
-        return _show_agent_config(cfg, agent_display, effective=args.effective)
+        # ⚑ RESOLVED HERE, where ``std`` is in scope; the formatter stays a formatter.
+        return _show_agent_config(
+            cfg, _agent_label(std, agent_id), effective=args.effective,
+        )
 
     if "=" in key_value:
         key, _, value = key_value.partition("=")
@@ -487,50 +484,36 @@ def _run_agent_config(args: argparse.Namespace) -> int:
         if gate_err is not None:
             print(gate_err, file=sys.stderr)
             return 1
-        # ⚑ ``name`` IS THE ONE TAIL THIS VERB STILL WRITES ITSELF, AND IT IS NOT A CARVE-OUT:
-        # it is a FILE-identity field of ``AgentConfig``, absent from the keyspace, so the
-        # shared setter has no key to route (:func:`agent_file_identity_only` derives that from
-        # the declaration, so it moves on its own). Everything else — every declared leaf,
-        # ``env.<VAR>`` and ``secret_path.<VAR>`` — goes through the ONE setter below.
-        # ⚑ THE NODE IS PASSED, and it is the whole point of the call: ``[R150]`` makes the
-        # vocabulary per-agent, so "is this tail a key" has no answer without naming the agent
-        # whose file is about to be written. ``agent_id`` is the canonical ``℘`` node — known good.
-        if agent_file_identity_only(agent_id, key):
-            # Sparse write — only the touched key is materialized. ⚑ NO SHAPE RULE HERE, AND
-            # ITS ABSENCE IS THE FIX: the ``run_args`` space-split stood on this line and
-            # nowhere else, so this verb and ``config set agent.<node>.run_args=…`` stored two
-            # different shapes for one key. It moved into ``agent_file.write_leaf``, which
-            # every write route goes through.
-            write_leaf(slot_for(std.agents, agent_id, key), value)
-        else:
-            # ⚑⚑ THE ONE SETTER. This verb had its OWN writer straight to ``write_leaf``, so
-            # none of the set-time validation ran: measured, ``agent set claude
-            # canon=@bogus.ref`` stored the dangling reference at rc 0 while the same value
-            # through ``system set`` was refused by name. Two writers of one keyspace slot is
-            # the defect — so the checks are NOT copied here; the write is routed to where they
-            # already live (the E3 resolution probe, the typed-scalar check and the
-            # auth-critical ``access`` enum guard among them).
-            # ⚑ The command scope is SYSTEM because the per-node agent store is global (under
-            # ``config.agents``) and the engine's per-node routes are reachable only there —
-            # see ``config_dest._agent_node_route``. The threading otherwise mirrors
-            # ``system set``'s, with ONE datum that verb does not have (P7): the NODE being
-            # written, which anchors ``@meta.agent.<node>.path`` in the set-time snapshot. A
-            # legal value spelled against the agent's own store root dangles without it.
-            from kanibako.settings.config_interface import set_config_value
-            from kanibako.settings.config_keys import ConfigLevel
+        # ⚑⚑ THE ONE SETTER, AND THERE IS NO LONGER A SECOND ARM BESIDE IT. This verb had its
+        # OWN writer straight to ``write_leaf``, so none of the set-time validation ran:
+        # measured, ``agent set claude canon=@bogus.ref`` stored the dangling reference at rc 0
+        # while the same value through ``system set`` was refused by name. Two writers of one
+        # keyspace slot is the defect — so the checks are NOT copied here; the write is routed
+        # to where they already live (the E3 resolution probe, the typed-scalar check and the
+        # auth-critical ``access`` enum guard among them). ``name`` was the last tail still
+        # written by hand, because it was not a key and the shared setter had nothing to route
+        # it to; retiring it (D8b) leaves ONE route for everything this verb accepts.
+        # ⚑ The command scope is SYSTEM because the per-node agent store is global (under
+        # ``config.agents``) and the engine's per-node routes are reachable only there —
+        # see ``config_dest._agent_node_route``. The threading otherwise mirrors
+        # ``system set``'s, with ONE datum that verb does not have (P7): the NODE being
+        # written, which anchors ``@meta.agent.<node>.path`` in the set-time snapshot. A
+        # legal value spelled against the agent's own store root dangles without it.
+        from kanibako.settings.config_interface import set_config_value
+        from kanibako.settings.config_keys import ConfigLevel
 
-            msg = set_config_value(
-                f"agent.{agent_id}.{key}", value,
-                config_path=_config_file(),
-                system_settings_path=std.settings,
-                cascade_system_path=std.settings,
-                cascade_agent_name=agent_id,
-                command_scope=ConfigLevel.system,
-                agents_root=std.agents,
-            )
-            if msg.startswith("Error:"):
-                print(msg, file=sys.stderr)
-                return 1
+        msg = set_config_value(
+            f"agent.{agent_id}.{key}", value,
+            config_path=_config_file(),
+            system_settings_path=std.settings,
+            cascade_system_path=std.settings,
+            cascade_agent_name=agent_id,
+            command_scope=ConfigLevel.system,
+            agents_root=std.agents,
+        )
+        if msg.startswith("Error:"):
+            print(msg, file=sys.stderr)
+            return 1
         # ⚑ THE KEY AS THE USER TYPED IT, never the canonical ``agent.<node>.<tail>`` the
         # setter echoes: this noun takes a BARE tail on the command line, and its ``reset``
         # twin already answers in that spelling (``_honest_reset_message(key, …)``). A
@@ -593,6 +576,95 @@ def _agent_key_gate(
     return table_value_error(key, path=path, verb=verb)
 
 
+def _declared_label(agent_id: str) -> str:
+    """The §2d FLOOR for *agent_id*'s ``label``: its plugin's declaration, else core's backstop.
+
+    ⚑ THE SAME TWO SOURCES THE LAUNCH FLOORS ON, IN THE SAME ORDER — ``start.py`` builds
+    ``{**core_defaults.behavior_defaults(), **{d.key: d.default for d in descriptors}}``, so a
+    plugin's declared value wins the core backstop and the merged floor then lands at
+    ``agent.default.<key>`` for a core-declared leaf (``settings_launch``'s OS1 rule; ``label``
+    is one).  Reading it the same way here is what stops ``agent info`` and the box from
+    disagreeing about an agent's description.
+
+    ⚑ A PLUGIN THAT CANNOT BE READ IS CONCEDED, NOT FATAL — the same treatment
+    ``settings_prefs.default_valid_agents`` gives a raising ``setting_descriptors()``: a broken
+    or absent plugin costs the user a description, never the command.  ``no_agent`` declares no
+    ``label`` at all and correctly reads the core backstop (the spec's ``agent.shell.label`` has
+    no node to live on yet — D2).
+    """
+    from kanibako.agent_ref import harness_of
+    from kanibako.settings import core_defaults
+    from kanibako.targets import get_target
+
+    try:
+        descriptors = get_target(harness_of(agent_id))().setting_descriptors()
+    except Exception:  # pragma: no cover - a plugin must not break a display verb
+        _log.debug("setting_descriptors() failed for a target", exc_info=True)
+        descriptors = []
+    for descriptor in descriptors:
+        if descriptor.key == "label":
+            return str(descriptor.default)
+    return core_defaults.behavior_default("label")
+
+
+def _agent_label(std: "StandardPaths", agent_id: str) -> str:
+    """*agent_id*'s human-readable DESCRIPTION — ``agent.<node>.label`` RESOLVED (spec §2d).
+
+    THE ONE RESOLVE BOTH DISPLAY VERBS SHARE.  ``agent info`` and ``agent show`` used to print
+    the agent file's ``name`` field, which was not a key; ``label`` is, so reading it means
+    consulting the cascade rather than a field.
+
+    ⚑⚑ THREE DOORS, IN CASCADE ORDER, AND THEY ARE NOT INTERCHANGEABLE:
+
+    1. the agent FILE's own flat ``label`` — read through the file boundary's slot, because
+       ``assemble_levels`` carries only this file's CATEGORY tables into the agent rung; its
+       flat behaviour scalars reach the launch through ``agent_file.state_level`` instead.
+       This is the same door ``agent get <node> label`` reads.
+    2. ``agent.<node>.label`` through the cascade — a per-agent value in the SYSTEM file.
+    3. ``agent.default.label`` through the cascade, FLOORED — the all-agents tier, whose base
+       rung is :func:`_declared_label`.
+
+    Steps 2 and 3 are §2d's active-over-default pick, cascade first, exactly as
+    ``settings_launch.effective_behavior`` makes it.
+
+    ⚑ THE FLOOR IS PASSED IN, never baked into ``effective_value`` — its other caller (``reset``)
+    must name NO built-in default, and that function's docstring says why.
+
+    ⚑ NO WORKSET OR BOX TIER, and that is honest rather than missing: this verb names an agent,
+    not a box, so there is no workset or box file to read.  A value set at either scope shows
+    where it applies — in ``box show``.
+
+    ALWAYS RETURNS A STRING: ``core-defaults.yaml``'s ``agent_default.label`` is declared, so
+    there is always a floor to fall to.  The final ``declared`` return covers only the arms
+    where ``effective_value`` declines to name a value at all — an unreadable path tier, or a
+    ``label`` explicitly set to the empty string.
+    """
+    from kanibako.settings.agent_config import agent_settings_path
+    from kanibako.settings.agent_file import read_leaf, slot_for
+    from kanibako.settings.config_interface import effective_value
+    from kanibako.settings.config_keys import AGENT_DEFAULT_SUB
+
+    stored = read_leaf(slot_for(std.agents, agent_id, "label"))
+    if stored is not None:
+        return stored
+
+    declared = _declared_label(agent_id)
+    floor: dict[str, object] = {f"agent.{AGENT_DEFAULT_SUB}.label": declared}
+    for sections in (("agent", agent_id), ("agent", AGENT_DEFAULT_SUB)):
+        resolved = effective_value(
+            ".".join((*sections, "label")), sections, "label",
+            agent_name=agent_id,
+            system_path=std.settings,
+            agent_path=agent_settings_path(std.agents, agent_id),
+            workset_path=None,
+            box_path=None,
+            floor=floor,
+        )
+        if resolved is not None:
+            return resolved[0]
+    return declared
+
+
 def _get_agent_key(cfg: AgentConfig, key: str) -> str | None:
     """Read a single key from agent config."""
     from kanibako.settings.agent_file import argv_text
@@ -605,8 +677,10 @@ def _get_agent_key(cfg: AgentConfig, key: str) -> str | None:
     if key.startswith("env."):
         env_name = key[4:]
         return cfg.env.get(env_name)
-    if key == "name":
-        return cfg.name or None
+    # ⚑ NO ``name`` ARM, AND ITS ABSENCE IS THE POINT (D8b): this is the agent-FILE read shim,
+    # and ``label`` — the key that replaced it — is an ordinary declared leaf that reaches
+    # ``cfg.state`` below like every other one. ``get`` reads the STORED tier by contract, so
+    # an unset ``label`` answers "(not set)" here while ``info``/``show`` resolve the cascade.
     if key == "run_args":
         # ⚑ THE FILE'S OWN JOIN (``agent_file.argv_text``), never a second one here:
         # it is the read half of the split ``write_leaf`` applies, and the two must
@@ -624,15 +698,22 @@ def _get_agent_key(cfg: AgentConfig, key: str) -> str | None:
 
 
 def _show_agent_config(
-    cfg: AgentConfig, agent_id: str, *, effective: bool = False,
+    cfg: AgentConfig, label: str, *, effective: bool = False,
 ) -> int:
-    """Display agent config."""
+    """Display agent config.
+
+    ⚑ A PURE FORMATTER, AND *label* IS WHY IT TAKES A STRING.  It receives a FILE object and no
+    cascade handle, so the one key this verb resolves (:func:`_agent_label`) is resolved at the
+    CALLER and handed in: two reads of one key in one verb is the shape to avoid.
+    ⚑ The parameter used to be ``agent_id`` and used to be handed the DISPLAY ref — a name that
+    had stopped describing what it received.
+    """
     from kanibako.settings.agent_file import argv_text
 
     has_output = False
 
-    # Identity keys
-    print(f"  name = {cfg.name or agent_id}")
+    # The §2d description + the identity keys the file models as fields of its own.
+    print(f"  label = {label}")
     if cfg.run_args:
         # ⚑ THE COMMAND-LINE SPELLING, not the list's Python repr: this line used to
         # print ``run_args = ['--a', '--b']`` at the user — a shape they cannot type
@@ -641,8 +722,13 @@ def _show_agent_config(
     has_output = True
 
     # agent-state keys
-    if cfg.state:
-        for k, v in sorted(cfg.state.items()):
+    # ⚑ ``label`` IS EXCLUDED HERE BECAUSE IT ALREADY HAS ITS LINE. It is an ordinary
+    # declared leaf, so a stored one rides ``cfg.state`` like any other — and the line
+    # above already carries it, RESOLVED. Listing both prints one key twice, with the
+    # stored value second, which reads as two keys of the same name.
+    state_rows = {k: v for k, v in cfg.state.items() if k != "label"}
+    if state_rows:
+        for k, v in sorted(state_rows.items()):
             print(f"  {k} = {v}")
         has_output = True
     elif effective:

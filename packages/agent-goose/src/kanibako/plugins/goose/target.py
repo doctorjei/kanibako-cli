@@ -278,10 +278,15 @@ class GooseTarget(Target):
         provider/model.  goose's env vars win over its own config.yaml, so a default
         here would clobber the provider the user picked with ``goose configure``.  An
         EXPLICIT setting still emits the env var (see :meth:`setting_descriptors`).
+
+        ⚑ The ``name="Goose"`` this wrote is gone (2026-09-15).  It was not a settings
+        key, so it had no place in a settings file at all; the description is declared
+        as ``label`` in ``goose-defaults.yaml``'s ``behavior:`` floor —
+        ``agent.goose.label``, spec §2d.
         """
         from kanibako.settings.agent_config import AgentConfig as _AgentConfig
 
-        return _AgentConfig(name="Goose", state={})
+        return _AgentConfig(state={})
 
     def setting_descriptors(self) -> list[TargetSetting]:
         """Declare Goose runtime settings — ``provider``, ``model``, ``endpoint``.

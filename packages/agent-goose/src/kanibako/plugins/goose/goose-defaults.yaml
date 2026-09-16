@@ -194,6 +194,14 @@ descriptor:
 # IS emitted.  ⚑ Do not "tidy" these rows away: an ABSENT `default:` is a load refusal,
 # not a synonym for `""`, precisely so this stays a statement and not an oversight.
 behavior:
+  # The agent's human-readable DESCRIPTION (spec §2d `agent.goose.label | "Goose
+  # Harness"`), and the ONLY thing `agent info` / `agent show` print as this agent's
+  # name.  ⚑ NOT `meta.agent.goose.name`, which is the store DIRECTORY and is RO.
+  # Without this row the core all-agents backstop wins and every goose install
+  # reads "Agent Description (None)".
+  - key: label
+    description: "Human-readable description of this agent"
+    default: "Goose Harness"
   - key: provider
     description: "LLM provider (unset = use goose configure / config.yaml)"
     default: ""

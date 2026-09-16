@@ -152,7 +152,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   file. The shipped fallback is `Agent Description (None)`, deliberately self-describing so that an
   agent with no label of its own reads as having none. `kanibako system defaults` lists it
   with the file that declares it, and `kanibako box show --effective` shows it among a box's agent
-  settings.
+  settings. **`kanibako agent info` and `agent show` read it**, resolved through the cascade —
+  they printed the agent file's `name` field, which was not a key and is now gone (below) — and
+  the three shipped plugins declare their own: `Claude Code`, `Codex CLI`, `Goose Harness`.
 
 - **The host state root has a declared key: `system.state`, defaulting to
   `$XDG_STATE_HOME/kanibako`.** It joins `system.cache` and `system.runtime` as a Layer-2
@@ -546,6 +548,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   plugin/base version pairing; upgrade the `kanibako-agent-*` packages with the base.
 
 ### Removed
+
+- **The agent settings file's `name:` field, and the allowlist that kept it working.** It was the
+  agent's human-readable description and it was not a settings key — a field of the record, outside
+  the keyspace, carried past the closed-keyspace gate by a check written for that one tail. Without
+  that check every agent file `kanibako setup` has ever written would already have been refused, so
+  the carve-out was the reason the breach did not show. `agent.<agent>.label` (above) carries the
+  description now, and the three shipped plugins declare their own — `Claude Code` unchanged,
+  `Codex CLI` for what setup wrote as `OpenAI Codex CLI`, and `Goose Harness` for `Goose`, the two
+  moving to the strings the spec states. Removing the field removes the carve-out with it: `agent set` /
+  `get` / `reset` refuse `name` by name the way they refuse any other non-key, and the `agent` verbs
+  no longer have a tail they write by hand instead of through the one shared setter.
+  ⚠️ **Every existing install carries a `name:` line, and the next launch refuses on it** — an
+  undeclared entry in a settings file stops the command, by name, and there is no compatibility
+  read. See `MIGRATION.md` § *2.73 An agent's description is a settings key, and the agent file's
+  `name:` is gone* for the one-line edit per agent. `agent info`, `agent list` and `agent show`
+  still display such a file, so the line can be found before it is deleted.
+  ⚠️ **This is a plugin-API break:** `AgentConfig` has no `name` field, so a
+  `generate_agent_config()` that still passes one raises `TypeError`. Two more user-visible
+  consequences: `agent info` prints `Label:` where it printed `Name:` (and `agent show` lists
+  `label = …`), showing the **resolved** value rather than a raw file field; and
+  `agent reset --all <agent>` clears the whole file, where it used to preserve `name`.
 
 - **`Target.apply_state()`, the last of the per-method launch hooks.** A target used to translate
   its agent-state values into `(cli_args, env_vars)` in Python: claude's turned `model` into

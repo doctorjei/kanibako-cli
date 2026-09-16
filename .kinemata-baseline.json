@@ -1613,7 +1613,7 @@
       "entry": "claim:path",
       "antipattern": "global/base_template/",
       "path": "MIGRATION.md",
-      "text": "11. **The box template root moved and restructured** (`global/base_template/` \u2192"
+      "text": "12. **The box template root moved and restructured** (`global/base_template/` \u2192"
     },
     {
       "registry": "claims",
@@ -1676,7 +1676,7 @@
       "entry": "claim:path",
       "antipattern": "global/settings.yaml",
       "path": "MIGRATION.md",
-      "text": "12. **System-scope binds/caches/secret pointers now live in ONE file** \u2014 `global/settings.yaml`,"
+      "text": "13. **System-scope binds/caches/secret pointers now live in ONE file** \u2014 `global/settings.yaml`,"
     },
     {
       "registry": "claims",
@@ -4931,7 +4931,7 @@
       "entry": "claim:path",
       "antipattern": "workset.yaml",
       "path": "MIGRATION.md",
-      "text": "22. **Every NAMED workset needs a one-time hand edit to its root `workset.yaml`, or it stops"
+      "text": "23. **Every NAMED workset needs a one-time hand edit to its root `workset.yaml`, or it stops"
     },
     {
       "registry": "claims",

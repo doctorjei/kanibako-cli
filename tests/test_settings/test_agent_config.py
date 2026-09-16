@@ -25,7 +25,9 @@ from kanibako.settings.agent_config import (
 class TestAgentConfigDefaults:
     def test_defaults(self):
         cfg = AgentConfig()
-        assert cfg.name == ""
+        # ⚑ NO ``name`` FIELD — it was not a keyspace leaf and is retired (D8b);
+        # ``agent.<agent>.label`` carries an agent's description now.
+        assert not hasattr(cfg, "name")
         assert cfg.run_args == []
         assert cfg.state == {}
         assert cfg.env == {}
@@ -34,12 +36,10 @@ class TestAgentConfigDefaults:
 
     def test_custom_values(self):
         cfg = AgentConfig(
-            name="Claude Code",
             run_args=["--verbose"],
             state={"access": "permissive"},
             env={"FOO": "bar"},
         )
-        assert cfg.name == "Claude Code"
         assert cfg.run_args == ["--verbose"]
         assert cfg.state == {"access": "permissive"}
         assert cfg.env == {"FOO": "bar"}

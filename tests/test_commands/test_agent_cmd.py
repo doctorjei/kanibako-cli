@@ -56,7 +56,6 @@ def agent_env(config_file, tmp_home):
 
     # Create a sample agent
     cfg = AgentConfig(
-        name="claude",
         run_args=["--no-helpers"],
         state={"model": "opus"},
         env={"EDITOR": "vim"},
@@ -125,7 +124,7 @@ class TestRunList:
         from kanibako.commands.agent_cmd import run_list
 
         adir = agents_dir(agent_env)
-        cfg2 = AgentConfig(name="aider", state={"model": "sonnet"})
+        cfg2 = AgentConfig(state={"model": "sonnet"})
         write_agent_config(agent_settings_path(adir, "aider"), cfg2)
 
         args = argparse.Namespace(quiet=False)
@@ -149,7 +148,9 @@ class TestRunInfo:
         rc = run_info(args)
         assert rc == 0
         out = capsys.readouterr().out
-        assert "claude" in out
+        # ⚑ THE `Label:` LINE IS THE RESOLVED `agent.claude.label` (D8b), not the file's
+        # retired `name` field — so the string is the claude plugin's own declaration.
+        assert "Label:" in out and "Claude Code" in out
         assert "opus" in out
         assert "EDITOR" in out
         assert "--no-helpers" in out
@@ -528,7 +529,7 @@ class TestSparseWrites:
             "model=opus",
             "env.FOO=bar",
             "secret_path.TOK=/p/token",
-            "name=Custom",
+            "label=Custom",
         ):
             assert run_set(
                 argparse.Namespace(agent_id="claude", key_value=kv)
@@ -537,7 +538,7 @@ class TestSparseWrites:
         data = load_doc(path)
         assert data["self"]["endpoint"] == "x"
         assert data["self"]["model"] == "opus"
-        assert data["self"]["name"] == "Custom"
+        assert data["self"]["label"] == "Custom"
         assert data["self"]["env"] == {"FOO": "bar"}
         # secret_path lands DIRECTLY under self.secret_path (self IS agent.<node>);
         # the whole self table is what _agent_partial re-roots into the cascade.
@@ -634,29 +635,37 @@ class TestSparseWrites:
         assert "No override for model" in capsys.readouterr().out
         assert path.read_text() == before
 
-    def test_reset_unset_name_now_honest(self, agent_env, capsys):
-        """ACCEPTED DELTA: the old reset always reported ``name`` cleared;
-        sparse reset honestly reports ``No override for name`` when name is not
-        in the file (consistent with the F7 honest-reset theme)."""
+    def test_reset_unset_key_now_honest(self, agent_env, capsys):
+        """ACCEPTED DELTA: the old reset always reported the key cleared; sparse reset
+        honestly reports ``No override for <key>`` when it is not in the file
+        (consistent with the F7 honest-reset theme).
+
+        ⚑ The subject was ``name`` until D8b retired it; ``label`` is the declared key
+        that replaced it, and an unset one answers the same way.
+        """
         from kanibako.commands.agent_cmd import run_reset
 
         _write_sparse(agent_env, "claude", {"self": {"endpoint": "x"}})
         rc = run_reset(argparse.Namespace(
-            agent_id="claude", key="name", all_keys=False, force=False,
+            agent_id="claude", key="label", all_keys=False, force=False,
         ))
         assert rc == 0
-        assert "No override for name" in capsys.readouterr().out
+        assert "No override for label" in capsys.readouterr().out
 
-    def test_reset_all_preserves_only_name(self, agent_env, capsys):
+    def test_reset_all_preserves_nothing(self, agent_env, capsys):
         """reset --all drops every override — state/env/secret_path/run_args AND
-        transform_settings — preserving ONLY name. transform_settings is NOT a
-        reset-all exception (it is a normal override once set)."""
+        transform_settings — preserving NOTHING. transform_settings is NOT a
+        reset-all exception (it is a normal override once set).
+
+        ⚑ IT USED TO PRESERVE ``name``, which was the file's non-key identity field; D8b
+        retired the field, so the exemption went with it and the root table goes whole.
+        """
         from kanibako.commands.agent_cmd import run_reset
         from kanibako.settings.config_io import load_doc
 
         path = _write_sparse(agent_env, "claude", {
             "self": {
-                "name": "Custom", "endpoint": "x", "model": "opus",
+                "label": "Custom", "endpoint": "x", "model": "opus",
                 "run_args": ["--a"],
                 # secret_path now lives DIRECTLY under self.secret_path.
                 "secret_path": {"TOK": "/p"},
@@ -668,13 +677,12 @@ class TestSparseWrites:
             agent_id="claude", key=None, all_keys=True, force=True,
         ))
         assert rc == 0
-        # env{FOO} + secret_path{TOK} + self{endpoint, model, run_args,
-        # transform_settings} = 6. Only name is preserved.
-        assert "Reset 6 override(s)." in capsys.readouterr().out
+        # env{FOO} + secret_path{TOK} + self{label, endpoint, model, run_args,
+        # transform_settings} = 7 ROOT keys, each counted once. Nothing is preserved.
+        assert "Reset 7 override(s)." in capsys.readouterr().out
 
-        data = load_doc(path)
-        # Only name survives under self; everything else (incl. transform_settings) gone.
-        assert data["self"] == {"name": "Custom"}
+        # Nothing survives, and the now-empty root table is pruned with it.
+        assert load_doc(path) == {}
 
     def test_reset_all_confirm_gates_destructive_write(self, agent_env, capsys):
         """Without --force, a declined confirm aborts and leaves the file
@@ -1343,7 +1351,7 @@ class TestAgentVerbKeyspaceGate:
         assert "keyspace is CLOSED" in err
 
     @pytest.mark.parametrize(
-        "kv", ("model=opus", "env.FOO=bar", "secret_path.TOK=/p", "name=Nav",
+        "kv", ("model=opus", "env.FOO=bar", "secret_path.TOK=/p", "label=Nav",
                "run_args=--a --b"),
     )
     def test_the_live_keys_still_write(self, kv, agent_env, capsys):
@@ -1477,12 +1485,13 @@ class TestAgentResetRoutesThroughTheOneSetter:
     the tail against the KNOWN-GOOD node (the on-disk store dir), which the shared engine
     structurally cannot do — it reads the node OUT of the key, so ``self.model`` parses as a node
     ``claude.self``.  Pinned by ``test_the_self_alias_is_still_refused_by_the_gate``.
-    ⚑ ``name`` is still removed at the file boundary and that is NOT a carve-out: it is a
-    FILE-identity field of ``AgentConfig``, absent from the keyspace, so the shared resetter has
-    no key to route.
+    ⚑ THERE IS NO SECOND ARM LEFT. ``name`` was removed at the file boundary because it was a
+    FILE-identity field of ``AgentConfig``, absent from the keyspace, so the shared resetter had
+    no key to route.  D8b retired the field (2026-09-15): every tail this verb accepts is now a
+    declared key, and every one of them takes the one route.
     """
 
-    _ROUTED = ("model", "run_args", "env.EDITOR", "secret_path.TOKEN")
+    _ROUTED = ("model", "run_args", "label", "env.EDITOR", "secret_path.TOKEN")
 
     @staticmethod
     def _spy(monkeypatch):
@@ -1522,19 +1531,25 @@ class TestAgentResetRoutesThroughTheOneSetter:
         assert kwargs["cascade_agent_name"] == "claude"
         assert kwargs["agents_root"] == agents_dir(agent_env)
 
-    def test_name_is_the_one_tail_the_verb_still_removes_itself(
+    def test_the_retired_identity_field_never_reaches_the_resetter(
         self, agent_env, monkeypatch, capsys,
     ):
-        """The IDENTITY residue: no key, so nothing for the shared resetter to route."""
+        """``name`` was the one tail this verb removed itself; D8b retired it.
+
+        It is refused at the noun's own §0 gate, so it never reaches the shared resetter
+        either — no key, no route, and no by-hand removal left behind to be the exception.
+        MUTATION PROOF: restore the ``IDENTITY_KEYS`` short-circuit in ``agent_key_reason``
+        and the gate passes, so this rc flips to 0.
+        """
         from kanibako.commands.agent_cmd import run_reset
 
         calls = self._spy(monkeypatch)
         rc = run_reset(argparse.Namespace(
             agent_id="claude", key="name", all_keys=False, force=False,
         ))
-        assert rc == 0, capsys.readouterr().err
+        assert rc == 1
         assert calls == []
-        assert "Cleared name set on the agent scope" in capsys.readouterr().out
+        assert "keyspace is CLOSED" in capsys.readouterr().err
 
     def test_the_reserved_any_agent_tier_is_refused(self, agent_env, capsys):
         """The guard the routing BUYS, and the one ``set`` has had since it routed.

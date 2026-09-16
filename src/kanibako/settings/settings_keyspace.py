@@ -220,9 +220,9 @@ DECLARED_WORKSET_CHANNEL_LEAVES: Final[frozenset[str]] = frozenset({
 #: ceiling. ⚑ The union is LAZY and this set is the half asked FIRST — see
 #: :class:`_EffectiveLeaves`, which is where the reason lives.
 DECLARED_AGENT_LEAVES: Final[frozenset[str]] = frozenset({
-    # §2d — the agent's human-readable DESCRIPTION. ⚑ Not ``meta.agent.<agent>.name``
-    # (the store dir, RO) and not the agent FILE's ``name`` identity field
-    # (``agent_config.IDENTITY_KEYS``), which is not a keyspace leaf at all.
+    # §2d — the agent's human-readable DESCRIPTION, and the ONE carrier of it since
+    # D8b retired the agent file's non-key ``name`` field (2026-09-15).
+    # ⚑ Not ``meta.agent.<agent>.name``, which is the STORE DIR (RO).
     "label",
     "access",              # §2d (the permission TIER — SUPERSEDES ``auto_approve``)
     "allow_helpers",       # §2d
@@ -1199,7 +1199,8 @@ class _EffectiveLeaves(Collection[str]):
     DISCRIMINATOR to judge per-agent with, where the partition is not expressible:
     the RO ``meta.box.agent.*`` mirror, whose agent is a runtime fact, absent from the
     key.  (``config_keys.agent_file_identity_only`` was the other until 2026-09-02,
-    when its two call sites started passing the NODE they already held.)
+    when its two call sites started passing the NODE they already held; it was DELETED
+    on 2026-09-15 with the agent file's non-key ``name`` field.)
     Narrowing it to core alone would refuse a leaf that reads back a real value,
     which is a capability removal no ruling asks for. ⚑ Its being the ONLY remaining
     union is why it is worth a name: a third caller wants an agent, not this.
@@ -1237,8 +1238,9 @@ def effective_agent_leaves(
 
     THE constructor for :class:`_EffectiveLeaves`.  Its second consumer,
     ``config_keys._PERSONA_STATE_LEAVES``, was DELETED on 2026-09-02 when
-    :func:`agent_file_identity_only` began taking a node, leaving :func:`key_class`'s
-    ``meta.box.agent`` mirror as the only one.
+    ``agent_file_identity_only`` began taking a node, leaving :func:`key_class`'s
+    ``meta.box.agent`` mirror as the only one.  (That function is itself gone since
+    2026-09-15; the mirror is the last union reader either way.)
     🛑 NOT THE ANSWER FOR A KEY THAT NAMES AN AGENT — that is
     :func:`agent_leaf_is_declared`. Reach for this only where the key carries no
     discriminator at all; the class docstring says why those two do not.

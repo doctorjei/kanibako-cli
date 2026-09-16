@@ -333,7 +333,9 @@ def _ensure_initialized() -> None:
 
     general_toml = agent_settings_path(agents_path, "general")
     if not general_toml.exists():
-        save_agent_file(general_toml, AgentConfig(name="Shell"))
+        # ⚑ EMPTY, and it has to be: the file holds USER INTENT only, and the agent's
+        # description is `agent.<agent>.label` (spec §2d), not a field of this file.
+        save_agent_file(general_toml, AgentConfig())
 
     target_names = list(discover_targets())
     for target_name, cls in discover_targets().items():
