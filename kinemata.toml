@@ -1533,3 +1533,8 @@ note = "a registry's declared identifiers against what the code prints"
 command = "kinemata claims"
 where = [".github/workflows/test.yml"]
 note = "documentation claims, and this inventory"
+
+[[gate]]
+command = "kinemata shape"
+where = [".github/workflows/test.yml"]
+note = "the manifest's shape against itself"

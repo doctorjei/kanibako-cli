@@ -127,7 +127,7 @@ jobs:
       # only the commands already listed here, so the inventory agreed with
       # itself. A section kind added without BOTH its command below and its
       # `[[gate]]` block is silent by construction -- keep this list and
-      # `kinemata.toml`'s gate blocks together. `shape` still has no gate block.
+      # `kinemata.toml`'s gate blocks together.
       - run: kinemata check
       - run: kinemata parity
       - run: kinemata shape
