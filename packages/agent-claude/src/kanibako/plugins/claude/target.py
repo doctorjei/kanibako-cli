@@ -509,13 +509,16 @@ class ClaudeTarget(Target):
         ``opus``).  Seeding that same value into the file would pin every
         install ABOVE the floor, so a later change to the default could never
         reach an existing box.
+
+        ⚑ AND SO IS THE REST OF IT: the ``name="Claude Code"`` this wrote is gone
+        (2026-09-15).  It was not a settings key, so it had no place in a settings
+        file at all; the description is declared as ``label`` in
+        ``claude-defaults.yaml``'s ``behavior:`` floor — ``agent.claude.label``,
+        spec §2d — where the same cascade rule governs it as every other key.
         """
         from kanibako.settings.agent_config import AgentConfig as _AgentConfig
 
-        return _AgentConfig(
-            name="Claude Code",
-            state={},
-        )
+        return _AgentConfig(state={})
 
     def default_common(self) -> dict[str, BindArm]:
         """Declare claude's AGENT-scope common dirs (plugins + cache).

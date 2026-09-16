@@ -703,7 +703,7 @@ class TestAgentConfigFirstUse:
             # Return a real AgentConfig so the (now YAML) write path can
             # serialize it — a bare MagicMock is not representable.
             from kanibako.settings.agent_config import AgentConfig
-            m.target.generate_agent_config.return_value = AgentConfig(name="claude")
+            m.target.generate_agent_config.return_value = AgentConfig()
             # The derived agent-config path (std.agents / "<id>.yaml") is a
             # MagicMock here; stub the writer so it never coerces that mock to a
             # literal "MagicMock" path and mkdir's it into the CWD.

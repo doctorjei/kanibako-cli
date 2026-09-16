@@ -36,10 +36,20 @@ _TARGETS = {
 
 #: The SHIPPED floor, key → default, in declaration order.  Changing one of these is a
 #: change to what every box of that agent runs at when the user has set nothing.
+#: ⚑ ``label`` LEADS EVERY ROW SINCE D8b (2026-09-15).  The agent's human-readable
+#: description is a declared §2d key now, and its floor is the plugin's own declaration —
+#: it is what ``kanibako agent info`` prints.  Drop a plugin's row and that agent reads the
+#: all-agents backstop, ``Agent Description (None)``, which is the display regression
+#: shipping these three rows exists to prevent.
 _SHIPPED: dict[str, list[tuple[str, str]]] = {
-    "claude": [("model", ""), ("endpoint", ""), ("transform", "tweakcc")],
-    "codex": [("model", ""), ("endpoint", "")],
-    "goose": [("provider", ""), ("model", ""), ("endpoint", "")],
+    "claude": [
+        ("label", "Claude Code"), ("model", ""), ("endpoint", ""),
+        ("transform", "tweakcc"),
+    ],
+    "codex": [("label", "Codex CLI"), ("model", ""), ("endpoint", "")],
+    "goose": [
+        ("label", "Goose Harness"), ("provider", ""), ("model", ""), ("endpoint", ""),
+    ],
 }
 
 

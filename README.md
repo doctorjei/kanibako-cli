@@ -748,11 +748,13 @@ support `shell.d/` on the next launch.
 Each agent gets a YAML configuration file inside its per-agent store directory
 at `$XDG_DATA_HOME/kanibako/agents/{agent}/agent.yaml`.  The file is
 generated automatically on first use (via the target plugin's
-`generate_agent_config()` method) and can be edited afterwards.
+`generate_agent_config()` method) and can be edited afterwards.  It is generated
+EMPTY: it holds what you set and nothing else, and every default comes from the
+cascade under it.
 
 ```yaml
 self:
-  name: "Claude Code"
+  label: "My Claude"        # the agent's description; unset reads the plugin's own
   run_args: ["--verbose"]   # extra CLI args prepended on every launch (omit if none)
   model: "opus"             # agent-specific state knobs (e.g. --model for Claude)
   access: "permissive"
@@ -766,7 +768,8 @@ self:
 **Sections:**
 - `self:` -- the file's root table, which stands for the agent whose file it is
   (`agent.<agent>`); it is a spelling of this file only and has no CLI form. It
-  holds identity and defaults (`name`, `run_args`) plus runtime state knobs
+  holds the agent's description (`label`) and its launch defaults (`run_args`)
+  plus runtime state knobs
   translated by the target plugin into CLI args and env vars (e.g. Claude maps
   `model` -> `--model`). Effective state resolves across the settings cascade
   `system < agent.<agent> < workset < box` with the target's declared defaults

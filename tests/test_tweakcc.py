@@ -207,7 +207,7 @@ self:
         )
 
         cfg = AgentConfig(
-            name="Test", transform_settings={"enabled": True, "config": "/path"},
+            transform_settings={"enabled": True, "config": "/path"},
         )
         path = tmp_path / "agent.yaml"
         write_agent_config(path, cfg)
@@ -224,7 +224,7 @@ self:
             save as write_agent_config,
         )
 
-        cfg = AgentConfig(name="Test")
+        cfg = AgentConfig()
         path = tmp_path / "agent.yaml"
         write_agent_config(path, cfg)
         content = path.read_text()
@@ -263,7 +263,7 @@ class TestAgentConfigTransformKey:
         )
 
         path = tmp_path / "agent.yaml"
-        write_agent_config(path, AgentConfig(name="Test", state={"transform": "tweakcc"}))
+        write_agent_config(path, AgentConfig(state={"transform": "tweakcc"}))
         assert load_agent_config(path).state["transform"] == "tweakcc"
 
     def test_unset_transform_is_absent_not_empty(self, tmp_path):
@@ -274,7 +274,7 @@ class TestAgentConfigTransformKey:
         )
 
         path = tmp_path / "agent.yaml"
-        write_agent_config(path, AgentConfig(name="Test"))
+        write_agent_config(path, AgentConfig())
         assert "transform" not in path.read_text()
         assert "transform" not in load_agent_config(path).state
 

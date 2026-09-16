@@ -1332,12 +1332,12 @@ keys:
   # plugin_contributed): spec §2d states agent.claude.label | "Claude Code",
   # agent.codex.label | "Codex CLI" and agent.goose.label | "Goose Harness", and each
   # belongs in that plugin's `behavior:` floor, reaching the keyspace through
-  # agent.<agent>.<key>. ⚑ NOT SHIPPED YET — until a plugin declares one, its agent
-  # reads this fallback. The pseudo-agent `agent.shell.label | "Box Shell"` has no
-  # plugin and no carrier either.
+  # agent.<agent>.<key>. ⚑ ALL THREE SHIP since 2026-09-15 (D8b); an agent whose plugin
+  # declares none reads this fallback. The pseudo-agent `agent.shell.label | "Box Shell"`
+  # has no plugin and no carrier — that is D2, a `shell` node the code does not have.
   # ⚑ NOT `meta.agent.<agent>.name`, which is the STORE DIR (a machine identity, RO).
-  # ⚑ The agent FILE still carries an identity field spelled `name`
-  # (agent_config.IDENTITY_KEYS); it is NOT a keyspace leaf and it is untouched here.
+  # ⚑ The agent FILE's non-key `name` field is GONE (D8b): `label` is the ONLY carrier of
+  # an agent's description now, and a stored `name:` refuses the launch by name.
   agent.default.label:
     scope: agent
     type: str

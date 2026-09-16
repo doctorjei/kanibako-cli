@@ -330,9 +330,11 @@ class TestGenerateAgentConfig:
             def writeback_credentials(self, home):
                 pass
 
+        # ⚑ EMPTY (D8b): the base used to return ``AgentConfig(name=self.display_name)``,
+        # and ``name`` was not a settings key.  A plugin declares its description as a
+        # ``label`` row in its defaults file instead — ``agent.<agent>.label``, spec §2d.
         t = SimpleTarget()
         cfg = t.generate_agent_config()
-        assert cfg.name == "Simple Agent"
         assert cfg.run_args == []
         assert cfg.state == {}
 

@@ -442,8 +442,23 @@ class TestGenerateAgentConfig:
         # (setting_descriptors -> EMPTY, i.e. codex's own built-in default),
         # never from a seed.
         config = CodexTarget().generate_agent_config()
-        assert config.name == "OpenAI Codex CLI"
         assert config.state == {}
+
+    def test_the_description_is_a_DECLARED_KEY_not_a_file_field(self):
+        """D8b: ``AgentConfig`` has no ``name``; the description is ``agent.codex.label``.
+
+        ⚑ NON-VACUITY: the string is the one spec §2d states, so a plugin that stopped
+        declaring it would read the all-agents ``Agent Description (None)`` backstop.
+        """
+        import dataclasses
+
+        from kanibako.settings.agent_config import AgentConfig
+
+        assert "name" not in {f.name for f in dataclasses.fields(AgentConfig)}
+        label = next(
+            d for d in CodexTarget().setting_descriptors() if d.key == "label"
+        )
+        assert label.default == "Codex CLI"
 
     def test_model_default_comes_from_the_descriptor_floor(self):
         # ... and that floor imposes nothing: spec §2d ships
@@ -465,7 +480,9 @@ class TestSettingDescriptors:
         # model + endpoint (persona: the alternate model-provider base-URL, a
         # first-class settable/cascade-resolved key; delivered via config.toml, not
         # an env — see the descriptor persona.endpoint_delivery: config_file).
-        assert keys == ["model", "endpoint"]
+        # ⚑ ``label`` LEADS THE TABLE (D8b): the agent's description is a declared §2d
+        # key now, and the file order is the order ``config`` lists the agent's settings in.
+        assert keys == ["label", "model", "endpoint"]
         endpoint = next(s for s in settings if s.key == "endpoint")
         assert endpoint.default == ""
         # ``access`` (R-41's permission TIER) is NOT a declared TargetSetting —

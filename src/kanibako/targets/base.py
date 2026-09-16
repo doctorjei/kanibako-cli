@@ -807,10 +807,18 @@ class Target(ABC):
         return []
 
     def generate_agent_config(self) -> AgentConfig:
-        """Return a default AgentConfig for this target."""
+        """Return a default AgentConfig for this target.
+
+        ⚑ EMPTY by default, and that is the FILE-PURITY invariant: the per-agent settings
+        file holds USER INTENT only, so a freshly generated one has nothing in it.  It used
+        to carry ``name=self.display_name``; that field was not a settings key and is gone
+        (2026-09-15).  Declare your agent's description as a ``label`` row in your defaults
+        file's ``behavior:`` section — ``agent.<agent>.label``, spec §2d — which is what
+        ``kanibako agent info`` prints.
+        """
         from kanibako.settings.agent_config import AgentConfig as _AgentConfig
 
-        return _AgentConfig(name=self.display_name)
+        return _AgentConfig()
 
     @property
     def default_entrypoint(self) -> str | None:

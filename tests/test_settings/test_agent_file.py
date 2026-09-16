@@ -47,7 +47,6 @@ class TestSecretPathSection:
         cfg_path = self._node_file(tmp_path)
         cfg_path.write_text(
             'self:\n'
-            '  name: "persona"\n'
             '  secret_path:\n'
             '    ANTHROPIC_AUTH_TOKEN: "~/.config/claude/nav/token"\n'
         )
@@ -62,7 +61,7 @@ class TestSecretPathSection:
 
     def test_load_missing_secret_path_section(self, tmp_path):
         cfg_path = self._node_file(tmp_path)
-        cfg_path.write_text('self:\n  name: "x"\n')
+        cfg_path.write_text('self:\n  model: "opus"\n')
         assert load(cfg_path).secret_path == {}
 
     def test_load_present_null_secret_path_is_kept_as_none(self, tmp_path):
@@ -78,7 +77,6 @@ class TestSecretPathSection:
         cfg_path = self._node_file(tmp_path)
         cfg_path.write_text(
             'self:\n'
-            '  name: "persona"\n'
             '  secret_path:\n'
             '    ANTHROPIC_AUTH_TOKEN: null\n'
         )
@@ -90,7 +88,6 @@ class TestSecretPathSection:
     def test_round_trip_secret_path(self, tmp_path):
         path = self._node_file(tmp_path)
         original = AgentConfig(
-            name="persona",
             secret_path={"ANTHROPIC_AUTH_TOKEN": "/secure/token"},
         )
         save(path, original)
@@ -109,7 +106,6 @@ class TestSecretPathSection:
         # non-empty, so it is NOT dropped as an empty category).
         path = self._node_file(tmp_path)
         original = AgentConfig(
-            name="persona",
             secret_path={"ANTHROPIC_AUTH_TOKEN": None},
         )
         save(path, original)
@@ -122,14 +118,13 @@ class TestSecretPathSection:
 class TestLoad:
     def test_nonexistent_file_returns_defaults(self, tmp_path):
         cfg = load(tmp_path / "missing.yaml")
-        assert cfg.name == ""
         assert cfg.run_args == []
+        assert cfg.state == {}
 
     def test_load_all_sections(self, tmp_path):
         cfg_path = tmp_path / "test.yaml"
         cfg_path.write_text(
             'self:\n'
-            '  name: "Claude Code"\n'
             '  run_args: ["--verbose", "--debug"]\n'
             '  model: "opus"\n'
             '  access: "permissive"\n'
@@ -137,7 +132,6 @@ class TestLoad:
             '    MY_VAR: "hello"\n'
         )
         cfg = load(cfg_path)
-        assert cfg.name == "Claude Code"
         assert cfg.run_args == ["--verbose", "--debug"]
         assert cfg.state == {"model": "opus", "access": "permissive"}
         assert cfg.env == {"MY_VAR": "hello"}
@@ -153,7 +147,6 @@ class TestLoad:
         cfg_path = tmp_path / "test.yaml"
         cfg_path.write_text(
             'self:\n'
-            '  name: "persona"\n'
             '  model: null\n'
         )
         cfg = load(cfg_path)
@@ -165,11 +158,10 @@ class TestLoad:
         cfg_path = tmp_path / "test.yaml"
         cfg_path.write_text(
             'self:\n'
-            '  name: "Shell"\n'
+            '  run_args: ["--verbose"]\n'
         )
         cfg = load(cfg_path)
-        assert cfg.name == "Shell"
-        assert cfg.run_args == []
+        assert cfg.run_args == ["--verbose"]
         assert cfg.state == {}
         assert cfg.env == {}
 
@@ -181,12 +173,11 @@ class TestLoad:
             '  access: "safe"\n'
         )
         cfg = load(cfg_path)
-        assert cfg.name == ""
         assert cfg.state == {"access": "safe"}
 
     def test_load_missing_agent_section(self, tmp_path):
         # A root table holding only env (no identity/state keys): env still
-        # loads, name/state stay empty.
+        # loads, state stays empty.
         cfg_path = tmp_path / "test.yaml"
         cfg_path.write_text(
             'self:\n'
@@ -194,7 +185,6 @@ class TestLoad:
             '    FOO: "bar"\n'
         )
         cfg = load(cfg_path)
-        assert cfg.name == ""
         assert cfg.state == {}
         assert cfg.env == {"FOO": "bar"}
 
@@ -202,7 +192,8 @@ class TestLoad:
         cfg_path = tmp_path / "test.yaml"
         cfg_path.write_text("")
         cfg = load(cfg_path)
-        assert cfg.name == ""
+        assert cfg.run_args == []
+        assert cfg.state == {}
 
     def test_a_stored_run_args_STRING_is_split_not_discarded(self, tmp_path):
         """REPLACES ``test_run_args_must_be_list``, which pinned the DEFECT.
@@ -246,7 +237,6 @@ class TestSave:
     def test_write_with_values(self, tmp_path):
         path = tmp_path / "test.yaml"
         cfg = AgentConfig(
-            name="Claude Code",
             run_args=["--verbose"],
             state={"access": "permissive"},
             env={"FOO": "bar"},
@@ -254,7 +244,6 @@ class TestSave:
         save(path, cfg)
 
         loaded = load(path)
-        assert loaded.name == "Claude Code"
         assert loaded.run_args == ["--verbose"]
         assert loaded.state == {"access": "permissive"}
         assert loaded.env == {"FOO": "bar"}
@@ -313,7 +302,6 @@ class TestRoundTrip:
     def test_write_then_load(self, tmp_path):
         path = tmp_path / "test.yaml"
         original = AgentConfig(
-            name="Claude Code",
             run_args=["--verbose", "--debug"],
             state={"model": "opus", "access": "permissive"},
             env={"MY_VAR": "hello"},
@@ -321,7 +309,6 @@ class TestRoundTrip:
         save(path, original)
         loaded = load(path)
 
-        assert loaded.name == original.name
         assert loaded.run_args == original.run_args
         assert loaded.state == original.state
         assert loaded.env == original.env
@@ -330,7 +317,7 @@ class TestRoundTrip:
         # A deliberately-null state scalar (e.g. a persona's ``model: null``)
         # survives save→load as a real ``None``, not the string "None".
         path = tmp_path / "test.yaml"
-        original = AgentConfig(name="persona", state={"model": None})
+        original = AgentConfig(state={"model": None})
         save(path, original)
         content = path.read_text()
         assert "model:" in content
@@ -343,7 +330,6 @@ class TestRoundTrip:
         save(path, original)
         loaded = load(path)
 
-        assert loaded.name == ""
         assert loaded.run_args == []
         assert loaded.state == {}
         assert loaded.env == {}
@@ -353,7 +339,6 @@ class TestRoundTrip:
         # with no separate state section, and load back intact.
         path = tmp_path / "test.yaml"
         original = AgentConfig(
-            name="Claude Code",
             run_args=["--verbose"],
             state={"model": "sonnet"},
         )
@@ -361,12 +346,11 @@ class TestRoundTrip:
         content = path.read_text()
         assert 'state:' not in content
         assert content.count("self:") == 1
-        assert 'name: Claude Code' in content
+        assert 'run_args:' in content
         assert 'model: sonnet' in content
 
         loaded = load(path)
         assert loaded.state == {"model": "sonnet"}
-        assert loaded.name == "Claude Code"
         assert loaded.run_args == ["--verbose"]
 
     def test_round_trip_multiple_run_args(self, tmp_path):
@@ -390,7 +374,6 @@ class TestCategoryTablesCarryThrough:
 
     _FLAT_YAML = (
         "self:\n"
-        "  name: Nav\n"
         "  model: gemma4\n"
         "  bindings:\n"
         "    ro:\n"
@@ -458,14 +441,14 @@ class TestCategoryTablesCarryThrough:
         assert "caches" not in load_doc(path)["self"]
 
     def test_schema_owned_dict_keys_never_captured(self, tmp_path):
-        # Malformed dict-valued identity keys must not ride category_tables (they
-        # would clobber the emitted string ``name`` on the next write) — and they are
-        # NOT refused as nested sub-tables either: a mistyped scalar is not a nesting.
+        # A malformed dict-valued IDENTITY key must not ride category_tables (it would
+        # clobber the emitted value on the next write) — and it is NOT refused as a nested
+        # sub-table either: a mistyped scalar is not a nesting.
+        # ⚑ ``run_args`` IS THE WHOLE SET NOW: ``name`` was the other identity key, and with
+        # it retired (D8b) a dict-valued ``name:`` IS a nested sub-table and DOES refuse.
         path = tmp_path / "agent.yaml"
         path.write_text(
             "self:\n"
-            "  name:\n"
-            "    weird: 1\n"
             "  run_args:\n"
             "    weird: 2\n"
         )
@@ -635,7 +618,7 @@ class TestTableValuedKeysTakeNoScalar:
         )
         assert msg is not None and "self.bindings.ro" in msg
 
-    @pytest.mark.parametrize("tail", ("model", "name", "env.FOO", "secret_path.TOK"))
+    @pytest.mark.parametrize("tail", ("model", "label", "env.FOO", "secret_path.TOK"))
     def test_the_scalar_tails_are_not_refused(self, tail, tmp_path):
         from kanibako.settings.agent_file import table_value_error
 
@@ -768,9 +751,9 @@ class TestLoadSurvivesAMalformedTable:
     @pytest.mark.parametrize("key", ("transform_settings", "env", "secret_path"))
     def test_a_scalar_at_a_table_key_does_not_raise(self, key, tmp_path):
         path = tmp_path / "agent.yaml"
-        path.write_text(f"self:\n  name: Nav\n  {key}: oops\n")
+        path.write_text(f"self:\n  model: opus\n  {key}: oops\n")
         cfg = load(path)          # must not raise
-        assert cfg.name == "Nav"
+        assert cfg.state == {"model": "opus"}
         assert getattr(cfg, key) == {}
         # ...and the garbage does NOT ride into the launch as an agent-state knob.
         assert key not in cfg.state
@@ -779,13 +762,12 @@ class TestLoadSurvivesAMalformedTable:
 class TestClearOverrides:
     """``agent reset --all``'s read-modify-write, now owned by the boundary."""
 
-    def test_preserves_name_and_counts(self, tmp_path):
+    def test_clears_every_root_key_and_counts(self, tmp_path):
         from kanibako.settings.config_io import load_doc
 
         path = tmp_path / "agent.yaml"
         path.write_text(
             "self:\n"
-            "  name: Nav\n"
             "  model: opus\n"
             "  access: full\n"
             "  secret_path:\n"
@@ -802,8 +784,10 @@ class TestClearOverrides:
         # each counting once — the rule the docstring states, with nothing special-cased.
         # ⚑ AND THE ``node`` ARGUMENT IS GONE WITH THAT ARM (S3): the count no longer has
         # anything to ask about which node's file this is.
+        # ⚑ NOTHING IS PRESERVED (D8b). ``name`` was the one exempt key and it was not a key
+        # at all; with it retired the root goes whole, and the root table goes with it.
         assert clear_overrides(path) == 4
-        assert load_doc(path) == {"self": {"name": "Nav"}}
+        assert load_doc(path) == {}
 
     def test_prunes_the_root_when_nothing_survives(self, tmp_path):
         from kanibako.settings.config_io import load_doc
@@ -814,8 +798,11 @@ class TestClearOverrides:
         assert load_doc(path) == {}
 
     def test_no_overrides_is_zero(self, tmp_path):
+        # ⚑ THE SHAPE :func:`save` WRITES FOR A FRESH AGENT since D8b — an empty root table.
+        # It used to hold the one unconditional ``name`` line, which is why this case named
+        # that key before.
         path = tmp_path / "agent.yaml"
-        path.write_text("self:\n  name: Nav\n")
+        path.write_text("self: {}\n")
         assert clear_overrides(path) == 0
 
 
@@ -977,10 +964,13 @@ class TestTheForwardCompatPassthroughIsClosed:
         # ⚑ WHY THE REFUSAL IS AT THE LAUNCH BOUNDARY AND NOT IN ``load``: a poisoned file
         # must still be clearable. ``clear_overrides`` reads raw YAML and never builds a
         # level, so this is the escape hatch, pinned rather than assumed.
+        # ⚑ ``name`` IS ONE OF THE UNDECLARED ENTRIES NOW (D8b), and the case is the live one:
+        # every file `kanibako setup` ever wrote carries that line, so this IS the poisoned
+        # file a user meets. It still SHOWS, and it still clears.
         path = tmp_path / "agent.yaml"
         path.write_text("self:\n  name: Nav\n  junk: x\n")
-        assert load(path).state == {"junk": "x"}   # the SHOW verbs still see it
-        assert clear_overrides(path) == 1
+        assert load(path).state == {"name": "Nav", "junk": "x"}   # the SHOW verbs see it
+        assert clear_overrides(path) == 2
 
 
 class TestFileSpelling:
@@ -1008,7 +998,7 @@ class TestLoadSharesTheRefusal:
         path = tmp_path / "agent.yaml"
         path.write_text(
             "self:\n"
-            "  name: Nav\n"
+            "  model: opus\n"
             "  claude:\n"
             "    env:\n"
             "      EDITOR: vim\n"
@@ -1024,7 +1014,7 @@ class TestLoadSharesTheRefusal:
         path = tmp_path / "agent.yaml"
         path.write_text(
             "self:\n"
-            "  name: Nav\n"
+            "  model: opus\n"
             "  env:\n"
             "    EDITOR: vim\n"
             "  bindings:\n"

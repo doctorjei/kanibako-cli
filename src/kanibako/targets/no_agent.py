@@ -36,6 +36,8 @@ class NoAgentTarget(Target):
         pass
 
     def generate_agent_config(self) -> AgentConfig:
+        # ⚑ EMPTY — the file holds user intent only; the description is
+        # ``agent.<agent>.label`` (spec §2d), not a field of this file.
         from kanibako.settings.agent_config import AgentConfig as _AgentConfig
 
-        return _AgentConfig(name="Shell")
+        return _AgentConfig()

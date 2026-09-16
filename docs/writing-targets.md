@@ -61,7 +61,7 @@ Optional overrides (sensible defaults provided by the base class):
 | `default_seeds()` | `{}` | Declare default `agent.<agent>.seeded` copy-once seeds |
 | `default_envs()` | `{}` | Declare default `agent.<agent>.env.<VAR>` environment variables |
 | `setting_descriptors()` | `[]` | Advertise runtime settings (key, default, choices) |
-| `generate_agent_config()` | `AgentConfig(name=display_name)` | Agent-specific config defaults |
+| `generate_agent_config()` | `AgentConfig()` (empty) | Agent-specific config defaults |
 | `default_entrypoint` | `None` (bash) | The box entrypoint binary name |
 | `should_retry_new_session(output)` | `False` | Detect a failed `--continue` and retry fresh |
 | `config_dir_name` | `.{name}` | The agent's config dir under home |
@@ -217,6 +217,12 @@ descriptor:
 # exactly this table, in file order.  `default:` is mandatory; an empty floor is
 # written "" rather than omitted.
 behavior:
+  # The agent's human-readable DESCRIPTION -- `agent.codex.label` (spec §2d), and
+  # what `kanibako agent info` prints.  Declare one or your agent reads the
+  # all-agents fallback, `Agent Description (None)`.
+  - key: label
+    description: "Human-readable description of this agent"
+    default: "Codex CLI"
   # 🛑 NO OPINIONATED DEFAULT.  kanibako imposes no model on any shipped agent —
   # an empty floor resolves to "", which the launch's argv/env assembly omits,
   # so codex falls back to its OWN built-in default until a user sets one
@@ -496,8 +502,23 @@ fields out of an auth file, or merge an OAuth blob).
 
 ### `generate_agent_config() -> AgentConfig`
 
-Return a default `AgentConfig` for this target (agent-specific state knobs,
-etc.).  The base returns `AgentConfig(name=self.display_name)`.
+Return a default `AgentConfig` for this target.  The base returns an EMPTY one,
+and so should yours: the per-agent settings file holds USER INTENT only, so a
+default written into it pins every install above the cascade floor and a later
+change to that default can never reach an existing box.
+
+```python
+def generate_agent_config(self) -> AgentConfig:
+    return AgentConfig(state={})
+```
+
+⚑ `AgentConfig` has **no `name` field**.  It carried one until v1.8.0; `name` was
+not a settings key, and passing it now raises `TypeError`.  Your agent's
+human-readable description is the declared key `agent.<agent>.label`, declared as
+a `label` row in your defaults file's `behavior:` section (see
+`setting_descriptors()` above) — that is what `kanibako agent info` prints, and a
+user can override it at any scope.  `display_name` is unchanged and is the harness's own
+name, not a settings value.
 
 ## Discovery and registration
 
