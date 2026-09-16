@@ -439,16 +439,21 @@ def is_terminal_category_key(key: str) -> bool:
 # meta.* — the RO families (spec §0, §2c, §2d)
 # ---------------------------------------------------------------------------
 
-# The L0.2 group (spec §1A). ⚑ `config_file` is the ONE member that is not a
-# treewalk result — its `origin` is `bootstrap`, an `$XDG_CONFIG_HOME` read with
-# the `~/.config` fallback — so "the runtime treewalk values" is no longer a
-# description of the whole family; the manifest row carries what the key holds.
-# ⚑ It has NO PRODUCER yet, deliberately: under the closed keyspace (spec §0) the
-# DECLARATION is what makes the name legal, and the call sites that will read it
-# are their own seam. Declared-but-unproduced is a state the manifest already
-# describes, as it does for `meta.box.{container_name,helper_num}` below.
+# The L0.2 group (spec §1A). The FLAT leaves are the runtime treewalk results;
+# the BOOTSTRAP locators live one level down, under the `user` and `admin`
+# sub-namespaces — `origin: bootstrap`, found before anything is configurable,
+# so a user may NOT move them (each manifest row carries what its key holds).
+# ⚑ All three locator keys are DECLARED-BUT-UNPRODUCED: under the closed
+# keyspace (spec §0) the DECLARATION is what makes the name legal, and the call
+# sites that will read them are their own seam. Declared-but-unproduced is a
+# state the manifest already describes, as it does for
+# `meta.box.{container_name,helper_num}` below.
 DECLARED_META_RUNTIME_LEAVES: Final[frozenset[str]] = frozenset({
-    "ws_root", "ws_name", "project_type", "config_file",
+    "ws_root", "ws_name", "project_type",
+})
+DECLARED_META_RUNTIME_USER_LEAVES: Final[frozenset[str]] = frozenset({"config"})
+DECLARED_META_RUNTIME_ADMIN_LEAVES: Final[frozenset[str]] = frozenset({
+    "config", "settings",
 })
 # The COLLAPSE outputs (spec §1A): folded AFTER every scope resolves, not at the L0.2
 # treewalk above — which is why they are their OWN group. ⚑ ALL FOUR ARE PRODUCED,
@@ -866,9 +871,27 @@ def _meta_reason(
             return _namespace("'meta.runtime' is a namespace, not a key")
         if len(tail) == 1 and tail[0] in DECLARED_META_RUNTIME_LEAVES:
             return _KEY
+        if len(tail) == 1 and tail[0] in ("user", "admin"):
+            return _namespace(f"'meta.runtime.{tail[0]}' is a namespace, not a key")
+        if len(tail) == 2 and tail[0] == "user":
+            if tail[1] in DECLARED_META_RUNTIME_USER_LEAVES:
+                return _KEY
+            return _undeclared(
+                f"'meta.runtime.user.{tail[1]}' is not a declared key (declared: "
+                f"{', '.join(sorted(DECLARED_META_RUNTIME_USER_LEAVES))})"
+            )
+        if len(tail) == 2 and tail[0] == "admin":
+            if tail[1] in DECLARED_META_RUNTIME_ADMIN_LEAVES:
+                return _KEY
+            return _undeclared(
+                f"'meta.runtime.admin.{tail[1]}' is not a declared key (declared: "
+                f"{', '.join(sorted(DECLARED_META_RUNTIME_ADMIN_LEAVES))})"
+            )
         return _undeclared(
             f"'meta.runtime.{'.'.join(tail)}' is not a declared key (declared: "
-            f"{', '.join(sorted(DECLARED_META_RUNTIME_LEAVES))})"
+            f"{', '.join(sorted(DECLARED_META_RUNTIME_LEAVES))}, "
+            f"{', '.join(sorted(f'user.{leaf}' for leaf in DECLARED_META_RUNTIME_USER_LEAVES))}, "
+            f"{', '.join(sorted(f'admin.{leaf}' for leaf in DECLARED_META_RUNTIME_ADMIN_LEAVES))})"
         )
 
     if group == "assembly":
