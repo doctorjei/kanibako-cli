@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from kanibako.channels.helpers import HELPER_SCRIPTS_RELPATH
+from kanibako.channels.helpers import HELPER_SCRIPTS_RELPATH, SPAWN_CONFIG_FILENAME
 from kanibako.runtime.container import ContainerRuntime
 from kanibako.log import get_logger
 from kanibako.settings.settings_resolve import BOX_PINNED_STATE_RELPATH, GUEST_HOME
@@ -611,8 +611,9 @@ def _build_helper_mounts(ctx: HelperContext, helper_num: int,
     if all_link.exists():
         mounts.append(Mount(all_link, f"{GUEST_HOME}/all", "Z,U"))
 
-    # Spawn config (read-only)
-    spawn_toml = helper_root / "spawn.yaml"
+    # Spawn config (read-only). ⚑ The guest dest must spell the same filename:
+    # in-box it is read as ``Path.home() / SPAWN_CONFIG_FILENAME``.
+    spawn_toml = helper_root / SPAWN_CONFIG_FILENAME
     if spawn_toml.is_file():
         mounts.append(Mount(spawn_toml, f"{GUEST_HOME}/spawn.yaml", "ro"))
 

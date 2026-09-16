@@ -45,6 +45,26 @@ def parent_of(agent: int, breadth: int) -> int | None:
 DEFAULT_DEPTH = 4
 DEFAULT_BREADTH = 4
 
+#: The spawn-budget filename, shared by the RO configs and the host default —
+#: one spelling, not three. The file's DOCUMENT shape is the same everywhere
+#: (a ``spawn:`` section with ``depth``/``breadth``); only the DIRECTORY says
+#: which tier it is.
+SPAWN_CONFIG_FILENAME = "spawn.yaml"
+
+
+def host_spawn_config_path(config_home: Path) -> Path:
+    """The host-wide spawn-budget file: ``<config_home>/kanibako/spawn.yaml``.
+
+    A DEDICATED file — the Layer-1 file carries ``config.*`` and nothing else
+    ([R158]), and its reader REFUSES anything more, so a ``spawn:`` section
+    there is refused by the settings path and must not be read here either.
+    Absent ⇒ no host tier (``read_spawn_config`` returns ``None``); the file
+    is opt-in, created by hand, never by ``init``.
+    """
+    from kanibako.settings.bootstrap import KANIBAKO_PATH
+
+    return config_home / KANIBAKO_PATH / SPAWN_CONFIG_FILENAME
+
 
 @dataclass(frozen=True)
 class SpawnBudget:
@@ -98,7 +118,7 @@ def resolve_spawn_budget(
 
 
 def read_spawn_config(path: Path) -> SpawnBudget | None:
-    """Read spawn limits from a config file (kanibako.cfg or RO spawn config).
+    """Read spawn limits from a dedicated spawn file (host default or RO config).
 
     Looks for a ``spawn`` section with ``depth`` and ``breadth`` keys.
     Returns ``None`` if the file or section is absent.
@@ -116,10 +136,10 @@ def read_spawn_config(path: Path) -> SpawnBudget | None:
 
 
 def write_spawn_config(path: Path, budget: SpawnBudget) -> None:
-    """Write spawn limits as a ``spawn`` section in a config file.
+    """Write spawn limits as a ``spawn`` section in a DEDICATED spawn file.
 
-    For RO spawn configs this creates a standalone file.
-    For kanibako.cfg this preserves other sections.
+    Only ever targets ``spawn.yaml`` files (the RO configs); the Layer-1 file
+    is never written here — it cannot carry a ``spawn:`` section.
     """
     existing = load_doc(path)
     existing["spawn"] = {"depth": budget.depth, "breadth": budget.breadth}
