@@ -1559,13 +1559,6 @@ keys:
   ## meta.box.mode reads `enum` off meta.runtime.project_type and must not say so twice.
   ## And meta.box.agent.<key> mirrors a whole SUBTREE, whose member types vary per
   ## <key>, so it has no single type to state — an answer, not a gap.
-  ## 🛑 THE RULE IS LANDED FOR THE PATH-VALUED ROWS ONLY (ratified 2026-09-14 as
-  ## "type 12, derive 1").  Four composed rows are `str` and are STILL UNTYPED —
-  ## meta.box.name, meta.box.container_name, meta.agent.default.name and
-  ## meta.agent.<agent>.name — so THIS COMMENT CURRENTLY DESCRIBES MORE THAN THE FILE
-  ## DOES.  That gap is deliberate and boarded, not an oversight: the rule as stated
-  ## reaches them, the ratified OUTCOME did not.  Do not cite this paragraph as proof
-  ## that an untyped composed row is a defect until that is settled.
   ## ⚑ meta.runtime.ws_name carries `str` because meta.workset.name BARE-MIRRORS it:
   ## without it the mirror rationale above is false of its own row — a derivation
   ## that derives nothing.
@@ -1752,6 +1745,7 @@ keys:
     namespace: meta
     set: never
     origin: construct_time
+    type: str
     value: {primary: "<construct-time>", named: "<construct-time>",
             standalone: "<@workset.kuid>_%leaf(@meta.workset.path)%"}
     note: "AUTHORITATIVE source = the workset registry's entry KEYS; no literal
@@ -1887,6 +1881,7 @@ keys:
     namespace: meta
     set: never
     origin: derived
+    type: str
     value: "kanibako-@meta.box.name%if @meta.box.helper_num: -helper-@meta.box.helper_num%"
     note: "a RENDERING of the identity pair, NEVER a source to parse back from"
     spec: "§2c (F5)"
@@ -1910,6 +1905,7 @@ keys:
     namespace: meta
     set: never
     origin: construct_time
+    type: str
     value: "default"
     note: "CORE-owned: there is NO default PLUGIN PACKAGE (§0 'the base system owns
            agent.default.*'), so this fixed literal cannot have a plugin origin"
@@ -1920,6 +1916,7 @@ keys:
     set: never
     origin: construct_time
     required: true
+    type: str
     note: "the resolved @system.agent, REQUIRED whenever an agent exists (a NO-AGENT
            box omits it); identifies the STORE DIR. ⚑ Not the cascade key: the key
            SEGMENT is the canonical discriminator and this VALUE is the `+` store
