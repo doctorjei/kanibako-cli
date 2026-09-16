@@ -38,25 +38,21 @@ def helpers_env(tmp_path, monkeypatch):
 
     # ⚑ THE ``XDG_CONFIG_HOME`` REDIRECT IS THE LOAD-BEARING HALF, not the file — and the
     # ``Path.home`` patch above does NOT subsume it.  ``run_spawn`` opens
-    # ``config_file_path(xdg("XDG_CONFIG_HOME", ".config"))`` for a host spawn budget, and
+    # ``host_spawn_config_path(xdg("XDG_CONFIG_HOME", ".config"))`` for a host spawn budget, and
     # ``settings.paths.resolve_xdg`` honors the ENV VAR OVER ``Path.home()``: it falls back
     # to ``Path.home() / ".config"`` only when the var is UNSET or set to a RELATIVE value
     # (which it warns about and ignores, per the XDG spec).  Unset — this box, and CI — that
     # fallback does land in the fake home, so dropping this line still passes here.
-    # The developer who EXPORTS ``XDG_CONFIG_HOME`` is the one who leaks a REAL config, and
-    # its spawn budget, into what these tests assert on.  Test it with the var exported AT A
-    # CONFIG THAT HAS A ``spawn:`` SECTION — exporting alone proves nothing, since a real
-    # config without one reads back the same ``None`` — or the test cannot see what the line
-    # is for.
+    # The developer who EXPORTS ``XDG_CONFIG_HOME`` is the one who leaks a REAL host budget
+    # into what these tests assert on.  Test it with the var exported AT A CONFIG HOME WITH
+    # NO ``kanibako/spawn.yaml`` — exporting alone proves nothing, since an absent file
+    # reads back the same ``None`` — or the test cannot see what the line is for.
     config_dir = tmp_path / "config"
     config_dir.mkdir()
     config_file = config_dir / CONFIG_FILENAME
     # EMPTY, exactly as ``settings.config.write_global_config`` writes it
     # (``atomic_write_text(path, "")``, called by ``cli._ensure_initialized`` on first run
-    # when the file is absent) — an initialized host that overrides nothing.  ⚑ It used to
-    # hold ``box: image:``, which configured NOTHING: the Layer-1 file cannot carry
-    # settings, and the host budget ``read_spawn_config`` looks for is a ``spawn:``
-    # section.  That is the route to use if a test ever needs a host budget.
+    # when the file is absent) — an initialized host that overrides nothing.
     config_file.write_text("")
     monkeypatch.setenv("XDG_CONFIG_HOME", str(config_dir))
     return home
@@ -162,6 +158,44 @@ class TestRunSpawn:
         rc = run_spawn(args)
         assert rc == 1  # second spawn refused
         assert "breadth" in capsys.readouterr().err
+
+    def test_host_budget_is_read_from_the_dedicated_file(self, helpers_env, capsys):
+        """The host tier lives at ``host_spawn_config_path``, not in the Layer-1 file.
+
+        ⚑ This pins WHERE the caller looks: ``resolve_spawn_budget`` takes budgets,
+        so its own tests cannot catch the caller reading a retired place.
+        """
+        from kanibako.channels.helpers import host_spawn_config_path
+        from kanibako.settings.paths import xdg
+
+        host_file = host_spawn_config_path(xdg("XDG_CONFIG_HOME", ".config"))
+        host_file.parent.mkdir(parents=True, exist_ok=True)
+        write_spawn_config(host_file, SpawnBudget(depth=4, breadth=1))
+
+        args = _make_args(depth=None, breadth=None, model=None)
+        rc = run_spawn(args)
+        assert rc == 0  # first spawn ok
+
+        rc = run_spawn(args)
+        assert rc == 1  # second spawn refused
+        assert "breadth" in capsys.readouterr().err
+
+    def test_spawn_section_in_layer1_file_is_not_a_host_budget(self, helpers_env):
+        """The breach, stated as a negative: a ``spawn:`` table in ``kanibako.cfg``
+        is refused by the settings path ([R158]) and buys nothing here either.
+
+        Without this the fix is indistinguishable from a MOVE that left the old
+        read in place — the dedicated file would work AND the Layer-1 section
+        would keep working, which is the breach silently not closing.
+        """
+        from kanibako.settings.paths import xdg
+
+        config_home = xdg("XDG_CONFIG_HOME", ".config")
+        (config_home / CONFIG_FILENAME).write_text("spawn:\n  depth: 0\n")
+
+        args = _make_args(depth=None, breadth=None, model=None)
+        rc = run_spawn(args)
+        assert rc == 0  # depth-0 budget ignored; built-in defaults apply
 
     def test_model_shown_in_output(self, helpers_env, capsys):
         args = _make_args(depth=None, breadth=None, model="sonnet")

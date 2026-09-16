@@ -8,16 +8,17 @@ import shutil
 import sys
 from pathlib import Path
 
-from kanibako.settings.config import config_file_path
 from kanibako.channels.helpers import (
     HELPER_SCRIPTS_RELPATH,
     PARENT_SCRIPTS_RELPATH,
+    SPAWN_CONFIG_FILENAME,
     SpawnBudget,
     check_spawn_allowed,
     child_budget,
     create_broadcast_dirs,
     create_helper_dirs,
     create_peer_channels,
+    host_spawn_config_path,
     link_broadcast,
     read_spawn_config,
     remove_helper_dirs,
@@ -177,7 +178,7 @@ def _check_helpers_enabled() -> bool:
 
 def _ro_spawn_config_path(helpers_dir: Path, helper_num: int) -> Path:
     """Return the path to a helper's RO spawn config."""
-    return helpers_dir / str(helper_num) / "spawn.yaml"
+    return helpers_dir / str(helper_num) / SPAWN_CONFIG_FILENAME
 
 
 def _state_path(helpers_dir: Path, helper_num: int) -> Path:
@@ -230,18 +231,19 @@ def run_spawn(args: argparse.Namespace) -> int:
     helpers_dir = _helpers_dir()
 
     # Resolve own spawn budget
-    config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
     host_budget = None
     ro_budget = None
 
     # Check for RO spawn config (set by parent, if we are a helper)
-    own_ro_config = Path.home() / "spawn.yaml"
+    own_ro_config = Path.home() / SPAWN_CONFIG_FILENAME
     if own_ro_config.is_file():
         ro_budget = read_spawn_config(own_ro_config)
 
-    # Check host config
-    if config_file.is_file():
-        host_budget = read_spawn_config(config_file)
+    # Check host default — a DEDICATED file, never the Layer-1 file (which
+    # carries ``config.*`` alone and whose reader refuses a ``spawn:`` table)
+    host_config = host_spawn_config_path(xdg("XDG_CONFIG_HOME", ".config"))
+    if host_config.is_file():
+        host_budget = read_spawn_config(host_config)
 
     budget = resolve_spawn_budget(
         ro_budget, host_budget, args.depth, args.breadth,
