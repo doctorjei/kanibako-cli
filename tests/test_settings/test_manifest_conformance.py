@@ -82,6 +82,8 @@ from kanibako.settings.settings_keyspace import (
     DECLARED_META_BOX_AUTH_LEAVES,
     DECLARED_META_BOX_LEAVES,
     DECLARED_META_RUNTIME_LEAVES,
+    DECLARED_META_RUNTIME_ADMIN_LEAVES,
+    DECLARED_META_RUNTIME_USER_LEAVES,
     DECLARED_META_WORKSET_LEAVES,
     DECLARED_SYSTEM_AUTH_LEAVES,
     DECLARED_SYSTEM_CHANNEL_LEAVES,
@@ -187,8 +189,8 @@ class TestManifestLoader:
         for section in ("registry", "policy", "categories", "keys",
                         "bind_default_entries", "not_keys"):
             assert section in doc, f"manifest section {section!r} is missing"
-        assert len(doc["keys"]) == 101, (
-            f"the manifest declares {len(doc['keys'])} key rows, not the 101 this "
+        assert len(doc["keys"]) == 103, (
+            f"the manifest declares {len(doc['keys'])} key rows, not the 103 this "
             f"file's counts were measured against — re-measure, do not adjust blindly"
         )
 
@@ -1251,6 +1253,8 @@ def _code_scalar_keys() -> set[str]:
         ("workset.channels.", DECLARED_WORKSET_CHANNEL_LEAVES),
         ("agent.default.", DECLARED_AGENT_LEAVES),
         ("meta.runtime.", DECLARED_META_RUNTIME_LEAVES),
+        ("meta.runtime.user.", DECLARED_META_RUNTIME_USER_LEAVES),
+        ("meta.runtime.admin.", DECLARED_META_RUNTIME_ADMIN_LEAVES),
         ("meta.assembly.", DECLARED_META_ASSEMBLY_LEAVES),
         ("meta.workset.", DECLARED_META_WORKSET_LEAVES),
         ("meta.box.", DECLARED_META_BOX_LEAVES),
@@ -1479,9 +1483,10 @@ class TestThePathTypeColumnHasOneCodeCarrier:
     def test_a_never_settable_path_row_is_not_claimed_by_the_set_time_predicate(self):
         """The other half of the split — asserted, not assumed away.
 
-        A ``set: never`` path row is DERIVED, so its value is produced by the code that
-        derives it and never travels a set route; ``meta.runtime.config_file`` is resolved
-        by ``resolve_xdg`` and ``meta.box.home`` off ``@meta.box.path``.  Claiming one in
+        A ``set: never`` path row never travels a set route: ``meta.box.home``
+        resolves off ``@meta.box.path``, and the ``meta.runtime.*`` bootstrap
+        locators are declared-but-unproduced (their producers are their own seam).
+        Claiming one in
         ``is_path_valued_key`` would advertise a set-time refusal that has nothing to
         refuse, and would hand ``path_key_anchor`` a key with no anchor to name.
         """

@@ -16,7 +16,9 @@ from kanibako.settings.keyspace_manifest import manifest_doc
 from kanibako.settings.settings_keyspace import (
     DECLARED_AGENT_LEAVES,
     DECLARED_META_ASSEMBLY_LEAVES,
+    DECLARED_META_RUNTIME_ADMIN_LEAVES,
     DECLARED_META_RUNTIME_LEAVES,
+    DECLARED_META_RUNTIME_USER_LEAVES,
     RESERVED_LEAF_NAMES,
     RETIRING_KEYS,
     is_valid_agent_segment,
@@ -536,6 +538,8 @@ def test_supporting_surface_is_valid(key):
 
 @pytest.mark.parametrize("key", [
     "meta.runtime.ws_root", "meta.runtime.ws_name", "meta.runtime.project_type",
+    "meta.runtime.user.config",
+    "meta.runtime.admin.config", "meta.runtime.admin.settings",
     "meta.assembly.bindings", "meta.assembly.seeded", "meta.assembly.synced",
     "meta.assembly.env",
     "meta.workset.path", "meta.workset.name", "meta.workset.settings",
@@ -643,6 +647,22 @@ def test_a_flat_meta_declaration_matches_the_manifest(group, declared):
     assert _manifest_leaves(f"meta.{group}.") == set(declared)
 
 
+def test_the_nested_runtime_leaves_match_the_manifest():
+    """The P5 half of the drift guard — nested rows are NOT dropped silently.
+
+    ``_manifest_leaves`` drops every nested tail, so the flat guard above goes
+    green whether or not ``meta.runtime.user.*`` exists. Green-because-unguarded
+    is the [R138] class. The prefix already reaches past the dot, so the same
+    helper pins the nested leaves with no new machinery.
+    """
+    assert _manifest_leaves("meta.runtime.user.") == set(
+        DECLARED_META_RUNTIME_USER_LEAVES
+    )
+    assert _manifest_leaves("meta.runtime.admin.") == set(
+        DECLARED_META_RUNTIME_ADMIN_LEAVES
+    )
+
+
 def test_the_collapse_outputs_are_declared_under_assembly_only():
     """The 2026-08-09 MOVE, on the manifest side: under ``assembly``, gone from
     ``runtime``."""
@@ -661,6 +681,32 @@ def test_the_runtime_spelling_of_a_collapse_output_is_refused_by_name(leaf):
     BY NAME (spec §0), so the assertion is on the reason text carrying the key.
     """
     key = f"meta.runtime.{leaf}"
+    assert key in reason(key)
+
+
+def test_the_retired_config_file_spelling_is_refused_by_name():
+    """The rename ships CLEAN — no alias: ``meta.runtime.config_file`` is not a key.
+
+    Without this the rename is indistinguishable from an ADD — declaring the
+    three ``user``/``admin`` rows while leaving ``config_file`` valid leaves
+    every positive case green and both spellings working. ⚑ Refused BY NAME
+    (spec §0), so the assertion is on the reason text carrying the key.
+    """
+    key = "meta.runtime.config_file"
+    assert not valid(key)
+    assert key in reason(key)
+
+
+@pytest.mark.parametrize("key", [
+    "meta.runtime.user.settings",
+    "meta.runtime.user.invented",
+    "meta.runtime.admin.invented",
+])
+def test_an_undeclared_runtime_subspace_leaf_is_refused_by_name(key):
+    """The mutation proof the validator widening owes: an UNDECLARED leaf under
+    ``meta.runtime.user`` / ``meta.runtime.admin`` refuses BY NAME — a stray
+    leaf must not fall through into a key."""
+    assert not valid(key)
     assert key in reason(key)
 
 
@@ -1181,6 +1227,7 @@ def test_the_prefix_corpus_is_not_vacuous():
     # it ([R141] as amended; spec :1081).
     "box.auth", "system.auth", "workset.auth",
     "meta.box.auth", "meta.agent.claude.auth", "meta.box.agent.auth",
+    "meta.runtime.user", "meta.runtime.admin",
 ])
 def test_a_declared_interior_is_a_NAMESPACE(path):
     """Each is a grouping declared keys hang under — spec :42 calls ``meta.*`` a

@@ -1585,14 +1585,29 @@ keys:
     type: enum
     choices: [standalone, primary, named]
     spec: "§1A"
-  meta.runtime.config_file:
+  meta.runtime.user.config:
     namespace: meta
     set: never
     origin: bootstrap
     type: path
-    value: "$XDG_CONFIG_HOME/kanibako_config.yaml, or ~/.config/ if unset / not absolute"
-    note: "the COMPLETE user file, not a base dir to concatenate; the SITE file
-           /etc/kanibako/config_base.yaml is separate"
+    value: "$XDG_CONFIG_HOME/kanibako.cfg, or ~/.config/ if unset / not absolute"
+    note: "the COMPLETE user file, not a base dir to concatenate"
+    spec: "§1A (L0.2)"
+  meta.runtime.admin.config:
+    namespace: meta
+    set: never
+    origin: bootstrap
+    type: path
+    value: "/etc/kanibako/base.cfg"
+    note: "the SITE Layer-1 input — the config set's least-specific layer"
+    spec: "§1A (L0.2)"
+  meta.runtime.admin.settings:
+    namespace: meta
+    set: never
+    origin: bootstrap
+    type: path
+    value: "/etc/kanibako/settings_base.yaml"
+    note: "the machine-wide SETTINGS floor — the cascade `base` level input (L2.1)"
     spec: "§1A (L0.2)"
   ## meta.assembly.* — the COLLAPSE outputs (ratified 2026-08-08f; MOVED out of
   ## meta.runtime on 2026-08-09). Their own group because they sit at the OPPOSITE
