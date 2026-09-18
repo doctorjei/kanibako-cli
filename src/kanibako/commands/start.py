@@ -4752,12 +4752,21 @@ def writeback_session_credentials(
         return
     desc = target.descriptor
     host_home = Path.home()
+    # Serialize the store write against a concurrent host op / the D watcher.  The
+    # directories written into ARE the lock: every writeback site and the daemon funnel
+    # through the same FUNCTION, but each excludes only the writers sharing a
+    # destination — two workset-tier boxes in different worksets no longer wait on
+    # each other.
+    dest_root = credsync.selected_source_root(auth_src, host_home=host_home)
+    dests = {dest_root} if dest_root is not None else set()
+    if desc is None or (auth_src.tier == "workset" and auth_src.global_sync):
+        # Two ways host home is written even when it is not the selected source: the
+        # global_sync mirror below, and the legacy no-descriptor hook, which picks its
+        # own host-side destination and cannot be inspected from here.
+        dests.add(host_home)
     from kanibako.launch.creds_watcher import clear_creds_dirty, creds_store_lock
     try:
-        # Serialize the store write against a concurrent host op / the D watcher
-        # (the shared STORE-write lock lives in creds_watcher so the daemon and every
-        # host writeback site funnel through the SAME mutex).
-        with creds_store_lock():
+        with creds_store_lock(*dests):
             if desc is not None:
                 credsync.writeback_box_credentials(
                     desc, target, auth=auth_src, host_home=host_home,
@@ -4773,20 +4782,19 @@ def writeback_session_credentials(
             # (which explicitly isolated its identity to the workset store) would leak
             # its oauthAccount to GLOBAL. The private/box tier is already excluded by
             # the ``auth_src.creds_shared`` guard above.
-            extra_dest = credsync.selected_source_root(auth_src, host_home=host_home)
-            if extra_dest is not None:
+            if dest_root is not None:
                 target.writeback_extra(
-                    project_home=proj.shell_path, host_home=extra_dest
+                    project_home=proj.shell_path, host_home=dest_root
                 )
                 # global_sync: mirror the workset store's .claude.json UP to global,
                 # matching the cred_files bottom-up hop (box→workset→global).
                 if (
                     auth_src.tier == "workset"
                     and auth_src.global_sync
-                    and extra_dest != host_home
+                    and dest_root != host_home
                 ):
                     target.writeback_extra(
-                        project_home=extra_dest, host_home=host_home
+                        project_home=dest_root, host_home=host_home
                     )
             # D Part 3 (flag hygiene / lazy fallback): a SUCCESSFUL writeback clears
             # the box's creds-dirty flag, so it never goes stale or gets double-
