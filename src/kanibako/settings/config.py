@@ -886,6 +886,10 @@ def setup_compat_gate(settings_path: Path | None) -> str | None:
 
 # Pseudo-agents are DISCOUNTED from the implicit installed-count rule; ``no_agent``
 # stays explicitly selectable. ⚑ ``general`` is a SLOT name, not a shipped target.
+# 🛑 NOT THE KEYSPEC'S PSEUDO-AGENTS, despite the word — that is
+# ``agent_ref.PSEUDO_AGENT_NAMES`` (``default``, ``shell``), the RESERVED names no agent,
+# persona or harness may take (§2d). This set is the count rule's discount list and shares
+# no member with it; the two are unrelated and must not be merged.
 _PSEUDO_AGENTS = frozenset({"no_agent", "general"})
 
 

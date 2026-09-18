@@ -311,7 +311,11 @@ box's non-credential config comes from the agent's curated template
 
 `name` is the short machine-readable identifier (`"codex"`, `"goose"`), used in
 configuration (`box.agent=codex`) and entry-point registration; it must be
-unique.  `display_name` is the human-readable name shown in status output.
+unique, and it must not be `default` or `shell`.  Those two are the
+pseudo-agent names, reserved by the keyspec to any agent, persona or harness; a
+target claiming either is **skipped at discovery** with a warning to stderr, so
+the plugin simply never registers rather than failing at install time.
+`display_name` is the human-readable name shown in status output.
 
 ### `detect() -> AgentInstall | None`
 

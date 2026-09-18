@@ -10,12 +10,14 @@ Prose for these symbols lives in `llm-docs/kanibako/agent_ref.py.md`.
 ```
 SEPARATORS = ((PLUS_SEP := '+'), (CANONICAL_SEP := '℘'))
 SEGMENT_CHAR_CLASS = '\\w' + ''.join((re.escape(ch) for ch in sorted(_SAFE_EXTRA)))
+PSEUDO_AGENT_NAMES = frozenset({'default', 'shell'})
 _SAFE_EXTRA = frozenset('-_')
 _DOT_HINT = "; '.' is reserved as settings key-path separator and cannot appear in an agent name"
 ```
 
 ## Functions
 ```
+def reserved_pseudo_agent_reason(name: str) -> str | None
 def display_agent_ref(node: str) -> str
 def canonicalize_agent_ref(raw: str) -> str
 def parse_agent_ref(raw: str) -> tuple[str, str]

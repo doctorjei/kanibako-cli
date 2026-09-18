@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from kanibako.agent_ref import PSEUDO_AGENT_NAMES
 from kanibako.targets import discover_targets, get_target, resolve_target
 from kanibako.targets.base import AgentInstall, Target
 from kanibako.targets.no_agent import NoAgentTarget
@@ -64,6 +65,17 @@ class _NoNameTarget(_FakeTarget):
     @property
     def name(self) -> str:
         return ""
+
+    def detect(self):
+        return None
+
+
+class _ReservedNameTarget(_FakeTarget):
+    """Target claiming a RESERVED pseudo-agent name (keyspec §2d)."""
+
+    @property
+    def name(self) -> str:
+        return "shell"
 
     def detect(self):
         return None
@@ -170,6 +182,75 @@ class TestBrokenEntryPointIsSkipped:
             targets = discover_targets()
         assert "fake" in targets
         assert "exploding" not in targets
+
+
+class TestReservedPseudoAgentNameIsRefused:
+    """A plugin may not register a PSEUDO-AGENT name (keyspec §2d).
+
+    *"Their names are RESERVED and MUST be refused to any agent, persona, or harness."*
+    ``default`` and ``shell`` already own an ``agent.<name>.*`` cascade slot and a store
+    dir in the keyspace itself, so a harness answering to one would own them too.
+    Before 2026-09-18 ``discover_targets`` keyed straight off ``ep.name`` with no name
+    validation at all.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _clear_warn_dedupe(self):
+        # Once-per-process, like the load-failure warning — reset it or test order
+        # decides whether a later test sees the message.
+        from kanibako.targets import _RESERVED_NAME_WARNED
+        _RESERVED_NAME_WARNED.clear()
+        yield
+        _RESERVED_NAME_WARNED.clear()
+
+    def test_the_reserved_set_is_not_empty(self):
+        # The sweep below is parametrized over the set; an empty one would pass
+        # vacuously.  The oracle is the spec's own two subheadings.
+        assert PSEUDO_AGENT_NAMES == {"default", "shell"}
+
+    @pytest.mark.parametrize("name", sorted(PSEUDO_AGENT_NAMES))
+    def test_entry_point_with_a_reserved_name_is_skipped(self, name):
+        bad = _mock_entry_point(name, _FakeTarget)
+        good = _mock_entry_point("fake", _FakeTarget)
+        with patch("kanibako.targets.entry_points", return_value=[bad, good]):
+            targets = discover_targets()
+        assert name not in targets
+        # SKIPPED, not fatal: discovery runs on every command, so one plugin's bad
+        # name must not take the CLI down with it.
+        assert targets["fake"] is _FakeTarget
+
+    def test_the_refusal_names_the_name_and_says_it_was_skipped(self, capsys):
+        bad = _mock_entry_point("shell", _FakeTarget)
+        with patch("kanibako.targets.entry_points", return_value=[bad]):
+            discover_targets()
+        err = capsys.readouterr().err
+        assert "'shell'" in err
+        assert "RESERVED" in err
+        assert "SKIPPED" in err
+
+    def test_the_warning_is_emitted_once_per_process(self, capsys):
+        bad = _mock_entry_point("shell", _FakeTarget)
+        with patch("kanibako.targets.entry_points", return_value=[bad]):
+            discover_targets()
+            discover_targets()
+            discover_targets()
+        assert capsys.readouterr().err.count("RESERVED") == 1
+
+    def test_an_ordinary_name_still_registers(self):
+        # Non-vacuity: prove the gate above refuses on the NAME, not on everything.
+        ep = _mock_entry_point("shellfish", _FakeTarget)
+        with patch("kanibako.targets.entry_points", return_value=[ep]):
+            targets = discover_targets()
+        assert targets["shellfish"] is _FakeTarget
+
+    def test_require_meta_name_refuses_a_reserved_harness_name(self):
+        # The floor under a Target that reaches a caller without going through
+        # discovery.  It RAISES rather than skipping: by here it is the target
+        # being launched, and there is nothing left to fall back to.
+        from kanibako.targets import _require_meta_name
+
+        with pytest.raises(ValueError, match="RESERVED pseudo-agent name"):
+            _require_meta_name(_ReservedNameTarget())
 
 
 class TestGetTarget:
@@ -315,6 +396,28 @@ class TestDirectoryPluginDiscovery:
         with patch("kanibako.targets.entry_points", return_value=[]):
             targets = discover_targets()
         assert "myplugin" in targets
+
+    def test_reserved_name_file_drop_plugin_is_skipped(self, tmp_path, monkeypatch):
+        """The reservation holds at the file-drop tier too (keyspec §2d).
+
+        All three discovery tiers assign through ``targets._register``, so this is the
+        same gate the entry-point tier uses — pinned separately because a per-tier copy
+        is exactly how a rule comes to hold in one place and not another.
+        """
+        from kanibako.targets import _RESERVED_NAME_WARNED
+
+        _RESERVED_NAME_WARNED.clear()
+        user_plugins = tmp_path / "kanibako" / "plugins"
+        _write_plugin(user_plugins, "shellplugin.py", "shell")
+        _write_plugin(user_plugins, "okplugin.py", "okplugin")
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+
+        with patch("kanibako.targets.entry_points", return_value=[]):
+            targets = discover_targets()
+        _RESERVED_NAME_WARNED.clear()
+
+        assert "shell" not in targets
+        assert "okplugin" in targets  # the healthy neighbour still lands
 
     def test_discover_project_dir_plugins(self, tmp_path):
         """Plugins in project box_data/plugins/ are discovered."""

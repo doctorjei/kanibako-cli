@@ -5049,6 +5049,51 @@ pin.
 
 ---
 
+### 3.2 `default` and `shell` are reserved names a plugin may not take
+
+**Read this if your plugin's `name` — or its `kanibako.agents` entry-point name — is `default` or
+`shell`.** Nothing kanibako ships uses either, so a stock install with the published
+`kanibako-agent-claude`, `-codex` or `-goose` is unaffected.
+
+**What changed.** Those two names belong to the keyspace's **pseudo-agents**: `default` is the
+all-agents fallback tier (`agent.default.*`), and `shell` is the plain-shell box. Each already owns
+an `agent.<name>.*` cascade slot and a store directory under `<data>/agents/`. The rule that they
+are reserved is not new — nothing enforced it, so a plugin could register one and quietly take over
+a tier the settings system reads for every agent. v1.8.0 refuses the name instead.
+
+**What you see.** Discovery **skips** the plugin and says so once, on stderr; the CLI and every
+other agent keep working:
+
+```
+Warning: 'shell' is a RESERVED pseudo-agent name (spec §2d, 'Pseudo-agent(s)'); it may not name an
+agent, a persona, or a harness. The agent plugin registering it (an installed entry point) is being
+SKIPPED; every other agent, and 'kanibako setup', still work. The plugin's author must give it a
+name of its own.
+```
+
+A user who types the name gets the same sentence as a hard error, at rc 1:
+
+```
+Error: 'shell' is a RESERVED pseudo-agent name (spec §2d, 'Pseudo-agent(s)'); it may not name an
+agent, a persona, or a harness
+```
+
+The reservation covers both halves of a composite ref, so `--agent mypersona+shell` is refused for
+its harness and `--agent shell+claude` for its persona. **It is an exact-spelling rule:** `Shell`,
+`shellx` and `defaults` are ordinary names and still work.
+
+**What you must do.**
+
+1. **Rename the plugin.** Change the `name` property on your `Target` and the entry-point name in
+   your `pyproject.toml` `[project.entry-points."kanibako.agents"]` table to match. Reinstall.
+2. **Rename the store directory** under `<data>/agents/` to the new name, if one was created.
+   Everything inside it — `agent.yaml`, `common/`, `caches/` — moves with it and needs no edit.
+3. **Rewrite the selection key wherever it names the old spelling** — `pref.system.agent` in each
+   box's `box.yaml`, and `system.agent` in `<data>/global/settings.yaml`. Edit the YAML by hand:
+   the value in the file is a ref that no longer parses, so no `set` verb will touch it.
+
+---
+
 # Migrating to kanibako 1.6.0
 
 > This is a **manual** runbook: 1.6.0 ships **no migration code**. You edit your

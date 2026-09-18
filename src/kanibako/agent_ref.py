@@ -25,10 +25,37 @@ SEGMENT_CHAR_CLASS = r"\w" + "".join(re.escape(ch) for ch in sorted(_SAFE_EXTRA)
 # make (``kimi.k3+claude``), & "only letters and digits" does not explain why dot is not one.
 _DOT_HINT = "; '.' is reserved as settings key-path separator and cannot appear in an agent name"
 
+# The PSEUDO-AGENT names (keyspec §2d, "Pseudo-agent(s)").  A pseudo-agent is not a true
+# agent but serves the AGENT ROLE, so its name is reserved: it already owns an
+# ``agent.<name>.*`` cascade slot & a store dir, & a true agent claiming one would own them
+# too.  The refusal sits at THIS gate because every user-supplied ref passes through it —
+# the CLI's ``-A``, ``kanibako agent``, the persona store, the stored-agent readers.
+# ⚑ EXACT SPELLING, never a case fold or a prefix test: ``Shell`` & ``shellx`` are ordinary
+# names, & widening a user-facing refusal past the names the spec reserves is its own defect.
+# ⚑ NOT the same rule as ``settings.config_dest.check_agent_node``'s ``default`` arm — that
+# one refuses a settings ROUTE & carries the any-agent tier's own cure.  It short-circuits on
+# ``default`` before reaching this parser, so that message is unchanged.
+PSEUDO_AGENT_NAMES = frozenset({"default", "shell"})
+
 
 def _is_segment_safe(segment: str) -> bool:
   """A non-empty segment of only letters/digits (any language) plus ``-``/``_``."""
   return all(ch.isalnum() or ch in _SAFE_EXTRA for ch in segment) if segment else False
+
+
+def reserved_pseudo_agent_reason(name: str) -> str | None:
+  """Why *name* may not be claimed by an agent, persona or harness — or ``None``.
+
+  ONE sentence for every site that refuses a reserved name: the spec reserves the names
+  against all three roles in a single breath, so three refusals must not drift apart.
+
+  ⚑ A REASON, NOT A RAISE — :mod:`kanibako.targets` skips a badly-named plugin rather
+  than raising, so the sentence has to be usable without an exception.
+  """
+  if name not in PSEUDO_AGENT_NAMES:
+    return None
+  return (f"'{name}' is a RESERVED pseudo-agent name (spec §2d, 'Pseudo-agent(s)'); it may "
+          f"not name an agent, a persona, or a harness")
 
 
 def _first_sep_index(raw: str) -> int:
@@ -50,6 +77,11 @@ def parse_agent_ref(raw: str) -> tuple[str, str]:
   """Parse an agent ref into ``(node, harness)``.
   - One-word refs: (``claude``) parse to ``(raw, raw)`` (persona == harness).
   - Composite refs: rejoined, parsed to ``("persona℘harness", "harness")``
+
+  ⚑ TWO RULES, NOT ONE: the segment CHARSET (:func:`_is_segment_safe`) & the pseudo-agent
+  RESERVATION (:data:`PSEUDO_AGENT_NAMES`).  They are checked apart because they are
+  different facts — the charset is about spelling, the reservation about who already owns
+  the name — & only the charset one is a property of a character.
   """
   if not isinstance(raw, str):
     raise ConfigError(f"agent ref must be a string, got {type(raw).__name__}: {raw!r}")
@@ -60,10 +92,13 @@ def parse_agent_ref(raw: str) -> tuple[str, str]:
   idx = _first_sep_index(ref)
 
   if idx == -1:
-    # Bare: node == harness == the whole (validated) name.
+    # Bare: node == harness == the whole (validated) name.  A bare ref names the persona
+    # AND the harness, so ONE reservation check covers both roles here.
     if not _is_segment_safe(ref):
       raise ConfigError(f"invalid agent name '{ref}': names may contain only letters and "
                         f"digits (any language), '-', & '_'{_DOT_HINT if '.' in ref else ''}")
+    if (why := reserved_pseudo_agent_reason(ref)) is not None:
+      raise ConfigError(why)
     return ref, ref
 
   if not _is_segment_safe(persona := ref[:idx]):
@@ -71,10 +106,16 @@ def parse_agent_ref(raw: str) -> tuple[str, str]:
                       f"& contain only letters & digits (any language), '-', & '_' (no separator)"
                       f"{_DOT_HINT if '.' in persona else ''}")
 
+  if (why := reserved_pseudo_agent_reason(persona)) is not None:
+    raise ConfigError(f"invalid agent ref '{raw}': persona segment {why}")
+
   if not _is_segment_safe(harness := ref[idx+1:]):
     raise ConfigError(f"invalid agent ref '{raw}': harness segment '{harness}' must be non-empty "
                       f"& contain only letters & digits (any language), '-', & '_' (no separator)"
                       f"{_DOT_HINT if '.' in harness else ''}")
+
+  if (why := reserved_pseudo_agent_reason(harness)) is not None:
+    raise ConfigError(f"invalid agent ref '{raw}': harness segment {why}")
 
   node = f"{persona}{CANONICAL_SEP}{harness}"
   return node, harness
