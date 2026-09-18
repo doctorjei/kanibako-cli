@@ -1542,11 +1542,12 @@ def agent_key_reason(node: str, tail: str) -> str | None:
     vocabulary is readable; where it is not, the concession still governs."*
 
     🛑 THERE IS NO IDENTITY ALLOWLIST ANY MORE, AND DO NOT PUT ONE BACK (D8b, 2026-09-15).  An
-    ``if tail in IDENTITY_KEYS: return None`` short-circuit stood above the gate, and the ONE
-    tail it rescued was ``name`` — the agent file's non-key identity field, now retired.  The
+    ``if tail in {"name", "run_args"}: return None`` short-circuit stood above the gate, and the
+    ONE tail it rescued was ``name`` — the agent file's non-key identity field, now retired.  The
     other, ``run_args``, is a declared §2d leaf, so the gate below admits it on its own: the
     allowlist was the carve-out that let an undeclared entry live in a settings file, and
-    deleting the field deletes the need for it (P4).
+    deleting the field deletes the need for it (P4).  The set it named is gone too (2026-09-18):
+    the FILE's shape asks ``agent_file._MODELED_KEYS``, which is not a keyspace question.
     """
     from kanibako.settings.settings_keyspace import key_validity
 

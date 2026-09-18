@@ -8,7 +8,6 @@ Prose for these symbols lives in `llm-docs/kanibako/settings/agent_config.py.md`
 ## Variables
 
 ```
-IDENTITY_KEYS = frozenset({'name', 'run_args'})
 AGENT_CATEGORY_DIRNAME: Final[Mapping[str, str]] = {category: category for category in ABSTRACT_CATEGORIES}
 DEFAULT_ROOT_LABEL = "this key's default root"
 DECLARATION_ROOT_LABEL = "this key's scope root"
@@ -35,7 +34,6 @@ def agent_config_path(data_path: Path, agent_id: str, paths_agents: str='agents'
 ```
 @dataclass
 class AgentConfig:
-    name: str = ''
     run_args: list[str] = field(default_factory=list)
     state: dict[str, str | None] = field(default_factory=dict)
     env: dict[str, str] = field(default_factory=dict)

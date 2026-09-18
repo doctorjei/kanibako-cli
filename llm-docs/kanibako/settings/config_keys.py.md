@@ -1463,10 +1463,12 @@ HERE** (2026-08-29). Same value, but reached through the module's ONE supplier, 
 this gate and `_PERSONA_STATE_LEAVES` from drifting into two vocabularies again — and passing it
 rather than materialising it means a core §2d leaf is answered without importing a single plugin.
 
-⚑ **THE IDENTITY RESIDUE**: `name` / `run_args` are FILE-identity fields of `AgentConfig`, not
-keyspace leaves (`agent_file._MODELED_KEYS` already says so). `run_args` happens to be a declared §2d
-leaf too; `name` is not, so the `IDENTITY_KEYS` allowlist is what keeps a shipped, pinned surface
-working — refusing it would be a breaking change no ruling asks for.
+🛑 **THERE IS NO IDENTITY ALLOWLIST ANY MORE, AND IT DOES NOT GO BACK.** An `if tail in {"name",
+"run_args"}: return None` short-circuit stood above this gate; the ONE tail it rescued was `name`,
+the agent file's non-key identity field, which D8b retired (2026-09-15). `run_args` is a declared §2d
+leaf, so the gate admits it on its own. The set that spelled the pair (`agent_config.IDENTITY_KEYS`)
+dissolved 2026-09-18 — what the FILE models is `agent_file._MODELED_KEYS`, and that is not a keyspace
+question.
 
 ```agent_write_key_error(node, tail, *, verb) -> str | None``` ·
 ```agent_read_key_error(node, tail) -> str | None```
@@ -1483,30 +1485,28 @@ gate exists at all: ``agent get claude self.model`` REFUSES instead of answering
 *verb* is the op word (``"set"`` / ``"reset"``). Gates itself — `None` for every other key — so every
 verb door applies it uniformly.
 
-```agent_file_identity_only(tail: str) -> bool```
-True iff *tail* is a per-agent FILE-identity field and NOT a declared key — the IDENTITY RESIDUE
-above, asked as its own question because `agent set` has to ACT on it.
+### `agent_file_identity_only` — DELETED (D8b, 2026-09-15)
 
-⚑ **IT EXISTS BECAUSE THE `agent` NOUN NOW HAS ONE WRITER** (2026-08-29). `agent set` wrote through
+True iff *tail* was a per-agent FILE-identity field and NOT a declared key — the predicate that
+decided whether `agent set` / `reset` wrote the per-agent FILE itself or routed to the shared setter.
+`name` was the whole of its answer, so retiring the field left a guard that could never return True
+again and it went (P4). **Why it existed is still worth reading**, because the defect it closed is
+the one every `agent` verb now depends on staying closed:
+
+⚑ **IT EXISTED BECAUSE THE `agent` NOUN NOW HAS ONE WRITER** (2026-08-29). `agent set` wrote through
 `agent_file.write_leaf` directly, so nothing in `config_interface.set_config_value` ran for it: no E3
 resolution probe, no typed-scalar check. MEASURED on an isolated store — `kanibako agent set claude
 canon=@bogus.ref` printed `Set canon=@bogus.ref` at rc 0 and stored the dangling reference, while the
 same value through `kanibako system set` was refused by name. The verb routes its writes to the shared
-setter now, and this predicate answers the one question that routing needs: *does the setter have a
-key here at all?*
+setter now, and this predicate answered the one question that routing needed: *does the setter have a
+key here at all?* With `name` gone the answer is YES for every tail the verb accepts, so the question
+stopped being worth asking.
 
-⚑ **`name` STAYS ON THE FILE BOUNDARY AND IT IS NOT A CARVE-OUT.** It is not a key — it is an
-`AgentConfig` field, live, written and displayed since long before the keyspace closed — so the
-shared setter has nothing to route it to; sending it there would earn *"unknown config key"* for a
-shipped surface. An EXEMPTION would be admitting an undeclared key past a gate, which is the opposite
-of what this does.
-
-⚑ **DERIVED, NEVER LISTED (P13).** `name` is the whole of it today only because `run_args` — the other
-`IDENTITY_KEYS` member — is ALSO a declared §2d leaf; a leaf entering or leaving either set moves the
-answer with no edit here. The vocabulary asked is the EFFECTIVE one (`_PERSONA_STATE_LEAVES`, core ∪
-plugin-declared), the same set `_is_persona_agent_key` routes on, so the router and the residue cannot
-disagree about which tails the setter claims. ⚑ The cheap term is FIRST: only an `IDENTITY_KEYS`
-member reaches the leaf set at all, so no ordinary `set` pays plugin discovery for this.
+⚑ **What went with it**: the argument that `name` on the file boundary was not a carve-out (it was an
+`AgentConfig` field, not a key, so the shared setter had nothing to route it to), and the P13
+derivation that kept the residue in step with `run_args` being a declared §2d leaf. Both were about a
+field that no longer exists; `agent_key_reason` above carries the standing prohibition they leave
+behind.
 
 ```_is_path_category_key(key: str) -> bool```
 True iff *key* is a PER-NAME PATH-TUPLE category key.
