@@ -8,7 +8,7 @@ is cleared, it is critical that such information is not lost.
 
 The sweep should include evaluation of all of the following, unless otherwise instructed:
 
- - Documentation - user, agent, and developer-orientet, and other reasonably expected audiences
+ - Documentation - user, agent, and developer-oriented, and other reasonably expected audiences
  - Memory - includes compaction as necessary and appropriate
  - Development State - tasks and devnotes (see STATE_CLEANUP, and also ensure items are recorded)
  - Relevant lists tracking information for design and/or implementation, if applicable
