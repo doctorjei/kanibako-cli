@@ -611,11 +611,13 @@ def _build_helper_mounts(ctx: HelperContext, helper_num: int,
     if all_link.exists():
         mounts.append(Mount(all_link, f"{GUEST_HOME}/all", "Z,U"))
 
-    # Spawn config (read-only). ⚑ The guest dest must spell the same filename:
-    # in-box it is read as ``Path.home() / SPAWN_CONFIG_FILENAME``.
+    # Spawn config (read-only). ⚑ BOTH ends take the constant: in-box the file is
+    # read as ``Path.home() / SPAWN_CONFIG_FILENAME``, so a dest spelled by hand
+    # would land where the reader never looks — helpers would silently get default
+    # budgets. Encoded rather than asserted in prose (P15).
     spawn_toml = helper_root / SPAWN_CONFIG_FILENAME
     if spawn_toml.is_file():
-        mounts.append(Mount(spawn_toml, f"{GUEST_HOME}/spawn.yaml", "ro"))
+        mounts.append(Mount(spawn_toml, f"{GUEST_HOME}/{SPAWN_CONFIG_FILENAME}", "ro"))
 
     # Helper socket — mount the hub socket into the helper.  The box-side dest is
     # the FIXED pinned root, the same path ``core-defaults.yaml`` declares for the

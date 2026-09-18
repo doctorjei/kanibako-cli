@@ -230,9 +230,14 @@ def run_info(args: argparse.Namespace) -> int:
     else:
         print("Default args: (none)")
 
-    if cfg.state:
+    # ``label`` is an ordinary declared leaf, so a stored one rides ``cfg.state``
+    # like any other — and the line above already carries it, RESOLVED. Listing
+    # both prints one key twice, with the stored value second, which reads as two
+    # keys of the same name (the same cut ``_show_agent_config`` makes).
+    state_rows = {k: v for k, v in cfg.state.items() if k != "label"}
+    if state_rows:
         print("State:")
-        for k, v in sorted(cfg.state.items()):
+        for k, v in sorted(state_rows.items()):
             print(f"  {k} = {v}")
     else:
         print("State:        (none)")
@@ -354,10 +359,11 @@ def _run_agent_config(args: argparse.Namespace) -> int:
                     return 0
             # ⚑ THROUGH THE BOUNDARY, not by hand on the raw document. This was the
             # sixth site that spelled the per-agent file's shape — a read-modify-write
-            # on the root table, in a command module. It PRESERVES ``name`` and reports
-            # a COUNT of the overrides actually removed, in the SAME wording the other
-            # scopes' ``reset_all`` (config_interface.py) prints; both facts now live
-            # with the shape, in :func:`agent_file.clear_overrides`.
+            # on the root table, in a command module. Nothing in the file is exempt
+            # now (MIGRATION § 2.73); it reports a COUNT of the overrides actually
+            # removed, in the SAME wording the other scopes' ``reset_all``
+            # (config_interface.py) prints. Both facts live with the shape, in
+            # :func:`agent_file.clear_overrides`.
             count = clear_overrides(path)
             print(
                 f"Reset {count} override(s)." if count else "No overrides to reset."
@@ -644,8 +650,12 @@ def _agent_label(std: "StandardPaths", agent_id: str) -> str:
     from kanibako.settings.config_interface import effective_value
     from kanibako.settings.config_keys import AGENT_DEFAULT_SUB
 
+    # ⚑ EMPTY IS NOT A VALUE AT THIS DOOR EITHER. Doors 2 and 3 already decline an
+    # empty render, and the contract below is that this function always returns
+    # something printable; a bare ``is not None`` here would let a stored ``""``
+    # through and print a blank ``Label:`` line.
     stored = read_leaf(slot_for(std.agents, agent_id, "label"))
-    if stored is not None:
+    if stored:
         return stored
 
     declared = _declared_label(agent_id)
