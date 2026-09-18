@@ -319,33 +319,23 @@ def gfm_anchor(text: str) -> str:
 def home_relative(path: Path) -> str:
     """*path* spelled from HOME -- ``~/canon/...`` -- instead of as a host path.
 
-    🛑 SECURITY, NOT COSMETICS, and that is his classification of it. The flattened
-    artifact is SHIPPED TEXT: it is written into the agent's native instruction slot
-    and travels wherever that file is read, quoted or pasted. A host-absolute target
-    baked into it hands every reader the host's directory layout and its account
-    name. Canon authors no HOST-absolute target -- the two shipped ``__LINKSECTION__``
-    call sites spell ``procedures/*`` and the kickoff spells ``@~/canon/COLLECTION.md``
-    -- so a host path is something this script INVENTED while resolving them.
+    🛑 SECURITY, NOT COSMETICS -- his classification. The flattened artifact is SHIPPED
+    TEXT in the agent's instruction slot and travels wherever it is read or pasted, so a
+    host-absolute target in it hands every reader the host's layout and account name.
+    Canon authors no HOST-absolute target -- the two shipped ``__LINKSECTION__`` sites
+    spell ``procedures/*``, the kickoff spells ``@~/canon/COLLECTION.md`` -- so a host
+    path is one this script INVENTED while resolving. An authored ``~/`` target never
+    arrives here: not an ``@`` ref, so ``LINK_RE`` skips it and it ships as written.
 
-    ⚑ AN AUTHORED ``~/`` TARGET IS LEGITIMATE AND NEVER ARRIVES HERE. It is not an
-    ``@`` ref, so ``LINK_RE`` never matches it and it ships as authored; both callers
-    pass a resolved ``row.target``.
+    ⚑ HOME IS THE ANCHOR because it is the only fixed point the three delivery modes
+    share: two (``--additional-context``, stdout) write no DEST, and the third's DEST is
+    the instruction slot itself, so a DEST-relative target would spell one path three
+    ways. Canon reaches the box at ``~/canon`` by the home bind in every mode.
 
-    ⚑ HOME IS THE ANCHOR, and it is the only fixed point all three delivery modes
-    share. Two of them (``--additional-context`` and stdout) write no DEST at all, so
-    a target relative to the OUTPUT FILE is undefined there; in the third -- the
-    SOURCE->DEST file mode the launch shim runs -- the DEST is the agent's own
-    instruction slot, so the same content would spell one target three ways. Canon
-    reaches the box under ``~/canon`` by the home bind, in every mode.
-
-    ⚑ THE ``~/`` IS KEPT rather than stripped to a bare relative path. A bare
-    ``canon/...`` claims "relative to the file you are reading", which is false
-    wherever this artifact lands. ``~/canon/...`` is the spelling canon itself
-    already uses, and so does every ``box_dest:`` in ``core-defaults.yaml``.
-
-    A path OUTSIDE home comes back UNCHANGED. There is no true relative spelling for
-    it, and an author who wrote an absolute target should get that target back --
-    this function never invents one, which is the whole defect it exists to end.
+    ⚑ THE ``~/`` IS KEPT, not stripped: a bare ``canon/...`` claims "relative to the file
+    you are reading", false wherever this lands. It is the spelling canon and every
+    ``box_dest:`` already use. A path OUTSIDE home comes back UNCHANGED -- there is no
+    true relative spelling, and this function never invents one.
     """
     try:
         return "~/" + path.relative_to(Path.home()).as_posix()
