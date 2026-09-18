@@ -89,8 +89,11 @@ _BIND_LEAF_CATEGORIES: frozenset[str] = frozenset(
     {"caches", "seeded", "common", "synced"}
 )
 # Aliases the single-source scope-containment tuple (kb_store) so this consumer
-# never re-declares the scope set. Order is not load-bearing: the emit loop re-sorts
-# by its own ``scope_order`` map.
+# never re-declares the scope set. This alias is the single source within this
+# module: the emit loop's ``scope_order`` map is DERIVED from it, not re-declared.
+# ⚑ ORDER IS LOAD-BEARING HERE, which it was not while the map was hand-written:
+# ``scope_order`` now takes its ranks from this tuple's POSITIONS, so reordering
+# ``SCOPE_CONTAINMENT`` reorders the emit and changes how a same-scope tie breaks.
 _SCOPES: tuple[str, ...] = SCOPE_CONTAINMENT
 
 #: The dotted-key TAILS a DEST-KEYED bind map can sit at in a default-category floor
@@ -1748,7 +1751,7 @@ def snapshot_category_entries(
     there is no second namespace for a key set to select. Do not reintroduce one.
     """
     collected: list[tuple[tuple[int, str, str], CategoryEntry]] = []
-    scope_order = {"system": 0, "agent": 1, "workset": 2, "box": 3}
+    scope_order = {s: i for i, s in enumerate(_SCOPES)}
 
     def _box_dest(raw: str) -> str:
         return resolve_box_dest(raw, box_ctx)
