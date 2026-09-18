@@ -323,9 +323,13 @@ def home_relative(path: Path) -> str:
     artifact is SHIPPED TEXT: it is written into the agent's native instruction slot
     and travels wherever that file is read, quoted or pasted. A host-absolute target
     baked into it hands every reader the host's directory layout and its account
-    name. Nothing in canon is AUTHORED absolute -- the two shipped ``__LINKSECTION__``
+    name. Canon authors no HOST-absolute target -- the two shipped ``__LINKSECTION__``
     call sites spell ``procedures/*`` and the kickoff spells ``@~/canon/COLLECTION.md``
-    -- so absolute was something this script INVENTED while resolving them.
+    -- so a host path is something this script INVENTED while resolving them.
+
+    ⚑ AN AUTHORED ``~/`` TARGET IS LEGITIMATE AND NEVER ARRIVES HERE. It is not an
+    ``@`` ref, so ``LINK_RE`` never matches it and it ships as authored; both callers
+    pass a resolved ``row.target``.
 
     ⚑ HOME IS THE ANCHOR, and it is the only fixed point all three delivery modes
     share. Two of them (``--additional-context`` and stdout) write no DEST at all, so
