@@ -21,17 +21,6 @@ from kanibako.settings.config import AGENT_META_FILE
 from kanibako.settings.settings_categories import ABSTRACT_CATEGORIES, DECLARATION_ROOT_REF
 from kanibako.settings.settings_resolve import SettingsError, match_var
 
-#: The root keys :class:`AgentConfig` models as SCALAR fields of its own rather than sweeping
-#: into :attr:`AgentConfig.state` — the agent's launch identity, not a state knob.
-#:
-#: ⚑ ``name`` WAS HERE AND IS GONE (D8b, 2026-09-15).  It was the agent FILE's own identity
-#: field: not a keyspace leaf, carried by an allowlist that let an undeclared entry live in a
-#: settings file.  ``agent.<agent>.label`` (spec §2d) is the declared key that carries an
-#: agent's human-readable description now, and it is an ordinary agent-scope key.  A file
-#: still holding a ``name:`` line REFUSES the launch by name — deliberately; see
-#: ``agent_file._refuse_undeclared_state`` and ``MIGRATION.md``.
-IDENTITY_KEYS = frozenset({"run_args"})
-
 
 @dataclass
 class AgentConfig:
@@ -41,6 +30,12 @@ class AgentConfig:
     (PRESENT-null — deliberately KEYLESS), or maps to a path ``str``.  Test
     membership (``var in cfg.secret_path``) before reading — ``.get(var)`` cannot
     tell the first two apart.  Field-by-field notes are in the llm-doc.
+
+    ⚑ ``name`` WAS A FIELD HERE AND IS GONE (D8b, 2026-09-15): the agent FILE's own identity
+    field, never a keyspace leaf.  ``agent.<agent>.label`` (spec §2d) is the declared key that
+    carries an agent's human-readable description now, and a file still holding a ``name:``
+    line REFUSES the launch by name — deliberately; see
+    :func:`kanibako.settings.agent_file._refuse_undeclared_state` and ``MIGRATION.md``.
     """
 
     run_args: list[str] = field(default_factory=list)

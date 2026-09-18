@@ -126,10 +126,11 @@ sub-table, and `self` is NOT A KEY — it SUBSTITUTES to `agent.<agent>`, so `se
 `claude` level (*"That would be agent.claude.claude"* / *"never ever ever"*). The argument is
 UNIFORM over any `<sub>`, which is why the literal `default` refuses on the same line.
 
-⚑ **The IDENTITY keys stay in the set deliberately.** A malformed dict-valued `name:` is a mistyped
-scalar, not a nested sub-table; it keeps its old handling — `load` coerces it and the carrier never
-captures it — rather than becoming a refusal about nesting (pinned by
-`test_schema_owned_dict_keys_never_captured`).
+⚑ **So the set holds one key whose value is not a table, deliberately** (`_SCALAR_WRITABLE_KEYS`). A
+malformed dict-valued `run_args:` is a mistyped scalar, not a nested sub-table; it keeps its old
+handling — `load` coerces it and the carrier never captures it — rather than becoming a refusal about
+nesting (pinned by `test_schema_owned_dict_keys_never_captured`). `name` was the other such key until
+D8b retired it, so a dict-valued `name:` refuses as a nesting now.
 
 ```_CARRIED_CATEGORIES: Final[frozenset[str]] = frozenset(_FLAT_AGENT_CATEGORIES) - _MODELED_KEYS```
 The categories that ride `AgentConfig.category_tables` OPAQUELY — every flat category the record
@@ -150,12 +151,21 @@ message) is (category in ("env", "secret_path"))`.)*
 categories holding a SCALAR per name, which is exactly why they are the only ones a scalar write can
 address AND the only ones a cure may name the verb for.
 
-```_TABLE_VALUED_KEYS: Final[frozenset[str]] = _ROOT_TABLES - IDENTITY_KEYS```
-Every ROOT key whose VALUE IS A TABLE — DERIVED, so it cannot drift from the shape the file holds:
-everything the root may carry except the two identity fields (`name` is a string, `run_args` a list of
-them). It answers ONE question — *can a SCALAR be written AT this key?* — and the answer is no for all
-of them: an entry inside one of these tables is DATA (a box destination, a VAR, a transform knob),
-never a key segment of its own. It is the D-7 cure's rule and `_write_address`'s backstop, spelled once.
+```_SCALAR_WRITABLE_KEYS: Final[frozenset[str]] = frozenset({"run_args"})```
+Every ROOT key that TAKES a scalar from the command line — the question *can a SCALAR be written AT
+this key?*, asked in its own words rather than borrowed. It used to be `IDENTITY_KEYS`
+(`kanibako.settings.agent_config`), subtracted below; that set meant *"the root keys that are NOT
+tables"* at this site, *"keep this out of `cfg.state`"* at `_MODELED_KEYS`, and *"admit this at the
+write door"* in `config_keys` — three unrelated jobs under one false name, dissolved 2026-09-18.
+⚑ It is NOT a claim about the STORED shape: `run_args` takes the scalar and stores it as argv WORDS,
+so `_LIST_VALUED_KEYS` is a SUBSET of this set. A plain-scalar modelled key would belong here and not
+there.
+
+```_TABLE_VALUED_KEYS: Final[frozenset[str]] = _ROOT_TABLES - _SCALAR_WRITABLE_KEYS```
+Every ROOT key whose VALUE IS A TABLE — the complement, so it cannot drift from the shape the file
+holds. The answer to the question above is NO for all of them: an entry inside one of these tables is
+DATA (a box destination, a VAR, a transform knob), never a key segment of its own. It is the D-7
+cure's rule and `_write_address`'s backstop, spelled once.
 
 ```_LIST_VALUED_KEYS: Final[frozenset[str]] = frozenset({"run_args"})```
 Every ROOT key the file stores as a LIST OF ARGV WORDS rather than as the one string the command
@@ -354,10 +364,14 @@ calls `agent_file.load` / `agent_file.save`, and `tests/conftest.py` patches `lo
 MODELLED key nor dict-valued. A category table (`env`, `secret_path`, `bindings`, …) is a dict, so
 it is never flat state — those ride `_agent_partial`, not the `_agent_state_partial` state channel.
 
-⚑ **The test is `_MODELED_KEYS`, NOT `IDENTITY_KEYS` (S3/D-7),** and the two differ only for a
-MALFORMED file: a scalar written where a table belongs (`env: oops`) is not dict-valued, so the
-narrower test swept it into state and the launch then carried a modelled field's garbage as an
-agent-state knob.
+⚑ **The test is EVERY modelled key, not just the one with a scalar slot (S3/D-7).** A narrower test
+differs only for a MALFORMED file: a scalar written where a table belongs (`env: oops`) is not
+dict-valued, so it swept into state and the launch then carried a modelled field's garbage as an
+agent-state knob. ⚑ Dropping `run_args` from the set is the same defect from the other side —
+**measured 2026-09-18**: `run_args: ["--a", "--b"]` then lands in `cfg.state` as the string
+`"['--a', '--b']"` beside the properly typed field, and `state_level` carries it into the launch
+cascade. `_refuse_undeclared_state` does NOT catch that — `run_args` is a declared §2d leaf, so the
+§0 gate accepts it.
 
 ⚑ **A `None` value is KEPT as `None`, never coerced through `str()`** — the 2026-08-17 ruling, and
 it applies to `state` and to `secret_path` alike. The coercion used to turn a hand-edited or

@@ -441,11 +441,12 @@ class TestCategoryTablesCarryThrough:
         assert "caches" not in load_doc(path)["self"]
 
     def test_schema_owned_dict_keys_never_captured(self, tmp_path):
-        # A malformed dict-valued IDENTITY key must not ride category_tables (it would
+        # A malformed dict-valued MODELLED key must not ride category_tables (it would
         # clobber the emitted value on the next write) — and it is NOT refused as a nested
         # sub-table either: a mistyped scalar is not a nesting.
-        # ⚑ ``run_args`` IS THE WHOLE SET NOW: ``name`` was the other identity key, and with
-        # it retired (D8b) a dict-valued ``name:`` IS a nested sub-table and DOES refuse.
+        # ⚑ ``run_args`` is the scalar-writable one (``_SCALAR_WRITABLE_KEYS``); ``name`` was
+        # beside it until D8b retired it, so a dict-valued ``name:`` IS a nested sub-table
+        # now and DOES refuse.
         path = tmp_path / "agent.yaml"
         path.write_text(
             "self:\n"

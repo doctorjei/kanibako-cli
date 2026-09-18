@@ -17,7 +17,6 @@ from pathlib import Path
 from typing import Any, Final, Iterable, Mapping
 
 from kanibako.settings.agent_config import (
-    IDENTITY_KEYS,
     AgentConfig,
     agent_settings_path,
 )
@@ -44,7 +43,14 @@ ROOT_SECTIONS: Final[tuple[str, ...]] = (_ROOT,)
 # 🛑 A CATEGORY MUST NEVER BE ADDED HERE without both an ``AgentConfig`` field and a ``save``
 # emission: load would capture it out of the opaque carrier and write would never put it back,
 # which is a silent data-loss shape.
-_MODELED_KEYS = IDENTITY_KEYS | frozenset({"env", "secret_path", "transform_settings"})
+# ⚑ ``run_args`` SITS HERE WITH THE REST, not behind a set borrowed from elsewhere: it is a
+# modelled field like the other three, and what makes it the odd one is only that its value is
+# not a table (:data:`_SCALAR_WRITABLE_KEYS`).  Leaving it out would sweep the stored argv list
+# into :attr:`AgentConfig.state` as the ``str()`` of a list, beside the field that already holds
+# it properly.
+_MODELED_KEYS: Final[frozenset[str]] = frozenset({
+    "run_args", "env", "secret_path", "transform_settings",
+})
 
 #: EVERY category the per-agent file stores FLAT under ``self`` — ``self`` IS ``agent.<node>``, so
 #: there is no second ``<node>`` embedding ([spec:15-21, "self"]; the S2 flatten).
@@ -60,8 +66,9 @@ _FLAT_AGENT_CATEGORIES: tuple[str, ...] = (
 #: ⚑⚑ THIS SET *IS* THE REFUSAL RULE — a dict-valued root key not in here is a nested
 #: ``self.<sub>:`` sub-table and refuses by name, so there is no second list of refused names to
 #: keep in step with it. UNIFORM over any ``<sub>``, ``default`` included.
-#: ⚑ The IDENTITY key stays in the set deliberately: a malformed dict-valued ``run_args:`` is a
-#: mistyped scalar, not a nested sub-table, and keeps its old handling.
+#: ⚑ It therefore holds one key whose value is NOT a table (:data:`_SCALAR_WRITABLE_KEYS`), and
+#: that is deliberate: a malformed dict-valued ``run_args:`` is a mistyped scalar, not a nested
+#: sub-table, and keeps its old handling.
 _ROOT_TABLES: Final[frozenset[str]] = _MODELED_KEYS | frozenset(_FLAT_AGENT_CATEGORIES)
 
 #: The categories that ride :attr:`AgentConfig.category_tables` OPAQUELY — every flat category the
@@ -76,11 +83,17 @@ _CARRIED_CATEGORIES: Final[frozenset[str]] = frozenset(_FLAT_AGENT_CATEGORIES) -
 #: the only categories holding a SCALAR per name (``env.<VAR>`` / ``secret_path.<VAR>``).
 _VERB_WRITABLE_CATEGORIES: Final[frozenset[str]] = frozenset({"env", "secret_path"})
 
-#: Every ROOT key whose VALUE IS A TABLE — derived, so it cannot drift from the shape the file
-#: actually holds: everything the root may carry EXCEPT the two identity fields. ⚑ It answers ONE
-#: question — "can a SCALAR be written AT this key?" — and the answer is no for all of them: an
-#: entry inside one of these tables is DATA, never a key segment of its own.
-_TABLE_VALUED_KEYS: Final[frozenset[str]] = _ROOT_TABLES - IDENTITY_KEYS
+#: Every ROOT key that TAKES A SCALAR from the command line — the direct answer to "can a SCALAR
+#: be written AT this key?", and the reason :data:`_ROOT_TABLES` is not all tables.
+#: ⚑ It is NOT a claim about the STORED shape: ``run_args`` takes the scalar and stores it as
+#: argv WORDS, so :data:`_LIST_VALUED_KEYS` is a SUBSET of this set — every list-valued key takes
+#: the one string it was split from. A plain-scalar modelled key would belong here and NOT there.
+_SCALAR_WRITABLE_KEYS: Final[frozenset[str]] = frozenset({"run_args"})
+
+#: Every ROOT key whose VALUE IS A TABLE — the complement, so it cannot drift from the shape the
+#: file actually holds. ⚑ The answer to the question above is NO for all of them: an entry inside
+#: one of these tables is DATA, never a key segment of its own.
+_TABLE_VALUED_KEYS: Final[frozenset[str]] = _ROOT_TABLES - _SCALAR_WRITABLE_KEYS
 
 #: Every ROOT key the file stores as a LIST OF ARGV WORDS rather than as the one string the
 #: command line hands over.
@@ -417,9 +430,9 @@ def load(path: Path) -> AgentConfig:
     # as a field of its own, and any dict-valued entry: a CATEGORY table is a dict
     # and is NOT flat state — those ride ``_agent_partial``, not the
     # ``_agent_state_partial`` state channel.
-    # ⚑ ``_MODELED_KEYS``, NOT ``IDENTITY_KEYS`` (S3/D-7): the two tests differ only
-    # for a MALFORMED file, and the narrower one swept a modelled field's garbage
-    # into state (llm-docs).
+    # ⚑ EVERY modelled key, not just the ones with a scalar slot (S3/D-7): the
+    # narrower test differs only for a MALFORMED file, where it swept a modelled
+    # field's garbage — ``env: oops`` — into state as an agent-state knob (llm-docs).
     # ⚑ A ``None`` value is KEPT as ``None`` (2026-08-17 ruling), never coerced
     # through ``str()``: that turned a ``model: null`` into the four-byte string
     # ``"None"``, a bogus model id the launch cascade took as real.

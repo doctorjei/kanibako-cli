@@ -29,13 +29,19 @@ entry-point registry of agent adapters. That warning lives at its own site — t
 A per-agent configuration as loaded from an agent YAML file. The record models the parts a launch
 invocation needs directly and carries the rest opaquely.
 
-### `name`, `run_args`, `state` — the `[agent]` section
+### `run_args`, `state` — the `[agent]` section
 
-`IDENTITY_KEYS` (`name`, `run_args`) are the keys that live directly in the `[agent]` section as
-agent **identity**. `state` holds the agent-state knobs beside them — `model`, `access`,
-`allow_helpers`, `endpoint`, and so on. Since the S2 flatten, all of them sit FLAT under the file's
-root, beside the category tables, because `self` IS `agent.<node>`: there is no per-node sub-table
-to nest them in.
+`run_args` is the one launch-invocation value the record models as a field of its own; `state` holds
+the agent-state knobs beside it — `model`, `access`, `allow_helpers`, `endpoint`, and so on. Since
+the S2 flatten, all of them sit FLAT under the file's root, beside the category tables, because
+`self` IS `agent.<node>`: there is no per-node sub-table to nest them in.
+
+⚑ **`name` was a field here and is gone** (D8b, 2026-09-15) — the FILE's own identity field, never a
+keyspace leaf. `agent.<agent>.label` carries an agent's description now, as an ordinary §2d key.
+⚑ **And the `IDENTITY_KEYS` set that spelled the pair is gone with it** (2026-09-18). With one member
+left, its name was false of what it held and the three jobs it did were unrelated: `agent_file`
+models `run_args` directly in `_MODELED_KEYS`, asks the scalar-vs-table question through
+`_SCALAR_WRITABLE_KEYS`, and the `config_keys` write-door allowlist was D8b's to delete.
 
 ### `env` — the ENV category
 

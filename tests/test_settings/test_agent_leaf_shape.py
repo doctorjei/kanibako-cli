@@ -489,8 +489,8 @@ class TestTheAgentFileIdentityFieldIsRetired:
     again, so it was deleted rather than left as a guard that cannot fire (P4).
 
     ⚑ WHAT IS PINNED INSTEAD is the fact that made the predicate necessary and now makes it
-    unnecessary: ``name`` is not a key at any door, and ``IDENTITY_KEYS`` no longer carries
-    it.  Re-add the allowlist ``agent_key_reason`` used to hold and the first row reds.
+    unnecessary: ``name`` is not a key at any door, and the file MODELS no such field.  Re-add
+    the allowlist ``agent_key_reason`` used to hold and the first row reds.
     """
 
     def test_name_is_not_a_key_at_the_agent_gate(self):
@@ -500,14 +500,20 @@ class TestTheAgentFileIdentityFieldIsRetired:
         reason = agent_key_reason("claude", "name")
         assert reason is not None and "name" in reason
 
-    def test_the_remaining_identity_field_is_a_declared_leaf(self):
-        """⚑ THE REASON THE ALLOWLIST IS GONE, not merely unused: the one field left in
-        ``IDENTITY_KEYS`` is a declared §2d leaf, so the gate below admits it unaided.
-        A field added here that core does NOT declare would need the route decided again."""
-        from kanibako.settings.agent_config import IDENTITY_KEYS
+    def test_the_scalar_the_file_models_is_a_declared_leaf(self):
+        """⚑ THE REASON THE ALLOWLIST IS GONE, not merely unused: the one root key the file
+        models AND takes a scalar at is a declared §2d leaf, so the gate above admits it
+        unaided.  A modelled field added there that core does NOT declare would need the route
+        decided again — which is what the allowlist was.  (Of the other three modelled keys,
+        only ``transform_settings`` is also a declared §2d leaf, and
+        ``TestTheKeyspaceAndTheFileAgree`` below pins the keyspace/file agreement for it;
+        ``env`` and ``secret_path`` are §2a categories and that class never sees them.)"""
+        from kanibako.settings.agent_file import _MODELED_KEYS, _SCALAR_WRITABLE_KEYS
 
-        assert "name" not in IDENTITY_KEYS
-        assert IDENTITY_KEYS <= DECLARED_AGENT_LEAVES
+        assert _SCALAR_WRITABLE_KEYS, "empty — the two rows below would pass vacuously"
+        assert "name" not in _MODELED_KEYS
+        assert _SCALAR_WRITABLE_KEYS <= _MODELED_KEYS
+        assert _SCALAR_WRITABLE_KEYS <= DECLARED_AGENT_LEAVES
 
     def test_the_record_models_no_name(self):
         """The field itself, at its declaration site — a settings file holds keys only."""
