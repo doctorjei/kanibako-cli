@@ -9,6 +9,7 @@ import pytest
 from kanibako.agent_ref import (
     CANONICAL_SEP,
     PLUS_SEP,
+    PSEUDO_AGENT_NAMES,
     _is_segment_safe,
     canonicalize_agent_ref,
     display_agent_ref,
@@ -295,6 +296,78 @@ def test_canonicalize_matches_parse_node():
 def test_canonicalize_malformed_raises():
     with pytest.raises(ConfigError):
         canonicalize_agent_ref("navigator+")
+
+
+# ---------------------------------------------------------------------------
+# Pseudo-agent name reservation
+#
+# Keyspec §2d, "Pseudo-agent(s)": *"Their names are RESERVED and MUST be refused
+# to any agent, persona, or harness."*  A pseudo-agent already owns an
+# ``agent.<name>.*`` cascade slot and a store dir, so a true agent claiming one
+# would own them too.  The refusal lives in ``parse_agent_ref`` because that is
+# the sole gate every user-supplied ref passes through.
+# ---------------------------------------------------------------------------
+
+
+def test_the_reserved_set_is_the_spec_s_two_names():
+    # The parametrized refusals below sweep PSEUDO_AGENT_NAMES, so an emptied set
+    # would make every one of them pass VACUOUSLY.  The oracle is the spec's own
+    # subheadings, not the module under test.
+    assert PSEUDO_AGENT_NAMES == {"default", "shell"}
+
+
+@pytest.mark.parametrize("name", sorted(PSEUDO_AGENT_NAMES))
+def test_reserved_name_refused_as_a_bare_agent(name):
+    # A bare ref names the persona AND the harness, so this is the "agent" arm.
+    with pytest.raises(ConfigError, match="RESERVED pseudo-agent name"):
+        parse_agent_ref(name)
+
+
+@pytest.mark.parametrize("name", sorted(PSEUDO_AGENT_NAMES))
+def test_reserved_name_refused_as_a_persona(name):
+    with pytest.raises(ConfigError, match=r"persona segment .* RESERVED"):
+        parse_agent_ref(f"{name}+claude")
+
+
+@pytest.mark.parametrize("name", sorted(PSEUDO_AGENT_NAMES))
+def test_reserved_name_refused_as_a_harness(name):
+    # ``claude+shell`` and ``claude+default`` both PARSED before 2026-09-18.
+    with pytest.raises(ConfigError, match=r"harness segment .* RESERVED"):
+        parse_agent_ref(f"claude+{name}")
+
+
+@pytest.mark.parametrize("name", sorted(PSEUDO_AGENT_NAMES))
+def test_reserved_name_refused_in_the_canonical_spelling_too(name):
+    # ``℘`` is the on-key spelling of the same ref; a refusal that only saw ``+``
+    # would be a refusal a stored key could walk around.
+    with pytest.raises(ConfigError, match="RESERVED pseudo-agent name"):
+        canonicalize_agent_ref(f"navigator{CANONICAL_SEP}{name}")
+
+
+@pytest.mark.parametrize(
+    "good", ["shellx", "myshell", "defaults", "no_default", "Shell", "Default", "SHELL"],
+)
+def test_the_reservation_does_not_over_reach(good):
+    # EXACT spelling only.  A name that merely contains, extends or re-cases a
+    # reserved word is an ordinary agent name, and refusing it would widen a
+    # user-facing surface past the two names the spec reserves.
+    assert parse_agent_ref(good) == (good, good)
+
+
+def test_the_reservation_leaves_the_agent_default_key_TIER_alone():
+    """``default`` is reserved as a NAME and still legal as the any-agent TIER token.
+
+    ``config_keys.resolve_key`` canonicalises the node segment of
+    ``agent.<node>.<leaf>`` through this module, so a ``ConfigError`` raised here
+    reaches the KEY path as well.  The tier has to survive it — and it does,
+    because that caller's ``except ConfigError`` arm returns the key unchanged,
+    which is the same answer it gave before the reservation existed.  Measured
+    against the pre-image, not against the new shape.
+    """
+    from kanibako.settings.config_keys import agent_default_tier_leaf, resolve_key
+
+    assert resolve_key("agent.default.model") == "agent.default.model"
+    assert agent_default_tier_leaf("agent.default.model") == "model"
 
 
 # ---------------------------------------------------------------------------

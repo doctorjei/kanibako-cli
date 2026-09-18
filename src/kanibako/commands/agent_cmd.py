@@ -153,6 +153,24 @@ def _load_std() -> StandardPaths:
     return load_std_paths(load_config(_config_file()))
 
 
+def _agent_node(raw: str) -> str:
+    """The node the ``<agent>`` positional names, canonicalised to the ``℘`` KEY form.
+
+    ⚑⚑ THE ANY-AGENT TIER TOKEN IS NOT A REF, and passes through untouched. This is
+    the order ``settings.config_dest.check_agent_node`` already uses and it is the same
+    reason: ``default`` ADDRESSES the reserved tier rather than NAMING an agent, while
+    ``agent_ref.parse_agent_ref`` is the true-agent grammar and refuses a reserved
+    pseudo-agent name (keyspec §2d). Canonicalising it would raise here and replace the
+    engine's refusal — which names the CURE, the bare-key spelling — with a bare
+    reservation notice. The other reserved name has no tier a verb can address, so it
+    takes the ``canonicalize_agent_ref`` road and surfaces as an ordinary ``ConfigError``
+    — which ``cli.py`` flattens to one ``Error: …`` line at rc 1, like any other.
+    """
+    from kanibako.settings.config_keys import AGENT_DEFAULT_SUB
+
+    return raw if raw == AGENT_DEFAULT_SUB else canonicalize_agent_ref(raw)
+
+
 def run_list(args: argparse.Namespace) -> int:
     """List configured agents."""
     from kanibako.settings.agent_file import load
@@ -212,7 +230,7 @@ def run_info(args: argparse.Namespace) -> int:
     # The positional may arrive in either spelling; canonicalise to the ``℘`` node —
     # the form every KEY takes.  ``agent_settings_path`` maps it back to the ``+``
     # store dirname, so nothing here composes a path from the node itself.
-    agent_id = canonicalize_agent_ref(args.agent_id)
+    agent_id = _agent_node(args.agent_id)
     agent_display = display_agent_ref(agent_id)
     path = agent_settings_path(std.agents, agent_id)
     if not path.exists():
@@ -332,7 +350,7 @@ def _run_agent_config(args: argparse.Namespace) -> int:
 
     # Canonicalise the (possibly ``+``) persona ref to the ``℘`` node — the KEY form.
     # ``agent_settings_path`` maps it back to the ``+`` store dirname.
-    agent_id = canonicalize_agent_ref(args.agent_id)
+    agent_id = _agent_node(args.agent_id)
     agent_display = display_agent_ref(agent_id)
     path = agent_settings_path(std.agents, agent_id)
     if not path.exists():

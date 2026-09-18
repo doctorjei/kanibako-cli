@@ -12,6 +12,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The pseudo-agent names `default` and `shell` are now refused to an agent, a persona and a
+  harness.** Both belong to the keyspace: `default` is the all-agents fallback tier
+  (`agent.default.*`) and `shell` is the plain-shell box, and each owns an `agent.<name>.*` cascade
+  slot in the keyspace. The reservation was documented and enforced nowhere —
+  target discovery keyed straight off a plugin's entry-point name with no name validation at all,
+  so a third-party plugin could register `default` or `shell` and quietly take over a tier the
+  settings system reads for every agent; `mypersona+shell` and `mypersona+default` parsed as
+  ordinary refs. A plugin claiming one of the two is now **skipped with a warning on stderr**,
+  which costs that one plugin its registration and leaves the rest of the CLI working, and a ref
+  naming one is refused at rc 1. The rule is exact-spelling: `Shell`, `shellx` and `defaults` are
+  ordinary agent names and are unaffected, as is the `agent.default.*` key tier itself. Nothing
+  kanibako ships uses either name. See `MIGRATION.md` § *3.2 `default` and `shell` are reserved
+  names a plugin may not take*.
+
 - **Credential writebacks now serialize on the directory they write into, instead of on a lock file
   under `$XDG_STATE_HOME`.** Two writebacks must not interleave — a `kanibako stop`, a foreground
   reattach and the per-box writeback daemon can all fire at once, onto the same credential files.

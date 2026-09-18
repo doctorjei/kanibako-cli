@@ -10,6 +10,7 @@ import sys
 from importlib.metadata import entry_points
 from pathlib import Path
 
+from kanibako.agent_ref import reserved_pseudo_agent_reason
 from kanibako.settings.bootstrap import STANDALONE_META_DIR
 from kanibako.targets.base import AgentInstall, Mount, Target, TargetSetting
 from kanibako.targets.no_agent import NoAgentTarget
@@ -27,6 +28,46 @@ logger = logging.getLogger(__name__)
 # setup's agent menu, the target resolve), and repeating the same paragraph on
 # every call would bury the rest of the output.
 _EP_LOAD_FAILED: set[str] = set()
+
+# Harness names already refused as RESERVED, so the stderr warning is emitted ONCE per
+# process — the same reason ``_EP_LOAD_FAILED`` above exists.
+_RESERVED_NAME_WARNED: set[str] = set()
+
+
+def _register(
+    targets: dict[str, type[Target]],
+    name: str,
+    cls: type[Target],
+    source: str,
+    *,
+    override: bool,
+) -> None:
+    """Enter *cls* in *targets* under its harness *name*, unless that name is RESERVED.
+
+    THE ONE REGISTRATION GATE — all three discovery tiers assign through it, so the
+    pseudo-agent reservation (keyspec §2d) cannot hold at one tier and not another.
+    *override* carries each tier's own precedence rule: entry points and the two
+    file-drop scans replace an earlier answer, the ``kanibako.plugins`` module fallback
+    keeps the first one.
+
+    ⚑ SKIP-AND-WARN, NEVER RAISE, for the reason the ``ep.load()`` guard in
+    :func:`discover_targets` states at length: discovery runs on every command, so one
+    third-party plugin's bad name must not take the CLI down. The refusal costs that ONE
+    plugin its registration and nothing else.
+    """
+    why = reserved_pseudo_agent_reason(name)
+    if why is not None:
+        if name not in _RESERVED_NAME_WARNED:
+            _RESERVED_NAME_WARNED.add(name)
+            print(
+                f"Warning: {why}. The agent plugin registering it ({source}) is being "
+                f"SKIPPED; every other agent, and 'kanibako setup', still work. The "
+                f"plugin's author must give it a name of its own.",
+                file=sys.stderr,
+            )
+        return
+    if override or name not in targets:
+        targets[name] = cls
 
 
 def _scan_plugin_modules(targets: dict[str, type[Target]]) -> None:
@@ -68,8 +109,9 @@ def _scan_plugin_modules(targets: dict[str, type[Target]]) -> None:
                     name = instance.name
                 except Exception:
                     continue
-                if name not in targets:
-                    targets[name] = attr
+                _register(
+                    targets, name, attr, f"module '{module_name}'", override=False,
+                )
 
 
 def _scan_directory_plugins(directory: Path, targets: dict[str, type[Target]]) -> None:
@@ -107,7 +149,8 @@ def _scan_directory_plugins(directory: Path, targets: dict[str, type[Target]]) -
                     name = instance.name
                 except Exception:
                     continue
-                targets[name] = attr  # later overrides earlier
+                # Later directories in the chain override earlier ones.
+                _register(targets, name, attr, f"file '{py_file}'", override=True)
 
 
 def discover_targets(project_path: Path | None = None) -> dict[str, type[Target]]:
@@ -178,7 +221,7 @@ def discover_targets(project_path: Path | None = None) -> dict[str, type[Target]
                 "entry point %s failed to load", ep.name, exc_info=True,
             )
             continue
-        targets[ep.name] = cls
+        _register(targets, ep.name, cls, "an installed entry point", override=True)
 
     # Fallback: scan kanibako.plugins.* for bind-mounted plugins
     _scan_plugin_modules(targets)
@@ -215,7 +258,7 @@ def get_target(name: str, project_path: Path | None = None) -> type[Target]:
 
 
 def _require_meta_name(target: Target) -> Target:
-    """Enforce that a resolved target declares a non-empty ``name``.
+    """Enforce that a resolved target declares a non-empty, non-RESERVED ``name``.
 
     The plugin's ``name`` is the HARNESS name — it is REQUIRED (D-2026-06-22):
     it identifies the harness's own store dir (``agents/<name>/``) and its
@@ -227,8 +270,14 @@ def _require_meta_name(target: Target) -> Target:
     used to say it was.  That key is materialized by
     ``settings.settings_launch.meta_identity_floor`` from the ACTIVE NODE, which
     for a persona is not the plugin's name at all; the two coincide only for a
-    bare agent.  Nothing here feeds this value into that key — this is a
-    NON-EMPTINESS guard and nothing more.
+    bare agent.  Nothing here feeds this value into that key — this function
+    VALIDATES a name, it never publishes one.
+
+    ⚑ AND A RESERVATION FLOOR (keyspec §2d): the store dir and cascade slot the name
+    identifies are exactly what a PSEUDO-AGENT name already owns, so a harness may not
+    claim one. :func:`_register` normally keeps such a plugin out of discovery
+    altogether; this is the floor under a ``Target`` that reaches a caller some other
+    way, and it RAISES because by here the target is the one being launched.
     """
     meta_name = getattr(target, "name", None)
     if not (isinstance(meta_name, str) and meta_name.strip()):
@@ -238,6 +287,13 @@ def _require_meta_name(target: Target) -> Target:
             f"declare meta.agent.<agent>.name (its 'name' property is empty); "
             f"a plugin MUST provide a non-empty name to identify its store dir "
             f"and cascade key."
+        )
+    why = reserved_pseudo_agent_reason(meta_name)
+    if why is not None:
+        cls = type(target)
+        raise ValueError(
+            f"{why}. Agent plugin {cls.__module__}.{cls.__qualname__} declares it as "
+            f"its harness name; rename the plugin's 'name' property."
         )
     return target
 

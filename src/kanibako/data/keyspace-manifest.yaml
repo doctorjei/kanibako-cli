@@ -1914,7 +1914,8 @@ keys:
   ## fields via meta_agent_grammar_floor / the descriptor's auth_share_support, so
   ## `origin: plugin` is correct THERE and must not be swept with these.
   ## ⚑ THE TRAP a plugin origin sets: a plugin DOES declare a `name`, and it is a
-  ## different value — targets.__init__._require_meta_name is a NON-EMPTINESS guard
+  ## different value — targets.__init__._require_meta_name is a NAME-VALIDITY guard
+  ## (non-emptiness plus the §2d pseudo-agent reservation)
   ## that feeds nothing, and "for a persona [it] is not the plugin's name at all".
   meta.agent.default.name:
     namespace: meta

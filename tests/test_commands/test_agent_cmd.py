@@ -1355,9 +1355,13 @@ class TestAgentVerbKeyspaceGate:
                "run_args=--a --b"),
     )
     def test_the_live_keys_still_write(self, kv, agent_env, capsys):
-        """THE GREEN HALF. ``name`` is NOT a declared §2d leaf — it is a FILE-identity field
-        of ``AgentConfig`` — so it rides an explicit ``IDENTITY_KEYS`` allowlist. Drop that
-        allowlist and this case dies; that is the mutation proof for the residue."""
+        """THE GREEN HALF — every shape the verb writes, and each one passes the §0 gate by
+        being DECLARED rather than by being rescued above it (the identity allowlist is gone;
+        see ``config_keys.agent_key_reason``).
+
+        MUTATION PROOF: drop ``run_args`` from ``settings_keyspace.DECLARED_AGENT_LEAVES`` and
+        that case reds — measured, the gate answers *"'run_args' is not a declared agent key of
+        'agent.claude'"*. Nothing else admits it."""
         from kanibako.commands.agent_cmd import run_set
 
         assert run_set(
@@ -1390,9 +1394,9 @@ class TestAgentSetRoutesThroughTheOneSetter:
     reference, while the SAME value through ``kanibako system set`` was refused by name.
 
     Two writers of one keyspace slot is the defect, so the fix is ONE writer — not a second copy
-    of the checks in the second writer.  ⚑ ``name`` still writes through the file boundary and
-    that is NOT a carve-out: it is a FILE-identity field of ``AgentConfig``, absent from the
-    keyspace, so the shared setter has no key to route (pinned by
+    of the checks in the second writer.  ⚑ NOTHING BYPASSES IT ANY MORE: ``name`` was the one
+    tail that still wrote through the file boundary, as a FILE-identity field of ``AgentConfig``
+    the shared setter had no key to route, and D8b retired the field (pinned by
     ``TestAgentVerbKeyspaceGate.test_the_live_keys_still_write``).
     """
 
@@ -1538,8 +1542,9 @@ class TestAgentResetRoutesThroughTheOneSetter:
 
         It is refused at the noun's own §0 gate, so it never reaches the shared resetter
         either — no key, no route, and no by-hand removal left behind to be the exception.
-        MUTATION PROOF: restore the ``IDENTITY_KEYS`` short-circuit in ``agent_key_reason``
-        and the gate passes, so this rc flips to 0.
+        MUTATION PROOF: put an identity allowlist back above that gate — ``if tail in
+        {"name", "run_args"}: return None`` at the top of ``agent_key_reason`` — and the
+        verb's gate passes, so the reset reaches the shared resetter and ``calls == []`` reds.
         """
         from kanibako.commands.agent_cmd import run_reset
 
@@ -1570,6 +1575,25 @@ class TestAgentResetRoutesThroughTheOneSetter:
         assert rc == 1
         err = capsys.readouterr().err
         assert "reserved any-agent tier" in err
+
+    def test_the_other_pseudo_agent_name_is_refused_by_the_ref_grammar(self, agent_env):
+        """``shell`` is reserved too (keyspec §2d), and takes a different road here.
+
+        The asymmetry with ``default`` above is what ``agent_cmd._agent_node`` encodes and
+        it is deliberate: ``default`` ADDRESSES a declared tier this verb routes to, so it
+        must reach the engine's refusal above — the one carrying the cure. ``shell`` names
+        no tier a verb can address, so the ref grammar refuses it first.
+        ``cli.py`` flattens the ``ConfigError`` to the one-line ``Error: …`` at rc 1 that
+        every ``KanibakoError`` takes; this calls the handler directly, below that seam.
+        """
+        from kanibako.commands.agent_cmd import run_reset
+        from kanibako.errors import ConfigError
+
+        _write_sparse(agent_env, "shell", {"self": {"model": "opus"}})
+        with pytest.raises(ConfigError, match="RESERVED pseudo-agent name"):
+            run_reset(argparse.Namespace(
+                agent_id="shell", key="model", all_keys=False, force=False,
+            ))
 
     def test_the_refusal_is_the_one_the_shared_resetter_produces(
         self, agent_env, capsys, tmp_path,
