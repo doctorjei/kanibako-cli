@@ -1,7 +1,10 @@
 # kinemata config for kanibako-cli -- THE config. It drives every command this
-# project runs: `check` (duplication), `parity`, `claims` (the DOCUMENTATION
-# gate), `unused`, `ids`, and the `undeclared`, `review` and `clusters` commands
-# that are not yet in CI.
+# project runs. FOUR RUN IN CI, and they are exactly the four the gate inventory
+# at the foot of this file declares: `check` (duplication), `parity`, `shape`
+# (the manifest against itself) and `claims` (the DOCUMENTATION gate). Also
+# configured but in no pipeline: `unused`, `ids`, `undeclared`, `review`,
+# `clusters`. ⚑ A command added to CI needs its `[[gate]]` block here, or the
+# inventory agrees with itself -- which is exactly how `shape` ran nowhere.
 #
 # ⚑ THERE IS EXACTLY ONE CONFIG IN THIS REPOSITORY, and one baseline
 # (`.kinemata-baseline.json`, the default name). Every command is run plainly --
@@ -1363,10 +1366,10 @@ registry = "keyspace"
   # ELEVEN PARAMETRIC ROWS. `tests/test_settings/test_set_column_conformance.py`
   # already asserts `declared == {"cli+file", "file", "never"}` -- but over
   # `_static_rows()`, which drops every row whose id carries a `<placeholder>`.
-  # Measured: 101 rows declared, 11 of them parametric (`agent.<agent>.<key>`,
+  # Measured: 11 of the declared rows are parametric (`agent.<agent>.<key>`,
   # `meta.box.agent.<key>`, the six `meta.agent.<agent>.*` and three more), so a
   # bad `set:` cell on any of those eleven passes the suite today. This rule has no
-  # guard and reaches all 101.  (Re-derive, do not trust: `kinemata shape` prints
+  # guard and reaches every row.  (Re-derive, do not trust: `kinemata shape` prints
   # `set-vocabulary: N examined`.)
   [[shape.rule]]
   name = "set-vocabulary"
@@ -1383,7 +1386,7 @@ registry = "keyspace"
   # ⚑ GUARDED BECAUSE THE COLUMN IS NOT UNIVERSAL, and the guard is the honest
   # statement of that: most rows carry `type:`; the ones that do not are
   # `agent.<agent>.<key>` plus the `meta.*` rows nothing here should type -- the BARE
-  # MIRRORS and a handful of composed `str` rows the ratified pass did not reach.
+  # MIRRORS, and those alone since the four composed `str` rows were typed.
   # (Re-derive, do not trust a figure here: `kinemata shape` prints
   # `type-vocabulary: N examined` against its own `N entry(s)` header. A count written
   # into this comment went stale twice in one day -- once when `system.state` landed
