@@ -81,19 +81,26 @@ jobs:
       # kinemata's `pyproject.toml` read `0.1.0a1` eighteen commits past that
       # tag, and the published `0.1.0a1` wheel did not contain `parity` at all --
       # so a version string could not tell two builds apart and could install a
-      # tool missing the command this gate turns on. The value pinned below is a
-      # published build that does identify itself: `0.1.1` is a final release
-      # (not a pre-release, so no `--pre` question applies), and its package
-      # tree is file-identical to upstream tag `v0.1.1` = commit `2bd32cb`
+      # tool missing the command this gate turns on. What retired the SHA was a
+      # published build that does identify itself: `0.1.1`, a final release (not
+      # a pre-release, so no `--pre` question applies) whose package tree is
+      # file-identical to upstream tag `v0.1.1` = commit `2bd32cb`
       # (`diff -rq -x __pycache__` against `src/kinemata`: no output, rc 0, and
       # non-vacuous -- 32 `.py` files each side, `__init__.py` md5 matching;
-      # verified 2026-09-15). It carries both `parity` and `shape`. The value is
-      # written once, on the run line -- restating it here would be a second
-      # copy to bump.
+      # verified 2026-09-15). `0.1.2` carries both `parity` and `shape`, as
+      # `0.1.1` did. 🛑 THE PINNED VALUE IS WRITTEN ONCE, ON THE RUN LINE -- and this
+      # paragraph named it anyway until the 0.1.2 bump found the second copy
+      # still reading `0.1.1`, which is the argument against keeping one.
       # ⚑ 0.1.1 REPORTS MORE THAN 0.1.0 ON THE SAME TREE, NEVER LESS: files that
       # a gitignored directory's name was removing from the file index are back.
       # Expect findings to APPEAR on a bump, read them at source, and do not tune
       # them away. The mechanism is in `.kinemata-baseline.json`'s note, residue (4).
+      # Measured at the 0.1.2 bump: it produced none, and that was a reading
+      # rather than luck. Its two behavior changes were an advisory line no
+      # section this config declared could trigger, and an illustration role no
+      # document in this tree marked a span with -- so all four commands below
+      # printed output byte-identical to 0.1.1's. The record of what that bump
+      # decided is in `.kinemata-baseline.json`'s note, residue (3).
       # 🛑 THIS PIN MUST NOT LAG THE TREE WE DEVELOP AGAINST. An older `[[parity]]`
       # did not refuse a key it could not mean, so a config using `field`/`authority`
       # against a build that predates them is SILENTLY DOWNGRADED to membership-only
@@ -107,7 +114,7 @@ jobs:
       # `/`-anchored spelling, which an earlier build reads as a literal substring
       # matching nothing -- lower this pin and the conformance job reds. The
       # measurement is in that file's version-floor note, above its `exclude`.
-      - run: pip install "kinemata[yaml]==0.1.1"
+      - run: pip install "kinemata[yaml]==0.1.2"
       # ⚑ THE PROJECT ITSELF IS INSTALLED HERE BECAUSE THE PARITY ORACLE IMPORTS
       # IT. `parity` runs a command that prints what the code produces, and an
       # oracle it cannot run is a FAILURE that no baseline can accept -- so a
@@ -125,9 +132,18 @@ jobs:
       # `kinemata claims` prints `gates: N of N declared check(s) run in
       # .github/workflows/test.yml`, but the `[[gate]]` blocks it counts declared
       # only the commands already listed here, so the inventory agreed with
-      # itself. A section kind added without BOTH its command below and its
-      # `[[gate]]` block is silent by construction -- keep this list and
-      # `kinemata.toml`'s gate blocks together.
+      # itself. That silence was structural at the version we reported it from:
+      # a section kind added without BOTH its command below and its `[[gate]]`
+      # block went unmentioned by construction. 0.1.2 answers it -- `claims` now
+      # prints `ungated: [[shape]] declares checks no [[gate]] row runs` beside
+      # the cover line, and the case above is the one that feature was built
+      # against.
+      # ⚑ BUT IT WARNS, IT NEVER FAILS, so it does not replace the rule. Upstream
+      # declines to fail on it because a declaration may be run by hand, and
+      # failing would force either real CI wiring or deleting the declaration to
+      # satisfy its own inventory. An advisory line is not a gate: `claims` still
+      # exits 0 while printing it and this job still reads green, so keep this
+      # list and `kinemata.toml`'s `[[gate]]` blocks together.
       - run: kinemata check
       - run: kinemata parity
       - run: kinemata shape
