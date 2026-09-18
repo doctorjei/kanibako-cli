@@ -324,18 +324,21 @@ def home_relative(path: Path) -> str:
     host-absolute target in it hands every reader the host's layout and account name.
     Canon authors no HOST-absolute target -- the two shipped ``__LINKSECTION__`` sites
     spell ``procedures/*``, the kickoff spells ``@~/canon/COLLECTION.md`` -- so a host
-    path is one this script INVENTED while resolving. An authored ``~/`` target never
-    arrives here: not an ``@`` ref, so ``LINK_RE`` skips it and it ships as written.
+    path is one this script INVENTED while resolving. Only RESOLVED paths reach here: an
+    authored ``~/`` link that is not an ``@`` ref never becomes a row at all (``LINK_RE``
+    skips it) and ships as written.
 
     ⚑ HOME IS THE ANCHOR because it is the only fixed point the three delivery modes
-    share: two (``--additional-context``, stdout) write no DEST, and the third's DEST is
-    the instruction slot itself, so a DEST-relative target would spell one path three
-    ways. Canon reaches the box at ``~/canon`` by the home bind in every mode.
+    share: two (``--additional-context``, stdout) write no DEST, and the third -- the
+    SOURCE->DEST file mode the launch shim runs -- has the instruction slot as its DEST,
+    so a DEST-relative target would spell one path three ways. Canon reaches the box at
+    ``~/canon`` by the home bind in every mode.
 
     ⚑ THE ``~/`` IS KEPT, not stripped: a bare ``canon/...`` claims "relative to the file
-    you are reading", false wherever this lands. It is the spelling canon and every
-    ``box_dest:`` already use. A path OUTSIDE home comes back UNCHANGED -- there is no
-    true relative spelling, and this function never invents one.
+    you are reading", false wherever this lands. It is the spelling canon itself uses, and
+    every home-anchored ``box_dest:`` in ``core-defaults.yaml``. A path OUTSIDE home comes
+    back UNCHANGED -- there is no true relative spelling, and this function never invents
+    one.
     """
     try:
         return "~/" + path.relative_to(Path.home()).as_posix()
