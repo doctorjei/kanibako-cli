@@ -304,7 +304,7 @@ inside boxes. In order of likely impact:
     XDG *data* base plus a hardcoded `kanibako`; a plugin you had dropped in your store was silently
     never loaded. Move the `.py` files, and re-run `kanibako code --remote` per remote.
 
-30. Smaller items: standalone boxes' `box get` got truthful (§2.9); a box suppressed to
+31. Smaller items: standalone boxes' `box get` got truthful (§2.9); a box suppressed to
     plain-shell keeps stale credential files in its home (§2.10); several never-released or
     expected-empty renames (§2.11); two `--null` CLI bugs fixed (§2.14); a customized helper
     entrypoint script moves to `~/canon/notebook/scripts/helper-init.sh` (§2.44).
@@ -5087,9 +5087,10 @@ its harness and `--agent shell+claude` for its persona. **It is an exact-spellin
 1. **Rename the plugin.** Change the `name` property on your `Target` and the entry-point name in
    your `pyproject.toml` `[project.entry-points."kanibako.agents"]` table to match. Reinstall.
 2. **Rename the store directory** under `<data>/agents/` to the new name, if one was created.
-   Everything inside it — `agent.yaml`, `common/`, `caches/` — moves with it and needs no edit.
+   Everything inside it — the agent settings file, the shared common directory, the caches — moves
+   with it and needs no edit.
 3. **Rewrite the selection key wherever it names the old spelling** — `pref.system.agent` in each
-   box's `box.yaml`, and `system.agent` in `<data>/global/settings.yaml`. Edit the YAML by hand:
+   box's `<box>/box.yaml`, and `system.agent` in `<data>/global/settings.yaml`. Edit the YAML by hand:
    the value in the file is a ref that no longer parses, so no `set` verb will touch it.
 
 ---
