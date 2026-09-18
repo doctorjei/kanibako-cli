@@ -29,6 +29,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import fcntl
+import os
 import sys
 import time
 from collections.abc import Callable, Iterator
@@ -36,7 +37,6 @@ from enum import Enum
 from pathlib import Path
 
 from kanibako.log import get_logger
-from kanibako.settings.paths import xdg
 
 log = get_logger("creds_watcher")
 
@@ -94,54 +94,60 @@ def clear_creds_dirty(project_home: Path) -> None:
 # --------------------------------------------------------------------------- #
 
 @contextlib.contextmanager
-def creds_store_lock() -> "Iterator[None]":
-    """Serialize credential-STORE writes across concurrent host ops + this watcher.
+def creds_store_lock(*dest_dirs: Path) -> "Iterator[None]":
+    """Serialize credential-STORE writes by flocking the writeback DESTINATION dirs.
 
-    The writeback copies box-home creds into the SHARED store (host home / workset
-    dir).  Two writers to the same store must not interleave: a ``kanibako stop``
-    writeback, a foreground reattach writeback, and this per-box daemon can all fire
-    at once.  There is no pre-existing lock on the writeback itself (the launch-path
-    flock is the EPHEMERAL session lock, SKIPPED for persistent boxes), so this is a
-    narrow host-wide mutex around the store write that EVERY writeback path shares —
-    the watcher and :func:`kanibako.commands.start.writeback_session_credentials`
-    both enter it, so concurrent writes serialize.
+    The writeback copies box-home creds into the SHARED store, and two writers to the
+    same store must not interleave: a ``kanibako stop`` writeback, a foreground
+    reattach writeback, and this per-box daemon can all fire at once.  There is no
+    pre-existing lock on the writeback itself (the launch-path flock is the EPHEMERAL
+    session lock, SKIPPED for persistent boxes).
+    :func:`kanibako.commands.start.writeback_session_credentials` is the SOLE writeback
+    site and this lock's SOLE caller; this module's own daemon reaches the store THROUGH
+    that function rather than entering the lock itself.
 
-    A single host-wide lock (over-serializing across worksets) is deliberate: cred
-    writebacks are rare + fast, so a global mutex is simpler and race-free.  TOLERANT:
-    a lock file that cannot be created / locked degrades to proceeding UNLOCKED (a
-    writeback must never be BLOCKED by a lock-infra hiccup) rather than raising.
+    ⚑ The lock IS the destination directory (``os.open`` + ``flock(LOCK_EX)`` on the
+    dir itself): it creates no file and mints no key, and its SCOPE is the
+    destination's scope BY CONSTRUCTION.  The ``"global"`` tier's destination is
+    ``host_home`` ITSELF (:func:`kanibako.targets.credsync.selected_source_root`), so a
+    global writeback still takes a HOST-WIDE lock, while a workset-tier writeback takes
+    only its own auth dir instead of over-serializing against unrelated stores.
+    🛑 Do NOT lock a FILE instead ([R167]): not a sentinel under a composed path (the bug
+    this replaced), and not the destination file, which a rename defeats —
+    ``writeback_extra`` rewrites ``~/.claude.json`` by temp+rename while ``cred_files``
+    copies IN PLACE, so a file lock would hold for one destination and silently not for
+    the other.
+
+    *dest_dirs* is EVERY directory the guarded writeback writes into — a global-synced
+    workset box writes its workset dir AND host home, so it passes both.  They are taken
+    in sorted real-path order, so no caller can invert or repeat its way into a deadlock.
+    TOLERANT: a directory that cannot be opened / locked is SKIPPED and the writeback
+    proceeds without THAT lock (it must never be BLOCKED by a lock-infra hiccup).
     """
-    # ⚑ The hardcoded ``"kanibako"`` leaf here is DELIBERATE, not the store-isolation
-    # bug it would be elsewhere: the ``"global"`` tier's writeback destination is
-    # ``host_home`` ITSELF (:func:`kanibako.targets.credsync.selected_source_root`),
-    # shared by EVERY store on the machine — so this lock must stay HOST-WIDE.  Do
-    # NOT repoint it at ``StandardPaths.state`` (``system.state``); a user who repoints
-    # that key would scope the lock per-store, breaking cross-store serialization.
-    lock_path = xdg("XDG_STATE_HOME", ".local/state") / "kanibako" / "creds-writeback.lock"
-    fd = None
-    try:
-        lock_path.parent.mkdir(parents=True, exist_ok=True)
-        fd = open(lock_path, "w")
-        fcntl.flock(fd, fcntl.LOCK_EX)
-    except Exception as exc:
-        # Broad by design: this lock must NEVER block/abort a writeback, so ANY
-        # acquisition failure (a missing dir, a non-lockable fd) degrades to unlocked.
-        log.debug("creds store lock unavailable (%s); proceeding unlocked", exc)
-        if fd is not None:
-            try:
-                fd.close()
-            except Exception:
-                pass
-            fd = None
+    held: list[int] = []
+    for dest in sorted({os.path.realpath(d) for d in dest_dirs}):
+        fd = None
+        try:
+            fd = os.open(dest, os.O_RDONLY)
+            fcntl.flock(fd, fcntl.LOCK_EX)
+        except Exception as exc:
+            # Broad by design: ANY acquisition failure (a missing dir, a non-lockable
+            # fd) must degrade rather than abort — see the TOLERANT note above.
+            log.debug("creds store lock unavailable for %s (%s); proceeding unlocked",
+                      dest, exc)
+            if fd is not None:
+                with contextlib.suppress(Exception):
+                    os.close(fd)
+            continue
+        held.append(fd)
     try:
         yield
     finally:
-        if fd is not None:
-            try:
+        for fd in reversed(held):
+            with contextlib.suppress(Exception):
                 fcntl.flock(fd, fcntl.LOCK_UN)
-                fd.close()
-            except Exception:
-                pass
+            with contextlib.suppress(Exception):
+                os.close(fd)
 
 
 # --------------------------------------------------------------------------- #

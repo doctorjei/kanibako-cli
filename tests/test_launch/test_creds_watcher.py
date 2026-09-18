@@ -8,6 +8,9 @@ helpers are driven over a real tmp dir (they are tiny + tolerant).
 
 from __future__ import annotations
 
+import fcntl
+import os
+import threading
 from pathlib import Path
 
 import pytest
@@ -246,23 +249,75 @@ def test_main_no_context_returns_zero(monkeypatch):
     assert cw.main(["--box", "gone"]) == 0
 
 
-def test_creds_store_lock_serializes_and_releases(tmp_path, monkeypatch):
-    # The store lock is a real flock context manager: it acquires + releases cleanly
-    # and, once released, can be re-entered (it does not deadlock a sequential caller).
-    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+def _held_exclusively(directory: Path) -> bool:
+    """True iff *directory* is flocked by somebody else (probed non-blockingly)."""
+    fd = os.open(directory, os.O_RDONLY)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        return True
+    else:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        return False
+    finally:
+        os.close(fd)
+
+
+def test_creds_store_lock_flocks_the_destination_dir(tmp_path):
+    # The lock IS the destination directory: while held it EXCLUDES another writer,
+    # it creates NO file of its own, and it releases cleanly on exit.
+    dest = tmp_path / "store"
+    dest.mkdir()
+    with creds_store_lock(dest):
+        assert _held_exclusively(dest)
+        assert list(dest.iterdir()) == []  # a directory flock leaves no sentinel
+    assert not _held_exclusively(dest)
+
+
+def test_creds_store_lock_holds_every_destination(tmp_path):
+    # A global-synced workset writeback touches its workset dir AND host home, so both
+    # are locked — the lock's scope is the whole set of directories written.
+    workset, home = tmp_path / "workset", tmp_path / "home"
+    workset.mkdir()
+    home.mkdir()
+    with creds_store_lock(workset, home):
+        assert _held_exclusively(workset)
+        assert _held_exclusively(home)
+    assert not _held_exclusively(workset)
+    assert not _held_exclusively(home)
+
+
+def test_creds_store_lock_does_not_self_deadlock_on_an_aliased_destination(tmp_path):
+    # flock is per OPEN FILE DESCRIPTION, so opening one directory twice in one process
+    # would BLOCK FOREVER.  Destinations are deduplicated by real path; run the
+    # acquisition off-thread so a regression FAILS here instead of hanging the suite.
+    dest = tmp_path / "store"
+    dest.mkdir()
+    alias = tmp_path / "alias"
+    alias.symlink_to(dest)
+    done = threading.Event()
+
+    def _acquire() -> None:
+        with creds_store_lock(dest, alias, dest):
+            pass
+        done.set()
+
+    threading.Thread(target=_acquire, daemon=True).start()
+    assert done.wait(timeout=10), "creds_store_lock self-deadlocked on one directory"
+
+
+def test_creds_store_lock_tolerates_an_unusable_destination(tmp_path):
+    # A destination that cannot be opened must degrade to proceeding UNLOCKED, not
+    # raise — and must not conjure the directory it failed to lock.
+    missing = tmp_path / "gone"
+    with creds_store_lock(missing):  # no raise; yields unlocked
+        pass
+    assert not missing.exists()
+
+
+def test_creds_store_lock_with_no_destinations_is_a_no_op():
+    # A private-tier writeback writes nowhere; there is nothing to serialize.
     with creds_store_lock():
-        pass
-    with creds_store_lock():  # re-entrant across sequential calls (released above)
-        pass
-    assert (tmp_path / "state" / "kanibako" / "creds-writeback.lock").exists()
-
-
-def test_creds_store_lock_tolerates_a_bad_lock_path(tmp_path, monkeypatch):
-    # A lock path that cannot be created must degrade to proceeding UNLOCKED, not raise.
-    blocker = tmp_path / "state"
-    blocker.write_text("i am a file, not a dir")  # mkdir under it will fail
-    monkeypatch.setenv("XDG_STATE_HOME", str(blocker))
-    with creds_store_lock():  # no raise; yields unlocked
         pass
 
 

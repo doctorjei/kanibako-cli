@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import contextlib
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -1191,13 +1193,12 @@ class TestPersistentMode:
 class TestCredsWatcherSpawnAndFlagHygiene:
     """Increment D: the detached-launch creds-watcher spawn + writeback flag hygiene."""
 
-    def test_writeback_clears_creds_dirty_flag(self, tmp_path, monkeypatch):
+    def test_writeback_clears_creds_dirty_flag(self, tmp_path):
         """D Part 3: a successful host writeback clears the box's creds-dirty flag."""
         from kanibako.commands.start import writeback_session_credentials
         from kanibako.launch.creds_watcher import creds_dirty_flag_path
         from tests.test_commands.test_start import _SHARED_AUTH
 
-        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
         home = tmp_path / "home"
         flag = creds_dirty_flag_path(home)
         flag.parent.mkdir(parents=True)
@@ -1214,13 +1215,12 @@ class TestCredsWatcherSpawnAndFlagHygiene:
 
         assert not flag.exists()  # cleared after the successful writeback
 
-    def test_writeback_private_box_leaves_flag_untouched(self, tmp_path, monkeypatch):
+    def test_writeback_private_box_leaves_flag_untouched(self, tmp_path):
         """A PRIVATE box writeback is a no-op (early return) — the flag is not cleared."""
         from kanibako.commands.start import writeback_session_credentials
         from kanibako.launch.creds_watcher import creds_dirty_flag_path
         from tests.test_commands.test_start import _PRIVATE_AUTH
 
-        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
         home = tmp_path / "home"
         flag = creds_dirty_flag_path(home)
         flag.parent.mkdir(parents=True)
@@ -1233,6 +1233,66 @@ class TestCredsWatcherSpawnAndFlagHygiene:
 
         writeback_session_credentials(target, proj, auth_src=_PRIVATE_AUTH)
         assert flag.exists()  # private box never propagates -> flag left as-is
+
+    @staticmethod
+    def _record_store_lock(tmp_path, *, descriptor, global_sync):
+        """Drive a writeback with ``creds_store_lock`` swapped for a recorder.
+
+        Returns the destination sets it was entered with, so a test can pin the
+        ``dests`` computation itself rather than the lock's own behaviour.
+        """
+        from kanibako.commands.start import writeback_session_credentials
+        from kanibako.settings.settings_launch import AuthSource
+
+        auth = AuthSource(
+            tier="workset", global_enabled=True, workset_enabled=True,
+            global_sync=global_sync, workset_source="ws",
+        )
+        workset_root = tmp_path / "workset-store"
+        locked: list[set[Path]] = []
+
+        @contextlib.contextmanager
+        def _recorder(*dests: Path):
+            locked.append(set(dests))
+            yield
+
+        proj = MagicMock()
+        proj.shell_path = tmp_path / "home"
+        target = MagicMock()
+        target.descriptor = descriptor
+
+        with patch("kanibako.commands.start.credsync") as mc, patch(
+            "kanibako.launch.creds_watcher.creds_store_lock", _recorder
+        ):
+            mc.selected_source_root.return_value = workset_root
+            writeback_session_credentials(target, proj, auth_src=auth)
+
+        # The writeback swallows its own exceptions, so an unentered lock would let
+        # every assertion below pass vacuously.
+        assert len(locked) == 1, "the writeback never entered the store lock"
+        return workset_root, locked[0]
+
+    def test_writeback_locks_host_home_too_when_globally_synced(self, tmp_path):
+        """global_sync mirrors the workset store UP to host home, so BOTH are locked.
+
+        Host home is not the selected source here; it is locked because the mirror
+        writes it anyway.
+        """
+        workset_root, dests = self._record_store_lock(
+            tmp_path, descriptor=MagicMock(), global_sync=True,
+        )
+        assert dests == {workset_root, Path.home()}
+
+    def test_writeback_locks_host_home_for_a_descriptorless_target(self, tmp_path):
+        """The legacy no-descriptor hook picks its own host-side destination.
+
+        That destination cannot be inspected from the writeback, so host home joins
+        the lock set even without global_sync.
+        """
+        workset_root, dests = self._record_store_lock(
+            tmp_path, descriptor=None, global_sync=False,
+        )
+        assert dests == {workset_root, Path.home()}
 
     def test_spawn_creds_watcher_builds_a_detached_popen(self, tmp_path):
         """D Part 2: the watcher is spawned DETACHED with the box subject argv."""

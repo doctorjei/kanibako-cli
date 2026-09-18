@@ -12,6 +12,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Credential writebacks now serialize on the directory they write into, instead of on a lock file
+  under `$XDG_STATE_HOME`.** Two writebacks must not interleave — a `kanibako stop`, a foreground
+  reattach and the per-box writeback daemon can all fire at once, onto the same credential files.
+  What kept them apart was a sentinel file at `$XDG_STATE_HOME/kanibako/creds-writeback.lock`, and
+  `XDG_STATE_HOME` is an environment variable: two kanibako processes that disagreed about it took
+  two different lock files and excluded each other from nothing, so one writeback could land on top
+  of another and put back a credential the other had just refreshed. The lock is now held on the
+  destination directory itself — your home directory for the global credential tier, the workset
+  auth directory for the workset tier — so the writers it excludes are exactly the writers that
+  share a destination, and that no longer depends on the environment. A workset-tier writeback also
+  stops waiting on stores it never shared a destination with. This lock no longer creates a file; a
+  leftover `creds-writeback.lock` in your state directory is inert and can be deleted.
+
 - **Plugins you drop in your own store are now found, and the `code --remote` wrapper is generated
   inside it.** Two directories were composed from `$XDG_DATA_HOME` plus a hardcoded `kanibako`
   segment rather than read from `config.data`: the user-level file-drop plugin directory
