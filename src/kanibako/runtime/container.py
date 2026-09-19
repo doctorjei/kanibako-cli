@@ -483,7 +483,16 @@ class ContainerRuntime:
         return result.returncode == 0
 
     def stop(self, name: str) -> bool:
-        """Stop a running container by name. Returns True if stopped."""
+        """Ask the runtime to stop container *name*; return True on exit status 0.
+
+        🛑 THIS IS NOT A LIVENESS READING, and reading it as one prints a false
+        message.  ``podman stop`` exits 0 for a container that was ALREADY
+        EXITED — there was nothing to stop and it says so by succeeding — so
+        True means "the runtime found this container and it is now not
+        running", never "it was running".  A caller that needs to know whether
+        the box was live must take that reading from :meth:`is_running` BEFORE
+        calling this.
+        """
         result = subprocess.run(
             [self.cmd, "stop", name],
             capture_output=True,

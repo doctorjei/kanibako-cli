@@ -32,6 +32,11 @@ def mock_runtime():
 
 class TestStopOne:
     def test_running_container_stopped(self, mock_runtime, capsys):
+        # A LIVE box: the only state for which "Stopped" is true.  The fixture
+        # default is NOT running (it exists for the writeback guard), so a test
+        # about stopping a running container must say so.
+        mock_runtime.is_running.return_value = True
+        mock_runtime.inspect_env.return_value = None  # no stamp -> no writeback
         with (
             patch("kanibako.commands.stop.load_config"),
             patch("kanibako.commands.stop.load_std_paths"),
@@ -72,6 +77,8 @@ class TestStopOne:
 
     def test_stop_removes_persistent_container(self, mock_runtime, capsys):
         """After stopping a running container, rm is called to clean up."""
+        mock_runtime.is_running.return_value = True  # a live box, per the name
+        mock_runtime.inspect_env.return_value = None  # no stamp -> no writeback
         mock_runtime.container_exists.return_value = True  # exists after stop
         with (
             patch("kanibako.commands.stop.load_config"),
@@ -104,6 +111,87 @@ class TestStopOne:
             mock_runtime.rm.assert_called_once()
             out = capsys.readouterr().out
             assert "Removed stopped container" in out
+
+    def test_orphan_container_is_not_reported_as_stopped(
+        self, mock_runtime, capsys,
+    ):
+        """🛑 THE RC-0 LIE: ``podman stop`` succeeds on an ALREADY-EXITED container.
+
+        A box whose PID 1 died without the CLI surviving to clean up — crash,
+        killed terminal, reboot — leaves an ``Exited`` container squatting on
+        the name, and the launch guard now names ``kanibako stop`` as the cure.
+        ``runtime.stop`` returns the runtime's exit status, which is 0 here
+        because there was nothing to stop, so this path printed ``Stopped
+        <box>`` to a user who had been told one command earlier that the box
+        was not running.
+
+        The pin is the SENTENCE, not the routing: the ``rm`` is what clears the
+        orphan and it must still happen, exactly as on the live arm.
+        """
+        mock_runtime.is_running.return_value = False   # the box is NOT live
+        mock_runtime.stop.return_value = True          # ...and podman says 0
+        mock_runtime.container_exists.return_value = True  # the orphan is there
+        with (
+            patch("kanibako.commands.stop.load_config"),
+            patch("kanibako.commands.stop.load_std_paths"),
+            patch("kanibako.commands.stop.resolve_box_target") as m_resolve,
+        ):
+            proj = MagicMock()
+            proj.name = "droste"
+            proj.project_hash = "abcdef1234567890" * 4
+            m_resolve.return_value = proj
+
+            assert _stop_one(mock_runtime, project_dir=None) == 0
+
+            # The action is unchanged: the orphan is removed.
+            mock_runtime.rm.assert_called_once_with("kanibako-droste")
+            # The sentence is the fix, and it is true.
+            out = capsys.readouterr().out
+            assert out == "Removed stopped container: kanibako-droste\n"
+
+    def test_live_box_is_reported_as_stopped(self, mock_runtime, capsys):
+        """The live arm's sentence is unchanged — the same box, actually running."""
+        mock_runtime.is_running.return_value = True
+        mock_runtime.inspect_env.return_value = None  # no stamp -> no writeback
+        mock_runtime.stop.return_value = True
+        mock_runtime.container_exists.return_value = True
+        with (
+            patch("kanibako.commands.stop.load_config"),
+            patch("kanibako.commands.stop.load_std_paths"),
+            patch("kanibako.commands.stop.resolve_box_target") as m_resolve,
+        ):
+            proj = MagicMock()
+            proj.name = "droste"
+            proj.project_hash = "abcdef1234567890" * 4
+            m_resolve.return_value = proj
+
+            assert _stop_one(mock_runtime, project_dir=None) == 0
+
+            mock_runtime.rm.assert_called_once_with("kanibako-droste")
+            out = capsys.readouterr().out
+            assert out == "Stopped kanibako-droste\n"
+
+    def test_liveness_is_read_exactly_once(self, mock_runtime):
+        """ONE ``is_running`` reading serves the writeback AND the sentence.
+
+        Two readings taken across the stop could disagree — the box written
+        back from and the box named in the message would be different facts.
+        The hoist is the invariant, so the call count is the pin.
+        """
+        mock_runtime.is_running.return_value = True
+        mock_runtime.inspect_env.return_value = None
+        with (
+            patch("kanibako.commands.stop.load_config"),
+            patch("kanibako.commands.stop.load_std_paths"),
+            patch("kanibako.commands.stop.resolve_box_target") as m_resolve,
+        ):
+            proj = MagicMock()
+            proj.name = "droste"
+            proj.project_hash = "abcdef1234567890" * 4
+            m_resolve.return_value = proj
+
+            assert _stop_one(mock_runtime, project_dir=None) == 0
+            mock_runtime.is_running.assert_called_once_with("kanibako-droste")
 
     def test_stop_with_project_dir(self, mock_runtime):
         with (
