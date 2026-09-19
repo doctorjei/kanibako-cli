@@ -15,6 +15,7 @@ def write_nested_key(path: Path, sections: tuple[str, ...], key: str, value: obj
 def remove_nested_key(path: Path, sections: tuple[str, ...], key: str) -> bool
 def render_stored_scalar(v: object) -> str | None
 def read_stored_leaf(noun_file: 'Path | None', sections: tuple[str, ...], leaf: str, *, render: 'Callable[[object], str | None]'=render_stored_scalar) -> str | None
-def read_stored_pref(noun_file: 'Path | None', sections: tuple[str, ...], leaf: str) -> str | None
+def render_stored_pref(v: object) -> str
+def read_stored_pref(noun_file: 'Path | None', sections: tuple[str, ...], leaf: str, *, render: 'Callable[[object], str | None]'=render_stored_pref) -> str | None
 def _yaml_problem(exc: yaml.YAMLError) -> str
 ```

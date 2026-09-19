@@ -767,7 +767,22 @@ def read_agent_settings(path: Path, agent_name: str) -> dict[str, str]:
 
     ⚑ A legacy FLAT ``[agent]`` table is treated as UNSET — only nested
     per-agent dicts are honored, and that is deliberate (no pass-1 migration).
+
+    ⚑ A LEAF WHOSE STORED SHAPE IS NOT A SCALAR IS STRINGIFIED BY THE MODULE THAT
+    OWNS THE SHAPE (``agent_file.stored_leaf_text``), not by ``str()``; a bare
+    ``str()`` printed the Python repr ``['--a', '--b']`` at every reader of
+    ``system get run_args`` and ``system show``.
     """
+    # ⚑ FUNCTION-SCOPE, AND IT MUST STAY THAT WAY: ``agent_file`` imports
+    # ``agent_config``, which imports THIS module for ``AGENT_META_FILE``, so a
+    # module-scope import here closes ``config → agent_file → agent_config → config``.
+    # The idiom is this file's own (see the other deferred imports below).
+    from kanibako.settings.agent_file import stored_leaf_text
+
+    def _text(leaf: str, v: object) -> str:
+        rendered = stored_leaf_text(leaf, v)
+        return str(v) if rendered is None else rendered
+
     if not path.exists():
         return {}
     data = load_doc(path)
@@ -777,10 +792,10 @@ def read_agent_settings(path: Path, agent_name: str) -> dict[str, str]:
     out: dict[str, str] = {}
     default_sec = agent.get("default")
     if isinstance(default_sec, dict):
-        out.update({k: str(v) for k, v in default_sec.items()})
+        out.update({k: _text(k, v) for k, v in default_sec.items()})
     agent_sec = agent.get(agent_name)
     if isinstance(agent_sec, dict):
-        out.update({k: str(v) for k, v in agent_sec.items()})
+        out.update({k: _text(k, v) for k, v in agent_sec.items()})
     return out
 
 

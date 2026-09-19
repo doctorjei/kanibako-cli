@@ -1439,10 +1439,15 @@ keys:
     spec: "§2d (default tier, R-12)"
   agent.default.run_args:
     scope: agent
-    type: str
+    type: list
     set: cli+file
     default: null
-    note: "raw-argv passthrough escape hatch"
+    note: "raw-argv passthrough escape hatch. ⚑ STORED AS A LIST; the CLI takes ONE
+           scalar string and normalizes it to a list before writing, so `set:` stays
+           `cli+file` under §0's 'TYPABLE as a scalar' test ([R169], 2026-09-19).
+           ⚑ The parametric row `agent.<agent>.<key>` states no type of its own — the
+           per-agent leaf takes this row's type through the registry invariant 'every
+           agent.default.<key> ALSO exists as agent.<agent>.<key> (same type)'."
     spec: "§2d"
   agent.default.transform:
     scope: agent

@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from typing import Any, Final, Iterable, Mapping
 
@@ -297,6 +298,28 @@ def argv_text(words: Iterable[object]) -> str:
     return " ".join(str(w) for w in words)
 
 
+def stored_leaf_text(tail: str, value: object) -> str | None:
+    """The text a USER is shown for *value* stored at *tail*, or ``None`` when this module owns
+    no rule for the pair and the caller must keep the rendering it already had.
+
+    ⚑⚑ THE PUBLIC ENTRY FOR EVERY SURFACE THAT DISPLAYS A STORED LEAF IT DID NOT READ THROUGH
+    :func:`read_leaf`.  Each of them coerced with a bare ``str()`` and so printed the Python repr
+    ``['--a', '--b']`` at a user.  They ask HERE instead of each learning which leaves are lists
+    (P10) — the list of them is :data:`_LIST_VALUED_KEYS`, and it is nobody else's to restate.
+    ⚑ NO ROSTER OF THOSE SURFACES LIVES HERE. The rule above IS the membership test; a census
+    taken by READING them off missed several that a probe then found, and an inventory that is
+    short reads as the whole set to anyone checking their new view against it.
+
+    ⚑⚑ ``None`` MEANS "NOT MINE", NEVER "ABSENT", and that is why this answers only the shape
+    question.  The callers' empty-and-bool idioms are not the same as each other — the three
+    ``pref`` idioms (spec §2h), ``get``'s empty-string→unset, the launch table's raw ``str()`` of a
+    bool its consumer re-coerces — so deciding them here would change values that are not argv.
+    """
+    if tail in _LIST_VALUED_KEYS and isinstance(value, list):
+        return argv_text(value)
+    return None
+
+
 def _stored_shape(tail: str, value: object) -> object:
     """*value* in the shape the FILE holds at *tail* — the argv split, or *value* unchanged.
 
@@ -308,18 +331,22 @@ def _stored_shape(tail: str, value: object) -> object:
     return value
 
 
-def _render_argv(v: object) -> str | None:
-    """A stored argv list rendered back as the command-line string it was split from.
+def _render_argv(tail: str, v: object) -> str | None:
+    """``read_leaf``'s renderer for a list-valued *tail*: :func:`stored_leaf_text`, falling back
+    to the scalar convention for anything that module owns no rule for.
 
     ⚑ AN EMPTY LIST RENDERS ``""``, NOT ``None``, and that is deliberate: a present
     ``run_args: []`` is the user's explicit "no arguments", and the absent answer would print
     "(not set)" over an override that is really there.  The scalar convention's empty→``None``
     rule is about an empty STRING, kanibako's idiom for no value; an empty LIST is a value.
+    :func:`stored_leaf_text` returns that ``""`` rather than ``None``, which is what keeps the
+    fallback below from swallowing it.
 
     ⚑ A STRING here renders through the scalar convention UNCHANGED — that is what the other
     write route stored before both routes agreed, and :func:`load` reads it the same way.
     """
-    return argv_text(v) if isinstance(v, list) else render_stored_scalar(v)
+    text = stored_leaf_text(tail, v)
+    return render_stored_scalar(v) if text is None else text
 
 
 def read_leaf(slot: AgentFileSlot) -> str | None:
@@ -334,7 +361,11 @@ def read_leaf(slot: AgentFileSlot) -> str | None:
     sections, leaf = _read_address(slot.tail)
     return read_stored_leaf(
         slot.path, sections, leaf,
-        render=_render_argv if slot.tail in _LIST_VALUED_KEYS else render_stored_scalar,
+        render=(
+            partial(_render_argv, slot.tail)
+            if slot.tail in _LIST_VALUED_KEYS
+            else render_stored_scalar
+        ),
     )
 
 

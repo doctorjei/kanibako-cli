@@ -167,10 +167,37 @@ def read_stored_leaf(
     return render(node[leaf])
 
 
+def render_stored_pref(v: object) -> str:
+    """Render a stored ``pref`` REQUEST, keeping all THREE empty idioms apart (spec §2h).
+
+    ⚑ IT NEVER ANSWERS ``None``, unlike :func:`render_stored_scalar` — every one of the three
+    idioms has a spelling of its own, so there is no value left for the absent answer to
+    collide with.  Absence is :func:`read_stored_pref`'s to report, above the render.
+    """
+    # ⚑ NOT render_stored_scalar: it collapses None and "" — the three pref idioms must stay apart.
+    if v is None:
+        return "null"
+    if v == "":
+        return '""'
+    if isinstance(v, bool):
+        return str(v).lower()
+    return str(v)
+
+
 def read_stored_pref(
     noun_file: "Path | None", sections: tuple[str, ...], leaf: str,
+    *, render: "Callable[[object], str | None]" = render_stored_pref,
 ) -> str | None:
-    """Read a stored ``pref`` REQUEST, rendering all THREE empty idioms apart (spec §2h)."""
+    """Read a stored ``pref`` REQUEST, rendering all THREE empty idioms apart (spec §2h).
+
+    ⚑ *render* IS HANDED IN FOR THE SAME REASON IT IS ON :func:`read_stored_leaf`, and the
+    two must not grow separate conventions: a leaf that is not there returns ``None`` above
+    without rendering anything, so a caller cannot tell absence from a rendered answer and
+    must supply its own rule.  A pref REQUEST carries whatever shape its TARGET key holds —
+    ``pref.agent.default.run_args`` carries the argv LIST — and a shape that is not a scalar
+    renders by a rule belonging to the file that owns it, not here.  The default keeps every
+    other caller on the three pref idioms.
+    """
     if noun_file is None or not noun_file.exists():
         return None
     node: object = load_doc(noun_file)
@@ -180,12 +207,4 @@ def read_stored_pref(
         node = node.get(sec)
     if not isinstance(node, dict) or leaf not in node:
         return None
-    v = node[leaf]
-    # ⚑ NOT render_stored_scalar: it collapses None and "" — the three pref idioms must stay apart.
-    if v is None:
-        return "null"
-    if v == "":
-        return '""'
-    if isinstance(v, bool):
-        return str(v).lower()
-    return str(v)
+    return render(node[leaf])

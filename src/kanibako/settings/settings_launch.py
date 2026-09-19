@@ -43,7 +43,7 @@ if TYPE_CHECKING:
 from kanibako import kuid
 from kanibako.agent_ref import harness_of
 from kanibako.settings.agent_config import store_dirname
-from kanibako.settings.agent_file import AgentFileLevel
+from kanibako.settings.agent_file import AgentFileLevel, stored_leaf_text
 from kanibako.settings.config import (
     AGENT_META_FILE,
     WORKSET_META_FILE,
@@ -1572,6 +1572,14 @@ def effective_behavior(
     slot is omitted (the consumer applies its own default, §3) — and, since
     present-``None`` SETS the name, it shadows the ``agent.default`` value below it.
     Values are stringified. Reads via the UNBOUND ``dict`` probe (S3).
+
+    ⚑ A LEAF WHOSE STORED SHAPE IS NOT A SCALAR IS STRINGIFIED BY THE MODULE THAT OWNS THE
+    SHAPE, not by ``str()`` — :func:`~kanibako.settings.agent_file.stored_leaf_text`.  Today
+    that is the argv list ``run_args``, which arrives here as the command-line string it was
+    split from; a bare ``str()`` handed the Python repr ``['--a', '--b']`` to every reader of
+    ``box show --effective``.  The table stays ``dict[str, str]`` deliberately: every consumer
+    coerces from a string, and the argv round-trip is lossless under the shipped whitespace
+    split, so widening it would touch every consumer to carry nothing.
     """
     agent_node = dict.get(snapshot, "agent", __MISSING__)
     out: dict[str, str] = {}
@@ -1611,7 +1619,10 @@ def effective_behavior(
         # Behavior leaves are scalars; a category subtree / Bind is NOT behavior.
         if isinstance(val, (KeyStore, Bind)):
             continue
-        out[key] = val if isinstance(val, str) else str(val)
+        # The non-scalar shapes render through their owner (see the docstring); everything
+        # else keeps the raw ``str()`` its consumers already coerce back from.
+        text = stored_leaf_text(key, val)
+        out[key] = text if text is not None else (val if isinstance(val, str) else str(val))
     return out
 
 

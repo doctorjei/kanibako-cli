@@ -14,7 +14,7 @@ import sys
 from dataclasses import fields
 from enum import Enum
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 
 from kanibako.settings.config import (
     load_config,
@@ -37,6 +37,7 @@ from kanibako.settings.agent_file import (
     AgentFileSlot,
     read_leaf,
     remove_leaf,
+    stored_leaf_text,
     write_leaf,
 )
 from kanibako.settings.config_dest import (
@@ -100,6 +101,7 @@ from kanibako.settings.config_io import (
     read_stored_pref,
     remove_nested_key,
     remove_root_key,
+    render_stored_pref,
     render_stored_scalar,
     write_nested_key,
     write_root_key,
@@ -624,6 +626,29 @@ def _set_leaf(store: "Any", parts: list, value: object) -> None:
 # Get / set / reset operations
 # ---------------------------------------------------------------------------
 
+def _argv_aware(
+    leaf: str, fallback: "Callable[[object], str | None]",
+) -> "Callable[[object], str | None]":
+    """A ``read_stored_*`` renderer that asks the module owning the SHAPE first and
+    *fallback* second — for the reads that do not go through ``agent_file.read_leaf``.
+
+    ⚑ EVERY EMPTY IDIOM STAYS THE CALLER'S. ``stored_leaf_text`` answers the shape question
+    alone and ``None`` when it owns no rule for the pair, so *fallback* still decides what an
+    empty string, a present-``None`` or a bool reads back as — and those differ between the
+    two readers below, which is why the fallback is a parameter rather than a constant.
+
+    🛑 NOT FOR THE USER-NAMED FAMILIES, and they are the reason this is not simply folded into
+    ``read_stored_leaf``'s default.  ``<scope>.env.<VAR>`` and ``<scope>.secret_path.<VAR>`` keep
+    the plain scalar convention: their leaf is a name the USER chose, so keying a shape rule on it
+    would make a variable someone happened to call ``run_args`` split like a command line.  The
+    CATEGORY reads keep it too — their values are tables, and a table is not a leaf.
+    """
+    def _render(v: object) -> str | None:
+        argv = stored_leaf_text(leaf, v)
+        return fallback(v) if argv is None else argv
+    return _render
+
+
 def get_config_value(
     key: str,
     *,
@@ -658,7 +683,13 @@ def get_config_value(
     # ``pref.<target>`` — return the REQUEST stored at this noun (§2h); the RESULT is --effective.
     if _is_pref_key(canonical):
         sections, leaf = _pref_sections_leaf(canonical)
-        return read_stored_pref(noun_file, sections, leaf)
+        # ⚑ The REQUEST carries whatever shape its TARGET holds, so the target's leaf decides
+        # the rendering: ``pref.agent.default.run_args`` stores the argv LIST and must read
+        # back as the command-line string, not as the Python repr ``['--p', '--q']``.
+        return read_stored_pref(
+            noun_file, sections, leaf,
+            render=_argv_aware(leaf, render_stored_pref),
+        )
 
     # Bare ``env.*`` — RETIRED (R-39). This engine returns values, never error strings, so the
     # refusal-with-cure lives at the three command handlers; ``None`` keeps a library read honest.
@@ -767,7 +798,15 @@ def get_config_value(
     )
     if dest is None:
         return None
-    return read_stored_leaf(dest.path, dest.sections, dest.leaf)
+    # ⚑ ``agent.default.run_args`` ARRIVES HERE, not at ``read_leaf``: the reserved ``default``
+    # node is not a persona, so the branch above deliberately drops it through to this routed
+    # read — and with it went ``read_leaf``'s renderer.  A bare ``str()`` answered the Python
+    # repr ``['--a', '--b']`` while the BARE ``run_args`` spelling of the very same stored value
+    # answered ``--a --b``: one file, two spellings, two answers.
+    return read_stored_leaf(
+        dest.path, dest.sections, dest.leaf,
+        render=_argv_aware(dest.leaf, render_stored_scalar),
+    )
 
 
 def set_config_value(

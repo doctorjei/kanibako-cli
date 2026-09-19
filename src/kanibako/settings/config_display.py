@@ -22,6 +22,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Mapping
 
+from kanibako.settings.agent_file import stored_leaf_text
 from kanibako.settings.config_io import load_doc
 from kanibako.settings.kb_store import SCOPE_CONTAINMENT, __MISSING__
 from kanibako.settings.settings_prefs import PREF_ROOT
@@ -37,6 +38,12 @@ def _nested_settings_overrides(path: Path | None) -> dict[str, str]:
     view cannot see.  Flattens every top-level scope table EXCEPT ``agent``
     (rendered by the agent-settings view).  Bools render lowercase, matching
     ``get``.
+
+    ⚑ AND A NON-SCALAR SHAPE RENDERS THROUGH ITS OWNER (``agent_file.stored_leaf_text``),
+    exactly as in :func:`_pref_overrides`.  Skipping ``agent`` does NOT put the argv list
+    out of reach: a ``pref:`` table is not a scope table but is not skipped either, so
+    ``pref.agent.default.run_args`` walks through here and printed the Python repr
+    ``['--p', '--q']`` in ``system show``.
     """
     if path is None or not path.exists():
         return {}
@@ -52,7 +59,8 @@ def _nested_settings_overrides(path: Path | None) -> dict[str, str]:
             elif isinstance(v, bool):
                 out[f"{prefix}{k}"] = str(v).lower()
             else:
-                out[f"{prefix}{k}"] = str(v)
+                text = stored_leaf_text(k, v)
+                out[f"{prefix}{k}"] = str(v) if text is None else text
 
     for key, val in data.items():
         # ``resource_overrides`` is the LEGACY dead table of the dropped
@@ -75,6 +83,11 @@ def _pref_overrides(path: Path | None) -> dict[str, str]:
     ``_nested_settings_overrides`` uses. A present-``None`` request renders as
     ``null`` — it is a REQUEST TO SUPPRESS, and showing it as blank would make
     the one thing a box cannot otherwise express look like nothing at all.
+
+    ⚑ A request whose TARGET holds a non-scalar shape renders through the module that
+    owns that shape (``agent_file.stored_leaf_text``): ``pref.agent.default.run_args``
+    carries the same argv LIST the target key does, and a bare ``str()`` put the Python
+    repr ``['--p', '--q']`` in every ``show`` block.
     """
     if path is None or not path.exists():
         return {}
@@ -95,7 +108,8 @@ def _pref_overrides(path: Path | None) -> dict[str, str]:
             elif v is None:
                 out[f"{prefix}{k}"] = "null"
             else:
-                out[f"{prefix}{k}"] = str(v)
+                text = stored_leaf_text(k, v)
+                out[f"{prefix}{k}"] = str(v) if text is None else text
 
     _walk(table, f"{PREF_ROOT}.")
     return out
@@ -140,7 +154,11 @@ def _print_pref_block(snapshot: Any, out: Any) -> None:
     if not requests:
         return
 
-    def _render(value: Any, dest: str | None = None) -> str:
+    # ⚑ NEITHER PARAMETER HAS A DEFAULT, and both lost one deliberately: a row that omitted
+    # *leaf* would silently fall back to ``str()`` and print the repr this function was fixed
+    # to stop printing.  Requiring it makes a new row DECIDE (P3) — there are three callers
+    # and they are all in view below.
+    def _render(value: Any, dest: str | None, leaf: str) -> str:
         if isinstance(value, BindEntry):
             # Dest-keyed: the destination is the KEY the caller walked in with.
             opts = f"  [{value.opts}]" if value.opts else ""
@@ -150,7 +168,16 @@ def _print_pref_block(snapshot: Any, out: Any) -> None:
             return f"{value.host} -> {value.box}{opts}"
         if value is None:
             return "null"
-        return str(value)
+        # ⚑ A NON-SCALAR SHAPE RENDERS THROUGH ITS OWNER, exactly as in the two override
+        # walks above — BOTH halves printed the Python repr ``['--a', '--b']`` here, the
+        # request off the ``pref`` subtree and the result off the target it names.
+        # ⚑ *leaf* is the TARGET's tail, never the row's, because a dest-keyed row's tail is
+        # a DESTINATION (data, not a key segment) and a destination contains dots.  The two
+        # cannot collide anyway — a dest-keyed arm's target tail is a category name and its
+        # entries arrive as ``BindEntry``/``Bind``, both matched above — but keying on the
+        # target is what makes that true BY CONSTRUCTION rather than by coincidence.
+        text = stored_leaf_text(leaf, value)
+        return str(value) if text is None else text
 
     def _at(target: str) -> Any:
         """The RESULT node at *target*, read in the same snapshot; ``__MISSING__`` if absent."""
@@ -165,8 +192,12 @@ def _print_pref_block(snapshot: Any, out: Any) -> None:
     # dest). A TERMINAL arm arrives as ONE request carrying the WHOLE map, and
     # expands to a row per entry — that is what keeps per-entry suppression
     # visible as such, since the arm itself survives a suppressed entry.
-    rows: list[tuple[str, str, Any, str | None]] = []
+    rows: list[tuple[str, str, Any, str | None, str]] = []
     for req in requests:
+        # ⚑ The TARGET's tail, taken ONCE per request and carried on every row it makes: a
+        # dest-keyed arm expands into rows whose own tail is a DESTINATION, so a row cannot
+        # re-derive this from the name it prints.
+        target_leaf = req.target.rsplit(".", 1)[-1]
         if isinstance(req.value, KeyStore):
             arm = _at(req.target)
             # ⚑ NOT named ``dest``: the row tuple unpacked below binds a ``dest``
@@ -176,16 +207,22 @@ def _print_pref_block(snapshot: Any, out: Any) -> None:
             for entry_dest in dict.keys(req.value):
                 rows.append((
                     f"{req.target}.{entry_dest}",
-                    _render(dict.__getitem__(req.value, entry_dest), entry_dest),
+                    _render(
+                        dict.__getitem__(req.value, entry_dest), entry_dest, target_leaf,
+                    ),
                     dict.get(arm, entry_dest, __MISSING__) if isinstance(arm, KeyStore)
                     else __MISSING__,
                     entry_dest,
+                    target_leaf,
                 ))
         else:
-            rows.append((req.target, _render(req.value), _at(req.target), None))
+            rows.append((
+                req.target, _render(req.value, None, target_leaf),
+                _at(req.target), None, target_leaf,
+            ))
 
     print("", file=out)
-    for target, request, value, dest in sorted(rows, key=lambda r: r[0]):
+    for target, request, value, dest, leaf in sorted(rows, key=lambda r: r[0]):
         print(f"  {PREF_ROOT}.{target} = {request}", file=out)
         if value is __MISSING__:
             # The ordinary present-None rule OMITTED it: a bind / category /
@@ -216,7 +253,7 @@ def _print_pref_block(snapshot: Any, out: Any) -> None:
         elif value is None:
             result = "(unset — the consumer applies its default)"
         else:
-            result = _render(value, dest)
+            result = _render(value, dest, leaf)
         print(f"    -> {target} = {result}", file=out)
 
 
