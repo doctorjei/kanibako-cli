@@ -1,11 +1,16 @@
-"""Tests for the agent SELECTION seam + installed-count rule.
+"""Tests for the agent SELECTION seam — validate a name, or REFUSE.
 
 ⮕ **P7 (spec §1A / §2g / §2h).** The cascade moved OUT of ``config.resolve_agent``:
 ``system.agent`` and the workset/box ``pref.system.agent`` requests are resolved
 off the settings snapshot (``settings_launch.resolve_selected_agent``), and
-``resolve_agent`` keeps only what is NOT a key — name validation, persona-ref
-canonicalisation and the installed-count rule. The retired ``box.agent_name`` /
-``workset_agent`` / ``system_default_path`` parameters are gone.
+``resolve_agent`` keeps only what is NOT a key — name validation and persona-ref
+canonicalisation. The retired ``box.agent_name`` / ``workset_agent`` /
+``system_default_path`` parameters are gone.
+
+🛑 **THERE IS NO INSTALLED-AGENT COUNT RULE** (retired 2026-09-19, his ruling; spec
+§2b). ``resolve_agent`` never picks — the installed set answers *"is this name
+installed?"* and nothing else. The tests below assert that the count is not read,
+at every count, which is the property the rule's deletion has to hold.
 """
 
 from __future__ import annotations
@@ -18,21 +23,20 @@ from kanibako.settings.config import (
     read_system_agent,
     resolve_agent,
 )
-from kanibako.errors import (
-    AgentNotInstalledError,
-    NoAgentInstalledError,
-    NoAgentSelectedError,
-)
+from kanibako.errors import AgentNotInstalledError, AgentUnsetError
 from kanibako.install_method import (
     detect_install_method,
     install_command,
 )
 from kanibako.settings.paths import load_std_paths, xdg
 
-# Exact Gate-2a locked wording (must match resolve_agent verbatim).
-GATE_2A = (
-    "No agent selected; run 'kanibako setup' to select one or "
-    "'kanibako shell' to access the container via command shell."
+# Exact UNSET refusal wording (must match resolve_agent verbatim).
+UNSET_REFUSAL = (
+    "No default agent is configured (system.agent is unset).\n"
+    "Choose one with:\n"
+    "  kanibako setup\n"
+    "Or name one for a single run with '--agent <name>'.\n"
+    "'kanibako shell' reaches the box's container without an agent."
 )
 
 
@@ -75,8 +79,7 @@ def test_a_blank_tier_is_a_value_not_an_unset(monkeypatch, blank):
     grammar refuses.
 
     MUTATION: restore ``_clean(explicit_agent) or _clean(requested)`` and the
-    first half silently launches ``goose`` (the agent the user did not type) and
-    the second ``claude`` (the count rule's autopick), both saying nothing.
+    first half silently launches ``goose`` — the agent the user did not type.
     """
     from kanibako.errors import ConfigError
 
@@ -87,114 +90,73 @@ def test_a_blank_tier_is_a_value_not_an_unset(monkeypatch, blank):
         resolve_agent(explicit_agent=blank, requested="goose")
     assert str(ei.value) == blank_ref_refusal()
 
-    # The STORED tier answers the same way, and with ONE agent installed the old
-    # reading had an answer ready for it — which is what made it silent.
+    # The STORED tier answers the same way.
     _patch_targets(monkeypatch, ["claude"])
     with pytest.raises(ConfigError) as ei:
         resolve_agent(explicit_agent=None, requested=blank)
     assert str(ei.value) == blank_ref_refusal()
-    # Control: the SAME call with the tier ABSENT still autopicks.
-    assert resolve_agent(explicit_agent=None, requested=None) == "claude"
-
-
-# ---------------------------------------------------------------------------
-# 2. Absent everywhere + exactly 1 installed
-# ---------------------------------------------------------------------------
-
-
-def test_single_installed_autopick(monkeypatch):
-    _patch_targets(monkeypatch, ["claude"])
-    _no_default(monkeypatch)
-    assert (
+    # Control: the SAME call with the tier ABSENT refuses too, by a DIFFERENT
+    # message — blank is an illegal ref, absent is "nobody chose".
+    with pytest.raises(AgentUnsetError):
         resolve_agent(explicit_agent=None, requested=None)
-        == "claude"
-    )
 
 
 # ---------------------------------------------------------------------------
-# 3. Absent everywhere + 0 installed -> Gate-2b (NoAgentInstalledError)
+# 2. Nothing resolved -> the UNSET refusal, AT EVERY INSTALLED COUNT
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
-    "envset,substring",
+    "installed",
     [
-        ({"PIPX_HOME": "/p"}, "pipx inject kanibako-cli kanibako-agent-claude"),
-        ({"UV_TOOL_DIR": "/u"}, "uv tool install kanibako-cli --with kanibako-agent-claude"),
-        ({}, "pip install kanibako-agent-claude"),
+        [],                                   # was Gate-2b
+        ["claude"],                           # was the autopick
+        ["claude", "goose"],                  # was Gate-2a
+        ["claude", "goose", "codex"],
+        ["no_agent", "general"],              # was Gate-2b via the discount list
+        ["claude", "no_agent", "general"],    # was the autopick via the discount list
     ],
+    ids=["zero", "one", "two", "three", "pseudo-only", "one-plus-pseudo"],
 )
-def test_zero_installed_gate2b(monkeypatch, envset, substring):
+def test_unset_refuses_whatever_is_installed(monkeypatch, installed):
+    """Nothing named an agent ⇒ one refusal, and the COUNT does not change it.
+
+    🛑 **This is the retired count rule's grave** (his ruling, 2026-09-19; spec §2b).
+    The ``["claude"]`` row is the one that used to launch: exactly one installed
+    plugin was auto-picked, and a user on a single-agent host never ran ``setup``.
+
+    MUTATION: restore ``if len(real_installed) == 1: return next(iter(...))`` and
+    the ``one`` and ``one-plus-pseudo`` rows go green-by-launching instead of
+    refusing — which is exactly the behaviour being deleted.
+    """
+    _patch_targets(monkeypatch, installed)
+    _no_default(monkeypatch)
+    with pytest.raises(AgentUnsetError) as ei:
+        resolve_agent(explicit_agent=None, requested=None)
+    assert str(ei.value) == UNSET_REFUSAL
+
+
+def test_unset_refusal_names_setup_and_not_an_install_command(monkeypatch):
+    """The cure is ``kanibako setup``, even with NO plugin installed at all.
+
+    The retired zero-installed arm printed a ``pip install …`` line instead; it is
+    ``setup``'s job to say that now (it prints ``No agent plugins installed.``), and
+    the launch has one answer rather than one per count.
+    """
     _patch_targets(monkeypatch, [])
     _no_default(monkeypatch)
-    for var in ("PIPX_HOME", "PIPX_BIN_DIR", "UV_TOOL_DIR"):
-        monkeypatch.delenv(var, raising=False)
-    monkeypatch.setattr("sys.prefix", "/usr")
-    monkeypatch.setattr("kanibako.install_method.is_externally_managed", lambda: False)
-    for k, v in envset.items():
-        monkeypatch.setenv(k, v)
-
-    with pytest.raises(NoAgentInstalledError) as ei:
+    with pytest.raises(AgentUnsetError) as ei:
         resolve_agent(explicit_agent=None, requested=None)
     msg = str(ei.value)
-    assert "No agent plugins are installed" in msg
-    assert substring in msg
-    assert "Access via shell: kanibako shell" in msg
-
-
-# ---------------------------------------------------------------------------
-# 4. Absent everywhere + 2+ installed -> Gate-2a (NoAgentSelectedError)
-# ---------------------------------------------------------------------------
-
-
-def test_multi_installed_gate2a(monkeypatch):
-    _patch_targets(monkeypatch, ["claude", "goose"])
-    _no_default(monkeypatch)
-    with pytest.raises(NoAgentSelectedError) as ei:
-        resolve_agent(explicit_agent=None, requested=None)
-    assert str(ei.value) == GATE_2A
-
-
-# ---------------------------------------------------------------------------
-# 4b. Pseudo/catch-all agents (no_agent, general) excluded from installed-count
-# ---------------------------------------------------------------------------
-
-
-def test_one_real_plus_pseudo_autopicks_real(monkeypatch):
-    # One real agent + the built-in shell fallback (and the catch-all label)
-    # must be UNAMBIGUOUS — the real agent is auto-picked, not Gate-2a.
-    _patch_targets(monkeypatch, ["claude", "no_agent", "general"])
-    _no_default(monkeypatch)
-    assert (
-        resolve_agent(explicit_agent=None, requested=None)
-        == "claude"
-    )
-
-
-def test_two_real_plus_pseudo_still_gate2a(monkeypatch):
-    # Two real agents + a pseudo agent -> still ambiguous -> Gate-2a.
-    _patch_targets(monkeypatch, ["claude", "goose", "no_agent"])
-    _no_default(monkeypatch)
-    with pytest.raises(NoAgentSelectedError):
-        resolve_agent(explicit_agent=None, requested=None)
-
-
-def test_only_pseudo_installed_gate2b(monkeypatch):
-    # Zero REAL agents (only the pseudo/no_agent target) -> Gate-2b, NOT
-    # "use no_agent".
-    _patch_targets(monkeypatch, ["no_agent", "general"])
-    _no_default(monkeypatch)
-    for var in ("PIPX_HOME", "PIPX_BIN_DIR", "UV_TOOL_DIR"):
-        monkeypatch.delenv(var, raising=False)
-    monkeypatch.setattr("sys.prefix", "/usr")
-    monkeypatch.setattr("kanibako.install_method.is_externally_managed", lambda: False)
-    with pytest.raises(NoAgentInstalledError):
-        resolve_agent(explicit_agent=None, requested=None)
+    assert "kanibako setup" in msg
+    assert "pip install" not in msg
+    assert "No agent plugins are installed" not in msg
 
 
 def test_explicit_pseudo_agent_still_selectable(monkeypatch):
-    # A pseudo agent stays EXPLICITLY selectable (--agent no_agent), even though
-    # it is excluded from the implicit count.
+    # ``no_agent`` is a NAME like any other: an explicit ref validates against the
+    # full installed set. (It used to be discounted from the implicit count too;
+    # there is no count left to discount it from.)
     _patch_targets(monkeypatch, ["claude", "no_agent"])
     _no_default(monkeypatch)
     assert (
@@ -208,7 +170,20 @@ def test_explicit_pseudo_agent_still_selectable(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_resolved_name_not_installed(monkeypatch):
+@pytest.mark.parametrize(
+    "envset,substring",
+    [
+        ({"PIPX_HOME": "/p"}, "pipx inject kanibako-cli kanibako-agent-claude"),
+        ({"UV_TOOL_DIR": "/u"}, "uv tool install kanibako-cli --with kanibako-agent-claude"),
+        ({}, "pip install kanibako-agent-claude"),
+    ],
+)
+def test_resolved_name_not_installed(monkeypatch, envset, substring):
+    """A NAMED agent that is not installed says how to install it, per install mode.
+
+    ⚑ This is the only refusal left that reads the installed set, and it reads it to
+    answer *"is this name there?"* — never *"how many are there?"*.
+    """
     _patch_targets(monkeypatch, ["goose"])  # claude NOT present
     _no_default(monkeypatch)
     monkeypatch.delenv("PIPX_HOME", raising=False)
@@ -216,11 +191,13 @@ def test_resolved_name_not_installed(monkeypatch):
     monkeypatch.delenv("UV_TOOL_DIR", raising=False)
     monkeypatch.setattr("sys.prefix", "/usr")
     monkeypatch.setattr("kanibako.install_method.is_externally_managed", lambda: False)
+    for k, v in envset.items():
+        monkeypatch.setenv(k, v)
     with pytest.raises(AgentNotInstalledError) as ei:
         resolve_agent(explicit_agent=None, requested="claude")
     msg = str(ei.value)
     assert "claude" in msg
-    assert "pip install kanibako-agent-claude" in msg
+    assert substring in msg
     assert "kanibako agent list" in msg
 
 

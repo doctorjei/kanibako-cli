@@ -250,29 +250,40 @@ Agent could not be resolved for an agent-requiring command.
 
 **The `str()` of the exception — and of every subclass — IS the user-facing message.** Callers do not
 reformat it; they let it reach `cli.py`, which prints it verbatim behind `Error: `. That is why each
-raise site in `settings/config.py` writes a multi-line message with an install command in it, and why
+raise site writes a multi-line message with a cure in it, and why
 `commands/agent_cmd.py:602` and `commands/start.py:556` both note that the error "surfaces verbatim".
 Reword one of these messages and you have reworded user-facing output.
 
-All three subclasses are raised from one function, `settings/config.py`'s `resolve_agent`.
+⚑ **Only ONE of these carries an install command now — `AgentNotInstalledError`.** The retired
+`NoAgentInstalledError` carried one for the zero-plugins-installed case; since 2026-09-19 the launch
+answers that case with `AgentUnsetError`, whose cure is `kanibako setup` at every installed count, and
+`commands/setup_cmd.py`'s Step 2 is where the tailored `install_method.install_command(...)` is
+printed instead. Do not re-add one here: the two refusals are deliberately one sentence each about
+what is UNSET, not a report on what is installed.
 
-⚑ The count rule that picks between the two gates runs on `real_installed = installed -
-_PSEUDO_AGENTS` (`config.py:597`). **Pseudo targets — `no_agent` — do not count toward it.** An
-explicitly NAMED harness is still validated against the FULL `installed` set, which is why the
-not-installed case below reads a different set from the two count cases.
+Two subclasses are raised from `settings/config.py`'s `resolve_agent`; the third,
+`AgentNoDefaultError`, is raised one seam earlier, in `settings/agent_select.py`'s `select_agent`,
+because only that function can see the difference between *unset* and *present-`None`*.
 
-```class NoAgentSelectedError(AgentResolutionError):```
-Gate-2a: 2+ REAL agents installed but none was chosen (no default).
+🛑 **THERE IS NO INSTALLED-AGENT COUNT RULE.** Retired 2026-09-19 (his ruling; keyspec §2b). Nothing
+auto-selects an agent, not even when exactly one plugin is installed, and the installed set is read
+for ONE question only — *is this NAME installed?* — which is why it is read inside the named-ref
+branch and is not in scope on the refusal path.
 
-`config.py:624`. The fall-through case: nothing resolved a name and the real-agent count is 2 or
-more. The message prescribes `kanibako setup` or `kanibako shell`.
+```class AgentUnsetError(AgentResolutionError):```
+`system.agent` is UNSET at every tier: setup has never chosen one.
 
-```class NoAgentInstalledError(AgentResolutionError):```
-Gate-2b: zero REAL agent plugins are installed.
+The fall-through case in `resolve_agent`: nothing resolved a name, at any count. The message
+prescribes `kanibako setup`, names `--agent <name>` for a single run, and points at `kanibako shell`
+for reaching the container without an agent.
 
-`config.py:619`. ⚑ The older descriptor said "zero agent plugins", which misreads a box that HAS the
-pseudo `no_agent` target as having one — the count rule excludes it, so this gate fires there. Test
-`tests/test_agent_resolution.py:151` pins exactly that case.
+```class AgentNoDefaultError(AgentResolutionError):```
+`system.agent` resolved to present-`None`: no default is set, so an agent must be named.
+
+Raised in `select_agent`, not here — `resolve_agent` receives `None` for BOTH absent arguments and
+cannot tell the two states apart. ⚑ **It is reachable by TYPO:** YAML reads `null`, `Null`, `NULL`,
+`~` and a key left blank after its colon as Python `None`. `None`/`none` are STRINGS and land on
+`AgentNotInstalledError` instead, so these three messages must stay mutually unmistakable.
 
 ```class AgentNotInstalledError(AgentResolutionError):```
 A name resolved (explicit `--agent`, cascade, or default) but that agent adapter is not installed.

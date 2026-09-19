@@ -852,7 +852,7 @@ is `None` the guard uses `{agent_name}`, since every agent-scope key in the leve
 the ALREADY-RESOLVED active agent and discovery would be pure cost on a flag-free launch.
 
 The level always carries the RESOLVED agent selection (`agent_select.select_agent`) whichever of its
-three sources won — `--agent`, the cascade, or the installed-count rule. Installing that ALWAYS (not
+two sources won — `--agent` or the cascade. Installing that ALWAYS (not
 only for `--agent`) is what keeps `@system.agent` equal to the node that actually runs, which the two
 re-pointed §2c anchors depend on. P8 added the ephemeral flag values beside it (`-M` →
 `agent.<active>.model`, `-N`/`-C`/`-R` → `agent.<active>.continue_mode`).
@@ -1011,11 +1011,16 @@ THREE distinguishable states, which the caller MUST keep apart (see `settings/ag
 
 * `str` — a name: the stored `system.agent`, or a `pref.system.agent` request from the box (which
   beats) or the workset file (§2h);
-* `None` — PRESENT-`None`: an explicit `pref.system.agent: null` SUPPRESSION ⇒ the NO-AGENT
-  plain-shell box (spec §2b, D-M6). A present-`None` on a SCALAR leaf is KEPT by
-  `_resolve_present_none`, which is exactly what makes this reachable — `if value is None: continue`
-  anywhere on this path silently deletes the capability;
-* `__MISSING__` — nothing ever set it ⇒ the caller falls through to the installed-count rule.
+* `None` — PRESENT-`None`: an explicit `pref.system.agent: null` ⇒ **NO DEFAULT IS SET** (spec
+  §2b), so the caller REFUSES unless an agent was named explicitly. A present-`None` on a SCALAR
+  leaf is KEPT by `_resolve_present_none`, which is exactly what makes this state reachable — `if
+  value is None: continue` anywhere on this path collapses it into the one below and the user reads
+  the wrong refusal;
+* `__MISSING__` — nothing ever set it ⇒ setup has never chosen one, and the caller REFUSES naming
+  `kanibako setup`.
+
+🛑 **BOTH ARE REFUSALS, NEVER AN IMPLICIT PICK.** The installed-agent count rule was retired
+2026-09-19 on his ruling; keeping the two states apart is what decides WHICH refusal prints.
 
 **Why this is a SEPARATE resolve.** `build_launch_snapshot` needs the active agent BEFORE it
 assembles: it discriminates the agent tier, wraps the per-agent file's state, and builds the
@@ -1073,8 +1078,8 @@ resolved effective-agent node into `snapshot["meta"]["box"]["agent"]`:
   cannot escape into the shared agent subtree.
 
 Re-materialization on an agent change is AUTOMATIC: `agent_name` is the launch-resolved active agent
-(`@system.agent` — the stored key, a `pref.system.agent` request, `--agent`, or the installed-count
-rule; see `settings/agent_select.py`), threaded into every snapshot build.
+(`@system.agent` — the stored key, a `pref.system.agent` request, or `--agent`; see
+`settings/agent_select.py`), threaded into every snapshot build.
 
 ⚑ The auth floor separately materializes `meta.box.agent.auth.share_support` (the capability mirror,
 a PRE-expand floor key), so this copy must not clobber it: an existing name under `meta.box.agent` is

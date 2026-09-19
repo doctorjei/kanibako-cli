@@ -12,6 +12,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`kanibako setup` told a host with no agent plugin that it was ready to go.** Three of Step 2's
+  branches could never run. The "no agent plugins installed" arm was gated on the discovered target
+  set being *empty*, which it never is — `no_agent`, the built-in plain shell, is an entry point
+  `kanibako-cli` declares for itself — and the same target, correctly reported as available, also
+  counted as an agent that was *found*, so the closing banner printed *"You're ready to go! Run
+  `kanibako` in any project directory."* on a machine where every launch refuses. Step 2 now counts
+  agent plugins (targets that need a host binary) separately from the shell, so a host with none of
+  them is told so, is given an install command, and is told at the end to install a plugin rather
+  than that it is ready. The install command is **tailored to how kanibako itself was installed**
+  (`pipx inject` / `uv tool install --with` / `pip install`): 1.7.2 printed that command from the
+  launch, and with the launch now answering *run `kanibako setup`* at every installed count, `setup`
+  is where the first-run user has to receive it. `setup --agent <unknown>` likewise stops
+  hard-coding `pip install` in its "install the plugin" hint.
+
 - **`README.md`'s "Common settings keys" table advertised six spellings the product refuses.** The front
   door went on teaching them through a public release: `box.agent` (retired to `pref.system.agent`, and a
   hard launch error), `group_auth` (now the two arms `box.auth.global_enabled` and
@@ -38,15 +52,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   resolves.** The same blank value, on the launch path, where three places asked about it and
   answered differently: the agent arbiter fell through a blank explicit ref to the stored one, the
   selection seam let the settings files answer a question the command line had asked (a box
-  carrying `pref.system.agent: null` came back suppressed, as a plain-shell box), and the launch's
+  carrying `pref.system.agent: null` had the files answer for the typed flag), and the launch's
   box-independent read folded the typed flag into the stored default. So a blank flag *refused* at
   a box that happened to be running — the reattach check reaches the ref grammar — and *launched*
   at the same box once it was stopped. Whether a container is up is not a fact about the ref you
   typed: both now stop at `Error: agent ref is empty`, before the box is touched. A value present
   at the selection key is a value wherever it came from, so a settings file carrying
-  `system.agent: ""` is refused by that same message rather than quietly falling to the
-  installed-count rule. *Unset* is still spelled by leaving the key out, and the no-agent box is
-  still `pref.system.agent: null`.
+  `system.agent: ""` is refused by that same message rather than quietly falling through to a
+  default. *Unset* is still spelled by leaving the key out; for what `pref.system.agent: null` now
+  means, see the agent-selection entry under **Changed**.
 
 - **A box that is not running is no longer refused with "A box is already running for this
   project".** When a box's PID 1 dies without the CLI surviving to clean up — a crash, a closed
@@ -260,6 +274,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   OAuth browser session is kept with the state, not the data* under **Changed**.
 
 ### Changed
+
+- **BREAKING: kanibako no longer picks an agent for you.** When nothing named one — no `--agent`, no
+  box or workset `pref.system.agent`, no `system.agent` — the *installed-agent count* used to decide:
+  exactly one installed plugin launched implicitly, zero or two-or-more was an error. The count now
+  decides nothing. A launch nobody pointed at an agent stops with exit status 1, and prints one of two
+  messages that say different things on purpose:
+
+  - `system.agent` **unset**, meaning setup has never chosen one: `No default agent is configured
+    (system.agent is unset).` — followed by `kanibako setup`, the cure.
+  - `system.agent` **null**, meaning a settings file declined to set a default: `No default agent is
+    set` — followed by how to name one, `--agent <name>` or `pref.system.agent`.
+
+  The install that pays for this is the one with a single agent plugin, which used to launch with no
+  setup at all: run `kanibako setup` once, or pass `--agent <name>` per run. `kanibako shell` still
+  needs no agent and still reaches the container. `setup`'s "skip" option now warns and asks you to
+  confirm however many agents are installed, where it used to waive both at exactly one.
+
+  ⚠️ `pref.system.agent: null` does not build a plain-shell box — it is the second refusal above.
+  Nothing you could do in 1.7.2 stopped working: `pref.*` did not exist there, so `null` never
+  reached a plain shell in any released version — that reading of `null` was introduced during the
+  1.8.0 rc series and withdrawn before the release. The plain-shell box is reached the way 1.7.2
+  reached it, by NAMING the `no_agent` pseudo-agent: `--agent no_agent`, or
+  `kanibako box set pref.system.agent=no_agent` (1.7.2 spelled that `box.agent_name: no_agent`,
+  now retired). Note too that YAML reads `null`, `Null`, `NULL`, `~` and a key left blank after its
+  colon all as null, so a typo lands on that refusal; `None` and `none` are strings and ask for an
+  agent by that name instead.
 
 - **The saved OAuth browser session is kept with the state, not the data.** The Playwright session
   that an automated `claude` re-authorization reuses — cookies and localStorage — was written to
@@ -2743,11 +2783,6 @@ migration code.** Four released config surfaces are removed outright
   remove an entry it inherits. The sibling `reset` verb *removes* the entry instead.
   Where a store cannot represent a suppression the flag is refused with the reason and
   the cure (see *Fixed*).
-- **A box can opt out of an agent entirely.** `kanibako box set --null pref.system.agent`
-  gives a plain-shell box *even when a host-wide default is set*: no agent binds, no
-  credentials delivered, no agent template layer, no `KANIBAKO_AGENT` stamp — and `stop`
-  writes nothing back for it. The state itself was reachable in 1.7.2 via the `no_agent`
-  pseudo-agent (`--agent no_agent` / `box.agent_name`); what is new is this spelling.
 - **The canon books — one root for everything a box reads.** The in-box instruction tree
   is now four books under `~/canon/`, entered at `~/canon/COLLECTION.md`:
   - `bible/` — packaged core guidance as per-scope chapters (`general/`, `workset/`,
@@ -3193,11 +3228,6 @@ migration code.** Four released config surfaces are removed outright
   nothing matched and the symlink shim pointing `agents/<persona>/common/…` at
   `agents/<harness>/common/…` had no consumer. They are now emitted under the active
   node. Bare (non-persona) agents are unaffected.
-- **A no-agent box no longer launches claude.** A suppressed selection produced an empty
-  node that `resolve_target` read as *no name given, please auto-detect* — so the
-  no-agent box came up running claude, credentials and all. The selection now carries an
-  explicit `has_agent`, honoured at every seam that turns a selection into a target
-  (launch, bootstrap, reauth).
 - **Per-agent credential paths no longer collapse into the workset auth root.** Three
   call sites quietly defaulted the per-agent credential path to none, which collapsed the
   per-agent credential directory into the workset auth root on exactly the commonest host

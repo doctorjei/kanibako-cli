@@ -250,9 +250,13 @@ at the TARGET's path (`settings_merge`): OMIT for a bind / category / masks leaf
 scalar leaf. This layer classifies nothing.
 
 ⚑ So `pref.system.agent: null` is KEPT as `None` — `system.agent` is a scalar leaf — and it means
-the NO-AGENT box (§2b). `pref_value` cannot express that distinction through its return type, which
-is deliberate for this case because "no agent selected" is the same outcome; a caller that needs
-present-`None` told apart from absent uses `pref_request_for` instead.
+**NO DEFAULT IS SET** (§2b): an agent must be named explicitly, or the launch refuses saying so.
+
+🛑 `pref_value` cannot express that distinction through its return type, and since the 2026-09-19
+ruling the distinction MATTERS: present-`None` and absent get DIFFERENT refusals (*no default set*
+vs *setup has never run*). A caller that needs them told apart must use `pref_request_for`. No
+production caller reads `system.agent` through `pref_value` today — the selection seam reads the
+cascade — and adding one would silently merge the two refusals.
 
 ## Agent discovery — `AgentNames` and the memo
 

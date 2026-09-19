@@ -2308,31 +2308,31 @@ class TestCheckLaunchBaselineUnit:
 
 
 # ---------------------------------------------------------------------------
-# Reattach: source the agent from the running container (no Gate-2a)
+# Reattach: source the agent from the running container (no selection refusal)
 # ---------------------------------------------------------------------------
 
 class TestReattachAgentSourcing:
     """A persistent box that is ALREADY RUNNING reattaches by sourcing its
     agent from the container's KANIBAKO_AGENT stamp, bypassing the selection
-    seam's Gate-2a (which would otherwise fire with 2+ agents and no default)."""
+    seam's refusal (which would otherwise fire with no default agent set)."""
 
-    def _gate2a_unless_explicit(self):
-        """``select_agent`` stand-in: raises Gate-2a unless an explicit agent is
+    def _refuse_unless_explicit(self):
+        """``select_agent`` stand-in: REFUSES unless an explicit agent is
         supplied — i.e. only the container-sourced injection can satisfy it."""
         from kanibako.settings.agent_select import AgentSelection
-        from kanibako.errors import NoAgentSelectedError
+        from kanibako.errors import AgentUnsetError
 
         def _fn(*, explicit_agent, **kw):
             if explicit_agent:
                 return AgentSelection(node=explicit_agent, source="cli")
-            raise NoAgentSelectedError("pick an agent")
+            raise AgentUnsetError("run setup")
         return _fn
 
-    def test_reattach_sources_stored_agent_no_gate2a(self, start_mocks, capsys):
+    def test_reattach_sources_stored_agent_no_refusal(self, start_mocks, capsys):
         with start_mocks() as m:
             m.runtime.is_running.return_value = True
             m.runtime.inspect_env.return_value = "claude"
-            m.resolve_agent.side_effect = self._gate2a_unless_explicit()
+            m.resolve_agent.side_effect = self._refuse_unless_explicit()
             rc = _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
                 new_session=False, safe_mode=False, resume_mode=False,
@@ -2353,7 +2353,7 @@ class TestReattachAgentSourcing:
         with start_mocks() as m:
             m.runtime.is_running.return_value = True
             m.runtime.inspect_env.return_value = "claude"
-            m.resolve_agent.side_effect = self._gate2a_unless_explicit()
+            m.resolve_agent.side_effect = self._refuse_unless_explicit()
             rc = _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
                 new_session=False, safe_mode=False, resume_mode=False,
@@ -2415,7 +2415,7 @@ class TestReattachAgentSourcing:
             m.runtime.inspect_env.return_value = "claude"
             # explicit_agent is None (default would resolve to something else),
             # so the stored agent is injected and used — no error.
-            m.resolve_agent.side_effect = self._gate2a_unless_explicit()
+            m.resolve_agent.side_effect = self._refuse_unless_explicit()
             rc = _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
                 new_session=False, safe_mode=False, resume_mode=False,
@@ -2443,7 +2443,7 @@ class TestReattachAgentSourcing:
         with start_mocks() as m:
             m.runtime.is_running.return_value = True
             m.runtime.inspect_env.return_value = stamp
-            m.resolve_agent.side_effect = self._gate2a_unless_explicit()
+            m.resolve_agent.side_effect = self._refuse_unless_explicit()
             rc = _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
                 new_session=False, safe_mode=False, resume_mode=False,
@@ -2456,14 +2456,14 @@ class TestReattachAgentSourcing:
 
     def test_preexisting_running_box_no_stamp_falls_back(self, start_mocks):
         """A box running before this change has no KANIBAKO_AGENT (inspect_env
-        -> None): no injection, normal resolution applies (Gate-2a if no
+        -> None): no injection, normal resolution applies (the refusal if no
         default — unchanged behavior)."""
-        from kanibako.errors import NoAgentSelectedError
+        from kanibako.errors import AgentUnsetError
         with start_mocks() as m:
             m.runtime.is_running.return_value = True
             m.runtime.inspect_env.return_value = None
-            m.resolve_agent.side_effect = self._gate2a_unless_explicit()
-            with pytest.raises(NoAgentSelectedError):
+            m.resolve_agent.side_effect = self._refuse_unless_explicit()
+            with pytest.raises(AgentUnsetError):
                 _run_container(
                     project_dir=None, entrypoint=None, image_override=None,
                     new_session=False, safe_mode=False, resume_mode=False,

@@ -17,6 +17,19 @@ a key.
 unconditionally — separate readers dereference ``@system.agent``, so the snapshot
 MUST agree with the process that runs.
 
+🛑 **IF NOTHING NAMES AN AGENT, NOTHING LAUNCHES — THE INSTALLED-AGENT COUNT IS NOT
+CONSULTED** (his ruling, 2026-09-19; spec §2b). Two states, two refusals, and they
+are deliberately NOT the same sentence:
+
+* ``system.agent`` **UNSET** — setup has never chosen one ⇒
+  :class:`~kanibako.errors.AgentUnsetError`, which sends the user to ``kanibako setup``.
+* ``system.agent`` **present-``None``** — a settings file declined to name a default ⇒
+  :class:`~kanibako.errors.AgentNoDefaultError`, which asks for a name.
+
+A third, unrelated failure is easy to confuse with them and must stay distinct: YAML
+reads ``None``/``none`` as STRINGS, so those spellings request an agent by that name
+and fail as *not installed*.
+
 The reference material lives in ``llm-docs/kanibako/settings/agent_select.py.md``:
 the P7 retirement of ``box.agent_name``, the three ways the snapshot and the
 process diverge without the install, P8's generalisation to every key-shadowing
@@ -39,8 +52,23 @@ class AgentSelection:
     """The resolved agent node, plus the *source* that chose it.
 
     *node* is the canonical agent NODE-name, or ``""`` for a NO-AGENT plain-shell
-    box (spec §2b, D-M6); *source* is ``"cli"``, ``"settings"``, ``"autopick"`` or
-    ``"suppressed"``. Both vocabularies are spelled out in the llm-doc.
+    box (spec §2b, D-M6); *source* is ``"cli"`` or ``"settings"``. Both
+    vocabularies are spelled out in the llm-doc.
+
+    🛑 **TWO SOURCES ARE RETIRED AND NEITHER IS PRODUCED ANY MORE.** ``"autopick"``
+    was the installed-agent count rule, deleted 2026-09-19 — nothing auto-selects,
+    not even with exactly one agent installed. ``"suppressed"`` was
+    ``pref.system.agent: null`` yielding the plain-shell box; that state is now a
+    REFUSAL (:class:`~kanibako.errors.AgentNoDefaultError`).
+
+    ⚑ **The ``has_agent`` / ``target is None`` guards below are KEPT, and NOT
+    because ``shell`` is coming.** Keyspec §2b makes the plain-shell box an
+    effective ``@system.agent`` of ``shell`` — a NAMED node (``meta.agent.shell.name
+    = "shell"``, §2d) — so a D2 selection is ``node="shell"`` and ``has_agent`` is
+    TRUE for it. The guards stay because ``""`` still means opposite things on the
+    two sides of the target seam, holding that shape costs one conjunct, and the
+    incident that proved it is on record (bifrost E-NULL, 2026-07-31). **Do not
+    read them as evidence that a null selection still launches anything.**
     """
 
     node: str
@@ -62,8 +90,14 @@ class AgentSelection:
 
         ⚑ ``None``, deliberately NOT ``NoAgentTarget()`` — the llm-doc says why,
         and carries the downstream gates that key on ``target is None``.
+
+        ⚑ **The NODE decides, and nothing else (P4).** This used to read
+        ``self.source != "suppressed" and bool(self.node)``; ``"suppressed"`` is a
+        retired source no production path emits, so the conjunct was dead weight in
+        front of the only test that ever mattered. ``bool(self.node)`` is the same
+        predicate for every value the class can hold.
         """
-        return self.source != "suppressed" and bool(self.node)
+        return bool(self.node)
 
     @property
     def selection_level(self) -> "dict[str, object] | None":
@@ -118,8 +152,10 @@ def select_agent(
 ) -> AgentSelection:
     """Resolve the agent for *proj* — the ONE seam (spec §1A / §2g / §2h).
 
-    Raises the typed :class:`~kanibako.errors.AgentResolutionError` subclasses
-    ``config.resolve_agent`` raises, a
+    Raises :class:`~kanibako.errors.AgentNoDefaultError` for a present-``None``
+    selection, the typed :class:`~kanibako.errors.AgentResolutionError` subclasses
+    ``config.resolve_agent`` raises (including
+    :class:`~kanibako.errors.AgentUnsetError` when nothing set the key), a
     :class:`~kanibako.settings.settings_resolve.SettingsError` when the selection
     key itself does not resolve, the ref-grammar ``ConfigError`` for an
     *explicit_agent* that is malformed or blank, and the retired-key refusal
@@ -127,6 +163,7 @@ def select_agent(
     Informational callers that must degrade rather than fail keep their own
     ``try/except`` — see the llm-doc.
     """
+    from kanibako.errors import AgentNoDefaultError
     from kanibako.settings.config import resolve_agent, settings_base_path
     from kanibako.settings.config_io import load_doc
     from kanibako.settings.paths import box_workset_settings_paths
@@ -163,14 +200,14 @@ def select_agent(
 
     requested: object = __MISSING__
     # ⚑⚑ "GIVEN" IS ``is not None``, NOT TRUTHINESS.  This gate can answer the
-    # whole question by itself (the SUPPRESSION return below never reaches
+    # whole question by itself (the no-default REFUSAL below never reaches
     # ``resolve_agent``), so a truthy test let a GIVEN-but-blank ref be answered
     # by the cascade — ``--agent ""`` came back as a no-agent box, or as whatever
     # the files said, with nothing printed.  A blank ref is a value: it goes
     # through to ``resolve_agent``, which refuses it by the ref grammar's own
     # message.  ``None`` keeps its one meaning — no ref was given at all.
     if explicit_agent is None:
-        # Only the cascade can suppress or supply; ``--agent`` short-circuits it.
+        # Only the cascade can decline or supply; ``--agent`` short-circuits it.
         requested = resolve_selected_agent(
             ctx=launch_resolve_ctx(std, proj, None),
             system_path=system_path,
@@ -178,20 +215,28 @@ def select_agent(
             box_path=box_path,
         )
         if requested is None:
-            # PRESENT-None = an explicit ``pref.system.agent: null`` SUPPRESSION ⇒
-            # the NO-AGENT plain-shell box (D-M6). ⚑ Keep it distinct from
-            # ``__MISSING__`` — never collapse them with a falsiness test.
-            return AgentSelection(node="", source="suppressed")
+            # PRESENT-None = NO DEFAULT IS SET (spec §2b): an agent must be named
+            # explicitly, or the launch REFUSES saying so. ⚑ Keep it distinct from
+            # ``__MISSING__`` — never collapse them with a falsiness test: the two
+            # states print DIFFERENT refusals, which is the whole ruling.
+            # 🛑 It used to return the NO-AGENT plain-shell box; under the
+            # 2026-09-19 ruling `<None>` no longer reaches that box — the `shell`
+            # pseudo-agent does, BY NAME.
+            raise AgentNoDefaultError(
+                "No default agent is set: system.agent is null (a blank value and "
+                "'~' spell this too),\n"
+                "so an agent must be named explicitly.\n"
+                "Name one with '--agent <name>', or set this box's agent with:\n"
+                "  kanibako box set pref.system.agent=<name>\n"
+                "'kanibako shell' reaches the box's container without an agent."
+            )
 
     node = resolve_agent(
         explicit_agent=explicit_agent,
         requested=None if requested is __MISSING__ else str(requested),
         project_path=project_path if project_path is not None else proj.project_path,
     )
-    if explicit_agent is not None:  # SAME "given" predicate as the gate above.
-        source = "cli"
-    elif requested is __MISSING__:
-        source = "autopick"
-    else:
-        source = "settings"
+    # ⚑ TWO SOURCES, not four: ``resolve_agent`` REFUSES an unset key rather than
+    # picking for the user, so a returning call always has a name somebody wrote.
+    source = "cli" if explicit_agent is not None else "settings"
     return AgentSelection(node=node, source=source)

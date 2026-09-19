@@ -804,21 +804,29 @@ def run_reauth(args: argparse.Namespace) -> int:
     proj = resolve_box_target(std, config, subject)
 
     # Resolve the agent UP FRONT through the ONE selection seam (--agent > box
-    # pref > workset pref > system.agent → installed-count rule).  reauth is an
-    # agent-requiring command, so a resolution failure raises a typed
-    # AgentResolutionError that the top-level cli.py handler surfaces verbatim
-    # (Gate-2a/2b) with a non-zero exit — never a silent fall-through.
+    # pref > workset pref > system.agent).  reauth is an agent-requiring command,
+    # so a resolution failure raises a typed AgentResolutionError that the
+    # top-level cli.py handler surfaces verbatim with a non-zero exit — never a
+    # silent fall-through, and never an implicit pick.
     selection = select_agent(
         std=std, proj=proj,
         explicit_agent=getattr(args, "agent", None),  # Phase D seam (--agent)
     )
     agent_name = selection.node
     # ``agent_name`` is the NODE-name (persona identity); the target/plugin is keyed
-    # by the HARNESS. ⚑ Routed through the ONE translator: a SUPPRESSED box
-    # (``pref.system.agent: null``) has no node, and handing ``""`` to
-    # ``resolve_target`` would AUTO-DETECT an agent and reauth it — credentials for
-    # an agent this box deliberately does not run (the same two-vocabulary
-    # collision the launch seam guards; bifrost E-NULL).
+    # by the HARNESS. ⚑ Routed through the ONE translator: a NO-AGENT box has no
+    # node, and handing ``""`` to ``resolve_target`` would AUTO-DETECT an agent and
+    # reauth it — credentials for an agent this box deliberately does not run (the
+    # same two-vocabulary collision the launch seam guards; bifrost E-NULL).
+    # 🛑 ``pref.system.agent: null`` reaches neither line since the 2026-09-19
+    # ruling: ``select_agent`` REFUSES it above, saying no default agent is set, so
+    # no production path produces a node-less selection and the ``target is None``
+    # arm below is unreachable today.
+    # ⚑ KEPT anyway, and NOT as a reservation for ``shell``: keyspec §2b makes the
+    # plain-shell box an effective ``@system.agent`` of ``shell``, a NAMED node, so
+    # a D2 selection has ``has_agent`` TRUE and resolves a target like any other.
+    # The guard stays because the incident is on record (bifrost E-NULL) and the
+    # shape costs one conjunct — a floor under the two-vocabulary seam, not a plan.
     target = (
         resolve_target(harness_of(selection.node), proj.project_path)
         if selection.has_agent
@@ -826,10 +834,9 @@ def run_reauth(args: argparse.Namespace) -> int:
     )
     if target is None:
         print(
-            "This box runs no agent (pref.system.agent is null), so there are no "
-            "credentials to refresh. Give it an agent with "
-            "'kanibako box set pref.system.agent=<name>', or pass '--agent <name>' "
-            "to reauth one explicitly.",
+            "This box runs no agent, so there are no credentials to refresh. "
+            "Give it an agent with 'kanibako box set pref.system.agent=<name>', "
+            "or pass '--agent <name>' to reauth one explicitly.",
             file=sys.stderr,
         )
         return 1

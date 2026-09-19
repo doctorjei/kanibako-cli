@@ -884,39 +884,28 @@ def setup_compat_gate(settings_path: Path | None) -> str | None:
     )
 
 
-# Pseudo-agents are DISCOUNTED from the implicit installed-count rule; ``no_agent``
-# stays explicitly selectable. ⚑ ``general`` is a SLOT name, not a shipped target.
-# 🛑 NOT THE KEYSPEC'S PSEUDO-AGENTS, despite the word — that is
-# ``agent_ref.PSEUDO_AGENT_NAMES`` (``default``, ``shell``), the RESERVED names no agent,
-# persona or harness may take (§2d). This set is the count rule's discount list and shares
-# no member with it; the two are unrelated and must not be merged.
-_PSEUDO_AGENTS = frozenset({"no_agent", "general"})
-
-
 def resolve_agent(
     *,
     explicit_agent: str | None,
     requested: str | None = None,
     project_path: Path | None = None,
 ) -> str:
-    """Validate/arbitrate the effective agent name against the installed set, plus the count rule.
+    """Validate the effective agent name against the installed set, or REFUSE (spec §2b).
 
     ⮕ **P7: the CASCADE moved out** — what stays here is what is NOT a key.
+
+    🛑 **THERE IS NO INSTALLED-AGENT COUNT RULE** (retired 2026-09-19, his ruling). A
+    name that resolved is validated; a name that did NOT resolve is a REFUSAL naming
+    ``kanibako setup``, whatever the count — **one installed agent does not make the
+    choice for the user.** Present-``None`` never reaches here: it is a DIFFERENT
+    refusal, raised at the selection seam (``agent_select.select_agent``), because the
+    two states mean different things and must not print the same sentence.
     """
     # ⚑ Lazy: kanibako.targets imports paths/config indirectly (cycle risk).
     from kanibako.agent_ref import canonicalize_agent_ref, harness_of
-    from kanibako.errors import (
-        AgentNotInstalledError,
-        NoAgentInstalledError,
-        NoAgentSelectedError,
-    )
+    from kanibako.errors import AgentNotInstalledError, AgentUnsetError
     from kanibako.install_method import install_command
     from kanibako.targets import discover_targets
-
-    installed = set(discover_targets(project_path).keys())
-    # The count rule considers only REAL launchable agents; an explicitly-named
-    # harness still validates against the FULL `installed` set below.
-    real_installed = installed - _PSEUDO_AGENTS
 
     # ⚑⚑ THE FIRST *PRESENT* TIER RESOLVES — never the first non-EMPTY one.
     # ABSENCE already has its own spelling in BOTH arguments: no ``--agent`` at
@@ -926,9 +915,9 @@ def resolve_agent(
     # sentinel" are three distinct idioms).  Reading it as absence invented a
     # FOURTH meaning for the one that already means something, and answered it by
     # launching whatever the next tier said: a typed ``--agent ""`` took the
-    # cascade's agent, a stored ``system.agent: ""`` took the installed-count
-    # rule's — silently, either way.  Every OTHER illegal ref at either tier has
-    # always refused here; the blank one escaped through an ``or``.
+    # cascade's agent, a stored ``system.agent: ""`` took the then-live
+    # installed-count rule's — silently, either way.  Every OTHER illegal ref at
+    # either tier has always refused here; the blank one escaped through an ``or``.
     raw_resolved = explicit_agent if explicit_agent is not None else requested
 
     if raw_resolved is not None:
@@ -941,6 +930,11 @@ def resolve_agent(
         # ``Error:`` line with the offending value first.
         node = canonicalize_agent_ref(raw_resolved)
         harness = harness_of(node)
+        # ⚑⚑ THE INSTALLED SET IS READ *ONLY INSIDE THIS BRANCH*, AND THAT IS THE
+        # POINT (P3/P4): it answers "is this NAME installed?" and is not in scope on
+        # the refusal path below, so the installed-agent count rule cannot be
+        # reintroduced there without re-adding this call — which a reader would see.
+        installed = set(discover_targets(project_path).keys())
         if harness in installed:
             return node
         raise AgentNotInstalledError(
@@ -949,18 +943,16 @@ def resolve_agent(
             f"Or run 'kanibako agent list' to see installed agents."
         )
 
-    # Nothing resolved -> installed-count rule (REAL agents only).
-    if len(real_installed) == 1:
-        return next(iter(real_installed))
-    if len(real_installed) == 0:
-        raise NoAgentInstalledError(
-            "No agent plugins are installed. Install one, e.g.:\n"
-            f"  {install_command('kanibako-agent-claude')}\n"
-            "Access via shell: kanibako shell"
-        )
-    raise NoAgentSelectedError(
-        "No agent selected; run 'kanibako setup' to select one or "
-        "'kanibako shell' to access the container via command shell."
+    # Nothing resolved at ANY tier ⇒ @system.agent is UNSET: setup has never chosen
+    # an agent (spec §2b).  ⚑ ``installed`` is deliberately NOT consulted — the old
+    # count rule launched the single installed agent implicitly, and that is the
+    # behavior this refusal replaces.
+    raise AgentUnsetError(
+        "No default agent is configured (system.agent is unset).\n"
+        "Choose one with:\n"
+        "  kanibako setup\n"
+        "Or name one for a single run with '--agent <name>'.\n"
+        "'kanibako shell' reaches the box's container without an agent."
     )
 
 

@@ -6,8 +6,10 @@ discriminator: each names the mutation it reddens under.
 Covers:
 
 * the selection ORDER — ``system.agent`` < workset pref < box pref < ``--agent``;
-* the THREE-state read (name / present-``None`` suppression / absent), because the
-  NO-AGENT box (D-M6) and "nothing was ever set" are DIFFERENT answers;
+* the THREE-state read (name / present-``None`` / absent), because *no default is
+  set* and *nothing was ever set* are DIFFERENT answers and get DIFFERENT refusals
+  — the installed-agent count rule that used to answer the third state was retired
+  2026-09-19 (spec §2b);
 * the §1A SELECTION LEVEL that keeps ``@system.agent`` equal to the node that runs;
 * the RETIRED-key refusals (``box.agent_name`` / ``system.default_agent``, M-4).
 """
@@ -94,28 +96,28 @@ class TestSelectionOrder:
 
 
 # --------------------------------------------------------------------------- #
-# The THREE-state read — the NO-AGENT box is NOT "unset" (D-M6)                #
+# The THREE-state read — "no default set" is NOT "unset" (spec §2b)            #
 # --------------------------------------------------------------------------- #
 
 
 class TestSelectionThreeState:
     def test_absent_everywhere_is_MISSING_not_none(self, tmp_path):
         """``__MISSING__`` (nothing set) must stay distinguishable from ``None``
-        (explicitly suppressed): the first falls through to the installed-count
-        rule, the second is a NO-AGENT box."""
+        (an explicit null): each gets its OWN refusal — *setup has never run* vs
+        *no default is set* — and collapsing them prints the wrong one."""
         assert _select(tmp_path) is __MISSING__
 
     def test_a_null_pref_is_KEPT_as_present_none(self, tmp_path):
-        """⚑ The D-M6 capability GAIN, and the silent-failure hazard §2h names.
+        """⚑ The THREE-STATE distinction, and the silent-failure hazard §2h names.
 
         ``pref.system.agent: null`` installs present-``None`` VERBATIM, and
         present-``None`` on a SCALAR leaf is KEPT (``_resolve_present_none``), so a
-        box can opt OUT of an agent even while a system default is set — which
-        the retired ``box.agent_name`` could not express.
+        box can decline the system default rather than inherit it — which the
+        retired ``box.agent_name`` could not express.
 
         INVERT: ``if value is None: continue`` anywhere on the pref/selection path
-        (the most natural guard to write) -> this returns ``__MISSING__`` and the box
-        silently launches the system default instead of a plain shell.
+        (the most natural guard to write) -> this returns ``__MISSING__``, and the
+        box is told to run ``setup`` when what it actually says is *no default*.
         """
         got = _select(
             tmp_path,
@@ -210,11 +212,15 @@ class TestSelectionLevel:
         )
         assert snap.system.agent == "goose"
 
-    def test_the_selection_level_supplies_an_autopicked_agent(self, tmp_path):
-        """⚑ The THIRD incoherence (not just ``--agent``): on the commonest host —
-        ONE agent installed, nothing stored — the box runs claude while
-        ``system.agent`` is ABSENT, so every ``@system.agent`` dereference would
-        coerce to ``""``. Installing the resolved selection ALWAYS covers it."""
+    def test_the_selection_level_supplies_a_cli_named_agent(self, tmp_path):
+        """⚑ The THIRD incoherence: a box launched on ``--agent claude`` with
+        NOTHING stored runs claude while ``system.agent`` is ABSENT, so every
+        ``@system.agent`` dereference would coerce to ``""``. Installing the
+        resolved selection ALWAYS covers it.
+
+        ⚑ This used to be written about the commonest host — one agent installed,
+        nothing stored — which the installed-count rule autopicked. That host
+        REFUSES now (spec §2b), so the incoherence is reached by ``--agent``."""
         snap = build_launch_snapshot(
             agent_name="claude", ctx=_ctx("claude"),
             system_path=None, agent_path=None, workset_path=None, box_path=None,
@@ -224,8 +230,17 @@ class TestSelectionLevel:
         assert snap.system.agent == "claude"
 
     def test_a_no_agent_box_installs_nothing(self):
-        """A suppressed box must leave ``system.agent`` absent — pinning it to the
-        ``general`` template slot would make the box look agent-bearing."""
+        """A node-less selection must leave ``system.agent`` absent — pinning it to
+        the ``general`` template slot would make the box look agent-bearing.
+
+        ⚑ ``select_agent`` no longer PRODUCES this shape (a null selection refuses
+        now), and ``shell`` will NOT restore it — keyspec §2b/§2d make the
+        plain-shell box a NAMED node (``"shell"``), so a D2 selection is
+        node-BEARING. The property is pinned on the dataclass anyway: it is the
+        floor under a two-vocabulary seam whose failure was measured (bifrost
+        E-NULL), it costs one assertion, and an untested branch is how the empty
+        node reached ``resolve_target`` the first time.
+        """
         assert AgentSelection(node="", source="suppressed").selection_level is None
         assert AgentSelection(node="claude", source="cli").selection_level == {
             "system.agent": "claude",
@@ -286,7 +301,10 @@ class TestRetiredKeyRefusal:
             )
         msg = str(ei.value)
         assert "kanibako box set myproj pref.system.agent=goose" in msg
-        assert "kanibako box set myproj --null pref.system.agent" in msg
+        # 🛑 The cure NAMES AN AGENT and stops. It used to offer `--null
+        # pref.system.agent` "for a no-agent box"; a null selection REFUSES to
+        # launch now (spec §2b), so that half sent the reader to a second error.
+        assert "--null" not in msg
 
     def test_box_name_is_ignored_off_the_box_level(self, tmp_path):
         """No SINGLE box is being refused for at workset/system/base/agent scope, so a
@@ -536,9 +554,30 @@ class TestSelectAgentSeam:
         sel = select_agent(std=std, proj=proj, explicit_agent="claude")
         assert (sel.node, sel.source) == ("claude", "cli")
 
-    def test_a_null_request_gives_a_no_agent_box_at_the_seam(
-        self, tmp_path, monkeypatch,
+    @pytest.mark.parametrize(
+        "spelling", ["null", "Null", "NULL", "~", ""],
+        ids=["null", "Null", "NULL", "tilde", "blank-after-colon"],
+    )
+    def test_a_null_request_refuses_saying_no_default_is_set(
+        self, tmp_path, monkeypatch, spelling,
     ):
+        """A present-``None`` selection REFUSES — it does not give a plain shell.
+
+        🛑 Spec §2b: ``null`` means *no default is set*, so an agent must be named
+        explicitly. ⚑ No RELEASED version ever gave a plain shell this way — ``pref.*``
+        does not exist in v1.7.2 (``git grep -c "pref\\.system\\.agent" v1.7.2`` is
+        zero), so this spelling was born and retired inside the 1.8.0 rc series. The
+        plain-shell box is reached BY NAME and always was: ``--agent no_agent`` /
+        ``pref.system.agent: no_agent`` (``shell`` will replace that name at D2).
+
+        ⚑ Every spelling here is one YAML reads as Python ``None`` — including a key
+        left BLANK after its colon, which makes this state reachable by typo. The
+        refusal therefore has to name the state, not echo a value.
+
+        MUTATION: return ``AgentSelection(node="", source="suppressed")`` again and
+        every row launches a plain shell where the user asked for an agent.
+        """
+        from kanibako.errors import AgentNoDefaultError
         from kanibako.settings.agent_select import select_agent
 
         monkeypatch.setattr(
@@ -547,41 +586,85 @@ class TestSelectAgentSeam:
         std, proj = _std(tmp_path), _proj(tmp_path)
         std.settings.write_text(yaml.safe_dump({"system": {"agent": "claude"}}))
         box_file, _ws = _box_workset(proj)
-        box_file.write_text("pref:\n  system:\n    agent:\n")
-        sel = select_agent(std=std, proj=proj, explicit_agent=None)
-        assert (sel.node, sel.source) == ("", "suppressed")
-        assert sel.selection_level is None
+        box_file.write_text(f"pref:\n  system:\n    agent: {spelling}\n")
+        with pytest.raises(AgentNoDefaultError) as ei:
+            select_agent(std=std, proj=proj, explicit_agent=None)
+        msg = str(ei.value)
+        assert "No default agent is set" in msg
+        assert "--agent <name>" in msg
+        assert "pref.system.agent=<name>" in msg
+        # 🛑 NOT the other refusal: this one must never send the reader to setup.
+        assert "kanibako setup" not in msg
 
-    def test_autopick_reports_its_source(self, tmp_path, monkeypatch):
+    def test_the_python_spelling_of_none_is_a_NAME_not_the_null_state(
+        self, tmp_path, monkeypatch,
+    ):
+        """``None``/``none`` are STRINGS in YAML — a third failure, kept distinct.
+
+        A Python-literate user reaching for the wrong spelling asks for an agent
+        LITERALLY CALLED "None" and is told it is not installed. Neither refusal
+        above may be confusable with that; this pins the fork.
+        """
+        from kanibako.errors import AgentNoDefaultError, AgentNotInstalledError
         from kanibako.settings.agent_select import select_agent
 
         monkeypatch.setattr(
             "kanibako.targets.discover_targets", lambda *a, **k: {"claude": object},
         )
         std, proj = _std(tmp_path), _proj(tmp_path)
-        sel = select_agent(std=std, proj=proj, explicit_agent=None)
-        assert (sel.node, sel.source) == ("claude", "autopick")
+        box_file, _ws = _box_workset(proj)
+        box_file.write_text("pref:\n  system:\n    agent: None\n")
+        with pytest.raises(AgentNotInstalledError) as ei:
+            select_agent(std=std, proj=proj, explicit_agent=None)
+        msg = str(ei.value)
+        assert "'None' is not installed" in msg
+        assert "No default agent" not in msg
+        assert not isinstance(ei.value, AgentNoDefaultError)
+
+    def test_an_unset_key_refuses_and_names_setup(self, tmp_path, monkeypatch):
+        """Nothing set it anywhere ⇒ the OTHER refusal, even with ONE agent installed.
+
+        🛑 This is where the installed-agent count rule used to autopick. Spec §2b:
+        unset means setup has never chosen one, so the cure is ``kanibako setup``.
+
+        MUTATION: restore the count rule and this returns ``("claude", "autopick")``.
+        """
+        from kanibako.errors import AgentUnsetError
+        from kanibako.settings.agent_select import select_agent
+
+        monkeypatch.setattr(
+            "kanibako.targets.discover_targets", lambda *a, **k: {"claude": object},
+        )
+        std, proj = _std(tmp_path), _proj(tmp_path)
+        with pytest.raises(AgentUnsetError) as ei:
+            select_agent(std=std, proj=proj, explicit_agent=None)
+        msg = str(ei.value)
+        assert "system.agent is unset" in msg
+        assert "kanibako setup" in msg
+        # 🛑 NOT the other refusal: the two are deliberately different sentences.
+        assert "No default agent is set:" not in msg
 
 
 class TestABlankExplicitRefIsGivenNotUnset:
     """``--agent ""`` is a ref the user TYPED, so the cascade never answers it.
 
     The seam decides for itself whether the cascade is consulted AT ALL, and it
-    can return a SUPPRESSED box without ever reaching the arbiter — so a truthy
+    can answer the whole question without ever reaching the arbiter — so a truthy
     "was one given?" test here was not merely redundant with
     ``resolve_agent``'s: it was the only thing standing between a blank flag and
     a silent answer.
     """
 
     @pytest.mark.parametrize("blank", ["", "  ", "\t\n"])
-    def test_a_blank_ref_is_refused_where_a_null_pref_would_suppress(
+    def test_a_blank_ref_is_refused_where_a_null_pref_would_answer(
         self, tmp_path, monkeypatch, blank,
     ):
-        """MUTATION: restore ``if not explicit_agent:`` and this returns the
-        no-agent box ``("", "suppressed")`` — the file's request answering a
-        question the command line asked.  The companion above
-        (``test_a_null_request_gives_a_no_agent_box_at_the_seam``) drives the
-        SAME tree with no flag and must keep suppressing.
+        """MUTATION: restore ``if not explicit_agent:`` and the file's null request
+        answers a question the command line asked — the reader gets
+        ``AgentNoDefaultError`` about their settings file for a flag they typed.
+        The companion above
+        (``test_a_null_request_refuses_saying_no_default_is_set``) drives the SAME
+        tree with no flag and must keep giving THAT refusal.
         """
         from kanibako.errors import ConfigError
         from kanibako.settings.agent_select import select_agent
@@ -632,10 +715,8 @@ class TestABlankExplicitRefIsGivenNotUnset:
     ):
         """A terminal ``""`` in a settings file is a value too (spec §2h).
 
-        With ONE agent installed the count rule had an answer waiting, so the
-        line the user wrote did nothing and said nothing.  MUTATION: restore the
-        ``or`` fall-through in ``resolve_agent`` and this box launches
-        ``claude``.
+        MUTATION: restore the ``or`` fall-through in ``resolve_agent`` and the
+        blank line the user wrote is read as an absence instead of refused.
         """
         from kanibako.errors import ConfigError
         from kanibako.settings.agent_select import select_agent
@@ -651,9 +732,12 @@ class TestABlankExplicitRefIsGivenNotUnset:
         with pytest.raises(ConfigError) as ei:
             select_agent(std=std, proj=proj, explicit_agent=None)
         assert str(ei.value) == blank_ref_refusal()
-        # Control: with the key ABSENT — the real "unset" — the count rule runs.
+        # Control: with the key ABSENT — the real "unset" — the seam refuses too,
+        # by the OTHER message. Three states, and a blank is none of them.
+        from kanibako.errors import AgentUnsetError
         std.settings.write_text(yaml.safe_dump({"system": {}}))
-        assert select_agent(std=std, proj=proj, explicit_agent=None).source == "autopick"
+        with pytest.raises(AgentUnsetError):
+            select_agent(std=std, proj=proj, explicit_agent=None)
 
 
 # --------------------------------------------------------------------------- #
@@ -684,7 +768,10 @@ class TestSelectAgentSeamBoxArgument:
             select_agent(std=std, proj=proj, explicit_agent=None)
         msg = str(ei.value)
         assert "kanibako box set myproj pref.system.agent=goose" in msg
-        assert "kanibako box set myproj --null pref.system.agent" in msg
+        # 🛑 The cure NAMES AN AGENT and stops. It used to offer `--null
+        # pref.system.agent` "for a no-agent box"; a null selection REFUSES to
+        # launch now (spec §2b), so that half sent the reader to a second error.
+        assert "--null" not in msg
 
     def test_a_nameless_box_falls_back_to_the_subject_PLACEHOLDER(
         self, tmp_path, monkeypatch,
@@ -713,7 +800,7 @@ class TestSelectAgentSeamBoxArgument:
             select_agent(std=std, proj=proj, explicit_agent=None)
         msg = str(ei.value)
         assert "kanibako box set <box> pref.system.agent=goose" in msg
-        assert "kanibako box set <box> --null pref.system.agent" in msg
+        assert "--null" not in msg
         assert "kanibako box set  pref.system.agent=goose" not in msg  # no doubled space
         assert "None" not in msg
 
@@ -765,7 +852,7 @@ class TestRetiredKeyCureIsLevelAppropriate:
         for level in ("box", "workset"):
             msg = self._msg(tmp_path, level, {"box": {"agent_name": "goose"}})
             assert f"kanibako {level} set <{level}> pref.system.agent=goose" in msg
-            assert "no-agent box" in msg
+            assert "no-agent box" not in msg
 
     def test_the_workset_cure_names_the_workset_verb_AND_a_subject(self, tmp_path):
         """DEFECT: the scalar cure hardcoded ``box set`` at BOTH pref-legal levels,
@@ -779,7 +866,7 @@ class TestRetiredKeyCureIsLevelAppropriate:
         msg = self._msg(tmp_path, "workset", {"box": {"agent_name": "goose"}})
         cure = msg.split("Fix: ", 1)[1].splitlines()[0].strip()
         assert cure.startswith("kanibako workset set <workset> pref.system.agent=goose")
-        assert "kanibako workset set <workset> --null pref.system.agent" in cure
+        assert "--null" not in cure
         # The BOX verb must not appear at all at this level.
         assert "kanibako box set" not in cure
 

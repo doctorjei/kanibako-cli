@@ -289,11 +289,15 @@ def _run_template_refresh(args: argparse.Namespace) -> TemplateStep:
 def _select_agent_interactive(detected: list[tuple[str, str]]) -> str | None:
     """Prompt the user to pick an agent from *detected*; return the name or None.
 
-    Presents a numbered menu of detected agents plus a "skip" option.  With 2+
-    agents, skip is GATED behind an explicit ``y``/``yes`` confirm (a naked
-    ``launch`` would otherwise fail); anything else re-prompts the choice.  With
-    exactly 1 agent, skip is harmless and accepted silently.  Returns the chosen
+    Presents a numbered menu of detected agents plus a "skip" option.  Skip is
+    GATED behind an explicit ``y``/``yes`` confirm — a naked ``launch`` will
+    otherwise fail — and anything else re-prompts the choice.  Returns the chosen
     agent name, or ``None`` to skip.
+
+    ⚑ **The gate does NOT depend on how many agents are installed.** It used to be
+    waived for exactly one, because the installed-count rule launched that one
+    implicitly; that rule was deleted 2026-09-19 (spec §2b) and skipping now costs
+    the same thing at every count.
     """
     skip_index = len(detected) + 1
     while True:
@@ -318,28 +322,25 @@ def _select_agent_interactive(detected: list[tuple[str, str]]) -> str | None:
             return detected[choice - 1][0]
 
         if choice == skip_index:
-            if len(detected) >= 2:
+            print()
+            print(
+                "  Warning: with no default agent, a bare `kanibako launch`/`start` "
+                "will FAIL."
+            )
+            print(
+                "  You must pass `--agent <name>` or set a default "
+                "(re-run `kanibako setup`)."
+            )
+            try:
+                confirm = input("  Skip anyway? [y/N] ").strip().lower()
+            except (EOFError, KeyboardInterrupt):
                 print()
-                print(
-                    "  Warning: with 2+ agents installed and no default, a bare "
-                    "`kanibako launch`/`start` will FAIL."
-                )
-                print(
-                    "  You must pass `--agent <name>` or set a default "
-                    "(re-run `kanibako setup`)."
-                )
-                try:
-                    confirm = input("  Skip anyway? [y/N] ").strip().lower()
-                except (EOFError, KeyboardInterrupt):
-                    print()
-                    return None
-                if confirm in ("y", "yes"):
-                    return None
-                # Not confirmed → re-prompt the choice.
-                print()
-                continue
-            # Exactly 1 agent → skip is harmless.
-            return None
+                return None
+            if confirm in ("y", "yes"):
+                return None
+            # Not confirmed → re-prompt the choice.
+            print()
+            continue
 
         print("  Out of range; please try again.")
         print()
@@ -386,6 +387,14 @@ def run_setup(args: argparse.Namespace) -> int:
     from kanibako.targets import discover_targets
 
     targets = discover_targets()
+    # ⚑⚑ AN AGENT PLUGIN IS A TARGET WITH A HOST BINARY, AND ``targets`` IS NEVER
+    # EMPTY.  ``no_agent`` is an entry point declared by ``kanibako-cli``'s OWN
+    # ``pyproject.toml``, so ``discover_targets()`` always contains it — ``if not
+    # targets:`` could never fire, and counting the binary-less Shell target as a
+    # find made the "no agents" arm below and the closing banner's ``else`` dead
+    # too.  Three branches, one cause.  ``plugin_count`` is what the user means by
+    # "an agent plugin"; ``found_any`` is what they mean by "one I can run".
+    plugin_count = 0
     found_any = False
     for name, cls in targets.items():
         try:
@@ -393,13 +402,16 @@ def run_setup(args: argparse.Namespace) -> int:
             if not getattr(instance, "has_binary", True):
                 # The binary-less "Shell" no-agent target needs no host binary;
                 # it ships in the image and is always available -- never flag it
-                # as "not found" (mirrors `system diagnose`).
+                # as "not found" (mirrors `system diagnose`).  🛑 It is NOT an
+                # agent plugin and must not satisfy either count: a host with only
+                # this target has nothing to run, and since the installed-agent
+                # count rule was retired (2026-09-19) a bare launch there refuses.
                 print(
                     f"  [ok] {instance.display_name} "
                     "(image default; no host binary needed)"
                 )
-                found_any = True
                 continue
+            plugin_count += 1
             install = instance.detect()
             if install is not None:
                 print(f"  [ok] {instance.display_name} detected")
@@ -409,9 +421,16 @@ def run_setup(args: argparse.Namespace) -> int:
         except Exception:
             print(f"  [--] {name}: error during detection")
 
-    if not targets:
+    if not plugin_count:
+        # ⚑ THE TAILORED INSTALL COMMAND LIVES HERE NOW.  The retired
+        # ``NoAgentInstalledError`` carried it on the LAUNCH path; the launch says
+        # "run `kanibako setup`" at every count, so setup is where the first-run
+        # user with no plugin at all has to be handed a command that works in
+        # THEIR install (pipx inject / uv tool --with / pip install).
+        from kanibako.install_method import install_command
+
         print("  [!!] No agent plugins installed.")
-        print("       Install one: pip install kanibako-agent-claude")
+        print(f"       Install one, e.g.: {install_command('kanibako-agent-claude')}")
     elif not found_any:
         print()
         print("  No agents detected on this system.")
@@ -546,10 +565,16 @@ def _run_agent_selection(args: argparse.Namespace) -> str | None:
             # setup-completion marker.  Raising a KanibakoError aborts
             # ``run_setup`` BEFORE the marker write; cli.py surfaces the
             # message verbatim with a non-zero exit.
+            # ⚑ The install line goes through ``install_method`` like every other
+            # one: a hard-coded ``pip install`` is the wrong command in a pipx or
+            # uv install, which is the whole reason that module exists.
+            from kanibako.install_method import install_command
+
             raise ConfigError(
                 f"Unknown agent '{requested}'. Installed agents: {available}.\n"
-                "Install the plugin (e.g. pip install kanibako-agent-"
-                f"{requested}) or pick from the list above."
+                "Install the plugin (e.g. "
+                f"{install_command(f'kanibako-agent-{requested}')}) "
+                "or pick from the list above."
             )
         _write_system_agent(requested)
         print(f"  [ok] Default agent set to '{requested}'.")

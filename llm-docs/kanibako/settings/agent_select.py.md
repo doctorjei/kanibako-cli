@@ -3,8 +3,21 @@
 `agent_select` is the ONE seam every command uses to answer *"which agent is this box's?"*. It
 resolves the settings side of the question with a narrow pre-pass, applies `--agent` on top, and
 hands the winner to `kanibako.settings.config.resolve_agent`, which owns everything that is NOT a
-key: name validation against the installed set, persona-ref canonicalisation, and the
-installed-count rule.
+key: name validation against the installed set and persona-ref canonicalisation.
+
+🛑 **IF NOTHING NAMES AN AGENT, NOTHING LAUNCHES** (his ruling, 2026-09-19; keyspec §2b). The
+installed-agent COUNT decides nothing — not even one installed plugin is picked for the user — and
+the two no-name states get two DIFFERENT refusals, which is the whole of the ruling:
+
+| `system.agent` | means | raised |
+|---|---|---|
+| UNSET | setup has never chosen one | `AgentUnsetError`, naming `kanibako setup` |
+| present-`None` | a settings file declined to set a default | `AgentNoDefaultError`, asking for a name |
+
+⚑ A third failure is easy to confuse with them and must stay distinct: YAML reads `None`/`none` as
+STRINGS, so those spellings request an agent by that name and fail as `AgentNotInstalledError`.
+⚑ The null state is reachable BY TYPO — `null`, `Null`, `NULL`, `~` and a key left blank after its
+colon all read as Python `None`.
 
 The module is deliberately thin. It contains one dataclass, one context builder, and one resolve
 function; the interesting content is the set of rules below, all of which are spec rules
@@ -88,8 +101,11 @@ harness), or `""` for a **NO-AGENT plain-shell box** (spec §2b, D-M6).
 |---|---|
 | `"cli"` | `--agent` |
 | `"settings"` | the stored key, or a pref |
-| `"autopick"` | the installed-count rule |
-| `"suppressed"` | `pref.system.agent: null` |
+
+🛑 **TWO SOURCES ARE RETIRED AND NEITHER IS PRODUCED ANY MORE.** `"autopick"` was the
+installed-count rule; `"suppressed"` was `pref.system.agent: null` yielding the plain-shell box,
+which is a REFUSAL now. A returning `select_agent` call therefore always carries a name somebody
+wrote.
 
 ## `has_agent` — `""` means OPPOSITE things on the two sides of the target seam
 
@@ -98,16 +114,30 @@ Does this box run an agent AT ALL? (spec §2b D-M6.)
 ⚑⚑ **USE THIS — never `bool(selection.node)` at a call site, and NEVER pass an empty node on to
 `resolve_target`.** Two vocabularies meet at that seam:
 
-* to SELECTION, `node == ""` means *this box runs NO agent* (a `pref.system.agent: null`
-  suppression);
+* to SELECTION, `node == ""` means *this box runs NO agent*;
 * to `kanibako.targets.resolve_target`, an empty/absent name means *no name was given —
   AUTO-DETECT one*, which is its documented contract for other callers and is not a bug there.
 
-Handing the first to the second LAUNDERS a deliberate suppression into auto-detection: bifrost
-measured a suppressed box launching claude, with claude's binary, commons and CREDENTIALS
-delivered. Route every selection→target conversion through the idiom below. ⚑ **There is no helper
+Handing the first to the second LAUNDERS a no-agent box into auto-detection: bifrost measured one
+launching claude, with claude's binary, commons and CREDENTIALS delivered. 🛑 **`pref.system.agent:
+null` no longer produces a node-less selection** — it refuses — so no production path reaches this
+guard today.
+
+⚑ **It is KEPT, and NOT because `shell` will arrive through it.** Keyspec §2b expresses the
+plain-shell box as an effective `@system.agent` of `shell`, and §2d gives that pseudo-agent a name
+(`meta.agent.shell.name` = `"shell"`), so a D2 selection is `node="shell"` — `has_agent` is TRUE for
+it and it resolves a target like any other agent. Nothing on the board is waiting to produce a
+node-less selection. The guard stays for the two reasons that do not expire: `""` means opposite
+things on the two sides of this seam whatever produces it, and the shape costs one boolean against a
+measured incident. It is a floor, not a reservation.
+
+Route every selection→target conversion through the idiom below. ⚑ **There is no helper
 that does it for you** — the `has_agent` guard IS the translation, spelled at each seam, so look for
 the guard and not for a function.
+
+⚑ The predicate is `bool(self.node)` and nothing else. It briefly read `self.source != "suppressed"
+and bool(self.node)`; `"suppressed"` is a retired source no production path emits, so that conjunct
+was dead in front of the only question being asked (P4).
 
 **The idiom, at every seam that needs a target:**
 
@@ -172,10 +202,14 @@ selection expands LENIENTLY; see `kanibako.settings.settings_launch.resolve_sele
 
 ## `select_agent` — what it raises, and who is allowed to swallow it
 
-It raises the typed `kanibako.errors.AgentResolutionError` subclasses that `config.resolve_agent`
-raises (Gate-2a / Gate-2b / not-installed), a `kanibako.settings.settings_resolve.SettingsError`
-when the selection key itself does not resolve, and the retired-key refusal when a settings file
-still carries `box.agent_name` / `system.default_agent` (migration M-4).
+It raises `kanibako.errors.AgentNoDefaultError` for a present-`None` selection — its OWN raise, the
+one `resolve_agent` cannot make because it cannot see the difference — plus the typed
+`AgentResolutionError` subclasses `config.resolve_agent` raises (`AgentUnsetError` when nothing set
+the key, `AgentNotInstalledError` when the name resolved but its adapter is missing), the ref-grammar
+`ConfigError` for an *explicit_agent* that is malformed or blank, a
+`kanibako.settings.settings_resolve.SettingsError` when the selection key itself does not resolve,
+and the retired-key refusal when a settings file still carries `box.agent_name` /
+`system.default_agent` (migration M-4).
 
 Informational callers that must degrade rather than fail (`box info`, the `config --effective`
 display) keep their existing `try/except` — that is what makes the launch loud and the read verbs
@@ -203,19 +237,33 @@ that would not resolve.
 
 ### PRESENT-`None` is not `__MISSING__`
 
-Only the cascade can suppress or supply, so `--agent` short-circuits the pre-pass entirely and a
+Only the cascade can decline or supply, so `--agent` short-circuits the pre-pass entirely and a
 launch that names its agent pays for no extra resolve.
 
 ⚑ **GIVEN is `is not None`, never truthiness.** A blank `--agent ""` short-circuits the pre-pass
 too, and goes through to `resolve_agent` to be refused by the ref grammar's own message. Under a
 truthy test a value the user TYPED was handed back to the files to answer — and since the pre-pass
-can return SUPPRESSED on its own, that answer never reached the arbiter at all: `--agent ""` at a
-box carrying `pref.system.agent: null` came back as a no-agent box, silently.
+answers the whole question on its own, that answer never reached the arbiter at all: `--agent ""`
+at a box carrying `pref.system.agent: null` came back as a no-agent box, silently.
 
-When the pre-pass returns PRESENT-`None`, that is an explicit `pref.system.agent: null`
-SUPPRESSION ⇒ the NO-AGENT plain-shell box (D-M6). ⚑ This arm is the capability the retired
-`box.agent_name` could NOT express (a stored system default always re-supplied an agent), so it
-must be kept distinct from `__MISSING__` — never collapse them with a falsiness test.
+When the pre-pass returns PRESENT-`None`, a settings file set `pref.system.agent: null` — **NO
+DEFAULT IS SET** (keyspec §2b), so the seam raises `AgentNoDefaultError` asking for a name. ⚑ It
+must be kept distinct from `__MISSING__` — never collapse them with a falsiness test — because
+`__MISSING__` means *setup has never run* and gets the OTHER refusal. Collapsing the two spellings
+loses the only distinction that decides which sentence the user reads.
+
+🛑 **This arm used to produce the NO-AGENT plain-shell box (D-M6) instead; his ruling of 2026-09-19
+took that route away.** ⚑ **No released version ever had it.** `pref.*` does not exist in v1.7.2 —
+`git grep -c "pref\.system\.agent" v1.7.2` is zero over the whole tree — so the `null` spelling was
+born and retired inside the 1.8.0 rc series, and the retirement breaks nothing a user can do today.
+
+⚑ **The plain-shell box is still reachable through settings, by NAME:** `no_agent` is an entry point
+declared by `kanibako-cli`'s own `pyproject.toml` (in v1.7.2 as well), so `discover_targets()` always
+contains it and `resolve_agent(explicit_agent=None, requested="no_agent")` returns `"no_agent"`.
+`NoAgentTarget.default_entrypoint` is `None`, so `commands/start.py` computes `no_agent_launch =
+True` and runs the resolved `box.shell`. `--agent no_agent` and `pref.system.agent: no_agent` both
+work, before and after this change. `shell` is the name that will eventually replace `no_agent`
+here — wiring it is D2, and nothing waits on it.
 
 ---
 
@@ -230,7 +278,7 @@ What stayed in the source, under the keep test:
 * the `⚑⚑` on `has_agent` — the warning plus the idiom line, because the launder-a-suppression bug
   happens at the call site and a pointer alone would not stop it;
 * the `⚑` at the PRESENT-`None` arm — collapsing it with `__MISSING__` looks like a simplification
-  and silently deletes the no-agent capability;
+  and silently merges two refusals the ruling exists to keep apart;
 * the `⚑` on the retired-key loop — it reads as over-broad until you know the base tier is the
   worst case;
 * the `⚑` on `launch_resolve_ctx`'s `agent_name=None` — the argument looks optional;

@@ -71,6 +71,13 @@ inside boxes. In order of likely impact:
    under it, because an unrecognized one is refused now as well (§2.67). A `setup_completed` marker
    is not worth carrying across — the release
    raises the setup baseline anyway, so a v1.7.2 value is refused as too old wherever it sits.
+   ⚑ **Let that `setup` choose a default agent; do not skip the menu.** v1.8.0 never picks an agent
+   implicitly, so a host with no `system.agent` refuses every bare launch even when exactly one
+   plugin is installed — which is what v1.7.2 launched for you (§2.74, "One installed agent is no
+   longer picked for you"). The same section covers `pref.system.agent: null`, which means *no
+   default is set* and refuses. If your v1.7.2 box ran a plain shell, it did so by NAMING the
+   `no_agent` pseudo-agent (`box.agent_name: no_agent`); carry that across as
+   `pref.system.agent: no_agent` and it keeps working.
 
 2. **Every settings file except the system one must be renamed by hand, or it is silently not
    read** (§2.45). Each cascade tier's file was called `settings.yaml`; each is now named for its
@@ -304,8 +311,8 @@ inside boxes. In order of likely impact:
     XDG *data* base plus a hardcoded `kanibako`; a plugin you had dropped in your store was silently
     never loaded. Move the `.py` files, and re-run `kanibako code --remote` per remote.
 
-31. Smaller items: standalone boxes' `box get` got truthful (§2.9); a box suppressed to
-    plain-shell keeps stale credential files in its home (§2.10); several never-released or
+31. Smaller items: standalone boxes' `box get` got truthful (§2.9); a box pointed at a new agent
+    keeps the old one's credential files in its home (§2.10); several never-released or
     expected-empty renames (§2.11); two `--null` CLI bugs fixed (§2.14); a customized helper
     entrypoint script moves to `~/canon/notebook/scripts/helper-init.sh` (§2.44).
 
@@ -352,7 +359,7 @@ REQUESTS one at the key that resolves earlier (`pref.system.agent`, spec §2h), 
 default is now `system.agent` (§2g). Refusing rather than running: kanibako cannot tell which
 agent you meant, and guessing would launch a DIFFERENT agent and seed that agent's credentials
 into this box.
-  Fix: kanibako box set <box> pref.system.agent=<value>   (or `kanibako box set <box> --null pref.system.agent` for a no-agent box)
+  Fix: kanibako box set <box> pref.system.agent=<value>
   then delete the `box: agent_name` entry from <path>.
 ```
 
@@ -371,11 +378,9 @@ It names the verb that matches the file it found the key in, and always carries 
 subject:
 
 - `box.agent_name` in a **box** settings file:
-  `kanibako box set <box> pref.system.agent=<value>` (or
-  `kanibako box set <box> --null pref.system.agent` for a no-agent box)
+  `kanibako box set <box> pref.system.agent=<value>`
 - `box.agent_name` in a **workset** settings file:
-  `kanibako workset set <workset> pref.system.agent=<value>` (or
-  `kanibako workset set <workset> --null pref.system.agent`)
+  `kanibako workset set <workset> pref.system.agent=<value>`
 - `box.agent_name` in a **system or agent** file: REMOVE it — a request may be written ONLY in
   a workset or box settings file (spec §2h), so this key has no equivalent at that scope. If
   you meant the host-wide default: `kanibako system set system.agent=<value>`. If you
@@ -898,12 +903,12 @@ To make a value a genuine box override again: `kanibako box set <root> box.<key>
 vault_ro,vault_rw,logs}` entries in a standalone root file become **live** and would silently
 relocate the box home/vault mounts — remove any you did not mean (§2.11).
 
-### 2.10 Credential residue on de-agented boxes
+### 2.10 Credential residue when a box changes agent
 
 `create` seeds the resolved agent's credentials into the box home as part of forming the box.
-If you later suppress the box to plain-shell (`kanibako box set --null pref.system.agent`),
-those credential files **remain in the box home and simply go stale** — a plain-shell launch
-runs no credential lifecycle, so nothing refreshes or writes them back. This is accepted,
+If you later point the box at a different agent (`kanibako box set pref.system.agent=<name>`), the
+first agent's credential files **remain in the box home and simply go stale** — nothing refreshes
+or writes back credentials for an agent the box no longer runs. This is accepted,
 documented behavior (boxes are trusted-user surfaces; a created box stays fully formed
 and inspectable). Manual cleanup if you want the residue gone: remove the agent's credential
 files from the box home under its config dir — e.g. `<box_dir>/home/.claude/…`, `…/.codex/…`,
@@ -4558,6 +4563,75 @@ store DIRECTORY, read-only and unrelated; `<box>` names and `--name` have nothin
 
 ---
 
+### 2.74 One installed agent is no longer picked for you
+
+**Read this if you never chose a default agent** — if `kanibako start` has been working for you
+without a `system.agent`, it stops working here.
+
+**What changed.** When nothing named an agent — no `--agent`, no box or workset
+`pref.system.agent`, no `system.agent` — the *installed-agent count* used to decide: exactly one
+installed plugin was launched implicitly, and zero or two-or-more was an error. The count decides
+nothing now. A launch nobody pointed at an agent refuses, rc 1, whatever is installed.
+
+**What you must do.** Once, on each host:
+
+```bash
+kanibako setup            # or: kanibako setup --agent claude
+```
+
+Or name one per run, `kanibako start --agent claude`, or per box,
+`kanibako box set pref.system.agent=claude`. `kanibako shell` is unaffected: it needs no agent and
+still reaches the container.
+
+**What you see if you don't.** One of two messages, and they are not the same message:
+
+```
+Error: No default agent is configured (system.agent is unset).
+Choose one with:
+  kanibako setup
+Or name one for a single run with '--agent <name>'.
+'kanibako shell' reaches the box's container without an agent.
+```
+
+```
+Error: No default agent is set: system.agent is null (a blank value and '~' spell this too),
+so an agent must be named explicitly.
+Name one with '--agent <name>', or set this box's agent with:
+  kanibako box set pref.system.agent=<name>
+'kanibako shell' reaches the box's container without an agent.
+```
+
+The first means nothing has ever set `system.agent`. The second means a settings file set it to
+null — *no default*, deliberately — so an agent must be named below it. ⚑ **Null is reachable by
+typo:** YAML reads `null`, `Null`, `NULL`, `~` **and a key left blank after its colon** all as null,
+so `system.agent:` with nothing after it lands on the second message. `None` and `none` are
+*strings*, so they ask for an agent named "None" and fail as one that is not installed — a third
+message, meaning something else again.
+
+🛑 **`pref.system.agent: null` does not give you a plain-shell box** — it is the second refusal
+above. ⚑ **Nothing you could do in v1.7.2 stopped working here:** `pref.*` did not exist in v1.7.2
+at all, so no released version ever reached a plain shell by writing `null`. That reading of `null`
+was introduced during the 1.8.0 rc series and withdrawn before the release; the key still accepts
+`null`, and it now means *no default is set*.
+
+The plain-shell box is, as it was in v1.7.2, reached by NAMING the `no_agent` pseudo-agent:
+
+```bash
+kanibako start --agent no_agent               # one run
+kanibako box set pref.system.agent=no_agent   # this box, persistently
+```
+
+v1.7.2 spelled that second line `box.agent_name: no_agent`; the key was retired (§2.1, "Settings
+keys renamed or retired"), and `pref.system.agent` is its replacement — the refusal a box carrying
+the old key gets prints exactly that `box set` line, with your stored value in it. A `shell`
+pseudo-agent will eventually be the name for this, but it is not wired yet: `no_agent` is what
+resolves today, and `kanibako shell` still reaches any box's container without an agent.
+
+⚑ **`kanibako setup`'s "skip" option asks you to confirm now however many agents are installed.** It
+used to waive the confirmation at exactly one, because that one would have been picked implicitly.
+
+---
+
 ## 3. For plugin authors
 
 ⚑ **THE PERSONA SURFACES ON `Target` CHANGED SHAPE in 1.8.0 — a plugin built against 1.7.x needs
@@ -5125,7 +5199,7 @@ then work top-to-bottom.
 | Templates | shell-variant tree + CLAUDE.md merge + host-config import | **layered seed-once** (base→agent→workset); host-config import **removed** (§8) |
 | Per-agent YAML section | `crab:` | `agent:` (§9) |
 | Box-side vault dest | `~/share-ro` / `~/share-rw` | `~/vault/ro` / `~/vault/rw` (§4.7, §9) |
-| Agent selection | arbitrary auto-pick among installed agents | cascade + installed-count rule; **2+ agents with no choice = error** (§10) |
+| Agent selection | arbitrary auto-pick among installed agents | cascade + installed-count rule; **2+ agents with no choice = error** (§10) *(superseded in v1.8.0 — no agent is ever picked implicitly; see "One installed agent is no longer picked for you" in the [v1.8.0 guide](#migrating-to-kanibako-v180))* |
 | Choosing a default agent | `kanibako system config system.default_agent …` | `kanibako setup` / edit the file — `system.*` is file-only (§10) *(superseded in v1.8.0 — see the [v1.8.0 guide](#migrating-to-kanibako-v180))* |
 | Targeting a non-cwd box | `refresh -p/--project` | `--box <name-or-path>` (universal); `-p/--project` removed (§10) |
 
@@ -6123,6 +6197,11 @@ The 1.6.0 pre-public clean-house also overhauls how an agent is chosen and how a
 command targets a box. These are **breaking** and require action on upgrade.
 
 ### 10.1 No agent is auto-picked when 2+ are installed (BREAKING)
+
+> **Superseded in v1.8.0.** No agent is auto-picked at *any* installed count now, and `setup`'s skip
+> is gated at every count. The count table and the skip rule below are the 1.6.0 state, kept as the
+> record of that upgrade — see "One installed agent is no longer picked for you" in the
+> [v1.8.0 guide](#migrating-to-kanibako-v180) for what runs today.
 
 Previously, `kanibako` (i.e. `start`) with no explicit or configured agent would
 **arbitrarily launch one of the installed agents** — the first in plugin-discovery

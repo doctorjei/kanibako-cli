@@ -737,18 +737,18 @@ class TestRunReauth:
         assert "No agent target" in capsys.readouterr().err
 
     def test_reauth_resolution_error_propagates(self, config_file, tmp_home):
-        """When the cascade resolves nothing (Gate-2a/2b), the typed
-        AgentResolutionError propagates to the top-level cli.py handler —
-        reauth does NOT swallow it into a rc-1 with an ad-hoc message."""
+        """When the cascade resolves nothing, the typed AgentResolutionError
+        propagates to the top-level cli.py handler — reauth does NOT swallow it
+        into a rc-1 with an ad-hoc message."""
         from kanibako.commands.agent_cmd import run_reauth
-        from kanibako.errors import NoAgentSelectedError
+        from kanibako.errors import AgentUnsetError
 
         args = argparse.Namespace(project=None)
         with patch(
             "kanibako.settings.config.resolve_agent",
-            side_effect=NoAgentSelectedError("no agent selected"),
+            side_effect=AgentUnsetError("run setup"),
         ):
-            with pytest.raises(NoAgentSelectedError):
+            with pytest.raises(AgentUnsetError):
                 run_reauth(args)
 
     def test_reauth_refreshes_credentials_legacy(self, config_file, tmp_home, capsys):

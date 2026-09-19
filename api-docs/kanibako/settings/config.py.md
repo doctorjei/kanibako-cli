@@ -16,7 +16,6 @@ _BOOL_FALSE = frozenset({'false', '0', 'no', 'off'})
 _DEFAULTS: dict[str, str] = {'box_image': 'ghcr.io/doctorjei/kanibako-oci:latest', 'box_shell': ''}
 _LAYER1_TABLE = 'config'
 _BOX_SCALAR_FIELDS: dict[str, str] = {'box.image': 'box_image', 'box.share_images': 'box_share_images', 'box.shell': 'box_shell', 'box.enable_vault': 'box_enable_vault'}
-_PSEUDO_AGENTS = frozenset({'no_agent', 'general'})
 ```
 
 ## Functions

@@ -648,9 +648,9 @@ def run_start(args: argparse.Namespace) -> int:
     # heuristic needs them for the agent-scope ``bootstrap`` lookup).  Agent
     # resolution proper happens UP FRONT inside _run_container via the unified
     # agent_select.select_agent seam (--agent > box pref > workset pref >
-    # system.agent → the installed-count rule); a Gate-2a/2b there surfaces verbatim
-    # with a non-zero exit — NEVER a silent drop to shell.  `kanibako shell`
-    # (run_shell) bypasses it.
+    # system.agent); if NONE of them names an agent it REFUSES, and the refusal
+    # surfaces verbatim with a non-zero exit — NEVER a silent drop to shell, and
+    # never an implicit pick.  `kanibako shell` (run_shell) bypasses it.
     agent_args = getattr(args, "agent_args", [])
 
     # The two ephemeral permission flags, carried RAW to the launch: ``-S``
@@ -2518,8 +2518,8 @@ def _run_container(
     # Reattach fast-source: for a PERSISTENT box that is ALREADY RUNNING, the
     # box's identity is its container name (agent-independent) and `kanibako
     # start` should simply reattach.  The reattach path needs an agent only for
-    # the per-agent credential refresh below.  W1's agent selection would Gate-2a
-    # ("pick an agent") when 2+ agents exist with no default — even though the
+    # the per-agent credential refresh below.  W1's agent selection would REFUSE
+    # whenever no default is set — even though the
     # box is happily running with a known agent.  So source that agent from the
     # container's KANIBAKO_AGENT stamp (set at launch) and feed it into the
     # cascade as the explicit choice.  The RUNNING BOX WINS over a differing
@@ -2686,10 +2686,10 @@ def _run_container(
     # "resolve config FIRST ... before anything else": agent resolution depends only
     # on config/settings (merged config + system default), NOT on the image being
     # pulled or the launch baseline — so it runs UP FRONT, above the image prep and
-    # baseline probe below, and a user with 2+ agents and no default hits the Gate-2a
-    # "pick an agent" error immediately instead of paying for a full image pull
-    # first.  ``kanibako shell`` (box_shell_mode) and explicit-entrypoint launches
-    # skip resolution entirely: they need no agent.
+    # baseline probe below, and a user with no default agent hits the refusal
+    # immediately instead of paying for a full image pull first.  ``kanibako shell``
+    # (box_shell_mode) and explicit-entrypoint launches skip resolution entirely:
+    # they need no agent.
     target = None
     install = None
     agent_selection = None
@@ -2697,30 +2697,37 @@ def _run_container(
         from kanibako.settings.agent_select import select_agent
         # Resolve the agent through the ONE seam (spec §1A / §2h): the stored
         # ``system.agent`` < the workset's ``pref.system.agent`` < the box's <
-        # ``--agent``, then the installed-count rule.  ``select_agent`` raises the
-        # typed AgentResolutionError subclasses (Gate-2a/2b / adapter-missing),
-        # which the top-level cli.py handler surfaces verbatim with a non-zero
-        # exit, and REFUSES by name a box still carrying the retired
-        # ``box.agent_name`` (migration M-4) rather than silently launching a
-        # different agent.
+        # ``--agent``.  ``select_agent`` raises the typed AgentResolutionError
+        # subclasses (unset / no-default / adapter-missing), which the top-level
+        # cli.py handler surfaces verbatim with a non-zero exit, and REFUSES by name
+        # a box still carrying the retired ``box.agent_name`` (migration M-4) rather
+        # than silently launching a different agent.
         agent_selection = select_agent(
             std=std, proj=proj, explicit_agent=explicit_agent,
         )
         agent_name = agent_selection.node
         # ⚑⚑ THE TWO-VOCABULARY SEAM — the D-M6 guard (bifrost E-NULL, 2026-07-31).
         # ``agent_name`` is the NODE-name (persona identity) and the TARGET/plugin is
-        # keyed by the HARNESS — BUT a SUPPRESSED box (``pref.system.agent: null``)
-        # has NO node, and ``""`` means opposite things on the two sides of this
-        # line: "no agent" to selection, "no name given → AUTO-DETECT" to
-        # ``resolve_target``. Passing it straight through LAUNDERED the suppression
-        # into auto-detection — measured on bifrost: the no-agent box launched
-        # claude, with claude's binary, commons and CREDENTIALS. The
+        # keyed by the HARNESS — BUT a NO-AGENT box has NO node, and ``""`` means
+        # opposite things on the two sides of this line: "no agent" to selection,
+        # "no name given → AUTO-DETECT" to ``resolve_target``. Passing it straight
+        # through LAUNDERED a no-agent box into auto-detection — measured on bifrost:
+        # it launched claude, with claude's binary, commons and CREDENTIALS. The
         # ``agent_selection.has_agent`` guard below IS the translator between the two
-        # vocabularies: a suppressed box never reaches ``resolve_target`` at all and
-        # gets ``target = None``, the shipped plain-shell shape (identical to
+        # vocabularies: a node-less selection never reaches ``resolve_target`` at all
+        # and gets ``target = None``, the shipped plain-shell shape (identical to
         # ``kanibako shell``). Every downstream gate keys on ``target is None``, so no
         # agent binds, no agent config, no cred delivery, no ``KANIBAKO_AGENT`` stamp,
         # and ``agent_id`` = ``"general"``.
+        # 🛑 ``pref.system.agent: null`` NO LONGER ARRIVES HERE — since the
+        # 2026-09-19 ruling it is a REFUSAL (no default set), not a silent plain
+        # shell, so NO production path reaches the ``else None`` arm today.
+        # ⚑ The guard is KEPT, and NOT as a reservation for ``shell``: keyspec §2b
+        # makes the plain-shell box an effective ``@system.agent`` of ``shell``, a
+        # NAMED node, so a D2 selection has ``has_agent`` TRUE and comes down the
+        # ``resolve_target`` side like any other agent. It is kept because the
+        # incident is on record (bifrost E-NULL) and the shape costs one conjunct —
+        # a floor, not a plan.
         target = (
             resolve_target(harness_of(agent_name), proj.project_path)
             if agent_selection.has_agent
@@ -6263,7 +6270,7 @@ def _resolve_box_launch_decisions(
         # ``@workset.auth.path/@system.agent`` (spec §2c), so this snapshot
         # must carry the RESOLVED selection or the per-agent credential source
         # would degenerate to the workset auth ROOT for any launch whose agent
-        # came from ``--agent`` or the installed-count rule.
+        # came from ``--agent`` rather than from the stored key.
         cli_level=selection_level,
     )
     auth_src = settings_launch.resolve_auth_source(snapshot, mode=proj.mode.value)

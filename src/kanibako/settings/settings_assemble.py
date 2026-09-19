@@ -238,13 +238,13 @@ def _retired_key_cure(
     # box.agent / box.agent_name → the §2h request, but ONLY where a request may be written.
     # ⚑ The VERB IS THE LEVEL (:func:`_cure_subject`) — a workset file's cure is
     # ``workset set``, the same fork :func:`_retired_mirror_cure` makes.
+    # 🛑 THE CURE NAMES AN AGENT AND NOTHING ELSE. It used to offer `--null
+    # pref.system.agent` "for a no-agent box"; since the 2026-09-19 ruling a null
+    # selection REFUSES to launch (spec §2b), so that half sent the user from one
+    # error to another.
     if level in _PREF_LEGAL_LEVELS:
         subject = _cure_subject(level, box_name)
-        return (
-            f"kanibako {level} set {subject} pref.system.agent={value}   "
-            f"(or `kanibako {level} set {subject} --null pref.system.agent` for a "
-            f"no-agent box)"
-        )
+        return f"kanibako {level} set {subject} pref.system.agent={value}"
     # M-4: no legal pref equivalent at base/system/agent — FLAG it, never silently relocate it.
     # No single box is in scope here, so the box arm takes the placeholder.
     return (
