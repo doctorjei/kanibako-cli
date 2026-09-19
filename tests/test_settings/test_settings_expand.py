@@ -895,6 +895,34 @@ class TestPrefReferencesAreRefused:
 
 
 # --------------------------------------------------------------------------- #
+# $TERM through the PRODUCTION env path                                        #
+# --------------------------------------------------------------------------- #
+
+
+def test_env_value_expands_term_host_side(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``<scope>.env.<VAR> = "$TERM"`` reaches a TERMINAL eagerly, host-side (§2d, §1).
+
+    The spec declares ``agent.shell.env.TERM | $TERM``; ``box.env.<VAR>`` rides the same
+    channel and is a declared family today, so it pins the mechanism without waiting on the
+    ``shell`` node. Measured at HEAD before the dispatch admitted the variable: this exact
+    snapshot raised ``SettingsError: Unknown variable: $TERM``.
+    """
+    monkeypatch.setenv("TERM", "xterm-256color")
+    snap = KeyStore({"box": {"env": {"TERM": "$TERM", "COLORTERM": "truecolor"}}})
+    out = expand(snap, _ctx())
+    assert _probe(out, "box", "env", "TERM") == "xterm-256color"
+    assert _probe(out, "box", "env", "COLORTERM") == "truecolor"
+
+
+def test_env_value_term_falls_back_when_the_host_has_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("TERM", raising=False)
+    out = expand(KeyStore({"box": {"env": {"TERM": "$TERM"}}}), _ctx())
+    assert _probe(out, "box", "env", "TERM") == "xterm"
+
+
+# --------------------------------------------------------------------------- #
 # DEST-KEYED entries (BindEntry) — the destination is the KEY (R-5/R-6)       #
 # --------------------------------------------------------------------------- #
 

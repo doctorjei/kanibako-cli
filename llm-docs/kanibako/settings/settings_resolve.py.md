@@ -66,8 +66,10 @@ Four things, and the first line of the old docstring named only two of them:
 It is format-agnostic and operates only on already-parsed data: the caller parses YAML into the
 simple mappings and lists this module consumes. (The old prose said "TOML/YAML" — kanibako's
 config files are all YAML.) It performs no file I/O, no mounting, and holds no global mutable
-state — the module-level names are a string, three ints, two compiled regexes, and the `UNSET`
-sentinel, which is `__slots__`-empty and therefore immutable.
+state — the module-level names are strings, three ints, two compiled regexes, and the `UNSET`
+sentinel, which is `__slots__`-empty and therefore immutable. Its one read of the process
+environment is `_host_term`, which supplies the `$TERM` default of a `ResolveCtx` at construction
+— a VALUE captured into the context, never an environment lookup during expansion.
 
 ## The import-direction invariant — what keeps this module extractable
 
@@ -284,12 +286,22 @@ class ResolveCtx:
     host_home: str
     xdg: dict[str, str]
     config: Mapping[str, str] = field(default_factory=dict)
+    term: str = field(default_factory=_host_term)
 ```
 Context for variable expansion.
 
 *xdg* maps XDG variable names (e.g. `"XDG_DATA_HOME"`) to host paths. Every host-side `ResolveCtx`
 gets its `xdg=` from one builder in `paths.py`, deliberately — an ad-hoc environment read here was
 a real defect once.
+
+*term* answers `$TERM` and is **defaulted, not built per call site**, which is the one place this
+class parts company with *xdg*: `TERM` is a single process-wide host fact with no per-context
+variation and no map to assemble, so a builder threaded through every construction site would buy
+nothing and would leave exactly the PARTIAL per-context namespace the spec calls a bug. The
+default reads the host env once per context (`_host_term`); a caller that knows better overrides
+it. The fallback lives here rather than in `paths.py` beside `resolve_xdg` because this module may
+import NOTHING from `settings/` — the ban is what splits the two, not a second opinion about where
+host-env defaults belong.
 
 *config* is the Layer-1 CONFIG-key FOUNDATION (spec §1): the resolved `config.*` bootstrap paths
 keyed by their full dotted name (`config.data`, `config.settings`, `config.agents`,
@@ -523,8 +535,10 @@ Grammar:
 * **`~`:** ONLY when it is the FIRST character of *expr*. Expands to `ctx.host_home`
   (`space=="host"`) or `GUEST_HOME` (`space=="guest"`). A `~` elsewhere is literal.
 * **`$VAR` / `${VAR}`:** name = `[A-Za-z_][A-Za-z0-9_]*`. `AGENT` → `ctx.agent_name`, `WORKSET` →
-  `ctx.workset_name`, `XDG_*` → `ctx.xdg[name]`. Unknown names, or known names whose context
-  value is `None`/missing, raise `SettingsError`.
+  `ctx.workset_name`, `TERM` → `ctx.term`, `XDG_*` → `ctx.xdg[name]`. Unknown names, or known names
+  whose context value is `None`/missing, raise `SettingsError` — `TERM` is the one name that
+  ALWAYS answers, because `ctx.term` always holds a value (`xterm` when the host has none). See
+  `_resolve_var` below for the three distinct refusals and for why a set `TERM` is not validated.
 * **`@`-ref:** two spellings, parsed by `match_ref` and resolved IDENTICALLY. Cycle-guarded
   against *chain*, capped at `MAX_REF_DEPTH` (64), and substitutes
   `lookup(ref_name, chain + (ref_name,))`; the result is a leaf.
@@ -579,6 +593,16 @@ Resolve a variable name against the context namespace.
 is `None`; an `XDG_`-prefixed name is refused the same way when absent from `ctx.xdg`; anything
 else is an "Unknown variable". ⚑ The three messages are distinct on purpose — "not set here" and
 "no such variable" are different user mistakes with different cures.
+
+`TERM` is the one variable that can NEITHER be refused NOR be wrong: it answers `ctx.term`, which
+always holds a value (`_host_term`). An empty or unset host `TERM` falls back to `xterm`
+(`DEFAULT_TERM`) — **and only an empty one; a set value is passed through UNVALIDATED.** The
+asymmetry with the `$XDG_*` twin, which ignores a value failing `isabs`, is deliberate and
+structural: `isabs` is a pure test on a string, whereas "is this `TERM` usable" is a terminfo
+lookup, and the terminfo set that decides it belongs to the BOX while this resolution runs on the
+HOST. A host-side check would be guessing about a place it cannot see; the accepted failure mode
+is instead a degraded terminal inside the box, visible there and cured by setting the key. Do not
+add validation here as a missing-symmetry fix.
 
 ```python
 _expand_ref(expr, i, lookup, chain) -> tuple[str, int]
