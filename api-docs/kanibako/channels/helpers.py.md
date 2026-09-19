@@ -1,8 +1,7 @@
 # `src/kanibako/channels/helpers.py` — API surface
 
 _Signatures only: no comments, no docstrings, no bodies._
-**GENERATED — do not hand-edit; regenerate with `notebook/scripts/dev-tools/gen-api-doc.py`.**
-Prose for these symbols lives in `llm-docs/kanibako/channels/helpers.py.md`.
+**GENERATED — do not hand-edit; regenerate with the gen-api-doc tool, kept in the maintainer's canon notebook outside this repository.**
 
 
 ## Variables
@@ -11,6 +10,7 @@ Prose for these symbols lives in `llm-docs/kanibako/channels/helpers.py.md`.
 UNLIMITED_BREADTH = 2 ** 16
 DEFAULT_DEPTH = 4
 DEFAULT_BREADTH = 4
+SPAWN_CONFIG_FILENAME = 'spawn.yaml'
 HELPER_SCRIPTS_RELPATH = 'scripts'
 PARENT_SCRIPTS_RELPATH = ('canon', 'notebook', 'scripts')
 _INIT_SCRIPT_NAME = 'helper-init.sh'
@@ -20,6 +20,7 @@ _INIT_SCRIPT_NAME = 'helper-init.sh'
 ```
 def effective_breadth(breadth: int) -> int
 def parent_of(agent: int, breadth: int) -> int | None
+def host_spawn_config_path(config_home: Path) -> Path
 def check_spawn_allowed(budget: SpawnBudget, current_children: int) -> str | None
 def child_budget(parent: SpawnBudget) -> SpawnBudget
 def resolve_spawn_budget(ro_config: SpawnBudget | None, host_config: SpawnBudget | None, cli_depth: int | None, cli_breadth: int | None) -> SpawnBudget

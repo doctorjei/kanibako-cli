@@ -1,14 +1,16 @@
 # `src/kanibako/commands/workset_cmd.py` — API surface
 
 _Signatures only: no comments, no docstrings, no bodies._
-**GENERATED — do not hand-edit; regenerate with `notebook/scripts/dev-tools/gen-api-doc.py`.**
+**GENERATED — do not hand-edit; regenerate with the gen-api-doc tool, kept in the maintainer's canon notebook outside this repository.**
 Prose for these symbols lives in `llm-docs/kanibako/commands/workset_cmd.py.md`.
 
 
 ## Variables
 
 ```
+_STANDALONE_REFUSAL = "Error: 'workset create --standalone' is refused: standalone is a single box's mode, not a working set's. A standalone box keeps its own state and its own workset-tier settings inside its project directory and belongs to no working set, so a working set cannot have standalone members; mode is detected from the box directory, never stored.\n  For a standalone box:  kanibako box create --standalone [path]\n  For a working set:     re-run without --standalone; boxes created in it or connected to it are 'named' mode."
 _NEXT_LAUNCH_REMINDER = 'Shares apply on the next box launch (bind mounts are fixed at container creation; a running box is unaffected).'
+_PREVIEW_HOME_SRC: str = "(each box's own home store)"
 ```
 
 ## Functions

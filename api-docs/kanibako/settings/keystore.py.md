@@ -1,7 +1,7 @@
 # `src/kanibako/settings/keystore.py` — API surface
 
 _Signatures only: no comments, no docstrings, no bodies._
-**GENERATED — do not hand-edit; regenerate with `notebook/scripts/dev-tools/gen-api-doc.py`.**
+**GENERATED — do not hand-edit; regenerate with the gen-api-doc tool, kept in the maintainer's canon notebook outside this repository.**
 Prose for these symbols lives in `llm-docs/kanibako/settings/keystore.py.md`.
 
 
@@ -14,7 +14,8 @@ V = TypeVar('V')
 ## Classes
 
 ```
-class ReservedKeyError(KeyError):
+class ReservedKeyError(KanibakoError, KeyError):
+    def __str__(self) -> str
 
 class KeyStore(dict[str, 'V | KeyStore[V]'], Generic[V]):
     RESERVED_KEY_NAMES: frozenset[str] = frozenset({'get', 'keys', 'values', 'items', 'pop', 'popitem', 'setdefault', 'update', 'clear', 'copy', 'fromkeys', 'RESERVED_KEY_NAMES', 'insert_segments'})

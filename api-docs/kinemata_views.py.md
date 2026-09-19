@@ -1,4 +1,4 @@
-# `packages/agent-goose/src/kanibako/plugins/goose/credentials.py` — API surface
+# `src/kinemata_views.py` — API surface
 
 _Signatures only: no comments, no docstrings, no bodies._
 **GENERATED — do not hand-edit; regenerate with the gen-api-doc tool, kept in the maintainer's canon notebook outside this repository.**
@@ -6,6 +6,6 @@ _Signatures only: no comments, no docstrings, no bodies._
 
 ## Functions
 ```
-def read_yaml(path: Path) -> dict
-def write_yaml(path: Path, data: dict) -> None
+def standalone_is_absent(entry: Any) -> bool
+def never_settable_path(entry: Any) -> bool
 ```

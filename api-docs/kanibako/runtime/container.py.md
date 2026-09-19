@@ -1,7 +1,7 @@
 # `src/kanibako/runtime/container.py` — API surface
 
 _Signatures only: no comments, no docstrings, no bodies._
-**GENERATED — do not hand-edit; regenerate with `notebook/scripts/dev-tools/gen-api-doc.py`.**
+**GENERATED — do not hand-edit; regenerate with the gen-api-doc tool, kept in the maintainer's canon notebook outside this repository.**
 Prose for these symbols lives in `llm-docs/kanibako/runtime/container.py.md`.
 
 
@@ -12,12 +12,14 @@ logger = get_logger('container')
 KEEP_ID_USERNS = f'--userns=keep-id:uid={GUEST_UID},gid={GUEST_GID}'
 _POST_START_TIMEOUT_S = 30.0
 _POST_START_POLL_S = 0.25
+_IMAGE_REF_RE = re.compile('[A-Za-z0-9][A-Za-z0-9._:/@-]*\\Z')
 _CANON_GUEST_PREFIX = f'{GUEST_HOME}/canon'
 _CANON_SEED_DENY_GUEST_PREFIXES = tuple((f'{GUEST_HOME}/{rel}' for rel in CANON_SEED_DENY_PREFIXES))
 ```
 
 ## Functions
 ```
+def image_ref_or_none(raw: str) -> str | None
 def remove_box_tree(target: Path) -> bool
 def detect_shadowed_mounts(shell_path: Path, project_path: Path, extra_mounts: list | None, enable_vault: bool) -> list[str]
 def _run_post_start(hook: 'Callable[[], None]') -> None

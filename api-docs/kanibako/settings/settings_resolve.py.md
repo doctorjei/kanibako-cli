@@ -1,7 +1,7 @@
 # `src/kanibako/settings/settings_resolve.py` — API surface
 
 _Signatures only: no comments, no docstrings, no bodies._
-**GENERATED — do not hand-edit; regenerate with `notebook/scripts/dev-tools/gen-api-doc.py`.**
+**GENERATED — do not hand-edit; regenerate with the gen-api-doc tool, kept in the maintainer's canon notebook outside this repository.**
 Prose for these symbols lives in `llm-docs/kanibako/settings/settings_resolve.py.md`.
 
 
@@ -11,6 +11,13 @@ Prose for these symbols lives in `llm-docs/kanibako/settings/settings_resolve.py
 GUEST_HOME = '/home/agent'
 GUEST_UID = 1000
 GUEST_GID = 1000
+GUEST_WORKSPACE_RELPATH = 'workspace'
+GUEST_VAULT_RELPATH = 'vault'
+GUEST_VAULT_RO_RELPATH = f'{GUEST_VAULT_RELPATH}/ro'
+GUEST_VAULT_RW_RELPATH = f'{GUEST_VAULT_RELPATH}/rw'
+GUEST_WORKSPACE = f'{GUEST_HOME}/{GUEST_WORKSPACE_RELPATH}'
+GUEST_VAULT_RO = f'{GUEST_HOME}/{GUEST_VAULT_RO_RELPATH}'
+GUEST_VAULT_RW = f'{GUEST_HOME}/{GUEST_VAULT_RW_RELPATH}'
 BOX_PINNED_ROOT_RELPATH = '.kanibako'
 BOX_PINNED_STATE_RELPATH = f'{BOX_PINNED_ROOT_RELPATH}/state'
 MAX_REF_DEPTH = 64

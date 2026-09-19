@@ -1,7 +1,7 @@
 # `src/kanibako/settings/config_keys.py` — API surface
 
 _Signatures only: no comments, no docstrings, no bodies._
-**GENERATED — do not hand-edit; regenerate with `notebook/scripts/dev-tools/gen-api-doc.py`.**
+**GENERATED — do not hand-edit; regenerate with the gen-api-doc tool, kept in the maintainer's canon notebook outside this repository.**
 Prose for these symbols lives in `llm-docs/kanibako/settings/config_keys.py.md`.
 
 
@@ -9,34 +9,43 @@ Prose for these symbols lives in `llm-docs/kanibako/settings/config_keys.py.md`.
 
 ```
 SETUP_MARKER_KEY = 'system.setup_completed'
-KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({'model', 'allow_helpers', 'access', 'endpoint', 'bootstrap', 'continue_mode', 'template', 'canon', 'run_args', 'transform', 'transform_settings', 'box.image', 'box.share_images', 'box.images_store', 'box.shell', 'system.auth.share_allowed', 'workset.auth.share_allowed', 'workset.auth.global_sync', 'box.auth.global_enabled', 'box.auth.workset_enabled', 'box.enable_vault', 'workset.registry', 'workset.auth.path', 'workset.boxes', 'workset.vault_ro', 'workset.vault_rw', 'workset.logs', 'workset.workspaces', 'workset.channelroot', 'workset.channels.common', 'workset.channels.chat', 'workset.channels.share', 'workset.channels.broadcast', 'workset.channels.mailboxes', 'workset.channels.share_global', 'workset.template', 'workset.canon', 'box.canon', 'workset.kuid', 'workset.skip_kuid_check', 'config.data', 'config.settings', 'config.agents', 'config.primary_workset', 'config.registry', 'config.journal', 'system.backup', 'system.channelroot', 'system.template', 'system.canon', 'system.cache', 'system.runtime', 'system.channels.common', 'system.channels.chat', 'system.channels.share', 'system.channels.broadcast', 'system.channels.mailboxes', 'system.agent', SETUP_MARKER_KEY})
+KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({'model', 'allow_helpers', 'access', 'endpoint', 'bootstrap', 'continue_mode', 'label', 'template', 'canon', 'run_args', 'transform', 'transform_settings', 'box.image', 'box.share_images', 'box.images_store', 'box.shell', 'system.auth.share_allowed', 'workset.auth.share_allowed', 'workset.auth.global_sync', 'box.auth.global_enabled', 'box.auth.workset_enabled', 'box.enable_vault', 'workset.registry', 'workset.auth.path', 'workset.boxes', 'workset.vault_ro', 'workset.vault_rw', 'workset.logs', 'workset.workspaces', 'workset.channelroot', 'workset.channels.common', 'workset.channels.chat', 'workset.channels.share', 'workset.channels.broadcast', 'workset.channels.mailboxes', 'workset.channels.share_global', 'workset.template', 'workset.canon', 'box.canon', 'workset.kuid', 'workset.skip_kuid_check', 'config.data', 'config.settings', 'config.agents', 'config.primary_workset', 'config.registry', 'config.journal', 'system.backup', 'system.channelroot', 'system.template', 'system.canon', 'system.cache', 'system.state', 'system.runtime', 'system.channels.common', 'system.channels.chat', 'system.channels.share', 'system.channels.broadcast', 'system.channels.mailboxes', 'system.agent', SETUP_MARKER_KEY})
 DYNAMIC_PREFIXES: tuple[str, ...] = ('env.',)
-KEY_TYPES: dict[str, str] = {'box.share_images': 'bool', 'system.auth.share_allowed': 'bool', 'workset.auth.share_allowed': 'bool', 'workset.auth.global_sync': 'bool', 'box.auth.global_enabled': 'bool', 'box.auth.workset_enabled': 'bool', 'box.enable_vault': 'bool', 'workset.skip_kuid_check': 'bool'}
+KEY_TYPES: dict[str, str] = {'box.share_images': 'bool', 'system.auth.share_allowed': 'bool', 'workset.auth.share_allowed': 'bool', 'workset.auth.global_sync': 'bool', 'box.auth.global_enabled': 'bool', 'box.auth.workset_enabled': 'bool', 'box.enable_vault': 'bool', 'workset.skip_kuid_check': 'bool', **{key: 'path' for key in CONFIG_PATH_DEFAULTS}, **{key: 'path' for key in SYSTEM_PATH_DEFAULTS}, 'workset.workspaces': 'path', 'workset.boxes': 'path', 'workset.logs': 'path', 'workset.vault_ro': 'path', 'workset.vault_rw': 'path', 'workset.canon': 'path', 'workset.registry': 'path', 'workset.template': 'path', 'workset.auth.path': 'path', 'workset.channelroot': 'path', 'workset.channels.common': 'path', 'workset.channels.chat': 'path', 'workset.channels.broadcast': 'path', 'workset.channels.share': 'path', 'workset.channels.mailboxes': 'path', 'workset.channels.share_global': 'path', 'box.canon': 'path', 'box.images_store': 'path'}
+AGENT_LEAF_MAP: 'Mapping[str, Collection[str]]' = ConcedingLeafMap(_DECLARED_HERE, unread_harnesses(_DECLARED_HERE))
 AGENT_DEFAULT_SUB = 'default'
-_KEY_ROUTES: dict[str, tuple[tuple[str, ...], str]] = {'box.image': (('box',), 'image'), 'box.shell': (('box',), 'shell'), 'box.share_images': (('box',), 'share_images'), 'box.images_store': (('box',), 'images_store'), 'system.agent': (('system',), 'agent'), 'system.auth.share_allowed': (('system', 'auth'), 'share_allowed'), 'system.backup': (('system',), 'backup'), 'system.channelroot': (('system',), 'channelroot'), 'system.template': (('system',), 'template'), 'system.canon': (('system',), 'canon'), 'system.cache': (('system',), 'cache'), 'system.runtime': (('system',), 'runtime'), 'system.channels.common': (('system', 'channels'), 'common'), 'system.channels.chat': (('system', 'channels'), 'chat'), 'system.channels.share': (('system', 'channels'), 'share'), 'system.channels.broadcast': (('system', 'channels'), 'broadcast'), 'system.channels.mailboxes': (('system', 'channels'), 'mailboxes'), 'workset.auth.share_allowed': (('workset', 'auth'), 'share_allowed'), 'workset.auth.global_sync': (('workset', 'auth'), 'global_sync'), 'box.auth.global_enabled': (('box', 'auth'), 'global_enabled'), 'box.auth.workset_enabled': (('box', 'auth'), 'workset_enabled'), 'box.enable_vault': (('box',), 'enable_vault'), 'workset.registry': (('workset',), 'registry'), 'workset.auth.path': (('workset', 'auth'), 'path'), 'workset.boxes': (('workset',), 'boxes'), 'workset.vault_ro': (('workset',), 'vault_ro'), 'workset.vault_rw': (('workset',), 'vault_rw'), 'workset.logs': (('workset',), 'logs'), 'workset.workspaces': (('workset',), 'workspaces'), 'workset.channelroot': (('workset',), 'channelroot'), 'workset.channels.common': (('workset', 'channels'), 'common'), 'workset.channels.chat': (('workset', 'channels'), 'chat'), 'workset.channels.share': (('workset', 'channels'), 'share'), 'workset.channels.broadcast': (('workset', 'channels'), 'broadcast'), 'workset.channels.mailboxes': (('workset', 'channels'), 'mailboxes'), 'workset.channels.share_global': (('workset', 'channels'), 'share_global'), 'workset.template': (('workset',), 'template'), 'workset.canon': (('workset',), 'canon'), 'box.canon': (('box',), 'canon'), 'workset.kuid': (('workset',), 'kuid'), 'workset.skip_kuid_check': (('workset',), 'skip_kuid_check')}
-_SCOPE_NAMESPACES: frozenset[str] = frozenset({'system', 'agent', 'workset', 'box', 'config', 'meta'})
+_KEY_ROUTES: dict[str, tuple[tuple[str, ...], str]] = {'box.image': (('box',), 'image'), 'box.shell': (('box',), 'shell'), 'box.share_images': (('box',), 'share_images'), 'box.images_store': (('box',), 'images_store'), 'system.agent': (('system',), 'agent'), SETUP_MARKER_KEY: (('system',), 'setup_completed'), 'system.auth.share_allowed': (('system', 'auth'), 'share_allowed'), 'system.backup': (('system',), 'backup'), 'system.channelroot': (('system',), 'channelroot'), 'system.template': (('system',), 'template'), 'system.canon': (('system',), 'canon'), 'system.cache': (('system',), 'cache'), 'system.state': (('system',), 'state'), 'system.runtime': (('system',), 'runtime'), 'system.channels.common': (('system', 'channels'), 'common'), 'system.channels.chat': (('system', 'channels'), 'chat'), 'system.channels.share': (('system', 'channels'), 'share'), 'system.channels.broadcast': (('system', 'channels'), 'broadcast'), 'system.channels.mailboxes': (('system', 'channels'), 'mailboxes'), 'workset.auth.share_allowed': (('workset', 'auth'), 'share_allowed'), 'workset.auth.global_sync': (('workset', 'auth'), 'global_sync'), 'box.auth.global_enabled': (('box', 'auth'), 'global_enabled'), 'box.auth.workset_enabled': (('box', 'auth'), 'workset_enabled'), 'box.enable_vault': (('box',), 'enable_vault'), 'workset.registry': (('workset',), 'registry'), 'workset.auth.path': (('workset', 'auth'), 'path'), 'workset.boxes': (('workset',), 'boxes'), 'workset.vault_ro': (('workset',), 'vault_ro'), 'workset.vault_rw': (('workset',), 'vault_rw'), 'workset.logs': (('workset',), 'logs'), 'workset.workspaces': (('workset',), 'workspaces'), 'workset.channelroot': (('workset',), 'channelroot'), 'workset.channels.common': (('workset', 'channels'), 'common'), 'workset.channels.chat': (('workset', 'channels'), 'chat'), 'workset.channels.share': (('workset', 'channels'), 'share'), 'workset.channels.broadcast': (('workset', 'channels'), 'broadcast'), 'workset.channels.mailboxes': (('workset', 'channels'), 'mailboxes'), 'workset.channels.share_global': (('workset', 'channels'), 'share_global'), 'workset.template': (('workset',), 'template'), 'workset.canon': (('workset',), 'canon'), 'box.canon': (('box',), 'canon'), 'workset.kuid': (('workset',), 'kuid'), 'workset.skip_kuid_check': (('workset',), 'skip_kuid_check')}
+_SCOPE_NAMESPACES: frozenset[str] = frozenset({*SCOPE_CONTAINMENT, 'config', 'meta'})
 _SCOPE_CONTAINMENT: tuple[str, ...] = SCOPE_CONTAINMENT
 _SCOPE_WRITE_ALLOWED: dict[ConfigLevel, frozenset[str]] = {level: frozenset(_SCOPE_CONTAINMENT[_SCOPE_CONTAINMENT.index(level.value):]) for level in ConfigLevel}
 _SETTINGS_SCOPE_TOKENS: frozenset[str] = frozenset(_SCOPE_CONTAINMENT)
-_PERSONA_STATE_LEAVES: frozenset[str] = DECLARED_AGENT_LEAVES
+_DECLARED_HERE: Final[_PluginDeclaredLeafMap] = _PluginDeclaredLeafMap()
 _PERSONA_ENV_SECTIONS: frozenset[str] = frozenset({'env'})
+_AGENT_DEFAULT_TIER_CURE: Final = "Author it in the 'agent: default:' table of the system settings file; the launch reads it from there."
 _AGENT_NODE_BIND_RE = re.compile('^agent\\.(?P<node>.+?)\\.(?P<cat>bindings\\.(?:ro|rw))\\.(?P<name>.+)$')
 _AGENT_NODE_SECRET_RE = re.compile('^agent\\.(?P<node>.+?)\\.secret_path\\.(?P<var>[A-Za-z_][A-Za-z0-9_]*)$')
 _SCOPE_ENV_RE = re.compile('^(?P<scope>system|workset|box)\\.env\\.(?P<var>[A-Za-z_][A-Za-z0-9_]*)$')
 _NO_BARE_AGENT_KEY_SCOPES: 'frozenset[ConfigLevel]' = frozenset({ConfigLevel.box, ConfigLevel.workset})
 _SCOPE_SECRET_RE = re.compile('^(?P<scope>system|workset|box)\\.secret_path\\.(?P<var>[A-Za-z_][A-Za-z0-9_]*)$')
 _SCOPE_READ_COMMAND = {'system': 'kanibako system get', 'workset': 'kanibako workset get <workset>', 'box': 'kanibako box get <box>'}
+_SCOPE_SHOW_COMMAND = {'system': 'kanibako system show', 'workset': 'kanibako workset show <workset>', 'box': 'kanibako box show <box>'}
 ```
 
 ## Functions
 ```
+def is_path_valued_key(canonical: str) -> bool
+def path_key_anchor(canonical: str) -> 'tuple[str, str]'
+def agent_node_of(canonical: str) -> str
 def resolve_key(raw: str) -> str
+def plugin_declared_leaf_map() -> 'Mapping[str, Collection[str]]'
 def is_access_key(canonical: str) -> bool
 def access_value_error(canonical: str, value: str) -> str | None
 def parse_agent_node_bind_key(key: str) -> 'tuple[str, str, str] | None'
 def scope_env_var_error(canonical: str) -> str | None
 def bare_env_retired_error(key: str, *, verb: str, command_scope: 'ConfigLevel | None'=None) -> str | None
+def agent_default_tier_leaf(key: str) -> str | None
 def agent_leaf_table_error(canonical: str, *, verb: str) -> str | None
+def terminal_category_write_error(canonical: str, *, verb: str) -> str | None
 def box_agent_retired_error(canonical: str, *, verb: str, active_agent: str | None=None) -> str
 def box_agent_redirect_key(canonical: str, command_scope: 'ConfigLevel | None', active_agent: str | None=None) -> str | None
 def bare_agent_key_scope_error(canonical: str, command_scope: 'ConfigLevel | None', *, verb: str, active_agent: str | None=None) -> str | None
@@ -48,7 +57,12 @@ def agent_node_bind_retired_error(canonical: str, *, verb: str) -> str | None
 def agent_key_reason(node: str, tail: str) -> str | None
 def agent_write_key_error(node: str, tail: str, *, verb: str) -> str | None
 def agent_read_key_error(node: str, tail: str) -> str | None
-def _coerce_value(canonical: str, value: 'str | None') -> object | str | None
+def scope_key_reason(canonical: str) -> str | None
+def table_leaf_read_cure(canonical: str, active_agent: str | None=None) -> str | None
+def agent_category_read_error(canonical: str, key: str) -> str | None
+def foreign_scope_read_error(canonical: str, key: str, command_scope: 'ConfigLevel | None') -> str | None
+def scope_read_key_error(key: str, command_scope: 'ConfigLevel | None', *, active_agent: str | None=None) -> str | None
+def _coerce_value(canonical: str, value: 'str | None') -> object | None
 def _scope_direction_error(canonical: str, command_scope: 'ConfigLevel | None') -> str | None
 def _parse_persona_agent_key(key: str) -> 'tuple[str, str] | None'
 def _is_persona_agent_key(key: str) -> bool
@@ -60,6 +74,7 @@ def _node_secret_display_key(canonical: str) -> str
 def _is_bare_env_key(key: str) -> bool
 def _is_scope_env_key(key: str) -> bool
 def _is_agent_setting(key: str) -> bool
+def _terminal_category_message(display_key: str, *, verb: str, cure: str, survives: str) -> str
 def _names_agent_leaf(canonical: str, leaf: str) -> bool
 def _is_box_agent_key(key: str) -> bool
 def _user_config_file_str() -> 'Path | str'
@@ -89,4 +104,15 @@ class ConfigLevel(Enum):
     workset = 'workset'
     agent = 'agent'
     system = 'system'
+
+@dataclass(frozen=True)
+class CoercionError:
+    message: str
+
+class _PluginDeclaredLeafMap(Mapping[str, 'Collection[str]']):
+    __slots__ = ()
+
+    def __getitem__(self, key: str) -> 'Collection[str]'
+    def __iter__(self) -> Iterator[str]
+    def __len__(self) -> int
 ```
