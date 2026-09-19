@@ -12,6 +12,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`README.md`'s "Common settings keys" table advertised six spellings the product refuses.** The front
+  door went on teaching them through a public release: `box.agent` (retired to `pref.system.agent`, and a
+  hard launch error), `group_auth` (now the two arms `box.auth.global_enabled` and
+  `box.auth.workset_enabled`), a bare `enable_vault` (the key is `box.enable_vault`), `start_mode` and
+  `autonomous` (both **deleted**, not renamed — the live axes are `continue_mode` and `access`), and a
+  bare `env.*` (the env family is scoped, so the spelling is `<scope>.env.<VAR>`). A reader who copied any
+  of them got a refusal. The individual retirements were already recorded here as they happened; what this
+  fixes is the table that kept advertising the dead names afterward.
+
 - **`box create --agent` with a blank value is now refused instead of silently ignored.** The create
   path asked two different questions about whether `--agent` had been given: the persona-store check
   tested the flag for truthiness, while the `pref.system.agent` persist tested it after stripping
@@ -24,6 +33,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   where it is validated, instead of by whichever consumer happened to strip it. A script passing
   `--agent "$VAR"` with an unset `VAR` now stops rather than creating a box for an agent nobody
   asked for.
+
+- **`kanibako start --agent ""` no longer launches on whatever agent the settings cascade
+  resolves.** The same blank value, on the launch path, where three places asked about it and
+  answered differently: the agent arbiter fell through a blank explicit ref to the stored one, the
+  selection seam let the settings files answer a question the command line had asked (a box
+  carrying `pref.system.agent: null` came back suppressed, as a plain-shell box), and the launch's
+  box-independent read folded the typed flag into the stored default. So a blank flag *refused* at
+  a box that happened to be running — the reattach check reaches the ref grammar — and *launched*
+  at the same box once it was stopped. Whether a container is up is not a fact about the ref you
+  typed: both now stop at `Error: agent ref is empty`, before the box is touched. A value present
+  at the selection key is a value wherever it came from, so a settings file carrying
+  `system.agent: ""` is refused by that same message rather than quietly falling to the
+  installed-count rule. *Unset* is still spelled by leaving the key out, and the no-agent box is
+  still `pref.system.agent: null`.
 
 - **A box that is not running is no longer refused with "A box is already running for this
   project".** When a box's PID 1 dies without the CLI surviving to clean up — a crash, a closed
@@ -39,6 +62,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   says the box is not running and points at `kanibako stop <box>`, the command that clears it. The
   refusal itself is unchanged in both cases — the name is taken either way, and a launch under it
   would otherwise fail deeper, out of `podman run`, as a name clash.
+
+- **`kanibako stop` no longer reports that it stopped a box that was not running.** `podman stop`
+  exits 0 on a container that has already exited — there is nothing to stop, and it says so by
+  succeeding — and that exit status was being read as *"it was running and now it isn't"*. So a
+  user who had just been told their box was not running, and sent to `kanibako stop` to clear the
+  container still holding its name, read `Stopped kanibako-<box>` one command later. `stop` now
+  reads liveness before it acts: a box that really was running still reports
+  `Stopped <container>`, and a container that was already down reports
+  `Removed stopped container: <container>` — the removal this path was already performing and
+  never announcing. What the command *does* is unchanged: the container is removed either way, and
+  removing it is what unblocks the next launch.
 
 - **The pseudo-agent names `default` and `shell` are now refused to an agent, a persona and a
   harness.** Both belong to the keyspace: `default` is the all-agents fallback tier

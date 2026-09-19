@@ -10094,6 +10094,94 @@ class TestRestartFlag(_RunningBoxDriver):
 
 
 # ---------------------------------------------------------------------------
+# A BLANK ``--agent`` — one answer, whether or not the box happens to be UP
+# ---------------------------------------------------------------------------
+
+
+class TestBlankAgentFlagAtALiveBoxAndAStoppedOne(_RunningBoxDriver):
+    """``kanibako start --agent ""`` used to get TWO different answers.
+
+    A LIVE box reached the reattach comparison and refused (``agent ref is
+    empty``); a STOPPED one fell through ``explicit_agent or
+    read_system_agent(...)`` and launched whatever was stored, silently.  Whether
+    a container is up is not a fact about the ref the user typed, so the two
+    paths now carry ONE refusal, taken from the grammar owner.
+    """
+
+    def _blank(self):
+        from tests.support.agent_refs import blank_ref_refusal
+
+        return blank_ref_refusal()
+
+    def test_a_live_box_refuses_by_the_GRAMMAR_not_the_mismatch_message(
+        self, start_mocks,
+    ):
+        """The live-box answer must be about the REF, not about the reattach.
+
+        ``--agent ""`` names no agent to disagree with, so the "already running
+        agent 'claude'" line would be a false account of what is wrong.
+        """
+        from kanibako.errors import ConfigError
+
+        with start_mocks() as m:
+            self._running(m, agent="claude")
+            with pytest.raises(ConfigError) as ei:
+                self._start(explicit_agent="")
+        assert str(ei.value) == self._blank()
+        assert "already running agent" not in str(ei.value)
+
+    def test_a_stopped_box_refuses_with_THE_SAME_message(self, start_mocks):
+        """The stopped path's arbiter, driven with what the seam hands it.
+
+        ``start_mocks`` stubs ``select_agent`` (a MagicMock ``std``/``proj``
+        cannot be handed to the real cascade), so the REAL
+        ``config.resolve_agent`` is bridged in behind it with the arguments the
+        seam passes when no ref comes from the files — ``requested=None``.  The
+        seam's own half of this (that a blank ref never consults the cascade at
+        all) is pinned in ``tests/test_settings/test_agent_select.py``.
+
+        MUTATION: restore ``_clean(...) or _clean(...)`` and this launch returns
+        0, having started the box on the stub's agent.
+        """
+        from kanibako.errors import ConfigError
+        from kanibako.settings.config import resolve_agent
+
+        with start_mocks() as m:
+            assert m.runtime.is_running.return_value is False
+            m.resolve_agent.side_effect = lambda **kw: resolve_agent(
+                explicit_agent=kw["explicit_agent"], requested=None,
+                project_path=None,
+            )
+            with pytest.raises(ConfigError) as ei:
+                self._start(explicit_agent="")
+        assert str(ei.value) == self._blank()
+
+    def test_a_blank_flag_never_consults_the_stored_system_agent(self, start_mocks):
+        """The box-INDEPENDENT deferral read is a typed value OR a stored one.
+
+        MUTATION: restore the ``or`` at ``_box_indep_ref`` and the spy fires —
+        the deferral decision taken for an agent the user did not ask for.
+        """
+        from kanibako.errors import ConfigError
+
+        with start_mocks() as m, patch(
+            "kanibako.commands.start.read_system_agent", return_value="claude",
+        ) as m_read:
+            self._running(m, agent="claude")
+            with pytest.raises(ConfigError):
+                self._start(explicit_agent="")
+            m_read.assert_not_called()
+        # Control: with NO flag the stored default IS what this read consults,
+        # so the patch target is live and the assertion above is not vacuous.
+        with start_mocks() as m, patch(
+            "kanibako.commands.start.read_system_agent", return_value="claude",
+        ) as m_read:
+            self._running(m, agent="claude")
+            assert self._start() == 0
+            assert m_read.called
+
+
+# ---------------------------------------------------------------------------
 # LIVENESS-MARKER DIR — both ends of the contract must name the SAME directory
 # ---------------------------------------------------------------------------
 

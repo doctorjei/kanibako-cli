@@ -913,20 +913,32 @@ def resolve_agent(
     from kanibako.install_method import install_command
     from kanibako.targets import discover_targets
 
-    def _clean(value: str | None) -> str:
-        return (value or "").strip()
-
     installed = set(discover_targets(project_path).keys())
     # The count rule considers only REAL launchable agents; an explicitly-named
     # harness still validates against the FULL `installed` set below.
     real_installed = installed - _PSEUDO_AGENTS
 
-    # First non-empty tier resolves a name.
-    raw_resolved = _clean(explicit_agent) or _clean(requested)
+    # ⚑⚑ THE FIRST *PRESENT* TIER RESOLVES — never the first non-EMPTY one.
+    # ABSENCE already has its own spelling in BOTH arguments: no ``--agent`` at
+    # all, and ``__MISSING__`` at the selection key, each arriving here as
+    # ``None``.  A present ``""`` is therefore a VALUE, not an absence — spec §2h
+    # ("present-``None``, terminal ``""`` (≠ unset), and the COPY-disable
+    # sentinel" are three distinct idioms).  Reading it as absence invented a
+    # FOURTH meaning for the one that already means something, and answered it by
+    # launching whatever the next tier said: a typed ``--agent ""`` took the
+    # cascade's agent, a stored ``system.agent: ""`` took the installed-count
+    # rule's — silently, either way.  Every OTHER illegal ref at either tier has
+    # always refused here; the blank one escaped through an ``or``.
+    raw_resolved = explicit_agent if explicit_agent is not None else requested
 
-    if raw_resolved:
+    if raw_resolved is not None:
         # ⚑ Canonicalise + validate the ref shape; the HARNESS is what must be
         # installed — NOT the composite node-name (a persona segment is free-form).
+        # ⚑ It also STRIPS, and it OWNS every way a ref can be illegal — charset,
+        # pseudo-agent reservation, empty-after-strip — so a blank is refused by
+        # ITS message rather than by a second predicate spelled here.  The
+        # ``ConfigError`` is a ``KanibakoError``: ``cli.py`` flattens it to one
+        # ``Error:`` line with the offending value first.
         node = canonicalize_agent_ref(raw_resolved)
         harness = harness_of(node)
         if harness in installed:

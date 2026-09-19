@@ -563,6 +563,99 @@ class TestSelectAgentSeam:
         assert (sel.node, sel.source) == ("claude", "autopick")
 
 
+class TestABlankExplicitRefIsGivenNotUnset:
+    """``--agent ""`` is a ref the user TYPED, so the cascade never answers it.
+
+    The seam decides for itself whether the cascade is consulted AT ALL, and it
+    can return a SUPPRESSED box without ever reaching the arbiter — so a truthy
+    "was one given?" test here was not merely redundant with
+    ``resolve_agent``'s: it was the only thing standing between a blank flag and
+    a silent answer.
+    """
+
+    @pytest.mark.parametrize("blank", ["", "  ", "\t\n"])
+    def test_a_blank_ref_is_refused_where_a_null_pref_would_suppress(
+        self, tmp_path, monkeypatch, blank,
+    ):
+        """MUTATION: restore ``if not explicit_agent:`` and this returns the
+        no-agent box ``("", "suppressed")`` — the file's request answering a
+        question the command line asked.  The companion above
+        (``test_a_null_request_gives_a_no_agent_box_at_the_seam``) drives the
+        SAME tree with no flag and must keep suppressing.
+        """
+        from kanibako.errors import ConfigError
+        from kanibako.settings.agent_select import select_agent
+
+        from tests.support.agent_refs import blank_ref_refusal
+
+        monkeypatch.setattr(
+            "kanibako.targets.discover_targets", lambda *a, **k: {"claude": object},
+        )
+        std, proj = _std(tmp_path), _proj(tmp_path)
+        std.settings.write_text(yaml.safe_dump({"system": {"agent": "claude"}}))
+        box_file, _ws = _box_workset(proj)
+        box_file.write_text("pref:\n  system:\n    agent:\n")
+
+        with pytest.raises(ConfigError) as ei:
+            select_agent(std=std, proj=proj, explicit_agent=blank)
+        assert str(ei.value) == blank_ref_refusal()
+
+    def test_a_blank_ref_is_refused_where_a_request_would_have_won(
+        self, tmp_path, monkeypatch,
+    ):
+        """The other half: a box that HAS a working request still refuses.
+
+        Without this, a reader could conclude the refusal belongs to the
+        suppression arm rather than to the flag.
+        """
+        from kanibako.errors import ConfigError
+        from kanibako.settings.agent_select import select_agent
+
+        from tests.support.agent_refs import blank_ref_refusal
+
+        monkeypatch.setattr(
+            "kanibako.targets.discover_targets",
+            lambda *a, **k: {"claude": object, "goose": object},
+        )
+        std, proj = _std(tmp_path), _proj(tmp_path)
+        box_file, _ws = _box_workset(proj)
+        box_file.write_text(yaml.safe_dump({"pref": {"system": {"agent": "goose"}}}))
+
+        with pytest.raises(ConfigError) as ei:
+            select_agent(std=std, proj=proj, explicit_agent="")
+        assert str(ei.value) == blank_ref_refusal()
+        # Control: the same tree, no flag, resolves the request it carries.
+        assert select_agent(std=std, proj=proj, explicit_agent=None).node == "goose"
+
+    def test_a_blank_STORED_agent_is_refused_through_the_seam(
+        self, tmp_path, monkeypatch,
+    ):
+        """A terminal ``""`` in a settings file is a value too (spec §2h).
+
+        With ONE agent installed the count rule had an answer waiting, so the
+        line the user wrote did nothing and said nothing.  MUTATION: restore the
+        ``or`` fall-through in ``resolve_agent`` and this box launches
+        ``claude``.
+        """
+        from kanibako.errors import ConfigError
+        from kanibako.settings.agent_select import select_agent
+
+        from tests.support.agent_refs import blank_ref_refusal
+
+        monkeypatch.setattr(
+            "kanibako.targets.discover_targets", lambda *a, **k: {"claude": object},
+        )
+        std, proj = _std(tmp_path), _proj(tmp_path)
+        std.settings.write_text(yaml.safe_dump({"system": {"agent": ""}}))
+
+        with pytest.raises(ConfigError) as ei:
+            select_agent(std=std, proj=proj, explicit_agent=None)
+        assert str(ei.value) == blank_ref_refusal()
+        # Control: with the key ABSENT — the real "unset" — the count rule runs.
+        std.settings.write_text(yaml.safe_dump({"system": {}}))
+        assert select_agent(std=std, proj=proj, explicit_agent=None).source == "autopick"
+
+
 # --------------------------------------------------------------------------- #
 # The BOX ARGUMENT in the cure — Jei's ruling, through the REAL seam           #
 # --------------------------------------------------------------------------- #

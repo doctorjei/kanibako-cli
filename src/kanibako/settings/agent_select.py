@@ -121,7 +121,9 @@ def select_agent(
     Raises the typed :class:`~kanibako.errors.AgentResolutionError` subclasses
     ``config.resolve_agent`` raises, a
     :class:`~kanibako.settings.settings_resolve.SettingsError` when the selection
-    key itself does not resolve, and the retired-key refusal (migration M-4).
+    key itself does not resolve, the ref-grammar ``ConfigError`` for an
+    *explicit_agent* that is malformed or blank, and the retired-key refusal
+    (migration M-4).
     Informational callers that must degrade rather than fail keep their own
     ``try/except`` — see the llm-doc.
     """
@@ -160,7 +162,14 @@ def select_agent(
             )
 
     requested: object = __MISSING__
-    if not explicit_agent:
+    # ⚑⚑ "GIVEN" IS ``is not None``, NOT TRUTHINESS.  This gate can answer the
+    # whole question by itself (the SUPPRESSION return below never reaches
+    # ``resolve_agent``), so a truthy test let a GIVEN-but-blank ref be answered
+    # by the cascade — ``--agent ""`` came back as a no-agent box, or as whatever
+    # the files said, with nothing printed.  A blank ref is a value: it goes
+    # through to ``resolve_agent``, which refuses it by the ref grammar's own
+    # message.  ``None`` keeps its one meaning — no ref was given at all.
+    if explicit_agent is None:
         # Only the cascade can suppress or supply; ``--agent`` short-circuits it.
         requested = resolve_selected_agent(
             ctx=launch_resolve_ctx(std, proj, None),
@@ -179,7 +188,7 @@ def select_agent(
         requested=None if requested is __MISSING__ else str(requested),
         project_path=project_path if project_path is not None else proj.project_path,
     )
-    if explicit_agent:
+    if explicit_agent is not None:  # SAME "given" predicate as the gate above.
         source = "cli"
     elif requested is __MISSING__:
         source = "autopick"

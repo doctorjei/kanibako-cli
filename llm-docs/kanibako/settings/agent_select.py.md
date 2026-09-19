@@ -206,6 +206,12 @@ that would not resolve.
 Only the cascade can suppress or supply, so `--agent` short-circuits the pre-pass entirely and a
 launch that names its agent pays for no extra resolve.
 
+⚑ **GIVEN is `is not None`, never truthiness.** A blank `--agent ""` short-circuits the pre-pass
+too, and goes through to `resolve_agent` to be refused by the ref grammar's own message. Under a
+truthy test a value the user TYPED was handed back to the files to answer — and since the pre-pass
+can return SUPPRESSED on its own, that answer never reached the arbiter at all: `--agent ""` at a
+box carrying `pref.system.agent: null` came back as a no-agent box, silently.
+
 When the pre-pass returns PRESENT-`None`, that is an explicit `pref.system.agent: null`
 SUPPRESSION ⇒ the NO-AGENT plain-shell box (D-M6). ⚑ This arm is the capability the retired
 `box.agent_name` could NOT express (a stored system default always re-supplied an agent), so it

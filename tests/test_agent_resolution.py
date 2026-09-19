@@ -62,7 +62,39 @@ def test_precedence_explicit_beats_requested(monkeypatch):
     _patch_targets(monkeypatch, ["claude", "goose"])
     assert resolve_agent(explicit_agent="claude", requested="goose") == "claude"
     assert resolve_agent(explicit_agent=None, requested="goose") == "goose"
-    assert resolve_agent(explicit_agent="", requested="goose") == "goose"
+
+
+@pytest.mark.parametrize("blank", ["", "  ", "\t\n"])
+def test_a_blank_tier_is_a_value_not_an_unset(monkeypatch, blank):
+    """A PRESENT tier resolves even when it is blank — it does not fall through.
+
+    Spec §2h names three downstream idioms and keeps them apart: present-``None``,
+    terminal ``""`` (**≠ unset**), and the COPY-disable sentinel.  Absence is
+    already spelled ``None`` in both arguments, so a blank one is a VALUE, and
+    the only legal reading of a value at this key is "an agent ref" — which the
+    grammar refuses.
+
+    MUTATION: restore ``_clean(explicit_agent) or _clean(requested)`` and the
+    first half silently launches ``goose`` (the agent the user did not type) and
+    the second ``claude`` (the count rule's autopick), both saying nothing.
+    """
+    from kanibako.errors import ConfigError
+
+    from tests.support.agent_refs import blank_ref_refusal
+
+    _patch_targets(monkeypatch, ["claude", "goose"])
+    with pytest.raises(ConfigError) as ei:
+        resolve_agent(explicit_agent=blank, requested="goose")
+    assert str(ei.value) == blank_ref_refusal()
+
+    # The STORED tier answers the same way, and with ONE agent installed the old
+    # reading had an answer ready for it — which is what made it silent.
+    _patch_targets(monkeypatch, ["claude"])
+    with pytest.raises(ConfigError) as ei:
+        resolve_agent(explicit_agent=None, requested=blank)
+    assert str(ei.value) == blank_ref_refusal()
+    # Control: the SAME call with the tier ABSENT still autopicks.
+    assert resolve_agent(explicit_agent=None, requested=None) == "claude"
 
 
 # ---------------------------------------------------------------------------
