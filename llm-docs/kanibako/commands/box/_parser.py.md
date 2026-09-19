@@ -179,6 +179,15 @@ and the seed all read that one name. `None` sends each of them through the ordin
 reads the very `pref.system.agent` the persist wrote — so the seeded agent and the configured agent
 cannot disagree. Spelling `args.agent` at any of those four sites again reopens the defect.
 
+And "given" has ONE spelling: `_agent_arg is not None`. The store check once asked truthiness while
+the persist asked `.strip()` truthiness, which are different questions — `--agent "  "` cleared the
+first and was dropped by the second. A flag the user typed is given even when its value is blank, so
+a given ref is VALIDATED through `parse_agent_ref` (the owner of charset, pseudo-agent reservation
+and empty-after-strip) and refused by its message; it is never read as "resolve from settings",
+which would steer the box to an agent the user did not ask for without saying so. The validated ref
+is stripped once at that same site, so no consumer normalizes again. `None` keeps its one meaning —
+recovery, or no flag at all.
+
 Explicit-create: `create` MAKES the box but does NOT launch it. A launch (`start` / bare
 `kanibako` / `code` / `shell`) no longer auto-creates, so the closing hint names the verb.
 
