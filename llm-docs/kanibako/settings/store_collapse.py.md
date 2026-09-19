@@ -67,6 +67,15 @@ into the realization's own node) is refused at the install site instead, because
 this walk as two entries — see `_refuse_realized_twin`, whose separate existence is about the CURE
 (a realization has no key to move to) and not about a second arbitration.
 
+⚑ **P7 — THE THIRD CONTESTED-VAR CASE IS NOT THIS MODULE'S EITHER, AND FOR A STRUCTURAL REASON.**
+A `secret_path.<VAR>` fills the same in-box variable as an `env.<VAR>`, but its VALUE is never read
+into kanibako (arm's-length delivery), so it can never become a `CollapsedEnv` and this walk sees
+only the `env` half of that slot. Keyspec §2a refuses the pair — naming both keys, with no
+precedence between the families — at the launch seam, in
+`settings_categories.refuse_env_secret_twins`, which holds the whole entry list and therefore both
+halves. 🛑 Do not move it in here by teaching the walk to read `secret_path` entries: that is the
+seam's own reason for existing, and the `-e` exclusion above applies to it unchanged.
+
 ⚑ **No fourth `CollapsedEnv` field, deliberately.** An overridden slot carries no "cli" marker:
 nothing displays env provenance today (`box show --effective` prints `env K = V`), so a fourth field
 would cost a spec + manifest + closure change to say something no user can see. Adding a DEFAULTED

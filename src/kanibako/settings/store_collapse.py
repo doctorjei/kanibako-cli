@@ -253,6 +253,11 @@ def collapse_env(
   ONCE and the CONTAINING scope writes it first, so a second scope's key could never
   take effect - it is refused rather than silently dropped or silently preferred.
 
+  ⚑ P7 - WHAT IT DOES *NOT* DECIDE: whether a ``secret_path.<VAR>`` names one of these
+  variables too. That pair is refused at the launch seam
+  (``settings_categories.refuse_env_secret_twins``), because a secret's VALUE is never
+  read into kanibako and so reaches no slot here to contest.
+
   ⚑ A SAME-SCOPE CONTEST CANNOT ARISE. One scope's ``env`` node is a MAP keyed by
   VAR, and the agent tier's two cascade levels are overlaid into ONE effective node
   per name upstream (``settings_launch.snapshot_category_entries``), so each scope
@@ -727,10 +732,16 @@ def _refuse_seed_outside_home(dest: str, entry: BindEntry) -> None:
 
 
 def _refuse_env_twin(arriving: CategoryEntry, held: CollapsedEnv) -> None:
-  """Two scopes' keys naming ONE variable: the slot is taken, so refuse - naming BOTH.
+  """Two scopes' ``env`` keys naming ONE variable: the slot is taken, so refuse - naming BOTH.
 
-  ⚑ THE SOLE RAISE SITE FOR THE ENV SLOT, deliberately: the severity of a contested
-  slot is one decision and it is spelled in one place.
+  ⚑ THE SOLE RAISE SITE FOR THE CROSS-SCOPE ``env`` CONTEST, deliberately: the
+  severity of a contested slot is one decision per case and each is spelled in one
+  place. The other two cases are elsewhere because their inputs are: a SAME-SCOPE
+  declared-vs-realized twin is ``commands.start._refuse_realized_twin`` (the collapse
+  cannot tell the two apart by design), and a VAR named by the ``env`` family AND the
+  ``secret_path`` family is ``settings_categories.refuse_env_secret_twins`` - a
+  secret's VALUE never enters the collapse at all, so this function sees only the
+  ``env`` half of that slot.
   """
   raise SettingsError(
     f"the environment variable {arriving.box_dest!r} is claimed by two keys: "

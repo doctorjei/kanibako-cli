@@ -1038,6 +1038,121 @@ class TestDeclarationKeyIsDiscriminated:
         assert entry.key.startswith("box.bindings.rw.")
 
 
+class TestAVarNamedByBothScalarFamiliesRefusesTheLaunch:
+    """Keyspec §2a: ``env.<VAR>`` and ``secret_path.<VAR>`` on one VAR REFUSE.
+
+    📖 THE CLAUSE: *"A VAR named by BOTH families REFUSES the launch, naming both
+    keys … NO precedence between the families is defined, and none may be inferred
+    from delivery order."*
+
+    ⚑ WHAT IT REPLACED, and why "it raises" is not enough to pin: the two families
+    share one delivery target, and before this refusal the box-side export shim
+    (``commands.start._secret_export_shim``, which runs ``export <VAR>=...`` at
+    agent start) simply overwrote what podman's ``-e`` had already put there. The
+    secret won every time — by an ORDERING ACCIDENT, silently, with no key
+    mentioned. So the assertions below are about the two KEY NAMES reaching the
+    user, not about the exception type.
+    """
+
+    @staticmethod
+    def _deliveries(floor, *, agent="claude"):
+        """Drive the live pipeline to the launch seam's carrier (the single route)."""
+        from kanibako.settings.settings_categories import launch_deliveries
+        from kanibako.settings.settings_launch import (
+            build_launch_snapshot,
+            meta_identity_floor,
+            snapshot_category_entries,
+        )
+
+        ctx = make_ctx(
+            workset_name=None,
+            config={"config.data": "/data", "config.agents": "/data/agents"},
+        )
+        base: dict[str, object] = dict(meta_identity_floor(
+            box_name="b", project_path="/p", inbox="/i", share_global="/sg",
+            share_workset=None, agent_name=agent,
+        ))
+        base.update(floor)
+        snap = build_launch_snapshot(
+            agent_name=agent, ctx=ctx, system_path=None, agent_path=None,
+            workset_path=None, box_path=None, default_categories=base,
+        )
+        entries = snapshot_category_entries(
+            snap, active_agent=agent, box_ctx=ctx,
+        )
+        return launch_deliveries(entries, agent_dests=frozenset())
+
+    def test_the_refusal_NAMES_BOTH_KEYS(self):
+        from kanibako.settings.settings_resolve import SettingsError
+
+        with pytest.raises(SettingsError) as excinfo:
+            self._deliveries({
+                "box.env.TOK": "inline-value",
+                "agent.claude.secret_path.TOK": "/secrets/tok",
+            })
+        message = str(excinfo.value)
+        # BOTH, always: a refusal naming one key sends the user to delete the half
+        # they can see and leaves the collision standing.
+        assert "'box.env.TOK'" in message
+        assert "'agent.claude.secret_path.TOK'" in message
+        assert "'TOK'" in message
+
+    def test_it_states_that_NO_PRECEDENCE_exists(self):
+        from kanibako.settings.settings_resolve import SettingsError
+
+        with pytest.raises(SettingsError) as excinfo:
+            self._deliveries({
+                "box.env.TOK": "inline-value",
+                "box.secret_path.TOK": "/secrets/tok",
+            })
+        message = str(excinfo.value)
+        assert "NO precedence between them is defined" in message
+        # ⚑ And the CURE is removal of one, not an override: there is no nearer
+        # file to write, because the two are different KEYS.
+        assert "Keep exactly ONE and remove the other" in message
+
+    @pytest.mark.parametrize("floor", [
+        # SAME scope.
+        {"box.env.TOK": "v", "box.secret_path.TOK": "/s/tok"},
+        # env NEARER than the secret.
+        {"box.env.TOK": "v", "system.secret_path.TOK": "/s/tok"},
+        # secret NEARER than the env.
+        {"system.env.TOK": "v", "box.secret_path.TOK": "/s/tok"},
+        # ACROSS the agent tier, either way round.
+        {"agent.claude.env.TOK": "v", "workset.secret_path.TOK": "/s/tok"},
+        {"workset.env.TOK": "v", "agent.claude.secret_path.TOK": "/s/tok"},
+    ])
+    def test_EVERY_scope_pairing_refuses_alike(self, floor):
+        # ⚑⚑ THIS IS WHAT "NO PRECEDENCE" MEANS OPERATIONALLY: the answer must not
+        # move when the nearer scope changes hands. A rule that refused only one
+        # arrangement would BE a precedence, spelled as a refusal.
+        from kanibako.settings.settings_resolve import SettingsError
+
+        with pytest.raises(SettingsError, match="named by BOTH scalar families"):
+            self._deliveries(floor)
+
+    def test_the_two_families_on_DIFFERENT_vars_still_launch(self):
+        # The control. The refusal is keyed on the VAR, so the families remain
+        # freely usable side by side — this is not a ban on holding both.
+        deliveries = self._deliveries({
+            "box.env.PLAIN": "value",
+            "box.secret_path.TOK": "/secrets/tok",
+        })
+        assert [e.key for e in deliveries.secrets] == ["box.secret_path.TOK"]
+
+    def test_a_reset_secret_pointer_leaves_no_twin_to_refuse(self):
+        # A present-null ``secret_path`` declares "this endpoint needs no token"
+        # (§2a's three-valued rule) and emits NO entry, so it names no VAR and
+        # cannot contend for one. ⚑ Pinned because the opposite — refusing on the
+        # KEY's presence rather than on an emitted entry — would break the
+        # documented way to turn a token off.
+        deliveries = self._deliveries({
+            "box.env.TOK": "value",
+            "box.secret_path.TOK": None,
+        })
+        assert deliveries.secrets == []
+
+
 class TestGuaranteeCreateIsALaunchGuaranteeNotAReadOne:
     """A DISPLAY verb must not write to disk.
 
