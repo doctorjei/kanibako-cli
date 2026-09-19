@@ -27,8 +27,10 @@
 # suffix set is per registry and defaults to `.py` alone (`kinemata/config.py`,
 # `suffixes: tuple[str, ...] = (".py",)`, verified at source 2026-09-14 against
 # kinemata `a365474` and RE-VERIFIED the same day at `00044f2`, nine commits
-# later, where the line is `config.py:137`), and no registry below declares
-# `suffixes`. Counted the
+# later, where the line is `config.py:137`). ONE registry below declares
+# `suffixes` -- `reserved-agent-names`, added 2026-09-19 -- and what it declares
+# is `.toml`, so no registry reads `.md`, which is the property this argument
+# rests on and not the count. Counted the
 # same day: `api-docs/` holds 136 `.md` and 0 `.py`, `llm-docs/` holds 55 `.md`
 # and 0 `.py` -- 191 documents, no code. Those two excludes therefore suppressed
 # NOTHING on the registry side. They were inert, and the difference the split
@@ -140,8 +142,9 @@ root = "."
 # respells every declared value by construction; `llm-docs/` is hand-written
 # prose, and prose naturally spells values while describing them. Both
 # observations hold. Neither reaches a duplication scan, which reads `.py` and
-# those directories contain none -- see the merge note above for the counts. An
-# exclude that suppresses nothing is not a scope decision, it is a line.
+# (since 2026-09-19) `.toml`, and those directories hold neither -- see the merge
+# note above for the counts. An exclude that suppresses nothing is not a scope
+# decision, it is a line.
 #
 # 🛑 `salvage/` IS DELIBERATELY NOT EXCLUDED, AND THIS IS THE ONE JUDGMENT HERE
 # THAT THE NEXT PERSON WILL WANT TO REVERSE. The upstream reason for excluding
@@ -285,11 +288,12 @@ historical = [
 #    any more. The claims config argued that the registry side's exclusion of
 #    those two directories was legitimate for a DUPLICATION scan while being
 #    fatal for a documentation scan, so the two positions could not live in one
-#    `exclude`. The premise was false: the registry scan reads `.py` and those
-#    directories hold none, so the registry-side exclude was inert and there was
-#    never a second position to hold. One `exclude` now serves both scans and
-#    this refusal is the only position either of them takes on the two
-#    directories -- they are scanned, and they are red.
+#    `exclude`. The premise was false: the registry scan reads `.py` and (since
+#    2026-09-19) `.toml`, and those directories hold neither, so the
+#    registry-side exclude was inert and there was never a second position to
+#    hold. One `exclude` now serves both scans and this refusal is the only
+#    position either of them takes on the two directories -- they are scanned,
+#    and they are red.
 #
 # 4. [[promise]] for docs/architecture.md:71 -- NOT ADDED. The path
 #    `src/kanibako/deprecation.py` is conditional on an EVENT ("when the first
@@ -994,7 +998,7 @@ kind = "code-patterns"
   # 🛑 `kinemata unused` WILL LIST BOTH as mentioned by nobody. That is this
   # entry working, not this entry rotting.
   # ⚑ The names DO survive in `src/kanibako/data/keyspace-manifest.yaml` as
-  # retired-key chain rows. A registry reads `.py` only, so they are out of
+  # retired-key chain rows. This registry reads `.py` only, so they are out of
   # reach here -- and they are load-bearing MIGRATION DATA, not a reappearance.
   [[registry.entry]]
   id = "scope_roots"
@@ -1118,7 +1122,7 @@ match_mode = "strings"
 # `antipatterns` ("an entry with none is invisible to every check",
 # `adapters/patterns.py`), and its own docstring scopes it to "a handful, not
 # hundreds". `yaml-mapping` also contributes nothing to the duplication gate,
-# which is right: these are `.md` paths and `check` reads `.py`. Measured
+# which is right: these are `.md` paths and `check` reads no `.md`. Measured
 # 2026-09-19 -- adding this registry moves `check`'s `silent:` tally by exactly
 # 139 (159/251 to 298/390) and changes no finding, which is the same arithmetic
 # the five narrowed views produced and is not a signal.
@@ -1156,6 +1160,117 @@ name = "python-floor"
 kind = "toml-value"
 source = "pyproject.toml"
 path = ["project", "requires-python"]
+
+# ---------------------------------------------------------------------------
+# FACT: no agent name this repository ships spells a RESERVED PSEUDO-AGENT name.
+# The two pseudo-agents, `default` and `shell` (keyspec §2d), already own an
+# `agent.<name>.*` cascade slot and a store dir of their own, so a real agent
+# claiming one would own them too -- and the product's answer to a plugin that
+# does is to make that plugin UNUSABLE. `targets/__init__.py::_register` is the
+# one registration gate every discovery tier assigns through, and it SKIPS a
+# reserved name with a once-per-process warning to stderr rather than raising;
+# `_require_meta_name` RAISES on a `Target` that reaches a launch some other way.
+# So a plugin of ours named `default` would build, publish and install cleanly,
+# and then simply never appear in `kanibako setup` -- the whole symptom being a
+# warning line beside output nobody is reading it against.
+# AUTHORITY: `agent_ref.py::PSEUDO_AGENT_NAMES` holds the reserved set, and
+# `reserved_pseudo_agent_reason` is the single sentence every refusal site
+# shares -- the spec reserves the name against all three roles, agent, persona
+# and harness, in one breath, so the refusals must not drift apart.
+# CATCHES: a distribution whose `kanibako.agents` entry-point KEY, or whose
+# `Target.name`, spells a reserved name -- arriving as a new `packages/*` tree,
+# as a rename of one of the three shipped today, or because the reserved set
+# grew to swallow a name already in use.
+#
+# 🛑 THIS IS THE IN-CORPUS HALF OF A RULE WHOSE OTHER HALF IS NOT EXPRESSIBLE,
+# and the split is worth stating because the two read as one sentence. The
+# RECURRENCE guard -- "no plugin from a package OUTSIDE this tree may register a
+# reserved name" -- has a subject that is not in the corpus at scan time, and
+# every mechanism in this file is a static declaration of negative polarity:
+# excellent at "nothing in this corpus spells X", structurally silent about
+# "something not in this corpus might". That half is REPORTED, not approximated
+# ([R160]). What answers for it is `_register`'s skip-and-warn, which is the
+# product behaving, not a check.
+#
+# ⚑ `code-patterns` IS FORCED, AND WITH IT THE DIRECTION OF THE PARITY BELOW.
+# The two subjects -- a TOML table's KEYS, and a `@property` returning a literal
+# -- are reachable by no registry kind here. `toml-value` reads the value and
+# refuses a table outright, which is measured directly above on `python-floor`;
+# `python-constants` reads module-level strings, and a property return is not
+# one. An ORACLE can read both, and does. That puts the CORPUS on the produced
+# side and leaves the reserved names as the declaration -- which is the
+# orientation `disjoint` exists for: a declaration of what the code must NOT
+# emit.
+#
+# 🛑 THE COST, STATED RATHER THAN BURIED: the two ids below are a SECOND
+# spelling of `PSEUDO_AGENT_NAMES`. A third reserved name added to that frozenset
+# and not added here is caught by nothing -- `disjoint` claims no overlap, never
+# that the declaration is complete, and the one parity a registry is allowed
+# cannot also be the `equal` that would pin it. The rot is one-way, and it is the
+# less likely direction: a new PLUGIN is enumerated by the oracle and caught
+# without anyone remembering this file, while a new RESERVED name is a keyspec
+# edit. ⇒ WIDENING §2d OBLIGES AN ENTRY HERE -- and because that edit is made in
+# `agent_ref.py` and not in this file, the reminder is written BESIDE
+# `PSEUDO_AGENT_NAMES`, where the person widening the set is already looking. It
+# is a pointer, not a second list: the names are spelled once there and once
+# here, and nowhere else.
+#
+# ⚑ `suffixes` IS DECLARED, THE FIRST REGISTRY IN THIS FILE TO DO SO, and the
+# `.py` half is absent from the antipatterns by measurement rather than by
+# oversight. Written as a code shape the `Target.name` catch is `return
+# "default"`, which has exactly one live site --
+# `commands/box/_lifecycle.py:1654`, an OWNERSHIP value in
+# `_ownership_from_args`, not an agent name and not wrong. An antipattern for it
+# would red this gate to report a correct line. The parity's oracle reaches that
+# half through the AST instead, where a `name` property on a `Target` subclass is
+# a structure and not a spelling. What is left to `check` is the entry-point
+# half, where the spelling IS the fact: a reserved key bound to a `module:Class`
+# value in any `.toml` under the tree.
+#
+# ⚑ BOTH QUOTES ARE MATCHED, because both are legal TOML and the parity oracle
+# reads them alike -- `tomllib` is quote-agnostic, so a single-quoted rogue entry
+# point still reds `parity`, and a pattern anchored on `"` alone would lose only
+# the SITE NAMING that makes `check` worth running beside it. Measured 2026-09-19
+# against a scratch tree in /tmp carrying its own copy of this config -- the
+# negative control below, with its rogue entry point SINGLE-quoted instead:
+# with `"` alone `kinemata check` is rc=0 and silent; with `["']` it is rc=1,
+# `shell (1 site)`, quoting `packages/agent-rogue/pyproject.toml:6` and the line.
+# Over THIS tree the widening changes nothing -- `check` output byte-identical,
+# same tally.
+#
+# ⚑ `home` NAMES A `.py` THIS REGISTRY NEVER READS, and that is deliberate too.
+# With `suffixes = [".toml"]` the scan reaches no `.py`, so the key can never
+# report a home; what it does is satisfy `unused`'s precondition, which refuses a
+# registry where neither `machinery` nor any entry's `home` says where the
+# entries are declared. The honest key would be `mentions_are_uses = false` --
+# these names are declared so that nothing spells them -- and it is NOT
+# EXPRESSIBLE ([R160]): it is absent from `REGISTRY_KEYS`, and declaring it is
+# rc=2, `declares mentions_are_uses, which means nothing here`, measured
+# 2026-09-19. So the `.py` path stands as the closest true thing sayable, and it
+# is the module that owns the reserved set.
+#
+# ⚑ IT CONTRIBUTES TWO ENTRIES TO `check` AND MOVES NO FINDING, measured rather
+# than assumed: the `silent:` tally goes 299/391 to 299/393 -- the declared total
+# by exactly 2, the silent numerator not at all, since both entries carry
+# antipatterns -- that line is the ONLY one in the whole output that differs, and
+# `reserved-agent-names` appears in no finding. The movement is arithmetic and is
+# not a signal.
+[[registry]]
+name = "reserved-agent-names"
+kind = "code-patterns"
+suffixes = [".toml"]
+
+  [[registry.entry]]
+  id = "default"
+  antipatterns = ['''(?m)^\s*default\s*=\s*["'][\w.]+:\w+["']''']
+  home = ["src/kanibako/agent_ref.py"]
+  note = "reserved pseudo-agent; an entry point that claims it is never registered"
+
+  [[registry.entry]]
+  id = "shell"
+  antipatterns = ['''(?m)^\s*shell\s*=\s*["'][\w.]+:\w+["']''']
+  home = ["src/kanibako/agent_ref.py"]
+  note = "reserved pseudo-agent; an entry point that claims it is never registered"
 
 # ---------------------------------------------------------------------------
 # THE PARITY ORACLES. Each one runs a command that prints what the CODE really
@@ -1537,6 +1652,85 @@ for v in sorted(seen):
     print(f"ci-python: {v}")
 """]
 extract = '(?m)^ci-python: (\S+)$'
+
+# The oracle for the reserved-name declaration above. It enumerates every agent
+# name this repository registers, from two places because the product reads two:
+# the `kanibako.agents` entry-point KEYS of the root `pyproject.toml` and of each
+# `packages/*/pyproject.toml` (what `_register` is handed as `ep.name`), and the
+# literal returned by the `name` property of every `Target` subclass under `src/`
+# and `packages/*/src/` (what `_register` is handed by the module and file-drop
+# scans, and what `_require_meta_name` validates).
+#
+# ⚑ IT READS THE TREE, NOT THE INSTALLED METADATA, and CI forces that rather
+# than style. The conformance job installs `-e .` and DELIBERATELY not the three
+# plugin packages -- its own comment says so at the install step -- so in that
+# environment `importlib.metadata.entry_points(group="kanibako.agents")` yields
+# exactly one entry, core's `no_agent`, and importing `kanibako.plugins.claude`
+# raises `ModuleNotFoundError`. Both measured 2026-09-19 in the kinemata venv,
+# which is installed the same way. An oracle built on the running environment
+# would have enumerated one name out of four and read green over three
+# unexamined distributions -- the vacuity this file keeps paying attention to,
+# arriving as a partial rather than an empty set, where `disjoint`'s own
+# empty-oracle refusal could not have caught it.
+#
+# ⚑ THE AST WALK SELECTS BY BASE CLASS, not by filename. `target.py` is where all
+# three plugins put the class today; a plugin that moved it would drop out of a
+# glob silently, and a produced side short by one is exactly the failure above.
+# The abstract `name` on `Target` itself contributes nothing -- its body is `...`,
+# so there is no returned constant -- and `class Target(ABC)` does not match a
+# base named `Target` either.
+#
+# ⚑ ONLY A LITERAL IS ENUMERATED, AND THE DECLARATION'S `CATCHES:` LINE
+# OVERSTATES ITSELF BY EXACTLY THAT MUCH. The walk reports an `ast.Return` whose
+# value is an `ast.Constant`, so a `name` property returning `_AGENT_NAME`, or an
+# f-string, or a lookup, contributes NOTHING to the produced side -- the AST half
+# reads a spelling written in place, not a value. The ENTRY-POINT half is
+# unaffected and still reaches every `packages/*` distribution, so the PRODUCT is
+# not exposed by this: a plugin of that shape is answered by `_require_meta_name`
+# at launch, which raises. It is the sentence "whose `Target.name` spells a
+# reserved name" that reaches further than the mechanism does.
+#
+# Measured 2026-09-19 on this tree, kinemata `0.2.0`:
+#   `# reserved-agent-names: 2 declared, 4 produced, no identifier is both
+#   declared and produced.`  rc=0
+# The 4 are `no_agent`, `claude`, `codex` and `goose`, printed over 8 lines --
+# each names itself twice, once as an entry-point key and once as `Target.name`,
+# core's `no_agent` included, because `NoAgentTarget.name` returns a literal and
+# is walked like the rest. That the two agree is a different fact and is not what
+# this table checks.
+# NEGATIVE CONTROL, run against a scratch tree in /tmp carrying its own copy of
+# this config, so this repository's config was never edited for it: a fourth
+# package declaring `shell = "kanibako.plugins.rogue:RogueTarget"` and a
+# `RogueTarget.name` returning `"default"` gives rc=1, `FAIL: 2 disagreement(s)`
+# -- `default: declared and produced, where neither may be` and the same for
+# `shell`, one reached through the TOML key and one through the AST, so both
+# halves of the oracle are shown discriminating. `kinemata check` over the same
+# tree: rc=1, `shell (1 site)`, naming
+# `packages/agent-rogue/pyproject.toml:5` and quoting the line.
+# VACUITY CONTROL, the same scratch config over a tree that declares no agent at
+# all: rc=1, `BLOCKED: claims no identifier is both declared and produced, and
+# its oracle produced no identifiers at all. Nothing can violate that, so the run
+# would pass by looking at nothing`.
+[[parity]]
+registry = "reserved-agent-names"
+relation = "disjoint"
+command = ["{python}", "-c", """
+import ast, pathlib, tomllib
+for manifest in [pathlib.Path("pyproject.toml"), *sorted(pathlib.Path("packages").glob("*/pyproject.toml"))]:
+    table = tomllib.loads(manifest.read_text()).get("project", {}).get("entry-points", {}).get("kanibako.agents", {})
+    for key in table:
+        print(f"agent-name: {key}")
+for source in [*sorted(pathlib.Path("src").rglob("*.py")), *sorted(pathlib.Path("packages").glob("*/src/**/*.py"))]:
+    for node in ast.walk(ast.parse(source.read_text())):
+        if not (isinstance(node, ast.ClassDef) and any("Target" in ast.unparse(base) for base in node.bases)):
+            continue
+        for item in ast.walk(node):
+            if isinstance(item, ast.FunctionDef) and item.name == "name":
+                for leaf in ast.walk(item):
+                    if isinstance(leaf, ast.Return) and isinstance(leaf.value, ast.Constant):
+                        print(f"agent-name: {leaf.value.value}")
+"""]
+extract = '(?m)^agent-name: (\S+)$'
 
 # ---------------------------------------------------------------------------
 # THE SHAPE RULES. `[[shape]]` reads only the declaration and asks whether it is
