@@ -352,9 +352,10 @@ destination in place.
   (`resolve_project`), which derives home/vault SOLELY from the default location. Reading the stored
   override here would make stop/cleanup/move target a DIFFERENT home than the launch binds
   (JC-B2b-4).
-* **Standalone registration** is `registry.standalone` (Phase 5d), NOT `names.yaml`. A standalone
-  source's entry must be dropped on a move or a standalone→standalone move strands the old
-  name → root mapping.
+* **Standalone registration** is `registry.standalone` (Phase 5d) — the GLOBAL registry's own
+  section, NOT the per-workset `registry.yaml` `boxes:` membership that carries primary and named
+  boxes. A standalone source's entry must be dropped on a move or a standalone→standalone move
+  strands the old name → root mapping.
 
 ## Functions
 
@@ -692,8 +693,8 @@ this function writes, which the sweep would relocate into the user's workspace),
 just re-established.
 
 A standalone box's identity is the canonical opaque `<kuid>_<leaf>`, matching `create --standalone`
-/ `duplicate --standalone`. Standalone boxes are NOT named via `names.yaml`; they are registered in
-`registry.standalone`.
+/ `duplicate --standalone`. Standalone boxes are NOT members of any workset's `boxes:` table; they
+are registered in `registry.standalone`.
 
 Convert ESTABLISHES the box uniformly via `establish_standalone`, which HONORS an explicit `--name`
 through `box_identity.resolve_standalone_name`:
@@ -708,8 +709,17 @@ and it is the ONLY key laid there; NO `mode` is persisted anywhere (see the drif
 ⚑ It is handed `state.box_authored_vault`: it writes straight into the box tier
 `_deliver_carried_box_settings` just laid down, so the resolved value would undo that carry and pin
 the source workset's default on a box that has LEFT it. The new root `workset.yaml` carries only
-`workset.kuid`, so the standalone box's resolved value IS what it authored. `_remove_old_metadata` purges the source's prior
-registry entry (`names.yaml` for primary/named) so it does not dangle.
+`workset.kuid`, so the standalone box's resolved value IS what it authored. `_remove_old_metadata`
+purges the source's prior registry entry so it does not dangle — and for BOTH non-standalone modes
+that entry is the same thing: the source workset's own `boxes:` row.
+
+⚑ **The two arms reach it by different doors and land on ONE carrier.** A `primary` source goes
+`unregister_primary_box_name` → `settings/paths.py::_unregister_workset_box_membership`; a workset
+member goes `remove_project`, which unlinks the discoverability symlink and then calls that SAME
+helper as its last durable step. The helper resolves the per-workset registry FILE
+(`resolve_workset_registry_path` — a `workset.registry` repoint wins, else
+`<workset_root>/registry.yaml`) and calls `workset_registry.unregister_workset_box`. So the thing
+dropped is a `boxes:` row in a `registry.yaml`, never a free-standing per-mode index.
 
 ⚑ `new_name` is only a *requested* name: the source's name is passed as the default when the caller
 gave no `--name` (i.e. `new_name == state.name`), in which case it is NOT treated as a user

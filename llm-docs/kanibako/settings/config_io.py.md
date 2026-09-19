@@ -2,7 +2,7 @@
 
 `config_io` is where a settings-cascade document becomes a `dict` and where a `dict` becomes a file
 on disk. Every level of the cascade — the bootstrap `kanibako.cfg`, each scope's own
-settings file, the agent files, plus the name registry (`names.yaml`) and the helper spawn budget
+settings file, the agent files, plus the consolidated name registry and the helper spawn budget
 (`spawn.yaml`) — is read by `load_doc` and written by `dump_doc`. Serialization is PyYAML
 throughout; there is no hand-rolled serializer. (`pyproject.toml` is Python packaging and is NOT
 handled here.)
@@ -231,10 +231,18 @@ Recorded here rather than relocated, because relocating a drifted claim launders
 that reads as current. Each was measured, not inferred.
 
 1. **`general.yaml`** (module docstring file list) — the file does not exist. Whole-repo search
-   (`command grep -rn -I`, excluding `.git`) finds it in exactly four places: this docstring, its
-   copy in the stale `build/lib/` artifact, `CHANGELOG.md:2216` (history), and `MIGRATION.md:2927`,
+   (`command grep -rn -I`, excluding `.git`) on 2026-08-18 FOUND it in exactly four places: this
+   docstring, its copy in the wheel-staging tree, `CHANGELOG.md` (history), and `MIGRATION.md`,
    which states it *becomes* `general/settings.yaml`. Zero references in `src/` (other than the
    docstring itself) and zero in `tests/`. **Dropped.**
+   ⚑ The measurement is PAST TENSE and cited BY CONTENT, deliberately. It was written in the
+   present, with two line numbers and a path into the wheel-staging tree; by the time anyone
+   followed them the line numbers had moved, the staging tree was gone, and the docstring arm had
+   been dropped by this very pass — so the sentence asserted four places of which two survive.
+   **Cite a document by a phrase that can be grepped, and never rest a claim on an artifact that
+   may already have been cleaned away when the reader arrives** — a line citation is invalidated by
+   any edit to the cited file, including one that leaves the sentence itself untouched, and a
+   staging path is only there while someone happens to have built.
 2. **`settings.yaml` listed TWICE** in the same parenthetical list. **Dropped one.**
 3. **`config.yaml` listed as a kanibako-owned config file.** It is goose's own agent config, already
    covered by the list's own "agent configs", and one of its write sites deliberately bypasses
@@ -245,9 +253,10 @@ that reads as current. Each was measured, not inferred.
    The adjacent sentence "there is no hand-rolled serializer" is TRUE and was kept.
 5. **`load_doc`'s parenthetical `("Configuration file missing or malformed")`** — a quotation of
    `ConfigError`'s docstring that no longer matches it. Live `errors.py` reads
-   `"""Configuration missing, malformed, or refused."""`; the quoted wording survives only in
-   `build/lib/kanibako/errors.py`. It was misleading twice over, since it is also not the message
-   `load_doc` actually raises (`the config file {path} is not valid YAML: …`). **Dropped.**
+   `"""Configuration missing, malformed, or refused."""`; at the time of measurement the quoted
+   wording survived nowhere in this tree but the wheel-staging copy of that module, which has since
+   been cleaned away. It was misleading twice over, since it is also not the message `load_doc`
+   actually raises (`the config file {path} is not valid YAML: …`). **Dropped.**
 6. **`write_root_key`'s "used for flat `KanibakoConfig` fields that live at the document root"** —
    false on both halves; see the measurement under that symbol. **Dropped.**
 
@@ -278,9 +287,20 @@ and reads as dead code.
 ### Packaging
 
 `llm-docs/` is **not shipped**, verified rather than assumed: `pyproject.toml` has
-`[tool.setuptools.packages.find] where = ["src"]`, there is no `MANIFEST.in`, the wheel staging tree
-`build/lib/` contains no `llm-docs` path, and the sdist manifest
-`src/kanibako_cli.egg-info/SOURCES.txt` (218 entries) has zero `llm-docs` entries.
+`[tool.setuptools.packages.find] where = ["src"]`, there is no `MANIFEST.in`, and the sdist manifest
+`src/kanibako_cli.egg-info/SOURCES.txt` has zero `llm-docs` entries.
+
+⚑ The wheel-staging arm this paragraph once carried was DROPPED, and so was the manifest's entry
+COUNT. Staging output is transient and gitignored, so "it is not in the staging tree" is evidence
+only while someone has built; and a count rots on the next added module. **State the PROPERTY —
+zero `llm-docs` entries — which stays true as the manifest grows.**
+
+⚑ The manifest arm that remains is itself a LOCAL BUILD PRODUCT — the egg-info tree is untracked
+and gitignored, here only because someone last built on this box, and absent from a fresh clone. It
+is kept because it CORROBORATES, not because it carries: the two arms before it are TRACKED and
+settle the question between them. So the conclusion does not REST on an artifact that may already
+have been cleaned away, which is what the rule above bars; read the third arm as confirmation a
+reader may be unable to reproduce.
 
 ### Kept and MARKED, per the invert-the-drop rule for library behaviour
 

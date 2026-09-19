@@ -112,8 +112,10 @@ write-ahead entry possible at all.
 
 ## J2 — the lifecycle journal, register-only write-ahead
 
-Import and connect **REGISTER** an externally-seeded box and **NEVER seed** (`CONVENTIONS.md`
-"Seed model" B7). J2 makes that register seam ATOMIC via the journal: a write-ahead
+Import and connect **REGISTER** an externally-seeded box and **NEVER seed**
+(`~/canon/notebook/procedures/seed-and-create-model.md`, "The model": *"`create` seeds + registers.
+`connect` / import register only — the box was seeded where it was created, so seeding again would
+clobber it."*). J2 makes that register seam ATOMIC via the journal: a write-ahead
 `op: import` / `op: connect` entry brackets the register, so a crash between write-entry and
 clear-entry leaves the entry behind, and the NEXT resolve re-enters this same (idempotent,
 register-if-absent) import and replays it — register-if-absent, then clear, **no seed**.

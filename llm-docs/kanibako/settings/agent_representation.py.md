@@ -39,8 +39,12 @@ below for why the active NODE name superseded it.
   constant at load, so the `Binding` this module receives is post-expansion; re-expanding would be
   wrong. A LITERAL-origin raw `@`/`$XDG`/`~` `box_dest` therefore stays raw for free (§6a).
 * **Build ALONGSIDE.** Nothing here was wired into the launch path when it was written; block 7b
-  swaps `descriptor_mounts` onto this representation. `assembly.py` / `agent_defaults.py` /
-  `start.py` were UNTOUCHED by 7a.
+  swaps `descriptor_mounts` onto this representation. `targets/assembly.py` /
+  `settings/agent_defaults.py` / `commands/start.py` were UNTOUCHED by 7a.
+  ⚑ Each is spelled WITH its package on purpose. Bare, `assembly.py` reads as a sibling of this
+  module — and there is no `settings/assembly.py`, in this tree or in any commit that reached it.
+  The `assembly.py` meant here is `targets/assembly.py`, the one the bullets above import
+  `resolve_binding_source` from.
 
 There is no mutation of the *descriptor* or the *install* either — the partial is built from copies
 of what they report.

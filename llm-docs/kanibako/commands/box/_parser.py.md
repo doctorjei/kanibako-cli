@@ -303,8 +303,15 @@ name is kept because `rm`'s call sites and tests read against it.
 
 1. `iter_projects` — default-mode boxes.
 2. `iter_workset_projects` — workset members.
-3. `registry_store.load_standalone` — STANDALONE boxes, which are not in `names.yaml` /
-   `iter_projects` and would otherwise be invisible.
+3. `registry_store.load_standalone` — STANDALONE boxes, which neither `iter_projects` nor
+   `iter_workset_projects` returns and which would otherwise be invisible. The two miss them for
+   DIFFERENT reasons, and only one of the two is about membership. `iter_workset_projects` walks
+   `ws.projects`, which IS the workset's `boxes:` table, and a standalone box holds no `boxes:` row
+   anywhere. `iter_projects` never consults a membership table to decide WHAT to list: it
+   enumerates the metadata dirs under `std.boxes` and reads the primary `boxes:` table only to fill
+   in the workspace column. A standalone box keeps its metadata dir under its OWN root rather than
+   as a child of `std.boxes`, so it is invisible there — and would stay invisible even if it did
+   carry a `boxes:` row.
 4. `registry_store.list_deregistered` — surfaced in a dedicated section, with `deregistered` as
    the status, so a user can SEE what they may `register` or `rm --purge`; before that they were
    invisible. Shown only when entries exist, so a tree with none renders byte-identically.
