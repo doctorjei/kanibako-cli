@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from kanibako.commands.flags import add_null_flag
 from kanibako.settings.config import config_file_path, load_config
@@ -33,6 +34,12 @@ from kanibako.project.workset import (
     remove_project,
     resolve_workset_name,
 )
+
+if TYPE_CHECKING:
+    # ⚑ TYPE-ONLY, deliberately: every ``settings`` import in this module is deferred
+    # into a function body, and a runtime one here would undo that.
+    from kanibako.settings.settings_categories import CategoryEntry
+    from kanibako.settings.store_collapse import CollapsedStore
 
 
 def add_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -742,12 +749,20 @@ def _run_workset_config(args: argparse.Namespace) -> int:
         # in both views, against spec §0 ("``config show`` lists them").
         # ⚑ ONE CARRIER: the rows come from the flatten the system noun already renders
         # them with, never from a second read of the same file.
-        return show_config(
+        rc = show_config(
             global_config_path=config_file,
             config_path=config_file,
             effective=args.effective,
             system_settings_path=ws_config,
         )
+        # ⚑ THE OTHER HALF OF THE SAME §0 CLAUSE. ``show_config`` renders the
+        # DECLARATIONS; the binding each abstract one DERIVES is an ``--effective``
+        # obligation and needs the workset-scope COLLAPSE, which the display engine
+        # neither has nor should grow — the block it renders for a box is fed a
+        # LAUNCH's snapshot, and a working set has no box to launch.
+        if rc != 0 or not args.effective:
+            return rc
+        return _print_effective_derivations(ws, std, ws_config)
 
     if action == ConfigAction.get:
         # ⚑ Refused at the HANDLER, not in the engine: the get engine returns VALUES and
@@ -1101,26 +1116,26 @@ def _workset_raw_shares(ws_config: Path) -> dict[tuple[str, str], object]:
 _PREVIEW_HOME_SRC: str = "(each box's own home store)"
 
 
-def _print_effective_shares(ws, std, ws_config: Path) -> int:
-    """Resolve, ARBITRATE and print the workset's bindings as launch-time mounts."""
-    from kanibako.errors import CategoryCollisionError
-    from kanibako.settings.kb_store import BindEntry
+def _workset_preview_entries(ws, std, ws_config: Path) -> "list[CategoryEntry]":
+    """The workset-only resolve → the ONE ``CategoryEntry`` list both listings read.
+
+    A working set names no BOX, so this builds the cascade a launch would build MINUS
+    the box tier: the agent name is a placeholder, the base file is absent, and the
+    only settings file passed is the workset's own.  ⚑ IT IS SHARED, and that is the
+    point — ``workset share list --effective`` and the derived-binding block of
+    ``workset show --effective`` describe ONE working set, and two resolves of one
+    file would be two answers about it.
+
+    Raises :class:`~kanibako.settings.settings_resolve.SettingsError` for a malformed
+    file; the ARBITRATION and its refusals are :func:`_workset_preview_collapse`'s.
+    """
     from kanibako.settings.paths import (host_config_map, host_xdg_map,
                                          system_path_floor)
     from kanibako.settings.settings_assemble import assemble_levels
-    from kanibako.settings.settings_categories import is_read_only
     from kanibako.settings.settings_expand import expand
     from kanibako.settings.settings_launch import snapshot_category_entries
     from kanibako.settings.settings_merge import merge
-    from kanibako.settings.settings_resolve import ResolveCtx, SettingsError
-    from kanibako.settings.store_collapse import (
-        DERIVED_MOUNT,
-        Declaration,
-        collapse_store_shapes,
-        derivation_result,
-        pair_declarations,
-    )
-    from kanibako.settings.store_shape import build_store_shape_set
+    from kanibako.settings.settings_resolve import ResolveCtx
 
     # ⚑ Resolver SPLIT (spec §1A / JC-2): Layer-1 ``config.*`` goes in ``ctx.config``,
     # Layer-2 ``system.*`` in the snapshot floor below. The xdg map must be the FULL host
@@ -1149,42 +1164,81 @@ def _print_effective_shares(ws, std, ws_config: Path) -> int:
     # they had configured simply not appear.
     floor: dict[str, object] = dict(system_path_floor(std))
 
-    try:
-        levels = assemble_levels(
-            agent_name="general",
-            base_path=ws_config.parent / "__absent_base__",
-            workset_path=ws_config,
-            floor=floor,
-        )
-        snapshot = merge(levels)
-        expanded = expand(snapshot, ctx)
-        entries = snapshot_category_entries(
-            expanded, active_agent="general", box_ctx=ctx,
-        )
-        # ⚑⚑ THE ARBITRATION IS THE LAUNCH'S OWN — the same two calls
-        # ``commands.start._install_assembly_collapse`` makes, not a second walk.
-        # Until 2026-08-26 this display printed the ENTRY LIST: every stored binding,
-        # pre-collapse, with no mask, no containment and no §0 row applied. So a
-        # workset that ALSO declared ``workset.masks`` over a share's destination
-        # listed that share as a live mount while the box received nothing at all
-        # (rc 0, no message), and one whose declarations a launch REFUSES outright
-        # listed cleanly. ⚑ The COLLISION WARNINGS a launch emits are not raised
-        # here: §0's exempt pair is an ambiguity between two ABSTRACT declarations, and a
-        # share is never one of the two — the surviving share is unaffected.
-        # ⚑ THE ENTRY LIST GOES IN AS WELL, and it buys exactly one thing: the
-        # DECLARATION KEY behind each collapsed mount
-        # (``CollapsedStore.declared_by``). A mask is the row that needs it — every
-        # other loss names a host source the reader can recognise their own key by,
-        # and a mask has none, so "the mask at /opt/x" was the only diagnosis this
-        # listing could give and /opt/x is not a path the swallowed share's key
-        # names. ⚑ Passing it changes NO arbitration: the fold is byte-identical
-        # either way, and the map is read, never re-derived.
-        collapsed = collapse_store_shapes(
-            build_store_shape_set(entries),
-            BindEntry(_PREVIEW_HOME_SRC, None),
-            entries,
-        )
-    except CategoryCollisionError as e:
+    # ⚑⚑ THE DECLARATION-ROOT ANCHOR (spec §2a "Declaration roots"), and WITHOUT IT THE
+    # LISTINGS LIE. The abstract trio are ROOTED at declaration load, so what is stored
+    # is ``@meta.workset.path/common/<src>`` — and ``system_path_floor`` carries no
+    # ``meta.*`` key at all, so that anchor expanded to the EMPTY STRING and a
+    # declaration sourced at the workset root printed as ``/common/<src>``, a path that
+    # exists nowhere. MEASURED on the CONCRETE half too: a share written
+    # ``@meta.workset.path/refdir`` listed as ``/refdir -> …`` at rc 0 with no warning.
+    # ⚑ ``ws.root`` IS this anchor — ``paths.workset_settings_path`` declares the
+    # workset tier as ``@meta.workset.path/workset.yaml`` — so nothing here decides
+    # where a root is. 🛑 NO PER-MODE BRANCH, and the spec is why: §2c's RUNTIME-
+    # DERIVED / ALL PROJECTS block declares ``meta.workset.path | @meta.runtime
+    # .ws_root`` for EVERY mode, so there is no per-mode variation at this key to
+    # reproduce. ``ws.root`` is already the resolved root for primary and named
+    # alike, and standalone cannot arrive here at all (``workset create
+    # --standalone`` is refused; ``resolve_workset_name`` reads the registry).
+    # ⚑ ``config_interface._meta_scope_anchor_floor(ws_config, None)`` WOULD return
+    # exactly this value — its ``workset_path.parent`` is ``ws.root``. It is not
+    # called only because it is private to a module another writer is inside; the
+    # consolidation is boarded, not declined.
+    floor["meta.workset.path"] = str(ws.root)
+
+    levels = assemble_levels(
+        agent_name="general",
+        base_path=ws_config.parent / "__absent_base__",
+        workset_path=ws_config,
+        floor=floor,
+    )
+    snapshot = merge(levels)
+    expanded = expand(snapshot, ctx)
+    return snapshot_category_entries(
+        expanded, active_agent="general", box_ctx=ctx,
+    )
+
+
+def _workset_preview_collapse(entries: "list[CategoryEntry]") -> "CollapsedStore":
+    """ARBITRATE *entries* over the preview foundation — the collapse, called ONCE.
+
+    Every §0 refusal a working set can trip (bind-over-bind, mask-on-mask,
+    seed-outside-home, …) is raised from here, so a caller that has nothing to
+    arbitrate may skip it and keep the output it had.
+    """
+    from kanibako.settings.kb_store import BindEntry
+    from kanibako.settings.store_collapse import collapse_store_shapes
+    from kanibako.settings.store_shape import build_store_shape_set
+
+    # ⚑⚑ THE ARBITRATION IS THE LAUNCH'S OWN — the same two calls
+    # ``commands.start._install_assembly_collapse`` makes, not a second walk.
+    # Until 2026-08-26 this display printed the ENTRY LIST: every stored binding,
+    # pre-collapse, with no mask, no containment and no §0 row applied. So a
+    # workset that ALSO declared ``workset.masks`` over a share's destination
+    # listed that share as a live mount while the box received nothing at all
+    # (rc 0, no message), and one whose declarations a launch REFUSES outright
+    # listed cleanly. ⚑ The COLLISION WARNINGS a launch emits are not raised
+    # here: §0's exempt pair is an ambiguity between two ABSTRACT declarations, and a
+    # share is never one of the two — the surviving share is unaffected.
+    # ⚑ THE ENTRY LIST GOES IN AS WELL, and it buys exactly one thing: the
+    # DECLARATION KEY behind each collapsed mount
+    # (``CollapsedStore.declared_by``). A mask is the row that needs it — every
+    # other loss names a host source the reader can recognise their own key by,
+    # and a mask has none, so "the mask at /opt/x" was the only diagnosis this
+    # listing could give and /opt/x is not a path the swallowed share's key
+    # names. ⚑ Passing it changes NO arbitration: the fold is byte-identical
+    # either way, and the map is read, never re-derived.
+    return collapse_store_shapes(
+        build_store_shape_set(entries),
+        BindEntry(_PREVIEW_HOME_SRC, None),
+        entries,
+    )
+
+
+def _preview_refusal(ws, exc: Exception) -> int:
+    """Report a refusal the preview raised, and the rc — ONE arm for both listings."""
+    from kanibako.errors import CategoryCollisionError
+
+    if isinstance(exc, CategoryCollisionError):
         # ⚑⚑ FRAMING ONLY, AND THE FRAME IS THE WHOLE ADDITION. The user asked what a
         # box in this working set would MOUNT; a bare collision message answers a
         # question they did not ask, and reads as a listing failure rather than as
@@ -1198,19 +1252,35 @@ def _print_effective_shares(ws, std, ws_config: Path) -> int:
         # re-derived.
         print(
             f"Cannot say what working set '{ws.name}' would mount: its "
-            f"declarations collide at '{e.box_dest}', so no box in it can launch. "
+            f"declarations collide at '{exc.box_dest}', so no box in it can launch. "
             f"The refusal a launch gives follows.",
             file=sys.stderr,
         )
-        # ⚑ BYTE-IDENTICAL to what ``cli.main`` would have printed had this
-        # propagated (``cli.py``'s ``KanibakoError`` arm: ``print(f"Error: {e}",
-        # file=sys.stderr)`` then rc 1). Catching it here ADDS the line above and
-        # changes nothing else — no second prefix, no reflowed message, same rc.
-        print(f"Error: {e}", file=sys.stderr)
-        return 1
-    except SettingsError as e:
-        print(f"Error: {e}", file=sys.stderr)
-        return 1
+    # ⚑ BYTE-IDENTICAL to what ``cli.main`` would have printed had this
+    # propagated (``cli.py``'s ``KanibakoError`` arm: ``print(f"Error: {e}",
+    # file=sys.stderr)`` then rc 1). Catching it here ADDS the line above and
+    # changes nothing else — no second prefix, no reflowed message, same rc.
+    print(f"Error: {exc}", file=sys.stderr)
+    return 1
+
+
+def _print_effective_shares(ws, std, ws_config: Path) -> int:
+    """Resolve, ARBITRATE and print the workset's bindings as launch-time mounts."""
+    from kanibako.errors import CategoryCollisionError
+    from kanibako.settings.settings_categories import is_read_only
+    from kanibako.settings.settings_resolve import SettingsError
+    from kanibako.settings.store_collapse import (
+        DERIVED_MOUNT,
+        Declaration,
+        derivation_result,
+        pair_declarations,
+    )
+
+    try:
+        entries = _workset_preview_entries(ws, std, ws_config)
+        collapsed = _workset_preview_collapse(entries)
+    except (CategoryCollisionError, SettingsError) as e:
+        return _preview_refusal(ws, e)
 
     # ⚑ THE SHARES ARE THE SUBJECT, not the collapsed map: a share's IDENTITY is its
     # destination (R-10) and that is what ``share rm`` takes, so a share the collapse
@@ -1239,4 +1309,94 @@ def _print_effective_shares(ws, std, ws_config: Path) -> int:
             continue
         print(f"  {entry.box_dest}  [{mode}]  (declared: {entry.host_src})")
         print(f"    {derivation_result(row, collapsed.declared_by)}")
+    return 0
+
+
+def _print_effective_derivations(ws, std, ws_config: Path) -> int:
+    """Print each ABSTRACT declaration WITH the binding it derives (keyspec §0).
+
+    §0 on the abstract trio: *"The binding they produce is MATERIALISED beside the
+    declaration, so ``--effective`` shows BOTH the declaration and the derived binding
+    and a user can see WHY a mount exists."*  The declaration half is rendered by
+    ``config_display`` from this noun's own settings file; this is the DERIVED half,
+    and the same clause leaves WHERE it is read from to the implementation — *"This
+    clause reserves a NAME; it does not name a storage site … The obligation above is
+    what the user must SEE."*
+
+    🛑 **THE ``binding_derivations`` NODE IS NOT READ, AND MAY NOT BE.** It is
+    materialised BEFORE arbitration for winners and losers alike (R-8), so every row
+    in it reads as a live mount — a ``common`` declaration a mask swallowed would
+    print ``(mount)`` with the mask invisible.  The answer comes from PAIRING the
+    declarations against the COLLAPSE, which is the one decision function
+    (``store_collapse.pair_declarations``), fed off the SAME entry list and the SAME
+    fold ``workset share list --effective`` reads.  Nothing is re-derived.
+
+    ⚑ **WHAT THIS CLAIMS, EXACTLY: what THIS WORKING SET's declarations derive among
+    themselves** — not what a named box receives.  A working set names no box, so the
+    box tier is absent and a box-scope ``masks`` entry that would swallow one of these
+    at launch cannot be seen from here.  The pid-0 foundation is spelled
+    :data:`_PREVIEW_HOME_SRC` for the same reason, and a ``seeded`` row prints its
+    GUEST destination only: §0's tuple direction resolves a seed to the host store
+    when the copy runs, and that store is the box's home.
+
+    ⚑ THE COLLAPSE RUNS ONLY WHEN THERE IS AN ABSTRACT DECLARATION TO ARBITRATE — so
+    no §0 arbitration refusal (bind-over-bind, mask-on-mask, seed-outside-home) can
+    reach a working set that declares none.
+
+    🛑 **THE RESOLVE IS NOT GATED, AND THIS VERB CAN NOW EXIT 1 WHERE IT EXITED 0.**
+    :func:`_workset_preview_entries` runs BEFORE the gate, ``expand`` is strict, and
+    ``snapshot_category_entries`` refuses an undeclared shape — while the ``show``
+    arm's own rendering is a YAML flatten that expands nothing.  So a working set
+    carrying, say, ``bindings.ro`` sourced at an unknown ``$VAR`` printed its rows at
+    rc 0 and now reports ``Error: Unknown variable: …`` at rc 1, with no abstract
+    declaration anywhere in the file.  MEASURED both ways.  That is the intended
+    answer — a view that cannot resolve the file must not claim rc 0 — but it is a
+    BEHAVIOUR CHANGE to the shipped verb, not a no-op for the ungated case.
+    """
+    from kanibako.errors import CategoryCollisionError
+    from kanibako.settings.kb_store import BINDING_DERIVATIONS_NODE
+    from kanibako.settings.settings_categories import ABSTRACT_CATEGORIES
+    from kanibako.settings.settings_resolve import SettingsError
+    from kanibako.settings.store_collapse import (
+        Declaration,
+        derivation_result,
+        pair_declarations,
+    )
+
+    try:
+        entries = _workset_preview_entries(ws, std, ws_config)
+        abstract = [e for e in entries if e.category in ABSTRACT_CATEGORIES]
+        if not abstract:
+            return 0
+        collapsed = _workset_preview_collapse(entries)
+    except (CategoryCollisionError, SettingsError) as e:
+        return _preview_refusal(ws, e)
+
+    # ⚑ THE SAME FOUR FIELDS the share half above builds a ``Declaration`` from, off
+    # the same list. ⚑ ``entry.delivery`` is READ, never re-derived from the key
+    # spelling: the entry already carries what its category delivers, and ``seeded``
+    # derives a COPY where the other two derive a MOUNT.
+    derivations = pair_declarations(
+        [
+            Declaration(e.key, e.box_dest, e.host_src, e.delivery)
+            for e in abstract
+        ],
+        collapsed.bindings,
+        [*collapsed.seeded, *collapsed.synced],
+    )
+
+    # ⚑ THE SHAPE IS THE BOX BLOCK'S (``config_display._print_category_block``'s
+    # abstract half): declaration line, then the derivation indented beneath it. One
+    # form at both nouns — a third spelling of one answer is the confusion Convention
+    # 0 is about. The HEADING is this noun's own addition, and it is needed here: this
+    # view ALSO prints the declaration rows in the FILE's spelling, so the block needs
+    # to say which working set it is answering for.
+    print("")
+    print(f"Derived bindings for working set '{ws.name}':")
+    for row in derivations:
+        print(f"  {row.declaration.key} = {row.declaration.src}")
+        print(
+            f"    {BINDING_DERIVATIONS_NODE}.{row.declaration.key} = "
+            f"{derivation_result(row, collapsed.declared_by)}"
+        )
     return 0
