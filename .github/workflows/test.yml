@@ -87,10 +87,13 @@ jobs:
       # file-identical to upstream tag `v0.1.1` = commit `2bd32cb`
       # (`diff -rq -x __pycache__` against `src/kinemata`: no output, rc 0, and
       # non-vacuous -- 32 `.py` files each side, `__init__.py` md5 matching;
-      # verified 2026-09-15). `0.1.2` carries both `parity` and `shape`, as
-      # `0.1.1` did. 🛑 THE PINNED VALUE IS WRITTEN ONCE, ON THE RUN LINE -- and this
-      # paragraph named it anyway until the 0.1.2 bump found the second copy
-      # still reading `0.1.1`, which is the argument against keeping one.
+      # verified 2026-09-15). The build pinned below carries both `parity` and
+      # `shape`, as `0.1.1` did -- verified by running them, not read off a
+      # feature list. 🛑 THE PINNED VALUE IS WRITTEN ONCE, ON THE RUN LINE -- and
+      # this paragraph named it anyway until the 0.1.2 bump found the second copy
+      # still reading `0.1.1`. It was respelled rather than removed there, so the
+      # 0.2.0 bump found it again, one version stale again. It names no version
+      # at all now, which is the only spelling of it that stays true.
       # ⚑ 0.1.1 REPORTS MORE THAN 0.1.0 ON THE SAME TREE, NEVER LESS: files that
       # a gitignored directory's name was removing from the file index are back.
       # Expect findings to APPEAR on a bump, read them at source, and do not tune
@@ -101,6 +104,25 @@ jobs:
       # document in this tree marked a span with -- so all four commands below
       # printed output byte-identical to 0.1.1's. The record of what that bump
       # decided is in `.kinemata-baseline.json`'s note, residue (3).
+      # 🛑 THE 0.2.0 BUMP IS THE ONE THAT EXERCISES THAT RULE, AND IT IS THE FIRST
+      # THAT IS NOT BYTE-IDENTICAL. Measured 2026-09-19 on this tree: all four
+      # commands below read rc 0, `check`, `parity` and `shape` print exactly what
+      # 0.1.2 printed, and `claims` gains one line BY DESIGN --
+      # `negated: N path claim(s) read as discussed rather than asserted, a
+      # negation being in the same clause` -- with `claims -v` listing every
+      # one of them at its site; run it for the current figure.
+      # Those are not new findings and not new text: they are path claims that a
+      # negation in the same clause had been withdrawing from checking without
+      # ever saying so, which is coverage this gate was silently not buying.
+      # Upstream called the line out in its changelog for exactly that reason --
+      # it is the half of a release an existing config observes and cannot
+      # discover from a feature list. Those sites are being read at source by a
+      # separate pass, which is what the rule above asks for, and the record of
+      # what this bump decided is in `.kinemata-baseline.json`'s note, residue (5).
+      # ⚑ DO NOT CARRY A FIGURE OUT OF UPSTREAM'S RELEASE LETTER. It measured a
+      # pinned clone of this tree and reported a smaller number; the tree has
+      # moved since, and upstream withdrew its own companion figure as a weak
+      # proxy. Run the command before quoting one.
       # 🛑 THIS PIN MUST NOT LAG THE TREE WE DEVELOP AGAINST. An older `[[parity]]`
       # did not refuse a key it could not mean, so a config using `field`/`authority`
       # against a build that predates them is SILENTLY DOWNGRADED to membership-only
@@ -114,7 +136,7 @@ jobs:
       # `/`-anchored spelling, which an earlier build reads as a literal substring
       # matching nothing -- lower this pin and the conformance job reds. The
       # measurement is in that file's version-floor note, above its `exclude`.
-      - run: pip install "kinemata[yaml]==0.1.2"
+      - run: pip install "kinemata[yaml]==0.2.0"
       # ⚑ THE PROJECT ITSELF IS INSTALLED HERE BECAUSE THE PARITY ORACLE IMPORTS
       # IT. `parity` runs a command that prints what the code produces, and an
       # oracle it cannot run is a FAILURE that no baseline can accept -- so a
