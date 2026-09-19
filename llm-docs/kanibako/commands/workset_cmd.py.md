@@ -142,10 +142,55 @@ The `pref:` table is flattened by that same walk, so `config_path` must **not** 
 `_pref_overrides` reads the config path, and pointing both at one file prints every pref request
 twice.
 
-`--effective` gains the DECLARATION half of §0's *"both the declaration and the derived binding"*.
-The derived half is not available at this noun: the binding a declaration produces is materialised
-by a launch resolve (`_resolve_launch_snapshot`), which needs a box identity and an agent, and a
-workset has neither. `box show --effective` is where the pair is rendered.
+`--effective` renders BOTH halves of §0's *"both the declaration and the derived binding"*: the
+declarations through the flatten above, and the binding each ABSTRACT one derives through
+`_print_effective_derivations` below.
+
+⚑ **The derived half was once thought unavailable here**, on the ground that a derivation is
+materialised by a launch resolve (`_resolve_launch_snapshot`), which needs a box identity and an
+agent a working set does not have. That is true of the LAUNCH's route and false as a conclusion:
+§0 leaves *"WHERE the derivation is materialised"* to the implementation and obliges only what the
+user SEES, and `_print_effective_shares` had already built a workset-only collapse with no box.
+The derived block feeds the same one. What it CANNOT answer without a box is stated at
+`_print_effective_derivations` and is narrower than "the pair": no box-tier declaration
+participates, and a `seeded` row names its guest destination but not the host store the copy
+eventually lands in.
+
+🛑 **THE `binding_derivations` NODE IS NOT READ HERE AND MAY NOT BE.** It is materialised BEFORE
+arbitration, for winners and losers alike (R-8), so every row in it reads as a live mount: a
+`common` declaration a `masks` entry swallowed would print `(mount)` with the mask invisible. The
+answer comes from PAIRING the declarations against the collapse — `store_collapse.pair_declarations`,
+the one decision function, and `store_collapse.derivation_result` for the phrase — exactly as the
+share half above does and as `box show --effective` does. The `Declaration` is built from the
+CategoryEntry's own `key` / `box_dest` / `host_src` / `delivery`; `delivery` is READ rather than
+re-derived from the key spelling, which is what keeps `seeded`'s `(copy)` distinct from the other
+two's `(mount)`.
+
+⚑ **THE GATE IS "IS THERE AN ABSTRACT DECLARATION", and it gates the COLLAPSE ONLY.** Every §0
+*arbitration* refusal — bind-over-bind, mask-on-mask, seed-outside-home — is raised by the collapse,
+so a working set that declares none of the trio can no longer meet one from this verb.
+
+🛑 **THE RESOLVE IS NOT GATED, AND THAT IS A BEHAVIOUR CHANGE TO A SHIPPED VERB.** The entry list is
+built BEFORE the gate, `expand` is strict, and `snapshot_category_entries` refuses an undeclared
+shape — while the `show` arm's own rendering is a YAML flatten that expands nothing. So a working
+set carrying only `bindings.ro: {/opt/x: ["$NOPE/y"]}`, with no abstract declaration anywhere,
+printed its rows at rc 0 and now prints `Error: Unknown variable: $NOPE` and returns 1. MEASURED
+both ways, 2026-09-19: the `show_config` call alone still returns 0 on that file, so the new rc is
+this block's.
+
+⚑ **THAT IS THE INTENDED ANSWER, and it is why the code is not "fixed" to suppress it.** A view
+whose whole claim is *these are the resolved values* must not report rc 0 over a file it could not
+resolve. What the gate buys is narrower and is the part worth having: an ARBITRATION refusal cannot
+reach a working set with nothing to arbitrate. A refusal that does arrive is reported through
+`_preview_refusal` at rc 1 — the derived binding genuinely does not exist, and rc 0 after an
+`Error:` line would say otherwise.
+
+⚑ **THE RENDERING IS THE BOX BLOCK'S** (`config_display._print_category_block`'s abstract half):
+declaration line, derivation indented beneath. One form at both nouns. The HEADING is this noun's
+own addition, because this view ALSO prints the declaration rows through the flatten, in the FILE's
+spelling — while a derivation is keyed by the RESOLVED destination, which is what the arbitration
+keyed on. That asymmetry is the box block's own and is inherited rather than papered over: a third
+spelling of one answer is the confusion Convention 0 is about.
 
 ### Why three guards sit in the GET arm and none in the others
 
@@ -307,7 +352,12 @@ launch (P3).
   on-disk list shape (`[src, opts]` or `[src]`) for display.
 * **`--effective`** (`_print_effective_shares`): resolves through the committed KeyStore snapshot
   pipeline (`assemble_levels → merge → expand → snapshot_category_entries`) scoped to the workset
-  file — the SAME resolver the launch uses. This replaced a retired `resolve_shares` /
+  file — the SAME resolver the launch uses. ⚑ **The pipeline itself now lives in
+  `_workset_preview_entries`, the arbitration in `_workset_preview_collapse` and the refusal arm in
+  `_preview_refusal`**, because the derived-binding block of `workset show --effective` describes
+  the same working set: two resolves of one file would be two answers about it. Everything the rest
+  of this section says about the resolve, the floor, the collapse and the framing holds of those
+  three; only the function it sits in moved. This replaced a retired `resolve_shares` /
   `read_bindings` / `LevelView` path; `resolve_shares` and `read_bindings` are gone from the tree,
   while `LevelView` itself survives and is still live in `settings/paths.py` and
   `settings/settings_resolve.py` — it is only this function's use of it that was retired.
@@ -352,6 +402,31 @@ retired hand list those three rows are absent and the literal and `@system.chann
 still print, rc 0 either way. This display gains no row of its own from the widening — it folds the
 map into a resolve floor and prints collapsed BINDINGS, never the floor.
 
+⚑⚑ **THE FLOOR ALSO CARRIES `meta.workset.path`, AND WITHOUT IT THIS LISTING PRINTED A PATH THAT
+EXISTS NOWHERE.** `system_path_floor` is the `system.*` tier and carries no `meta.*` key at all,
+while `settings_expand` renders an anchor with no referent as the EMPTY STRING — so a share written
+`@meta.workset.path/refdir` was listed as mounting `/refdir`, at the filesystem root, rc 0, no
+warning. MEASURED on the shipped listing, 2026-09-19. The anchor is spec §2a's workset
+`<scope-root>`, so the same gap mis-rooted every `common` / `caches` / `seeded` declaration by
+definition — which is what made this a PREREQUISITE of rendering the derived half at all, not a
+neighbouring fix. 🛑 **THIS IS NOT A ROOT-JOIN** (the section above still holds): nothing is
+prepended to a stored value; an anchor the stored value already names is given its referent.
+
+⚑ **`ws.root` IS the anchor, and there is NO per-mode branch to reproduce.**
+`paths.workset_settings_path` declares the workset tier as `@meta.workset.path/workset.yaml`, so the
+working set's own root is that anchor by declaration and nothing here decides where a root is. And
+the key itself does not vary by mode: §2c's **RUNTIME-DERIVED — ALL PROJECTS (every mode)** block
+declares `meta.workset.path | @meta.runtime.ws_root` once, for all three. The launch reaches that
+same value through `@config.primary_workset` at primary because `meta.runtime.ws_root` is where the
+per-mode choice lives (§1A) — one rung below this key, and not a variation at this key. Primary and
+named both land on `ws.root` here; standalone cannot reach this noun at all (`workset create
+--standalone` is refused, and `resolve_workset_name` reads the registry).
+
+⚑ **`config_interface._meta_scope_anchor_floor(ws_config, None)` would return exactly this value** —
+its `workset_path.parent` is `ws.root`. It is not called because it is private to a module under
+concurrent edit; the consolidation is boarded rather than declined, and this is the third carrier of
+one fact until it lands.
+
 `tests/test_commands/test_workset_cmd.py::TestWorksetCmdSystemFloor` pins it, and pins it by
 DERIVATION now: it drives this display with a binding sourced at every key the launch floor answers
 and names no key itself. The version that guarded the split before compared each function's SOURCE
@@ -384,7 +459,7 @@ already measured wrong for once (the floor above).
 the exception.** `CategoryCollisionError` used to fall out to `cli.main`, which printed the launch's
 own `Error: …` and exited 1. That is the right message and the right code, and it is context-free:
 the user asked what a box in this working set would MOUNT and got a bare collision, which reads as a
-listing failure rather than as the answer. `_print_effective_shares` now catches it and prints, to
+listing failure rather than as the answer. `_preview_refusal` catches it and prints, to
 stderr, above the refusal:
 
 ```
@@ -589,7 +664,24 @@ name-keyed refusal" and "The arity trap". `assemble_levels` returns
 the only file passed.
 
 ```python
+def _workset_preview_entries(ws, std, ws_config: Path) -> list[CategoryEntry]
+def _workset_preview_collapse(entries: list[CategoryEntry]) -> CollapsedStore
+def _preview_refusal(ws, exc: Exception) -> int
+```
+The workset-only resolve, its arbitration, and the one refusal arm — shared by both `--effective`
+listings, because they describe ONE working set. See "Listing: single route, no second resolver".
+
+```python
 def _print_effective_shares(ws, std, ws_config: Path) -> int
 ```
 Resolve and print the workset's bindings as launch-time mounts. See "Listing: single route, no
 second resolver".
+
+```python
+def _print_effective_derivations(ws, std, ws_config: Path) -> int
+```
+The DERIVED half of §0 at this noun: every `common` / `caches` / `seeded` declaration with the
+binding it produces, paired against the same collapse. Runs only under `--effective`; the COLLAPSE
+runs only when there is an abstract declaration to arbitrate, but the RESOLVE always does — so this
+verb can now exit 1 on a file it cannot resolve where it printed at rc 0 before. See "Which two
+files the SHOW arm hands the engine".

@@ -1748,6 +1748,171 @@ class TestWorksetShowListsTheAbstractTrio:
         assert "no overrides" in self._show("trioclean", capsys, effective=False)
 
 
+class TestWorksetShowDerivesTheAbstractTrio:
+    """keyspec §0: *"``--effective`` shows BOTH the declaration and the derived
+    binding and a user can see WHY a mount exists."*
+
+    The DECLARATION half is ``TestWorksetShowListsTheAbstractTrio`` above.  This is
+    the DERIVED half, at the noun that owns a working set's declarations — and it is
+    an ``--effective`` obligation only.
+
+    ⚑ **EACH TEST NAMES THE GUARD IT DEPENDS ON, rather than one blanket mutation
+    claim for the class.** The two tests that assert an ABSENCE cannot red under the
+    mutation the four PRESENCE tests red under — dropping the
+    ``_print_effective_derivations`` call from the ``show`` branch of
+    ``commands/workset_cmd.py`` prints nothing, which is what they assert — so a
+    claim spanning all six would be a gate that passes vacuously (P15).  The three
+    guards, one per group:
+
+    * the CALL in the ``show`` branch — the four tests asserting a printed row.
+    * the ``not args.effective`` guard beside it —
+      ``test_the_PLAIN_view_derives_nothing``, whose fixture declares the trio, so
+      the block would print for the plain view without it.
+    * the ``if not abstract: return 0`` gate in ``_print_effective_derivations`` —
+      ``test_a_workset_with_no_abstract_declaration_prints_no_block``, which would
+      otherwise receive the heading over an empty row list.
+
+    🛑 Those three are read off the assertions and the guards, NOT measured by
+    running the mutations: the tree is shared with other writers and a mutation
+    parked in it is a trap for whoever gates next.
+
+    ⚑ Nothing below hard-codes a host path: the expected source is derived from the
+    working set's own root, which is what ``@meta.workset.path`` names (§2a
+    "Declaration roots"), so a layout change reds instead of quietly outdating.
+    """
+
+    TRIO = {
+        "common": {"~/shared/docs": ["teamdocs"]},
+        "caches": {"~/.cache/uv": ["uv"]},
+        "seeded": {"~/.bashrc": ["bashrc"]},
+    }
+
+    def _ws(self, config_file, tmp_home, name):
+        std = load_std_paths(load_config(config_file))
+        return create_workset(name, tmp_home / f"ws_{name}", std)
+
+    def _merge(self, ws, table):
+        """MERGE into the workset's settings file — the trio is YAML-only."""
+        from kanibako.commands.workset_cmd import _workset_config_path
+        from kanibako.settings.config_io import dump_doc, load_doc
+
+        path = _workset_config_path(ws)
+        doc = load_doc(path)
+        doc.setdefault("workset", {}).update(table)
+        dump_doc(path, doc)
+
+    def _show(self, name, capsys, *, effective=True, rc=0):
+        from kanibako.commands.workset_cmd import run_show
+
+        assert run_show(
+            argparse.Namespace(workset=name, effective=effective),
+        ) == rc
+        return capsys.readouterr()
+
+    def test_every_abstract_family_derives_its_binding(
+        self, config_file, tmp_home, capsys,
+    ):
+        """One row per declaration, each carrying what it DERIVES — the §0 pair."""
+        ws = self._ws(config_file, tmp_home, "deriv")
+        self._merge(ws, self.TRIO)
+        out = self._show("deriv", capsys).out
+
+        # The MOUNT pair: source rooted at the workset root, arrow to the GUEST dest.
+        assert f"{ws.root}/common/teamdocs -> /home/agent/shared/docs" in out
+        assert "(mount)" in out
+        assert f"{ws.root}/caches/uv -> /home/agent/.cache/uv" in out
+        # ⚑ ``seeded`` derives a COPY, not a mount (§0), and the phrase says so.
+        assert f"{ws.root}/seeded/bashrc -> /home/agent/.bashrc  (copy)" in out
+
+    def test_the_declaration_key_is_named_beside_its_derivation(
+        self, config_file, tmp_home, capsys,
+    ):
+        """A derivation the user cannot trace to a key is one they cannot act on."""
+        ws = self._ws(config_file, tmp_home, "derivkey")
+        self._merge(ws, self.TRIO)
+        out = self._show("derivkey", capsys).out
+        assert "workset.common./home/agent/shared/docs" in out
+
+    def test_the_root_anchor_resolves(self, config_file, tmp_home, capsys):
+        """🛑 The REGRESSION this pins: ``@meta.workset.path`` was absent from the
+        preview floor, so a rooted declaration resolved to a bare ``/common/<src>``
+        — a path that exists nowhere.  Derived from ``ws.root``, never a literal."""
+        ws = self._ws(config_file, tmp_home, "derivroot")
+        self._merge(ws, {"common": {"~/shared/docs": ["teamdocs"]}})
+        out = self._show("derivroot", capsys).out
+        assert str(ws.root) in out
+        assert " /common/teamdocs" not in out
+
+    def test_a_masked_declaration_prints_the_LOSS_not_a_mount(
+        self, config_file, tmp_home, capsys,
+    ):
+        """The measured defect class: reading the pre-arbitration node alone reports
+        a mount for a declaration a mask swallowed, with the mask invisible."""
+        ws = self._ws(config_file, tmp_home, "derivmask")
+        self._merge(ws, {
+            "common": {"~/shared/docs": ["teamdocs"]},
+            "masks": {"~/shared/docs": True},
+        })
+        out = self._show("derivmask", capsys).out
+        assert "no mount" in out
+        assert "workset.masks.~/shared/docs" in out
+        assert "teamdocs -> " not in out
+
+    def test_the_PLAIN_view_derives_nothing(self, config_file, tmp_home, capsys):
+        """The derived half is an ``--effective`` obligation; the plain view shows
+        what this file OVERRIDES and must not grow a resolved answer."""
+        ws = self._ws(config_file, tmp_home, "derivplain")
+        self._merge(ws, self.TRIO)
+        out = self._show("derivplain", capsys, effective=False).out
+        assert "Derived bindings" not in out
+
+    def test_a_workset_with_no_abstract_declaration_prints_no_block(
+        self, config_file, tmp_home, capsys,
+    ):
+        """Nothing to arbitrate ⇒ no collapse and no block: the output a working set
+        without the trio already had is unchanged."""
+        ws = self._ws(config_file, tmp_home, "derivnone")
+        self._merge(ws, {"bindings": {"ro": {"/opt/ref": ["/on/host"]}}})
+        out = self._show("derivnone", capsys).out
+        assert "Derived bindings" not in out
+
+
+class TestWorksetPreviewResolvesTheDeclarationRoot:
+    """``@meta.workset.path`` must resolve in BOTH ``--effective`` listings.
+
+    ⚑ The anchor is §2a's workset ``<scope-root>``, so every rooted declaration and
+    every value a user spells against it depends on it.  It was absent from the
+    preview floor — ``paths.system_path_floor`` carries no ``meta.*`` key — and
+    ``settings_expand`` renders an unresolvable anchor as the EMPTY string, so a
+    share sourced ``@meta.workset.path/refdir`` listed as ``/refdir`` at rc 0 with no
+    warning.  MEASURED on the shipped ``workset share list --effective``.
+    """
+
+    def _ws(self, config_file, tmp_home, name):
+        std = load_std_paths(load_config(config_file))
+        return create_workset(name, tmp_home / f"ws_{name}", std)
+
+    def test_share_list_effective_roots_a_meta_workset_path_source(
+        self, config_file, tmp_home, capsys,
+    ):
+        from kanibako.commands.workset_cmd import _workset_config_path, run_share_list
+        from kanibako.settings.config_io import dump_doc, load_doc
+
+        ws = self._ws(config_file, tmp_home, "anchorws")
+        path = _workset_config_path(ws)
+        doc = load_doc(path)
+        doc.setdefault("workset", {})["bindings"] = {
+            "ro": {"/opt/ref": ["@meta.workset.path/refdir"]},
+        }
+        dump_doc(path, doc)
+
+        assert run_share_list(argparse.Namespace(
+            workset="anchorws", effective=True,
+        )) == 0
+        out = capsys.readouterr().out
+        assert f"{ws.root}/refdir -> /opt/ref" in out
+
+
 class TestWorksetGetThreadsTheAgentsRoot:
     """``workset get <ws> agent.<node>.<key>`` reads the node's own file.
 
