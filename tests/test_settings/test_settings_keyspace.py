@@ -569,6 +569,19 @@ def _manifest_leaves(prefix: str) -> set[str]:
     ARTEFACT rather than about this checkout.  Four ad-hoc ``importlib.resources``
     reads (three here, one in ``test_config_dest_parity``) each restated that
     property in their own docstring; the loader now carries it once.
+
+    ⚑ DROPPING A NESTED TAIL IS NOT LEAVING IT UNGUARDED, and two board rows read it
+    as one.  ``meta.box.auth.*`` and ``meta.agent.<agent>.auth.*`` are pinned in BOTH
+    directions by ``test_manifest_conformance.TestKeySetConformance``, which expands
+    every nested arm from ``_SCALAR_DECLARATIONS`` — verified 2026-09-19 by mutating a
+    stand-in manifest.  No auth guard was added here for that reason.
+
+    ⚑ THE RUNTIME ARMS DO HAVE A SECOND CARRIER, one screen down:
+    ``test_the_nested_runtime_leaves_match_the_manifest`` states for
+    ``meta.runtime.{user,admin}.*`` what the conformance class already states — both
+    fire on a deleted ``meta.runtime.user.config`` row (measured 2026-09-19).  It is a
+    PRECEDENT THAT WAS NOT COPIED, not a rule the auth arms were exempted from: its
+    disposition is boarded, and the asymmetry stands until that is ruled on.
     """
     tails = {
         str(k)[len(prefix):] for k in manifest_doc()["keys"] if str(k).startswith(prefix)
@@ -654,6 +667,10 @@ def test_the_nested_runtime_leaves_match_the_manifest():
     green whether or not ``meta.runtime.user.*`` exists. Green-because-unguarded
     is the [R138] class. The prefix already reaches past the dot, so the same
     helper pins the nested leaves with no new machinery.
+
+    ⚑ UNGUARDED MEANT *IN THIS FILE*, and reading it wider is what put two board rows
+    on the auth arms: ``test_manifest_conformance.TestKeySetConformance`` pins every
+    nested arm, this one included. See ``_manifest_leaves`` above.
     """
     assert _manifest_leaves("meta.runtime.user.") == set(
         DECLARED_META_RUNTIME_USER_LEAVES

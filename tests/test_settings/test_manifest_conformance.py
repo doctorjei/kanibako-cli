@@ -1229,6 +1229,34 @@ SHAPE_ROWS: frozenset[str] = frozenset({
 #: (No exemption dict remains; a future finding of this kind re-introduces one here.)
 
 
+#: The ``(prefix, leaves)`` table :func:`_code_scalar_keys` expands, lifted out of the
+#: function so that :meth:`TestKeySetConformance.test_no_declaration_family_is_empty`
+#: reads the SAME table the sweep does.  A vacuity guard holding its own copy of the
+#: prefixes would keep passing after a family stopped being swept, which is the failure
+#: it exists to catch.
+_SCALAR_DECLARATIONS: tuple[tuple[str, frozenset[str]], ...] = (
+    ("config.", DECLARED_CONFIG_LEAVES),
+    ("system.", DECLARED_SYSTEM_LEAVES),
+    ("system.channels.", DECLARED_SYSTEM_CHANNEL_LEAVES),
+    ("system.auth.", DECLARED_SYSTEM_AUTH_LEAVES),
+    ("box.", DECLARED_BOX_LEAVES),
+    ("box.auth.", DECLARED_BOX_AUTH_LEAVES),
+    ("workset.", DECLARED_WORKSET_LEAVES),
+    ("workset.auth.", DECLARED_WORKSET_AUTH_LEAVES),
+    ("workset.channels.", DECLARED_WORKSET_CHANNEL_LEAVES),
+    ("agent.default.", DECLARED_AGENT_LEAVES),
+    ("meta.runtime.", DECLARED_META_RUNTIME_LEAVES),
+    ("meta.runtime.user.", DECLARED_META_RUNTIME_USER_LEAVES),
+    ("meta.runtime.admin.", DECLARED_META_RUNTIME_ADMIN_LEAVES),
+    ("meta.assembly.", DECLARED_META_ASSEMBLY_LEAVES),
+    ("meta.workset.", DECLARED_META_WORKSET_LEAVES),
+    ("meta.box.", DECLARED_META_BOX_LEAVES),
+    ("meta.box.auth.", DECLARED_META_BOX_AUTH_LEAVES),
+    ("meta.agent.<agent>.", DECLARED_META_AGENT_LEAVES),
+    ("meta.agent.<agent>.auth.", DECLARED_META_AGENT_AUTH_LEAVES),
+)
+
+
 def _code_scalar_keys() -> set[str]:
     """Every SCALAR key the ``DECLARED_*`` frozensets declare, as dotted spellings.
 
@@ -1239,29 +1267,13 @@ def _code_scalar_keys() -> set[str]:
     ⚑ Category keys (``<scope>.bindings.ro`` and friends) are declared under the
     manifest's ``categories:`` table, not ``keys:``, and the frozensets do not contain
     them either, so they never enter this diff.
+    ⚑ The NESTED arms are members here like any other: ``meta.runtime.{user,admin}.``
+    and the two auth arms ``meta.box.auth.`` / ``meta.agent.<agent>.auth.`` are pinned by
+    the two directions below, which is where a reader who finds no nested guard in
+    ``test_settings_keyspace.py`` should look.
     """
     out: set[str] = set()
-    for prefix, leaves in (
-        ("config.", DECLARED_CONFIG_LEAVES),
-        ("system.", DECLARED_SYSTEM_LEAVES),
-        ("system.channels.", DECLARED_SYSTEM_CHANNEL_LEAVES),
-        ("system.auth.", DECLARED_SYSTEM_AUTH_LEAVES),
-        ("box.", DECLARED_BOX_LEAVES),
-        ("box.auth.", DECLARED_BOX_AUTH_LEAVES),
-        ("workset.", DECLARED_WORKSET_LEAVES),
-        ("workset.auth.", DECLARED_WORKSET_AUTH_LEAVES),
-        ("workset.channels.", DECLARED_WORKSET_CHANNEL_LEAVES),
-        ("agent.default.", DECLARED_AGENT_LEAVES),
-        ("meta.runtime.", DECLARED_META_RUNTIME_LEAVES),
-        ("meta.runtime.user.", DECLARED_META_RUNTIME_USER_LEAVES),
-        ("meta.runtime.admin.", DECLARED_META_RUNTIME_ADMIN_LEAVES),
-        ("meta.assembly.", DECLARED_META_ASSEMBLY_LEAVES),
-        ("meta.workset.", DECLARED_META_WORKSET_LEAVES),
-        ("meta.box.", DECLARED_META_BOX_LEAVES),
-        ("meta.box.auth.", DECLARED_META_BOX_AUTH_LEAVES),
-        ("meta.agent.<agent>.", DECLARED_META_AGENT_LEAVES),
-        ("meta.agent.<agent>.auth.", DECLARED_META_AGENT_AUTH_LEAVES),
-    ):
+    for prefix, leaves in _SCALAR_DECLARATIONS:
         out |= {prefix + leaf for leaf in leaves}
     return out
 
@@ -1378,6 +1390,43 @@ class TestKeySetConformance:
         assert leftover & parametric_agent == {
             "agent.<agent>.access", "agent.<agent>.template", "agent.<agent>.canon",
         }
+
+    def test_no_declaration_family_is_empty(self):
+        """ANTI-VACUITY for both directions above (P15): an empty family is SILENT.
+
+        Set-equality catches drift on ONE side.  Empty a ``DECLARED_*`` frozenset and
+        delete its manifest rows in the same edit, and every case above stays green:
+        the code contributes no spelling to miss and the manifest offers no row to
+        leave over.  MEASURED 2026-09-19 on a stand-in manifest — dropping
+        ``meta.box.auth.workset_path`` from the registry while
+        ``DECLARED_META_BOX_AUTH_LEAVES`` goes empty reds none of the cases above.
+
+        ⚑ FOUR families hold a SINGLE leaf and are the exposed ones, because one
+        deletion empties them outright: ``system.auth``, ``meta.runtime.user``,
+        ``meta.box.auth`` and ``meta.agent.<agent>.auth``.  Not every auth arm is
+        small — ``box.auth`` holds 2 and ``workset.auth`` 3 (counted 2026-09-19).
+
+        🛑 WHAT THIS DOES NOT BUY — BOTH HALVES MEASURED 2026-09-19, on a stand-in:
+
+        * RETIRING A FAMILY IS STILL UNWITNESSED.  Delete a family's
+          :data:`_SCALAR_DECLARATIONS` row — the edit this case's own failure message
+          asks for — together with its manifest rows, and leave the frozenset
+          declared: every case in this class is GREEN, while ``key_validity`` still
+          answers ``meta.box.auth.workset_path`` with ``None``.  That is a live key
+          with no registry row and no coverage.  The only red is the loader's hand
+          count of 103 rows, which a developer re-measures as a matter of course.  A
+          retirement is complete only when the frozenset goes too, and nothing here
+          says so.
+        * A COORDINATED EDIT dropping one leaf of a multi-leaf family from both
+          carriers.  Two carriers cannot witness their own agreement; the spec is the
+          outside oracle, and the keyspec is what a key deletion has to move first.
+        """
+        empty = [prefix for prefix, leaves in _SCALAR_DECLARATIONS if not leaves]
+        assert not empty, (
+            f"declaration families with no leaves: {empty} — the sweep above covers "
+            f"them vacuously.  If the family is genuinely retired, drop its row from "
+            f"_SCALAR_DECLARATIONS in the same edit"
+        )
 
 
 class TestSetColumnConformance:
