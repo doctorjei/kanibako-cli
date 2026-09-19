@@ -38,10 +38,9 @@ the S2 flatten, all of them sit FLAT under the file's root, beside the category 
 
 ⚑ **`name` was a field here and is gone** (D8b, 2026-09-15) — the FILE's own identity field, never a
 keyspace leaf. `agent.<agent>.label` carries an agent's description now, as an ordinary §2d key.
-⚑ **And the `IDENTITY_KEYS` set that spelled the pair is gone with it** (2026-09-18). With one member
-left, its name was false of what it held and the three jobs it did were unrelated: `agent_file`
-models `run_args` directly in `_MODELED_KEYS`, asks the scalar-vs-table question through
-`_SCALAR_WRITABLE_KEYS`, and the `config_keys` write-door allowlist was D8b's to delete.
+⚑ **And the `IDENTITY_KEYS` set that spelled the pair is gone with it** (2026-09-18): with one member
+left, its name was false of what it held. **Which three jobs it was doing, and where each one went,
+is enumerated once — at the `_SCALAR_WRITABLE_KEYS` block in `agent_file.py.md`.**
 
 ### `env` — the ENV category
 

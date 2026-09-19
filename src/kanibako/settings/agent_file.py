@@ -111,6 +111,11 @@ _TABLE_VALUED_KEYS: Final[frozenset[str]] = _ROOT_TABLES - _SCALAR_WRITABLE_KEYS
 #: A reader who changes the split must see the join, and the reverse.
 _LIST_VALUED_KEYS: Final[frozenset[str]] = frozenset({"run_args"})
 
+# The SUBSET the comment above STATES, pinned rather than restated (P15) — a member added here
+# and not there cannot be a live shape: a key that takes no scalar from the command line is
+# refused by NAME, so there is nothing for the split to translate. The relation is pinned by
+# a test, not an import-time assert, in tests/test_settings/test_agent_leaf_shape.py.
+
 #: What a cure renders for a category whose refused table is EMPTY (nothing to quote): a sample
 #: ``(key, value)`` for ONE entry. The dest-keyed families share
 #: :data:`_DEST_KEYED_PLACEHOLDER` rather than taking a row each.

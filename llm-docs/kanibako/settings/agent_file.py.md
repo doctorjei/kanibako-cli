@@ -108,6 +108,24 @@ closed and the refusal became universal.
 
 ## Constants
 
+```_MODELED_KEYS: Final[frozenset[str]] = frozenset({"run_args", "env", "secret_path", "transform_settings"})```
+The SCHEMA-OWNED root keys — the ones `AgentConfig` holds as FIELDS of its own, as against the flat
+categories `category_tables` carries opaquely. Three separate questions read it and none of them
+keeps a list beside it: what `load` must NOT sweep into `cfg.state`, what `_CARRIED_CATEGORIES`
+subtracts, and what `_ROOT_TABLES` unions with the flat categories to admit at the root.
+
+🛑 **A CATEGORY MUST NEVER JOIN IT WITHOUT BOTH AN `AgentConfig` FIELD AND A `save` EMISSION.** The
+failure is silent DATA LOSS, not a read that comes back empty: `load` would capture the table out of
+the opaque carrier, and `save`, having no field to emit it from, would never put it back.
+
+⚑ **`run_args` sits here with the other three, not behind a set borrowed from elsewhere.** It is a
+modelled field exactly like them; the only thing odd about it is that its VALUE is not a table
+(`_SCALAR_WRITABLE_KEYS`, below). *(Measured by removing it: `cfg.state` gains `run_args: "['--a',
+'--b']"` — the `str()` of the list — beside the correctly typed field, and `state_level` then carries
+that string into the launch cascade as `agent.<agent>.run_args`. Two carriers of one key,
+disagreeing in TYPE, with nothing refusing either. It is NOT that the undeclared-state refusal never
+sees it: `run_args` is declared, so that refusal would see it and ACCEPT it.)*
+
 ```_FLAT_AGENT_CATEGORIES: tuple[str, ...] = ("bindings", "caches", "seeded", "common", "synced", "masks", "secret_path", "env")```
 EVERY category the file stores FLAT under `self`. **EIGHT TOKENS, NINE CATEGORIES** — `bindings` is
 one token whose `{ro, rw}` table rides WHOLE, exactly as the canonical `agent.<node>.bindings` key
@@ -157,9 +175,14 @@ this key?*, asked in its own words rather than borrowed. It used to be `IDENTITY
 (`kanibako.settings.agent_config`), subtracted below; that set meant *"the root keys that are NOT
 tables"* at this site, *"keep this out of `cfg.state`"* at `_MODELED_KEYS`, and *"admit this at the
 write door"* in `config_keys` — three unrelated jobs under one false name, dissolved 2026-09-18.
+Only the first two have successors: D8b DELETED the write-door allowlist rather than rehoming it —
+the §2d gate it short-circuited admits `run_args` unaided (`config_keys.py.md`, the agent-key gate).
+⚑ **This is the ONE enumeration of the three**; `agent_config.py.md` points here rather than telling
+it a second way.
 ⚑ It is NOT a claim about the STORED shape: `run_args` takes the scalar and stores it as argv WORDS,
 so `_LIST_VALUED_KEYS` is a SUBSET of this set. A plain-scalar modelled key would belong here and not
-there.
+there. **That subset is ASSERTED at import beside `_LIST_VALUED_KEYS`, not left to prose** (P15): a
+member added there and not here fails loudly the moment the module loads.
 
 ```_TABLE_VALUED_KEYS: Final[frozenset[str]] = _ROOT_TABLES - _SCALAR_WRITABLE_KEYS```
 Every ROOT key whose VALUE IS A TABLE — the complement, so it cannot drift from the shape the file
@@ -344,9 +367,9 @@ carrier holds is exactly the flat categories the record has no field for. Guarde
 ONE set (`_CARRIED_CATEGORIES`), which is also why nothing it emits is a shape `load` would refuse.
 **Measured: no live caller makes the load→write round trip it protects** — all four `save` callers
 persist a freshly generated config (both `start.py` sites gate on `agent_cfg_dirty`,
-first-use-only; both `cli.py` sites build inline). A guard, not a live guarantee. 🛑 Do NOT move a
-category into `_MODELED_KEYS` without a field AND a `save` emission: load would capture it out of
-the carrier and write would never put it back.
+first-use-only; both `cli.py` sites build inline). A guard, not a live guarantee. 🛑 The rule for
+moving a category INTO `_MODELED_KEYS`, and the data-loss shape that breaks if it is ignored, is at
+that constant's own block above.
 
 ⚑ **`load` and `save` are the ONLY names for this round trip** (S1b). The transitional
 `agent_config.load_agent_config` / `write_agent_config` forwards — the S1b BRIDGE, which existed

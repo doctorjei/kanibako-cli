@@ -611,6 +611,21 @@ class TestTheKeyspaceAndTheFileAgree:
         )
 
 
+class TestTheListValuedKeysAreScalarWritable:
+    """The relation ``agent_file.py`` states in comment but no longer asserts at import."""
+
+    def test_list_valued_keys_are_a_subset_of_scalar_writable_keys(self):
+        """A set that is list-valued must be writable as a scalar, or ``_is_table_valued``
+        would refuse a legal scalar write."""
+        from kanibako.settings.agent_file import (
+            _LIST_VALUED_KEYS,
+            _SCALAR_WRITABLE_KEYS,
+        )
+
+        assert _LIST_VALUED_KEYS, "empty — the subset check below would pass vacuously"
+        assert _LIST_VALUED_KEYS <= _SCALAR_WRITABLE_KEYS
+
+
 # ---------------------------------------------------------------------------
 # THE FIVE DOORS ANSWER WITH ONE VOICE
 # ---------------------------------------------------------------------------
