@@ -823,7 +823,13 @@ canonicalisation, and the installed-count rule. (Was: `explicit_agent > box_agen
 workset_agent > system default`, with `box.agent_name` — RETIRED, spec §2b — as the box tier.)
 
 Precedence: *explicit_agent* (the §1A CLI level) > *requested* (whatever the settings cascade
-resolved). The FIRST non-empty one "resolves a name".
+resolved). The FIRST **PRESENT** one resolves a name — never the first non-EMPTY one. `None` is
+the only spelling of absence either argument has (no `--agent` at all; `__MISSING__` at the
+selection key), so a present `""` is a VALUE: spec §2h keeps `present-None`, terminal `""` (**≠
+unset**) and the COPY-disable sentinel apart as three idioms. A blank tier therefore reaches
+`canonicalize_agent_ref` and is refused as an empty ref, instead of falling through to the next
+tier (a typed `--agent ""` taking the cascade's agent) or to the count rule (a stored
+`system.agent: ""` taking the single installed one), silently in both cases.
 
 A resolved name is validated against the installed set — the keys of `targets.discover_targets`,
 i.e. the DISCOVERED PLUGINS:

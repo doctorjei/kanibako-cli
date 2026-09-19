@@ -2356,7 +2356,17 @@ def _run_container(
     # RESIDUAL ruling).  A bare / non-persona launch materialises immediately,
     # exactly as before (single resolve, byte-identical).
     _defer_box = False
-    _box_indep_ref = explicit_agent or read_system_agent(system_settings_path)
+    # ⚑⚑ ONE TYPED value and ONE STORED one, so "GIVEN" IS ``is not None`` HERE
+    # TOO.  Under ``or``, a blank ``--agent ""`` fell through to the stored
+    # default and this decision was then taken for an agent the user never asked
+    # for.  A given ref answers the question whatever it says; a blank one names
+    # nothing to defer FOR, and is refused by the ref grammar at ``select_agent``
+    # below (and, at a live box, by the reattach comparison further down — the
+    # same message either way).
+    _box_indep_ref = (
+        explicit_agent if explicit_agent is not None
+        else read_system_agent(system_settings_path)
+    )
     if _box_indep_ref:
         try:
             _node, _harness = parse_agent_ref(_box_indep_ref)
@@ -2541,6 +2551,12 @@ def _run_container(
             # ⚑ Both separators are accepted, so a box stamped ``℘`` by an older
             # version reattaches unchanged.
             stored_agent = canonicalize_agent_ref(stored_agent)
+            # ⚑ ``is not None`` is the GIVEN predicate here as well, and the
+            # canonicalize inside it is what refuses a given-but-BLANK ref at a
+            # LIVE box — the very ``ConfigError`` a stopped box gets from
+            # ``resolve_agent``.  Guarding this with truthiness would split the
+            # two answers again: refused at a live box, silently resolved from
+            # the cascade at a stopped one.
             if explicit_agent is not None and (
                 canonicalize_agent_ref(explicit_agent) != stored_agent
             ):
