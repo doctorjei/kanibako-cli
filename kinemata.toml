@@ -1129,6 +1129,35 @@ source = "generated-artifacts.yaml"
 section = "artifacts"
 
 # ---------------------------------------------------------------------------
+# FACT: the interpreter floor this project declares in packaging is one CI
+# actually runs.
+# AUTHORITY: `pyproject.toml`'s `requires-python` is the declared side -- it is
+# where an installer reads the promise from, so it IS the promise; the
+# `python-version:` pins in `.github/workflows/` are the code side.
+# CATCHES: the floor raised in packaging while the jobs keep pinning the old
+# interpreter, and a matrix moved up off the floor. Either way the version this
+# project tells users it supports is exercised NOWHERE, and nothing in a green
+# run says so -- the suite passes on interpreters no user was pointed at, and
+# the first report comes from someone whose install matched the metadata.
+#
+# ⚑ `toml-value` READS THE VALUE, NOT THE KEY THAT HOLDS IT, which is why the
+# `path` descends all the way to the scalar. Stopping one key short is refused
+# rather than guessed at, measured 2026-09-19 with `path = ["project"]`: rc=2,
+# `'project' in pyproject.toml is a table, and this kind reads the values
+# themselves rather than the keys that hold them`, followed by that level's
+# keys so an author can finish the path.
+#
+# ⚑ IT CONTRIBUTES ONE ENTRY TO `check` AND NOTHING ELSE, measured rather than
+# assumed: the `silent:` tally moves by exactly 1 (298/390 to 299/391) and no
+# finding changes. A version string is not something `check` can catch code
+# re-deriving, so the movement is arithmetic and is not a signal.
+[[registry]]
+name = "python-floor"
+kind = "toml-value"
+source = "pyproject.toml"
+path = ["project", "requires-python"]
+
+# ---------------------------------------------------------------------------
 # THE PARITY ORACLES. Each one runs a command that prints what the CODE really
 # produces and compares that set against what a registry above DECLARES.
 #
@@ -1426,6 +1455,88 @@ authority = "declared"
 registry = "api-doc-artifacts"
 command = ["{python}", "scripts/gen-api-doc.py", "--list-unchanged"]
 extract = '(?m)^(api-docs/\S+\.md)$'
+
+# ---------------------------------------------------------------------------
+# THE SECOND TABLE HERE WHOSE ORACLE IMPORTS NOTHING, and the first whose two
+# sides are two FILES. Nothing in the tree compared them before: packaging says
+# `>=3.11`, eight jobs across two workflows say `"3.11"`, and the agreement
+# between them was upheld by nobody.
+#
+# 🛑 `produced_contains`, NOT `equal`, AND A LATER READER WILL WANT TO TIGHTEN
+# IT. The claim is that the floor is AMONG the pins -- never that the pins are
+# exactly the floor. A matrix that legitimately adds 3.12 is a job testing MORE,
+# not a drift, and an equality would report it every run until someone deleted
+# the coverage to get the green back. The question worth asking is only whether
+# the floor goes untested, and containment in this direction is that question
+# and nothing else.
+#
+# ⚑ THE ORACLE GLOBS `.github/workflows/*.y*ml` rather than naming the three
+# that exist, so a NEW workflow pinning an interpreter is in scope the day it
+# lands. It reads the files as TEXT -- no YAML parse, no import -- which is what
+# lets the produced side owe `pyproject.toml` nothing: the two sides really are
+# the two files, and neither is derived from the other. The relative path is
+# safe from any caller's directory: an oracle runs with the project root as its
+# working directory (`claims.run_oracle`), not the shell's.
+#
+# 🛑 THE `y*` IS THE HALF THAT MAKES THAT SENTENCE TRUE, and the glob was
+# `*.yml` until 2026-09-19. GitHub Actions reads a `.yaml` file in this
+# directory exactly as it reads a `.yml` one, so half the legal namespace sat
+# out of scope: a future `.yaml` workflow pinning a different interpreter would
+# have been invisible, the oracle would still have produced `3.11` from the
+# other files, and this gate would have read GREEN while checking less than it
+# says. That is the silence the paragraphs above refuse everywhere else, and
+# the sentence claiming a new workflow is in scope the day it lands was
+# aspirational until the glob was widened. Measured 2026-09-19: `*.y*ml` and
+# `*.yml` return the same three files on this tree, in the same order and with
+# no duplicate, so this widens COVERAGE and does not move today's result.
+#
+# ⚑ `translate` IS ON THE DECLARED SIDE AND IS THE WHOLE NOTATION GAP. Packaging
+# spells a floor as a CONSTRAINT (`>=3.11`); a job pins a VERSION (`3.11`).
+# Stripping the operator is the one difference between the spellings, and it is
+# declared here rather than done inside the command on purpose: an oracle taught
+# to print `>=3.11` would hide the fact that the comparison is not literal.
+#
+# ⚑ AND IT IS FAIL-CLOSED, WHICH IS THE PROPERTY THAT ACTUALLY MAKES IT SAFE
+# and is not visible from the sentence above. The pattern handles `>=` and
+# nothing else, so any other notation survives translation unchanged and reds
+# the gate -- there is no spelling this normalization quietly accepts. Measured
+# 2026-09-19 under kinemata `0.2.0` against a scratch copy of this table in
+# /tmp, swapping `requires-python` alone and leaving this repository's config
+# untouched: `>=3.11` rc=0, and `>3.11`, `~=3.11`, `>=3.12`, `>= 3.11`,
+# `>=3.11.0` and `>=3.11,<4` all rc=1.
+# 🛑 THE COST IS THAT THE RED DOES NOT SAY WHICH FAULT IT FOUND. Three of those
+# six -- `>= 3.11`, `>=3.11.0` and `>=3.11,<4` -- name the SAME floor 3.11 in a
+# notation this pattern does not strip, and each fails as `declared, produced by
+# nothing`, which is the identical message `>=3.12` produces when the floor has
+# genuinely moved past what CI runs. So a red here means the floor moved OR the
+# spelling did. Read `pyproject.toml` first: a reader who trusts the message
+# alone goes looking in the workflows for a drift that is not there.
+#
+# Measured 2026-09-19 on this tree, kinemata `0.2.0`:
+#   `# python-floor: 1 declared, 1 produced, every identifier declared is
+#   produced by the code.`  rc=0
+# NEGATIVE CONTROL, the same table with `replacement = "X"` so the declared
+# floor renders as `X3.11`: rc=1, `X3.11: declared, produced by nothing`. The
+# comparison is against what the workflows really say, not against itself.
+# VACUITY CONTROL, the oracle's glob pointed at a directory that does not exist:
+# rc=1, `BLOCKED: claims every identifier declared is produced by the code, and
+# its oracle produced no identifiers at all. Nothing can violate that, so the
+# run would pass by looking at nothing`. A containment whose produced side has
+# gone silent cannot read as a clean tree.
+[[parity]]
+registry = "python-floor"
+relation = "produced_contains"
+translate = { pattern = '^>=', replacement = "" }
+command = ["{python}", "-c", """
+import pathlib, re
+seen = set()
+for wf in sorted(pathlib.Path(".github/workflows").glob("*.y*ml")):
+    for m in re.finditer(r'(?m)^\\s*python-version:\\s*"?([0-9.]+)"?\\s*$', wf.read_text()):
+        seen.add(m.group(1))
+for v in sorted(seen):
+    print(f"ci-python: {v}")
+"""]
+extract = '(?m)^ci-python: (\S+)$'
 
 # ---------------------------------------------------------------------------
 # THE SHAPE RULES. `[[shape]]` reads only the declaration and asks whether it is
