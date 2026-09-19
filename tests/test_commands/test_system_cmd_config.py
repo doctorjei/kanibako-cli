@@ -1261,3 +1261,161 @@ class TestSystemSetAnchorsTheNodeItWrites:
         capsys.readouterr()
         assert _set(f"{self.KEY}=@meta.agent.goose.path/canon") == 1
         assert "meta.agent.goose.path" in capsys.readouterr().err
+
+
+def _argv_leaves() -> list[str]:
+    """The leaves whose STORED shape is a list, read off the predicate that decides it.
+
+    ⚑ P13 — never ``run_args`` by name.  A leaf joining ``agent_file._LIST_VALUED_KEYS``
+    becomes a display hazard at every entry point below on the day it is added, and these
+    pins must red THEN rather than after someone remembers to widen them.
+    """
+    from kanibako.settings.agent_file import _LIST_VALUED_KEYS
+
+    assert _LIST_VALUED_KEYS, "an empty predicate would make every pin below vacuous"
+    return sorted(_LIST_VALUED_KEYS)
+
+
+class TestAListValuedLeafReadsBackAsItsCommandLine:
+    """A stored leaf whose shape is a LIST comes back as the command line it was split
+    from — never as the Python repr ``['--a', '--b']``, a spelling no user can type back.
+
+    ⚑⚑ ONE PIN PER ENTRY POINT, NOT PER SURFACE, and the distinction is the point.  The
+    rendering itself is one function (``agent_file.stored_leaf_text``) and is pinned beside
+    its owner in ``test_settings/test_agent_file.py``; what each row here proves is that the
+    entry point ASKS IT — which is exactly what a surface written later forgets to do.  A
+    census of these taken by READING the code found four of them; the rest answered a probe.
+
+    ⚑ THE ``"['"`` ASSERTION IS THE ORACLE, not the equality: a surface that renders the
+    right words while leaking brackets somewhere ELSE in the same output is the failure this
+    class exists for, and an equality on one line cannot see it.
+    """
+
+    def _seed(self, config_file, leaf, *, pref=False):
+        """Plant the list at ``agent.default.<leaf>`` in the system SETTINGS file."""
+        std = _std(config_file)
+        std.settings.parent.mkdir(parents=True, exist_ok=True)
+        doc = load_doc(std.settings) if std.settings.exists() else {}
+        doc.setdefault("agent", {}).setdefault("default", {})[leaf] = ["--a", "--b"]
+        if pref:
+            doc.setdefault("pref", {}).setdefault("agent", {}).setdefault(
+                "default", {},
+            )[leaf] = ["--p", "--q"]
+        dump_doc(std.settings, doc)
+        return std
+
+    def test_get_the_bare_spelling(self, config_file, tmp_home, capsys):
+        """``config.read_agent_settings`` — the bare agent-setting read."""
+        for leaf in _argv_leaves():
+            self._seed(config_file, leaf)
+            capsys.readouterr()
+            assert _get(leaf) == 0
+            out = capsys.readouterr().out
+            assert f"{leaf}=--a --b" in out
+            assert "['" not in out, out
+
+    def test_get_the_agent_default_spelling(self, config_file, tmp_home, capsys):
+        """The ROUTED read — and the reason it is its own row.
+
+        ``agent.default.<leaf>`` is NOT a persona key: the reserved ``default`` node has no
+        ``agents/default/agent.yaml``, so the read falls through to ``_read_dest`` +
+        ``read_stored_leaf`` and never meets ``agent_file.read_leaf``'s renderer.  One
+        settings file, two spellings of one value, and they answered differently.
+        """
+        for leaf in _argv_leaves():
+            self._seed(config_file, leaf)
+            capsys.readouterr()
+            assert _get(f"agent.default.{leaf}") == 0
+            out = capsys.readouterr().out
+            assert f"agent.default.{leaf}=--a --b" in out
+            assert "['" not in out, out
+
+    def test_get_the_pref_spelling(self, config_file, tmp_home, capsys):
+        """``config_io.read_stored_pref`` — a §2h REQUEST carries its TARGET's shape."""
+        for leaf in _argv_leaves():
+            self._seed(config_file, leaf, pref=True)
+            capsys.readouterr()
+            assert _get(f"pref.agent.default.{leaf}") == 0
+            out = capsys.readouterr().out
+            assert f"pref.agent.default.{leaf}=--p --q" in out
+            assert "['" not in out, out
+
+    def test_show_renders_the_agent_table_and_the_nested_flatten(
+        self, config_file, tmp_home, capsys,
+    ):
+        """ONE output, TWO producers: ``read_agent_settings`` prints the bare row and
+        ``config_display._nested_settings_overrides`` prints the ``pref`` one.
+
+        ⚑ At SYSTEM scope the ``pref`` line comes from the NESTED flatten, not from
+        ``_pref_overrides``: that walk skips the ``agent`` table but not ``pref``, which is
+        why a list under ``pref`` reached it at all.  ``_pref_overrides`` is the box/workset
+        noun's flatten and is pinned separately below.
+        """
+        for leaf in _argv_leaves():
+            self._seed(config_file, leaf, pref=True)
+            capsys.readouterr()
+            assert _show() == 0
+            out = capsys.readouterr().out
+            assert f"{leaf} = --a --b" in out
+            assert f"pref.agent.default.{leaf} = --p --q" in out
+            assert "['" not in out, out
+
+    def test_show_renders_a_noun_file_s_pref_flatten(self, tmp_path, capsys):
+        """``config_display._pref_overrides`` — the OTHER flatten, reached through the
+        ``config_path`` noun file a box or workset ``show`` is handed.
+        """
+        from kanibako.settings.config_interface import show_config
+
+        for leaf in _argv_leaves():
+            noun = tmp_path / f"noun-{leaf}.yaml"
+            dump_doc(noun, {"pref": {"agent": {"default": {leaf: ["--p", "--q"]}}}})
+            capsys.readouterr()
+            show_config(
+                global_config_path=tmp_path / "g.yaml",
+                config_path=noun, effective=False,
+            )
+            out = capsys.readouterr().out
+            assert f"pref.agent.default.{leaf} = --p --q" in out
+            assert "['" not in out, out
+
+    def test_effective_behavior_hands_the_launch_a_command_line(self):
+        """``settings_launch.effective_behavior`` — the table the DESCRIPTOR ASSEMBLY reads.
+
+        ⚑ NOT A DISPLAY PIN, though ``box show --effective`` prints it: this table is handed
+        to ``targets/assembly.py`` as ``setting_values=``, which realizes any ``SettingArg``
+        by ``setting_key``.  So the emitted string is a VALUE leaving the display layer, and
+        a plugin declaring this leaf would put it in a container's argv.
+        """
+        from kanibako.settings.keystore import KeyStore
+        from kanibako.settings.settings_launch import effective_behavior
+
+        for leaf in _argv_leaves():
+            snap = KeyStore({"agent": {"default": {leaf: ["--a", "--b"]}}})
+            assert effective_behavior(snap, active_agent="claude")[leaf] == "--a --b"
+
+    def test_the_effective_pref_block_renders_BOTH_halves(self, tmp_path, capsys):
+        """``config_display._print_pref_block`` — the REQUEST and the RESULT it produced.
+
+        Both halves run through the one ``_render`` closure, so a cure applied to the
+        request alone leaves the arrow line printing a repr.  The leaf handed to that
+        closure is the TARGET's tail, never the row's: a dest-keyed row's tail is a
+        DESTINATION, which is data and contains dots.
+        """
+        from kanibako.settings.config_interface import show_config
+        from kanibako.settings.keystore import KeyStore
+
+        for leaf in _argv_leaves():
+            snap = KeyStore({
+                "pref": {"agent": {"default": {leaf: ["--p", "--q"]}}},
+                "agent": {"default": {leaf: ["--a", "--b"]}},
+            })
+            capsys.readouterr()
+            show_config(
+                global_config_path=tmp_path / "g.yaml",
+                config_path=tmp_path / "s.yaml",
+                effective=True, category_snapshot=snap,
+            )
+            out = capsys.readouterr().out
+            assert f"pref.agent.default.{leaf} = --p --q" in out
+            assert f"-> agent.default.{leaf} = --a --b" in out
+            assert "['" not in out, out

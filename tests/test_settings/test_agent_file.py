@@ -23,6 +23,7 @@ from kanibako.settings.agent_file import (
     save,
     slot_for,
     state_level,
+    stored_leaf_text,
     write_leaf,
 )
 from kanibako.settings.settings_resolve import SettingsError
@@ -709,6 +710,53 @@ class TestTheArgvSHAPEIsTheFileS:
 
         write_leaf(self._slot(tmp_path), None)
         assert load_doc(tmp_path / "claude" / "agent.yaml")["self"]["run_args"] is None
+
+    def test_stored_leaf_text_joins_the_words_for_every_list_valued_leaf(self):
+        """The PUBLIC renderer the display surfaces outside this module call.
+
+        ⚑ P13 — the subject is the module's own predicate, not the name ``run_args``: a
+        leaf added to :data:`_LIST_VALUED_KEYS` tomorrow is covered here without an edit,
+        which is the point of asking this module instead of each view deciding for itself.
+        ⚑ MUTATION, MEASURED: return ``None`` unconditionally and rows in this class red —
+        ``read_leaf``'s two among them, which is what proves the join DELEGATES to this
+        function rather than keeping a copy of its own — and the entry-point class
+        ``test_commands/test_system_cmd_config.py::TestAListValuedLeafReadsBackAsItsCommandLine``
+        reds with it.  ⚑ Nothing else in the suite moves: a surface not pinned there is not
+        pinned anywhere, so THAT class is the only evidence a new view asked this question.
+        """
+        from kanibako.settings.agent_file import _LIST_VALUED_KEYS
+
+        assert _LIST_VALUED_KEYS, "an empty predicate would make every row below vacuous"
+        for tail in _LIST_VALUED_KEYS:
+            assert stored_leaf_text(tail, ["--c", "--d"]) == "--c --d"
+
+    def test_stored_leaf_text_answers_NOT_MINE_for_anything_else(self):
+        """``None`` means "this module owns no rule for the pair", NEVER "absent".
+
+        The callers' empty-and-bool idioms differ from each other — the three ``pref``
+        idioms, ``get``'s empty-string→unset, the launch table's raw ``str()`` — so a
+        shape this module does not own must come back untouched for the caller to render.
+        """
+        from kanibako.settings.agent_file import _LIST_VALUED_KEYS
+
+        tail = next(iter(_LIST_VALUED_KEYS))
+        assert stored_leaf_text(tail, "--c --d") is None   # right leaf, scalar already
+        assert stored_leaf_text(tail, None) is None        # the --null suppression
+        assert stored_leaf_text(tail, True) is None        # a bool the caller lowercases
+        assert stored_leaf_text("model", ["--c"]) is None  # a list at a leaf that has none
+
+    def test_stored_leaf_text_renders_an_EMPTY_list_as_empty_not_NOT_MINE(self):
+        """The one case where the two meanings of ``None`` would collide, kept apart.
+
+        An empty ``run_args`` is the user's explicit "no arguments" (see
+        ``test_an_EMPTY_value_is_a_value_and_an_ABSENT_one_is_not``).  Answering ``None``
+        here would hand it back to the caller's scalar convention, which collapses empty
+        to the absent answer, and "(not set)" would print over an override that is really
+        in the file.
+        """
+        from kanibako.settings.agent_file import _LIST_VALUED_KEYS
+
+        assert stored_leaf_text(next(iter(_LIST_VALUED_KEYS)), []) == ""
 
     def test_no_OTHER_leaf_is_split(self, tmp_path):
         """The rule is one leaf's, not every leaf's — a model name keeps its spaces."""

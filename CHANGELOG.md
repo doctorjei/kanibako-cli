@@ -1037,6 +1037,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a spelling you cannot type back in. Both print `--a --b` now, the line you gave them. Nothing
   stored changes; this is the display only.
 
+- **And `system`, `box` and `workset` went on printing it that way.** The fix above reached the two
+  commands that read an agent's own value. Every other surface stringified the list its own way and
+  was missed: `kanibako system get run_args` answered `run_args=['--a', '--b']`, `kanibako system
+  show` listed it as `run_args = ['--a', '--b']`, `--effective` added `(override)` after the same
+  brackets, and `kanibako box show --effective` listed it among an agent's resolved settings in
+  that spelling too. `kanibako system get agent.default.run_args` was the sharpest of them: one
+  stored value, the other spelling of the same key, brackets from this one and the command line
+  from `kanibako system get run_args`. A `pref` request carries whatever shape the key it targets
+  holds, so `kanibako system get pref.agent.default.run_args` and the `pref` line of any `show`
+  answered `['--p', '--q']` as well, and the request-and-result pair `--effective` prints came back
+  bracketed on both halves — the request and the value it produced. All of them print the command
+  line you wrote now: `--a --b`, `--p --q`. **What you will see:** display only, at every one of
+  these commands; nothing stored changes and no value you have set means anything different. The
+  rendering now lives in the one place that knows which settings hold a list, so a view added later
+  asks it rather than deciding for itself — each of these had decided for itself, which is how one
+  of them could be fixed while the rest were not.
+
 - **A setting an agent plugin declares — `agent.goose.provider`, say — was a key to `kanibako agent`
   and an unknown key to `kanibako system`.** Most agent settings are the same for every agent and
   kanibako declares them itself, but an agent plugin may declare settings of its own; goose declares
