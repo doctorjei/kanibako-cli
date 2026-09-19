@@ -1,7 +1,7 @@
 # `src/kanibako/settings/settings_views.py` — API surface
 
 _Signatures only: no comments, no docstrings, no bodies._
-**GENERATED — do not hand-edit; regenerate with `notebook/scripts/dev-tools/gen-api-doc.py`.**
+**GENERATED — do not hand-edit; regenerate with the gen-api-doc tool, kept in the maintainer's canon notebook outside this repository.**
 Prose for these symbols lives in `llm-docs/kanibako/settings/settings_views.py.md`.
 
 
@@ -21,7 +21,7 @@ T = TypeVar('T')
 ```
 def bind_map(node: KeyStore, *, label: str='bindings') -> Mapping[str, BindEntry]
 def bind_maps(node: KeyStore, *, label: str='bindings') -> tuple[Mapping[str, BindEntry], Mapping[str, BindEntry]]
-def derived_bindings(node: KeyStore, *, label: str='binding_derivations') -> dict[str, Bind]
+def derived_bindings(node: KeyStore, *, label: str=BINDING_DERIVATIONS_NODE) -> dict[str, Bind]
 def env_view(node: KeyStore, *, label: str='env') -> Mapping[str, 'str | int | float | bool']
 def masks_set(node: KeyStore, *, label: str='masks') -> set[str]
 def as_str(value: Any) -> str

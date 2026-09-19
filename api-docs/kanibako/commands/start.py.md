@@ -1,7 +1,7 @@
 # `src/kanibako/commands/start.py` — API surface
 
 _Signatures only: no comments, no docstrings, no bodies._
-**GENERATED — do not hand-edit; regenerate with `notebook/scripts/dev-tools/gen-api-doc.py`.**
+**GENERATED — do not hand-edit; regenerate with the gen-api-doc tool, kept in the maintainer's canon notebook outside this repository.**
 Prose for these symbols lives in `llm-docs/kanibako/commands/start.py.md`.
 
 
@@ -53,7 +53,7 @@ def _effective_transform(proj, system_settings_path: 'Path | None', agent_id: st
 def _resolve_bootstrap_program(project_dir: str | None=None, explicit_agent: str | None=None) -> str
 def _bootstrap_available(program: str | None=None) -> bool
 def _check_box_components(proj) -> str | None
-def _resolve_existing_box(std: StandardPaths, config: KanibakoConfig, project_dir: str | None) -> ProjectPaths | None
+def _resolve_existing_box(std: StandardPaths, config: BootstrapConfig, project_dir: str | None) -> ProjectPaths | None
 def _broken_standalone_error(std: StandardPaths, project_dir: str) -> str | None
 def _no_box_error(project_dir: str | None, std: StandardPaths | None=None) -> str
 def _unbuilt_box_error(proj: ProjectPaths) -> str | None

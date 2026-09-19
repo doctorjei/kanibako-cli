@@ -1,8 +1,7 @@
 # `src/kanibako/commands/code_cmd.py` — API surface
 
 _Signatures only: no comments, no docstrings, no bodies._
-**GENERATED — do not hand-edit; regenerate with `notebook/scripts/dev-tools/gen-api-doc.py`.**
-Prose for these symbols lives in `llm-docs/kanibako/commands/code_cmd.py.md`.
+**GENERATED — do not hand-edit; regenerate with the gen-api-doc tool, kept in the maintainer's canon notebook outside this repository.**
 
 
 ## Variables
@@ -22,6 +21,7 @@ def _extension_for_agent(agent_name: str, project_path) -> str | None
 def _resolve_box_agent_node(runtime, std, proj, container_name: str) -> str | None
 def _resolve_box_vscode_extension(agent_name: str | None, proj) -> str | None
 def _resolve_box_image(runtime, proj, container_name: str) -> str | None
+def _write_attached_config(path, extension: str | None) -> None
 def _seed_attached_config(runtime, std, proj, container_name: str) -> None
 def _wire_docker_path(wrapper_path) -> int | None
 def _seed_remote_attached_config(engine, container_name: str) -> None

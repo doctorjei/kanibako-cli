@@ -1,8 +1,7 @@
 # `src/kanibako/browser_sidecar.py` — API surface
 
 _Signatures only: no comments, no docstrings, no bodies._
-**GENERATED — do not hand-edit; regenerate with `notebook/scripts/dev-tools/gen-api-doc.py`.**
-Prose for these symbols lives in `llm-docs/kanibako/browser_sidecar.py.md`.
+**GENERATED — do not hand-edit; regenerate with the gen-api-doc tool, kept in the maintainer's canon notebook outside this repository.**
 
 
 ## Variables

@@ -1,7 +1,7 @@
 # `src/kanibako/settings/paths.py` — API surface
 
 _Signatures only: no comments, no docstrings, no bodies._
-**GENERATED — do not hand-edit; regenerate with `notebook/scripts/dev-tools/gen-api-doc.py`.**
+**GENERATED — do not hand-edit; regenerate with the gen-api-doc tool, kept in the maintainer's canon notebook outside this repository.**
 Prose for these symbols lives in `llm-docs/kanibako/settings/paths.py.md`.
 
 
@@ -38,10 +38,13 @@ def resolve_system_paths(set_values: Mapping[str, str], *, data_home: Path, home
 def host_config_map(std: StandardPaths) -> dict[str, str]
 def system_path_floor(std: StandardPaths) -> dict[str, str]
 def load_system_config(user_config_path: Path, *, data_home: Path, home: Path) -> dict[str, Path]
+def resolve_data_path(*, config_home: Path | None=None, data_home: Path | None=None) -> Path
+def resolve_state_path(*, config_home: Path | None=None, data_home: Path | None=None) -> Path
 def resolve_data_leaf(data_path: Path | None=None, *, config_home: Path | None=None, data_home: Path | None=None) -> str
 def load_std_paths(config: BootstrapConfig | None=None) -> StandardPaths
 def resolve_project(std: StandardPaths, config: BootstrapConfig, project_dir: str | None=None, *, initialize: bool=False, enable_vault: bool | None=None, name_override: str | None=None, register: bool=True) -> ProjectPaths
 def helper_log_path(std: StandardPaths, proj: ProjectPaths) -> Path
+def write_vault_gitignore(vault_root: Path, vault_rw_path: Path) -> None
 def detect_project_mode(project_dir: Path, std: StandardPaths, config: BootstrapConfig) -> DetectionResult
 def load_primary_boxes(primary_workset: Path) -> dict[str, str]
 def primary_box_name_for_workspace(primary_workset: Path, workspace: str) -> str | None
@@ -64,7 +67,9 @@ def _box_settings_files(mode: BoxMode, metadata_path: Path, group: '_WorksetRoot
 def _fallback_runtime_dir(var_name: str) -> Path
 def _runtime_base_usable(base: Path) -> bool
 def _refuse_bare_relative(key: str, raw: object, default: str, *, ctx: ResolveCtx, lookup: Callable[[str, tuple[str, ...]], str]) -> None
+def _resolve_system_path_keys(set_values: Mapping[str, str], keys: Iterable[str], *, data_home: Path, home: Path, xdg_vars: Mapping[str, str]) -> tuple[dict[str, str], dict[str, Path]]
 def _floor_field(key: str) -> str
+def _path_tier_set_values(user_config_path: Path, *, data_home: Path, home: Path, xdg_vars: Mapping[str, str]) -> dict[str, str]
 def _resolve_local_dir(std: StandardPaths, project_path_str: str) -> tuple[str, Path]
 def _primary_box_paths(std: StandardPaths, metadata_path: Path, box_name: str) -> tuple[Path, Path, Path]
 def _workset_box_paths(metadata_path: Path, vault_ro_base: Path, vault_rw_base: Path, box_name: str) -> tuple[Path, Path, Path]
@@ -111,7 +116,6 @@ class StandardPaths:
     cache_home: Path
     config_file: Path
     data_path: Path
-    state_path: Path
     cache_path: Path
     data: Path
     backup: Path
@@ -124,6 +128,7 @@ class StandardPaths:
     registry: Path
     journal: Path
     cache: Path
+    state: Path
     runtime: Path
     channels_common: Path
     channels_chat: Path

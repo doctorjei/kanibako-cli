@@ -1,8 +1,7 @@
 # `src/kanibako/settings/bootstrap.py` — API surface
 
 _Signatures only: no comments, no docstrings, no bodies._
-**GENERATED — do not hand-edit; regenerate with `notebook/scripts/dev-tools/gen-api-doc.py`.**
-Prose for these symbols lives in `llm-docs/kanibako/settings/bootstrap.py.md`.
+**GENERATED — do not hand-edit; regenerate with the gen-api-doc tool, kept in the maintainer's canon notebook outside this repository.**
 
 
 ## Variables
@@ -14,8 +13,12 @@ XDG_RUNTIME_DIR = 'XDG_RUNTIME_DIR'
 XDG_STATE_HOME = 'XDG_STATE_HOME'
 XDG_CACHE_HOME = 'XDG_CACHE_HOME'
 XDG_SPEC_DEFAULTS: dict[str, str] = {XDG_DATA_HOME: '.local/share', XDG_CONFIG_HOME: '.config', XDG_STATE_HOME: '.local/state', XDG_CACHE_HOME: '.cache'}
+CONFIG_FILE = 'kanibako.cfg'
+SITE_CONFIG_DIR = '/etc/kanibako'
+SITE_CONFIG_FILE = 'base.cfg'
+SITE_SETTINGS_FILE = 'settings_base.yaml'
 CONFIG_PATH_DEFAULTS: dict[str, str] = {'config.data': '$XDG_DATA_HOME/kanibako', 'config.settings': '@config.data/global/settings.yaml', 'config.agents': '@config.data/agents', 'config.primary_workset': '@config.data/primary_workset', 'config.registry': '@config.data/global/registry.yaml', 'config.journal': '@config.data/global/journal.yaml'}
-SYSTEM_PATH_DEFAULTS: dict[str, str] = {'system.backup': '@config.data/backup', 'system.channelroot': '@config.data/channels', 'system.template': '@config.data/global/template', 'system.canon': '@config.data/global/canon', 'system.cache': '$XDG_CACHE_HOME/kanibako', 'system.runtime': '$XDG_RUNTIME_DIR/kanibako', 'system.channels.common': '@system.channelroot/common', 'system.channels.chat': '@system.channelroot/chat', 'system.channels.broadcast': '@system.channels.chat/broadcast.md', 'system.channels.mailboxes': '@system.channelroot/mailboxes', 'system.channels.share': '@system.channelroot/share'}
+SYSTEM_PATH_DEFAULTS: dict[str, str] = {'system.backup': '@config.data/backup', 'system.channelroot': '@config.data/channels', 'system.template': '@config.data/global/template', 'system.canon': '@config.data/global/canon', 'system.cache': '$XDG_CACHE_HOME/kanibako', 'system.state': '$XDG_STATE_HOME/kanibako', 'system.runtime': '$XDG_RUNTIME_DIR/kanibako', 'system.channels.common': '@system.channelroot/common', 'system.channels.chat': '@system.channelroot/chat', 'system.channels.broadcast': '@system.channels.chat/broadcast.md', 'system.channels.mailboxes': '@system.channelroot/mailboxes', 'system.channels.share': '@system.channelroot/share'}
 PROFILE_FILE = '.profile'
 BASHRC_FILE = '.bashrc'
 SHELL_D_FILE = '.shell.d'

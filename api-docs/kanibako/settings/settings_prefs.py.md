@@ -1,7 +1,7 @@
 # `src/kanibako/settings/settings_prefs.py` — API surface
 
 _Signatures only: no comments, no docstrings, no bodies._
-**GENERATED — do not hand-edit; regenerate with `notebook/scripts/dev-tools/gen-api-doc.py`.**
+**GENERATED — do not hand-edit; regenerate with the gen-api-doc tool, kept in the maintainer's canon notebook outside this repository.**
 Prose for these symbols lives in `llm-docs/kanibako/settings/settings_prefs.py.md`.
 
 
@@ -55,7 +55,7 @@ class PrefRequest:
     def where(self) -> str
 
 class AgentNames(Collection[str]):
-    def __init__(self, discovered: Collection[str], *, leaves: 'Collection[str] | None'=None, discovery_failed: bool=False) -> None
+    def __init__(self, discovered: Collection[str], *, leaf_map: 'Mapping[str, Collection[str]] | None'=None, unreadable: 'Container[str]'=frozenset(), discovery_failed: bool=False) -> None
 
     def __contains__(self, item: object) -> bool
     def __iter__(self)

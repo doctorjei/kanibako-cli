@@ -1,7 +1,7 @@
 # `src/kanibako/settings/settings_launch.py` — API surface
 
 _Signatures only: no comments, no docstrings, no bodies._
-**GENERATED — do not hand-edit; regenerate with `notebook/scripts/dev-tools/gen-api-doc.py`.**
+**GENERATED — do not hand-edit; regenerate with the gen-api-doc tool, kept in the maintainer's canon notebook outside this repository.**
 Prose for these symbols lives in `llm-docs/kanibako/settings/settings_launch.py.md`.
 
 
@@ -16,6 +16,7 @@ _BIND_FLOOR_TAILS: tuple[str, ...] = ('.bindings.ro', '.bindings.rw') + tuple((f
 _SYSTEM_SHARE_ALLOWED_KEY = 'system.auth.share_allowed'
 _BOX_MODES: frozenset[str] = frozenset({'primary', 'named', 'standalone'})
 _WORKSET_CHANNEL_LEAVES: frozenset[str] = frozenset({'common', 'chat', 'broadcast', 'share', 'mailboxes', 'share_global'})
+_SETTINGS_FILE_NAMES: Final[str] = "the box's box.yaml, the workset's workset.yaml, the agent's agent.yaml, or the system settings.yaml"
 _BOX_ROOT_KEY = 'meta.box.path'
 _BOX_STORE_KEY = 'workset.boxes'
 ```
@@ -23,6 +24,7 @@ _BOX_STORE_KEY = 'workset.boxes'
 ## Types
 ```
 AuthTier = Literal['workset', 'global', 'box']
+_TierFile = tuple[str, Path | None]
 
 ```
 
@@ -33,15 +35,19 @@ def meta_runtime_floor(*, mode: str, ws_name: str, ws_root_literal: str | None=N
 def meta_agent_path_floor(agent_name: str) -> dict[str, object]
 def meta_agent_grammar_floor(agent_name: str, descriptor: 'PluginDescriptor | None') -> dict[str, object]
 def meta_identity_floor(*, box_name: str, project_path: str, inbox: str, share_global: str, share_workset: str | None, box_settings: str | None=None, agent_name: str | None=None, agent_real_name: str | None=None, agent_auth_share_support: bool=False) -> dict[str, object]
-def workset_anchor_floor(*, mode: str, workset_channels: Mapping[str, str] | None=None) -> dict[str, object]
+def workset_anchor_floor(*, mode: str, channelroot: str | None=None, workspaces: str | None=None, workset_channels: Mapping[str, str] | None=None) -> dict[str, object]
 def resolve_auth_source(snapshot: KeyStore, *, mode: str | None=None) -> AuthSource
 def build_launch_snapshot(*, agent_name: str, ctx: ResolveCtx, system_path: Path | None, agent_path: Path | None, workset_path: Path | None, box_path: Path | None, behavior_floor: Mapping[str, object] | None=None, default_categories: Mapping[str, object] | None=None, agent_partial: KeyStore | None=None, agent_state: AgentFileLevel | None=None, persona_values: Mapping[str, str] | None=None, auth_chain: Mapping[str, object] | None=None, meta_runtime: Mapping[str, object] | None=None, meta_identity: Mapping[str, object] | None=None, workset_anchor: Mapping[str, object] | None=None, prefs: 'Sequence[PrefRequest] | None'=None, valid_agents: 'Collection[str] | None'=None, cli_level: Mapping[str, object] | None=None) -> KeyStore
 def resolve_selected_agent(*, ctx: ResolveCtx, system_path: Path | None, workset_path: Path | None, box_path: Path | None, prefs: 'Sequence[PrefRequest] | None'=None, valid_agents: 'Collection[str] | None'=None) -> object
 def snapshot_leaf(snapshot: KeyStore, dotted: str) -> object
 def effective_behavior(snapshot: KeyStore, *, active_agent: str, keys: 'list[str] | None'=None) -> dict[str, str]
 def meta_agent_grammar(snapshot: KeyStore, *, active_agent: str) -> AgentGrammar
+def resolve_box_dest(raw: str, box_ctx: ResolveCtx) -> str
 def snapshot_category_entries(snapshot: KeyStore, *, active_agent: str, box_ctx: ResolveCtx, optional_keys: frozenset[str]=frozenset()) -> list[CategoryEntry]
 def _is_bind_floor_key(key: str) -> bool
+def _loaded_tiers(files: Sequence[_TierFile]) -> tuple[tuple[str, Path], ...]
+def _refuse_retired_spelling(tiers: Sequence[tuple[str, Path]]) -> None
+def _refuse_undeclared_snapshot(store: KeyStore, *, files: Sequence[_TierFile]) -> None
 def _assert_box_root_resolved(snapshot: KeyStore) -> None
 def _materialize_box_agent_mirror(snapshot: KeyStore, *, active_agent: str) -> None
 def _mirror_fill(box_node: KeyStore, agent_node: KeyStore) -> None

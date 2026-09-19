@@ -1,7 +1,7 @@
 # `src/kanibako/settings/settings_expand.py` — API surface
 
 _Signatures only: no comments, no docstrings, no bodies._
-**GENERATED — do not hand-edit; regenerate with `notebook/scripts/dev-tools/gen-api-doc.py`.**
+**GENERATED — do not hand-edit; regenerate with the gen-api-doc tool, kept in the maintainer's canon notebook outside this repository.**
 Prose for these symbols lives in `llm-docs/kanibako/settings/settings_expand.py.md`.
 
 
@@ -42,6 +42,7 @@ class _Expander:
     def _expand_node(self, node: KeyStore, *, path: tuple[str, ...]) -> KeyStore
     def _expand_dest_key(self, key: str, value: StoreValue, *, chain: tuple[str, ...]) -> str
     def _expand_leaf(self, value: StoreValue, *, path: tuple[str, ...]) -> StoreValue | _Absent
+    def _refuse_relative_host_src(self, raw: str, expanded: str, *, chain: tuple[str, ...]) -> None
     def _expand_bind(self, bind: Bind, *, chain: tuple[str, ...]) -> StoreValue | _Absent
     def _expand_bind_entry(self, entry: BindEntry, *, chain: tuple[str, ...]) -> StoreValue | _Absent
     def _expand_str(self, value: str, *, space: str, chain: tuple[str, ...]) -> StoreValue | _Absent

@@ -1,7 +1,7 @@
 # `src/kanibako/settings/messages.py` — API surface
 
 _Signatures only: no comments, no docstrings, no bodies._
-**GENERATED — do not hand-edit; regenerate with `notebook/scripts/dev-tools/gen-api-doc.py`.**
+**GENERATED — do not hand-edit; regenerate with the gen-api-doc tool, kept in the maintainer's canon notebook outside this repository.**
 Prose for these symbols lives in `llm-docs/kanibako/settings/messages.py.md`.
 
 
@@ -26,6 +26,8 @@ ERR_SETTINGS_BAD_PATH = 'Unresolvable %s path: %s'
 ERR_SETTINGS_BAD_REF = 'Unknown @%s-reference: %s'
 ERR_CONFIG_NO_FILE = '%s is missing. Run any kanibako command to initialize.'
 ERR_CONFIG_LAYER1_SETTINGS = '%s carries settings, which it cannot hold:\n  %s\n' + 'That file holds the config.* bootstrap paths and nothing else. ' + 'Delete those lines from it, then set what you meant with ' + "'kanibako system set <key>=<value>', which writes the settings file."
+ERR_CONFIG_LAYER1_UNDECLARED = '%s carries config keys that do not exist:\n  %s\n' + 'Layer 1 declares exactly these (spec §1): %s. Fix or delete ' + 'those lines; config.* keys are only ever set by editing that file.'
+ERR_CONFIG_LAYER1_TABLE = "%s has a 'config:' entry that is not a table: %s\n" + 'It carries the config.* bootstrap paths as keys under it, e.g.\n' + '  config:\n    data: /path/to/kanibako'
 ERR_PROJECT_NO_PATH = "Project path '%s' does not exist."
 ERR_PROJECT_NEW_HOME = 'Refusing to create project rooted at $HOME: this would mount the ' + 'entire home directory as the workspace.\n If you really want a ' + 'project here, use:\nkanibako create --standalone ~ --allow-home'
 ERR_PROJECT_REG_HOME = 'Refusing to register $HOME as a project path: this would mount the ' + 'entire home directory as the workspace.'
