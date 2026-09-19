@@ -22,6 +22,7 @@ from kanibako.agent_ref import parse_agent_ref
 from kanibako.errors import ConfigError
 from kanibako.settings.agent_file import AgentFileSlot, slot_for
 from kanibako.settings.config_keys import (
+    _AGENT_DEFAULT_TIER_CURE,
     AGENT_DEFAULT_SUB,
     _is_agent_setting,
     _parse_agent_node_secret_key,
@@ -86,9 +87,13 @@ def _reserved_tier_refusal(tail: str) -> str:
     ⚑ TWO CURES, PICKED BY ``_is_agent_setting`` — the SAME predicate
     ``config_interface`` dispatches its bare-key write on, so the bare key this names
     is reachable.  A *tail* with no bare spelling is sent to the settings FILE.
-    ⚑ It promises NO READ-BACK: ``config get`` answers "(not set)" over a
-    hand-authored ``agent.default.env.<VAR>``, and no message may say otherwise (see
-    :func:`_read_dest`).
+    ⚑ THE SECOND CURE NO LONGER COVERS ``env.<VAR>``/``secret_path.<VAR>``: both are
+    CLI-settable at the tier now (:func:`~kanibako.settings.config_keys.
+    agent_default_tier_category`), so they are DISPATCHED ahead of this refusal.  What
+    could still reach that arm is a declared NON-scalar leaf, and the one that exists,
+    ``transform_settings``, is intercepted a branch earlier by ``agent_leaf_table_error``
+    — which names the SAME file, so the arm and its interceptor agree.
+    ⚑ The cure SENTENCE is ``config_keys``' (P10) — this module was its third carrier.
     Reasoning: ``llm-docs/kanibako/settings/config_dest.py.md``.
     """
     head = "Error: 'default' is the reserved any-agent tier, not a persona node"
@@ -98,9 +103,8 @@ def _reserved_tier_refusal(tail: str) -> str:
             f"(e.g. '{tail}') instead."
         )
     return (
-        f"{head}, and '{tail}' has no bare CLI spelling. Author it in the "
-        f"'agent: default:' table of the system settings file; the launch reads it "
-        f"from there."
+        f"{head}, and '{tail}' has no bare CLI spelling. "
+        f"{_AGENT_DEFAULT_TIER_CURE}"
     )
 
 
@@ -157,19 +161,39 @@ def _node_bind_target(
 
 def _node_secret_target(
     canonical: str, agents_root: "Path | None",
-) -> "AgentFileSlot | None":
+) -> "AgentFileSlot | str | None":
     """Resolve a canonical ``agent.<node>.secret_path.<VAR>`` key (SECRET category)
     to its FILE write/read/reset location — the get/set/reset symmetry twin.
 
-    A slot on the node's own settings file with the tail ``secret_path.<VAR>``, or
-    ``None`` under the same conditions as :func:`_node_bind_target`.
+    An :class:`AgentFileSlot`, an ``"Error: ..."`` string for a REFUSED node, or ``None``
+    when it is not a node secret / *agents_root* was not threaded.
+
+    ⚑⚑ THE THREE OUTCOMES ARE THREE, AND THEY WERE TWO.  A refused node and an
+    unthreaded root both collapsed into ``None``, so the callers — which can only read
+    ``None`` as "no store here" — told a user typing at the SYSTEM scope that the key
+    "is only settable at the system scope."  A route that cannot say WHICH refusal
+    happened forces its caller to guess, and the guess printed a false sentence.
+    ⚑ The SHAPE is :func:`_persona_agent_target`'s, deliberately: the two are the
+    per-node write routes of one tier and a caller handles them identically.
     """
     parsed = _parse_agent_node_secret_key(canonical)
     if parsed is None:
         return None
     node, _var = parsed
     route = _agent_node_route(node, f"secret_path.{_var}", agents_root)
-    return route if isinstance(route, AgentFileSlot) else None
+    if isinstance(route, NodeRouteRefusal):
+        if route.reason == "reserved":
+            # ⚑ UNREACHABLE BY DISPATCH, NOT BY LUCK: ``agent.default.secret_path.<VAR>``
+            # is a real key with a real destination, claimed by every verb ahead of this
+            # route (``config_keys.agent_default_tier_category``).  If this ever prints,
+            # that branch is gone — so it names the cause instead of re-curing the key,
+            # which is how the false "only settable at the system scope" got written.
+            return (
+                f"Error: '{canonical}' reached the per-node secret route; the reserved "
+                f"any-agent tier has no per-node file, and its own route is missing."
+            )
+        return f"Error: {route.detail}"
+    return route
 
 
 # ---------------------------------------------------------------------------
@@ -270,6 +294,7 @@ def _key_slot(canonical: str) -> "tuple[tuple[str, ...], str, str] | None":
     file shape and is resolved by :func:`_agent_node_route`.
     """
     from kanibako.settings.config_keys import (
+        agent_default_tier_category,
         agent_default_tier_leaf,
         _is_agent_setting,
         _is_path_category_key,
@@ -311,6 +336,17 @@ def _key_slot(canonical: str) -> "tuple[tuple[str, ...], str, str] | None":
     default_leaf = agent_default_tier_leaf(canonical)
     if default_leaf is not None:
         return ("agent", "default"), default_leaf, _NOUN
+    # ⚑ THE SAME TABLE, ONE LEVEL DEEPER — the any-agent tier's two SCALAR category
+    # families (spec §2a ``env.<VAR>`` / ``secret_path.<VAR>``). ``agent: default: env:``
+    # in the NOUN's settings file is where the launch reads them from
+    # (``settings_assemble.assemble_levels``: the ``agent.default`` rung is structurally
+    # empty and the tier arrives on the SYSTEM level), so it is where all three verbs
+    # address them. Routed to the per-node file instead, the reserved ``default`` node has
+    # no file and every verb refused a declared, ``cli_set: true`` key.
+    default_cat = agent_default_tier_category(canonical)
+    if default_cat is not None:
+        category, var = default_cat
+        return ("agent", "default", category), var, _NOUN
     # THREE TERMS, ONE SLOT RULE — they are one storage shape: a category tuple at
     # the key's own nested path in the scope's settings file.
     #

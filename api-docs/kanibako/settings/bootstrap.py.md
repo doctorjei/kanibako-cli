@@ -19,6 +19,7 @@ SITE_CONFIG_FILE = 'base.cfg'
 SITE_SETTINGS_FILE = 'settings_base.yaml'
 CONFIG_PATH_DEFAULTS: dict[str, str] = {'config.data': '$XDG_DATA_HOME/kanibako', 'config.settings': '@config.data/global/settings.yaml', 'config.agents': '@config.data/agents', 'config.primary_workset': '@config.data/primary_workset', 'config.registry': '@config.data/global/registry.yaml', 'config.journal': '@config.data/global/journal.yaml'}
 SYSTEM_PATH_DEFAULTS: dict[str, str] = {'system.backup': '@config.data/backup', 'system.channelroot': '@config.data/channels', 'system.template': '@config.data/global/template', 'system.canon': '@config.data/global/canon', 'system.cache': '$XDG_CACHE_HOME/kanibako', 'system.state': '$XDG_STATE_HOME/kanibako', 'system.runtime': '$XDG_RUNTIME_DIR/kanibako', 'system.channels.common': '@system.channelroot/common', 'system.channels.chat': '@system.channelroot/chat', 'system.channels.broadcast': '@system.channels.chat/broadcast.md', 'system.channels.mailboxes': '@system.channelroot/mailboxes', 'system.channels.share': '@system.channelroot/share'}
+SPAWN_BUDGET_DEFAULTS: dict[str, int] = {'depth': 4, 'breadth': 4}
 PROFILE_FILE = '.profile'
 BASHRC_FILE = '.bashrc'
 SHELL_D_FILE = '.shell.d'

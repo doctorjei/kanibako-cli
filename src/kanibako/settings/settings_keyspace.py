@@ -164,6 +164,14 @@ DECLARED_SYSTEM_CHANNEL_LEAVES: Final[frozenset[str]] = frozenset({
     "common", "chat", "broadcast", "mailboxes", "share",
 })
 
+#: ``system.helpers.<leaf>`` — the helper-hub SPAWN BUDGET (spec §2g).
+#: ⚑ DECLARED 2026-09-19.  Both leaves were LIVE and UNDECLARED: ``channels/helpers.py``
+#: read a ``spawn:`` table out of a bespoke ``<XDG_CONFIG_HOME>/kanibako/spawn.yaml``,
+#: which is the §0 violation ``system.templates_stamp`` was retired for.
+DECLARED_SYSTEM_HELPERS_LEAVES: Final[frozenset[str]] = frozenset({
+    "depth", "breadth",
+})
+
 #: ``system.auth.<leaf>`` — the auth 3-tier gate (spec §2g/§2c; settable ONLY
 #: from the system floor per §0).
 DECLARED_SYSTEM_AUTH_LEAVES: Final[frozenset[str]] = frozenset({"share_allowed"})
@@ -1477,6 +1485,7 @@ def key_class(
             leaves=DECLARED_SYSTEM_LEAVES,
             sub_tables={
                 "channels": DECLARED_SYSTEM_CHANNEL_LEAVES,
+                "helpers": DECLARED_SYSTEM_HELPERS_LEAVES,
                 "auth": DECLARED_SYSTEM_AUTH_LEAVES,
             },
             what="system",

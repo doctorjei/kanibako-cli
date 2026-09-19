@@ -1022,6 +1022,29 @@ keys:
            bump (hard block); CI compares the packaged-template digest against
            the previous tag and REQUIRES the bump."
     spec: "§2g (R-34 + R-38)"
+  system.helpers.depth:
+    scope: system
+    type: int
+    set: cli+file
+    default: 4
+    note: "helper-hub SPAWN BUDGET — how many GENERATIONS may be spawned below a
+           box. -1 is unlimited; 0 refuses the spawn. A parent hands its child a
+           DECREMENTED copy at the child's own system tier, so the budget runs out
+           on its own. ⚑ DECLARED 2026-09-19: the pair was LIVE and UNDECLARED,
+           read by channels/helpers.py from a bespoke spawn.yaml `spawn:` table
+           (§0 violation, the system.templates_stamp shape). The built-in value is
+           channels/helpers.DEFAULT_DEPTH, applied when no tier carries the key."
+    spec: "§2g"
+  system.helpers.breadth:
+    scope: system
+    type: int
+    set: cli+file
+    default: 4
+    note: "helper-hub SPAWN BUDGET — how many helpers one box may hold at once.
+           -1 is unlimited. INHERITED by a child unchanged; only depth decrements.
+           Declared with its depth twin (see that row). Built-in value:
+           channels/helpers.DEFAULT_BREADTH."
+    spec: "§2g"
   system.auth.share_allowed:
     scope: system
     type: bool

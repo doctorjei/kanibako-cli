@@ -409,7 +409,9 @@ The order below is the order in the source, and several steps of it are load-bea
 * **`agent.<node>.secret_path.<VAR>`** — the per-node SECRET category (spec §2a): the stored PATH
   (never the secret VALUE) at the DISCRIMINATED slot in the node's OWN settings file — the
   get/set/reset symmetry twin. ⚑ Checked BEFORE the persona branch. Missing `agents_root` /
-  malformed node → `None`.
+  malformed node → `None` (a READ reports neither condition; the write verbs name them).
+  ⚑ The RESERVED `default` node is excluded by `is_agent_default_tier_key` and falls THROUGH to
+  the routed read, for the same reason the persona branch excludes it.
 * **`<scope>.secret_path.<VAR>`** — the stored PATH from the NOUN's settings file. ⚑ `noun_file`
   is the SAME per-noun selection set/reset use (`settings_dest`). It read `project_toml`
   unconditionally before, which the SYSTEM handler never threads — so a
@@ -625,12 +627,22 @@ pre-existing defect still allows the set and `config set` stays usable to REPAIR
   and `collect_prefs` reads. ⚑ NESTED, never a dotted literal: a bind-shaped value spelled the
   dotted way would never be bind-parsed, so the two spellings would behave differently (see
   `settings_prefs`).
+* **`agent.default.{env,secret_path}.<VAR>`** — the any-agent tier's two SCALAR category families
+  (spec §2a). Routed like the tier's bare leaves: `default` is the RESERVED tier, not a persona,
+  and has no `agents/default/agent.yaml`, so the write lands in the `agent: default: <category>:`
+  table of the NOUN's settings file — the table `assemble_levels` reads the tier from.
+  ⚑ Checked BEFORE both per-node branches, which would otherwise refuse a declared,
+  `cli_set: true` key at every scope there is: `set` prescribed a hand-edit and `get` then
+  answered "(not set)" over the value the user hand-authored where it said to.
 * **`agent.<node>.secret_path.<VAR>`** — the per-node SECRET category (spec §2a). A SCALAR path
   write to the node's OWN settings file at the DISCRIMINATED `agent.<node>.secret_path`
   sub-table (the shape `_agent_partial` reads into the cascade + `agent_file.load` reads back).
   ⚑ Checked BEFORE the persona branch (`env_file` was there in rc; `secret_path` is discriminated
   node storage, a clean break). The §0 directional guard already ran: `agent.*` is settable only
   DOWNWARD from system, so box/workset was refused above; SYSTEM threads `agents_root`.
+  ⚑ A MALFORMED node ref is NAMED, not reported as a scope error: `_node_secret_target` returns
+  an `"Error: …"` string for it, and only an UNTHREADED `agents_root` reaches the
+  "only settable at the system scope" sentence.
 * **`<scope>.secret_path.<VAR>`** — the SECRET category at a NON-agent scope: a SCALAR path write
   to the command scope's SETTINGS file at the nested slot (the shape `_file_partial` reads into
   the cascade). The §0 directional guard already permitted it (own/contained scope).
@@ -770,8 +782,10 @@ with its `set_config_value` twin.
 ### The reset dispatch
 
 Each branch clears exactly where its `set` twin wrote. `pref.<target-key>`;
-`agent.<node>.secret_path.<VAR>` (⚑ BEFORE the persona branch; a missing `agents_root` /
-malformed node → refused, only resettable at the system scope); `<scope>.secret_path.<VAR>`;
+`agent.default.{env,secret_path}.<VAR>` (⚑ BEFORE both per-node branches, symmetrically with set);
+`agent.<node>.secret_path.<VAR>` (⚑ BEFORE the persona branch; a missing `agents_root` → refused,
+only resettable at the system scope, and a MALFORMED node ref named instead);
+`<scope>.secret_path.<VAR>`;
 `<scope>.env.<VAR>`; `agent.<node>.<key>` (`remove_nested_key` prunes now-empty `agent:`/`env:`
 tables, keeping the file sparse); the bare agent settings (`agent.default`, SYSTEM routing to the
 system settings file); `box.agent.<key>` — RETIRED (P7, spec §2b), refused with the cure rather

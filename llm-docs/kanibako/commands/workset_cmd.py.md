@@ -119,6 +119,34 @@ special-casing (the old `group_auth` `meta.workset` identity key is retired).
 `workset.env.<VAR>`, stored in `ws_config` like every other workset key, so there is no second
 write target at this scope.
 
+### Which two files the SHOW arm hands the engine
+
+`show_config` takes a config file and a settings file, and `config_dest.noun_settings_file` states
+the test that picks between them: the settings argument wins *"when the noun keeps its settings
+apart from its config file"*. A workset does — its Layer-1 config file and its settings file are
+two different documents — so this arm passes them as the **system noun** does:
+`config_path=config_file`, `system_settings_path=ws_config`.
+
+⚑ **The pair used to be spelled the other way** (`config_path=ws_config`, no settings argument),
+and that cost two things. `load_merged_config` read the settings document as a **BOX-tier** file and
+dropped it with an upward-scope warning, and the nested-settings flatten — the block that renders a
+noun's own settings file — was never fed. The result: a workset's `common` / `caches` / `seeded`
+declarations were invisible in **both** views at the one noun that owns them, against spec §0
+(*"They remain real, declared keys: … `config show` lists them"*).
+
+⚑ **ONE CARRIER.** The rows come from `config_display._nested_settings_overrides`, the same flatten
+`system show` already renders its own declarations with. Nothing here re-reads or re-derives the
+file, and there is no workset-only renderer.
+
+The `pref:` table is flattened by that same walk, so `config_path` must **not** also be `ws_config`:
+`_pref_overrides` reads the config path, and pointing both at one file prints every pref request
+twice.
+
+`--effective` gains the DECLARATION half of §0's *"both the declaration and the derived binding"*.
+The derived half is not available at this noun: the binding a declaration produces is materialised
+by a launch resolve (`_resolve_launch_snapshot`), which needs a box identity and an agent, and a
+workset has neither. `box show --effective` is where the pair is rendered.
+
 ### Why three guards sit in the GET arm and none in the others
 
 All three refusals — bare agent behavior key, bare `env.<VAR>`, and the closed-keyspace read gate

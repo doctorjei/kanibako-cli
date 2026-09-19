@@ -134,25 +134,28 @@ reachable" are the SAME question asked once. It derives through `SCALAR_AGENT_LE
 `DECLARED_AGENT_LEAVES − TABLE_VALUED_AGENT_LEAVES`, so a leaf declared tomorrow lands on the right
 arm with no edit here (P13), and nothing is exempted by name.
 
-**THE TAIL THAT REACHES THE FILE ARM IS `env.<VAR>`** — the section form
-`_parse_persona_agent_key` recognises structurally — and it gets there by construction, not by
-enumeration. `transform_settings` is the only other tail the arm would take, and MEASURED it never
-arrives: `agent_leaf_table_error` refuses it a branch earlier (its message carries no *"reserved
-any-agent tier"*) and names the SAME file. So the arm has one live member and a second that agrees
-with it — which is why the arm needs no list.
+**`env.<VAR>` NO LONGER REACHES THE FILE ARM, AND THAT IS THE 2026-09-19 CURE.** The measurement
+above diagnosed a refusal that prescribed a failing command; the message was made true, but the key
+was still a DECLARED, `cli_set: true` key with no CLI route at all — a §0 defect the better wording
+concealed. `agent.default.env.<VAR>` and `agent.default.secret_path.<VAR>` are the any-agent tier's
+two SCALAR category families, `agent_default_tier_category` claims their slot, and every verb
+DISPATCHES them ahead of this refusal. So the arm's only remaining member is `transform_settings`,
+and MEASURED it never arrives either: `agent_leaf_table_error` refuses it a branch earlier (its
+message carries no *"reserved any-agent tier"*) and names the SAME file. The arm still needs no
+list — it is the answer for any future declared leaf that has no bare spelling.
 
 **THE FILE CURE IS MEASURED TOO.** A system settings file carrying `agent: default: env: {UNIVERSAL:
 …}` produces the category entry `agent.default.env.UNIVERSAL` and collapses into `meta.assembly.env`,
 so *"the launch reads it from there"* is a fact about running code, not an inference from the spec.
 It is deliberately the wording `config_keys._terminal_category_message` already gives the
-`agent.default` arm — one key, one destination, one sentence, whichever door a user knocks on.
+`agent.default` arm — one key, one destination, one sentence, whichever door a user knocks on. The
+sentence itself is now `config_keys._AGENT_DEFAULT_TIER_CURE`'s; this module was its third carrier.
 
-**WHAT IT DOES NOT SAY, AND MUST NOT.** The sibling `caches` message ends by promising the value
-reads back; this one does not, because it does not. `config get agent.default.env.FOO` answers
-"(not set)" over a hand-authored value: `config_interface.get_config_value` gates its persona branch
-on `agent_default_tier_leaf(canonical) is None`, and that function deliberately declines the dotted
-`env.` tail, so the read returns before it ever reaches `_read_dest`. The read hole is real and is
-NOT closed here — closing it is an edit to that guard, outside this module.
+**THE READ HOLE IS CLOSED, AND IT WAS CLOSED AT THE ROUTE.** `config get agent.default.env.FOO`
+used to answer "(not set)" over a hand-authored value, because `get_config_value` gated its persona
+branch on `agent_default_tier_leaf` alone and that function declines the dotted `env.` tail. The
+guard asks `is_agent_default_tier_key` now — both halves of the tier's vocabulary — so the read
+falls through to `_read_dest` and lands on the slot `set` wrote.
 
 ### `_node_bind_target` — READ-ONLY since R-9
 
@@ -177,7 +180,20 @@ destination read back "(not set)" here while the launch delivered it (D-4).
 It resolves `agent.<node>.secret_path.<VAR>` (SECRET category) to a slot on the node's own settings
 file with the tail `secret_path.<VAR>`. `agent_file` places it at EXACTLY the table
 `_agent_partial` reads into the launch cascade and `agent_file.load` reads back into
-`AgentConfig.secret_path`. Its `None` conditions mirror `_node_bind_target`'s.
+`AgentConfig.secret_path`.
+
+⚑⚑ **IT HAS THREE OUTCOMES, AND IT HAD TWO.** A REFUSED node and an UNTHREADED `agents_root` both
+collapsed into `None`, and `None` is the only thing a caller can read as "no store here" — so
+`config set agent.my agent.secret_path.TOK=…` at the SYSTEM scope answered *"is a per-node secret
+pointer and is only settable at the system scope"*. A route that cannot say WHICH refusal happened
+forces its caller to guess, and the guess printed a false sentence. It returns an `"Error: …"`
+string for a refused node now, exactly as `_persona_agent_target` always has: the two are the
+per-node write routes of one tier and a caller handles them identically.
+
+⚑ **NO `reserved` ARM, BY DISPATCH.** `agent.default.secret_path.<VAR>` is a real key with a real
+destination and every verb claims it before this route is consulted, so the reserved node cannot
+arrive. The arm exists only to NAME that condition if the claiming branch is ever removed — it does
+not re-cure the key, which is how the false sentence got written the first time.
 
 ## The FILE-scope destination rule (H2)
 
@@ -263,6 +279,15 @@ and falls through to `_KEY_ROUTES`.
 at `<scope>.env.<VAR>`, the shape `settings_assemble._file_partial` reads into the cascade and
 `settings_launch._emit_scope_node` emits as a `category="env"` entry. It answers `_NOUN` for the
 same reason the secret pointer does — env is a SETTINGS category and has no Layer-1 config-file form.
+
+⚑ **THE AGENT TIER TAKES BOTH OF THEM AT A DEEPER SLOT.** `<scope>` in §2a includes `agent.default`,
+so `agent.default.env.<VAR>` and `agent.default.secret_path.<VAR>` are declared too — but the tier is
+a TABLE, not a file: there is no `agents/default/agent.yaml`, and `assemble_levels` leaves the
+`agent.default` rung structurally empty and reads the tier off the SYSTEM file's `agent: default:`
+table. So `agent_default_tier_category` claims `("agent", "default", <category>) / <VAR>` under
+`_NOUN` — the same table its bare-leaf sibling `agent_default_tier_leaf` claims, one level deeper.
+Until it existed the tier's only route was the per-node one, which refuses the reserved node, so a
+declared `cli_set: true` key was unreachable from every verb at every scope.
 
 #### The category branch: three terms, one slot rule
 

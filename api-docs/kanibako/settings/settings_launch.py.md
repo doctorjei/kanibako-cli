@@ -8,6 +8,7 @@ Prose for these symbols lives in `llm-docs/kanibako/settings/settings_launch.py.
 ## Variables
 
 ```
+SYSTEM_SCALAR_FLOOR: dict[str, object] = {f'system.helpers.{leaf}': value for leaf, value in SPAWN_BUDGET_DEFAULTS.items()}
 BOX_HOME_KEY: Final[str] = 'meta.box.home'
 SELECTION_KEY = 'system.agent'
 _BIND_LEAF_CATEGORIES: frozenset[str] = frozenset({'caches', 'seeded', 'common', 'synced'})

@@ -24,7 +24,7 @@ from kanibako.commands.helper_cmd import (
     run_spawn,
     run_stop,
 )
-from kanibako.channels.helpers import SpawnBudget, write_spawn_config
+from kanibako.channels.helpers import SpawnBudget, write_spawn_budget
 from tests.support.filenames import CONFIG_FILENAME
 
 
@@ -36,17 +36,19 @@ def helpers_env(tmp_path, monkeypatch):
     (home / "canon" / "notebook" / "scripts").mkdir(parents=True)
     monkeypatch.setattr(Path, "home", staticmethod(lambda: home))
 
-    # ⚑ THE ``XDG_CONFIG_HOME`` REDIRECT IS THE LOAD-BEARING HALF, not the file — and the
-    # ``Path.home`` patch above does NOT subsume it.  ``run_spawn`` opens
-    # ``host_spawn_config_path(xdg("XDG_CONFIG_HOME", ".config"))`` for a host spawn budget, and
-    # ``settings.paths.resolve_xdg`` honors the ENV VAR OVER ``Path.home()``: it falls back
-    # to ``Path.home() / ".config"`` only when the var is UNSET or set to a RELATIVE value
-    # (which it warns about and ignores, per the XDG spec).  Unset — this box, and CI — that
-    # fallback does land in the fake home, so dropping this line still passes here.
-    # The developer who EXPORTS ``XDG_CONFIG_HOME`` is the one who leaks a REAL host budget
-    # into what these tests assert on.  Test it with the var exported AT A CONFIG HOME WITH
-    # NO ``kanibako/spawn.yaml`` — exporting alone proves nothing, since an absent file
-    # reads back the same ``None`` — or the test cannot see what the line is for.
+    # ⚑ THE TWO XDG REDIRECTS ARE THE LOAD-BEARING HALF, not the file — and the
+    # ``Path.home`` patch above does NOT subsume them.  ``run_spawn`` reads its own
+    # ``system.helpers.*`` tier from ``config.system_settings_path()``, which resolves
+    # ``@config.settings`` off ``$XDG_CONFIG_HOME`` (the Layer-1 file) and
+    # ``$XDG_DATA_HOME`` (the store the settings file sits in), and
+    # ``settings.paths.resolve_xdg`` honors the ENV VAR OVER ``Path.home()``: it falls
+    # back to ``Path.home() / …`` only when the var is UNSET or set to a RELATIVE value
+    # (which it warns about and ignores, per the XDG spec).  Unset — this box, and CI —
+    # those fallbacks do land in the fake home, so dropping either line still passes here.
+    # The developer who EXPORTS them is the one who leaks a REAL host budget into what
+    # these tests assert on.  Test it with the vars exported at a store carrying NO
+    # ``system.helpers.*`` — exporting alone proves nothing, since an absent file reads
+    # back the same ``None`` — or the test cannot see what the lines are for.
     config_dir = tmp_path / "config"
     config_dir.mkdir()
     config_file = config_dir / CONFIG_FILENAME
@@ -55,6 +57,7 @@ def helpers_env(tmp_path, monkeypatch):
     # when the file is absent) — an initialized host that overrides nothing.
     config_file.write_text("")
     monkeypatch.setenv("XDG_CONFIG_HOME", str(config_dir))
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
     return home
 
 
@@ -137,9 +140,9 @@ class TestRunSpawn:
         assert (helpers / "2" / "peers" / "1:2-rw").is_symlink()
 
     def test_depth_zero_refused(self, helpers_env, capsys):
-        # Write RO config with depth=0
+        # A parent handed this box depth=0
         own_ro = helpers_env / "spawn.yaml"
-        write_spawn_config(own_ro, SpawnBudget(depth=0, breadth=4))
+        write_spawn_budget(own_ro, SpawnBudget(depth=0, breadth=4))
 
         args = _make_args(depth=None, breadth=None, model=None)
         rc = run_spawn(args)
@@ -147,9 +150,9 @@ class TestRunSpawn:
         assert "depth" in capsys.readouterr().err
 
     def test_breadth_exhausted(self, helpers_env, capsys):
-        # Write RO config with breadth=1
+        # A parent handed this box breadth=1
         own_ro = helpers_env / "spawn.yaml"
-        write_spawn_config(own_ro, SpawnBudget(depth=4, breadth=1))
+        write_spawn_budget(own_ro, SpawnBudget(depth=4, breadth=1))
 
         args = _make_args(depth=None, breadth=None, model=None)
         rc = run_spawn(args)
@@ -159,18 +162,17 @@ class TestRunSpawn:
         assert rc == 1  # second spawn refused
         assert "breadth" in capsys.readouterr().err
 
-    def test_host_budget_is_read_from_the_dedicated_file(self, helpers_env, capsys):
-        """The host tier lives at ``host_spawn_config_path``, not in the Layer-1 file.
+    def test_own_budget_is_read_from_the_system_settings_file(self, helpers_env, capsys):
+        """This box's own tier IS ``@config.settings``, the declared system tier.
 
         ⚑ This pins WHERE the caller looks: ``resolve_spawn_budget`` takes budgets,
         so its own tests cannot catch the caller reading a retired place.
         """
-        from kanibako.channels.helpers import host_spawn_config_path
-        from kanibako.settings.paths import xdg
+        from kanibako.settings.config import system_settings_path
 
-        host_file = host_spawn_config_path(xdg("XDG_CONFIG_HOME", ".config"))
-        host_file.parent.mkdir(parents=True, exist_ok=True)
-        write_spawn_config(host_file, SpawnBudget(depth=4, breadth=1))
+        settings_file = system_settings_path()
+        settings_file.parent.mkdir(parents=True, exist_ok=True)
+        write_spawn_budget(settings_file, SpawnBudget(depth=4, breadth=1))
 
         args = _make_args(depth=None, breadth=None, model=None)
         rc = run_spawn(args)
@@ -180,22 +182,44 @@ class TestRunSpawn:
         assert rc == 1  # second spawn refused
         assert "breadth" in capsys.readouterr().err
 
-    def test_spawn_section_in_layer1_file_is_not_a_host_budget(self, helpers_env):
-        """The breach, stated as a negative: a ``spawn:`` table in ``kanibako.cfg``
-        is refused by the settings path ([R158]) and buys nothing here either.
+    def test_the_retired_bespoke_file_is_not_a_budget(self, helpers_env):
+        """The breach, stated as a negative: ``<config home>/kanibako/spawn.yaml``.
 
-        Without this the fix is indistinguishable from a MOVE that left the old
-        read in place — the dedicated file would work AND the Layer-1 section
-        would keep working, which is the breach silently not closing.
+        That dedicated file held an UNDECLARED ``spawn:`` table — a §0 violation — and
+        it is gone. Without this case the declaration is indistinguishable from an ADD
+        that left the old read in place: the declared tier would work AND the bespoke
+        file would keep working, which is the breach silently not closing.
         """
+        from kanibako.settings.bootstrap import KANIBAKO_PATH
+        from kanibako.settings.paths import xdg
+
+        retired = xdg("XDG_CONFIG_HOME", ".config") / KANIBAKO_PATH / "spawn.yaml"
+        retired.parent.mkdir(parents=True, exist_ok=True)
+        retired.write_text("spawn:\n  depth: 0\n  breadth: 0\n")
+
+        args = _make_args(depth=None, breadth=None, model=None)
+        rc = run_spawn(args)
+        assert rc == 0  # the depth-0 budget is ignored; built-in defaults apply
+
+    def test_spawn_section_in_layer1_file_is_REFUSED(self, helpers_env):
+        """A ``spawn:`` table in ``kanibako.cfg`` is refused BY NAME ([R158]).
+
+        ⚑ STRENGTHENED 2026-09-19 with the declaration.  It used to assert rc=0 — the
+        table bought nothing because ``run_spawn`` never opened the Layer-1 file at all.
+        Reading the budget from ``@config.settings`` means the spawn verb now loads that
+        file like every other verb, so [R158]'s refusal reaches it: *"a user running a
+        different image than their file says should learn it"*.  Silently ignoring was
+        the weaker half of that rule, kept only by an accident of which files were read.
+        """
+        from kanibako.errors import ConfigError
         from kanibako.settings.paths import xdg
 
         config_home = xdg("XDG_CONFIG_HOME", ".config")
         (config_home / CONFIG_FILENAME).write_text("spawn:\n  depth: 0\n")
 
         args = _make_args(depth=None, breadth=None, model=None)
-        rc = run_spawn(args)
-        assert rc == 0  # depth-0 budget ignored; built-in defaults apply
+        with pytest.raises(ConfigError, match="carries settings"):
+            run_spawn(args)
 
     def test_model_shown_in_output(self, helpers_env, capsys):
         args = _make_args(depth=None, breadth=None, model="sonnet")
@@ -206,8 +230,8 @@ class TestRunSpawn:
         args = _make_args(depth=3, breadth=4, model=None)
         run_spawn(args)
 
-        from kanibako.channels.helpers import read_spawn_config
-        child_config = read_spawn_config(
+        from kanibako.channels.helpers import read_spawn_budget
+        child_config = read_spawn_budget(
             helpers_env / "helpers" / "1" / "spawn.yaml"
         )
         assert child_config is not None

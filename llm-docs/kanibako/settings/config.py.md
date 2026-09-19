@@ -5,8 +5,8 @@ This module owns `kanibako.cfg` and the two flat dataclasses either side of it �
 scalars) — plus the
 YAML read/write primitives, the built-in defaults, the layer-overlay merge, and a handful of
 DIRECT readers (`workset.kuid`, `workset.skip_kuid_check`, `system.agent`,
-`system.setup_completed`, and — for the AUTHORING TIER only — `box.enable_vault`) that must answer
-BEFORE a cascade snapshot exists. It also carries two
+`system.setup_completed`, `system.helpers.*`, and — for the AUTHORING TIER only —
+`box.enable_vault`) that must answer BEFORE a cascade snapshot exists. It also carries two
 arbiters that are not config reads at all and live here only because their inputs do:
 `setup_compat_gate` and `resolve_agent`.
 
@@ -115,10 +115,10 @@ loader starts from the built-in defaults.
 
 ## The pre-cascade readers, and the rule that no longer follows from it
 
-`read_box_enable_vault`, `read_workset_kuid`, `read_workset_skip_kuid_check` and
-`read_system_agent` all read a DECLARED key DIRECTLY out of a settings file rather than through
-the resolver, because each has a caller that runs before a snapshot exists. That much is still
-true, and still the reason these functions exist.
+`read_box_enable_vault`, `read_workset_kuid`, `read_workset_skip_kuid_check`,
+`read_system_agent` and `read_system_helpers` all read a DECLARED key DIRECTLY out of a settings
+file rather than through the resolver, because each has a caller that runs before a snapshot
+exists. That much is still true, and still the reason these functions exist.
 
 ⚑⚑ **WHAT DOES NOT FOLLOW FROM IT — AND USED TO BE WRITTEN HERE AS IF IT DID — IS *"the DEFAULT
 lives in the reader, not in a cascade floor"*.** The premise ("a caller runs before a snapshot
@@ -752,6 +752,49 @@ itself is unaffected — but every verb that resolves a path first will have ref
 *(The older wording here claimed the typed loader "maps only KNOWN system leaves and ignores
 unknown ones". It has no known/unknown filter at all — measured 2026-08-11 — so that mechanism was
 dropped rather than moved. The conclusion it supported is unchanged.)*
+
+```read_system_helpers(settings_path: Path | None) -> dict[str, int]```
+The helper-hub SPAWN BUDGET — the two declared `system.helpers.*` leaves (spec §2g), read out of the
+`system: helpers:` table of a settings document. `SYSTEM_HELPERS_SECTION` and
+`SYSTEM_HELPERS_LEAVES` are exported beside it: they are the one spelling of that slot, shared with
+the per-child document `channels/helpers.py` writes.
+
+🛑 **There is deliberately NO writer here.** The only thing that writes a budget is a parent handing
+one to its child, and its target is `helpers/<N>/spawn.yaml` — a DELIVERY document mounted RO into
+that helper, read back by explicit path, assembled by no cascade. It is written in
+`channels/helpers.write_spawn_budget` with `dump_doc`, NOT through `config_io.write_nested_key`:
+that seam is allowlisted precisely so a runtime-computed default cannot be persisted into a cascade
+settings file, and a child's budget is runtime-computed. Putting the write here, next to a reader
+whose other caller really is `@config.settings`, would invite exactly that.
+
+⚑ **DECLARED 2026-09-19, and that is why the pair is here.** The budget was a LIVE, UNDECLARED key:
+`channels/helpers.py` read a `spawn:` table out of a bespoke
+`<XDG_CONFIG_HOME>/kanibako/spawn.yaml` — the same §0 violation `system.templates_stamp` was
+retired for (next section). Both the bespoke file and the `spawn:` spelling are gone.
+
+⚑ **TWO TIERS, ONE READER, which is why the reader takes a PATH rather than resolving one.**
+`kanibako box helper spawn` consults the budget a PARENT handed it (the RO document at
+`~/spawn.yaml`, mounted into a helper by the hub) and then its own `@config.settings`. Both are
+ordinary settings documents carrying the same two keys; a second shape would be a second keyspace.
+
+🛑 **A non-numeric leaf is REFUSED BY NAME, never coerced.** A fabricated default would answer a
+budget question with a number the user never wrote, and the set-time type guard
+(`config_keys.KEY_TYPES`) cannot reach a hand-edited file.
+
+⚑ **Why a RAW reader is required.** The spawn verb decides whether it may spawn at all, IN BOX,
+before any snapshot exists — the same timing argument the readers above make.
+
+
+```system_settings_path() -> Path```
+THE system SETTINGS file (`@config.settings`), resolved from Layer 1 alone.
+
+⚑ Deliberately NOT `paths.load_std_paths`: that one MATERIALIZES the store and RAISES when no
+Layer-1 file exists, neither of which a pre-cascade reader may do to a box that has never been set
+up. The returned path need not exist — every reader here treats an absent file as "unset", which is
+exactly what a fresh install is.
+
+⮕ It is the shared spelling of a derivation `commands/setup_cmd.py` and `commands/system_cmd.py`
+still carry their own (materializing) copies of; consolidating those is a separate change.
 
 ### The retired template-stamp gate
 

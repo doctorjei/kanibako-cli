@@ -38,6 +38,17 @@ to `assemble_levels(floor=…)`. Step 2a folds it UNDER the base file, so a file
 overrides by name — precedence-equivalent to the old AGENT-level `defaults=`, verified against
 `resolve_value`'s two-pass order. Plus:
 
+* **`SYSTEM_SCALAR_FLOOR` — the one part of the floor that is not caller-supplied.** The `floor`
+  dict starts SEEDED with kanibako's shipped `system.*` SCALAR defaults (today: the helper spawn
+  budget `system.helpers.{depth,breadth}`, values derived from `bootstrap.SPAWN_BUDGET_DEFAULTS`),
+  so a whole-value `@system.helpers.depth` ANSWERS for a box that already exists — the property
+  `[R143]` ratified and the `workset.channelroot` defect (R-35, *"fix the CODE"*) is the failure of.
+  It is UNCONDITIONAL, unlike the four optional floor FRAGMENTS below: a narrow resolve genuinely
+  has no auth chain, but a shipped default with no story for being absent would resolve
+  `__MISSING__` for a key the manifest promises a value for. A new non-path `system.*` default
+  belongs in that table; the rest of §2g's scalars either declare no default, are paths floored by
+  `paths.resolve_system_paths`, or ride `auth_chain`.
+
 * **OS1** — the bare behavior floor (`{d.key: d.default}`) is mapped to the SCOPE-QUALIFIED
   `agent.default.<key>` before folding: the declared behavior defaults are the ALL-AGENTS backstop
   (spec §2d lists them under `agent.default.*` — access / allow_helpers / model / …). There is NO

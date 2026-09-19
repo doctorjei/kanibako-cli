@@ -87,6 +87,7 @@ from kanibako.settings.settings_keyspace import (
     DECLARED_META_WORKSET_LEAVES,
     DECLARED_SYSTEM_AUTH_LEAVES,
     DECLARED_SYSTEM_CHANNEL_LEAVES,
+    DECLARED_SYSTEM_HELPERS_LEAVES,
     DECLARED_SYSTEM_LEAVES,
     DECLARED_WORKSET_AUTH_LEAVES,
     DECLARED_WORKSET_CHANNEL_LEAVES,
@@ -189,8 +190,8 @@ class TestManifestLoader:
         for section in ("registry", "policy", "categories", "keys",
                         "bind_default_entries", "not_keys"):
             assert section in doc, f"manifest section {section!r} is missing"
-        assert len(doc["keys"]) == 103, (
-            f"the manifest declares {len(doc['keys'])} key rows, not the 103 this "
+        assert len(doc["keys"]) == 105, (
+            f"the manifest declares {len(doc['keys'])} key rows, not the 105 this "
             f"file's counts were measured against — re-measure, do not adjust blindly"
         )
 
@@ -293,9 +294,15 @@ _BEHAVIOR_KEYS = (
 #: per-node arm.  ⚑ Only the DEFAULT arm is pinned here — the per-NODE arm stays in
 #: ``NO_ORACLE_REF_HOP`` below, where its VALUE is now asserted outright (finding 1 is
 #: closed; what is left is the ``@``-hop the canon sibling has too).
+#: ⚑ The helper-hub SPAWN BUDGET pair joined 2026-09-19 with the keys themselves. Their
+#: carrier is a pair of MODULE CONSTANTS rather than a floor builder, and that is the
+#: whole reason they sit in this class: the spawn verb resolves the budget in-box,
+#: before any snapshot exists, so no launch floor installs them and there is no emitter
+#: output to read.
 _SINGLETON_KEYS = (
     "agent.default.canon", "workset.kuid", "box.env.COLORTERM",
     "agent.default.template",
+    "system.helpers.depth", "system.helpers.breadth",
 )
 
 #: (i-f) The workset CHANNEL family — ``workset.channelroot`` plus the six declared
@@ -695,6 +702,29 @@ class TestSingletonDefaults:
         """
         shipped = core_defaults.env_default_categories()
         assert shipped == {"box.env.COLORTERM": _default("box.env.COLORTERM")}
+
+    def test_the_spawn_budget_floor(self):
+        """``system.helpers.{depth,breadth}`` ARE the shipped system scalar floor.
+
+        ⚑ TWO CARRIERS, BOTH ASSERTED, because the key has two answering paths and a
+        pin on either alone is satisfiable while the other drifts.  The LAUNCH floor is
+        what makes ``@system.helpers.depth`` resolve for a box; the in-box spawn
+        FALLBACK is what ``kanibako box helper spawn`` uses before any snapshot exists.
+        Both are read through their producers, never off ``SPAWN_BUDGET_DEFAULTS`` —
+        that table is the shared source, so comparing it to itself would pin nothing.
+        """
+        from kanibako.channels.helpers import resolve_spawn_budget
+        from kanibako.settings.settings_launch import SYSTEM_SCALAR_FLOOR
+
+        assert SYSTEM_SCALAR_FLOOR["system.helpers.depth"] == (
+            _default("system.helpers.depth")
+        )
+        assert SYSTEM_SCALAR_FLOOR["system.helpers.breadth"] == (
+            _default("system.helpers.breadth")
+        )
+        fallback = resolve_spawn_budget(None, None, None, None)
+        assert fallback.depth == _default("system.helpers.depth")
+        assert fallback.breadth == _default("system.helpers.breadth")
 
     def test_the_workset_kuid_sentinel(self):
         """The primary/named arms ARE ``kuid.SENTINEL``.
@@ -1176,8 +1206,8 @@ class TestDefaultsCoverage:
             f"this file classifies rows the manifest no longer declares a default for: "
             f"{sorted(stale)}"
         )
-        assert len(declared) == 67, (
-            f"the manifest gives {len(declared)} rows a default, not the 67 measured — "
+        assert len(declared) == 69, (
+            f"the manifest gives {len(declared)} rows a default, not the 69 measured — "
             f"re-classify, do not adjust the count"
         )
 
@@ -1200,8 +1230,12 @@ class TestDefaultsCoverage:
         ⚑ 52/14 → 53/14 (2026-09-14): ``system.state`` was declared in the code, closing a
         spec-conformance gap (the keyspec §2g has carried the row since R-43). It arrives
         PINNED with no edit here — ``_PATH_ORACLE`` IS ``SYSTEM_PATH_DEFAULTS``.
+        ⚑ 53/14 → 55/14 (2026-09-19): ``system.helpers.{depth,breadth}`` were declared,
+        closing a §0 violation — the pair was LIVE and read from a bespoke file. They
+        arrive PINNED against the spawn resolver's own fallback; a budget default with no
+        oracle would be a number nobody is answerable for.
         """
-        assert len(PINNED_DEFAULT_KEYS) == 53
+        assert len(PINNED_DEFAULT_KEYS) == 55
         assert len(EXEMPT_DEFAULT_KEYS) == 14
         assert not (PINNED_DEFAULT_KEYS & EXEMPT_DEFAULT_KEYS)
 
@@ -1238,6 +1272,7 @@ _SCALAR_DECLARATIONS: tuple[tuple[str, frozenset[str]], ...] = (
     ("config.", DECLARED_CONFIG_LEAVES),
     ("system.", DECLARED_SYSTEM_LEAVES),
     ("system.channels.", DECLARED_SYSTEM_CHANNEL_LEAVES),
+    ("system.helpers.", DECLARED_SYSTEM_HELPERS_LEAVES),
     ("system.auth.", DECLARED_SYSTEM_AUTH_LEAVES),
     ("box.", DECLARED_BOX_LEAVES),
     ("box.auth.", DECLARED_BOX_AUTH_LEAVES),
@@ -1414,7 +1449,7 @@ class TestKeySetConformance:
           declared: every case in this class is GREEN, while ``key_validity`` still
           answers ``meta.box.auth.workset_path`` with ``None``.  That is a live key
           with no registry row and no coverage.  The only red is the loader's hand
-          count of 103 rows, which a developer re-measures as a matter of course.  A
+          count of manifest rows, which a developer re-measures as a matter of course.  A
           retirement is complete only when the frozenset goes too, and nothing here
           says so.
         * A COORDINATED EDIT dropping one leaf of a multi-leaf family from both

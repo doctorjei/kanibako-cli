@@ -21,11 +21,11 @@ from kanibako.channels.helpers import (
     effective_breadth,
     link_broadcast,
     parent_of,
-    read_spawn_config,
+    read_spawn_budget,
     remove_helper_dirs,
     resolve_init_script,
     resolve_spawn_budget,
-    write_spawn_config,
+    write_spawn_budget,
 )
 
 
@@ -151,16 +151,17 @@ class TestChildBudget:
 
 
 class TestResolveSpawnBudget:
-    def test_ro_config_wins(self):
-        ro = SpawnBudget(depth=1, breadth=1)
-        host = SpawnBudget(depth=4, breadth=4)
-        result = resolve_spawn_budget(ro, host, cli_depth=10, cli_breadth=10)
-        assert result == ro
+    def test_handed_down_wins(self):
+        """A limited box may not raise the limit its parent handed it."""
+        handed_down = SpawnBudget(depth=1, breadth=1)
+        own = SpawnBudget(depth=4, breadth=4)
+        result = resolve_spawn_budget(handed_down, own, cli_depth=10, cli_breadth=10)
+        assert result == handed_down
 
-    def test_host_config_without_ro(self):
-        host = SpawnBudget(depth=3, breadth=5)
-        result = resolve_spawn_budget(None, host, cli_depth=10, cli_breadth=10)
-        assert result == host
+    def test_own_settings_without_a_handed_down_budget(self):
+        own = SpawnBudget(depth=3, breadth=5)
+        result = resolve_spawn_budget(None, own, cli_depth=10, cli_breadth=10)
+        assert result == own
 
     def test_cli_flags_without_config(self):
         result = resolve_spawn_budget(None, None, cli_depth=2, cli_breadth=6)
@@ -176,46 +177,83 @@ class TestResolveSpawnBudget:
         assert result == SpawnBudget()
 
 
-# --- Spawn config I/O ---
+# --- Spawn budget I/O — the declared ``system.helpers.*`` keys (spec §2g) ---
 
 
-class TestSpawnConfigIO:
+class TestSpawnBudgetIO:
     def test_write_and_read(self, tmp_path):
         path = tmp_path / "spawn.yaml"
         budget = SpawnBudget(depth=3, breadth=5)
-        write_spawn_config(path, budget)
-        result = read_spawn_config(path)
+        write_spawn_budget(path, budget)
+        result = read_spawn_budget(path)
         assert result == budget
 
-    def test_read_missing_file(self, tmp_path):
-        assert read_spawn_config(tmp_path / "nope.yaml") is None
+    def test_the_written_document_is_the_declared_keyspace(self, tmp_path):
+        """⚑ THE ANTI-REGRESSION CASE: a bespoke ``spawn:`` table is what was wrong.
 
-    def test_read_no_spawn_section(self, tmp_path):
+        The stored shape must be the ``system: helpers:`` table the keyspace declares,
+        because the SAME reader is pointed at a box's own ``@config.settings``. A
+        round-trip alone would stay green through any private shape.
+        """
+        from kanibako.settings.config_io import load_doc
+
+        path = tmp_path / "spawn.yaml"
+        write_spawn_budget(path, SpawnBudget(depth=3, breadth=5))
+        data = load_doc(path)
+        assert data == {"system": {"helpers": {"depth": 3, "breadth": 5}}}
+        assert "spawn" not in data
+
+    def test_read_missing_file(self, tmp_path):
+        assert read_spawn_budget(tmp_path / "nope.yaml") is None
+
+    def test_read_no_helpers_table(self, tmp_path):
         path = tmp_path / "empty.yaml"
         path.write_text("other:\n  foo: 1\n")
-        assert read_spawn_config(path) is None
+        assert read_spawn_budget(path) is None
+
+    def test_a_retired_spawn_table_is_not_a_budget(self, tmp_path):
+        """The pre-declaration spelling is not a key, so it carries no budget."""
+        path = tmp_path / "legacy.yaml"
+        path.write_text("spawn:\n  depth: 9\n  breadth: 9\n")
+        assert read_spawn_budget(path) is None
+
+    def test_one_leaf_is_a_partial_override(self, tmp_path):
+        path = tmp_path / "partial.yaml"
+        path.write_text("system:\n  helpers:\n    depth: 2\n")
+        result = read_spawn_budget(path)
+        assert result == SpawnBudget(depth=2, breadth=DEFAULT_BREADTH)
+
+    def test_a_non_numeric_leaf_is_refused_by_name(self, tmp_path):
+        """Never a fabricated default: a budget the user did not write is not a budget."""
+        from kanibako.errors import ConfigError
+
+        path = tmp_path / "bad.yaml"
+        path.write_text("system:\n  helpers:\n    depth: lots\n")
+        with pytest.raises(ConfigError, match="system.helpers.depth"):
+            read_spawn_budget(path)
 
     def test_preserves_other_sections(self, tmp_path):
-        path = tmp_path / "config.yaml"
-        path.write_text("other:\n  foo: 1\n")
-        write_spawn_config(path, SpawnBudget(depth=2, breadth=3))
-        result = read_spawn_config(path)
+        path = tmp_path / "settings.yaml"
+        path.write_text("other:\n  foo: 1\nsystem:\n  agent: claude\n")
+        write_spawn_budget(path, SpawnBudget(depth=2, breadth=3))
+        result = read_spawn_budget(path)
         assert result == SpawnBudget(depth=2, breadth=3)
-        # Other section preserved
+        # A real settings file's other tiers — and its other ``system`` leaves — survive.
         from kanibako.settings.config_io import load_doc
         data = load_doc(path)
         assert data["other"]["foo"] == 1
+        assert data["system"]["agent"] == "claude"
 
     def test_unlimited_values(self, tmp_path):
         path = tmp_path / "unlimited.yaml"
         budget = SpawnBudget(depth=-1, breadth=-1)
-        write_spawn_config(path, budget)
-        result = read_spawn_config(path)
+        write_spawn_budget(path, budget)
+        result = read_spawn_budget(path)
         assert result == budget
 
     def test_creates_parent_dirs(self, tmp_path):
         path = tmp_path / "sub" / "dir" / "spawn.yaml"
-        write_spawn_config(path, SpawnBudget())
+        write_spawn_budget(path, SpawnBudget())
         assert path.exists()
 
 

@@ -611,13 +611,25 @@ def _build_helper_mounts(ctx: HelperContext, helper_num: int,
     if all_link.exists():
         mounts.append(Mount(all_link, f"{GUEST_HOME}/all", "Z,U"))
 
-    # Spawn config (read-only). ⚑ BOTH ends take the constant: in-box the file is
-    # read as ``Path.home() / SPAWN_CONFIG_FILENAME``, so a dest spelled by hand
-    # would land where the reader never looks — helpers would silently get default
+    # The handed-down SPAWN BUDGET (read-only). ⚑ BOTH ends take the constant: in-box
+    # the file is read as ``Path.home() / SPAWN_CONFIG_FILENAME``, so a dest spelled by
+    # hand would land where the reader never looks — helpers would silently get default
     # budgets. Encoded rather than asserted in prose (P15).
-    spawn_toml = helper_root / SPAWN_CONFIG_FILENAME
-    if spawn_toml.is_file():
-        mounts.append(Mount(spawn_toml, f"{GUEST_HOME}/{SPAWN_CONFIG_FILENAME}", "ro"))
+    #
+    # ⚑ SINCE 2026-09-19 THE DOCUMENT IS AN ORDINARY SETTINGS DOCUMENT carrying the two
+    # DECLARED ``system.helpers.*`` keys (spec §2g); the undeclared ``spawn:`` table it
+    # used to carry was a §0 closed-keyspace violation. The MOUNT is still hand-built —
+    # it inherits this function's documented single-route exemption above, and closing
+    # THAT is a separate change: the declarative bind tables in ``core-defaults.yaml``
+    # describe what a BOX gets (every dest there must appear in the manifest's
+    # ``bind_default_entries``), and a helper is not one.
+    # ⚑ ``ro`` IS LOAD-BEARING: a helper must not be able to raise the budget it was
+    # handed. ``_build_helper_mounts`` is the ONLY delivery into a helper — the runtime
+    # binds no home for one — so dropping this row would not fall back to the home bind,
+    # it would drop the budget entirely.
+    budget_doc = helper_root / SPAWN_CONFIG_FILENAME
+    if budget_doc.is_file():
+        mounts.append(Mount(budget_doc, f"{GUEST_HOME}/{SPAWN_CONFIG_FILENAME}", "ro"))
 
     # Helper socket — mount the hub socket into the helper.  The box-side dest is
     # the FIXED pinned root, the same path ``core-defaults.yaml`` declares for the

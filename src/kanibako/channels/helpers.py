@@ -6,6 +6,8 @@ import importlib.resources
 from dataclasses import dataclass
 from pathlib import Path
 
+from kanibako.settings.bootstrap import SPAWN_BUDGET_DEFAULTS
+from kanibako.settings.config import SYSTEM_HELPERS_SECTION, read_system_helpers
 from kanibako.settings.config_io import dump_doc, load_doc
 
 # When breadth is unlimited (-1), use 2^16 for numbering purposes.
@@ -42,28 +44,23 @@ def parent_of(agent: int, breadth: int) -> int | None:
 # Spawn budget
 # ---------------------------------------------------------------------------
 
-DEFAULT_DEPTH = 4
-DEFAULT_BREADTH = 4
+#: The built-in budget, applied when NO tier carries ``system.helpers.*``.  ⚑ DERIVED
+#: from the declared table, never restated: the launch floor spells the same two values
+#: as dotted keys (``settings_launch.SYSTEM_SCALAR_FLOOR``), and a second literal here
+#: would let a box's resolved ``@system.helpers.depth`` and this in-box fallback disagree.
+DEFAULT_DEPTH = SPAWN_BUDGET_DEFAULTS["depth"]
+DEFAULT_BREADTH = SPAWN_BUDGET_DEFAULTS["breadth"]
 
-#: The spawn-budget filename, shared by the RO configs and the host default —
-#: one spelling, not three. The file's DOCUMENT shape is the same everywhere
-#: (a ``spawn:`` section with ``depth``/``breadth``); only the DIRECTORY says
-#: which tier it is.
+#: The RO budget filename — the document a PARENT writes into its child's home,
+#: carrying that child's decremented budget.  ⚑ BOTH ENDS TAKE THIS CONSTANT: the
+#: helper reads it at ``Path.home() / SPAWN_CONFIG_FILENAME`` and the hub mounts it
+#: at the matching guest dest, so a dest spelled by hand would land where the reader
+#: never looks (``helper_listener._build_helper_mounts``).
+#:
+#: ⚑ ITS CONTENT IS A SETTINGS DOCUMENT, not a bespoke shape: the two declared
+#: ``system.helpers.*`` keys in their ordinary ``system: helpers:`` table, which is why
+#: :func:`read_spawn_budget` also answers a box's own ``@config.settings``.
 SPAWN_CONFIG_FILENAME = "spawn.yaml"
-
-
-def host_spawn_config_path(config_home: Path) -> Path:
-    """The host-wide spawn-budget file: ``<config_home>/kanibako/spawn.yaml``.
-
-    A DEDICATED file — the Layer-1 file carries ``config.*`` and nothing else
-    ([R158]), and its reader REFUSES anything more, so a ``spawn:`` section
-    there is refused by the settings path and must not be read here either.
-    Absent ⇒ no host tier (``read_spawn_config`` returns ``None``); the file
-    is opt-in, created by hand, never by ``init``.
-    """
-    from kanibako.settings.bootstrap import KANIBAKO_PATH
-
-    return config_home / KANIBAKO_PATH / SPAWN_CONFIG_FILENAME
 
 
 @dataclass(frozen=True)
@@ -93,57 +90,76 @@ def child_budget(parent: SpawnBudget) -> SpawnBudget:
 
 
 def resolve_spawn_budget(
-    ro_config: SpawnBudget | None,
-    host_config: SpawnBudget | None,
+    handed_down: SpawnBudget | None,
+    own_settings: SpawnBudget | None,
     cli_depth: int | None,
     cli_breadth: int | None,
 ) -> SpawnBudget:
-    """Resolve the effective spawn budget using config precedence.
+    """Resolve the effective spawn budget.
 
-    Order: RO config > host config > CLI flags > built-in defaults.
-    CLI flags only apply when neither RO nor host config exist.
+    Order: the budget a PARENT handed down > this box's own ``system.helpers.*`` >
+    CLI flags > built-in defaults.  The flags only apply when neither tier carries a
+    budget: a handed-down limit is not something the limited box may raise.
     """
-    if ro_config is not None:
-        return ro_config
-    if host_config is not None:
-        return host_config
+    if handed_down is not None:
+        return handed_down
+    if own_settings is not None:
+        return own_settings
     depth = cli_depth if cli_depth is not None else DEFAULT_DEPTH
     breadth = cli_breadth if cli_breadth is not None else DEFAULT_BREADTH
     return SpawnBudget(depth=depth, breadth=breadth)
 
 
 # ---------------------------------------------------------------------------
-# Spawn config I/O
+# Spawn budget I/O — the DECLARED ``system.helpers.*`` keys (spec §2g)
 # ---------------------------------------------------------------------------
+#
+# ⚑ THERE IS ONE READER FOR BOTH TIERS, and that is the point of the declaration.
+# Until 2026-09-19 the budget was an undeclared ``spawn:`` table read out of a bespoke
+# ``<XDG_CONFIG_HOME>/kanibako/spawn.yaml``; a §0 keyspace has no such key, so the file
+# and the table are gone and both tiers are now ordinary settings documents.
 
 
-def read_spawn_config(path: Path) -> SpawnBudget | None:
-    """Read spawn limits from a dedicated spawn file (host default or RO config).
+def read_spawn_budget(path: Path) -> SpawnBudget | None:
+    """The budget a settings document carries, or ``None`` when it declares neither leaf.
 
-    Looks for a ``spawn`` section with ``depth`` and ``breadth`` keys.
-    Returns ``None`` if the file or section is absent.
+    A document that names only one leaf gets the built-in for the other — that is a
+    partial override, not an absence.
     """
-    if not path.exists():
-        return None
-    data = load_doc(path)
-    spawn = data.get("spawn")
-    if spawn is None:
+    leaves = read_system_helpers(path)
+    if not leaves:
         return None
     return SpawnBudget(
-        depth=int(spawn.get("depth", DEFAULT_DEPTH)),
-        breadth=int(spawn.get("breadth", DEFAULT_BREADTH)),
+        depth=leaves.get("depth", DEFAULT_DEPTH),
+        breadth=leaves.get("breadth", DEFAULT_BREADTH),
     )
 
 
-def write_spawn_config(path: Path, budget: SpawnBudget) -> None:
-    """Write spawn limits as a ``spawn`` section in a DEDICATED spawn file.
+def write_spawn_budget(path: Path, budget: SpawnBudget) -> None:
+    """Write *budget* as the two declared ``system.helpers.*`` keys.
 
-    Only ever targets ``spawn.yaml`` files (the RO configs); the Layer-1 file
-    is never written here — it cannot carry a ``spawn:`` section.
+    🛑 DELIBERATELY NOT ``config_io.write_nested_key``, and the reason is the guard on
+    that seam rather than convenience.  It is the one write primitive for a CASCADE
+    settings file, allowlisted so that a runtime-computed DEFAULT cannot be persisted
+    into one (``tests/test_settings/test_defaults_enforcement.py``) — and a child's
+    budget IS runtime-computed, ``child_budget`` of whatever the parent resolved.
+    ⚑ *path* is never a cascade file: it is the per-child DELIVERY document at
+    ``helpers/<N>/spawn.yaml``, mounted RO into that helper and read back by explicit
+    path.  No cascade assembles it, so nothing this writes can reach a user's settings.
+    Routing it through the guarded seam would ask that guard to bless the exact write it
+    exists to catch; writing a cascade file from here would be the end run.
     """
-    existing = load_doc(path)
-    existing["spawn"] = {"depth": budget.depth, "breadth": budget.breadth}
-    dump_doc(path, existing)
+    doc = load_doc(path)
+    node = doc
+    for section in SYSTEM_HELPERS_SECTION:
+        child = node.get(section)
+        if not isinstance(child, dict):
+            child = {}
+            node[section] = child
+        node = child
+    node["depth"] = budget.depth
+    node["breadth"] = budget.breadth
+    dump_doc(path, doc)
 
 
 # ---------------------------------------------------------------------------

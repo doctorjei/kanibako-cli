@@ -520,15 +520,18 @@ class TestBareAgentKeyDest:
         assert not (bench.agents / "default").exists()
 
 
-#: Every tail ``config_keys._parse_persona_agent_key`` recognises under the RESERVED
-#: ``default`` node — the ``env.<VAR>`` section form (structural) and the core §2d leaf
-#: table. ⚑ NOT the same as "reaches the reserved refusal": ``transform_settings`` is
-#: intercepted a branch earlier by ``agent_leaf_table_error``, and the sweep covers it
+#: Every tail that still REACHES a refusal under the RESERVED ``default`` node: the core
+#: §2d leaf table. ⚑ NOT the same as "reaches the reserved refusal": ``transform_settings``
+#: is intercepted a branch earlier by ``agent_leaf_table_error``, and the sweep covers it
 #: DELIBERATELY, since what is asserted is that NO ``agent.default.<tail>`` refusal
 #: prescribes a failing command, whichever refusal answers.
+#: ⚑⚑ THE ``env.<VAR>`` SECTION FORM LEFT THIS CORPUS, and so did ``secret_path.<VAR>``:
+#: both are CLI-settable at the tier now (``config_keys.agent_default_tier_category``), so
+#: neither reaches a refusal to have a cure examined.  Their DESTINATION is pinned by
+#: :class:`TestTheAnyAgentTierScalarCategoriesRoute` below.
 #: ⚑ DERIVED, NEVER LISTED (P13) — a leaf declared tomorrow arrives here with no edit,
 #: and the row that broke cannot be the row that is missing.
-_RESERVED_TIER_TAILS = ("env.PROBE_VAR", *sorted(DECLARED_AGENT_LEAVES))
+_RESERVED_TIER_TAILS = tuple(sorted(DECLARED_AGENT_LEAVES))
 
 #: The cure's bare-key form, as the message spells it.
 _BARE_CURE = re.compile(r"bare key \(e\.g\. '(?P<cure>[^']+)'\)")
@@ -540,7 +543,10 @@ class TestTheReservedTierCureIsReachable:
     ⚑⚑ MEASURED, 2026-09-01: ``agent.default.env.FOO`` is a DECLARED key (§2a declares
     ``<scope>.env.<VAR>`` at ``agent.default``) and its refusal cured with the bare key
     ``env.FOO`` — the RETIRED bare docker-``.env`` spelling (R-39), which refuses. The
-    error text routed the user out of one dead end into another.
+    error text routed the user out of one dead end into another. ⚑ THAT ROW IS GONE FROM
+    THIS SWEEP because the DEFECT UNDER IT was cured at the route rather than at the
+    message: the key is settable now, so there is no refusal left to cure. What the sweep
+    still guards is every tail that DOES refuse.
 
     ⚑ THE TWO ARMS ARE PINNED AT DIFFERENT STRENGTHS, and the docstring says so rather
     than claiming one bar for both. The BARE arm's oracle is the cure ITSELF, not its
@@ -554,19 +560,21 @@ class TestTheReservedTierCureIsReachable:
     asserts the winning slot's key. Asserting it a second time here would be the
     traveling copy P10 forbids.
 
-    MUTATION: collapse ``config_dest._reserved_tier_refusal`` back to the single bare-key
-    cure and ``env.PROBE_VAR`` reds — the prescribed ``env.PROBE_VAR`` answers
-    "the bare env.<VAR> spelling is RETIRED".
+    MUTATION: name a leaf in ``config_keys.SCALAR_AGENT_LEAVES`` that has no bare CLI
+    route and the bare arm reds — the prescribed cure answers "unknown config key".
     """
 
     def test_the_witness_sets_are_not_empty(self):
         """P15 — a DERIVED corpus that empties must RED, never pass vacuously.
 
-        ⚑ ONLY THE DERIVED HALF NEEDS A GUARD.  The sweep's leaf rows come out of
-        ``DECLARED_AGENT_LEAVES``, which can empty; the file arm's witness is the
-        LITERAL ``env.PROBE_VAR`` in :data:`_RESERVED_TIER_TAILS`, and it is covered a
-        second time by a standalone row below — neither can empty, so neither is
-        asserted here.
+        ⚑ ONLY THE BARE ARM HAS WITNESSES.  The sweep's rows come out of
+        ``DECLARED_AGENT_LEAVES``, which can empty.  The FILE arm has NO live member at all:
+        ``env.<VAR>``/``secret_path.<VAR>`` are settable at the tier now, and the one declared
+        non-scalar leaf, ``transform_settings``, is intercepted a branch earlier by
+        ``agent_leaf_table_error`` (measured) — so the arm is kept for a FUTURE declared leaf
+        with no bare spelling, and there is nothing here to guard against emptying.
+        🛑 The assertion that used to sit here was a guard over an EMPTY CLAIM: the difference
+        set is non-empty but witnesses nothing.
         """
         assert DECLARED_AGENT_LEAVES
         assert SCALAR_AGENT_LEAVES, "no tail would exercise the bare-key cure"
@@ -597,13 +605,48 @@ class TestTheReservedTierCureIsReachable:
             ConfigLevel.system, cure.group("cure"), sample_leaf_value(tail),
         ).startswith("Error:"), msg
 
-    def test_the_env_section_form_is_not_sent_to_the_retired_bare_spelling(self, bench):
-        """The measured case, pinned by NAME as well as by the sweep above."""
-        msg = bench.set(ConfigLevel.system, "agent.default.env.PROBE_VAR", "x")
-        assert "reserved any-agent tier" in msg
-        assert "env.PROBE_VAR" in msg
-        assert "bare key" not in msg, msg
-        assert "'agent: default:' table of the system settings file" in msg, msg
+
+class TestTheAnyAgentTierScalarCategoriesRoute:
+    """WHICH FILE ``agent.default.{env,secret_path}.<VAR>`` lives in.
+
+    The two SCALAR name-parametric categories (spec §0) are declared at ``agent.default``
+    like every other §2a category and carry ``cli_set: true``, but the tier's only route
+    was the PER-NODE one — and ``default`` is the reserved any-agent tier, which has no
+    ``agents/default/agent.yaml``. So ``set`` refused at every scope and prescribed a
+    hand-edit, and ``get`` then answered "(not set)" over the value hand-authored where
+    the refusal said to put it. Both now name the ``agent: default: <category>:`` table
+    of the system SETTINGS file, which is the table the launch reads.
+
+    MUTATION: drop the ``agent_default_tier_category`` claim from
+    ``config_dest._key_slot`` and the read rows die with ``None``; drop the dispatch
+    branch in ``config_interface`` and the write rows get a refusal back.
+    """
+
+    @pytest.mark.parametrize("category,var,value", [
+        ("env", "PROBE_VAR", "x"),
+        ("secret_path", "PROBE_TOK", "/t/tok"),
+    ])
+    def test_set_get_reset_all_name_the_system_settings_file(
+        self, bench, category, var, value,
+    ):
+        key = f"agent.default.{category}.{var}"
+        before = bench.snapshot()
+        assert bench.set(ConfigLevel.system, key, value) == f"Set {key}={value}"
+        assert list(bench.changed(before)) == ["ssp"], bench.changed(before)
+        assert load_doc(bench.ssp)["agent"]["default"][category][var] == value
+        assert not (bench.agents / "default").exists()
+        assert bench.get(ConfigLevel.system, key) == value
+        assert bench.reset(ConfigLevel.system, key).startswith("Cleared")
+        assert bench.get(ConfigLevel.system, key) is None
+
+    @pytest.mark.parametrize("category,var,value", [
+        ("env", "PROBE_VAR", "x"),
+        ("secret_path", "PROBE_TOK", "/t/tok"),
+    ])
+    def test_a_hand_authored_entry_reads_back(self, bench, category, var, value):
+        """The half the refusal used to promise and the code did not keep."""
+        bench.seed(bench.ssp, ("agent", "default", category), var, value)
+        assert bench.get(ConfigLevel.system, f"agent.default.{category}.{var}") == value
 
 
 # ---------------------------------------------------------------------------

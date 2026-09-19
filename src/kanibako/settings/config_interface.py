@@ -75,13 +75,14 @@ from kanibako.settings.config_keys import (
     _persona_display_key,
     _scope_direction_error,
     access_value_error,
-    agent_default_tier_leaf,
+    agent_default_tier_category,
     agent_leaf_table_error,
     bare_agent_key_scope_error,
     bare_env_retired_error,
     box_agent_redirect_key,
     box_agent_retired_error,
     is_access_key,
+    is_agent_default_tier_key,
     is_path_valued_key,
     path_key_anchor,
     terminal_category_write_error,
@@ -716,10 +717,13 @@ def get_config_value(
 
     # ``agent.<node>.secret_path.<VAR>`` — the stored PATH, never the secret VALUE (spec §2a).
     # ⚑ BEFORE the persona branch (discriminated node storage).
-    if _is_agent_node_secret_key(canonical):
+    # ⚑ EXCEPT THE RESERVED ``default`` NODE, for the reason the persona branch below spells
+    # out: the any-agent tier lives in the NOUN's settings file, so it falls THROUGH to the
+    # routed read, where ``config_dest._key_slot`` gives it the slot ``set`` wrote.
+    if _is_agent_node_secret_key(canonical) and not is_agent_default_tier_key(canonical):
         secret_target = _node_secret_target(canonical, agents_root)
-        if secret_target is None:
-            return None
+        if not isinstance(secret_target, AgentFileSlot):
+            return None  # no store here, or a refused node — a read reports neither
         return read_leaf(secret_target)
 
     # ``<scope>.secret_path.<VAR>`` — the stored PATH from the NOUN's settings file.
@@ -740,8 +744,10 @@ def get_config_value(
     # the reserved-node refusal — a REASON with no read attached — and every declared
     # ``agent.default.<leaf>`` answered "(not set)" at rc 0 over a value ``get`` on the bare
     # spelling returned.
-    # ⚑ The refusal is still the right answer for the WRITE verbs; only the read moved.
-    if _is_persona_agent_key(canonical) and agent_default_tier_leaf(canonical) is None:
+    # ⚑ The refusal is still the right answer for the WRITE verbs for a declared LEAF; the
+    # tier's two SCALAR CATEGORY families are now WRITTEN through the same routed slot, so
+    # ``is_agent_default_tier_key`` covers both halves of the tier here.
+    if _is_persona_agent_key(canonical) and not is_agent_default_tier_key(canonical):
         target = _persona_agent_target(canonical, agents_root)
         if isinstance(target, AgentFileSlot):
             return read_leaf(target)
@@ -803,10 +809,16 @@ def get_config_value(
     # read — and with it went ``read_leaf``'s renderer.  A bare ``str()`` answered the Python
     # repr ``['--a', '--b']`` while the BARE ``run_args`` spelling of the very same stored value
     # answered ``--a --b``: one file, two spellings, two answers.
-    return read_stored_leaf(
-        dest.path, dest.sections, dest.leaf,
-        render=_argv_aware(dest.leaf, render_stored_scalar),
+    # ⚑ THE USER-NAMED FAMILIES TAKE THE PLAIN SCALAR CONVENTION — ``_argv_aware``'s own 🛑.
+    # The any-agent tier's ``env.<VAR>``/``secret_path.<VAR>`` now reach this tail, and their leaf
+    # is a VAR the USER chose: a variable someone happened to call ``run_args`` must not render as
+    # a command line when its ``system.env.`` and ``agent.<node>.env.`` siblings do not.
+    render = (
+        render_stored_scalar
+        if agent_default_tier_category(canonical) is not None
+        else _argv_aware(dest.leaf, render_stored_scalar)
     )
+    return read_stored_leaf(dest.path, dest.sections, dest.leaf, render=render)
 
 
 def set_config_value(
@@ -997,10 +1009,27 @@ def set_config_value(
     # ⚑ There is NO ``agent.<node>.bindings.{ro,rw}.<name>`` branch here any more (R-9) — its
     # absence is deliberate, and the preamble refusal cannot be out-ordered by a new branch.
 
+    # ``agent.default.{env,secret_path}.<VAR>`` — the any-agent tier's two SCALAR category
+    # families (spec §2a), routed like the tier's bare leaves: the reserved ``default`` node
+    # is not a persona and has no ``agents/default/agent.yaml``, so the value is written to
+    # the ``agent: default: <category>:`` table of the NOUN's settings file, which is the
+    # table the launch reads. ⚑ BEFORE both per-node branches, which would otherwise refuse
+    # a declared, ``cli_set: true`` key at every scope there is.
+    if agent_default_tier_category(canonical) is not None:
+        dest = _write_dest(
+            canonical, command_scope=command_scope,
+            config_path=config_path, settings_path=system_settings_path,
+        )
+        assert dest is not None  # the any-agent tier's category families always have a slot
+        write_nested_key(dest.file, dest.sections, dest.leaf, value)
+        return f"Set {canonical}={'null' if value is None else value}"
+
     # ``agent.<node>.secret_path.<VAR>`` — a SCALAR path write to the node's OWN settings file
     # at the DISCRIMINATED sub-table. ⚑ BEFORE the persona branch.
     if _is_agent_node_secret_key(canonical):
         secret_target = _node_secret_target(canonical, agents_root)
+        if isinstance(secret_target, str):
+            return secret_target  # malformed node ref
         if secret_target is None:
             return (
                 f"Error: '{key}' is a per-node secret pointer and is only "
@@ -1194,10 +1223,21 @@ def reset_config_value(
     # ⚑ There is NO ``agent.<node>.bindings.{ro,rw}.<name>`` branch here any more (R-9), and
     # the absence is deliberate — the preamble refuses it BY NAME, symmetrically with set.
 
+    # ``agent.default.{env,secret_path}.<VAR>`` — clear the any-agent tier's SCALAR category
+    # families from the SAME slot ``set`` wrote (``_reset_dest`` IS the write route).
+    # ⚑ BEFORE both per-node branches, symmetrically with set.
+    if agent_default_tier_category(canonical) is not None:
+        dest = _reset_dest(canonical, command_scope, config_path, system_settings_path)
+        if remove_nested_key(dest.file, dest.sections, dest.leaf):
+            return _honest_reset_message(canonical, command_scope)
+        return f"No override for {canonical}"
+
     # ``agent.<node>.secret_path.<VAR>`` — remove the stored pointer from the node's OWN file.
     # ⚑ BEFORE the persona branch.
     if _is_agent_node_secret_key(canonical):
         secret_target = _node_secret_target(canonical, agents_root)
+        if isinstance(secret_target, str):
+            return secret_target  # malformed node ref
         if secret_target is None:
             return (
                 f"Error: '{key}' is a per-node secret pointer and is only "
@@ -1636,7 +1676,8 @@ def show_config(
                 for k, v in sorted(settings.items()):
                     print(f"  {k} = {v} (override)", file=out)
 
-        # SYSTEM scope: the nested settings-tier entries a system-scope ``set`` stores and the
+        # A NOUN THAT KEEPS ITS SETTINGS APART FROM ITS CONFIG FILE (system, and since
+        # 2026-09-19 workset too): the nested settings-tier entries such a ``set`` stores and the
         # launch cascade reads (F2 — the effective view must show what set wrote).
         if system_settings_path is not None:
             nested = _nested_settings_overrides(system_settings_path)
@@ -1693,7 +1734,8 @@ def show_config(
                 print(f"  {k} = {v}", file=out)
                 has_output = True
 
-        # SYSTEM scope: the nested settings-tier overrides ARE overrides at this level.
+        # A NOUN THAT KEEPS ITS SETTINGS APART FROM ITS CONFIG FILE: the nested
+        # settings-tier overrides ARE overrides at this level.
         # ⚑ This flatten has no key semantics (``config_display``'s own contract), so it
         # cannot tell an override from junk; the subtraction is what keeps an undeclared
         # entry out of a list whose heading claims everything in it is an override.

@@ -732,10 +732,21 @@ def _run_workset_config(args: argparse.Namespace) -> int:
     )
 
     if action == ConfigAction.show:
+        # ⚑ THE WORKSET KEEPS ITS SETTINGS APART FROM ITS CONFIG FILE, exactly as the
+        # system noun does, so it passes the pair the SAME way (``noun_settings_file``'s
+        # own test): Layer-1 ``kanibako.cfg`` as the config file, ``workset.yaml`` as the
+        # settings file.  Passing ``workset.yaml`` as *config_path* instead made it a
+        # BOX-tier file to ``load_merged_config`` — which dropped it with an
+        # upward-scope warning — and left the nested settings flatten unfed, so the
+        # abstract trio (``common``/``caches``/``seeded``) this noun OWNS was invisible
+        # in both views, against spec §0 ("``config show`` lists them").
+        # ⚑ ONE CARRIER: the rows come from the flatten the system noun already renders
+        # them with, never from a second read of the same file.
         return show_config(
             global_config_path=config_file,
-            config_path=ws_config,
+            config_path=config_file,
             effective=args.effective,
+            system_settings_path=ws_config,
         )
 
     if action == ConfigAction.get:

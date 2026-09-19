@@ -1662,6 +1662,92 @@ class TestWorksetGetIsWiredToTheClosedKeyspace:
         assert "undeclared" not in capsys.readouterr().out
 
 
+class TestWorksetShowListsTheAbstractTrio:
+    """spec §0: *"They remain real, declared keys: a user sets them in YAML …,
+    ``config show`` lists them"* — at the noun that OWNS a workset's declarations.
+
+    The trio (``common`` / ``caches`` / ``seeded``) is YAML-only, so every fixture
+    here hand-authors it; a ``set`` would be refused (terminal category).
+
+    ⚑ MUTATION-PROVED: drop ``system_settings_path=ws_config`` from the ``show``
+    branch of ``commands/workset_cmd.py`` and all three families vanish from both
+    views — which is the defect these pin.
+    ⚑ The PLAIN view is the requirement (Jei, 2026-09-19), not only ``--effective``.
+    """
+
+    TRIO = {
+        "common": {"~/shared/docs": ["teamdocs"]},
+        "caches": {"~/.cache/uv": ["uv"]},
+        "seeded": {"~/.bashrc": ["bashrc"]},
+    }
+
+    def _ws(self, config_file, tmp_home, name):
+        std = load_std_paths(load_config(config_file))
+        return create_workset(name, tmp_home / f"ws_{name}", std)
+
+    def _merge(self, ws, table):
+        """MERGE into the workset's settings file — never overwrite it."""
+        from kanibako.commands.workset_cmd import _workset_config_path
+        from kanibako.settings.config_io import dump_doc, load_doc
+
+        path = _workset_config_path(ws)
+        doc = load_doc(path)
+        doc.setdefault("workset", {}).update(table)
+        dump_doc(path, doc)
+
+    def _show(self, name, capsys, *, effective):
+        from kanibako.commands.workset_cmd import run_show
+
+        assert run_show(argparse.Namespace(workset=name, effective=effective)) == 0
+        return capsys.readouterr().out
+
+    @pytest.mark.parametrize("effective", [False, True])
+    def test_every_abstract_family_is_listed(
+        self, config_file, tmp_home, capsys, effective,
+    ):
+        ws = self._ws(config_file, tmp_home, "trio")
+        self._merge(ws, self.TRIO)
+        out = self._show("trio", capsys, effective=effective)
+        assert "workset.common.~/shared/docs" in out
+        assert "workset.caches.~/.cache/uv" in out
+        assert "workset.seeded.~/.bashrc" in out
+
+    def test_a_declaration_is_listed_ONCE(self, config_file, tmp_home, capsys):
+        """One carrier, one row: the flatten is the only reader of this file."""
+        ws = self._ws(config_file, tmp_home, "trioonce")
+        self._merge(ws, self.TRIO)
+        out = self._show("trioonce", capsys, effective=False)
+        for dotted in (
+            "workset.common.~/shared/docs",
+            "workset.caches.~/.cache/uv",
+            "workset.seeded.~/.bashrc",
+        ):
+            assert out.count(dotted) == 1, dotted
+
+    def test_a_pref_request_is_not_doubled_by_the_flatten(
+        self, config_file, tmp_home, capsys,
+    ):
+        """``_pref_overrides`` reads the CONFIG path and the flatten reads the
+        SETTINGS path; aiming both at ``workset.yaml`` prints each pref twice."""
+        from kanibako.commands.workset_cmd import _workset_config_path
+        from kanibako.settings.config_io import dump_doc, load_doc
+
+        ws = self._ws(config_file, tmp_home, "trioprefs")
+        path = _workset_config_path(ws)
+        doc = load_doc(path)
+        doc.setdefault("pref", {}).setdefault("system", {})["agent"] = "claude"
+        dump_doc(path, doc)
+        out = self._show("trioprefs", capsys, effective=False)
+        assert out.count("pref.system.agent = claude") == 1
+
+    def test_a_clean_workset_still_reports_no_overrides(
+        self, config_file, tmp_home, capsys,
+    ):
+        """The flatten must not manufacture a row out of a create-written file."""
+        self._ws(config_file, tmp_home, "trioclean")
+        assert "no overrides" in self._show("trioclean", capsys, effective=False)
+
+
 class TestWorksetGetThreadsTheAgentsRoot:
     """``workset get <ws> agent.<node>.<key>`` reads the node's own file.
 

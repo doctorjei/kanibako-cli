@@ -82,6 +82,10 @@ LABEL_TO_CONFORMANCE_CLASS: dict[str, str] = {
     # anywhere to compare the manifest to", the label's whole reason, stopped being true
     # of the last row that claimed it. **No "exempt" survives that label.**
     "project/workset.py (workspaces key resolution)": "pinned",
+    # The helper-hub SPAWN BUDGET pair (2026-09-19) — PINNED: the floor installs a real
+    # literal and the in-box spawn fallback derives from the same table, so there are two
+    # values to compare and a reason to assert they are one.
+    "settings_launch.py (system scalar floor)": "pinned",
     "runtime-probed (podman graphroot)": "exempt",
     "(nothing declares it — unset until you set it)": "exempt",
     "(empty — the category starts with no entries)": "exempt",
@@ -134,8 +138,8 @@ class TestSourcePartition:
             f"registry defaults with no source: {sorted(declared - covered)}; "
             f"sources for rows the registry no longer defaults: {sorted(covered - declared)}"
         )
-        assert len(declared) == 67, (
-            f"the manifest gives {len(declared)} rows a default, not the 67 measured"
+        assert len(declared) == 69, (
+            f"the manifest gives {len(declared)} rows a default, not the 69 measured"
         )
 
     def test_the_partition_agrees_with_the_conformance_classification(self):

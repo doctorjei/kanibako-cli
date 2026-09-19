@@ -43,6 +43,7 @@ if TYPE_CHECKING:
 from kanibako import kuid
 from kanibako.agent_ref import harness_of
 from kanibako.settings.agent_config import store_dirname
+from kanibako.settings.bootstrap import SPAWN_BUDGET_DEFAULTS
 from kanibako.settings.agent_file import AgentFileLevel, stored_leaf_text
 from kanibako.settings.config import (
     AGENT_META_FILE,
@@ -135,6 +136,27 @@ def _is_bind_floor_key(key: str) -> bool:
 
 #: The GLOBAL-share gate default (spec §2g / §2b). The single host-wide allow flag.
 _SYSTEM_SHARE_ALLOWED_KEY = "system.auth.share_allowed"
+
+
+#: The shipped ``system.*`` SCALAR floor — installed at the BASE rung of EVERY resolve,
+#: unconditionally, so a whole-value ``@``-ref to one of these keys ANSWERS ([R143]; the
+#: ``workset.channelroot`` defect R-35, "fix the CODE").  Every settings scope still
+#: outranks it by merge level, so a user's ``system:`` table wins by name.
+#:
+#: ⚑ UNCONDITIONAL, unlike the four floor FRAGMENTS folded in below: those are optional
+#: because a narrow resolve legitimately has no auth chain or no workset anchor. A
+#: shipped scalar default has no such story — a resolve that skipped it would answer
+#: ``__MISSING__`` for a key the manifest promises a value for.
+#: ⚑ ONLY the helper SPAWN BUDGET today, and the emptiness of the rest is the reason:
+#: the other §2g scalars either declare NO default (``system.agent``,
+#: ``system.setup_completed``), are PATHS floored by ``paths.resolve_system_paths``, or
+#: ride the ``auth_chain`` fragment. A new non-path ``system.*`` default belongs here.
+#: ⚑ VALUES DERIVED from ``bootstrap.SPAWN_BUDGET_DEFAULTS`` (P13) — the same table the
+#: in-box spawn fallback reads, so the two cannot disagree.
+SYSTEM_SCALAR_FLOOR: dict[str, object] = {
+    f"system.helpers.{leaf}": value
+    for leaf, value in SPAWN_BUDGET_DEFAULTS.items()
+}
 
 
 def auth_chain_floor(
@@ -1053,7 +1075,10 @@ def build_launch_snapshot(
     runtime. No resolve whose output is WRITTEN TO DISK may see a flag. Both lists,
     caller by caller: the llm-doc.
     """
-    floor: dict[str, object] = {}
+    # ⚑ SEEDED, not empty: the shipped ``system.*`` scalar defaults are installed by
+    # EVERY resolve (see :data:`SYSTEM_SCALAR_FLOOR`). Everything below may overwrite
+    # them by name, and every settings scope outranks them by merge level.
+    floor: dict[str, object] = dict(SYSTEM_SCALAR_FLOOR)
     # OS1: bare behavior keys → their scope-qualified §2d spelling. There is NO bare
     # ``agent.<key>`` (spec §0).
     #

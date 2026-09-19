@@ -11,6 +11,7 @@ KEYSPACE_VERSION: Final[str] = '1.8.0rc'
 DECLARED_CONFIG_LEAVES: Final[frozenset[str]] = frozenset({'data', 'settings', 'agents', 'primary_workset', 'registry', 'journal'})
 DECLARED_SYSTEM_LEAVES: Final[frozenset[str]] = frozenset({'channelroot', 'template', 'canon', 'backup', 'cache', 'state', 'runtime', 'agent', 'setup_completed'})
 DECLARED_SYSTEM_CHANNEL_LEAVES: Final[frozenset[str]] = frozenset({'common', 'chat', 'broadcast', 'mailboxes', 'share'})
+DECLARED_SYSTEM_HELPERS_LEAVES: Final[frozenset[str]] = frozenset({'depth', 'breadth'})
 DECLARED_SYSTEM_AUTH_LEAVES: Final[frozenset[str]] = frozenset({'share_allowed'})
 DECLARED_BOX_LEAVES: Final[frozenset[str]] = frozenset({'image', 'share_images', 'images_store', 'canon', 'shell', 'enable_vault'})
 DECLARED_BOX_AUTH_LEAVES: Final[frozenset[str]] = frozenset({'global_enabled', 'workset_enabled'})
