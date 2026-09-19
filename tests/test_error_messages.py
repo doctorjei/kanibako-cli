@@ -149,12 +149,13 @@ class TestAuthFailureMessages:
 
 
 class TestContainerExistsMessage:
-    """Verify container-exists error suggests stop."""
+    """Verify the container-exists refusal names a cure that fits the state."""
 
-    def test_container_exists_suggests_stop(self, start_mocks, capsys):
-        """Container-exists error mentions both start and stop."""
+    def test_running_container_suggests_reattach_and_stop(self, start_mocks, capsys):
+        """A LIVE box: the error mentions both start and stop."""
         with start_mocks() as m:
             m.runtime.container_exists.return_value = True
+            m.runtime.is_running.return_value = True
             rc = _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
                 new_session=False, safe_mode=False, resume_mode=False,
@@ -164,6 +165,24 @@ class TestContainerExistsMessage:
         err = capsys.readouterr().err
         assert "kanibako start" in err
         assert "kanibako stop" in err
+
+    def test_exited_container_suggests_only_stop(self, start_mocks, capsys):
+        """An EXITED container: reattach and --restart are both no-ops there, so
+        neither is offered.  ``kanibako stop`` is, because it is the cure that
+        works — it falls through to ``rm`` for a container it did not stop."""
+        with start_mocks() as m:
+            m.runtime.container_exists.return_value = True
+            m.runtime.is_running.return_value = False
+            rc = _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[],
+            )
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert "kanibako stop testproject" in err
+        assert "Reattach" not in err
+        assert "--restart" not in err
 
 
 class TestContainerStartFailureMessage:
