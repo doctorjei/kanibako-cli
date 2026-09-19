@@ -21,11 +21,13 @@ would close a cycle, which is why emission sits at the launch seam.
 any more.  The by-dest reconcile was RETIRED at 6-R3 and THREE seams replaced it, each
 holding the inputs its own rows need — the per-scope ``store_shape`` PRODUCER (the
 refusals decidable within one scope, through the two public raisers below), the ASSEMBLY COLLAPSE
-(``store_collapse``, the cross-scope pairs), and THIS module's launch-seam pair
-:func:`secret_path_deliveries` and :func:`narrow_table_winners`, which answer the two
-questions the collapse deliberately does not: what a ``secret_path`` dest delivers,
-and what a NARROW resolve's own injected table mounts.  ⚑ The credential gate is none
-of the three — a DELIVERY policy, not a collision rule (cutover step 4).
+(``store_collapse``, the cross-scope pairs), and THIS module's launch-seam TRIO
+:func:`refuse_env_secret_twins`, :func:`secret_path_deliveries` and
+:func:`narrow_table_winners`, which answer the three questions the collapse
+deliberately does not: which VARs are named by BOTH scalar families, what a
+``secret_path`` dest delivers, and what a NARROW resolve's own injected table mounts.
+⚑ The credential gate is none of the three — a DELIVERY policy, not a collision rule
+(cutover step 4).
 
 ⚑ NO ROOT-JOIN, by rule.  Every ``host_src`` reaching this module already resolves ON
 ITS OWN, because the ABSTRACT categories are rooted at DECLARATION.  A layer that
@@ -450,6 +452,66 @@ def secret_path_deliveries(entries: list[CategoryEntry]) -> list[CategoryEntry]:
     return delivered
 
 
+def refuse_env_secret_twins(entries: list[CategoryEntry]) -> None:
+    """Refuse a VAR named by BOTH scalar families, naming both keys (spec §2a).
+
+    ``env.<VAR>`` and ``secret_path.<VAR>`` are the two SCALAR name-parametric
+    families and they share ONE delivery target — a box environment variable.  Spec
+    §2a: *"A VAR named by BOTH families REFUSES the launch, naming both keys …  NO
+    precedence between the families is defined, and none may be inferred from
+    delivery order."*
+
+    ⚑⚑ THE THIRD QUESTION THE COLLAPSE DOES NOT ANSWER, for the same reason as the
+    other two: a ``secret_path`` carries no arm in the disk-store shape and its VALUE
+    never enters the collapse at all (arm's length), so ``store_collapse.collapse_env``
+    arbitrates only the ``env`` HALF of a VAR slot and cannot see this contest.  ⚑ It
+    is the whole ENTRY LIST that holds both, which is why this reads that and not a
+    product of either half.
+
+    ⚑ EVERY SCOPE PAIRING, and that is not a widening: the two are different KEYS, so
+    no cascade level and no containment walk can ever reduce the pair to one.  ⚑ The
+    credential gate never drops either family (:func:`gate_credential_delivery` drops
+    ``synced`` and credential ``seeded`` alone), so the gated and ungated lists hold
+    the same twins.
+
+    🛑 A PER-RUN ``-e VAR=VALUE`` IS NOT A PARTICIPANT AND MUST NOT BE TAUGHT TO BE.
+    It is the ``env`` family's CLI LEVEL rather than a key
+    (``store_collapse._apply_cli_env``), so the remedy below — remove one of two keys
+    — would name nothing the user could remove.
+    """
+    from kanibako.settings.settings_resolve import SettingsError
+
+    env_keys: dict[str, list[str]] = {}
+    secret_keys: dict[str, list[str]] = {}
+    for e in entries:
+        if e.category == "env":
+            env_keys.setdefault(e.name, []).append(e.key)
+        elif e.category == "secret_path":
+            secret_keys.setdefault(e.name, []).append(e.key)
+
+    for var, env_group in env_keys.items():
+        secret_group = secret_keys.get(var)
+        if secret_group is None:
+            continue
+        # ⚑ EVERY key on each side, never one picked as representative: with no
+        # precedence to appeal to, a message naming one of three leaves the user to
+        # guess which pair is the mistake.  (A second ``env`` key normally meets
+        # ``store_collapse._refuse_env_twin`` first; on a NARROW resolve, which folds
+        # no env slots, it reaches here instead.)
+        raise SettingsError(
+            f"the environment variable {var!r} is named by BOTH scalar families: "
+            f"{_and_list(env_group)} {_agrees('hold', env_group)} a VALUE for it, "
+            f"and {_and_list(secret_group)} {_agrees('point', secret_group)} at a "
+            f"host file the box exports it from. The two families share ONE "
+            f"delivery target, so naming a variable with both is a mistake "
+            f"rather than a preference: NO "
+            f"precedence between them is defined, and none may be inferred from the "
+            f"order a box happens to receive them. Keep exactly ONE and remove the "
+            f"other - 'secret_path' when the value is secret material kanibako must "
+            f"never read, 'env' otherwise."
+        )
+
+
 def launch_deliveries(
     entries: list[CategoryEntry], *, agent_dests: frozenset[str],
     narrow_bindings: "dict[str, object] | None" = None,
@@ -464,7 +526,14 @@ def launch_deliveries(
     ⚑ *declared_by* is HANDED IN, never derived: it is the FOLD's record (see the field),
     and this function has no bind map to read one off.  Omitted, the carrier reports an
     empty map and every reader of it prints exactly what it always did.
+
+    ⚑ THE BOTH-FAMILIES REFUSAL RUNS FIRST, above every dest question: it is decided
+    on VAR NAMES alone, so it needs none of the winners below, and the pair it names
+    is the likelier user error of the two.  It lives on THIS side of the seam rather
+    than inside :func:`secret_path_deliveries` because it is not a dest contest —
+    ``env`` has no dest at all.
     """
+    refuse_env_secret_twins(entries)
     return LaunchDeliveries(
         secrets=secret_path_deliveries(entries),
         agent_dests=agent_dests,
@@ -601,6 +670,25 @@ def _entry_lines(entries: list[CategoryEntry]) -> str:
     return "".join(
         f"    {e.key.ljust(width)}  ->  {e.host_src}\n" for e in entries
     )
+
+
+def _and_list(keys: list[str]) -> str:
+    """``'a'``, ``'a' and 'b'``, ``'a', 'b' and 'c'`` - quoted keys, INLINE.
+
+    The sibling of :func:`_entry_lines`, for a refusal whose participants are KEYS
+    with no source to pair them with - :func:`refuse_env_secret_twins`' two families
+    contend over a VARIABLE NAME rather than a destination, so there is no
+    ``key -> host_src`` column to lay out.
+    """
+    quoted = [repr(k) for k in keys]
+    if len(quoted) == 1:
+        return quoted[0]
+    return f"{', '.join(quoted[:-1])} and {quoted[-1]}"
+
+
+def _agrees(verb: str, subjects: list[str]) -> str:
+    """*verb* (bare plural form) agreeing with a one-or-many :func:`_and_list` subject."""
+    return verb if len(subjects) > 1 else f"{verb}s"
 
 
 #: The SUPPRESS-THEN-ADD cure (§0), unwrapped.  ⚑⚑ ONE CARRIER, and that is the whole

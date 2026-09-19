@@ -146,9 +146,11 @@ same VAR"), not two different names contending for one destination.
 Cutover 6-R3 deleted `reconcile_categories`, `ReconciledCategories` and the three group resolvers
 beneath them. There is no single cross-scope pass any more. §0's table is applied by the per-scope
 `store_shape` PRODUCER (all that is decidable inside ONE scope), by the assembly COLLAPSE (masks
-and every CROSS-scope pair), and by this module's two launch-seam functions for the inputs the collapse
-cannot see — `secret_path_deliveries` (a `secret_path` dest has no arm in the store shape) and
-`narrow_table_winners` (a narrow resolve, where the collapse returns early).
+and every CROSS-scope pair), and by this module's three launch-seam functions for the inputs the collapse
+cannot see — `refuse_env_secret_twins` (a secret's VALUE never enters the collapse, so the env
+fold sees only half of a contested VAR slot), `secret_path_deliveries` (a `secret_path` dest has
+no arm in the store shape) and `narrow_table_winners` (a narrow resolve, where the collapse
+returns early).
 
 ⚑ **The class went for the same reason its `warnings` field went before it.** That field carried
 §0's same-scope ambiguities until cutover 5-1c, when the per-scope producer became the sole builder; two
@@ -454,7 +456,7 @@ delivered by the home bind). `<box_dir>/canon` (= the key `@box.canon`) is the b
 CONTRIBUTION root, whose `handbook/` is ONE CHAPTER bound RO at `~/canon/handbook/box`.
 **`@box.canon` is NOT `~/canon`** — same word, adjacent paths, opposite directions of travel.
 
-## The launch seam — the two questions the collapse does not answer
+## The launch seam — the three questions the collapse does not answer
 
 ### `gate_credential_delivery`
 
@@ -481,6 +483,10 @@ The launch seam's carrier for what the entry list delivers BESIDE the assembly c
 set: the arm's-length SECRET mounts and the dests the agent's own delivery binds land at. It is
 built ONCE at the seam (`commands.start._resolve_launch_snapshot`) off the CREDENTIAL-GATED
 entry list — the same list the collapse sees, so the two describe one box.
+
+⚑ **`launch_deliveries` can REFUSE rather than return**: it asks `refuse_env_secret_twins`
+first, above every dest question. A resolve that gets a carrier back has already been told that
+no VAR is named by both scalar families.
 
 * *secrets* — the `secret_path` mounts the launch delivers (`secret_path_deliveries`: the
   per-VAR winners, minus what §0 gives to a `masks` at the same dest), in the emitter's order.
@@ -521,6 +527,45 @@ undeclared key. Producer DESIGN §9.1's precedent governs: what is not a setting
 function-to-function. Adding a field to the carrier is therefore cheap, and adding a leaf is a
 keyspace change — which is what `meta.assembly.env` went through before the collapse could
 write it.
+
+### `refuse_env_secret_twins`
+
+Keyspec §2a: *"A VAR named by BOTH families REFUSES the launch, naming both keys … NO
+precedence between the families is defined, and none may be inferred from delivery order."*
+`env.<VAR>` and `secret_path.<VAR>` are the two SCALAR name-parametric families and they share
+ONE delivery target — a box environment variable — so a VAR named by both is a mistake rather
+than a preference.
+
+⚑⚑ **It is a THIRD question the collapse does not answer, for the same reason as the other
+two.** `store_collapse.collapse_env` arbitrates the env VAR slots, but a secret's VALUE is never
+read into kanibako at all (arm's-length delivery), so no `CollapsedEnv` can ever exist for the
+`secret_path` half and the fold sees only one side of the contest. The whole ENTRY LIST holds
+both, which is why this function reads that and not a product of either half.
+
+🛑 **WHAT IT REPLACED.** Nothing refused this before, and nothing arbitrated it either: podman
+received the `env` value through `-e`, and then the box-side export shim
+(`commands.start._secret_export_shim`) ran `export <VAR>="$(cat …)"` at agent start and
+overwrote it. The secret won every launch, by an ORDERING ACCIDENT, with neither key named. That
+is the precedence the spec says may not be inferred.
+
+⚑ **Every scope pairing, and that is not a widening.** The two are different KEYS, so no cascade
+level and no containment walk can reduce the pair to one; refusing only the arrangements where
+the secret sits nearer would BE a precedence, spelled as a refusal. The credential gate never
+drops either family, so the gated and ungated lists hold the same twins.
+
+⚑ **It is asked in `launch_deliveries`, ABOVE every dest question**, because it is decided on VAR
+NAMES alone and needs none of the winners below. It is deliberately NOT inside
+`secret_path_deliveries`: that function answers a DEST contest, and `env` has no dest at all.
+
+🛑 **A per-run `-e VAR=VALUE` is not a participant and must not be taught to be.** It is the
+`env` family's CLI LEVEL rather than a key (`store_collapse._apply_cli_env`), so the remedy —
+remove one of two keys — would name nothing the user could remove. The same reasoning keeps `-e`
+out of `_refuse_env_twin`.
+
+⚑ **A present-null `secret_path.<VAR>` emits no entry** (§2a's three-valued rule: a path is
+used · present-null means this endpoint needs no token · absent means not configured), so it
+names no VAR and cannot contend for one. The refusal keys on an EMITTED entry, never on a key's
+presence — otherwise the documented way to turn a token off would start refusing launches.
 
 ### `secret_path_winners` and `secret_path_deliveries`
 

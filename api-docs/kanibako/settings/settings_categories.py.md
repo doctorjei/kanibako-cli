@@ -53,6 +53,7 @@ def path_depth(box_dest: str) -> int
 def gate_credential_delivery(entries: list[CategoryEntry], deliver_creds: bool) -> list[CategoryEntry]
 def secret_path_winners(entries: list[CategoryEntry]) -> list[CategoryEntry]
 def secret_path_deliveries(entries: list[CategoryEntry]) -> list[CategoryEntry]
+def refuse_env_secret_twins(entries: list[CategoryEntry]) -> None
 def launch_deliveries(entries: list[CategoryEntry], *, agent_dests: frozenset[str], narrow_bindings: 'dict[str, object] | None'=None, declared_by: 'dict[str, str] | None'=None) -> LaunchDeliveries
 def narrow_table_winners(entries: list[CategoryEntry], dests: frozenset[str]) -> list[CategoryEntry]
 def raise_binding_vs_binding(box_dest: str, concrete: list[CategoryEntry]) -> NoReturn
@@ -63,6 +64,8 @@ def effective_bindings_and_template_sources(snapshot: 'KeyStore') -> 'tuple[Any,
 def _bind_options(category: str) -> str
 def _most_specific(entries: list[CategoryEntry]) -> CategoryEntry
 def _entry_lines(entries: list[CategoryEntry]) -> str
+def _and_list(keys: list[str]) -> str
+def _agrees(verb: str, subjects: list[str]) -> str
 def _rule_changed(body: str) -> str
 def _suppress_then_add(occupant_segments: tuple[str, ...], *, ambiguous: bool=False) -> str
 def _assembly_copy_list(snapshot: 'KeyStore', dotted: str) -> list[Any]
