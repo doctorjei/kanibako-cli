@@ -477,7 +477,7 @@ edit `global/settings.yaml` directly.
 
 ## Project Modes
 
-Kanibako supports three ways to organize box state (`box.mode`).  The mode is
+Kanibako supports three ways to organize box state (`meta.box.mode`).  The mode is
 inferred automatically from context.
 
 Two of those modes -- **primary** and **named** -- are flavors of the same idea:
@@ -499,7 +499,7 @@ ordinary `workset set default` mechanism (see [Configuration](#configuration)):
 
 ```bash
 kanibako workset set default model=opus          # default for ALL primary-mode boxes
-kanibako workset set default group_auth=false    # distinct credentials by default
+kanibako workset set default workset.auth.share_allowed=false  # distinct credentials by default
 ```
 
 The names `__PRIMARY__` / `__STANDALONE__` (and legacy `default`) are reserved
@@ -1024,16 +1024,17 @@ is `.yaml`.
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `start_mode` | `continue` | Default start mode (continue/new) |
+| `continue_mode` | `true` | Continue the previous session (`true`) vs. start fresh (`false`) |
 | `model` | platform default | Agent model name |
-| `autonomous` | `true` | Run with full permissions (autonomy) |
+| `access` | `full` | Permission tier -- `restricted`, `editing` or `full` |
 | `box.image` | `kanibako-oci:latest` | Container rig |
 | `box.shell` | `$KANIBAKO_SHELL` | Login shell for a no-agent box (`kanibako start` with no agent, `kanibako shell`); resolved `box.shell` → `$KANIBAKO_SHELL` → the image's recorded login shell → `sh` |
-| `box.agent` | (resolved) | Agent target plugin for this box; part of the resolution cascade (see [Agent Selection](#agent-selection)) |
+| `pref.system.agent` | (unset) | Agent target plugin requested for this box or workset; part of the resolution cascade (see [Agent Selection](#agent-selection)) |
 | `box.share_images` | | Share host images into the box |
-| `group_auth` | `true` | Shared credentials across the group (`true`) vs. per-box (`false`) |
-| `enable_vault` | `true` | Enable vault directories |
-| `env.*` | | Persistent environment variables (`<scope>.env.<VAR>`) |
+| `box.auth.global_enabled` | `true` | The box's host-global credential-share opt-in (`true`) vs. per-box (`false`) |
+| `box.auth.workset_enabled` | `true` | The box's workset credential-share opt-in (`true`) vs. per-box (`false`) |
+| `box.enable_vault` | `true` | Enable vault directories |
+| `<scope>.env.<VAR>` | | Persistent environment variables |
 | `<scope>.bindings.ro` / `.rw` | | Scoped bind-mounts. ⚑ **Settings-file only** — one key per arm, holding a map keyed by box destination. There is no `.<name>` sub-key and no `config set` route; `config get` reads it |
 | `<scope>.caches` | | Scoped cache mounts — same shape: one key, `{box_dest: [host_src[, options]]}`, settings-file only |
 | `<scope>.common` | | Shared dirs mounted rw — same shape |
