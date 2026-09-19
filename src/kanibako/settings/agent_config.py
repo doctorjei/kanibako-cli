@@ -31,6 +31,14 @@ class AgentConfig:
     membership (``var in cfg.secret_path``) before reading — ``.get(var)`` cannot
     tell the first two apart.  Field-by-field notes are in the llm-doc.
 
+    ⚑⚑ ``run_args`` IS THREE-STATE FOR THE SAME REASON, and it is why the field is
+    ``| None``: ABSENT (``None`` — this file says nothing about the argv) is not the
+    same as an explicit ``run_args: []`` (the user's "no arguments").  The two used to
+    load as one empty list, which was harmless while the file was the argv's only
+    source and is not now: ``agent.default.run_args`` reaches a launch (`[R169]`), so
+    the difference is whether this agent OPTS OUT of that default or lets it through.
+    Test ``cfg.run_args is None`` before reading — a truthy test cannot tell them apart.
+
     ⚑ ``name`` WAS A FIELD HERE AND IS GONE (D8b, 2026-09-15): the agent FILE's own identity
     field, never a keyspace leaf.  ``agent.<agent>.label`` (spec §2d) is the declared key that
     carries an agent's human-readable description now, and a file still holding a ``name:``
@@ -38,7 +46,7 @@ class AgentConfig:
     :func:`kanibako.settings.agent_file._refuse_undeclared_state` and ``MIGRATION.md``.
     """
 
-    run_args: list[str] = field(default_factory=list)
+    run_args: list[str] | None = None
     state: dict[str, str | None] = field(default_factory=dict)
     # ⚑ `env` is the READ side of the `agent` verbs, NOT a delivery route: env
     # reaches the box through the collapse's arbitrated slots (MBR-1 P3).
@@ -178,8 +186,12 @@ def is_unambiguous_path_value(value: str) -> bool:
     ⚑ NARROWER THAN :func:`is_self_resolving`, ON PURPOSE, AND THE DIFFERENCE IS
     ``$VAR``.  That predicate rules on a BIND SOURCE, where a declaration may name
     any variable the launch namespace supplies; this one rules on a path a USER
-    typed, and the keyspace's non-XDG variables (``$AGENT``, ``$WORKSET``) expand to
-    a bare NAME — so ``$AGENT/logs`` is exactly as relative as ``logs``.
+    typed, and EVERY variable outside the ``XDG_`` family expands to a bare word
+    that anchors nothing — today an agent or workset name (``$AGENT``,
+    ``$WORKSET``) or a terminal type (``$TERM``) — so ``$AGENT/logs`` and
+    ``$TERM/logs`` are exactly as relative as ``logs``.  ⚑ The test below is the
+    ``XDG_`` PREFIX, not that list: a variable added to the dispatch is refused
+    here the day it lands, and this sentence is examples, never an inventory.
     ⚑ The leading-escape cases fall the same way they do there: ``\/foo`` unescapes
     to an absolute path, ``\~foo`` to a plain relative dir.
     """

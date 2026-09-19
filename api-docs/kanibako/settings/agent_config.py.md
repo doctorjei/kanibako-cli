@@ -34,7 +34,7 @@ def agent_config_path(data_path: Path, agent_id: str, paths_agents: str='agents'
 ```
 @dataclass
 class AgentConfig:
-    run_args: list[str] = field(default_factory=list)
+    run_args: list[str] | None = None
     state: dict[str, str | None] = field(default_factory=dict)
     env: dict[str, str] = field(default_factory=dict)
     secret_path: dict[str, str | None] = field(default_factory=dict)

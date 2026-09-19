@@ -1103,6 +1103,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   asks it rather than deciding for itself — each of these had decided for itself, which is how one
   of them could be fixed while the rest were not.
 
+- **`agent.default.run_args` was a setting no launch ever read.** You could set it — at the system,
+  workset or box scope, by its bare name or in full — and `kanibako system show --effective` listed
+  it back as an override. Every box still started without those arguments. The launch took `run_args`
+  from one place only, the agent's own settings file, so the any-agent default had nowhere to arrive:
+  the one tier that is supposed to answer *"for every agent, unless that agent says otherwise"* was
+  the one tier the launch could not see. It is read off the settings cascade now, the way `model`,
+  `access` and every other agent setting already were. **What you will see:** if you have an
+  `agent.default.run_args` stored anywhere, the agents that were ignoring it start receiving those
+  arguments at the next launch — `kanibako system show --effective` has been telling you they would.
+  A per-agent value **replaces** the any-agent default rather than adding to it, exactly as a
+  per-agent `model` replaces the default one; so an agent with its own `run_args` — in
+  `agents/<agent>/agent.yaml`, or set as `agent.<agent>.run_args` — is unaffected by this, and gets
+  its own list and nothing else. To opt one agent out of a default you set for every agent, give it
+  an explicitly empty `run_args` — `kanibako agent set <agent> run_args=""`, which stores
+  `run_args: []` — which is a different thing from an agent file that has never mentioned the key,
+  and is now kept apart from it everywhere rather than only at `kanibako agent get`. If you set the
+  default once, saw no effect and compensated elsewhere — a shell alias, a per-box setting — remove
+  one of the two, or the agent now gets the flags twice.
+
 - **A setting an agent plugin declares — `agent.goose.provider`, say — was a key to `kanibako agent`
   and an unknown key to `kanibako system`.** Most agent settings are the same for every agent and
   kanibako declares them itself, but an agent plugin may declare settings of its own; goose declares

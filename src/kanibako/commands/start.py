@@ -886,12 +886,12 @@ def _effective_agent_scalar(
         host_home=str(Path.home()),
         xdg=host_xdg_map(),
     )
-    # The per-agent file's FLAT behavior state (agent.<active>.* slot) — the shape
+    # The per-agent file's behavior (agent.<active>.* slot) — the shape
     # ``effective_behavior`` reads for a per-agent override.  Absent file → empty.
     if agent_state is None and agent_path is not None and Path(agent_path).exists():
         try:
             agent_state = agent_file.state_level(
-                agent_file.load(agent_path).state, node=agent_id,
+                agent_file.load(agent_path), node=agent_id,
             )
         except Exception:
             agent_state = None
@@ -989,7 +989,7 @@ def _effective_transform(
         proj, system_settings_path, agent_id,
         key="transform", floor=floor,
         agent_state=(
-            agent_file.state_level(agent_cfg.state, node=agent_id)
+            agent_file.state_level(agent_cfg, node=agent_id)
             if agent_cfg is not None else None
         ),
     )
@@ -3696,7 +3696,22 @@ def _run_container(
             from kanibako.settings import settings_launch
             _realized = _realizer.result
             effective_state = _realized.effective_state
-            all_extra = list(agent_cfg.run_args) + list(extra_args)
+            # ``run_args`` OFF THE CASCADE, not off the agent FILE (`[R169]`, spec §2d
+            # ``agent.<agent>.run_args | <None>   (← agent.default.run_args)``). The
+            # file is one LEVEL of that cascade and reaches this read through
+            # ``agent_file.state_level`` like every other agent-scope behavior value,
+            # so an ``agent.default.run_args`` in a system / workset / box settings
+            # file is what a box without a per-agent value now starts with. A
+            # per-agent value REPLACES it — the §2d active-over-default pick
+            # ``effective_behavior`` already does, no concatenation.
+            # ⚑ ONE COERCION, HERE, AND NO SECOND ONE ANYWHERE.  The table hands the
+            # argv over as the command-line STRING its owner joined
+            # (``agent_file.stored_leaf_text``), so a stored list and a string
+            # hand-written into a YAML arrive identically and ``argv_words`` splits
+            # both.  Nobody's file is rewritten to make that true.
+            all_extra = agent_file.argv_words(
+                effective_state.get("run_args", "")
+            ) + list(extra_args)
             if desc is not None:
                 # Descriptor path: assemble argv + container-env overlay
                 # declaratively from the plugin descriptor (replaces the legacy
@@ -5979,8 +5994,9 @@ def _effective_behavior_for_display(
     Read off the SAME KeyStore snapshot the live launch reads (block 7c).
     Single-route + launch-FIDELITY: this builds the behavior snapshot exactly as
     :func:`_resolve_launch_snapshot` does for a launch — the target's declared
-    defaults fold in as the ``agent.default.*`` floor (OS1); the per-agent FILE
-    state (``agent_cfg.state``, flat ``[agent]``) is injected as ``agent_state``
+    defaults fold in as the ``agent.default.*`` floor (OS1); the per-agent FILE's
+    behavior (``agent_cfg``, the flat ``[agent]`` state plus the modelled
+    ``run_args``) is injected as ``agent_state``
     (the active slot ``agent.<active>.*``); the box / workset / system settings
     files merge as their discriminated ``agent.default.*`` / ``agent.<name>.*``
     tables through ``assemble_levels`` — then :func:`~kanibako.settings.settings_launch.
@@ -6023,7 +6039,7 @@ def _effective_behavior_for_display(
     # line above — the same node the ``agent.<node>.*`` cascade slot keys on, and
     # the reason this read exists (fix 4a).  Building it beside ``behavior_floor``
     # would pin a node that has not been decided yet.
-    agent_state = agent_file.state_level(agent_cfg.state, node=active)
+    agent_state = agent_file.state_level(agent_cfg, node=active)
 
     # DISPLAY == LAUNCH: the same persona-store tier the launch resolves against
     # (:func:`_persona_values_for`), read here for the same node. Without it this
@@ -6254,9 +6270,9 @@ def _resolve_box_launch_decisions(
         behavior_floor=behavior_floor or None,
         # agent_state (the active-node slot) is only needed when we actually read
         # behavior; gated on behavior_floor so a no-descriptor / mock target never
-        # dereferences agent_cfg.state.
+        # dereferences agent_cfg.
         agent_state=(
-            agent_file.state_level(agent_cfg.state, node=agent_name)
+            agent_file.state_level(agent_cfg, node=agent_name)
             if behavior_floor and agent_cfg is not None
             else None
         ),
@@ -6903,8 +6919,8 @@ def _resolve_launch_snapshot(
 
     # Block 7b (ruling A — the FULL read-path swap): the BEHAVIOR cascade now flows
     # through THIS one snapshot too. The target's declared-default floor folds in as
-    # ``agent.default.<key>`` (OS1); the per-agent FILE's flat ``[agent]`` state
-    # (``agent_cfg.state``) is wrapped under ``agent.<active>`` (it is NOT the
+    # ``agent.default.<key>`` (OS1); the per-agent FILE's behavior
+    # (``agent_cfg``) is wrapped under ``agent.<active>`` (it is NOT the
     # discriminated tables ``assemble_levels`` reads from ``agent_path``, so it is
     # injected as ``agent_state`` — see ``build_launch_snapshot``). Only the MAIN
     # launch carries behavior (the conditional image/helper resolves do not).
@@ -6923,7 +6939,7 @@ def _resolve_launch_snapshot(
                 **{d.key: d.default for d in descriptors},
             }
         if agent_cfg is not None:
-            agent_state = agent_file.state_level(agent_cfg.state, node=agent_name)
+            agent_state = agent_file.state_level(agent_cfg, node=agent_name)
 
     # ``pref.*`` REQUESTS (spec §2h) — collected ONCE here, at the single launch
     # aggregation point, and threaded into the snapshot build. This function runs

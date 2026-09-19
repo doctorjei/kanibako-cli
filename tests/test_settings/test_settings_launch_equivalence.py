@@ -317,6 +317,7 @@ def test_depth_order_preserved_across_families(tmp_path):
 # --------------------------------------------------------------------------- #
 
 
+from kanibako.settings.agent_config import AgentConfig  # noqa: E402
 from kanibako.settings.agent_file import (  # noqa: E402
     state_level as agent_file_state_level,
 )
@@ -334,7 +335,9 @@ def _behavior_snapshot(agent, *, floor, agent_state, box_path, system_path):
         behavior_floor=floor,
         # Wrapped here, as the production producers do (C-2): the level carries
         # the node it merges under, which for this read is the active agent.
-        agent_state=agent_file_state_level(agent_state, node=agent),
+        agent_state=agent_file_state_level(
+            AgentConfig(state=dict(agent_state or {})), node=agent,
+        ),
     )
     return snap
 
@@ -494,7 +497,10 @@ def test_box_config_effective_display_matches_launch_behavior_read(tmp_path):
         SimpleNamespace(key=k, default=v) for k, v in floor.items()
     ]
     target = SimpleNamespace(name=agent, setting_descriptors=lambda: descriptors)
-    agent_cfg = SimpleNamespace(state=dict(state))
+    # ⚑ THE RECORD, not a namespace shaped like one: the display's level producer
+    # reads the file's argv field too (``agent_file.state_level``), so a stand-in
+    # missing it describes an agent file that cannot exist.
+    agent_cfg = AgentConfig(state=dict(state))
     display = _effective_behavior_for_display(
         target, agent_cfg, box, system_settings_path=None, workset_config_path=None,
     )

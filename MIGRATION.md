@@ -311,7 +311,14 @@ inside boxes. In order of likely impact:
     XDG *data* base plus a hardcoded `kanibako`; a plugin you had dropped in your store was silently
     never loaded. Move the `.py` files, and re-run `kanibako code --remote` per remote.
 
-31. Smaller items: standalone boxes' `box get` got truthful (§2.9); a box pointed at a new agent
+31. **A `run_args` you set for every agent now actually reaches every agent** (§2.75).
+    `agent.default.run_args` — the bare `run_args` spelling included — was settable at any scope and
+    was listed by `show --effective`, and no launch read it: a box took its arguments from the
+    agent's own settings file alone. It resolves through the cascade now, so flags you set once and
+    saw no effect from start being passed. Read `run_args` off `kanibako system show --effective`
+    before your first launch. A per-agent value replaces the default rather than adding to it.
+
+32. Smaller items: standalone boxes' `box get` got truthful (§2.9); a box pointed at a new agent
     keeps the old one's credential files in its home (§2.10); several never-released or
     expected-empty renames (§2.11); two `--null` CLI bugs fixed (§2.14); a customized helper
     entrypoint script moves to `~/canon/notebook/scripts/helper-init.sh` (§2.44).
@@ -3784,6 +3791,15 @@ into the list by hand. ⚑ An explicitly empty `run_args=` means *no arguments* 
 different thing from a key you never set: `kanibako agent get <agent> run_args` answers with an
 empty line for the first and `(not set)` for the second.
 
+🛑 **One sentence above needs a second reading now that `agent.default.run_args` reaches a launch**
+(**"2.75 `agent.default.run_args` reaches a launch, and a per-agent value replaces it"** below).
+`kanibako agent show <agent>` reads **that agent's own file** — so its `run_args` line still shows
+exactly what this section says it does, *and it is not the whole of what a launch will pass*: an
+any-agent default set at the system, workset or box scope reaches an agent whose file is silent,
+and no `agent show` line reports it. **`kanibako system show --effective` is where that default
+appears.** The distinction the paragraph above draws is what carries the difference: a file that
+never mentions `run_args` lets the default through, and an explicitly empty one refuses it.
+
 ---
 
 ### 2.60 `box convert --standalone` recognises a repointed directory as kanibako's
@@ -4629,6 +4645,53 @@ resolves today, and `kanibako shell` still reaches any box's container without a
 
 ⚑ **`kanibako setup`'s "skip" option asks you to confirm now however many agents are installed.** It
 used to waive the confirmation at exactly one, because that one would have been picked implicitly.
+
+---
+
+### 2.75 `agent.default.run_args` reaches a launch, and a per-agent value replaces it
+
+**Read this if you have ever set `run_args` at the system, workset or box scope** — that is, by its
+bare name (`kanibako system set run_args=…`) or in full (`agent.default.run_args`), rather than
+against one agent. If you have only ever set it on an agent, with `kanibako agent set <agent>
+run_args=…` or `agent.<agent>.run_args`, nothing here changes what your boxes do.
+
+**What changed.** The any-agent default was settable and was displayed, and no launch read it. A
+box took its `run_args` from the agent's own settings file and from nowhere else, so an
+`agent.default.run_args` sat in your settings file being listed by `kanibako system show
+--effective` as an override while every box started without it. It is read off the settings cascade
+now, like every other agent setting.
+
+**What to do:** run `kanibako system show --effective` — and the same at any workset or box where
+you have set it — and look for a `run_args` line. Whatever it shows is what an agent without its own
+value will now be started with. `kanibako system reset run_args` removes it if that is not what you
+want. If you set it once, found it did nothing and added the flags somewhere else instead — a shell
+alias, a wrapper script, a per-agent `run_args` — remove one of the two, or the agent gets them
+twice.
+
+**A per-agent value REPLACES the default; it is not added to it.** This is the ordinary rule for an
+agent setting (`agent.<agent>.<key>` falls back to `agent.default.<key>`, it does not extend it),
+and it is the same rule `model` and `access` have always followed. An agent with its own `run_args`
+is started with that list and nothing else, so flags you want it to share with the default appear
+in both lists.
+
+```yaml
+# global/settings.yaml — every agent gets --verbose …
+agent:
+  default:
+    run_args: ["--verbose"]
+  claude:
+    run_args: ["--debug"]        # … except claude, which gets --debug ALONE.
+```
+
+⚑ The agent's own settings file (`agents/<agent>/agent.yaml`) counts as the per-agent value and
+replaces the default the same way. **This is how you opt ONE agent out of a default you set for
+every agent:** write `run_args: []` into that agent's file — an explicit *no arguments* — or
+`kanibako agent set <agent> run_args=""`. A file that has never mentioned `run_args` sets nothing
+and lets the default through, and the two are kept apart everywhere: `kanibako agent get <agent>
+run_args` answers with an empty line for the opt-out and `(not set)` for the untouched file.
+⚑ Splitting and quoting are unchanged — see
+**"2.59 A `run_args` stored as a string now takes effect"** above, which describes the whitespace
+split and why an argument containing a space is written into the list by hand.
 
 ---
 

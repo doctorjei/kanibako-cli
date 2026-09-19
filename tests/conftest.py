@@ -707,8 +707,9 @@ def start_mocks():
                 )
                 # Block 7b (ruling A): flow the BEHAVIOR cascade into the stub's
                 # snapshot too — the target's declared-default floor (→ agent.
-                # default.*) + the per-agent FILE's flat state (agent_cfg.state,
-                # wrapped under agent.<active>) — so the LIVE behavior read
+                # default.*) + the per-agent FILE's behavior (agent_cfg, its flat
+                # state AND its run_args, wrapped under agent.<active>; the file's
+                # argv reaches a launch through THIS level) — so the LIVE behavior read
                 # (effective_behavior) returns the real model/access/etc. The
                 # category sources stay None (MagicMock-path mounts are covered by
                 # the dedicated suites with a REAL std).
@@ -723,9 +724,7 @@ def start_mocks():
                 if _agent_cfg is not None:
                     # The DISCRIMINATED level the real producers build (C-2): the
                     # node is the ACTIVE one, exactly as ``start.py`` folds it.
-                    _state = agent_file_state_level(
-                        _agent_cfg.state, node=_node,
-                    )
+                    _state = agent_file_state_level(_agent_cfg, node=_node)
                 # ⚑⚑ THE ONE CORE FACT THIS STUB CARRIES — the box HOME SOURCE, and
                 # it is a PRECONDITION of the collapse, not a convenience.  Home is
                 # pid 0 and does NOT route through ``bindings.rw`` (spec ``:1015``):

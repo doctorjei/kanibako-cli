@@ -117,7 +117,11 @@ from typing import (
 # plus ``kanibako.errors``, no settings import in either direction. The keyspace
 # needs it because NORMALISING a node to its harness is the KEYSPACE's rule, not a
 # supplier's: see :func:`agent_declared_leaves`.
-from kanibako.agent_ref import canonicalize_agent_ref, harness_of
+from kanibako.agent_ref import (
+    PSEUDO_AGENT_NAMES,
+    canonicalize_agent_ref,
+    harness_of,
+)
 from kanibako.errors import ConfigError
 from kanibako.settings.kb_store import BINDING_DERIVATIONS_NODE, SCOPE_CONTAINMENT
 from kanibako.settings.keystore import KeyStore
@@ -645,13 +649,38 @@ def leaf_name_reason(leaf: str) -> str | None:
 def is_valid_agent_segment(segment: str, valid_agents: Collection[str]) -> bool:
     """Is *segment* a legal ``agent.<HERE>`` discriminator?
 
-    ``default`` (the agent tier's all-agents FALLBACK, §2) or a member
-    of *valid_agents*. The caller decides what "valid agent" means — see
+    A PSEUDO-AGENT name (spec §2d *"Pseudo-agent(s)"*) or a member of
+    *valid_agents*. The caller decides what "valid agent" means — see
     ``settings_prefs.default_valid_agents``, which answers it as "a discovered
     harness, or a persona node whose harness is discovered" (§2h: the
     test is *is it a VALID agent*, NOT *is it the ACTIVE agent*).
+
+    ⚑⚑ THE PSEUDO-AGENT SET IS ``agent_ref``'s, NOT A SECOND LIST HERE. The spec
+    reserves those names in ONE breath — against an agent, a persona and a harness —
+    and :data:`~kanibako.agent_ref.PSEUDO_AGENT_NAMES` is where that reservation is
+    already spelled. A twin here would be two carriers of one shape: the parser would
+    refuse a name this segment rule still admitted, or the reverse, and each list
+    alone would read true.
+
+    ⚑ THE TWO SIDES ARE COMPLEMENTS, NOT A CONTRADICTION (P14). ``agent_ref`` refuses
+    a pseudo-agent name to anything that CLAIMS it — an agent, a persona, a harness —
+    because the name is already owned. This admits the same names as the ``agent.<HERE>``
+    DISCRIMINATOR, because being owned is precisely what gives them a cascade slot.
     """
-    return segment == "default" or segment in valid_agents
+    return segment in PSEUDO_AGENT_NAMES or segment in valid_agents
+
+
+def valid_agent_segments(valid_agents: Collection[str]) -> list[str]:
+    """Every legal ``agent.<HERE>`` discriminator, sorted — for a refusal MESSAGE.
+
+    ⚑ ONE CARRIER WITH :func:`is_valid_agent_segment`, and the reason is that a
+    message which offers a NARROWER world than the predicate accepts sends a user to
+    fix a name that was already correct. The two refusal sentences that print this —
+    :func:`_bad_agent_reason` here and ``settings_prefs.allowlist_reason``'s — each
+    kept their own ``{*valid_agents, "default"}`` copy, and both went stale the moment
+    a second pseudo-agent was reserved.
+    """
+    return sorted({*valid_agents, *PSEUDO_AGENT_NAMES})
 
 
 def _category_reason(
@@ -804,12 +833,20 @@ def _could_name_an_agent(segment: str) -> bool:
     a RELIC (``agent.common.plugins``, ``agent.env.<VAR>``, ``agent.seeded.*`` — the
     undiscriminated launch-built form, MIGRATION.md §2.11).
 
-    FALSE for a §2a category token and for ``default``; both are then judged by the
-    core contract, which knows them. TRUE for anything else — including a
+    FALSE for a §2a category token and for a PSEUDO-AGENT name
+    (:data:`~kanibako.agent_ref.PSEUDO_AGENT_NAMES`); all of them are then judged by
+    the core contract, which knows them. TRUE for anything else — including a
     plausible-looking typo such as ``agent.clade.zippity``, which is the IRREDUCIBLE
     residual: ``clade`` is exactly the shape a real uninstalled harness has.
+
+    ⚑ ``shell`` REACHED THE SAME ANSWER BY ACCIDENT BEFORE IT WAS NAMED HERE, and that
+    is why it is named. It fell through to :func:`agent_declared_leaves`'s
+    will-not-canonicalise arm, because ``agent_ref`` happens to REFUSE a reserved name
+    to the parser — so the keyspace's own rule was being carried by another module's
+    refusal. Relax that refusal and ``shell`` would silently become a CONCEDED name,
+    with every leaf a user liked legal under ``agent.shell.*``.
     """
-    return segment != "default" and not _is_category_token(segment)
+    return segment not in PSEUDO_AGENT_NAMES and not _is_category_token(segment)
 
 
 def _scope_reason(
@@ -1006,10 +1043,10 @@ def _meta_reason(
 
 
 def _bad_agent_reason(name: str, valid_agents: Collection[str]) -> str:
-    known = ", ".join(sorted({*valid_agents, "default"})) or "default"
+    known = ", ".join(valid_agent_segments(valid_agents))
     return (
         f"'{name}' is not a valid agent (valid: {known}). The agent segment of "
-        f"an agent-scope key must name a real agent or the 'default' fallback "
+        f"an agent-scope key must name a real agent or a reserved PSEUDO-AGENT "
         f"tier (spec §2d / §0 L21 — a bare 'agent.<key>' is not a key)"
     )
 
@@ -1125,12 +1162,13 @@ def agent_declared_leaves(
     while the canonical ``agent.nav℘claude.zippity`` classified UNDECLARED — one key,
     two answers by spelling.
 
-    TWO segments get core's table and NO concession — a §2a category token, and
-    ``default``. Neither is withheld from the concession by policy: their standing is
-    the KEYSPACE's own, so it is knowable on every machine and there is nothing a
-    missing plugin could make unreadable (:func:`_could_name_an_agent`). ⚑ A ref that
-    will not canonicalise joins them, for the same reason pointing the other way — it
-    names no agent, so there is no plugin whose absence could excuse it.
+    TWO KINDS of segment get core's table and NO concession — a §2a category token,
+    and a PSEUDO-AGENT name (``default``, ``shell``). Neither is withheld from the
+    concession by policy: their standing is the KEYSPACE's own, so it is knowable on
+    every machine and there is nothing a missing plugin could make unreadable
+    (:func:`_could_name_an_agent`). ⚑ A ref that will not canonicalise joins them, for
+    the same reason pointing the other way — it names no agent, so there is no plugin
+    whose absence could excuse it.
     """
     if agent_leaf_map is None or not _could_name_an_agent(name):
         return frozenset()
@@ -1530,10 +1568,11 @@ def key_class(
         # ``agent.default.provider``, which the ratified manifest names not-a-key
         # twice (``not_keys.code_residue``; ``provider_disposition``, R-37).
         # :func:`agent_declared_leaves` reaches the same answer from the general rule:
-        # ``_could_name_an_agent('default')`` is False, so ``default`` gets core's
-        # table and NO concession — which is also what a §2a category token gets, and
-        # for the same reason. Their standing is the KEYSPACE's own, so it is knowable
-        # on every machine and there is nothing to concede.
+        # ``_could_name_an_agent`` is False for every PSEUDO-AGENT name, so ``default``
+        # and ``shell`` get core's table and NO concession — which is also what a §2a
+        # category token gets, and for the same reason. Their standing is the
+        # KEYSPACE's own, so it is knowable on every machine and there is nothing to
+        # concede.
         # ⚑ THE ORDER INSIDE IS LOAD-BEARING and it is the COST order too: the
         # universal table is asked first, ``_could_name_an_agent`` second, the map
         # third. Ask the map first and ``agent.common.plugins`` — the undiscriminated

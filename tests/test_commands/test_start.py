@@ -2436,6 +2436,90 @@ class TestAgentConfigIntegration:
             # run_args precede extra_args, both appended after the assembled flags.
             assert cli_args[-2:] == ["--verbose", "--foo"]
 
+    def test_the_any_agent_default_run_args_reaches_the_launch(self, start_mocks):
+        """`[R169]`: ``agent.default.run_args`` is a REAL default, read at launch.
+
+        The per-agent file sets none, so what reaches the argv is the any-agent rung —
+        the one a launch could not see at all before the cascade was wired, because the
+        seam read :attr:`AgentConfig.run_args` and nothing else.  The descriptor floor
+        IS that rung: ``build_launch_snapshot(behavior_floor=…)`` lands it at
+        ``agent.default.*``.
+
+        (Mutation: read ``agent_cfg.run_args`` at the seam again → ``--a``/``--b``
+        never reach ``cli_args`` → RED.)
+        """
+        from types import SimpleNamespace
+
+        with start_mocks() as m:
+            m.target.setting_descriptors.return_value = [
+                SimpleNamespace(key="run_args", default="--a --b"),
+            ]
+            # ⚑ ``None``, the ABSENT state — an explicit ``[]`` is an OPT-OUT and is the
+            # case two below. The record's three states are the difference.
+            m.agent_cfg.run_args = None
+            m.load_agent_config.return_value = m.agent_cfg
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=["--foo"],
+            )
+            cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
+            assert cli_args[-3:] == ["--a", "--b", "--foo"]
+
+    def test_a_per_agent_run_args_REPLACES_the_any_agent_default(self, start_mocks):
+        """§2d ``agent.<agent>.run_args | <None>   (← agent.default.run_args)``.
+
+        The active slot's value wins WHOLE.  ⚑ REPLACE, never append: the §2d pick
+        takes the FIRST present value and concatenates nothing, exactly as it does for
+        ``model`` and every other agent-scope behavior leaf.
+
+        (Mutation: concatenate the two slots instead → ``--a``/``--b`` ride along →
+        RED.)
+        """
+        from types import SimpleNamespace
+
+        with start_mocks() as m:
+            m.target.setting_descriptors.return_value = [
+                SimpleNamespace(key="run_args", default="--a --b"),
+            ]
+            m.agent_cfg.run_args = ["--verbose"]
+            m.load_agent_config.return_value = m.agent_cfg
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=["--foo"],
+            )
+            cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
+            assert cli_args[-2:] == ["--verbose", "--foo"]
+            assert "--a" not in cli_args and "--b" not in cli_args
+
+    def test_an_agent_files_EMPTY_run_args_opts_out_of_the_default(self, start_mocks):
+        """`run_args: []` in the agent file means "no arguments" and beats the default.
+
+        The capability this protects: a user with an any-agent default who wants ONE agent
+        started without it. It reaches the seam because the record is three-state — an
+        absent key is `None` and lets the default through (the case two above).
+
+        (Mutation: give `AgentConfig.run_args` back its `list[str] = []` default, or fold it
+        into the level on truthiness → `--a`/`--b` reach `cli_args` → RED.)
+        """
+        from types import SimpleNamespace
+
+        with start_mocks() as m:
+            m.target.setting_descriptors.return_value = [
+                SimpleNamespace(key="run_args", default="--a --b"),
+            ]
+            m.agent_cfg.run_args = []
+            m.load_agent_config.return_value = m.agent_cfg
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=["--foo"],
+            )
+            cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
+            assert cli_args[-1:] == ["--foo"]
+            assert "--a" not in cli_args and "--b" not in cli_args
+
     def test_model_state_reaches_argv_via_descriptor(self, start_mocks):
         """Agent state drives the agent argv: ``model`` is emitted as ``--model <value>``.
 

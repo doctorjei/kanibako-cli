@@ -27,6 +27,7 @@ _DEST_KEYED_PLACEHOLDER: Final[tuple[str, str]] = ('<box-dest>', '[<host-src>]')
 def table_value_error(tail: str, *, path: Path, verb: str) -> str | None
 def file_spelling(*segments: str) -> str
 def slot_for(agents_root: Path, node: str, tail: str) -> AgentFileSlot
+def argv_words(value: str) -> list[str]
 def argv_text(words: Iterable[object]) -> str
 def stored_leaf_text(tail: str, value: object) -> str | None
 def read_leaf(slot: AgentFileSlot) -> str | None
@@ -36,11 +37,10 @@ def clear_overrides(path: Path) -> int
 def load(path: Path) -> AgentConfig
 def save(path: Path, cfg: AgentConfig) -> None
 def level_table(raw: Any, *, sub_key: str, node: str | None=None, path: Path | None=None) -> AgentFileLevel
-def state_level(state: 'Mapping[str, str | None] | None', *, node: str) -> AgentFileLevel | None
+def state_level(cfg: 'AgentConfig | None', *, node: str) -> AgentFileLevel | None
 def _read_address(tail: str) -> tuple[tuple[str, ...], str]
 def _write_address(tail: str) -> tuple[tuple[str, ...], str]
 def _is_table_valued(tail: str) -> bool
-def _argv_words(value: str) -> list[str]
 def _stored_shape(tail: str, value: object) -> object
 def _render_argv(tail: str, v: object) -> str | None
 def _nested_agent_cure(category: str | None, sub_key: str, *, var: str, value: str) -> str

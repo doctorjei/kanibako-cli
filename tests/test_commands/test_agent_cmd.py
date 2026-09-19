@@ -451,7 +451,9 @@ class TestRunConfig:
         cfg = load_agent_config(path)
         assert cfg.state == {}
         assert cfg.env == {}
-        assert cfg.run_args == []
+        # ``reset --all`` REWRITES the file without the key, so the record reads the
+        # absent state (``None``), not the explicit "no arguments" (``[]``).
+        assert cfg.run_args is None
 
     def test_config_reset_requires_key(self, agent_env, capsys):
         from kanibako.commands.agent_cmd import run_reset

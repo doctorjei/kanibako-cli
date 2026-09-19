@@ -312,12 +312,18 @@ than being wrapped — pinned by `test_read_does_not_re_render`, which uses a sc
 rule for `_LIST_VALUED_KEYS` above: the seam every write route already goes through is the only
 place the shape is decided, so a second copy in a caller cannot exist to drift.
 
-```_argv_words(value: str) -> list[str]``` · ```argv_text(words) -> str```
-The two halves of the argv translation. `_argv_words` is deliberately `str.split`, NOT
+```argv_words(value: str) -> list[str]``` · ```argv_text(words) -> str```
+The two halves of the argv translation. `argv_words` is deliberately `str.split`, NOT
 `shlex.split` — adding quote handling would change the MEANING of values already on disk rather
 than fix one; a word that must contain a space is hand-edited into the list. `argv_text` is public
 because two display surfaces need it: `agent_cmd._show_agent_config` (which printed the Python repr
 `run_args = ['--a', '--b']` at the user) and `_get_agent_key`.
+
+⚑ **`argv_words` is public since `[R169]` (it was `_argv_words`), and the reason is the LAUNCH.**
+The behaviour table hands `run_args` over as the command-line string `argv_text` joined — so a
+stored list and a string hand-written into a YAML arrive at `start.py`'s `all_extra` seam
+identically — and that seam splits it back with THIS function. One parser, both directions, no
+second answer to "what is a word".
 
 ```_stored_shape(tail, value) -> object``` · ```_render_argv(v) -> str | None```
 `_stored_shape` is what `write_leaf` applies; `None` PASSES THROUGH, because it is the `--null`
@@ -328,18 +334,31 @@ rule is about an empty STRING, kanibako's idiom for no value; a present `run_arg
 user's explicit "no arguments" and collapsing it would print "(not set)" over an override that is
 really in the file. The three states stay apart: absent → `None`, present-empty → `""`,
 present-with-words → the words.
+⚑⚑ **AND SINCE `[R169]` THE RECORD KEEPS THEM APART TOO** (`AgentConfig.run_args: list[str] | None`).
+It used to collapse absent and present-empty into one `[]`, which was harmless only while this file
+was the argv's sole source: now `agent.default.run_args` reaches a launch, so the difference is
+whether this agent OPTS OUT of that default or lets it through. The display convention here and the
+record's three states are the same fact, and they were briefly out of step — the file surface kept
+the pair apart while the record did not, so `agent get` reported an opt-out that no launch honoured.
 ⚑ A STRING here renders through the scalar convention unchanged — that is what the other write
 route stored before the routes agreed, and `load` reads it the same way.
 
 ```clear_overrides(path: Path) -> int```
-Drop every user override from the file at *path*, PRESERVING `name`; return the count.
+Drop every user override from the file at *path*; return the count.
 
 This was `agent reset --all`'s hand-rolled read-modify-write on the raw document, in a command
-module — the sixth shape site. Sparse "remove all user overrides": from the root table, every key
-EXCEPT `name` — which removes `run_args`, all state keys and every category table — then prune the
-now-empty root table. The COUNT is part of the contract, not a detail: **each removed ROOT
-key counts once**, whatever it holds (a category table counts as the one override it is), which is
-what makes the printed number agree with the other scopes' `reset_all`.
+module — the sixth shape site. "Remove all user overrides" is the `self:` root table deleted
+outright — `run_args`, all state keys and every category table go with it — and the file is left
+SPARSE, no default key re-materialized in their place. The COUNT is part of the contract, not a
+detail: **each removed ROOT key counts once**, whatever it holds (a category table counts as the
+one override it is), which is what makes the printed number agree with the other scopes'
+`reset_all`.
+
+⚑ **NOTHING IS EXEMPT, AND THAT IS D8b (2026-09-15).** The one key it used to hold back — `name`,
+the file's non-key identity field, spared from the deletion and left out of the count — is retired,
+and a verb whose whole promise is that it clears the user's settings may not keep one of them. A
+file still carrying a `name:` line loses it here, and the printed number counts it: the count is
+the root table's whole length. The widening is user-visible and recorded in `MIGRATION.md`.
 
 ⚑ **THE COUNT MOVED AT S2, DELIBERATELY.** The per-VAR arm (each `secret_path` entry counting
 individually, parity with the old flat `env_file` count) only ever fired for entries found INSIDE
@@ -415,7 +434,11 @@ back empty. It is a READ rule, not a shim: nothing writes a string here any more
 route already wrote work from the next command on, and the next `save` normalises them. A bare
 `run_args:` parses to `None` and means "no arguments", never the word `"None"` — the same trap the
 `model: null` paragraph above records; anything else scalar is one word's worth of text and splits
-like one. *(The old pin `test_run_args_must_be_list` asserted the empty list and was true of the
+like one. ⚑ **The KEY'S ABSENCE is read by MEMBERSHIP (`"run_args" not in agent_sec`), not by the
+value being `None`, and the record then holds `None` rather than `[]`** — the three-state read
+(`[R169]`). A bare `run_args:` is a PRESENT "no arguments" and still loads as `[]`, so the two
+`None`-looking YAML shapes part company here: one says nothing, the other refuses the any-agent
+default. *(The old pin `test_run_args_must_be_list` asserted the empty list and was true of the
 code while wrong about the product; it is replaced by
 `test_a_stored_run_args_STRING_is_split_not_discarded`.)*
 
@@ -547,8 +570,19 @@ _refuse_env_twin`, the sole twin raise site). That one arbitrates two DECLARED k
 slot at COLLAPSE time; this one rejects a FILE SPELLING at ASSEMBLY time, before any key exists.
 Neither weakens the other and neither test may stand in for the other's.
 
-```state_level(state, *, node) -> AgentFileLevel | None```
-The file's FLAT behaviour state as a DISCRIMINATED level, or `None` if empty.
+```state_level(cfg, *, node) -> AgentFileLevel | None```
+The file's BEHAVIOUR as a DISCRIMINATED level, or `None` if it sets none.
+
+⚑⚑ **IT TAKES THE RECORD, NOT `cfg.state`, AND THAT IS THE `run_args` CASCADE (`[R169]`).**
+`run_args` is a behaviour leaf the record models as a FIELD of its own (`_MODELED_KEYS`), so a level
+built from `cfg.state` alone dropped it — and the file's argv reached the launch by a SECOND route,
+read straight off `AgentConfig.run_args` at `start.py`'s `all_extra` seam, where no
+`agent.default.run_args` could ever contest it. Folded in here, the §2d active-over-default pick does
+the override with nothing added for it. The fold is **`is not None`, never truthy**: a present
+`run_args: []` must SET the key, because that is how an agent opts OUT of the any-agent default;
+folding on truthiness hands that agent the very default its empty list refuses.
+⚑ It rides as the stored LIST — `effective_behavior` renders it through `stored_leaf_text`, and the
+consumer splits that string back with `argv_words`.
 
 The per-agent file stores behaviour FLAT (`model` — already per-agent), not under the sub-tables
 the cascade merges by, so the discriminator has to be attached somewhere. It is attached HERE, at

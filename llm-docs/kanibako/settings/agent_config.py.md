@@ -36,6 +36,16 @@ the agent-state knobs beside it — `model`, `access`, `allow_helpers`, `endpoin
 the S2 flatten, all of them sit FLAT under the file's root, beside the category tables, because
 `self` IS `agent.<node>`: there is no per-node sub-table to nest them in.
 
+⚑⚑ **`run_args` IS THREE-STATE (`list[str] | None`), the same shape and the same reason as
+`secret_path`** — `[R169]`. ABSENT is `None` ("this file says nothing about the argv"); an explicit
+`run_args: []` is the user's "no arguments". Both used to load as one empty list, which was harmless
+only while this file was the argv's sole source: `agent.default.run_args` reaches a launch now, so
+the difference is whether this agent OPTS OUT of that default or lets it through. **Test
+`cfg.run_args is None`** — a truthy test cannot tell them apart, and the one that folds them hands an
+opted-out agent the default it refused. ⚑ A bare `run_args:` in the YAML is a PRESENT "no arguments"
+and loads as `[]`, not as the absent state; the membership test in `agent_file.load` is what parts
+the two `None`-looking shapes.
+
 ⚑ **`name` was a field here and is gone** (D8b, 2026-09-15) — the FILE's own identity field, never a
 keyspace leaf. `agent.<agent>.label` carries an agent's description now, as an ordinary §2d key.
 ⚑ **And the `IDENTITY_KEYS` set that spelled the pair is gone with it** (2026-09-18): with one member
