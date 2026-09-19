@@ -1007,8 +1007,9 @@ keys:
            system.default_agent (R-2 — D-M2 SUPERSEDED 2026-07-29: the one-char
            clash expired when the agent store dir became config.agents). A box
            or workset requests a different one with pref.system.agent (§2h);
-           the CLI --agent beats both (§1A). Unset/<None> ⇒ NO-AGENT
-           plain-shell box (D-M6)."
+           the CLI --agent beats both (§1A). `shell` ⇒ plain-shell box
+           (D-M6). <None> ⇒ no default set, an agent must be named
+           explicitly. Unset ⇒ setup has never run; refuse."
     spec: "§2g (R-2)"
   system.setup_completed:
     scope: system
