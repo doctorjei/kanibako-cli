@@ -579,6 +579,47 @@ source = "src/kanibako/data/keyspace-manifest.yaml"
 section = "keys"
 where = { id_matches = "^workset\\.auth\\." }
 
+# FACT: every FIXED-spelling key the manifest declares under the four addressable
+# scopes is a spelling `config_keys.KNOWN_CONFIG_KEYS` holds.
+# AUTHORITY: the manifest's `keys:` section is the declared side and is the
+# authority; `KNOWN_CONFIG_KEYS` is the code side.
+# CATCHES: a new key row landing WITHOUT its `KNOWN_CONFIG_KEYS` entry -- the
+# omission nothing in the tree could see.
+#
+# 🛑 THE DIRECTION IS THE WHOLE POINT, AND THE CONVERSE IS ALREADY HELD.
+# `test_settings_keyspace.py`'s `test_known_config_keys_are_valid_under_the_validator`
+# asserts SETTABLE ⊆ DECLARED; nothing asserted DECLARED ⊆ SETTABLE. The 43
+# non-`config` rows of this view are caught INCIDENTALLY -- each has a
+# `_KEY_ROUTES` row, which `test_config_dest_parity.py`'s mutated-spellings
+# corpus reaches -- and the six `config.*` Layer-1 leaves have NONE, so nothing
+# reaches them. That 6/43 split is the whole gap and it is structural: measured
+# 2026-09-19 by partitioning the 49 against `_KEY_ROUTES`, 43 of 43 present, 0 of
+# 6. The read-only scoping pass that sized this table confirmed the consequence
+# by running the suite over a mutated tree: `config.settings`,
+# `config.primary_workset` and `config.registry` deleted together, 10,030 tests
+# pass (their figure, recorded with its provenance, not re-run here).
+# The user-visible cost is that the CLI then reads a declared key as a project
+# name: `kanibako box get config.registry` answers `Error: Unknown project or
+# workset: 'config.registry'`.
+#
+# ⚑ IT ASSERTS CONTAINMENT; IT DOES NOT DERIVE THE CARRIER. Deriving
+# `KNOWN_CONFIG_KEYS` from the manifest was PROPOSED AND DECLINED (2026-08-08),
+# and the quarantine block above the set records that decline. A declaration that
+# reds when the two disagree is P15's SECOND tier -- fail loudly -- which is what
+# is available once the first tier is closed by a ruling.
+#
+# ⚑ THE PREDICATE IS REQUIRED AND ITS FIVE CELLS ARE IN ITS DOCSTRING. The one a
+# reader will try to simplify is the family test: it reads `parts[1]`, and testing
+# every segment instead drops `system.channels.common` and `workset.channels.common`
+# because `common` is both a delivery family and a `channels` leaf. Read
+# `fixed_scope_key` before editing this `where`.
+[[registry]]
+name = "fixed-scope-keys"
+kind = "yaml-mapping"
+source = "src/kanibako/data/keyspace-manifest.yaml"
+section = "keys"
+where = { holds = "kinemata_views:fixed_scope_key" }
+
 # ---------------------------------------------------------------------------
 # FACT: the channel system's wire vocabulary -- the two synthesized workset
 # tokens, the default chat leaf, and where helper scripts live inside a box.
@@ -1433,16 +1474,22 @@ for key in sorted(workset_anchor_floor(mode="standalone")):
 """]
 extract = '(?m)^(\S+)$'
 
-# Measured 2026-09-15, kinemata `0.1.0`:
-#   `# never-settable-paths: 13 declared, 36 produced, no identifier is both
+# Measured 2026-09-15 as `13 declared`; RE-MEASURED 2026-09-19, kinemata `0.2.0`:
+#   `# never-settable-paths: 15 declared, 36 produced, no identifier is both
 #   declared and produced.`  rc=0
+# ⚑ THE DECLARED SIDE MOVED AND THE PRODUCED SIDE DID NOT, which is what the
+# view is for. Diffed against `67e72b26` rather than inferred: the manifest
+# gained `meta.runtime.admin.{config,settings}` and `meta.runtime.user.config`
+# and retired `meta.runtime.config_file` -- net two -- and the disjointness held
+# across all four without anyone touching this table. Re-derive the figure with
+# `kinemata parity` rather than reading it here.
 # NEGATIVE CONTROL, the registry widened to `where = { field = "type", equals =
 # "path" }` -- every path row, settable ones included: rc=1, `FAIL: 36
 # disagreement(s)`, all "declared and produced, where neither may be". So the
 # `set: never` half of the predicate is doing the work, and the disjointness is
 # not true of path rows in general.
 # ⚑ OUR NUMBERS ARE NOT UPSTREAM'S, AND THE DIFFERENCE IS THE DECLARATION. They
-# report `1 declared, 39 produced` for this shape; re-run here it is 13 and 36.
+# report `1 declared, 39 produced` for this shape; re-run here it is 15 and 36.
 # 39 is the floor the sibling test in `TestThePathTypeColumnHasOneCodeCarrier`
 # pins on the SETTABLE path rows, parametric spellings included -- so their
 # produced side was the manifest's settable rows handed to the predicate, which
@@ -1523,6 +1570,60 @@ for name, value in sorted(auth_chain_floor(mode="primary", agent_name="default")
 extract = '(?m)^kanibako-auth: ([^\s=]+)=(\S+)$'
 field = ["default", "primary"]
 authority = "declared"
+
+# ---------------------------------------------------------------------------
+# 🛑 `produced_contains`, AND AN EQUALITY WOULD BE WRONG RATHER THAN MERELY
+# STRICT. The set legitimately holds 12 spellings this view has no row for --
+# the BARE agent leaves (`model`, `access`, `template` …), which are declared
+# parametrically as `agent.<agent>.<leaf>` and typed by the CLI without a scope
+# prefix. The question worth asking is only whether a DECLARED fixed key can go
+# missing from the set, and containment in this direction is that question.
+#
+# Measured 2026-09-19 on this tree, kinemata `0.2.0`:
+#   `# fixed-scope-keys: 49 declared, 61 produced, every identifier declared is
+#   produced by the code.`  rc=0
+# ⚑ Re-derive both figures with `kinemata parity` rather than reading them here.
+# They are quoted at all only because the TRAP CONTROL below turns on the declared
+# side moving 49 -> 47 while the run stays green; `fixed_scope_key`'s docstring
+# owns that reason.
+# THREE NEGATIVE CONTROLS, each run in a scratch copy under /tmp and each
+# restored to green afterwards. Each removed a spelling from the set:
+#   `config.registry`         -> rc=1, `config.registry: declared, produced by
+#                                nothing`
+#   `system.channels.common`  -> rc=1, `system.channels.common: declared,
+#                                produced by nothing`
+#   all three of `config.registry`, `config.settings` and
+#   `config.primary_workset` together
+#                             -> rc=1, all three named on their own lines
+# The THIRD is the one that earns this table: those three have no `_KEY_ROUTES`
+# row, so the incidental catch that covers the other 43 cannot reach them and
+# this is the only mechanism that names them. The SECOND is the trap control,
+# below.
+# VACUITY CONTROL, the `where` replaced by an `id_matches` nothing satisfies:
+# rc=2, `where ... kept none of the entries 'fixed-scope-keys' declares, so
+# every check reading this view would pass by looking at nothing` -- a config
+# refusal, so it stalls every command rather than reporting a clean run.
+# SECOND VACUITY ARM, the oracle's `print` removed: rc=1, `BLOCKED: claims every
+# identifier declared is produced by the code, and its oracle produced no
+# identifiers at all. Nothing can violate that, so the run would pass by looking
+# at nothing`.
+#
+# 🛑 THE TRAP CONTROL, RUN THROUGH THE TOOL AND NOT REASONED. The same predicate
+# with `any(part in …)` in place of the positional `parts[1]` test reports
+# `47 declared, 61 produced` and **still exits 0** -- it loses
+# `system.channels.common` and `workset.channels.common` and reports a clean run
+# while checking two fewer rows. That is the selector limit stated at the head of
+# the narrowed views, arriving as a SILENT NARROWING rather than a finding, which
+# is why the reason lives in `fixed_scope_key`'s docstring and is repeated here.
+[[parity]]
+registry = "fixed-scope-keys"
+relation = "produced_contains"
+command = ["{python}", "-c", """
+from kanibako.settings.config_keys import KNOWN_CONFIG_KEYS
+for key in sorted(KNOWN_CONFIG_KEYS):
+    print(f"kanibako-known: {key}")
+"""]
+extract = '(?m)^kanibako-known: (\S+)$'
 
 # ---------------------------------------------------------------------------
 # THE FIRST ORACLE HERE THAT IMPORTS NOTHING. Every table above runs a `{python}
