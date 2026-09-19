@@ -42,6 +42,7 @@ from kanibako.settings.agent_file import (
 )
 from kanibako.settings.config_dest import (
     DestRoute,
+    _category_segments,
     _write_dest,
     _read_dest,
     noun_settings_file,
@@ -109,7 +110,8 @@ from kanibako.settings.config_io import (
 )
 from kanibako.errors import UserCancelled
 from kanibako.settings.kb_store import __MISSING__
-from kanibako.settings.settings_keyspace import key_validity
+from kanibako.settings.settings_categories import ABSTRACT_CATEGORIES
+from kanibako.settings.settings_keyspace import is_terminal_category_key, key_validity
 from kanibako.settings.keystore import ReservedKeyError
 from kanibako.settings.settings_prefs import PREF_ROOT
 from kanibako.utils import confirm_prompt
@@ -1622,6 +1624,44 @@ def _undeclared_stored_entries(path: "Path | None") -> dict[str, str]:
     return out
 
 
+def _abstract_declarations(path: "Path | None", scope: str) -> dict[str, str]:
+    """*scope*'s OWN ABSTRACT-category declarations in a settings file — ``key → value``.
+
+    Spec §0 on ``common`` / ``caches`` / ``seeded``: *"They remain real, declared keys: a
+    user sets them in YAML …, ``config show`` lists them"* — an obligation on the PLAIN
+    view, which ``--effective`` (the sibling clause, the derivation block) does not discharge.
+
+    ⚑ A SELECTION over :func:`_nested_settings_overrides`, never a second read: the rows a
+    noun renders come off the one flatten at every noun, so a declaration cannot be shown
+    one way here and another way at the system noun.  The narrowing is what lets it run at
+    a noun whose settings file IS its config file — see the call site.
+
+    ⚑⚑ *scope* IS NOT A CONVENIENCE FILTER — IT IS WHAT KEEPS THE ROWS TRUE.  The flatten
+    walks EVERY top-level scope table, and a table naming a CONTAINING scope (a
+    ``workset:`` table hand-pasted into a box's file) is dropped at assembly and *"never
+    enters the merge"* (spec §0, directional enforcement), with a warning printed over this
+    very output.  Listed here it would assert an override that has no effect — the same
+    false surface the missing ``.env`` block below refuses, and the likeliest way for it to
+    arise is the mis-scope this view is the user's only chance to notice.  The DOWNWARD case
+    needs no exception: a box is the innermost scope, so it contains nothing.
+
+    ⚑ The key ends at the CATEGORY and the destination is one whole segment after it, so the
+    split is ``config_dest._category_segments`` rather than a ``.``-split: a destination
+    carries dots (``box.caches.~/.cache/uv``).  A row only counts when that split really
+    STOPPED at a terminal category key, which is what keeps an undeclared table that merely
+    happens to be named after one (``box.bogus.common.x``) out of the list.
+    """
+    out: dict[str, str] = {}
+    for dotted, value in _nested_settings_overrides(path).items():
+        segments = _category_segments(dotted)
+        if segments[0] != scope:
+            continue
+        category = ".".join(segments[:-1])
+        if is_terminal_category_key(category) and segments[-2] in ABSTRACT_CATEGORIES:
+            out[dotted] = value
+    return out
+
+
 def show_config(
     *,
     global_config_path: Path,
@@ -1744,6 +1784,25 @@ def show_config(
             for k, v in sorted(nested.items()):
                 if k in undeclared:
                     continue
+                print(f"  {k} = {v}", file=out)
+                has_output = True
+        else:
+            # THE BOX NOUN, whose settings file IS its config file: the block above
+            # cannot run on it.  A whole-file flatten here would print the box scalars
+            # and the ``pref`` requests a SECOND time — the scalars under a second
+            # spelling (``box_image`` above, ``box.image`` from the flatten), which is
+            # the one thing worse than showing them once.  So it is NARROWED to the
+            # ABSTRACT declarations, which nothing else in this branch can see and
+            # spec §0 obliges ``config show`` to list.
+            # ⚑ SCOPED TO THE CLAUSE, not to the file: ``bindings.{ro,rw}``/``masks``/
+            # ``synced``/``env``/``secret_path`` stored at a box stay unlisted here, as
+            # they were — no clause obliges them, and for ``secret_path`` [R149] reads
+            # the other way ("you may not want your secret files - even just locations
+            # - being dumped to the terminal").
+            # ⚑ The noun's OWN scope, and the helper needs it: see its docstring for
+            # what an upward-scope table in this file would otherwise assert.
+            declared = _abstract_declarations(settings_src, ConfigLevel.box.value)
+            for k, v in sorted(declared.items()):
                 print(f"  {k} = {v}", file=out)
                 has_output = True
 

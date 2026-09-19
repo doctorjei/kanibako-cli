@@ -981,31 +981,50 @@ migration's own detection recipe.
 category key at all: that display predates the keystore and reads `load_merged_config`. Extending
 it across all five scopes is a read-surface job with its own owner, not a side effect of this one.
 
-*system_settings_path*, when supplied (SYSTEM scope), is the file the agent SETTINGS +
-`system.agent` are DISPLAYED from (`@config.settings` = `global/settings.yaml`); the `system.*`
-CONFIG display always uses `global_config_path`. When `None` (box/workset) settings display reads
-`config_path` as before.
+*system_settings_path*, when supplied, is the file the agent SETTINGS + `system.agent` are
+DISPLAYED from (`@config.settings` at SYSTEM); the `system.*` CONFIG
+display always uses `global_config_path`. ⚑ **Every noun that keeps its settings APART from its
+config file supplies it** — SYSTEM, and the WORKSET since 2026-09-19, which passes its own
+settings file here and the Layer-1 file as *config_path*. When `None` — the BOX, whose settings
+file IS its config file — the settings display reads *config_path*.
 
 ### What each view prints
 
 The `--effective` view prints, in order: the merged `KanibakoConfig` fields (each marked
 `(override)` when the level overrides it); the agent settings — a fully-resolved *agent_state*
 when supplied (the box view, marking only the keys actually set at the box level), else the
-project-level overrides; at SYSTEM scope the nested settings-tier entries in the system settings
-file (`system.auth.share_allowed`, downward scope defaults) — the values a system-scope `set`
-stores and the launch cascade reads (F2: the effective view must show what set wrote); the `pref`
+project-level overrides; at a noun that supplies *system_settings_path* the nested settings-tier
+entries in that file (`system.auth.share_allowed`, downward scope defaults) — the values a
+`set` at that scope stores and the launch cascade reads (F2: the effective view must show what
+set wrote); the `pref`
 REQUESTS and the RESULT each produced (spec §2h read verbs); the path-delivery CATEGORIES and
 their materialised derivations (§0); and the env vars.
 
-The plain view prints the project overrides, the agent settings, the SYSTEM nested settings-tier
-overrides (they ARE overrides at this level), and the `pref` REQUESTS stored at this noun (spec
-§2h "config show lists prefs" — also overrides at this level).
+The plain view prints the project overrides, the agent settings, that same noun's nested
+settings-tier overrides (they ARE overrides at this level), and the `pref` REQUESTS stored at this
+noun (spec §2h "config show lists prefs" — also overrides at this level).
+
+⚑ **Where that nested block cannot run — the BOX, whose settings file IS its config file — the
+ABSTRACT declarations are printed instead** (`_abstract_declarations`). Spec §0 obliges the plain
+view to list `common` / `caches` / `seeded` ("a user sets them in YAML …, `config show` lists
+them"), and every other reader in the branch is blind to them. It is the SAME flatten the SYSTEM
+block uses, NARROWED: run whole here it would print the box scalars and the `pref` requests a
+second time, the scalars under a second spelling. The narrowing is to the spec's clause, not to
+the file — a box's `bindings` / `masks` / `synced` / `env` / `secret_path` stay unlisted in this
+view, no clause obliging them and [R149] reading the other way for the last.
+
+⚑ **It is narrowed by SCOPE as well as by category, and that half is not cosmetic.** The flatten
+walks every top-level scope table, so a `workset:` table pasted into a box's file would be listed
+here — while directional enforcement DROPS it at assembly ("never enters the merge", §0) and
+prints a warning over this very output. A row the box does not get is not an override of
+anything; the helper takes the noun's own scope token and keeps to it. The downward case needs no
+exception, the box containing nothing.
 
 ⚑ **Then, LAST and not counted as an override, the entries the noun's settings file carries that
 the keyspace does not DECLARE** (`_undeclared_stored_entries`, whose docstring holds the reasoning).
 It is a display of FILE CONTENT, not a §0 read of a key: nothing is resolved, no default is
 fabricated. It exists because `box get` / `workset get` now REFUSE such a name (§0) and the only
-cure is a hand edit — a cure nobody can follow for a line they cannot see. The SYSTEM nested block
+cure is a hand edit — a cure nobody can follow for a line they cannot see. That nested block
 SUBTRACTS this set before printing: that flatten has no key semantics, so without the subtraction
 one line would appear twice, once called an override and once called junk. The agent-settings
 block does not subtract, because it renders a leaf FLAT (`bogus`, not `agent.default.bogus`) and

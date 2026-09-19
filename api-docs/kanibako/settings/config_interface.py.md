@@ -32,6 +32,7 @@ def _honest_reset_message(key: str, command_scope: 'ConfigLevel | None', effecti
 def _count_leaves(node: object) -> int
 def _clear_writable_scope_tables(path: Path, command_scope: 'ConfigLevel | None') -> int
 def _undeclared_stored_entries(path: 'Path | None') -> dict[str, str]
+def _abstract_declarations(path: 'Path | None', scope: str) -> dict[str, str]
 ```
 
 ## Classes

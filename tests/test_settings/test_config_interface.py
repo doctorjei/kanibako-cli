@@ -18,6 +18,7 @@ from kanibako.settings.config_interface import (
     reset_all,
 )
 from kanibako.settings.bootstrap import SYSTEM_PATH_DEFAULTS
+from kanibako.settings.settings_categories import ABSTRACT_CATEGORIES
 
 from tests.support.filenames import CONFIG_FILENAME
 
@@ -844,6 +845,99 @@ class TestShowConfig:
         out = _nested_settings_overrides(sys_file)
         assert not any(k.startswith("resource_overrides") for k in out), out
         assert out.get("workset.auth.share_allowed") == "false"
+
+    def test_plain_show_lists_the_abstract_declarations_at_the_box_noun(
+        self, tmp_path, capsys,
+    ):
+        """Spec §0 on ``common``/``caches``/``seeded``: *"a user sets them in YAML …,
+        ``config show`` lists them"* — the PLAIN view, which the ``--effective`` sibling
+        clause does not discharge.
+
+        ⚑ DERIVED FROM :data:`ABSTRACT_CATEGORIES`, never a list of three (P13): a
+        fourth abstract category would have to be shown here too, and a literal roster
+        would go on passing while it was invisible.
+
+        ⚑ EVERY DESTINATION HERE CARRIES A DOT, and that is the whole point of the
+        fixture: a destination is DATA and the key stops at the category, so a plain
+        ``.``-split cuts ``box.caches.~/.cache/uv`` into a key that does not exist.  With
+        dotless destinations the two splits agree, and a "simplification" to the wrong
+        one would pass while dropping every real cache declaration from the view.
+        """
+        global_cfg = tmp_path / CONFIG_FILENAME
+        global_cfg.write_text("")
+        project_toml = tmp_path / BOX_META_FILE
+        dump_doc(project_toml, {
+            "box": {cat: {f"~/.{cat}/dest": [f"{cat}-src"]}
+                    for cat in ABSTRACT_CATEGORIES},
+        })
+
+        show_config(global_config_path=global_cfg, config_path=project_toml)
+
+        out = capsys.readouterr().out
+        for cat in ABSTRACT_CATEGORIES:
+            assert f"box.{cat}.~/.{cat}/dest" in out, (cat, out)
+        assert "no overrides" not in out, out
+
+    def test_the_box_declaration_block_prints_each_row_once(self, tmp_path, capsys):
+        """The narrowing is the POINT: a whole-file flatten here would say the same
+        thing twice, and the scalars under a second spelling (``box_image`` from the
+        override loop, ``box.image`` from the flatten)."""
+        global_cfg = tmp_path / CONFIG_FILENAME
+        global_cfg.write_text("")
+        project_toml = tmp_path / BOX_META_FILE
+        dump_doc(project_toml, {
+            "box": {"image": "custom", "caches": {"~/c": ["leaf"]}},
+            "pref": {"system": {"agent": "goose"}},
+        })
+
+        show_config(global_config_path=global_cfg, config_path=project_toml)
+
+        out = capsys.readouterr().out
+        assert out.count("custom") == 1, out
+        assert out.count("pref.system.agent") == 1, out
+        assert out.count("box.caches.~/c") == 1, out
+
+    def test_an_undeclared_table_named_after_a_category_is_not_a_declaration(
+        self, tmp_path, capsys,
+    ):
+        """``box.bogus.common`` ENDS in a category token without being one (the
+        ``system.channels.common`` hazard, one scope over).  It belongs to the
+        undeclared block — listing it as a declaration would report junk as a key."""
+        global_cfg = tmp_path / CONFIG_FILENAME
+        global_cfg.write_text("")
+        project_toml = tmp_path / BOX_META_FILE
+        dump_doc(project_toml, {"box": {"bogus": {"common": {"~/x": ["y"]}}}})
+
+        show_config(global_config_path=global_cfg, config_path=project_toml)
+
+        out = capsys.readouterr().out
+        assert "undeclared" in out, out
+        # The ONE occurrence is the undeclared block's own row.
+        assert out.count("box.bogus.common.~/x") == 1, out
+        assert "(no overrides)" in out, out
+
+    def test_an_upward_scope_declaration_is_not_an_override_at_the_box(
+        self, tmp_path, capsys,
+    ):
+        """A ``workset:`` table hand-pasted into a box's file is DROPPED at assembly
+        (spec §0 directional enforcement: it *"never enters the merge"*), so listing it
+        would assert an override that has no effect — the same false surface the absent
+        ``.env`` block refuses.  The box's OWN row still prints."""
+        global_cfg = tmp_path / CONFIG_FILENAME
+        global_cfg.write_text("")
+        project_toml = tmp_path / BOX_META_FILE
+        dump_doc(project_toml, {
+            "box": {"caches": {"~/ok": ["mine"]}},
+            "workset": {"caches": {"~/up": ["theirs"]}},
+            "system": {"common": {"~/sys": ["higher"]}},
+        })
+
+        show_config(global_config_path=global_cfg, config_path=project_toml)
+
+        out = capsys.readouterr().out
+        assert "box.caches.~/ok" in out, out
+        assert "workset.caches" not in out, out
+        assert "system.common" not in out, out
 
 
 # ---------------------------------------------------------------------------
