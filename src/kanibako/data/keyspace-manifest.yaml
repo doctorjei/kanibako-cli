@@ -1851,14 +1851,18 @@ keys:
     set: never
     origin: derived
     type: path
-    value: "@workset.channels.share/@meta.box.name"    # <None> for standalone
+    value: {primary: "@workset.channels.share/@meta.box.name",
+            named: "@workset.channels.share/@meta.box.name",
+            standalone: null}
     spec: "§2c"
   meta.box.auth.workset_path:
     namespace: meta
     set: never
     origin: derived
     type: path
-    value: "@workset.auth.path/@system.agent"          # <None> for standalone
+    value: {primary: "@workset.auth.path/@system.agent",
+            named: "@workset.auth.path/@system.agent",
+            standalone: null}
     note: "reclassified from the old SETTABLE box.auth.workset_path (2026-07-04):
            being meta means it can't be set to a dangling @-ref. Respelled from
            @box.agent_name (R-31, with R-3)."
@@ -2734,6 +2738,16 @@ not_keys:
     "meta.box.project_dir": "RETIRED (R-36) — there is no project-dir key: the project dir
                              is @meta.workset.path (standalone) or meta.box.workspace
                              (primary) (§2c)"
+    "meta.assembly.backup": "RESERVED with the meta.assembly group (2026-08-08f), RETIRED
+                             2026-08-10 — SUBSUMED by meta.assembly.synced, which reads ONE
+                             list in BOTH directions (delivery host->guest at launch,
+                             writeback guest->host at session end), so no reverse-direction
+                             member is needed. Refused BY NAME, as is the pre-2026-08-09
+                             spelling meta.runtime.backup; both post-date v1.8.0-rc1, so the
+                             retirement ships CLEAN — no alias, nothing to migrate.
+                             ⚑ SPELLED IN FULL because system.backup is a LIVE key
+                             (@config.data/backup, §2g) and a bare `backup` row here would
+                             claim the wrong name."
     "box.bindings.ro.canon_bible": "RETIRED 2026-07-31 (R-36) — the whole-dir bible bind;
                                     undeclared from that edit forward. The charter ships as
                                     per-chapter INTERNAL binds (canon_charter_*, §2c).
