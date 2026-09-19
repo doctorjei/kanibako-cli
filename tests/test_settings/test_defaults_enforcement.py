@@ -62,7 +62,15 @@ _SANCTIONED: dict[str, int] = {
     # none (spec §2g: unset means setup has never run). It is a new ARM on an already
     # sanctioned surface, not a new surface, which is exactly the case this count
     # exists to surface for review rather than to forbid.
-    "src/kanibako/settings/config_interface.py": 7,
+    # ⚑ 7 → 8 on 2026-09-19, REVIEWED AND JUSTIFIED RATHER THAN RENUMBERED. The new site is
+    # the ``agent.default`` tier's ``set`` arm: ``config set agent.default.env.<VAR>=…`` and
+    # its ``secret_path`` twin now have a real route, so the value a user TYPED is written to
+    # the slot ``_write_dest`` resolves. It records USER INTENT in the strictest sense — it is
+    # reached only from the ``set`` verb, it writes no default (the families have none), and
+    # the spec sanctions the route: §0's ``standard`` clause and §2a's scope list both name
+    # ``agent.default``, and the manifest carries ``cli_set: true`` on both rows.
+    # 🛑 It is a new ARM on an already sanctioned surface, not a new surface.
+    "src/kanibako/settings/config_interface.py": 8,
     # The agent settings file writer (``agents/<node>/agent.yaml``), which by
     # the FILE-PURITY invariant may only ever carry user-intent values.
     "src/kanibako/settings/agent_file.py": 1,

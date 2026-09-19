@@ -193,6 +193,13 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     "system.channels.share",
     "system.channels.broadcast",
     "system.channels.mailboxes",
+    # ⚑ THE ``system.helpers.*`` PAIR (spec §2g) — the helper-hub SPAWN BUDGET, declared
+    # 2026-09-19 after living as an undeclared ``spawn:`` table in a bespoke file. INTs,
+    # one nested slot, and here for the same reason ``SETUP_MARKER_KEY`` below is: the
+    # ``system_cmd`` GET arm gates on this set, so a key the CLI can SET must be a key it
+    # can READ.
+    "system.helpers.depth",
+    "system.helpers.breadth",
     # system.agent (spec §2g): the CURRENT agent's name — a system-scope SETTING, so it
     # routes to the ``system:`` table of the SYSTEM SETTINGS file, not the [system] config table.
     "system.agent",
@@ -247,6 +254,10 @@ _KEY_ROUTES: dict[str, tuple[tuple[str, ...], str]] = {
     "system.channels.share": (("system", "channels"), "share"),
     "system.channels.broadcast": (("system", "channels"), "broadcast"),
     "system.channels.mailboxes": (("system", "channels"), "mailboxes"),
+    # The helper-hub SPAWN BUDGET (spec §2g) — its own nested slot in the system
+    # SETTINGS file, so a parent's write and a child's read name one location.
+    "system.helpers.depth": (("system", "helpers"), "depth"),
+    "system.helpers.breadth": (("system", "helpers"), "breadth"),
     "workset.auth.share_allowed": (("workset", "auth"), "share_allowed"),
     "workset.auth.global_sync": (("workset", "auth"), "global_sync"),
     "box.auth.global_enabled": (("box", "auth"), "global_enabled"),
@@ -288,6 +299,8 @@ _KEY_ROUTES: dict[str, tuple[tuple[str, ...], str]] = {
 # :func:`access_value_error`, never a type here.
 #
 # ``bool``  — coerced to a real bool before writing (the H2 fix).
+# ``int``   — coerced to a real int before writing; a non-numeric value is REFUSED at
+#             set time rather than at the read that needed the number.
 # ``path``  — a host PATH, so [R147]'s bare-relative refusal reaches it at set time
 #             (:func:`is_path_valued_key`).  NOT coerced: the file keeps the raw
 #             spelling, tokens and all (spec §0).
@@ -307,6 +320,11 @@ KEY_TYPES: dict[str, str] = {
     "box.auth.workset_enabled": "bool",
     "box.enable_vault": "bool",
     "workset.skip_kuid_check": "bool",
+    # The helper-hub SPAWN BUDGET (spec §2g) — the first ``int`` the CLI acts on, and it
+    # must: ``-1``/``0``/``4`` decide whether a box may spawn at all, so a typo reaching
+    # the file would only fail later, inside the spawn the user asked for.
+    "system.helpers.depth": "int",
+    "system.helpers.breadth": "int",
     # The Layer-1 config tier and the Layer-2 ``system.*`` tier, DERIVED from the two
     # declared-default tables they are (P13) — a path key added to either arrives here
     # with no edit.  ⚑ The six ``config.*`` rows are ``set: file`` and have no CLI write
@@ -366,6 +384,13 @@ def _coerce_value(canonical: str, value: "str | None") -> object | None:
             f"Error: {canonical} expects a boolean "
             f"(true/false/1/0/yes/no), got {value!r}"
         )
+    if kind == "int":
+        try:
+            return int(value)
+        except ValueError:
+            return CoercionError(
+                f"Error: {canonical} expects a whole number, got {value!r}"
+            )
     return value
 
 
@@ -668,10 +693,9 @@ AGENT_DEFAULT_SUB = "default"
 #: module name this destination — :func:`terminal_category_write_error` and
 #: :func:`agent_node_bind_retired_error` — and only the first had the measurement, so
 #: the second sent users to the file that must not exist. Both take it from here now.
-#: 🛑 A THIRD CARRIER SURVIVES OUTSIDE THIS MODULE and is NOT yet folded in:
-#: ``config_dest._reserved_tier_refusal`` spells the same sentence by hand. It can
-#: import this (``config_dest`` sits ABOVE ``config_keys``); it was left alone only
-#: because it is a different seam. Fold it in rather than adding a fourth.
+#: ⚑ THE THIRD CARRIER WAS FOLDED IN (2026-09-19): ``config_dest._reserved_tier_refusal``
+#: interpolates this constant rather than spelling the sentence. THREE consumers, ONE
+#: source — add a fourth CONSUMER here, never a fourth SPELLING.
 _AGENT_DEFAULT_TIER_CURE: Final = (
     "Author it in the 'agent: default:' table of the system settings file; the "
     "launch reads it from there."
@@ -917,8 +941,8 @@ def agent_default_tier_leaf(key: str) -> str | None:
     and read, so it must read back here too.
     ⚑ DERIVED (P13) through :data:`DECLARED_AGENT_LEAVES`, the §2d declaration SoT — a
     leaf entering the any-agent tier reaches this surface with no edit.  The ``env.``
-    section form parses to a dotted tail and is deliberately NOT claimed: it is a different
-    family with its own scoped spelling.
+    section form parses to a dotted tail, which is in no leaf set; the two SCALAR CATEGORY
+    families of the same tier are :func:`agent_default_tier_category`'s, not this one's.
     """
     parsed = _parse_persona_agent_key(key)
     if parsed is None or parsed[0] != AGENT_DEFAULT_SUB:
@@ -934,6 +958,56 @@ def agent_default_tier_leaf(key: str) -> str | None:
     # breach this function exists to prevent, pointing the other way.  ``[R150]``:
     # ``agent.default`` carries only the leaves established AT that tier.
     return parsed[1] if parsed[1] in DECLARED_AGENT_LEAVES else None
+
+
+def agent_default_tier_category(key: str) -> "tuple[str, str] | None":
+    """The ``(category, VAR)`` *key* names when it spells the any-agent tier's SCALAR
+    category families IN FULL, else ``None``.
+
+    ``agent.default.env.FOO`` → ``("env", "FOO")``; ``agent.default.secret_path.TOK`` →
+    ``("secret_path", "TOK")``.  These are spec §0's only two name-parametric categories
+    and both are CLI-settable at every scope the agent tier included (§2a), so the tier
+    owes them a route — the SIBLING of :func:`agent_default_tier_leaf`, answering the same
+    question for the other half of the tier's vocabulary.
+
+    ⚑ A DESTINATION FACT, LIKE ITS SIBLING: ``default`` is the RESERVED any-agent tier and
+    has no ``agents/default/agent.yaml``, so the value lives in the NOUN's settings file
+    under ``agent: default: <category>:`` — the same table the bare leaves use, one level
+    deeper.  Until this existed both families were refused at every scope by a message
+    naming a hand-edit, and a hand-authored value read back "(not set)" (spec §0 forbids
+    the fabricated answer) — a declared, ``cli_set: true`` key with no CLI route at all.
+
+    ⚑ DERIVED (P13) from the two RECOGNISERS, never from a hand list of category names:
+    :func:`_parse_agent_node_secret_key` is the ``secret_path`` shape and
+    :func:`_parse_persona_agent_key`'s section arm is the ``env`` one, so both VARs are
+    JUDGED against the declared §2a shape rather than merely counted.
+    """
+    secret = _parse_agent_node_secret_key(key)
+    if secret is not None:
+        node, var = secret
+        return ("secret_path", var) if node == AGENT_DEFAULT_SUB else None
+    parsed = _parse_persona_agent_key(key)
+    if parsed is None or parsed[0] != AGENT_DEFAULT_SUB:
+        return None
+    # ⚑ The DOTTED tail is the section arm's signature and the flat leaf arm cannot
+    # produce one, so the split is a fact about which arm answered — not a re-parse.
+    category, sep, var = parsed[1].partition(".")
+    return (category, var) if sep else None
+
+
+def is_agent_default_tier_key(key: str) -> bool:
+    """True iff *key* spells the any-agent tier IN FULL — a declared LEAF or one of the two
+    SCALAR category families.
+
+    ⚑ THE NAME FOR THE DISJUNCTION, so the read verbs state "the tier owns this spelling"
+    once instead of each asking both halves.  The per-node branches it guards must let the
+    tier through: the reserved ``default`` node is not a persona and its file does not
+    exist, so a per-node route answers a REFUSAL where a value was stored.
+    """
+    return (
+        agent_default_tier_leaf(key) is not None
+        or agent_default_tier_category(key) is not None
+    )
 
 
 def agent_leaf_table_error(canonical: str, *, verb: str) -> str | None:
@@ -1903,6 +1977,10 @@ def _has_dedicated_route(canonical: str) -> bool:
     # a route for a key nothing writes.
     return (
         _is_pref_key(canonical)
+        # ⚑ A SUBSET of the two terms below it, and listed anyway: this branch DISPATCHES
+        # ahead of them, so a mirror that omitted it would read as if the per-node routes
+        # claimed the any-agent tier — which is the bug the branch exists to undo.
+        or agent_default_tier_category(canonical) is not None
         or _is_agent_node_secret_key(canonical)
         or _is_scope_secret_key(canonical)
         or _is_scope_env_key(canonical)

@@ -23,7 +23,7 @@ def _agent_node_route(node: str, tail: str, agents_root: 'Path | None') -> 'Agen
 def _reserved_tier_refusal(tail: str) -> str
 def _persona_agent_target(canonical: str, agents_root: 'Path | None') -> 'AgentFileSlot | str | None'
 def _node_bind_target(canonical: str, agents_root: 'Path | None') -> 'AgentFileSlot | None'
-def _node_secret_target(canonical: str, agents_root: 'Path | None') -> 'AgentFileSlot | None'
+def _node_secret_target(canonical: str, agents_root: 'Path | None') -> 'AgentFileSlot | str | None'
 def _category_segments(canonical: str) -> tuple[str, ...]
 def _key_slot(canonical: str) -> 'tuple[tuple[str, ...], str, str] | None'
 def _dest(canonical: str, *, command_scope: 'object | None', config_path: 'Path | None', settings_path: 'Path | None') -> 'DestRoute | None'

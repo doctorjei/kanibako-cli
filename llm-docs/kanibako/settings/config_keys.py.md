@@ -990,6 +990,34 @@ does (the manifest's three other dict rows are `set: file`), and spec §2a's *"w
 CLI-settable: scalars…"* excludes it. Changing that row is the registry's owner's call, not the
 code's — so `tests/test_settings/test_set_column_conformance.py` names it as a FINDING.
 
+```agent_default_tier_category(key: str) -> tuple[str, str] | None```
+The ``(category, VAR)`` *key* names when it spells the any-agent tier's SCALAR category families in
+full — `agent.default.env.<VAR>` and `agent.default.secret_path.<VAR>`.
+
+⚑ **THE SIBLING OF `agent_default_tier_leaf`, ANSWERING FOR THE OTHER HALF OF THE TIER'S
+VOCABULARY.** §0 names exactly two name-parametric categories, both SCALAR and both `cli_set: true`
+in the manifest, and §2a lists `agent.default` among the scopes they are available at. They were
+nonetheless refused by every verb at every scope: the tier's only route was the PER-NODE one, and
+`default` is the reserved tier, which has no `agents/default/agent.yaml`. `set` sent the user to a
+hand-edit; `get` then answered "(not set)" over the value they had hand-authored, while the launch
+applied it. This function claims the destination, and `config_dest._key_slot` maps it to
+`("agent", "default", <category>) / <VAR>` in the NOUN's settings file — the table
+`settings_assemble.assemble_levels` reads the tier from.
+
+⚑ **DERIVED (P13) FROM THE TWO RECOGNISERS**, never from a hand list of category names:
+`_parse_agent_node_secret_key` is the `secret_path` shape, `_parse_persona_agent_key`'s section arm
+is the `env` one. Both JUDGE the VAR against the declared §2a shape rather than counting segments,
+so the reserved-name floor and the VAR grammar reach this family unchanged.
+
+```is_agent_default_tier_key(key: str) -> bool```
+Does *key* spell the any-agent tier IN FULL — a declared LEAF or one of the two scalar category
+families?
+
+⚑ **THE NAME FOR THE DISJUNCTION.** `get_config_value`'s two per-node branches must both let the
+tier through, and each asking both halves separately is how one of them gets widened and the other
+does not. The per-node routes answer a REFUSAL where the tier stores a VALUE, so a read routed
+there reports "(not set)" for something that is set.
+
 ```_is_box_agent_key(key: str) -> bool```
 The RETIRED box-scoped agent mirror ``box.agent.<key>`` (spec §2b).
 
@@ -1431,9 +1459,9 @@ per-entry read would rebuild the same broken cure one level down.
 ⚑ **THE SIBLING ALREADY KNEW, WHICH IS WHY THIS IS ONE SOURCE NOW.**
 :func:`terminal_category_write_error` has carried a ``default`` arm since 2026-08-28, recording the
 very measurement this door lacked; one of two sibling messages had learned the lesson. Both now take
-the sentence from `_AGENT_DEFAULT_TIER_CURE` instead of spelling it. 🛑 A THIRD carrier survives
-outside this module — ``config_dest._reserved_tier_refusal`` spells it by hand and can import this
-constant (`config_dest` sits ABOVE `config_keys`). Fold it in rather than adding a fourth.
+the sentence from `_AGENT_DEFAULT_TIER_CURE` instead of spelling it. ⚑ The THIRD carrier,
+``config_dest._reserved_tier_refusal``, was folded in on 2026-09-19 and now interpolates this
+constant too — three consumers, one source. Add a consumer, never a fourth spelling.
 
 ```agent_key_reason(node: str, tail: str) -> str | None```
 The §0 reason *tail* is not a declared key of agent *node*, or `None` when it is — **the `agent`
@@ -1557,6 +1585,13 @@ arms (R-9) and, since DS-BL1 = (a), ``caches`` / ``seeded`` / ``common`` / ``syn
 scope. None has a term here: all are refused in the verb preamble and never reach the dispatch. ⚑ The
 `_is_path_category_key` term that used to sit here went with the repoint route it claimed; do NOT
 restore it "so categories are covered" — it would report a route for a key nothing writes.
+
+⚑ **THE `agent_default_tier_category` TERM IS A SUBSET OF THE TWO BELOW IT, AND IS LISTED ANYWAY.**
+`agent.default.env.<VAR>` is already claimed by `_is_persona_agent_key` and
+`agent.default.secret_path.<VAR>` by `_is_agent_node_secret_key`, so the predicate's ANSWER is
+unchanged by it. What changes is what the mirror SAYS: the tier branch dispatches ahead of both, and
+a mirror that omitted it would read as if the per-node routes claimed the reserved tier — which is
+exactly the bug the branch exists to undo.
 
 Its ONE job is to keep :func:`_probes_at_set_time` off keys nothing handles, so an unknown key still
 reaches the routing table at the bottom of the dispatch and is reported as ``unknown config key:

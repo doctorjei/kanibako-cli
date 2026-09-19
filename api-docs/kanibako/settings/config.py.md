@@ -11,6 +11,7 @@ Prose for these symbols lives in `llm-docs/kanibako/settings/config.py.md`.
 BOX_META_FILE = 'box.yaml'
 WORKSET_META_FILE = 'workset.yaml'
 AGENT_META_FILE = 'agent.yaml'
+SYSTEM_HELPERS_SECTION: 'tuple[str, ...]' = ('system', 'helpers')
 _BOOL_TRUE = frozenset({'true', '1', 'yes', 'on'})
 _BOOL_FALSE = frozenset({'false', '0', 'no', 'off'})
 _DEFAULTS: dict[str, str] = {'box_image': 'ghcr.io/doctorjei/kanibako-oci:latest', 'box_shell': ''}
@@ -42,7 +43,9 @@ def write_project_config_key(path: Path, flat_key: str, value: str) -> None
 def unset_project_config_key(path: Path, flat_key: str) -> bool
 def load_project_overrides(path: Path) -> dict[str, object]
 def read_agent_settings(path: Path, agent_name: str) -> dict[str, str]
+def system_settings_path() -> Path
 def read_system_agent(system_path: Path | None) -> str | None
+def read_system_helpers(settings_path: Path | None) -> dict[str, int]
 def read_setup_completed(settings_path: Path | None) -> str | None
 def setup_compat_gate(settings_path: Path | None) -> str | None
 def resolve_agent(*, explicit_agent: str | None, requested: str | None=None, project_path: Path | None=None) -> str

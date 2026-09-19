@@ -12,6 +12,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`kanibako workset show` was blind to the workset's own settings file.** A working set's
+  `common`, `caches` and `seeded` declarations — the abstract categories a workset exists to carry —
+  appeared in neither the plain view nor `--effective`, at the one noun that owns them, though the
+  keyspace spec says they remain real, declared keys that `config show` lists. A user who
+  hand-authored a `workset.yaml` and then asked to see it was told `(no overrides)`. The cause was
+  which of two files the verb handed the display engine: `workset.yaml` was passed as the noun's
+  *config* file rather than as its *settings* file, so the block that renders a noun's own settings
+  never ran, and the cascade read the same file at the **box** tier and discarded it with an
+  `upward-scope key 'workset'` warning printed over the output. Both views now list the
+  declarations, and that spurious warning is gone.
+- **A migration note told you to put your own instructions in a file kanibako overwrites.** The
+  1.6.0 guide's "CLAUDE.md is now a plain template file" section directed you to fold your content
+  into a template-layer agent instruction file. That file is the one the directive flattener writes
+  at every box start, and the in-box supervisor then keeps it matching the directive tree for the
+  life of the box — so anything you added there was overwritten, mid-session as well as at launch.
+  The section now names where your content actually belongs and survives. It also named two files
+  that no longer ship.
+
 - **`kanibako setup` told a host with no agent plugin that it was ready to go.** Three of Step 2's
   branches could never run. The "no agent plugins installed" arm was gated on the discovered target
   set being *empty*, which it never is — `no_agent`, the built-in plain shell, is an entry point
@@ -167,6 +185,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that chapter now appears in it, numbered, under the charter's contents.
 
 ### Added
+
+- **The helper spawn budget is now two settable keys, `system.helpers.depth` and
+  `system.helpers.breadth`, instead of an undeclared table in a file of its own.** The budget that
+  decides how far and how wide `kanibako box helper spawn` may go was read out of a bespoke
+  `spawn:` table — a key the closed keyspace does not have, so no verb could show it, set it or
+  refuse a typo in it, and a misspelt leaf silently became the built-in 4. Both leaves are declared
+  now and behave like every other setting: `kanibako system get system.helpers.depth` reads the
+  effective value, `kanibako system set system.helpers.breadth=2` writes it, a non-numeric value is
+  refused when you type it rather than at the spawn that needed the number, and `kanibako system
+  defaults` lists both. `-1` is still unlimited and `0` still refuses a spawn. The budget a parent
+  hands its child travels the same declared keys, so the file inside a helper is now an ordinary
+  settings document. **Upgrading:** a helper directory created by v1.7.2 still holds the old
+  `spawn:` spelling, which is no longer a budget — `kanibako box helper respawn` against such a
+  directory gives that helper the built-in budget rather than the one it was handed. Spawning a new
+  helper writes the new spelling; there is nothing to migrate on the host, where the budget never
+  had a file of its own in any release.
 
 - **A persona endpoint that is not a well-formed URL is refused at the store boundary, naming the
   file and the cure.** Kanibako checked only that an endpoint was *present*; a scheme-less value
@@ -435,14 +469,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `canon`, `transform_settings` — are unaffected at `agent.default`, including where a plugin
   declares one too. Precedence is unchanged: a settings file at any scope still outranks a
   floored value.
-
-- **A refusal at `agent.default.env.<VAR>` no longer sends you to a spelling that also refuses.**
-  `agent.default` is the all-agents tier, not a persona, so a write there is refused — and the
-  refusal used to offer one cure to everybody: *set it with the bare key*. For an env variable the
-  bare key is `env.FOO`, the retired docker-`.env` spelling, which answers *"the bare `env.<VAR>`
-  spelling is RETIRED"*. The refusal now says this tail has no bare CLI spelling and names the
-  place that works: the `agent: default:` table of the system settings file, which the launch
-  reads. Behaviour for every other `agent.default.<leaf>` is unchanged.
 
 - **A setting an agent plugin declares is a key on that agent alone, at every door.** The rule the
   entry above applies to the all-agents tier applies to the named tier too: every leaf other than
@@ -1031,6 +1057,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rewritten as a list. Splitting is on whitespace and there is no quoting, exactly as before: an
   argument that must contain a space is written into the list by hand. `run_args=` with nothing
   after it still means *no arguments*, and stays distinct from a key you never set.
+
+- **Two settings every agent shares could not be set, read or cleared from the command line, at any
+  scope.** `agent.default.env.<VAR>` sets an environment variable for every agent, and
+  `agent.default.secret_path.<VAR>` points every agent at a host file holding a token. Both are
+  ordinary settings the launch reads and applies — but neither had a command-line route.
+  `kanibako system set agent.default.env.EDITOR=nano` answered *"'default' is the reserved any-agent
+  tier, not a persona node"* and sent you to edit the settings file by hand; having done that,
+  `kanibako system get agent.default.env.EDITOR` answered `(not set)` over the value you had just
+  written, and the launch applied it anyway. The route the refusal was missing is the one it
+  described: both keys now read and write the `agent: default:` table of the system settings file,
+  the same table `kanibako system set model=…` uses and the same one the launch reads. **What you
+  will see:** `set`, `get` and `reset` work on both keys at the system scope, and a value you
+  hand-authored before this fix reads back rather than reporting itself unset. Per-agent
+  `agent.<agent>.env.<VAR>` and `agent.<agent>.secret_path.<VAR>` are unchanged — they were never
+  the broken half — and the reserved-name rule still refuses `env.keys` and its siblings.
+
+- **A mistyped agent name in a `secret_path` key was reported as a scope error.** `kanibako system
+  set agent.my agent.secret_path.TOKEN=~/.config/token` answered *"'agent.my agent.secret_path.TOKEN'
+  is a per-node secret pointer and is only settable at the system scope"* — at the system scope. Two
+  different conditions reached the same sentence: no per-agent store being available, and the agent
+  reference being refused. The second is now named the way every other per-agent key names it
+  (*"invalid agent name 'my agent': names may contain only letters and digits…"*), for `set` and
+  `reset` alike.
 
 - **`run_args` was printed back at you as a Python list.** `kanibako agent show claude` printed
   `run_args = ['--a', '--b']` and `kanibako system get agent.claude.run_args` answered the same —

@@ -31,8 +31,10 @@ from kanibako.settings.settings_prefs import PREF_ROOT
 def _nested_settings_overrides(path: Path | None) -> dict[str, str]:
     """Flatten a settings file's nested SCOPE tables to ``dotted.key → value``.
 
-    The display companion of the ``_SETTINGS_SCOPE_TOKENS`` routing (F2): a
-    ``config set`` at the SYSTEM scope nests scope-token settings (e.g.
+    The display companion of the ``_SETTINGS_SCOPE_TOKENS`` routing (F2).  ⚑ IT SERVES
+    EVERY NOUN THAT KEEPS ITS SETTINGS APART FROM ITS CONFIG FILE — the system scope, and
+    the WORKSET noun since 2026-09-19; it is not system-only.  A
+    ``config set`` at such a scope nests scope-token settings (e.g.
     ``system.auth.share_allowed``, downward ``workset.*``/``box.*`` defaults)
     in the system SETTINGS file — entries the flat ``KanibakoConfig`` override
     view cannot see.  Flattens every top-level scope table EXCEPT ``agent``

@@ -18,15 +18,14 @@ from kanibako.channels.helpers import (
     create_broadcast_dirs,
     create_helper_dirs,
     create_peer_channels,
-    host_spawn_config_path,
     link_broadcast,
-    read_spawn_config,
+    read_spawn_budget,
     remove_helper_dirs,
     resolve_init_script,
     resolve_spawn_budget,
-    write_spawn_config,
+    write_spawn_budget,
 )
-from kanibako.settings.paths import xdg
+from kanibako.settings.config import system_settings_path
 from kanibako.settings.settings_resolve import BOX_PINNED_STATE_RELPATH
 
 
@@ -177,7 +176,11 @@ def _check_helpers_enabled() -> bool:
 
 
 def _ro_spawn_config_path(helpers_dir: Path, helper_num: int) -> Path:
-    """Return the path to a helper's RO spawn config."""
+    """The settings document carrying the budget this parent hands helper *helper_num*.
+
+    Written here, mounted RO into that helper's home by the hub, and read back there
+    through the same ``system.helpers.*`` keys any settings file carries.
+    """
     return helpers_dir / str(helper_num) / SPAWN_CONFIG_FILENAME
 
 
@@ -230,23 +233,16 @@ def run_spawn(args: argparse.Namespace) -> int:
     """Spawn a new helper instance."""
     helpers_dir = _helpers_dir()
 
-    # Resolve own spawn budget
-    host_budget = None
-    ro_budget = None
-
-    # Check for RO spawn config (set by parent, if we are a helper)
-    own_ro_config = Path.home() / SPAWN_CONFIG_FILENAME
-    if own_ro_config.is_file():
-        ro_budget = read_spawn_config(own_ro_config)
-
-    # Check host default — a DEDICATED file, never the Layer-1 file (which
-    # carries ``config.*`` alone and whose reader refuses a ``spawn:`` table)
-    host_config = host_spawn_config_path(xdg("XDG_CONFIG_HOME", ".config"))
-    if host_config.is_file():
-        host_budget = read_spawn_config(host_config)
+    # Resolve own spawn budget from the two DECLARED ``system.helpers.*`` tiers
+    # (spec §2g).  Both are ordinary settings documents, so one reader answers both.
+    #
+    # Tier 1 — what a PARENT handed this box: present only when this box IS a helper.
+    handed_down = read_spawn_budget(Path.home() / SPAWN_CONFIG_FILENAME)
+    # Tier 2 — this box's own system settings file (``@config.settings``).
+    own_settings = read_spawn_budget(system_settings_path())
 
     budget = resolve_spawn_budget(
-        ro_budget, host_budget, args.depth, args.breadth,
+        handed_down, own_settings, args.depth, args.breadth,
     )
 
     # Check if spawning is allowed
@@ -265,9 +261,9 @@ def run_spawn(args: argparse.Namespace) -> int:
     create_peer_channels(helpers_dir, helper_num, existing)
     link_broadcast(helpers_dir, helper_num)
 
-    # Write RO spawn config for the child
+    # Hand the child its own (decremented) budget, as the declared keys
     child_cfg = child_budget(budget)
-    write_spawn_config(
+    write_spawn_budget(
         _ro_spawn_config_path(helpers_dir, helper_num),
         child_cfg,
     )

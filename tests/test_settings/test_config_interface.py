@@ -5793,6 +5793,174 @@ class TestSystemScopeSecretPathSymmetry:
         ) == "/t/box"
 
 
+class TestAgentDefaultTierScalarCategories:
+    """``agent.default.env.<VAR>`` / ``agent.default.secret_path.<VAR>`` — the
+    any-agent tier's two SCALAR category families (spec §2a).
+
+    Both are DECLARED, both carry ``cli_set: true`` in the manifest, and §0 says a
+    ``standard`` key reaches the CLI iff its value is typable as a scalar — yet every
+    verb at every scope refused them, because the only route the reserved ``default``
+    node had was the PER-NODE one and there is no ``agents/default/agent.yaml``.  The
+    write went to a refusal and the read fabricated "(not set)" over a value the launch
+    was applying.
+    """
+
+    def _files(self, tmp_path):
+        cf = tmp_path / "kanibako.cfg"
+        ssp = tmp_path / "global" / "settings.yaml"
+        ssp.parent.mkdir(parents=True, exist_ok=True)
+        return cf, ssp
+
+    def _get(self, key, cf, ssp, agents):
+        return get_config_value(
+            key, global_config_path=cf, system_settings_path=ssp,
+            command_scope=ConfigLevel.system, agents_root=agents,
+        )
+
+    @pytest.mark.parametrize(
+        "key, category, var, value",
+        [
+            ("agent.default.env.FOO", "env", "FOO", "bar"),
+            ("agent.default.secret_path.TOK", "secret_path", "TOK", "/t/tok"),
+        ],
+    )
+    def test_set_get_reset_name_one_slot(self, tmp_path, key, category, var, value):
+        cf, ssp = self._files(tmp_path)
+        agents = tmp_path / "agents"
+        agents.mkdir()
+        msg = set_config_value(
+            key, value, config_path=cf, system_settings_path=ssp,
+            command_scope=ConfigLevel.system, agents_root=agents,
+        )
+        assert msg == f"Set {key}={value}", msg
+        # The tier is a TABLE IN THE SYSTEM SETTINGS FILE — never a per-node file.
+        assert load_doc(ssp) == {"agent": {"default": {category: {var: value}}}}
+        assert not (agents / "default").exists()
+        assert self._get(key, cf, ssp, agents) == value
+        msg = reset_config_value(
+            key, config_path=cf, system_settings_path=ssp,
+            command_scope=ConfigLevel.system, agents_root=agents,
+        )
+        assert msg.startswith("Cleared"), msg
+        assert self._get(key, cf, ssp, agents) is None
+
+    def test_the_written_slot_is_the_one_the_launch_reads(self, tmp_path):
+        """The OUTSIDE ORACLE: the cascade assembler, not this module's own route.
+
+        A get/set pair that agrees with itself proves nothing about delivery — the
+        question is whether the table ``set`` wrote is the table the launch reads.
+        """
+        from kanibako.settings.settings_assemble import assemble_levels
+
+        cf, ssp = self._files(tmp_path)
+        for key, value in (
+            ("agent.default.env.FOO", "bar"),
+            ("agent.default.secret_path.TOK", "/t/tok"),
+        ):
+            set_config_value(
+                key, value, config_path=cf, system_settings_path=ssp,
+                command_scope=ConfigLevel.system, agents_root=tmp_path / "agents",
+            )
+        system_rung = assemble_levels(agent_name="claude", system_path=ssp)[4]
+        agent_tier = dict.__getitem__(
+            dict.__getitem__(system_rung, "agent"), "default",
+        )
+        assert dict.__getitem__(dict.__getitem__(agent_tier, "env"), "FOO") == "bar"
+        assert dict.__getitem__(
+            dict.__getitem__(agent_tier, "secret_path"), "TOK",
+        ) == "/t/tok"
+
+    def test_the_tier_shares_one_table_with_its_bare_leaves(self, tmp_path):
+        """``system set model=`` and the tier's category families are ONE tier, so
+        they land in ONE ``agent: default:`` table — not two that drift apart."""
+        cf, ssp = self._files(tmp_path)
+        for key, value in (("model", "opus"), ("agent.default.env.FOO", "bar")):
+            set_config_value(
+                key, value, config_path=cf, system_settings_path=ssp,
+                command_scope=ConfigLevel.system, agents_root=tmp_path / "agents",
+            )
+        assert load_doc(ssp) == {
+            "agent": {"default": {"model": "opus", "env": {"FOO": "bar"}}},
+        }
+
+    @pytest.mark.parametrize(
+        "key", ["agent.default.env.keys", "agent.default.secret_path.keys"],
+    )
+    def test_the_reserved_name_floor_still_refuses(self, tmp_path, key):
+        """A route is not a hole: spec §0's reserved-leaf floor is unmoved."""
+        cf, ssp = self._files(tmp_path)
+        msg = set_config_value(
+            key, "x", config_path=cf, system_settings_path=ssp,
+            command_scope=ConfigLevel.system, agents_root=tmp_path / "agents",
+        )
+        assert msg.startswith("Error:") and "reserved" in msg, msg
+        assert not ssp.exists()
+
+    @pytest.mark.parametrize("node_key", [
+        "agent.claude.env.FOO", "agent.claude.secret_path.TOK",
+    ])
+    def test_the_per_node_families_are_untouched(self, tmp_path, node_key):
+        """The tier claims ``default`` ALONE — a real node still routes to its own file."""
+        cf, ssp = self._files(tmp_path)
+        agents = tmp_path / "agents"
+        (agents / "claude").mkdir(parents=True)
+        msg = set_config_value(
+            node_key, "/t/v", config_path=cf, system_settings_path=ssp,
+            command_scope=ConfigLevel.system, agents_root=agents,
+        )
+        assert not msg.startswith("Error:"), msg
+        assert not ssp.exists()
+        assert self._get(node_key, cf, ssp, agents) == "/t/v"
+
+    def test_a_declared_leaf_still_gets_the_bare_spelling_cure(self, tmp_path):
+        """Only the two CATEGORY families moved; the tier's LEAF refusal is unchanged."""
+        cf, ssp = self._files(tmp_path)
+        msg = set_config_value(
+            "agent.default.model", "opus", config_path=cf, system_settings_path=ssp,
+            command_scope=ConfigLevel.system, agents_root=tmp_path / "agents",
+        )
+        assert "set the any-agent default with the bare key" in msg, msg
+
+
+class TestNodeSecretRouteNamesItsRefusal:
+    """A MALFORMED node ref in ``agent.<node>.secret_path.<VAR>`` must be named.
+
+    ``_node_secret_target`` collapsed "this node is refused" and "no per-node store was
+    threaded" into one ``None``, so the caller — which can only read ``None`` as the
+    second — told a user typing AT the system scope that the key "is only settable at
+    the system scope."  The persona route has always named this refusal; the secret
+    route now does too.
+    """
+
+    @pytest.mark.parametrize("verb", ["set", "reset"])
+    def test_a_malformed_node_is_named(self, tmp_path, verb):
+        agents = tmp_path / "agents"
+        agents.mkdir()
+        key = "agent.bad ref.secret_path.TOK"
+        if verb == "set":
+            msg = set_config_value(
+                key, "/t/tok", config_path=tmp_path / "x",
+                command_scope=ConfigLevel.system, agents_root=agents,
+            )
+        else:
+            msg = reset_config_value(
+                key, config_path=tmp_path / "x",
+                command_scope=ConfigLevel.system, agents_root=agents,
+            )
+        assert "invalid agent name" in msg, msg
+        assert "only settable at the system scope" not in msg
+        assert "only resettable at the system scope" not in msg
+
+    def test_an_unthreaded_store_still_says_so(self, tmp_path):
+        """The OTHER outcome keeps its own message — the point is that they differ."""
+        msg = set_config_value(
+            "agent.claude.secret_path.TOK", "/t/tok",
+            config_path=tmp_path / "x", command_scope=ConfigLevel.system,
+            agents_root=None,
+        )
+        assert "only settable at the system scope" in msg, msg
+
+
 class TestSystemScopeCategoryFileRouting:
     """F2 — WHICH FILE a SYSTEM-scope category key lives in.
 

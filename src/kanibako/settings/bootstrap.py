@@ -83,6 +83,20 @@ SYSTEM_PATH_DEFAULTS: dict[str, str] = {
    "system.channels.share":         "@system.channelroot/share"}
 
 
+# ---------------------------------------------------------------------------
+# Layer 2 — the system-scope SETTINGS scalars that are NOT paths (spec §2g)
+# ---------------------------------------------------------------------------
+#: The helper-hub SPAWN BUDGET built-ins — how deep and how wide a box may spawn when
+#: no tier carries the key.  ⚑ Keyed by LEAF: the two consumers want it two ways, and a
+#: leaf map is the shape both can derive from.  ``settings_launch.SYSTEM_SCALAR_FLOOR``
+#: spells the dotted keys for the launch floor, so an ``@system.helpers.depth`` answers;
+#: ``channels/helpers.py`` takes the bare numbers for ``SpawnBudget``'s field defaults
+#: and for the in-box resolve, which runs before any snapshot exists.
+#: ⚑ HERE rather than beside either consumer because it is ONE value with TWO carriers
+#: otherwise, and this file is already where a declared default lives (P10).
+SPAWN_BUDGET_DEFAULTS: dict[str, int] = {"depth": 4, "breadth": 4}
+
+
 PROFILE_FILE = ".profile"
 BASHRC_FILE = ".bashrc"
 SHELL_D_FILE = ".shell.d"

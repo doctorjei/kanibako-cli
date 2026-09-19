@@ -332,6 +332,9 @@ def _resolve_box_scalars(
 
     # Path resolution only, deliberately NOT load_std_paths (which materializes
     # the store). ⚑ Not mkdir-free: an unset XDG_RUNTIME_DIR makes one dir here.
+    # ⚑ SPELLED HERE rather than through :func:`system_settings_path` because THIS
+    # caller is handed *global_path*; the shared helper derives the Layer-1 file from
+    # ``$XDG_CONFIG_HOME``, which would ignore the argument.
     system_path = load_system_config(
         global_path, data_home=xdg("XDG_DATA_HOME", ".local/share"),
         home=Path.home(),
@@ -799,6 +802,26 @@ def read_agent_settings(path: Path, agent_name: str) -> dict[str, str]:
     return out
 
 
+def system_settings_path() -> Path:
+    """THE system SETTINGS file (``@config.settings``), resolved from Layer-1 alone.
+
+    ⚑ Path resolution only, deliberately NOT ``paths.load_std_paths``: that one
+    MATERIALIZES the store and RAISES when no Layer-1 file exists, neither of which a
+    pre-cascade reader may do to a box that has never been set up.
+    ⚑ The returned path need not exist — every reader here treats an absent file as
+    "unset", which is exactly what a fresh install is.
+    """
+    from kanibako.settings.bootstrap import (XDG_CONFIG_HOME, XDG_DATA_HOME,
+                                             XDG_SPEC_DEFAULTS)
+    from kanibako.settings.paths import load_system_config, xdg
+
+    return load_system_config(
+        config_file_path(xdg(XDG_CONFIG_HOME, XDG_SPEC_DEFAULTS[XDG_CONFIG_HOME])),
+        data_home=xdg(XDG_DATA_HOME, XDG_SPEC_DEFAULTS[XDG_DATA_HOME]),
+        home=Path.home(),
+    )["config.settings"]
+
+
 def read_system_agent(system_path: Path | None) -> str | None:
     """The stored ``system.agent`` SETTING from the system settings tier; ``None`` when unset.
 
@@ -813,6 +836,54 @@ def read_system_agent(system_path: Path | None) -> str | None:
         return None
     value = str(system.get("agent") or "").strip()
     return value or None
+
+
+#: Where the helper-hub SPAWN BUDGET sits inside a settings document: the nested
+#: ``system: helpers:`` table (spec §2g).  ⚑ ONE spelling, EXPORTED — the reader below
+#: and the per-child document ``channels/helpers.py`` writes must not name two places.
+#: ``config_keys._KEY_ROUTES`` carries the CLI verb's copy of the same slot — the
+#: arrangement ``system.agent`` has had since it was declared.
+SYSTEM_HELPERS_SECTION: "tuple[str, ...]" = ("system", "helpers")
+
+
+def read_system_helpers(settings_path: Path | None) -> dict[str, int]:
+    """The ``system.helpers.*`` SPAWN BUDGET leaves from a settings document; empty when unset.
+
+    ⚑ *settings_path* is any document carrying a ``system`` tier — ``@config.settings``
+    for a box's own budget, and the RO document a parent writes into a helper's home for
+    the budget that helper was HANDED.  One shape, so one reader answers both.
+    ⚑ A RAW reader, the third of this file's three (:func:`read_system_agent`,
+    :func:`read_setup_completed`): ``kanibako box helper spawn`` decides whether it may
+    spawn at all before any snapshot exists.
+    🛑 A leaf that is not a whole number is REFUSED BY NAME.  Coercing it to a default
+    would answer a budget question with a number the user never wrote — and the set-time
+    guard (``config_keys.KEY_TYPES``) cannot reach a hand-edited file.
+    ⚑ The leaf set is the KEYSPACE's own (P13), not a second list here; the lazy import
+    is this file's idiom for the ``keystore`` cycle its module docstring names.
+    """
+    from kanibako.settings.settings_keyspace import DECLARED_SYSTEM_HELPERS_LEAVES
+
+    if settings_path is None or not settings_path.exists():
+        return {}
+    node: object = load_doc(settings_path)
+    for section in SYSTEM_HELPERS_SECTION:
+        if not isinstance(node, dict):
+            return {}
+        node = node.get(section)
+    if not isinstance(node, dict):
+        return {}
+    out: dict[str, int] = {}
+    for leaf in sorted(DECLARED_SYSTEM_HELPERS_LEAVES):
+        if leaf not in node:
+            continue
+        try:
+            out[leaf] = int(node[leaf])
+        except (TypeError, ValueError):
+            raise ConfigError(
+                f"system.helpers.{leaf} in {settings_path} must be a whole number, "
+                f"got {node[leaf]!r}"
+            ) from None
+    return out
 
 
 def read_setup_completed(settings_path: Path | None) -> str | None:

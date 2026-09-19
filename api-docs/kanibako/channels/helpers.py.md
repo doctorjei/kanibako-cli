@@ -8,8 +8,8 @@ _Signatures only: no comments, no docstrings, no bodies._
 
 ```
 UNLIMITED_BREADTH = 2 ** 16
-DEFAULT_DEPTH = 4
-DEFAULT_BREADTH = 4
+DEFAULT_DEPTH = SPAWN_BUDGET_DEFAULTS['depth']
+DEFAULT_BREADTH = SPAWN_BUDGET_DEFAULTS['breadth']
 SPAWN_CONFIG_FILENAME = 'spawn.yaml'
 HELPER_SCRIPTS_RELPATH = 'scripts'
 PARENT_SCRIPTS_RELPATH = ('canon', 'notebook', 'scripts')
@@ -20,12 +20,11 @@ _INIT_SCRIPT_NAME = 'helper-init.sh'
 ```
 def effective_breadth(breadth: int) -> int
 def parent_of(agent: int, breadth: int) -> int | None
-def host_spawn_config_path(config_home: Path) -> Path
 def check_spawn_allowed(budget: SpawnBudget, current_children: int) -> str | None
 def child_budget(parent: SpawnBudget) -> SpawnBudget
-def resolve_spawn_budget(ro_config: SpawnBudget | None, host_config: SpawnBudget | None, cli_depth: int | None, cli_breadth: int | None) -> SpawnBudget
-def read_spawn_config(path: Path) -> SpawnBudget | None
-def write_spawn_config(path: Path, budget: SpawnBudget) -> None
+def resolve_spawn_budget(handed_down: SpawnBudget | None, own_settings: SpawnBudget | None, cli_depth: int | None, cli_breadth: int | None) -> SpawnBudget
+def read_spawn_budget(path: Path) -> SpawnBudget | None
+def write_spawn_budget(path: Path, budget: SpawnBudget) -> None
 def create_helper_dirs(helpers_dir: Path, helper_num: int) -> Path
 def create_broadcast_dirs(helpers_dir: Path) -> Path
 def create_peer_channels(helpers_dir: Path, new_helper: int, existing_helpers: list[int]) -> None

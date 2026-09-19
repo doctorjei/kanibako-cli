@@ -6015,7 +6015,8 @@ any edits you make inside a box afterward survive:
 ```
 
 Per-file rule: plain ordered copy, **last layer wins**, seed-once. There is **no
-per-file merge of any file** (see the CLAUDE.md change below).
+per-file merge of any file** (see §8.4, "The instruction-merge machinery is gone",
+below).
 
 ### 8.2 Content moves (a rename, not a loss)
 
@@ -6040,14 +6041,41 @@ variants reappears it can return later as a creation-time `box create --template
 <variant>` flag, not a cascade setting.) Remove any `shell:`/`template_name:`
 variant key from your agent config.
 
-### 8.4 CLAUDE.md is now a plain template file
+### 8.4 The instruction-merge machinery is gone
 
-The instruction-merge machinery (section-marker concatenation of base / template /
-project layers of `CLAUDE.md`) is **deleted**. `CLAUDE.md` is now an ordinary
-template file: plain ordered copy, last-wins, seed-once. Base-layer guidance lives
-in a separate non-colliding file (`INSTRUCTIONS.md`) so it never clobbers the agent
-template's `CLAUDE.md`. If you relied on the merge markers, fold your content
-directly into the appropriate template-layer `CLAUDE.md`.
+The section-marker merge that concatenated base / template / project layers of
+`CLAUDE.md` is **deleted**, and nothing per-file replaced it: a template layer is a
+plain ordered copy, last-wins, seed-once (§8.1, "Layered seed-once template"). No
+template ships an agent instruction file of its own any more, so there is nothing
+left for a merge to combine.
+
+⚑ **Do not fold your content into the file your agent reads its instructions
+from.** That file is an **output**. Each agent plugin names it with
+`KANIBAKO_DIRECTIVE_FINAL`, and the flattener rewrites it from your directive tree
+at every box start; the in-box supervisor then keeps it matching that tree for the
+rest of the box's life. Anything hand-written there is overwritten without a word.
+
+**If you relied on the merge markers, your content goes into the tree the flattener
+reads, not the file it writes** — the canon. Which book takes it depends on who it
+is for:
+
+- Guidance you want **shared across boxes** belongs to a **handbook** chapter, in
+  the canon contribution root of the scope it applies to — system, agent, workset
+  or box. A handbook chapter is host-side content bound read-only into the box, so
+  you edit it on the host.
+- Guidance that is **only ever this box's** belongs to the **notebook**, which a
+  template layer may seed at creation and which the box owns from then on.
+
+See "The canon books — where your instruction files now live" in the [v1.8.0
+guide](#migrating-to-kanibako-v180) for the layout and each scope's source, and
+§14, "The flattened directives file: no generated headings, a new link form", for
+what the flattener makes of them.
+
+⚑ **Inside the canon, a template layer may seed the notebook and the workbook
+only.** The charter and the handbook reach the box as read-only binds, not as
+box-home seeds; the canon skeleton is created root-owned, so a layer that writes
+into either region stops the box create with a permission error rather than
+losing quietly.
 
 ### 8.5 ⚑ Host-config IMPORT removed (the headline break)
 

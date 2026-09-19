@@ -194,6 +194,13 @@ def source_groups() -> tuple[tuple[str, frozenset[str]], ...]:
     # floor a primary value, which the floor refuses on purpose.
     ("project/workset.py (workspaces key resolution)",
      frozenset({"workset.workspaces"})),
+    # The helper-hub SPAWN BUDGET (spec §2g) — the shipped system-scope SCALAR floor,
+    # installed unconditionally by every resolve. The label names the FLOOR rather than
+    # `bootstrap.SPAWN_BUDGET_DEFAULTS` (the value table it derives from) for the same
+    # reason the channel family above names its deriver: the floor is where a wrong
+    # value would reach a box.
+    ("settings_launch.py (system scalar floor)",
+     frozenset({"system.helpers.depth", "system.helpers.breadth"})),
     # --- rows with no value-carrying artefact at all --- #
     ("runtime-probed (podman graphroot)", frozenset({"box.images_store"})),
     # ``default: <None>`` — an ABSENCE. No floor builder installs these at all.
