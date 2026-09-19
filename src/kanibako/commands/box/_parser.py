@@ -44,7 +44,7 @@ from kanibako.settings.paths import (
     resolve_standalone_project,
     unregister_primary_box_name,
 )
-from kanibako.agent_ref import harness_of, with_harness
+from kanibako.agent_ref import harness_of, parse_agent_ref, with_harness
 from kanibako.targets import resolve_target
 from kanibako.utils import container_name_for, short_hash, write_project_gitignore
 
@@ -740,9 +740,27 @@ def run_create(args: argparse.Namespace) -> int:
     # ``pref.system.agent`` the persist wrote, so seed and settings cannot disagree.  The
     # module's llm-doc carries the full reasoning.
     _agent_arg = None if is_recovery else getattr(args, "agent", None)
-    # ⚑ The store check runs BEFORE the verdict below, so a broken store is reported as
-    # itself rather than as the verdict's downstream "no endpoint configured".
-    if isinstance(_agent_arg, str) and _agent_arg:
+    # ⚑⚑ "GIVEN" IS ``is not None`` AT EVERY DOOR — argparse's own absent-vs-present
+    # answer, and the ONE predicate both the store check here and the
+    # ``pref.system.agent`` persist below ask.  Truthiness and ``.strip()`` truthiness
+    # are DIFFERENT questions and they disagreed on ``--agent "  "``: it cleared the
+    # truthy door and was dropped by the stripping one.  A flag the user TYPED is given
+    # even when its value is blank, so it is validated rather than quietly read as
+    # "resolve from settings" — silently steering the box to a different agent than the
+    # one asked for is the dishonest half of that disagreement.
+    if _agent_arg is not None:
+        # ⚑ ``parse_agent_ref`` (which strips) OWNS what a legal ref is — charset,
+        # pseudo-agent reservation, and empty-after-strip — so a blank ref is refused
+        # by its message, not by a second spelling of the rule here.  Its
+        # ``ConfigError`` is a ``KanibakoError``: ``cli.py`` flattens it to one
+        # ``Error:`` line.  The parse is for the REFUSAL only; the RAW ref is what is
+        # stored and passed on (selection canonicalizes on read).
+        parse_agent_ref(_agent_arg)
+        # The ONE normalized value every consumer below reads — the persist used to
+        # strip again on its own, which is how the two doors drifted apart (P10).
+        _agent_arg = _agent_arg.strip()
+        # ⚑ The store check runs BEFORE the verdict below, so a broken store is reported
+        # as itself rather than as the verdict's downstream "no endpoint configured".
         _store_err = _check_persona_store_for_create(
             _agent_arg, _probe.project_path,
         )
@@ -818,11 +836,13 @@ def run_create(args: argparse.Namespace) -> int:
 
         # ⚑ `create --agent` persists the §2h REQUEST `pref.system.agent`, NOT the retired
         # `box.agent_name`, and stores the RAW ref (selection canonicalizes on read).
-        if isinstance(_agent_arg, str) and _agent_arg.strip():
+        # ⚑ SAME "given" predicate as the store check above, deliberately — the two used
+        # to spell it differently, and a blank ref fell down the gap between them.
+        if _agent_arg is not None:
             from kanibako.settings.config_interface import set_config_value
             from kanibako.settings.config_keys import ConfigLevel
             _msg = set_config_value(
-                "pref.system.agent", _agent_arg.strip(),
+                "pref.system.agent", _agent_arg,
                 config_path=project_toml,
                 command_scope=ConfigLevel.box,
             )

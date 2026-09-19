@@ -22,6 +22,7 @@ from pathlib import Path
 
 import pytest
 
+from kanibako.agent_ref import parse_agent_ref
 from kanibako.launch import journal
 from kanibako.commands.start import (
     _box_journal_key,
@@ -980,6 +981,144 @@ class TestAgentFlagIsReadOnce:
             "attempt persisted, and nothing ever re-seeds. Read _agent_arg "
             "instead; llm-docs/kanibako/commands/box/_parser.py.md carries the "
             "full reasoning."
+        )
+
+
+class TestBlankAgentFlagIsGivenAtBothDoors:
+    """``--agent`` is GIVEN whenever argparse hands over a string — the persona
+    store check and the ``pref.system.agent`` persist ask that one question.
+
+    They once asked two: the store check tested ``_agent_arg`` truthiness, the
+    persist tested ``.strip()`` truthiness, and ``--agent "  "`` fell between
+    them.  A blank ref is a value the user TYPED, so it is refused by the ref
+    grammar rather than read as "resolve from settings" — which would create the
+    box steering an agent nobody asked for and say nothing about it.
+    """
+
+    @pytest.mark.parametrize("blank", ["", "  ", "\t\n", "   "])
+    def test_blank_agent_refuses_before_either_door_acts(
+        self, blank, config_file, tmp_home, credentials_dir, monkeypatch
+    ):
+        """Every blank spelling refuses identically, and nothing is created.
+
+        INVERT: restore either door's old guard and ``""`` walks past both into a
+        materialised box whose agent came from the cascade.
+        """
+        from kanibako.commands.box._parser import run_create
+        from kanibako.errors import ConfigError, KanibakoError
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths
+
+        store_checked = {"v": False}
+
+        def spy_store(*a, **kw):  # door one must never be reached with a blank
+            store_checked["v"] = True
+            return None
+
+        monkeypatch.setattr(
+            "kanibako.commands.box._parser._check_persona_store_for_create",
+            spy_store,
+        )
+        seed_called = {"v": False}
+        monkeypatch.setattr(
+            "kanibako.commands.start.seed_new_box",
+            lambda std, config, proj, **kw: seed_called.__setitem__("v", True),
+        )
+
+        with pytest.raises(ConfigError) as excinfo:
+            run_create(_create_args(tmp_home / "project", agent=blank))
+
+        # The refusal is the GRAMMAR's, on a KanibakoError that cli.py flattens to
+        # a single ``Error: …`` line — not a second spelling of the rule here.
+        assert isinstance(excinfo.value, KanibakoError)
+        assert str(excinfo.value) == "agent ref is empty"
+        assert store_checked["v"] is False
+        assert seed_called["v"] is False
+        std = load_std_paths(load_config(config_file))
+        assert not std.boxes.exists() or not any(std.boxes.iterdir())
+        assert journal.read_journal(std.journal) == {}
+
+    def test_both_doors_read_the_same_normalized_ref(
+        self, config_file, tmp_home, credentials_dir, monkeypatch
+    ):
+        """A ref with surrounding whitespace reaches BOTH doors as ONE value.
+
+        The persist used to strip on its own while the store check saw the raw
+        flag — two normalizations, so the box could be checked under one spelling
+        and configured under another.  Asserted as the RULE (what door one saw ==
+        what door two wrote), never against a literal, so a change in HOW the ref
+        is normalized keeps the pin meaningful.
+        """
+        from kanibako.commands.box._parser import run_create
+        from kanibako.settings.config import load_config
+        from kanibako.settings.config_io import load_doc
+        from kanibako.settings.paths import load_std_paths
+
+        seen: dict[str, str] = {}
+
+        def spy_store(agent_ref, project_path):
+            seen["checked"] = agent_ref
+            return None
+
+        monkeypatch.setattr(
+            "kanibako.commands.box._parser._check_persona_store_for_create",
+            spy_store,
+        )
+        monkeypatch.setattr(
+            "kanibako.commands.start.seed_new_box",
+            lambda std, config, proj, **kw: seen.__setitem__(
+                "seeded", kw.get("explicit_agent")
+            ),
+        )
+
+        assert run_create(
+            _create_args(tmp_home / "project", name="spaced", agent="  goose  ")
+        ) == 0
+
+        std = load_std_paths(load_config(config_file))
+        persisted = load_doc(
+            std.boxes / "spaced" / "box.yaml"
+        )["pref"]["system"]["agent"]
+        assert seen["checked"] == persisted == seen["seeded"]
+        # And it is a ref the grammar accepts, so the box is configured for a name
+        # the cascade can actually resolve.
+        assert parse_agent_ref(persisted)[0] == "goose"
+
+    def test_the_two_doors_spell_given_the_same_way(self) -> None:
+        """STRUCTURAL twin: every ``_agent_arg`` guard in ``run_create`` is the
+        SAME expression.
+
+        The behavioral pins above catch today's disagreement; this one catches the
+        NEXT one, whatever value it happens to disagree about.  Asserted as mutual
+        agreement rather than against an expected spelling — the rule is "one
+        question", not "this question" — and it reds on emptiness (P15): a
+        ``run_create`` that guards on ``_agent_arg`` nowhere fails here.
+        """
+        import inspect
+
+        from kanibako.commands.box._parser import run_create
+
+        fn = ast.parse(inspect.getsource(run_create)).body[0]
+        guards = [
+            n.test for n in ast.walk(fn)
+            if isinstance(n, ast.If)
+            and any(
+                isinstance(s, ast.Name) and s.id == "_agent_arg"
+                for s in ast.walk(n.test)
+            )
+        ]
+        assert len(guards) >= 2, (
+            "run_create must guard BOTH the persona store check and the "
+            "pref.system.agent persist on _agent_arg; found "
+            f"{len(guards)} such guard(s)."
+        )
+        shapes = {ast.dump(g) for g in guards}
+        assert len(shapes) == 1, (
+            "The _agent_arg guards in run_create ask "
+            f"{len(shapes)} different questions: {sorted(shapes)}. They must ask "
+            "ONE — whether --agent was GIVEN. Truthiness and .strip() truthiness "
+            "are different predicates, and an all-whitespace --agent used to "
+            "clear the first and be dropped by the second."
         )
 
 
