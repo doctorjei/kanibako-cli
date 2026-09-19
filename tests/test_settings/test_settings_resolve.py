@@ -6,6 +6,7 @@ import pytest
 
 from kanibako.agent_ref import CANONICAL_SEP
 from kanibako.settings.settings_resolve import (
+    DEFAULT_TERM,
     GUEST_HOME,
     MAX_REF_DEPTH,
     UNSET,
@@ -164,6 +165,61 @@ def test_expand_xdg_var() -> None:
 
 def test_expand_agent_var() -> None:
     assert expand_expr("$AGENT", space="host", ctx=make_ctx(), lookup=no_lookup) == "myagent"
+
+
+# --------------------------------------------------------------------------- #
+# $TERM — the host-env twin of $XDG_*, with a LITERAL fallback and NO validation #
+# --------------------------------------------------------------------------- #
+
+
+def _expand_term(ctx: ResolveCtx) -> str:
+    return expand_expr("$TERM", space="host", ctx=ctx, lookup=no_lookup)
+
+
+@pytest.mark.parametrize("value", ["xterm-256color", "screen.linux"])
+def test_expand_term_var_takes_the_host_value(
+    monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    monkeypatch.setenv("TERM", value)
+    assert _expand_term(make_ctx()) == value
+
+
+@pytest.mark.parametrize("set_empty", [True, False])
+def test_expand_term_var_empty_or_unset_falls_back_to_xterm(
+    monkeypatch: pytest.MonkeyPatch, set_empty: bool
+) -> None:
+    # Jei, 2026-09-08: "if TERM is empty, we should fall back to xterm". UNSET is the same
+    # nothing as EMPTY — the XDG twin reads both through one ``environ.get(var, "")``.
+    if set_empty:
+        monkeypatch.setenv("TERM", "")
+    else:
+        monkeypatch.delenv("TERM", raising=False)
+    assert _expand_term(make_ctx()) == DEFAULT_TERM == "xterm"
+
+
+@pytest.mark.parametrize("value", ["no-such-terminfo-entry-anywhere", "  ", "!!"])
+def test_expand_term_var_set_value_is_never_validated(
+    monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    """A SET ``TERM`` reaches the box verbatim — ONLY an empty one falls back.
+
+    ⚑ THIS TEST EXISTS TO STOP A FUTURE "missing symmetry" FIX. The ``$XDG_*`` twin ignores a
+    value that fails ``isabs``; ``TERM`` has no such pure test (usability is a terminfo lookup,
+    and the lookup that matters happens IN THE BOX, whose terminfo set this side cannot see).
+    Adding a host-side check here is the defect, not the cure.
+    """
+    monkeypatch.setenv("TERM", value)
+    assert _expand_term(make_ctx()) == value
+
+
+def test_expand_term_var_honors_an_explicit_ctx_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TERM", "xterm-256color")
+    ctx = ResolveCtx(
+        agent_name=None, workset_name=None, host_home=HOST_HOME, xdg={}, term="vt100"
+    )
+    assert _expand_term(ctx) == "vt100"
 
 
 def test_expand_braced_workset_var() -> None:

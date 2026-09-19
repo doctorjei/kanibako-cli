@@ -9,6 +9,7 @@ See ``llm-docs/kanibako/settings/settings_resolve.py.md``.
 
 from __future__ import annotations
 
+import os
 import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
@@ -81,10 +82,29 @@ class _Unset:
 
 UNSET = _Unset()
 
+#: The terminal type a box gets when the HOST has none. Jei, 2026-09-08: an EMPTY (or unset)
+#: ``TERM`` falls back to this — and ONLY an empty one; a SET value passes through UNVALIDATED.
+DEFAULT_TERM = "xterm"
+
+
+def _host_term() -> str:
+    """Read the host's ``TERM`` for ``$TERM``; empty or unset ⇒ :data:`DEFAULT_TERM`.
+
+    ⚑ A SET VALUE IS DELIBERATELY NOT CHECKED, and the asymmetry with the ``$XDG_*`` twin
+    (``paths.resolve_xdg``, which ignores a relative value) is the point: ``os.path.isabs`` is
+    a pure test on a string, while "is this ``TERM`` usable" is a terminfo lookup — and this
+    resolution runs HOST-side for a consumer that is IN the box, whose terminfo set differs.
+    A host-side check would be guessing about a place it cannot see, so an unusable value is
+    carried through and degrades the terminal in the box, visibly and overridably by setting
+    the key. Do NOT restore the symmetry here.
+    """
+    return os.environ.get("TERM", "") or DEFAULT_TERM
+
 
 @dataclass(frozen=True)
 class ResolveCtx:
-    """Context for variable expansion: ``$AGENT``/``$WORKSET``/``~``, ``$XDG_*``, ``@config.*``.
+    """Context for variable expansion: ``$AGENT``/``$WORKSET``/``~``, ``$XDG_*``, ``$TERM``,
+    ``@config.*``.
 
     ⚑ Frozen protects rebinding, not the dicts — do not mutate *xdg* / *config* in place.
     """
@@ -94,6 +114,12 @@ class ResolveCtx:
     host_home: str
     xdg: dict[str, str]
     config: Mapping[str, str] = field(default_factory=dict)
+    #: ``$TERM``'s answer, defaulted from the host env (:func:`_host_term`). ⚑ DEFAULTED rather
+    #: than built per call site like *xdg*: ``TERM`` is one process-wide host fact with no
+    #: per-context variation and no map to build, so threading a builder through every ctx
+    #: would buy nothing and would invite the PARTIAL per-context namespace the spec calls a
+    #: bug. A caller that knows better may still override it.
+    term: str = field(default_factory=_host_term)
 
 
 @dataclass(frozen=True)
@@ -363,6 +389,9 @@ def _resolve_var(name: str, ctx: ResolveCtx) -> str:
         if ctx.workset_name is None:
             raise SettingsError("Variable $WORKSET is not set in this context.")
         return ctx.workset_name
+    if name == "TERM":
+        # Never refuses and never validates — see :func:`_host_term`.
+        return ctx.term
     if name.startswith("XDG_"):
         if name not in ctx.xdg:
             raise SettingsError(f"Variable ${name} is not set in this context.")

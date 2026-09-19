@@ -22,6 +22,7 @@ BOX_PINNED_ROOT_RELPATH = '.kanibako'
 BOX_PINNED_STATE_RELPATH = f'{BOX_PINNED_ROOT_RELPATH}/state'
 MAX_REF_DEPTH = 64
 UNSET = _Unset()
+DEFAULT_TERM = 'xterm'
 _VAR_NAME_RE = re.compile('[A-Za-z_][A-Za-z0-9_]*')
 _REF_SEG = f'[{SEGMENT_CHAR_CLASS}{CANONICAL_SEP}]+'
 _REF_NAME_RE = re.compile(f'{_REF_SEG}(?:\\.{_REF_SEG})*')
@@ -37,6 +38,7 @@ def match_var(expr: str, i: int) -> tuple[str, int]
 def match_ref(expr: str, i: int) -> tuple[str, int]
 def expand_expr(expr: str, *, space: Literal['host', 'guest'], ctx: ResolveCtx, lookup: Callable[[str, tuple[str, ...]], str], chain: tuple[str, ...]=(), defer_env: bool=False) -> str
 def resolve_value(key: str, *, levels: list[LevelView], ctx: ResolveCtx, lookup: Callable[[str, tuple[str, ...]], str]) -> ResolvedValue | _Unset
+def _host_term() -> str
 def _unescape(s: str) -> str
 def _scan_var_span(expr: str, i: int) -> tuple[str, int]
 def _expand_var(expr: str, i: int, ctx: ResolveCtx) -> tuple[str, int]
@@ -57,6 +59,7 @@ class ResolveCtx:
     host_home: str
     xdg: dict[str, str]
     config: Mapping[str, str] = field(default_factory=dict)
+    term: str = field(default_factory=_host_term)
 
 @dataclass(frozen=True)
 class LevelView:
