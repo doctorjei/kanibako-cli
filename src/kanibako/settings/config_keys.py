@@ -179,10 +179,15 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     "system.runtime",
     # ⚑ THE ``system.channels.*`` FAMILY, WHOLE — the five declared leaves (spec §2g),
     # STRING paths, one nested slot; the SYSTEM twins of ``workset.channels.*`` above.
-    # They are here for the same reason the workset five are: without the spelling the
-    # SET gate answers "unknown config key" for a DECLARED, settable key.  ⚑ It was the
-    # ``get`` gate too until 2026-08-28; that read is on ``key_validity`` now, so this set
-    # no longer bounds any READ.
+    # 🛑 UNTIL 2026-09-19 THIS COMMENT JUSTIFIED THE ENTRIES WITH "without the spelling
+    # the SET gate answers 'unknown config key' for a DECLARED, settable key".  FALSE,
+    # and measured false on its own subject: with ``system.channels.common`` deleted from
+    # this set in an isolated store, ``system set system.channels.common=…`` and
+    # ``system get system.channels.common`` both succeed, rc=0 — no verb's vocabulary has
+    # been on this set since 2026-08-28 (the QUARANTINE block above).  The entries stay
+    # for the PARSER disambiguation that block names, and the omission is now CAUGHT
+    # rather than argued for: ``kinemata.toml``'s ``fixed-scope-keys`` parity table
+    # asserts DECLARED ⊆ this set (P15's second tier).
     "system.channels.common",
     "system.channels.chat",
     "system.channels.share",

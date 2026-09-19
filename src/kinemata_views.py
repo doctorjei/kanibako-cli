@@ -92,3 +92,76 @@ def never_settable_path(entry: Any) -> bool:
     row the manifest never promised anything about.
     """
     return entry.extra.get("set") == "never" and entry.extra.get("type") == "path"
+
+
+#: The delivery families whose keys are not ordinary scalar settings, spelled at
+#: the segment a key carries the family in. `bindings.ro` and `bindings.rw` share
+#: the head `bindings`, so the NINE families occupy EIGHT heads.
+#:
+#: 🛑 ALL NINE ARE HERE, FOR TWO DIFFERENT REASONS. The seven BIND-SHAPED families
+#: are here because the key ends at the family and the destination is the sub-key,
+#: so no spelling of one belongs in a set of scalar keys. `env` and `secret_path`
+#: are here because they are the two `<VAR>`-PARAMETRIC SCALAR families -- the
+#: spec's "only name-parametric categories left" -- whose keys are spelled
+#: `<scope>.env.<VAR>` and `<scope>.secret_path.<VAR>` and are answered by
+#: `config_keys._is_scope_env_key` / `_is_scope_secret_key`, two branches of
+#: `is_known_key`, never by the set.
+#:
+#: ⚑ CLAIM EITHER ONE HERE AND THE VIEW REDS A ROW THE SET HAS NO REASON TO HOLD.
+#: Measured 2026-09-19: dropping `env` admits the manifest's illustrative
+#: `box.env.COLORTERM` and reports 50 declared, the extra row produced by nothing.
+#: `secret_path` has no manifest row yet, so the count is unchanged either way; it
+#: is listed because the realistic future row is that row's exact analogue --
+#: `is_known_key("box.secret_path")` is False, `is_known_key("box.secret_path.FOO")`
+#: is True -- and with it this set is exactly the manifest's own two shape classes.
+_DELIVERY_HEADS = frozenset(
+    {
+        "bindings",
+        "masks",
+        "caches",
+        "seeded",
+        "synced",
+        "common",
+        "env",
+        "secret_path",
+    }
+)
+
+#: The four scopes a FIXED, CLI-addressable key is spelled under. `agent` is
+#: absent because the CLI spells its leaves BARE (`model`, not
+#: `agent.default.model`), so the `agent.default.*` rows that survive the other
+#: cells have no dotted spelling any set could match; `test_agent_leaf_shape.py`
+#: claims that half. `meta` is absent because the `meta.*` contract is read-only.
+_FIXED_SCOPES = frozenset({"config", "system", "workset", "box"})
+
+
+def fixed_scope_key(entry: Any) -> bool:
+    """A declared key with a FIXED spelling that the CLI must recognize.
+
+    Five conditions, and each one removes rows the `KNOWN_CONFIG_KEYS`
+    disambiguation set has no reason to hold: a `set: never` row has no write
+    route, a `parametric` row and a row carrying a `<…>` segment have no
+    spelling any set could contain, a row outside the four scopes is either an
+    agent leaf (bare, so not a dotted spelling at all) or `meta.*` (read-only),
+    and a row under a DELIVERY-FAMILY head is either a sub-key destination or a
+    `<VAR>`-parametric spelling -- `_DELIVERY_HEADS` carries which is which, and
+    `box.masks`, `box.bindings.{ro,rw}` and `box.env.COLORTERM` are the
+    manifest's illustrative rows for those families.
+
+    🛑 THE FAMILY TEST IS POSITIONAL -- `parts[1]`, NEVER `any(part in …)`.
+    `common` is BOTH a delivery family and a `channels` leaf, so testing every
+    segment silently drops `system.channels.common` and `workset.channels.common`
+    -- two rows that are ordinary settable path keys and are in the set.
+    ⚑ RUN, NOT REASONED, 2026-09-19: the wide spelling reports `47 declared`
+    where this one reports 49, AND IT STILL EXITS 0. That is the cost worth
+    naming -- a selector does not fail on a row it drops, so the wide test buys
+    a green over two rows nobody is checking any more.
+    """
+    if entry.extra.get("set") == "never" or entry.extra.get("parametric"):
+        return False
+    parts = str(entry.id).split(".")
+    if any(part.startswith("<") for part in parts):
+        return False
+    if parts[0] not in _FIXED_SCOPES:
+        return False
+    return not (len(parts) > 1 and parts[1] in _DELIVERY_HEADS)
