@@ -1085,6 +1085,50 @@ match_mode = "strings"
   note = "the per-agent file's root section; a literal elsewhere is a leaked file address"
 
 # ---------------------------------------------------------------------------
+# FACT: every generated api-doc this repository declares is CURRENT with the
+# module it mirrors.
+# AUTHORITY: `scripts/gen-api-doc.py` is the code side -- it re-renders each
+# module from the AST and prints the artifacts it would write UNCHANGED;
+# `generated-artifacts.yaml` is the declared side.
+# CATCHES: a source module edited without its api-doc regenerated, an artifact
+# hand-edited, an artifact deleted, and a new module whose artifact nothing
+# declares. Each is named INDIVIDUALLY, which is the whole reason this is a
+# `[[parity]]` and not a `[[count]]` against `--check --all`'s summary line: a
+# count against a count cannot say WHICH.
+#
+# 🛑 THE ORACLE POINTS AT THE HEALTHY POPULATION, AND THE INVERSE SHAPE IS
+# MEASURED WRONG RATHER THAN MERELY DISLIKED. "No generated artifact is stale",
+# written as `disjoint` over an oracle printing the STALE ones, prints NOTHING
+# in the healthy state -- so a clean tree and a run that looked at nothing are
+# the same text, and both states fail, one of them for the wrong reason.
+# Upstream recommended that shape to themselves first and measured their way out
+# of it; the rule is in their `docs/introduction.md` at `relation`, and the
+# discriminator is "is its set non-empty when everything is fine?". This one's
+# is 139. `--list-unchanged` exists for this and has no stale-listing twin, by
+# its own docstring, so the wrong shape cannot be written by accident.
+#
+# ⚑ THE DECLARED SIDE IS HAND-MAINTAINED AND IS DELIBERATELY NOT THE `api-docs/`
+# TREE. A registry enumerated from that directory would compare it with itself:
+# a deleted artifact would leave both sides at once and report nothing. Measured
+# as control 3 below. The file's own header carries the rest of the reasoning
+# and the one command that regenerates its rows.
+#
+# ⚑ `yaml-mapping` IS FORCED BY THE TOOL, not chosen. `code-patterns` -- the
+# other kind that can hold a literal list -- refuses an entry with no
+# `antipatterns` ("an entry with none is invisible to every check",
+# `adapters/patterns.py`), and its own docstring scopes it to "a handful, not
+# hundreds". `yaml-mapping` also contributes nothing to the duplication gate,
+# which is right: these are `.md` paths and `check` reads `.py`. Measured
+# 2026-09-19 -- adding this registry moves `check`'s `silent:` tally by exactly
+# 139 (159/251 to 298/390) and changes no finding, which is the same arithmetic
+# the five narrowed views produced and is not a signal.
+[[registry]]
+name = "api-doc-artifacts"
+kind = "yaml-mapping"
+source = "generated-artifacts.yaml"
+section = "artifacts"
+
+# ---------------------------------------------------------------------------
 # THE PARITY ORACLES. Each one runs a command that prints what the CODE really
 # produces and compares that set against what a registry above DECLARES.
 #
@@ -1335,6 +1379,53 @@ for name, value in sorted(auth_chain_floor(mode="primary", agent_name="default")
 extract = '(?m)^kanibako-auth: ([^\s=]+)=(\S+)$'
 field = ["default", "primary"]
 authority = "declared"
+
+# ---------------------------------------------------------------------------
+# THE FIRST ORACLE HERE THAT IMPORTS NOTHING. Every table above runs a `{python}
+# -c` snippet that imports kanibako; this one runs a repository SCRIPT that
+# parses the tree with `ast` and never imports it. `{python}` still earns its
+# place -- it pins the interpreter to the one kinemata runs under, which is what
+# forced the tool onto the project's own 3.11 floor rather than leaving it a
+# 3.12-only script no CI job could execute.
+#
+# 🛑 THE ORACLE MUST BE IN THE REPOSITORY, AND UNTIL 2026-09-19 IT WAS NOT. The
+# generator lived in the maintainer's canon notebook, outside every clone, so
+# this table could not have been written: measured, a missing oracle reports
+# `BLOCKED: exited 2 ... No such file or directory` and BLOCKED is a failure no
+# baseline may accept. It was MOVED, never copied -- one carrier.
+#
+# Measured 2026-09-19 on this tree, kinemata `0.1.2`:
+#   `# api-doc-artifacts: 139 declared, 139 produced, in agreement.`  rc=0
+# FOUR NEGATIVE CONTROLS, each run against this tree and each restored to green
+# and byte-verified afterwards:
+#   one artifact hand-edited        -> rc=1, `api-docs/kanibako/settings/paths.py.md:
+#                                      declared, produced by nothing`
+#   one SOURCE module given a new   -> rc=1, `api-docs/kanibako/kuid.py.md:
+#     public function, doc not             declared, produced by nothing`
+#     regenerated
+#   one artifact deleted            -> rc=1, `api-docs/kanibako/errors.py.md:
+#                                      declared, produced by nothing`
+#   a new module with a current doc -> rc=1, `api-docs/kanibako/brand_new.py.md:
+#     and no registry row                  produced, declared by nothing`
+# The first three are the staleness question. The FOURTH is the closed-world
+# half, and it is the reason the declared side is a declaration and not a
+# listing of `api-docs/`.
+#
+# ⚑ `extract` IS ANCHORED ON THE ARTIFACT SHAPE, not on `(\S+)`. stdout and
+# stderr are JOINED, and the generator's one stderr line is `PARSE ERROR:
+# <source path>: <error>` -- a `.py` path, not a doc path -- so anchoring on `api-docs/`
+# keeps it out of the identifier set. It exits 2 in that case anyway, which
+# BLOCKS the table rather than reporting a short list as a finding.
+#
+# ⚑ THE ORACLE READS `llm-docs/` TOO, which is not obvious from its name. The
+# generated header points at a prose companion only where one exists, so writing
+# one makes that api-doc stale. Found by measurement, not by reading: a scratch
+# tree copied WITHOUT `llm-docs/` reported 55 stale and the 55 were an artifact
+# of the copy. A probe of this table must carry all four trees.
+[[parity]]
+registry = "api-doc-artifacts"
+command = ["{python}", "scripts/gen-api-doc.py", "--list-unchanged"]
+extract = '(?m)^(api-docs/\S+\.md)$'
 
 # ---------------------------------------------------------------------------
 # THE SHAPE RULES. `[[shape]]` reads only the declaration and asks whether it is
