@@ -301,17 +301,17 @@ class TestResolveBeforeImage:
     """Agent resolution must run BEFORE image pull + the tmux baseline check.
 
     W1 §Design 7: "resolve config FIRST ... before anything else."  A user with
-    2+ agents and no default must hit the Gate-2a "pick an agent" error
+    No default agent must hit the "run setup" refusal
     immediately — not after paying a full image pull (ensure_image) and then a
     tmux baseline error.
     """
 
-    def test_gate2a_raises_before_image_and_baseline(self, start_mocks):
-        from kanibako.errors import NoAgentSelectedError
+    def test_unset_agent_raises_before_image_and_baseline(self, start_mocks):
+        from kanibako.errors import AgentUnsetError
 
         with start_mocks() as m:
-            m.resolve_agent.side_effect = NoAgentSelectedError("pick one")
-            with pytest.raises(NoAgentSelectedError):
+            m.resolve_agent.side_effect = AgentUnsetError("run setup")
+            with pytest.raises(AgentUnsetError):
                 _run_container(
                     project_dir=None,
                     entrypoint=None,
@@ -3470,7 +3470,7 @@ class TestNoAgentMessage:
 
     The old pre-launch "No agents detected." guard (which returned 0) is GONE:
     agent resolution now happens UP FRONT inside _run_container via
-    resolve_agent, which raises a typed AgentResolutionError (Gate-2a/2b) that
+    resolve_agent, which raises a typed AgentResolutionError that
     the top-level cli.py handler surfaces verbatim with a non-zero exit — never
     a silent return 0 / drop to shell.
     """
@@ -3512,16 +3512,16 @@ class TestNoAgentMessage:
         assert mock_run.call_args.kwargs["explicit_agent"] is None
 
     def test_start_no_agent_resolution_error_propagates(self):
-        """0 agents installed → resolve_agent raises NoAgentInstalledError from
+        """Nothing named an agent → resolve_agent raises AgentUnsetError from
         _run_container; run_start does NOT swallow it into a return 0."""
-        from kanibako.errors import NoAgentInstalledError
+        from kanibako.errors import AgentUnsetError
 
         with patch(
             "kanibako.commands.start._run_container",
-            side_effect=NoAgentInstalledError("no agents"),
+            side_effect=AgentUnsetError("run setup"),
         ):
             args = self._make_start_args()
-            with pytest.raises(NoAgentInstalledError):
+            with pytest.raises(AgentUnsetError):
                 run_start(args)
 
     def test_shell_still_works_without_agent(self, start_mocks):
@@ -4739,7 +4739,7 @@ class TestRunShellBoxShell:
     def test_shell_bypasses_agent_resolution_with_no_or_many_agents(self, start_mocks):
         """`kanibako shell` reaches the container even when agent resolution
         WOULD fail (0 agents, or 2+ with no default).  box_shell_mode must never
-        call config.resolve_agent — so a Gate-2a/2b error can never abort shell."""
+        call config.resolve_agent — so a selection refusal can never abort shell."""
         from kanibako.commands.start import run_shell
         with start_mocks() as m:
             # If shell ever resolved an agent it would blow up here.
@@ -7322,6 +7322,15 @@ class TestSuppressedBoxLaunchesNoAgent:
 
     These drive the LAUNCH-side wiring, which is the level the escape happened at:
     the unit tests for ``select_agent`` were green throughout.
+
+    ⚑ **``select_agent`` no longer PRODUCES this shape** — ``pref.system.agent: null``
+    refuses now (spec §2b, 2026-09-19) — and ``shell`` will NOT restore it: keyspec
+    §2b/§2d make the plain-shell box a NAMED node (``"shell"``), so a D2 selection is
+    node-BEARING and comes down the ``resolve_target`` side like any other agent.
+    The shape is INJECTED here on purpose anyway. The guard it proves is the floor
+    under a seam where ``""`` means opposite things on the two sides, whatever
+    produces it; the test costs a fixture, and an incident this expensive does not
+    get its regression test deleted because the one route that reached it moved.
     """
 
     def _suppressed(self):

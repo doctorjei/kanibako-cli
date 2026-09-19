@@ -111,9 +111,10 @@ def dead_env(tmp_path, host_storage_conf) -> dict:
     shutil.copy2(_PLUGIN_SRC, plugin_dir / "dead.py")
 
     # Pin the e2e image and system.agent = dead, so selection picks DeadTarget
-    # (mirrors e2e_env's claude pin; the stored key wins before the
-    # installed-count rule).  Both pins, plus the empty bootstrap file, come from
-    # the one writer — see write_e2e_settings_files.
+    # (mirrors e2e_env's claude pin).  ⚑ The pin is REQUIRED: nothing is selected
+    # implicitly, so an unset key refuses whatever is installed.  Both pins, plus
+    # the empty bootstrap file, come from the one writer — see
+    # write_e2e_settings_files.
     write_e2e_settings_files(config_home, data_home, home=home, agent="dead")
 
     env = os.environ.copy()
@@ -274,9 +275,10 @@ def live_env(tmp_path, host_storage_conf) -> dict:
     shutil.copy2(_LIVE_PLUGIN_SRC, plugin_dir / "live.py")
 
     # Pin the e2e image and system.agent = live, so selection picks LiveTarget
-    # (mirrors dead_env's dead pin; the stored key wins before the
-    # installed-count rule).  Both pins, plus the empty bootstrap file, come from
-    # the one writer — see write_e2e_settings_files.
+    # (mirrors dead_env's dead pin).  ⚑ The pin is REQUIRED: nothing is selected
+    # implicitly, so an unset key refuses whatever is installed.  Both pins, plus
+    # the empty bootstrap file, come from the one writer — see
+    # write_e2e_settings_files.
     write_e2e_settings_files(config_home, data_home, home=home, agent="live")
 
     env = os.environ.copy()

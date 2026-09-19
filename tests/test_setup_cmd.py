@@ -125,15 +125,47 @@ def test_interactive_pick_writes_default(tmp_home, config_file, monkeypatch):
     assert read_system_agent(ssp) == "goose"
 
 
-def test_interactive_single_agent_skip_silent(tmp_home, config_file, monkeypatch):
+def test_interactive_single_agent_skip_is_confirmed_too(
+    tmp_home, config_file, monkeypatch, capsys
+):
+    """A skip is GATED at ONE detected agent as well (spec §2b).
+
+    🛑 It used to be accepted silently here, on the grounds that skipping was
+    harmless with one agent — the installed-agent count rule would launch that one
+    implicitly. That rule was deleted 2026-09-19, so a skip costs the same thing at
+    every count and the user has to be told before taking it.
+
+    MUTATION: restore ``if len(detected) >= 2:`` around the warning and this hangs
+    or returns ``None`` without ever printing ``will FAIL``.
+    """
     _patch_targets(monkeypatch, {"claude": _make_target("claude")})
     monkeypatch.setattr("sys.stdin.isatty", lambda: True)
-    # 1 agent → skip option is index 2; accepted silently (no confirm prompt).
-    monkeypatch.setattr("builtins.input", lambda *a: "2")
+    # 1 agent → skip option is index 2; confirm "y" to take it.
+    answers = iter(["2", "y"])
+    monkeypatch.setattr("builtins.input", lambda *a: next(answers))
     selected = setup_cmd._run_agent_selection(_ns())
     assert selected is None
+    assert "will FAIL" in capsys.readouterr().out
     _, ssp = _config_paths(tmp_home)
     assert read_system_agent(ssp) is None
+
+
+def test_interactive_single_agent_unconfirmed_skip_reprompts_to_pick(
+    tmp_home, config_file, monkeypatch
+):
+    """The other half at ONE agent: declining the skip returns to the menu.
+
+    ⚑ Drives the ITERATOR to exhaustion deliberately — a constant-answer mock would
+    loop forever here, which is how the waiver's removal is visible at all.
+    """
+    _patch_targets(monkeypatch, {"claude": _make_target("claude")})
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+    # skip(2) → "n" (unconfirmed) re-prompts → then pick claude(1).
+    answers = iter(["2", "n", "1"])
+    monkeypatch.setattr("builtins.input", lambda *a: next(answers))
+    assert setup_cmd._run_agent_selection(_ns()) == "claude"
+    _, ssp = _config_paths(tmp_home)
+    assert read_system_agent(ssp) == "claude"
 
 
 def test_interactive_skip_two_agents_reprompts_then_confirms(
@@ -385,6 +417,43 @@ def test_step2_reports_binary_less_shell_as_ok(tmp_home, config_file, monkeypatc
     assert "Shell" in out
     assert "not found on this system" not in out
     assert "image default" in out
+
+
+def test_no_real_plugin_reaches_the_tailored_install_command(
+    tmp_home, config_file, monkeypatch, capsys
+):
+    """Zero agent PLUGINS ⇒ the "install one" arm fires, with a TAILORED command.
+
+    🛑 **The regression this pins.** The launch path used to raise
+    ``NoAgentInstalledError`` carrying ``install_method.install_command(...)``; the
+    2026-09-19 ruling deleted that class, so the launch now says *run `kanibako
+    setup`* at every installed count and ``setup`` is the only place left that can
+    hand a first-run user a command which works in THEIR install.
+
+    ⚑ It could not fire before: the gate was ``if not targets:``, and ``targets`` is
+    NEVER empty — ``no_agent`` is an entry point declared by ``kanibako-cli``'s own
+    ``pyproject.toml``. The binary-less Shell target also set ``found_any``, so the
+    closing banner claimed *"You're ready to go!"* on a host where every launch
+    refuses. Three branches, one cause; the gate counts ``has_binary`` targets now.
+
+    MUTATION: gate on ``if not targets:`` again (or let the binary-less target set
+    ``found_any``) and BOTH assertions below flip — no install command at all, and
+    a "ready to go" banner in front of a host that cannot launch.
+    """
+    from kanibako.install_method import install_command
+    from kanibako.targets.no_agent import NoAgentTarget
+
+    _patch_targets(monkeypatch, {"no_agent": NoAgentTarget})
+    _stub_probes(monkeypatch)
+    _stage_templates()
+    monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+    setup_cmd.run_setup(_ns())
+    out = capsys.readouterr().out
+    assert "No agent plugins installed." in out
+    assert install_command("kanibako-agent-claude") in out
+    # 🛑 And the banner must not contradict it.
+    assert "You're ready to go!" not in out
+    assert "Install an agent plugin and its host binary" in out
 
 
 # --- Step 5: template-refresh step (informed-consent flow) -----------------

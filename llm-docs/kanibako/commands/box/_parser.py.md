@@ -343,14 +343,14 @@ different cures. For a genuinely unused default-mode directory it says a launch 
 box — ⚑ NOT "start a session with `kanibako start`": since the v1.7.0 explicit-create gate a launch
 NEVER materialises a box, so naming `start` described behaviour we do not have.
 
-Agent resolution here is INFORMATIONAL, not an agent-requiring launch, so a failure (no default
-with 2+ agents, 0 agents, adapter missing) DEGRADES to `n/a` rather than erroring. It still goes
-through the ONE selection seam, `agent_select.select_agent` (`system.agent` < workset pref < box
-pref). ⚑ The Agent row shows WHERE THE SELECTION CAME FROM (P7): "which agent does this box run,
-and WHY?" is the question a retired-key or wrong-default box makes urgent, and the answer is in no
-single file — it may be the stored `system.agent`, a workset/box `pref.system.agent`, or the
-installed-count rule picking the only agent installed. `AgentSelection.source` already carries it,
-and this is the one place a user can read it. A refused RETIRED key (migration M-4) likewise
+Agent resolution here is INFORMATIONAL, not an agent-requiring launch, so a failure (`system.agent`
+unset, `system.agent` null / no default set, adapter missing) DEGRADES to `n/a` rather than
+erroring. It still goes through the ONE selection seam, `agent_select.select_agent` (`system.agent`
+< workset pref < box pref). ⚑ The Agent row shows WHERE THE SELECTION CAME FROM (P7): "which agent
+does this box run, and WHY?" is the question a retired-key or wrong-default box makes urgent, and
+the answer is in no single file — it may be the stored `system.agent`, a workset/box
+`pref.system.agent`, or `--agent`. `AgentSelection.source` already carries it, and this is the one
+place a user can read it. A refused RETIRED key (migration M-4) likewise
 surfaces here rather than being swallowed as "unresolved", because `box info` is where a user looks
 when a box will not start.
 
@@ -423,9 +423,9 @@ the slots and nothing else.
 #### `cli_level` — selection only, and the inert `--agent`
 
 ⚑ The display installs the SAME §1A selection level the launch installs (P7). Without it, this
-view would resolve `@system.agent` DIFFERENTLY from the launch it claims to show — an autopicked or
-`--agent` box would render `meta.box.auth.workset_path` with the agent segment dropped. A display
-that disagrees with the launch is worse than no display.
+view would resolve `@system.agent` DIFFERENTLY from the launch it claims to show — an `--agent` box
+would render `meta.box.auth.workset_path` with the agent segment dropped. A display that disagrees
+with the launch is worse than no display.
 
 ⚑ SELECTION ONLY, and for a READ verb that is the WHOLE of the CLI level (P8). `box config` carries
 none of the launch's ephemeral VALUE flags (`-M`, `-N`/`-C`/`-R`, `--image`, `--share-images` live

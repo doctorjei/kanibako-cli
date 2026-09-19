@@ -777,7 +777,7 @@ categories:
                                      #   on the KEY, not on a harness/plugin flag
                                      #   (mirrors `pref.system.agent: null` —
                                      #   `settings/agent_select.py` — an established
-                                     #   PRESENT-None SUPPRESSION, not a novel shape).
+                                     #   PRESENT-None REQUEST, not a novel shape).
                                      #   The persona verify probe (targets/base.py
                                      #   `Target.verify_persona`) is SENT with the
                                      #   Authorization header omitted for a
@@ -2515,8 +2515,9 @@ pref:
   # VALUES ARE INSTALLED VERBATIM — INCLUDING present-None. A None pref lands
   # on the target key and is classified by the ORDINARY present-None rule:
   # OMIT for a bind / category / masks leaf (no mount / unmask), KEPT None for
-  # a scalar leaf (consumer default) — so pref.system.agent: null requests the
-  # NO-AGENT plain-shell box. The box's ONLY channel to drop something its agent
+  # a scalar leaf (consumer default) — so pref.system.agent: null asks for NO
+  # DEFAULT AGENT (spec §2b): one must then be named explicitly, or the launch
+  # refuses saying so. The box's ONLY channel to drop something its agent
   # declares is still the pref, but since 2026-08-07f EVERY bind-shaped category
   # is dest-keyed, so the null moves INSIDE the value for all six:
   # `pref.agent.<agent>.<category>: {<box_dest>: null}` drops one destination and

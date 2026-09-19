@@ -72,12 +72,25 @@ class AgentResolutionError(KanibakoError):
     """Agent could not be resolved for an agent-requiring command."""
 
 
-class NoAgentSelectedError(AgentResolutionError):
-    """Gate-2a: 2+ REAL agents installed but none was chosen (no default)."""
+class AgentUnsetError(AgentResolutionError):
+    """``system.agent`` is UNSET at every tier: setup has never chosen one (spec §2b).
+
+    ⚑ The PAIR with :class:`AgentNoDefaultError`, and they are not interchangeable —
+    that is the whole of the 2026-09-19 ruling. UNSET means *nothing has ever set the
+    key*, so the cure is ``kanibako setup``; present-``None`` means *a settings file
+    deliberately declined to name a default*, so the cure is naming one. Neither ever
+    auto-selects: the installed-agent COUNT decides nothing.
+    """
 
 
-class NoAgentInstalledError(AgentResolutionError):
-    """Gate-2b: zero REAL agent plugins are installed."""
+class AgentNoDefaultError(AgentResolutionError):
+    """``system.agent`` resolved to present-``None``: no default is set (spec §2b).
+
+    ⚑ Reachable BY TYPO — YAML reads ``null``, ``Null``, ``NULL``, ``~`` and a bare
+    key with nothing after the colon as Python ``None`` — so the message names the
+    spellings. (``None``/``none`` are STRINGS and fail as an unknown agent instead,
+    which is why this message must not read like that one.)
+    """
 
 
 class AgentNotInstalledError(AgentResolutionError):

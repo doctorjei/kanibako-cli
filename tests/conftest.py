@@ -311,11 +311,10 @@ def start_mocks():
             patch("kanibako.commands.start.resolve_target") as m_resolve_target,
             # P7 unified SELECTION seam: _run_container resolves the agent via
             # agent_select.select_agent (system.agent < workset pref < box pref <
-            # --agent, then the installed-count rule) BEFORE resolve_target.
-            # Patch it to a fixed selection so _run_container tests don't depend
-            # on the host's installed-agent set (which would otherwise trigger
-            # Gate-2a with the meta package's 3 adapters). Tests exercising the
-            # no-agent / ambiguous paths re-patch it. (Was
+            # --agent) BEFORE resolve_target. Patch it to a fixed selection so
+            # _run_container tests don't depend on the host having a default agent
+            # configured (which would otherwise refuse). Tests exercising the
+            # no-agent / refusal paths re-patch it. (Was
             # ``kanibako.settings.config.resolve_agent``, whose cascade P7 moved out.)
             patch(
                 "kanibako.settings.agent_select.select_agent",

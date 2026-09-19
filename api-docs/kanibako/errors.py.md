@@ -37,9 +37,9 @@ class SubjectConflictError(KanibakoError):
 
 class AgentResolutionError(KanibakoError):
 
-class NoAgentSelectedError(AgentResolutionError):
+class AgentUnsetError(AgentResolutionError):
 
-class NoAgentInstalledError(AgentResolutionError):
+class AgentNoDefaultError(AgentResolutionError):
 
 class AgentNotInstalledError(AgentResolutionError):
 ```

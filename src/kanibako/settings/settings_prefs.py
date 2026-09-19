@@ -740,11 +740,15 @@ def pref_value(
     Later requests win (box after workset), matching the overlay precedence.
     The read helper agent SELECTION uses: ``pref_value(prefs, "system.agent")``.
 
-    ⚑ A present-``None`` request is indistinguishable from "no request" through
-    this helper's return type. That is deliberate for the ``system.agent`` case —
-    ``pref.system.agent: null`` MEANS the NO-AGENT box (§2b), which is
-    the same outcome as no agent being selected. A caller needing the
-    distinction should use :func:`pref_request_for`.
+    🛑 A present-``None`` request is indistinguishable from "no request" through
+    this helper's return type, **and for ``system.agent`` those are no longer the
+    same thing.** Since the 2026-09-19 ruling (spec §2b) ``pref.system.agent:
+    null`` means NO DEFAULT IS SET and refuses with one message, while *no request*
+    falls through to an unset key and refuses with a DIFFERENT one. **Any caller
+    that must tell them apart has to use :func:`pref_request_for`** — which is why
+    the selection seam reads the cascade (``resolve_selected_agent``) rather than
+    this helper. No production caller reads ``system.agent`` through here today;
+    adding one would silently merge the two refusals.
     """
     req = pref_request_for(requests, target)
     return None if req is None else req.value
@@ -813,10 +817,11 @@ def pref_origin(
     the overlay precedence (box after workset).
 
     ⚑ :func:`pref_request_for` is deliberately NOT reused here. Its contract is
-    exact target equality, the read that agent SELECTION depends on
-    (``pref_value(prefs, "system.agent")``), and widening it so this diagnostic
-    could reach the dest-keyed categories would silently change that read. Two
-    questions, two functions.
+    EXACT TARGET EQUALITY — the only read that can tell an explicit
+    ``pref.system.agent: null`` from no request at all, which is the whole of the
+    §2b two-refusal split — and widening it so this diagnostic could reach the
+    dest-keyed categories would silently destroy that. Two questions, two
+    functions.
     """
     winner: PrefRequest | None = None
     for req in requests:

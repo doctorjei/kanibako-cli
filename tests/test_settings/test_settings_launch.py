@@ -2525,7 +2525,7 @@ def test_meta_box_agent_mirror_copy_is_not_an_alias():
 
 def test_meta_box_agent_mirror_repoints_on_agent_change():
     # Re-materialized when the SELECTED agent changes: agent_name IS the resolved
-    # active agent (``@system.agent`` — stored key, pref, --agent or autopick), so a
+    # active agent (``@system.agent`` — the stored key, a pref, or --agent), so a
     # different agent_name mirrors a different subtree.
     common = dict(
         ctx=_ctx(),

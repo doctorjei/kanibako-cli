@@ -709,7 +709,7 @@ a config path), so it lives in the `system:` table of the system settings file `
 reads the system tier from. Callers pass that settings-file path as *system_path*, NOT
 `~/.config/kanibako.cfg`, which holds only the bootstrap PATH tables.
 
-`None` means "no system default" — callers fall through to the installed-count rule.
+`None` means "no system default" — the caller REFUSES rather than picking one (keyspec §2b).
 
 ⮕ **RENAMED + RELOCATED (P7, spec §2g).** Was `read_default_agent`, reading `system.default_agent`
 out of the reserved any-agent `agent.default` table under the leaf `default_agent` — a location
@@ -813,14 +813,14 @@ string is a NON-BLOCKING advisory the caller prints to stderr before continuing.
 
 
 ```resolve_agent(*, explicit_agent: str | None, requested: str | None = None, project_path: Path | None = None) -> str```
-Validate/arbitrate the effective agent name, plus the installed-count rule.
+Validate the effective agent name against the installed set, or REFUSE.
 
 ⮕ **P7: the CASCADE moved out.** `system.agent` and the `pref.system.agent` requests of the
 workset/box files are resolved off the launch snapshot by
 :func:`kanibako.settings.agent_select.select_agent`, which passes the winner here as *requested*.
-What stays here is what is NOT a key: name VALIDATION against the installed set, persona-ref
-canonicalisation, and the installed-count rule. (Was: `explicit_agent > box_agent_name >
-workset_agent > system default`, with `box.agent_name` — RETIRED, spec §2b — as the box tier.)
+What stays here is what is NOT a key: name VALIDATION against the installed set and persona-ref
+canonicalisation. (Was: `explicit_agent > box_agent_name > workset_agent > system default`, with
+`box.agent_name` — RETIRED, spec §2b — as the box tier.)
 
 Precedence: *explicit_agent* (the §1A CLI level) > *requested* (whatever the settings cascade
 resolved). The FIRST **PRESENT** one resolves a name — never the first non-EMPTY one. `None` is
@@ -828,7 +828,7 @@ the only spelling of absence either argument has (no `--agent` at all; `__MISSIN
 selection key), so a present `""` is a VALUE: spec §2h keeps `present-None`, terminal `""` (**≠
 unset**) and the COPY-disable sentinel apart as three idioms. A blank tier therefore reaches
 `canonicalize_agent_ref` and is refused as an empty ref, instead of falling through to the next
-tier (a typed `--agent ""` taking the cascade's agent) or to the count rule (a stored
+tier (a typed `--agent ""` taking the cascade's agent) or to the then-live count rule (a stored
 `system.agent: ""` taking the single installed one), silently in both cases.
 
 A resolved name is validated against the installed set — the keys of `targets.discover_targets`,
@@ -838,11 +838,15 @@ i.e. the DISCOVERED PLUGINS:
 * not installed → raise :class:`~kanibako.errors.AgentNotInstalledError` (actionable: names the
   agent + how to install it).
 
-Nothing resolved → the installed-count rule (NO ordering, NO tie-break):
+Nothing resolved → raise :class:`~kanibako.errors.AgentUnsetError`, naming `kanibako setup`.
 
-* exactly 1 installed → return that name;
-* 0 installed → raise :class:`~kanibako.errors.NoAgentInstalledError` (Gate-2b);
-* 2+ installed → raise :class:`~kanibako.errors.NoAgentSelectedError` (Gate-2a).
+🛑 **THE INSTALLED COUNT IS NOT CONSULTED HERE, AND THE SET IS NOT EVEN IN SCOPE.** The retired
+rule (1 → use / 0 → error / 2+ → error) was deleted 2026-09-19 on his ruling; `discover_targets` is
+called INSIDE the named-ref branch above, so reinstating a count rule on this path would mean
+re-adding that call where a reader can see it (P3/P4). The sibling state — present-`None`, *no
+default set* — never reaches this function at all: `select_agent` raises
+:class:`~kanibako.errors.AgentNoDefaultError` for it, because the two states must print different
+sentences.
 
 ### Canonicalisation before validation
 
@@ -853,20 +857,19 @@ and the same call VALIDATES the ref shape (raises `ConfigError` on a malformed s
 ⚑ The HARNESS — right of `℘`, the whole name when bare — is what must be an installed target, NOT
 the composite node-name: a persona's name segment is free-form.
 
-### The pseudo-agent discount
+### The pseudo-agent discount — GONE with the rule it served
 
-The implicit installed-count rule (1 → use / 0 → error / 2+ → error) considers only REAL launchable
-agents. `_PSEUDO_AGENTS` (`no_agent`, `general`) is subtracted, so a host with exactly one real
-agent plus the built-in shell fallback is unambiguous (not "2+"), and a host with zero real agents
-reports Gate-2b (not "use no_agent"). An explicitly-named harness validates against the FULL
+`_PSEUDO_AGENTS` (`no_agent`, `general`) existed to subtract non-launchable targets from the
+installed COUNT. With the count rule retired (2026-09-19) there is no count to discount from, and
+the set is deleted. 🛑 **It was never the keyspec's pseudo-agents** (`default`, `shell` —
+`agent_ref.PSEUDO_AGENT_NAMES`, the RESERVED names, spec §2d), shared no member with them, and the
+two must not be conflated now that only one of them exists.
+
+⚑ **Nothing about explicit selection changed.** A named harness validates against the FULL
 `installed` set, so `no_agent` stays explicitly selectable (`--agent no_agent` /
-`pref.system.agent: no_agent`).
-
-⚑ The two members are NOT symmetric. `no_agent` is a real shipped target (`targets/no_agent.py`,
-exported from `targets/__init__`). `general` is NOT a target any distribution registers — it is the
-agent-LESS SLOT NAME `_resolve_box_scalars` passes as `agent_name`. So `--agent general` raises
-`AgentNotInstalledError` today; its membership here is defensive, guarding against a plugin ever
-claiming the name.
+`pref.system.agent: no_agent`). `general` is NOT a target any distribution registers — it is the
+agent-LESS SLOT NAME `_resolve_box_scalars` passes as `agent_name` — so `--agent general` raises
+`AgentNotInstalledError`, as it did before.
 
 ⚑ The imports inside the function are lazy on purpose: `kanibako.targets` imports `paths` / this
 module indirectly, so importing it at module scope risks a cycle. This mirrors `discover_targets`'

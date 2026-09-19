@@ -1246,10 +1246,12 @@ def resolve_selected_agent(
     """Resolve ``system.agent`` as the settings files + their prefs give it.
 
     Returns the resolved value in THREE states the caller MUST keep apart (see
-    :mod:`kanibako.settings.agent_select`): a ``str`` name · present-``None``, the
-    explicit ``pref.system.agent: null`` SUPPRESSION ⇒ the NO-AGENT plain-shell box
-    (spec §2b, D-M6) · ``__MISSING__``, nothing ever set it ⇒ the caller falls through
-    to the installed-count rule.
+    :mod:`kanibako.settings.agent_select`): a ``str`` name · present-``None``, an
+    explicit ``pref.system.agent: null`` ⇒ NO DEFAULT IS SET, so the caller REFUSES
+    unless an agent was named explicitly (spec §2b) · ``__MISSING__``, nothing ever
+    set it ⇒ setup has never chosen one, and the caller REFUSES directing the user
+    to ``kanibako setup``. 🛑 **Both refusals, never an implicit pick — the
+    installed-agent count decides nothing** (retired 2026-09-19).
 
     ⚑ The present-``None`` arm is only reachable because ``_resolve_present_none``
     KEEPS a present-``None`` on a SCALAR leaf — an ``if value is None: continue``
