@@ -954,8 +954,9 @@ Detection order:
    discovery.
 3. **Workset** — *project_dir* lives inside a registered workset root (`workspaces/` subdirectory
    first, then the root itself).
-4. **Default (name-based)** — one-pass scan of `names.yaml`; deepest registered path that is an
-   ancestor of *project_dir* wins. Requires `boxes/{name}/` to exist on disk.
+4. **Default (name-based)** — one-pass scan of the PRIMARY per-workset `boxes:` membership
+   (`_find_local_ancestor` → `load_primary_boxes`); deepest registered path that is an ancestor of
+   *project_dir* wins. Requires `boxes/{name}/` to exist on disk.
 5. **Walk ancestors for on-disk markers** — a `box_data/` standalone marker, or an unregistered
    NAMED workset root (a `registry.yaml` carrying a `workset:` identity table). Both are drop-in
    *imported* on discovery (registered + an alert to stderr; a name collision REFUSES — see

@@ -43,7 +43,14 @@ coexist there without colliding, which is why `run_create` and `share add` both 
 
 The PRIMARY ("default") workset roots at `@config.primary_workset`. Its old
 `@config.data/config.yaml` write target was a DEAD WRITE — the launch cascade never read it — which
-is finding **F4** of `reference/2026-07-02-scoping-cascade-audit.md`.
+is finding **F4** (*"PRIMARY workset = three-file split"*, MED-HIGH, a genuine bug) of the ARCHIVED
+`~/canon/notebook/archives/resources/reference/2026-07-02-scoping-cascade-audit.md`.
+
+⚑ The audit MOVED to the archive and this citation did not move with it. The bare `reference/…`
+spelling was worse than dangling — it was PLAUSIBLE: `~/canon/workbook/reference/` exists and still
+holds this audit's siblings, so the citation resolved to a real directory that does not hold this
+file — and there is no `reference/` in this repo at all. **Cite the surviving location in full.**
+An archived document is still the record; it is the elided prefix, not the archiving, that lost it.
 
 ## `create`: pre-flight, then stamp
 
