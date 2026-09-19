@@ -1702,6 +1702,23 @@ class TestPreplink:
         assert fl.preplink(str(home / "blank.md")) == []
         assert fl.preplink(str(home / "comments.md")) == []
 
+    def test_a_directory_matching_the_glob_is_skipped_silently(self, home):
+        """The shipped chapter glob is ``directives/*`` — no suffix — so a
+        SUBDIRECTORY matches it, and an rc2 user's surviving ``directives/rules/``
+        is exactly that. Only files become entries, so the leftover tree
+        contributes no row and consumes no number; the migration guide's request
+        to delete it (*The packaged canon book is `charter`, and the handbook lost
+        a level*) is tidiness, not a repair.
+        """
+        chapter = home / "general" / "directives"
+        (chapter / "rules").mkdir(parents=True)
+        (chapter / "ALPHA.md").write_text("## Alpha\n", encoding="utf-8")
+        (chapter / "rules" / "CANON.md").write_text("## Stale\n", encoding="utf-8")
+        rows = flattener.Flattener().preplink(
+            str(chapter / "*"), "1", ".", "{__SECTION__(source, sep)} @"
+        )
+        assert [(entry.name, new) for entry, _, new, _ in rows] == [("ALPHA.md", "1.1 Alpha")]
+
     def test_the_title_is_the_first_line_of_real_text_not_the_first_hash(self, home):
         """🛑 A COMMENT IS NOT REAL TEXT, and the blocks contain heading-shaped
         decoys, so the naive test picks the wrong title."""

@@ -4357,9 +4357,10 @@ joined the chapter, `DOCUMENT_UPDATES.md` and `STATE_CLEANUP.md`, beside the exi
 `<data>/global/canon/handbook/general/directives/rules/`, then delete that directory.**
 Create-if-absent leaves it where it is and adds the new flat files beside it, and the two do not
 line up for a clean diff: `CANON.md` was renamed as well as rewritten, so your `rules/CANON.md` is
-the file that became `directives/LOWER_CANON.md`. Leaving it is not inert, either — `SYS_GENERAL.md`
-pulls the chapter's directives in with a glob, `directives/*`, and a surviving `rules/`
-subdirectory falls inside that pattern rather than outside it.
+the file that became `directives/LOWER_CANON.md`. Leaving it costs you your own edits rather than a
+broken chapter — `SYS_GENERAL.md` pulls the chapter's directives in with a glob, `directives/*`, and
+a surviving rules subdirectory falls inside that pattern, but the flattener takes files only, so the
+directory is skipped in silence and everything you wrote inside it goes unread.
 
 **(d) Delete any bind entry of yours whose destination is under `~/canon/bible/`.** A bind is keyed
 by its destination (§2.23), and a destination is data rather than a declared name, so this is **not**
