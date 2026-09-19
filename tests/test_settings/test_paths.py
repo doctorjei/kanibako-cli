@@ -2441,6 +2441,18 @@ class TestPathLeafDefaultsHaveOneCarrier:
         spec formula with the leaf typed by hand — that a weaker equality-only form
         let through, while line 384 of that same module had been composing the
         agent-tier formula off the constant all along.
+
+        ⚑ The CARRIER is checked to spell every needle before the tree is swept — the
+        P15 reason the sibling below gives for its own check, which this case went
+        without until 2026-09-19.  What it catches is the carrier keeping the CONSTANT
+        while losing the LITERAL: composing ``BOX_META_FILE`` out of parts instead of
+        spelling ``"box.yaml"`` leaves the sweep hunting a needle no file can match —
+        measured green before this assertion and red after it.
+
+        ⚑ RESIDUAL, AND THE SIBLING SHARES IT: the needles ARE the constants' current
+        values, so RENAMING one moves the needle and the carrier's literal together.
+        Both checks pass, and any module still spelling the OLD name goes unswept.
+        Nothing here can see that; the renaming commit has to.
         """
         import inspect
 
@@ -2451,6 +2463,15 @@ class TestPathLeafDefaultsHaveOneCarrier:
                      config_mod.AGENT_META_FILE}
         carrier = Path(inspect.getfile(config_mod)).resolve()
         src = REPO_ROOT / "src" / "kanibako"
+
+        in_carrier = {value.rsplit("/", 1)[-1]
+                      for _, value in _code_string_literals(carrier)
+                      if value.split() == [value]}
+        assert filenames <= in_carrier, (
+            f"{carrier.name} no longer spells "
+            f"{sorted(filenames - in_carrier)} as a code literal; this test's needles "
+            f"come from it, so the sweep below would pass vacuously"
+        )
 
         for path in sorted(src.rglob("*.py")):
             if path.resolve() == carrier:
