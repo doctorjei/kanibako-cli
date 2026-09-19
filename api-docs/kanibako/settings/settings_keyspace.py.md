@@ -59,6 +59,7 @@ def is_terminal_category_tail(tail: Sequence[str]) -> bool
 def is_terminal_category_key(key: str) -> bool
 def leaf_name_reason(leaf: str) -> str | None
 def is_valid_agent_segment(segment: str, valid_agents: Collection[str]) -> bool
+def valid_agent_segments(valid_agents: Collection[str]) -> list[str]
 def unread_harnesses(declared: 'AgentLeafMap') -> 'Container[str]'
 def agent_declared_leaves(name: str, agent_leaf_map: 'AgentLeafMap | None') -> 'Collection[str] | None'
 def agent_leaf_is_declared(name: str, tail: str, agent_leaf_map: 'AgentLeafMap | None') -> bool

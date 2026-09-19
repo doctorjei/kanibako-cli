@@ -12,6 +12,7 @@ from typing import Mapping
 
 import pytest
 
+from kanibako.agent_ref import PSEUDO_AGENT_NAMES
 from kanibako.settings.keyspace_manifest import manifest_doc
 from kanibako.settings.settings_keyspace import (
     DECLARED_AGENT_LEAVES,
@@ -493,10 +494,47 @@ def test_reserved_leaf_names_rejected():
     assert "dunder" in reason("box.env.__init__")
 
 
-def test_is_valid_agent_segment_accepts_default_and_members():
-    assert is_valid_agent_segment("default", AGENTS)
+@pytest.mark.parametrize("name", sorted(PSEUDO_AGENT_NAMES))
+def test_is_valid_agent_segment_accepts_every_pseudo_agent(name):
+    """The discriminator admits the RESERVED names, swept from the reservation itself.
+
+    ⚑ PARAMETRIZED OFF :data:`~kanibako.agent_ref.PSEUDO_AGENT_NAMES` (P13), so a third
+    reserved name is covered with no edit here — and a name that is reserved against
+    agents but NOT admitted as a segment reds, which is the pair that must not come
+    apart.  ``AGENTS`` deliberately contains neither: the standing is the keyspace's
+    own, not a discovery result's.
+    """
+    assert name not in AGENTS
+    assert is_valid_agent_segment(name, AGENTS)
+
+
+def test_is_valid_agent_segment_accepts_members_and_refuses_the_rest():
     assert is_valid_agent_segment("claude", AGENTS)
     assert not is_valid_agent_segment("zippity", AGENTS)
+
+
+@pytest.mark.parametrize("name", sorted(PSEUDO_AGENT_NAMES))
+def test_a_pseudo_agent_tier_judges_like_a_real_one(name):
+    """⚑ THE STEP-1 FALSIFIER, both halves: the tier resolves, and it stays CLOSED.
+
+    A pseudo-agent's leaves are CORE's universal §2d table and nothing else — there is
+    no plugin whose absence could excuse an unknown one — so an invented leaf must be
+    refused at ``agent.shell.*`` exactly as it is at ``agent.default.*``.  Admitting
+    the discriminator without that second half would open the tier rather than declare
+    it.
+    """
+    assert valid(f"agent.{name}.label")
+    assert valid(f"agent.{name}.access")
+    assert valid(f"agent.{name}.env.TERM")
+    assert valid(f"meta.agent.{name}.name")
+    assert not valid(f"agent.{name}.zippity")
+
+
+def test_the_refusal_message_offers_every_pseudo_agent():
+    """A refusal that named a NARROWER world would send a user to fix a good name."""
+    message = reason("agent.zippity.label")
+    for name in PSEUDO_AGENT_NAMES:
+        assert name in message, message
 
 
 def test_non_active_agent_is_valid():

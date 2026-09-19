@@ -282,18 +282,23 @@ def slot_for(agents_root: Path, node: str, tail: str) -> AgentFileSlot:
 # The ARGV translation — one string on the command line, a list of words on disk
 # ---------------------------------------------------------------------------
 
-def _argv_words(value: str) -> list[str]:
+def argv_words(value: str) -> list[str]:
     """The argv WORDS in one command-line *value*, as the file stores them.
 
     ⚑ DELIBERATELY :meth:`str.split`, NOT ``shlex.split``.  It is what the split has always
     done, and adding quote handling would change the MEANING of values already on disk
     rather than fix one.  A word that must contain a space is hand-edited into the list.
+
+    ⚑ PUBLIC because the LAUNCH splits too: the behavior table hands ``run_args`` over as the
+    command-line string :func:`argv_text` joined (a stored list and a hand-written string
+    therefore arrive identically), and the consumer splits it back with THIS function.  A
+    second splitter anywhere would be a second answer to "what is a word".
     """
     return value.split()
 
 
 def argv_text(words: Iterable[object]) -> str:
-    """*words* as the ONE command-line string they were split from — :func:`_argv_words`
+    """*words* as the ONE command-line string they were split from — :func:`argv_words`
     read backwards, for every surface that shows a stored argv list to a user."""
     return " ".join(str(w) for w in words)
 
@@ -327,7 +332,7 @@ def _stored_shape(tail: str, value: object) -> object:
     empty argv line, and splitting it would silently turn a suppression into ``[]``.
     """
     if tail in _LIST_VALUED_KEYS and isinstance(value, str):
-        return _argv_words(value)
+        return argv_words(value)
     return value
 
 
@@ -454,13 +459,23 @@ def load(path: Path) -> AgentConfig:
     # nothing writes a string here any more.
     # ⚑ A bare ``run_args:`` parses to ``None`` — "no arguments", never the word
     # "None"; anything else scalar is one word's worth of text and is split like one.
-    raw_args = agent_sec.get("run_args")
-    if isinstance(raw_args, list):
-        cfg.run_args = [str(a) for a in raw_args]
-    elif raw_args is None:
-        cfg.run_args = []
+    # ⚑⚑ AN ABSENT KEY IS ``None``, NOT AN EMPTY LIST, AND THE MEMBERSHIP TEST IS WHAT
+    # TELLS THEM APART (:class:`AgentConfig`, three-state).  The file surface always
+    # kept them apart — ``read_leaf`` answers ``None`` for absent and ``""`` for a
+    # stored ``[]`` — and the record collapsing them was harmless only while this file
+    # was the argv's sole source.  It is not: ``agent.default.run_args`` reaches a
+    # launch (`[R169]`), so an agent writing ``run_args: []`` to OPT OUT of that
+    # default has to be distinguishable from one that never mentioned the key.
+    if "run_args" not in agent_sec:
+        cfg.run_args = None
     else:
-        cfg.run_args = _argv_words(str(raw_args))
+        raw_args = agent_sec["run_args"]
+        if isinstance(raw_args, list):
+            cfg.run_args = [str(a) for a in raw_args]
+        elif raw_args is None:
+            cfg.run_args = []
+        else:
+            cfg.run_args = argv_words(str(raw_args))
 
     # Flat state = the SCALAR agent-state knobs. Exclude every key the record MODELS
     # as a field of its own, and any dict-valued entry: a CATEGORY table is a dict
@@ -533,6 +548,13 @@ def save(path: Path, cfg: AgentConfig) -> None:
     # are first-use only), so nothing round-trips a user's explicit empty list through
     # here.  ``agent set <node> run_args=""`` writes through :func:`write_leaf` and keeps
     # materializing the empty list.
+    # ⚑⚑ THE GUARD IS TRUTHY WHILE THE RECORD IS THREE-STATE, and that is only safe
+    # because of the sentence above — re-measured 2026-09-19: every ``generate_agent_config``
+    # returns a bare :class:`AgentConfig`, whose ``run_args`` is now ``None``.  🛑 A FOURTH
+    # CALLER, or a plugin that seeds ``run_args=[]``, MAKES THIS A DATA-LOSS SHAPE: it would
+    # drop the one value that distinguishes "this agent takes no arguments" from "this file
+    # says nothing".  Give it ``is not None`` at that point rather than re-deriving why it
+    # was ever allowed to be truthy.
     if cfg.run_args:
         agent_sec["run_args"] = list(cfg.run_args)
     for k, v in cfg.state.items():
@@ -725,9 +747,9 @@ def level_table(
 
 
 def state_level(
-    state: "Mapping[str, str | None] | None", *, node: str
+    cfg: "AgentConfig | None", *, node: str
 ) -> AgentFileLevel | None:
-    """The agent file's FLAT behaviour state as a DISCRIMINATED level, or ``None`` if empty.
+    """The agent file's BEHAVIOUR as a DISCRIMINATED level, or ``None`` if it sets none.
 
     The per-agent file stores behaviour FLAT (``model`` — already per-agent), not under the
     sub-tables the cascade merges by.  The discriminator is the file's OWN node and is attached
@@ -738,16 +760,39 @@ def state_level(
     ``settings_launch._agent_state_partial`` reads the level's node — so the node a table merges
     under is no longer a second, uncross-checked argument.
 
+    ⚑⚑ IT TAKES THE RECORD, NOT :attr:`AgentConfig.state`, AND THAT IS THE ``run_args`` CASCADE
+    (`[R169]`).  ``run_args`` is a behaviour leaf the RECORD models as a field of its own
+    (:data:`_MODELED_KEYS`), so a level built from ``state`` alone dropped it and the file's argv
+    reached a launch by a SECOND route — read straight off ``AgentConfig.run_args`` at the seam
+    that builds the command line, where no ``agent.default.run_args`` could ever reach it.  Folded
+    in here, the §2d pick does the override: a per-agent value REPLACES the any-agent default, the
+    way every other ``agent.<agent>.<key> | agent.default.<key>`` row does.
+    ⚑ It rides as the stored LIST, which ``effective_behavior`` renders through
+    :func:`stored_leaf_text`; the consumer splits that string back with :func:`argv_words`.
+    ⚑⚑ THE FOLD IS ``is not None``, NEVER A TRUTHY TEST, and that is the whole reason
+    :attr:`AgentConfig.run_args` is three-state.  A present ``run_args: []`` is the user's
+    explicit "no arguments" (:func:`_render_argv` says the same of the display), so it must
+    reach the cascade and SET the key — that is how an agent OPTS OUT of
+    ``agent.default.run_args``.  A truthy test folds it in with the absent key and silently
+    hands that agent the default it wrote the empty list to refuse.
+
     ⚑⚑ AND IT IS WHERE THE FORWARD-COMPAT PASSTHROUGH CLOSES (S3, D-5's other end): an undeclared
     scalar in the file used to ride into the launch snapshot VERBATIM.  The refusal is LAUNCH-ONLY
     on purpose — ``agent list`` / ``info`` read ``cfg.state`` directly and the repair verbs never
     call :func:`load`, so a poisoned file still LISTS, still DISPLAYS, and can still be fixed;
     only starting a box on it refuses, by name.
     """
-    if not state:
+    if cfg is None:
         return None
-    _refuse_undeclared_state(state, node=node)
-    return AgentFileLevel(node, dict(state))
+    state: "Mapping[str, str | None]" = cfg.state or {}
+    if state:
+        _refuse_undeclared_state(state, node=node)
+    table: dict[str, object] = dict(state)
+    if cfg.run_args is not None:
+        table["run_args"] = list(cfg.run_args)
+    if not table:
+        return None
+    return AgentFileLevel(node, table)
 
 
 def _refuse_undeclared_state(state: "Mapping[str, str | None]", *, node: str) -> None:

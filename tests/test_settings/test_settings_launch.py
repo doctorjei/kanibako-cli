@@ -3828,7 +3828,7 @@ class TestCliLevelPrecedence:
             system_path=None, agent_path=agent_file,
             workset_path=None, box_path=None,
             agent_state=agent_file_state_level(
-                agent_file_load(agent_file).state, node="claude",
+                agent_file_load(agent_file), node="claude",
             ),
             cli_level=cli_level,
         )
@@ -3988,6 +3988,7 @@ def _agent_file_contender(key, value):
 
 # ⚑ Imported as a FUNCTION, not as the module: ``_persona_snap`` below has a
 # parameter literally named ``agent_file`` (the agent settings FILE it writes).
+from kanibako.settings.agent_config import AgentConfig  # noqa: E402
 from kanibako.settings.agent_file import (  # noqa: E402
     load as agent_file_load,
     state_level as agent_file_state_level,
@@ -4019,8 +4020,11 @@ def _persona_snap(
         ),
         box_path=_write_yaml(tmp_path / "box.yaml", box) if box else None,
         # The helper takes a plain dict and wraps it the way the production
-        # producers do (C-2): the level carries the node it merges under.
-        agent_state=agent_file_state_level(agent_state, node="claude"),
+        # producers do (C-2): the level is built from the FILE RECORD and carries
+        # the node it merges under.
+        agent_state=agent_file_state_level(
+            AgentConfig(state=dict(agent_state or {})), node="claude",
+        ),
         persona_values=persona_values,
         valid_agents=_PREF_AGENTS,
     )
@@ -4219,7 +4223,7 @@ class TestPersonaTierIsInertWhenEmpty:
             behavior_floor={"model": "opus", "allow_helpers": "true"},
             default_categories={"box.bindings.rw": {"~/": ("/h/home", "Z,U")}},
             agent_state=agent_file_state_level(
-                {"endpoint": "stored-endpoint"}, node="claude",
+                AgentConfig(state={"endpoint": "stored-endpoint"}), node="claude",
             ),
             valid_agents=_PREF_AGENTS,
             **persona_kw,
@@ -5067,3 +5071,88 @@ def test_an_absolute_secret_path_still_emits_its_mount():
     snap = KeyStore({"box": {"secret_path": {"API_KEY": "/t/api"}}})
     entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
     assert [(e.category, e.host_src) for e in entries] == [("secret_path", "/t/api")]
+
+
+# --------------------------------------------------------------------------- #
+# `[R169]` — the run_args cascade, through the door a USER actually writes      #
+# --------------------------------------------------------------------------- #
+
+
+def _run_args_launch(tmp_path, *, system_doc, file_cfg):
+    """The launch's `run_args`, read the way ``start.py``'s ``all_extra`` seam reads it.
+
+    ⚑ THROUGH A REAL SETTINGS FILE, not a hand-built floor: the rung is the same
+    ``KeyStore`` slot either way, but the claim these cases make is about what a user
+    WRITES, and only this path exercises `assemble_levels`' read of it.
+    """
+    from kanibako.settings.agent_file import argv_words
+
+    snap = build_launch_snapshot(
+        agent_name="claude",
+        ctx=_ctx(),
+        system_path=_write_yaml(tmp_path / "system.yaml", system_doc),
+        agent_path=None, workset_path=None, box_path=None,
+        behavior_floor={"model": "haiku"},
+        agent_state=agent_file_state_level(file_cfg, node="claude"),
+    )
+    state = effective_behavior(snap, active_agent="claude")
+    return argv_words(state.get("run_args", ""))
+
+
+def test_an_any_agent_run_args_in_a_settings_file_reaches_the_launch(tmp_path):
+    """`[R169]`: ``agent.default.run_args`` is a real default, read at launch.
+
+    (Mutation: drop the ``run_args`` fold from ``agent_file.state_level`` and read the
+    agent FILE record at the seam again → this stays green and the next two red, which
+    is why all three are here.)
+    """
+    assert _run_args_launch(
+        tmp_path,
+        system_doc={"agent": {"default": {"run_args": ["--a", "--b"]}}},
+        file_cfg=AgentConfig(),
+    ) == ["--a", "--b"]
+
+
+def test_a_per_agent_run_args_REPLACES_the_any_agent_default(tmp_path):
+    """§2d ``agent.<agent>.run_args | <None>   (← agent.default.run_args)``.
+
+    The active slot wins WHOLE — the §2d pick concatenates nothing.
+    (Mutation: merge the two slots instead → ``--a``/``--b`` ride along → RED.)
+    """
+    assert _run_args_launch(
+        tmp_path,
+        system_doc={"agent": {"default": {"run_args": ["--a", "--b"]},
+                              "claude": {"run_args": ["--only-mine"]}}},
+        file_cfg=AgentConfig(),
+    ) == ["--only-mine"]
+
+
+def test_an_agent_files_EMPTY_run_args_opts_that_agent_out_of_the_default(tmp_path):
+    """THE OPT-OUT, and it is a capability the record's three states exist to carry.
+
+    ``run_args: []`` in ``agents/<agent>/agent.yaml`` is the user's "no arguments" and
+    must beat a populated ``agent.default.run_args``; a file that never mentions the key
+    must let that default through (the case above).
+    (Mutation: give ``AgentConfig.run_args`` back its ``list[str] = []`` default, or fold
+    it into the level on truthiness → this agent silently gets ``--dangerous`` → RED.)
+    """
+    assert _run_args_launch(
+        tmp_path,
+        system_doc={"agent": {"default": {"run_args": ["--dangerous"]}}},
+        file_cfg=AgentConfig(run_args=[]),
+    ) == []
+
+
+def test_a_hand_written_run_args_STRING_in_a_settings_file_is_split_not_rewritten(
+    tmp_path,
+):
+    """`[R169]`: the same parser coerces a string on READ, and nobody's file is rewritten.
+
+    ⚑ ONE COERCION: the behavior table hands the argv over as the command-line string its
+    owner joined, so a stored list and a hand-written string arrive identically.
+    """
+    doc = {"agent": {"default": {"run_args": "--a --b"}}}
+    assert _run_args_launch(tmp_path, system_doc=doc, file_cfg=AgentConfig()) == [
+        "--a", "--b",
+    ]
+    assert (tmp_path / "system.yaml").read_text().count("--a --b") == 1

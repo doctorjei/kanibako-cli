@@ -119,7 +119,9 @@ class TestSecretPathSection:
 class TestLoad:
     def test_nonexistent_file_returns_defaults(self, tmp_path):
         cfg = load(tmp_path / "missing.yaml")
-        assert cfg.run_args == []
+        # ⚑ ``None``, NOT ``[]``: the record is three-state and a file that does not
+        # exist says NOTHING about the argv, which is not the same as saying "none".
+        assert cfg.run_args is None
         assert cfg.state == {}
 
     def test_load_all_sections(self, tmp_path):
@@ -193,7 +195,7 @@ class TestLoad:
         cfg_path = tmp_path / "test.yaml"
         cfg_path.write_text("")
         cfg = load(cfg_path)
-        assert cfg.run_args == []
+        assert cfg.run_args is None
         assert cfg.state == {}
 
     def test_a_stored_run_args_STRING_is_split_not_discarded(self, tmp_path):
@@ -331,7 +333,7 @@ class TestRoundTrip:
         save(path, original)
         loaded = load(path)
 
-        assert loaded.run_args == []
+        assert loaded.run_args is None
         assert loaded.state == {}
         assert loaded.env == {}
 
@@ -773,14 +775,27 @@ class TestTheArgvSHAPEIsTheFileS:
         The subject is :class:`AgentConfig`'s own annotations, not a name typed twice —
         so a field added tomorrow reds HERE, where the split is decided, instead of
         silently reaching a write route that does not split for it.
+
+        ⚑ OPTIONALITY IS STRIPPED BEFORE THE TEST, and that is the rule this pin means:
+        the question is what SHAPE the value has, never whether the field can also be
+        absent.  ``run_args`` is ``list[str] | None`` — three-state, `[R169]` — and a
+        ``startswith("list")`` read of the raw annotation stopped seeing it, which would
+        have let the set drift to empty and passed the guard vacuously (P15).
         """
         import dataclasses
 
         from kanibako.settings.agent_file import _LIST_VALUED_KEYS
 
+        def _shapes(annotation: object) -> set[str]:
+            """The value shapes an annotation admits, ``None`` not being one."""
+            return {
+                part.strip() for part in str(annotation).split("|")
+                if part.strip() != "None"
+            }
+
         list_fields = {
             f.name for f in dataclasses.fields(AgentConfig)
-            if str(f.type).startswith("list")
+            if any(shape.startswith("list") for shape in _shapes(f.type))
         }
         assert list_fields == set(_LIST_VALUED_KEYS), (
             "AgentConfig holds a list-shaped field the file's write route does not "
@@ -944,12 +959,56 @@ class TestLevelTable:
 class TestStateLevel:
     def test_empty_state_is_no_level(self):
         assert state_level(None, node="claude") is None
-        assert state_level({}, node="claude") is None
+        assert state_level(AgentConfig(), node="claude") is None
 
     def test_discriminator_attaches_at_the_boundary(self):
-        assert state_level({"model": "opus"}, node="claude") == AgentFileLevel(
+        assert state_level(
+            AgentConfig(state={"model": "opus"}), node="claude",
+        ) == AgentFileLevel(
             "claude", {"model": "opus"}
         )
+
+    def test_the_files_run_args_rides_this_level_too(self):
+        """`[R169]`: the file's argv is a CASCADE LEVEL, not a second read.
+
+        ``run_args`` is a behavior leaf the RECORD models as a field of its own, so a
+        level built from ``cfg.state`` alone dropped it — and the launch read it
+        straight off :attr:`AgentConfig.run_args`, where no ``agent.default.run_args``
+        could ever reach it.  ⚑ The stored LIST rides; the display join happens at
+        ``effective_behavior``, not here.
+
+        (Mutation: build the table from ``cfg.state`` alone again → the key is absent
+        from the level → RED.)
+        """
+        level = state_level(
+            AgentConfig(state={"model": "opus"}, run_args=["--a", "--b"]),
+            node="claude",
+        )
+        assert level == AgentFileLevel(
+            "claude", {"model": "opus", "run_args": ["--a", "--b"]},
+        )
+        # A file whose ONLY override is the argv is still a level — the empty-state
+        # early return must not swallow it.
+        assert state_level(
+            AgentConfig(run_args=["--a"]), node="claude",
+        ) == AgentFileLevel("claude", {"run_args": ["--a"]})
+
+    def test_an_ABSENT_run_args_sets_nothing_and_an_EXPLICIT_EMPTY_ONE_OPTS_OUT(self):
+        """The two halves of the three-state record, and the difference is a capability.
+
+        A file that never mentions ``run_args`` must leave ``agent.default.run_args``
+        alone; a file that says ``run_args: []`` must SET the key, which is how an agent
+        opts OUT of that default.  The fold is ``is not None`` for exactly this pair.
+
+        (Mutation: fold on truthiness instead → the explicit empty stops setting the key,
+        the agent silently receives the default it wrote the empty list to refuse → RED.)
+        """
+        absent = state_level(AgentConfig(state={"model": "opus"}), node="claude")
+        assert absent is not None and "run_args" not in absent.table
+        assert state_level(AgentConfig(), node="claude") is None
+
+        opted_out = state_level(AgentConfig(run_args=[]), node="claude")
+        assert opted_out == AgentFileLevel("claude", {"run_args": []})
 
 
 class TestTheForwardCompatPassthroughIsClosed:
@@ -963,7 +1022,7 @@ class TestTheForwardCompatPassthroughIsClosed:
 
     def test_an_undeclared_scalar_refuses_the_launch_by_name(self):
         with pytest.raises(SettingsError) as exc:
-            state_level({"model": "opus", "junk": "x"}, node="claude")
+            state_level(AgentConfig(state={"model": "opus", "junk": "x"}), node="claude")
         message = str(exc.value)
         assert "'junk'" in message
         assert "agents/claude/agent.yaml" in message
@@ -975,7 +1034,7 @@ class TestTheForwardCompatPassthroughIsClosed:
         # ``self.model:`` root leaf is a scalar the loader sweeps into state — and it stops
         # here rather than becoming ``agent.claude.self.model`` in the snapshot.
         with pytest.raises(SettingsError, match=r"self\.model"):
-            state_level({"self.model": "opus"}, node="claude")
+            state_level(AgentConfig(state={"self.model": "opus"}), node="claude")
 
     def test_every_core_declared_leaf_still_launches(self):
         # The CONTROL. A refusal that also refused the real keys would be caught by the
@@ -985,7 +1044,7 @@ class TestTheForwardCompatPassthroughIsClosed:
             "allow_helpers": "true", "continue_mode": "true", "bootstrap": "x",
             "template": "t", "canon": "c", "transform": "tweakcc",
         }
-        assert state_level(state, node="claude").table == state
+        assert state_level(AgentConfig(state=state), node="claude").table == state
 
     def test_a_plugin_declared_leaf_still_launches(self):
         """THE POSITIVE CONTROL, and the mutation proof for the per-agent vocabulary.
@@ -1005,7 +1064,9 @@ class TestTheForwardCompatPassthroughIsClosed:
         leaves = default_valid_agents().leaf_map.get("goose", ())
         if "provider" not in leaves:
             pytest.skip("the goose plugin does not declare 'provider' in this environment")
-        assert state_level({"provider": "ollama"}, node="goose").table == {
+        assert state_level(
+            AgentConfig(state={"provider": "ollama"}), node="goose",
+        ).table == {
             "provider": "ollama",
         }
 

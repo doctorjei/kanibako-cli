@@ -61,6 +61,7 @@ from kanibako.settings.settings_keyspace import (
     is_valid_agent_segment,
     key_validity,
     unread_harnesses,
+    valid_agent_segments,
 )
 from kanibako.settings.settings_resolve import SettingsError
 
@@ -358,9 +359,10 @@ def allowlist_reason(
     """FILTER 2 — is the target requestable IN PRINCIPLE? (spec §2h)
 
     Membership alone is NOT sufficient (filter 3 still applies). The agent
-    segment of ``agent.*.**`` is INVALID unless it names a valid agent or
-    ``default`` — and the test is *is it a VALID agent*, NOT *is it the ACTIVE
-    agent*, so pre-configuring an agent you may switch to is legal.
+    segment of ``agent.*.**`` is INVALID unless it names a valid agent or a
+    reserved PSEUDO-AGENT tier (:func:`~kanibako.settings.settings_keyspace.
+    is_valid_agent_segment`) — and the test is *is it a VALID agent*, NOT *is it
+    the ACTIVE agent*, so pre-configuring an agent you may switch to is legal.
     """
     for pattern in allowlist:
         if not glob_match(pattern, target):
@@ -379,7 +381,7 @@ def allowlist_reason(
                         f"be read. Check the kanibako install (run 'kanibako "
                         f"system diagnose'); the request itself may be fine"
                     )
-                known = ", ".join(sorted({*valid_agents, "default"}))
+                known = ", ".join(valid_agent_segments(valid_agents))
                 return (
                     f"it names agent '{name}', which is not a valid agent "
                     f"(valid: {known}). A pref MAY pre-configure an agent this "

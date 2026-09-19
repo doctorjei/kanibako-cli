@@ -335,7 +335,7 @@ class TestGenerateAgentConfig:
         # ``label`` row in its defaults file instead — ``agent.<agent>.label``, spec §2d.
         t = SimpleTarget()
         cfg = t.generate_agent_config()
-        assert cfg.run_args == []
+        assert cfg.run_args is None
         assert cfg.state == {}
 
 

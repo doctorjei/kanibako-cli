@@ -611,7 +611,10 @@ class TestGenerateAgentConfig:
         # tier); seeding either would pin the install above the floor and freeze
         # the default forever.
         assert cfg.state == {}
-        assert cfg.run_args == []
+        # ⚑ ``None``, the ABSENT state: a generated file says nothing about the argv, so
+        # the any-agent ``agent.default.run_args`` still reaches this agent's launch. An
+        # explicit ``[]`` here would seed an OPT-OUT into every new claude store (`[R169]`).
+        assert cfg.run_args is None
         assert cfg.env == {}
 
     def test_the_description_is_a_DECLARED_KEY_not_a_file_field(self):

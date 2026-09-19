@@ -38,7 +38,7 @@ class TestNoAgentTarget:
         # ``name="Shell"`` this used to carry was not a settings key.  ``no_agent``
         # declares no ``label`` either, so it reads the all-agents ``agent.default.label``.
         cfg = self.target.generate_agent_config()
-        assert cfg.run_args == []
+        assert cfg.run_args is None
         assert cfg.state == {}
 
 

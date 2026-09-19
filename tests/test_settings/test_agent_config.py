@@ -28,7 +28,9 @@ class TestAgentConfigDefaults:
         # ⚑ NO ``name`` FIELD — it was not a keyspace leaf and is retired (D8b);
         # ``agent.<agent>.label`` carries an agent's description now.
         assert not hasattr(cfg, "name")
-        assert cfg.run_args == []
+        # ⚑ THREE-STATE: the DEFAULT is "this file says nothing", which is ``None`` —
+        # an explicit ``[]`` is the user's "no arguments" and must be distinguishable.
+        assert cfg.run_args is None
         assert cfg.state == {}
         assert cfg.env == {}
         assert cfg.secret_path == {}
