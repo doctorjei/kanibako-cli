@@ -12,6 +12,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`box create --agent` with a blank value is now refused instead of silently ignored.** The create
+  path asked two different questions about whether `--agent` had been given: the persona-store check
+  tested the flag for truthiness, while the `pref.system.agent` persist tested it after stripping
+  whitespace. An empty value was false to both, so `kanibako box create --agent ""` built the box
+  without a word, steering whatever agent the settings cascade resolved rather than the one the
+  caller's variable failed to supply. A value you type is now *given* whatever it contains, and the
+  agent-ref grammar validates it: `--agent ""` and `--agent "  "` both stop at `Error: agent ref is
+  empty` with exit status 1, before any box directory, journal entry or seed exists.
+  `--agent "  claude  "` still works and is still stored as `claude` — the ref is stripped once,
+  where it is validated, instead of by whichever consumer happened to strip it. A script passing
+  `--agent "$VAR"` with an unset `VAR` now stops rather than creating a box for an agent nobody
+  asked for.
+
+- **A box that is not running is no longer refused with "A box is already running for this
+  project".** When a box's PID 1 dies without the CLI surviving to clean up — a crash, a closed
+  terminal, a reboot — its container is left behind in the `Exited` state, still holding the box's
+  name. `kanibako list` reported that box as `stopped` and `kanibako ps` omitted it entirely —
+  both correctly — but the launch guard asked a different question: it checked only whether
+  a container *existed*, in any state, and then announced that one was *running*. Every cure
+  that message named was wrong there — there is nothing to reattach to, and `--restart` no-ops
+  on a box that is already down — so
+  `kanibako shell` stayed locked out until you happened to run `kanibako stop`, which removes an
+  exited container as a side effect. The guard now reads liveness as well as existence. A live box
+  gets the same refusal and the same three cures as before; an exited container gets a message that
+  says the box is not running and points at `kanibako stop <box>`, the command that clears it. The
+  refusal itself is unchanged in both cases — the name is taken either way, and a launch under it
+  would otherwise fail deeper, out of `podman run`, as a name clash.
+
 - **The pseudo-agent names `default` and `shell` are now refused to an agent, a persona and a
   harness.** Both belong to the keyspace: `default` is the all-agents fallback tier
   (`agent.default.*`) and `shell` is the plain-shell box, and each owns an `agent.<name>.*` cascade

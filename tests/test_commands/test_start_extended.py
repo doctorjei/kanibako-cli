@@ -1423,12 +1423,18 @@ class TestNoConversationHint:
 
 
 class TestInteractivePersistentGuard:
-    """Interactive mode rejects launch when a container already exists."""
+    """Interactive mode rejects launch when a container already exists.
+
+    ⚑ EXISTENCE is the refusal's condition and it stays that way — the launch
+    creates the container BY NAME, so an exited one blocks it just as hard as a
+    live one.  LIVENESS only picks which true sentence is printed.
+    """
 
     def test_existing_container_blocks_interactive(self, start_mocks, capsys):
         """If a container exists, interactive start returns 1 with a message."""
         with start_mocks() as m:
             m.runtime.container_exists.return_value = True
+            m.runtime.is_running.return_value = True
             rc = _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
                 new_session=False, safe_mode=False, resume_mode=False,
@@ -1439,6 +1445,31 @@ class TestInteractivePersistentGuard:
         captured = capsys.readouterr()
         assert "already running" in captured.err.lower()
         assert "kanibako start" in captured.err
+
+    def test_exited_container_blocks_without_claiming_it_runs(
+        self, start_mocks, capsys,
+    ):
+        """🐞 REGRESSION, observed on ``droste`` 2026-09-08: an EXITED container
+        (exists, not running) was refused with "A box is already running for this
+        project" — ``kanibako list`` reported that box as ``stopped`` and ``kanibako ps``
+        omitted it entirely, both correctly.  Every cure that message named was wrong
+        there, so a dead box was a permanent lockout.  The refusal is KEPT (the name is
+        still taken); only
+        the claim is corrected, and it names the cure that works."""
+        with start_mocks() as m:
+            m.runtime.container_exists.return_value = True
+            m.runtime.is_running.return_value = False
+            rc = _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[],
+            )
+            assert rc == 1
+            m.runtime.run.assert_not_called()
+        err = capsys.readouterr().err
+        assert "already running" not in err.lower()
+        assert "is not running" in err
+        assert "kanibako stop testproject" in err
 
     def test_no_container_proceeds_normally(self, start_mocks):
         """When no container exists, interactive mode proceeds."""

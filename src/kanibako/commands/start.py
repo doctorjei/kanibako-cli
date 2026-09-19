@@ -3233,7 +3233,13 @@ def _run_container(
         # running for this project AND we're in shell mode (entrypoint set,
         # no agent), exec into it instead of erroring — matches the natural
         # UX of `kanibako shell <name> -- cmd` against a live container.
-        if runtime.is_running(container_name) and entrypoint is not None:
+        #
+        # ⚑⚑ LIVENESS AND EXISTENCE ARE TWO QUESTIONS, AND THIS SEAM ASKS BOTH
+        # — ONE READING EACH.  ``is_running`` is taken ONCE here and reused by
+        # the refusal below, so the exec door and the refusal can never be
+        # decided from two readings that disagree across the gap.
+        box_is_live = runtime.is_running(container_name)
+        if box_is_live and entrypoint is not None:
             exec_cmd = [entrypoint] + (extra_args or [])
             # Apply per-run -e/--env vars to the exec'd process. The container's
             # baseline env (the collapsed `<scope>.env.<VAR>` slots — KANIBAKO_NAME
@@ -3245,16 +3251,44 @@ def _run_container(
                 container_name, exec_cmd, env=cli_env_values
             )
         if runtime.container_exists(container_name):
-            # Where an --ephemeral / shell launch meets a live box.  It is the
-            # same "cannot be integrated into a running box" wall the override
-            # gate puts up, so it names the same cures.
-            print(
-                "Error: A box is already running for this project.\n"
-                "  Reattach:  kanibako start\n"
-                "  Restart:   kanibako --restart\n"
-                "  Stop it:   kanibako stop",
-                file=sys.stderr,
-            )
+            # EXISTENCE is what blocks the launch, and it is deliberately the
+            # condition above: ``runtime.run`` creates the container BY NAME, so
+            # any container already holding the name — running or exited — makes
+            # a fresh launch impossible.  Do not narrow this to ``is_running``;
+            # the refusal would vanish and the clash would resurface much deeper,
+            # out of ``podman run``, as "name already in use".
+            #
+            # 🛑 LIVENESS is a DIFFERENT question, and it picks the SENTENCE.
+            # Answering the existence question with the liveness claim is what
+            # made an EXITED container a permanent lockout: ``kanibako list``
+            # reported that box as ``stopped`` and ``kanibako ps`` omitted it
+            # entirely — both correctly — but every cure the live sentence
+            # names is a no-op on a box that is already down.
+            if box_is_live:
+                # Where an --ephemeral / shell launch meets a live box.  It is
+                # the same "cannot be integrated into a running box" wall the
+                # override gate puts up, so it names the same cures.
+                print(
+                    "Error: A box is already running for this project.\n"
+                    "  Reattach:  kanibako start\n"
+                    "  Restart:   kanibako --restart\n"
+                    "  Stop it:   kanibako stop",
+                    file=sys.stderr,
+                )
+            else:
+                # ⚑ ``kanibako stop`` is named because it is the cure that
+                # WORKS: it removes an exited container (``stop._stop_one``
+                # falls through to ``rm``) even though there was nothing to
+                # stop.  A container left behind by a box whose PID 1 died —
+                # crash, killed terminal, reboot — lands exactly here.
+                print(
+                    "Error: This project's box is not running, but a stopped "
+                    f"container is still holding its name ({container_name}), "
+                    "which blocks a new launch.\n"
+                    f"  Clear it:  kanibako stop {proj.name}\n"
+                    "  Then run your command again.",
+                    file=sys.stderr,
+                )
             return 1
 
     # Concurrency lock (skip for persistent — container existence is the lock)
