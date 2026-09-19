@@ -35,6 +35,7 @@ _DOT_HINT = "; '.' is reserved as settings key-path separator and cannot appear 
 # ⚑ NOT the same rule as ``settings.config_dest.check_agent_node``'s ``default`` arm — that
 # one refuses a settings ROUTE & carries the any-agent tier's own cure.  It short-circuits on
 # ``default`` before reaching this parser, so that message is unchanged.
+# ⚑ WIDENING THIS SET obliges a matching entry in ``kinemata.toml``'s ``reserved-agent-names``.
 PSEUDO_AGENT_NAMES = frozenset({"default", "shell"})
 
 
