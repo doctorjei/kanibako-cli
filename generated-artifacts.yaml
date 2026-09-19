@@ -1,0 +1,183 @@
+# THE GENERATED API-DOC ARTIFACTS THIS REPOSITORY DECLARES.
+#
+# One row per `api-docs/<mirror>.md`, and the row is the whole claim: this
+# artifact is declared to exist and to be CURRENT with the module it mirrors.
+# The rows carry no value, because membership is the entire question -- what a
+# doc SAYS is settled by regenerating it, not by a cell here.
+#
+# 🛑 THIS IS NOT A CONFIG. It is a registry SOURCE, read by the
+# `api-doc-artifacts` [[registry]] in `kinemata.toml`, which is still the one
+# config in this repository. Nothing passes this file to `kinemata -c`, and
+# kinemata would refuse it if anything did. It is named for its contents rather
+# than for the tool that reads them, following
+# `src/kanibako/data/keyspace-manifest.yaml`.
+#
+# 🛑 IT IS HAND-MAINTAINED, AND THAT IS THE POINT. A list derived from the
+# `api-docs/` tree would compare that tree with itself: an artifact DELETED
+# outright would leave both sides at once and report nothing. A declaration the
+# tree is checked against catches the deletion as `declared, produced by
+# nothing`, which is the same finding staleness produces and wants the same
+# reading -- go and look at the artifact. Measured, not reasoned: control 3 in
+# the `[[parity]]` note.
+#
+# ⇒ ADDING A MODULE UNDER `src/` OR `packages/*/src/` OWES A ROW HERE. Until it
+# has one, `kinemata parity` reports the new artifact as `produced, declared by
+# nothing`. Removing a module owes the row's removal. Neither is busywork: the
+# closed-world half is what makes this a declaration rather than a file listing.
+#
+# ⚑ THE MIRROR RULE, so a row can be written by hand: everything up to and
+# including the first `src` component is dropped, and `.md` is appended.
+#   src/kanibako/settings/paths.py                 -> api-docs/kanibako/settings/paths.py.md
+#   packages/agent-claude/src/kanibako/plugins/... -> api-docs/kanibako/plugins/claude/target.py.md
+# `build/`, `tests/` and `data/base/canon/` are not API surface and mirror
+# nothing; `scripts/gen-api-doc.py`'s SCOPE section states that list and owns it.
+#
+# ⚑ REGENERATE THE ROWS, never retype them:
+#   scripts/gen-api-doc.py --list-unchanged | sed 's/^/  /; s/$/:/'
+# It prints the CURRENT artifacts, so run it on a tree `--check --all` calls
+# clean or the output is a shorter list that looks like a declaration.
+#
+# ⚑ SORTED BY THE GENERATOR'S OWN ORDER (`discover()`, sorted source paths), so
+# a regenerated list and this file diff cleanly. 139 rows, 2026-09-19, against a
+# tree reading `139 modules: 0 new, 0 changed, 139 unchanged (0 stale/missing)`.
+
+artifacts:
+  api-docs/kanibako/plugins/claude/__init__.py.md:
+  api-docs/kanibako/plugins/claude/credentials.py.md:
+  api-docs/kanibako/plugins/claude/target.py.md:
+  api-docs/kanibako/plugins/codex/__init__.py.md:
+  api-docs/kanibako/plugins/codex/target.py.md:
+  api-docs/kanibako/plugins/goose/__init__.py.md:
+  api-docs/kanibako/plugins/goose/credentials.py.md:
+  api-docs/kanibako/plugins/goose/target.py.md:
+  api-docs/kanibako/__init__.py.md:
+  api-docs/kanibako/__main__.py.md:
+  api-docs/kanibako/_atomic.py.md:
+  api-docs/kanibako/agent_ref.py.md:
+  api-docs/kanibako/auth_browser.py.md:
+  api-docs/kanibako/auth_parser.py.md:
+  api-docs/kanibako/box_lifecycle.py.md:
+  api-docs/kanibako/box_supervisor.py.md:
+  api-docs/kanibako/browser_sidecar.py.md:
+  api-docs/kanibako/browser_state.py.md:
+  api-docs/kanibako/bun_sea.py.md:
+  api-docs/kanibako/channels/__init__.py.md:
+  api-docs/kanibako/channels/channels.py.md:
+  api-docs/kanibako/channels/helper_client.py.md:
+  api-docs/kanibako/channels/helper_listener.py.md:
+  api-docs/kanibako/channels/helpers.py.md:
+  api-docs/kanibako/cli.py.md:
+  api-docs/kanibako/commands/__init__.py.md:
+  api-docs/kanibako/commands/agent_cmd.py.md:
+  api-docs/kanibako/commands/archive.py.md:
+  api-docs/kanibako/commands/baseline_cmd.py.md:
+  api-docs/kanibako/commands/box/__init__.py.md:
+  api-docs/kanibako/commands/box/_duplicate.py.md:
+  api-docs/kanibako/commands/box/_lifecycle.py.md:
+  api-docs/kanibako/commands/box/_parser.py.md:
+  api-docs/kanibako/commands/clean.py.md:
+  api-docs/kanibako/commands/code_cmd.py.md:
+  api-docs/kanibako/commands/diagnose.py.md:
+  api-docs/kanibako/commands/flags.py.md:
+  api-docs/kanibako/commands/fork_cmd.py.md:
+  api-docs/kanibako/commands/helper_cmd.py.md:
+  api-docs/kanibako/commands/image.py.md:
+  api-docs/kanibako/commands/install.py.md:
+  api-docs/kanibako/commands/restore.py.md:
+  api-docs/kanibako/commands/setup_cmd.py.md:
+  api-docs/kanibako/commands/start.py.md:
+  api-docs/kanibako/commands/stop.py.md:
+  api-docs/kanibako/commands/system_cmd.py.md:
+  api-docs/kanibako/commands/upgrade.py.md:
+  api-docs/kanibako/commands/vault_cmd.py.md:
+  api-docs/kanibako/commands/workset_cmd.py.md:
+  api-docs/kanibako/containers/__init__.py.md:
+  api-docs/kanibako/data/__init__.py.md:
+  api-docs/kanibako/errors.py.md:
+  api-docs/kanibako/git.py.md:
+  api-docs/kanibako/install_method.py.md:
+  api-docs/kanibako/kuid.py.md:
+  api-docs/kanibako/launch/__init__.py.md:
+  api-docs/kanibako/launch/box_identity.py.md:
+  api-docs/kanibako/launch/box_resolve.py.md:
+  api-docs/kanibako/launch/creds_watcher.py.md:
+  api-docs/kanibako/launch/hygiene.py.md:
+  api-docs/kanibako/launch/journal.py.md:
+  api-docs/kanibako/launch/shells.py.md:
+  api-docs/kanibako/launch/templates.py.md:
+  api-docs/kanibako/log.py.md:
+  api-docs/kanibako/persona_store.py.md:
+  api-docs/kanibako/plugins/__init__.py.md:
+  api-docs/kanibako/project/__init__.py.md:
+  api-docs/kanibako/project/import_reconcile.py.md:
+  api-docs/kanibako/project/names.py.md:
+  api-docs/kanibako/project/registry_store.py.md:
+  api-docs/kanibako/project/workset.py.md:
+  api-docs/kanibako/project/workset_registry.py.md:
+  api-docs/kanibako/proxy/__init__.py.md:
+  api-docs/kanibako/proxy/server.py.md:
+  api-docs/kanibako/proxy/sse.py.md:
+  api-docs/kanibako/runtime/__init__.py.md:
+  api-docs/kanibako/runtime/baseline.py.md:
+  api-docs/kanibako/runtime/container.py.md:
+  api-docs/kanibako/runtime/containerfiles.py.md:
+  api-docs/kanibako/runtime/freshness.py.md:
+  api-docs/kanibako/runtime/image_sharing.py.md:
+  api-docs/kanibako/runtime/registry.py.md:
+  api-docs/kanibako/runtime/rig_bundle.py.md:
+  api-docs/kanibako/runtime/rig_meta.py.md:
+  api-docs/kanibako/runtime/rig_registry.py.md:
+  api-docs/kanibako/runtime/rig_resolve.py.md:
+  api-docs/kanibako/runtime/rig_source.py.md:
+  api-docs/kanibako/runtime/templates_image.py.md:
+  api-docs/kanibako/scripts/__init__.py.md:
+  api-docs/kanibako/scripts/import-directives.py.md:
+  api-docs/kanibako/settings/__init__.py.md:
+  api-docs/kanibako/settings/agent_config.py.md:
+  api-docs/kanibako/settings/agent_defaults.py.md:
+  api-docs/kanibako/settings/agent_file.py.md:
+  api-docs/kanibako/settings/agent_representation.py.md:
+  api-docs/kanibako/settings/agent_select.py.md:
+  api-docs/kanibako/settings/bootstrap.py.md:
+  api-docs/kanibako/settings/config.py.md:
+  api-docs/kanibako/settings/config_dest.py.md:
+  api-docs/kanibako/settings/config_display.py.md:
+  api-docs/kanibako/settings/config_interface.py.md:
+  api-docs/kanibako/settings/config_io.py.md:
+  api-docs/kanibako/settings/config_keys.py.md:
+  api-docs/kanibako/settings/core_defaults.py.md:
+  api-docs/kanibako/settings/defaults_inventory.py.md:
+  api-docs/kanibako/settings/kb_store.py.md:
+  api-docs/kanibako/settings/keyspace_manifest.py.md:
+  api-docs/kanibako/settings/keystore.py.md:
+  api-docs/kanibako/settings/keystore_strings.py.md:
+  api-docs/kanibako/settings/messages.py.md:
+  api-docs/kanibako/settings/paths.py.md:
+  api-docs/kanibako/settings/settings_assemble.py.md:
+  api-docs/kanibako/settings/settings_categories.py.md:
+  api-docs/kanibako/settings/settings_cli_level.py.md:
+  api-docs/kanibako/settings/settings_configset.py.md:
+  api-docs/kanibako/settings/settings_expand.py.md:
+  api-docs/kanibako/settings/settings_keyspace.py.md:
+  api-docs/kanibako/settings/settings_keyspace_probe.py.md:
+  api-docs/kanibako/settings/settings_launch.py.md:
+  api-docs/kanibako/settings/settings_merge.py.md:
+  api-docs/kanibako/settings/settings_prefs.py.md:
+  api-docs/kanibako/settings/settings_resolve.py.md:
+  api-docs/kanibako/settings/settings_views.py.md:
+  api-docs/kanibako/settings/store_collapse.py.md:
+  api-docs/kanibako/settings/store_shape.py.md:
+  api-docs/kanibako/settings/workset_dirkeys.py.md:
+  api-docs/kanibako/snapshots.py.md:
+  api-docs/kanibako/targets/__init__.py.md:
+  api-docs/kanibako/targets/assembly.py.md:
+  api-docs/kanibako/targets/base.py.md:
+  api-docs/kanibako/targets/credsync.py.md:
+  api-docs/kanibako/targets/no_agent.py.md:
+  api-docs/kanibako/tweakcc.py.md:
+  api-docs/kanibako/tweakcc_cache.py.md:
+  api-docs/kanibako/utils.py.md:
+  api-docs/kanibako/vscode/__init__.py.md:
+  api-docs/kanibako/vscode/vscode_config.py.md:
+  api-docs/kanibako/vscode/vscode_remote.py.md:
+  api-docs/kinemata_views.py.md:
