@@ -58,7 +58,9 @@ def run(args: argparse.Namespace) -> int:
     return _stop_one(runtime, project_dir=subject)
 
 
-def _writeback_on_stop(runtime, proj, container_name: str, *, std, config) -> None:
+def _writeback_on_stop(
+    runtime, proj, container_name: str, *, std, config, box_is_live: bool,
+) -> None:
     """Run project -> host credential writeback for a box about to be stopped.
 
     Sources the box's agent from its ``KANIBAKO_AGENT`` launch stamp (set on the
@@ -67,12 +69,19 @@ def _writeback_on_stop(runtime, proj, container_name: str, *, std, config) -> No
     Best-effort: a stop must succeed even if writeback can't run (e.g. no stamp,
     no agent, container already gone).
 
+    ⚑ ``box_is_live`` is the caller's SINGLE ``is_running`` reading (P10), not a
+    convenience: :func:`_stop_one` needs the same fact to pick its sentence, and
+    two readings taken across the gap could disagree — writing back from a box
+    the message then calls stopped, or the reverse.  Only a LIVE box is written
+    back from; the box's home is a host mount, so the creds are readable while
+    the container is still up.
+
     Auth 3-tier SHARING: the writeback tier/source is the resolved AuthSource,
     resolved through the auth chain (single-route, the same launch-snapshot
     pipeline ``start`` uses) for the box's stamped agent — a PRIVATE box keeps its
     creds project-local and they are NOT written back.
     """
-    if not runtime.is_running(container_name):
+    if not box_is_live:
         return
     agent = runtime.inspect_env(container_name, "KANIBAKO_AGENT")
     if not agent:
@@ -129,18 +138,40 @@ def _stop_one(runtime: ContainerRuntime, *, project_dir: str | None) -> int:
 
     lock_file = proj.metadata_path / ".kanibako.lock"
 
+    # ⚑⚑ ONE LIVENESS READING, TAKEN BEFORE ANYTHING CHANGES IT, SERVING BOTH
+    # DECISIONS — the writeback below and the sentence printed further down.
+    # Same shape and same call count as the launch guard in ``start.py``.
+    box_is_live = runtime.is_running(container_name)
+
     # FIX 1: writeback BEFORE stopping — an in-box login must reach the host on
-    # `kanibako stop` too.  The box's home is a host mount, so creds are readable
-    # while the container is still up.  Source the box's agent from its launch
-    # stamp (KANIBAKO_AGENT) so we know which plugin's cred lifecycle to run; a
-    # box launched before stamping (or a no-agent box) has no stamp -> skip.
-    _writeback_on_stop(runtime, proj, container_name, std=std, config=config)
+    # `kanibako stop` too.  Source the box's agent from its launch stamp
+    # (KANIBAKO_AGENT) so we know which plugin's cred lifecycle to run; a box
+    # launched before stamping (or a no-agent box) has no stamp -> skip.
+    _writeback_on_stop(
+        runtime, proj, container_name,
+        std=std, config=config, box_is_live=box_is_live,
+    )
 
     if runtime.stop(container_name):
-        print(f"Stopped {container_name}")
         # Clean up stopped container (persistent containers lack --rm)
         if runtime.container_exists(container_name):
             runtime.rm(container_name)
+        # 🛑 RC 0 IS NOT LIVENESS.  ``runtime.stop`` returns the runtime's exit
+        # status, and ``podman stop`` exits 0 on a container that is ALREADY
+        # EXITED — so this arm is reached both when a live box was really
+        # stopped and when there was nothing running to stop.  Printing
+        # "Stopped" for both told a user who had just been told the box was
+        # not running that we had stopped it one command later.  The ACTION is
+        # right either way — both arms reach ``container_exists`` -> ``rm``,
+        # which is what clears the orphan and unblocks the next launch — so
+        # only the SENTENCE branches, on the reading hoisted above.
+        # ⚑ The removal sentence is safe to print unconditionally in this arm:
+        # rc 0 means the runtime FOUND the container (podman and docker both
+        # fail a stop on a name that is not there), so the ``rm`` above ran.
+        if box_is_live:
+            print(f"Stopped {container_name}")
+        else:
+            print(f"Removed stopped container: {container_name}")
     else:
         print(f"No running container found for this project ({container_name})")
         # Clean up stopped persistent container if it exists

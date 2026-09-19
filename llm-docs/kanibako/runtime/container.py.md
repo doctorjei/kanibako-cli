@@ -570,7 +570,9 @@ True if a container exists, running or stopped.
 ```python
 ContainerRuntime.stop(name: str) -> bool
 ```
-Stop a running container by name; True if stopped.
+Ask the runtime to stop *name*; True on exit status 0. **Not a liveness reading:** `podman stop`
+exits 0 on an already-exited container, so True means the runtime found it and it is now down,
+never that it was up. Take liveness from `is_running` first.
 
 ```python
 ContainerRuntime.rm(name: str) -> bool
