@@ -310,7 +310,7 @@ box's non-credential config comes from the agent's curated template
 ### `name` / `display_name` (properties, abstract)
 
 `name` is the short machine-readable identifier (`"codex"`, `"goose"`), used in
-configuration (`box.agent=codex`) and entry-point registration; it must be
+configuration (`pref.system.agent=codex`) and entry-point registration; it must be
 unique, and it must not be `default` or `shell`.  Those two are the
 pseudo-agent names, reserved by the keyspec to any agent, persona or harness; a
 target claiming either is **skipped at discovery** with a warning to stderr, so
@@ -570,7 +570,7 @@ entirely (a plain shell with no agent binary or credentials).
 Select a target for a box explicitly:
 
 ```bash
-kanibako box set box.agent=myagent
+kanibako box set pref.system.agent=myagent
 ```
 
 ## Packaging

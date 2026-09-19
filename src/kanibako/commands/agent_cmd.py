@@ -740,7 +740,8 @@ def _show_agent_config(
 
     has_output = False
 
-    # The §2d description + the identity keys the file models as fields of its own.
+    # The §2d description + ``run_args``, the one launch-invocation value the file
+    # models as a field of its own.
     print(f"  label = {label}")
     if cfg.run_args:
         # ⚑ THE COMMAND-LINE SPELLING, not the list's Python repr: this line used to
