@@ -34,7 +34,7 @@ def parse_bind_map(raw: Any, *, category: str='bindings', root_ref: str | None=N
 def dotted_partial(floor: dict[str, object] | None) -> KeyStore
 def assemble_levels(*, agent_name: str, base_path: Path | None=None, system_path: Path | None=None, agent_path: Path | None=None, workset_path: Path | None=None, box_path: Path | None=None, floor: dict[str, object] | None=None) -> list[KeyStore]
 def _declaration_root_ref(path: tuple[str, ...], category: str) -> str | None
-def _stored_spelling(value: Any) -> str
+def _stored_spelling(raw: Any) -> str
 def _cure_assignment(sub: str, value: Any) -> str
 def _cure_subject(level: str, box_name: str | None) -> str
 def _retired_mirror_cure(*, level: str, box_name: str | None, table: 'dict[Any, Any]') -> str

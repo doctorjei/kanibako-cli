@@ -95,6 +95,7 @@ artifacts:
   api-docs/kanibako/data/__init__.py.md:
   api-docs/kanibako/errors.py.md:
   api-docs/kanibako/git.py.md:
+  api-docs/kanibako/identifiers.py.md:
   api-docs/kanibako/install_method.py.md:
   api-docs/kanibako/kuid.py.md:
   api-docs/kanibako/launch/__init__.py.md:

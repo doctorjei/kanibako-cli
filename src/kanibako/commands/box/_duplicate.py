@@ -484,15 +484,14 @@ def _duplicate_to_workset(args, std, config) -> int:
         print("Error: source is already a workset project.", file=sys.stderr)
         return 1
 
-    # R2: every box name is lowercase — fold a user-supplied --name, and also
-    # lowercase the basename-derived default for a consistent invariant.
-    proj_name = (getattr(args, "project_name", None) or source_path.name).lower()
+    # ⚑ Stored as typed (spec §0): the user's ``--name``, else the source directory's
+    # own basename — whose case is the user's too, and is never folded on its way here.
+    proj_name = getattr(args, "project_name", None) or source_path.name
 
     # Validate name not taken — case-blind (spec §0), reporting the member as STORED.
     # ⚑ NOT reachable by the registry-lookup guard in
     # ``tests/test_identifier_case_enforcement.py``: this is an ``==`` inside a loop over
     # already-loaded members, not a lookup into a registry, so no detector sees it.
-    # Found by reading the site the entry fold above feeds.
     held = find_identifier(proj_name, (p.name for p in ws.projects))
     if held is not None:
         print(f"Error: project '{held}' already exists in workset '{ws_name}'.", file=sys.stderr)

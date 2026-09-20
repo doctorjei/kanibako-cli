@@ -71,43 +71,25 @@ _NAME_SECTIONS = frozenset({"worksets", "standalone", "deregistered", "boxes"})
 
 #: Variable spellings that hold a kanibako identifier.  Folding one by hand is the
 #: retired entry fold, wherever it appears.
+#:
+#: ⚑ ``supplied`` and ``leaf`` are the standalone door's two: ``supplied`` is a whole
+#: box name as the user typed it, and ``leaf`` is the case-CARRYING half of one
+#: (``<kuid>_<leaf>``, the source directory's basename).  ``sanitize_cap`` folded that
+#: leaf until Phase 2, which is the retired cure by another variable name.
 _IDENTIFIER_VARS = frozenset({
     "name", "value", "target", "ws_name", "box_name", "proj_name",
-    "cand", "candidate", "agent_name", "workset_name",
+    "cand", "candidate", "agent_name", "workset_name", "supplied", "leaf",
 })
 
 _FOLDS = frozenset({"lower", "casefold"})
 
-#: ⚑ THE ENTRY FOLD — ``args.name = args.name.lower()`` and its ``_lower_name`` twin.
-#: These are the retired ``[R171]`` cure itself, still live because removing them is a
-#: STORAGE change (Phase 2 of the identifier-case plan) and this phase changes nothing
-#: about what is stored.
-#:
-#: 🛑 NOT AN EXEMPTION LIST, and it must never become one.
-#:
-#: ⚑ **COUNTS, NOT A FILE SET, AND THE DIFFERENCE IS THE WHOLE CONSTRUCT.**  A bare set
-#: of PATHS skips the whole file, so it grants each named file an UNBOUNDED licence to
-#: fold — which is exactly what it claims not to do, and it had already let a second fold
-#: into ``_lifecycle.py`` unseen.  The count is asserted EQUAL in both directions by
-#: :meth:`TestNobodyFoldsAnIdentifierByHand.test_the_entry_fold_is_exactly_what_is_declared`:
-#: a NEW fold in one of these files reds it, and so does REMOVING one.
-#:
-#: When Phase 2 deletes the entry fold, that test reds, and the cure is to delete this
-#: constant and that test — not to renumber.
-#:
-#: 🛑 These three files ARE the retired ``[R171]`` cure, measured.  A FOURTH file, or a
-#: higher count in one of these, is a NEW hand fold — not a bookkeeping update, and not
-#: something this declaration covers.
-_ENTRY_FOLD: dict[str, int] = {
-    # ``args.name = args.name.lower()`` — the box-create entry fold itself.
-    "src/kanibako/commands/box/_parser.py": 1,
-    # ``_lower_name``'s ``name.lower()``, and the ``(spec.name or "").lower()`` on the
-    # rename edge that feeds it.  TWO, measured — the second is why this is a count.
-    "src/kanibako/commands/box/_lifecycle.py": 2,
-    # ``(getattr(args, "project_name", …) or source_path.name).lower()`` — the duplicate
-    # verb's own entry fold, under its own ``R2`` comment.
-    "src/kanibako/commands/box/_duplicate.py": 1,
-}
+# ⚑ THE ENTRY FOLD IS GONE, AND SO IS ITS DECLARATION.  Both guards below are now
+# ABSOLUTE: outside the carrier the permitted population is ZERO, with no inventory to
+# keep and nothing to renumber.  ``_ENTRY_FOLD`` was a ``{path: count}`` map of the
+# three files holding the retired ``[R171]`` cure, asserted EQUAL in BOTH directions
+# precisely so that removing those folds would red and take the declaration with it.
+# That is what happened.  🛑 Do not reintroduce it, or anything shaped like it, to let
+# a new fold pass — an inventory here is an exemption list wearing a pin's clothes.
 
 
 def _scan_roots() -> list[Path]:
@@ -225,6 +207,11 @@ def _receiver_leaves(expr: ast.AST) -> list[str]:
         return [leaf for value in expr.values for leaf in _receiver_leaves(value)]
     if isinstance(expr, ast.IfExp):
         return _receiver_leaves(expr.body) + _receiver_leaves(expr.orelse)
+    if isinstance(expr, ast.Call):
+        # ``_SAFE_CHAR_RE.sub("_", leaf).lower()`` -- the receiver is a CALL, and reading
+        # only Name/Attribute/BoolOp/IfExp saw nothing.  That is the shape ``sanitize_cap``
+        # held, so ``leaf`` in _IDENTIFIER_VARS pinned nothing until this branch existed.
+        return [leaf for arg in expr.args for leaf in _receiver_leaves(arg)]
     return []
 
 
@@ -381,7 +368,7 @@ class TestNobodyFoldsAnIdentifierByHand:
     def test_no_hand_fold_of_an_identifier_outside_the_carrier(self):
         offenders = sorted(
             rel for rel, hits in _findings().items()
-            if hits["fold"] and rel != _CARRIER and rel not in _ENTRY_FOLD
+            if hits["fold"] and rel != _CARRIER
         )
         assert not offenders, (
             "an identifier is folded by hand:\n  "
@@ -398,33 +385,4 @@ class TestNobodyFoldsAnIdentifierByHand:
         assert _findings().get(_CARRIER, {}).get("fold"), (
             f"{_CARRIER} does not fold at all — the detector is broken, or the "
             f"comparison moved out of its carrier"
-        )
-
-    def test_the_entry_fold_is_exactly_what_is_declared(self):
-        """🛑 The two-directional half, and the reason ``_ENTRY_FOLD`` is not an exemption.
-
-        Those two files hold the retired ``[R171]`` entry fold, which Phase 2 removes.
-        The assertion is EQUALITY of the per-file count, so it reds in both directions:
-
-        * a fold REMOVED (Phase 2 landing) — delete the entry and this test with it;
-        * a fold ADDED to an already-named file — which a file-granular skip would have
-          waved through, and did.
-
-        ⚑ The message must name the LINES, because "the count changed" without them
-        sends the next reader to re-derive the only part that is work.
-        """
-        actual = {rel: len(_findings().get(rel, {}).get("fold", [])) for rel in _ENTRY_FOLD}
-        drifted = {rel: n for rel, n in actual.items() if n != _ENTRY_FOLD[rel]}
-        assert not drifted, (
-            "the declared entry fold moved:\n  "
-            + "\n  ".join(
-                f"{rel} — declared {_ENTRY_FOLD[rel]}, found {n}"
-                + (f" at {_cite(rel, 'fold')}" if n else " (none left)")
-                for rel, n in sorted(drifted.items())
-            )
-            + "\n\nFEWER: Phase 2 removed the entry fold — delete the entry, and delete "
-            "this test once _ENTRY_FOLD is empty; the guard is meant to become absolute. "
-            "MORE: a NEW identifier fold was added to a file that only held the retired "
-            "[R171] cure. That is not covered by this declaration — route it through "
-            f"`kanibako.identifiers.{_SEAM}`."
         )

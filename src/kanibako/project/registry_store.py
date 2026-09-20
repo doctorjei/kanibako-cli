@@ -123,15 +123,32 @@ def standalone_root(registry: Path, box_name: str) -> str | None:
     return None if stored is None else entries[stored]
 
 
+def _drop_case_twin(entries: dict, box_name: str) -> None:
+    """Drop any key that IS *box_name* under §0 but is spelled differently — in place.
+
+    ⚑ ONE ROW PER IDENTIFIER, and this is the half that makes that true at the WRITE.
+    The key is still written as given (fold to compare, never to store); what this
+    removes is a row that IS this identifier under §0 but is spelled otherwise, so the
+    section never holds two rows for one box. ⚑ No guarded caller can present one today
+    — the standalone import refuses a case twin at a different root before it reaches
+    here (``import_reconcile.py:181``) — and that is why this is a WRITE-side invariant
+    rather than a cure: it is the half that stays true if a caller ever arrives
+    unguarded.
+    """
+    stored = find_identifier(box_name, entries)
+    if stored is not None and stored != box_name:
+        del entries[stored]
+
+
 def register_standalone(registry: Path, box_name: str, root: Path) -> None:
     """Register a standalone box (``box_name`` → *root*); a re-register overwrites.
 
-    🛑 The key is written AS GIVEN — fold to compare, never to store.  The overwrite is
-    an EXACT-key overwrite, deliberately: resolving it case-blind while the write still
-    used the caller's spelling would leave ``Foo`` in the section beside ``foo``.  That
-    is a storage question, and it is not this phase's.
+    ⚑ The key is written AS GIVEN — fold to compare, never to store — and a
+    case-variant row for the same box is REPLACED rather than joined
+    (:func:`_drop_case_twin`).
     """
     entries = load_standalone(registry)
+    _drop_case_twin(entries, box_name)
     entries[box_name] = str(root)
     save_section(registry, "standalone", entries)
 
@@ -189,8 +206,14 @@ def register_deregistered(
     image: str | None = None,
     deregistered_at: str | None = None,
 ) -> None:
-    """Park a deregistered box's recovery blob under *box_name*, overwriting any prior."""
+    """Park a deregistered box's recovery blob under *box_name*, overwriting any prior.
+
+    ⚑ A case-variant row for the same box is REPLACED, not joined
+    (:func:`_drop_case_twin`): :func:`lookup_deregistered` and the purge verbs resolve
+    case-blind, so two rows would make which blob they find a matter of order.
+    """
     entries = load_deregistered(registry)
+    _drop_case_twin(entries, box_name)
     entry: dict = {
         "kind": kind,
         "workspace": str(workspace) if workspace is not None else None,

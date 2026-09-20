@@ -642,16 +642,16 @@ def run_create(args: argparse.Namespace) -> int:
     enable_vault = not getattr(args, "no_vault", False)
     project_dir = args.path
 
-    # ⚑ R2: fold --name to lowercase BEFORE validating (the blocklist sees the fold).
+    # ⚑ --name is VALIDATED AS TYPED and stored that way (spec §0, ⚑ NAMING RULES):
+    # fold to compare, never to store.  The collision checks below compare case-blind,
+    # so the case the user typed costs them nothing.
     if getattr(args, "name", None):
-        args.name = args.name.lower()
         validate_box_name(args.name)
 
     # ⚑ §D4a: a STANDALONE box is indexed only on ``--register``; the default is an
     # unregistered, independent box, which is what lets it move freely.  The registry
     # is the by-name-from-elsewhere index and nothing else, so without it ``--name``
     # has nothing to name and is ignored (with it, ``--name`` sources the entry).
-    # Read AFTER the R2 fold, so what is threaded is the folded name.
     standalone_register = bool(getattr(args, "register", False))
     standalone_name = (getattr(args, "name", None) or "") if standalone_register else ""
 

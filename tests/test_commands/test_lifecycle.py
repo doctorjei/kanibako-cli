@@ -353,7 +353,7 @@ class TestConvertInPlace:
 
     def test_convert_standalone_noncanonical_name_becomes_leaf(self, env):
         """A non-canonical --name becomes the leaf with a FRESH random prefix
-        (lowercased + sanitized) (R1/R3 no-match)."""
+        (sanitized, case KEPT — spec §0) (R1/R3 no-match)."""
         config, std, tmp_home = env
         pdir = _make_default(env)
         src_state = resolve_lifecycle_target(str(pdir), std, config)
@@ -366,7 +366,7 @@ class TestConvertInPlace:
         prefix, sep, leaf = new.name.partition("_")
         assert sep == "_"
         assert len(prefix) == 5
-        assert leaf == "mybox"  # lowercased
+        assert leaf == "MyBox"  # the case the user typed (spec §0)
 
     def test_convert_standalone_taken_canonical_name_refuses(self, env):
         """A canonical --name that collides with an existing standalone box is
@@ -582,6 +582,27 @@ class TestMoveSameOwner:
         # names.yaml updated.
         assert str(dest) in load_primary_boxes(std.primary_workset).values()
         assert str(pdir) not in load_primary_boxes(std.primary_workset).values()
+
+    def test_move_with_a_case_variant_name_is_not_refused_as_its_own_twin(self, env):
+        # §0: ``--name PROJ`` on a box stored as ``proj`` names the SAME box, so the
+        # move is a relocation and not a rename.  ``_validate`` compares case-blind and
+        # skips the free-name check; the mint must therefore be the STORED spelling, or
+        # ``_to_default`` reads the source's OWN registration as a collision and refuses
+        # the move AFTER the tree has been copied.
+        config, std, tmp_home = env
+        pdir = _make_default(env, contents="casevariant")
+        state = resolve_lifecycle_target(str(pdir), std, config)
+        dest = tmp_home / "case_dest"
+        new = execute_lifecycle(
+            state, TargetSpec(location=dest, ownership=UNCHANGED, name="PROJ"),
+            std, config, confirm=_conf_yes(),
+        )
+        assert new.mode == BoxMode.primary
+        assert (dest / "file.txt").read_text() == "casevariant"
+        boxes = load_primary_boxes(std.primary_workset)
+        # ONE row, under the spelling it was created with, now at the new location.
+        assert [k for k in boxes if k.casefold() == "proj"] == ["proj"]
+        assert boxes["proj"] == str(dest)
 
 
 # ---------------------------------------------------------------------------
