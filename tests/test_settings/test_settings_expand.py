@@ -902,10 +902,12 @@ class TestPrefReferencesAreRefused:
 def test_env_value_expands_term_host_side(monkeypatch: pytest.MonkeyPatch) -> None:
     """``<scope>.env.<VAR> = "$TERM"`` reaches a TERMINAL eagerly, host-side (§2d, §1).
 
-    The spec declares ``agent.shell.env.TERM | $TERM``; ``box.env.<VAR>`` rides the same
-    channel and is a declared family today, so it pins the mechanism without waiting on the
-    ``shell`` node. Measured at HEAD before the dispatch admitted the variable: this exact
-    snapshot raised ``SettingsError: Unknown variable: $TERM``.
+    The spec declares ``agent.default.env.TERM | $TERM`` (2026-09-19, Jei's all-agents
+    ruling — it was the ``shell`` node's row before that); ``box.env.<VAR>`` rides the same
+    channel, so this pins the MECHANISM at a second scope rather than re-testing the shipped
+    declaration, whose own delivery is ``tests/test_cli.py``'s. Measured at HEAD before the
+    dispatch admitted the variable: this exact snapshot raised
+    ``SettingsError: Unknown variable: $TERM``.
     """
     monkeypatch.setenv("TERM", "xterm-256color")
     snap = KeyStore({"box": {"env": {"TERM": "$TERM", "COLORTERM": "truecolor"}}})

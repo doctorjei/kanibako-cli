@@ -2169,7 +2169,7 @@ of them could never take effect, and you were not told which.
 **This cannot happen on a default install.** Nothing kanibako ships declares an `env` entry at two
 scopes.
 
-**⚑ But kanibako ships FIVE `env` declarations of its own, and your key can contest any of them.**
+**⚑ But kanibako ships SIX `env` declarations of its own, and your key can contest any of them.**
 Each is an ordinary key at exactly one scope, so a key of yours naming the same variable at a
 *different* scope is the second declaration this section refuses — even though only one of the two
 keys is in a file you wrote:
@@ -2177,6 +2177,7 @@ keys is in a file you wrote:
 | kanibako's key | scope | see |
 |---|---|---|
 | `box.env.COLORTERM` | **box** | §2.42 |
+| `agent.default.env.TERM` | **agent** | §2.79 |
 | `system.env.KANIBAKO_NAME` | **system** | §2.36 |
 | `system.env.KANIBAKO_AGENT` | **system** | §2.36 |
 | `system.env.KANIBAKO_DIRECTIVE_SEED` | **system** | §2.36 |
@@ -4882,6 +4883,66 @@ A fully-formed standalone `--name <kuid>_<leaf>` accepts a capital in the leaf t
 is canonicalized to the kuid's one spelling — lowercased, with Crockford's input substitutions
 applied (`o`→`0`, `i`/`l`→`1`), so `--name k3xyo_foo` is stored as `k3xy0_foo`.
 The container for a standalone box is named from its PATH, not its name, so it is unaffected.
+
+---
+
+### 2.79 Every agent now gets the host's `TERM`, so a `TERM` key at another scope refuses
+
+**Read this if you set `TERM` in any settings file.** For everyone else this section is a box that
+finally knows what terminal it is in, and there is nothing to do.
+
+**What changed.** Kanibako declared a terminal type for the plain-shell box and for nothing else, so
+an agent box ran with whatever `TERM` its image happened to set — usually `xterm` or nothing at all,
+whatever your terminal actually was. **`agent.default.env.TERM` is now a declared default whose
+value is `$TERM`**, the host's own terminal type, and every agent inherits it. An empty or unset
+host `TERM` resolves to `xterm`, so a box always receives one.
+
+**A `TERM` that is set is passed through exactly as written and is never checked.** Whether the
+value names a terminal your box's image knows is a question about that image's terminfo database,
+which kanibako cannot see from the host. If a box gets a degraded terminal, set the key to a
+terminal the image does have — `xterm-256color` and `screen-256color` are safe nearly everywhere.
+
+**Overriding it for one agent costs one key, and the others are unaffected.** The agent tier is
+overlaid one variable at a time, so a value on a single agent replaces the default for that agent
+alone:
+
+```bash
+kanibako system set agent.claude.env.TERM=xterm-256color
+```
+
+To change it for every agent, write kanibako's own key in a nearer file — that is the ordinary
+cascade, not a contest:
+
+```bash
+kanibako system set agent.default.env.TERM=xterm-256color
+```
+
+**⚑ A `TERM` key at any OTHER scope now refuses the launch.** Because kanibako's declaration sits at
+agent scope, `box.env.TERM`, `workset.env.TERM` and `system.env.TERM` are each a *second* scope
+naming one variable, which is the contested slot §2.33 refuses — and the message names kanibako's
+key alongside yours:
+
+```
+Error: the environment variable 'TERM' is claimed by two keys: 'agent.default.env.TERM' at the
+'agent' scope already holds it, and 'box.env.TERM' at the 'box' scope names it again. …
+```
+
+**The cure is a re-spelling, not a move.** Put the value on an agent-scope key and delete yours:
+
+```bash
+kanibako box reset <box> box.env.TERM
+kanibako system set agent.default.env.TERM=<your value>
+```
+
+A `TERM` that varies per box has no agent-scope spelling, because the agent tier is not per box. If
+that is what you had, keep the value on the box by resetting kanibako's key for the agent that box
+runs — `kanibako system set --null agent.<agent>.env.TERM` — which frees the variable for your
+`box.env.TERM` to own.
+
+**Where it lives.** The declaration is one line in kanibako's packaged `core-defaults.yaml`, under
+its `env:` section, beside `COLORTERM` (§2.42). That file ships inside the package and an upgrade
+replaces it, so it is not a configuration surface: the settings keys above are how you override the
+value.
 
 ---
 

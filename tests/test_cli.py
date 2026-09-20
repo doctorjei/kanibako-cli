@@ -1616,6 +1616,133 @@ class TestTemplateStalenessRetired:
         )
         assert _build_config_env(slots)["COLORTERM"] == "256color"
 
+    def _term_launch(self, tmp_home, *, agent, system_path=None, box_path=None):
+        """``(container env, collapsed slots)`` for *agent*, fed the shipped core env floor.
+
+        Same route as the ``COLORTERM`` proof above and for the same reason — "declared"
+        is not "delivered", so the assertion has to come out the end of the real chain
+        ``build_launch_snapshot -> snapshot_category_entries -> collapse_env ->
+        start._build_config_env``.
+
+        ⚑ AN OVERRIDE IS WRITTEN INTO THE **SYSTEM** FILE, never the agent file, and the
+        difference is not cosmetic: the agent file's root table IS ``agent.<node>``
+        (spec §2d "self"), so an ``agent: claude:`` table there would read
+        ``agent.<node>.agent.claude`` and land nowhere. The system file is the route the
+        agent TIER's levels actually arrive by.
+        """
+        from kanibako.cli import _ensure_initialized
+        from kanibako.commands.start import _build_config_env
+        from kanibako.settings import core_defaults
+        from kanibako.settings.config import config_file_path, load_config
+        from kanibako.settings.paths import load_std_paths, xdg
+        from kanibako.settings.settings_launch import (
+            build_launch_snapshot,
+            snapshot_category_entries,
+        )
+        from kanibako.settings.settings_resolve import ResolveCtx
+        from kanibako.settings.store_collapse import collapse_env
+
+        _ensure_initialized()
+        std = load_std_paths(load_config(config_file_path(xdg("XDG_CONFIG_HOME", ".config"))))
+        ctx = ResolveCtx(
+            agent_name=agent, workset_name=None, host_home=str(tmp_home),
+            xdg={"XDG_DATA_HOME": str(tmp_home / "data")}, config={},
+        )
+        snap = build_launch_snapshot(
+            agent_name=agent, ctx=ctx,
+            system_path=system_path if system_path is not None else std.settings,
+            agent_path=None, workset_path=None, box_path=box_path,
+            default_categories=core_defaults.env_default_categories(),
+        )
+        slots = collapse_env(
+            snapshot_category_entries(snap, active_agent=agent, box_ctx=ctx),
+        )
+        return _build_config_env(slots), slots
+
+    def test_term_arrives_in_the_container_env_for_every_agent(
+        self, tmp_home, monkeypatch,
+    ):
+        """⚑ THE DELIVERY PROOF for ``agent.default.env.TERM`` (Jei, 2026-09-19).
+
+        The value shipped is the EXPRESSION ``$TERM``, so this pins two things one
+        assertion apart: that the floor reaches the container env at all, and that the
+        expression was RESOLVED on the way — a box handed the literal four characters
+        ``$TERM`` would be a working delivery of a broken value.
+
+        ⚑ TWO AGENTS, and the second is the point of declaring at the DEFAULT tier: the
+        keyspec's row says every agent inherits without restating, and a floor that
+        answered only for the agent it was probed with would satisfy a one-agent test.
+        """
+        monkeypatch.setenv("TERM", "tmux-256color")
+        for agent in ("claude", "goose"):
+            env, slots = self._term_launch(tmp_home, agent=agent)
+            assert env["TERM"] == "tmux-256color", agent
+            winner = slots["TERM"]
+            assert (winner.scope, winner.key) == ("agent", "agent.default.env.TERM")
+
+    def test_term_falls_back_to_xterm_when_the_host_has_none(
+        self, tmp_home, monkeypatch,
+    ):
+        """An empty host ``TERM`` still delivers one — Jei, 2026-09-08.
+
+        ⚑ EMPTY, not merely unset: the shell exports an empty ``TERM`` readily, and a
+        box handed ``TERM=`` is the degraded terminal the fallback exists to prevent.
+        """
+        monkeypatch.setenv("TERM", "")
+        env, _ = self._term_launch(tmp_home, agent="claude")
+        assert env["TERM"] == "xterm"
+
+    def test_one_agent_s_own_term_wins_without_touching_the_others(
+        self, tmp_home, monkeypatch,
+    ):
+        """``agent.<agent>.env.TERM`` replaces the default FOR THAT AGENT ONLY.
+
+        This is the claim the keyspec row makes about WHY the key sits at the default
+        tier — the agent tier's two cascade levels are overlaid per VARIABLE — so it is
+        asserted from both sides: the overridden agent gets the new value, and a second
+        agent resolved against the SAME file still inherits.
+        """
+        from kanibako.settings.config_io import write_nested_key
+
+        monkeypatch.setenv("TERM", "tmux-256color")
+        system_file = tmp_home / "sys-with-agent-term.yaml"
+        write_nested_key(system_file, ("agent", "claude", "env"), "TERM", "screen")
+
+        env, slots = self._term_launch(
+            tmp_home, agent="claude", system_path=system_file,
+        )
+        assert env["TERM"] == "screen"
+        assert slots["TERM"].key == "agent.claude.env.TERM"
+
+        env, slots = self._term_launch(
+            tmp_home, agent="goose", system_path=system_file,
+        )
+        assert env["TERM"] == "tmux-256color"
+        assert slots["TERM"].key == "agent.default.env.TERM"
+
+    def test_a_box_scope_term_refuses_the_launch_naming_both_keys(
+        self, tmp_home, monkeypatch,
+    ):
+        """``box.env.TERM`` is now a SECOND scope naming one variable (spec §2d).
+
+        ⚑ THE USER-FACING COST OF THE DECLARATION, pinned so it cannot regress into a
+        silent win for either key: a spelling that worked before the default shipped
+        stops the launch, and ``MIGRATION.md`` §2.79 carries the cure.
+        """
+        from kanibako.settings.config_io import write_nested_key
+        from kanibako.settings.settings_resolve import SettingsError
+
+        monkeypatch.setenv("TERM", "tmux-256color")
+        box_settings = tmp_home / "termbox" / "box.yaml"
+        box_settings.parent.mkdir(parents=True, exist_ok=True)
+        write_nested_key(box_settings, ("box", "env"), "TERM", "screen")
+
+        with pytest.raises(SettingsError) as excinfo:
+            self._term_launch(tmp_home, agent="claude", box_path=box_settings)
+        message = str(excinfo.value)
+        assert "agent.default.env.TERM" in message
+        assert "box.env.TERM" in message
+
 
 class TestShellAgentFlagIgnored:
     """shell + --agent is IGNORED with a note (not a hard FlagRelevanceError)."""

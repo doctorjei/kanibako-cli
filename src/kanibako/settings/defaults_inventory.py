@@ -134,8 +134,9 @@ def source_groups() -> tuple[tuple[str, frozenset[str]], ...]:
     # The ``env:`` table's own keys, intersected with the registry: the file may ship an
     # env default the registry has not (yet) enumerated, and only the enumerated ones
     # are section-1 rows. ⚑ The label is the SAME string section 3 prints, deliberately
-    # — ``box.env.COLORTERM`` is one fact reported by two sections (a DECLARED KEY and
-    # a variable a box gets), not two opinions about where it comes from.
+    # — ``box.env.COLORTERM`` and ``agent.default.env.TERM`` are each one fact reported
+    # by two sections (a DECLARED KEY and a variable a box gets), not two opinions about
+    # where they come from.
     ("core-defaults.yaml (env:)", frozenset(core_defaults.env_default_categories())
      & declared),
     # --- carriers with nothing to enumerate: named, one reason each --- #
@@ -407,13 +408,18 @@ def bind_rows() -> list[DefaultRow]:
 # ⚑ THIS SECTION IS A REPORT ON THE LIVE ENV FLOOR, NOT A REGISTRY CLAIM.  The values
 # are read from the same two emitters the launch reads, so it lists what a box actually
 # gets — which is why it lists EVERY var, including the one the registry also carries.
-# ⚑⚑ THE REGISTRY ENUMERATES ONE env INSTANCE and no longer "deliberately lacks" them:
-# spec §2b declares ``box.env.COLORTERM`` (the core-shipped default), so it is a
-# section-1 DECLARED KEY as well, printed there with the SAME source label.  That
-# overlap is the point — the two sections answer different questions about one value,
-# and dropping it from here would make "the environment variables a box gets" omit the
-# only one kanibako itself ships.  Every OTHER env instance (each plugin's declared
-# vars) is a family member with no registry row, and this is where it is reported.
+# ⚑⚑ THE REGISTRY ENUMERATES TWO env INSTANCES and no longer "deliberately lacks" them:
+# spec §2b declares ``box.env.COLORTERM`` and §2d declares ``agent.default.env.TERM``
+# (both core-shipped defaults), so each is a section-1 DECLARED KEY as well, printed
+# there with the SAME source label.  That overlap is the point — the two sections answer
+# different questions about one value, and dropping them from here would make "the
+# environment variables a box gets" omit the only ones kanibako itself ships.  Every
+# OTHER env instance (each plugin's declared vars) is a family member with no registry
+# row, and this is where it is reported.
+# ⚑ A VALUE PRINTS AS DECLARED, NOT AS RESOLVED.  ``agent.default.env.TERM`` reads
+# ``$TERM`` here: this is the STATIC view (see the module docstring), so resolving it
+# would answer for THIS host rather than for the install.  ``box show --effective`` is
+# the surface that resolves.
 
 
 class PluginConsultation(NamedTuple):

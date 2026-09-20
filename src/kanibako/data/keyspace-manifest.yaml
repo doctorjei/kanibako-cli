@@ -1540,6 +1540,29 @@ keys:
            the agents store, CORE-owned: there is NO default plugin package
            (§0 'the base system owns agent.default.*')."
     spec: "§2d (R-13)"
+  agent.default.env.TERM:
+    scope: agent
+    type: str
+    set: cli+file
+    default: "$TERM"
+    note: "the HOST's terminal type, for EVERY agent — shipped in
+           core-defaults.yaml's `env: agent.default:` table. The stored value is
+           the EXPRESSION, not a resolved string: `$TERM` is expanded per launch
+           by settings_resolve, which answers the host's TERM and falls back to
+           `xterm` when the host's is empty or unset (a value that IS set passes
+           through UNVALIDATED — a terminfo check would be a host-side guess about
+           the box's database).
+           ⚑ THE DEFAULT TIER, NOT A PER-NODE ROW, on Jei's 2026-09-19 ruling: a
+           terminal type is not a plain-shell concern. The agent tier's two cascade
+           levels are overlaid PER NAME (§2a), so a plugin descriptor or any
+           settings file overrides it for ONE agent and every other agent keeps
+           inheriting — no restatement per node.
+           ⚑ Same FAMILY contract as box.env.COLORTERM: an ORDINARY write-many key
+           of the parametric `env` category, so an override is the SAME key in a
+           nearer file and the nearest wins, while TERM named at a SECOND scope
+           (box.env.TERM) is the launch REFUSAL naming both keys (see
+           meta.assembly.env)."
+    spec: "§2d (default tier; ruled all-agents 2026-09-19)"
   agent.<agent>.<key>:
     scope: agent
     parametric: [agent, key]

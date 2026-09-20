@@ -6741,11 +6741,13 @@ def _resolve_launch_snapshot(
             ), family="kickoff", origins=cat_origins,
         )
         # The STATIC core env floor, declared in ``core-defaults.yaml``'s ``env:``
-        # section (D1-3).  FIRST of the two core env tables on purpose: it holds
-        # LITERALS a file can carry, the derived table below holds values only a
-        # launch can compute, and where both name one VAR the DERIVED value is the
-        # authoritative one — so it merges second and wins.  It carries
-        # ``box.env.COLORTERM`` since D1-4/MBR-2 deleted the first-run write.
+        # section (D1-3).  FIRST of the two core env tables on purpose: it holds what
+        # a FILE can carry whole — a literal, or an expression the shared engine
+        # resolves — the derived table below holds values only a launch can compute,
+        # and where both name one VAR the DERIVED value is the authoritative one, so
+        # it merges second and wins.  It carries ``box.env.COLORTERM`` since D1-4/MBR-2
+        # deleted the first-run write, and ``agent.default.env.TERM`` (= ``$TERM``,
+        # the host's terminal type for every agent) since 2026-09-20.
         _merge_default_categories(
             default_categories, core_defaults.env_default_categories(),
             family="core env file", origins=cat_origins,

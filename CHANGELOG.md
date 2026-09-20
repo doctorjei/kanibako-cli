@@ -337,17 +337,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **`$TERM` now resolves in a settings value, and falls back to `xterm` when the host has none.**
-  The expression engine routed `$AGENT`, `$WORKSET` and `$XDG_*` and refused every other name, so a
-  value written `$TERM` — the spelling the keyspace uses for a plain-shell box's terminal type —
-  stopped the command with `Unknown variable: $TERM`. It resolves now, from the host's environment,
-  anywhere a settings value may carry a variable (`kanibako box set <box> box.env.TERM='$TERM'`, or
-  the same key written by hand). An empty or unset host `TERM` resolves to `xterm` rather than to
-  nothing, so a box always receives a terminal type. **A `TERM` that is set is passed through
-  exactly as written and is never checked** — whether it names a terminal the box knows is a
-  question about that image's terminfo database, which the host side cannot see, so a box lacking
-  the entry gets a degraded terminal you can cure by setting the key to one it has. `$HOME` and
-  every other environment variable are still refused by name.
+- **Every box now gets the host's terminal type, and `$TERM` resolves in a settings value.** Two
+  halves of one gap. Nothing kanibako shipped declared `TERM` for anything but a plain-shell box, so
+  an agent box got whatever terminal type its image happened to set; and the expression engine
+  routed `$AGENT`, `$WORKSET` and `$XDG_*` and refused every other name, so writing `$TERM` yourself
+  stopped the command with `Unknown variable: $TERM`. Kanibako now ships
+  `agent.default.env.TERM` = `$TERM`, which **every** agent inherits, and `$TERM` resolves from the
+  host's environment anywhere a settings value may carry a variable. An empty or unset host `TERM`
+  resolves to `xterm` rather than to nothing, so a box always receives a terminal type. **A `TERM`
+  that is set is passed through exactly as written and is never checked** — whether it names a
+  terminal the box knows is a question about that image's terminfo database, which the host side
+  cannot see, so a box lacking the entry gets a degraded terminal you can cure by setting the key to
+  one it has. `$HOME` and every other environment variable are still refused by name.
+
+  To give **one** agent a different terminal type, write `agent.<agent>.env.TERM` in whichever
+  settings file is nearest the box; the agent tier is overlaid per variable, so every other agent
+  keeps inheriting the default. To change it for **all** of them, write `agent.default.env.TERM` —
+  the same key kanibako declares, so the nearer file simply wins. **Do not write `box.env.TERM`**:
+  a variable is owned by one scope, so naming `TERM` at the box scope while
+  `agent.default.env.TERM` holds it refuses the launch and names both keys. See
+  `MIGRATION.md`, "An environment variable may be declared at ONE scope only".
 
 - **The helper spawn budget is now two settable keys, `system.helpers.depth` and
   `system.helpers.breadth`, instead of an undeclared table in a file of its own.** The budget that
