@@ -475,8 +475,9 @@ class TestTheEnvConsumerReadsTheLeaf:
     def _core_file_env_vars() -> set[str]:
         """The VARs core DECLARES in ``core-defaults.yaml``'s ``env:`` section (D1-4).
 
-        Core's OTHER env source, beside the derived stamps above: literals a file
-        can hold (``COLORTERM`` today). ⚑ DERIVED, not re-listed — the section's
+        Core's OTHER env source, beside the derived stamps above: values a file can
+        hold WHOLE — ``COLORTERM`` and ``TERM`` today, both expressions the shared
+        engine resolves per launch. ⚑ DERIVED, not re-listed — the section's
         exact content is pinned once, in
         ``test_defaults_golden.TestCoreStaticEnvDefaults``, which is where a new
         row gets its review. Re-listing it here would be a second copy that goes

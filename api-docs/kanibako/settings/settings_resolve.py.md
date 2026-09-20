@@ -37,8 +37,10 @@ def normalize_bind_dest(dest: str) -> str
 def match_var(expr: str, i: int) -> tuple[str, int]
 def match_ref(expr: str, i: int) -> tuple[str, int]
 def expand_expr(expr: str, *, space: Literal['host', 'guest'], ctx: ResolveCtx, lookup: Callable[[str, tuple[str, ...]], str], chain: tuple[str, ...]=(), defer_env: bool=False) -> str
+def resolve_var(name: str, ctx: ResolveCtx) -> str | _Unset
 def resolve_value(key: str, *, levels: list[LevelView], ctx: ResolveCtx, lookup: Callable[[str, tuple[str, ...]], str]) -> ResolvedValue | _Unset
 def _host_term() -> str
+def _host_colorterm() -> str | None
 def _unescape(s: str) -> str
 def _scan_var_span(expr: str, i: int) -> tuple[str, int]
 def _expand_var(expr: str, i: int, ctx: ResolveCtx) -> tuple[str, int]
@@ -60,6 +62,7 @@ class ResolveCtx:
     xdg: dict[str, str]
     config: Mapping[str, str] = field(default_factory=dict)
     term: str = field(default_factory=_host_term)
+    colorterm: str | None = field(default_factory=_host_colorterm)
 
 @dataclass(frozen=True)
 class LevelView:

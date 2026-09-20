@@ -101,10 +101,27 @@ def _host_term() -> str:
     return os.environ.get("TERM", "") or DEFAULT_TERM
 
 
+def _host_colorterm() -> str | None:
+    """Read the host's ``COLORTERM`` for ``$COLORTERM``; empty or unset ⇒ ``None``.
+
+    ⚑ THERE IS NO ``DEFAULT_COLORTERM`` TWIN, and the missing constant is the design.
+    ``TERM`` can fall back because every terminal HAS a type; ``COLORTERM`` is an
+    unstandardized convention whose modern meaning is a CAPABILITY CLAIM — *this
+    display does 24-bit color* — and that is the HOST's claim to make, never ours.
+    So absence has no substitute here: ``None`` is a legitimate answer, and the
+    whole-value caller DROPS the key rather than delivering one
+    (``settings_expand._resolve_whole_value_var``).
+    🛑 AN EMPTY HOST VALUE IS ABSENCE, not a third answer to pass through. Readers
+    of ``COLORTERM`` disagree about ``""`` — some test only for the variable's
+    presence — so emitting one would be the same false claim in another spelling.
+    """
+    return os.environ.get("COLORTERM") or None
+
+
 @dataclass(frozen=True)
 class ResolveCtx:
     """Context for variable expansion: ``$AGENT``/``$WORKSET``/``~``, ``$XDG_*``, ``$TERM``,
-    ``@config.*``.
+    ``$COLORTERM``, ``@config.*``.
 
     ⚑ Frozen protects rebinding, not the dicts — do not mutate *xdg* / *config* in place.
     """
@@ -120,6 +137,11 @@ class ResolveCtx:
     #: would buy nothing and would invite the PARTIAL per-context namespace the spec calls a
     #: bug. A caller that knows better may still override it.
     term: str = field(default_factory=_host_term)
+    #: ``$COLORTERM``'s answer — a PASSTHROUGH, so ``None`` is a REAL answer meaning the
+    #: host set none and the box must get NO such variable (:func:`_host_colorterm`).
+    #: Defaulted from the host env for the same reason *term* is: one process-wide host
+    #: fact, no map to build, no per-context variation.
+    colorterm: str | None = field(default_factory=_host_colorterm)
 
 
 @dataclass(frozen=True)
@@ -379,8 +401,19 @@ def _expand_var(expr: str, i: int, ctx: ResolveCtx) -> tuple[str, int]:
     return _resolve_var(name, ctx), end
 
 
-def _resolve_var(name: str, ctx: ResolveCtx) -> str:
-    """Resolve a variable name against the context namespace."""
+def resolve_var(name: str, ctx: ResolveCtx) -> str | _Unset:
+    """Resolve a variable name against the context namespace — THREE-STATE.
+
+    Answers the value, or :data:`UNSET` for the one class of variable whose declared
+    answer can be LEGITIMATE ABSENCE: a PASSTHROUGH of a host signal that has no
+    substitute value (``$COLORTERM``). Every other unresolvable name still RAISES and
+    NAMES ITSELF — :data:`UNSET` is never a way of saying "I could not work this out".
+
+    ⚑ THIS IS THE PRIMITIVE and :func:`_resolve_var` is derived from it, not the other
+    way round. Only a caller that can EXPRESS absence may see the third state, and
+    exactly one can: a WHOLE-VALUE expression, which drops its holder key (§6b). An
+    embedded token is string substitution and has no way to say "no variable".
+    """
     if name == "AGENT":
         if ctx.agent_name is None:
             raise SettingsError("Variable $AGENT is not set in this context.")
@@ -392,11 +425,28 @@ def _resolve_var(name: str, ctx: ResolveCtx) -> str:
     if name == "TERM":
         # Never refuses and never validates — see :func:`_host_term`.
         return ctx.term
+    if name == "COLORTERM":
+        # A PASSTHROUGH with NO fallback value: the host's signal, or nothing at all.
+        # ⚑ The asymmetry with ``TERM`` directly above is deliberate — see
+        # :func:`_host_colorterm` for why no literal could stand in here.
+        return ctx.colorterm if ctx.colorterm is not None else UNSET
     if name.startswith("XDG_"):
         if name not in ctx.xdg:
             raise SettingsError(f"Variable ${name} is not set in this context.")
         return ctx.xdg[name]
     raise SettingsError(f"Unknown variable: ${name}")
+
+
+def _resolve_var(name: str, ctx: ResolveCtx) -> str:
+    """The EMBEDDED-token answer: :func:`resolve_var` with absence coerced to ``""``.
+
+    ⚑ THE SAME RULE THE EMBEDDED ``@``-REF PATH ALREADY KEEPS
+    (``settings_expand._lookup_str``): an absent referent substitutes an empty string,
+    which never deletes the HOST expression's key. ``"c=$COLORTERM"`` on a host with
+    none is ``"c="``, because the key's value is that whole string and it exists.
+    """
+    value = resolve_var(name, ctx)
+    return "" if isinstance(value, _Unset) else value
 
 
 def _expand_ref(

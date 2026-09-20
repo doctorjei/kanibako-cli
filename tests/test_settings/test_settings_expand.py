@@ -910,10 +910,11 @@ def test_env_value_expands_term_host_side(monkeypatch: pytest.MonkeyPatch) -> No
     ``SettingsError: Unknown variable: $TERM``.
     """
     monkeypatch.setenv("TERM", "xterm-256color")
-    snap = KeyStore({"box": {"env": {"TERM": "$TERM", "COLORTERM": "truecolor"}}})
+    snap = KeyStore({"box": {"env": {"TERM": "$TERM", "TERM_PROGRAM": "vscode"}}})
     out = expand(snap, _ctx())
     assert _probe(out, "box", "env", "TERM") == "xterm-256color"
-    assert _probe(out, "box", "env", "COLORTERM") == "truecolor"
+    # The literal beside it is the control: only the TOKEN moves.
+    assert _probe(out, "box", "env", "TERM_PROGRAM") == "vscode"
 
 
 def test_env_value_term_falls_back_when_the_host_has_none(
@@ -922,6 +923,91 @@ def test_env_value_term_falls_back_when_the_host_has_none(
     monkeypatch.delenv("TERM", raising=False)
     out = expand(KeyStore({"box": {"env": {"TERM": "$TERM"}}}), _ctx())
     assert _probe(out, "box", "env", "TERM") == "xterm"
+
+
+# --------------------------------------------------------------------------- #
+# $COLORTERM — a PASSTHROUGH, so absence is an ANSWER and not a failure         #
+# --------------------------------------------------------------------------- #
+#
+# ⚑ THE PAIR ABOVE AND THE PAIR BELOW ARE THE WHOLE CONTRAST, which is why they sit
+# together: ``$TERM`` ALWAYS answers (``xterm`` when the host has none) and
+# ``$COLORTERM`` sometimes answers NOTHING.  The spec's ``box.env.COLORTERM`` row
+# states it — "the host's signal PASSED THROUGH, and ABSENT in the box when the host
+# sets none" — because ``COLORTERM`` is unstandardized and an empty one is a third
+# state readers misparse.  A test asserting ``== ""`` here would be asserting the
+# defect.
+
+
+def test_env_value_expands_colorterm_host_side(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A host ``COLORTERM`` reaches the box VERBATIM — the passthrough half.
+
+    ⚑ Whatever the host says, not a value we vet: ``COLORTERM`` is a capability claim
+    and only the host can make it, so an unfamiliar spelling passes through exactly as
+    a set ``TERM`` does.
+    """
+    monkeypatch.setenv("COLORTERM", "24bit")
+    out = expand(KeyStore({"box": {"env": {"COLORTERM": "$COLORTERM"}}}), _ctx())
+    assert _probe(out, "box", "env", "COLORTERM") == "24bit"
+
+
+def test_env_value_colorterm_is_dropped_when_the_host_has_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Host sets none ⇒ the KEY IS GONE from the snapshot, not present-and-empty.
+
+    ⚑ ``__MISSING__``, never ``""``. The distinction is the point of the change: an
+    empty ``COLORTERM`` is a third state, and a reader that tests only for the
+    variable's PRESENCE would read one as the capability claim the host never made.
+    """
+    monkeypatch.delenv("COLORTERM", raising=False)
+    out = expand(KeyStore({"box": {"env": {"COLORTERM": "$COLORTERM"}}}), _ctx())
+    assert _probe(out, "box", "env", "COLORTERM") is __MISSING__
+
+
+def test_env_value_colorterm_treats_an_empty_host_value_as_absence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``COLORTERM=""`` on the host is ABSENCE, not a third answer carried through.
+
+    Same rule ``_host_term`` keeps for an empty ``TERM`` — an empty string is not a
+    value — but with the opposite destination, because there is no fallback to fall to.
+    """
+    monkeypatch.setenv("COLORTERM", "")
+    out = expand(KeyStore({"box": {"env": {"COLORTERM": "$COLORTERM"}}}), _ctx())
+    assert _probe(out, "box", "env", "COLORTERM") is __MISSING__
+
+
+def test_embedded_colorterm_substitutes_empty_and_keeps_its_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """EMBEDDED, the §6b twin: the token empties, the holder key SURVIVES.
+
+    Absence deletes the key only where the whole value IS the token. Here the key's
+    value is a sentence the user wrote, and it still exists — exactly as an embedded
+    ``@``-ref to an absent key behaves (``_lookup_str``).
+    """
+    monkeypatch.delenv("COLORTERM", raising=False)
+    out = expand(KeyStore({"box": {"env": {"NOTE": "color=$COLORTERM;"}}}), _ctx())
+    assert _probe(out, "box", "env", "NOTE") == "color=;"
+
+
+def test_whole_value_colorterm_is_not_resolved_in_deferred_space(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A ``box_dest`` ``$COLORTERM`` stays RAW (S17) — host space only.
+
+    Pathological as a destination, and asserted anyway: the deferral rule is about the
+    SPACE, not about which variables are well-behaved. Answering it here would resolve
+    a box-side token against the HOST's environment, and on a host with none it would
+    delete a binding.
+    """
+    monkeypatch.delenv("COLORTERM", raising=False)
+    out = expand(_arm({"~/c/$COLORTERM": BindEntry("/h/c")}), _ctx())
+    arm = _probe(out, "box", "bindings", "rw")
+    assert isinstance(arm, KeyStore)
+    assert set(dict.keys(arm)) == {"~/c/$COLORTERM"}
 
 
 # --------------------------------------------------------------------------- #

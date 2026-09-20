@@ -67,9 +67,10 @@ It is format-agnostic and operates only on already-parsed data: the caller parse
 simple mappings and lists this module consumes. (The old prose said "TOML/YAML" — kanibako's
 config files are all YAML.) It performs no file I/O, no mounting, and holds no global mutable
 state — the module-level names are strings, three ints, two compiled regexes, and the `UNSET`
-sentinel, which is `__slots__`-empty and therefore immutable. Its one read of the process
-environment is `_host_term`, which supplies the `$TERM` default of a `ResolveCtx` at construction
-— a VALUE captured into the context, never an environment lookup during expansion.
+sentinel, which is `__slots__`-empty and therefore immutable. Its reads of the process environment
+are `_host_term` and `_host_colorterm`, which supply the `$TERM` and `$COLORTERM` defaults of a
+`ResolveCtx` at construction — VALUES captured into the context, never an environment lookup
+during expansion.
 
 ## The import-direction invariant — what keeps this module extractable
 
@@ -303,6 +304,11 @@ it. The fallback lives here rather than in `paths.py` beside `resolve_xdg` becau
 import NOTHING from `settings/` — the ban is what splits the two, not a second opinion about where
 host-env defaults belong.
 
+*colorterm* answers `$COLORTERM` and is defaulted the same way, for the same reasons — but its type
+is `str | None`, and the `None` is the whole point. `COLORTERM` is a PASSTHROUGH of a host signal
+with no substitute value, so "the host set none" is a real answer rather than a failure, and
+`_host_colorterm` returns `None` for an unset **or empty** host value. See `resolve_var` below.
+
 *config* is the Layer-1 CONFIG-key FOUNDATION (spec §1): the resolved `config.*` bootstrap paths
 keyed by their full dotted name (`config.data`, `config.settings`, `config.agents`,
 `config.primary_workset`, `config.registry`). It is consulted by the `@config.*` ref route —
@@ -535,10 +541,12 @@ Grammar:
 * **`~`:** ONLY when it is the FIRST character of *expr*. Expands to `ctx.host_home`
   (`space=="host"`) or `GUEST_HOME` (`space=="guest"`). A `~` elsewhere is literal.
 * **`$VAR` / `${VAR}`:** name = `[A-Za-z_][A-Za-z0-9_]*`. `AGENT` → `ctx.agent_name`, `WORKSET` →
-  `ctx.workset_name`, `TERM` → `ctx.term`, `XDG_*` → `ctx.xdg[name]`. Unknown names, or known names
-  whose context value is `None`/missing, raise `SettingsError` — `TERM` is the one name that
-  ALWAYS answers, because `ctx.term` always holds a value (`xterm` when the host has none). See
-  `_resolve_var` below for the three distinct refusals and for why a set `TERM` is not validated.
+  `ctx.workset_name`, `TERM` → `ctx.term`, `COLORTERM` → `ctx.colorterm`, `XDG_*` →
+  `ctx.xdg[name]`. Unknown names, or known names whose context value is `None`/missing, raise
+  `SettingsError` — `TERM` is the one name that ALWAYS answers, because `ctx.term` always holds a
+  value (`xterm` when the host has none), and `COLORTERM` is the one name that may answer NOTHING.
+  See `resolve_var` below for the three distinct refusals, for why a set `TERM` is not validated,
+  and for the three-state split.
 * **`@`-ref:** two spellings, parsed by `match_ref` and resolved IDENTICALLY. Cycle-guarded
   against *chain*, capped at `MAX_REF_DEPTH` (64), and substitutes
   `lookup(ref_name, chain + (ref_name,))`; the result is a leaf.
@@ -585,9 +593,20 @@ Expand a `$VAR` or `${VAR}` starting at index *i*.
 Parses via the shared `match_var`; only the RESOLUTION of the name is this function's own.
 
 ```python
-_resolve_var(name: str, ctx: ResolveCtx) -> str
+resolve_var(name: str, ctx: ResolveCtx) -> str | _Unset
 ```
-Resolve a variable name against the context namespace.
+Resolve a variable name against the context namespace — THREE-STATE, and the PRIMITIVE the
+string-valued `_resolve_var` below is derived from.
+
+It answers the value, or `UNSET` for the one class of variable whose declared answer can be
+LEGITIMATE ABSENCE: a PASSTHROUGH of a host signal that has no substitute value. `$COLORTERM` is
+the only member today. ⚑ `UNSET` is NEVER a way of saying "I could not work this out" — every
+other unresolvable name still raises and names itself.
+
+Only a caller that can EXPRESS absence may see the third state, and exactly one can: a WHOLE-VALUE
+expression, which drops its holder key (§6b). `settings_expand._resolve_whole_value_var` is that
+caller. An embedded token is string substitution and has no way to say "no variable", so it takes
+the derived function instead.
 
 `AGENT` and `WORKSET` are refused with a "not set in this context" message when the context field
 is `None`; an `XDG_`-prefixed name is refused the same way when absent from `ctx.xdg`; anything
@@ -603,6 +622,25 @@ lookup, and the terminfo set that decides it belongs to the BOX while this resol
 HOST. A host-side check would be guessing about a place it cannot see; the accepted failure mode
 is instead a degraded terminal inside the box, visible there and cured by setting the key. Do not
 add validation here as a missing-symmetry fix.
+
+`COLORTERM` is the mirror image and the asymmetry is deliberate: it answers `ctx.colorterm`, or
+`UNSET` when that is `None`. **There is no `DEFAULT_COLORTERM`, and one must not be added.** `TERM`
+can fall back because every terminal has a type; `COLORTERM` is an unstandardized convention whose
+modern meaning is a CAPABILITY CLAIM — *this display does 24-bit color* — which is the HOST's to
+make. A literal here would assert it on the host's behalf, which is exactly the defect the
+passthrough replaced (the shipped default was `truecolor` until 2026-09-20). An EMPTY host value is
+treated as absence for the same reason: `COLORTERM=""` is a third state readers misparse, some
+testing only for the variable's presence.
+
+```python
+_resolve_var(name: str, ctx: ResolveCtx) -> str
+```
+The EMBEDDED-token answer: `resolve_var` with absence coerced to `""`.
+
+Same rule the embedded `@`-ref path already keeps (`settings_expand._lookup_str`): an absent
+referent substitutes an empty string, which never deletes the HOST expression's key. On a host with
+no `COLORTERM`, `"c=$COLORTERM"` is `"c="` — the key's value is that whole string and it exists.
+Its one caller is `_expand_var`, i.e. every `$VAR` reached through `expand_expr`.
 
 ```python
 _expand_ref(expr, i, lookup, chain) -> tuple[str, int]

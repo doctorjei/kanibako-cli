@@ -197,9 +197,10 @@ inside boxes. In order of likely impact:
     naming the file and the per-tier cure. Move each var with
     `kanibako system set system.env.<VAR>=<value>` (or the `workset`/`box` equivalent), then
     delete the file. ⚑ **One exception, and it is the `COLORTERM` line kanibako put there
-    itself: do NOT move that one** — `COLORTERM=truecolor` is a declared default now (§2.42),
-    so it needs no key at all, and re-creating it at `system` scope would *refuse* your
-    launches as a contested variable (§2.33). Just delete the line with the file.
+    itself: do NOT move that one** — `COLORTERM` is a declared default now and passes your
+    host's own value through (§2.42), so it needs no key at all, and re-creating it at
+    `system` scope would *refuse* your launches as a contested variable (§2.33). Just delete
+    the line with the file.
 
 19. **You can no longer `set` or `reset` a bind entry from the CLI — edit the settings file
     instead** (§2.20). `kanibako box set box.bindings.rw.home=/newhome` and `kanibako system set
@@ -1256,8 +1257,9 @@ Move any values you still want with `kanibako system set system.env.<VAR>=<value
 leaving them in place is harmless; they are simply dead.
 
 ⚑ **The `COLORTERM` line in that file is *ours*, not yours — DELETE it, do not migrate it.**
-`COLORTERM=truecolor` is a declared default in v1.8.0 (§2.42): it reaches every box with no key
-stored anywhere, so moving it to `system.env.COLORTERM` the way the other lines migrate would create
+`COLORTERM` is a declared default in v1.8.0 and carries your host's own value (§2.42): it reaches
+every box with no key stored anywhere, so moving it to `system.env.COLORTERM` as the other lines do
+would create
 a *second* declaration of a variable kanibako already declares at box scope, and that refuses the
 launch (§2.33). Every other line in the file migrates exactly as described.
 
@@ -2766,26 +2768,40 @@ membership, which is not optional; the flag is accepted and does nothing there.
 
 ---
 
-### 2.42 `COLORTERM` is a declared default — nothing writes it into your settings any more
+### 2.42 `COLORTERM` passes your host's value through, and is absent when your host sets none
 
-**Read this if you turned truecolor OFF, or if you set `COLORTERM` yourself.** For everyone else
-this section is good news you do not have to act on.
+**Read this if a box lost 24-bit color, if you turned truecolor OFF, or if you set `COLORTERM`
+yourself.**
 
-**What changed.** v1.7.2 wrote `COLORTERM=truecolor` into `<data>/env` the first time it ran, and
-that file was the value's only delivery path — the file §2.19 says is no longer read. v1.8.0 does
-not write the value anywhere at all: **`COLORTERM=truecolor` is declared as a default at `box`
-scope**, in kanibako's own defaults file, and it simply resolves. No settings file mentions it, and
-no first run creates it.
+**What changed.** Two things, and the second is the one that can surprise you.
 
-**⚑ This closes a gap §2.19 leaves open.** The old write only ever fired on a genuinely fresh host,
-so upgrading from v1.7.2 never produced the replacement key — you would have lost truecolor unless
-you migrated that `env`-file line by hand. A declared default applies to every box on every install,
-new or upgraded, so **the `COLORTERM` line is now the one entry in a legacy `env` file that needs no
-cure at all.** Delete the file (§2.19) and truecolor keeps working.
+v1.7.2 wrote `COLORTERM=truecolor` into `<data>/env` the first time it ran, and that file was the
+value's only delivery path — the file §2.19 says is no longer read. v1.8.0 writes the value nowhere
+at all: **`COLORTERM` is declared as a default at `box` scope**, in kanibako's own defaults file,
+and it simply resolves. No settings file mentions it, and no first run creates it.
 
-**A value you already stored still wins.** `box.env.COLORTERM` written in any settings file is the
-*same key* kanibako declares, so it is the ordinary cascade and the nearer file wins — no refusal,
-nothing to change:
+**And the declared value is `$COLORTERM` — your host's — not the literal `truecolor`.** A box gets
+whatever your terminal advertises, and **if your host sets no `COLORTERM`, the box gets none
+either.** Not an empty one: the variable is absent, because programs disagree about what an empty
+`COLORTERM` means and some read the bare presence of the name as the claim.
+
+**Why.** `COLORTERM` is not a standard variable. It is a convention whose modern meaning is *this
+display does 24-bit color* — a claim only your terminal can make, and kanibako was making it on
+your host's behalf while inheriting `TERM` faithfully right beside it. **This is the box matching
+the host, not losing a feature:** the same program, run outside a box on the same terminal, gets no
+`COLORTERM` either.
+
+**If a box lost truecolor, your host is not advertising it.** Two cures, answering different
+questions:
+
+| what you run | what it does |
+|---|---|
+| `COLORTERM=truecolor kanibako start <box>` | one launch, set in your host's shell — the value passes straight through |
+| `kanibako box set <box> box.env.COLORTERM=truecolor` | permanent, for that box, whatever the host says |
+
+**A value you already stored still wins**, and it is the same mechanism as the second row.
+`box.env.COLORTERM` written in any settings file is the *same key* kanibako declares, so it is the
+ordinary cascade and the nearer file wins — no refusal, nothing to change:
 
 ```yaml
 # this box's settings file — wins over the declared default
@@ -2793,6 +2809,12 @@ box:
   env:
     COLORTERM: 256color
 ```
+
+**⚑ This closes a gap §2.19 leaves open.** The old write only ever fired on a genuinely fresh host,
+so upgrading from v1.7.2 never produced the replacement key — you would have lost the variable
+entirely unless you migrated that `env`-file line by hand. A declared default applies to every box
+on every install, new or upgraded, so **the `COLORTERM` line is now the one entry in a legacy `env`
+file that needs no cure at all.** Delete the file (§2.19); the value comes from your host now.
 
 **⚑ A `COLORTERM` key at any OTHER scope now refuses the launch.** Because kanibako's declaration
 sits at box scope, `system.env.COLORTERM`, `workset.env.COLORTERM` and
@@ -2805,18 +2827,20 @@ kanibako system reset system.env.COLORTERM
 kanibako box set <box> box.env.COLORTERM=<your value>
 ```
 
-**⚑ To turn truecolor OFF there is no longer a line to delete.** Under v1.7.2 you removed the
-`COLORTERM` line from `<data>/env`; a declared default has no line, so disabling it takes an
-explicit override. Three spellings, and they do different things:
+**⚑ To keep `COLORTERM` out of a box whatever the host says, there is no line to delete.** Under
+v1.7.2 you removed the `COLORTERM` line from `<data>/env`; a declared default has no line, so it
+takes an explicit override. Three spellings, and they do different things:
 
 | what you run | what the box gets |
 |---|---|
-| `kanibako box set <box> --null box.env.COLORTERM` | **`COLORTERM` is not set at all** — the variable is absent from the box's environment |
+| `kanibako box set <box> --null box.env.COLORTERM` | **`COLORTERM` is not set at all** — the variable is absent from the box's environment, even on a host that sets it |
 | `kanibako box set <box> box.env.COLORTERM=` | **`COLORTERM` is set and EMPTY** (`COLORTERM=`) — present, so a program that only tests whether the variable exists still sees it |
 | `kanibako box set <box> box.env.COLORTERM=256color` | that value, verbatim |
 
-The `--null` row is the exact equivalent of deleting the old file line. The empty row is not: most
-terminal-capability checks read the *value*, but not all of them do.
+The `--null` row is the one you want, and it is the exact equivalent of deleting the old file line.
+The empty row is listed because it is spellable, not because it is useful: it is the third state the
+declared default itself now avoids, and most — not all — terminal-capability checks read the
+*value*.
 
 **Where it lives.** The declaration is one line in kanibako's packaged `core-defaults.yaml`, under
 its `env:` section. That file ships inside the package and an upgrade replaces it, so it is not a

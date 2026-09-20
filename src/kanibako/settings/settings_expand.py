@@ -14,6 +14,10 @@ every other unresolvable case is an ERROR that NAMES the key: a cycle, a depth-c
 breach, an unknown ``$VAR``, a ``@pref.*`` ref, or a binding destination that would
 resolve to no path.
 
+⚑ ABSENCE HAS A SECOND SOURCE, and it is not a failure: a PASSTHROUGH variable
+(``$COLORTERM``) whose host signal is unset answers absence too, and a whole-value
+one DROPS its key by the same §6b rule. Nothing is delivered empty on that path.
+
 ⚑ ``box_dest`` keeps its ``$XDG``/``~`` RAW (S17): ENVIRONMENT differs host vs box,
 so those tokens are DEFERRED to mount time. ``@``-refs (CONFIG) expand BOTH sides.
 An expanded ``Bind.box`` may therefore still carry a token — a known, bounded
@@ -42,6 +46,8 @@ from kanibako.settings.settings_resolve import (
     SettingsError,
     expand_expr,
     match_ref,
+    match_var,
+    resolve_var,
 )
 
 
@@ -109,6 +115,33 @@ def _is_whole_value_ref(value: str) -> str | None:
         return None
     try:
         name, end = match_ref(value, 0)
+    except SettingsError:
+        return None
+    return name if end == len(value) else None
+
+
+def _is_whole_value_var(value: str) -> str | None:
+    """Return the variable NAME iff *value* IS exactly one whole-value ``$VAR``.
+
+    The ``$`` twin of :func:`_is_whole_value_ref`, and it exists for the SAME reason:
+    the two paths differ in what they can SAY. An embedded token is string
+    substitution and can only ever produce a string, while a whole-value expression
+    inherits a THREE-state — and one variable needs the third. ``$COLORTERM`` is a
+    PASSTHROUGH of a host signal with no substitute value (spec, ``box.env.COLORTERM``),
+    so "the host set none" must reach the walk as absence and DROP the key, never as
+    an empty string a reader would take for a capability claim.
+
+    Uses ``match_var``, the SHARED grammar, so ``$X`` and ``${X}`` both qualify.
+    ``"\\$X"`` / ``"a$X"`` / ``"$X/y"`` / ``"$X "`` → ``None`` (embedded).
+
+    **It NEVER RAISES — a total predicate**, like its ``@`` twin: a malformed reference
+    (``"$"``, ``"${X"``) answers ``None`` and falls through to ``expand_expr``, which
+    raises it with the same message from the same place it always has.
+    """
+    if not value or value[0] != "$":
+        return None
+    try:
+        name, end = match_var(value, 0)
     except SettingsError:
         return None
     return name if end == len(value) else None
@@ -368,8 +401,10 @@ class _Expander:
         """Expand a single string leaf in *space* (``"host"`` or ``"defer"``).
 
         WHOLE-VALUE ``@``-ref (S18) → INHERIT the referent's full 3-state
-        (``_ABSENT`` / ``None`` / the terminal). EMBEDDED token or plain literal →
-        ``expand_expr`` substitution (absent/None token → empty string).
+        (``_ABSENT`` / ``None`` / the terminal). WHOLE-VALUE ``$VAR``, host space only
+        → the value or ``_ABSENT`` (:meth:`_resolve_whole_value_var`). EMBEDDED token
+        or plain literal → ``expand_expr`` substitution (absent/None token → empty
+        string).
 
         *space*: ``"host"`` expands ``~``/``$VAR`` host-side; ``"defer"`` leaves
         them RAW for the box side (S17). ``@``-refs expand in BOTH spaces.
@@ -377,7 +412,28 @@ class _Expander:
         ref_name = _is_whole_value_ref(value)
         if ref_name is not None:
             return self._resolve_ref(ref_name, chain=(*chain, ref_name))
+        if space == "host":
+            var_name = _is_whole_value_var(value)
+            if var_name is not None:
+                return self._resolve_whole_value_var(var_name)
         return self._expand_embedded(value, space=space, chain=chain)
+
+    def _resolve_whole_value_var(self, name: str) -> StoreValue | _Absent:
+        """A whole-value ``$VAR`` host-side: the value, or :data:`_ABSENT` (§6b).
+
+        ⚑ HOST SPACE ONLY, and the guard is at the call site: under ``space="defer"``
+        a ``$VAR`` is emitted VERBATIM for the BOX resolver (S17), so answering it
+        here would resolve a box-side token against the HOST's environment.
+        ⚑ Every REFUSING name still raises from ``resolve_var`` exactly as it does
+        through the embedded path — an unset ``$AGENT``, an unknown ``$XDG_*``, an
+        unknown name. :data:`~kanibako.settings.settings_resolve.UNSET` is the
+        passthrough class alone, and it means the key is DROPPED rather than
+        delivered empty.
+        """
+        value = resolve_var(name, self._ctx)
+        if not isinstance(value, str):
+            return _ABSENT
+        return value
 
     # ------------------------------------------------------------------ #
     # Reference resolution — the transitive fixpoint + cycle guard       #

@@ -653,8 +653,9 @@ class TestCoreStaticEnvDefaults:
     folds the launch-DERIVED ``KANIBAKO_*`` stamps into ``default_categories`` and
     that table becomes the floor.  What D1-3 adds is a way to declare a variable in
     the FILE, without writing code, whenever the file can hold its whole value — a
-    literal (``box.env.COLORTERM``, the first, D1-4/MBR-2) or an EXPRESSION the
-    shared engine resolves (``agent.default.env.TERM``: ``$TERM``, 2026-09-20).
+    literal, or an EXPRESSION the shared engine resolves.  BOTH shipped entries are
+    expressions today (``agent.default.env.TERM``: ``$TERM``; ``box.env.COLORTERM``:
+    ``$COLORTERM``, which was the literal ``truecolor`` until 2026-09-20).
     What still belongs in the derived table is a value only a LAUNCH can compute.
     The route cases below drive a
     PATCHED loader document so they pin the MECHANISM and not one variable; the
@@ -791,13 +792,18 @@ class TestCoreStaticEnvDefaults:
     #: pinned the emptiness; D1-4/MBR-2 moved the first value in, so the pin
     #: becomes the section's exact CONTENT — same job either way: nothing reaches
     #: a box from this file that somebody did not decide to ship.
-    #: ⚑ THE SECOND VALUE (2026-09-20) is ``agent.default.env.TERM``, and it is the
-    #: first EXPRESSION in the section: the stored value is ``$TERM``, resolved per
-    #: launch. Its scope head is the AGENT DEFAULT tier on Jei's 2026-09-19 ruling
-    #: that a terminal type belongs to every agent, not to the plain-shell box.
+    #: ⚑ THE SECOND VALUE (2026-09-20) is ``agent.default.env.TERM``: the stored
+    #: value is ``$TERM``, resolved per launch. Its scope head is the AGENT DEFAULT
+    #: tier on Jei's 2026-09-19 ruling that a terminal type belongs to every agent,
+    #: not to the plain-shell box.
+    #: ⚑ ``COLORTERM`` BECAME AN EXPRESSION THE SAME WEEK (2026-09-20) and the two
+    #: expressions do NOT behave alike: ``$TERM`` always answers (``xterm`` when the
+    #: host has none) while ``$COLORTERM`` is a PASSTHROUGH that can answer nothing,
+    #: dropping the key so the box gets no such variable. Only the host can claim a
+    #: 24-bit display; the retired literal ``truecolor`` claimed it for them.
     _SHIPPED_ENV = {
         "agent.default": {"TERM": "$TERM"},
-        "box": {"COLORTERM": "truecolor"},
+        "box": {"COLORTERM": "$COLORTERM"},
     }
 
     def test_the_shipped_env_section_is_exactly_the_declared_content(self):
@@ -828,7 +834,7 @@ class TestCoreStaticEnvDefaults:
                 )
         assert core_defaults.env_default_categories() == {
             "agent.default.env.TERM": "$TERM",
-            "box.env.COLORTERM": "truecolor",
+            "box.env.COLORTERM": "$COLORTERM",
         }, "the emitter must hand back the file's declaration under its dotted key"
 
     def test_an_unknown_scope_head_refuses_by_name(self, monkeypatch):

@@ -20,6 +20,7 @@ def expand(snapshot: KeyStore, ctx: ResolveCtx) -> KeyStore
 def expand(snapshot: KeyStore, ctx: ResolveCtx, *, collect_errors: bool) -> KeyStore | tuple[KeyStore, dict[str, str]]
 def expand(snapshot: KeyStore, ctx: ResolveCtx, *, collect_errors: bool=False) -> KeyStore | tuple[KeyStore, dict[str, str]]
 def _is_whole_value_ref(value: str) -> str | None
+def _is_whole_value_var(value: str) -> str | None
 ```
 
 ## Classes
@@ -46,6 +47,7 @@ class _Expander:
     def _expand_bind(self, bind: Bind, *, chain: tuple[str, ...]) -> StoreValue | _Absent
     def _expand_bind_entry(self, entry: BindEntry, *, chain: tuple[str, ...]) -> StoreValue | _Absent
     def _expand_str(self, value: str, *, space: str, chain: tuple[str, ...]) -> StoreValue | _Absent
+    def _resolve_whole_value_var(self, name: str) -> StoreValue | _Absent
     def _resolve_ref(self, dotted: str, *, chain: tuple[str, ...]) -> StoreValue | _Absent
     def _lookup_raw(self, dotted: str) -> StoreValue | _Absent
     def _expand_embedded(self, value: str, *, space: str, chain: tuple[str, ...]) -> str
