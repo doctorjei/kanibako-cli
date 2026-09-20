@@ -38,6 +38,7 @@ import sys
 from contextlib import contextmanager
 from pathlib import Path
 
+from kanibako.identifiers import find_identifier
 from kanibako.project import registry_store
 from kanibako.project.names import cross_kind_shadow_hatch, register_name
 from kanibako.settings.config import WORKSET_META_FILE
@@ -175,8 +176,7 @@ def import_standalone(
         name = root.name
 
     # Collision check against a DIFFERENT root.
-    registered = registry_store.load_standalone(registry)
-    other_root = registered.get(name)
+    other_root = registry_store.standalone_root(registry, name)  # ⚑ case-blind (§0)
     if other_root is not None and other_root != root_str:
         raise _conflict("standalone box", name, root, other_root)
 
@@ -250,7 +250,9 @@ def import_named_workset(
     # the module docstring's conflict paragraph for why create's refusal cannot carry.
     from kanibako.settings.paths import load_primary_boxes
 
-    if name in load_primary_boxes(primary_workset):
+    # ⚑ Case-blind (spec §0, ⚑ NAMING RULES) — the twin of the shadow WARN in
+    # ``names.resolve_name``, and it must see the same collisions that one does.
+    if find_identifier(name, load_primary_boxes(primary_workset)) is not None:
         logger.warning(
             "imported workset '%s' shares its bare name with a primary box; the "
             "bare name resolves to the box, so %s.",

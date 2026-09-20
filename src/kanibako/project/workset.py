@@ -47,7 +47,9 @@ from typing import Any, Callable
 from kanibako.project import registry_store, workset_registry
 from kanibako.settings import bootstrap
 from kanibako.settings.config_io import load_doc
+from kanibako.channels.channels import WS_TOKEN_PRIMARY, WS_TOKEN_STANDALONE
 from kanibako.errors import LegacyWorksetIdentityError, WorksetError
+from kanibako.identifiers import find_identifier
 from kanibako.project.names import register_name, unregister_name
 from kanibako.settings.config import WORKSET_META_FILE
 from kanibako.settings.workset_dirkeys import resolve_workset_dir_key
@@ -371,16 +373,47 @@ def _journal_connect(
 DEFAULT_WORKSET_ID = "__default__"
 DEFAULT_WORKSET_ALIAS = "default"
 
-# Sentinels reserved by the three-mode model (specs/settings-keyspace-1.8.0.md §2c);
-# ⚑ a workset name is a user-typed channel address, so collisions REFUSE, never resolve.
-RESERVED_WORKSET_NAMES = frozenset(
-    {DEFAULT_WORKSET_ID, DEFAULT_WORKSET_ALIAS, "__PRIMARY__", "__STANDALONE__"}
-)
+# ⚑⚑ TWO SETS, BECAUSE THE TWO HALVES ARE RESERVED FOR DIFFERENT REASONS — and the
+# reasons, not the comparison rule, are what the split carries.  Both are reserved by
+# the three-mode model (specs/settings-keyspace-1.8.0.md §2c), and a workset name is a
+# user-typed channel address, so a collision REFUSES rather than resolves.
+
+#: Reserved IDENTIFIERS — the bare names that ALIAS the synthesized default workset.
+#: ⚑ Load-bearing beyond the reservation: :func:`resolve_workset_name` and the ``workset``
+#: verbs resolve exactly these two to the virtual default.  ``__PRIMARY__`` must NOT be
+#: here — it names a partition, not the default workset.
+RESERVED_WORKSET_IDENTIFIERS = frozenset({DEFAULT_WORKSET_ID, DEFAULT_WORKSET_ALIAS})
+
+#: Reserved PARTITION TOKENS — the system-scope channel partition DIRECTORY names
+#: (``channels/mailboxes/__PRIMARY__/``).  A named workset's token is its own name,
+#: emitted verbatim as that directory, so a workset carrying one of these would land
+#: inside the partition's tree.
+#: 🛑 EXACT WHEREVER A TOKEN IS EMITTED INTO A PATH — a path is never case-folded.
+#: ⚑ IMPORTED from :mod:`kanibako.channels.channels`, never re-spelled: that module owns
+#: these two literals, and a second spelling of a path segment is a second carrier.
+WORKSET_PARTITION_TOKENS = frozenset({WS_TOKEN_PRIMARY, WS_TOKEN_STANDALONE})
+
+#: Every name a user may not give a workset — the refusal's subject, and its message.
+RESERVED_WORKSET_NAMES = RESERVED_WORKSET_IDENTIFIERS | WORKSET_PARTITION_TOKENS
 
 
 def is_reserved_workset_name(name: str) -> bool:
-    """Return True if *name* is a reserved sentinel (cannot be a NAMED workset)."""
-    return name in RESERVED_WORKSET_NAMES
+    """Return True if *name* is reserved (cannot be a NAMED workset).
+
+    ⚑⚑ BOTH HALVES FOLD, AND THE REASON IS THAT THIS IS A REFUSAL, NOT A PATH.
+    Folding here reserves the case variants of a token; it does not fold any path —
+    the tokens themselves are still emitted exactly, wherever they are emitted.
+
+    🛑 The earlier reading — that a workset named ``__primary__`` is harmless because it
+    is a distinct path segment — holds only on a case-SENSITIVE filesystem.  On macOS,
+    the platform whose ``agents/Shell/`` collision opened this whole arc,
+    ``channels/mailboxes/__primary__/`` IS ``channels/mailboxes/__PRIMARY__/``, and a
+    named workset's token is its own name emitted verbatim
+    (``channels.channels.workset_name_token``).  That is cross-partition channel leakage
+    reached by a name we accepted.  Two names differing only by case ARE a collision
+    ([R172]); refusing is both the safer direction and the consistent one.
+    """
+    return find_identifier(name, RESERVED_WORKSET_NAMES) is not None
 
 
 # ---------------------------------------------------------------------------
@@ -653,21 +686,31 @@ def create_workset(
         )
 
     # ⚑ Same-kind uniqueness (D-B3): refuse, never auto-suffix.  --force NEVER bypasses this.
+    # ⚑ Case-blind (§0, ⚑ NAMING RULES): ``Foo`` collides with a registered ``foo``.
     registry = _load_registry(std)
-    if name in registry:
+    held = find_identifier(name, registry)
+    if held is not None:
+        # ⚑ Name the STORED spelling when it differs.  A user refused for a name that
+        # does not appear in ``workset list`` cannot otherwise tell what they hit.
+        as_stored = "" if held == name else f" as '{held}'"
         raise WorksetError(
-            f"Workset name '{name}' is already in use (registered at "
-            f"{registry[name]}). Workset names must be unique; choose a "
+            f"Workset name '{name}' is already in use{as_stored} (registered at "
+            f"{registry[held]}). Workset names must be unique; choose a "
             "different name."
         )
 
     # ⚑ Cross-kind guard: a colliding PRIMARY BOX name would shadow this workset in
     # bare-name resolution.  Refuse unless *force*, BEFORE any on-disk side effect.
+    # ⚑⚑ BOTH SIDES FOLD.  Comparing a raw workset name against box keys assumed already
+    # folded let ``Foo`` walk past a box named ``foo`` — the asymmetric compare §0 closes.
     if not force:
         from kanibako.settings.paths import load_primary_boxes
-        if name in load_primary_boxes(std.primary_workset):
+        shadowing = find_identifier(name, load_primary_boxes(std.primary_workset))
+        if shadowing is not None:
+            as_stored = "" if shadowing == name else f" (the box is named '{shadowing}')"
             raise WorksetError(
-                f"Workset name '{name}' is already in use by a primary box. "
+                f"Workset name '{name}' is already in use by a primary box"
+                f"{as_stored}. "
                 f"Box and workset names are separate namespaces, but this bare "
                 f"name would then be shadowed by the box in bare-name "
                 f"resolution. Re-run with --force to use this name anyway."
@@ -759,24 +802,29 @@ def default_workset(std: StandardPaths) -> Workset:
 
 def resolve_workset_name(name: str, std: StandardPaths) -> Workset:
     """Resolve a workset *name* to a :class:`Workset` (``default``/``__default__`` → synthesized)."""
-    if name in (DEFAULT_WORKSET_ID, DEFAULT_WORKSET_ALIAS):
+    if find_identifier(name, RESERVED_WORKSET_IDENTIFIERS) is not None:
         return default_workset(std)
     registry = _load_registry(std)
-    if name not in registry:
+    # ⚑ Resolve THROUGH the stored spelling: the Workset must carry the name as
+    # registered, not as typed, or everything derived from it disagrees with the registry.
+    stored = find_identifier(name, registry)
+    if stored is None:
         raise WorksetError(f"Working set '{name}' is not registered.")
-    return load_workset(registry[name], name)
+    return load_workset(registry[stored], stored)
 
 
 def delete_workset(name: str, std: StandardPaths, *, remove_files: bool = False) -> Path:
     """Unregister a workset and optionally remove its tree; returns the deleted root path."""
     registry = _load_registry(std)
-    if name not in registry:
+    stored = find_identifier(name, registry)
+    if stored is None:
         raise WorksetError(f"Workset '{name}' is not registered.")
 
-    root = registry[name]
+    root = registry[stored]
 
-    # Drop the ONE ``worksets`` entry.  Idempotent: a missing entry is a no-op.
-    unregister_name(std.registry, name, section="worksets")
+    # Drop the ONE ``worksets`` entry, by the STORED spelling.  Idempotent: a missing
+    # entry is a no-op.
+    unregister_name(std.registry, stored, section="worksets")
 
     # ⚑ Irreversible step LAST: only after the registry is clean.
     if remove_files and root.is_dir():

@@ -103,6 +103,71 @@ class TestCreateWorkset:
         with pytest.raises(WorksetError, match="must be unique"):
             create_workset("dup", tmp_home / "worksets" / "b", std)
 
+    def test_cross_kind_guard_catches_a_CASE_VARIANT_primary_box(self, std, tmp_home):
+        """⚑ THE ASYMMETRIC COMPARE — a live defect before the §0 naming rules landed.
+
+        The cross-kind guard compared a RAW workset name against primary box keys that
+        were only folded because ``box create`` folded them on the way in.  So a workset
+        named ``Foo`` walked straight past a box named ``foo``, was registered, and then
+        lost every bare-name lookup to the box it was supposed to have been refused for.
+
+        Under spec §0 (``⚑ NAMING RULES``) ``Foo`` and ``foo`` ARE the same name, so
+        this is the collision the guard already means to refuse — it simply could not be
+        seen while one side of the compare was folded and the other was not.
+        """
+        from kanibako.settings.paths import register_primary_box_name
+
+        proj = tmp_home / "proj"
+        proj.mkdir()
+        register_primary_box_name(std.primary_workset, std.registry, "foo", str(proj))
+
+        root = tmp_home / "worksets" / "Foo"
+        with pytest.raises(WorksetError, match="already in use by a primary box"):
+            create_workset("Foo", root, std)
+        # Refused BEFORE any on-disk side effect, like the exact-case refusal.
+        assert not root.exists()
+
+    def test_cross_kind_case_refusal_names_the_box_as_STORED(self, std, tmp_home):
+        """A user refused for a name they cannot find in ``list`` learns nothing."""
+        from kanibako.settings.paths import register_primary_box_name
+
+        proj = tmp_home / "proj"
+        proj.mkdir()
+        register_primary_box_name(std.primary_workset, std.registry, "foo", str(proj))
+
+        with pytest.raises(WorksetError, match="the box is named 'foo'"):
+            create_workset("Foo", tmp_home / "worksets" / "Foo", std)
+
+    def test_same_kind_duplicate_is_case_blind(self, std, tmp_home):
+        """§0: workset names collide without regard to case, and the refusal says which."""
+        create_workset("same-name", tmp_home / "worksets" / "set1", std)
+
+        with pytest.raises(WorksetError, match="already in use as 'same-name'"):
+            create_workset("SAME-NAME", tmp_home / "worksets" / "set2", std)
+
+    def test_a_partition_token_is_refused_in_any_case(self, std, tmp_home):
+        """🛑 ``__primary__`` is REFUSED, and the filesystem is why.
+
+        A named workset's channel token is its own name emitted verbatim as the
+        ``mailboxes/``/``share/`` directory (``channels.channels.workset_name_token``).
+        On a case-INSENSITIVE filesystem — macOS, the platform whose ``agents/Shell/``
+        collision opened this arc — ``channels/mailboxes/__primary__/`` IS
+        ``channels/mailboxes/__PRIMARY__/``, so accepting the name is cross-partition
+        channel leakage rather than a harmless distinct segment.
+
+        ⚑ Folding the REFUSAL is not folding a path: the tokens are still emitted
+        exactly wherever they are emitted.  This only reserves their case variants.
+        """
+        for spelling in ("__primary__", "__Primary__", "__standalone__"):
+            with pytest.raises(WorksetError, match="is reserved"):
+                create_workset(spelling, tmp_home / "worksets" / "p", std)
+
+    def test_reserved_identifier_is_refused_in_any_case(self, std, tmp_home):
+        """The other half: ``default`` is a user-typed bare name, so ``Default`` hits it."""
+        for spelling in ("Default", "DEFAULT", "__DEFAULT__"):
+            with pytest.raises(WorksetError, match="is reserved"):
+                create_workset(spelling, tmp_home / "worksets" / spelling, std)
+
     def test_existing_root_raises(self, std, tmp_home):
         root = tmp_home / "worksets" / "existing"
         root.mkdir(parents=True)

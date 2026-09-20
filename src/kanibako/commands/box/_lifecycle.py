@@ -34,6 +34,7 @@ from kanibako.settings.config import (
     resolve_box_enable_vault,
     write_box_enable_vault,
 )
+from kanibako.identifiers import find_identifier
 from kanibako.errors import ProjectError, WorksetError
 from kanibako.settings.paths import (
     STANDALONE_META_DIR,
@@ -476,9 +477,11 @@ def _resolve_target_workset(
     name: str, std: StandardPaths,
 ) -> Workset:
     registry = list_worksets(std)
-    if name not in registry:
+    # ⚑ Case-blind (spec §0, ⚑ NAMING RULES), loaded under the REGISTERED spelling.
+    stored = find_identifier(name, registry)
+    if stored is None:
         raise WorksetError(f"Workset '{name}' not found.")
-    return load_workset(registry[name], name)
+    return load_workset(registry[stored], stored)
 
 
 def _validate(
@@ -1474,9 +1477,9 @@ def _to_workset(
         registry_path = workset_registry.resolve_workset_registry_path(
             target_ws.root, load_doc(target_ws.root / WORKSET_META_FILE),
         )
-        recorded_str = workset_registry.load_workset_boxes(registry_path).get(
-            new_name
-        )
+        # ⚑ THE membership accessor, not a second spelling of it: it already compares
+        # case-blind (spec §0) and returns the path under the stored key.
+        recorded_str = workset_registry.workset_box_path(registry_path, new_name)
         recorded_workspace = (
             Path(recorded_str) if recorded_str else new_workspace
         )

@@ -27,6 +27,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from kanibako.identifiers import find_identifier
 from kanibako.project import registry_store
 from kanibako.settings.config import WORKSET_META_FILE
 from kanibako.errors import ProjectError
@@ -103,11 +104,15 @@ def register_name(
             "mount your entire home directory as the workspace."
         )
     names = _load(registry)
-    if name in names["worksets"]:
+    # ⚑ Compared case-blind (spec §0, ⚑ NAMING RULES) — ``Foo`` collides with ``foo``.
+    held = find_identifier(name, names["worksets"])
+    if held is not None:
         raise ProjectError(
             f"Name '{name}' is already registered"
-            f" (worksets: {names['worksets'][name]})"
+            f" (worksets: {names['worksets'][held]})"
         )
+    # 🛑 STORED AS TYPED — fold to compare, NEVER to store.  The key written here is the
+    # caller's spelling, unfolded, and it stays that way.
     names[section][name] = path
     _save(registry, names)
 
@@ -133,7 +138,10 @@ def register_name_if_absent(
         register_name(registry, name, path, section=section)
         return
     names = _load(registry)
-    existing = names[section].get(name)
+    # ⚑ Case-blind (§0): the recovery re-entry may type a different case than the
+    # interrupted create stored, and that is still the SAME registered name.
+    stored = find_identifier(name, names[section])
+    existing = None if stored is None else names[section][stored]
     if existing is not None and existing == path:
         return  # identical mapping already present → no-op.
     register_name(registry, name, path, section=section)
@@ -149,9 +157,12 @@ def unregister_name(
     Returns True if the name was found and removed, False otherwise.
     """
     names = _load(registry)
-    if name not in names.get(section, {}):
+    # ⚑ Found case-blind, DELETED by the stored spelling (§0): folding the query alone
+    # would report success while leaving the entry behind.
+    stored = find_identifier(name, names.get(section, {}))
+    if stored is None:
         return False
-    del names[section][name]
+    del names[section][stored]
     _save(registry, names)
     return True
 
@@ -198,9 +209,10 @@ def _workset_member_paths(worksets: dict[str, str], name: str) -> list[str]:
         registry_path = workset_registry.resolve_workset_registry_path(
             ws_root, load_doc(ws_root / WORKSET_META_FILE),
         )
-        box_path = workset_registry.load_workset_boxes(registry_path).get(name)
-        if box_path is not None:
-            paths.append(box_path)
+        boxes = workset_registry.load_workset_boxes(registry_path)
+        stored = find_identifier(name, boxes)  # ⚑ case-blind membership test (§0)
+        if stored is not None:
+            paths.append(boxes[stored])
     return paths
 
 
@@ -286,17 +298,22 @@ def resolve_name(
             # deterministically to the box (this step precedes the worksets
             # step).  Warn once so the shadowed workset is not silently missed —
             # it stays reachable via its noun-scoped ``workset`` commands.
-            if name in names["worksets"]:
+            # ⚑ Case-blind (§0): under the naming rules ``Foo`` and ``foo`` ARE the same
+            # name, so a case-variant workset is shadowed just as squarely.  The hatch
+            # must print the STORED spelling — it is a command the user will run.
+            shadowed = find_identifier(name, names["worksets"])
+            if shadowed is not None:
                 logger.warning(
                     "bare name '%s' resolved to the primary box; a workset of "
                     "the same name is shadowed (%s).",
-                    name, cross_kind_shadow_hatch(name),
+                    name, cross_kind_shadow_hatch(shadowed),
                 )
             return primary_path, "project"
 
-    # 3. Worksets.
-    if name in names["worksets"]:
-        return names["worksets"][name], "workset"
+    # 3. Worksets.  ⚑ Case-blind (§0), resolved through the STORED key.
+    stored_ws = find_identifier(name, names["worksets"])
+    if stored_ws is not None:
+        return names["worksets"][stored_ws], "workset"
 
     # 4. Workset-MEMBER boxes.  A bare name that is a member of a NAMED workset
     #    is otherwise unaddressable from outside that workset (the cwd-inside
@@ -335,7 +352,11 @@ def resolve_qualified_name(
     ws_name, proj_name = qualified.split("/", 1)
     names = _load(registry)
 
-    if ws_name not in names["worksets"]:
+    # ⚑ Case-blind (§0).  A DISTINCT name rather than a rebind of *ws_name*: everything
+    # below returns and reports the STORED spelling, and a reader has to be able to see
+    # which of the two any given line means.
+    stored_ws = find_identifier(ws_name, names["worksets"])
+    if stored_ws is None:
         raise ProjectError(f"Unknown workset: '{ws_name}'")
 
     from kanibako.project import workset_registry
@@ -344,7 +365,7 @@ def resolve_qualified_name(
         resolve_workset_workspaces,
     )
 
-    ws_root = Path(names["worksets"][ws_name])
+    ws_root = Path(names["worksets"][stored_ws])
     settings_doc = load_workset_settings_doc(ws_root)
     # Registered membership FIRST (the authoritative name → workspace store):
     # a member keeps its REGISTERED path wherever a composition epoch put it —
@@ -355,13 +376,13 @@ def resolve_qualified_name(
     )
     registered = workset_registry.workset_box_path(registry_path, proj_name)
     if registered is not None:
-        return registered, ws_name
+        return registered, stored_ws
     # Fallback: a workspace subdir under the resolved ``workset.workspaces``
     # (repoint honored — §3.3) — e.g. an in-tree connect before its first start
     # (no ``boxes:`` entry yet).
     candidate = resolve_workset_workspaces(ws_root, settings_doc) / proj_name
     if not candidate.is_dir():
         raise ProjectError(
-            f"Project '{proj_name}' not found in workset '{ws_name}'"
+            f"Project '{proj_name}' not found in workset '{stored_ws}'"
         )
-    return str(candidate), ws_name
+    return str(candidate), stored_ws

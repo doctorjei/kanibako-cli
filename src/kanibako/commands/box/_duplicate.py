@@ -14,6 +14,7 @@ from kanibako.settings.config import (
     load_config,
     read_box_enable_vault,
 )
+from kanibako.identifiers import find_identifier
 from kanibako.settings.config_io import dump_doc
 from kanibako.runtime.container import remove_box_tree
 from kanibako.settings.core_defaults import materialize_canon_skeleton
@@ -464,9 +465,13 @@ def _duplicate_to_workset(args, std, config) -> int:
         return 1
 
     registry = list_worksets(std)
-    if ws_name not in registry:
+    # ⚑ Case-blind (spec §0, ⚑ NAMING RULES); the workset is loaded under the spelling
+    # it is REGISTERED with, not the one typed at --workset.
+    stored_ws = find_identifier(ws_name, registry)
+    if stored_ws is None:
         print(f"Error: workset '{ws_name}' not found.", file=sys.stderr)
         return 1
+    ws_name = stored_ws
     ws = load_workset(registry[ws_name], ws_name)
 
     source_path = Path(args.source_path).resolve()
@@ -483,11 +488,15 @@ def _duplicate_to_workset(args, std, config) -> int:
     # lowercase the basename-derived default for a consistent invariant.
     proj_name = (getattr(args, "project_name", None) or source_path.name).lower()
 
-    # Validate name not taken.
-    for p in ws.projects:
-        if p.name == proj_name:
-            print(f"Error: project '{proj_name}' already exists in workset '{ws_name}'.", file=sys.stderr)
-            return 1
+    # Validate name not taken — case-blind (spec §0), reporting the member as STORED.
+    # ⚑ NOT reachable by the registry-lookup guard in
+    # ``tests/test_identifier_case_enforcement.py``: this is an ``==`` inside a loop over
+    # already-loaded members, not a lookup into a registry, so no detector sees it.
+    # Found by reading the site the entry fold above feeds.
+    held = find_identifier(proj_name, (p.name for p in ws.projects))
+    if held is not None:
+        print(f"Error: project '{held}' already exists in workset '{ws_name}'.", file=sys.stderr)
+        return 1
 
     # default<->standalone: architectural boundary (centralized vs in-workspace metadata), not re-rooting — kept distinct (#71 B2).
     if source_mode == BoxMode.primary:

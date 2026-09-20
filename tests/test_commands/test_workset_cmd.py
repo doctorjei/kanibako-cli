@@ -2228,3 +2228,88 @@ class TestWorksetShareListArbitrates:
         )
         # The FRAME reads its destination off the exception too, not off the entries.
         assert "collide at '/opt/sentinel'" in err
+
+
+class TestWorksetVerbsAreCaseBlind:
+    """Spec §0, ``⚑ NAMING RULES`` — and these were LIVE defects, not latent ones.
+
+    Unlike box names, workset names have never been folded on entry, so an exact-match
+    lookup in a workset verb is a defect the day it is written.  ``create`` refusing
+    ``SAME-NAME`` against a stored ``same-name`` while ``rm``/``connect``/``disconnect``
+    answered "not registered" for the same pair made the tree contradict itself.
+
+    ⚑ Each of these fails on the pre-image; they are the evidence, not the gate.
+    """
+
+    def test_rm_resolves_a_case_variant_and_reports_the_STORED_name(
+        self, config_file, tmp_home, capsys,
+    ):
+        from kanibako.commands.workset_cmd import run_rm
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        create_workset("todel", tmp_home / "ws_todel", std)
+
+        rc = run_rm(argparse.Namespace(name="ToDel", purge=False, force=True))
+        assert rc == 0
+        # The name is reported as REGISTERED — the user is being told what was destroyed.
+        assert "Deleted working set 'todel'" in capsys.readouterr().out
+        assert list_worksets(std) == {}
+
+    def test_rm_of_the_default_alias_is_refused_in_any_case(
+        self, config_file, tmp_home, capsys,
+    ):
+        """The tuple-literal compare: an exact re-spelling of a set that folds.
+
+        ``workset rm Default`` used to miss this guard entirely and fall through to
+        "not registered", which is both the wrong message and the wrong reason.
+        """
+        from kanibako.commands.workset_cmd import run_rm
+
+        rc = run_rm(argparse.Namespace(name="Default", purge=False, force=True))
+        assert rc == 1
+        assert "default workset cannot be removed" in capsys.readouterr().err
+
+    def test_connect_resolves_a_case_variant(self, config_file, tmp_home, capsys):
+        from kanibako.commands.workset_cmd import run_connect
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        create_workset("addws", tmp_home / "ws_add", std)
+
+        src = tmp_home / "add_src"
+        src.mkdir()
+
+        rc = run_connect(argparse.Namespace(
+            workset="AddWS", source=str(src), project_name=None, force=False,
+        ))
+        assert rc == 0
+        assert "Added project" in capsys.readouterr().out
+
+    def test_disconnect_resolves_a_case_variant(self, config_file, tmp_home, capsys):
+        from kanibako.commands.workset_cmd import run_disconnect
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        ws = create_workset("rmws", tmp_home / "ws_rm", std)
+
+        src = tmp_home / "rm_src"
+        src.mkdir()
+        add_project(ws, "rmproj", src)
+
+        rc = run_disconnect(argparse.Namespace(
+            workset="RmWS", project="rmproj", remove_files=False, force=True,
+        ))
+        assert rc == 0
+        assert "Removed project 'rmproj'" in capsys.readouterr().out
+
+    def test_disconnect_of_the_default_alias_is_refused_in_any_case(
+        self, config_file, tmp_home, capsys,
+    ):
+        from kanibako.commands.workset_cmd import run_disconnect
+
+        rc = run_disconnect(argparse.Namespace(
+            workset="DEFAULT", project="x", remove_files=False, force=True,
+        ))
+        assert rc == 1
+        assert "default workset cannot be removed" in capsys.readouterr().err
