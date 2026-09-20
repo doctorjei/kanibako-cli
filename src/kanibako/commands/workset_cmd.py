@@ -1061,6 +1061,7 @@ def run_share_list(args: argparse.Namespace) -> int:
 
 def _workset_raw_shares(ws_config: Path) -> dict[tuple[str, str], object]:
     """The file's ``workset.bindings.{ro,rw}`` as a ``{(mode, dest): raw}`` map (the RAW view)."""
+    from kanibako.agent_ref import GENERAL_SLOT
     from kanibako.settings.agent_config import is_self_resolving
     from kanibako.settings.kb_store import BindEntry
     from kanibako.settings.kb_store import __MISSING__
@@ -1071,7 +1072,7 @@ def _workset_raw_shares(ws_config: Path) -> dict[tuple[str, str], object]:
     # ⚑ assemble_levels returns [box, workset, agent.<active>, agent.default, system,
     # base] — index 1 is the workset partial, the only file passed.
     levels = assemble_levels(
-        agent_name="general",
+        agent_name=GENERAL_SLOT,
         base_path=ws_config.parent / "__absent_base__",
         workset_path=ws_config,
     )
@@ -1142,6 +1143,7 @@ def _workset_preview_entries(ws, std, ws_config: Path) -> "list[CategoryEntry]":
     Raises :class:`~kanibako.settings.settings_resolve.SettingsError` for a malformed
     file; the ARBITRATION and its refusals are :func:`_workset_preview_collapse`'s.
     """
+    from kanibako.agent_ref import GENERAL_SLOT
     from kanibako.settings.paths import (host_config_map, host_xdg_map,
                                          system_path_floor)
     from kanibako.settings.settings_assemble import assemble_levels
@@ -1199,7 +1201,7 @@ def _workset_preview_entries(ws, std, ws_config: Path) -> "list[CategoryEntry]":
     floor["meta.workset.path"] = str(ws.root)
 
     levels = assemble_levels(
-        agent_name="general",
+        agent_name=GENERAL_SLOT,
         base_path=ws_config.parent / "__absent_base__",
         workset_path=ws_config,
         floor=floor,
@@ -1207,7 +1209,7 @@ def _workset_preview_entries(ws, std, ws_config: Path) -> "list[CategoryEntry]":
     snapshot = merge(levels)
     expanded = expand(snapshot, ctx)
     return snapshot_category_entries(
-        expanded, active_agent="general", box_ctx=ctx,
+        expanded, active_agent=GENERAL_SLOT, box_ctx=ctx,
     )
 
 

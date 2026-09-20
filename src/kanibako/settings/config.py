@@ -324,6 +324,7 @@ def _resolve_box_scalars(
     ⚑ Lazy imports throughout: ``paths`` and ``settings_assemble`` both import
     this module at module load, so hoisting any of these closes the cycle.
     """
+    from kanibako.agent_ref import GENERAL_SLOT
     from kanibako.settings.keystore import KeyStore
     from kanibako.settings.paths import load_system_config, host_xdg_map, xdg
     from kanibako.settings.settings_cli_level import build_cli_level
@@ -354,9 +355,9 @@ def _resolve_box_scalars(
     )
 
     snapshot = build_launch_snapshot(
-        agent_name="general",
+        agent_name=GENERAL_SLOT,
         ctx=ResolveCtx(
-            agent_name="general", workset_name=None,
+            agent_name=GENERAL_SLOT, workset_name=None,
             host_home=str(Path.home()), xdg=host_xdg_map(),
         ),
         system_path=system_path if system_path.exists() else None,

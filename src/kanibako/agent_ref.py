@@ -38,6 +38,20 @@ _DOT_HINT = "; '.' is reserved as settings key-path separator and cannot appear 
 # ⚑ WIDENING THIS SET obliges a matching entry in ``kinemata.toml``'s ``reserved-agent-names``.
 PSEUDO_AGENT_NAMES = frozenset({"default", "shell"})
 
+# The AGENT-SLOT name a launch wears when NO agent is involved — a no-agent/plain-shell
+# box, & the agent-less resolves that stand in for one (``kanibako init``'s agent file,
+# the workset previews, the effective-settings dumps).  It keys the ``agents/<node>/`` dir
+# & the ``agent.<node>.*`` cascade slot exactly as a real node-name does, which is why the
+# ``agent.default`` backstop still reaches a no-agent launch.
+# ⚑ A TEMPLATE/CHAPTER FALLBACK SLOT, NOT AN AGENT (keyspec ``templates/general/standard``,
+# & the ``general`` canon chapter).  Nothing SELECTS it —
+# :attr:`kanibako.settings.agent_select.AgentSelection.selection_level` installs NOTHING for
+# a no-agent box rather than pinning ``system.agent`` here.  It reaches a slot only as the
+# ``else`` arm where a resolved target would otherwise supply the name.
+# ⚑ DELIBERATELY NOT in ``PSEUDO_AGENT_NAMES``: that set is a user-facing REFUSAL, & this
+# name is not reserved against a user's agent, persona or harness.
+GENERAL_SLOT = "general"
+
 
 def _is_segment_safe(segment: str) -> bool:
   """A non-empty segment of only letters/digits (any language) plus ``-``/``_``."""
