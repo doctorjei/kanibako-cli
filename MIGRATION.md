@@ -318,10 +318,22 @@ inside boxes. In order of likely impact:
     saw no effect from start being passed. Read `run_args` off `kanibako system show --effective`
     before your first launch. A per-agent value replaces the default rather than adding to it.
 
-32. Smaller items: standalone boxes' `box get` got truthful (§2.9); a box pointed at a new agent
+32. **If one environment variable is named by both an `env` key and a `secret_path` key, that box
+    no longer starts** (§2.76). `box.env.OPENAI_API_KEY` alongside
+    `box.secret_path.OPENAI_API_KEY` used to launch, and the secret quietly won — an accident of
+    the order the two mechanisms run in, never a rule. It now refuses, naming both keys, at every
+    combination of scopes. **The cure is one owner:** keep `secret_path` for credential material
+    and `env` for everything else, and delete the other key. ⚑ **Check your persona if one of the
+    keys is not in any of your files** — a resolved token pointer arrives as a live
+    `agent.<agent>.secret_path.<VAR>` (§2.15). ⚑ `-e VAR=VALUE` is not a key and is not part of
+    this pair.
+
+33. Smaller items: standalone boxes' `box get` got truthful (§2.9); a box pointed at a new agent
     keeps the old one's credential files in its home (§2.10); several never-released or
     expected-empty renames (§2.11); two `--null` CLI bugs fixed (§2.14); a customized helper
-    entrypoint script moves to `~/canon/notebook/scripts/helper-init.sh` (§2.44).
+    entrypoint script moves to `~/canon/notebook/scripts/helper-init.sh` (§2.44);
+    `workset show --effective` exits 1 on a working set file it cannot resolve, where it used to
+    print what it could read and exit 0 (§2.77).
 
 ---
 
@@ -4692,6 +4704,96 @@ run_args` answers with an empty line for the opt-out and `(not set)` for the unt
 ⚑ Splitting and quoting are unchanged — see
 **"2.59 A `run_args` stored as a string now takes effect"** above, which describes the whitespace
 split and why an argument containing a space is written into the list by hand.
+
+### 2.76 A variable named by both `env` and `secret_path` is refused
+
+**What changed.** `<scope>.env.<VAR>` sets a variable to a value you write in a settings file.
+`<scope>.secret_path.<VAR>` points at a host file and has the box read the variable out of it at
+agent start, so the secret never passes through kanibako. They are different families with
+different purposes, but they deliver to the same place: one environment variable inside the box.
+
+Naming one variable with both used to start the box, and the `secret_path` value won:
+
+```yaml
+# a box settings file
+box:
+  env:
+    OPENAI_API_KEY: sk-the-one-I-pasted-here
+  secret_path:
+    OPENAI_API_KEY: ~/.config/openai/token
+```
+
+**kanibako now refuses that launch and names both keys:**
+
+```
+Error: the environment variable 'OPENAI_API_KEY' is named by BOTH scalar families:
+'box.env.OPENAI_API_KEY' holds a VALUE for it, and 'box.secret_path.OPENAI_API_KEY' points at a
+host file the box exports it from. …
+```
+
+**Why.** The old outcome was not a rule, it was an accident of ordering: the `env` value reached
+the container through podman's `-e`, and the shim that reads a mounted secret ran afterwards and
+overwrote it. Nothing chose that, nothing documented it, and nothing would have told you if it
+changed. So there is **no precedence between the two families at all** — not "the secret wins", not
+"the nearer scope wins" — and a variable claimed by both is treated as what it is: two declarations
+where one can only ever be discarded, and you were not told which.
+
+**Every scope pairing is the same refusal.** `box.env.TOK` against `system.secret_path.TOK`
+refuses exactly as `system.env.TOK` against `box.secret_path.TOK` does, and as two keys in one
+file do. Refusing only some arrangements would be a precedence wearing a refusal's clothes.
+
+**What you must do.** Keep **one** of the two keys and delete the other.
+
+* Keep **`secret_path`** when the value is credential material — a token, a key, a password. That
+  is what the family is for: the value stays in a `0600` host file, is mounted read-only, and is
+  never read into kanibako, never written to a snapshot or a log, and never placed on the podman
+  command line where `ps` can see it.
+* Keep **`env`** when the value is ordinary configuration.
+
+`kanibako box show --effective` resolves the same settings and reports the same refusal without
+starting anything, so you can find these before a launch does.
+
+**This cannot happen on a default install.** No variable kanibako or its agent plugins ship is
+named by both families.
+
+**⚑ One of the two keys may be one you never wrote — check your persona.** When a persona store
+resolves a bearer-token pointer, it supplies that pointer as a live agent-scope key
+(`agent.<agent>.secret_path.<VAR>`) at every launch; it is a resolution input rather than file
+content, so grepping your settings files will not find it. Your own `env` key naming that same
+variable — a token you pasted in as a plain value before the persona existed, typically — is this
+refusal. The cure is to delete your `env` key and let the persona's pointer own the variable.
+A persona can also supply a plain `env.<VAR>`; the mirror case is your own `secret_path` key naming
+that variable, and there the cure runs the other way — drop the persona's variable from your
+`secret_path` table, or rename one of the two.
+
+**⚑ `-e VAR=VALUE` is not one of the two, and is unaffected.** The per-run flag is the `env`
+family's command-line level, not a key, so it can never be half of this pair. A `-e` naming a
+variable a `secret_path` also names is not refused — though the secret still lands last, which is
+the reason to spell the intent as keys and let this refusal find the conflict.
+
+**Turning a token OFF is still one line and is not this refusal.** Writing
+`secret_path.<VAR>: null` means "this endpoint needs no token" and declares no variable at all,
+so it never contends with an `env` key of the same name.
+
+### 2.77 `workset show --effective` exits 1 on a working set file it cannot resolve
+
+**Read this if a script runs `kanibako workset show <ws> --effective` and checks its exit status.**
+
+**What changed.** `--effective` now also prints the binding each `common` / `caches` / `seeded`
+declaration derives, and producing that means resolving the working set's file the way a launch
+would. That resolution is strict: an unknown `$VAR`, a reference to something that is not a key, or
+a category table of the wrong shape stops it. Those files used to reach this view untouched — the
+plain listing is a straight read of the YAML and expands nothing — so a working set whose binding
+was sourced at `$NOPE/y` was never resolved at all: the view printed the scalar values it could
+read and exited **0**. It now prints `Error: Unknown variable: $NOPE` and exits **1**.
+
+It is not limited to working sets that use the abstract categories: the file is resolved before
+kanibako knows whether there is anything to derive.
+
+**What to do.** Nothing, if your working set files resolve — and if one of them does not, this is
+the view telling you a launch in that working set would fail too. Fix the value it names.
+`kanibako workset show <ws>` without `--effective` is unaffected and still prints the file as
+written, so a script that only wants the stored content should drop the flag.
 
 ---
 
