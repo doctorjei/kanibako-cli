@@ -10,6 +10,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **The shipped `STATE_CLEANUP` procedure gains a step: correct references in other documents before
+  archiving an element.** Every box receives this procedure in its handbook, and until now it checked
+  only what a departing element itself owed — nothing told the reader to fix the documents that restate
+  its information. A record that had been archived correctly could therefore leave a false restatement
+  behind as the surviving copy, which is exactly how a ratified decision was lost here for three days.
+  The wording is Jei's.
+
 ### Fixed
 
 - **`--null` answered with Python's spelling of nothing.** `kanibako system set --null run_args`

@@ -28,3 +28,5 @@ still available if needed in the future.
    complete and one incomplete, according to the most sensible division.
    1. keep the incomplete portion in the task list.
    1. Archive the completed portion.
+
+4. Correct references in other documents before archiving an element.
