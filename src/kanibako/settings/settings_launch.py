@@ -67,6 +67,7 @@ from kanibako.settings.settings_categories import (
     SECRET_MOUNT_DIR,
     CategoryEntry,
     _bind_options,
+    refuse_non_scalar_family_value,
 )
 from kanibako.settings.settings_cli_level import guard_cli_level
 from kanibako.settings.settings_expand import expand
@@ -1947,8 +1948,14 @@ def _assert_declared_categories(key_prefix: str, node: KeyStore) -> None:
     inside the box — no mount, no warning.
 
     ⚑ ``env`` and ``secret_path`` still keep their SILENT SKIP of a non-``KeyStore``
-    node: they are the scalar-valued pair, outside the boundary approved for the bind
-    pass, and widening them is a decision, not an omission to fix in passing.
+    node — the CATEGORY-ROOT case, ``box.env: "foo"``, where a VALUE sits where the
+    family's map belongs: they are the scalar-valued pair, outside the boundary
+    approved for the bind pass, and widening them is a decision, not an omission to fix
+    in passing.
+    🛑 THAT IS THE ROOT CASE ALONE, AND IT IS NO LONGER THE WHOLE STORY.  A non-scalar
+    at a LEAF of either family (``box.env.FOO: ['--x', '--w']``) is REFUSED, by name, at
+    the emit below (``settings_categories.refuse_non_scalar_family_value``, §2a) — so
+    "silent skip" describes what happens ABOVE the leaves and nothing else.
 
     ⚑ The FLOOR's list→keyed-dict bridge for ``<scope>.masks`` is NOT the same
     permission and stays: a floor table is written by kanibako or a plugin, never by a
@@ -2102,6 +2109,14 @@ def _emit_scope_node(
             value = dict.__getitem__(env, var)
             if value is None:
                 continue  # a reset env var has no value to export.
+            # ⚑ THE SCALAR REFUSAL (§2a), and it is not a display rule: the coercion
+            # below used to hand ``str(['--x', '--w'])`` to the guest as the variable's
+            # literal VALUE. This is the ONE site that sees the MERGED snapshot, so it
+            # covers the collapse, ``LaunchDeliveries``, the launch env map and
+            # ``box show --effective`` from a single raise.
+            refuse_non_scalar_family_value(
+                f"{decl_scope_fn('env', var)}.env.{var}", "env", value,
+            )
             sort_key = (order, "env", var)
             collected.append((
                 sort_key,
@@ -2130,6 +2145,13 @@ def _emit_scope_node(
             path_val = dict.__getitem__(secret, var)
             if path_val is None:
                 continue  # a reset secret_path has no path to mount.
+            # ⚑ THE SCALAR REFUSAL (§2a) — the env branch's twin, and here the coercion
+            # it replaces produced a MOUNT SOURCE spelled as a Python repr, which the
+            # bare-relative refusal below then reported as the wrong defect.
+            refuse_non_scalar_family_value(
+                f"{decl_scope_fn('secret_path', var)}.secret_path.{var}",
+                "secret_path", path_val,
+            )
             host_src = path_val if isinstance(path_val, str) else str(path_val)
             if host_src and not host_src.startswith("/"):
                 # ⚑ [R147] REACHES THIS FAMILY, and a ``type: path`` grep MISSES it:

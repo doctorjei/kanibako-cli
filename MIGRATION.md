@@ -4944,6 +4944,70 @@ its `env:` section, beside `COLORTERM` (§2.42). That file ships inside the pack
 replaces it, so it is not a configuration surface: the settings keys above are how you override the
 value.
 
+### 2.80 A list or a map at `env.<VAR>` or `secret_path.<VAR>` is refused instead of coerced
+
+**Read this if a settings file of yours holds more than one value under either key.** The CLI
+cannot write such a value — `kanibako system set` takes a single scalar — so this only reaches you
+if you wrote it by hand.
+
+**What changed.** Both families hold **one scalar**: an environment variable is a string, and a
+`secret_path` is one host path. v1.7.x took whatever YAML held there and ran it through Python's
+`str()`, which produced a Python *repr* and delivered it:
+
+```yaml
+# a box settings file — v1.7.x accepted this
+box:
+  env:
+    FOO:
+      - --x
+      - --w
+  secret_path:
+    TOKEN:
+      - ~/.config/a/token
+      - ~/.config/b/token
+```
+
+```
+# v1.7.x — inside the box
+$ echo $FOO
+['--x', '--w']
+```
+
+The `secret_path` half failed differently: kanibako stats every host source before it builds a
+mount, and the repr is not a path that exists, so the entry was dropped with a warning naming it —
+`secret_path: token file not found at ['~/.config/a/token', '~/.config/b/token']; TOKEN unset
+(agent may fail auth)`. You were told, but what you were told was that a file was missing, when the
+real fault was that the key held a list at all. The variable never reached the box.
+
+**v1.8.0 refuses both, names the key, and says what the value has to be:**
+
+```
+Error: box.env.FOO holds a list; the env.<VAR> family is SCALAR (spec §2a) and an environment
+variable is a STRING. Its value is never coerced into a string nor shell-split, so write ONE
+quoted value - 'x y' is one variable holding two words, not two values.
+```
+
+The refusal runs at the launch, and `kanibako system get box.env.FOO` reports it too rather than
+printing the repr back at you.
+
+**What you must do.** Write one value per key:
+
+```yaml
+box:
+  env:
+    FOO: "--x --w"        # ONE variable holding two words
+  secret_path:
+    TOKEN: ~/.config/a/token
+    OTHER_TOKEN: ~/.config/b/token   # a second secret is a second key
+```
+
+⚑ **A variable is never shell-split.** `FOO="--x --w"` reaches the box as that one string, exactly
+as `export FOO='--x --w'` would in your own shell — kanibako does not turn it into an argument
+list, and there is no spelling of this key that does.
+
+⚑ **Scalars are untouched.** A number, a `true`, an empty string and a `null` reset all behave as
+they did; only a list or a map is refused.
+
 ---
 
 ## 3. For plugin authors

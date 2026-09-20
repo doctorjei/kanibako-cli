@@ -1267,9 +1267,17 @@ user asked to HIDE plainly readable inside the box — no mount, no warning. Its
 3-state marker rather than a source (spec §2a — `dict[box_dest → bool|None]`, *"NOT a bare list"*),
 which changes only the example the refusal prints.
 
-⚑ `env` and `secret_path` still keep their SILENT SKIP of a non-`KeyStore` node: they are the
-scalar-valued pair, they were outside the boundary approved for the bind pass, and widening them is a
-decision, not an omission to fix in passing. Tracked for the undeclared-shape sweep.
+⚑ `env` and `secret_path` still keep their SILENT SKIP of a non-`KeyStore` node — the CATEGORY-ROOT
+case, `box.env: "foo"`, a VALUE where the family's map belongs: they are the scalar-valued pair, they
+were outside the boundary approved for the bind pass, and widening them is a decision, not an
+omission to fix in passing. Tracked for the undeclared-shape sweep.
+
+🛑 **That is the ROOT case alone.** A non-scalar at a LEAF of either family (`box.env.FOO: ['--x',
+'--w']`) is REFUSED by name at the emit — `settings_categories.refuse_non_scalar_family_value`, spec
+§2a's *"BOTH FAMILIES ARE SCALAR … a non-scalar (list, map, etc) is REFUSED at resolve and the key is
+named"*. The refusal is not a display rule: both branches used to coerce with `str(value)`, so a list
+at `box.env.FOO` was EXPORTED INTO THE GUEST as the literal text `['--x', '--w']` and a list at
+`secret_path.<VAR>` became a MOUNT SOURCE spelled as a Python repr.
 
 What the arm check asserts is UNCHANGED by the dest-keyed reshape: a bindings arm's value must be a
 MAP node. Before, a map of names; now, a map of destinations. A scalar / `Bind` / list sitting at

@@ -528,6 +528,42 @@ function-to-function. Adding a field to the carrier is therefore cheap, and addi
 keyspace change — which is what `meta.assembly.env` went through before the collapse could
 write it.
 
+### `refuse_non_scalar_family_value` (+ `is_scalar_family_value`)
+
+Keyspec §2a: *"BOTH FAMILIES ARE SCALAR. A non-scalar (list, map, etc) is REFUSED at resolve and
+the key is named, irrespective of origin (settings file, plugin, CLI, etc). Its value is never
+coerced into a string or shell-split."*
+
+🛑 **IT IS NOT A DISPLAY RULE, and that is the whole reason it is a refusal rather than a
+renderer.** Both emit branches coerced with `str(value)`: a list at `box.env.FOO` was EXPORTED
+INTO THE GUEST as the literal text `['--x', '--w']` (the coercion becomes `CategoryEntry.options`,
+which `store_collapse.collapse_env` hands on as the variable's value), and a list at
+`secret_path.<VAR>` became a MOUNT SOURCE spelled as a Python repr. Curing the rendering alone
+would have cured the screen and left the box wrong.
+
+⚑ **IRRESPECTIVE OF ORIGIN IS THE RULE'S REACH, NOT A SECOND THING TO PRINT.** The message names
+the KEY and stops there: the key already tells a reader which file to open (`box.env.FOO` is the
+box's settings file), and no producer here carries the ROUTE a value arrived by — threading one
+would mean changing `snapshot_category_entries` to carry provenance beside every entry.
+
+⚑ **ONE RULE, TWO APPLICATION SITES, ONE SENTENCE.** The launch refusal is at the RESOLVE seam
+(`settings_launch._emit_scope_node`), which sees the MERGED snapshot and so covers the collapse,
+`LaunchDeliveries`, the launch env map and `box show --effective` from a single raise. The `get`
+verbs never build a snapshot — they read the FILE — so `config_interface` applies the same
+function on the read path (`_scalar_family_render`, `_read_slot`). The remedy TEXT lives here,
+once, exactly like the two collision raisers: two seams with two copies is how one refusal grows
+two sentences.
+
+⚑ **AN INT / FLOAT / BOOL IS A SCALAR** and stays accepted — §2a refuses the NON-scalars. A
+present-`None` is one too: it is the tri-state OMIT, which the emit already reads as a reset and
+every `get` spells `null`. A PLUGIN's own defaults file is stricter (`agent_defaults._env_values`
+takes strings alone), because an unquoted `true` in a file kanibako ships is an authoring slip
+rather than a user's value.
+
+🛑 **THE WRITE BOUNDARY IS THE WRONG PLACE and a refusal there would be unreachable code:**
+`config set` takes `value: str | None` off argv and cannot produce a list or a map, so every
+non-scalar in either family is hand-authored YAML.
+
 ### `refuse_env_secret_twins`
 
 Keyspec §2a: *"A VAR named by BOTH families REFUSES the launch, naming both keys … NO

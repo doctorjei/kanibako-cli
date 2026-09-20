@@ -452,6 +452,82 @@ def secret_path_deliveries(entries: list[CategoryEntry]) -> list[CategoryEntry]:
     return delivered
 
 
+def _value_shape(value: object) -> str:
+    """A USER-FACING name for a refused value's shape — never a class name.
+
+    ``KeyStore`` is the merged store's node type and means nothing to someone reading
+    the YAML they wrote, where the same thing is a MAP; ``Bind``/``BindEntry`` are
+    ``tuple`` subclasses and read as LISTS in a file.  The two names below are the two
+    spellings a settings file actually has for a non-scalar.
+    """
+    if isinstance(value, dict):
+        return "map"
+    if isinstance(value, (list, tuple)):
+        return "list"
+    return type(value).__name__
+
+
+def is_scalar_family_value(value: object) -> bool:
+    """True iff *value* is a shape the two SCALAR families may hold (spec §2a).
+
+    ⚑ A present-``None`` IS one: it is the tri-state OMIT a reset writes, which every
+    reader already spells ``null``, and refusing it would refuse the unset idiom.
+    ⚑ AN INT / FLOAT / BOOL IS ONE TOO, and that is the spec's line rather than a
+    softening: §2a refuses *"a non-scalar (list, map, etc)"*, so a YAML ``8080`` at
+    ``box.env.PORT`` stays the value it has always been.  (A PLUGIN's own defaults file
+    is stricter still — ``agent_defaults._env_values`` takes strings alone — because an
+    unquoted ``true`` there is an authoring slip in a file kanibako ships, not a user's
+    value.)
+    """
+    return value is None or isinstance(value, (str, int, float, bool))
+
+
+def refuse_non_scalar_family_value(
+    key: str, category: str, value: object,
+) -> None:
+    """Refuse a NON-SCALAR stored at *key*, one of the two SCALAR families (spec §2a).
+
+    *category* is ``"env"`` or ``"secret_path"``; *key* is the WHOLE dotted key, which
+    is the only thing the message names — §2a: *"A non-scalar (list, map, etc) is
+    REFUSED at resolve and the key is named, irrespective of origin (settings file,
+    plugin, CLI, etc)."*  ⚑ IRRESPECTIVE OF ORIGIN IS THE RULE'S REACH, NOT A SECOND
+    THING TO PRINT: the key already tells a reader which file to open (``box.env.FOO``
+    is the box's settings file), and no producer here carries the ROUTE a value arrived
+    by.  A message promising the route would need one threaded from
+    ``snapshot_category_entries`` down.
+
+    ⚑⚑ THE REMEDY TEXT LIVES HERE, ONCE, like the two collision raisers above: the
+    rule has more than one application site (the launch RESOLVE seam, which sees the
+    merged snapshot, and the ``get`` READ, which reads a file and builds no snapshot),
+    and a second copy is how two seams drift into two sentences for one refusal.
+
+    🛑 IT IS NOT A DISPLAY RULE.  Before it existed both seams coerced with ``str()``:
+    a list at ``box.env.FOO`` was EXPORTED INTO THE GUEST as the literal text
+    ``['--x', '--w']`` and a list at ``secret_path.<VAR>`` became a MOUNT SOURCE spelled
+    as a Python repr.  Curing the rendering alone would have cured the screen and left
+    the box wrong.
+    """
+    from kanibako.settings.settings_resolve import SettingsError
+
+    if is_scalar_family_value(value):
+        return
+    shape = _value_shape(value)
+    if category == "env":
+        raise SettingsError(
+            f"{key} holds a {shape}; the env.<VAR> family is SCALAR (spec §2a) and "
+            f"an environment variable is a STRING. Its value is never coerced into "
+            f"a string nor shell-split, so write ONE quoted value - 'x y' is one "
+            f"variable holding two words, not two values."
+        )
+    raise SettingsError(
+        f"{key} holds a {shape}; the secret_path.<VAR> family is SCALAR (spec §2a) "
+        f"and its value is ONE host path - the file the box exports the variable "
+        f"from. Its value is never coerced into a string, so a {shape} names no "
+        f"host file to mount: give a single path, and declare a second "
+        f"secret_path.<VAR> key for a second secret."
+    )
+
+
 def refuse_env_secret_twins(entries: list[CategoryEntry]) -> None:
     """Refuse a VAR named by BOTH scalar families, naming both keys (spec §2a).
 

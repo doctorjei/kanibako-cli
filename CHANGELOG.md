@@ -21,6 +21,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A list or a map written at `<scope>.env.<VAR>` or `<scope>.secret_path.<VAR>` was coerced with
+  Python's `str()` instead of being refused.** Both families hold one scalar, and the coercion was
+  not a display slip: a list at `box.env.FOO` was exported *into the box* as the literal text
+  `['--x', '--w']`, so the variable the box read was a Python repr; `kanibako system get` answered
+  the same repr; and at `secret_path.<VAR>` the repr became the host path kanibako looked for,
+  which then failed with a complaint that an absolute path was "a BARE RELATIVE path" — naming a
+  defect the settings file did not have. Both families now refuse a non-scalar, naming the key, at
+  launch and at `get` alike. ⚑ **Nothing to do on upgrade unless a settings file already holds
+  one:** `config set` takes a single scalar and could never write a list or a map, so such a value
+  is hand-authored. Quote it as the one value the variable is meant to hold — `"--x --w"` is one
+  variable holding two words — or declare a second `secret_path.<VAR>` key for a second secret.
+  ⚑ Scalars are untouched: a number, a bool, the empty string and a `null` reset all read back and
+  deliver exactly as before.
+
 - **`kanibako system set system.cache=<path>` was accepted and changed nothing.** The key is
   declared and settable, and it did resolve — into a field no consumer read. Both caches kanibako
   keeps under its cache root, the tweakcc patched-binary cache and the image digest cache, were
