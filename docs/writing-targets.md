@@ -53,7 +53,11 @@ class MyTarget(Target):
 it however your agent spells itself — a capital is fine and is shown to the user. Kanibako builds
 the node by lowercasing it, and the node is what spells `<data>/agents/<agent>/` and the
 `agent.<agent>.*` cascade slot. So a plugin named `MyAgent` stores under the node `myagent`, and a
-second plugin calling itself `myagent` claims that node too and is refused.
+second plugin calling itself `myagent` claims that node too. What happens then is the ordinary
+discovery precedence (see *Three-tier plugin discovery* in the README): within one tier the second
+is refused with a warning naming both spellings, because order inside a tier is arbitrary; across
+tiers the later tier overrides the earlier one, which is how you shadow an installed plugin with a
+file you drop in your own store.
 
 Optional overrides (sensible defaults provided by the base class):
 

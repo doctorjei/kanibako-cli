@@ -26,11 +26,25 @@ class _FakeTarget:
 
 
 def _make_target(name: str, detects: bool = True):
+    """A plugin class DECLARING *name* — its ``Target.name``, in the plugin's own case.
+
+    ⚑ The declared name is not the registry KEY.  A registry is keyed by NODE — the
+    name in lowercase (``[R173]``) — so a fixture that wants to tell the two apart
+    files a MixedCase declaration under its own lowercase node; see
+    :data:`_MIXED_CASE`.  A fixture declaring a lowercase name cannot discriminate,
+    because for it the two spellings are the same string.
+    """
     return type(
         f"Target_{name}",
         (_FakeTarget,),
-        {"display_name": name.title(), "_detects": detects},
+        {"name": name, "display_name": name.title(), "_detects": detects},
     )
+
+
+#: The discriminating registry: node ``kirobo``, declared name ``Kirobo``.  Every
+#: assertion about WHICH spelling is written needs one, because ``claude`` answers
+#: both questions with the same string.
+_MIXED_CASE = {"kirobo": _make_target("Kirobo")}
 
 
 def _patch_targets(monkeypatch, targets: dict):
@@ -69,18 +83,26 @@ def test_agent_flag_valid_writes_default(tmp_home, config_file, monkeypatch):
     assert read_system_agent(ssp) == "claude"
 
 
-def test_agent_flag_is_case_blind_and_writes_the_node(tmp_home, config_file, monkeypatch):
+def test_agent_flag_is_case_blind_and_writes_the_DECLARED_NAME(
+    tmp_home, config_file, monkeypatch
+):
     """One identifier, one answer at every door (keyspec §0, ⚑ NAMING RULES).
 
-    `--agent Claude` reaches the plugin at a launch, so it has to reach it here
+    `--agent kirobo` reaches the plugin at a launch, so it has to reach it here
     too — a setup that refuses what `start` accepts contradicts itself about what
-    is installed. What is WRITTEN is the node, so the stored selection is the one
-    the launch resolves, byte for byte.
+    is installed.
+
+    🛑 What is WRITTEN is the plugin's DECLARED NAME, not the node it matched.
+    `system.agent` holds a NAME (keyspec §2g, `[R173]`), and for an agent the
+    canonical case is the plugin's own (`[R172]`) — so the capital survives the
+    round trip and `resolve_agent` folds it to the node at the launch. Writing the
+    node here instead would be fold-to-store: the declared case would exist in no
+    stored carrier at all.
     """
-    _patch_targets(monkeypatch, {"claude": _make_target("claude")})
-    assert setup_cmd._run_agent_selection(_ns(agent="Claude")) == "claude"
+    _patch_targets(monkeypatch, _MIXED_CASE)
+    assert setup_cmd._run_agent_selection(_ns(agent="KIROBO")) == "Kirobo"
     _, ssp = _config_paths(tmp_home)
-    assert read_system_agent(ssp) == "claude"
+    assert read_system_agent(ssp) == "Kirobo"
 
 
 def test_agent_flag_bogus_errors_no_write(tmp_home, config_file, monkeypatch):
@@ -137,6 +159,22 @@ def test_interactive_pick_writes_default(tmp_home, config_file, monkeypatch):
     assert selected == "goose"
     _, ssp = _config_paths(tmp_home)
     assert read_system_agent(ssp) == "goose"
+
+
+def test_interactive_pick_writes_the_DECLARED_NAME(tmp_home, config_file, monkeypatch):
+    """The menu door answers the same spelling the ``--agent`` door does.
+
+    Two doors, one identifier: a pick from the list stores the plugin's declared
+    case exactly as `setup --agent` does, because both write `system.agent` and
+    that key holds a NAME (`[R173]`). The lowercase-``claude`` fixtures above
+    cannot see this — for them the node and the name are one string.
+    """
+    _patch_targets(monkeypatch, _MIXED_CASE)
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda *a: "1")
+    assert setup_cmd._run_agent_selection(_ns()) == "Kirobo"
+    _, ssp = _config_paths(tmp_home)
+    assert read_system_agent(ssp) == "Kirobo"
 
 
 def test_interactive_single_agent_skip_is_confirmed_too(

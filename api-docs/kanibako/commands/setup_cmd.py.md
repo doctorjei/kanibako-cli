@@ -8,6 +8,7 @@ _Signatures only: no comments, no docstrings, no bodies._
 ```
 def add_arguments(parser: argparse.ArgumentParser) -> None
 def run_setup(args: argparse.Namespace) -> int
+def _declared_name(node: str, cls: type) -> str
 def _detected_agents() -> list[tuple[str, str]]
 def _known_target_names() -> list[str]
 def _settings_paths() -> tuple[Path, Path]

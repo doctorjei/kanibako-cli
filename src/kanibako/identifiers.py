@@ -30,10 +30,11 @@ from collections.abc import Iterable
 def _fold(name: str) -> str:
     """The comparison form of an identifier.
 
-    ``casefold()`` rather than ``lower()``: agent segments admit ``\\w`` in any
-    language (``agent_ref.SEGMENT_CHAR_CLASS``), and keeping ``.lower()``
-    unspoken here leaves any surviving ``.lower()``-on-a-name textually
-    identifiable as the retired ``[R171]`` entry fold.
+    ``casefold()`` rather than ``lower()``: identifier segments admit ``\\w`` in
+    any language (``agent_ref.SEGMENT_CHAR_CLASS``), and a COMPARISON wants the
+    widest equivalence there is — ``STRASSE`` and ``straße`` are one name to a
+    user.  ⚑ That argument is about comparing, and it does NOT carry over to
+    :func:`agent_node_case`, which writes a directory; its docstring says why.
 
     ⚑ PRIVATE, and that is the design: with no exported way to fold a single
     name, there is no reachable way to fold one HALF of a comparison.  The
@@ -56,15 +57,21 @@ def agent_node_case(name: str) -> str:
 
     ⚑ **Call it where a node is DERIVED from a name**, never as one half of a
     comparison — that is :func:`find_identifier`, which folds both sides and is the
-    only reason ``_fold`` stayed private.  A node built here and a registry key
-    built here are byte-equal, which is what lets the two be compared at all.
+    only reason ``_fold`` stayed private.
 
-    ⚑ ``_fold`` rather than ``.lower()``: the two differ only on names no agent-ref
-    grammar realistically carries, and reaching for a SECOND fold here would give
-    the tree two spellings of one rule.  The keyspec's ``%tolower(…)%`` in §2d is
-    table prose for the same idea, not a resolver macro (``[R176]``).
+    🛑 **``lower()``, NOT the comparison fold, and the two are not interchangeable
+    here.**  The spec spells this ``%tolower(…)%`` (§2d, ``[R176]``) and §0 says a
+    node is its name *in lowercase* — a CASE change.  ``casefold`` is a wider
+    equivalence that changes LETTERS: ``"Straße".lower()`` is ``"straße"`` while
+    ``"Straße".casefold()`` is ``"strasse"``, so a casefolded node would spell a
+    plugin's store ``agents/strasse/`` where the spec says ``agents/straße/`` — a
+    different word on disk, not a different case.
+    ⚑ **Nothing is lost at the lookup, and that was the argument for reusing the
+    comparison fold.**  :func:`find_identifier` casefolds BOTH sides, so a key built
+    here is reached by any spelling of the query, ``STRASSE`` included.  The two
+    folds answer different questions and neither has to be the other.
     """
-    return _fold(name)
+    return name.lower()
 
 
 def find_identifier(name: str, candidates: Iterable[str]) -> str | None:

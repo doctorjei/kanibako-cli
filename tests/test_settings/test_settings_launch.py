@@ -1937,10 +1937,10 @@ class TestMetaAgentNameIsTheStoreDirname:
     why the persona case carries the weight and the bare case is the control.
     """
 
-    def _floor(self, node):
+    def _floor(self, node, real=None):
         return meta_identity_floor(
             box_name="x", project_path="/p", inbox="/i", share_global="/s",
-            share_workset=None, agent_name=node,
+            share_workset=None, agent_name=node, agent_real_name=real,
         )
 
     def test_the_persona_name_value_is_the_plus_spelling(self):
@@ -1952,20 +1952,59 @@ class TestMetaAgentNameIsTheStoreDirname:
 
     def test_the_spec_formula_composes(self):
         """⚑ THE RULE, not an inventory (P13): §2d says ``path`` IS
-        ``@config.agents/@meta.agent.<a>.name``.  Asserting the COMPOSITION reds if
-        EITHER half drifts, which a literal on one half alone would not.
+        ``@config.agents/%tolower(@meta.agent.<a>.name)%`` (``[R176]``).  Asserting
+        the COMPOSITION reds if EITHER half drifts, which a literal on one half
+        alone would not.  ⚑ The ``tolower`` is HIS adjustment and belongs in the
+        assertion: leave it out and a case-carrying name reads as a drift.
         """
-        for node in ("navigator℘claude", "claude"):
-            floor = self._floor(node)
+        for node, real in (
+            ("navigator℘claude", None),
+            ("claude", None),
+            ("kirobo", "Kirobo"),
+            ("navigator℘kirobo", "Kirobo"),
+        ):
+            floor = self._floor(node, real)
+            name = floor[f"meta.agent.{node}.name"]
             assert (
-                f"@config.agents/{floor[f'meta.agent.{node}.name']}"
-                == floor[f"meta.agent.{node}.path"]
-            ), node
+                f"@config.agents/{name.lower()}" == floor[f"meta.agent.{node}.path"]
+            ), (node, real)
 
     def test_a_bare_agent_is_byte_identical(self):
         """THE NO-CHANGE CONTROL: ``store_dirname`` is identity on a name with no
         separator, so a bare agent's value is exactly what it always was."""
         assert self._floor("claude")["meta.agent.claude.name"] == "claude"
+
+    def test_the_name_KEEPS_the_declared_case_while_the_key_is_the_node(self):
+        """🛑 THE KEY IS THE FOLD OF THE VALUE, NOT A SECOND SPELLING OF IT.
+
+        ``[R173]``: an agent's canonical case lives in its NAME, and
+        ``meta.agent.<a>.name`` is one of the two values named as carrying it.
+        Materializing the already-folded node here instead would leave the plugin's
+        declared spelling in NO stored carrier — and would satisfy §2d's
+        ``%tolower(…)%``, written precisely to keep the name case-carrying, with a
+        no-op.  That is ``[R171]``'s retired fold-to-store cure re-spelled.
+        """
+        floor = self._floor("kirobo", "Kirobo")
+        assert floor["meta.agent.kirobo.name"] == "Kirobo"
+        assert floor["meta.agent.kirobo.path"] == "@config.agents/kirobo"
+
+    def test_only_the_HARNESS_segment_takes_the_declared_case(self):
+        """A persona segment is the user's; neither ruling reaches it (``Q35``).
+
+        And the splice is IDEMPOTENT — every existing caller hands the whole node
+        over as *agent_real_name*, so a bare declared name and a whole ref must
+        answer the same.
+        """
+        assert (
+            self._floor("navigator℘kirobo", "Kirobo")["meta.agent.navigator℘kirobo.name"]
+            == "navigator+Kirobo"
+        )
+        assert (
+            self._floor("navigator℘kirobo", "navigator℘Kirobo")[
+                "meta.agent.navigator℘kirobo.name"
+            ]
+            == "navigator+Kirobo"
+        )
 
 
 class TestMetaAgentPath:

@@ -39,27 +39,63 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _declared_name(node: str, cls: type) -> str:
+    """The plugin's DECLARED name for *node* — its own case, or *node* if it cannot be.
+
+    ``system.agent`` holds a NAME, and for an agent the canonical case is the one the
+    PLUGIN declares (``[R172]``, ``[R173]``) — so this command must store ``Kirobo``,
+    not the ``kirobo`` node it matched.  The registry is keyed by node and throws the
+    declaration away, so it is read back off the class.
+
+    ⚑ **Read back and CHECKED, because the two discovery routes declare it in
+    different places.**  A file-drop plugin is filed under its ``Target.name``; an
+    ENTRY POINT is filed under its entry-point name, which is packaging metadata and
+    need not agree with the class.  A declared name that does not fold back to the
+    node the class was filed under is therefore not this node's name at all — and the
+    node is then the honest answer, being itself a legal name that
+    ``config.resolve_agent`` resolves.
+    """
+    from kanibako.identifiers import agent_node_case
+
+    try:
+        declared = cls().name
+    except Exception:
+        return node
+    return declared if isinstance(declared, str) and (
+        agent_node_case(declared) == node
+    ) else node
+
+
 def _detected_agents() -> list[tuple[str, str]]:
-    """Return ``(name, display_name)`` for every DETECTED (installed) agent.
+    """Return ``(declared name, display_name)`` for every DETECTED (installed) agent.
 
     Detection mirrors Step 2's report: an agent counts when its host binary is
-    found via ``detect()``.  Returned in sorted-by-name order for a stable menu.
+    found via ``detect()``.  Returned in sorted-by-node order for a stable menu.
+
+    ⚑ The first element is the DECLARED NAME, not the registry key: it is what a pick
+    from the menu writes to ``system.agent``, which holds a name (:func:`_declared_name`).
     """
     from kanibako.targets import discover_targets
 
     found: list[tuple[str, str]] = []
-    for name, cls in sorted(discover_targets().items()):
+    for node, cls in sorted(discover_targets().items()):
         try:
             instance = cls()
             if instance.detect() is not None:
-                found.append((name, instance.display_name))
+                found.append((_declared_name(node, cls), instance.display_name))
         except Exception:
             continue
     return found
 
 
 def _known_target_names() -> list[str]:
-    """Return the names of every installed agent plugin (detected or not)."""
+    """Return the NODE of every installed agent plugin (detected or not).
+
+    🛑 NODES, deliberately — these spell the per-agent store directories
+    ``install_packaged_templates`` creates, and a store path is node-derived
+    (keyspec §0).  The door that writes ``system.agent`` wants the other spelling;
+    see :func:`_declared_name`.
+    """
     from kanibako.targets import discover_targets
 
     return sorted(discover_targets().keys())
@@ -560,12 +596,17 @@ def _run_agent_selection(args: argparse.Namespace) -> str | None:
     if requested:
         # ⚑ CASE-BLIND, and it has to be the same answer ``--agent`` gets at a launch
         # (keyspec §0): an agent is one identifier however it is capitalized, and this
-        # door and ``start``'s must not disagree about whether it is installed.  What
-        # comes back is the NODE, which is what gets written — so the stored selection
-        # is byte-identical to the one the launch resolves.
+        # door and ``start``'s must not disagree about whether it is installed.
+        # 🛑 What is MATCHED is the node; what is WRITTEN is the plugin's DECLARED
+        # NAME.  ``system.agent`` holds a name (keyspec §2g, ``[R173]``) and an
+        # agent's canonical case is the plugin's (``[R172]``), so storing the node
+        # here would fold the name on the way to storage and leave the declared case
+        # in no stored carrier at all.  ``resolve_agent`` folds it back at the launch.
         from kanibako.identifiers import find_identifier
+        from kanibako.targets import discover_targets
 
-        node = find_identifier(requested, _known_target_names())
+        installed = discover_targets()
+        node = find_identifier(requested, installed)
         if node is None:
             available = ", ".join(_known_target_names()) or "(none installed)"
             # Hard error: an unknown agent must NOT be treated as a graceful
@@ -584,9 +625,10 @@ def _run_agent_selection(args: argparse.Namespace) -> str | None:
                 f"{install_command(f'kanibako-agent-{requested}')}) "
                 "or pick from the list above."
             )
-        _write_system_agent(node)
-        print(f"  [ok] Default agent set to '{node}'.")
-        return node
+        name = _declared_name(node, installed[node])
+        _write_system_agent(name)
+        print(f"  [ok] Default agent set to '{name}'.")
+        return name
 
     detected = _detected_agents()
 

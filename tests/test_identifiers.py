@@ -90,21 +90,30 @@ class TestAgentNodeCase:
         """A node handed back in is still that node — the store dir is spelled once."""
         assert agent_node_case(agent_node_case("Shell")) == agent_node_case("Shell")
 
-    def test_it_is_the_SAME_fold_the_comparison_uses(self):
-        """Why it must be: a node derived here is looked up by ``find_identifier``.
+    def test_a_node_it_built_is_still_reachable_through_the_comparison(self):
+        """The contract that matters: ``get_target`` must find what ``_register`` filed.
 
-        ``get_target`` compares a typed name against registry keys that this
-        function built.  Two different folds would agree on every ASCII name and
-        part on the first one that is not — a registry key no lookup could reach.
+        The two folds are DIFFERENT and do not have to agree — ``find_identifier``
+        casefolds BOTH sides, so a key this function built is reached by any
+        spelling of the query, including the one the wider fold collapses.
         """
-        node = agent_node_case("STRASSE")
+        node = agent_node_case("Straße")
         assert find_identifier("straße", [node]) == node
-        assert agent_node_case("straße") == node
+        assert find_identifier("STRASSE", [node]) == node
+        assert find_identifier("Straße", [node]) == node
 
-    def test_a_non_ASCII_name_folds_rather_than_merely_lowercasing(self):
-        """The discriminating pair, as in ``test_casefold_not_lower`` above."""
-        assert "straße".lower() == "straße"
-        assert agent_node_case("straße") == "strasse"
+    def test_it_LOWERCASES_rather_than_casefolding(self):
+        """``%tolower(…)%`` is a CASE change; ``casefold`` is a LETTER change.
+
+        Keyspec §2d spells the store-path fold ``%tolower(@meta.agent.<agent>.name)%``
+        (``[R176]``) and §0 says the node is the name *in lowercase*.
+        ``"Straße".casefold()`` is ``"strasse"`` — a different word — so a
+        casefolded node would spell a plugin's store ``agents/strasse/`` where the
+        spec says ``agents/straße/``.  The assertion discriminates the two
+        implementations rather than merely exercising one.
+        """
+        assert "Straße".casefold() == "strasse"
+        assert agent_node_case("Straße") == "straße"
 
 
 class TestTheCarrierIsATerminalLeaf:
