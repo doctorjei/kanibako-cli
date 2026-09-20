@@ -40,9 +40,17 @@ PSEUDO_AGENT_NAMES = frozenset({"default", "shell"})
 
 # The AGENT-SLOT name a launch wears when NO agent is involved — a no-agent/plain-shell
 # box, & the agent-less resolves that stand in for one (``kanibako init``'s agent file,
-# the workset previews, the effective-settings dumps).  It keys the ``agents/<node>/`` dir
-# & the ``agent.<node>.*`` cascade slot exactly as a real node-name does, which is why the
+# the workset previews, the effective-settings dumps).  It OCCUPIES the ``agents/<node>/``
+# dir & the ``agent.<node>.*`` cascade POSITION as a real node-name does — which is why
+# ``_materialize_box_agent_mirror``'s blank short-circuit does not fire & the
 # ``agent.default`` backstop still reaches a no-agent launch.
+# 🛑 IT IS NOT A DECLARED AGENT, & the difference is not cosmetic: ``agent.general.*`` is
+# UNDECLARED, so a closed-keyspace resolve REFUSES it.  That is why
+# ``settings_cli_level.build_cli_level`` is given ``active_agent=None`` for a no-agent
+# launch — spelling ``agent.general.model`` there would fabricate a key.
+# ⚑ THIS COMMENT IS THE CONSTANT'S ONLY AUTHORITY.  The eleven literals it replaced each
+# carried their own value; ``tests/test_agent_ref.py`` pins the VALUE, & the spelling is a
+# fact about a user's store — rename it & the on-disk dir moves.
 # ⚑ A TEMPLATE/CHAPTER FALLBACK SLOT, NOT AN AGENT (keyspec ``templates/general/standard``,
 # & the ``general`` canon chapter).  Nothing SELECTS it —
 # :attr:`kanibako.settings.agent_select.AgentSelection.selection_level` installs NOTHING for

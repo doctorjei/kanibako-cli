@@ -8,6 +8,7 @@ import pytest
 
 from kanibako.agent_ref import (
     CANONICAL_SEP,
+    GENERAL_SLOT,
     PLUS_SEP,
     PSEUDO_AGENT_NAMES,
     _is_segment_safe,
@@ -307,6 +308,24 @@ def test_canonicalize_malformed_raises():
 # would own them too.  The refusal lives in ``parse_agent_ref`` because that is
 # the sole gate every user-supplied ref passes through.
 # ---------------------------------------------------------------------------
+
+
+def test_the_general_slot_is_the_word_on_disk():
+    """The VALUE, pinned — collapsing eleven literals to one constant removed the pin.
+
+    ``GENERAL_SLOT`` names a DIRECTORY (``<data>/agents/general/``) and the
+    ``agent.general.*`` cascade position beneath it, so its spelling is a fact about
+    a user's store rather than an internal label.  Nothing else asserts it: rename
+    the constant's value and the on-disk directory moves, the box agent mirror takes
+    its blank short-circuit, and the ``agent.default`` backstop stops reaching a
+    no-agent launch — with every test still green.  That is the hole a named
+    constant opens when it replaces literals that each carried their own value.
+
+    ⚑ It is DELIBERATELY not in ``PSEUDO_AGENT_NAMES``: that set is a user-facing
+    refusal and this name is not reserved against anybody's agent.
+    """
+    assert GENERAL_SLOT == "general"
+    assert GENERAL_SLOT not in PSEUDO_AGENT_NAMES
 
 
 def test_the_reserved_set_is_the_spec_s_two_names():
