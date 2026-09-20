@@ -95,9 +95,11 @@ def env_default_categories() -> dict[str, str]:
 
     ⚑ A SEPARATE emitter from ``start._core_env_default_categories``, whose docstring
     forbids new entries: that one carries the launch-DERIVED ``KANIBAKO_*`` stamps —
-    values that do not exist until a launch runs — while these are literals a file can
-    hold.  The derived table merges AFTER this one, so a stamp still wins a VAR this
-    section also names.
+    values that do not exist until a launch runs — while these are values a FILE can
+    hold, which includes a ``$VAR`` EXPRESSION and is not limited to literals.  The
+    floor folds under the base level and the snapshot is expanded before any entry is
+    walked, so ``TERM: "$TERM"`` resolves here.  The derived table merges AFTER this
+    one, so a stamp still wins a VAR this section also names.
     ⚑ Values are STRINGS, as in :func:`behavior_defaults`: an unquoted YAML bool would
     reach the box as ``"True"``.
 
