@@ -23,6 +23,7 @@ from kanibako.settings.config import (
     persist_creation_flags,
 )
 from kanibako.runtime.container import ContainerRuntime
+from kanibako.identifiers import find_identifier
 from kanibako.errors import ContainerError, ProjectError
 from kanibako.project.names import read_names, unregister_name
 from kanibako.settings.paths import (
@@ -1318,9 +1319,8 @@ def _purge_deregistered(std, name: str, entry: dict, args: argparse.Namespace) -
             std.registry, Path(str(metadata)),
         ) if metadata else None
     else:
-        active_owner = (
-            name if name in load_primary_boxes(std.primary_workset) else None
-        )
+        # ⚑ Case-blind (spec §0), and the STORED spelling is what gets reported.
+        active_owner = find_identifier(name, load_primary_boxes(std.primary_workset))
     if active_owner is not None:
         print(
             f"'{name}' now refers to an active box (its metadata at {metadata} is "
@@ -1383,10 +1383,12 @@ def _resolve_standalone_target(
     from kanibako.project import registry_store
     from kanibako.settings.paths import BoxMode, detect_project_mode
 
-    # 1) Direct standalone-NAME lookup.
+    # 1) Direct standalone-NAME lookup — case-blind (spec §0), returning the name as
+    #    REGISTERED so everything downstream addresses the box the registry knows.
     entries = registry_store.load_standalone(std.registry)
-    if target in entries:
-        return target, Path(entries[target])
+    stored = find_identifier(target, entries)
+    if stored is not None:
+        return stored, Path(entries[stored])
 
     # 2) PATH target: detect the box by ancestor-walk, then match its registered root.
     candidate = Path(target)
@@ -1487,10 +1489,14 @@ def run_rm(args: argparse.Namespace) -> int:
     section: str | None = None
     path: str | None = None
 
-    if target in primary_boxes:
-        name, section, path = target, "projects", primary_boxes[target]
-    elif target in names["worksets"]:
-        name, section, path = target, "worksets", names["worksets"][target]
+    # ⚑ Case-blind (spec §0), and *name* takes the STORED spelling — it drives the
+    # unregister below, which must address the key the registry actually holds.
+    primary_hit_name = find_identifier(target, primary_boxes)
+    workset_hit_name = find_identifier(target, names["worksets"])
+    if primary_hit_name is not None:
+        name, section, path = primary_hit_name, "projects", primary_boxes[primary_hit_name]
+    elif workset_hit_name is not None:
+        name, section, path = workset_hit_name, "worksets", names["worksets"][workset_hit_name]
 
     if name is None:
         # Reverse path lookup: the primary membership first, then the worksets index.
@@ -1596,8 +1602,7 @@ def _readopt_deregistered(std, name: str, entry: dict, *, force: bool) -> int:
             )
             return 1
         # Conflict: an ACTIVE standalone box at a DIFFERENT root — refuse, never clobber.
-        registered = registry_store.load_standalone(std.registry)
-        other = registered.get(name)
+        other = registry_store.standalone_root(std.registry, name)  # ⚑ case-blind (§0)
         if other is not None and Path(other).resolve() != root:
             print(
                 f"Error: an active standalone box already owns the name '{name}' "
@@ -1666,16 +1671,21 @@ def run_register(args: argparse.Namespace) -> int:
         return _readopt_deregistered(std, target, dereg, force=force)
 
     # 2. Already-ACTIVE guards — rc 0 no-op for a live box, a redirect for a workset.
+    # ⚑ All three guards compare case-blind (spec §0) and report the STORED spelling —
+    # a user told "'Foo' is already registered" who cannot find ``Foo`` anywhere learns
+    # nothing.
     primary_boxes = load_primary_boxes(std.primary_workset)
-    if target in primary_boxes:
-        print(f"'{target}' is already registered (primary box at {primary_boxes[target]}).")
+    held = find_identifier(target, primary_boxes)
+    if held is not None:
+        print(f"'{held}' is already registered (primary box at {primary_boxes[held]}).")
         return 0
     standalone = registry_store.load_standalone(std.registry)
-    if target in standalone:
-        print(f"'{target}' is already registered (standalone box at {standalone[target]}).")
+    held = find_identifier(target, standalone)
+    if held is not None:
+        print(f"'{held}' is already registered (standalone box at {standalone[held]}).")
         return 0
     worksets = read_names(std.registry)["worksets"]
-    if target in worksets:
+    if find_identifier(target, worksets) is not None:
         print(
             f"Error: '{target}' is a workset, not a box. Worksets keep their own "
             "lifecycle; 'register' applies to primary and standalone boxes only.",

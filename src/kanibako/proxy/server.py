@@ -247,13 +247,16 @@ class _AnthropicProxyHandler(BaseHTTPRequestHandler):
     """
     url = self._config.upstream_base.rstrip("/") + self.path
     request = urllib.request.Request(url, data=body or None, method=self.command)
-    for name, value in self.headers.items():
-      lowered = name.lower()
+    # ⚑ ``header``, not ``name``: an HTTP field name is case-insensitive by RFC 9110 and
+    # folding one is correct — it is NOT a kanibako identifier, and sharing the variable
+    # spelling with one made this loop read like a violation of the never-fold rule.
+    for header, header_value in self.headers.items():
+      lowered = header.lower()
       if lowered in _REQUEST_DROP:
         continue
       if decode_body and lowered == "accept-encoding":
         continue
-      request.add_header(name, value)   # Authorization included, verbatim and unlogged
+      request.add_header(header, header_value)  # Authorization included, verbatim and unlogged
     if decode_body:
       request.add_header("Accept-Encoding", "identity")
     if body:
@@ -279,10 +282,10 @@ class _AnthropicProxyHandler(BaseHTTPRequestHandler):
     for all three instead of leaving one of them to a framing bug.
     """
     self.send_response_only(status)
-    for name, value in headers.items():
-      if name.lower() in _HOP_BY_HOP:
+    for header, header_value in headers.items():  # an HTTP field name, not an identifier
+      if header.lower() in _HOP_BY_HOP:
         continue
-      self.send_header(name, value)
+      self.send_header(header, header_value)
     self._end_headers_and_close()
 
   def _send_stream_headers(self) -> None:

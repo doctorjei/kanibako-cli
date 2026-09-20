@@ -37,6 +37,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from kanibako.identifiers import find_identifier
 from kanibako.settings.config_io import dump_doc, load_doc
 from kanibako.settings.workset_dirkeys import resolve_workset_dir_key
 from kanibako.errors import LegacyRegistryIdentityError, ProjectError
@@ -182,6 +183,11 @@ def register_workset_box(registry_path: Path, box_name: str, path: Path) -> None
     # box name.  Relaxing this refusal re-opens duplicate ``list`` rows.  It costs
     # the legitimate flows nothing — a re-register is idempotent and a MOVE (same
     # name, new path) still overwrites below.
+    # ⚑ THE ONE NAME COMPARE HERE STAYS EXACT, DELIBERATELY (spec §0, ⚑ NAMING RULES,
+    # Phase 1).  Folding it would read ``Foo`` as the self case against a stored ``foo``
+    # and fall through to the write below, which puts ``Foo`` in the table BESIDE
+    # ``foo`` — two rows for one box.  The fold belongs here only once the write itself
+    # resolves to the stored spelling, which is a storage change and not this phase's.
     for existing_name, existing_path in boxes.items():
         if existing_name != box_name and _same_workspace(existing_path, path_str):
             raise ProjectError(
@@ -198,14 +204,23 @@ def unregister_workset_box(registry_path: Path, box_name: str) -> None:
     if not registry_path.is_file():
         return
     full_doc, boxes = _load_boxes_raw(registry_path)
-    if boxes.pop(box_name, None) is None:
+    # ⚑ Found case-blind, removed by the STORED spelling (§0).
+    stored = find_identifier(box_name, boxes)
+    if stored is None:
         return
+    del boxes[stored]
     _write_boxes(registry_path, full_doc, boxes)
 
 
 def workset_box_path(registry_path: Path, box_name: str) -> str | None:
-    """Return the registered path for *box_name*, or ``None`` if not a member."""
-    return load_workset_boxes(registry_path).get(box_name)
+    """Return the registered path for *box_name*, or ``None`` if not a member.
+
+    ⚑ Membership compares case-blind (spec §0, ⚑ NAMING RULES); the table keeps the
+    spelling it was registered under.
+    """
+    boxes = load_workset_boxes(registry_path)
+    stored = find_identifier(box_name, boxes)
+    return None if stored is None else boxes[stored]
 
 
 def reverse_lookup_workset_box(

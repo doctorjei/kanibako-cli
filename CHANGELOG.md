@@ -12,6 +12,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Box and workset names collided only when the case matched exactly.** Every collision check in
+  the tree was an exact-match `in` or `.get`, so whether two names clashed depended on which side
+  of the comparison had already been lowercased — and only the box-`create` path lowercases. A
+  workset named `Foo` therefore walked past the cross-kind guard protecting a primary box named
+  `foo`, got registered, and then lost every bare-name lookup to the box it should have been
+  refused for; the standalone-box resolver had the mirror-image defect, folding the query it was
+  handed and not the keys it searched. Names now compare **without regard to case** wherever they
+  are compared — creation, registration, resolution, removal and the shadow warnings — through a
+  single helper that hands back the spelling actually stored, so the matched key is the one the
+  registry holds. ⚑ **Nothing about what is stored changed**: a name is written in the case it was
+  typed, and the one place that still lowercases on entry (`box create`) is unchanged here.
+  Two consequences worth stating. A name that was accepted before may now be refused —
+  `workset create Foo` when `foo` is taken, `box register FOO` when `foo` is registered — and the
+  refusal names the stored spelling so the clash is findable. And the reserved workset names are
+  now reserved in every case: `Default` hits the same reservation `default` does, and so do
+  `__primary__` and `__standalone__` — a named workset's channel token is its own name emitted
+  verbatim as a directory, so on a case-insensitive filesystem a workset called `__primary__`
+  would land inside the primary partition's own mailboxes. Reserving the case variants costs
+  nothing and closes that; the tokens themselves are still emitted exactly, because a path is
+  never case-folded.
+
 - **`kanibako box show` did not list a box's own `common`, `caches` and `seeded` declarations.**
   The abstract categories are real, declared keys — the keyspace spec says a user sets them in YAML
   and `config show` lists them — but the plain view at the box noun could not see a category table

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from kanibako.identifiers import find_identifier
 from kanibako.settings.config_io import dump_doc, load_doc
 
 # Top-level sections of registry.yaml, in canonical order.
@@ -111,17 +112,39 @@ def standalone_box_names(registry: Path) -> set[str]:
     return set(load_standalone(registry))
 
 
+def standalone_root(registry: Path, box_name: str) -> str | None:
+    """Return the registered root for *box_name*, or ``None`` if not registered.
+
+    ⚑ Compared case-blind (spec §0, ⚑ NAMING RULES); the section keeps the spelling it
+    was registered under.  The ONE name→root read, so callers do not re-spell the lookup.
+    """
+    entries = load_standalone(registry)
+    stored = find_identifier(box_name, entries)
+    return None if stored is None else entries[stored]
+
+
 def register_standalone(registry: Path, box_name: str, root: Path) -> None:
-    """Register a standalone box (``box_name`` → *root*); a re-register overwrites."""
+    """Register a standalone box (``box_name`` → *root*); a re-register overwrites.
+
+    🛑 The key is written AS GIVEN — fold to compare, never to store.  The overwrite is
+    an EXACT-key overwrite, deliberately: resolving it case-blind while the write still
+    used the caller's spelling would leave ``Foo`` in the section beside ``foo``.  That
+    is a storage question, and it is not this phase's.
+    """
     entries = load_standalone(registry)
     entries[box_name] = str(root)
     save_section(registry, "standalone", entries)
 
 
 def unregister_standalone(registry: Path, box_name: str) -> None:
-    """Remove *box_name* from the ``standalone`` section (no-op if absent)."""
+    """Remove *box_name* from the ``standalone`` section (no-op if absent).
+
+    ⚑ Found case-blind, removed by the STORED spelling (§0).
+    """
     entries = load_standalone(registry)
-    if entries.pop(box_name, None) is not None:
+    stored = find_identifier(box_name, entries)
+    if stored is not None:
+        del entries[stored]
         save_section(registry, "standalone", entries)
 
 
@@ -182,9 +205,14 @@ def register_deregistered(
 
 
 def unregister_deregistered(registry: Path, box_name: str) -> bool:
-    """Drop *box_name* from ``deregistered``; ``False`` if absent (purge is idempotent)."""
+    """Drop *box_name* from ``deregistered``; ``False`` if absent (purge is idempotent).
+
+    ⚑ Found case-blind, removed by the STORED spelling (§0).
+    """
     entries = load_deregistered(registry)
-    if entries.pop(box_name, None) is not None:
+    stored = find_identifier(box_name, entries)
+    if stored is not None:
+        del entries[stored]
         save_section(registry, "deregistered", entries)
         return True
     return False
@@ -195,9 +223,11 @@ def lookup_deregistered(registry: Path, box_name: str) -> dict | None:
 
     ⚑ A PURE read: self-healing belongs at the ``list`` / ``purge`` seam, never
     here, so callers get a predictable lookup.
+    ⚑ Compared case-blind (§0).
     """
-    entry = load_deregistered(registry).get(box_name)
-    return dict(entry) if entry is not None else None
+    entries = load_deregistered(registry)
+    stored = find_identifier(box_name, entries)
+    return None if stored is None else dict(entries[stored])
 
 
 def _metadata_definitively_gone(path: str) -> bool:

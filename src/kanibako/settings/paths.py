@@ -28,6 +28,7 @@ from pathlib import Path
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from typing import NamedTuple, Protocol, overload
 
+from kanibako.identifiers import find_identifier
 from kanibako.log import get_logger
 
 from kanibako.settings.config import (WORKSET_META_FILE, BOX_META_FILE, BootstrapConfig, config_file_path,
@@ -1366,11 +1367,16 @@ def check_primary_box_name_free(primary_workset: Path, registry: Path, name: str
         from kanibako.errors import ProjectError
         raise ProjectError(ERR_PROJECT_REG_HOME)
 
-    if name in load_primary_boxes(primary_workset):
+    # ⚑ Case-blind on BOTH sides (spec §0, ⚑ NAMING RULES).  The second check used to
+    # compare a raw name against workset keys assumed folded — the asymmetric compare
+    # that let a box slip past a same-named workset.
+    if find_identifier(name, load_primary_boxes(primary_workset)) is not None:
         from kanibako.errors import ProjectError
         raise ProjectError(ERR_PROJECT_NAME_USED % name)
 
-    if not force and name in set(registry_store.load_section(registry, "worksets")):
+    if not force and find_identifier(
+        name, registry_store.load_section(registry, "worksets")
+    ) is not None:
         from kanibako.errors import ProjectError
         raise ProjectError(ERR_PROJECT_DIR_IS_WS % name)
 
@@ -1382,7 +1388,12 @@ def pick_primary_box_name(primary_workset: Path, registry: Path, workspace: str,
     taken_names = _primary_name_domain(primary_workset, registry)
 
     def taken(cand: str) -> bool:
-        return cand in taken_names or (boxes_dir is not None and (boxes_dir / cand).exists())
+        # ⚑ TWO questions under TWO rules, and the split is deliberate: the NAME domain
+        # compares case-blind (§0), the DIRECTORY probe is a PATH and is never folded.
+        return (
+            find_identifier(cand, taken_names) is not None
+            or (boxes_dir is not None and (boxes_dir / cand).exists())
+        )
 
     candidate = base
     n = 2
@@ -1404,7 +1415,9 @@ def register_primary_box_name_if_absent(primary_workset: Path, registry: Path, n
     """Idempotent :func:`register_primary_box_name` for deferred-create recovery."""
     from kanibako.project.workset_registry import _same_workspace
 
-    existing = load_primary_boxes(primary_workset).get(name)
+    boxes = load_primary_boxes(primary_workset)
+    stored = find_identifier(name, boxes)
+    existing = None if stored is None else boxes[stored]
     if existing is not None and _same_workspace(existing, str(workspace)):
         return
     register_primary_box_name(primary_workset, registry, name, workspace, force=force)
@@ -1537,7 +1550,11 @@ def iter_projects(std: StandardPaths, config: BootstrapConfig) -> list[tuple[Pat
     for entry in sorted(projects_dir.iterdir()):
         if not entry.is_dir():
             continue
-        registered_ws = registered.get(entry.name)
+        # ⚑ The box dir's LEAF is a path segment; matching it to a registered box name is
+        # an identifier question, so it compares case-blind (spec §0).  The directory name
+        # itself is never folded — only the comparison is.
+        stored = find_identifier(entry.name, registered)
+        registered_ws = None if stored is None else registered[stored]
         project_path: Path | None = Path(registered_ws) if registered_ws else None
         results.append((entry, project_path))
     return results
@@ -1710,11 +1727,13 @@ def resolve_box_target(std: StandardPaths, config: BootstrapConfig, value: str |
         from kanibako.project import registry_store
 
         standalone = registry_store.load_standalone(std.registry)
-        # Box names are lowercase (R2); fold the query for the lookup.
-        root_str = standalone.get(value.lower())
-        if root_str is not None:
-            return _flag(resolve_standalone_project(std, config, root_str, initialize=initialize,
-                                                    register=register))
+        # ⚑ BOTH sides fold (spec §0, ⚑ NAMING RULES).  This folded the QUERY alone, which
+        # was only ever correct while storage was folded too — a box stored as ``Foo``
+        # would have been unreachable by any spelling.
+        stored = find_identifier(value, standalone)
+        if stored is not None:
+            return _flag(resolve_standalone_project(std, config, standalone[stored],
+                                                    initialize=initialize, register=register))
 
     # Else: NAME (projects/worksets/qualified) or PATH, both via the existing resolver.
     return _flag(resolve_any_project(std, config, value, initialize=initialize, register=register))

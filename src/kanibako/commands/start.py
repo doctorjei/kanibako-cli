@@ -45,6 +45,7 @@ from kanibako.runtime.container import (
     _guest_dest_to_host,
     detect_shadowed_mounts,
 )
+from kanibako.identifiers import find_identifier
 from kanibako.errors import ConfigError, ContainerError, KanibakoError, ProjectError
 from kanibako.log import get_logger
 from kanibako.runtime.rig_registry import load_registry, registry_path
@@ -1182,7 +1183,9 @@ def _broken_standalone_error(std: StandardPaths, project_dir: str) -> str | None
     from kanibako.settings.paths import BoxMode, box_metadata_dir
 
     entries = registry_store.load_standalone(std.registry)
-    name = project_dir if project_dir in entries else None
+    # ⚑ Case-blind (spec §0), and *name* becomes the STORED spelling — it keys the
+    # root lookup below.
+    name = find_identifier(project_dir, entries)
     if name is None:
         # Not a registered NAME — try the ROOT PATH grammar (``start <root>``).
         candidate = Path(project_dir)

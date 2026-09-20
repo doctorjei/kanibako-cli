@@ -23,9 +23,10 @@ from kanibako.settings.paths import (
     xdg,
 )
 from kanibako.utils import confirm_prompt
+from kanibako.identifiers import find_identifier
 from kanibako.project.workset import (
     DEFAULT_WORKSET_ALIAS,
-    DEFAULT_WORKSET_ID,
+    RESERVED_WORKSET_IDENTIFIERS,
     add_project,
     create_workset,
     delete_workset,
@@ -482,18 +483,26 @@ def run_list(args: argparse.Namespace) -> int:
 def run_rm(args: argparse.Namespace) -> int:
     std = _load_std()
 
-    if args.name in (DEFAULT_WORKSET_ID, DEFAULT_WORKSET_ALIAS):
+    # ⚑ Case-blind (spec §0, ⚑ NAMING RULES), against the SAME set ``create`` reserves —
+    # a tuple literal here would be a second spelling of it, and an exact one at that,
+    # so ``workset rm Default`` fell past this guard into "not registered".
+    if find_identifier(args.name, RESERVED_WORKSET_IDENTIFIERS) is not None:
         print("Error: The default workset cannot be removed.", file=sys.stderr)
         return 1
 
     # Check if workset has projects — error unless --force.
     registry = list_worksets(std)
-    if args.name in registry:
+    stored = find_identifier(args.name, registry)  # ⚑ case-blind (§0)
+    # ⚑ Every message below names the workset as REGISTERED once we have found it — the
+    # user is about to confirm a destructive act, and the name they typed may not be the
+    # one on disk.  Falls back to what they typed when there is no match to name.
+    label_name = args.name if stored is None else stored
+    if stored is not None:
         try:
-            ws = load_workset(registry[args.name], args.name)
+            ws = load_workset(registry[stored], stored)
             if ws.projects and not args.force:
                 print(
-                    f"Error: workset '{args.name}' has {len(ws.projects)} project(s). "
+                    f"Error: workset '{label_name}' has {len(ws.projects)} project(s). "
                     f"Use --force to remove anyway.",
                     file=sys.stderr,
                 )
@@ -504,14 +513,14 @@ def run_rm(args: argparse.Namespace) -> int:
     if not args.force:
         label = "and remove files " if args.purge else ""
         confirm_prompt(
-            f"Unregister {label}working set '{args.name}'? Type 'yes' to confirm: "
+            f"Unregister {label}working set '{label_name}'? Type 'yes' to confirm: "
         )
     try:
         root = delete_workset(args.name, std, remove_files=args.purge)
     except WorksetError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
-    print(f"Deleted working set '{args.name}' (root was {root})")
+    print(f"Deleted working set '{label_name}' (root was {root})")
     return 0
 
 
@@ -520,12 +529,13 @@ def run_connect(args: argparse.Namespace) -> int:
 
     std = _load_std()
     registry = list_worksets(std)
-    if args.workset not in registry:
+    stored = find_identifier(args.workset, registry)  # ⚑ case-blind (§0)
+    if stored is None:
         print(f"Error: Working set '{args.workset}' is not registered.", file=sys.stderr)
         return 1
 
     try:
-        ws = load_workset(registry[args.workset], args.workset)
+        ws = load_workset(registry[stored], stored)
     except WorksetError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
@@ -555,17 +565,20 @@ def run_connect(args: argparse.Namespace) -> int:
 def run_disconnect(args: argparse.Namespace) -> int:
     std = _load_std()
 
-    if args.workset in (DEFAULT_WORKSET_ID, DEFAULT_WORKSET_ALIAS):
+    # ⚑ Case-blind (§0), against the reserved-IDENTIFIER set rather than a second,
+    # exact-matching spelling of it.
+    if find_identifier(args.workset, RESERVED_WORKSET_IDENTIFIERS) is not None:
         print("Error: The default workset cannot be removed.", file=sys.stderr)
         return 1
 
     registry = list_worksets(std)
-    if args.workset not in registry:
+    stored = find_identifier(args.workset, registry)  # ⚑ case-blind (§0)
+    if stored is None:
         print(f"Error: Working set '{args.workset}' is not registered.", file=sys.stderr)
         return 1
 
     try:
-        ws = load_workset(registry[args.workset], args.workset)
+        ws = load_workset(registry[stored], stored)
     except WorksetError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1

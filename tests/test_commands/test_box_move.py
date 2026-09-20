@@ -109,3 +109,39 @@ class TestBoxMove:
         assert dest.is_dir()
         ws2 = load_workset(ws.root, ws.name)
         assert any(p.name == "movable" for p in ws2.projects)
+
+
+class TestTargetWorksetResolutionIsCaseBlind:
+    """``_resolve_target_workset`` backs ``box move --to-workset`` and convert-to-workset.
+
+    Spec §0, ``⚑ NAMING RULES``: workset names compare without regard to case, and
+    nothing folds them on entry — so an exact-match lookup here refused a workset that
+    plainly exists.  ⚑ Fails on the pre-image.
+    """
+
+    def test_a_case_variant_resolves_to_the_REGISTERED_workset(
+        self, config_file, tmp_home,
+    ):
+        from kanibako.commands.box._lifecycle import _resolve_target_workset
+        from kanibako.project.workset import create_workset
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        create_workset("target", tmp_home / "ws_target", std)
+
+        ws = _resolve_target_workset("TarGet", std)
+        # The Workset carries the name as REGISTERED, never as typed.
+        assert ws.name == "target"
+
+    def test_a_genuine_miss_still_raises(self, config_file, tmp_home):
+        """The complement: case-blind is not match-anything."""
+        import pytest
+
+        from kanibako.commands.box._lifecycle import _resolve_target_workset
+        from kanibako.errors import WorksetError
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+
+        with pytest.raises(WorksetError, match="not found"):
+            _resolve_target_workset("nosuchworkset", std)

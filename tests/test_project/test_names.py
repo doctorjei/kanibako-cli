@@ -90,6 +90,21 @@ class TestRegisterName:
         register_name(reg, "x", "/x", section="worksets")
         assert reg.is_file()
 
+    def test_duplicate_is_case_blind(self, registry: Path) -> None:
+        """Spec §0, ``⚑ NAMING RULES``: names collide without regard to case."""
+        register_name(registry, "ws1", "/ws/root", section="worksets")
+        with pytest.raises(ProjectError, match="already registered"):
+            register_name(registry, "WS1", "/other/path", section="worksets")
+
+    def test_the_key_is_stored_AS_TYPED(self, registry: Path) -> None:
+        """🛑 The other half of the rule, and the one a fold silently breaks.
+
+        Comparison folds; STORAGE never does.  A cure that lowercased on the way in is
+        exactly what ``[R172]`` retired, so the written key is asserted, not assumed.
+        """
+        register_name(registry, "MixedCase", "/ws/root", section="worksets")
+        assert read_names(registry)["worksets"] == {"MixedCase": "/ws/root"}
+
 
 # ---------------------------------------------------------------------------
 # unregister_name (worksets)
@@ -103,6 +118,18 @@ class TestUnregisterName:
 
     def test_unregister_nonexistent(self, registry: Path) -> None:
         assert unregister_name(registry, "nope", section="worksets") is False
+
+    def test_unregister_is_case_blind_and_REMOVES_THE_STORED_KEY(
+        self, registry: Path
+    ) -> None:
+        """Finding case-blind is only half of it: the delete must hit the stored key.
+
+        A fold applied to the QUERY alone reports ``True`` and leaves the entry behind —
+        the half-folded shape ``find_identifier`` exists to make unsayable.
+        """
+        register_name(registry, "MixedCase", "/ws1", section="worksets")
+        assert unregister_name(registry, "mixedcase", section="worksets") is True
+        assert read_names(registry)["worksets"] == {}
 
 
 # ---------------------------------------------------------------------------
