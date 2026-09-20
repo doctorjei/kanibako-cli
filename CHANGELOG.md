@@ -2395,16 +2395,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tool. It now reads *"WARNING: agent directives file exceeds 32KiB, the limit for some harnesses /
   agents."* — the same conservative threshold, stated as what it is.
 
-- **BREAKING: `COLORTERM=truecolor` is a declared default now, and nothing writes it into your
-  settings.** v1.7.2 seeded the value into the global `env` file on first run, and 1.8.0 development
-  briefly wrote it as a settings key instead; **neither happens.** It is declared at **box** scope in
-  kanibako's own defaults file, so it resolves for every box with nothing stored anywhere —
+- **BREAKING: a box inherits your host's `COLORTERM` instead of being told `truecolor`, and nothing
+  writes the value into your settings.** v1.7.2 seeded `COLORTERM=truecolor` into the global `env`
+  file on first run, and 1.8.0 development briefly wrote it as a settings key instead; **neither
+  happens.** The variable is declared at **box** scope in kanibako's own defaults file, with the
+  value `$COLORTERM` — your host's — so it resolves for every box with nothing stored anywhere,
   including the installs the old first-run write never reached, since that write fired only on a
   genuinely fresh host. A `box.env.COLORTERM` of your own still wins, by the ordinary cascade.
-  **What breaks is turning it off: there is no longer a line to delete.** Disabling truecolor now
-  takes an explicit override — `kanibako box set <box> --null box.env.COLORTERM` leaves the variable
-  unset in the box, and `kanibako box set <box> box.env.COLORTERM=` sets it to the empty string.
-  ⚑ And because kanibako now declares the variable at box scope, a `COLORTERM` key of your own at
+  **If your host sets no `COLORTERM`, a box now gets none either.** Not an empty one: the variable
+  is absent, because programs disagree about what an empty `COLORTERM` means and some read the bare
+  presence of the name as the claim. `COLORTERM` is not a standard variable — it is a convention
+  meaning *this display does 24-bit color*, which is a claim only your terminal can make, and
+  kanibako was making it on your host's behalf while inheriting `TERM` faithfully right beside it.
+  **This is the box matching the host, not losing a feature:** the same program run outside a box,
+  on the same terminal, gets no `COLORTERM` either. Two ways to put it back — `COLORTERM=truecolor
+  kanibako start …` for one launch, or `box.env.COLORTERM=truecolor` in any settings file to keep
+  it. To go the other way, `kanibako box set <box> --null box.env.COLORTERM` leaves the variable
+  unset whatever the host says.
+  ⚑ And because kanibako declares the variable at box scope, a `COLORTERM` key of your own at
   **any other** scope is a contested slot and refuses the launch (§2.33) — re-spell it
   `box.env.COLORTERM`. The launch notice about retired `env` files says so too: `COLORTERM` was the
   one line kanibako itself put in them, and it is the one line that must be deleted rather than

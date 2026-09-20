@@ -398,13 +398,13 @@ class TestEnvRows:
         rows, _ = env_rows()
         core = {r.key: r.value for r in rows if r.source == "core-defaults.yaml (env:)"}
         assert core == core_defaults.env_default_categories()
-        # ⚑ ``$TERM`` UNRESOLVED IS THE CORRECT CELL, not a leak of the declaration.
+        # ⚑ AN UNRESOLVED EXPRESSION IS THE CORRECT CELL, not a leak of the declaration.
         # This listing is the install-wide STATIC view (module docstring) — no box, no
         # resolution — so printing this host's terminal type would be answering a
         # question the section does not ask, and would differ per reader.
         assert core == {
             "agent.default.env.TERM": "$TERM",
-            "box.env.COLORTERM": "truecolor",
+            "box.env.COLORTERM": "$COLORTERM",
         }
 
     def test_every_installed_target_is_consulted_and_its_vars_listed(self):

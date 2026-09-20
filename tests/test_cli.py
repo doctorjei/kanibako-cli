@@ -1516,7 +1516,9 @@ class TestTemplateStalenessRetired:
         std = load_std_paths(load_config(cf)) if cf.exists() else std
         assert load_doc(std.settings)["box"]["env"]["COLORTERM"] == "mine"
 
-    def test_declared_colorterm_reaches_the_resolved_container_env(self, tmp_home):
+    def test_declared_colorterm_reaches_the_resolved_container_env(
+        self, tmp_home, monkeypatch,
+    ):
         """⚑ THE DELIVERY PROOF for the DECLARED default (MBR-2/D1-4).
 
         ⚑ What changed here is the SOURCE, not the route: the value used to be a
@@ -1529,9 +1531,15 @@ class TestTemplateStalenessRetired:
             build_launch_snapshot -> snapshot_category_entries
             -> collapse_env -> start._build_config_env
 
-        and assert ``COLORTERM=truecolor`` arrives, carrying the ``box`` scope. A
+        and assert the HOST's ``COLORTERM`` arrives, carrying the ``box`` scope. A
         ``config show --effective`` check would NOT substitute: it shares code
         with the display path B9 changed the same day.
+
+        ⚑ THE SHIPPED VALUE IS ``$COLORTERM`` NOW, not the literal ``truecolor``
+        this used to assert (2026-09-20): kanibako was asserting a 24-bit-color
+        capability on the host's behalf. The route is unchanged — what moved is
+        what comes out of it — so the host value is PLANTED here rather than
+        inherited, and the twin below covers the other answer.
 
         ⚑ THE PROVENANCE ASSERT MOVED WITH THE ROUTE, not away from it. It read the
         winning ``CategoryEntry`` off ``LaunchDeliveries.envs``; that carrier is
@@ -1554,6 +1562,7 @@ class TestTemplateStalenessRetired:
         cf = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
         std = load_std_paths(load_config(cf))
 
+        monkeypatch.setenv("COLORTERM", "24bit")
         ctx = ResolveCtx(
             agent_name="claude", workset_name=None, host_home=str(tmp_home),
             xdg={"XDG_DATA_HOME": str(tmp_home / "data")}, config={},
@@ -1569,17 +1578,73 @@ class TestTemplateStalenessRetired:
             snap, active_agent="claude", box_ctx=ctx,
         )
         slots = collapse_env(entries)
-        assert _build_config_env(slots)["COLORTERM"] == "truecolor"
+        assert _build_config_env(slots)["COLORTERM"] == "24bit"
         winner = slots["COLORTERM"]
         assert (winner.scope, winner.key) == ("box", "box.env.COLORTERM")
 
-    def test_colorterm_box_file_override_beats_the_declared_default(self, tmp_home):
+    def test_declared_colorterm_is_absent_when_the_host_sets_none(
+        self, tmp_home, monkeypatch,
+    ):
+        """⚑ THE OTHER ANSWER, out of the SAME route: NO variable at all.
+
+        The twin of the delivery proof above, and it asserts MISSING rather than
+        empty on purpose — ``COLORTERM=""`` is a third state, and a reader that
+        tests only for the variable's presence would take one for the truecolor
+        claim the host never made. This is the box matching the host: a program
+        run outside a box on such a terminal gets no ``COLORTERM`` either.
+
+        ⚑ AT THE DELIVERED ENV, not at the snapshot. The drop happens in
+        ``settings_expand`` (§6b whole-value absence), and the claim a user can
+        check is that nothing reaches the container — so it is measured where the
+        container env is built.
+        """
+        from kanibako.cli import _ensure_initialized
+        from kanibako.commands.start import _build_config_env
+        from kanibako.settings import core_defaults
+        from kanibako.settings.config import config_file_path, load_config
+        from kanibako.settings.paths import load_std_paths, xdg
+        from kanibako.settings.settings_launch import (
+            build_launch_snapshot,
+            snapshot_category_entries,
+        )
+        from kanibako.settings.settings_resolve import ResolveCtx
+        from kanibako.settings.store_collapse import collapse_env
+
+        _ensure_initialized()
+        cf = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+        std = load_std_paths(load_config(cf))
+
+        monkeypatch.delenv("COLORTERM", raising=False)
+        ctx = ResolveCtx(
+            agent_name="claude", workset_name=None, host_home=str(tmp_home),
+            xdg={"XDG_DATA_HOME": str(tmp_home / "data")}, config={},
+        )
+        snap = build_launch_snapshot(
+            agent_name="claude", ctx=ctx, system_path=std.settings,
+            agent_path=None, workset_path=None, box_path=None,
+            default_categories=core_defaults.env_default_categories(),
+        )
+        slots = collapse_env(
+            snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx),
+        )
+        assert "COLORTERM" not in slots
+        assert "COLORTERM" not in _build_config_env(slots)
+
+    def test_colorterm_box_file_override_beats_the_declared_default(
+        self, tmp_home, monkeypatch,
+    ):
         """A box's OWN ``box.env.COLORTERM`` still wins over the DECLARED default.
 
         The declaration only makes sense if it stays overridable at the scope it
         is declared for — a default nothing can beat is a hardwired value. ⚑ The
         override must be spelled at the SAME scope: a ``system.env.COLORTERM``
         would not win, it would REFUSE the launch as a contested slot.
+
+        ⚑ MEASURED ON A HOST THAT SETS NONE (2026-09-20), which is the harder
+        case and the one users will hit: the declared default now resolves to
+        ABSENCE there, so this pins that a stored key is a VALUE beating a
+        default, not a fallback filling a hole. It is the persistent escape hatch
+        the migration entry names.
         """
         from kanibako.cli import _ensure_initialized
         from kanibako.commands.start import _build_config_env
@@ -1602,6 +1667,7 @@ class TestTemplateStalenessRetired:
         box_settings.parent.mkdir(parents=True, exist_ok=True)
         write_nested_key(box_settings, ("box", "env"), "COLORTERM", "256color")
 
+        monkeypatch.delenv("COLORTERM", raising=False)
         ctx = ResolveCtx(
             agent_name="claude", workset_name=None, host_home=str(tmp_home),
             xdg={"XDG_DATA_HOME": str(tmp_home / "data")}, config={},

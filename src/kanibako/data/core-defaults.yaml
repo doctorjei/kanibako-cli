@@ -504,6 +504,14 @@ agent_default:
 # it needs no stored value at all: it resolves for every box, including boxes and
 # installs that predate this release, and a user's own `box.env.COLORTERM` in any
 # settings file beats it by the ordinary cascade.
+# ⚑ ITS VALUE IS A PASSTHROUGH, NOT A LITERAL (2026-09-20), because the variable
+# is a CLAIM ABOUT THE HOST rather than a preference of ours.  `COLORTERM` is
+# unstandardized and its modern meaning is "this display does 24-bit color"; the
+# shipped literal `truecolor` asserted that on the host's behalf while `TERM`
+# right beside it was faithfully inherited.  `$COLORTERM` carries the host's own
+# signal, and where the host sets none it resolves to ABSENCE and the key is
+# DROPPED — the box gets no such variable rather than an empty one, which is a
+# third state readers misparse (`settings_resolve._host_colorterm`).
 #
 # `TERM`: AGENT.DEFAULT scope, on Jei's 2026-09-19 ruling — *"it should be the
 # default for **all** agents (host, then xterm fallback) this isnt just for shell"*.
@@ -515,4 +523,4 @@ env:
   agent.default:
     TERM: "$TERM"
   box:
-    COLORTERM: "truecolor"
+    COLORTERM: "$COLORTERM"

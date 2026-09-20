@@ -1305,14 +1305,22 @@ keys:
     scope: box
     type: str
     set: cli+file
-    default: "truecolor"
+    default: "$COLORTERM"
     note: "THE ONE env MEMBER KANIBAKO ITSELF DECLARES — shipped in
            core-defaults.yaml's `env: box:` table (D1-4/MBR-2 9ac0980,
            2026-08-15), which REPLACED the first-run write that used to
            materialise the value into the system settings file. BOX scope because
            it describes the terminal a box runs in, not the host install; it
            resolves for every box, including installs predating the release, with
-           no stored value anywhere. An ORDINARY key of the parametric `env`
+           no stored value anywhere.
+           ⚑ A PASSTHROUGH, NOT A LITERAL (2026-09-20). The default was
+           `truecolor`, which asserted a 24-bit-color capability on the HOST's
+           behalf: COLORTERM is unstandardized, only the host can make that claim,
+           and TERM beside it was already inherited. `$COLORTERM` carries the
+           host's own signal; when the host sets none the value resolves to
+           ABSENCE and the key is DROPPED (§6b whole-value), so the box gets NO
+           such variable — never an empty one, a third state readers misparse.
+           An ORDINARY key of the parametric `env`
            category (§2a): write-many, so an override is the SAME key in a nearer
            file and the nearest wins, while the SAME VAR named at a SECOND scope
            is the launch REFUSAL naming both keys (see meta.assembly.env).

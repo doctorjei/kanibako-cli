@@ -301,7 +301,8 @@ _BEHAVIOR_KEYS = (
 #: before any snapshot exists, so no launch floor installs them and there is no emitter
 #: output to read.
 #: ⚑ ``agent.default.env.TERM`` joined 2026-09-20, the SECOND ``env`` member kanibako
-#: ships a default for and the first whose default is an EXPRESSION (``$TERM``). It has
+#: ships a default for; its default is an EXPRESSION (``$TERM``), as
+#: ``box.env.COLORTERM``'s became the same day (``$COLORTERM``). It has
 #: the same carrier as ``box.env.COLORTERM`` — ``core_defaults.env_default_categories``
 #: — so the oracle below reads the emitter ONCE and pins both, which is also what keeps
 #: the "exactly the shipped table" half of that case honest as the table grows.

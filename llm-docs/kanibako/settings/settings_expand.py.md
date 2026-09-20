@@ -14,6 +14,10 @@ ABSENCE — the holder key is DROPPED (whole-value, §6b) or substitutes the emp
 and every other unresolvable case is an ERROR that NAMES the key: a cycle, a depth-cap breach, an
 unknown `$VAR`, a `@pref.*` reference, or a binding destination that would resolve to no path.
 
+⚑ **ABSENCE HAS A SECOND SOURCE, and it is not a failure.** A PASSTHROUGH variable — `$COLORTERM`,
+the only one — answers absence when the host sets none, and a whole-value one drops its key by the
+same §6b rule. Nothing is ever delivered empty on that path; see *Whole-value `$VAR`* below.
+
 ## It REUSES the single-expression engine; it does not fork it
 
 The scanner is `kanibako.settings.settings_resolve.expand_expr` — escapes, `~`, `$VAR` / `${VAR}`,
@@ -47,8 +51,8 @@ What this module adds are the three things the single-expression engine lacks (b
 `workset_name` — consumed for host-side `$VAR` / `~`. Per leaf:
 
 * **scalar str** → expanded host-side (`space="host"`); a whole-value `@`-ref inherits the referent's
-  3-state (absent → the key is DROPPED; present-None → `None`); an embedded token substitutes per
-  `expand_expr`.
+  3-state (absent → the key is DROPPED; present-None → `None`); a whole-value `$VAR` answers its
+  value or ABSENCE (host space only); an embedded token substitutes per `expand_expr`.
 * **`Bind`** → `host_src` expanded FULLY host-side; `box_dest` expands its `@`-refs but leaves
   `$XDG` / `~` RAW (deferred box-side, S17). If a whole-value `host_src` `@`-ref resolves
   absent/None, the WHOLE Bind is dropped, or carried as that terminal (§3 — a bind/category consumer
@@ -75,8 +79,9 @@ NOTHING else — no leading or trailing characters, no embedded literal. It uses
 SHARED grammar, so BOTH the bare `@a.b` and the braced `@{a.b}` spellings qualify.
 
 `"@a.b"` / `"@{a.b}"` → `"a.b"`. `"@a-@b"` / `"x@a"` / `"@a/c"` / `"@a "` / `"@{a.b}x"` → `None`
-(embedded — handled by `expand_expr` substitution). A leading `~` or `$` is therefore never
-whole-value: those are environment tokens, not config refs.
+(embedded — handled by `expand_expr` substitution). A leading `~` or `$` is never whole-value HERE:
+those are environment tokens, not config refs. `$` has its own predicate — see *Whole-value `$VAR`*
+below — and `~` has none, because it carries no 3-state to inherit.
 
 ⚑ **THE BRACED FORM MUST LAND HERE, NOT ON THE EMBEDDED PATH.** This predicate is the ONLY thing
 that decides the shape, and the two paths differ in a way that is invisible until it bites: a
@@ -91,6 +96,31 @@ it falls through to `_Expander._expand_embedded`, where `expand_expr` raises it 
 from the same place it always has. That keeps error provenance identical for malformed input in
 STRICT and LENIENT mode alike; the only behaviour delta in this function is that a WELL-FORMED braced
 ref now answers its name instead of `None`.
+
+## Whole-value `$VAR` — the `$` twin, and why only one variable needs it
+
+`_is_whole_value_var` returns the variable NAME iff the value IS exactly one `$VAR` and nothing
+else, using `match_var`, the SHARED grammar, so `$X` and `${X}` both qualify. `"\\$X"` / `"a$X"` /
+`"$X/y"` / `"$X "` → `None` (embedded). **It NEVER RAISES — a total predicate**, like its `@` twin: a
+malformed reference (`"$"`, `"${X"`) answers `None` and falls through to `expand_expr`, which raises
+it with the same message from the same place it always has.
+
+`_resolve_whole_value_var` then calls `settings_resolve.resolve_var`, the THREE-state primitive, and
+maps its `UNSET` to `_ABSENT` — the same sentinel a missing `@`-referent produces, so `_expand_node`
+drops the key by machinery that already existed. Every REFUSING name still raises exactly as it does
+through the embedded path: an unset `$AGENT`, an unknown `$XDG_*`, an unknown name.
+
+⚑ **It exists for ONE variable, and the reason is not arbitrary.** `$COLORTERM` is a PASSTHROUGH of
+a host signal with no substitute value: `COLORTERM` is unstandardized and its modern meaning is a
+capability claim only the host can make (spec, `box.env.COLORTERM`). "The host set none" therefore
+has to reach the walk as ABSENCE and drop the key — an empty string there is a third state readers
+misparse, and it would assert the claim by another spelling. Every other name answers or raises, so
+routing them through this path changes nothing.
+
+🛑 **HOST SPACE ONLY, and the guard is at the `_expand_str` call site.** Under `space="defer"` a
+`$VAR` is emitted VERBATIM for the BOX resolver (S17); answering it here would resolve a box-side
+token against the HOST's environment, and on a host with no `COLORTERM` it would silently delete a
+binding instead of deferring it.
 
 ## Cycles, the depth cap, and the memo
 
@@ -305,7 +335,8 @@ chains.
 
 * **S17** — box-side `$XDG` / `~` left RAW in `Bind.box`; `@`-refs expand BOTH sides. The concrete
   realization of S12's deferral contract.
-* **S18** — whole-value vs embedded `@`-ref decided by PARSE, never by guess.
+* **S18** — whole-value vs embedded decided by PARSE, never by guess — for `@`-refs and, since
+  2026-09-20, for `$VAR` on the host side.
 * **S19** — expansion does NOT mutate the input snapshot (pure; fresh tree).
 * **S3** — every snapshot access uses the UNBOUND `dict.<method>(obj, …)` bypass, so a key named
   `get` / `items` / `keys` cannot shadow the protocol into a crash.
