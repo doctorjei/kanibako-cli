@@ -45,7 +45,7 @@ from kanibako.runtime.container import (
     _guest_dest_to_host,
     detect_shadowed_mounts,
 )
-from kanibako.identifiers import find_identifier
+from kanibako.identifiers import agent_node_case, find_identifier
 from kanibako.errors import ConfigError, ContainerError, KanibakoError, ProjectError
 from kanibako.log import get_logger
 from kanibako.runtime.rig_registry import load_registry, registry_path
@@ -1043,7 +1043,10 @@ def _resolve_bootstrap_program(
             if _sel.has_agent
             else None
         )
-        agent_id = with_harness(agent_name, target.name) if target else GENERAL_SLOT
+        agent_id = (
+            with_harness(agent_name, agent_node_case(target.name))
+            if target else GENERAL_SLOT
+        )
         return _effective_bootstrap(
             proj, system_settings_path, agent_id,
             agent_path=agent_settings_path(std.agents, agent_id),
@@ -2762,11 +2765,16 @@ def _run_container(
     # the active-agent snapshot discriminator.  ``with_harness`` swaps in the
     # ACTUALLY-resolved target name (a NoAgent/other fallback is reflected while the
     # persona name is preserved); for a bare agent whose target resolved as
-    # requested node == harness == target.name.  Hoisted HERE (ahead of the baseline
+    # requested, node == harness == the target's NODE.  ⚑ ``agent_node_case`` is what
+    # makes that the node and not the plugin's declared NAME ([R173], keyspec §0):
+    # the name keeps its case, the node — and the ``agents/<node>/`` dir and
+    # ``agent.<node>.*`` slot spelled from it — is lowercase.  A plugin calling
+    # itself ``Shell`` must not write ``agents/Shell/``.
+    # Hoisted HERE (ahead of the baseline
     # probe) so the agent-scope ``bootstrap`` value can be resolved before the probe
     # consumes it.  ``general`` for a no-agent / shell launch (target is None) so the
     # ``agent.default`` bootstrap backstop still applies.
-    agent_id = with_harness(agent_name, target.name) if target else GENERAL_SLOT
+    agent_id = with_harness(agent_name, agent_node_case(target.name)) if target else GENERAL_SLOT
     agent_cfg_path = agent_settings_path(std.agents, agent_id)
 
     # AGENT-scope ``bootstrap`` (spec §2d): the AUTHORITATIVE per-launch value,
@@ -6047,9 +6055,12 @@ def _effective_behavior_for_display(
     # (``navigator℘claude``) the per-node ``agents/<node>/agent.yaml`` state and
     # the ``agent.<node>.*`` cascade slot key on the node, NOT the harness
     # (``target.name``) — else ``config --effective`` shows the bare-harness view
-    # for a persona. Bare: node==harness==target.name → byte-identical. Falls back to
-    # ``target.name`` when a caller omits the node (legacy / test convenience).
-    active = node_name if node_name is not None else target.name
+    # for a persona. Bare: node==harness==the target's NODE → byte-identical. Falls
+    # back to that node when a caller omits one (legacy / test convenience).
+    # ⚑ ``agent_node_case``, not the declared name: a node is lowercase ([R173]), and
+    # this value keys ``agents/<node>/agent.yaml`` and ``agent.<node>.*`` — deriving
+    # it unfolded here would spell one agent's slot two ways.
+    active = node_name if node_name is not None else agent_node_case(target.name)
     # ⚑ BUILT HERE, NOT ABOVE: the level's node is the ACTIVE node resolved on the
     # line above — the same node the ``agent.<node>.*`` cascade slot keys on, and
     # the reason this read exists (fix 4a).  Building it beside ``behavior_floor``
@@ -7990,7 +8001,7 @@ def persona_create_verdict(
         return None
     if target is None:
         return None
-    agent_id = with_harness(agent_name, target.name)
+    agent_id = with_harness(agent_name, agent_node_case(target.name))
     if harness_of(agent_id) == agent_id:
         return None  # bare — no persona gate.
     agent_cfg_path = agent_settings_path(std.agents, agent_id)
@@ -8069,9 +8080,11 @@ def seed_new_box(std, config, proj, *, explicit_agent: str | None = None) -> Non
         target = None
 
     # NODE-name (persona identity) keys the agents/<node>/ dir + agent.<node>.*
-    # slot; with_harness swaps in the actually-resolved target name (fallback-safe),
-    # persona preserved. Bare + as-requested -> node == harness == target.name.
-    agent_id = with_harness(agent_name, target.name) if target else GENERAL_SLOT
+    # slot; with_harness swaps in the actually-resolved target's NODE (fallback-safe),
+    # persona preserved. Bare + as-requested -> node == harness == that node.
+    # ⚑ ``agent_node_case``, not ``target.name``: the declared name keeps its case,
+    # the node is lowercase ([R173]) — the hoisted site above says why at length.
+    agent_id = with_harness(agent_name, agent_node_case(target.name)) if target else GENERAL_SLOT
     agent_cfg_path = agent_settings_path(std.agents, agent_id)
     # Load or GENERATE the agent config IN MEMORY (mirrors the launch path) — the
     # WRITE + share shim are deferred until after the persona load-or-error

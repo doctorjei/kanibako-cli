@@ -11,6 +11,10 @@ because it is building a path is already conforming and must not be routed
 through here.  Before calling :func:`find_identifier`, say which of the two you
 are looking at.
 
+Agents are the one kind with a second spelling: :func:`agent_node_case` derives
+the lowercase NODE from a declared NAME (``[R173]``).  That is a derivation, not
+an entry fold, and its docstring draws the line.
+
 This module is the ONE carrier of the comparison.  It imports nothing from the
 tree on purpose: ``settings/`` reaches it, and ``settings/paths.py`` →
 ``settings/agent_config.py`` → ``agent_ref`` is a live chain that an owner
@@ -37,6 +41,30 @@ def _fold(name: str) -> str:
     exists to make unsayable.
     """
     return name.casefold()
+
+
+def agent_node_case(name: str) -> str:
+    """The NODE spelling of an agent *name* — lowercase, always (keyspec §0).
+
+    🛑 **NOT the retired entry fold, and the difference is that an agent has TWO
+    spellings while a box or a workset has one** (``[R173]``).  The NAME keeps the
+    plugin's declared case and lives in VALUES (``system.agent``,
+    ``meta.agent.<agent>.name``); the NODE is the KEY segment — ``agent.<agent>.*``
+    and everything derived from it, the ``agents/<node>/`` store dir included — and
+    the spec says it is lowercase by construction.  So this DERIVES a second value;
+    it does not fold the name on the way to storage.
+
+    ⚑ **Call it where a node is DERIVED from a name**, never as one half of a
+    comparison — that is :func:`find_identifier`, which folds both sides and is the
+    only reason ``_fold`` stayed private.  A node built here and a registry key
+    built here are byte-equal, which is what lets the two be compared at all.
+
+    ⚑ ``_fold`` rather than ``.lower()``: the two differ only on names no agent-ref
+    grammar realistically carries, and reaching for a SECOND fold here would give
+    the tree two spellings of one rule.  The keyspec's ``%tolower(…)%`` in §2d is
+    table prose for the same idea, not a resolver macro (``[R176]``).
+    """
+    return _fold(name)
 
 
 def find_identifier(name: str, candidates: Iterable[str]) -> str | None:

@@ -11,6 +11,7 @@ from importlib.metadata import entry_points
 from pathlib import Path
 
 from kanibako.agent_ref import reserved_pseudo_agent_reason
+from kanibako.identifiers import agent_node_case, find_identifier
 from kanibako.settings.bootstrap import STANDALONE_META_DIR
 from kanibako.targets.base import AgentInstall, Mount, Target, TargetSetting
 from kanibako.targets.no_agent import NoAgentTarget
@@ -33,16 +34,21 @@ _EP_LOAD_FAILED: set[str] = set()
 # process — the same reason ``_EP_LOAD_FAILED`` above exists.
 _RESERVED_NAME_WARNED: set[str] = set()
 
+# Declared names already refused as CASE-COLLIDING, warned once per process, identically.
+_COLLIDING_NAME_WARNED: set[str] = set()
+
 
 def _register(
     targets: dict[str, type[Target]],
+    declared: dict[str, tuple[str, str]],
     name: str,
     cls: type[Target],
     source: str,
     *,
+    tier: str,
     override: bool,
 ) -> None:
-    """Enter *cls* in *targets* under its harness *name*, unless that name is RESERVED.
+    """Enter *cls* in *targets* under the NODE its declared *name* derives.
 
     THE ONE REGISTRATION GATE — all three discovery tiers assign through it, so the
     pseudo-agent reservation (keyspec §2d) cannot hold at one tier and not another.
@@ -50,27 +56,65 @@ def _register(
     file-drop scans replace an earlier answer, the ``kanibako.plugins`` module fallback
     keeps the first one.
 
+    ⚑⚑ **THE KEY IS THE NODE, NOT THE DECLARED NAME** (``[R173]``, keyspec §0): a
+    plugin calling itself ``Shell`` keeps that spelling in its ``name`` property — the
+    canonical NAME — while everything derived from the node is lowercase, the
+    ``agents/<node>/`` store dir included.  Deriving the node HERE is what closes the
+    macOS ``agents/Shell/`` vs ``agents/shell/`` collision; ``agent_config.store_dirname``
+    is correct as it stands and must not fold.
+    🛑 **The RESERVATION is therefore tested against the NODE too.** What a pseudo-agent
+    owns is a store dir and an ``agent.<node>.*`` slot, and those follow the node — so
+    ``Shell`` claims exactly what ``shell`` does.
+
+    *declared* maps node → ``(declared name, tier)`` for what already holds it, which is
+    how a CASE COLLISION is told from an ordinary override.  Two plugins in ONE tier
+    declaring ``Claude`` and ``claude`` collapse to one node, and discovery order within
+    a tier is arbitrary — so the second is REFUSED rather than silently winning.  Across
+    tiers the precedence rule above is a documented answer, not an accident, and it is
+    left alone: a file-drop plugin still replaces an installed one.
+
     ⚑ SKIP-AND-WARN, NEVER RAISE, for the reason the ``ep.load()`` guard in
     :func:`discover_targets` states at length: discovery runs on every command, so one
     third-party plugin's bad name must not take the CLI down. The refusal costs that ONE
     plugin its registration and nothing else.
     """
-    why = reserved_pseudo_agent_reason(name)
+    node = agent_node_case(name)
+    why = reserved_pseudo_agent_reason(node)
     if why is not None:
         if name not in _RESERVED_NAME_WARNED:
             _RESERVED_NAME_WARNED.add(name)
+            spelling = (
+                "" if node == name
+                else f" The plugin declares '{name}', whose node is '{node}'."
+            )
             print(
-                f"Warning: {why}. The agent plugin registering it ({source}) is being "
-                f"SKIPPED; every other agent, and 'kanibako setup', still work. The "
-                f"plugin's author must give it a name of its own.",
+                f"Warning: {why}.{spelling} The agent plugin registering it ({source}) "
+                f"is being SKIPPED; every other agent, and 'kanibako setup', still "
+                f"work. The plugin's author must give it a name of its own.",
                 file=sys.stderr,
             )
         return
-    if override or name not in targets:
-        targets[name] = cls
+    held = declared.get(node)
+    if held is not None and held[0] != name and held[1] == tier:
+        if name not in _COLLIDING_NAME_WARNED:
+            _COLLIDING_NAME_WARNED.add(name)
+            print(
+                f"Warning: the agent plugin '{name}' ({source}) collides with '{held[0]}', "
+                f"which is already registered: an agent's node is its name in lowercase "
+                f"(keyspec §0), so both claim '{node}' and its 'agents/{node}/' store. "
+                f"'{name}' is being SKIPPED; every other agent, and 'kanibako setup', "
+                f"still work. One of the two must be renamed to more than its case.",
+                file=sys.stderr,
+            )
+        return
+    if override or node not in targets:
+        targets[node] = cls
+        declared[node] = (name, tier)
 
 
-def _scan_plugin_modules(targets: dict[str, type[Target]]) -> None:
+def _scan_plugin_modules(
+    targets: dict[str, type[Target]], declared: dict[str, tuple[str, str]],
+) -> None:
     """Scan ``kanibako.plugins.*`` for Target subclasses (bind-mount fallback).
 
     Entry points rely on dist-info metadata which doesn't travel via
@@ -110,11 +154,16 @@ def _scan_plugin_modules(targets: dict[str, type[Target]]) -> None:
                 except Exception:
                     continue
                 _register(
-                    targets, name, attr, f"module '{module_name}'", override=False,
+                    targets, declared, name, attr, f"module '{module_name}'",
+                    tier="kanibako.plugins", override=False,
                 )
 
 
-def _scan_directory_plugins(directory: Path, targets: dict[str, type[Target]]) -> None:
+def _scan_directory_plugins(
+    directory: Path,
+    targets: dict[str, type[Target]],
+    declared: dict[str, tuple[str, str]],
+) -> None:
     """Scan a directory for .py files containing Target subclasses.
 
     Files starting with ``_`` are skipped.  Later directories in the
@@ -149,12 +198,21 @@ def _scan_directory_plugins(directory: Path, targets: dict[str, type[Target]]) -
                     name = instance.name
                 except Exception:
                     continue
-                # Later directories in the chain override earlier ones.
-                _register(targets, name, attr, f"file '{py_file}'", override=True)
+                # Later directories in the chain override earlier ones, so each
+                # DIRECTORY is its own tier for the case-collision test.
+                _register(
+                    targets, declared, name, attr, f"file '{py_file}'",
+                    tier=str(directory), override=True,
+                )
 
 
 def discover_targets(project_path: Path | None = None) -> dict[str, type[Target]]:
     """Scan entry points, plugin modules, and directories for targets.
+
+    ⚑ **Keyed by NODE — the declared name in lowercase** (``[R173]``, keyspec §0).
+    The declared spelling is the plugin's ``name`` property and stays there; these
+    keys are what the ``agents/<node>/`` store dir and the ``agent.<node>.*`` cascade
+    slot are spelled from, so they carry the node's case, not the name's.
 
     Discovery order (later overrides earlier):
 
@@ -165,6 +223,10 @@ def discover_targets(project_path: Path | None = None) -> dict[str, type[Target]
     4. Project directory (``{project}/box_data/plugins/``)
     """
     targets: dict[str, type[Target]] = {}
+    # node -> (declared name, tier), so ``_register`` can tell a CASE COLLISION from
+    # a tier's documented override.  Per-call and thrown away with the scan: it says
+    # nothing about what is stored, only about what this scan has already seen.
+    declared: dict[str, tuple[str, str]] = {}
     # Group is agent-domain (a registry of agent adapters) → "kanibako.agents".
     # NB: distinct from the `kanibako.settings.agent_config` module (per-agent tool
     # config object); the module was named `agent_config` (not `agents`) to
@@ -221,10 +283,13 @@ def discover_targets(project_path: Path | None = None) -> dict[str, type[Target]
                 "entry point %s failed to load", ep.name, exc_info=True,
             )
             continue
-        _register(targets, ep.name, cls, "an installed entry point", override=True)
+        _register(
+            targets, declared, ep.name, cls, "an installed entry point",
+            tier="entry-points", override=True,
+        )
 
     # Fallback: scan kanibako.plugins.* for bind-mounted plugins
-    _scan_plugin_modules(targets)
+    _scan_plugin_modules(targets, declared)
 
     # User-level file-drop plugins, under the ``config.data`` directory the user actually
     # configured — never the XDG data base plus a hardcoded "kanibako" leaf ([R155]).  The
@@ -236,25 +301,33 @@ def discover_targets(project_path: Path | None = None) -> dict[str, type[Target]
     # so it must not acquire a failure mode here.
     from kanibako.settings.paths import resolve_data_path
 
-    _scan_directory_plugins(resolve_data_path() / "plugins", targets)
+    _scan_directory_plugins(resolve_data_path() / "plugins", targets, declared)
 
     # Project-level file-drop plugins.  Absence is not an error.
     if project_path is not None:
-        _scan_directory_plugins(project_path / STANDALONE_META_DIR / "plugins", targets)
+        _scan_directory_plugins(
+            project_path / STANDALONE_META_DIR / "plugins", targets, declared,
+        )
 
     return targets
 
 
 def get_target(name: str, project_path: Path | None = None) -> type[Target]:
-    """Look up a target class by name.
+    """Look up a target class by name, compared WITHOUT REGARD TO CASE (keyspec §0).
+
+    *name* is whatever a user typed or a settings value carried, so it arrives in any
+    case; the registry is keyed by NODE.  ``--agent Claude`` and ``--agent claude``
+    therefore reach one plugin instead of one working and one reporting an agent that
+    is not installed.
 
     Raises ``KeyError`` if no target with that name is registered.
     """
     targets = discover_targets(project_path)
-    if name not in targets:
+    node = find_identifier(name, targets)
+    if node is None:
         available = ", ".join(sorted(targets)) or "(none)"
         raise KeyError(f"Unknown target '{name}'. Available: {available}")
-    return targets[name]
+    return targets[node]
 
 
 def _require_meta_name(target: Target) -> Target:
@@ -278,6 +351,8 @@ def _require_meta_name(target: Target) -> Target:
     claim one. :func:`_register` normally keeps such a plugin out of discovery
     altogether; this is the floor under a ``Target`` that reaches a caller some other
     way, and it RAISES because by here the target is the one being launched.
+    ⚑ It tests the NODE, exactly as ``_register`` does and for the same reason: what
+    is owned follows the node, so ``Shell`` claims what ``shell`` claims.
     """
     meta_name = getattr(target, "name", None)
     if not (isinstance(meta_name, str) and meta_name.strip()):
@@ -288,12 +363,14 @@ def _require_meta_name(target: Target) -> Target:
             f"a plugin MUST provide a non-empty name to identify its store dir "
             f"and cascade key."
         )
-    why = reserved_pseudo_agent_reason(meta_name)
+    node = agent_node_case(meta_name)
+    why = reserved_pseudo_agent_reason(node)
     if why is not None:
         cls = type(target)
+        spelling = "" if node == meta_name else f" (declared as '{meta_name}')"
         raise ValueError(
             f"{why}. Agent plugin {cls.__module__}.{cls.__qualname__} declares it as "
-            f"its harness name; rename the plugin's 'name' property."
+            f"its harness name{spelling}; rename the plugin's 'name' property."
         )
     return target
 

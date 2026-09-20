@@ -495,6 +495,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **An agent's name keeps the case its plugin declares; the node kanibako spells from it is
+  lowercase.** An agent has two spellings and they were the same one. `--agent Claude` was refused
+  with *"Agent 'Claude' is not installed"* — naming the plugin that was installed, in the case its
+  own documentation uses — while a plugin that called itself `Shell` wrote its store to
+  `<data>/agents/Shell/`, one case-insensitive filesystem away from the `shell` pseudo-agent's own
+  store. The two are now separate: **the name is the plugin's, in its own case**, and **the node —
+  the `agent.<agent>.*` cascade slot and the `<data>/agents/<agent>/` store directory spelled from
+  it — is that name in lowercase**. So an agent is found however you capitalize it, and it is
+  stored in exactly one place whatever case it declares. ⚑ **Nothing moves for the agents kanibako
+  publishes**: `claude`, `codex` and `goose` declare lowercase names already, and a lowercase name
+  is its own node. A plugin that declares a capital does move its store, and the keys naming it must
+  be re-spelled — see *An agent's store directory and cascade slot are its name in lowercase* in
+  [MIGRATION.md](MIGRATION.md). ⚑ Reserved names go by the node too: a plugin calling itself
+  `Shell` is now skipped with the same warning `shell` gets, because it claims the same store.
+  A name a *user* types is still matched exactly against the reserved set, so `--agent Shell` is
+  refused as an agent that is not installed rather than as a reserved name.
+
+- **Two agent plugins whose names differ only in case are no longer decided by install order.**
+  They collapse to one node, so they claim one store directory and one cascade slot. Where both
+  arrive through the same discovery route — two entry points, or two files in one plugin
+  directory — the second is **skipped with a warning naming both spellings**, instead of silently
+  winning or losing depending on the order the metadata happened to come back in. Overriding an
+  installed plugin with one you drop in your own store is unchanged and still works: that is a
+  different route, and which route wins is written down.
+
 - **A box name is stored in the case you typed it.** `kanibako create --name Foo` folded the name
   to lowercase before it validated, registered or displayed it, so the box was `foo` and a capital
   letter was unreachable in a box name. The name is now validated and stored exactly as given — at

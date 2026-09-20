@@ -6,7 +6,7 @@ cannot hold either one — the tree has already been through a cure that folded 
 (``[R171]``, retired) and through a half-folded lookup that folded the QUERY and not the
 stored key.  Both look correct in a diff.
 
-So the rule is asserted syntactically, in two directions:
+So the rule is asserted syntactically, in three directions:
 
 * **Nobody membership-tests an identifier registry directly.**  ``name in registry`` is
   the exact-match comparison ``find_identifier`` exists to replace, and it is the shape
@@ -15,6 +15,11 @@ So the rule is asserted syntactically, in two directions:
 * **Nobody folds an identifier by hand.**  ``identifiers._fold`` is private precisely so
   that no caller can fold one half of a comparison; a ``.lower()`` on a variable named
   like an identifier is that private fold, re-spelled.
+* **Nobody composes an agent NODE out of a declared NAME.**  An agent is the one kind
+  with two spellings (``[R173]``): the name keeps its plugin's case, the node is that
+  name lowercased.  ``with_harness(node, target.name)`` builds a node segment out of
+  the wrong one, and no amount of folding on the REGISTRY side reaches it — the value
+  comes off the class, not off the key.
 
 🛑 **If a variable named ``name``/``value`` genuinely is NOT a kanibako identifier —
 an HTTP header field, say — RENAME IT.**  ``proxy/server.py`` was renamed to ``header``
@@ -82,6 +87,16 @@ _IDENTIFIER_VARS = frozenset({
 })
 
 _FOLDS = frozenset({"lower", "casefold"})
+
+#: The node COMPOSER, and the attribute that holds a plugin's DECLARED NAME.  An agent
+#: has two spellings (``[R173]``): the name keeps the plugin's case, the node is that
+#: name lowercased.  Composing a node out of the first is the third way this rule is
+#: broken, and the one a registry-side fix does not reach.
+_COMPOSER = "with_harness"
+_DECLARED_NAME_ATTRS = frozenset({"name"})
+
+#: The derivation seam — the only sanctioned way to turn a NAME into a NODE.
+_NODE_SEAM = "agent_node_case"
 
 # ⚑ THE ENTRY FOLD IS GONE, AND SO IS ITS DECLARATION.  Both guards below are now
 # ABSOLUTE: outside the carrier the permitted population is ZERO, with no inventory to
@@ -215,6 +230,33 @@ def _receiver_leaves(expr: ast.AST) -> list[str]:
     return []
 
 
+def unfolded_node_derivations(tree: ast.Module) -> list[int]:
+    """Lines building a node's HARNESS segment out of an unfolded declared name.
+
+    ``with_harness(node, <harness>)`` composes a NODE, and every segment of a node is
+    lowercase (``[R173]``, keyspec §0).  ``target.name`` is the declared NAME, which
+    keeps the plugin's own case — so handing one straight to ``with_harness`` spells
+    ``agents/Shell/`` and ``agent.Shell.*`` from a value that was never a node.
+
+    ⚑ **Folding the registry key is not enough, which is why this is a separate rule
+    from the two above.**  The sites ``[R176]`` measured read ``Target.name``, the class
+    property — never the key the registry filed the class under — so a registry keyed by
+    node still wrote the declared case at launch.  One more lived in
+    ``commands/box/_parser.py`` and no measurement had named it; this is what finds the
+    next one.
+    """
+    hits: list[int] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or _called(node) != _COMPOSER:
+            continue
+        if len(node.args) < 2:
+            continue
+        harness = node.args[1]
+        if isinstance(harness, ast.Attribute) and harness.attr in _DECLARED_NAME_ATTRS:
+            hits.append(node.lineno)
+    return sorted(set(hits))
+
+
 def hand_folds(tree: ast.Module) -> list[int]:
     """Lines applying ``.lower()``/``.casefold()`` to an identifier-named variable."""
     hits: list[int] = []
@@ -230,13 +272,14 @@ def hand_folds(tree: ast.Module) -> list[int]:
 
 @cache
 def _findings() -> dict[str, dict[str, list[int]]]:
-    """``{repo-relative path: {"in": [lines], "fold": [lines]}}`` over shipped source."""
+    """``{repo-relative path: {"in"/"fold"/"node": [lines]}}`` over shipped source."""
     found: dict[str, dict[str, list[int]]] = {}
     for rel, path in _shipped():
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         tests, folds = membership_tests(tree), hand_folds(tree)
-        if tests or folds:
-            found[rel] = {"in": tests, "fold": folds}
+        nodes = unfolded_node_derivations(tree)
+        if tests or folds or nodes:
+            found[rel] = {"in": tests, "fold": folds, "node": nodes}
     return found
 
 
@@ -359,6 +402,48 @@ class TestNobodyMembershipTestsARegistry:
             f"`kanibako.identifiers.{_SEAM}`, which hands back the STORED spelling — "
             f"index with THAT, never with the name as typed. There is no allowlist "
             f"here and adding one would retire the rule."
+        )
+
+
+class TestNobodyComposesANodeFromADeclaredName:
+    """A node's segments are lowercase; ``Target.name`` is not (``[R173]``)."""
+
+    def test_no_with_harness_call_takes_an_unfolded_declared_name(self):
+        offenders = sorted(rel for rel, hits in _findings().items() if hits["node"])
+        assert not offenders, (
+            "a node's harness segment is composed from a DECLARED NAME:\n  "
+            + "\n  ".join(_cite(rel, "node") for rel in offenders)
+            + f"\n\nAn agent's NAME keeps its plugin's case; its NODE — the "
+            f"`agent.<node>.*` slot and the `agents/<node>/` store spelled from it — "
+            f"is that name in lowercase (spec §0, ⚑ NAMING RULES). Derive it through "
+            f"`kanibako.identifiers.{_NODE_SEAM}`. There is no allowlist here: "
+            f"folding the plugin registry's KEY does not reach these sites, which is "
+            f"the whole reason this rule is separate."
+        )
+
+    def test_the_detector_reds_on_the_shape_it_is_named_for(self):
+        """Synthetic, so it holds whatever the real tree looks like."""
+        source = (
+            "def f(agent_name, target, other):\n"
+            "    a = with_harness(agent_name, target.name)\n"
+            "    b = with_harness(agent_name, agent_node_case(target.name))\n"
+            "    c = with_harness(agent_name, found)\n"
+            "    d = with_harness(agent_name, other.harness)\n"
+            "    return a, b, c, d\n"
+        )
+        assert unfolded_node_derivations(ast.parse(source)) == [2]
+
+    def test_the_composer_and_the_seam_both_still_exist(self):
+        """A rename on either side would empty this guard without failing it."""
+        agent_ref = (REPO_ROOT / "src" / "kanibako" / "agent_ref.py").read_text(
+            encoding="utf-8"
+        )
+        assert f"def {_COMPOSER}(" in agent_ref, (
+            f"agent_ref.py no longer defines {_COMPOSER}; the node composer moved"
+        )
+        carrier = (REPO_ROOT / _CARRIER).read_text(encoding="utf-8")
+        assert f"def {_NODE_SEAM}(" in carrier, (
+            f"{_CARRIER} no longer defines {_NODE_SEAM}; the node derivation moved"
         )
 
 

@@ -253,6 +253,117 @@ class TestReservedPseudoAgentNameIsRefused:
             _require_meta_name(_ReservedNameTarget())
 
 
+class TestTheRegistryIsKeyedByNode:
+    """``[R173]``: an agent's NAME keeps its case, its NODE is always lowercase.
+
+    The node is what the ``agents/<node>/`` store dir and the ``agent.<node>.*``
+    cascade slot are spelled from, so a plugin calling itself ``Shell`` must not
+    reach disk as ``agents/Shell/`` — the macOS collision that opened this arc.
+    Deriving the node at REGISTRATION is the cure; ``agent_config.store_dirname``
+    is correct as it stands and must not fold.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _clear_warn_dedupe(self):
+        from kanibako.targets import _COLLIDING_NAME_WARNED, _RESERVED_NAME_WARNED
+
+        _RESERVED_NAME_WARNED.clear()
+        _COLLIDING_NAME_WARNED.clear()
+        yield
+        _RESERVED_NAME_WARNED.clear()
+        _COLLIDING_NAME_WARNED.clear()
+
+    def test_a_declared_MixedCase_name_registers_under_its_lowercase_node(self):
+        ep = _mock_entry_point("Kirobo", _FakeTarget)
+        with patch("kanibako.targets.entry_points", return_value=[ep]):
+            targets = discover_targets()
+        assert "kirobo" in targets
+        assert "Kirobo" not in targets
+
+    def test_the_declared_NAME_is_untouched_on_the_plugin(self):
+        """The other half of the rule — folding the node must not erase the name."""
+
+        class _MixedCaseTarget(_FakeTarget):
+            @property
+            def name(self) -> str:
+                return "Kirobo"
+
+        ep = _mock_entry_point("Kirobo", _MixedCaseTarget)
+        with patch("kanibako.targets.entry_points", return_value=[ep]):
+            targets = discover_targets()
+        assert targets["kirobo"]().name == "Kirobo"
+
+    def test_a_case_variant_of_a_RESERVED_name_is_refused_too(self):
+        """What a pseudo-agent owns follows the NODE, so ``Shell`` claims it as well.
+
+        Before the node fold this plugin registered happily under ``Shell`` and took
+        ``agents/Shell/`` — one case-insensitive filesystem away from the reserved
+        ``shell`` store.
+        """
+        bad = _mock_entry_point("Shell", _FakeTarget)
+        good = _mock_entry_point("fake", _FakeTarget)
+        with patch("kanibako.targets.entry_points", return_value=[bad, good]):
+            targets = discover_targets()
+        assert "Shell" not in targets
+        assert "shell" not in targets
+        assert targets["fake"] is _FakeTarget
+
+    def test_that_refusal_names_BOTH_spellings(self, capsys):
+        """A plugin author reading it looks for the name they wrote, not the node."""
+        bad = _mock_entry_point("Shell", _FakeTarget)
+        with patch("kanibako.targets.entry_points", return_value=[bad]):
+            discover_targets()
+        err = capsys.readouterr().err
+        assert "'Shell'" in err
+        assert "'shell'" in err
+        assert "SKIPPED" in err
+
+
+class TestACaseCollidingSecondPluginIsRefused:
+    """``[R173]``: two plugins collapsing to one node is a COLLISION, not a race.
+
+    Discovery order within a tier is arbitrary — entry points come back in whatever
+    order the metadata yields — so letting the later one win means the box's agent
+    depends on install order.  The refusal is skip-and-warn, like every other one at
+    this gate.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _clear_warn_dedupe(self):
+        from kanibako.targets import _COLLIDING_NAME_WARNED
+
+        _COLLIDING_NAME_WARNED.clear()
+        yield
+        _COLLIDING_NAME_WARNED.clear()
+
+    def test_the_first_declared_spelling_keeps_the_node(self):
+        first = _mock_entry_point("Kirobo", _FakeTarget)
+        second = _mock_entry_point("kirobo", _DetectableTarget)
+        with patch("kanibako.targets.entry_points", return_value=[first, second]):
+            targets = discover_targets()
+        assert list(targets) == ["kirobo"]
+        assert targets["kirobo"] is _FakeTarget
+
+    def test_the_refusal_says_what_collided_and_with_what(self, capsys):
+        first = _mock_entry_point("Kirobo", _FakeTarget)
+        second = _mock_entry_point("kirobo", _DetectableTarget)
+        with patch("kanibako.targets.entry_points", return_value=[first, second]):
+            discover_targets()
+        err = capsys.readouterr().err
+        assert "'kirobo' " in err
+        assert "'Kirobo'" in err
+        assert "SKIPPED" in err
+
+    def test_an_EXACT_repeat_is_an_ordinary_override_not_a_collision(self, capsys):
+        """Non-vacuity, and the boundary: the guard fires on CASE, not on repetition."""
+        first = _mock_entry_point("kirobo", _FakeTarget)
+        second = _mock_entry_point("kirobo", _DetectableTarget)
+        with patch("kanibako.targets.entry_points", return_value=[first, second]):
+            targets = discover_targets()
+        assert targets["kirobo"] is _DetectableTarget
+        assert "collides" not in capsys.readouterr().err
+
+
 class TestGetTarget:
     def test_found(self):
         ep = _mock_entry_point("fake", _FakeTarget)
@@ -264,6 +375,26 @@ class TestGetTarget:
         with patch("kanibako.targets.entry_points", return_value=[]):
             with pytest.raises(KeyError, match="Unknown target 'nope'"):
                 get_target("nope")
+
+    def test_the_lookup_is_case_blind(self):
+        """``--agent Fake`` and ``--agent fake`` name ONE agent (keyspec §0).
+
+        The query is a NAME — typed, or carried in ``system.agent`` — and the
+        registry is keyed by NODE, so the comparison folds both sides.  Exact
+        matching made a capital an agent that is not installed.
+        """
+        ep = _mock_entry_point("fake", _FakeTarget)
+        with patch("kanibako.targets.entry_points", return_value=[ep]):
+            assert get_target("Fake") is _FakeTarget
+            assert get_target("FAKE") is _FakeTarget
+            assert get_target("fake") is _FakeTarget
+
+    def test_an_unrelated_name_still_misses(self):
+        """Non-vacuity: folding widened the match, it did not remove it."""
+        ep = _mock_entry_point("fake", _FakeTarget)
+        with patch("kanibako.targets.entry_points", return_value=[ep]):
+            with pytest.raises(KeyError, match="Unknown target 'faked'"):
+                get_target("faked")
 
 
 class TestResolveTarget:

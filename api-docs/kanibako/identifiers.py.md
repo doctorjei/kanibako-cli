@@ -6,6 +6,7 @@ _Signatures only: no comments, no docstrings, no bodies._
 
 ## Functions
 ```
+def agent_node_case(name: str) -> str
 def find_identifier(name: str, candidates: Iterable[str]) -> str | None
 def _fold(name: str) -> str
 ```

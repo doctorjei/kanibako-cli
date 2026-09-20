@@ -257,6 +257,45 @@ def test_bare_claude_unchanged_with_persona_support(monkeypatch):
     )
 
 
+def test_a_typed_case_variant_reaches_the_agent_and_returns_the_NODE(monkeypatch):
+    """``[R173]``: ``system.agent`` and ``--agent`` carry a NAME; the node is lowercase.
+
+    This is the hop where the one becomes the other.  Exact matching answered
+    ``--agent Claude`` with *"Agent 'Claude' is not installed"* — the installed
+    plugin, named in the case its own docs use.  Folding only the LOOKUP would be
+    worse: the launch would then key ``agents/Claude/`` and ``agent.Claude.*``,
+    spelling one agent's store two ways.
+    """
+    _patch_targets(monkeypatch, ["claude"])
+    _no_default(monkeypatch)
+    assert resolve_agent(explicit_agent="Claude", requested=None) == "claude"
+    assert resolve_agent(explicit_agent="CLAUDE", requested=None) == "claude"
+    assert resolve_agent(explicit_agent=None, requested="Claude") == "claude"
+
+
+def test_a_case_variant_folds_the_HARNESS_and_leaves_the_PERSONA_alone(monkeypatch):
+    """Only the harness segment is this ruling's to touch.
+
+    ``[R173]`` splits an agent into a case-carrying NAME and a lowercase NODE; a
+    PERSONA has no plugin to declare it, and whether it folds is still open
+    (``Q35``).  So the substitution replaces exactly the harness.
+    """
+    _patch_targets(monkeypatch, ["claude"])
+    _no_default(monkeypatch)
+    assert (
+        resolve_agent(explicit_agent="Navigator+Claude", requested=None)
+        == "Navigator℘claude"
+    )
+
+
+def test_an_unrelated_name_is_still_refused(monkeypatch):
+    """Non-vacuity: the fold widened the match, it did not disable the check."""
+    _patch_targets(monkeypatch, ["claude"])
+    _no_default(monkeypatch)
+    with pytest.raises(AgentNotInstalledError):
+        resolve_agent(explicit_agent="clauded", requested=None)
+
+
 def test_persona_box_tier_canonicalized(monkeypatch):
     # A persona ref supplied at the BOX tier (not just explicit) is canonicalised.
     _patch_targets(monkeypatch, ["claude"])

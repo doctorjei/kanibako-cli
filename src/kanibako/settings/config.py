@@ -995,8 +995,9 @@ def resolve_agent(
     two states mean different things and must not print the same sentence.
     """
     # ⚑ Lazy: kanibako.targets imports paths/config indirectly (cycle risk).
-    from kanibako.agent_ref import canonicalize_agent_ref, harness_of
+    from kanibako.agent_ref import canonicalize_agent_ref, harness_of, with_harness
     from kanibako.errors import AgentNotInstalledError, AgentUnsetError
+    from kanibako.identifiers import find_identifier
     from kanibako.install_method import install_command
     from kanibako.targets import discover_targets
 
@@ -1028,8 +1029,17 @@ def resolve_agent(
         # the refusal path below, so the installed-agent count rule cannot be
         # reintroduced there without re-adding this call — which a reader would see.
         installed = set(discover_targets(project_path).keys())
-        if harness in installed:
-            return node
+        # ⚑⚑ THIS IS THE HOP WHERE A NAME BECOMES A NODE ([R173]).  ``system.agent``
+        # and ``--agent`` carry a NAME — the plugin's declared case, or whatever the
+        # user typed — while the registry is keyed by NODE, so the match is case-blind
+        # and what comes back is the NODE.  Substituting it is what makes
+        # ``--agent Claude`` reach the ``claude`` plugin AND key ``agents/claude/``:
+        # returning the typed spelling instead would spell one agent's store and
+        # cascade slot two ways.  ⚑ Only the HARNESS segment is replaced — a persona
+        # segment is the user's and is not this ruling's to touch.
+        found = find_identifier(harness, installed)
+        if found is not None:
+            return with_harness(node, found)
         raise AgentNotInstalledError(
             f"Agent '{harness}' is not installed. Install it with:\n"
             f"  {install_command(f'kanibako-agent-{harness}')}\n"

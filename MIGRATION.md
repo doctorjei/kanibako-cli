@@ -5034,6 +5034,72 @@ they did; only a list or a map is refused.
 
 ---
 
+### 2.81 An agent's store directory and cascade slot are its name in lowercase
+
+**Read this if an agent plugin you have installed declares a name with a capital letter in it.**
+Every agent kanibako publishes — `claude`, `codex`, `goose` — declares a lowercase name, and a
+lowercase name is already its own node, so a stock install has nothing to do here. Check yours:
+
+```bash
+ls <data>/agents/    # <data> is $XDG_DATA_HOME/kanibako, or whatever `config.data` points at
+```
+
+Anything there with a capital in it is affected. `general` and `no_agent` are kanibako's own and
+are lowercase.
+
+**What changed.** An agent has two spellings and v1.7.x had only one. Its **name** is what the
+plugin calls itself and keeps that plugin's case; its **node** is the spelling kanibako builds
+things out of — the `agent.<agent>.*` cascade slot, and the `<data>/agents/<agent>/` store
+directory beneath it — and the node is **always lowercase**. A plugin declaring `Kirobo` therefore
+keeps the name `Kirobo` while its node, its slot and its store are `kirobo`.
+
+Two things follow, and one of them is why a capital was worth fixing rather than allowing: a plugin
+called `Shell` wrote `<data>/agents/Shell/`, which on macOS *is* `<data>/agents/shell/` — the
+reserved plain-shell pseudo-agent's own store, shared by accident. And `--agent Kirobo` was refused
+with *"Agent 'Kirobo' is not installed"* when `kirobo` was the installed spelling, or the reverse.
+Agent names are now matched **without regard to case**, so either spelling reaches the plugin.
+
+**What to do — one `mv` and one re-spelling per affected agent.** Nothing is renamed for you.
+
+1. **Move the store directory to the lowercase name**, before your next launch. Everything inside
+   it — the agent settings file, the shared common directory, the caches — moves with it and needs
+   no edit:
+
+   ```bash
+   cd <data>/agents
+   mv Kirobo kirobo
+   ```
+
+   On macOS and other case-insensitive filesystems the two paths are already one directory and
+   there is nothing to move. If kanibako has already created an empty `kirobo` beside your
+   `Kirobo`, move the contents across and delete the empty one.
+
+2. **Re-spell every settings key that names the agent.** A key path is matched exactly, and the
+   launch now reads `agent.kirobo.*` — so a value written at `agent.Kirobo.*` no longer reaches
+   it. The keys live in `<data>/global/settings.yaml`, in each working set's settings file, and in
+   each box's own settings file:
+
+   ```bash
+   kanibako system set agent.kirobo.model=<your value>
+   ```
+
+   Then delete the line carrying the old spelling from the file. Edit it by hand: whether a `reset`
+   will take a capitalized node is not something to rely on, and what you want is the line gone.
+
+⚑ **The selection key needs no edit.** `system.agent` and the `pref.system.agent` in a box's file
+hold a *name*, not a node, and a name is matched without regard to case — so a stored `Kirobo`
+still selects the plugin and is resolved to the `kirobo` node on the way to the launch. The same
+goes for `--agent` and for `kanibako setup --agent`: either spelling reaches the plugin.
+
+⚑ **The `kanibako agent` verbs take the node, and they are matched exactly.** `kanibako agent show
+Kirobo` addresses the `Kirobo` store — the one you just moved — so use the lowercase spelling:
+`kanibako agent show kirobo`. This is the one surface where the capital is not accepted for you.
+
+⚑ **Nothing about a box, a working set or a persona changed here.** Their names have no
+name/node split: the case you typed is the case that is stored, which is §2.78.
+
+---
+
 ## 3. For plugin authors
 
 ⚑ **THE PERSONA SURFACES ON `Target` CHANGED SHAPE in 1.8.0 — a plugin built against 1.7.x needs
@@ -5562,8 +5628,17 @@ agent, a persona, or a harness
 ```
 
 The reservation covers both halves of a composite ref, so `--agent mypersona+shell` is refused for
-its harness and `--agent shell+claude` for its persona. **It is an exact-spelling rule:** `Shell`,
-`shellx` and `defaults` are ordinary names and still work.
+its harness and `--agent shell+claude` for its persona.
+
+**A plugin's name is tested by its NODE, so a capital does not escape it.** What a pseudo-agent
+owns is a store directory and a cascade slot, and both are spelled from the node — the name in
+lowercase (§2.81). A plugin declaring `Shell` or `Default` therefore claims exactly what `shell`
+and `default` claim, and is skipped with the same warning; the message names both spellings so you
+can find the one you wrote. `shellx` and `defaults` are ordinary names and still work — the rule is
+a whole-name match, never a prefix.
+
+**A name a user types is still matched exactly.** `--agent Shell` is answered as an agent that is
+not installed rather than as a reserved name, because no plugin can hold that node.
 
 **What you must do.**
 

@@ -23,7 +23,7 @@ from kanibako.settings.config import (
     persist_creation_flags,
 )
 from kanibako.runtime.container import ContainerRuntime
-from kanibako.identifiers import find_identifier
+from kanibako.identifiers import agent_node_case, find_identifier
 from kanibako.errors import ContainerError, ProjectError
 from kanibako.project.names import read_names, unregister_name
 from kanibako.settings.paths import (
@@ -2107,7 +2107,13 @@ def _run_box_config(args: argparse.Namespace) -> int:
                 target = None
             # ⚑ The NODE-name keys both the ``agent.<node>.*`` slot and the
             # ``agents/<node>/`` dir; ``with_harness`` follows the RESOLVED target.
-            agent_id = with_harness(agent_name, target.name) if target else GENERAL_SLOT
+            # ⚑ ``agent_node_case``, not the declared name: a node is lowercase
+            # ([R173]).  This view reads the same store the launch writes, so an
+            # unfolded spelling here would report a file the launch never opens.
+            agent_id = (
+                with_harness(agent_name, agent_node_case(target.name))
+                if target else GENERAL_SLOT
+            )
             agent_cfg_path = agent_settings_path(std.agents, agent_id)
             if target and not agent_cfg_path.exists():
                 agent_cfg = target.generate_agent_config()
