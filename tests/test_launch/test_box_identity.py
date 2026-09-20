@@ -34,8 +34,10 @@ class TestStandaloneKuidHelpers:
         assert name == f"{_VALID_KUID}_myproj"
 
     def test_compose_sanitizes_and_caps_leaf(self) -> None:
+        # The SPACE is sanitized; the CASE is not (spec §0) — the live leaf carries
+        # the source directory's own spelling.
         name = box_identity.compose_standalone_name(_VALID_KUID, Path("/x/Cool Proj"))
-        assert name == f"{_VALID_KUID}_cool_proj"
+        assert name == f"{_VALID_KUID}_Cool_Proj"
 
     def test_compose_roundtrips_through_standalone_kuid(self) -> None:
         name = box_identity.compose_standalone_name(_VALID_KUID, Path("/x/proj"))
@@ -50,10 +52,12 @@ class TestSanitizeCap:
     def test_passes_portable_chars(self) -> None:
         assert box_identity.sanitize_cap("my-app_1.0") == "my-app_1.0"
 
-    def test_lowercases(self) -> None:
-        # R2: every box name is lowercase, so the leaf is folded too.
-        assert box_identity.sanitize_cap("MyProj") == "myproj"
-        assert box_identity.sanitize_cap("ALL-CAPS_1.0") == "all-caps_1.0"
+    def test_keeps_case(self) -> None:
+        # Spec §0, ⚑ NAMING RULES: the leaf carries the SOURCE DIRECTORY's case, and
+        # only the kuid half of <kuid>_<leaf> is lowercase. This folded until the
+        # entry fold came out; a fold restored here is the retired [R171] cure.
+        assert box_identity.sanitize_cap("MyProj") == "MyProj"
+        assert box_identity.sanitize_cap("ALL-CAPS_1.0") == "ALL-CAPS_1.0"
 
     def test_replaces_illegal_chars(self) -> None:
         assert box_identity.sanitize_cap("my app!@#") == "my_app___"
@@ -156,16 +160,18 @@ class TestIsCanonicalStandaloneName:
         assert not box_identity.is_canonical_standalone_name("abcdu_proj")
         assert not box_identity.is_canonical_standalone_name("ab!cd_proj")
 
-    def test_rejects_uppercase_leaf(self) -> None:
-        # The LEAF must be pre-lowercased (callers fold the supplied name first);
-        # an uppercase leaf fails the sanitized-token class.
-        assert not box_identity.is_canonical_standalone_name(f"{_VALID_KUID}_Proj")
-        assert not box_identity.is_canonical_standalone_name(f"{_VALID_KUID}_PROJ")
+    def test_accepts_uppercase_leaf(self) -> None:
+        # The leaf admits uppercase (spec §0): it carries a case the user chose, and
+        # the grammar accepts exactly what sanitize_cap emits. It rejected uppercase
+        # outright until the entry fold came out — the retired fold written into the
+        # grammar itself.
+        assert box_identity.is_canonical_standalone_name(f"{_VALID_KUID}_Proj")
+        assert box_identity.is_canonical_standalone_name(f"{_VALID_KUID}_PROJ")
 
     def test_prefix_folds_crockford_input_rules(self) -> None:
-        # kuid.is_valid canonicalizes the prefix (Crockford: i/l→1, o→0, case),
-        # so an uppercase / i-l-o prefix over a valid kuid still matches. Callers
-        # pre-lowercase, so this folding is benign in practice.
+        # kuid.is_valid canonicalizes the prefix (Crockford: i/l→1, o→0, case), so an
+        # uppercase / i-l-o prefix over a valid kuid still matches the SHAPE. What is
+        # stored is the canonicalized prefix — see TestResolveStandaloneName.
         assert kuid.is_valid("ABCDE")  # sanity: folds to the valid 'abcde'
         assert box_identity.is_canonical_standalone_name("ABCDE_proj")
 
@@ -204,7 +210,7 @@ class TestResolveStandaloneName:
         prefix, sep, leaf = name.partition("_")
         assert sep == "_"
         assert kuid.is_valid(prefix)
-        assert leaf == "weirdname"  # lowercased + sanitized
+        assert leaf == "WeirdName"  # sanitized, case KEPT (spec §0)
 
     def test_no_match_sanitizes_supplied(self) -> None:
         name = box_identity.resolve_standalone_name(
@@ -229,12 +235,24 @@ class TestResolveStandaloneName:
         name = box_identity.resolve_standalone_name(Path("/x/p"), supplied, set())
         assert name == supplied
 
-    def test_match_lowercased_before_verbatim(self) -> None:
-        # Uppercase supplied is folded, then matched, then returned verbatim.
+    def test_match_canonicalizes_the_kuid_and_keeps_the_leaf(self) -> None:
+        # The two halves go opposite ways (spec §0): the kuid has one spelling of its
+        # own and is canonicalized, the leaf carries the case the user typed. Both
+        # halves were folded until the entry fold came out.
         name = box_identity.resolve_standalone_name(
             Path("/x/p"), f"{_VALID_KUID.upper()}_Proj", set()
         )
-        assert name == f"{_VALID_KUID}_proj"
+        assert name == f"{_VALID_KUID}_Proj"
+
+    def test_match_canonicalizes_a_crockford_alias_in_the_kuid(self) -> None:
+        # ``i``/``l``/``o`` are INPUT ALIASES, not alphabet members: one id has one
+        # stored spelling. A ``.lower()`` on the kuid half passes the case test above
+        # and FAILS this one, which is why the two are separate.
+        alias, canonical = "abcdi", "abcd1"
+        name = box_identity.resolve_standalone_name(
+            Path("/x/p"), f"{alias}_Proj", set()
+        )
+        assert name == f"{canonical}_Proj"
 
     def test_match_and_taken_raises(self) -> None:
         from kanibako.errors import ProjectError
@@ -382,12 +400,13 @@ class TestValidateBoxName:
     def test_rejects_too_long(self) -> None:
         assert box_identity.is_valid_box_name("x" * 65) is False
 
-    # --- uppercase folds (accepted post-fold), NOT blocked on case --------
+    # --- uppercase is NOT blocked: a name is validated as the user typed it -----
 
-    def test_uppercase_folded_is_valid(self) -> None:
-        # The --name invariant folds BEFORE validation; the folded form is valid.
-        folded = "MyApp".lower()
-        assert box_identity.is_valid_box_name(folded) is True
+    def test_uppercase_is_valid(self) -> None:
+        # Spec §0: --name is validated AS TYPED, and the blocklist never covered case.
+        # This asserted the FOLDED spelling while box create still folded on entry,
+        # which left the real question — is `MyApp` a legal box name? — unasked.
+        assert box_identity.is_valid_box_name("MyApp") is True
 
     def test_validate_raises_actionable_message(self) -> None:
         with pytest.raises(ProjectError, match=r"Invalid box name 'a/b'"):

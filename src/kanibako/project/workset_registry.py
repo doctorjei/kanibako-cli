@@ -183,18 +183,21 @@ def register_workset_box(registry_path: Path, box_name: str, path: Path) -> None
     # box name.  Relaxing this refusal re-opens duplicate ``list`` rows.  It costs
     # the legitimate flows nothing — a re-register is idempotent and a MOVE (same
     # name, new path) still overwrites below.
-    # ⚑ THE ONE NAME COMPARE HERE STAYS EXACT, DELIBERATELY (spec §0, ⚑ NAMING RULES,
-    # Phase 1).  Folding it would read ``Foo`` as the self case against a stored ``foo``
-    # and fall through to the write below, which puts ``Foo`` in the table BESIDE
-    # ``foo`` — two rows for one box.  The fold belongs here only once the write itself
-    # resolves to the stored spelling, which is a storage change and not this phase's.
+    # ⚑ THE SELF TEST IS CASE-BLIND (spec §0, ⚑ NAMING RULES) AND THE WRITE BELOW IS
+    # WHAT MAKES THAT SAFE.  ``Foo`` against a stored ``foo`` is the SAME box, so it is
+    # self and not a second registration of one workspace; the case-variant row is then
+    # dropped rather than left BESIDE the new one, which is the two-rows-for-one-box
+    # outcome an exact self test used to prevent by refusing instead.
+    self_name = find_identifier(box_name, boxes)
     for existing_name, existing_path in boxes.items():
-        if existing_name != box_name and _same_workspace(existing_path, path_str):
+        if existing_name != self_name and _same_workspace(existing_path, path_str):
             raise ProjectError(
                 f"Workspace {path_str!r} is already registered in this workset "
                 f"as box {existing_name!r}; refusing to register it a second "
                 f"time as {box_name!r} (one box per workspace path)."
             )
+    if self_name is not None and self_name != box_name:
+        del boxes[self_name]
     boxes[box_name] = path_str
     _write_boxes(registry_path, full_doc, boxes)
 

@@ -30,5 +30,6 @@ def register_deregistered(registry: Path, box_name: str, *, kind: str, workspace
 def unregister_deregistered(registry: Path, box_name: str) -> bool
 def lookup_deregistered(registry: Path, box_name: str) -> dict | None
 def list_deregistered(registry: Path) -> dict[str, dict]
+def _drop_case_twin(entries: dict, box_name: str) -> None
 def _metadata_definitively_gone(path: str) -> bool
 ```

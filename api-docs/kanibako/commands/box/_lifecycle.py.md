@@ -26,6 +26,7 @@ def execute_lifecycle(state: ProjectState, spec: TargetSpec, std: StandardPaths,
 def run_remap(args) -> int
 def run_move(args) -> int
 def run_convert(args) -> int
+def _same_box_name(left: str | None, right: str | None) -> bool
 def _default_rename_name(state: ProjectState, std: StandardPaths, landing_ws: Path, requested_name: str) -> str | None
 def _primary_source_own_name(state: ProjectState, std: StandardPaths) -> str | None
 def _ownership_to_mode(ownership: str) -> tuple[BoxMode, str | None]
@@ -56,7 +57,7 @@ def _safe_unregister(std: StandardPaths, name: str) -> None
 def _safe_register_membership(std: StandardPaths, name: str, workspace: Path) -> None
 def _safe_remove_project(ws: Workset, name: str, std: StandardPaths) -> None
 def _ownership_from_args(args) -> str | _Sentinel
-def _lower_name(args) -> str | None
+def _validated_name(args) -> str | None
 def _make_confirm(force: bool, summary: str)
 def _load_env()
 def _abort_if_locked(state: ProjectState, force: bool) -> bool

@@ -143,7 +143,7 @@ RETIRED_FILE_KEYS: "dict[tuple[str, ...], str]" = {
 _PREF_LEGAL_LEVELS: "frozenset[str]" = frozenset({"workset", "box"})
 
 
-def _stored_spelling(value: Any) -> str:
+def _stored_spelling(raw: Any) -> str:
     """A stored leaf AS THE USER'S FILE SPELLS IT — ONE derivation, shared by every message and
     cure this module quotes a stored value back into.
 
@@ -151,10 +151,14 @@ def _stored_spelling(value: Any) -> str:
     depend on it: the message is compared against the file the reader is looking at, and a cure is
     pasted into a CLI that parses the YAML spelling. A present-``None`` leaf has nothing to quote
     and renders EMPTY — each caller supplies its own shape for that (``<name>``, ``(empty)``).
+
+    ⚑ The parameter is ``raw``, not ``value``: this lowercases a BOOL's YAML spelling, and
+    ``value`` is an identifier name to ``tests/test_identifier_case_enforcement.py``, whose
+    doctrine is that a non-identifier bearing an identifier's name gets RENAMED, not exempted.
     """
-    if isinstance(value, bool):
-        return str(value).lower()
-    return "" if value is None else str(value).strip()
+    if isinstance(raw, bool):
+        return str(raw).lower()
+    return "" if raw is None else str(raw).strip()
 
 
 def _cure_assignment(sub: str, value: Any) -> str:

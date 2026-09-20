@@ -149,6 +149,18 @@ def owner_token(mode: BoxMode, ws_name: str | None = None) -> str:
     return mode.value
 
 
+def _same_box_name(left: str | None, right: str | None) -> bool:
+    """True when two box names are the SAME identifier — compared case-blind (spec §0).
+
+    A one-candidate call into the single comparison carrier, so this file states the
+    rule nowhere itself.  An absent name (``None``/``""``) is not an identifier and
+    compares exactly, which is what the ``or state.name`` defaults below rely on.
+    """
+    if not left or not right:
+        return left == right
+    return find_identifier(left, (right,)) is not None
+
+
 def _default_rename_name(
     state: ProjectState,
     std: StandardPaths,
@@ -164,7 +176,9 @@ def _default_rename_name(
         )
         if existing is not None:
             # ⚑ Landing path already registered ⇒ SAME-PATH edge, no NEW registration minted.
-            if requested_name != existing:
+            # ⚑ Case-blind (§0): ``--name FOO`` on a box registered as ``foo`` names the
+            # SAME box, so it is the moot reuse below and not a refused in-place rename.
+            if not _same_box_name(requested_name, existing):
                 raise ProjectError(
                     f"In-place rename of a primary (default-mode) box is not "
                     f"supported: '{existing}' -> '{requested_name}'. Move the box "
@@ -173,6 +187,13 @@ def _default_rename_name(
                 )
             # --name equals the current name: a moot reuse, not a rename edge.
             return None
+    # ⚑ Case-blind (§0): ``--name FOO`` on a box registered as ``foo`` names the SAME
+    # box, so the mint is its STORED spelling. Minting the typed case makes the source's
+    # OWN registration read as a same-kind collision at ``_to_default``, refusing a move
+    # ``_validate`` has already allowed -- after the tree is copied.
+    own = _primary_source_own_name(state, std)
+    if own is not None and _same_box_name(requested_name, own):
+        return own
     return requested_name
 
 
@@ -538,7 +559,7 @@ def _validate(
                  or (state.ws is not None and target_ws is not None
                      and state.ws.name == target_ws.name)))
     )
-    no_rename = new_name == state.name
+    no_rename = _same_box_name(new_name, state.name)
     if not relocating and no_owner_change and no_rename:
         raise ProjectError(
             "Nothing to do: target equals the current location, owner, and name."
@@ -607,28 +628,35 @@ def _validate(
             )
 
     # --- name not taken in target workset ---
+    # ⚑ Both compares are case-blind (spec §0): the SELF exemption, so ``--name FOO``
+    # on the box already registered as ``foo`` is not read as a collision with itself,
+    # and the member scan, so it is not read as free either.  ⚑ The member scan is an
+    # ``==`` over already-loaded members rather than a registry lookup, so nothing in
+    # ``tests/test_identifier_case_enforcement.py`` sees it — found by reading.
     if (
         target_mode == BoxMode.named
         and target_ws is not None
         and not (state.ws is not None and target_ws.name == state.ws.name
-                 and new_name == state.name)
+                 and _same_box_name(new_name, state.name))
     ):
-        for p in target_ws.projects:
-            if p.name == new_name:
-                raise WorksetError(
-                    f"Project '{new_name}' already exists in workset "
-                    f"'{target_ws.name}'."
-                )
+        held = find_identifier(new_name, (p.name for p in target_ws.projects))
+        if held is not None:
+            raise WorksetError(
+                f"Project '{held}' already exists in workset "
+                f"'{target_ws.name}'."
+            )
 
     # --- cross-kind name policy on a DEFAULT-mode --name rename edge (F-7) ---
     # ⚑ Checked UP FRONT so a name refusal costs no file copy.
-    requested_name = (spec.name or "").lower()
+    requested_name = spec.name or ""
     if target_mode == BoxMode.primary:
         landing_ws = dest if dest is not None else state.workspace_path
         mint = _default_rename_name(state, std, landing_ws, requested_name)
         # ⚑ FIX1: a same-name relocate reuses the SOURCE's OWN registration — self-reuse,
         # not a collision, so it is exempt from the same-kind guard.
-        if mint is not None and mint != _primary_source_own_name(state, std):
+        if mint is not None and not _same_box_name(
+            mint, _primary_source_own_name(state, std)
+        ):
             check_primary_box_name_free(
                 std.primary_workset, std.registry, mint, str(landing_ws),
                 force=force,
@@ -1663,14 +1691,13 @@ def _ownership_from_args(args) -> str | _Sentinel:
     return UNCHANGED
 
 
-def _lower_name(args) -> str | None:
-    """Return the user's ``--name`` folded to lowercase and validated (R2), or ``None``."""
+def _validated_name(args) -> str | None:
+    """Return the user's ``--name`` validated AS TYPED (spec §0), or ``None``."""
     name = getattr(args, "name", None)
     if not name:
         return name
-    folded = name.lower()
-    validate_box_name(folded)
-    return folded
+    validate_box_name(name)
+    return name
 
 
 def _make_confirm(force: bool, summary: str):
@@ -1793,7 +1820,7 @@ def run_move(args) -> int:
 
     ownership = _ownership_from_args(args)
     spec = TargetSpec(
-        location=new_path, ownership=ownership, name=_lower_name(args),
+        location=new_path, ownership=ownership, name=_validated_name(args),
     )
     summary = (
         "Move project workspace:\n"
@@ -1862,7 +1889,7 @@ def run_convert(args) -> int:
         return 2
 
     spec = TargetSpec(
-        location=location, ownership=ownership, name=_lower_name(args),
+        location=location, ownership=ownership, name=_validated_name(args),
     )
     if location is INPLACE:
         loc_desc = "in place"

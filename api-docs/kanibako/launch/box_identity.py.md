@@ -12,7 +12,7 @@ _LEAF_CAP = 32
 _EMPTY_LEAF_FALLBACK = 'box'
 _SAFE_CHAR_RE = re.compile('[^A-Za-z0-9._-]')
 _MAX_REGEN_ATTEMPTS = 1000
-_LEAF_RE = re.compile('^[a-z0-9._-]{1,32}$')
+_LEAF_RE = re.compile('^[A-Za-z0-9._-]{1,32}$')
 _ALLOWED_PUNCT = frozenset('_-.')
 _BLOCKED_ASCII_PUNCT = frozenset(string.punctuation) - _ALLOWED_PUNCT
 _NAME_MIN_LEN = 1
@@ -32,5 +32,7 @@ def make_standalone_box_name(root: Path, existing: set[str]) -> str
 def validate_standalone_name(supplied: str, existing: set[str]) -> None
 def resolve_standalone_name(root: Path, supplied: str, existing: set[str]) -> str
 def _box_name_violation(name: str) -> str | None
+def _canonical_name(supplied: str) -> str
+def _refuse_taken(stored: str) -> ProjectError
 def _generate_with_leaf(leaf: str, existing: set[str]) -> str
 ```

@@ -4808,6 +4808,51 @@ written, so a script that only wants the stored content should drop the flag.
 
 ---
 
+### 2.78 A standalone box's name keeps its project directory's case
+
+**Read this if any standalone project directory has a capital letter in its name.** If they are
+all lowercase, nothing here reaches you.
+
+**What changed.** A standalone box is named `<kuid>_<leaf>`: a stable id, an underscore, and the
+project directory's current basename. The leaf is re-derived at every command, which is what lets
+a box keep its identity when you move the directory — and until now it was folded to lowercase on
+the way through. It no longer is. The kuid half is still lowercase; the two halves are opposite
+deliberately, because a leaf carries a name you chose and a kuid has one spelling of its own.
+
+So a standalone box in `~/src/MyProject` reported `k3xy0_myproject` before and reports
+`k3xy0_MyProject` from your first command on v1.8.0. Nothing on disk is renamed for you, and
+nothing needs to be: names are compared without regard to case everywhere kanibako compares them,
+so the `standalone:` row written under the old spelling is still found, and it is rewritten under
+the new one the next time the box is registered.
+
+**What to do — one `mv` per affected box, and only if it has channel messages you want to keep.**
+A box's mailbox and its global share are directories *named for the box*, so on a case-sensitive
+filesystem they do not follow the rename: the box gets a new, empty inbox and its old messages
+stay where they were, at an address nothing now reads. Move each one to the new spelling before
+your next launch:
+
+```bash
+# <data> is $XDG_DATA_HOME/kanibako, or whatever `config.data` points at if you moved it.
+cd <data>/channels
+mv mailboxes/__STANDALONE__/k3xy0_myproject mailboxes/__STANDALONE__/k3xy0_MyProject
+mv share/__STANDALONE__/k3xy0_myproject     share/__STANDALONE__/k3xy0_MyProject
+```
+
+`kanibako box list` prints the new name; the old directory's name is that with the leaf
+lowercased. On macOS and other case-insensitive filesystems the two paths are already the same
+directory and there is nothing to move.
+
+⚑ **Related, and it affects new boxes only.** A box name is now stored in the case you type it,
+so `kanibako create --name Foo` makes a box called `Foo` rather than `foo`, and its directories
+and container are named to match. A capital was unreachable in a box name before. Nothing new is
+refused — `Foo` still collides with an existing `foo`, and the refusal names the stored spelling.
+A fully-formed standalone `--name <kuid>_<leaf>` accepts a capital in the leaf too; its kuid half
+is canonicalized to the kuid's one spelling — lowercased, with Crockford's input substitutions
+applied (`o`→`0`, `i`/`l`→`1`), so `--name k3xyo_foo` is stored as `k3xy0_foo`.
+The container for a standalone box is named from its PATH, not its name, so it is unaffected.
+
+---
+
 ## 3. For plugin authors
 
 ⚑ **THE PERSONA SURFACES ON `Target` CHANGED SHAPE in 1.8.0 — a plugin built against 1.7.x needs

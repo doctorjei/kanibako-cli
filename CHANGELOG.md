@@ -401,6 +401,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **A box name is stored in the case you typed it.** `kanibako create --name Foo` folded the name
+  to lowercase before it validated, registered or displayed it, so the box was `foo` and a capital
+  letter was unreachable in a box name. The name is now validated and stored exactly as given — at
+  `create`, at `box move --name`, at `box convert --name` and at `box duplicate --name` — and the
+  box directory, the vault directories and the container kanibako names for it all follow the
+  stored spelling. Nothing that was accepted before is refused now: names still collide **without
+  regard to case**, so `--name Foo` is still turned away when `foo` is taken, and the refusal
+  names the spelling actually stored. Where a box is registered a second time under a different
+  case — a directory renamed `foo` → `Foo` — the registry row is replaced rather than joined, so
+  one box never occupies two rows.
+
+- **BREAKING: a standalone box's name keeps its project directory's case, and that name is
+  re-derived on every command — so this reaches boxes that already exist.** A standalone box is
+  named `<kuid>_<leaf>`, where the leaf is the project directory's current basename; the leaf was
+  folded to lowercase and now is not, while the kuid half stays lowercase. The two halves are
+  opposite deliberately: a leaf carries a name you chose, a kuid has one spelling of its own. A
+  box in a directory called `MyProject` therefore reads `k3xy0_MyProject` on the first command
+  after upgrading, where it read `k3xy0_myproject` before. Every registry lookup compares without
+  regard to case, so the entry written under the old spelling still resolves and is rewritten the
+  next time the box is registered — but **a box's channel mailbox and global share are directories
+  named for the box**, and on a case-sensitive filesystem those move. One `mv` per affected box
+  carries the messages across; see *A standalone box's name keeps its project directory's case* in
+  [MIGRATION.md](MIGRATION.md). Unaffected if your project directories are already lowercase.
+  ⚑ A fully-formed `--name <kuid>_<leaf>` accepts a capital in the leaf as well — the standalone
+  name grammar admitted no uppercase at all, which was the retired fold written into the grammar
+  itself. The kuid half of such a name is canonicalized to the kuid's one spelling — lowercased,
+  with Crockford's input substitutions applied (`o`→`0`, `i`/`l`→`1`), so `--name k3xyo_foo` is
+  stored as `k3xy0_foo`.
+
 - **BREAKING: a variable named by both `env.<VAR>` and `secret_path.<VAR>` now refuses the launch,
   naming both keys.** The two families deliver to the same place — one environment variable inside
   the box — and until now setting both silently gave the secret the variable: podman received the
