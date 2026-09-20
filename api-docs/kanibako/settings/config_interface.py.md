@@ -28,6 +28,7 @@ def _clone_keystore(store: 'Any') -> 'Any'
 def _set_leaf(store: 'Any', parts: list, value: object) -> None
 def _argv_aware(leaf: str, fallback: 'Callable[[object], str | None]') -> 'Callable[[object], str | None]'
 def _stored_shape_for(canonical: str, value: object) -> object
+def _set_confirmation(display_key: str, value: object) -> str
 def _reset_dest(canonical: str, command_scope: 'ConfigLevel | None', config_path: Path, system_settings_path: 'Path | None') -> DestRoute
 def _honest_reset_message(key: str, command_scope: 'ConfigLevel | None', effective: 'tuple[str, str] | None'=None) -> str
 def _count_leaves(node: object) -> int

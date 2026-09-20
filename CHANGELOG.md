@@ -12,6 +12,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`--null` answered with Python's spelling of nothing.** `kanibako system set --null run_args`
+  replied `Set run_args=None`, and so did the confirmation for a scope secret pointer, a per-node
+  secret pointer and a per-persona agent setting — four of the nine `set` confirmations
+  interpolated the value raw, while the other five already said `null`. That is not only an
+  inconsistency: `None` is not a spelling the CLI reads back as nothing. At a typed key it is
+  refused outright (`expects a boolean (true/false/1/0/yes/no), got 'None'`), and at a
+  string-valued key it is accepted as the literal three letters — so a user who retyped what they
+  had just been shown stored `run_args: [None]` and was answered `Set run_args=None` a second time,
+  with nothing to say the two messages meant different things. Every door now spells an explicit
+  null `null`: the YAML the settings file holds, and what the other five confirmations already
+  printed. ⚑ Only the message changed. `--null` writes the same real YAML
+  null it always did, and it is still the only way to ask for one — `key=null` stores the literal
+  string `null`, as it always has. ⚑ Nothing to do on upgrade: `--null` did not exist in 1.7.2, so
+  no released version ever printed this.
+
 - **Box and workset names collided only when the case matched exactly.** Every collision check in
   the tree was an exact-match `in` or `.get`, so whether two names clashed depended on which side
   of the comparison had already been lowercased — and only the box-`create` path lowercases. A

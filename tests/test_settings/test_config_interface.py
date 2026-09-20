@@ -5787,6 +5787,74 @@ class TestNullSpelling:
         doc = yaml.safe_load(f.read_text())
         assert doc["pref"]["agent"]["claude"]["common"] is None
 
+    # ⚑ ``None`` IS NOT A SPELLING OF THE SURFACE. Four of the nine confirmation sites
+    # used to interpolate the value raw, so ``--null`` answered ``Set run_args=None`` — a
+    # Python repr, at doors whose siblings already said ``null``. The lie is quiet on a
+    # string-typed key: ``run_args=None`` is ACCEPTED back and stores the three letters as
+    # an argv word, so the user's copy of what they were shown never announces itself.
+    @pytest.mark.parametrize(
+        "key,scope,expect",
+        [
+            # The four that leaked, one per dispatch branch.
+            ("run_args", ConfigLevel.system, "run_args"),
+            ("system.secret_path.FOO", ConfigLevel.system, "system.secret_path.FOO"),
+            ("agent.claude.secret_path.TOK", ConfigLevel.system,
+             "agent.claude.secret_path.TOK"),
+            ("agent.claude.model", ConfigLevel.system, "agent.claude.model"),
+            # The five that already said ``null`` — pinned so the shared renderer cannot
+            # regress them on its way to fixing the other four.
+            ("system.env.FOO", ConfigLevel.system, "system.env.FOO"),
+            ("agent.default.env.FOO", ConfigLevel.system, "agent.default.env.FOO"),
+            ("pref.agent.claude.model", ConfigLevel.box, "pref.agent.claude.model"),
+            ("system.setup_completed", ConfigLevel.system, "system.setup_completed"),
+            ("box.shell", ConfigLevel.box, "box.shell"),
+        ],
+    )
+    def test_every_null_door_spells_it_null(self, tmp_path, key, scope, expect):
+        """``--null`` never shows a Python ``None`` at any door that accepts it."""
+        agents_root = tmp_path / "agents"
+        (agents_root / "claude").mkdir(parents=True)
+        ssp = tmp_path / "global" / "settings.yaml"
+        ssp.parent.mkdir(parents=True, exist_ok=True)
+        msg = set_config_value(
+            key, None,
+            config_path=tmp_path / CONFIG_FILENAME,
+            system_settings_path=ssp,
+            agents_root=agents_root,
+            command_scope=scope,
+        )
+        assert msg == f"Set {expect}=null", msg
+
+    def test_no_branch_spells_the_confirmation_for_itself(self):
+        """P13/P15 — a TENTH hand-rolled ``Set …`` f-string IN THIS MODULE fails this, not a reviewer.
+
+        The four repr leaks above were four copies of one display rule, so the pin is on
+        the SHAPE: ``_set_confirmation`` is the only place the message is built.
+        """
+        import ast
+        import inspect
+
+        from kanibako.settings import config_interface
+
+        tree = ast.parse(inspect.getsource(config_interface))
+
+        def _built_here(node):
+            return [
+                child.lineno
+                for child in ast.walk(node)
+                if isinstance(child, ast.JoinedStr)
+                and child.values
+                and isinstance(child.values[0], ast.Constant)
+                and str(child.values[0].value).startswith("Set ")
+            ]
+
+        owner = next(
+            n for n in ast.walk(tree)
+            if isinstance(n, ast.FunctionDef) and n.name == "_set_confirmation"
+        )
+        assert _built_here(owner), "the renderer stopped building the message"
+        assert _built_here(tree) == _built_here(owner)
+
     def test_no_write_mechanism_refuses_null_on_its_own_any_more(self, tmp_path):
         """⚑⚑ THE SPECIMEN RAN OUT. This row pinned the ONE mechanism that could not
         express a null: first the docker ``env.<VAR>`` arm ("the env file is a plain

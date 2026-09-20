@@ -856,6 +856,20 @@ def get_config_value(
     return read_stored_leaf(dest.path, dest.sections, dest.leaf, render=render)
 
 
+def _set_confirmation(display_key: str, value: object) -> str:
+    """The ``set`` confirmation line, for every branch of :func:`set_config_value`."""
+    # ⚑ *display_key* is the key AS THE USER MAY RETYPE IT — ``_honest_reset_message``'s ⚑,
+    # and the same reason: a confirmation is a lesson, so it may only teach spellings the
+    # CLI accepts. That rule binds the VALUE too, which is why this is one function and not
+    # nine f-strings. A present-``None`` is spelled ``null`` — the YAML the file now holds and
+    # what the ``--null`` flag exists to write. ⚑ The READ verbs still answer ``None`` at every
+    # door (``config_io.render_stored_scalar``, and ``show_config``'s own prints, which do not
+    # route through it): a separate, boarded defect — do not "reconcile" the two here. ``None`` is a
+    # Python repr, and on a string-typed key the CLI accepts it BACK as the literal three
+    # letters, so the leak does not even announce itself as one.
+    return f"Set {display_key}={'null' if value is None else value}"
+
+
 def set_config_value(
     key: str,
     value: "str | None",
@@ -1044,7 +1058,7 @@ def set_config_value(
         write_nested_key(
             dest.file, dest.sections, dest.leaf, _stored_shape_for(canonical, value),
         )
-        return f"Set {canonical}={'null' if value is None else value}"
+        return _set_confirmation(canonical, value)
 
     # ⚑ There is NO ``agent.<node>.bindings.{ro,rw}.<name>`` branch here any more (R-9) — its
     # absence is deliberate, and the preamble refusal cannot be out-ordered by a new branch.
@@ -1062,7 +1076,7 @@ def set_config_value(
         )
         assert dest is not None  # the any-agent tier's category families always have a slot
         write_nested_key(dest.file, dest.sections, dest.leaf, value)
-        return f"Set {canonical}={'null' if value is None else value}"
+        return _set_confirmation(canonical, value)
 
     # ``agent.<node>.secret_path.<VAR>`` — a SCALAR path write to the node's OWN settings file
     # at the DISCRIMINATED sub-table. ⚑ BEFORE the persona branch.
@@ -1076,7 +1090,7 @@ def set_config_value(
                 f"settable at the system scope."
             )
         write_leaf(secret_target, value)
-        return f"Set {_node_secret_display_key(canonical)}={value}"
+        return _set_confirmation(_node_secret_display_key(canonical), value)
 
     # ``<scope>.secret_path.<VAR>`` — a SCALAR path write to the command scope's SETTINGS file.
     if _is_scope_secret_key(canonical):
@@ -1086,7 +1100,7 @@ def set_config_value(
         )
         assert dest is not None  # the scope-secret family always has a slot
         write_nested_key(dest.file, dest.sections, dest.leaf, value)
-        return f"Set {canonical}={value}"
+        return _set_confirmation(canonical, value)
 
     # ``<scope>.env.<VAR>`` — a SCALAR write to the command scope's SETTINGS file, VERBATIM
     # (the set-time E3 probe already ran on it). The AGENT form is routed by the persona branch.
@@ -1097,7 +1111,7 @@ def set_config_value(
         )
         assert dest is not None  # the scope-env family always has a slot
         write_nested_key(dest.file, dest.sections, dest.leaf, value)
-        return f"Set {canonical}={'null' if value is None else value}"
+        return _set_confirmation(canonical, value)
 
     # ``agent.<node>.<key>`` — the PER-PERSONA key (B1): a VERBATIM write to the node's OWN
     # ``agents/<node>/agent.yaml``, sparse by construction (``write_nested_key`` is RMW).
@@ -1111,7 +1125,7 @@ def set_config_value(
                 f"settable at the system scope."
             )
         write_leaf(target, value)
-        return f"Set {_persona_display_key(canonical)}={value}"
+        return _set_confirmation(_persona_display_key(canonical), value)
 
     # Bare agent settings — the agent-agnostic CLI writes the any-agent ``agent.default`` tier.
     if _is_agent_setting(canonical):
@@ -1123,7 +1137,7 @@ def set_config_value(
         write_nested_key(
             dest.file, dest.sections, dest.leaf, _stored_shape_for(canonical, value),
         )
-        return f"Set {canonical}={value}"
+        return _set_confirmation(canonical, value)
 
     # ⚑ THERE IS NO ``box.agent.<key>`` BRANCH HERE ANY MORE and its absence is DELIBERATE:
     # the retirement refusal moved UP into the preamble, ahead of the E3 probe, so no write
@@ -1147,7 +1161,7 @@ def set_config_value(
         )
         assert dest is not None  # the marker's slot is unconditional
         write_nested_key(dest.file, dest.sections, dest.leaf, value)
-        return f"Set {canonical}={'null' if value is None else value}"
+        return _set_confirmation(canonical, value)
 
     # Regular config keys — the single known-key table (H1: an unknown key returns an error
     # string and NEVER raises).
@@ -1172,9 +1186,12 @@ def set_config_value(
         write_nested_key(dest.file, dest.sections, dest.leaf, typed)
     else:
         write_root_key(dest.file, dest.leaf, typed)
-    # ⚑ THE CANONICAL KEY, never a re-flattened one: a confirmation is a lesson, and the
-    # form it teaches must be the form every other verb accepts.
-    return f"Set {canonical}={'null' if value is None else value}"
+    # ⚑ THE CANONICAL KEY, never a re-flattened one — this branch is where an underscore
+    # spelling no verb accepts used to reach the user. The rule it broke is stated once, on
+    # :func:`_set_confirmation`.
+    # ⚑ *value*, not *typed*: the RAW string the user typed round-trips by construction,
+    # where the coerced form would answer ``true`` with ``True``.
+    return _set_confirmation(canonical, value)
 
 
 def reset_config_value(
