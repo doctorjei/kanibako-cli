@@ -37,7 +37,7 @@ keyed by setting name, not dest-keyed category tables, and they are why the sent
 | block | producer | emits |
 |---|---|---|
 | `agent_default` | `behavior_defaults` / `behavior_default` | the `agent.default.<key>` BEHAVIOR floor (spec §2d) — `access` · `allow_helpers` · `continue_mode` · `bootstrap` |
-| `env` | `env_default_categories` | STATIC `<scope>.env.<VAR>` floor keys; ships exactly one — `box.env.COLORTERM` |
+| `env` | `env_default_categories` | STATIC `<scope>.env.<VAR>` floor keys; ships exactly two — `box.env.COLORTERM` and `agent.default.env.TERM` |
 
 Two reading traps in that pair:
 
@@ -46,8 +46,9 @@ Two reading traps in that pair:
   :func:`kanibako.settings.settings_keyspace.access_default` both come here. `access` in particular
   has NO constant any more: the retired `ACCESS_DEFAULT` was a second spelling of `full`.
 * `env_default_categories` is NOT `commands.start._core_env_default_categories`. That one emits the
-  launch-DERIVED `KANIBAKO_*` stamps and its docstring forbids new entries; this one emits literals
-  a file can hold. The derived table merges AFTER this one, so a stamp wins a contested VAR.
+  launch-DERIVED `KANIBAKO_*` stamps and its docstring forbids new entries; this one emits whatever
+  the FILE can hold whole — a literal, or an EXPRESSION the shared engine resolves. The derived
+  table merges AFTER this one, so a stamp wins a contested VAR.
 
 ⚑ **`env_default_categories` FAILS CLOSED on the key it builds** (`_check_env_key`, MBR-2/D1-4): the
 emitted `<scope>.env.<VAR>` is matched against `settings_categories.ENV_KEY_RE`, so a typo'd scope
@@ -56,11 +57,19 @@ nothing downstream recognises. The regex is IMPORTED rather than re-spelled — 
 own declaration of the family — through a function-local import, the `add_bind` pattern that keeps
 this module's MODULE scope free of the settings stack.
 
-⚑ **`box.env.COLORTERM` is the section's first and only entry, and its SCOPE is load-bearing.** A
-variable declared here at one scope and written by a user at ANOTHER refuses the launch
-(`store_collapse.collapse_env`), so moving it to `system:` would break exactly the users who had
-already stored their own. It replaced a first-run WRITE in `cli.py`; the write seam is now guarded
-by `tests/test_settings/test_defaults_enforcement.py`.
+⚑ **EVERY ENTRY'S SCOPE IS LOAD-BEARING.** A variable declared here at one scope and written by a
+user at ANOTHER refuses the launch (`store_collapse.collapse_env`), so a scope slip breaks exactly
+the users who had already stored their own. Two entries, two scopes, each for a stated reason:
+
+* `box.env.COLORTERM` was the section's first. It replaced a first-run WRITE in `cli.py`; the write
+  seam is now guarded by `tests/test_settings/test_defaults_enforcement.py`. BOX scope because it
+  describes the terminal a box runs, not the host install.
+* `agent.default.env.TERM` (2026-09-20) is the second, and the first whose value is an EXPRESSION:
+  the file stores `$TERM`, and `settings_resolve` answers it with the host's terminal type —
+  `xterm` when the host's is empty or unset, a set value passed through UNVALIDATED. AGENT DEFAULT
+  tier on Jei's 2026-09-19 ruling that a terminal type belongs to every agent, not to the
+  plain-shell box: the agent tier's two cascade levels are overlaid PER NAME (spec §2a), so a
+  plugin descriptor or a settings file overrides it for ONE agent while the rest keep inheriting.
 
 Two things in the module are NOT table producers and should not be read as such:
 

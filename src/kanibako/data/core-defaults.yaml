@@ -462,7 +462,9 @@ agent_default:
 
 # ---------------------------------------------------------------------------
 # STATIC core `<scope>.env.<VAR>` defaults (spec §2d) — the file route for core
-# environment variables whose value is a LITERAL.
+# environment variables whose whole value a FILE can hold: a literal, or a
+# settings EXPRESSION the shared engine resolves (`$TERM` below, the same
+# dispatch every `@`-ref in this file goes through).
 #
 # ⚑ SHAPE: scope-keyed sub-tables of `<VAR>: "<value>"` — the `box:` table below
 # is the worked example; a second scope is a sibling table beside it.
@@ -476,6 +478,13 @@ agent_default:
 #
 # ⚑ VALUES ARE STRINGS, exactly as in `agent_default:` above: an unquoted YAML
 # `true`/`1` would reach the box as "True"/"1" rather than what the author wrote.
+#
+# ⚑ AN EXPRESSION IS RESOLVED, NOT PASSED THROUGH.  The floor folds under the base
+# level and the whole snapshot is expanded before any entry is walked, so `$TERM`
+# reaches a box as the HOST's terminal type.  That is the one thing this route can
+# do that `start._core_env_default_categories` exists for — a value it CANNOT do is
+# one derived from the launch itself (a resolved project, a resolved agent), which
+# no expression spells.
 #
 # ⚑ THIS IS NOT THE HOME OF THE `KANIBAKO_*` STAMPS.  Those are launch-DERIVED
 # (a project name, a resolved agent, a computed path) and are spelled in exactly
@@ -495,6 +504,15 @@ agent_default:
 # it needs no stored value at all: it resolves for every box, including boxes and
 # installs that predate this release, and a user's own `box.env.COLORTERM` in any
 # settings file beats it by the ordinary cascade.
+#
+# `TERM`: AGENT.DEFAULT scope, on Jei's 2026-09-19 ruling — *"it should be the
+# default for **all** agents (host, then xterm fallback) this isnt just for shell"*.
+# The DEFAULT tier rather than a per-node row because the agent tier's two cascade
+# levels are overlaid PER NAME (spec §2a), so a plugin descriptor or any settings
+# file overrides it for ONE agent and the rest keep inheriting.  The `$TERM`
+# dispatch and the `xterm` fallback are `settings_resolve._host_term`.
 env:
+  agent.default:
+    TERM: "$TERM"
   box:
     COLORTERM: "truecolor"

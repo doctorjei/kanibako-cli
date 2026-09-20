@@ -64,6 +64,7 @@ from kanibako.settings.config import (
     read_workset_skip_kuid_check,
 )
 from kanibako.settings.config_keys import _KEY_ROUTES
+from kanibako.settings.kb_store import SCOPE_CONTAINMENT
 from kanibako.settings.keyspace_manifest import (
     KEYSPACE_MANIFEST_FILENAME,
     manifest_doc,
@@ -190,8 +191,8 @@ class TestManifestLoader:
         for section in ("registry", "policy", "categories", "keys",
                         "bind_default_entries", "not_keys"):
             assert section in doc, f"manifest section {section!r} is missing"
-        assert len(doc["keys"]) == 105, (
-            f"the manifest declares {len(doc['keys'])} key rows, not the 105 this "
+        assert len(doc["keys"]) == 106, (
+            f"the manifest declares {len(doc['keys'])} key rows, not the 106 this "
             f"file's counts were measured against — re-measure, do not adjust blindly"
         )
 
@@ -299,8 +300,14 @@ _BEHAVIOR_KEYS = (
 #: whole reason they sit in this class: the spawn verb resolves the budget in-box,
 #: before any snapshot exists, so no launch floor installs them and there is no emitter
 #: output to read.
+#: ⚑ ``agent.default.env.TERM`` joined 2026-09-20, the SECOND ``env`` member kanibako
+#: ships a default for and the first whose default is an EXPRESSION (``$TERM``). It has
+#: the same carrier as ``box.env.COLORTERM`` — ``core_defaults.env_default_categories``
+#: — so the oracle below reads the emitter ONCE and pins both, which is also what keeps
+#: the "exactly the shipped table" half of that case honest as the table grows.
 _SINGLETON_KEYS = (
     "agent.default.canon", "workset.kuid", "box.env.COLORTERM",
+    "agent.default.env.TERM",
     "agent.default.template",
     "system.helpers.depth", "system.helpers.breadth",
 )
@@ -692,16 +699,32 @@ class TestSingletonDefaults:
         assert seeds["agent.default.template"] == emitted["agent.default.template"]
 
     def test_the_core_env_floor(self):
-        """``box.env.COLORTERM`` IS ``core-defaults.yaml``'s whole ``env:`` table.
+        """The registry's env rows ARE ``core-defaults.yaml``'s whole ``env:`` table.
 
         The emitter builds ``<scope>.env.<VAR>`` keys off the shipped file, so reading
-        its OUTPUT pins both halves of the manifest row at once — the key SPELLING and
-        the value.  Asserting the table is exactly one entry is the anti-vacuity half:
-        a second shipped env default would otherwise slip in unregistered, and the
-        registry's job is to name every one.
+        its OUTPUT pins both halves of each manifest row at once — the key SPELLING and
+        the value.  Asserting the table is EXACTLY the registry's env rows is the
+        anti-vacuity half: a shipped env default that no row names would otherwise slip
+        in unregistered, and the registry's job is to name every one.
+
+        ⚑ THE EXPECTATION IS DERIVED FROM THE REGISTRY, not restated: the set of keys
+        comes from the manifest and each value from that key's own ``default:``, so a
+        third shipped variable arrives here by declaring a row and by nothing else.
+        ⚑ ``agent.default.env.TERM``'s default is the EXPRESSION ``$TERM``, not a
+        resolved terminal type.  That is the stored value at every carrier — the file,
+        the registry and ``system defaults`` all say ``$TERM``; resolution happens per
+        launch, and a carrier holding a resolved string would be pinning THIS host.
         """
         shipped = core_defaults.env_default_categories()
-        assert shipped == {"box.env.COLORTERM": _default("box.env.COLORTERM")}
+        registry_env = [
+            str(k) for k, v in _keys().items()
+            if isinstance(v, dict) and "default" in v and ".env." in str(k)
+        ]
+        assert sorted(shipped) == sorted(registry_env), (
+            f"core-defaults.yaml ships {sorted(shipped)} and the registry declares "
+            f"{sorted(registry_env)} — every shipped env default needs its own row"
+        )
+        assert shipped == {k: _default(k) for k in registry_env}
 
     def test_the_spawn_budget_floor(self):
         """``system.helpers.{depth,breadth}`` ARE the shipped system scalar floor.
@@ -1206,8 +1229,8 @@ class TestDefaultsCoverage:
             f"this file classifies rows the manifest no longer declares a default for: "
             f"{sorted(stale)}"
         )
-        assert len(declared) == 69, (
-            f"the manifest gives {len(declared)} rows a default, not the 69 measured — "
+        assert len(declared) == 70, (
+            f"the manifest gives {len(declared)} rows a default, not the 70 measured — "
             f"re-classify, do not adjust the count"
         )
 
@@ -1234,8 +1257,12 @@ class TestDefaultsCoverage:
         closing a §0 violation — the pair was LIVE and read from a bespoke file. They
         arrive PINNED against the spawn resolver's own fallback; a budget default with no
         oracle would be a number nobody is answerable for.
+        ⚑ 55/14 → 56/14 (2026-09-20): ``agent.default.env.TERM``, the second shipped
+        ``env`` default (Jei's all-agents ruling). PINNED for the same reason its
+        ``box.env.COLORTERM`` twin is — ``core-defaults.yaml``'s ``env:`` table carries
+        it, and :meth:`TestSingletonDefaults.test_the_core_env_floor` reads that emitter.
         """
-        assert len(PINNED_DEFAULT_KEYS) == 55
+        assert len(PINNED_DEFAULT_KEYS) == 56
         assert len(EXEMPT_DEFAULT_KEYS) == 14
         assert not (PINNED_DEFAULT_KEYS & EXEMPT_DEFAULT_KEYS)
 
@@ -1387,8 +1414,16 @@ class TestKeySetConformance:
         # not hand-listed, so it states its reason exactly once: the DECLARED_* sets
         # hold SCALAR leaves, and anything whose head is a declared category — the
         # terminal dest-keyed rows (`box.bindings.ro`) and a member of a parametric
-        # family (`box.env.COLORTERM`, the one env default kanibako ships) — is
-        # declared THERE instead.  One reason, no per-row exception.
+        # family (`box.env.COLORTERM` and `agent.default.env.TERM`, the two env
+        # defaults kanibako ships) — is declared THERE instead.  One reason, no
+        # per-row exception.
+        # ⚑ THE SCOPE HEAD IS STRIPPED BY THE KEYSPACE'S RULE, not by a `box.` prefix
+        # test (2026-09-20).  The prefix was incidental — every category row happened
+        # to be box-scope — and it silently classified an agent-scope member of a
+        # declared family as an unaccounted row.  A category family is declared at
+        # FOUR scopes (spec §2a), so the derivation reads the head off the key: one
+        # segment, or TWO for the agent tier, whose head is `agent.<node>` because
+        # bare `agent` is not a key.
         declared_categories = {
             name for name, row in manifest_doc()["categories"].items()
             if isinstance(row, dict) and "value" in row
@@ -1397,11 +1432,21 @@ class TestKeySetConformance:
             "the manifest's categories: table no longer names every BIND_CATEGORIES "
             f"member: {sorted(BIND_CATEGORIES - declared_categories)}"
         )
+
+        def _category_tail(key: str) -> str:
+            """*key* with its SCOPE head removed; ``""`` when it names no scope."""
+            head, _, tail = key.partition(".")
+            if head not in SCOPE_CONTAINMENT:
+                return ""
+            if head == "agent":
+                _, _, tail = tail.partition(".")
+            return tail
+
         category_rows = {
             key for key in leftover
-            if key.startswith("box.")
-            and (key[len("box."):] in declared_categories
-                 or key[len("box."):].rpartition(".")[0] in declared_categories)
+            if (tail := _category_tail(key))
+            and (tail in declared_categories
+                 or tail.rpartition(".")[0] in declared_categories)
         }
         parametric_agent = {
             f"agent.<agent>.{leaf}" for leaf in DECLARED_AGENT_LEAVES
@@ -1421,6 +1466,7 @@ class TestKeySetConformance:
         # And the derivations are not vacuous: each class actually has members.
         assert leftover & category_rows == {
             "box.bindings.ro", "box.bindings.rw", "box.masks", "box.env.COLORTERM",
+            "agent.default.env.TERM",
         }
         assert leftover & parametric_agent == {
             "agent.<agent>.access", "agent.<agent>.template", "agent.<agent>.canon",

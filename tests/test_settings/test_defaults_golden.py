@@ -651,9 +651,12 @@ class TestCoreStaticEnvDefaults:
 
     The delivery mechanism already existed — ``start._core_env_default_categories``
     folds the launch-DERIVED ``KANIBAKO_*`` stamps into ``default_categories`` and
-    that table becomes the floor.  What D1-3 adds is a way to declare a variable
-    whose value is a LITERAL, in the file, without writing code; D1-4/MBR-2 moved
-    the first value into it (``box.env.COLORTERM``).  The route cases below drive a
+    that table becomes the floor.  What D1-3 adds is a way to declare a variable in
+    the FILE, without writing code, whenever the file can hold its whole value — a
+    literal (``box.env.COLORTERM``, the first, D1-4/MBR-2) or an EXPRESSION the
+    shared engine resolves (``agent.default.env.TERM``: ``$TERM``, 2026-09-20).
+    What still belongs in the derived table is a value only a LAUNCH can compute.
+    The route cases below drive a
     PATCHED loader document so they pin the MECHANISM and not one variable; the
     content case pins what actually ships, and the refusal cases pin the fail-closed
     validation of the key the emitter builds.
@@ -788,16 +791,27 @@ class TestCoreStaticEnvDefaults:
     #: pinned the emptiness; D1-4/MBR-2 moved the first value in, so the pin
     #: becomes the section's exact CONTENT — same job either way: nothing reaches
     #: a box from this file that somebody did not decide to ship.
-    _SHIPPED_ENV = {"box": {"COLORTERM": "truecolor"}}
+    #: ⚑ THE SECOND VALUE (2026-09-20) is ``agent.default.env.TERM``, and it is the
+    #: first EXPRESSION in the section: the stored value is ``$TERM``, resolved per
+    #: launch. Its scope head is the AGENT DEFAULT tier on Jei's 2026-09-19 ruling
+    #: that a terminal type belongs to every agent, not to the plain-shell box.
+    _SHIPPED_ENV = {
+        "agent.default": {"TERM": "$TERM"},
+        "box": {"COLORTERM": "truecolor"},
+    }
 
     def test_the_shipped_env_section_is_exactly_the_declared_content(self):
-        """The section IS ``box.env.COLORTERM``, as a string, and nothing else.
+        """The section IS those two entries, as strings, and nothing else.
 
         ``COLORTERM`` is at BOX scope deliberately (it describes the terminal a box
         runs, not the host install) and a WRONG scope here is not cosmetic: a
         variable declared at one scope and written by a user at another REFUSES the
         launch naming both keys, so a slip to ``system:`` would break exactly the
-        users who had already stored their own.
+        users who had already stored their own.  ``TERM`` is at the AGENT DEFAULT
+        tier for the mirror-image reason: the agent tier's two cascade levels are
+        overlaid PER NAME, so one agent can be given a different terminal type
+        without the others restating it — which a box-scope declaration could not
+        offer, and which a per-node declaration would force on every plugin.
         """
         doc = _load_yaml("kanibako.data", "core-defaults.yaml")
         assert doc.get("env") == self._SHIPPED_ENV, (
@@ -813,6 +827,7 @@ class TestCoreStaticEnvDefaults:
                     f"value round-trips to the box as its Python repr"
                 )
         assert core_defaults.env_default_categories() == {
+            "agent.default.env.TERM": "$TERM",
             "box.env.COLORTERM": "truecolor",
         }, "the emitter must hand back the file's declaration under its dotted key"
 

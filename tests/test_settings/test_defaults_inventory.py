@@ -138,8 +138,8 @@ class TestSourcePartition:
             f"registry defaults with no source: {sorted(declared - covered)}; "
             f"sources for rows the registry no longer defaults: {sorted(covered - declared)}"
         )
-        assert len(declared) == 69, (
-            f"the manifest gives {len(declared)} rows a default, not the 69 measured"
+        assert len(declared) == 70, (
+            f"the manifest gives {len(declared)} rows a default, not the 70 measured"
         )
 
     def test_the_partition_agrees_with_the_conformance_classification(self):
@@ -375,27 +375,37 @@ class TestBindRows:
 class TestEnvRows:
     """Section 3 — the env instances a box gets, registry-enumerated or not."""
 
-    def test_the_registry_enumerates_exactly_the_core_env_default(self):
-        """⚑ THE REGISTRY NOW CARRIES ONE env INSTANCE, and section 3 still lists it.
+    def test_the_registry_enumerates_exactly_the_core_env_defaults(self):
+        """⚑ THE REGISTRY CARRIES TWO env INSTANCES, and section 3 still lists both.
 
         This case used to assert the registry carried NONE, and said that a red here
         meant per-VAR rows had been ratified and the section had to be re-derived.  They
-        were: spec §2b declares ``box.env.COLORTERM`` (2026-08-15, ``9ac0980``) and the
-        manifest gained its row.  The re-derivation the old text demanded is NOT a
-        removal — section 3 reports the live env floor a box gets, so the one var
-        kanibako ships belongs in it, and it is section 1 that grew a DECLARED KEY row.
-        What this pins is that the overlap is exactly that one key: a SECOND registry
+        were: spec §2b declares ``box.env.COLORTERM`` (2026-08-15, ``9ac0980``) and §2d
+        declares ``agent.default.env.TERM`` (2026-09-19, Jei's all-agents ruling).  The
+        re-derivation the old text demanded is NOT a removal — section 3 reports the
+        live env floor a box gets, so the vars kanibako ships belong in it, and it is
+        section 1 that grew the DECLARED KEY rows.
+        What this pins is that the overlap is exactly those two keys: a THIRD registry
         env row would be a new ratification and must be read before it prints.
         """
         registry_env = [str(k) for k in manifest_doc()["keys"] if ".env." in str(k)]
-        assert registry_env == ["box.env.COLORTERM"]
-        assert "box.env.COLORTERM" in {r.key for r in env_rows()[0]}
+        assert sorted(registry_env) == [
+            "agent.default.env.TERM", "box.env.COLORTERM",
+        ]
+        assert set(registry_env) <= {r.key for r in env_rows()[0]}
 
     def test_the_core_env_floor_is_the_shipped_emitter_s(self):
         rows, _ = env_rows()
         core = {r.key: r.value for r in rows if r.source == "core-defaults.yaml (env:)"}
         assert core == core_defaults.env_default_categories()
-        assert core == {"box.env.COLORTERM": "truecolor"}
+        # ⚑ ``$TERM`` UNRESOLVED IS THE CORRECT CELL, not a leak of the declaration.
+        # This listing is the install-wide STATIC view (module docstring) — no box, no
+        # resolution — so printing this host's terminal type would be answering a
+        # question the section does not ask, and would differ per reader.
+        assert core == {
+            "agent.default.env.TERM": "$TERM",
+            "box.env.COLORTERM": "truecolor",
+        }
 
     def test_every_installed_target_is_consulted_and_its_vars_listed(self):
         """Counted against ``discover_targets`` + each target's own ``default_envs``."""
@@ -425,7 +435,9 @@ class TestEnvRows:
         monkeypatch.setattr(targets_pkg, "discover_targets", lambda *a, **k: {})
         rows, plugins = env_rows()
         assert plugins.consulted == () and plugins.declaring == ()
-        assert [r.key for r in rows] == ["box.env.COLORTERM"]
+        assert [r.key for r in rows] == [
+            "agent.default.env.TERM", "box.env.COLORTERM",
+        ]
         out = io.StringIO()
         print_defaults(out)
         assert "No agent targets could be discovered" in out.getvalue()
@@ -443,7 +455,9 @@ class TestEnvRows:
         )
         rows, plugins = env_rows()
         assert plugins.consulted == ("broken",) and plugins.declaring == ()
-        assert [r.key for r in rows] == ["box.env.COLORTERM"]
+        assert [r.key for r in rows] == [
+            "agent.default.env.TERM", "box.env.COLORTERM",
+        ]
 
 
 class TestRendering:
