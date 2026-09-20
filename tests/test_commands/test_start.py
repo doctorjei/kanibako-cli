@@ -2969,9 +2969,20 @@ class TestTweakccIntegration:
                 assert rc == 0
                 mock_apply.assert_not_called()
 
-    def test_enabled_calls_apply_tweakcc(self, start_mocks):
-        """When tweakcc is enabled in agent config, _apply_tweakcc is called."""
+    def test_enabled_calls_apply_tweakcc(self, start_mocks, tmp_path):
+        """Enabled in agent config → ``_apply_tweakcc`` runs, AND is handed ``std.cache``.
+
+        ⚑ THE CONSUMER HALF of the ``system.cache`` root.  The producer pins live in
+        ``tests/test_settings/test_system_paths.py::TestCacheRootIsTheKey`` and say the
+        key reaches ``std.cache``; without this one the launch could hand the transform
+        some other directory and both halves would still be green.  A bare
+        ``assert_called_once()`` was exactly that gap — `cache_path` was handed here for
+        as long as the field existed, and nothing said so.
+        (Mutation: pass any other cache dir → the argument is not ``cache_root`` → RED.)
+        """
         with start_mocks() as m:
+            cache_root = tmp_path / "cache-root"
+            m.load_std_paths.return_value.cache = cache_root
             m.agent_cfg.transform_settings = {"enabled": True}
             m.load_agent_config.return_value = m.agent_cfg
 
@@ -2983,6 +2994,7 @@ class TestTweakccIntegration:
                     extra_args=[],
                 )
                 mock_apply.assert_called_once()
+                assert mock_apply.call_args.args[2] == cache_root
 
     def test_patched_binary_used_in_mounts(self, start_mocks, tmp_path):
         """When tweakcc returns a patched install, descriptor_mounts uses it.
@@ -3108,6 +3120,75 @@ class TestTweakccIntegration:
             )
             env = m.runtime.run.call_args.kwargs.get("env") or {}
             assert env.get("DISABLE_AUTOUPDATER") == "1"
+
+
+class TestCacheRootReachesItsConsumers:
+    """Every launch consumer of a cache directory is handed ``std.cache``.
+
+    ⚑ THE CONSUMER HALF of the ``system.cache`` repair.  The producer pins
+    (``tests/test_settings/test_system_paths.py::TestCacheRootIsTheKey``) say the key
+    reaches ``std.cache``; these say the launch passes THAT on, so the two halves cannot
+    both be green while the root a user set reaches nobody.  ⚑ The THIRD consumer, the
+    binary transform, is pinned at its own site —
+    ``TestTweakccIntegration::test_enabled_calls_apply_tweakcc``.
+    """
+
+    def test_freshness_is_handed_the_system_cache_root(self, start_mocks, tmp_path):
+        """(Mutation: pass any other cache dir → the argument is not ``cache_root`` → RED.)"""
+        with start_mocks() as m, patch(
+            "kanibako.runtime.freshness.check_image_freshness",
+        ) as m_fresh:
+            cache_root = tmp_path / "cache-root"
+            m.load_std_paths.return_value.cache = cache_root
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[],
+            )
+            m_fresh.assert_called_once()
+            assert m_fresh.call_args.args[2] == cache_root
+
+    def test_the_helper_hub_shares_the_cache_roots_tweakcc_dir(self, start_mocks, tmp_path):
+        """The helpers' patched-binary bind source is ``std.cache / "tweakcc"``.
+
+        ⚑ THE ONE CONSUMER THAT TAKES NO ARGUMENT — ``_start_helper_hub`` derives a leaf
+        under the root and MOUNTS it, so a wrong root here is a wrong mount source rather
+        than a wrong call, and the two argument pins above cannot see it.  The dir must
+        exist (the append is gated on ``.is_dir()``) and the hub is agent-scope opt-in, so
+        both are set up here rather than left to the fixture floor.
+        (Mutation: restore the ``std.cache_path`` derivation → the source is a path off the
+        mock's auto-attribute, not ``cache_root / "tweakcc"`` → RED.)
+        """
+        from kanibako.channels import helper_listener as helper_listener_mod
+
+        with start_mocks() as m, patch.object(
+            helper_listener_mod, "HelperHub",
+        ) as m_hub_cls:
+            cache_root = tmp_path / "cache-root"
+            (cache_root / "tweakcc").mkdir(parents=True)
+            m.load_std_paths.return_value.cache = cache_root
+            # A real runtime dir for the AF_UNIX socket name, as the hub's other
+            # real-``_start_helper_hub`` tests do.
+            m.load_std_paths.return_value.runtime = tmp_path / "run"
+            m.agent_cfg.state["allow_helpers"] = "true"
+            m.agent_cfg.transform_settings = {"enabled": True}
+            m.load_agent_config.return_value = m.agent_cfg
+
+            with patch("kanibako.commands.start._apply_tweakcc") as mock_apply:
+                # A non-None ``tweakcc_entry`` is what opens the share; the install and
+                # cache object are the launch's own, unchanged.
+                mock_apply.return_value = (
+                    m.target.detect.return_value, MagicMock(), MagicMock(),
+                )
+                assert _run_container(
+                    project_dir=None, entrypoint=None, image_override=None,
+                    new_session=False, safe_mode=False, resume_mode=False,
+                    extra_args=[],
+                ) == 0
+
+        assert m_hub_cls.return_value.start.call_count == 1, "the hub must start"
+        ctx = m_hub_cls.return_value.start.call_args.args[1]
+        assert cache_root / "tweakcc" in {mt.source for mt in ctx.binary_mounts}
 
 
 class TestBinaryMountSafeFail:

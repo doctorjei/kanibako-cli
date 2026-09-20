@@ -75,7 +75,6 @@ class StandardPaths:
     cache_home: Path
     config_file: Path
     data_path: Path
-    cache_path: Path
     # System-level derived dirs: the Layer-1 ``config.*`` foundation + Layer-2 ``system.*``.
     data: Path
     backup: Path
@@ -91,12 +90,12 @@ class StandardPaths:
     registry: Path
     # Lifecycle journal — write-ahead log of in-flight box-lifecycle ops (``config.journal``).
     journal: Path
+    # ⚑ ``system.cache`` and ``system.state`` are THE host cache and state roots, and the
+    # only things a cache or a state store derives from.  Neither has any relationship to
+    # ``config.data``: the ``cache_path`` / ``state_path`` fields that tracked that key's
+    # LEAF under the XDG base were one defect with two spellings, and both are gone
+    # ([R166] removed the state half).  Do not re-derive either from a leaf.
     cache: Path
-    # ⚑ ``system.state`` — THE host state root, and the only thing a state store derives
-    # from ([R166]).  State has no relationship to ``config.data``: the ``state_path``
-    # field that tracked that key's LEAF under ``$XDG_STATE_HOME`` was a defect and is
-    # gone.  ``cache_path`` above still tracks the leaf; the same repair for
-    # ``system.cache`` is a separate change.
     state: Path
     runtime: Path
     # Channels skeleton — keys/defaults only; sub-key wiring is Phase 6.
@@ -576,10 +575,10 @@ def system_path_floor(std: StandardPaths) -> dict[str, str]:
     settles that it is a defect rather than a report — *"if it has a default value, yes,
     thay value should be placed in the keystore"* — universally, with no exemption list.
 
-    ⚑ RESERVED AND REACHABLE ARE ORTHOGONAL.  Nothing in kanibako READS those three yet,
-    and that stays true: *reserved* is a fact about CONSUMERS, this floor is a fact about
-    the KEYSTORE, and a reserved key still answers.  No discriminator is needed because
-    the question was never asked.
+    ⚑ RESERVED AND REACHABLE ARE ORTHOGONAL, and ``system.backup`` is the one left with
+    no consumer: *reserved* is a fact about CONSUMERS, this floor is a fact about the
+    KEYSTORE, and a reserved key still answers.  No discriminator is needed because the
+    question was never asked.
 
     ⚑ CONSUMERS CHECKED IN THE SAME CHANGE — both, and both take the whole map:
     ``commands/start._launch_snapshot_inputs`` (three more scalars in the snapshot floor,
@@ -742,26 +741,6 @@ def resolve_state_path(*, config_home: Path | None = None,
         return Path(xdg_vars[XDG_STATE_HOME]) / KANIBAKO_PATH
 
 
-def resolve_data_leaf(data_path: Path | None = None, *, config_home: Path | None = None,
-                      data_home: Path | None = None) -> str:
-    """The leaf (basename) of ``config.data`` — PURE and TOTAL, via :func:`resolve_data_path`.
-
-    Given an ALREADY-RESOLVED *data_path* (e.g. a caller's own
-    ``load_system_config(...)["config.data"]``), this is just ``data_path.name`` — no re-read.
-    Without one it is :func:`resolve_data_path`'s leaf.
-    ⚑ ONE CALLER LEFT, and the leaf reading is retired everywhere else: ``load_std_paths``
-    joins it to ``$XDG_CACHE_HOME`` for ``cache_path``.  ``$XDG_CACHE_HOME`` has a key of
-    its own — ``system.cache`` — so that is the same defect [R166] removed from the STATE
-    side, a different key and its own repair; this function loses its last caller with it.
-    ⚑ A caller anchored on the DATA base wants the whole path, not this:
-    a repointed ``config.data`` moves its parent too, and rejoining the leaf to the XDG base
-    would silently drop that move.
-    """
-    if data_path is not None:
-        return data_path.name
-    return resolve_data_path(config_home=config_home, data_home=data_home).name
-
-
 def load_std_paths(config: BootstrapConfig | None = None) -> StandardPaths:
     """Compute all standard kanibako directories, creating them as needed."""
     config_home = xdg(XDG_CONFIG_HOME, XDG_SPEC_DEFAULTS[XDG_CONFIG_HOME])
@@ -779,19 +758,17 @@ def load_std_paths(config: BootstrapConfig | None = None) -> StandardPaths:
     # Resolve the system-level path tier from the CONFIG file set: /etc base < user-global.
     resolved = load_system_config(config_file, data_home=data_home, home=Path.home())
     data_path = resolved["config.data"]
-    # ⚑ The CACHE path still tracks the data dir's leaf (default leaf "kanibako"); STATE
-    # does not, and has no such field — it is ``system.state`` and nothing else ([R166]).
-    cache_path = cache_home / resolve_data_leaf(data_path)
 
-    # Ensure directories exist.
+    # Ensure directories exist.  ⚑ CACHE and STATE are created at their own keys, never
+    # at a leaf of ``config.data`` rejoined to the XDG base — see ``StandardPaths``.
     config_file.parent.mkdir(parents=True, exist_ok=True)
     data_path.mkdir(parents=True, exist_ok=True)
     resolved["system.state"].mkdir(parents=True, exist_ok=True)
-    cache_path.mkdir(parents=True, exist_ok=True)
+    resolved["system.cache"].mkdir(parents=True, exist_ok=True)
 
     return StandardPaths(config_home=config_home, data_home=data_home, state_home=state_home,
                      cache_home=cache_home, config_file=config_file, data_path=data_path,
-                     cache_path=cache_path, data=resolved["config.data"],
+                     data=resolved["config.data"],
                      backup=resolved["system.backup"], agents=resolved["config.agents"],
                      channels=resolved["system.channelroot"], template=resolved["system.template"],
                      canon=resolved["system.canon"], settings=resolved["config.settings"],

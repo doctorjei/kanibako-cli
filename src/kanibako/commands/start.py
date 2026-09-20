@@ -2111,7 +2111,7 @@ def _start_helper_hub(
 
     # Share tweakcc cache with helpers so they reuse patched binaries
     if tweakcc_entry is not None:
-        _tweakcc_cache_dir = std.cache_path / "tweakcc"
+        _tweakcc_cache_dir = std.cache / "tweakcc"
         if _tweakcc_cache_dir.is_dir():
             binary_mounts.append(_HMount(
                 source=_tweakcc_cache_dir,
@@ -2885,7 +2885,7 @@ def _run_container(
             )
 
         from kanibako.runtime.freshness import check_image_freshness
-        check_image_freshness(runtime, image, std.cache_path)
+        check_image_freshness(runtime, image, std.cache)
 
         # Two-tier launch verification (one ephemeral probe covers both tiers).
         # Only meaningful for a persistent, bootstrap-wrapped session: the
@@ -3534,7 +3534,7 @@ def _run_container(
         )
         if active_transform == _TWEAKCC_TRANSFORM:
             result = _apply_tweakcc(
-                install, agent_cfg, std.cache_path, image, runtime.cmd, logger,
+                install, agent_cfg, std.cache, image, runtime.cmd, logger,
             )
             if result:
                 install, tweakcc_entry, tweakcc_cache_obj = result

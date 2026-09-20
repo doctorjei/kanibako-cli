@@ -21,6 +21,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`kanibako system set system.cache=<path>` was accepted and changed nothing.** The key is
+  declared and settable, and it did resolve — into a field no consumer read. Both caches kanibako
+  keeps under its cache root, the tweakcc patched-binary cache and the image digest cache, were
+  placed instead under `$XDG_CACHE_HOME` joined to the *last segment of `config.data`* — a
+  directory the setting could not reach and one `docs/tweakcc.md` has never named. Both now live
+  under `system.cache`, and setting the key moves them together. ⚑ **Nothing to do on upgrade, and
+  on a default install nothing moves**: `system.cache` defaults to `$XDG_CACHE_HOME/kanibako`,
+  which is byte for byte where the old derivation already put it. If you have repointed
+  `config.data` to a store whose last segment is not `kanibako`, your caches move to the key's
+  value and the old directory is left behind; both are rebuilt on demand — the binary is
+  re-patched at the next launch and the digest cache re-reads the registry — so there is nothing
+  to copy and nothing is lost.
+
 - **A persona probe that `box create` or `box start` could not verify said so without saying where
   it had read the endpoint and model.** The message named the endpoint, the model actually sent and
   the provider's own words, and then left the user to guess which of their files any of it had come
@@ -1531,16 +1544,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Bindings sourced at `@system.backup`, `@system.cache` or `@system.runtime` were accepted and
   then silently dropped.** All three are settings keys kanibako declares, gives a default, and lets
-  you set — `kanibako system set system.cache=…` has always worked. But the map that `@system.*`
-  references actually resolve against when a box starts was written out by hand and named only
-  eight of the eleven, so a binding, seed or environment value sourced at one of those three
-  resolved when you set it, reached nothing at launch, and was discarded with no message and exit
-  0. The same row simply did not appear in `workset share list --effective` either, so the listing
-  a user checks their configuration against agreed with the drop instead of exposing it. The map is
-  now derived from the declared table at both sites, so those three resolve, mount and display like
-  any other path key, and one declared later arrives without an edit. **Nothing else changes:** the
-  eight keys that already resolved resolve to the same values, no key became settable that was not
-  settable before, and no new value is written to any file.
+  you set — `kanibako system set system.cache=…` has always been accepted. But the map that
+  `@system.*` references actually resolve against when a box starts was written out by hand and
+  named only eight of the eleven, so a binding, seed or environment value sourced at one of those
+  three resolved when you set it, reached nothing at launch, and was discarded with no message and
+  exit 0. The same row simply did not appear in `workset share list --effective` either, so the
+  listing a user checks their configuration against agreed with the drop instead of exposing it. The
+  map is now derived from the declared table at both sites, so those three resolve, mount and
+  display like any other path key, and one declared later arrives without an edit. **Nothing else
+  changes:** the eight keys that already resolved resolve to the same values, no key became settable
+  that was not settable before, and no new value is written to any file.
 
 - **A value sourced at `@config.journal` was accepted and then silently dropped at launch.**
   Kanibako's Layer-1 config foundation declares six keys, but the map that `@config.*` references
@@ -3360,6 +3373,17 @@ migration code.** Four released config surfaces are removed outright
   plugins import it at module scope, so an old wheel fails on it exactly as it fails on
   `probe_verdict`. `MIGRATION.md` lists which published wheels hit which of the two.
   Upgrade the plugins with the base — see `MIGRATION.md`, *For plugin authors*.
+- **`resolve_data_leaf` is removed from `kanibako.settings.paths`.** It answered with the *last
+  segment* of `config.data`, and by the time it went its only caller was the cache defect listed
+  under `[Unreleased]` above — a leaf rejoined to an XDG base, which a repointed store silently
+  dropped. A caller that wants the configured store wants the whole path: `resolve_data_path()`
+  for the data root and `resolve_state_path()` for the state root, both public and both total.
+  ⚑ **Listed because it was published, not because it is known to have reached anyone**, and not
+  marked breaking for the same reason. It was public in exactly one published artifact,
+  `1.8.0rc2` — absent from `1.7.2` and from `1.8.0rc1` — and `rc2` is a pre-release, so a plain
+  `pip install kanibako-cli` never resolved a version carrying it. No published plugin imports it
+  either: all four plugin wheels on PyPI were checked (`kanibako-agent-claude` 1.7.2 and
+  1.8.0rc2, `kanibako-agent-goose` 0.5.0, `kanibako-agent-codex` 0.5.0) and none names it.
 - **BREAKING: the legacy claude host-dir credential path is GONE.** A persona used to be
   able to resolve its endpoint, bearer token and model-map env by auto-adopting
   `~/.config/claude/<persona>/settings.json` + its sibling `token` file when nothing was

@@ -438,7 +438,7 @@ of the Layer-2 path tier — which made the bootstrap file a settings source in 
 mattered, where every host path is decided. *"kanibako_config.yaml <-- cannot have settings.
 Period."* (Jei, on what is now `kanibako.cfg`) This is the exact mirror of the filter layer 3
 already had in the other direction (a `config:` table in a SETTINGS file must never reach Layer 1,
-spec §1), and it is the same filter `resolve_data_leaf` already applied to the same two files —
+spec §1), and it is the same filter `resolve_data_path` already applied to the same two files —
 one rule, two sites, and this was the site that lacked it.
 
 Back-compat: a user with only `~/.config/kanibako.cfg` (no `/etc` file) gets the base layer
@@ -537,7 +537,7 @@ to 11-vs-11. [R143] is the authority — *"if it has a default value, yes, thay 
 in the keystore"* — universal, no allowlist and no origin test.
 
 ⚑ **RESERVED AND REACHABLE ARE ORTHOGONAL, WHICH IS WHY THIS NEEDS NO DISCRIMINATOR.** Nothing reads
-those three yet and nothing here gives them a consumer: *reserved* is a fact about consumers, this
+`system.backup`, and nothing here gives it a consumer: *reserved* is a fact about consumers, this
 floor is a fact about the keystore, and a reserved key still answers.
 
 ⚑ **`_FLOOR_FIELD_ALIASES` IS A SPELLING TABLE, NOT A MEMBERSHIP LIST**, and the distinction is the
@@ -569,8 +569,9 @@ as needed.
 
 The system-level path tier (settings-framework `system.path.*`) is resolved from the CONFIG file
 set: `/etc` `base.cfg` < user-global. A user with only `~/.config/kanibako.cfg` gets the
-prior behavior (empty `/etc` layer). The state/cache paths track the data dir's leaf name (unchanged
-behavior: default leaf `kanibako` under each XDG base).
+prior behavior (empty `/etc` layer). Neither the cache nor the state root derives from the data
+dir's leaf: `system.cache` and `system.state` are keys of their own, and this is where each one's
+resolved value is materialized ([R166] retired the state reading; the cache reading followed it).
 
 ```python
 def resolve_project(

@@ -34,7 +34,6 @@ from kanibako.settings.paths import (
     load_std_paths,
     load_system_config,
     resolve_config_paths,
-    resolve_data_leaf,
     resolve_data_path,
     resolve_state_path,
     resolve_system_paths,
@@ -769,7 +768,7 @@ class TestResolveDataPath:
 
     THE single source for a caller that holds no ``StandardPaths`` and must still land in the
     store the user configured ([R155]): ``targets.discover_targets`` and
-    ``vscode_remote.vscode_remote_bin_dir``. ``resolve_data_leaf`` is its leaf.
+    ``vscode_remote.vscode_remote_bin_dir``.
     """
 
     def _redirect_etc_base(self, monkeypatch, tmp_path: Path) -> None:
@@ -820,18 +819,6 @@ class TestResolveDataPath:
         assert set(tmp_path.rglob("*")) == before
         assert not data_home.exists()
         assert not (tmp_path / "custom_store").exists()
-
-    def test_leaf_routes_through_the_path_resolver(self, tmp_path, monkeypatch):
-        """Wiring proof (P10): ``resolve_data_leaf`` keeps no second copy of the resolve."""
-        import kanibako.settings.paths as paths_mod
-
-        self._redirect_etc_base(monkeypatch, tmp_path)
-        spy = MagicMock(side_effect=paths_mod.resolve_data_path)
-        monkeypatch.setattr(paths_mod, "resolve_data_path", spy)
-
-        assert resolve_data_leaf(config_home=tmp_path / "cfg-absent",
-                                 data_home=tmp_path / "data") == "kanibako"
-        spy.assert_called_once()
 
 
 class TestResolveStatePath:
@@ -933,114 +920,66 @@ class TestResolveStatePath:
         spy.assert_not_called()
 
 
-class TestResolveDataLeaf:
-    """``resolve_data_leaf`` — the PURE, TOTAL leaf-of-``config.data`` resolver.
+class TestCacheRootIsTheKey:
+    """``std.cache`` is ``system.cache``, and nothing derives a cache dir from a LEAF.
 
-    THE single source for the one caller left: ``load_std_paths``' ``cache_path``, which
-    joins the leaf to ``$XDG_CACHE_HOME`` instead of re-deriving ``data_path.name`` on its
-    own.  ⚑ The STATE side used to route through here too; [R166] retired that reading, so
-    a state assertion in this class would be testing a rule the code no longer states.
+    The key was declared, defaulted and ``set: cli+file``, and ``load_std_paths`` resolved
+    it — into a field no consumer read.  All three took ``cache_path``, which joined
+    ``config.data``'s leaf to ``$XDG_CACHE_HOME``, so ``system set system.cache=…``
+    succeeded and did nothing.  That is the defect [R166] removed from the STATE side, one
+    key over; these cases pin the repair from both directions — the key REACHES the root,
+    and a repointed ``config.data`` does NOT.
+
+    ⚑ The class this replaced pinned ``resolve_data_leaf``, whose only caller was the
+    defect: the function went with it.
     """
 
     def _redirect_etc_base(self, monkeypatch, tmp_path: Path) -> None:
-        """Point the /etc base CONFIG path at an absent tmp file (mirrors
-        ``TestLoadSystemConfig._redirect`` — hermetic, doesn't depend on the real host)."""
+        """Point the /etc base CONFIG path at an absent tmp file (hermetic — mirrors
+        ``TestLoadSystemConfig._redirect``)."""
         import kanibako.settings.config as cfg_mod
 
         monkeypatch.setattr(cfg_mod, "config_base_path", lambda: tmp_path / "etc_absent.yaml")
 
-    # --- fast path: an already-resolved data_path -------------------------
-
-    def test_pre_resolved_path_returns_its_basename(self, tmp_path):
-        assert resolve_data_leaf(tmp_path / "custom-leaf") == "custom-leaf"
-
-    # --- fresh resolve: tracks a non-default config.data -------------------
-
-    def test_tracks_non_default_config_data_leaf(self, tmp_path, monkeypatch):
-        self._redirect_etc_base(monkeypatch, tmp_path)
-        config_home = tmp_path / "cfg"
-        config_home.mkdir()
-        (config_home / CONFIG_FILENAME).write_text(
-            f'config:\n  data: "{tmp_path / "custom_store"}"\n'
-        )
-        leaf = resolve_data_leaf(config_home=config_home, data_home=tmp_path / "data")
-        assert leaf == "custom_store"
-
-    # --- TOTAL: never raises, degrades to the default leaf -----------------
-
-    def test_no_config_file_returns_default_leaf(self, tmp_path, monkeypatch):
-        self._redirect_etc_base(monkeypatch, tmp_path)
-        leaf = resolve_data_leaf(config_home=tmp_path / "cfg-absent",
-                                 data_home=tmp_path / "data")
-        assert leaf == "kanibako"
-
-    def test_malformed_config_degrades_without_raising(self, tmp_path, monkeypatch):
-        self._redirect_etc_base(monkeypatch, tmp_path)
-        config_home = tmp_path / "cfg"
-        config_home.mkdir()
-        (config_home / CONFIG_FILENAME).write_text("not: [valid: yaml: at all")
-        # Mutation proof: without the try/except this raises ConfigError and the
-        # test errors out rather than reaching the assertion.
-        leaf = resolve_data_leaf(config_home=config_home, data_home=tmp_path / "data")
-        assert leaf == "kanibako"
-
-    # --- creates nothing -----------------------------------------------------
-
-    def test_creates_no_directories(self, tmp_path, monkeypatch):
-        self._redirect_etc_base(monkeypatch, tmp_path)
-        config_home = tmp_path / "cfg"
-        config_home.mkdir()
-        (config_home / CONFIG_FILENAME).write_text(
-            f'config:\n  data: "{tmp_path / "custom_store"}"\n'
-        )
-        data_home = tmp_path / "data"
-        before = set(tmp_path.rglob("*"))
-        resolve_data_leaf(config_home=config_home, data_home=data_home)
-        after = set(tmp_path.rglob("*"))
-        assert after == before
-        assert not data_home.exists()
-        assert not (tmp_path / "custom_store").exists()
-
-    def test_never_touches_xdg_runtime_dir_fallback(self, tmp_path, monkeypatch):
-        """Mutation proof: if the resolve ever routed through ``host_xdg_map`` (which
-        resolves ``XDG_RUNTIME_DIR`` and can mkdir a fallback dir when unset), this fails."""
-        import kanibako.settings.paths as paths_mod
-
-        self._redirect_etc_base(monkeypatch, tmp_path)
-        monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
-        monkeypatch.setattr(paths_mod, "_runtime_fallback_cache", {})
-        spy = MagicMock()
-        monkeypatch.setattr(paths_mod, "_fallback_runtime_dir", spy)
-
-        resolve_data_leaf(config_home=tmp_path / "cfg", data_home=tmp_path / "data")
-        spy.assert_not_called()
-
-    # --- P4 wiring: load_std_paths routes its leaf through the resolver ----
-
-    def test_load_std_paths_uses_the_resolver_for_its_leaf(self, tmp_home):
-        """Observable-behaviour parity: overriding ``config.data`` still cascades to
-        ``cache_path`` exactly as the old inline ``data_path.name`` did.
-
-        ⚑ MUTATION PROOF for [R166] in the same assertion pair: the repointed store moves
-        the CACHE path and leaves ``std.state`` on the key's own default.  A resolve that
-        re-grew a leaf reading for state would put ``std.state`` under ``srv_data``.
+    def test_a_repointed_config_data_moves_neither_cache_nor_state(self, tmp_home, monkeypatch):
+        """⚑ THE INVERTED PIN.  This pair read ``std.cache_path == std.cache_home /
+        "srv_data"`` — the leaf reading asserted as the rule.  Both roots now hold their
+        own keys' defaults; re-grow a leaf reading for either and exactly one of these reds.
+        🛑 IT GUARDS FORWARD, NOT BACK — measured against the pre-image it PASSES, because
+        ``std.cache`` already carried ``system.cache`` there; the defect was what the
+        CONSUMERS were handed, which is what the two cases below pin.
         """
+        self._redirect_etc_base(monkeypatch, tmp_home)
         cf = tmp_home / "config" / CONFIG_FILENAME
         cf.write_text(f'config:\n  data: "{tmp_home / "srv_data"}"\n')
-        config = load_config(cf)
-        std = load_std_paths(config)
-        assert std.cache_path == std.cache_home / "srv_data"
+        std = load_std_paths(load_config(cf))
+        # Anti-vacuity: the repoint really took, so the two below are saying something.
+        assert std.data_path == tmp_home / "srv_data"
+        assert std.cache == std.cache_home / "kanibako"
         assert std.state == std.state_home / "kanibako"
 
-    def test_load_std_paths_calls_resolve_data_leaf(self, tmp_home, config_file, monkeypatch):
-        """Wiring proof: ``load_std_paths`` must call the shared resolver, not keep its
-        own second copy of the ``.name`` derivation."""
-        import kanibako.settings.paths as paths_mod
+    def test_the_settings_file_key_reaches_the_root_and_creates_it(self, tmp_home, monkeypatch):
+        """``system set system.cache=…`` writes the ``system:`` table of ``@config.settings``;
+        the whole repair is that the write ARRIVES at what the consumers are handed."""
+        self._redirect_etc_base(monkeypatch, tmp_home)
+        cf = tmp_home / "config" / CONFIG_FILENAME
+        cf.write_text(f'config:\n  data: "{tmp_home / "srv_data"}"\n')
+        ssp = load_system_config(
+            cf, data_home=tmp_home / "data", home=tmp_home / "home",
+        )["config.settings"]
+        ssp.parent.mkdir(parents=True, exist_ok=True)
+        ssp.write_text(f'system:\n  cache: "{tmp_home / "elsewhere"}"\n')
 
-        real = paths_mod.resolve_data_leaf
-        spy = MagicMock(side_effect=real)
-        monkeypatch.setattr(paths_mod, "resolve_data_leaf", spy)
+        std = load_std_paths(load_config(cf))
+        assert std.cache == tmp_home / "elsewhere"
+        # The producer MATERIALIZES the key's own directory...
+        assert std.cache.is_dir()
+        # ...and never the leaf-joined one it used to create and hand out.
+        assert not (std.cache_home / "srv_data").exists()
 
-        config = load_config(config_file)
-        load_std_paths(config)
-        spy.assert_called_once()
+    def test_standard_paths_carries_no_leaf_derived_cache_field(self, std):
+        """P3: the regression is UNAVAILABLE, not merely forbidden.  With ``cache_path``
+        gone a consumer cannot be handed a leaf-derived cache dir without deriving one by
+        hand, which is the shape this reds on."""
+        assert not hasattr(std, "cache_path")
+
