@@ -599,26 +599,35 @@ def _check_persona_store_for_create(agent_ref: str, project_path) -> str | None:
             )
         except Exception:
             # The probe contract is never-raise; hold plugins to it, and warn on a bug.
+            # ⚑ The traceback goes to the DEBUG log, as on the launch path
+            # (``start.py::_persona_probe_error``).  The warning printed below cannot
+            # name the offending plugin — so discarding the traceback here left a
+            # contract breach with NO record of which plugin broke it, on the one door
+            # a plugin author reaches first.
+            get_logger(__name__).debug(
+                "persona '%s': verify probe raised; inconclusive",
+                display, exc_info=True,
+            )
             outcome = PersonaProbeOutcome.inconclusive("the probe itself failed")
+        # ⚑ On THIS path the endpoint and model are the persona store's own, read
+        # straight out of ``entry.config_dir`` — no cascade is built before create, so
+        # the provenance is exact here in a way the launch path's cannot be.
+        resolved_from = f"the persona store at {entry.config_dir}"
         if outcome.verdict is PersonaProbeVerdict.REJECTED:
             # ⚑ WARN-ONLY, and it names WHAT WAS REFUSED — never the token.  A 403 on a
             # model the account may not use is indistinguishable here from a dead
             # credential, and the old wording sent users to replace a valid one.
-            status = outcome.evidence.status if outcome.evidence is not None else None
-            refused = (
-                f"refused the probe with HTTP {status}" if status is not None
-                else "refused the probe"
-            )
             print(
-                f"Warning: the persona endpoint {refused} for '{display}'; "
-                f"creating anyway.{outcome.evidence_block()}",
+                f"Warning: the persona endpoint "
+                f"{outcome.refusal_phrase(bundle.endpoint)} for '{display}'; creating "
+                f"anyway.{outcome.evidence_block(resolved_from=resolved_from)}",
                 file=sys.stderr,
             )
         elif outcome.verdict is PersonaProbeVerdict.INCONCLUSIVE:
             print(
                 f"Warning: could not verify the persona endpoint for "
                 f"'{display}' ({outcome.reason}); creating unverified."
-                f"{outcome.evidence_block()}",
+                f"{outcome.evidence_block(resolved_from=resolved_from)}",
                 file=sys.stderr,
             )
         elif outcome.verdict is PersonaProbeVerdict.NOT_APPLICABLE:

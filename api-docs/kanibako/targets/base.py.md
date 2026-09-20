@@ -159,8 +159,8 @@ class ProbeEvidence:
     status: int | None = None
     provider_text: str = ''
 
-    def lines(self, indent: str='  ') -> tuple[str, ...]
-    def block(self, indent: str='  ') -> str
+    def lines(self, indent: str='  ', *, resolved_from: str='') -> tuple[str, ...]
+    def block(self, indent: str='  ', *, resolved_from: str='') -> str
 
 class PersonaProbeOutcome(NamedTuple):
     verdict: PersonaProbeVerdict
@@ -175,7 +175,8 @@ class PersonaProbeOutcome(NamedTuple):
     def inconclusive(cls, reason: str, evidence: 'ProbeEvidence | None'=None) -> 'PersonaProbeOutcome'
     @classmethod
     def not_applicable(cls, reason: str) -> 'PersonaProbeOutcome'
-    def evidence_block(self, indent: str='  ') -> str
+    def evidence_block(self, indent: str='  ', *, resolved_from: str='') -> str
+    def refusal_phrase(self, endpoint: str) -> str
 
 @dataclass(frozen=True)
 class Operation:

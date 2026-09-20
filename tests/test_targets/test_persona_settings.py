@@ -1038,6 +1038,63 @@ class TestProbeEvidence:
         assert len(outcome.evidence.provider_text) <= 301   # cap + the ellipsis
         assert outcome.evidence.provider_text.endswith("…")
 
+    def test_the_evidence_says_WHERE_the_endpoint_and_model_CAME_FROM(self, token_file):
+        """*"I am not getting that 403"* — he could not, and neither half of the
+        verdict said where its inputs had been resolved from.
+
+        The caller supplies the answer because the plugin was HANDED both values.
+        """
+        server = _ProbeServer(status=403, body=self._PROVIDER_BODY)
+        try:
+            outcome = ClaudeTarget().verify_persona(
+                server.endpoint, token_file, "gemma4", timeout=5.0,
+            )
+        finally:
+            server.close()
+        block = outcome.evidence_block(resolved_from="the persona store at /s/nav")
+        assert "The endpoint and model above came from the persona store at /s/nav." in block
+        # ⚑ It sits with the SENT half, ahead of what came back.
+        assert block.index("came from") < block.index("provider:")
+
+    def test_a_caller_THAT_CANNOT_SAY_prints_no_provenance_at_all(self, token_file):
+        """🛑 Never print a provenance that was not resolved.  Silence is the default,
+        so the sentence is unavailable to a caller that did not answer (P3).
+
+        (Mutation: default ``resolved_from`` to any placeholder → a fabricated origin
+        prints at every door → RED.)
+        """
+        server = _ProbeServer(status=403, body=self._PROVIDER_BODY)
+        try:
+            outcome = ClaudeTarget().verify_persona(
+                server.endpoint, token_file, "gemma4", timeout=5.0,
+            )
+        finally:
+            server.close()
+        assert "came from" not in outcome.evidence_block()
+
+    def test_the_refusal_SENTENCE_is_single_sourced_like_the_block(self):
+        """FINDING 4: the block was shared and the sentence introducing it was not,
+        so the two doors diverged in the very commit that shared the block.
+
+        The endpoint is interpolated ONLY on the status-less arm — the one arm where
+        ``evidence_block`` is empty and nothing else would name it.
+        """
+        from kanibako.targets.base import PersonaProbeOutcome, ProbeEvidence
+
+        answered = PersonaProbeOutcome.rejected(
+            ProbeEvidence(endpoint="https://e.example", status=403),
+        )
+        assert answered.refusal_phrase("https://e.example") == (
+            "refused the probe with HTTP 403"
+        )
+        assert "https://e.example" in answered.evidence_block()
+
+        silent = PersonaProbeOutcome.rejected(ProbeEvidence(endpoint="https://e.example"))
+        assert silent.evidence_block() == ""
+        assert silent.refusal_phrase("https://e.example") == (
+            "(https://e.example) refused the probe"
+        )
+
     @pytest.mark.parametrize("target_cls", [ClaudeTarget, CodexTarget])
     def test_a_provider_that_ECHOES_THE_TOKEN_never_leaks_it(
         self, token_file, target_cls,
