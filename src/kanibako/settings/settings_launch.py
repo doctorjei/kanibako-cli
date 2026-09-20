@@ -41,7 +41,7 @@ if TYPE_CHECKING:
     from kanibako.targets.base import PluginDescriptor
 
 from kanibako import kuid
-from kanibako.agent_ref import harness_of
+from kanibako.agent_ref import harness_of, with_harness
 from kanibako.settings.agent_config import store_dirname
 from kanibako.settings.bootstrap import SPAWN_BUDGET_DEFAULTS
 from kanibako.settings.agent_file import AgentFileLevel, stored_leaf_text
@@ -340,6 +340,17 @@ def meta_agent_path_floor(agent_name: str) -> dict[str, object]:
     # ⚑ THE TWO HALVES ARE SPELLED DIFFERENTLY ON PURPOSE: the KEY is a key path, so
     # its node segment stays CANONICAL (``℘``); the VALUE is a DIRECTORY, so it takes
     # the ``+`` store spelling (``agent_config.store_dirname``).
+    #
+    # ⚑ WHERE §2d's ``%tolower(…)%`` IS: in the NODE this composes from, not in a
+    # fold applied here. The node's harness segment IS the declared name lowercased
+    # — ``targets._register`` derives it, ``config.resolve_agent`` substitutes it —
+    # so a path built from the node has already had the fold applied, and
+    # ``agent_settings_path`` / the persona shim build the SAME string from the SAME
+    # node. 🛑 Folding again HERE would not be a no-op: a node's PERSONA segment
+    # keeps the user's case (neither [R172] nor [R173] reaches it, and ``Q35`` is
+    # open), so a ``tolower`` over the whole value would name ``agents/nav+claude/``
+    # while every other composer named ``agents/Nav+claude/``. The node is what holds
+    # this key and the rest of the tree in agreement.
     return {
         f"meta.agent.{store_agent}.path": f"@config.agents/{store_dirname(store_agent)}"
         for store_agent in {agent_name, harness_of(agent_name)}
@@ -403,11 +414,15 @@ def meta_identity_floor(
     single-sourced with the cascade's own box-tier path so the two cannot drift; it
     stays optional for narrow resolves that materialize no box tier.
 
-    *agent_name* is the cascade discriminator (``install.name``); *agent_real_name*
-    is the plugin's own value. ⚑ The STORE-ROOT anchor is keyed on the DISCRIMINATOR,
-    not the real name — the store dir is ``agents/<store_dirname(discriminator)>/``,
-    which is what ``agent_settings_path`` and the persona shim use. Both ``None`` for a NO-AGENT
-    box. Per-key detail: the llm-doc.
+    *agent_name* is the cascade discriminator — the NODE, lowercase by construction
+    (``[R173]``). *agent_real_name* carries the plugin's DECLARED harness NAME in the
+    plugin's own case (``Target.name``); its HARNESS SEGMENT is spliced into the
+    node's harness slot to build the case-carrying ``meta.agent.<a>.name`` VALUE and
+    is used for nothing else, so a caller may hand over a bare name or a whole ref.
+    ⚑ The STORE-ROOT anchor is keyed on the DISCRIMINATOR, not the real name — the
+    store dir is ``agents/<store_dirname(discriminator)>/``, which is what
+    ``agent_settings_path`` and the persona shim use, and it is the node that keeps
+    the two in agreement. Both ``None`` for a NO-AGENT box. Per-key detail: the llm-doc.
     """
     floor: dict[str, object] = {
         # Box identity (spec §2c). ⚑ The box name is REUSED from ``proj.name``
@@ -431,15 +446,30 @@ def meta_identity_floor(
     if agent_name is not None:
         # ⚑ THE KEY DISCRIMINATOR AND THE VALUE ARE SPELLED DIFFERENTLY, and §2d's
         # own formula is why: ``meta.agent.<a>.path`` IS
-        # ``@config.agents/@meta.agent.<a>.name``, so this VALUE **names the store
-        # DIRECTORY** and must be the ``+`` spelling ``store_dirname`` produces.
-        # The discriminator segment stays CANONICAL (``℘``) because it is a key
-        # path. Spell the value with ``℘`` and the spec's formula stops composing:
-        # ``@config.agents/<name>`` names a directory that is not there.
+        # ``@config.agents/%tolower(@meta.agent.<a>.name)%``, so this VALUE is what
+        # the store DIRECTORY is spelled FROM and must be the ``+`` spelling
+        # ``store_dirname`` produces. The discriminator segment stays CANONICAL
+        # (``℘``) because it is a key path. Spell the value with ``℘`` and the
+        # spec's formula stops composing.
         # ⚑ A BARE AGENT IS UNAFFECTED BY CONSTRUCTION — ``store_dirname`` is
         # identity on a name with no separator, so only personas move.
+        #
+        # 🛑🛑 THE HARNESS SEGMENT CARRIES THE PLUGIN'S DECLARED CASE, AND THAT IS
+        # THE WHOLE POINT OF THE KEY ([R173], [R176]). An agent's canonical case
+        # lives in its NAME; the node is the fold OF that name. Substituting the
+        # already-folded discriminator here would leave the declared spelling in no
+        # stored carrier at all, and would satisfy §2d's ``%tolower(…)%`` — his own
+        # adjustment, written precisely to keep the name case-carrying — with a
+        # NO-OP. That is [R171]'s retired fold-to-store cure, re-spelled.
+        # ⚑ ``with_harness``, so only the HARNESS moves: a persona segment is the
+        # user's and neither ruling reaches it.
+        # ⚑ ``harness_of`` on the real name too, so the splice is IDEMPOTENT: a
+        # caller handing over a whole ref (the node, or ``persona℘Kirobo``) gets the
+        # same answer as one handing over the bare declared name. Without it,
+        # ``with_harness(nav℘claude, nav℘claude)`` would compose ``nav℘nav℘claude``.
         floor[f"meta.agent.{agent_name}.name"] = store_dirname(
-            agent_real_name if agent_real_name is not None else agent_name
+            with_harness(agent_name, harness_of(agent_real_name))
+            if agent_real_name is not None else agent_name
         )
         # The agent's STORE ROOT — see :func:`meta_agent_path_floor`.
         floor.update(meta_agent_path_floor(agent_name))

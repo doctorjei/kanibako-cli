@@ -6494,13 +6494,18 @@ def _launch_snapshot_inputs(
     # (meta.agent.<a>.{mode,exec} via meta_agent_grammar_floor — the single
     # descriptor→keyspace seam). None when no descriptor resolves.
     agent_desc = None
+    # The plugin's DECLARED harness name, in its own case ([R173]): the case-carrying
+    # half of ``meta.agent.<a>.name``. ``agent_name`` is the NODE and has already been
+    # folded, so it cannot supply this. ``None`` when no target resolves — the floor
+    # then falls back to the node, which is the best spelling available.
+    agent_declared_name: str | None = None
     if agent_name:
         from kanibako.targets import resolve_target
 
         try:
-            agent_desc = resolve_target(
-                harness_of(agent_name), proj.project_path
-            ).descriptor
+            agent_target = resolve_target(harness_of(agent_name), proj.project_path)
+            agent_declared_name = agent_target.name
+            agent_desc = agent_target.descriptor
             agent_auth_support = bool(
                 agent_desc.auth_share_support if agent_desc is not None else False
             )
@@ -6515,6 +6520,7 @@ def _launch_snapshot_inputs(
                 agent_name,
             )
             agent_desc = None
+            agent_declared_name = None
             agent_auth_support = False
     # The SINGLE-SOURCE (box_tier, workset_tier) settings-file pair (M-8). It is
     # UNIFORM now: primary/named = (the box's own box.yaml, the workset root's);
@@ -6539,11 +6545,13 @@ def _launch_snapshot_inputs(
         # reads and `config set` writes (M-8). No per-mode branch: the box tier is
         # non-optional by TYPE (`box_workset_settings_paths` -> tuple[Path, ...]).
         box_settings=str(cascade_box_path),
-        # The agent identity key (spec §2d): the cascade discriminator AND the
-        # value are the resolved agent name (install.name). Omitted for a NO-AGENT
-        # box (empty name) — it has no agent identity.
+        # The agent identity key (spec §2d). ⚑ THE DISCRIMINATOR AND THE VALUE ARE
+        # TWO SPELLINGS OF ONE AGENT ([R173]): the key's segment is the NODE, which
+        # is lowercase; the value keeps the case the plugin DECLARED. Passing the
+        # node for both would fold the name on the way to storage. Omitted for a
+        # NO-AGENT box (empty name) — it has no agent identity.
         agent_name=agent_name if agent_name else None,
-        agent_real_name=agent_name if agent_name else None,
+        agent_real_name=agent_declared_name,
         agent_auth_share_support=agent_auth_support,
     )
     # B5: the plugin-set LAUNCH GRAMMAR ``meta.agent.<a>.{mode,exec}`` (spec §2d;

@@ -5059,7 +5059,8 @@ reserved plain-shell pseudo-agent's own store, shared by accident. And `--agent 
 with *"Agent 'Kirobo' is not installed"* when `kirobo` was the installed spelling, or the reverse.
 Agent names are now matched **without regard to case**, so either spelling reaches the plugin.
 
-**What to do — one `mv` and one re-spelling per affected agent.** Nothing is renamed for you.
+**What to do — one `mv`, then re-spell the agent wherever you wrote it.** Nothing is renamed for
+you.
 
 1. **Move the store directory to the lowercase name**, before your next launch. Everything inside
    it — the agent settings file, the shared common directory, the caches — moves with it and needs
@@ -5085,6 +5086,19 @@ Agent names are now matched **without regard to case**, so either spelling reach
 
    Then delete the line carrying the old spelling from the file. Edit it by hand: whether a `reset`
    will take a capitalized node is not something to rely on, and what you want is the line gone.
+
+3. **Re-spell the agent inside any `@`-reference you wrote as a VALUE**, not just in the keys. A
+   `@meta.agent.Kirobo.path` or an `@agent.Kirobo.<key>` on the right-hand side of a setting is a
+   key path too, and the `set` above does not reach one. 🛑 **This is the step with no error to
+   warn you:** a reference naming a spelling nothing declares is *dangling*, and a dangling
+   reference embedded in a value renders as an empty string rather than failing — so a bind whose
+   source read `@meta.agent.Kirobo.path/caches` becomes a bind of the wrong directory and nothing
+   is reported. Search for the old spelling anywhere in your settings files, both sides of the
+   colon:
+
+   ```bash
+   grep -rn Kirobo <data>/global/settings.yaml <workset root>/workset.yaml <box>/box.yaml
+   ```
 
 ⚑ **The selection key needs no edit.** `system.agent` and the `pref.system.agent` in a box's file
 hold a *name*, not a node, and a name is matched without regard to case — so a stored `Kirobo`

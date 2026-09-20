@@ -92,7 +92,12 @@ def _writeback_on_stop(
             writeback_session_credentials,
         )
         from kanibako.settings.agent_config import agent_settings_path
-        from kanibako.agent_ref import canonicalize_agent_ref, harness_of
+        from kanibako.agent_ref import (
+            canonicalize_agent_ref,
+            harness_of,
+            with_harness,
+        )
+        from kanibako.identifiers import agent_node_case
         from kanibako.targets import resolve_target
         # 🛑 CANONICALISE, THEN DERIVE. The stamp is the OUTSIDE spelling (``+``) —
         # an env var is a place a human looks — but every use below is a KEY or a
@@ -102,7 +107,19 @@ def _writeback_on_stop(
         # catch below would swallow — writeback SILENTLY stopping for every persona
         # box. ⚑ Also the BACK-COMPAT seam: a box stamped ``℘`` by an older version
         # still works, because ``canonicalize_agent_ref`` accepts both separators.
-        agent = canonicalize_agent_ref(agent)
+        ref = canonicalize_agent_ref(agent)
+        # 🛑 AND THEN FOLD, because canonicalising is not folding: the parser
+        # normalises the separator and validates the charset, and changes no case at
+        # all. The stamp is a VALUE-supplied spelling, so it folds at the hop that
+        # reaches for a node ([R173]) — otherwise a box whose plugin declares a
+        # capital reads ``agents/Kirobo/agent.yaml``, a file the launch never wrote,
+        # and the blanket catch below turns that into credential writeback silently
+        # not happening.
+        # ⚑ The HARNESS segment ONLY, which is exactly what the launch folds when it
+        # builds ``agent_id``: a node's persona segment keeps the user's case, so
+        # folding the whole ref would name a DIFFERENT store than the one the launch
+        # wrote for every capitalised persona.
+        agent = with_harness(ref, agent_node_case(harness_of(ref)))
         # The target/plugin is keyed by the HARNESS; ``agent_name=agent`` below
         # keeps the node (keyspace slot).
         target = resolve_target(harness_of(agent), proj.project_path)

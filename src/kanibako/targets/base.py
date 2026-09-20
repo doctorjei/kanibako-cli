@@ -787,7 +787,12 @@ class Target(ABC):
         agent's NODE from it — the name in lowercase — and the node is what spells
         ``<data>/agents/<node>/`` and the ``agent.<node>.*`` cascade slot (keyspec §0,
         ``⚑ NAMING RULES``).  Two plugins whose names differ only in case therefore
-        claim ONE node, and the second to be discovered is refused.
+        claim ONE node — and what happens then depends on WHERE the second one came
+        from.  Within a single discovery tier (two entry points, or two files in one
+        plugin directory) the second is REFUSED, because order inside a tier is
+        arbitrary.  Across tiers the later tier OVERRIDES the earlier one, exactly as
+        it does for an identically-spelled name: that precedence is the documented
+        way you shadow an installed plugin with one of your own.
         """
         ...
 

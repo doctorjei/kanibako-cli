@@ -98,6 +98,24 @@ _DECLARED_NAME_ATTRS = frozenset({"name"})
 #: The derivation seam — the only sanctioned way to turn a NAME into a NODE.
 _NODE_SEAM = "agent_node_case"
 
+#: The REF parser.  What it returns is a canonical ref, **not a node**: it normalises
+#: the separator and validates the charset, and folds NOTHING.  A ref arriving from
+#: outside the process — a ``KANIBAKO_AGENT`` container stamp, a settings VALUE — has
+#: therefore still to pass :data:`_NODE_SEAM` before it may spell a store path.
+_REF_PARSER = "canonicalize_agent_ref"
+
+#: Composers that turn a node into a STORE PATH.  Handed a ref that never folded, they
+#: name a directory the launch does not write.
+_STORE_PATH_COMPOSERS = frozenset({"agent_settings_path"})
+
+#: Identifier variables with NO node/name split — a box or a workset name, where the
+#: typed case IS the stored case (``[R172]``; ``[R173]`` explicitly does not reach
+#: them).  Deriving an agent NODE from one of these is the retired entry fold wearing
+#: the new seam's name, and the ``.lower()`` detector below cannot see it.
+_NODELESS_IDENTIFIER_VARS = frozenset({
+    "box_name", "ws_name", "workset_name", "proj_name", "supplied", "leaf",
+})
+
 # ⚑ THE ENTRY FOLD IS GONE, AND SO IS ITS DECLARATION.  Both guards below are now
 # ABSOLUTE: outside the carrier the permitted population is ZERO, with no inventory to
 # keep and nothing to renumber.  ``_ENTRY_FOLD`` was a ``{path: count}`` map of the
@@ -230,6 +248,47 @@ def _receiver_leaves(expr: ast.AST) -> list[str]:
     return []
 
 
+def _harness_arg(call: ast.Call) -> ast.AST | None:
+    """``with_harness``'s SECOND argument, positional or by keyword.
+
+    ⚑ The keyword form is not hypothetical politeness: ``with_harness(a,
+    harness=target.name)`` is the same composition and reading ``args[1]`` alone
+    returned ``None`` for it, so the rule held for one spelling of its own subject.
+    """
+    if len(call.args) >= 2:
+        return call.args[1]
+    for kw in call.keywords:
+        if kw.arg == "harness":
+            return kw.value
+    return None
+
+
+def _is_declared_name(expr: ast.AST) -> bool:
+    """Is *expr* a plugin's DECLARED NAME — ``<anything>.name``, wrappers unwrapped?
+
+    A call to the node seam is the CURED shape and stops the walk: whatever
+    ``agent_node_case(...)`` was handed, what comes back is a node.  Everything else
+    is descended exactly as :func:`_receiver_leaves` descends a fold's receiver, so a
+    default (``spec.name or ""``) and a conditional are still declared names.
+
+    🛑 A bare ``ast.Name`` is deliberately NOT a hit.  ``with_harness(node, found)``
+    and ``with_harness(node, agent_real_name)`` pass values whose PROVENANCE this
+    function cannot see; the hoisted-local arm of :func:`unfolded_node_derivations`
+    is what reads provenance, and it reads it per scope.
+    """
+    if isinstance(expr, ast.Call):
+        if _called(expr) == _NODE_SEAM:
+            return False
+        return any(_is_declared_name(arg) for arg in expr.args)
+    if isinstance(expr, ast.Attribute):
+        return expr.attr in _DECLARED_NAME_ATTRS
+    if isinstance(expr, ast.BoolOp):
+        return any(_is_declared_name(value) for value in expr.values)
+    if isinstance(expr, ast.IfExp):
+        return _is_declared_name(expr.body) or _is_declared_name(expr.orelse)
+    return False
+
+
 def unfolded_node_derivations(tree: ast.Module) -> list[int]:
     """Lines building a node's HARNESS segment out of an unfolded declared name.
 
@@ -244,24 +303,118 @@ def unfolded_node_derivations(tree: ast.Module) -> list[int]:
     node still wrote the declared case at launch.  One more lived in
     ``commands/box/_parser.py`` and no measurement had named it; this is what finds the
     next one.
+
+    Three shapes reach the composer and all three are read: the argument itself, the
+    argument by KEYWORD, and a LOCAL hoisted out of one earlier in the same scope.
+    🛑 **What is NOT read is where the value came from across a call boundary.**  A
+    parameter is opaque here by design — ``settings_launch.meta_identity_floor``
+    composes the ``meta.agent.<a>.name`` VALUE, which is a NAME and must keep its
+    case, out of a parameter this guard cannot and should not second-guess.  The
+    declaration at that call site is what carries the distinction.
     """
     hits: list[int] = []
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call) or _called(node) != _COMPOSER:
-            continue
-        if len(node.args) < 2:
-            continue
-        harness = node.args[1]
-        if isinstance(harness, ast.Attribute) and harness.attr in _DECLARED_NAME_ATTRS:
-            hits.append(node.lineno)
+    for scope in _scopes(tree):
+        hoisted: set[str] = set()
+        for node in ast.walk(scope):
+            if not isinstance(node, ast.Assign) or len(node.targets) != 1:
+                continue
+            target = node.targets[0]
+            if isinstance(target, ast.Name) and _is_declared_name(node.value):
+                hoisted.add(target.id)
+
+        for node in ast.walk(scope):
+            if not isinstance(node, ast.Call) or _called(node) != _COMPOSER:
+                continue
+            harness = _harness_arg(node)
+            if harness is None:
+                continue
+            if _is_declared_name(harness) or (
+                isinstance(harness, ast.Name) and harness.id in hoisted
+            ):
+                hits.append(node.lineno)
+    return sorted(set(hits))
+
+
+def unfolded_stamp_derivations(tree: ast.Module) -> list[int]:
+    """Lines spelling a STORE PATH from a ref that was parsed but never folded.
+
+    ``canonicalize_agent_ref`` normalises the separator and validates the charset.  It
+    folds NOTHING — so a ``KANIBAKO_AGENT`` stamp or a settings value that reaches
+    ``agent_settings_path`` through it alone names ``agents/Kirobo/`` while the launch
+    writes ``agents/kirobo/``.  ``[R173]``: *any lookup that takes a user-supplied or
+    value-supplied agent spelling and reaches for a node folds at that hop.*
+
+    ⚑ This is the rule ``with_harness`` does not reach, because these sites compose no
+    node at all — they hand the ref straight to the path.  Both live under a blanket
+    ``except``, so the failure is silent: credential writeback simply stops.
+
+    🛑 **Its declared limit: ONE hop, within ONE scope.**  A local bound directly from
+    the parser is tracked; a local bound from THAT local is not, and neither is a
+    value that crosses a call.  Widening it further wants a declaration rather than a
+    syntax rule (``[R160]``), and a guard that claimed the wider rule while checking
+    the narrow one would be worse than one that says which it checks.
+    """
+    hits: list[int] = []
+    for scope in _scopes(tree):
+        unfolded: set[str] = set()
+        assigns = sorted(
+            (n for n in ast.walk(scope) if isinstance(n, ast.Assign)),
+            key=lambda n: n.lineno,
+        )
+        for node in assigns:
+            if len(node.targets) != 1:
+                continue
+            target = node.targets[0]
+            if not isinstance(target, ast.Name):
+                continue
+            calls = {
+                _called(sub) for sub in ast.walk(node.value)
+                if isinstance(sub, ast.Call)
+            }
+            if _REF_PARSER in calls and _NODE_SEAM not in calls:
+                unfolded.add(target.id)
+            elif _NODE_SEAM in calls:
+                unfolded.discard(target.id)
+
+        for node in ast.walk(scope):
+            if not isinstance(node, ast.Call):
+                continue
+            if _called(node) not in _STORE_PATH_COMPOSERS:
+                continue
+            for arg in list(node.args) + [kw.value for kw in node.keywords]:
+                if isinstance(arg, ast.Name) and arg.id in unfolded:
+                    hits.append(node.lineno)
     return sorted(set(hits))
 
 
 def hand_folds(tree: ast.Module) -> list[int]:
-    """Lines applying ``.lower()``/``.casefold()`` to an identifier-named variable."""
+    """Lines folding an identifier by hand — a ``.lower()``/``.casefold()`` call, or the SEAM.
+
+    ⚑ **The seam counts, and leaving it out was a hole the ``[R173]`` work opened.**
+    ``agent_node_case`` is public now, so ``box_name = agent_node_case(box_name)``
+    folds an identifier to store with no attribute call anywhere in it — the exact
+    cure ``[R172]`` retired, passing every guard because the detector read only
+    ``.lower()`` and ``.casefold()``.
+
+    🛑 The seam arm is narrower than the attribute arm ON PURPOSE, and not as a
+    concession: deriving a node from an AGENT name is what the seam is FOR, so
+    ``agent_node_case(target.name)`` is the cured shape and must stay clean.  What
+    cannot be cured is a box or a workset name (:data:`_NODELESS_IDENTIFIER_VARS`) —
+    those have no second spelling to derive (``[R172]``, and ``[R173]`` says it does
+    not reach them), so the call can only be a fold on the way to storage.
+    """
     hits: list[int] = []
     for node in ast.walk(tree):
-        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+        if not isinstance(node, ast.Call):
+            continue
+        if _called(node) == _NODE_SEAM:
+            if any(
+                leaf in _NODELESS_IDENTIFIER_VARS
+                for arg in node.args for leaf in _receiver_leaves(arg)
+            ):
+                hits.append(node.lineno)
+            continue
+        if not isinstance(node.func, ast.Attribute):
             continue
         if node.func.attr not in _FOLDS:
             continue
@@ -272,14 +425,17 @@ def hand_folds(tree: ast.Module) -> list[int]:
 
 @cache
 def _findings() -> dict[str, dict[str, list[int]]]:
-    """``{repo-relative path: {"in"/"fold"/"node": [lines]}}`` over shipped source."""
+    """``{repo-relative path: {"in"/"fold"/"node"/"stamp": [lines]}}`` over shipped source."""
     found: dict[str, dict[str, list[int]]] = {}
     for rel, path in _shipped():
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         tests, folds = membership_tests(tree), hand_folds(tree)
         nodes = unfolded_node_derivations(tree)
-        if tests or folds or nodes:
-            found[rel] = {"in": tests, "fold": folds, "node": nodes}
+        stamps = unfolded_stamp_derivations(tree)
+        if tests or folds or nodes or stamps:
+            found[rel] = {
+                "in": tests, "fold": folds, "node": nodes, "stamp": stamps,
+            }
     return found
 
 
@@ -432,6 +588,95 @@ class TestNobodyComposesANodeFromADeclaredName:
             "    return a, b, c, d\n"
         )
         assert unfolded_node_derivations(ast.parse(source)) == [2]
+
+    def test_the_detector_reds_on_the_KEYWORD_and_the_HOISTED_shapes(self):
+        """The two spellings of its own subject that read ``args[1]`` alone missed.
+
+        A keyword argument is the same composition, and a hoisted local is the
+        one-line edit that silences a positional hit without changing a thing about
+        what is written to disk.
+        """
+        source = (
+            "def f(agent_name, target):\n"
+            "    a = with_harness(agent_name, harness=target.name)\n"
+            "    declared = target.name\n"
+            "    b = with_harness(agent_name, declared)\n"
+            '    c = with_harness(agent_name, (target.name or ""))\n'
+            "    node = agent_node_case(target.name)\n"
+            "    d = with_harness(agent_name, node)\n"
+            "    return a, b, c, d\n"
+        )
+        assert unfolded_node_derivations(ast.parse(source)) == [2, 4, 5]
+
+    def test_the_stamp_detector_reds_on_a_parsed_but_unfolded_ref(self):
+        """``canonicalize_agent_ref`` validates a ref; it does not fold one."""
+        source = (
+            "def f(std, stamp):\n"
+            "    agent = canonicalize_agent_ref(stamp)\n"
+            "    return agent_settings_path(std.agents, agent)\n"
+        )
+        assert unfolded_stamp_derivations(ast.parse(source)) == [3]
+
+    def test_the_stamp_detector_accepts_the_cured_shape(self):
+        """Folded at the hop, in either spelling of the cure."""
+        one_statement = (
+            "def f(std, stamp):\n"
+            "    ref = canonicalize_agent_ref(stamp)\n"
+            "    agent = with_harness(ref, agent_node_case(harness_of(ref)))\n"
+            "    return agent_settings_path(std.agents, agent)\n"
+        )
+        assert unfolded_stamp_derivations(ast.parse(one_statement)) == []
+        rebound = (
+            "def f(std, stamp):\n"
+            "    agent = canonicalize_agent_ref(stamp)\n"
+            "    agent = agent_node_case(agent)\n"
+            "    return agent_settings_path(std.agents, agent)\n"
+        )
+        assert unfolded_stamp_derivations(ast.parse(rebound)) == []
+
+    def test_the_seam_fold_detector_separates_an_agent_from_a_box(self):
+        """The seam is a DERIVATION for an agent and a FOLD for anything else."""
+        source = (
+            "def f(target, box_name, ws_name, agent_name):\n"
+            "    a = agent_node_case(target.name)\n"      # the cured shape
+            "    b = agent_node_case(agent_name)\n"       # an agent: still a derivation
+            "    c = agent_node_case(box_name)\n"         # no node to derive
+            "    d = agent_node_case(ws_name)\n"          # no node to derive
+            "    return a, b, c, d\n"
+        )
+        assert hand_folds(ast.parse(source)) == [4, 5]
+
+    def test_no_store_path_is_spelled_from_an_unfolded_stamp(self):
+        offenders = sorted(rel for rel, hits in _findings().items() if hits["stamp"])
+        assert not offenders, (
+            "a store path is spelled from a ref that was parsed but never folded:\n  "
+            + "\n  ".join(_cite(rel, "stamp") for rel in offenders)
+            + f"\n\n`{_REF_PARSER}` normalises a ref's separator and validates its "
+            f"charset; it folds NOTHING. A `KANIBAKO_AGENT` stamp or a settings "
+            f"VALUE reaching a store path through it alone names `agents/Kirobo/` "
+            f"while the launch writes `agents/kirobo/` (spec §0, ⚑ NAMING RULES; "
+            f"[R173]: any lookup that takes a value-supplied agent spelling and "
+            f"reaches for a node folds at that hop). Fold the HARNESS segment "
+            f"through `kanibako.identifiers.{_NODE_SEAM}`, which is what the launch "
+            f"itself does — folding the whole ref would move a capitalised PERSONA's "
+            f"store, which the launch does not."
+        )
+
+    def test_the_ref_parser_and_the_path_composers_still_exist(self):
+        """A rename on any of them would empty the stamp rule without failing it."""
+        defined: set[str] = set()
+        for _, path in _shipped():
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            defined.update(
+                node.name for node in ast.walk(tree)
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            )
+        gone = sorted(({_REF_PARSER} | _STORE_PATH_COMPOSERS) - defined)
+        assert not gone, (
+            f"no longer defined anywhere in shipped source: {gone} — the stamp rule "
+            f"now covers less than it claims. Re-derive _REF_PARSER / "
+            f"_STORE_PATH_COMPOSERS."
+        )
 
     def test_the_composer_and_the_seam_both_still_exist(self):
         """A rename on either side would empty this guard without failing it."""
