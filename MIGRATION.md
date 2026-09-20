@@ -822,7 +822,7 @@ What that costs you, and what to avoid:
   line on stderr at every box launch. With a single import in every kickoff there is nothing
   left to warn about, so if you still see one, something in your chain is addressing content
   that is not there.
-- No-agent (plain-shell) boxes: the kickoff file is bound but nothing consumes it yet; no
+- Plain-shell boxes: the kickoff file is bound but nothing consumes it yet; no
   action, no breakage.
 
 ### 2.7 Workset shares: relative host paths
@@ -2671,7 +2671,7 @@ mode is `GOOSE_MODE`, computed from the `access` key with `-S` / `-A` folded in;
 | `OPENAI_HOST` | goose | `endpoint` | when `endpoint` resolves to a value |
 | `ANTHROPIC_BASE_URL` | claude | `endpoint` | when `endpoint` resolves to a value |
 
-codex realizes none, and neither does a no-agent (`kanibako shell`) box.
+codex realizes none, and neither does a plain-shell (`kanibako shell`) box.
 
 **What changed.** These five used to be written onto the container's environment *after* your
 settings had been resolved — the last layer, above every file. They are **ordinary agent-scope
@@ -6416,7 +6416,7 @@ implicit pick, choose a default once with **`kanibako setup`**, or pass
 `--agent <name>` per invocation. This applies uniformly to every agent-requiring
 command (`start`, `box start`, `agent reauth`, …) — not just launch.
 
-`kanibako shell` is the **sole** no-agent path: it never resolves an agent and never
+`kanibako shell` is the **sole** plain-shell path: it never resolves an agent and never
 errors on agent selection (the emergency-recovery hatch into the container).
 
 ### 10.2 `setup` now selects a default agent
