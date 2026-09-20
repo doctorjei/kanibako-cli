@@ -651,7 +651,7 @@ class TestTheArgvSHAPEIsTheFileS:
         return slot_for(tmp_path, "claude", "run_args")
 
     def test_write_leaf_stores_the_words(self, tmp_path):
-        """⚑ MUTATION: drop ``_stored_shape`` from ``write_leaf`` and this reds with
+        """⚑ MUTATION: drop ``stored_leaf_shape`` from ``write_leaf`` and this reds with
         the bare string — which is exactly what ``config set`` used to store."""
         from kanibako.settings.config_io import load_doc
 

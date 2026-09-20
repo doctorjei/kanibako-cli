@@ -4705,6 +4705,17 @@ run_args` answers with an empty line for the opt-out and `(not set)` for the unt
 **"2.59 A `run_args` stored as a string now takes effect"** above, which describes the whitespace
 split and why an argument containing a space is written into the list by hand.
 
+⚑ **And a `run_args` you set at a scope is now STORED as a list, whichever command you used.**
+`kanibako system set run_args="--verbose --debug"` used to write that line into
+`global/settings.yaml` verbatim, as one string, while `kanibako agent set <agent> run_args=…` wrote
+a list of words into the agent's own file — one key with two shapes on disk. It is split once,
+before storage, everywhere now, `pref.agent.<agent>.run_args` included, so the example above is what
+a file the CLI wrote and a file you edited by hand both mean. Values already on disk are not
+rewritten, and a string left in one is read as the same words it always was (see **"2.59 A
+`run_args` stored as a string now takes effect"** above). A variable you named `run_args` is a
+different thing and is not affected: `system.env.run_args` and `agent.default.env.run_args` hold a
+value you chose, not a command line, and stay exactly as you typed them.
+
 ### 2.76 A variable named by both `env` and `secret_path` is refused
 
 **What changed.** `<scope>.env.<VAR>` sets a variable to a value you write in a settings file.

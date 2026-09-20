@@ -102,8 +102,9 @@ _TABLE_VALUED_KEYS: Final[frozenset[str]] = _ROOT_TABLES - _SCALAR_WRITABLE_KEYS
 #: ⚑⚑ A DIFFERENT QUESTION FROM :data:`_TABLE_VALUED_KEYS`, and the contrast is the point: a
 #: table-valued key takes NO scalar at all and is refused by name; one of these TAKES the
 #: scalar and stores it as words.  So the translation exists, and it lives HERE with the rest
-#: of the shape, at BOTH ends — :func:`write_leaf` splits it in and :func:`read_leaf` joins it
-#: back out.
+#: of the shape, at BOTH ends — :func:`stored_leaf_shape` splits it in and
+#: :func:`stored_leaf_text` joins it back out, for the SCOPE settings files (``config_interface``)
+#: exactly as for this one (:func:`write_leaf` / :func:`read_leaf`).
 #:
 #: ⚑⚑ WHY BOTH ENDS ARE IN ONE PLACE (P10).  The split used to live in ``agent set``'s own
 #: writer and nowhere else, so the file had two write routes disagreeing about one shape:
@@ -325,8 +326,19 @@ def stored_leaf_text(tail: str, value: object) -> str | None:
     return None
 
 
-def _stored_shape(tail: str, value: object) -> object:
-    """*value* in the shape the FILE holds at *tail* — the argv split, or *value* unchanged.
+def stored_leaf_shape(tail: str, value: object) -> object:
+    """*value* in the shape a FILE holds at *tail* — the argv split, or *value* unchanged.
+
+    ⚑⚑ THE WRITE-SIDE TWIN OF :func:`stored_leaf_text`, and PUBLIC for the same reason.  The
+    SCOPE settings files hold the §2d leaves too, written by routes that never reach
+    :func:`write_leaf`, and each of them stored the STRING the command line handed over —
+    ``[R169]``: one parser, two entry points, ONE stored shape.  They ask HERE rather than
+    each learning which leaves are lists (P10).
+
+    🛑 *tail* IS THE FILE TAIL, NEVER THE WRITTEN LEAF'S NAME, and that is the whole safety of
+    this call.  A user may name an environment variable ``run_args``; its tail is the DOTTED
+    ``env.run_args`` (:func:`_address`), which is in no leaf set, so the scalar they typed
+    stays a scalar.  Keyed on the last segment instead, this would shell-split it.
 
     ⚑ ``None`` PASSES THROUGH: it is the ``--null`` suppression idiom (spec §2h), not an
     empty argv line, and splitting it would silently turn a suppression into ``[]``.
@@ -379,11 +391,12 @@ def write_leaf(slot: AgentFileSlot, value: object) -> None:
 
     ⚑ Through :func:`_write_address`, which is NARROWER than the read side and raises on a
     dest-keyed tail — the caller gates first.
-    ⚑⚑ AND THROUGH :func:`_stored_shape`, so EVERY write route lands the shape :func:`load`
-    reads.  A caller must NOT pre-split: a second copy of that rule is the defect this closed.
+    ⚑⚑ AND THROUGH :func:`stored_leaf_shape`, so EVERY write route lands the shape
+    :func:`load` reads.  A caller must NOT pre-split: a second copy of that rule is the
+    defect this closed.
     """
     sections, leaf = _write_address(slot.tail)
-    write_nested_key(slot.path, sections, leaf, _stored_shape(slot.tail, value))
+    write_nested_key(slot.path, sections, leaf, stored_leaf_shape(slot.tail, value))
 
 
 def remove_leaf(slot: AgentFileSlot) -> bool:

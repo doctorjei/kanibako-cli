@@ -1997,6 +1997,139 @@ class TestSystemSettingsTierSplit:
 
 
 # ---------------------------------------------------------------------------
+# The SCOPE files' stored shape for a list-valued §2d leaf (`[R169]`, spec §2d:
+# "STORED AS A LIST; CLI takes ONE scalar string and normalizes it to a list
+# before writing"). The per-agent FILE's door is pinned by test_agent_file.py.
+# ---------------------------------------------------------------------------
+
+def _list_leaves() -> list[str]:
+    """The leaves the FILE stores as argv words, asked of the code that decides it.
+
+    ⚑ P13 — the pins below parametrize over this rather than spelling ``run_args``, so a
+    leaf joining or leaving the rule arrives here with no test edit. ⚑ P15 — an empty set
+    would make every pin below pass vacuously, so the emptiness is itself asserted.
+    """
+    from kanibako.settings.agent_file import _LIST_VALUED_KEYS
+
+    leaves = sorted(_LIST_VALUED_KEYS)
+    assert leaves, "the list-valued rule is empty — these pins would pass vacuously"
+    return leaves
+
+
+class TestScopeFileStoresArgvWords:
+    """The two RAW write doors normalize before the value lands — one stored shape,
+    whatever route wrote it. Until this landed, ``system set run_args="--z --y"`` wrote
+    the STRING while ``agent set`` wrote the list: one key, two shapes on disk."""
+
+    @pytest.mark.parametrize("leaf", _list_leaves())
+    def test_the_bare_door_stores_the_words(self, tmp_path, leaf):
+        """⚑ MUTATION: hand ``value`` straight to ``write_nested_key`` at the
+        ``_is_agent_setting`` door and this reds with ``'--z --y'``."""
+        cf = tmp_path / CONFIG_FILENAME
+        ssp = tmp_path / "global" / "settings.yaml"
+        set_config_value(
+            leaf, "--z --y", config_path=cf, system_settings_path=ssp,
+        )
+        assert load_doc(ssp)["agent"]["default"][leaf] == ["--z", "--y"]
+
+    @pytest.mark.parametrize("leaf", _list_leaves())
+    @pytest.mark.parametrize("node", ["default", "claude"])
+    def test_the_pref_door_stores_the_TARGETS_shape(self, tmp_path, leaf, node):
+        """A request carries whatever its target holds (§2h), so the pref door owes the
+        same shape as the direct write — otherwise one settings file answers one key two
+        ways depending on which spelling put it there.
+
+        ⚑ MUTATION: drop ``_stored_shape_for`` from the pref door and this reds."""
+        f = tmp_path / WORKSET_META_FILE
+        set_config_value(
+            f"pref.agent.{node}.{leaf}", "--m --n",
+            config_path=f, command_scope=ConfigLevel.workset,
+        )
+        assert load_doc(f)["pref"]["agent"][node][leaf] == ["--m", "--n"]
+
+    @pytest.mark.parametrize("leaf", _list_leaves())
+    def test_an_env_VAR_the_user_named_for_a_list_leaf_is_NOT_split(
+        self, tmp_path, leaf,
+    ):
+        """🛑 THE REASON THE RULE IS KEYED ON THE FILE TAIL AND NOT ON THE WRITTEN LEAF.
+
+        All three spellings write a leaf NAMED ``run_args``, and all three hold a variable
+        the USER named — a SCALAR (spec §2a). Pushing the normalization down into
+        ``write_nested_key``, which sees only the leaf, would shell-split every one of
+        them; so would a ``_stored_shape_for`` keyed on the last segment.
+
+        🛑 THERE IS EXACTLY ONE GUARD AND IT IS THE DOTTED TAIL. That the ``env`` doors are
+        routed earlier and still write raw is a TRUE FACT about this file and NOT a second
+        guard: ``_is_agent_setting`` is exact membership over BARE leaves, so a dotted
+        ``agent.default.env.run_args`` could not match it at any branch order, and the pref
+        door has no ordering protection at all — it handles every ``pref.*``, the
+        ``pref.*.env.*`` spellings included. Reading the lone guard as one of two is how it
+        gets deleted later by someone tidying up.
+
+        ⚑ MUTATION: key ``_stored_shape_for`` on ``canonical.rsplit(".", 1)[-1]`` and the
+        ``pref`` row reds with ``['x', 'y', 'z']`` — measured. The other two rows do NOT red
+        under that mutation, because their doors do not reach the helper today; they are
+        pinned here as the regression this test holds shut if a later writer moves the rule
+        down to a door that cannot tell a leaf from a tail.
+        """
+        cf = tmp_path / CONFIG_FILENAME
+        ssp = tmp_path / "global" / "settings.yaml"
+        wf = tmp_path / WORKSET_META_FILE
+
+        set_config_value(
+            f"agent.default.env.{leaf}", "p q r",
+            config_path=cf, system_settings_path=ssp,
+            command_scope=ConfigLevel.system,
+        )
+        set_config_value(
+            f"system.env.{leaf}", "s t u",
+            config_path=cf, system_settings_path=ssp,
+            command_scope=ConfigLevel.system,
+        )
+        set_config_value(
+            f"pref.agent.claude.env.{leaf}", "x y z",
+            config_path=wf, command_scope=ConfigLevel.workset,
+        )
+
+        stored = load_doc(ssp)
+        assert stored["agent"]["default"]["env"][leaf] == "p q r"
+        assert stored["system"]["env"][leaf] == "s t u"
+        assert load_doc(wf)["pref"]["agent"]["claude"]["env"][leaf] == "x y z"
+
+    @pytest.mark.parametrize("leaf", _list_leaves())
+    def test_the_round_trip_answers_the_TYPED_form(self, tmp_path, leaf):
+        """What a user typed is what ``get`` says back — never the Python repr of the
+        shape the file grew. The store changed; the surface must not."""
+        cf = tmp_path / CONFIG_FILENAME
+        ssp = tmp_path / "global" / "settings.yaml"
+        set_config_value(
+            leaf, "--z --y", config_path=cf, system_settings_path=ssp,
+        )
+        got = get_config_value(
+            leaf, global_config_path=cf, system_settings_path=ssp,
+        )
+        assert got == "--z --y"
+        assert "[" not in str(got)
+
+    @pytest.mark.parametrize("leaf", _list_leaves())
+    def test_a_null_stays_a_suppression_and_an_empty_string_is_no_arguments(
+        self, tmp_path, leaf,
+    ):
+        """The two empty idioms are DIFFERENT and the scope files must read them the way
+        the per-agent file already does: ``--null`` is the §2h suppression and survives as
+        ``None``; a typed empty string is the user's explicit "no arguments" and is the
+        empty argv list, which is a VALUE."""
+        cf = tmp_path / CONFIG_FILENAME
+        ssp = tmp_path / "global" / "settings.yaml"
+
+        set_config_value(leaf, None, config_path=cf, system_settings_path=ssp)
+        assert load_doc(ssp)["agent"]["default"][leaf] is None
+
+        set_config_value(leaf, "", config_path=cf, system_settings_path=ssp)
+        assert load_doc(ssp)["agent"]["default"][leaf] == []
+
+
+# ---------------------------------------------------------------------------
 # Category `config set` — the source-only RAW host_src repoint (block 7c).
 # Drives the REAL `set_config_value` router (not the unit `settings_configset`).
 # Spec §2a / design §6d / SEAMS S24/S25.

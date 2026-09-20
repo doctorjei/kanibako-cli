@@ -37,6 +37,7 @@ from kanibako.settings.agent_file import (
     AgentFileSlot,
     read_leaf,
     remove_leaf,
+    stored_leaf_shape,
     stored_leaf_text,
     write_leaf,
 )
@@ -67,6 +68,7 @@ from kanibako.settings.config_keys import (
     _is_scope_bind_key,
     _is_scope_env_key,
     _is_scope_secret_key,
+    _parse_persona_agent_key,
     _config_key_refusal,
     _node_secret_display_key,
     _pref_sections_leaf,
@@ -652,6 +654,37 @@ def _argv_aware(
     return _render
 
 
+def _stored_shape_for(canonical: str, value: object) -> object:
+    """*value* in the shape a SETTINGS FILE must hold it in at *canonical* — the WRITE-side
+    twin of :func:`_argv_aware`, and the scope files' half of what ``agent_file.write_leaf``
+    already does for the per-agent file.
+
+    ⚑ ``[R169]``: ONE stored shape, whatever route wrote it.  ``run_args`` is typed at the CLI
+    as one scalar string (spec §0, "TYPABLE as a scalar") and stored as argv WORDS, so the
+    split happens ONCE, here, before the value lands — never on read, which would leave the
+    user's own file disagreeing with the CLI's.  The RULE stays in ``agent_file``, the module
+    that owns the §2d leaves' shapes; this only supplies the TAIL it is keyed on.
+
+    🛑 THE TAIL, NEVER THE WRITTEN LEAF'S NAME — ``_argv_aware``'s 🛑 pointing the other way,
+    and the reason this is not folded into ``config_io.write_nested_key``.
+    ``agent.default.env.run_args``, ``system.env.run_args`` and
+    ``pref.agent.claude.env.run_args`` all write a leaf NAMED ``run_args`` holding a variable
+    the USER named; it is a scalar and must never be shell-split.  Only an ``agent.<node>.``
+    key has a file tail at all, and that parse gives the ``env.`` arm the DOTTED tail
+    ``env.run_args``, which is in no leaf set.  So those three cannot reach the split from
+    here — by construction, not by a check a fourth spelling could be forgotten from.
+    """
+    target = canonical[len(PREF_ROOT) + 1:] if _is_pref_key(canonical) else canonical
+    if _is_agent_setting(target):
+        tail = target  # the BARE CLI spelling of an ``agent.default.<leaf>`` key IS the tail
+    else:
+        parsed = _parse_persona_agent_key(target)
+        if parsed is None:
+            return value
+        tail = parsed[1]
+    return stored_leaf_shape(tail, value)
+
+
 def get_config_value(
     key: str,
     *,
@@ -1005,7 +1038,12 @@ def set_config_value(
             config_path=config_path, settings_path=system_settings_path,
         )
         assert dest is not None  # the pref family always has a slot
-        write_nested_key(dest.file, dest.sections, dest.leaf, value)
+        # ⚑ IN THE TARGET'S SHAPE (:func:`_stored_shape_for`): a request carries whatever its
+        # target holds, so ``pref.agent.default.run_args`` stores the argv LIST — the same
+        # shape the direct write below lands, which is what lets the read render one way.
+        write_nested_key(
+            dest.file, dest.sections, dest.leaf, _stored_shape_for(canonical, value),
+        )
         return f"Set {canonical}={'null' if value is None else value}"
 
     # ⚑ There is NO ``agent.<node>.bindings.{ro,rw}.<name>`` branch here any more (R-9) — its
@@ -1082,7 +1120,9 @@ def set_config_value(
             config_path=config_path, settings_path=system_settings_path,
         )
         assert dest is not None  # the bare-agent family always has a slot
-        write_nested_key(dest.file, dest.sections, dest.leaf, value)
+        write_nested_key(
+            dest.file, dest.sections, dest.leaf, _stored_shape_for(canonical, value),
+        )
         return f"Set {canonical}={value}"
 
     # ⚑ THERE IS NO ``box.agent.<key>`` BRANCH HERE ANY MORE and its absence is DELIBERATE:
