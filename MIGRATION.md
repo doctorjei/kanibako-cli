@@ -4903,6 +4903,12 @@ updating, and one of them fails at IMPORT time:**
   takes a new keyword-only **`env`** — the persona-grata **store entry's own** environment block,
   less the endpoint and token variables. Add it to your signature (`*, env=None, timeout=5.0`) or
   the call raises `TypeError`, which the callers treat as a probe bug.
+  🛑 **Read what "a probe bug" costs: the gate is lost, not the launch.** A raise is caught and
+  read as `INCONCLUSIVE`, so every `start` prints `could not verify the endpoint (<url>) — the
+  probe itself failed; launching unverified` and proceeds, and every `box create` prints the
+  matching warning and creates. The launch does not fail, the traceback goes to the debug log at
+  either door, the message never names your plugin — and the persona verification your users
+  believe they have is gone, on every launch, for as long as the old signature ships.
   ⚑ Build the probe request WITHOUT a `model` key when the persona names no model, rather than
   declining to probe or substituting a default id: some endpoints do not require one, and a server
   with a hardwired model can reject an id it does not serve.

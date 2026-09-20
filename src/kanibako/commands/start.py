@@ -5508,21 +5508,32 @@ def _persona_probe_error(
             logger.debug("persona '%s': verify probe raised; inconclusive",
                          display, exc_info=True)
         outcome = PersonaProbeOutcome.inconclusive("the probe itself failed")
+    # ⚑ On THIS path endpoint and model are read off the COLLAPSED launch snapshot,
+    # and `settings_merge.merge` drops the level a value won at — so name the
+    # MECHANISM, never a rung, and name EVERY slot the readers actually consult.
+    # 🛑 BOTH readers fall back to ``agent.default``: ``effective_behavior``'s
+    # active-over-default pick for the endpoint, :func:`_persona_model_state` for the
+    # model.  Naming ``agent.<display>`` alone sends a user with only
+    # ``agent.default.model`` set hunting a key that is in none of their files.
+    # 🛑 And the persona-grata store is a CASCADE RUNG of its own
+    # (``settings_launch._persona_partial`` splices it onto this same
+    # ``agent.<node>`` subtree), so a store-configured persona has the named keys and
+    # no file holding them — hence the carrier list rather than a bare key path.
+    resolved_from = (
+        f"the settings cascade (the endpoint and model keys under agent.{display} "
+        f"or agent.default, from a settings file or the persona-grata store)"
+    )
     if outcome.verdict is PersonaProbeVerdict.REJECTED:
-        status = outcome.evidence.status if outcome.evidence is not None else None
-        refused = (
-            f"refused the probe with HTTP {status}" if status is not None
-            else f"({endpoint}) refused the probe"
-        )
         return (
             f"Error: persona '{display}' cannot be loaded — the endpoint "
-            f"{refused}.{outcome.evidence_block()}"
+            f"{outcome.refusal_phrase(endpoint)}."
+            f"{outcome.evidence_block(resolved_from=resolved_from)}"
         )
     if outcome.verdict is PersonaProbeVerdict.INCONCLUSIVE:
         print(
             f"Warning: persona '{display}': could not verify the endpoint "
             f"({endpoint}) — {outcome.reason}; launching unverified."
-            f"{outcome.evidence_block()}",
+            f"{outcome.evidence_block(resolved_from=resolved_from)}",
             file=sys.stderr,
         )
     elif outcome.verdict is PersonaProbeVerdict.NOT_APPLICABLE and logger is not None:

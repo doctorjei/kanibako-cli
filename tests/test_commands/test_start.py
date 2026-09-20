@@ -8959,6 +8959,95 @@ class TestPersonaPreflightBundle:
         assert "rejected the token" not in err
         assert "fix the token" not in err.lower()
 
+    def test_the_LAUNCH_door_says_where_it_read_the_endpoint_and_model(
+        self, tmp_path,
+    ):
+        """FINDING 9: the create side's provenance line was pinned and this one was not.
+
+        🛑 It must name EVERY slot the readers consult, not just the per-persona one.
+        ``settings_launch.effective_behavior`` (endpoint) and
+        ``_persona_model_state`` (model) BOTH fall back to ``agent.default``, so a
+        user with only ``agent.default.model`` set was being sent to a key that is in
+        none of their files.  And the persona-grata store is spliced onto this same
+        ``agent.<node>`` subtree as a cascade rung of its own, so the named keys can
+        exist with no settings file holding them — hence the carrier list.
+        ⚑ It names a MECHANISM, never a rung: the collapse drops the level a value
+        won at, so a rung named here would be invented.
+        (Mutation: narrow it back to ``agent.<display>.endpoint and
+        agent.<display>.model`` → RED on both the fallback and the store.)
+        """
+        target = self._Target(outcome=_rejected(
+            status=403, model="claude-sonnet-4-5",
+            token_path=self._token(tmp_path),
+        ))
+        _ep, err, _p = self._run(
+            self._cfg(secret_path={"ANTHROPIC_AUTH_TOKEN": str(self._token(tmp_path))}),
+            probe=True, target=target,
+        )
+        assert err is not None
+        assert "The endpoint and model above came from the settings cascade" in err
+        assert "agent.navigator+claude or agent.default" in err
+        assert "a settings file or the persona-grata store" in err
+        # 🛑 Never the create door's answer: no store dir is resolved on this path.
+        assert "the persona store at" not in err
+
+    def test_the_provenance_line_DOES_NOT_CLAIM_a_rewritten_model_id(
+        self, tmp_path,
+    ):
+        """FINDING 1: ``ProbeEvidence.model`` is what went ON THE WIRE.
+
+        When the harness resolved a tier alias through its env var, the id on the
+        model line is the harness's and the named source holds the ALIAS — so the
+        sentence may speak for the endpoint and for the model's INPUT only.  Two
+        adjacent lines otherwise contradict each other, and this is the alias-403
+        arm: the measured failure ``_wire_model`` exists for, and so the likeliest
+        refusal a user ever reads.
+        (Mutation: drop the ``model_origin`` guard → the line claims the key held
+        ``claude-sonnet-4-5-20990101`` when it held ``sonnet`` → RED.)
+        """
+        target = self._Target(outcome=_rejected(
+            status=403, model="claude-sonnet-4-5-20990101",
+            model_origin="the box resolves 'sonnet' through ANTHROPIC_DEFAULT_SONNET_MODEL",
+            token_path=self._token(tmp_path),
+        ))
+        _ep, err, _p = self._run(
+            self._cfg(secret_path={"ANTHROPIC_AUTH_TOKEN": str(self._token(tmp_path))}),
+            probe=True, target=target,
+        )
+        assert err is not None
+        assert "The endpoint above, and the model it was resolved from, came from" in err
+        assert "The endpoint and model above came from" not in err
+        # The wire id and its origin still stand on the model line, unchanged.
+        assert "claude-sonnet-4-5-20990101" in err
+        assert "ANTHROPIC_DEFAULT_SONNET_MODEL" in err
+
+    def test_the_provenance_line_DOES_NOT_CLAIM_an_OMITTED_model(self, tmp_path):
+        """🔑 An OMISSION does not come from a source — the third arm.
+
+        A persona that names no model is still PROBED, with the ``model`` key left
+        out of the body, so the model line reads ``(omitted)``.  Saying "the
+        endpoint and model above came from <source>" over that line attributes
+        provenance to something that is not there — the same defect as the
+        rewritten-id arm, in its other direction.  The sentence speaks for the
+        endpoint alone.
+        ⚑ These three are the WHOLE set: the model line has exactly the states
+        rewritten-id, plain-id and omitted.
+        (Mutation: fold this arm back into the plain one → the message attributes an
+        omission to the cascade → RED.)
+        """
+        target = self._Target(outcome=_rejected(
+            status=403, model=None, token_path=self._token(tmp_path),
+        ))
+        _ep, err, _p = self._run(
+            self._cfg(secret_path={"ANTHROPIC_AUTH_TOKEN": str(self._token(tmp_path))}),
+            probe=True, target=target, model=None,
+        )
+        assert err is not None
+        assert "model     (omitted)" in err
+        assert "The endpoint above came from the settings cascade" in err
+        assert "The endpoint and model above" not in err
+        assert "the model it was resolved from" not in err
+
     def test_an_INCONCLUSIVE_probe_warns_and_proceeds(self, tmp_path, capsys):
         """DESIGN §5b: a blip is not a config error; the box surfaces a real 401.
 

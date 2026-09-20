@@ -603,13 +603,44 @@ It is filled in TWO halves — a plugin builds the request half before the call,
 fills *status* / *provider_text* from the answer, **so no plugin can forget to.** `rejected` takes
 it POSITIONALLY for the same reason: a refusal whose inputs a user cannot see is the failure mode.
 
-`PersonaProbeOutcome.evidence_block()` is THE single renderer for both consumers (the launch hard
-error in `commands/start.py::_persona_probe_error` and the create warning in
-`commands/box/_parser.py::_check_persona_store_for_create`), so the two shapes cannot drift. It is
-EMPTY unless the endpoint ANSWERED: a probe that never reached it has no facts to lay out, and four
-lines restating the caller's own inputs is noise. The closing "which input was at fault" sentence
-is emitted for a REFUSAL status ONLY — for any other status the caller's own *reason* already says
-what was seen, and a second reading would be a guess.
+A printed refusal is TWO pieces, and `PersonaProbeOutcome` renders both for both consumers (the
+launch hard error in `commands/start.py::_persona_probe_error` and the create warning in
+`commands/box/_parser.py::_check_persona_store_for_create`):
+
+* `evidence_block()` — the block. EMPTY unless the endpoint ANSWERED: a probe that never reached it
+  has no facts to lay out, and four lines restating the caller's own inputs is noise. The closing
+  "which input was at fault" sentence is emitted for a REFUSAL status ONLY — for any other status
+  the caller's own *reason* already says what was seen, and a second reading would be a guess.
+* `refusal_phrase(endpoint)` — the sentence that INTRODUCES the block. ⚑ It exists because
+  single-sourcing the block alone was not enough: both consumers kept their own copy of the
+  sentence, and the copies DIVERGED in the very commit that shared the block (`c2f6ee91`). 🛑 Read
+  that as a DIVERGENCE, not a regression: measured against that commit's pre-image, the create path
+  has NEVER named the endpoint on the status-less arm, and the launch path always has — before and
+  after — so sharing the block left the gap exactly where it already was. The endpoint is
+  interpolated only when there is no status — precisely when `evidence_block()` is `""` and nothing
+  else would name it.
+
+`evidence_block()` takes a `resolved_from` the CALLER supplies (and passes it down to
+`ProbeEvidence.lines` / `.block`, which declare it the same way); `refusal_phrase` takes the
+endpoint and nothing else. It names where *endpoint* and *model* came from, and it is a render-time
+argument rather than a `ProbeEvidence` field because the plugin that builds the record was handed
+both values and cannot know; `""` prints no provenance, so a caller that cannot answer stays silent
+instead of guessing. 🛑 It names a SOURCE, never a cascade RUNG — the create path can say "the
+persona store at `<dir>`" exactly, while the launch path reads a collapsed snapshot whose level
+`settings_merge.merge` has already dropped, so the most it may honestly say is which keys and which
+carriers could hold them (`agent.<node>` or its `agent.default` fallback, in a settings file or the
+persona-grata store — both readers consult the fallback, and the store is a cascade rung of its
+own). 🛑 AND ITS SUBJECT HAS **THREE** ARMS, one per state of the model line above it, because
+attributing provenance to something that line does not show is the one way this sentence can lie:
+
+| model line | subject | why |
+|---|---|---|
+| `<id>  (<origin>)` | "The endpoint above, and the model it was resolved from," | the id went on the WIRE after the harness rewrote a tier alias, so the named source holds the ALIAS, not that id — the alias-403 arm, the measured failure the rewrite exists for, not an edge case |
+| `<id>` | "The endpoint and model above" | the id is the source's own |
+| `(omitted)` | "The endpoint above" | 🔑 an OMISSION does not come from a source; a persona naming no model is still probed with the key left out |
+
+⚑ Three is the whole set — the model line has exactly those three states. A fourth arm means the
+model line grew a state, which is the thing to check first.
 
 ```python
 def probe_outcome(response: ProbeResponse, sent: ProbeEvidence) -> PersonaProbeOutcome

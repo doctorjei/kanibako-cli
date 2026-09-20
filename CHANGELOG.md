@@ -21,6 +21,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A persona probe that `box create` or `box start` could not verify said so without saying where
+  it had read the endpoint and model.** The message named the endpoint, the model actually sent and
+  the provider's own words, and then left the user to guess which of their files any of it had come
+  from — a persona can be configured in the persona-grata store, in an agent settings file or
+  through the keyspace, and the message named none of them. All four messages — a refusal and an
+  inconclusive one at each door, the launch refusal being the only arm that stops anything — now
+  carry the line **whenever the endpoint answered**. When it never answered there is no evidence
+  block to carry it, which covers the commonest inconclusive of all: the endpoint that could not be
+  reached. At `create` the values are the store entry's own and the line names the store directory
+  exactly; at launch they come off the collapsed cascade, so it names the keys and the places that
+  can hold them instead. ⚑ The line names a *source*, never a cascade level. A caller that cannot
+  answer prints nothing rather than guessing, and the settings merge does not retain the level a
+  value won at, so the line says which mechanism produced the values, not which scope set them.
+  ⚑ And it speaks only for what the lines above it actually show. Where the box resolves a tier
+  alias through an env var, the line says the endpoint and the model it was *resolved from* came
+  from that source, because the id printed on the model line is the one that went on the wire and
+  not the one the source holds. Where the persona names no model at all — a valid configuration,
+  and still probed, with the key left out of the request — the model line reads `(omitted)` and the
+  line speaks for the endpoint alone, because an omission did not come from anywhere.
+
+- **The `box create` warning has never named the endpoint when the probe came back without a
+  status, and sharing the evidence block did not close that.** Each gate renders one message out of
+  two pieces — an introducing sentence and an evidence block — and only the block was shared, so
+  the two sentences stayed apart: on the one arm where there is no block to print, `create` said
+  `the persona endpoint refused the probe` with no endpoint anywhere in it, while the launch gate
+  named it — as it did before that change and after. ⚑ Nothing regressed here; the create door
+  simply never had an endpoint in this sentence to lose, and single-sourcing the block left the gap
+  exactly where it was. That arm is reachable only from a third-party plugin that builds a refusal
+  by hand, which is exactly the caller least able to work out what was refused. Both pieces are
+  single-sourced now.
+
 - **`--null` answered with Python's spelling of nothing.** `kanibako system set --null run_args`
   replied `Set run_args=None`, and so did the confirmation for a scope secret pointer, a per-node
   secret pointer and a per-persona agent setting — four of the nine `set` confirmations
@@ -3323,7 +3354,12 @@ migration code.** Four released config surfaces are removed outright
   published 1.7.2 claude plugin imports it at module scope, so an old plugin wheel against the new
   base raises `ImportError` from any command that resolves an agent. `read_persona_settings` now
   returns a tri-state `PersonaReadOutcome`, `verify_persona` a four-way `PersonaProbeOutcome`.
-  Upgrade the plugins with the base — see `MIGRATION.md` §3.
+  ⚑ **The module-level helper `http_probe_status` is removed the same way**, in favour of
+  `http_probe`, which answers with a `ProbeResponse(status, body)` rather than a bare status so a
+  refusal can quote the provider's own words. It was public in 1.7.2 too, and both released 1.7.2
+  plugins import it at module scope, so an old wheel fails on it exactly as it fails on
+  `probe_verdict`. `MIGRATION.md` lists which published wheels hit which of the two.
+  Upgrade the plugins with the base — see `MIGRATION.md`, *For plugin authors*.
 - **BREAKING: the legacy claude host-dir credential path is GONE.** A persona used to be
   able to resolve its endpoint, bearer token and model-map env by auto-adopting
   `~/.config/claude/<persona>/settings.json` + its sibling `token` file when nothing was

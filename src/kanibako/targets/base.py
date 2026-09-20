@@ -507,10 +507,33 @@ class ProbeEvidence:
     status: int | None = None       # None = the endpoint was never reached
     provider_text: str = ""
 
-    def lines(self, indent: str = "  ") -> tuple[str, ...]:
+    def lines(self, indent: str = "  ", *, resolved_from: str = "") -> tuple[str, ...]:
         """The evidence block: one labeled line per input, then the provider's own words.
 
         ⚑ The closing sentence is emitted for a REFUSAL status ONLY (llm-doc).
+
+        ⚑ *resolved_from* names WHERE the caller got *endpoint* and *model* — a
+        RENDER-TIME fact, not evidence state, because the plugin that builds this record
+        was HANDED both values and cannot know.  `""` prints no provenance at all: a
+        caller that cannot answer must stay silent rather than guess, so the sentence is
+        unavailable to anyone who did not actually resolve it (P3).
+        🛑 It says a SOURCE, never a cascade RUNG: the launch path reads endpoint and
+        model off a collapsed snapshot and `settings_merge.merge` drops the level, so
+        naming a level here would be an invention.  Coarse and true beats precise and
+        made up.
+        🛑 AND IT SPEAKS ONLY FOR WHAT THE LINES ABOVE ACTUALLY SHOW — THREE arms,
+        each matching the model line's own state, because attributing provenance to
+        something that is not there is the one way this sentence can lie:
+        * *model* set and *model_origin* set — the id shown went on the WIRE after the
+          harness rewrote it (a claude tier alias through
+          `ANTHROPIC_DEFAULT_<TIER>_MODEL`), so the named source holds the ALIAS, not
+          that id, and the sentence narrows to the model's INPUT.  This is the
+          alias-403 arm: the measured failure the rewrite exists for, and so the
+          likeliest refusal a user ever reads.
+        * *model* set, no origin — the id is the source's own; today's wording stands.
+        * NO *model* — the line reads `(omitted)`, and an OMISSION does not come from
+          a source, so the sentence speaks for the endpoint alone.
+        ⚑ Three is the whole set: the model line has exactly these three states.
         """
         model = "(omitted)" if not self.model else self.model
         if self.model and self.model_origin:
@@ -524,6 +547,20 @@ class ProbeEvidence:
             f"{indent}{'model':<10}{model}",
             f"{indent}{'token':<10}{token}",
         ]
+        if resolved_from:
+            # ⚑ THREE arms, each guarded on exactly what the model line above says —
+            # the sentence may never speak for something that line does not show.
+            if not self.model:
+                # 🛑 An OMISSION does not come from a source: the line reads
+                # `(omitted)`, so there is no model for the sentence to attribute.
+                subject = "The endpoint above"
+            elif self.model_origin:
+                # The id shown is the harness's, not the named source's; only the
+                # input it was resolved FROM came from there.
+                subject = "The endpoint above, and the model it was resolved from,"
+            else:
+                subject = "The endpoint and model above"
+            out.append(f"{indent}{subject} came from {resolved_from}.")
         if self.provider_text:
             out.append(f"{indent}{'provider:':<10}{self.provider_text}")
         if self.status in _REFUSAL_STATUSES:
@@ -533,9 +570,9 @@ class ProbeEvidence:
             )
         return tuple(out)
 
-    def block(self, indent: str = "  ") -> str:
+    def block(self, indent: str = "  ", *, resolved_from: str = "") -> str:
         """`lines`, joined — the form a printed message interpolates."""
-        return "\n".join(self.lines(indent))
+        return "\n".join(self.lines(indent, resolved_from=resolved_from))
 
 
 class PersonaProbeOutcome(NamedTuple):
@@ -572,15 +609,40 @@ class PersonaProbeOutcome(NamedTuple):
         """No probe was attempted; *reason* says why none is possible."""
         return cls(PersonaProbeVerdict.NOT_APPLICABLE, reason)
 
-    def evidence_block(self, indent: str = "  ") -> str:
+    def evidence_block(self, indent: str = "  ", *, resolved_from: str = "") -> str:
         """The evidence lines to append to a printed message, newline-led; `""` when none.
 
         ⚑ Empty unless the endpoint ANSWERED.  THE single renderer for both consumers —
-        the launch error and the create warning (llm-doc).
+        the launch error and the create warning (llm-doc).  *resolved_from* is the
+        caller's own answer to "where did these inputs come from"; see
+        `ProbeEvidence.lines`.
         """
         if self.evidence is None or self.evidence.status is None:
             return ""
-        return "\n" + self.evidence.block(indent)
+        return "\n" + self.evidence.block(indent, resolved_from=resolved_from)
+
+    def refusal_phrase(self, endpoint: str) -> str:
+        """How the endpoint refused, for the SENTENCE that introduces `evidence_block`.
+
+        The sentence and the block are one message, and both consumers must render them
+        alike — `evidence_block` single-sourced the block and this sentence escaped.
+        ⚑ MEASURED (`git log -S 'refused the probe' -- commands/box/_parser.py` ⇒
+        `c2f6ee91` alone): the create door has NEVER named the endpoint on this arm —
+        its pre-image read `the persona endpoint rejected the token for '<display>'` —
+        while the launch door always has, before `c2f6ee91` and after.  The two
+        sentences DIVERGED there; nothing was dropped, and sharing the block did not
+        close the gap.
+
+        ⚑ *endpoint* is interpolated ONLY when there is no status, which is exactly when
+        `evidence_block` returns `""` — with a status the block names the endpoint on its
+        own line and repeating it in the sentence would be the same fact twice (P10).
+        A status-less REJECTED cannot come from `probe_outcome`; a third-party plugin
+        that builds one by hand can still reach here, and this is what it gets.
+        """
+        status = self.evidence.status if self.evidence is not None else None
+        if status is None:
+            return f"({endpoint}) refused the probe"
+        return f"refused the probe with HTTP {status}"
 
 
 def probe_outcome(response: ProbeResponse, sent: ProbeEvidence) -> PersonaProbeOutcome:

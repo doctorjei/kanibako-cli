@@ -2517,6 +2517,74 @@ class TestCheckPersonaStoreForCreate:
         # from a live one that lacks model entitlement.
         assert "rejected the token" not in out
         assert "fix the token" not in out.lower()
+        # ⚑ And it says WHERE the inputs came from.  On the create path that is
+        # EXACT — no cascade is built before create, so the store dir is the source.
+        assert f"came from the persona store at {tmp_home}" in out
+        assert "config/personas/navigator/codex" in out.replace("\\", "/")
+
+    def test_a_status_less_REJECTED_still_names_the_endpoint_here(
+        self, tmp_home, monkeypatch, capsys,
+    ):
+        """The create door used to drop the endpoint on this arm while launch kept it.
+
+        With no status there is no evidence block, so the introducing sentence is
+        the ONLY place the endpoint can appear — and it did not.  Both doors now
+        render the sentence through ``PersonaProbeOutcome.refusal_phrase``, which
+        takes the endpoint the CALLER probed (the launch door has no bundle).
+        """
+        from kanibako.targets.base import PersonaProbeOutcome, ProbeEvidence
+
+        self._store(tmp_home)
+        err = self._call(
+            tmp_home, "navigator+codex", monkeypatch,
+            outcome=PersonaProbeOutcome.rejected(
+                ProbeEvidence(endpoint="https://api.navigator.example/v1"),
+            ),
+        )
+        assert err is None
+        out = capsys.readouterr().err
+        assert "(https://api.navigator.example/v1) refused the probe" in out
+
+    def test_a_RAISING_probe_leaves_its_traceback_in_the_debug_log(
+        self, tmp_home, monkeypatch, capsys, caplog,
+    ):
+        """The never-raise contract is a PLUGIN's to keep, and this door swallowed
+        the only evidence of which plugin broke it.
+
+        The warning cannot name the plugin, and the create does not fail — so with
+        the traceback discarded, a third-party ``verify_persona`` that raises on
+        every call left no record anywhere.  The launch door has always logged it
+        (``start.py::_persona_probe_error``); `MIGRATION.md`, *For plugin authors*,
+        tells plugin authors it goes to the debug log at BOTH doors.
+        (Mutation: drop the ``debug(..., exc_info=True)`` call → RED.)
+        """
+        import traceback
+
+        from kanibako.plugins.codex.target import CodexTarget
+
+        def _boom(*a, **k):
+            raise RuntimeError("the plugin exploded")
+
+        # The REAL target — the store reader must still work, or the bundle reads
+        # as ``no_reader`` and the probe is never reached.  Only the probe raises.
+        broken = CodexTarget()
+        broken.verify_persona = _boom  # type: ignore[method-assign]
+
+        # ⚑ ``log.get_logger`` PREFIXES its argument, so ``get_logger(__name__)``
+        # here is the logger ``kanibako.kanibako.commands.box._parser``.  Level is
+        # set on the ``kanibako`` parent, which is the one ``setup_logging``
+        # configures and the one every call site inherits from.
+        self._store(tmp_home)
+        with caplog.at_level("DEBUG", logger="kanibako"):
+            err = self._call(tmp_home, "navigator+codex", monkeypatch, target=broken)
+        assert err is None                      # a probe bug never fails a create
+        assert "creating unverified" in capsys.readouterr().err
+        records = [r for r in caplog.records if "verify probe raised" in r.getMessage()]
+        assert records, [r.getMessage() for r in caplog.records]
+        assert records[0].exc_info is not None
+        assert "the plugin exploded" in "".join(
+            traceback.format_exception(*records[0].exc_info)
+        )
 
     def test_an_INCONCLUSIVE_endpoint_warns_but_still_creates(
         self, tmp_home, monkeypatch, capsys,
