@@ -24,6 +24,7 @@ _DEST_KEYED_PLACEHOLDER: Final[tuple[str, str]] = ('<box-dest>', '[<host-src>]')
 
 ## Functions
 ```
+def scalar_family_of(tail: str) -> str | None
 def table_value_error(tail: str, *, path: Path, verb: str) -> str | None
 def file_spelling(*segments: str) -> str
 def slot_for(agents_root: Path, node: str, tail: str) -> AgentFileSlot

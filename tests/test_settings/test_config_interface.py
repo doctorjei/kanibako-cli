@@ -6637,3 +6637,129 @@ class TestStoredViewMarksUndeclaredEntries:
         assert "undeclared" in out
         assert "system.frobnicate = 1" in out
         assert "system.agent" not in out.split("undeclared", 1)[1]
+
+
+# ---------------------------------------------------------------------------
+# The two SCALAR families: a hand-authored NON-SCALAR is refused ON READ (§2a)
+# ---------------------------------------------------------------------------
+
+class TestScalarFamilyReadRefusal:
+    """§2a's scalar rule reaches ``get``, and it needs its own application site.
+
+    The launch refusal lives at the RESOLVE seam (``settings_launch._emit_scope_node``),
+    which sees the merged snapshot.  A ``get`` never builds one — it reads the FILE —
+    so without this a value the launch refuses to export still read back as the Python
+    repr that same rule forbids: one fact, two answers.
+
+    ⚑ EVERY VALUE HERE IS HAND-AUTHORED, because that is the only route a non-scalar
+    has: ``config set`` takes a ``str | None`` from argv and cannot produce a list, so
+    a refusal at the write boundary would be unreachable code.
+    """
+
+    @staticmethod
+    def _files(tmp_path):
+        cf = tmp_path / CONFIG_FILENAME
+        cf.write_text("")
+        ssp = tmp_path / "settings.yaml"
+        agents = tmp_path / "agents"
+        return cf, ssp, agents
+
+    @staticmethod
+    def _author(path, sections, leaf, value):
+        """Write *value* at ``sections/leaf`` the way a hand-edited file holds it."""
+        path.parent.mkdir(parents=True, exist_ok=True)
+        doc = load_doc(path) if path.exists() else {}
+        node = doc
+        for section in sections:
+            node = node.setdefault(section, {})
+        node[leaf] = value
+        dump_doc(path, doc)
+
+    @staticmethod
+    def _get(key, cf, ssp, agents):
+        return get_config_value(
+            key, global_config_path=cf, system_settings_path=ssp,
+            command_scope=ConfigLevel.system, agents_root=agents,
+        )
+
+    @pytest.mark.parametrize("key, sections, leaf, category", [
+        ("system.env.FOO", ("system", "env"), "FOO", "env"),
+        ("system.secret_path.TOK", ("system", "secret_path"), "TOK", "secret_path"),
+        ("agent.default.env.FOO", ("agent", "default", "env"), "FOO", "env"),
+        (
+            "agent.default.secret_path.TOK",
+            ("agent", "default", "secret_path"), "TOK", "secret_path",
+        ),
+    ])
+    def test_a_list_in_the_settings_file_is_refused_naming_the_key(
+        self, tmp_path, key, sections, leaf, category,
+    ):
+        from kanibako.settings.settings_resolve import SettingsError
+
+        cf, ssp, agents = self._files(tmp_path)
+        self._author(ssp, sections, leaf, ["/a", "/b"])
+        with pytest.raises(SettingsError) as e:
+            self._get(key, cf, ssp, agents)
+        msg = str(e.value)
+        assert key in msg and "SCALAR" in msg
+        assert f"{category}.<VAR>" in msg
+        # 🛑 THE DEFECT, SPELLED OUT: the repr is what the pre-image ANSWERED.
+        assert "['/a', '/b']" not in msg
+
+    @pytest.mark.parametrize("key, tail", [
+        ("agent.claude.env.FOO", "env.FOO"),
+        ("agent.claude.secret_path.TOK", "secret_path.TOK"),
+    ])
+    def test_a_list_in_a_PER_NODE_agent_file_is_refused_too(self, tmp_path, key, tail):
+        """The per-node route reads through a SLOT, which carries no node — so the
+        refusal is phrased by the caller holding the canonical key, never inside
+        ``agent_file.read_leaf``, which could name only the tail."""
+        from kanibako.settings.settings_resolve import SettingsError
+
+        cf, ssp, agents = self._files(tmp_path)
+        section, _, var = tail.partition(".")
+        self._author(
+            agents / "claude" / "agent.yaml", ("self", section), var, ["/a", "/b"],
+        )
+        with pytest.raises(SettingsError) as e:
+            self._get(key, cf, ssp, agents)
+        assert key in str(e.value)
+
+    def test_the_READ_and_the_RESOLVE_refuse_in_THE_SAME_WORDS(self, tmp_path):
+        """ONE CARRIER: the sentence is ``settings_categories``', and two seams
+        applying it must not drift into two sentences for one refusal."""
+        from kanibako.settings.keystore import KeyStore
+        from kanibako.settings.settings_launch import snapshot_category_entries
+        from kanibako.settings.settings_resolve import ResolveCtx, SettingsError
+
+        cf, ssp, agents = self._files(tmp_path)
+        self._author(ssp, ("system", "env"), "FOO", ["--x", "--w"])
+        with pytest.raises(SettingsError) as read_err:
+            self._get("system.env.FOO", cf, ssp, agents)
+        with pytest.raises(SettingsError) as resolve_err:
+            snapshot_category_entries(
+                KeyStore({"system": {"env": {"FOO": ["--x", "--w"]}}}),
+                active_agent="claude",
+                box_ctx=ResolveCtx(
+                    agent_name="claude", workset_name=None, host_home="/home/host",
+                    xdg={"XDG_DATA_HOME": "/data"},
+                ),
+            )
+        assert str(read_err.value) == str(resolve_err.value)
+
+    @pytest.mark.parametrize("stored, shown", [
+        ("plain", "plain"), (8080, "8080"), (True, "true"), (None, "null"), ("", '""'),
+    ])
+    def test_every_SCALAR_still_reads_back_unchanged(self, tmp_path, stored, shown):
+        """CONTROL.  The refusal sits IN FRONT of the scalar convention and may not
+        disturb it — §2h's empty idioms and the tri-state ``null`` included."""
+        cf, ssp, agents = self._files(tmp_path)
+        self._author(ssp, ("system", "env"), "FOO", stored)
+        assert self._get("system.env.FOO", cf, ssp, agents) == shown
+
+    def test_an_ABSENT_leaf_still_reads_as_not_set(self, tmp_path):
+        """``None`` from a read means ABSENCE and nothing else — the refusal must not
+        turn a missing leaf into an error."""
+        cf, ssp, agents = self._files(tmp_path)
+        self._author(ssp, ("system", "env"), "OTHER", "x")
+        assert self._get("system.env.FOO", cf, ssp, agents) is None

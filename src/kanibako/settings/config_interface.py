@@ -37,8 +37,10 @@ from kanibako.settings.agent_file import (
     AgentFileSlot,
     read_leaf,
     remove_leaf,
+    scalar_family_of,
     stored_leaf_shape,
     stored_leaf_text,
+    stored_leaf_value,
     write_leaf,
 )
 from kanibako.settings.config_dest import (
@@ -112,7 +114,10 @@ from kanibako.settings.config_io import (
 )
 from kanibako.errors import UserCancelled
 from kanibako.settings.kb_store import __MISSING__
-from kanibako.settings.settings_categories import ABSTRACT_CATEGORIES
+from kanibako.settings.settings_categories import (
+    ABSTRACT_CATEGORIES,
+    refuse_non_scalar_family_value,
+)
 from kanibako.settings.settings_keyspace import is_terminal_category_key, key_validity
 from kanibako.settings.keystore import ReservedKeyError
 from kanibako.settings.settings_prefs import PREF_ROOT
@@ -656,6 +661,51 @@ def _argv_aware(
     return _render
 
 
+def _scalar_family_render(key: str, category: str) -> "Callable[[object], str]":
+    """A ``read_stored_leaf`` renderer that REFUSES a non-scalar at the two SCALAR
+    families, then renders by the plain scalar convention (spec §2a).
+
+    ⚑ THE READ NEEDS ITS OWN APPLICATION SITE BECAUSE IT NEVER BUILDS A SNAPSHOT.  The
+    launch refusal sits at the resolve seam (``settings_launch._emit_scope_node``); a
+    ``get`` reads the FILE, so a value refused at launch would otherwise still read back
+    as the Python repr the same rule forbids exporting.  The RULE and its two sentences
+    are ``settings_categories``', once, for both.
+
+    ⚑ IT RAISES RATHER THAN RETURNING A SENTINEL, and the renderer type is why: *render*
+    is ``Callable[[object], str]`` and TOTAL by contract, because ``None`` from a read is
+    ABSENCE and nothing else (``config_io.read_stored_leaf``).  The raise is a
+    ``SettingsError``, which ``cli.py`` already turns into a one-line ``Error: …`` and
+    rc 1 — the shape every other refusal-with-cure reaches the user in.
+
+    🛑 NOT ``_argv_aware``'s TWIN, and the two must not merge: that one asks what a
+    LIST-valued leaf reads back as, this one says the leaf may not hold a list at all.
+    """
+    def _render(v: object) -> str:
+        refuse_non_scalar_family_value(key, category, v)
+        return render_stored_scalar(v)
+    return _render
+
+
+def _read_slot(canonical: str, slot: AgentFileSlot) -> str | None:
+    """``agent_file.read_leaf`` with §2a's non-scalar refusal in front of it.
+
+    ⚑ THE PER-NODE HALF OF :func:`_scalar_family_render`, and it is a separate function
+    for one reason: the agent file's reads go through a SLOT, which carries no node
+    (``AgentFileSlot``), so the refusal cannot be phrased inside ``read_leaf`` — §2a
+    requires the whole KEY be named, and only this side has it.
+    ⚑ THE VALUE IS ASKED OF THE OBJECT, NEVER THE RENDERING (``stored_leaf_value``'s
+    own ⚑⚑): the renderings are not injective, so a door that JUDGES a value must read
+    the raw one.  Absence and a present-``None`` both answer ``None`` there, and both
+    are scalars, so the refusal passes them through to the read that tells them apart.
+    """
+    family = scalar_family_of(slot.tail)
+    if family is not None:
+        refuse_non_scalar_family_value(
+            canonical, family, stored_leaf_value(slot),
+        )
+    return read_leaf(slot)
+
+
 def _stored_shape_for(canonical: str, value: object) -> object:
     """*value* in the shape a SETTINGS FILE must hold it in at *canonical* — the WRITE-side
     twin of :func:`_argv_aware`, and the scope files' half of what ``agent_file.write_leaf``
@@ -738,7 +788,10 @@ def get_config_value(
     if _is_scope_env_key(canonical):
         if noun_file and noun_file.exists():
             parts = canonical.split(".")
-            return read_stored_leaf(noun_file, (parts[0], "env"), parts[2])
+            return read_stored_leaf(
+                noun_file, (parts[0], "env"), parts[2],
+                render=_scalar_family_render(canonical, "env"),
+            )
         return None
 
     # ``agent.<node>.bindings.{ro,rw}.<name>`` — the per-node DESCRIPTOR bind, read RAW from the
@@ -761,7 +814,7 @@ def get_config_value(
         secret_target = _node_secret_target(canonical, agents_root)
         if not isinstance(secret_target, AgentFileSlot):
             return None  # no store here, or a refused node — a read reports neither
-        return read_leaf(secret_target)
+        return _read_slot(canonical, secret_target)
 
     # ``<scope>.secret_path.<VAR>`` — the stored PATH from the NOUN's settings file.
     # ⚑ ``noun_file``, NOT ``project_toml``: the SYSTEM handler never threads the latter.
@@ -770,6 +823,7 @@ def get_config_value(
             parts = canonical.split(".")
             return read_stored_leaf(
                 noun_file, (parts[0], "secret_path"), parts[2],
+                render=_scalar_family_render(canonical, "secret_path"),
             )
         return None
 
@@ -787,7 +841,7 @@ def get_config_value(
     if _is_persona_agent_key(canonical) and not is_agent_default_tier_key(canonical):
         target = _persona_agent_target(canonical, agents_root)
         if isinstance(target, AgentFileSlot):
-            return read_leaf(target)
+            return _read_slot(canonical, target)
         return None
 
     # Bare agent settings (model, continue_mode, access, allow_helpers).
@@ -850,9 +904,13 @@ def get_config_value(
     # The any-agent tier's ``env.<VAR>``/``secret_path.<VAR>`` now reach this tail, and their leaf
     # is a VAR the USER chose: a variable someone happened to call ``run_args`` must not render as
     # a command line when its ``system.env.`` and ``agent.<node>.env.`` siblings do not.
+    # ⚑ …AND THE SCALAR CONVENTION IS WHAT THEY TAKE, WITH §2a'S REFUSAL IN FRONT OF IT:
+    # the tier's two families may not hold a non-scalar at all, and this read builds no
+    # snapshot, so the resolve seam's raise cannot cover it.
+    _tier_family = agent_default_tier_category(canonical)
     render = (
-        render_stored_scalar
-        if agent_default_tier_category(canonical) is not None
+        _scalar_family_render(canonical, _tier_family[0])
+        if _tier_family is not None
         else _argv_aware(dest.leaf, render_stored_scalar)
     )
     return read_stored_leaf(dest.path, dest.sections, dest.leaf, render=render)

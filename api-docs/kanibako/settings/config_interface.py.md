@@ -27,6 +27,8 @@ def _category_set_lookups(config_path: Path, *, canonical: str, command_scope: '
 def _clone_keystore(store: 'Any') -> 'Any'
 def _set_leaf(store: 'Any', parts: list, value: object) -> None
 def _argv_aware(leaf: str, fallback: 'Callable[[object], str]') -> 'Callable[[object], str]'
+def _scalar_family_render(key: str, category: str) -> 'Callable[[object], str]'
+def _read_slot(canonical: str, slot: AgentFileSlot) -> str | None
 def _stored_shape_for(canonical: str, value: object) -> object
 def _set_confirmation(display_key: str, value: object) -> str
 def _reset_dest(canonical: str, command_scope: 'ConfigLevel | None', config_path: Path, system_settings_path: 'Path | None') -> DestRoute

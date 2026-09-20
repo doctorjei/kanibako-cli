@@ -46,6 +46,19 @@ unchanged. So a settings read reads the NOUN'S file (`settings_dest` = `system_s
 SYSTEM, else `project_toml`) — get reads exactly where `set` wrote (F5/F6 plus the F2/F3-class
 downward-key sibling: all "get reads where set wrote").
 
+⚑ **AND A READ CAN REFUSE, on exactly one rule.** The two SCALAR families (`<scope>.env.<VAR>`,
+`<scope>.secret_path.<VAR>`, at every scope and in a per-node agent file) may not hold a non-scalar,
+so a hand-authored list or map there raises `SettingsError` instead of reading back as a Python
+repr — spec §2a, the rule and its sentence owned by `settings_categories.refuse_non_scalar_family_value`.
+Two helpers apply it because the reads take two shapes: `_scalar_family_render` is the renderer
+handed to `read_stored_leaf` (the renderer type is TOTAL, so it RAISES rather than answering a
+sentinel — `None` from a read means ABSENCE and nothing else), and `_read_slot` wraps
+`agent_file.read_leaf`, judging `agent_file.stored_leaf_value`'s RAW object because a slot carries
+no node and the refusal must name the whole key. `cli.main` turns the raise into one `Error: …`
+line and rc 1, which is the shape the error-string refusals in this module already print.
+🛑 The launch refusal (`settings_launch._emit_scope_node`) cannot cover this: a `get` reads the
+FILE and builds no snapshot.
+
 ## The retired routes, and why their READS survive
 
 Three retirements shape almost every branch in this module:

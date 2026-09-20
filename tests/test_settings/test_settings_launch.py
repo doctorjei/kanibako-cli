@@ -3368,6 +3368,91 @@ class TestCategoryRootRefusal:
 
 
 # --------------------------------------------------------------------------- #
+# The two SCALAR families: a NON-SCALAR is refused at resolve (spec §2a)       #
+# --------------------------------------------------------------------------- #
+
+
+class TestScalarFamilyNonScalarRefusal:
+    """§2a: *"BOTH FAMILIES ARE SCALAR. A non-scalar (list, map, etc) is REFUSED at
+    resolve and the key is named, irrespective of origin … Its value is never coerced
+    into a string or shell-split."*
+
+    🛑 IT IS NOT A DISPLAY DEFECT, which is why the refusal lives HERE and not in a
+    renderer.  Both branches coerced with ``str(value)``: a list at ``box.env.FOO``
+    reached the guest as the literal text ``['--x', '--w']``, and a list at
+    ``secret_path.<VAR>`` became a MOUNT SOURCE spelled as a Python repr.  A renderer
+    fix would have cured the screen and left the box wrong.
+
+    ⚑ ONE SITE FOR THE WHOLE LAUNCH: ``snapshot_category_entries`` is the sole producer
+    every downstream seam reads, so this covers the collapse, ``LaunchDeliveries``, the
+    launch env map and ``box show --effective`` without a second guard.
+    """
+
+    @staticmethod
+    def _entries(node: dict):
+        return snapshot_category_entries(
+            KeyStore(node), active_agent="claude", box_ctx=_ctx(),
+        )
+
+    def test_a_list_at_env_VAR_is_refused_naming_the_key(self):
+        with pytest.raises(_SettingsError) as e:
+            self._entries({"box": {"env": {"FOO": ["--x", "--w"]}}})
+        msg = str(e.value)
+        assert "box.env.FOO" in msg
+        assert "SCALAR" in msg and "list" in msg
+        # The remedy is the SCALAR rule, never the shell-split one: teaching a
+        # user-named VAR to split is a promise nothing keeps.
+        assert "never coerced" in msg and "shell-split" in msg
+
+    def test_a_list_at_secret_path_VAR_is_refused_naming_the_key(self):
+        """⚑ AND IT REPORTS THE RIGHT DEFECT.  The repr ``"['/a', '/b']"`` begins with
+        ``[``, so the coercion used to hand it to the BARE-RELATIVE refusal, which told
+        the user their absolute paths were relative."""
+        with pytest.raises(_SettingsError) as e:
+            self._entries({"box": {"secret_path": {"TOK": ["/a", "/b"]}}})
+        msg = str(e.value)
+        assert "box.secret_path.TOK" in msg
+        assert "SCALAR" in msg and "ONE host path" in msg
+        assert "BARE RELATIVE" not in msg
+
+    @pytest.mark.parametrize("category", ["env", "secret_path"])
+    def test_a_MAP_is_refused_and_named_as_a_map(self, category):
+        """The file's word, not the store's: a nested table is a ``map`` to whoever
+        wrote it, and ``KeyStore`` names nothing they can see."""
+        with pytest.raises(_SettingsError) as e:
+            self._entries({"box": {category: {"FOO": KeyStore({"a": "b"})}}})
+        msg = str(e.value)
+        assert f"box.{category}.FOO holds a map" in msg
+        assert "KeyStore" not in msg
+
+    @pytest.mark.parametrize("tier", ["default", "claude"])
+    def test_the_agent_tier_is_named_DISCRIMINATED(self, tier):
+        """``agent.env.FOO`` is not a key (§0), so the refusal may not print one."""
+        with pytest.raises(_SettingsError) as e:
+            self._entries({"agent": {tier: {"env": {"FOO": ["--x"]}}}})
+        msg = str(e.value)
+        assert f"agent.{tier}.env.FOO" in msg
+        assert "agent.env.FOO" not in msg
+
+    @pytest.mark.parametrize("value, exported", [
+        ("plain", "plain"), (8080, "8080"), (True, "True"),
+    ])
+    def test_every_SCALAR_still_emits(self, value, exported):
+        """CONTROL, and it is the spec's line rather than a softening: §2a refuses the
+        NON-scalars, so a YAML ``8080`` at ``box.env.PORT`` stays the value it was."""
+        entries = self._entries({"box": {"env": {"PORT": value}}})
+        assert [(e.category, e.name, e.options) for e in entries] == [
+            ("env", "PORT", exported),
+        ]
+
+    @pytest.mark.parametrize("category", ["env", "secret_path"])
+    def test_a_present_None_is_still_the_RESET_it_always_was(self, category):
+        """A present-``None`` is the tri-state OMIT, not a non-scalar: it emits
+        nothing and must not be refused."""
+        assert self._entries({"box": {category: {"FOO": None}}}) == []
+
+
+# --------------------------------------------------------------------------- #
 # STRUCTURAL: the implicit-root-prepend mechanism must not come back           #
 # --------------------------------------------------------------------------- #
 

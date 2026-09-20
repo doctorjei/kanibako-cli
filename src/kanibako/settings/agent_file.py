@@ -170,6 +170,23 @@ class AgentFileLevel:
     table: dict
 
 
+def scalar_family_of(tail: str) -> str | None:
+    """The SCALAR family *tail* names — ``"env"`` / ``"secret_path"`` — else ``None``.
+
+    :data:`_VERB_WRITABLE_CATEGORIES`' question asked of a READ: the two categories
+    holding a scalar per NAME are exactly the two §2a declares scalar, so a caller
+    applying the non-scalar refusal (``settings_categories``) asks THIS rather than
+    matching the tail itself.  ⚑ The partition is :func:`_read_address`'s — the first
+    segment is the category and everything after it is ONE name.
+
+    ⚑ A TAIL, NOT A KEY, because the slot carries no node (:class:`AgentFileSlot`): the
+    caller that HAS the canonical key is the one that phrases the refusal, since §2a
+    requires the whole key be named and a tail is not one.
+    """
+    category, sep, rest = tail.partition(".")
+    return category if sep and rest and category in _VERB_WRITABLE_CATEGORIES else None
+
+
 # ---------------------------------------------------------------------------
 # The file ADDRESS — spelled once, produced only in here
 # ---------------------------------------------------------------------------

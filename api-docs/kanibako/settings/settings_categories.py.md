@@ -53,6 +53,8 @@ def path_depth(box_dest: str) -> int
 def gate_credential_delivery(entries: list[CategoryEntry], deliver_creds: bool) -> list[CategoryEntry]
 def secret_path_winners(entries: list[CategoryEntry]) -> list[CategoryEntry]
 def secret_path_deliveries(entries: list[CategoryEntry]) -> list[CategoryEntry]
+def is_scalar_family_value(value: object) -> bool
+def refuse_non_scalar_family_value(key: str, category: str, value: object) -> None
 def refuse_env_secret_twins(entries: list[CategoryEntry]) -> None
 def launch_deliveries(entries: list[CategoryEntry], *, agent_dests: frozenset[str], narrow_bindings: 'dict[str, object] | None'=None, declared_by: 'dict[str, str] | None'=None) -> LaunchDeliveries
 def narrow_table_winners(entries: list[CategoryEntry], dests: frozenset[str]) -> list[CategoryEntry]
@@ -62,6 +64,7 @@ def derive_binding_keys(entries: list[CategoryEntry]) -> dict[tuple[str, ...], '
 def declaration_delivery(decl_key: str) -> Delivery
 def effective_bindings_and_template_sources(snapshot: 'KeyStore') -> 'tuple[Any, ...]'
 def _bind_options(category: str) -> str
+def _value_shape(value: object) -> str
 def _most_specific(entries: list[CategoryEntry]) -> CategoryEntry
 def _entry_lines(entries: list[CategoryEntry]) -> str
 def _and_list(keys: list[str]) -> str

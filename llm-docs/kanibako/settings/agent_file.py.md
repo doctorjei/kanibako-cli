@@ -222,6 +222,17 @@ rest rather than a row each.
 
 ## Functions
 
+```scalar_family_of(tail: str) -> str | None```
+The SCALAR family *tail* names — `"env"` / `"secret_path"` — else `None`.
+`_VERB_WRITABLE_CATEGORIES`' question asked of a READ: the two categories holding a scalar per NAME
+are exactly the two spec §2a declares scalar, so a caller applying the non-scalar refusal
+(`settings_categories.refuse_non_scalar_family_value`) asks this instead of matching the tail itself.
+The partition is `_read_address`'s — first segment the category, everything after it ONE name.
+
+⚑ **A TAIL, NOT A KEY**, because `AgentFileSlot` carries no node: the caller holding the canonical
+key phrases the refusal, since §2a requires the whole key be named and a tail is not one. That is why
+`read_leaf` does not refuse for itself and `config_interface._read_slot` does it instead.
+
 ```_read_address(tail: str) -> tuple[tuple[str, ...], str]```
 Map a per-agent-file key TAIL to the `(sections, leaf)` it is READ from — the file-shape SoT.
 
