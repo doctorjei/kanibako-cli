@@ -1204,6 +1204,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   default once, saw no effect and compensated elsewhere — a shell alias, a per-box setting — remove
   one of the two, or the agent now gets the flags twice.
 
+- **`kanibako system set run_args="--verbose --debug"` stored that line as one string, while
+  `kanibako agent set <agent> run_args="--verbose --debug"` stored it as a list of words.** One key,
+  two shapes on disk, decided by which command you happened to reach for. `run_args` holds a list —
+  that is what an agent's own settings file has always held, and what the examples in the migration
+  guide show — but the system, workset and box settings files took whatever the command line handed
+  over and wrote it down verbatim. The line is split once, before it is stored, at every command
+  that writes it now, `pref.agent.<agent>.run_args` requests included. **What you will see:** the
+  next time you set the key, your own settings file holds a list where a string used to sit.
+  Nothing already on disk is rewritten, and nothing starts or stops reaching a launch — a string
+  you left there is still read as the same words. You still type the value as one line, and
+  `kanibako system get run_args` still answers with that line rather than with brackets. A variable
+  you happen to have named `run_args` — `system.env.run_args`, `agent.default.env.run_args` — holds
+  a value you chose rather than a command line, and is untouched.
+
 - **A setting an agent plugin declares — `agent.goose.provider`, say — was a key to `kanibako agent`
   and an unknown key to `kanibako system`.** Most agent settings are the same for every agent and
   kanibako declares them itself, but an agent plugin may declare settings of its own; goose declares

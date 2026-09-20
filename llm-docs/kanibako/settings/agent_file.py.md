@@ -194,8 +194,11 @@ cure's rule and `_write_address`'s backstop, spelled once.
 Every ROOT key the file stores as a LIST OF ARGV WORDS rather than as the one string the command
 line hands over. **A DIFFERENT QUESTION FROM `_TABLE_VALUED_KEYS`**, and the contrast is the point:
 a table-valued key takes NO scalar and is refused by name; one of these TAKES the scalar and stores
-it as words. So a translation exists, and both ends of it live here — `write_leaf` splits in
-(`_stored_shape`), `read_leaf` joins back out (`_render_argv`).
+it as words. So a translation exists, and both ends of it live here — `stored_leaf_shape` splits
+in, `stored_leaf_text` joins back out. ⚑ **BOTH ENDS ARE PUBLIC SINCE `[R169]`, AND THE REASON IS
+THAT THE SCOPE SETTINGS FILES HOLD THESE LEAVES TOO.** `write_leaf` / `read_leaf` are this file's
+callers of them; `config_interface`'s scope-file doors are the system / workset / box files'. The
+membership question is answered HERE either way, so no caller learns which leaves are lists.
 
 ⚑ **THE DEFECT THAT PUT IT HERE (2026-08-29, measured on a real store).** The split lived in
 `agent_cmd`'s own writer and nowhere else, so the file had two write routes with two shapes:
@@ -308,9 +311,12 @@ The ONE leaf whose stored shape is not a scalar hands its own renderer IN instea
 (`read_stored_leaf(..., render=_render_argv)`), which is why the conventions stay untouched rather
 than being wrapped — pinned by `test_read_does_not_re_render`, which uses a scalar leaf.
 
-⚑⚑ **`write_leaf` APPLIES `_stored_shape`, AND NO CALLER MAY PRE-SPLIT.** That is the single-carrier
-rule for `_LIST_VALUED_KEYS` above: the seam every write route already goes through is the only
-place the shape is decided, so a second copy in a caller cannot exist to drift.
+⚑⚑ **EVERY WRITE ROUTE APPLIES `stored_leaf_shape`, AND NO CALLER MAY PRE-SPLIT.** That is the
+single-carrier rule for `_LIST_VALUED_KEYS` above: the shape is decided in ONE place, so a second
+copy in a caller cannot exist to drift. `write_leaf` applies it for this file; `config_interface`'s
+two raw scope-file doors — the bare `agent.default.<leaf>` write and the `pref.*` write — apply it
+for the system / workset / box settings files (`[R169]`: one parser, two entry points, one stored
+shape).
 
 ```argv_words(value: str) -> list[str]``` · ```argv_text(words) -> str```
 The two halves of the argv translation. `argv_words` is deliberately `str.split`, NOT
@@ -325,9 +331,23 @@ stored list and a string hand-written into a YAML arrive at `start.py`'s `all_ex
 identically — and that seam splits it back with THIS function. One parser, both directions, no
 second answer to "what is a word".
 
-```_stored_shape(tail, value) -> object``` · ```_render_argv(v) -> str | None```
-`_stored_shape` is what `write_leaf` applies; `None` PASSES THROUGH, because it is the `--null`
-suppression idiom (spec §2h) and splitting it would forge an empty argv line.
+```stored_leaf_shape(tail, value) -> object``` · ```_render_argv(v) -> str | None```
+`stored_leaf_shape` is the WRITE-side twin of `stored_leaf_text`: given a leaf's tail it returns
+the value in the shape a FILE holds it in, or the value unchanged where this module owns no rule
+for the pair. `None` PASSES THROUGH, because it is the `--null` suppression idiom (spec §2h) and
+splitting it would forge an empty argv line.
+
+⚑ **IT WAS PRIVATE (`_stored_shape`) UNTIL `[R169]`, AND WHAT CHANGED IS NOT THE NAME.** It is now
+a SEAM: `config_interface` calls it to normalize before a value lands in a system, workset or box
+settings file, so that a `run_args` typed at the CLI is one shape on disk whichever command wrote
+it. Before that, `config set run_args="--z --y"` stored the string while `agent set` stored the
+list — the same two-carrier defect described above, one tier up.
+
+🛑 **THE ARGUMENT IS THE FILE TAIL, NEVER THE WRITTEN LEAF'S NAME**, and a caller that confuses the
+two breaks a user's data. A user may name an environment variable `run_args`; its tail is the
+DOTTED `env.run_args` (`_address`), which is in no leaf set, so the scalar they typed stays a
+scalar. That dotted tail is the WHOLE of the protection — there is no second check behind it, and a
+caller keying on the last segment of a key would shell-split every `env.<VAR>` so named.
 
 ⚑ `_render_argv` renders an EMPTY list as `""`, NOT `None`. The scalar convention's empty→`None`
 rule is about an empty STRING, kanibako's idiom for no value; a present `run_args: []` is the
