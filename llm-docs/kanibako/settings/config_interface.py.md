@@ -857,8 +857,13 @@ does not resolve cleanly post-reset — the cleared-only form is kept (evidence 
 rather than guess a wrong value, the exact lie being fixed).
 
 
-```_effective_after_reset(routed, sections, leaf, *, agent_name, system_path, agent_path, workset_path, box_path) -> tuple[str, str] | None```
-The now-effective `(value, source_tier)` for *routed* AFTER a reset, else `None`.
+```effective_value(canonical, sections, leaf, *, agent_name, system_path, agent_path, workset_path, box_path, floor=None) -> tuple[str, str] | None```
+The cascade-effective `(value, source_tier)` for *canonical*, else `None`.
+
+⚑ **IT WAS `_effective_after_reset` AND THE NAME HERE OUTLIVED IT.** It has TWO callers now and the
+`floor` keyword is why: `reset_config_value` passes nothing (a cleared key must name no built-in
+default), while `agent info`'s label resolution passes the §2d declared floor precisely because it
+wants one. Everything below was written about the reset caller — read it as that caller's view.
 
 Reuses the SAME committed pipeline the launch + set-time probe use (`assemble_levels` → `merge` →
 lenient `expand`, single-source — NOT a re-implementation), so the tier is the one the cascade
@@ -868,9 +873,14 @@ state (the Editor's condition: build AFTER removal, not stale).
 Returns `None` — so the caller keeps the cleared-only form — when: no cascade files are supplied
 (a caller that does not thread them), the key is absent from the post-reset snapshot, it is not a
 plain scalar (a `Bind`/`KeyStore`/list has no single "effective value" to print here), or it does
-not expand cleanly (an unresolved `@`-ref / cycle — no built-in guess). A stored/resolved EMPTY
-string also renders to `None` (Editor NIT-a), so the message is never "effective is now
-`<blank>`"; `render_stored_scalar` already maps `""` → `None`.
+not expand cleanly (an unresolved `@`-ref / cycle — no built-in guess). A resolved EMPTY string is
+also `None` (Editor NIT-a), so the message is never "effective is now `<blank>`".
+
+⚑ **THAT EMPTY ARM IS THIS FUNCTION'S OWN, NOT THE RENDERER'S**, and it stopped being the
+renderer's on 2026-09-20: `render_stored_scalar` is now TOTAL and spells a stored `""` as `""`
+(spec §2h — `""` is a terminal value, not unset), so nothing upstream declines a blank any more.
+`effective_value` tests the resolved VALUE (`if eff == ""`) instead, which is also why a door that
+must decline an empty stored value tests the value and never the rendering.
 
 ⚑ The path-tier inputs are identical to the set-time probe's, but the FAILURE ARM DIFFERS: a
 failure must not break a reset, and an "effective" computed without the floor would name a value

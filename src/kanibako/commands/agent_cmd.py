@@ -12,6 +12,7 @@ from kanibako.commands.flags import add_null_flag
 
 if TYPE_CHECKING:
     from pathlib import Path
+    from typing import Mapping
 
     from kanibako.settings.agent_config import AgentConfig
     from kanibako.settings.paths import StandardPaths
@@ -219,7 +220,7 @@ def run_list(args: argparse.Namespace) -> int:
 def run_info(args: argparse.Namespace) -> int:
     """Show agent configuration details."""
     from kanibako.settings.agent_config import agent_settings_path
-    from kanibako.settings.agent_file import load
+    from kanibako.settings.agent_file import load, stored_leaf_display
 
     try:
         std = _load_std()
@@ -244,7 +245,10 @@ def run_info(args: argparse.Namespace) -> int:
     # prints, so a reader can reach it: `kanibako agent set <agent> label=…`.
     print(f"Label:        {_agent_label(std, agent_id)}")
     if cfg.run_args:
-        print(f"Default args: {' '.join(cfg.run_args)}")
+        # ⚑ THE FILE'S OWN JOIN, not a second one: ``agent_file`` owns the argv
+        # translation, and a hand-rolled ``' '.join`` here was a second answer to
+        # "how does a stored argv list read back" (P10).
+        print(f"Default args: {stored_leaf_display('run_args', cfg.run_args)}")
     else:
         print("Default args: (none)")
 
@@ -255,15 +259,15 @@ def run_info(args: argparse.Namespace) -> int:
     state_rows = {k: v for k, v in cfg.state.items() if k != "label"}
     if state_rows:
         print("State:")
-        for k, v in sorted(state_rows.items()):
-            print(f"  {k} = {v}")
+        for k, text in _stored_rows(state_rows):
+            print(f"  {k} = {text}")
     else:
         print("State:        (none)")
 
     if cfg.env:
         print("Env:")
-        for k, v in sorted(cfg.env.items()):
-            print(f"  {k} = {v}")
+        for k, text in _stored_rows(cfg.env, "env."):
+            print(f"  {k} = {text}")
     else:
         print("Env:          (none)")
 
@@ -271,8 +275,8 @@ def run_info(args: argparse.Namespace) -> int:
     # secret) are never read here — only the path is shown.
     if cfg.secret_path:
         print("Secret paths:")
-        for k, v in sorted(cfg.secret_path.items()):
-            print(f"  {k} = {v}")
+        for k, text in _stored_rows(cfg.secret_path, "secret_path."):
+            print(f"  {k} = {text}")
 
     return 0
 
@@ -455,21 +459,26 @@ def _run_agent_config(args: argparse.Namespace) -> int:
     # An accepted-and-ignored flag is the worse failure — the user is told the
     # write happened by the absence of any error.
     #
-    # ⚑ Why REFUSE rather than write the null. This file's reader coerces every
-    # value it loads: ``agent_file.load`` builds ``cfg.state`` / ``cfg.env``
-    # with ``str(v)``, so a YAML ``null`` here comes back as the TEXT ``"None"``
-    # — not a suppression, a four-character string. For ``access`` that string
-    # is not a legal tier at all, so a flag whose whole promise is "suppress
-    # this" would leave the box REFUSING to launch (and, before R-41 made the
-    # resolver exact, it would have run PERMISSIVE instead). The other three scopes route
-    # through ``set_config_value``, which owns the closed-keyspace check and the
-    # per-route null refusals (the retired bare ``env.<VAR>``; every bind-shaped
-    # CATEGORY, whose write route DS-BL1 = (a) retired outright — so ``--null`` on one
-    # gets that refusal, not a null-mechanism one); this verb has its own writer and
-    # none of that, so writing here
-    # would also put two disagreeing spellings of one idea in the tree. Agent-file
-    # null semantics need the READER to change with them — a separate change that
-    # owns launch consumption, not a CLI polish.
+    # 🛑 THE REFUSAL IS KEPT; BOTH REASONS IT USED TO REST ON ARE GONE, and saying so is
+    # the point — an obsolete justification left standing is how a rule gets a NEW one
+    # invented for it later.
+    #
+    # It read: (1) this file's reader coerces with ``str(v)``, so a YAML ``null`` would
+    # come back as the TEXT ``"None"`` — for ``access``, not a legal tier at all, so a
+    # flag promising "suppress this" would leave the box REFUSING to launch; and (2) this
+    # verb has its own writer, so writing here would put two disagreeing spellings of one
+    # idea in the tree. Neither holds now. ``agent_file.load`` KEEPS a present-``None`` in
+    # ``cfg.state``, ``cfg.env`` and ``cfg.secret_path`` alike, and the ``=`` arm below
+    # routes through ``set_config_value`` — the one setter, with the closed-keyspace check
+    # and the per-route null refusals (the retired bare ``env.<VAR>``; every bind-shaped
+    # CATEGORY, whose write route DS-BL1 = (a) retired outright, so ``--null`` on one gets
+    # THAT refusal, not a null-mechanism one).
+    #
+    # ⚑ WHETHER AGENT SCOPE SHOULD NOW ACCEPT ``--null`` IS A PRODUCT QUESTION, not a
+    # leftover to tidy: it asks what an agent writing a present-``None`` at its OWN level
+    # means to the launch, which is the consumer's side of §2h and nobody's to settle in a
+    # rendering pass. Until it is settled the message below is the honest answer: the
+    # ``agent reset`` cure it names is measured working, and the pref cure is §2h's own.
     if getattr(args, "null", False):
         if key_value is None:
             print("Error: --null requires a key", file=sys.stderr)
@@ -558,10 +567,15 @@ def _run_agent_config(args: argparse.Namespace) -> int:
         # tables — so a record-only read printed "(not set)" over values the file
         # carries, including ones ``agent set`` had just written.  The fallback
         # goes through the SAME boundary slot ``config get agent.<node>.<tail>``
-        # uses, so the two verbs render ONE string
-        # (``config_io.render_stored_scalar``) rather than two renderings of one
-        # value.  ⚑ A declared key MUST be readable (spec §0); the record's shape
+        # uses.  ⚑ A declared key MUST be readable (spec §0); the record's shape
         # is not a reason for a key to have no answer.
+        # ⚑⚑ THE TWO ARMS SPELL A VALUE THE SAME WAY BECAUSE BOTH RENDER, NOT
+        # BECAUSE ONLY ONE DOES.  Routing the fallback through the shared renderer
+        # was never enough on its own: every key the record MODELS is answered
+        # above and never reaches here, so while that arm handed its value back
+        # raw this verb had two vocabularies — ``agent get <node> label`` over a
+        # stored ``""`` printed a blank line where ``system get`` printed ``""``.
+        # ``_get_agent_key`` renders too now, through the same pair.
         val = read_leaf(slot_for(std.agents, agent_id, key))
     if val is not None:
         print(val)
@@ -643,7 +657,8 @@ def _agent_label(std: "StandardPaths", agent_id: str) -> str:
     1. the agent FILE's own flat ``label`` — read through the file boundary's slot, because
        ``assemble_levels`` carries only this file's CATEGORY tables into the agent rung; its
        flat behaviour scalars reach the launch through ``agent_file.state_level`` instead.
-       This is the same door ``agent get <node> label`` reads.
+       This is the same SLOT ``agent get <node> label`` reads, but NOT the same read: that
+       verb renders and this one must not (below).
     2. ``agent.<node>.label`` through the cascade — a per-agent value in the SYSTEM file.
     3. ``agent.default.label`` through the cascade, FLOORED — the all-agents tier, whose base
        rung is :func:`_declared_label`.
@@ -664,7 +679,11 @@ def _agent_label(std: "StandardPaths", agent_id: str) -> str:
     ``label`` explicitly set to the empty string.
     """
     from kanibako.settings.agent_config import agent_settings_path
-    from kanibako.settings.agent_file import read_leaf, slot_for
+    from kanibako.settings.agent_file import (
+        slot_for,
+        stored_leaf_display,
+        stored_leaf_value,
+    )
     from kanibako.settings.config_interface import effective_value
     from kanibako.settings.config_keys import AGENT_DEFAULT_SUB
 
@@ -672,9 +691,16 @@ def _agent_label(std: "StandardPaths", agent_id: str) -> str:
     # empty render, and the contract below is that this function always returns
     # something printable; a bare ``is not None`` here would let a stored ``""``
     # through and print a blank ``Label:`` line.
-    stored = read_leaf(slot_for(std.agents, agent_id, "label"))
-    if stored:
-        return stored
+    # ⚑⚑ IT IS THE STORED VALUE THAT IS TESTED, NEVER THE RENDERING, and that is not a
+    # style choice: the read verbs spell a stored ``""`` as ``""`` (spec §2h), which is
+    # also what a user who stored the two-character label ``""`` gets back, so the two are
+    # INDISTINGUISHABLE once rendered and a door comparing text discards one of them. This
+    # is the same test ``effective_value`` makes for the same reason, on the same key.
+    # ⚑ A present-``None`` answers ``None`` here too, together with absent, and both mean
+    # the file names no label — which is exactly the fall-through this door wants.
+    stored = stored_leaf_value(slot_for(std.agents, agent_id, "label"))
+    if stored is not None and stored != "":
+        return stored_leaf_display("label", stored)
 
     declared = _declared_label(agent_id)
     floor: dict[str, object] = {f"agent.{AGENT_DEFAULT_SUB}.label": declared}
@@ -693,30 +719,63 @@ def _agent_label(std: "StandardPaths", agent_id: str) -> str:
     return declared
 
 
-def _get_agent_key(cfg: AgentConfig, key: str) -> str | None:
-    """Read a single key from agent config."""
-    from kanibako.settings.agent_file import argv_text
+def _stored_rows(
+    table: "Mapping[str, object]", prefix: str = "",
+) -> list[tuple[str, str]]:
+    """*table*'s entries as sorted ``(name, rendered text)`` pairs.
 
+    ⚑⚑ THE ONE RENDERING RULE THE NOUN'S DISPLAY DOORS SHARE (P10).  ``info`` and ``show``
+    print the same three tables under different headings, and each used to coerce with a
+    bare ``f"{v}"`` — so a stored null printed Python's ``None`` at both, a spelling the CLI
+    refuses back, while the ``system`` noun's view of the very same file said ``null``.
+    ⚑ *prefix* IS THE FILE TAIL'S HEAD (``env.``, ``secret_path.``), not decoration:
+    ``stored_leaf_display`` keys its shape rule on the tail, which is what keeps an env var
+    NAMED ``run_args`` a scalar.
+    """
+    from kanibako.settings.agent_file import stored_leaf_display
+
+    return [
+        (k, stored_leaf_display(f"{prefix}{k}", v)) for k, v in sorted(table.items())
+    ]
+
+
+def _get_agent_key(cfg: AgentConfig, key: str) -> str | None:
+    """The RENDERED value the RECORD holds at *key*, or ``None`` when it holds none.
+
+    ⚑⚑ IT RENDERS, AND ITS CALLER'S FILE FALLBACK IS WHY IT MUST.  That fallback reads the
+    same leaf through ``read_leaf`` and so answers in the ``get`` conventions (spec §2h);
+    handing the record's value back raw made ONE verb answer in two vocabularies — a stored
+    ``""`` printed a blank line where the file route prints ``""``, and a stored null that
+    reached the record printed ``None``.
+    ⚑ ``None`` STILL MEANS "THE RECORD HAS NO ANSWER", never a rendered one: the record
+    models a SUBSET of what the file may hold, and a present-``None`` it does hold is
+    indistinguishable from a key it never saw, so both fall through to the file — which can
+    tell them apart and is the only reader that can.
+    """
     # secret_path.<VAR> — the SECRET category POINTER (host path). Checked before the
     # ``env.`` prefix. Returns the stored PATH, never the (secret) file contents.
     if key.startswith("secret_path."):
-        var = key[len("secret_path."):]
-        return cfg.secret_path.get(var)
-    if key.startswith("env."):
-        env_name = key[4:]
-        return cfg.env.get(env_name)
+        v: object = cfg.secret_path.get(key[len("secret_path."):])
+    elif key.startswith("env."):
+        v = cfg.env.get(key[4:])
     # ⚑ NO ``name`` ARM, AND ITS ABSENCE IS THE POINT (D8b): this is the agent-FILE read shim,
     # and ``label`` — the key that replaced it — is an ordinary declared leaf that reaches
     # ``cfg.state`` below like every other one. ``get`` reads the STORED tier by contract, so
     # an unset ``label`` answers "(not set)" here while ``info``/``show`` resolve the cascade.
-    if key == "run_args":
-        # ⚑ THE FILE'S OWN JOIN (``agent_file.argv_text``), never a second one here:
-        # it is the read half of the split ``write_leaf`` applies, and the two must
-        # not be able to drift. An empty list falls through to the file read below,
-        # which tells a present ``run_args: []`` apart from an absent key.
-        return argv_text(cfg.run_args) if cfg.run_args else None
-    # Everything else goes to state
-    return cfg.state.get(key)
+    elif key == "run_args":
+        # ⚑ THE FILE'S OWN JOIN (through ``agent_file.stored_leaf_display``), never a
+        # second one here: it is the read half of the split ``write_leaf`` applies, and
+        # the two must not be able to drift. An empty list falls through to the file read
+        # in the caller, which tells a present ``run_args: []`` apart from an absent key.
+        v = cfg.run_args or None
+    else:
+        # Everything else goes to state
+        v = cfg.state.get(key)
+    if v is None:
+        return None
+    from kanibako.settings.agent_file import stored_leaf_display
+
+    return stored_leaf_display(key, v)
 
 
 # ⚑ ``_agent_key_route`` IS GONE (S1) and its absence is deliberate. It was a thin
@@ -736,7 +795,7 @@ def _show_agent_config(
     ⚑ The parameter used to be ``agent_id`` and used to be handed the DISPLAY ref — a name that
     had stopped describing what it received.
     """
-    from kanibako.settings.agent_file import argv_text
+    from kanibako.settings.agent_file import stored_leaf_display
 
     has_output = False
 
@@ -747,7 +806,7 @@ def _show_agent_config(
         # ⚑ THE COMMAND-LINE SPELLING, not the list's Python repr: this line used to
         # print ``run_args = ['--a', '--b']`` at the user — a shape they cannot type
         # back in.
-        print(f"  run_args = {argv_text(cfg.run_args)}")
+        print(f"  run_args = {stored_leaf_display('run_args', cfg.run_args)}")
     has_output = True
 
     # agent-state keys
@@ -757,23 +816,23 @@ def _show_agent_config(
     # stored value second, which reads as two keys of the same name.
     state_rows = {k: v for k, v in cfg.state.items() if k != "label"}
     if state_rows:
-        for k, v in sorted(state_rows.items()):
-            print(f"  {k} = {v}")
+        for k, text in _stored_rows(state_rows):
+            print(f"  {k} = {text}")
         has_output = True
     elif effective:
         print("  # (no state overrides)")
 
     # [env] section
     if cfg.env:
-        for k, v in sorted(cfg.env.items()):
-            print(f"  env.{k} = {v}")
+        for k, text in _stored_rows(cfg.env, "env."):
+            print(f"  env.{k} = {text}")
         has_output = True
 
     # secret_path POINTERS (VAR -> host path). Only the PATH is shown; the token
     # file contents (the secret) are never read here.
     if cfg.secret_path:
-        for k, v in sorted(cfg.secret_path.items()):
-            print(f"  secret_path.{k} = {v}")
+        for k, text in _stored_rows(cfg.secret_path, "secret_path."):
+            print(f"  secret_path.{k} = {text}")
         has_output = True
 
     if not has_output:

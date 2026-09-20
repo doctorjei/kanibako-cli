@@ -27,6 +27,7 @@ from kanibako.settings.config_io import (
     read_stored_leaf,
     remove_nested_key,
     render_stored_scalar,
+    stored_leaf_object,
     write_nested_key,
 )
 from kanibako.settings.settings_resolve import SettingsError
@@ -318,7 +319,7 @@ def stored_leaf_text(tail: str, value: object) -> str | None:
 
     ⚑⚑ ``None`` MEANS "NOT MINE", NEVER "ABSENT", and that is why this answers only the shape
     question.  The callers' empty-and-bool idioms are not the same as each other — the three
-    ``pref`` idioms (spec §2h), ``get``'s empty-string→unset, the launch table's raw ``str()`` of a
+    idioms the read verbs spell apart (spec §2h) against the launch table's raw ``str()`` of a
     bool its consumer re-coerces — so deciding them here would change values that are not argv.
     """
     if tail in _LIST_VALUED_KEYS and isinstance(value, list):
@@ -348,38 +349,63 @@ def stored_leaf_shape(tail: str, value: object) -> object:
     return value
 
 
-def _render_argv(tail: str, v: object) -> str | None:
-    """``read_leaf``'s renderer for a list-valued *tail*: :func:`stored_leaf_text`, falling back
-    to the scalar convention for anything that module owns no rule for.
+def stored_leaf_display(tail: str, value: object) -> str:
+    """The text shown for *value* stored at *tail*: :func:`stored_leaf_text`, falling back to
+    the scalar convention for anything this module owns no rule for.
 
-    ⚑ AN EMPTY LIST RENDERS ``""``, NOT ``None``, and that is deliberate: a present
-    ``run_args: []`` is the user's explicit "no arguments", and the absent answer would print
-    "(not set)" over an override that is really there.  The scalar convention's empty→``None``
-    rule is about an empty STRING, kanibako's idiom for no value; an empty LIST is a value.
-    :func:`stored_leaf_text` returns that ``""`` rather than ``None``, which is what keeps the
-    fallback below from swallowing it.
+    ⚑⚑ THE COMPOSED PAIR, PUBLIC SO NO SURFACE HAS TO COMPOSE IT AGAIN (P10).  Every verb
+    that shows a stored leaf owes BOTH halves — the shape rule for the leaves this module
+    owns, and ``config_io``'s ONE scalar convention for the rest — and a surface that took
+    only the second printed the Python repr ``['--a', '--b']`` at a user while one that took
+    only the first printed ``None`` for a stored null.
+    ⚑ TOTAL, like the convention it falls back to: absence is reported by the READ, above any
+    rendering, so a caller with no value to show must not call here at all.
 
-    ⚑ A STRING here renders through the scalar convention UNCHANGED — that is what the other
-    write route stored before both routes agreed, and :func:`load` reads it the same way.
+    ⚑ AN EMPTY LIST RENDERS BLANK, and that is deliberate: a present ``run_args: []`` is the
+    user's explicit "no arguments", so it is a VALUE and reads back as the empty command line
+    it is.  :func:`stored_leaf_text` answers that blank itself, which is what keeps the
+    fallback — where the empty STRING has its own spelling, ``""`` (spec §2h) — from giving
+    one of kanibako's empty idioms to a shape that is not it.
+
+    ⚑ A STRING at a list-valued *tail* renders through the scalar convention UNCHANGED — that
+    is what the other write route stored before both routes agreed, and :func:`load` reads it
+    the same way.
     """
-    text = stored_leaf_text(tail, v)
-    return render_stored_scalar(v) if text is None else text
+    text = stored_leaf_text(tail, value)
+    return render_stored_scalar(value) if text is None else text
+
+
+def stored_leaf_value(slot: AgentFileSlot) -> object:
+    """The RAW value the file holds at *slot*, UNRENDERED, or ``None`` when it holds none.
+
+    ⚑⚑ FOR A DOOR THAT JUDGES THE VALUE, WHICH :func:`read_leaf` CANNOT SERVE: the renderings
+    are deliberately not injective — a stored ``""`` and a stored ``'""'`` both read back
+    ``""`` (spec §2h) — so a door deciding "did the user leave this empty?" must ask the
+    object, never the text.
+    🛑 ABSENT AND A PRESENT-``None`` BOTH ANSWER ``None`` HERE, and that is the whole reason
+    this is not a ``get`` route: both mean "this file names no value at *slot*", which is
+    what a FALLING-THROUGH door wants and exactly what a verb reporting "(not set)" must not
+    be told.  That verb uses :func:`read_leaf`.
+    """
+    sections, leaf = _read_address(slot.tail)
+    return stored_leaf_object(slot.path, sections, leaf)
 
 
 def read_leaf(slot: AgentFileSlot) -> str | None:
     """The value STORED at *slot*, or ``None`` when absent / no file.
 
-    ⚑ Through :func:`~kanibako.settings.config_io.read_stored_leaf` — its two rendering
-    conventions (bools lowercase, a stored ``""`` reading as ``None``) are load-bearing for
-    every ``get``, so this must NOT re-render on top of them.  The one leaf whose stored shape
-    is NOT a scalar hands its own renderer in instead (:func:`_render_argv`); without it a
-    ``get`` printed the Python repr ``['--e', '--f']`` at the user.
+    ⚑ Through :func:`~kanibako.settings.config_io.read_stored_leaf` — its rendering
+    conventions (bools lowercase, and spec §2h's empty idioms each spelled apart) are
+    load-bearing for every ``get``, so this must NOT re-render on top of them.  The one leaf
+    whose stored shape is NOT a scalar hands its own renderer in instead
+    (:func:`stored_leaf_display`); without it a ``get`` printed the Python repr ``['--e', '--f']``
+    at the user.
     """
     sections, leaf = _read_address(slot.tail)
     return read_stored_leaf(
         slot.path, sections, leaf,
         render=(
-            partial(_render_argv, slot.tail)
+            partial(stored_leaf_display, slot.tail)
             if slot.tail in _LIST_VALUED_KEYS
             else render_stored_scalar
         ),
@@ -511,9 +537,16 @@ def load(path: Path) -> AgentConfig:
     # ⚑ ISINSTANCE-GUARDED, like every modelled table below (S3/D-7): the READ side
     # stays permissive about a wrong SHAPE on purpose — the reads are how a user SEES
     # a broken file. The WRITE side refuses it (``table_value_error``).
+    # ⚑⚑ A ``None`` value is KEPT as ``None``, exactly as ``cfg.secret_path`` below and
+    # ``cfg.state`` above keep it, and for the same 2026-08-17 reason: it is the DECLARED
+    # suppression state (spec §2h's present-``None``), not a malformed one. A bare
+    # ``str()`` turned ``FOO:`` into the four-byte string ``"None"`` INSIDE the record —
+    # after which no reader could tell it from a user who really wrote ``FOO: None``, and
+    # the file fallback that answers ``null`` for every other category was never reached.
+    # The two tables disagreed about one idiom while sitting two lines apart.
     env_sub = agent_sec.get("env", {})
     cfg.env = {
-        k: str(v) for k, v in env_sub.items()
+        k: (v if v is None else str(v)) for k, v in env_sub.items()
     } if isinstance(env_sub, dict) else {}
     # secret_path: VAR -> host PATH pointer, read DIRECTLY from the root's
     # ``secret_path`` table (spec §2a SECRET category).  A plain string path; the
@@ -555,7 +588,7 @@ def save(path: Path, cfg: AgentConfig) -> None:
     # DEFAULT state, so it was the widest phantom in the file: ``run_args`` was emitted
     # unconditionally, so every freshly seeded agent file carried ``run_args: []`` and
     # ``agent reset --all`` counted that empty list as an override the user never wrote.
-    # ⚑ A PRESENT ``run_args: []`` IS STILL A VALUE (:func:`_render_argv`) and is NOT at
+    # ⚑ A PRESENT ``run_args: []`` IS STILL A VALUE (:func:`stored_leaf_display`) and is NOT at
     # risk here: all three :func:`save` callers write a file that does not yet exist
     # (``cli._ensure_initialized``, and start.py's two ``agent_cfg_dirty`` sites, which
     # are first-use only), so nothing round-trips a user's explicit empty list through
@@ -784,7 +817,7 @@ def state_level(
     :func:`stored_leaf_text`; the consumer splits that string back with :func:`argv_words`.
     ⚑⚑ THE FOLD IS ``is not None``, NEVER A TRUTHY TEST, and that is the whole reason
     :attr:`AgentConfig.run_args` is three-state.  A present ``run_args: []`` is the user's
-    explicit "no arguments" (:func:`_render_argv` says the same of the display), so it must
+    explicit "no arguments" (:func:`stored_leaf_display` says the same of the display), so it must
     reach the cascade and SET the key — that is how an agent OPTS OUT of
     ``agent.default.run_args``.  A truthy test folds it in with the absent key and silently
     hands that agent the default it wrote the empty list to refuse.

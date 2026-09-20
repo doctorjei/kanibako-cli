@@ -50,7 +50,11 @@ class AgentConfig:
     state: dict[str, str | None] = field(default_factory=dict)
     # ⚑ `env` is the READ side of the `agent` verbs, NOT a delivery route: env
     # reaches the box through the collapse's arbitrated slots (MBR-1 P3).
-    env: dict[str, str] = field(default_factory=dict)
+    # ⚑ `str | None` LIKE ITS SIBLING BELOW, and for the same reason: a present-`None`
+    # is the DECLARED suppression state (spec §2h), so the record must be able to hold
+    # one. Typed `dict[str, str]`, this field forced `load` to `str()` it into the word
+    # `"None"` and the two tables gave different answers for one idiom.
+    env: dict[str, str | None] = field(default_factory=dict)
     secret_path: dict[str, str | None] = field(default_factory=dict)
     transform_settings: dict = field(default_factory=dict)
     # ⚑ Carried OPAQUELY through load→write; no live producer today.  A guard

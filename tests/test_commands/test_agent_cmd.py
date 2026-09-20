@@ -155,6 +155,54 @@ class TestRunInfo:
         assert "EDITOR" in out
         assert "--no-helpers" in out
 
+    def test_a_label_stored_EMPTY_still_falls_through_to_the_declaration(
+        self, agent_env, capsys,
+    ):
+        """EMPTY IS NOT A VALUE AT THIS DOOR, and falsiness stopped being the test for it.
+
+        The read verbs owe the user the difference between a value they wrote and a key they
+        never set (spec §2h), so a stored ``""`` RENDERS as the two characters ``""`` — which
+        is TRUE, and would print ``Label: ""``.  This door's contract is the opposite one: it
+        always prints something, so an empty label falls to the plugin's declaration.  ⚑ The
+        door therefore tests the STORED OBJECT, never the rendering; its twin below pins what
+        goes wrong when it tests the text instead.
+        """
+        from kanibako.commands.agent_cmd import run_info
+        from kanibako.settings.agent_file import slot_for, write_leaf
+
+        write_leaf(slot_for(agents_dir(agent_env), "claude", "label"), "")
+        capsys.readouterr()
+        assert run_info(argparse.Namespace(agent_id="claude")) == 0
+        out = capsys.readouterr().out
+        assert "Claude Code" in out, out
+        assert 'Label: ""' not in out, out
+
+    def test_a_label_stored_as_two_QUOTE_CHARACTERS_still_displays(
+        self, agent_env, capsys,
+    ):
+        """THE STORED VALUE AND ITS RENDERING ARE NOT THE SAME QUESTION, and this door asks
+        the first one.
+
+        ``label: '""'`` is a two-character STRING a user may perfectly well want, and it
+        RENDERS identically to a stored empty string — that is deliberate (spec §2h), and it
+        is exactly why a door declining an empty value must not compare text.  One that did
+        silently discarded this label and printed the plugin's declaration instead, with no
+        message and rc 0.
+
+        ⚑ PINNED AS A PAIR WITH ITS TWIN ABOVE.  Either row alone passes under the wrong
+        implementation: the twin passes when the door discards BOTH, and this one passes
+        when it discards NEITHER.  Only together do they say "tell them apart".
+        """
+        from kanibako.commands.agent_cmd import run_info
+        from kanibako.settings.agent_file import slot_for, write_leaf
+
+        write_leaf(slot_for(agents_dir(agent_env), "claude", "label"), '""')
+        capsys.readouterr()
+        assert run_info(argparse.Namespace(agent_id="claude")) == 0
+        out = capsys.readouterr().out
+        assert 'Label:        ""' in out, out
+        assert "Claude Code" not in out, out
+
     def test_info_missing_agent(self, agent_env, capsys):
         from kanibako.commands.agent_cmd import run_info
 
@@ -162,6 +210,113 @@ class TestRunInfo:
         rc = run_info(args)
         assert rc == 1
         assert "not found" in capsys.readouterr().err
+
+
+# ---------------------------------------------------------------------------
+# The three §2h empty idioms, at every ``agent`` door that prints a stored value
+# ---------------------------------------------------------------------------
+
+
+class TestTheAgentNounSpellsTheEmptyIdiomsApart:
+    """Spec §2h's three empty idioms at the ``agent`` noun: a present-``None`` is ``null``,
+    a terminal ``""`` is ``""``, and only an ABSENT key answers "(not set)".
+
+    ⚑⚑ NOT ONE DOOR IN THIS NOUN WAS PINNED FOR ANY OF THEM, which is how ``agent get <node>
+    env.<VAR>`` printed Python's ``None`` through a fully green suite — over the same file
+    where ``system get agent.<node>.env.<VAR>`` printed ``null``.
+
+    ⚑ THE ``system`` VERB IS THE ORACLE, not a second assertion of the same thing.  Both
+    verbs read ONE file, so a pin that only re-states the ``agent`` verb's own output cannot
+    tell a correct rendering from a consistently wrong one; the disagreement is the defect,
+    and the disagreement is what is asserted.
+
+    ⚑ THE ``"None"`` SWEEP IS AN ORACLE TOO: the failure is a repr leaking SOMEWHERE in the
+    block, which an equality on one line cannot see.
+    """
+
+    #: One agent file holding each idiom in the record's MODELLED tables and in its flat
+    #: state — the tables disagreed with each other, so a pin on any one of them is silent
+    #: about the rest.
+    FILE = {
+        "self": {
+            "model": None,
+            "access": "",
+            "env": {"NULLV": None, "EMPTY": "", "PLAIN": "x"},
+            "secret_path": {"TOKNULL": None, "TOKEMPTY": ""},
+        },
+    }
+
+    #: tail → the ONE spelling both verbs must answer with.
+    SPELLINGS = {
+        "model": "null",
+        "access": '""',
+        "env.NULLV": "null",
+        "env.EMPTY": '""',
+        "env.PLAIN": "x",
+        "secret_path.TOKNULL": "null",
+        "secret_path.TOKEMPTY": '""',
+    }
+
+    def _seed(self, data_path):
+        from kanibako.settings.config_io import dump_doc
+
+        path = agent_settings_path(agents_dir(data_path), "claude")
+        dump_doc(path, self.FILE)
+        return path
+
+    @pytest.mark.parametrize("tail", sorted(SPELLINGS))
+    def test_get_answers_what_system_get_answers(self, tail, agent_env, capsys):
+        """``agent get <node> <tail>`` and ``system get agent.<node>.<tail>``, one file."""
+        from kanibako.commands.agent_cmd import run_get
+        from kanibako.commands.system_cmd import run_get as system_get
+
+        self._seed(agent_env)
+        expected = self.SPELLINGS[tail]
+
+        capsys.readouterr()
+        assert run_get(argparse.Namespace(agent_id="claude", key=tail)) == 0
+        mine = capsys.readouterr().out.strip()
+
+        assert system_get(argparse.Namespace(key=f"agent.claude.{tail}")) == 0
+        theirs = capsys.readouterr().out.strip()
+
+        assert mine == expected, mine
+        assert theirs == f"agent.claude.{tail}={expected}", theirs
+
+    def test_get_still_says_not_set_for_an_ABSENT_key(self, agent_env, capsys):
+        """The state the cure could have destroyed.  Teaching a renderer to answer ``null``
+        is exactly how "never set" gets collapsed into "set to null", so absence is pinned
+        beside the idioms — in a PARAMETRIC family, where a valid name need not exist."""
+        from kanibako.commands.agent_cmd import run_get
+
+        self._seed(agent_env)
+        capsys.readouterr()
+        assert run_get(argparse.Namespace(agent_id="claude", key="env.NOSUCH")) == 0
+        captured = capsys.readouterr()
+        assert "(not set)" in captured.err, captured.err
+        assert "null" not in captured.out, captured.out
+
+    @pytest.mark.parametrize("door", ["show", "info"])
+    def test_the_display_doors_spell_every_idiom_and_no_python_repr(
+        self, door, agent_env, capsys,
+    ):
+        """``agent show`` and ``agent info`` print the same three tables under different
+        headings, and each coerced with a bare ``f"{v}"`` — two copies of one missing rule,
+        so a pin on either alone leaves the other free to drift."""
+        from kanibako.commands import agent_cmd
+
+        self._seed(agent_env)
+        capsys.readouterr()
+        run = getattr(agent_cmd, f"run_{door}")
+        args = argparse.Namespace(agent_id="claude", effective=False)
+        assert run(args) == 0
+        out = capsys.readouterr().out
+
+        for tail, expected in self.SPELLINGS.items():
+            leaf = tail.rpartition(".")[2]
+            assert f"{leaf} = {expected}" in out, (tail, out)
+        assert "None" not in out, out
+        assert "NOSUCH" not in out, out
 
 
 # ---------------------------------------------------------------------------

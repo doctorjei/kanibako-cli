@@ -169,13 +169,44 @@ readability choice, not a correctness one.
 ## Stored-value reads (the `get` model's stored-at-noun read + its rendering)
 
 ```python
-def render_stored_scalar(v: object) -> str | None
+def render_stored_scalar(v: object) -> str
 ```
-Render a stored scalar for `get` output: bools lowercase, empty → None.
+Render a stored scalar for `get` output, keeping §2h's empty idioms apart: present-`None` → `null`,
+terminal `""` → `""`, bool → lowercase, else `str(v)`.
 
 The single rendering function, shared by the stored read below and by `config show` / `--effective`
-(`config_interface`, line ~1041) so one value cannot display two ways. `commands/agent_cmd.py`
-names it for the same reason.
+(`config_interface`) so one value cannot display two ways. `commands/agent_cmd.py` and
+`settings/config_display.py` name it for the same reason.
+
+⚑ **TOTAL, AND THE TYPE IS THE RULE (P3).** It answered `str | None` until 2026-09-20, with the tail
+`return str(v) if v != "" else None` — so a leaf the user had deliberately set to `""` read back
+`(not set)`, the answer reserved for a key the file does not mention. Spec §2h names `""` as a
+terminal value that is **not** unset, so that collapse was a defect, not a convention. Absence is
+reported by the READ, above any rendering; a renderer able to answer `None` can therefore only
+collapse "not set" into a value that is really there.
+
+🛑 **A DOOR THAT JUDGES EMPTINESS MUST NOT JUDGE THE RENDERING.** These spellings are not
+injective on purpose: a stored `""` and a stored `'""'` both render `""`. `commands/agent_cmd.py`'s
+`_agent_label` briefly tested `rendered != '""'` and so discarded a user's two-character label.
+Such a door reads `stored_leaf_object` below.
+
+⚑ `null` names **the YAML the file holds, not the word you type to write it**: `--null` is the write
+spelling, and `set <key>=null` stores the three-character STRING, which reads back through this same
+line. Reading a `get` line back is not always retyping it.
+
+```python
+def stored_leaf_object(noun_file, sections, leaf, *, default: object = None) -> object
+```
+The RAW value stored at `sections/leaf` in *noun_file*, or *default* when absent.
+
+⚑ **THE ONE WALK.** Both rendering readers below are this plus their own renderer, so the two cannot
+grow separate ideas of where a leaf lives. (They were two hand-copied walks until 2026-09-20.)
+
+🛑 *default* is what "not there" looks like **to the caller**, and the caller owns that choice
+because the raw answer cannot make it: a present-`None` is indistinguishable from the `None`
+default. The two readers below pass the module-private `_ABSENT` sentinel because they must tell
+absence from a present-`None`; `agent_file.stored_leaf_value` takes the `None` default because its
+one door treats both as "the file names no value here".
 
 ```python
 def read_stored_leaf(noun_file, sections, leaf, *, render=render_stored_scalar) -> str | None
@@ -183,33 +214,26 @@ def read_stored_leaf(noun_file, sections, leaf, *, render=render_stored_scalar) 
 Return the value STORED at `sections/leaf` in *noun_file* (the `get` model's stored-at-noun read),
 or `None` when absent / no file.
 
-A root-level scalar (empty *sections*, e.g. a flat config field) reads the document root. Bools
-render lowercase `"true"`/`"false"` (matching `set`'s coercion + `show`'s rendering); a stored empty
-string reads as `None` (`"(not set)"`), preserving the prior "empty ⇒ unset" convention.
+A root-level scalar (empty *sections*, e.g. a flat config field) reads the document root.
 
-⚑ **`render` EXISTS BECAUSE THE ABSENT ANSWER NEVER REACHES A RENDERER.** A leaf that is not there
-returns `None` from the walk without rendering anything, so a caller cannot tell absence from a
-rendered value once it has the result — the rendering has to go IN, not be layered on the way out.
-The scalar convention is not universal: `agent_file.read_leaf` passes `_render_argv` for its one
-list-valued leaf (`run_args`), because a shape rule belongs with the module that owns the shape and
-`str()` on a list printed the Python repr `['--e', '--f']` at the user. Every other caller —
-`config_interface`'s four sites — takes the default.
+⚑ **`None` MEANS ABSENT AND NOTHING ELSE, AND THE TOTAL `render` TYPE IS WHAT GUARANTEES IT.** A
+leaf that is not there returns above without rendering anything, and no renderer this signature
+accepts can produce that answer for a value that IS there — so a caller cannot be handed an
+ambiguous result and does not have to know the rule.
+
+⚑ `render` is a PARAMETER because the scalar convention is not universal: `agent_file.read_leaf`
+passes `stored_leaf_display` for its one list-valued leaf (`run_args`), because a shape rule belongs
+with the module that owns the shape and `str()` on a list printed the Python repr `['--e', '--f']`
+at the user. Every other caller takes the default.
 
 ⚑ Spec §2a's read-verb rule: **plain `get` = stored-at-noun, `--effective` = cascade.** This
 function is the stored-at-noun half. It never consults the cascade, which is why a system-scope
 `get system.agent` and a pref'd box's `--effective` MAY disagree and both be correct.
 
 ```python
-def read_stored_pref(noun_file: "Path | None", sections: tuple[str, ...], leaf: str) -> str | None
+def read_stored_pref(noun_file, sections, leaf, *, render=render_stored_pref) -> str | None
 ```
 Read a stored `pref` REQUEST, rendering all THREE empty idioms apart.
-
-⚑ The general `read_stored_leaf` renders a stored `""` as `None` (`"(not set)"`) — the
-"empty ⇒ unset" convention. That convention is WRONG for a pref: §2h designates `get` as the verb
-that *"returns the REQUEST"*, and the three idioms it must forward untouched (present-`None`,
-terminal `""`, and absence) are three DIFFERENT requests. Collapsing two of them into one display
-makes the suppression request — the only channel a box has to drop something its agent declares —
-indistinguishable from having asked nothing.
 
 absent → `None` (`"(not set)"`) · present-`None` → `"null"` · `""` → `'""'` · else the value.
 
@@ -218,10 +242,18 @@ pref.system.agent` returns the REQUEST" *and continues* "`--effective` shows BOT
 resulting value — so *"why did `system.agent` resolve to zippity"* is answerable from the snapshot
 instead of by reading files. This is what closes the 'I set it and nothing happened' failure family."
 
-⚑ **THE FOUR-BRANCH TAIL IS THE WHOLE POINT — do not refactor it into `render_stored_scalar`.**
-The `None` and `""` arms are exactly what that function collapses. The `""` test precedes the
-`bool` test safely (`False == ""` is `False`), but the ORDER is not arbitrary: `None` must be
-checked before anything that would stringify it.
+⚑ **`render_stored_pref` AGREES WITH `render_stored_scalar` TODAY, STRING FOR STRING, AND IS STILL
+NOT IT — do not fold them.** The old justification here was that the scalar renderer *collapsed*
+`""` into the absent answer; it no longer does, and the reason the two stay apart is now the
+different one the source states: they answer different QUESTIONS. `render_stored_scalar` **decides**
+what a scalar leaf reads back as; `render_stored_pref` may only **forward** — *"the pref layer MUST
+NOT interpret emptiness AT ALL … otherwise it becomes a FOURTH place deciding what 'empty' means"*
+(§2h). A request also carries whatever shape its TARGET holds, so a rule the scalar convention may
+adopt about non-scalars is one this side must not inherit. Folding them would put one branch under
+two authorities; **the agreement is the point, not a reason to merge.**
+
+⚑ The `""` test precedes the `bool` test safely (`False == ""` is `False`), but the ORDER is not
+arbitrary: `None` must be checked before anything that would stringify it.
 
 ---
 
@@ -278,8 +310,9 @@ future edit break something silently at that exact line:
 * at the `isinstance(text, str)` guard — deleting the guard is silent until it OOMs the box;
 * above the `try:` — the parse-failure normalization is what stops a raw `yaml.YAMLError` reaching
   the CLI as a traceback, and it looks like boilerplate;
-* at `read_stored_pref`'s four-branch tail — it looks exactly like a candidate for collapsing into
-  `render_stored_scalar`, which is the one thing it must not do.
+* at `render_stored_pref`'s four-branch tail — it now agrees with `render_stored_scalar` string for
+  string, which makes it look exactly like a candidate for collapsing into it, and that is the one
+  thing it must not do.
 
 A fourth was ADDED above `write_root_key`, pointing here: the pair currently has no reachable route
 and reads as dead code.

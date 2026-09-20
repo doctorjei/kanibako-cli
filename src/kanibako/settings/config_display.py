@@ -23,9 +23,37 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from kanibako.settings.agent_file import stored_leaf_text
-from kanibako.settings.config_io import load_doc
+from kanibako.settings.config_io import load_doc, render_stored_scalar
 from kanibako.settings.kb_store import SCOPE_CONTAINMENT, __MISSING__
 from kanibako.settings.settings_prefs import PREF_ROOT
+
+
+def _flatten_table(node: dict, prefix: str, out: dict[str, str]) -> None:
+    """Flatten one stored TABLE into *out* as ``dotted.key → rendered value``, recursing.
+
+    ⚑⚑ ONE WALK FOR BOTH FLATTENERS BELOW, AND IT IS A FIX, NOT A TIDY-UP (P4/P15).  They
+    were two copies that their own docstrings called "the SAME walk" — and they were not:
+    the ``null`` arm was written on the ``pref`` side and never carried to its twin, so a
+    present-``None`` stored in a scope table printed Python's ``None`` in ``system show``
+    while the identical value under ``pref:`` printed ``null``.  One copy cannot disagree
+    with itself.
+    ⚑ RENDERING IS NOT DECIDED HERE — it is ``agent_file.stored_leaf_text`` for a shape this
+    module does not own, else the ONE scalar convention ``get`` answers with
+    (``config_io.render_stored_scalar``), which is what makes the blocks BELOW agree with
+    ``get`` about a stored value by construction rather than by two walks being kept in step.
+    ⚑ THAT IS A CLAIM ABOUT THIS WALK, NOT ABOUT THE VERB.  ``show --effective`` opens with a
+    merged-config listing that never comes through here: it prints ``KanibakoConfig``'s own
+    FIELD names by ``str()``, so ``box_share_images = False`` sits a few lines above this
+    walk's ``box.share_images = false``.  Those names are not keys and nothing retypes them,
+    which is why the mismatch is cosmetic — but it is real, and a sentence saying ``show``
+    and ``get`` agree FULL STOP would be false.
+    """
+    for k, v in node.items():
+        if isinstance(v, dict):
+            _flatten_table(v, f"{prefix}{k}.", out)
+        else:
+            text = stored_leaf_text(k, v)
+            out[f"{prefix}{k}"] = render_stored_scalar(v) if text is None else text
 
 
 def _nested_settings_overrides(path: Path | None) -> dict[str, str]:
@@ -38,10 +66,10 @@ def _nested_settings_overrides(path: Path | None) -> dict[str, str]:
     ``system.auth.share_allowed``, downward ``workset.*``/``box.*`` defaults)
     in the system SETTINGS file — entries the flat ``KanibakoConfig`` override
     view cannot see.  Flattens every top-level scope table EXCEPT ``agent``
-    (rendered by the agent-settings view).  Bools render lowercase, matching
-    ``get``.
+    (rendered by the agent-settings view).  Values render through
+    :func:`_flatten_table`, so one stored value has one spelling at every verb.
 
-    ⚑ AND A NON-SCALAR SHAPE RENDERS THROUGH ITS OWNER (``agent_file.stored_leaf_text``),
+    ⚑ A NON-SCALAR SHAPE RENDERS THROUGH ITS OWNER (``agent_file.stored_leaf_text``),
     exactly as in :func:`_pref_overrides`.  Skipping ``agent`` does NOT put the argv list
     out of reach: a ``pref:`` table is not a scope table but is not skipped either, so
     ``pref.agent.default.run_args`` walks through here and printed the Python repr
@@ -54,16 +82,6 @@ def _nested_settings_overrides(path: Path | None) -> dict[str, str]:
         return {}
     out: dict[str, str] = {}
 
-    def _walk(node: dict, prefix: str) -> None:
-        for k, v in node.items():
-            if isinstance(v, dict):
-                _walk(v, f"{prefix}{k}.")
-            elif isinstance(v, bool):
-                out[f"{prefix}{k}"] = str(v).lower()
-            else:
-                text = stored_leaf_text(k, v)
-                out[f"{prefix}{k}"] = str(v) if text is None else text
-
     for key, val in data.items():
         # ``resource_overrides`` is the LEGACY dead table of the dropped
         # ``resource.*`` surface (spec §3 D-M7): the settable code is gone, so a
@@ -72,7 +90,7 @@ def _nested_settings_overrides(path: Path | None) -> dict[str, str]:
         # settable surface.
         if key in ("agent", "resource_overrides") or not isinstance(val, dict):
             continue
-        _walk(val, f"{key}.")
+        _flatten_table(val, f"{key}.", out)
     return out
 
 
@@ -81,10 +99,12 @@ def _pref_overrides(path: Path | None) -> dict[str, str]:
 
     ``config show`` must LIST prefs (spec §2h read verbs). The box/workset plain
     view reads ``load_project_overrides`` + ``read_agent_settings``, neither of
-    which can see a ``pref:`` table, so it is flattened here with the SAME walk
-    ``_nested_settings_overrides`` uses. A present-``None`` request renders as
-    ``null`` — it is a REQUEST TO SUPPRESS, and showing it as blank would make
-    the one thing a box cannot otherwise express look like nothing at all.
+    which can see a ``pref:`` table, so it is flattened here through
+    :func:`_flatten_table` — literally the walk ``_nested_settings_overrides``
+    uses, which is what the two docstrings claimed while each carried its own copy.
+    A present-``None`` request renders as ``null`` — it is a REQUEST TO SUPPRESS,
+    and showing it as blank would make the one thing a box cannot otherwise
+    express look like nothing at all.
 
     ⚑ A request whose TARGET holds a non-scalar shape renders through the module that
     owns that shape (``agent_file.stored_leaf_text``): ``pref.agent.default.run_args``
@@ -100,20 +120,7 @@ def _pref_overrides(path: Path | None) -> dict[str, str]:
     if not isinstance(table, dict):
         return {}
     out: dict[str, str] = {}
-
-    def _walk(node: dict, prefix: str) -> None:
-        for k, v in node.items():
-            if isinstance(v, dict):
-                _walk(v, f"{prefix}{k}.")
-            elif isinstance(v, bool):
-                out[f"{prefix}{k}"] = str(v).lower()
-            elif v is None:
-                out[f"{prefix}{k}"] = "null"
-            else:
-                text = stored_leaf_text(k, v)
-                out[f"{prefix}{k}"] = str(v) if text is None else text
-
-    _walk(table, f"{PREF_ROOT}.")
+    _flatten_table(table, f"{PREF_ROOT}.", out)
     return out
 
 
@@ -168,18 +175,18 @@ def _print_pref_block(snapshot: Any, out: Any) -> None:
         if isinstance(value, Bind):
             opts = f"  [{value.opts}]" if value.opts else ""
             return f"{value.host} -> {value.box}{opts}"
-        if value is None:
-            return "null"
-        # ⚑ A NON-SCALAR SHAPE RENDERS THROUGH ITS OWNER, exactly as in the two override
-        # walks above — BOTH halves printed the Python repr ``['--a', '--b']`` here, the
+        # ⚑ A NON-SCALAR SHAPE RENDERS THROUGH ITS OWNER, exactly as in the override walk
+        # above — BOTH halves printed the Python repr ``['--a', '--b']`` here, the
         # request off the ``pref`` subtree and the result off the target it names.
+        # ⚑ AND A SCALAR THROUGH ``config_io.render_stored_scalar``, exactly as there: the
+        # ``null`` arm that used to sit here was a fourth hand-kept copy of the same rule.
         # ⚑ *leaf* is the TARGET's tail, never the row's, because a dest-keyed row's tail is
         # a DESTINATION (data, not a key segment) and a destination contains dots.  The two
         # cannot collide anyway — a dest-keyed arm's target tail is a category name and its
         # entries arrive as ``BindEntry``/``Bind``, both matched above — but keying on the
         # target is what makes that true BY CONSTRUCTION rather than by coincidence.
         text = stored_leaf_text(leaf, value)
-        return str(value) if text is None else text
+        return render_stored_scalar(value) if text is None else text
 
     def _at(target: str) -> Any:
         """The RESULT node at *target*, read in the same snapshot; ``__MISSING__`` if absent."""
