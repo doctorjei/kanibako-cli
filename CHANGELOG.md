@@ -12,6 +12,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`kanibako box show` did not list a box's own `common`, `caches` and `seeded` declarations.**
+  The abstract categories are real, declared keys — the keyspace spec says a user sets them in YAML
+  and `config show` lists them — but the plain view at the box noun could not see a category table
+  at all. A `box.yaml` carrying nothing but a `caches:` declaration was answered `(no overrides)`,
+  so the one view that reports what you wrote at this noun denied you had written anything. The
+  plain view now lists them under their real keys (`box.caches.~/.cache/uv`), from the same key
+  listing the workset and system nouns already print, and nothing else in the file changed: the
+  scalars and the `pref` requests still appear exactly once each, and a declaration written for a
+  *containing* scope — a `workset:` table in a box's file, which kanibako drops with a warning — is
+  not listed as an override, because it is not one. ⚑ Values in these rows print in Python's list
+  spelling, `box.caches.~/.cache/uv = ['uv']`; that is how the workset and system nouns already
+  render a declaration's sources, and the box noun rendered no category row at all before this, so
+  the spelling reaches box users here for the first time. `bindings`, `masks`, `synced`, `env` and
+  `secret_path` stored at a box are unchanged and stay unlisted in this view.
+
+- **`kanibako workset show --effective` never showed the binding a working set's `common`, `caches`
+  and `seeded` declarations produce.** The keyspace spec asks `--effective` to show both the
+  declaration and the binding it derives, so that a user can see *why* a mount exists; at this noun
+  the derived half never appeared. A user who wrote `common: {~/shared/docs: [teamdocs]}` was shown
+  `teamdocs` back, and nothing about the directory that is actually mounted or where it lives. The
+  view now prints, under each declaration, the host source it derives and the guest destination it
+  lands at, with `(mount)` or — for `seeded`, which derives a copy rather than a mount — `(copy)`. A
+  declaration that a `masks` entry swallows is printed as the loss it is and names the mask that
+  took the destination, instead of being reported as a live mount. What the block answers is what
+  **this working set's** declarations derive among themselves; a working set names no box, so a
+  box's own declarations are not part of the picture.
+
+- **`kanibako workset share list --effective` printed the wrong source for any share written
+  against the working set's own root.** `@meta.workset.path` was missing from the resolve this
+  listing builds, and an anchor with no referent renders as nothing — so a share sourced
+  `@meta.workset.path/refdir` was listed as mounting `/refdir`, a path at the filesystem root that
+  exists nowhere, at exit status 0 and with no warning. The same gap silently mis-rooted every
+  `common` / `caches` / `seeded` declaration, which the spec roots at that anchor by definition.
+  The anchor now resolves to the working set's root in both listings.
+
 - **`kanibako workset show` was blind to the workset's own settings file.** A working set's
   `common`, `caches` and `seeded` declarations — the abstract categories a workset exists to carry —
   appeared in neither the plain view nor `--effective`, at the one noun that owns them, though the
@@ -186,6 +221,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`$TERM` now resolves in a settings value, and falls back to `xterm` when the host has none.**
+  The expression engine routed `$AGENT`, `$WORKSET` and `$XDG_*` and refused every other name, so a
+  value written `$TERM` — the spelling the keyspace uses for a plain-shell box's terminal type —
+  stopped the command with `Unknown variable: $TERM`. It resolves now, from the host's environment,
+  anywhere a settings value may carry a variable (`kanibako box set <box> box.env.TERM='$TERM'`, or
+  the same key written by hand). An empty or unset host `TERM` resolves to `xterm` rather than to
+  nothing, so a box always receives a terminal type. **A `TERM` that is set is passed through
+  exactly as written and is never checked** — whether it names a terminal the box knows is a
+  question about that image's terminfo database, which the host side cannot see, so a box lacking
+  the entry gets a degraded terminal you can cure by setting the key to one it has. `$HOME` and
+  every other environment variable are still refused by name.
+
 - **The helper spawn budget is now two settable keys, `system.helpers.depth` and
   `system.helpers.breadth`, instead of an undeclared table in a file of its own.** The budget that
   decides how far and how wide `kanibako box helper spawn` may go was read out of a bespoke
@@ -308,6 +355,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   OAuth browser session is kept with the state, not the data* under **Changed**.
 
 ### Changed
+
+- **BREAKING: a variable named by both `env.<VAR>` and `secret_path.<VAR>` now refuses the launch,
+  naming both keys.** The two families deliver to the same place — one environment variable inside
+  the box — and until now setting both silently gave the secret the variable: podman received the
+  `env` value through `-e`, and the box-side shim that reads a mounted secret ran `export <VAR>=…`
+  at agent start and overwrote it. Nothing said so, and nothing named either key. That outcome was
+  an accident of the order two unrelated mechanisms happen to run in, so it was never a precedence
+  to rely on, and the keyspace defines none between the families. kanibako refuses the launch
+  instead, names every `env` key and every `secret_path` key involved, and tells you to keep exactly
+  one — `secret_path` when the value is secret material kanibako must never read, `env` otherwise.
+  Every scope pairing refuses alike: `box.env.TOK` against `system.secret_path.TOK` is the same
+  refusal as two keys in one file, because the two are different keys and no cascade can reduce the
+  pair to one. `kanibako box show --effective` resolves the same settings and reports the same
+  refusal without starting anything. A per-run `-e VAR=VALUE` is the `env` family's command-line
+  level rather than a key, so it is never half of this pair and is unaffected; and a
+  `secret_path.<VAR>: null` — *this endpoint needs no token* — declares no variable at all and
+  cannot contend for one. **It cannot fire on a default install:** nothing kanibako or its agent
+  plugins ship names one variable with both families. See *A variable named by both `env` and
+  `secret_path` is refused* in [MIGRATION.md](MIGRATION.md).
+
+- **`kanibako workset show --effective` now fails on a working set file it cannot resolve, instead
+  of printing what it could read and reporting success.** Rendering the derived binding means
+  resolving the file the way a launch would, and that resolution is strict: an unknown `$VAR`, a
+  reference to something that is not a key, or a category table of the wrong shape stops it. Those
+  files used to reach this view untouched, because the plain listing is a straight read of the YAML
+  and expands nothing — so a working set whose binding was sourced at, say, `$NOPE/y` was never
+  resolved at all: the view printed the scalar values it could read and exited 0. It now prints
+  `Error: Unknown variable: $NOPE` and exits **1**. The
+  change is not limited to working sets that use `common` / `caches` / `seeded`: the resolution
+  happens before kanibako knows whether there is anything to derive. Nothing about which values are
+  correct has changed — what changed is that a view whose whole promise is *these are the resolved
+  values* no longer reports success over a file it failed to resolve. `kanibako workset show`
+  without `--effective` is unaffected and still prints the file as written. See
+  *`workset show --effective` exits 1 on a working set file it cannot resolve* in
+  [MIGRATION.md](MIGRATION.md).
 
 - **BREAKING: kanibako no longer picks an agent for you.** When nothing named one — no `--agent`, no
   box or workset `pref.system.agent`, no `system.agent` — the *installed-agent count* used to decide:
