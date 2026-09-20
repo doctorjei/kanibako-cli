@@ -45,7 +45,7 @@ from kanibako.settings.paths import (
     resolve_standalone_project,
     unregister_primary_box_name,
 )
-from kanibako.agent_ref import harness_of, parse_agent_ref, with_harness
+from kanibako.agent_ref import GENERAL_SLOT, harness_of, parse_agent_ref, with_harness
 from kanibako.targets import resolve_target
 from kanibako.utils import container_name_for, short_hash, write_project_gitignore
 
@@ -2107,7 +2107,7 @@ def _run_box_config(args: argparse.Namespace) -> int:
                 target = None
             # ⚑ The NODE-name keys both the ``agent.<node>.*`` slot and the
             # ``agents/<node>/`` dir; ``with_harness`` follows the RESOLVED target.
-            agent_id = with_harness(agent_name, target.name) if target else "general"
+            agent_id = with_harness(agent_name, target.name) if target else GENERAL_SLOT
             agent_cfg_path = agent_settings_path(std.agents, agent_id)
             if target and not agent_cfg_path.exists():
                 agent_cfg = target.generate_agent_config()

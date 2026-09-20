@@ -324,6 +324,7 @@ def _ensure_initialized() -> None:
     # Each agent's settings live INSIDE its store dir as
     # agents/<agent>/agent.yaml (the per-agent store dir is created on
     # demand by ``agent_file.save``).
+    from kanibako.agent_ref import GENERAL_SLOT
     from kanibako.settings.agent_config import AgentConfig, agent_settings_path
     from kanibako.settings.agent_file import save as save_agent_file
     from kanibako.targets import discover_targets
@@ -331,7 +332,7 @@ def _ensure_initialized() -> None:
     agents_path = sys_paths["config.agents"]
     agents_path.mkdir(parents=True, exist_ok=True)
 
-    general_toml = agent_settings_path(agents_path, "general")
+    general_toml = agent_settings_path(agents_path, GENERAL_SLOT)
     if not general_toml.exists():
         # ⚑ EMPTY, and it has to be: the file holds USER INTENT only, and the agent's
         # description is `agent.<agent>.label` (spec §2d), not a field of this file.

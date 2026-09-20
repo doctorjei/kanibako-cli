@@ -70,6 +70,7 @@ from kanibako.settings.paths import (
     system_path_floor,
 )
 from kanibako.agent_ref import (
+    GENERAL_SLOT,
     canonicalize_agent_ref,
     display_agent_ref,
     harness_of,
@@ -1042,7 +1043,7 @@ def _resolve_bootstrap_program(
             if _sel.has_agent
             else None
         )
-        agent_id = with_harness(agent_name, target.name) if target else "general"
+        agent_id = with_harness(agent_name, target.name) if target else GENERAL_SLOT
         return _effective_bootstrap(
             proj, system_settings_path, agent_id,
             agent_path=agent_settings_path(std.agents, agent_id),
@@ -1789,7 +1790,7 @@ def _refuse_retired_behavior(
     )
 
     box_path, workset_path = box_workset_settings_paths(proj)
-    subject = agent_id if agent_id and agent_id != "general" else None
+    subject = agent_id if agent_id and agent_id != GENERAL_SLOT else None
     for level, path in (
         ("base", settings_base_path()),
         ("system", system_settings_path),
@@ -2765,7 +2766,7 @@ def _run_container(
     # probe) so the agent-scope ``bootstrap`` value can be resolved before the probe
     # consumes it.  ``general`` for a no-agent / shell launch (target is None) so the
     # ``agent.default`` bootstrap backstop still applies.
-    agent_id = with_harness(agent_name, target.name) if target else "general"
+    agent_id = with_harness(agent_name, target.name) if target else GENERAL_SLOT
     agent_cfg_path = agent_settings_path(std.agents, agent_id)
 
     # AGENT-scope ``bootstrap`` (spec §2d): the AUTHORITATIVE per-launch value,
@@ -8070,7 +8071,7 @@ def seed_new_box(std, config, proj, *, explicit_agent: str | None = None) -> Non
     # NODE-name (persona identity) keys the agents/<node>/ dir + agent.<node>.*
     # slot; with_harness swaps in the actually-resolved target name (fallback-safe),
     # persona preserved. Bare + as-requested -> node == harness == target.name.
-    agent_id = with_harness(agent_name, target.name) if target else "general"
+    agent_id = with_harness(agent_name, target.name) if target else GENERAL_SLOT
     agent_cfg_path = agent_settings_path(std.agents, agent_id)
     # Load or GENERATE the agent config IN MEMORY (mirrors the launch path) — the
     # WRITE + share shim are deferred until after the persona load-or-error
