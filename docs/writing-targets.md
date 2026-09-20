@@ -40,7 +40,7 @@ from kanibako.targets.base import Target, AgentInstall, PluginDescriptor
 
 class MyTarget(Target):
     @property
-    def name(self) -> str: ...              # abstract: short id, e.g. "myagent"
+    def name(self) -> str: ...              # abstract: short id, e.g. "myagent" (see below)
     @property
     def display_name(self) -> str: ...      # abstract: e.g. "My Agent"
     def detect(self) -> AgentInstall | None: ...  # abstract
@@ -48,6 +48,12 @@ class MyTarget(Target):
     @property
     def descriptor(self) -> PluginDescriptor | None: ...  # the declarative contract
 ```
+
+⚑ **`name` is the agent's NAME and it is kept verbatim; the store directory is its NODE.** Spell
+it however your agent spells itself — a capital is fine and is shown to the user. Kanibako builds
+the node by lowercasing it, and the node is what spells `<data>/agents/<agent>/` and the
+`agent.<agent>.*` cascade slot. So a plugin named `MyAgent` stores under the node `myagent`, and a
+second plugin calling itself `myagent` claims that node too and is refused.
 
 Optional overrides (sensible defaults provided by the base class):
 

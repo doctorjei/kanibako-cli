@@ -69,6 +69,20 @@ def test_agent_flag_valid_writes_default(tmp_home, config_file, monkeypatch):
     assert read_system_agent(ssp) == "claude"
 
 
+def test_agent_flag_is_case_blind_and_writes_the_node(tmp_home, config_file, monkeypatch):
+    """One identifier, one answer at every door (keyspec §0, ⚑ NAMING RULES).
+
+    `--agent Claude` reaches the plugin at a launch, so it has to reach it here
+    too — a setup that refuses what `start` accepts contradicts itself about what
+    is installed. What is WRITTEN is the node, so the stored selection is the one
+    the launch resolves, byte for byte.
+    """
+    _patch_targets(monkeypatch, {"claude": _make_target("claude")})
+    assert setup_cmd._run_agent_selection(_ns(agent="Claude")) == "claude"
+    _, ssp = _config_paths(tmp_home)
+    assert read_system_agent(ssp) == "claude"
+
+
 def test_agent_flag_bogus_errors_no_write(tmp_home, config_file, monkeypatch):
     import pytest
 

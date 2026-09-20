@@ -14,7 +14,7 @@ import re
 
 from tests.support.repo import REPO_ROOT
 
-from kanibako.identifiers import find_identifier
+from kanibako.identifiers import agent_node_case, find_identifier
 
 
 class TestFindIdentifier:
@@ -71,6 +71,40 @@ class TestFindIdentifier:
 
     def test_candidates_may_be_a_one_shot_iterator(self):
         assert find_identifier("Foo", iter(["a", "foo", "b"])) == "foo"
+
+
+class TestAgentNodeCase:
+    """The agent NODE derivation — ``[R173]``, keyspec §0's ``⚑ NAMING RULES``.
+
+    An agent has TWO spellings: the declared NAME keeps its case and lives in
+    values, the NODE is lowercase and keys ``agent.<node>.*`` and
+    ``agents/<node>/``.  This is the second one.
+    """
+
+    def test_a_declared_case_becomes_a_lowercase_node(self):
+        assert agent_node_case("Claude") == "claude"
+        assert agent_node_case("CLAUDE") == "claude"
+        assert agent_node_case("claude") == "claude"
+
+    def test_it_is_idempotent(self):
+        """A node handed back in is still that node — the store dir is spelled once."""
+        assert agent_node_case(agent_node_case("Shell")) == agent_node_case("Shell")
+
+    def test_it_is_the_SAME_fold_the_comparison_uses(self):
+        """Why it must be: a node derived here is looked up by ``find_identifier``.
+
+        ``get_target`` compares a typed name against registry keys that this
+        function built.  Two different folds would agree on every ASCII name and
+        part on the first one that is not — a registry key no lookup could reach.
+        """
+        node = agent_node_case("STRASSE")
+        assert find_identifier("straße", [node]) == node
+        assert agent_node_case("straße") == node
+
+    def test_a_non_ASCII_name_folds_rather_than_merely_lowercasing(self):
+        """The discriminating pair, as in ``test_casefold_not_lower`` above."""
+        assert "straße".lower() == "straße"
+        assert agent_node_case("straße") == "strasse"
 
 
 class TestTheCarrierIsATerminalLeaf:

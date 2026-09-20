@@ -558,7 +558,15 @@ def _run_agent_selection(args: argparse.Namespace) -> str | None:
 
     # Non-interactive: `setup --agent <name>`.
     if requested:
-        if requested not in _known_target_names():
+        # ⚑ CASE-BLIND, and it has to be the same answer ``--agent`` gets at a launch
+        # (keyspec §0): an agent is one identifier however it is capitalized, and this
+        # door and ``start``'s must not disagree about whether it is installed.  What
+        # comes back is the NODE, which is what gets written — so the stored selection
+        # is byte-identical to the one the launch resolves.
+        from kanibako.identifiers import find_identifier
+
+        node = find_identifier(requested, _known_target_names())
+        if node is None:
             available = ", ".join(_known_target_names()) or "(none installed)"
             # Hard error: an unknown agent must NOT be treated as a graceful
             # skip — return non-zero and write NEITHER the default NOR the
@@ -576,9 +584,9 @@ def _run_agent_selection(args: argparse.Namespace) -> str | None:
                 f"{install_command(f'kanibako-agent-{requested}')}) "
                 "or pick from the list above."
             )
-        _write_system_agent(requested)
-        print(f"  [ok] Default agent set to '{requested}'.")
-        return requested
+        _write_system_agent(node)
+        print(f"  [ok] Default agent set to '{node}'.")
+        return node
 
     detected = _detected_agents()
 

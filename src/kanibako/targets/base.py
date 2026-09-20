@@ -780,7 +780,15 @@ class Target(ABC):
     @property
     @abstractmethod
     def name(self) -> str:
-        """Short identifier for this target (e.g. 'claude')."""
+        """Short identifier for this target (e.g. 'claude') — the agent's NAME.
+
+        ⚑ Spell it however the agent spells itself: this value is kept verbatim and
+        is what a user is shown.  It is NOT the store directory.  Kanibako derives the
+        agent's NODE from it — the name in lowercase — and the node is what spells
+        ``<data>/agents/<node>/`` and the ``agent.<node>.*`` cascade slot (keyspec §0,
+        ``⚑ NAMING RULES``).  Two plugins whose names differ only in case therefore
+        claim ONE node, and the second to be discovered is refused.
+        """
         ...
 
     @property
