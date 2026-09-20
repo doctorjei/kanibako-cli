@@ -27,6 +27,7 @@ def _run_agent_config(args: argparse.Namespace) -> int
 def _agent_key_gate(agent_id: str, key: str, *, path: 'Path', verb: str) -> str | None
 def _declared_label(agent_id: str) -> str
 def _agent_label(std: 'StandardPaths', agent_id: str) -> str
+def _stored_rows(table: 'Mapping[str, object]', prefix: str='') -> list[tuple[str, str]]
 def _get_agent_key(cfg: AgentConfig, key: str) -> str | None
 def _show_agent_config(cfg: AgentConfig, label: str, *, effective: bool=False) -> int
 ```

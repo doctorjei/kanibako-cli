@@ -534,13 +534,16 @@ class TestSlotRouting:
             remove_leaf(slot)
 
     def test_read_does_not_re_render(self, tmp_path):
-        # ⚑ The two ``read_stored_leaf`` conventions are load-bearing for every
-        # ``get`` and the boundary must not layer a second rendering on them.
+        # ⚑ ``read_stored_leaf``'s conventions are load-bearing for every ``get`` and the
+        # boundary must not layer a second rendering on them.  ⚑ A stored ``""`` reads back
+        # as ``""``, not as the absent answer: spec §2h's terminal empty string is ≠ unset,
+        # and this slot is NOT list-valued, so nothing above intercepts it.
         slot = slot_for(tmp_path, "claude", "allow_helpers")
         write_leaf(slot, True)
         assert read_leaf(slot) == "true"
         write_leaf(slot, "")
-        assert read_leaf(slot) is None
+        assert read_leaf(slot) == '""'
+        assert read_leaf(slot_for(tmp_path, "claude", "model")) is None  # absent, still
 
 
 class TestTheDestIsData:
@@ -692,9 +695,11 @@ class TestTheArgvSHAPEIsTheFileS:
     def test_an_EMPTY_value_is_a_value_and_an_ABSENT_one_is_not(self, tmp_path):
         """The three states stay apart: absent, present-and-empty, present-with-words.
 
-        ⚑ ``""`` NOT ``None`` for the empty list, deliberately: the scalar convention
-        collapses an empty STRING to the absent answer, and applying it here would print
-        "(not set)" over an override that is really in the file.
+        ⚑ A BLANK, NOT ``None``, for the empty list, deliberately: an empty argv line is
+        the user's explicit "no arguments", and the absent answer would print "(not set)"
+        over an override that is really in the file.  ⚑ It is also not the scalar
+        convention's ``""`` (spec §2h's terminal empty STRING) — two different stored
+        shapes, two spellings.
         """
         slot = self._slot(tmp_path)
         assert read_leaf(slot) is None                    # absent
@@ -735,9 +740,9 @@ class TestTheArgvSHAPEIsTheFileS:
     def test_stored_leaf_text_answers_NOT_MINE_for_anything_else(self):
         """``None`` means "this module owns no rule for the pair", NEVER "absent".
 
-        The callers' empty-and-bool idioms differ from each other — the three ``pref``
-        idioms, ``get``'s empty-string→unset, the launch table's raw ``str()`` — so a
-        shape this module does not own must come back untouched for the caller to render.
+        The callers' empty-and-bool idioms differ from each other — the idioms the read
+        verbs spell apart (spec §2h) against the launch table's raw ``str()`` — so a shape
+        this module does not own must come back untouched for the caller to render.
         """
         from kanibako.settings.agent_file import _LIST_VALUED_KEYS
 
@@ -752,9 +757,9 @@ class TestTheArgvSHAPEIsTheFileS:
 
         An empty ``run_args`` is the user's explicit "no arguments" (see
         ``test_an_EMPTY_value_is_a_value_and_an_ABSENT_one_is_not``).  Answering ``None``
-        here would hand it back to the caller's scalar convention, which collapses empty
-        to the absent answer, and "(not set)" would print over an override that is really
-        in the file.
+        here would hand it back to the caller's scalar convention, which spells the empty
+        STRING ``""`` — a different stored shape, and a user who typed no arguments would
+        read back a pair of quotes they never wrote.
         """
         from kanibako.settings.agent_file import _LIST_VALUED_KEYS
 

@@ -1419,3 +1419,135 @@ class TestAListValuedLeafReadsBackAsItsCommandLine:
             assert f"pref.agent.default.{leaf} = --p --q" in out
             assert f"-> agent.default.{leaf} = --a --b" in out
             assert "['" not in out, out
+
+
+class TestTheEmptyIdiomsReadBackAsThemselves:
+    """Spec §2h's three empty idioms stay apart at every door that prints a stored value:
+    a present-``None`` is ``null``, a terminal ``""`` is ``""``, and only an ABSENT key
+    answers "(not set)".
+
+    ⚑⚑ ONE PIN PER ENTRY POINT, the sibling discipline of the class above and for the same
+    reason: the rendering is one function (``config_io.render_stored_scalar``) and the thing
+    a surface written later forgets is to ASK IT.  Four doors printed ``str(None)`` — two
+    ``get`` doors among them, which is why "fix the renderer" was not the whole cure.
+
+    ⚑ THE ``"None"`` ASSERTION IS THE ORACLE, not the equality: the failure is a repr
+    leaking somewhere ELSE in the same output, which an equality on one line cannot see.
+
+    🛑 AND THE ABSENT ROW IS NOT FILLER.  Teaching the renderer to answer ``null`` is
+    exactly how "not set" gets collapsed into "set to null", so the state this fix could
+    have destroyed is pinned beside the ones it fixed.
+    """
+
+    def _seed(self, config_file):
+        """A scope table and an agent table, each holding a null and an empty string."""
+        std = _std(config_file)
+        std.settings.parent.mkdir(parents=True, exist_ok=True)
+        doc = load_doc(std.settings) if std.settings.exists() else {}
+        doc.setdefault("system", {}).setdefault("env", {}).update(
+            {"NULLV": None, "EMPTY": "", "PLAIN": "x"},
+        )
+        doc.setdefault("agent", {}).setdefault("default", {}).update(
+            {"model": None, "access": ""},
+        )
+        dump_doc(std.settings, doc)
+        return std
+
+    def test_get_through_the_routed_stored_read(self, config_file, tmp_home, capsys):
+        """``config_io.read_stored_leaf`` — the ``<scope>.env.<VAR>`` scalar family."""
+        self._seed(config_file)
+        capsys.readouterr()
+        assert _get("system.env.NULLV") == 0
+        assert "system.env.NULLV=null" in capsys.readouterr().out
+        assert _get("system.env.EMPTY") == 0
+        assert 'system.env.EMPTY=""' in capsys.readouterr().out
+
+    def test_get_through_the_bare_agent_setting_read(
+        self, config_file, tmp_home, capsys,
+    ):
+        """``config.read_agent_settings`` — THE SECOND ``get`` DOOR, and the one a writer
+        told only about the renderer leaves behind.  Its routed twin reads the same stored
+        value through ``read_stored_leaf``; the two must not answer differently.
+
+        ⚑ BOTH HALVES OF THE SEED, because the two idioms fail in OPPOSITE directions and a
+        door can get one right while getting the other wrong: the null leaks Python's repr,
+        the empty string collapses into "(not set)".  ``access: ""`` sat in ``_seed``
+        unasserted, which is the shape of a corpus that reads complete and is not."""
+        self._seed(config_file)
+        for leaf, expected in (("model", "null"), ("access", '""')):
+            for key in (leaf, f"agent.default.{leaf}"):
+                capsys.readouterr()
+                assert _get(key) == 0
+                out = capsys.readouterr().out
+                assert out.strip().endswith(f"={expected}"), (key, out)
+                assert "None" not in out, (key, out)
+                assert "(not set)" not in out, (key, out)
+
+    def test_an_ABSENT_key_still_answers_not_set(self, config_file, tmp_home, capsys):
+        """The state the cure could have destroyed: absence is reported ABOVE the render."""
+        self._seed(config_file)
+        capsys.readouterr()
+        assert _get("system.env.NOSUCH") == 0
+        out = capsys.readouterr().out
+        assert "(not set)" in out, out
+        assert "null" not in out, out
+
+    def test_show_renders_the_scope_table_and_the_agent_table(
+        self, config_file, tmp_home, capsys,
+    ):
+        """``config_display._flatten_table`` under ``_nested_settings_overrides``, plus the
+        agent rows ``read_agent_settings`` produces — one output, two producers."""
+        self._seed(config_file)
+        capsys.readouterr()
+        assert _show() == 0
+        out = capsys.readouterr().out
+        assert "system.env.NULLV = null" in out, out
+        assert 'system.env.EMPTY = ""' in out, out
+        assert "model = null" in out, out
+        assert "None" not in out, out
+
+    def test_show_renders_a_noun_file_s_pref_flatten(self, tmp_path, capsys):
+        """``_pref_overrides`` — the OTHER ``_flatten_table`` caller, and the twin whose
+        ``null`` arm was right while the one above it was not.  Both now read one walk."""
+        from kanibako.settings.config_interface import show_config
+
+        noun = tmp_path / "noun.yaml"
+        dump_doc(noun, {"pref": {"agent": {"default": {"model": None}}}})
+        capsys.readouterr()
+        show_config(
+            global_config_path=tmp_path / "g.yaml", config_path=noun, effective=False,
+        )
+        out = capsys.readouterr().out
+        assert "pref.agent.default.model = null" in out, out
+
+    def test_the_effective_pref_block_renders_a_null_REQUEST(self, tmp_path, capsys):
+        """``config_display._print_pref_block``'s ``_render`` — a fourth hand-kept copy of
+        the same rule until it was routed through the one renderer."""
+        from kanibako.settings.config_interface import show_config
+        from kanibako.settings.keystore import KeyStore
+
+        snap = KeyStore({"pref": {"agent": {"default": {"model": None}}}})
+        capsys.readouterr()
+        show_config(
+            global_config_path=tmp_path / "g.yaml", config_path=tmp_path / "s.yaml",
+            effective=True, category_snapshot=snap,
+        )
+        out = capsys.readouterr().out
+        assert "pref.agent.default.model = null" in out, out
+        assert "None" not in out, out
+
+    def test_an_undeclared_stored_entry_renders_the_same_way(
+        self, config_file, tmp_home, capsys,
+    ):
+        """``_undeclared_stored_entries`` — not a key, but the same one spelling.  §0 is
+        untouched: this REPORTS a line in the user's file, it does not resolve one."""
+        std = _std(config_file)
+        std.settings.parent.mkdir(parents=True, exist_ok=True)
+        doc = load_doc(std.settings) if std.settings.exists() else {}
+        doc.setdefault("system", {})["bogus_leaf"] = None
+        dump_doc(std.settings, doc)
+        capsys.readouterr()
+        assert _show() == 0
+        out = capsys.readouterr().out
+        assert "system.bogus_leaf = null" in out, out
+        assert "None" not in out, out

@@ -10,7 +10,7 @@ from kanibako._atomic import atomic_write_text
 from kanibako.errors import ConfigError
 from kanibako.settings.bootstrap import (CONFIG_FILE, CONFIG_PATH_DEFAULTS, SITE_CONFIG_DIR,
                                          SITE_CONFIG_FILE, SITE_SETTINGS_FILE)
-from kanibako.settings.config_io import dump_doc, load_doc
+from kanibako.settings.config_io import dump_doc, load_doc, render_stored_scalar
 from kanibako.settings.messages import (ERR_CONFIG_LAYER1_SETTINGS, ERR_CONFIG_LAYER1_TABLE,
                                         ERR_CONFIG_LAYER1_UNDECLARED)
 
@@ -775,6 +775,12 @@ def read_agent_settings(path: Path, agent_name: str) -> dict[str, str]:
     OWNS THE SHAPE (``agent_file.stored_leaf_text``), not by ``str()``; a bare
     ``str()`` printed the Python repr ``['--a', '--b']`` at every reader of
     ``system get run_args`` and ``system show``.
+
+    ⚑⚑ AND A SCALAR RENDERS THROUGH ``config_io.render_stored_scalar``, FOR THE SAME REASON —
+    THIS IS A ``get`` DOOR, not a ``show``-only one.  ``get_config_value``'s bare agent-setting
+    branch answers straight out of this dict, so a second stringifier here is a second answer
+    for one stored value: ``str()`` printed ``None`` for the §2h present-``None`` OMIT idiom and
+    ``True`` for a bool the routed read spells ``true``.
     """
     # ⚑ FUNCTION-SCOPE, AND IT MUST STAY THAT WAY: ``agent_file`` imports
     # ``agent_config``, which imports THIS module for ``AGENT_META_FILE``, so a
@@ -784,7 +790,7 @@ def read_agent_settings(path: Path, agent_name: str) -> dict[str, str]:
 
     def _text(leaf: str, v: object) -> str:
         rendered = stored_leaf_text(leaf, v)
-        return str(v) if rendered is None else rendered
+        return render_stored_scalar(v) if rendered is None else rendered
 
     if not path.exists():
         return {}

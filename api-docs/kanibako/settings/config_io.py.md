@@ -5,6 +5,12 @@ _Signatures only: no comments, no docstrings, no bodies._
 Prose for these symbols lives in `llm-docs/kanibako/settings/config_io.py.md`.
 
 
+## Variables
+
+```
+_ABSENT = object()
+```
+
 ## Functions
 ```
 def load_doc(path: Path | None) -> dict
@@ -13,9 +19,10 @@ def write_root_key(path: Path, key: str, value: object) -> None
 def remove_root_key(path: Path, key: str) -> bool
 def write_nested_key(path: Path, sections: tuple[str, ...], key: str, value: object) -> None
 def remove_nested_key(path: Path, sections: tuple[str, ...], key: str) -> bool
-def render_stored_scalar(v: object) -> str | None
-def read_stored_leaf(noun_file: 'Path | None', sections: tuple[str, ...], leaf: str, *, render: 'Callable[[object], str | None]'=render_stored_scalar) -> str | None
+def render_stored_scalar(v: object) -> str
+def stored_leaf_object(noun_file: 'Path | None', sections: tuple[str, ...], leaf: str, *, default: object=None) -> object
+def read_stored_leaf(noun_file: 'Path | None', sections: tuple[str, ...], leaf: str, *, render: 'Callable[[object], str]'=render_stored_scalar) -> str | None
 def render_stored_pref(v: object) -> str
-def read_stored_pref(noun_file: 'Path | None', sections: tuple[str, ...], leaf: str, *, render: 'Callable[[object], str | None]'=render_stored_pref) -> str | None
+def read_stored_pref(noun_file: 'Path | None', sections: tuple[str, ...], leaf: str, *, render: 'Callable[[object], str]'=render_stored_pref) -> str | None
 def _yaml_problem(exc: yaml.YAMLError) -> str
 ```

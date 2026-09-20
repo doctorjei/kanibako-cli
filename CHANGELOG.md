@@ -36,6 +36,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   string `null`, as it always has. ⚑ Nothing to do on upgrade: `--null` did not exist in 1.7.2, so
   no released version ever printed this.
 
+- **The read verbs answered `None` for a value the file holds as `null`, and `(not set)` for one it
+  holds as `""`.** `kanibako system get system.env.FOO` printed `system.env.FOO=None` over a
+  settings file whose line really reads `FOO:` — Python's spelling of nothing, at the one door whose
+  job is to read a stored value back. Like the `set` confirmation above it was not a display nit:
+  `None` is not a spelling kanibako accepts, so retyping what `get` had just shown you stored the
+  literal three letters at a string-valued key and was refused outright at a typed one. The empty
+  string failed in the opposite direction — a `FOO: ""` you had deliberately written read back
+  `(not set)`, the answer reserved for a key that is not in the file at all. Both now read back what
+  the file says: an explicit null is `null`, a terminal empty string is `""`, and `(not set)` again
+  means only that the key is absent. ⚑ **Nothing about what is stored changed, and no key changed
+  meaning.** The keyspace has always kept the three states apart — an explicit null asks for a
+  binding, a variable or a mask to be *omitted*; an empty string is a real terminal value; neither is
+  "unset" — so this is the read verbs finally saying which of the three they found. ⚑ The same three
+  spellings now reach every `show` block that lists what a file STORES — a noun's own overrides, its
+  nested settings-tier entries, its `pref:` requests, and the agent noun's `info` and `show` — each
+  of which had the defect independently of `get` and of each other: one stored null printed `None`
+  in `kanibako system show` and `null` in `kanibako box show`, because each place spelled the rule
+  out by hand and only some had been corrected. They now all ask one renderer. ⚑ One block is
+  deliberately unchanged: the merged-config listing at the top of `show --effective` prints
+  kanibako's internal field names (`box_share_images = False`), not keys, and keeps Python's
+  spelling; the dotted `box.share_images = false` three lines below it is the line that names a key.
+  ⚑ Worth knowing if you parse the
+  output: a `get` that used to print `None`, or to take the `(not set)` path, may now print `null`
+  or `""` instead, and an absent key is the only thing left that reports `(not set)`. ⚑ Unchanged,
+  deliberately: `reset` still declines to name a blank, so `Cleared … effective is now` reports
+  that the cascade fell through rather than naming an empty string as the winner.
+
 - **Box and workset names collided only when the case matched exactly.** Every collision check in
   the tree was an exact-match `in` or `.get`, so whether two names clashed depended on which side
   of the comparison had already been lowercased — and only the box-`create` path lowercases. A

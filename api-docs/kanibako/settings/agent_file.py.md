@@ -31,6 +31,8 @@ def argv_words(value: str) -> list[str]
 def argv_text(words: Iterable[object]) -> str
 def stored_leaf_text(tail: str, value: object) -> str | None
 def stored_leaf_shape(tail: str, value: object) -> object
+def stored_leaf_display(tail: str, value: object) -> str
+def stored_leaf_value(slot: AgentFileSlot) -> object
 def read_leaf(slot: AgentFileSlot) -> str | None
 def write_leaf(slot: AgentFileSlot, value: object) -> None
 def remove_leaf(slot: AgentFileSlot) -> bool
@@ -42,7 +44,6 @@ def state_level(cfg: 'AgentConfig | None', *, node: str) -> AgentFileLevel | Non
 def _read_address(tail: str) -> tuple[tuple[str, ...], str]
 def _write_address(tail: str) -> tuple[tuple[str, ...], str]
 def _is_table_valued(tail: str) -> bool
-def _render_argv(tail: str, v: object) -> str | None
 def _nested_agent_cure(category: str | None, sub_key: str, *, var: str, value: str) -> str
 def _refused_category(sub_tbl: dict) -> str | None
 def _refuse_nested_tables(root_tbl: dict, *, node: str | None, path: Path | None) -> None

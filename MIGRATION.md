@@ -3186,6 +3186,38 @@ This is the reading third of the closed keyspace, which `system get` (and, since
 get`) already enforced. `(not set)` is now what it says: **a declared key with no value stored at
 this noun**, still rc 0.
 
+**And it narrowed a second time: `(not set)` means ABSENT, never "empty".** A settings file can
+hold three different empty things — the keyspec's §2h names them: a present `null` (the tri-state
+*omit*), a terminal `""`, which is **not** the same as unset, and the copy-disable sentinel. The
+read verbs used to get two of those wrong. A present `null` — `TOKEN:` with nothing after it,
+hand-written in a 1.7.2 settings file and what `set --null` writes in 1.8.0 — read back as Python's
+`None`, a spelling the CLI does not accept back. And a `""` you had deliberately written read back
+as `(not set)`, which is the answer for a key you never wrote at all. Both now read back what the
+file holds:
+
+```
+$ kanibako system get system.secret_path.TOKEN   # the file says `TOKEN:`
+system.secret_path.TOKEN=null                    # 1.7.2: system.secret_path.TOKEN=None
+$ kanibako system get system.secret_path.EMPTY   # the file says `EMPTY: ""`
+system.secret_path.EMPTY=""                      # 1.7.2: system.secret_path.EMPTY: (not set)
+$ kanibako system get system.secret_path.NOSUCH  # the file does not mention it
+system.secret_path.NOSUCH: (not set)             # unchanged, and now the only line saying this
+```
+
+The same three spellings now reach the `show` blocks that list what a file **stores** — a noun's
+own overrides, its nested settings-tier entries, its `pref:` requests, and the agent noun's `info`
+and `show`. They did not before: those places each spelled the rule out by hand and only some had
+been corrected, so one `pref:` line holding a `null` printed `null` from a box's own file and
+`None` from the system settings file. ⚑ One block is deliberately left alone: the merged-config
+listing at the top of `show --effective` prints kanibako's internal field names (`box_share_images
+= False`), not keys, and it keeps Python's spelling — the dotted `box.share_images = false` three
+lines below it is the line that names a key.
+
+**Nothing is required of you for this half.** No file changes, nothing stored changes, no key
+changes meaning, and the exit code is unchanged on all three lines above. The one thing worth
+checking is a script that reads `(not set)` as "empty or unset": a key you deliberately set to
+`""` now reads back `""`, and only a key absent from this noun's file still reports `(not set)`.
+
 **What you must do.** A script that reads a key and branches on rc will now see 1 where it saw 0 —
 but only for a name that was never a key, where the `(not set)` it used to get was meaningless. If
 you were using `box get` as a spell-checker for your own key names, it is a much better one now.

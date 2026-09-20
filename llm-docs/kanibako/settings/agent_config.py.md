@@ -61,8 +61,15 @@ table into the cascade, and the variable reaches the box through the collapse's 
 like every other scope's (MBR-1 P3).
 
 What the field is FOR is the READ side of the `agent` verbs: `agent info` and `agent show` render it
-(`commands/agent_cmd.py`, around `:223` and `:531`), and `agent get <node> env.<VAR>` returns it
-(around `:489`).
+(`commands/agent_cmd.py`'s `run_info` and `_show_agent_config`, both through `_stored_rows`), and
+`agent get <node> env.<VAR>` returns it (`_get_agent_key`).
+
+⚑ **`dict[str, str | None]`, THE SAME THREE STATES AS `secret_path`** — since 2026-09-20, and the
+lag is the lesson. Typed `dict[str, str]` it *forced* `load` to `str()` a present-`None` into the
+word `"None"`, two lines from the `secret_path` comprehension that keeps it; the record then carried
+the four-byte string past every file-level fallback, so `agent get <node> env.<VAR>` printed `None`
+where the identical `secret_path` read printed `null`. **A field's TYPE can be the thing that makes
+a reader wrong.**
 
 ⚑ It is NOT needed to preserve a user's `agent set`. That verb writes through `write_nested_key` and
 never builds an `AgentConfig`, and every `agent_file.save` caller persists a FRESHLY GENERATED config

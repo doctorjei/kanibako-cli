@@ -305,11 +305,12 @@ the census caught it on the first run. Route the site through `file_spelling()`.
 The per-VALUE half of the boundary — every `config_interface` per-node get/set/reset and every
 `agent set`/`reset` goes through these.
 
-⚑ `read_leaf` goes through `config_io.read_stored_leaf` and must NOT re-render on top of it: its two
-conventions (bools lowercase, a stored `""` reading as `None`) are load-bearing for every `get`.
-The ONE leaf whose stored shape is not a scalar hands its own renderer IN instead
-(`read_stored_leaf(..., render=_render_argv)`), which is why the conventions stay untouched rather
-than being wrapped — pinned by `test_read_does_not_re_render`, which uses a scalar leaf.
+⚑ `read_leaf` goes through `config_io.read_stored_leaf` and must NOT re-render on top of it: its
+conventions (bools lowercase, and spec §2h's empty idioms each spelled apart — present-`None` →
+`null`, terminal `""` → `""`) are load-bearing for every `get`. The ONE leaf whose stored shape is
+not a scalar hands its own renderer IN instead (`read_stored_leaf(..., render=stored_leaf_display)`,
+bound to the tail), which is why the conventions stay untouched rather than being wrapped — pinned
+by `test_read_does_not_re_render`, which uses a scalar leaf.
 
 ⚑⚑ **EVERY WRITE ROUTE APPLIES `stored_leaf_shape`, AND NO CALLER MAY PRE-SPLIT.** That is the
 single-carrier rule for `_LIST_VALUED_KEYS` above: the shape is decided in ONE place, so a second
@@ -331,7 +332,7 @@ stored list and a string hand-written into a YAML arrive at `start.py`'s `all_ex
 identically — and that seam splits it back with THIS function. One parser, both directions, no
 second answer to "what is a word".
 
-```stored_leaf_shape(tail, value) -> object``` · ```_render_argv(v) -> str | None```
+```stored_leaf_shape(tail, value) -> object``` · ```stored_leaf_display(tail, value) -> str``` · ```stored_leaf_value(slot) -> object```
 `stored_leaf_shape` is the WRITE-side twin of `stored_leaf_text`: given a leaf's tail it returns
 the value in the shape a FILE holds it in, or the value unchanged where this module owns no rule
 for the pair. `None` PASSES THROUGH, because it is the `--null` suppression idiom (spec §2h) and
@@ -349,11 +350,37 @@ DOTTED `env.run_args` (`_address`), which is in no leaf set, so the scalar they 
 scalar. That dotted tail is the WHOLE of the protection — there is no second check behind it, and a
 caller keying on the last segment of a key would shell-split every `env.<VAR>` so named.
 
-⚑ `_render_argv` renders an EMPTY list as `""`, NOT `None`. The scalar convention's empty→`None`
-rule is about an empty STRING, kanibako's idiom for no value; a present `run_args: []` is the
-user's explicit "no arguments" and collapsing it would print "(not set)" over an override that is
-really in the file. The three states stay apart: absent → `None`, present-empty → `""`,
-present-with-words → the words.
+```python
+def stored_leaf_display(tail: str, value: object) -> str
+```
+`stored_leaf_text`, falling back to `config_io.render_stored_scalar` for anything this module owns
+no rule for — **the composed pair, PUBLIC so no surface has to compose it again** (P10). It was
+private (`_render_argv`) and framed as `read_leaf`'s argv renderer until 2026-09-20; the body never
+was argv-specific, and every verb that shows a stored leaf owes BOTH halves. A surface taking only
+the scalar half printed the Python repr `['--a', '--b']` at a user; one taking only the shape half
+printed `None` for a stored null. TOTAL, like the convention it falls back to.
+
+```python
+def stored_leaf_value(slot: AgentFileSlot) -> object
+```
+The RAW value the file holds at *slot*, UNRENDERED, or `None` when it holds none — over
+`config_io.stored_leaf_object`, so there is still one walk.
+
+🛑 **FOR A DOOR THAT JUDGES THE VALUE, WHICH `read_leaf` CANNOT SERVE.** The `get` renderings are
+deliberately not injective: a stored `""` and a stored `'""'` both read back `""` (spec §2h). So a
+door asking "did the user leave this empty?" must ask the OBJECT. `agent_cmd._agent_label` asked
+the text for one commit and discarded a user's two-character label, falling through to the
+plugin-declared one with no message.
+
+🛑 **ABSENT AND A PRESENT-`None` BOTH ANSWER `None` HERE**, which is why this is not a `get` route:
+both mean "this file names no value at *slot*", exactly what a FALLING-THROUGH door wants and
+exactly what a verb reporting `(not set)` must not be told. That verb uses `read_leaf`.
+
+⚑ An EMPTY LIST renders BLANK through `stored_leaf_display`, not `""` and not `(not set)`. A
+present `run_args: []` is the user's explicit "no arguments", so it is a VALUE and reads back as
+the empty command line it is; the two-character `""` spelling is the empty STRING's, a different
+idiom (spec §2h) that must not be handed to a shape which is not it. The three states stay apart:
+absent → `None` (`(not set)`), present-empty-list → a blank line, present-with-words → the words.
 ⚑⚑ **AND SINCE `[R169]` THE RECORD KEEPS THEM APART TOO** (`AgentConfig.run_args: list[str] | None`).
 It used to collapse absent and present-empty into one `[]`, which was harmless only while this file
 was the argv's sole source: now `agent.default.run_args` reaches a launch, so the difference is
@@ -436,7 +463,13 @@ cascade. `_refuse_undeclared_state` does NOT catch that — `run_args` is a decl
 §0 gate accepts it.
 
 ⚑ **A `None` value is KEPT as `None`, never coerced through `str()`** — the 2026-08-17 ruling, and
-it applies to `state` and to `secret_path` alike. The coercion used to turn a hand-edited or
+it applies to `state`, to `secret_path` **and, since 2026-09-20, to `env`**. 🛑 `env` was the one
+table left out, two lines from `secret_path` in the source and disagreeing with it about one
+idiom, and the miss is instructive: `AgentConfig.env` was typed `dict[str, str]`, so the coercion
+was not a choice the reader made but one the RECORD forced. The four-byte `"None"` then sat INSIDE
+the record, past every file-level fallback — which is exactly why `agent get <node>
+secret_path.<VAR>` printed `null` while `agent get <node> env.<VAR>` printed `None` over the same
+YAML. The field is `dict[str, str | None]` now. The coercion used to turn a hand-edited or
 `--null`-written `model: null` into the four-byte string `"None"`: a BOGUS model id that reached the
 launch cascade as a real value, silently defeating the exact "this persona needs no model"
 declaration the persona-model gate now depends on. `state_level` passes every value through

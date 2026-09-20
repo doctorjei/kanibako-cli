@@ -632,15 +632,17 @@ def _set_leaf(store: "Any", parts: list, value: object) -> None:
 # ---------------------------------------------------------------------------
 
 def _argv_aware(
-    leaf: str, fallback: "Callable[[object], str | None]",
-) -> "Callable[[object], str | None]":
+    leaf: str, fallback: "Callable[[object], str]",
+) -> "Callable[[object], str]":
     """A ``read_stored_*`` renderer that asks the module owning the SHAPE first and
     *fallback* second — for the reads that do not go through ``agent_file.read_leaf``.
 
     ⚑ EVERY EMPTY IDIOM STAYS THE CALLER'S. ``stored_leaf_text`` answers the shape question
     alone and ``None`` when it owns no rule for the pair, so *fallback* still decides what an
-    empty string, a present-``None`` or a bool reads back as — and those differ between the
-    two readers below, which is why the fallback is a parameter rather than a constant.
+    empty string, a present-``None`` or a bool reads back as. The two readers below agree on
+    those spellings today; the fallback stays a parameter because they answer to different
+    authorities (spec §2h bars the pref layer from interpreting emptiness at all), not because
+    a constant would print something different this week.
 
     🛑 NOT FOR THE USER-NAMED FAMILIES, and they are the reason this is not simply folded into
     ``read_stored_leaf``'s default.  ``<scope>.env.<VAR>`` and ``<scope>.secret_path.<VAR>`` keep
@@ -648,7 +650,7 @@ def _argv_aware(
     would make a variable someone happened to call ``run_args`` split like a command line.  The
     CATEGORY reads keep it too — their values are tables, and a table is not a leaf.
     """
-    def _render(v: object) -> str | None:
+    def _render(v: object) -> str:
         argv = stored_leaf_text(leaf, v)
         return fallback(v) if argv is None else argv
     return _render
@@ -862,11 +864,9 @@ def _set_confirmation(display_key: str, value: object) -> str:
     # and the same reason: a confirmation is a lesson, so it may only teach spellings the
     # CLI accepts. That rule binds the VALUE too, which is why this is one function and not
     # nine f-strings. A present-``None`` is spelled ``null`` — the YAML the file now holds and
-    # what the ``--null`` flag exists to write. ⚑ The READ verbs still answer ``None`` at every
-    # door (``config_io.render_stored_scalar``, and ``show_config``'s own prints, which do not
-    # route through it): a separate, boarded defect — do not "reconcile" the two here. ``None`` is a
-    # Python repr, and on a string-typed key the CLI accepts it BACK as the literal three
-    # letters, so the leak does not even announce itself as one.
+    # what the ``--null`` flag exists to write. ⚑ THE READ VERBS SAY ``null`` TOO, through
+    # ``config_io.render_stored_scalar``: the two verbs disagreed about one stored value until
+    # that renderer was made total, which is why the rule is not restated here.
     return f"Set {display_key}={'null' if value is None else value}"
 
 
@@ -1540,11 +1540,14 @@ def effective_value(
     found, eff = _reads(resolved_snap, key_path)
     if not found or isinstance(eff, (Bind, KeyStore, list)) or eff is None:
         return None
-    # ⚑ A stored/resolved EMPTY string has no value to name — never "effective is now <blank>".
-    rendered = render_stored_scalar(eff)
-    if rendered is None:
+    # ⚑ A stored/resolved EMPTY string has no value to NAME — never "effective is now
+    # <blank>".  TESTED HERE, ON THE VALUE, because the renderer no longer reports it: it is
+    # total now, and this suppression is THIS function's ruled contract (F7 — the honest
+    # ``reset`` message), never the scalar convention's.  ``get`` says ``""`` for the same
+    # stored value and is right to: it is answering "what is stored", not naming a fallback.
+    if eff == "":
         return None
-    return (rendered, source_tier)
+    return (render_stored_scalar(eff), source_tier)
 
 
 def write_system_value(config_path: Path, leaf: str, value: object) -> None:
@@ -1669,13 +1672,10 @@ def _undeclared_stored_entries(path: "Path | None") -> dict[str, str]:
                 continue  # declared — whatever is under it is DATA, not keys
             if isinstance(v, dict) and v:
                 _walk(v, f"{dotted}.")
-            elif isinstance(v, bool):
-                # Rendered as ``get`` renders it, so one value has one spelling.
-                out[dotted] = str(v).lower()
-            elif v is None:
-                out[dotted] = "null"
             else:
-                out[dotted] = str(v)
+                # THROUGH ``get``'s own renderer, so one value has one spelling — the rule
+                # three hand-kept arms here used to restate, one of which had drifted.
+                out[dotted] = render_stored_scalar(v)
 
     _walk(data, "")
     return out

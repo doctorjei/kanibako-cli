@@ -135,46 +135,99 @@ def remove_nested_key(
 # Stored-value reads (the ``get`` model's stored-at-noun read + its rendering)
 # ---------------------------------------------------------------------------
 
-def render_stored_scalar(v: object) -> str | None:
-    """Render a stored scalar for ``get`` output: bools lowercase, empty → None."""
+def render_stored_scalar(v: object) -> str:
+    """Render a stored scalar for ``get`` output, keeping §2h's empty idioms apart.
+
+    ⚑⚑ TOTAL, AND THAT IS THE POINT (P3).  Absence is reported ABOVE any render — by
+    :func:`read_stored_leaf`, which never reaches here for a leaf that is not in the file —
+    so a renderer able to answer ``None`` could only collapse "not set" into a STORED value.
+    It used to answer ``None`` for a stored ``""`` and did exactly that: a terminal empty
+    string read back "(not set)", which spec §2h forbids in as many words (``""`` ≠ unset).
+
+    THE THREE STORED SPELLINGS, each its own: a present-``None`` (the tri-state OMIT) is
+    ``null``; a terminal ``""`` is ``""``; a bool is lowercase, the spelling ``set`` accepts
+    back.  ⚑ EACH NAMES THE YAML THE FILE HOLDS, WHICH IS NOT THE SAME AS THE WORD YOU TYPE
+    TO WRITE IT.  ``null`` is the file's null, and the write spelling for it is the ``--null``
+    FLAG: ``set <key>=null`` stores the three-character STRING, a different value that reads
+    back through this same line.  A ``get`` may only teach values the CLI reads, and
+    ``str(None)`` taught ``None``, which a typed key refuses and a string key stores as three
+    letters — but reading a line back is not always retyping it.
+    """
+    if v is None:
+        return "null"
+    if v == "":
+        return '""'
     if isinstance(v, bool):
         return str(v).lower()
-    return str(v) if v != "" else None
+    return str(v)
+
+
+def stored_leaf_object(
+    noun_file: "Path | None", sections: tuple[str, ...], leaf: str,
+    *, default: object = None,
+) -> object:
+    """The RAW value stored at ``sections/leaf`` in *noun_file*, or *default* when absent.
+
+    ⚑⚑ THE UNRENDERED READ, AND THE ONLY WALK: :func:`read_stored_leaf` and
+    :func:`read_stored_pref` are each this plus their own renderer, which is what keeps the
+    two from growing separate ideas of where a leaf lives.
+    ⚑⚑ A DOOR THAT JUDGES THE VALUE READS HERE, NEVER THE RENDERING.  The renderings are
+    deliberately not injective — a stored ``""`` and a stored ``'""'`` both read back ``""``
+    (§2h) — so ``rendered == '""'`` cannot tell a user's two-character label from an empty
+    one, and a door asking that question must ask it of the object.
+    🛑 *default* IS WHAT "NOT THERE" LOOKS LIKE TO THE CALLER, and the caller owns that
+    choice because the raw answer cannot make it: a present-``None`` is indistinguishable
+    from the ``None`` default.  Pass a sentinel to tell them apart; leave it ``None`` only
+    where absent and present-``None`` mean the same thing to you.
+    """
+    if noun_file is None or not noun_file.exists():
+        return default
+    node: object = load_doc(noun_file)
+    for sec in sections:
+        if not isinstance(node, dict):
+            return default
+        node = node.get(sec)
+    if not isinstance(node, dict) or leaf not in node:
+        return default
+    return node[leaf]
+
+
+#: :func:`stored_leaf_object`'s "not there" answer for the two rendering readers below, which
+#: must tell absence from a present-``None``.  Private: a caller outside this module hands in
+#: its own, so this object never travels (P11).
+_ABSENT = object()
 
 
 def read_stored_leaf(
     noun_file: "Path | None", sections: tuple[str, ...], leaf: str,
-    *, render: "Callable[[object], str | None]" = render_stored_scalar,
+    *, render: "Callable[[object], str]" = render_stored_scalar,
 ) -> str | None:
     """The value STORED at ``sections/leaf`` in *noun_file*, or ``None`` when absent / no file.
 
-    ⚑ *render* IS THE ONLY WAY THE ABSENT ANSWER AND A RENDERED ONE STAY APART: a leaf that
-    is not there returns ``None`` above without rendering anything, so a caller cannot tell
-    the two cases apart from the outside and must hand its rendering IN.  It exists because
-    the scalar convention is not universal — a leaf whose stored shape is not a scalar
-    (``agent_file``'s argv list) renders by a rule that belongs with the file that owns the
-    shape, not here.  The default keeps every other caller on the scalar convention.
+    ⚑ ``None`` MEANS ABSENT AND NOTHING ELSE, and the TOTAL *render* is what guarantees it:
+    a leaf that is not there returns above without rendering anything, and no renderer this
+    signature accepts can produce that answer for a value that IS there.  The type carries
+    the rule, so no caller has to know it (P3).
+    ⚑ *render* is a parameter because the scalar convention is not universal — a leaf whose
+    stored shape is not a scalar (``agent_file``'s argv list) renders by a rule that belongs
+    with the file that owns the shape, not here.  The default keeps every other caller on the
+    scalar convention.
     """
-    if noun_file is None or not noun_file.exists():
-        return None
-    node: object = load_doc(noun_file)
-    for sec in sections:
-        if not isinstance(node, dict):
-            return None
-        node = node.get(sec)
-    if not isinstance(node, dict) or leaf not in node:
-        return None
-    return render(node[leaf])
+    v = stored_leaf_object(noun_file, sections, leaf, default=_ABSENT)
+    return None if v is _ABSENT else render(v)
 
 
 def render_stored_pref(v: object) -> str:
     """Render a stored ``pref`` REQUEST, keeping all THREE empty idioms apart (spec §2h).
 
-    ⚑ IT NEVER ANSWERS ``None``, unlike :func:`render_stored_scalar` — every one of the three
-    idioms has a spelling of its own, so there is no value left for the absent answer to
-    collide with.  Absence is :func:`read_stored_pref`'s to report, above the render.
+    ⚑ IT AGREES WITH :func:`render_stored_scalar` TODAY, STRING FOR STRING, AND IS STILL NOT
+    IT.  They answer different questions: that one DECIDES what a scalar leaf reads back as,
+    while this one may only FORWARD — *"the pref layer MUST NOT interpret emptiness AT ALL …
+    otherwise it becomes a FOURTH place deciding what 'empty' means"* (§2h).  A request also
+    carries whatever shape its TARGET holds, so a rule the scalar convention may adopt about
+    values that are not scalars is a rule this side must NOT inherit.  Folding them would put
+    one branch under two authorities; the agreement is the point, not a reason to merge.
     """
-    # ⚑ NOT render_stored_scalar: it collapses None and "" — the three pref idioms must stay apart.
     if v is None:
         return "null"
     if v == "":
@@ -186,25 +239,17 @@ def render_stored_pref(v: object) -> str:
 
 def read_stored_pref(
     noun_file: "Path | None", sections: tuple[str, ...], leaf: str,
-    *, render: "Callable[[object], str | None]" = render_stored_pref,
+    *, render: "Callable[[object], str]" = render_stored_pref,
 ) -> str | None:
     """Read a stored ``pref`` REQUEST, rendering all THREE empty idioms apart (spec §2h).
 
     ⚑ *render* IS HANDED IN FOR THE SAME REASON IT IS ON :func:`read_stored_leaf`, and the
     two must not grow separate conventions: a leaf that is not there returns ``None`` above
-    without rendering anything, so a caller cannot tell absence from a rendered answer and
-    must supply its own rule.  A pref REQUEST carries whatever shape its TARGET key holds —
+    without rendering anything, and the TOTAL renderer type is what keeps that the only way
+    this answers ``None``.  A pref REQUEST carries whatever shape its TARGET key holds —
     ``pref.agent.default.run_args`` carries the argv LIST — and a shape that is not a scalar
     renders by a rule belonging to the file that owns it, not here.  The default keeps every
     other caller on the three pref idioms.
     """
-    if noun_file is None or not noun_file.exists():
-        return None
-    node: object = load_doc(noun_file)
-    for sec in sections:
-        if not isinstance(node, dict):
-            return None
-        node = node.get(sec)
-    if not isinstance(node, dict) or leaf not in node:
-        return None
-    return render(node[leaf])
+    v = stored_leaf_object(noun_file, sections, leaf, default=_ABSENT)
+    return None if v is _ABSENT else render(v)

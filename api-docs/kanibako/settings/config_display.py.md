@@ -6,6 +6,7 @@ _Signatures only: no comments, no docstrings, no bodies._
 
 ## Functions
 ```
+def _flatten_table(node: dict, prefix: str, out: dict[str, str]) -> None
 def _nested_settings_overrides(path: Path | None) -> dict[str, str]
 def _pref_overrides(path: Path | None) -> dict[str, str]
 def _print_pref_block(snapshot: Any, out: Any) -> None
