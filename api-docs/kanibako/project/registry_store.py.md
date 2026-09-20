@@ -21,6 +21,7 @@ def load_section(registry: Path, section: str) -> dict
 def save_section(registry: Path, section: str, entries: dict) -> None
 def load_standalone(registry: Path) -> dict[str, str]
 def standalone_box_names(registry: Path) -> set[str]
+def standalone_root(registry: Path, box_name: str) -> str | None
 def register_standalone(registry: Path, box_name: str, root: Path) -> None
 def unregister_standalone(registry: Path, box_name: str) -> None
 def standalone_name_for_root(registry: Path, root: Path) -> str | None
