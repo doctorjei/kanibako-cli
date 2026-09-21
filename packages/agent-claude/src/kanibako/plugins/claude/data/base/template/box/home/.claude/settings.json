@@ -110,7 +110,7 @@
   },
   "statusLine": {
     "type": "command",
-    "command": "~/canon/handbook/agent/scripts/interface/statusline.sh"
+    "command": "~/canon/charter/agent/scripts/interface/statusline.sh"
   },
   "effortLevel": "high",
   "skipDangerousModePermissionPrompt": true,
