@@ -1787,9 +1787,11 @@ class TestPersonaShareSymlinks:
 
         ⚑ ALL THREE HOOKS, because the shim reads all three: the re-root in
         ``agent_categories_for_node`` covers ``seeded`` and the category binds too,
-        and a source re-rooted with no link behind it is an ABSENT source.  The two
-        extra hooks default EMPTY — exactly what every shipped plugin returns, so
-        the cases below that use the default fixture stay the ``common``-only story.
+        and a source re-rooted with no link behind it is an ABSENT source.  The
+        ``seeded`` hook defaults EMPTY — no shipped plugin declares one, so the
+        cases below stay the ``common``-only story for seeds; the category-binds
+        default is claude's LIVE ``caches`` row, cross-checked by the shape test
+        just below.
         """
         from types import SimpleNamespace
         if common_binds is None:
@@ -1803,11 +1805,19 @@ class TestPersonaShareSymlinks:
                     ),
                 },
             }
+        if category_binds is None:
+            category_binds = {
+                "agent.claude.caches": {
+                    "@system.cache/tweakcc": (
+                        "@meta.agent.claude.path/caches/tweakcc",
+                    ),
+                },
+            }
         return SimpleNamespace(
             name=self._HARNESS,
             default_common=lambda: common_binds,
             default_seeds=lambda: seeds or {},
-            default_category_binds=lambda: category_binds or {},
+            default_category_binds=lambda: category_binds,
         )
 
     def test_fixture_shape_matches_the_live_plugin(self):
@@ -1901,6 +1911,25 @@ class TestPersonaShareSymlinks:
             assert harness_dir.is_dir(), f"harness {name} dir missing"
             assert node_link.resolve() == harness_dir.resolve()
             assert node_link.readlink() == harness_dir
+
+    def test_persona_caches_leaf_is_shared_like_the_common_dirs(self, tmp_path):
+        """The declared ``caches`` leaf rides the SAME shim as ``common``.
+
+        A persona launch patches into ``agents/<node>/caches/tweakcc`` (the
+        re-rooted ``agent.<node>.caches`` source), so without the link the
+        writer would fill a persona-private dir the harness never shares — and
+        a second persona would patch the same binary twice.  The link keeps ONE
+        cache per harness, with the persona's symlink-replace escape hatch
+        intact (a real dir at the node path is left alone, as for ``common``).
+        """
+        from kanibako.commands.start import ensure_persona_share_symlinks
+        std = self._std(tmp_path)
+        ensure_persona_share_symlinks(std, self._NODE, self._target())
+        node_link = self._node_store(std) / "caches" / "tweakcc"
+        harness_dir = std.agents / self._HARNESS / "caches" / "tweakcc"
+        assert node_link.is_symlink(), "no caches link at the node store"
+        assert harness_dir.is_dir(), "no harness caches dir behind the link"
+        assert node_link.readlink() == harness_dir
 
     def test_persona_idempotent_second_call_noop(self, tmp_path):
         from kanibako.commands.start import ensure_persona_share_symlinks
@@ -2994,15 +3023,18 @@ class TestTweakccIntegration:
                 mock_apply.assert_not_called()
 
     def test_enabled_calls_apply_tweakcc(self, start_mocks, tmp_path):
-        """Enabled in agent config → ``_apply_tweakcc`` runs, AND is handed ``std.cache``.
+        """Enabled in agent config → ``_apply_tweakcc`` runs, AND is handed the
+        DECLARED ``caches`` source dir under ``std.agents``.
 
-        ⚑ THE CONSUMER HALF of the ``system.cache`` root.  The producer pins live in
-        ``tests/test_settings/test_system_paths.py::TestCacheRootIsTheKey`` and say the
-        key reaches ``std.cache``; without this one the launch could hand the transform
-        some other directory and both halves would still be green.  A bare
-        ``assert_called_once()`` was exactly that gap — `cache_path` was handed here for
-        as long as the field existed, and nothing said so.
-        (Mutation: pass any other cache dir → the argument is not ``cache_root`` → RED.)
+        ⚑ THE CONSUMER HALF of the ``caches`` declaration.  The producer pins live in
+        ``tests/test_settings/test_system_paths.py::TestCacheRootIsTheKey`` (for the
+        ``system.cache`` DEST half) and
+        ``tests/test_categories_live.py::TestEffectiveBlockAgainstARealAgentPlugin``
+        (for the resolved source half); without this one the launch could hand the
+        transform some other directory and all three halves would still be green.
+        The retired call handed ``std.cache`` — asserting the agents-store dir by
+        name is what makes that regression RED.
+        (Mutation: pass any other cache dir → the argument leaves ``std.agents`` → RED.)
         """
         with start_mocks() as m:
             cache_root = tmp_path / "cache-root"
@@ -3018,7 +3050,13 @@ class TestTweakccIntegration:
                     extra_args=[],
                 )
                 mock_apply.assert_called_once()
-                assert mock_apply.call_args.args[2] == cache_root
+                cache_dir = mock_apply.call_args.args[2]
+                assert cache_dir != cache_root
+                assert str(cache_dir).startswith(
+                    str(m.load_std_paths.return_value.agents)
+                )
+                assert cache_dir.name == "tweakcc"
+                assert cache_dir.parent.name == "caches"
 
     def test_patched_binary_used_in_mounts(self, start_mocks, tmp_path):
         """When tweakcc returns a patched install, descriptor_mounts uses it.
@@ -3172,24 +3210,38 @@ class TestCacheRootReachesItsConsumers:
             m_fresh.assert_called_once()
             assert m_fresh.call_args.args[2] == cache_root
 
-    def test_the_helper_hub_shares_the_cache_roots_tweakcc_dir(self, start_mocks, tmp_path):
-        """The helpers' patched-binary bind source is ``std.cache / "tweakcc"``.
+    def test_the_helper_hub_shares_the_declared_caches_mount(self, start_mocks, tmp_path):
+        """The helpers reuse the DECLARED ``caches`` mount, not an identity mount.
 
-        ⚑ THE ONE CONSUMER THAT TAKES NO ARGUMENT — ``_start_helper_hub`` derives a leaf
-        under the root and MOUNTS it, so a wrong root here is a wrong mount source rather
-        than a wrong call, and the two argument pins above cannot see it.  The dir must
-        exist (the append is gated on ``.is_dir()``) and the hub is agent-scope opt-in, so
-        both are set up here rather than left to the fixture floor.
-        (Mutation: restore the ``std.cache_path`` derivation → the source is a path off the
-        mock's auto-attribute, not ``cache_root / "tweakcc"`` → RED.)
+        The collapse-emitted mount for ``agent.claude.caches`` (host source = the
+        agent store dir, guest dest = resolved ``@system.cache/tweakcc``) is
+        SELECTED into the helper context by its source — the same Mount object
+        the director gets, so one emission serves both boxes and no hand-built
+        ``destination=str(source)`` mount survives.  Pinned byte-exact on BOTH
+        sides: the source is the dir the patcher wrote (the entry lives directly
+        under it) and the dest is the ``std.cache``-rooted string the retired
+        mount used — the move changes the source, never the dest.
+
+        The collapse half of this seam is pinned on the REAL pipeline in
+        ``tests/test_categories_live.py``; here the emitted mount is injected at
+        the bind-map boundary (the snapshot orchestrator is stubbed in this
+        fixture) so this test pins the WIRING — emit → select → helper ctx —
+        rather than re-proving the resolve.
+        (Mutation: restore the identity mount → dest == source → the
+        not-identity assertion goes RED; drop the selection → the mount never
+        reaches the helper ctx → RED.)
         """
         from kanibako.channels import helper_listener as helper_listener_mod
+        from kanibako.settings.kb_store import BindEntry
+        from kanibako.targets.base import AgentInstall
+        from kanibako.tweakcc_cache import CacheEntry
 
         with start_mocks() as m, patch.object(
             helper_listener_mod, "HelperHub",
         ) as m_hub_cls:
             cache_root = tmp_path / "cache-root"
-            (cache_root / "tweakcc").mkdir(parents=True)
+            agent_cache_dir = tmp_path / "agents" / "claude" / "caches" / "tweakcc"
+            agent_cache_dir.mkdir(parents=True)
             m.load_std_paths.return_value.cache = cache_root
             # A real runtime dir for the AF_UNIX socket name, as the hub's other
             # real-``_start_helper_hub`` tests do.
@@ -3198,12 +3250,40 @@ class TestCacheRootReachesItsConsumers:
             m.agent_cfg.transform_settings = {"enabled": True}
             m.load_agent_config.return_value = m.agent_cfg
 
-            with patch("kanibako.commands.start._apply_tweakcc") as mock_apply:
-                # A non-None ``tweakcc_entry`` is what opens the share; the install and
-                # cache object are the launch's own, unchanged.
-                mock_apply.return_value = (
-                    m.target.detect.return_value, MagicMock(), MagicMock(),
-                )
+            # The patched binary the launch delivers: a real file under the
+            # DECLARED source dir (the launcher bind is AGENT_CRITICAL, so the
+            # emitter raises rather than mounts a missing source).
+            patched_binary = agent_cache_dir / "0123456789abcdef"
+            patched_binary.write_bytes(b"\x7fELF" + b"\x00" * 50)
+            install_dir = tmp_path / "install"
+            install_dir.mkdir()
+            patched_install = AgentInstall(
+                name="claude",
+                binary=patched_binary,
+                install_dir=install_dir,
+            )
+            fake_entry = CacheEntry(path=patched_binary, fd=-1)
+            fake_cache = MagicMock()
+
+            import kanibako.commands.start as start_mod
+            real_bind_map = start_mod._launch_bind_map
+            guest_dest = str(cache_root / "tweakcc")
+
+            def _map_plus_caches(snapshot):
+                binds = dict(real_bind_map(snapshot))
+                binds[guest_dest] = BindEntry(str(agent_cache_dir))
+                return binds
+
+            with (
+                patch("kanibako.commands.start._apply_tweakcc") as mock_apply,
+                patch(
+                    "kanibako.commands.start._launch_bind_map",
+                    side_effect=_map_plus_caches,
+                ),
+            ):
+                # A non-None ``tweakcc_entry`` is what opens the share; the entry
+                # lives directly under the declared source dir.
+                mock_apply.return_value = (patched_install, fake_entry, fake_cache)
                 assert _run_container(
                     project_dir=None, entrypoint=None, image_override=None,
                     new_session=False, safe_mode=False, resume_mode=False,
@@ -3212,7 +3292,32 @@ class TestCacheRootReachesItsConsumers:
 
         assert m_hub_cls.return_value.start.call_count == 1, "the hub must start"
         ctx = m_hub_cls.return_value.start.call_args.args[1]
-        assert cache_root / "tweakcc" in {mt.source for mt in ctx.binary_mounts}
+        shared = [
+            mt for mt in ctx.binary_mounts
+            if getattr(mt, "source", None) == agent_cache_dir
+        ]
+        assert len(shared) == 1, (
+            "the declared caches mount — and only it — reaches the helpers"
+        )
+        assert str(shared[0].destination) == guest_dest
+        assert shared[0].options == "", (
+            "caches folds into the rw arm — no mode option is statable"
+        )
+        assert str(shared[0].destination) != str(shared[0].source), (
+            "identity mount (destination == source) is the retired shape"
+        )
+        # The SAME emitted mount serves the director box (one emission, two
+        # consumers — that is the single-route claim).
+        director_mounts = m.runtime.run.call_args.kwargs.get("extra_mounts") or []
+        assert any(
+            getattr(mt, "source", None) == agent_cache_dir
+            and str(getattr(mt, "destination", None)) == guest_dest
+            for mt in director_mounts
+        )
+        # And the patched binary itself still reaches the helpers at the
+        # launcher dest (the in-helper binary path, solved WITH the declaration).
+        assert patched_binary in {getattr(mt, "source", None) for mt in ctx.binary_mounts}
+        fake_cache.release.assert_called_once_with(fake_entry)
 
 
 class TestBinaryMountSafeFail:
@@ -3314,6 +3419,10 @@ class TestApplyTweakcc:
             assert patched_install.install_dir == install.install_dir
             assert entry is fake_entry
             cache_instance.put.assert_not_called()
+            # The handed dir IS the cache dir — nothing is appended to it here
+            # (the ``cache_path / "tweakcc"`` composition is the retired shape;
+            # the caller hands the DECLARED source via ``_tweakcc_cache_dir``).
+            MockCache.assert_called_once_with(tmp_path)
 
     def test_cache_miss_calls_put(self, tmp_path):
         """Cache miss → calls put with tweakcc command."""
@@ -3371,6 +3480,37 @@ class TestApplyTweakcc:
             result = _apply_tweakcc(install, agent_cfg, tmp_path, "kanibako-oci:latest", "podman", logger)
             _, _, cache_obj = result
             assert cache_obj is cache_instance
+            MockCache.assert_called_once_with(tmp_path)
+
+
+class TestTweakccCacheDir:
+    """Unit tests for the ``_tweakcc_cache_dir`` composer."""
+
+    def test_bare_agent_dir(self, tmp_path):
+        """The writer dir is the agent store's ``caches/tweakcc`` leaf."""
+        from types import SimpleNamespace
+
+        from kanibako.commands.start import _tweakcc_cache_dir
+
+        std = SimpleNamespace(agents=tmp_path / "agents")
+        assert _tweakcc_cache_dir(std, "claude") == (
+            tmp_path / "agents" / "claude" / "caches" / "tweakcc"
+        )
+
+    def test_mock_std_agents_string_form(self, tmp_path):
+        """A stringified ``std.agents`` composes identically (mock tolerance).
+
+        The launch fixture's ``std`` is a MagicMock whose ``agents`` attribute
+        only carries its STRING form, so the composer must read that form and
+        never take ``/`` hops off the attribute itself.
+        """
+        from kanibako.commands.start import _tweakcc_cache_dir
+
+        std = MagicMock()
+        std.agents.__str__.return_value = str(tmp_path / "agents")
+        assert _tweakcc_cache_dir(std, "claude") == (
+            tmp_path / "agents" / "claude" / "caches" / "tweakcc"
+        )
 
 
 class TestPrepareHostHook:

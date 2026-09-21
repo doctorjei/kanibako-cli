@@ -549,11 +549,14 @@ class ClaudeTarget(Target):
     def default_category_binds(self) -> CategoryBindDefaults:
         """Declare claude's AGENT-scope ``@``-ref-sourced category binds.
 
-        Read from ``claude-defaults.yaml`` (via the loader).  Currently EMPTY: the
+        Read from ``claude-defaults.yaml`` (via the loader).  ONE member: the
+        tweakcc patched-binary cache, ``agent.claude.caches`` at
+        ``@system.cache/tweakcc`` from ``@meta.agent.claude.path/caches/tweakcc``
+        (spec §2d instantiation — a declared entry, NOT an identity mount; the
         former ``@system.instructions`` → ``~/.claude/KANIBAKO.md`` instructions
         bind was retired — the box guide now ships INSIDE the RO ``general``
         chapter bind at ``~/canon/charter/general`` + the flattened per-agent
-        FINAL file.
+        FINAL file).
         """
         return load_category_binds(_DEFAULTS_PACKAGE, _DEFAULTS_FILE, self.name)
 

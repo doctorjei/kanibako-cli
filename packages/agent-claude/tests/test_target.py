@@ -540,6 +540,38 @@ class TestDefaultShares:
             assert box_dest.startswith("/home/agent/.claude/")
 
 
+class TestDefaultCategoryBinds:
+    """claude declares the tweakcc cache as an AGENT-scope ``caches`` entry.
+
+    The spec's ``agent.claude.caches[@system.cache/tweakcc]`` instantiation:
+    ONE terminal key whose value is the dest-keyed map
+    ``{box_dest: (host_src,)}``.  The SOURCE is the agent DECLARATION ROOT
+    and the DEST the standard cache dir — INDEPENDENT, never an identity mount
+    (spec §2d).  No ``ro`` option: ``caches`` folds into the ``rw`` arm and the
+    collapse refuses a mode-contradicting option.
+    """
+
+    def test_declares_the_tweakcc_cache(self):
+        assert ClaudeTarget().default_category_binds() == {
+            "agent.claude.caches": {
+                "@system.cache/tweakcc": (
+                    "@meta.agent.claude.path/caches/tweakcc",
+                ),
+            },
+        }
+
+    def test_source_is_not_the_dest(self):
+        """The entry is NOT an identity mount (spec §2d forbids it here).
+
+        A regression to ``destination=str(source)`` — the retired hand-built
+        helper mount — resolves both sides to one string and is RED here.
+        """
+        arm = ClaudeTarget().default_category_binds()["agent.claude.caches"]
+        assert arm  # not vacuous — claude ships one row
+        for box_dest, value in arm.items():
+            assert value[0] != box_dest, box_dest
+
+
 class TestDefaultEnvs:
     """claude's declared AGENT-scope env keys (spec §2d ``agent.claude.env.*``)."""
 

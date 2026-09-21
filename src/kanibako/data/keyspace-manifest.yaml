@@ -3087,8 +3087,8 @@ plugin_contributed:
   # ⚑ Dests are GUEST paths, RESOLVED to the host store when the copy runs (§0 /
   # R-20; respelled 2026-08-08, were "@meta.box.path/home/..."). `synced` is and
   # remains a COPY category — the respell changed the SPELLING, never the delivery.
-  # ⚑⚑ EACH ROW BELOW NOW READS `X | (X)` AND IS *NOT* AN IDENTITY ENTRY (contrast
-  # the genuine identity `caches` mounts at §2d, where dest == source host-side):
+  # ⚑⚑ EACH ROW BELOW NOW READS `X | (X)` AND IS *NOT* AN IDENTITY ENTRY (as is
+  # the declared `caches` entry at §2d, whose dest and source are INDEPENDENT):
   # the KEY's `~` is the GUEST home, element 0's `~` is the HOST user's home.
   category_default_entries:
     agent.claude.synced:

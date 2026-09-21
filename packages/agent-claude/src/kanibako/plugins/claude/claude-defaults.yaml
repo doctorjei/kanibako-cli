@@ -215,6 +215,24 @@ common:
   - host_src: cache
     box_dest: "$GUEST_HOME/.claude/cache"
 
+# AGENT-scope `@`-ref-sourced category binds (spec §2d): the tweakcc
+# patched-binary cache (the spec's `agent.claude.caches[@system.cache/tweakcc]`
+# instantiation).  The SOURCE is the agent DECLARATION ROOT
+# (`@meta.agent.claude.path/caches/tweakcc`, so the patched binaries live at
+# `agents/claude/caches/tweakcc`); the DEST is the standard cache dir.  Dest and
+# source are INDEPENDENT: this is NOT an identity mount.  No `ro`: `caches`
+# folds into the `rw` arm and the collapse REFUSES a mode-contradicting option
+# (`store_collapse._refuse_mode_contradiction`) — a cache is host-written and
+# box-consumed, like the `common` sibling dirs.  Read by the loader into the ONE
+# terminal key `agent.claude.caches` (`{box_dest: (host_src,)}`), folded into the
+# floor beside `common` and emitted by the ONE category emitter — the hand-built
+# identity `_HMount` in `commands/start.py::_start_helper_hub` is gone, and the
+# helper reuses this same emitted mount.
+category_binds:
+  - category: caches
+    box_dest: "@system.cache/tweakcc"
+    meta_ref: "@meta.agent.claude.path/caches/tweakcc"
+
 # The former Route-A `category_binds:` `instructions` entry (@system.instructions →
 # ~/.claude/KANIBAKO.md) is RETIRED: the box guide now reaches the box INSIDE the RO
 # `general` chapter bind at `~/canon/charter/general` + the flattened per-agent FINAL file

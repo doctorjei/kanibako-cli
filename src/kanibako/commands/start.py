@@ -25,6 +25,7 @@ if TYPE_CHECKING:
 
 from kanibako.settings import agent_file
 from kanibako.settings.agent_config import (
+    agent_category_dirname,
     agent_settings_path,
     store_dirname,
 )
@@ -1619,12 +1620,33 @@ def _bootstrap_attach(program: str) -> list[str]:
     return [program]
 
 
-def _apply_tweakcc(install, agent_cfg, cache_path, image, runtime_cmd, logger):
+def _tweakcc_cache_dir(std, agent_id: str) -> Path:
+    """The host dir the tweakcc patched-binary cache lives in, for this launch.
+
+    The DECLARED ``caches`` source (spec §2d instantiation
+    ``agent.claude.caches[@system.cache/tweakcc]``): the agent store's
+    ``caches/tweakcc`` leaf under the ACTIVE node — ``agents/<node>/`` for a
+    persona (whose leaf the persona-share shim links at the harness's real dir
+    BEFORE this runs), ``agents/claude/`` for the bare agent.  Composed from
+    ``std.agents`` (the resolved ``@config.agents``) and :func:`store_dirname`
+    (the one place a node becomes a directory) — the shared facts, never
+    re-spelled — plus the FIXED category dirname (refused if undeclared).
+    """
+    return (
+        Path(str(std.agents)) / store_dirname(agent_id)
+        / agent_category_dirname("caches") / "tweakcc"
+    )
+
+
+def _apply_tweakcc(install, agent_cfg, cache_dir, image, runtime_cmd, logger):
     """Apply tweakcc patching if enabled in agent config.
 
     Patching runs inside a throwaway container (``<runtime> run --rm``) on the
     same image the agent will use.  The patched binary is cached on disk with
-    flock-based reference counting.
+    flock-based reference counting.  *cache_dir* is the DECLARED ``caches``
+    source for this launch (:func:`_tweakcc_cache_dir`) — the writer addresses
+    the same dir the emitted ``agent.<node>.caches`` mount shares, so the
+    patched binary is reachable in the box AND its helpers at the mount.
 
     Returns ``(patched_install, cache_entry, cache)`` on success, or
     *None* if tweakcc is disabled or patching fails (graceful fallback).
@@ -1643,7 +1665,6 @@ def _apply_tweakcc(install, agent_cfg, cache_path, image, runtime_cmd, logger):
         bin_hash = cli_js_hash(install.binary)
         cfg_hash = config_hash(merged_config)
 
-        cache_dir = cache_path / "tweakcc"
         cache = TweakccCache(cache_dir)
         key = cache.cache_key(bin_hash, cfg_hash)
 
@@ -2051,7 +2072,6 @@ def _start_helper_hub(
     target,
     install,
     binary_mnts,
-    tweakcc_entry,
     std,
     container_env,
     entrypoint,
@@ -2067,7 +2087,6 @@ def _start_helper_hub(
     SIDE EFFECT: extends the caller's ``extra_mounts`` list IN PLACE.
     """
     from kanibako.channels.helper_listener import HelperContext, HelperHub, MessageLog
-    from kanibako.targets.base import Mount as _HMount
 
     # Socket must live in a short path to stay under the AF_UNIX
     # ``sun_path`` limit.  ``std.runtime`` is ``$XDG_RUNTIME_DIR/kanibako``
@@ -2112,16 +2131,6 @@ def _start_helper_hub(
     binary_mounts = _kanibako_mounts()
     if target and install:
         binary_mounts.extend(binary_mnts)
-
-    # Share tweakcc cache with helpers so they reuse patched binaries
-    if tweakcc_entry is not None:
-        _tweakcc_cache_dir = std.cache / "tweakcc"
-        if _tweakcc_cache_dir.is_dir():
-            binary_mounts.append(_HMount(
-                source=_tweakcc_cache_dir,
-                destination=str(_tweakcc_cache_dir),
-                options="ro",
-            ))
 
     helper_ctx = HelperContext(
         runtime=runtime,
@@ -3236,9 +3245,10 @@ def _run_container(
     suppress_oauth = active_endpoint is not None
 
     # Loadability resolved → NOW materialise the persona artifacts.  Persist the
-    # freshly generated agent config; the common-dir shim points
-    # ``agents/<node>/common/{plugins,cache}`` at the harness's dirs BEFORE mount
-    # assembly resolves them.  A bare agent (node == harness) is a no-op for the shim.
+    # freshly generated agent config; the category-source shim points
+    # ``agents/<node>/common/{plugins,cache}`` and ``agents/<node>/caches/tweakcc``
+    # at the harness's dirs BEFORE mount assembly resolves them.  A bare agent
+    # (node == harness) is a no-op for the shim.
     # ⚑ ``agent_cfg_dirty`` is FIRST-USE ONLY: nothing on this path writes a resolved
     # persona value back, so a persona launch leaves an existing
     # ``agents/<node>/agent.yaml`` byte-identical.
@@ -3543,7 +3553,8 @@ def _run_container(
         )
         if active_transform == _TWEAKCC_TRANSFORM:
             result = _apply_tweakcc(
-                install, agent_cfg, std.cache, image, runtime.cmd, logger,
+                install, agent_cfg, _tweakcc_cache_dir(std, agent_id),
+                image, runtime.cmd, logger,
             )
             if result:
                 install, tweakcc_entry, tweakcc_cache_obj = result
@@ -3968,6 +3979,26 @@ def _run_container(
         binary_mnts: list = [
             m for m in category_mounts if str(m.destination) in agent_dests
         ]
+        # The declared tweakcc cache (``agent.<node>.caches`` at
+        # ``@system.cache/tweakcc``, spec §2d instantiation) rides to the
+        # helpers as the SAME emitted mount the director gets — selected by
+        # SOURCE, the cache dir the patcher just wrote (``tweakcc_entry.path``
+        # lives directly under it), so the helper reuses the patched binaries
+        # with no second route.  A masked or suppressed dest simply yields no
+        # mount here, exactly as in the director box — debug, not warning: a
+        # missing winner is a deliberate configuration, not a defect.
+        if tweakcc_entry is not None:
+            _tweakcc_mounts = [
+                m for m in category_mounts
+                if m.source == tweakcc_entry.path.parent
+            ]
+            if not _tweakcc_mounts:
+                logger.debug(
+                    "tweakcc cache at %s has no emitted mount; helpers run "
+                    "without the cache dir (dest masked or source suppressed?)",
+                    tweakcc_entry.path.parent,
+                )
+            binary_mnts.extend(_tweakcc_mounts)
 
         # Synced copies (the terminal `<scope>.synced` category) — applied on EVERY
         # launch (mtime-gated), unlike copy-once seeds.  ADDITIVE: with no
@@ -4103,7 +4134,6 @@ def _run_container(
                 target=target,
                 install=install,
                 binary_mnts=binary_mnts,
-                tweakcc_entry=tweakcc_entry,
                 std=std,
                 container_env=container_env,
                 entrypoint=entrypoint,

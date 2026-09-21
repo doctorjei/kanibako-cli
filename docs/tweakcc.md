@@ -9,11 +9,12 @@ Kanibako orchestrates the full patching lifecycle:
 
 1. Computes a content hash of the host binary's embedded cli.js
 2. Merges config layers: kanibako defaults -> external config file -> inline overrides
-3. Checks the flock-based binary cache (at `@system.cache/tweakcc`, i.e.
-   `$XDG_CACHE_HOME/kanibako/tweakcc/`)
+3. Checks the flock-based binary cache in the agent store
+   (`agents/claude/caches/tweakcc`, the declared `agent.claude.caches` source)
 4. On cache miss, copies the binary and invokes tweakcc to patch it
-5. Mounts the cached patched binary into the box
-6. Propagates the cache to helper boxes
+5. Mounts the cached patched binary into the box (at the launcher bind) and the
+   cache dir at `@system.cache/tweakcc`
+6. Propagates the same declared cache mount to helper boxes
 
 **Note:** tweakcc is a Node.js package and requires Node.js on the host (or
 in the box where patching runs).  The patching invocation is under
