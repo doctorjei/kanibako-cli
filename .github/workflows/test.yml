@@ -136,7 +136,7 @@ jobs:
       # `/`-anchored spelling, which an earlier build reads as a literal substring
       # matching nothing -- lower this pin and the conformance job reds. The
       # measurement is in that file's version-floor note, above its `exclude`.
-      - run: pip install "kinemata[yaml]==0.2.0"
+      - run: pip install "kinemata[yaml]==0.3.0"
       # ⚑ THE PROJECT ITSELF IS INSTALLED HERE BECAUSE THE PARITY ORACLE IMPORTS
       # IT. `parity` runs a command that prints what the code produces, and an
       # oracle it cannot run is a FAILURE that no baseline can accept -- so a
