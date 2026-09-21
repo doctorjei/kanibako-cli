@@ -66,6 +66,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   re-patched at the next launch and the digest cache re-reads the registry — so there is nothing
   to copy and nothing is lost.
 
+- **The tweakcc patched-binary cache moved into the agent store.** It lived at
+  `$XDG_CACHE_HOME/kanibako/tweakcc` and reached helper boxes through a hand-built identity
+  mount; it is now the declared `agent.claude.caches` entry (spec §2d): host source
+  `agents/claude/caches/tweakcc`, guest dest `@system.cache/tweakcc`, delivered by the category
+  route like every other bind. The guest path is byte for byte where it was, so helpers find the
+  cache exactly where they always have — only the host directory moved, and the box itself now
+  mounts the cache dir too (read-write, like the agent `common` shares). A persona launch shares
+  one cache per harness through the persona symlink shim. ⚑ **Nothing to do on upgrade, and
+  nothing is lost:** the old directory is left behind and rebuilt on demand — the binary is
+  re-patched at the next launch — so there is nothing to copy; delete
+  `$XDG_CACHE_HOME/kanibako/tweakcc` by hand if you want the space back. ⚑ This supersedes the
+  `system.cache` entry above for the tweakcc half: both caches lived under `system.cache`, and
+  the image digest cache still does — only the patched-binary cache moved out, to the store §2d
+  names. (Note for the spec side: §2g still calls `system.cache` the transform-caches root "under
+  it" — that gloss now describes the dest, not the host source, and is his to settle.)
+
 - **A persona probe that `box create` or `box start` could not verify said so without saying where
   it had read the endpoint and model.** The message named the endpoint, the model actually sent and
   the provider's own words, and then left the user to guess which of their files any of it had come

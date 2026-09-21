@@ -67,13 +67,14 @@ def _bootstrap_wrap(program: str, inner_cmd: str, cli_args: list[str]) -> tuple[
 def _env_flag_enabled(value: str | None) -> bool
 def _build_supervisor_pid1(supervisor_argv: list[str], fallback_argv: list[str]) -> tuple[str, list[str]]
 def _bootstrap_attach(program: str) -> list[str]
-def _apply_tweakcc(install, agent_cfg, cache_path, image, runtime_cmd, logger)
+def _tweakcc_cache_dir(std, agent_id: str) -> Path
+def _apply_tweakcc(install, agent_cfg, cache_dir, image, runtime_cmd, logger)
 def _parse_cli_env(cli_env: list[str] | None) -> dict[str, str]
 def _refuse_retired_behavior(*, proj, agent_id, system_settings_path, agent_cfg_path) -> None
 def _deliver_panel_permissions(*, target, proj, access, provider, logger)
 def _assemble_image_sharing_mounts(*, merged, proj, runtime, std, agent_id, system_settings_path, agent_cfg_path, auth_src, extra_mounts, logger)
 def _assemble_launch_env(*, std, proj, deliveries, env_slots, extra_mounts, logger)
-def _start_helper_hub(*, runtime, image, container_name, proj, target, install, binary_mnts, tweakcc_entry, std, container_env, entrypoint, box_shell, agent_id, system_settings_path, agent_cfg_path, auth_src, extra_mounts)
+def _start_helper_hub(*, runtime, image, container_name, proj, target, install, binary_mnts, std, container_env, entrypoint, box_shell, agent_id, system_settings_path, agent_cfg_path, auth_src, extra_mounts)
 def _persist_or_announce_flags(proj, box_settings_path: Path, *, image_override: str | None, share_images: bool) -> None
 def _run_container(*, project_dir: str | None, entrypoint: str | None, image_override: str | None, new_session: bool, continue_override: bool=False, safe_mode: bool, autonomous: bool=False, resume_mode: bool, extra_args: list[str], no_helpers: bool=False, no_auto_auth: bool=False, browser: bool=False, share_images: bool=False, persistent: bool=False, explicit_persistent: bool=False, explicit_ephemeral: bool=False, detach: bool=False, restart: bool=False, model_override: str | None=None, cli_env: list[str] | None=None, box_shell_mode: bool=False, explicit_agent: str | None=None, setup_only: bool=False, print_container: bool=False, warm_only: bool=False) -> int
 def _print_setup_did_not_take(target) -> None

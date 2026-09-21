@@ -1354,6 +1354,42 @@ class TestEffectiveBlockAgainstARealAgentPlugin:
         # would satisfy every assertion above by printing nothing per declaration.
         assert "temporarily unavailable" not in text
 
+    def test_the_declared_caches_entry_resolves_store_sourced_and_writer_agrees(self):
+        """The shipped ``agent.claude.caches`` entry, end to end (spec §2d).
+
+        GUEST dest is the resolved ``@system.cache/tweakcc`` — byte-identical to
+        the retired identity mount's dest (the system.cache repair's
+        precondition), so the in-helper path does not move.  HOST source is the
+        agent store ``agents/claude/caches/tweakcc`` — the move this row makes —
+        and it is NOT the dest (the spec forbids the identity mount here).
+
+        WRITER/MOUNT AGREEMENT, the half the declaration alone cannot close:
+        :func:`commands.start._tweakcc_cache_dir` — the dir the patcher writes —
+        names the same path the pipeline emits, so the launch's source-matched
+        helper selection cannot silently miss.  A drift between the YAML leaf
+        and the writer is RED here, not a helper that quietly loses its cache.
+        """
+        from kanibako.commands.start import _tweakcc_cache_dir
+        from kanibako.settings.settings_launch import snapshot_category_entries
+
+        snap, entries, ctx = self._snapshot()
+        by_dest = {
+            e.box_dest: e.host_src for e in snapshot_category_entries(
+                snap, active_agent="claude", box_ctx=ctx,
+            ) if e.delivery != "ENV"
+        }
+        assert by_dest["/xcache/kanibako/tweakcc"] == (
+            "/data/agents/claude/caches/tweakcc"
+        )
+        assert by_dest["/xcache/kanibako/tweakcc"] != "/xcache/kanibako/tweakcc"
+
+        class _Std:
+            agents = "/data/agents"
+
+        assert str(_tweakcc_cache_dir(_Std(), "claude")) == (
+            by_dest["/xcache/kanibako/tweakcc"]
+        )
+
 
 class TestTheEffectiveBlockShowsThePidZeroFoundation:
     """⚑⚑ CUTOVER 6-H — ``box show --effective`` must not lose the box's own home.

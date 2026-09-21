@@ -9,10 +9,13 @@ is SILENT: no mount, no copy, no error, no warning. ``common`` was adapted first
 call sites — twice in :func:`~kanibako.commands.start._resolve_launch_snapshot` and
 again on the CREATE path in ``_apply_init_seeds``.
 
-⚑ THIS IS INVISIBLE TO THE SHIPPED FLEET. Every first-party plugin returns ``{}`` from
-both hooks, so no configuration of claude/goose/codex can show the defect and no test
-driven by them can catch it. Every case here therefore drives a target that DECLARES
-something, and the module's whole value is that non-empty return.
+⚑ SHIPPED COVERAGE IS THIN BY CONSTRUCTION. goose/codex return ``{}`` from both
+hooks and claude declares exactly ONE ``category_binds`` row (the tweakcc
+``caches`` entry) and no seeds, so no shipped configuration exercises the
+general mechanism — every case here therefore drives a target that DECLARES
+something, and the module's whole value is that non-empty return.  The shipped
+row's own persona adaptation is pinned separately below, against the REAL
+``ClaudeTarget`` table, so a change to what claude ships fails by name.
 
 ⚑ RE-KEY IS ONLY HALF. The source is re-rooted onto ``@meta.agent.<node>.path`` too,
 which is a SYMLINK ``commands.start.ensure_persona_share_symlinks`` lays at the
@@ -159,6 +162,40 @@ class TestTheDeclarationsArriveForAPersona:
         for entry in entries:
             assert f"/agents/{NODE_DIR}/" in entry.host_src, entry.host_src
             assert f"/agents/{HARNESS}/" not in entry.host_src, entry.host_src
+
+
+class TestTheShippedCachesRowAdaptsToAPersona:
+    """claude's ONE shipped ``category_binds`` row adapts like any declaration.
+
+    Driven against the REAL ``ClaudeTarget`` table rather than the synthetic
+    ``DECLARED_*`` above, so a change to what claude ships fails by name.  The
+    full resolve is pinned for the harness in ``test_categories_live.py``; what
+    this pins is the ADAPTER contract for the shipped row: re-keyed to the node
+    AND re-rooted onto the node's store (the symlink escape hatch), never at
+    the harness store directly.
+    """
+
+    def test_real_table_adapts_key_and_source_to_the_node(self):
+        from kanibako.plugins.claude import ClaudeTarget
+
+        table = ClaudeTarget().default_category_binds()
+        assert agent_categories_for_node(
+            table, node_name=NODE, harness=HARNESS,
+        ) == {
+            f"agent.{NODE}.caches": {
+                "@system.cache/tweakcc": (
+                    f"@meta.agent.{NODE}.path/caches/tweakcc",
+                ),
+            },
+        }
+
+    def test_bare_agent_is_identity_for_the_real_table(self):
+        from kanibako.plugins.claude import ClaudeTarget
+
+        table = ClaudeTarget().default_category_binds()
+        assert agent_categories_for_node(
+            table, node_name=HARNESS, harness=HARNESS,
+        ) == table
 
 
 class TestTheLaunchSeamCarriesTheDeclarations:
