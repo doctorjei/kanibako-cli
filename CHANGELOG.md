@@ -280,8 +280,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   settings system reads for every agent; `mypersona+shell` and `mypersona+default` parsed as
   ordinary refs. A plugin claiming one of the two is now **skipped with a warning on stderr**,
   which costs that one plugin its registration and leaves the rest of the CLI working, and a ref
-  naming one is refused at rc 1. The rule is exact-spelling: `Shell`, `shellx` and `defaults` are
-  ordinary agent names and are unaffected, as is the `agent.default.*` key tier itself. Nothing
+  naming one is refused at rc 1. The rule is a whole-name match that folds for comparison: `Shell`
+  is refused like `shell`, while `shellx` and `defaults` are ordinary agent names and are
+  unaffected, as is the `agent.default.*` key tier itself. Nothing
   kanibako ships uses either name. See `MIGRATION.md` § *3.2 `default` and `shell` are reserved
   names a plugin may not take*.
 
@@ -505,12 +506,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   it — is that name in lowercase**. So an agent is found however you capitalize it, and it is
   stored in exactly one place whatever case it declares. ⚑ **Nothing moves for the agents kanibako
   publishes**: `claude`, `codex` and `goose` declare lowercase names already, and a lowercase name
-  is its own node. A plugin that declares a capital does move its store, and the keys naming it must
-  be re-spelled — see *An agent's store directory and cascade slot are its name in lowercase* in
-  [MIGRATION.md](MIGRATION.md). ⚑ Reserved names go by the node too: a plugin calling itself
-  `Shell` is now skipped with the same warning `shell` gets, because it claims the same store.
-  A name a *user* types is still matched exactly against the reserved set, so `--agent Shell` is
-  refused as an agent that is not installed rather than as a reserved name.
+  is its own node. A plugin that declares a capital does move its store, and the keys naming it should
+  be re-spelled for cleanliness — a key left at the old capital still resolves to the node — see *An
+  agent's store directory and cascade slot are its name in lowercase* in
+  [MIGRATION.md](MIGRATION.md). ⚑ Reserved names go by comparison too: a plugin calling itself
+  `Shell` is now skipped with the same warning `shell` gets, because it claims the same store —
+  and a name a *user* types is refused the same way, so `--agent Shell` is now answered as a
+  reserved name rather than as an agent that is not installed.
 
 - **Two agent plugins whose names differ only in case are no longer decided by install order.**
   They collapse to one node, so they claim one store directory and one cascade slot. Where both
@@ -519,6 +521,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   winning or losing depending on the order the metadata happened to come back in. Overriding an
   installed plugin with one you drop in your own store is unchanged and still works: that is a
   different route, and which route wins is written down.
+
+- **A user-typed agent spelling reaches the node however it is capitalized — and a re-cased
+  reserved name is refused however it is capitalized.** `agent.Claude.model` reads the `claude`
+  node instead of answering *unknown agent*, and `kanibako agent show Claude` reads the
+  `agents/claude/` store the launch writes instead of the `agents/Claude/` directory it never
+  opens. Only the harness folds: a persona segment keeps the case you typed, and key names
+  outside the agent segment stay case-sensitive. The reservation folds the same way, so
+  `--agent Shell` is now refused as a RESERVED pseudo-agent name — the *not installed* answer it
+  got before was one identifier getting two refusals by spelling. `shellx` and `defaults` are
+  still ordinary names; the rule was never a prefix test. ⚑ **Nothing moves, and keys need no
+  urgent re-spelling:** the store moved in *An agent's name keeps the case its plugin declares*
+  above, and a key left at an old capital now resolves to the node — re-spell it when convenient.
 
 - **A box name is stored in the case you typed it.** `kanibako create --name Foo` folded the name
   to lowercase before it validated, registered or displayed it, so the box was `foo` and a capital

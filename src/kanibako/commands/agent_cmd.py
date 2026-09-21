@@ -7,8 +7,14 @@ import logging
 import sys
 from typing import TYPE_CHECKING
 
-from kanibako.agent_ref import canonicalize_agent_ref, display_agent_ref
+from kanibako.agent_ref import (
+    canonicalize_agent_ref,
+    display_agent_ref,
+    harness_of,
+    with_harness,
+)
 from kanibako.commands.flags import add_null_flag
+from kanibako.identifiers import agent_node_case
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -166,10 +172,21 @@ def _agent_node(raw: str) -> str:
     reservation notice. The other reserved name has no tier a verb can address, so it
     takes the ``canonicalize_agent_ref`` road and surfaces as an ordinary ``ConfigError``
     — which ``cli.py`` flattens to one ``Error: …`` line at rc 1, like any other.
+
+    ⚑ THE HARNESS SEGMENT FOLDS ([R173]): the launch writes ``agents/claude/``
+    from the declared name, so ``agent show Claude`` must read ``agents/claude/``
+    and not ``agents/Claude/``. Only the harness folds — a persona segment is the
+    user's and is not this ruling's to touch (the same cut
+    ``settings.config.resolve_agent`` makes). Through
+    :func:`kanibako.identifiers.agent_node_case` — the sanctioned seam, never a
+    hand fold.
     """
     from kanibako.settings.config_keys import AGENT_DEFAULT_SUB
 
-    return raw if raw == AGENT_DEFAULT_SUB else canonicalize_agent_ref(raw)
+    if raw == AGENT_DEFAULT_SUB:
+        return raw
+    node = canonicalize_agent_ref(raw)
+    return with_harness(node, agent_node_case(harness_of(node)))
 
 
 def run_list(args: argparse.Namespace) -> int:
@@ -630,7 +647,6 @@ def _declared_label(agent_id: str) -> str:
     ``label`` at all and correctly reads the core backstop (the spec's ``agent.shell.label`` has
     no node to live on yet — D2).
     """
-    from kanibako.agent_ref import harness_of
     from kanibako.settings import core_defaults
     from kanibako.targets import get_target
 
@@ -843,7 +859,6 @@ def _show_agent_config(
 
 def run_reauth(args: argparse.Namespace) -> int:
     """Check authentication and login if needed."""
-    from kanibako.agent_ref import harness_of
     from kanibako.settings.agent_select import select_agent
     from kanibako.settings.config import load_config
     from kanibako.targets import resolve_target

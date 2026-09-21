@@ -1637,6 +1637,29 @@ def test_the_narrowing_does_not_touch_a_NAMED_agents_leaf():
     assert "provider" in other.reason
 
 
+def test_the_node_segment_folds_on_lookup():
+    """``agent.Goose.provider`` reaches the ``goose`` node ([R173]).
+
+    The leaf map is keyed by lowercase NODE while the key arrives in the user's
+    spelling, so the lookup folds for comparison instead of reading a wrong-cased
+    node as an unknown agent. A plugin leaf still has no slot on a READABLE agent
+    that does not declare it — the fold reaches the node, it does not union
+    vocabularies.
+    """
+    from kanibako.settings.settings_keyspace import KeyClass
+
+    judged = _class("agent.Goose.provider", agent_leaf_map=_GOOSE_MAP)
+    assert judged.cls is KeyClass.KEY, f"agent.Goose.provider: {judged.reason}"
+    judged = _class("agent.GOOSE.provider", agent_leaf_map=_GOOSE_MAP)
+    assert judged.cls is KeyClass.KEY, f"agent.GOOSE.provider: {judged.reason}"
+    other = _class(
+        "agent.Claude.provider",
+        agent_leaf_map={**_GOOSE_MAP, "claude": frozenset()},
+    )
+    assert other.cls is KeyClass.UNDECLARED, "a fold is not a union"
+    assert "provider" in other.reason
+
+
 def test_conceding_a_vocabulary_concedes_nothing_else():
     """SHAPE and the reserved-name floor survive the concession.
 

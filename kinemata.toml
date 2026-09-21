@@ -1303,15 +1303,21 @@ suffixes = [".toml"]
 
   [[registry.entry]]
   id = "default"
-  antipatterns = ['''(?m)^\s*default\s*=\s*["'][\w.]+:\w+["']''']
+  antipatterns = ['''(?mi)^\s*default\s*=\s*["'][\w.]+:\w+["']''']
   home = ["src/kanibako/agent_ref.py"]
   note = "reserved pseudo-agent; an entry point that claims it is never registered"
 
   [[registry.entry]]
   id = "shell"
-  antipatterns = ['''(?m)^\s*shell\s*=\s*["'][\w.]+:\w+["']''']
+  antipatterns = ['''(?mi)^\s*shell\s*=\s*["'][\w.]+:\w+["']''']
   home = ["src/kanibako/agent_ref.py"]
   note = "reserved pseudo-agent; an entry point that claims it is never registered"
+
+# ⚑ CASE-INSENSITIVE (`(?mi)`, 2026-09-21): the reservation folds for comparison
+# ([R172], keyspec §0, `agent_ref.reserved_pseudo_agent_reason` through
+# `identifiers.find_identifier`) — a `Shell = "..."` entry point claims what
+# `shell` reserves, so the pattern folds with the rule. The parity oracle below
+# folds its produced names the same way, for the same reason.
 
 # ---------------------------------------------------------------------------
 # THE PARITY ORACLES. Each one runs a command that prints what the CODE really
@@ -1820,7 +1826,8 @@ import ast, pathlib, tomllib
 for manifest in [pathlib.Path("pyproject.toml"), *sorted(pathlib.Path("packages").glob("*/pyproject.toml"))]:
     table = tomllib.loads(manifest.read_text()).get("project", {}).get("entry-points", {}).get("kanibako.agents", {})
     for key in table:
-        print(f"agent-name: {key}")
+        # The reservation folds for comparison ([R172]), so the oracle folds what it produces.
+        print(f"agent-name: {key.casefold()}")
 for source in [*sorted(pathlib.Path("src").rglob("*.py")), *sorted(pathlib.Path("packages").glob("*/src/**/*.py"))]:
     for node in ast.walk(ast.parse(source.read_text())):
         if not (isinstance(node, ast.ClassDef) and any("Target" in ast.unparse(base) for base in node.bases)):
@@ -1829,7 +1836,8 @@ for source in [*sorted(pathlib.Path("src").rglob("*.py")), *sorted(pathlib.Path(
             if isinstance(item, ast.FunctionDef) and item.name == "name":
                 for leaf in ast.walk(item):
                     if isinstance(leaf, ast.Return) and isinstance(leaf.value, ast.Constant):
-                        print(f"agent-name: {leaf.value.value}")
+                        seen = leaf.value.value
+                        print(f"agent-name: {seen.casefold() if isinstance(seen, str) else seen}")
 """]
 extract = '(?m)^agent-name: (\S+)$'
 

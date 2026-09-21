@@ -364,13 +364,34 @@ def test_reserved_name_refused_in_the_canonical_spelling_too(name):
 
 
 @pytest.mark.parametrize(
-    "good", ["shellx", "myshell", "defaults", "no_default", "Shell", "Default", "SHELL"],
+    "good", ["shellx", "myshell", "defaults", "no_default"],
 )
 def test_the_reservation_does_not_over_reach(good):
-    # EXACT spelling only.  A name that merely contains, extends or re-cases a
+    # PREFIX or extension only.  A name that merely contains or extends a
     # reserved word is an ordinary agent name, and refusing it would widen a
-    # user-facing surface past the two names the spec reserves.
+    # user-facing surface past the two names the spec reserves.  Re-casing is
+    # NOT in this list: the reservation folds for comparison ([R172]), so
+    # ``Shell`` is refused like ``shell`` — see the next test.
     assert parse_agent_ref(good) == (good, good)
+
+
+@pytest.mark.parametrize(
+    "variant", ["Shell", "SHELL", "sHeLl", "Default", "DEFAULT"],
+)
+def test_the_reservation_folds_for_comparison(variant):
+    """One identifier, one refusal ([R172], keyspec §0 NAMING RULES).
+
+    A re-cased reserved name is the SAME identifier compared case-blind, so it
+    is refused in every role a reserved name is refused in — bare, persona and
+    harness alike. Before the fold ``Shell`` parsed as an ordinary agent while
+    ``shell`` refused: one identifier, two answers by spelling.
+    """
+    with pytest.raises(ConfigError, match="RESERVED pseudo-agent name"):
+        parse_agent_ref(variant)
+    with pytest.raises(ConfigError, match=r"persona segment .* RESERVED"):
+        parse_agent_ref(f"{variant}+claude")
+    with pytest.raises(ConfigError, match=r"harness segment .* RESERVED"):
+        parse_agent_ref(f"claude+{variant}")
 
 
 def test_the_reservation_leaves_the_agent_default_key_TIER_alone():

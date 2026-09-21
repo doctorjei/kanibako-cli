@@ -334,6 +334,25 @@ class TestRunConfig:
         out = capsys.readouterr().out
         assert "model = opus" in out
 
+    def test_config_show_folds_the_typed_case_to_the_stored_node(
+        self, agent_env, capsys,
+    ):
+        """``agent show Claude`` reads the store the launch writes ([R173]).
+
+        The launch derives the node in lowercase (``agents/claude/``), so the
+        verb folds the user-typed harness segment to the same node instead of
+        reading ``agents/Claude/`` — a directory the launch never opens. Only
+        the harness folds; the ``default`` tier token still passes through to
+        the engine's own refusal (see the pseudo-agent tests below).
+        """
+        from kanibako.commands.agent_cmd import run_show
+
+        args = argparse.Namespace(agent_id="Claude", effective=False)
+        rc = run_show(args)
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "model = opus" in out
+
     def test_config_get_state_key(self, agent_env, capsys):
         from kanibako.commands.agent_cmd import run_get
 

@@ -9,6 +9,7 @@
 from __future__ import annotations
 import re
 from kanibako.errors import ConfigError
+from kanibako.identifiers import find_identifier
 
 # Persona/harness separators.  ``+`` is the spelling wherever a human looks, the on-disk store
 # dirname included (:func:`kanibako.settings.agent_config.store_dirname`).  ``℘`` exists for ONE
@@ -30,8 +31,10 @@ _DOT_HINT = "; '.' is reserved as settings key-path separator and cannot appear 
 # ``agent.<name>.*`` cascade slot & a store dir, & a true agent claiming one would own them
 # too.  The refusal sits at THIS gate because every user-supplied ref passes through it —
 # the CLI's ``-A``, ``kanibako agent``, the persona store, the stored-agent readers.
-# ⚑ EXACT SPELLING, never a case fold or a prefix test: ``Shell`` & ``shellx`` are ordinary
-# names, & widening a user-facing refusal past the names the spec reserves is its own defect.
+# ⚑ FOLDS FOR COMPARISON, never a prefix test ([R172], keyspec §0): ``Shell``
+# is the same identifier as ``shell`` & is refused like it, while ``shellx``
+# stays an ordinary name, & widening a user-facing refusal past the names the
+# spec reserves is its own defect.
 # ⚑ NOT the same rule as ``settings.config_dest.check_agent_node``'s ``default`` arm — that
 # one refuses a settings ROUTE & carries the any-agent tier's own cure.  It short-circuits on
 # ``default`` before reaching this parser, so that message is unchanged.
@@ -74,8 +77,11 @@ def reserved_pseudo_agent_reason(name: str) -> str | None:
 
   ⚑ A REASON, NOT A RAISE — :mod:`kanibako.targets` skips a badly-named plugin rather
   than raising, so the sentence has to be usable without an exception.
+
+  ⚑ FOLDS FOR COMPARISON through :func:`kanibako.identifiers.find_identifier` —
+  the one carrier of the rule, so no hand fold lives here for the pin to catch.
   """
-  if name not in PSEUDO_AGENT_NAMES:
+  if find_identifier(name, PSEUDO_AGENT_NAMES) is None:
     return None
   return (f"'{name}' is a RESERVED pseudo-agent name (spec §2d, 'Pseudo-agent(s)'); it may "
           f"not name an agent, a persona, or a harness")
