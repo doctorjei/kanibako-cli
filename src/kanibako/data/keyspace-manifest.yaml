@@ -978,6 +978,9 @@ keys:
     set: cli+file
     default: "@config.data/backup"
     spec: "§2g"
+    note: "RESERVED 2026-09-21 — future intent, no consumer yet; setting it is accepted
+           and inert BY DESIGN, not by omission. Do not wire a consumer without a new
+           ruling; do not remove the row without one either."
   system.cache:
     scope: system
     type: path
