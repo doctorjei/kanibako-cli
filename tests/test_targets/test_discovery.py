@@ -10,7 +10,7 @@ import pytest
 from kanibako.agent_ref import PSEUDO_AGENT_NAMES
 from kanibako.targets import discover_targets, get_target, resolve_target
 from kanibako.targets.base import AgentInstall, Target
-from kanibako.targets.no_agent import NoAgentTarget
+from kanibako.targets.shell import ShellTarget
 
 from tests.support.filenames import CONFIG_FILENAME
 
@@ -101,7 +101,7 @@ class TestDiscoverTargets:
         # discovered, so the registry always carries it ([R175]).
         with patch("kanibako.targets.entry_points", return_value=[]):
             targets = discover_targets()
-        assert targets == {"shell": NoAgentTarget}
+        assert targets == {"shell": ShellTarget}
 
     def test_multiple_targets(self):
         ep1 = _mock_entry_point("a", _FakeTarget)
@@ -111,7 +111,7 @@ class TestDiscoverTargets:
         assert len(targets) == 3  # a, b, plus the seeded shell built-in
         assert "a" in targets
         assert "b" in targets
-        assert targets["shell"] is NoAgentTarget
+        assert targets["shell"] is ShellTarget
 
 
 class TestBrokenEntryPointIsSkipped:
@@ -223,7 +223,7 @@ class TestReservedPseudoAgentNameIsRefused:
         if name == "shell":
             # ⚑ The SEEDED built-in owns this slot ([R175]) — the rogue plugin
             # neither registers under it nor displaces the owner.
-            assert targets["shell"] is NoAgentTarget
+            assert targets["shell"] is ShellTarget
         else:
             assert name not in targets
 
@@ -315,7 +315,7 @@ class TestTheRegistryIsKeyedByNode:
         assert "Shell" not in targets
         # ⚑ The node is owned by the SEEDED built-in, which the rogue plugin
         # neither registers as nor displaces.
-        assert targets["shell"] is NoAgentTarget
+        assert targets["shell"] is ShellTarget
         assert targets["fake"] is _FakeTarget
 
     def test_that_refusal_names_BOTH_spellings(self, capsys):
@@ -437,12 +437,12 @@ class TestResolveTarget:
         ep = _mock_entry_point("fake", _FakeTarget)
         with patch("kanibako.targets.entry_points", return_value=[ep]):
             t = resolve_target()
-        assert isinstance(t, NoAgentTarget)
+        assert isinstance(t, ShellTarget)
 
     def test_auto_detect_empty_returns_shell(self):
         with patch("kanibako.targets.entry_points", return_value=[]):
             t = resolve_target()
-        assert isinstance(t, NoAgentTarget)
+        assert isinstance(t, ShellTarget)
 
     def test_resolve_by_name_requires_meta_name(self):
         # meta.agent.<agent>.name (the plugin's `name`) is REQUIRED; an empty
@@ -559,7 +559,7 @@ class TestDirectoryPluginDiscovery:
         _RESERVED_NAME_WARNED.clear()
 
         # ⚑ The file-drop rogue is skipped AND the seeded owner keeps the slot.
-        assert targets["shell"] is NoAgentTarget
+        assert targets["shell"] is ShellTarget
         assert "shellplugin" not in targets
         assert "okplugin" in targets  # the healthy neighbour still lands
 

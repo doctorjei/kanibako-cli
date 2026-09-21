@@ -621,7 +621,7 @@ def start_mocks():
             # build_cli_args / binary_mounts / apply_state launch hooks were
             # removed from start.py).  start.py therefore drives argv / env /
             # delivery mounts through ``kanibako.targets.assembly`` for this mock.
-            # A test that wants a descriptor-less target (only NoAgentTarget in
+            # A test that wants a descriptor-less target (only ShellTarget in
             # production) sets ``target.descriptor = None`` explicitly.
             from kanibako.plugins.claude.target import ClaudeTarget
             target.descriptor = ClaudeTarget().descriptor

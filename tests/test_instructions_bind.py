@@ -57,7 +57,7 @@ from kanibako.targets.base import (
     HostSrcOrigin,
     PluginDescriptor,
 )
-from kanibako.targets.no_agent import NoAgentTarget
+from kanibako.targets.shell import ShellTarget
 
 _AGENTS = ["claude", "codex", "goose"]
 
@@ -268,7 +268,7 @@ def test_route_a_instructions_bind_retired(agent: str):
 # ===========================================================================
 
 
-class _KickoffTarget(NoAgentTarget):
+class _KickoffTarget(ShellTarget):
     """A REAL ``Target`` (the built-in fallback) carrying a supplied descriptor.
 
     Subclassing the ABC's own fallback rather than duck-typing means every other

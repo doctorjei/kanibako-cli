@@ -3340,7 +3340,7 @@ class TestBoxAgentMirrorConfigSet:
         assert "pref.agent.claude.bindings.ro.share" in msg
         assert not f.exists()
 
-    def test_set_box_agent_names_a_placeholder_when_no_agent_resolves(self, tmp_path):
+    def test_set_box_agent_names_a_placeholder_when_none_resolves(self, tmp_path):
         # With no resolvable agent the cure still teaches the SHAPE.
         f = tmp_path / "box-settings.yaml"
         msg = set_config_value(

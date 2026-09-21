@@ -108,13 +108,13 @@ re-split ref on raw separator at call site).
 Return *node* with its harness segment REPLACED by *harness*.
 
 Preserves persona name (left of `℘`) while swapping harness; used when actually-RESOLVED target
-differs from requested harness (e.g., `NoAgentTarget` fallback when named agent's binary absent),
+differs from requested harness (e.g., `ShellTarget` fallback when named agent's binary absent),
 so the store dir + keyspace slot follow the real target.
 
 * bare node (`"claude"`, harness `"claude"`) -> `"claude"` (unchanged);
-* bare node, fallback harness (`"claude"`, `"no_agent"`) -> `"no_agent"`;
+* bare node, fallback harness (`"claude"`, `"shell"`) -> `"shell"`;
 * persona node (`"navigator℘claude"`, `"claude"`) -> `"navigator℘claude"`;
-* persona node, fallback (`"navigator℘claude"`, `"no_agent"`) -> `"navigator℘no_agent"` (persona
+* persona node, fallback (`"navigator℘claude"`, `"shell"`) -> `"navigator℘shell"` (persona
   name kept, harness swapped).
 
 ```def display_agent_ref(node: str) -> str```

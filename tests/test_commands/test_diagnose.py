@@ -238,7 +238,7 @@ class TestCheckAgents:
         assert "not executable" in results[0][2]
         assert str(binary) in results[0][2]
 
-    def test_no_agent_fallback_shows_resolved_shell(self) -> None:
+    def test_shell_fallback_shows_resolved_shell(self) -> None:
         """The no-binary Shell fallback is OK and shows the resolved box.shell.
 
         It needs no host binary and is always available, so diagnose must NOT
@@ -253,7 +253,7 @@ class TestCheckAgents:
         with (
             patch(
                 "kanibako.targets.discover_targets",
-                return_value={"no_agent": mock_cls},
+                return_value={"shell": mock_cls},
             ),
             patch(
                 "kanibako.launch.shells.resolve_box_shell",
@@ -269,7 +269,7 @@ class TestCheckAgents:
         assert "image default" in detail
         assert "not found" not in detail
 
-    def test_no_agent_fallback_source_labels(self) -> None:
+    def test_shell_fallback_source_labels(self) -> None:
         """Each resolver source token maps to the right friendly label."""
         cases = {
             "box.shell": ("/bin/zsh", "box.shell"),
@@ -285,7 +285,7 @@ class TestCheckAgents:
             with (
                 patch(
                     "kanibako.targets.discover_targets",
-                    return_value={"no_agent": mock_cls},
+                    return_value={"shell": mock_cls},
                 ),
                 patch(
                     "kanibako.launch.shells.resolve_box_shell",
@@ -296,7 +296,7 @@ class TestCheckAgents:
             detail = results[0][2]
             assert detail == f"{shell} ({label})", (source, detail)
 
-    def test_no_agent_fallback_without_config_is_safe(self) -> None:
+    def test_shell_fallback_without_config_is_safe(self) -> None:
         """Without config/std the Shell line falls back to sh, never crashing."""
         mock_target = MagicMock()
         mock_target.display_name = "Shell"
@@ -304,7 +304,7 @@ class TestCheckAgents:
         mock_cls = MagicMock(return_value=mock_target)
         with patch(
             "kanibako.targets.discover_targets",
-            return_value={"no_agent": mock_cls},
+            return_value={"shell": mock_cls},
         ):
             results = _check_agents()
         assert len(results) == 1

@@ -484,7 +484,7 @@ class TestReadPersonaBundle:
         assert bundle.to_persona_values()["endpoint"] == endpoint
 
     def test_harness_with_no_reader_is_not_a_reject(self, tmp_home):
-        """⚑ BOTH-``None`` (goose / ``NoAgentTarget``) is NOT a reject.
+        """⚑ BOTH-``None`` (goose / ``ShellTarget``) is NOT a reject.
 
         The distinction is load-bearing, not cosmetic: a launch HARD-ERRORS on
         ``reject_reason``, and a goose persona is configured entirely through
@@ -515,11 +515,11 @@ class TestReadPersonaBundle:
         assert bundle.reject_reason is not None
 
     def test_the_real_no_reader_targets_take_the_no_reader_arm(self, tmp_home):
-        """Not a stub: ``NoAgentTarget`` inherits the base no-op reader."""
-        from kanibako.targets.no_agent import NoAgentTarget
+        """Not a stub: ``ShellTarget`` inherits the base no-op reader."""
+        from kanibako.targets.shell import ShellTarget
 
         self._entry(tmp_home)
-        bundle = self._read(target=NoAgentTarget())
+        bundle = self._read(target=ShellTarget())
         assert bundle is not None
         assert bundle.no_reader is True
         assert bundle.reject_reason is None

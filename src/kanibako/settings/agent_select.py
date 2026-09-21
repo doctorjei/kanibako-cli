@@ -88,7 +88,7 @@ class AgentSelection:
 
         ``target = resolve_target(harness_of(sel.node), path) if sel.has_agent else None``
 
-        ⚑ ``None``, deliberately NOT ``NoAgentTarget()`` — the llm-doc says why,
+        ⚑ ``None``, deliberately NOT ``ShellTarget()`` — the llm-doc says why,
         and carries the downstream gates that key on ``target is None``.
 
         ⚑ **The NODE decides, and nothing else (P4).** This used to read

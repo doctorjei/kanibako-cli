@@ -438,7 +438,7 @@ class TestCanonDefaultCategories:
             "@system.canon/handbook/general"
         )
 
-    def test_the_guest_dests_carry_no_agent_segment(self, tmp_path):
+    def test_the_guest_dests_carry_no_node_segment(self, tmp_path):
         """§2d "storage is varied, binding is not": the agent chapter is stored per
         agent node but always ARRIVES at ``~/canon/handbook/agent``.
 
@@ -487,7 +487,7 @@ class TestCanonDefaultCategories:
             "@config.agents/raiju+claude/canon"
         )
 
-    def test_a_no_agent_box_emits_no_agent_chapter_and_no_agent_key(self, tmp_path):
+    def test_a_shell_box_omits_the_agent_chapter_and_key(self, tmp_path):
         """A dangling embedded ref would coerce to ``""`` and yield the degenerate
         host path ``/handbook`` (§6b) — so the entry is OMITTED, not emptied."""
         cats = core_defaults.canon_default_categories(_Std(tmp_path), None)

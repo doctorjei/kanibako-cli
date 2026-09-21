@@ -1,19 +1,19 @@
-"""Tests for NoAgentTarget."""
+"""Tests for ShellTarget."""
 
 from __future__ import annotations
 
-from kanibako.targets.no_agent import NoAgentTarget
+from kanibako.targets.shell import ShellTarget
 
 
-class TestNoAgentTarget:
+class TestShellTarget:
     def setup_method(self):
-        self.target = NoAgentTarget()
+        self.target = ShellTarget()
 
     def test_name(self):
         # ⚑ ``shell`` — the §2d pseudo-agent's OWN slot ([R174]/[R175], Q22).
-        # The class and module keep their names (a different-sized rename,
-        # owned by the scrub row); the registry/store/cascade spelling is what
-        # moved.
+        # The class and module were renamed with it (the scrub row's
+        # different-sized rename); the registry/store/cascade spelling is what
+        # moved first.
         assert self.target.name == "shell"
 
     def test_display_name(self):
@@ -46,8 +46,8 @@ class TestNoAgentTarget:
         assert cfg.state == {}
 
 
-class TestNoAgentTargetImport:
+class TestShellTargetImport:
     def test_importable_from_package(self):
-        from kanibako.targets import NoAgentTarget
-        t = NoAgentTarget()
+        from kanibako.targets import ShellTarget
+        t = ShellTarget()
         assert t.name == "shell"

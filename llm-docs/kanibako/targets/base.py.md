@@ -521,7 +521,7 @@ The tri-state result of `Target.read_persona_settings`.
   what was wrong with it — the config is PRESENT but UNUSABLE, and the caller reports the reason
   verbatim;
 * BOTH `None` — this harness has no persona reader at all (today goose and
-  `no_agent.NoAgentTarget`, which inherit the base no-op). **Not a complaint about any file.**
+  `shell.ShellTarget`, which inherit the base no-op). **Not a complaint about any file.**
 
 `settings` and `reject_reason` are never both non-`None`. Splitting "no reader" from "unusable
 config" is the point: a reject must NAME ITS OWN CAUSE instead of collapsing into a bare `None` the
@@ -850,7 +850,7 @@ whether the agent is authenticated.
 `descriptor` is the declarative plugin descriptor, `None` ONLY for the built-in no-agent shell.
 Core assembles launch argv, bindings, container env and credential sync declaratively from it; the
 legacy per-method launch hooks were removed for the public release. **Every shipped agent plugin
-returns a descriptor.** The sole descriptor-less target is `no_agent.NoAgentTarget`, which launches
+returns a descriptor.** The sole descriptor-less target is `shell.ShellTarget`, which launches
 a plain shell with no agent argv and no delivery binds.
 
 ### Host preparation
@@ -1164,7 +1164,7 @@ caller can report WHY instead of guessing (see `PersonaReadOutcome`). **Pure rea
 never reads the token file.**
 
 The default `PersonaReadOutcome(None, None)` means this harness has no persona reader
-(goose/no_agent), which is **NOT** a reject.
+(goose/shell), which is **NOT** a reject.
 
 #### `verify_persona`
 

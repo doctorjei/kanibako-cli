@@ -1488,7 +1488,7 @@ def test_p6d2_workset_auth_path_settable_and_overrides_default(tmp_path):
     assert a.workset_source == "/custom/store/claude"
 
 
-def test_p6d2_standalone_scrub_no_agent_garbage(tmp_path):
+def test_p6d2_standalone_scrub_stray_agent_garbage(tmp_path):
     """change 7: standalone → workset.auth.path None + meta.box.auth.workset_path
     None + workset tier disabled → workset_source None (NO /<agent> garbage that
     credsync would mkdir against host root). The None pins + resolver scrub are
@@ -2240,7 +2240,7 @@ class TestMetaAgentGrammarSnapshot:
         assert "unmaterialized" not in (views.MetaAgentView.__doc__ or "")
 
 
-def test_meta_identity_no_agent_omits_agent_key():
+def test_meta_identity_agentless_omits_agent_key():
     """A NO-AGENT box (agent_name=None) materializes NO meta.agent.* key."""
     floor = meta_identity_floor(
         box_name="x", project_path="/p", inbox="/i", share_global="/s",
@@ -2669,7 +2669,7 @@ def test_a_blank_active_agent_has_no_meta_box_agent_mirror():
     assert "agent" not in box
 
 
-def test_the_no_agent_LAUNCH_shape_mirrors_the_default_backstop():
+def test_the_shell_LAUNCH_shape_mirrors_the_default_backstop():
     """⚑ THE MEASURED LAUNCH SHAPE, not the docstring's.
 
     A no-agent/shell launch passes ``agent_name="shell"`` (start.py:

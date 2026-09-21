@@ -332,7 +332,7 @@ class TestHubSpawn:
         })
         assert resp["status"] == "error"
 
-    def test_spawn_no_agent_uses_resolved_box_shell(self, hub_and_sock):
+    def test_spawn_shell_uses_resolved_box_shell(self, hub_and_sock):
         """No-agent helper falls back to the resolved box.shell, not /bin/bash.
 
         When neither entrypoint nor default_entrypoint is set (a no-agent box),
@@ -360,7 +360,7 @@ class TestHubSpawn:
         assert call_kwargs["cli_args"] == ["1", "/bin/zsh"]
         assert "/bin/bash" not in call_kwargs["cli_args"]
 
-    def test_spawn_no_agent_no_box_shell_floors_to_sh(self, hub_and_sock):
+    def test_spawn_shell_no_box_shell_floors_to_sh(self, hub_and_sock):
         """If box_shell is somehow None, the last-ditch floor is sh, not bash."""
         hub, sock_path, ctx = hub_and_sock
         ctx.entrypoint = None

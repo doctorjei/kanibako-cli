@@ -453,10 +453,10 @@ you get depends on which of two states `system.agent` is in:
 after its colon**. (`None` and `none` are *strings*, so those spell a request for an
 agent named "None" and fail as an agent that is not installed.)
 
-A plain-shell box is a **choice**, not a fallback. Name the built-in `no_agent`
-pseudo-agent -- `--agent no_agent`, or `kanibako box set pref.system.agent=no_agent`
+A plain-shell box is a **choice**, not a fallback. Name the built-in `shell`
+pseudo-agent -- `--agent shell`, or `kanibako box set pref.system.agent=shell`
 -- and the box launches `box.shell` with no agent binary and no credentials.
-`no_agent` ships with `kanibako-cli` itself, so it resolves on every install.
+`shell` ships with `kanibako-cli` itself, so it resolves on every install.
 
 This resolution is **uniform** across every agent-requiring command (`start`,
 `box start`, `agent reauth`, ...). `kanibako shell` is the **sole** exception: it
@@ -899,9 +899,9 @@ expose a declarative `PluginDescriptor` (the plugin system is descriptor-only).
 Claude, Codex, and Goose ship via `kanibako-agent-{claude,codex,goose}`
 (installed by the `kanibako` meta-package); other agents can be added as pip
 packages.  Install `kanibako-cli` alone for agent-agnostic operation.
-`no_agent` -- a plain shell with no agent binary or credentials -- ships with
+`shell` -- a plain shell with no agent binary or credentials -- ships with
 `kanibako-cli` itself and is always available, but it is **selected, never
-automatic**: name it with `--agent no_agent` or `pref.system.agent=no_agent`.
+automatic**: name it with `--agent shell` or `pref.system.agent=shell`.
 Nothing is picked for you (see [Agent Selection](#agent-selection)).
 
 **Shipped agents:**
@@ -1033,7 +1033,7 @@ is `.yaml`.
 | `model` | platform default | Agent model name |
 | `access` | `full` | Permission tier -- `restricted`, `editing` or `full` |
 | `box.image` | `kanibako-oci:latest` | Container rig |
-| `box.shell` | `$KANIBAKO_SHELL` | Login shell for a launch that runs no agent program -- `kanibako shell`, or `kanibako start` at a box whose agent has no entrypoint of its own (`--agent no_agent`). An explicit `--entrypoint` runs *that* instead. Resolved `box.shell` → `$KANIBAKO_SHELL` → the image's recorded login shell → `sh` |
+| `box.shell` | `$KANIBAKO_SHELL` | Login shell for a launch that runs no agent program -- `kanibako shell`, or `kanibako start` at a box whose agent has no entrypoint of its own (`--agent shell`). An explicit `--entrypoint` runs *that* instead. Resolved `box.shell` → `$KANIBAKO_SHELL` → the image's recorded login shell → `sh` |
 | `pref.system.agent` | (unset) | Agent target plugin requested for this box or workset; part of the resolution cascade (see [Agent Selection](#agent-selection)) |
 | `box.share_images` | | Share host images into the box |
 | `box.auth.global_enabled` | `true` | The box's host-global credential-share opt-in (`true`) vs. per-box (`false`) |

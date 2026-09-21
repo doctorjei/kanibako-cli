@@ -301,7 +301,7 @@ class TestTemplateSeedDefaults:
             "the seeded payload lands where NOTHING reads it"
         )
 
-    def test_no_agent_omits_agent_layer(self, primary_proj):
+    def test_shell_omits_agent_layer(self, primary_proj):
         defs = template_seed_defaults(primary_proj, None)
         assert not any(k.startswith("agent.") for k in defs)
         # system + workset layers still declared.
@@ -514,7 +514,7 @@ class TestLayeredHomeSeed:
         assert (home / "canon" / "notebook" / "MY_CONTENTS.md").is_file()
         assert (home / ".claude.json").is_file()
 
-    def test_no_agent_box_seeds_base_only(self, std, config, primary_proj):
+    def test_shell_box_seeds_base_only(self, std, config, primary_proj):
         """A NO-AGENT box seeds the base layer but NOT the agent layer."""
         install_packaged_templates(std, ["claude"])
         (std.template / "box" / "home" / "base-only.txt").write_text("base")
@@ -803,7 +803,7 @@ class TestHandbookLayerSourceKeys:
             "system.template", "agent.claude.template", "workset.template",
         )
 
-    def test_no_agent_omits_the_agent_layer(self, primary_proj):
+    def test_shell_omits_the_agent_layer(self, primary_proj):
         assert handbook_layer_source_keys(primary_proj, None) == (
             "system.template", "workset.template",
         )
@@ -1025,7 +1025,7 @@ class TestBoxHandbookHostCopyThroughTheSeam:
         assert _handbook_dir(primary_proj).parent != primary_proj.shell_path
         assert not list(primary_proj.shell_path.rglob("sys-only.md"))
 
-    def test_a_no_agent_box_gets_system_and_workset_only(
+    def test_a_shell_box_gets_system_and_workset_only(
         self, std, config, primary_proj,
     ):
         """⚑ END-TO-END CONFIRMATION, NOT THE PIN.  ``agent-only.md`` is absent here
@@ -1033,7 +1033,7 @@ class TestBoxHandbookHostCopyThroughTheSeam:
         no-agent snapshot never declares ``agent.<a>.template`` for it to resolve),
         so this negative does not discriminate on its own — it survives a mutation
         that puts the agent key back.  The DISCRIMINATING pin is
-        ``TestHandbookLayerSourceKeys.test_no_agent_omits_the_agent_layer``."""
+        ``TestHandbookLayerSourceKeys.test_shell_omits_the_agent_layer``."""
         self._populate(std)
         _install_handbook(std, primary_proj, agent="")
         hb = _handbook_dir(primary_proj)
@@ -1266,10 +1266,10 @@ class TestInstallPackagedTemplates:
         ).is_file()
 
     def test_unknown_agent_gets_a_store_but_no_payload(self, std):
-        """An agent with no packaged payload (e.g. no_agent) still gets its store
+        """An agent with no packaged payload (e.g. shell) still gets its store
         skeleton (the mould stamp + D7 dirs) but no content."""
-        install_packaged_templates(std, ["no_agent"])
-        store = std.agents / "no_agent"
+        install_packaged_templates(std, ["shell"])
+        store = std.agents / "shell"
         assert (store / "template" / "box" / "home").is_dir()
         # ⚑ Pinned on the CHAPTER, not a level inside it: a wrong payload reds this
         # whatever shape it arrives in.  D7 creates the skeleton under ``template/``,
@@ -2081,8 +2081,8 @@ class TestPackagedTemplatesDigest:
 
     def test_deterministic_and_order_independent(self, monkeypatch, tmp_path):
         self._fake_trees(monkeypatch, tmp_path)
-        d1 = packaged_templates_digest(["claude", "no_agent"])
-        d2 = packaged_templates_digest(["no_agent", "claude"])
+        d1 = packaged_templates_digest(["claude", "shell"])
+        d2 = packaged_templates_digest(["shell", "claude"])
         assert d1 == d2
         assert len(d1) == 64  # sha256 hex
 
@@ -2119,9 +2119,9 @@ class TestPackagedTemplatesDigest:
 
     def test_agent_membership_changes_digest(self, monkeypatch, tmp_path):
         self._fake_trees(monkeypatch, tmp_path)
-        # ``claude`` contributes a packaged tree; ``no_agent`` contributes none.
+        # ``claude`` contributes a packaged tree; ``shell`` contributes none.
         assert packaged_templates_digest(["claude"]) != packaged_templates_digest(
-            ["no_agent"]
+            ["shell"]
         )
 
     def test_real_packaged_digest_stable(self):

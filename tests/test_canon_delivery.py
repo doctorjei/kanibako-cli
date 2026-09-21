@@ -57,7 +57,7 @@ from kanibako.settings.settings_categories import narrow_table_winners
 from kanibako.settings.settings_launch import build_launch_snapshot, snapshot_category_entries
 from kanibako.settings.settings_resolve import GUEST_HOME, ResolveCtx
 from kanibako.targets import resolve_target
-from kanibako.targets.no_agent import NoAgentTarget
+from kanibako.targets.shell import ShellTarget
 from kanibako.launch.templates import (
     _packaged_base_template,
     install_packaged_templates,
@@ -727,7 +727,7 @@ class TestSiblingAssembly:
 # ===========================================================================
 
 
-class _WiringTarget(NoAgentTarget):
+class _WiringTarget(ShellTarget):
     """A REAL ``Target`` for the live ``_resolve_launch_snapshot`` seam, with only
     ``rom_root`` overridden.
 

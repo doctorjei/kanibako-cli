@@ -41,7 +41,7 @@ aids, not the authority.
 | `runtime/containerfiles.py` | Resolve bundled/override Containerfiles by suffix (`get_containerfile`, `list_containerfile_suffixes`) |
 | `runtime/freshness.py` | Non-blocking image digest comparison |
 | ~~`deprecation.py`~~ | **SEQUESTERED** at `salvage/deprecation.py` (2026-08-01) — deprecation-tracking registry + `@deprecated` decorator + `overdue_deprecations` helper + CI gate. Dormant until the post-public era; see "Deprecating something" below |
-| `targets/` | Descriptor-only agent plugin system (Target ABC + `PluginDescriptor` + NoAgentTarget; `assembly.py` builds launch argv/binds, `credsync.py` runs the cred lifecycle; Claude/Goose/Codex in `kanibako-agent-*`) |
+| `targets/` | Descriptor-only agent plugin system (Target ABC + `PluginDescriptor` + ShellTarget; `assembly.py` builds launch argv/binds, `credsync.py` runs the cred lifecycle; Claude/Goose/Codex in `kanibako-agent-*`) |
 | `plugins/` | Namespace package for bind-mounted plugins (shipped agents propagate into nested boxes) |
 | `auth_parser.py` | Parse OAuth URL and verification code from `claude auth login` output |
 | `auth_browser.py` | Automated OAuth refresh via headless Playwright browser |

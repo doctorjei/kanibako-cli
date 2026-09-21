@@ -2126,7 +2126,7 @@ def _start_helper_hub(
     # agent's delivery binds so an in-helper agent finds the same binary;
     # `binary_mnts` is the descriptor-assembled delivery mount list built
     # above (only set when a descriptor-bearing target has a host
-    # install — NoAgentTarget has none, so helpers get just the kanibako
+    # install — ShellTarget has none, so helpers get just the kanibako
     # binds).
     binary_mounts = _kanibako_mounts()
     if target and install:
@@ -3869,7 +3869,7 @@ def _run_container(
                 # call here would be a second producer of the same variables, above
                 # the channel, which is precisely the layer the fold deleted.
             else:
-                # Descriptor-less target: the only one is NoAgentTarget (the
+                # Descriptor-less target: the only one is ShellTarget (the
                 # `kanibako shell` fallback), which launches a plain shell with
                 # no agent argv and no realized variables.  The legacy
                 # build_cli_args / apply_state hook dispatch was removed for the
@@ -4101,12 +4101,12 @@ def _run_container(
         # no-agent launch (the main entrypoint), or any helper spawn (helpers
         # need a shell fallback even under a real-agent director).  A real-agent
         # launch with helpers off never needs it, so skip the resolve there.
-        no_agent_launch = not entrypoint and (
+        shell_launch = not entrypoint and (
             target is None or target.default_entrypoint is None
         )
         # DETACH also needs the resolved box shell: its PID-1 keep-alive runs a
         # bare SHELL (not the agent), so resolve box.shell even for an agent
-        # launch (where no_agent_launch is False).  E2c: a SUPERVISED foreground
+        # launch (where shell_launch is False).  E2c: a SUPERVISED foreground
         # agent (persistent, not detach) likewise needs it — the supervisor PID-1's
         # forward-compat FALLBACK is the same bare-shell keep-alive.  is_agent_mode
         # guarantees entrypoint becomes target.default_entrypoint below, so a target
@@ -4117,7 +4117,7 @@ def _run_container(
             and target is not None
             and target.default_entrypoint is not None
         )
-        if no_agent_launch or helpers_enabled or detach or supervised_agent_launch:
+        if shell_launch or helpers_enabled or detach or supervised_agent_launch:
             from kanibako.launch.shells import resolve_box_shell
             box_shell, _box_shell_source = resolve_box_shell(
                 merged, std, runtime=runtime, image=image,
@@ -4456,7 +4456,7 @@ def _run_container(
                     supervisor_argv, [fallback_ep, *fallback_argv],
                 )
             elif detach:
-                # NO real agent to supervise (shell / NoAgentTarget / custom
+                # NO real agent to supervise (shell / ShellTarget / custom
                 # --entrypoint): today's BARE-SHELL keep-alive, UNCHANGED.  The tmux
                 # session runs a bare shell as PID-1; separate `podman exec`
                 # processes (VS Code terminals, the panel) don't touch it, so they
@@ -4467,7 +4467,7 @@ def _run_container(
                     bootstrap_program, inner_cmd, inner_args,
                 )
             else:
-                # Foreground persistent NO-AGENT (attach): a shell / NoAgentTarget /
+                # Foreground persistent NO-AGENT (attach): a shell / ShellTarget /
                 # custom --entrypoint box — nothing to supervise, so it stays the
                 # agent-as-session / shell-as-session tmux wrap: the command IS the
                 # tmux session, so exiting it ends the session and tears the box down

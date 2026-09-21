@@ -909,10 +909,10 @@ the set is deleted. 🛑 **It was never the keyspec's pseudo-agents** (`default`
 two must not be conflated now that only one of them exists.
 
 ⚑ **Nothing about explicit selection changed.** A named harness validates against the FULL
-`installed` set, so `no_agent` stays explicitly selectable (`--agent no_agent` /
-`pref.system.agent: no_agent`). `general` is NOT a target any distribution registers — it is the
-agent-LESS SLOT NAME `_resolve_box_scalars` passes as `agent_name` — so `--agent general` raises
-`AgentNotInstalledError`, as it did before.
+`installed` set, so `shell` stays explicitly selectable (`--agent shell` /
+`pref.system.agent: shell`). `general` is NOT a target any distribution registers — the agent-less
+slot is `shell` (`GENERAL_SLOT`), which is what those paths pass as `agent_name` — so
+`--agent general` raises `AgentNotInstalledError`, as it did before.
 
 ⚑ The imports inside the function are lazy on purpose: `kanibako.targets` imports `paths` / this
 module indirectly, so importing it at module scope risks a cycle. This mirrors `discover_targets`'

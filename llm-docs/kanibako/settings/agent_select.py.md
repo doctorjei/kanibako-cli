@@ -149,9 +149,9 @@ target = resolve_target(harness_of(sel.node), path) if sel.has_agent else None
 downstream gate already keys on `target is None` (no agent binds, no agent config, no credential
 delivery, no `KANIBAKO_AGENT` stamp, `agent_id` = `"general"`).
 
-⚑ Deliberately NOT `NoAgentTarget()`: that is a RESOLVED target, so it would earn a
+⚑ Deliberately NOT `ShellTarget()`: that is a RESOLVED target, so it would earn a
 `KANIBAKO_AGENT` stamp — and the stamp is what drives the stop / creds-watch writeback, which would
-then run a credential lifecycle against a box that has none. `NoAgentTarget` stays the right answer
+then run a credential lifecycle against a box that has none. `ShellTarget` stays the right answer
 for `resolve_target`'s own auto-detect-found-nothing case; it is not the right answer for "the user
 asked for NO agent".
 
@@ -257,13 +257,12 @@ took that route away.** ⚑ **No released version ever had it.** `pref.*` does n
 `git grep -c "pref\.system\.agent" v1.7.2` is zero over the whole tree — so the `null` spelling was
 born and retired inside the 1.8.0 rc series, and the retirement breaks nothing a user can do today.
 
-⚑ **The plain-shell box is still reachable through settings, by NAME:** `no_agent` is an entry point
-declared by `kanibako-cli`'s own `pyproject.toml` (in v1.7.2 as well), so `discover_targets()` always
-contains it and `resolve_agent(explicit_agent=None, requested="no_agent")` returns `"no_agent"`.
-`NoAgentTarget.default_entrypoint` is `None`, so `commands/start.py` computes `no_agent_launch =
-True` and runs the resolved `box.shell`. `--agent no_agent` and `pref.system.agent: no_agent` both
-work, before and after this change. `shell` is the name that will eventually replace `no_agent`
-here — wiring it is D2, and nothing waits on it.
+⚑ **The plain-shell box is still reachable through settings, by NAME:** `shell` is the built-in
+target seeded by `kanibako-cli` itself (no entry point — `pyproject.toml` carries none for it), so
+`discover_targets()` always contains it and `resolve_agent(explicit_agent=None, requested="shell")`
+returns `"shell"`. `ShellTarget.default_entrypoint` is `None`, so `commands/start.py` computes
+`shell_launch = True` and runs the resolved `box.shell`. `--agent shell` and `pref.system.agent:
+shell` both work. The retired `no_agent` spelling is refused, never translated ([R174]).
 
 ---
 

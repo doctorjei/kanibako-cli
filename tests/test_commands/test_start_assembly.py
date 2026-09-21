@@ -44,7 +44,7 @@ from kanibako.settings.settings_launch import effective_behavior
 from kanibako.settings.settings_resolve import SettingsError, normalize_bind_dest
 from kanibako.settings.store_collapse import HOME_DEST
 from kanibako.targets.assembly import BindingSourceError
-from kanibako.targets.no_agent import NoAgentTarget
+from kanibako.targets.shell import ShellTarget
 
 #: A bind at ``/home`` — legal on the live route (it collides with no dest and just
 #: depth-sorts under the home mount), refused by the collapse's rule 1, because home
@@ -52,7 +52,7 @@ from kanibako.targets.no_agent import NoAgentTarget
 _SUBSUMING = {"box.bindings.rw": {"/home": ("/tmp",)}}
 
 
-class _WiringTarget(NoAgentTarget):
+class _WiringTarget(ShellTarget):
     """A REAL target for the live seam, so a new hook cannot make this pass by accident."""
 
     def rom_root(self) -> Path | None:
@@ -575,7 +575,7 @@ class TestTheEnvConsumerReadsTheLeaf:
         is now BOTH core sources and nothing else. What it pins is unchanged: a
         variable arriving from any channel BESIDE the leaf fails here.
         ⚑ ``_WiringTarget`` declares no ``default_envs()`` of its own (it inherits
-        ``NoAgentTarget``'s empty table), so the agent scope contributes nothing to
+        ``ShellTarget``'s empty table), so the agent scope contributes nothing to
         this difference and the two core sources are all of it.
 
         🛑 THE HOST STATE IS PINNED, NOT INHERITED, and it is half the property. One

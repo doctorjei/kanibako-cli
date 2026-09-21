@@ -1,4 +1,4 @@
-# `src/kanibako/targets/no_agent.py` — API surface
+# `src/kanibako/targets/shell.py` — API surface
 
 _Signatures only: no comments, no docstrings, no bodies._
 **GENERATED — do not hand-edit; regenerate with `scripts/gen-api-doc.py`.**
@@ -7,7 +7,7 @@ _Signatures only: no comments, no docstrings, no bodies._
 ## Classes
 
 ```
-class NoAgentTarget(Target):
+class ShellTarget(Target):
     @property
     def name(self) -> str
     @property

@@ -109,7 +109,7 @@ class TestSetupAgents:
         assert "[ok] Claude Code detected" in captured.out
         assert "You're ready to go" in captured.out
 
-    def test_setup_no_agents(self, setup_args, capsys, tmp_path):
+    def test_setup_without_plugins(self, setup_args, capsys, tmp_path):
         """When no agent plugins are installed, it shows [!!]."""
         with (
             patch(

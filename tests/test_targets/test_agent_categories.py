@@ -40,7 +40,7 @@ from kanibako.settings.settings_launch import (
     snapshot_category_entries,
 )
 from kanibako.settings.settings_resolve import ResolveCtx
-from kanibako.targets.no_agent import NoAgentTarget
+from kanibako.targets.shell import ShellTarget
 
 HARNESS = "claude"
 NODE = "navigator℘claude"
@@ -65,7 +65,7 @@ DECLARED_SEEDS = {
 }
 
 
-class DeclaringTarget(NoAgentTarget):
+class DeclaringTarget(ShellTarget):
     """A REAL target declaring a seed AND two category binds against its HARNESS name."""
 
     @property

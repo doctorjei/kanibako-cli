@@ -432,8 +432,8 @@ class TestEnvRows:
     def test_an_empty_discovery_lists_no_plugin_vars_and_does_not_crash(self, monkeypatch):
         """⚑ MUTATION PROOF 4 — discovery returning NOTHING is legible, never a traceback.
 
-        ⚑ This is the DISCOVERY-FAILED case, NOT a cli-only install: ``no_agent`` is
-        kanibako-cli's own entry point, so a working cli-only install still consults
+        ⚑ This is the DISCOVERY-FAILED case, NOT a cli-only install: ``shell`` is
+        kanibako-cli's own SEEDED target, so a working cli-only install still consults
         one target and takes the other branch.
         """
         import kanibako.targets as targets_pkg

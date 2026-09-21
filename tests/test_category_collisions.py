@@ -198,7 +198,7 @@ class TestShippedDefaultsAreQuiet:
 
         for mode, proj, ws_root, hl in _probe_cases(tmp_path):
             snap, ctx = _probe_snapshot(mode, proj, ws_root, hl)
-            for agent in ("claude", "no_agent"):
+            for agent in ("claude", "shell"):
                 entries = snapshot_category_entries(
                     snap, active_agent=agent, box_ctx=ctx,
                 )
@@ -1200,7 +1200,7 @@ class TestRemedyTextIsHonestAboutWhatItCanKnow:
         assert "self.claude" not in text
         assert "agent:\n  claude:\n    bindings:\n      ro:\n        a: null" in text
 
-    def test_a_box_scope_occupant_gets_no_agent_caveat(self):
+    def test_a_box_scope_occupant_gets_no_per_agent_file_caveat(self):
         with pytest.raises(CategoryCollisionError) as exc:
             raise_binding_vs_binding(DEST, [
                 entry("bindings.ro", name="a", scope="box"),
@@ -1701,7 +1701,7 @@ class TestThePrefOriginReachesTheLIVEPATH:
     from kanibako.commands.start import _resolve_launch_snapshot
     from kanibako.errors import CategoryCollisionError
     from kanibako.settings.paths import resolve_project
-    from kanibako.targets.no_agent import NoAgentTarget
+    from kanibako.targets.shell import ShellTarget
 
     src = tmp_path / "collide"
     src.mkdir()
@@ -1715,7 +1715,7 @@ class TestThePrefOriginReachesTheLIVEPATH:
       _resolve_launch_snapshot(
         std=std, proj=proj, agent_name="claude",
         system_settings_path=None, agent_cfg_path=None,
-        desc=None, install=None, target=NoAgentTarget(), agent_cfg=None,
+        desc=None, install=None, target=ShellTarget(), agent_cfg=None,
         deliver_creds=True,
         # The OCCUPANT, at the same tier: an explicit agent-scope binding the
         # pref-installed ``common`` then extends onto.
