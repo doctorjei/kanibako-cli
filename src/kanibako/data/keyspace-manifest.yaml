@@ -1378,7 +1378,8 @@ keys:
   # belongs in that plugin's `behavior:` floor, reaching the keyspace through
   # agent.<agent>.<key>. ⚑ ALL THREE SHIP since 2026-09-15 (D8b); an agent whose plugin
   # declares none reads this fallback. The pseudo-agent `agent.shell.label | "Box Shell"`
-  # has no plugin and no carrier — that is D2, a `shell` node the code does not have.
+  # has no plugin; its carrier is the `agent.shell.*` block below (D2: a `shell`
+  # node the code now materializes — store dir, cascade slot, tier floor).
   # ⚑ NOT `meta.agent.<agent>.name`, which is the STORE DIR (a machine identity, RO).
   # ⚑ The agent FILE's non-key `name` field is GONE (D8b): `label` is the ONLY carrier of
   # an agent's description now, and a stored `name:` refuses the launch by name.
@@ -1619,6 +1620,88 @@ keys:
            singular). The discriminator lives on the HOST side of the bind
            tuple, never the guest side."
     spec: "§2d (R-9 + R-13)"
+
+  ## ---- agent.shell.* — the plain-shell tier (§2d `**shell**` fence) -------
+  ## Transcribed, never paraphrased, from the spec fence. `set:` copies the
+  ## agent.default twin per row; the VALUE column is the fence's tier value.
+  ## `agent.shell.bindings.{ro,rw}` mints NO row — bindings are declared by the
+  ## CATEGORY FAMILY (the agent.default fence's identical line carries no row
+  ## either; a second one would be the two-carriers defect). `continue_mode`,
+  ## `model` and `endpoint` are NOT rows: the fence omits them DELIBERATELY and
+  ## the §2d per-node fallback supplies them — do not add them, do not propose
+  ## a spec edit for them.
+  agent.shell.label:
+    scope: agent
+    type: str
+    set: cli+file
+    default: "Box Shell"
+    note: "the plain-shell box's description (fence literal, NOT the all-agents
+           fallback). Installed by the shell tier floor
+           (`core-defaults.yaml agent_shell:`), so a shell pick reads it."
+    spec: "§2d (shell fence)"
+  agent.shell.access:
+    scope: agent
+    type: enum
+    choices: [restricted, editing, full]
+    set: cli+file
+    default: full
+    note: "permission TIER for a plain-shell box (fence literal). The VALUES stay
+           the universal enum — same realization rule as the twin."
+    spec: "§2d (shell fence)"
+  agent.shell.allow_helpers:
+    scope: agent
+    type: bool
+    set: cli+file
+    default: true
+    note: "helper spawning for a plain-shell box (fence literal). Read off the
+           launch snapshot by the same gate that reads the twin."
+    spec: "§2d (shell fence)"
+  agent.shell.bootstrap:
+    scope: agent
+    type: str
+    set: cli+file
+    default: null                 # fence <None> — the tier contributes none
+    note: "no multiplexer default at the shell tier; an unset shell box reads the
+           §2d fallback (agent.default.bootstrap) like any other agent."
+    spec: "§2d (shell fence)"
+  agent.shell.run_args:
+    scope: agent
+    type: list
+    set: cli+file
+    default: null
+    note: "raw-argv passthrough escape hatch. ⚑ STORED AS A LIST; the CLI takes ONE
+           scalar string and normalizes it to a list before writing ([R169])."
+    spec: "§2d (shell fence)"
+  agent.shell.transform:
+    scope: agent
+    type: str
+    set: cli+file
+    default: null
+    note: "WHICH binary transform the shell box uses; null = none (fence <None>)."
+    spec: "§2d (shell fence)"
+  agent.shell.transform_settings:
+    scope: agent
+    type: dict
+    set: file
+    default: {}
+    note: "binary-transform SETTINGS input for the shell tier (fence `{}`)."
+    spec: "§2d (shell fence)"
+  agent.shell.template:
+    scope: agent
+    type: path
+    set: cli+file
+    default: null                 # fence <None> — installs NO layer-2 template (§2b)
+    note: "no per-agent template SOURCE at the shell tier; the tier installs no
+           layer-2 template because shell's IS EMPTY."
+    spec: "§2d (shell fence)"
+  agent.shell.canon:
+    scope: agent
+    type: path
+    set: cli+file
+    default: "@config.agents/default/canon"
+    note: "the shell tier's CANON CONTRIBUTION ROOT is the all-agents fallback arm
+           itself (fence literal) — the pseudo-agent ships no canon of its own."
+    spec: "§2d (shell fence)"
 
   ## ---- meta.* — TOP-LEVEL protected RO namespace (§0) ---------------------
   ## Materialized ONLY by construct-time / plugin / runtime derivation.
@@ -2002,6 +2085,55 @@ keys:
     note: "CORE-owned: there is NO default PLUGIN PACKAGE (§0 'the base system owns
            agent.default.*'), so this fixed literal cannot have a plugin origin"
     spec: "§2d"
+  ## ---- meta.agent.shell.* — the plain-shell identity anchors (§2d fence) ----
+  ## Concrete literals beside the parametric meta.agent.<agent>.* rows below: the
+  ## fence declares all five, and the parametric rows cannot carry shell's FIXED
+  ## values. `exec` carries NO value cell — the fence reads <None> and the
+  ## snapshot carries no such key (the parametric row's plugin origin already
+  ## says who would set it: nobody, the built-in ships no descriptor).
+  meta.agent.shell.name:
+    namespace: meta
+    set: never
+    origin: construct_time
+    type: str
+    value: "shell"
+    note: "CORE-owned fixed literal, the default row's twin: there is NO shell
+           PLUGIN PACKAGE either — the built-in target occupies this slot."
+    spec: "§2d (shell fence)"
+  meta.agent.shell.path:
+    namespace: meta
+    set: never
+    origin: construct_time
+    type: path
+    value: "@config.agents/shell"
+    note: "META so agent/workset/box cascade CANNOT override it — the twin formula
+           (@config.agents/@meta.agent.<agent>.name) with name = shell."
+    spec: "§2d (shell fence)"
+  meta.agent.shell.settings:
+    namespace: meta
+    set: never
+    origin: construct_time
+    type: path
+    value: "@meta.agent.shell.path/agent.yaml"
+    spec: "§2d (shell fence)"
+  meta.agent.shell.mode:
+    namespace: meta
+    set: never
+    origin: construct_time
+    type: dict
+    value: {}
+    note: "the EMPTY grammar, materialized by CORE (`meta_agent_grammar_floor`):
+           the built-in ships no descriptor, and absence would read as
+           unmaterialized (the reader raises on it) — D2/D4."
+    spec: "§2d (shell fence)"
+  meta.agent.shell.exec:
+    namespace: meta
+    set: never
+    origin: plugin
+    type: str
+    note: "never set for shell — no STANDALONE op, no descriptor to carry one.
+           The fence reads <None> and the snapshot carries no such key."
+    spec: "§2d (shell fence)"
   meta.agent.<agent>.name:
     namespace: meta
     parametric: [agent]
@@ -2009,10 +2141,12 @@ keys:
     origin: construct_time
     required: true
     type: str
-    note: "the resolved @system.agent, REQUIRED whenever an agent exists (a NO-AGENT
-           box omits it); identifies the STORE DIR. ⚑ Not the cascade key: the key
-           SEGMENT is the canonical discriminator and this VALUE is the `+` store
-           spelling, and for a persona the two DIFFER (settings_launch)."
+    note: "the resolved @system.agent, REQUIRED whenever a true agent exists; identifies
+           the STORE DIR. A plain-shell box carries the concrete `meta.agent.shell.name`
+           literal instead (spec §2d fence; [R176] Q53) — never this parametric row with
+           an empty node. ⚑ Not the cascade key: the key SEGMENT is the canonical
+           discriminator and this VALUE is the `+` store spelling, and for a persona the
+           two DIFFER (settings_launch)."
     spec: "§2d"
   meta.agent.<agent>.path:
     namespace: meta
@@ -2182,7 +2316,12 @@ bind_default_entries:
              exactly ONE is bound — override, not additive); dest carries NO agent
              segment (the plural/singular split is LOAD-BEARING, R-9/R-13). The
              <active> discriminator is the ACTIVE AGENT NODE, interpolated at the
-             seam; the whole entry is OMITTED for a NO-AGENT box."
+             seam. A plain-shell box binds it like any other: <active> is `shell`
+             and the shell tier's canon IS the all-agents fallback arm
+             (@config.agents/default/canon, spec §2d fence). The entry is omitted
+             only for a blank-agent narrow resolve (no node at all — the init agent
+             file, workset previews, effective-settings dumps), never for a
+             launched box, which always names a node."
       spec: "§2c (CANON books; R-10) / §2d (R-9 + R-13)"
     "~/canon/handbook/workset":
       user_key: true

@@ -460,6 +460,20 @@ agent_default:
   bootstrap: "tmux"
   label: "Agent Description (None)"
 
+# The SHELL pseudo-agent's own tier values (spec §2d, "Pseudo-agent(s)" fence) —
+# the tier a plain-shell box resolves, installed UNCONDITIONALLY in every launch
+# snapshot's base floor beside the default arm above (P: a declared default must
+# answer for a box that already exists, whatever that box runs).  A dormant tier
+# for every other agent: the §2d pick reads `agent.<active>`, so these leaves
+# reach only a shell pick and never overlay a plugin agent's own tier.
+# ⚑ VALUES ARE STRINGS, exactly as in `agent_default:` above.  `canon` is NOT
+# here: its shell arm is dynamic (the store dir wins when it exists) and lives
+# in `core_defaults.canon_default_categories` beside the default arm.
+agent_shell:
+  label: "Box Shell"
+  access: "full"
+  allow_helpers: "true"
+
 # ---------------------------------------------------------------------------
 # STATIC core `<scope>.env.<VAR>` defaults (spec §2d) — the file route for core
 # environment variables whose whole value a FILE can hold: a literal, or a

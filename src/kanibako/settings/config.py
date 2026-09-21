@@ -1015,6 +1015,16 @@ def resolve_agent(
     raw_resolved = explicit_agent if explicit_agent is not None else requested
 
     if raw_resolved is not None:
+        # ⚑ THE SHELL PSEUDO-AGENT IS SELECTABLE BY NAME (spec §2b) though no
+        # agent, persona or harness may CLAIM the name (D6).  It names the
+        # built-in occupying its own slot ([R175]), so it resolves WITHOUT
+        # consulting the installed set — the seeded registry answers the same
+        # way, but the ref grammar refuses the name before any lookup runs.
+        # Fold-to-compare ([R172]): any case reaches it, and the NODE returned
+        # is lowercase.  ``default`` gets no such arm: the any-agent tier is not
+        # a launchable agent, so it stays a reservation refusal.
+        if find_identifier(raw_resolved.strip(), {"shell"}) is not None:
+            return "shell"
         # ⚑ Canonicalise + validate the ref shape; the HARNESS is what must be
         # installed — NOT the composite node-name (a persona segment is free-form).
         # ⚑ It also STRIPS, and it OWNS every way a ref can be illegal — charset,

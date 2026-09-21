@@ -2095,7 +2095,7 @@ def _run_box_config(args: argparse.Namespace) -> int:
             try:
                 from kanibako.settings.agent_select import select_agent
                 # Informational display: tolerate a resolution failure, degrading to
-                # the "general" no-agent state below.  Still the ONE selection seam.
+                # the "shell" no-agent state below.  Still the ONE selection seam.
                 effective_selection = select_agent(std=std, proj=proj)
                 agent_name = effective_selection.node
                 target = (

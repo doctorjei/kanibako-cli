@@ -16,7 +16,13 @@ class NoAgentTarget(Target):
 
     @property
     def name(self) -> str:
-        return "no_agent"
+        # ⚑ ``shell`` — the §2d pseudo-agent's OWN slot ([R174]/[R175], Q22).
+        # The rename reached the display long ago (``display_name`` below); the
+        # NAME is what the registry, the store dir and the cascade slot are
+        # spelled from, so it moves only with the D6 reservation scoped to let
+        # the built-in through (``targets.__init__``) and the selection seam
+        # admitting it (``settings.config.resolve_agent``).
+        return "shell"
 
     @property
     def display_name(self) -> str:

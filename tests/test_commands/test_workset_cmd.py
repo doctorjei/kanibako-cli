@@ -1100,7 +1100,7 @@ class TestPrimaryWorksetSpecConvergence:
             xdg=host_xdg_map(std.data_home),
         )
         snap = build_launch_snapshot(
-            agent_name="general",
+            agent_name="shell",
             ctx=ctx,
             system_path=std.settings,
             agent_path=None,
@@ -1381,7 +1381,7 @@ class TestPrimaryWorksetMigration:
             xdg=host_xdg_map(std.data_home),
         )
         snap = build_launch_snapshot(
-            agent_name="general",
+            agent_name="shell",
             ctx=ctx,
             system_path=std.settings,
             agent_path=None,

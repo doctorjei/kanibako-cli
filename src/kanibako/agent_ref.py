@@ -41,27 +41,34 @@ _DOT_HINT = "; '.' is reserved as settings key-path separator and cannot appear 
 # ⚑ WIDENING THIS SET obliges a matching entry in ``kinemata.toml``'s ``reserved-agent-names``.
 PSEUDO_AGENT_NAMES = frozenset({"default", "shell"})
 
-# The AGENT-SLOT name a launch wears when NO agent is involved — a no-agent/plain-shell
-# box, & the agent-less resolves that stand in for one (``kanibako init``'s agent file,
-# the workset previews, the effective-settings dumps).  It OCCUPIES the ``agents/<node>/``
-# dir & the ``agent.<node>.*`` cascade POSITION as a real node-name does — which is why
+# The AGENT-SLOT name a launch wears when NO true agent is involved — a
+# plain-shell box, & the agent-less resolves that stand in for one
+# (``kanibako init``'s agent file, the workset previews, the effective-settings
+# dumps).  It OCCUPIES the ``agents/<node>/`` dir & the ``agent.<node>.*``
+# cascade POSITION as a real node-name does — which is why
 # ``_materialize_box_agent_mirror``'s blank short-circuit does not fire & the
 # ``agent.default`` backstop still reaches a no-agent launch.
-# 🛑 IT IS NOT A DECLARED AGENT, & the difference is not cosmetic: ``agent.general.*`` is
-# UNDECLARED, so a closed-keyspace resolve REFUSES it.  That is why
-# ``settings_cli_level.build_cli_level`` is given ``active_agent=None`` for a no-agent
-# launch — spelling ``agent.general.model`` there would fabricate a key.
+# 🛑 IT IS A DECLARED PSEUDO-AGENT (keyspec §2d, "Pseudo-agent(s)"), & the
+# difference from the old ``"general"`` slot is not cosmetic: ``agent.shell.*``
+# is DECLARED, so a closed-keyspace resolve ACCEPTS it where it REFUSED
+# ``agent.general.*``.  That is why ``settings_cli_level.build_cli_level`` is
+# still given ``active_agent=None`` for a no-agent launch — spelling
+# ``agent.shell.model`` there would install a flag value onto the shell tier no
+# parser exposes flags for.
 # ⚑ THIS COMMENT IS THE CONSTANT'S ONLY AUTHORITY.  The eleven literals it replaced each
 # carried their own value; ``tests/test_agent_ref.py`` pins the VALUE, & the spelling is a
 # fact about a user's store — rename it & the on-disk dir moves.
-# ⚑ A TEMPLATE/CHAPTER FALLBACK SLOT, NOT AN AGENT (keyspec ``templates/general/standard``,
-# & the ``general`` canon chapter).  Nothing SELECTS it —
+# ⚑ A PSEUDO-AGENT, NOT A TEMPLATE FALLBACK (keyspec ``agent.shell.*``).  Nothing
+# SELECTS it implicitly —
 # :attr:`kanibako.settings.agent_select.AgentSelection.selection_level` installs NOTHING for
-# a no-agent box rather than pinning ``system.agent`` here.  It reaches a slot only as the
-# ``else`` arm where a resolved target would otherwise supply the name.
-# ⚑ DELIBERATELY NOT in ``PSEUDO_AGENT_NAMES``: that set is a user-facing REFUSAL, & this
-# name is not reserved against a user's agent, persona or harness.
-GENERAL_SLOT = "general"
+# a node-less box rather than pinning ``system.agent`` here.  It reaches a slot only as the
+# ``else`` arm where a resolved target would otherwise supply the name, or BY NAME
+# (``--agent shell``, ``pref.system.agent``, ``system.agent: shell`` — spec §2b).
+# ⚑ IN ``PSEUDO_AGENT_NAMES`` BY DESIGN, unlike its ``"general"`` predecessor:
+# that set is a user-facing REFUSAL against agents/personas/harnesses CLAIMING the
+# name, & the shell slot IS the reserved owner — the boundary working, not bent
+# ([R175]: built-in is a category, not a carve-out).
+GENERAL_SLOT = "shell"
 
 
 def _is_segment_safe(segment: str) -> bool:

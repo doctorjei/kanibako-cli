@@ -643,13 +643,16 @@ def _declared_label(agent_id: str) -> str:
 
     ⚑ A PLUGIN THAT CANNOT BE READ IS CONCEDED, NOT FATAL — the same treatment
     ``settings_prefs.default_valid_agents`` gives a raising ``setting_descriptors()``: a broken
-    or absent plugin costs the user a description, never the command.  ``no_agent`` declares no
-    ``label`` at all and correctly reads the core backstop (the spec's ``agent.shell.label`` has
-    no node to live on yet — D2).
+    or absent plugin costs the user a description, never the command.
     """
     from kanibako.settings import core_defaults
     from kanibako.targets import get_target
 
+    if agent_id == "shell":
+        # ⚑ The built-in's tier declaration (D2): no descriptor to read, so the
+        # shell floor's own label IS the declaration — the same artefact the
+        # launch folds, keeping `agent show` and the box in agreement.
+        return core_defaults.shell_tier_default("label")
     try:
         descriptors = get_target(harness_of(agent_id))().setting_descriptors()
     except Exception:  # pragma: no cover - a plugin must not break a display verb

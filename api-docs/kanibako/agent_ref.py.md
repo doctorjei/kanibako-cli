@@ -11,7 +11,7 @@ Prose for these symbols lives in `llm-docs/kanibako/agent_ref.py.md`.
 SEPARATORS = ((PLUS_SEP := '+'), (CANONICAL_SEP := '℘'))
 SEGMENT_CHAR_CLASS = '\\w' + ''.join((re.escape(ch) for ch in sorted(_SAFE_EXTRA)))
 PSEUDO_AGENT_NAMES = frozenset({'default', 'shell'})
-GENERAL_SLOT = 'general'
+GENERAL_SLOT = 'shell'
 _SAFE_EXTRA = frozenset('-_')
 _DOT_HINT = "; '.' is reserved as settings key-path separator and cannot appear in an agent name"
 ```

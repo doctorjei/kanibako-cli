@@ -6,8 +6,9 @@
   symbolically)
 - _CONDITIONAL_: per-mode / per-state gates, applied at the injection site, never in the file
 
-Eight declared BIND families, one producer each, plus two NON-BIND scalar sections
-(``agent_default:`` behavior, ``env:`` static variables); every table lands in the BASE-level
+Eight declared BIND families, one producer each, plus three NON-BIND scalar sections
+(``agent_default:`` behavior, ``agent_shell:`` shell-tier behavior, ``env:`` static
+variables); every table lands in the BASE-level
 floor. The box-create canon SKELETON also lives here — mirror image of the canon binds
 (llm-docs).
 """
@@ -88,6 +89,39 @@ def behavior_default(key: str) -> str:
             f"behavior floor (spec §2d agent.default.{key}) lives there and nowhere else."
         )
     return defaults[key]
+
+
+def shell_tier_defaults() -> dict[str, str]:
+    """Return the declared ``agent.shell.<key>`` tier floor (spec §2d fence).
+
+    The shell pseudo-agent's OWN tier values, read off the ``agent_shell:`` table
+    the way :func:`behavior_defaults` reads ``agent_default:``.  Folded into the
+    base floor UNCONDITIONALLY (every snapshot carries the tier; only a shell
+    pick reads it), so the fence defaults ANSWER for a box that already exists
+    (P) whatever that box runs.  ⚑ Values are STRINGS, same convention, same
+    reason.  ⚑ ``canon`` is NOT here — its arm is dynamic and lives in
+    :func:`canon_default_categories`.
+    """
+    return {
+        f"agent.shell.{key}": str(value)
+        for key, value in (_load_doc().get("agent_shell") or {}).items()
+    }
+
+
+def shell_tier_default(key: str) -> str:
+    """ONE declared ``agent.shell.<key>`` value — the FAIL-CLOSED single-key read.
+
+    The shell-tier twin of :func:`behavior_default`: one spelling, re-read per
+    call, absent declaration RAISES as a packaging defect.
+    """
+    defaults = shell_tier_defaults()
+    shell_key = f"agent.shell.{key}"
+    if shell_key not in defaults:
+        raise RuntimeError(
+            f"{CORE_DEFAULTS_FILENAME} declares no 'agent_shell.{key}' — the shell "
+            f"tier floor (spec §2d agent.shell.{key}) lives there and nowhere else."
+        )
+    return defaults[shell_key]
 
 
 def env_default_categories() -> dict[str, str]:
@@ -623,12 +657,29 @@ def canon_default_categories(
         out[f"agent.{agent_name}.canon"] = (
             store_canon if node_store.is_dir() else "@agent.default.canon"
         )
+        # ⚑ THE SHELL ARM RIDES THE SAME GATE (D2): the pseudo-agent's tier is
+        # materialized wherever an agent context exists — every production launch
+        # carries a named agent now, so the leaf ANSWERS in every snapshot (P)
+        # while a blank-agent narrow resolve still emits no agent tier at all.
+        # Spelled as the FENCE LITERAL (== the default arm above), not the
+        # one-hop indirection the per-node arm uses: the shell store ships no
+        # canon dir, so the store branch would never fire for it anyway, and the
+        # literal is what the manifest row pins.  The store branch is KEPT for
+        # honesty — a user who creates the dir gets it bound, like any node.
+        shell_store = std.agents / store_dirname("shell") / "canon"
+        out["agent.shell.canon"] = (
+            f"@config.agents/{store_dirname('shell')}/canon"
+            if shell_store.is_dir() else "@config.agents/default/canon"
+        )
 
     for entry in _load_doc().get("canon", []):
         ref = str(entry["meta_ref"])
         if CANON_ACTIVE_AGENT_TOKEN in ref:
             if not agent_name:
-                continue  # NO-AGENT box: no agent tier at all, so no chapter bind.
+                continue  # BLANK agent (an agent-less narrow resolve): no agent
+                # tier at all, so no chapter bind.  A ``shell`` box TAKES the
+                # tier — the pseudo-agent's canon falls back to the default's
+                # by the ordinary §2d pick (``agent.shell.canon`` above).
             ref = ref.replace(CANON_ACTIVE_AGENT_TOKEN, agent_name)
         add_bind(
             out, str(entry["category"]), str(entry["box_dest"]), ref,

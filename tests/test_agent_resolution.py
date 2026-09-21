@@ -113,8 +113,8 @@ def test_a_blank_tier_is_a_value_not_an_unset(monkeypatch, blank):
         ["claude"],                           # was the autopick
         ["claude", "goose"],                  # was Gate-2a
         ["claude", "goose", "codex"],
-        ["no_agent", "general"],              # was Gate-2b via the discount list
-        ["claude", "no_agent", "general"],    # was the autopick via the discount list
+        ["shell"],                              # the seeded built-in, alone
+        ["claude", "shell"],                    # one plugin plus the built-in
     ],
     ids=["zero", "one", "two", "three", "pseudo-only", "one-plus-pseudo"],
 )
@@ -153,16 +153,27 @@ def test_unset_refusal_names_setup_and_not_an_install_command(monkeypatch):
     assert "No agent plugins are installed" not in msg
 
 
-def test_explicit_pseudo_agent_still_selectable(monkeypatch):
-    # ``no_agent`` is a NAME like any other: an explicit ref validates against the
-    # full installed set. (It used to be discounted from the implicit count too;
-    # there is no count left to discount it from.)
-    _patch_targets(monkeypatch, ["claude", "no_agent"])
+@pytest.mark.parametrize("spelling", ["shell", "Shell", "SHELL"])
+def test_explicit_shell_resolves_without_consulting_installed(
+    monkeypatch, spelling,
+):
+    # ``shell`` is SELECTABLE though not claimable: it names the built-in
+    # occupying its own slot (spec §2b, [R175]), so it resolves WITHOUT
+    # consulting the installed set — even a host with only ``claude`` answers
+    # it.  Fold-to-compare ([R172]): any case reaches the lowercase node.
+    _patch_targets(monkeypatch, ["claude"])
     _no_default(monkeypatch)
-    assert (
+    assert resolve_agent(explicit_agent=spelling, requested=None) == "shell"
+
+
+def test_explicit_no_agent_is_not_installed(monkeypatch):
+    # [R174]: ``no_agent`` does not exist — a token reaching the code is an
+    # error, never a translation.  It parses as a name like any other and then
+    # fails the installed-set lookup it was never registered in.
+    _patch_targets(monkeypatch, ["claude", "shell"])
+    _no_default(monkeypatch)
+    with pytest.raises(AgentNotInstalledError):
         resolve_agent(explicit_agent="no_agent", requested=None)
-        == "no_agent"
-    )
 
 
 # ---------------------------------------------------------------------------

@@ -567,8 +567,8 @@ class TestSelectAgentSeam:
         explicitly. ⚑ No RELEASED version ever gave a plain shell this way — ``pref.*``
         does not exist in v1.7.2 (``git grep -c "pref\\.system\\.agent" v1.7.2`` is
         zero), so this spelling was born and retired inside the 1.8.0 rc series. The
-        plain-shell box is reached BY NAME and always was: ``--agent no_agent`` /
-        ``pref.system.agent: no_agent`` (``shell`` will replace that name at D2).
+        plain-shell box is reached BY NAME: ``--agent shell`` /
+        ``pref.system.agent: shell`` (the ``no_agent`` spelling is retired — [R174]).
 
         ⚑ Every spelling here is one YAML reads as Python ``None`` — including a key
         left BLANK after its colon, which makes this state reachable by typo. The
@@ -903,8 +903,8 @@ class TestNoAgentAuthPathIsUnreachable:
         """*support* mirrors what the REAL floor computes.
 
         ``_launch_snapshot_inputs`` derives ``meta.agent.<a>.auth.share_support``
-        from the resolved target's DESCRIPTOR, and for a no-agent box (``"general"``
-        / blank) there is no target — ``resolve_target("general")`` raises KeyError
+        from the resolved target's DESCRIPTOR, and for a no-agent box (``"shell"``
+        / blank) there is no target — ``resolve_target("shell")`` raises KeyError
         and the floor records ``False``. Passing ``True`` there would be the test
         lying about the host, and it is exactly what made an earlier draft of this
         test "prove" a collapse that the real path cannot produce.
@@ -928,9 +928,9 @@ class TestNoAgentAuthPathIsUnreachable:
         )
         return snap, resolve_auth_source(snap, mode="primary")
 
-    @pytest.mark.parametrize("agent_name", ["general", ""])
+    @pytest.mark.parametrize("agent_name", ["shell", ""])
     def test_the_collapsed_path_never_reaches_a_consumer(self, agent_name):
-        """Both no-agent shapes: the LAUNCH's ``"general"`` slot, and a blank name.
+        """Both no-agent shapes: the LAUNCH's ``"shell"`` slot, and a blank name.
 
         ⚑ The blank case used to CRASH here — ``@meta.agent..auth.share_support`` is
         a malformed ref, and the strict ``as_bool`` rejected the leftover string
