@@ -227,6 +227,16 @@ def discover_targets(project_path: Path | None = None) -> dict[str, type[Target]
     # a tier's documented override.  Per-call and thrown away with the scan: it says
     # nothing about what is stored, only about what this scan has already seen.
     declared: dict[str, tuple[str, str]] = {}
+    # ⚑ THE BUILT-IN IS SEEDED, NOT DISCOVERED ([R175] — built-in is a CATEGORY,
+    # not a carve-out).  The plain-shell target owns the ``shell`` slot the way a
+    # plugin owns its name, so it enters through no plugin door: no entry point
+    # (``pyproject.toml`` carries none for it), no module scan, no file drop —
+    # both scanners below skip it by identity.  The D6 reservation in
+    # ``_register`` / ``_require_meta_name`` therefore never sees it, and a
+    # third-party plugin declaring ``shell`` is still refused there — that
+    # refusal protects exactly this slot.
+    targets["shell"] = NoAgentTarget
+    declared["shell"] = ("shell", "builtin")
     # Group is agent-domain (a registry of agent adapters) → "kanibako.agents".
     # NB: distinct from the `kanibako.settings.agent_config` module (per-agent tool
     # config object); the module was named `agent_config` (not `agents`) to
@@ -364,14 +374,20 @@ def _require_meta_name(target: Target) -> Target:
             f"and cascade key."
         )
     node = agent_node_case(meta_name)
-    why = reserved_pseudo_agent_reason(node)
-    if why is not None:
-        cls = type(target)
-        spelling = "" if node == meta_name else f" (declared as '{meta_name}')"
-        raise ValueError(
-            f"{why}. Agent plugin {cls.__module__}.{cls.__qualname__} declares it as "
-            f"its harness name{spelling}; rename the plugin's 'name' property."
-        )
+    # ⚑ THE BUILT-IN OCCUPIES ITS OWN SLOT ([R175]).  The reservation below
+    # refuses a HARNESS claiming a pseudo-agent name, because what is owned is a
+    # store dir and a cascade slot — and this target IS that owner, claiming
+    # nothing.  Scoping the refusal to non-built-ins states the rule (a plugin
+    # may not claim the slot), it does not except anyone from it.
+    if not isinstance(target, NoAgentTarget):
+        why = reserved_pseudo_agent_reason(node)
+        if why is not None:
+            cls = type(target)
+            spelling = "" if node == meta_name else f" (declared as '{meta_name}')"
+            raise ValueError(
+                f"{why}. Agent plugin {cls.__module__}.{cls.__qualname__} declares it as "
+                f"its harness name{spelling}; rename the plugin's 'name' property."
+            )
     return target
 
 

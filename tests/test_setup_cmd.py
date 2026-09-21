@@ -448,12 +448,12 @@ def test_full_setup_marker_write_failure_is_incomplete_and_nonzero(
 
 
 def test_step2_reports_binary_less_shell_as_ok(tmp_home, config_file, monkeypatch, capsys):
-    """The binary-less 'Shell' (no_agent) target has no host binary; Step 2 must
+    """The binary-less 'Shell' target has no host binary; Step 2 must
     report it as available (image default), not '... not found on this system'.
     """
     from kanibako.targets.no_agent import NoAgentTarget
 
-    _patch_targets(monkeypatch, {"no_agent": NoAgentTarget})
+    _patch_targets(monkeypatch, {"shell": NoAgentTarget})
     monkeypatch.setattr(
         "kanibako.commands.diagnose._check_runtime", lambda: ("ok", "podman")
     )
@@ -463,7 +463,7 @@ def test_step2_reports_binary_less_shell_as_ok(tmp_home, config_file, monkeypatc
     # Step 5 is not this test's subject, and its outcome now gates both the marker
     # and the RC — stage the templates so it reports CURRENT deterministically.
     _stage_templates()
-    rc = setup_cmd.run_setup(_ns(agent="no_agent"))
+    rc = setup_cmd.run_setup(_ns(agent="shell"))
     assert rc == 0
     out = capsys.readouterr().out
     assert "Shell" in out
@@ -483,8 +483,8 @@ def test_no_real_plugin_reaches_the_tailored_install_command(
     hand a first-run user a command which works in THEIR install.
 
     ⚑ It could not fire before: the gate was ``if not targets:``, and ``targets`` is
-    NEVER empty — ``no_agent`` is an entry point declared by ``kanibako-cli``'s own
-    ``pyproject.toml``. The binary-less Shell target also set ``found_any``, so the
+    NEVER empty — the ``shell`` built-in is SEEDED by ``discover_targets`` itself.
+    The binary-less Shell target also set ``found_any``, so the
     closing banner claimed *"You're ready to go!"* on a host where every launch
     refuses. Three branches, one cause; the gate counts ``has_binary`` targets now.
 
@@ -495,7 +495,7 @@ def test_no_real_plugin_reaches_the_tailored_install_command(
     from kanibako.install_method import install_command
     from kanibako.targets.no_agent import NoAgentTarget
 
-    _patch_targets(monkeypatch, {"no_agent": NoAgentTarget})
+    _patch_targets(monkeypatch, {"shell": NoAgentTarget})
     _stub_probes(monkeypatch)
     _stage_templates()
     monkeypatch.setattr("sys.stdin.isatty", lambda: False)

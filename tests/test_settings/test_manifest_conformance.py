@@ -191,8 +191,8 @@ class TestManifestLoader:
         for section in ("registry", "policy", "categories", "keys",
                         "bind_default_entries", "not_keys"):
             assert section in doc, f"manifest section {section!r} is missing"
-        assert len(doc["keys"]) == 106, (
-            f"the manifest declares {len(doc['keys'])} key rows, not the 106 this "
+        assert len(doc["keys"]) == 120, (
+            f"the manifest declares {len(doc['keys'])} key rows, not the 120 this "
             f"file's counts were measured against — re-measure, do not adjust blindly"
         )
 
@@ -287,6 +287,14 @@ _BEHAVIOR_KEYS = (
     "agent.default.label",
 )
 
+#: The ``agent.shell.*`` tier floor (spec §2d fence, D2) — the shell tier's OWN
+#: values, installed unconditionally by ``core_defaults.shell_tier_defaults``.
+#: Typed by the manifest itself, like the behavior tuple above.  (The shell
+#: `canon` arm is dynamic and sits in ``_SINGLETON_KEYS`` with its producer.)
+_SHELL_TIER_KEYS = (
+    "agent.shell.label", "agent.shell.access", "agent.shell.allow_helpers",
+)
+
 #: (i-e) + the kuid sentinel — one-off rows with a single named carrier each.
 #: ``box.env.COLORTERM`` is the third: the ONE ``env`` member kanibako itself ships a
 #: default for, carried by ``core_defaults.env_default_categories`` (spec §2b:867).
@@ -310,6 +318,7 @@ _SINGLETON_KEYS = (
     "agent.default.canon", "workset.kuid", "box.env.COLORTERM",
     "agent.default.env.TERM",
     "agent.default.template",
+    "agent.shell.canon",
     "system.helpers.depth", "system.helpers.breadth",
 )
 
@@ -328,7 +337,8 @@ _CHANNEL_KEYS = (
 PINNED_DEFAULT_KEYS: frozenset[str] = frozenset(
     set(_PATH_ORACLE) | set(_ANCHOR_KEYS) | set(_ANCHOR_SCALAR_KEYS)
     | set(_ANCHOR_SCALAR_KEYS_PRIMARY_NAMED) | {_WORKSPACES_KEY} | set(_AUTH_KEYS)
-    | set(_SCALAR_KEYS) | set(_BEHAVIOR_KEYS) | set(_SINGLETON_KEYS) | set(_CHANNEL_KEYS)
+    | set(_SCALAR_KEYS) | set(_BEHAVIOR_KEYS) | set(_SHELL_TIER_KEYS)
+    | set(_SINGLETON_KEYS) | set(_CHANNEL_KEYS)
 )
 
 
@@ -664,6 +674,47 @@ class TestBehaviorDefaults:
         assert access_default() == _default("agent.default.access")
 
 
+class TestShellTierDefaults:
+    """The ``agent.shell.*`` tier floor — pinned THROUGH the manifest's own ``type:``.
+
+    The shell tier's OWN values (spec §2d fence, D2), installed unconditionally by
+    ``core_defaults.shell_tier_defaults`` off the ``agent_shell:`` table — the
+    shell-tier twin of :class:`TestBehaviorDefaults`.  Same bool convention: the
+    file quotes, the manifest writes the value, the comparison goes through the
+    declared type.  (The shell `canon` arm is dynamic and pinned with its
+    producer in :class:`TestSingletonDefaults`, beside the default arm.)
+    """
+
+    def test_the_manifest_types_the_shell_floor(self):
+        """Anti-vacuity: the typed comparison below is only honest if types are declared."""
+        types = {k: _keys()[k].get("type") for k in _SHELL_TIER_KEYS}
+        assert types == {
+            "agent.shell.label": "str",
+            "agent.shell.access": "enum",
+            "agent.shell.allow_helpers": "bool",
+        }, types
+
+    @pytest.mark.parametrize("key", _SHELL_TIER_KEYS)
+    def test_the_manifest_default_is_the_shipped_shell_value(self, key):
+        shipped = core_defaults.shell_tier_defaults()[key]
+        declared = _default(key)
+        if _keys()[key].get("type") == "bool":
+            assert coerce_bool(shipped) is declared, (
+                f"{key}: manifest declares {declared!r} (type bool); "
+                f"core-defaults.yaml ships {shipped!r}, which coerces to "
+                f"{coerce_bool(shipped)!r}"
+            )
+        else:
+            assert shipped == declared, (
+                f"{key}: manifest says {declared!r}, core-defaults.yaml ships "
+                f"{shipped!r}"
+            )
+
+    def test_the_shell_access_choices_are_the_code_tier_set(self):
+        """``access`` is the one enum leaf — its ``choices:`` is pinnable too."""
+        assert tuple(_keys()["agent.shell.access"]["choices"]) == ACCESS_TIERS
+
+
 class TestSingletonDefaults:
     """(i-e) and the kuid sentinel — rows with exactly one named code carrier."""
 
@@ -679,6 +730,19 @@ class TestSingletonDefaults:
             _StubStandardPaths(), PROBE_AGENT,
         )
         assert emitted["agent.default.canon"] == _default("agent.default.canon")
+
+    def test_the_agent_shell_canon_arm(self):
+        """The shell arm of the same producer — the FENCE LITERAL, unconditional (D2).
+
+        Read from the emitter's OUTPUT like the default arm above: the value a
+        launch installs at the shell tier.  The stub store carries no shell canon
+        dir, so this is the fallback arm — which is the fence literal itself, not
+        the one-hop indirection the per-node arm uses.
+        """
+        emitted = core_defaults.canon_default_categories(
+            _StubStandardPaths(), PROBE_AGENT,
+        )
+        assert emitted["agent.shell.canon"] == _default("agent.shell.canon")
 
     def test_the_agent_default_template_root(self):
         """``launch.templates.agent_template_defaults`` emits this literal (spec §2d).
@@ -1101,6 +1165,8 @@ NO_ORACLE_ABSENT: frozenset[str] = frozenset({
     "system.agent", "system.setup_completed", "box.shell",
     "agent.default.model", "agent.default.endpoint", "agent.default.run_args",
     "agent.default.transform",
+    "agent.shell.bootstrap", "agent.shell.run_args", "agent.shell.transform",
+    "agent.shell.template",
 })
 
 #: (E4) ``default: {}`` — the EMPTY CONTAINER a category arm starts at.  That emptiness
@@ -1109,6 +1175,7 @@ NO_ORACLE_ABSENT: frozenset[str] = frozenset({
 #: bind arms are dest-keyed bindmaps).
 NO_ORACLE_EMPTY: frozenset[str] = frozenset({
     "box.bindings.ro", "box.bindings.rw", "box.masks", "agent.default.transform_settings",
+    "agent.shell.transform_settings",
 })
 
 #: (E5) Two ``@``-ref rows spelled ONE HOP differently from the code, each for its own
@@ -1230,8 +1297,8 @@ class TestDefaultsCoverage:
             f"this file classifies rows the manifest no longer declares a default for: "
             f"{sorted(stale)}"
         )
-        assert len(declared) == 70, (
-            f"the manifest gives {len(declared)} rows a default, not the 70 measured — "
+        assert len(declared) == 79, (
+            f"the manifest gives {len(declared)} rows a default, not the 79 measured — "
             f"re-classify, do not adjust the count"
         )
 
@@ -1262,9 +1329,15 @@ class TestDefaultsCoverage:
         ``env`` default (Jei's all-agents ruling). PINNED for the same reason its
         ``box.env.COLORTERM`` twin is — ``core-defaults.yaml``'s ``env:`` table carries
         it, and :meth:`TestSingletonDefaults.test_the_core_env_floor` reads that emitter.
+        ⚑ 56/14 → 60/19 (2026-09-21): the shell tier's fence rows (D1 Step 2 on D2's
+        node). PINNED: ``agent.shell.{label,access,allow_helpers}`` against the new
+        ``agent_shell:`` floor and ``agent.shell.canon`` against its producer arm.
+        EXEMPT in the existing classes: the four ``<None>`` tier rows join E3
+        (no floor installs them — the resolve reads the §2d fallback) and the
+        ``{}`` row joins E4.
         """
-        assert len(PINNED_DEFAULT_KEYS) == 56
-        assert len(EXEMPT_DEFAULT_KEYS) == 14
+        assert len(PINNED_DEFAULT_KEYS) == 60
+        assert len(EXEMPT_DEFAULT_KEYS) == 19
         assert not (PINNED_DEFAULT_KEYS & EXEMPT_DEFAULT_KEYS)
 
 
@@ -1276,6 +1349,24 @@ class TestDefaultsCoverage:
 #: stands for "any legal tail", so there is no single spelling to validate.
 SHAPE_ROWS: frozenset[str] = frozenset({
     "agent.<agent>.<key>", "meta.box.agent.<key>",
+})
+
+#: The transcribed shell-tier fence rows (D1 Step 2 on D2's node): concrete rows the
+#: scalar declarations cannot cover — ``agent.shell.*`` is neither the default tier
+#: nor the parametric per-node arm, and ``meta.agent.shell.*`` is neither the
+#: default literal nor the parametric arm.  Enumerated (a sixth kind, with the
+#: anti-vacuity pin below asserting exactly these members), because a derivation
+#: off the leaf sets would ALSO cover the three leaves the fence deliberately
+#: omits (continue_mode/model/endpoint) and the bindings arms the category
+#: family owns — the fence's shape, not the vocabulary's, is what is pinned.
+SHELL_TIER_ROWS: frozenset[str] = frozenset({
+    "agent.shell.label", "agent.shell.access", "agent.shell.allow_helpers",
+    "agent.shell.bootstrap", "agent.shell.run_args", "agent.shell.transform",
+    "agent.shell.transform_settings", "agent.shell.template",
+    "agent.shell.canon",
+    "meta.agent.shell.name", "meta.agent.shell.path",
+    "meta.agent.shell.settings", "meta.agent.shell.mode",
+    "meta.agent.shell.exec",
 })
 
 #: ⚑ FINDING 4 IS CLOSED (2026-08-21) and its exemption is GONE, which is what the
@@ -1458,6 +1549,7 @@ class TestKeySetConformance:
             | (leftover & parametric_agent)              # the per-node agent arm
             | {"meta.agent.default.name"}                # the always-legal `default` node
             | {"meta.box.agent.auth.share_support"}      # the agent-mirror sub-namespace
+            | (leftover & SHELL_TIER_ROWS)               # the transcribed shell fence (D2)
         )
         assert leftover == expected, (
             f"manifest rows the scalar declarations do not account for: "
@@ -1472,6 +1564,10 @@ class TestKeySetConformance:
         assert leftover & parametric_agent == {
             "agent.<agent>.access", "agent.<agent>.template", "agent.<agent>.canon",
         }
+        assert leftover & SHELL_TIER_ROWS == SHELL_TIER_ROWS, (
+            f"shell-tier rows missing from the manifest: "
+            f"{sorted(SHELL_TIER_ROWS - leftover)}"
+        )
 
     def test_no_declaration_family_is_empty(self):
         """ANTI-VACUITY for both directions above (P15): an empty family is SILENT.

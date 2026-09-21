@@ -131,6 +131,12 @@ def source_groups() -> tuple[tuple[str, frozenset[str]], ...]:
       auth_chain_floor(mode="primary", agent_name=_PROBE_AGENT))),
     ("core-defaults.yaml (agent_default:)", frozenset(
       f"agent.default.{leaf}" for leaf in core_defaults.behavior_defaults())),
+    # The shell tier's OWN values — the fence literals no other tier carries.
+    # Derived off the emitter exactly like the default arm above, so a fourth
+    # `agent_shell:` leaf arrives here on its own. `canon` is NOT in this set:
+    # its shell arm is dynamic and is classified with its producer below.
+    ("core-defaults.yaml (agent_shell:)", frozenset(
+      core_defaults.shell_tier_defaults())),
     # The ``env:`` table's own keys, intersected with the registry: the file may ship an
     # env default the registry has not (yet) enumerated, and only the enumerated ones
     # are section-1 rows. ⚑ The label is the SAME string section 3 prints, deliberately
@@ -157,6 +163,9 @@ def source_groups() -> tuple[tuple[str, frozenset[str]], ...]:
     # 🛑 Do not re-add the label: an empty group raises out of :func:`key_rows`.
     # The one literal emitted by the canon bind producer (spec §2d).
     ("core_defaults.py (canon producer)", frozenset({"agent.default.canon"})),
+    # The shell arm of the same producer — the fence literal, unconditional (D2),
+    # beside the default arm above because the emitter spells both.
+    ("core_defaults.py (canon producer, shell arm)", frozenset({"agent.shell.canon"})),
     # ⚑ THE ``kuid.py (SENTINEL)`` LABEL IS GONE (2026-08-29) — not because the sentinel
     # moved, but because ``workset.kuid`` did: the anchor floor emits it now (as
     # ``kuid.SENTINEL``, by reference), and this partition must stay disjoint. One hop
@@ -207,11 +216,13 @@ def source_groups() -> tuple[tuple[str, frozenset[str]], ...]:
     # ``default: <None>`` — an ABSENCE. No floor builder installs these at all.
     ("(nothing declares it — unset until you set it)", frozenset({
       "system.agent", "system.setup_completed", "box.shell", "agent.default.model",
-      "agent.default.endpoint", "agent.default.run_args", "agent.default.transform"})),
+      "agent.default.endpoint", "agent.default.run_args", "agent.default.transform",
+      "agent.shell.bootstrap", "agent.shell.run_args", "agent.shell.transform",
+      "agent.shell.template"})),
     # ``default: {}`` — the resolver's own initial state for a category arm.
     ("(empty — the category starts with no entries)", frozenset({
       "box.bindings.ro", "box.bindings.rw", "box.masks",
-      "agent.default.transform_settings"})),
+      "agent.default.transform_settings", "agent.shell.transform_settings"})),
     # The per-NODE arm of the same producer, spelled ONE @-hop differently from the
     # registry (``@meta.agent.<a>.path`` IS ``@config.agents/<a>``; both resolve to one
     # place). Labelled apart from the ``agent.default`` arm above because they are two
@@ -432,7 +443,7 @@ class PluginConsultation(NamedTuple):
 def env_rows() -> tuple[list[DefaultRow], PluginConsultation]:
   """Section 3 — core's static env floor plus every INSTALLED plugin's declared vars.
 
-  A cli-only install consults kanibako's own ``no_agent`` target and declares nothing; a
+  A cli-only install consults kanibako's own ``shell`` target and declares nothing; a
   plugin that fails to load is not allowed
   to take the listing down with it, since ``system defaults`` must work on a broken
   install (that is when a user most needs to read it).
@@ -557,8 +568,8 @@ def print_defaults(out: Any) -> None:
       file=out,
     )
   else:
-    # ⚑ DISCOVERY ITSELF FAILED — not a thin install: ``no_agent`` is kanibako-cli's
-    # own entry point, so a working install always consults at least one target.
+    # ⚑ DISCOVERY ITSELF FAILED — not a thin install: the ``shell`` built-in is
+    # SEEDED, so a working install always consults at least one target.
     print("\n  No agent targets could be discovered, so no plugin variables are listed.", file=out)
 
   print(

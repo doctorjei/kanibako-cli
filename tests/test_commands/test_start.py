@@ -193,7 +193,7 @@ class TestTargetWarnings:
         with start_mocks() as m:
             m.target.detect.return_value = None
             m.target.has_binary = False
-            m.target.name = "no_agent"
+            m.target.name = "shell"
             _run_container(
                 project_dir=None,
                 entrypoint=None,
@@ -262,11 +262,11 @@ class TestTargetWarnings:
             assert m_protect.call_args.args[0] == m.proj.shell_path
 
     def test_no_agent_target_still_launches(self, start_mocks):
-        """Container should still launch with no_agent target."""
+        """Container should still launch with the binary-less shell target."""
         with start_mocks() as m:
             m.target.detect.return_value = None
             m.target.has_binary = False
-            m.target.name = "no_agent"
+            m.target.name = "shell"
             rc = _run_container(
                 project_dir=None,
                 entrypoint=None,
@@ -2689,8 +2689,8 @@ class TestAgentConfigIntegration:
             env = m.runtime.run.call_args.kwargs.get("env") or {}
             assert env.get("DISABLE_AUTOUPDATER") == "1"
 
-    def test_shell_mode_uses_general_agent(self, start_mocks):
-        """Shell mode (entrypoint set) loads 'general' agent config."""
+    def test_shell_mode_uses_shell_agent(self, start_mocks):
+        """Shell mode (entrypoint set) loads 'shell' agent config."""
         with start_mocks() as m:
             m.resolve_target.side_effect = KeyError("skip")
             _run_container(
@@ -2699,20 +2699,44 @@ class TestAgentConfigIntegration:
                 extra_args=[],
             )
             # The agent config path is derived as
-            # std.agents / "general" / "agent.yaml" (the settings file lives
+            # std.agents / "shell" / "agent.yaml" (the settings file lives
             # inside the per-agent store dir).
             div_args = [
                 c[0][0]
                 for c in m.load_std_paths.return_value.agents.__truediv__.call_args_list
             ]
-            assert "general" in div_args
-            # ... / "general" / "agent.yaml"
+            assert "shell" in div_args
+            # ... / "shell" / "agent.yaml"
             sub_args = [
                 c[0][0]
                 for c in m.load_std_paths.return_value.agents.__truediv__
                 .return_value.__truediv__.call_args_list
             ]
             assert "agent.yaml" in sub_args
+
+    def test_shell_launch_never_resolves_the_retired_general_store(
+        self, start_mocks,
+    ):
+        """Step 4: the ``agents/general/`` store is orphaned, never read.
+
+        Flipping the slot without moving the store read would silently orphan
+        whatever the user edited in ``agents/general/agent.yaml`` — the launch
+        would come up on defaults with rc 0.  Pin both halves: the shell store
+        IS resolved, and the retired word appears in NO store-dir resolution.
+        """
+        with start_mocks() as m:
+            m.resolve_target.side_effect = KeyError("skip")
+            _run_container(
+                project_dir=None, entrypoint="/bin/bash", image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[],
+            )
+            div_args = [
+                c[0][0]
+                for c in m.load_std_paths.return_value.agents.__truediv__.call_args_list
+            ]
+            assert "shell" in div_args
+            assert "general" not in div_args
 
 
 class TestContainerEnvPrecedence:
@@ -7511,7 +7535,7 @@ class TestSuppressedBoxLaunchesNoAgent:
             # AUTO-DETECT (its documented contract for other callers), so a
             # suppressed box gets whatever agent is installed. A resolve for a
             # NAMED target is fine — ``_launch_snapshot_inputs`` legitimately asks
-            # about ``"general"`` — so guard on the EMPTINESS, not on the call.
+            # about ``"shell"`` — so guard on the EMPTINESS, not on the call.
             if not name:
                 raise AssertionError(
                     "resolve_target called with an EMPTY name for a SUPPRESSED "
@@ -7551,23 +7575,23 @@ class TestSuppressedBoxLaunchesNoAgent:
             m.target.binary_mounts.assert_not_called()
             m.target.generate_agent_config.assert_not_called()
 
-    def test_a_suppressed_box_resolves_the_snapshot_as_general_with_no_level(
+    def test_a_suppressed_box_resolves_the_snapshot_as_shell_with_no_level(
         self, start_mocks,
     ):
-        """``agent_id`` falls to the ``general`` template slot and NOTHING is
+        """``agent_id`` falls to the ``shell`` slot and NOTHING is
         installed at ``system.agent`` — pinning that the suppression survives all
         the way into the snapshot inputs.
 
         ⚑ P8: the whole §1A CLI LEVEL must be ``None`` here, not merely its
         selection half. A suppressed box has no agent slot to spell flag keys
         against, so ``build_cli_level`` is given ``active_agent=None`` and drops
-        them — the alternative (``agent.general.*``) would fabricate a key the
-        closed keyspace does not declare.
+        them — the alternative (``agent.shell.*``) would install a flag value
+        onto the shell tier no parser exposes flags for.
         """
         with start_mocks() as m:
             assert self._run(m) == 0
             kwargs = m.resolve_launch_snapshot.call_args.kwargs
-            assert kwargs["agent_name"] == "general"
+            assert kwargs["agent_name"] == "shell"
             assert kwargs["cli_level"] is None
             assert kwargs["target"] is None
 

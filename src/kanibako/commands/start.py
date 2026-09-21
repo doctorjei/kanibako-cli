@@ -869,7 +869,7 @@ def _effective_agent_scalar(
     active-over-default pick.  There is NO derived-on-disk value — the keystore is
     the sole intermediary ([[settings-must-map-to-keystore-key]]).
 
-    *agent_id* is the launch-resolved active node-name (``"general"`` for a
+    *agent_id* is the launch-resolved active node-name (``"shell"`` for a
     no-agent / shell box, so the ``agent.default`` backstop still applies).
     *agent_state* is the per-agent file's flat behavior state as an
     ``AgentFileLevel`` — the table WITH the node it merges under, attached at the
@@ -2725,7 +2725,7 @@ def _run_container(
         # and gets ``target = None``, the shipped plain-shell shape (identical to
         # ``kanibako shell``). Every downstream gate keys on ``target is None``, so no
         # agent binds, no agent config, no cred delivery, no ``KANIBAKO_AGENT`` stamp,
-        # and ``agent_id`` = ``"general"``.
+        # and ``agent_id`` = ``"shell"``.
         # 🛑 ``pref.system.agent: null`` NO LONGER ARRIVES HERE — since the
         # 2026-09-19 ruling it is a REFUSAL (no default set), not a silent plain
         # shell, so NO production path reaches the ``else None`` arm today.
@@ -2772,7 +2772,7 @@ def _run_container(
     # itself ``Shell`` must not write ``agents/Shell/``.
     # Hoisted HERE (ahead of the baseline
     # probe) so the agent-scope ``bootstrap`` value can be resolved before the probe
-    # consumes it.  ``general`` for a no-agent / shell launch (target is None) so the
+    # consumes it.  ``shell`` for a no-agent / shell launch (target is None) so the
     # ``agent.default`` bootstrap backstop still applies.
     agent_id = with_harness(agent_name, agent_node_case(target.name)) if target else GENERAL_SLOT
     agent_cfg_path = agent_settings_path(std.agents, agent_id)
@@ -2976,7 +2976,7 @@ def _run_container(
         ),
     )
 
-    # Plugin descriptor (None for legacy/no_agent targets).  Hoisted here so
+    # Plugin descriptor (None for legacy/shell targets).  Hoisted here so
     # EVERY credential lifecycle site — the reattach refresh immediately below,
     # and the init / refresh / writeback sites on the launch path — branches off a
     # single value: descriptor-bearing targets route their cred lifecycle through
@@ -3577,10 +3577,11 @@ def _run_container(
         #
         # ⚑ ``active_agent`` is the agent slot the flag values are spelled against,
         # so it is given ONLY for a real agent launch. A ``kanibako shell`` /
-        # ``--entrypoint`` box resolves under the ``"general"`` template slot, which
-        # is NOT an agent — spelling ``agent.general.model`` there would fabricate a
-        # key the closed keyspace does not declare, and the guard would (rightly)
-        # refuse it. Neither parser exposes these flags for such a launch anyway.
+        # ``--entrypoint`` box resolves under the ``"shell"`` slot: the flags are
+        # still dropped (``active_agent=None``) because neither parser exposes
+        # these flags for such a launch anyway — spelling ``agent.shell.model``
+        # would install a flag value onto the shell tier, not fabricate an
+        # undeclared key, and there is no flag to spell.
         _cli_level = build_cli_level(
             selection=(
                 agent_selection.selection_level
@@ -3666,7 +3667,7 @@ def _run_container(
         # ``agent.default.allow_helpers``): resolve it off the ONE launch
         # snapshot (via ``effective_behavior``, the §2d active-over-default pick),
         # coerced to bool. Resolved here for BOTH the agent and the no-agent/shell
-        # path (agent_id == "general") so the helper hub gate below sees the
+        # path (agent_id == "shell") so the helper hub gate below sees the
         # effective value regardless of target.
         # ⚑ THE None-GUARD STAYS, and applies the DECLARED value, because TWO
         # distinct paths still reach it: an agent-less / mocked target carries no
@@ -6801,6 +6802,17 @@ def _resolve_launch_snapshot(
             default_categories,
             core_defaults.canon_default_categories(std, agent_name or None),
             family="canon", origins=cat_origins,
+        )
+        # The SHELL TIER's own values (spec §2d fence: label/access/allow_helpers).
+        # Folded UNCONDITIONALLY beside the default arm above, for the same reason
+        # the template arms below are: a declared default must ANSWER for a box
+        # that ALREADY EXISTS (P), whatever that box runs, and only a shell pick
+        # reads this tier — a plugin agent's pick never touches it, so nothing
+        # overlays.  (``canon`` rides the producer above, whose arm is dynamic.)
+        _merge_default_categories(
+            default_categories,
+            core_defaults.shell_tier_defaults(),
+            family="shell tier", origins=cat_origins,
         )
         # The AGENT-tier ``template`` SOURCE keys (spec §2d) — the direct sibling of
         # the ``canon`` agent scalars just above, folded HERE for the same reason they

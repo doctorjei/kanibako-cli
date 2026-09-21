@@ -864,11 +864,11 @@ class TestTheRealizedVariablesArriveAsKeys:
         from kanibako.commands.start import _LaunchRealizer
 
         realizer = _LaunchRealizer(
-            desc=None, agent_id="general", safe_mode=True, autonomous=False,
+            desc=None, agent_id="shell", safe_mode=True, autonomous=False,
         )
-        ctx = make_ctx("general")
+        ctx = make_ctx("shell")
         snapshot = build_launch_snapshot(
-            agent_name="general", ctx=ctx,
+            agent_name="shell", ctx=ctx,
             system_path=None, agent_path=None, workset_path=None, box_path=None,
         )
         realized = realizer(snapshot)

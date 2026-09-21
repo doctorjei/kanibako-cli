@@ -13,7 +13,11 @@ dependencies = ["argcomplete>=3.0", "PyYAML>=6.0", "packaging>=20.0"]
 kanibako = "kanibako.cli:main"
 
 [project.entry-points."kanibako.agents"]
-no_agent = "kanibako.targets.no_agent:NoAgentTarget"
+# ⚑ NO built-in entry point (D2 / Step A): the plain-shell target is SEEDED
+# directly in ``targets.discover_targets`` ([R175] — built-in is a category),
+# so it enters through no plugin door.  A third-party ``shell`` entry point is
+# refused by the D6 reservation in ``_register`` and reported by the
+# ``reserved-agent-names`` kinemata parity.
 
 [project.optional-dependencies]
 # The three GATE tools (``ruff``, ``mypy``, ``pytest``) are PINNED, not floated.

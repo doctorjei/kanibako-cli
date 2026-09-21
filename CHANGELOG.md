@@ -12,6 +12,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The plain-shell box resolves under the `shell` pseudo-agent, not the `general` template
+  slot.** `agents/general/agent.yaml` is now `agents/shell/agent.yaml`, and `$AGENT` inside a
+  plain-shell box is `shell`. The old slot was never a declared key — `agent.general.*` was
+  refused by the closed keyspace — while `agent.shell.*` is (spec §2d, "Pseudo-agent(s)"), so
+  the `agent.default` backstop reaches a plain-shell launch through a real node rather than
+  around an undeclared one. Clean break, documentation-only migration: nothing renames the
+  directory for you, and there is no fallback read of the old one — see MIGRATION.md ("The
+  plain-shell store is `agents/shell/`") for the hand move.
+
+- **The built-in plain-shell target is named `shell`, not `no_agent`.** `--agent no_agent`
+  is now `--agent shell`, and the `kanibako.agents` entry point is gone — the target is
+  seeded directly by discovery instead ([R175]: the built-in is a category, not a
+  carve-out). The old spelling is refused, never translated ([R174]). The D6 reservation
+  still refuses `shell` (and `default`) as a plugin, persona or harness name. A shell box
+  resolves its target like any other agent's, but the built-in installs no binds, creds,
+  or layer-2 template — the tier exists and `agent.shell.*` resolves, which is the whole
+  of the change. See MIGRATION.md (same section) for the re-spelling.
+
 - **The shipped `STATE_CLEANUP` procedure gains a step: correct references in other documents before
   archiving an element.** Every box receives this procedure in its handbook, and until now it checked
   only what a departing element itself owed — nothing told the reader to fix the documents that restate

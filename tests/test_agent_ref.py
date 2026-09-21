@@ -310,22 +310,25 @@ def test_canonicalize_malformed_raises():
 # ---------------------------------------------------------------------------
 
 
-def test_the_general_slot_is_the_word_on_disk():
+def test_the_general_slot_is_the_shell_word_on_disk():
     """The VALUE, pinned — collapsing eleven literals to one constant removed the pin.
 
-    ``GENERAL_SLOT`` names a DIRECTORY (``<data>/agents/general/``) and the
-    ``agent.general.*`` cascade position beneath it, so its spelling is a fact about
+    ``GENERAL_SLOT`` names a DIRECTORY (``<data>/agents/shell/``) and the
+    ``agent.shell.*`` cascade position beneath it, so its spelling is a fact about
     a user's store rather than an internal label.  Nothing else asserts it: rename
     the constant's value and the on-disk directory moves, the box agent mirror takes
     its blank short-circuit, and the ``agent.default`` backstop stops reaching a
     no-agent launch — with every test still green.  That is the hole a named
     constant opens when it replaces literals that each carried their own value.
 
-    ⚑ It is DELIBERATELY not in ``PSEUDO_AGENT_NAMES``: that set is a user-facing
-    refusal and this name is not reserved against anybody's agent.
+    ⚑ It IS in ``PSEUDO_AGENT_NAMES``: the slot names the shell pseudo-agent
+    (keyspec §2d, "Pseudo-agent(s)"), the reserved owner of that slot — the
+    boundary working, not bent ([R175]).  The name stays ``GENERAL_SLOT`` so the
+    fifteen call sites flip with the value; renaming the constant is a
+    fifteen-site sweep for another day.
     """
-    assert GENERAL_SLOT == "general"
-    assert GENERAL_SLOT not in PSEUDO_AGENT_NAMES
+    assert GENERAL_SLOT == "shell"
+    assert GENERAL_SLOT in PSEUDO_AGENT_NAMES
 
 
 def test_the_reserved_set_is_the_spec_s_two_names():

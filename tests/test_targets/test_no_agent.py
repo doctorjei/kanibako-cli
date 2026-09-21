@@ -10,7 +10,11 @@ class TestNoAgentTarget:
         self.target = NoAgentTarget()
 
     def test_name(self):
-        assert self.target.name == "no_agent"
+        # ⚑ ``shell`` — the §2d pseudo-agent's OWN slot ([R174]/[R175], Q22).
+        # The class and module keep their names (a different-sized rename,
+        # owned by the scrub row); the registry/store/cascade spelling is what
+        # moved.
+        assert self.target.name == "shell"
 
     def test_display_name(self):
         assert self.target.display_name == "Shell"
@@ -35,8 +39,8 @@ class TestNoAgentTarget:
 
     def test_generate_agent_config(self):
         # ⚑ EMPTY (D8b): the per-agent settings file holds user intent only, and the
-        # ``name="Shell"`` this used to carry was not a settings key.  ``no_agent``
-        # declares no ``label`` either, so it reads the all-agents ``agent.default.label``.
+        # ``name="Shell"`` this used to carry was not a settings key.  The FILE declares
+        # no ``label`` either; the box reads the shell tier floor's ``agent.shell.label``.
         cfg = self.target.generate_agent_config()
         assert cfg.run_args is None
         assert cfg.state == {}
@@ -46,4 +50,4 @@ class TestNoAgentTargetImport:
     def test_importable_from_package(self):
         from kanibako.targets import NoAgentTarget
         t = NoAgentTarget()
-        assert t.name == "no_agent"
+        assert t.name == "shell"

@@ -97,18 +97,21 @@ class TestDiscoverTargets:
         assert targets["fake"] is _FakeTarget
 
     def test_empty_when_no_targets(self):
+        # ⚑ Never TRULY empty (D2): the ``shell`` built-in is SEEDED, not
+        # discovered, so the registry always carries it ([R175]).
         with patch("kanibako.targets.entry_points", return_value=[]):
             targets = discover_targets()
-        assert targets == {}
+        assert targets == {"shell": NoAgentTarget}
 
     def test_multiple_targets(self):
         ep1 = _mock_entry_point("a", _FakeTarget)
         ep2 = _mock_entry_point("b", _DetectableTarget)
         with patch("kanibako.targets.entry_points", return_value=[ep1, ep2]):
             targets = discover_targets()
-        assert len(targets) == 2
+        assert len(targets) == 3  # a, b, plus the seeded shell built-in
         assert "a" in targets
         assert "b" in targets
+        assert targets["shell"] is NoAgentTarget
 
 
 class TestBrokenEntryPointIsSkipped:
@@ -214,10 +217,15 @@ class TestReservedPseudoAgentNameIsRefused:
         good = _mock_entry_point("fake", _FakeTarget)
         with patch("kanibako.targets.entry_points", return_value=[bad, good]):
             targets = discover_targets()
-        assert name not in targets
         # SKIPPED, not fatal: discovery runs on every command, so one plugin's bad
         # name must not take the CLI down with it.
         assert targets["fake"] is _FakeTarget
+        if name == "shell":
+            # ⚑ The SEEDED built-in owns this slot ([R175]) — the rogue plugin
+            # neither registers under it nor displaces the owner.
+            assert targets["shell"] is NoAgentTarget
+        else:
+            assert name not in targets
 
     def test_the_refusal_names_the_name_and_says_it_was_skipped(self, capsys):
         bad = _mock_entry_point("shell", _FakeTarget)
@@ -305,7 +313,9 @@ class TestTheRegistryIsKeyedByNode:
         with patch("kanibako.targets.entry_points", return_value=[bad, good]):
             targets = discover_targets()
         assert "Shell" not in targets
-        assert "shell" not in targets
+        # ⚑ The node is owned by the SEEDED built-in, which the rogue plugin
+        # neither registers as nor displaces.
+        assert targets["shell"] is NoAgentTarget
         assert targets["fake"] is _FakeTarget
 
     def test_that_refusal_names_BOTH_spellings(self, capsys):
@@ -341,7 +351,8 @@ class TestACaseCollidingSecondPluginIsRefused:
         second = _mock_entry_point("kirobo", _DetectableTarget)
         with patch("kanibako.targets.entry_points", return_value=[first, second]):
             targets = discover_targets()
-        assert list(targets) == ["kirobo"]
+        # ⚑ ``shell`` leads: the built-in is seeded before any plugin tier runs.
+        assert list(targets) == ["shell", "kirobo"]
         assert targets["kirobo"] is _FakeTarget
 
     def test_the_refusal_says_what_collided_and_with_what(self, capsys):
@@ -422,13 +433,13 @@ class TestResolveTarget:
             t = resolve_target()
         assert isinstance(t, _DetectableTarget)
 
-    def test_auto_detect_none_found_returns_no_agent(self):
+    def test_auto_detect_none_found_returns_shell(self):
         ep = _mock_entry_point("fake", _FakeTarget)
         with patch("kanibako.targets.entry_points", return_value=[ep]):
             t = resolve_target()
         assert isinstance(t, NoAgentTarget)
 
-    def test_auto_detect_empty_returns_no_agent(self):
+    def test_auto_detect_empty_returns_shell(self):
         with patch("kanibako.targets.entry_points", return_value=[]):
             t = resolve_target()
         assert isinstance(t, NoAgentTarget)
@@ -547,7 +558,9 @@ class TestDirectoryPluginDiscovery:
             targets = discover_targets()
         _RESERVED_NAME_WARNED.clear()
 
-        assert "shell" not in targets
+        # ⚑ The file-drop rogue is skipped AND the seeded owner keeps the slot.
+        assert targets["shell"] is NoAgentTarget
+        assert "shellplugin" not in targets
         assert "okplugin" in targets  # the healthy neighbour still lands
 
     def test_discover_project_dir_plugins(self, tmp_path):

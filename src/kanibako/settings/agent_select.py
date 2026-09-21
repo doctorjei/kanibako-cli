@@ -104,7 +104,7 @@ class AgentSelection:
         """The §1A top-most level to install, or ``None`` for a NO-AGENT box.
 
         ⚑ A no-agent box installs NOTHING, and in particular must NOT be pinned to
-        the ``"general"`` slot — that is a template fallback, not an agent.
+        the ``"shell"`` slot — that would name a default nobody set.
         """
         return {SELECTION_KEY: self.node} if self.node else None
 

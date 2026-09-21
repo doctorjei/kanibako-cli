@@ -5044,8 +5044,8 @@ lowercase name is already its own node, so a stock install has nothing to do her
 ls <data>/agents/    # <data> is $XDG_DATA_HOME/kanibako, or whatever `config.data` points at
 ```
 
-Anything there with a capital in it is affected. `general` and `no_agent` are kanibako's own and
-are lowercase.
+Anything there with a capital in it is affected. The plain-shell slot (`shell`) is kanibako's
+own and is lowercase.
 
 **What changed.** An agent has two spellings and v1.7.x had only one. Its **name** is what the
 plugin calls itself and keeps that plugin's case; its **node** is the spelling kanibako builds
@@ -5111,6 +5111,51 @@ Kirobo` addresses the `Kirobo` store — the one you just moved — so use the l
 
 ⚑ **Nothing about a box, a working set or a persona changed here.** Their names have no
 name/node split: the case you typed is the case that is stored, which is §2.78.
+
+---
+
+### 2.82 The plain-shell store is `<data>/agents/shell/`, and `$AGENT` in a plain-shell box is `shell`
+
+**Read this if you ever edited `<data>/agents/general/agent.yaml` or `<data>/agents/no_agent/agent.yaml` by
+hand, or if anything you run inside a plain-shell box reads `$AGENT`.** A stock install has
+one thing to do: nothing breaks on its own, but the old directories are left behind and can
+be deleted once you have moved your edits.
+
+**What changed.** The plain-shell box used to resolve under a template slot called `general`
+that the keyspace never declared, with a second spelling — the `no_agent` target — beside it
+for the same condition. Both were words for one role, and neither was a real settings node.
+The slot is now the `shell` pseudo-agent (spec §2d, "Pseudo-agent(s)"): a declared node, so
+`agent.shell.*` resolves and the `agent.default` backstop reaches a plain-shell launch exactly
+as before. Concretely: the per-agent settings file for a plain-shell box lives at
+`<data>/agents/shell/agent.yaml` (`<data>` is `$XDG_DATA_HOME/kanibako`, or whatever
+`config.data` points at), and `$AGENT` inside a plain-shell box is now `shell`, not `general`.
+
+**What to do — move your edits by hand, then delete the old directories.** Nothing is
+renamed for you (clean break — no migration code, no symlink, no fallback read):
+
+```bash
+mv <data>/agents/general/agent.yaml <data>/agents/shell/agent.yaml      # if you edited the general slot's file
+mv <data>/agents/no_agent/agent.yaml <data>/agents/shell/agent.yaml     # if you edited the no_agent target's file
+cd <data>/agents && rmdir general no_agent 2>/dev/null || true            # both are empty afterwards, or delete them; absent dirs are fine
+```
+
+If you edited both files, merge them by hand first: they were two spellings of one box's
+settings, and the survivor holds the union. If you edited neither, there is nothing to move
+— `kanibako setup` writes an empty `shell/agent.yaml` on its next run, and the two old
+directories can simply be deleted.
+
+⚑ **Check anything inside a plain-shell box that branches on `$AGENT`.** A script testing
+`$AGENT = general` now takes the wrong arm. The value is `shell`.
+
+**Selecting the plain-shell box by name.** `--agent no_agent` is now `--agent shell`, and
+`pref.system.agent: no_agent` / `system.agent: no_agent` in a settings file is
+`pref.system.agent: shell` / `system.agent: shell`. The old spelling is not translated —
+it fails the installed-set lookup, because nothing by that name is registered anymore.
+Re-spell it wherever you wrote it:
+
+```bash
+grep -rn no_agent <data>/global/settings.yaml <workset root>/workset.yaml <box>/box.yaml
+```
 
 ---
 

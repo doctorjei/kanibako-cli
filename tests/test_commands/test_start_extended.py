@@ -765,10 +765,10 @@ class TestAgentConfigFirstUse:
             # Each dest gets its THREE ordered layers (system -> agent -> workset).
             assert all(len(call[0][1]) == 3 for call in mock_fn.call_args_list)
 
-    def test_no_agent_target_uses_no_agent_id(self, start_mocks):
-        """When auto-detect finds nothing, NoAgentTarget's name is used as agent_id."""
+    def test_shell_target_uses_shell_id(self, start_mocks):
+        """The built-in shell target's name is used as agent_id."""
         with start_mocks() as m:
-            m.target.name = "no_agent"
+            m.target.name = "shell"
             m.target.has_binary = False
             m.target.detect.return_value = None
             _run_container(
@@ -776,15 +776,16 @@ class TestAgentConfigFirstUse:
                 new_session=False, safe_mode=False, resume_mode=False,
                 extra_args=[],
             )
-            # The agent config path is std.agents / "no_agent" / "agent.yaml"
+            # The agent config path is std.agents / "shell" / "agent.yaml"
             # (settings live inside the per-agent store dir); std.agents also gets
-            # a / "no_agent" / "share" call from the scoped-share resolver, so
+            # a / "shell" / "share" call from the scoped-share resolver, so
             # check the full call list.
             div_args = [
                 c[0][0]
                 for c in m.load_std_paths.return_value.agents.__truediv__.call_args_list
             ]
-            assert "no_agent" in div_args
+            assert "shell" in div_args
+            assert "no_agent" not in div_args
             sub_args = [
                 c[0][0]
                 for c in m.load_std_paths.return_value.agents.__truediv__

@@ -56,6 +56,9 @@ LABEL_TO_CONFORMANCE_CLASS: dict[str, str] = {
     "settings_launch.py (anchor floor)": "pinned",
     "settings_launch.py (auth floor)": "pinned",
     "core-defaults.yaml (agent_default:)": "pinned",
+    # ⚑ The shell tier's own values (D2) — pinned against the new floor, exactly
+    # like the default arm above.
+    "core-defaults.yaml (agent_shell:)": "pinned",
     "core-defaults.yaml (env:)": "pinned",
     "config.py (KanibakoConfig field)": "pinned",
     # ⚑⚑ THE ``config.py (read-with-default)`` LABEL IS GONE (2026-08-29) and its
@@ -68,6 +71,9 @@ LABEL_TO_CONFORMANCE_CLASS: dict[str, str] = {
     # pre-snapshot route and still returns the same ``True``. What it stopped being is the
     # only carrier — the same shape ``workset.skip_kuid_check`` had one commit earlier.
     "core_defaults.py (canon producer)": "pinned",
+    # ⚑ The shell arm of the same producer (D2) — pinned against its output, exactly
+    # like the default arm above.
+    "core_defaults.py (canon producer, shell arm)": "pinned",
     # ⚑ ``kuid.py (SENTINEL)`` IS GONE (2026-08-29). ``workset.kuid`` moved to the anchor
     # floor, which emits ``kuid.SENTINEL`` by reference; both labels are "pinned", so the
     # class unions below are unchanged and the move is invisible to the provenance case —
@@ -138,8 +144,8 @@ class TestSourcePartition:
             f"registry defaults with no source: {sorted(declared - covered)}; "
             f"sources for rows the registry no longer defaults: {sorted(covered - declared)}"
         )
-        assert len(declared) == 70, (
-            f"the manifest gives {len(declared)} rows a default, not the 70 measured"
+        assert len(declared) == 79, (
+            f"the manifest gives {len(declared)} rows a default, not the 79 measured"
         )
 
     def test_the_partition_agrees_with_the_conformance_classification(self):

@@ -41,7 +41,7 @@ if TYPE_CHECKING:
     from kanibako.targets.base import PluginDescriptor
 
 from kanibako import kuid
-from kanibako.agent_ref import harness_of, with_harness
+from kanibako.agent_ref import GENERAL_SLOT, harness_of, with_harness
 from kanibako.settings.agent_config import store_dirname
 from kanibako.settings.bootstrap import SPAWN_BUDGET_DEFAULTS
 from kanibako.settings.agent_file import AgentFileLevel, stored_leaf_text
@@ -372,9 +372,17 @@ def meta_agent_grammar_floor(
     shape this arc exists to kill.
 
     Keyed on the DISCRIMINATOR (the ACTIVE node); a descriptor-less agent
-    materializes nothing and the launch takes the no-agent path.
+    materializes nothing and the launch takes the no-agent path — EXCEPT the
+    no-agent slot itself, whose EMPTY grammar the spec declares POSITIVELY
+    (``meta.agent.shell.mode | {}``, §2d fence).
     """
     if descriptor is None:
+        if agent_name == GENERAL_SLOT:
+            # ⚑ D2/D4: absence would say "no grammar was materialized" (and the
+            # reader raises on it); ``{}`` says "the grammar IS empty".  The
+            # shell box takes the plain-shell path either way — the difference
+            # is conformance, not behavior.
+            return {f"meta.agent.{agent_name}.mode": {}}
         return {}
     floor: dict[str, object] = {
         f"meta.agent.{agent_name}.mode": {
@@ -1455,7 +1463,7 @@ def _assert_box_root_resolved(snapshot: KeyStore) -> None:
 # read-back cannot escape into the shared agent subtree.
 #
 # ⚑ The NO-AGENT box does NOT take the blank short-circuit — the launch passes
-# ``"general"``, so the mirror holds the ``agent.default`` backstop. That is measured,
+# ``"shell"``, so the mirror holds the ``agent.default`` backstop. That is measured,
 # harmless, and PINNED (tests/test_settings/test_settings_launch.py); the llm-doc has
 # the shape and why the inherited comment here was wrong twice over.
 

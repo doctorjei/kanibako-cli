@@ -2119,6 +2119,18 @@ class TestMetaAgentGrammarFloor:
     def test_descriptor_less_agent_materializes_nothing(self):
         assert meta_agent_grammar_floor("whatever", None) == {}
 
+    def test_shell_materializes_empty_mode(self):
+        """D2/D4: the shell grammar IS EMPTY (``{}``), not absent.
+
+        Spec §2d fence: ``meta.agent.shell.mode | {}`` is a POSITIVE
+        declaration.  Absence would say "no grammar was materialized" (and the
+        reader raises on it); ``{}`` says the grammar is empty.  Every other
+        descriptor-less node still materializes nothing.
+        """
+        assert meta_agent_grammar_floor("shell", None) == {
+            "meta.agent.shell.mode": {},
+        }
+
     def test_exec_omitted_when_no_exec_operation(self):
         from kanibako.targets.base import PluginDescriptor
 
@@ -2237,6 +2249,47 @@ def test_meta_identity_no_agent_omits_agent_key():
     assert not any(k.startswith("meta.agent.") for k in floor)
     # And B2 no longer emits meta.workset.name at all.
     assert "meta.workset.name" not in floor
+
+
+def test_shell_snapshot_carries_empty_mode():
+    """D2/D4 end to end: a shell launch snapshot holds ``meta.agent.shell.mode``
+    as an EMPTY map — declared and present, not absent."""
+    from kanibako.settings.settings_launch import meta_identity_floor
+
+    ident = meta_identity_floor(
+        box_name="x", project_path="/p", inbox="/i", share_global="/s",
+        share_workset=None, agent_name="shell", agent_real_name="shell",
+    )
+    ident.update(meta_agent_grammar_floor("shell", None))
+    snap = build_launch_snapshot(
+        agent_name="shell", ctx=_ctx_with_config(),
+        system_path=None, agent_path=None, workset_path=None, box_path=None,
+        meta_identity=ident,
+    )
+    ma = _meta_node(snap, "meta", "agent", "shell")
+    mode = dict.get(ma, "mode")
+    assert mode is not None and len(mode) == 0
+    # The shell identity triple materializes too (spec §2d fence).
+    assert dict.get(ma, "name") == "shell"
+    assert "exec" not in ma  # <None> ⇒ absent, not a null leaf
+
+
+def test_shell_canon_falls_back_to_default_canon(tmp_path):
+    """Step 7 falsifier: ``agent.shell.canon`` resolves to the default canon.
+
+    The spec fence says ``agent.shell.canon | @config.agents/default/canon``,
+    and the floor spells that LITERAL whenever the shell store carries no canon
+    dir of its own — not the one-hop indirection the per-node arm uses, so the
+    manifest row pins against the emitter output directly.
+    """
+    from types import SimpleNamespace
+
+    from kanibako.settings.core_defaults import canon_default_categories
+
+    std = SimpleNamespace(agents=tmp_path / "agents")
+    out = canon_default_categories(std, "shell")
+    assert out["agent.default.canon"] == "@config.agents/default/canon"
+    assert out["agent.shell.canon"] == "@config.agents/default/canon"
 
 
 def test_meta_identity_standalone_share_workset_none_terminal():
@@ -2619,8 +2672,8 @@ def test_a_blank_active_agent_has_no_meta_box_agent_mirror():
 def test_the_no_agent_LAUNCH_shape_mirrors_the_default_backstop():
     """⚑ THE MEASURED LAUNCH SHAPE, not the docstring's.
 
-    A no-agent/shell launch passes ``agent_name="general"`` (start.py:
-    ``agent_id = with_harness(...) if target else "general"``), NOT a blank — so the
+    A no-agent/shell launch passes ``agent_name="shell"`` (start.py:
+    ``agent_id = with_harness(...) if target else GENERAL_SLOT``), NOT a blank — so the
     blank short-circuit above does NOT fire and the mirror holds the
     ``agent.default`` backstop. This is the shape a reader of ``meta.box.agent`` on
     a real shell box will find; pinning it stops the module note from drifting back
@@ -2630,7 +2683,7 @@ def test_the_no_agent_LAUNCH_shape_mirrors_the_default_backstop():
     survive the copy either way.
     """
     snap = build_launch_snapshot(
-        agent_name="general",
+        agent_name="shell",
         ctx=_ctx(),
         system_path=None, agent_path=None, workset_path=None, box_path=None,
         behavior_floor={"model": "opus", "allow_helpers": "true"},
@@ -3893,7 +3946,7 @@ class TestPrefFreeByteIdentity:
     there is nothing to splice.
     """
 
-    @pytest.mark.parametrize("agent_name", ["claude", "general", "navigator℘claude"])
+    @pytest.mark.parametrize("agent_name", ["claude", "shell", "navigator℘claude"])
     def test_identical_when_no_pref_table_exists(self, tmp_path, agent_name):
         box = {"box": {"image": "img", "bindings": {"rw": {
             "home": ["/host/home", "~/"],

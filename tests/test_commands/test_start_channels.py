@@ -90,7 +90,7 @@ def _build(std, proj):
     _snapshot, deliveries = _resolve_launch_snapshot(
         std=std,
         proj=proj,
-        agent_name="general",
+        agent_name="shell",
         system_settings_path=None,
         agent_cfg_path=None,
         desc=None,
@@ -268,7 +268,7 @@ def _workset_anchor(std, proj):
     (
         _ctx, _resolved_sys, _meta_runtime, _meta_identity, workset_anchor,
         _cascade_box_path, _cascade_workset_path,
-    ) = _launch_snapshot_inputs(std=std, proj=proj, agent_name="general")
+    ) = _launch_snapshot_inputs(std=std, proj=proj, agent_name="shell")
     return workset_anchor
 
 

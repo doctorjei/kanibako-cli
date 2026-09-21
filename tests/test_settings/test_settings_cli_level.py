@@ -104,9 +104,11 @@ def test_resume_installs_true_not_absent() -> None:
 def test_no_active_agent_drops_the_agent_scope_flags() -> None:
     """A shell / ``--entrypoint`` box has no agent slot to spell against.
 
-    It resolves under the ``"general"`` template slot, which is NOT an agent, so
-    ``agent.general.*`` would fabricate a key the closed keyspace does not declare.
-    The flags are dropped, not fabricated — and the selection still rides.
+    It resolves under the ``"shell"`` slot, and the flags are still dropped
+    (``active_agent=None``) because neither parser exposes them for such a
+    launch — spelling ``agent.shell.*`` would install a flag value onto the
+    shell tier. The flags are dropped, not installed — and the selection still
+    rides.
     """
     level = build_cli_level(
         selection={SELECTION_KEY: "claude"},

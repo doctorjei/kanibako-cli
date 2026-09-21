@@ -424,8 +424,8 @@ def run_setup(args: argparse.Namespace) -> int:
 
     targets = discover_targets()
     # ⚑⚑ AN AGENT PLUGIN IS A TARGET WITH A HOST BINARY, AND ``targets`` IS NEVER
-    # EMPTY.  ``no_agent`` is an entry point declared by ``kanibako-cli``'s OWN
-    # ``pyproject.toml``, so ``discover_targets()`` always contains it — ``if not
+    # EMPTY.  The ``shell`` built-in is SEEDED by ``discover_targets`` itself, so
+    # ``discover_targets()`` always contains it — ``if not
     # targets:`` could never fire, and counting the binary-less Shell target as a
     # find made the "no agents" arm below and the closing banner's ``else`` dead
     # too.  Three branches, one cause.  ``plugin_count`` is what the user means by
