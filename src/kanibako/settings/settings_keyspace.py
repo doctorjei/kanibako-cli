@@ -123,6 +123,11 @@ from kanibako.agent_ref import (
     harness_of,
 )
 from kanibako.errors import ConfigError
+# ⚑ MODULE SCOPE, and it closes no cycle: ``identifiers`` imports nothing
+# in-tree — it is the leaf the comparison rule lives on. The keyspace needs it
+# because FOLDING a node segment on lookup is the KEYSPACE's rule ([R173]):
+# see :func:`agent_declared_leaves`.
+from kanibako.identifiers import agent_node_case, find_identifier
 from kanibako.settings.kb_store import BINDING_DERIVATIONS_NODE, SCOPE_CONTAINMENT
 from kanibako.settings.keystore import KeyStore
 # ⚑ MODULE SCOPE, and it closes no cycle: ``settings_categories`` is pure — it
@@ -666,8 +671,30 @@ def is_valid_agent_segment(segment: str, valid_agents: Collection[str]) -> bool:
     a pseudo-agent name to anything that CLAIMS it — an agent, a persona, a harness —
     because the name is already owned. This admits the same names as the ``agent.<HERE>``
     DISCRIMINATOR, because being owned is precisely what gives them a cascade slot.
+
+    ⚑ FOLDS FOR COMPARISON ([R173]): the segment arrives in the user's spelling
+    while ``valid_agents`` is keyed by lowercase NODE, so ``agent.Claude.model``
+    reaches the ``claude`` node instead of reading as an unknown agent. The
+    exact ``in`` arms stay first — they carry predicate members no iteration
+    can see (``ANY_AGENT`` concedes every NAME; a persona node is valid by its
+    harness) — and the fold joins them through
+    :func:`kanibako.identifiers.find_identifier`, never a hand fold, with the
+    persona-harness hop folded last.
     """
-    return segment in PSEUDO_AGENT_NAMES or segment in valid_agents
+    if segment in PSEUDO_AGENT_NAMES or segment in valid_agents:
+        return True
+    if find_identifier(segment, PSEUDO_AGENT_NAMES) is not None:
+        return True
+    if find_identifier(segment, valid_agents) is not None:
+        return True
+    try:
+        node = canonicalize_agent_ref(segment)
+    except ConfigError:
+        return False
+    harness = harness_of(node)
+    return harness in valid_agents or (
+        find_identifier(harness, valid_agents) is not None
+    )
 
 
 def valid_agent_segments(valid_agents: Collection[str]) -> list[str]:
@@ -1177,7 +1204,18 @@ def agent_declared_leaves(
     except ConfigError:
         return frozenset()
     harness = harness_of(node)
+    # ⚑ FOLDS FOR COMPARISON ([R173]): the map is keyed by lowercase NODE while
+    # the ref arrives in the user's spelling, so ``agent.Claude.model`` reaches
+    # the ``claude`` node instead of reading as an unknown agent. The node is
+    # DERIVED through the sanctioned seam and asked by ``.get`` — twice, never
+    # an iteration: the map may be a lazy discovery view (pinned by
+    # ``_NeverAsk``: consulted, never iterated) and the exact spelling stays the
+    # fast path. The concession arm below needs no fold: it is reached only
+    # after both spellings missed, so a co-infinite concession (every production
+    # supplier's shape) concedes regardless.
     declared = agent_leaf_map.get(harness)
+    if declared is None:
+        declared = agent_leaf_map.get(agent_node_case(harness))
     if declared is not None:
         return declared
     if isinstance(agent_leaf_map, ConcedingLeafMap):
