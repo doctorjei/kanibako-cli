@@ -34,7 +34,7 @@ from kanibako.box_supervisor import CONTINUE_MARKER, KANIBAKO_PKG_MOUNT_ROOT
 from kanibako.commands.diagnose import probe_missing_executables
 from kanibako.settings.config import (
     coerce_bool,
-    config_file_path,
+    user_config_file,
     load_config,
     load_merged_config,
     persist_creation_flags,
@@ -65,7 +65,6 @@ from kanibako.settings.settings_cli_level import build_cli_level
 from kanibako.settings.paths import (
     _upgrade_shell,
     box_workset_settings_paths,
-    xdg,
     load_std_paths,
     resolve_box_target,
     system_path_floor,
@@ -1019,7 +1018,7 @@ def _resolve_bootstrap_program(
     re-resolves the authoritative value the same way.
     """
     try:
-        config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+        config_file = user_config_file()
         config = load_config(config_file)
         std = load_std_paths(config)
         system_settings_path = std.settings
@@ -2341,7 +2340,7 @@ def _run_container(
     # 🛑 The typed FLAG stays the gate for user intent (the override gate below reads
     # ``cli_env``, the list); this map is the parsed VALUE and is never a substitute.
     cli_env_values = _parse_cli_env(cli_env)
-    config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+    config_file = user_config_file()
     config = load_config(config_file)
 
     std = load_std_paths(config)

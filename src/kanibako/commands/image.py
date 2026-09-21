@@ -11,11 +11,11 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-from kanibako.settings.config import config_file_path, load_config, load_merged_config
+from kanibako.settings.config import user_config_file, load_config, load_merged_config
 from kanibako.runtime.container import ContainerRuntime
 from kanibako.runtime.containerfiles import get_containerfile
 from kanibako.errors import ContainerError
-from kanibako.settings.paths import xdg, load_std_paths
+from kanibako.settings.paths import load_std_paths
 from kanibako.runtime.rig_bundle import (
     BUNDLE_SUFFIX,
     pack_bundle,
@@ -211,7 +211,7 @@ def run_extend(args: argparse.Namespace) -> int:
     container, writes in-image ``/etc/kanibako/rig.yaml`` metadata, commits the
     result as ``kanibako-rig-<name>``, and records a registry row.
     """
-    config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+    config_file = user_config_file()
     config = load_config(config_file)
     std = load_std_paths(config)
     merged = load_merged_config(config_file, None)
@@ -350,7 +350,7 @@ def run_list(args: argparse.Namespace) -> int:
     a stored field. ``-q/--quiet`` keeps the legacy one-name-per-line behavior;
     ``--json`` emits a machine-readable document.
     """
-    config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+    config_file = user_config_file()
     config = load_config(config_file)
     std = load_std_paths(config)
     merged = load_merged_config(config_file, None)
@@ -487,7 +487,7 @@ _PREP_STATUS = {"none": "prepped", "pull": "unprepped", "build": "unprepped", "m
 
 def run_info(args: argparse.Namespace) -> int:
     """Show details about a rig: kind, live status, image, and provenance."""
-    config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+    config_file = user_config_file()
     config = load_config(config_file)
     std = load_std_paths(config)
     merged = load_merged_config(config_file, None)
@@ -577,7 +577,7 @@ def run_rm(args: argparse.Namespace) -> int:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
-    config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+    config_file = user_config_file()
     config = load_config(config_file)
     std = load_std_paths(config)
 
@@ -728,7 +728,7 @@ def run_prep(args: argparse.Namespace) -> int:
     side effect it implies. ``--force`` re-preps even if already prepped;
     ``--all`` build-or-pulls every local kanibako rig.
     """
-    config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+    config_file = user_config_file()
     config = load_config(config_file)
     std = load_std_paths(config)
     containers_dir = std.data_path / "containers"
@@ -830,7 +830,7 @@ def run_update(args: argparse.Namespace) -> int:
     With no *name*, the target defaults to the configured ``box.image`` rig (the
     current box's rig). ``--all`` pulls every local kanibako rig.
     """
-    config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+    config_file = user_config_file()
     config = load_config(config_file)
     std = load_std_paths(config)
     containers_dir = std.data_path / "containers"
@@ -885,7 +885,7 @@ def run_add(args: argparse.Namespace) -> int:
     prefabs get a registry ``rigs`` row (a tar is loaded via ``runtime.load`` first,
     a ref is recorded as-is). Run ``rig prep <name>`` afterward to materialize.
     """
-    config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+    config_file = user_config_file()
     config = load_config(config_file)
     std = load_std_paths(config)
 
@@ -1054,7 +1054,7 @@ def run_export(args: argparse.Namespace) -> int:
     ``image.tar``, reconstructs the sidecar ``rig.yaml`` from the registry row
     (the authoritative copy still rides inside the image), and packs both.
     """
-    config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+    config_file = user_config_file()
     config = load_config(config_file)
     std = load_std_paths(config)
 
@@ -1127,7 +1127,7 @@ def run_import(args: argparse.Namespace) -> int:
     Loads the bundle's ``image.tar`` and records an extended registry row from
     the bundle's ``rig.yaml`` metadata.
     """
-    config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+    config_file = user_config_file()
     config = load_config(config_file)
     std = load_std_paths(config)
 

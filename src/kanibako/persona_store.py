@@ -35,7 +35,7 @@ from urllib.parse import urlsplit
 
 from kanibako.agent_ref import display_agent_ref, harness_of, parse_agent_ref, persona_of
 from kanibako.errors import ConfigError
-from kanibako.settings.paths import xdg
+from kanibako.settings.paths import user_config_home
 
 if TYPE_CHECKING:
     from kanibako.targets.base import Target
@@ -71,9 +71,11 @@ def persona_store_root() -> Path:
     """The persona-grata discovery root: ``$XDG_CONFIG_HOME/personas/``.
 
     FIXED by design (DESIGN §5a — not configurable); the single builder for the
-    store path, over the spec-backed :func:`kanibako.settings.paths.xdg`.
+    store path, over the internal :func:`kanibako.settings.paths.user_config_home`
+    resolver ([R154] refuses a ``config_home`` key by name, so directory users
+    route through here, not through a key).
     """
-    return xdg("XDG_CONFIG_HOME", ".config") / "personas"
+    return user_config_home() / "personas"
 
 
 def locate_entry(ref: str) -> PersonaEntry | None:

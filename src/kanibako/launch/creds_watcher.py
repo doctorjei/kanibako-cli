@@ -311,14 +311,14 @@ def _resolve_watch_context(box: str | None):
     from kanibako.agent_ref import canonicalize_agent_ref, harness_of, with_harness
     from kanibako.identifiers import agent_node_case
     from kanibako.commands.start import _resolve_box_auth_source
-    from kanibako.settings.config import config_file_path, load_config
+    from kanibako.settings.config import user_config_file, load_config
     from kanibako.runtime.container import ContainerRuntime
-    from kanibako.settings.paths import load_std_paths, resolve_box_target, xdg
+    from kanibako.settings.paths import load_std_paths, resolve_box_target
     from kanibako.targets import resolve_target
     from kanibako.utils import container_name_for
 
     runtime = ContainerRuntime()
-    config = load_config(config_file_path(xdg("XDG_CONFIG_HOME", ".config")))
+    config = load_config(user_config_file())
     std = load_std_paths(config)
     proj = resolve_box_target(std, config, box, initialize=False)
     container_name = container_name_for(proj)

@@ -110,6 +110,13 @@ def config_file_path(config_home: Path) -> Path:
     return config_home / CONFIG_FILE
 
 
+def user_config_file() -> Path:
+    """The value of ``meta.runtime.user.config`` — callers READ it; they do not compose it ([R154])."""
+    from kanibako.settings.paths import user_config_home
+
+    return config_file_path(user_config_home())
+
+
 def _layer1_settings_keys(data: dict) -> list[str]:
     """Every SETTINGS entry a Layer-1 document carries, dotted and sorted; empty ⇒ the file is clean.
 
@@ -818,12 +825,11 @@ def system_settings_path() -> Path:
     ⚑ The returned path need not exist — every reader here treats an absent file as
     "unset", which is exactly what a fresh install is.
     """
-    from kanibako.settings.bootstrap import (XDG_CONFIG_HOME, XDG_DATA_HOME,
-                                             XDG_SPEC_DEFAULTS)
+    from kanibako.settings.bootstrap import (XDG_DATA_HOME, XDG_SPEC_DEFAULTS)
     from kanibako.settings.paths import load_system_config, xdg
 
     return load_system_config(
-        config_file_path(xdg(XDG_CONFIG_HOME, XDG_SPEC_DEFAULTS[XDG_CONFIG_HOME])),
+        user_config_file(),
         data_home=xdg(XDG_DATA_HOME, XDG_SPEC_DEFAULTS[XDG_DATA_HOME]),
         home=Path.home(),
     )["config.settings"]

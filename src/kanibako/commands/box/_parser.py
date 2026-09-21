@@ -17,7 +17,7 @@ from kanibako.launch.box_identity import validate_box_name
 from kanibako.commands.flags import add_null_flag
 from kanibako.settings.config import (
     WORKSET_META_FILE,
-    config_file_path,
+    user_config_file,
     load_config,
     load_merged_config,
     persist_creation_flags,
@@ -27,7 +27,6 @@ from kanibako.identifiers import agent_node_case, find_identifier
 from kanibako.errors import ContainerError, ProjectError
 from kanibako.project.names import read_names, unregister_name
 from kanibako.settings.paths import (
-    xdg,
     BoxMode,
     _box_settings_files,
     _standalone_settings_files,
@@ -644,7 +643,7 @@ def _check_persona_store_for_create(agent_ref: str, project_path) -> str | None:
 
 def run_create(args: argparse.Namespace) -> int:
     """Create a new kanibako project (replaces ``kanibako init``)."""
-    config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+    config_file = user_config_file()
     config = load_config(config_file)
     std = load_std_paths(config)
 
@@ -929,7 +928,7 @@ def run_list(args: argparse.Namespace) -> int:
     active_only = getattr(args, "active", False) and not show_all
     quiet = getattr(args, "quiet", False)
 
-    config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+    config_file = user_config_file()
     config = load_config(config_file)
     std = load_std_paths(config)
 
@@ -1479,7 +1478,7 @@ def run_rm(args: argparse.Namespace) -> int:
     from kanibako.project.names import lookup_by_path
     from kanibako.utils import confirm_prompt
 
-    config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+    config_file = user_config_file()
     config = load_config(config_file)
     std = load_std_paths(config)
 
@@ -1662,7 +1661,7 @@ def run_register(args: argparse.Namespace) -> int:
     from kanibako.project import registry_store
     from kanibako.launch.box_resolve import standalone_settings_present
 
-    config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+    config_file = user_config_file()
     config = load_config(config_file)
     std = load_std_paths(config)
 
@@ -1773,7 +1772,7 @@ def _check_container_running(proj) -> tuple[bool, str]:
 
 
 def run_info(args: argparse.Namespace) -> int:
-    config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+    config_file = user_config_file()
     config = load_config(config_file)
 
     try:
@@ -1982,7 +1981,7 @@ def _run_box_config(args: argparse.Namespace) -> int:
         show_config,
     )
 
-    config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+    config_file = user_config_file()
     config = load_config(config_file)
     std = load_std_paths(config)
 

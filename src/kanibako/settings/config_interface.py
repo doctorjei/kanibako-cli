@@ -303,12 +303,12 @@ def _path_tier_split() -> "tuple[dict[str, str], dict[str, object]]":
     """The path tier as ``(config_foundation, floor)``, RAISING on failure."""
     # ⚑ THE FAILURE ARM IS THE CALLER'S, DELIBERATELY — do not add a ``try`` here: the two
     # callers disagree about what a failure means and both are right.
-    from kanibako.settings.config import config_file_path
+    from kanibako.settings.config import user_config_file
     from kanibako.settings.paths import load_system_config, xdg
 
     floor: dict[str, object] = {}
     config_foundation: dict[str, str] = {}
-    user_config = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+    user_config = user_config_file()
     data_home = xdg("XDG_DATA_HOME", ".local/share")
     for dotted, path in load_system_config(
         user_config, data_home=data_home, home=Path.home(),

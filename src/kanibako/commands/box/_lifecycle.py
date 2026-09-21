@@ -230,9 +230,8 @@ def resolve_lifecycle_target(
     import os
 
     if config is None:
-        from kanibako.settings.config import config_file_path, load_config
-        from kanibako.settings.paths import xdg
-        config = load_config(config_file_path(xdg("XDG_CONFIG_HOME", ".config")))
+        from kanibako.settings.config import user_config_file, load_config
+        config = load_config(user_config_file())
 
     raw = old or os.getcwd()
     # ⚑ Bare-token front door (mirrors resolve_any_project): ``remap``/``convert`` need it —
@@ -694,9 +693,8 @@ def execute_lifecycle(
     import os
 
     if config is None:
-        from kanibako.settings.config import config_file_path, load_config
-        from kanibako.settings.paths import xdg
-        config = load_config(config_file_path(xdg("XDG_CONFIG_HOME", ".config")))
+        from kanibako.settings.config import user_config_file, load_config
+        config = load_config(user_config_file())
 
     cwd = Path(os.getcwd())
     plan = _validate(state, spec, std, config, force=force, cwd=cwd)
@@ -1721,10 +1719,10 @@ def _make_confirm(force: bool, summary: str):
 
 
 def _load_env():
-    from kanibako.settings.config import config_file_path, load_config
-    from kanibako.settings.paths import load_std_paths, xdg
+    from kanibako.settings.config import user_config_file, load_config
+    from kanibako.settings.paths import load_std_paths
 
-    config = load_config(config_file_path(xdg("XDG_CONFIG_HOME", ".config")))
+    config = load_config(user_config_file())
     std = load_std_paths(config)
     return config, std
 

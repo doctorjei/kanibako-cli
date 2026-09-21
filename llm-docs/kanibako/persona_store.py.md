@@ -43,7 +43,8 @@ $XDG_CONFIG_HOME/personas/          <- discovery root (FIXED, not configurable)
 ```
 
 `persona_store_root` is the single builder for that path, fixed by DESIGN §5a and deliberately not
-configurable. It reuses the spec-backed XDG resolution in `kanibako.settings.paths.xdg`, so
+configurable. It routes through the internal `user_config_home` resolver in
+`kanibako.settings.paths` ([R154] refuses a `config_home` key by name), so
 `XDG_CONFIG_HOME` is honored iff it is set AND absolute, and otherwise the root is `$HOME/.config`.
 
 **Store PRESENCE decides persona-vs-plain (DESIGN §4).** Every discovery entry point here returns a

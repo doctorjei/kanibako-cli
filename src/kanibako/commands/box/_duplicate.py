@@ -10,7 +10,7 @@ from pathlib import Path
 from kanibako.settings.config import (
     BOX_META_FILE,
     carried_box_settings,
-    config_file_path,
+    user_config_file,
     load_config,
     read_box_enable_vault,
 )
@@ -27,7 +27,6 @@ from kanibako.settings.paths import (
     assign_primary_box_name,
     box_metadata_dir,
     box_workset_settings_paths,
-    xdg,
     detect_project_mode,
     load_std_paths,
     primary_box_name_for_workspace,
@@ -620,7 +619,7 @@ def _duplicate_from_workset(args, source_path, new_path, std, config) -> int:
 
 
 def run_duplicate(args: argparse.Namespace) -> int:
-    config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+    config_file = user_config_file()
     config = load_config(config_file)
     std = load_std_paths(config)
 

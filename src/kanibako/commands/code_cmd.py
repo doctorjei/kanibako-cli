@@ -18,12 +18,12 @@ import sys
 from pathlib import Path
 
 from kanibako.box_lifecycle import is_vscode_server_path_part
-from kanibako.settings.config import config_file_path, load_config
+from kanibako.settings.config import user_config_file, load_config
 from kanibako.runtime.container import ContainerRuntime
 from kanibako.errors import ContainerError, KanibakoError
 from kanibako.log import get_logger
 from kanibako.settings.paths import (
-    xdg,
+    user_config_home,
     load_std_paths,
     resolve_box_target,
 )
@@ -170,7 +170,7 @@ def run_code(args: argparse.Namespace) -> int:
         )
         return 1
 
-    config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+    config_file = user_config_file()
     config = load_config(config_file)
     std = load_std_paths(config)
 
@@ -369,7 +369,7 @@ def _resolve_box_image(runtime, proj, container_name: str) -> str | None:
         # file ``box set box.image=…`` writes.
         _box_path, _ws_path = box_workset_settings_paths(proj)
         merged = load_merged_config(
-            config_file_path(xdg("XDG_CONFIG_HOME", ".config")),
+            user_config_file(),
             _box_path, workset_path=_ws_path,
         )
         return merged.box_image or None
@@ -470,7 +470,7 @@ def _seed_attached_config(runtime, std, proj, container_name: str) -> None:
         agent_name = _resolve_box_agent_node(runtime, std, proj, container_name)
         extension = _resolve_box_vscode_extension(agent_name, proj)
         path = attached_container_config_path(
-            image_ref, xdg("XDG_CONFIG_HOME", ".config"),
+            image_ref, user_config_home(),
         )
         _write_attached_config(path, extension)
     except Exception:
@@ -504,7 +504,7 @@ def _wire_docker_path(wrapper_path) -> int | None:
     """
     wrapper_str = str(wrapper_path)
     settings_path = (
-        xdg("XDG_CONFIG_HOME", ".config") / "Code" / "User" / "settings.json"
+        user_config_home() / "Code" / "User" / "settings.json"
     )
     snippet = (
         f"  Add this to your VS Code user settings.json ({settings_path}):\n"
@@ -628,7 +628,7 @@ def _seed_remote_attached_config(engine, container_name: str) -> None:
         except Exception:
             extension = None
         path = attached_container_config_path(
-            image_ref, xdg("XDG_CONFIG_HOME", ".config"),
+            image_ref, user_config_home(),
         )
         _write_attached_config(path, extension)
     except Exception:

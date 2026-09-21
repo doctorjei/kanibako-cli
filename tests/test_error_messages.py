@@ -253,7 +253,7 @@ class TestSystemInfoOutput:
         from kanibako.commands.system_cmd import run_info
 
         with (
-            patch("kanibako.commands.system_cmd.config_file_path") as m_cf,
+            patch("kanibako.commands.system_cmd.user_config_file") as m_cf,
             patch("kanibako.commands.system_cmd.load_config"),
             patch("kanibako.commands.system_cmd.xdg", return_value=MagicMock()),
             patch("kanibako.runtime.container.ContainerRuntime") as m_rt,
@@ -275,7 +275,7 @@ class TestSystemInfoOutput:
 
         mock_cls = MagicMock()
         with (
-            patch("kanibako.commands.system_cmd.config_file_path") as m_cf,
+            patch("kanibako.commands.system_cmd.user_config_file") as m_cf,
             patch("kanibako.commands.system_cmd.load_config"),
             patch("kanibako.commands.system_cmd.xdg", return_value=MagicMock()),
             patch("kanibako.runtime.container.ContainerRuntime") as m_rt,
@@ -299,7 +299,7 @@ class TestSystemInfoOutput:
         from kanibako.commands.system_cmd import run_info
 
         with (
-            patch("kanibako.commands.system_cmd.config_file_path") as m_cf,
+            patch("kanibako.commands.system_cmd.user_config_file") as m_cf,
             patch("kanibako.commands.system_cmd.load_config"),
             patch("kanibako.commands.system_cmd.xdg", return_value=MagicMock()),
             patch("kanibako.runtime.container.ContainerRuntime") as m_rt,
@@ -320,7 +320,7 @@ class TestSystemInfoOutput:
         from kanibako.commands.system_cmd import run_info
 
         with (
-            patch("kanibako.commands.system_cmd.config_file_path") as m_cf,
+            patch("kanibako.commands.system_cmd.user_config_file") as m_cf,
             patch("kanibako.commands.system_cmd.xdg", return_value=MagicMock()),
             patch("kanibako.runtime.container.ContainerRuntime") as m_rt,
             patch("subprocess.run") as m_run,
@@ -340,7 +340,7 @@ class TestSystemInfoOutput:
         from kanibako.commands.system_cmd import run_info
 
         with (
-            patch("kanibako.commands.system_cmd.config_file_path") as m_cf,
+            patch("kanibako.commands.system_cmd.user_config_file") as m_cf,
             patch("kanibako.commands.system_cmd.xdg", return_value=MagicMock()),
             patch(
                 "kanibako.runtime.container.ContainerRuntime",
@@ -360,7 +360,7 @@ class TestSystemInfoOutput:
         from kanibako.commands.system_cmd import run_info
 
         with (
-            patch("kanibako.commands.system_cmd.config_file_path") as m_cf,
+            patch("kanibako.commands.system_cmd.user_config_file") as m_cf,
             patch("kanibako.commands.system_cmd.load_config"),
             patch("kanibako.commands.system_cmd.xdg", return_value=MagicMock()),
             patch("kanibako.runtime.container.ContainerRuntime") as m_rt,

@@ -280,15 +280,14 @@ def _normalize_command(effective: list[str]) -> list[str]:
 def _ensure_initialized() -> None:
     """Ensure kanibako is initialized (create config + data dirs on first run)."""
     from kanibako.settings.config import (
-        config_file_path,
+        user_config_file,
         write_global_config,
     )
     from pathlib import Path
 
     from kanibako.settings.paths import resolve_system_paths, xdg
 
-    config_home = xdg("XDG_CONFIG_HOME", ".config")
-    cf = config_file_path(config_home)
+    cf = user_config_file()
 
     if cf.exists():
         return  # Already initialized
@@ -425,10 +424,10 @@ def _setup_nudge(args: argparse.Namespace) -> None:
     try:
         from pathlib import Path
 
-        from kanibako.settings.config import config_file_path, setup_compat_gate
+        from kanibako.settings.config import user_config_file, setup_compat_gate
         from kanibako.settings.paths import load_system_config, xdg
 
-        cf = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+        cf = user_config_file()
         # The marker lives in the SYSTEM SETTINGS file (``@config.settings``) since
         # 2026-08-26 — spec §2g declares it a Layer-2 ``system.*`` settings key, and
         # Layer-1 holds the ``config.*`` bootstrap paths alone (spec §1).

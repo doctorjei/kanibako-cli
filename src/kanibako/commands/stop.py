@@ -5,11 +5,10 @@ from __future__ import annotations
 import argparse
 import sys
 
-from kanibako.settings.config import config_file_path, load_config
+from kanibako.settings.config import user_config_file, load_config
 from kanibako.runtime.container import ContainerRuntime
 from kanibako.errors import ContainerError
 from kanibako.settings.paths import (
-    xdg,
     load_std_paths,
     resolve_box_target,
 )
@@ -146,7 +145,7 @@ def _writeback_on_stop(
 
 def _stop_one(runtime: ContainerRuntime, *, project_dir: str | None) -> int:
     """Stop the container for a single project."""
-    config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+    config_file = user_config_file()
     config = load_config(config_file)
     std = load_std_paths(config)
 

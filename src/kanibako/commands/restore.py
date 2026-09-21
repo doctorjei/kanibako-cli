@@ -10,7 +10,7 @@ import tarfile
 import tempfile
 from pathlib import Path
 
-from kanibako.settings.config import config_file_path, load_config
+from kanibako.settings.config import user_config_file, load_config
 from kanibako.runtime.container import remove_box_tree
 from kanibako.settings.core_defaults import materialize_canon_skeleton
 from kanibako.errors import ProjectError, UserCancelled, WorksetError
@@ -21,7 +21,6 @@ from kanibako.settings.paths import (
     load_std_paths,
     primary_box_name_for_workspace,
     resolve_any_project,
-    xdg,
 )
 from kanibako.utils import confirm_prompt
 
@@ -47,7 +46,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
 
 
 def run(args: argparse.Namespace) -> int:
-    config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+    config_file = user_config_file()
     config = load_config(config_file)
     std = load_std_paths(config)
 

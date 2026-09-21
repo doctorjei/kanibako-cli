@@ -15,12 +15,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from kanibako.commands.flags import add_null_flag
-from kanibako.settings.config import config_file_path, load_config
+from kanibako.settings.config import user_config_file, load_config
 from kanibako.errors import WorksetError
 from kanibako.settings.paths import (
     load_std_paths,
     workset_settings_path,
-    xdg,
 )
 from kanibako.utils import confirm_prompt
 from kanibako.identifiers import find_identifier
@@ -343,7 +342,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
 
 def _load_std():
     """Load config and standard paths."""
-    config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+    config_file = user_config_file()
     config = load_config(config_file)
     return load_std_paths(config)
 
@@ -597,9 +596,8 @@ def run_disconnect(args: argparse.Namespace) -> int:
     member: str = project_token
     if project_token:
         try:
-            from kanibako.settings.config import config_file_path, load_config
-            from kanibako.settings.paths import xdg
-            config = load_config(config_file_path(xdg("XDG_CONFIG_HOME", ".config")))
+            from kanibako.settings.config import user_config_file, load_config
+            config = load_config(user_config_file())
             resolved = resolve_box_target(std, config, project_token)
             if resolved.name:
                 member = resolved.name
@@ -712,7 +710,7 @@ def _run_workset_config(args: argparse.Namespace) -> int:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
-    config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+    config_file = user_config_file()
     ws_config = _workset_config_path(ws)
     # The workset-tier docker env FILE is GONE (R-39/RQ-1); ``workset.env.<VAR>`` is an
     # ordinary key in ``ws_config``, so there is no second write target here.
