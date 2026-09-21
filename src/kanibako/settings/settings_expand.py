@@ -17,6 +17,12 @@ resolve to no path.
 ⚑ ABSENCE HAS A SECOND SOURCE, and it is not a failure: a PASSTHROUGH variable
 (``$COLORTERM``) whose host signal is unset answers absence too, and a whole-value
 one DROPS its key by the same §6b rule. Nothing is delivered empty on that path.
+🛑 THE DROP IS NOT CONFINED TO ``env``, and the reach is worth stating plainly: a
+whole-value passthrough written as a BINDING's host source drops that binding, with
+no message — exactly as an absent whole-value ``@``-referent in the same position
+always has. One rule, two spellings. A passthrough is a terminal CLAIM about the
+host's display, never a path, so naming one as a source is a mis-write the expansion
+cannot tell from a deliberate §6b drop.
 
 ⚑ ``box_dest`` keeps its ``$XDG``/``~`` RAW (S17): ENVIRONMENT differs host vs box,
 so those tokens are DEFERRED to mount time. ``@``-refs (CONFIG) expand BOTH sides.

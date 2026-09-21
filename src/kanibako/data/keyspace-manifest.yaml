@@ -1306,6 +1306,7 @@ keys:
     type: str
     set: cli+file
     default: "$COLORTERM"
+    may_answer_absent: true
     note: "THE ONE env MEMBER KANIBAKO ITSELF DECLARES — shipped in
            core-defaults.yaml's `env: box:` table (D1-4/MBR-2 9ac0980,
            2026-08-15), which REPLACED the first-run write that used to
@@ -1325,7 +1326,18 @@ keys:
            file and the nearest wins, while the SAME VAR named at a SECOND scope
            is the launch REFUSAL naming both keys (see meta.assembly.env).
            Delivery is the §2d env channel, through meta.assembly.env. The
-           category declares the FAMILY; this row declares the shipped DEFAULT."
+           category declares the FAMILY; this row declares the shipped DEFAULT.
+           ⚑ `may_answer_absent: true` (2026-09-20) DECLARES the paragraph above
+           as DATA any reader of this manifest can act on: THIS ROW'S DEFAULT MAY
+           RESOLVE TO ABSENCE, and that is the declared answer rather than a
+           dangling default. It is the row's OWN warrant — not an exemption kept
+           somewhere else — which is what lets reachability conformance ([R143]'s
+           property P) read it off the row, name no key, and still admit no
+           unexplained dangle: a declared default either RESOLVES, or DECLARES
+           that it may answer absent. LEGAL ONLY where the default IS one
+           whole-value host `$VAR` (a PASSTHROUGH), the single shape that can
+           answer absence instead of a value; on a literal or an `@`-ref default
+           absence is a DANGLE and P still says so."
     spec: "§2b (core-declared default, 2026-08-15)"
   box.bindings.ro:
     scope: box
