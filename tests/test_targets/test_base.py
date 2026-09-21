@@ -283,13 +283,13 @@ class TestHasResumableSession:
         missing = tmp_path / "does-not-exist"
         assert self._minimal_target().has_resumable_session(missing) is True
 
-    def test_no_agent_does_not_override(self):
-        """no_agent keeps the base default-True hook (a plain shell has no
+    def test_shell_does_not_override(self):
+        """shell keeps the base default-True hook (a plain shell has no
         session to resume, so continue-vs-fresh never applies)."""
-        from kanibako.targets.no_agent import NoAgentTarget
+        from kanibako.targets.shell import ShellTarget
 
         assert (
-            NoAgentTarget().has_resumable_session.__func__
+            ShellTarget().has_resumable_session.__func__
             is Target.has_resumable_session
         )
 

@@ -144,7 +144,7 @@ file.
 | `token_path` | the resolved absolute host token path, or `None` when the `.secret_path` pointer did not resolve |
 | `token_error` | why it did not resolve; set iff `token_path` is `None`. A SOFT condition — the rest of the bundle is still usable, so a caller warns and carries on rather than refusing the launch |
 | `reject_reason` | set iff the located entry has a harness reader that REFUSED its config: present but unusable, naming the cause |
-| `no_reader` | set iff the harness has NO persona reader at all — today goose and `NoAgentTarget`, which inherit the base no-op |
+| `no_reader` | set iff the harness has NO persona reader at all — today goose and `ShellTarget`, which inherit the base no-op |
 
 The `env` and `env_dropped` defaults are immutable by construction (`MappingProxyType({})` and
 `()`), because a bare `{}` as a `NamedTuple` field default is ONE object shared by every instance.

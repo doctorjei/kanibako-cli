@@ -49,7 +49,7 @@ concession.** Importing ``kanibako.targets.base`` does execute ``kanibako/target
 — but if that ``__init__`` is the module already in progress, Python finds it in
 ``sys.modules`` and the import is a no-op. Adding ``X.Y → X`` edges therefore reports the
 ordinary package-with-a-facade shape as a cycle: measured here, it manufactures two false
-arcs (``targets/__init__`` → ``targets/no_agent`` → ``targets``, and the same shape in
+arcs (``targets/__init__`` → ``targets/shell`` → ``targets``, and the same shape in
 ``packages/agent-claude``), neither of which is a cycle at runtime.
 
 **Corpus:** ``src/kanibako/**`` plus ``packages/*/src/**``, as one graph. Settled 2026-09-02.

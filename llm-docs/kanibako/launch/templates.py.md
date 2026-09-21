@@ -511,7 +511,7 @@ the box with no agent config. Pinned by
 ### `_packaged_agent_store`
 
 Locates a plugin's packaged AGENT-STORE payload → `Path`, returning `None` if the plugin is not
-installed or ships no `data/base` (`no_agent` / a third-party target without curated content).
+installed or ships no `data/base` (`shell` / a third-party target without curated content).
 
 ⚑ THE SPELLING IS CLOSED: there is no `data/template` fallback and there must not be one again. A
 plugin shipping anything else contributes NOTHING rather than landing its payload somewhere

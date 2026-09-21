@@ -2380,11 +2380,11 @@ class TestCheckPersonaStoreForCreate:
         may own a store dir purely for its ``.secret_path``; a harness that
         cannot read a store config has made no complaint about any file.
         """
-        from kanibako.targets.no_agent import NoAgentTarget
+        from kanibako.targets.shell import ShellTarget
 
         self._store(tmp_home)
         assert self._call(
-            tmp_home, "navigator+codex", monkeypatch, target=NoAgentTarget(),
+            tmp_home, "navigator+codex", monkeypatch, target=ShellTarget(),
         ) is None
         assert not (tmp_home / "data" / "agents").exists()
 
@@ -2689,7 +2689,7 @@ class TestCreatePersistsAgentSelection:
         # …and NOT the retired key.
         assert "agent_name" not in data.get("box", {})
 
-    def test_plain_create_writes_no_agent_selection(
+    def test_plain_create_writes_no_selection(
         self, config_file, tmp_home, credentials_dir,
     ):
         from kanibako.settings.config_io import load_doc
@@ -2788,7 +2788,7 @@ class TestCreatePersistsAgentSelection:
         assert "model" not in node_self
         assert "secret_path" not in node_self
 
-    def test_failing_verdict_leaves_no_box_and_no_agent_selection(
+    def test_failing_verdict_leaves_no_box_and_no_selection(
         self, config_file, tmp_home, credentials_dir, capsys,
     ):
         """FAILURE-PATH RESIDUE: a create refused by the persona verdict must

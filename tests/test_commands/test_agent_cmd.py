@@ -101,7 +101,7 @@ class TestRunList:
         out = capsys.readouterr().out
         assert out.strip() == "claude"
 
-    def test_list_no_agents(self, empty_agent_env, capsys):
+    def test_list_empty(self, empty_agent_env, capsys):
         from kanibako.commands.agent_cmd import run_list
 
         args = argparse.Namespace(quiet=False)
@@ -110,7 +110,7 @@ class TestRunList:
         out = capsys.readouterr().out
         assert "No agents" in out
 
-    def test_list_no_agents_quiet(self, empty_agent_env, capsys):
+    def test_list_empty_quiet(self, empty_agent_env, capsys):
         from kanibako.commands.agent_cmd import run_list
 
         args = argparse.Namespace(quiet=True)

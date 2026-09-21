@@ -229,7 +229,7 @@ class TestSelectionLevel:
         )
         assert snap.system.agent == "claude"
 
-    def test_a_no_agent_box_installs_nothing(self):
+    def test_a_nodeless_box_installs_nothing(self):
         """A node-less selection must leave ``system.agent`` absent — pinning it to
         the ``general`` template slot would make the box look agent-bearing.
 
@@ -568,7 +568,7 @@ class TestSelectAgentSeam:
         does not exist in v1.7.2 (``git grep -c "pref\\.system\\.agent" v1.7.2`` is
         zero), so this spelling was born and retired inside the 1.8.0 rc series. The
         plain-shell box is reached BY NAME: ``--agent shell`` /
-        ``pref.system.agent: shell`` (the ``no_agent`` spelling is retired — [R174]).
+        ``pref.system.agent: shell`` (the retired underscore spelling — [R174]).
 
         ⚑ Every spelling here is one YAML reads as Python ``None`` — including a key
         left BLANK after its colon, which makes this state reachable by typo. The
@@ -888,7 +888,7 @@ class TestRetiredKeyCureIsLevelAppropriate:
             assert "system set system.agent=claude" in msg
 
 
-class TestNoAgentAuthPathIsUnreachable:
+class TestSuppressedAuthPathIsUnreachable:
     """The E-NULL defect's SECOND symptom, and why it cannot recur.
 
     A suppressed box installs NO selection level (correctly — ``system.agent`` must

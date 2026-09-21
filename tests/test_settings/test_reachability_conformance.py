@@ -83,7 +83,7 @@ TERMINUS ROUTING, derived from the manifest and not special-cased:
 * everything else → ANY recorded terminus, read with ``settings_launch.snapshot_leaf``,
   the ONE public dotted reader.
 
-⚑ THE PROBE LAUNCHES WITH THE REAL ``claude`` TARGET, not ``NoAgentTarget`` — see
+⚑ THE PROBE LAUNCHES WITH THE REAL ``claude`` TARGET, not ``ShellTarget`` — see
 :func:`_probe`, which carries the measurement that forced the choice.  The no-agent
 delta is REPORTED rather than hidden.
 
@@ -123,7 +123,7 @@ from kanibako.settings.paths import (
   resolve_workset_project,
 )
 from kanibako.settings.settings_launch import snapshot_leaf
-from kanibako.targets.no_agent import NoAgentTarget
+from kanibako.targets.shell import ShellTarget
 
 
 # The three box modes, spelled as ``meta.box.mode`` spells them (``BoxMode``).
@@ -276,13 +276,13 @@ def _probe(request, std, config_file, mode: str, target=None):
   one test would let one mode's ``initialize=True`` write into the other's reading.
   One test, one project, one mode.
 
-  ⚑⚑ THE DEFAULT TARGET IS THE REAL ``claude`` PLUGIN, NOT ``NoAgentTarget`` — and
-  that is a MEASUREMENT, not a preference.  Under ``NoAgentTarget`` three keys
+  ⚑⚑ THE DEFAULT TARGET IS THE REAL ``claude`` PLUGIN, NOT ``ShellTarget`` — and
+  that is a MEASUREMENT, not a preference.  Under ``ShellTarget`` three keys
   (``agent.default.{access,allow_helpers,continue_mode}``) report as dangling; under
   the real target all three answer.  A no-agent box is a legitimate launch but it is
   not the representative one, and asserting off it would MANUFACTURE a red.  The
   difference is not swept under the rug — it is the subject of
-  :meth:`TestTheCorpusAndTheProbe.test_report_the_no_agent_delta`.
+  :meth:`TestTheCorpusAndTheProbe.test_report_the_shell_delta`.
 
   ⚑ IT WAS FOUR UNDER THE SINGLE-TERMINUS PROBE, and the fourth is a result rather
   than a correction: ``agent.default.bootstrap`` now answers WITHOUT an agent target,
@@ -667,21 +667,21 @@ class TestTheCorpusAndTheProbe:
       print(f"  {key}: {', '.join(where) or 'NOWHERE'}")
 
   @pytest.mark.parametrize("mode", MODES)
-  def test_report_the_no_agent_delta(self, mode, request, std, config_file):
-    """REPORT-ONLY: what a ``NoAgentTarget`` launch reaches that an agent one does not.
+  def test_report_the_shell_delta(self, mode, request, std, config_file):
+    """REPORT-ONLY: what a ``ShellTarget`` launch reaches that an agent one does not.
 
     ⚑ THE INSTRUMENT'S OWN BIAS, MEASURED RATHER THAN ASSUMED.  A no-agent box
     installs no agent-tier floor, so keys that answer under the ``claude`` plugin
-    dangle under ``NoAgentTarget``.  P is asserted off the agent-bearing launch; this
+    dangle under ``ShellTarget``.  P is asserted off the agent-bearing launch; this
     case exists so the size of that choice is a number, not a footnote.
     """
     termini, ctx = _probe(request, std, config_file, mode)
     bare_termini, bare_ctx = _probe(
-      request, std, config_file, mode, target=NoAgentTarget(),
+      request, std, config_file, mode, target=ShellTarget(),
     )
     with_agent = set(_partition(mode, termini, ctx)[0])
     without = set(_partition(mode, bare_termini, bare_ctx)[0])
-    print(f"\n=== NoAgentTarget delta · mode={mode} ===")
+    print(f"\n=== ShellTarget delta · mode={mode} ===")
     print(f"  answers ONLY with an agent target: {sorted(with_agent - without)}")
     print(f"  answers ONLY without one:          {sorted(without - with_agent)}")
 

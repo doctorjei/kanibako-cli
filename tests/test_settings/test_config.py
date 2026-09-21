@@ -1521,7 +1521,7 @@ class TestMergedConfigKeyspaceResolve:
         bt.write_text("box:\n  share_images: true\n")
         assert load_merged_config(gp, bt).box_share_images is True
 
-    def test_agentless_resolve_no_agent_required(self, tmp_path, monkeypatch):
+    def test_agentless_resolve_without_any_agent(self, tmp_path, monkeypatch):
         """The resolve is AGENT-LESS by construction (the ``kanibako shell``
         requirement): nothing here selects or consults an agent, and a host with
         zero agents still resolves the box scalars."""

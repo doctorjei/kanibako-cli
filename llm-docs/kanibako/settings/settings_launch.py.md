@@ -465,7 +465,7 @@ as a dangling `@`-reference.
 It is spelled `@config.agents/<store dirname>` rather than the spec's
 `@config.agents/@meta.agent.<a>.name` chain (§2d); the flat form avoids a floor entry that
 references its own sibling. The two compose to the SAME string for every node — verified for a
-persona, a bare agent and `no_agent` — because BOTH halves take the store dirname.
+persona, a bare agent and `shell` — because BOTH halves take the store dirname.
 
 ⚑ **THAT IS WHY `meta.agent.<a>.name` CARRIES THE `+` SPELLING (2026-08-27).** The key's
 DISCRIMINATOR stays canonical (`navigator℘claude`) because a key path needs `℘`; its VALUE is

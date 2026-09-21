@@ -2311,7 +2311,7 @@ class TestTheEffectiveDISPLAYSEAMCarriesTheDeclaringKeysEndToEnd:
         """
         from kanibako.commands.start import _resolve_launch_snapshot
         from kanibako.settings.paths import resolve_project
-        from kanibako.targets.no_agent import NoAgentTarget
+        from kanibako.targets.shell import ShellTarget
 
         src = tmp_path / "masked"
         src.mkdir()
@@ -2319,7 +2319,7 @@ class TestTheEffectiveDISPLAYSEAMCarriesTheDeclaringKeysEndToEnd:
         _snapshot, deliveries = _resolve_launch_snapshot(
             std=std, proj=proj, agent_name="claude",
             system_settings_path=None, agent_cfg_path=None,
-            desc=None, install=None, target=NoAgentTarget(), agent_cfg=None,
+            desc=None, install=None, target=ShellTarget(), agent_cfg=None,
             deliver_creds=True, guarantee_create=False,
             extra_default_categories={
                 "box.bindings.ro": {"/opt/arb": (str(src),)},

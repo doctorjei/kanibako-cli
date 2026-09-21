@@ -204,7 +204,7 @@ class PersonaBundle(NamedTuple):
     token_path: Path | None = None     # resolved ABSOLUTE host token path
     token_error: str | None = None     # why it did not resolve (set iff token_path is None)
     reject_reason: str | None = None   # the harness READ this config and REFUSED it
-    no_reader: bool = False            # harness has NO persona reader (goose, NoAgentTarget)
+    no_reader: bool = False            # harness has NO persona reader (goose, ShellTarget)
 
     def to_persona_values(self) -> dict[str, str]:
         """Render this bundle as the UN-DISCRIMINATED persona-values mapping.

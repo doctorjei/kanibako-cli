@@ -46,7 +46,7 @@ def test_parse_bare_allows_safe_punctuation():
     # Alnum + '-' '_' are fs/key-safe in a bare name.  ⚑ '.' was legal here
     # until 2026-08-04 (this line read "agent-1.2"); see _SAFE_EXTRA for why it
     # is not — it is the settings key-path separator.
-    assert parse_agent_ref("no_agent") == ("no_agent", "no_agent")
+    assert parse_agent_ref("my_agent") == ("my_agent", "my_agent")
     assert parse_agent_ref("agent-1_2") == ("agent-1_2", "agent-1_2")
 
 
@@ -225,7 +225,7 @@ def test_parse_rejects_dot_in_a_segment(bad):
         ("kimi-k3+claude", ("kimi-k3℘claude", "claude")),  # the dash stays legal
         ("kimi_k3+claude", ("kimi_k3℘claude", "claude")),
         ("claude", ("claude", "claude")),  # bare: LOAD-BEARING back-compat
-        ("no_agent", ("no_agent", "no_agent")),
+        ("my_agent", ("my_agent", "my_agent")),
         ("gemma-4+claude", ("gemma-4℘claude", "claude")),
         # Non-ASCII word characters are a MUST-WORK case, not a rejection.
         ("漢字+claude", ("漢字℘claude", "claude")),
@@ -424,8 +424,8 @@ def test_with_harness_bare_as_requested():
 
 
 def test_with_harness_bare_fallback():
-    # Bare node, target fell back (e.g. NoAgent) -> the fallback name.
-    assert with_harness("claude", "no_agent") == "no_agent"
+    # Bare node, target fell back (e.g. Shell) -> the fallback name.
+    assert with_harness("claude", "shell") == "shell"
 
 
 def test_with_harness_persona_as_requested():
@@ -435,7 +435,7 @@ def test_with_harness_persona_as_requested():
 
 def test_with_harness_persona_fallback_keeps_persona_name():
     # Persona node, target fell back -> persona name kept, harness swapped.
-    assert with_harness("navigator℘claude", "no_agent") == "navigator℘no_agent"
+    assert with_harness("navigator℘claude", "shell") == "navigator℘shell"
 
 
 # ---------------------------------------------------------------------------

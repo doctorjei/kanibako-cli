@@ -2540,7 +2540,7 @@ class TestAllowHelpersGate:
     ``allow_helpers=false`` (helpers OFF by default in unit tests). A per-agent
     override on ``agent_cfg.state`` WINS that default (§2d active-over-default), so
     these tests flip the resolved value via the active slot. Observation seam: for
-    a real-agent launch (``no_agent_launch`` is False), ``resolve_box_shell`` is
+    a real-agent launch (``shell_launch`` is False), ``resolve_box_shell`` is
     reached ONLY when ``helpers_enabled`` is True.
     """
 
@@ -2672,7 +2672,7 @@ class TestDetachedSupervisor:
             assert "|| {" in script  # fallback is a brace group now
             assert "new-session -s kanibako" in script
 
-    def test_detached_no_agent_keeps_bare_shell_keepalive(self, start_mocks):
+    def test_detached_shell_keeps_bare_shell_keepalive(self, start_mocks):
         """Detached NO-AGENT box → unchanged bare-shell tmux keep-alive."""
         with start_mocks() as m:
             rc = _run_container(
@@ -3217,7 +3217,7 @@ class TestForegroundSupervisor:
         for off in (None, "", "0", "false", "no", "off", "maybe"):
             assert _env_flag_enabled(off) is False
 
-    def test_foreground_no_agent_keeps_bare_shell_wrap(self, start_mocks):
+    def test_foreground_shell_keeps_bare_shell_wrap(self, start_mocks):
         """Foreground NO-AGENT (box_shell_mode) → unchanged tmux wrap, NO supervisor."""
         with start_mocks() as m:
             rc = _run_container(

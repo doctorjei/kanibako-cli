@@ -8,7 +8,7 @@ _Signatures only: no comments, no docstrings, no bodies._
 
 ```
 logger = logging.getLogger(__name__)
-__all__ = ['AgentInstall', 'Mount', 'NoAgentTarget', 'Target', 'TargetSetting', 'discover_targets', 'get_target', 'resolve_target']
+__all__ = ['AgentInstall', 'Mount', 'ShellTarget', 'Target', 'TargetSetting', 'discover_targets', 'get_target', 'resolve_target']
 _EP_LOAD_FAILED: set[str] = set()
 _RESERVED_NAME_WARNED: set[str] = set()
 _COLLIDING_NAME_WARNED: set[str] = set()

@@ -601,11 +601,11 @@ class TestCoreBehaviorDefaults:
         from kanibako.settings.paths import resolve_project
         from kanibako.settings.settings_launch import effective_behavior
         from kanibako.targets.base import TargetSetting
-        from kanibako.targets.no_agent import NoAgentTarget
+        from kanibako.targets.shell import ShellTarget
 
         node = "claude"
 
-        class _CollidingTarget(NoAgentTarget):
+        class _CollidingTarget(ShellTarget):
             """A REAL target that declares ``bootstrap`` against the core floor."""
 
             @property
@@ -675,9 +675,9 @@ class TestCoreStaticEnvDefaults:
 
     @staticmethod
     def _target():
-        from kanibako.targets.no_agent import NoAgentTarget
+        from kanibako.targets.shell import ShellTarget
 
-        class _CoreTarget(NoAgentTarget):
+        class _CoreTarget(ShellTarget):
             """A REAL target declaring nothing of its own — every VAR here is core's."""
 
             @property

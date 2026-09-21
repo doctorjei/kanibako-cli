@@ -41,7 +41,7 @@ from kanibako.settings.settings_launch import (
 )
 from kanibako.settings.settings_resolve import ResolveCtx, SettingsError
 from kanibako.settings.store_collapse import collapse_env
-from kanibako.targets.no_agent import NoAgentTarget
+from kanibako.targets.shell import ShellTarget
 
 # The SHIPPED declarations, spelled out so a silent change to a plugin's defaults file
 # fails here by name. Values are GUEST-side and already ``$GUEST_HOME``-expanded.
@@ -420,7 +420,7 @@ class TestTheLaunchWireCarriesTheDeclaration:
 
     VAR = "KANI_WIRED"
 
-    class _DeclaringTarget(NoAgentTarget):
+    class _DeclaringTarget(ShellTarget):
         """A REAL target declaring ONE variable against its own HARNESS name."""
 
         @property
@@ -528,7 +528,7 @@ class TestTheCoreStampsRideTheSameWire:
         "KANIBAKO_AGENT_MARKERS_DIR": "/tmp/kanibako/agents",
     }
 
-    class _CoreTarget(NoAgentTarget):
+    class _CoreTarget(ShellTarget):
         """A REAL target declaring NO env of its own — every VAR here is core's."""
 
         @property
@@ -567,7 +567,7 @@ class TestTheCoreStampsRideTheSameWire:
         assert slots[var].scope == "system"
         assert slots[var].key == f"system.env.{var}"
 
-    def test_a_no_agent_launch_carries_the_other_three_and_no_agent_stamp(
+    def test_a_shell_launch_carries_the_other_three_without_an_agent_stamp(
         self, std, config, project_dir,
     ):
         """The ONE gate that is not unconditional, kept where a shell launch sees it.

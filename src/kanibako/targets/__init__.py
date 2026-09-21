@@ -14,10 +14,10 @@ from kanibako.agent_ref import reserved_pseudo_agent_reason
 from kanibako.identifiers import agent_node_case, find_identifier
 from kanibako.settings.bootstrap import STANDALONE_META_DIR
 from kanibako.targets.base import AgentInstall, Mount, Target, TargetSetting
-from kanibako.targets.no_agent import NoAgentTarget
+from kanibako.targets.shell import ShellTarget
 
 __all__ = [
-    "AgentInstall", "Mount", "NoAgentTarget",
+    "AgentInstall", "Mount", "ShellTarget",
     "Target", "TargetSetting",
     "discover_targets", "get_target", "resolve_target",
 ]
@@ -146,7 +146,7 @@ def _scan_plugin_modules(
                 isinstance(attr, type)
                 and issubclass(attr, Target)
                 and attr is not Target
-                and attr is not NoAgentTarget
+                and attr is not ShellTarget
             ):
                 try:
                     instance = attr()
@@ -191,7 +191,7 @@ def _scan_directory_plugins(
                 isinstance(attr, type)
                 and issubclass(attr, Target)
                 and attr is not Target
-                and attr is not NoAgentTarget
+                and attr is not ShellTarget
             ):
                 try:
                     instance = attr()
@@ -235,7 +235,7 @@ def discover_targets(project_path: Path | None = None) -> dict[str, type[Target]
     # ``_register`` / ``_require_meta_name`` therefore never sees it, and a
     # third-party plugin declaring ``shell`` is still refused there — that
     # refusal protects exactly this slot.
-    targets["shell"] = NoAgentTarget
+    targets["shell"] = ShellTarget
     declared["shell"] = ("shell", "builtin")
     # Group is agent-domain (a registry of agent adapters) → "kanibako.agents".
     # NB: distinct from the `kanibako.settings.agent_config` module (per-agent tool
@@ -379,7 +379,7 @@ def _require_meta_name(target: Target) -> Target:
     # store dir and a cascade slot — and this target IS that owner, claiming
     # nothing.  Scoping the refusal to non-built-ins states the rule (a plugin
     # may not claim the slot), it does not except anyone from it.
-    if not isinstance(target, NoAgentTarget):
+    if not isinstance(target, ShellTarget):
         why = reserved_pseudo_agent_reason(node)
         if why is not None:
             cls = type(target)
@@ -414,4 +414,4 @@ def resolve_target(
         if instance.detect() is not None:
             return _require_meta_name(instance)
 
-    return _require_meta_name(NoAgentTarget())
+    return _require_meta_name(ShellTarget())

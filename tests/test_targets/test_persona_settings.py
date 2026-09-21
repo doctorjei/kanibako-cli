@@ -10,7 +10,7 @@ SPECIFIC ``reject_reason`` naming the file and the cause.  Claude parses
 ``ANTHROPIC_AUTH_TOKEN`` auth var, the REST of ``env`` carried through as
 passthrough); codex parses ``config.toml`` (the inverse of the
 ``CodexModelProvider`` shape kanibako emits — ``base_url``/``env_key``
-+ top-level ``model``/``model_provider``).  Goose/no_agent inherit the base
++ top-level ``model``/``model_provider``).  Goose/shell inherit the base
 no-reader default: BOTH fields ``None``.
 """
 
@@ -41,7 +41,7 @@ from kanibako.targets.base import (
     _scrub_decoded,
     http_probe,
 )
-from kanibako.targets.no_agent import NoAgentTarget
+from kanibako.targets.shell import ShellTarget
 
 
 def _reject(outcome, *needles: str) -> None:
@@ -58,12 +58,12 @@ class TestBaseDefault:
     def test_default_is_no_reader_not_a_reject(self, tmp_path):
         # BOTH None = "this harness has no persona reader" — distinct from a
         # present-but-unusable config, which must name its own cause.
-        assert NoAgentTarget().read_persona_settings(tmp_path) == (
+        assert ShellTarget().read_persona_settings(tmp_path) == (
             PersonaReadOutcome(settings=None, reject_reason=None)
         )
 
-    def test_goose_and_no_agent_inherit_the_default(self):
-        for target in (GooseTarget(), NoAgentTarget()):
+    def test_goose_and_shell_inherit_the_default(self):
+        for target in (GooseTarget(), ShellTarget()):
             assert (
                 target.read_persona_settings.__func__
                 is Target.read_persona_settings
@@ -389,7 +389,7 @@ class TestVerifyPersonaBase:
     """
 
     def test_base_default_is_not_applicable(self, tmp_path):
-        outcome = NoAgentTarget().verify_persona(
+        outcome = ShellTarget().verify_persona(
             "https://e.example", tmp_path, "m",
         )
         assert outcome.verdict is PersonaProbeVerdict.NOT_APPLICABLE

@@ -451,9 +451,9 @@ def test_step2_reports_binary_less_shell_as_ok(tmp_home, config_file, monkeypatc
     """The binary-less 'Shell' target has no host binary; Step 2 must
     report it as available (image default), not '... not found on this system'.
     """
-    from kanibako.targets.no_agent import NoAgentTarget
+    from kanibako.targets.shell import ShellTarget
 
-    _patch_targets(monkeypatch, {"shell": NoAgentTarget})
+    _patch_targets(monkeypatch, {"shell": ShellTarget})
     monkeypatch.setattr(
         "kanibako.commands.diagnose._check_runtime", lambda: ("ok", "podman")
     )
@@ -493,9 +493,9 @@ def test_no_real_plugin_reaches_the_tailored_install_command(
     a "ready to go" banner in front of a host that cannot launch.
     """
     from kanibako.install_method import install_command
-    from kanibako.targets.no_agent import NoAgentTarget
+    from kanibako.targets.shell import ShellTarget
 
-    _patch_targets(monkeypatch, {"shell": NoAgentTarget})
+    _patch_targets(monkeypatch, {"shell": ShellTarget})
     _stub_probes(monkeypatch)
     _stage_templates()
     monkeypatch.setattr("sys.stdin.isatty", lambda: False)

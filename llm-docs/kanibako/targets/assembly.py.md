@@ -23,7 +23,7 @@ today means all three first-party agents.
   P4c-2).
 * `descriptor_mounts` emits the delivery binds.
 
-The only descriptor-less target is `NoAgentTarget`, the `kanibako shell` fallback. It launches a
+The only descriptor-less target is `ShellTarget`, the `kanibako shell` fallback. It launches a
 plain shell with no agent argv and no delivery binds.
 
 ## `BindingSourceError`

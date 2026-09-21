@@ -77,7 +77,7 @@ inside boxes. In order of likely impact:
    longer picked for you"). The same section covers `pref.system.agent: null`, which means *no
    default is set* and refuses. If your v1.7.2 box ran a plain shell, it did so by NAMING the
    `no_agent` pseudo-agent (`box.agent_name: no_agent`); carry that across as
-   `pref.system.agent: no_agent` and it keeps working.
+   `pref.system.agent: shell` and it keeps working.
 
 2. **Every settings file except the system one must be renamed by hand, or it is silently not
    read** (§2.45). Each cascade tier's file was called `settings.yaml`; each is now named for its
@@ -4699,18 +4699,18 @@ at all, so no released version ever reached a plain shell by writing `null`. Tha
 was introduced during the 1.8.0 rc series and withdrawn before the release; the key still accepts
 `null`, and it now means *no default is set*.
 
-The plain-shell box is, as it was in v1.7.2, reached by NAMING the `no_agent` pseudo-agent:
+The plain-shell box is, as it was in v1.7.2, reached by NAMING the `shell` pseudo-agent:
 
 ```bash
-kanibako start --agent no_agent               # one run
-kanibako box set pref.system.agent=no_agent   # this box, persistently
+kanibako start --agent shell                  # one run
+kanibako box set pref.system.agent=shell   # this box, persistently
 ```
 
 v1.7.2 spelled that second line `box.agent_name: no_agent`; the key was retired (§2.1, "Settings
 keys renamed or retired"), and `pref.system.agent` is its replacement — the refusal a box carrying
-the old key gets prints exactly that `box set` line, with your stored value in it. A `shell`
-pseudo-agent will eventually be the name for this, but it is not wired yet: `no_agent` is what
-resolves today, and `kanibako shell` still reaches any box's container without an agent.
+the old key gets prints exactly that `box set` line, with your stored value in it. The `shell`
+pseudo-agent is the name for this: it is what resolves today, and `kanibako shell` still reaches
+any box's container without an agent.
 
 ⚑ **`kanibako setup`'s "skip" option asks you to confirm now however many agents are installed.** It
 used to waive the confirmation at exactly one, because that one would have been picked implicitly.

@@ -1,4 +1,4 @@
-"""NoAgentTarget: built-in fallback target that runs a plain shell."""
+"""ShellTarget: built-in fallback target that runs a plain shell."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from kanibako.settings.agent_config import AgentConfig
 
 
-class NoAgentTarget(Target):
+class ShellTarget(Target):
     """Fallback target that launches /bin/sh without any agent binary."""
 
     @property

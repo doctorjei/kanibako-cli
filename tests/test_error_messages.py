@@ -294,7 +294,7 @@ class TestSystemInfoOutput:
         assert "1 detected" in out
         assert "kanibako agent list" in out
 
-    def test_info_no_agents_shows_install_hint(self, capsys):
+    def test_info_empty_shows_install_hint(self, capsys):
         """System info shows install hint when no agents are found."""
         from kanibako.commands.system_cmd import run_info
 

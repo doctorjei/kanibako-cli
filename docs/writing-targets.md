@@ -354,7 +354,7 @@ box.  For agents whose install location is genuinely user-chosen (codex), a
 ### `descriptor` (property)
 
 Return the agent's `PluginDescriptor` (see above).  The default returns `None`,
-which is reserved for the built-in `NoAgentTarget` (plain shell, no agent
+which is reserved for the built-in `ShellTarget` (plain shell, no agent
 binary, no credentials).  Every real agent plugin returns a descriptor.
 
 ### `check_auth() -> bool`

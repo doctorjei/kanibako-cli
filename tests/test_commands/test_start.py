@@ -188,7 +188,7 @@ class TestTargetWarnings:
         assert "Warning:" in captured.err
         assert "binary not found" in captured.err
 
-    def test_no_agent_target_suppresses_warning(self, start_mocks, capsys):
+    def test_shell_target_suppresses_warning(self, start_mocks, capsys):
         """When target has_binary=False and detect() returns None, no warning is printed."""
         with start_mocks() as m:
             m.target.detect.return_value = None
@@ -261,7 +261,7 @@ class TestTargetWarnings:
             m_protect.assert_called_once()
             assert m_protect.call_args.args[0] == m.proj.shell_path
 
-    def test_no_agent_target_still_launches(self, start_mocks):
+    def test_shell_target_still_launches(self, start_mocks):
         """Container should still launch with the binary-less shell target."""
         with start_mocks() as m:
             m.target.detect.return_value = None
@@ -3794,7 +3794,7 @@ class TestBrowserSidecar:
                 assert rc == 0  # continues without sidecar
 
 
-class TestNoAgentMessage:
+class TestAgentlessRunStart:
     """Verify run_start's no-agent behavior under the W1 unified resolver.
 
     The old pre-launch "No agents detected." guard (which returned 0) is GONE:
@@ -3840,7 +3840,7 @@ class TestNoAgentMessage:
         # The --agent seam is threaded (None until Phase D wires the flag).
         assert mock_run.call_args.kwargs["explicit_agent"] is None
 
-    def test_start_no_agent_resolution_error_propagates(self):
+    def test_start_unset_agent_resolution_error_propagates(self):
         """Nothing named an agent → resolve_agent raises AgentUnsetError from
         _run_container; run_start does NOT swallow it into a return 0."""
         from kanibako.errors import AgentUnsetError
@@ -3856,11 +3856,11 @@ class TestNoAgentMessage:
     def test_shell_still_works_without_agent(self, start_mocks):
         """run_shell calls _run_container directly — no agent check."""
         from kanibako.commands.start import run_shell
-        from kanibako.targets.no_agent import NoAgentTarget
+        from kanibako.targets.shell import ShellTarget
 
         with start_mocks() as m:
-            # Make resolve_target return NoAgentTarget inside _run_container
-            m.resolve_target.return_value = NoAgentTarget()
+            # Make resolve_target return ShellTarget inside _run_container
+            m.resolve_target.return_value = ShellTarget()
             args = argparse.Namespace(
                 shell_args=[],
                 project=None,
@@ -4273,16 +4273,16 @@ class TestApplyInitSeeds:
 class TestBoxShellLaunch:
     """Verify the no-agent launch shell comes from resolve_box_shell (Phase 3).
 
-    The no-agent case is when ``target.default_entrypoint`` is None (NoAgentTarget):
+    The no-agent case is when ``target.default_entrypoint`` is None (ShellTarget):
     ``_run_container`` then resolves the shell via ``resolve_box_shell`` instead of
     a hardcoded ``/bin/bash``.  A real agent (non-None default_entrypoint) keeps
     using its own entrypoint.
     """
 
-    def test_no_agent_persistent_uses_resolved_shell(self, start_mocks):
+    def test_shell_persistent_uses_resolved_shell(self, start_mocks):
         """No-agent persistent launch wraps the resolved shell, not /bin/bash."""
         with start_mocks() as m:
-            m.target.default_entrypoint = None  # NoAgentTarget
+            m.target.default_entrypoint = None  # ShellTarget
             with patch(
                 "kanibako.launch.shells.resolve_box_shell",
                 return_value=("/bin/bash", "image"),
@@ -4306,7 +4306,7 @@ class TestBoxShellLaunch:
             assert "--" in cli_args
             assert cli_args[cli_args.index("--") + 1] == "/bin/bash"
 
-    def test_no_agent_persistent_uses_resolved_zsh(self, start_mocks):
+    def test_shell_persistent_uses_resolved_zsh(self, start_mocks):
         """box.shell=/bin/zsh (resolver result) is the launched inner command."""
         with start_mocks() as m:
             m.target.default_entrypoint = None
@@ -4327,7 +4327,7 @@ class TestBoxShellLaunch:
             cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
             assert cli_args[cli_args.index("--") + 1] == "/bin/zsh"
 
-    def test_no_agent_nonpersistent_uses_resolved_shell_as_entrypoint(self, start_mocks):
+    def test_shell_nonpersistent_uses_resolved_shell_as_entrypoint(self, start_mocks):
         """No-agent ephemeral launch passes the resolved shell as entrypoint."""
         with start_mocks() as m:
             m.target.default_entrypoint = None
@@ -4347,7 +4347,7 @@ class TestBoxShellLaunch:
                 )
             assert m.runtime.run.call_args.kwargs.get("entrypoint") == "/bin/zsh"
 
-    def test_no_agent_passes_runtime_and_image_to_resolver(self, start_mocks):
+    def test_shell_passes_runtime_and_image_to_resolver(self, start_mocks):
         """The resolver is given runtime+image so lazy image-shell backfill works."""
         with start_mocks() as m:
             m.target.default_entrypoint = None
@@ -6169,7 +6169,7 @@ class TestPersonaModelState:
         snap = KeyStore({"agent": {"default": {}, "claude": {}}})
         assert _persona_model_state(snap, "claude") is __MISSING__
 
-    def test_no_agent_node_at_all_is_missing(self):
+    def test_no_node_at_all_is_missing(self):
         from kanibako.commands.start import _persona_model_state
         from kanibako.settings.keystore import KeyStore
         from kanibako.settings.kb_store import __MISSING__
@@ -7638,7 +7638,7 @@ class TestAgentCriticalDests:
 # ---------------------------------------------------------------------------
 
 
-class TestSuppressedBoxLaunchesNoAgent:
+class TestSuppressedBoxLaunchesShell:
     """⚑⚑ THE BIFROST E-NULL REGRESSION — a defect the UNIT seam could not catch.
 
     ``select_agent`` was already correct (``node='' source='suppressed'``); the bug
@@ -7696,7 +7696,7 @@ class TestSuppressedBoxLaunchesNoAgent:
             assert self._run(m) == 0
             m.runtime.run.assert_called_once()
 
-    def test_a_suppressed_box_carries_no_agent_stamp(self, start_mocks):
+    def test_a_suppressed_box_omits_the_agent_stamp(self, start_mocks):
         """No ``KANIBAKO_AGENT``: the stamp is what stop / creds-watch read back to
         run a credential writeback, so a bogus one would restart the whole agent
         lifecycle on a box that has no agent (and re-open the MUST-1 collapse on
@@ -7706,7 +7706,7 @@ class TestSuppressedBoxLaunchesNoAgent:
             env = m.runtime.run.call_args.kwargs["env"]
             assert "KANIBAKO_AGENT" not in env
 
-    def test_a_suppressed_box_delivers_no_agent_binary_mounts(self, start_mocks):
+    def test_a_suppressed_box_delivers_no_binary_mounts(self, start_mocks):
         """The plain-shell shape: no target ⇒ no descriptor, no install, so the
         launch never asks the target for binaries or a config."""
         with start_mocks() as m:
@@ -8546,10 +8546,10 @@ class TestPersonaLiveTierWiring:
         treats a reject as fatal.
         """
         from kanibako.commands.start import _persona_bundle_for, _persona_values_for
-        from kanibako.targets.no_agent import NoAgentTarget
+        from kanibako.targets.shell import ShellTarget
 
         self._store(tmp_home)
-        target = NoAgentTarget()
+        target = ShellTarget()
 
         bundle = _persona_bundle_for(self._NODE, target)
         assert bundle is not None
@@ -8560,7 +8560,7 @@ class TestPersonaLiveTierWiring:
         snap = self._snapshot(std, target=target, persona_values=None)
         assert not dict.get(self._active(snap), "env")
 
-    def test_resolving_a_persona_writes_no_agent_settings_file(
+    def test_resolving_a_persona_writes_no_settings_file(
         self, std, config_file, tmp_home,
     ):
         """⚑ NEVER-PERSIST: the agent settings file is USER-INTENT ONLY.
@@ -9800,7 +9800,7 @@ class TestShellAtALiveBoxResolvesFromTheRunningImage(_RunningBoxDriver):
     ⚑ SCOPED TO A BOX RUNNING AN AGENT, keyed on the live ``KANIBAKO_AGENT``
     stamp — ``self._running(m)`` supplies one.  A live NO-AGENT box's tmux
     session IS the user's own shell, so it must keep reattaching; that is
-    ``test_a_live_no_agent_box_reattaches_to_its_own_shell_session``.
+    ``test_a_live_shell_box_reattaches_to_its_own_shell_session``.
     """
 
     _LIVE_IMAGE = "ghcr.io/doctorjei/live-box:latest"
@@ -9888,7 +9888,7 @@ class TestShellAtALiveBoxResolvesFromTheRunningImage(_RunningBoxDriver):
         assert m.runtime.exec.call_args.args[1] == ["sh"]
         m.runtime.get_local_digest.assert_not_called()
 
-    def test_a_live_no_agent_box_reattaches_to_its_own_shell_session(
+    def test_a_live_shell_box_reattaches_to_its_own_shell_session(
         self, start_mocks,
     ):
         """⚑ THE ARM MUST NOT FIRE AT A LIVE NO-AGENT BOX.  Such a box has PID-1
@@ -9957,7 +9957,7 @@ class TestShellAtALiveBoxResolvesFromTheRunningImage(_RunningBoxDriver):
         assert call.kwargs.get("env") == {"FOO": "bar"}
         assert call.kwargs.get("attach") is not True
 
-    def test_per_run_env_is_still_refused_at_a_live_no_agent_box(
+    def test_per_run_env_is_still_refused_at_a_live_shell_box(
         self, start_mocks, capsys,
     ):
         """⚑ THE MUTATION GUARD for ``stored_agent`` in that condition.  Relaxed

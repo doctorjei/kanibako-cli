@@ -8,7 +8,7 @@ is pure apart from ``Path.exists()`` checks in :func:`descriptor_mounts` /
 divergent LOGIC stays behind the plugin ``Target`` hook methods.
 
 LIVE in ``commands/start.py`` for every descriptor-bearing target; the only
-descriptor-less one is ``NoAgentTarget`` (the ``kanibako shell`` fallback), which
+descriptor-less one is ``ShellTarget`` (the ``kanibako shell`` fallback), which
 launches a plain shell with no agent argv and no delivery binds.
 
 Design, history and the full case tables: ``llm-docs/kanibako/targets/assembly.py.md``.
