@@ -523,9 +523,9 @@ def _check_vscode(config_home: Path | None = None) -> list[tuple[str, str, str]]
 
     # 3. dev.containers.dockerPath in the user settings.json.
     if config_home is None:
-        from kanibako.settings.paths import xdg
+        from kanibako.settings.paths import user_config_home
 
-        config_home = xdg("XDG_CONFIG_HOME", ".config")
+        config_home = user_config_home()
     settings_path = config_home / "Code" / "User" / "settings.json"
     results.append(_check_vscode_docker_path(settings_path))
 
@@ -534,7 +534,7 @@ def _check_vscode(config_home: Path | None = None) -> list[tuple[str, str, str]]
 
 def run_system_diagnose(args: object) -> int:
     """Run full system diagnostics."""
-    from kanibako.settings.config import config_file_path, load_config, load_merged_config
+    from kanibako.settings.config import user_config_file, load_config, load_merged_config
     from kanibako.settings.paths import load_std_paths, xdg
 
     print("Kanibako System Diagnostics")
@@ -553,8 +553,7 @@ def run_system_diagnose(args: object) -> int:
     # Image
     merged = None
     try:
-        config_home = xdg("XDG_CONFIG_HOME", ".config")
-        cf = config_file_path(config_home)
+        cf = user_config_file()
         merged = load_merged_config(cf, None)
         status, detail = _check_image(merged)
         print(_format_check(status, "Image", detail))
@@ -577,8 +576,7 @@ def run_system_diagnose(args: object) -> int:
     # the catch site instead would emit it out of sequence AND leave Journal
     # still saying `cannot check`.
     try:
-        config_home = xdg("XDG_CONFIG_HOME", ".config")
-        cf = config_file_path(config_home)
+        cf = user_config_file()
         std = load_std_paths(load_config(cf))
     except KanibakoError as e:
         std = None
@@ -600,8 +598,7 @@ def run_system_diagnose(args: object) -> int:
 
     # Storage
     try:
-        config_home = xdg("XDG_CONFIG_HOME", ".config")
-        cf = config_file_path(config_home)
+        cf = user_config_file()
         from kanibako.settings.config import bootstrap_config_paths
         from kanibako.settings.paths import resolve_system_paths
         data_home = xdg("XDG_DATA_HOME", ".local/share")
@@ -647,11 +644,10 @@ def run_system_diagnose(args: object) -> int:
 
 def run_box_diagnose(args: object) -> int:
     """Run diagnostics for a specific project box."""
-    from kanibako.settings.config import config_file_path, load_config
-    from kanibako.settings.paths import load_std_paths, resolve_any_project, xdg
+    from kanibako.settings.config import user_config_file, load_config
+    from kanibako.settings.paths import load_std_paths, resolve_any_project
 
-    config_home = xdg("XDG_CONFIG_HOME", ".config")
-    cf = config_file_path(config_home)
+    cf = user_config_file()
     config = load_config(cf)
     std = load_std_paths(config)
 
@@ -731,8 +727,7 @@ def run_box_diagnose(args: object) -> int:
 
 def run_rig_diagnose(args: object) -> int:
     """Run diagnostics for rig/image status."""
-    from kanibako.settings.config import config_file_path, load_merged_config
-    from kanibako.settings.paths import xdg
+    from kanibako.settings.config import user_config_file, load_merged_config
 
     print("Rig (Image) Diagnostics")
     print("=" * 40)
@@ -746,8 +741,7 @@ def run_rig_diagnose(args: object) -> int:
     print(_format_check(status, "Container runtime", detail))
 
     try:
-        config_home = xdg("XDG_CONFIG_HOME", ".config")
-        cf = config_file_path(config_home)
+        cf = user_config_file()
         merged = load_merged_config(cf, None)
         status, detail = _check_image(merged)
         print(_format_check(status, "Configured image", detail))
@@ -795,9 +789,8 @@ def _diagnose_baseline(args: object, errors: _SettingsErrorLog) -> None:
     body naming both checks.  The caller emits it.
     """
     from kanibako.runtime import baseline as baseline_mod
-    from kanibako.settings.config import config_file_path, load_merged_config
+    from kanibako.settings.config import user_config_file, load_merged_config
     from kanibako.runtime.container import ContainerRuntime
-    from kanibako.settings.paths import xdg
 
     only = getattr(args, "only", None)
     skip = getattr(args, "skip", None)
@@ -828,8 +821,7 @@ def _diagnose_baseline(args: object, errors: _SettingsErrorLog) -> None:
             return
     else:
         try:
-            config_home = xdg("XDG_CONFIG_HOME", ".config")
-            merged = load_merged_config(config_file_path(config_home), None)
+            merged = load_merged_config(user_config_file(), None)
             images = [merged.box_image]
         except KanibakoError as e:
             _report_settings_error("  Baseline", e, errors)

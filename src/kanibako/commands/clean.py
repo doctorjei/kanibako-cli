@@ -37,9 +37,8 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
 
 
 def run(args: argparse.Namespace) -> int:
-    from kanibako.settings.paths import xdg
-    from kanibako.settings.config import config_file_path
-    config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+    from kanibako.settings.config import user_config_file
+    config_file = user_config_file()
     config = load_config(config_file)
     std = load_std_paths(config)
 

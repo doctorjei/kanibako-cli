@@ -110,11 +110,10 @@ def _settings_paths() -> tuple[Path, Path]:
     (``read_system_agent``) and ``system.setup_completed`` (``read_setup_completed``,
     moved here 2026-08-26).
     """
-    from kanibako.settings.config import config_file_path, load_config
-    from kanibako.settings.paths import load_std_paths, xdg
+    from kanibako.settings.config import user_config_file, load_config
+    from kanibako.settings.paths import load_std_paths
 
-    config_home = xdg("XDG_CONFIG_HOME", ".config")
-    cf = config_file_path(config_home)
+    cf = user_config_file()
     std = load_std_paths(load_config(cf))
     return cf, std.settings
 
@@ -478,11 +477,9 @@ def run_setup(args: argparse.Namespace) -> int:
     from kanibako.commands.diagnose import _check_image
 
     try:
-        from kanibako.settings.config import config_file_path, load_merged_config
-        from kanibako.settings.paths import xdg
+        from kanibako.settings.config import user_config_file, load_merged_config
 
-        config_home = xdg("XDG_CONFIG_HOME", ".config")
-        cf = config_file_path(config_home)
+        cf = user_config_file()
         merged = load_merged_config(cf, None)
         status, detail = _check_image(merged)
         if status == "ok":

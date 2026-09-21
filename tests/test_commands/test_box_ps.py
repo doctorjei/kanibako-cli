@@ -37,7 +37,7 @@ def _mock_patches(mock_runtime, names=None):
         names = {"projects": {}, "worksets": {}}
     return (
         patch("kanibako.commands.box._parser.ContainerRuntime", return_value=mock_runtime),
-        patch("kanibako.commands.box._parser.config_file_path"),
+        patch("kanibako.commands.box._parser.user_config_file"),
         patch("kanibako.commands.box._parser.load_config"),
         patch("kanibako.commands.box._parser.load_std_paths", return_value=MagicMock(data_path=MagicMock())),
         patch("kanibako.commands.box._parser.iter_projects", return_value=[]),
@@ -94,7 +94,7 @@ class TestBoxPs:
         with (
             patch("kanibako.commands.box._parser.ContainerRuntime",
                   side_effect=ContainerError("No runtime")),
-            patch("kanibako.commands.box._parser.config_file_path"),
+            patch("kanibako.commands.box._parser.user_config_file"),
             patch("kanibako.commands.box._parser.load_config"),
             patch("kanibako.commands.box._parser.load_std_paths",
                   return_value=MagicMock(data_path=MagicMock())),
@@ -146,7 +146,7 @@ class TestRunList:
 
         with (
             patch("kanibako.commands.box._parser.ContainerRuntime", return_value=mock_runtime),
-            patch("kanibako.commands.box._parser.config_file_path"),
+            patch("kanibako.commands.box._parser.user_config_file"),
             patch("kanibako.commands.box._parser.load_config"),
             patch("kanibako.commands.box._parser.load_std_paths",
                   return_value=MagicMock(data_path=MagicMock())),
@@ -189,7 +189,7 @@ class TestRunList:
 
         with (
             patch("kanibako.commands.box._parser.ContainerRuntime", return_value=mock_runtime),
-            patch("kanibako.commands.box._parser.config_file_path"),
+            patch("kanibako.commands.box._parser.user_config_file"),
             patch("kanibako.commands.box._parser.load_config"),
             patch("kanibako.commands.box._parser.load_std_paths",
                   return_value=MagicMock(data_path=MagicMock())),
@@ -218,7 +218,7 @@ class TestRunList:
 
         with (
             patch("kanibako.commands.box._parser.ContainerRuntime", return_value=mock_runtime),
-            patch("kanibako.commands.box._parser.config_file_path"),
+            patch("kanibako.commands.box._parser.user_config_file"),
             patch("kanibako.commands.box._parser.load_config"),
             patch("kanibako.commands.box._parser.load_std_paths",
                   return_value=MagicMock(data_path=MagicMock())),
@@ -246,7 +246,7 @@ class TestRunList:
 
         with (
             patch("kanibako.commands.box._parser.ContainerRuntime", return_value=mock_runtime),
-            patch("kanibako.commands.box._parser.config_file_path"),
+            patch("kanibako.commands.box._parser.user_config_file"),
             patch("kanibako.commands.box._parser.load_config"),
             patch("kanibako.commands.box._parser.load_std_paths",
                   return_value=MagicMock(data_path=MagicMock())),
@@ -277,7 +277,7 @@ class TestRunList:
         with (
             patch("kanibako.commands.box._parser.ContainerRuntime",
                   side_effect=ContainerError("No runtime")),
-            patch("kanibako.commands.box._parser.config_file_path"),
+            patch("kanibako.commands.box._parser.user_config_file"),
             patch("kanibako.commands.box._parser.load_config"),
             patch("kanibako.commands.box._parser.load_std_paths",
                   return_value=MagicMock(data_path=MagicMock())),
@@ -317,7 +317,7 @@ class TestRunList:
 
         with (
             patch("kanibako.commands.box._parser.ContainerRuntime", return_value=mock_runtime),
-            patch("kanibako.commands.box._parser.config_file_path"),
+            patch("kanibako.commands.box._parser.user_config_file"),
             patch("kanibako.commands.box._parser.load_config"),
             patch("kanibako.commands.box._parser.load_std_paths",
                   return_value=MagicMock(data_path=MagicMock())),

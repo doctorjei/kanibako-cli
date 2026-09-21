@@ -319,6 +319,16 @@ def xdg(env_var: str, default_suffix: str) -> Path:
     return resolve_xdg(env_var, default_suffix)
 
 
+def user_config_home() -> Path:
+    """The XDG config base dir — the ONE internal resolver for directory users ([R154]).
+
+    ⚑ NOT A KEY: [R154] refuses a companion ``config_home`` key by name — 18 sites use
+    this value as a DIRECTORY, two outside kanibako's tree entirely (VS Code's
+    ``settings.json``, the persona-grata root), so they route through here instead.
+    """
+    return xdg(XDG_CONFIG_HOME, XDG_SPEC_DEFAULTS[XDG_CONFIG_HOME])
+
+
 def spec_default_xdg_map(data_home: Path | None) -> dict[str, str]:
     """The XDG vars that HAVE a spec default (data/config/state/cache) — no ``XDG_RUNTIME_DIR``.
 
@@ -682,8 +692,7 @@ def resolve_data_path(*, config_home: Path | None = None,
     ``$XDG_RUNTIME_DIR`` (no shipped default does) degrades to the default rather than
     resolving it — an acceptable trade for staying total and side-effect-free.
     """
-    ch = config_home if config_home is not None else xdg(XDG_CONFIG_HOME,
-                                                          XDG_SPEC_DEFAULTS[XDG_CONFIG_HOME])
+    ch = config_home if config_home is not None else user_config_home()
     dh = data_home if data_home is not None else xdg(XDG_DATA_HOME,
                                                       XDG_SPEC_DEFAULTS[XDG_DATA_HOME])
     try:
@@ -726,8 +735,7 @@ def resolve_state_path(*, config_home: Path | None = None,
     ``system.state`` a user stored as an expression over ``$XDG_RUNTIME_DIR`` degrades to
     the default instead of resolving — the same trade, made the same way.
     """
-    ch = config_home if config_home is not None else xdg(XDG_CONFIG_HOME,
-                                                          XDG_SPEC_DEFAULTS[XDG_CONFIG_HOME])
+    ch = config_home if config_home is not None else user_config_home()
     dh = data_home if data_home is not None else xdg(XDG_DATA_HOME,
                                                       XDG_SPEC_DEFAULTS[XDG_DATA_HOME])
     xdg_vars = spec_default_xdg_map(dh)
@@ -743,7 +751,7 @@ def resolve_state_path(*, config_home: Path | None = None,
 
 def load_std_paths(config: BootstrapConfig | None = None) -> StandardPaths:
     """Compute all standard kanibako directories, creating them as needed."""
-    config_home = xdg(XDG_CONFIG_HOME, XDG_SPEC_DEFAULTS[XDG_CONFIG_HOME])
+    config_home = user_config_home()
     data_home = xdg(XDG_DATA_HOME, XDG_SPEC_DEFAULTS[XDG_DATA_HOME])
     state_home = xdg(XDG_STATE_HOME, XDG_SPEC_DEFAULTS[XDG_STATE_HOME])
     cache_home = xdg(XDG_CACHE_HOME, XDG_SPEC_DEFAULTS[XDG_CACHE_HOME])

@@ -23,6 +23,7 @@ _BOX_SCALAR_FIELDS: dict[str, str] = {'box.image': 'box_image', 'box.share_image
 ```
 def coerce_bool(value: object) -> bool | None
 def config_file_path(config_home: Path) -> Path
+def user_config_file() -> Path
 def bootstrap_config_paths(path: Path) -> dict[str, str]
 def system_path_set_values(settings_path: Path) -> dict[str, str]
 def config_base_path() -> Path

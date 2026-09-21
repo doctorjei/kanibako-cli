@@ -8,10 +8,10 @@ import tarfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-from kanibako.settings.config import config_file_path, load_config
+from kanibako.settings.config import user_config_file, load_config
 from kanibako.errors import GitError
 from kanibako.git import check_uncommitted, check_unpushed, get_metadata, is_git_repo
-from kanibako.settings.paths import xdg, load_std_paths, resolve_any_project
+from kanibako.settings.paths import load_std_paths, resolve_any_project
 
 
 def add_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -35,7 +35,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
 
 
 def run(args: argparse.Namespace) -> int:
-    config_file = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+    config_file = user_config_file()
     config = load_config(config_file)
     std = load_std_paths(config)
 

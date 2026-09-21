@@ -1278,11 +1278,10 @@ def is_config_file_only_key(key: str) -> bool:
 def _user_config_file_str() -> "Path | str":
     """The RESOLVED user bootstrap config file, for refusal messages."""
     # ⚑ ERROR path — it must never itself raise; the literal default is the fallback.
-    from kanibako.settings.config import config_file_path
-    from kanibako.settings.paths import xdg
+    from kanibako.settings.config import user_config_file
 
     try:
-        return config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+        return user_config_file()
     except Exception:
         return f"~/.config/{CONFIG_FILE}"
 

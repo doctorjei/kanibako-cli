@@ -7,7 +7,7 @@ import sys
 
 from kanibako import __version__
 from kanibako.commands.flags import add_null_flag
-from kanibako.settings.config import config_file_path, load_config
+from kanibako.settings.config import user_config_file, load_config
 from kanibako.settings.paths import xdg
 
 
@@ -136,8 +136,7 @@ def run_info(args: argparse.Namespace) -> int:
     """Show system information: version, paths, runtime."""
     import platform
 
-    config_home = xdg("XDG_CONFIG_HOME", ".config")
-    cf = config_file_path(config_home)
+    cf = user_config_file()
 
     print(f"Kanibako v{__version__}")
     print(f"Python:    {platform.python_version()}")
@@ -281,8 +280,7 @@ def _run_system_config(args: argparse.Namespace) -> int:
     """
     from kanibako.settings.paths import load_std_paths
 
-    config_home = xdg("XDG_CONFIG_HOME", ".config")
-    cf = config_file_path(config_home)
+    cf = user_config_file()
     # The system SETTINGS file (separate from the kanibako.cfg CONFIG file).
     std = load_std_paths(load_config(cf))
     ssp = std.settings

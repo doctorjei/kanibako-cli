@@ -23,7 +23,7 @@ from pathlib import Path
 import yaml
 
 from kanibako.settings.bootstrap import SITE_CONFIG_DIR
-from kanibako.settings.paths import xdg
+from kanibako.settings.paths import user_config_home
 
 # Filename used both for the shipped default (in kanibako.data) and the overlays.
 BASELINE_FILENAME = "image-baseline.yaml"
@@ -59,7 +59,7 @@ def _shipped_default() -> dict[str, list[str]]:
 
 def _overlay_paths() -> list[Path]:
     """Overlay locations, in additive merge order (machine then user)."""
-    config_home = xdg("XDG_CONFIG_HOME", ".config")
+    config_home = user_config_home()
     return [
         Path(SITE_CONFIG_DIR) / BASELINE_FILENAME,
         config_home / "kanibako" / BASELINE_FILENAME,

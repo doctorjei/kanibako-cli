@@ -146,10 +146,9 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
 
 def _config_file() -> Path:
     """The Layer-1 CONFIG file's path — this module's ONE recipe for locating it."""
-    from kanibako.settings.config import config_file_path
-    from kanibako.settings.paths import xdg
+    from kanibako.settings.config import user_config_file
 
-    return config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
+    return user_config_file()
 
 
 def _load_std() -> StandardPaths:
