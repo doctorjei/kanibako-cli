@@ -494,6 +494,45 @@ class TestTheEnvConsumerReadsTheLeaf:
             for key in core_defaults.env_default_categories()
         }
 
+    @staticmethod
+    def _core_file_env_passthroughs() -> dict[str, str]:
+        """Delivered VAR → the host ``$VAR`` its declared value passes through.
+
+        The subset of :meth:`_core_file_env_vars` whose declared value IS exactly one
+        whole-value host variable — the only shape that can answer ABSENCE and drop
+        its key rather than deliver something (spec, ``box.env.COLORTERM``).
+        ⚑ DERIVED off the same section, by the production predicate: a new
+        passthrough row moves both cases below with no edit here, and no VAR is
+        named in this file.
+        """
+        from kanibako.settings import core_defaults
+        from kanibako.settings.settings_categories import ENV_KEY_RE
+        from kanibako.settings.settings_expand import _is_whole_value_var
+
+        table: dict[str, str] = {}
+        for key, value in core_defaults.env_default_categories().items():
+            var = _is_whole_value_var(value)
+            if var is not None:
+                table[ENV_KEY_RE.match(key).group("name")] = var
+        return table
+
+    @classmethod
+    def _core_file_env_vars_answering_absent(cls) -> set[str]:
+        """Of those, the ones THIS host withholds — the launch drops the key outright.
+
+        ⚑ Asked of ``settings_resolve.resolve_var``, the production three-state
+        primitive, NOT of ``os.environ``: a variable with a FALLBACK (``$TERM``)
+        answers even when the host exports nothing, and belongs in the delivered set.
+        The question is whether the declared EXPRESSION answers.
+        """
+        from kanibako.settings.settings_resolve import UNSET, ResolveCtx, resolve_var
+
+        ctx = ResolveCtx(agent_name=None, workset_name=None, host_home="/", xdg={})
+        return {
+            name for name, var in cls._core_file_env_passthroughs().items()
+            if resolve_var(var, ctx) is UNSET
+        }
+
     def _env(self, std, config, project_dir, floor=None):
         """The container env the way the launch builds it: leaf → consumer."""
         from kanibako.commands.start import _build_config_env, _launch_env_map
@@ -513,7 +552,9 @@ class TestTheEnvConsumerReadsTheLeaf:
         assert env["KANI_PINNED"] == "workset"
         assert env["KANI_ONLY_WORKSET"] == "ws-only"
 
-    def test_the_leaf_is_the_WHOLE_config_env(self, std, config, project_dir):
+    def test_the_leaf_is_the_WHOLE_config_env(
+        self, std, config, project_dir, monkeypatch,
+    ):
         """🛑 REPLACES ``test_the_agent_tier_stays_the_UNDER_layer`` (MBR-1 P3).
 
         That test pinned an ``AgentConfig.env`` dict handed to the consumer beside
@@ -536,11 +577,56 @@ class TestTheEnvConsumerReadsTheLeaf:
         ⚑ ``_WiringTarget`` declares no ``default_envs()`` of its own (it inherits
         ``NoAgentTarget``'s empty table), so the agent scope contributes nothing to
         this difference and the two core sources are all of it.
+
+        🛑 THE HOST STATE IS PINNED, NOT INHERITED, and it is half the property. One
+        of core's file rows is a PASSTHROUGH, so what core delivers depends on the
+        machine the suite runs on; asserting the full set while inheriting whatever
+        the developer's terminal exported made this case green here and red on a host
+        that sets nothing. Its twin below pins the other state. Neither names a VAR.
         """
+        for var in self._core_file_env_passthroughs().values():
+            monkeypatch.setenv(var, f"host-{var}")
+        assert not self._core_file_env_vars_answering_absent(), (
+            "anti-vacuity: every declared passthrough was just given a host value, "
+            "so none may still answer absent"
+        )
         env = self._env(std, config, project_dir)
         declared = {"KANI_PINNED", "KANI_ONLY_WORKSET"}
         assert declared <= set(env)
         assert set(env) - declared == self._CORE_STAMPS | self._core_file_env_vars()
+
+    def test_the_leaf_is_the_whole_config_env_when_the_host_withholds_a_passthrough(
+        self, std, config, project_dir, monkeypatch,
+    ):
+        """The twin state: the host sets no passthrough, so core delivers fewer VARs.
+
+        ⚑ THE CLAIM IS THE SAME ONE — no channel BESIDE the leaf — and it is worth
+        keeping in BOTH states rather than planting a host value to make one state
+        go away. What changes is only the expected set: a passthrough that answers
+        absent DROPS its key (§6b), so the difference is both core sources MINUS
+        exactly what the host withheld.
+
+        ⚑ The subtraction is DERIVED from the declaration and the host, so a row
+        that stops being a passthrough, or a host that sets one, moves this case
+        instead of breaking it.
+        """
+        for var in self._core_file_env_passthroughs().values():
+            monkeypatch.delenv(var, raising=False)
+        withheld = self._core_file_env_vars_answering_absent()
+        assert withheld, (
+            "anti-vacuity: with every declared passthrough unset, at least one must "
+            "answer absent or this case pins the same state as its twin above"
+        )
+        env = self._env(std, config, project_dir)
+        declared = {"KANI_PINNED", "KANI_ONLY_WORKSET"}
+        assert declared <= set(env)
+        assert set(env) - declared == self._CORE_STAMPS | (
+            self._core_file_env_vars() - withheld
+        )
+        assert not withheld & set(env), (
+            "a VAR whose declared value answered absent still reached the container "
+            "env, so something delivers it beside the leaf"
+        )
 
     def test_a_VAR_named_by_two_scopes_never_reaches_the_consumer(
         self, std, config, project_dir,

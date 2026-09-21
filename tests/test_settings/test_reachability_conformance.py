@@ -7,7 +7,24 @@ The property, stated once:
   ``default:`` for box mode *m* — the arm for *m* being neither ``null``, nor ``{}``,
   nor a ``<prose placeholder>`` — the key ANSWERS in mode *m*: FOR ANY BOX THAT EXISTS
   IN MODE *m*, a whole-value ``@K`` reference resolves to a non-``__MISSING__``
-  terminal.
+  terminal — UNLESS (iii) the row DECLARES ``may_answer_absent:``, which says absence
+  IS that default's own answer.
+
+⚑⚑ (iii) IS A SHARPENING, NOT A WEAKENING, and that distinction is the whole of it. P
+now reads: EVERY DECLARED DEFAULT EITHER RESOLVES, OR DECLARES THAT IT MAY ANSWER
+ABSENT. Both halves are read OFF THE ROW, so no dangle goes unexplained and nothing here
+names a key. The arm exists because a default that legitimately resolves to absence
+became expressible: ``box.env.COLORTERM`` declares ``$COLORTERM``, a PASSTHROUGH of a
+host signal, and the ratified spec row says the box gets NO such variable when the host
+sets none. P was written when no such default could exist. Jei, 2026-09-20, choosing a
+declared arm over the alternatives: *"(i) seems like the best for posterity, so unless
+there's another argument, lets do that."*
+
+🛑 AND IT IS NOT AN EXEMPTION LIST. The arm is DATA ON THE ROW, readable by anything
+that reads the manifest, and ``test_the_absent_arm_is_only_legal_on_a_passthrough``
+below bounds it to the ONE default shape that can answer absence. A key name in this
+file, a regex on a variable name, or an ``if key == …`` would be the carve-out the arm
+exists to avoid.
 
 ⚑⚑ THE TERMINUS IS NOT A NAMED OBJECT.  It is ANY resolve the production path performs
 for a box THAT ALREADY EXISTS — and K answers if it reaches a terminal in ANY of them.
@@ -50,12 +67,12 @@ discriminator, no allow-list and no exemption table:
 * NOTHING ABOUT THE VALUE.  ``_PATH_ORACLE`` in
   ``tests/test_settings/test_manifest_conformance.py`` owns value correctness; P owns
   existence.  Two properties, two carriers, no overlap.
-* NO EXEMPTION TABLE.  The exclusions in (i)/(ii) are read off each manifest row
+* NO EXEMPTION TABLE.  The exclusions in (i)/(ii)/(iii) are read off each manifest row
   itself — the same mechanism ``tests/test_settings/test_set_column_conformance.py``
-  uses for its ``set:`` column.  Declaring a key, retiring one, or filling in a
-  ``null`` arm moves this file with NO edit here.  ⚑ AND NO PER-KEY DATA ANYWHERE:
-  there is no key named in this file that gets treated differently from any other.
-  One definition, applied identically to every row.
+  uses for its ``set:`` column.  Declaring a key, retiring one, filling in a ``null``
+  arm, or declaring ``may_answer_absent:`` moves this file with NO edit here.
+  ⚑ AND NO PER-KEY DATA ANYWHERE: there is no key named in this file that gets treated
+  differently from any other.  One definition, applied identically to every row.
 
 TERMINUS ROUTING, derived from the manifest and not special-cased:
 
@@ -116,6 +133,11 @@ MODES = ("primary", "named", "standalone")
 # a corpus that collapsed to nothing would otherwise pass every assertion below.
 _CORPUS_FLOOR = {"primary": 45, "named": 45, "standalone": 38}
 _DEMAND_EDGE_FLOOR = 30
+
+#: The manifest field that carries exclusion (iii) — spelled ONCE, here, so the corpus
+#: builder and the bound on the arm read the same name.  ⚑ It is the FIELD's name, not
+#: a key's: nothing in this file may name a KEY.
+_ABSENT_ARM = "may_answer_absent"
 
 
 # ---------------------------------------------------------------------------
@@ -318,6 +340,18 @@ def _default_arm(row: dict, mode: str) -> object:
   return declared
 
 
+def _may_answer_absent(row: dict) -> bool:
+  """Exclusion (iii), read off the row: does *row* DECLARE that absence is an answer?
+
+  ⚑ THE ROW STAYS IN THE CORPUS.  Only the DANGLE verdict changes — which is the
+  narrowest place the arm can act.  Dropping the row from :func:`_corpus` instead would
+  also silence D (demand) and F (family closure) for it, and a key another declaration
+  ``@``-references is a defect worth reporting whether or not its own absence is
+  declared: the demander still collapses.
+  """
+  return bool(row.get(_ABSENT_ARM))
+
+
 def _corpus(mode: str) -> "dict[str, dict]":
   """The rows P applies to in *mode*."""
   return {
@@ -347,12 +381,23 @@ def _answers(key: str, row: dict, termini, ctx) -> bool:
   return bool(_answering_termini(key, row, termini, ctx))
 
 
-def _partition(mode: str, termini, ctx) -> "tuple[list[str], list[str]]":
-  """``(ANSWERS, DANGLES)`` for *mode*, both sorted."""
-  answers, dangles = [], []
+def _partition(mode: str, termini, ctx) -> "tuple[list[str], list[str], list[str]]":
+  """``(ANSWERS, DANGLES, DECLARED-ABSENT)`` for *mode*, all sorted.
+
+  The third bucket is exclusion (iii): a corpus row that does not answer AND declares
+  :data:`_ABSENT_ARM`.  It is REPORTED rather than silently folded into the first,
+  because "answers here" and "declares that it need not" are different facts and a
+  reader of the output is owed both.
+  """
+  answers, dangles, declared_absent = [], [], []
   for key, row in sorted(_corpus(mode).items()):
-    (answers if _answers(key, row, termini, ctx) else dangles).append(key)
-  return answers, dangles
+    if _answers(key, row, termini, ctx):
+      answers.append(key)
+    elif _may_answer_absent(row):
+      declared_absent.append(key)
+    else:
+      dangles.append(key)
+  return answers, dangles, declared_absent
 
 
 # ---------------------------------------------------------------------------
@@ -516,6 +561,43 @@ class TestTheCorpusAndTheProbe:
     }
     assert not stray, f"dict defaults keyed by something other than a mode: {stray}"
 
+  def test_the_absent_arm_is_only_legal_on_a_passthrough(self):
+    """Exclusion (iii) is BOUNDED by the shape of the default it qualifies.
+
+    ⚑⚑ THIS IS WHAT KEEPS THE ARM FROM BECOMING AN EXEMPTION LIST IN YAML.  A row may
+    declare that its default MAY answer absent only where EVERY arm of that default IS
+    one whole-value host ``$VAR`` — a PASSTHROUGH, the single shape that can resolve to
+    absence instead of a value (spec §2c: a whole-value reference with an absent
+    referent drops its key; ``settings_expand._is_whole_value_var`` decides the shape,
+    and it is the production predicate, not a second copy of the grammar).  Put the arm
+    on a literal, an ``@``-ref or an embedded token and this REDS: there, absence is a
+    dangle and P still says so.
+
+    ⚑ The carrier floor is MEASURED, like ``_CORPUS_FLOOR`` — it reds on the machinery
+    going dead.  Retiring the last passthrough is a deliberate edit here, not a silent
+    slide into an untested branch.
+    """
+    from kanibako.settings.settings_expand import _is_whole_value_var
+
+    carriers = {
+      key: row for key, row in _static_rows().items() if _may_answer_absent(row)
+    }
+    ill_formed = {
+      key: row.get("default") for key, row in carriers.items()
+      if not all(
+        isinstance(arm, str) and _is_whole_value_var(arm) is not None
+        for arm in _arms(row.get("default")).values()
+      )
+    }
+    assert not ill_formed, (
+      f"{_ABSENT_ARM} declared on a default that cannot answer absence — only a "
+      f"whole-value host $VAR can: {ill_formed}"
+    )
+    assert carriers, (
+      f"no row carries {_ABSENT_ARM} any more; exclusion (iii) is now untested "
+      f"machinery — remove it, or remove this floor on purpose"
+    )
+
   @pytest.mark.parametrize("mode", MODES)
   def test_every_mode_yields_a_snapshot_and_something_answers(
     self, mode, request, std, config_file,
@@ -556,10 +638,10 @@ class TestTheCorpusAndTheProbe:
       key in ctx.config for key, row in corpus.items() if row.get("layer") == 1
     ), f"{mode}: the layer-1 flat foundation answers NOTHING"
 
-    answers, dangles = _partition(mode, termini, ctx)
+    answers, dangles, declared_absent = _partition(mode, termini, ctx)
     assert answers, f"{mode}: NOTHING answers — the probe, not the keyspace, is wrong"
     print(f"\n=== P/REACHABILITY · mode={mode} ===")
-    print(f"  corpus  {len(answers) + len(dangles)}")
+    print(f"  corpus  {len(answers) + len(dangles) + len(declared_absent)}")
     for label, snapshot in termini:
       reach = sum(
         1 for key in corpus if snapshot_leaf(snapshot, key) is not __MISSING__
@@ -567,6 +649,8 @@ class TestTheCorpusAndTheProbe:
       print(f"  terminus {label}: {reach} corpus keys")
     print(f"  ANSWERS {len(answers)}: {', '.join(answers)}")
     print(f"  DANGLES {len(dangles)}: {', '.join(dangles) or '(none)'}")
+    print(f"  DECLARED MAY-ANSWER-ABSENT {len(declared_absent)}: "
+          f"{', '.join(declared_absent) or '(none)'}")
 
   @pytest.mark.parametrize("mode", MODES)
   def test_report_where_each_key_answers(self, mode, request, std, config_file):
@@ -625,16 +709,28 @@ class TestEveryDeclaredDefaultAnswers:
   only question the manifest actually promises: a declared default RESOLVES.
 
   ⚑ NO EXEMPTION SET, BY CONSTRUCTION.  The corpus comes from the manifest rows
-  themselves (exclusions (i) and (ii) are read off each row); nothing here names a key.
-  Declaring a key, retiring one, or filling in a ``null`` arm moves this case with no
-  edit — which is what makes it a property rather than a list.
+  themselves (exclusions (i), (ii) and (iii) are read off each row); nothing here names
+  a key.  Declaring a key, retiring one, filling in a ``null`` arm, or declaring
+  ``may_answer_absent:`` moves this case with no edit — which is what makes it a
+  property rather than a list.
+
+  🛑 (iii) IS THE ONE THING THAT MAY EXCUSE A NON-ANSWER, AND IT IS NOT A WEAKENING —
+  see the module docstring.  A row that declares absence as its answer has SAID SO, in
+  the manifest, where every reader of the manifest can see it; a dangle is a default
+  that resolves to nothing and says nothing.  The arm is bounded to one default shape
+  (``test_the_absent_arm_is_only_legal_on_a_passthrough``), so it cannot be reached for
+  to quiet an ordinary dangle.
   """
 
   @pytest.mark.parametrize("mode", MODES)
   def test_no_declared_default_dangles(self, mode, request, std, config_file):
-    """Every corpus key ANSWERS at some resolve a box that already exists performs."""
+    """Every corpus key ANSWERS, or its own row declares that it need not."""
     termini, ctx = _probe(request, std, config_file, mode)
-    _answers, dangles = _partition(mode, termini, ctx)
+    _answers, dangles, declared_absent = _partition(mode, termini, ctx)
+    print(f"\n=== declared MAY-ANSWER-ABSENT and did · mode={mode} "
+          f"({len(declared_absent)}) ===")
+    for key in declared_absent or ["(none)"]:
+      print(f"  {key}")
     assert not dangles, (
       f"mode={mode}: these keys declare a real default that NOTHING installs, so a "
       f"whole-value @-reference to each resolves absent for a box that already "

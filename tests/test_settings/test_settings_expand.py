@@ -993,21 +993,53 @@ def test_embedded_colorterm_substitutes_empty_and_keeps_its_key(
     assert _probe(out, "box", "env", "NOTE") == "color=;"
 
 
-def test_whole_value_colorterm_is_not_resolved_in_deferred_space(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A ``box_dest`` ``$COLORTERM`` stays RAW (S17) — host space only.
+def test_a_whole_value_var_box_side_stays_raw_in_deferred_space() -> None:
+    """A WHOLE-VALUE ``$VAR`` box-side stays RAW (S17) — the guard is the SPACE.
 
-    Pathological as a destination, and asserted anyway: the deferral rule is about the
-    SPACE, not about which variables are well-behaved. Answering it here would resolve
-    a box-side token against the HOST's environment, and on a host with none it would
-    delete a binding.
+    🛑 THE VARIABLE IS DELIBERATELY NOT THE PASSTHROUGH, and that is the case. What
+    the ``space == "host"`` guard protects is S17 for EVERY variable, so the hazard
+    it holds off is the ordinary one: delete the guard and both destinations below
+    resolve against the HOST, baking ``/home/u/.local/share`` into a box path —
+    where ``XDG_DATA_HOME`` names a different directory entirely. A version of this
+    case written with the passthrough and an EMBEDDED token
+    (``"~/c/$COLORTERM"``) asserted none of that: ``_is_whole_value_var`` answers
+    ``None`` on a leading literal, so the guarded branch was never entered and the
+    case passed with the guard deleted.
+
+    ⚑ BOTH box-side shapes, because they reach ``_expand_str`` by different routes:
+    ``Bind.box`` through ``_expand_bind``, a dest KEY through ``_expand_dest_key``.
     """
-    monkeypatch.delenv("COLORTERM", raising=False)
-    out = expand(_arm({"~/c/$COLORTERM": BindEntry("/h/c")}), _ctx())
+    snap = KeyStore({
+        "meta": {"box": {"path": "/data/box"}},
+        "box": {
+            "caches": {"c": Bind("/h/c", "$XDG_DATA_HOME")},
+            "bindings": {"rw": {"$XDG_DATA_HOME": BindEntry("/h/d")}},
+        },
+    })
+    out = expand(snap, _ctx())
+    assert _probe(out, "box", "caches", "c") == Bind("/h/c", "$XDG_DATA_HOME")
     arm = _probe(out, "box", "bindings", "rw")
     assert isinstance(arm, KeyStore)
-    assert set(dict.keys(arm)) == {"~/c/$COLORTERM"}
+    assert set(dict.keys(arm)) == {"$XDG_DATA_HOME"}
+
+
+def test_a_whole_value_passthrough_box_side_defers_instead_of_answering_absent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The passthrough's box-side twin: ``$COLORTERM`` DEFERS, it does not answer.
+
+    Pathological as a destination and asserted anyway, because here the guard's
+    absence would be LOUD and wrong rather than quiet: host-side this expression
+    answers ABSENCE, and a dest key that answers absent RAISES (``_expand_dest_key``
+    — "a box destination cannot resolve to no path"). The space rule is what keeps a
+    box-side token from being put to the host at all, so the key goes out verbatim
+    for the box resolver, on a host that sets the variable and on one that does not.
+    """
+    monkeypatch.delenv("COLORTERM", raising=False)
+    out = expand(_arm({"$COLORTERM": BindEntry("/h/c")}), _ctx())
+    arm = _probe(out, "box", "bindings", "rw")
+    assert isinstance(arm, KeyStore)
+    assert set(dict.keys(arm)) == {"$COLORTERM"}
 
 
 # --------------------------------------------------------------------------- #

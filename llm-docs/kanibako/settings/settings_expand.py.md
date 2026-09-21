@@ -119,8 +119,20 @@ routing them through this path changes nothing.
 
 🛑 **HOST SPACE ONLY, and the guard is at the `_expand_str` call site.** Under `space="defer"` a
 `$VAR` is emitted VERBATIM for the BOX resolver (S17); answering it here would resolve a box-side
-token against the HOST's environment, and on a host with no `COLORTERM` it would silently delete a
-binding instead of deferring it.
+token against the HOST's environment. ⚑ **The reason is S17 for EVERY variable, not the
+passthrough** — a `Bind.box` of `"$XDG_DATA_HOME"` would bake the HOST's
+`/home/<user>/.local/share` into a box destination, where that variable names a different
+directory. The passthrough's own box-side answer would be the LOUD half of the same bug: absence in
+a dest position RAISES (`_expand_dest_key`), it does not delete a binding.
+
+🛑 **THE DROP DOES REACH BINDINGS, host-side, and it is silent.** A whole-value passthrough in a
+binding's HOST SOURCE (`box.bindings.ro: {/x: "$COLORTERM"}`) makes `_expand_bind` /
+`_expand_bind_entry` propagate `_ABSENT`, and `_expand_node` drops the entry with no message — the
+capability simply is not there. That is ONE rule, not a new silence: an absent whole-value
+`@`-referent in the same position has always dropped the same way (§6b), and confining the `$` half
+to the categories that can express absence would give one spelling a cure and the other silence for
+one shape. ⚑ A passthrough is a terminal CLAIM, never a path; naming one as a source is a
+mis-write the expansion cannot tell from a deliberate §6b drop.
 
 ## Cycles, the depth cap, and the memo
 
