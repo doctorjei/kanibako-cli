@@ -24,6 +24,13 @@ sample.  The same anti-vacuity discipline as ``test_defaults_golden.py``: assert
 corpus is the size it was measured at, assert the targets exist, and say why anything
 is left out.
 
+⚑ THE SAME DISCIPLINE COVERS THE ``value:`` CELL (section 4b).  Thirty-one rows carry
+a ``value:`` instead of a ``default:`` — the comparable cell for ``meta.*`` rows — and
+until section 4b existed nothing pinned them: a ``value:`` edit was green by
+construction.  :data:`PINNED_VALUE_KEYS` and :data:`EXEMPT_VALUE_KEYS` partition those
+31 exactly as the default tables partition the 79, and the ten rows carrying NEITHER
+cell are classified by name in :data:`NEITHER_CELL_KEYS` so a lost cell reds here.
+
 ⚑ WHAT IS **NOT** HERE, AND WHERE IT LIVES INSTEAD: the FAMILY half of key-set
 conformance — the 9 category families and the ``categories.scopes`` ``agent.active``
 spelling.  It is **CLOSED**, by ``tests/test_settings/test_manifest_enforces.py`` §4
@@ -57,6 +64,8 @@ from kanibako import kuid
 from kanibako.launch.templates import agent_template_defaults, template_seed_defaults
 from kanibako.settings import core_defaults
 from kanibako.settings.config import (
+    AGENT_META_FILE,
+    WORKSET_META_FILE,
     KanibakoConfig,
     box_scalar_defaults_floor,
     coerce_bool,
@@ -96,7 +105,14 @@ from kanibako.settings.settings_keyspace import (
     access_default,
     key_validity,
 )
-from kanibako.settings.settings_launch import auth_chain_floor, workset_anchor_floor
+from kanibako.settings.settings_launch import (
+    auth_chain_floor,
+    meta_agent_grammar_floor,
+    meta_agent_path_floor,
+    meta_identity_floor,
+    meta_runtime_floor,
+    workset_anchor_floor,
+)
 from kanibako.settings.settings_resolve import SettingsError
 from kanibako.settings.bootstrap import CONFIG_PATH_DEFAULTS, SYSTEM_PATH_DEFAULTS
 
@@ -130,6 +146,11 @@ def _keys() -> dict:
 def _default(key: str) -> object:
     """The manifest's declared ``default:`` for *key* — KeyError if the row has none."""
     return _keys()[key]["default"]
+
+
+def _value(key: str) -> object:
+    """The manifest's declared ``value:`` for *key* — KeyError if the row has none."""
+    return _keys()[key]["value"]
 
 
 def _per_mode(value: object) -> dict[str, object]:
@@ -1269,6 +1290,640 @@ class TestNoOracleExemptions:
         }
 
 
+# --------------------------------------------------------------------------- #
+# 4b. VALUE-cell conformance — the rows whose comparable cell is ``value:``
+# --------------------------------------------------------------------------- #
+#
+# Census 2026-09-22: 120 ``keys:`` rows = 79 ``default:`` + 31 ``value:`` + 0 both +
+# 10 neither.  The 31 ``value:`` rows are the ``meta.*`` comparable cell (the
+# ``meta.box.path`` / ``meta.box.home`` hole that took an outside oracle to surface),
+# and the 10 neither-rows are a third unpinned class the default coverage never saw.
+#
+# TWO PIN SHAPES, following the file's existing idioms.  A LITERAL pin asserts the
+# manifest string and the floor string equal (per mode where the row is a mode map).
+# A ONE-HOP pin is for rows where the floor carries the RESOLVED literal while the
+# manifest declares the formula — the ``workset.workspaces`` shape: the manifest arm is
+# followed one hop against the derivation that owns the ref, never re-resolved.  Where
+# the floor only CARRIES a caller literal (the box-identity addresses), the pin is the
+# manifest formula verbatim plus the passthrough, and the caller wiring is named.
+#
+# ⚑ TWO MEASURED DEVIATIONS from the briefing, both in the pins' favor.  First,
+# ``meta.agent.<agent>.path`` is NOT spelled identically on both sides: the manifest
+# says ``@config.agents/@meta.agent.<agent>.name`` while the floor unrolls the name hop
+# through ``store_dirname`` — so it is pinned as a RELATION (path == ``@config.agents/``
+# + the name floor's value), the one-hop shape, not a string equality that would be
+# false.  Second, ``meta.agent.shell.mode`` is PINNED, not exempt: ``{}`` here is a
+# MATERIALIZED positive declaration (the grammar-floor reader raises on an absence —
+# D2/D4), not the resolver-initial-state emptiness E4 declines.  An exemption reason
+# for it would have been false, which is worse than a re-bucketing.
+#: (ii-a) Value rows floored by ``settings_launch.workset_anchor_floor``.
+_VALUE_ANCHOR_KEYS = (
+    "meta.box.path", "meta.box.home",
+)
+
+#: (ii-b) Value rows floored by ``settings_launch.auth_chain_floor``.
+_VALUE_AUTH_KEYS = (
+    "meta.box.auth.workset_path", "meta.box.agent.auth.share_support",
+)
+
+#: (ii-c) Value rows floored by ``settings_launch.meta_runtime_floor``.
+_VALUE_REROOT_KEYS = (
+    "meta.workset.path", "meta.workset.name", "meta.workset.settings",
+    "meta.box.mode",
+)
+
+#: (ii-d) Value rows floored by the agent-identity builders (``meta_agent_path_floor``,
+#: ``meta_identity_floor``, ``meta_agent_grammar_floor``) — the parametric pair, the
+#: default-tier name literal, and the four shell-fence literals.
+_VALUE_AGENT_IDENTITY_KEYS = (
+    "meta.agent.<agent>.path", "meta.agent.<agent>.settings",
+    "meta.agent.default.name",
+    "meta.agent.shell.path", "meta.agent.shell.name",
+    "meta.agent.shell.settings", "meta.agent.shell.mode",
+)
+
+#: (ii-e) Value rows the identity floor CARRIES as caller literals — the channel
+#: partition addresses, the box-tier file anchor, the workspace source, and the box
+#: name — pinned against the manifest formulas plus the derivation that owns each ref.
+_VALUE_BOX_ADDRESS_KEYS = (
+    "meta.box.inbox", "meta.box.share_global", "meta.box.share_workset",
+    "meta.box.settings", "meta.box.workspace", "meta.box.name",
+)
+
+#: Every manifest ``keys:`` row this section pins a VALUE for: 21.
+PINNED_VALUE_KEYS: frozenset[str] = frozenset(
+    set(_VALUE_ANCHOR_KEYS) | set(_VALUE_AUTH_KEYS) | set(_VALUE_REROOT_KEYS)
+    | set(_VALUE_AGENT_IDENTITY_KEYS) | set(_VALUE_BOX_ADDRESS_KEYS)
+)
+
+
+class TestValueAnchorFormulas:
+    """(ii-a) ``meta.box.path`` / ``meta.box.home`` ARE the anchor floor's formulas.
+
+    The literal half of the hole the board row was filed on: the manifest records no
+    ``default:`` for these rows because the spelling lives in the ``value:`` cell, and
+    nothing compared that cell to ``workset_anchor_floor``.
+    """
+
+    @staticmethod
+    def _floors() -> dict[str, dict[str, object]]:
+        return {mode: workset_anchor_floor(mode=mode) for mode in MODES}
+
+    def test_the_builder_carries_both_rows_in_every_mode(self):
+        """Anti-vacuity: a floor that stopped emitting a row must red HERE."""
+        floors = self._floors()
+        for mode in MODES:
+            missing = [k for k in _VALUE_ANCHOR_KEYS if k not in floors[mode]]
+            assert not missing, f"{mode}: workset_anchor_floor no longer builds {missing}"
+
+    def test_the_manifest_value_is_the_spelled_formula(self):
+        """The manifest side, verbatim — a reworded formula reds before any floor runs."""
+        assert _per_mode(_value("meta.box.path")) == {
+            "primary": "@workset.boxes/@meta.box.name",
+            "named": "@workset.boxes/@meta.box.name",
+            "standalone": "@workset.boxes",
+        }
+        assert _value("meta.box.home") == "@meta.box.path/home"
+
+    @pytest.mark.parametrize("key", _VALUE_ANCHOR_KEYS)
+    def test_the_manifest_value_is_the_floor_formula(self, key):
+        floors = self._floors()
+        want = _per_mode(_value(key))
+        for mode in MODES:
+            assert floors[mode][key] == want[mode], (
+                f"{key} [{mode}]: manifest value says {want[mode]!r}, "
+                f"workset_anchor_floor says {floors[mode][key]!r}"
+            )
+
+    def test_the_home_row_is_the_named_key(self):
+        """``meta.box.home`` is spelled once, as ``BOX_HOME_KEY`` — the assembly seam and
+        ``box show --effective`` read the same constant, so a re-typed string here is a
+        second carrier, not a pin."""
+        from kanibako.settings.settings_launch import BOX_HOME_KEY
+
+        assert BOX_HOME_KEY == "meta.box.home"
+        assert BOX_HOME_KEY in _VALUE_ANCHOR_KEYS
+
+
+class TestValueAuthFormulas:
+    """(ii-b) The auth value rows ARE ``auth_chain_floor``'s per-mode values.
+
+    ``meta.box.auth.workset_path`` pins like the (i-c) default chain, standalone-``None``
+    arm included.  ``meta.box.agent.auth.share_support`` pins as a DOCUMENTED
+    interpolation: the manifest uses the ``<@system.agent>`` node-selector notation and
+    the floor interpolates the selected node, because the resolver cannot express the
+    selector (the floor's own docstring says so) — asserting string equality would pin a
+    spelling the code cannot emit.
+    """
+
+    @staticmethod
+    def _floors() -> dict[str, dict[str, object]]:
+        return {
+            mode: auth_chain_floor(mode=mode, agent_name=PROBE_AGENT) for mode in MODES
+        }
+
+    def test_the_manifest_values_are_the_spelled_formulas(self):
+        assert _per_mode(_value("meta.box.auth.workset_path")) == {
+            "primary": "@workset.auth.path/@system.agent",
+            "named": "@workset.auth.path/@system.agent",
+            "standalone": None,
+        }
+        assert (
+            _value("meta.box.agent.auth.share_support")
+            == "@meta.agent.<@system.agent>.auth.share_support"
+        )
+
+    def test_the_workset_path_value_is_the_floor_value(self):
+        floors = self._floors()
+        want = _per_mode(_value("meta.box.auth.workset_path"))
+        for mode in MODES:
+            assert floors[mode]["meta.box.auth.workset_path"] == want[mode], (
+                f"meta.box.auth.workset_path [{mode}]: manifest value says "
+                f"{want[mode]!r}, auth_chain_floor says "
+                f"{floors[mode]['meta.box.auth.workset_path']!r}"
+            )
+
+    def test_the_capability_mirror_is_the_interpolated_ref(self):
+        """The floor answers the manifest's node-selector with the selected node filled
+        in — the one spelling the resolver can carry.
+
+        (Mutation: interpolate a different node and the launch resolves the mirror
+        against an agent tier that was never materialized.)
+        """
+        floors = self._floors()
+        for mode in MODES:
+            assert floors[mode]["meta.box.agent.auth.share_support"] == (
+                f"@meta.agent.{PROBE_AGENT}.auth.share_support"
+            ), (
+                f"meta.box.agent.auth.share_support [{mode}]: "
+                f"{floors[mode]['meta.box.agent.auth.share_support']!r}"
+            )
+
+
+class TestValueRerootFormulas:
+    """(ii-c) The re-rooted ``meta.*`` values ARE ``meta_runtime_floor``'s formulas.
+
+    Uniform in every mode (the per-mode variation lives one hop down, in
+    ``meta.runtime.ws_root`` / ``ws_name`` — both PROSE rows this section exempts, so
+    the re-root is what is honestly pinnable here).
+    """
+
+    @staticmethod
+    def _floors() -> dict[str, dict[str, object]]:
+        return {
+            "primary": meta_runtime_floor(mode="primary", ws_name="__PRIMARY__"),
+            "named": meta_runtime_floor(
+                mode="named", ws_name="conformance-set",
+                ws_root_literal="/w/conformance-set",
+            ),
+            "standalone": meta_runtime_floor(
+                mode="standalone", ws_name="__STANDALONE__",
+                ws_root_literal="/tmp/proj",
+            ),
+        }
+
+    def test_the_manifest_values_are_the_spelled_formulas(self):
+        assert _value("meta.workset.path") == "@meta.runtime.ws_root"
+        assert _value("meta.workset.name") == "@meta.runtime.ws_name"
+        assert _value("meta.workset.settings") == "@meta.workset.path/workset.yaml"
+        assert _value("meta.box.mode") == "@meta.runtime.project_type"
+
+    def test_the_settings_leaf_is_the_one_carrier(self):
+        """The filename is drawn from ``WORKSET_META_FILE``, never re-typed — the spec
+        fixes the ``@``-anchor, and the floor's own comment says the leaf comes from
+        its one carrier."""
+        assert WORKSET_META_FILE == "workset.yaml"
+
+    @pytest.mark.parametrize("key", _VALUE_REROOT_KEYS)
+    def test_the_manifest_value_is_the_floor_formula(self, key):
+        floors = self._floors()
+        want = _value(key)
+        assert not isinstance(want, dict), f"{key} is no longer uniform — move it"
+        for mode in MODES:
+            assert floors[mode][key] == want, (
+                f"{key} [{mode}]: manifest value says {want!r}, "
+                f"meta_runtime_floor says {floors[mode][key]!r}"
+            )
+
+
+class TestValueAgentIdentity:
+    """(ii-d) The agent-identity values ARE the identity builders' formulas.
+
+    The parametric ``path`` row is the measured non-literal: the manifest composes the
+    store root off ``@meta.agent.<agent>.name`` while the floor unrolls that hop through
+    ``store_dirname``, so the pin is the RELATION (path == ``@config.agents/`` + the
+    name floor's value), with the ``<agent>`` hop answered by the name floor — the
+    one-hop shape.  ``settings`` is the same relation one hop further down, through the
+    ``path`` anchor plus ``AGENT_META_FILE``.  The ``default.name`` / ``shell.*`` rows
+    are plain literals: each fires when its node is the active one.
+    """
+
+    def test_the_manifest_values_are_the_spelled_formulas(self):
+        assert _value("meta.agent.<agent>.path") == (
+            "@config.agents/@meta.agent.<agent>.name"
+        )
+        assert _value("meta.agent.<agent>.settings") == (
+            "@meta.agent.<agent>.path/agent.yaml"
+        )
+        assert _value("meta.agent.default.name") == "default"
+        assert _value("meta.agent.shell.path") == "@config.agents/shell"
+        assert _value("meta.agent.shell.name") == "shell"
+        assert _value("meta.agent.shell.settings") == (
+            "@meta.agent.shell.path/agent.yaml"
+        )
+        assert _value("meta.agent.shell.mode") == {}
+
+    def test_the_settings_leaf_is_the_one_carrier(self):
+        assert AGENT_META_FILE == "agent.yaml"
+
+    @staticmethod
+    def _identity(agent: str) -> dict[str, object]:
+        return meta_identity_floor(
+            box_name="conformance-box", project_path="/p", inbox="/i",
+            share_global="/g", share_workset="/s", agent_name=agent,
+        )
+
+    def test_the_parametric_path_is_the_name_hop_unrolled(self):
+        """``meta.agent.<a>.path`` == ``@config.agents/`` + the name floor's value.
+
+        BARE (node == harness): the control — both spellings are one string.  PERSONA:
+        the load-bearing half — the KEY segment stays canonical (``℘``) while the VALUE
+        wears the ``+`` store spelling, and the relation must hold for both.
+        """
+        path_floor = meta_agent_path_floor(PROBE_AGENT)
+        name_value = self._identity(PROBE_AGENT)[f"meta.agent.{PROBE_AGENT}.name"]
+        assert path_floor[f"meta.agent.{PROBE_AGENT}.path"] == (
+            f"@config.agents/{name_value}"
+        )
+
+        from kanibako.agent_ref import CANONICAL_SEP
+
+        node = f"navigator{CANONICAL_SEP}{PROBE_AGENT}"
+        node_path_floor = meta_agent_path_floor(node)
+        node_name_value = self._identity(node)[f"meta.agent.{node}.name"]
+        assert node_path_floor[f"meta.agent.{node}.path"] == (
+            f"@config.agents/{node_name_value}"
+        )
+
+    def test_the_parametric_settings_hangs_off_the_path_anchor(self):
+        floor = self._identity(PROBE_AGENT)
+        assert floor[f"meta.agent.{PROBE_AGENT}.settings"] == (
+            f"@meta.agent.{PROBE_AGENT}.path/{AGENT_META_FILE}"
+        )
+
+    def test_the_default_name_is_the_active_default_node(self):
+        """Fires when ``default`` IS the active node — the tier core itself owns (there
+        is no default plugin package), so no descriptor ever carries it."""
+        floor = self._identity("default")
+        assert floor["meta.agent.default.name"] == "default"
+
+    def test_the_shell_fence_literals_are_the_active_shell_node(self):
+        """The three shell-identity literals fire when ``shell`` is the active node (a
+        plain-shell box selects node ``shell`` — ``agent_select`` — so this is the
+        launch path, not only the set-time snapshot's ``meta_agent_path_floor`` arm)."""
+        floor = self._identity("shell")
+        assert floor["meta.agent.shell.name"] == "shell"
+        assert floor["meta.agent.shell.path"] == "@config.agents/shell"
+        assert floor["meta.agent.shell.settings"] == "@meta.agent.shell.path/agent.yaml"
+        assert meta_agent_path_floor("shell") == {
+            "meta.agent.shell.path": "@config.agents/shell",
+        }
+
+    def test_no_agent_box_materializes_no_agent_identity(self):
+        """Anti-vacuity: the literals above fire for the shell NODE, not for a box with
+        no agent at all — ``agent_name=None`` must carry no ``meta.agent.*`` key."""
+        floor = meta_identity_floor(
+            box_name="conformance-box", project_path="/p", inbox="/i",
+            share_global="/g", share_workset="/s", agent_name=None,
+        )
+        assert [k for k in floor if k.startswith("meta.agent.")] == []
+
+    def test_the_shell_mode_is_the_materialized_empty_grammar(self):
+        """``meta.agent.shell.mode`` == ``{}`` — PINNED, not exempt.
+
+        ``{}`` here says "the grammar IS empty" (the built-in ships no descriptor);
+        an ABSENCE would say "no grammar was materialized" and the reader raises on
+        it (D2/D4 — the floor's own docstring).  That is a materialized positive
+        declaration with a named producer, which is exactly what E4 declines to cover.
+        """
+        assert meta_agent_grammar_floor("shell", None) == {"meta.agent.shell.mode": {}}
+        # ...and the discriminator matters: a descriptor-less NON-shell agent
+        # materializes nothing at all — no key, not an empty one.
+        assert meta_agent_grammar_floor(PROBE_AGENT, None) == {}
+
+
+class _ProbeNamedBox(_StubChannelProject):
+    """A channel stub WITH a name — ``box_channel_addresses`` raises on a nameless box."""
+
+    name = "conformance-box"
+
+
+class TestValueBoxAddresses:
+    """(ii-e) The box-partition addresses ARE what ``channels`` derives, carried through
+    the identity floor as resolved literals.
+
+    ⚑ A VALUE ORACLE, NOT A SECOND RESOLVER — the :class:`TestWorksetChannelDefaults`
+    shape, one hop further out.  Each manifest formula is followed ONE HOP: its channel
+    ref answered by the derivation that owns it, its ``@meta.box.name`` by the probe
+    name — and compared to what ``box_channel_addresses`` returns, which is exactly what
+    the launch seam hands ``meta_identity_floor`` (``commands/start.py`` passes
+    ``addr.inbox`` / ``addr.share_global`` / ``addr.share_workset`` and
+    ``proj.project_path`` through).  ``meta.box.settings`` / ``meta.box.workspace`` /
+    ``meta.box.name`` have no channel derivation behind them, so their pin is the
+    manifest formula verbatim plus the floor passthrough.
+    """
+
+    @staticmethod
+    def _addrs(mode: str):
+        from kanibako.channels import channels as ch
+
+        proj = _ProbeNamedBox(BoxMode(mode))
+        return ch.box_channel_addresses(proj, _StubChannelPaths())
+
+    @staticmethod
+    def _refs(mode: str) -> dict[str, object]:
+        proj = _ProbeNamedBox(BoxMode(mode))
+        std = _StubChannelPaths()
+        derived = TestWorksetChannelDefaults._derived(proj, std)
+        return {
+            "@workset.channels.mailboxes": derived["workset.channels.mailboxes"],
+            "@workset.channels.share_global": derived["workset.channels.share_global"],
+            "@workset.channels.share": derived["workset.channels.share"],
+            "@meta.box.name": _ProbeNamedBox.name,
+        }
+
+    @staticmethod
+    def _follow(formula: str, refs: dict[str, object]) -> Path:
+        return TestWorksetChannelDefaults._follow(formula, refs)
+
+    def test_the_manifest_values_are_the_spelled_formulas(self):
+        assert _value("meta.box.inbox") == "@workset.channels.mailboxes/@meta.box.name"
+        assert _value("meta.box.share_global") == (
+            "@workset.channels.share_global/@meta.box.name"
+        )
+        assert _per_mode(_value("meta.box.share_workset")) == {
+            "primary": "@workset.channels.share/@meta.box.name",
+            "named": "@workset.channels.share/@meta.box.name",
+            "standalone": None,
+        }
+        assert _value("meta.box.settings") == "@meta.box.path/box.yaml"
+        assert _per_mode(_value("meta.box.workspace")) == {
+            "primary": "<the user's real project dir>",
+            "named": "@workset.workspaces/@meta.box.name",
+            "standalone": "@workset.workspaces",
+        }
+        assert _per_mode(_value("meta.box.name")) == {
+            "primary": "<construct-time>",
+            "named": "<construct-time>",
+            "standalone": "<@workset.kuid>_%leaf(@meta.workset.path)%",
+        }
+
+    @pytest.mark.parametrize("mode", sorted(MODES))
+    def test_the_channel_formulas_are_the_derived_addresses(self, mode):
+        """The manifest's three channel formulas, followed one hop, ARE the deriver's
+        answers — which is what the floor then carries."""
+        refs = self._refs(mode)
+        addr = self._addrs(mode)
+        assert addr.inbox == self._follow(str(_value("meta.box.inbox")), refs)
+        assert addr.share_global == self._follow(
+            str(_value("meta.box.share_global")), refs
+        )
+        arm = _per_mode(_value("meta.box.share_workset"))[mode]
+        if arm is None:
+            assert addr.share_workset is None, (
+                f"meta.box.share_workset [{mode}]: manifest declares NO value, the "
+                f"deriver answered {addr.share_workset!r}"
+            )
+        else:
+            assert addr.share_workset == self._follow(str(arm), refs)
+
+    @pytest.mark.parametrize("mode", sorted(MODES))
+    def test_the_floor_carries_the_derived_addresses(self, mode):
+        """The launch seam's half: what the deriver answers is what the keyspace gets —
+        a RESOLVED literal, never the formula (the manifest's own workspace note
+        authorizes this: "DECLARATION only — the launch floor carries the RESOLVED dir.
+        Do NOT spell the floor as this formula")."""
+        addr = self._addrs(mode)
+        floor = meta_identity_floor(
+            box_name=_ProbeNamedBox.name, project_path="/p", inbox=str(addr.inbox),
+            share_global=str(addr.share_global),
+            share_workset=(
+                None if addr.share_workset is None else str(addr.share_workset)
+            ),
+        )
+        assert floor["meta.box.inbox"] == str(addr.inbox)
+        assert floor["meta.box.share_global"] == str(addr.share_global)
+        assert floor["meta.box.share_workset"] == (
+            None if addr.share_workset is None else str(addr.share_workset)
+        )
+
+    def test_the_settings_anchor_is_a_passthrough_of_the_cascade_path(self):
+        """``meta.box.settings`` carries the SAME ``cascade_box_path`` the snapshot's
+        box tier reads (``commands/start.py`` M-8: one pair feeds both, so anchor and
+        cascade cannot drift) — the formula's ``box.yaml`` leaf is the declaration."""
+        floor = meta_identity_floor(
+            box_name="b", project_path="/p", inbox="/i", share_global="/g",
+            share_workset="/s", box_settings="/box/box.yaml",
+        )
+        assert floor["meta.box.settings"] == "/box/box.yaml"
+
+    @pytest.mark.parametrize("mode", sorted(MODES))
+    def test_the_workspace_and_name_floors_carry_the_caller_literals(self, mode):
+        """``workspace`` (every mode) and ``name`` are caller literals — the primary
+        ``<the user's real project dir>`` and the per-mode ``<construct-time>`` arms are
+        PROSE about values composed outside any floor, asserted verbatim above."""
+        floor = meta_identity_floor(
+            box_name="conformance-box", project_path="/p", inbox="/i",
+            share_global="/g", share_workset=None, agent_name=None,
+        )
+        assert floor["meta.box.workspace"] == "/p"
+        assert floor["meta.box.name"] == "conformance-box"
+
+    def test_the_standalone_name_is_the_composed_kuid_leaf(self):
+        """The standalone arm's formula ``<@workset.kuid>_%leaf(@meta.workset.path)%``
+        IS what ``launch.box_identity`` composes: the stored kuid, joined by ``_`` to
+        the sanitized, capped project-root leaf — against a HAND-computed leaf, not the
+        composer's own helper, so the leaf grammar is pinned too."""
+        from kanibako.launch.box_identity import compose_standalone_name
+
+        assert compose_standalone_name("7xk9q", Path("/ws/my proj!")) == "7xk9q_my_proj_"
+
+
+#: (E6) ``value:`` rows whose cell is PROSE, not a comparable literal.  The
+#: ``meta.runtime.*`` partition-token rows describe one value per mode in words
+#: (``standalone=__STANDALONE__ · primary=__PRIMARY__ · named=<detected name>``) — there
+#: is no single string any oracle could equal.  What IS pinned is the re-root that
+#: resolves THROUGH them (``meta.workset.{path,name}``, class (ii-c) above).
+NO_VALUE_RUNTIME_PROSE: frozenset[str] = frozenset({
+    "meta.runtime.ws_name", "meta.runtime.ws_root",
+})
+
+#: (E7) ``value:`` rows answered OFF-SNAPSHOT through bootstrap constants, which no
+#: launch floor emits.  ``user_config_file`` is READ, never composed (``[R154]``), and
+#: the site pair lives as ``SITE_CONFIG_DIR`` + the file names — joining them here
+#: would be a second carrier of the site layout, so each side is asserted verbatim and
+#: the reason names the carrier.
+NO_VALUE_BOOTSTRAP_OFF_SNAPSHOT: frozenset[str] = frozenset({
+    "meta.runtime.admin.config", "meta.runtime.admin.settings",
+    "meta.runtime.user.config",
+})
+
+#: (E8) ``value:`` rows CONSTRUCTED at delivery by the collapse route — one collapsed
+#: map/list per row, with no single literal anywhere to compare the manifest's
+#: type-prose (``dict[guest_dest -> (host_src, opts)]``) against.  An oracle would
+#: re-implement the collapse (P2/P4).  The shape check names the carrier functions.
+NO_VALUE_DELIVERY_CONSTRUCTED: frozenset[str] = frozenset({
+    "meta.assembly.bindings", "meta.assembly.env",
+    "meta.assembly.seeded", "meta.assembly.synced",
+})
+
+#: (E9) ``value:`` rows RENDERED off-snapshot, never sourced from it.
+#: ``meta.box.container_name`` has NO producer (``settings_keyspace`` says so at the
+#: ``meta.box`` declaration: it renders in ``utils.container_name_for`` off proj attrs,
+#: not the store) — and the renderer cannot equal the manifest's ``%if`` template
+#: without a template engine, i.e. a second resolver.  A whole-value ``@``-ref to it
+#: would dangle, which is why nothing floors it.
+NO_VALUE_OFF_SNAPSHOT_RENDER: frozenset[str] = frozenset({
+    "meta.box.container_name",
+})
+
+EXEMPT_VALUE_KEYS: frozenset[str] = (
+    NO_VALUE_RUNTIME_PROSE | NO_VALUE_BOOTSTRAP_OFF_SNAPSHOT
+    | NO_VALUE_DELIVERY_CONSTRUCTED | NO_VALUE_OFF_SNAPSHOT_RENDER
+)
+
+
+class TestNoValueExemptions:
+    """The declined ``value:`` classes, each asserted to be the shape its reason claims."""
+
+    def test_the_runtime_prose_rows_really_are_prose(self):
+        """E6: multi-arm descriptions, one value per mode in words — not literals."""
+        assert _value("meta.runtime.ws_name") == (
+            "standalone=__STANDALONE__ · primary=__PRIMARY__ · named=<detected name>"
+        )
+        assert _value("meta.runtime.ws_root") == (
+            "standalone=<runtime project dir> · primary=@config.primary_workset · "
+            "named=<detected workset root>"
+        )
+
+    def test_the_bootstrap_rows_name_their_off_snapshot_carrier(self):
+        """E7: the manifest literals verbatim, and the bootstrap constants verbatim —
+        deliberately NOT equated (see E7's reason: the join would be a second carrier).
+        """
+        assert _value("meta.runtime.admin.config") == "/etc/kanibako/base.cfg"
+        assert _value("meta.runtime.admin.settings") == (
+            "/etc/kanibako/settings_base.yaml"
+        )
+        assert _value("meta.runtime.user.config") == (
+            "$XDG_CONFIG_HOME/kanibako.cfg, or ~/.config/ if unset / not absolute"
+        )
+
+        from kanibako.settings.bootstrap import (
+            CONFIG_FILE,
+            SITE_CONFIG_DIR,
+            SITE_CONFIG_FILE,
+            SITE_SETTINGS_FILE,
+        )
+
+        assert SITE_CONFIG_DIR == "/etc/kanibako"
+        assert SITE_CONFIG_FILE == "base.cfg"
+        assert SITE_SETTINGS_FILE == "settings_base.yaml"
+        assert CONFIG_FILE == "kanibako.cfg"
+
+    def test_the_delivery_rows_are_the_collapse_outputs(self):
+        """E8: the manifest's type-prose verbatim, and the collapse entry points that
+        construct them present — the reason's carrier, pinned by name."""
+        assert _value("meta.assembly.bindings") == (
+            "dict[guest_dest -> (host_src, opts)]"
+        )
+        assert _value("meta.assembly.env") == "dict[VAR -> (value, scope, key)]"
+        assert _value("meta.assembly.seeded") == (
+            "list[(host_src, guest_dest, opts)]"
+        )
+        assert _value("meta.assembly.synced") == (
+            "list[(host_src, guest_dest, opts)]"
+        )
+
+        from kanibako.settings import store_collapse
+
+        for entry in ("collapse_store_shapes", "collapse_seeded", "collapse_env"):
+            assert callable(getattr(store_collapse, entry, None)), (
+                f"store_collapse.{entry} is gone — E8's carrier moved, re-classify"
+            )
+        assert hasattr(store_collapse, "CollapsedStore")
+
+    def test_the_container_name_really_renders_off_snapshot(self):
+        """E9: the manifest's ``%if`` template verbatim, and the renderer measured —
+        ``container_name_for`` answers off proj attrs (no snapshot in, no ``%if`` out),
+        so equality with the template is unstatable without a second resolver."""
+        assert _value("meta.box.container_name") == (
+            "kanibako-@meta.box.name%if @meta.box.helper_num: "
+            "-helper-@meta.box.helper_num%"
+        )
+
+        from types import SimpleNamespace
+
+        from kanibako.utils import container_name_for
+
+        named = SimpleNamespace(
+            mode=SimpleNamespace(value="named"), name="conformance-box",
+            project_hash="ab" * 32, metadata_path=Path("/ws/conformance-box"),
+        )
+        assert container_name_for(named) == "kanibako-conformance-box"
+        standalone = SimpleNamespace(
+            mode=SimpleNamespace(value="standalone"), name="7xk9q_ws",
+            project_hash="ab" * 32, metadata_path=Path("/x/y"),
+        )
+        assert container_name_for(standalone) == "kanibako-ronin-x-y"
+
+
+#: The manifest rows carrying NEITHER a ``default:`` nor a ``value:`` — measured ten,
+#: each with a stated reason.  A row gaining a cell leaves this set (caught by the
+#: value/default coverage); a new cell-less row lands here unclassified.
+NEITHER_CELL_KEYS: frozenset[str] = frozenset({
+    "agent.<agent>.<key>",
+    "agent.<agent>.access",
+    "meta.agent.<agent>.auth.share_support",
+    "meta.agent.<agent>.exec",
+    "meta.agent.<agent>.mode",
+    "meta.agent.<agent>.name",
+    "meta.agent.shell.exec",
+    "meta.box.agent.<key>",
+    "meta.box.helper_num",
+    "meta.runtime.project_type",
+})
+
+#: Why each neither-row has no comparable cell.  Every key above must appear here —
+#: a row without a reason is unclassified, which is what this table exists to forbid.
+NEITHER_CELL_REASONS: dict[str, str] = {
+    # SHAPE rows: the parametric contract, not one value — any single spelling would
+    # be a fabrication, and the per-node values live in plugin/launch tiers.
+    "agent.<agent>.<key>": "shape row (per-agent contract; values are plugin-declared)",
+    "meta.box.agent.<key>": (
+        "shape row (RO read-back mirror of the effective agent subtree)"
+    ),
+    # Per-agent leaves that FALL BACK or ARRIVE per-plugin: no declared value of their
+    # own — ``access`` reads ``agent.default.access``; the auth capability, ``exec``
+    # fragment and ``mode`` grammar arrive per descriptor at launch.
+    "agent.<agent>.access": "fallback leaf (agent.default.access answers)",
+    "meta.agent.<agent>.auth.share_support": "plugin-set capability per agent",
+    "meta.agent.<agent>.exec": "per-descriptor one-shot fragment, absent if undeclared",
+    "meta.agent.<agent>.mode": "per-descriptor launch grammar, absent if undeclared",
+    # Construct-time identity: REQUIRED per agent but resolved per box, so the
+    # registry declares the requirement, not a spelling (the concrete shell twin
+    # IS a value row, pinned in (ii-d)).
+    "meta.agent.<agent>.name": "construct-time identity, required, no declared spelling",
+    # The fence no-op: never set for shell — no STANDALONE op, no descriptor — and
+    # the fence reads ``<None>`` (the row's own note).
+    "meta.agent.shell.exec": "never set for shell; the fence reads <None>",
+    # Never-in-snapshot: ``helper_num`` travels as a STRUCTURED field in helper
+    # messages (its row's note); ``project_type`` is the mode token the runtime floor
+    # TAKES AS INPUT, not a value it declares.
+    "meta.box.helper_num": "spawn-only structured field, unset for a top-level box",
+    "meta.runtime.project_type": "runtime-treewalk input token, not a declared value",
+}
+
+
 class TestDefaultsCoverage:
     """The property that keeps this file honest as the manifest grows."""
 
@@ -1339,6 +1994,82 @@ class TestDefaultsCoverage:
         assert len(PINNED_DEFAULT_KEYS) == 60
         assert len(EXEMPT_DEFAULT_KEYS) == 19
         assert not (PINNED_DEFAULT_KEYS & EXEMPT_DEFAULT_KEYS)
+
+    def test_every_value_row_is_pinned_or_named(self):
+        """PINNED ∪ EXEMPT == every manifest row carrying a ``value:``.
+
+        The value-side twin of
+        :meth:`test_every_default_row_is_pinned_or_named`: a ``value:`` edit was green
+        by construction until section 4b existed, so this case is what makes a lost
+        value cell red.  A NEW value row lands here as an unclassified key.
+        """
+        declared = {
+            str(k) for k, v in _keys().items() if isinstance(v, dict) and "value" in v
+        }
+        unclassified = declared - PINNED_VALUE_KEYS - EXEMPT_VALUE_KEYS
+        assert not unclassified, (
+            f"manifest value rows with neither a pin nor a named exemption: "
+            f"{sorted(unclassified)} — add each to a class in section 4b (with a "
+            f"reason) or pin it"
+        )
+        stale = (PINNED_VALUE_KEYS | EXEMPT_VALUE_KEYS) - declared
+        assert not stale, (
+            f"section 4b classifies rows the manifest no longer declares a value for: "
+            f"{sorted(stale)}"
+        )
+        assert len(declared) == 31, (
+            f"the manifest gives {len(declared)} rows a value, not the 31 measured — "
+            f"re-classify, do not adjust the count"
+        )
+
+    def test_the_value_split_is_the_measured_split(self):
+        """21 pinned rows, 10 exempted — stated so a silent migration between them reds."""
+        assert len(PINNED_VALUE_KEYS) == 21
+        assert len(EXEMPT_VALUE_KEYS) == 10
+        assert not (PINNED_VALUE_KEYS & EXEMPT_VALUE_KEYS)
+
+    def test_the_neither_rows_are_exactly_the_measured_ten(self):
+        """The ten rows carrying NEITHER cell are named, cell-less, and reasoned.
+
+        A row gaining a ``default:`` or ``value:`` leaves this set (and must arrive in
+        one of the two coverage cases above); a new cell-less row lands here
+        unclassified.  A row without a stated reason is unclassified too.
+        """
+        neither = {
+            str(k) for k, v in _keys().items()
+            if isinstance(v, dict) and "default" not in v and "value" not in v
+        }
+        assert neither == NEITHER_CELL_KEYS, (
+            f"neither-cell rows moved: unclassified={sorted(neither - NEITHER_CELL_KEYS)}, "
+            f"stale={sorted(NEITHER_CELL_KEYS - neither)}"
+        )
+        assert len(NEITHER_CELL_KEYS) == 10
+        assert set(NEITHER_CELL_REASONS) == NEITHER_CELL_KEYS, (
+            f"reason table drift: unreasoned="
+            f"{sorted(NEITHER_CELL_KEYS - set(NEITHER_CELL_REASONS))}, "
+            f"stale={sorted(set(NEITHER_CELL_REASONS) - NEITHER_CELL_KEYS)}"
+        )
+
+    def test_the_default_value_neither_cells_partition_the_registry(self):
+        """79 + 31 + 10 == 120, disjoint — no row carries both cells, none carries
+        neither unnoticed.  The 120 is the loader's own count, re-stated here as the
+        arithmetic the three coverage cases must sum to."""
+        keys = _keys()
+        defaulted = {
+            str(k) for k, v in keys.items() if isinstance(v, dict) and "default" in v
+        }
+        valued = {
+            str(k) for k, v in keys.items() if isinstance(v, dict) and "value" in v
+        }
+        neither = {
+            str(k) for k, v in keys.items()
+            if isinstance(v, dict) and "default" not in v and "value" not in v
+        }
+        assert not (defaulted & valued), (
+            f"rows carrying BOTH cells: {sorted(defaulted & valued)}"
+        )
+        assert defaulted | valued | neither == {str(k) for k in keys}
+        assert (len(defaulted), len(valued), len(neither)) == (79, 31, 10)
 
 
 # --------------------------------------------------------------------------- #
