@@ -17,9 +17,7 @@ from kanibako.settings.keyspace_manifest import manifest_doc
 from kanibako.settings.settings_keyspace import (
     DECLARED_AGENT_LEAVES,
     DECLARED_META_ASSEMBLY_LEAVES,
-    DECLARED_META_RUNTIME_ADMIN_LEAVES,
     DECLARED_META_RUNTIME_LEAVES,
-    DECLARED_META_RUNTIME_USER_LEAVES,
     RESERVED_LEAF_NAMES,
     RETIRING_KEYS,
     is_valid_agent_segment,
@@ -696,26 +694,6 @@ def test_a_flat_meta_declaration_matches_the_manifest(group, declared):
     unproduced leaves, not because the helper cannot reach it.
     """
     assert _manifest_leaves(f"meta.{group}.") == set(declared)
-
-
-def test_the_nested_runtime_leaves_match_the_manifest():
-    """The P5 half of the drift guard — nested rows are NOT dropped silently.
-
-    ``_manifest_leaves`` drops every nested tail, so the flat guard above goes
-    green whether or not ``meta.runtime.user.*`` exists. Green-because-unguarded
-    is the [R138] class. The prefix already reaches past the dot, so the same
-    helper pins the nested leaves with no new machinery.
-
-    ⚑ UNGUARDED MEANT *IN THIS FILE*, and reading it wider is what put two board rows
-    on the auth arms: ``test_manifest_conformance.TestKeySetConformance`` pins every
-    nested arm, this one included. See ``_manifest_leaves`` above.
-    """
-    assert _manifest_leaves("meta.runtime.user.") == set(
-        DECLARED_META_RUNTIME_USER_LEAVES
-    )
-    assert _manifest_leaves("meta.runtime.admin.") == set(
-        DECLARED_META_RUNTIME_ADMIN_LEAVES
-    )
 
 
 def test_the_collapse_outputs_are_declared_under_assembly_only():
