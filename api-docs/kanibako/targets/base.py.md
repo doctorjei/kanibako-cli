@@ -40,6 +40,7 @@ def _scrub_embedded(text: str, secrets: tuple[str, ...], embed: int, depth: int)
 def _survives(text: str, secrets: tuple[str, ...]) -> bool
 def _provider_text(raw: bytes, headers: Mapping[str, str]) -> str
 def _tilde(path: Path) -> str
+def _scrub_endpoint_userinfo(endpoint: str) -> str
 def _validate_agent_binary(binary: Path) -> str | None
 ```
 

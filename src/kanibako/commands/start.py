@@ -5593,7 +5593,9 @@ def _persona_probe_error(
     worth surfacing) — no launch may die on a probe bug.  Returns the error
     message, or ``None`` to proceed.
     """
-    from kanibako.targets.base import PersonaProbeOutcome, PersonaProbeVerdict
+    from kanibako.targets.base import (
+        PersonaProbeOutcome, PersonaProbeVerdict, _scrub_endpoint_userinfo,
+    )
 
     if target is None:
         return None
@@ -5631,7 +5633,7 @@ def _persona_probe_error(
     if outcome.verdict is PersonaProbeVerdict.INCONCLUSIVE:
         print(
             f"Warning: persona '{display}': could not verify the endpoint "
-            f"({endpoint}) — {outcome.reason}; launching unverified."
+            f"({_scrub_endpoint_userinfo(endpoint)}) — {outcome.reason}; launching unverified."
             f"{outcome.evidence_block(resolved_from=resolved_from)}",
             file=sys.stderr,
         )
@@ -5836,12 +5838,15 @@ def _preflight_env_persona(
     channels (the ``endpoint``→env ``SettingArg`` + the ``secret_path`` mount), so
     there is no config-file provider to carry (``provider`` None).
     """
+    from kanibako.targets.base import _scrub_endpoint_userinfo
+
     token_state = _persona_token_pointer(agent_cfg, wiring.token_var, bundle)
     if token_state is __MISSING__ or (
         isinstance(token_state, str) and not _secret_pointer_usable(token_state)
     ):
         return None, (
-            f"Error: persona '{display}' has an endpoint ({endpoint}) but no "
+            f"Error: persona '{display}' has an endpoint "
+            f"({_scrub_endpoint_userinfo(endpoint)}) but no "
             f"usable auth token.\n"
             f"  A custom-endpoint persona needs an API key delivered via a "
             f"`kanibako system set agent.{display}.secret_path.{wiring.token_var}="
@@ -5856,7 +5861,8 @@ def _preflight_env_persona(
     model_state = _model_tristate(keyspace_model)
     if wiring.model_required and model_state is __MISSING__:
         return None, (
-            f"Error: persona '{display}' has an endpoint ({endpoint}) but no "
+            f"Error: persona '{display}' has an endpoint "
+            f"({_scrub_endpoint_userinfo(endpoint)}) but no "
             f"model configured.\n"
             f"  A custom-endpoint persona must name the provider's model id "
             f"(e.g. `kanibako system set agent.{display}.model=<model-id>`); the "
@@ -5955,6 +5961,8 @@ def _preflight_config_file_persona(
     for INC 3.  NEVER mutates *agent_cfg*: every value is resolved live through the
     cascade before this seam.
     """
+    from kanibako.targets.base import _scrub_endpoint_userinfo
+
     token_err = _codex_persona_token_error(
         agent_cfg, wiring, endpoint, display, bundle,
     )
@@ -5999,7 +6007,8 @@ def _preflight_config_file_persona(
         # supposed to read.
         if wiring.model_required:
             return None, (
-                f"Error: persona '{display}' has an endpoint ({endpoint}) but no "
+                f"Error: persona '{display}' has an endpoint "
+                f"({_scrub_endpoint_userinfo(endpoint)}) but no "
                 f"model configured.\n"
                 f"  A custom-endpoint codex persona must name the provider's model id "
                 f"(e.g. `kanibako system set agent.{display}.model=<model-id>`); the "
@@ -6051,8 +6060,11 @@ def _codex_persona_token_error(
     together (:func:`_persona_secret_path_keys`), since a store-only persona has no
     file key.  Returns ``None`` when a single, usable token resolves.
     """
+    from kanibako.targets.base import _scrub_endpoint_userinfo
+
     intro = (
-        f"Error: persona '{display}' has an endpoint ({endpoint}) but no "
+        f"Error: persona '{display}' has an endpoint "
+        f"({_scrub_endpoint_userinfo(endpoint)}) but no "
         f"usable auth token.\n"
     )
     tail = "  Set the key for this persona, then retry."

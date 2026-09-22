@@ -484,6 +484,32 @@ def _tilde(path: Path) -> str:
         return str(path)
 
 
+def _scrub_endpoint_userinfo(endpoint: str) -> str:
+    """*endpoint* with a URL userinfo (``user[:password]@``) replaced by `_REDACTED`.
+
+    Host, port, path, query and fragment print UNCHANGED: a refusal must keep
+    the endpoint legible (WHERE it pointed) while losing the credential, and
+    only the authority-section userinfo is a credential by construction.  An
+    ``@`` in the path, query or fragment is not userinfo and is left alone, as
+    is a string too malformed to split — mangling what could not be parsed
+    would invent a URL.  The whole userinfo span is dropped structurally, so no
+    re-encoding of it can survive the way one can defeat `_provider_text`.
+    """
+    import urllib.parse as _urlparse
+
+    try:
+        parts = _urlparse.urlsplit(endpoint)
+    except ValueError:
+        return endpoint
+    if "@" not in parts.netloc:
+        return endpoint
+    hostport = parts.netloc.rpartition("@")[2]
+    return _urlparse.urlunsplit((
+        parts.scheme, _REDACTED + "@" + hostport,
+        parts.path, parts.query, parts.fragment,
+    ))
+
+
 @dataclass(frozen=True)
 class ProbeEvidence:
     """What a persona probe SENT and what came back — the facts a non-PASS verdict rests on.
@@ -510,6 +536,8 @@ class ProbeEvidence:
     def lines(self, indent: str = "  ", *, resolved_from: str = "") -> tuple[str, ...]:
         """The evidence block: one labeled line per input, then the provider's own words.
 
+        ⚑ The endpoint line is userinfo-scrubbed (`_scrub_endpoint_userinfo`):
+        host, path and provenance stay legible; the credential does not.
         ⚑ The closing sentence is emitted for a REFUSAL status ONLY (llm-doc).
 
         ⚑ *resolved_from* names WHERE the caller got *endpoint* and *model* — a
@@ -543,7 +571,7 @@ class ProbeEvidence:
             if self.token_path is None else _tilde(self.token_path)
         )
         out = [
-            f"{indent}{'endpoint':<10}{self.endpoint}",
+            f"{indent}{'endpoint':<10}{_scrub_endpoint_userinfo(self.endpoint)}",
             f"{indent}{'model':<10}{model}",
             f"{indent}{'token':<10}{token}",
         ]
@@ -638,10 +666,12 @@ class PersonaProbeOutcome(NamedTuple):
         own line and repeating it in the sentence would be the same fact twice (P10).
         A status-less REJECTED cannot come from `probe_outcome`; a third-party plugin
         that builds one by hand can still reach here, and this is what it gets.
+        ⚑ The interpolated endpoint is userinfo-scrubbed, like the block's own
+        endpoint line (`_scrub_endpoint_userinfo`).
         """
         status = self.evidence.status if self.evidence is not None else None
         if status is None:
-            return f"({endpoint}) refused the probe"
+            return f"({_scrub_endpoint_userinfo(endpoint)}) refused the probe"
         return f"refused the probe with HTTP {status}"
 
 
