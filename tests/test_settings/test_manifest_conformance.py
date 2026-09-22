@@ -1606,6 +1606,53 @@ class TestKeySetConformance:
             f"_SCALAR_DECLARATIONS in the same edit"
         )
 
+    def test_the_declaration_table_names_every_exported_leaf_set(self):
+        """ANTI-VACUITY for the sweep itself (P15): the table cannot silently shrink.
+
+        ⚑ THE ATTACK THIS CLOSES, MEASURED 2026-09-19: delete a family's
+        :data:`_SCALAR_DECLARATIONS` row — the edit the sibling case's own failure
+        message asks for — together with its manifest rows, re-measure the loader's
+        hand count, and leave the ``DECLARED_*`` frozenset declared: every case in
+        this class stays GREEN while ``key_validity`` still answers the key with
+        ``None`` (measured on ``meta.box.auth.workset_path``).  That is a live key
+        with no registry row and no coverage.
+
+        🛑 THE COUNT PIN IS NOT THE GUARD — it reds on the manifest half of that
+        edit, but its own message says *"re-measure"*, so a developer re-measures
+        it as a matter of course.  THIS EQUALITY IS THE GUARD: the set of
+        ``DECLARED_*_LEAVES`` names :data:`_SCALAR_DECLARATIONS` references must
+        EQUAL the set ``settings_keyspace`` actually exports.  A dropped row names
+        its family here, and so does a new export nobody wired into the sweep.
+        """
+        from kanibako.settings import settings_keyspace as keyspace_module
+
+        exported = {
+            name
+            for name, value in vars(keyspace_module).items()
+            if name.startswith("DECLARED_") and name.endswith("_LEAVES")
+            and isinstance(value, frozenset)
+        }
+        by_id = {id(getattr(keyspace_module, name)): name for name in exported}
+        unnamed = [
+            prefix for prefix, leaves in _SCALAR_DECLARATIONS
+            if id(leaves) not in by_id
+        ]
+        assert not unnamed, (
+            f"declaration rows referencing no exported DECLARED_*_LEAVES set: "
+            f"{unnamed} — the sweep above covers them against nothing"
+        )
+        referenced = {by_id[id(leaves)] for _, leaves in _SCALAR_DECLARATIONS}
+        assert len(referenced) == len(_SCALAR_DECLARATIONS), (
+            f"two declaration rows reference one leaf set: "
+            f"{len(_SCALAR_DECLARATIONS)} rows name {len(referenced)} sets "
+            f"({sorted(referenced)}) — one family rides another's coverage"
+        )
+        assert referenced == exported, (
+            f"the declaration table and the keyspace exports disagree: rows with "
+            f"no export: {sorted(referenced - exported)}; exports with no row "
+            f"(unswept families): {sorted(exported - referenced)}"
+        )
+
 
 class TestSetColumnConformance:
     """The ``set:`` column, in the two directions that are MEASURED TRUE."""
