@@ -1402,6 +1402,133 @@ def test_auth_capability_mirror_is_ref_to_agent_slot():
 
 
 # --------------------------------------------------------------------------- #
+# Q61: the three computed sharing-state keys                                  #
+# --------------------------------------------------------------------------- #
+
+def _auth_active(snap):
+    """The three computed sharing-state keys off a launch snapshot, as
+    (workset-global-active, box-global-active, box-workset-active)."""
+    return (
+        snap.meta.workset.auth.global_active,
+        snap.meta.box.auth.global_active,
+        snap.meta.box.auth.workset_active,
+    )
+
+
+class TestAuthActiveKeys:
+    """The FULL truth table for the computed ``meta.*.auth.*_active`` keys.
+
+    The sketch (Q61, ratified): workset-global-active is system-allow AND
+    workset-sync; box-global-active is system-allow AND the box global knob;
+    box-workset-active is false unless the workset allows AND the box workset
+    knob is on, then true when the workset globally syncs, else NOT
+    box-global-active. All three are false when the agent does not support
+    sharing. Each case below names which arm it pins, so a red names its row.
+    """
+
+    def test_all_default_primary_is_all_active(self, tmp_path):
+        """Capable agent, every gate open (primary defaults) → all three True,
+        and all three are REAL bools, not truthy terminals."""
+        wga, bga, wsa = _auth_active(_auth_snapshot("primary", tmp_path=tmp_path))
+        assert wga is True and bga is True and wsa is True
+
+    def test_agent_without_support_is_all_inactive(self, tmp_path):
+        """share_support=False → all three False, regardless of the allow flags
+        (the hard capability floor)."""
+        wga, bga, wsa = _auth_active(
+            _auth_snapshot("primary", tmp_path=tmp_path, support=False)
+        )
+        assert wga is False and bga is False and wsa is False
+
+    def test_system_disallow_is_all_inactive(self, tmp_path):
+        """system.auth.share_allowed=false → the global gate is off and the
+        workset allow defaults to @system, so it is off too → all three False."""
+        wga, bga, wsa = _auth_active(
+            _auth_snapshot(
+                "primary", tmp_path=tmp_path,
+                system_file={"system": {"auth": {"share_allowed": False}}},
+            )
+        )
+        assert wga is False and bga is False and wsa is False
+
+    def test_workset_allow_off_clears_only_workset_active(self, tmp_path):
+        """workset.auth.share_allowed=false → the workset tier is unavailable
+        (workset-active False) but both global-actives stay True."""
+        wga, bga, wsa = _auth_active(
+            _auth_snapshot(
+                "primary", tmp_path=tmp_path,
+                workset_file={"workset": {"auth": {"share_allowed": False}}},
+            )
+        )
+        assert wga is True and bga is True and wsa is False
+
+    def test_box_workset_opt_out_clears_only_workset_active(self, tmp_path):
+        """box.auth.workset_enabled=false → workset-active False, both
+        global-actives True (the opt-out is set at the BOX scope)."""
+        wga, bga, wsa = _auth_active(
+            _auth_snapshot(
+                "primary", tmp_path=tmp_path,
+                box_file={"box": {"auth": {"workset_enabled": False}}},
+            )
+        )
+        assert wga is True and bga is True and wsa is False
+
+    def test_no_workset_sync_with_box_global_on_clears_workset_active(
+        self, tmp_path,
+    ):
+        """THE SYNC-CONDITIONAL, FIRST WAY: workset.auth.global_sync=false while
+        the box still globally shares → workset-global-active False,
+        box-global-active True, and box-workset-active is NOT box-global-active,
+        i.e. False (one store at a time)."""
+        wga, bga, wsa = _auth_active(
+            _auth_snapshot(
+                "primary", tmp_path=tmp_path,
+                workset_file={"workset": {"auth": {"global_sync": False}}},
+            )
+        )
+        assert wga is False and bga is True and wsa is False
+
+    def test_no_workset_sync_with_box_global_off_sets_workset_active(
+        self, tmp_path,
+    ):
+        """THE SYNC-CONDITIONAL, SECOND WAY: workset.auth.global_sync=false AND
+        box.auth.global_enabled=false → box-global-active False, and
+        box-workset-active is NOT box-global-active, i.e. True (the box shares
+        with the workset store instead of the global one)."""
+        wga, bga, wsa = _auth_active(
+            _auth_snapshot(
+                "primary", tmp_path=tmp_path,
+                workset_file={"workset": {"auth": {"global_sync": False}}},
+                box_file={"box": {"auth": {"global_enabled": False}}},
+            )
+        )
+        assert wga is False and bga is False and wsa is True
+
+    def test_box_global_opt_out_alone_clears_only_box_global_active(
+        self, tmp_path,
+    ):
+        """SOLO KNOB-OFF: box.auth.global_enabled=false with the workset still
+        globally syncing → workset-global-active True, box-global-active False,
+        and box-workset-active is NOT box-global-active, i.e. True — isolating
+        the knob from the sync arm the second sync-conditional pairs it with."""
+        wga, bga, wsa = _auth_active(
+            _auth_snapshot(
+                "primary", tmp_path=tmp_path,
+                box_file={"box": {"auth": {"global_enabled": False}}},
+            )
+        )
+        assert wga is True and bga is False and wsa is True
+
+    def test_standalone_is_global_active_only(self, tmp_path):
+        """STANDALONE has no workset group (both workset inputs degenerate
+        False) but the global tier still applies → only box-global-active."""
+        wga, bga, wsa = _auth_active(
+            _auth_snapshot("standalone", tmp_path=tmp_path)
+        )
+        assert wga is False and bga is True and wsa is False
+
+
+# --------------------------------------------------------------------------- #
 # change 8 (P6d2): box.auth.workset_path → RO meta.box.auth.workset_path        #
 # --------------------------------------------------------------------------- #
 

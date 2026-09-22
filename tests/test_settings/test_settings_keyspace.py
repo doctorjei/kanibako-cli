@@ -579,9 +579,11 @@ def test_supporting_surface_is_valid(key):
     "meta.assembly.bindings", "meta.assembly.seeded", "meta.assembly.synced",
     "meta.assembly.env",
     "meta.workset.path", "meta.workset.name", "meta.workset.settings",
+    "meta.workset.auth.global_active",
     "meta.box.path", "meta.box.name", "meta.box.mode", "meta.box.workspace",
     "meta.box.settings", "meta.box.inbox", "meta.box.share_global",
     "meta.box.share_workset", "meta.box.auth.workset_path",
+    "meta.box.auth.global_active", "meta.box.auth.workset_active",
     "meta.box.home", "meta.box.container_name", "meta.box.helper_num",
     "meta.box.agent.model", "meta.box.agent.common",
     "meta.agent.claude.name", "meta.agent.claude.path",
@@ -607,7 +609,7 @@ def _manifest_leaves(prefix: str) -> set[str]:
     property in their own docstring; the loader now carries it once.
 
     ⚑ DROPPING A NESTED TAIL IS NOT LEAVING IT UNGUARDED, and two board rows read it
-    as one.  ``meta.box.auth.*`` and ``meta.agent.<agent>.auth.*`` are pinned in BOTH
+    as one.  ``meta.box.auth.*``, ``meta.workset.auth.*`` and ``meta.agent.<agent>.auth.*`` are pinned in BOTH
     directions by ``test_manifest_conformance.TestKeySetConformance``, which expands
     every nested arm from ``_SCALAR_DECLARATIONS`` — verified 2026-09-19 by mutating a
     stand-in manifest.  No auth guard was added here for that reason.
@@ -805,7 +807,8 @@ UNPRODUCED_BOX_LEAVES = ("container_name", "helper_num")
 def test_the_meta_box_declaration_matches_the_manifest():
     """The ``meta.box`` half of the same drift guard — RED before 2026-08-08g.
 
-    ⚑ DIRECT leaves only: ``meta.box`` also carries ``auth.workset_path`` and the
+    ⚑ DIRECT leaves only: ``meta.box`` also carries ``auth.workset_path``,
+    ``auth.global_active``, ``auth.workset_active`` and the
     ``agent.*`` mirror, which ``key_validity`` dispatches on separate arms and which
     ``DECLARED_META_BOX_LEAVES`` deliberately does not hold.
     """
@@ -1260,6 +1263,7 @@ def test_the_prefix_corpus_is_not_vacuous():
     # it ([R141] as amended; spec :1081).
     "box.auth", "system.auth", "workset.auth",
     "meta.box.auth", "meta.agent.claude.auth", "meta.box.agent.auth",
+    "meta.workset.auth",
     "meta.runtime.user", "meta.runtime.admin",
 ])
 def test_a_declared_interior_is_a_NAMESPACE(path):

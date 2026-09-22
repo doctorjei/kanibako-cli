@@ -1914,6 +1914,18 @@ keys:
     note: "the §1A SINGLE-SOURCE canonical spelling; the former
            @meta.runtime.ws_settings anchor is CUT (unified path; R-36)"
     spec: "§2c / §1A"
+  meta.workset.auth.global_active:
+    namespace: meta
+    set: never
+    origin: derived
+    type: bool
+    value: "<computed>"
+    note: "COMPUTED per launch by settings_launch._materialize_auth_active, post-expand
+           (expand does not evaluate &&): meta.agent.<agent>.auth.share_support AND
+           system.auth.share_allowed AND workset.auth.global_sync — whether the workset
+           tier is actively syncing with the global store. Uniform in every mode;
+           standalone degenerates through its inputs. Keyspec text drafted, unratified."
+    spec: "§2c (Q61)"
   meta.box.name:
     namespace: meta
     set: never
@@ -2024,6 +2036,29 @@ keys:
            being meta means it can't be set to a dangling @-ref. Respelled from
            @box.agent_name (R-31, with R-3)."
     spec: "§2c (R-31)"
+  meta.box.auth.global_active:
+    namespace: meta
+    set: never
+    origin: derived
+    type: bool
+    value: "<computed>"
+    note: "COMPUTED per launch by settings_launch._materialize_auth_active, post-expand
+           (expand does not evaluate &&): meta.agent.<agent>.auth.share_support AND
+           system.auth.share_allowed AND box.auth.global_enabled — whether this box is
+           actively sharing with the global store. Keyspec text drafted, unratified."
+    spec: "§2b (Q61)"
+  meta.box.auth.workset_active:
+    namespace: meta
+    set: never
+    origin: derived
+    type: bool
+    value: "<computed>"
+    note: "COMPUTED per launch by settings_launch._materialize_auth_active, post-expand:
+           false unless workset.auth.share_allowed AND box.auth.workset_enabled; then
+           true when workset.auth.global_sync, else NOT meta.box.auth.global_active —
+           whether this box is actively sharing with its workset store. False whenever
+           the agent does not support sharing. Keyspec text drafted, unratified."
+    spec: "§2b (Q61)"
   meta.box.agent.<key>:
     namespace: meta
     parametric: [key]

@@ -751,37 +751,47 @@ class AuthSource:
         return self.tier != "box"
 
 
-def resolve_auth_source(
-    snapshot: KeyStore, *, mode: str | None = None
-) -> AuthSource:
-    """Resolve the box's credential-SHARING SOURCE off the expanded snapshot.
+@dataclass(frozen=True)
+class _AuthInputs:
+    """The six resolved bools the auth chain decides from (Q61 sketch inputs).
 
-    Computes each tier's EFFECTIVE enable in Python — the spec's ``%support && allow
-    && knob%``, since the expand engine does not evaluate ``&&`` (module note) — then
-    selects by precedence workset>global: workset ENABLED with its store present, else
-    global ENABLED, else ``"box"`` (private, no source).
+    Read ONCE here so :func:`resolve_auth_source` (the tier decision) and
+    :func:`_materialize_auth_active` (the three computed ``meta.*`` keys) cannot
+    drift apart — two readers of one shape, not two shapes.
+    """
 
-    ⚑ An absent ``box`` node means the floor was not injected → fail CLOSED (tier
-    ``"box"``, no sharing) rather than launder. Each input is a real ``bool`` terminal
-    resolved by ``expand``; :func:`as_bool` does not launder either.
+    support: bool
+    system_allow: bool
+    workset_allow: bool
+    global_sync: bool
+    global_knob: bool
+    workset_knob: bool
+
+
+def _read_auth_inputs(snapshot: KeyStore) -> _AuthInputs:
+    """Read the six auth-chain bools off the expanded snapshot.
+
+    An absent ``box`` node means the floor was not injected → all False (fail
+    CLOSED, never laundered into sharing). Each input is a real ``bool``
+    terminal resolved by ``expand``; :func:`as_bool` does not launder either.
     """
     from kanibako.settings.settings_views import as_bool
 
     box_node = dict.get(snapshot, "box", __MISSING__)
     if not isinstance(box_node, KeyStore):
-        return AuthSource(
-            tier="box",
-            global_enabled=False,
-            workset_enabled=False,
+        return _AuthInputs(
+            support=False,
+            system_allow=False,
+            workset_allow=False,
             global_sync=False,
-            workset_source=None,
+            global_knob=True,
+            workset_knob=True,
         )
 
-    # The box-scoped RO meta anchors: the capability MIRROR and the DERIVED per-box
-    # source root (change 8 — being ``meta.*``, a scope FILE cannot repoint it).
+    # The box-scoped RO capability MIRROR (change 8 — being ``meta.*``, a scope
+    # FILE cannot repoint it).
     meta_node = dict.get(snapshot, "meta", __MISSING__)
     support = False
-    workset_source: str | None = None
     if isinstance(meta_node, KeyStore):
         meta_box = dict.get(meta_node, "box", __MISSING__)
         if isinstance(meta_box, KeyStore):
@@ -792,13 +802,6 @@ def resolve_auth_source(
                     support = as_bool(
                         dict.get(mba_auth, "share_support", False)
                     )
-            # The RO DERIVED per-box workset source root, sibling of meta.box.agent:
-            # a resolved string; absent / None / "" all coerce to None.
-            meta_box_auth = dict.get(meta_box, "auth", __MISSING__)
-            if isinstance(meta_box_auth, KeyStore):
-                wp = dict.get(meta_box_auth, "workset_path", __MISSING__)
-                if isinstance(wp, str) and wp:
-                    workset_source = wp
 
     # The system + workset allow flags.
     system_node = dict.get(snapshot, "system", __MISSING__)
@@ -829,9 +832,117 @@ def resolve_auth_source(
         global_knob = as_bool(dict.get(box_auth, "global_enabled", True))
         workset_knob = as_bool(dict.get(box_auth, "workset_enabled", True))
 
+    return _AuthInputs(
+        support=support,
+        system_allow=system_allow,
+        workset_allow=workset_allow,
+        global_sync=global_sync,
+        global_knob=global_knob,
+        workset_knob=workset_knob,
+    )
+
+
+def _materialize_auth_active(snapshot: KeyStore) -> None:
+    """Materialize the three computed sharing-state keys (Q61, ratified).
+
+    Mutates *snapshot* in place — it is the launch-local expanded tree, owned by
+    the caller. The sketch, verbatim in intent: ``meta.workset.auth.global_active``
+    is system-allow AND workset-sync; ``meta.box.auth.global_active`` is
+    system-allow AND the box global knob; ``meta.box.auth.workset_active`` is
+    false unless the workset allows AND the box workset knob is on, then true
+    when the workset globally syncs, else the negation of box-global-active. All
+    three are false when the agent does not support sharing.
+
+    ⚑ Post-expand, beside the B5 mirror below: ``expand`` resolves ONLY @-refs /
+    $VAR / ~ and does NOT evaluate ``&&`` (module note), so — like the effective
+    enables in :func:`resolve_auth_source` — these ANDs exist in PYTHON, never as
+    floor expressions. Reads via :func:`_read_auth_inputs`, the same six bools
+    the tier decision reads, so the keys and the tier cannot disagree.
+    Reads/writes via the UNBOUND ``dict`` protocol (S3) so a key named ``get`` /
+    ``auth`` cannot shadow.
+    """
+    inputs = _read_auth_inputs(snapshot)
+    if inputs.support:
+        box_global_active = bool(inputs.system_allow and inputs.global_knob)
+        workset_global_active = bool(inputs.system_allow and inputs.global_sync)
+        if inputs.workset_allow and inputs.workset_knob:
+            if inputs.global_sync:
+                box_workset_active = True
+            else:
+                box_workset_active = not box_global_active
+        else:
+            box_workset_active = False
+    else:
+        box_global_active = False
+        workset_global_active = False
+        box_workset_active = False
+    meta_node = dict.get(snapshot, "meta", __MISSING__)
+    if not isinstance(meta_node, KeyStore):
+        meta_node = KeyStore()
+        snapshot["meta"] = meta_node
+    meta_workset = dict.get(meta_node, "workset", __MISSING__)
+    if not isinstance(meta_workset, KeyStore):
+        meta_workset = KeyStore()
+        meta_node["workset"] = meta_workset
+    workset_auth = dict.get(meta_workset, "auth", __MISSING__)
+    if not isinstance(workset_auth, KeyStore):
+        workset_auth = KeyStore()
+        meta_workset["auth"] = workset_auth
+    workset_auth["global_active"] = workset_global_active
+    meta_box = dict.get(meta_node, "box", __MISSING__)
+    if not isinstance(meta_box, KeyStore):
+        meta_box = KeyStore()
+        meta_node["box"] = meta_box
+    box_auth = dict.get(meta_box, "auth", __MISSING__)
+    if not isinstance(box_auth, KeyStore):
+        box_auth = KeyStore()
+        meta_box["auth"] = box_auth
+    box_auth["global_active"] = box_global_active
+    box_auth["workset_active"] = box_workset_active
+
+
+def resolve_auth_source(
+    snapshot: KeyStore, *, mode: str | None = None
+) -> AuthSource:
+    """Resolve the box's credential-SHARING SOURCE off the expanded snapshot.
+
+    Computes each tier's EFFECTIVE enable in Python — the spec's ``%support && allow
+    && knob%``, since the expand engine does not evaluate ``&&`` (module note) — then
+    selects by precedence workset>global: workset ENABLED with its store present, else
+    global ENABLED, else ``"box"`` (private, no source).
+
+    ⚑ An absent ``box`` node means the floor was not injected → fail CLOSED (tier
+    ``"box"``, no sharing) rather than launder. Each input is a real ``bool`` terminal
+    resolved by ``expand``; :func:`as_bool` does not launder either.
+    """
+    inputs = _read_auth_inputs(snapshot)
+
+    box_node = dict.get(snapshot, "box", __MISSING__)
+    if not isinstance(box_node, KeyStore):
+        return AuthSource(
+            tier="box",
+            global_enabled=False,
+            workset_enabled=False,
+            global_sync=False,
+            workset_source=None,
+        )
+
+    # The RO DERIVED per-box workset source root, sibling of meta.box.agent:
+    # a resolved string; absent / None / "" all coerce to None.
+    meta_node = dict.get(snapshot, "meta", __MISSING__)
+    workset_source: str | None = None
+    if isinstance(meta_node, KeyStore):
+        meta_box = dict.get(meta_node, "box", __MISSING__)
+        if isinstance(meta_box, KeyStore):
+            meta_box_auth = dict.get(meta_box, "auth", __MISSING__)
+            if isinstance(meta_box_auth, KeyStore):
+                wp = dict.get(meta_box_auth, "workset_path", __MISSING__)
+                if isinstance(wp, str) and wp:
+                    workset_source = wp
+
     # Effective enables (the Python AND standing in for the spec's %… && …%).
-    global_enabled = bool(support and system_allow and global_knob)
-    workset_enabled = bool(support and workset_allow and workset_knob)
+    global_enabled = bool(inputs.support and inputs.system_allow and inputs.global_knob)
+    workset_enabled = bool(inputs.support and inputs.workset_allow and inputs.workset_knob)
 
     # Precedence workset>global: the workset tier wins when enabled AND its store
     # path is present (a lone box has no workset store → degenerate to global/box).
@@ -852,7 +963,7 @@ def resolve_auth_source(
         tier=tier,
         global_enabled=global_enabled,
         workset_enabled=workset_enabled,
-        global_sync=global_sync,
+        global_sync=inputs.global_sync,
         workset_source=workset_source,
     )
 
@@ -1266,6 +1377,10 @@ def build_launch_snapshot(
     # The meta.box.agent.* RO mirror (B5) — a COPY step, AFTER expand so the values
     # are resolved terminals.
     _materialize_box_agent_mirror(expanded, active_agent=agent_name)
+    # The three computed sharing-state keys (Q61) — a COMPUTE step, AFTER expand
+    # for the same reason: expand does not evaluate &&, so the ANDs only exist in
+    # Python. Before the §0 refusal below, which must see the finished tree.
+    _materialize_auth_active(expanded)
     if workset_anchor and _BOX_ROOT_KEY in workset_anchor:
         _assert_box_root_resolved(expanded)
     # ⚑ MEASUREMENT FIRST, THEN ENFORCEMENT, AND THE ORDER IS LOAD-BEARING. The probe
