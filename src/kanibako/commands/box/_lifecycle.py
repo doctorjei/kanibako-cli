@@ -900,6 +900,146 @@ def _deliver_carried_box_settings(state: ProjectState, dst_box_tier: Path) -> No
         dump_doc(dst_box_tier, carried)
 
 
+def _vault_leaf_has_contents(leaf: Path) -> bool:
+    """True when *leaf* holds anything — an unreadable leaf counts as non-empty.
+
+    ⚑ An error here must never read as "empty": the carry skips its warnings for
+    empty leaves, and silence about an unreadable store would be the wrong default.
+    A MISSING leaf holds nothing, so only that error reads as empty.
+    """
+    try:
+        return any(leaf.iterdir())
+    except FileNotFoundError:
+        return False
+    except OSError:
+        return True
+
+
+def _copy_vault_leaf_contents(src: Path, dst: Path) -> None:
+    """Merge-copy the CONTENTS of vault leaf *src* into leaf *dst*.
+
+    ⚑ The counterpart ``snapshots.py`` uses a bare ``copytree`` for vault content;
+    this is the same operation pointed at the relocation destination instead of a
+    snapshot dir.  No-ops when *src* holds nothing (missing or not a dir) and when
+    *src* and *dst* are the same directory (a reuse-in-place edge, whose teardown
+    is skipped — there is nothing to carry).  RAISES on a copy failure: callers
+    run this BEFORE the source teardown, so a failure aborts the relocation with
+    the source still whole (and the unwind drops the destination).
+    """
+    if not src.is_dir():
+        return
+    if src.resolve() == dst.resolve():
+        return
+    if src.resolve() in dst.resolve().parents:
+        # ⚑ Pathological (a destination repointed inside the source leaf): copying
+        # would nest the tree into itself, and the teardown below would then delete
+        # the just-written destination with the source.  Refuse loudly instead.
+        raise ProjectError(
+            f"Refusing to carry the vault from {src} into {dst}: the destination "
+            f"is inside the source."
+        )
+    dst.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(src, dst, dirs_exist_ok=True)
+
+
+def _vault_carry_pairs(
+    state: ProjectState,
+    std: StandardPaths,
+    dst_ro: Path,
+    dst_rw: Path,
+) -> list[tuple[Path, Path]]:
+    """The ``(source, destination)`` vault pairs whose contents must be carried.
+
+    ⚑ THE MISSING COPIER (bugfixes: ``box move``/``convert`` empties the vault):
+    every destination leaf is created EMPTY and the source leaves are then deleted,
+    so without this the vault's contents survive nowhere.  His ruling (96th) prices
+    the vault as a STORE — contents must survive a relocation — so the fix is the
+    copy, not a warning and not a refusal.
+
+    ⚑ MIRRORS the teardown guards in :func:`_remove_old_metadata`: extends their
+    risk model to the copy, replaces nothing.
+    * primary/named: the box's vault is a per-box LEAF strictly under the source
+      arm.  A source NOT strictly under its arm is shared or foreign ground the
+      teardown refuses to delete (warn-on-skip); the carry refuses it too, with
+      its own warning naming where the contents remain.
+    * standalone: the box's vault IS the resolved arm, so the
+      :func:`standalone_vault_teardown` removable/retained split governs instead —
+      removable arms are carried (teardown deletes them); retained arms stay put
+      under the teardown's own note and are NOT duplicated into the new box.
+    Same-path pairs (reuse-in-place edges, whose teardown is skipped entirely)
+    are dropped silently — there is nothing to carry.
+    """
+    import sys
+
+    if not state.enable_vault:
+        # ⚑ No destination vault exists to carry into: every creator gates the
+        # leaves on ``enable_vault``.
+        return []
+    pairs = [(state.vault_ro, dst_ro), (state.vault_rw, dst_rw)]
+    if state.mode == BoxMode.standalone:
+        removable, _retained = standalone_vault_teardown(state.metadata_path)
+        removable_roots = {p.resolve() for p in removable}
+        out: list[tuple[Path, Path]] = []
+        for src, dst in pairs:
+            if src.resolve() == dst.resolve():
+                continue
+            if src.resolve() not in removable_roots:
+                # ⚑ Retained: the teardown leaves it in place AND prints where, so
+                # the new box starts empty there — say so once, and only when
+                # something is actually stored.
+                if src.is_dir() and _vault_leaf_has_contents(src):
+                    print(
+                        f"Note: the new vault starts empty — kept the existing "
+                        f"store at {src} in place.",
+                        file=sys.stderr,
+                    )
+                continue
+            out.append((src, dst))
+        return out
+    if state.mode == BoxMode.primary:
+        arms = (std.primary_vault_ro, std.primary_vault_rw)
+    elif state.mode == BoxMode.named and state.ws is not None:
+        arms = resolve_workset_vault_pair(state.ws.root)
+    else:  # pragma: no cover - defensive: an unknown mode stays hands-off
+        return []
+    out = []
+    for (src, dst), arm in zip(pairs, arms):
+        if src.resolve() == dst.resolve():
+            continue
+        # ⚑ STRICT mirror of the teardown guard below: ``relative_to`` ACCEPTS an
+        # equal path, so a leafless arm would take the whole shared dir.  Resolved
+        # on both sides (the teardown compares as stored); the model — hands off
+        # anything not strictly under the arm — is the same.
+        if arm.resolve() not in src.resolve().parents:
+            # ⚑ The teardown prints its own leaving-in-place warning for the same
+            # path; this one says the contents were not carried.
+            if src.is_dir() and _vault_leaf_has_contents(src):
+                print(
+                    f"Warning: not carrying vault contents from {src} — it is not "
+                    f"a per-box directory under {arm}; they remain at {src}.",
+                    file=sys.stderr,
+                )
+            continue
+        out.append((src, dst))
+    return out
+
+
+def _carry_vault_contents(
+    state: ProjectState,
+    std: StandardPaths,
+    dst_ro: Path,
+    dst_rw: Path,
+) -> None:
+    """Carry the source vault's contents into the freshly created destination leaves.
+
+    Runs BEFORE the source teardown on every path that relocates the vault; the
+    reuse-in-place edges (whose teardown is skipped) collapse to same-path no-ops
+    inside.  A copy failure RAISES, aborting before anything is deleted.
+    """
+    for src, dst in _vault_carry_pairs(state, std, dst_ro, dst_rw):
+        _copy_vault_leaf_contents(src, dst)
+
+
 def _remove_old_metadata(
     state: ProjectState,
     std: StandardPaths,
@@ -1090,6 +1230,10 @@ def _to_default(
         vault_rw.mkdir(parents=True, exist_ok=True)
         unwind.push(lambda: shutil.rmtree(vault_ro, ignore_errors=True))
         unwind.push(lambda: shutil.rmtree(vault_rw, ignore_errors=True))
+
+    # ⚑ THE VAULT CARRY (P1 data loss): the leaves above are created EMPTY and
+    # ``_remove_old_metadata`` below deletes the source — contents move first.
+    _carry_vault_contents(state, std, vault_ro, vault_rw)
 
     _remove_old_metadata(state, std, config, preserve_name=preserved_name)
 
@@ -1371,6 +1515,11 @@ def _to_standalone(
     # repoint included, which is why its return value is what gets passed.
     write_vault_gitignore(root, vault_rw)
 
+    # ⚑ THE VAULT CARRY (P1 data loss) — see ``_to_default``: the destination
+    # vault is fresh and the teardown below deletes the source, so contents
+    # move first.  A reuse-in-place rename collapses to a same-path no-op.
+    _carry_vault_contents(state, std, vault_ro, vault_rw)
+
     _remove_old_metadata(
         state, std, config, preserve_root=root if reused_in_place else None,
     )
@@ -1436,15 +1585,31 @@ def _to_workset(
         import tempfile
         stash = Path(tempfile.mkdtemp(prefix="kanibako-unwind-"))
         stash_boxes = stash / "boxes"
-        if state.metadata_path.is_dir():
-            shutil.copytree(
-                state.metadata_path, stash_boxes,
-                ignore=shutil.ignore_patterns(".kanibako.lock"),
-                dirs_exist_ok=True,
-            )
+        try:
+            if state.metadata_path.is_dir():
+                shutil.copytree(
+                    state.metadata_path, stash_boxes,
+                    ignore=shutil.ignore_patterns(".kanibako.lock"),
+                    dirs_exist_ok=True,
+                )
+            # ⚑ THE VAULT CARRY, leg 1 of 2 (P1 data loss): ``remove_project`` below
+            # deletes the source vault leaves, while the destination leaves only exist
+            # after ``add_project`` — so the contents wait out the swap in the stash
+            # beside the metadata.  Guarded by the same risk model as the teardown.
+            stash_vault_ro = stash / "vault_ro"
+            stash_vault_rw = stash / "vault_rw"
+            for _src, _tmp in _vault_carry_pairs(
+                state, std, stash_vault_ro, stash_vault_rw,
+            ):
+                _copy_vault_leaf_contents(_src, _tmp)
+            remove_project(src_ws, src_name, remove_files=True, std=std)
+        except BaseException:
+            # ⚑ Leg 1 runs BEFORE the unwind push below, so a failure here owns
+            # no compensating action yet — drop the stash here, not in the unwind.
+            shutil.rmtree(stash, ignore_errors=True)
+            raise
         metadata_source = stash_boxes
         shell_source = stash_boxes / "home"
-        remove_project(src_ws, src_name, remove_files=True, std=std)
 
         def _restore_source() -> None:
             add_project(src_ws, src_name, src_source_path, std)
@@ -1453,6 +1618,12 @@ def _to_workset(
                     stash_boxes, src_ws.projects_dir / src_name,
                     dirs_exist_ok=True,
                 )
+            # ⚑ THE VAULT CARRY, unwind leg (P1 data loss): leg 1 released the
+            # source leaves into the stash, so membership alone would hand back
+            # an emptied store — land the stashed contents back first.  No-ops
+            # when leg 1 carried nothing; runs BEFORE the stash is removed.
+            _copy_vault_leaf_contents(stash_vault_ro, state.vault_ro)
+            _copy_vault_leaf_contents(stash_vault_rw, state.vault_rw)
             shutil.rmtree(stash, ignore_errors=True)
 
         unwind.push(_restore_source)
@@ -1524,7 +1695,15 @@ def _to_workset(
     write_box_enable_vault(dst_project / BOX_META_FILE, state.box_authored_vault)
 
     # ⚑ A workset source ALREADY released above — cleaning up again would double-remove.
+    if source_is_workset:
+        # ⚑ THE VAULT CARRY, leg 2 of 2 (P1 data loss): the destination leaves
+        # exist now — land the stashed contents.  No-ops when leg 1 carried nothing.
+        _copy_vault_leaf_contents(stash_vault_ro, vault_ro)
+        _copy_vault_leaf_contents(stash_vault_rw, vault_rw)
     if not source_is_workset:
+        # ⚑ THE VAULT CARRY (P1 data loss) — see ``_to_default``: contents move
+        # before the teardown below deletes the source.
+        _carry_vault_contents(state, std, vault_ro, vault_rw)
         _remove_old_metadata(state, std, config)
 
     return ProjectState(
