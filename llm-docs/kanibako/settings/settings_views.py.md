@@ -202,7 +202,8 @@ materialized for the box (spec §2c; §0 meta-RO):
 * `share_workset` (B2) — this box's workset-local share dir, `None` for STANDALONE (spec §2c).
 * `settings` — the RO box-TIER settings-file path, UNIFORM in every mode (spec §2c, ALL PROJECTS).
   Standalone's is `<root>/box_data/box.yaml`, a real path that is merely ABSENT BY DEFAULT
-  (§5) — NOT a `None` terminal. It is typed `Path | None` only because a narrow or partial resolve
+  (`system-design-1.8.0.md` § "Detection & import": detection reads the ROOT file and must NOT
+  depend on `box_data/box.yaml`, "which may be absent") — NOT a `None` terminal. It is typed `Path | None` only because a narrow or partial resolve
   may materialize no box tier; the launch always supplies one.
 
 `container_name` and `helper_num` are a non-bind RENDER and are deliberately not materialized here
