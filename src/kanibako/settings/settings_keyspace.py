@@ -497,7 +497,14 @@ DECLARED_META_BOX_LEAVES: Final[frozenset[str]] = frozenset({
     "inbox", "share_global", "share_workset",
     "home", "container_name", "helper_num",
 })
-DECLARED_META_BOX_AUTH_LEAVES: Final[frozenset[str]] = frozenset({"workset_path"})
+DECLARED_META_BOX_AUTH_LEAVES: Final[frozenset[str]] = frozenset({
+    "workset_path", "global_active", "workset_active",
+})
+#: ``meta.workset.auth.<leaf>`` — the computed workset sharing state (Q61): whether
+#: the workset tier is actively syncing with the global store. The ``auth`` leaves
+#: live one level down like their ``meta.box.auth`` siblings, so they get their own
+#: arm in :func:`_meta_reason` rather than joining :data:`DECLARED_META_WORKSET_LEAVES`.
+DECLARED_META_WORKSET_AUTH_LEAVES: Final[frozenset[str]] = frozenset({"global_active"})
 DECLARED_META_AGENT_LEAVES: Final[frozenset[str]] = frozenset({
     "name", "path", "settings", "mode", "exec",
 })
@@ -981,6 +988,15 @@ def _meta_reason(
             return _namespace("'meta.workset' is a namespace, not a key")
         if len(tail) == 1 and tail[0] in DECLARED_META_WORKSET_LEAVES:
             return _KEY
+        if len(tail) == 1 and tail[0] == "auth":
+            return _namespace("'meta.workset.auth' is a namespace, not a key")
+        if len(tail) == 2 and tail[0] == "auth":
+            if tail[1] in DECLARED_META_WORKSET_AUTH_LEAVES:
+                return _KEY
+            return _undeclared(
+                f"'meta.workset.auth.{tail[1]}' is not a declared key (declared: "
+                f"{', '.join(sorted(DECLARED_META_WORKSET_AUTH_LEAVES))})"
+            )
         return _undeclared(
             f"'meta.workset.{'.'.join(tail)}' is not a declared key (declared: "
             f"{', '.join(sorted(DECLARED_META_WORKSET_LEAVES))})"
@@ -1029,7 +1045,8 @@ def _meta_reason(
             return _agent_tail_reason("meta.box.agent", mirror, leaves)
         return _undeclared(
             f"'meta.box.{'.'.join(tail)}' is not a declared key (declared: "
-            f"{', '.join(sorted(DECLARED_META_BOX_LEAVES))}, auth.workset_path, "
+            f"{', '.join(sorted(DECLARED_META_BOX_LEAVES))}, "
+            f"{', '.join('auth.' + leaf for leaf in sorted(DECLARED_META_BOX_AUTH_LEAVES))}, "
             f"and the agent.* read-back mirror)"
         )
 
