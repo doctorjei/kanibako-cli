@@ -192,19 +192,31 @@ def ensure_persona_share_symlinks(std, agent_id, target) -> None:
     """Point a persona's agent-scope shared stores at the harness's (symlink shim).
 
     A persona is a distinct agent NODE (``navigator℘claude``) whose ``agents/<node>/``
-    dir is its own store, but whose plugins/cache/template SHOULD be shared with the
+    dir is its own store, but whose template/common/canon SHOULD be shared with the
     bare harness (``agents/claude/``) rather than starting empty.  The resolver DOES
     re-root a declaration onto the node (``agent_categories_for_node``); what makes
-    that resolve to the harness's content is the SYMLINK laid here.  TWO sources of
-    links, one mechanism (:func:`_link_persona_share`):
+    that resolve to the harness's content is the SYMLINK laid here.  THREE whole-leaf
+    shares plus the remaining declared sources, one mechanism
+    (:func:`_link_persona_share`):
 
-    * every agent-scope category source the target DECLARES that is rooted at the
-      harness's own store — ``default_common()`` (claude's ``plugins`` / ``cache``),
-      ``default_seeds()`` and ``default_category_binds()`` alike; generic over
-      harnesses and over categories, NO per-plugin and no per-category code.
-      ``agents/<node>/<leaf>`` becomes a symlink -> ``agents/<harness>/<leaf>``.
     * ``template`` — the seed-layer-2 SOURCE store: ``agents/<node>/template``
       becomes a symlink -> ``agents/<harness>/template``.
+    * ``canon`` — the agent-handbook-chapter SOURCE store:
+      ``agents/<node>/canon`` becomes a symlink -> ``agents/<harness>/canon``, so
+      the ``agent.<node>.canon`` key answers the harness's chapter instead of
+      falling back to the default's.  Laid only when the harness's dir already
+      EXISTS: with nothing to share the default fallback is the right answer.
+    * ``common`` — the whole live-BIND dir: ``agents/<node>/common`` becomes a
+      symlink -> ``agents/<harness>/common``, sharing every leaf at once,
+      declared or not.  TARGET-DECLARED, so laid only when the target declares a
+      source beneath it — with no target, or none declared, nothing is laid.
+    * every REMAINING agent-scope category source the target DECLARES that is
+      rooted at the harness's own store — ``default_seeds()`` and
+      ``default_category_binds()`` (e.g. claude's ``caches/tweakcc``); generic over
+      harnesses and over categories, NO per-plugin and no per-category code.
+      ``agents/<node>/<leaf>`` becomes a symlink -> ``agents/<harness>/<leaf>``.
+      (The ``common`` leaves this loop used to lay one by one now arrive through
+      the whole-leaf link above; the loop stays the mechanism for the rest.)
 
     ⚑⚑ THE LINK IS LAID AT THE PATH THE SOURCE NAMES, NEVER AT AN ENTRY BENEATH IT,
     and that granularity is load-bearing for a SEED: ``launch.templates.stage_layers``
@@ -287,21 +299,48 @@ def ensure_persona_share_symlinks(std, agent_id, target) -> None:
         what="template", logger=logger,
     )
 
+    # (2) The CANON store root — the agent-handbook-chapter SOURCE.  ⚑ WHOLE-LEAF,
+    # like (1): the ``agent.<node>.canon`` key names ``@config.agents/<node>/canon``
+    # and the chapter bind reads ``<that>/handbook`` through it, so the link and
+    # the key meet at the SAME dir or the persona falls back to the DEFAULT chapter
+    # while its harness ships its own.  ⚑ LINK ONLY WHAT EXISTS: the node key falls
+    # back to ``@agent.default.canon`` while the node's ``canon`` is absent, and an
+    # unconditional link would trade that REAL default content for an EMPTY harness
+    # dir this shim just mkdir'd.  Every shipped harness carries
+    # ``canon/handbook``, so a missing harness dir means a harness with no canon to
+    # share.  Re-run heals: the shim runs every launch, so a later-installed
+    # harness canon links then.  ⚑ NOT target-declared (the floor comes from
+    # ``core_defaults``), hence laid BEFORE the no-target return like (1).  The
+    # escape hatch is the same never-clobber rule — replace the link with a real
+    # directory and the persona carries its own canon.
+    _harness_canon = agents_root / store_dirname(harness) / "canon"
+    if _harness_canon.is_dir():
+        _link_persona_share(
+            agents_root / store_dirname(agent_id) / "canon",
+            _harness_canon,
+            what="canon", logger=logger,
+        )
+
     if target is None:
         return
 
-    # (2) EVERY target-declared agent-scope category source.  ⚑ The three hooks are
-    # enumerated because they are the three the launch folds into its floor
-    # (:func:`_resolve_launch_snapshot`, and ``default_seeds`` again at
-    # :func:`_apply_init_seeds`); a fourth hook added there needs adding here in the
-    # SAME change, or its re-rooted source names a path nothing created.
-    # Each table is the TERMINAL key -> its whole dest-keyed map, so the entries are
-    # the VALUES and the store leaf is read off each rooted host_src.
-    # ⚑ DEDUPED: two declarations may legitimately share one store dir (a plugin
-    # binding ``common/cache`` ro and rw), and the second call would only re-walk a
-    # link the first laid — but the debug log would claim two shares where the box
-    # has one.
-    linked: set[str] = set()
+    # (3) The COMMON store root — WHOLE-LEAF, for the same reason as (1): the loop
+    # below links each re-rooted source one by one, so a leaf the plugin adds
+    # tomorrow (or a user carries by hand) would resolve to an absent path until
+    # this file changed in the same commit — the absent-source symptom one hop out.
+    # One link over the whole dir shares every leaf at once, and the loop below
+    # degrades to a harmless no-op for the leaves it already covers (a path reached
+    # THROUGH a link is an existing dir, so never-clobber leaves it).  ⚑ AFTER the
+    # no-target return, unlike (1)/(2): ``common`` is TARGET-DECLARED, so it is laid
+    # only when the target actually DECLARES a source beneath it — with no target,
+    # or none declared, nothing is laid and nothing is invented.  The dirname comes
+    # from ``agent_category_dirname``, the module that OWNS the per-agent store
+    # layout.
+    # ⚑ COLLECT-FIRST: the declared leaves are gathered by (4) before ANY link is
+    # laid, so this share can read whether a ``common/`` leaf is among them.
+    _common_dirname = agent_category_dirname("common")
+    _leaves: list[str] = []
+    _seen: set[str] = set()
     for table in (
         target.default_common(),
         target.default_seeds(),
@@ -312,16 +351,37 @@ def ensure_persona_share_symlinks(std, agent_id, target) -> None:
                 continue
             for entry in arm.values():
                 leaf = harness_store_leaf(entry[0], harness)
-                if leaf is None or leaf in linked:
+                if leaf is None or leaf in _seen:
                     # ``None``: a self-resolving source the plugin chose itself — not
                     # its own store, so there is nothing to share and nothing to shim.
                     continue
-                linked.add(leaf)
-                _link_persona_share(
-                    agents_root / store_dirname(agent_id) / leaf,
-                    agents_root / store_dirname(harness) / leaf,
-                    what=leaf, logger=logger,
-                )
+                _seen.add(leaf)
+                _leaves.append(leaf)
+    if any(leaf == _common_dirname or leaf.startswith(_common_dirname + "/")
+           for leaf in _leaves):
+        _link_persona_share(
+            agents_root / store_dirname(agent_id) / _common_dirname,
+            agents_root / store_dirname(harness) / _common_dirname,
+            what="common", logger=logger,
+        )
+
+    # (4) EVERY REMAINING target-declared agent-scope category source.  ⚑ The three hooks are
+    # enumerated because they are the three the launch folds into its floor
+    # (:func:`_resolve_launch_snapshot`, and ``default_seeds`` again at
+    # :func:`_apply_init_seeds`); a fourth hook added there needs adding here in the
+    # SAME change, or its re-rooted source names a path nothing created.
+    # Each table is the TERMINAL key -> its whole dest-keyed map, so the entries are
+    # the VALUES and the store leaf was read off each rooted host_src above.
+    # ⚑ DEDUPED above: two declarations may legitimately share one store dir (a plugin
+    # binding ``common/cache`` ro and rw), and the second call would only re-walk a
+    # link the first laid — but the debug log would claim two shares where the box
+    # has one.
+    for leaf in _leaves:
+        _link_persona_share(
+            agents_root / store_dirname(agent_id) / leaf,
+            agents_root / store_dirname(harness) / leaf,
+            what=leaf, logger=logger,
+        )
 
 
 def add_start_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -3244,10 +3304,10 @@ def _run_container(
     suppress_oauth = active_endpoint is not None
 
     # Loadability resolved → NOW materialise the persona artifacts.  Persist the
-    # freshly generated agent config; the category-source shim points
-    # ``agents/<node>/common/{plugins,cache}`` and ``agents/<node>/caches/tweakcc``
-    # at the harness's dirs BEFORE mount assembly resolves them.  A bare agent
-    # (node == harness) is a no-op for the shim.
+    # freshly generated agent config; the share shim points ``agents/<node>/``'s
+    # ``template``, ``common`` and ``canon`` leaves (plus ``caches/tweakcc`` and any
+    # other declared store leaf) at the harness's dirs BEFORE mount assembly
+    # resolves them.  A bare agent (node == harness) is a no-op for the shim.
     # ⚑ ``agent_cfg_dirty`` is FIRST-USE ONLY: nothing on this path writes a resolved
     # persona value back, so a persona launch leaves an existing
     # ``agents/<node>/agent.yaml`` byte-identical.
@@ -8195,7 +8255,7 @@ def seed_new_box(std, config, proj, *, explicit_agent: str | None = None) -> Non
     suppress_oauth = active_endpoint is not None
 
     # Loadability resolved → materialise the persona artifacts (write the freshly
-    # generated config, then the common-dir shim) BEFORE the seed resolve reads them.
+    # generated config, then the share-link shim) BEFORE the seed resolve reads them.
     if target is not None and agent_cfg_dirty:
         assert seed_agent_cfg is not None  # target set ⇒ config built above.
         agent_file.save(agent_cfg_path, seed_agent_cfg)
