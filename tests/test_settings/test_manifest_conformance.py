@@ -95,6 +95,7 @@ from kanibako.settings.settings_keyspace import (
     DECLARED_META_RUNTIME_ADMIN_LEAVES,
     DECLARED_META_RUNTIME_USER_LEAVES,
     DECLARED_META_WORKSET_LEAVES,
+    DECLARED_META_WORKSET_AUTH_LEAVES,
     DECLARED_SYSTEM_AUTH_LEAVES,
     DECLARED_SYSTEM_CHANNEL_LEAVES,
     DECLARED_SYSTEM_HELPERS_LEAVES,
@@ -212,8 +213,8 @@ class TestManifestLoader:
         for section in ("registry", "policy", "categories", "keys",
                         "bind_default_entries", "not_keys"):
             assert section in doc, f"manifest section {section!r} is missing"
-        assert len(doc["keys"]) == 120, (
-            f"the manifest declares {len(doc['keys'])} key rows, not the 120 this "
+        assert len(doc["keys"]) == 123, (
+            f"the manifest declares {len(doc['keys'])} key rows, not the 123 this "
             f"file's counts were measured against — re-measure, do not adjust blindly"
         )
 
@@ -1350,10 +1351,22 @@ _VALUE_BOX_ADDRESS_KEYS = (
     "meta.box.settings", "meta.box.workspace", "meta.box.name",
 )
 
-#: Every manifest ``keys:`` row this section pins a VALUE for: 21.
+#: (ii-f) Value rows COMPUTED post-expand by
+#: ``settings_launch._materialize_auth_active`` (Q61) — the manifest carries the
+#: ``<computed>`` placeholder, NOT a formula: a real ``@``-ref there would resolve
+#: through ``expand`` and change launch behavior, so the placeholder is
+#: load-bearing, not vagueness. Pinned verbatim, plus the producer proof.
+_VALUE_AUTH_ACTIVE_KEYS = (
+    "meta.workset.auth.global_active",
+    "meta.box.auth.global_active",
+    "meta.box.auth.workset_active",
+)
+
+#: Every manifest ``keys:`` row this section pins a VALUE for: 24.
 PINNED_VALUE_KEYS: frozenset[str] = frozenset(
     set(_VALUE_ANCHOR_KEYS) | set(_VALUE_AUTH_KEYS) | set(_VALUE_REROOT_KEYS)
     | set(_VALUE_AGENT_IDENTITY_KEYS) | set(_VALUE_BOX_ADDRESS_KEYS)
+    | set(_VALUE_AUTH_ACTIVE_KEYS)
 )
 
 
@@ -1458,6 +1471,44 @@ class TestValueAuthFormulas:
                 f"meta.box.agent.auth.share_support [{mode}]: "
                 f"{floors[mode]['meta.box.agent.auth.share_support']!r}"
             )
+
+
+class TestValueAuthActiveFormulas:
+    """(ii-f) The computed sharing-state rows ARE ``_materialize_auth_active``'s output.
+
+    The manifest carries the ``<computed>`` placeholder rather than a formula:
+    ``&&`` is inexpressible in ``@``-ref grammar, so no formula could spell the
+    conjunction — the placeholder is load-bearing. Pinned verbatim, plus the
+    producer proof — a floorless launch snapshot carries all three as bools (the
+    fail-CLOSED arm; the truth table itself is pinned by
+    ``test_settings_launch.TestAuthActiveKeys``).
+    """
+
+    @pytest.mark.parametrize("key", _VALUE_AUTH_ACTIVE_KEYS)
+    def test_the_manifest_value_is_the_computed_placeholder(self, key):
+        assert _value(key) == "<computed>"
+
+    def test_the_producer_materializes_all_three_as_bools(self):
+        """Anti-vacuity: a producer that stopped emitting a row must red HERE."""
+        from kanibako.settings.settings_launch import build_launch_snapshot
+        from kanibako.settings.settings_resolve import ResolveCtx
+
+        snap = build_launch_snapshot(
+            agent_name="claude",
+            ctx=ResolveCtx(
+                agent_name="claude",
+                workset_name=None,
+                host_home="/home/host",
+                xdg={"XDG_DATA_HOME": "/data"},
+            ),
+            system_path=None,
+            agent_path=None,
+            workset_path=None,
+            box_path=None,
+        )
+        assert snap.meta.workset.auth.global_active is False
+        assert snap.meta.box.auth.global_active is False
+        assert snap.meta.box.auth.workset_active is False
 
 
 class TestValueRerootFormulas:
@@ -2017,14 +2068,14 @@ class TestDefaultsCoverage:
             f"section 4b classifies rows the manifest no longer declares a value for: "
             f"{sorted(stale)}"
         )
-        assert len(declared) == 31, (
-            f"the manifest gives {len(declared)} rows a value, not the 31 measured — "
+        assert len(declared) == 34, (
+            f"the manifest gives {len(declared)} rows a value, not the 34 measured — "
             f"re-classify, do not adjust the count"
         )
 
     def test_the_value_split_is_the_measured_split(self):
-        """21 pinned rows, 10 exempted — stated so a silent migration between them reds."""
-        assert len(PINNED_VALUE_KEYS) == 21
+        """24 pinned rows, 10 exempted — stated so a silent migration between them reds."""
+        assert len(PINNED_VALUE_KEYS) == 24
         assert len(EXEMPT_VALUE_KEYS) == 10
         assert not (PINNED_VALUE_KEYS & EXEMPT_VALUE_KEYS)
 
@@ -2051,8 +2102,8 @@ class TestDefaultsCoverage:
         )
 
     def test_the_default_value_neither_cells_partition_the_registry(self):
-        """79 + 31 + 10 == 120, disjoint — no row carries both cells, none carries
-        neither unnoticed.  The 120 is the loader's own count, re-stated here as the
+        """79 + 34 + 10 == 123, disjoint — no row carries both cells, none carries
+        neither unnoticed.  The 123 is the loader's own count, re-stated here as the
         arithmetic the three coverage cases must sum to."""
         keys = _keys()
         defaulted = {
@@ -2069,7 +2120,7 @@ class TestDefaultsCoverage:
             f"rows carrying BOTH cells: {sorted(defaulted & valued)}"
         )
         assert defaulted | valued | neither == {str(k) for k in keys}
-        assert (len(defaulted), len(valued), len(neither)) == (79, 31, 10)
+        assert (len(defaulted), len(valued), len(neither)) == (79, 34, 10)
 
 
 # --------------------------------------------------------------------------- #
@@ -2135,6 +2186,7 @@ _SCALAR_DECLARATIONS: tuple[tuple[str, frozenset[str]], ...] = (
     ("meta.runtime.admin.", DECLARED_META_RUNTIME_ADMIN_LEAVES),
     ("meta.assembly.", DECLARED_META_ASSEMBLY_LEAVES),
     ("meta.workset.", DECLARED_META_WORKSET_LEAVES),
+    ("meta.workset.auth.", DECLARED_META_WORKSET_AUTH_LEAVES),
     ("meta.box.", DECLARED_META_BOX_LEAVES),
     ("meta.box.auth.", DECLARED_META_BOX_AUTH_LEAVES),
     ("meta.agent.<agent>.", DECLARED_META_AGENT_LEAVES),
@@ -2153,9 +2205,9 @@ def _code_scalar_keys() -> set[str]:
     manifest's ``categories:`` table, not ``keys:``, and the frozensets do not contain
     them either, so they never enter this diff.
     ⚑ The NESTED arms are members here like any other: ``meta.runtime.{user,admin}.``
-    and the two auth arms ``meta.box.auth.`` / ``meta.agent.<agent>.auth.`` are pinned by
-    the two directions below, which is where a reader who finds no nested guard in
-    ``test_settings_keyspace.py`` should look.
+    and the three auth arms ``meta.box.auth.`` / ``meta.agent.<agent>.auth.`` /
+    ``meta.workset.auth.`` are pinned by the two directions below, which is where
+    a reader who finds no nested guard in ``test_settings_keyspace.py`` should look.
     """
     out: set[str] = set()
     for prefix, leaves in _SCALAR_DECLARATIONS:
@@ -2312,8 +2364,9 @@ class TestKeySetConformance:
 
         ⚑ FOUR families hold a SINGLE leaf and are the exposed ones, because one
         deletion empties them outright: ``system.auth``, ``meta.runtime.user``,
-        ``meta.box.auth`` and ``meta.agent.<agent>.auth``.  Not every auth arm is
-        small — ``box.auth`` holds 2 and ``workset.auth`` 3 (counted 2026-09-19).
+        ``meta.workset.auth`` and ``meta.agent.<agent>.auth``.  Not every auth arm is
+        small — ``box.auth`` holds 2 and ``workset.auth`` and ``meta.box.auth`` hold
+        3 each (counted 2026-09-19, re-counted 2026-09-22).
 
         🛑 WHAT THIS DOES NOT BUY — BOTH HALVES MEASURED 2026-09-19, on a stand-in:
 
