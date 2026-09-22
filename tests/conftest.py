@@ -1063,3 +1063,38 @@ def _sim_unshare_globally(request):
         if cls is not None and cls.__name__ == "TestUnshareChownChmod":
             return
     request.getfixturevalue("protected_canon")
+
+
+#: Delivered host signals no test may INHERIT (board row 2, ``tasks/bugfixes.md``).
+#: ``box.env.COLORTERM`` is a PASSTHROUGH of the host's ``COLORTERM`` (absence is
+#: the whole feature) and ``agent.default.env.TERM`` passes ``$TERM`` through
+#: (falling back to ``xterm`` only when the host sets none) — and ``ResolveCtx``
+#: snapshots BOTH at construction — so a test that neither pins nor scrubs them
+#: measures the developer's shell: green on a host exporting
+#: ``COLORTERM=truecolor`` (this box), red under ``env -u COLORTERM``, the
+#: absence path never exercised. Scrubbing here, at the FIXTURE rather than in a
+#: runner, keeps the hermeticity IN the repo, so bare ``pytest``, the chunked
+#: gate and CI's bare invocation all run the same suite — a runner-side scrub
+#: cannot cover CI, and a second unset leg there would then prove nothing.
+#: ⚑ ``HOME`` / ``XDG_*`` / ``PATH`` / ``SHELL`` are DELIBERATELY absent: tests
+#: that do not take ``tmp_home`` read the real ``HOME``/``XDG_*``, and spawned
+#: subprocesses need ``PATH``. Those stay pinned per test (``tmp_home`` covers
+#: ``HOME``/``XDG_*``); this set holds only signals whose absence is a SPECIFIED
+#: answer the suite already pins both ways.
+_HOST_SIGNAL_VARS = ("COLORTERM", "TERM")
+
+
+@pytest.fixture(autouse=True)
+def _scrub_delivered_host_signals(monkeypatch):
+    """Run every test without the delivered host signals in ``_HOST_SIGNAL_VARS``.
+
+    ``monkeypatch`` undoes the scrub after each test, so the developer's shell
+    is untouched — only the test process's view is hermetic. A test needing a
+    signal sets it explicitly (``monkeypatch.setenv`` wins: it runs after this
+    autouse fixture), and a test that forgets gets the ABSENT answer
+    deterministically rather than whatever the host exports — turning a
+    green-for-the-wrong-reason into a loud, reproducible red.
+    """
+    for _var in _HOST_SIGNAL_VARS:
+        monkeypatch.delenv(_var, raising=False)
+    yield
