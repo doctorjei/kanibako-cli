@@ -1095,6 +1095,80 @@ class TestProbeEvidence:
             "(https://e.example) refused the probe"
         )
 
+    def test_userinfo_in_the_endpoint_is_scrubbed_but_the_host_survives(self):
+        """The endpoint is user-configured and may carry a credential in its
+        userinfo; the block prints WHERE it pointed, not the credential.
+        """
+        from kanibako.targets.base import PersonaProbeOutcome, ProbeEvidence
+
+        secret = "sk-userinfo-credential-8H2K"
+        evidence = ProbeEvidence(
+            endpoint=f"https://{secret}@gw.example.com/v1/messages",
+            model="sonnet", status=403, provider_text="nope",
+        )
+        block = PersonaProbeOutcome.rejected(evidence).evidence_block()
+        assert secret not in block
+        assert "gw.example.com" in block
+        assert "/v1/messages" in block
+        assert "<redacted>" in block
+
+    def test_a_user_and_password_userinfo_is_scrubbed_whole(self):
+        """Both halves of ``user:password@`` go — redacting the username alone
+        would leave the password on the terminal.
+        """
+        from kanibako.targets.base import PersonaProbeOutcome, ProbeEvidence
+
+        evidence = ProbeEvidence(
+            endpoint="https://agent:s3cr3t-pw-9Q@gw.example.com/v1",
+            model="sonnet", status=401,
+        )
+        block = PersonaProbeOutcome.rejected(evidence).evidence_block()
+        assert "s3cr3t-pw-9Q" not in block
+        assert "https://agent:" not in block
+        assert "gw.example.com/v1" in block
+
+    def test_the_status_less_refusal_scrubs_userinfo_but_names_the_host(self):
+        """The widened arm has no block, so the sentence is the only carrier —
+        it carries the scrubbed endpoint, not the credential and not silence.
+        """
+        from kanibako.targets.base import PersonaProbeOutcome, ProbeEvidence
+
+        secret = "sk-status-less-5T4R"
+        endpoint = f"https://{secret}@gw.example.com/v1"
+        silent = PersonaProbeOutcome.rejected(ProbeEvidence(endpoint=endpoint))
+        assert silent.evidence_block() == ""
+        phrase = silent.refusal_phrase(endpoint)
+        assert secret not in phrase
+        assert "gw.example.com/v1" in phrase
+
+    def test_an_endpoint_without_userinfo_renders_byte_identical(self):
+        """Legibility pin: no credential, no redaction — the endpoint the
+        refusal row wants MORE legible survives this row's scrub untouched.
+        """
+        from kanibako.targets.base import (
+            PersonaProbeOutcome, ProbeEvidence, _scrub_endpoint_userinfo,
+        )
+
+        endpoint = "https://gw.example.com/v1/messages?retry=3"
+        assert _scrub_endpoint_userinfo(endpoint) == endpoint
+        answered = PersonaProbeOutcome.rejected(
+            ProbeEvidence(endpoint=endpoint, status=403),
+        )
+        assert f"endpoint  {endpoint}" in answered.evidence_block()
+        silent = PersonaProbeOutcome.rejected(ProbeEvidence(endpoint=endpoint))
+        assert silent.refusal_phrase(endpoint) == f"({endpoint}) refused the probe"
+
+    def test_an_at_sign_outside_the_authority_is_not_userinfo(self):
+        """Boundary pin: only the netloc userinfo is a credential by
+        construction — an ``@`` in the query, and a string too malformed to
+        split, print unchanged rather than mangled.
+        """
+        from kanibako.targets.base import _scrub_endpoint_userinfo
+
+        echoed = "https://gw.example.com/v1?notify=ops@example.com"
+        assert _scrub_endpoint_userinfo(echoed) == echoed
+        assert _scrub_endpoint_userinfo("not a url at all") == "not a url at all"
+
     @pytest.mark.parametrize("target_cls", [ClaudeTarget, CodexTarget])
     def test_a_provider_that_ECHOES_THE_TOKEN_never_leaks_it(
         self, token_file, target_cls,

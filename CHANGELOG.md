@@ -402,6 +402,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   back, and `system reset <key>` clears it. If you set `system.state` to a directory you have
   not created yet, create it first — the set door now asks for an existing, writable directory.
 
+- **A credential in a persona endpoint's userinfo no longer reaches the terminal.** The endpoint
+  is user-configured and the evidence block printed it raw, so `https://<token>@host/...`
+  appeared intact in refusal evidence, probe warnings and pre-flight errors. Every printed
+  endpoint is now userinfo-scrubbed through the one helper (`https://<redacted>@host/...`): host,
+  path and provenance stay legible, the credential does not. ⚑ Scrubbed is not proven clean —
+  the block inherits the provider text's documented residue, so it is still not safe to paste.
+
 ### Added
 
 - **Every box now gets the host's terminal type, and `$TERM` resolves in a settings value.** Two
