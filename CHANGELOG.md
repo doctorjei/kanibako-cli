@@ -1915,6 +1915,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   because the two landed under different keys there. They land under one key now, so the launch
   refuses naming both — the same refusal, on the launch shape that used to escape it.
 
+- **A persona agent now shares its harness's whole `common` and `canon` stores by symlink, so a
+  persona box binds the harness's own agent-handbook chapter instead of the default's.** Nothing
+  to do on upgrade: existing persona stores keep working through their per-leaf links, and
+  replacing a link with a real directory still gives the persona its own copy.
+
 - **Duplicating a standalone box no longer buries a copy of the source — carrying the source's
   identity — inside the new box.** The copy took the standalone source's *root* as its source
   directory, so the destination's `box_data/` came out holding the source's `workspace`, `vault`,

@@ -1762,9 +1762,10 @@ class TestPluginsAndCacheShares:
 
 class TestPersonaShareSymlinks:
     """Block D: ``ensure_persona_share_symlinks`` lays a symlink shim so a PERSONA
-    node (``navigator℘claude``) shares the harness's ``agents/claude/{plugins,
-    cache}`` instead of getting its own empty dirs.  Bare (node == harness) is a
-    no-op (byte-identical to every existing agent path)."""
+    node (``navigator℘claude``) shares the harness's whole ``template``, ``common``
+    and ``canon`` leaves (plus any other declared store leaf, e.g.
+    ``caches/tweakcc``) instead of getting its own empty dirs.  Bare (node ==
+    harness) is a no-op (byte-identical to every existing agent path)."""
 
     _HARNESS = "claude"
     _NODE = "navigator℘claude"
@@ -1856,11 +1857,14 @@ class TestPersonaShareSymlinks:
 
         std = self._std(tmp_path)
         ensure_persona_share_symlinks(std, self._NODE, self._target())
-        assert (std.agents / "navigator+claude" / "common" / "plugins").is_symlink()
+        assert (std.agents / "navigator+claude" / "common").is_symlink()
+        assert (std.agents / "navigator+claude" / "common").readlink() == (
+            std.agents / "claude" / "common"
+        )
         assert not (std.agents / "navigator℘claude").exists()
 
-    def test_links_are_under_the_common_dir(self, tmp_path):
-        """T7 — the shim reads the REAL (declaration-rooted) ``common`` shape.
+    def test_common_share_is_the_whole_leaf(self, tmp_path):
+        """T7 — the ``common`` share is ONE whole-leaf link, not one link per entry.
 
         ⚑ THIS IS THE ONE THAT CAUGHT THE BREAKAGE.  The shim used to build its
         paths from the ``host_src`` VALUE, which was a bare leaf (``plugins``).
@@ -1875,9 +1879,10 @@ class TestPersonaShareSymlinks:
         the rooted ``host_src`` is now the only carrier and
         ``agent_representation.harness_store_leaf`` is the ONE place that rule is
         written — it strips EXACTLY the harness's STORE declaration root and
-        answers ``None`` for anything else.  Both sides of the link resolve to the
-        same directory ``@meta.agent.<node>.path/<leaf>`` names, so shim and
-        resolver cannot drift.
+        answers ``None`` for anything else.  The whole-leaf link and the resolver
+        meet at the same directory ``@meta.agent.<node>.path/common`` names, so
+        shim and resolver cannot drift — and a leaf the plugin adds tomorrow is
+        shared with no shim change at all.
 
         (Mutation: join the WHOLE ``host_src`` instead of stripping the root → the
         ``@``-ref becomes a path component → RED.)
@@ -1886,12 +1891,22 @@ class TestPersonaShareSymlinks:
 
         std = self._std(tmp_path)
         ensure_persona_share_symlinks(std, self._NODE, self._target())
+        node_link = self._node_store(std) / "common"
+        harness_dir = std.agents / self._HARNESS / "common"
+        assert node_link.is_symlink(), f"no whole-leaf link at {node_link}"
+        assert node_link.readlink() == harness_dir
+        assert harness_dir.is_dir(), f"no harness dir at {harness_dir}"
+        # The declared entries arrive THROUGH the link, not as links of their own.
         for name in ("plugins", "cache"):
-            node_link = self._node_store(std) / "common" / name
-            harness_dir = std.agents / self._HARNESS / "common" / name
-            assert node_link.is_symlink(), f"{name}: no link at {node_link}"
-            assert harness_dir.is_dir(), f"{name}: no harness dir at {harness_dir}"
-            assert node_link.readlink() == harness_dir
+            entry = node_link / name
+            assert entry.is_dir(), f"{name}: missing through the link"
+            assert not entry.is_symlink(), f"{name}: sublink beside the whole link"
+        # The loop-laid NON-common leaf keeps the rooted-host_src rule above.
+        caches_link = self._node_store(std) / "caches" / "tweakcc"
+        assert caches_link.is_symlink(), "no loop-laid caches link"
+        assert caches_link.readlink() == (
+            std.agents / self._HARNESS / "caches" / "tweakcc"
+        )
         # And NOTHING was created from the raw @-ref value.
         assert not any(
             "@" in p.name for p in self._node_store(std).rglob("*")
@@ -1902,13 +1917,14 @@ class TestPersonaShareSymlinks:
     def test_persona_symlinks_created_for_each_share(self, tmp_path):
         from kanibako.commands.start import ensure_persona_share_symlinks
         std = self._std(tmp_path)
+        (std.agents / self._HARNESS / "canon" / "handbook").mkdir(parents=True)
         ensure_persona_share_symlinks(std, self._NODE, self._target())
-        for name in ("plugins", "cache"):
-            node_link = self._node_store(std) / "common" / name
-            harness_dir = std.agents / self._HARNESS / "common" / name
-            assert node_link.is_symlink(), f"{name} not a symlink"
+        for leaf in ("template", "common", "canon"):
+            node_link = self._node_store(std) / leaf
+            harness_dir = std.agents / self._HARNESS / leaf
+            assert node_link.is_symlink(), f"{leaf} not a symlink"
             # Harness dir made FIRST -> the link is NOT dangling.
-            assert harness_dir.is_dir(), f"harness {name} dir missing"
+            assert harness_dir.is_dir(), f"harness {leaf} dir missing"
             assert node_link.resolve() == harness_dir.resolve()
             assert node_link.readlink() == harness_dir
 
@@ -1934,17 +1950,18 @@ class TestPersonaShareSymlinks:
     def test_persona_idempotent_second_call_noop(self, tmp_path):
         from kanibako.commands.start import ensure_persona_share_symlinks
         std = self._std(tmp_path)
+        (std.agents / self._HARNESS / "canon").mkdir(parents=True)
         ensure_persona_share_symlinks(std, self._NODE, self._target())
         before = {
-            name: (self._node_store(std) / "common" / name).readlink()
-            for name in ("plugins", "cache")
+            leaf: (self._node_store(std) / leaf).readlink()
+            for leaf in ("template", "common", "canon")
         }
         # Second call: still symlinks, same target (no clobber, no error).
         ensure_persona_share_symlinks(std, self._NODE, self._target())
-        for name in ("plugins", "cache"):
-            link = self._node_store(std) / "common" / name
+        for leaf in ("template", "common", "canon"):
+            link = self._node_store(std) / leaf
             assert link.is_symlink()
-            assert link.readlink() == before[name]
+            assert link.readlink() == before[leaf]
 
     def test_persona_real_dir_at_node_left_alone(self, tmp_path):
         from kanibako.commands.start import ensure_persona_share_symlinks
@@ -2015,6 +2032,10 @@ class TestPersonaShareSymlinks:
         # ...and NOT the common half: no target, nothing declared, nothing laid.
         assert not (self._node_store(std) / "common").exists()
         assert not (std.agents / self._HARNESS / "common").exists()
+        # ...and NOT the canon half either while the harness ships no canon: the
+        # node key keeps its default fallback instead of an empty shim-made dir.
+        assert not (self._node_store(std) / "canon").exists()
+        assert not (std.agents / self._HARNESS / "canon").exists()
 
     # --- the TEMPLATE share: seed layer 2 reads the NODE's own store ---------
 
@@ -2120,6 +2141,124 @@ class TestPersonaShareSymlinks:
         stage_layers(dest, [dangling / "box" / "home"])
         assert not dest.exists()
 
+    # --- the CANON share: the agent-chapter bind reads the NODE's own store ---
+
+    def test_canon_link_points_at_the_harness_canon(self, tmp_path):
+        """``agents/<node>/canon`` -> ``agents/<harness>/canon``.
+
+        The ``agent.<node>.canon`` key names the NODE's store and falls back to the
+        default's while it is absent — so without this link a persona box binds the
+        DEFAULT chapter while its harness ships its own ``SYS_AGENT.md``.
+        """
+        from kanibako.commands.start import ensure_persona_share_symlinks
+
+        std = self._std(tmp_path)
+        chapter = std.agents / self._HARNESS / "canon" / "handbook"
+        chapter.mkdir(parents=True)
+        (chapter / "SYS_AGENT.md").write_text("HARNESS\n")
+        ensure_persona_share_symlinks(std, self._NODE, self._target())
+        node_link = self._node_store(std) / "canon"
+        harness_dir = std.agents / self._HARNESS / "canon"
+        assert node_link.is_symlink(), f"no canon link at {node_link}"
+        assert node_link.readlink() == harness_dir
+        assert harness_dir.is_dir()
+        # The chapter the bind reads arrives through the link, by value.
+        landed = node_link / "handbook" / "SYS_AGENT.md"
+        assert landed.is_file() and not landed.is_symlink()
+        assert landed.read_text() == "HARNESS\n"
+
+    def test_canon_link_skipped_while_the_harness_has_no_canon(self, tmp_path):
+        """NO harness canon ⇒ NO link — the default fallback must survive.
+
+        An unconditional link would trade the REAL default chapter for an EMPTY
+        dir this shim just mkdir'd.  The shim creates nothing here, and a later
+        launch heals once a harness canon exists (next test).
+        """
+        from kanibako.commands.start import ensure_persona_share_symlinks
+
+        std = self._std(tmp_path)
+        ensure_persona_share_symlinks(std, self._NODE, self._target())
+        assert not (self._node_store(std) / "canon").exists()
+        assert not (std.agents / self._HARNESS / "canon").exists()
+
+    def test_canon_link_heals_on_a_later_launch(self, tmp_path):
+        """The shim runs every launch: a harness canon installed LATER links then."""
+        from kanibako.commands.start import ensure_persona_share_symlinks
+
+        std = self._std(tmp_path)
+        ensure_persona_share_symlinks(std, self._NODE, self._target())
+        assert not (self._node_store(std) / "canon").exists()
+        (std.agents / self._HARNESS / "canon" / "handbook").mkdir(parents=True)
+        ensure_persona_share_symlinks(std, self._NODE, self._target())
+        node_link = self._node_store(std) / "canon"
+        assert node_link.is_symlink()
+        assert node_link.readlink() == std.agents / self._HARNESS / "canon"
+
+    def test_none_target_with_harness_canon_still_lays_canon(self, tmp_path):
+        """Canon is NOT target-declared (its floor comes from core), so like the
+        template link it is laid even with no target — provided there is harness
+        canon to share."""
+        from kanibako.commands.start import ensure_persona_share_symlinks
+
+        std = self._std(tmp_path)
+        (std.agents / self._HARNESS / "canon").mkdir(parents=True)
+        ensure_persona_share_symlinks(std, self._NODE, None)
+        node_link = self._node_store(std) / "canon"
+        assert node_link.is_symlink()
+        assert node_link.readlink() == std.agents / self._HARNESS / "canon"
+
+    def test_a_persona_owned_real_canon_dir_is_left_alone(self, tmp_path):
+        """THE ESCAPE HATCH, canon half: a real ``agents/<node>/canon`` is the
+        persona's OWN chapter and is never replaced by a link."""
+        from kanibako.commands.start import ensure_persona_share_symlinks
+
+        std = self._std(tmp_path)
+        (std.agents / self._HARNESS / "canon").mkdir(parents=True)
+        own = self._node_store(std) / "canon" / "handbook"
+        own.mkdir(parents=True)
+        (own / "SYS_AGENT.md").write_text("mine")
+        ensure_persona_share_symlinks(std, self._NODE, self._target())
+        node_dir = self._node_store(std) / "canon"
+        assert node_dir.is_dir() and not node_dir.is_symlink()
+        assert (own / "SYS_AGENT.md").read_text() == "mine"
+
+    def test_a_persona_owned_real_common_dir_is_left_alone(self, tmp_path):
+        """THE ESCAPE HATCH, common half: a real ``agents/<node>/common`` is never
+        replaced by the whole-leaf link — while the loop still lays the leaves it
+        owns that the persona did not (``caches/tweakcc`` here)."""
+        from kanibako.commands.start import ensure_persona_share_symlinks
+
+        std = self._std(tmp_path)
+        own = self._node_store(std) / "common" / "plugins"
+        own.mkdir(parents=True)
+        (own / "sentinel.txt").write_text("mine")
+        ensure_persona_share_symlinks(std, self._NODE, self._target())
+        node_dir = self._node_store(std) / "common"
+        assert node_dir.is_dir() and not node_dir.is_symlink()
+        assert (own / "sentinel.txt").read_text() == "mine"
+        caches = self._node_store(std) / "caches" / "tweakcc"
+        assert caches.is_symlink()
+
+    def test_a_legacy_mixed_common_dir_is_left_alone(self, tmp_path):
+        """LEGACY-MIXED UPGRADE STATE: a real ``agents/<node>/common`` holding an
+        OLD per-entry symlink is never given the whole-leaf link — while the old
+        sublink itself is left byte-identical."""
+        from kanibako.commands.start import ensure_persona_share_symlinks
+
+        std = self._std(tmp_path)
+        harness_plugins = std.agents / self._HARNESS / "common" / "plugins"
+        harness_plugins.mkdir(parents=True)
+        own = self._node_store(std) / "common"
+        own.mkdir(parents=True)
+        sublink = own / "plugins"
+        sublink.symlink_to(harness_plugins)
+        before = sublink.readlink()
+        ensure_persona_share_symlinks(std, self._NODE, self._target())
+        node_dir = self._node_store(std) / "common"
+        assert node_dir.is_dir() and not node_dir.is_symlink()
+        assert sublink.is_symlink()
+        assert sublink.readlink() == before
+
     # --- ORDERING: the L7 guarantee-create is a no-op on the symlink --------
 
     def test_guarantee_create_mkdir_does_not_clobber_symlink(self, tmp_path):
@@ -2130,12 +2269,12 @@ class TestPersonaShareSymlinks:
         from kanibako.commands.start import ensure_persona_share_symlinks
         std = self._std(tmp_path)
         ensure_persona_share_symlinks(std, self._NODE, self._target())
-        node_link = self._node_store(std) / "common" / "plugins"
+        node_link = self._node_store(std) / "common"
         # Simulate the L7 guarantee-create on the (already-symlinked) source.
         node_link.mkdir(parents=True, exist_ok=True)
         assert node_link.is_symlink()  # NOT replaced by a real dir
         assert node_link.resolve() == (
-            std.agents / self._HARNESS / "common" / "plugins"
+            std.agents / self._HARNESS / "common"
         ).resolve()
 
     # --- COVERAGE TRACKS THE RE-ROOT: seeds + category binds get links too ---
@@ -2165,7 +2304,9 @@ class TestPersonaShareSymlinks:
 
         (Mutation: drop ``default_seeds`` / ``default_category_binds`` from the
         shim's loop and the corresponding link is absent here, while every
-        ``common`` case above stays green.)
+        ``common`` case above stays green.  ⚑ ``common`` itself is covered one
+        level up, by the whole-leaf link — the loop staying green for it here
+        would prove nothing, so the ``common/*`` rows assert arrival THROUGH it.)
         """
         from kanibako.commands.start import ensure_persona_share_symlinks
 
@@ -2173,13 +2314,18 @@ class TestPersonaShareSymlinks:
         ensure_persona_share_symlinks(std, self._NODE, self._target(
             seeds=self._SEEDS, category_binds=self._CAT_BINDS,
         ))
-        for leaf in ("seedsrc", "caches/x", "robits",
-                     "common/plugins", "common/cache"):
+        for leaf in ("seedsrc", "caches/x", "robits"):
             node_link = self._node_store(std) / leaf
             harness_dir = std.agents / self._HARNESS / leaf
             assert node_link.is_symlink(), f"no link for {leaf}"
             assert node_link.readlink() == harness_dir
             assert harness_dir.is_dir(), f"dangling link for {leaf}"
+        assert (self._node_store(std) / "common").is_symlink()
+        for leaf in ("common/plugins", "common/cache"):
+            node_path = self._node_store(std) / leaf
+            harness_dir = std.agents / self._HARNESS / leaf
+            assert node_path.is_dir() and not node_path.is_symlink()
+            assert node_path.resolve() == harness_dir.resolve()
 
     def test_the_link_is_at_the_path_the_source_names(self, tmp_path):
         """⚑⚑ GRANULARITY IS LOAD-BEARING FOR A SEED, measured on the real copier.
@@ -2265,9 +2411,14 @@ class TestPersonaShareSymlinks:
                 "/home/agent/two": ("@meta.agent.claude.path/common/shared", "ro"),
             }},
         ))
-        link = self._node_store(std) / "common" / "shared"
-        assert link.is_symlink()
-        assert link.readlink() == std.agents / self._HARNESS / "common" / "shared"
+        node_link = self._node_store(std) / "common"
+        assert node_link.is_symlink()
+        assert node_link.readlink() == std.agents / self._HARNESS / "common"
+        shared = self._node_store(std) / "common" / "shared"
+        assert shared.is_dir() and not shared.is_symlink()
+        assert shared.resolve() == (
+            std.agents / self._HARNESS / "common" / "shared"
+        ).resolve()
 
 
 class TestCredsyncRouting:
