@@ -384,6 +384,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   comments today, so the assembled text does not change; what changes is that anything written into
   that chapter now appears in it, numbered, under the charter's contents.
 
+- **One legal `set` no longer bricks the CLI — and `system set system.state=<path>` now refuses
+  a path kanibako cannot use.** Path resolution used to create four directories as a side effect
+  (the config file's parent, `config.data`, `system.state`, `system.cache`), so a single
+  stored-but-unusable value — a path that does not exist, one you cannot write to, or a file
+  where a directory belongs — killed every subsequent command with a raw `PermissionError` or
+  `FileExistsError` traceback, including the `system reset` that would have un-stored it; the
+  only cure was hand-editing the settings file. The resolve now resolves only — every store
+  already materializes at its own point of use — so an already-stored bad value stays
+  recoverable by the CLI (`get`, `show` and `reset` all run), and the config verbs
+  (`system set/get/show/reset`) no longer resolve Layer 2 at all: they read the Layer-1
+  `config.*` foundation they actually need. `system set system.state` additionally refuses a
+  path that does not exist and one you cannot write to, naming the reason. Box creation is
+  exempt — a box being created legitimately names paths that do not exist yet — and the refusal
+  is scoped to `system.state`: host source paths keep their warn-and-proceed behavior.
+  ⚑ **Nothing to do on upgrade unless a settings file already holds a bad value:** it now reads
+  back, and `system reset <key>` clears it. If you set `system.state` to a directory you have
+  not created yet, create it first — the set door now asks for an existing, writable directory.
+
 ### Added
 
 - **Every box now gets the host's terminal type, and `$TERM` resolves in a settings value.** Two

@@ -41,6 +41,7 @@ def system_path_floor(std: StandardPaths) -> dict[str, str]
 def load_system_config(user_config_path: Path, *, data_home: Path, home: Path) -> dict[str, Path]
 def resolve_data_path(*, config_home: Path | None=None, data_home: Path | None=None) -> Path
 def resolve_state_path(*, config_home: Path | None=None, data_home: Path | None=None) -> Path
+def resolve_cache_path(*, config_home: Path | None=None, data_home: Path | None=None) -> Path
 def load_std_paths(config: BootstrapConfig | None=None) -> StandardPaths
 def resolve_project(std: StandardPaths, config: BootstrapConfig, project_dir: str | None=None, *, initialize: bool=False, enable_vault: bool | None=None, name_override: str | None=None, register: bool=True) -> ProjectPaths
 def helper_log_path(std: StandardPaths, proj: ProjectPaths) -> Path

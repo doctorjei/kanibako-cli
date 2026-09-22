@@ -1667,15 +1667,23 @@ class TestSystemConfigFileOnly:
     """
 
     def test_the_system_path_tier_is_settable(self, tmp_path):
-        """Every ``SYSTEM_PATH_DEFAULTS`` member takes a set and lands in the settings file."""
+        """Every ``SYSTEM_PATH_DEFAULTS`` member takes a set and lands in the settings file.
+
+        ⚑ Q16: ``system.state`` refuses a path that does not exist, so it takes a real
+        directory while the rest of the tier takes ``/tmp/x`` — settability is the
+        property, not the value.
+        """
         cf = tmp_path / CONFIG_FILENAME
         ssp = tmp_path / "settings.yaml"
+        statedir = tmp_path / "state"
+        statedir.mkdir(exist_ok=True)
         for key in sorted(SYSTEM_PATH_DEFAULTS):
+            value = str(statedir) if key == "system.state" else "/tmp/x"
             msg = set_config_value(
-                key, "/tmp/x", config_path=cf, system_settings_path=ssp,
+                key, value, config_path=cf, system_settings_path=ssp,
                 command_scope=ConfigLevel.system,
             )
-            assert msg == f"Set {key}=/tmp/x", (key, msg)
+            assert msg == f"Set {key}={value}", (key, msg)
         # The SETTINGS file took every write; the bootstrap config file took none.
         assert ssp.exists() and not cf.exists()
 

@@ -1366,6 +1366,10 @@ class TestPrimaryWorksetMigration:
         config = load_config(config_file)
         std = load_std_paths(config)
         legacy = std.data_path / "settings.yaml"
+        # ⚑ The resolve no longer materializes the store (set-door brick repair),
+        # so the test stages its own legacy file — the subject here is the DROP,
+        # not directory creation.
+        legacy.parent.mkdir(parents=True, exist_ok=True)
         legacy_text = "box:\n  shell: /bin/legacy\n"
         legacy.write_text(legacy_text)
 

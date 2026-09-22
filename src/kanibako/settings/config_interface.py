@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from dataclasses import fields
 from enum import Enum
@@ -453,6 +454,76 @@ def _bare_relative_path_error(
         where=str(dest.file) if dest is not None else None,
         anchor_label=anchor_label,
     )
+
+
+def _unusable_store_root_error(canonical: str, value: "str | None") -> "str | None":
+    """Q16 set-time refusal — ``system.state`` naming a path kanibako cannot use.
+
+    His ruling, built exactly: refuse a store-root path that does not exist AND one
+    we cannot write to — *"a path we cannot use is not a path we should store."*
+    The value is expanded the way the read tier will read it (the same ``expand_expr``
+    over the same path-tier split), so the refusal judges what the resolve would
+    compute, not the spelling.
+
+    ⚑ SCOPED TO THE DOOR HE NAMED — ``system.state`` alone.  §2a's *"WARN, proceed"*
+    arm still governs host SOURCE paths (bindings/caches/seeded/common/synced), and
+    neither ``config.data`` (no CLI write route — B2) nor ``system.cache`` is named,
+    so neither refuses here; with the resolve no longer materializing, both stay
+    recoverable instead.  Do NOT widen this to every path key.
+    ⚑ BOX CREATION IS EXEMPT BY CONSTRUCTION, not by a flag: creation never routes
+    through :func:`set_config_value` — it writes box records, not this key — so a
+    path that does not exist yet stays legal exactly where it must.
+    ⚑ ``--null`` (``None``) and ``""`` pass through: clearing the key is the recovery
+    door and is never refused.
+    ⚑ THE UNKNOWABLE IS NOT REFUSED: a value whose target cannot be expanded here (a
+    dangling ``@``-ref, an empty expansion) returns ``None`` rather than a guess —
+    the E3 probe below refuses those on its own terms.
+    """
+    if canonical != "system.state" or not value:
+        return None
+    from kanibako.settings.settings_resolve import SettingsError, expand_expr
+
+    try:
+        config_foundation, path_floor = _path_tier_split()
+    except Exception:
+        return None
+
+    def _lookup(ref: str, chain: "tuple[str, ...]" = ()) -> str:
+        if ref.startswith("config."):
+            return config_foundation[ref]
+        floored = path_floor.get(ref)
+        if floored is None:
+            raise SettingsError(f"unknown path-tier ref: {ref}")
+        return str(floored)
+
+    try:
+        target = expand_expr(
+            value, space="host", ctx=_set_time_ctx(config=config_foundation),
+            lookup=_lookup,
+        )
+    except Exception:
+        return None
+    if not target:
+        return None
+    candidate = Path(target)
+    if not candidate.exists():
+        return (
+            f"Error: system.state is set to {value!r}, which does not exist. "
+            "Create the directory first (or name one that exists) and set the key "
+            "again — kanibako will not store a store root it cannot use."
+        )
+    if not candidate.is_dir():
+        return (
+            f"Error: system.state is set to {value!r}, which is not a directory. "
+            "Name a directory — kanibako will not store a store root it cannot use."
+        )
+    if not os.access(candidate, os.W_OK | os.X_OK):
+        return (
+            f"Error: system.state is set to {value!r}, which is not writable. "
+            "Name a directory you can write to — kanibako will not store a store "
+            "root it cannot use."
+        )
+    return None
 
 
 def _category_set_lookups(
@@ -1060,6 +1131,14 @@ def set_config_value(
     )
     if path_err is not None:
         return path_err
+
+    # Q16 — ``system.state`` naming an unusable store root is REFUSED at set time, so
+    # the CLI never again stores a value its own resolve cannot read back.  See
+    # :func:`_unusable_store_root_error` for the scope (that key alone), the
+    # box-creation carve-out, and why the unknowable is not refused.
+    state_err = _unusable_store_root_error(canonical, value)
+    if state_err is not None:
+        return state_err
 
     # SET-TIME RESOLUTION PROBE for a value the EXPANDER will see (E3, spec §2a / Q9); see
     # :func:`_probes_at_set_time` for which keys qualify. It blocks ONLY on the edited value's

@@ -44,13 +44,26 @@ def _primary_names(std):
 
 
 class TestLoadStdPaths:
-    def test_creates_directories(self, config_file, tmp_home):
+    def test_resolves_without_creating(self, config_file, tmp_home):
+        """``load_std_paths`` RESOLVES ONLY — it creates nothing.
+
+        The eager-``mkdir`` block stood here until the set-door brick repair: one
+        stored-but-unusable value then bricked EVERY command (including the
+        ``reset`` that would have un-stored it) behind a raw ``OSError``.  Every
+        store materializes at its own point of use, so the resolve answers the
+        same paths and leaves the filesystem alone.
+        """
         config = load_config(config_file)
         std = load_std_paths(config)
 
-        assert std.data_path.is_dir()
-        assert std.state.is_dir()
-        assert std.cache.is_dir()
+        # Anti-vacuity: the resolve really answered, so the absences below say
+        # something (a resolve that returned nothing would also "create nothing").
+        assert std.data_path == tmp_home / "data" / "kanibako"
+        assert std.state == tmp_home / "state" / "kanibako"
+        assert std.cache == tmp_home / "cache" / "kanibako"
+        assert not std.data_path.exists()
+        assert not std.state.exists()
+        assert not std.cache.exists()
 
     def test_uses_xdg_dirs(self, config_file, tmp_home):
         config = load_config(config_file)

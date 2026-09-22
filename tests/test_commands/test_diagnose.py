@@ -1628,3 +1628,48 @@ class TestSettingsErrorsAreConsolidated:
         out = capsys.readouterr().out
         assert "Settings errors:" not in out
         assert "affects:" not in out
+
+
+class TestSystemDiagnoseSurvivesBrickedStoreRoots:
+    """The set-door brick repair: ``diagnose`` is the door a bricked user reaches
+    for, so it must answer (rc 0, no traceback) under every stored-but-unusable
+    shape — measured per key, per the board row."""
+
+    def _hand_set(self, config_file, key, value):
+        from kanibako.settings.config import load_config
+        from kanibako.settings.config_io import dump_doc
+        from kanibako.settings.paths import load_std_paths
+
+        std = load_std_paths(load_config(config_file))
+        std.settings.parent.mkdir(parents=True, exist_ok=True)
+        doc = {"system": {key.split(".", 1)[1]: value}}
+        dump_doc(std.settings, doc)
+
+    def test_file_where_cache_belongs(self, config_file, tmp_home, capsys) -> None:
+        afile = tmp_home / "afile"
+        afile.write_text("not a directory")
+        self._hand_set(config_file, "system.cache", str(afile))
+        rc = run_system_diagnose(argparse.Namespace())
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert "Traceback" not in out, out
+
+    def test_bare_relative_state_names_the_error(
+        self, config_file, tmp_home, capsys,
+    ) -> None:
+        self._hand_set(config_file, "system.state", "rel/dir")
+        rc = run_system_diagnose(argparse.Namespace())
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert "Traceback" not in out, out
+        assert "BARE RELATIVE" in out, out
+
+    def test_missing_state_dir_is_not_an_error(
+        self, config_file, tmp_home, capsys,
+    ) -> None:
+        self._hand_set(config_file, "system.state", str(tmp_home / "never-made"))
+        rc = run_system_diagnose(argparse.Namespace())
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert "Traceback" not in out, out
+        assert "[ok] Journal" in out, out
