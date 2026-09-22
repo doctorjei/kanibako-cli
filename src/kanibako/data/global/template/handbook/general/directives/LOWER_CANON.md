@@ -44,12 +44,14 @@ The roject-specific `~/canon/workbook` uses these conventions:
 
 | Path (relative) | Description | Loaded at start by default? |
 |---------------------------|-------------|-------------------------------------|
-| `devnotes.md` | Detailed changelog; should reflect relevant actions/updates | No |
-| `status.md` | Detailed current status; should reflect relevant actions/updates | Yes |
-| `tasks.md` | Task board (kanban or simple list) | No; _Authoritative_. |
+
 | `designs/` | Project design(s) | No; _Authoritative_. |
 | `plans/` | Active implementation plans | When executing a plan |
 | `specs/` | Project specification(s) | No; _Authoritative_. |
+| `state/` | All files regarding the project's current state | No; _Authoritative_. |
+| `state/devnotes.md` | Detailed changelog; should reflect relevant actions/updates | No |
+| `state/status.md` | Detailed current status; should reflect relevant actions/updates | Yes |
+| `tasks/` | Task boards (kanban or simple list) | No; _Authoritative_. |
 | `temp/` | Temporary storage (volatile between sessions) | No |
 | `temp/scripts` | one-off scripts (used once or a few times at most) | No |
 | `temp/testing` | Temporary testing data / logs | No |
@@ -59,5 +61,5 @@ legacy behavior / decisions). It is useful when necessesary but rarely needed.
 
 _All scripts, plans, documents, & other resources that have become historical_ (i.e., not related
 to current or future design, planning, and/or development) should move to the archives. Current /
-active documents and/or logs (e.g., `devnotes.md` & `tasks.md`) should truncate old entries, moving
+active documents and/or logs (e.g., `devnotes.md` & `tasks`) should truncate old entries, moving
 those old entries _verbatim_ into the archives and named appropriately.
