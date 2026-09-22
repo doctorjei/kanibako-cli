@@ -1377,16 +1377,27 @@ class TestSystemPathTierDest:
 
     def test_set_get_reset_all_name_the_settings_file(self, bench):
         for key in sorted(SYSTEM_PATH_DEFAULTS):
+            # ⚑ Q16: ``system.state`` refuses a path that does not exist, so it
+            # takes a real directory while the rest of the tier takes ``/x`` —
+            # the property under test is the DESTINATION (one file), not the value.
+            value = "/x"
+            if key == "system.state":
+                value = str(bench.tmp / "state")
+                (bench.tmp / "state").mkdir(exist_ok=True)
             before = bench.snapshot()
-            assert bench.set(ConfigLevel.system, key, "/x") == f"Set {key}=/x", key
+            assert bench.set(ConfigLevel.system, key, value) == f"Set {key}={value}", key
             assert set(bench.changed(before)) == {"ssp"}, key
-            assert bench.get(ConfigLevel.system, key) == "/x", key
+            assert bench.get(ConfigLevel.system, key) == value, key
             assert not bench.reset(ConfigLevel.system, key).startswith("Error:"), key
             assert bench.get(ConfigLevel.system, key) is None, key
 
     def test_the_bootstrap_config_file_is_never_written(self, bench):
         for key in sorted(SYSTEM_PATH_DEFAULTS):
-            bench.set(ConfigLevel.system, key, "/x")
+            value = "/x"
+            if key == "system.state":
+                value = str(bench.tmp / "state")
+                (bench.tmp / "state").mkdir(exist_ok=True)
+            bench.set(ConfigLevel.system, key, value)
         assert not bench.cf.exists()
 
 

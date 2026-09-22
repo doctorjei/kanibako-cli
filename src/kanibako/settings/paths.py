@@ -675,9 +675,8 @@ def resolve_data_path(*, config_home: Path | None = None,
     :class:`StandardPaths` reaches the directory the user CONFIGURED instead of composing the
     XDG data base with a hardcoded ``kanibako`` leaf ([R155]: a kanibako subdirectory
     references ``config.data``; it is never composed from the XDG base).
-    :func:`kanibako.targets.discover_targets` and
-    :func:`kanibako.vscode.vscode_remote.vscode_remote_bin_dir` are those callers: both run on
-    paths where ``load_std_paths`` is unavailable, since it REQUIRES a config file and
+    :func:`kanibako.targets.discover_targets` is that caller: it runs on paths
+    where ``load_std_paths`` is unavailable, since it REQUIRES a config file and
     MATERIALIZES directories, and this requires neither.
 
     ⚑ TOTAL: any failure to read or resolve config — the file is absent, unreadable, or
@@ -749,8 +748,55 @@ def resolve_state_path(*, config_home: Path | None = None,
         return Path(xdg_vars[XDG_STATE_HOME]) / KANIBAKO_PATH
 
 
+def resolve_cache_path(*, config_home: Path | None = None,
+                       data_home: Path | None = None) -> Path:
+    """The resolved ``system.cache`` DIRECTORY — PURE and TOTAL; creates nothing, never raises.
+
+    The cache-base sibling of :func:`resolve_state_path`, for a caller holding no
+    :class:`StandardPaths` that must still land in the cache root the user configured
+    (``system.cache`` and ``system.state`` are THE host cache and state roots, and the
+    only things a cache or a state store derives from — neither has any relationship
+    to ``config.data``).
+    :func:`kanibako.vscode.vscode_remote.vscode_remote_bin_dir` is that caller: the
+    generated dispatch wrapper is regenerable output, so it lives under the cache
+    root rather than in the user-meaningful data store.
+
+    ⚑ Same layer as :func:`resolve_state_path`: ``system.cache`` is Layer 2, so
+    ``system set system.cache=…`` writes to the SETTINGS file, and a resolve that
+    stopped at the CONFIG files would miss every value a user ever set.
+    ⚑ TOTAL: any failure to read or resolve degrades to ``$XDG_CACHE_HOME`` joined
+    to ``KANIBAKO_PATH``, matching ``SYSTEM_PATH_DEFAULTS["system.cache"]``'s own
+    default. Side-effect-free by :func:`resolve_data_path`'s route, for the same
+    reason (the ``xdg`` map is :func:`spec_default_xdg_map`, which never resolves
+    ``XDG_RUNTIME_DIR``).
+    """
+    ch = config_home if config_home is not None else user_config_home()
+    dh = data_home if data_home is not None else xdg(XDG_DATA_HOME,
+                                                      XDG_SPEC_DEFAULTS[XDG_DATA_HOME])
+    xdg_vars = spec_default_xdg_map(dh)
+    try:
+        raw = _path_tier_set_values(config_file_path(ch), data_home=dh, home=Path.home(),
+                                    xdg_vars=xdg_vars)
+        _, resolved = _resolve_system_path_keys(raw, ("system.cache",), data_home=dh,
+                                                home=Path.home(), xdg_vars=xdg_vars)
+        return resolved["system.cache"]
+    except Exception:
+        return Path(xdg_vars[XDG_CACHE_HOME]) / KANIBAKO_PATH
+
+
 def load_std_paths(config: BootstrapConfig | None = None) -> StandardPaths:
-    """Compute all standard kanibako directories, creating them as needed."""
+    """Compute all standard kanibako directories, resolving them ONLY.
+
+    ⚑ RESOLVE-ONLY: this function creates NOTHING.  An ``Ensure directories
+    exist`` block stood here ``mkdir``-ing ``config_file.parent``,
+    ``config.data``, ``system.state`` and ``system.cache`` on the common path,
+    so one stored-but-unusable value (an unwritable path, a file where a
+    directory belongs) bricked EVERY command behind a raw ``OSError`` —
+    including the ``reset`` that would have un-stored it.  Every one of those
+    stores already materializes at its own point of use (the atomic writer,
+    first-run init, the cache and state writers), so the eager creation bought
+    nothing and the recovery cost everything.
+    """
     config_home = user_config_home()
     data_home = xdg(XDG_DATA_HOME, XDG_SPEC_DEFAULTS[XDG_DATA_HOME])
     state_home = xdg(XDG_STATE_HOME, XDG_SPEC_DEFAULTS[XDG_STATE_HOME])
@@ -766,13 +812,6 @@ def load_std_paths(config: BootstrapConfig | None = None) -> StandardPaths:
     # Resolve the system-level path tier from the CONFIG file set: /etc base < user-global.
     resolved = load_system_config(config_file, data_home=data_home, home=Path.home())
     data_path = resolved["config.data"]
-
-    # Ensure directories exist.  ⚑ CACHE and STATE are created at their own keys, never
-    # at a leaf of ``config.data`` rejoined to the XDG base — see ``StandardPaths``.
-    config_file.parent.mkdir(parents=True, exist_ok=True)
-    data_path.mkdir(parents=True, exist_ok=True)
-    resolved["system.state"].mkdir(parents=True, exist_ok=True)
-    resolved["system.cache"].mkdir(parents=True, exist_ok=True)
 
     return StandardPaths(config_home=config_home, data_home=data_home, state_home=state_home,
                      cache_home=cache_home, config_file=config_file, data_path=data_path,

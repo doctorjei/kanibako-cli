@@ -23,6 +23,7 @@ def _path_tier_split() -> 'tuple[dict[str, str], dict[str, object]]'
 def _meta_scope_anchor_floor(workset_path: 'Path | None', box_path: 'Path | None') -> dict[str, object]
 def _set_time_anchor(anchor_ref: str, *, scope_anchors: 'dict[str, object]', agents_root: 'Path | None') -> 'str | None'
 def _bare_relative_path_error(canonical: str, value: 'str | None', *, display_key: str, route_key: str, config_path: Path, system_settings_path: 'Path | None', command_scope: 'ConfigLevel | None', workset_path: 'Path | None', box_path: 'Path | None', agents_root: 'Path | None') -> 'str | None'
+def _unusable_store_root_error(canonical: str, value: 'str | None') -> 'str | None'
 def _category_set_lookups(config_path: Path, *, canonical: str, command_scope: 'ConfigLevel | None'=None, system_settings_path: Path | None=None, system_path: Path | None=None, agent_path: Path | None=None, workset_path: Path | None=None, box_path: Path | None=None, agent_name: str='')
 def _clone_keystore(store: 'Any') -> 'Any'
 def _set_leaf(store: 'Any', parts: list, value: object) -> None

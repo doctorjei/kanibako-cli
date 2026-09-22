@@ -1551,3 +1551,124 @@ class TestTheEmptyIdiomsReadBackAsThemselves:
         out = capsys.readouterr().out
         assert "system.bogus_leaf = null" in out, out
         assert "None" not in out, out
+
+
+class TestSystemStateSetRefusal:
+    """Q16 — ``system set system.state=<unusable>`` is refused AT SET TIME.
+
+    *"A path we cannot use is not a path we should store."*  Scoped to the door
+    he named (``system.state`` alone — §2a's WARN-proceed arm still governs host
+    SOURCE paths, and ``system.cache`` takes no refusal here); box creation is
+    exempt by construction (it never routes through ``set_config_value``).
+    """
+
+    def _settings_file(self, config_file):
+        std = _std(config_file)
+        std.settings.parent.mkdir(parents=True, exist_ok=True)
+        return std.settings
+
+    def test_refuses_a_path_that_does_not_exist(self, config_file, tmp_home, capsys):
+        capsys.readouterr()
+        rc = _set("system.state=/srv/no-such-state")
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert "system.state" in err, err
+        assert "does not exist" in err, err
+        # Nothing stored: the refusal happens BEFORE the write.
+        assert _get("system.state") == 0
+        assert "not set" in capsys.readouterr().out
+
+    def test_refuses_an_unwritable_directory(self, config_file, tmp_home, capsys):
+        locked = tmp_home / "locked"
+        locked.mkdir()
+        locked.chmod(0o500)
+        try:
+            capsys.readouterr()
+            rc = _set(f"system.state={locked}")
+        finally:
+            locked.chmod(0o700)
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert "system.state" in err, err
+        assert "not writable" in err, err
+        assert _get("system.state") == 0
+        assert "not set" in capsys.readouterr().out
+
+    def test_refuses_a_file_where_a_directory_belongs(
+        self, config_file, tmp_home, capsys,
+    ):
+        afile = tmp_home / "afile"
+        afile.write_text("not a directory")
+        capsys.readouterr()
+        rc = _set(f"system.state={afile}")
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert "system.state" in err, err
+        assert "not a directory" in err, err
+        assert _get("system.state") == 0
+        assert "not set" in capsys.readouterr().out
+
+    def test_accepts_an_existing_writable_directory(
+        self, config_file, tmp_home, capsys,
+    ):
+        good = tmp_home / "state" / "custom"
+        good.mkdir()
+        capsys.readouterr()
+        assert _set(f"system.state={good}") == 0
+        assert f"Set system.state={good}" in capsys.readouterr().out
+        assert _get("system.state") == 0
+        assert f"system.state={good}" in capsys.readouterr().out
+
+    def test_a_handwritten_missing_path_stays_recoverable_by_the_cli(
+        self, config_file, tmp_home, capsys,
+    ):
+        """The read door never materializes, so a value the set door never saw
+        (hand edit, a path that stopped being writable later) is still
+        un-storable by the CLI: get, show, reset and a correcting set all run."""
+        ssp = self._settings_file(config_file)
+        dump_doc(ssp, {"system": {"state": "/srv/handwritten-missing"}})
+        capsys.readouterr()
+        assert _get("system.state") == 0
+        assert "system.state=/srv/handwritten-missing" in capsys.readouterr().out
+        assert _show() == 0
+        assert "system.state = /srv/handwritten-missing" in capsys.readouterr().out
+        assert _reset("system.state") == 0
+        assert "Cleared system.state" in capsys.readouterr().out
+        assert _get("system.state") == 0
+        assert "not set" in capsys.readouterr().out
+
+    def test_a_handwritten_bare_relative_value_stays_recoverable_by_the_cli(
+        self, config_file, tmp_home, capsys,
+    ):
+        """[R147]'s read-time refusal names the defect AND leaves the doors open:
+        a clean refusal is recoverable, a traceback was not."""
+        ssp = self._settings_file(config_file)
+        dump_doc(ssp, {"system": {"state": "rel/dir"}})
+        capsys.readouterr()
+        assert _get("system.state") == 0
+        assert "system.state=rel/dir" in capsys.readouterr().out
+        assert _show() == 0
+        assert "system.state = rel/dir" in capsys.readouterr().out
+        assert _reset("system.state") == 0
+        assert "Cleared system.state" in capsys.readouterr().out
+
+    def test_system_cache_takes_no_set_time_refusal(
+        self, config_file, tmp_home, capsys,
+    ):
+        """SCOPE PIN: the ruling names ``system.state``; ``system.cache`` accepts
+        a not-yet-existing path (a mount not yet up is a lawful intent there) and
+        stays recoverable because the resolve no longer materializes."""
+        capsys.readouterr()
+        assert _set("system.cache=/srv/not-yet-a-cache") == 0
+        assert _get("system.cache") == 0
+        assert "system.cache=/srv/not-yet-a-cache" in capsys.readouterr().out
+        assert _reset("system.cache") == 0
+        assert "Cleared system.cache" in capsys.readouterr().out
+
+    def test_verbs_run_with_no_config_file(self, tmp_home, capsys):
+        """The Layer-1-only route: with no ``kanibako.cfg`` at all, the verbs
+        resolve defaults and read absence — they never touch Layer 2."""
+        capsys.readouterr()
+        assert _get("system.state") == 0
+        assert "not set" in capsys.readouterr().out
+        assert _show() == 0

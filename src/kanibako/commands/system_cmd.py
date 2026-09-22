@@ -7,7 +7,7 @@ import sys
 
 from kanibako import __version__
 from kanibako.commands.flags import add_null_flag
-from kanibako.settings.config import user_config_file, load_config
+from kanibako.settings.config import user_config_file
 from kanibako.settings.paths import xdg
 
 
@@ -278,12 +278,45 @@ def _run_system_config(args: argparse.Namespace) -> int:
     launch READ, so no verb threads it. The system env family is the settings key
     ``system.env.<VAR>``, stored in ``ssp`` like every other system setting.
     """
-    from kanibako.settings.paths import load_std_paths
+    from pathlib import Path
+
+    from kanibako.settings.bootstrap import XDG_DATA_HOME, XDG_SPEC_DEFAULTS
+    from kanibako.settings.config import (
+        bootstrap_config_paths,
+        config_base_path,
+        config_file_path,
+        user_config_file,
+    )
+    from kanibako.settings.paths import (
+        resolve_config_paths,
+        spec_default_xdg_map,
+        user_config_home,
+        xdg,
+    )
 
     cf = user_config_file()
+    # ⚑ The Layer-1 foundation resolve, deliberately NOT ``load_std_paths``: that one
+    # MATERIALIZES the store, so one stored-but-unusable Layer-2 value bricked every
+    # config verb behind a raw ``OSError`` — including the ``reset`` that would have
+    # un-stored it.  These verbs need only ``std.settings`` and ``std.agents``, both
+    # Layer-1 ``config.*``, so the foundation answers them exactly (``cli.py`` and
+    # ``settings/config.py`` already make this substitution for the same reason).
+    # ⚑ ``spec_default_xdg_map``, NOT ``host_xdg_map``: resolving ``XDG_RUNTIME_DIR``
+    # can mkdir a fallback dir when unset, and this resolve creates nothing.  No
+    # shipped ``config.*`` default references it, so nothing is lost by the choice.
+    # ⚑ An absent file yields {}: a fresh install resolves defaults, and every reader
+    # below treats an absent file as "unset" — which is exactly what it is.
+    ch = user_config_home()
+    dh = xdg(XDG_DATA_HOME, XDG_SPEC_DEFAULTS[XDG_DATA_HOME])
+    _raw: dict[str, str] = {}
+    _raw.update(bootstrap_config_paths(config_base_path()))
+    _raw.update(bootstrap_config_paths(config_file_path(ch)))
+    _foundation = resolve_config_paths(
+        _raw, data_home=dh, home=Path.home(), xdg_vars=spec_default_xdg_map(dh),
+    )
     # The system SETTINGS file (separate from the kanibako.cfg CONFIG file).
-    std = load_std_paths(load_config(cf))
-    ssp = std.settings
+    ssp = Path(_foundation["config.settings"])
+    agents_root = Path(_foundation["config.agents"])
 
     from kanibako.settings.config_keys import (
         ConfigLevel,
@@ -339,7 +372,7 @@ def _run_system_config(args: argparse.Namespace) -> int:
             key, config_path=cf, system_settings_path=ssp,
             command_scope=ConfigLevel.system,
             cascade_system_path=ssp,
-            agents_root=std.agents,
+            agents_root=agents_root,
         )
         if msg.startswith("Error:"):
             print(msg, file=sys.stderr)
@@ -393,7 +426,7 @@ def _run_system_config(args: argparse.Namespace) -> int:
         val = get_config_value(
             key, global_config_path=cf,
             system_settings_path=ssp,
-            agents_root=std.agents,
+            agents_root=agents_root,
             # ⚑ The scope is threaded even though every other handler threads it
             # for a REASON this one does not have: ``get`` consumes command_scope
             # only for the box-scope redirect, so at the system scope it changes
@@ -451,7 +484,7 @@ def _run_system_config(args: argparse.Namespace) -> int:
             cascade_system_path=ssp,
             cascade_agent_name=agent_node_of(resolve_key(key)),
             command_scope=ConfigLevel.system,
-            agents_root=std.agents,
+            agents_root=agents_root,
         )
         if msg.startswith("Error:"):
             print(msg, file=sys.stderr)

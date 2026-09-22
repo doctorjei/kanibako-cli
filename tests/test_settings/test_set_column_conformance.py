@@ -96,6 +96,11 @@ def _rows_with(set_column: str) -> "dict[str, dict]":
 def _refusal(tmp: Path, key: str, row: dict) -> "str | None":
     """The ``Error: …`` text a real ``set`` answers for *key*, or ``None`` if it took."""
     value = _VALUE_FOR_TYPE.get(str(row.get("type")), "probe")
+    # ⚑ Q16: ``system.state`` refuses a path that does not exist, so its probe dir is
+    # created first — the property under test is SETTABILITY (``set: cli+file`` ⇒ the
+    # verb writes), not accept-a-missing-path.
+    if key == "system.state":
+        Path(value).mkdir(parents=True, exist_ok=True)
     scope = _SCOPE_FOR_TOKEN[key.split(".", 1)[0]]
     message = Bench(tmp).set(scope, _cli_spelling(key), value)
     return message if message.startswith("Error:") else None
