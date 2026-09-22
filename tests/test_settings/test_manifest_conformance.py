@@ -1793,3 +1793,40 @@ class TestThePathTypeColumnHasOneCodeCarrier:
             "box.secret_path.TOKEN", "agent.claude.secret_path.TOKEN",
         ):
             assert is_path_valued_key(spelling), spelling
+
+
+# --------------------------------------------------------------------------- #
+# 6. The ``cli_set`` column — the categories table's guard cell
+# --------------------------------------------------------------------------- #
+
+class TestCliSetColumnConformance:
+    """The ``categories:`` ``cli_set`` cell, pinned directly rather than by proxy."""
+
+    def test_the_cli_set_cell_partitions_exactly_the_nine_families(self):
+        """The guard both kinemata mechanisms read is present, boolean, and 7/2."""
+        # ⚑ THE TWO CONSUMERS LIVE OUTSIDE THIS FILE (``kinemata.toml``): the four
+        # ``[[shape]]`` rules on the ``categories`` registry and the ``bind-shaped``
+        # parity view both guard on this cell's VALUE. A row silently losing it
+        # would red THERE, naming ``TERMINAL_CATEGORY_TAILS`` — never the cell.
+        # ⚑ LITERAL SETS, DELIBERATELY: the code-side agreement is the parity
+        # view's claim, so deriving the seven from the code here would make this
+        # a second carrier of that check rather than a pin on the cell itself.
+        cats = manifest_doc()["categories"]
+        fams = {name: row for name, row in cats.items() if isinstance(row, dict)}
+        # The two non-family records are not mappings, so no guard arm can sweep
+        # them in — and a third one would land here, not slip past.
+        assert set(cats) - set(fams) == {"scopes", "scopes_spec"}, sorted(set(cats))
+        untyped = {
+            name for name, row in fams.items()
+            if type(row.get("cli_set")) is not bool
+        }
+        assert not untyped, (
+            f"categories rows with no boolean cli_set cell: {sorted(untyped)}"
+        )
+        assert {n for n, r in fams.items() if r["cli_set"] is False} == {
+            "masks", "bindings.ro", "bindings.rw", "caches",
+            "seeded", "common", "synced",
+        }
+        assert {n for n, r in fams.items() if r["cli_set"] is True} == {
+            "env", "secret_path",
+        }
