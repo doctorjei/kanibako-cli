@@ -282,7 +282,7 @@ deregistered `--purge` path — same paths, same order, same guards:
   per-box helper log at `@config.primary_workset/logs/<box>.jsonl`, keyed by the registry name.
 * `_teardown_standalone_box` removes the in-tree `box_data/` marker, the ROOT `workset.yaml` and
   the box's vault. The ROOT file is the WORKSET tier AND the other half of the
-`system-design-1.8.0.md` § "Detection & import" detection marker,
+system-design § "Detection & import" detection marker,
   so dropping it is what stops the box being re-detected; the BOX tier lives inside `box_data/` and
   goes with the dir. The user's workspace files, and `root` itself, are never touched.
   ⚑⚑ **The vault is RESOLVED via `project.workset.standalone_vault_teardown(root)`, and that call
