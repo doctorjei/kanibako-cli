@@ -736,7 +736,7 @@ destination's BOX TIER now (spec §2c ALL PROJECTS: `meta.box.settings = @meta.b
 and `@meta.box.path` for a standalone IS `box_data/`). It used to be deleted here on the theory that
 the box meta lived only at the ROOT — that theory is the RETIRED model, and deleting the file now
 discards the box's settings. Detection is unaffected either way: it reads the ROOT file
-(`system-design-1.8.0.md` § "Detection & import"), which
+(`system-design` § "Detection & import"), which
 `establish_standalone` writes.
 
 ⚑ The vault `.gitignore` goes through `settings/paths.py::write_vault_gitignore`, handed the arm
