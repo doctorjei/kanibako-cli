@@ -433,7 +433,10 @@ class TestLayeredHomeSeed:
         home = primary_proj.shell_path
         # Base layer — the packaged notebook AND the custom marker.
         assert (home / "canon" / "notebook" / "MY_CONTENTS.md").is_file()
-        assert (home / "canon" / "workbook" / "devnotes.md").is_file()
+        assert (home / "canon" / "workbook" / "state" / "devnotes.md").is_file()
+        assert (home / "canon" / "workbook" / "state" / "status.md").is_file()
+        assert (home / "canon" / "workbook" / "tasks" / "main.md").is_file()
+        assert (home / "canon" / "workbook" / "tasks" / "product.md").is_file()
         assert (home / "base-only.txt").read_text() == "base"
         # Agent layer — the packaged .claude.json/settings AND the custom marker.
         assert (home / ".claude.json").is_file()
@@ -1191,7 +1194,16 @@ class TestInstallPackagedTemplates:
             std.template / "box" / "home" / "canon" / "notebook" / "MY_CONTENTS.md"
         ).is_file()
         assert (
-            std.template / "box" / "home" / "canon" / "workbook" / "devnotes.md"
+            std.template / "box" / "home" / "canon" / "workbook" / "state" / "devnotes.md"
+        ).is_file()
+        assert (
+            std.template / "box" / "home" / "canon" / "workbook" / "state" / "status.md"
+        ).is_file()
+        assert (
+            std.template / "box" / "home" / "canon" / "workbook" / "tasks" / "main.md"
+        ).is_file()
+        assert (
+            std.template / "box" / "home" / "canon" / "workbook" / "tasks" / "product.md"
         ).is_file()
         assert (
             std.template / "box" / "canon" / "handbook" / "SYS_BOX.md"
@@ -2261,7 +2273,7 @@ class TestRefreshEquivalenceTiers:
 
     def test_markdown_comment_and_whitespace_change_is_equivalent(self, std):
         install_packaged_templates(std, ["claude"])
-        target = std.template / "box" / "home" / "canon" / "workbook" / "devnotes.md"
+        target = std.template / "box" / "home" / "canon" / "workbook" / "state" / "devnotes.md"
         text = target.read_text()
         # A comment edit, ONE trailing space (insignificant — two would be a
         # markdown HARD BREAK, which the normaliser deliberately preserves), CRLF
@@ -2277,7 +2289,7 @@ class TestRefreshEquivalenceTiers:
 
     def test_markdown_body_change_is_different(self, std):
         install_packaged_templates(std, ["claude"])
-        target = std.template / "box" / "home" / "canon" / "workbook" / "devnotes.md"
+        target = std.template / "box" / "home" / "canon" / "workbook" / "state" / "devnotes.md"
         target.write_text(target.read_text() + "\nA REAL NEW LINE\n")
         _added, overwritten, _kept = plan_template_refresh(std, ["claude"])
         assert target in overwritten
@@ -2366,7 +2378,7 @@ class TestRefreshHonoursTheClassifier:
     edit the preview just said it would leave alone.
     """
 
-    _STAGED = ("box", "home", "canon", "workbook", "devnotes.md")
+    _STAGED = ("box", "home", "canon", "workbook", "state", "devnotes.md")
 
     def test_refresh_leaves_an_EQUIVALENT_staged_file_alone(self, std):
         install_packaged_templates(std, ["claude"])
