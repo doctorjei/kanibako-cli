@@ -31,6 +31,7 @@ import stat
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from kanibako.launch.creds_watcher import creds_store_lock
 from kanibako.log import get_logger
 from kanibako.targets.base import Cadence
 
@@ -268,6 +269,13 @@ def _sync_workset_dir_from_global(
     source dir as another sync client of global (host home) via the SAME
     ``refresh_cred_files`` primitive — the workset dir's layout mirrors ``home_rel``
     (the same layout a box uses), so the primitive applies unchanged.
+
+    ⚑ Holds :func:`~kanibako.launch.creds_watcher.creds_store_lock` over the
+    workset dir AND host home — the same pair a global-synced workset writeback
+    locks. The workset dir because this WRITES it and must not interleave with a
+    writeback into it; host home because this READS it, and a writeback into
+    global rewrites those files in place, so an unlocked read can copy a torn file
+    into the workset store.
     """
     if (
         auth.tier != "workset"
@@ -275,11 +283,13 @@ def _sync_workset_dir_from_global(
         or auth.workset_source is None
     ):
         return
-    refresh_cred_files(
-        descriptor, target,
-        source_root=host_home,
-        project_home=Path(auth.workset_source),
-    )
+    workset_dir = Path(auth.workset_source)
+    with creds_store_lock(workset_dir, host_home):
+        refresh_cred_files(
+            descriptor, target,
+            source_root=host_home,
+            project_home=workset_dir,
+        )
 
 
 def _sync_workset_dir_to_global(
