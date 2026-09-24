@@ -306,7 +306,7 @@ def match_ref(expr: str, i: int) -> tuple[str, int]:
 
     ⚑ PRECONDITION: ``expr[i] == "@"`` — NOT re-verified; stated because this is a CROSS-MODULE
     seam, so a new caller scanning for ``@`` differently must still hand over the ``@``'s index.
-    ⚑ THE SINGLE parser for both spellings (three callers, three modules — seam S25).
+    ⚑ THE SINGLE parser for both spellings, shared across modules (seam S25).
     ⚑ NESTING IS NOT SUPPORTED and fails loudly: a substituted value is a LEAF, never re-scanned.
     """
     n = len(expr)

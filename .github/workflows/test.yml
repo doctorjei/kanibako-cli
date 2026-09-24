@@ -169,6 +169,7 @@ jobs:
       - run: kinemata check
       - run: kinemata parity
       - run: kinemata shape
+      - run: kinemata undeclared
       - run: kinemata claims
 
   integration:

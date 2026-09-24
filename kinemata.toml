@@ -322,58 +322,77 @@ historical = [
 # The keyspace: each key carries the spec section it traces to, which is exactly
 # the clause linkage the registry contract asks for.
 #
-# ⚑ DELIBERATELY NOT `closed = true`, and this is the measurement rather than
-# caution. Closing it makes an identifier no entry declares a hard failure, and
-# run that way this tree reports 24 distinct identifiers across 48 sites --
-# ALL of them false. Every one is declared, just not in `keys:`:
+# ⚑ CLOSED (`closed = true` below; authored 2026-09-22): the adapter answers
+# membership across the manifest sections below, so a stray here is a hard
+# failure. The closed-but-not-flat shape that made `kind = "yaml-mapping"`
+# report 24 identifiers across 48 sites as undeclared (measured, all recorded
+# outside `keys:`):
 #
-#   system._boxes, system._primary_*   -> not_keys.code_residue
 #   box.agent, box.agent_name          -> not_keys.renamed
 #   workset.seeded, system.seeded      -> category_default_entries
 #   agent.claude.common                -> plugin_contributed
 #
-# That is this project's own audit finding measured from the other side: the
-# keyspace is CLOSED BUT NOT FLAT, and membership is answered by six manifest
-# sections rather than one. `kind = "yaml-mapping"` reads a single section, so
-# it cannot answer the closed-world question here however it is configured.
+# `system._boxes` and `system._primary_*` were in that count and are NOT
+# admitted: they are code-only names the manifest records under
+# `not_keys.code_residue` as never spec-sanctioned, so a live use of one is a
+# stray, tracked by the conformance.md row "NINE LIVE CODE USES OF MANIFEST
+# `not_keys.code_residue` NAMES". `not_keys.renamed` stays admitted: a retired
+# spelling must stay recognizable to be refused with its cure (spec §0).
 #
-# The fix is `kind = "import"`, which exists for this case -- a project-authored
-# class answering `declared()` across all six sections. Until that adapter is
-# written this registry stays open, and the catch it would buy stays unbought.
-# An advisory list of 24 false positives is not a weaker catch, it is a habit of
-# skimming red.
+# 🛑 TWO AXES ARE NOT EXPRESSIBLE AND ARE REPORTED, NOT APPROXIMATED: the
+# plugin-contributed MEMBER leaf axis -- the manifest marks `member_census`
+# MUST NOT be used as a validation source, and CI installs no plugins, so a
+# one-segment leaf under any agent node but the default tier is CONCEDED
+# (spec §0), never judged; that reaches the `shell` pseudo-agent too, because
+# the manifest carries no pseudo-agent set -- and `env.<VAR>` /
+# `secret_path.<VAR>`, unbounded by construction. Neither is narrowed,
+# excluded, or shimmed into the declaration. The default tier IS judged: core
+# owns it, so a leaf there must be an `agent.default.*` row or a category.
+# `tests/test_settings/test_kinemata_keyspace.py` pins both answers against
+# the product's `key_class`. Two more gaps are EXPRESSIBLE, so they are defects
+# rather than axes -- `pref.<target-key>` is never seen (`pref` is not a
+# candidate root) and an agent NODE name is never judged (`agent.cluade.model`
+# passes) -- tracked by the session.md row "Four residual adapter↔product
+# keyspace disagreements".
 #
-# ⚑ IT CONTRIBUTES NOTHING TO `check`, and that is not a defect. Verified at
-# source: `adapters/mapping.py` yields entries with no `antipatterns`, so the
-# duplication gate has nothing to match. This registry pays for itself through
-# `ids` and `unused` -- measured 2026-09-14 at `75f7da94`: `kinemata ids` exits
-# 0 and projects 100 entries, `kinemata unused` exits 0 and names 8 keys nothing
-# mentions outside the `machinery` below.
+# Pre-existing strays are accepted BY DATE in `.kinemata-baseline.json`
+# (until 2026-09-30), accepted by the DIRECTOR; his extension to 2026-09-30
+# covered only the three parity disagreements. Two kinds remain. The
+# `not_keys.code_residue` uses above, carried by their conformance row. And
+# filenames: a filename is a DECLARED CONSTANT, never an exemption by shape
+# (his Q67 answer), so each record is a constant's declaration line in
+# `meta-files` or `agent-plugin-files`, which `undeclared` cannot see because
+# its closure is per registry (mailed to kinemata 2026-09-24), plus
+# `vscode_remote.py`'s `meta.json`, still owed its constant. Measured zero
+# sites on either NOT EXPRESSIBLE axis, so neither contributes a record.
 #
-# 🛑 BUT IT DOES NOT PAY THROUGH `undeclared`, WHICH REFUSES OUTRIGHT. Measured
-# 2026-09-14 at `75f7da94`, kinemata `a365474` -- `kinemata undeclared`, exit 2:
+# ⚑ No `[[parity]]` table names this registry: `declared()` is a superset of
+# `entries()`, so a parity over it would compare the declaration against a
+# subset of itself. Cost zero today for exactly this reason.
 #
-#   error: no declared registry can recognize its own identifiers, so none can
-#   say what is undeclared. This needs a registry with an identifier syntax
-#   (today: kind = "yaml-mapping" with `syntax`). Running anyway would report
-#   nothing and mean nothing.
+# ⚑ IT CONTRIBUTES NOTHING TO `check`, and that is not a defect. Measured:
+# `KeyspaceRegistry.entries()` builds every entry with no `antipatterns`, so
+# the duplication gate has nothing to match. This registry pays for itself through
+# `ids` and `unused`: `kinemata ids -r keyspace` re-derives the entries it
+# projects, and `kinemata unused -r keyspace` the keys nothing mentions outside
+# the `machinery` below.
 #
-# The r2 config claimed this registry answers `undeclared`, and as written it
-# cannot: `syntax` -- the pattern recognizing anything SHAPED LIKE a kanibako key
-# -- is not declared. That is not repaired here on purpose. Choosing the pattern
-# decides what counts as a key MENTION across the whole tree, which is a
-# declaration in its own right and a larger decision than a merge; writing a
-# plausible one to clear an exit code is how a gate comes to report a number
-# nobody derived. The refusal is correct behavior and is recorded rather than
-# worked around. ⚑ The `closed = true` discussion above is downstream of this:
-# `adapters/mapping.py` refuses `closed` without `syntax` too, so the 24-false-
-# positive measurement was made under a config this one does not yet reproduce.
+# ⚑ IT PAYS THROUGH `undeclared`, WHICH REFUSED OUTRIGHT UNTIL THIS ADAPTER
+# EXISTED (exit 2, re-measured at kinemata `0.1.2`: no registry could
+# recognize its own identifiers). `candidates()` is the identifier syntax,
+# and the closure guard probes it at load: a string literal that is WHOLLY
+# key-shaped (the derived root alternation over segments), or an `@`-ref
+# anywhere in one, read by the product's own ref parser. A literal that is
+# only partly key-shaped is prose, which `claims` owns. Comments, docstrings
+# and f-strings never reach it -- the `strings` mode drops them -- so a key
+# built in an f-string is not seen. Choosing what counts as a key MENTION is a
+# declaration in its own right; it lives in the adapter, derived from the
+# manifest roots, never as a literal here.
 [[registry]]
 name = "keyspace"
-kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
-section = "keys"
-clause_field = "spec"
+kind = "import"
+target = "kanibako.settings.kinemata_keyspace:KeyspaceRegistry"
+closed = true
 
 # The files that DECLARE keys rather than use them. Without this, `unused`
 # refuses outright: every entry is mentioned by its own declaring machinery, so
@@ -702,6 +721,26 @@ kind = "python-constants"
 modules = [
   "src/kanibako/settings/config.py",
   "src/kanibako/settings/config_keys.py",
+]
+
+# ---------------------------------------------------------------------------
+# FACT: the third-party config filenames the agent plugins read and write --
+# codex's `config.toml`, goose's `config.yaml`. Each is the harness's own name,
+# not a kanibako key.
+# AUTHORITY: the owning plugin's `target.py`, which declares each once as a
+# module constant that every site in that module uses.
+# CATCHES: the filename respelled as a literal in any OTHER module. `check`
+# exempts a constant's home module; a respelling inside it is caught instead by
+# `undeclared` on `keyspace`, where a whole-filename literal is a candidate.
+# ⚑ That same `undeclared` still reports each DECLARATION line, because its
+# closure is per registry and cannot see this one's declaration home. That is
+# kinemata's gap, mailed to them 2026-09-24; those lines stay in the baseline.
+[[registry]]
+name = "agent-plugin-files"
+kind = "python-constants"
+modules = [
+  "packages/agent-codex/src/kanibako/plugins/codex/target.py",
+  "packages/agent-goose/src/kanibako/plugins/goose/target.py",
 ]
 
 # ---------------------------------------------------------------------------
@@ -1320,6 +1359,66 @@ suffixes = [".toml"]
 # folds its produced names the same way, for the same reason.
 
 # ---------------------------------------------------------------------------
+# FACT: the value vocabulary of `KEY_TYPES` -- the kinds a key IS in
+# `settings/config_keys.py`: `bool`, `int`, `path`.
+# AUTHORITY: `KEY_TYPES` is the code carrier of the registry's `type:` column,
+# and the parity below is its code side; NOTHING here is the manifest side,
+# because agreement with the manifest cannot pin this table. The manifest's
+# own `type:` column is the wider eight-token vocabulary the `type-vocabulary`
+# shape rule pins -- `enum` among them -- and the pair-equality test asserts
+# the pairs agree, so the `enum` the manifest genuinely declares for
+# `meta.runtime.project_type` is exactly what an injected `KEY_TYPES` row
+# would spell. Both pass it; the parity below does not.
+# CATCHES: a fourth kind landing in the table -- the hole `09ba8722` knowingly
+# left. First half of the re-boarded KEY_TYPES row; the bespoke assertion is
+# not built until this declaration has been tried.
+#
+# ⚑ THREE, NOT TWO. The row re-boards a `{"bool", "path"}` pin, and that pin
+# is already violated by the live tree: `system.helpers.depth` and
+# `system.helpers.breadth` are `"int"` -- the spawn budget, deliberate since
+# `cdbc3e08`, with its own `_coerce_value` arm and refusal string. Measured,
+# not reasoned: the same parity over a two-entry declaration reds `int:
+# produced, declared by nothing`. `int` is the legitimate third kind the row
+# said to check for, and widening to it is the only widening anything may do.
+#
+# ⚑ NOT A SECOND CARRIER. The three words are enumerated as a vocabulary once,
+# here, and nowhere else: `KEY_TYPES` spells them per ROW, which is the thing
+# being pinned, and the comment above that table documents them without
+# enumerating them as a set. A fourth kind spelled in a row reds the parity; a
+# fourth word added here is the conscious widening, and nothing else can do it.
+#
+# ⚑ THE ANTIPATTERNS ARE ROW-SHAPED ON PURPOSE. A bare `"bool"` fires on
+# `TYPE_BARE_NAMES` in `scripts/gen-api-doc.py` -- a type-name list, a
+# different fact, so the pattern does not match it. `:`-before-the-quote fires nowhere outside
+# `config_keys.py`: measured 2026-09-22 over every non-excluded `.py` in
+# `src/`, `packages/` and `scripts/`, both quote styles, all three kinds. So
+# `check` is silent on a clean tree, and a kind-word respelled outside the
+# table -- the `**{key: "path" ...}` splats included, which the `:` reaches --
+# is a finding rather than arithmetic. `check` moves by exactly the 3 declared
+# entries and no finding.
+[[registry]]
+name = "key-kinds"
+kind = "code-patterns"
+
+  [[registry.entry]]
+  id = "bool"
+  antipatterns = [''':\s*["']bool["']''']
+  home = ["src/kanibako/settings/config_keys.py"]
+  note = "a KEY_TYPES kind: coerced to a real bool before writing"
+
+  [[registry.entry]]
+  id = "int"
+  antipatterns = [''':\s*["']int["']''']
+  home = ["src/kanibako/settings/config_keys.py"]
+  note = "a KEY_TYPES kind: the spawn budget, refused at set time if not numeric"
+
+  [[registry.entry]]
+  id = "path"
+  antipatterns = [''':\s*["']path["']''']
+  home = ["src/kanibako/settings/config_keys.py"]
+  note = "a KEY_TYPES kind: a host path, never coerced, tokens kept raw"
+
+# ---------------------------------------------------------------------------
 # THE PARITY ORACLES. Each one runs a command that prints what the CODE really
 # produces and compares that set against what a registry above DECLARES.
 #
@@ -1842,6 +1941,45 @@ for source in [*sorted(pathlib.Path("src").rglob("*.py")), *sorted(pathlib.Path(
 extract = '(?m)^agent-name: (\S+)$'
 
 # ---------------------------------------------------------------------------
+# THE `KEY_TYPES` VALUE-VOCABULARY PIN. `relation = "declared_contains"` is the
+# row's `<=` exactly: every kind the code produces is declared, and a kind the
+# code stops producing is silent rather than a finding. An equality would
+# report a removed kind every run until someone deleted the coverage to get
+# the green back -- the tightening the `python-floor` table refuses for the
+# same reason.
+#
+# ⚑ THE ORACLE PRINTS VALUES, NOT KEYS. `sorted(set(KEY_TYPES.values()))` is
+# the whole of the vocabulary question: a new ROW of an old kind changes
+# nothing, a new KIND is one produced identifier. The `kanibako-key-kind:`
+# prefix is there so nothing incidental on either stream can be read as a kind.
+#
+# Measured 2026-09-22 on this tree, kinemata `0.3.0`:
+#   `# key-kinds: 3 declared, 3 produced, every identifier the code produces is
+#   declared.`  rc=0
+# NEGATIVE CONTROL, the row's own injection in a scratch tree --
+# `KEY_TYPES["meta.runtime.project_type"] = "enum"`: rc=1, `enum: produced,
+# declared by nothing`. On the SAME mutant
+# `test_the_code_types_every_key_the_registry_declares_it_at` passes -- the
+# pair is genuinely in the registry -- so the pin reds exactly what the suite
+# cannot see, which is the hole it was re-boarded to close.
+# SECOND CONTROL, the declaration narrowed to `bool` and `path`: rc=1, `int:
+# produced, declared by nothing` -- the legitimate third kind, and the reason
+# the vocabulary is three rather than the row's two.
+# VACUITY POSTURE, inherited rather than re-proved: `declared_contains` fails
+# a run whose oracle produced nothing (upstream's own rule, cited on the
+# `workset-denials` table), and an oracle that cannot import the tree exits
+# nonzero, which BLOCKS rather than reporting a short list as a finding.
+[[parity]]
+registry = "key-kinds"
+relation = "declared_contains"
+command = ["{python}", "-c", """
+from kanibako.settings.config_keys import KEY_TYPES
+for kind in sorted(set(KEY_TYPES.values())):
+    print(f"kanibako-key-kind: {kind}")
+"""]
+extract = '(?m)^kanibako-key-kind: (\S+)$'
+
+# ---------------------------------------------------------------------------
 # THE SHAPE RULES. `[[shape]]` reads only the declaration and asks whether it is
 # the shape this project says it is -- the one mechanism here that compares the
 # manifest to ITSELF rather than to the code. It is a REMINDER, not a catch: an
@@ -2046,3 +2184,8 @@ note = "documentation claims, and this inventory"
 command = "kinemata shape"
 where = [".github/workflows/test.yml"]
 note = "the manifest's shape against itself"
+
+[[gate]]
+command = "kinemata undeclared"
+where = [".github/workflows/test.yml"]
+note = "an identifier the tree uses that no closed registry declares"
