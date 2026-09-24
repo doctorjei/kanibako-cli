@@ -51,20 +51,38 @@ def short_hash(full_hash: str, length: int = 8) -> str:
     return full_hash[:length]
 
 
-def container_name_for(proj: ProjectPaths) -> str:
-    """Deterministic container name for a project.
+def container_name_for_box_name(name: str) -> str:
+    """Container name of a PRIMARY- or NAMED-mode box, keyed by its box *name*.
 
-    - Local with name: ``kanibako-{name}``
-    - Local without name (legacy): ``kanibako-{short_hash}``
-    - Workset: ``kanibako-{short_hash}`` (name-based pending workset naming)
-    - Standalone: ``kanibako-ronin-{escape_path(root)}`` (the root, NOT the
-      ``workspace/`` subdir — ``metadata_path`` is the root for standalone)
+    :func:`container_name_for` also passes a short project hash here for a nameless
+    (legacy) primary box, so *name* is not always a box name.
+    ⚑ NEVER a standalone box — its container is keyed by its ROOT, not its name
+    (:func:`container_name_for_standalone_root`).
+    """
+    return f"kanibako-{name}"
+
+
+def container_name_for_standalone_root(root: Path) -> str:
+    """Container name of a STANDALONE box, keyed by its *root* — never by its box name.
+
+    *root* is the box ROOT (``metadata_path``), NOT its ``workspace/`` subdir.
+    """
+    return f"kanibako-ronin-{escape_path(str(root))}"
+
+
+def container_name_for(proj: ProjectPaths) -> str:
+    """Deterministic container name for a project — picks the spelling for its mode.
+
+    - Primary or named, with a name: ``kanibako-{name}``
+    - Primary, nameless (legacy): ``kanibako-{short_hash}``
+    - Standalone: ``kanibako-ronin-{escape_path(root)}``
+
+    ⚑ A caller holding a registry row rather than a :class:`ProjectPaths` (``box ps``)
+    calls the spelling for its mode directly; it never re-spells one by hand.
     """
     if proj.mode.value == "standalone":
-        return f"kanibako-ronin-{escape_path(str(proj.metadata_path))}"
-    if proj.name:
-        return f"kanibako-{proj.name}"
-    return f"kanibako-{short_hash(proj.project_hash)}"
+        return container_name_for_standalone_root(proj.metadata_path)
+    return container_name_for_box_name(proj.name or short_hash(proj.project_hash))
 
 
 def project_hash(project_path: str) -> str:

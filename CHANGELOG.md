@@ -454,6 +454,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   "Could not find kanibako git repository." and `kanibako system` reported the install as `pip`.
   Both now recognize a worktree checkout.
 
+- **`kanibako ps` never showed a running standalone box, and `kanibako list` showed it as
+  `stopped` while it ran.** The listing looked for a container named after the box, but
+  `kanibako start` names a standalone box's container after the path of its root directory, so
+  the lookup could never match. `ps` and `list` now use the container name `start` gives each
+  mode; primary and named boxes are looked up exactly as before.
+
 ### Added
 
 - **Every box now gets the host's terminal type, and `$TERM` resolves in a settings value.** Two

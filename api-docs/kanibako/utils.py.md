@@ -16,6 +16,8 @@ _GITIGNORE_ENTRIES = ['box_data/']
 def cp_if_newer(src: str | os.PathLike, dst: str | os.PathLike) -> bool
 def confirm_prompt(message: str) -> None
 def short_hash(full_hash: str, length: int=8) -> str
+def container_name_for_box_name(name: str) -> str
+def container_name_for_standalone_root(root: Path) -> str
 def container_name_for(proj: ProjectPaths) -> str
 def project_hash(project_path: str) -> str
 def escape_path(path: str) -> str
