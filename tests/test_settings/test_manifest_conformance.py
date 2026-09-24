@@ -2407,6 +2407,9 @@ class TestKeySetConformance:
         ``DECLARED_*_LEAVES`` names :data:`_SCALAR_DECLARATIONS` references must
         EQUAL the set ``settings_keyspace`` actually exports.  A dropped row names
         its family here, and so does a new export nobody wired into the sweep.
+
+        ⚑ Identity is per OBJECT, so two exported names bound to one frozenset are
+        one leaf set: the row referencing it names BOTH, and neither is unswept.
         """
         from kanibako.settings import settings_keyspace as keyspace_module
 
@@ -2416,19 +2419,22 @@ class TestKeySetConformance:
             if name.startswith("DECLARED_") and name.endswith("_LEAVES")
             and isinstance(value, frozenset)
         }
-        by_id = {id(getattr(keyspace_module, name)): name for name in exported}
+        names_by_id: dict[int, set[str]] = {}
+        for name in exported:
+            names_by_id.setdefault(id(getattr(keyspace_module, name)), set()).add(name)
         unnamed = [
             prefix for prefix, leaves in _SCALAR_DECLARATIONS
-            if id(leaves) not in by_id
+            if id(leaves) not in names_by_id
         ]
         assert not unnamed, (
             f"declaration rows referencing no exported DECLARED_*_LEAVES set: "
             f"{unnamed} — the sweep above covers them against nothing"
         )
-        referenced = {by_id[id(leaves)] for _, leaves in _SCALAR_DECLARATIONS}
-        assert len(referenced) == len(_SCALAR_DECLARATIONS), (
+        row_ids = [id(leaves) for _, leaves in _SCALAR_DECLARATIONS]
+        referenced = set().union(*(names_by_id[row_id] for row_id in row_ids))
+        assert len(set(row_ids)) == len(row_ids), (
             f"two declaration rows reference one leaf set: "
-            f"{len(_SCALAR_DECLARATIONS)} rows name {len(referenced)} sets "
+            f"{len(row_ids)} rows name {len(set(row_ids))} sets "
             f"({sorted(referenced)}) — one family rides another's coverage"
         )
         assert referenced == exported, (
