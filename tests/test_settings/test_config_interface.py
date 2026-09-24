@@ -1857,12 +1857,12 @@ class TestConfigJournalRecognition:
 
 
 class TestSystemSettingsTierSplit:
-    """SYSTEM scope: SETTINGS route to @system.settings (global/settings.yaml),
-    while system.* CONFIG keys stay in kanibako.cfg — the config/settings split.
+    """SYSTEM scope: SETTINGS route to @config.settings (global/settings.yaml),
+    while kanibako.cfg carries ``config.*`` alone — the config/settings split.
 
     The interface fns take an optional ``system_settings_path``; when set (the
     SYSTEM scope) SETTINGS reads/writes go there, NOT to ``config_path`` /
-    ``global_config_path`` (which remain the CONFIG file for ``system.*``).
+    ``global_config_path`` (the CONFIG file, which holds only ``config.*``).
     """
 
     def test_system_agent_set_routes_to_settings_file(self, tmp_path):
@@ -1932,9 +1932,10 @@ class TestSystemSettingsTierSplit:
     def test_the_system_path_tier_reads_the_settings_file(self, tmp_path):
         """A ``system.*`` PATH key reads where its ``set`` writes: the SETTINGS file.
 
-        ⚑ The ``[system]`` table of ``kanibako.cfg`` is the resolution
-        FLOOR, not the store, so a plain ``get`` does not report it — spec §2a:
-        plain get answers what THIS scope's file says, never another tier's value.
+        ⚑ The ``system:`` table planted in ``kanibako.cfg`` below is neither store
+        nor floor: that file carries ``config.*`` alone, and loading it REFUSES a
+        settings table (``bootstrap_config_paths``).  A plain ``get`` never reads
+        it — spec §2a: plain get answers what THIS scope's file says.
         """
         from kanibako.settings.config_io import write_nested_key
 
