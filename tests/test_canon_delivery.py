@@ -413,7 +413,7 @@ class TestDisjointness:
             CANON_SEED_DENY_PREFIXES,
             {
                 "canon/notebook/MY_CONTENTS.md",
-                "canon/workbook/devnotes.md",
+                "canon/workbook/state/devnotes.md",
                 "canon/charters-of-mine/x.md",
                 "canon/COLLECTION.md.bak",
                 "workspace/README.md",
@@ -1222,7 +1222,10 @@ class TestBaseTemplateSeedsTheNotebook:
         home_root = packaged_box_home_template()
         assert home_root is not None
         assert (home_root / "canon" / "notebook" / "MY_CONTENTS.md").is_file()
-        assert (home_root / "canon" / "workbook" / "devnotes.md").is_file()
+        assert (home_root / "canon" / "workbook" / "state" / "devnotes.md").is_file()
+        assert (home_root / "canon" / "workbook" / "state" / "status.md").is_file()
+        assert (home_root / "canon" / "workbook" / "tasks" / "main.md").is_file()
+        assert (home_root / "canon" / "workbook" / "tasks" / "product.md").is_file()
         # The retired roots are GONE from the package.
         base = _packaged_base_template()
         assert not (base / "playbook").exists()
@@ -1256,7 +1259,16 @@ class TestBaseTemplateSeedsTheNotebook:
             proj.shell_path / "canon" / "notebook" / "MY_CONTENTS.md"
         ).is_file()
         assert (
-            proj.shell_path / "canon" / "workbook" / "devnotes.md"
+            proj.shell_path / "canon" / "workbook" / "state" / "devnotes.md"
+        ).is_file()
+        assert (
+            proj.shell_path / "canon" / "workbook" / "state" / "status.md"
+        ).is_file()
+        assert (
+            proj.shell_path / "canon" / "workbook" / "tasks" / "main.md"
+        ).is_file()
+        assert (
+            proj.shell_path / "canon" / "workbook" / "tasks" / "product.md"
         ).is_file()
 
 

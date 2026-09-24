@@ -181,10 +181,35 @@ SEED_MANIFEST: tuple[SeedFile, ...] = (
     SeedFile("base", "box/home/canon/notebook/directives/CONVENTIONS.md",
              "home/canon/notebook/directives/CONVENTIONS.md"),
     # ---- base: the box's own WORKBOOK (process / progress / state) ----
-    SeedFile("base", "box/home/canon/workbook/devnotes.md",
-             "home/canon/workbook/devnotes.md"),
-    SeedFile("base", "box/home/canon/workbook/tasks.md",
-             "home/canon/workbook/tasks.md"),
+    # ⚑ Reorganized 2026-09-22: flat ``devnotes.md``/``tasks.md`` became the
+    # ``state/`` + ``tasks/`` dirs — ``tasks.md`` SPLIT into ``main.md`` (entry
+    # board) + ``product.md``, and ``status.md`` (previously shipped but
+    # unmanifested) is pinned here too, at ``state/status.md``. Every other
+    # ``tasks/`` board follows ``product.md``.
+    SeedFile("base", "box/home/canon/workbook/state/devnotes.md",
+             "home/canon/workbook/state/devnotes.md"),
+    SeedFile("base", "box/home/canon/workbook/state/status.md",
+             "home/canon/workbook/state/status.md"),
+    SeedFile("base", "box/home/canon/workbook/tasks/main.md",
+             "home/canon/workbook/tasks/main.md"),
+    SeedFile("base", "box/home/canon/workbook/tasks/product.md",
+             "home/canon/workbook/tasks/product.md"),
+    SeedFile("base", "box/home/canon/workbook/tasks/backlog.md",
+             "home/canon/workbook/tasks/backlog.md"),
+    SeedFile("base", "box/home/canon/workbook/tasks/bugfixes.md",
+             "home/canon/workbook/tasks/bugfixes.md"),
+    SeedFile("base", "box/home/canon/workbook/tasks/conformance.md",
+             "home/canon/workbook/tasks/conformance.md"),
+    SeedFile("base", "box/home/canon/workbook/tasks/deferred.md",
+             "home/canon/workbook/tasks/deferred.md"),
+    SeedFile("base", "box/home/canon/workbook/tasks/project-docs.md",
+             "home/canon/workbook/tasks/project-docs.md"),
+    SeedFile("base", "box/home/canon/workbook/tasks/session.md",
+             "home/canon/workbook/tasks/session.md"),
+    SeedFile("base", "box/home/canon/workbook/tasks/spec-canon.md",
+             "home/canon/workbook/tasks/spec-canon.md"),
+    SeedFile("base", "box/home/canon/workbook/tasks/user-docs.md",
+             "home/canon/workbook/tasks/user-docs.md"),
     # ---- base: the box's HANDBOOK CHAPTER — lands OUTSIDE the home, and by the
     # ---- HOST-template copy rather than the ``seeded`` category (2026-08-07g) ----
     SeedFile("base", "box/canon/handbook/SYS_BOX.md",

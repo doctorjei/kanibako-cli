@@ -40,11 +40,10 @@ minimize context consumption.
 
 #### Workbook
 
-The roject-specific `~/canon/workbook` uses these conventions:
+The project-specific `~/canon/workbook` uses these conventions:
 
 | Path (relative) | Description | Loaded at start by default? |
 |---------------------------|-------------|-------------------------------------|
-
 | `designs/` | Project design(s) | No; _Authoritative_. |
 | `plans/` | Active implementation plans | When executing a plan |
 | `specs/` | Project specification(s) | No; _Authoritative_. |
@@ -57,7 +56,7 @@ The roject-specific `~/canon/workbook` uses these conventions:
 | `temp/testing` | Temporary testing data / logs | No |
 
 **Archives:** To preserve context, DO NOT read unless needed (e.g., as reference for context about
-legacy behavior / decisions). It is useful when necessesary but rarely needed.
+legacy behavior / decisions). It is useful when necessary but rarely needed.
 
 _All scripts, plans, documents, & other resources that have become historical_ (i.e., not related
 to current or future design, planning, and/or development) should move to the archives. Current /

@@ -3,7 +3,7 @@
 <!--[STOCK] Choose the format that fits your project: kanban buckets, numbered
      list, or simple categories. The format below is a suggestion. -->
 
-This is the product task board. It holds the prioority production tasks slated for design and development.
+This is the product task board. It holds the priority production tasks slated for design and development.
 
 ## Immediate
 
@@ -49,9 +49,3 @@ This is the product task board. It holds the prioority production tasks slated f
 
 *Update this file as work is identified and completed. Write future work
 here immediately — items that only exist in conversation are lost on clear.*
-
-
-
-
-# Task Board
-
