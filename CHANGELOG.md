@@ -39,6 +39,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`box move` and `box convert` emptied the vault.** Every relocating path created the
+  destination's `vault/ro` and `vault/rw` leaves empty, and teardown then deleted each source leaf
+  the box owned — a per-box leaf under its vault directory, or a standalone box's removable vault —
+  so those contents were gone. Leaves teardown keeps (shared or foreign ground, a standalone box's
+  retained vault) were never lost, but the new box started without them. Owned leaves' contents now
+  move before teardown on every relocating path of both verbs, the unwind restores the source on
+  failure, and reuse-in-place relocations are untouched. A kept leaf that holds something now says
+  so on stderr: `Warning: not carrying vault contents from <src> …` for a primary or named box
+  whose leaf is not a per-box directory under its vault directory, and `Note: the new vault starts
+  empty …` for a standalone box's retained vault; both name where the contents remain. A disabled
+  vault (`box.enable_vault: false`) is unchanged.
+
 - **A list or a map written at `<scope>.env.<VAR>` or `<scope>.secret_path.<VAR>` was coerced with
   Python's `str()` instead of being refused.** Both families hold one scalar, and the coercion was
   not a display slip: a list at `box.env.FOO` was exported *into the box* as the literal text
