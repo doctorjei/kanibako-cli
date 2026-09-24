@@ -767,8 +767,7 @@ class TestResolveDataPath:
     """``resolve_data_path`` — the PURE, TOTAL ``config.data`` DIRECTORY resolver.
 
     THE single source for a caller that holds no ``StandardPaths`` and must still land in the
-    store the user configured ([R155]): ``targets.discover_targets`` and
-    ``vscode_remote.vscode_remote_bin_dir``.
+    store the user configured ([R155]): ``targets.discover_targets``.
     """
 
     def _redirect_etc_base(self, monkeypatch, tmp_path: Path) -> None:

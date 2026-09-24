@@ -40,9 +40,12 @@ def wrapper_env(tmp_path, monkeypatch):
     """
     # ⚑ CONFIG_HOME isolated too: _vscode_remote_state_dir reads it via
     # resolve_state_path() (see test_vscode_remote.py's _isolate_xdg for why).
+    # ⚑ CACHE_HOME isolated too: ensure_dispatch_wrapper lands under
+    # system.cache now — without this the fixture writes the real ~/.cache.
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
     (tmp_path / "run").mkdir(parents=True, exist_ok=True)
     monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path / "run"))
 
