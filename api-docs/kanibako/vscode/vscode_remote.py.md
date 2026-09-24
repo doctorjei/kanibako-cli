@@ -8,6 +8,7 @@ _Signatures only: no comments, no docstrings, no bodies._
 
 ```
 logger = get_logger('vscode_remote')
+DOCKER_CONTEXT_META_FILE = 'meta.json'
 _CONTEXT_PREFIX = 'kanibako-remote-'
 _SCRIPT_VERSION = 2
 _REMOTE_PATH_PREAMBLE = 'PATH="$HOME/.local/bin:$PATH" '

@@ -520,6 +520,11 @@ def preflight_engine(engine: RemoteEngine) -> None:
 # Docker context meta.json (so the ext can resolve/validate the context)
 # ---------------------------------------------------------------------------
 
+#: docker's context-metadata file, under ``<docker config>/contexts/meta/<sha256(name)>/``
+#: -- docker's name, not a kanibako key.
+DOCKER_CONTEXT_META_FILE = "meta.json"
+
+
 def _docker_config_dir() -> Path:
     val = os.environ.get("DOCKER_CONFIG")
     if val and os.path.isabs(val):
@@ -543,7 +548,7 @@ def ensure_docker_context_meta(name: str, url: str) -> Path:
         )
     digest = hashlib.sha256(name.encode()).hexdigest()
     meta_dir = _docker_config_dir() / "contexts" / "meta" / digest
-    meta_file = meta_dir / "meta.json"
+    meta_file = meta_dir / DOCKER_CONTEXT_META_FILE
     payload = {
         "Name": name,
         "Metadata": {},
