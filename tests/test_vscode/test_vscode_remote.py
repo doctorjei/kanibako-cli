@@ -29,8 +29,8 @@ def _isolate_xdg(tmp_path, monkeypatch):
 
     ⚑ ``XDG_CONFIG_HOME`` is isolated too: ``_vscode_remote_state_dir`` resolves
     ``system.state`` via :func:`kanibako.settings.paths.resolve_state_path`, and
-    ``vscode_remote_bin_dir`` resolves ``config.data`` via
-    :func:`kanibako.settings.paths.resolve_data_path`; both read
+    ``vscode_remote_bin_dir`` resolves ``system.cache`` via
+    :func:`kanibako.settings.paths.resolve_cache_path`; both read
     ``$XDG_CONFIG_HOME/kanibako.cfg`` — an unisolated env would read the REAL host config
     and make those paths (hence much of this file) depend on whatever happens to be on the
     box running the suite.
@@ -46,6 +46,7 @@ def _isolate_xdg(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
     monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path / "run"))
     monkeypatch.setenv("DOCKER_CONFIG", str(tmp_path / "docker"))
     monkeypatch.delenv("TMPDIR", raising=False)
@@ -246,16 +247,23 @@ def test_context_slug_distinct_dests_never_collide():
 
 # --- _vscode_remote_state_dir sits under system.state (resolve_state_path) ---
 
-def _write_store_config(store: Path, *, state: Path | None = None) -> None:
-    """Point ``config.data`` at *store* and, when given, set ``system.state`` in the
-    settings file that store carries."""
+def _write_store_config(
+    store: Path, *, state: Path | None = None, cache: Path | None = None,
+) -> None:
+    """Point ``config.data`` at *store* and, when given, set ``system.state`` /
+    ``system.cache`` in the settings file that store carries."""
     config_home = Path(os.environ["XDG_CONFIG_HOME"])
     config_home.mkdir(parents=True, exist_ok=True)
     (config_home / CONFIG_FILENAME).write_text(f'config:\n  data: "{store}"\n')
+    rows = ""
     if state is not None:
+        rows += f'  state: "{state}"\n'
+    if cache is not None:
+        rows += f'  cache: "{cache}"\n'
+    if rows:
         settings = store / "global" / "settings.yaml"
         settings.parent.mkdir(parents=True, exist_ok=True)
-        settings.write_text(f'system:\n  state: "{state}"\n')
+        settings.write_text(f"system:\n{rows}")
 
 
 def test_state_dir_defaults_under_the_state_key_when_no_config():
@@ -302,28 +310,52 @@ def test_state_dir_malformed_config_degrades_without_raising():
     assert d == Path(os.environ["XDG_STATE_HOME"]) / "kanibako" / "vscode-remote"
 
 
-# --- vscode_remote_bin_dir is anchored on config.data itself (resolve_data_path) ---
+# --- vscode_remote_bin_dir sits under system.cache (resolve_cache_path) ---
 
-def test_bin_dir_defaults_under_xdg_data_home_when_no_config():
-    """No config under the isolated ``XDG_CONFIG_HOME`` → the shipped default location,
-    exactly the prior hardcoded behaviour."""
+def test_bin_dir_defaults_under_xdg_cache_home_when_no_config():
+    """No config under the isolated ``XDG_CONFIG_HOME`` → ``system.cache``'s own default
+    (TOTAL: absent config never raises)."""
     assert vr.vscode_remote_bin_dir() == (
-        Path(os.environ["XDG_DATA_HOME"]) / "kanibako" / "vscode-remote" / "bin"
+        Path(os.environ["XDG_CACHE_HOME"]) / "kanibako" / "vscode-remote" / "bin"
     )
 
 
-def test_bin_dir_follows_repointed_config_data(tmp_path):
-    """[R155]: the generated wrapper lives inside the store the user configured — the WHOLE
-    ``config.data`` path. A store outside ``$XDG_DATA_HOME`` also rules out a leaf-only
-    reading, which would rejoin "custom_store" to the XDG base and miss the move."""
+def test_bin_dir_follows_a_repointed_system_cache(tmp_path):
+    """The generated wrapper derives from ``system.cache``, so setting that key
+    moves it."""
+    _write_store_config(tmp_path / "custom_store", cache=tmp_path / "elsewhere" / "cache")
+    assert vr.vscode_remote_bin_dir() == (
+        tmp_path / "elsewhere" / "cache" / "vscode-remote" / "bin"
+    )
+
+
+def test_bin_dir_ignores_a_repointed_config_data(tmp_path):
+    """MUTATION PROOF: the wrapper has no relationship to ``config.data``. A store
+    outside ``$XDG_CACHE_HOME`` rules out a leaf-only reading: a leaf-only reading
+    would rejoin "custom_store" to the XDG cache base and move the wrapper where it
+    must not go."""
+    _write_store_config(tmp_path / "custom_store")
+    assert vr.vscode_remote_bin_dir() == (
+        Path(os.environ["XDG_CACHE_HOME"]) / "kanibako" / "vscode-remote" / "bin"
+    )
+
+
+def test_bin_dir_creates_nothing(tmp_path):
+    """Calling it is a pure path computation — no directory materializes."""
+    _write_store_config(tmp_path / "custom_store", cache=tmp_path / "elsewhere" / "cache")
+    before = set(tmp_path.rglob("*"))
+    vr.vscode_remote_bin_dir()
+    after = set(tmp_path.rglob("*"))
+    assert after == before
+    assert not (tmp_path / "elsewhere").exists()
+
+
+def test_bin_dir_malformed_config_degrades_without_raising():
     config_home = Path(os.environ["XDG_CONFIG_HOME"])
     config_home.mkdir(parents=True, exist_ok=True)
-    (config_home / CONFIG_FILENAME).write_text(
-        f'config:\n  data: "{tmp_path / "srv" / "custom_store"}"\n'
-    )
-    assert vr.vscode_remote_bin_dir() == (
-        tmp_path / "srv" / "custom_store" / "vscode-remote" / "bin"
-    )
+    (config_home / CONFIG_FILENAME).write_text("not: [valid: yaml: at all")
+    d = vr.vscode_remote_bin_dir()  # must not raise
+    assert d == Path(os.environ["XDG_CACHE_HOME"]) / "kanibako" / "vscode-remote" / "bin"
 
 
 # --- connection store round-trip + greppability ----------------------------

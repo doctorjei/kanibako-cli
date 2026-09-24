@@ -53,7 +53,7 @@ from pathlib import Path
 from kanibako.errors import KanibakoError
 from kanibako.log import get_logger
 from kanibako.runtime.container import image_ref_or_none
-from kanibako.settings.paths import resolve_data_path, resolve_state_path
+from kanibako.settings.paths import resolve_cache_path, resolve_state_path
 
 logger = get_logger("vscode_remote")
 
@@ -567,15 +567,18 @@ def ensure_docker_context_meta(name: str, url: str) -> Path:
 def vscode_remote_bin_dir() -> Path:
     """Directory holding the generated ``podman-dispatch`` wrapper.
 
-    Anchored on ``config.data`` itself ([R155]), not on the XDG data base plus a hardcoded
-    leaf: a user who repoints ``config.data`` gets the generated wrapper inside the store
-    they configured. ⚑ Contrast :func:`_vscode_remote_state_dir`, the module's other
-    resolved root: the wrapper is a generated ARTIFACT and belongs in the data store, while
-    the connection store is STATE and derives from ``system.state`` ([R166]). Two keys,
-    two bases, neither derived from the other.
-    :func:`resolve_data_path` is PURE and TOTAL, so this stays as total as it was.
+    Anchored on ``system.cache`` itself (:func:`resolve_cache_path`), not on the
+    XDG cache base plus a hardcoded leaf: a user who repoints ``system.cache``
+    gets the generated wrapper inside the cache root they configured. The wrapper
+    is regenerable output — ``kanibako code --remote`` rewrites it, so a cache
+    wipe is safe — while the data store holds user-meaningful content; generated
+    output does not belong there. ⚑ Contrast :func:`_vscode_remote_state_dir`,
+    the module's other resolved root: the connection store is STATE and derives
+    from ``system.state`` ([R166]). Two keys, two bases, neither derived from
+    the other. :func:`resolve_cache_path` is PURE and TOTAL, so this stays as
+    total as it was.
     """
-    return resolve_data_path() / "vscode-remote" / "bin"
+    return resolve_cache_path() / "vscode-remote" / "bin"
 
 
 def dispatch_wrapper_path() -> Path:

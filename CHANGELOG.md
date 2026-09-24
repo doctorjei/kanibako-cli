@@ -37,6 +37,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   behind as the surviving copy, which is exactly how a ratified decision was lost here for three days.
   The wording is Jei's.
 
+- **The `code --remote` dispatch wrapper moved from the data store to the cache root.**
+  `podman-dispatch` is regenerable output and now lives under `system.cache` (default
+  `$XDG_CACHE_HOME/kanibako/vscode-remote/bin/`); repointing `system.cache` moves it. Run
+  `kanibako code --remote` once to regenerate it and re-point `dev.containers.dockerPath` — see
+  `MIGRATION.md` § *2.83 The `code --remote` wrapper moved from the data store to the cache root*.
+
 ### Fixed
 
 - **`box move` and `box convert` emptied the vault.** Every relocating path created the
@@ -345,18 +351,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   stops waiting on stores it never shared a destination with. This lock no longer creates a file; a
   leftover `creds-writeback.lock` in your state directory is inert and can be deleted.
 
-- **Plugins you drop in your own store are now found, and the `code --remote` wrapper is generated
-  inside it.** Two directories were composed from `$XDG_DATA_HOME` plus a hardcoded `kanibako`
-  segment rather than read from `config.data`: the user-level file-drop plugin directory
-  (discovery tier 2) and the directory holding the generated `podman-dispatch` wrapper. A user
-  who repointed `config.data` therefore had plugin discovery scanning a store they no
-  longer used — an agent they had written simply never appeared in `kanibako setup` or `--agent`,
-  with nothing printed to explain the absence — while the wrapper was written into that abandoned
-  tree. Both now resolve through `config.data`, the declared key. A default install is unaffected:
-  `config.data` defaults to `$XDG_DATA_HOME/kanibako`, which is the path both sites were
-  hardcoding. ⚠️ **If you repointed `config.data`, plugins in the old
-  location stop being discovered** — see `MIGRATION.md` § *2.72 Plugins and the `code --remote`
-  wrapper follow a repointed `config.data`* for the two host-side moves.
+- **Plugins you drop in your own store are now found.** The user-level file-drop plugin directory
+  (discovery tier 2) was composed from `$XDG_DATA_HOME` plus a hardcoded `kanibako` segment rather
+  than read from `config.data`. A user who repointed `config.data` therefore had plugin discovery
+  scanning a store they no longer used — an agent they had written simply never appeared in
+  `kanibako setup` or `--agent`, with nothing printed to explain the absence. It now resolves
+  through `config.data`, the declared key. A default install is unaffected: `config.data` defaults
+  to `$XDG_DATA_HOME/kanibako`, which is the path the site was hardcoding. ⚠️ **If you repointed
+  `config.data`, plugins in the old location stop being discovered** — see `MIGRATION.md`
+  § *2.72 File-drop plugins follow a repointed `config.data`* for the move.
 
 - **The seeded `check-comms.sh` hook never reported a broadcast, and an error inside your mailbox
   could stop it reporting mail.** Two defects, both shipped in `1.8.0rc2`. It watched

@@ -308,9 +308,8 @@ inside boxes. In order of likely impact:
 
 30. **If `config.data` points anywhere but `$XDG_DATA_HOME/kanibako`, your own file-drop plugins
     are now discovered in it — and stop being discovered in the default store** (§2.72). The
-    plugin directory and the `code --remote` wrapper directory were the last two built from the
-    XDG *data* base plus a hardcoded `kanibako`; a plugin you had dropped in your store was silently
-    never loaded. Move the `.py` files, and re-run `kanibako code --remote` per remote.
+    plugin directory was built from the XDG *data* base plus a hardcoded `kanibako`, so a plugin you
+    had dropped in your store was silently never loaded. Move the `.py` files.
 
 31. **A `run_args` you set for every agent now actually reaches every agent** (§2.75).
     `agent.default.run_args` — the bare `run_args` spelling included — was settable at any scope and
@@ -329,7 +328,14 @@ inside boxes. In order of likely impact:
     `agent.<agent>.secret_path.<VAR>` (§2.15). ⚑ `-e VAR=VALUE` is not a key and is not part of
     this pair.
 
-33. Smaller items: standalone boxes' `box get` got truthful (§2.9); a box pointed at a new agent
+33. **If you use `kanibako code --remote`, run it once after upgrading and accept the `dockerPath`
+    update.** The `podman-dispatch` wrapper VS Code's `dev.containers.dockerPath` points at moved from
+    `$XDG_DATA_HOME/kanibako/vscode-remote/bin/` to the cache root, `@system.cache/vscode-remote/bin/`,
+    on every install. One run, against any remote, regenerates it and re-points the setting; then
+    delete `$XDG_DATA_HOME/kanibako/vscode-remote/`. A JSONC `settings.json` needs the line pasted by
+    hand — see *2.83 The `code --remote` wrapper moved from the data store to the cache root*.
+
+34. Smaller items: standalone boxes' `box get` got truthful (§2.9); a box pointed at a new agent
     keeps the old one's credential files in its home (§2.10); several never-released or
     expected-empty renames (§2.11); two `--null` CLI bugs fixed (§2.14); a customized helper
     entrypoint script moves to `~/canon/notebook/scripts/helper-init.sh` (§2.44);
@@ -4528,49 +4534,35 @@ afterwards, so by the time you read the list your shipped-template edits are alr
 
 ---
 
-### 2.72 Plugins and the `code --remote` wrapper follow a repointed `config.data`
+### 2.72 File-drop plugins follow a repointed `config.data`
 
 **Read this ONLY if `config.data` points somewhere other than `$XDG_DATA_HOME/kanibako`** — for
-example `config.data: /srv/kanibako`. On a default install both paths below resolve exactly where
-they did before and this section is a no-op.
+example `config.data: /srv/kanibako`. On a default install the path below resolves exactly where
+it did before and this section is a no-op.
 
-**What changed.** Two directories were built from `$XDG_DATA_HOME` plus a hardcoded `kanibako`
-segment instead of being read from `config.data`, so they stayed in the default store no matter
-where yours actually was:
+**What changed.** The file-drop plugin directory was built from `$XDG_DATA_HOME` plus a hardcoded
+`kanibako` segment instead of being read from `config.data`, so it stayed in the default store no
+matter where yours actually was:
 
 | what | old path | new path |
 |---|---|---|
 | your own file-drop plugins | `$XDG_DATA_HOME/kanibako/plugins/` | `<data>/plugins/` |
-| the generated `code --remote` dispatch wrapper (`podman-dispatch`) | `$XDG_DATA_HOME/kanibako/vscode-remote/bin/` | `<data>/vscode-remote/bin/` |
 
 The trigger is the whole path, not its last segment. A store moved to a different *parent* while
 keeping the `kanibako` name — `/srv/kanibako` — was affected exactly as one renamed outright.
 
-**How a user notices.** Both ways are quiet:
+**How a user notices.** Quietly. Discovery scanned the default location, so a target you had
+written and dropped into `<data>/plugins/` did not appear in `kanibako setup` or as an `--agent`
+value, and nothing said why. Now it is found — and a copy left behind in
+`$XDG_DATA_HOME/kanibako/plugins/` stops being found, which is the same change seen from the other
+side.
 
-- **A plugin in your store was never discovered.** Discovery scanned the default location, so a
-  target you had written and dropped into `<data>/plugins/` did not appear in `kanibako setup` or
-  as an `--agent` value, and nothing said why. Now it is found — and a copy left behind in
-  `$XDG_DATA_HOME/kanibako/plugins/` stops being found, which is the same change seen from the
-  other side.
-- **`kanibako code --remote` regenerates its wrapper at a new path.** The wrapper VS Code's
-  `dev.containers.dockerPath` points at is written under your store now, so the setting recorded
-  before the upgrade names a file kanibako no longer maintains.
+**What you must do.** Move any file-drop plugins from `$XDG_DATA_HOME/kanibako/plugins/` into
+`<data>/plugins/`. Nothing kanibako ships lives there — this directory holds only `.py` files you put
+there yourself. Plugins installed with `pip` are unaffected; they are found through entry points.
 
-**What you must do.**
-
-1. Move any file-drop plugins from `$XDG_DATA_HOME/kanibako/plugins/` into `<data>/plugins/`.
-   Nothing kanibako ships lives there — this directory holds only `.py` files you put there
-   yourself. Plugins installed with `pip` are unaffected; they are found through entry points.
-2. Re-run `kanibako code --remote` once per remote you use. That rewrites `dockerPath` and
-   regenerates the wrapper in the new location; the old `vscode-remote/bin/` tree can then be
-   deleted, as nothing reads it. **If your VS Code `settings.json` contains comments or trailing
-   commas** — JSONC, and common — the command will not rewrite it, because doing so would drop
-   your comments. It prints the exact `"dev.containers.dockerPath"` line to paste and exits `1`
-   **before** regenerating the wrapper, so neither half of the step has happened: paste the line
-   yourself, then re-run the command to get the wrapper. Nothing is modified or lost in the
-   refusal. The same happens if the file cannot be read, or if you run this without a terminal
-   (the update is a y/N prompt).
+The `code --remote` wrapper moved too, for every install, and not into `<data>` — see
+*2.83 The `code --remote` wrapper moved from the data store to the cache root*.
 
 ### 2.73 An agent's description is a settings key, and the agent file's `name:` is gone
 
@@ -5156,6 +5148,31 @@ Re-spell it wherever you wrote it:
 ```bash
 grep -rn no_agent <data>/global/settings.yaml <workset root>/workset.yaml <box>/box.yaml
 ```
+
+### 2.83 The `code --remote` wrapper moved from the data store to the cache root
+
+**Read this if you use `kanibako code --remote`.** The generated `podman-dispatch` wrapper that VS
+Code's `dev.containers.dockerPath` points at moved from `$XDG_DATA_HOME/kanibako/vscode-remote/bin/`
+to `@system.cache/vscode-remote/bin/` (default `$XDG_CACHE_HOME/kanibako/vscode-remote/bin/`). This
+applies to every install, whatever `config.data` says.
+
+**What changed.** The wrapper is regenerable output — `kanibako code --remote` rewrites it on every
+run — so it now lives in the cache root, and repointing `system.cache` moves it. It used to sit in
+the data store, at a path built from `$XDG_DATA_HOME` plus a hardcoded `kanibako`.
+
+**How a user notices.** The first `kanibako code --remote` after the upgrade finds `dockerPath`
+naming the old file and asks, y/N, to point it at the new one.
+
+**What you must do.** Run `kanibako code --remote` once, against any remote — one wrapper and one
+`dockerPath` serve them all — and accept the `dockerPath` update. Then delete
+`$XDG_DATA_HOME/kanibako/vscode-remote/`; nothing reads it.
+
+**If your VS Code `settings.json` contains comments or trailing commas** — JSONC, and common — the
+command will not rewrite it, because doing so would drop your comments. It prints the exact
+`"dev.containers.dockerPath"` line to paste and exits `1` **before** regenerating the wrapper, so
+neither half has happened: paste the line yourself, then re-run the command to get the wrapper.
+Nothing is modified or lost in the refusal. The same happens if the file cannot be read, if you
+decline the prompt, or if you run this without a terminal (the update is a y/N prompt).
 
 ---
 
