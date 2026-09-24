@@ -958,9 +958,12 @@ class TestCacheRootIsTheKey:
         assert std.cache == std.cache_home / "kanibako"
         assert std.state == std.state_home / "kanibako"
 
-    def test_the_settings_file_key_reaches_the_root_and_creates_it(self, tmp_home, monkeypatch):
+    def test_the_settings_file_key_reaches_the_root_without_creating_it(self, tmp_home, monkeypatch):
         """``system set system.cache=…`` writes the ``system:`` table of ``@config.settings``;
-        the whole repair is that the write ARRIVES at what the consumers are handed."""
+        the write ARRIVES at what the consumers are handed — and the resolve leaves
+        the filesystem alone.  The ``.is_dir()`` pin stood here until the set-door
+        brick repair, asserting the eager ``mkdir`` that bricked every command on a
+        stored-but-unusable value; each store materializes at its own point of use."""
         self._redirect_etc_base(monkeypatch, tmp_home)
         cf = tmp_home / "config" / CONFIG_FILENAME
         cf.write_text(f'config:\n  data: "{tmp_home / "srv_data"}"\n')
@@ -972,8 +975,8 @@ class TestCacheRootIsTheKey:
 
         std = load_std_paths(load_config(cf))
         assert std.cache == tmp_home / "elsewhere"
-        # The producer MATERIALIZES the key's own directory...
-        assert std.cache.is_dir()
+        # The resolve answers the key's own directory WITHOUT materializing it...
+        assert not (tmp_home / "elsewhere").exists()
         # ...and never the leaf-joined one it used to create and hand out.
         assert not (std.cache_home / "srv_data").exists()
 

@@ -254,7 +254,8 @@ class TestSystemInfoOutput:
 
         with (
             patch("kanibako.commands.system_cmd.user_config_file") as m_cf,
-            patch("kanibako.commands.system_cmd.load_config"),
+            patch("kanibako.settings.config.bootstrap_config_paths"),
+            patch("kanibako.settings.paths.resolve_system_paths"),
             patch("kanibako.commands.system_cmd.xdg", return_value=MagicMock()),
             patch("kanibako.runtime.container.ContainerRuntime") as m_rt,
             patch("subprocess.run") as m_run,
@@ -276,7 +277,8 @@ class TestSystemInfoOutput:
         mock_cls = MagicMock()
         with (
             patch("kanibako.commands.system_cmd.user_config_file") as m_cf,
-            patch("kanibako.commands.system_cmd.load_config"),
+            patch("kanibako.settings.config.bootstrap_config_paths"),
+            patch("kanibako.settings.paths.resolve_system_paths"),
             patch("kanibako.commands.system_cmd.xdg", return_value=MagicMock()),
             patch("kanibako.runtime.container.ContainerRuntime") as m_rt,
             patch("subprocess.run") as m_run,
@@ -300,7 +302,8 @@ class TestSystemInfoOutput:
 
         with (
             patch("kanibako.commands.system_cmd.user_config_file") as m_cf,
-            patch("kanibako.commands.system_cmd.load_config"),
+            patch("kanibako.settings.config.bootstrap_config_paths"),
+            patch("kanibako.settings.paths.resolve_system_paths"),
             patch("kanibako.commands.system_cmd.xdg", return_value=MagicMock()),
             patch("kanibako.runtime.container.ContainerRuntime") as m_rt,
             patch("subprocess.run") as m_run,
@@ -361,7 +364,8 @@ class TestSystemInfoOutput:
 
         with (
             patch("kanibako.commands.system_cmd.user_config_file") as m_cf,
-            patch("kanibako.commands.system_cmd.load_config"),
+            patch("kanibako.settings.config.bootstrap_config_paths"),
+            patch("kanibako.settings.paths.resolve_system_paths"),
             patch("kanibako.commands.system_cmd.xdg", return_value=MagicMock()),
             patch("kanibako.runtime.container.ContainerRuntime") as m_rt,
             patch("subprocess.run") as m_run,
