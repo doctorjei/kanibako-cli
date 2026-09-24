@@ -1687,15 +1687,15 @@ def effective_value(
     return (render_stored_scalar(eff), source_tier)
 
 
-def write_system_value(config_path: Path, leaf: str, value: object) -> None:
-    """Write a ``system: <leaf>`` key into *config_path*'s ``system:`` table programmatically,
-    past the CLI guard: none of ``set_config_value``'s refusals run here.
+def write_system_value(system_settings_path: Path, leaf: str, value: object) -> None:
+    """Write a ``system: <leaf>`` key into *system_settings_path*'s ``system:`` table
+    programmatically, past the CLI guard: none of ``set_config_value``'s refusals run here.
 
-    ⚑ The one production target is the SYSTEM SETTINGS file (``@config.settings``) —
+    ⚑ *system_settings_path* is the SYSTEM SETTINGS file (``@config.settings``) —
     ``setup`` and the setup gate write the marker there; the Layer-1 config file may
     not carry a ``system:`` table.
     """
-    write_nested_key(config_path, ("system",), leaf, value)
+    write_nested_key(system_settings_path, ("system",), leaf, value)
 
 
 def _count_leaves(node: object) -> int:
