@@ -23,10 +23,11 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
 
 def _get_repo_dir() -> Path | None:
     """Find the kanibako git repository directory."""
-    # Start from this file's location and walk up to find .git
+    # Start from this file's location and walk up to find .git — a directory in a
+    # normal checkout, a ``gitdir:`` FILE in a git worktree.
     current = Path(__file__).resolve().parent
     for _ in range(5):  # Don't walk up forever
-        if (current / ".git").is_dir():
+        if (current / ".git").exists():
             return current
         parent = current.parent
         if parent == current:
