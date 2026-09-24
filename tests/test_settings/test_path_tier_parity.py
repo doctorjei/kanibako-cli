@@ -113,7 +113,7 @@ class TestAntiVacuity:
     """The SET side is the derived one, so it is the side that can be pinned.
 
     ⚑ ``config_file`` (hence ``tmp_home``) is REQUIRED: ``_path_tier_split`` reads the
-    REAL ``$XDG_CONFIG_HOME/kanibako_config.yaml`` unless the environment is isolated,
+    REAL ``$XDG_CONFIG_HOME/kanibako.cfg`` unless the environment is isolated,
     so without it this case is answered by whatever the host happens to have.
     """
     _, floor = config_interface._path_tier_split()

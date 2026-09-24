@@ -1017,7 +1017,7 @@ class TestChannelTypeRootsRouteUNIFORMLY:
 
     ⚑ UNTIL 2026-08-23 the two scopes answered DIFFERENTLY: ``system.channels.*``
     had no slot at all, because the whole ``SYSTEM_PATH_DEFAULTS`` family was refused
-    as "structural" and read from ``kanibako_config.yaml`` before the slot rule ran.
+    as "structural" and read from ``kanibako.cfg`` before the slot rule ran.
     Spec §2g declares them settings keys; they are routed now, and the per-scope
     hedging that used to live in these cases is gone with the divergence.
 

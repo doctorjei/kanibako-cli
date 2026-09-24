@@ -514,7 +514,7 @@ def test_no_real_plugin_reaches_the_tailored_install_command(
 def _system_table(tmp_home):
     """The raw ``system:`` table of the SYSTEM SETTINGS file (or ``{}``).
 
-    ⚑ THE SETTINGS FILE, NOT ``kanibako_config.yaml`` (2026-08-26): that is where
+    ⚑ THE SETTINGS FILE, NOT ``kanibako.cfg`` (2026-08-26): that is where
     ``setup`` writes now, so this keeps its teeth.  Read against the config file, the
     R-38 "no ``templates_stamp``" assertion below would pass vacuously — the config
     file has no ``system:`` table at all any more.

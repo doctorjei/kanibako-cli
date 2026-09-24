@@ -156,7 +156,7 @@ class TestLoadConfig:
 
 
 class TestLayer1FileCannotHaveSettings:
-    """``kanibako_config.yaml`` carries ``config.*`` and NOTHING else — on the READ
+    """``kanibako.cfg`` carries ``config.*`` and NOTHING else — on the READ
     side as well as the write side.
 
     ⚑⚑ Jei, 2026-08-26: *"kanibako_config.yaml <-- cannot have settings. Period."*
@@ -472,7 +472,7 @@ class TestReadSetupCompleted:
     ⚑ ITS FILE IS THE SYSTEM SETTINGS FILE since 2026-08-26 (Jei: "there is no reason
     whatsoever that ``system.setup_completed`` should go in the config. It should not.
     It should go in the global settings file") — which is what spec §2g always declared.
-    The variable is named ``ssp`` here for that reason: passing ``kanibako_config.yaml``
+    The variable is named ``ssp`` here for that reason: passing ``kanibako.cfg``
     is now the wrong file, and nothing in the shipped code does it.
     """
 
@@ -1461,7 +1461,7 @@ class TestMergedConfigKeyspaceResolve:
 
         ⚑ THE REPLACEMENT for ``test_stored_system_default_is_mapped_not_stranded``,
         and it asserts the OPPOSITE. That case pinned "consumer-map risk 1": the
-        ``kanibako_config.yaml [box]`` table was written at init on EVERY install and
+        ``kanibako.cfg [box]`` table was written at init on EVERY install and
         the settings cascade did not read it, so its values would be STRANDED unless
         mapped in as the floor. Nothing settings-shaped is written there any more, so
         there is nothing to strand — and a table left by hand must not resolve.

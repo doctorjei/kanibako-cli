@@ -608,7 +608,7 @@ class TestCreateImage:
         run_create(args)
 
         # ⚑ THE STORED SYSTEM DEFAULT IS THE SYSTEM SETTINGS FILE, which is what this
-        # case is named for. It used to write ``kanibako_config.yaml`` instead; that
+        # case is named for. It used to write ``kanibako.cfg`` instead; that
         # file cannot carry settings (Jei, 2026-08-26), and this is the file
         # ``kanibako system set box.image=…`` has always written.
         ssp = load_std_paths(load_config(config_file)).settings

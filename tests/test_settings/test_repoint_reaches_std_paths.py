@@ -134,7 +134,7 @@ class TestTheLayeringIsNotReversed:
     def test_a_config_table_in_the_settings_file_does_NOT_reach_layer_1(
         self, config_file, tmp_home,
     ):
-        """Spec §1: ``config.*`` keys live in ``kanibako_config.yaml`` ALONE.
+        """Spec §1: ``config.*`` keys live in ``kanibako.cfg`` ALONE.
 
         The settings file is read for the path tier now, and the filter that keeps
         Layer 1 out of it is the thing this pins — without it, a hand-written
