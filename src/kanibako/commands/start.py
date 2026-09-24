@@ -1359,11 +1359,11 @@ def _unbuilt_box_error(proj: ProjectPaths) -> str | None:
     resolves to no name at all, so the explicit-create gate answers it first and
     it never reaches here.
 
-    ⚑ The CURE LINE is the part a future ``repair`` verb replaces (tasks.md
-    MBR-6); everything above it describes the box, not the remedy.  Both cures
-    were run against the live CLI on a box whose directory had already been
-    deleted: ``kanibako create <workspace>`` rebuilds a PRIMARY box in place and
-    keeps its registration, while a NAMED box needs ``workset disconnect`` +
+    ⚑ The CURE LINE is the part a future ``repair`` verb replaces (the MBR-6 row
+    in the canon workbook plans); everything above it describes the box, not the
+    remedy.  Both cures were run against the live CLI on a box whose directory had
+    already been deleted: ``kanibako create <workspace>`` rebuilds a PRIMARY box in
+    place and keeps its registration, while a NAMED box needs ``workset disconnect`` +
     ``workset connect`` (``create`` refuses there — "project already
     initialized").
     """

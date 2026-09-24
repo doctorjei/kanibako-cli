@@ -1838,6 +1838,6 @@ I3/§D4a `create --standalone` registers only on request and drops `--name` enti
 name never reaches the resolver, the kuid is regenerated, and the box this branch describes comes
 back as a different one that is also no longer in the registry that named it.
 
-⚑ **The CURE LINE** is the part a future `repair` verb replaces (`tasks.md` MBR-6), exactly as in
+⚑ **The CURE LINE** is the part a future `repair` verb replaces (the MBR-6 row in the canon workbook plans), exactly as in
 `_unbuilt_box_error`, whose three-part shape (`Error:` / *why we won't* / `Rebuild it:`) this
 deliberately reuses so standalone stops being the one mode that answers differently.
