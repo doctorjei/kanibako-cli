@@ -17,7 +17,7 @@ name: Images
 #                      carry its revision label; writes nothing
 #       mode promote - v<X.Y.Z> push: verify again, then digest-copy the rc to
 #                      :X.Y.Z, :latest and :edge (no rebuild; idempotent)
-#   * push to main / pull_request touching the image sources: build only
+#   * push to main / pull_request: SWITCHED OFF for now (see the note at `on:`)
 #   * workflow_dispatch: build only; with publish=true it pushes
 #     :<version>-dev.<sha7>, NEVER a bare :X.Y.Z, and never moves :edge (a dev
 #     tag stays sole-tagged, so images-prune-tags.yml can remove it)
@@ -27,6 +27,31 @@ name: Images
 # narrows to what it needs: `rc-check` is read-only.
 
 on:
+  # ⚑ AUTOMATIC BUILDS ARE SWITCHED OFF until the image work is done: no push
+  # or pull_request trigger, so images build only on a release tag (through
+  # workflow_call) or a manual dispatch. To restore them, paste this block back
+  # under `on:` after workflow_dispatch, uncommented:
+  #   push:
+  #     branches: [main]
+  #     paths:
+  #       - 'images/**'
+  #       - 'src/kanibako/containers/tmux.conf'
+  #       # `kanibako baseline list` inputs: the Containerfile installs its output
+  #       - 'src/kanibako/data/image-baseline.yaml'
+  #       - 'src/kanibako/runtime/baseline.py'
+  #       - 'src/kanibako/commands/baseline_cmd.py'
+  #       - 'pyproject.toml'
+  #       - '.github/workflows/images.yml'
+  #   pull_request:
+  #     paths:
+  #       - 'images/**'
+  #       - 'src/kanibako/containers/tmux.conf'
+  #       # `kanibako baseline list` inputs: the Containerfile installs its output
+  #       - 'src/kanibako/data/image-baseline.yaml'
+  #       - 'src/kanibako/runtime/baseline.py'
+  #       - 'src/kanibako/commands/baseline_cmd.py'
+  #       - 'pyproject.toml'
+  #       - '.github/workflows/images.yml'
   workflow_call:
     inputs:
       mode:
@@ -43,34 +68,13 @@ on:
         description: 'Push :<version>-dev.<sha7> to GHCR (off = build-only test). Never a release tag.'
         type: boolean
         default: false
-  push:
-    branches: [main]
-    paths:
-      - 'images/**'
-      - 'src/kanibako/containers/tmux.conf'
-      # `kanibako baseline list` inputs: the Containerfile installs its output
-      - 'src/kanibako/data/image-baseline.yaml'
-      - 'src/kanibako/runtime/baseline.py'
-      - 'src/kanibako/commands/baseline_cmd.py'
-      - 'pyproject.toml'
-      - '.github/workflows/images.yml'
-  pull_request:
-    paths:
-      - 'images/**'
-      - 'src/kanibako/containers/tmux.conf'
-      # `kanibako baseline list` inputs: the Containerfile installs its output
-      - 'src/kanibako/data/image-baseline.yaml'
-      - 'src/kanibako/runtime/baseline.py'
-      - 'src/kanibako/commands/baseline_cmd.py'
-      - 'pyproject.toml'
-      - '.github/workflows/images.yml'
 
 env:
   REGISTRY: ghcr.io
 
 jobs:
   # ---------------------------------------------------------------------------
-  # build: modes build + rc, and every direct trigger (push/PR/dispatch, where
+  # build: modes build + rc, and the direct trigger (dispatch, where
   # `inputs.mode` is unset and so means build).
   # ---------------------------------------------------------------------------
   build:

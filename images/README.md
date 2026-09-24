@@ -67,10 +67,12 @@ The images release with the CLI, in its rc-then-promote flow; the runbook is
 
 ### Workflows (repo root, `.github/workflows/`)
 
-- `images.yml` builds the images. A push to `main` or a pull request that
-  touches `images/` builds all four without publishing; `release.yml` calls it
-  for the rc, verify and promote steps. A manual dispatch builds, and with
-  `publish=true` pushes `:<version>-dev.<sha7>`, never a release tag.
+- `images.yml` builds the images. For now they build only on a release tag or
+  a manual dispatch: `release.yml` calls it for the rc, verify and promote
+  steps, and a manual dispatch builds, and with `publish=true` pushes
+  `:<version>-dev.<sha7>`, never a release tag. The push-to-`main` and pull
+  request builds are switched off until the image work is done; the note at
+  the workflow's `on:` block says how to restore them.
 - `images-prune-tags.yml` is a manual, dry-run-default GHCR tag cleanup. It
   deletes by manifest digest, skips multi-tag manifests and refuses `:edge` and
   `:latest`. Never point it at a promoted `-rcN` tag; its header explains why.

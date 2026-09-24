@@ -449,8 +449,12 @@ carries exactly the cli that PyPI gets, and no image build waits on PyPI.
 | --- | --- |
 | push of `v<ver>-rc<n>` | `rc-pypi-check` → `images-rc`: build the four variants, refuse if `:<ver>-rc<n>` exists, push it, guarded `:edge` advance |
 | push of `v<ver>` | `images-verify` → `promote` (PyPI) → `images-promote`: digest copy to `:<ver>`, `:latest`, `:edge` |
-| push to `main` or a PR touching `images/**`, `src/kanibako/containers/tmux.conf`, the `kanibako baseline list` inputs (`src/kanibako/data/image-baseline.yaml`, `runtime/baseline.py`, `commands/baseline_cmd.py`), `pyproject.toml` or `images.yml` | `images.yml` builds the four variants; nothing is pushed |
 | `gh workflow run images.yml` | build only; `-f publish=true` pushes `:<version>-dev.<sha7>`, never a release tag and never `:edge` |
+
+A push to `main` or a pull request builds no images at the moment. Those
+triggers are switched off in `images.yml` until the image work is done; the
+note at its `on:` block holds the removed block for restoring them. Until then
+the images build only on a release tag or a manual dispatch.
 
 - **Coupled both ways.** A red `images-verify` blocks the PyPI publish, and a
   failed `promote` blocks the image promote. The cost is that an image-only
@@ -463,9 +467,10 @@ carries exactly the cli that PyPI gets, and no image build waits on PyPI.
   tag, so a broken rc image means cutting the next rc. `images-promote` is an
   idempotent digest copy; if it fails, re-run it.
 - **Image inputs under `src/kanibako/**` first meet a full image build at the
-  next rc tag.** The path filters above catch the known ones (the baseline
-  list, `pyproject.toml`) at PR time. Any other change there that breaks the
-  image build turns `images-rc` red on the rc tag, and that blocks the final.
+  next rc tag**, unless someone dispatches `images.yml` first. With the push
+  and pull request builds off, that now includes the known ones (the baseline
+  list, `pyproject.toml`). A change that breaks the image build turns
+  `images-rc` red on the rc tag, and that blocks the final.
 - **Partially-failed rc run: use "Re-run failed jobs", never "Re-run all
   jobs".** A variant that already pushed its `:<ver>-rc<n>` would fail the
   refuse-if-exists check on a full re-run. If a variant pushed but its `:edge`
@@ -473,7 +478,8 @@ carries exactly the cli that PyPI gets, and no image build waits on PyPI.
 - **Image dispatch lives in `images.yml`, never in `release.yml`.** Every
   dispatch of `release.yml` reaches the PyPI-uploading `dev` job, so an image
   entry point there would carry a PyPI upload with it.
-- **Test an image change before a tag.** A pull request builds the images, and
+- **Test an image change before a tag.** A dispatch of `images.yml` builds the
+  images (pull requests do not, for now), and
   on `main` a dispatch with `publish=true` proves GHCR write access through a
   throwaway dev tag. Remove that tag afterwards with
   `.github/workflows/images-prune-tags.yml` (dry run first). ⚑ Never prune a
