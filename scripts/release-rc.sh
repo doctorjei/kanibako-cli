@@ -153,8 +153,10 @@ if [[ "$MODE" == "promote" ]]; then
     fi
     TAG="v${PROMOTE_VER}"
     # The final tag must sit on an rc commit: images-verify finds the rc images
-    # through a v<ver>-rc<n> tag on the same commit, so a final tag anywhere else
-    # is stranded (pushed, but its image and PyPI jobs refuse to run).
+    # through a v<ver>-rc<n> tag on the same commit, and release.yml's `promote`
+    # refuses a final tag with no such rc tag. Both lanes would refuse a final
+    # tag anywhere else, so it would be stranded; this check refuses it before
+    # the tag exists.
     HEAD_TAGS="$(git -C "$REPO_ROOT" tag --points-at HEAD)"
     if ! grep -qE "^v${PROMOTE_VER//./\\.}-rc[0-9]+$" <<<"$HEAD_TAGS"; then
         echo "Error: no v${PROMOTE_VER}-rc<N> tag points at HEAD; promote the rc commit." >&2

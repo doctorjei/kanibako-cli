@@ -3,7 +3,8 @@
 Container base images for [kanibako](../README.md), the sandboxed-agent CLI.
 This directory holds the sources for the four `kanibako-*` base images on GHCR;
 they are built and released from this repo, by the same tag that releases the
-CLI to PyPI.
+CLI to PyPI. The two releases are independent: a failure in one never stops the
+other.
 
 ## Variants
 
@@ -59,11 +60,12 @@ The images release with the CLI, in its rc-then-promote flow; the runbook is
 1. The rc tag `vX.Y.Z-rcN` builds all four variants from the tagged tree and
    publishes `kanibako-<variant>:X.Y.Z-rcN`, refusing to overwrite an existing
    rc tag, then advances `:edge` if it is not behind `:latest`.
-2. The final tag `vX.Y.Z`, on the same commit, first verifies that the four rc
-   images exist and were built from that commit. Only then does the PyPI
-   publish run, and only after it succeeds are the rc manifests copied **by
-   digest** to `:X.Y.Z`, `:latest` and `:edge`. There is no rebuild, so the
-   published images are byte-identical to the rc.
+2. The final tag `vX.Y.Z`, on the same commit, verifies that the four rc
+   images exist and were built from that commit, and waits for green Tests on
+   it. Only then are the rc manifests copied **by digest** to `:X.Y.Z`,
+   `:latest` and `:edge`. There is no rebuild, so the published images are
+   byte-identical to the rc. The image promote does not wait for the PyPI
+   publish, and the PyPI publish does not wait for the images.
 
 ### Workflows (repo root, `.github/workflows/`)
 
