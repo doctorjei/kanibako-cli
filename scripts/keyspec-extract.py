@@ -806,7 +806,11 @@ def main(argv: list[str]) -> int:
       encoding="utf-8",
     )
     print(f"\n{merged} merged key-shaped rows (heuristic) across {len(results)} section(s)")
-    print("2026-08-20 nine-extractor run reported 106 keys against 96 in the manifest")
+    print(
+      "manifest `keys:` count, NOT measured by this run -- re-derive it with:\n"
+      f"  PYTHONPATH={_REPO / 'src'} python3 -c \"from kanibako.settings.keyspace_manifest "
+      "import manifest_doc; print(len(manifest_doc()['keys']))\""
+    )
 
   if failures:
     print("\n" + "\n".join(failures), file=sys.stderr)
