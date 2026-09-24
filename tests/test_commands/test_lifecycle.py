@@ -1526,7 +1526,7 @@ class TestTheVaultGitignoreClaimsOnlyWhatVaultRwAnswers:
     """
 
     def test_convert_writes_no_gitignore_when_vault_rw_points_out_of_the_skeleton(self, env):
-        """🐞 ``box convert --to standalone`` — the fourth sighting of the class ``722c3d59``
+        """🐞 ``box convert --standalone`` — the fourth sighting of the class ``722c3d59``
         cured in ``_init_common``, one function away and out of that writer's seam."""
         root = _default_with_workset_keys(
             env, "claimfalse", {"vault_rw": "@meta.workset.path/store/rw"},

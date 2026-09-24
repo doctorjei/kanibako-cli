@@ -43,6 +43,11 @@ long-only on `start`/`shell`.
 ⚑ `--default` / `--standalone` / `--workset <ws>` are one mutually-exclusive group, attached by
 `_add_target_group` — OPTIONAL on `move` (no flag = owner unchanged), REQUIRED on `convert`.
 
+⚑ `duplicate --to` is a different surface: it takes a MODE, and `_MODE_CHOICES` is derived from
+`BoxMode` (`primary` · `named` · `standalone`), never a hand-kept list. The pre-1.8.0 spellings
+`default` and `workset` are not modes; argparse refuses them (rc 2, naming the valid choices) and
+nothing translates them.
+
 ## `create`: the ordering IS the design
 
 `run_create` is a sequence of gates whose ORDER is load-bearing at almost every step. Reordering

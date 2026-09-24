@@ -51,7 +51,8 @@ from kanibako.utils import (
     short_hash, write_project_gitignore,
 )
 
-_MODE_CHOICES = ["default", "standalone", "workset"]
+# ``box duplicate --to`` takes the mode enum's own tokens, never a hand-kept spelling list.
+_MODE_CHOICES = [m.value for m in BoxMode]
 
 # The two ``create`` flag classes.  Their union is pinned against the parser by
 # ``TestCreateFlagsAreClassified``, so a NEW create flag reds until it is filed.
@@ -240,7 +241,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     # kanibako box convert [<old>] (--default|--standalone|--workset <ws>) [--move [path]]
     convert_p = box_sub.add_parser(
         "convert",
-        help="Change a project's ownership/mode (default/standalone/workset)",
+        help="Change a project's owner (--default, --standalone or --workset <ws>)",
         description=(
             "Change which mode/workset owns a project. In-place by default for\n"
             "all modes (the workspace does not move). Add `--move <path>` to\n"
@@ -293,7 +294,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     duplicate_p.add_argument(
         "--workset", default=None,
-        help="Target workset name (required when --to workset)",
+        help="Target workset name (required when --to named)",
     )
     duplicate_p.add_argument(
         "--name", dest="project_name", default=None,

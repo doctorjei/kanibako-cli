@@ -37,6 +37,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   behind as the surviving copy, which is exactly how a ratified decision was lost here for three days.
   The wording is Jei's.
 
+- **`box duplicate --to` takes the mode names: `default` is now `primary` and `workset` is now
+  `named`.** `--to standalone` is unchanged. `default` and `workset` were never modes — the modes
+  are `primary`, `named` and `standalone` — so `--to` now takes exactly those three. Clean break:
+  the old spellings are refused at argument parsing (rc 2, and the error lists the valid choices),
+  never translated. See `MIGRATION.md` § *2.84 `box duplicate --to` takes the mode names:
+  `primary`, `named`, `standalone`*. `box convert`'s help no longer calls its targets modes.
+
 - **The `code --remote` dispatch wrapper moved from the data store to the cache root.**
   `podman-dispatch` is regenerable output and now lives under `system.cache` (default
   `$XDG_CACHE_HOME/kanibako/vscode-remote/bin/`); repointing `system.cache` moves it. Run

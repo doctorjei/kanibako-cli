@@ -63,10 +63,10 @@ def _source_is_external(args: argparse.Namespace, std) -> bool:
 
 def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
     """Duplicate a project into a different mode layout."""
-    to_mode_str = args.to_mode
+    to_mode = BoxMode(args.to_mode)
 
-    # Duplicate TO workset: separate code path.
-    if to_mode_str == "workset":
+    # Duplicate TO a named (workset) box: separate code path.
+    if to_mode is BoxMode.named:
         return _duplicate_to_workset(args, std, config)
 
     source_path = Path(args.source_path).resolve()
@@ -109,7 +109,7 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
             return 2
 
     # Confirm with user.
-    target_mode = BoxMode.standalone if to_mode_str == "standalone" else BoxMode.primary
+    target_mode = to_mode
 
     # F-3 (guard-before-copy): for a PRIMARY (local) target, front-run the
     # one-box-per-workspace-path (Guard-1) refusal BEFORE prompting or copying, so
@@ -460,7 +460,7 @@ def _duplicate_to_workset(args, std, config) -> int:
 
     ws_name = getattr(args, "workset", None)
     if not ws_name:
-        print("Error: --workset is required when duplicating to workset mode.", file=sys.stderr)
+        print("Error: --workset is required with --to named.", file=sys.stderr)
         return 1
 
     registry = list_worksets(std)
@@ -546,8 +546,6 @@ def _duplicate_to_workset(args, std, config) -> int:
 
 def _duplicate_from_workset(args, source_path, new_path, std, config) -> int:
     """Duplicate a workset project to default-mode or standalone layout (source untouched)."""
-    to_mode_str = args.to_mode
-
     # Resolve via workset-or-connected fallback: an external-connected source
     # lives outside any workset tree, so the in-tree lookup alone would miss it
     # and raise an uncaught WorksetError.
@@ -563,7 +561,7 @@ def _duplicate_from_workset(args, source_path, new_path, std, config) -> int:
         print(f"Error: no project data found for source path: {source_path}", file=sys.stderr)
         return 1
 
-    target_mode = BoxMode.standalone if to_mode_str == "standalone" else BoxMode.primary
+    target_mode = BoxMode(args.to_mode)
 
     # Lock file warning.
     lock_file = src_proj.metadata_path / ".kanibako.lock"
@@ -635,11 +633,11 @@ def run_duplicate(args: argparse.Namespace) -> int:
     # (external path -> one {workset, project}); a bare duplicate has no
     # workspace of its own, so it could only point at the SAME external dir as
     # the original -> would violate the 1:1 mapping.  This does NOT apply when
-    # duplicating --to default/standalone: there the bare result makes new_path
+    # duplicating --to primary/standalone: there the bare result makes new_path
     # itself the workspace (no aliasing), so it is allowed.
     _to_mode = getattr(args, "to_mode", None)
     if (
-        _to_mode not in ("default", "standalone")
+        _to_mode not in (BoxMode.primary.value, BoxMode.standalone.value)
         and getattr(args, "bare", False)
         and _source_is_external(args, std)
     ):
@@ -665,16 +663,16 @@ def run_duplicate(args: argparse.Namespace) -> int:
     # found" (BUG-B).  Detect the source mode (ancestor-walk) and, for a
     # non-primary source, default the target mode sensibly so a bare
     # `box duplicate <src> <dst>` works: standalone → a fresh standalone box at
-    # the destination (matching `--to standalone`); named → a default-mode box
-    # (matching `--to default`).
+    # the destination (matching `--to standalone`); named → a primary box
+    # (matching `--to primary`).
     src_for_detect = Path(args.source_path)
     if src_for_detect.is_dir():
         src_mode = detect_project_mode(src_for_detect.resolve(), std, config).mode
         if src_mode is BoxMode.standalone:
-            args.to_mode = "standalone"
+            args.to_mode = BoxMode.standalone.value
             return _run_duplicate_cross_mode(args, std, config)
         if src_mode is BoxMode.named:
-            args.to_mode = "default"
+            args.to_mode = BoxMode.primary.value
             return _run_duplicate_cross_mode(args, std, config)
 
     source_path = Path(args.source_path).resolve()

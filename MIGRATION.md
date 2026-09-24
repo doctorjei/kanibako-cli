@@ -340,7 +340,9 @@ inside boxes. In order of likely impact:
     expected-empty renames (§2.11); two `--null` CLI bugs fixed (§2.14); a customized helper
     entrypoint script moves to `~/canon/notebook/scripts/helper-init.sh` (§2.44);
     `workset show --effective` exits 1 on a working set file it cannot resolve, where it used to
-    print what it could read and exit 0 (§2.77).
+    print what it could read and exit 0 (§2.77); `box duplicate --to default` is now
+    `--to primary` and `--to workset` is now `--to named`, with no alias — see *2.84 `box duplicate
+    --to` takes the mode names: `primary`, `named`, `standalone`*.
 
 ---
 
@@ -5173,6 +5175,26 @@ command will not rewrite it, because doing so would drop your comments. It print
 neither half has happened: paste the line yourself, then re-run the command to get the wrapper.
 Nothing is modified or lost in the refusal. The same happens if the file cannot be read, if you
 decline the prompt, or if you run this without a terminal (the update is a y/N prompt).
+
+### 2.84 `box duplicate --to` takes the mode names: `primary`, `named`, `standalone`
+
+**Read this if you script `kanibako box duplicate --to`.** The three values `--to` accepts are now
+the box modes' own names. Two of them changed:
+
+| v1.7.2 | v1.8.0 |
+|--------|--------|
+| `--to default` | `--to primary` |
+| `--to workset` | `--to named` |
+| `--to standalone` | `--to standalone` (unchanged) |
+
+**What changed.** `--to` used to take `default` and `workset`, which are not modes: the modes are
+`primary`, `named` and `standalone`, and `named` is the mode of a box that belongs to a workset.
+The destination for `--to named` is still chosen with `--workset <ws>`, as before.
+
+**What you must do.** Re-spell the value wherever you wrote it. The old spellings are not
+translated: `--to default` and `--to workset` fail at argument parsing, exit `2`, and the error
+lists the three valid choices. `box convert` and `box move` are not affected: neither has `--to`,
+and their `--default`, `--standalone` and `--workset <ws>` flags are unchanged.
 
 ---
 
