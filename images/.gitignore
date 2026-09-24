@@ -1,0 +1,9 @@
+# Build scratch / local artifacts
+*.log
+*.tmp
+.DS_Store
+
+# Local build context leftovers
+/tmp/
+build/
+dist/
