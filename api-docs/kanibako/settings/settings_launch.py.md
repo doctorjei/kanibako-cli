@@ -46,6 +46,8 @@ def meta_agent_grammar(snapshot: KeyStore, *, active_agent: str) -> AgentGrammar
 def resolve_box_dest(raw: str, box_ctx: ResolveCtx) -> str
 def snapshot_category_entries(snapshot: KeyStore, *, active_agent: str, box_ctx: ResolveCtx, optional_keys: frozenset[str]=frozenset()) -> list[CategoryEntry]
 def _is_bind_floor_key(key: str) -> bool
+def _read_auth_inputs(snapshot: KeyStore) -> _AuthInputs
+def _materialize_auth_active(snapshot: KeyStore) -> None
 def _loaded_tiers(files: Sequence[_TierFile]) -> tuple[tuple[str, Path], ...]
 def _refuse_retired_spelling(tiers: Sequence[tuple[str, Path]]) -> None
 def _refuse_undeclared_snapshot(store: KeyStore, *, files: Sequence[_TierFile]) -> None
@@ -83,4 +85,13 @@ class AuthSource:
 class AgentGrammar(NamedTuple):
     mode: dict[str, list[str]]
     exec_fragment: 'list[str] | None'
+
+@dataclass(frozen=True)
+class _AuthInputs:
+    support: bool
+    system_allow: bool
+    workset_allow: bool
+    global_sync: bool
+    global_knob: bool
+    workset_knob: bool
 ```
