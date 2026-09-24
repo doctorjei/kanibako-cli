@@ -13,15 +13,18 @@ the same tag:
   `.github/workflows/images.yml`. See
   [section 6](#6-container-images-release-with-the-cli).
 
-Two properties hold this pipeline together:
+Three properties hold this pipeline together:
 
 1. **A PyPI pre-release never happens by accident.** Pushing an rc tag uploads
    *nothing* to PyPI; publishing an rc or a dev build there is always an
    explicit manual workflow dispatch. (The rc tag does publish the rc
    *images*, `:<ver>-rc<n>`, to GHCR; nothing pulls those unless asked to.)
 2. **A production release ships the tree as-is, and only if it is green.** The
-   promote job does no version stamping and refuses to publish unless every
-   required Tests job succeeded for that exact commit.
+   promote job does no version stamping, and neither it nor the image promote
+   runs unless every required Tests job succeeded for that exact commit.
+3. **The PyPI release and the image release are independent.** One tag drives
+   both, but a failure in one never stops the other
+   ([section 6](#6-container-images-release-with-the-cli)).
 
 ---
 
@@ -36,10 +39,11 @@ string, default empty). Every job self-gates:
 | `rc-pypi-check` | **push** of an rc tag `v<ver>-rc<n>` | Validates the tag shape, builds all five packages, runs `twine check`. **No upload.** |
 | `rc-release` | **push** of an rc tag (after `rc-pypi-check`) | Creates a **DRAFT** GitHub prerelease with generated notes (guarded, so a re-run reuses an existing draft). |
 | `dev` | **manual dispatch**, no `agent` input | Builds a pre-release — `<X.Y.Z>rc<N>` when dispatched on an rc tag, `<base>.dev<N>` on a branch. Uploads to PyPI **only** when `publish=true`. |
-| `images-rc` | **push** of an rc tag (after `rc-pypi-check`) | Builds the four images from the tagged tree's wheel and publishes `:<ver>-rc<n>` to GHCR, refusing to overwrite an existing rc tag; advances `:edge` unless it would fall behind `:latest`. |
+| `images-rc` | **push** of an rc tag | Builds the four images from the tagged tree's wheel and publishes `:<ver>-rc<n>` to GHCR, refusing to overwrite an existing rc tag; advances `:edge` unless it would fall behind `:latest`. |
 | `images-verify` | push of a **bare** `v<ver>` tag | Requires all four rc images for this commit to exist and to carry its revision label. Writes nothing. |
-| `promote` | push of a **bare** `v<ver>` tag (no `-rc`), after `images-verify` | Waits for green Tests jobs on the tag's SHA, then builds and publishes all five packages to **prod PyPI** (OIDC) and publishes the GitHub release, deleting the rc draft. |
-| `images-promote` | push of a **bare** `v<ver>` tag, after `promote` | Copies the verified rc images **by digest** to `:<ver>`, `:latest` and `:edge`. No rebuild. |
+| `tests-gate` | push of a **bare** `v<ver>` tag | Waits for the **Tests** run on the tag's SHA and requires every required job to have succeeded. Writes nothing. |
+| `promote` | push of a **bare** `v<ver>` tag (no `-rc`), after `tests-gate` | Builds and publishes all five packages to **prod PyPI** (OIDC) and publishes the GitHub release, deleting the rc draft. |
+| `images-promote` | push of a **bare** `v<ver>` tag, after `tests-gate` and `images-verify` | Copies the verified rc images **by digest** to `:<ver>`, `:latest` and `:edge`. No rebuild. |
 | `publish-agent` | **manual dispatch** with `agent=agent-goose\|agent-codex` | Builds and publishes that one agent package at its static version. |
 
 The three `images-*` jobs call `.github/workflows/images.yml`, and every one of
@@ -51,9 +55,10 @@ Two consequences worth internalising:
 - **An rc tag push publishes nothing to PyPI.** It twine-checks the build and
   drafts a GitHub prerelease, and that is all. Getting an rc onto PyPI is a
   separate, deliberate dispatch ([section 3.4](#34-dispatch-the-publish)).
-- **The rc path is not self-gated on tests.** Only `promote` waits for green
-  Tests. Before dispatching an rc publish, the releaser confirms the tag's
-  Tests run by hand ([section 3.3](#33-confirm-the-tags-tests-run-is-green)).
+- **The rc path is not self-gated on tests.** Only the final tag's
+  `tests-gate` waits for green Tests. Before dispatching an rc publish, the
+  releaser confirms the tag's Tests run by hand
+  ([section 3.3](#33-confirm-the-tags-tests-run-is-green)).
 
 The test gates live in `.github/workflows/test.yml` — workflow name **Tests**,
 jobs `test` (ruff + mypy + unit pytest), `conformance` (kinemata),
@@ -204,8 +209,8 @@ gh api "repos/doctorjei/kanibako-cli/actions/workflows/test.yml/runs?head_sha=$S
 commit; a bare "what concluded at this SHA" query can report a run that is not
 **Tests**. The query above (and `gh run list --workflow=test.yml --commit
 $SHA`) scopes to the right workflow. To be thorough, check the individual job
-conclusions — `test`, `conformance`, `integration`, `e2e` — the same four the
-promote gate requires:
+conclusions — `test`, `conformance`, `integration`, `e2e` — the same four
+`tests-gate` requires on the final tag:
 
 ```bash
 RUN=$(gh api "repos/doctorjei/kanibako-cli/actions/workflows/test.yml/runs?head_sha=$SHA" \
@@ -305,9 +310,11 @@ and `kanibako` went out as `1.8.0rc1` pre-releases, while
 - The rc has been published and soaked to your satisfaction, and its images
   (`:<ver>-rc<n>`, all four variants) were published from this same commit.
   `images-verify` finds them through the rc tag on the commit, so the final tag
-  must sit on the rc commit.
-- The promote commit must have a **green Tests run**; the job re-checks and
-  will refuse otherwise.
+  must sit on the rc commit. `release-rc.sh --promote` refuses to tag anywhere
+  else, and the server refuses it too: `promote` checks for the rc tag itself,
+  from git, without waiting on any image job.
+- The promote commit must have a **green Tests run**; `tests-gate` re-checks,
+  and neither PyPI nor the images publish otherwise.
 
 ### 4.1 Tag and push
 
@@ -321,27 +328,39 @@ git push origin v1.8.0
 `--promote` performs **no version bump**. It just tags `v<ver>` on the current
 `HEAD`, and refuses unless a `v<ver>-rc<n>` tag already points at `HEAD`.
 
-If a final tag was pushed and its rc images are missing, tag the next rc on the
-**same** commit, push it, and let `images-rc` publish; then use "Re-run failed
-jobs" on the final tag's run (`rc-check` re-reads the tags on the commit).
+If a final tag was pushed on an rc commit but its rc images are missing (the
+rc's `images-rc` failed), PyPI still publishes; only the image jobs fail. Tag
+the next rc on the **same** commit, push it, and let `images-rc` publish; then
+use "Re-run failed jobs" on the final tag's run (`rc-check` re-reads the tags
+on the commit). The new rc tag also runs `rc-release`, whose draft nothing
+tidies now that `promote` has already run, so then delete the
+`v<ver>-rc<n+1>` draft: `gh release delete v<ver>-rc<n+1> --yes`.
 
-### 4.2 What the promote job does
+### 4.2 What the final tag runs
 
-Pushing the bare `v1.8.0` tag first runs `images-verify`: the newest
-`v1.8.0-rc<n>` tag on the same commit names the source rc, and all four
-`:1.8.0-rc<n>` images must exist with that commit as their
-`org.opencontainers.image.revision` label. If they do not, nothing below runs.
-Then `release.yml`'s `promote` job (`environment: pypi`):
+Pushing the bare `v1.8.0` tag starts two lanes that share one gate and do not
+wait on each other.
 
-1. **Gates on GREEN Tests for this exact commit.** It polls the **Tests**
-   workflow run for the tag's SHA (30s interval, 45-minute deadline) until it
-   completes, then requires `test`, `conformance`, `integration` **and** `e2e`
-   to each report `conclusion == success`. A missing, skipped or renamed required job counts
-   as a failure — the gate is fail-safe by design, because both workflows fire
-   independently on the tag and a red Tests job would otherwise not block a
-   prod publish.
-2. Validates the tag shape (`v<MAJOR>.<MINOR>.<PATCH>`, no `-rc`) and derives
+**The shared gate, `tests-gate`: GREEN Tests for this exact commit.** It polls
+the **Tests** workflow run for the tag's SHA (30s interval, 45-minute deadline)
+until it completes, then requires `test`, `conformance`, `integration` **and**
+`e2e` to each report `conclusion == success`. A missing, skipped or renamed
+required job counts as a failure — the gate is fail-safe by design, because both
+workflows fire independently on the tag and a red Tests job would otherwise not
+block a prod publish. Both `promote` and `images-promote` need it.
+
+**The image lane** starts with `images-verify`: the newest `v1.8.0-rc<n>` tag
+on the same commit names the source rc, and all four `:1.8.0-rc<n>` images must
+exist with that commit as their `org.opencontainers.image.revision` label. If
+they do not, `images-promote` does not run. The PyPI lane is unaffected.
+
+**The PyPI lane** is `release.yml`'s `promote` job (`environment: pypi`),
+after `tests-gate`:
+
+1. Validates the tag shape (`v<MAJOR>.<MINOR>.<PATCH>`, no `-rc`) and derives
    `VER`.
+2. **Refuses unless a `v<ver>-rc<n>` tag points at the same commit**, read from
+   git, not from any image job.
 3. Pins `packages/meta`'s **stamped-train** dependencies — `kanibako-cli` and
    `kanibako-agent-claude` — to `==$VER` at build time
    ([section 2](#2-the-packages)). The goose and codex floors are left alone.
@@ -367,9 +386,13 @@ Then `release.yml`'s `promote` job (`environment: pypi`):
 7. Publishes the GitHub release with generated notes and **deletes** any
    matching `v<ver>-rc*` draft prereleases.
 
-Only after `promote` succeeds does `images-promote` copy the verified rc images
-by digest to `:1.8.0`, `:latest` and `:edge`, so `:latest` never moves ahead of
-the packages it bundles.
+Once `tests-gate` and `images-verify` both succeed, `images-promote` verifies
+the rc images again and copies them by digest to `:1.8.0`, `:latest` and
+`:edge`. It does not wait for `promote`, so `:latest` can lead PyPI: for
+minutes on every release (a digest copy beats a build plus PyPI's index lag),
+and until the PyPI publish is fixed if it fails. The image bundles its own
+wheel, so the image itself is consistent; fix the PyPI failure separately and
+re-run `promote`.
 
 ### 4.3 Verify + broadcast
 
@@ -382,8 +405,8 @@ the packages it bundles.
 
 - The GitHub release for `v<ver>` is published and the rc draft is gone.
 - `images-promote` went green, and `:<ver>` and `:latest` resolve to the rc's
-  digest for all four variants. If it failed after PyPI succeeded, **re-run
-  that job**; it is an idempotent digest copy. Never re-tag
+  digest for all four variants. If it failed, **re-run that job**; it is an
+  idempotent digest copy, and PyPI's outcome does not affect it. Never re-tag
   ([section 6](#6-container-images-release-with-the-cli)).
 - Then broadcast per project convention.
 
@@ -437,7 +460,7 @@ The four base variants (`min`, `oci`, `lxc`, `vm`) are built from
 `images/containers/Containerfile.kanibako` (see
 [`images/README.md`](../images/README.md)) by the reusable workflow
 `.github/workflows/images.yml`. `release.yml` calls it on the tags that drive
-the PyPI release, so one tag releases both.
+the PyPI release, so one tag releases both, independently.
 
 **The image bundles this tree's own wheel.** Every image build runs
 `python -m build --wheel` on the checked-out commit and hands the wheel to the
@@ -445,10 +468,10 @@ Containerfile as the named build context `cliwheel`. On an rc tag the tree is
 already `X.Y.Z`, and the final tag sits on the same commit, so the image
 carries exactly the cli that PyPI gets, and no image build waits on PyPI.
 
-| Event | Image jobs, in order |
+| Event | Jobs, in order |
 | --- | --- |
-| push of `v<ver>-rc<n>` | `rc-pypi-check` → `images-rc`: build the four variants, refuse if `:<ver>-rc<n>` exists, push it, guarded `:edge` advance |
-| push of `v<ver>` | `images-verify` → `promote` (PyPI) → `images-promote`: digest copy to `:<ver>`, `:latest`, `:edge` |
+| push of `v<ver>-rc<n>` | `images-rc`: build the four variants, refuse if `:<ver>-rc<n>` exists, push it, guarded `:edge` advance |
+| push of `v<ver>` | `tests-gate` + `images-verify` → `images-promote`: verify again, then digest copy to `:<ver>`, `:latest`, `:edge` |
 | `gh workflow run images.yml` | build only; `-f publish=true` pushes `:<version>-dev.<sha7>`, never a release tag and never `:edge` |
 
 A push to `main` or a pull request builds no images at the moment. Those
@@ -456,10 +479,16 @@ triggers are switched off in `images.yml` until the image work is done; the
 note at its `on:` block holds the removed block for restoring them. Until then
 the images build only on a release tag or a manual dispatch.
 
-- **Coupled both ways.** A red `images-verify` blocks the PyPI publish, and a
-  failed `promote` blocks the image promote. The cost is that an image-only
-  breakage (a droste base, an apt mirror) holds up a cli release. The coupling
-  toward PyPI is the single `needs: [images-verify]` line on `promote`.
+- **Independent of the PyPI release.** No image job needs a PyPI job, and no
+  PyPI job needs an image job: a broken rc image (a droste base, an apt mirror)
+  does not hold up a cli release, and a failed PyPI publish does not hold up the
+  image promote. What both lanes share is `tests-gate`, so a red Tests run on the
+  release commit stops both. The cost of independence is that `:latest` can
+  lead PyPI: for minutes on every release, and until the PyPI publish is fixed
+  if it fails.
+- **An image never promotes unverified.** `images-promote` needs
+  `images-verify`, and its own call re-checks that all four rc images exist and
+  carry the release commit's revision label before it copies anything.
 - **Image-only changes ride a cli release.** A droste base bump, a
   Containerfile fix or a security rebuild ships with the next cli release, or
   with a patch release cut for it. There is no image-only release path.
@@ -470,7 +499,8 @@ the images build only on a release tag or a manual dispatch.
   next rc tag**, unless someone dispatches `images.yml` first. With the push
   and pull request builds off, that now includes the known ones (the baseline
   list, `pyproject.toml`). A change that breaks the image build turns
-  `images-rc` red on the rc tag, and that blocks the final.
+  `images-rc` red on the rc tag, and that blocks the image promote on the final
+  tag. The PyPI release goes ahead.
 - **Partially-failed rc run: use "Re-run failed jobs", never "Re-run all
   jobs".** A variant that already pushed its `:<ver>-rc<n>` would fail the
   refuse-if-exists check on a full re-run. If a variant pushed but its `:edge`

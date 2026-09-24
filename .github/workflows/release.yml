@@ -14,9 +14,21 @@ name: Release
 # Container images (`kanibako-{min,oci,lxc,vm}`, sources under `images/`)
 # ride the same tag. The image jobs below call the reusable
 # `.github/workflows/images.yml`, which bundles this tree's own wheel:
-#   * rc tag:    images-rc (after rc-pypi-check) publishes :<ver>-rc<n>
-#   * final tag: images-verify -> promote (PyPI) -> images-promote, which
+#   * rc tag:    images-rc publishes :<ver>-rc<n>
+#   * final tag: [tests-gate, images-verify] -> images-promote, which
 #                digest-copies the rc to :<ver>, :latest and :edge
+#
+# ⚑ THE PyPI RELEASE AND THE IMAGE RELEASE ARE INDEPENDENT (maintainer
+# decision, 2026-09-24). No image job needs a PyPI job and no PyPI job needs an image job:
+# a broken rc image never holds up PyPI, and a failed PyPI publish never holds
+# up the images. What they share is `tests-gate`, which is neither: a red Tests
+# run on the release commit stops both. Do not add a `needs:` edge between the
+# two lanes.
+#
+#   rc tag:    rc-pypi-check -> rc-release          images-rc
+#   final tag: tests-gate -> promote
+#              tests-gate + images-verify -> images-promote
+#
 # ⚑ Image DISPATCH lives in images.yml, never here: every dispatch of this file
 # reaches the PyPI-uploading `dev` job. Every image job gates on a `push` event.
 #
@@ -104,6 +116,9 @@ jobs:
   # ---------------------------------------------------------------------------
   # rc images: build the four variants from this tree's wheel and publish
   # :<ver>-rc<n> (refused if it already exists), then a guarded :edge advance.
+  # Needs no PyPI job: images.yml validates the tag shape itself and refuses a
+  # tree whose wheel version is not the tag's, so a red `rc-pypi-check` (a
+  # packaging problem) does not stop the rc images, nor they it.
   #
   # ⚑ PERMISSIONS ARE JOB-LEVEL, NEVER WORKFLOW-LEVEL: `packages: write` at the
   # top of this file would reach the PyPI jobs too. All three image callers
@@ -115,7 +130,6 @@ jobs:
   images-rc:
     name: rc - build + publish rc images
     if: ${{ github.event_name == 'push' && contains(github.ref_name, '-rc') }}
-    needs: [rc-pypi-check]
     permissions:
       contents: read
       packages: write
@@ -128,9 +142,10 @@ jobs:
       publish: true
 
   # ---------------------------------------------------------------------------
-  # final tag, before PyPI: the rc images for THIS commit exist and were built
-  # from it. Writes nothing. `promote` needs it, so an unverified rc image
-  # blocks the irreversible PyPI step.
+  # final tag: the rc images for THIS commit exist and were built from it.
+  # Writes nothing. `images-promote` needs it, so an unverified rc image never
+  # reaches :latest (and images.yml's promote mode verifies again before its
+  # copy). No PyPI job needs it: an image problem does not hold up PyPI.
   # ---------------------------------------------------------------------------
 
   images-verify:
@@ -144,8 +159,86 @@ jobs:
       mode: verify
 
   # ---------------------------------------------------------------------------
+  # final tag: GREEN Tests jobs for this commit. Both production publishes need
+  # it, `promote` (PyPI) and `images-promote` (GHCR), and it belongs to
+  # neither: a red Tests run stops both, which is not one release blocking the
+  # other. ONE job, so the required-jobs list has one carrier.
+  # ---------------------------------------------------------------------------
+
+  tests-gate:
+    name: Require green Tests for this commit
+    if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-') }}
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Gate the release on GREEN Tests jobs for this commit
+        # STRUCTURAL FIX for the CI-e2e "disaster": release.yml (this gate) and
+        # test.yml (the Tests workflow, which owns the test/integration/e2e jobs)
+        # are SEPARATE workflows both fired by the v* tag, so a RED Tests job never
+        # blocked a prod publish — rc10..rc12 shipped while the e2e had been broken
+        # for weeks, and rc15 shipped with a RED `integration` while the gate only
+        # checked `e2e`. REFUSE to release unless EVERY required Tests job SUCCEEDED
+        # for THIS exact commit. The required set mirrors test.yml's `jobs:` keys
+        # (test, conformance, integration, e2e). Both workflows start together on the tag push,
+        # so poll the Tests run for this SHA until it concludes, then require each
+        # required job == success. Checking per-job (not just the run conclusion)
+        # is FAIL-SAFE: a skipped/renamed/missing critical job yields a non-success
+        # (or empty) conclusion and REJECTS, rather than a run-level "success" that
+        # a skipped critical job could produce.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # The Tests jobs that MUST be green before a prod release. Keep in sync
+          # with test.yml's `jobs:` keys (job name defaults to the key).
+          # ⚑ THIS LIST DRIFTED ONCE AND THE DRIFT WAS SILENT: `conformance` was
+          # added to test.yml and never added here, so a red kinemata gate could
+          # not block a publish. Adding a job to test.yml means adding it here.
+          REQUIRED_JOBS: "test conformance integration e2e"
+        run: |
+          set -euo pipefail
+          sha="$GITHUB_SHA"
+          echo "Requiring green Tests jobs ($REQUIRED_JOBS) for $sha before releasing…"
+          deadline=$(( $(date +%s) + 45*60 ))   # e2e ~13m + queue/runner headroom
+          while :; do
+            run_id=$(gh api \
+              "repos/$GITHUB_REPOSITORY/actions/workflows/test.yml/runs?head_sha=$sha&per_page=1" \
+              --jq '.workflow_runs[0].id // empty')
+            if [ -n "$run_id" ]; then
+              status=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id" --jq '.status')
+              if [ "$status" = "completed" ]; then
+                echo "Tests run $run_id completed; checking required job conclusions…"
+                all_ok=1
+                for job in $REQUIRED_JOBS; do
+                  concl=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/jobs?per_page=100" \
+                    --jq ".jobs[] | select(.name==\"$job\") | .conclusion" | head -n1)
+                  echo "  job '$job' conclusion: ${concl:-<none>}"
+                  if [ "$concl" != "success" ]; then
+                    echo "REFUSING to release: the '$job' job is '${concl:-missing}', not success." >&2
+                    all_ok=0
+                  fi
+                done
+                if [ "$all_ok" = "1" ]; then
+                  echo "All required Tests jobs are green — the publishes may proceed."
+                  break
+                fi
+                echo "Fix the failing Tests job(s) (see plans/e2e-restoration-MUSTFIX.md) and re-tag." >&2
+                exit 1
+              fi
+              echo "  Tests run $run_id status=$status; waiting…"
+            else
+              echo "  no Tests run for $sha yet; waiting…"
+            fi
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+              echo "Timed out waiting for the Tests jobs to conclude." >&2
+              exit 1
+            fi
+            sleep 30
+          done
+
+  # ---------------------------------------------------------------------------
   # release path: build + publish the PyPI packages, publish the GitHub release.
-  # Images are promoted after it, by `images-promote`.
+  # Needs only `tests-gate`; no image job gates it (see the header).
   #
   # NOTE: the PyPI publish step requires a Trusted Publisher configured per
   # project on PyPI with: owner=doctorjei, repo=kanibako-cli, workflow=release.yml,
@@ -169,79 +262,16 @@ jobs:
     # those is a promote. Requiring `push` makes the tag the ONLY way to promote,
     # which is what the pipeline's one-tag-drives-a-release model already claims.
     if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-') }}
-    # GATE DIRECTION (a one-line decision): the images are coupled BOTH ways. An
-    # unverified rc image blocks this PyPI publish, and images-promote needs
-    # this job. To let a cli release go out without its images, drop this line.
-    needs: [images-verify]
+    # Needs `tests-gate` alone. ⚑ NO IMAGE JOB HERE: the PyPI and image
+    # releases are independent (see the header), so a broken rc image never
+    # holds up this publish.
+    needs: [tests-gate]
     runs-on: ubuntu-latest
     environment: pypi
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-
-      - name: Gate promote on GREEN Tests jobs for this commit
-        # STRUCTURAL FIX for the CI-e2e "disaster": release.yml (this promote) and
-        # test.yml (the Tests workflow, which owns the test/integration/e2e jobs)
-        # are SEPARATE workflows both fired by the v* tag, so a RED Tests job never
-        # blocked a prod publish — rc10..rc12 shipped while the e2e had been broken
-        # for weeks, and rc15 shipped with a RED `integration` while the gate only
-        # checked `e2e`. REFUSE to publish unless EVERY required Tests job SUCCEEDED
-        # for THIS exact commit. The required set mirrors test.yml's `jobs:` keys
-        # (test, integration, e2e). Both workflows start together on the tag push,
-        # so poll the Tests run for this SHA until it concludes, then require each
-        # required job == success. Checking per-job (not just the run conclusion)
-        # is FAIL-SAFE: a skipped/renamed/missing critical job yields a non-success
-        # (or empty) conclusion and REJECTS, rather than a run-level "success" that
-        # a skipped critical job could produce.
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # The Tests jobs that MUST be green before a prod promote. Keep in sync
-          # with test.yml's `jobs:` keys (job name defaults to the key).
-          # ⚑ THIS LIST DRIFTED ONCE AND THE DRIFT WAS SILENT: `conformance` was
-          # added to test.yml and never added here, so a red kinemata gate could
-          # not block a publish. Adding a job to test.yml means adding it here.
-          REQUIRED_JOBS: "test conformance integration e2e"
-        run: |
-          set -euo pipefail
-          sha="$GITHUB_SHA"
-          echo "Requiring green Tests jobs ($REQUIRED_JOBS) for $sha before publishing…"
-          deadline=$(( $(date +%s) + 45*60 ))   # e2e ~13m + queue/runner headroom
-          while :; do
-            run_id=$(gh api \
-              "repos/$GITHUB_REPOSITORY/actions/workflows/test.yml/runs?head_sha=$sha&per_page=1" \
-              --jq '.workflow_runs[0].id // empty')
-            if [ -n "$run_id" ]; then
-              status=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id" --jq '.status')
-              if [ "$status" = "completed" ]; then
-                echo "Tests run $run_id completed; checking required job conclusions…"
-                all_ok=1
-                for job in $REQUIRED_JOBS; do
-                  concl=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/jobs?per_page=100" \
-                    --jq ".jobs[] | select(.name==\"$job\") | .conclusion" | head -n1)
-                  echo "  job '$job' conclusion: ${concl:-<none>}"
-                  if [ "$concl" != "success" ]; then
-                    echo "REFUSING to publish: the '$job' job is '${concl:-missing}', not success." >&2
-                    all_ok=0
-                  fi
-                done
-                if [ "$all_ok" = "1" ]; then
-                  echo "All required Tests jobs are green — proceeding with the publish."
-                  break
-                fi
-                echo "Fix the failing Tests job(s) (see plans/e2e-restoration-MUSTFIX.md) and re-tag." >&2
-                exit 1
-              fi
-              echo "  Tests run $run_id status=$status; waiting…"
-            else
-              echo "  no Tests run for $sha yet; waiting…"
-            fi
-            if [ "$(date +%s)" -ge "$deadline" ]; then
-              echo "Timed out waiting for the Tests jobs to conclude." >&2
-              exit 1
-            fi
-            sleep 30
-          done
 
       - name: Fetch tags
         run: git fetch --tags --force
@@ -253,6 +283,22 @@ jobs:
             exit 1
           fi
           echo "VER=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      - name: Refuse a release tag that is not on an rc commit
+        # The final tag must sit on the commit of a v<ver>-rc<n> tag: that rc is
+        # what was tested and soaked. images-verify already refuses otherwise,
+        # but the lanes are independent, so the PyPI lane checks for itself.
+        # Git only -- it reads the tags `Fetch tags` brought in, never an image,
+        # so it couples nothing. release-rc.sh --promote runs the same check
+        # before tagging.
+        run: |
+          set -euo pipefail
+          HEAD_TAGS=$(git tag --points-at "$GITHUB_SHA")
+          if ! grep -qE "^v${VER//./\\.}-rc[0-9]+$" <<<"$HEAD_TAGS"; then
+            echo "No v${VER}-rc<N> tag on $GITHUB_SHA; promote an rc commit (scripts/release-rc.sh --promote)." >&2
+            exit 1
+          fi
+          echo "rc tag(s) on $GITHUB_SHA: $(grep -E "^v${VER//./\\.}-rc[0-9]+$" <<<"$HEAD_TAGS" | tr '\n' ' ')"
 
       - uses: actions/setup-python@v6
         with:
@@ -331,16 +377,22 @@ jobs:
           done
 
   # ---------------------------------------------------------------------------
-  # image promote: after PyPI succeeds, so :latest never moves ahead of the
-  # packages it bundles. Digest copy of the verified rc to :<ver>, :latest and
-  # :edge; no rebuild. Idempotent: if it fails, re-run the job, never re-tag.
-  # Same guard as `promote`.
+  # image promote: after green Tests and verified rc images, and NOT after PyPI.
+  # ⚑ NO PyPI JOB HERE: the releases are independent (see the header), so a
+  # failed PyPI publish never holds up the images. The price, accepted with the
+  # decision: :latest can lead PyPI: for minutes on every release (a digest
+  # copy beats a build plus PyPI's index lag), and until the PyPI publish is
+  # fixed if it fails. The image bundles its own wheel, so the image itself is
+  # consistent.
+  # Digest copy of the verified rc to :<ver>, :latest and :edge; no rebuild.
+  # Idempotent: if it fails, re-run the job, never re-tag. Same guard as
+  # `promote`.
   # ---------------------------------------------------------------------------
 
   images-promote:
     name: Promote rc images
     if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-') }}
-    needs: [promote]
+    needs: [tests-gate, images-verify]
     permissions:
       contents: read
       packages: write
