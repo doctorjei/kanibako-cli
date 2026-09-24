@@ -1462,14 +1462,17 @@ kind = "code-patterns"
 # ⚑ `id_matches` AGAIN, and anchored at both ends, because `agent.shell.template`
 # is a third `template` row and this table CANNOT claim it. `agent_template_defaults`
 # supplies it for node `shell` as a present `None` (keyspec §2d's shell fence
-# declares `<None>`, and a supplied `<None>` beats the `agent.default` fallback),
-# and `equal` over a `field` cannot compare a `None`: a declared `null` renders as
-# NO value, while an identifier the oracle prints always carries one, `''` at
-# least. Measured 2026-09-24 on a scratch copy with the code FIXED, this view
-# widened to `shell` and the oracle printing the shell arm: rc=1,
-# `agent.shell.template: the declaration records no default, and the code
-# produces 'None'` -- and `produces ''` with the `None` printed as nothing. The
-# present `None` is `shell-template-none`'s, below.
+# declares `<None>`, and a supplied `<None>` beats the `agent.default` fallback).
+# This table compares in the `text` form, where a declared `null` renders as NO
+# value while an identifier the oracle prints always carries one, `''` at least.
+# Measured 2026-09-24 on a scratch copy with the code FIXED, this view widened to
+# `shell` and the oracle printing the shell arm: rc=1, `agent.shell.template: the
+# declaration records no default, and the code produces 'None'` -- and `produces
+# ''` with the `None` printed as nothing (0.3.0; unchanged under 0.4.0).
+# kinemata `0.4.0`'s `format = "json"` compares a declared `null` with a printed
+# `null`, but this table cannot take it: json REFUSES `translate` at load (rc 2),
+# and the `translate` hop below is load-bearing (its HOP CONTROL). So the shell
+# row is `shell-template-none`'s, a `json` table of its own, below.
 [[registry]]
 name = "agent-template-source"
 kind = "yaml-mapping"
@@ -1478,23 +1481,23 @@ section = "keys"
 where = { id_matches = '^agent\.(<agent>|default)\.template$' }
 
 # FACT: `agent.shell.template` -- keyspec §2d's shell fence declares it `<None>`,
-# and §2b says the pseudo-agent installs NO layer-2 template -- is SUPPLIED by
-# the code as a present `None`, never omitted.
-# AUTHORITY: the manifest row, sourced from the §2d fence;
-# `launch.templates.agent_template_defaults` is the code side.
+# and §2b says the pseudo-agent installs NO layer-2 template -- defaults to the
+# `null` the manifest declares, and the code SUPPLIES that as a present `None`,
+# never omitted.
+# AUTHORITY: `declared`. The manifest row, sourced from the §2d fence, is the
+# expected value; `launch.templates.agent_template_defaults` is the code on trial.
 # CATCHES: the node arm floored as a store path again (`@config.agents/shell/
-# template`, which seeded every shell box from that store), AND the key OMITTED,
+# template`, which seeded every shell box from that store); the key OMITTED,
 # which lets the §2d pick read `agent.default.template` back as the shell box's
 # `meta.box.agent.template` -- a supplied `<None>` beats a fallback, an absence
-# does not.
-# ⚑ MEMBERSHIP ONLY, because `agent-template-source`'s `equal`-over-`default`
-# cannot carry a `None` (measured, above). The oracle prints the keys the shell
-# floor supplies AS `None`, so the claim is "declared, and supplied as `None`".
-# 🛑 THE SELECTOR LIMIT OF THE NARROWED VIEWS: `id_matches` selects the row by
-# name, not by its `default: null`, so a manifest cell that became a real value
-# would not red here. No declarative guard can select a present `null` (`absent`
-# means MISSING, and TOML has no null for `equals`); that half stays with the
-# manifest-conformance tests, as `standalone-absences`' first assertion does.
+# does not; AND the manifest cell itself changed or removed.
+# ⚑ A VALUE COMPARISON, in kinemata `0.4.0`'s `format = "json"`: the oracle
+# prints the node arm as JSON, and a declared `null` must meet a printed `null`
+# -- where the `text` form `agent-template-source` uses cannot carry a `None`
+# (measured, above). The `id_matches` view selects the row by NAME, and the
+# `default` comparison is what reaches its `null`: a manifest cell that became a
+# string reds here as a disagreement, and a removed cell as "the declaration
+# records no default".
 [[registry]]
 name = "shell-template-none"
 kind = "yaml-mapping"
@@ -2253,28 +2256,59 @@ authority = "declared"
 translate = { pattern = '^@meta\.agent\.<agent>\.path/', replacement = "@config.agents/gemma+claude/" }
 translate_identifier = { pattern = '^agent\.<agent>\.', replacement = "agent.gemma℘claude." }
 
-# Measured 2026-09-24, kinemata `0.3.0`, each variant a scratch copy under /tmp
-# run with `PYTHONPATH=<copy>/src`:
-#   FIXED: `# shell-template-none: 1 declared, 1 produced, in agreement.` (the
-#   run's one other red is `api-doc-artifacts`', which predates this table).
-#   `check`'s `silent:` tally goes 497/597 to 498/598 -- by its 1 entry, the only
-#   line of `check` output that differs; `shape`, `undeclared` and `claims`
-#   print byte-identical output.
-# NEGATIVE CONTROLS, each rc=1 with `agent.shell.template: declared, produced by
-# nothing`:
-#   `templates.py` at HEAD (the node arm floored as a store path);
-#   the key OMITTED for node `shell` (the shape [R177] rejects).
+# ⚑ THE ORACLE PRINTS EVERY KEY EXCEPT THE FALLBACK ARM: `agent.default.template`
+# is `agent-template-source`'s row, and this one-row view's `equal` would red it
+# as undeclared here. Printing every other key, rather than `agent.shell.template`
+# alone or only `agent.shell.*`, keeps "and nothing else" over the whole shell
+# arm: a stray key of ANY name reds as produced but not declared (the last two
+# controls below).
+# ⚑ `json.dumps` IS THE SPELLING `format = "json"` PARSES BACK, so the `None`
+# prints as `null` and a string prints quoted. The extract's value group is
+# `(.+)`, not `\S+`, so a JSON string holding a space would still be captured
+# whole.
+#
+# Measured 2026-09-24 on this tree, kinemata `0.4.0`, `PYTHONPATH=src`:
+#   `# shell-template-none: 1 declared, 1 produced, in agreement, agreeing on
+#   default.`  rc=0
+# Under `0.3.0` this was a membership view and read `1 declared, 1 produced, in
+# agreement.` -- the value half is what `format = "json"` added. `check`,
+# `shape`, `undeclared` and `claims` print byte-identical output against the
+# membership view (claims compared in a git clone, since outside a repository it
+# prints `NOT CHECKED: commit hashes` and a different `unsettled:` tally).
+# SIX NEGATIVE CONTROLS, each one edit in a fresh `mktemp` copy under /tmp run
+# with `PYTHONPATH=<copy>/src`, each rc=1 with `FAIL: 1 disagreement(s)`:
+#   manifest cell -> `"@config.agents/shell/template"`:
+#     `agent.shell.template: default declared '"@config.agents/shell/template"',
+#     code produces 'null'`
+#   manifest cell `default: null` removed:
+#     `agent.shell.template: the declaration records no default, and the code
+#     produces 'null'`
+#   the key OMITTED for node `shell` (the shape [R177] rejects):
+#     `agent.shell.template: declared, produced by nothing`
+#   the node arm floored as a store path (the pre-`26db59aa` code):
+#     `agent.shell.template: default declared 'null', code produces
+#     '"@config.agents/shell/template"'`
+#   a stray key added to the shell arm, `agent.shell.extra = None`:
+#     `agent.shell.extra: produced, declared by nothing`
+#   a stray NON-shell key added to the shell arm, `agent.claude.template = "x"`
+#   (rc 0 while the oracle printed only `agent.shell.*`):
+#     `agent.claude.template: produced, declared by nothing`
 # VACUITY: `equal` over a one-row view reds a silent oracle as "produced by
-# nothing", so it needs no guard of its own.
+# nothing" -- the omission control above is that case -- so it needs no guard
+# of its own.
 [[parity]]
 registry = "shell-template-none"
 command = ["{python}", "-c", """
+import json
 from kanibako.launch.templates import agent_template_defaults
 for key, value in sorted(agent_template_defaults("shell").items()):
-    if value is None:
-        print(f"kanibako-shell-none: {key}")
+    if key != "agent.default.template":
+        print(f"kanibako-shell-template: {key}={json.dumps(value)}")
 """]
-extract = '(?m)^kanibako-shell-none: (\S+)$'
+extract = '(?m)^kanibako-shell-template: ([^\s=]+)=(.+)$'
+field = "default"
+format = "json"
+authority = "declared"
 
 # ---------------------------------------------------------------------------
 # THE §4.3 TEN, THEIR ORACLES. Registries and the FACT each one states are
