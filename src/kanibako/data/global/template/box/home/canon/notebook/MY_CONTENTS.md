@@ -19,7 +19,7 @@
 ## Preparation
 
 At startup, **always** read `status.md` (usually in the _workbook_) for current session status.
-Before begining any actual work, read `devnotes.md` (usually in the same place as `status.md`.
+Before beginning any actual work, read `devnotes.md` (usually in the same place as `status.md`).
 As you work, update the `devnotes.md` file — especially after build checks.
 
 ## Directives
