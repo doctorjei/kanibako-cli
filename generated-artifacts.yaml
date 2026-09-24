@@ -152,6 +152,7 @@ artifacts:
   api-docs/kanibako/settings/keyspace_manifest.py.md:
   api-docs/kanibako/settings/keystore.py.md:
   api-docs/kanibako/settings/keystore_strings.py.md:
+  api-docs/kanibako/settings/kinemata_keyspace.py.md:
   api-docs/kanibako/settings/messages.py.md:
   api-docs/kanibako/settings/paths.py.md:
   api-docs/kanibako/settings/settings_assemble.py.md:

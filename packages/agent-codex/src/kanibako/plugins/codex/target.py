@@ -70,6 +70,9 @@ _NPM_ROOT_TIMEOUT = 10
 _DEFAULTS_PACKAGE = "kanibako.plugins.codex"
 _DEFAULTS_FILE = "codex-defaults.yaml"
 
+#: codex's own config file, under ``~/.codex/`` -- codex's name, not a kanibako key.
+CODEX_CONFIG_FILE = "config.toml"
+
 _CODEX_DESCRIPTOR = load_descriptor(_DEFAULTS_PACKAGE, _DEFAULTS_FILE)
 # The declared BEHAVIOR floor (the file's `behavior:` section) — no default value
 # is written in this module.
@@ -278,7 +281,7 @@ class CodexTarget(Target):
         from kanibako.vscode.vscode_config import seed_codex_approval
 
         return seed_codex_approval(
-            config_root / ".codex" / "config.toml", access=access,
+            config_root / ".codex" / CODEX_CONFIG_FILE, access=access,
         )
 
     def deliver_directive_hook(
@@ -304,8 +307,8 @@ class CodexTarget(Target):
         from kanibako.vscode.vscode_config import seed_codex_config
 
         return seed_codex_config(
-            config_root / ".codex" / "config.toml",
-            box_config_path=f"{GUEST_HOME}/.codex/config.toml",
+            config_root / ".codex" / CODEX_CONFIG_FILE,
+            box_config_path=f"{GUEST_HOME}/.codex/{CODEX_CONFIG_FILE}",
             codex_cwd=f"{GUEST_HOME}/workspace",
             model_provider=model_provider,
         )
@@ -436,7 +439,7 @@ class CodexTarget(Target):
         """
         import tomllib
 
-        cfg = config_dir / "config.toml"
+        cfg = config_dir / CODEX_CONFIG_FILE
         try:
             raw = cfg.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError) as exc:

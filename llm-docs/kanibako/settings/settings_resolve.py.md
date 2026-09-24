@@ -513,8 +513,9 @@ TWO SPELLINGS, one meaning:
   and the extension. Where both forms are expressible they resolve identically.
 
 **The SINGLE parser for both spellings**, shared by the scanner (`_expand_ref`), the whole-value
-shape test (`settings_expand._is_whole_value_ref`) and set-time validation
-(`settings_configset._scan_tokens`) — one grammar, not three (seam S25).
+shape test (`settings_expand._is_whole_value_ref`), set-time validation
+(`settings_configset._scan_tokens`) and the kinemata keyspace adapter's `@`-ref candidates
+(`kinemata_keyspace._ref_names`) — one grammar for every reader (seam S25).
 
 The braced form deliberately MIRRORS `${...}` (`_expand_var` / `_scan_var_span`): optional brace,
 the same name regex, a required closing brace, and a distinct "unterminated" error. Same idea,

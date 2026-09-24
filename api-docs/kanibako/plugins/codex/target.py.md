@@ -9,6 +9,7 @@ Prose for these symbols lives in `llm-docs/kanibako/plugins/codex/target.py.md`.
 
 ```
 logger = get_logger('targets.codex')
+CODEX_CONFIG_FILE = 'config.toml'
 _NPM_ROOT_TIMEOUT = 10
 _DEFAULTS_PACKAGE = 'kanibako.plugins.codex'
 _DEFAULTS_FILE = 'codex-defaults.yaml'

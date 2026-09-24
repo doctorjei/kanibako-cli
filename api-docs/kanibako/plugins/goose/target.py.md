@@ -9,6 +9,7 @@ Prose for these symbols lives in `llm-docs/kanibako/plugins/goose/target.py.md`.
 
 ```
 logger = get_logger('targets.goose')
+GOOSE_CONFIG_FILE = 'config.yaml'
 _BINARY = Path.home() / '.local' / 'bin' / 'goose'
 _DEFAULTS_PACKAGE = 'kanibako.plugins.goose'
 _DEFAULTS_FILE = 'goose-defaults.yaml'

@@ -46,6 +46,9 @@ _BINARY = Path.home() / ".local" / "bin" / "goose"
 _DEFAULTS_PACKAGE = "kanibako.plugins.goose"
 _DEFAULTS_FILE = "goose-defaults.yaml"
 
+#: goose's own config file, under ``~/.config/goose/`` -- goose's name, not a kanibako key.
+GOOSE_CONFIG_FILE = "config.yaml"
+
 _GOOSE_DESCRIPTOR = load_descriptor(_DEFAULTS_PACKAGE, _DEFAULTS_FILE)
 # The declared BEHAVIOR floor (the file's `behavior:` section) — no default value is
 # written in this module.  goose's three are EMPTY on purpose; the file says why.
@@ -91,7 +94,7 @@ class GooseTarget(Target):
 
         if src is None or not Path(src).is_file():
             return
-        if not spec.home_rel.endswith("config.yaml"):
+        if not spec.home_rel.endswith(GOOSE_CONFIG_FILE):
             # Defensive: any other filtered spec falls back to a wholesale copy.
             dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(str(src), str(dst))
@@ -179,7 +182,7 @@ class GooseTarget(Target):
         # emits, so the panel cannot drift from the CLI, and core must not reach back
         # into a named plugin to read them.
         return seed_goose_mode(
-            config_root / ".config" / "goose" / "config.yaml",
+            config_root / ".config" / "goose" / GOOSE_CONFIG_FILE,
             access=access,
             descriptor=_GOOSE_DESCRIPTOR,
         )
@@ -253,7 +256,7 @@ class GooseTarget(Target):
             return True
 
         secrets = Path.home() / ".config" / "goose" / "secrets.yaml"
-        config = Path.home() / ".config" / "goose" / "config.yaml"
+        config = Path.home() / ".config" / "goose" / GOOSE_CONFIG_FILE
 
         if not secrets.is_file() or secrets.stat().st_size == 0:
             print(
