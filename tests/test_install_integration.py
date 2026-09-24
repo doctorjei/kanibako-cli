@@ -1,7 +1,6 @@
-"""Integration tests for the install command.
+"""Integration tests for install (the lazy first-run init) and containerfile discovery.
 
-Exercises real filesystem operations for install, containerfile discovery,
-and settings filtering.  Run with::
+Exercises real filesystem operations.  Run with::
 
     pytest -m integration tests/test_install_integration.py -v
 """
@@ -16,20 +15,57 @@ import pytest
 class TestInstallFilesystem:
     """Verify real filesystem operations during install."""
 
-    def test_full_install_creates_directory_tree(
-        self, integration_home, integration_config
-    ):
-        """Install creates config, data, and state directories."""
-        from kanibako.settings.config import load_config
+    def test_first_run_install_stamps_the_host_stores(self, integration_home):
+        """First-run init writes the config file and the spec's install-row stores.
+
+        ⚑ DRIVES THE REAL VERB. kanibako has no ``install`` command: install is the
+        lazy first-run init (``cli._ensure_initialized``), which every non-exempt
+        command runs before dispatch. The system design spec's OUT-OF-BOX TEMPLATES
+        table names what its "install / setup" row copies INTO:
+        ``global/template/*``, ``agents/default`` and ``global/canon/handbook``.
+        Those are asserted here, plus the config file whose existence is init's
+        own done-marker.
+
+        ⚑ NO ``integration_config`` FIXTURE: it writes the config file first, and
+        init returns early once that file exists, so it would never run.
+
+        🛑 STATE AND CACHE ARE NOT ASSERTED, because install does not create them.
+        This test used to call ``load_std_paths`` and assert all four roots were
+        directories. That only held while ``load_std_paths`` ran eager ``mkdir``s,
+        and that block was removed on purpose: one unusable stored value bricked
+        every command. Each store is now created where it is first used, and
+        ``test_paths.py::TestLoadStdPaths::test_resolves_without_creating`` pins
+        that resolving creates nothing.
+        """
+        from kanibako.cli import _ensure_initialized
+        from kanibako.launch.templates import (
+            AGENT_MOULD_DIRNAME,
+            PACKAGED_BOX_TEMPLATE,
+            PACKAGED_WORKSET_TEMPLATE,
+        )
+        from kanibako.settings.config import load_config, user_config_file
         from kanibako.settings.paths import load_std_paths
 
-        config = load_config(integration_config)
-        std = load_std_paths(config)
+        cf = user_config_file()
+        # Anti-vacuity: nothing is on disk before the verb runs, so every
+        # presence below was put there by init.
+        assert not cf.exists()
 
-        assert std.config_file.parent.is_dir()
-        assert std.data_path.is_dir()
-        assert std.state.is_dir()
-        assert std.cache.is_dir()
+        _ensure_initialized()
+
+        assert cf.is_file()
+        std = load_std_paths(load_config(cf))
+        # The paths come from the resolved keys, not from hard-coded leaves, so
+        # this follows the directories the user's config actually names.
+        for mould in (PACKAGED_BOX_TEMPLATE, PACKAGED_WORKSET_TEMPLATE,
+                      AGENT_MOULD_DIRNAME):
+            assert (std.template / mould).is_dir(), mould
+        assert (std.agents / "default").is_dir()
+        assert (std.canon / "handbook").is_dir()
+        # The stamp copies files, not just directories: a copy that silently
+        # found no packaged source would still leave these directories behind.
+        assert any(p.is_file() for p in (std.template / PACKAGED_BOX_TEMPLATE).rglob("*"))
+        assert any(p.is_file() for p in (std.canon / "handbook").rglob("*"))
 
     def test_install_preserves_existing_config(
         self, integration_home, integration_config
