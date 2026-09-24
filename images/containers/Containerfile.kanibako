@@ -6,13 +6,15 @@ FROM $BASE_IMAGE
 
 ARG AGENT_USER=agent
 ARG VARIANT=oci
-# Pin the kanibako-cli release that ships in the image. Empty = latest on PyPI;
-# a release build passes the matching X.Y.Z so image version tracks cli version.
+# The version of the kanibako-cli wheel handed in through the `cliwheel` build
+# context (see the install step below). CI passes the version it read off the
+# wheel's filename; when set, the install step refuses a wheel of any other
+# version. Empty = no check, and an empty label.
 ARG KANIBAKO_CLI_VERSION=
 
 # Self-report the bundled cli version so :edge / :latest advancement can compare
 # image versions via the label (references the build-arg above; single-stage
-# build so the ARG is in scope here). Empty arg = empty label (latest-on-PyPI).
+# build so the ARG is in scope here).
 LABEL org.opencontainers.image.version="${KANIBAKO_CLI_VERSION}"
 
 USER root
@@ -32,12 +34,44 @@ RUN if [ -f /etc/subuid ]; then sed -i "s/^droste:/$AGENT_USER:/" /etc/subuid; f
 
 # Install kanibako-cli first: the shared baseline apt step below derives its
 # package list from `kanibako baseline list`, so the CLI (and its Python deps)
-# must be present before that command runs. Empty KANIBAKO_CLI_VERSION = latest.
-RUN if command -v pip >/dev/null 2>&1; then \
-        pip install --break-system-packages \
-            "kanibako-cli${KANIBAKO_CLI_VERSION:+==$KANIBAKO_CLI_VERSION}" \
-            build twine; \
-    fi
+# must be present before that command runs.
+#
+# The cli is the wheel built from the SAME tree as this Containerfile, handed in
+# as the named build context `cliwheel` (a directory holding exactly one
+# kanibako_cli-*.whl) — never a PyPI release, so an rc image needs nothing
+# published first. A plain build must supply it:
+#   python -m build --wheel --outdir dist/cliwheel .
+#   podman build --build-context cliwheel=dist/cliwheel ...
+#
+# ⚑ pip is bootstrapped where the base lacks it. droste-seed (min) ships
+# python3 without pip, and this step used to be skipped there in silence: the
+# published kanibako-min:1.6.0 carries no kanibako and, because the baseline
+# list below came back empty, none of the baseline tools either. Every step
+# from here on fails loudly instead. Inside the `if` below, keep the commands
+# `;`-separated: `set -e` ignores a failure in a non-final `&&` member, so an
+# `&&` chain there would swallow a failed `apt-get update`.
+COPY --from=cliwheel kanibako_cli-*.whl /tmp/cliwheel/
+RUN set -eu; \
+    if ! python3 -m pip --version >/dev/null 2>&1; then \
+        apt-get update; \
+        apt-get install -y --no-install-recommends python3-pip; \
+        rm -rf /var/lib/apt/lists/*; \
+    fi; \
+    set -- /tmp/cliwheel/kanibako_cli-*.whl; \
+    if [ "$#" -ne 1 ] || [ ! -f "$1" ]; then \
+        echo "cliwheel must hold exactly one kanibako_cli wheel; found: $*" >&2; \
+        exit 1; \
+    fi; \
+    if [ -n "$KANIBAKO_CLI_VERSION" ]; then \
+        case "${1##*/}" in \
+            "kanibako_cli-${KANIBAKO_CLI_VERSION}-"*) ;; \
+            *) echo "cliwheel holds ${1##*/}, not kanibako-cli ${KANIBAKO_CLI_VERSION}" >&2; \
+               exit 1 ;; \
+        esac; \
+    fi; \
+    python3 -m pip install --break-system-packages "$1" build twine; \
+    rm -rf /tmp/cliwheel; \
+    kanibako --version
 
 # Shared (all-variant) packages.
 #
@@ -55,8 +89,10 @@ RUN if command -v pip >/dev/null 2>&1; then \
 # into the box, so the box must provide the lib or it fails to load. Cheap
 # (~150 KB) insurance against host-binary/image-lib version skew. A general
 # detect+declare mechanism for such agent deps is tracked separately.
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        $(kanibako baseline list) \
+RUN baseline="$(kanibako baseline list)" \
+    && [ -n "$baseline" ] \
+    && apt-get update && apt-get install -y --no-install-recommends \
+        $baseline \
         cifs-utils \
         nfs-common \
         libgomp1 \
@@ -110,8 +146,11 @@ RUN if [ "$VARIANT" = "lxc" ] || [ "$VARIANT" = "vm" ]; then \
     fi \
     && chmod +x /usr/local/bin/kanibako-entrypoint
 
-# Default tmux config (user can override via shell template or bind mount)
-COPY tmux.conf /etc/tmux.conf
+# Default tmux config (user can override via shell template or bind mount).
+# The one carrier is the cli's src/kanibako/containers/tmux.conf, handed in as
+# the named build context `clicontainers`
+# (`--build-context clicontainers=src/kanibako/containers`).
+COPY --from=clicontainers tmux.conf /etc/tmux.conf
 
 USER $AGENT_USER
 WORKDIR /home/$AGENT_USER

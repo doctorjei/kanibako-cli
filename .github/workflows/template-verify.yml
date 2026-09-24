@@ -3,7 +3,7 @@ name: Verify Templates
 # Build the bundled template Containerfiles against the published kanibako-oci
 # base image and run each template's declared smoke checks. Nothing here
 # publishes an image: it is build + smoke only. The base image itself is built
-# and released by the kanibako-images repo (split 2026-06-12).
+# and released from this repo's `images/` by images.yml and release.yml.
 
 on:
   push:
@@ -62,11 +62,10 @@ jobs:
 
       - uses: docker/setup-buildx-action@v4
 
-      # Build each template directly FROM the published base. The base
-      # Containerfile moved to the kanibako-images repo at the 2026-06-12 split,
-      # so it can no longer be built locally here; the published ref below is
-      # the same one the e2e job in test.yml consumes, and matches the
-      # templates' own ARG BASE_IMAGE default.
+      # Build each template directly FROM the published base, not a local
+      # build of images/: the published ref below is the same one the e2e job
+      # in test.yml consumes, and matches the templates' own ARG BASE_IMAGE
+      # default.
       - name: Build template ${{ matrix.template }}
         run: |
           set -euo pipefail

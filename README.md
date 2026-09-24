@@ -603,9 +603,9 @@ layered OCI image builder.
 
 Base rigs are pulled automatically from GHCR on first use; they are
 **pull-only** (Kanibako does not build them locally). If a pull fails, Kanibako
-reports an actionable error. To use a custom base, build it yourself from the
-[kanibako-images](https://github.com/doctorjei/kanibako-images) repo and point
-Kanibako at the resulting local image via `--image` / `box_image`. Toolchain
+reports an actionable error. To use a custom base, build it yourself from
+[`images/`](images/README.md) in this repo and point Kanibako at the resulting
+local image via `--image` / `box_image`. Toolchain
 *templates* still build locally (they layer on a pulled base).
 
 ```bash

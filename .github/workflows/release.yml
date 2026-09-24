@@ -11,8 +11,14 @@ name: Release
 #       builds + publishes the PyPI packages to prod (OIDC) and publishes
 #       the GitHub release.
 #
-# Container images are built and published by the kanibako-images repo,
-# not here.
+# Container images (`kanibako-{min,oci,lxc,vm}`, sources under `images/`)
+# ride the same tag. The image jobs below call the reusable
+# `.github/workflows/images.yml`, which bundles this tree's own wheel:
+#   * rc tag:    images-rc (after rc-pypi-check) publishes :<ver>-rc<n>
+#   * final tag: images-verify -> promote (PyPI) -> images-promote, which
+#                digest-copies the rc to :<ver>, :latest and :edge
+# ⚑ Image DISPATCH lives in images.yml, never here: every dispatch of this file
+# reaches the PyPI-uploading `dev` job. Every image job gates on a `push` event.
 #
 # Triggers on ALL v* tags and self-gates by job `if`. No paths: filters.
 
@@ -96,8 +102,50 @@ jobs:
                  --title "$GITHUB_REF_NAME"
 
   # ---------------------------------------------------------------------------
+  # rc images: build the four variants from this tree's wheel and publish
+  # :<ver>-rc<n> (refused if it already exists), then a guarded :edge advance.
+  #
+  # ⚑ PERMISSIONS ARE JOB-LEVEL, NEVER WORKFLOW-LEVEL: `packages: write` at the
+  # top of this file would reach the PyPI jobs too. All three image callers
+  # grant the same `packages: write`, because a called workflow can only narrow
+  # the caller's token and images.yml's jobs narrow per job (its `rc-check` is
+  # read-only). Granting less here risks failing the call outright.
+  # ---------------------------------------------------------------------------
+
+  images-rc:
+    name: rc - build + publish rc images
+    if: ${{ github.event_name == 'push' && contains(github.ref_name, '-rc') }}
+    needs: [rc-pypi-check]
+    permissions:
+      contents: read
+      packages: write
+    concurrency:
+      group: ghcr-kanibako-tags
+      cancel-in-progress: false
+    uses: ./.github/workflows/images.yml
+    with:
+      mode: rc
+      publish: true
+
+  # ---------------------------------------------------------------------------
+  # final tag, before PyPI: the rc images for THIS commit exist and were built
+  # from it. Writes nothing. `promote` needs it, so an unverified rc image
+  # blocks the irreversible PyPI step.
+  # ---------------------------------------------------------------------------
+
+  images-verify:
+    name: Verify rc images for this commit
+    if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-') }}
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/images.yml
+    with:
+      mode: verify
+
+  # ---------------------------------------------------------------------------
   # release path: build + publish the PyPI packages, publish the GitHub release.
-  # Container images are built and published by the kanibako-images repo.
+  # Images are promoted after it, by `images-promote`.
   #
   # NOTE: the PyPI publish step requires a Trusted Publisher configured per
   # project on PyPI with: owner=doctorjei, repo=kanibako-cli, workflow=release.yml,
@@ -121,6 +169,10 @@ jobs:
     # those is a promote. Requiring `push` makes the tag the ONLY way to promote,
     # which is what the pipeline's one-tag-drives-a-release model already claims.
     if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-') }}
+    # GATE DIRECTION (a one-line decision): the images are coupled BOTH ways. An
+    # unverified rc image blocks this PyPI publish, and images-promote needs
+    # this job. To let a cli release go out without its images, drop this line.
+    needs: [images-verify]
     runs-on: ubuntu-latest
     environment: pypi
     steps:
@@ -277,6 +329,27 @@ jobs:
                 ".[] | select(.tagName | startswith(\"${GITHUB_REF_NAME}-rc\")) | .tagName"); do
             gh release delete "$rc" --yes || true
           done
+
+  # ---------------------------------------------------------------------------
+  # image promote: after PyPI succeeds, so :latest never moves ahead of the
+  # packages it bundles. Digest copy of the verified rc to :<ver>, :latest and
+  # :edge; no rebuild. Idempotent: if it fails, re-run the job, never re-tag.
+  # Same guard as `promote`.
+  # ---------------------------------------------------------------------------
+
+  images-promote:
+    name: Promote rc images
+    if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-') }}
+    needs: [promote]
+    permissions:
+      contents: read
+      packages: write
+    concurrency:
+      group: ghcr-kanibako-tags
+      cancel-in-progress: false
+    uses: ./.github/workflows/images.yml
+    with:
+      mode: promote
 
   # ---------------------------------------------------------------------------
   # pre-release path: on-demand (workflow_dispatch) pre-release publish. The

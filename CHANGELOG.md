@@ -12,6 +12,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The base images (`kanibako-{min,oci,lxc,vm}`) are built and released from this repo.** Their
+  sources moved in from the former `kanibako-images` repo, with its history, under `images/`. One
+  tag now drives both releases: an rc tag publishes the `:X.Y.Z-rcN` images, and the final tag
+  verifies them, publishes to PyPI, then promotes them to `:X.Y.Z`, `:latest` and `:edge`. Each
+  image bundles the cli wheel built from the tagged commit instead of installing a PyPI release,
+  so an rc image no longer waits on PyPI. A pull failure's error now points at `images/` in this
+  repo for building a custom base.
+
 - **The plain-shell box resolves under the `shell` pseudo-agent, not the `general` template
   slot.** `agents/general/agent.yaml` is now `agents/shell/agent.yaml`, and `$AGENT` inside a
   plain-shell box is `shell`. The old slot was never a declared key — `agent.general.*` was
@@ -51,6 +59,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `MIGRATION.md` § *2.83 The `code --remote` wrapper moved from the data store to the cache root*.
 
 ### Fixed
+
+- **`kanibako-min` shipped without kanibako or the baseline tools.** Its base, droste-seed, has
+  no pip, so the image build skipped the cli install in silence, and the baseline tool list it
+  derives from `kanibako baseline list` came back empty (measured on the published
+  `kanibako-min:1.6.0`). The build now installs pip where the base lacks it and fails loudly if
+  either step does.
 
 - **`box move` and `box convert` emptied the vault.** Every relocating path created the
   destination's `vault/ro` and `vault/rw` leaves empty, and teardown then deleted each source leaf

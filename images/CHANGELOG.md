@@ -1,5 +1,12 @@
 # Changelog
 
+> **Closed record.** The images now live in the `kanibako-cli` repo under
+> `images/` and are built and released from it, by the same tag that releases
+> the CLI, bundling the wheel built from that commit. New changes are recorded
+> in the repo's [`CHANGELOG.md`](../CHANGELOG.md). The entries below are the
+> history of the former standalone `kanibako-images` repo, kept as written; the
+> files and workflows they name have since moved or been replaced.
+
 All notable changes to the kanibako base images are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).

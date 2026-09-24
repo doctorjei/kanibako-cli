@@ -1,0 +1,367 @@
+name: Images
+
+# Build (and, on the release path, publish) the four kanibako base images
+# (`kanibako-{min,oci,lxc,vm}`) from `images/containers/Containerfile.kanibako`.
+#
+# ⚑ THE IMAGE BUNDLES THIS TREE'S OWN WHEEL, NOT A PyPI RELEASE. Every build
+# runs `python -m build --wheel` on the checked-out commit and hands the wheel to
+# the Containerfile as the named build context `cliwheel`. On an rc tag the tree
+# is already X.Y.Z, and the final tag sits on the green rc's commit, so the image
+# bundles the same cli PyPI builds from, and no PyPI timing is involved.
+#
+# Entry points, and what each may write:
+#   * workflow_call from release.yml (the ONLY path to release tags)
+#       mode rc      - v<X.Y.Z>-rc<N> push: build + push :X.Y.Z-rcN (refused if
+#                      it already exists), then a guarded :edge advance
+#       mode verify  - v<X.Y.Z> push: the rc images for THIS commit exist and
+#                      carry its revision label; writes nothing
+#       mode promote - v<X.Y.Z> push: verify again, then digest-copy the rc to
+#                      :X.Y.Z, :latest and :edge (no rebuild; idempotent)
+#   * push to main / pull_request touching the image sources: build only
+#   * workflow_dispatch: build only; with publish=true it pushes
+#     :<version>-dev.<sha7>, NEVER a bare :X.Y.Z, and never moves :edge (a dev
+#     tag stays sole-tagged, so images-prune-tags.yml can remove it)
+#
+# ⚑ PERMISSIONS ARE PER JOB. A reusable workflow can only narrow the caller's
+# token, so release.yml's caller jobs grant `packages: write` and each job here
+# narrows to what it needs: `rc-check` is read-only.
+
+on:
+  workflow_call:
+    inputs:
+      mode:
+        description: 'build | rc | verify | promote'
+        type: string
+        required: true
+      publish:
+        description: 'mode rc: push the rc images (release.yml passes true)'
+        type: boolean
+        default: false
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Push :<version>-dev.<sha7> to GHCR (off = build-only test). Never a release tag.'
+        type: boolean
+        default: false
+  push:
+    branches: [main]
+    paths:
+      - 'images/**'
+      - 'src/kanibako/containers/tmux.conf'
+      # `kanibako baseline list` inputs: the Containerfile installs its output
+      - 'src/kanibako/data/image-baseline.yaml'
+      - 'src/kanibako/runtime/baseline.py'
+      - 'src/kanibako/commands/baseline_cmd.py'
+      - 'pyproject.toml'
+      - '.github/workflows/images.yml'
+  pull_request:
+    paths:
+      - 'images/**'
+      - 'src/kanibako/containers/tmux.conf'
+      # `kanibako baseline list` inputs: the Containerfile installs its output
+      - 'src/kanibako/data/image-baseline.yaml'
+      - 'src/kanibako/runtime/baseline.py'
+      - 'src/kanibako/commands/baseline_cmd.py'
+      - 'pyproject.toml'
+      - '.github/workflows/images.yml'
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # build: modes build + rc, and every direct trigger (push/PR/dispatch, where
+  # `inputs.mode` is unset and so means build).
+  # ---------------------------------------------------------------------------
+  build:
+    name: build kanibako-${{ matrix.variant }}
+    if: ${{ contains(fromJSON('["build","rc"]'), inputs.mode || 'build') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: min
+            base: ghcr.io/doctorjei/droste-seed:1.1.0
+          - variant: oci
+            base: ghcr.io/doctorjei/droste-fiber:1.1.0
+          - variant: lxc
+            base: ghcr.io/doctorjei/droste-thread:1.1.0
+          - variant: vm
+            base: ghcr.io/doctorjei/droste-hair:1.1.0
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Build the cli wheel from this tree
+        run: |
+          pip install build
+          python -m build --wheel --outdir dist/cliwheel .
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Plan the tag (and refuse to overwrite one)
+        id: plan
+        env:
+          MODE: ${{ inputs.mode || 'build' }}
+          PUBLISH: ${{ inputs.publish && 'true' || 'false' }}
+          EVENT: ${{ github.event_name }}
+          OWNER: ${{ github.repository_owner }}
+          VARIANT: ${{ matrix.variant }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          wheels=(dist/cliwheel/kanibako_cli-*.whl)
+          if [ "${#wheels[@]}" -ne 1 ]; then
+            echo "Expected exactly one kanibako_cli wheel, found ${#wheels[@]}." >&2
+            exit 1
+          fi
+          whl=$(basename "${wheels[0]}")
+          CLI_VERSION=${whl#kanibako_cli-}
+          CLI_VERSION=${CLI_VERSION%%-*}
+          PKG="${REGISTRY}/${OWNER}/kanibako-${VARIANT}"
+          PUSH=false
+          TAG=ci
+          case "$MODE" in
+            rc)
+              if [ "$EVENT" != "push" ] || [[ ! "$GITHUB_REF_NAME" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)-rc[0-9]+$ ]]; then
+                echo "mode rc needs a pushed v<X.Y.Z>-rc<N> tag; got event '$EVENT', ref '$GITHUB_REF_NAME'." >&2
+                exit 1
+              fi
+              if [ "${BASH_REMATCH[1]}" != "$CLI_VERSION" ]; then
+                echo "The tree builds kanibako-cli $CLI_VERSION, but the tag is $GITHUB_REF_NAME." >&2
+                echo "Bump the tree to ${BASH_REMATCH[1]} before tagging (scripts/release-rc.sh does)." >&2
+                exit 1
+              fi
+              TAG="${GITHUB_REF_NAME#v}"
+              PUSH="$PUBLISH"
+              ;;
+            build)
+              if [ "$EVENT" = "workflow_dispatch" ] && [ "$PUBLISH" = "true" ]; then
+                TAG="${CLI_VERSION}-dev.${GITHUB_SHA::7}"
+                PUSH=true
+              fi
+              ;;
+            *)
+              echo "Unknown mode '$MODE'." >&2
+              exit 1
+              ;;
+          esac
+          if [ "$PUSH" = "true" ]; then
+            # ⚑ Only an rc tag or a dev tag is ever pushed from here. A bare
+            # X.Y.Z is the promote's, and it is a digest copy, never a build.
+            if [[ ! "$TAG" =~ -rc[0-9]+$ && ! "$TAG" =~ -dev\.[0-9a-f]{7}$ ]]; then
+              echo "Refusing to push '$TAG': only -rcN and -dev.<sha7> tags are built here." >&2
+              exit 1
+            fi
+            # Never re-tag in place. Treat only a definite "not found" as absent;
+            # any other inspect failure (network, auth) stops the run.
+            if out=$(docker buildx imagetools inspect "${PKG}:${TAG}" 2>&1); then
+              echo "REFUSING: ${PKG}:${TAG} already exists. Cut a new rc rather than overwrite it." >&2
+              exit 1
+            fi
+            case "$out" in
+              *"not found"*|*"MANIFEST_UNKNOWN"*|*"manifest unknown"*) ;;
+              *) echo "Could not tell whether ${PKG}:${TAG} exists:" >&2; echo "$out" >&2; exit 1 ;;
+            esac
+          fi
+          {
+            echo "cli_version=$CLI_VERSION"
+            echo "ref=${PKG}:${TAG}"
+            echo "push=$PUSH"
+          } >> "$GITHUB_OUTPUT"
+          echo "kanibako-${VARIANT}: cli $CLI_VERSION -> ${PKG}:${TAG} (push=$PUSH)"
+
+      - name: Build (and push if planned) kanibako-${{ matrix.variant }}
+        uses: docker/build-push-action@v7
+        with:
+          context: images/containers/
+          file: images/containers/Containerfile.kanibako
+          # `cliwheel` carries this tree's wheel; `clicontainers` carries the one
+          # tmux.conf, which ships in the cli package as package data.
+          build-contexts: |
+            cliwheel=dist/cliwheel
+            clicontainers=src/kanibako/containers
+          push: ${{ steps.plan.outputs.push == 'true' }}
+          # Single-image manifests (no attestations), so promote can copy them
+          # cleanly by digest.
+          provenance: false
+          sbom: false
+          tags: ${{ steps.plan.outputs.ref }}
+          # rc-check matches this against the final tag's commit.
+          labels: org.opencontainers.image.revision=${{ github.sha }}
+          build-args: |
+            BASE_IMAGE=${{ matrix.base }}
+            VARIANT=${{ matrix.variant }}
+            KANIBAKO_CLI_VERSION=${{ steps.plan.outputs.cli_version }}
+          cache-from: type=gha,scope=${{ matrix.variant }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.variant }}
+
+      # Guarded :edge advance, rc only. :edge advances iff there is no current
+      # :latest, or the candidate cli version is >= the version :latest
+      # self-reports (compared on the base X.Y.Z, so a .devN / -rcN suffix never
+      # blocks or confuses the sort). Digest copy of the just-pushed rc; no rebuild.
+      - name: Advance :edge if candidate >= :latest
+        if: ${{ inputs.mode == 'rc' && steps.plan.outputs.push == 'true' }}
+        env:
+          OWNER: ${{ github.repository_owner }}
+          VARIANT: ${{ matrix.variant }}
+          CAND_VER: ${{ steps.plan.outputs.cli_version }}
+          SRC: ${{ steps.plan.outputs.ref }}
+        run: |
+          set -euo pipefail
+          PKG="${REGISTRY}/${OWNER}/kanibako-${VARIANT}"
+          base() { echo "$1" | sed -E 's/[-.]?(rc|dev)[0-9]+$//'; }
+          latest_ver=$(docker buildx imagetools inspect "${PKG}:latest" \
+            --format '{{ index .Image.Config.Labels "org.opencontainers.image.version" }}' \
+            2>/dev/null || true)
+          if [ -z "$latest_ver" ] || \
+             [ "$(printf '%s\n%s\n' "$(base "$latest_ver")" "$(base "$CAND_VER")" | sort -V | tail -n1)" = "$(base "$CAND_VER")" ]; then
+            echo "Advancing :edge -> ${SRC} (latest_ver='${latest_ver}', cand='${CAND_VER}')"
+            docker buildx imagetools create --tag "${PKG}:edge" "${SRC}"
+          else
+            echo "Holding :edge (cand '${CAND_VER}' < latest '${latest_ver}'); no advance."
+          fi
+
+  # ---------------------------------------------------------------------------
+  # rc-check: modes verify + promote. The source rc comes from GIT, not from an
+  # input: the newest v<X.Y.Z>-rc<N> tag on the final tag's own commit. All four
+  # rc images must exist and carry this commit as their revision label.
+  # ---------------------------------------------------------------------------
+  rc-check:
+    name: verify the rc images for this commit
+    if: >-
+      ${{ contains(fromJSON('["verify","promote"]'), inputs.mode)
+          && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+          && !contains(github.ref_name, '-') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+      rc_tag: ${{ steps.resolve.outputs.rc_tag }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Resolve the source rc from git
+        id: resolve
+        run: |
+          set -euo pipefail
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Release tag '$GITHUB_REF_NAME' is malformed; expected v<MAJOR>.<MINOR>.<PATCH>." >&2
+            exit 1
+          fi
+          VER="${GITHUB_REF_NAME#v}"
+          git fetch --tags --force
+          RC=$(git tag --points-at "$GITHUB_SHA" | grep -E "^v${VER//./\\.}-rc[0-9]+$" | sort -V | tail -n1 || true)
+          if [ -z "$RC" ]; then
+            echo "No v${VER}-rc<N> tag points at $GITHUB_SHA. The final tag must sit on the green rc's commit." >&2
+            exit 1
+          fi
+          {
+            echo "version=$VER"
+            echo "rc_tag=${RC#v}"
+          } >> "$GITHUB_OUTPUT"
+          echo "Source rc for $GITHUB_REF_NAME: $RC"
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Require all four rc images, built from this commit
+        env:
+          OWNER: ${{ github.repository_owner }}
+          RC_TAG: ${{ steps.resolve.outputs.rc_tag }}
+        run: |
+          set -euo pipefail
+          bad=0
+          for variant in min oci lxc vm; do
+            SRC="${REGISTRY}/${OWNER}/kanibako-${variant}:${RC_TAG}"
+            if ! rev=$(docker buildx imagetools inspect "$SRC" \
+                  --format '{{ index .Image.Config.Labels "org.opencontainers.image.revision" }}' 2>&1); then
+              echo "MISSING: $SRC ($rev)" >&2
+              bad=1
+            elif [ "$rev" != "$GITHUB_SHA" ]; then
+              echo "WRONG COMMIT: $SRC was built from '${rev:-<no revision label>}', not $GITHUB_SHA" >&2
+              bad=1
+            else
+              echo "OK: $SRC @ $rev"
+            fi
+          done
+          if [ "$bad" -ne 0 ]; then
+            echo "The rc images for this commit are not all present; refusing." >&2
+            exit 1
+          fi
+
+  # ---------------------------------------------------------------------------
+  # promote: mode promote only. Digest copy of the verified rc to :X.Y.Z,
+  # :latest and :edge. No rebuild, so the promoted tags are byte-identical to
+  # the rc; re-running it is harmless.
+  # ---------------------------------------------------------------------------
+  promote:
+    name: promote rc -> :X.Y.Z + :latest + :edge
+    needs: [rc-check]
+    if: >-
+      ${{ inputs.mode == 'promote'
+          && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+          && !contains(github.ref_name, '-') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Promote (digest copy, no rebuild)
+        env:
+          OWNER: ${{ github.repository_owner }}
+          VER: ${{ needs.rc-check.outputs.version }}
+          RC_TAG: ${{ needs.rc-check.outputs.rc_tag }}
+        run: |
+          set -euo pipefail
+          for variant in min oci lxc vm; do
+            PKG="${REGISTRY}/${OWNER}/kanibako-${variant}"
+            echo "::group::promote kanibako-${variant}"
+            echo "+ docker buildx imagetools create -t ${PKG}:${VER} -t ${PKG}:latest -t ${PKG}:edge ${PKG}:${RC_TAG}"
+            # :edge tags along so it is never behind :latest. No guard needed: a
+            # release promote is by definition the newest release.
+            docker buildx imagetools create \
+              -t "${PKG}:${VER}" \
+              -t "${PKG}:latest" \
+              -t "${PKG}:edge" \
+              "${PKG}:${RC_TAG}"
+            echo "::endgroup::"
+          done
+          echo "Promoted all four variants to :${VER} + :latest + :edge."

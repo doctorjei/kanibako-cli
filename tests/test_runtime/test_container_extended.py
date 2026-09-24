@@ -40,7 +40,7 @@ class TestEnsureImage:
             patch.object(rt, "pull", return_value=False),
             patch.object(rt, "build") as m_build,
         ):
-            with pytest.raises(ContainerError, match="kanibako-images"):
+            with pytest.raises(ContainerError, match="images/ in github.com/doctorjei/kanibako-cli"):
                 rt.ensure_image("kanibako-oci:latest", Path("/containers"))
             m_build.assert_not_called()
 
