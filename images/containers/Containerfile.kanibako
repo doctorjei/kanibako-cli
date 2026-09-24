@@ -1,0 +1,126 @@
+# Shared Containerfile for all kanibako image variants.
+# The droste base tier is selected via --build-arg BASE_IMAGE=...
+# (seed → min, fiber → oci, thread → lxc, hair → vm).
+ARG BASE_IMAGE=ghcr.io/doctorjei/droste-fiber:1.1.0
+FROM $BASE_IMAGE
+
+ARG AGENT_USER=agent
+ARG VARIANT=oci
+# Pin the kanibako-cli release that ships in the image. Empty = latest on PyPI;
+# a release build passes the matching X.Y.Z so image version tracks cli version.
+ARG KANIBAKO_CLI_VERSION=
+
+# Self-report the bundled cli version so :edge / :latest advancement can compare
+# image versions via the label (references the build-arg above; single-stage
+# build so the ARG is in scope here). Empty arg = empty label (latest-on-PyPI).
+LABEL org.opencontainers.image.version="${KANIBAKO_CLI_VERSION}"
+
+USER root
+
+# Rename droste user (UID 1000) to the desired agent username
+RUN existing=$(getent passwd 1000 | cut -d: -f1); \
+    if [ -n "$existing" ] && [ "$existing" != "$AGENT_USER" ]; then \
+        usermod -l "$AGENT_USER" -d "/home/$AGENT_USER" -m "$existing" \
+        && groupmod -n "$AGENT_USER" "$existing"; \
+    fi \
+    && echo "$AGENT_USER ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/$AGENT_USER \
+    && chmod 0440 /etc/sudoers.d/$AGENT_USER
+
+# Fix subuid/subgid ownership after user rename (droste -> agent)
+RUN if [ -f /etc/subuid ]; then sed -i "s/^droste:/$AGENT_USER:/" /etc/subuid; fi \
+    && if [ -f /etc/subgid ]; then sed -i "s/^droste:/$AGENT_USER:/" /etc/subgid; fi
+
+# Install kanibako-cli first: the shared baseline apt step below derives its
+# package list from `kanibako baseline list`, so the CLI (and its Python deps)
+# must be present before that command runs. Empty KANIBAKO_CLI_VERSION = latest.
+RUN if command -v pip >/dev/null 2>&1; then \
+        pip install --break-system-packages \
+            "kanibako-cli${KANIBAKO_CLI_VERSION:+==$KANIBAKO_CLI_VERSION}" \
+            build twine; \
+    fi
+
+# Shared (all-variant) packages.
+#
+# The baseline tool set (tmux, inotify-tools, ripgrep, fd-find, openssh-client)
+# is the single source of truth kanibako expects in every box; it is derived at
+# build time from `kanibako baseline list` so the image and the CLI never drift.
+#
+# nodejs/npm (MCP servers + tweakcc) and cifs-utils/nfs-common remain explicit
+# image conveniences, NOT part of the baseline contract. They are absent from
+# seed (min) and fiber (oci); they ship in thread/hair (lxc/vm), where
+# reinstalling them is a no-op.
+#
+# libgomp1 (OpenMP runtime) is a host-provided-agent-binary runtime dep: some
+# goose releases link libgomp.so.1 directly, and the host goose binary is bound
+# into the box, so the box must provide the lib or it fails to load. Cheap
+# (~150 KB) insurance against host-binary/image-lib version skew. A general
+# detect+declare mechanism for such agent deps is tracked separately.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        $(kanibako baseline list) \
+        cifs-utils \
+        nfs-common \
+        libgomp1 \
+        nodejs \
+        npm \
+    && rm -rf /var/lib/apt/lists/* \
+    && if command -v fdfind >/dev/null 2>&1; then \
+           ln -sf "$(command -v fdfind)" /usr/local/bin/fd; \
+       fi
+
+# Lean CLI tool for the seed-based min variant only. The shared baseline step
+# above now provides fd-find/inotify-tools/ripgrep for every variant; sshpass
+# stays min-only. gh and uv are intentionally omitted from min — add them
+# locally if a min box ever needs them.
+RUN if [ "$VARIANT" = "min" ]; then \
+        apt-get update && apt-get install -y --no-install-recommends \
+            sshpass \
+        && rm -rf /var/lib/apt/lists/*; \
+    fi
+
+# tweakcc: custom Claude Code patching tool (requires node/npm)
+RUN if command -v npm >/dev/null 2>&1; then \
+        npm install -g tweakcc 2>/dev/null || true; \
+    fi
+
+# LXC-specific fixes: mask failing units, enable DHCP, configure rootless Podman
+RUN if [ "$VARIANT" = "lxc" ]; then \
+        apt-get update && apt-get install -y --no-install-recommends slirp4netns \
+        && rm -rf /var/lib/apt/lists/* \
+        && : > /etc/fstab \
+        && systemctl mask \
+            systemd-remount-fs.service systemd-growfs-root.service \
+            dev-hugepages.mount dev-mqueue.mount run-lock.mount \
+            tmp.mount run-rpc_pipefs.mount \
+        && systemctl enable getty@console.service \
+        && mkdir -p /etc/systemd/network \
+        && printf '[Match]\nName=eth0\n\n[Network]\nDHCP=yes\n' \
+               > /etc/systemd/network/80-dhcp.network \
+        && mkdir -p /etc/containers \
+        && printf '[engine]\ncgroup_manager = "cgroupfs"\n\n[network]\ndefault_rootless_network_cmd = "slirp4netns"\n' \
+               > /etc/containers/containers.conf \
+        && mkdir -p /var/lib/systemd/linger \
+        && touch "/var/lib/systemd/linger/$AGENT_USER"; \
+    fi
+
+# LXC/VM need systemd as PID 1; OCI/min use /bin/bash
+RUN if [ "$VARIANT" = "lxc" ] || [ "$VARIANT" = "vm" ]; then \
+        printf '#!/bin/bash\nexec /sbin/init\n' > /usr/local/bin/kanibako-entrypoint; \
+    else \
+        printf '#!/bin/bash\nexec /bin/bash "$@"\n' > /usr/local/bin/kanibako-entrypoint; \
+    fi \
+    && chmod +x /usr/local/bin/kanibako-entrypoint
+
+# Default tmux config (user can override via shell template or bind mount)
+COPY tmux.conf /etc/tmux.conf
+
+USER $AGENT_USER
+WORKDIR /home/$AGENT_USER
+
+ENV LANG=C.UTF-8
+ENV PATH="/home/$AGENT_USER/.local/bin:${PATH}"
+
+RUN mkdir -p workspace .local/state/kanibako .local/bin vault/ro vault/rw
+
+WORKDIR /home/$AGENT_USER/workspace
+
+ENTRYPOINT ["/usr/local/bin/kanibako-entrypoint"]

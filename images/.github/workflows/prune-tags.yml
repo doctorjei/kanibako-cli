@@ -1,0 +1,71 @@
+name: Prune Image Tags
+
+# Manually prune a tag (default: the retired `edge`) from the four base
+# packages on GHCR. Uses the in-workflow GITHUB_TOKEN, which can manage these
+# packages because kanibako-images has Admin "Actions access" on each.
+#
+# SAFETY: dry_run defaults to true — the first run only REPORTS what it would
+# delete. A package version is deleted by manifest digest, which removes ALL
+# tags on that manifest; so a version that carries more than the target tag is
+# SKIPPED (deleting it would take the other tags with it).
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to prune from each base package'
+        type: string
+        default: 'edge'
+      dry_run:
+        description: 'Report only; do not delete'
+        type: boolean
+        default: true
+
+permissions:
+  packages: write   # backed by Admin Actions-access on each kanibako-* package
+
+jobs:
+  prune:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      OWNER: ${{ github.repository_owner }}
+      TAG: ${{ inputs.tag }}
+      DRY: ${{ inputs.dry_run }}
+    steps:
+      - name: Prune ${{ inputs.tag }} from base packages
+        run: |
+          set -euo pipefail
+          for pkg in kanibako-min kanibako-oci kanibako-lxc kanibako-vm; do
+            echo "::group::$pkg"
+            # All versions whose tag list includes $TAG, as compact {id,tags} lines.
+            matches=$(gh api --paginate \
+              "/users/${OWNER}/packages/container/${pkg}/versions" \
+              --jq ".[] | select(.metadata.container.tags | index(\"${TAG}\")) | {id, tags: .metadata.container.tags}" \
+              | jq -c '.' || true)
+
+            if [ -z "$matches" ]; then
+              echo "no version tagged '${TAG}'"
+              echo "::endgroup::"
+              continue
+            fi
+
+            while IFS= read -r v; do
+              [ -z "$v" ] && continue
+              id=$(jq -r '.id' <<<"$v")
+              tags=$(jq -c '.tags' <<<"$v")
+              ntags=$(jq '.tags | length' <<<"$v")
+              if [ "$ntags" -ne 1 ]; then
+                echo "SKIP version $id — manifest also holds other tags $tags (delete would remove them too)"
+                continue
+              fi
+              if [ "$DRY" = "true" ]; then
+                echo "DRY-RUN: would delete version $id (tags $tags)"
+              else
+                echo "deleting version $id (tags $tags)"
+                gh api --method DELETE \
+                  "/users/${OWNER}/packages/container/${pkg}/versions/${id}"
+              fi
+            done <<<"$matches"
+            echo "::endgroup::"
+          done
