@@ -4,7 +4,7 @@
 re-classified in CODE as a "structural"/file-only key and refused.  That is how
 ``system.template`` — named in spec §2a's own CLI-settable list, beside
 ``workset.vault_{ro,rw}`` and ``agent.<agent>.canon`` — spent the 1.8.0 cycle unsettable,
-answering a refusal that told the user to hand-edit ``kanibako_config.yaml``.  Nothing
+answering a refusal that told the user to hand-edit ``kanibako.cfg``.  Nothing
 went red, because every existing pin asked the code what it believed rather than asking
 the registry what is true.
 

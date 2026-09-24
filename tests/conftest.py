@@ -132,7 +132,7 @@ def tmp_home(tmp_path, monkeypatch):
 
 @pytest.fixture
 def config_file(tmp_home):
-    """Write a default kanibako_config.yaml and return its path."""
+    """Write a default kanibako.cfg and return its path."""
     config_home = tmp_home / "config"
     cf = config_home / CONFIG_FILENAME
     write_global_config(cf)
@@ -147,7 +147,7 @@ def sample_config():
 
 @pytest.fixture
 def config(config_file):
-    """Load config from the default kanibako_config.yaml."""
+    """Load config from the default kanibako.cfg."""
     return load_config(config_file)
 
 

@@ -1007,7 +1007,7 @@ class TestLazyInitExemptions:
 
     def test_box_helper_skips_lazy_init(self, tmp_path, monkeypatch):
         """'box helper' command should not trigger lazy init."""
-        # Point XDG_CONFIG_HOME to an empty dir (no kanibako_config.yaml)
+        # Point XDG_CONFIG_HOME to an empty dir (no kanibako.cfg)
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
         monkeypatch.setattr(
             "kanibako.commands.helper_cmd._helpers_dir",
@@ -1108,7 +1108,7 @@ class TestVerboseFlag:
 def _marker_file(tmp_path):
     """The SYSTEM SETTINGS file ``_setup_nudge`` resolves under these tests' patches.
 
-    ⚑ The setup marker left ``kanibako_config.yaml`` on 2026-08-26 (Jei; spec §2g has
+    ⚑ The setup marker left ``kanibako.cfg`` on 2026-08-26 (Jei; spec §2g has
     always declared it a Layer-2 ``system.*`` SETTINGS key), so a test that PLANTS one
     must plant it where the shipped code looks.  Computed by the SHIPPED resolver
     rather than spelled out here: a literal would pin a path instead of the behaviour,
@@ -1397,7 +1397,7 @@ class TestTemplateStalenessRetired:
         """An initialized config (current setup marker) + an optional ORPHAN stamp.
 
         ⚑ THE ORPHAN GOES IN THE SETTINGS FILE, beside the marker (2026-08-31). It used
-        to be written into ``kanibako_config.yaml``, which is where the retired writer
+        to be written into ``kanibako.cfg``, which is where the retired writer
         put it — and that file refuses a ``system:`` table now, so planting it there
         would exercise the Layer-1 refusal instead of the retired staleness gate this
         class is about. The Layer-1 case has its own pin in

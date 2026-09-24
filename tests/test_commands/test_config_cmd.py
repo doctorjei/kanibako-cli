@@ -114,7 +114,7 @@ class TestBoxConfigShow:
         ONLY in the system SETTINGS file (``@config.settings`` — the exact
         ``system_path`` the launch snapshot reads, ``std.settings``) shows in
         ``box show --effective``.  Pins the display ctx's system tier to the
-        launch derivation — NEVER the kanibako_config.yaml CONFIG file (which
+        launch derivation — NEVER the kanibako.cfg CONFIG file (which
         the launch cascade does not read for settings)."""
         from kanibako.commands.box._parser import run_show
         from kanibako.settings.config_io import write_nested_key

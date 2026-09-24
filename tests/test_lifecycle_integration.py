@@ -54,7 +54,7 @@ def _setup_with_image(cli_env: dict, image: str) -> None:
     # ⚑ THE IMAGE TRAVELS ON ``create -i``, the route a user actually has: it
     # persists ``box.image`` through the §1A create exception
     # (``config.persist_creation_flags``). This helper used to regex-patch an
-    # ``image:`` line into ``kanibako_config.yaml`` instead — a file that cannot
+    # ``image:`` line into ``kanibako.cfg`` instead — a file that cannot
     # carry settings (the rule is spelled once, at
     # ``settings/config.bootstrap_config_paths``) and that
     # ``write_global_config`` creates at ZERO BYTES. The substitution therefore

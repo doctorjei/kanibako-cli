@@ -21,7 +21,7 @@ class TestCommsConfig:
     def test_comms_from_the_settings_file(self, tmp_path):
         """A ``system.channelroot`` repoint takes effect — read from the SETTINGS file.
 
-        🛑 NOT FROM ``kanibako_config.yaml`` (R153, 2026-08-31).  Spec §1 gives Layer 1
+        🛑 NOT FROM ``kanibako.cfg`` (R153, 2026-08-31).  Spec §1 gives Layer 1
         the ``config.*`` bootstrap paths ALONE and names ``system.channelroot`` among the
         Layer-2 keys that KEEP the ``system.*`` name, so the bootstrap file cannot carry
         it and now REFUSES it.  This case planted it there and read it back through

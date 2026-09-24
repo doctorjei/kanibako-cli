@@ -111,7 +111,7 @@ class TestSystemConfig:
         # box-scope ``box.image`` is a legal DOWNWARD write — ACCEPTED (rc 0)
         # and stored in the system SETTINGS file (``@config.settings``) with
         # the ``box:`` scope token kept, an overridable default for every box.
-        # The Layer-1 kanibako_config.yaml is NOT touched (spec §1: settings
+        # The Layer-1 kanibako.cfg is NOT touched (spec §1: settings
         # keys never live in the bootstrap config file).
         from kanibako.commands.system_cmd import run_set
         from kanibako.settings.config_io import load_doc

@@ -241,7 +241,7 @@ class TestTheLegalShapesAreAccepted:
     def test_workset_scope_accepts_it(self, value, config_file, tmp_path):
         # ⚑ ``config_file`` (hence ``tmp_home``) is REQUIRED for the ``@config.*`` cases:
         # the set-time probe resolves that foundation from the REAL
-        # ``$XDG_CONFIG_HOME/kanibako_config.yaml`` and CONCEDES on any failure, so an
+        # ``$XDG_CONFIG_HOME/kanibako.cfg`` and CONCEDES on any failure, so an
         # unisolated run answers "dangling @-reference" off the host's own file.
         files = _files(tmp_path)
         message = _set("workset.channelroot", value, files, ConfigLevel.workset)

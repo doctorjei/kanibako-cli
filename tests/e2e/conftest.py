@@ -421,7 +421,7 @@ def write_e2e_settings_files(
     """Pre-seed the two files an e2e env starts from: the bootstrap config and the settings.
 
     ⚑⚑ THE IMAGE PIN USED TO BE DEAD.  Every e2e env wrote
-    ``kanibako:\\n  image: "<E2E_IMAGE>"`` into ``kanibako_config.yaml`` — a file that
+    ``kanibako:\\n  image: "<E2E_IMAGE>"`` into ``kanibako.cfg`` — a file that
     cannot carry settings (the rule is spelled once, at
     ``settings/config.bootstrap_config_paths``).  The stanza was INERT, so every e2e
     box launched the DECLARED DEFAULT ``ghcr.io/doctorjei/kanibako-oci:latest`` and not

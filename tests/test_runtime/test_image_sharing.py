@@ -667,7 +667,7 @@ class TestImageSharingConfig:
 
     ⚑⚑ THE FIXTURE FILE AND THE CLAIM MOVED HERE ON 2026-08-31 (R153), NOT THE
     BEHAVIOUR.  Every case below wrote its ``box:`` table into a path named
-    ``kanibako_config.yaml`` and read it back with ``load_config`` — green, because that
+    ``kanibako.cfg`` and read it back with ``load_config`` — green, because that
     was a GENERAL document reader.  Spec §1 gives the Layer-1 bootstrap file the
     ``config.*`` paths ALONE, so the key's file is a SETTINGS file and its reader is
     ``load_merged_config``.  The Layer-1 positional is the EMPTY file the ``config_file``

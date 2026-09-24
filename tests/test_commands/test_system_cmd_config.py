@@ -2,12 +2,12 @@
 
 The old pin here ("ALL ``system.*``-prefixed keys are FILE-ONLY") was the F2
 collateral and is DELIBERATELY FLIPPED: routing a settable ``system.*``
-SETTINGS key to ``kanibako_config.yaml`` was a write-only no-op
+SETTINGS key to ``kanibako.cfg`` was a write-only no-op
 (``resolve_system_paths`` drops unknown ``[system]`` entries), while the
 launch reads those keys from the system SETTINGS file (``@config.settings`` =
 ``global/settings.yaml``).  The rule now:
 
-* ``system.setup_completed`` stays FILE-ONLY in ``kanibako_config.yaml``'s
+* ``system.setup_completed`` stays FILE-ONLY in ``kanibako.cfg``'s
   ``[system]`` table — set/reset refused, get/show still read, and the refusal
   names the file that hand-editing actually honors.  ⚑ The
   ``SYSTEM_PATH_DEFAULTS`` family stood beside it until 2026-08-23; spec §2g
@@ -126,7 +126,7 @@ class TestSystemAuthShareAllowed:
         std = _std(config_file)
         # Stored as a REAL bool in the system SETTINGS file (the launch input).
         assert load_doc(std.settings)["system"]["auth"]["share_allowed"] is False
-        # NOT in the kanibako_config.yaml [system] table (the dead location:
+        # NOT in the kanibako.cfg [system] table (the dead location:
         # resolve_system_paths drops unknown [system] entries).
         assert "auth" not in load_doc(config_file).get("system", {})
 
@@ -190,7 +190,7 @@ class TestSystemDefaultAgentSetting:
         assert load_doc(std.settings)["system"]["agent"] == "goose"
         # The LAUNCH reader sees the CLI-set value (set/launch agreement).
         assert read_system_agent(std.settings) == "goose"
-        # Nothing landed in the kanibako_config.yaml CONFIG file.
+        # Nothing landed in the kanibako.cfg CONFIG file.
         assert "agent" not in load_doc(config_file)
 
     def test_get_reads_back_the_set_value(self, config_file, tmp_home, capsys):
@@ -438,7 +438,7 @@ class TestSystemStructuralFileOnly:
     def test_get_config_path_key_reads_kanibako_config_yaml(
         self, config_file, tmp_home, capsys,
     ):
-        """config.data (Layer-1 CONFIG) is read from kanibako_config.yaml — get
+        """config.data (Layer-1 CONFIG) is read from kanibako.cfg — get
         still works (the key moved system.data -> config.data in block #3a)."""
         custom = str(tmp_home / "custom-data")
         write_nested_key(config_file, ("config",), "data", custom)
@@ -481,7 +481,7 @@ class TestSystemStructuralFileOnly:
         assert config_file.read_bytes() == before
 
     def test_a_structural_table_in_the_config_file_refuses(self, config_file, tmp_home):
-        """🛑 A ``system:`` path table hand-written into ``kanibako_config.yaml`` is not
+        """🛑 A ``system:`` path table hand-written into ``kanibako.cfg`` is not
         "file-only, not an override" — it is not readable there at all (Jei, 2026-08-31).
         """
         from kanibako.errors import ConfigError
@@ -754,7 +754,7 @@ class TestSystemCategoryFileRouting:
     def test_a_tuple_only_in_the_config_file_refuses(
         self, config_file, tmp_home, capsys,
     ):
-        """The control: the same key hand-written into kanibako_config.yaml STOPS the
+        """The control: the same key hand-written into kanibako.cfg STOPS the
         command, because that file may not carry a settings key at all.
 
         ⚑ CHANGED 2026-08-31. It used to read back "(not set)" — true of the cascade and
@@ -849,7 +849,7 @@ class TestSystemAgentNodeBindSeamSuperseded:
     EARLIER and just as loudly.
 
     The seam swallowed ``canonicalize_agent_ref``'s ``ConfigError`` and left the
-    write pointed at the kanibako_config.yaml CONFIG file, and it let the RESERVED
+    write pointed at the kanibako.cfg CONFIG file, and it let the RESERVED
     ``default`` node through as far as ``mkdir`` — creating an ``agents/default/``
     dir for a key the launch never reads as a node. R-9 retired the whole write
     route, so the handler no longer parses a node at all and the engine refuses in

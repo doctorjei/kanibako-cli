@@ -661,7 +661,7 @@ class TestShowConfig:
     def test_show_effective(self, tmp_path, capsys):
         """--effective resolves the box scalars; the value comes from a SETTINGS file.
 
-        ⚑ CHANGED 2026-08-26: the planted value used to sit in ``kanibako_config.yaml``
+        ⚑ CHANGED 2026-08-26: the planted value used to sit in ``kanibako.cfg``
         and be read back from there. That file cannot carry settings (Jei), so the
         SOURCE moved to the box settings file — which is where a user's ``box.image``
         has always actually been written.
@@ -680,7 +680,7 @@ class TestShowConfig:
         assert "my:img" in captured.out
 
     def test_show_effective_refuses_a_box_table_in_the_layer1_file(self, tmp_path):
-        """🛑 A ``box:`` table hand-written into ``kanibako_config.yaml`` STOPS the view.
+        """🛑 A ``box:`` table hand-written into ``kanibako.cfg`` STOPS the view.
 
         The replacement pin for what ``test_show_effective`` used to assert, stated as
         the ruling it now obeys: *"kanibako_config.yaml <-- cannot have settings.
@@ -1612,7 +1612,7 @@ class TestSystemAgent:
         # Residuals item 2: the key lives in the system SETTINGS file
         # (@config.settings, where read_system_agent + set/reset all agree), so a
         # system-scope get reads it via ``system_settings_path`` — NOT the
-        # kanibako_config.yaml CONFIG file.
+        # kanibako.cfg CONFIG file.
         cf = tmp_path / CONFIG_FILENAME
         ssp = tmp_path / "global" / "settings.yaml"
         _seed_system_agent(ssp, "goose")
@@ -1694,7 +1694,7 @@ class TestSystemConfigFileOnly:
         writer chose: a route to the wrong file would satisfy any file-shape assertion
         and still be invisible to every consumer.  ⚑⚑ THAT FILE IS THE SYSTEM SETTINGS
         FILE SINCE 2026-08-26 — the marker IS a settings-file key (spec §2g), and
-        ``kanibako_config.yaml`` cannot carry settings at all (Jei).  This case
+        ``kanibako.cfg`` cannot carry settings at all (Jei).  This case
         asserted the exact opposite on both counts within the preceding three days;
         the invariant it pins — set and read name ONE file — never moved.
         """
@@ -1858,7 +1858,7 @@ class TestConfigJournalRecognition:
 
 class TestSystemSettingsTierSplit:
     """SYSTEM scope: SETTINGS route to @system.settings (global/settings.yaml),
-    while system.* CONFIG keys stay in kanibako_config.yaml — the config/settings split.
+    while system.* CONFIG keys stay in kanibako.cfg — the config/settings split.
 
     The interface fns take an optional ``system_settings_path``; when set (the
     SYSTEM scope) SETTINGS reads/writes go there, NOT to ``config_path`` /
@@ -1867,7 +1867,7 @@ class TestSystemSettingsTierSplit:
 
     def test_system_agent_set_routes_to_settings_file(self, tmp_path):
         """F3 flip: the set SUCCEEDS and lands in the system SETTINGS file's
-        ``system:`` table — never the kanibako_config.yaml CONFIG file.
+        ``system:`` table — never the kanibako.cfg CONFIG file.
         (⮕ P7: the table moved from ``agent.default`` to ``system``, §2g.)"""
         cf = tmp_path / CONFIG_FILENAME              # CONFIG file
         ssp = tmp_path / "global" / "settings.yaml"  # SETTINGS file
@@ -1892,9 +1892,9 @@ class TestSystemSettingsTierSplit:
         assert get_config_value(
             "system.agent", global_config_path=cf, system_settings_path=ssp,
         ) == "goose"
-        # The launch-time reader points at the SETTINGS file, not kanibako_config.yaml.
+        # The launch-time reader points at the SETTINGS file, not kanibako.cfg.
         assert read_system_agent(ssp) == "goose"
-        # A stale value in kanibako_config.yaml does NOT feed the tier.
+        # A stale value in kanibako.cfg does NOT feed the tier.
         assert read_system_agent(cf) is None
 
     def test_agent_setting_routes_to_settings_file(self, tmp_path):
@@ -1912,7 +1912,7 @@ class TestSystemSettingsTierSplit:
 
     def test_config_file_only_key_stays_in_config_file(self, tmp_path):
         """The CONFIG-FILE-ONLY read uses global_config_path
-        (kanibako_config.yaml), even when a settings file is supplied —
+        (kanibako.cfg), even when a settings file is supplied —
         config/settings stay separate.
 
         ⚑ The subject is a ``config.*`` key: since 2026-08-26 that family IS the
@@ -1932,7 +1932,7 @@ class TestSystemSettingsTierSplit:
     def test_the_system_path_tier_reads_the_settings_file(self, tmp_path):
         """A ``system.*`` PATH key reads where its ``set`` writes: the SETTINGS file.
 
-        ⚑ The ``[system]`` table of ``kanibako_config.yaml`` is the resolution
+        ⚑ The ``[system]`` table of ``kanibako.cfg`` is the resolution
         FLOOR, not the store, so a plain ``get`` does not report it — spec §2a:
         plain get answers what THIS scope's file says, never another tier's value.
         """
@@ -2647,7 +2647,7 @@ class TestCommandFileTakesTheCommandScopeSlot:
     (``workset set box.*``) it handed a genuine ``workset.yaml`` to the BOX slot,
     where ``_drop_upward_scopes`` called it a "box settings file" and stripped the
     file's own ``workset:`` table out of the snapshot E3 judges against. At the
-    SYSTEM scope it filed ``kanibako_config.yaml`` — which spec §1 says is "NOT part
+    SYSTEM scope it filed ``kanibako.cfg`` — which spec §1 says is "NOT part
     of the keyspace; NOT a settings tier" — as a real settings tier, so a value
     stored ONLY in that bootstrap file probed as resolvable.
     """
@@ -2674,7 +2674,7 @@ class TestCommandFileTakesTheCommandScopeSlot:
         self, tmp_path, caplog,
     ):
         """A file passed as the command's own is placed by the COMMAND scope, so a
-        ``system``-scope set never files ``kanibako_config.yaml`` into the box slot.
+        ``system``-scope set never files ``kanibako.cfg`` into the box slot.
 
         ⚑ Pinned through the SIDE EFFECT that gave the defect away: at the box slot
         ``_drop_upward_scopes`` warns and strips, and it must not fire at all here."""
@@ -2712,7 +2712,7 @@ class TestCommandFileTakesTheCommandScopeSlot:
 
 
 class TestLayer1FileIsNotASettingsSourceAtAll:
-    """``kanibako_config.yaml`` supplies NOTHING to the set-time probe — not a tier,
+    """``kanibako.cfg`` supplies NOTHING to the set-time probe — not a tier,
     and not a floor either.
 
     ⚑⚑ Jei, 2026-08-26, hardening the ``setup_completed`` ruling into its general
@@ -2798,7 +2798,7 @@ class TestLayer1FileIsNotASettingsSourceAtAll:
 
         ⚑ IT TAKES ``config_file`` (hence ``tmp_home``) since 2026-08-31, and that is a
         REQUIREMENT rather than tidiness: this foundation is read from the REAL
-        ``$XDG_CONFIG_HOME/kanibako_config.yaml`` unless the environment is isolated, so
+        ``$XDG_CONFIG_HOME/kanibako.cfg`` unless the environment is isolated, so
         without the fixture the case passes or fails on the host's own file.
         """
         f = tmp_path / "box.yaml"
@@ -2937,7 +2937,7 @@ class TestScopeDirectionGuard:
     def test_system_scope_allows_box_key_downward(self, tmp_path):
         """DOWNWARD (system ⊃ box): accepted, and stored in the system
         SETTINGS file (``@config.settings``) with the ``box:`` scope token kept
-        — NOT in the Layer-1 kanibako_config.yaml (spec §1: settings keys never
+        — NOT in the Layer-1 kanibako.cfg (spec §1: settings keys never
         live in the bootstrap config file)."""
         cf = tmp_path / CONFIG_FILENAME
         ssp = tmp_path / BOX_META_FILE
@@ -3772,7 +3772,7 @@ class TestF6NoFabricatedDefaultOnPlainGet:
     ):
         # --effective must still show the resolved (merged) value — unchanged.
         # ⚑ The value is planted in the BOX SETTINGS file, not in
-        # ``kanibako_config.yaml``: since 2026-08-26 that file carries no settings at
+        # ``kanibako.cfg``: since 2026-08-26 that file carries no settings at
         # all, so planting there would prove nothing about the effective view.
         global_cfg = tmp_path / CONFIG_FILENAME
         project_toml = tmp_path / BOX_META_FILE
@@ -3842,7 +3842,7 @@ class TestF7HonestResetMessage:
     ):
         # ⚑ ``config_file`` (hence ``tmp_home``) is REQUIRED, not decoration: the
         # effective-value arm resolves the path tier from the REAL
-        # ``$XDG_CONFIG_HOME/kanibako_config.yaml``, concedes on any failure, and falls
+        # ``$XDG_CONFIG_HOME/kanibako.cfg``, concedes on any failure, and falls
         # back to the generic tail — so on an unisolated run this case is answered by
         # the host's own config file rather than by the code under test.
         # Residuals item 1: threading the cascade lets the honest message APPEND
@@ -6027,7 +6027,7 @@ def test_a_reserved_leaf_on_a_category_key_still_returns_an_error_not_a_raise(
 # ---------------------------------------------------------------------------
 # SYSTEM-scope file routing — get / set / reset must all name ONE file, and that
 # file must be the one the LAUNCH cascade reads (@config.settings), never the
-# kanibako_config.yaml CONFIG file.  Three branches were holdouts (F1/F2/F3).
+# kanibako.cfg CONFIG file.  Three branches were holdouts (F1/F2/F3).
 # ---------------------------------------------------------------------------
 
 def _system_scope_files(tmp_path):
@@ -6267,7 +6267,7 @@ class TestNodeSecretRouteNamesItsRefusal:
 class TestSystemScopeCategoryFileRouting:
     """F2 — WHICH FILE a SYSTEM-scope category key lives in.
 
-    The bug: ``set`` repointed the tuple in the kanibako_config.yaml CONFIG file while
+    The bug: ``set`` repointed the tuple in the kanibako.cfg CONFIG file while
     ``get`` read the system SETTINGS file, so a successful set read back as
     "(not set)"; and because ``reset --all`` sweeps the SETTINGS file's scope tables,
     the config-file write SURVIVED ``--all``.
@@ -6304,7 +6304,7 @@ class TestSystemScopeCategoryFileRouting:
 
     def test_a_tuple_only_in_the_config_file_is_not_read(self, tmp_path):
         """The control that makes the row above mean something: the SAME key
-        hand-written into kanibako_config.yaml instead reads back "(not set)",
+        hand-written into kanibako.cfg instead reads back "(not set)",
         because that file is in NO cascade level. RED if the read ever falls back
         to the config file "to be helpful"."""
         cf, ssp = _system_scope_files(tmp_path)
