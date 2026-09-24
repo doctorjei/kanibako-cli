@@ -15,8 +15,6 @@ import pytest
 from kanibako.settings.agent_config import AgentConfig
 from kanibako.targets.base import TargetSetting
 
-from tests.support.filenames import CONFIG_FILENAME
-
 
 class TestKanibakoMounts:
     """Tests for _kanibako_mounts() in start.py."""
@@ -215,12 +213,12 @@ class TestBuildEffectiveState:
         """
         from kanibako.settings.config import write_agent_setting
 
-        global_toml = tmp_path / "settings.yaml"
-        global_toml.write_text("")
+        ssp = tmp_path / "settings.yaml"
+        ssp.write_text("")
         if settings:
             for k, v in settings.items():
-                write_agent_setting(global_toml, k, v, "claude")
-        return global_toml
+                write_agent_setting(ssp, k, v, "claude")
+        return ssp
 
     def _make_workset_config(self, tmp_path, settings=None, agent="claude"):
         """Create a minimal workset config.yaml, optionally with a box→agent tweak.
@@ -391,25 +389,24 @@ class TestBuildEffectiveState:
         target = self._make_target(descriptors)
         agent_cfg = AgentConfig()  # empty state
         project_toml = self._make_project_toml(tmp_path)
-        global_toml = self._make_system_settings(tmp_path, settings={"model": "sonnet"})
+        ssp = self._make_system_settings(tmp_path, settings={"model": "sonnet"})
 
         result = _build_effective_state(
-            target, agent_cfg, project_toml, system_settings_path=global_toml
+            target, agent_cfg, project_toml, system_settings_path=ssp
         )
         # System set value beats the target-default floor.
         assert result["model"] == "sonnet"
 
-    def test_precedence_box_workset_crab_system(self, tmp_path):
-        """Precedence is box > workset > crab > system; system beats the floor.
+    def test_precedence_box_workset_agent_system(self, tmp_path):
+        """Precedence is box > workset > agent > system; system beats the floor.
 
-        Levels are most-specific-first ``[box, workset, crab, system]``, so a
-        value set at the workset level beats one set in crab state. The box- and
-        workset-scope per-agent overrides ride the box.agent.* mirror (§2b): the
-        box sets it same-scope, the workset sets it defaults-down (workset ⊂ box);
-        effective_behavior reads box.agent first, so a box-file box.agent still
-        beats a workset-file box.agent, which still beats the crab (agent-state)
-        default. (Neither a box nor a workset file may set agent.<name>.* directly
-        — upward, dropped at RESOLVE, spec §0; the mirror is the legal path.)
+        Levels are most-specific-first ``[box, workset, agent, system]``, so a
+        value set at the workset level beats one set in agent state. The box- and
+        workset-scope per-agent overrides ride the §2h request
+        ``pref.agent.<agent>.<key>``, and a box-file request beats a workset-file
+        one, which still beats the agent-state default. (Neither a box nor a
+        workset file may set ``agent.<name>.*`` directly — upward, dropped at
+        RESOLVE, spec §0; the request is the legal path.)
         """
         from kanibako.commands.start import _effective_behavior_for_display as _build_effective_state
 
@@ -418,7 +415,7 @@ class TestBuildEffectiveState:
             TargetSetting(key="access", description="Access", default="permissive"),
         ]
         target = self._make_target(descriptors)
-        global_toml = self._make_system_settings(
+        ssp = self._make_system_settings(
             tmp_path, settings={"model": "sys-model", "access": "default"}
         )
         # workset config lives in its own dir to avoid colliding filenames.
@@ -426,9 +423,9 @@ class TestBuildEffectiveState:
             tmp_path / "ws", settings={"model": "ws-model"}
         )
 
-        # crab state also sets model — but workset is more specific, so workset
+        # agent state also sets model — but workset is more specific, so workset
         # wins.  access is left for the system level only.
-        agent_cfg = AgentConfig(state={"model": "crab-model"})
+        agent_cfg = AgentConfig(state={"model": "agent-model"})
         proj_dir = tmp_path / "proj"
         proj_dir.mkdir()
         project_toml = self._make_project_toml(proj_dir)
@@ -437,10 +434,10 @@ class TestBuildEffectiveState:
             target,
             agent_cfg,
             project_toml,
-            system_settings_path=global_toml,
+            system_settings_path=ssp,
             workset_config_path=ws_toml,
         )
-        # model: box unset → workset (more specific than crab/system) wins.
+        # model: box unset → workset (more specific than agent/system) wins.
         assert result["model"] == "ws-model"
         # access: only system sets it; nothing more specific does, so the
         # system set value wins over the "permissive" floor.
@@ -454,7 +451,7 @@ class TestBuildEffectiveState:
             target,
             agent_cfg,
             box_toml,
-            system_settings_path=global_toml,
+            system_settings_path=ssp,
             workset_config_path=ws_toml,
         )
         assert result2["model"] == "box-model"
@@ -467,7 +464,7 @@ class TestBuildEffectiveState:
             TargetSetting(key="model", description="Model", default="opus"),
         ]
         target = self._make_target(descriptors)
-        # crab state explicitly clears model.
+        # agent state explicitly clears model.
         agent_cfg = AgentConfig(state={"model": ""})
         project_toml = self._make_project_toml(tmp_path)
 
@@ -492,21 +489,21 @@ class TestBuildEffectiveState:
             TargetSetting(key="model", description="Model", default="opus"),
         ]
         # An override for claude, carried by the (legal) system file.
-        global_toml = self._make_system_settings(tmp_path, settings={"model": "sonnet"})
+        ssp = self._make_system_settings(tmp_path, settings={"model": "sonnet"})
         project_toml = self._make_project_toml(tmp_path / "proj")
         agent_cfg = AgentConfig()
 
         # claude sees its override.
         claude = self._make_target(descriptors, name="claude")
         res_claude = _build_effective_state(
-            claude, agent_cfg, project_toml, system_settings_path=global_toml
+            claude, agent_cfg, project_toml, system_settings_path=ssp
         )
         assert res_claude["model"] == "sonnet"
 
         # goose does NOT — it falls back to its declared default floor.
         goose = self._make_target(descriptors, name="goose")
         res_goose = _build_effective_state(
-            goose, agent_cfg, project_toml, system_settings_path=global_toml
+            goose, agent_cfg, project_toml, system_settings_path=ssp
         )
         assert res_goose["model"] == "opus"
 
@@ -524,20 +521,20 @@ class TestBuildEffectiveState:
             TargetSetting(key="model", description="Model", default="opus"),
         ]
         # Any-agent default + a claude-specific override, both on the system file.
-        global_toml = self._make_system_settings(tmp_path, settings={"model": "sonnet"})
-        write_agent_setting(global_toml, "model", "haiku", "default")
+        ssp = self._make_system_settings(tmp_path, settings={"model": "sonnet"})
+        write_agent_setting(ssp, "model", "haiku", "default")
         project_toml = self._make_project_toml(tmp_path / "proj")
         agent_cfg = AgentConfig()
 
         claude = self._make_target(descriptors, name="claude")
         res_claude = _build_effective_state(
-            claude, agent_cfg, project_toml, system_settings_path=global_toml
+            claude, agent_cfg, project_toml, system_settings_path=ssp
         )
         assert res_claude["model"] == "sonnet"  # agent-specific wins
 
         goose = self._make_target(descriptors, name="goose")
         res_goose = _build_effective_state(
-            goose, agent_cfg, project_toml, system_settings_path=global_toml
+            goose, agent_cfg, project_toml, system_settings_path=ssp
         )
         assert res_goose["model"] == "haiku"  # default tier applies
 
@@ -563,10 +560,13 @@ class TestXdgFallbackRegression:
     def _seeded_setup(self, tmp_path):
         """Build a target + stored configs carrying raw ``$XDG_CACHE_HOME``.
 
-        The global config mirrors the live carrier state: the
+        The system SETTINGS file mirrors the live carrier state: the
         setup-materialized ``system.cache`` entry (the value that crashed the
         launch) PLUS a declared agent leaf carrying the same token, so the
         expanded value is assertable end-to-end through the display read.
+        ⚑ It is the file the callers pass as ``system_settings_path``, so it is
+        named like one — ``kanibako.cfg`` may not carry a ``system:`` or
+        ``agent:`` table.
 
         ⚑ The leaf is ``template`` — a DECLARED §2d agent leaf (the keyspace is
         CLOSED, so a made-up probe name is not a key).  Its NAME is incidental
@@ -584,8 +584,8 @@ class TestXdgFallbackRegression:
         ]
         target.name = "claude"
 
-        global_toml = tmp_path / CONFIG_FILENAME
-        global_toml.write_text(
+        ssp = tmp_path / "settings.yaml"
+        ssp.write_text(
             "system:\n"
             "  cache: $XDG_CACHE_HOME/kanibako\n"
             "agent:\n"
@@ -599,7 +599,7 @@ class TestXdgFallbackRegression:
         # A minimal box-tier settings file (P8b sparse create writes no identity
         # section); the XDG expansion under test rides the global/agent tiers.
         write_project_config(project_toml, "base:image")
-        return target, AgentConfig(), project_toml, global_toml
+        return target, AgentConfig(), project_toml, ssp
 
     def test_stored_xdg_cache_value_with_env_var_set(self, tmp_path, monkeypatch):
         """THE dogfood repro (map-not-env): the env var IS exported, yet the
@@ -608,10 +608,10 @@ class TestXdgFallbackRegression:
         from kanibako.commands.start import _effective_behavior_for_display
 
         monkeypatch.setenv("XDG_CACHE_HOME", "/custom/cache")
-        target, agent_cfg, project_toml, global_toml = self._seeded_setup(tmp_path)
+        target, agent_cfg, project_toml, ssp = self._seeded_setup(tmp_path)
 
         result = _effective_behavior_for_display(
-            target, agent_cfg, project_toml, system_settings_path=global_toml
+            target, agent_cfg, project_toml, system_settings_path=ssp
         )
         assert result["template"] == "/custom/cache/kanibako/probe"
 
@@ -623,10 +623,10 @@ class TestXdgFallbackRegression:
         from kanibako.commands.start import _effective_behavior_for_display
 
         monkeypatch.delenv("XDG_CACHE_HOME", raising=False)
-        target, agent_cfg, project_toml, global_toml = self._seeded_setup(tmp_path)
+        target, agent_cfg, project_toml, ssp = self._seeded_setup(tmp_path)
 
         result = _effective_behavior_for_display(
-            target, agent_cfg, project_toml, system_settings_path=global_toml
+            target, agent_cfg, project_toml, system_settings_path=ssp
         )
         expected = str(Path.home() / ".cache" / "kanibako" / "probe")
         assert result["template"] == expected
@@ -638,10 +638,10 @@ class TestXdgFallbackRegression:
         from kanibako.commands.start import _effective_behavior_for_display
 
         monkeypatch.setenv("XDG_CACHE_HOME", "")
-        target, agent_cfg, project_toml, global_toml = self._seeded_setup(tmp_path)
+        target, agent_cfg, project_toml, ssp = self._seeded_setup(tmp_path)
 
         result = _effective_behavior_for_display(
-            target, agent_cfg, project_toml, system_settings_path=global_toml
+            target, agent_cfg, project_toml, system_settings_path=ssp
         )
         expected = str(Path.home() / ".cache" / "kanibako" / "probe")
         assert result["template"] == expected

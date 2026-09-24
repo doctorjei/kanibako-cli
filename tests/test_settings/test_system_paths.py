@@ -745,7 +745,8 @@ class TestResolverSplitRouting:
 
 class TestConfigDataCascade:
     """A user ``kanibako.cfg`` override of ``config.data`` cascades to
-    every dependent (all 5 config keys + the Layer-2 system paths that @-ref it).
+    every dependent (the other ``config.*`` keys + the Layer-2 system paths that
+    @-ref it).
     """
 
     def test_config_data_override_cascades_to_all(self, tmp_path):
@@ -758,10 +759,12 @@ class TestConfigDataCascade:
         assert resolved["config.agents"] == root / "agents"
         assert resolved["config.primary_workset"] == root / "primary_workset"
         assert resolved["config.registry"] == root / "global" / "registry.yaml"
+        assert resolved["config.journal"] == root / "global" / "journal.yaml"
         # Layer-2 system paths @-ref config.data → cascade too.
         assert resolved["system.channelroot"] == root / "channels"
         assert resolved["system.backup"] == root / "backup"
         assert resolved["system.template"] == root / "global" / "template"
+        assert resolved["system.canon"] == root / "global" / "canon"
 
 
 class TestResolveDataPath:
