@@ -1436,6 +1436,47 @@ kind = "code-patterns"
   note = "a KEY_TYPES kind: a host path, never coerced, tokens kept raw"
 
 # ---------------------------------------------------------------------------
+# FACT: the agent-tier template SOURCE keys -- `agent.<agent>.template`, the node
+# arm, and `agent.default.template`, its all-agents fallback -- default to the
+# values the manifest declares.
+# AUTHORITY: the manifest's `default:` cell is the declared side, sourced from
+# spec §2d; `launch.templates.agent_template_defaults` is the code side, the one
+# artifact that emits both arms (the main launch floor and the create-time seed
+# resolve both fold it).
+# CATCHES: either arm's formula edited away from the declared one -- a store
+# leaf, the fallback node, or the `+` store dirname a persona's node arm must
+# wear.
+#
+# ⚑ A NARROWED VIEW OF `keys`, like `standalone-absences`, `never-settable-paths`,
+# `workset-auth-chain` and `fixed-scope-keys` above, and for the reason their
+# banner gives: `where` makes the registry BE the group, so `equal` keeps "and
+# nothing else" over exactly these rows. Unlike `workset-auth-chain`, the oracle
+# needs no filter of its own -- it emits these two keys and nothing else. It is
+# placed here rather than among them because the narrowed-view figures quoted up
+# there are dated measurements that did not include it. Measured 2026-09-24
+# against them, it behaves as they do: `kinemata unused` prints a `skipped:`
+# line for it, and `check`'s `silent:` tally goes 374/474 to 376/476 -- both
+# figures by its 2 entries, the only line of `check` output that differs.
+# ⚑ `id_matches` AGAIN, and anchored at both ends, because `agent.shell.template`
+# is a third `template` row and this table does not claim it. 🛑 NOT BECAUSE
+# NOTHING PRODUCES IT: `agent_template_defaults` emits the node arm for EVERY
+# node, `shell` included, and a plain-shell box launches with node `shell`
+# (`agent_ref.GENERAL_SLOT`) -- so the floor carries `agent.shell.template =
+# @config.agents/shell/template` where keyspec §2d's shell fence declares
+# `<None>`. Measured 2026-09-24 on a scratch copy, this view widened to `shell`
+# and the oracle given a second `shell` probe: rc=1, `agent.shell.template: the
+# declaration records no default, and the code produces
+# '@config.agents/shell/template'`. A CODE defect, boarded as the conformance row
+# "`agent.shell.template` IS FLOORED FOR SHELL BOXES"; the arm joins this view
+# when the code moves, not before.
+[[registry]]
+name = "agent-template-source"
+kind = "yaml-mapping"
+source = "src/kanibako/data/keyspace-manifest.yaml"
+section = "keys"
+where = { id_matches = '^agent\.(<agent>|default)\.template$' }
+
+# ---------------------------------------------------------------------------
 # THE PARITY ORACLES. Each one runs a command that prints what the CODE really
 # produces and compares that set against what a registry above DECLARES.
 #
@@ -1995,6 +2036,88 @@ for kind in sorted(set(KEY_TYPES.values())):
     print(f"kanibako-key-kind: {kind}")
 """]
 extract = '(?m)^kanibako-key-kind: (\S+)$'
+
+# ---------------------------------------------------------------------------
+# THE FIRST TABLE HERE THAT TRANSLATES BOTH THE KEY AND THE VALUE, and it needs
+# `0.3.0`: `translate_identifier` does not exist before it. The row declares
+# `agent.<agent>.template = @meta.agent.<agent>.path/template`, and the code
+# emits `agent.<node>.template = @config.agents/<dirname>/template`. That is a
+# hop on the KEY and a hop on the VALUE, and on a value comparison `translate`
+# is spent on the values -- so before `0.3.0` the key hop had no spelling.
+#
+# ⚑ WHAT THE ONE-HOP RUN REPORTED, reproduced 2026-09-24 on this table with
+# `translate_identifier` removed: rc=1, `FAIL: 2 disagreement(s)` --
+# `agent.gemma℘claude.template: produced, declared by nothing` and
+# `agent.<agent>.template: declared, produced by nothing`. Two membership
+# findings, and NO VALUE COMPARED for the node arm, because a value is compared
+# only for an identifier both sides carry. (`agent.default.template` needs no
+# hop and was compared.)
+# 🛑 THE ORACLE COULD HAVE MADE THAT GREEN BY PRINTING `agent.<agent>.template`
+# ITSELF, and that is the route this table refuses. Re-keying the oracle's
+# output to the declaration's spelling hides the hop where no reader of this
+# config can see it; a capability you can route around silently is not absent,
+# it is undeclared. Both hops are therefore HERE, one key each, and the oracle
+# prints what the code returns and nothing else.
+#
+# ⚑ THE TWO HOPS ARE THE SPEC'S OWN COMPOSITION, NOT OURS.
+# `translate` is `meta.agent.<agent>.path` -- keyspec §2d
+# `@config.agents/%tolower(@meta.agent.<agent>.name)%`, a no-op fold on a
+# canonical node -- with the node's store name substituted;
+# `translate_identifier` is the parametric `<agent>` segment
+# substituted with the same node. Each touches the placeholder and nothing
+# else, so the `template` leaf is compared literally on both rows.
+#
+# 🛑 THE NODE IS A PERSONA, AND A BARE AGENT WOULD HIDE A DEFECT. For a persona
+# the key segment is the canonical `℘` node and the store dirname is the `+`
+# spelling (`agent_config.store_dirname`); for a bare agent the two are one
+# string. Measured, not reasoned: with the node arm's `store_dirname(agent_id)`
+# replaced by a bare `agent_id`, this table with node `claude` stays rc=0,
+# `2 declared, 2 produced, in agreement` -- blind to exactly the KEY vs
+# DIRECTORY split the node arm's own comment states.
+#
+# Measured 2026-09-24 on this tree, kinemata `0.3.0`:
+#   `# agent-template-source: 2 declared, 2 produced, in agreement, agreeing on
+#   default.`  rc=0
+# FOUR NEGATIVE CONTROLS, each one edit in a scratch copy under /tmp, each
+# restored to green afterwards, each rc=1 with `FAIL: 1 disagreement(s)` naming
+# BOTH values:
+#   node arm, `store_dirname(agent_id)` -> `agent_id` (code):
+#     `agent.gemma℘claude.template: default declared
+#     '@config.agents/gemma+claude/template', code produces
+#     '@config.agents/gemma℘claude/template'`
+#   node arm leaf -> `canon` (code):
+#     `... code produces '@config.agents/gemma+claude/canon'`
+#   `agent.<agent>.template` default leaf -> `canon` (manifest):
+#     `... default declared '@config.agents/gemma+claude/canon', code produces
+#     '@config.agents/gemma+claude/template'`
+#   fallback arm node `default` -> `shell` (code):
+#     `agent.default.template: default declared
+#     '@config.agents/default/template', code produces
+#     '@config.agents/shell/template'`
+# HOP CONTROL, `translate` removed and `translate_identifier` kept: rc=1,
+# `agent.gemma℘claude.template: default declared
+# '@meta.agent.<agent>.path/template', code produces
+# '@config.agents/gemma+claude/template'`. So the value hop is load-bearing too.
+# VACUITY CONTROL, the oracle's `print` removed: rc=1, both rows `declared,
+# produced by nothing`. `equal` needs no vacuity guard, and this is why.
+#
+# 🛑 WHAT THIS DOES NOT REACH: the node arm's `@config.agents/...` is an
+# UNROLLED hop -- `meta.agent.<a>.path` itself is never consulted by
+# `agent_template_defaults` -- so a change to how `settings_launch` builds that
+# anchor would not red here. The `meta.*` rows are `set: never` and belong to
+# their own floor.
+[[parity]]
+registry = "agent-template-source"
+command = ["{python}", "-c", """
+from kanibako.launch.templates import agent_template_defaults
+for key, value in sorted(agent_template_defaults("gemma℘claude").items()):
+    print(f"kanibako-template-source: {key}={value}")
+"""]
+extract = '(?m)^kanibako-template-source: ([^\s=]+)=(\S+)$'
+field = "default"
+authority = "declared"
+translate = { pattern = '^@meta\.agent\.<agent>\.path/', replacement = "@config.agents/gemma+claude/" }
+translate_identifier = { pattern = '^agent\.<agent>\.', replacement = "agent.gemma℘claude." }
 
 # ---------------------------------------------------------------------------
 # THE SHAPE RULES. `[[shape]]` reads only the declaration and asks whether it is
