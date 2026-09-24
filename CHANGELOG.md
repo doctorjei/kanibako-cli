@@ -27,7 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the `agent.default` backstop reaches a plain-shell launch through a real node rather than
   around an undeclared one. Clean break, documentation-only migration: nothing renames the
   directory for you, and there is no fallback read of the old one — see MIGRATION.md ("The
-  plain-shell store is `agents/shell/`") for the hand move.
+  plain-shell store is `<data>/agents/shell/`, and `$AGENT` in a plain-shell box is `shell`")
+  for the hand move.
 
 - **The built-in plain-shell target is named `shell`, not `no_agent`.** `--agent no_agent`
   is now `--agent shell`, and the `kanibako.agents` entry point is gone — the target is
@@ -37,6 +38,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   resolves its target like any other agent's, but the built-in installs no binds, creds,
   or layer-2 template — the tier exists and `agent.shell.*` resolves, which is the whole
   of the change. See MIGRATION.md (same section) for the re-spelling.
+
+- **A plain-shell box no longer takes a per-agent template seed by default.** In 1.7.2 a new
+  plain-shell box was seeded from its slot's agent-store template, `<data>/agents/general/template/`
+  or `<data>/agents/no_agent/template/`, through the source key `agent.general.template` — a key
+  the keyspace never declared. That slot is now the `shell` pseudo-agent (above), whose declared
+  template key `agent.shell.template` defaults to `<None>` (spec §2d). A template layer whose
+  source is `<None>` is skipped (spec §2a), so a shell box is seeded from the system template and,
+  for a primary or named box, the workset template, and its handbook chapter likewise takes no
+  agent layer. To keep a per-shell template, move the files to
+  `<data>/agents/shell/template/box/home` and set `agent.shell.template` to
+  `"@config.agents/shell/template"` in `<data>/global/settings.yaml`; or move them to the system
+  template (`<data>/global/template/box/home`, which seeds every new box) or a workset's
+  `template/box/home` — see MIGRATION.md ("The plain-shell store is `<data>/agents/shell/`, and
+  `$AGENT` in a plain-shell box is `shell`") for the commands. Boxes that already exist are
+  unaffected: seeding happens once, at create.
 
 - **The shipped `STATE_CLEANUP` procedure gains a step: correct references in other documents before
   archiving an element.** Every box receives this procedure in its handbook, and until now it checked

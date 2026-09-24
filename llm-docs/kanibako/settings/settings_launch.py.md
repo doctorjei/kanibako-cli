@@ -1340,7 +1340,11 @@ leaf is a 2-element `BindEntry(src, opts)` that carries no destination at all. T
 HERE, at the seam that knows the shape, and the destination handed to `_emit_bind` is the map key —
 never a value field. That is what makes "mount at the destination stored in the value"
 UNREPRESENTABLE rather than merely guarded against (R-8). Present-`None` binds are omitted at build
-(§3/§6e).
+(§3/§6e). ⚑ **The one `None` that reaches the loop is a `seeded` entry, and it is SKIPPED, not
+refused** — spec §2a: a layer whose source is `<None>` is skipped. `settings_expand` hands such a layer
+up as a present `None` (not absent) so that it still overrides a fallback arm in the §2d pick
+(`[R177]`); a whole-value source ref to a present `None` arrives the same way. Every other category
+keeps the raise.
 
 ⚑ `name` is the DESTINATION for every category now. There is no entry name in the keyspace, so the
 collision messages and the `binding_derivations.*` materialisation identify an entry by where it

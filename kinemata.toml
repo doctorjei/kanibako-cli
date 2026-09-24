@@ -1460,23 +1460,47 @@ kind = "code-patterns"
 # line for it, and `check`'s `silent:` tally goes 374/474 to 376/476 -- both
 # figures by its 2 entries, the only line of `check` output that differs.
 # ⚑ `id_matches` AGAIN, and anchored at both ends, because `agent.shell.template`
-# is a third `template` row and this table does not claim it. 🛑 NOT BECAUSE
-# NOTHING PRODUCES IT: `agent_template_defaults` emits the node arm for EVERY
-# node, `shell` included, and a plain-shell box launches with node `shell`
-# (`agent_ref.GENERAL_SLOT`) -- so the floor carries `agent.shell.template =
-# @config.agents/shell/template` where keyspec §2d's shell fence declares
-# `<None>`. Measured 2026-09-24 on a scratch copy, this view widened to `shell`
-# and the oracle given a second `shell` probe: rc=1, `agent.shell.template: the
-# declaration records no default, and the code produces
-# '@config.agents/shell/template'`. A CODE defect, boarded as the conformance row
-# "`agent.shell.template` IS FLOORED FOR SHELL BOXES"; the arm joins this view
-# when the code moves, not before.
+# is a third `template` row and this table CANNOT claim it. `agent_template_defaults`
+# supplies it for node `shell` as a present `None` (keyspec §2d's shell fence
+# declares `<None>`, and a supplied `<None>` beats the `agent.default` fallback),
+# and `equal` over a `field` cannot compare a `None`: a declared `null` renders as
+# NO value, while an identifier the oracle prints always carries one, `''` at
+# least. Measured 2026-09-24 on a scratch copy with the code FIXED, this view
+# widened to `shell` and the oracle printing the shell arm: rc=1,
+# `agent.shell.template: the declaration records no default, and the code
+# produces 'None'` -- and `produces ''` with the `None` printed as nothing. The
+# present `None` is `shell-template-none`'s, below.
 [[registry]]
 name = "agent-template-source"
 kind = "yaml-mapping"
 source = "src/kanibako/data/keyspace-manifest.yaml"
 section = "keys"
 where = { id_matches = '^agent\.(<agent>|default)\.template$' }
+
+# FACT: `agent.shell.template` -- keyspec §2d's shell fence declares it `<None>`,
+# and §2b says the pseudo-agent installs NO layer-2 template -- is SUPPLIED by
+# the code as a present `None`, never omitted.
+# AUTHORITY: the manifest row, sourced from the §2d fence;
+# `launch.templates.agent_template_defaults` is the code side.
+# CATCHES: the node arm floored as a store path again (`@config.agents/shell/
+# template`, which seeded every shell box from that store), AND the key OMITTED,
+# which lets the §2d pick read `agent.default.template` back as the shell box's
+# `meta.box.agent.template` -- a supplied `<None>` beats a fallback, an absence
+# does not.
+# ⚑ MEMBERSHIP ONLY, because `agent-template-source`'s `equal`-over-`default`
+# cannot carry a `None` (measured, above). The oracle prints the keys the shell
+# floor supplies AS `None`, so the claim is "declared, and supplied as `None`".
+# 🛑 THE SELECTOR LIMIT OF THE NARROWED VIEWS: `id_matches` selects the row by
+# name, not by its `default: null`, so a manifest cell that became a real value
+# would not red here. No declarative guard can select a present `null` (`absent`
+# means MISSING, and TOML has no null for `equals`); that half stays with the
+# manifest-conformance tests, as `standalone-absences`' first assertion does.
+[[registry]]
+name = "shell-template-none"
+kind = "yaml-mapping"
+source = "src/kanibako/data/keyspace-manifest.yaml"
+section = "keys"
+where = { id_matches = '^agent\.shell\.template$' }
 
 # ---------------------------------------------------------------------------
 # THE §4.3 TEN: EIGHT DECLARED 2026-09-24, TWO RECORDED. #35 (defaults
@@ -2228,6 +2252,29 @@ field = "default"
 authority = "declared"
 translate = { pattern = '^@meta\.agent\.<agent>\.path/', replacement = "@config.agents/gemma+claude/" }
 translate_identifier = { pattern = '^agent\.<agent>\.', replacement = "agent.gemma℘claude." }
+
+# Measured 2026-09-24, kinemata `0.3.0`, each variant a scratch copy under /tmp
+# run with `PYTHONPATH=<copy>/src`:
+#   FIXED: `# shell-template-none: 1 declared, 1 produced, in agreement.` (the
+#   run's one other red is `api-doc-artifacts`', which predates this table).
+#   `check`'s `silent:` tally goes 497/597 to 498/598 -- by its 1 entry, the only
+#   line of `check` output that differs; `shape`, `undeclared` and `claims`
+#   print byte-identical output.
+# NEGATIVE CONTROLS, each rc=1 with `agent.shell.template: declared, produced by
+# nothing`:
+#   `templates.py` at HEAD (the node arm floored as a store path);
+#   the key OMITTED for node `shell` (the shape [R177] rejects).
+# VACUITY: `equal` over a one-row view reds a silent oracle as "produced by
+# nothing", so it needs no guard of its own.
+[[parity]]
+registry = "shell-template-none"
+command = ["{python}", "-c", """
+from kanibako.launch.templates import agent_template_defaults
+for key, value in sorted(agent_template_defaults("shell").items()):
+    if value is None:
+        print(f"kanibako-shell-none: {key}")
+"""]
+extract = '(?m)^kanibako-shell-none: (\S+)$'
 
 # ---------------------------------------------------------------------------
 # THE §4.3 TEN, THEIR ORACLES. Registries and the FACT each one states are

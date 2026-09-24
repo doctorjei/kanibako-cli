@@ -271,6 +271,25 @@ The 3-state rule is unchanged from the name-keyed shape: a whole-value `src` ref
 makes the WHOLE entry `_ABSENT` (drop it — the binding cannot point anywhere); a present-`None` `src`
 yields `None` (the §3 bind/category OMIT terminal). `opts` is carried verbatim.
 
+⚑ **A `seeded` ENTRY IS A LAYER, AND A LAYER WITH A `<None>` SOURCE IS SKIPPED (spec §2a).** The node
+walk flags every entry of a `<scope>.seeded` map (`seed=True`, matched by the `_SEEDED` token at the
+entry's parent path). For such an entry, an EMBEDDED `@`-ref whose referent is a present `None` makes
+the source `<None>`, and the entry becomes a PRESENT `None` — not `_ABSENT`. A supplied `<None>` is a
+value and a default is a fallback that applies only where nothing was supplied (`[R177]`): an `_ABSENT`
+entry let the §2d pick (`settings_launch._agent_pick_node`) refill a shell box's `~/` from a user's
+`agent.default.seeded`. The collapse (`settings_launch._emit_bind_map`) then SKIPS a `None` `seeded`
+entry — this one and a whole-value source ref to a present `None` alike (§2a: a layer whose source is
+`<None>` is skipped). The rule is SOURCE-side only; a `None` on the destination side keeps its
+pre-existing handling in `_expand_dest_key` (a whole-value ref raises, an embedded one substitutes `""`).
+Every shipped layer embeds its root —
+`@agent.<a>.template/box/home` — and the embedded rule below renders a `None` as `""`, so without this
+the shell fence's `agent.shell.template: <None>` (or a user's `agent.<a>.template: null` /
+`workset.template: null`) became the HOST path `/box/home` rather than a skipped layer. This is the one
+place the referent is still visible: after expansion the `""` is indistinguishable from a real path.
+The substitution itself is unchanged — `_lookup_str` only RECORDS the `None` (its `none_refs` list)
+before coercing it. Scope: `seeded` entries only, present-`None` only. An ABSENT referent keeps the
+§6b embedded `""`, and every other category keeps the embedded rule as is.
+
 ## The host-source refusal — POST-expansion, and deliberately not [R147]'s test
 
 `_refuse_relative_host_src(raw, expanded, chain)` runs in BOTH bind arms once the source half is a
@@ -310,7 +329,9 @@ the engine's additive `defer_env` flag, proposed in chat and held pending the di
 resolver — so embedded refs are also fixpoint- and cycle-guarded (B7) — and coerces the result to a
 SUBSTITUTION string per the embedded-token rule (§6b). STRICT: an absent or present-None referent →
 `""`, an empty substitution that never deletes the host key; a resolved scalar → its string form. The
-`chain` it receives is `expand_expr`'s already-extended trail.
+`chain` it receives is `expand_expr`'s already-extended trail. When handed a `none_refs` list (the
+`seeded` arm above) it appends each present-`None` referent before the coercion, and the substitution
+is unchanged.
 
 Two degenerate shapes are handled to keep the function total. An embedded ref to a whole `Bind` has
 no single string form, so it substitutes the Bind's `host` (the source path). The dest-keyed shape

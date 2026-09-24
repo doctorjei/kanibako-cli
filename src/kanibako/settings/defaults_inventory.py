@@ -213,12 +213,25 @@ def source_groups() -> tuple[tuple[str, frozenset[str]], ...]:
      frozenset({"system.helpers.depth", "system.helpers.breadth"})),
     # --- rows with no value-carrying artefact at all --- #
     ("runtime-probed (podman graphroot)", frozenset({"box.images_store"})),
-    # ``default: <None>`` — an ABSENCE. No floor builder installs these at all.
+    # The §2d SHELL FENCE's ``agent.shell.template | <None>``, floored as a PRESENT
+    # ``None`` by ``launch.templates.agent_template_defaults``.  ⚑ ``<None>`` IS A VALUE
+    # ([R177]): SUPPLIED, so it beats the ``agent.default.template`` fallback, and so it
+    # has a carrier to name — which is why it is not in the "nothing declares it" group
+    # below.  Its layer is declared and SKIPPED at resolve (spec §2a).
+    ("launch/templates.py (shell fence, present None)",
+     frozenset({"agent.shell.template"})),
+    # ``default: <None>`` rows with NO carrier.  ⚑ ``agent.shell.{bootstrap,run_args,
+    # transform}`` are declared ``<None>`` by the same fence as ``agent.shell.template``
+    # above, but NO floor builder installs them yet: they are ABSENT, not ``None``, so a
+    # fallback still reaches them.  For ``bootstrap`` it lands on a value —
+    # ``commands.start._effective_bootstrap`` answers the declared
+    # ``agent.default.bootstrap`` (``tmux``) where no scope sets one — an [R177] gap of
+    # its own, not fixed here.  ``run_args`` and ``transform`` fall back to default arms
+    # that are themselves unset.  The rest are true ABSENCES as well.
     ("(nothing declares it — unset until you set it)", frozenset({
       "system.agent", "system.setup_completed", "box.shell", "agent.default.model",
       "agent.default.endpoint", "agent.default.run_args", "agent.default.transform",
-      "agent.shell.bootstrap", "agent.shell.run_args", "agent.shell.transform",
-      "agent.shell.template"})),
+      "agent.shell.bootstrap", "agent.shell.run_args", "agent.shell.transform"})),
     # ``default: {}`` — the resolver's own initial state for a category arm.
     ("(empty — the category starts with no entries)", frozenset({
       "box.bindings.ro", "box.bindings.rw", "box.masks",

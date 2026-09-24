@@ -95,8 +95,20 @@ runs (spec §0) — sourced from an `@`-ref SETTINGS key so the source stays use
 the cascade (setting `workset.template` / `agent.<a>.template` reroutes that layer):
 
 * `system.seeded` — ALWAYS (Q4: no carve-out).
-* `agent.<a>.seeded` — only when an agent is bound; the source key `agent.<a>.template` defaults to
+* `agent.<a>.seeded` — for EVERY agent node (spec §2a declares `<scope>.seeded` at every scope,
+  `agent.<active>` included); the source key `agent.<a>.template` defaults to
   `@config.agents/<a>/template` (spec §2a/§2d; `<a>` = the ACTIVE NODE — persona or bare harness).
+  ⚑ WHETHER IT SEEDS IS DECIDED AT RESOLVE, OFF THE CASCADE — never here, off the default. The SHELL
+  node (`agent_ref.GENERAL_SLOT`) has a present-`None` arm (a supplied value, which beats the default
+  arm — `[R177]`; §2d's shell fence declares `agent.shell.template | <None>`, and §2b says the
+  pseudo-agent installs no layer-2 template), so by default its layer is SKIPPED — and a USER-set
+  `agent.shell.template` seeds through the same layer. The skip is `settings_expand`'s: §2a says a
+  layer whose source is `<None>` is SKIPPED, and the layer EMBEDS its root, so a `seeded` entry whose
+  embedded `@`-ref resolves to a present `None` is DROPPED at expansion rather than rendered as `""`
+  (which would be the HOST path `/box/home`). One rule for every layer and every scope: a user's
+  `agent.<a>.template: null` or `workset.template: null` skips its layer the same way.
+  ⚑ Until 2026-09-24 this table gated the layer on the DEFAULT arm's value. That dropped a user-set
+  `agent.shell.template` at create, and left a user's null rendering as `/box/home`.
   ⚑ The KEY segment is the CANONICAL node (`persona℘harness`); the VALUE is a store DIRECTORY, so
   it is the `+` spelling `settings.agent_config.store_dirname` produces. Absent for a NO-AGENT box. ⚑ NODE-ROOTED since 2026-08-27 — see "the persona's template
   is SHARED BY LINK" below; it used to spell `harness_of(<a>)`, which for a bare agent is the same
@@ -119,6 +131,18 @@ the cascade (setting `workset.template` / `agent.<a>.template` reroutes that lay
 
 `agent.default.template` = `@config.agents/default/template` (the §2d DEFAULT-TIER arm) and
 `agent.<a>.template` = `@config.agents/<a>/template` (the NODE arm), under one `if agent_id` gate.
+⚑ The shell node's NODE arm is a present `None`. Its §2d fence declares
+`agent.shell.template | <None>`, and a `<None>` there is a SUPPLIED value: `agent.default.template` is
+a fallback that applies only where nothing was supplied, so it never reaches a shell box (`[R177]`,
+which rejected OMITTING the key — absence lets the §2d pick read the default arm back as the shell
+box's `meta.box.agent.template`). The `agent.shell.seeded` layer is still declared; the `None` source
+skips it at resolve (see the seed table above). Until 2026-09-24 the node arm was emitted for
+`shell` as a store path: the floor carried `@config.agents/shell/template` and every shell box was
+seeded from that store (which `install_packaged_templates` creates). Pinned by `test_templates.py`'s
+`test_the_shell_node_arm_is_a_present_none_over_a_declared_layer`,
+`test_a_shell_node_box_takes_no_seed_from_the_shell_store`,
+`test_a_user_set_shell_template_seeds_its_files_at_create` and
+`test_a_shell_node_launch_floors_a_present_none_shell_template`.
 SOURCE SCALARS ONLY — no `seeded` layer, which is what lets it be folded into an ORDINARY LAUNCH.
 
 ⚑⚑ TWO FOLDS, AND THAT IS THE POINT. `template_seed_defaults` COMPOSES it (so the create-time seed
@@ -129,8 +153,8 @@ and no second carrier. Before the split, both arms were emitted ONLY in the seed
 `@agent.default.template` resolved to `__MISSING__` for every box that already existed.
 
 ⚑ INERT FOR DELIVERY IS NOT UNREACHABLE, and conflating the two is how this stayed broken. The
-default arm IS inert for delivery — the node arm is emitted unconditionally, so the §2d fallback to
-it never fires (proved by mutation: poisoning this arm moves no seed, poisoning the node arm reds
+default arm IS inert for delivery — the node arm is emitted for every agent node — a store path for
+a true agent, a present `None` for `shell` — so the §2d fallback to it never fires (proved by mutation: poisoning this arm moves no seed, poisoning the node arm reds
 ten cases). DELIVERY asks which arm the §2d pick lands on; REACHABILITY asks whether
 `@agent.default.template` resolves at all, and the answer to that must be yes: the key is DECLARED
 with a real default, so some artefact must carry its value or `system defaults` prints a row it
@@ -189,8 +213,8 @@ Measured, not assumed; pinned by
 and end-to-end by `test_templates.py::TestPersonaTemplateLayerThroughTheLink`.
 
 ⚑ The shim lays the template link BEFORE its own no-target return, because `template` — unlike
-`common` — is not target-declared: `template_seed_defaults` emits the node arm for every agent id,
-installed plugin or not.
+`common` — is not target-declared: `template_seed_defaults` emits a store-path node arm for every
+TRUE agent id (the `shell` pseudo-agent's arm is a present `None`), installed plugin or not.
 
 ⚑ Nothing guarantee-creates `agents/<node>/template` behind the shim's back. The L7
 guarantee-create acts on MOUNT sources, and a seed source is a COPY; `ensure_agent_stores` (which
@@ -687,6 +711,10 @@ source key may now be floored elsewhere — `workset.template` is `workset_ancho
 testing for the scalar would ask the seed table about a row it no longer declares, and the workset
 layer would silently vanish from the handbook copy. The LAYER is what this function is enumerating
 the roots of, and it is the entry the table always carries.
+
+⚑ A NAMED KEY MAY RESOLVE TO A SUPPLIED `<None>` — the shell node's `agent.shell.template`, or a
+user's null. The seam (`commands.start._install_box_handbook`) skips that layer QUIETLY, as the seed
+does; only a key that did not resolve at all earns its warning.
 
 ⚑ THESE STAY KEYS. They are separate declared SOURCE keys — NOT `seeded` entries — and they carry
 the user's repoint route (`config set workset.template` reroutes this copy, pinned by the repoint

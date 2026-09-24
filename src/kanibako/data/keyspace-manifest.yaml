@@ -1545,11 +1545,14 @@ keys:
            hops in prose one line later for the SIBLING key ('agent.default.canon
            resolves to @config.agents/default/canon'), which is why this row spells
            the result rather than the formula — matching agent.default.canon.
-           ⚑ THE ARTEFACT THAT EMITS IT is launch.templates.template_seed_defaults,
-           beside the NODE arm agent.<agent>.template and under the same agent gate.
-           It is INERT for delivery: the node arm is installed for EVERY agent (whose
-           template/ subtree ensure_agent_stores guarantee-creates), so the §2d
-           fallback to this arm never fires. It is emitted anyway because a DECLARED
+           ⚑ THE ARTEFACT THAT EMITS IT is launch.templates.agent_template_defaults
+           (folded into the main launch floor; template_seed_defaults composes it for
+           the create-time seed), beside the NODE arm agent.<agent>.template and under
+           the same agent gate. It is INERT for delivery: the node arm is installed for
+           every agent node (a store path, whose template/ subtree ensure_agent_stores
+           guarantee-creates, for a true agent; a present None for the shell
+           pseudo-agent, whose fence declares <None>), so the §2d fallback to this arm
+           never fires. It is emitted anyway because a DECLARED
            default needs a code artefact carrying its value — `system defaults`
            refuses to print a row it cannot source, and a default no artefact
            produces would be exactly that row."
