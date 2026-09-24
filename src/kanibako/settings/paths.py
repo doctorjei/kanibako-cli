@@ -487,6 +487,11 @@ def resolve_system_paths(set_values: Mapping[str, str],
     # ⚑ Resolving HERE and not at ``_primary_box_paths`` is deliberate — every consumer
     # of ``std.boxes`` / ``std.primary_logs`` / ``std.primary_vault_*`` (create, rm,
     # clean, purge, the helper hub) then sees the ONE answer.
+    # ⚑ KEYED BY NON-KEY NAMES (``_primary_*``, no dotted root), deliberately.  These are
+    # internal bookkeeping, not settings: the old ``system._*`` spellings are recorded as
+    # ``not_keys.code_residue`` in the manifest, and a key-shaped name here is a stray in
+    # the CLOSED keyspace (spec §0).  A consumer filtering this table by ``config.`` /
+    # ``system.`` prefix never sees them.
     # ⚑ Deferred import: the documented ``settings.paths`` <-> ``project.workset`` cycle.
     pw = resolved["config.primary_workset"]
     from kanibako.project.workset import (load_workset_settings_doc, resolve_workset_boxes,
@@ -494,10 +499,10 @@ def resolve_system_paths(set_values: Mapping[str, str],
                                           resolve_workset_vault_rw)
 
     pw_settings = load_workset_settings_doc(pw)
-    resolved["system._boxes"] = resolve_workset_boxes(pw, pw_settings)
-    resolved["system._primary_vault_ro"] = resolve_workset_vault_ro(pw, pw_settings)
-    resolved["system._primary_vault_rw"] = resolve_workset_vault_rw(pw, pw_settings)
-    resolved["system._primary_logs"] = resolve_workset_logs(pw, pw_settings)
+    resolved["_primary_boxes"] = resolve_workset_boxes(pw, pw_settings)
+    resolved["_primary_vault_ro"] = resolve_workset_vault_ro(pw, pw_settings)
+    resolved["_primary_vault_rw"] = resolve_workset_vault_rw(pw, pw_settings)
+    resolved["_primary_logs"] = resolve_workset_logs(pw, pw_settings)
     return resolved
 
 
@@ -827,10 +832,10 @@ def load_std_paths(config: BootstrapConfig | None = None) -> StandardPaths:
                      channels_broadcast=resolved["system.channels.broadcast"],
                      channels_mailboxes=resolved["system.channels.mailboxes"],
                      channels_share=resolved["system.channels.share"],
-                     boxes=resolved["system._boxes"],
-                     primary_vault_ro=resolved["system._primary_vault_ro"],
-                     primary_vault_rw=resolved["system._primary_vault_rw"],
-                     primary_logs=resolved["system._primary_logs"])
+                     boxes=resolved["_primary_boxes"],
+                     primary_vault_ro=resolved["_primary_vault_ro"],
+                     primary_vault_rw=resolved["_primary_vault_rw"],
+                     primary_logs=resolved["_primary_logs"])
 
 
 def resolve_project(std: StandardPaths, config: BootstrapConfig, project_dir: str | None = None, *,

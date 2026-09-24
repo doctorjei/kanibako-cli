@@ -316,16 +316,15 @@ def _path_tier_split() -> "tuple[dict[str, str], dict[str, object]]":
     ).items():
         if dotted.startswith("config."):
             config_foundation[dotted] = str(path)
-        # ⚑ DECLARED KEYS ONLY, and the filter is not decoration. The path tier's
-        # ``system.*`` half is NOT all keyspace: ``resolve_system_paths`` also derives
-        # four PRIMARY-workset surrogates (``system._boxes``,
-        # ``system._primary_{vault_ro,vault_rw,logs}``) whose ONLY consumers are the
-        # ``StandardPaths`` fields built out of the same dict — the manifest classes
-        # them ``not_keys.code_residue``, *"appeared in CODE only, never
-        # spec-sanctioned"*. Floored unfiltered they became REAL nodes in every
-        # resolved store, which is a CLOSED-keyspace breach (spec §0) manufactured by
-        # code rather than declared. This is a FILTER, not a silent accept of user
-        # input: nothing here comes from a user, and no ``@system._*`` ref exists.
+        # ⚑ DECLARED KEYS ONLY. ``resolve_system_paths`` also carries the four PRIMARY-workset
+        # roots under the NON-KEY names ``_primary_{boxes,vault_ro,vault_rw,logs}``; their only
+        # consumers are the ``StandardPaths`` fields built from the same dict, and they fall out
+        # at the prefix test above. (Their old ``system._*`` spellings, which the manifest
+        # classes ``not_keys.code_residue``, *"appeared in CODE only, never spec-sanctioned"*,
+        # passed that test and were floored as REAL nodes in every resolved store, a
+        # CLOSED-keyspace breach (spec §0).) ``key_validity`` stays as the guard against any
+        # future undeclared ``system.*`` entry. It is a FILTER, not a silent accept of user
+        # input: nothing here comes from a user.
         elif dotted.startswith("system.") and key_validity(
             dotted, valid_agents=(),
         ) is None:

@@ -9,8 +9,9 @@ path settings, split by prefix), ``config.load_config`` populating
 Keys are the FULL dotted form: Layer-1 ``config.{data,settings,agents,
 primary_workset,registry}`` (the bootstrap foundation) + Layer-2 ``system.*``
 path settings (channelroot/template/canon/backup/cache/runtime + channels.*).
-``config.global`` is ELIMINATED.  The OLD per-project box store resolves under
-the transitional pseudo-key ``system._boxes`` (the ``StandardPaths.boxes`` alias).
+``config.global`` is ELIMINATED.  The PRIMARY-workset box/vault/logs roots resolve
+under the non-key names ``_primary_{boxes,vault_ro,vault_rw,logs}`` (the
+``StandardPaths`` fields); they are bookkeeping, never ``system.*`` keys.
 
 EQUIVALENCE ORACLE: the RESOLVED host paths are byte-identical to the pre-reshape
 build for the default config (modulo the dropped ``system.global`` field) — the 5
@@ -70,10 +71,10 @@ class TestResolveSystemPathsDefaults:
         # live via the RO bundle + launch-flatten, not a host runtime install.
         assert "system.instructions" not in resolved
         # Phase 5: PRIMARY box/vault/logs roots live under the PRIMARY workset.
-        assert resolved["system._boxes"] == base / "primary_workset" / "boxes"
-        assert resolved["system._primary_vault_ro"] == base / "primary_workset" / "vault" / "ro"
-        assert resolved["system._primary_vault_rw"] == base / "primary_workset" / "vault" / "rw"
-        assert resolved["system._primary_logs"] == base / "primary_workset" / "logs"
+        assert resolved["_primary_boxes"] == base / "primary_workset" / "boxes"
+        assert resolved["_primary_vault_ro"] == base / "primary_workset" / "vault" / "ro"
+        assert resolved["_primary_vault_rw"] == base / "primary_workset" / "vault" / "rw"
+        assert resolved["_primary_logs"] == base / "primary_workset" / "logs"
 
     def test_config_foundation_resolves_standalone(self, tmp_path):
         """The Layer-1 foundation resolves the 6 config keys on its own."""
@@ -113,15 +114,15 @@ class TestResolveSystemPathsDefaults:
     def test_returns_every_declared_key(self, tmp_path):
         resolved = resolve_system_paths({}, data_home=tmp_path, home=tmp_path)
         # Every declared Layer-1 config key + Layer-2 system key + the derived
-        # PRIMARY-workset pseudo-keys.
+        # PRIMARY-workset roots under their non-key names.
         assert set(resolved) == (
             set(CONFIG_PATH_DEFAULTS)
             | set(SYSTEM_PATH_DEFAULTS)
             | {
-                "system._boxes",
-                "system._primary_vault_ro",
-                "system._primary_vault_rw",
-                "system._primary_logs",
+                "_primary_boxes",
+                "_primary_vault_ro",
+                "_primary_vault_rw",
+                "_primary_logs",
             }
         )
 
@@ -137,7 +138,7 @@ class TestResolveSystemPathsOverrides:
         custom = tmp_path / "custom"
         assert resolved["config.data"] == custom
         assert resolved["config.agents"] == custom / "agents"
-        assert resolved["system._boxes"] == custom / "primary_workset" / "boxes"
+        assert resolved["_primary_boxes"] == custom / "primary_workset" / "boxes"
         # A Layer-2 system.* path @-refs config.data → tracks the override too.
         assert resolved["system.channelroot"] == custom / "channels"
         assert resolved["system.template"] == custom / "global" / "template"
@@ -549,10 +550,10 @@ class TestLoadSystemConfig:
             set(CONFIG_PATH_DEFAULTS)
             | set(SYSTEM_PATH_DEFAULTS)
             | {
-                "system._boxes",
-                "system._primary_vault_ro",
-                "system._primary_vault_rw",
-                "system._primary_logs",
+                "_primary_boxes",
+                "_primary_vault_ro",
+                "_primary_vault_rw",
+                "_primary_logs",
             }
         )
         assert resolved["config.data"] == tmp_path / "kanibako"
