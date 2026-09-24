@@ -699,6 +699,26 @@ class TestDetachMode:
             assert rc == 125
 
 
+class TestStop:
+    """Test stop(): the bool is the runtime's EXIT STATUS, never a liveness reading."""
+
+    def test_stop_success(self):
+        from unittest.mock import MagicMock
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        with patch("kanibako.runtime.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=0)
+            assert rt.stop("mycontainer") is True
+            cmd = m.call_args[0][0]
+            assert cmd == ["/usr/bin/podman", "stop", "mycontainer"]
+
+    def test_stop_failure(self):
+        from unittest.mock import MagicMock
+        rt = ContainerRuntime(command="/usr/bin/podman")
+        with patch("kanibako.runtime.container.subprocess.run") as m:
+            m.return_value = MagicMock(returncode=125)
+            assert rt.stop("nonexistent") is False
+
+
 class TestRmAndIsRunning:
     """Test rm() and is_running() methods."""
 
