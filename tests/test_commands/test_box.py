@@ -1005,7 +1005,7 @@ class TestBoxDuplicateCrossMode:
 
         dst_dir = tmp_home / "dup_dec_dst"
 
-        args = self._make_args(src_dir, dst_dir, "default")
+        args = self._make_args(src_dir, dst_dir, "primary")
         rc = run_duplicate(args)
         assert rc == 0
 
@@ -1051,7 +1051,7 @@ class TestBoxDuplicateCrossMode:
             side_effect=RuntimeError("boom"),
         ):
             try:
-                run_duplicate(self._make_args(src_dir, dst_dir, "default", bare=True))
+                run_duplicate(self._make_args(src_dir, dst_dir, "primary", bare=True))
             except RuntimeError:
                 pass
 
@@ -1063,7 +1063,7 @@ class TestBoxDuplicateCrossMode:
     def test_duplicate_cross_mode_to_registered_primary_refuses_cleanly(
         self, config_file, tmp_home, credentials_dir,
     ):
-        """F2: a cross-mode ``--to-mode primary`` onto a dest workspace that is
+        """F2: a cross-mode ``--to primary`` onto a dest workspace that is
         ALREADY a registered primary box hits Guard 1 (one box per workspace
         path).  The refusal must be CLEAN (rc=1, no traceback), leave the dest
         box's registration intact, and mint no stray box dir.
@@ -1087,7 +1087,7 @@ class TestBoxDuplicateCrossMode:
         names_before = load_primary_boxes(std.primary_workset)
 
         rc = run_duplicate(
-            self._make_args(src_dir, dst_dir, "default", force=True)
+            self._make_args(src_dir, dst_dir, "primary", force=True)
         )
         assert rc == 1
 
@@ -1124,7 +1124,7 @@ class TestBoxDuplicateCrossMode:
 
         names_before = load_primary_boxes(std.primary_workset)
 
-        rc = run_duplicate(self._make_args(src_dir, dst_dir, "default"))
+        rc = run_duplicate(self._make_args(src_dir, dst_dir, "primary"))
         assert rc == 1
 
         # The copy this call created was rolled back; registration intact.
@@ -1166,7 +1166,7 @@ class TestBoxDuplicateCrossMode:
             "kanibako.commands.box._duplicate.shutil.copytree",
             side_effect=_copytree_oserror,
         ):
-            rc = run_duplicate(self._make_args(src_dir, dst_dir, "default"))
+            rc = run_duplicate(self._make_args(src_dir, dst_dir, "primary"))
 
         assert rc == 1
         # No stray dir created by this call; no orphan name registered.
@@ -1211,7 +1211,7 @@ class TestBoxDuplicateCrossMode:
             return_value=None,
         ):
             rc = run_duplicate(
-                self._make_args(src_dir, dst_dir, "default", force=False)
+                self._make_args(src_dir, dst_dir, "primary", force=False)
             )
 
         assert rc == 1
@@ -1261,7 +1261,7 @@ class TestBoxDuplicateCrossMode:
             return_value=None,
         ):
             rc = run_duplicate(
-                self._make_args(src_dir, dst_dir, "default", force=False)
+                self._make_args(src_dir, dst_dir, "primary", force=False)
             )
 
         assert rc == 1
@@ -1390,7 +1390,7 @@ class TestBoxDuplicateCrossMode:
         assert len(prefix) == 5
         assert leaf == "b3_dst"
 
-    def test_duplicate_cross_mode_to_workset_requires_workset_flag(self, config_file, tmp_home, credentials_dir):
+    def test_duplicate_cross_mode_to_workset_requires_workset_flag(self, config_file, tmp_home, credentials_dir, capsys):
         from kanibako.commands.box import run_duplicate
 
         config = load_config(config_file)
@@ -1403,9 +1403,10 @@ class TestBoxDuplicateCrossMode:
         dst_dir = tmp_home / "dup_ws_dst"
 
         # No --workset flag → error
-        args = self._make_args(src_dir, dst_dir, "workset")
+        args = self._make_args(src_dir, dst_dir, "named")
         rc = run_duplicate(args)
         assert rc == 1
+        assert "--workset is required with --to named" in capsys.readouterr().err
 
 
 # ---------------------------------------------------------------------------
@@ -1590,7 +1591,7 @@ class TestBoxDuplicateToWorkset:
                     bare=False, force=True):
         return argparse.Namespace(
             source_path=str(source), new_path=str(dest),
-            to_mode="workset", bare=bare, force=force,
+            to_mode="named", bare=bare, force=force,
             workset=workset, project_name=project_name,
         )
 
@@ -1630,7 +1631,7 @@ class TestBoxDuplicateToWorkset:
         # Workspace NOT copied (skeleton dir exists from add_project but no code.py)
         assert not (ws.workspaces_dir / "dup_bare_src" / "code.py").exists()
 
-    def test_duplicate_to_workset_requires_workset_flag(self, config_file, tmp_home, credentials_dir):
+    def test_duplicate_to_workset_requires_workset_flag(self, config_file, tmp_home, credentials_dir, capsys):
         from kanibako.commands.box import run_duplicate
 
         config = load_config(config_file)
@@ -1640,6 +1641,7 @@ class TestBoxDuplicateToWorkset:
         args = self._make_args(project_dir, tmp_home / "unused")
         rc = run_duplicate(args)
         assert rc == 1
+        assert "--workset is required with --to named" in capsys.readouterr().err
 
     def test_duplicate_to_workset_preserves_source(self, config_file, tmp_home, credentials_dir):
         from kanibako.commands.box import run_duplicate
@@ -1775,7 +1777,7 @@ class TestBoxDuplicateExternal:
 
         args = argparse.Namespace(
             source_path=str(ext_dir), new_path=str(tmp_home / "unused"),
-            to_mode="workset", bare=True, force=True,
+            to_mode="named", bare=True, force=True,
             workset="ext-ws", project_name="dup-proj",
         )
         rc = run_duplicate(args)
@@ -1824,7 +1826,7 @@ class TestBoxDuplicateExternal:
 
         args = argparse.Namespace(
             source_path=str(ext_dir), new_path=str(tmp_home / "unused"),
-            to_mode="workset", bare=True, force=True,
+            to_mode="named", bare=True, force=True,
             workset="ext-ws2", project_name="dup-proj",
         )
         rc = run_duplicate(args)
@@ -1852,7 +1854,7 @@ class TestBoxDuplicateExternal:
 
         args = argparse.Namespace(
             source_path=str(project_dir), new_path=str(tmp_home / "unused"),
-            to_mode="workset", bare=False, force=True,
+            to_mode="named", bare=False, force=True,
             workset="plain-ws", project_name=None,
         )
         rc = run_duplicate(args)
@@ -1865,10 +1867,10 @@ class TestBoxDuplicateExternal:
         # No external wiring for an internal (copied) workspace.
         assert _connected_index(std) == {}
 
-    def test_duplicate_external_to_default(
+    def test_duplicate_external_to_primary(
         self, config_file, tmp_home, credentials_dir,
     ):
-        """``--to default`` of an external-connected source succeeds.
+        """``--to primary`` of an external-connected source succeeds.
 
         The destination gets the EXTERNAL dir's contents (copied from the live
         workspace, not the discoverability symlink) plus default-mode metadata.
@@ -1887,7 +1889,7 @@ class TestBoxDuplicateExternal:
 
         args = argparse.Namespace(
             source_path=str(ext_dir), new_path=str(dest),
-            to_mode="default", bare=False, force=True,
+            to_mode="primary", bare=False, force=True,
             workset=None, project_name=None,
         )
         rc = run_duplicate(args)
@@ -1931,10 +1933,10 @@ class TestBoxDuplicateExternal:
         assert (ext_dir / "code.py").read_text() == "print('external')"
         assert _connected_index(std) == before
 
-    def test_bare_duplicate_external_to_default_allowed(
+    def test_bare_duplicate_external_to_primary_allowed(
         self, config_file, tmp_home, credentials_dir,
     ):
-        """``--bare --to default`` of an external source succeeds (no aliasing).
+        """``--bare --to primary`` of an external source succeeds (no aliasing).
 
         The bare result makes ``new_path`` itself the workspace, so the 1:1
         connected.yaml refusal does NOT apply.  Metadata only, no crash, no
@@ -1952,7 +1954,7 @@ class TestBoxDuplicateExternal:
 
         args = argparse.Namespace(
             source_path=str(ext_dir), new_path=str(dest),
-            to_mode="default", bare=True, force=True,
+            to_mode="primary", bare=True, force=True,
             workset=None, project_name=None,
         )
         rc = run_duplicate(args)
@@ -1965,10 +1967,10 @@ class TestBoxDuplicateExternal:
         assert (ext_dir / "code.py").read_text() == "print('external')"
         assert _connected_index(std) == before
 
-    def test_bare_duplicate_external_to_workset_still_refused(
+    def test_bare_duplicate_external_to_named_still_refused(
         self, config_file, tmp_home, credentials_dir, capsys,
     ):
-        """The narrowed guard still refuses ``--bare --to workset`` (aliasing case)."""
+        """The narrowed guard still refuses ``--bare --to named`` (aliasing case)."""
         from kanibako.commands.box import run_duplicate
 
         config = load_config(config_file)
@@ -1980,7 +1982,7 @@ class TestBoxDuplicateExternal:
 
         args = argparse.Namespace(
             source_path=str(ext_dir), new_path=str(tmp_home / "unused"),
-            to_mode="workset", bare=True, force=True,
+            to_mode="named", bare=True, force=True,
             workset="extbarews-ws", project_name="dup-proj",
         )
         rc = run_duplicate(args)
@@ -2021,7 +2023,7 @@ class TestBoxDuplicateFromWorkset:
         workspace_path = ws.workspaces_dir / "ws-proj"
         dest = tmp_home / "dup_ws_ac_dst"
 
-        args = self._make_args(workspace_path, dest, "default")
+        args = self._make_args(workspace_path, dest, "primary")
         rc = run_duplicate(args)
         assert rc == 0
 
@@ -2075,7 +2077,7 @@ class TestBoxDuplicateFromWorkset:
         workspace_path = ws.workspaces_dir / "pres-proj"
         dest = tmp_home / "dup_ws_pres_dst"
 
-        args = self._make_args(workspace_path, dest, "default")
+        args = self._make_args(workspace_path, dest, "primary")
         rc = run_duplicate(args)
         assert rc == 0
 
@@ -2128,10 +2130,10 @@ class TestBoxDuplicateNoToMode:
         # Fresh identity (not the source's box name).
         assert dst_names[0] != src_proj.name
 
-    def test_named_source_without_to_duplicates_to_default(
+    def test_named_source_without_to_duplicates_to_primary(
         self, config_file, tmp_home, credentials_dir,
     ):
-        """A workset (named) source resolves without --to into a default box."""
+        """A workset (named) source resolves without --to into a primary box."""
         from kanibako.commands.box import run_duplicate
         from kanibako.project.workset import add_project, create_workset
 

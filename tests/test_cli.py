@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import logging
+import re
 
 import pytest
 
 from kanibako.cli import build_parser
+from kanibako.settings.paths import BoxMode
 
 from tests.support.filenames import CONFIG_FILENAME
 
@@ -800,10 +802,28 @@ class TestParser:
 
     def test_box_duplicate_workset_flag(self):
         parser = build_parser()
-        args = parser.parse_args(["box", "duplicate", "/src", "/dst", "--to", "workset", "--workset", "myws", "--name", "proj"])
-        assert args.to_mode == "workset"
+        args = parser.parse_args(["box", "duplicate", "/src", "/dst", "--to", "named", "--workset", "myws", "--name", "proj"])
+        assert args.to_mode == "named"
         assert args.workset == "myws"
         assert args.project_name == "proj"
+
+    @pytest.mark.parametrize("mode", list(BoxMode))
+    def test_box_duplicate_to_takes_mode_tokens(self, mode):
+        """``box duplicate --to`` accepts every ``BoxMode`` token as that mode."""
+        args = build_parser().parse_args(["box", "duplicate", "/src", "/dst", "--to", mode.value])
+        assert BoxMode(args.to_mode) is mode
+
+    @pytest.mark.parametrize("retired", ["default", "workset"])
+    def test_box_duplicate_to_refuses_retired_spellings(self, retired, capsys):
+        """Retired ``--to`` spellings are refused; the choices offered are exactly the modes."""
+        with pytest.raises(SystemExit) as exc:
+            build_parser().parse_args(["box", "duplicate", "/src", "/dst", "--to", retired])
+        assert exc.value.code == 2
+        err = capsys.readouterr().err
+        assert f"invalid choice: '{retired}'" in err
+        # argparse quotes each choice on 3.11 (CI) and not on 3.13; strip the quotes either way.
+        offered = re.search(r"choose from (.+)\)", err).group(1)
+        assert [c.strip("' ") for c in offered.split(",")] == [m.value for m in BoxMode]
 
     # -- Top-level alias tests --
 
