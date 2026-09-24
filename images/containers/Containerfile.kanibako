@@ -50,6 +50,20 @@ RUN if [ -f /etc/subuid ]; then sed -i "s/^droste:/$AGENT_USER:/" /etc/subuid; f
 # from here on fails loudly instead. Inside the `if` below, keep the commands
 # `;`-separated: `set -e` ignores a failure in a non-final `&&` member, so an
 # `&&` chain there would swallow a failed `apt-get update`.
+#
+# ⚑ `--ignore-installed` is what lets this install coexist with Debian's own
+# Python packages. Debian ships them (python3-packaging, python3-yaml,
+# python3-requests, ...) without a RECORD file, so pip cannot uninstall one,
+# and any requirement here that wants a newer version than Debian ships fails
+# the whole build (twine 7.0.0 requires packaging>=26.1 against trixie's 25.0).
+# With the flag, pip never uninstalls: it installs the full resolved set into
+# /usr/local/lib/python3.X/dist-packages, which comes before
+# /usr/lib/python3/dist-packages on sys.path and so shadows the Debian copies.
+# The cost is duplicate copies of the packages in both places, and
+# system-python tools importing the PyPI versions. The install stays in the
+# SYSTEM python on purpose, not in a venv: the in-box `kanibako` is the host's
+# package bind-mounted at /opt/kanibako and run by `#!/usr/bin/env python3`
+# (scripts/kanibako-entry), so its runtime deps must import under system python3.
 COPY --from=cliwheel kanibako_cli-*.whl /tmp/cliwheel/
 RUN set -eu; \
     if ! python3 -m pip --version >/dev/null 2>&1; then \
@@ -69,7 +83,8 @@ RUN set -eu; \
                exit 1 ;; \
         esac; \
     fi; \
-    python3 -m pip install --break-system-packages "$1" build twine; \
+    python3 -m pip install --break-system-packages --ignore-installed \
+        "$1" build twine; \
     rm -rf /tmp/cliwheel; \
     kanibako --version
 
