@@ -1,32 +1,42 @@
 name: Prune Image Tags
 
-# Manually prune a tag (default: the retired `edge`) from the four base
-# packages on GHCR. Uses the in-workflow GITHUB_TOKEN, which can manage these
-# packages because kanibako-images has Admin "Actions access" on each.
+# Manually prune ONE tag from the four base packages (kanibako-{min,oci,lxc,vm})
+# on GHCR. Uses the in-workflow GITHUB_TOKEN, which can delete package versions
+# only if this repo has Admin "Actions access" on each package (a one-time
+# package-settings step; see docs/RELEASING.md).
 #
 # SAFETY: dry_run defaults to true — the first run only REPORTS what it would
 # delete. A package version is deleted by manifest digest, which removes ALL
 # tags on that manifest; so a version that carries more than the target tag is
-# SKIPPED (deleting it would take the other tags with it).
+# SKIPPED (deleting it would take the other tags with it). `:edge` and
+# `:latest` are live and refused outright: an rc build gives `:edge` a list of
+# its own, sole-tagged, which the multi-tag skip would not protect.
+#
+# ⚑ DO NOT PRUNE A PROMOTED -rcN TAG. Promote wraps the rc manifest in a NEW
+# list rather than retagging it, so :X.Y.Z / :latest / :edge reference the rc
+# manifest as a CHILD while the rc tag is its only tag. The multi-tag skip
+# cannot see that reference, and deleting the child most likely leaves the
+# promoted tags dangling (inferred, not yet verified on GHCR). Safe targets are
+# sole-tagged versions nothing lists, such as a :X.Y.Z-dev.<sha7> from an
+# images.yml dispatch.
 
 on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Tag to prune from each base package'
+        description: 'Tag to prune from each base package (never a promoted -rcN; see header)'
         type: string
-        default: 'edge'
+        required: true
       dry_run:
         description: 'Report only; do not delete'
         type: boolean
         default: true
 
-permissions:
-  packages: write   # backed by Admin Actions-access on each kanibako-* package
-
 jobs:
   prune:
     runs-on: ubuntu-latest
+    permissions:
+      packages: write   # backed by Admin Actions-access on each kanibako-* package
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       OWNER: ${{ github.repository_owner }}
@@ -36,6 +46,9 @@ jobs:
       - name: Prune ${{ inputs.tag }} from base packages
         run: |
           set -euo pipefail
+          case "$TAG" in
+            edge|latest) echo "Refusing to prune the live :$TAG tag." >&2; exit 1 ;;
+          esac
           for pkg in kanibako-min kanibako-oci kanibako-lxc kanibako-vm; do
             echo "::group::$pkg"
             # All versions whose tag list includes $TAG, as compact {id,tags} lines.

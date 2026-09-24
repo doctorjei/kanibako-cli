@@ -303,8 +303,8 @@ class ContainerRuntime:
         raise ContainerError(
             f"Failed to pull rig '{image}'.\n"
             "Check your network/registry access. To use a custom base image, build it\n"
-            "yourself (see github.com/doctorjei/kanibako-images) and pass it via --image\n"
-            "or set box_image in your config."
+            "yourself from images/ in github.com/doctorjei/kanibako-cli and pass it via\n"
+            "--image or set box_image in your config."
         )
 
     # ------------------------------------------------------------------

@@ -47,6 +47,7 @@ MODE B — promote an rc to a release:
   scripts/release-rc.sh --promote <ver> [--dry-run]
     <ver>         X.Y.Z (e.g. 1.2.5)
   Steps: git tag v<ver> on the CURRENT HEAD (run with HEAD at the rc commit).
+         Refuses unless a v<ver>-rc<N> tag points at HEAD.
          No version bump. Does NOT push.
 
 GLOBAL:
@@ -151,6 +152,14 @@ if [[ "$MODE" == "promote" ]]; then
         exit 1
     fi
     TAG="v${PROMOTE_VER}"
+    # The final tag must sit on an rc commit: images-verify finds the rc images
+    # through a v<ver>-rc<n> tag on the same commit, so a final tag anywhere else
+    # is stranded (pushed, but its image and PyPI jobs refuse to run).
+    HEAD_TAGS="$(git -C "$REPO_ROOT" tag --points-at HEAD)"
+    if ! grep -qE "^v${PROMOTE_VER//./\\.}-rc[0-9]+$" <<<"$HEAD_TAGS"; then
+        echo "Error: no v${PROMOTE_VER}-rc<N> tag points at HEAD; promote the rc commit." >&2
+        exit 1
+    fi
     echo "=== Promote: tagging ${TAG} on current HEAD ==="
     run git -C "$REPO_ROOT" tag "$TAG"
     echo ""

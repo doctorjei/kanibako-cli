@@ -52,7 +52,7 @@ aids, not the authority.
 | `channels/helper_client.py` | Container-side socket client for hub communication |
 | `commands/` | CLI subcommand implementations |
 | `commands/flags.py` | Injects the blanket `--agent`/`--box` flags onto every leaf subparser, checks per-command flag relevance, and reconciles a positional subject against `--box` |
-| `containers/` | Bundled `Containerfile.template-<name>` toolchain templates (jvm/systems/js/dotnet/android) + `tmux.conf` (base rig images live in the kanibako-images repo) |
+| `containers/` | Bundled `Containerfile.template-<name>` toolchain templates (jvm/systems/js/dotnet/android) + `tmux.conf`, which the base rig images copy in (their sources live in `images/` at the repo root) |
 | `scripts/` | Bundled scripts: `helper-init.sh` (entrypoint wrapper), `kanibako-entry` (container CLI) |
 
 ## Deprecating something (post-public)

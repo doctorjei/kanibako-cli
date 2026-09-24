@@ -71,7 +71,7 @@ class TestImagePullFailureMessages:
                 real_rt.ensure_image("kanibako-custom:v1")
             msg = str(exc_info.value)
             assert "kanibako-custom:v1" in msg
-            assert "kanibako-images" in msg
+            assert "images/ in github.com/doctorjei/kanibako-cli" in msg
             assert "--image" in msg
             # Pull-only: no build is ever attempted.
             m_build.assert_not_called()

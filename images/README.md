@@ -1,8 +1,9 @@
-# kanibako-images
+# kanibako images
 
-Container base images for [kanibako](https://github.com/doctorjei/kanibako-cli),
-the sandboxed-agent CLI. This repo builds and publishes the four `kanibako-*`
-base images to GHCR; the CLI itself lives in the separate `kanibako-cli` repo.
+Container base images for [kanibako](../README.md), the sandboxed-agent CLI.
+This directory holds the sources for the four `kanibako-*` base images on GHCR;
+they are built and released from this repo, by the same tag that releases the
+CLI to PyPI.
 
 ## Variants
 
@@ -23,49 +24,61 @@ at build time from `kanibako baseline list`, so the images and the CLI never
 drift. `nodejs`/`npm` and `cifs-utils`/`nfs-common` are explicit conveniences
 (not part of the baseline contract); `sshpass` is min-only.
 
-The image bundles a pinned `kanibako-cli` release: a `vX.Y.Z` images release
-ships `kanibako-cli==X.Y.Z` via the `KANIBAKO_CLI_VERSION` build-arg.
+Each image bundles the `kanibako-cli` wheel built from the same commit, handed
+to the Containerfile through the named build context `cliwheel`, so an image
+never waits on a PyPI release. The image's `org.opencontainers.image.version`
+label reports that wheel's version and `org.opencontainers.image.revision`
+reports the commit. The default `/etc/tmux.conf` is the CLI's own
+`src/kanibako/containers/tmux.conf`, handed in as the named build context
+`clicontainers`.
 
 ## Building locally
 
+From the repo root:
+
 ```sh
-podman build -f containers/Containerfile.kanibako \
+python -m build --wheel --outdir dist/cliwheel .
+podman build -f images/containers/Containerfile.kanibako \
+  --build-context cliwheel=dist/cliwheel \
+  --build-context clicontainers=src/kanibako/containers \
   --build-arg VARIANT=oci \
   --build-arg BASE_IMAGE=ghcr.io/doctorjei/droste-fiber:1.1.0 \
-  --build-arg KANIBAKO_CLI_VERSION=1.5.0 \
   -t kanibako-oci:dev \
-  containers/
+  images/containers/
 ```
 
-Omit `KANIBAKO_CLI_VERSION` to pull the latest `kanibako-cli` from PyPI. Swap
+The wheel directory the first command writes must hold exactly one
+`kanibako_cli-*.whl`, so empty it before rebuilding. Swap
 `VARIANT`/`BASE_IMAGE` per the table above for the other variants.
 
 ## Release process
 
-Releases follow an rc-then-promote flow (mirrors `kanibako-cli`), so the
-tested bits are exactly the shipped bits:
+The images release with the CLI, in its rc-then-promote flow; the runbook is
+[`docs/RELEASING.md`](../docs/RELEASING.md). In short:
 
-1. Push a release-candidate tag `vX.Y.Z-rcN`. `release.yml` builds all four
-   variants (each with `--build-arg KANIBAKO_CLI_VERSION=X.Y.Z`) and publishes
-   `kanibako-<variant>:X.Y.Z-rcN`.
-2. Wait for green CI on the rc and validate the rc images.
-3. Promote: push the final `vX.Y.Z` tag (or run the `release.yml` promote
-   dispatch with `promote_version` + `promote_rc`). Promote copies the rc
-   manifests **by digest** to `:X.Y.Z` and `:latest` — no rebuild, so the
-   published images are byte-identical to the green rc.
+1. The rc tag `vX.Y.Z-rcN` builds all four variants from the tagged tree and
+   publishes `kanibako-<variant>:X.Y.Z-rcN`, refusing to overwrite an existing
+   rc tag, then advances `:edge` if it is not behind `:latest`.
+2. The final tag `vX.Y.Z`, on the same commit, first verifies that the four rc
+   images exist and were built from that commit. Only then does the PyPI
+   publish run, and only after it succeeds are the rc manifests copied **by
+   digest** to `:X.Y.Z`, `:latest` and `:edge`. There is no rebuild, so the
+   published images are byte-identical to the rc.
 
-### Other workflows
+### Workflows (repo root, `.github/workflows/`)
 
-- `build-images.yml` — manual `:latest`-only build/publish. A push to
-  `main` (touching `containers/**`) builds and warms the layer cache but does
-  not publish; a `workflow_dispatch` with `push=true` publishes `:latest`.
-- `prune-tags.yml` — manual, dry-run-default GHCR tag cleanup (deletes by
-  manifest digest; skips multi-tag manifests).
+- `images.yml` builds the images. A push to `main` or a pull request that
+  touches `images/` builds all four without publishing; `release.yml` calls it
+  for the rc, verify and promote steps. A manual dispatch builds, and with
+  `publish=true` pushes `:<version>-dev.<sha7>`, never a release tag.
+- `images-prune-tags.yml` is a manual, dry-run-default GHCR tag cleanup. It
+  deletes by manifest digest, skips multi-tag manifests and refuses `:edge` and
+  `:latest`. Never point it at a promoted `-rcN` tag; its header explains why.
 
-The current version line is recorded in [`VERSION`](VERSION); see
-[`CHANGELOG.md`](CHANGELOG.md) for history.
+The version is the CLI's (`pyproject.toml`); see [`CHANGELOG.md`](CHANGELOG.md)
+for the images' history before they rejoined this repo.
 
-## Repository layout
+## Layout
 
-- `containers/` — `Containerfile.kanibako` (the four base variants) + `tmux.conf`.
-- `.github/workflows/` — `release.yml`, `build-images.yml`, `prune-tags.yml`.
+- `containers/Containerfile.kanibako`: the four base variants, selected by
+  `VARIANT` and `BASE_IMAGE`.
