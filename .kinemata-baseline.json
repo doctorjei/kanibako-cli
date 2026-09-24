@@ -2,7 +2,7 @@
   "version": 1,
   "until": "2026-09-30",
   "by": "Jei Blanchard",
-  "note": "Q59: parity reserved-agent-names shell disagreement accepted short-term; live carrier is the no_agent scrub row until scoping vocabulary (ii) exists; until extended to 2026-09-30 on his word (Q66), which covered only the three parity disagreements. keyspace registry closed (authored 2026-09-22, kind-import row step 4) - the pre-existing undeclared:keyspace strays (filename-shaped identifiers) accepted by the director (Kirobo) as day-one cost; Q67 answered 2026-09-24 (candidates are whole key-shaped literals and @-refs, filenames are declared constants), and the entries left are declaration homes of meta-files / agent-plugin-files constants that undeclared cannot see across registries - reported to kinemata 2026-09-24 (from-kanibako-2026-09-24-undeclared-flags-another-registrys-declaration-home.md) - plus vscode_remote.py meta.json, owed. 2026-09-24: the system._boxes / system._primary_* records are live code uses of manifest not_keys.code_residue names, which the adapter no longer admits; accepted by the director (Kirobo), carried by conformance.md row \"NINE LIVE CODE USES OF MANIFEST `not_keys.code_residue` NAMES\". The re-record also offered 10 claims + 3 api-doc parity findings from concurrent commits; left for their owners, not accepted here.",
+  "note": "Q59: parity reserved-agent-names shell disagreement accepted short-term; live carrier is the no_agent scrub row until scoping vocabulary (ii) exists; until extended to 2026-09-30 on his word (Q66), which covered only the three parity disagreements. keyspace registry closed (authored 2026-09-22, kind-import row step 4) - the pre-existing undeclared:keyspace strays (filename-shaped identifiers) accepted by the director (Kirobo) as day-one cost; Q67 answered 2026-09-24 (candidates are whole key-shaped literals and @-refs, filenames are declared constants), and the entries left are declaration homes of meta-files / agent-plugin-files / docker-context-files constants that undeclared cannot see across registries - reported to kinemata 2026-09-24 (from-kanibako-2026-09-24-undeclared-flags-another-registrys-declaration-home.md); vscode_remote.py's meta.json became the docker-context-files constant DOCKER_CONTEXT_META_FILE later that day, after the letter, and its declaration line is the same gap. 2026-09-24: the system._boxes / system._primary_* records are live code uses of manifest not_keys.code_residue names, which the adapter no longer admits; accepted by the director (Kirobo), carried by conformance.md row \"NINE LIVE CODE USES OF MANIFEST `not_keys.code_residue` NAMES\". The re-record also offered 10 claims + 3 api-doc parity findings from concurrent commits; left for their owners, not accepted here.",
   "findings": [
     {
       "registry": "canon-layout",
@@ -4346,7 +4346,7 @@
       "entry": "meta.json",
       "antipattern": "",
       "path": "src/kanibako/vscode/vscode_remote.py",
-      "text": "meta_file = meta_dir / \"meta.json\""
+      "text": "DOCKER_CONTEXT_META_FILE = \"meta.json\""
     },
     {
       "registry": "undeclared:keyspace",

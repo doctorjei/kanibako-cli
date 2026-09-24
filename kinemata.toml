@@ -361,10 +361,10 @@ historical = [
 # `not_keys.code_residue` uses above, carried by their conformance row. And
 # filenames: a filename is a DECLARED CONSTANT, never an exemption by shape
 # (his Q67 answer), so each record is a constant's declaration line in
-# `meta-files` or `agent-plugin-files`, which `undeclared` cannot see because
-# its closure is per registry (mailed to kinemata 2026-09-24), plus
-# `vscode_remote.py`'s `meta.json`, still owed its constant. Measured zero
-# sites on either NOT EXPRESSIBLE axis, so neither contributes a record.
+# `meta-files`, `agent-plugin-files` or `docker-context-files`, which
+# `undeclared` cannot see because its closure is per registry (mailed to
+# kinemata 2026-09-24). Measured zero sites on either NOT EXPRESSIBLE axis, so
+# neither contributes a record.
 #
 # ⚑ No `[[parity]]` table names this registry: `declared()` is a superset of
 # `entries()`, so a parity over it would compare the declaration against a
@@ -741,6 +741,23 @@ kind = "python-constants"
 modules = [
   "packages/agent-codex/src/kanibako/plugins/codex/target.py",
   "packages/agent-goose/src/kanibako/plugins/goose/target.py",
+]
+
+# ---------------------------------------------------------------------------
+# FACT: the third-party filename the remote-VS-Code plumbing writes -- docker's
+# context-metadata `meta.json`, docker's name, not a kanibako key.
+# AUTHORITY: `vscode/vscode_remote.py`, which writes the docker context and
+# declares the name once as a module constant that every site in it uses.
+# Sibling of `agent-plugin-files` rather than a member: that registry's
+# authority is an agent plugin's `target.py`, and docker is no agent.
+# CATCHES: the filename respelled as a literal in any OTHER module; a
+# respelling inside `vscode_remote.py` is caught by `undeclared` on `keyspace`,
+# exactly as for `agent-plugin-files`, whose declaration-line gap this shares.
+[[registry]]
+name = "docker-context-files"
+kind = "python-constants"
+modules = [
+  "src/kanibako/vscode/vscode_remote.py",
 ]
 
 # ---------------------------------------------------------------------------
