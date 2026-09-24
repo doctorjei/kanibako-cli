@@ -94,8 +94,8 @@ def clear_creds_dirty(project_home: Path) -> None:
 # --------------------------------------------------------------------------- #
 
 @contextlib.contextmanager
-def creds_store_lock(*dest_dirs: Path) -> "Iterator[None]":
-    """Serialize credential-STORE writes by flocking the writeback DESTINATION dirs.
+def creds_store_lock(*store_dirs: Path) -> "Iterator[None]":
+    """Serialize credential-STORE access by flocking the store directories.
 
     Two writers to the same SHARED store must not interleave, and they come in two
     kinds.  The WRITEBACK copies box-home creds into the store — a ``kanibako stop``,
@@ -106,12 +106,17 @@ def creds_store_lock(*dest_dirs: Path) -> "Iterator[None]":
     writes that store and reads host home while another box may be writing back into
     either, so :func:`kanibako.targets.credsync._sync_workset_dir_from_global` takes
     this lock too, over both — a torn source file is as corrupting as a torn write.
-    So such a start waits behind any host-wide writeback: milliseconds normally, and
-    as unbounded as the writeback's own wait if a holder hangs.
-    ⚑ A new store writer must take it: enumerate the writers by grepping for WRITES to
-    a store directory, never for callers of this lock.  There is no other lock on
-    these writes (the launch-path flock is the EPHEMERAL session lock, SKIPPED for
-    persistent boxes).
+    For the same reason the BOX-level seed and refresh READ of a store
+    (:func:`kanibako.targets.credsync._box_from_source`) takes it over the box's source
+    root.  So a create or start waits behind any writeback into a store it reads:
+    milliseconds normally, and as unbounded as the writeback's own wait if a holder
+    hangs.  ⚑ Never enter it while already holding it: each entry opens a fresh
+    descriptor, and ``flock`` conflicts between descriptors in one process, so a
+    nested entry over a directory already held self-deadlocks.
+    ⚑ A new store writer or reader must take it: enumerate them by grepping for WRITES
+    to and READS from a store directory, never for callers of this lock.  There is no
+    other lock on these writes (the launch-path flock is the EPHEMERAL session lock,
+    SKIPPED for persistent boxes).
 
     ⚑ The lock IS the destination directory (``os.open`` + ``flock(LOCK_EX)`` on the
     dir itself): it creates no file and mints no key, and its SCOPE is the
@@ -125,14 +130,15 @@ def creds_store_lock(*dest_dirs: Path) -> "Iterator[None]":
     copies IN PLACE, so a file lock would hold for one destination and silently not for
     the other.
 
-    *dest_dirs* is EVERY directory the guarded writeback writes into — a global-synced
-    workset box writes its workset dir AND host home, so it passes both.  They are taken
-    in sorted real-path order, so no caller can invert or repeat its way into a deadlock.
-    TOLERANT: a directory that cannot be opened / locked is SKIPPED and the writeback
-    proceeds without THAT lock (it must never be BLOCKED by a lock-infra hiccup).
+    *store_dirs* is EVERY store directory the guarded operation writes into or reads
+    from — a global-synced workset box writes its workset dir AND host home, so it
+    passes both.  They are taken in sorted real-path order, so no single call can
+    invert or repeat its way into a deadlock.
+    TOLERANT: a directory that cannot be opened / locked is SKIPPED and the guarded
+    operation proceeds without THAT lock (it must never be BLOCKED by a lock-infra hiccup).
     """
     held: list[int] = []
-    for dest in sorted({os.path.realpath(d) for d in dest_dirs}):
+    for dest in sorted({os.path.realpath(d) for d in store_dirs}):
         fd = None
         try:
             fd = os.open(dest, os.O_RDONLY)

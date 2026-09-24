@@ -36,6 +36,8 @@ from kanibako.log import get_logger
 from kanibako.targets.base import Cadence
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from kanibako.settings.settings_launch import AuthSource
     from kanibako.targets.base import PluginDescriptor, Target
 
@@ -318,6 +320,39 @@ def _sync_workset_dir_to_global(
     )
 
 
+def _box_from_source(
+    primitive: Callable[..., None],
+    descriptor: PluginDescriptor,
+    target: Target,
+    *,
+    auth: AuthSource,
+    host_home: Path,
+    project_home: Path,
+) -> None:
+    """The BOX-level hop: run *primitive* (seed or refresh) from the selected source.
+
+    ⚑ Holds :func:`~kanibako.launch.creds_watcher.creds_store_lock` over the
+    source root for the read, the same directory a writeback into that store locks:
+    a writeback rewrites those files in place, and a torn source file is as
+    corrupting as a torn write. Worse here: ``copy2`` carries the source mtime into
+    the box, so the mtime gate would skip every later refresh until the source
+    changed again. The private tier (source root ``None``) reads no store and takes
+    no lock.
+
+    Enter it with NO store lock held, or it self-deadlocks (see
+    ``creds_store_lock``); :func:`_sync_workset_dir_from_global` has released its
+    lock before either orchestrator reaches this hop.
+    """
+    source_root = selected_source_root(auth, host_home=host_home)
+    locked = () if source_root is None else (source_root,)
+    with creds_store_lock(*locked):
+        primitive(
+            descriptor, target,
+            source_root=source_root,
+            project_home=project_home,
+        )
+
+
 def _create_workset_source_dirs(
     descriptor: PluginDescriptor, *, auth: AuthSource
 ) -> None:
@@ -398,10 +433,9 @@ def seed_box_credentials(
     _sync_workset_dir_from_global(
         descriptor, target, auth=auth, host_home=host_home
     )
-    seed_cred_files(
-        descriptor, target,
-        source_root=selected_source_root(auth, host_home=host_home),
-        project_home=project_home,
+    _box_from_source(
+        seed_cred_files, descriptor, target,
+        auth=auth, host_home=host_home, project_home=project_home,
     )
 
 
@@ -431,10 +465,9 @@ def refresh_box_credentials(
     _sync_workset_dir_from_global(
         descriptor, target, auth=auth, host_home=host_home
     )
-    refresh_cred_files(
-        descriptor, target,
-        source_root=selected_source_root(auth, host_home=host_home),
-        project_home=project_home,
+    _box_from_source(
+        refresh_cred_files, descriptor, target,
+        auth=auth, host_home=host_home, project_home=project_home,
     )
 
 

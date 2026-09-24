@@ -26,7 +26,7 @@ def creds_dirty_flag_path(project_home: Path) -> Path
 def read_creds_dirty(project_home: Path) -> bool
 def clear_creds_dirty(project_home: Path) -> None
 @contextlib.contextmanager
-def creds_store_lock(*dest_dirs: Path) -> 'Iterator[None]'
+def creds_store_lock(*store_dirs: Path) -> 'Iterator[None]'
 def decide_watch(box_running: bool, dirty: bool) -> WatchAction
 def main(argv: list[str] | None=None) -> int
 def _build_parser() -> argparse.ArgumentParser
