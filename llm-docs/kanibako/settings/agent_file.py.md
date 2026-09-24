@@ -20,8 +20,8 @@ half is now `level_table`), and `agent reset --all`'s raw surgery (now `clear_ov
   NAMES it. The nested refusal below is §0 applied to a spelling that never named a key.
 * **Spec §2d** — the ONLY two agent key forms are `agent.default.<key>` and `agent.<agent>.<key>`.
 * **Spec §2a** — the SECRET / ENV categories and the bind-shaped categories' representation.
-* **RULINGS LEDGER rows 49-52** (`workbook/tasks.md`) — the alias semantics, verbatim, and the
-  ruling that `self` never appears in our code. The ledger WINS over this file.
+* **RULINGS [R50]-[R52]** (the canon rulings ledger) — the alias semantics, verbatim, and the
+  ruling that `self` never appears in our code. The rulings WIN over this file.
 
 ## What is in here, and what deliberately is not
 
