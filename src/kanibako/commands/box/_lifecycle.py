@@ -923,8 +923,15 @@ def _copy_vault_leaf_contents(src: Path, dst: Path) -> None:
     snapshot dir.  No-ops when *src* holds nothing (missing or not a dir) and when
     *src* and *dst* are the same directory (a reuse-in-place edge, whose teardown
     is skipped — there is nothing to carry).  RAISES on a copy failure: callers
-    run this BEFORE the source teardown, so a failure aborts the relocation with
+    run this BEFORE the source teardown (except leg 2 of the workset stash and its
+    unwind, whose source is the stash), so a failure aborts the relocation with
     the source still whole (and the unwind drops the destination).
+
+    ⚑ ``copytree`` dereferences symlinks and copies every entry it can before it
+    raises one ``shutil.Error`` listing the rest, so a dangling symlink fails the
+    carry.  That failure is re-raised as a ``ProjectError`` naming the leaf and the
+    entries; the entries are NOT skipped, since skipping one would drop it from the
+    store without a word.
     """
     if not src.is_dir():
         return
@@ -939,7 +946,36 @@ def _copy_vault_leaf_contents(src: Path, dst: Path) -> None:
             f"is inside the source."
         )
     dst.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(src, dst, dirs_exist_ok=True)
+    try:
+        shutil.copytree(src, dst, dirs_exist_ok=True)
+    except shutil.Error as e:
+        raise ProjectError(_vault_copy_failure_message(src, dst, e)) from e
+
+
+def _vault_copy_failure_message(src: Path, dst: Path, err: shutil.Error) -> str:
+    """Name the vault leaf and each entry ``copytree`` could not copy.
+
+    ``copytree`` raises with ``args[0]`` a list of ``(source, destination, reason)``;
+    any other shape falls back to the error's own text.
+    """
+    failures = err.args[0] if err.args else None
+    if not isinstance(failures, list):
+        return f"Could not carry the vault contents of {src} to {dst}: {err}"
+    shown = 5
+    lines = []
+    for entry_src, _entry_dst, why in failures[:shown]:
+        entry = Path(entry_src)
+        if entry.is_symlink() and not entry.exists():
+            why = "dangling symlink"
+        lines.append(f"  {entry}: {why}")
+    if len(failures) > shown:
+        lines.append(f"  … and {len(failures) - shown} more")
+    return (
+        f"Could not carry the vault contents of {src} to {dst}; "
+        f"{len(failures)} entr{'y' if len(failures) == 1 else 'ies'} failed:\n"
+        + "\n".join(lines)
+        + "\nThe relocation was aborted."
+    )
 
 
 def _vault_carry_pairs(
