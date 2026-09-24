@@ -58,7 +58,7 @@ pytestmark = [pytest.mark.e2e, *e2e_requires]
 # durable notes live now, and because it exercises the one part of ``~/canon`` that
 # must stay AGENT-WRITABLE while everything around it is root-owned 555.
 #
-# It stays a USER-DECLARED ``system.seeded.<name>`` key, deliberately: a user-declared
+# It stays a USER-DECLARED ``system.seeded`` entry, deliberately: a user-declared
 # seed is GUEST-space (``~/...``, translated by ``_guest_dest_to_host``), so this test
 # also keeps covering the guest arm of the two-namespace split while the packaged
 # layers cover the host arm.  ``~/canon/notebook`` expands, in guest space, to
@@ -149,21 +149,21 @@ def _home_is_seeded(env: dict[str, str], project: Path) -> bool:
 
 
 def _write_seed_config(env: dict[str, str], host_seed_dir: Path) -> None:
-    """Configure ``system.seeded.notebook`` in the system settings file.
+    """Configure a ``system.seeded`` entry for ``~/canon/notebook`` in the system settings file.
 
-    The create path reads ``seeded`` category keys from ``@system.settings`` ==
+    The create path reads ``seeded`` category keys from ``@config.settings`` ==
     ``{XDG_DATA_HOME}/kanibako/global/settings.yaml`` (see
-    ``_category_resolution_inputs``).  We point a ``~/canon/notebook``-style seed at
+    ``_resolve_launch_snapshot``).  We point a ``~/canon/notebook``-style seed at
     *host_seed_dir*, mirroring the user's real per-agent seed entry that was
-    clobbered.  The value form is a structured ``[host_src, guest_dest]``
-    pair (the keyspace rework rejects the legacy ``<host_src>:<guest_dest>`` string).
+    clobbered.  The ``seeded`` table is DEST-KEYED (``{box_dest: [host_src]}``);
+    the body's comment records the shape it replaced.
 
     This MERGES into any existing settings document rather than overwriting it:
     the ``e2e_env`` fixture writes ``system.agent: claude`` into
     this SAME file (so the claude-only tests resolve an agent even when other
     plugins are installed), and a blind overwrite here would wipe that key and
     re-introduce the dual-agent "No agent selected" ambiguity that prevents the
-    box from launching.  We load the existing doc, add ``system.seeded.notebook``,
+    box from launching.  We load the existing doc, add the ``system.seeded`` entry,
     and write it back, preserving the ``system`` content.
     """
     from kanibako.settings.config import config_file_path, load_config

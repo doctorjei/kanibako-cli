@@ -1284,9 +1284,9 @@ def set_config_value(
     # all six are refused BY NAME in the preamble above. Do NOT "restore" it: re-adding a write
     # route would need a visible spec edit.
 
-    # The setup VERSION MARKER — written to the ``system:`` table of the BOOTSTRAP config
-    # file, which is where ``setup`` puts it and where every reader looks (spec §2g:
-    # "PERSISTS, user-resettable").
+    # The setup VERSION MARKER — written to the ``system:`` table of the SYSTEM SETTINGS
+    # file (``@config.settings``), which is where ``setup`` puts it and where every reader
+    # looks (spec §2g: "PERSISTS, user-resettable"); the route is ``_KEY_ROUTES``.
     # ⚑ A REFUSAL STOOD HERE UNTIL 2026-08-23, and it named the config file as the cure —
     # telling the user to hand-edit a file the CLI can write, for a key the registry
     # declares ``set: cli+file``. The ``config.*`` half of that refusal is unaffected: it
@@ -1491,9 +1491,9 @@ def reset_config_value(
     # ⚑ THERE IS NO CATEGORY RESET BRANCH ANY MORE (DS-BL1 = (a)) — gone symmetrically with its
     # SET twin, which is the point. Do not restore one half of a symmetric pair.
 
-    # The setup VERSION MARKER — cleared from the config file's ``system:`` table, the same
-    # slot set wrote. ⚑ This is the "user-resettable" half of spec §2g's own description of
-    # the key, and it was refused outright until 2026-08-23.
+    # The setup VERSION MARKER — cleared from the system settings file's ``system:`` table,
+    # the same slot set wrote. ⚑ This is the "user-resettable" half of spec §2g's own
+    # description of the key, and it was refused outright until 2026-08-23.
     if canonical == SETUP_MARKER_KEY:
         dest = _reset_dest(canonical, command_scope, config_path, system_settings_path)
         if remove_nested_key(dest.file, dest.sections, dest.leaf):
@@ -1688,7 +1688,13 @@ def effective_value(
 
 
 def write_system_value(config_path: Path, leaf: str, value: object) -> None:
-    """Write a ``[system] <leaf>`` key to the CONFIG file programmatically, past the CLI guard."""
+    """Write a ``system: <leaf>`` key into *config_path*'s ``system:`` table programmatically,
+    past the CLI guard: none of ``set_config_value``'s refusals run here.
+
+    ⚑ The one production target is the SYSTEM SETTINGS file (``@config.settings``) —
+    ``setup`` and the setup gate write the marker there; the Layer-1 config file may
+    not carry a ``system:`` table.
+    """
     write_nested_key(config_path, ("system",), leaf, value)
 
 

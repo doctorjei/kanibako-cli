@@ -1830,31 +1830,6 @@ class TestConfigJournalRecognition:
         ), msg
         assert not cf.exists()
 
-    def test_non_system_key_still_settable_at_global_tier(self, tmp_path):
-        """Narrow scope (a): only system.*-prefixed keys are refused.  A
-        regular key still sets fine via the (global) config path."""
-        cf = tmp_path / CONFIG_FILENAME
-        msg = set_config_value("box.image", "ghcr.io/foo:bar", config_path=cf)
-        assert msg.startswith("Set")
-        assert load_doc(cf)["box"]["image"] == "ghcr.io/foo:bar"
-
-    def test_write_system_value_round_trips(self, tmp_path):
-        """The programmatic helper bypasses the guard and round-trips, while
-        preserving other keys (what setup relies on)."""
-        from kanibako.settings.config import read_setup_completed
-        from kanibako.settings.config_interface import write_system_value
-        from kanibako.settings.config_io import write_nested_key
-
-        cf = tmp_path / CONFIG_FILENAME
-        write_nested_key(cf, ("system",), "data", "/keep/me")
-        write_system_value(cf, "setup_completed", "1.6.0")
-
-        data = load_doc(cf)
-        assert data["system"]["setup_completed"] == "1.6.0"
-        assert data["system"]["data"] == "/keep/me"  # other keys preserved
-        # The raw reader and a typed-loader-agnostic read agree.
-        assert read_setup_completed(cf) == "1.6.0"
-
 
 class TestSystemSettingsTierSplit:
     """SYSTEM scope: SETTINGS route to @config.settings (global/settings.yaml),
@@ -1909,6 +1884,39 @@ class TestSystemSettingsTierSplit:
         assert get_config_value(
             "model", global_config_path=cf, system_settings_path=ssp,
         ) == "gpt-5"
+
+    def test_box_key_set_at_system_scope_lands_in_settings_file(self, tmp_path):
+        """A contained scope's key (``box.image``) sets from the system scope, and it
+        lands in the system SETTINGS file — the Layer-1 config file carries
+        ``config.*`` alone and is never created by a settings write."""
+        cf = tmp_path / CONFIG_FILENAME
+        ssp = tmp_path / "global" / "settings.yaml"
+        msg = set_config_value(
+            "box.image", "ghcr.io/foo:bar",
+            config_path=cf, system_settings_path=ssp,
+            command_scope=ConfigLevel.system,
+        )
+        assert msg.startswith("Set"), msg
+        assert load_doc(ssp)["box"]["image"] == "ghcr.io/foo:bar"
+        assert not cf.exists()
+
+    def test_write_system_value_round_trips(self, tmp_path):
+        """setup's programmatic marker writer round-trips in the system SETTINGS file
+        and preserves the ``system:`` table's other keys — ``system.agent`` sits in
+        that same table, and setup writes both."""
+        from kanibako.settings.config import read_setup_completed
+        from kanibako.settings.config_interface import write_system_value
+        from kanibako.settings.config_io import write_nested_key
+
+        ssp = tmp_path / "global" / "settings.yaml"
+        write_nested_key(ssp, ("system",), "agent", "claude")
+        write_system_value(ssp, "setup_completed", "1.6.0")
+
+        data = load_doc(ssp)
+        assert data["system"]["setup_completed"] == "1.6.0"
+        assert data["system"]["agent"] == "claude"  # other keys preserved
+        # The raw reader and a typed-loader-agnostic read agree.
+        assert read_setup_completed(ssp) == "1.6.0"
 
     def test_config_file_only_key_stays_in_config_file(self, tmp_path):
         """The CONFIG-FILE-ONLY read uses global_config_path
