@@ -1695,9 +1695,12 @@ def _to_workset(
     write_box_enable_vault(dst_project / BOX_META_FILE, state.box_authored_vault)
 
     # ⚑ A workset source ALREADY released above — cleaning up again would double-remove.
-    if source_is_workset:
+    if source_is_workset and state.ws is not None:
         # ⚑ THE VAULT CARRY, leg 2 of 2 (P1 data loss): the destination leaves
         # exist now — land the stashed contents.  No-ops when leg 1 carried nothing.
+        # ⚑ The guard MIRRORS leg 1's guard (the *VAULT CARRY, leg 1 of 2* block
+        # above): the stash vars are bound only under it, so a named box with no
+        # workset (a corrupt state refused elsewhere) must not reach this line.
         _copy_vault_leaf_contents(stash_vault_ro, vault_ro)
         _copy_vault_leaf_contents(stash_vault_rw, vault_rw)
     if not source_is_workset:
