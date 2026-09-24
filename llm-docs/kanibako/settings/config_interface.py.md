@@ -112,7 +112,7 @@ Parse a single positional config argument into `(action, key, value)`.
 UNDOES a `--null`). See "Why `--null` is a FLAG" above.
 
 
-```_pref_value_error(canonical, value, *, config_path, system_path, agent_path, workset_path, box_path, agent_name) -> str | None```
+```_pref_value_error(canonical, value, *, config_path, command_scope, system_settings_path, system_path, agent_path, workset_path, box_path, agent_name) -> str | None```
 Validate a pref's VALUE against the shape + resolution of its TARGET key.
 
 ⚑ **THE VALUE IS VALIDATED AT THE TARGET PATH, NEVER AT THE `pref.*` PATH.** A pref's key
@@ -257,7 +257,7 @@ into one would be a behavior change on one of them, and which one is correct is 
 not a refactor's call.
 
 
-```_category_set_lookups(config_path, *, canonical, system_path=None, agent_path=None, workset_path=None, box_path=None, agent_name="") -> tuple[Callable, Callable]```
+```_category_set_lookups(config_path, *, canonical, command_scope=None, system_settings_path=None, system_path=None, agent_path=None, workset_path=None, box_path=None, agent_name="") -> tuple[Callable, Callable]```
 The set-time lookups over ONE merged cascade snapshot: `(resolves, raw_bind)`.
 
 Built for a `config set` at *config_path* (the COMMAND-scope file): the E3 RESOLUTION probe (Q9,
@@ -692,12 +692,12 @@ pre-existing defect still allows the set and `config set` stays usable to REPAIR
   does not, and did not: `BIND_KEY_RE` reads the segment after the scope as the CATEGORY, and
   `agent` is not one. The ordering is still right — it is just belt-and-braces, not a live
   collision.
-* **STRUCTURAL `system.*` path-tier keys (the `SYSTEM_PATH_DEFAULTS` family) — FILE-ONLY.** They
-  live in `kanibako.cfg`'s `[system]` table (the file `resolve_system_paths` reads),
-  editable there or via `kanibako setup` (`write_system_value` bypasses this guard). The refusal
-  names THAT file. ⚑ This is a precise family check (F2): a `system.*` SETTINGS key (auth chain /
-  `system.agent` / categories / env) was routed above or falls through to the routing table below
-  — it is never refused here.
+* **STRUCTURAL `system.*` path-tier keys (the `SYSTEM_PATH_DEFAULTS` family) — NO BRANCH OF
+  THEIR OWN, deliberately.** They are Layer-2 SETTINGS keys (spec §2g, every one `set: cli+file`)
+  and route through `_KEY_ROUTES` to the system settings file (`@config.settings`) like any other
+  setting (see `config_keys.is_config_file_only_key`). ⚑ A FILE-ONLY refusal stood here until
+  2026-08-23 and named the Layer-1 file as the cure; that file carries `config.*` alone.
+  Do not restore it without a spec edit.
 * **Regular config keys** — routed via the single known-key table (the H1 fix: an unknown key
   returns an error string and NEVER raises). ⚑ The canonical dotted spelling and ONLY it — the flat
   underscore form used to be normalised in here and is now refused by name (see the deleted
@@ -709,7 +709,8 @@ pre-existing defect still allows the set and `config set` stays usable to REPAIR
   `assemble_levels` mirrors — never remapped to the key-scope's own file). `settings_dest` ==
   `config_path` at box/workset; at SYSTEM it is the system settings file (`@config.settings`) —
   settings keys never land in the Layer-1 `kanibako.cfg` (spec §1). Non-scope keys
-  (`allow_helpers`) and `system.*` regular keys keep their historical `config_path` slot.
+  (`allow_helpers`) and `system.*` regular keys land in the same `settings_dest` — no route writes
+  the Layer-1 file (`config_dest._dest`).
 
 ### The category SET branch that is gone
 
@@ -804,7 +805,8 @@ tables, keeping the file sparse); the bare agent settings (`agent.default`, SYST
 system settings file); `box.agent.<key>` — RETIRED (P7, spec §2b), refused with the cure rather
 than silently clearing a key that no longer does anything, and with the SAME named agent the set
 path uses so the two verbs prescribe the identical spelling; STRUCTURAL `system.*` path-tier keys
-— FILE-ONLY, refused for symmetry (edit the config file directly or re-run `kanibako setup`);
+— no branch of their own since 2026-08-23: they are routed settings keys, removed from the system
+settings file like the regular keys below;
 and the regular keys, routed through the same known-key table as set/get (no
 get-validated/set-unguarded asymmetry). The regular arm is symmetric with `set_config_value` BY
 CONSTRUCTION: the same rule site picks the file, so a scope-prefixed SETTINGS key is removed from
@@ -906,18 +908,18 @@ key (the merge's precedence winner), read with the UNBOUND `dict` ops (S3, colli
 the bound `.get`.
 
 
-```write_system_value(config_path: Path, leaf: str, value: object) -> None```
+```write_system_value(system_settings_path: Path, leaf: str, value: object) -> None```
 Programmatically write a `system: <leaf>` key into the file it is given.
 
 This is the PROGRAM editing a settings document on the user's behalf, at a point where no CLI verb
 is running: `kanibako setup` recording `system.setup_completed`, and `setup_compat_gate`'s
 best-effort forward bump of the same marker.
 
-⚑ **THE PARAMETER NAME SAYS `config_path`, AND BOTH LIVE CALLERS NOW PASS THE SYSTEM SETTINGS
-FILE.** The function is path-agnostic — its whole body is `write_nested_key(path, ("system",), leaf,
-value)` — and the marker's storage moved to `@config.settings` on 2026-08-26, so nothing programmatic
-writes a `system:` table into `kanibako.cfg` any more. That file cannot carry settings at all
-(Jei), so a caller passing it here would be writing something no reader reads.
+⚑ **The parameter is the SYSTEM SETTINGS file (`@config.settings`).** The function is
+path-agnostic — its whole body is `write_nested_key(system_settings_path, ("system",), leaf,
+value)` — and the marker's storage moved to `@config.settings` on 2026-08-26, so nothing
+programmatic writes a `system:` table into the Layer-1 config file any more. That file cannot carry
+settings at all (Jei), so a caller passing it here would be writing something no reader reads.
 
 ⚑ **IT DOES NOT "BYPASS A GUARD" (2026-08-23), and the older wording claimed a guard that is gone.**
 `config set system.setup_completed=…` writes the same table through `_KEY_ROUTES`. The two writers
@@ -986,7 +988,7 @@ settings live in (`settings_dest` — `config_path` at box/workset, the system s
 SYSTEM) and is gated by the §0 containment guard.
 
 
-```show_config(*, global_config_path, config_path=None, env_global=None, env_project=None, effective=False, file=None, workset_path=None, agent_state=None, env_resolved=None, system_settings_path=None, category_snapshot=None, category_error=None) -> int```
+```show_config(*, global_config_path, config_path=None, env_global=None, env_project=None, effective=False, file=None, workset_path=None, agent_state=None, env_resolved=None, system_settings_path=None, category_snapshot=None, category_ctx=None, category_error=None, category_declared_by=None) -> int```
 Display config values — overrides only, or the full resolved view. Returns an exit code.
 
 * *effective=False*: show only overrides at this level.

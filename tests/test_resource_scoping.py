@@ -221,7 +221,7 @@ class TestBuildEffectiveState:
         return ssp
 
     def _make_workset_config(self, tmp_path, settings=None, agent="claude"):
-        """Create a minimal workset config.yaml, optionally with a box→agent tweak.
+        """Create a minimal workset.yaml, optionally with a box→agent tweak.
 
         A workset-scope per-agent behavior override rides the §2h REQUEST
         ``pref.agent.<agent>.<key>`` — prefs are legal in the WORKSET and BOX
@@ -233,14 +233,14 @@ class TestBuildEffectiveState:
         from kanibako.settings.config_io import dump_doc
 
         tmp_path.mkdir(parents=True, exist_ok=True)
-        ws_toml = tmp_path / "config.yaml"
+        ws_file = tmp_path / "workset.yaml"
         if settings:
-            dump_doc(ws_toml, {"pref": {"agent": {agent: dict(settings)}}})
+            dump_doc(ws_file, {"pref": {"agent": {agent: dict(settings)}}})
         else:
-            ws_toml.write_text("")
-        return ws_toml
+            ws_file.write_text("")
+        return ws_file
 
-    def _make_project_toml(self, tmp_path, settings=None, agent="claude"):
+    def _make_box_file(self, tmp_path, settings=None, agent="claude"):
         """Create a minimal box.yaml, optionally with a box→agent tweak.
 
         A per-agent behavior override at the BOX scope rides the §2h REQUEST
@@ -252,18 +252,18 @@ class TestBuildEffectiveState:
         from kanibako.settings.config_io import dump_doc, load_doc
 
         tmp_path.mkdir(parents=True, exist_ok=True)
-        project_toml = tmp_path / "box.yaml"
+        box_file = tmp_path / "box.yaml"
         # A minimal box-tier settings file (P8b sparse create writes no identity
         # section; the pref requests below are what this scoping test cares about).
-        write_project_config(project_toml, "base:image")
+        write_project_config(box_file, "base:image")
         if settings:
-            doc = load_doc(project_toml)
+            doc = load_doc(box_file)
             node = doc.setdefault("pref", {}).setdefault("agent", {}).setdefault(
                 agent, {},
             )
             node.update(settings)
-            dump_doc(project_toml, doc)
-        return project_toml
+            dump_doc(box_file, doc)
+        return box_file
 
     def test_target_defaults_only(self, tmp_path):
         """With no agent state and no project overrides, the DECLARED floors apply.
@@ -283,10 +283,10 @@ class TestBuildEffectiveState:
         ]
         target = self._make_target(descriptors)
         agent_cfg = AgentConfig()  # empty state
-        project_toml = self._make_project_toml(tmp_path)
+        box_file = self._make_box_file(tmp_path)
 
         result = _build_effective_state(
-            target, agent_cfg, project_toml, system_settings_path=None
+            target, agent_cfg, box_file, system_settings_path=None
         )
         assert result == {
             # The DESCRIPTOR floor.
@@ -308,10 +308,10 @@ class TestBuildEffectiveState:
         ]
         target = self._make_target(descriptors)
         agent_cfg = AgentConfig(state={"model": "sonnet"})
-        project_toml = self._make_project_toml(tmp_path)
+        box_file = self._make_box_file(tmp_path)
 
         result = _build_effective_state(
-            target, agent_cfg, project_toml, system_settings_path=None
+            target, agent_cfg, box_file, system_settings_path=None
         )
         assert result["model"] == "sonnet"
 
@@ -324,10 +324,10 @@ class TestBuildEffectiveState:
         ]
         target = self._make_target(descriptors)
         agent_cfg = AgentConfig(state={"model": "sonnet"})
-        project_toml = self._make_project_toml(tmp_path, settings={"model": "haiku"})
+        box_file = self._make_box_file(tmp_path, settings={"model": "haiku"})
 
         result = _build_effective_state(
-            target, agent_cfg, project_toml, system_settings_path=None
+            target, agent_cfg, box_file, system_settings_path=None
         )
         assert result["model"] == "haiku"
 
@@ -350,11 +350,11 @@ class TestBuildEffectiveState:
         ]
         target = self._make_target(descriptors)
         agent_cfg = AgentConfig(state={"model": "sonnet", "custom_key": "custom_value"})
-        project_toml = self._make_project_toml(tmp_path)
+        box_file = self._make_box_file(tmp_path)
 
         with pytest.raises(SettingsError) as exc:
             _build_effective_state(
-                target, agent_cfg, project_toml, system_settings_path=None
+                target, agent_cfg, box_file, system_settings_path=None
             )
         assert "custom_key" in str(exc.value)
 
@@ -362,7 +362,7 @@ class TestBuildEffectiveState:
         # declaredness and not about having any agent state at all.
         agent_cfg = AgentConfig(state={"model": "sonnet"})
         assert _build_effective_state(
-            target, agent_cfg, project_toml, system_settings_path=None
+            target, agent_cfg, box_file, system_settings_path=None
         )["model"] == "sonnet"
 
     def test_no_descriptors_returns_agent_state(self, tmp_path):
@@ -371,10 +371,10 @@ class TestBuildEffectiveState:
 
         target = self._make_target([])  # no descriptors
         agent_cfg = AgentConfig(state={"model": "opus", "access": "permissive"})
-        project_toml = self._make_project_toml(tmp_path)
+        box_file = self._make_box_file(tmp_path)
 
         result = _build_effective_state(
-            target, agent_cfg, project_toml, system_settings_path=None
+            target, agent_cfg, box_file, system_settings_path=None
         )
         assert result == {"model": "opus", "access": "permissive"}
 
@@ -388,11 +388,11 @@ class TestBuildEffectiveState:
         ]
         target = self._make_target(descriptors)
         agent_cfg = AgentConfig()  # empty state
-        project_toml = self._make_project_toml(tmp_path)
+        box_file = self._make_box_file(tmp_path)
         ssp = self._make_system_settings(tmp_path, settings={"model": "sonnet"})
 
         result = _build_effective_state(
-            target, agent_cfg, project_toml, system_settings_path=ssp
+            target, agent_cfg, box_file, system_settings_path=ssp
         )
         # System set value beats the target-default floor.
         assert result["model"] == "sonnet"
@@ -419,7 +419,7 @@ class TestBuildEffectiveState:
             tmp_path, settings={"model": "sys-model", "access": "default"}
         )
         # workset config lives in its own dir to avoid colliding filenames.
-        ws_toml = self._make_workset_config(
+        ws_file = self._make_workset_config(
             tmp_path / "ws", settings={"model": "ws-model"}
         )
 
@@ -428,14 +428,14 @@ class TestBuildEffectiveState:
         agent_cfg = AgentConfig(state={"model": "agent-model"})
         proj_dir = tmp_path / "proj"
         proj_dir.mkdir()
-        project_toml = self._make_project_toml(proj_dir)
+        box_file = self._make_box_file(proj_dir)
 
         result = _build_effective_state(
             target,
             agent_cfg,
-            project_toml,
+            box_file,
             system_settings_path=ssp,
-            workset_config_path=ws_toml,
+            workset_config_path=ws_file,
         )
         # model: box unset → workset (more specific than agent/system) wins.
         assert result["model"] == "ws-model"
@@ -444,15 +444,15 @@ class TestBuildEffectiveState:
         assert result["access"] == "default"
 
         # Now set model at the box level too → box beats workset.
-        box_toml = self._make_project_toml(
+        box2_file = self._make_box_file(
             tmp_path / "proj2", settings={"model": "box-model"}
         )
         result2 = _build_effective_state(
             target,
             agent_cfg,
-            box_toml,
+            box2_file,
             system_settings_path=ssp,
-            workset_config_path=ws_toml,
+            workset_config_path=ws_file,
         )
         assert result2["model"] == "box-model"
 
@@ -466,10 +466,10 @@ class TestBuildEffectiveState:
         target = self._make_target(descriptors)
         # agent state explicitly clears model.
         agent_cfg = AgentConfig(state={"model": ""})
-        project_toml = self._make_project_toml(tmp_path)
+        box_file = self._make_box_file(tmp_path)
 
         result = _build_effective_state(
-            target, agent_cfg, project_toml, system_settings_path=None
+            target, agent_cfg, box_file, system_settings_path=None
         )
         # Terminal "" — does not fall back to the "opus" floor.
         assert result["model"] == ""
@@ -490,20 +490,20 @@ class TestBuildEffectiveState:
         ]
         # An override for claude, carried by the (legal) system file.
         ssp = self._make_system_settings(tmp_path, settings={"model": "sonnet"})
-        project_toml = self._make_project_toml(tmp_path / "proj")
+        box_file = self._make_box_file(tmp_path / "proj")
         agent_cfg = AgentConfig()
 
         # claude sees its override.
         claude = self._make_target(descriptors, name="claude")
         res_claude = _build_effective_state(
-            claude, agent_cfg, project_toml, system_settings_path=ssp
+            claude, agent_cfg, box_file, system_settings_path=ssp
         )
         assert res_claude["model"] == "sonnet"
 
         # goose does NOT — it falls back to its declared default floor.
         goose = self._make_target(descriptors, name="goose")
         res_goose = _build_effective_state(
-            goose, agent_cfg, project_toml, system_settings_path=ssp
+            goose, agent_cfg, box_file, system_settings_path=ssp
         )
         assert res_goose["model"] == "opus"
 
@@ -523,18 +523,18 @@ class TestBuildEffectiveState:
         # Any-agent default + a claude-specific override, both on the system file.
         ssp = self._make_system_settings(tmp_path, settings={"model": "sonnet"})
         write_agent_setting(ssp, "model", "haiku", "default")
-        project_toml = self._make_project_toml(tmp_path / "proj")
+        box_file = self._make_box_file(tmp_path / "proj")
         agent_cfg = AgentConfig()
 
         claude = self._make_target(descriptors, name="claude")
         res_claude = _build_effective_state(
-            claude, agent_cfg, project_toml, system_settings_path=ssp
+            claude, agent_cfg, box_file, system_settings_path=ssp
         )
         assert res_claude["model"] == "sonnet"  # agent-specific wins
 
         goose = self._make_target(descriptors, name="goose")
         res_goose = _build_effective_state(
-            goose, agent_cfg, project_toml, system_settings_path=ssp
+            goose, agent_cfg, box_file, system_settings_path=ssp
         )
         assert res_goose["model"] == "haiku"  # default tier applies
 
@@ -595,11 +595,11 @@ class TestXdgFallbackRegression:
 
         proj_dir = tmp_path / "proj"
         proj_dir.mkdir()
-        project_toml = proj_dir / "box.yaml"
+        box_file = proj_dir / "box.yaml"
         # A minimal box-tier settings file (P8b sparse create writes no identity
         # section); the XDG expansion under test rides the global/agent tiers.
-        write_project_config(project_toml, "base:image")
-        return target, AgentConfig(), project_toml, ssp
+        write_project_config(box_file, "base:image")
+        return target, AgentConfig(), box_file, ssp
 
     def test_stored_xdg_cache_value_with_env_var_set(self, tmp_path, monkeypatch):
         """THE dogfood repro (map-not-env): the env var IS exported, yet the
@@ -608,10 +608,10 @@ class TestXdgFallbackRegression:
         from kanibako.commands.start import _effective_behavior_for_display
 
         monkeypatch.setenv("XDG_CACHE_HOME", "/custom/cache")
-        target, agent_cfg, project_toml, ssp = self._seeded_setup(tmp_path)
+        target, agent_cfg, box_file, ssp = self._seeded_setup(tmp_path)
 
         result = _effective_behavior_for_display(
-            target, agent_cfg, project_toml, system_settings_path=ssp
+            target, agent_cfg, box_file, system_settings_path=ssp
         )
         assert result["template"] == "/custom/cache/kanibako/probe"
 
@@ -623,10 +623,10 @@ class TestXdgFallbackRegression:
         from kanibako.commands.start import _effective_behavior_for_display
 
         monkeypatch.delenv("XDG_CACHE_HOME", raising=False)
-        target, agent_cfg, project_toml, ssp = self._seeded_setup(tmp_path)
+        target, agent_cfg, box_file, ssp = self._seeded_setup(tmp_path)
 
         result = _effective_behavior_for_display(
-            target, agent_cfg, project_toml, system_settings_path=ssp
+            target, agent_cfg, box_file, system_settings_path=ssp
         )
         expected = str(Path.home() / ".cache" / "kanibako" / "probe")
         assert result["template"] == expected
@@ -638,10 +638,10 @@ class TestXdgFallbackRegression:
         from kanibako.commands.start import _effective_behavior_for_display
 
         monkeypatch.setenv("XDG_CACHE_HOME", "")
-        target, agent_cfg, project_toml, ssp = self._seeded_setup(tmp_path)
+        target, agent_cfg, box_file, ssp = self._seeded_setup(tmp_path)
 
         result = _effective_behavior_for_display(
-            target, agent_cfg, project_toml, system_settings_path=ssp
+            target, agent_cfg, box_file, system_settings_path=ssp
         )
         expected = str(Path.home() / ".cache" / "kanibako" / "probe")
         assert result["template"] == expected
