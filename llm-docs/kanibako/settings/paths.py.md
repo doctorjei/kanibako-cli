@@ -78,10 +78,11 @@ Write-ahead log of in-flight box-lifecycle ops, beside the registry
 ### `boxes`, `primary_vault_ro`, `primary_vault_rw`, `primary_logs`
 
 `boxes` is the PRIMARY-workset box store, `@config.primary_workset/boxes`. Phase 5 moved it here
-from the OLD `@config.data/boxes` location; the transitional `_boxes` pseudo-key + alias property
-were retired with the `_migrate_settings_to_boxes` shim. Per-box metadata/shell live under
-`boxes/<name>/`; the PRIMARY vault/logs live as siblings under the PRIMARY workset (see
-`resolve_project`).
+from the OLD `@config.data/boxes` location, retiring the `_migrate_settings_to_boxes` shim and the
+`StandardPaths._boxes` field with its `boxes` alias property (`boxes` is a plain field now). The
+path-tier table carries it under the non-key name `_primary_boxes` (see `resolve_system_paths`).
+Per-box metadata/shell live under `boxes/<name>/`; the PRIMARY vault/logs live as siblings under
+the PRIMARY workset (see `resolve_project`).
 
 The vault + logs roots DEFAULT to `@config.primary_workset/vault/{ro,rw}` and
 `@config.primary_workset/logs`. Phase 5 moved the PRIMARY vault out of the workspace into the
@@ -392,9 +393,9 @@ set (both Layer-1 `config.<leaf>` and Layer-2 `system.<leaf>` keys, e.g. the glo
 Layer-2 path settings. *data_home* is the already-resolved XDG data base exposed as
 `$XDG_DATA_HOME`; *home* expands a leading `~`.
 
-Returns `{full_dotted_key: Path}` for every Layer-1 `config.*` key AND every Layer-2 `system.*` key,
-plus the derived PRIMARY-workset pseudo-keys `system._boxes` / `system._primary_vault_ro` /
-`system._primary_vault_rw` / `system._primary_logs` (under `@config.primary_workset`). The
+Returns `{name: Path}`: every Layer-1 `config.*` key and every Layer-2 `system.*` key under its full
+dotted key, plus the derived PRIMARY-workset roots under the NON-KEY names `_primary_boxes` /
+`_primary_vault_ro` / `_primary_vault_rw` / `_primary_logs` (under `@config.primary_workset`). The
 `system.*` defaults `@`-ref a Layer-1 config key, resolved against the foundation injected into
 `ctx.config`.
 
@@ -404,12 +405,16 @@ Internal notes:
   foundation (`ctx.config`); `@system.*` → the system path set. Prefix-driven.
 * `system.*` config paths are always scalar strings (no structured category leaves at this tier),
   which is why the now-`object`-typed value is narrowed with `str(...)` before expansion.
-* The `system._*` pseudo-keys are the PRIMARY-workset box/vault/logs roots, derived from the
+* The `_primary_*` entries are the PRIMARY-workset box/vault/logs roots, derived from the
   resolved PRIMARY workset dir (`@config.primary_workset`). ⚑ `_primary_vault_ro` /
   `_primary_vault_rw` are RESOLVED through the workset dir-key route (one `workset.yaml` read,
   both arms), not composed — see the `primary_vault_*` field notes above. That is the only file
   read in this function, and it is best-effort: an ABSENT or unparseable `workset.yaml` yields the
   declared defaults, while an unresolvable `@`-ref REFUSES and names the key.
+* ⚑ The `_primary_*` names are NOT keys and are not key-shaped on purpose: the manifest records
+  the old `system._*` spellings under `not_keys.code_residue` (code only, never spec-sanctioned),
+  so a key-shaped name here is a stray in the closed keyspace (spec §0). A consumer filtering
+  this table by `config.` / `system.` prefix never sees them.
 
 ```python
 def load_system_config(

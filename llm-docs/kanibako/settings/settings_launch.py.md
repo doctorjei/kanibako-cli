@@ -541,8 +541,8 @@ layer-3 seed source `workset.template`; see that subsection below. The builder's
 than its job.
 
 JC-B2b-1: these `workset.*` keys do NOT exist as resolvable snapshot keys otherwise —
-`resolve_system_paths` derives only the PRIMARY pseudo-keys (`system._boxes` /
-`system._primary_vault_*` / `system._primary_logs`) into `StandardPaths`, and there is no `workset.*`
+`resolve_system_paths` derives only the PRIMARY-workset roots (the non-key entries `_primary_boxes` /
+`_primary_vault_*` / `_primary_logs`) into `StandardPaths`, and there is no `workset.*`
 tier in the snapshot. They are MATERIALIZED here.
 
 ⚑ **WHERE THE PER-MODE VARIATION LIVES (spec §2c).** It lives HERE and nowhere downstream, so every

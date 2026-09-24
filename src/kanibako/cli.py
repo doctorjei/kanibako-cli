@@ -309,7 +309,7 @@ def _ensure_initialized() -> None:
     )
     data_path = sys_paths["config.data"]
     (data_path / "containers").mkdir(parents=True, exist_ok=True)
-    sys_paths["system._boxes"].mkdir(parents=True, exist_ok=True)
+    sys_paths["_primary_boxes"].mkdir(parents=True, exist_ok=True)
 
     # NOTE (block #3a, JC-3): the channel type-root skeleton is NO LONGER
     # pre-created here.  ``channelroot`` moved to Layer 2 (a ``system.*`` settings

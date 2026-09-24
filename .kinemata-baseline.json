@@ -2,7 +2,7 @@
   "version": 1,
   "until": "2026-09-30",
   "by": "Jei Blanchard",
-  "note": "Q59: parity reserved-agent-names shell disagreement accepted short-term; live carrier is the no_agent scrub row until scoping vocabulary (ii) exists; until extended to 2026-09-30 on his word (Q66), which covered only the three parity disagreements. keyspace registry closed (authored 2026-09-22, kind-import row step 4) - the pre-existing undeclared:keyspace strays (filename-shaped identifiers) accepted by the director (Kirobo) as day-one cost; Q67 answered 2026-09-24 (candidates are whole key-shaped literals and @-refs, filenames are declared constants), and the entries left are declaration homes of meta-files / agent-plugin-files / docker-context-files constants that undeclared cannot see across registries - reported to kinemata 2026-09-24 (from-kanibako-2026-09-24-undeclared-flags-another-registrys-declaration-home.md); vscode_remote.py's meta.json became the docker-context-files constant DOCKER_CONTEXT_META_FILE later that day, after the letter, and its declaration line is the same gap. 2026-09-24: the system._boxes / system._primary_* records are live code uses of manifest not_keys.code_residue names, which the adapter no longer admits; accepted by the director (Kirobo), carried by conformance.md row \"NINE LIVE CODE USES OF MANIFEST `not_keys.code_residue` NAMES\". The re-record also offered 10 claims + 3 api-doc parity findings from concurrent commits; left for their owners, not accepted here.",
+  "note": "Q59: parity reserved-agent-names shell disagreement accepted short-term; live carrier is the no_agent scrub row until scoping vocabulary (ii) exists; until extended to 2026-09-30 on his word (Q66), which covered only the three parity disagreements. keyspace registry closed (authored 2026-09-22, kind-import row step 4) - the pre-existing undeclared:keyspace strays (filename-shaped identifiers) accepted by the director (Kirobo) as day-one cost; Q67 answered 2026-09-24 (candidates are whole key-shaped literals and @-refs, filenames are declared constants), and the entries left are declaration homes of meta-files / agent-plugin-files / docker-context-files constants that undeclared cannot see across registries - reported to kinemata 2026-09-24 (from-kanibako-2026-09-24-undeclared-flags-another-registrys-declaration-home.md); vscode_remote.py's meta.json became the docker-context-files constant DOCKER_CONTEXT_META_FILE later that day, after the letter, and its declaration line is the same gap. 2026-09-24: the nine system._boxes / system._primary_* records (live code uses of manifest not_keys.code_residue names, accepted earlier that day by the director (Kirobo)) were cleared the same day by renaming the four path-tier table entries to the non-key names _primary_boxes / _primary_vault_ro / _primary_vault_rw / _primary_logs; no record of them remains. The re-record also offered 10 claims + 3 api-doc parity findings from concurrent commits; left for their owners, not accepted here.",
   "findings": [
     {
       "registry": "canon-layout",
@@ -1830,21 +1830,7 @@
       "entry": "claim:path",
       "antipattern": "kanibako.cfg",
       "path": "llm-docs/kanibako/settings/config_interface.py.md",
-      "text": "live in `kanibako.cfg`'s `[system]` table (the file `resolve_system_paths` reads),"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "kanibako.cfg",
-      "path": "llm-docs/kanibako/settings/config_interface.py.md",
       "text": "of the `kanibako.cfg` CONFIG file. When `None` (box/workset) writes go to `config_path`"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "kanibako.cfg",
-      "path": "llm-docs/kanibako/settings/config_interface.py.md",
-      "text": "writes a `system:` table into `kanibako.cfg` any more. That file cannot carry settings at all"
     },
     {
       "registry": "claims",
@@ -4347,69 +4333,6 @@
       "antipattern": "",
       "path": "src/kanibako/vscode/vscode_remote.py",
       "text": "DOCKER_CONTEXT_META_FILE = \"meta.json\""
-    },
-    {
-      "registry": "undeclared:keyspace",
-      "entry": "system._boxes",
-      "antipattern": "",
-      "path": "src/kanibako/cli.py",
-      "text": "sys_paths[\"system._boxes\"].mkdir(parents=True, exist_ok=True)"
-    },
-    {
-      "registry": "undeclared:keyspace",
-      "entry": "system._boxes",
-      "antipattern": "",
-      "path": "src/kanibako/settings/paths.py",
-      "text": "boxes=resolved[\"system._boxes\"],"
-    },
-    {
-      "registry": "undeclared:keyspace",
-      "entry": "system._boxes",
-      "antipattern": "",
-      "path": "src/kanibako/settings/paths.py",
-      "text": "resolved[\"system._boxes\"] = resolve_workset_boxes(pw, pw_settings)"
-    },
-    {
-      "registry": "undeclared:keyspace",
-      "entry": "system._primary_logs",
-      "antipattern": "",
-      "path": "src/kanibako/settings/paths.py",
-      "text": "primary_logs=resolved[\"system._primary_logs\"])"
-    },
-    {
-      "registry": "undeclared:keyspace",
-      "entry": "system._primary_logs",
-      "antipattern": "",
-      "path": "src/kanibako/settings/paths.py",
-      "text": "resolved[\"system._primary_logs\"] = resolve_workset_logs(pw, pw_settings)"
-    },
-    {
-      "registry": "undeclared:keyspace",
-      "entry": "system._primary_vault_ro",
-      "antipattern": "",
-      "path": "src/kanibako/settings/paths.py",
-      "text": "primary_vault_ro=resolved[\"system._primary_vault_ro\"],"
-    },
-    {
-      "registry": "undeclared:keyspace",
-      "entry": "system._primary_vault_ro",
-      "antipattern": "",
-      "path": "src/kanibako/settings/paths.py",
-      "text": "resolved[\"system._primary_vault_ro\"] = resolve_workset_vault_ro(pw, pw_settings)"
-    },
-    {
-      "registry": "undeclared:keyspace",
-      "entry": "system._primary_vault_rw",
-      "antipattern": "",
-      "path": "src/kanibako/settings/paths.py",
-      "text": "primary_vault_rw=resolved[\"system._primary_vault_rw\"],"
-    },
-    {
-      "registry": "undeclared:keyspace",
-      "entry": "system._primary_vault_rw",
-      "antipattern": "",
-      "path": "src/kanibako/settings/paths.py",
-      "text": "resolved[\"system._primary_vault_rw\"] = resolve_workset_vault_rw(pw, pw_settings)"
     },
     {
       "registry": "undeclared:keyspace",
