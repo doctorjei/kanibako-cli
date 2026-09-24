@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import argparse
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from kanibako.commands.box._parser import run_list, run_ps
+from kanibako.settings.paths import BoxMode
+from kanibako.utils import container_name_for, container_name_for_box_name
 
 
 @pytest.fixture
@@ -333,3 +336,114 @@ class TestRunList:
             assert "idle" in out
             assert "active" in out
             assert "stopped" in out
+
+
+class TestContainerNamePerMode:
+    """Activity is looked up under the container name ``start`` actually gives each mode.
+
+    ⚑ The expected names come from ``container_name_for`` — the dispatcher ``start``
+    names containers with — never re-spelled here, so a drift in either side reds.
+    """
+
+    @staticmethod
+    def _cname(mode, *, name, root=None):
+        """The container name ``start`` gives a *mode* box — asked of ``container_name_for``."""
+        proj = SimpleNamespace(mode=mode, name=name, metadata_path=root,
+                               project_hash="0" * 64)
+        return container_name_for(proj)
+
+    @staticmethod
+    def _run(mock_runtime, args, *, projects=(), primary=None, worksets=(), standalone=None):
+        with (
+            patch("kanibako.commands.box._parser.ContainerRuntime", return_value=mock_runtime),
+            patch("kanibako.commands.box._parser.user_config_file"),
+            patch("kanibako.commands.box._parser.load_config"),
+            patch("kanibako.commands.box._parser.load_std_paths",
+                  return_value=MagicMock(data_path=MagicMock())),
+            patch("kanibako.commands.box._parser.iter_projects", return_value=list(projects)),
+            patch("kanibako.commands.box._parser.iter_workset_projects",
+                  return_value=list(worksets)),
+            patch("kanibako.commands.box._parser.load_primary_boxes",
+                  return_value=primary or {}),
+            patch("kanibako.project.registry_store.load_standalone",
+                  return_value=standalone or {}),
+            patch("kanibako.project.registry_store.list_deregistered", return_value={}),
+        ):
+            return run_ps(args) if isinstance(args, _PsArgs) else run_list(args)
+
+    def test_ps_shows_running_standalone_box(self, mock_runtime, tmp_path, capsys):
+        root = tmp_path / "lone-project"
+        root.mkdir()
+        mock_runtime.list_running.return_value = [
+            (self._cname(BoxMode.standalone, name="lone", root=root),
+             "kanibako-oci:latest", "Up 1 minute"),
+        ]
+        rc = self._run(mock_runtime, _PsArgs(), standalone={"lone": str(root)})
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "Standalone boxes:" in out
+        row = _row(out, "lone")
+        assert "active" in row
+        assert str(root) in row
+
+    def test_list_shows_stopped_standalone_box(self, mock_runtime, tmp_path, capsys):
+        root = tmp_path / "lone-project"
+        root.mkdir()
+        rc = self._run(mock_runtime, _list_args(), standalone={"lone": str(root)})
+        assert rc == 0
+        out = capsys.readouterr().out
+        row = _row(out, "lone")
+        assert "stopped" in row
+
+    def test_container_named_by_box_name_is_not_the_standalone_box(
+            self, mock_runtime, tmp_path, capsys):
+        """A ``kanibako-<box name>`` container is NOT the standalone box's container."""
+        root = tmp_path / "lone-project"
+        root.mkdir()
+        mock_runtime.list_running.return_value = [
+            (container_name_for_box_name("lone"), "kanibako-oci:latest", "Up 1 minute"),
+        ]
+        rc = self._run(mock_runtime, _PsArgs(), standalone={"lone": str(root)})
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert not [line for line in out.splitlines() if line.split()[:1] == ["lone"]]
+
+    def test_ps_shows_running_box_in_every_mode(self, mock_runtime, tmp_path, capsys):
+        """Primary and named keep ``kanibako-<name>``; standalone is keyed by its root."""
+        prim_ws = tmp_path / "prim-ws"
+        prim_ws.mkdir()
+        sa_root = tmp_path / "sa-root"
+        sa_root.mkdir()
+        member = SimpleNamespace(name="wsbox", source_path=tmp_path / "wsbox-src")
+        ws = SimpleNamespace(root=tmp_path / "ws", projects=[member])
+        mock_runtime.list_running.return_value = [
+            (self._cname(BoxMode.primary, name="primbox"), "kanibako-oci:latest", "Up"),
+            (self._cname(BoxMode.named, name="wsbox"), "kanibako-oci:latest", "Up"),
+            (self._cname(BoxMode.standalone, name="lone", root=sa_root),
+             "kanibako-oci:latest", "Up"),
+        ]
+        rc = self._run(
+            mock_runtime, _PsArgs(),
+            projects=[(tmp_path / "boxes" / "primbox", prim_ws)],
+            primary={"primbox": str(prim_ws)},
+            worksets=[("myws", ws, [("wsbox", "ok")])],
+            standalone={"lone": str(sa_root)},
+        )
+        assert rc == 0
+        out = capsys.readouterr().out
+        for name in ("primbox", "wsbox", "lone"):
+            assert "active" in _row(out, name), (name, out)
+
+
+def _row(out, name):
+    """The one listing row whose NAME column is *name*."""
+    rows = [line for line in out.splitlines() if line.split()[:1] == [name]]
+    assert len(rows) == 1, (name, out)
+    return rows[0]
+
+
+class _PsArgs(argparse.Namespace):
+    """``ps`` args, typed so the helper above dispatches to ``run_ps``."""
+
+    def __init__(self, *, show_all=False, quiet=False):
+        super().__init__(show_all=show_all, quiet=quiet)

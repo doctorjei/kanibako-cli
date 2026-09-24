@@ -46,7 +46,10 @@ from kanibako.settings.paths import (
 )
 from kanibako.agent_ref import GENERAL_SLOT, harness_of, parse_agent_ref, with_harness
 from kanibako.targets import resolve_target
-from kanibako.utils import container_name_for, short_hash, write_project_gitignore
+from kanibako.utils import (
+    container_name_for, container_name_for_box_name, container_name_for_standalone_root,
+    short_hash, write_project_gitignore,
+)
 
 _MODE_CHOICES = ["default", "standalone", "workset"]
 
@@ -999,7 +1002,7 @@ def run_list(args: argparse.Namespace) -> int:
                 status = "unknown"
                 label = "(no breadcrumb)"
             elif project_path.is_dir():
-                cname = f"kanibako-{proj_name}"
+                cname = container_name_for_box_name(proj_name)
                 if cname in running_containers:
                     status = "active"
                 else:
@@ -1037,7 +1040,7 @@ def run_list(args: argparse.Namespace) -> int:
                 continue
             # Activity status, for healthy workset projects only.
             if proj_status not in ("missing",):
-                cname = f"kanibako-{proj_name}"
+                cname = container_name_for_box_name(proj_name)
                 if cname in running_containers:
                     display_status = "active"
                 else:
@@ -1084,7 +1087,7 @@ def run_list(args: argparse.Namespace) -> int:
         if not root.is_dir():
             status = "missing"
         else:
-            cname = f"kanibako-{box_name}"
+            cname = container_name_for_standalone_root(root)
             status = "active" if cname in running_containers else "stopped"
         if status == "missing" and not show_all:
             continue
