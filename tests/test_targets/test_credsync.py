@@ -13,8 +13,12 @@ from __future__ import annotations
 
 import os
 import stat
+import threading
 from pathlib import Path
 
+import pytest
+
+from kanibako.launch.creds_watcher import creds_store_lock
 from kanibako.settings.settings_launch import AuthSource
 from kanibako.targets.base import (
     AgentInstall,
@@ -29,6 +33,7 @@ from kanibako.targets.credsync import (
     refresh_cred_files,
     seed_box_credentials,
     seed_cred_files,
+    selected_source_root,
     writeback_box_credentials,
     writeback_cred_files,
 )
@@ -573,6 +578,55 @@ class TestGlobalSyncHop:
         # The box wrote to the workset dir; global (host) is NOT touched.
         assert (ws / ".config/goose/secrets.yaml").read_text() == "BOXNEW"
         assert (host / ".config/goose/secrets.yaml").read_text() == "GLOBALKEPT"
+
+
+class TestStartSyncTakesTheWritebackLock:
+    """The start-time global→workset hop WRITES the workset store and READS host
+    home, so it must wait on a writeback holding the lock over either one."""
+
+    @pytest.mark.parametrize(
+        "orchestrator", [seed_box_credentials, refresh_box_credentials],
+    )
+    @pytest.mark.parametrize(
+        "writeback_dirs",
+        [
+            # A global-synced workset box's writeback locks its workset dir AND host home.
+            lambda ws, host: (
+                selected_source_root(_workset_src(str(ws), global_sync=True),
+                                     host_home=host),
+                host,
+            ),
+            # A workset-tier box without global_sync writes back into its workset dir only.
+            lambda ws, host: (selected_source_root(_workset_src(str(ws)), host_home=host),),
+            # A global-tier box's writeback locks host home only.
+            lambda ws, host: (selected_source_root(_global_src(), host_home=host),),
+        ],
+        ids=["workset-synced-writeback", "workset-writeback", "global-writeback"],
+    )
+    def test_workset_sync_waits_for_a_held_writeback_lock(
+        self, tmp_path: Path, orchestrator, writeback_dirs
+    ) -> None:
+        host, proj, ws = tmp_path / "host", tmp_path / "proj", tmp_path / "ws"
+        _write(host / ".config/goose/secrets.yaml", "GLOBAL", mtime=300)
+        _write(ws / ".config/goose/secrets.yaml", "wsold", mtime=100)
+        auth = _workset_src(str(ws), global_sync=True)
+        done = threading.Event()
+
+        def _start_time_sync() -> None:
+            orchestrator(
+                GOOSE_DESC, _StubTarget(),
+                auth=auth, host_home=host, project_home=proj,
+            )
+            done.set()
+
+        with creds_store_lock(*writeback_dirs(ws, host)):
+            threading.Thread(target=_start_time_sync, daemon=True).start()
+            assert not done.wait(timeout=0.5), (
+                "the workset sync ran while a writeback held the store lock"
+            )
+            assert (ws / ".config/goose/secrets.yaml").read_text() == "wsold"
+        assert done.wait(timeout=10), "the workset sync never resumed after release"
+        assert (ws / ".config/goose/secrets.yaml").read_text() == "GLOBAL"
 
 
 class TestTierBox:

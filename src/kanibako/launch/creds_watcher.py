@@ -97,14 +97,21 @@ def clear_creds_dirty(project_home: Path) -> None:
 def creds_store_lock(*dest_dirs: Path) -> "Iterator[None]":
     """Serialize credential-STORE writes by flocking the writeback DESTINATION dirs.
 
-    The writeback copies box-home creds into the SHARED store, and two writers to the
-    same store must not interleave: a ``kanibako stop`` writeback, a foreground
-    reattach writeback, and this per-box daemon can all fire at once.  There is no
-    pre-existing lock on the writeback itself (the launch-path flock is the EPHEMERAL
-    session lock, SKIPPED for persistent boxes).
-    :func:`kanibako.commands.start.writeback_session_credentials` is the SOLE writeback
-    site and this lock's SOLE caller; this module's own daemon reaches the store THROUGH
-    that function rather than entering the lock itself.
+    Two writers to the same SHARED store must not interleave, and they come in two
+    kinds.  The WRITEBACK copies box-home creds into the store — a ``kanibako stop``,
+    a foreground reattach, and this per-box daemon can all fire at once — through
+    :func:`kanibako.commands.start.writeback_session_credentials`, the sole writeback
+    site; this module's daemon reaches the store THROUGH that function rather than
+    entering the lock itself.  The start-time REFRESH of a global-synced workset store
+    writes that store and reads host home while another box may be writing back into
+    either, so :func:`kanibako.targets.credsync._sync_workset_dir_from_global` takes
+    this lock too, over both — a torn source file is as corrupting as a torn write.
+    So such a start waits behind any host-wide writeback: milliseconds normally, and
+    as unbounded as the writeback's own wait if a holder hangs.
+    ⚑ A new store writer must take it: enumerate the writers by grepping for WRITES to
+    a store directory, never for callers of this lock.  There is no other lock on
+    these writes (the launch-path flock is the EPHEMERAL session lock, SKIPPED for
+    persistent boxes).
 
     ⚑ The lock IS the destination directory (``os.open`` + ``flock(LOCK_EX)`` on the
     dir itself): it creates no file and mints no key, and its SCOPE is the

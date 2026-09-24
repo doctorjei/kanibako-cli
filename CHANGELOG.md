@@ -351,6 +351,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   stops waiting on stores it never shared a destination with. This lock no longer creates a file; a
   leftover `creds-writeback.lock` in your state directory is inert and can be deleted.
 
+- **Creating or starting a box could race a credential writeback on a shared workset store.** In a
+  workset whose agent credentials are shared and synced with host home
+  (`workset.auth.global_sync`), creating or starting a box, or running `kanibako agent reauth`,
+  first refreshes the workset's credential store from host home. That refresh took no lock. It
+  could interleave with another box's writeback into the workset store (`kanibako stop`, detach,
+  session exit, or the background credential watcher), or read a host-home credential file while
+  a global writeback was rewriting it. Either way the workset store could end up with a
+  half-written credential file, or a just-rotated token replaced by an older copy, and boxes in
+  that workset would then fail authentication until someone logged in again. The refresh now takes
+  the writeback's lock, over both the workset store and host home, so it waits for any writeback
+  in progress on either. The refresh has run unlocked since `workset.auth.global_sync` arrived in
+  1.7.0.
+
 - **Plugins you drop in your own store are now found.** The user-level file-drop plugin directory
   (discovery tier 2) was composed from `$XDG_DATA_HOME` plus a hardcoded `kanibako` segment rather
   than read from `config.data`. A user who repointed `config.data` therefore had plugin discovery
