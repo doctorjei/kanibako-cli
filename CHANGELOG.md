@@ -431,11 +431,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   not created yet, create it first — the set door now asks for an existing, writable directory.
 
 - **A credential in a persona endpoint's userinfo no longer reaches the terminal.** The endpoint
-  is user-configured and the evidence block printed it raw, so `https://<token>@host/...`
-  appeared intact in refusal evidence, probe warnings and pre-flight errors. Every printed
-  endpoint is now userinfo-scrubbed through the one helper (`https://<redacted>@host/...`): host,
-  path and provenance stay legible, the credential does not. ⚑ Scrubbed is not proven clean —
-  the block inherits the provider text's documented residue, so it is still not safe to paste.
+  is user-configured and was printed raw, so `https://<token>@host/...` appeared intact in refusal
+  evidence, probe warnings, pre-flight errors, and the error that refuses a malformed endpoint.
+  Each of these now prints the endpoint userinfo-scrubbed through the one helper
+  (`https://<redacted>@host/...`): host, path and provenance stay legible, the credential does
+  not. A malformed endpoint is scrubbed too, since the error refusing it is where it gets printed;
+  where a missing `//` leaves a scheme indistinguishable from a username (`https:tok@host` reads
+  like `user:pw@host`), both are redacted from the printed endpoint, and the error still names the
+  `https://<host>` form it expected. ⚑ Scrubbed is not proven clean — a credential containing an
+  unencoded `/`, `?` or `#` is not recognised as userinfo and prints in whole or in part, and the
+  evidence block inherits the provider text's documented residue — so it is still not safe to
+  paste.
 
 ### Added
 

@@ -490,24 +490,50 @@ def _scrub_endpoint_userinfo(endpoint: str) -> str:
     Host, port, path, query and fragment print UNCHANGED: a refusal must keep
     the endpoint legible (WHERE it pointed) while losing the credential, and
     only the authority-section userinfo is a credential by construction.  An
-    ``@`` in the path, query or fragment is not userinfo and is left alone, as
-    is a string too malformed to split — mangling what could not be parsed
-    would invent a URL.  The whole userinfo span is dropped structurally, so no
-    re-encoding of it can survive the way one can defeat `_provider_text`.
+    ``@`` in the path, query or fragment is not userinfo and is left alone.
+    The whole userinfo span is dropped structurally, so no re-encoding of it
+    can survive the way one can defeat `_provider_text`.
+
+    ⚑ A MALFORMED endpoint is scrubbed too: it is the one most likely to be
+    printed, by the error refusing it.  Where ``urlsplit`` raises or finds no
+    authority (``user:pw@host/v1``, ``https:///tok@host``), the would-be
+    authority starts past the first run of ``/`` ahead of the first ``@`` (else
+    at the start) and ends at the next ``/``, ``?`` or ``#`` — where urllib ends
+    a netloc; everything before its LAST ``@`` is dropped.  That can take a
+    leading scheme, or a first path segment, too (``https:tok@host`` →
+    ``<redacted>@host``, ``gw.example.com/team@corp/v1`` →
+    ``gw.example.com/<redacted>@corp/v1``): over-redaction of a string that is
+    not a usable URL, never a credential printed.  Only a span is deleted, so
+    no URL is invented.
     """
     import urllib.parse as _urlparse
 
     try:
-        parts = _urlparse.urlsplit(endpoint)
+        parts: _urlparse.SplitResult | None = _urlparse.urlsplit(endpoint)
     except ValueError:
+        parts = None
+    if parts is not None and parts.netloc:
+        if "@" not in parts.netloc:
+            return endpoint
+        hostport = parts.netloc.rpartition("@")[2]
+        return _urlparse.urlunsplit((
+            parts.scheme, _REDACTED + "@" + hostport,
+            parts.path, parts.query, parts.fragment,
+        ))
+    stop = min(
+        (i for i in (endpoint.find("?"), endpoint.find("#")) if i != -1),
+        default=len(endpoint),
+    )
+    first_at = endpoint.find("@", 0, stop)
+    if first_at == -1:
         return endpoint
-    if "@" not in parts.netloc:
+    slash = endpoint.find("/", 0, first_at)
+    start = 0 if slash == -1 else len(endpoint) - len(endpoint[slash:].lstrip("/"))
+    end = endpoint.find("/", start, stop)
+    last_at = endpoint.rfind("@", start, stop if end == -1 else end)
+    if last_at == -1:
         return endpoint
-    hostport = parts.netloc.rpartition("@")[2]
-    return _urlparse.urlunsplit((
-        parts.scheme, _REDACTED + "@" + hostport,
-        parts.path, parts.query, parts.fragment,
-    ))
+    return endpoint[:start] + _REDACTED + endpoint[last_at:]
 
 
 @dataclass(frozen=True)

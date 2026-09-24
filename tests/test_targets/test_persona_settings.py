@@ -1160,8 +1160,9 @@ class TestProbeEvidence:
 
     def test_an_at_sign_outside_the_authority_is_not_userinfo(self):
         """Boundary pin: only the netloc userinfo is a credential by
-        construction — an ``@`` in the query, and a string too malformed to
-        split, print unchanged rather than mangled.
+        construction — an ``@`` in the query prints unchanged, as does a string
+        with no ``@`` at all; a malformed string that does carry userinfo is
+        scrubbed (``test_persona_endpoint_scrub.py``).
         """
         from kanibako.targets.base import _scrub_endpoint_userinfo
 
