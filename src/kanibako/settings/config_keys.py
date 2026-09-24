@@ -305,7 +305,7 @@ _KEY_ROUTES: dict[str, tuple[tuple[str, ...], str]] = {
 #             (:func:`is_path_valued_key`).  NOT coerced: the file keeps the raw
 #             spelling, tokens and all (spec §0).
 #
-# ⚑ THE TWO KINDS ARE ONE TABLE ON PURPOSE.  A key has one declared type, and the
+# ⚑ EVERY KIND IS ONE TABLE ON PURPOSE.  A key has one declared type, and the
 # manifest column that states it is one column; two code tables would be two answers to
 # "what is this key" and would drift the way every split carrier here has.
 # ⚑ THE PARAMETRIC PATH KEYS ARE NOT SPELLABLE HERE — ``agent.<node>.{template,canon}``

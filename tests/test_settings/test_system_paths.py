@@ -501,17 +501,18 @@ class TestHostXdgMap:
 
 
 class TestLoadSystemConfig:
-    """The 2-file CONFIG loader: config_base < user-global, then the SETTINGS file.
+    """The 2-file CONFIG loader: site ``base.cfg`` < user-global, then the SETTINGS file.
 
     ``config_base_path`` points at ``/etc/kanibako`` in production; tests redirect
     it at a tmp file via monkeypatch so the cascade can be exercised hermetically.
     (The former ``config_required`` non-overridable tier was CUT, 2026-06-29f.)
 
     ⚑⚑ THE TWO CONFIG FILES SUPPLY ``config.*`` ONLY, SINCE 2026-08-26. Jei:
-    *"kanibako_config.yaml <-- cannot have settings. Period."* — and ``config_base.yaml``
-    is the SAME family, the site half of the Layer-1 CONFIG set (spec §1 names both;
-    the settings base is the separate ``/etc/kanibako/settings_base.yaml``). The Layer-2
-    ``system.*`` path half comes from ``@config.settings`` alone, which is layer 3.
+    *"kanibako_config.yaml <-- cannot have settings. Period."* (that file is
+    ``kanibako.cfg`` now) — and the site ``base.cfg`` is the SAME family, the site half
+    of the Layer-1 CONFIG set (spec §1 names both; the settings base is the separate
+    ``/etc/kanibako/settings_base.yaml``). The Layer-2 ``system.*`` path half comes from
+    ``@config.settings`` alone, which is layer 3.
     """
 
     def _redirect(self, monkeypatch, base: Path) -> None:
@@ -525,7 +526,7 @@ class TestLoadSystemConfig:
         monkeypatch.setattr(cfg_mod, "config_base_path", lambda: base)
 
     def test_only_user_global_still_works(self, tmp_path, monkeypatch):
-        """Back-compat: a user with only ~/.config/kanibako_config.yaml (absent
+        """Back-compat: a user with only ~/.config/kanibako.cfg (absent
         /etc base) gets exactly the prior behavior."""
         base = tmp_path / SITE_CONFIG_FILENAME  # absent
         self._redirect(monkeypatch, base)
@@ -743,7 +744,7 @@ class TestResolverSplitRouting:
 
 
 class TestConfigDataCascade:
-    """A user ``kanibako_config.yaml`` override of ``config.data`` cascades to
+    """A user ``kanibako.cfg`` override of ``config.data`` cascades to
     every dependent (all 5 config keys + the Layer-2 system paths that @-ref it).
     """
 

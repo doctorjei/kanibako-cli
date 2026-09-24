@@ -2,16 +2,18 @@
 
 The old pin here ("ALL ``system.*``-prefixed keys are FILE-ONLY") was the F2
 collateral and is DELIBERATELY FLIPPED: routing a settable ``system.*``
-SETTINGS key to ``kanibako.cfg`` was a write-only no-op
-(``resolve_system_paths`` drops unknown ``[system]`` entries), while the
-launch reads those keys from the system SETTINGS file (``@config.settings`` =
-``global/settings.yaml``).  The rule now:
+SETTINGS key to the Layer-1 config file was a write-only no-op (at the time
+``resolve_system_paths`` dropped unknown ``[system]`` entries; since 2026-08-31
+``bootstrap_config_paths`` REFUSES any settings table in ``kanibako.cfg``),
+while the launch reads those keys from the system SETTINGS file
+(``@config.settings`` = ``global/settings.yaml``).  The rule now:
 
-* ``system.setup_completed`` stays FILE-ONLY in ``kanibako.cfg``'s
-  ``[system]`` table — set/reset refused, get/show still read, and the refusal
-  names the file that hand-editing actually honors.  ⚑ The
-  ``SYSTEM_PATH_DEFAULTS`` family stood beside it until 2026-08-23; spec §2g
-  declares all eleven Layer-2 SETTINGS keys, so they joined the row below.
+* ``kanibako.cfg`` carries ``config.*`` ALONE, so no ``system.*`` key routes
+  there.  ``system.setup_completed`` was the last file-only holdout: it became
+  settable on 2026-08-23 and moved to the system SETTINGS file on 2026-08-26
+  (``TestSystemStructuralFileOnly``).  ⚑ The ``SYSTEM_PATH_DEFAULTS`` family
+  joined the row below on 2026-08-23 too; spec §2g declares every Layer-2
+  ``system.*`` path key a SETTINGS key.
 * system-scope SETTINGS (``system.auth.share_allowed``,
   ``system.agent``, ``env.*``, agent settings) route to the SAME
   storage the launch cascade reads: the system settings file for keyed
@@ -126,8 +128,8 @@ class TestSystemAuthShareAllowed:
         std = _std(config_file)
         # Stored as a REAL bool in the system SETTINGS file (the launch input).
         assert load_doc(std.settings)["system"]["auth"]["share_allowed"] is False
-        # NOT in the kanibako.cfg [system] table (the dead location:
-        # resolve_system_paths drops unknown [system] entries).
+        # NOT in kanibako.cfg: that file carries ``config.*`` alone, and a
+        # ``system:`` table there is REFUSED at load (``bootstrap_config_paths``).
         assert "auth" not in load_doc(config_file).get("system", {})
 
     def test_get_reads_back_the_set_value(self, config_file, tmp_home, capsys):
@@ -435,7 +437,7 @@ class TestSystemStructuralFileOnly:
         assert _get("config.data") == 0
         assert capsys.readouterr().out.strip() != ""
 
-    def test_get_config_path_key_reads_kanibako_config_yaml(
+    def test_get_config_path_key_reads_kanibako_cfg(
         self, config_file, tmp_home, capsys,
     ):
         """config.data (Layer-1 CONFIG) is read from kanibako.cfg — get

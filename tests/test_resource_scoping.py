@@ -207,11 +207,15 @@ class TestBuildEffectiveState:
         target.name = name
         return target
 
-    def _make_global_config(self, tmp_path, settings=None):
-        """Create a minimal global kanibako.cfg, optionally with [agent]."""
+    def _make_system_settings(self, tmp_path, settings=None):
+        """Create a minimal system SETTINGS file, optionally with ``agent.claude.*`` rows.
+
+        The callers pass it as ``system_settings_path`` — the ``global/settings.yaml``
+        tier — so it is named like one; ``kanibako.cfg`` carries ``config.*`` alone.
+        """
         from kanibako.settings.config import write_agent_setting
 
-        global_toml = tmp_path / CONFIG_FILENAME
+        global_toml = tmp_path / "settings.yaml"
         global_toml.write_text("")
         if settings:
             for k, v in settings.items():
@@ -377,8 +381,8 @@ class TestBuildEffectiveState:
         assert result == {"model": "opus", "access": "permissive"}
 
     def test_system_level_provides_value(self, tmp_path):
-        """System [crab] (global kanibako.cfg) supplies a value when nothing
-        more specific sets it."""
+        """The system SETTINGS file's ``agent.claude`` table supplies a value when
+        nothing more specific sets it."""
         from kanibako.commands.start import _effective_behavior_for_display as _build_effective_state
 
         descriptors = [
@@ -387,7 +391,7 @@ class TestBuildEffectiveState:
         target = self._make_target(descriptors)
         agent_cfg = AgentConfig()  # empty state
         project_toml = self._make_project_toml(tmp_path)
-        global_toml = self._make_global_config(tmp_path, settings={"model": "sonnet"})
+        global_toml = self._make_system_settings(tmp_path, settings={"model": "sonnet"})
 
         result = _build_effective_state(
             target, agent_cfg, project_toml, system_settings_path=global_toml
@@ -414,7 +418,7 @@ class TestBuildEffectiveState:
             TargetSetting(key="access", description="Access", default="permissive"),
         ]
         target = self._make_target(descriptors)
-        global_toml = self._make_global_config(
+        global_toml = self._make_system_settings(
             tmp_path, settings={"model": "sys-model", "access": "default"}
         )
         # workset config lives in its own dir to avoid colliding filenames.
@@ -488,7 +492,7 @@ class TestBuildEffectiveState:
             TargetSetting(key="model", description="Model", default="opus"),
         ]
         # An override for claude, carried by the (legal) system file.
-        global_toml = self._make_global_config(tmp_path, settings={"model": "sonnet"})
+        global_toml = self._make_system_settings(tmp_path, settings={"model": "sonnet"})
         project_toml = self._make_project_toml(tmp_path / "proj")
         agent_cfg = AgentConfig()
 
@@ -520,7 +524,7 @@ class TestBuildEffectiveState:
             TargetSetting(key="model", description="Model", default="opus"),
         ]
         # Any-agent default + a claude-specific override, both on the system file.
-        global_toml = self._make_global_config(tmp_path, settings={"model": "sonnet"})
+        global_toml = self._make_system_settings(tmp_path, settings={"model": "sonnet"})
         write_agent_setting(global_toml, "model", "haiku", "default")
         project_toml = self._make_project_toml(tmp_path / "proj")
         agent_cfg = AgentConfig()

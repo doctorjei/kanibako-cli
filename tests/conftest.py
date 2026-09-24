@@ -1065,7 +1065,8 @@ def _sim_unshare_globally(request):
     request.getfixturevalue("protected_canon")
 
 
-#: Delivered host signals no test may INHERIT (board row 2, ``tasks/bugfixes.md``).
+#: Delivered host signals no test may INHERIT (``tasks/bugfixes.md``, the row
+#: *"OUR FULL-SUITE VERDICT DEPENDS ON THE DEVELOPER'S OWN ENVIRONMENT"*).
 #: ``box.env.COLORTERM`` is a PASSTHROUGH of the host's ``COLORTERM`` (absence is
 #: the whole feature) and ``agent.default.env.TERM`` passes ``$TERM`` through
 #: (falling back to ``xterm`` only when the host sets none) — and ``ResolveCtx``
