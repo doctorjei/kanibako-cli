@@ -42,6 +42,7 @@ def _copy_metadata(src_metadata: Path, src_shell: Path, dst_metadata: Path, *, s
 def _deliver_carried_box_settings(state: ProjectState, dst_box_tier: Path) -> None
 def _vault_leaf_has_contents(leaf: Path) -> bool
 def _copy_vault_leaf_contents(src: Path, dst: Path) -> None
+def _vault_copy_failure_message(src: Path, dst: Path, err: shutil.Error) -> str
 def _vault_carry_pairs(state: ProjectState, std: StandardPaths, dst_ro: Path, dst_rw: Path) -> list[tuple[Path, Path]]
 def _carry_vault_contents(state: ProjectState, std: StandardPaths, dst_ro: Path, dst_rw: Path) -> None
 def _remove_old_metadata(state: ProjectState, std: StandardPaths, config: BootstrapConfig, *, preserve_name: str | None=None, preserve_root: Path | None=None) -> None

@@ -267,6 +267,33 @@ class TestVaultCarry:
         assert (src_rw / "rw-note.txt").read_text() == seed["rw-note.txt"]
         assert (src_rw / "sub" / "deep.txt").read_text() == seed["sub/deep.txt"]
 
+    def test_dangling_symlink_aborts_move_with_source_intact(self, env):
+        """A dangling link fails the carry by NAME; the source survives, the dest unwinds."""
+        config, std, tmp_home = env
+        pdir = _make_default(env)
+        state = resolve_lifecycle_target(str(pdir), std, config)
+        seed = _seed_vault(state)
+        link = state.vault_rw / "gone"
+        link.symlink_to(tmp_home / "no-such-target")
+        boxes_before = sorted(p.name for p in std.boxes.iterdir())
+        with pytest.raises(ProjectError) as exc:
+            execute_lifecycle(
+                state, TargetSpec(location=tmp_home / "newhome", ownership=UNCHANGED),
+                std, config, confirm=_conf_yes(),
+            )
+        msg = str(exc.value)
+        assert str(state.vault_rw) in msg
+        assert f"{link}: dangling symlink" in msg
+        # Source vault intact, byte for byte, link included.
+        assert (state.vault_ro / "ro-note.txt").read_text() == seed["ro-note.txt"]
+        assert (state.vault_rw / "rw-note.txt").read_text() == seed["rw-note.txt"]
+        assert (state.vault_rw / "sub" / "deep.txt").read_text() == seed["sub/deep.txt"]
+        assert link.is_symlink()
+        # Destination unwound: no new box dir, no new vault leaves.
+        assert sorted(p.name for p in std.boxes.iterdir()) == boxes_before
+        assert sorted(p.name for p in std.primary_vault_ro.iterdir()) == [state.vault_ro.name]
+        assert sorted(p.name for p in std.primary_vault_rw.iterdir()) == [state.vault_rw.name]
+
     def test_disabled_vault_move_completes_without_vault(self, env):
         """No destination vault exists when disabled — the carry stays hands-off."""
         config, std, tmp_home = env
@@ -345,6 +372,23 @@ class TestCopyVaultLeafContents:
             _copy_vault_leaf_contents(src, src / "child")
         # Nothing was created inside the source.
         assert not (src / "child").exists()
+
+    def test_dangling_symlink_raises_named_project_error(self, tmp_path):
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "a.txt").write_text("a")
+        link = src / "gone"
+        link.symlink_to(tmp_path / "no-such-target")
+        dst = tmp_path / "dst"
+        with pytest.raises(ProjectError) as exc:
+            _copy_vault_leaf_contents(src, dst)
+        msg = str(exc.value)
+        assert f"vault contents of {src} to {dst}" in msg
+        assert f"{link}: dangling symlink" in msg
+        assert "The relocation was aborted." in msg
+        # The source is untouched.
+        assert (src / "a.txt").read_text() == "a"
+        assert link.is_symlink()
 
 
 class TestCarryGuardContract:
