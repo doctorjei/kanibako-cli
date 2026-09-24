@@ -820,8 +820,8 @@ def system_settings_path() -> Path:
     """THE system SETTINGS file (``@config.settings``), resolved from Layer-1 alone.
 
     ⚑ Path resolution only, deliberately NOT ``paths.load_std_paths``: that one
-    MATERIALIZES the store and RAISES when no Layer-1 file exists, neither of which a
-    pre-cascade reader may do to a box that has never been set up.
+    RAISES when no Layer-1 file exists, which a pre-cascade reader may not do to a
+    box that has never been set up.
     ⚑ The returned path need not exist — every reader here treats an absent file as
     "unset", which is exactly what a fresh install is.
     """

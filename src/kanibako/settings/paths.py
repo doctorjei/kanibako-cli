@@ -676,8 +676,7 @@ def resolve_data_path(*, config_home: Path | None = None,
     XDG data base with a hardcoded ``kanibako`` leaf ([R155]: a kanibako subdirectory
     references ``config.data``; it is never composed from the XDG base).
     :func:`kanibako.targets.discover_targets` is that caller: it runs on paths
-    where ``load_std_paths`` is unavailable, since it REQUIRES a config file and
-    MATERIALIZES directories, and this requires neither.
+    where ``load_std_paths`` is unavailable, since it REQUIRES a config file, and this does not.
 
     ⚑ TOTAL: any failure to read or resolve config — the file is absent, unreadable, or
     malformed YAML, or a stored expression fails to resolve — degrades to

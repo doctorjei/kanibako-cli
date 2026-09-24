@@ -432,7 +432,8 @@ def _setup_nudge(args: argparse.Namespace) -> None:
         # 2026-08-26 — spec §2g declares it a Layer-2 ``system.*`` settings key, and
         # Layer-1 holds the ``config.*`` bootstrap paths alone (spec §1).
         # ⚑ ``load_system_config``, deliberately NOT ``load_std_paths``: the latter
-        # MATERIALIZES the store, and a non-blocking advisory must not create dirs.
+        # resolves through the Layer-2 store, and a non-blocking advisory answers from
+        # Layer-1 alone.
         # ⚑ A resolve failure here is caught by this function's own ``except`` and
         # degrades to "no gate ran" — the documented never-break-a-command contract.
         settings_path = load_system_config(

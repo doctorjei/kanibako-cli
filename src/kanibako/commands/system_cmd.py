@@ -295,11 +295,13 @@ def _run_system_config(args: argparse.Namespace) -> int:
     )
 
     cf = user_config_file()
-    # ⚑ The Layer-1 foundation resolve, deliberately NOT ``load_std_paths``: that one
-    # MATERIALIZES the store, so one stored-but-unusable Layer-2 value bricked every
-    # config verb behind a raw ``OSError`` — including the ``reset`` that would have
-    # un-stored it.  These verbs need only ``std.settings`` and ``std.agents``, both
-    # Layer-1 ``config.*``, so the foundation answers them exactly (``cli.py`` and
+    # ⚑ The Layer-1 foundation resolve, deliberately NOT ``load_std_paths``: a
+    # stored-but-unusable Layer-2 value must not reach these verbs — the [R147] read-time
+    # refusal owns that guard — and the foundation answers from Layer-1 alone.  (Brick
+    # history: back when ``load_std_paths`` also MATERIALIZED the store, one such value
+    # bricked every config verb behind a raw ``OSError``, including the ``reset`` that
+    # would have un-stored it.)  These verbs need only ``std.settings`` and ``std.agents``,
+    # both Layer-1 ``config.*``, so the foundation answers them exactly (``cli.py`` and
     # ``settings/config.py`` already make this substitution for the same reason).
     # ⚑ ``spec_default_xdg_map``, NOT ``host_xdg_map``: resolving ``XDG_RUNTIME_DIR``
     # can mkdir a fallback dir when unset, and this resolve creates nothing.  No
