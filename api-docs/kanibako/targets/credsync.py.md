@@ -23,6 +23,7 @@ def _chmod_600(path: Path) -> None
 def _copy_dir(src: Path, dst: Path) -> None
 def _sync_workset_dir_from_global(descriptor: PluginDescriptor, target: Target, *, auth: AuthSource, host_home: Path) -> None
 def _sync_workset_dir_to_global(descriptor: PluginDescriptor, target: Target, *, auth: AuthSource, host_home: Path) -> None
+def _box_from_source(primitive: Callable[..., None], descriptor: PluginDescriptor, target: Target, *, auth: AuthSource, host_home: Path, project_home: Path) -> None
 def _create_workset_source_dirs(descriptor: PluginDescriptor, *, auth: AuthSource) -> None
 def _cred_descriptor(descriptor: PluginDescriptor, *, suppress_oauth: bool) -> PluginDescriptor
 ```

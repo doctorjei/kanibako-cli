@@ -629,6 +629,51 @@ class TestStartSyncTakesTheWritebackLock:
         assert (ws / ".config/goose/secrets.yaml").read_text() == "GLOBAL"
 
 
+class TestBoxReadTakesTheWritebackLock:
+    """The box-level seed/refresh READS the selected store, which a writeback rewrites
+    in place, so it must wait on a writeback holding the lock over that store."""
+
+    @pytest.mark.parametrize(
+        "orchestrator", [seed_box_credentials, refresh_box_credentials],
+    )
+    @pytest.mark.parametrize(
+        "auth_for",
+        [
+            # A global-tier box reads host home.
+            lambda ws: _global_src(),
+            # A workset-tier box reads its workset dir (no global hop, which locks too).
+            lambda ws: _workset_src(str(ws)),
+        ],
+        ids=["global-tier", "workset-tier"],
+    )
+    def test_box_read_waits_for_a_held_writeback_lock(
+        self, tmp_path: Path, orchestrator, auth_for
+    ) -> None:
+        host, proj, ws = tmp_path / "host", tmp_path / "proj", tmp_path / "ws"
+        auth = auth_for(ws)
+        source = selected_source_root(auth, host_home=host)
+        assert source is not None
+        _write(source / ".config/goose/secrets.yaml", "STORE", mtime=300)
+        box_file = proj / ".config/goose/secrets.yaml"
+        done = threading.Event()
+
+        def _box_read() -> None:
+            orchestrator(
+                GOOSE_DESC, _StubTarget(),
+                auth=auth, host_home=host, project_home=proj,
+            )
+            done.set()
+
+        with creds_store_lock(source):
+            threading.Thread(target=_box_read, daemon=True).start()
+            assert not done.wait(timeout=0.5), (
+                "the box read ran while a writeback held the store lock"
+            )
+            assert not box_file.exists()
+        assert done.wait(timeout=10), "the box read never resumed after release"
+        assert box_file.read_text() == "STORE"
+
+
 class TestTierBox:
     def test_private_box_seed_writes_no_cred_content(self, tmp_path: Path) -> None:
         host, proj = tmp_path / "host", tmp_path / "proj"
