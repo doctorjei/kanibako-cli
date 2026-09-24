@@ -10,6 +10,7 @@ Prose for these symbols lives in `llm-docs/kanibako/settings/settings_expand.py.
 ```
 _ABSENT: _Absent = _Absent()
 _PREF_ROOT = 'pref'
+_SEEDED = 'seeded'
 ```
 
 ## Functions
@@ -42,14 +43,14 @@ class _Expander:
 
     def _expand_node(self, node: KeyStore, *, path: tuple[str, ...]) -> KeyStore
     def _expand_dest_key(self, key: str, value: StoreValue, *, chain: tuple[str, ...]) -> str
-    def _expand_leaf(self, value: StoreValue, *, path: tuple[str, ...]) -> StoreValue | _Absent
+    def _expand_leaf(self, value: StoreValue, *, path: tuple[str, ...], seed: bool=False) -> StoreValue | _Absent
     def _refuse_relative_host_src(self, raw: str, expanded: str, *, chain: tuple[str, ...]) -> None
     def _expand_bind(self, bind: Bind, *, chain: tuple[str, ...]) -> StoreValue | _Absent
-    def _expand_bind_entry(self, entry: BindEntry, *, chain: tuple[str, ...]) -> StoreValue | _Absent
-    def _expand_str(self, value: str, *, space: str, chain: tuple[str, ...]) -> StoreValue | _Absent
+    def _expand_bind_entry(self, entry: BindEntry, *, chain: tuple[str, ...], seed: bool=False) -> StoreValue | _Absent
+    def _expand_str(self, value: str, *, space: str, chain: tuple[str, ...], none_refs: list[str] | None=None) -> StoreValue | _Absent
     def _resolve_whole_value_var(self, name: str) -> StoreValue | _Absent
     def _resolve_ref(self, dotted: str, *, chain: tuple[str, ...]) -> StoreValue | _Absent
     def _lookup_raw(self, dotted: str) -> StoreValue | _Absent
-    def _expand_embedded(self, value: str, *, space: str, chain: tuple[str, ...]) -> str
-    def _lookup_str(self, dotted: str, chain: tuple[str, ...]) -> str
+    def _expand_embedded(self, value: str, *, space: str, chain: tuple[str, ...], none_refs: list[str] | None=None) -> str
+    def _lookup_str(self, dotted: str, chain: tuple[str, ...], none_refs: list[str] | None=None) -> str
 ```

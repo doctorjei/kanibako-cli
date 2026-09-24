@@ -5130,13 +5130,52 @@ renamed for you (clean break — no migration code, no symlink, no fallback read
 ```bash
 mv <data>/agents/general/agent.yaml <data>/agents/shell/agent.yaml      # if you edited the general slot's file
 mv <data>/agents/no_agent/agent.yaml <data>/agents/shell/agent.yaml     # if you edited the no_agent target's file
-cd <data>/agents && rmdir general no_agent 2>/dev/null || true            # both are empty afterwards, or delete them; absent dirs are fine
+cd <data>/agents && rmdir general/template no_agent/template general no_agent 2>/dev/null || true   # empty once agent.yaml and any template/ content have moved; absent dirs are fine
 ```
 
 If you edited both files, merge them by hand first: they were two spellings of one box's
 settings, and the survivor holds the union. If you edited neither, there is nothing to move
 — `kanibako setup` writes an empty `shell/agent.yaml` on its next run, and the two old
 directories can simply be deleted.
+
+**Template files for a plain-shell box.** In v1.7.2 a new plain-shell box was also seeded from
+`<data>/agents/general/template/` (or `<data>/agents/no_agent/template/`), if you had created one.
+It no longer is, and by default `<data>/agents/shell/template/` does not take its place: the
+`shell` pseudo-agent's template key `agent.shell.template` defaults to `<None>` (spec §2d), and a
+template layer whose source is `<None>` is skipped. A new plain-shell box is seeded from the
+system template and, for a box in a workset, that workset's template.
+
+To keep the files for plain-shell boxes only — the faithful equivalent of the old directory —
+move them into the shell store and point `agent.shell.template` at it. Set the key in the system
+settings file, `<data>/global/settings.yaml`:
+
+```bash
+mkdir -p <data>/agents/shell/template/box/home
+cp -a <data>/agents/general/template/. <data>/agents/shell/template/box/home/
+```
+
+```yaml
+# <data>/global/settings.yaml
+agent:
+  shell:
+    template: "@config.agents/shell/template"
+```
+
+Or move them to a template every box reads. The system template seeds EVERY new box, whatever
+agent it runs; a workset's template seeds that workset's boxes:
+
+```bash
+# every new box gets these:
+mkdir -p <data>/global/template/box/home
+cp -a <data>/agents/general/template/. <data>/global/template/box/home/
+# or, that workset's boxes only:
+mkdir -p <workset root>/template/box/home
+cp -a <data>/agents/general/template/. <workset root>/template/box/home/
+```
+
+Use `no_agent` in place of `general` if that is where your files are. Once they are copied,
+empty the old `template/` directory and re-run the `rmdir` line above. Boxes that already exist
+keep the home they were seeded with.
 
 ⚑ **Check anything inside a plain-shell box that branches on `$AGENT`.** A script testing
 `$AGENT = general` now takes the wrong arm. The value is `shell`.

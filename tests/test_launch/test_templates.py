@@ -308,6 +308,37 @@ class TestTemplateSeedDefaults:
         assert "system.seeded" in defs
         assert "workset.seeded" in defs
 
+    def test_the_shell_node_arm_is_a_present_none_over_a_declared_layer(
+        self, primary_proj,
+    ):
+        """The PRODUCTION shell box: node ``shell`` (``agent_ref.GENERAL_SLOT``), not blank.
+
+        Keyspec §2d's shell fence declares ``agent.shell.template | <None>``, and §2b says
+        the pseudo-agent installs NO layer-2 template.  So the node arm is a PRESENT
+        ``None`` — a supplied value, which beats the ``agent.default.template`` fallback
+        ([R177] rejected omitting it).  The ``agent.shell.seeded`` LAYER is still
+        declared (§2a declares ``<scope>.seeded`` at every scope): the ``None`` source
+        SKIPS it at resolve, and a user-set ``agent.shell.template`` seeds through it
+        (``TestLayeredHomeSeed`` pins both).  The default arm still answers, because
+        the agent tier exists for a shell box.
+        (Mutation: drop the ``GENERAL_SLOT`` branch and this goes RED with
+        ``@config.agents/shell/template``; OMIT the key instead and it goes RED on the
+        missing ``None``; gate the layer on the default's VALUE and it goes RED on the
+        missing layer.)
+        """
+        from kanibako.launch.templates import agent_template_defaults
+
+        assert agent_template_defaults("shell") == {
+            "agent.default.template": "@config.agents/default/template",
+            "agent.shell.template": None,
+        }
+        defs = template_seed_defaults(primary_proj, "shell")
+        assert "agent.shell.template" in defs
+        assert defs["agent.shell.template"] is None
+        assert defs["agent.shell.seeded"] == {
+            "~/": ("@agent.shell.template/box/home",),
+        }
+
     def test_workset_layer_default_points_at_workset_template(self, primary_proj):
         """Layer 3 default = @meta.workset.path/template (Q3, was <None>).
 
@@ -385,11 +416,24 @@ class _FakeTarget:
         return {}
 
 
+def _write_system_settings(std, doc):
+    """Merge *doc*'s tables into the SYSTEM settings file (``std.settings``)."""
+    cur = (
+        yaml.safe_load(std.settings.read_text()) if std.settings.exists() else {}
+    ) or {}
+    for scope, table in doc.items():
+        for tier, keys in table.items():
+            cur.setdefault(scope, {}).setdefault(tier, {}).update(keys)
+    std.settings.parent.mkdir(parents=True, exist_ok=True)
+    std.settings.write_text(yaml.safe_dump(cur))
+
+
 def _seed(std, proj, *, agent="claude", deliver_creds=True, agent_cfg_path=None):
-    """Drive the one-time home seed (the unified keystore-routed route)."""
+    """Drive the one-time home seed (the unified keystore-routed route); return the
+    snapshot it resolved, which carries the collapsed seed list."""
     from kanibako.commands.start import _apply_init_seeds
 
-    _apply_init_seeds(
+    return _apply_init_seeds(
         std=std,
         proj=proj,
         agent_name=agent,
@@ -527,6 +571,228 @@ class TestLayeredHomeSeed:
         assert (home / "base-only.txt").is_file()
         # No agent template layer.
         assert not (home / ".claude.json").exists()
+
+    def test_a_shell_node_box_takes_no_seed_from_the_shell_store(
+        self, std, config, primary_proj,
+    ):
+        """The PRODUCTION shell create: node ``shell`` with the built-in ``ShellTarget``.
+
+        ``install_packaged_templates`` creates ``agents/shell/template/box/home``, so a
+        user file placed there used to seed into every shell box.  §2d declares
+        ``agent.shell.template | <None>``: the layer is skipped.  The base-layer file is
+        the positive control — the seed ran, and took everything but the shell store.
+        The seed LIST is the discriminating observable for the skip: an unskipped
+        ``None`` source renders as the host path ``/box/home``, which no test host has.
+        """
+        from kanibako.commands.start import _apply_init_seeds, _launch_seed_list
+        from kanibako.targets.shell import ShellTarget
+
+        install_packaged_templates(std, ["claude", "shell"])
+        (std.template / "box" / "home" / "base-only.txt").write_text("base")
+        planted = std.agents / "shell" / "template" / "box" / "home"
+        assert planted.is_dir()
+        (planted / "planted.txt").write_text("shell store")
+        default_home = std.agents / "default" / "template" / "box" / "home"
+        default_home.mkdir(parents=True, exist_ok=True)
+        (default_home / "default-arm.txt").write_text("default store")
+
+        snapshot = _apply_init_seeds(
+            std=std, proj=primary_proj, agent_name="shell", target=ShellTarget(),
+            global_config_path=std.settings,
+            agent_config_path=std.agents / "shell" / "agent.yaml",
+            logger=logging.getLogger("test-seed"),
+        )
+        srcs = [seed.src for seed in _launch_seed_list(snapshot)]
+        assert "/box/home" not in srcs, srcs
+        assert not any("/agents/" in src for src in srcs), srcs
+        home = primary_proj.shell_path
+        assert (home / "base-only.txt").read_text() == "base"
+        assert not (home / "planted.txt").exists()
+        # No §2d fallback either: the fence's ``<None>`` is a SUPPLIED value, and the
+        # default arm is a fallback that applies only where nothing was ([R177]).
+        assert not (home / "default-arm.txt").exists()
+
+    def test_a_shell_node_launch_floors_a_present_none_shell_template(
+        self, std, config, primary_proj,
+    ):
+        """The MAIN launch resolve for a shell box floors ``agent.shell.template: None``.
+
+        The spec declares it ``<None>`` — a SUPPLIED value, so the §2d pick lands on it
+        and never falls back to ``agent.default.template`` ([R177]).  The floor used to
+        carry ``@config.agents/shell/template``; omitting the key instead let the pick
+        read the default arm back into ``meta.box.agent.template``.
+        ``agent.default.template`` still answers, so the ``None`` is the shell arm's
+        alone, not a missing agent tier.
+        """
+        from kanibako.commands.start import _resolve_launch_snapshot
+        from kanibako.settings.kb_store import __MISSING__
+        from kanibako.targets.shell import ShellTarget
+
+        snapshot, _deliveries = _resolve_launch_snapshot(
+            std=std, proj=primary_proj, agent_name="shell",
+            system_settings_path=None, agent_cfg_path=None,
+            desc=None, install=None, target=ShellTarget(), agent_cfg=None,
+            deliver_creds=True,
+        )
+        agent = dict.get(snapshot, "agent")
+        shell = dict.get(agent, "shell", {})
+        assert dict.get(shell, "template", __MISSING__) is None, shell
+        default = dict.get(agent, "default")
+        assert str(dict.get(default, "template")).endswith("/agents/default/template")
+        box_agent = dict.get(dict.get(dict.get(snapshot, "meta"), "box"), "agent")
+        assert dict.get(box_agent, "template", __MISSING__) is None, box_agent
+
+    @pytest.mark.parametrize("spelling", ["store_ref", "plain_path"])
+    def test_a_user_set_shell_template_seeds_its_files_at_create(
+        self, std, config, primary_proj, tmp_path, spelling,
+    ):
+        """The fence's ``<None>`` is a DEFAULT, and a user may supply a value over it.
+
+        ``store_ref`` is the route MIGRATION.md gives a user whose v1.7.2 plain-shell
+        template lived in ``agents/general/template``: move the files to
+        ``<data>/agents/shell/template/box/home`` and set ``agent.shell.template`` to
+        ``@config.agents/shell/template`` in the system settings file
+        (``<data>/global/settings.yaml``).  ``plain_path`` names any other directory.
+        Either way the layer must seed: a table that gated ``agent.shell.seeded`` on
+        the DEFAULT's value dropped a user's value here.
+        """
+        from kanibako.commands.start import _apply_init_seeds
+        from kanibako.targets.shell import ShellTarget
+
+        install_packaged_templates(std, ["shell"])
+        (std.template / "box" / "home" / "base-only.txt").write_text("base")
+        if spelling == "store_ref":
+            root = std.agents / "shell" / "template"
+            value = "@config.agents/shell/template"
+        else:
+            root = tmp_path / "custom-tpl"
+            value = str(root)
+        (root / "box" / "home").mkdir(parents=True, exist_ok=True)
+        (root / "box" / "home" / "CUSTOM.txt").write_text("custom")
+        _write_system_settings(std, {"agent": {"shell": {"template": value}}})
+        agent_file = std.agents / "shell" / "agent.yaml"
+
+        _apply_init_seeds(
+            std=std, proj=primary_proj, agent_name="shell", target=ShellTarget(),
+            global_config_path=std.settings, agent_config_path=agent_file,
+            logger=logging.getLogger("test-seed"),
+        )
+        home = primary_proj.shell_path
+        assert (home / "base-only.txt").read_text() == "base"
+        assert (home / "CUSTOM.txt").read_text() == "custom"
+
+    def test_a_null_agent_template_skips_the_layer_not_the_host_path(
+        self, std, config, primary_proj,
+    ):
+        """``agent.claude.template: null`` in the system settings file SKIPS layer 2 —
+        spec §2a: a layer whose source is ``<None>`` is skipped.  The layer source ``@agent.claude.template/box/home`` EMBEDS the
+        ref, and the embedded rule renders a ``None`` as ``""``: unskipped, the
+        layer read the HOST path ``/box/home``.  The seed list is the observable —
+        on a host without ``/box/home`` the copy would skip it silently either way.
+        """
+        from kanibako.commands.start import _launch_seed_list
+
+        install_packaged_templates(std, ["claude"])
+        (std.template / "box" / "home" / "base-only.txt").write_text("base")
+        agent_home = std.agents / "claude" / "template" / "box" / "home"
+        agent_home.mkdir(parents=True, exist_ok=True)
+        (agent_home / "agent-only.txt").write_text("agent")
+        _write_system_settings(std, {"agent": {"claude": {"template": None}}})
+
+        snapshot = _seed(std, primary_proj)
+        srcs = [seed.src for seed in _launch_seed_list(snapshot)]
+        assert "/box/home" not in srcs, srcs
+        assert all(src.endswith("/template/box/home") for src in srcs), srcs
+        assert not any("/agents/claude/" in src for src in srcs), srcs
+        home = primary_proj.shell_path
+        assert (home / "base-only.txt").read_text() == "base"
+        assert not (home / "agent-only.txt").exists()
+
+    def test_a_null_workset_template_skips_the_layer_not_the_host_path(
+        self, std, config, primary_proj,
+    ):
+        """``workset.template: null`` in the workset file SKIPS layer 3 — the same
+        §2a rule as layer 2, for the same embedded-``None`` reason.  Unskipped, the
+        layer read ``/box/home``."""
+        from kanibako.commands.start import _launch_seed_list
+
+        self._populate(std, primary_proj)
+        wsf = std.primary_workset / "workset.yaml"
+        doc = (yaml.safe_load(wsf.read_text()) if wsf.exists() else {}) or {}
+        doc.setdefault("workset", {})["template"] = None
+        wsf.write_text(yaml.safe_dump(doc))
+
+        snapshot = _seed(std, primary_proj)
+        srcs = [seed.src for seed in _launch_seed_list(snapshot)]
+        assert "/box/home" not in srcs, srcs
+        assert all(src.endswith("/template/box/home") for src in srcs), srcs
+        home = primary_proj.shell_path
+        assert (home / "agent-only.txt").read_text() == "agent"
+        assert not (home / "workset-only.txt").exists()
+
+    def test_a_user_agent_default_seed_does_not_reach_a_shell_box(
+        self, std, config, primary_proj, tmp_path,
+    ):
+        """A user's ``agent.default.seeded: {"~/": [dir]}`` does NOT seed a shell box.
+
+        The shell fence's ``agent.shell.template: <None>`` makes the shell arm's
+        ``~/`` layer source ``<None>``.  That is a SUPPLIED value, and a default is a
+        fallback that applies only where nothing was supplied ([R177]), so the §2d pick
+        must land on the shell arm's skipped layer, not fall back to the default arm's
+        entry.  Dropping the entry as ABSENT instead let the default arm's ``~/`` seed
+        the shell box.  The base-layer file is the positive control.
+        """
+        from kanibako.commands.start import _apply_init_seeds, _launch_seed_list
+        from kanibako.targets.shell import ShellTarget
+
+        install_packaged_templates(std, ["shell"])
+        (std.template / "box" / "home" / "base-only.txt").write_text("base")
+        user_home = tmp_path / "user-default" / "box" / "home"
+        user_home.mkdir(parents=True)
+        (user_home / "DEFAULT.txt").write_text("default arm")
+        _write_system_settings(
+            std, {"agent": {"default": {"seeded": {"~/": [str(user_home)]}}}},
+        )
+
+        snapshot = _apply_init_seeds(
+            std=std, proj=primary_proj, agent_name="shell", target=ShellTarget(),
+            global_config_path=std.settings,
+            agent_config_path=std.agents / "shell" / "agent.yaml",
+            logger=logging.getLogger("test-seed"),
+        )
+        srcs = [seed.src for seed in _launch_seed_list(snapshot)]
+        assert str(user_home) not in srcs, srcs
+        home = primary_proj.shell_path
+        assert (home / "base-only.txt").read_text() == "base"
+        assert not (home / "DEFAULT.txt").exists()
+
+    def test_a_whole_value_seed_source_naming_a_present_none_is_skipped(
+        self, std, config, primary_proj,
+    ):
+        """A ``seeded`` entry whose WHOLE-VALUE source ref resolves to a present
+        ``None`` is SKIPPED, not refused — spec §2a: a layer whose source is
+        ``<None>`` is skipped.  ``@agent.shell.template`` is the shell fence's
+        ``<None>``; the entry used to reach the collapse as ``None`` and raise
+        ``SettingsError … is NoneType``.  The base layer still seeds.
+        """
+        from kanibako.commands.start import _apply_init_seeds, _launch_seed_list
+        from kanibako.targets.shell import ShellTarget
+
+        install_packaged_templates(std, ["shell"])
+        (std.template / "box" / "home" / "base-only.txt").write_text("base")
+        _write_system_settings(
+            std, {"system": {"seeded": {"~/x": ["@agent.shell.template"]}}},
+        )
+
+        snapshot = _apply_init_seeds(
+            std=std, proj=primary_proj, agent_name="shell", target=ShellTarget(),
+            global_config_path=std.settings,
+            agent_config_path=std.agents / "shell" / "agent.yaml",
+            logger=logging.getLogger("test-seed"),
+        )
+        dests = [seed.dest for seed in _launch_seed_list(snapshot)]
+        assert not any(dest.rstrip("/").endswith("/x") for dest in dests), dests
+        assert (primary_proj.shell_path / "base-only.txt").read_text() == "base"
 
     def test_private_box_keeps_template_layers(self, std, config, primary_proj):
         """deliver_creds=False (PRIVATE box) suppresses CREDENTIAL seeds only — the
@@ -811,6 +1077,16 @@ class TestHandbookLayerSourceKeys:
             "system.template", "workset.template",
         )
 
+    def test_the_shell_node_names_its_agent_layer_key(self, primary_proj):
+        """The production spelling of a shell box is node ``shell``, and it declares the
+        agent layer like every node: the KEY is named, and its §2d ``<None>`` value is
+        what skips the layer at the seam
+        (``TestBoxHandbookHostCopyThroughTheSeam.test_a_shell_node_box_skips_the_agent
+        _layer_quietly``)."""
+        assert handbook_layer_source_keys(primary_proj, "shell") == (
+            "system.template", "agent.shell.template", "workset.template",
+        )
+
     def test_standalone_omits_the_workset_layer(self, standalone_proj):
         assert handbook_layer_source_keys(standalone_proj, "claude") == (
             "system.template", "agent.claude.template",
@@ -1044,6 +1320,43 @@ class TestBoxHandbookHostCopyThroughTheSeam:
         assert (hb / "workset-only.md").is_file()
         assert not (hb / "agent-only.md").exists()
         assert (hb / "shared.md").read_text() == "workset"
+
+    def _plant_shell_store(self, std):
+        d = std.agents / "shell" / "template" / "box" / "canon" / "handbook"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "agent-only.md").write_text("shell store")
+
+    def test_a_shell_node_box_skips_the_agent_layer_quietly(
+        self, std, config, primary_proj, caplog,
+    ):
+        """Node ``shell``: the §2d fence's ``agent.shell.template: <None>`` is a
+        SUPPLIED value, so the agent layer is skipped — and skipped QUIETLY, because a
+        ``<None>`` source is not a key that failed to resolve.  A warning here would
+        print on every plain-shell create."""
+        self._populate(std)
+        self._plant_shell_store(std)
+        with caplog.at_level(logging.WARNING):
+            _install_handbook(std, primary_proj, agent="shell")
+        hb = _handbook_dir(primary_proj)
+        assert (hb / "sys-only.md").is_file()
+        assert (hb / "workset-only.md").is_file()
+        assert not (hb / "agent-only.md").exists()
+        assert not [r for r in caplog.records if "did not resolve" in r.getMessage()]
+
+    def test_a_user_set_shell_template_reaches_the_handbook_copy(
+        self, std, config, primary_proj,
+    ):
+        """A user-set ``agent.shell.template`` feeds the handbook's agent layer, the
+        same source the home seed reads."""
+        self._populate(std)
+        self._plant_shell_store(std)
+        _write_system_settings(
+            std, {"agent": {"shell": {"template": "@config.agents/shell/template"}}},
+        )
+        _install_handbook(std, primary_proj, agent="shell")
+        assert (_handbook_dir(primary_proj) / "agent-only.md").read_text() == (
+            "shell store"
+        )
 
     def test_workset_template_repoint_reroutes_the_copy(
         self, std, config, primary_proj, tmp_path,

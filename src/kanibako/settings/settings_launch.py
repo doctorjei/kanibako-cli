@@ -2382,6 +2382,11 @@ def _emit_bind_map(
             *decl_scope_fn(category, dest).split("."),
             *category.split("."), dest,
         )
+        if entry is None and category == "seeded":
+            # Spec §2a: a seeded LAYER whose source is ``<None>`` is SKIPPED, not
+            # refused.  ``settings_expand`` hands a present-None source up as ``None``
+            # so it still overrides a fallback arm in the §2d pick ([R177]).
+            continue
         if not isinstance(entry, BindEntry):
             raise SettingsError(
                 f"category {'.'.join(key_segments)} is {type(entry).__name__}, "

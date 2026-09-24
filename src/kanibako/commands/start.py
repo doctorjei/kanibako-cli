@@ -247,8 +247,10 @@ def ensure_persona_share_symlinks(std, agent_id, target) -> None:
     ``stage_layers``' per-entry ``is_symlink()`` refusal (§2a source-symlink,
     exfiltration) never sees it and the box gets bytes, not a dangling link.
     ⚑ AND IT IS NOT TARGET-DECLARED, unlike the categories — hence it is laid BEFORE
-    the no-target return: ``template_seed_defaults`` emits the node arm for every agent
-    id, whether or not the harness's plugin is installed on this host.
+    the no-target return: ``launch.templates.agent_template_defaults`` emits a
+    store-path node arm for every TRUE agent id (the ``shell`` pseudo-agent's arm is a
+    present ``None``, and a bare node returns before any link is laid), whether or not the
+    harness's plugin is installed on this host.
 
     PRECONDITION: call at persona-dir MATERIALIZATION, BEFORE mount assembly /
     category source resolution, so the symlink pre-dates any real-dir
@@ -8073,7 +8075,14 @@ def _install_box_handbook(
     if dest is None:
         return
     roots: list[Path] = []
+    from kanibako.settings.settings_launch import snapshot_leaf
+
     for key in handbook_layer_source_keys(proj, agent_id or None):
+        if snapshot_leaf(snapshot, key) is None:
+            # A SUPPLIED ``<None>`` (the shell fence's ``agent.shell.template``, or a
+            # user's null): the layer has no source and is skipped, exactly as the
+            # seed skips it (spec §2a).  Not a failed resolve, so nothing to warn of.
+            continue
         root = _snapshot_scalar(snapshot, key)
         if root is None:
             # An unresolved SOURCE key is a dropped layer, not a failed create —

@@ -93,6 +93,10 @@ LABEL_TO_CONFORMANCE_CLASS: dict[str, str] = {
     # values to compare and a reason to assert they are one.
     "settings_launch.py (system scalar floor)": "pinned",
     "runtime-probed (podman graphroot)": "exempt",
+    # The §2d shell fence's ``agent.shell.template`` (2026-09-24) — PINNED: its
+    # ``<None>`` is floored as a PRESENT ``None`` by ``agent_template_defaults``, so
+    # there is a carrier to read, and it left "nothing declares it" for that reason.
+    "launch/templates.py (shell fence, present None)": "pinned",
     "(nothing declares it — unset until you set it)": "exempt",
     "(empty — the category starts with no entries)": "exempt",
     "core_defaults.py (canon producer, per node)": "exempt",

@@ -2019,8 +2019,9 @@ class TestPersonaShareSymlinks:
         ⚑ The two shares differ in exactly one way and this pins it: ``common`` is
         TARGET-DECLARED (``target.default_common()``), so with no target there is
         nothing to enumerate; ``template`` is not — ``template_seed_defaults`` emits
-        the node-rooted layer-2 source key for EVERY agent id, whether or not the
-        harness's plugin is installed on this host.  Were the template link behind
+        the node-rooted layer-2 source key for every TRUE agent id (all but the
+        ``shell`` pseudo-agent), whether or not the harness's plugin is installed on
+        this host.  Were the template link behind
         the no-target return, that box would seed with layer 2 silently EMPTY.
         """
         from kanibako.commands.start import ensure_persona_share_symlinks

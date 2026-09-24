@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from typing import Any, ClassVar, TYPE_CHECKING
 from pathlib import Path
 
+from kanibako.agent_ref import GENERAL_SLOT
 from kanibako.settings.agent_config import store_dirname
 from kanibako.settings.core_defaults import ROM_ROOT_PARTS, packaged_data_dir
 
@@ -78,7 +79,9 @@ def agent_template_defaults(agent_id: str | None) -> dict[str, object]:
     # carrying it here rather than beside the canon arm keeps the template family's
     # value in the module that owns ``AGENT_TEMPLATE_STORE_REL``.
     # ⚑ INERT FOR DELIVERY, and that is the point: the node arm below is emitted
-    # unconditionally for every agent, so the §2d fallback to this arm never fires.
+    # for every TRUE agent, so the §2d fallback to this arm never fires.  The shell
+    # pseudo-agent's node arm is a present ``None`` (see below), so the fallback never
+    # reaches it either.
     # ⚑⚑ INERT FOR DELIVERY IS NOT UNREACHABLE.  Delivery asks which arm the §2d pick
     # lands on; REACHABILITY asks whether ``@agent.default.template`` resolves at all.
     # Two different questions, and the answer to the second must be yes.
@@ -88,6 +91,15 @@ def agent_template_defaults(agent_id: str | None) -> dict[str, object]:
     defs["agent.default.template"] = (
         f"@config.agents/default/{AGENT_TEMPLATE_STORE_REL}"
     )
+    if agent_id == GENERAL_SLOT:
+        # ⚑ A PRESENT ``None``, NEVER ABSENT.  §2d's shell fence declares
+        # ``agent.shell.template | <None>`` — a SUPPLIED value, so it beats the
+        # ``agent.default.template`` fallback, which applies only where nothing was
+        # supplied ([R177]; omitting the key is the rejected shape, and lets the §2d
+        # pick read the default arm back).  §2b: the tier installs NO layer-2 template;
+        # the layer itself stays declared, and a ``None`` source SKIPS it at resolve.
+        defs[f"agent.{agent_id}.template"] = None
+        return defs
     # SOURCE key (spec §2a/§2d), not a hardcoded path: settable, so a user
     # override reroutes the layer by cascade precedence.
     # ⚑⚑ NODE-ROOTED, NEVER THE HARNESS (ruled 2026-08-27).  §2d and the
@@ -151,6 +163,14 @@ def template_seed_defaults(
     defs: dict[str, object] = {"system.seeded": _layer("@system.template")}
     defs.update(agent_template_defaults(agent_id))
     if agent_id:
+        # EVERY agent node declares the layer (spec §2a: ``<scope>.seeded`` is declared
+        # at every scope, ``agent.<active>`` included) — the shell node too.  Whether it
+        # SEEDS is the SOURCE's business, decided at resolve time off the cascade, never
+        # here off the default: the shell fence's ``<None>`` skips it (§2a, "any layer
+        # whose source is ``<None>`` is SKIPPED" — ``settings_expand`` drops a seeded
+        # entry whose embedded ``@``-ref resolves to ``None``), and a USER-set
+        # ``agent.shell.template`` seeds from that store.  Gating on the default's value
+        # here dropped the user's value at create.
         defs[f"agent.{agent_id}.seeded"] = _layer(f"@agent.{agent_id}.template")
     if has_workset_channels(proj):
         # STANDALONE (no workset channels) omits the layer, exactly as the floor omits

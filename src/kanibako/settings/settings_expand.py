@@ -85,6 +85,12 @@ _ABSENT: _Absent = _Absent()
 #: a ``settings_prefs`` import would cycle through the settings stack.
 _PREF_ROOT = "pref"
 
+#: The ``seeded`` CATEGORY token (spec §2a) — the one category whose entries are
+#: SKIPPED when their source is ``<None>`` (see :meth:`_Expander._expand_bind_entry`).
+#: Spelled here for the same reason as ``_PREF_ROOT``: it names a TOKEN of the tree
+#: this pass walks, and the walk matches it by position.
+_SEEDED = "seeded"
+
 
 class _LenientDefect(Exception):
     """Internal (lenient-mode only) signal: the leaf being expanded is unresolvable.
@@ -231,6 +237,9 @@ class _Expander:
         cannot shadow it.
         """
         out = KeyStore()
+        # A ``<scope>.seeded`` map (spec §2a): its entries are LAYERS, and a layer
+        # whose source is ``<None>`` is SKIPPED rather than rendered.
+        seed_map = bool(path) and path[-1] == _SEEDED
         for key in dict.keys(node):
             child_path = (*path, key)
             value = dict.__getitem__(node, key)
@@ -254,14 +263,16 @@ class _Expander:
                 # the leaf; every clean leaf still resolves. STRICT never enters.
                 try:
                     out_key = self._expand_dest_key(key, value, chain=child_path)
-                    resolved = self._expand_leaf(value, path=child_path)
+                    resolved = self._expand_leaf(
+                        value, path=child_path, seed=seed_map,
+                    )
                 except (_LenientDefect, SettingsError) as exc:
                     reason = exc.reason if isinstance(exc, _LenientDefect) else str(exc)
                     self.errors[".".join(child_path)] = reason
                     continue
             else:
                 out_key = self._expand_dest_key(key, value, chain=child_path)
-                resolved = self._expand_leaf(value, path=child_path)
+                resolved = self._expand_leaf(value, path=child_path, seed=seed_map)
             if resolved is _ABSENT:
                 continue  # whole-value ref to an absent key → drop this key (§6b).
             if isinstance(value, BindEntry) and dict.__contains__(out, out_key):
@@ -306,7 +317,7 @@ class _Expander:
         return dest
 
     def _expand_leaf(
-        self, value: StoreValue, *, path: tuple[str, ...]
+        self, value: StoreValue, *, path: tuple[str, ...], seed: bool = False
     ) -> StoreValue | _Absent:
         """Expand a single non-KeyStore leaf (scalar / Bind / BindEntry / list / None).
 
@@ -319,7 +330,7 @@ class _Expander:
         if isinstance(value, Bind):
             return self._expand_bind(value, chain=chain)
         if isinstance(value, BindEntry):
-            return self._expand_bind_entry(value, chain=chain)
+            return self._expand_bind_entry(value, chain=chain, seed=seed)
         if isinstance(value, str):
             return self._expand_str(value, space="host", chain=chain)
         # No token to expand. (A present-None leaf is a terminal, not _ABSENT.)
@@ -380,7 +391,7 @@ class _Expander:
         return Bind(host, box, bind.opts)
 
     def _expand_bind_entry(
-        self, entry: BindEntry, *, chain: tuple[str, ...]
+        self, entry: BindEntry, *, chain: tuple[str, ...], seed: bool = False
     ) -> StoreValue | _Absent:
         """Expand a :class:`BindEntry`: ``src`` fully host-side; ``opts`` verbatim.
 
@@ -388,8 +399,32 @@ class _Expander:
         because the other half — the destination — is the mapping KEY and is
         expanded by :meth:`_expand_dest_key` on the node walk (R-5/R-6). The
         3-state rule is unchanged from the name-keyed shape.
+
+        *seed* marks an entry of a ``<scope>.seeded`` map — a LAYER (spec §2a), and
+        "any layer whose source/dest is ``<None>`` is SKIPPED".  ⚑ Every shipped layer
+        EMBEDS its root (``@agent.<a>.template/box/home``), and the embedded rule
+        renders a ``None`` referent as ``""``: the source would become the HOST path
+        ``/box/home``, not ``<None>``.  So a seeded source with an embedded ``@``-ref
+        that resolves to a present ``None`` is ``<None>``, and the entry becomes a
+        PRESENT ``None`` here, the one place the referent is still visible.  ⚑ ``None``,
+        not ``_ABSENT``: a supplied ``<None>`` is a value, and a default is a fallback
+        that applies only where nothing was supplied ([R177]) — dropping the entry
+        let the ``agent.default.seeded`` arm's ``~/`` refill it in the §2d pick
+        (``_agent_pick_node``) and seed a SHELL box.  The collapse
+        (``settings_launch._emit_bind_map``) SKIPS a ``None`` seeded entry — this one
+        and a whole-value source ref to a present ``None`` alike.  ONE rule for every
+        layer and every scope; an ABSENT referent keeps the embedded ``""`` (§6b), and
+        every other category keeps the embedded rule unchanged.
+        ⚑ SOURCE-side only.  A ``None`` on the DESTINATION side is untouched,
+        pre-existing behavior: :meth:`_expand_dest_key` raises on a whole-value dest
+        ref to a present ``None``, and an embedded one substitutes ``""``.
         """
-        src = self._expand_str(entry.src, space="host", chain=chain)
+        none_refs: list[str] | None = [] if seed else None
+        src = self._expand_str(
+            entry.src, space="host", chain=chain, none_refs=none_refs,
+        )
+        if none_refs:
+            return None
         if src is _ABSENT or src is None:
             # Whole-value src ref absent/None → the entry inherits that 3-state.
             return src
@@ -403,6 +438,7 @@ class _Expander:
         *,
         space: str,
         chain: tuple[str, ...],
+        none_refs: list[str] | None = None,
     ) -> StoreValue | _Absent:
         """Expand a single string leaf in *space* (``"host"`` or ``"defer"``).
 
@@ -414,6 +450,9 @@ class _Expander:
 
         *space*: ``"host"`` expands ``~``/``$VAR`` host-side; ``"defer"`` leaves
         them RAW for the box side (S17). ``@``-refs expand in BOTH spaces.
+
+        *none_refs*, when given, collects every EMBEDDED ``@``-ref whose referent is a
+        present ``None`` (see :meth:`_lookup_str`); the substitution is unchanged.
         """
         ref_name = _is_whole_value_ref(value)
         if ref_name is not None:
@@ -422,7 +461,9 @@ class _Expander:
             var_name = _is_whole_value_var(value)
             if var_name is not None:
                 return self._resolve_whole_value_var(var_name)
-        return self._expand_embedded(value, space=space, chain=chain)
+        return self._expand_embedded(
+            value, space=space, chain=chain, none_refs=none_refs,
+        )
 
     def _resolve_whole_value_var(self, name: str) -> StoreValue | _Absent:
         """A whole-value ``$VAR`` host-side: the value, or :data:`_ABSENT` (§6b).
@@ -556,7 +597,12 @@ class _Expander:
     # ------------------------------------------------------------------ #
 
     def _expand_embedded(
-        self, value: str, *, space: str, chain: tuple[str, ...]
+        self,
+        value: str,
+        *,
+        space: str,
+        chain: tuple[str, ...],
+        none_refs: list[str] | None = None,
     ) -> str:
         """Substitute embedded tokens in *value* via ``expand_expr`` (§6b).
 
@@ -570,12 +616,17 @@ class _Expander:
             value,
             space="host",
             ctx=self._ctx,
-            lookup=lambda ref, ch: self._lookup_str(ref, ch),
+            lookup=lambda ref, ch: self._lookup_str(ref, ch, none_refs),
             chain=chain,
             defer_env=(space == "defer"),
         )
 
-    def _lookup_str(self, dotted: str, chain: tuple[str, ...]) -> str:
+    def _lookup_str(
+        self,
+        dotted: str,
+        chain: tuple[str, ...],
+        none_refs: list[str] | None = None,
+    ) -> str:
         """``expand_expr`` lookup: resolve *dotted* and coerce to a SUBSTITUTION
         string (the embedded-token rule, §6b).
 
@@ -587,8 +638,14 @@ class _Expander:
         LENIENT (Q9): an ABSENT referent never reaches that coercion —
         ``_resolve_ref`` raises ``_LenientDefect`` first. A present-None referent is
         still a legitimate ``""``. Only the absent case diverges.
+
+        *none_refs*, when given, RECORDS a present-``None`` referent before the
+        coercion — the seeded-layer skip (:meth:`_expand_bind_entry`) needs to know the
+        ``""`` stood for a ``None``; the substitution itself is unchanged.
         """
         resolved = self._resolve_ref(dotted, chain=chain)
+        if resolved is None and none_refs is not None:
+            none_refs.append(dotted)
         if resolved is _ABSENT or resolved is None:
             return ""
         if isinstance(resolved, Bind):

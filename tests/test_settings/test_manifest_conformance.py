@@ -336,11 +336,14 @@ _SHELL_TIER_KEYS = (
 #: the same carrier as ``box.env.COLORTERM`` — ``core_defaults.env_default_categories``
 #: — so the oracle below reads the emitter ONCE and pins both, which is also what keeps
 #: the "exactly the shipped table" half of that case honest as the table grows.
+#: ⚑ ``agent.shell.template`` joined 2026-09-24 from E3: the §2d shell fence's
+#: ``<None>``, floored as a PRESENT ``None`` by ``agent_template_defaults``' shell arm.
 _SINGLETON_KEYS = (
     "agent.default.canon", "workset.kuid", "box.env.COLORTERM",
     "agent.default.env.TERM",
     "agent.default.template",
     "agent.shell.canon",
+    "agent.shell.template",
     "system.helpers.depth", "system.helpers.breadth",
 )
 
@@ -785,6 +788,20 @@ class TestSingletonDefaults:
         seeds = template_seed_defaults(_StubProjectPaths(), PROBE_AGENT)
         assert seeds["agent.default.template"] == emitted["agent.default.template"]
 
+    def test_the_agent_shell_template_arm_is_a_present_none(self):
+        """The §2d shell fence's ``agent.shell.template | <None>``, read off the emitter.
+
+        ⚑ PRESENT, not merely ``None``-valued on a ``.get``: a ``<None>`` is a SUPPLIED
+        value ([R177]) that beats the ``agent.default.template`` fallback, and an
+        ABSENT key would let the fallback through.  So the case asserts membership
+        before value — dropping the shell arm reds on the first, flooring a store path
+        again reds on the second.
+        """
+        assert _default("agent.shell.template") is None
+        emitted = agent_template_defaults("shell")
+        assert "agent.shell.template" in emitted
+        assert emitted["agent.shell.template"] is None
+
     def test_the_core_env_floor(self):
         """The registry's env rows ARE ``core-defaults.yaml``'s whole ``env:`` table.
 
@@ -1183,12 +1200,14 @@ NO_ORACLE_PLACEHOLDER: frozenset[str] = frozenset({"box.images_store"})
 #: so the property is "no builder emits it", which is a different (and much weaker)
 #: claim than a value oracle; a floor that is silent about a key is indistinguishable
 #: from a floor that has not been written yet.
+#: ⚑ ``agent.shell.template`` LEFT this class 2026-09-24: its ``<None>`` is floored as a
+#: PRESENT ``None`` (a supplied value, [R177]), so it has a carrier and is pinned in
+#: ``_SINGLETON_KEYS`` against it.
 NO_ORACLE_ABSENT: frozenset[str] = frozenset({
     "system.agent", "system.setup_completed", "box.shell",
     "agent.default.model", "agent.default.endpoint", "agent.default.run_args",
     "agent.default.transform",
     "agent.shell.bootstrap", "agent.shell.run_args", "agent.shell.transform",
-    "agent.shell.template",
 })
 
 #: (E4) ``default: {}`` — the EMPTY CONTAINER a category arm starts at.  That emptiness
@@ -2041,9 +2060,12 @@ class TestDefaultsCoverage:
         EXEMPT in the existing classes: the four ``<None>`` tier rows join E3
         (no floor installs them — the resolve reads the §2d fallback) and the
         ``{}`` row joins E4.
+        ⚑ 60/19 → 61/18 (2026-09-24): ``agent.shell.template`` left E3 for
+        ``_SINGLETON_KEYS`` — the shell arm of ``agent_template_defaults`` now floors
+        its ``<None>`` as a PRESENT ``None``, so the row has a carrier to pin.
         """
-        assert len(PINNED_DEFAULT_KEYS) == 60
-        assert len(EXEMPT_DEFAULT_KEYS) == 19
+        assert len(PINNED_DEFAULT_KEYS) == 61
+        assert len(EXEMPT_DEFAULT_KEYS) == 18
         assert not (PINNED_DEFAULT_KEYS & EXEMPT_DEFAULT_KEYS)
 
     def test_every_value_row_is_pinned_or_named(self):
