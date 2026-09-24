@@ -398,7 +398,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   being copied into the assembled file verbatim.** The shipped canon documents have called these since
   the tome layout landed, but the importer only ever understood two forms — a bare `@path` and
   `[text](@path)` — so neither call matched anything and both were emitted as literal text. Nothing
-  reported an error, because from the importer's point of view a line it does not recognise is just a
+  reported an error, because from the importer's point of view a line it does not recognize is just a
   line: the assembled canon came out a few lines long, and an agent starting in a box got almost none
   of its instructions and no indication that anything was missing. The two calls, and the
   `__IMPORT__` / `__LINK__` forms they wrap, now import or link their target, give each one a section
@@ -441,7 +441,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   where a missing `//` leaves a scheme indistinguishable from a username (`https:tok@host` reads
   like `user:pw@host`), both are redacted from the printed endpoint, and the error still names the
   `https://<host>` form it expected. ⚑ Scrubbed is not proven clean — a credential containing an
-  unencoded `/`, `?` or `#` is not recognised as userinfo and prints in whole or in part, and the
+  unencoded `/`, `?` or `#` is not recognized as userinfo and prints in whole or in part, and the
   evidence block inherits the provider text's documented residue — so it is still not safe to
   paste.
 
@@ -496,7 +496,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   catch it either — a malformed URL fails at the transport layer, which the probe folds in with
   "the server is briefly down" and treats as inconclusive, i.e. warn-and-proceed. The endpoint is
   now validated where the persona store's harness-native config becomes a cascade value, so both
-  `create` and `launch` refuse it from one place. The check is deliberately minimal — a recognised
+  `create` and `launch` refuse it from one place. The check is deliberately minimal — a recognized
   scheme (`http`/`https`) and a non-empty host, and nothing about path, port or query — because a
   persona endpoint is a base URL the harness appends its own routes to, and a false refusal here
   would break a working box.
@@ -929,12 +929,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that workset's box trees under the default `boxes/` anyway, and write each box's helper log under
   the default `logs/`, because the code that composed those paths spelled the directory names by
   hand instead of reading your setting. The result was the quieter kind of broken: the workset was
-  recognised, so nothing looked wrong, and the files simply went somewhere else. Every path that
+  recognized, so nothing looked wrong, and the files simply went somewhere else. Every path that
   creates, moves, duplicates, converts, purges or removes a box tree now reads the setting, and so
   does the primary workset's own store and log root and the helper-log writer — in all three modes,
   standalone included, whose log directory is the box's own `box_data/` by default and follows the
   setting when you move it. Forking a box that is not in the workset's membership also stopped
-  recognising the store on a repointed workset, and so silently gave the fork no source metadata;
+  recognizing the store on a repointed workset, and so silently gave the fork no source metadata;
   it now compares against the resolved directory rather than the name `boxes`. ⚠️
   **If you had repointed either setting, kanibako has been writing to the default directory all
   along** — see `MIGRATION.md`, *A repointed `workset.boxes` or `workset.logs` now takes effect*,
@@ -1078,7 +1078,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   probe.`
 
 - **Two retired keys in an agent plugin's defaults file are refused by name at load.** Plugin
-  descriptor keys are read individually, so an unrecognised one is simply never read — which for
+  descriptor keys are read individually, so an unrecognized one is simply never read — which for
   these two meant a plugin that loaded *successfully* and then behaved as though it had declared
   nothing. `safe_bypass:` (renamed to `access_realization:`, and reshaped with it — the
   two-polarity pair became per-tier rows under `tiers:`) left the agent with no permission
@@ -1394,7 +1394,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   spelling — with `workset.workspaces` pointed outside the root, the convert filled a `workspace/`
   directory the box never opens and your files were left where nothing binds them. The sweep now
   resolves `workset.workspaces`, `workset.vault_ro`, `workset.vault_rw` and `workset.canon` and
-  compares directories, so a repointed one is recognised as kanibako's wherever you put it, and the
+  compares directories, so a repointed one is recognized as kanibako's wherever you put it, and the
   workspace is filled at the path the box actually reads. **What you will see:** a directory kept
   because one of these settings points into it is now reported by name on standard error — `Note:
   left /path/store at the standalone root — workset.vault_ro resolves inside it.` The default
@@ -1534,7 +1534,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   failed with `Error: unknown config key: agent.goose.provider`, and `kanibako system get
   agent.goose.provider` answered `(not set)` — successfully, with the real value sitting in the
   agent's own settings file the whole time. The cause was two lists of what an agent setting can be
-  called: the one that judges a key had the plugin's settings folded in and the one that recognises
+  called: the one that judges a key had the plugin's settings folded in and the one that recognizes
   the `agent.<agent>.<setting>` spelling did not. There is one list now, so both doors give the same
   answer. **What you will see:** `set` and `reset` at these keys now succeed where they used to
   fail, and `get` returns the stored value where it used to report nothing. A setting no agent
@@ -2093,7 +2093,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   was not part of the error hierarchy kanibako catches. What the user got was a stack trace. It now
   exits 1 with the refusal alone: `Error: key 'get' is reserved: it would shadow a real attribute
   on the settings store. Reserved names: [...]`, the full list included so the name can be
-  recognised rather than guessed at. **The refusal also names the file that carries the name**, as
+  recognized rather than guessed at. **The refusal also names the file that carries the name**, as
   `(in settings file <path>)` after the reason, so a name reserved in one of several files in the
   cascade does not have to be hunted for. The same address is now appended to every refusal the
   settings parse raises — a retired entry shape, a bare relative path, a wrong number of arguments —
@@ -2289,7 +2289,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   chapter stamped anywhere else is one the bind never reads. `workset.template` is resolved the same
   way on the `workset create` path.
 
-- **A workset that repointed `workset.boxes` or `workset.logs` stopped being recognised as a
+- **A workset that repointed `workset.boxes` or `workset.logs` stopped being recognized as a
   workset at all.** The ancestor walk identifies a named workset root by the directories it is made
   of, but it tested three of those four against hardcoded names rather than against the keys that
   declare them — so repointing `workset.boxes` or `workset.logs` moved the real directory while
@@ -2339,7 +2339,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   box. An in-tree member's row now records `workspaces/<name>`; an external connect records the
   external directory, unchanged.
 
-- **A key the launch path writes on every resolve was not recognised as declared.**
+- **A key the launch path writes on every resolve was not recognized as declared.**
   `meta.box.agent.*` is the read-only mirror of the effective agent subtree, and it carries an
   `auth.*` sub-namespace the agent scope itself does not have — `meta.box.agent.auth.share_support`
   is its own declared row, mirroring the plugin-set capability on the `meta.agent` tier. Key
@@ -2429,7 +2429,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   It names `box.enable_vault`'s own read-write vault path now, which is the directory to create.
   Advisory as before: nothing fails, and `box.enable_vault=false` still silences it.
 
-- **`config.journal`, `workset.workspaces` and `workset.channelroot` are keys the CLI recognises.**
+- **`config.journal`, `workset.workspaces` and `workset.channelroot` are keys the CLI recognizes.**
   All three are declared, resolved and used, and all three answered `Error: unknown config key` —
   values kanibako reads at every launch that the tool storing them could not name.
   `config.journal` now reads back like its five `config.*` siblings (`kanibako system get
@@ -2725,7 +2725,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rule the closed-keyspace entry below states. Refusing rather than ignoring is deliberate and
   specific to this key — an undeclared key is not read at all, so a box you had deliberately set
   to `auto_approve: false` would otherwise have come up at the permissive default with nothing
-  said. An unrecognised tier is rejected at both ends, `set` time and launch, and never treated as
+  said. An unrecognized tier is rejected at both ends, `set` time and launch, and never treated as
   permissive. See [MIGRATION.md](MIGRATION.md) §2.1.
 
 - **BREAKING: an undeclared key in ANY settings file now stops the command, naming every one it
