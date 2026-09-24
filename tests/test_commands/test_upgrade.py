@@ -15,8 +15,34 @@ class TestGetRepoDir:
         # The actual kanibako repo should be found
         repo = _get_repo_dir()
         assert repo is not None
-        assert (repo / ".git").is_dir()
+        # A directory in a normal checkout, a file in a git worktree.
+        assert (repo / ".git").exists()
         assert (repo / "src" / "kanibako").is_dir()
+
+    @staticmethod
+    def _fake_install(tmp_path, monkeypatch):
+        """Point the module's ``__file__`` into a fake checkout; return its root."""
+        import kanibako.commands.upgrade as upgrade_mod
+
+        root = tmp_path / "checkout"
+        module_dir = root / "src" / "kanibako" / "commands"
+        module_dir.mkdir(parents=True)
+        monkeypatch.setattr(upgrade_mod, "__file__", str(module_dir / "upgrade.py"))
+        return root
+
+    def test_finds_worktree_git_file(self, tmp_path, monkeypatch):
+        root = self._fake_install(tmp_path, monkeypatch)
+        (root / ".git").write_text("gitdir: /elsewhere/.git/worktrees/checkout\n")
+        assert _get_repo_dir() == root.resolve()
+
+    def test_finds_git_directory(self, tmp_path, monkeypatch):
+        root = self._fake_install(tmp_path, monkeypatch)
+        (root / ".git").mkdir()
+        assert _get_repo_dir() == root.resolve()
+
+    def test_no_git_returns_none(self, tmp_path, monkeypatch):
+        self._fake_install(tmp_path, monkeypatch)
+        assert _get_repo_dir() is None
 
 
 class TestUpgrade:

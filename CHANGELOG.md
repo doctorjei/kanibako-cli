@@ -443,6 +443,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   evidence block inherits the provider text's documented residue — so it is still not safe to
   paste.
 
+- **`kanibako upgrade` could not find its own repository in a git worktree.** It looked for a
+  `.git` directory, but in a worktree `.git` is a file (`gitdir: …`), so `upgrade` failed with
+  "Could not find kanibako git repository." and `kanibako system` reported the install as `pip`.
+  Both now recognize a worktree checkout.
+
 ### Added
 
 - **Every box now gets the host's terminal type, and `$TERM` resolves in a settings value.** Two
