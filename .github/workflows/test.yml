@@ -119,6 +119,16 @@ jobs:
       # discover from a feature list. Those sites are being read at source by a
       # separate pass, which is what the rule above asks for, and the record of
       # what this bump decided is in `.kinemata-baseline.json`'s note, residue (5).
+      # ⚑ THE 0.4.0 BUMP MOVED NO VERDICT AND NO LINE A STEP HERE PRINTS.
+      # Measured 2026-09-24 on this tree: all five commands below printed output
+      # byte-identical to 0.3.0's, plain and under `-v`, every one rc 0. Its two
+      # refusals, a flag that is not a boolean and a list key spelled as a
+      # string, found nothing here to refuse. No `exclude` fragment was left
+      # removing nothing. The one registry that scans a non-`.py` suffix
+      # (`.toml`) lost no comment hit, and no `[[shape]]` rule here uses the
+      # pattern keys whose missing-field reading changed. The only output that
+      # moved belongs to `kinemata ids`, which no step runs: it now prints a
+      # view once.
       # ⚑ DO NOT CARRY A FIGURE OUT OF UPSTREAM'S RELEASE LETTER. It measured a
       # pinned clone of this tree and reported a smaller number; the tree has
       # moved since, and upstream withdrew its own companion figure as a weak
@@ -136,7 +146,7 @@ jobs:
       # `/`-anchored spelling, which an earlier build reads as a literal substring
       # matching nothing -- lower this pin and the conformance job reds. The
       # measurement is in that file's version-floor note, above its `exclude`.
-      - run: pip install "kinemata[yaml]==0.3.0"
+      - run: pip install "kinemata[yaml]==0.4.0"
       # ⚑ THE PROJECT ITSELF IS INSTALLED HERE BECAUSE THE PARITY ORACLE IMPORTS
       # IT. `parity` runs a command that prints what the code produces, and an
       # oracle it cannot run is a FAILURE that no baseline can accept -- so a
