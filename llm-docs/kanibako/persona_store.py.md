@@ -233,10 +233,17 @@ harness, the exception class and its message. It is reported, never swallowed si
 ### The endpoint rejection message
 
 When the harness config names an endpoint that fails `validate_endpoint`, the resulting
-`reject_reason` names the entry, the config dir, and the underlying error, and then offers the
-override that does not require editing the store:
+`reject_reason` names the entry, the config dir, and the underlying (userinfo-scrubbed) error, and
+then offers the override that does not require editing the store:
 `kanibako system set agent.<display>.endpoint=<url>`, where `<display>` is the ref rendered through
 `display_agent_ref` (the human-typable `+` form, not the canonical `℘`).
+
+Every message names the endpoint userinfo-scrubbed (`targets.base._scrub_endpoint_userinfo`); the
+check itself runs on the raw string. A malformed endpoint still carries the user's credential and
+this refusal is where it gets printed, so nothing raw rides along: urllib's detail is re-read off
+the scrubbed form (or, when only the dropped userinfo was at fault, replaced by a sentence saying
+so), the error is raised `from None`, and a scheme the scrub took with the userinfo
+(`user:pw@host` splits with scheme `user`) is echoed as `<redacted>`.
 
 ## Two probe rules that are easy to get BACKWARDS
 

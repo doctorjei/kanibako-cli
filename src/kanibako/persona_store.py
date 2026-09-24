@@ -36,6 +36,7 @@ from urllib.parse import urlsplit
 from kanibako.agent_ref import display_agent_ref, harness_of, parse_agent_ref, persona_of
 from kanibako.errors import ConfigError
 from kanibako.settings.paths import user_config_home
+from kanibako.targets.base import _REDACTED, _scrub_endpoint_userinfo
 
 if TYPE_CHECKING:
     from kanibako.targets.base import Target
@@ -257,20 +258,43 @@ def validate_endpoint(endpoint: str) -> None:
     the one outcome this check must never cause.  ⚑ The uncaught live incident it exists
     for: ``myhost:8080/v1`` reads as ``urlsplit``-scheme ``"myhost"``, sails past every
     truthiness check downstream, and dies inside Node with ``Invalid URL``.
+
+    ⚑ Every message names the endpoint USERINFO-SCRUBBED (`_scrub_endpoint_userinfo`)
+    and prints nothing the scrubbed form does not show: a malformed endpoint still
+    carries the user's credential, and this refusal is where it gets printed.  The
+    check runs on the raw endpoint; only the message is scrubbed.
     """
+    shown = _scrub_endpoint_userinfo(endpoint)
     try:
         parsed = urlsplit(endpoint)
-    except ValueError as exc:
+    except ValueError:
+        # urllib quotes the raw netloc in some of these texts, so the fault is re-read
+        # off *shown*; if *shown* splits, the fault lay in the span the scrub dropped.
+        # ``from None``: the raw ValueError would carry that netloc along as __cause__.
+        try:
+            urlsplit(shown)
+        except ValueError as exc:
+            fault = str(exc)
+        else:
+            fault = "the userinfo before '@' is not well-formed"
         raise ConfigError(
-            f"persona endpoint {endpoint!r} is not a well-formed URL ({exc})"
-        ) from exc
+            f"persona endpoint {shown!r} is not a well-formed URL ({fault})"
+        ) from None
     if parsed.scheme.lower() not in _ENDPOINT_SCHEMES:
+        # With no ``//`` the scrub can take a would-be scheme along with the userinfo
+        # (``user:pw@host``); echo it only if it survived into *shown*.
+        got = parsed.scheme if shown.lower().startswith(parsed.scheme) else _REDACTED
         raise ConfigError(
-            f"persona endpoint {endpoint!r} has no recognised scheme "
-            f"(got {parsed.scheme!r}; must start with 'http://' or 'https://')"
+            f"persona endpoint {shown!r} has no recognised scheme "
+            f"(got {got!r}; must start with 'http://' or 'https://')"
         )
     if not parsed.hostname:
-        raise ConfigError(f"persona endpoint {endpoint!r} names no host after the scheme")
+        # The scheme is http/https by now, so it is safe to echo even where the scrub
+        # took it (``https:tok@host``) — and it shows the reader the missing ``//``.
+        raise ConfigError(
+            f"persona endpoint {shown!r} names no host after the scheme "
+            f"(expected '{parsed.scheme}://<host>')"
+        )
 
 
 def read_persona_bundle(ref: str, target: Target) -> PersonaBundle | None:
