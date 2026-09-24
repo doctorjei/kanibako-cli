@@ -165,3 +165,64 @@ def fixed_scope_key(entry: Any) -> bool:
     if parts[0] not in _FIXED_SCOPES:
         return False
     return not (len(parts) > 1 and parts[1] in _DELIVERY_HEADS)
+
+
+#: The three kinds `config_keys.KEY_TYPES` carries -- its own header names them
+#: (`bool`, `int`, `path`) and says `access` is an ENUM guarded elsewhere, never a
+#: type there. A `str` or `version_marker` row is not coerced by the CLI, so it has
+#: no reason to be in that table.
+#: `kinemata.toml`'s `key-kinds` registry declares this vocabulary; this set is the
+#: selector's copy, and `key-types` reds if the two part.
+_CLI_TYPED = frozenset({"bool", "int", "path"})
+
+
+def cli_typed_key(entry: Any) -> bool:
+    """A FIXED-scope key whose declared `type:` is one the CLI acts on.
+
+    `fixed_scope_key` AND a `type:` in `_CLI_TYPED` -- the manifest-side statement
+    of what `KEY_TYPES` says it is: *"the DECLARED TYPE of every key whose type
+    the CLI acts on"*, fixed spellings only (its parametric path keys are
+    answered by `is_path_valued_key`, never by the table).
+
+    ⚑ THE GUARD READS `type:`, WHICH IS ALSO THE CELL THE PARITY COMPARES, and the
+    consequence is stated rather than hidden: a code type that disagrees with a
+    `bool`/`int`/`path` row is a VALUE divergence, but a code entry for a row whose
+    type is outside the three (`str`, say) falls OUT of this view and is reported
+    as a MEMBERSHIP finding -- `produced, declared by nothing`. Both are red; they
+    differ only in which line names the row.
+    """
+    return fixed_scope_key(entry) and entry.extra.get("type") in _CLI_TYPED
+
+
+def cli_routed_key(entry: Any) -> bool:
+    """A FIXED-scope key the CLI may set -- `set: cli+file`.
+
+    `fixed_scope_key` AND `set: cli+file`. The six `config.*` rows are
+    `set: file`, and are the only fixed-scope rows this drops.
+
+    ⚑ THIS IS THE CONVERSE `TestSetColumnConformance` DECLINES, AND ITS REASON
+    DOES NOT REACH THIS VIEW. The test says `cli+file => in _KEY_ROUTES` is the
+    wrong shape because the `agent.*` tier and the bare any-agent keys are written
+    through their own routes. `fixed_scope_key` has already excluded both -- no
+    `agent` scope, no `<…>` segment -- so over the fixed scopes the routing table
+    is the one CLI write route, and a `cli+file` row it does not route is a key
+    the CLI promises and cannot set.
+
+    The `env`/`secret_path` `<VAR>` rows, which `_DELIVERY_HEADS` removes, are the
+    third route (`_is_scope_env_key` / `_is_scope_secret_key`).
+    """
+    return fixed_scope_key(entry) and entry.extra.get("set") == "cli+file"
+
+
+def bootstrap_path_row(entry: Any) -> bool:
+    """A `type: path` row in the two BOOTSTRAP scopes, `config` and `system`.
+
+    The manifest-side statement of the corpus `settings/bootstrap.py` carries in
+    `CONFIG_PATH_DEFAULTS` and `SYSTEM_PATH_DEFAULTS`: every path key of the two
+    tiers that resolve before any workset exists. No `set:` condition, because the
+    six `config.*` rows are `set: file` and belong to the corpus all the same.
+    """
+    return (
+        str(entry.id).split(".", 1)[0] in {"config", "system"}
+        and entry.extra.get("type") == "path"
+    )

@@ -1398,11 +1398,12 @@ suffixes = [".toml"]
 # produced, declared by nothing`. `int` is the legitimate third kind the row
 # said to check for, and widening to it is the only widening anything may do.
 #
-# ⚑ NOT A SECOND CARRIER. The three words are enumerated as a vocabulary once,
-# here, and nowhere else: `KEY_TYPES` spells them per ROW, which is the thing
-# being pinned, and the comment above that table documents them without
-# enumerating them as a set. A fourth kind spelled in a row reds the parity; a
-# fourth word added here is the conscious widening, and nothing else can do it.
+# ⚑ ONE SECOND ENUMERATION, AND IT IS A SELECTOR, NOT A CARRIER. The three
+# words are listed as a set here and in `kinemata_views._CLI_TYPED`, which
+# selects the manifest rows `key-types` compares; `KEY_TYPES` spells them per
+# ROW, which is the thing being pinned. They cannot part silently: a kind in
+# `KEY_TYPES` that `_CLI_TYPED` lacks is `produced, declared by nothing` in
+# `key-types`. A fourth kind widens BOTH, in one edit.
 #
 # ⚑ THE ANTIPATTERNS ARE ROW-SHAPED ON PURPOSE. A bare `"bool"` fires on
 # `TYPE_BARE_NAMES` in `scripts/gen-api-doc.py` -- a type-name list, a
@@ -1475,6 +1476,114 @@ kind = "yaml-mapping"
 source = "src/kanibako/data/keyspace-manifest.yaml"
 section = "keys"
 where = { id_matches = '^agent\.(<agent>|default)\.template$' }
+
+# ---------------------------------------------------------------------------
+# THE §4.3 TEN: EIGHT DECLARED 2026-09-24, TWO RECORDED. #35 (defaults
+# coverage exhaustiveness) is NOT EXPRESSIBLE and stays pytest; #37 (every row
+# passes `key_validity`) is not a parity -- its oracle would read the manifest.
+# The re-inventory
+# (`kanibako-kinemata-reinventory-2026-09-14`, § "4.3 PARTLY EXPRESSIBLE")
+# bucketed these families "membership yes, values no"; `0.3.0`'s list-path
+# `section`, `where`, `field` and `relation` reach them. Each view below is one
+# registry for ONE fact, because a registry carries one `[[parity]]` -- and each
+# has its parity, with the measurement and its controls, below the banner.
+# 🛑 NONE RETIRES A TEST. Which pytest cases each one makes redundant is a later
+# decision, made against the test.
+# ⚑ WHAT THE SEVEN VIEWS COST ELSEWHERE, measured 2026-09-24: none carries an
+# `antipattern`, so `check`'s `silent:` tally goes 376/476 to 497/597 -- by
+# exactly their 121 entries (3 + 5 + 2 + 2 + 46 + 45 + 18) -- and `check`,
+# `shape` and `undeclared` stay rc=0.
+
+# FACT: the SCOPES `policy.seed_whitelists` governs are the scopes the copier
+# implements, and each scope's `allow:` list is the code's whitelist for it.
+# `test_manifest_enforces` B (`TestScopeParity`) and D1 (`TestAllowListParity`).
+# AUTHORITY: the manifest is release authority for the seed policy; the code
+# carrier is `launch.templates.SCOPE_WHITELISTS`, the table `_check_whitelist`
+# reads.
+# ⚑ `where = { present = "root" }` KEEPS THE SCOPE ROWS AND DROPS THE TWO POLICY
+# FIELDS (`default`, `traversal_defences`), which carry no `root`. The guard reads
+# `root`, a cell the parity never compares, so the selector does not grade the
+# row it keeps. A new field WITHOUT `root` is dropped here silently -- which is
+# why `seed-whitelist-fields` below exists, and its `[[shape]]` is the catch.
+[[registry]]
+name = "seed-scopes"
+kind = "yaml-mapping"
+source = "src/kanibako/data/keyspace-manifest.yaml"
+section = ["policy", "seed_whitelists"]
+where = { present = "root" }
+
+# FACT: every field of `policy.seed_whitelists` is a scope row or one of the two
+# classified POLICY fields. `test_manifest_enforces` A2.
+# ⚑ UNNARROWED ON PURPOSE: this is the whole block, so a field `seed-scopes`
+# drops is still in front of the `[[shape]]` that reads this view.
+[[registry]]
+name = "seed-whitelist-fields"
+kind = "yaml-mapping"
+source = "src/kanibako/data/keyspace-manifest.yaml"
+section = ["policy", "seed_whitelists"]
+
+# FACT: the `box` and `agent` deny maps name each tier's settings FILE.
+# `test_manifest_enforces` F, the two arms `workset-denials` above leaves to the
+# test. Same shape as that registry, one scope each, for the one-registry-one-
+# parity reason.
+# AUTHORITY: the manifest's deny map is the declared side; `config.BOX_META_FILE`
+# / `AGENT_META_FILE` are the code carriers `paths.py` / `agent_config.py` locate
+# each tier's file with.
+# CATCHES: a tier's settings file renamed on one side, so its deny row denies
+# nothing, silently, at seed time.
+[[registry]]
+name = "box-denials"
+kind = "yaml-mapping"
+source = "src/kanibako/data/keyspace-manifest.yaml"
+section = ["policy", "seed_whitelists", "box", "deny"]
+
+[[registry]]
+name = "agent-denials"
+kind = "yaml-mapping"
+source = "src/kanibako/data/keyspace-manifest.yaml"
+section = ["policy", "seed_whitelists", "agent", "deny"]
+
+# FACT: `config_keys.KEY_TYPES` types every key the manifest's `type:` column
+# declares a CLI-acted type for, and types it the SAME. `test_manifest_conformance`
+# `test_the_code_types_every_key_the_registry_declares_it_at` (#46).
+# ⚑ THE VIEW IS `kinemata_views:cli_typed_key` -- `fixed_scope_key` and a `type:`
+# of `bool`, `int` or `path`, the three kinds `KEY_TYPES`' own header names. Its
+# docstring states what reading `type:` in the guard costs.
+[[registry]]
+name = "key-types"
+kind = "yaml-mapping"
+source = "src/kanibako/data/keyspace-manifest.yaml"
+section = "keys"
+where = { holds = "kinemata_views:cli_typed_key" }
+
+# FACT: `config_keys._KEY_ROUTES` routes exactly the fixed-scope `set: cli+file`
+# rows. `test_manifest_conformance` `test_every_routed_key_is_a_declared_manifest_row`
+# (#42) asserts routes ⊆ manifest; this view is the equality over the rows a
+# route is owed to, and `kinemata_views:cli_routed_key` says why the converse the
+# test declines holds here.
+# AUTHORITY: `declared` -- the keyspec's route rule (a `standard` key reaches the
+# CLI IFF its value is typable as a scalar; `config ⇒ file`), stated per row in
+# the manifest's `set:` column. `_KEY_ROUTES` is the code on trial.
+# CATCHES: a fixed-scope `cli+file` key with no route; a route to a `file` row
+# (the six `config.*`) or to an undeclared key -- #42's own case.
+[[registry]]
+name = "cli-routed-keys"
+kind = "yaml-mapping"
+source = "src/kanibako/data/keyspace-manifest.yaml"
+section = "keys"
+where = { holds = "kinemata_views:cli_routed_key" }
+
+# FACT: the `config.*` and `system.*` path rows' `default:` cells ARE
+# `settings/bootstrap.py`'s two tables, verbatim. `test_manifest_conformance`
+# `TestPathDefaults` -- the path-default arm of § 4.3's first bullet.
+# CATCHES: a default respelled on either side; a `config`/`system` path row
+# without its bootstrap literal, or a literal without its row.
+[[registry]]
+name = "bootstrap-path-defaults"
+kind = "yaml-mapping"
+source = "src/kanibako/data/keyspace-manifest.yaml"
+section = "keys"
+where = { holds = "kinemata_views:bootstrap_path_row" }
 
 # ---------------------------------------------------------------------------
 # THE PARITY ORACLES. Each one runs a command that prints what the CODE really
@@ -1602,8 +1711,8 @@ extract = '(?m)^(\S+)$'
 # 🛑 THIS REACHES THE `workset` ARM OF A THREE-SCOPE TEST.
 # `TestTheSettingsFileDenialsNameRealFiles.test_the_deny_row_is_the_code_filename`
 # is parametrized over `box`, `workset` and `agent` against `BOX_META_FILE`,
-# `WORKSET_META_FILE` and `AGENT_META_FILE`; only the workset deny map is
-# declared here, so the other two scopes stay with the test.
+# `WORKSET_META_FILE` and `AGENT_META_FILE`; the `box` and `agent` arms are
+# `box-denials` and `agent-denials` (2026-09-24), under "THE §4.3 TEN".
 [[parity]]
 registry = "workset-denials"
 relation = "declared_contains"
@@ -2120,6 +2229,185 @@ translate = { pattern = '^@meta\.agent\.<agent>\.path/', replacement = "@config.
 translate_identifier = { pattern = '^agent\.<agent>\.', replacement = "agent.gemma℘claude." }
 
 # ---------------------------------------------------------------------------
+# THE §4.3 TEN, THEIR ORACLES. Registries and the FACT each one states are
+# above the banner, under the same heading. Every figure below was measured
+# 2026-09-24 at `61ff5c36` plus the working tree, kinemata `0.3.0`, each control
+# ONE edit in a scratch copy under /tmp run with `PYTHONPATH=<copy>/src` (so the
+# oracle imports the copy, not the editable install), and every edited file
+# byte-compared (`cmp`) against this tree afterwards.
+#
+# FACT: `policy.seed_whitelists`' scope rows ARE `SCOPE_WHITELISTS`' scopes
+# (membership -- `test_manifest_enforces` B), and each row's `allow:` list IS
+# that scope's code whitelist (the value -- D1).
+# AUTHORITY: `declared`. The manifest is release authority for seed policy; a
+# code entry it omits is a permission nobody declared.
+# CATCHES: a scope on one side only; an allow entry added, dropped or respelled
+# on either side.
+# ⚑ ONE TABLE, TWO FAMILIES, because membership runs under every value
+# comparison -- the scope set is exactly the identifier set this table pairs on.
+# ⚑ `translate` IS THE TEST'S `_undirect`, MOVED INTO THE CONFIG WHERE A READER
+# SEES IT: the manifest writes the directory notation `home/`, the code carries
+# `home`, and `_check_whitelist` appends the separator itself. It strips ONE
+# trailing `/` from declared values and touches nothing else. It does NOT
+# replace `TestAllowNotation` (C): an entry written WITHOUT the slash passes
+# through unchanged and still agrees.
+#   `# seed-scopes: 3 declared, 3 produced, in agreement, agreeing on allow.`
+#   (+ `set-valued: 3 declared cell(s) hold a list, compared as sets`) rc=0
+# NEGATIVE CONTROLS, each rc=1:
+#   code, box `"home"` -> `"homes"`: `box: allow declared 'home', code
+#     produces 'homes'` -- a VALUE divergence
+#   manifest, box `allow` gains `caches/`: `box: allow declared 'caches',
+#     produced by nothing` -- a VALUE divergence
+#   code, scope `"box"` -> `"boxes"`: `boxes: produced, declared by nothing` and
+#     `box: declared, produced by nothing` -- the membership half (B)
+# HOP CONTROL, `translate` removed: rc=1, 3 divergences, e.g. `box: allow
+# declared 'canon/handbook/', 'home/', code produces 'canon/handbook', 'home'`.
+# The notation hop is load-bearing.
+# VACUITY CONTROL, the oracle's `print` removed: rc=1, all three scopes
+# `declared, produced by nothing`.
+# 🛑 WHAT THIS CANNOT SAY: an EMPTY allow list has no line to print. On the
+# MANIFEST side it reads `declared, produced by nothing` (measured: box `allow: []`
+# on both sides). On the CODE side it was INVISIBLE -- a code-only `"system": ()`
+# passed this table green (measured) -- so the oracle refuses an empty whitelist
+# and exits 1, which kinemata reports BLOCKED. Either way it reds rather than
+# passes. None is empty today.
+[[parity]]
+registry = "seed-scopes"
+command = ["{python}", "-c", """
+from kanibako.launch.templates import SCOPE_WHITELISTS
+for scope, allowed in sorted(SCOPE_WHITELISTS.items()):
+    if not allowed:
+        raise SystemExit(f"scope {scope!r} has an EMPTY whitelist, which this oracle cannot print")
+    for entry in allowed:
+        print(f"kanibako-seed-allow: {scope}={entry}")
+"""]
+extract = '(?m)^kanibako-seed-allow: ([^\s=]+)=(\S+)$'
+field = "allow"
+authority = "declared"
+translate = { pattern = '/$', replacement = "" }
+
+# FACT: the `box` and `agent` deny maps name each tier's settings FILE -- the
+# two arms of `test_manifest_enforces` F that `workset-denials` leaves to the
+# test. `declared_contains` for the reason that table's note measures: the
+# other deny rows are not produced by anything and are not wrong.
+# ⚑ MEMBERSHIP ONLY -- F's claim is `want in deny`, so there is no value half.
+#   `# box-denials: 2 declared, 1 produced, every identifier the code produces
+#   is declared.`  rc=0
+#   `# agent-denials: 2 declared, 1 produced, ...`  rc=0
+# NEGATIVE CONTROLS, manifest deny row respelled, each rc=1:
+#   `box.yaml` -> `bx.yaml`:     `box.yaml: produced, declared by nothing`
+#   `agent.yaml` -> `agnt.yaml`: `agent.yaml: produced, declared by nothing`
+# VACUITY CONTROL, each oracle's `print` removed: rc=1, `BLOCKED: claims every
+# identifier the code produces is declared, and its oracle produced no
+# identifiers at all`.
+[[parity]]
+registry = "box-denials"
+relation = "declared_contains"
+command = ["{python}", "-c", """
+from kanibako.settings import config
+print(config.BOX_META_FILE)
+"""]
+extract = '(?m)^(\S+)$'
+
+[[parity]]
+registry = "agent-denials"
+relation = "declared_contains"
+command = ["{python}", "-c", """
+from kanibako.settings import config
+print(config.AGENT_META_FILE)
+"""]
+extract = '(?m)^(\S+)$'
+
+# FACT: `KEY_TYPES` types every CLI-typed manifest row, and types it as the
+# row's `type:` cell says. `test_manifest_conformance` #46,
+# `test_the_code_types_every_key_the_registry_declares_it_at`, BOTH halves --
+# the names and the (code type, registry type) pairs.
+# AUTHORITY: `declared`. The test's own words: *"The registry is authority"*.
+# CATCHES: a code type moved off the declared one; a declared type moved off the
+# code's; a `KEY_TYPES` entry for a key the view does not hold -- including the
+# test's own injection -- and a declared CLI-typed row the table dropped. The
+# last is WIDER than the test, which asserts `KEY_TYPES ⊆ rows` only.
+#   `# key-types: 46 declared, 46 produced, in agreement, agreeing on type.` rc=0
+# NEGATIVE CONTROLS, each rc=1, `FAIL: 1 disagreement(s)`:
+#   code, `box.enable_vault` `bool` -> `path`: `box.enable_vault: type declared
+#     'bool', code produces 'path'` -- a VALUE divergence
+#   manifest, `workset.logs` `type: path` -> `bool`: `workset.logs: type
+#     declared 'bool', code produces 'path'` -- a VALUE divergence
+#   code, `KEY_TYPES["meta.box.name"] = "path"` (the test docstring's injection):
+#     `meta.box.name: produced, declared by nothing`
+#   code, `box.canon` removed from `KEY_TYPES`: `box.canon: declared, produced by
+#     nothing`
+# SELECTOR CONTROL, manifest `workset.logs` `type: path` -> `str`: rc=1,
+# `workset.logs: produced, declared by nothing`. Red, as `cli_typed_key`'s
+# docstring says -- but as MEMBERSHIP, because the guard reads the cell this
+# table compares. A type moved OUT of the three kinds is reported as a missing
+# row, not a mistyped one.
+# VACUITY CONTROL, the oracle's `print` removed: rc=1, 46 `declared, produced by
+# nothing`.
+[[parity]]
+registry = "key-types"
+command = ["{python}", "-c", """
+from kanibako.settings.config_keys import KEY_TYPES
+for key, kind in sorted(KEY_TYPES.items()):
+    print(f"kanibako-key-type: {key}={kind}")
+"""]
+extract = '(?m)^kanibako-key-type: ([^\s=]+)=(\S+)$'
+field = "type"
+authority = "declared"
+
+# FACT: `_KEY_ROUTES` routes exactly the fixed-scope `set: cli+file` rows.
+# `test_manifest_conformance` #42 asserts routes ⊆ manifest; this is the
+# EQUALITY, and it is wider than the test on purpose -- `cli_routed_key`'s
+# docstring says why the converse the test declines holds over this view.
+# `_KEY_ROUTES` is what `config set` routes through (`config_keys`).
+#   `# cli-routed-keys: 45 declared, 45 produced, in agreement.`  rc=0
+# NEGATIVE CONTROLS, each rc=1:
+#   code, the `box.canon` route removed: `box.canon: declared, produced by
+#     nothing` -- a `cli+file` key the CLI cannot set
+#   manifest, `box.canon` `set: cli+file` -> `file`: `box.canon: produced,
+#     declared by nothing` -- a route to a key the manifest does not let the CLI
+#     write
+# VACUITY CONTROL, the oracle's `print` removed: rc=1, 45 `declared, produced by
+# nothing`.
+# ⚑ MEMBERSHIP ONLY. A route's VALUE is a settings-file slot, and the manifest
+# has no cell that spells one.
+[[parity]]
+registry = "cli-routed-keys"
+command = ["{python}", "-c", """
+from kanibako.settings.config_keys import _KEY_ROUTES
+for key in sorted(_KEY_ROUTES):
+    print(f"kanibako-routed: {key}")
+"""]
+extract = '(?m)^kanibako-routed: (\S+)$'
+
+# FACT: every `config.*`/`system.*` path row's `default:` IS the literal
+# `settings/bootstrap.py` carries -- `CONFIG_PATH_DEFAULTS` and
+# `SYSTEM_PATH_DEFAULTS`, the tables `settings/paths.py` hands its `LevelView`s
+# as the tier defaults. `test_manifest_conformance` `TestPathDefaults`.
+# AUTHORITY: `declared`; the manifest cell is the spec's default.
+# ⚑ NO `translate`: both sides spell the `@`-ref and `$XDG_*` tokens verbatim.
+#   `# bootstrap-path-defaults: 18 declared, 18 produced, in agreement,
+#   agreeing on default.`  rc=0
+# NEGATIVE CONTROLS, each rc=1, `FAIL: 1 disagreement(s)`:
+#   code, `system.backup` -> `@config.data/backups`: `system.backup: default
+#     declared '@config.data/backup', code produces '@config.data/backups'`
+#   manifest, `config.journal` -> `.../journal.yml`: `config.journal: default
+#     declared '@config.data/global/journal.yml', code produces
+#     '@config.data/global/journal.yaml'`
+# VACUITY CONTROL, the oracle's `print` removed: rc=1, 18 `declared, produced by
+# nothing`.
+[[parity]]
+registry = "bootstrap-path-defaults"
+command = ["{python}", "-c", """
+from kanibako.settings.bootstrap import CONFIG_PATH_DEFAULTS, SYSTEM_PATH_DEFAULTS
+for key, value in sorted({**CONFIG_PATH_DEFAULTS, **SYSTEM_PATH_DEFAULTS}.items()):
+    print(f"kanibako-path-default: {key}={value}")
+"""]
+extract = '(?m)^kanibako-path-default: ([^\s=]+)=(\S+)$'
+field = "default"
+authority = "declared"
+
+# ---------------------------------------------------------------------------
 # THE SHAPE RULES. `[[shape]]` reads only the declaration and asks whether it is
 # the shape this project says it is -- the one mechanism here that compares the
 # manifest to ITSELF rather than to the code. It is a REMINDER, not a catch: an
@@ -2280,6 +2568,42 @@ registry = "categories"
   name = "parametric-is-not-dest-keyed"
   when = { field = "cli_set", equals = true }
   absent = "dest_keyed"
+
+# ---------------------------------------------------------------------------
+# FACT: every field of `policy.seed_whitelists` is a scope row (it carries
+# `root`) or one of the two classified POLICY fields, and both of those are
+# still there. `test_manifest_enforces` A2, both directions.
+# AUTHORITY: the classification is the test's `POLICY_FIELDS`, stated here as a
+# claim. `[[parity]] seed-scopes` pins the `root`-carrying rows to the code's
+# scopes, so the two together are A2's `fields == scopes ∪ POLICY_FIELDS`.
+# CATCHES: a new field that is neither (it lands in no parity, because
+# `seed-scopes` selects on `root`); a policy field deleted or turned into a
+# scope row.
+# ⚑ THE STALE DIRECTION RIDES ON "A RULE THAT SELECTS NOTHING FAILS": one rule
+# per policy field, guarded on its name, so a deleted field is a VACUOUS rule.
+# Measured 2026-09-24, kinemata `0.3.0`: 3 rules, all satisfied, examined 2 / 1
+# / 1. CONTROLS in a scratch copy, each rc=1:
+#   `audit: strict` added:        `audit: a-rootless-field-is-a-classified-policy-field`
+#   `traversal_defences` deleted: `VACUOUS 'traversal-defences-is-still-a-policy-field':
+#                                 examined no entry, so it checked nothing`
+#   `default` given a `root`:     `default: default-is-still-a-policy-field`
+[[shape]]
+registry = "seed-whitelist-fields"
+
+  [[shape.rule]]
+  name = "a-rootless-field-is-a-classified-policy-field"
+  when = { absent = "root" }
+  id_matches = '^(default|traversal_defences)$'
+
+  [[shape.rule]]
+  name = "default-is-still-a-policy-field"
+  when = { id_matches = '^default$' }
+  absent = "root"
+
+  [[shape.rule]]
+  name = "traversal-defences-is-still-a-policy-field"
+  when = { id_matches = '^traversal_defences$' }
+  absent = "root"
 
 # ---------------------------------------------------------------------------
 # THE GATE INVENTORY. `[[gate]]` is verified by the `claims` command, so a gate
