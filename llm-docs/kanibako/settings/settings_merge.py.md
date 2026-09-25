@@ -181,8 +181,10 @@ LAST segment, so a present `None` was OMITTED as a category reset at:
 The entry case read ANY ancestor token. Measured over every declared key and every scope × category
 root and entry, the position rule changed no declared key's class; it changed four NON-keys
 (`agent.seeded.<dest>`, `box.bindings.<name>`, `meta.assembly.bindings.<dest>`,
-`workset.channels.common.<x>`) from OMIT to KEEP, so a `null` at one now reaches the closed-keyspace
-refusal instead of vanishing.
+`workset.channels.common.<x>`) from OMIT to KEEP. Two are reachable, and a `null` at them now
+reaches the closed-keyspace refusal instead of vanishing (`agent.seeded.<dest>`,
+`box.bindings.<name>`). The other two never reach the merge: the `meta:` table is dropped at
+assembly, and `workset.channels.common.<x>` is refused earlier by the path-value check.
 
 ### ⚑ The `pref` subtree is EXEMPT — no classification at all
 
