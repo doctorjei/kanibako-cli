@@ -22,7 +22,7 @@ _SEED_SRC_HOME = 'box/home'
 _SEED_SRC_HANDBOOK = 'box/canon/handbook'
 _BOX_TEMPLATE_SKELETON = ('box/home/canon/notebook', 'box/home/canon/workbook', 'box/canon/handbook')
 _MOULD_CANON_ROOT = 'canon'
-_CANON_CHAPTER_LEAF = 'handbook'
+_CANON_CHAPTER_LEAF = HANDBOOK_REL
 _HTML_COMMENT_RE = re.compile('<!--.*?-->', re.DOTALL)
 _FENCE_RE = re.compile('(^|\\n)(```|~~~)[^\\n]*\\n.*?(\\n\\2[^\\n]*(?=\\n|$))', re.DOTALL)
 ```

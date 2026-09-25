@@ -9,6 +9,7 @@ from pathlib import Path
 from kanibako.settings.bootstrap import SPAWN_BUDGET_DEFAULTS
 from kanibako.settings.config import SYSTEM_HELPERS_SECTION, read_system_helpers
 from kanibako.settings.config_io import dump_doc, load_doc
+from kanibako.settings.core_defaults import CANON_GUEST_ROOT, NOTEBOOK_SCRIPTS_REL
 
 # When breadth is unlimited (-1), use 2^16 for numbering purposes.
 # Large enough to never collide; small enough for human-readable numbers.
@@ -177,9 +178,12 @@ def write_spawn_budget(path: Path, budget: SpawnBudget) -> None:
 #: vestigial two-level path whose first level carried nothing at all.
 HELPER_SCRIPTS_RELPATH = "scripts"
 
-#: Where a PARENT keeps its own override copy of the entrypoint wrapper.  The parent IS
-#: a box, so this is the canon address for a reusable helper script.
-PARENT_SCRIPTS_RELPATH = ("canon", "notebook", "scripts")
+#: Where a PARENT keeps its own override copy of the entrypoint wrapper, home-relative.
+#: The parent IS a box, so this is the canon address for a reusable helper script, read
+#: from the canon layout.  ⚑ Its ``scripts`` leaf shares a spelling with
+#: :data:`HELPER_SCRIPTS_RELPATH` and nothing else: the two sides were repointed
+#: independently, and renaming the helper's dir must not move a canon address.
+PARENT_SCRIPTS_RELPATH = f"{CANON_GUEST_ROOT}/{NOTEBOOK_SCRIPTS_REL}"
 
 
 def create_helper_dirs(helpers_dir: Path, helper_num: int) -> Path:

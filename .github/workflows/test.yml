@@ -129,6 +129,14 @@ jobs:
       # pattern keys whose missing-field reading changed. The only output that
       # moved belongs to `kinemata ids`, which no step runs: it now prints a
       # view once.
+      # 🛑 THE 0.4.1 BUMP MOVED `check`'s VERDICT, AND THE TREE MOVED WITH IT.
+      # A `python-constants` home is now the declaring STATEMENT, not the whole
+      # module, so a same-value literal beside its declaration is a finding.
+      # Measured 2026-09-24: on the tree before this bump `check` read rc 1 on
+      # two real duplicates, both cured in code in the same change; the other
+      # four commands printed output byte-identical to 0.4.0's. It is also what
+      # lets `kinemata.toml`'s `keyspace` defer filenames to `filenames`
+      # without losing a respelling inside a home module.
       # ⚑ DO NOT CARRY A FIGURE OUT OF UPSTREAM'S RELEASE LETTER. It measured a
       # pinned clone of this tree and reported a smaller number; the tree has
       # moved since, and upstream withdrew its own companion figure as a weak
@@ -144,9 +152,13 @@ jobs:
       # further away.
       # 🛑 AND IT IS A FLOOR, NOT A PREFERENCE. `kinemata.toml`'s `exclude` uses the
       # `/`-anchored spelling, which an earlier build reads as a literal substring
-      # matching nothing -- lower this pin and the conformance job reds. The
-      # measurement is in that file's version-floor note, above its `exclude`.
-      - run: pip install "kinemata[yaml]==0.4.0"
+      # matching nothing. The measurement is in that file's version-floor note,
+      # above its `exclude`. The floor is now `0.4.1` itself: below `0.4.0` the
+      # job reds (`0.3.0` refuses the config at load, rc 2, naming `only`), but
+      # `0.4.0` loads it and stays GREEN while exempting a constant's whole home
+      # module from `check`, so a respelling there is reported by nothing. The
+      # measurement is in the `filenames` registry's note.
+      - run: pip install "kinemata[yaml]==0.4.1"
       # ⚑ THE PROJECT ITSELF IS INSTALLED HERE BECAUSE THE PARITY ORACLE IMPORTS
       # IT. `parity` runs a command that prints what the code produces, and an
       # oracle it cannot run is a FAILURE that no baseline can accept -- so a

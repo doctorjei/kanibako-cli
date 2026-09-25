@@ -425,9 +425,15 @@ ROM_COLLECTION_REL = "COLLECTION.md"
 ROM_CHARTER_REL = "charter"
 ROM_CONTENTS_REL = f"{ROM_CHARTER_REL}/ROM_CONTENTS.md"
 
-# The handbook BOOK root, guest-only (nothing packages a handbook); beside ``ROM_CHARTER_REL``
-# because the managed-region deny list below needs both book roots.
+# The handbook BOOK root under a canon root (the rom packages no handbook); beside
+# ``ROM_CHARTER_REL`` because the managed-region deny list below needs both book roots.  The
+# same leaf names the handbook under every host ``@<scope>.canon`` (``templates``' chapter leaf).
 HANDBOOK_REL = "handbook"
+
+# The notebook's reusable-scripts dir, canon-root-relative: the canon's own address for a
+# script a box keeps for reuse (the helper entrypoint override is read from it).  SEEDED
+# territory, not skeleton: nothing here creates it.
+NOTEBOOK_SCRIPTS_REL = "notebook/scripts"
 
 # ⚑ The load-bearing box guide (the charter's GENERAL chapter), rom-root-relative; it MUST ship
 # whenever the rom root is populated — see the fail-closed guard in ``rom_default_categories``.

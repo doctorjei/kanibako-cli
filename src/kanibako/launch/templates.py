@@ -14,7 +14,7 @@ from pathlib import Path
 
 from kanibako.agent_ref import GENERAL_SLOT
 from kanibako.settings.agent_config import store_dirname
-from kanibako.settings.core_defaults import ROM_ROOT_PARTS, packaged_data_dir
+from kanibako.settings.core_defaults import HANDBOOK_REL, ROM_ROOT_PARTS, packaged_data_dir
 
 if TYPE_CHECKING:
     from kanibako.settings.paths import ProjectPaths, StandardPaths
@@ -498,10 +498,12 @@ _MOULD_CANON_ROOT = "canon"
 #: fixed.  It is the chapter leaf under ANY canon contribution root, not the workset one
 #: alone: spec ``:1373`` binds ``system.canon``'s ``handbook/`` subtree the same way, and
 #: ``core-defaults.yaml`` spells ``@<scope>.canon/handbook`` for all four scopes.
+#: It IS the canon layout's handbook book root (:data:`core_defaults.HANDBOOK_REL`), so it
+#: is read from there, never respelled.
 #: ⚑ Not to be confused with :data:`PACKAGED_HANDBOOK`, which names the SOURCE subtree of
 #: the packaged template root.  An install is a (packaged subtree → host dest) PAIR, and
 #: the two halves are independent facts that happen to share a spelling.
-_CANON_CHAPTER_LEAF = "handbook"
+_CANON_CHAPTER_LEAF = HANDBOOK_REL
 
 
 def _packaged_base_template() -> Path | None:

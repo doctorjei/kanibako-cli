@@ -2,7 +2,7 @@
   "version": 1,
   "until": "2026-09-30",
   "by": "Jei Blanchard",
-  "note": "Q59: parity reserved-agent-names shell disagreement accepted short-term; live carrier is the no_agent scrub row until scoping vocabulary (ii) exists; until extended to 2026-09-30 on his word (Q66), which covered only the three parity disagreements. keyspace registry closed (authored 2026-09-22, kind-import row step 4) - the pre-existing undeclared:keyspace strays (filename-shaped identifiers) accepted by the director (Kirobo) as day-one cost; Q67 answered 2026-09-24 (candidates are whole key-shaped literals and @-refs, filenames are declared constants), and the entries left are declaration homes of meta-files / agent-plugin-files / docker-context-files constants that undeclared cannot see across registries - reported to kinemata 2026-09-24 (from-kanibako-2026-09-24-undeclared-flags-another-registrys-declaration-home.md); vscode_remote.py's meta.json became the docker-context-files constant DOCKER_CONTEXT_META_FILE later that day, after the letter, and its declaration line is the same gap. 2026-09-24: the nine system._boxes / system._primary_* records (live code uses of manifest not_keys.code_residue names, accepted earlier that day by the director (Kirobo)) were cleared the same day by renaming the four path-tier table entries to the non-key names _primary_boxes / _primary_vault_ro / _primary_vault_rw / _primary_logs; no record of them remains. The re-record also offered 10 claims + 3 api-doc parity findings from concurrent commits; left for their owners, not accepted here.",
+  "note": "Q59: parity reserved-agent-names shell disagreement accepted short-term; live carrier is the no_agent scrub row until scoping vocabulary (ii) exists; until extended to 2026-09-30 on his word (Q66), which covered only the three parity disagreements. keyspace registry closed (authored 2026-09-22, kind-import row step 4) - the pre-existing undeclared:keyspace strays (filename-shaped identifiers) accepted by the director (Kirobo) as day-one cost; Q67 answered 2026-09-24 (candidates are whole key-shaped literals and @-refs, filenames are declared constants), and the entries then left were declaration homes of meta-files / agent-plugin-files / docker-context-files constants that undeclared could not see across registries - reported to kinemata 2026-09-24 (from-kanibako-2026-09-24-undeclared-flags-another-registrys-declaration-home.md); vscode_remote.py's meta.json became the docker-context-files constant DOCKER_CONTEXT_META_FILE later that day, after the letter, and its declaration line was the same gap. 2026-09-24: the nine system._boxes / system._primary_* records (live code uses of manifest not_keys.code_residue names, accepted earlier that day by the director (Kirobo)) were cleared the same day by renaming the four path-tier table entries to the non-key names _primary_boxes / _primary_vault_ro / _primary_vault_rw / _primary_logs; no record of them remains. The re-record also offered 10 claims + 3 api-doc parity findings from concurrent commits; left for their owners, not accepted here. 2026-09-24, kinemata 0.4.1: `kinemata baseline --prune` dropped the five filename declaration-line records (box.yaml, workset.yaml, config.toml, config.yaml, meta.json) once keyspace's defer_to handed them to the filenames registry, and one canon-layout record, templates.py's `_CANON_CHAPTER_LEAF = \"handbook\"`, which now reads core_defaults.HANDBOOK_REL; no undeclared:keyspace record remains.",
   "findings": [
     {
       "registry": "canon-layout",
@@ -10,13 +10,6 @@
       "antipattern": "handbook",
       "path": "src/kanibako/launch/templates.py",
       "text": "PACKAGED_HANDBOOK = \"handbook\""
-    },
-    {
-      "registry": "canon-layout",
-      "entry": "HANDBOOK_REL",
-      "antipattern": "handbook",
-      "path": "src/kanibako/launch/templates.py",
-      "text": "_CANON_CHAPTER_LEAF = \"handbook\""
     },
     {
       "registry": "canon-layout",
@@ -4305,41 +4298,6 @@
       "antipattern": "XDG_STATE_HOME",
       "path": "src/kanibako/box_supervisor.py",
       "text": "(\"XDG_STATE_HOME\", \".local/state\", \"state\"),"
-    },
-    {
-      "registry": "undeclared:keyspace",
-      "entry": "box.yaml",
-      "antipattern": "",
-      "path": "src/kanibako/settings/config.py",
-      "text": "BOX_META_FILE = \"box.yaml\""
-    },
-    {
-      "registry": "undeclared:keyspace",
-      "entry": "config.toml",
-      "antipattern": "",
-      "path": "packages/agent-codex/src/kanibako/plugins/codex/target.py",
-      "text": "CODEX_CONFIG_FILE = \"config.toml\""
-    },
-    {
-      "registry": "undeclared:keyspace",
-      "entry": "config.yaml",
-      "antipattern": "",
-      "path": "packages/agent-goose/src/kanibako/plugins/goose/target.py",
-      "text": "GOOSE_CONFIG_FILE = \"config.yaml\""
-    },
-    {
-      "registry": "undeclared:keyspace",
-      "entry": "meta.json",
-      "antipattern": "",
-      "path": "src/kanibako/vscode/vscode_remote.py",
-      "text": "DOCKER_CONTEXT_META_FILE = \"meta.json\""
-    },
-    {
-      "registry": "undeclared:keyspace",
-      "entry": "workset.yaml",
-      "antipattern": "",
-      "path": "src/kanibako/settings/config.py",
-      "text": "WORKSET_META_FILE = \"workset.yaml\""
     }
   ]
 }
