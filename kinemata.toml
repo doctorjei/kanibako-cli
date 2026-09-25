@@ -2044,6 +2044,197 @@ section = "keys"
 where = { id_matches = '^workset\.channels\.' }
 
 # ---------------------------------------------------------------------------
+# THE §4.3 REMAINDER, SECOND PASS: the rows the verdict file (named in the banner
+# above) left EXPRESSIBLE-NOT-YET, declared 2026-09-25 under kinemata `0.4.1` in
+# the first pass's shapes. That banner's rules hold here unchanged: one view per
+# code carrier, each oracle printing its carrier's whole output less a filter its
+# parity states, sentinel `@`-refs for resolved inputs. The `bind_default_entries`
+# views are counted by `test_manifest_conformance`'s bind ledger
+# (`_kinemata_carried_binds`), as the `keys:` views are by section 4c.
+# ⚑ WHAT THEY COST ELSEWHERE, measured 2026-09-25 against a git clone of `47674fc3`:
+# `check`'s `silent:` tally goes 574/682 to 617/725 -- the 43 rows of the twenty
+# views below -- and its `unread:` tally 1719 f-strings to 1720 (`kinemata_views`);
+# `claims`, `shape` and `undeclared` print byte-identical output.
+
+# FACT: the `access` rows' `choices:` column is `settings_keyspace.ACCESS_TIERS`,
+# IN ORDER -- the default tier, the shell fence and the per-agent row alike. The
+# order is part of the claim: `targets.base` reads the tuple as least -> most
+# permissive.
+[[registry]]
+name = "access-choices"
+kind = "yaml-mapping"
+source = "src/kanibako/data/keyspace-manifest.yaml"
+section = "keys"
+where = { id_matches = '^agent\.[^.]+\.access$' }
+
+# FACT: `settings_keyspace.access_default()`, the second reader of
+# `agent.default.access` beside the behavior table `behavior-floor` compares,
+# answers the declared default.
+[[registry]]
+name = "access-default-reader"
+kind = "yaml-mapping"
+source = "src/kanibako/data/keyspace-manifest.yaml"
+section = "keys"
+where = { id_matches = '^agent\.default\.access$' }
+
+# FACT: the parametric agent-store anchors carry their declared formulas on a
+# persona node -- `meta.agent.<agent>.path` as `meta_agent_path_floor` builds it,
+# `meta.agent.<agent>.settings` as `meta_identity_floor` does. One view each: each
+# takes its own value hop.
+[[registry]]
+name = "agent-path-anchor"
+kind = "yaml-mapping"
+source = "src/kanibako/data/keyspace-manifest.yaml"
+section = "keys"
+where = { id_matches = '^meta\.agent\.<agent>\.path$' }
+
+[[registry]]
+name = "agent-settings-anchor"
+kind = "yaml-mapping"
+source = "src/kanibako/data/keyspace-manifest.yaml"
+section = "keys"
+where = { id_matches = '^meta\.agent\.<agent>\.settings$' }
+
+# FACT: the box's own channel addresses -- `meta.box.inbox`, `meta.box.share_global`
+# and `meta.box.share_workset` -- are what `channels.box_channel_addresses` derives,
+# carried by `meta_identity_floor` through `settings_launch.box_address_args`, the
+# wiring the launch unpacks into that call. One view per row and
+# arm, because each takes its own intra-family hop and `share_workset` is a
+# per-mode map. (`TestValueBoxAddresses` keeps the spellings and the arms no view
+# reaches.)
+[[registry]]
+name = "box-inbox"
+kind = "yaml-mapping"
+source = "src/kanibako/data/keyspace-manifest.yaml"
+section = "keys"
+where = { id_matches = '^meta\.box\.inbox$' }
+
+[[registry]]
+name = "box-share-global"
+kind = "yaml-mapping"
+source = "src/kanibako/data/keyspace-manifest.yaml"
+section = "keys"
+where = { id_matches = '^meta\.box\.share_global$' }
+
+[[registry]]
+name = "box-share-workset-primary"
+kind = "yaml-mapping"
+source = "src/kanibako/data/keyspace-manifest.yaml"
+section = "keys"
+where = { id_matches = '^meta\.box\.share_workset$' }
+
+[[registry]]
+name = "box-share-workset-named"
+kind = "yaml-mapping"
+source = "src/kanibako/data/keyspace-manifest.yaml"
+section = "keys"
+where = { id_matches = '^meta\.box\.share_workset$' }
+
+[[registry]]
+name = "box-share-workset-standalone"
+kind = "yaml-mapping"
+source = "src/kanibako/data/keyspace-manifest.yaml"
+section = "keys"
+where = { id_matches = '^meta\.box\.share_workset$' }
+
+# FACT: the CREATE-time seed table (`launch.templates.template_seed_defaults`)
+# carries the agent-tier template SOURCES the manifest declares -- the scalars it
+# composes from `agent_template_defaults` rather than spelling a second time.
+[[registry]]
+name = "seed-table-template"
+kind = "yaml-mapping"
+source = "src/kanibako/data/keyspace-manifest.yaml"
+section = "keys"
+where = { id_matches = '^agent\.(<agent>|default)\.template$' }
+
+# FACT: the same table's layer-2 `seeded` entry is the one the manifest declares,
+# `~/` from `(@agent.<agent>.template/box/home)` -- on a persona node, and on a bare
+# one (`-bare`), where the node and its store dirname are one string.
+[[registry]]
+name = "agent-seeded-layer"
+kind = "yaml-mapping"
+source = "src/kanibako/data/keyspace-manifest.yaml"
+section = ["category_default_entries", "agent.<agent>.seeded"]
+
+[[registry]]
+name = "agent-seeded-layer-bare"
+kind = "yaml-mapping"
+source = "src/kanibako/data/keyspace-manifest.yaml"
+section = ["category_default_entries", "agent.<agent>.seeded"]
+
+# FACT: `agent_template_defaults` on a BARE node -- the control beside
+# `agent-template-source`'s persona, where the key segment and the store dirname
+# coincide.
+[[registry]]
+name = "agent-template-bare"
+kind = "yaml-mapping"
+source = "src/kanibako/data/keyspace-manifest.yaml"
+section = "keys"
+where = { id_matches = '^agent\.(<agent>|default)\.template$' }
+
+# FACT: the handbook BIND rows' host sources are what `core_defaults.canon_default_categories`
+# emits into `box.bindings.ro` -- the four `<scope>.canon` refs and the system
+# contents file.
+[[registry]]
+name = "handbook-binds"
+kind = "yaml-mapping"
+source = "src/kanibako/data/keyspace-manifest.yaml"
+section = ["bind_default_entries", "box.bindings.ro"]
+where = { id_matches = '^~/canon/handbook/' }
+
+# FACT: the helper message LOG's bind row is what `core_defaults.helper_default_categories`
+# emits into `box.bindings.ro`. (Its `box.bindings.rw` arm is `helper-socket-bind`'s.)
+[[registry]]
+name = "helper-log-bind"
+kind = "yaml-mapping"
+source = "src/kanibako/data/keyspace-manifest.yaml"
+section = ["bind_default_entries", "box.bindings.ro"]
+where = { id_matches = '^~/\.kanibako/state/' }
+
+# FACT: the helper SOCKET's mount OPTIONS are the ones the manifest declares -- the
+# half of the cell `helper-socket-bind` does not compare. (`""`: a relabel or chown
+# would break the live socket the hub listens on.)
+[[registry]]
+name = "helper-socket-options"
+kind = "yaml-mapping"
+source = "src/kanibako/data/keyspace-manifest.yaml"
+section = ["bind_default_entries", "box.bindings.rw"]
+where = { id_matches = '^~/\.kanibako/state/helper\.sock$' }
+
+# FACT: the CORE binds' host sources -- the workspace and the two vault rows, per
+# mode -- are what `core_defaults.core_default_categories` emits. One view per arm.
+[[registry]]
+name = "core-binds-ro"
+kind = "yaml-mapping"
+source = "src/kanibako/data/keyspace-manifest.yaml"
+section = ["bind_default_entries", "box.bindings.ro"]
+where = { id_matches = '^~/vault/' }
+
+[[registry]]
+name = "core-binds-rw"
+kind = "yaml-mapping"
+source = "src/kanibako/data/keyspace-manifest.yaml"
+section = ["bind_default_entries", "box.bindings.rw"]
+where = { id_matches = '^~/(workspace|vault/rw)$' }
+
+# FACT: the CHANNEL binds' host sources -- the system-scope family, the box inbox
+# and the workset-local family -- are what `core_defaults.channel_default_categories`
+# emits, all into `box.bindings.rw`, for a NAMED box and (`-primary`) a PRIMARY one.
+[[registry]]
+name = "channel-binds"
+kind = "yaml-mapping"
+source = "src/kanibako/data/keyspace-manifest.yaml"
+section = ["bind_default_entries", "box.bindings.rw"]
+where = { id_matches = '^~/channels/' }
+
+[[registry]]
+name = "channel-binds-primary"
+kind = "yaml-mapping"
+source = "src/kanibako/data/keyspace-manifest.yaml"
+section = ["bind_default_entries", "box.bindings.rw"]
+where = { id_matches = '^~/channels/' }
+
+# ---------------------------------------------------------------------------
 # THE PARITY ORACLES. Each one runs a command that prints what the CODE really
 # produces and compares that set against what a registry above DECLARES.
 #
@@ -3537,17 +3728,15 @@ authority = "declared"
 # name onto it, so the prefix proves only that the name lands under the dir it is
 # given. That the launch gives it `std.runtime` (`_start_helper_hub`'s
 # `_run_dir = std.runtime`) is NOT proved by this view.
-# ⚑ THE EMITTER THE LAUNCH CALLS, FED THE NAME `helper_socket_path` COMPOSES. A
-# named box whose name and workset name are the braced refs the cell embeds, under
-# that run dir, in a scratch cwd, where both sources are created because the
-# emitter binds only a source that exists. The oracle prints the emitter's whole
-# `box.bindings.rw` arm, dest by dest; its dests are GUEST paths
-# (`settings_resolve.normalize_bind_dest`), and the oracle writes `GUEST_HOME` back
-# as the `~` the manifest keys on, importing the constant rather than respelling it.
+# ⚑ THE EMITTER THE LAUNCH CALLS, FED THE NAME `helper_socket_path` COMPOSES
+# (`kinemata_views.sentinel_helper_binds`): a named box whose name and workset name
+# are the braced refs the cell embeds, under that run dir, in a scratch cwd. The
+# oracle prints the emitter's whole `box.bindings.rw` arm, dest by dest, each dest
+# written back as the `~` the manifest keys on (`kinemata_views.guest_bind_arm`).
 # ⚑ `translate` IS THE NAME RULE'S UNBOUNDED ARM, declared where it can be read:
 # `<bounded name of "<t>">` is `<t>.sock` while the path fits the socket limit.
-# It matches only a cell whose mount options are `""`, so the manifest's options
-# are pinned; the EMITTER's options are not printed and not compared.
+# It matches only a cell whose mount options are `""`; the EMITTER's options are
+# `helper-socket-options`' to compare.
 #   `# helper-socket-bind: 1 declared, 1 produced, in agreement, agreeing on
 #   default.`  rc=0
 # NEGATIVE CONTROLS:
@@ -3568,26 +3757,13 @@ authority = "declared"
 [[parity]]
 registry = "helper-socket-bind"
 command = ["{python}", "-c", """
-import os, pathlib, tempfile
-from kanibako.commands.start import helper_socket_path
-from kanibako.settings.core_defaults import helper_default_categories
-from kanibako.settings.settings_resolve import GUEST_HOME
-from kinemata_views import ref_token_project
+import os, tempfile
+from kinemata_views import guest_bind_arm, sentinel_helper_binds
 with tempfile.TemporaryDirectory() as scratch:
     os.chdir(scratch)
-    run_dir = pathlib.Path("@system.runtime")
-    run_dir.mkdir()
-    socket = helper_socket_path(
-        ref_token_project("named", workset_name="@{meta.workset.name}", box_name="@{meta.box.name}"),
-        run_dir,
-    )
-    socket.touch()
-    log = pathlib.Path("helpers.jsonl")
-    log.touch()
-    binds = helper_default_categories(socket_path=socket, log_path=log)
-for dest, (host_src, *_) in sorted(binds.get("box.bindings.rw", {}).items()):
-    guest = "~" + dest[len(GUEST_HOME):] if dest.startswith(GUEST_HOME + "/") else dest
-    print(f"kanibako-helper-bind: {guest}={host_src}")
+    binds = sentinel_helper_binds()
+for dest, (host_src, *_) in guest_bind_arm(binds, "bindings.rw"):
+    print(f"kanibako-helper-bind: {dest}={host_src}")
 """]
 extract = '(?m)^kanibako-helper-bind: ([^\s=]+)=(\S+)$'
 field = "default"
@@ -3769,6 +3945,541 @@ for leaf in sorted(DECLARED_WORKSET_CHANNEL_LEAVES):
 """]
 extract = '(?m)^kanibako-channel-leaf: (\S+)$'
 translate = { pattern = '^workset\.channels\.', replacement = "" }
+
+# ---------------------------------------------------------------------------
+# THE §4.3 REMAINDER, SECOND PASS, THEIR ORACLES. Registries and the FACT each
+# states are above, under "THE §4.3 REMAINDER, SECOND PASS". Measured 2026-09-25 on
+# `47674fc3` plus the working tree, kinemata `0.4.1`, `PYTHONPATH=src`; each control
+# is ONE edit in a fresh copy under /tmp run with `PYTHONPATH=<copy>/src`, rc=1
+# with `FAIL: 1 disagreement(s)` unless it says otherwise, and the quoted finding
+# is the whole report.
+
+# ⚑ ONE IDENTIFIER FOR THREE ROWS: `translate_identifier` maps `agent.default.access`,
+# `agent.shell.access` and `agent.<agent>.access` onto the bare leaf `access` -- the
+# spelling `config_keys.is_access_key` answers -- and each row's cell is compared,
+# in order, against the one tuple (`ordered: 3 declared cell(s)`). The cost: a
+# finding names `access`, not the row; the declared order it quotes is the way back.
+#   `# access-choices: 1 declared, 1 produced, in agreement, agreeing on choices.`
+#   `ordered: 3 declared cell(s) hold a list, compared in order`  rc=0
+# NEGATIVE CONTROLS:
+#   code, `ACCESS_TIERS` reordered `editing, restricted, full`: rc=1, `FAIL: 3
+#     disagreement(s)`, each `access: choices declared 'restricted', 'editing',
+#     'full' in this order, code produces 'editing', 'restricted', 'full' (the
+#     same values, reordered)`
+#   manifest, `agent.<agent>.access` choices `restricted, full, editing`: one
+#     finding, `(the same values, reordered)` -- each row is compared
+# VACUITY, the `print` removed: rc=1, `access: declared, produced by nothing`.
+[[parity]]
+registry = "access-choices"
+command = ["{python}", "-c", """
+from kanibako.settings.settings_keyspace import ACCESS_TIERS
+for tier in ACCESS_TIERS:
+    print(f"kanibako-access-tier: access={tier}")
+"""]
+extract = '(?m)^kanibako-access-tier: ([^\s=]+)=(\S+)$'
+field = "choices"
+authority = "declared"
+ordered = true
+translate_identifier = { pattern = '^agent\.[^.]+\.access$', replacement = "access" }
+
+#   `# access-default-reader: 1 declared, 1 produced, in agreement, agreeing on
+#   default.`  rc=0
+# NEGATIVE CONTROL, code, `access_default` answering `"editing"` instead of reading
+# the table: `agent.default.access: default declared '"full"', code produces
+# '"editing"'`.
+[[parity]]
+registry = "access-default-reader"
+command = ["{python}", "-c", """
+import json
+from kanibako.settings.settings_keyspace import access_default
+print(f"kanibako-access-default: agent.default.access={json.dumps(access_default())}")
+"""]
+extract = '(?m)^kanibako-access-default: ([^\s=]+)=(.+)$'
+field = "default"
+format = "json"
+authority = "declared"
+
+# ⚑ TWO HOPS, `agent-template-source`'s shape: `translate_identifier` substitutes the
+# persona node, `translate` answers `@meta.agent.<agent>.name` with that node's store
+# dirname. The oracle prints the NODE's key only: `meta_agent_path_floor` also emits
+# the HARNESS anchor (`meta.agent.claude.path`, for harness-keyed refs a user writes),
+# a second instance of the same parametric row that one identifier hop cannot also
+# name. What ties the path to the NAME floor's own value stays with
+# `TestValueAgentIdentity.test_the_parametric_path_is_the_name_hop_unrolled`.
+#   `# agent-path-anchor: 1 declared, 1 produced, in agreement, agreeing on value.`
+#   rc=0
+# NEGATIVE CONTROL, code, `store_dirname(store_agent)` -> `store_agent`:
+# `meta.agent.gemma℘claude.path: value declared '@config.agents/gemma+claude', code
+# produces '@config.agents/gemma℘claude'`.
+[[parity]]
+registry = "agent-path-anchor"
+command = ["{python}", "-c", """
+from kanibako.settings.settings_launch import meta_agent_path_floor
+node = "gemma℘claude"
+for key, value in sorted(meta_agent_path_floor(node).items()):
+    if key == f"meta.agent.{node}.path":
+        print(f"kanibako-agent-path: {key}={value}")
+"""]
+extract = '(?m)^kanibako-agent-path: ([^\s=]+)=(\S+)$'
+field = "value"
+authority = "declared"
+translate = { pattern = '@meta\.agent\.<agent>\.name$', replacement = "gemma+claude" }
+translate_identifier = { pattern = '^meta\.agent\.<agent>\.', replacement = "meta.agent.gemma℘claude." }
+
+# ⚑ The oracle prints every `meta.agent.*.settings` key the identity floor emits, so
+# a second node's anchor would red here as undeclared.
+#   `# agent-settings-anchor: 1 declared, 1 produced, in agreement, agreeing on
+#   value.`  rc=0
+# NEGATIVE CONTROL, code, the formula gains a `conf/` segment:
+# `meta.agent.gemma℘claude.settings: value declared
+# '@meta.agent.gemma℘claude.path/agent.yaml', code produces
+# '@meta.agent.gemma℘claude.path/conf/agent.yaml'`.
+[[parity]]
+registry = "agent-settings-anchor"
+command = ["{python}", "-c", """
+from kanibako.settings.settings_launch import meta_identity_floor
+floor = meta_identity_floor(
+    box_name="b", project_path="/p", inbox="/i", share_global="/g",
+    share_workset=None, box_settings="/s", agent_name="gemma℘claude",
+)
+for key, value in sorted(floor.items()):
+    if key.startswith("meta.agent.") and key.endswith(".settings"):
+        print(f"kanibako-agent-settings: {key}={value}")
+"""]
+extract = '(?m)^kanibako-agent-settings: ([^\s=]+)=(\S+)$'
+field = "value"
+authority = "declared"
+translate = { pattern = '^@meta\.agent\.<agent>\.', replacement = "@meta.agent.gemma℘claude." }
+translate_identifier = { pattern = '^meta\.agent\.<agent>\.', replacement = "meta.agent.gemma℘claude." }
+
+# ⚑ THE LAUNCH'S WIRING, FED `@`-REFS (`kinemata_views.box_address_floor`): the
+# derivation on the mode-aware sentinel stubs, handed to `meta_identity_floor` through
+# `settings_launch.box_address_args` -- the function `commands.start` unpacks into the
+# same call, so the slot each address fills is the launch's own. What is not proved:
+# that the launch keeps calling it (one call site, `_launch_snapshot_inputs`).
+# `translate` is the manifest's intra-family hop, one per row -- `@workset.channels.<leaf>`
+# unrolled to that leaf's own declared default: `mailboxes` and `share_global` as
+# `workset-partition` compares them, `share` (`@workset.channelroot/share`, with
+# `channelroot` unrolled too) as `workset-channels-primary`/`-named` do.
+# 🛑 NAMED MODE ONLY for `inbox` and `share_global`, for `workset-partition`'s reason:
+# `workset_name_token` answers PRIMARY and STANDALONE with a constant, so only a named
+# box can be handed `@meta.workset.name`. `TestValueBoxAddresses` keeps those arms.
+# 🛑 Each of these views prints ONE `meta.box.*` key, so a new key under `meta.box.*`
+# from the identity floor is seen by none of them (`agent-identity-literals` drops the
+# prefix too).
+#   `# box-inbox: 1 declared, 1 produced, in agreement, agreeing on value.`  rc=0
+#   `# box-share-global: ...`, `# box-share-workset-primary: ... agreeing on
+#   value.primary.`, `-named: ... value.named.`, `-standalone: ...
+#   value.standalone.`  each rc=0
+# NEGATIVE CONTROLS:
+#   code, `inbox = part.share_global / proj.name` (box-inbox; box-share-global
+#     stays rc=0): `meta.box.inbox: value declared
+#     '@system.channels.mailboxes/@meta.workset.name/@meta.box.name', code produces
+#     '@system.channels.share/@meta.workset.name/@meta.box.name'`
+#   code, `share_global = part.mailboxes / proj.name` (box-share-global): the mirror
+#     finding
+#   code, `share_workset` joined onto `wch.chat` (primary and named views): `value.<arm>
+#     declared '@meta.workset.path/channels/share/@meta.box.name', code produces
+#     '@meta.workset.path/channels/chat/@meta.box.name'`
+#   code, standalone `share_workset` answered `part.share_global / proj.name`
+#     (standalone view): `value.standalone declared 'null', code produces
+#     '"@system.channels.share/__STANDALONE__/@meta.box.name"'`
+#   code, `channels.workset_root` PRIMARY -> `proj.metadata_path` (the named view stays
+#     rc=0): `value.primary declared ..., code produces
+#     '@DECOY.metadata_path/channels/share/@meta.box.name'`
+#   code, the floor key respelled `meta.box.inbox2`: rc=1, `BLOCKED: exited 1, last
+#     saying "KeyError: 'meta.box.inbox'"`
+#   manifest, `share_workset`'s named arm -> `@workset.channels.share_global/...`:
+#     `value.named declared '@workset.channels.share_global/@meta.box.name', code
+#     produces '@meta.workset.path/channels/share/@meta.box.name'`
+[[parity]]
+registry = "box-inbox"
+command = ["{python}", "-c", """
+import os, tempfile
+from kinemata_views import box_address_floor
+with tempfile.TemporaryDirectory() as scratch:
+    os.chdir(scratch)
+    floor = box_address_floor("named")
+print(f"kanibako-box-address: meta.box.inbox={floor['meta.box.inbox']}")
+"""]
+extract = '(?m)^kanibako-box-address: ([^\s=]+)=(\S+)$'
+field = "value"
+authority = "declared"
+translate = { pattern = '^@workset\.channels\.mailboxes/', replacement = "@system.channels.mailboxes/@meta.workset.name/" }
+
+[[parity]]
+registry = "box-share-global"
+command = ["{python}", "-c", """
+import os, tempfile
+from kinemata_views import box_address_floor
+with tempfile.TemporaryDirectory() as scratch:
+    os.chdir(scratch)
+    floor = box_address_floor("named")
+print(f"kanibako-box-address: meta.box.share_global={floor['meta.box.share_global']}")
+"""]
+extract = '(?m)^kanibako-box-address: ([^\s=]+)=(\S+)$'
+field = "value"
+authority = "declared"
+translate = { pattern = '^@workset\.channels\.share_global/', replacement = "@system.channels.share/@meta.workset.name/" }
+
+[[parity]]
+registry = "box-share-workset-primary"
+command = ["{python}", "-c", """
+import os, tempfile
+from kinemata_views import box_address_floor
+with tempfile.TemporaryDirectory() as scratch:
+    os.chdir(scratch)
+    floor = box_address_floor("primary")
+print(f"kanibako-box-address: meta.box.share_workset={floor['meta.box.share_workset']}")
+"""]
+extract = '(?m)^kanibako-box-address: ([^\s=]+)=(\S+)$'
+field = ["value", "primary"]
+authority = "declared"
+translate = { pattern = '^@workset\.channels\.share/', replacement = "@meta.workset.path/channels/share/" }
+
+[[parity]]
+registry = "box-share-workset-named"
+command = ["{python}", "-c", """
+import os, tempfile
+from kinemata_views import box_address_floor
+with tempfile.TemporaryDirectory() as scratch:
+    os.chdir(scratch)
+    floor = box_address_floor("named")
+print(f"kanibako-box-address: meta.box.share_workset={floor['meta.box.share_workset']}")
+"""]
+extract = '(?m)^kanibako-box-address: ([^\s=]+)=(\S+)$'
+field = ["value", "named"]
+authority = "declared"
+translate = { pattern = '^@workset\.channels\.share/', replacement = "@meta.workset.path/channels/share/" }
+
+[[parity]]
+registry = "box-share-workset-standalone"
+command = ["{python}", "-c", """
+import json, os, tempfile
+from kinemata_views import box_address_floor
+with tempfile.TemporaryDirectory() as scratch:
+    os.chdir(scratch)
+    floor = box_address_floor("standalone")
+print(f"kanibako-box-address: meta.box.share_workset={json.dumps(floor['meta.box.share_workset'])}")
+"""]
+extract = '(?m)^kanibako-box-address: ([^\s=]+)=(.+)$'
+field = ["value", "standalone"]
+format = "json"
+authority = "declared"
+
+# ⚑ `agent-template-source`'s node, hops and filter-free print, over the CREATE-time
+# table instead of the launch producer. The table's `seeded` layers are maps and are
+# not printed here: the agent layer is `agent-seeded-layer`'s.
+#   `# seed-table-template: 2 declared, 2 produced, in agreement, agreeing on
+#   default.`  rc=0
+# NEGATIVE CONTROLS:
+#   code, a literal `agent.default.template = "@config.agents/default/tmpl"` written
+#     into the table after the composition: `agent.default.template: default declared
+#     '@config.agents/default/template', code produces '@config.agents/default/tmpl'`
+#   code, a persona also given a HARNESS-keyed `agent.claude.template` (and
+#     `agent.claude.seeded`): `agent.claude.template: produced, declared by nothing`
+#     here, and `agent-seeded-layer` below reds on the layer
+[[parity]]
+registry = "seed-table-template"
+command = ["{python}", "-c", """
+import types
+from kanibako.launch.templates import template_seed_defaults
+from kanibako.settings.paths import BoxMode
+seeds = template_seed_defaults(types.SimpleNamespace(mode=BoxMode.named), "gemma℘claude")
+for key, value in sorted(seeds.items()):
+    if not isinstance(value, dict):
+        print(f"kanibako-seed-source: {key}={value}")
+"""]
+extract = '(?m)^kanibako-seed-source: ([^\s=]+)=(\S+)$'
+field = "default"
+authority = "declared"
+translate = { pattern = '^@meta\.agent\.<agent>\.path/', replacement = "@config.agents/gemma+claude/" }
+translate_identifier = { pattern = '^agent\.<agent>\.', replacement = "agent.gemma℘claude." }
+
+# ⚑ THE ORACLE PRINTS EVERY `agent.*.seeded` LAYER'S ENTRIES, so a layer keyed to a
+# second node prints a second value for `~/` and reds. `translate` strips the
+# manifest's `(…)` notation and substitutes the node in one hop.
+#   `# agent-seeded-layer: 1 declared, 1 produced, in agreement, agreeing on
+#   default.`  rc=0
+#   `# agent-seeded-layer-bare: 1 declared, 1 produced, in agreement, agreeing on
+#   default.`  rc=0
+# NEGATIVE CONTROLS:
+#   code, the layer's source leaf `template` -> `templates` (both views): `~/: default
+#     declared '@agent.gemma℘claude.template/box/home', code produces
+#     '@agent.gemma℘claude.templates/box/home'` (and the bare twin with `claude`)
+#   code, a persona also given `agent.claude.seeded`: `~/: default produced
+#     '@agent.claude.template/box/home', declared by nothing`
+#   code, a BARE node's layer respelled `@agent.CLAUDE.template` while a persona's is
+#     untouched: the persona view rc=0, the bare view `~/: default declared
+#     '@agent.claude.template/box/home', code produces '@agent.CLAUDE.template/box/home'`
+#   manifest, the cell -> `(@agent.<agent>.template/home)`: `~/: default declared
+#     '@agent.gemma℘claude.template/home', code produces
+#     '@agent.gemma℘claude.template/box/home'`
+[[parity]]
+registry = "agent-seeded-layer"
+command = ["{python}", "-c", """
+import types
+from kanibako.launch.templates import template_seed_defaults
+from kanibako.settings.paths import BoxMode
+seeds = template_seed_defaults(types.SimpleNamespace(mode=BoxMode.named), "gemma℘claude")
+for key, layer in sorted(seeds.items()):
+    if key.startswith("agent.") and key.endswith(".seeded"):
+        for dest, (host_src, *_) in sorted(layer.items()):
+            print(f"kanibako-agent-seed: {dest}={host_src}")
+"""]
+extract = '(?m)^kanibako-agent-seed: ([^\s=]+)=(\S+)$'
+field = "default"
+authority = "declared"
+translate = { pattern = '^\(@agent\.<agent>\.(.*)\)$', replacement = '@agent.gemma℘claude.\1' }
+
+[[parity]]
+registry = "agent-seeded-layer-bare"
+command = ["{python}", "-c", """
+import types
+from kanibako.launch.templates import template_seed_defaults
+from kanibako.settings.paths import BoxMode
+seeds = template_seed_defaults(types.SimpleNamespace(mode=BoxMode.named), "claude")
+for key, layer in sorted(seeds.items()):
+    if key.startswith("agent.") and key.endswith(".seeded"):
+        for dest, (host_src, *_) in sorted(layer.items()):
+            print(f"kanibako-agent-seed: {dest}={host_src}")
+"""]
+extract = '(?m)^kanibako-agent-seed: ([^\s=]+)=(\S+)$'
+field = "default"
+authority = "declared"
+translate = { pattern = '^\(@agent\.<agent>\.(.*)\)$', replacement = '@agent.claude.\1' }
+
+# ⚑ THE BARE CONTROL `agent-template-source` DECLINED TO BE: that view takes a persona
+# because a bare node hides the key/dirname split. This one takes `claude` because a
+# defect can be bare-only as well.
+#   `# agent-template-bare: 2 declared, 2 produced, in agreement, agreeing on
+#   default.`  rc=0
+# NEGATIVE CONTROLS:
+#   code, the node arm's dirname upper-cased for a node WITHOUT `℘` only:
+#     `agent-template-source` rc=0, this view `agent.claude.template: default declared
+#     '@config.agents/claude/template', code produces '@config.agents/CLAUDE/template'`
+#   code, `agent.default.template` rooted at `shell` (both views): `default declared
+#     '@config.agents/default/template', code produces '@config.agents/shell/template'`
+[[parity]]
+registry = "agent-template-bare"
+command = ["{python}", "-c", """
+from kanibako.launch.templates import agent_template_defaults
+for key, value in sorted(agent_template_defaults("claude").items()):
+    print(f"kanibako-template-source: {key}={value}")
+"""]
+extract = '(?m)^kanibako-template-source: ([^\s=]+)=(\S+)$'
+field = "default"
+authority = "declared"
+translate = { pattern = '^@meta\.agent\.<agent>\.path/', replacement = "@config.agents/claude/" }
+translate_identifier = { pattern = '^agent\.<agent>\.', replacement = "agent.claude." }
+
+# ⚑ THE ACTIVE NODE IS THE SENTINEL `<active>`, the manifest's own discriminator:
+# the emitter substitutes whatever node it is handed into `@agent.<active>.canon`,
+# so handed the token it composes the declared cell. The `agents` store is a scratch
+# dir; the canon SCALARS the producer also returns are `canon-defaults`'. Every dest is
+# printed, and `translate` strips the manifest's `(…)` notation.
+#   `# handbook-binds: 5 declared, 5 produced, in agreement, agreeing on default.`
+#   rc=0
+# NEGATIVE CONTROLS:
+#   code, `core-defaults.yaml`'s `canon_hb_workset` ref -> `@workset.canon/hb`:
+#     `~/canon/handbook/workset: default declared '@workset.canon/handbook', code
+#     produces '@workset.canon/hb'`
+#   code, the `<active>` token replaced with `"default"` rather than the node:
+#     `~/canon/handbook/agent: default declared '@agent.<active>.canon/handbook', code
+#     produces '@agent.default.canon/handbook'`
+#   code, a sixth `canon:` row at `~/canon/handbook/extra`: `produced, declared by
+#     nothing`
+[[parity]]
+registry = "handbook-binds"
+command = ["{python}", "-c", """
+import pathlib, tempfile, types
+from kanibako.settings.core_defaults import canon_default_categories
+from kinemata_views import guest_bind_arm
+with tempfile.TemporaryDirectory() as agents:
+    floor = canon_default_categories(types.SimpleNamespace(agents=pathlib.Path(agents)), "<active>")
+for dest, (host_src, *_) in guest_bind_arm(floor, "bindings.ro"):
+    print(f"kanibako-handbook-bind: {dest}={host_src}")
+"""]
+extract = '(?m)^kanibako-handbook-bind: ([^\s=]+)=(\S+)$'
+field = "default"
+authority = "declared"
+translate = { pattern = '^\((.*)\)$', replacement = '\1' }
+
+# ⚑ `helper-socket-bind`'s emitter and inputs (`kinemata_views.sentinel_helper_binds`),
+# its `box.bindings.ro` arm.
+#   `# helper-log-bind: 1 declared, 1 produced, in agreement, agreeing on default.`
+#   rc=0
+# NEGATIVE CONTROL, code, `helper_log`'s ref -> `@workset.logs/@{meta.box.name}.log`:
+# `~/.kanibako/state/helpers.jsonl: default declared
+# '@workset.logs/@{meta.box.name}.jsonl', code produces
+# '@workset.logs/@{meta.box.name}.log'`.
+[[parity]]
+registry = "helper-log-bind"
+command = ["{python}", "-c", """
+import os, tempfile
+from kinemata_views import guest_bind_arm, sentinel_helper_binds
+with tempfile.TemporaryDirectory() as scratch:
+    os.chdir(scratch)
+    binds = sentinel_helper_binds()
+for dest, (host_src, *_) in guest_bind_arm(binds, "bindings.ro"):
+    print(f"kanibako-helper-log: {dest}={host_src}")
+"""]
+extract = '(?m)^kanibako-helper-log: ([^\s=]+)=(\S+)$'
+field = "default"
+authority = "declared"
+translate = { pattern = '^\((.*)\)$', replacement = '\1' }
+
+# ⚑ THE OPTIONS SLOT ONLY: `translate` keeps the cell's quoted second element, and the
+# oracle prints the emitter's as JSON so an empty string is still a value.
+#   `# helper-socket-options: 1 declared, 1 produced, in agreement, agreeing on
+#   default.`  rc=0
+# NEGATIVE CONTROL, code, `helper_sock`'s options `""` -> `"Z"`: this view
+# `~/.kanibako/state/helper.sock: default declared '""', code produces '"Z"'`, and
+# `helper-socket-bind` stays rc=0 -- the half it does not compare.
+[[parity]]
+registry = "helper-socket-options"
+command = ["{python}", "-c", """
+import json, os, tempfile
+from kinemata_views import guest_bind_arm, sentinel_helper_binds
+with tempfile.TemporaryDirectory() as scratch:
+    os.chdir(scratch)
+    binds = sentinel_helper_binds()
+for dest, (_, *options) in guest_bind_arm(binds, "bindings.rw"):
+    print(f"kanibako-helper-options: {dest}={json.dumps(options[0] if options else None)}")
+"""]
+extract = '(?m)^kanibako-helper-options: ([^\s=]+)=(\S+)$'
+field = "default"
+authority = "declared"
+translate = { pattern = '^\(.*, ("[^"]*")\)$', replacement = '\1' }
+
+# ⚑ `json`, BECAUSE THE VAULT CELLS ARE PER-MODE MAPS, and so the manifest's `(…)`
+# notation is written ORACLE-side: `json` refuses `translate`, the `every_mode_cell`
+# reason. The per-mode split is compared too, as on `workset-anchor-floor`: a uniform
+# row prints bare, a mode-varying one as its map. No row is dropped: with
+# `enable_vault=True` every mode emits all three; a row a future emitter adds in SOME
+# modes only would be dropped here. The stub's `project_path` and vault paths are
+# decoys; the emitter prints the refs, never them. `guarantee_create=False` keeps the
+# vault mkdir off disk.
+#   `# core-binds-ro: 1 declared, 1 produced, in agreement, agreeing on default.`
+#   `# core-binds-rw: 2 declared, 2 produced, in agreement, agreeing on default.`
+#   each rc=0
+# NEGATIVE CONTROLS:
+#   code, the standalone vault ro ref gains `/@meta.box.name` (ro): `~/vault/ro:
+#     default declared '{"named":...,"standalone":"(@workset.vault_ro)"}', code
+#     produces '"(@workset.vault_ro/@meta.box.name)"'` -- three equal arms print as one
+#   code, the named vault rw ref loses its box segment (rw; ro stays rc=0): `~/vault/rw:
+#     default declared '{..."named":"(@workset.vault_rw/@meta.box.name)"...}', code
+#     produces '{..."named":"(@workset.vault_rw)"...}'`
+#   code, `workspace`'s ref -> `@meta.box.workdir` (rw): `~/workspace: default declared
+#     '"(@meta.box.workspace)"', code produces '"(@meta.box.workdir)"'`
+#   manifest, the vault ro standalone arm -> `(@workset.vault_ro/x)`: the mirror finding
+[[parity]]
+registry = "core-binds-ro"
+command = ["{python}", "-c", """
+import json, pathlib
+from kanibako.settings.core_defaults import core_default_categories
+from kanibako.settings.settings_launch import _BOX_MODES
+from kinemata_views import (
+    every_mode_cell, guest_bind_arm, ref_token_project, ref_token_standard_paths,
+)
+floors = {}
+for mode in _BOX_MODES:
+    proj = ref_token_project(mode, workset_name="@meta.workset.name", box_name="@meta.box.name")
+    for decoy in ("project_path", "vault_ro_path", "vault_rw_path"):
+        setattr(proj, decoy, pathlib.Path(f"@DECOY.{decoy}"))
+    binds = core_default_categories(
+        ref_token_standard_paths(mode), proj, enable_vault=True, mode=mode,
+        guarantee_create=False,
+    )
+    floors[mode] = {dest: f"({src})" for dest, (src, *_) in guest_bind_arm(binds, "bindings.ro")}
+for dest, cell in sorted(every_mode_cell(floors).items()):
+    print(f"kanibako-core-bind: {dest}={json.dumps(cell)}")
+"""]
+extract = '(?m)^kanibako-core-bind: ([^\s=]+)=(.+)$'
+field = "default"
+format = "json"
+authority = "declared"
+
+[[parity]]
+registry = "core-binds-rw"
+command = ["{python}", "-c", """
+import json, pathlib
+from kanibako.settings.core_defaults import core_default_categories
+from kanibako.settings.settings_launch import _BOX_MODES
+from kinemata_views import (
+    every_mode_cell, guest_bind_arm, ref_token_project, ref_token_standard_paths,
+)
+floors = {}
+for mode in _BOX_MODES:
+    proj = ref_token_project(mode, workset_name="@meta.workset.name", box_name="@meta.box.name")
+    for decoy in ("project_path", "vault_ro_path", "vault_rw_path"):
+        setattr(proj, decoy, pathlib.Path(f"@DECOY.{decoy}"))
+    binds = core_default_categories(
+        ref_token_standard_paths(mode), proj, enable_vault=True, mode=mode,
+        guarantee_create=False,
+    )
+    floors[mode] = {dest: f"({src})" for dest, (src, *_) in guest_bind_arm(binds, "bindings.rw")}
+for dest, cell in sorted(every_mode_cell(floors).items()):
+    print(f"kanibako-core-bind: {dest}={json.dumps(cell)}")
+"""]
+extract = '(?m)^kanibako-core-bind: ([^\s=]+)=(.+)$'
+field = "default"
+format = "json"
+authority = "declared"
+
+# ⚑ NAMED MODE, and PRIMARY in `channel-binds-primary`: both bind all eight rows from
+# the same `meta_ref`s. A standalone box omits the three workset-local rows, having no
+# workset tier -- an omission the rows' `default:` cells do not spell (only their `note:`
+# prose does), so no view here claims it (`test_start_channels.py` holds it). The
+# arm is hard-coded in `channel_default_categories`, and the views read the emitter,
+# not the table.
+#   `# channel-binds: 8 declared, 8 produced, in agreement, agreeing on default.`
+#   `# channel-binds-primary: 8 declared, 8 produced, in agreement, agreeing on
+#   default.`  each rc=0
+# NEGATIVE CONTROLS:
+#   code, `inbox`'s ref -> `@meta.box.inbox2`: `~/channels/inbox: default declared
+#     '@meta.box.inbox', code produces '@meta.box.inbox2'`
+#   code, the emitter's arm `bindings.rw` -> `bindings.ro`: rc=1, `FAIL: 8
+#     disagreement(s)`, every row `declared, produced by nothing`
+[[parity]]
+registry = "channel-binds"
+command = ["{python}", "-c", """
+import os, tempfile
+from kanibako.settings.core_defaults import channel_default_categories
+from kinemata_views import guest_bind_arm, ref_token_project, ref_token_standard_paths
+with tempfile.TemporaryDirectory() as scratch:
+    os.chdir(scratch)
+    binds = channel_default_categories(
+        ref_token_standard_paths("named"),
+        ref_token_project("named", workset_name="@meta.workset.name", box_name="@meta.box.name"),
+    )
+for dest, (host_src, *_) in guest_bind_arm(binds, "bindings.rw"):
+    print(f"kanibako-channel-bind: {dest}={host_src}")
+"""]
+extract = '(?m)^kanibako-channel-bind: ([^\s=]+)=(\S+)$'
+field = "default"
+authority = "declared"
+translate = { pattern = '^\((.*)\)$', replacement = '\1' }
+
+[[parity]]
+registry = "channel-binds-primary"
+command = ["{python}", "-c", """
+import os, tempfile
+from kanibako.settings.core_defaults import channel_default_categories
+from kinemata_views import guest_bind_arm, ref_token_project, ref_token_standard_paths
+with tempfile.TemporaryDirectory() as scratch:
+    os.chdir(scratch)
+    binds = channel_default_categories(
+        ref_token_standard_paths("primary"),
+        ref_token_project("primary", workset_name="@meta.workset.name", box_name="@meta.box.name"),
+    )
+for dest, (host_src, *_) in guest_bind_arm(binds, "bindings.rw"):
+    print(f"kanibako-channel-bind: {dest}={host_src}")
+"""]
+extract = '(?m)^kanibako-channel-bind: ([^\s=]+)=(\S+)$'
+field = "default"
+authority = "declared"
+translate = { pattern = '^\((.*)\)$', replacement = '\1' }
 
 # ---------------------------------------------------------------------------
 # THE SHAPE RULES. `[[shape]]` reads only the declaration and asks whether it is

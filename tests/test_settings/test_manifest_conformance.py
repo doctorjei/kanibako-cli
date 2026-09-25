@@ -73,7 +73,6 @@ import pytest
 import yaml
 
 from kanibako import kuid
-from kanibako.launch.templates import agent_template_defaults, template_seed_defaults
 from kanibako.settings.config import (
     AGENT_META_FILE,
     WORKSET_META_FILE,
@@ -86,7 +85,6 @@ from kanibako.settings.keyspace_manifest import (
 )
 from kanibako.settings.paths import BoxMode
 from kanibako.settings.settings_keyspace import (
-    ACCESS_TIERS,
     BIND_CATEGORIES,
     DECLARED_AGENT_LEAVES,
     DECLARED_BOX_AUTH_LEAVES,
@@ -109,7 +107,6 @@ from kanibako.settings.settings_keyspace import (
     DECLARED_WORKSET_AUTH_LEAVES,
     DECLARED_WORKSET_CHANNEL_LEAVES,
     DECLARED_WORKSET_LEAVES,
-    access_default,
     key_validity,
 )
 from kanibako.settings.settings_launch import (
@@ -159,17 +156,6 @@ def _per_mode(value: object) -> dict[str, object]:
     if isinstance(value, dict) and set(value) == set(MODES):
         return dict(value)
     return {mode: value for mode in MODES}
-
-
-def _unwrap(value: str) -> str:
-    """Strip the manifest's ``(…)`` STRUCTURED-VALUE notation off a bind default.
-
-    ``bind_default_entries`` writes a bind's host_src as ``(@some.key/path)`` — the
-    parentheses mark "this is the value half of a dest-keyed entry", they are not part
-    of the reference.  The code carries the bare reference.
-    """
-    text = str(value)
-    return text[1:-1] if text.startswith("(") and text.endswith(")") else text
 
 
 # --------------------------------------------------------------------------- #
@@ -406,12 +392,14 @@ class TestWorksetWorkspacesDefault:
 
 
 class TestBehaviorDefaults:
-    """The ``agent.default.*`` floor's manifest columns beside its values.
+    """The ``agent.default.*`` floor's ``type:`` column beside its values.
 
     The VALUES are the ``behavior-floor`` view's: ``core-defaults.yaml`` quotes its
     booleans (``"true"``, so a consumer never sees ``"True"``) and the manifest writes the
     value (``true``), and the view's ``translate`` map is where that spelling difference
-    is bridged.
+    is bridged.  The ``access`` leaf's ``choices:`` column is the ``access-choices``
+    view's, and its second reader, ``access_default``, the ``access-default-reader``
+    view's.
     """
 
     def test_the_manifest_types_the_behavior_floor(self):
@@ -431,22 +419,15 @@ class TestBehaviorDefaults:
             "agent.default.label": "str",
         }, types
 
-    def test_the_access_tier_choices_are_the_code_tier_set(self):
-        """``access`` is the one enum leaf — its ``choices:`` is a second pinnable column."""
-        assert tuple(_keys()["agent.default.access"]["choices"]) == ACCESS_TIERS
-
-    def test_the_access_accessor_agrees_with_the_manifest(self):
-        """The one leaf with two readers (``access_default``) is checked through both."""
-        assert access_default() == _default("agent.default.access")
-
 
 class TestShellTierDefaults:
-    """The ``agent.shell.*`` tier floor's manifest columns beside its values.
+    """The ``agent.shell.*`` tier floor's ``type:`` column beside its values.
 
     The shell-tier twin of :class:`TestBehaviorDefaults`.  The VALUES are the
     ``shell-tier-behavior`` (``label``/``access``/``allow_helpers``) and
     ``shell-tier-fence`` (``bootstrap``/``run_args``/``transform``) views'.  (The shell
-    ``canon`` arm is the ``canon-defaults`` view's.)
+    ``canon`` arm is the ``canon-defaults`` view's, and ``access``'s ``choices:`` the
+    ``access-choices`` view's.)
     """
 
     def test_the_manifest_types_the_shell_floor(self):
@@ -462,29 +443,13 @@ class TestShellTierDefaults:
             "agent.shell.transform": "str",
         }, types
 
-    def test_the_shell_access_choices_are_the_code_tier_set(self):
-        """``access`` is the one enum leaf — its ``choices:`` is pinnable too."""
-        assert tuple(_keys()["agent.shell.access"]["choices"]) == ACCESS_TIERS
 
-
-class TestSingletonDefaults:
-    """(i-e) One-off rows — the half of each that no kinemata view asserts.
-
-    The values of ``agent.{default,shell}.canon`` (``canon-defaults``),
-    ``agent.default.template`` (``agent-template-source``), ``agent.shell.template``
-    (``shell-template-none``), the env rows (``env-defaults``) and the spawn budget
-    (``spawn-budget-floor`` + ``spawn-budget-fallback``) are compared by those views.
-    """
-
-    def test_the_seed_table_composes_the_default_template_producer(self):
-        """⚑ THE NO-SECOND-SPELLING HALF.  The create-time seed table COMPOSES
-        ``agent_template_defaults`` rather than restating it, so the two tables cannot
-        disagree about the arm; put a literal back into ``template_seed_defaults`` and
-        this reds.  (The producer's own value is ``agent-template-source``'s.)
-        """
-        emitted = agent_template_defaults(PROBE_AGENT)
-        seeds = template_seed_defaults(_StubProjectPaths(), PROBE_AGENT)
-        assert seeds["agent.default.template"] == emitted["agent.default.template"]
+#: (i-e) The one-off rows have no class here: every half of them is a kinemata view's.
+#: ``agent.{default,shell}.canon`` (``canon-defaults``), the ``template`` rows
+#: (``agent-template-source`` and its bare twin ``agent-template-bare``, the create-time
+#: seed table ``seed-table-template``, ``shell-template-none``), the env rows
+#: (``env-defaults``) and the spawn budget (``spawn-budget-floor`` +
+#: ``spawn-budget-fallback``).
 
 
 #: A probe root that does not exist.  ⚑ THAT IS THE POINT: a manifest ``default:`` is
@@ -627,19 +592,6 @@ class TestWorksetChannelDefaults:
         assert leaves == set(DECLARED_WORKSET_CHANNEL_LEAVES)
 
 
-class _StubProjectPaths:
-    """The one attribute ``template_seed_defaults`` reads — the box MODE.
-
-    Deliberately NOT a ``ProjectPaths``: building one wants a workset on disk, and
-    this case is about a literal in an emitter.  ``standalone`` is the mode that
-    reaches the agent arm with the fewest inputs — it has no workset tier (spec
-    ``:936``), so the emitter's only other branch is simply off, and the agent-tier
-    row under test does not vary by mode.
-    """
-
-    mode = BoxMode.standalone
-
-
 # --------------------------------------------------------------------------- #
 # 3. DEFAULTS conformance — the BIND entries
 # --------------------------------------------------------------------------- #
@@ -699,26 +651,6 @@ def _core_defaults_doc() -> dict:
     return yaml.safe_load(Path(str(ref)).read_text()) or {}
 
 
-def _code_bind_refs() -> dict[str, object]:
-    """``{box_dest: meta_ref}`` over every declarative bind family in core-defaults.yaml.
-
-    A per-mode row contributes its ``mode_meta_ref`` MAP; a uniform row its ``meta_ref``
-    string.  Rows with neither (``kani``, ``kickoff``, the probed helper socket and
-    ``images_conf``) have no reference to carry and are simply absent — the manifest
-    marks those ``user_key: false`` with a ``value:`` rather than a ``default:``.
-    """
-    doc = _core_defaults_doc()
-    out: dict[str, object] = {}
-    for family in ("channels", "core", "kani", "kickoff", "canon", "helpers", "images"):
-        for entry in doc.get(family) or []:
-            dest = str(entry["box_dest"])
-            if "mode_meta_ref" in entry:
-                out[dest] = {m: str(v) for m, v in entry["mode_meta_ref"].items()}
-            elif "meta_ref" in entry:
-                out[dest] = str(entry["meta_ref"])
-    return out
-
-
 def _manifest_bind_defaults() -> dict[str, tuple[str, object]]:
     """``{box_dest: (arm, default)}`` over ``bind_default_entries`` rows with a default."""
     out: dict[str, tuple[str, object]] = {}
@@ -730,23 +662,50 @@ def _manifest_bind_defaults() -> dict[str, tuple[str, object]]:
 
 
 class TestBindDefaults:
-    """The bind rows' host-source references ARE ``core-defaults.yaml``'s ``meta_ref``s."""
+    """The bind rows' host sources ARE what the bind emitters install.
 
-    def test_the_two_corpora_are_the_measured_size(self):
-        """Anti-vacuity, and the arithmetic the wiring estimate got one off.
+    ⚑ THE COMPARISON IS KINEMATA'S (2026-09-25).  Each emitter has a view in
+    ``kinemata.toml`` — ``handbook-binds``, ``helper-log-bind``, ``helper-socket-bind``
+    (+ ``helper-socket-options``), ``core-binds-ro`` / ``core-binds-rw`` and
+    ``channel-binds`` — comparing the manifest cell with what the emitter RETURNS, where
+    the retired case here compared it with ``core-defaults.yaml``'s ``meta_ref`` column
+    and never ran an emitter.  What stays: the corpus, the ledger that every defaulted
+    row is carried or named, the helper socket's name rule beyond the one arm its view
+    reaches, and the internal rows.
+    """
 
-        30 bind DESTS (29 before this phase added the ``images_conf`` row), 19 of them
-        carrying a ``default:``; 18 code rows carry a ``meta_ref``/``mode_meta_ref``.  17
-        pair up, and the helper socket is checked against its name rule.  The estimate's
-        "18/20" double-counted the images row: its code carrier
-        (``/var/lib/shared-images``) is the code side of the very ``<box_image_dir>`` row
-        the estimate itself exempted.
-        """
+    def test_the_corpus_is_the_measured_size(self):
+        """Anti-vacuity: 30 bind DESTS, 19 of them carrying a ``default:``."""
         entries = manifest_doc()["bind_default_entries"]
         assert sum(len(a) for a in entries.values()) == 30
         assert len(_manifest_bind_defaults()) == 19
-        assert len(_code_bind_refs()) == 18
-        assert len(set(_manifest_bind_defaults()) - set(BIND_EXEMPTIONS)) == 18
+
+    def test_every_bind_default_is_carried_or_named(self):
+        """Carried ∪ exempt == every ``bind_default_entries`` row with a ``default:``.
+
+        The bind twin of :meth:`TestDefaultsCoverage.test_every_default_row_is_pinned_or_named`.
+        The carried set is DERIVED from the views (:func:`_kinemata_carried_binds`), so a
+        dropped view reds here naming its rows, and a new defaulted row lands here
+        unclassified.  A row both carried and exempt reds too: its exemption reason has
+        stopped being true.
+        """
+        declared = {(arm, dest) for dest, (arm, _) in _manifest_bind_defaults().items()}
+        carried = set(_kinemata_carried_binds())
+        exempt = {(_manifest_bind_defaults()[dest][0], dest) for dest in BIND_EXEMPTIONS}
+        unclassified = declared - carried - exempt
+        assert not unclassified, (
+            f"bind rows with a default that no kinemata view compares and no exemption "
+            f"names: {sorted(unclassified)}"
+        )
+        assert not (carried - declared), (
+            f"a view carries bind rows the manifest gives no default: "
+            f"{sorted(carried - declared)}"
+        )
+        assert not (carried & exempt), (
+            f"exempted as having no carrier, yet compared by a kinemata view: "
+            f"{sorted(carried & exempt)}"
+        )
+        assert (len(carried), len(exempt)) == (18, 1)
 
     def test_every_exemption_names_a_row_that_exists(self):
         """A stale exemption is worse than none — it silently un-pins a live row."""
@@ -757,29 +716,11 @@ class TestBindDefaults:
                 f"default — delete the exemption or fix the dest"
             )
 
-    @pytest.mark.parametrize(
-        "dest", sorted(set(_manifest_bind_defaults()) - set(BIND_EXEMPTIONS))
-    )
-    def test_the_manifest_bind_default_is_the_code_meta_ref(self, dest):
-        arm, raw = _manifest_bind_defaults()[dest]
-        if dest == HELPER_SOCKET_DEST:
-            _check_helper_socket_row(raw)
-            return
-        code = _code_bind_refs()
-        assert dest in code, (
-            f"{arm} {dest}: the manifest declares a default but core-defaults.yaml has "
-            f"no meta_ref row for this dest — either the bind moved or this row is stale"
-        )
-        want, got = raw, code[dest]
-        if isinstance(want, dict):
-            assert isinstance(got, dict), f"{dest}: manifest is per-mode, code is not"
-            assert {m: _unwrap(v) for m, v in want.items()} == got, (
-                f"{arm} {dest}: manifest {want!r} vs core-defaults.yaml {got!r}"
-            )
-        else:
-            assert _unwrap(want) == got, (
-                f"{arm} {dest}: manifest {want!r} vs core-defaults.yaml {got!r}"
-            )
+    def test_the_helper_socket_row_is_the_name_rule(self):
+        """The halves ``helper-socket-bind`` cannot hold: the PRIMARY and STANDALONE
+        names (a constant workset token no sentinel can stand in for) and the LENGTH
+        bound with its hash, which the cell spells only as prose."""
+        _check_helper_socket_row(_manifest_bind_defaults()[HELPER_SOCKET_DEST][1])
 
     def test_the_internal_generated_binds_carry_no_default(self):
         """``user_key: false`` rows declare a ``value:``, never a ``default:``.
@@ -810,6 +751,51 @@ class TestBindDefaults:
         row = manifest_doc()["bind_default_entries"]["box.bindings.ro"][dest]
         assert row["user_key"] is False
         assert "images_conf" in manifest_doc()["not_keys"]["never_a_key"]
+
+    def test_every_code_bind_dest_is_a_manifest_dest(self):
+        """CODE → MANIFEST: every dest a ``core-defaults.yaml`` bind table declares is a
+        ``bind_default_entries`` row, under the arm the table's ``category`` names.
+
+        The direction the views do not cover: a view reds a stray row only in the
+        emitter it reads, and three of the seven tables (``kani``, ``kickoff``,
+        ``images``) have no view, so a bind added there with no manifest row would
+        otherwise pass everything.  ⚑ ONE CODE DEST HAS NO DEST OF ITS OWN, and it is
+        derived, never spelled: the ``images`` table's ``images`` row is the code side
+        of the ``<box_image_dir>`` placeholder (see :data:`BIND_EXEMPTIONS`).
+        ⚑ NOT A KINEMATA VIEW: a registry reads ONE arm, the ``channels`` table carries no
+        ``category`` (its arm is hard-coded in the emitter), and pairing the placeholder
+        with its dest would put ``/var/lib/shared-images`` in ``kinemata.toml`` as a
+        second carrier — the reason the verdict file records that row NOT EXPRESSIBLE.
+        """
+        from kanibako.settings.core_defaults import bind_dest_families
+
+        arms = manifest_doc()["bind_default_entries"]
+        declared = {dest for arm in arms.values() for dest in arm}
+        placeholder = {
+            str(e["box_dest"]) for e in (_core_defaults_doc().get("images") or [])
+            if str(e["key"]) == "images"
+        }
+        assert len(placeholder) == 1, f"expected one `images` bind, got {placeholder}"
+        assert "<box_image_dir>" in BIND_EXEMPTIONS
+        undeclared = set(bind_dest_families()) - declared - placeholder
+        assert not undeclared, (
+            f"core-defaults.yaml binds dests no bind_default_entries row declares: "
+            f"{sorted(undeclared)}"
+        )
+        assert not (placeholder & declared), (
+            f"{sorted(placeholder)} is now a manifest dest — the `<box_image_dir>` "
+            f"placeholder no longer stands for it"
+        )
+        doc = _core_defaults_doc()
+        for table in set(bind_dest_families().values()):
+            for entry in doc.get(table) or []:
+                dest, category = str(entry["box_dest"]), entry.get("category")
+                if category is None or dest in placeholder:
+                    continue
+                assert dest in (arms.get(f"box.{category}") or {}), (
+                    f"core-defaults.yaml `{table}` binds {dest} into box.{category}, but "
+                    f"the manifest declares it under another arm"
+                )
 
 
 # --------------------------------------------------------------------------- #
@@ -892,11 +878,10 @@ NO_ORACLE_EMPTY: frozenset[str] = frozenset({
 #: ``agent-template-source`` kinemata views compare both cells through a declared
 #: ``translate`` of exactly that hop, on a PERSONA node so the key segment and the store
 #: dirname differ — so both rows are :data:`CARRIED_DEFAULT_KEYS`.  What the two retired
-#: cases held beyond the cell is pinned elsewhere, exactly: the absent-store fallback by
+#: cases held beyond the cell is held elsewhere, exactly: the absent-store fallback by
 #: ``test_seed_hostdest``'s ``test_a_node_without_its_own_canon_falls_back_to_the_default_tier``,
-#: the seed table's node-rooted arm and ``seeded`` layer by ``test_templates``'
-#: ``test_agent_layer_sources_the_nodes_own_store`` and
-#: ``test_a_persona_node_sources_its_own_store_not_the_harness``.
+#: the seed table's node-rooted arm and ``seeded`` layer by the ``seed-table-template``,
+#: ``agent-seeded-layer`` and ``agent-seeded-layer-bare`` kinemata views.
 
 EXEMPT_DEFAULT_KEYS: frozenset[str] = (
     NO_ORACLE_PLACEHOLDER | NO_ORACLE_ABSENT | NO_ORACLE_EMPTY
@@ -948,22 +933,18 @@ class TestNoOracleExemptions:
 #
 # ⚑ THE LITERAL PINS LEFT FOR KINEMATA (2026-09-25).  The anchor, auth and re-root floors'
 # rows and the agent-identity literals are compared by the ``workset-anchor-meta``,
-# ``auth-chain-meta``, ``meta-runtime-floor`` and ``agent-identity-literals`` views, and
-# counted as :data:`CARRIED_VALUE_KEYS` (section 4c).  The classes below keep each
-# formula's SPELLING (the manifest against the spec, which no view reads) and the halves
-# no view asserts.
+# ``auth-chain-meta``, ``meta-runtime-floor`` and ``agent-identity-literals`` views, the
+# parametric ``meta.agent.<agent>.{path,settings}`` by ``agent-path-anchor`` and
+# ``agent-settings-anchor``, and the box's three channel addresses by the ``box-inbox``,
+# ``box-share-global`` and ``box-share-workset-*`` views — all counted as
+# :data:`CARRIED_VALUE_KEYS` (section 4c).  The classes below keep each formula's
+# SPELLING (the manifest against the spec, which no view reads) and the halves no view
+# asserts.
 
-#: (ii-d) The PARAMETRIC agent-identity rows — the one-hop RELATION above, which no view
-#: can print as a value.
-_VALUE_AGENT_PARAMETRIC_KEYS = (
-    "meta.agent.<agent>.path", "meta.agent.<agent>.settings",
-)
-
-#: (ii-e) Value rows the identity floor CARRIES as caller literals — the channel
-#: partition addresses, the box-tier file anchor, the workspace source, and the box
-#: name — pinned against the manifest formulas plus the derivation that owns each ref.
-_VALUE_BOX_ADDRESS_KEYS = (
-    "meta.box.inbox", "meta.box.share_global", "meta.box.share_workset",
+#: (ii-e) Value rows the identity floor CARRIES as caller literals — the box-tier file
+#: anchor, the workspace source and the box name.  No code spells their formulas, so
+#: each is pinned as the manifest formula verbatim plus the floor passthrough.
+_VALUE_BOX_CALLER_LITERAL_KEYS = (
     "meta.box.settings", "meta.box.workspace", "meta.box.name",
 )
 
@@ -981,8 +962,7 @@ _VALUE_AUTH_ACTIVE_KEYS = (
 #: Every manifest ``keys:`` row whose ``value:`` this section is the carrier for — as on
 #: the default side, a row a kinemata view compares is :data:`CARRIED_VALUE_KEYS` instead.
 PINNED_VALUE_KEYS: frozenset[str] = frozenset(
-    set(_VALUE_AGENT_PARAMETRIC_KEYS) | set(_VALUE_BOX_ADDRESS_KEYS)
-    | set(_VALUE_AUTH_ACTIVE_KEYS)
+    set(_VALUE_BOX_CALLER_LITERAL_KEYS) | set(_VALUE_AUTH_ACTIVE_KEYS)
 )
 
 
@@ -1113,15 +1093,15 @@ class TestValueAgentIdentity:
 
     The parametric ``path`` row is the measured non-literal: the manifest composes the
     store root off ``@meta.agent.<agent>.name`` while the floor unrolls that hop through
-    ``store_dirname``, so the pin is the RELATION (path == ``@config.agents/`` + the
-    name floor's value), with the ``<agent>`` hop answered by the name floor — the
-    one-hop shape.  ``settings`` is the same relation one hop further down, through the
-    ``path`` anchor plus ``AGENT_META_FILE``.  The ``default.name`` / ``shell.*`` rows
-    are plain literals, each firing when its node is the active one — compared by the
-    ``agent-identity-literals`` kinemata view, which runs the identity and grammar floors
-    for nodes ``default`` and ``shell``.  What stays here beside the spellings: the
-    parametric relation, the set-time path floor, and the two NEGATIVE discriminators
-    (no agent, and an agent with no descriptor).
+    ``store_dirname``.  Its VALUE on a persona node is the ``agent-path-anchor`` view's,
+    which declares the name hop as a ``translate``; ``settings``, one hop further down
+    through the ``path`` anchor plus ``AGENT_META_FILE``, is ``agent-settings-anchor``'s.
+    The ``default.name`` / ``shell.*`` rows are plain literals, each firing when its node
+    is the active one — compared by the ``agent-identity-literals`` kinemata view, which
+    runs the identity and grammar floors for nodes ``default`` and ``shell``.  What stays
+    here beside the spellings: the path's RELATION to the name floor, the set-time path
+    floor, and the two NEGATIVE discriminators (no agent, and an agent with no
+    descriptor).
     """
 
     def test_the_manifest_values_are_the_spelled_formulas(self):
@@ -1152,9 +1132,11 @@ class TestValueAgentIdentity:
     def test_the_parametric_path_is_the_name_hop_unrolled(self):
         """``meta.agent.<a>.path`` == ``@config.agents/`` + the name floor's value.
 
-        BARE (node == harness): the control — both spellings are one string.  PERSONA:
-        the load-bearing half — the KEY segment stays canonical (``℘``) while the VALUE
-        wears the ``+`` store spelling, and the relation must hold for both.
+        The half ``agent-path-anchor`` cannot hold: that view answers the name hop with
+        a declared literal, so only this case ties the path floor to what the NAME floor
+        emits.  BARE (node == harness): the control — both spellings are one string.
+        PERSONA: the load-bearing half — the KEY segment stays canonical (``℘``) while
+        the VALUE wears the ``+`` store spelling, and the relation must hold for both.
         """
         path_floor = meta_agent_path_floor(PROBE_AGENT)
         name_value = self._identity(PROBE_AGENT)[f"meta.agent.{PROBE_AGENT}.name"]
@@ -1169,12 +1151,6 @@ class TestValueAgentIdentity:
         node_name_value = self._identity(node)[f"meta.agent.{node}.name"]
         assert node_path_floor[f"meta.agent.{node}.path"] == (
             f"@config.agents/{node_name_value}"
-        )
-
-    def test_the_parametric_settings_hangs_off_the_path_anchor(self):
-        floor = self._identity(PROBE_AGENT)
-        assert floor[f"meta.agent.{PROBE_AGENT}.settings"] == (
-            f"@meta.agent.{PROBE_AGENT}.path/{AGENT_META_FILE}"
         )
 
     def test_the_set_time_path_floor_carries_the_shell_literal(self):
@@ -1223,6 +1199,14 @@ class TestValueBoxAddresses:
     ``proj.project_path`` through).  ``meta.box.settings`` / ``meta.box.workspace`` /
     ``meta.box.name`` have no channel derivation behind them, so their pin is the
     manifest formula verbatim plus the floor passthrough.
+
+    ⚑ THE ARMS THE KINEMATA VIEWS DO NOT REACH, and only those.  ``box-share-workset-*``
+    compare ``share_workset`` in all three modes, through ``meta_identity_floor`` fed by
+    ``settings_launch.box_address_args`` (the wiring the launch unpacks); ``box-inbox``
+    and ``box-share-global`` compare the two partition
+    addresses in NAMED mode only, the one mode whose ``@meta.workset.name`` a sentinel
+    can stand in for (the ``workset-partition`` reason).  So this class keeps those two
+    at PRIMARY and STANDALONE.
     """
 
     @staticmethod
@@ -1240,7 +1224,6 @@ class TestValueBoxAddresses:
         return {
             "@workset.channels.mailboxes": derived["workset.channels.mailboxes"],
             "@workset.channels.share_global": derived["workset.channels.share_global"],
-            "@workset.channels.share": derived["workset.channels.share"],
             "@meta.box.name": _ProbeNamedBox.name,
         }
 
@@ -1270,43 +1253,15 @@ class TestValueBoxAddresses:
             "standalone": "<@workset.kuid>_%leaf(@meta.workset.path)%",
         }
 
-    @pytest.mark.parametrize("mode", sorted(MODES))
-    def test_the_channel_formulas_are_the_derived_addresses(self, mode):
-        """The manifest's three channel formulas, followed one hop, ARE the deriver's
-        answers — which is what the floor then carries."""
+    @pytest.mark.parametrize("mode", ["primary", "standalone"])
+    def test_the_partition_formulas_are_the_derived_addresses(self, mode):
+        """The two partition formulas, followed one hop, ARE the deriver's answers in
+        the two modes whose workset name is a constant token."""
         refs = self._refs(mode)
         addr = self._addrs(mode)
         assert addr.inbox == self._follow(str(_value("meta.box.inbox")), refs)
         assert addr.share_global == self._follow(
             str(_value("meta.box.share_global")), refs
-        )
-        arm = _per_mode(_value("meta.box.share_workset"))[mode]
-        if arm is None:
-            assert addr.share_workset is None, (
-                f"meta.box.share_workset [{mode}]: manifest declares NO value, the "
-                f"deriver answered {addr.share_workset!r}"
-            )
-        else:
-            assert addr.share_workset == self._follow(str(arm), refs)
-
-    @pytest.mark.parametrize("mode", sorted(MODES))
-    def test_the_floor_carries_the_derived_addresses(self, mode):
-        """The launch seam's half: what the deriver answers is what the keyspace gets —
-        a RESOLVED literal, never the formula (the manifest's own workspace note
-        authorizes this: "DECLARATION only — the launch floor carries the RESOLVED dir.
-        Do NOT spell the floor as this formula")."""
-        addr = self._addrs(mode)
-        floor = meta_identity_floor(
-            box_name=_ProbeNamedBox.name, project_path="/p", inbox=str(addr.inbox),
-            share_global=str(addr.share_global),
-            share_workset=(
-                None if addr.share_workset is None else str(addr.share_workset)
-            ),
-        )
-        assert floor["meta.box.inbox"] == str(addr.inbox)
-        assert floor["meta.box.share_global"] == str(addr.share_global)
-        assert floor["meta.box.share_workset"] == (
-            None if addr.share_workset is None else str(addr.share_workset)
         )
 
     def test_the_settings_anchor_is_a_passthrough_of_the_cascade_path(self):
@@ -1628,6 +1583,13 @@ def _assert_registry_is_read(registry: dict) -> None:
     )
 
 
+def _reads_manifest(registry: dict) -> bool:
+    """Whether a ``[[registry]]`` reads the shipped keyspace manifest."""
+    return Path(str(registry.get("source", ""))).parts[-3:] == (
+        "kanibako", "data", KEYSPACE_MANIFEST_FILENAME,
+    )
+
+
 def _kinemata_carried() -> dict[str, dict[str, tuple[str, ...]]]:
     """``{cell: {key: (view, …)}}`` — every manifest ``keys:`` row a kinemata view compares.
 
@@ -1647,10 +1609,7 @@ def _kinemata_carried() -> dict[str, dict[str, tuple[str, ...]]]:
         if not path or path[0] not in carried:
             continue
         registry = registries[str(parity["registry"])]
-        manifest = Path(str(registry.get("source", ""))).parts[-3:] == (
-            "kanibako", "data", KEYSPACE_MANIFEST_FILENAME,
-        )
-        if not manifest or _field_path(registry.get("section")) != ("keys",):
+        if not _reads_manifest(registry) or _field_path(registry.get("section")) != ("keys",):
             continue
         _assert_registry_is_read(registry)
         for key, row in rows.items():
@@ -1674,6 +1633,53 @@ CARRIED_DEFAULT_KEYS: frozenset[str] = frozenset(_KINEMATA_CARRIED["default"])
 CARRIED_VALUE_KEYS: frozenset[str] = frozenset(_KINEMATA_CARRIED["value"])
 
 
+def _kinemata_carried_binds() -> dict[tuple[str, str], tuple[str, ...]]:
+    """``{(arm, dest): (view, …)}`` — every ``bind_default_entries`` row whose
+    ``default:`` a kinemata view compares with the code.
+
+    The section-3 twin of :func:`_kinemata_carried`, read the same way: a
+    ``[[parity]]`` whose ``field`` starts with ``default``, over a registry reading the
+    manifest's ``bind_default_entries.<arm>``, whose ``where`` selects the row, and the
+    row holds the compared path.
+    """
+    config = _kinemata_config()
+    registries = {str(r["name"]): r for r in config.get("registry", [])}
+    arms = manifest_doc()["bind_default_entries"]
+    carried: dict[tuple[str, str], list[str]] = {}
+    for parity in config.get("parity", []):
+        path = _field_path(parity.get("field"))
+        if not path or path[0] != "default":
+            continue
+        registry = registries[str(parity["registry"])]
+        section = _field_path(registry.get("section"))
+        if not _reads_manifest(registry) or section[:1] != ("bind_default_entries",):
+            continue
+        assert len(section) == 2, f"{registry['name']!r} reads {section}, not one bind arm"
+        _assert_registry_is_read(registry)
+        for dest, row in (arms.get(section[1]) or {}).items():
+            if (
+                isinstance(row, dict) and _at_path(row, path)
+                and _kinemata_selects(registry.get("where"), str(dest), row)
+            ):
+                carried.setdefault((section[1], str(dest)), []).append(
+                    str(parity["registry"])
+                )
+    return {key: tuple(views) for key, views in carried.items()}
+
+
+def _carrying_views() -> dict[str, str]:
+    """``{view: row}`` for every view either ledger counts — one row each, for messages."""
+    views: dict[str, str] = {}
+    for by_key in _KINEMATA_CARRIED.values():
+        for key, carriers in by_key.items():
+            for view in carriers:
+                views.setdefault(view, key)
+    for (arm, dest), carriers in _kinemata_carried_binds().items():
+        for view in carriers:
+            views.setdefault(view, f"{arm} {dest}")
+    return views
+
+
 class TestKinemataCarrier:
     """The derived carried sets mean what the coverage cases take them to mean."""
 
@@ -1695,23 +1701,43 @@ class TestKinemataCarrier:
         for cell, by_key in _KINEMATA_CARRIED.items():
             for key, views in by_key.items():
                 for view in views:
-                    parity = parities[view]
-                    assert _field_path(parity.get("field"))[0] == cell, (key, view)
-                    assert parity.get("authority") == "declared", (
-                        f"{view} (carrying {key}) does not hold the manifest as the claim"
-                    )
-                    assert re.compile(str(parity["extract"])).groups >= 2, (
-                        f"{view} (carrying {key}) extracts no value to compare"
-                    )
+                    assert _field_path(parities[view].get("field"))[0] == cell, (key, view)
+        for view, key in _carrying_views().items():
+            parity = parities[view]
+            assert parity.get("authority") == "declared", (
+                f"{view} (carrying {key}) does not hold the manifest as the claim"
+            )
+            assert re.compile(str(parity["extract"])).groups >= 2, (
+                f"{view} (carrying {key}) extracts no value to compare"
+            )
 
     def test_no_carrying_view_has_an_accepted_disagreement(self):
-        """A baselined parity finding on a carrying view is a disagreement CI does not
-        fail on — the row would count as compared while its comparison is waived."""
+        """A baselined parity finding on a view comparing a manifest ROW's cell is a
+        disagreement CI does not fail on — the row would count as compared while its
+        comparison is waived.
+
+        ⚑ WIDER THAN THE TWO LEDGERS: every ``authority = "declared"`` parity with a
+        ``field``, over a registry reading a ``keys:``, ``bind_default_entries`` or
+        ``category_default_entries`` row of the manifest — so a column no ledger counts
+        (``access-choices``' ``choices``) and an entry section none reads
+        (``agent-seeded-layer``) are covered too.  ``categories``' dated acceptance is
+        outside it: that registry reads the ``categories:`` table, no ledger counts a row by
+        it, and what it waives is ``unproduced`` on the metadata records
+        ``scopes``/``scopes_spec``, never a family's compared ``delivery``.
+        """
         import json
 
         baseline = json.loads(KINEMATA_BASELINE.read_text(encoding="utf-8"))
-        views = {view for by_key in _KINEMATA_CARRIED.values()
-                 for carriers in by_key.values() for view in carriers}
+        registries = _kinemata_config_registries()
+        views = set(_carrying_views()) | {
+            str(parity["registry"]) for parity in _kinemata_config().get("parity", [])
+            if parity.get("field") and parity.get("authority") == "declared"
+            and _reads_manifest(registries[str(parity["registry"])])
+            and _field_path(registries[str(parity["registry"])].get("section"))[:1] in (
+                ("keys",), ("bind_default_entries",), ("category_default_entries",),
+            )
+        }
+        assert {"access-choices", "agent-seeded-layer"} <= views, sorted(views)
         # A parity finding is recorded under ``parity:<view>:<kind>``.
         waived = sorted(
             registry for registry in (
@@ -1875,15 +1901,18 @@ class TestDefaultsCoverage:
         )
 
     def test_the_value_split_is_the_measured_split(self):
-        """11 pinned, 13 carried, 10 exempted — stated so a silent migration between them reds.
+        """6 pinned, 18 carried, 10 exempted — stated so a silent migration between them reds.
 
         ⚑ 24/10 → 11 pinned + 13 carried / 10 (2026-09-25), with the default side: the
         anchor, auth and re-root rows and the agent-identity literals are compared by
-        kinemata views.  Left pinned: the six box addresses, the parametric
-        ``meta.agent.<agent>.{path,settings}`` pair, and the three ``<computed>`` rows.
+        kinemata views.
+        ⚑ 11 + 13 → 6 + 18 (2026-09-25, the second pass): the parametric
+        ``meta.agent.<agent>.{path,settings}`` pair and the box's three channel addresses
+        joined the views.  Left pinned: the three box caller literals and the three
+        ``<computed>`` rows.
         """
-        assert len(PINNED_VALUE_KEYS) == 11
-        assert len(CARRIED_VALUE_KEYS) == 13
+        assert len(PINNED_VALUE_KEYS) == 6
+        assert len(CARRIED_VALUE_KEYS) == 18
         assert len(EXEMPT_VALUE_KEYS) == 10
         assert not (PINNED_VALUE_KEYS & EXEMPT_VALUE_KEYS)
         assert not (CARRIED_VALUE_KEYS & EXEMPT_VALUE_KEYS)

@@ -364,6 +364,79 @@ def ref_token_standard_paths(mode: str) -> Any:
 
     return SimpleNamespace(
         primary_workset=_root_or_decoy(mode, "primary_workset"),
+        channels_common=Path("@system.channels.common"),
+        channels_chat=Path("@system.channels.chat"),
         channels_mailboxes=Path("@system.channels.mailboxes"),
         channels_share=Path("@system.channels.share"),
+    )
+
+
+def guest_bind_arm(binds: Any, arm: str) -> list[tuple[str, tuple[str, ...]]]:
+    """`(dest, entry)` for each entry of *binds*' `box.<arm>` arm, sorted by dest.
+
+    A bind emitter keys its arm by GUEST path (`settings_resolve.normalize_bind_dest`),
+    while `bind_default_entries` keys the same row `~/...`; each dest under
+    `GUEST_HOME` is written back as the `~` the manifest keys on, importing the
+    constant rather than respelling it.
+    """
+    from kanibako.settings.settings_resolve import GUEST_HOME
+
+    out = []
+    for dest, entry in (binds.get(f"box.{arm}") or {}).items():
+        if dest.startswith(GUEST_HOME + "/"):
+            dest = "~" + dest[len(GUEST_HOME):]
+        out.append((dest, tuple(entry)))
+    return sorted(out)
+
+
+def sentinel_helper_binds() -> Any:
+    """`core_defaults.helper_default_categories` fed the socket `helper_socket_path`
+    names for a NAMED sentinel box, under a run dir spelled `@system.runtime`.
+
+    The box and workset names are the braced refs the socket cell embeds
+    (`@{meta.box.name}`, `@{meta.workset.name}`). Both sources are created, because
+    the emitter binds only a source that exists, and they are created RELATIVE to
+    the working directory -- so the caller runs this in a scratch cwd.
+    """
+    from pathlib import Path
+
+    from kanibako.commands.start import helper_socket_path
+    from kanibako.settings.core_defaults import helper_default_categories
+
+    run_dir = Path("@system.runtime")
+    run_dir.mkdir()
+    socket = helper_socket_path(
+        ref_token_project(
+            "named", workset_name="@{meta.workset.name}", box_name="@{meta.box.name}",
+        ),
+        run_dir,
+    )
+    socket.touch()
+    log = Path("helpers.jsonl")
+    log.touch()
+    return helper_default_categories(socket_path=socket, log_path=log)
+
+
+def box_address_floor(mode: str) -> dict[str, Any]:
+    """`meta_identity_floor` fed `channels.box_channel_addresses` for a *mode* sentinel
+    box through `settings_launch.box_address_args` -- the wiring `commands.start`
+    unpacks into the same call, so the three address slots are the launch's own.
+
+    The box name is `@meta.box.name` and the named workset's `@meta.workset.name`
+    (bare: each ref ends its cell). The derivation reads a workset file at the stub
+    root, so the caller runs this in a scratch cwd, where `@meta.workset.path/...`
+    is absent. The other identity inputs are decoys naming themselves.
+    """
+    from kanibako.channels.channels import box_channel_addresses
+    from kanibako.settings.settings_launch import box_address_args, meta_identity_floor
+
+    addr = box_channel_addresses(
+        ref_token_project(
+            mode, workset_name="@meta.workset.name", box_name="@meta.box.name",
+        ),
+        ref_token_standard_paths(mode),
+    )
+    return meta_identity_floor(
+        box_name="@meta.box.name", project_path="@DECOY.project_path",
+        **box_address_args(addr), box_settings="@DECOY.box_settings",
     )

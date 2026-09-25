@@ -226,50 +226,13 @@ class TestTemplateSeedDefaults:
         assert dests, defs
         assert set(dests) == {"~/"}, dests
 
-    def test_agent_layer_sources_the_nodes_own_store(self, primary_proj):
-        """Layer 2: ``agent.<node>.seeded`` reads ``@agent.<node>.template``, which
-        defaults to the NODE's OWN store — ``@config.agents/<node>/template``.
-
-        ⚑ RULED 2026-08-27, and the test NAME used to say the opposite ("sources
-        harness store").  The emitter spelled ``harness_of(agent_id)``; §2d and the
-        manifest both root the key at the ACTIVE NODE, so the code moved.  A persona
-        still gets the harness's CONTENT — by SYMLINK, laid by
-        ``commands.start.ensure_persona_share_symlinks`` — which is what makes the
-        node-rooted source resolve to something.
-        """
-        defs = template_seed_defaults(primary_proj, "claude")
-        assert defs["agent.claude.template"] == "@config.agents/claude/template"
-        assert defs["agent.claude.seeded"] == {
-            "~/": ("@agent.claude.template/box/home",),
-        }
-
-    def test_a_persona_node_sources_its_own_store_not_the_harness(
-        self, primary_proj,
-    ):
-        """THE CASE A BARE AGENT CANNOT SHOW: node != harness.
-
-        For ``claude`` the node-rooted and harness-rooted spellings are the SAME
-        STRING, so every assertion above stays green under either implementation.
-        Only a persona separates them — which is exactly why the old harness-rooted
-        emit survived so long, and why this case exists.
-
-        (Mutation: restore ``harness = harness_of(agent_id)`` and root the value at
-        it → this goes RED with ``@config.agents/claude/template``.)
-        """
-        node = "navigator℘claude"
-        defs = template_seed_defaults(primary_proj, node)
-        # ⚑ KEY vs DIRECTORY, both literal: the key segment stays the canonical node,
-        # the VALUE is a store path and carries the ``+`` dirname.
-        assert defs[f"agent.{node}.template"] == (
-            "@config.agents/navigator+claude/template"
-        )
-        assert "@config.agents/claude/template" not in defs.values()
-        # The layer keys are the node's too — nothing here is harness-keyed.
-        assert defs[f"agent.{node}.seeded"] == {
-            "~/": (f"@agent.{node}.template/box/home",),
-        }
-        assert not any("claude" == k.split(".")[1] for k in defs if
-                       k.startswith("agent.") and not k.startswith("agent.default."))
+    # ⚑ Layer 2's SOURCE and ENTRY — ``agent.<node>.template`` rooted at the node's OWN
+    # store, and ``agent.<node>.seeded`` reading it — are compared with the manifest by
+    # the ``seed-table-template`` (persona) and ``agent-seeded-layer`` / ``-bare``
+    # kinemata views (2026-09-25).  The persona is the load-bearing node: for ``claude``
+    # the node-rooted and harness-rooted spellings are ONE string, so only a persona
+    # separates them (RULED 2026-08-27: the key roots at the ACTIVE NODE, never
+    # ``harness_of``).
 
     def test_landing_path_equals_layer_2_source(self, primary_proj):
         """⚑⚑ THE MUST-FIX, pinned: layer 2's SOURCE ref resolves to exactly the

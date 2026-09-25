@@ -6836,11 +6836,7 @@ def _launch_snapshot_inputs(
     meta_identity = settings_launch_module.meta_identity_floor(
         box_name=proj.name,
         project_path=str(proj.project_path),
-        inbox=str(addr.inbox),
-        share_global=str(addr.share_global),
-        share_workset=(
-            str(addr.share_workset) if addr.share_workset is not None else None
-        ),
+        **settings_launch_module.box_address_args(addr),
         # meta.box.settings — the box-TIER file path (str), in EVERY mode. The SAME
         # value as cascade_box_path, so the anchor names exactly the file the cascade
         # reads and `config set` writes (M-8). No per-mode branch: the box tier is

@@ -391,6 +391,10 @@ The box name is carried on `proj.name` — standalone's `<kuid>_%leaf%` is compo
 NOT re-compose or regenerate it. `share_global` / `share_workset` are materialized identity anchors
 for parity and future routing.
 
+The three address arguments come from ONE function, `box_address_args(addr)` (a `BoxAddressArgs`
+TypedDict), which the launch unpacks into the floor call. The kinemata `box-*` views unpack the
+same function, so the slot-to-address wiring they compare is the launch's own.
+
 *share_workset* is `None` for STANDALONE (no workset-local channels, spec §2c) → materialized as a
 whole-value `None` terminal (the key is PRESENT with value `None`). It is now the ONLY standalone
 `None` terminal here: a lone box genuinely has no workset-LOCAL channel dir, whereas it DOES have a

@@ -37,6 +37,7 @@ def auth_chain_floor(*, mode: str, agent_name: str) -> dict[str, object]
 def meta_runtime_floor(*, mode: str, ws_name: str, ws_root_literal: str | None=None) -> dict[str, object]
 def meta_agent_path_floor(agent_name: str) -> dict[str, object]
 def meta_agent_grammar_floor(agent_name: str, descriptor: 'PluginDescriptor | None') -> dict[str, object]
+def box_address_args(addr: 'BoxChannelAddresses') -> BoxAddressArgs
 def meta_identity_floor(*, box_name: str, project_path: str, inbox: str, share_global: str, share_workset: str | None, box_settings: str | None=None, agent_name: str | None=None, agent_real_name: str | None=None, agent_auth_share_support: bool=False) -> dict[str, object]
 def workset_anchor_floor(*, mode: str, channelroot: str | None=None, workspaces: str | None=None, workset_channels: Mapping[str, str] | None=None) -> dict[str, object]
 def resolve_auth_source(snapshot: KeyStore, *, mode: str | None=None) -> AuthSource
@@ -78,6 +79,11 @@ def _no_lookup(ref: str, chain: tuple[str, ...]) -> str
 ## Classes
 
 ```
+class BoxAddressArgs(TypedDict):
+    inbox: str
+    share_global: str
+    share_workset: str | None
+
 @dataclass(frozen=True)
 class AuthSource:
     tier: AuthTier
